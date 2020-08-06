@@ -1,0 +1,119 @@
+# Copyright 2020 The Pigweed Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+# gn-format disable
+import("//build_overrides/pigweed.gni")
+
+import("$dir_pw_build/target_types.gni")
+import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_protobuf_compiler/nanopb.gni")
+import("$dir_pw_unit_test/test.gni")
+config("overrides") {
+  include_dirs = [ "public_overrides" ]
+  visibility = [ ":*" ]
+}
+
+config("public") {
+  include_dirs = [ "public" ]
+  visibility = [ ":*" ]
+}
+
+pw_source_set("nanopb") {
+  public_configs = [ ":overrides" ]
+  public = [ "public_overrides/pw_rpc/internal/method.h" ]
+  sources = [ "method.cc" ]
+  public_deps = [ "..:server_library_deps" ]
+
+  if (dir_pw_third_party_nanopb != "") {
+    public_deps += [ dir_pw_third_party_nanopb ]
+  }
+
+  visibility = [ "../*" ]
+}
+
+pw_source_set("service_method_traits") {
+  public_configs = [ ":public" ]
+  public = [ "public/pw_rpc/internal/service_method_traits.h" ]
+  public_deps = [ "..:nanopb_server" ]
+}
+
+pw_source_set("test_method_context") {
+  public_configs = [ ":public" ]
+  public = [ "public/pw_rpc/test_method_context.h" ]
+  public_deps = [
+    ":service_method_traits",
+    "..:nanopb_server",
+    dir_pw_containers,
+    dir_pw_unit_test,
+  ]
+}
+
+pw_source_set("echo_service") {
+  public_configs = [ ":public" ]
+  public_deps = [ "..:echo_service_proto_nanopb_rpc" ]
+  sources = [ "public/pw_rpc/echo_service_nanopb.h" ]
+}
+
+pw_doc_group("docs") {
+  sources = [ "docs.rst" ]
+}
+
+pw_test_group("tests") {
+  tests = [
+    ":codegen_test",
+    ":echo_service_test",
+    ":method_test",
+    ":service_method_traits_test",
+  ]
+}
+
+pw_test("codegen_test") {
+  deps = [
+    ":test_method_context",
+    "..:nanopb_server",
+    "..:test_protos_nanopb_rpc",
+  ]
+  sources = [ "codegen_test.cc" ]
+  enable_if = dir_pw_third_party_nanopb != ""
+}
+
+pw_test("method_test") {
+  deps = [
+    "..:internal_test_utils_nanopb_server",
+    "..:nanopb_server",
+    "..:test_protos_nanopb",
+  ]
+  sources = [ "method_test.cc" ]
+  enable_if = dir_pw_third_party_nanopb != ""
+}
+
+pw_test("echo_service_test") {
+  deps = [
+    ":echo_service",
+    ":test_method_context",
+  ]
+  sources = [ "echo_service_test.cc" ]
+  enable_if = dir_pw_third_party_nanopb != ""
+}
+
+pw_test("service_method_traits_test") {
+  deps = [
+    ":echo_service",
+    ":service_method_traits",
+    ":test_method_context",
+    "..:test_protos_nanopb_rpc",
+  ]
+  sources = [ "service_method_traits_test.cc" ]
+  enable_if = dir_pw_third_party_nanopb != ""
+}
