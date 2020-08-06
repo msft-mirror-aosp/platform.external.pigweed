@@ -1,0 +1,52 @@
+// Copyright 2020 The Pigweed Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+syntax = "proto3";
+
+package pw.rpc.internal;
+
+enum PacketType {
+  // RPC packets correspond with a request or response for a service method.
+  RPC = 0;
+
+  // STREAM_END packets signal the end of a server or client stream.
+  STREAM_END = 1;
+
+  // CANCEL packets request termination of an ongoing RPC.
+  CANCEL = 2;
+
+  // ERROR packets are sent by the server to indicate that it received an
+  // unexpected or malformed packet.
+  ERROR = 3;
+}
+
+message RpcPacket {
+  // The type of packet. Determines which other fields are used. Required.
+  PacketType type = 1;
+
+  // Channel through which the packet is sent. Required.
+  uint32 channel_id = 2;
+
+  // Hash of the fully-qualified name of the service with which this packet is
+  // associated. For RPC packets, this is the service that processes the packet.
+  fixed32 service_id = 3;
+
+  // Hash of the name of the method which should process this packet.
+  fixed32 method_id = 4;
+
+  // The packet's payload, which is an encoded protobuf.
+  bytes payload = 5;
+
+  // Status code for the RPC response or error.
+  uint32 status = 6;
+}
