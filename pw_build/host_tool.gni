@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-import("python_script.gni")
+import("python_action.gni")
 
 declare_args() {
   # Whether to build host-side tooling.
@@ -46,7 +46,7 @@ if (pw_build_HOST_TOOLS) {
       ]
     }
 
-    pw_python_script(target_name) {
+    pw_python_action(target_name) {
       script = "$dir_pw_build/py/pw_build/host_tool.py"
       args = _script_args
       deps = [ invoker.tool ]

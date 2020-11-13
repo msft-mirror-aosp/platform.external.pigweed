@@ -38,7 +38,7 @@ TEST(MemoryWriter, BytesWritten) {
   EXPECT_EQ(memory_writer.bytes_written(), 0u);
   Status status =
       memory_writer.Write(&kExpectedStruct, sizeof(kExpectedStruct));
-  EXPECT_EQ(status, Status::OK);
+  EXPECT_EQ(status, Status::Ok());
   EXPECT_EQ(memory_writer.bytes_written(), sizeof(kExpectedStruct));
 }  // namespace
 
@@ -68,13 +68,14 @@ TEST(MemoryWriter, MultipleWrites) {
     for (size_t i = 0; i < sizeof(buffer); ++i) {
       buffer[i] = std::byte(counter++);
     }
-    EXPECT_EQ(memory_writer.Write(std::span(buffer)), Status::OK);
+    EXPECT_EQ(memory_writer.Write(std::span(buffer)), Status::Ok());
   }
 
   EXPECT_GT(memory_writer.ConservativeWriteLimit(), 0u);
   EXPECT_LT(memory_writer.ConservativeWriteLimit(), kTempBufferSize);
 
-  EXPECT_EQ(memory_writer.Write(std::span(buffer)), Status::RESOURCE_EXHAUSTED);
+  EXPECT_EQ(memory_writer.Write(std::span(buffer)),
+            Status::ResourceExhausted());
   EXPECT_EQ(memory_writer.bytes_written(), counter);
 
   counter = 0;
@@ -98,12 +99,12 @@ TEST(MemoryWriter, FullWriter) {
     size_t bytes_to_write =
         std::min(sizeof(buffer), memory_writer.ConservativeWriteLimit());
     EXPECT_EQ(memory_writer.Write(std::span(buffer, bytes_to_write)),
-              Status::OK);
+              Status::Ok());
   }
 
   EXPECT_EQ(memory_writer.ConservativeWriteLimit(), 0u);
 
-  EXPECT_EQ(memory_writer.Write(std::span(buffer)), Status::OUT_OF_RANGE);
+  EXPECT_EQ(memory_writer.Write(std::span(buffer)), Status::OutOfRange());
   EXPECT_EQ(memory_writer.bytes_written(), memory_buffer.size());
 
   for (const std::byte& value : memory_writer.WrittenData()) {
@@ -115,7 +116,7 @@ TEST(MemoryWriter, EmptyData) {
   std::byte buffer[5] = {};
 
   MemoryWriter memory_writer(memory_buffer);
-  EXPECT_EQ(memory_writer.Write(buffer, 0), Status::OK);
+  EXPECT_EQ(memory_writer.Write(buffer, 0), Status::Ok());
   EXPECT_EQ(memory_writer.bytes_written(), 0u);
 }
 
@@ -130,7 +131,8 @@ TEST(MemoryWriter, ValidateContents_SingleByteWrites) {
   EXPECT_EQ(memory_writer.data()[1], std::byte{0x7E});
 }
 
-#if CHECK_TEST_CRASHES
+#define TESTING_CHECK_FAILURES_IS_SUPPORTED 0
+#if TESTING_CHECK_FAILURES_IS_SUPPORTED
 
 // TODO(amontanez): Ensure that this test triggers an assert.
 TEST(MemoryWriter, NullPointer) {
@@ -151,7 +153,7 @@ TEST(MemoryReader, NullPointer) {
   memory_reader.Read(nullptr, 21);
 }
 
-#endif  // CHECK_TEST_CRASHES
+#endif  // TESTING_CHECK_FAILURES_IS_SUPPORTED
 
 TEST(MemoryReader, SingleFullRead) {
   constexpr size_t kTempBufferSize = 32;
@@ -169,7 +171,7 @@ TEST(MemoryReader, SingleFullRead) {
   // Read exactly the available bytes.
   EXPECT_EQ(memory_reader.ConservativeReadLimit(), dest.size());
   Result<ByteSpan> result = memory_reader.Read(dest);
-  EXPECT_EQ(result.status(), Status::OK);
+  EXPECT_EQ(result.status(), Status::Ok());
   EXPECT_EQ(result.value().size_bytes(), dest.size());
 
   ASSERT_EQ(source.size(), result.value().size_bytes());
@@ -180,7 +182,7 @@ TEST(MemoryReader, SingleFullRead) {
   // Shoud be no byte remaining.
   EXPECT_EQ(memory_reader.ConservativeReadLimit(), 0u);
   result = memory_reader.Read(dest);
-  EXPECT_EQ(result.status(), Status::OUT_OF_RANGE);
+  EXPECT_EQ(result.status(), Status::OutOfRange());
 }
 
 TEST(MemoryReader, EmptySpanRead) {
@@ -195,7 +197,7 @@ TEST(MemoryReader, EmptySpanRead) {
 
   // Read exactly the available bytes.
   Result<ByteSpan> result = memory_reader.Read(dest);
-  EXPECT_EQ(result.status(), Status::OK);
+  EXPECT_EQ(result.status(), Status::Ok());
   EXPECT_EQ(result.value().size_bytes(), 0u);
   EXPECT_EQ(result.value().data(), dest.data());
 
@@ -218,7 +220,7 @@ TEST(MemoryReader, SinglePartialRead) {
   // Try and read double the bytes available. Use the pointer/size version of
   // the API.
   Result<ByteSpan> result = memory_reader.Read(dest.data(), dest.size());
-  EXPECT_EQ(result.status(), Status::OK);
+  EXPECT_EQ(result.status(), Status::Ok());
   EXPECT_EQ(result.value().size_bytes(), source.size());
 
   ASSERT_EQ(source.size(), result.value().size_bytes());
@@ -229,7 +231,7 @@ TEST(MemoryReader, SinglePartialRead) {
   // Shoud be no byte remaining.
   EXPECT_EQ(memory_reader.ConservativeReadLimit(), 0u);
   result = memory_reader.Read(dest);
-  EXPECT_EQ(result.status(), Status::OUT_OF_RANGE);
+  EXPECT_EQ(result.status(), Status::OutOfRange());
 }
 
 TEST(MemoryReader, MultipleReads) {
@@ -253,7 +255,7 @@ TEST(MemoryReader, MultipleReads) {
 
     // Try and read a chunk of bytes.
     Result<ByteSpan> result = memory_reader.Read(dest);
-    EXPECT_EQ(result.status(), Status::OK);
+    EXPECT_EQ(result.status(), Status::Ok());
     EXPECT_EQ(result.value().size_bytes(), dest.size());
     EXPECT_EQ(memory_reader.ConservativeReadLimit(),
               read_limit - result.value().size_bytes());

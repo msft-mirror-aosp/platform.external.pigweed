@@ -75,18 +75,24 @@ class _MethodClient:
 
     def invoke(self, callback: Callback, _request=None, **request_fields):
         """Invokes an RPC with a callback."""
-        self._rpcs.invoke(self._rpc,
-                          self.method.get_request(_request, request_fields),
-                          callback)
+        self._rpcs.send_request(self._rpc,
+                                self.method.get_request(
+                                    _request, request_fields),
+                                callback,
+                                override_pending=False)
         return _AsyncCall(self._rpcs, self._rpc)
 
     def reinvoke(self, callback: Callback, _request=None, **request_fields):
         """Invokes an RPC with a callback, overriding any pending requests."""
-        self._rpcs.invoke(self._rpc,
-                          self.method.get_request(_request, request_fields),
-                          callback,
-                          override_pending=True)
+        self._rpcs.send_request(self._rpc,
+                                self.method.get_request(
+                                    _request, request_fields),
+                                callback,
+                                override_pending=True)
         return _AsyncCall(self._rpcs, self._rpc)
+
+    def __repr__(self) -> str:
+        return repr(self.method)
 
 
 class _AsyncCall:
@@ -99,7 +105,7 @@ class _AsyncCall:
         self._rpcs = rpcs
 
     def cancel(self) -> bool:
-        return self._rpcs.cancel(self.rpc)
+        return self._rpcs.send_cancel(self.rpc)
 
     def __enter__(self) -> '_AsyncCall':
         return self
@@ -129,7 +135,7 @@ class _StreamingResponses:
 class UnaryMethodClient(_MethodClient):
     def __call__(self, _request=None, **request_fields) -> Tuple[Status, Any]:
         responses: queue.SimpleQueue = queue.SimpleQueue()
-        self.invoke(
+        self.reinvoke(
             lambda _, status, payload: responses.put((status, payload)),
             _request, **request_fields)
         return responses.get()
@@ -138,7 +144,7 @@ class UnaryMethodClient(_MethodClient):
 class ServerStreamingMethodClient(_MethodClient):
     def __call__(self, _request=None, **request_fields) -> _StreamingResponses:
         responses: queue.SimpleQueue = queue.SimpleQueue()
-        self.invoke(
+        self.reinvoke(
             lambda _, status, payload: responses.put((status, payload)),
             _request, **request_fields)
         return _StreamingResponses(responses)
@@ -201,5 +207,5 @@ class Impl(client.ClientImpl):
         try:
             context(rpc, status, payload, *args, **kwargs)
         except:  # pylint: disable=bare-except
-            rpcs.cancel(rpc)
+            rpcs.send_cancel(rpc)
             _LOG.exception('Callback %s for %s raised exception', context, rpc)

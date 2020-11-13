@@ -20,12 +20,16 @@
 #include "pw_containers/intrusive_list.h"
 #include "pw_rpc/internal/call.h"
 #include "pw_rpc/internal/channel.h"
+#include "pw_rpc/internal/method.h"
 #include "pw_rpc/service.h"
 #include "pw_status/status.h"
 
-namespace pw::rpc::internal {
+namespace pw::rpc {
 
-class Method;
+class Server;
+
+namespace internal {
+
 class Packet;
 
 // Internal ServerWriter base class. ServerWriters are used to stream responses.
@@ -53,7 +57,7 @@ class BaseServerWriter : public IntrusiveList<BaseServerWriter>::Item {
   uint32_t method_id() const;
 
   // Closes the ServerWriter, if it is open.
-  void Finish(Status status = Status::OK);
+  void Finish(Status status = Status::Ok());
 
  protected:
   constexpr BaseServerWriter() : state_{kClosed} {}
@@ -62,16 +66,27 @@ class BaseServerWriter : public IntrusiveList<BaseServerWriter>::Item {
 
   const Channel& channel() const { return call_.channel(); }
 
+  constexpr const Channel::OutputBuffer& buffer() const { return response_; }
+
   std::span<std::byte> AcquirePayloadBuffer();
 
+  // Releases the buffer, sending a packet with the specified payload.
   Status ReleasePayloadBuffer(std::span<const std::byte> payload);
 
+  // Releases the buffer without sending a packet.
+  Status ReleasePayloadBuffer();
+
  private:
-  Packet RpcPacket(std::span<const std::byte> payload = {}) const;
+  friend class rpc::Server;
+
+  void Close();
+
+  Packet ResponsePacket(std::span<const std::byte> payload = {}) const;
 
   ServerCall call_;
   Channel::OutputBuffer response_;
   enum { kClosed, kOpen } state_;
 };
 
-}  // namespace pw::rpc::internal
+}  // namespace internal
+}  // namespace pw::rpc

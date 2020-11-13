@@ -13,16 +13,8 @@
 // the License.
 #pragma once
 
-#if __has_include(<version>)
-#include <version>
-#endif  // __has_include(<version>)
-
-#ifdef __cpp_lib_span  // C++ library feature test macro, provided by <version>.
-
+#if __has_include_next(<span>)
 #include_next <span>
-
-#else
+#endif  // __has_include_next(<span>)
 
 #include "pw_span/internal/span.h"
-
-#endif  // __cpp_lib_span

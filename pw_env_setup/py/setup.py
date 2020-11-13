@@ -11,9 +11,9 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""env_setup module definition for PyOxidizer."""
+"""pw_env_setup package definition."""
 
-import setuptools
+import setuptools  # type: ignore
 
 setuptools.setup(
     name='pw_env_setup',
@@ -27,6 +27,7 @@ setuptools.setup(
     },
     package_data={
         'pw_env_setup': [
+            'py.typed',
             'cargo_setup/packages.txt',
             'cipd_setup/luci.json',
             'cipd_setup/pigweed.json',
@@ -34,4 +35,5 @@ setuptools.setup(
             'virtualenv_setup/requirements.txt',
         ],
     },
+    zip_safe=False,
 )

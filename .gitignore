@@ -12,6 +12,8 @@ bazel-*
 .clangd/
 *.swp
 *.swo
+*flycheck_*
+*_flymake.*
 
 # Python
 *.pyc
@@ -21,6 +23,8 @@ bazel-*
 .cache/
 .mypy_cache/
 __pycache__/
+build/
+dist/
 
 # PyOxidizer
 pw_env_setup/py/oxidizer/build

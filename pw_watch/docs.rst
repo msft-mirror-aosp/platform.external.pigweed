@@ -1,8 +1,4 @@
-.. default-domain:: python
-
-.. highlight:: sh
-
-.. _chapter-watch:
+.. _module-pw_watch:
 
 --------
 pw_watch
@@ -18,7 +14,7 @@ flash, and run tests upon save.
 
 .. note::
 
-  ``pw_watch`` currently only works with Pigweed's GN build.
+  ``pw_watch`` currently only works with Pigweed's GN and CMake builds.
 
 Module Usage
 ============
@@ -64,4 +60,4 @@ Thanks to GN's understanding of the full dependency tree, only the tests
 affected by a file change are run when ``pw_watch`` triggers a build. By
 default, host builds using ``pw_watch`` will run unit tests. To run unit tests
 on a device as part of ``pw_watch``, refer to your device's
-:ref:`target documentation<chapter-targets>`.
+:ref:`target documentation<docs-targets>`.

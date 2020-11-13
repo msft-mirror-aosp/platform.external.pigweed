@@ -12,12 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# gn-format disable
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
+
 config("default_config") {
   include_dirs = [
     "public",
@@ -38,6 +38,7 @@ pw_test_group("tests") {
 
 pw_test("test") {
   deps = [ ":pw_span" ]
+  remove_configs = [ "$dir_pw_build:extra_strict_warnings" ]
   sources = [ "span_test.cc" ]
 }
 

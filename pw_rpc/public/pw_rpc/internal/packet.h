@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <span>
 
+#include "pw_bytes/span.h"
 #include "pw_rpc_protos/packet.pwpb.h"
 #include "pw_status/status_with_size.h"
 
@@ -28,13 +29,13 @@ class Packet {
 
   // Parses a packet from a protobuf message. Missing or malformed fields take
   // their default values.
-  static Status FromBuffer(std::span<const std::byte> data, Packet& packet);
+  static Result<Packet> FromBuffer(ConstByteSpan data);
 
   // Creates an RPC packet with the channel, service, and method ID of the
   // provided packet.
   static constexpr Packet Response(const Packet& request,
-                                   Status status = Status::OK) {
-    return Packet(PacketType::RPC,
+                                   Status status = Status::Ok()) {
+    return Packet(PacketType::RESPONSE,
                   request.channel_id(),
                   request.service_id(),
                   request.method_id(),
@@ -42,10 +43,21 @@ class Packet {
                   status);
   }
 
-  // Creates an ERROR packet with the channel, service, and method ID of the
-  // provided packet.
-  static constexpr Packet Error(const Packet& packet, Status status) {
-    return Packet(PacketType::ERROR,
+  // Creates a SERVER_ERROR packet with the channel, service, and method ID of
+  // the provided packet.
+  static constexpr Packet ServerError(const Packet& packet, Status status) {
+    return Packet(PacketType::SERVER_ERROR,
+                  packet.channel_id(),
+                  packet.service_id(),
+                  packet.method_id(),
+                  {},
+                  status);
+  }
+
+  // Creates a CLIENT_ERROR packet with the channel, service, and method ID of
+  // the provided packet.
+  static constexpr Packet ClientError(const Packet& packet, Status status) {
+    return Packet(PacketType::CLIENT_ERROR,
                   packet.channel_id(),
                   packet.service_id(),
                   packet.method_id(),
@@ -55,14 +67,14 @@ class Packet {
 
   // Creates an empty packet.
   constexpr Packet()
-      : Packet(PacketType::RPC, kUnassignedId, kUnassignedId, kUnassignedId) {}
+      : Packet(PacketType{}, kUnassignedId, kUnassignedId, kUnassignedId) {}
 
   constexpr Packet(PacketType type,
                    uint32_t channel_id,
                    uint32_t service_id,
                    uint32_t method_id,
-                   std::span<const std::byte> payload = {},
-                   Status status = Status::OK)
+                   ConstByteSpan payload = {},
+                   Status status = Status::Ok())
       : type_(type),
         channel_id_(channel_id),
         service_id_(service_id),
@@ -71,20 +83,24 @@ class Packet {
         status_(status) {}
 
   // Encodes the packet into its wire format. Returns the encoded size.
-  StatusWithSize Encode(std::span<std::byte> buffer) const;
+  Result<ConstByteSpan> Encode(ByteSpan buffer) const;
 
   // Determines the space required to encode the packet proto fields for a
   // response, excluding the payload. This may be used to split the buffer into
   // reserved space and available space for the payload.
   size_t MinEncodedSizeBytes() const;
 
+  enum Destination : bool { kServer, kClient };
+
+  constexpr Destination destination() const {
+    return static_cast<int>(type_) % 2 == 0 ? kServer : kClient;
+  }
+
   constexpr PacketType type() const { return type_; }
   constexpr uint32_t channel_id() const { return channel_id_; }
   constexpr uint32_t service_id() const { return service_id_; }
   constexpr uint32_t method_id() const { return method_id_; }
-  constexpr const std::span<const std::byte>& payload() const {
-    return payload_;
-  }
+  constexpr const ConstByteSpan& payload() const { return payload_; }
   constexpr Status status() const { return status_; }
 
   constexpr void set_type(PacketType type) { type_ = type; }
@@ -95,9 +111,7 @@ class Packet {
     service_id_ = service_id;
   }
   constexpr void set_method_id(uint32_t method_id) { method_id_ = method_id; }
-  constexpr void set_payload(std::span<const std::byte> payload) {
-    payload_ = payload;
-  }
+  constexpr void set_payload(ConstByteSpan payload) { payload_ = payload; }
   constexpr void set_status(Status status) { status_ = status; }
 
  private:
@@ -105,7 +119,7 @@ class Packet {
   uint32_t channel_id_;
   uint32_t service_id_;
   uint32_t method_id_;
-  std::span<const std::byte> payload_;
+  ConstByteSpan payload_;
   Status status_;
 };
 

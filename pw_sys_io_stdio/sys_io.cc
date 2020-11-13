@@ -20,22 +20,27 @@ namespace pw::sys_io {
 
 Status ReadByte(std::byte* dest) {
   if (dest == nullptr) {
-    return Status::FAILED_PRECONDITION;
+    return Status::FailedPrecondition();
   }
 
   int value = std::getchar();
   if (value == EOF) {
-    return Status::RESOURCE_EXHAUSTED;
+    return Status::ResourceExhausted();
   }
   *dest = static_cast<std::byte>(value);
-  return Status::OK;
+  return Status::Ok();
+}
+
+Status TryReadByte(std::byte*) {
+  // TryReadByte() is not (yet) supported on hosts.
+  return Status::Unimplemented();
 }
 
 Status WriteByte(std::byte b) {
   if (std::putchar(static_cast<char>(b)) == EOF) {
-    return Status::INTERNAL;
+    return Status::Internal();
   }
-  return Status::OK;
+  return Status::Ok();
 }
 
 StatusWithSize WriteLine(const std::string_view& s) {

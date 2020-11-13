@@ -14,7 +14,6 @@
 
 #include <cinttypes>
 
-#include "pw_boot_armv7m/boot.h"
 #include "pw_preprocessor/compiler.h"
 #include "pw_sys_io/sys_io.h"
 
@@ -171,11 +170,21 @@ namespace pw::sys_io {
 // see if a byte is ready yet.
 Status ReadByte(std::byte* dest) {
   while (true) {
-    if (usart1.status & kReadDataReady) {
-      *dest = static_cast<std::byte>(usart1.data_register);
+    if (TryReadByte(dest).ok()) {
+      return Status::Ok();
     }
   }
-  return Status::OK;
+}
+
+// Wait for a byte to read on USART1. This blocks until a byte is read. This is
+// extremely inefficient as it requires the target to burn CPU cycles polling to
+// see if a byte is ready yet.
+Status TryReadByte(std::byte* dest) {
+  if (!(usart1.status & kReadDataReady)) {
+    return Status::Unavailable();
+  }
+  *dest = static_cast<std::byte>(usart1.data_register);
+  return Status::Ok();
 }
 
 // Send a byte over USART1. Since this blocks on every byte, it's rather
@@ -188,7 +197,7 @@ Status WriteByte(std::byte b) {
   while (!(usart1.status & kTxRegisterEmpty)) {
   }
   usart1.data_register = static_cast<uint32_t>(b);
-  return Status::OK;
+  return Status::Ok();
 }
 
 // Writes a string using pw::sys_io, and add newline characters at the end.

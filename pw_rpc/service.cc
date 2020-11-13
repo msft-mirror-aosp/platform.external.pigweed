@@ -14,17 +14,23 @@
 
 #include "pw_rpc/service.h"
 
+#include <cstddef>
 #include <type_traits>
-
-#include "pw_rpc/internal/method.h"
 
 namespace pw::rpc {
 
 const internal::Method* Service::FindMethod(uint32_t method_id) const {
-  for (const internal::Method& method : methods_) {
-    if (method.id() == method_id) {
-      return &method;
+  const internal::MethodUnion* method_impl = methods_;
+
+  for (size_t i = 0; i < method_count_; ++i) {
+    const internal::Method* method = &method_impl->method();
+    if (method->id() == method_id) {
+      return method;
     }
+
+    const auto raw = reinterpret_cast<const std::byte*>(method_impl);
+    method_impl =
+        reinterpret_cast<const internal::MethodUnion*>(raw + method_size_);
   }
 
   return nullptr;

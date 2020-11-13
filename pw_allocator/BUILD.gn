@@ -12,12 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# gn-format disable
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
+
 declare_args() {
   pw_allocator_POISON_HEAP = false
 }
@@ -78,7 +78,6 @@ pw_source_set("freelist_heap") {
     "$dir_pw_log",
   ]
   sources = [ "freelist_heap.cc" ]
-  sources += public
 }
 
 pw_test_group("tests") {
@@ -108,5 +107,6 @@ pw_test("freelist_heap_test") {
 }
 
 pw_doc_group("docs") {
+  inputs = [ "doc_resources/pw_allocator_heap_visualizer_demo.png" ]
   sources = [ "docs.rst" ]
 }

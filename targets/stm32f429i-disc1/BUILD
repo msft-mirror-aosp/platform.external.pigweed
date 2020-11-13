@@ -22,9 +22,9 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])  # Apache License 2.0
 
 pw_cc_library(
-    name = "pw_pre_init",
+    name = "pre_init",
     srcs = [
-        "early_boot.c",
+        "boot.cc",
         "vector_table.cc"
     ],
     deps = [
