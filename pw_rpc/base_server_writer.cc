@@ -50,11 +50,16 @@ void BaseServerWriter::Finish(Status status) {
     return;
   }
 
-  call_.server().RemoveWriter(*this);
-  state_ = kClosed;
+  // If the ServerWriter implementer or user forgets to release an acquired
+  // buffer before finishing, release it here.
+  if (!response_.empty()) {
+    ReleasePayloadBuffer();
+  }
+
+  Close();
 
   // Send a control packet indicating that the stream (and RPC) has terminated.
-  call_.channel().Send(Packet(PacketType::STREAM_END,
+  call_.channel().Send(Packet(PacketType::SERVER_STREAM_END,
                               call_.channel().id(),
                               call_.service().id(),
                               method().id(),
@@ -67,20 +72,43 @@ std::span<std::byte> BaseServerWriter::AcquirePayloadBuffer() {
     return {};
   }
 
-  response_ = call_.channel().AcquireBuffer();
-  return response_.payload(RpcPacket());
+  // Only allow having one active buffer at a time.
+  if (response_.empty()) {
+    response_ = call_.channel().AcquireBuffer();
+  }
+
+  return response_.payload(ResponsePacket());
 }
 
 Status BaseServerWriter::ReleasePayloadBuffer(
     std::span<const std::byte> payload) {
   if (!open()) {
-    return Status::FAILED_PRECONDITION;
+    return Status::FailedPrecondition();
   }
-  return call_.channel().Send(response_, RpcPacket(payload));
+  return call_.channel().Send(response_, ResponsePacket(payload));
 }
 
-Packet BaseServerWriter::RpcPacket(std::span<const std::byte> payload) const {
-  return Packet(PacketType::RPC,
+Status BaseServerWriter::ReleasePayloadBuffer() {
+  if (!open()) {
+    return Status::FailedPrecondition();
+  }
+
+  call_.channel().Release(response_);
+  return Status::Ok();
+}
+
+void BaseServerWriter::Close() {
+  if (!open()) {
+    return;
+  }
+
+  call_.server().RemoveWriter(*this);
+  state_ = kClosed;
+}
+
+Packet BaseServerWriter::ResponsePacket(
+    std::span<const std::byte> payload) const {
+  return Packet(PacketType::RESPONSE,
                 call_.channel().id(),
                 call_.service().id(),
                 method().id(),

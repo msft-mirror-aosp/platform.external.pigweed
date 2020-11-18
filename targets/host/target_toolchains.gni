@@ -12,13 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# gn-format disable
 import("//build_overrides/pigweed.gni")
 
-import("$dir_pw_protobuf_compiler/nanopb.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
+import("$dir_pw_third_party/nanopb/nanopb.gni")
 import("$dir_pw_toolchain/host_clang/toolchains.gni")
 import("$dir_pw_toolchain/host_gcc/toolchains.gni")
+
 _host_common = {
   # Use logging-based test output on host.
   pw_unit_test_MAIN = "$dir_pw_unit_test:logging_main"
@@ -38,12 +38,9 @@ _host_common = {
   # Tokenizer trace time.
   pw_trace_tokenizer_time = "$dir_pw_trace_tokenized:host_trace_time"
 
-  # Allow nanopb to be toggled via a build arg on host for easy testing.
-  _has_nanopb = pw_protobuf_GENERATORS + [ "nanopb" ] - [ "nanopb" ] !=
-                pw_protobuf_GENERATORS
-  if (dir_pw_third_party_nanopb != "" && !_has_nanopb) {
-    pw_protobuf_GENERATORS += [ "nanopb" ]
-  }
+  # Specify builtin GN variables.
+  current_os = host_os
+  current_cpu = host_cpu
 }
 
 # Linux-specific target configuration.
@@ -76,6 +73,8 @@ _os_specific_config = {
   }
 }
 
+_target_default_configs = [ "$dir_pw_build:extra_strict_warnings" ]
+
 pw_target_toolchain_host = {
   _excluded_members = [
     "defaults",
@@ -90,6 +89,7 @@ pw_target_toolchain_host = {
       forward_variables_from(_toolchain_base.defaults, "*")
       forward_variables_from(_host_common, "*")
       forward_variables_from(_os_specific_config, "*")
+      default_configs += _target_default_configs
     }
   }
 
@@ -101,6 +101,7 @@ pw_target_toolchain_host = {
       forward_variables_from(_toolchain_base.defaults, "*")
       forward_variables_from(_host_common, "*")
       forward_variables_from(_os_specific_config, "*")
+      default_configs += _target_default_configs
     }
   }
 
@@ -112,6 +113,7 @@ pw_target_toolchain_host = {
       forward_variables_from(_toolchain_base.defaults, "*")
       forward_variables_from(_host_common, "*")
       forward_variables_from(_os_specific_config, "*")
+      default_configs += _target_default_configs
     }
   }
 
@@ -123,6 +125,7 @@ pw_target_toolchain_host = {
       forward_variables_from(_toolchain_base.defaults, "*")
       forward_variables_from(_host_common, "*")
       forward_variables_from(_os_specific_config, "*")
+      default_configs += _target_default_configs
     }
   }
 
@@ -134,6 +137,7 @@ pw_target_toolchain_host = {
       forward_variables_from(_toolchain_base.defaults, "*")
       forward_variables_from(_host_common, "*")
       forward_variables_from(_os_specific_config, "*")
+      default_configs += _target_default_configs
     }
   }
 
@@ -145,6 +149,7 @@ pw_target_toolchain_host = {
       forward_variables_from(_toolchain_base.defaults, "*")
       forward_variables_from(_host_common, "*")
       forward_variables_from(_os_specific_config, "*")
+      default_configs += _target_default_configs
     }
   }
 }

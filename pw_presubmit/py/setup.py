@@ -13,7 +13,7 @@
 # the License.
 """The pw_presubmit package."""
 
-import setuptools
+import setuptools  # type: ignore
 
 setuptools.setup(
     name='pw_presubmit',
@@ -22,9 +22,12 @@ setuptools.setup(
     author_email='pigweed-developers@googlegroups.com',
     description='Presubmit tools and a presubmit script for Pigweed',
     install_requires=[
-        'mypy==0.770',
-        'pylint==2.5.2',
+        'mypy==0.790',
+        'pylint==2.6.0',
         'yapf==0.30.0',
+        'pw_package',
     ],
     packages=setuptools.find_packages(),
+    package_data={'pw_presubmit': ['py.typed']},
+    zip_safe=False,
 )

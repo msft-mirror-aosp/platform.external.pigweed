@@ -13,7 +13,7 @@
 # the License.
 """The pw_trace package."""
 
-import setuptools
+import setuptools  # type: ignore
 
 setuptools.setup(
     name='pw_trace',
@@ -22,5 +22,6 @@ setuptools.setup(
     author_email='pigweed-developers@googlegroups.com',
     description='Tools for dealing with trace data',
     packages=setuptools.find_packages(),
-    test_suite='setup.test_suite',
+    package_data={'pw_trace': ['py.typed']},
+    zip_safe=False,
 )

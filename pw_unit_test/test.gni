@@ -12,11 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# gn-format disable
 import("//build_overrides/pigweed.gni")
 
-import("$dir_pw_build/python_script.gni")
+import("$dir_pw_build/python_action.gni")
 import("$dir_pw_build/target_types.gni")
+
 declare_args() {
   # Path to a test runner to automatically run unit tests after they are built.
   #
@@ -50,7 +50,7 @@ template("_pw_disableable_target") {
     # If the target is disabled, create an empty target in its place. Use an
     # action with the original target's sources as inputs to ensure that
     # the source files exist (even if they don't compile).
-    pw_python_script(target_name) {
+    pw_python_action(target_name) {
       script = "$dir_pw_build/py/pw_build/nop.py"
       stamp = true
 
@@ -161,7 +161,7 @@ template("pw_test") {
       }
     }
 
-    pw_python_script(_test_to_run + "_run") {
+    pw_python_action(_test_to_run + "_run") {
       deps = [ ":$_test_target_name" ]
       inputs = [ pw_unit_test_AUTOMATIC_RUNNER ]
       script = "$dir_pw_unit_test/py/pw_unit_test/test_runner.py"
@@ -205,7 +205,7 @@ template("pw_test_group") {
         _group_deps_metadata += [
           {
             type = "dep"
-            group = get_path_info(dep, "abspath")
+            group = get_label_info(dep, "label_no_toolchain")
           },
         ]
       }
@@ -220,7 +220,7 @@ template("pw_test_group") {
         self = [
           {
             type = "self"
-            name = get_path_info(":$_group_target", "abspath")
+            name = get_label_info(":$_group_target", "label_no_toolchain")
           },
         ]
 

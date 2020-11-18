@@ -35,6 +35,9 @@
 //
 #pragma once
 
+#ifndef __cpp_lib_span
+#define __cpp_lib_span 202002L
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -43,7 +46,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "pw_polyfill/language_features.h"
+#include "pw_polyfill/language_feature_macros.h"
 #include "pw_polyfill/standard_library/namespace.h"
 
 // Pigweed: Disable the asserts from Chromium for now.
@@ -470,3 +473,4 @@ span(const Container&) -> span<pw_span_internal::ValueType<const Container>>;
 _PW_POLYFILL_END_NAMESPACE_STD
 
 #undef _PW_SPAN_ASSERT
+#endif  // __cpp_lib_span

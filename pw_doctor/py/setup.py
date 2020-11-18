@@ -13,7 +13,7 @@
 # the License.
 """The pw_doctor package."""
 
-import setuptools
+import setuptools  # type: ignore
 
 setuptools.setup(
     name='pw_doctor',
@@ -22,4 +22,6 @@ setuptools.setup(
     author_email='pigweed-developers@googlegroups.com',
     description='Environment check script for Pigweed',
     packages=setuptools.find_packages(),
+    package_data={'pw_doctor': ['py.typed']},
+    zip_safe=False,
 )

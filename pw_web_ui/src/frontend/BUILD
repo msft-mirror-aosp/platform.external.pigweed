@@ -14,7 +14,7 @@
 
 package(default_visibility = ["//visibility:public"])
 
-load("@npm_bazel_typescript//:index.bzl", "ts_library", "ts_devserver")
+load("@npm//@bazel/typescript:index.bzl", "ts_library", "ts_devserver")
 load("//pw_web_ui:web_bundle.bzl", "web_bundle")
 
 ts_library(
@@ -45,6 +45,16 @@ ts_devserver(
     # TODO(msoulanille): Use the devserver's bundler
     # instead of serving the production bundle.
     name = "devserver",
+    static_files = [
+        "index.html",
+        ":app_bundle",
+    ]
+)
+
+ts_devserver(
+    # Bundles and serves the production bundle for testing.
+    # Should NOT be used for serving in production.
+    name = "prodserver",
     static_files = [
         "index.html",
         ":app_bundle",

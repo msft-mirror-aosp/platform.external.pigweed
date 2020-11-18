@@ -28,69 +28,10 @@
 #endif  // __cplusplus
 #endif  // PW_TRACE_GET_TIME_DELTA
 
+#include "pw_status/status.h"
 #include "pw_tokenizer/tokenize.h"
+#include "pw_trace_tokenized/config.h"
 #include "pw_trace_tokenized/internal/trace_tokenized_internal.h"
-
-// Configurable options
-
-// Since not all strings are tokenizeable, labels can be passed as arguments.
-// PW_TRACE_CONFIG_ARG_LABEL_SIZE_BYTES configures the maximum number of
-// characters to include, if more are provided the string will be clipped.
-#ifndef PW_TRACE_CONFIG_ARG_LABEL_SIZE_BYTES
-#define PW_TRACE_CONFIG_ARG_LABEL_SIZE_BYTES 20
-#endif  // PW_TRACE_CONFIG_ARG_LABEL_SIZE_BYTES
-
-// PW_TRACE_TIME_TYPE sets the type for trace time.
-#ifndef PW_TRACE_TIME_TYPE
-#define PW_TRACE_TIME_TYPE uint32_t
-#endif  // PW_TRACE_TIME_TYPE
-
-// PW_TRACE_GET_TIME is the macro which is called to get the current time for a
-// trace event. It's default is to use pw_trace_GetTraceTime() which needs to be
-// provided by the platform.
-#ifndef PW_TRACE_GET_TIME
-#define PW_TRACE_GET_TIME() pw_trace_GetTraceTime()
-extern PW_TRACE_TIME_TYPE pw_trace_GetTraceTime();
-#endif  // PW_TRACE_GET_TIME
-
-// PW_TRACE_GET_TIME_TICKS_PER_SECOND is the macro which is called to determine
-// the unit of the trace time. It's default is to use
-// pw_trace_GetTraceTimeTicksPerSecond() which needs to be provided by the
-// platform.
-#ifndef PW_TRACE_GET_TIME_TICKS_PER_SECOND
-#define PW_TRACE_GET_TIME_TICKS_PER_SECOND() \
-  pw_trace_GetTraceTimeTicksPerSecond()
-extern size_t pw_trace_GetTraceTimeTicksPerSecond();
-#endif  // PW_TRACE_GET_TIME_TICKS_PER_SECOND
-
-// PW_TRACE_GET_TIME_DELTA is te macro which is called to determine
-// the delta between two PW_TRACE_TIME_TYPE variables. It should return a
-// delta of the two times, in the same type.
-// The default implementation just subtracts the two, which is suitable if
-// values either never wrap, or are unsigned and do not wrap multiple times
-// between trace events. If either of these are not the case a different
-// implemention should be used.
-#ifndef PW_TRACE_GET_TIME_DELTA
-#define PW_TRACE_GET_TIME_DELTA(last_time, current_time) \
-  ((current_time) - (last_time))
-#ifdef __cplusplus
-static_assert(
-    std::is_unsigned<PW_TRACE_TIME_TYPE>::value,
-    "Default time delta implementation only works for unsigned time types.");
-#endif  // __cplusplus
-#endif  // PW_TRACE_GET_TIME_DELTA
-
-// PW_TRACE_LOCK is called when a new event is being processed to ensure only
-// one event is sent to the sinks at a time. Is is also called when registering
-// and unregistering callbacks and sinks.
-#ifndef PW_TRACE_LOCK
-#define PW_TRACE_LOCK()
-#endif  // PW_TRACE_LOCK
-
-// PW_TRACE_UNLOCK is called after sending the data to all the sinks.
-#ifndef PW_TRACE_UNLOCK
-#define PW_TRACE_UNLOCK()
-#endif  // PW_TRACE_UNLOCK
 
 #ifdef __cplusplus
 namespace pw {
@@ -98,9 +39,88 @@ namespace trace {
 
 using EventType = pw_trace_EventType;
 
+namespace internal {
+
+// Simple ring buffer which is suitable for use in a critical section.
+template <size_t kSize>
+class TraceQueue {
+ public:
+  struct QueueEventBlock {
+    uint32_t trace_token;
+    EventType event_type;
+    const char* module;
+    uint32_t trace_id;
+    uint8_t flags;
+    size_t data_size;
+    std::byte data_buffer[PW_TRACE_BUFFER_MAX_DATA_SIZE_BYTES];
+  };
+
+  pw::Status TryPushBack(uint32_t trace_token,
+                         EventType event_type,
+                         const char* module,
+                         uint32_t trace_id,
+                         uint8_t flags,
+                         const void* data_buffer,
+                         size_t data_size) {
+    if (IsFull()) {
+      return pw::Status::RESOURCE_EXHAUSTED;
+    }
+    event_queue_[head_].trace_token = trace_token;
+    event_queue_[head_].event_type = event_type;
+    event_queue_[head_].module = module;
+    event_queue_[head_].trace_id = trace_id;
+    event_queue_[head_].flags = flags;
+    event_queue_[head_].data_size = data_size;
+    for (size_t i = 0; i < data_size; i++) {
+      event_queue_[head_].data_buffer[i] =
+          reinterpret_cast<const std::byte*>(data_buffer)[i];
+    }
+    head_ = (head_ + 1) % kSize;
+    is_empty_ = false;
+    return pw::Status::OK;
+  }
+
+  const volatile QueueEventBlock* PeekFront() const {
+    if (IsEmpty()) {
+      return nullptr;
+    }
+    return &event_queue_[tail_];
+  }
+
+  void PopFront() {
+    if (!IsEmpty()) {
+      tail_ = (tail_ + 1) % kSize;
+      is_empty_ = (tail_ == head_);
+    }
+  }
+
+  void Clear() {
+    head_ = 0;
+    tail_ = 0;
+    is_empty_ = true;
+  }
+
+  bool IsEmpty() const { return is_empty_; }
+  bool IsFull() const { return !is_empty_ && (head_ == tail_); }
+
+ private:
+  std::array<volatile QueueEventBlock, kSize> event_queue_;
+  volatile size_t head_ = 0;  // Next write
+  volatile size_t tail_ = 0;  // Next read
+  volatile bool is_empty_ =
+      true;  // Used to distinquish if head==tail is empty or full
+};
+
+}  // namespace internal
+
 class TokenizedTraceImpl {
  public:
-  void Enable(bool enable) { enabled_ = enable; }
+  void Enable(bool enable) {
+    if (enable != enabled_ && enable) {
+      event_queue_.Clear();
+    }
+    enabled_ = enable;
+  }
   bool IsEnabled() const { return enabled_; }
 
   void HandleTraceEvent(uint32_t trace_token,
@@ -112,8 +132,13 @@ class TokenizedTraceImpl {
                         size_t data_size);
 
  private:
+  using TraceQueue = internal::TraceQueue<PW_TRACE_QUEUE_SIZE_EVENTS>;
   PW_TRACE_TIME_TYPE last_trace_time_ = 0;
   bool enabled_ = false;
+  TraceQueue event_queue_;
+
+  void HandleNextItemInQueue(
+      const volatile TraceQueue::QueueEventBlock* event_block);
 };
 
 // A singleton object of the TokenizedTraceImpl class which can be used to
@@ -167,10 +192,13 @@ class TokenizedTrace {
 //    "1|2|test_module|group|label|%d"
 // The trace_id, and data value are runtime values and not included in the
 // token string.
-#define PW_TRACE_REF(event_type, module, label, flags, group)   \
-  PW_TOKENIZE_STRING(PW_STRINGIFY(event_type) "|" PW_STRINGIFY( \
-      flags) "|" module "|" group "|" label)
+#define PW_TRACE_REF(event_type, module, label, flags, group)          \
+  PW_TOKENIZE_STRING_DOMAIN("trace",                                   \
+                            PW_STRINGIFY(event_type) "|" PW_STRINGIFY( \
+                                flags) "|" module "|" group "|" label)
 
-#define PW_TRACE_REF_DATA(event_type, module, label, flags, group, type) \
-  PW_TOKENIZE_STRING(PW_STRINGIFY(event_type) "|" PW_STRINGIFY(          \
-      flags) "|" module "|" group "|" label "|" type)
+#define PW_TRACE_REF_DATA(event_type, module, label, flags, group, type)    \
+  PW_TOKENIZE_STRING_DOMAIN(                                                \
+      "trace",                                                              \
+      PW_STRINGIFY(event_type) "|" PW_STRINGIFY(flags) "|" module "|" group \
+                                                       "|" label "|" type)

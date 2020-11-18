@@ -13,7 +13,7 @@
 # the License.
 """pw_rpc"""
 
-import setuptools
+import setuptools  # type: ignore
 
 setuptools.setup(
     name='pw_rpc',
@@ -22,10 +22,18 @@ setuptools.setup(
     author_email='pigweed-developers@googlegroups.com',
     description='On-device remote procedure calls',
     packages=setuptools.find_packages(),
-    entry_points={'console_scripts': ['pw_rpc_codegen = pw_rpc.plugin:main']},
+    package_data={'pw_rpc': ['py.typed']},
+    zip_safe=False,
+    entry_points={
+        'console_scripts': [
+            'pw_rpc_codegen_nanopb = pw_rpc.plugin_nanopb:main',
+            'pw_rpc_codegen_raw = pw_rpc.plugin_raw:main'
+        ]
+    },
     install_requires=[
         'protobuf',
-        'pw_protobuf',
-        'pw_protobuf_compiler',
+        # 'pw_protobuf_compiler',
+        # 'pw_status',
     ],
+    tests_require=['pw_build'],
 )

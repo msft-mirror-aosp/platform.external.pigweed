@@ -21,11 +21,11 @@ namespace pw::allocator {
 Status Block::Init(const std::span<std::byte> region, Block** block) {
   // Ensure the region we're given is aligned and sized accordingly
   if (reinterpret_cast<uintptr_t>(region.data()) % alignof(Block) != 0) {
-    return Status::INVALID_ARGUMENT;
+    return Status::InvalidArgument();
   }
 
   if (region.size() < sizeof(Block)) {
-    return Status::INVALID_ARGUMENT;
+    return Status::InvalidArgument();
   }
 
   union {
@@ -43,21 +43,21 @@ Status Block::Init(const std::span<std::byte> region, Block** block) {
 
   aliased.block->prev = nullptr;
   *block = aliased.block;
-#if PW_ALLOCATOR_POISON_ENABLE
+#if defined(PW_ALLOCATOR_POISON_ENABLE) && PW_ALLOCATOR_POISON_ENABLE
   (*block)->PoisonBlock();
 #endif  // PW_ALLOCATOR_POISON_ENABLE
-  return Status::OK;
+  return Status::Ok();
 }
 
 Status Block::Split(size_t head_block_inner_size, Block** new_block) {
   if (new_block == nullptr) {
-    return Status::INVALID_ARGUMENT;
+    return Status::InvalidArgument();
   }
 
   // Don't split used blocks.
   // TODO: Relax this restriction? Flag to enable/disable this check?
   if (Used()) {
-    return Status::FAILED_PRECONDITION;
+    return Status::FailedPrecondition();
   }
 
   // First round the head_block_inner_size up to a alignof(Block) bounary.
@@ -74,7 +74,7 @@ Status Block::Split(size_t head_block_inner_size, Block** new_block) {
   // (1) Are we trying to allocate a head block larger than the current head
   // block? This may happen because of the alignment above.
   if (aligned_head_block_inner_size > InnerSize()) {
-    return Status::OUT_OF_RANGE;
+    return Status::OutOfRange();
   }
 
   // (2) Does the resulting block have enough space to store the header?
@@ -82,7 +82,7 @@ Status Block::Split(size_t head_block_inner_size, Block** new_block) {
   // size == sizeof(Block))?
   if (InnerSize() - aligned_head_block_inner_size <
       sizeof(Block) + 2 * PW_ALLOCATOR_POISON_OFFSET) {
-    return Status::RESOURCE_EXHAUSTED;
+    return Status::ResourceExhausted();
   }
 
   // Create the new block inside the current one.
@@ -113,23 +113,23 @@ Status Block::Split(size_t head_block_inner_size, Block** new_block) {
 
   *new_block = next;
 
-#if PW_ALLOCATOR_POISON_ENABLE
+#if defined(PW_ALLOCATOR_POISON_ENABLE) && PW_ALLOCATOR_POISON_ENABLE
   PoisonBlock();
   (*new_block)->PoisonBlock();
 #endif  // PW_ALLOCATOR_POISON_ENABLE
 
-  return Status::OK;
+  return Status::Ok();
 }
 
 Status Block::MergeNext() {
   // Anything to merge with?
   if (Last()) {
-    return Status::OUT_OF_RANGE;
+    return Status::OutOfRange();
   }
 
   // Is this or the next block in use?
   if (Used() || Next()->Used()) {
-    return Status::FAILED_PRECONDITION;
+    return Status::FailedPrecondition();
   }
 
   // Simply enough, this block's next pointer becomes the next block's
@@ -142,14 +142,14 @@ Status Block::MergeNext() {
     Next()->prev = this;
   }
 
-  return Status::OK;
+  return Status::Ok();
 }
 
 Status Block::MergePrev() {
   // We can't merge if we have no previous. After that though, merging with
   // the previous block is just MergeNext from the previous block.
   if (prev == nullptr) {
-    return Status::OUT_OF_RANGE;
+    return Status::OutOfRange();
   }
 
   // WARNING: This class instance will still exist, but technically be invalid
@@ -171,14 +171,14 @@ void Block::CrashIfInvalid() {
       break;
     case NEXT_MISMATCHED:
       PW_DCHECK(false,
-                "The 'prev' field in the next block (%p), does not match the "
+                "The 'prev' field in the next block (%p) does not match the "
                 "address of the current block (%p).",
                 Next()->Prev(),
                 this);
       break;
     case PREV_MISMATCHED:
       PW_DCHECK(false,
-                "The 'next' field in the previous block (%p), does not match "
+                "The 'next' field in the previous block (%p) does not match "
                 "the address of the current block (%p).",
                 Prev()->Next(),
                 this);
@@ -208,7 +208,7 @@ Block::BlockStatus Block::CheckStatus() const {
     return BlockStatus::PREV_MISMATCHED;
   }
 
-#if PW_ALLOCATOR_POISON_ENABLE
+#if defined(PW_ALLOCATOR_POISON_ENABLE) && PW_ALLOCATOR_POISON_ENABLE
   if (!this->CheckPoisonBytes()) {
     return BlockStatus::POISON_CORRUPTED;
   }
@@ -219,7 +219,7 @@ Block::BlockStatus Block::CheckStatus() const {
 // Paint sizeof(void*) bytes before and after the usable space in Block as the
 // randomized function pattern.
 void Block::PoisonBlock() {
-#if PW_ALLOCATOR_POISON_ENABLE
+#if defined(PW_ALLOCATOR_POISON_ENABLE) && PW_ALLOCATOR_POISON_ENABLE
   std::byte* front_region = reinterpret_cast<std::byte*>(this) + sizeof(*this);
   memcpy(front_region, POISON_PATTERN, PW_ALLOCATOR_POISON_OFFSET);
 
@@ -230,7 +230,7 @@ void Block::PoisonBlock() {
 }
 
 bool Block::CheckPoisonBytes() const {
-#if PW_ALLOCATOR_POISON_ENABLE
+#if defined(PW_ALLOCATOR_POISON_ENABLE) && PW_ALLOCATOR_POISON_ENABLE
   std::byte* front_region = reinterpret_cast<std::byte*>(
       reinterpret_cast<intptr_t>(this) + sizeof(*this));
   if (std::memcmp(front_region, POISON_PATTERN, PW_ALLOCATOR_POISON_OFFSET)) {

@@ -1,13 +1,11 @@
-.. default-domain:: cpp
-
-.. highlight:: sh
+.. _module-pw_checksum:
 
 -----------
 pw_checksum
 -----------
 The ``pw_checksum`` module provides functions for calculating checksums.
 
-pw_checksum/ccitt_crc16.h
+pw_checksum/crc16_ccitt.h
 =========================
 
 .. cpp:namespace:: pw::checksum

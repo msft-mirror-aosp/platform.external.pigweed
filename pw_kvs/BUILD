@@ -39,7 +39,6 @@ pw_cc_library(
         "public/pw_kvs/internal/sectors.h",
         "public/pw_kvs/internal/span_traits.h",
         "pw_kvs_private/config.h",
-        "pw_kvs_private/macros.h",
         "sectors.cc",
     ],
     hdrs = [
@@ -135,6 +134,21 @@ pw_cc_library(
         ":fake_flash",
     ],
   defines = [ "PW_FLASH_TEST_ALIGNMENT=256" ],
+)
+
+pw_cc_library(
+    name = "fake_flash_test_key_value_store",
+    srcs = [
+        "fake_flash_test_key_value_store.cc",
+    ],
+    hdrs = [
+        "public/pw_kvs/test_key_value_store.h",
+    ],
+    deps = [
+        ":crc16",
+        ":pw_kvs",
+        ":fake_flash",
+    ],
 )
 
 pw_cc_library(
@@ -317,6 +331,19 @@ pw_cc_test(
         "//pw_span",
         "//pw_status",
         "//pw_string",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "fake_flash_test_key_value_store_test",
+    srcs = ["test_key_value_store_test.cc"],
+    deps = [
+        ":crc16",
+        ":fake_flash_test_key_value_store",
+        ":pw_kvs",
+        "//pw_log:backend",
+        "//pw_status",
         "//pw_unit_test",
     ],
 )

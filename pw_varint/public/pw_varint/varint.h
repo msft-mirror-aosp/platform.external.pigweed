@@ -43,14 +43,14 @@ size_t pw_VarintZigZagEncodedSize(int64_t integer);
 #include <span>
 #include <type_traits>
 
-#include "pw_polyfill/language_features.h"
+#include "pw_polyfill/language_feature_macros.h"
 
 namespace pw {
 namespace varint {
 
-// The maximum number of bytes occupied by an encoded varint. The maximum
-// uint64_t occupies 10 bytes when encoded.
-PW_INLINE_VARIABLE constexpr size_t kMaxVarintSizeBytes = 10;
+// The maximum number of bytes occupied by an encoded varint.
+PW_INLINE_VARIABLE constexpr size_t kMaxVarint32SizeBytes = 5;
+PW_INLINE_VARIABLE constexpr size_t kMaxVarint64SizeBytes = 10;
 
 // ZigZag encodes a signed integer. This maps small negative numbers to small,
 // unsigned positive numbers, which improves their density for LEB128 encoding.
@@ -119,7 +119,7 @@ size_t Encode(T integer, const std::span<std::byte>& output) {
 //     size_t bytes = Decode(data, &value);
 //
 //     if (bytes == 0u) {
-//       return Status::DATA_LOSS;
+//       return Status::DataLoss();
 //     }
 //     results.push_back(value);
 //     data = data.subspan(bytes)
@@ -134,13 +134,13 @@ inline size_t Decode(const std::span<const std::byte>& input, uint64_t* value) {
 }
 
 // Returns a size of an integer when encoded as a varint.
-inline size_t EncodedSize(uint64_t integer) {
-  return pw_VarintEncodedSize(integer);
+constexpr size_t EncodedSize(uint64_t integer) {
+  return integer == 0 ? 1 : (64 - __builtin_clzll(integer) + 6) / 7;
 }
 
 // Returns a size of an signed integer when ZigZag encoded as a varint.
-inline size_t ZigZagEncodedSize(int64_t integer) {
-  return pw_VarintZigZagEncodedSize(integer);
+constexpr size_t ZigZagEncodedSize(int64_t integer) {
+  return EncodedSize(ZigZagEncode(integer));
 }
 
 }  // namespace varint
