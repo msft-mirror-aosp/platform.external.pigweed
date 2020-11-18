@@ -16,14 +16,21 @@
 
 import os
 from pathlib import Path
+import platform
 import tempfile
 import unittest
 
 from pw_build.python_runner import ExpressionError, GnPaths, Label, TargetInfo
 from pw_build.python_runner import expand_expressions
 
-TEST_PATHS = GnPaths(Path('/gn_root'), Path('/gn_root/out'),
-                     Path('/gn_root/some/cwd'), '//toolchains/cool:ToolChain')
+ROOT = Path(r'C:\gn_root' if platform.system() == 'Windows' else '/gn_root')
+
+TEST_PATHS = GnPaths(
+    ROOT,
+    ROOT / 'out',
+    ROOT / 'some' / 'cwd',
+    '//toolchains/cool:ToolChain',
+)
 
 
 class LabelTest(unittest.TestCase):
@@ -38,63 +45,63 @@ class LabelTest(unittest.TestCase):
         for paths, toolchain in self._paths_and_toolchain_name:
             label = Label(paths, '//')
             self.assertEqual(label.name, '')
-            self.assertEqual(label.dir, Path('/gn_root'))
+            self.assertEqual(label.dir, ROOT)
             self.assertEqual(label.out_dir,
-                             Path('/gn_root/out', toolchain, 'obj'))
+                             ROOT.joinpath('out', toolchain, 'obj'))
             self.assertEqual(label.gen_dir,
-                             Path('/gn_root/out', toolchain, 'gen'))
+                             ROOT.joinpath('out', toolchain, 'gen'))
 
     def test_absolute(self):
         for paths, toolchain in self._paths_and_toolchain_name:
             label = Label(paths, '//foo/bar:baz')
             self.assertEqual(label.name, 'baz')
-            self.assertEqual(label.dir, Path('/gn_root/foo/bar'))
+            self.assertEqual(label.dir, ROOT.joinpath('foo/bar'))
             self.assertEqual(label.out_dir,
-                             Path('/gn_root/out', toolchain, 'obj/foo/bar'))
+                             ROOT.joinpath('out', toolchain, 'obj/foo/bar'))
             self.assertEqual(label.gen_dir,
-                             Path('/gn_root/out', toolchain, 'gen/foo/bar'))
+                             ROOT.joinpath('out', toolchain, 'gen/foo/bar'))
 
     def test_absolute_implicit_target(self):
         for paths, toolchain in self._paths_and_toolchain_name:
             label = Label(paths, '//foo/bar')
             self.assertEqual(label.name, 'bar')
-            self.assertEqual(label.dir, Path('/gn_root/foo/bar'))
+            self.assertEqual(label.dir, ROOT.joinpath('foo/bar'))
             self.assertEqual(label.out_dir,
-                             Path('/gn_root/out', toolchain, 'obj/foo/bar'))
+                             ROOT.joinpath('out', toolchain, 'obj/foo/bar'))
             self.assertEqual(label.gen_dir,
-                             Path('/gn_root/out', toolchain, 'gen/foo/bar'))
+                             ROOT.joinpath('out', toolchain, 'gen/foo/bar'))
 
     def test_relative(self):
         for paths, toolchain in self._paths_and_toolchain_name:
             label = Label(paths, ':tgt')
             self.assertEqual(label.name, 'tgt')
-            self.assertEqual(label.dir, Path('/gn_root/some/cwd'))
+            self.assertEqual(label.dir, ROOT.joinpath('some/cwd'))
             self.assertEqual(label.out_dir,
-                             Path('/gn_root/out', toolchain, 'obj/some/cwd'))
+                             ROOT.joinpath('out', toolchain, 'obj/some/cwd'))
             self.assertEqual(label.gen_dir,
-                             Path('/gn_root/out', toolchain, 'gen/some/cwd'))
+                             ROOT.joinpath('out', toolchain, 'gen/some/cwd'))
 
     def test_relative_subdir(self):
         for paths, toolchain in self._paths_and_toolchain_name:
             label = Label(paths, 'tgt')
             self.assertEqual(label.name, 'tgt')
-            self.assertEqual(label.dir, Path('/gn_root/some/cwd/tgt'))
+            self.assertEqual(label.dir, ROOT.joinpath('some/cwd/tgt'))
             self.assertEqual(
                 label.out_dir,
-                Path('/gn_root/out', toolchain, 'obj/some/cwd/tgt'))
+                ROOT.joinpath('out', toolchain, 'obj/some/cwd/tgt'))
             self.assertEqual(
                 label.gen_dir,
-                Path('/gn_root/out', toolchain, 'gen/some/cwd/tgt'))
+                ROOT.joinpath('out', toolchain, 'gen/some/cwd/tgt'))
 
     def test_relative_parent_dir(self):
         for paths, toolchain in self._paths_and_toolchain_name:
             label = Label(paths, '..:tgt')
             self.assertEqual(label.name, 'tgt')
-            self.assertEqual(label.dir, Path('/gn_root/some'))
+            self.assertEqual(label.dir, ROOT.joinpath('some'))
             self.assertEqual(label.out_dir,
-                             Path('/gn_root/out', toolchain, 'obj/some'))
+                             ROOT.joinpath('out', toolchain, 'obj/some'))
             self.assertEqual(label.gen_dir,
-                             Path('/gn_root/out', toolchain, 'gen/some'))
+                             ROOT.joinpath('out', toolchain, 'gen/some'))
 
 
 class ResolvePathTest(unittest.TestCase):
@@ -124,7 +131,7 @@ target_output_name = this_is_a_test
 build fake_toolchain/obj/fake_module/fake_test.fake_test.cc.o: fake_toolchain_cxx ../fake_module/fake_test.cc
 build fake_toolchain/obj/fake_module/fake_test.fake_test_c.c.o: fake_toolchain_cc ../fake_module/fake_test_c.c
 
-build fake_toolchain/obj/fake_module/test/fake_test.elf: fake_tolchain_link fake_tolchain/obj/fake_module/fake_test.fake_test.cc.o fake_tolchain/obj/fake_module/fake_test.fake_test_c.c.o
+build fake_toolchain/obj/fake_module/test/fake_test.elf: fake_toolchain_link fake_toolchain/obj/fake_module/fake_test.fake_test.cc.o fake_toolchain/obj/fake_module/fake_test.fake_test_c.c.o
   ldflags = -Og -fdiagnostics-color
   libs =
   frameworks =
@@ -132,7 +139,7 @@ build fake_toolchain/obj/fake_module/test/fake_test.elf: fake_tolchain_link fake
   output_dir = host_clang_debug/obj/fake_module/test
 '''
 
-NINJA_SOURCE_SET = '''\
+_SOURCE_SET_TEMPLATE = '''\
 defines =
 framework_dirs =
 include_dirs = -I../fake_module/public
@@ -144,7 +151,7 @@ target_output_name = this_is_a_test
 build fake_toolchain/obj/fake_module/fake_source_set.file_a.cc.o: fake_toolchain_cxx ../fake_module/file_a.cc
 build fake_toolchain/obj/fake_module/fake_source_set.file_b.c.o: fake_toolchain_cc ../fake_module/file_b.c
 
-build fake_toolchain/obj/fake_module/fake_source_set.stamp: fake_tolchain_link fake_tolchain/obj/fake_module/fake_source_set.file_a.cc.o fake_tolchain/obj/fake_module/fake_source_set.file_b.c.o
+build {path} fake_toolchain/obj/fake_module/fake_source_set.file_a.cc.o fake_toolchain/obj/fake_module/fake_source_set.file_b.c.o
   ldflags = -Og -fdiagnostics-color -Wno-error=deprecated
   libs =
   frameworks =
@@ -152,14 +159,23 @@ build fake_toolchain/obj/fake_module/fake_source_set.stamp: fake_tolchain_link f
   output_dir = host_clang_debug/obj/fake_module
 '''
 
+# GN originally used empty .stamp files to mark the completion of a group of
+# dependencies. GN switched to using 'phony' Ninja targets instead, which don't
+# require creating a new file.
+_PHONY_BUILD_PATH = 'fake_toolchain/phony/fake_module/fake_source_set: phony'
+_STAMP_BUILD_PATH = 'fake_toolchain/obj/fake_module/fake_source_set.stamp:'
 
-def _create_ninja_files():
+NINJA_SOURCE_SET = _SOURCE_SET_TEMPLATE.format(path=_PHONY_BUILD_PATH)
+NINJA_SOURCE_SET_STAMP = _SOURCE_SET_TEMPLATE.format(path=_STAMP_BUILD_PATH)
+
+
+def _create_ninja_files(source_set: str) -> tuple:
     tempdir = tempfile.TemporaryDirectory(prefix='pw_build_test_')
 
     module = Path(tempdir.name, 'out', 'fake_toolchain', 'obj', 'fake_module')
     os.makedirs(module)
     module.joinpath('fake_test.ninja').write_text(NINJA_EXECUTABLE)
-    module.joinpath('fake_source_set.ninja').write_text(NINJA_SOURCE_SET)
+    module.joinpath('fake_source_set.ninja').write_text(source_set)
     module.joinpath('fake_no_objects.ninja').write_text('\n')
 
     outdir = Path(tempdir.name, 'out', 'fake_toolchain', 'obj', 'fake_module')
@@ -175,7 +191,8 @@ def _create_ninja_files():
 class TargetTest(unittest.TestCase):
     """Tests querying GN target information."""
     def setUp(self):
-        self._tempdir, self._outdir, self._paths = _create_ninja_files()
+        self._tempdir, self._outdir, self._paths = _create_ninja_files(
+            NINJA_SOURCE_SET)
 
     def tearDown(self):
         self._tempdir.cleanup()
@@ -220,10 +237,18 @@ class TargetTest(unittest.TestCase):
         self.assertIsNone(target.artifact)
 
 
+class StampTargetTest(TargetTest):
+    """Test with old-style .stamp files instead of phony Ninja targets."""
+    def setUp(self):
+        self._tempdir, self._outdir, self._paths = _create_ninja_files(
+            NINJA_SOURCE_SET_STAMP)
+
+
 class ExpandExpressionsTest(unittest.TestCase):
     """Tests expansion of expressions like <TARGET_FILE(//foo)>."""
     def setUp(self):
-        self._tempdir, self._outdir, self._paths = _create_ninja_files()
+        self._tempdir, self._outdir, self._paths = _create_ninja_files(
+            NINJA_SOURCE_SET)
 
     def tearDown(self):
         self._tempdir.cleanup()
@@ -356,6 +381,13 @@ class ExpandExpressionsTest(unittest.TestCase):
     def test_target_objects_non_existent_target(self):
         with self.assertRaisesRegex(ExpressionError, 'generated'):
             expand_expressions(self._paths, '<TARGET_OBJECTS(//not_real)>')
+
+
+class StampExpandExpressionsTest(TargetTest):
+    """Test with old-style .stamp files instead of phony Ninja targets."""
+    def setUp(self):
+        self._tempdir, self._outdir, self._paths = _create_ninja_files(
+            NINJA_SOURCE_SET_STAMP)
 
 
 if __name__ == '__main__':

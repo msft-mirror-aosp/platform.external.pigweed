@@ -73,6 +73,7 @@ from pw_env_setup import cargo_setup
 from pw_env_setup import environment
 from pw_env_setup import spinner
 from pw_env_setup import virtualenv_setup
+from pw_env_setup import windows_env_start
 
 
 # TODO(pwbug/67, pwbug/68) switch to shutil.which().
@@ -117,7 +118,7 @@ def _which(executable,
 
 
 class _Result:
-    class Status:  # pylint: disable=too-few-public-methods
+    class Status:
         DONE = 'done'
         SKIPPED = 'skipped'
         FAILED = 'failed'
@@ -136,8 +137,7 @@ class _Result:
         return self._messages
 
 
-def _get_env(varname):
-    globs = os.environ.get(varname, '').split(os.pathsep)
+def _process_globs(globs):
     unique_globs = []
     for pat in globs:
         if pat and pat not in unique_globs:
@@ -150,12 +150,11 @@ def _get_env(varname):
             matches = glob.glob(pat)
             if not matches:
                 warnings.append(
-                    'warning: pattern "{}" in {} matched 0 files'.format(
-                        pat, varname))
+                    'warning: pattern "{}" matched 0 files'.format(pat))
             files.extend(matches)
 
-    if not files:
-        warnings.append('warning: variable {} matched 0 files'.format(varname))
+    if globs and not files:
+        warnings.append('warning: matched 0 total files')
 
     return files, warnings
 
@@ -169,12 +168,16 @@ def result_func(glob_warnings):
 
 # TODO(mohrr) remove disable=useless-object-inheritance once in Python 3.
 # pylint: disable=useless-object-inheritance
+# pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-arguments
 class EnvSetup(object):
     """Run environment setup for Pigweed."""
     def __init__(self, pw_root, cipd_cache_dir, shell_file, quiet, install_dir,
-                 *args, **kwargs):
-        super(EnvSetup, self).__init__(*args, **kwargs)
+                 use_pigweed_defaults, cipd_package_file, virtualenv_root,
+                 virtualenv_requirements, virtualenv_gn_target,
+                 cargo_package_file, enable_cargo, json_file, project_root):
         self._env = environment.Environment()
+        self._project_root = project_root
         self._pw_root = pw_root
         self._setup_root = os.path.join(pw_root, 'pw_env_setup', 'py',
                                         'pw_env_setup')
@@ -183,6 +186,8 @@ class EnvSetup(object):
         self._is_windows = os.name == 'nt'
         self._quiet = quiet
         self._install_dir = install_dir
+        self._virtualenv_root = (virtualenv_root
+                                 or os.path.join(install_dir, 'pigweed-venv'))
 
         if os.path.isfile(shell_file):
             os.unlink(shell_file)
@@ -190,9 +195,45 @@ class EnvSetup(object):
         if isinstance(self._pw_root, bytes) and bytes != str:
             self._pw_root = self._pw_root.decode()
 
-        # No need to set PW_ROOT or _PW_ACTUAL_ENVIRONMENT_ROOT, that will be
-        # done by bootstrap.sh and bootstrap.bat for both bootstrap and
-        # activate.
+        self._cipd_package_file = []
+        self._virtualenv_requirements = []
+        self._virtualenv_gn_targets = []
+        self._cargo_package_file = []
+        self._enable_cargo = enable_cargo
+
+        self._json_file = json_file
+
+        setup_root = os.path.join(pw_root, 'pw_env_setup', 'py',
+                                  'pw_env_setup')
+
+        # TODO(pwbug/67, pwbug/68) Investigate pulling these files into an
+        # oxidized env setup executable instead of referring to them in the
+        # source tree. Note that this could be error-prone because users expect
+        # changes to the files in the source tree to affect bootstrap.
+        if use_pigweed_defaults:
+            # If updating this section make sure to update
+            # $PW_ROOT/pw_env_setup/docs.rst as well.
+            self._cipd_package_file.append(
+                os.path.join(setup_root, 'cipd_setup', 'pigweed.json'))
+            self._cipd_package_file.append(
+                os.path.join(setup_root, 'cipd_setup', 'luci.json'))
+            self._virtualenv_requirements.append(
+                os.path.join(setup_root, 'virtualenv_setup',
+                             'requirements.txt'))
+            self._virtualenv_gn_targets.append(
+                virtualenv_setup.GnTarget(
+                    '{}#:python.install'.format(pw_root)))
+            self._cargo_package_file.append(
+                os.path.join(setup_root, 'cargo_setup', 'packages.txt'))
+
+        self._cipd_package_file.extend(cipd_package_file)
+        self._virtualenv_requirements.extend(virtualenv_requirements)
+        self._virtualenv_gn_targets.extend(virtualenv_gn_target)
+        self._cargo_package_file.extend(cargo_package_file)
+
+        self._env.set('PW_PROJECT_ROOT', project_root)
+        self._env.set('PW_ROOT', pw_root)
+        self._env.set('_PW_ACTUAL_ENVIRONMENT_ROOT', install_dir)
         self._env.add_replacement('_PW_ACTUAL_ENVIRONMENT_ROOT', install_dir)
         self._env.add_replacement('PW_ROOT', pw_root)
 
@@ -208,7 +249,10 @@ class EnvSetup(object):
     def setup(self):
         """Runs each of the env_setup steps."""
 
-        enable_colors()
+        if os.name == 'nt':
+            windows_env_start.print_banner(bootstrap=True, no_shell_file=False)
+        else:
+            enable_colors()
 
         steps = [
             ('CIPD package manager', self.cipd),
@@ -217,8 +261,11 @@ class EnvSetup(object):
         ]
 
         # TODO(pwbug/63): Add a Windows version of cargo to CIPD.
-        if not self._is_windows and os.environ.get('PW_CARGO_SETUP', ''):
+        if not self._is_windows and self._enable_cargo:
             steps.append(("Rust cargo", self.cargo))
+
+        if self._is_windows:
+            steps.append(("Windows scripts", self.win_scripts))
 
         self._log(
             Color.bold('Downloading and installing packages into local '
@@ -272,7 +319,7 @@ Then use `set +x` to go back to normal.
         self._log('')
         self._env.echo('')
 
-        self._env.hash()
+        self._env.finalize()
 
         self._env.echo(Color.bold('Sanity checking the environment:'))
         self._env.echo()
@@ -290,6 +337,12 @@ Then use `set +x` to go back to normal.
         with open(self._shell_file, 'w') as outs:
             self._env.write(outs)
 
+        deactivate = os.path.join(
+            self._install_dir,
+            'deactivate{}'.format(os.path.splitext(self._shell_file)[1]))
+        with open(deactivate, 'w') as outs:
+            self._env.write_deactivate(outs)
+
         config = {
             # Skipping sysname and nodename in os.uname(). nodename could change
             # based on the current network. sysname won't change, but is
@@ -303,6 +356,10 @@ Then use `set +x` to go back to normal.
             outs.write(
                 json.dumps(config, indent=4, separators=(',', ': ')) + '\n')
 
+        if self._json_file is not None:
+            with open(self._json_file, 'w') as outs:
+                self._env.json(outs)
+
         return 0
 
     def cipd(self):
@@ -310,7 +367,7 @@ Then use `set +x` to go back to normal.
 
         cipd_client = cipd_wrapper.init(install_dir, silent=True)
 
-        package_files, glob_warnings = _get_env('PW_CIPD_PACKAGE_FILES')
+        package_files, glob_warnings = _process_globs(self._cipd_package_file)
         result = result_func(glob_warnings)
 
         if not package_files:
@@ -328,13 +385,9 @@ Then use `set +x` to go back to normal.
     def virtualenv(self):
         """Setup virtualenv."""
 
-        venv_path = os.path.join(self._install_dir, 'python3-env')
-
-        requirements, req_glob_warnings = _get_env(
-            'PW_VIRTUALENV_REQUIREMENTS')
-        setup_py_roots, setup_glob_warnings = _get_env(
-            'PW_VIRTUALENV_SETUP_PY_ROOTS')
-        result = result_func(req_glob_warnings + setup_glob_warnings)
+        requirements, req_glob_warnings = _process_globs(
+            self._virtualenv_requirements)
+        result = result_func(req_glob_warnings)
 
         orig_python3 = _which('python3')
         with self._env():
@@ -352,14 +405,17 @@ Then use `set +x` to go back to normal.
                 shutil.copyfile(new_python3, python3_copy)
             new_python3 = python3_copy
 
-        if not requirements and not setup_py_roots:
+        if not requirements and not self._virtualenv_gn_targets:
             return result(_Result.Status.SKIPPED)
 
-        if not virtualenv_setup.install(venv_path=venv_path,
-                                        requirements=requirements,
-                                        setup_py_roots=setup_py_roots,
-                                        python=new_python3,
-                                        env=self._env):
+        if not virtualenv_setup.install(
+                project_root=self._project_root,
+                venv_path=self._virtualenv_root,
+                requirements=requirements,
+                gn_targets=self._virtualenv_gn_targets,
+                python=new_python3,
+                env=self._env,
+        ):
             return result(_Result.Status.FAILED)
 
         return result(_Result.Status.DONE)
@@ -372,18 +428,17 @@ Then use `set +x` to go back to normal.
         self._env.prepend('PATH', os.path.join(host_dir, 'host_tools'))
         return _Result(_Result.Status.DONE)
 
-    def cargo(self):
-        if not os.environ.get('PW_CARGO_SETUP', ''):
-            return _Result(
-                _Result.Status.SKIPPED,
-                '    Note: Re-run bootstrap with PW_CARGO_SETUP=1 set '
-                'in your environment',
-                '          to enable Rust. (Rust is usually not needed.)',
-            )
+    def win_scripts(self):
+        # These scripts act as a compatibility layer for windows.
+        env_setup_dir = os.path.join(self._pw_root, 'pw_env_setup')
+        self._env.prepend('PATH', os.path.join(env_setup_dir,
+                                               'windows_scripts'))
+        return _Result(_Result.Status.DONE)
 
+    def cargo(self):
         install_dir = os.path.join(self._install_dir, 'cargo')
 
-        package_files, glob_warnings = _get_env('PW_CARGO_PACKAGE_FILES')
+        package_files, glob_warnings = _process_globs(self._cargo_package_file)
         result = result_func(glob_warnings)
 
         if not package_files:
@@ -410,10 +465,19 @@ def parse(argv=None):
                     stderr=outs).strip()
         except subprocess.CalledProcessError:
             pw_root = None
+
     parser.add_argument(
         '--pw-root',
         default=pw_root,
         required=not pw_root,
+    )
+
+    project_root = os.environ.get('PW_PROJECT_ROOT', None) or pw_root
+
+    parser.add_argument(
+        '--project-root',
+        default=project_root,
+        required=not project_root,
     )
 
     parser.add_argument(
@@ -441,11 +505,88 @@ def parse(argv=None):
         required=True,
     )
 
-    return parser.parse_args(argv)
+    parser.add_argument(
+        '--use-pigweed-defaults',
+        help='Use Pigweed default values in addition to the given environment '
+        'variables.',
+        action='store_true',
+    )
+
+    parser.add_argument(
+        '--cipd-package-file',
+        help='CIPD package file. JSON file consisting of a list of dicts with '
+        '"path" and "tags" keys, where "tags" a list of str.',
+        default=[],
+        action='append',
+    )
+
+    parser.add_argument(
+        '--virtualenv-requirements',
+        help='Pip requirements file. Compiled with pip-compile.',
+        default=[],
+        action='append',
+    )
+
+    parser.add_argument(
+        '--virtualenv-gn-target',
+        help=('GN targets that build and install Python packages. Format: '
+              "path/to/gn_root#target"),
+        default=[],
+        action='append',
+        type=virtualenv_setup.GnTarget,
+    )
+
+    parser.add_argument(
+        '--virtualenv-root',
+        help=('Root of virtualenv directory. Default: '
+              '<install_dir>/pigweed-venv'),
+        default=None,
+    )
+
+    parser.add_argument(
+        '--cargo-package-file',
+        help='Rust cargo packages to install. Lines with package name and '
+        'version separated by a space.',
+        default=[],
+        action='append',
+    )
+
+    parser.add_argument(
+        '--enable-cargo',
+        help='Enable cargo installation.',
+        action='store_true',
+    )
+
+    parser.add_argument(
+        '--json-file',
+        help='Dump environment variable operations to a JSON file.',
+        default=None,
+    )
+
+    args = parser.parse_args(argv)
+
+    one_required = (
+        'use_pigweed_defaults',
+        'cipd_package_file',
+        'virtualenv_requirements',
+        'virtualenv_gn_target',
+        'cargo_package_file',
+    )
+
+    if not any(getattr(args, x) for x in one_required):
+        parser.error('At least one of ({}) is required'.format(', '.join(
+            '"--{}"'.format(x.replace('_', '-')) for x in one_required)))
+
+    return args
 
 
 def main():
-    return EnvSetup(**vars(parse())).setup()
+    try:
+        return EnvSetup(**vars(parse())).setup()
+    except subprocess.CalledProcessError as err:
+        print()
+        print(err.output)
+        raise
 
 
 if __name__ == '__main__':

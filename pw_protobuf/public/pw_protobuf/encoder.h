@@ -17,7 +17,9 @@
 #include <cstring>
 #include <span>
 
+#include "pw_bytes/span.h"
 #include "pw_protobuf/wire_format.h"
+#include "pw_result/result.h"
 #include "pw_status/status.h"
 #include "pw_varint/varint.h"
 
@@ -31,7 +33,7 @@ class Encoder {
   // message. This can be templated to minimize the overhead.
   using SizeType = size_t;
 
-  constexpr Encoder(std::span<std::byte> buffer,
+  constexpr Encoder(ByteSpan buffer,
                     std::span<SizeType*> locations,
                     std::span<SizeType*> stack)
       : buffer_(buffer),
@@ -40,7 +42,7 @@ class Encoder {
         blob_count_(0),
         blob_stack_(stack),
         depth_(0),
-        encode_status_(Status::OK) {}
+        encode_status_(Status::Ok()) {}
 
   // Disallow copy/assign to avoid confusion about who owns the buffer.
   Encoder(const Encoder& other) = delete;
@@ -225,7 +227,7 @@ class Encoder {
   }
 
   // Writes a proto bytes key-value pair.
-  Status WriteBytes(uint32_t field_number, std::span<const std::byte> value) {
+  Status WriteBytes(uint32_t field_number, ConstByteSpan value) {
     std::byte* original_cursor = cursor_;
     WriteFieldKey(field_number, WireType::kDelimited);
     WriteVarint(value.size_bytes());
@@ -259,14 +261,25 @@ class Encoder {
   // obtained from Encode().
   void Clear() {
     cursor_ = buffer_.data();
-    encode_status_ = Status::OK;
+    encode_status_ = Status::Ok();
     blob_count_ = 0;
     depth_ = 0;
   }
 
   // Runs a final encoding pass over the intermediary data and returns the
   // encoded protobuf message.
-  Status Encode(std::span<const std::byte>* out);
+  Result<ConstByteSpan> Encode();
+
+  // DEPRECATED. Use Encode() instead.
+  // TODO(frolv): Remove this after all references to it are updated.
+  Status Encode(ConstByteSpan* out) {
+    Result result = Encode();
+    if (!result.ok()) {
+      return result.status();
+    }
+    *out = result.value();
+    return Status::Ok();
+  }
 
  private:
   constexpr bool ValidFieldNumber(uint32_t field_number) const {
@@ -278,7 +291,7 @@ class Encoder {
   // Encodes the key for a proto field consisting of its number and wire type.
   Status WriteFieldKey(uint32_t field_number, WireType wire_type) {
     if (!ValidFieldNumber(field_number)) {
-      encode_status_ = Status::INVALID_ARGUMENT;
+      encode_status_ = Status::InvalidArgument();
       return encode_status_;
     }
 
@@ -340,7 +353,7 @@ class Encoder {
   }
 
   // The buffer into which the proto is encoded.
-  std::span<std::byte> buffer_;
+  ByteSpan buffer_;
   std::byte* cursor_;
 
   // List of pointers to sub-messages' delimiting size fields.
@@ -359,8 +372,7 @@ class Encoder {
 template <size_t kMaxNestedDepth = 1, size_t kMaxBlobs = 1>
 class NestedEncoder : public Encoder {
  public:
-  NestedEncoder(std::span<std::byte> buffer)
-      : Encoder(buffer, blobs_, stack_) {}
+  NestedEncoder(ByteSpan buffer) : Encoder(buffer, blobs_, stack_) {}
 
   // Disallow copy/assign to avoid confusion about who owns the buffer.
   NestedEncoder(const NestedEncoder& other) = delete;

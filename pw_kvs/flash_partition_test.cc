@@ -37,7 +37,7 @@ void WriteData(FlashPartition& partition, uint8_t fill_byte) {
 
   const size_t alignment = partition.alignment_bytes();
 
-  ASSERT_EQ(Status::OK, partition.Erase(0, partition.sector_count()));
+  ASSERT_EQ(Status::Ok(), partition.Erase(0, partition.sector_count()));
 
   const size_t chunks_per_sector = partition.sector_size_bytes() / alignment;
 
@@ -53,7 +53,7 @@ void WriteData(FlashPartition& partition, uint8_t fill_byte) {
          chunk_index++) {
       StatusWithSize status =
           partition.Write(address, as_bytes(std::span(test_data, alignment)));
-      ASSERT_EQ(Status::OK, status.status());
+      ASSERT_EQ(Status::Ok(), status.status());
       ASSERT_EQ(alignment, status.size());
       address += alignment;
     }
@@ -71,7 +71,7 @@ void WriteData(FlashPartition& partition, uint8_t fill_byte) {
       memset(test_data, 0, sizeof(test_data));
       StatusWithSize status = partition.Read(address, alignment, test_data);
 
-      EXPECT_EQ(Status::OK, status.status());
+      EXPECT_EQ(Status::Ok(), status.status());
       EXPECT_EQ(alignment, status.size());
       if (!status.ok() || (alignment != status.size())) {
         error_count++;
@@ -140,7 +140,8 @@ TEST(FlashPartitionTest, EraseTest) {
       std::min(sizeof(test_data), test_partition.sector_size_bytes());
   auto data_span = std::span(test_data, block_size);
 
-  ASSERT_EQ(Status::OK, test_partition.Erase(0, test_partition.sector_count()));
+  ASSERT_EQ(Status::Ok(),
+            test_partition.Erase(0, test_partition.sector_count()));
 
   // Write to the first page of each sector.
   for (size_t sector_index = 0; sector_index < test_partition.sector_count();
@@ -149,20 +150,20 @@ TEST(FlashPartitionTest, EraseTest) {
         sector_index * test_partition.sector_size_bytes();
 
     StatusWithSize status = test_partition.Write(address, as_bytes(data_span));
-    ASSERT_EQ(Status::OK, status.status());
+    ASSERT_EQ(Status::Ok(), status.status());
     ASSERT_EQ(block_size, status.size());
   }
 
   // Preset the flag to make sure the check actually sets it.
   bool is_erased = true;
-  ASSERT_EQ(Status::OK, test_partition.IsErased(&is_erased));
+  ASSERT_EQ(Status::Ok(), test_partition.IsErased(&is_erased));
   ASSERT_EQ(false, is_erased);
 
-  ASSERT_EQ(Status::OK, test_partition.Erase());
+  ASSERT_EQ(Status::Ok(), test_partition.Erase());
 
   // Preset the flag to make sure the check actually sets it.
   is_erased = false;
-  ASSERT_EQ(Status::OK, test_partition.IsErased(&is_erased));
+  ASSERT_EQ(Status::Ok(), test_partition.IsErased(&is_erased));
   ASSERT_EQ(true, is_erased);
 
   // Read the first page of each sector and make sure it has been erased.
@@ -173,7 +174,7 @@ TEST(FlashPartitionTest, EraseTest) {
 
     StatusWithSize status =
         test_partition.Read(address, data_span.size_bytes(), data_span.data());
-    EXPECT_EQ(Status::OK, status.status());
+    EXPECT_EQ(Status::Ok(), status.status());
     EXPECT_EQ(data_span.size_bytes(), status.size());
 
     EXPECT_EQ(true, test_partition.AppearsErased(as_bytes(data_span)));
@@ -186,10 +187,54 @@ TEST(FlashPartitionTest, AlignmentCheck) {
   const size_t sector_size_bytes = test_partition.sector_size_bytes();
 
   EXPECT_LE(alignment, kMaxFlashAlignment);
+  EXPECT_GT(alignment, 0u);
   EXPECT_EQ(kMaxFlashAlignment % alignment, 0U);
   EXPECT_LE(kMaxFlashAlignment, sector_size_bytes);
   EXPECT_LE(sector_size_bytes % kMaxFlashAlignment, 0U);
 }
+
+#define TESTING_CHECK_FAILURES_IS_SUPPORTED 0
+#if TESTING_CHECK_FAILURES_IS_SUPPORTED
+// TODO: Ensure that this test triggers an assert.
+TEST(FlashPartitionTest, BadWriteAddressAlignment) {
+  FlashPartition& test_partition = FlashTestPartition();
+
+  // Can't get bad alignment with alignment of 1.
+  if (test_partition.alignment_bytes() == 1) {
+    return;
+  }
+
+  std::array<std::byte, kMaxFlashAlignment> source_data;
+  test_partition.Write(1, source_data);
+}
+
+// TODO: Ensure that this test triggers an assert.
+TEST(FlashPartitionTest, BadWriteSizeAlignment) {
+  FlashPartition& test_partition = FlashTestPartition();
+
+  // Can't get bad alignment with alignment of 1.
+  if (test_partition.alignment_bytes() == 1) {
+    return;
+  }
+
+  std::array<std::byte, 1> source_data;
+  test_partition.Write(0, source_data);
+}
+
+// TODO: Ensure that this test triggers an assert.
+TEST(FlashPartitionTest, BadEraseAddressAlignment) {
+  FlashPartition& test_partition = FlashTestPartition();
+
+  // Can't get bad alignment with sector size of 1.
+  if (test_partition.sector_size_bytes() == 1) {
+    return;
+  }
+
+  // Try Erase at address 1 for 1 sector.
+  test_partition.Erase(1, 1);
+}
+
+#endif  // TESTING_CHECK_FAILURES_IS_SUPPORTED
 
 TEST(FlashPartitionTest, IsErased) {
   FlashPartition& test_partition = FlashTestPartition();
@@ -198,10 +243,10 @@ TEST(FlashPartitionTest, IsErased) {
   // Make sure the partition is big enough to do this test.
   ASSERT_GE(test_partition.size_bytes(), 3 * kMaxFlashAlignment);
 
-  ASSERT_EQ(Status::OK, test_partition.Erase());
+  ASSERT_EQ(Status::Ok(), test_partition.Erase());
 
   bool is_erased = true;
-  ASSERT_EQ(Status::OK, test_partition.IsErased(&is_erased));
+  ASSERT_EQ(Status::Ok(), test_partition.IsErased(&is_erased));
   ASSERT_EQ(true, is_erased);
 
   static const uint8_t fill_byte = 0x55;
@@ -211,26 +256,26 @@ TEST(FlashPartitionTest, IsErased) {
 
   // Write the chunk with fill byte.
   StatusWithSize status = test_partition.Write(alignment, as_bytes(data_span));
-  ASSERT_EQ(Status::OK, status.status());
+  ASSERT_EQ(Status::Ok(), status.status());
   ASSERT_EQ(data_span.size_bytes(), status.size());
 
-  EXPECT_EQ(Status::OK, test_partition.IsErased(&is_erased));
+  EXPECT_EQ(Status::Ok(), test_partition.IsErased(&is_erased));
   EXPECT_EQ(false, is_erased);
 
   // Check the chunk that was written.
-  EXPECT_EQ(Status::OK,
+  EXPECT_EQ(Status::Ok(),
             test_partition.IsRegionErased(
                 alignment, data_span.size_bytes(), &is_erased));
   EXPECT_EQ(false, is_erased);
 
   // Check a region that starts erased but later has been written.
-  EXPECT_EQ(Status::OK,
+  EXPECT_EQ(Status::Ok(),
             test_partition.IsRegionErased(0, 2 * alignment, &is_erased));
   EXPECT_EQ(false, is_erased);
 
   // Check erased for a region smaller than kMaxFlashAlignment. This has been a
   // bug in the past.
-  EXPECT_EQ(Status::OK,
+  EXPECT_EQ(Status::Ok(),
             test_partition.IsRegionErased(0, alignment, &is_erased));
   EXPECT_EQ(true, is_erased);
 }

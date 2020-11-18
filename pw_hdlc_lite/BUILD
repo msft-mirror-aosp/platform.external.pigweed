@@ -23,19 +23,67 @@ licenses(["notice"])  # Apache License 2.0
 
 pw_cc_library(
     name = "pw_hdlc_lite",
-    hdrs = [
-      "public/pw_hdlc_lite/encoder.h",
-      "public/pw_hdlc_lite/sys_io_stream.h",
-    ],
     srcs = [
-      "encoder.cc",
+        "decoder.cc",
+        "encoder.cc",
+        "pw_hdlc_lite_private/protocol.h",
+        "rpc_packets.cc",
+    ],
+    hdrs = [
+        "public/pw_hdlc_lite/decoder.h",
+        "public/pw_hdlc_lite/encoder.h",
+        "public/pw_hdlc_lite/sys_io_stream.h",
     ],
     includes = ["public"],
+    deps = [
+        "//pw_bytes",
+        "//pw_checksum",
+        "//pw_log",
+        "//pw_result",
+        "//pw_span",
+        "//pw_status",
+        "//pw_stream",
+    ],
+)
+
+pw_cc_library(
+    name = "pw_rpc",
+    srcs = ["rpc_packets.cc"],
+    hdrs = [
+        "public/pw_hdlc_lite/rpc_channel.h",
+        "public/pw_hdlc_lite/rpc_packets.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":pw_hdlc_lite",
+        "//pw_rpc:server",
+    ],
 )
 
 cc_test(
     name = "encoder_test",
     srcs = ["encoder_test.cc"],
+    deps = [
+        ":pw_hdlc_lite",
+        "//pw_stream",
+        "//pw_unit_test",
+    ],
+)
+
+cc_test(
+    name = "decoder_test",
+    srcs = ["decoder_test.cc"],
+    deps = [
+        ":pw_hdlc_lite",
+        "//pw_result",
+        "//pw_stream",
+        "//pw_unit_test",
+    ],
+)
+
+cc_test(
+    name = "rpc_channel_test",
+    srcs = ["rpc_channel_test.cc"],
     deps = [
         ":pw_hdlc_lite",
         "//pw_stream",

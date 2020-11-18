@@ -47,7 +47,7 @@ class TraceEvent(NamedTuple):
     event_type: TraceType
     module: str
     label: str
-    timestamp: int
+    timestamp_us: int
     group: str = ""
     trace_id: int = 0
     flags: int = 0
@@ -58,8 +58,9 @@ class TraceEvent(NamedTuple):
 
 def event_has_trace_id(event_type):
     return event_type in {
-        "kPwTraceEvent_AsyncStart", "kPwTraceEvent_AsyncStep",
-        "kPwTraceEvent_AsyncEnd"
+        "PW_TRACE_EVENT_TYPE_ASYNC_START",
+        "PW_TRACE_EVENT_TYPE_ASYNC_STEP",
+        "PW_TRACE_EVENT_TYPE_ASYNC_END",
     }
 
 
@@ -67,7 +68,7 @@ def generate_trace_json(events: Iterable[TraceEvent]):
     """Generates a list of JSON lines from provided trace events."""
     json_lines = []
     for event in events:
-        if event.module is None or event.timestamp is None or \
+        if event.module is None or event.timestamp_us is None or \
            event.event_type is None or event.label is None:
             _LOG.error("Invalid sample")
             continue
@@ -75,7 +76,7 @@ def generate_trace_json(events: Iterable[TraceEvent]):
         line = {
             "pid": event.module,
             "name": (event.label),
-            "ts": event.timestamp
+            "ts": event.timestamp_us
         }
         if event.event_type == TraceType.DurationStart:
             line["ph"] = "B"
@@ -139,6 +140,8 @@ def generate_trace_json(events: Iterable[TraceEvent]):
                 for i, item in enumerate(items):
                     args["data_" + str(i)] = item
                 line["args"] = args
+            else:
+                line["args"] = {"data": event.data.hex()}
 
         # Encode as JSON
         json_lines.append(json.dumps(line))

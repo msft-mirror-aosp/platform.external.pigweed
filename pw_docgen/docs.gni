@@ -12,11 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# gn-format disable
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/input_group.gni")
-import("$dir_pw_build/python_script.gni")
+import("$dir_pw_build/python_action.gni")
+
 declare_args() {
   # Whether or not the current target should build docs.
   pw_docgen_BUILD_DOCS = false
@@ -107,8 +107,8 @@ template("pw_doc_gen") {
   _script_args += rebase_path(invoker.sources)
 
   if (pw_docgen_BUILD_DOCS) {
-    pw_python_script(target_name) {
-      script = "$dir_pw_docgen/py/docgen.py"
+    pw_python_action(target_name) {
+      script = "$dir_pw_docgen/py/pw_docgen/docgen.py"
       args = _script_args
       deps = [ ":$_metadata_file_target" ]
       inputs = [ invoker.conf ]

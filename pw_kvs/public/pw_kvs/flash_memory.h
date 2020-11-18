@@ -18,7 +18,7 @@
 #include <initializer_list>
 #include <span>
 
-#include "pw_assert/assert.h"
+#include "pw_assert/light.h"
 #include "pw_kvs/alignment.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
@@ -34,56 +34,59 @@ class FlashMemory {
  public:
   // The flash address is in the range of: 0 to FlashSize.
   typedef uint32_t Address;
-  constexpr FlashMemory(size_t sector_size,
-                        size_t sector_count,
-                        size_t alignment,
-                        uint32_t start_address = 0,
-                        uint32_t sector_start = 0,
-                        std::byte erased_memory_content = std::byte{0xFF})
+
+  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
+  FlashMemory(size_t sector_size,
+              size_t sector_count,
+              size_t alignment,
+              uint32_t start_address = 0,
+              uint32_t sector_start = 0,
+              std::byte erased_memory_content = std::byte{0xFF})
       : sector_size_(sector_size),
         flash_sector_count_(sector_count),
         alignment_(alignment),
         start_address_(start_address),
         start_sector_(sector_start),
         erased_memory_content_(erased_memory_content) {
-    PW_DCHECK_UINT_NE(alignment_, 0);
+    PW_ASSERT(alignment_ != 0u);
   }
 
   virtual ~FlashMemory() = default;
 
   virtual Status Enable() = 0;
+
   virtual Status Disable() = 0;
+
   virtual bool IsEnabled() const = 0;
-  virtual Status SelfTest() { return Status::UNIMPLEMENTED; }
+
+  virtual Status SelfTest() { return Status::Unimplemented(); }
 
   // Erase num_sectors starting at a given address. Blocking call.
-  // Address should be on a sector boundary.
+  // Address should be on a sector boundary. Returns:
   //
-  //                OK: success
-  // DEADLINE_EXCEEDED: timeout
-  //  INVALID_ARGUMENT: address is not sector-aligned
-  //      OUT_OF_RANGE: erases past the end of the memory
-  //
+  // OK - success
+  // DEADLINE_EXCEEDED - timeout
+  // INVALID_ARGUMENT - address is not sector-aligned
+  // OUT_OF_RANGE - erases past the end of the memory
   virtual Status Erase(Address flash_address, size_t num_sectors) = 0;
 
-  // Reads bytes from flash into buffer. Blocking call.
+  // Reads bytes from flash into buffer. Blocking call. Returns:
   //
-  //                OK: success
-  // DEADLINE_EXCEEDED: timeout
-  //      OUT_OF_RANGE: write does not fit in the flash memory
+  // OK - success
+  // DEADLINE_EXCEEDED - timeout
+  // OUT_OF_RANGE - write does not fit in the flash memory
   virtual StatusWithSize Read(Address address, std::span<std::byte> output) = 0;
 
   StatusWithSize Read(Address address, void* buffer, size_t len) {
     return Read(address, std::span(static_cast<std::byte*>(buffer), len));
   }
 
-  // Writes bytes to flash. Blocking call.
+  // Writes bytes to flash. Blocking call. Returns:
   //
-  //                OK: success
-  // DEADLINE_EXCEEDED: timeout
-  //  INVALID_ARGUMENT: address or data size are not aligned
-  //      OUT_OF_RANGE: write does not fit in the memory
-  //
+  // OK - success
+  // DEADLINE_EXCEEDED - timeout
+  // INVALID_ARGUMENT - address or data size are not aligned
+  // OUT_OF_RANGE - write does not fit in the memory
   virtual StatusWithSize Write(Address destination_flash_address,
                                std::span<const std::byte> data) = 0;
 
@@ -102,14 +105,20 @@ class FlashMemory {
   // sector start is not 0. (ex.: cases where there are portions of flash
   // that should be handled independently).
   constexpr uint32_t start_sector() const { return start_sector_; }
+
   constexpr size_t sector_size_bytes() const { return sector_size_; }
+
   constexpr size_t sector_count() const { return flash_sector_count_; }
+
   constexpr size_t alignment_bytes() const { return alignment_; }
+
   constexpr size_t size_bytes() const {
     return sector_size_ * flash_sector_count_;
   }
+
   // Address of the start of flash (the address of sector 0)
   constexpr uint32_t start_address() const { return start_address_; }
+
   constexpr std::byte erased_memory_content() const {
     return erased_memory_content_;
   }
@@ -154,78 +163,71 @@ class FlashPartition {
     FlashPartition::Address address_;
   };
 
-  constexpr FlashPartition(
+  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
+  FlashPartition(
       FlashMemory* flash,
       uint32_t start_sector_index,
       uint32_t sector_count,
       uint32_t alignment_bytes = 0,  // Defaults to flash alignment
-      PartitionPermission permission = PartitionPermission::kReadAndWrite)
-      : flash_(*flash),
-        start_sector_index_(start_sector_index),
-        sector_count_(sector_count),
-        alignment_bytes_(alignment_bytes == 0
-                             ? flash_.alignment_bytes()
-                             : std::max(alignment_bytes,
-                                        uint32_t(flash_.alignment_bytes()))),
-        permission_(permission) {
-    uint32_t misalignment = (alignment_bytes_ % flash_.alignment_bytes());
-    PW_DCHECK_UINT_EQ(
-        misalignment,
-        0,
-        "Flash partition alignmentmust be a multiple of the flash "
-        "memory alignment");
-  }
+      PartitionPermission permission = PartitionPermission::kReadAndWrite);
 
   // Creates a FlashPartition that uses the entire flash with its alignment.
-  constexpr FlashPartition(FlashMemory* flash)
+  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
+  FlashPartition(FlashMemory* flash)
       : FlashPartition(
             flash, 0, flash->sector_count(), flash->alignment_bytes()) {}
 
+  FlashPartition(FlashPartition&&) = default;
   FlashPartition(const FlashPartition&) = delete;
   FlashPartition& operator=(const FlashPartition&) = delete;
 
   virtual ~FlashPartition() = default;
 
   // Performs any required partition or flash-level initialization.
-  virtual Status Init() { return Status::OK; }
+  virtual Status Init() { return Status::Ok(); }
 
   // Erase num_sectors starting at a given address. Blocking call.
-  // Address should be on a sector boundary.
-  // Returns: OK, on success.
-  //          TIMEOUT, on timeout.
-  //          INVALID_ARGUMENT, if address or sector count is invalid.
-  //          PERMISSION_DENIED, if partition is read only.
-  //          UNKNOWN, on HAL error
+  // Address must be on a sector boundary. Returns:
+  //
+  // OK - success.
+  // TIMEOUT - on timeout.
+  // INVALID_ARGUMENT - address or sector count is invalid.
+  // PERMISSION_DENIED - partition is read only.
+  // UNKNOWN - HAL error
   virtual Status Erase(Address address, size_t num_sectors);
 
   Status Erase() { return Erase(0, this->sector_count()); }
 
-  // Reads bytes from flash into buffer. Blocking call.
-  // Returns: OK, on success.
-  //          TIMEOUT, on timeout.
-  //          INVALID_ARGUMENT, if address or length is invalid.
-  //          UNKNOWN, on HAL error
+  // Reads bytes from flash into buffer. Blocking call. Returns:
+  //
+  // OK - success.
+  // TIMEOUT - on timeout.
+  // INVALID_ARGUMENT - address or length is invalid.
+  // UNKNOWN - HAL error
   virtual StatusWithSize Read(Address address, std::span<std::byte> output);
 
   StatusWithSize Read(Address address, size_t length, void* output) {
     return Read(address, std::span(static_cast<std::byte*>(output), length));
   }
 
-  // Writes bytes to flash. Blocking call.
-  // Returns: OK, on success.
-  //          TIMEOUT, on timeout.
-  //          INVALID_ARGUMENT, if address or length is invalid.
-  //          PERMISSION_DENIED, if partition is read only.
-  //          UNKNOWN, on HAL error
+  // Writes bytes to flash. Address and data.size_bytes() must both be a
+  // multiple of alignment_bytes(). Blocking call. Returns:
+  //
+  // OK - success.
+  // TIMEOUT - on timeout.
+  // INVALID_ARGUMENT - address or length is invalid.
+  // PERMISSION_DENIED - partition is read only.
+  // UNKNOWN - HAL error
   virtual StatusWithSize Write(Address address,
                                std::span<const std::byte> data);
 
   // Check to see if chunk of flash partition is erased. Address and len need to
-  // be aligned with FlashMemory.
-  // Returns: OK, on success.
-  //          TIMEOUT, on timeout.
-  //          INVALID_ARGUMENT, if address or length is invalid.
-  //          UNKNOWN, on HAL error
+  // be aligned with FlashMemory. Returns:
+  //
+  // OK - success.
+  // TIMEOUT - on timeout.
+  // INVALID_ARGUMENT - address or length is invalid.
+  // UNKNOWN - HAL error
   // TODO: Result<bool>
   virtual Status IsRegionErased(Address source_flash_address,
                                 size_t len,
@@ -251,6 +253,7 @@ class FlashPartition {
 
   size_t size_bytes() const { return sector_count() * sector_size_bytes(); }
 
+  // Alignment required for write address and write size.
   size_t alignment_bytes() const { return alignment_bytes_; }
 
   size_t sector_count() const { return sector_count_; }
@@ -274,10 +277,15 @@ class FlashPartition {
     return permission_ == PartitionPermission::kReadAndWrite;
   }
 
+  constexpr std::byte erased_memory_content() const {
+    return flash_.erased_memory_content();
+  }
+
   uint32_t start_sector_index() const { return start_sector_index_; }
 
  protected:
   Status CheckBounds(Address address, size_t len) const;
+
   FlashMemory& flash() const { return flash_; }
 
  private:

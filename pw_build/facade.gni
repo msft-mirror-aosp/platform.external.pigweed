@@ -11,19 +11,31 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-# gn-format disable
+
 import("//build_overrides/pigweed.gni")
 
-import("$dir_pw_build/python_script.gni")
+import("$dir_pw_build/python_action.gni")
 import("$dir_pw_build/target_types.gni")
 
 # Declare a facade.
-# A Pigweed facade is an API layer that has a single implementation it must link
-# against. Typically this will be done by pointing `dir_pw_[module]_backend` at
-# a backend implementation for that module.
+#
+# A Pigweed facade is an API layer that has a single implementation it must
+# link against. Typically this will be done by pointing a build arg like
+# `pw_[module]_BACKEND` at a backend implementation for that module.
+#
+# To avoid circular dependencies, pw_facade creates two targets:
+#
+#   - $target_name: the public-facing pw_source_set
+#   - $target_name.facade: target used by the backend to avoid circular
+#         dependencies
+#
+# If the target name matches the directory name (e.g. //foo:foo), a ":facade"
+# alias of the facade target (e.g. //foo:facade) is also provided. This avoids
+# the need to repeat the directory name, for consistency with the main target.
 #
 # Example facade:
 #
+#   # Creates ":module_name" and ":module_name.facade" GN targets.
 #   pw_facade("module_name") {
 #     backend = dir_module_name_backend
 #     public_deps = [
@@ -31,20 +43,26 @@ import("$dir_pw_build/target_types.gni")
 #     ]
 #   }
 #
-# Args:
-#  - backend: the dependency that implements this facade
-#  - facade_name: (optional) The name to use for the facade target on which the
-#        backend depends. Only required when a module defines multiple facades.
-#        Defaults to "facade".
+# Accepts the standard pw_source_set args with the following additions:
+#
+#  - backend: the dependency that implements this facade (a GN variable)
 #
 template("pw_facade") {
   assert(defined(invoker.backend),
          "pw_facade requires a reference to a backend variable for the facade")
 
-  if (defined(invoker.facade_name)) {
-    _facade_name = invoker.facade_name
-  } else {
-    _facade_name = "facade"
+  _facade_name = "$target_name.facade"
+
+  if (get_path_info(get_label_info(":$target_name", "dir"), "name") ==
+      get_label_info(":$target_name", "name")) {
+    group("facade") {
+      public_deps = [ ":$_facade_name" ]
+    }
+  }
+
+  # For backwards compatibility, provide a _facade version of the name.
+  group(target_name + "_facade") {
+    public_deps = [ ":$_facade_name" ]
   }
 
   # A facade's headers are split into a separate target to avoid a circular
@@ -89,7 +107,7 @@ template("pw_facade") {
     # error message.
     _main_target_name = target_name
 
-    pw_python_script(_main_target_name + "_NO_BACKEND_SET") {
+    pw_python_action(_main_target_name + ".NO_BACKEND_SET") {
       stamp = true
       script = "$dir_pw_build/py/pw_build/null_backend.py"
       args = [ _main_target_name ]
@@ -111,8 +129,8 @@ template("pw_facade") {
     if (invoker.backend != "") {
       public_deps += [ invoker.backend ]
     } else {
-      # If the backend is not set, depend on the *_NO_BACKEND_SET target.
-      public_deps += [ ":$_main_target_name" + "_NO_BACKEND_SET" ]
+      # If the backend is not set, depend on the *.NO_BACKEND_SET target.
+      public_deps += [ ":$_main_target_name" + ".NO_BACKEND_SET" ]
     }
   }
 }

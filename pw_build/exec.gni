@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-import("python_script.gni")
+import("python_action.gni")
 
 # Runs a program which isn't in Python.
 #
@@ -108,7 +108,7 @@ template("pw_exec") {
     _script_args += invoker.args
   }
 
-  pw_python_script(target_name) {
+  pw_python_action(target_name) {
     script = "$dir_pw_build/py/pw_build/exec.py"
     args = _script_args
 

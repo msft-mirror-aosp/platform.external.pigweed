@@ -17,7 +17,7 @@
 #include <cstddef>
 #include <span>
 
-#include "pw_assert/assert.h"
+#include "pw_assert/light.h"
 #include "pw_bytes/span.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
@@ -61,7 +61,7 @@ class Writer {
   // OUT_OF_RANGE - Writer has been exhausted, similar to EOF. No data written,
   //     no more will be written.
   Status Write(ConstByteSpan data) {
-    PW_DCHECK(data.empty() || data.data() != nullptr);
+    PW_DASSERT(data.empty() || data.data() != nullptr);
     return DoWrite(data);
   }
   Status Write(const void* data, size_t size_bytes) {
@@ -73,7 +73,8 @@ class Writer {
   // written. This number is advisory and not guaranteed to write without a
   // RESOURCE_EXHAUSTED or OUT_OF_RANGE. As Writer processes/handles enqueued of
   // other contexts write data this number can go up or down for some Writers.
-  // Returns zero if, in the current state, Write() would not return Status::OK.
+  // Returns zero if, in the current state, Write() would not return
+  // Status::Ok().
   virtual size_t ConservativeWriteLimit() const = 0;
 
  private:
@@ -107,7 +108,7 @@ class Reader {
   // OUT_OF_RANGE - Reader has been exhausted, similar to EOF. No bytes read, no
   //     more will be read.
   Result<ByteSpan> Read(ByteSpan dest) {
-    PW_DCHECK(dest.empty() || dest.data() != nullptr);
+    PW_DASSERT(dest.empty() || dest.data() != nullptr);
     StatusWithSize result = DoRead(dest);
 
     if (result.ok()) {
@@ -125,7 +126,8 @@ class Reader {
   // requested bytes or without a RESOURCE_EXHAUSTED or OUT_OF_RANGE. As Reader
   // processes/handles/receives enqueued data or other contexts read data this
   // number can go up or down for some Readers.
-  // Returns zero if, in the current state, Read() would not return Status::OK.
+  // Returns zero if, in the current state, Read() would not return
+  // Status::Ok().
   virtual size_t ConservativeReadLimit() const = 0;
 
  private:

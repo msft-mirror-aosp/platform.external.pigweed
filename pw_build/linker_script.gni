@@ -12,7 +12,6 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# gn-format disable
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/exec.gni")
@@ -84,7 +83,9 @@ template("pw_linker_script") {
 
     # Add defines.
     if (defined(invoker.defines)) {
-      args += process_file_template(invoker.defines, "-D{{source_name_part}}")
+      foreach(compiler_define, invoker.defines) {
+        args += [ "-D${compiler_define}" ]
+      }
     }
 
     # Set output file.

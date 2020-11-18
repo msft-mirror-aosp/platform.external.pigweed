@@ -13,7 +13,7 @@
 # the License.
 """pw_module"""
 
-import setuptools
+import setuptools  # type: ignore
 
 setuptools.setup(
     name='pw_module',
@@ -22,4 +22,6 @@ setuptools.setup(
     author_email='pigweed-developers@googlegroups.com',
     description='Meta-module for Pigweed',
     packages=setuptools.find_packages(),
+    package_data={'pw_module': ['py.typed']},
+    zip_safe=False,
 )

@@ -12,10 +12,10 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# gn-format disable
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_toolchain/arm_gcc/toolchains.gni")
+
 declare_args() {
   # Enable the pw_target_runner for on-device testing.
   pw_use_test_server = false
@@ -64,13 +64,19 @@ _target_config = {
     "PW_BOOT_VECTOR_TABLE_BEGIN=0x08000000",
     "PW_BOOT_VECTOR_TABLE_SIZE=512",
   ]
+
+  current_cpu = "arm"
+  current_os = ""
 }
 
 _toolchain_properties = {
   final_binary_extension = ".elf"
 }
 
-_target_default_configs = [ "$dir_pw_toolchain/arm_gcc:enable_float_printf" ]
+_target_default_configs = [
+  "$dir_pw_build:extra_strict_warnings",
+  "$dir_pw_toolchain/arm_gcc:enable_float_printf",
+]
 
 pw_target_toolchain_stm32f429i_disc1 = {
   _excluded_members = [

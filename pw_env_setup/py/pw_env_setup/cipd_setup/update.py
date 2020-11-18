@@ -140,6 +140,7 @@ def write_ensure_file(package_file, ensure_file):
                    '$ParanoidMode CheckPresence\n')
 
         for entry in data:
+            outs.write('@Subdir {}\n'.format(entry.get('subdir', '')))
             outs.write('{} {}\n'.format(entry['path'],
                                         ' '.join(entry['tags'])))
 
@@ -192,6 +193,7 @@ def update(
             '-ensure-file', ensure_file,
             '-root', install_dir,
             '-log-level', 'warning',
+            '-cache-dir', cache_dir,
             '-max-threads', '0',  # 0 means use CPU count.
         ]  # yapf: disable
 
