@@ -3,11 +3,18 @@
 ----------------
 pw_log_tokenized
 ----------------
-``pw_log_tokenized`` is a ``pw_log`` backend that tokenizes log messages using
-the ``pw_tokenizer`` module. Log messages are tokenized and passed to the
-``pw_tokenizer_HandleEncodedMessageWithPayload`` function. For maximum
-efficiency, the log level, 16-bit tokenized module name, and flags bits are
-passed through the payload argument.
+The ``pw_log_tokenized`` module contains utilities for tokenized logging. It
+connects ``pw_log`` to ``pw_tokenizer``.
+
+C++ backend
+===========
+``pw_log_tokenized`` provides a backend for ``pw_log`` that tokenizes log
+messages with the ``pw_tokenizer`` module. By default, log messages are
+tokenized with the ``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD`` macro.
+The log level, 16-bit tokenized module name, and flags bits are passed through
+the payload argument. The macro eventually passes logs to the
+``pw_tokenizer_HandleEncodedMessageWithPayload`` function, which must be
+implemented by the application.
 
 Example implementation:
 
@@ -30,7 +37,19 @@ Example implementation:
      }
    }
 
-See the documentation for ``pw_tokenizer`` for further details.
+See the documentation for :ref:`module-pw_tokenizer` for further details.
+
+Using a custom macro
+--------------------
+Applications may use their own macro instead of
+``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD`` by setting the
+``PW_LOG_TOKENIZED_ENCODE_MESSAGE`` config macro. This macro should take
+arguments equivalent to ``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD``:
+
+  .. c:function:: PW_LOG_TOKENIZED_ENCODE_MESSAGE(pw_tokenizer_Payload log_metadata, const char* message, ...)
+
+For instructions on how to implement a custom tokenization macro, see
+:ref:`module-pw_tokenizer-custom-macro`.
 
 Build targets
 -------------
@@ -41,5 +60,12 @@ implements the backend for the ``pw_log`` facade. ``pw_log_tokenized`` invokes
 the ``pw_tokenizer:global_handler_with_payload`` facade, which must be
 implemented by the user of ``pw_log_tokenized``.
 
-.. note::
-  The documentation for this module is currently incomplete.
+Python package
+==============
+``pw_log_tokenized`` includes a Python package for decoding tokenized logs.
+
+pw_log_tokenized
+----------------
+.. automodule:: pw_log_tokenized
+  :members:
+  :undoc-members:

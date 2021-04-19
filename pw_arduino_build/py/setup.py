@@ -22,7 +22,13 @@ setuptools.setup(
     author_email='pigweed-developers@googlegroups.com',
     description='Target-specific python scripts for the arduino target',
     packages=setuptools.find_packages(),
-    package_data={'pw_arduino_build': ['py.typed']},
+    package_data={
+        'pw_arduino_build': [
+            'core_patches/teensy/01-teensyduino_1.53-cpp17.diff',
+            'core_patches/teensy/02-teensy4_nonstatic_flash_functions.diff',
+            'py.typed',
+        ]
+    },
     zip_safe=False,
     entry_points={
         'console_scripts': [
@@ -37,7 +43,7 @@ setuptools.setup(
         ]
     },
     install_requires=[
-        'pyserial',
+        'pyserial>=3.5,<4.0',
         'coloredlogs',
         'parameterized',
     ])

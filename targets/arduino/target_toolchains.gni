@@ -14,6 +14,7 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_sys_io/backend.gni")
 import("$dir_pw_toolchain/arm_gcc/toolchains.gni")
 
 declare_args() {
@@ -43,7 +44,11 @@ _target_config = {
   # Facade backends
   pw_assert_BACKEND = dir_pw_assert_basic
   pw_log_BACKEND = dir_pw_log_basic
+  pw_sync_INTERRUPT_SPIN_LOCK_BACKEND =
+      "$dir_pw_sync_baremetal:interrupt_spin_lock"
   pw_sys_io_BACKEND = dir_pw_sys_io_arduino
+  pw_rpc_system_server_BACKEND =
+      "$dir_pigweed/targets/arduino:system_rpc_server"
   pw_arduino_build_INIT_BACKEND = "$dir_pigweed/targets/arduino:pre_init"
 
   current_cpu = "arm"

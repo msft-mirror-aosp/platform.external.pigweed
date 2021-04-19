@@ -25,11 +25,11 @@ The ``pw_assert`` API provides three classes of macros:
   a message.
 - **PW_CHECK_<type>_<cmp>(a, b[, fmt, ...])** - Assert that the expression ``a
   <cmp> b`` is true, optionally with a message.
-- **PW_ASSERT(condition)** - Header- and constexpr- assert.
+- **PW_ASSERT(condition)** - Header- and constexpr-safe assert.
 
 .. tip::
 
-  All of the assert macros optionally support a message with additional
+  All of the ``CHECK`` macros optionally support a message with additional
   arguments, to assist in debugging when an assert triggers:
 
   .. code-block:: cpp
@@ -42,7 +42,7 @@ Example
 
 .. code-block:: cpp
 
-  #include "pw_assert/assert.h"
+  #include "pw_assert/check.h"
 
   int main() {
     bool sensor_running = StartSensor(&msg);
@@ -72,7 +72,7 @@ Example
 
 .. tip::
 
-  Use ``PW_ASSERT`` from ``pw_assert/light.h`` for asserts in headers or
+  Use ``PW_ASSERT`` from ``pw_assert/assert.h`` for asserts in headers or
   asserting in ``constexpr`` contexts.
 
 Structure of assert modules
@@ -102,9 +102,8 @@ See the Backend API section below for more details.
 ----------
 Facade API
 ----------
-
 The below functions describe the assert API functions that applications should
-invoke to assert. These macros found in the ``pw_assert/assert.h`` header.
+invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
 
 .. cpp:function:: PW_CRASH(format, ...)
 
@@ -149,10 +148,9 @@ invoke to assert. These macros found in the ``pw_assert/assert.h`` header.
     tokenizing assert backend. For example, if ``x`` and ``b`` are integers,
     use instead ``PW_CHECK_INT_LT(x, b)``.
 
-    Additionally, use ``PW_CHECK_OK(status)`` when checking for a
-    ``Status::OK``, since it enables showing a human-readable status string
-    rather than an integer (e.g. ``status == RESOURCE_EXHAUSTED`` instead of
-    ``status == 5``.
+    Additionally, use ``PW_CHECK_OK(status)`` when checking for an OK status,
+    since it enables showing a human-readable status string rather than an
+    integer (e.g. ``status == RESOURCE_EXHAUSTED`` instead of ``status == 5``.
 
     +------------------------------------+-------------------------------------+
     | **Do NOT do this**                 | **Do this instead**                 |
@@ -164,7 +162,7 @@ invoke to assert. These macros found in the ``pw_assert/assert.h`` header.
     | ``PW_CHECK(Temp() <= 10.0)``       | ``PW_CHECK_FLOAT_EXACT_LE(``        |
     |                                    | ``    Temp(), 10.0)``               |
     +------------------------------------+-------------------------------------+
-    | ``PW_CHECK(Foo() == Status::OK)``  | ``PW_CHECK_OK(Foo())``              |
+    | ``PW_CHECK(Foo() == OkStatus())``  | ``PW_CHECK_OK(Foo())``              |
     +------------------------------------+-------------------------------------+
 
 .. cpp:function:: PW_CHECK_NOTNULL(ptr)
@@ -367,7 +365,7 @@ invoke to assert. These macros found in the ``pw_assert/assert.h`` header.
 .. cpp:function:: PW_DCHECK_OK(status)
 .. cpp:function:: PW_DCHECK_OK(status, format, ...)
 
-  Assert that ``status`` evaluates to ``pw::Status::OK`` (in C++) or
+  Assert that ``status`` evaluates to ``pw::OkStatus()`` (in C++) or
   ``PW_STATUS_OK`` (in C). Optionally include a message with arguments to
   report.
 
@@ -388,14 +386,14 @@ invoke to assert. These macros found in the ``pw_assert/assert.h`` header.
 
   .. note::
 
-    Using ``PW_CHECK_OK(status)`` instead of ``PW_CHECK(status == Status::OK)``
+    Using ``PW_CHECK_OK(status)`` instead of ``PW_CHECK(status == OkStatus())``
     enables displaying an error message with a string version of the error
     code; for example ``status == RESOURCE_EXHAUSTED`` instead of ``status ==
     5``.
 
----------
-Light API
----------
+----------
+Assert API
+----------
 The normal ``PW_CHECK_*`` and ``PW_DCHECK_*`` family of macros are intended to
 provide rich debug information, like the file, line number, value of operands
 in boolean comparisons, and more. However, this comes at a cost: these macros
@@ -412,12 +410,11 @@ There are several issues with the normal ``PW_CHECK_*`` suite of macros:
 4. ``PW_CHECK_*`` can trigger circular dependencies when asserts are used from
    low-level contexts, like in ``<span>``.
 
-**Light asserts** solve all of the above three problems: No risk of ODR
-violations, are constexpr safe, and have a tiny call site footprint; and there
-is no header dependency on the backend preventing circular include issues.
-However, there are **no format messages, no captured line number, no captured
-file, no captured expression, or anything other than a binary indication of
-failure**.
+**PW_ASSERT** solves all of the above problems: No risk of ODR violations, are
+constexpr safe, and have a tiny call site footprint; and there is no header
+dependency on the backend preventing circular include issues.  However, there
+are **no format messages, no captured line number, no captured file, no captured
+expression, or anything other than a binary indication of failure**.
 
 Example
 -------
@@ -426,7 +423,7 @@ Example
 
   // This example demonstrates asserting in a header.
 
-  #include "pw_assert/light.h"
+  #include "pw_assert/assert.h"
 
   class InlinedSubsystem {
    public:
@@ -442,8 +439,8 @@ Example
     }
   };
 
-Light API reference
--------------------
+PW_ASSERT API reference
+-----------------------
 .. cpp:function:: PW_ASSERT(condition)
 
   A header- and constexpr-safe version of ``PW_CHECK()``.
@@ -464,15 +461,16 @@ Light API reference
   Unlike the ``PW_CHECK_*()`` suite of macros, ``PW_ASSERT()`` and
   ``PW_DASSERT()`` capture no rich information like line numbers, the file,
   expression arguments, or the stringified expression. Use these macros **only
-  when absolutely necessary**--in headers, constexr contexts, or in rare cases
+  when absolutely necessary**---in headers, constexpr contexts, or in rare cases
   where the call site overhead of a full PW_CHECK must be avoided.
 
   Use ``PW_CHECK_*()`` whenever possible.
 
-Light API backend
------------------
-The light API ultimately calls the C function ``pw_assert_HandleFailure()``,
-which must be provided by the assert backend.
+PW_ASSERT API backend
+---------------------
+The ``PW_ASSERT`` API ultimately calls the C function
+``pw_assert_HandleFailure()``, which must be provided by the ``pw_assert``
+backend.
 
 -----------
 Backend API
@@ -548,14 +546,14 @@ and that header must define the following macros:
     See :ref:`module-pw_assert_basic` for one way to combine these arguments
     into a meaningful error message.
 
-Additionally, the backend must provide a link-time function for the light
-assert handler. This does not need to appear in the backend header, but instead
-is in a ``.cc`` file.
+Additionally, the backend must provide a link-time function for the
+``PW_ASSERT`` assert handler. This does not need to appear in the backend
+header, but instead is in a ``.cc`` file.
 
 .. cpp:function:: pw_assert_HandleFailure()
 
   Handle a low-level crash. This crash entry happens through
-  ``pw_assert/light.h``. In this crash handler, there is no access to line,
+  ``pw_assert/assert.h``. In this crash handler, there is no access to line,
   file, expression, or other rich assert information. Backends should do
   something reasonable in this case; typically, capturing the stack is useful.
 

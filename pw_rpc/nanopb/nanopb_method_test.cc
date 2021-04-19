@@ -22,6 +22,7 @@
 #include "pw_rpc/service.h"
 #include "pw_rpc_nanopb_private/internal_test_utils.h"
 #include "pw_rpc_private/internal_test_utils.h"
+#include "pw_rpc_private/method_impl_tester.h"
 #include "pw_rpc_test_protos/test.pb.h"
 
 namespace pw::rpc::internal {
@@ -29,10 +30,105 @@ namespace {
 
 using std::byte;
 
+struct FakePb {};
+
+// Create a fake service for use with the MethodImplTester.
+class TestNanopbService final : public Service {
+ public:
+  Status Unary(ServerContext&, const FakePb&, FakePb&) { return Status(); }
+
+  static Status StaticUnary(ServerContext&, const FakePb&, FakePb&) {
+    return Status();
+  }
+
+  void ServerStreaming(ServerContext&, const FakePb&, ServerWriter<FakePb>&) {}
+
+  static void StaticServerStreaming(ServerContext&,
+                                    const FakePb&,
+                                    ServerWriter<FakePb>&) {}
+
+  Status UnaryWrongArg(ServerContext&, FakePb&, FakePb&) { return Status(); }
+
+  static void StaticUnaryVoidReturn(ServerContext&, const FakePb&, FakePb&) {}
+
+  int ServerStreamingBadReturn(ServerContext&,
+                               const FakePb&,
+                               ServerWriter<FakePb>&) {
+    return 5;
+  }
+
+  static void StaticServerStreamingMissingArg(const FakePb&,
+                                              ServerWriter<FakePb>&) {}
+};
+
+// Test that the matches() function matches valid signatures.
+static_assert(NanopbMethod::template matches<&TestNanopbService::Unary,
+                                             FakePb,
+                                             FakePb>());
+static_assert(
+    NanopbMethod::template matches<&TestNanopbService::ServerStreaming,
+                                   FakePb,
+                                   FakePb>());
+static_assert(NanopbMethod::template matches<&TestNanopbService::StaticUnary,
+                                             FakePb,
+                                             FakePb>());
+static_assert(
+    NanopbMethod::template matches<&TestNanopbService::StaticServerStreaming,
+                                   FakePb,
+                                   FakePb>());
+
+// Test that the matches() function does not match the wrong method type.
+static_assert(!NanopbMethod::template matches<&TestNanopbService::UnaryWrongArg,
+                                              FakePb,
+                                              FakePb>());
+static_assert(
+    !NanopbMethod::template matches<&TestNanopbService::StaticUnaryVoidReturn,
+                                    FakePb,
+                                    FakePb>());
+static_assert(!NanopbMethod::template matches<
+              &TestNanopbService::ServerStreamingBadReturn,
+              FakePb,
+              FakePb>());
+static_assert(!NanopbMethod::template matches<
+              &TestNanopbService::StaticServerStreamingMissingArg,
+              FakePb,
+              FakePb>());
+
+struct WrongPb;
+
+// Test matches() rejects incorrect request/response types.
+static_assert(!NanopbMethod::template matches<&TestNanopbService::Unary,
+                                              WrongPb,
+                                              FakePb>());
+static_assert(!NanopbMethod::template matches<&TestNanopbService::Unary,
+                                              FakePb,
+                                              WrongPb>());
+static_assert(!NanopbMethod::template matches<&TestNanopbService::Unary,
+                                              WrongPb,
+                                              WrongPb>());
+static_assert(
+    !NanopbMethod::template matches<&TestNanopbService::ServerStreaming,
+                                    WrongPb,
+                                    FakePb>());
+
+static_assert(!NanopbMethod::template matches<&TestNanopbService::StaticUnary,
+                                              FakePb,
+                                              WrongPb>());
+static_assert(
+    !NanopbMethod::template matches<&TestNanopbService::StaticServerStreaming,
+                                    FakePb,
+                                    WrongPb>());
+
+TEST(MethodImplTester, NanopbMethod) {
+  constexpr MethodImplTester<NanopbMethod, TestNanopbService, nullptr, nullptr>
+      method_tester;
+  EXPECT_TRUE(method_tester.MethodImplIsValid());
+}
+
 pw_rpc_test_TestRequest last_request;
 ServerWriter<pw_rpc_test_TestResponse> last_writer;
 
-Status AddFive(ServerCall&,
+Status AddFive(ServerContext&,
                const pw_rpc_test_TestRequest& request,
                pw_rpc_test_TestResponse& response) {
   last_request = request;
@@ -40,11 +136,11 @@ Status AddFive(ServerCall&,
   return Status::Unauthenticated();
 }
 
-Status DoNothing(ServerCall&, const pw_rpc_test_Empty&, pw_rpc_test_Empty&) {
+Status DoNothing(ServerContext&, const pw_rpc_test_Empty&, pw_rpc_test_Empty&) {
   return Status::Unknown();
 }
 
-void StartStream(ServerCall&,
+void StartStream(ServerContext&,
                  const pw_rpc_test_TestRequest& request,
                  ServerWriter<pw_rpc_test_TestResponse>& writer) {
   last_request = request;
@@ -99,7 +195,7 @@ TEST(NanopbMethod, UnaryRpc_InvalidPayload_SendsError) {
   const Packet& packet = context.output().sent_packet();
   EXPECT_EQ(PacketType::SERVER_ERROR, packet.type());
   EXPECT_EQ(Status::DataLoss(), packet.status());
-  EXPECT_EQ(context.kServiceId, packet.service_id());
+  EXPECT_EQ(context.service_id(), packet.service_id());
   EXPECT_EQ(method.id(), packet.method_id());
 }
 
@@ -120,7 +216,7 @@ TEST(NanopbMethod, UnaryRpc_BufferTooSmallForResponse_SendsInternalError) {
   const Packet& packet = context.output().sent_packet();
   EXPECT_EQ(PacketType::SERVER_ERROR, packet.type());
   EXPECT_EQ(Status::Internal(), packet.status());
-  EXPECT_EQ(context.kServiceId, packet.service_id());
+  EXPECT_EQ(context.service_id(), packet.service_id());
   EXPECT_EQ(method.id(), packet.method_id());
 
   EXPECT_EQ(value, last_request.integer);
@@ -147,18 +243,45 @@ TEST(NanopbMethod, ServerWriter_SendsResponse) {
 
   method.Invoke(context.get(), context.packet({}));
 
-  EXPECT_EQ(Status::Ok(), last_writer.Write({.value = 100}));
+  EXPECT_EQ(OkStatus(), last_writer.Write({.value = 100}));
 
   PW_ENCODE_PB(pw_rpc_test_TestResponse, payload, .value = 100);
   std::array<byte, 128> encoded_response = {};
   auto encoded = context.packet(payload).Encode(encoded_response);
-  ASSERT_EQ(Status::Ok(), encoded.status());
+  ASSERT_EQ(OkStatus(), encoded.status());
 
   ASSERT_EQ(encoded.value().size(), context.output().sent_data().size());
   EXPECT_EQ(0,
             std::memcmp(encoded.value().data(),
                         context.output().sent_data().data(),
                         encoded.value().size()));
+}
+
+TEST(NanopbMethod, ServerWriter_WriteWhenClosed_ReturnsFailedPrecondition) {
+  const NanopbMethod& method =
+      std::get<2>(FakeService::kMethods).nanopb_method();
+  ServerContextForTest<FakeService> context(method);
+
+  method.Invoke(context.get(), context.packet({}));
+
+  EXPECT_EQ(OkStatus(), last_writer.Finish());
+  EXPECT_TRUE(last_writer.Write({.value = 100}).IsFailedPrecondition());
+}
+
+TEST(NanopbMethod, ServerWriter_WriteAfterMoved_ReturnsFailedPrecondition) {
+  const NanopbMethod& method =
+      std::get<2>(FakeService::kMethods).nanopb_method();
+  ServerContextForTest<FakeService> context(method);
+
+  method.Invoke(context.get(), context.packet({}));
+  ServerWriter<pw_rpc_test_TestResponse> new_writer = std::move(last_writer);
+
+  EXPECT_EQ(OkStatus(), new_writer.Write({.value = 100}));
+
+  EXPECT_EQ(Status::FailedPrecondition(), last_writer.Write({.value = 100}));
+  EXPECT_EQ(Status::FailedPrecondition(), last_writer.Finish());
+
+  EXPECT_EQ(OkStatus(), new_writer.Finish());
 }
 
 TEST(NanopbMethod,
@@ -176,12 +299,12 @@ TEST(NanopbMethod,
   // Verify that the encoded size of a packet with an empty payload is correct.
   std::array<byte, 128> encoded_response = {};
   auto encoded = context.packet({}).Encode(encoded_response);
-  ASSERT_EQ(Status::Ok(), encoded.status());
+  ASSERT_EQ(OkStatus(), encoded.status());
   ASSERT_EQ(kNoPayloadPacketSize, encoded.value().size());
 
   method.Invoke(context.get(), context.packet({}));
 
-  EXPECT_EQ(Status::Ok(), last_writer.Write({}));  // Barely fits
+  EXPECT_EQ(OkStatus(), last_writer.Write({}));  // Barely fits
   EXPECT_EQ(Status::Internal(), last_writer.Write({.value = 1}));  // Too big
 }
 

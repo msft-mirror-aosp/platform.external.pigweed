@@ -15,7 +15,7 @@
 
 #include <algorithm>
 
-#include "pw_assert/assert.h"
+#include "pw_assert/light.h"
 #include "pw_status/status.h"
 
 namespace pw {
@@ -26,19 +26,18 @@ namespace pw {
 template <typename T>
 class Result {
  public:
-  constexpr Result(T&& value)
-      : value_(std::move(value)), status_(Status::Ok()) {}
-  constexpr Result(const T& value) : value_(value), status_(Status::Ok()) {}
+  constexpr Result(T&& value) : value_(std::move(value)), status_(OkStatus()) {}
+  constexpr Result(const T& value) : value_(value), status_(OkStatus()) {}
 
   template <typename... Args>
   constexpr Result(std::in_place_t, Args&&... args)
-      : value_(std::forward<Args>(args)...), status_(Status::Ok()) {}
+      : value_(std::forward<Args>(args)...), status_(OkStatus()) {}
 
-  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
-  Result(Status status) : status_(status) { PW_CHECK(status_ != Status::Ok()); }
-  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
-  Result(Status::Code code) : status_(code) {
-    PW_CHECK(status_ != Status::Ok());
+  constexpr Result(Status status) : dummy_({}), status_(status) {
+    PW_ASSERT(!status_.ok());
+  }
+  constexpr Result(Status::Code code) : dummy_({}), status_(code) {
+    PW_ASSERT(!status_.ok());
   }
 
   constexpr Result(const Result&) = default;
@@ -50,28 +49,29 @@ class Result {
   constexpr Status status() const { return status_; }
   constexpr bool ok() const { return status_.ok(); }
 
-  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
-  T& value() & {
-    PW_CHECK_OK(status_);
+  constexpr T& value() & {
+    PW_ASSERT(status_.ok());
     return value_;
   }
 
-  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
-  const T& value() const& {
-    PW_CHECK_OK(status_);
+  constexpr const T& value() const& {
+    PW_ASSERT(status_.ok());
     return value_;
   }
 
-  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
-  T&& value() && {
-    PW_CHECK_OK(status_);
+  constexpr T&& value() && {
+    PW_ASSERT(status_.ok());
     return std::move(value_);
   }
 
   template <typename U>
   constexpr T value_or(U&& default_value) const& {
     if (ok()) {
+      PW_MODIFY_DIAGNOSTICS_PUSH();
+      // GCC 10 emits -Wmaybe-uninitialized warnings about value_.
+      PW_MODIFY_DIAGNOSTIC_GCC(ignored, "-Wmaybe-uninitialized");
       return value_;
+      PW_MODIFY_DIAGNOSTICS_POP();
     }
     return std::forward<U>(default_value);
   }
@@ -85,8 +85,13 @@ class Result {
   }
 
  private:
+  struct Dummy {};
+
   union {
     T value_;
+
+    // Ensure that there is always a trivial constructor for the union.
+    Dummy dummy_;
   };
   Status status_;
 };

@@ -32,13 +32,25 @@ class FakeGeneratedService : public Service {
   constexpr FakeGeneratedService(uint32_t id) : Service(id, kMethods) {}
 
   static constexpr std::array<NanopbMethodUnion, 4> kMethods = {
-      GetNanopbOrRawMethodFor<&Implementation::DoNothing>(
+      GetNanopbOrRawMethodFor<&Implementation::DoNothing,
+                              MethodType::kUnary,
+                              pw_rpc_test_Empty,
+                              pw_rpc_test_Empty>(
           10u, pw_rpc_test_Empty_fields, pw_rpc_test_Empty_fields),
-      GetNanopbOrRawMethodFor<&Implementation::RawStream>(
+      GetNanopbOrRawMethodFor<&Implementation::RawStream,
+                              MethodType::kServerStreaming,
+                              pw_rpc_test_TestRequest,
+                              pw_rpc_test_TestResponse>(
           11u, pw_rpc_test_TestRequest_fields, pw_rpc_test_TestResponse_fields),
-      GetNanopbOrRawMethodFor<&Implementation::AddFive>(
+      GetNanopbOrRawMethodFor<&Implementation::AddFive,
+                              MethodType::kUnary,
+                              pw_rpc_test_TestRequest,
+                              pw_rpc_test_TestResponse>(
           12u, pw_rpc_test_TestRequest_fields, pw_rpc_test_TestResponse_fields),
-      GetNanopbOrRawMethodFor<&Implementation::StartStream>(
+      GetNanopbOrRawMethodFor<&Implementation::StartStream,
+                              MethodType::kServerStreaming,
+                              pw_rpc_test_TestRequest,
+                              pw_rpc_test_TestResponse>(
           13u, pw_rpc_test_TestRequest_fields, pw_rpc_test_TestResponse_fields),
   };
 };
@@ -97,7 +109,7 @@ TEST(NanopbMethodUnion, Raw_CallsServerStreamingMethod) {
   method.Invoke(context.get(), context.packet(request));
 
   EXPECT_TRUE(last_raw_writer.open());
-  last_raw_writer.Finish();
+  EXPECT_EQ(OkStatus(), last_raw_writer.Finish());
   EXPECT_EQ(context.output().sent_packet().type(),
             PacketType::SERVER_STREAM_END);
 }
@@ -139,7 +151,7 @@ TEST(NanopbMethodUnion, Nanopb_CallsServerStreamingMethod) {
   EXPECT_EQ(555, last_request.integer);
   EXPECT_TRUE(last_writer.open());
 
-  last_writer.Finish();
+  EXPECT_EQ(OkStatus(), last_writer.Finish());
   EXPECT_EQ(context.output().sent_packet().type(),
             PacketType::SERVER_STREAM_END);
 }

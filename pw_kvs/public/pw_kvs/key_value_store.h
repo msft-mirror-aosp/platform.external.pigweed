@@ -17,7 +17,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <string_view>
 #include <type_traits>
 
 #include "pw_containers/vector.h"
@@ -29,10 +28,12 @@
 #include "pw_kvs/internal/key_descriptor.h"
 #include "pw_kvs/internal/sectors.h"
 #include "pw_kvs/internal/span_traits.h"
+#include "pw_kvs/key.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 
-namespace pw::kvs {
+namespace pw {
+namespace kvs {
 
 enum class GargbageCollectOnWrite {
   // Disable all automatic garbage collection on write.
@@ -115,7 +116,7 @@ class KeyValueStore {
   //   FAILED_PRECONDITION: the KVS is not initialized
   //      INVALID_ARGUMENT: key is empty or too long or value is too large
   //
-  StatusWithSize Get(std::string_view key,
+  StatusWithSize Get(Key key,
                      std::span<std::byte> value,
                      size_t offset_bytes = 0) const;
 
@@ -124,8 +125,8 @@ class KeyValueStore {
   // std::as_writable_bytes(std::span(array)), or pass a pointer to the array
   // instead of the array itself.
   template <typename Pointer,
-            typename = std::enable_if_t<std::is_pointer_v<Pointer>>>
-  Status Get(const std::string_view& key, const Pointer& pointer) const {
+            typename = std::enable_if_t<std::is_pointer<Pointer>::value>>
+  Status Get(const Key& key, const Pointer& pointer) const {
     using T = std::remove_reference_t<std::remove_pointer_t<Pointer>>;
     CheckThatObjectCanBePutOrGet<T>();
     return FixedSizeGet(key, pointer, sizeof(T));
@@ -148,14 +149,17 @@ class KeyValueStore {
   //   FAILED_PRECONDITION: the KVS is not initialized
   //      INVALID_ARGUMENT: key is empty or too long or value is too large
   //
-  template <typename T>
-  Status Put(const std::string_view& key, const T& value) {
-    if constexpr (ConvertsToSpan<T>::value) {
-      return PutBytes(key, std::as_bytes(std::span(value)));
-    } else {
-      CheckThatObjectCanBePutOrGet<T>();
-      return PutBytes(key, std::as_bytes(std::span(&value, 1)));
-    }
+  template <typename T,
+            typename std::enable_if_t<ConvertsToSpan<T>::value>* = nullptr>
+  Status Put(const Key& key, const T& value) {
+    return PutBytes(key, std::as_bytes(internal::make_span(value)));
+  }
+
+  template <typename T,
+            typename std::enable_if_t<!ConvertsToSpan<T>::value>* = nullptr>
+  Status Put(const Key& key, const T& value) {
+    CheckThatObjectCanBePutOrGet<T>();
+    return PutBytes(key, std::as_bytes(std::span<const T>(&value, 1)));
   }
 
   // Removes a key-value entry from the KVS.
@@ -167,7 +171,7 @@ class KeyValueStore {
   //   FAILED_PRECONDITION: the KVS is not initialized
   //      INVALID_ARGUMENT: key is empty or too long
   //
-  Status Delete(std::string_view key);
+  Status Delete(Key key);
 
   // Returns the size of the value corresponding to the key.
   //
@@ -177,7 +181,7 @@ class KeyValueStore {
   //   FAILED_PRECONDITION: the KVS is not initialized
   //      INVALID_ARGUMENT: key is empty or too long
   //
-  StatusWithSize ValueSize(std::string_view key) const;
+  StatusWithSize ValueSize(Key key) const;
 
   // Perform all maintenance possible, including all neeeded repairing of
   // corruption and garbage collection of reclaimable space in the KVS. When
@@ -225,7 +229,7 @@ class KeyValueStore {
     }
 
     template <typename Pointer,
-              typename = std::enable_if_t<std::is_pointer_v<Pointer>>>
+              typename = std::enable_if_t<std::is_pointer<Pointer>::value>>
     Status Get(const Pointer& pointer) const {
       using T = std::remove_reference_t<std::remove_pointer_t<Pointer>>;
       CheckThatObjectCanBePutOrGet<T>();
@@ -360,7 +364,7 @@ class KeyValueStore {
   template <typename T>
   static constexpr void CheckThatObjectCanBePutOrGet() {
     static_assert(
-        std::is_trivially_copyable_v<T> && !std::is_pointer_v<T>,
+        std::is_trivially_copyable<T>::value && !std::is_pointer<T>::value,
         "Only trivially copyable, non-pointer objects may be Put and Get by "
         "value. Any value may be stored by converting it to a byte std::span "
         "with std::as_bytes(std::span(&value, 1)) or "
@@ -373,7 +377,7 @@ class KeyValueStore {
                       Address start_address,
                       Address* next_entry_address);
 
-  Status PutBytes(std::string_view key, std::span<const std::byte> value);
+  Status PutBytes(Key key, std::span<const std::byte> value);
 
   StatusWithSize ValueSize(const EntryMetadata& metadata) const;
 
@@ -391,7 +395,7 @@ class KeyValueStore {
   //                 key's hash collides with the hash for an existing
   //                 descriptor
   //
-  Status FindEntry(std::string_view key, EntryMetadata* metadata) const;
+  Status FindEntry(Key key, EntryMetadata* metadata) const;
 
   // Searches for a KeyDescriptor that matches this key and sets *metadata to
   // point to it if one is found.
@@ -399,41 +403,38 @@ class KeyValueStore {
   //          OK: there is a matching descriptor and *metadata is set
   //   NOT_FOUND: there is no descriptor that matches this key
   //
-  Status FindExisting(std::string_view key, EntryMetadata* metadata) const;
+  Status FindExisting(Key key, EntryMetadata* metadata) const;
 
-  StatusWithSize Get(std::string_view key,
+  StatusWithSize Get(Key key,
                      const EntryMetadata& metadata,
                      std::span<std::byte> value_buffer,
                      size_t offset_bytes) const;
 
-  Status FixedSizeGet(std::string_view key,
-                      void* value,
-                      size_t size_bytes) const;
+  Status FixedSizeGet(Key key, void* value, size_t size_bytes) const;
 
-  Status FixedSizeGet(std::string_view key,
+  Status FixedSizeGet(Key key,
                       const EntryMetadata& descriptor,
                       void* value,
                       size_t size_bytes) const;
 
-  Status CheckWriteOperation(std::string_view key) const;
-  Status CheckReadOperation(std::string_view key) const;
+  Status CheckWriteOperation(Key key) const;
+  Status CheckReadOperation(Key key) const;
 
   Status WriteEntryForExistingKey(EntryMetadata& metadata,
                                   EntryState new_state,
-                                  std::string_view key,
+                                  Key key,
                                   std::span<const std::byte> value);
 
-  Status WriteEntryForNewKey(std::string_view key,
-                             std::span<const std::byte> value);
+  Status WriteEntryForNewKey(Key key, std::span<const std::byte> value);
 
-  Status WriteEntry(std::string_view key,
+  Status WriteEntry(Key key,
                     std::span<const std::byte> value,
                     EntryState new_state,
                     EntryMetadata* prior_metadata = nullptr,
                     const internal::Entry* prior_entry = nullptr);
 
   EntryMetadata CreateOrUpdateKeyDescriptor(const Entry& new_entry,
-                                            std::string_view key,
+                                            Key key,
                                             EntryMetadata* prior_metadata,
                                             size_t prior_size);
 
@@ -451,7 +452,7 @@ class KeyValueStore {
   Status MarkSectorCorruptIfNotOk(Status status, SectorDescriptor* sector);
 
   Status AppendEntry(const Entry& entry,
-                     std::string_view key,
+                     Key key,
                      std::span<const std::byte> value);
 
   StatusWithSize CopyEntryToSector(Entry& entry,
@@ -508,7 +509,7 @@ class KeyValueStore {
   Status Repair();
 
   internal::Entry CreateEntry(Address address,
-                              std::string_view key,
+                              Key key,
                               std::span<const std::byte> value,
                               EntryState state);
 
@@ -574,7 +575,8 @@ class KeyValueStoreBuffer : public KeyValueStore {
                       const Options& options = {})
       : KeyValueStoreBuffer(
             partition,
-            std::span(reinterpret_cast<const EntryFormat (&)[1]>(format)),
+            std::span<const EntryFormat, kEntryFormats>(
+                reinterpret_cast<const EntryFormat (&)[1]>(format)),
             options) {
     static_assert(kEntryFormats == 1,
                   "kEntryFormats EntryFormats must be specified");
@@ -625,4 +627,5 @@ class KeyValueStoreBuffer : public KeyValueStore {
   std::array<EntryFormat, kEntryFormats> formats_;
 };
 
-}  // namespace pw::kvs
+}  // namespace kvs
+}  // namespace pw

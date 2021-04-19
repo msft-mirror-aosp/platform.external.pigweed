@@ -15,7 +15,7 @@
 
 #include <cstring>
 
-#include "pw_rpc_protos/echo.rpc.pb.h"
+#include "pw_rpc/echo.rpc.pb.h"
 
 namespace pw::rpc {
 
@@ -25,7 +25,7 @@ class EchoService final : public generated::EchoService<EchoService> {
               const pw_rpc_EchoMessage& request,
               pw_rpc_EchoMessage& response) {
     std::strncpy(response.msg, request.msg, sizeof(response.msg));
-    return Status::Ok();
+    return OkStatus();
   }
 };
 

@@ -19,7 +19,7 @@ import logging
 import os
 import pathlib
 import shutil
-from typing import Dict, List, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -59,12 +59,18 @@ class Package:
         This method will be skipped if the directory does not exist.
         """
 
+    def info(self, path: pathlib.Path) -> Sequence[str]:  # pylint: disable=no-self-use
+        """Returns a short string explaining how to enable the package."""
+
 
 _PACKAGES: Dict[str, Package] = {}
 
 
-def register(package_class: type) -> None:
-    obj = package_class()
+def register(package_class: type, name: str = None) -> None:
+    if name:
+        obj = package_class(name)
+    else:
+        obj = package_class()
     _PACKAGES[obj.name] = obj
 
 
@@ -112,6 +118,10 @@ class PackageManager:
             available=tuple(available),
         )
 
+    def info(self, package: str) -> Sequence[str]:
+        pkg = _PACKAGES[package]
+        return pkg.info(self._pkg_root / pkg.name)
+
 
 class PackageManagerCLI:
     """Command-line interface to PackageManager."""
@@ -122,6 +132,8 @@ class PackageManagerCLI:
         _LOG.info('Installing %s...', package)
         self._mgr.install(package, force)
         _LOG.info('Installing %s...done.', package)
+        for line in self._mgr.info(package):
+            _LOG.info('%s', line)
         return 0
 
     def remove(self, package: str) -> int:
@@ -133,6 +145,8 @@ class PackageManagerCLI:
     def status(self, package: str) -> int:
         if self._mgr.status(package):
             _LOG.info('%s is installed.', package)
+            for line in self._mgr.info(package):
+                _LOG.info('%s', line)
             return 0
 
         _LOG.info('%s is not installed.', package)
@@ -144,6 +158,8 @@ class PackageManagerCLI:
         _LOG.info('Installed packages:')
         for package in packages.installed:
             _LOG.info('  %s', package)
+            for line in self._mgr.info(package):
+                _LOG.info('    %s', line)
         _LOG.info('')
 
         _LOG.info('Available packages:')
@@ -154,7 +170,7 @@ class PackageManagerCLI:
         return 0
 
     def run(self, command: str, pkg_root: pathlib.Path, **kwargs) -> int:
-        self._mgr = PackageManager(pkg_root)
+        self._mgr = PackageManager(pkg_root.resolve())
         return getattr(self, command)(**kwargs)
 
 

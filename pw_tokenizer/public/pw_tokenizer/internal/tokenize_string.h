@@ -39,29 +39,29 @@ namespace internal {
 
 // The C++ tokenzied string entry supports both string literals and char arrays,
 // such as __func__.
-template <uint32_t domain_size, uint32_t string_size>
+template <uint32_t kDomainSize, uint32_t kStringSize>
 PW_PACKED(class)
 Entry {
  public:
   constexpr Entry(uint32_t token,
-                  const char(&domain)[domain_size],
-                  const char(&string)[string_size])
+                  const char(&domain)[kDomainSize],
+                  const char(&string)[kStringSize])
       : magic_(_PW_TOKENIZER_ENTRY_MAGIC),
         token_(token),
-        domain_size_(domain_size),
-        string_size_(string_size),
+        domain_size_(kDomainSize),
+        string_size_(kStringSize),
         domain_(std::to_array(domain)),
         string_(std::to_array(string)) {}
 
  private:
-  static_assert(string_size > 0u && domain_size > 0u);
+  static_assert(kStringSize > 0u && kDomainSize > 0u);
 
   uint32_t magic_;
   uint32_t token_;
   uint32_t domain_size_;
   uint32_t string_size_;
-  std::array<char, domain_size> domain_;
-  std::array<char, string_size> string_;
+  std::array<char, kDomainSize> domain_;
+  std::array<char, kStringSize> string_;
 };
 
 }  // namespace internal
@@ -117,6 +117,11 @@ Entry {
 #include "pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_128_hash_macro.h"
 #define PW_TOKENIZER_STRING_TOKEN PW_TOKENIZER_65599_FIXED_LENGTH_128_HASH
 
+#elif PW_TOKENIZER_CFG_C_HASH_LENGTH == 256
+
+#include "pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_256_hash_macro.h"
+#define PW_TOKENIZER_STRING_TOKEN PW_TOKENIZER_65599_FIXED_LENGTH_256_HASH
+
 #else  // unsupported hash length
 
 // Only hash lengths for which there is a corresponding macro header
@@ -124,6 +129,9 @@ Entry {
 // be generated with the generate_hash_macro.py function. New macro headers must
 // be added to this file.
 #error "Unsupported value for PW_TOKENIZER_CFG_C_HASH_LENGTH"
+
+// Define a dummy macro to give clearer compilation errors.
+#define PW_TOKENIZER_STRING_TOKEN(unused) 0u
 
 #endif  // PW_TOKENIZER_CFG_C_HASH_LENGTH
 
