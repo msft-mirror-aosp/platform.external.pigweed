@@ -34,9 +34,10 @@ class FakeGeneratedService : public Service {
   constexpr FakeGeneratedService(uint32_t id) : Service(id, kMethods) {}
 
   static constexpr std::array<RawMethodUnion, 3> kMethods = {
-      GetRawMethodFor<&Implementation::DoNothing>(10u),
-      GetRawMethodFor<&Implementation::AddFive>(11u),
-      GetRawMethodFor<&Implementation::StartStream>(12u),
+      GetRawMethodFor<&Implementation::DoNothing, MethodType::kUnary>(10u),
+      GetRawMethodFor<&Implementation::AddFive, MethodType::kUnary>(11u),
+      GetRawMethodFor<&Implementation::StartStream,
+                      MethodType::kServerStreaming>(12u),
   };
 };
 
@@ -117,7 +118,7 @@ TEST(RawMethodUnion, InvokesUnary) {
   protobuf::Decoder decoder(response.payload());
   ASSERT_TRUE(decoder.Next().ok());
   int64_t value;
-  EXPECT_EQ(decoder.ReadInt64(&value), Status::Ok());
+  EXPECT_EQ(decoder.ReadInt64(&value), OkStatus());
   EXPECT_EQ(value, 461);
 }
 
@@ -138,7 +139,7 @@ TEST(RawMethodUnion, InvokesServerStreaming) {
   EXPECT_EQ(777, last_request.integer);
   EXPECT_EQ(2u, last_request.status_code);
   EXPECT_TRUE(last_writer.open());
-  last_writer.Finish();
+  EXPECT_EQ(OkStatus(), last_writer.Finish());
 }
 
 }  // namespace

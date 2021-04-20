@@ -22,8 +22,7 @@
 // assert backend from triggering.
 //
 // clang-format off
-#define PW_ASSERT_USE_SHORT_NAMES 1
-#include "pw_assert/internal/assert_impl.h"
+#include "pw_assert/internal/check_impl.h"
 // clang-format on
 
 #include "gtest/gtest.h"
@@ -453,43 +452,23 @@ TEST(AssertPass, DCheckDisabledBinaryOpTwoSideEffectingCalls_2) {
 }
 #endif  // PW_ASSERT_ENABLE_DEBUG
 
-// Note: This requires enabling PW_ASSERT_USE_SHORT_NAMES 1 above.
-TEST(Check, ShortNamesWork) {
-  // Crash
-  CRASH("msg");
-  CRASH("msg: %d", 5);
-
-  // Check
-  CHECK(true);
-  CHECK(true, "msg");
-  CHECK(true, "msg: %d", 5);
-  CHECK(false);
-  CHECK(false, "msg");
-  CHECK(false, "msg: %d", 5);
-
-  // Check with binary comparison
-  CHECK_INT_LE(1, 2);
-  CHECK_INT_LE(1, 2, "msg");
-  CHECK_INT_LE(1, 2, "msg: %d", 5);
-}
-
 // Verify PW_CHECK_OK, including message handling.
 TEST_F(AssertFail, StatusNotOK) {
   pw::Status status = pw::Status::Unknown();
   PW_CHECK_OK(status);
-  EXPECT_MESSAGE("Check failed: status (=UNKNOWN) == Status::OK (=OK). ");
+  EXPECT_MESSAGE("Check failed: status (=UNKNOWN) == OkStatus() (=OK). ");
 }
 
 TEST_F(AssertFail, StatusNotOKMessageNoArguments) {
   pw::Status status = pw::Status::Unknown();
   PW_CHECK_OK(status, "msg");
-  EXPECT_MESSAGE("Check failed: status (=UNKNOWN) == Status::OK (=OK). msg");
+  EXPECT_MESSAGE("Check failed: status (=UNKNOWN) == OkStatus() (=OK). msg");
 }
 
 TEST_F(AssertFail, StatusNotOKMessageArguments) {
   pw::Status status = pw::Status::Unknown();
   PW_CHECK_OK(status, "msg: %d", 5);
-  EXPECT_MESSAGE("Check failed: status (=UNKNOWN) == Status::OK (=OK). msg: 5");
+  EXPECT_MESSAGE("Check failed: status (=UNKNOWN) == OkStatus() (=OK). msg: 5");
 }
 
 // Example expression for the test below.
@@ -498,13 +477,13 @@ pw::Status DoTheThing() { return pw::Status::ResourceExhausted(); }
 TEST_F(AssertFail, NonTrivialExpression) {
   PW_CHECK_OK(DoTheThing());
   EXPECT_MESSAGE(
-      "Check failed: DoTheThing() (=RESOURCE_EXHAUSTED) == Status::OK (=OK). ");
+      "Check failed: DoTheThing() (=RESOURCE_EXHAUSTED) == OkStatus() (=OK). ");
 }
 
 // Note: This function seems pointless but it is not, since pw::Status::FOO
 // constants are not actually status objects, but code objects. This way we can
 // ensure the macros work with both real status objects and literals.
-TEST_F(AssertPass, Function) { PW_CHECK_OK(pw::Status::Ok()); }
+TEST_F(AssertPass, Function) { PW_CHECK_OK(pw::OkStatus()); }
 TEST_F(AssertPass, Enum) { PW_CHECK_OK(PW_STATUS_OK); }
 TEST_F(AssertFail, Function) { PW_CHECK_OK(pw::Status::Unknown()); }
 TEST_F(AssertFail, Enum) { PW_CHECK_OK(PW_STATUS_UNKNOWN); }
@@ -512,14 +491,14 @@ TEST_F(AssertFail, Enum) { PW_CHECK_OK(PW_STATUS_UNKNOWN); }
 #if PW_ASSERT_ENABLE_DEBUG
 
 // In debug mode, the asserts should check their arguments.
-TEST_F(AssertPass, DCheckFunction) { PW_DCHECK_OK(pw::Status::Ok()); }
+TEST_F(AssertPass, DCheckFunction) { PW_DCHECK_OK(pw::OkStatus()); }
 TEST_F(AssertPass, DCheckEnum) { PW_DCHECK_OK(PW_STATUS_OK); }
 TEST_F(AssertFail, DCheckFunction) { PW_DCHECK_OK(pw::Status::Unknown()); }
 TEST_F(AssertFail, DCheckEnum) { PW_DCHECK_OK(PW_STATUS_UNKNOWN); }
 #else  // PW_ASSERT_ENABLE_DEBUG
 
 // In release mode, all the asserts should pass.
-TEST_F(AssertPass, DCheckFunction_Ok) { PW_DCHECK_OK(pw::Status::Ok()); }
+TEST_F(AssertPass, DCheckFunction_Ok) { PW_DCHECK_OK(pw::OkStatus()); }
 TEST_F(AssertPass, DCheckEnum_Ok) { PW_DCHECK_OK(PW_STATUS_OK); }
 TEST_F(AssertPass, DCheckFunction_Err) { PW_DCHECK_OK(pw::Status::Unknown()); }
 TEST_F(AssertPass, DCheckEnum_Err) { PW_DCHECK_OK(PW_STATUS_UNKNOWN); }

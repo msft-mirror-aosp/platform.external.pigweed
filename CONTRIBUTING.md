@@ -21,13 +21,15 @@ Pigweed contribution overview:
    * Install the Pigweed presubmit check hook (`pw presubmit --install`).
      (recommended).
  1. Ensure all files include a correct [copyright and license header](CONTRIBUTING.md#source-code-headers).
+ 1. Include any necessary changes to
+    [documentation](CONTRIBUTING.md#documentation).
  1. Run `pw presubmit` (see below) to detect style or compilation issues before
     uploading.
  1. Upload the change with `git push origin HEAD:refs/for/master`.
  1. Address any reviewer feedback by amending the commit (`git commit --amend`).
  1. Submit change to CI builders to merge. If you are not part of Pigweed's
     core team, you can ask the reviewer to add the `+2 CQ` vote, which will
-    trigger a rebase asd submit once the builders pass.
+    trigger a rebase and submit once the builders pass.
 
 ## Contributor License Agreement
 
@@ -43,8 +45,9 @@ again.
 
 ## Gerrit Commit Hook
 
-Gerrit requires all changes to have a `Change-Id` tag at the bottom of each CL.
-You should set this up to be done automatically using the instructions below.
+Gerrit requires all changes to have a `Change-Id` tag at the bottom of each
+commit message. You should set this up to be done automatically using the
+instructions below.
 
 **Linux/macOS**<br/>
 ```bash
@@ -57,6 +60,20 @@ and then copy it to the `.git\hooks` directory in the Pigweed repository.
 ```batch
 copy %HOMEPATH%\Downloads\commit-msg %HOMEPATH%\pigweed\.git\hooks\commit-msg
 ```
+
+## Documentation
+
+All Pigweed changes must either
+
+ 1. Include updates to documentation, or
+ 1. Include `No-Docs-Update-Reason: <reason>` in the commit message or a Gerrit
+    comment on the CL. Potential reasons might include
+    * "minor code formatting change",
+    * "internal cleanup of pw_modulename, no changes to API"
+
+It's acceptable to only document new changes in an otherwise underdocumented
+module, but it's not acceptable to not document new changes because the module
+doesn't have any other documentation.
 
 ## Code Reviews
 
@@ -117,13 +134,61 @@ Apache header for Python and GN files:
 # the License.
 ```
 
-## Continuous Integration
+## Presubmit Checks and Continuous Integration
 
-All Pigweed CLs must adhere to Pigweed's style guide and pass a suite of
-automated builds, tests, and style checks to be merged upstream. Much of this
-checking is done using Pigweed's pw_presubmit module by automated builders. To
-speed up the review process, consider adding `pw presubmit` as a git push hook
-using the following command:
+All Pigweed change lists (CLs) must adhere to Pigweed's style guide and pass a
+suite of automated builds, tests, and style checks to be merged upstream. Much
+of this checking is done using Pigweed's `pw_presubmit` module by automated
+builders. These builders run before each Pigweed CL is submitted and in our
+continuous integration infrastructure (see
+https://ci.chromium.org/p/pigweed/g/pigweed/console).
+
+### Running Presubmit Checks
+
+To run automated presubmit checks on a pending CL, click the `CQ DRY RUN` button
+in the Gerrit UI. The results appear in the Tryjobs section, below the source
+listing. Jobs that passed are green; jobs that failed are red.
+
+If all checks pass, you will see a ``Dry run: This CL passed the CQ dry run.``
+comment on your change. If any checks fail, you will see a ``Dry run: Failed
+builds:`` message. All failures must be addressed before submitting.
+
+In addition to the publicly visible presubmit checks, Pigweed runs internal
+presubmit checks that are only visible within Google. If any these checks fail,
+external developers will see a ``Dry run: Failed builds:`` comment on the CL,
+even if all visible checks passed. Reach out to the Pigweed team for help
+addressing these issues.
+
+### Project Presubmit Checks
+
+In addition to Pigweed's presubmit checks, some projects that use Pigweed run
+their presubmit checks in Pigweed's infrastructure. This supports a development
+flow where projects automatically update their Pigweed submodule if their tests
+pass. If a project cannot build against Pigweed's tip-of-tree, it will stay on a
+fixed Pigweed revision until the issues are fixed. See the
+[sample project](https://pigweed.googlesource.com/pigweed/sample_project/) for
+an example of this.
+
+Pigweed does its best to keep builds passing for dependent projects. In some
+circumstances, the Pigweed maintainers may choose to merge changes that break
+dependent projects. This will only be done if
+
+  * a feature or fix is needed urgently in Pigweed or for a different project,
+    and
+  * the project broken by the change does not imminently need Pigweed updates.
+
+The downstream project will continue to build against their last working
+revision of Pigweed until the incompatibilities are fixed.
+
+In these situations, Pigweed's commit queue submission process will fail for all
+changes. If a change passes all presubmit checks except for known failures, the
+Pigweed team may permit manual submission of the CL. Contact the Pigweed team
+for submission approval.
+
+### Running local presubmits
+
+To speed up the review process, consider adding `pw presubmit` as a git push
+hook using the following command:
 
 **Linux/macOS**<br/>
 ```bash
@@ -133,16 +198,13 @@ $ pw presubmit --install
 This will be effectively the same as running the following command before every
 `git push`:
 ```bash
-$ pw presubmit --program quick
+$ pw presubmit
 ```
 
 ![pigweed presubmit demonstration](pw_presubmit/docs/pw_presubmit_demo.gif)
 
-Running `pw presubmit` manually will default to running the `full` presubmit
-program.
-
-If you ever need to bypass the presubmit hook (due to it being broken, for example) you
-may push using this command:
+If you ever need to bypass the presubmit hook (due to it being broken, for
+example) you may push using this command:
 
 ```bash
 $ git push origin HEAD:refs/for/master --no-verify

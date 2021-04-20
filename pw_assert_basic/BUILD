@@ -43,6 +43,30 @@ pw_cc_library(
     ],
     deps = [
         ":headers",
+        ":pw_assert_basic_handler",
+        "//pw_assert:facade",
+        "//pw_preprocessor",
+    ],
+)
+
+pw_cc_library(
+    name = "handler_facade",
+    hdrs = [
+        "public/pw_assert_basic/handler.h",
+    ],
+    deps = [
+        "//pw_preprocessor",
+    ],
+)
+
+pw_cc_library(
+    name = "pw_assert_basic_handler",
+    srcs = [
+        "basic_handler.cc",
+    ],
+    deps = [
+        ":handler_facade",
+        ":headers",
         "//pw_assert:facade",
         "//pw_preprocessor",
         "//pw_string",
