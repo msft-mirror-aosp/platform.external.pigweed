@@ -8,11 +8,11 @@
 
   Home <self>
   docs/getting_started.md
-  Source Code <https://pigweed.googlesource.com/pigweed/pigweed/+/refs/heads/master>
+  Source Code <https://cs.opensource.google/pigweed/pigweed>
   Code Reviews <https://pigweed-review.googlesource.com>
   Mailing List <https://groups.google.com/forum/#!forum/pigweed>
   Chat Room <https://discord.gg/M9NSeTA>
-  Issue Tracker <https://bugs.chromium.org/p/pigweed/issues/list>
+  Issue Tracker <https://bugs.pigweed.dev/>
   CONTRIBUTING.md
   CODE_OF_CONDUCT.md
   docs/embedded_cpp_guide

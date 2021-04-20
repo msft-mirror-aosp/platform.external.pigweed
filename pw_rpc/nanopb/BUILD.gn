@@ -30,6 +30,7 @@ pw_source_set("method") {
   sources = [ "nanopb_method.cc" ]
   public_deps = [
     ":common",
+    "..:config",
     "..:server",
   ]
   deps = [ dir_pw_log ]
@@ -65,21 +66,11 @@ pw_source_set("common") {
   }
 }
 
-pw_source_set("service_method_traits") {
-  public_configs = [ ":public" ]
-  public = [ "public/pw_rpc/internal/nanopb_service_method_traits.h" ]
-  public_deps = [
-    ":method_union",
-    "..:service_method_traits",
-  ]
-}
-
 pw_source_set("test_method_context") {
   public_configs = [ ":public" ]
   public = [ "public/pw_rpc/nanopb_test_method_context.h" ]
   public_deps = [
-    ":service_method_traits",
-    "..:server",
+    ":method",
     dir_pw_assert,
     dir_pw_containers,
   ]
@@ -95,7 +86,7 @@ pw_source_set("internal_test_utils") {
 
 pw_source_set("echo_service") {
   public_configs = [ ":public" ]
-  public_deps = [ "..:echo_service_proto.nanopb_rpc" ]
+  public_deps = [ "..:protos.nanopb_rpc" ]
   sources = [ "public/pw_rpc/echo_service_nanopb.h" ]
 }
 
@@ -108,9 +99,10 @@ pw_test_group("tests") {
     ":client_call_test",
     ":codegen_test",
     ":echo_service_test",
+    ":method_lookup_test",
     ":nanopb_method_test",
     ":nanopb_method_union_test",
-    ":nanopb_service_method_traits_test",
+    ":stub_generation_test",
   ]
 }
 
@@ -150,6 +142,18 @@ pw_test("nanopb_method_test") {
   enable_if = dir_pw_third_party_nanopb != ""
 }
 
+pw_test("method_lookup_test") {
+  deps = [
+    ":method",
+    ":test_method_context",
+    "..:test_protos.nanopb_rpc",
+    "..:test_utils",
+    "../raw:test_method_context",
+  ]
+  sources = [ "method_lookup_test.cc" ]
+  enable_if = dir_pw_third_party_nanopb != ""
+}
+
 pw_test("nanopb_method_union_test") {
   deps = [
     ":internal_test_utils",
@@ -171,14 +175,8 @@ pw_test("echo_service_test") {
   enable_if = dir_pw_third_party_nanopb != ""
 }
 
-pw_test("nanopb_service_method_traits_test") {
-  deps = [
-    ":echo_service",
-    ":method",
-    ":service_method_traits",
-    ":test_method_context",
-    "..:test_protos.nanopb_rpc",
-  ]
-  sources = [ "nanopb_service_method_traits_test.cc" ]
+pw_test("stub_generation_test") {
+  deps = [ "..:test_protos.nanopb_rpc" ]
+  sources = [ "stub_generation_test.cc" ]
   enable_if = dir_pw_third_party_nanopb != ""
 }

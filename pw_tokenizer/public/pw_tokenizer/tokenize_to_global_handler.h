@@ -47,9 +47,14 @@
       PW_TOKENIZER_DEFAULT_DOMAIN, format, __VA_ARGS__)
 
 // Same as PW_TOKENIZE_TO_GLOBAL_HANDLER, but tokenizes to the specified domain.
-#define PW_TOKENIZE_TO_GLOBAL_HANDLER_DOMAIN(domain, format, ...)     \
+#define PW_TOKENIZE_TO_GLOBAL_HANDLER_DOMAIN(domain, format, ...) \
+  PW_TOKENIZE_TO_GLOBAL_HANDLER_MASK(domain, UINT32_MAX, format, __VA_ARGS__)
+
+// Same as PW_TOKENIZE_TO_GLOBAL_HANDLER_DOMAIN, but applies a mask to the
+// token.
+#define PW_TOKENIZE_TO_GLOBAL_HANDLER_MASK(domain, mask, format, ...) \
   do {                                                                \
-    _PW_TOKENIZE_FORMAT_STRING(domain, format, __VA_ARGS__);          \
+    PW_TOKENIZE_FORMAT_STRING(domain, mask, format, __VA_ARGS__);     \
     _pw_tokenizer_ToGlobalHandler(_pw_tokenizer_token,                \
                                   PW_TOKENIZER_ARG_TYPES(__VA_ARGS__) \
                                       PW_COMMA_ARGS(__VA_ARGS__));    \
@@ -66,7 +71,7 @@ void pw_tokenizer_HandleEncodedMessage(const uint8_t encoded_message[],
 // This function encodes the tokenized strings. Do not call it directly;
 // instead, use the PW_TOKENIZE_TO_GLOBAL_HANDLER macro.
 void _pw_tokenizer_ToGlobalHandler(pw_tokenizer_Token token,
-                                   _pw_tokenizer_ArgTypes types,
+                                   pw_tokenizer_ArgTypes types,
                                    ...);
 
 PW_EXTERN_C_END

@@ -18,7 +18,7 @@
 
 namespace pw::cpu_exception {
 
-extern "C" void pw_CpuExceptionDefaultHandler(pw_CpuExceptionState*) {
+extern "C" void pw_cpu_exception_DefaultHandler(pw_cpu_exception_State*) {
   PW_LOG_CRITICAL("Unhandled CPU exception encountered!");
   // TODO(pwbug/95): Replace with pw_abort when that module exists.
   std::abort();

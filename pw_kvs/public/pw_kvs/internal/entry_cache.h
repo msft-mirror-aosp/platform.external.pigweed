@@ -16,7 +16,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
-#include <string_view>
 #include <type_traits>
 
 #include "pw_containers/vector.h"
@@ -24,8 +23,11 @@
 #include "pw_kvs/format.h"
 #include "pw_kvs/internal/key_descriptor.h"
 #include "pw_kvs/internal/sectors.h"
+#include "pw_kvs/key.h"
 
-namespace pw::kvs::internal {
+namespace pw {
+namespace kvs {
+namespace internal {
 
 // Caches information about a key-value entry. Facilitates quickly finding
 // entries without having to read flash.
@@ -57,7 +59,7 @@ class EntryMetadata {
   // than allowed by the redundancy.
   void AddNewAddress(Address address) {
     addresses_[addresses_.size()] = address;
-    addresses_ = std::span(addresses_.begin(), addresses_.size() + 1);
+    addresses_ = std::span<Address>(addresses_.begin(), addresses_.size() + 1);
   }
 
   // Remove an address from the entry metadata.
@@ -167,7 +169,7 @@ class EntryCache {
   StatusWithSize Find(FlashPartition& partition,
                       const Sectors& sectors,
                       const EntryFormats& formats,
-                      std::string_view key,
+                      Key key,
                       EntryMetadata* metadata) const;
 
   // Adds a new descriptor to the descriptor list. The entry MUST be unique and
@@ -230,4 +232,6 @@ class EntryCache {
   const size_t redundancy_;
 };
 
-}  // namespace pw::kvs::internal
+}  // namespace internal
+}  // namespace kvs
+}  // namespace pw

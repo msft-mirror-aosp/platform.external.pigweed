@@ -20,6 +20,7 @@ if(NOT "${dir_pw_third_party_nanopb}" STREQUAL "")
 endif()
 
 add_subdirectory(raw)
+add_subdirectory(system_server)
 
 pw_add_module_library(pw_rpc.server
   SOURCES
@@ -42,6 +43,14 @@ pw_add_module_library(pw_rpc.client
     pw_log
 )
 
+pw_add_module_library(pw_rpc.client_server
+  SOURCES
+    client_server.cc
+  PUBLIC_DEPS
+    pw_rpc.client
+    pw_rpc.server
+)
+
 pw_add_module_library(pw_rpc.common
   SOURCES
     channel.cc
@@ -57,17 +66,23 @@ pw_add_module_library(pw_rpc.common
     pw_log
 )
 
+pw_add_module_library(pw_rpc.synchronized_channel_output
+  PUBLIC_DEPS
+    pw_rpc.common
+    pw_sync.mutex
+)
+
 add_library(pw_rpc.test_utils INTERFACE)
 target_include_directories(pw_rpc.test_utils INTERFACE .)
 
 pw_proto_library(pw_rpc.protos
   SOURCES
-    pw_rpc_protos/packet.proto
-)
-
-pw_proto_library(pw_rpc.echo_proto
-  SOURCES
-    pw_rpc_protos/echo.proto
+    internal/packet.proto
+    echo.proto
+  INPUTS
+    echo.options
+  PREFIX
+    pw_rpc
 )
 
 pw_proto_library(pw_rpc.test_protos

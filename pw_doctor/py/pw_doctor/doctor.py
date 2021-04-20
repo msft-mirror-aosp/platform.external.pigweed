@@ -26,6 +26,8 @@ import sys
 import tempfile
 from typing import Callable, Iterable, List, Set
 
+import pw_cli.pw_command_plugins
+
 
 def call_stdout(*args, **kwargs):
     kwargs.update(stdout=subprocess.PIPE)
@@ -127,6 +129,12 @@ CHECKS: List[Callable] = []
 
 
 @register_into(CHECKS)
+def pw_plugins(ctx: DoctorContext):
+    if pw_cli.pw_command_plugins.errors():
+        ctx.error('Not all pw plugins loaded successfully')
+
+
+@register_into(CHECKS)
 def env_os(ctx: DoctorContext):
     """Check that the environment matches this machine."""
     if '_PW_ACTUAL_ENVIRONMENT_ROOT' not in os.environ:
@@ -192,8 +200,9 @@ def python_version(ctx: DoctorContext):
     """Check the Python version is correct."""
     actual = sys.version_info
     expected = (3, 8)
+    latest = (3, 9)
     if (actual[0:2] < expected or actual[0] != expected[0]
-            or actual[0:2] > expected):
+            or actual[0:2] > latest):
         # If we get the wrong version but it still came from CIPD print a
         # warning but give it a pass.
         if 'chromium' in sys.version:
@@ -342,6 +351,11 @@ def run_doctor(strict=False, checks=None):
 
     if doctor.failures:
         doctor.log.info('Failed checks: %s', ', '.join(doctor.failures))
+        doctor.log.info(
+            "Your environment setup has completed, but something isn't right "
+            'and some things may not work correctly. You may continue with '
+            'development, but please seek support at '
+            'https://bugs.pigweed.dev/ or by reaching out to your team.')
     else:
         doctor.log.info('Environment passes all checks!')
     return len(doctor.failures)

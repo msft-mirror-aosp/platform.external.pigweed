@@ -37,11 +37,8 @@ compiler defaults. (See Pigweed's ``//BUILDCONFIG.gn``)
 ``pw_build`` also provides several useful GN templates that are used throughout
 Pigweed.
 
-Templates
----------
-
 Target types
-^^^^^^^^^^^^
+------------
 .. code-block::
 
   import("$dir_pw_build/target_types.gni")
@@ -75,10 +72,20 @@ template for a project.
 All of the ``pw_*`` target type overrides accept any arguments, as they simply
 forward them through to the underlying target.
 
+Python packages
+---------------
+GN templates for :ref:`Python build automation <docs-python-build>` are
+described in :ref:`module-pw_build-python`.
+
+.. toctree::
+  :hidden:
+
+  python
+
 .. _module-pw_build-facade:
 
 pw_facade
-^^^^^^^^^
+---------
 In their simplest form, a :ref:`facade<docs-module-structure-facades>` is a GN
 build arg used to change a dependency at compile time. Pigweed targets configure
 these facades as needed.
@@ -106,7 +113,7 @@ The ``pw_facade`` template declares two targets:
 .. _module-pw_build-python-action:
 
 pw_python_action
-^^^^^^^^^^^^^^^^
+----------------
 The ``pw_python_action`` template is a convenience wrapper around ``action`` for
 running Python scripts. The main benefit it provides is resolution of GN target
 labels to compiled binary files. This allows Python scripts to be written
@@ -147,6 +154,11 @@ argument. A single argument may contain multiple expressions.
 Generally, these expressions are used within templates rather than directly in
 BUILD.gn files. This allows build code to use GN labels without having to worry
 about converting them to files.
+
+.. note::
+
+  We intend to replace these expressions with native GN features when possible.
+  See `pwbug/347 <http://bugs.pigweed.dev/347>`_.
 
 The following expressions are supported:
 
@@ -238,7 +250,7 @@ The following expressions are supported:
   }
 
 pw_input_group
-^^^^^^^^^^^^^^
+--------------
 ``pw_input_group`` defines a group of input files which are not directly
 processed by the build but are still important dependencies of later build
 steps. This is commonly used alongside metadata to propagate file dependencies
@@ -282,7 +294,7 @@ Targets depending on ``foo_metadata`` will rebuild when any of the ``.foo``
 files are modified.
 
 pw_zip
-^^^^^^
+------
 ``pw_zip`` is a target that allows users to zip up a set of input files and
 directories into a single output ``.zip`` file—a simple automation of a
 potentially repetitive task.
@@ -391,7 +403,7 @@ module tests, execute ``pw_run_tests.modules``:
 
 .. code-block:: sh
 
-  pw watch out/cmake_host pw_run_tests.modules
+  pw watch -C out/cmake_host pw_run_tests.modules
 
 CMake functions
 ---------------
@@ -454,17 +466,14 @@ Third party libraries
 ---------------------
 The CMake build includes third-party libraries similarly to the GN build. A
 ``dir_pw_third_party_<library>`` cache variable is defined for each third-party
-dependency. This variable can have one of three values:
+dependency. The variable must be set to the absolute path of the library in
+order to use it. If the variable is empty
+(``if("${dir_pw_third_party_<library>}" STREQUAL "")``), the dependency is not
+available.
 
-* ``""`` (empty) -- the dependency is not available
-* ``PRESENT`` -- the dependency is available and is already included in the
-  build
-* ``</path/to/the/dependency>`` -- the dependency is available and will be
-  automatically imported from this path using ``add_subdirectory``.
-
-If the variable is empty (``if("${dir_pw_third_party_<library>}" STREQUAL
-"")``), the dependency is not available. Otherwise, it is available and
-libraries declared by it can be referenced.
+Third-party dependencies are not automatically added to the build. They can be
+manually added with ``add_subdirectory`` or by setting the
+``pw_third_party_<library>_ADD_SUBDIRECTORY`` option to ``ON``.
 
 Third party variables are set like any other cache global variable in CMake. It
 is recommended to set these in one of the following ways:
@@ -474,7 +483,7 @@ is recommended to set these in one of the following ways:
 
   .. code-block:: cmake
 
-    set(dir_pw_third_party_nanopb PRESENT CACHE STRING "" FORCE)
+    set(dir_pw_third_party_nanopb ${CMAKE_CURRENT_SOURCE_DIR}/external/nanopb CACHE PATH "" FORCE)
 
 * Set the variable at the command line with the ``-D`` option.
 
@@ -507,11 +516,120 @@ If desired, modules can be included individually.
 
 Bazel
 =====
-Bazel is currently very experimental, and only builds for host.
+Bazel is currently very experimental, and only builds for host and ARM Cortex-M
+microcontrollers.
 
 The common configuration for Bazel for all modules is in the ``pigweed.bzl``
 file. The built-in Bazel rules ``cc_binary``, ``cc_library``, and ``cc_test``
 are wrapped with ``pw_cc_binary``, ``pw_cc_library``, and ``pw_cc_test``.
 These wrappers add parameters to calls to the compiler and linker.
 
-The ``BUILD`` file is merely a placeholder and currently does nothing.
+Currently Pigweed is making use of a set of
+[open source](https://github.com/silvergasp/bazel-embedded) toolchains. The host
+builds are only supported on Linux/Mac based systems. Additionally the host
+builds are not entirely hermetic, and will make use of system
+libraries and headers. This is close to the default configuration for Bazel,
+though slightly more hermetic. The host toolchain is based around clang-11 which
+has a system dependency on 'libtinfo.so.5' which is often included as part of
+the libncurses packages. On Debian based systems this can be installed using the
+command below:
+
+.. code-block:: sh
+
+  sudo apt install libncurses5
+
+The host toolchain does not currently support native Windows, though using WSL
+is a viable alternative.
+
+The ARM Cortex-M Bazel toolchains are based around gcc-arm-non-eabi and are
+entirely hermetic. You can target Cortex-M, by using the platforms command line
+option. This set of toolchains is supported from hosts; Windows, Mac and Linux.
+The platforms that are currently supported are listed below:
+
+.. code-block:: sh
+
+  bazel build //:your_target --platforms=@pigweed//pw_build/platforms:cortex_m0
+  bazel build //:your_target --platforms=@pigweed//pw_build/platforms:cortex_m1
+  bazel build //:your_target --platforms=@pigweed//pw_build/platforms:cortex_m3
+  bazel build //:your_target --platforms=@pigweed//pw_build/platforms:cortex_m4
+  bazel build //:your_target --platforms=@pigweed//pw_build/platforms:cortex_m7
+  bazel build //:your_target \
+    --platforms=@pigweed//pw_build/platforms:cortex_m4_fpu
+  bazel build //:your_target \
+    --platforms=@pigweed//pw_build/platforms:cortex_m7_fpu
+
+
+The above examples are cpu/fpu oriented platforms and can be used where
+applicable for your application. There some more specific platforms for the
+types of boards that are included as examples in Pigweed. It is strongly
+encouraged that you create your own set of platforms specific for your project,
+that implement the constraint_settings in this repository. e.g.
+
+New board constraint_value:
+
+.. code-block:: python
+
+  #your_repo/build_settings/constraints/board/BUILD
+  constraint_value(
+    name = "nucleo_l432kc",
+    constraint_setting = "@pigweed//pw_build/constraints/board",
+  )
+
+New chipset constraint_value:
+
+.. code-block:: python
+
+  # your_repo/build_settings/constraints/chipset/BUILD
+  constraint_value(
+    name = "stm32l432kc",
+    constraint_setting = "@pigweed//pw_build/constraints/chipset",
+  )
+
+New platforms for chipset and board:
+
+.. code-block:: python
+
+  #your_repo/build_settings/platforms/BUILD
+  # Works with all stm32l432kc
+  platforms(
+    name = "stm32l432kc",
+    parents = ["@pigweed//pw_build/platforms:cortex_m4"],
+    constraint_values =
+      ["@your_repo//build_settings/constraints/chipset:stm32l432kc"],
+  )
+
+  # Works with only the nucleo_l432kc
+  platforms(
+    name = "nucleo_l432kc",
+    parents = [":stm32l432kc"],
+    constraint_values =
+      ["@your_repo//build_settings/constraints/board:nucleo_l432kc"],
+  )
+
+In the above example you can build your code with the command line:
+
+.. code-block:: python
+
+  bazel build //:your_target_for_nucleo_l432kc \
+    --platforms=@your_repo//build_settings:nucleo_l432kc
+
+
+You can also specify that a specific target is only compatible with one
+platform:
+
+.. code-block:: python
+
+  cc_library(
+    name = "compatible_with_all_stm32l432kc",
+    srcs = ["tomato_src.c"],
+    target_compatible_with =
+      ["@your_repo//build_settings/constraints/chipset:stm32l432kc"],
+  )
+
+  cc_library(
+    name = "compatible_with_only_nucleo_l432kc",
+    srcs = ["bbq_src.c"],
+    target_compatible_with =
+      ["@your_repo//build_settings/constraints/board:nucleo_l432kc"],
+  )
+

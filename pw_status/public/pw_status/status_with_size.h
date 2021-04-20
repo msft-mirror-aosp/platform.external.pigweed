@@ -20,24 +20,6 @@
 
 namespace pw {
 
-class StatusWithSize;
-
-namespace internal {
-
-// TODO(pwbug/268): Remove this class after migrating to the helper functions.
-template <int kStatusShift>
-class StatusWithSizeConstant {
- private:
-  friend class ::pw::StatusWithSize;
-
-  explicit constexpr StatusWithSizeConstant(Status value)
-      : value_(static_cast<size_t>(value.code()) << kStatusShift) {}
-
-  const size_t value_;
-};
-
-}  // namespace internal
-
 // StatusWithSize stores a status and an unsigned integer. The integer must not
 // exceed StatusWithSize::max_size(), which is 134,217,727 (2**27 - 1) on 32-bit
 // systems.
@@ -64,45 +46,7 @@ class StatusWithSizeConstant {
 //      increases code size.
 //
 class StatusWithSize {
- private:
-  static constexpr size_t kStatusBits = 5;
-  static constexpr size_t kSizeMask = ~static_cast<size_t>(0) >> kStatusBits;
-  static constexpr size_t kStatusMask = ~kSizeMask;
-  static constexpr size_t kStatusShift = sizeof(size_t) * 8 - kStatusBits;
-
-  using Constant = internal::StatusWithSizeConstant<kStatusShift>;
-
  public:
-  // Non-OK StatusWithSizes can be constructed from these constants, such as:
-  //
-  //   StatusWithSize result = StatusWithSize::NotFound();
-  //
-  // These constants are DEPRECATED! Use the helper functions below instead. For
-  // example, change StatusWithSize::NotFound() to StatusWithSize::NotFound().
-  //
-  // TODO(pwbug/268): Migrate to the functions and remove these constants.
-  static constexpr Constant CANCELLED{Status::Cancelled()};
-  static constexpr Constant UNKNOWN{Status::Unknown()};
-  static constexpr Constant INVALID_ARGUMENT{Status::InvalidArgument()};
-  static constexpr Constant DEADLINE_EXCEEDED{Status::DeadlineExceeded()};
-  static constexpr Constant NOT_FOUND{Status::NotFound()};
-  static constexpr Constant ALREADY_EXISTS{Status::AlreadyExists()};
-  static constexpr Constant PERMISSION_DENIED{Status::PermissionDenied()};
-  static constexpr Constant RESOURCE_EXHAUSTED{Status::ResourceExhausted()};
-  static constexpr Constant FAILED_PRECONDITION{Status::FailedPrecondition()};
-  static constexpr Constant ABORTED{Status::Aborted()};
-  static constexpr Constant OUT_OF_RANGE{Status::OutOfRange()};
-  static constexpr Constant UNIMPLEMENTED{Status::Unimplemented()};
-  static constexpr Constant INTERNAL{Status::Internal()};
-  static constexpr Constant UNAVAILABLE{Status::Unavailable()};
-  static constexpr Constant DATA_LOSS{Status::DataLoss()};
-  static constexpr Constant UNAUTHENTICATED{Status::Unauthenticated()};
-
-  // Functions that create a StatusWithSize with the specified status code. For
-  // codes other than OK, the size defaults to 0.
-  static constexpr StatusWithSize Ok(size_t size) {
-    return StatusWithSize(size);
-  }
   static constexpr StatusWithSize Cancelled(size_t size = 0) {
     return StatusWithSize(Status::Cancelled(), size);
   }
@@ -152,22 +96,19 @@ class StatusWithSize {
     return StatusWithSize(Status::DataLoss(), size);
   }
 
-  // Creates a StatusWithSize with Status::Ok() and a size of 0.
+  // Creates a StatusWithSize with OkStatus() and a size of 0.
   explicit constexpr StatusWithSize() : size_(0) {}
 
-  // Creates a StatusWithSize with Status::Ok() and the provided size.
+  // Creates a StatusWithSize with status OK and the provided size.
   // std::enable_if is used to prevent enum types (e.g. Status) from being used.
   // TODO(hepler): Add debug-only assert that size <= max_size().
-  template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+  template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
   explicit constexpr StatusWithSize(T size) : size_(size) {}
 
   // Creates a StatusWithSize with the provided status and size.
   explicit constexpr StatusWithSize(Status status, size_t size)
       : StatusWithSize((static_cast<size_t>(status.code()) << kStatusShift) |
                        size) {}
-
-  // Allow implicit conversions from the StatusWithSize constants.
-  constexpr StatusWithSize(Constant constant) : size_(constant.value_) {}
 
   constexpr StatusWithSize(const StatusWithSize&) = default;
   constexpr StatusWithSize& operator=(const StatusWithSize&) = default;
@@ -178,7 +119,7 @@ class StatusWithSize {
   // The maximum valid value for size.
   static constexpr size_t max_size() { return kSizeMask; }
 
-  // True if status() == Status::Ok().
+  // True if status() == OkStatus().
   constexpr bool ok() const { return (size_ & kStatusMask) == 0u; }
 
   constexpr Status status() const {
@@ -236,6 +177,11 @@ class StatusWithSize {
   }
 
  private:
+  static constexpr size_t kStatusBits = 5;
+  static constexpr size_t kSizeMask = ~static_cast<size_t>(0) >> kStatusBits;
+  static constexpr size_t kStatusMask = ~kSizeMask;
+  static constexpr size_t kStatusShift = sizeof(size_t) * 8 - kStatusBits;
+
   size_t size_;
 };
 

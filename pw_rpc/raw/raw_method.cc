@@ -28,6 +28,10 @@ RawServerWriter::~RawServerWriter() {
 }
 
 Status RawServerWriter::Write(ConstByteSpan response) {
+  if (!open()) {
+    return Status::FailedPrecondition();
+  }
+
   if (buffer().Contains(response)) {
     return ReleasePayloadBuffer(response);
   }
@@ -60,8 +64,7 @@ void RawMethod::CallUnary(ServerCall& call, const Packet& request) const {
 
   PW_LOG_WARN("Failed to send response packet for channel %u",
               unsigned(call.channel().id()));
-  call.channel().Send(response_buffer,
-                      Packet::ServerError(request, Status::Internal()));
+  call.channel().Send(Packet::ServerError(request, Status::Internal()));
 }
 
 void RawMethod::CallServerStreaming(ServerCall& call,
