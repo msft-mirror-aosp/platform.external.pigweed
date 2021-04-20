@@ -53,7 +53,9 @@ TEST(BaseServerWriter, Move_ClosesOriginal) {
   BaseServerWriter moved(context.get());
   BaseServerWriter writer(std::move(moved));
 
+#ifndef __clang_analyzer__
   EXPECT_FALSE(moved.open());
+#endif  // ignore use-after-move
   EXPECT_TRUE(writer.open());
 }
 
@@ -104,7 +106,7 @@ TEST(ServerWriter, Finish_RemovesFromServer) {
   ServerContextForTest<TestService> context(TestService::method.method());
   FakeServerWriter writer(context.get());
 
-  writer.Finish();
+  EXPECT_EQ(OkStatus(), writer.Finish());
 
   auto& writers = context.server().writers();
   EXPECT_TRUE(writers.empty());
@@ -114,15 +116,23 @@ TEST(ServerWriter, Finish_SendsCancellationPacket) {
   ServerContextForTest<TestService> context(TestService::method.method());
   FakeServerWriter writer(context.get());
 
-  writer.Finish();
+  EXPECT_EQ(OkStatus(), writer.Finish());
 
   const Packet& packet = context.output().sent_packet();
   EXPECT_EQ(packet.type(), PacketType::SERVER_STREAM_END);
-  EXPECT_EQ(packet.channel_id(), context.kChannelId);
-  EXPECT_EQ(packet.service_id(), context.kServiceId);
+  EXPECT_EQ(packet.channel_id(), context.channel_id());
+  EXPECT_EQ(packet.service_id(), context.service_id());
   EXPECT_EQ(packet.method_id(), context.get().method().id());
   EXPECT_TRUE(packet.payload().empty());
-  EXPECT_EQ(packet.status(), Status::Ok());
+  EXPECT_EQ(packet.status(), OkStatus());
+}
+
+TEST(ServerWriter, Finish_ReturnsStatusFromChannelSend) {
+  ServerContextForTest<TestService> context(TestService::method.method());
+  FakeServerWriter writer(context.get());
+  context.output().set_send_status(Status::Unauthenticated());
+
+  EXPECT_EQ(Status::Unauthenticated(), writer.Finish());
 }
 
 TEST(ServerWriter, Close) {
@@ -130,8 +140,9 @@ TEST(ServerWriter, Close) {
   FakeServerWriter writer(context.get());
 
   ASSERT_TRUE(writer.open());
-  writer.Finish();
+  EXPECT_EQ(OkStatus(), writer.Finish());
   EXPECT_FALSE(writer.open());
+  EXPECT_EQ(Status::FailedPrecondition(), writer.Finish());
 }
 
 TEST(ServerWriter, Close_ReleasesBuffer) {
@@ -142,7 +153,7 @@ TEST(ServerWriter, Close_ReleasesBuffer) {
   auto buffer = writer.PayloadBuffer();
   buffer[0] = std::byte{0};
   EXPECT_FALSE(writer.output_buffer().empty());
-  writer.Finish();
+  EXPECT_EQ(OkStatus(), writer.Finish());
   EXPECT_FALSE(writer.open());
   EXPECT_TRUE(writer.output_buffer().empty());
 }
@@ -152,11 +163,11 @@ TEST(ServerWriter, Open_SendsPacketWithPayload) {
   FakeServerWriter writer(context.get());
 
   constexpr byte data[] = {byte{0xf0}, byte{0x0d}};
-  ASSERT_EQ(Status::Ok(), writer.Write(data));
+  ASSERT_EQ(OkStatus(), writer.Write(data));
 
   byte encoded[64];
   auto result = context.packet(data).Encode(encoded);
-  ASSERT_EQ(Status::Ok(), result.status());
+  ASSERT_EQ(OkStatus(), result.status());
 
   EXPECT_EQ(result.value().size(), context.output().sent_data().size());
   EXPECT_EQ(
@@ -165,14 +176,12 @@ TEST(ServerWriter, Open_SendsPacketWithPayload) {
           encoded, context.output().sent_data().data(), result.value().size()));
 }
 
-TEST(ServerWriter, Closed_IgnoresPacket) {
+TEST(ServerWriter, Closed_IgnoresFinish) {
   ServerContextForTest<TestService> context(TestService::method.method());
   FakeServerWriter writer(context.get());
 
-  writer.Finish();
-
-  constexpr byte data[] = {byte{0xf0}, byte{0x0d}};
-  EXPECT_EQ(Status::FailedPrecondition(), writer.Write(data));
+  EXPECT_EQ(OkStatus(), writer.Finish());
+  EXPECT_EQ(Status::FailedPrecondition(), writer.Finish());
 }
 
 }  // namespace

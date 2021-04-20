@@ -41,12 +41,25 @@ namespace pw {
 // StringBuilder supports C++-style << output, similar to std::ostringstream. It
 // also supports std::string-like append functions and printf-style output.
 //
-// StringBuilder uses the ToString function to support arbitrary types. Defining
-// a ToString template specialization overload in the pw namespace allows
-// writing that type to a StringBuilder with <<.
+// Support for custom types is added by overloading operator<< in the same
+// namespace as the custom type. For example:
 //
-// For example, the following ToString overload allows writing MyStatus objects
-// to StringBuilders:
+//   namespace my_project {
+//
+//   struct MyType {
+//     int foo;
+//     const char* bar;
+//   };
+//
+//   pw::StringBuilder& operator<<(pw::StringBuilder& sb, const MyType& value) {
+//     return sb << "MyType(" << value.foo << ", " << value.bar << ')';
+//   }
+//
+//   }  // namespace my_project
+//
+// The ToString template function can be specialized to support custom types
+// with StringBuilder, though overloading operator<< is generally preferred. For
+// example:
 //
 //   namespace pw {
 //
@@ -57,32 +70,6 @@ namespace pw {
 //
 //   }  // namespace pw
 //
-// For complex types, it may be easier to override StringBuilder's << operator,
-// similar to the standard library's std::ostream. For example:
-//
-//   namespace pw {
-//
-//   StringBuilder& operator<<(StringBuilder& sb, const MyType& value) {
-//     return sb << "MyType(" << value.foo << ", " << value.bar << ')';
-//   }
-//
-//   }  // namespace pw
-//
-// Alternately, complex types may use a StringBuilder in their ToString, but it
-// is likely to be simpler to override StringBuilder's operator<<.
-//
-// StringBuilder is safe, flexible, and results in much smaller code size than
-// using std::ostringstream. However, applications sensitive to code size should
-// use StringBuilder with care.
-//
-// The fixed code size cost of StringBuilder is significant, though smaller than
-// std::snprintf. Using StringBuilder's << and append methods exclusively in
-// place of snprintf reduces code size, but snprintf may be difficult to avoid.
-//
-// The incremental code size cost of StringBuilder is comparable to snprintf if
-// errors are handled. Each argument to StringBuilder's << expands to a function
-// call, but one or two StringBuilder appends may have a smaller code size
-// impact than a single snprintf call. See the size report for further analysis.
 class StringBuilder {
  public:
   // Creates an empty StringBuilder.
@@ -135,7 +122,7 @@ class StringBuilder {
   // The status from the last operation. May be OK while status() is not OK.
   Status last_status() const { return last_status_; }
 
-  // True if status() is Status::Ok().
+  // True if status() is OkStatus().
   bool ok() const { return status_.ok(); }
 
   // True if the string is empty.
@@ -150,10 +137,10 @@ class StringBuilder {
   // Clears the string and resets its error state.
   void clear();
 
-  // Sets the statuses to Status::Ok();
+  // Sets the statuses to OkStatus();
   void clear_status() {
-    status_ = Status::Ok();
-    last_status_ = Status::Ok();
+    status_ = OkStatus();
+    last_status_ = OkStatus();
   }
 
   // Appends a single character. Stets the status to RESOURCE_EXHAUSTED if the

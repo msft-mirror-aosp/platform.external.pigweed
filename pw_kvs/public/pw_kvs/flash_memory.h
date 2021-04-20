@@ -23,7 +23,8 @@
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 
-namespace pw::kvs {
+namespace pw {
+namespace kvs {
 
 enum class PartitionPermission : bool {
   kReadOnly,
@@ -41,7 +42,7 @@ class FlashMemory {
               size_t alignment,
               uint32_t start_address = 0,
               uint32_t sector_start = 0,
-              std::byte erased_memory_content = std::byte{0xFF})
+              std::byte erased_memory_content = std::byte(0xFF))
       : sector_size_(sector_size),
         flash_sector_count_(sector_count),
         alignment_(alignment),
@@ -78,7 +79,8 @@ class FlashMemory {
   virtual StatusWithSize Read(Address address, std::span<std::byte> output) = 0;
 
   StatusWithSize Read(Address address, void* buffer, size_t len) {
-    return Read(address, std::span(static_cast<std::byte*>(buffer), len));
+    return Read(address,
+                std::span<std::byte>(static_cast<std::byte*>(buffer), len));
   }
 
   // Writes bytes to flash. Blocking call. Returns:
@@ -93,8 +95,9 @@ class FlashMemory {
   StatusWithSize Write(Address destination_flash_address,
                        const void* data,
                        size_t len) {
-    return Write(destination_flash_address,
-                 std::span(static_cast<const std::byte*>(data), len));
+    return Write(
+        destination_flash_address,
+        std::span<const std::byte>(static_cast<const std::byte*>(data), len));
   }
 
   // Convert an Address to an MCU pointer, this can be used for memory
@@ -163,7 +166,6 @@ class FlashPartition {
     FlashPartition::Address address_;
   };
 
-  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
   FlashPartition(
       FlashMemory* flash,
       uint32_t start_sector_index,
@@ -172,7 +174,6 @@ class FlashPartition {
       PartitionPermission permission = PartitionPermission::kReadAndWrite);
 
   // Creates a FlashPartition that uses the entire flash with its alignment.
-  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
   FlashPartition(FlashMemory* flash)
       : FlashPartition(
             flash, 0, flash->sector_count(), flash->alignment_bytes()) {}
@@ -184,7 +185,7 @@ class FlashPartition {
   virtual ~FlashPartition() = default;
 
   // Performs any required partition or flash-level initialization.
-  virtual Status Init() { return Status::Ok(); }
+  virtual Status Init() { return OkStatus(); }
 
   // Erase num_sectors starting at a given address. Blocking call.
   // Address must be on a sector boundary. Returns:
@@ -207,7 +208,8 @@ class FlashPartition {
   virtual StatusWithSize Read(Address address, std::span<std::byte> output);
 
   StatusWithSize Read(Address address, size_t length, void* output) {
-    return Read(address, std::span(static_cast<std::byte*>(output), length));
+    return Read(address,
+                std::span<std::byte>(static_cast<std::byte*>(output), length));
   }
 
   // Writes bytes to flash. Address and data.size_bytes() must both be a
@@ -230,7 +232,7 @@ class FlashPartition {
   // UNKNOWN - HAL error
   // TODO: Result<bool>
   virtual Status IsRegionErased(Address source_flash_address,
-                                size_t len,
+                                size_t length,
                                 bool* is_erased);
 
   // Check if the entire partition is erased.
@@ -296,4 +298,5 @@ class FlashPartition {
   const PartitionPermission permission_;
 };
 
-}  // namespace pw::kvs
+}  // namespace kvs
+}  // namespace pw

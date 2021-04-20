@@ -228,7 +228,7 @@ class ByteBuilder {
     return StatusWithSize(status_, size_);
   }
 
-  // True if status() is Status::Ok().
+  // True if status() is OkStatus().
   bool ok() const { return status_.ok(); }
 
   // True if the bytes builder is empty.
@@ -243,11 +243,11 @@ class ByteBuilder {
   // Clears the bytes and resets its error state.
   void clear() {
     size_ = 0;
-    status_ = Status::Ok();
+    status_ = OkStatus();
   };
 
-  // Sets the statuses to Status::Ok();
-  void clear_status() { status_ = Status::Ok(); }
+  // Sets the statuses to OkStatus();
+  void clear_status() { status_ = OkStatus(); }
 
   // Appends a single byte. Sets the status to RESOURCE_EXHAUSTED if the
   // byte cannot be added because the buffer is full.
@@ -350,7 +350,7 @@ class ByteBuilder {
 };
 
 // ByteBuffers declare a buffer along with a ByteBuilder.
-template <size_t size_bytes>
+template <size_t kSizeBytes>
 class ByteBuffer : public ByteBuilder {
  public:
   ByteBuffer() : ByteBuilder(buffer_) {}
@@ -361,28 +361,28 @@ class ByteBuffer : public ByteBuilder {
   }
 
   // A smaller ByteBuffer may be copied or assigned into a larger one.
-  template <size_t other_size_bytes>
-  ByteBuffer(const ByteBuffer<other_size_bytes>& other)
+  template <size_t kOtherSizeBytes>
+  ByteBuffer(const ByteBuffer<kOtherSizeBytes>& other)
       : ByteBuilder(buffer_, other) {
-    static_assert(ByteBuffer<other_size_bytes>::max_size() <= max_size(),
+    static_assert(ByteBuffer<kOtherSizeBytes>::max_size() <= max_size(),
                   "A ByteBuffer cannot be copied into a smaller buffer");
     CopyContents(other);
   }
 
-  template <size_t other_size_bytes>
-  ByteBuffer& operator=(const ByteBuffer<other_size_bytes>& other) {
-    assign<other_size_bytes>(other);
+  template <size_t kOtherSizeBytes>
+  ByteBuffer& operator=(const ByteBuffer<kOtherSizeBytes>& other) {
+    assign<kOtherSizeBytes>(other);
     return *this;
   }
 
   ByteBuffer& operator=(const ByteBuffer& other) {
-    assign<size_bytes>(other);
+    assign<kSizeBytes>(other);
     return *this;
   }
 
-  template <size_t other_size_bytes>
-  ByteBuffer& assign(const ByteBuffer<other_size_bytes>& other) {
-    static_assert(ByteBuffer<other_size_bytes>::max_size() <= max_size(),
+  template <size_t kOtherSizeBytes>
+  ByteBuffer& assign(const ByteBuffer<kOtherSizeBytes>& other) {
+    static_assert(ByteBuffer<kOtherSizeBytes>::max_size() <= max_size(),
                   "A ByteBuffer cannot be copied into a smaller buffer");
     CopySizeAndStatus(other);
     CopyContents(other);
@@ -391,9 +391,9 @@ class ByteBuffer : public ByteBuilder {
 
   // Returns the maximum length of the bytes that can be inserted in the bytes
   // buffer.
-  static constexpr size_t max_size() { return size_bytes; }
+  static constexpr size_t max_size() { return kSizeBytes; }
 
-  // Returns a ByteBuffer<size_bytes>& instead of a generic ByteBuilder& for
+  // Returns a ByteBuffer<kSizeBytes>& instead of a generic ByteBuilder& for
   // append calls.
   template <typename... Args>
   ByteBuffer& append(Args&&... args) {
@@ -407,7 +407,7 @@ class ByteBuffer : public ByteBuilder {
     std::memcpy(buffer_.data(), other.data(), other.size());
   }
 
-  std::array<std::byte, size_bytes> buffer_;
+  std::array<std::byte, kSizeBytes> buffer_;
 };
 
 }  // namespace pw

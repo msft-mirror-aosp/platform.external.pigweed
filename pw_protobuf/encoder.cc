@@ -1,4 +1,4 @@
-// Copyright 2019 The Pigweed Authors
+// Copyright 2021 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -14,14 +14,15 @@
 
 #include "pw_protobuf/encoder.h"
 
+#include <limits>
+
 namespace pw::protobuf {
 
 Status Encoder::WriteUint64(uint32_t field_number, uint64_t value) {
   std::byte* original_cursor = cursor_;
   WriteFieldKey(field_number, WireType::kVarint);
-  Status status = WriteVarint(value);
-  IncreaseParentSize(cursor_ - original_cursor);
-  return status;
+  WriteVarint(value);
+  return IncreaseParentSize(cursor_ - original_cursor);
 }
 
 // Encodes a base-128 varint to the buffer.
@@ -43,7 +44,7 @@ Status Encoder::WriteVarint(uint64_t value) {
   }
 
   cursor_ += written;
-  return Status::Ok();
+  return OkStatus();
 }
 
 Status Encoder::WriteRawBytes(const std::byte* ptr, size_t size) {
@@ -61,7 +62,7 @@ Status Encoder::WriteRawBytes(const std::byte* ptr, size_t size) {
   std::memmove(cursor_, ptr, size);
 
   cursor_ += size;
-  return Status::Ok();
+  return OkStatus();
 }
 
 Status Encoder::Push(uint32_t field_number) {
@@ -90,7 +91,7 @@ Status Encoder::Push(uint32_t field_number) {
   }
 
   // Update parent size with the written key.
-  IncreaseParentSize(cursor_ - original_cursor);
+  PW_TRY(IncreaseParentSize(cursor_ - original_cursor));
 
   union {
     std::byte* cursor;
@@ -105,7 +106,7 @@ Status Encoder::Push(uint32_t field_number) {
   blob_stack_[depth_++] = size_cursor;
 
   cursor_ += sizeof(*size_cursor);
-  return Status::Ok();
+  return OkStatus();
 }
 
 Status Encoder::Pop() {
@@ -121,17 +122,26 @@ Status Encoder::Pop() {
   // Update the parent's size with how much total space the child will take
   // after its size field is varint encoded.
   SizeType child_size = *blob_stack_[--depth_];
-  IncreaseParentSize(child_size + VarintSizeBytes(child_size));
+  PW_TRY(IncreaseParentSize(child_size + VarintSizeBytes(child_size)));
 
-  return Status::Ok();
+  // Encode the child
+  if (Status status = EncodeFrom(blob_count_ - 1).status(); !status.ok()) {
+    encode_status_ = status;
+    return encode_status_;
+  }
+  blob_count_--;
+
+  return OkStatus();
 }
 
-Result<ConstByteSpan> Encoder::Encode() {
+Result<ConstByteSpan> Encoder::Encode() { return EncodeFrom(0); }
+
+Result<ConstByteSpan> Encoder::EncodeFrom(size_t blob) {
   if (!encode_status_.ok()) {
     return encode_status_;
   }
 
-  if (blob_count_ == 0) {
+  if (blob >= blob_count_) {
     // If there are no nested blobs, the buffer already contains a valid proto.
     return Result<ConstByteSpan>(buffer_.first(EncodedSize()));
   }
@@ -143,7 +153,6 @@ Result<ConstByteSpan> Encoder::Encode() {
 
   // Starting from the first blob, encode each size field as a varint and
   // shift all subsequent data downwards.
-  unsigned int blob = 0;
   size_cursor = blob_locations_[blob];
   std::byte* write_cursor = read_cursor;
 
@@ -178,6 +187,30 @@ Result<ConstByteSpan> Encoder::Encode() {
   // Point the cursor to the end of the encoded proto.
   cursor_ = write_cursor;
   return Result<ConstByteSpan>(buffer_.first(EncodedSize()));
+}
+
+Status Encoder::IncreaseParentSize(size_t size_bytes) {
+  if (!encode_status_.ok()) {
+    return encode_status_;
+  }
+
+  if (depth_ == 0) {
+    return OkStatus();
+  }
+
+  size_t current_size = *blob_stack_[depth_ - 1];
+
+  constexpr size_t max_size =
+      std::min(varint::MaxValueInBytes(sizeof(SizeType)),
+               static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()));
+
+  if (size_bytes > max_size || current_size > max_size - size_bytes) {
+    encode_status_ = Status::OutOfRange();
+    return encode_status_;
+  }
+
+  *blob_stack_[depth_ - 1] = current_size + size_bytes;
+  return OkStatus();
 }
 
 }  // namespace pw::protobuf

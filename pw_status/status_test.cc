@@ -12,26 +12,6 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-// Make sure status works if these macros are defined.
-// TODO(pwbug/268): Remove these macros after migrating from these aliases.
-#define OK Uh oh, this macro is defined !
-#define CANCELLED Uh oh, this macro is defined !
-#define UNKNOWN Uh oh, this macro is defined !
-#define INVALID_ARGUMENT Uh oh, this macro is defined !
-#define DEADLINE_EXCEEDED Uh oh, this macro is defined !
-#define NOT_FOUND Uh oh, this macro is defined !
-#define ALREADY_EXISTS Uh oh, this macro is defined !
-#define PERMISSION_DENIED Uh oh, this macro is defined !
-#define UNAUTHENTICATED Uh oh, this macro is defined !
-#define RESOURCE_EXHAUSTED Uh oh, this macro is defined !
-#define FAILED_PRECONDITION Uh oh, this macro is defined !
-#define ABORTED Uh oh, this macro is defined !
-#define OUT_OF_RANGE Uh oh, this macro is defined !
-#define UNIMPLEMENTED Uh oh, this macro is defined !
-#define INTERNAL Uh oh, this macro is defined !
-#define UNAVAILABLE Uh oh, this macro is defined !
-#define DATA_LOSS Uh oh, this macro is defined !
-
 #include "pw_status/status.h"
 
 #include "gtest/gtest.h"
@@ -49,7 +29,7 @@ TEST(Status, Default) {
 
 TEST(Status, ConstructWithStatusCode) {
   constexpr Status status(PW_STATUS_ABORTED);
-  static_assert(Status::Aborted() == status);
+  static_assert(status.IsAborted());
 }
 
 TEST(Status, AssignFromStatusCode) {
@@ -61,7 +41,7 @@ TEST(Status, AssignFromStatusCode) {
 TEST(Status, Ok_OkIsTrue) {
   static_assert(Status().ok());
   static_assert(Status(PW_STATUS_OK).ok());
-  static_assert(Status::Ok().ok());
+  static_assert(OkStatus().ok());
 }
 
 TEST(Status, NotOk_OkIsFalse) {
@@ -72,7 +52,7 @@ TEST(Status, NotOk_OkIsFalse) {
 TEST(Status, Code) {
   // clang-format off
   static_assert(PW_STATUS_OK == Status().code());
-  static_assert(PW_STATUS_OK == Status::Ok().code());
+  static_assert(PW_STATUS_OK == OkStatus().code());
   static_assert(PW_STATUS_CANCELLED == Status::Cancelled().code());
   static_assert(PW_STATUS_UNKNOWN == Status::Unknown().code());
   static_assert(PW_STATUS_INVALID_ARGUMENT == Status::InvalidArgument().code());
@@ -94,7 +74,7 @@ TEST(Status, Code) {
 
 TEST(Status, EqualCodes) {
   static_assert(PW_STATUS_OK == Status());
-  static_assert(PW_STATUS_OK == Status::Ok());
+  static_assert(PW_STATUS_OK == OkStatus());
   static_assert(PW_STATUS_CANCELLED == Status::Cancelled());
   static_assert(PW_STATUS_UNKNOWN == Status::Unknown());
   static_assert(PW_STATUS_INVALID_ARGUMENT == Status::InvalidArgument());
@@ -133,27 +113,27 @@ TEST(Status, IsError) {
 }
 
 TEST(Status, IsNotError) {
-  static_assert(!Status::Ok().IsCancelled());
-  static_assert(!Status::Ok().IsUnknown());
-  static_assert(!Status::Ok().IsInvalidArgument());
-  static_assert(!Status::Ok().IsDeadlineExceeded());
-  static_assert(!Status::Ok().IsNotFound());
-  static_assert(!Status::Ok().IsAlreadyExists());
-  static_assert(!Status::Ok().IsPermissionDenied());
-  static_assert(!Status::Ok().IsUnauthenticated());
-  static_assert(!Status::Ok().IsResourceExhausted());
-  static_assert(!Status::Ok().IsFailedPrecondition());
-  static_assert(!Status::Ok().IsAborted());
-  static_assert(!Status::Ok().IsOutOfRange());
-  static_assert(!Status::Ok().IsUnimplemented());
-  static_assert(!Status::Ok().IsInternal());
-  static_assert(!Status::Ok().IsUnavailable());
-  static_assert(!Status::Ok().IsDataLoss());
+  static_assert(!OkStatus().IsCancelled());
+  static_assert(!OkStatus().IsUnknown());
+  static_assert(!OkStatus().IsInvalidArgument());
+  static_assert(!OkStatus().IsDeadlineExceeded());
+  static_assert(!OkStatus().IsNotFound());
+  static_assert(!OkStatus().IsAlreadyExists());
+  static_assert(!OkStatus().IsPermissionDenied());
+  static_assert(!OkStatus().IsUnauthenticated());
+  static_assert(!OkStatus().IsResourceExhausted());
+  static_assert(!OkStatus().IsFailedPrecondition());
+  static_assert(!OkStatus().IsAborted());
+  static_assert(!OkStatus().IsOutOfRange());
+  static_assert(!OkStatus().IsUnimplemented());
+  static_assert(!OkStatus().IsInternal());
+  static_assert(!OkStatus().IsUnavailable());
+  static_assert(!OkStatus().IsDataLoss());
 }
 
 TEST(Status, Strings) {
   EXPECT_STREQ("OK", Status().str());
-  EXPECT_STREQ("OK", Status::Ok().str());
+  EXPECT_STREQ("OK", OkStatus().str());
   EXPECT_STREQ("CANCELLED", Status::Cancelled().str());
   EXPECT_STREQ("UNKNOWN", Status::Unknown().str());
   EXPECT_STREQ("INVALID_ARGUMENT", Status::InvalidArgument().str());
@@ -176,27 +156,6 @@ TEST(Status, UnknownString) {
   EXPECT_STREQ("INVALID STATUS", Status(kInvalidCode).str());
 }
 
-TEST(Status, DeprecatedAliases) {
-  // TODO(pwbug/268): Remove this test after migrating from these aliases.
-  static_assert(PW_STATUS_OK == Status::OK);
-  static_assert(PW_STATUS_CANCELLED == Status::CANCELLED);
-  static_assert(PW_STATUS_UNKNOWN == Status::UNKNOWN);
-  static_assert(PW_STATUS_INVALID_ARGUMENT == Status::INVALID_ARGUMENT);
-  static_assert(PW_STATUS_DEADLINE_EXCEEDED == Status::DEADLINE_EXCEEDED);
-  static_assert(PW_STATUS_NOT_FOUND == Status::NOT_FOUND);
-  static_assert(PW_STATUS_ALREADY_EXISTS == Status::ALREADY_EXISTS);
-  static_assert(PW_STATUS_PERMISSION_DENIED == Status::PERMISSION_DENIED);
-  static_assert(PW_STATUS_RESOURCE_EXHAUSTED == Status::RESOURCE_EXHAUSTED);
-  static_assert(PW_STATUS_FAILED_PRECONDITION == Status::FAILED_PRECONDITION);
-  static_assert(PW_STATUS_ABORTED == Status::ABORTED);
-  static_assert(PW_STATUS_OUT_OF_RANGE == Status::OUT_OF_RANGE);
-  static_assert(PW_STATUS_UNIMPLEMENTED == Status::UNIMPLEMENTED);
-  static_assert(PW_STATUS_INTERNAL == Status::INTERNAL);
-  static_assert(PW_STATUS_UNAVAILABLE == Status::UNAVAILABLE);
-  static_assert(PW_STATUS_DATA_LOSS == Status::DATA_LOSS);
-  static_assert(PW_STATUS_UNAUTHENTICATED == Status::UNAUTHENTICATED);
-}
-
 // Functions for executing the C pw_Status tests.
 extern "C" {
 
@@ -215,7 +174,7 @@ TEST(StatusCLinkage, CallCFunctionWithStatus) {
   EXPECT_EQ(Status::Unknown(), PassStatusFromC(Status::Unknown()));
 
   EXPECT_EQ(Status::NotFound(), PassStatusFromC(PW_STATUS_NOT_FOUND));
-  EXPECT_EQ(Status::Ok(), PassStatusFromC(Status::Ok()));
+  EXPECT_EQ(OkStatus(), PassStatusFromC(OkStatus()));
 }
 
 TEST(StatusCLinkage, TestStatusFromC) { EXPECT_EQ(0, TestStatusFromC()); }
