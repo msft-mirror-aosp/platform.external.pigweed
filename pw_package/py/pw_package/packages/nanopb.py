@@ -13,6 +13,9 @@
 # the License.
 """Install and check status of nanopb."""
 
+import pathlib
+from typing import Sequence
+
 import pw_package.git_repo
 import pw_package.package_manager
 
@@ -20,11 +23,17 @@ import pw_package.package_manager
 class NanoPB(pw_package.git_repo.GitRepo):
     """Install and check status of nanopb."""
     def __init__(self, *args, **kwargs):
-        super().__init__(*args,
-                         name='nanopb',
-                         url='https://github.com/nanopb/nanopb.git',
-                         commit='9f57cc871d8a025039019c2d2fde217591f4e30d',
-                         **kwargs)
+        super().__init__(
+            *args,
+            name='nanopb',
+            url=
+            'https://pigweed.googlesource.com/third_party/github/nanopb/nanopb',
+            commit='2b48a361786dfb1f63d229840217a93aae064667',
+            **kwargs)
 
-
-pw_package.package_manager.register(NanoPB)
+    def info(self, path: pathlib.Path) -> Sequence[str]:
+        return (
+            f'{self.name} installed in: {path}',
+            "Enable by running 'gn args out' and adding this line:",
+            f'  dir_pw_third_party_nanopb = "{path}"',
+        )

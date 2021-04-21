@@ -35,31 +35,6 @@ pw_cc_library(
     hdrs = [ "public/pw_log_rpc/logs_rpc.h" ]
 )
 
-pw_cc_library(
-    name = "pw_log_queue",
-    srcs = [ "log_queue.cc" ],
-    includes = [ "public" ],
-    deps = [
-        "//pw_bytes",
-        "//pw_log",
-        "//pw_result",
-        "//pw_ring_buffer",
-        "//pw_status",
-    ],
-    hdrs = [ "public/pw_log_rpc/log_queue.h" ]
-)
-
-pw_cc_test(
-    name = "log_queue_test",
-    srcs = [
-        "log_queue_test.cc",
-    ],
-    deps = [
-        "//pw_preprocessor",
-        "//pw_unit_test",
-    ],
-)
-
 pw_cc_test(
     name = "logs_rpc_test",
     srcs = [

@@ -2,7 +2,7 @@
   {
     "path": "gn/gn/${os}-${arch=amd64,arm64}",
     "tags": [
-      "git_revision:fe9e5db149b0cc78e03511d52c452039dbf5ac1b"
+      "git_revision:b2e3d8622c1ce1bd853c7a11f62a739946669cdd"
     ]
   },
   {
@@ -19,9 +19,9 @@
   },
   {
     "_comment": "TODO(pwbug/93): Package Bazel for Windows.",
-    "path": "pigweed/third_party/bazel/${os=linux,mac}-${arch=amd64}",
+    "path": "fuchsia/third_party/bazel/${os=linux,mac}-${arch=amd64}",
     "tags": [
-      "version:3.2.0"
+      "version:4.0.0"
     ]
   },
   {
@@ -37,9 +37,9 @@
     ]
   },
   {
-    "path": "infra/tools/protoc/${os}-${arch=amd64}",
+    "path": "infra/3pp/tools/protoc/${os}-${arch}",
     "tags": [
-      "protobuf_version:v3.8.0"
+      "version:3.14.0"
     ]
   },
   {
@@ -91,13 +91,13 @@
   {
     "path": "pigweed/host_tools/${os}-${arch=amd64}",
     "tags": [
-      "git_revision:00e773eafb943b25643d2e32b0d0af2f032426b3"
+      "git_revision:2f56efcee3192685898200f6049538ebd809ae36"
     ]
   },
   {
-    "path": "infra/goma/client/${os}-${arch=amd64}",
+    "path": "infra/rbe/client/${os=linux,windows}-${arch=amd64}",
     "tags": [
-      "git_revision:b3d6d03fbdc1d0cfcdae70db30830a08eece4ae1"
+      "git_revision:bbfff8b0a8701cebd503d961c99e9587605b19e2"
     ]
   },
   {
@@ -118,6 +118,12 @@
     "subdir": "kythe",
     "tags": [
       "version:2020-08-05"
+    ]
+  },
+  {
+    "path": "infra/3pp/tools/renode/${os=linux}-${arch=amd64}",
+    "tags": [
+      "version:2@renode-1.11.0+20210306gite7897c1"
     ]
   }
 ]

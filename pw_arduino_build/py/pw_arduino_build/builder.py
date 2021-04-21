@@ -89,10 +89,8 @@ class ArduinoBuilder:
         self.compiler_path_override = compiler_path_override
         self.variant_includes = ""
         self.build_variant_path = False
-        if library_names and library_path:
-            self.library_names = library_names
-            self.library_path = os.path.realpath(
-                os.path.expanduser(os.path.expandvars(library_path)))
+        self.library_names = library_names
+        self.library_path = library_path
 
         self.compiler_path_override_binaries = []
         if self.compiler_path_override:
@@ -134,6 +132,19 @@ class ArduinoBuilder:
             ]
             _LOG.error("\n".join(possible_alternatives))
             sys.exit(1)
+
+        # Populate library paths.
+        if not library_path:
+            self.library_path = []
+        # Append core libraries directory.
+        core_lib_path = Path(self.package_path) / "libraries"
+        if core_lib_path.is_dir():
+            self.library_path.append(Path(self.package_path) / "libraries")
+        if library_path:
+            self.library_path = [
+                os.path.realpath(os.path.expanduser(
+                    os.path.expandvars(l_path))) for l_path in library_path
+            ]
 
         # Grab all folder names in the cores directory. These are typically
         # sub-core source files.
@@ -180,7 +191,7 @@ class ArduinoBuilder:
     def _apply_recipe_overrides(self):
         # Override link recipes with per-core exceptions
         # Teensyduino cores
-        if self.build_arch == 'TEENSY':
+        if self.build_arch == "TEENSY":
             # Change {build.path}/{archive_file}
             # To {archive_file_path} (which should contain the core.a file)
             new_link_line = self.platform["recipe.c.combine.pattern"].replace(
@@ -200,7 +211,7 @@ class ArduinoBuilder:
 
         # Adafruit-samd core
         # TODO(tonymd): This build_arch may clash with Arduino-SAMD core
-        elif self.build_arch == 'SAMD':
+        elif self.build_arch == "SAMD":
             new_link_line = self.platform["recipe.c.combine.pattern"].replace(
                 "\"{build.path}/{archive_file}\" -Wl,--end-group",
                 "{archive_file_path} -Wl,--end-group", 1)
@@ -208,7 +219,7 @@ class ArduinoBuilder:
 
         # STM32L4 Core:
         # https://github.com/GrumpyOldPizza/arduino-STM32L4
-        elif self.build_arch == 'STM32L4':
+        elif self.build_arch == "STM32L4":
             # TODO(tonymd): {build.path}/{archive_file} for the link step always
             # seems to be core.a (except STM32 core)
             line_to_delete = "-Wl,--start-group \"{build.path}/{archive_file}\""
@@ -217,8 +228,11 @@ class ArduinoBuilder:
             self.platform["recipe.c.combine.pattern"] = new_link_line
 
         # stm32duino core
-        elif self.build_arch == 'STM32':
-            pass
+        elif self.build_arch == "STM32":
+            # Must link in SrcWrapper for all projects.
+            if not self.library_names:
+                self.library_names = []
+            self.library_names.append("SrcWrapper")
 
     def _copy_default_menu_options_to_build_variables(self):
         # Clear existing options
@@ -967,24 +981,25 @@ class ArduinoBuilder:
         if not self.library_names or not self.library_path:
             return []
 
-        library_path = self.library_path
         folder_patterns = ["*"]
         if self.library_names:
             folder_patterns = self.library_names
 
-        library_folders = file_operations.find_files(library_path,
-                                                     folder_patterns,
-                                                     directories_only=True)
-        library_source_root_folders = []
-        for lib in library_folders:
-            lib_dir = os.path.join(library_path, lib)
-            src_dir = os.path.join(lib_dir, "src")
-            if os.path.exists(src_dir) and os.path.isdir(src_dir):
-                library_source_root_folders.append(src_dir)
-            else:
-                library_source_root_folders.append(lib_dir)
+        library_folders = OrderedDict()
+        for library_dir in self.library_path:
+            found_library_names = file_operations.find_files(
+                library_dir, folder_patterns, directories_only=True)
+            _LOG.debug("Found Libraries %s: %s", library_dir,
+                       found_library_names)
+            for lib_name in found_library_names:
+                lib_dir = os.path.join(library_dir, lib_name)
+                src_dir = os.path.join(lib_dir, "src")
+                if os.path.exists(src_dir) and os.path.isdir(src_dir):
+                    library_folders[lib_name] = src_dir
+                else:
+                    library_folders[lib_name] = lib_dir
 
-        return library_source_root_folders
+        return list(library_folders.values())
 
     def library_include_dirs(self):
         return [Path(lib).as_posix() for lib in self.library_folders()]
@@ -996,9 +1011,13 @@ class ArduinoBuilder:
             include_args.append("-I{}".format(os.path.relpath(lib_dir)))
         return include_args
 
-    def library_files(self, pattern):
+    def library_files(self, pattern, only_library_name=None):
         sources = []
         library_folders = self.library_folders()
+        if only_library_name:
+            library_folders = [
+                lf for lf in self.library_folders() if only_library_name in lf
+            ]
         for lib_dir in library_folders:
             for file_path in file_operations.find_files(lib_dir, [pattern]):
                 if not file_path.startswith("examples"):

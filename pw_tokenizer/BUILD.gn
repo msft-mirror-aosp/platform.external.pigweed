@@ -45,7 +45,7 @@ config("linker_script") {
       "-T",
       rebase_path("pw_tokenizer_linker_sections.ld"),
     ]
-  } else if (current_os == "linux") {
+  } else if (current_os == "linux" && !pw_toolchain_OSS_FUZZ_ENABLED) {
     # When building for Linux, the linker provides a default linker script.
     # The add_tokenizer_sections_to_default_script.ld wrapper includes the
     # pw_tokenizer_linker_sections.ld script in a way that appends to the the
@@ -73,10 +73,10 @@ pw_source_set("pw_tokenizer") {
   public_deps = [
     ":config",
     dir_pw_preprocessor,
-    dir_pw_span,
   ]
   deps = [ dir_pw_varint ]
   public = [
+    "public/pw_tokenizer/encode_args.h",
     "public/pw_tokenizer/hash.h",
     "public/pw_tokenizer/tokenize.h",
   ]
@@ -87,10 +87,10 @@ pw_source_set("pw_tokenizer") {
     "public/pw_tokenizer/internal/argument_types_macro_4_byte.h",
     "public/pw_tokenizer/internal/argument_types_macro_8_byte.h",
     "public/pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_128_hash_macro.h",
+    "public/pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_256_hash_macro.h",
     "public/pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_80_hash_macro.h",
     "public/pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_96_hash_macro.h",
     "public/pw_tokenizer/internal/tokenize_string.h",
-    "pw_tokenizer_private/encode_args.h",
     "tokenize.cc",
   ]
   friend = [ ":*" ]
@@ -141,13 +141,11 @@ pw_source_set("base64") {
     ":pw_tokenizer",
     dir_pw_base64,
     dir_pw_preprocessor,
-    dir_pw_span,
   ]
 }
 
 pw_source_set("decoder") {
   public_configs = [ ":public_include_path" ]
-  public_deps = [ dir_pw_span ]
   deps = [ dir_pw_varint ]
   public = [
     "public/pw_tokenizer/detokenize.h",
@@ -200,10 +198,7 @@ pw_test_group("tests") {
     ":token_database_test",
     ":tokenize_test",
   ]
-  group_deps = [
-    "$dir_pw_preprocessor:tests",
-    "$dir_pw_span:tests",
-  ]
+  group_deps = [ "$dir_pw_preprocessor:tests" ]
 }
 
 pw_test("argument_types_test") {
@@ -214,7 +209,7 @@ pw_test("argument_types_test") {
   ]
   deps = [ ":pw_tokenizer" ]
 
-  if (dir_pw_third_party_arduino != "") {
+  if (pw_arduino_build_CORE_PATH != "") {
     remove_configs = [ "$dir_pw_build:strict_warnings" ]
   }
 }
@@ -279,6 +274,7 @@ _simple_tokenize_test_sources = [
   "$dir_pw_varint/varint.cc",
   "encode_args.cc",
   "public/pw_tokenizer/config.h",
+  "public/pw_tokenizer/encode_args.h",
   "public/pw_tokenizer/hash.h",
   "public/pw_tokenizer/internal/argument_types.h",
   "public/pw_tokenizer/internal/argument_types_macro_4_byte.h",
@@ -290,7 +286,6 @@ _simple_tokenize_test_sources = [
   "public/pw_tokenizer/tokenize.h",
   "public/pw_tokenizer/tokenize_to_global_handler.h",
   "public/pw_tokenizer/tokenize_to_global_handler_with_payload.h",
-  "pw_tokenizer_private/encode_args.h",
   "simple_tokenize_test.cc",
   "tokenize.cc",
   "tokenize_to_global_handler.cc",
@@ -344,7 +339,6 @@ pw_fuzzer("token_database_fuzzer") {
     ":decoder",
     "$dir_pw_fuzzer",
     "$dir_pw_preprocessor",
-    "$dir_pw_span",
   ]
 }
 

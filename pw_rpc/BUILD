@@ -25,8 +25,8 @@ licenses(["notice"])  # Apache License 2.0
 pw_cc_library(
     name = "client",
     srcs = [
-        "client.cc",
         "base_client_call.cc",
+        "client.cc",
     ],
     hdrs = [
         "public/pw_rpc/client.h",
@@ -34,7 +34,7 @@ pw_cc_library(
     ],
     deps = [
         ":common",
-    ]
+    ],
 )
 
 pw_cc_library(
@@ -45,6 +45,7 @@ pw_cc_library(
         "public/pw_rpc/internal/call.h",
         "public/pw_rpc/internal/hash.h",
         "public/pw_rpc/internal/method.h",
+        "public/pw_rpc/internal/method_lookup.h",
         "public/pw_rpc/internal/method_union.h",
         "public/pw_rpc/internal/server.h",
         "server.cc",
@@ -62,11 +63,22 @@ pw_cc_library(
 )
 
 pw_cc_library(
+    name = "client_server",
+    srcs = ["client_server.cc"],
+    hdrs = ["public/pw_rpc/client_server.h"],
+    deps = [
+        ":client",
+        ":server",
+    ],
+)
+
+pw_cc_library(
     name = "common",
     srcs = [
         "channel.cc",
         "packet.cc",
         "public/pw_rpc/internal/channel.h",
+        "public/pw_rpc/internal/config.h",
         "public/pw_rpc/internal/method_type.h",
         "public/pw_rpc/internal/packet.h",
     ],
@@ -83,12 +95,14 @@ pw_cc_library(
 )
 
 pw_cc_library(
-    name = "service_method_traits",
-    hdrs = [
-        "public/pw_rpc/internal/service_method_traits.h",
-    ],
+    name = "synchronized_channel_output",
+    hdrs = ["public/pw_rpc/synchronized_channel_output.h"],
     includes = ["public"],
-    deps = [ ":server"  ],
+    deps = [
+        ":common",
+        "//pw_sync:lock_annotations",
+        "//pw_sync:mutex",
+    ],
 )
 
 pw_cc_library(
@@ -96,6 +110,7 @@ pw_cc_library(
     hdrs = [
         "public/pw_rpc/internal/test_method.h",
         "pw_rpc_private/internal_test_utils.h",
+        "pw_rpc_private/method_impl_tester.h",
     ],
     visibility = ["//visibility:private"],
     deps = [
@@ -111,6 +126,7 @@ filegroup(
     srcs = [
         "nanopb/codegen_test.cc",
         "nanopb/echo_service_test.cc",
+        "nanopb/method_lookup_test.cc",
         "nanopb/nanopb_client_call.cc",
         "nanopb/nanopb_client_call_test.cc",
         "nanopb/nanopb_common.cc",
@@ -121,14 +137,10 @@ filegroup(
         "nanopb/public/pw_rpc/internal/nanopb_common.h",
         "nanopb/public/pw_rpc/internal/nanopb_method.h",
         "nanopb/public/pw_rpc/internal/nanopb_method_union.h",
-        "nanopb/public/pw_rpc/internal/nanopb_service_method_traits.h",
         "nanopb/public/pw_rpc/nanopb_client_call.h",
         "nanopb/public/pw_rpc/nanopb_test_method_context.h",
         "nanopb/pw_rpc_nanopb_private/internal_test_utils.h",
-        "nanopb/nanopb_service_method_traits_test.cc",
-        "nanopb/test.pb.c",
-        "nanopb/test.pb.h",
-        "nanopb/test_rpc.pb.h",
+        "nanopb/stub_generation_test.cc",
     ],
 )
 
@@ -184,10 +196,19 @@ pw_cc_test(
     ],
 )
 
+pw_cc_test(
+    name = "client_server_test",
+    srcs = ["client_server_test.cc"],
+    deps = [
+        ":client_server",
+        "//pw_rpc/raw:method_union",
+    ],
+)
+
 proto_library(
     name = "packet_proto",
     srcs = [
-        "pw_rpc_protos/packet.proto",
+        "pw_rpc_protos/internal/packet.proto",
     ],
 )
 

@@ -12,10 +12,6 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-_pw_abspath () {
-  python -c "import os.path; print(os.path.abspath('$@'))"
-}
-
 # Just in case PATH isn't already exported.
 export PATH
 
@@ -73,7 +69,13 @@ pw_bold_white() {
 
 pw_eval_sourced() {
   if [ "$1" -eq 0 ]; then
-    _PW_NAME=$(basename "$PW_SETUP_SCRIPT_PATH" .sh)
+    # TODO(pwbug/354) Remove conditional after all downstream projects have
+    # changed to passing in second argument.
+    if [ -n "$2" ]; then
+      _PW_NAME=$(basename "$2" .sh)
+    else
+      _PW_NAME=$(basename "$_BOOTSTRAP_PATH" .sh)
+    fi
     pw_bold_red "Error: Attempting to $_PW_NAME in a subshell"
     pw_red "  Since $_PW_NAME.sh modifies your shell's environment variables,"
     pw_red "  it must be sourced rather than executed. In particular, "
@@ -105,7 +107,11 @@ pw_get_env_root() {
   # PW_ENVIRONMENT_ROOT came from the developer and not from a previous
   # bootstrap possibly from another workspace.
   if [ -z "$PW_ENVIRONMENT_ROOT" ]; then
-    echo "$PW_ROOT/.environment"
+    if [ -n "$PW_PROJECT_ROOT" ]; then
+      echo "$PW_PROJECT_ROOT/.environment"
+    else
+      echo "$PW_ROOT/.environment"
+    fi
   else
     echo "$PW_ENVIRONMENT_ROOT"
   fi
@@ -192,6 +198,10 @@ pw_bootstrap() {
     _PW_PYTHON="$PW_BOOTSTRAP_PYTHON"
   elif which python &> /dev/null; then
     _PW_PYTHON=python
+  elif which python3 &> /dev/null; then
+    _PW_PYTHON=python3
+  elif which python2 &> /dev/null; then
+    _PW_PYTHON=python2
   else
     pw_bold_red "Error: No system Python present\n"
     pw_red "  Pigweed's bootstrap process requires a local system Python."
@@ -206,18 +216,26 @@ pw_bootstrap() {
 
   if [ -n "$_PW_ENV_SETUP" ]; then
     "$_PW_ENV_SETUP" "$@"
+    _PW_ENV_SETUP_STATUS="$?"
   else
     "$_PW_PYTHON" "$PW_ROOT/pw_env_setup/py/pw_env_setup/env_setup.py" "$@"
+    _PW_ENV_SETUP_STATUS="$?"
   fi
 }
 
 pw_activate() {
   _pw_hello "  ACTIVATOR! This sets your shell environment variables.\n"
+  _PW_ENV_SETUP_STATUS=0
 }
 
 pw_finalize() {
   _PW_NAME="$1"
   _PW_SETUP_SH="$2"
+
+  if [ "$_PW_ENV_SETUP_STATUS" -ne 0 ]; then
+     return
+  fi
+
   if [ -f "$_PW_SETUP_SH" ]; then
     . "$_PW_SETUP_SH"
 
@@ -245,8 +263,8 @@ pw_cleanup() {
   unset _PW_SETUP_SH
   unset _PW_DEACTIVATE_SH
   unset _NEW_PW_ROOT
+  unset _PW_ENV_SETUP_STATUS
 
-  unset _pw_abspath
   unset pw_none
   unset pw_red
   unset pw_bold_red

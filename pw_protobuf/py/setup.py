@@ -29,5 +29,6 @@ setuptools.setup(
     },
     install_requires=[
         'protobuf',
+        'pw_cli',
     ],
 )
