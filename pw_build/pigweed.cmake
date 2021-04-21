@@ -13,6 +13,21 @@
 # the License.
 include_guard(GLOBAL)
 
+# Wrapper around cmake_parse_arguments that fails with an error if any arguments
+# remained unparsed.
+macro(_pw_parse_argv_strict function start_arg options one multi)
+  cmake_parse_arguments(PARSE_ARGV
+      "${start_arg}" arg "${options}" "${one}" "${multi}"
+  )
+  if(NOT "${arg_UNPARSED_ARGUMENTS}" STREQUAL "")
+    set(_all_args ${options} ${one} ${multi})
+    message(FATAL_ERROR
+        "Unexpected arguments to ${function}: ${arg_UNPARSED_ARGUMENTS}\n"
+        "Valid arguments: ${_all_args}"
+    )
+  endif()
+endmacro()
+
 # Automatically creates a library and test targets for the files in a module.
 # This function is only suitable for simple modules that meet the following
 # requirements:
@@ -44,8 +59,11 @@ include_guard(GLOBAL)
 #   PRIVATE_DEPS - private target_link_libraries arguments
 #
 function(pw_auto_add_simple_module MODULE)
-  set(multi PUBLIC_DEPS PRIVATE_DEPS TEST_DEPS)
-  cmake_parse_arguments(PARSE_ARGV 1 arg "" "IMPLEMENTS_FACADE" "${multi}")
+  _pw_parse_argv_strict(pw_auto_add_simple_module 1
+      ""
+      "IMPLEMENTS_FACADE"
+      "PUBLIC_DEPS;PRIVATE_DEPS;TEST_DEPS"
+  )
 
   file(GLOB all_sources *.cc *.c)
 
@@ -58,15 +76,15 @@ function(pw_auto_add_simple_module MODULE)
 
   if(arg_IMPLEMENTS_FACADE)
     set(groups backends)
-    set(facade_dep "${arg_IMPLEMENTS_FACADE}.facade")
   else()
     set(groups modules "${MODULE}")
   endif()
 
   pw_add_module_library("${MODULE}"
+    IMPLEMENTS_FACADES
+      ${arg_IMPLEMENTS_FACADE}
     PUBLIC_DEPS
       ${arg_PUBLIC_DEPS}
-      ${facade_dep}
     PRIVATE_DEPS
       ${arg_PRIVATE_DEPS}
     SOURCES
@@ -98,7 +116,11 @@ endfunction(pw_auto_add_simple_module)
 #  GROUPS - groups in addition to MODULE to which to add these tests
 #
 function(pw_auto_add_module_tests MODULE)
-  cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "PRIVATE_DEPS;GROUPS")
+  _pw_parse_argv_strict(pw_auto_add_module_tests 1
+      ""
+      ""
+      "PRIVATE_DEPS;GROUPS"
+  )
 
   file(GLOB cc_tests *_test.cc)
 
@@ -122,6 +144,11 @@ function(pw_auto_add_module_tests MODULE)
   endforeach()
 endfunction(pw_auto_add_module_tests)
 
+# Sets the provided variable to the common library arguments.
+macro(_pw_library_args variable)
+  set("${variable}" SOURCES HEADERS PUBLIC_DEPS PRIVATE_DEPS ${ARGN})
+endmacro()
+
 # Creates a library in a module. The library has access to the public/ include
 # directory.
 #
@@ -131,10 +158,11 @@ endfunction(pw_auto_add_module_tests)
 #   HEADERS - header files for this library
 #   PUBLIC_DEPS - public target_link_libraries arguments
 #   PRIVATE_DEPS - private target_link_libraries arguments
+#   IMPLEMENTS_FACADES - which facades this library implements
 #
 function(pw_add_module_library NAME)
-  set(list_args SOURCES HEADERS PUBLIC_DEPS PRIVATE_DEPS)
-  cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "${list_args}")
+  _pw_library_args(list_args IMPLEMENTS_FACADES)
+  _pw_parse_argv_strict(pw_add_module_library 1 "" "" "${list_args}")
 
   # Check that the library's name is prefixed by the module name.
   get_filename_component(module "${CMAKE_CURRENT_SOURCE_DIR}" NAME)
@@ -147,7 +175,7 @@ function(pw_add_module_library NAME)
   endif()
 
   add_library("${NAME}" EXCLUDE_FROM_ALL ${arg_HEADERS} ${arg_SOURCES})
-  target_include_directories("${NAME}" PUBLIC public/)
+  target_include_directories("${NAME}" PUBLIC public)
   target_link_libraries("${NAME}"
     PUBLIC
       pw_build
@@ -157,6 +185,13 @@ function(pw_add_module_library NAME)
       pw_build.extra_strict_warnings
       ${arg_PRIVATE_DEPS}
   )
+
+  if(NOT "${arg_IMPLEMENTS_FACADES}" STREQUAL "")
+    target_include_directories("${NAME}" PUBLIC public_overrides)
+    set(facades ${arg_IMPLEMENTS_FACADES})
+    list(TRANSFORM facades APPEND ".facade")
+    target_link_libraries("${NAME}" PUBLIC ${facades})
+  endif()
 
   # Libraries require at least one source file.
   if(NOT arg_SOURCES)
@@ -171,13 +206,14 @@ endfunction(pw_add_module_library)
 # module that implements the facade depends on a library named
 # MODULE_NAME.facade.
 #
-# pw_add_facade accepts the same arguments as pw_add_module_library, with the
-# following additions:
+# pw_add_facade accepts the same arguments as pw_add_module_library, except for
+# IMPLEMENTS_FACADES. It also accepts the following argument:
 #
 #  DEFAULT_BACKEND - which backend to use by default
 #
 function(pw_add_facade NAME)
-  cmake_parse_arguments(PARSE_ARGV 1 arg "" "DEFAULT_BACKEND" "")
+  _pw_library_args(list_args)
+  _pw_parse_argv_strict(pw_add_facade 1 "" "DEFAULT_BACKEND" "${list_args}")
 
   # If no backend is set, a script that displays an error message is used
   # instead. If the facade is used in the build, it fails with this error.
@@ -199,13 +235,18 @@ function(pw_add_facade NAME)
 
   # Define the facade library, which is used by the backend to avoid circular
   # dependencies.
-  pw_add_module_library("${NAME}.facade" ${arg_UNPARSED_ARGUMENTS})
+  add_library("${NAME}.facade" INTERFACE)
+  target_include_directories("${NAME}.facade" INTERFACE public)
+  target_link_libraries("${NAME}.facade" INTERFACE ${arg_PUBLIC_DEPS})
 
   # Define the public-facing library for this facade, which depends on the
   # header files in .facade target and exposes the dependency on the backend.
-  add_library("${NAME}" INTERFACE)
-  target_link_libraries("${NAME}"
-    INTERFACE
+  pw_add_module_library("${NAME}"
+    SOURCES
+      ${arg_SOURCES}
+    HEADERS
+      ${arg_HEADERS}
+    PUBLIC_DEPS
       "${NAME}.facade"
       "${${NAME}_BACKEND}"
   )
@@ -219,7 +260,7 @@ endfunction(pw_set_backend)
 # Declares a unit test. Creates two targets:
 #
 #  * <TEST_NAME> - the test executable
-#  * <TEST_NAME>_run - builds and runs the test
+#  * <TEST_NAME>.run - builds and runs the test
 #
 # Args:
 #
@@ -230,7 +271,7 @@ endfunction(pw_set_backend)
 #       added to the 'default' and 'all' groups
 #
 function(pw_add_test NAME)
-  cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPS;GROUPS")
+  _pw_parse_argv_strict(pw_add_test 1 "" "" "SOURCES;DEPS;GROUPS")
 
   add_executable("${NAME}" EXCLUDE_FROM_ALL ${arg_SOURCES})
   target_link_libraries("${NAME}"
@@ -255,7 +296,7 @@ function(pw_add_test NAME)
     OUTPUT
       "${NAME}.stamp"
   )
-  add_custom_target("${NAME}_run" DEPENDS "${NAME}.stamp")
+  add_custom_target("${NAME}.run" DEPENDS "${NAME}.stamp")
 
   # Always add tests to the "all" group. If no groups are provided, add the
   # test to the "default" group.
@@ -280,6 +321,6 @@ function(pw_add_test_to_groups TEST_NAME)
     endif()
 
     add_dependencies("pw_tests.${group}" "${TEST_NAME}")
-    add_dependencies("pw_run_tests.${group}" "${TEST_NAME}_run")
+    add_dependencies("pw_run_tests.${group}" "${TEST_NAME}.run")
   endforeach()
 endfunction(pw_add_test_to_groups)

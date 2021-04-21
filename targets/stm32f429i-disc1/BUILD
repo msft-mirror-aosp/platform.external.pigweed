@@ -25,12 +25,21 @@ pw_cc_library(
     name = "pre_init",
     srcs = [
         "boot.cc",
-        "vector_table.cc"
+        "vector_table.c"
     ],
     deps = [
         "//pw_boot_armv7m",
         "//pw_malloc",
         "//pw_preprocessor",
         "//pw_sys_io_baremetal_stm32f429",
+    ],
+)
+
+pw_cc_library(
+    name = "system_rpc_server",
+    srcs = ["system_rpc_server.cc"],
+    deps = [
+        "//pw_rpc/system_server:facade",
+        "//pw_hdlc:pw_rpc",
     ],
 )

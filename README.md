@@ -13,14 +13,16 @@ value developer feedback along the way.
 # Quick links
 
  - [Getting started guide](docs/getting_started.md)
- - [Source code](https://pigweed.googlesource.com/pigweed/pigweed/+/refs/heads/master)
+ - [Documentation](https://pigweed.dev)
+ - [Source code](https://cs.opensource.google/pigweed/pigweed)
  - [Code reviews](https://pigweed-review.googlesource.com/)
- - [Issue tracker](https://bugs.chromium.org/p/pigweed/issues/list)
+ - [Issue tracker](https://bugs.pigweed.dev/)
  - [Mailing list](https://groups.google.com/forum/#!forum/pigweed)
  - [Chat room (Discord)](https://discord.gg/M9NSeTA)
  - [Open Source blog post](https://opensource.googleblog.com/2020/03/pigweed-collection-of-embedded-libraries.html)
 
-Get the code: `git clone https://pigweed.googlesource.com/pigweed/pigweed`
+Get the code: `git clone https://pigweed.googlesource.com/pigweed/pigweed` (or
+[fork us on GitHub](https://github.com/google/pigweed)).
 
 # Getting Started
 
@@ -33,10 +35,6 @@ There are many modules in Pigweed, and this section only showcases a small
 selection that happen to produce visual output. For more information about the
 different Pigweed module offerings, refer to "Module Guides" section in the full
 documentation.
-
-Note: For now the full documentation is not available online; you must build
-it. Building the docs is easy; see the [getting started
-guide](docs/getting_started.md) for how.
 
 ## `pw_watch` - Build, flash, run, & test on save
 
@@ -122,19 +120,13 @@ on-device.
 See the "Module Guides" in the documentation for the complete list and
 documentation for each, but is a selection of some others:
 
- - `pw_cpu_exception_armv7m`: Robust low level hardware fault handler for ARM
+ - `pw_cpu_exception_cortex_m`: Robust low level hardware fault handler for ARM
    Cortex-M; the handler even has unit tests written in assembly to verify
    nested-hardware-fault handling!
 
  - `pw_polyfill`: Similar to JavaScript “polyfill” libraries, this module
    provides selected C++17 standard library components that are compatible with
    C++11 and C++14.
-
- - `pw_minimal_cpp_stdlib`: An entirely incomplete implementation of the C++17
-   standard library, that provides some of the primitives needed by Pigweed
-   itself. Useful for projects that want to use Pigweed, but don’t enable the
-   typical standard C++ libraries like GNU’s libstdc++ or LLVM’s libc++. Don’t
-   use this module unless you know what you are doing.
 
  - `pw_tokenizer`: Replace string literals from log statements with 32-bit
    tokens, to reduce flash use, reduce logging bandwidth, and save formatting

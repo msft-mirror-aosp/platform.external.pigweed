@@ -20,6 +20,7 @@
 #include <type_traits>
 
 #include "pw_rpc/internal/base_server_writer.h"
+#include "pw_rpc/internal/config.h"
 #include "pw_rpc/internal/method.h"
 #include "pw_rpc/internal/method_type.h"
 #include "pw_rpc/internal/nanopb_common.h"
@@ -53,22 +54,14 @@ class ServerWriter : public internal::BaseServerWriter {
 
 namespace internal {
 
+class NanopbMethod;
 class Packet;
 
-// Templated false value for use in static_assert(false) statements.
-template <typename...>
-constexpr std::false_type kFalseValue{};
-
-// Extracts the request and response proto types from a method.
-template <typename Method>
-struct RpcTraits {
-  static_assert(kFalseValue<Method>,
-                "The selected function is not an RPC service method");
-};
-
-// Specialization for unary RPCs.
+// MethodTraits specialization for a static unary method.
 template <typename RequestType, typename ResponseType>
-struct RpcTraits<Status (*)(ServerCall&, const RequestType&, ResponseType&)> {
+struct MethodTraits<Status (*)(
+    ServerContext&, const RequestType&, ResponseType&)> {
+  using Implementation = NanopbMethod;
   using Request = RequestType;
   using Response = ResponseType;
 
@@ -77,10 +70,20 @@ struct RpcTraits<Status (*)(ServerCall&, const RequestType&, ResponseType&)> {
   static constexpr bool kClientStreaming = false;
 };
 
-// Specialization for server streaming RPCs.
+// MethodTraits specialization for a unary method.
+template <typename T, typename RequestType, typename ResponseType>
+struct MethodTraits<Status (T::*)(
+    ServerContext&, const RequestType&, ResponseType&)>
+    : public MethodTraits<Status (*)(
+          ServerContext&, const RequestType&, ResponseType&)> {
+  using Service = T;
+};
+
+// MethodTraits specialization for a static server streaming method.
 template <typename RequestType, typename ResponseType>
-struct RpcTraits<void (*)(
-    ServerCall&, const RequestType&, ServerWriter<ResponseType>&)> {
+struct MethodTraits<void (*)(
+    ServerContext&, const RequestType&, ServerWriter<ResponseType>&)> {
+  using Implementation = NanopbMethod;
   using Request = RequestType;
   using Response = ResponseType;
 
@@ -89,29 +92,20 @@ struct RpcTraits<void (*)(
   static constexpr bool kClientStreaming = false;
 };
 
-// Member function specialization for unary RPCs.
+// MethodTraits specialization for a server streaming method.
 template <typename T, typename RequestType, typename ResponseType>
-struct RpcTraits<Status (T::*)(
-    ServerContext&, const RequestType&, ResponseType&)>
-    : public RpcTraits<Status (*)(
-          ServerCall&, const RequestType&, ResponseType&)> {
-  using Service = T;
-};
-
-// Member function specialization for server streaming RPCs.
-template <typename T, typename RequestType, typename ResponseType>
-struct RpcTraits<void (T::*)(
+struct MethodTraits<void (T::*)(
     ServerContext&, const RequestType&, ServerWriter<ResponseType>&)>
-    : public RpcTraits<void (*)(
-          ServerCall&, const RequestType&, ServerWriter<ResponseType>&)> {
+    : public MethodTraits<void (*)(
+          ServerContext&, const RequestType&, ServerWriter<ResponseType>&)> {
   using Service = T;
 };
 
 template <auto method>
-using Request = typename RpcTraits<decltype(method)>::Request;
+using Request = typename MethodTraits<decltype(method)>::Request;
 
 template <auto method>
-using Response = typename RpcTraits<decltype(method)>::Response;
+using Response = typename MethodTraits<decltype(method)>::Response;
 
 // The NanopbMethod class invokes user-defined service methods. When a
 // pw::rpc::Server receives an RPC request packet, it looks up the matching
@@ -125,6 +119,13 @@ using Response = typename RpcTraits<decltype(method)>::Response;
 // structs.
 class NanopbMethod : public Method {
  public:
+  template <auto method, typename RequestType, typename ResponseType>
+  static constexpr bool matches() {
+    return std::is_same_v<MethodImplementation<method>, NanopbMethod> &&
+           std::is_same_v<RequestType, Request<method>> &&
+           std::is_same_v<ResponseType, Response<method>>;
+  }
+
   // Creates a NanopbMethod for a unary RPC.
   template <auto method>
   static constexpr NanopbMethod Unary(uint32_t id,
@@ -136,18 +137,19 @@ class NanopbMethod : public Method {
     //
     // In optimized builds, the compiler inlines the user-defined function into
     // this wrapper, elminating any overhead.
-    return NanopbMethod(
-        id,
-        UnaryInvoker<AllocateSpaceFor<Request<method>>(),
-                     AllocateSpaceFor<Response<method>>()>,
-        Function{.unary =
-                     [](ServerCall& call, const void* req, void* resp) {
-                       return method(call,
-                                     *static_cast<const Request<method>*>(req),
-                                     *static_cast<Response<method>*>(resp));
-                     }},
-        request,
-        response);
+    constexpr UnaryFunction wrapper =
+        [](ServerCall& call, const void* req, void* resp) {
+          return CallMethodImplFunction<method>(
+              call,
+              *static_cast<const Request<method>*>(req),
+              *static_cast<Response<method>*>(resp));
+        };
+    return NanopbMethod(id,
+                        UnaryInvoker<AllocateSpaceFor<Request<method>>(),
+                                     AllocateSpaceFor<Response<method>>()>,
+                        Function{.unary = wrapper},
+                        request,
+                        response);
   }
 
   // Creates a NanopbMethod for a server-streaming RPC.
@@ -160,20 +162,24 @@ class NanopbMethod : public Method {
     // struct as void* and a BaseServerWriter instead of the templated
     // ServerWriter class. This wrapper is stored generically in the Function
     // union, defined below.
+    constexpr ServerStreamingFunction wrapper =
+        [](ServerCall& call, const void* req, BaseServerWriter& writer) {
+          return CallMethodImplFunction<method>(
+              call,
+              *static_cast<const Request<method>*>(req),
+              static_cast<ServerWriter<Response<method>>&>(writer));
+        };
     return NanopbMethod(
         id,
         ServerStreamingInvoker<AllocateSpaceFor<Request<method>>()>,
-        Function{.server_streaming =
-                     [](ServerCall& call,
-                        const void* req,
-                        BaseServerWriter& writer) {
-                       method(call,
-                              *static_cast<const Request<method>*>(req),
-                              static_cast<ServerWriter<Response<method>>&>(
-                                  writer));
-                     }},
+        Function{.server_streaming = wrapper},
         request,
         response);
+  }
+
+  // Represents an invalid method. Used to reduce error message verbosity.
+  static constexpr NanopbMethod Invalid() {
+    return {0, InvalidInvoker, {}, nullptr, nullptr};
   }
 
   // Encodes a response protobuf with Nanopb to the provided buffer.
@@ -219,7 +225,7 @@ class NanopbMethod : public Method {
   // avoid generating unnecessary copies of the invoker functions.
   template <typename T>
   static constexpr size_t AllocateSpaceFor() {
-    return std::max(sizeof(T), size_t(64));
+    return std::max(sizeof(T), cfg::kNanopbStructMinBufferSize);
   }
 
   constexpr NanopbMethod(uint32_t id,
@@ -243,13 +249,15 @@ class NanopbMethod : public Method {
   // Invoker function for unary RPCs. Allocates request and response structs by
   // size, with maximum alignment, to avoid generating unnecessary copies of
   // this function for each request/response type.
-  template <size_t request_size, size_t response_size>
+  template <size_t kRequestSize, size_t kResponseSize>
   static void UnaryInvoker(const Method& method,
                            ServerCall& call,
                            const Packet& request) {
-    std::aligned_storage_t<request_size, alignof(std::max_align_t)>
+    _PW_RPC_NANOPB_STRUCT_STORAGE_CLASS
+    std::aligned_storage_t<kRequestSize, alignof(std::max_align_t)>
         request_struct{};
-    std::aligned_storage_t<response_size, alignof(std::max_align_t)>
+    _PW_RPC_NANOPB_STRUCT_STORAGE_CLASS
+    std::aligned_storage_t<kResponseSize, alignof(std::max_align_t)>
         response_struct{};
 
     static_cast<const NanopbMethod&>(method).CallUnary(
@@ -259,11 +267,12 @@ class NanopbMethod : public Method {
   // Invoker function for server streaming RPCs. Allocates space for a request
   // struct. Ignores the payload buffer since resposnes are sent through the
   // ServerWriter.
-  template <size_t request_size>
+  template <size_t kRequestSize>
   static void ServerStreamingInvoker(const Method& method,
                                      ServerCall& call,
                                      const Packet& request) {
-    std::aligned_storage_t<request_size, alignof(std::max_align_t)>
+    _PW_RPC_NANOPB_STRUCT_STORAGE_CLASS
+    std::aligned_storage_t<kRequestSize, alignof(std::max_align_t)>
         request_struct{};
 
     static_cast<const NanopbMethod&>(method).CallServerStreaming(
@@ -293,6 +302,10 @@ class NanopbMethod : public Method {
 
 template <typename T>
 Status ServerWriter<T>::Write(const T& response) {
+  if (!open()) {
+    return Status::FailedPrecondition();
+  }
+
   std::span<std::byte> buffer = AcquirePayloadBuffer();
 
   if (auto result =

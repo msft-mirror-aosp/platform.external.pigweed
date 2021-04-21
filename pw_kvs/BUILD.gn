@@ -14,6 +14,7 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/module_config.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
@@ -40,6 +41,7 @@ pw_source_set("pw_kvs") {
     "public/pw_kvs/flash_test_partition.h",
     "public/pw_kvs/format.h",
     "public/pw_kvs/io.h",
+    "public/pw_kvs/key.h",
     "public/pw_kvs/key_value_store.h",
   ]
   sources = [
@@ -60,9 +62,10 @@ pw_source_set("pw_kvs") {
   ]
   public_deps = [
     dir_pw_assert,
+    dir_pw_bytes,
     dir_pw_containers,
-    dir_pw_span,
     dir_pw_status,
+    dir_pw_string,
   ]
   deps = [
     ":config",
@@ -103,7 +106,6 @@ pw_source_set("fake_flash") {
   public_deps = [
     dir_pw_containers,
     dir_pw_kvs,
-    dir_pw_span,
     dir_pw_status,
   ]
   deps = [
@@ -120,6 +122,22 @@ pw_source_set("fake_flash_small_partition") {
   deps = [
     ":fake_flash",
     dir_pw_kvs,
+  ]
+}
+
+pw_source_set("fake_flash_12_byte_partition") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_kvs/flash_test_partition.h" ]
+  sources = [ "fake_flash_test_partition.cc" ]
+  public_deps = [ ":flash_test_partition" ]
+  deps = [
+    ":fake_flash",
+    dir_pw_kvs,
+  ]
+  defines = [
+    "PW_FLASH_TEST_SECTORS=3",
+    "PW_FLASH_TEST_SECTOR_SIZE=4",
+    "PW_FLASH_TEST_ALIGNMENT=4",
   ]
 }
 
@@ -221,6 +239,7 @@ pw_test_group("tests") {
   tests = [
     ":alignment_test",
     ":checksum_test",
+    ":converts_to_span_test",
     ":entry_test",
     ":entry_cache_test",
     ":flash_partition_small_test",
@@ -235,6 +254,7 @@ pw_test_group("tests") {
     ":key_value_store_map_test",
     ":fake_flash_test_key_value_store_test",
     ":sectors_test",
+    ":key_test",
     ":key_value_store_wear_test",
   ]
 }
@@ -251,6 +271,11 @@ pw_test("checksum_test") {
     dir_pw_log,
   ]
   sources = [ "checksum_test.cc" ]
+}
+
+pw_test("converts_to_span_test") {
+  deps = [ ":pw_kvs" ]
+  sources = [ "converts_to_span_test.cc" ]
 }
 
 pw_test("entry_test") {
@@ -379,6 +404,11 @@ pw_test("sectors_test") {
   sources = [ "sectors_test.cc" ]
 }
 
+pw_test("key_test") {
+  deps = [ ":pw_kvs" ]
+  sources = [ "key_test.cc" ]
+}
+
 pw_test("key_value_store_wear_test") {
   deps = [
     ":fake_flash",
@@ -391,4 +421,29 @@ pw_test("key_value_store_wear_test") {
 
 pw_doc_group("docs") {
   sources = [ "docs.rst" ]
+  report_deps = [ ":kvs_size" ]
+}
+
+pw_size_report("kvs_size") {
+  title = "Pigweed KVS size report"
+
+  # To see all the symbols, uncomment the following:
+  # Note: The size report RST table won't be generated when full_report = true.
+  # full_report = true
+
+  binaries = [
+    {
+      target = "size_report:with_kvs"
+      base = "size_report:base_with_only_flash"
+      label = "KeyValueStore"
+    },
+  ]
+
+  binaries += [
+    {
+      target = "size_report:base_with_only_flash"
+      base = "size_report:base"
+      label = "FlashPartition"
+    },
+  ]
 }

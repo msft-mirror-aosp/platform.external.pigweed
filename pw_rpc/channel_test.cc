@@ -28,7 +28,9 @@ TEST(ChannelOutput, Name) {
    public:
     NameTester(const char* name) : ChannelOutput(name) {}
     std::span<std::byte> AcquireBuffer() override { return {}; }
-    Status SendAndReleaseBuffer(size_t) override { return Status::Ok(); }
+    Status SendAndReleaseBuffer(std::span<const std::byte>) override {
+      return OkStatus();
+    }
   };
 
   EXPECT_STREQ("hello_world", NameTester("hello_world").name());
@@ -39,6 +41,18 @@ constexpr Packet kTestPacket(PacketType::RESPONSE, 1, 42, 100);
 const size_t kReservedSize = 2 /* type */ + 2 /* channel */ + 5 /* service */ +
                              5 /* method */ + 2 /* payload key */ +
                              2 /* status */;
+
+enum class ChannelId {
+  kOne = 1,
+  kTwo = 2,
+};
+
+TEST(Channel, Create_FromEnum) {
+  constexpr rpc::Channel one = Channel::Create<ChannelId::kOne>(nullptr);
+  constexpr rpc::Channel two = Channel::Create<ChannelId::kTwo>(nullptr);
+  static_assert(one.id() == 1);
+  static_assert(two.id() == 2);
+}
 
 TEST(Channel, TestPacket_ReservedSizeMatchesMinEncodedSizeBytes) {
   EXPECT_EQ(kReservedSize, kTestPacket.MinEncodedSizeBytes());
@@ -72,7 +86,7 @@ TEST(Channel, OutputBuffer_ExactFit) {
   EXPECT_EQ(payload.size(), output.buffer().size() - kReservedSize);
   EXPECT_EQ(output.buffer().data() + kReservedSize, payload.data());
 
-  EXPECT_EQ(Status::Ok(), channel.Send(output_buffer, kTestPacket));
+  EXPECT_EQ(OkStatus(), channel.Send(output_buffer, kTestPacket));
 }
 
 TEST(Channel, OutputBuffer_PayloadDoesNotFit_ReportsError) {
@@ -96,7 +110,7 @@ TEST(Channel, OutputBuffer_ExtraRoom) {
   EXPECT_EQ(payload.size(), output.buffer().size() - kReservedSize);
   EXPECT_EQ(output.buffer().data() + kReservedSize, payload.data());
 
-  EXPECT_EQ(Status::Ok(), channel.Send(output_buffer, kTestPacket));
+  EXPECT_EQ(OkStatus(), channel.Send(output_buffer, kTestPacket));
 }
 
 TEST(Channel, OutputBuffer_ReturnsStatusFromChannelOutputSend) {
