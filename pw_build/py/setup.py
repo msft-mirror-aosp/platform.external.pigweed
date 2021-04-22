@@ -26,5 +26,13 @@ setuptools.setup(
     zip_safe=False,
     install_requires=[
         'wheel',
+        'pw_cli',
+        'pw_env_setup',
+        'pw_presubmit',
     ],
+    entry_points={
+        'console_scripts': [
+            'copy_from_cipd = pw_build.copy_from_cipd:main',
+        ],
+    },
 )

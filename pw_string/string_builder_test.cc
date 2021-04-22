@@ -102,8 +102,8 @@ TEST(StringBuilder, EmptyBuffer_Resize_WritesNothing) {
 
 TEST(StringBuilder, EmptyBuffer_AppendEmpty_ResourceExhausted) {
   StringBuilder sb(std::span<char>{});
-  EXPECT_EQ(Status::Ok(), sb.last_status());
-  EXPECT_EQ(Status::Ok(), sb.status());
+  EXPECT_EQ(OkStatus(), sb.last_status());
+  EXPECT_EQ(OkStatus(), sb.status());
 
   sb << "";
 
@@ -113,8 +113,8 @@ TEST(StringBuilder, EmptyBuffer_AppendEmpty_ResourceExhausted) {
 
 TEST(StringBuilder, Status_StartsOk) {
   StringBuffer<16> sb;
-  EXPECT_EQ(Status::Ok(), sb.status());
-  EXPECT_EQ(Status::Ok(), sb.last_status());
+  EXPECT_EQ(OkStatus(), sb.status());
+  EXPECT_EQ(OkStatus(), sb.last_status());
 }
 
 TEST(StringBuilder, Status_StatusAndLastStatusUpdate) {
@@ -129,7 +129,7 @@ TEST(StringBuilder, Status_StatusAndLastStatusUpdate) {
 
   sb << "";
   EXPECT_EQ(Status::OutOfRange(), sb.status());
-  EXPECT_EQ(Status::Ok(), sb.last_status());
+  EXPECT_EQ(OkStatus(), sb.last_status());
 }
 
 TEST(StringBuilder, Status_ClearStatus_SetsStatuesToOk) {
@@ -138,8 +138,8 @@ TEST(StringBuilder, Status_ClearStatus_SetsStatuesToOk) {
   EXPECT_EQ(Status::ResourceExhausted(), sb.last_status());
 
   sb.clear_status();
-  EXPECT_EQ(Status::Ok(), sb.status());
-  EXPECT_EQ(Status::Ok(), sb.last_status());
+  EXPECT_EQ(OkStatus(), sb.status());
+  EXPECT_EQ(OkStatus(), sb.last_status());
 }
 
 TEST(StringBuilder, StreamOutput_OutputSelf) {
@@ -153,7 +153,7 @@ TEST(StringBuilder, StreamOutput_OutputSelf) {
 TEST(StringBuilder, PushBack) {
   StringBuffer<12> sb;
   sb.push_back('?');
-  EXPECT_EQ(Status::Ok(), sb.last_status());
+  EXPECT_EQ(OkStatus(), sb.last_status());
   EXPECT_EQ(1u, sb.size());
   EXPECT_STREQ("?", sb.data());
 }
@@ -168,7 +168,7 @@ TEST(StringBuilder, PushBack_Full) {
 TEST(StringBuilder, PopBack) {
   auto sb = MakeString<12>("Welcome!");
   sb.pop_back();
-  EXPECT_EQ(Status::Ok(), sb.last_status());
+  EXPECT_EQ(OkStatus(), sb.last_status());
   EXPECT_EQ(7u, sb.size());
   EXPECT_STREQ("Welcome", sb.data());
 }
@@ -362,7 +362,7 @@ TEST(StringBuilder, SteamOutput_StringView) {
   constexpr std::string_view hello("hello");
 
   buffer << hello;
-  EXPECT_EQ(Status::Ok(), buffer.status());
+  EXPECT_EQ(OkStatus(), buffer.status());
   EXPECT_STREQ("hello", buffer.data());
 }
 
@@ -422,7 +422,7 @@ TEST(StringBuffer, CopyConstructFromSameSize) {
   two << "";
   ASSERT_STREQ("What heck", two.data());
   ASSERT_EQ(Status::ResourceExhausted(), two.status());
-  ASSERT_EQ(Status::Ok(), two.last_status());
+  ASSERT_EQ(OkStatus(), two.last_status());
 }
 
 TEST(StringBuffer, CopyConstructFromSmaller) {
@@ -521,13 +521,18 @@ TEST(MakeString, LargerThanDefaultSize_Truncates) {
 TEST(MakeString, StringLiteral_ResizesToFitWholeLiteral) {
   EXPECT_STREQ("", MakeString().data());
 
-  auto normal = MakeString("");
+  [[maybe_unused]] auto normal = MakeString("");
   static_assert(normal.max_size() == decltype(MakeString(1))::max_size());
+  EXPECT_EQ(normal.max_size(), decltype(MakeString(1))::max_size());
 
-  auto resized = MakeString("This string is reeeeeeeeeaaaaallly long!!!!!");
+  [[maybe_unused]] auto resized =
+      MakeString("This string is reeeeeeeeeaaaaallly long!!!!!");
   static_assert(resized.max_size() > decltype(MakeString(1))::max_size());
   static_assert(resized.max_size() ==
                 sizeof("This string is reeeeeeeeeaaaaallly long!!!!!") - 1);
+  EXPECT_GT(resized.max_size(), decltype(MakeString(1))::max_size());
+  EXPECT_EQ(resized.max_size(),
+            sizeof("This string is reeeeeeeeeaaaaallly long!!!!!") - 1);
 }
 
 TEST(MakeString, StringLiteral_UsesLongerFixedSize) {
@@ -582,5 +587,42 @@ static_assert(DefaultStringBufferSize(1234, 5678, 9012, 3456, 7890, 1234) ==
               25);
 static_assert(DefaultStringBufferSize('a', nullptr, 'b', 4, 5, 6, 7, 8) == 33);
 
+struct SomeCustomType {};
+
+StringBuilder& operator<<(StringBuilder& sb, const SomeCustomType&) {
+  return sb << "SomeCustomType was here!";
+}
+
+TEST(StringBuilder, ShiftOperatorOverload_SameNamsepace) {
+  pw::StringBuffer<48> buffer;
+  buffer << SomeCustomType{};
+
+  EXPECT_STREQ("SomeCustomType was here!", buffer.c_str());
+}
+
 }  // namespace
 }  // namespace pw
+
+namespace some_other_ns {
+
+struct MyCustomType {
+  int item;
+};
+
+pw::StringBuilder& operator<<(pw::StringBuilder& sb,
+                              const MyCustomType& value) {
+  return sb << "MyCustomType(" << value.item << ')';
+}
+
+}  // namespace some_other_ns
+
+namespace pw_test_namespace {
+
+TEST(StringBuilder, ShiftOperatorOverload_DifferentNamsepace) {
+  pw::StringBuffer<48> buffer;
+  buffer << "This is " << some_other_ns::MyCustomType{1138};
+
+  EXPECT_STREQ("This is MyCustomType(1138)", buffer.data());
+}
+
+}  // namespace pw_test_namespace

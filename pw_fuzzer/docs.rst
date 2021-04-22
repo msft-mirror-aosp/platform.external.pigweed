@@ -25,7 +25,7 @@ steps that it executes repeatedly:
 
 .. note::
 
-  ``pw_fuzzer`` is currently only supported on Linux using clang.
+  ``pw_fuzzer`` is currently only supported on Linux and MacOS using clang.
 
 .. image:: doc_resources/pw_fuzzer_coverage_guided.png
    :alt: Coverage Guided Fuzzing with libFuzzer
@@ -88,12 +88,12 @@ To build a fuzzer, do the following:
     ]
   }
 
-2. Select the clang toolchain and a sanitizer of your choice. See LLVM for
-   `valid options`_.
+2. Select your choice of sanitizers ("address" is also the current default).
+   See LLVM for `valid options`_.
 
 .. code:: sh
 
-  $ gn gen out/host --args='pw_target_toolchain="//pw_toolchain:host_clang_og" pw_sanitizer="address"'
+  $ gn gen out --args='pw_toolchain_SANITIZERS=["address"]'
 
 3. Build normally, e.g. using ``pw watch``.
 
@@ -113,7 +113,12 @@ saves failing inputs to ``artifacts/``, treats any input that takes longer than
 
 .. code::
 
-  $ ASAN_OPTIONS=detect_odr_violation=0 ./out/host/obj/pw_fuzzer/toy_fuzzer -artifact_prefix=artifacts/ -timeout=10 corpus
+  $ mkdir -p corpus
+  $ ASAN_OPTIONS=detect_odr_violation=0 \
+      out/host_clang_fuzz/obj/pw_fuzzer/bin/toy_fuzzer \
+      -artifact_prefix=artifacts/ \
+      -timeout=10 \
+      corpus
   INFO: Seed: 305325345
   INFO: Loaded 1 modules   (46 inline 8-bit counters): 46 [0x38dfc0, 0x38dfee),
   INFO: Loaded 1 PC tables (46 PCs): 46 [0x23aaf0,0x23add0),

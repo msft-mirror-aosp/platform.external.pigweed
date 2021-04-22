@@ -14,22 +14,12 @@
 
 import("//build_overrides/pigweed.gni")
 
-import("$dir_pw_build/module_config.gni")
+import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_protobuf_compiler/proto.gni")
+import("$dir_pw_third_party/nanopb/nanopb.gni")
 import("$dir_pw_unit_test/test.gni")
-
-declare_args() {
-  # The build target that overrides the default configuration options for this
-  # module. This should point to a source set that provides defines through a
-  # public config (which may -include a file or add defines directly).
-  pw_trace_CONFIG = pw_build_DEFAULT_MODULE_CONFIG
-
-  # Tokenizer trace time, gets included if provided
-  pw_trace_tokenizer_time = ""
-
-  # Trace buffer size in bytes. Set to 0 to disable.
-  pw_trace_tokenized_BUFFER_SIZE = 256
-}
+import("config.gni")
 
 config("public_include_path") {
   include_dirs = [ "public" ]
@@ -61,7 +51,7 @@ pw_source_set("pw_trace_tokenized") {
   ]
   public_deps = [
     ":config",
-    ":pw_trace_tokenized_core",
+    ":core",
     "$dir_pw_tokenizer",
   ]
   if (pw_trace_tokenizer_time != "") {
@@ -74,7 +64,7 @@ pw_source_set("pw_trace_tokenized") {
 pw_test("trace_tokenized_test") {
   enable_if = pw_trace_tokenizer_time != ""
   deps = [
-    ":pw_trace_tokenized_core",
+    ":core",
     "$dir_pw_trace",
   ]
 
@@ -85,8 +75,28 @@ config("trace_buffer_size") {
   defines = [ "PW_TRACE_BUFFER_SIZE_BYTES=${pw_trace_tokenized_BUFFER_SIZE}" ]
 }
 
+pw_proto_library("trace_rpc_service_proto") {
+  sources = [ "pw_trace_protos/trace_rpc.proto" ]
+  inputs = [ "pw_trace_protos/trace_rpc.options" ]
+}
+
+pw_source_set("trace_rpc_service") {
+  public_configs = [ ":public_include_path" ]
+  public_deps = [ ":trace_rpc_service_proto.nanopb_rpc" ]
+  deps = [
+    ":core",
+    ":tokenized_trace_buffer",
+    "$dir_pw_log",
+    "$dir_pw_trace",
+  ]
+  sources = [
+    "public/pw_trace_tokenized/trace_rpc_service_nanopb.h",
+    "trace_rpc_service_nanopb.cc",
+  ]
+}
+
 pw_source_set("tokenized_trace_buffer") {
-  deps = [ ":pw_trace_tokenized_core" ]
+  deps = [ ":core" ]
   public_deps = [
     ":config",
     "$dir_pw_ring_buffer",
@@ -132,16 +142,16 @@ pw_test("tokenized_trace_buffer_log_test") {
 }
 
 pw_source_set("fake_trace_time") {
-  deps = [ ":pw_trace_tokenized_core" ]
+  deps = [ ":core" ]
   sources = [ "fake_trace_time.cc" ]
 }
 
 pw_source_set("host_trace_time") {
-  deps = [ ":pw_trace_tokenized_core" ]
+  deps = [ ":core" ]
   sources = [ "host_trace_time.cc" ]
 }
 
-pw_source_set("pw_trace_tokenized_core") {
+pw_source_set("core") {
   public_configs = [
     ":backend_config",
     ":public_include_path",
@@ -163,6 +173,7 @@ pw_source_set("pw_trace_tokenized_core") {
     "public/pw_trace_tokenized/trace_tokenized.h",
   ]
   sources = [ "trace.cc" ]
+  visibility = [ ":*" ]
 }
 
 pw_doc_group("docs") {
@@ -208,4 +219,22 @@ pw_executable("trace_tokenized_example_filter") {
     "$dir_pw_trace:trace_sample_app",
   ]
   sources = [ "example/filter.cc" ]
+}
+
+if (dir_pw_third_party_nanopb == "") {
+  group("trace_tokenized_example_rpc") {
+  }
+} else {
+  pw_executable("trace_tokenized_example_rpc") {
+    sources = [ "example/rpc.cc" ]
+    deps = [
+      ":trace_rpc_service",
+      "$dir_pw_hdlc",
+      "$dir_pw_log",
+      "$dir_pw_rpc:server",
+      "$dir_pw_rpc/system_server",
+      "$dir_pw_trace",
+      "$dir_pw_trace:trace_sample_app",
+    ]
+  }
 }

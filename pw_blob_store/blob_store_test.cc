@@ -73,23 +73,23 @@ class BlobStoreTest : public ::testing::Test {
     snprintf(name, sizeof(name), "TestBlobBlock");
 
     BlobStoreBuffer<kBufferSize> blob(
-        name, partition_, &checksum, kvs::TestKvs());
-    EXPECT_EQ(Status::Ok(), blob.Init());
+        name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+    EXPECT_EQ(OkStatus(), blob.Init());
 
     BlobStore::BlobWriter writer(blob);
-    EXPECT_EQ(Status::OK, writer.Open());
-    ASSERT_EQ(Status::OK, writer.Write(write_data));
-    EXPECT_EQ(Status::OK, writer.Close());
+    EXPECT_EQ(OkStatus(), writer.Open());
+    ASSERT_EQ(OkStatus(), writer.Write(write_data));
+    EXPECT_EQ(OkStatus(), writer.Close());
 
     // Use reader to check for valid data.
     BlobStore::BlobReader reader(blob);
-    ASSERT_EQ(Status::Ok(), reader.Open());
+    ASSERT_EQ(OkStatus(), reader.Open());
     Result<ConstByteSpan> result = reader.GetMemoryMappedBlob();
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(write_size_bytes, result.value().size_bytes());
-    VerifyFlash(result.value());
-    VerifyFlash(flash_.buffer());
-    EXPECT_EQ(Status::OK, reader.Close());
+    VerifyFlash(result.value().first(write_size_bytes));
+    VerifyFlash(flash_.buffer().first(write_size_bytes));
+    EXPECT_EQ(OkStatus(), reader.Close());
   }
 
   // Open a new blob instance and read the blob using the given read chunk size.
@@ -99,23 +99,25 @@ class BlobStoreTest : public ::testing::Test {
     VerifyFlash(flash_.buffer());
 
     char name[16] = "TestBlobBlock";
-    BlobStoreBuffer<16> blob(name, partition_, &checksum, kvs::TestKvs());
-    EXPECT_EQ(Status::Ok(), blob.Init());
+    constexpr size_t kBufferSize = 16;
+    BlobStoreBuffer<kBufferSize> blob(
+        name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+    EXPECT_EQ(OkStatus(), blob.Init());
 
     // Use reader to check for valid data.
     BlobStore::BlobReader reader1(blob);
-    ASSERT_EQ(Status::Ok(), reader1.Open());
+    ASSERT_EQ(OkStatus(), reader1.Open());
     Result<ConstByteSpan> possible_blob = reader1.GetMemoryMappedBlob();
     ASSERT_TRUE(possible_blob.ok());
     VerifyFlash(possible_blob.value());
-    EXPECT_EQ(Status::Ok(), reader1.Close());
+    EXPECT_EQ(OkStatus(), reader1.Close());
 
     BlobStore::BlobReader reader(blob);
-    ASSERT_EQ(Status::Ok(), reader.Open());
+    ASSERT_EQ(OkStatus(), reader.Open());
 
-    std::array<std::byte, kBlobDataSize> read_buffer_;
+    std::array<std::byte, kBlobDataSize> read_buffer;
 
-    ByteSpan read_span = read_buffer_;
+    ByteSpan read_span = read_buffer;
     while (read_span.size_bytes() > 0) {
       size_t read_size = std::min(read_span.size_bytes(), read_chunk_size);
 
@@ -125,12 +127,12 @@ class BlobStoreTest : public ::testing::Test {
 
       ASSERT_EQ(read_span.size_bytes(), reader.ConservativeReadLimit());
       auto result = reader.Read(read_span.first(read_size));
-      ASSERT_EQ(result.status(), Status::Ok());
+      ASSERT_EQ(result.status(), OkStatus());
       read_span = read_span.subspan(read_size);
     }
-    EXPECT_EQ(Status::Ok(), reader.Close());
+    EXPECT_EQ(OkStatus(), reader.Close());
 
-    VerifyFlash(read_buffer_);
+    VerifyFlash(read_buffer);
   }
 
   void VerifyFlash(ConstByteSpan verify_bytes, size_t offset = 0) {
@@ -158,8 +160,42 @@ class BlobStoreTest : public ::testing::Test {
 TEST_F(BlobStoreTest, Init_Ok) {
   // TODO: Do init test with flash/kvs explicitly in the different possible
   // entry states.
-  BlobStoreBuffer<256> blob("Blob_OK", partition_, nullptr, kvs::TestKvs());
-  EXPECT_EQ(Status::Ok(), blob.Init());
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      "Blob_OK", partition_, nullptr, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+}
+
+TEST_F(BlobStoreTest, IsOpen) {
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      "Blob_open", partition_, nullptr, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+
+  BlobStore::DeferredWriter deferred_writer(blob);
+  EXPECT_EQ(false, deferred_writer.IsOpen());
+  EXPECT_EQ(OkStatus(), deferred_writer.Open());
+  EXPECT_EQ(true, deferred_writer.IsOpen());
+  EXPECT_EQ(OkStatus(), deferred_writer.Close());
+  EXPECT_EQ(false, deferred_writer.IsOpen());
+
+  BlobStore::BlobWriter writer(blob);
+  EXPECT_EQ(false, writer.IsOpen());
+  EXPECT_EQ(OkStatus(), writer.Open());
+  EXPECT_EQ(true, writer.IsOpen());
+
+  // Need to write something, so the blob reader is able to open.
+  std::array<std::byte, 64> tmp_buffer = {};
+  EXPECT_EQ(OkStatus(), writer.Write(tmp_buffer));
+  EXPECT_EQ(OkStatus(), writer.Close());
+  EXPECT_EQ(false, writer.IsOpen());
+
+  BlobStore::BlobReader reader(blob);
+  EXPECT_EQ(false, reader.IsOpen());
+  ASSERT_EQ(OkStatus(), reader.Open());
+  EXPECT_EQ(true, reader.IsOpen());
+  EXPECT_EQ(OkStatus(), reader.Close());
+  EXPECT_EQ(false, reader.IsOpen());
 }
 
 TEST_F(BlobStoreTest, Discard) {
@@ -173,39 +209,43 @@ TEST_F(BlobStoreTest, Discard) {
   // TODO: Do this test with flash/kvs in the different entry state
   // combinations.
 
-  BlobStoreBuffer<256> blob(blob_title, partition_, &checksum, kvs::TestKvs());
-  EXPECT_EQ(Status::OK, blob.Init());
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      blob_title, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
 
   BlobStore::BlobWriter writer(blob);
 
-  EXPECT_EQ(Status::OK, writer.Open());
-  EXPECT_EQ(Status::OK, writer.Write(tmp_buffer));
+  EXPECT_EQ(OkStatus(), writer.Open());
+  EXPECT_EQ(OkStatus(), writer.Write(tmp_buffer));
 
   // The write does an implicit erase so there should be no key for this blob.
-  EXPECT_EQ(Status::NOT_FOUND,
+  EXPECT_EQ(Status::NotFound(),
             kvs::TestKvs().Get(blob_title, tmp_buffer).status());
-  EXPECT_EQ(Status::OK, writer.Close());
+  EXPECT_EQ(OkStatus(), writer.Close());
 
-  EXPECT_EQ(Status::OK, kvs::TestKvs().Get(blob_title, tmp_buffer).status());
+  EXPECT_EQ(OkStatus(), kvs::TestKvs().Get(blob_title, tmp_buffer).status());
 
-  EXPECT_EQ(Status::OK, writer.Open());
-  EXPECT_EQ(Status::OK, writer.Discard());
-  EXPECT_EQ(Status::OK, writer.Close());
+  EXPECT_EQ(OkStatus(), writer.Open());
+  EXPECT_EQ(OkStatus(), writer.Discard());
+  EXPECT_EQ(OkStatus(), writer.Close());
 
-  EXPECT_EQ(Status::NOT_FOUND,
+  EXPECT_EQ(Status::NotFound(),
             kvs::TestKvs().Get(blob_title, tmp_buffer).status());
 }
 
 TEST_F(BlobStoreTest, MultipleErase) {
-  BlobStoreBuffer<256> blob("Blob_OK", partition_, nullptr, kvs::TestKvs());
-  EXPECT_EQ(Status::Ok(), blob.Init());
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      "Blob_OK", partition_, nullptr, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
 
   BlobStore::BlobWriter writer(blob);
-  EXPECT_EQ(Status::Ok(), writer.Open());
+  EXPECT_EQ(OkStatus(), writer.Open());
 
-  EXPECT_EQ(Status::Ok(), writer.Erase());
-  EXPECT_EQ(Status::Ok(), writer.Erase());
-  EXPECT_EQ(Status::Ok(), writer.Erase());
+  EXPECT_EQ(OkStatus(), writer.Erase());
+  EXPECT_EQ(OkStatus(), writer.Erase());
+  EXPECT_EQ(OkStatus(), writer.Erase());
 }
 
 TEST_F(BlobStoreTest, OffsetRead) {
@@ -218,19 +258,21 @@ TEST_F(BlobStoreTest, OffsetRead) {
   kvs::ChecksumCrc16 checksum;
 
   char name[16] = "TestBlobBlock";
-  BlobStoreBuffer<16> blob(name, partition_, &checksum, kvs::TestKvs());
-  EXPECT_EQ(Status::Ok(), blob.Init());
+  constexpr size_t kBufferSize = 16;
+  BlobStoreBuffer<kBufferSize> blob(
+      name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
   BlobStore::BlobReader reader(blob);
-  ASSERT_EQ(Status::Ok(), reader.Open(kOffset));
+  ASSERT_EQ(OkStatus(), reader.Open(kOffset));
 
-  std::array<std::byte, kBlobDataSize - kOffset> read_buffer_;
-  ByteSpan read_span = read_buffer_;
+  std::array<std::byte, kBlobDataSize - kOffset> read_buffer;
+  ByteSpan read_span = read_buffer;
   ASSERT_EQ(read_span.size_bytes(), reader.ConservativeReadLimit());
 
   auto result = reader.Read(read_span);
-  ASSERT_EQ(result.status(), Status::Ok());
-  EXPECT_EQ(Status::Ok(), reader.Close());
-  VerifyFlash(read_buffer_, kOffset);
+  ASSERT_EQ(result.status(), OkStatus());
+  EXPECT_EQ(OkStatus(), reader.Close());
+  VerifyFlash(read_buffer, kOffset);
 }
 
 TEST_F(BlobStoreTest, InvalidReadOffset) {
@@ -242,10 +284,38 @@ TEST_F(BlobStoreTest, InvalidReadOffset) {
   kvs::ChecksumCrc16 checksum;
 
   char name[16] = "TestBlobBlock";
-  BlobStoreBuffer<16> blob(name, partition_, &checksum, kvs::TestKvs());
-  EXPECT_EQ(Status::Ok(), blob.Init());
+  constexpr size_t kBufferSize = 16;
+  BlobStoreBuffer<kBufferSize> blob(
+      name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
   BlobStore::BlobReader reader(blob);
   ASSERT_EQ(Status::InvalidArgument(), reader.Open(kOffset));
+}
+
+// Test reading with a read buffer larger than the available data in the
+TEST_F(BlobStoreTest, ReadBufferIsLargerThanData) {
+  InitSourceBufferToRandom(0x57326);
+
+  constexpr size_t kWriteBytes = 64;
+  WriteTestBlock(kWriteBytes);
+
+  kvs::ChecksumCrc16 checksum;
+
+  char name[16] = "TestBlobBlock";
+  constexpr size_t kBufferSize = 16;
+  BlobStoreBuffer<kBufferSize> blob(
+      name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+  EXPECT_EQ(kWriteBytes, reader.ConservativeReadLimit());
+
+  std::array<std::byte, kWriteBytes + 10> read_buffer;
+  ByteSpan read_span = read_buffer;
+
+  auto result = reader.Read(read_span);
+  ASSERT_EQ(result.status(), OkStatus());
+  EXPECT_EQ(OkStatus(), reader.Close());
 }
 
 TEST_F(BlobStoreTest, ChunkRead1) {
