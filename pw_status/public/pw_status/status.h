@@ -32,7 +32,7 @@ typedef enum {
   // success. It is typical to check for this value before proceeding on any
   // given call across an API or RPC boundary. To check this value, use the
   // `Status::ok()` member function rather than inspecting the raw code.
-  PW_STATUS_OK = 0,  // Use Status::Ok() in C++
+  PW_STATUS_OK = 0,  // Use OkStatus() in C++
 
   // Cancelled (gRPC code "CANCELLED") indicates the operation was cancelled,
   // typically by the caller.
@@ -180,77 +180,17 @@ const char* pw_StatusString(pw_Status status);
 
 }  // extern "C"
 
-// This header violates the Pigweed style guide! It declares constants that use
-// macro naming style, rather than constant naming style (kConstant). This is
-// done for readability and for consistency with Google's standard status codes
-// (e.g. as in gRPC).
-//
-// The problem is that the status code names might overlap with macro
-// definitions. To workaround this, this header undefines any macros with these
-// names.
-//
-// If your project relies on a macro with one of these names (e.g. INTERNAL),
-// make sure it is included after status.h so that the macro is defined.
-//
-// TODO(pwbug/268): Remove these #undefs after removing the names that violate
-//     the style guide.
-#undef OK
-#undef CANCELLED
-#undef UNKNOWN
-#undef INVALID_ARGUMENT
-#undef DEADLINE_EXCEEDED
-#undef NOT_FOUND
-#undef ALREADY_EXISTS
-#undef PERMISSION_DENIED
-#undef UNAUTHENTICATED
-#undef RESOURCE_EXHAUSTED
-#undef FAILED_PRECONDITION
-#undef ABORTED
-#undef OUT_OF_RANGE
-#undef UNIMPLEMENTED
-#undef INTERNAL
-#undef UNAVAILABLE
-#undef DATA_LOSS
-
 namespace pw {
 
 // The Status class is a thin, zero-cost abstraction around the pw_Status enum.
-// It initializes to Status::Ok() by default and adds ok() and str() methods.
+// It initializes to OkStatus() by default and adds ok() and str() methods.
 // Implicit conversions are permitted between pw_Status and pw::Status.
 class Status {
  public:
   using Code = pw_Status;
 
-  // All of the pw_Status codes are available in the Status class as, e.g.
-  // pw::Status::Ok() or pw::Status::OutOfRange().
-  //
-  // These aliases are DEPRECATED -- prefer using the helper functions below.
-  // For example, change Status::CANCELLED to Status::Cancelled().
-  //
-  // TODO(pwbug/268): Migrate to the helper functions and remove these aliases.
-  static constexpr Code OK = PW_STATUS_OK;
-  static constexpr Code CANCELLED = PW_STATUS_CANCELLED;
-  static constexpr Code UNKNOWN = PW_STATUS_UNKNOWN;
-  static constexpr Code INVALID_ARGUMENT = PW_STATUS_INVALID_ARGUMENT;
-  static constexpr Code DEADLINE_EXCEEDED = PW_STATUS_DEADLINE_EXCEEDED;
-  static constexpr Code NOT_FOUND = PW_STATUS_NOT_FOUND;
-  static constexpr Code ALREADY_EXISTS = PW_STATUS_ALREADY_EXISTS;
-  static constexpr Code PERMISSION_DENIED = PW_STATUS_PERMISSION_DENIED;
-  static constexpr Code UNAUTHENTICATED = PW_STATUS_UNAUTHENTICATED;
-  static constexpr Code RESOURCE_EXHAUSTED = PW_STATUS_RESOURCE_EXHAUSTED;
-  static constexpr Code FAILED_PRECONDITION = PW_STATUS_FAILED_PRECONDITION;
-  static constexpr Code ABORTED = PW_STATUS_ABORTED;
-  static constexpr Code OUT_OF_RANGE = PW_STATUS_OUT_OF_RANGE;
-  static constexpr Code UNIMPLEMENTED = PW_STATUS_UNIMPLEMENTED;
-  static constexpr Code INTERNAL = PW_STATUS_INTERNAL;
-  static constexpr Code UNAVAILABLE = PW_STATUS_UNAVAILABLE;
-  static constexpr Code DATA_LOSS = PW_STATUS_DATA_LOSS;
-
   // Functions that create a Status with the specified code.
   // clang-format off
-  [[nodiscard]] static constexpr Status Ok() {
-    return PW_STATUS_OK;
-  }
   [[nodiscard]] static constexpr Status Cancelled() {
     return PW_STATUS_CANCELLED;
   }
@@ -310,7 +250,7 @@ class Status {
   // Returns the Status::Code (pw_Status) for this Status.
   constexpr Code code() const { return code_; }
 
-  // True if the status is Status::Ok().
+  // True if the status is OK.
   [[nodiscard]] constexpr bool ok() const { return code_ == PW_STATUS_OK; }
 
   // Functions for checking which status this is.
@@ -369,6 +309,11 @@ class Status {
  private:
   Code code_;
 };
+
+// Returns an OK status. Equivalent to Status() or Status(PW_STATUS_OK). This
+// function is used instead of a Status::Ok() function, which would be too
+// similar to Status::ok().
+[[nodiscard]] constexpr Status OkStatus() { return Status(); }
 
 constexpr bool operator==(const Status& lhs, const Status& rhs) {
   return lhs.code() == rhs.code();

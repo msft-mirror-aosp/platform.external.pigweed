@@ -14,6 +14,7 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_build/python.gni")
 import("$dir_pw_docgen/docs.gni")
 
 # IMPORTANT: The compilation flags in this file must be kept in sync with
@@ -86,6 +87,12 @@ config("strict_warnings") {
   cflags_cc = [ "-Wnon-virtual-dtor" ]
 }
 
+# Thread safety warnings are only supported by Clang.
+config("clang_thread_safety_warnings") {
+  cflags = [ "-Wthread-safety" ]
+  defines = [ "_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS=1" ]
+}
+
 # This config contains warnings that we don't necessarily recommend projects
 # enable, but are enabled for upstream Pigweed for maximum project
 # compatibility.
@@ -94,6 +101,7 @@ config("extra_strict_warnings") {
     "-Wshadow",
     "-Wredundant-decls",
   ]
+  cflags_c = [ "-Wstrict-prototypes" ]
 }
 
 config("cpp11") {
@@ -124,8 +132,24 @@ pool("pip_pool") {
   depth = 1
 }
 
+pool("copy_from_cipd_pool") {
+  depth = 1
+}
+
+# Requirements for the pw_python_package lint targets.
+pw_python_requirements("python_lint") {
+  requirements = [
+    "build",
+    "mypy==0.800",
+    "pylint==2.6.0",
+  ]
+}
+
 pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
+  sources = [
+    "docs.rst",
+    "python.rst",
+  ]
 }
 
 # Pool to limit a single thread to download external Go packages at a time.

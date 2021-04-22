@@ -14,12 +14,11 @@
 
 #define PW_LOG_MODULE_NAME "KVS"
 #define PW_LOG_LEVEL PW_KVS_LOG_LEVEL
-#define PW_LOG_USE_ULTRA_SHORT_NAMES 1
 
 #include "pw_kvs/internal/sectors.h"
 
 #include "pw_kvs_private/config.h"
-#include "pw_log/log.h"
+#include "pw_log/shorter.h"
 
 namespace pw::kvs::internal {
 namespace {
@@ -111,7 +110,7 @@ Status Sectors::Find(FindMode find_mode,
       if ((find_mode == kAppendEntry) ||
           (sector->RecoverableBytes(sector_size_bytes) == 0)) {
         *found_sector = sector;
-        return Status::Ok();
+        return OkStatus();
       } else {
         if ((non_empty_least_reclaimable_sector == nullptr) ||
             (non_empty_least_reclaimable_sector->RecoverableBytes(
@@ -140,7 +139,7 @@ Status Sectors::Find(FindMode find_mode,
         Index(first_empty_sector));
     last_new_ = first_empty_sector;
     *found_sector = first_empty_sector;
-    return Status::Ok();
+    return OkStatus();
   }
 
   // Tier 3 check: If we got this far, use the sector with least recoverable
@@ -150,7 +149,7 @@ Status Sectors::Find(FindMode find_mode,
     DBG("  Found a usable sector %u, with %u B recoverable, in GC",
         Index(*found_sector),
         unsigned((*found_sector)->RecoverableBytes(sector_size_bytes)));
-    return Status::Ok();
+    return OkStatus();
   }
 
   // No sector was found.

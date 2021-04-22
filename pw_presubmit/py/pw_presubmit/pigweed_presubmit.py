@@ -20,6 +20,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import shutil
 import sys
 from typing import Sequence, IO, Tuple, Optional
 
@@ -32,31 +33,16 @@ except ImportError:
         os.path.abspath(__file__))))
     import pw_presubmit
 
-from pw_presubmit import build, cli, environment, format_code, git_repo
+import pw_package.pigweed_packages
+
+from pw_presubmit import build, cli, format_code, git_repo
 from pw_presubmit import call, filter_paths, plural, PresubmitContext
 from pw_presubmit import PresubmitFailure, Programs
 from pw_presubmit.install_hook import install_hook
 
 _LOG = logging.getLogger(__name__)
 
-
-#
-# Initialization
-#
-def init_cipd(ctx: PresubmitContext):
-    environment.init_cipd(ctx.root, ctx.output_dir)
-
-
-def init_virtualenv(ctx: PresubmitContext):
-    environment.init_virtualenv(
-        ctx.root,
-        ctx.output_dir,
-        gn_targets=(
-            f'{ctx.root}#:python.install',
-            f'{ctx.root}#:target_support_packages.install',
-        ),
-    )
-
+pw_package.pigweed_packages.initialize()
 
 # Trigger builds if files with these extensions change.
 _BUILD_EXTENSIONS = ('.py', '.rst', '.gn', '.gni',
@@ -64,7 +50,19 @@ _BUILD_EXTENSIONS = ('.py', '.rst', '.gn', '.gni',
 
 
 def _at_all_optimization_levels(target):
-    for level in ['debug', 'size_optimized', 'speed_optimized']:
+    levels = ('debug', 'size_optimized', 'speed_optimized')
+
+    # Skip optimized host GCC builds for now, since GCC sometimes emits spurious
+    # warnings.
+    #
+    #   -02: GCC 9.3 emits spurious maybe-uninitialized warnings
+    #   -0s: GCC 8.1 (Mingw-w64) emits a spurious nonnull warning
+    #
+    # TODO(pwbug/255): Enable optimized GCC builds when this is fixed.
+    if target == 'host_gcc':
+        levels = ('debug', )
+
+    for level in levels:
         yield f'{target}_{level}'
 
 
@@ -77,24 +75,47 @@ def gn_clang_build(ctx: PresubmitContext):
 
 
 @filter_paths(endswith=_BUILD_EXTENSIONS)
+def gn_gcc_build(ctx: PresubmitContext):
+    build.gn_gen(ctx.root, ctx.output_dir)
+    build.ninja(ctx.output_dir, *_at_all_optimization_levels('host_gcc'))
+
+
+_HOST_COMPILER = 'gcc' if sys.platform == 'win32' else 'clang'
+
+
+def gn_host_build(ctx: PresubmitContext):
+    build.gn_gen(ctx.root, ctx.output_dir)
+    build.ninja(ctx.output_dir,
+                *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'))
+
+
+@filter_paths(endswith=_BUILD_EXTENSIONS)
 def gn_quick_build_check(ctx: PresubmitContext):
     build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, 'host_clang_size_optimized',
+
+    # TODO(pwbug/255): Switch to optimized GCC builds when this is fixed.
+    # See comment in _at_all_optimization_levels() above for details.
+    optimization_level = 'size_optimized'
+    if _HOST_COMPILER == 'gcc':
+        optimization_level = 'debug'
+
+    build.ninja(ctx.output_dir, f'host_{_HOST_COMPILER}_{optimization_level}',
                 'stm32f429i_size_optimized', 'python.tests', 'python.lint')
 
 
 @filter_paths(endswith=_BUILD_EXTENSIONS)
-def gn_gcc_build(ctx: PresubmitContext):
+def gn_full_build_check(ctx: PresubmitContext):
     build.gn_gen(ctx.root, ctx.output_dir)
+    build.ninja(ctx.output_dir, *_at_all_optimization_levels('stm32f429i'),
+                *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+                'python.tests', 'python.lint', 'docs')
 
-    # Skip optimized host GCC builds for now, since GCC sometimes emits spurious
-    # warnings.
-    #
-    #   -02: GCC 9.3 emits spurious maybe-uninitialized warnings
-    #   -0s: GCC 8.1 (Mingw-w64) emits a spurious nonnull warning
-    #
-    # TODO(pwbug/255): Enable optimized GCC builds when this is fixed.
-    build.ninja(ctx.output_dir, 'host_gcc_debug')
+
+@filter_paths(endswith=_BUILD_EXTENSIONS)
+def gn_full_qemu_check(ctx: PresubmitContext):
+    build.gn_gen(ctx.root, ctx.output_dir)
+    build.ninja(ctx.output_dir, *_at_all_optimization_levels('qemu_gcc'),
+                *_at_all_optimization_levels('qemu_clang'))
 
 
 @filter_paths(endswith=_BUILD_EXTENSIONS)
@@ -118,9 +139,28 @@ def gn_nanopb_build(ctx: PresubmitContext):
 
 
 @filter_paths(endswith=_BUILD_EXTENSIONS)
+def gn_teensy_build(ctx: PresubmitContext):
+    build.install_package(ctx.package_root, 'teensy')
+    build.gn_gen(ctx.root,
+                 ctx.output_dir,
+                 pw_arduino_build_CORE_PATH='"{}"'.format(str(
+                     ctx.package_root)),
+                 pw_arduino_build_CORE_NAME='teensy',
+                 pw_arduino_build_PACKAGE_NAME='teensy/avr',
+                 pw_arduino_build_BOARD='teensy40')
+    build.ninja(ctx.output_dir, *_at_all_optimization_levels('arduino'))
+
+
+@filter_paths(endswith=_BUILD_EXTENSIONS)
 def gn_qemu_build(ctx: PresubmitContext):
     build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, *_at_all_optimization_levels('qemu'))
+    build.ninja(ctx.output_dir, *_at_all_optimization_levels('qemu_gcc'))
+
+
+@filter_paths(endswith=_BUILD_EXTENSIONS)
+def gn_qemu_clang_build(ctx: PresubmitContext):
+    build.gn_gen(ctx.root, ctx.output_dir)
+    build.ninja(ctx.output_dir, *_at_all_optimization_levels('qemu_clang'))
 
 
 def gn_docs_build(ctx: PresubmitContext):
@@ -130,16 +170,13 @@ def gn_docs_build(ctx: PresubmitContext):
 
 def gn_host_tools(ctx: PresubmitContext):
     build.gn_gen(ctx.root, ctx.output_dir, pw_build_HOST_TOOLS=True)
-    build.ninja(ctx.output_dir)
+    build.ninja(ctx.output_dir, 'host')
 
 
 @filter_paths(endswith=format_code.C_FORMAT.extensions)
 def oss_fuzz_build(ctx: PresubmitContext):
-    build.gn_gen(ctx.root,
-                 ctx.output_dir,
-                 pw_toolchain_OSS_FUZZ_ENABLED=True,
-                 pw_toolchain_SANITIZER="address")
-    build.ninja(ctx.output_dir, "host_clang")
+    build.gn_gen(ctx.root, ctx.output_dir, pw_toolchain_OSS_FUZZ_ENABLED=True)
+    build.ninja(ctx.output_dir, "fuzzers")
 
 
 @filter_paths(endswith='.py')
@@ -154,29 +191,86 @@ def python_checks(ctx: PresubmitContext):
     )
 
 
-@filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.cmake',
-                        'CMakeLists.txt'))
-def cmake_tests(ctx: PresubmitContext):
-    toolchain = ctx.root / 'pw_toolchain' / 'host_clang' / 'toolchain.cmake'
+def _run_cmake(ctx: PresubmitContext) -> None:
+    build.install_package(ctx.package_root, 'nanopb')
 
+    toolchain = ctx.root / 'pw_toolchain' / 'host_clang' / 'toolchain.cmake'
     build.cmake(ctx.root,
                 ctx.output_dir,
                 f'-DCMAKE_TOOLCHAIN_FILE={toolchain}',
+                '-DCMAKE_EXPORT_COMPILE_COMMANDS=1',
+                f'-Ddir_pw_third_party_nanopb={ctx.package_root / "nanopb"}',
+                '-Dpw_third_party_nanopb_ADD_SUBDIRECTORY=ON',
                 env=build.env_with_clang_vars())
-    build.ninja(ctx.output_dir, 'pw_run_tests.modules')
+
+
+@filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.cmake',
+                        'CMakeLists.txt'))
+def cmake_tests(ctx: PresubmitContext):
+    _run_cmake(ctx)
+    build.ninja(ctx.output_dir, 'pw_apps', 'pw_run_tests.modules')
+
+
+# TODO: Slowly add modules here that work with bazel until all
+# modules are added. Then replace with //...
+_MODULES_THAT_WORK_WITH_BAZEL = [
+    '//pw_assert_basic/...',
+    '//pw_base64/...',
+    '//pw_build/...',
+    '//pw_chrono_stl/...',
+    '//pw_containers/...',
+    '//pw_cpu_exception/...',
+    '//pw_docgen/...',
+    '//pw_doctor/...',
+    '//pw_i2c/...',
+    '//pw_log/...',
+    '//pw_log_basic/...',
+    '//pw_polyfill/...',
+    '//pw_preprocessor/...',
+    '//pw_protobuf_compiler/...',
+    '//pw_span/...',
+    '//pw_status/...',
+    '//pw_sys_io/...',
+    '//pw_sys_io_baremetal_lm3s6965evb/...',
+    '//pw_sys_io_stdio/...',
+    '//pw_thread_stl/...',
+    '//pw_toolchain/...',
+    '//pw_varint/...',
+    '//pw_web_ui/...',
+]
 
 
 @filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.bzl', 'BUILD'))
 def bazel_test(ctx: PresubmitContext):
+    """Runs bazel test on each bazel compatible module"""
+
     try:
         call('bazel',
              'test',
-             '//...',
+             *_MODULES_THAT_WORK_WITH_BAZEL,
              '--verbose_failures',
              '--verbose_explanations',
              '--worker_verbose',
-             '--symlink_prefix',
-             ctx.output_dir.joinpath('bazel-'),
+             '--test_output=errors',
+             cwd=ctx.root,
+             env=build.env_with_clang_vars())
+    except:
+        _LOG.info('If the Bazel build inexplicably fails while the '
+                  'other builds are passing, try deleting the Bazel cache:\n'
+                  '    rm -rf ~/.cache/bazel')
+        raise
+
+
+@filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.bzl', 'BUILD'))
+def bazel_build(ctx: PresubmitContext):
+    """Runs Bazel build on each Bazel compatible module"""
+    try:
+        call('bazel',
+             'build',
+             *_MODULES_THAT_WORK_WITH_BAZEL,
+             '--verbose_failures',
+             '--verbose_explanations',
+             '--worker_verbose',
              cwd=ctx.root,
              env=build.env_with_clang_vars())
     except:
@@ -275,6 +369,9 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\.pb\.h$',
     r'\.pb\.c$',
     r'\_pb2.pyi?$',
+    # Diff/Patch files
+    r'\.diff$',
+    r'\.patch$',
 )
 
 
@@ -379,13 +476,25 @@ def source_is_in_build_files(ctx: PresubmitContext):
         _GN_SOURCES_IN_BUILD,
         ctx.paths,
         bazel_dirs=[ctx.root],
-        gn_build_files=git_repo.list_files(
-            pathspecs=['BUILD.gn', '*BUILD.gn']))
+        gn_build_files=git_repo.list_files(pathspecs=['BUILD.gn', '*BUILD.gn'],
+                                           repo_path=ctx.root))
 
     if missing:
         _LOG.warning(
             'All source files must appear in BUILD and BUILD.gn files')
         raise PresubmitFailure
+
+    _run_cmake(ctx)
+    cmake_missing = build.check_compile_commands_for_files(
+        ctx.output_dir / 'compile_commands.json',
+        (f for f in ctx.paths if f.suffix in ('.c', '.cc')))
+    if cmake_missing:
+        _LOG.warning('The CMake build is missing %d files', len(cmake_missing))
+        _LOG.warning('Files missing from CMake:\n%s',
+                     '\n'.join(str(f) for f in cmake_missing))
+        # TODO(hepler): Many files are missing from the CMake build. Make this
+        #     check an error when the missing files are fixed.
+        # raise PresubmitFailure
 
 
 def build_env_setup(ctx: PresubmitContext):
@@ -413,6 +522,13 @@ def commit_message_format(_: PresubmitContext):
     _LOG.debug('%-25s%+25s%+22s', 'Line limits', '72|', '72|')
     for line in lines:
         _LOG.debug(line)
+
+    # Ignore Gerrit-generated reverts.
+    if ('Revert' in lines[0]
+            and 'This reverts commit ' in git_repo.commit_message()
+            and 'Reason for revert: ' in git_repo.commit_message()):
+        _LOG.warning('Ignoring apparent Gerrit-generated revert')
+        return
 
     if not lines:
         _LOG.error('The commit message is too short!')
@@ -443,7 +559,7 @@ def commit_message_format(_: PresubmitContext):
     # might possibly have a URL, path, or metadata in them. Also skip any lines
     # with non-ASCII characters.
     for i, line in enumerate(lines[2:], 3):
-        if ':' in line or '/' in line or not line.isascii():
+        if any(c in line for c in ':/>') or not line.isascii():
             continue
 
         if len(line) > 72:
@@ -458,31 +574,76 @@ def commit_message_format(_: PresubmitContext):
         raise PresubmitFailure
 
 
+def static_analysis(ctx: PresubmitContext):
+    """Check that files pass static analyzer checks."""
+    build.gn_gen(ctx.root, ctx.output_dir,
+                 '--export-compile-commands=host_clang_debug')
+    build.ninja(ctx.output_dir, 'host_clang_debug')
+
+    compile_commands = ctx.output_dir.joinpath('compile_commands.json')
+    analyzer_output = ctx.output_dir.joinpath('analyze-build-output')
+
+    if analyzer_output.exists():
+        shutil.rmtree(analyzer_output)
+
+    call('analyze-build',
+         '--cdb',
+         compile_commands,
+         '--exclude',
+         'third_party',
+         '--output',
+         analyzer_output,
+         cwd=ctx.root,
+         env=build.env_with_clang_vars())
+
+    # Search for reports under output directory.
+    reports = list(analyzer_output.glob('*/report*'))
+    if len(reports) != 0:
+        archive = shutil.make_archive(str(analyzer_output), 'zip',
+                                      reports[0].parent)
+        _LOG.error('Static analyzer found errors: %s', archive)
+        _LOG.error('To view report, open: %s',
+                   Path(reports[0]).parent.joinpath('index.html'))
+        raise PresubmitFailure
+
+
+def renode_check(ctx: PresubmitContext):
+    """Placeholder for future check."""
+    _LOG.info('%s %s', ctx.root, ctx.output_dir)
+
+
 #
 # Presubmit check programs
 #
 
-BROKEN = (
-    # TODO(pwbug/45): Remove clang-tidy from BROKEN when it passes.
+OTHER_CHECKS = (
+    # TODO(pwbug/45): Remove clang-tidy from OTHER_CHECKS when it passes.
     clang_tidy,
-    # QEMU build. Currently doesn't have test runners.
-    gn_qemu_build,
     # Build that attempts to duplicate the build OSS-Fuzz does. Currently
     # failing.
     oss_fuzz_build,
     bazel_test,
     cmake_tests,
     gn_nanopb_build,
+    gn_full_build_check,
+    gn_full_qemu_check,
+    gn_clang_build,
+    gn_gcc_build,
+    renode_check,
+    static_analysis,
 )
 
-QUICK = (
+LINTFORMAT = (
     commit_message_format,
-    init_cipd,
-    init_virtualenv,
-    source_is_in_build_files,
     copyright_notice,
     format_code.presubmit_checks(),
     pw_presubmit.pragma_once,
+    source_is_in_build_files,
+)
+
+QUICK = (
+    LINTFORMAT,
+    bazel_test,
     gn_quick_build_check,
     # TODO(pwbug/141): Re-enable CMake and Bazel for Mac after we have fixed the
     # the clang issues. The problem is that all clang++ invocations need the
@@ -491,25 +652,34 @@ QUICK = (
 )
 
 FULL = (
-    commit_message_format,
-    init_cipd,
-    init_virtualenv,
-    copyright_notice,
-    format_code.presubmit_checks(),
-    pw_presubmit.pragma_once,
-    gn_clang_build,
+    LINTFORMAT,
+    gn_host_build,
     gn_arm_build,
     gn_docs_build,
     gn_host_tools,
+    bazel_build,
+    bazel_test,
     # On Mac OS, system 'gcc' is a symlink to 'clang' by default, so skip GCC
-    # host builds on Mac for now.
-    gn_gcc_build if sys.platform != 'darwin' else (),
+    # host builds on Mac for now. Skip it on Windows too, since gn_host_build
+    # already uses 'gcc' on Windows.
+    gn_gcc_build if sys.platform not in ('darwin', 'win32') else (),
+    # Windows doesn't support QEMU yet.
+    gn_qemu_build if sys.platform != 'win32' else (),
+    gn_qemu_clang_build if sys.platform != 'win32' else (),
     source_is_in_build_files,
     python_checks,
     build_env_setup,
+    # Skip gn_teensy_build if running on Windows. The Teensycore installer is
+    # an exe that requires an admin role.
+    gn_teensy_build if sys.platform in ['linux', 'darwin'] else (),
 )
 
-PROGRAMS = Programs(broken=BROKEN, quick=QUICK, full=FULL)
+PROGRAMS = Programs(
+    full=FULL,
+    lintformat=LINTFORMAT,
+    other_checks=OTHER_CHECKS,
+    quick=QUICK,
+)
 
 
 def parse_args() -> argparse.Namespace:

@@ -34,6 +34,16 @@ stored in the linked list; only the `pw::IntrusiveList` class can modify the
 list.
 
 
+pw::containers::FlatMap
+=======================
+FlatMap provides a simple, fixed-size associative array with lookup by key or
+value. ``pw::containers::FlatMap`` contains the same methods and features for
+looking up data as std::map. However, there are no methods that modify the
+underlying data.  The underlying array in ``pw::containers::FlatMap`` does not
+need to be sorted. During construction, ``pw::containers::FlatMap`` will
+perform a constexpr insertion sort.
+
+
 Usage
 -----
 While the API of `pw::IntrusiveList` is relatively similar to a
@@ -55,7 +65,7 @@ That means two key things:
 .. code-block:: cpp
 
   class Square
-     : public pw::containers::IntrusiveList<Square>::Item {
+     : public pw::IntrusiveList<Square>::Item {
    public:
     Square(unsigned int side_length) : side_length(side_length) {}
     unsigned long Area() { return side_length * side_length; }
@@ -64,7 +74,7 @@ That means two key things:
     unsigned int side_length;
   };
 
-  pw::containers::IntrusiveList<Square> squares;
+  pw::IntrusiveList<Square> squares;
 
   Square small(1);
   Square large(4000);

@@ -21,6 +21,7 @@ import logging
 import os
 import shutil
 import sys
+import subprocess
 import tarfile
 import urllib.request
 import zipfile
@@ -77,21 +78,36 @@ def verify_file_checksum(file_path,
         raise InvalidChecksumError(
             f"Invalid {sum_function.__name__}\n"
             f"{downloaded_checksum} {os.path.basename(file_path)}\n"
-            f"{expected_checksum} (expected)")
+            f"{expected_checksum} (expected)\n\n"
+            "Please delete this file and try again:\n"
+            f"{file_path}")
 
     _LOG.debug("  %s:", sum_function.__name__)
     _LOG.debug("  %s %s", downloaded_checksum, os.path.basename(file_path))
     return True
 
 
+def relative_or_absolute_path(file_string: str):
+    """Return a Path relative to os.getcwd(), else an absolute path."""
+    file_path = Path(file_string)
+    try:
+        return file_path.relative_to(os.getcwd())
+    except ValueError:
+        return file_path.resolve()
+
+
 def download_to_cache(url: str,
                       expected_md5sum=None,
                       expected_sha256sum=None,
-                      cache_directory=".cache") -> str:
+                      cache_directory=".cache",
+                      downloaded_file_name=None) -> str:
 
     cache_dir = os.path.realpath(
         os.path.expanduser(os.path.expandvars(cache_directory)))
-    downloaded_file = os.path.join(cache_dir, url.split("/")[-1])
+    if not downloaded_file_name:
+        # Use the last part of the URL as the file name.
+        downloaded_file_name = url.split("/")[-1]
+    downloaded_file = os.path.join(cache_dir, downloaded_file_name)
 
     if not os.path.exists(downloaded_file):
         _LOG.info("Downloading: %s", url)
@@ -99,8 +115,7 @@ def download_to_cache(url: str,
         urllib.request.urlretrieve(url, filename=downloaded_file)
 
     if os.path.exists(downloaded_file):
-        _LOG.info("Downloaded: %s",
-                  Path(downloaded_file).relative_to(os.getcwd()))
+        _LOG.info("Downloaded: %s", relative_or_absolute_path(downloaded_file))
         if expected_sha256sum:
             verify_file_checksum(downloaded_file,
                                  expected_sha256sum,
@@ -148,7 +163,7 @@ def extract_archive(archive_file: str,
                                     "." + os.path.basename(archive_file))
     os.makedirs(temp_extract_dir, exist_ok=True)
 
-    _LOG.info("Extracting: %s", Path(archive_file).relative_to(os.getcwd()))
+    _LOG.info("Extracting: %s", relative_or_absolute_path(archive_file))
     if zipfile.is_zipfile(archive_file):
         extract_zipfile(archive_file, temp_extract_dir)
     elif tarfile.is_tarfile(archive_file):
@@ -157,7 +172,7 @@ def extract_archive(archive_file: str,
         _LOG.error("Unknown archive format: %s", archive_file)
         return sys.exit(1)
 
-    _LOG.info("Installing into: %s", Path(dest_dir).relative_to(os.getcwd()))
+    _LOG.info("Installing into: %s", relative_or_absolute_path(dest_dir))
     path_to_extracted_files = temp_extract_dir
 
     extracted_top_level_files = os.listdir(temp_extract_dir)
@@ -210,3 +225,19 @@ def decode_file_json(file_name):
         _LOG.warning("Unable to read file '%s'", file_path)
 
     return json_file_options, file_path
+
+
+def git_apply_patch(root_directory,
+                    patch_file,
+                    ignore_whitespace=True,
+                    unsafe_paths=False):
+    """Use `git apply` to apply a diff file."""
+
+    _LOG.info("Applying Patch: %s", patch_file)
+    git_apply_command = ["git", "apply"]
+    if ignore_whitespace:
+        git_apply_command.append("--ignore-whitespace")
+    if unsafe_paths:
+        git_apply_command.append("--unsafe-paths")
+    git_apply_command += ["--directory", root_directory, patch_file]
+    subprocess.run(git_apply_command)

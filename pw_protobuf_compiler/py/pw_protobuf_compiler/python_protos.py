@@ -13,6 +13,7 @@
 # the License.
 """Tools for compiling and importing Python protos on the fly."""
 
+from collections.abc import Mapping
 import importlib.util
 import logging
 import os
@@ -21,8 +22,8 @@ import subprocess
 import shlex
 import tempfile
 from types import ModuleType
-from typing import Dict, Generic, Iterable, Iterator, List, NamedTuple, Set
-from typing import Tuple, TypeVar, Union
+from typing import (Dict, Generic, Iterable, Iterator, List, NamedTuple, Set,
+                    Tuple, TypeVar, Union)
 
 _LOG = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ def compile_protos(
 
     cmd: Tuple[PathOrStr, ...] = (
         'protoc',
+        '--experimental_allow_proto3_optional',
         '--python_out',
         os.path.abspath(output_dir),
         *(f'-I{d}' for d in include_paths),
@@ -70,7 +72,7 @@ def _import_module(name: str, path: str) -> ModuleType:
     return module
 
 
-def import_modules(directory: PathOrStr) -> Iterator[ModuleType]:
+def import_modules(directory: PathOrStr) -> Iterator:
     """Imports modules in a directory and yields them."""
     parent = os.path.dirname(directory)
 
@@ -87,7 +89,7 @@ def import_modules(directory: PathOrStr) -> Iterator[ModuleType]:
 
 def compile_and_import(proto_files: Iterable[PathOrStr],
                        includes: Iterable[PathOrStr] = (),
-                       output_dir: PathOrStr = None) -> Iterator[ModuleType]:
+                       output_dir: PathOrStr = None) -> Iterator:
     """Compiles protos and imports their modules; yields the proto modules.
 
     Args:
@@ -111,15 +113,14 @@ def compile_and_import(proto_files: Iterable[PathOrStr],
 
 def compile_and_import_file(proto_file: PathOrStr,
                             includes: Iterable[PathOrStr] = (),
-                            output_dir: PathOrStr = None) -> ModuleType:
+                            output_dir: PathOrStr = None):
     """Compiles and imports the module for a single .proto file."""
     return next(iter(compile_and_import([proto_file], includes, output_dir)))
 
 
-def compile_and_import_strings(
-        contents: Iterable[str],
-        includes: Iterable[PathOrStr] = (),
-        output_dir: PathOrStr = None) -> Iterator[ModuleType]:
+def compile_and_import_strings(contents: Iterable[str],
+                               includes: Iterable[PathOrStr] = (),
+                               output_dir: PathOrStr = None) -> Iterator:
     """Compiles protos in one or more strings."""
 
     if isinstance(contents, str):
@@ -150,16 +151,16 @@ class _NestedPackage(Generic[T]):
 
     def _add_package(self, subpackage: str, package: '_NestedPackage') -> None:
         self._packages[subpackage] = package
-        setattr(self, subpackage, package)
 
     def _add_item(self, item) -> None:
-        self._items.append(item)
-        for attr, value in vars(item).items():
-            if not attr.startswith('_'):
-                setattr(self, attr, value)
+        if item not in self._items:  # Don't store the same item multiple times.
+            self._items.append(item)
 
     def __getattr__(self, attr: str):
-        # Fall back to item attributes, which includes private attributes.
+        """Look up subpackages or package members."""
+        if attr in self._packages:
+            return self._packages[attr]
+
         for item in self._items:
             if hasattr(item, attr):
                 return getattr(item, attr)
@@ -167,7 +168,30 @@ class _NestedPackage(Generic[T]):
         raise AttributeError(
             f'Proto package "{self._package}" does not contain "{attr}"')
 
+    def __getitem__(self, subpackage: str) -> '_NestedPackage[T]':
+        """Support accessing nested packages by name."""
+        result = self
+
+        for package in subpackage.split('.'):
+            result = result._packages[package]
+
+        return result
+
+    def __dir__(self) -> List[str]:
+        """List subpackages and members of modules as attributes."""
+        attributes = list(self._packages)
+
+        for item in self._items:
+            for attr, value in vars(item).items():
+                # Exclude private variables and modules from dir().
+                if not attr.startswith('_') and not isinstance(
+                        value, ModuleType):
+                    attributes.append(attr)
+
+        return attributes
+
     def __iter__(self) -> Iterator['_NestedPackage[T]']:
+        """Iterate over nested packages."""
         return iter(self._packages.values())
 
     def __repr__(self) -> str:
@@ -226,6 +250,9 @@ def as_packages(items: Iterable[Tuple[str, T]],
     return packages
 
 
+PathOrModule = Union[str, Path, ModuleType]
+
+
 class Library:
     """A collection of protocol buffer modules sorted by package.
 
@@ -245,10 +272,27 @@ class Library:
     for iterating over all modules.
     """
     @classmethod
+    def from_paths(cls, protos: Iterable[PathOrModule]) -> 'Library':
+        """Creates a Library from paths to proto files or proto modules."""
+        paths: List[PathOrStr] = []
+        modules: List[ModuleType] = []
+
+        for proto in protos:
+            if isinstance(proto, (Path, str)):
+                paths.append(proto)
+            else:
+                modules.append(proto)
+
+        if paths:
+            modules += compile_and_import(paths)
+        return Library(modules)
+
+    @classmethod
     def from_strings(cls,
                      contents: Iterable[str],
                      includes: Iterable[PathOrStr] = (),
                      output_dir: PathOrStr = None) -> 'Library':
+        """Creates a proto library from protos in the provided strings."""
         return cls(compile_and_import_strings(contents, includes, output_dir))
 
     def __init__(self, modules: Iterable[ModuleType]):
@@ -263,7 +307,92 @@ class Library:
             (m.DESCRIPTOR.package, m)  # type: ignore[attr-defined]
             for m in modules)
 
-    def modules(self) -> Iterable[ModuleType]:
-        """Allows iterating over all protobuf modules in this library."""
+    def modules(self) -> Iterable:
+        """Iterates over all protobuf modules in this library."""
         for module_list in self.modules_by_package.values():
             yield from module_list
+
+    def messages(self) -> Iterable:
+        """Iterates over all protobuf messages in this library."""
+        for module in self.modules():
+            yield from _nested_messages(
+                module, module.DESCRIPTOR.message_types_by_name)
+
+
+def _nested_messages(scope, message_names: Iterable[str]) -> Iterator:
+    for name in message_names:
+        msg = getattr(scope, name)
+        yield msg
+        yield from _nested_messages(msg, msg.DESCRIPTOR.nested_types_by_name)
+
+
+def _repr_char(char: int) -> str:
+    r"""Returns an ASCII char or the \x code for non-printable values."""
+    if ord(' ') <= char <= ord('~'):
+        return r"\'" if chr(char) == "'" else chr(char)
+
+    return f'\\x{char:02X}'
+
+
+def bytes_repr(value: bytes) -> str:
+    """Prints bytes as mixed ASCII only if at least half are printable."""
+    ascii_char_count = sum(ord(' ') <= c <= ord('~') for c in value)
+    if ascii_char_count >= len(value) / 2:
+        contents = ''.join(_repr_char(c) for c in value)
+    else:
+        contents = ''.join(f'\\x{c:02X}' for c in value)
+
+    return f"b'{contents}'"
+
+
+def _field_repr(field, value) -> str:
+    if field.type == field.TYPE_ENUM:
+        try:
+            enum = field.enum_type.values_by_number[value]
+            return f'{field.enum_type.full_name}.{enum.name}'
+        except KeyError:
+            return repr(value)
+
+    if field.type == field.TYPE_MESSAGE:
+        return proto_repr(value)
+
+    if field.type == field.TYPE_BYTES:
+        return bytes_repr(value)
+
+    return repr(value)
+
+
+def _proto_repr(message) -> Iterator[str]:
+    for field in message.DESCRIPTOR.fields:
+        value = getattr(message, field.name)
+
+        # Skip fields that are not present.
+        try:
+            if not message.HasField(field.name):
+                continue
+        except ValueError:
+            # Skip default-valued fields that don't support HasField.
+            if (field.label != field.LABEL_REPEATED
+                    and value == field.default_value):
+                continue
+
+        if field.label == field.LABEL_REPEATED:
+            if not value:
+                continue
+
+            if isinstance(value, Mapping):
+                key_desc, value_desc = field.message_type.fields
+                values = ', '.join(
+                    f'{_field_repr(key_desc, k)}: {_field_repr(value_desc, v)}'
+                    for k, v in value.items())
+                yield f'{field.name}={{{values}}}'
+            else:
+                values = ', '.join(_field_repr(field, v) for v in value)
+                yield f'{field.name}=[{values}]'
+        else:
+            yield f'{field.name}={_field_repr(field, value)}'
+
+
+def proto_repr(message) -> str:
+    """Creates a repr-like string for a protobuf."""
+    return f'{message.DESCRIPTOR.full_name}({", ".join(_proto_repr(message))})'
