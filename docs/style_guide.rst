@@ -163,7 +163,7 @@ C functions with no parameters must include ``void``.
 
 Comments
 ========
-Prefer C++-style (``//``) comments over C-style commments (``/* */``). C-style
+Prefer C++-style (``//``) comments over C-style comments (``/* */``). C-style
 comments should only be used for inline comments.
 
 .. code-block:: cpp
@@ -250,43 +250,57 @@ additional requirements.
   * If private code must be exposed in a header file, it must be in a namespace
     nested under ``pw``. The namespace may be named for its subsystem or use a
     name that designates it as private, such as ``internal``.
-  * Template arguments for non-type names (e.g. ``template <int foo_bar>``)
-    should follow the variable naming convention, which means snake case (e.g.
-    ``foo_bar``). This matches the Google C++ style, however the wording in the
-    official style guide isn't explicit and could be interpreted to use
-    ``kFooBar`` style naming. Wide practice establishes that the naming
-    convention is ``snake_case``, and so that is the style we use in Pigweed.
+  * Template arguments for non-type names (e.g. ``template <int kFooBar>``)
+    should follow the constexpr and const variable Google naming convention,
+    which means k prefixed camel case (e.g.
+    ``kCamelCase``). This matches the Google C++ style for variable naming,
+    however the wording in the official style guide isn't explicit for template
+    arguments and could be interpreted to use ``foo_bar`` style naming.
+    For consistency with other variables whose value is always fixed for the
+    duration of the program, the naming convention is ``kCamelCase``, and so
+    that is the style we use in Pigweed.
 
     **Note:** At time of writing much of Pigweed incorrectly follows the
-    ``kCamelCase`` naming for non-type template arguments. This is a bug that
+    ``snake_case`` naming for non-type template arguments. This is a bug that
     will be fixed eventually.
 
 **C code**
-  * Public names used by C code must be prefixed with ``pw_``.
+In general, C symbols should be prefixed with the module name. If the symbol is
+not associated with a module, use just ``pw`` as the module name. Facade
+backends may chose to prefix symbols with the facade's name to help reduce the
+length of the prefix.
+
+  * Public names used by C code must be prefixed with the module name (e.g.
+    ``pw_tokenizer_*``).
   * If private code must be exposed in a header, private names used by C code
-    must be prefixed with ``_pw_``.
+    must be prefixed with an underscore followed by the module name (e.g.
+    ``_pw_assert_*``).
   * Avoid writing C source (.c) files in Pigweed. Prefer to write C++ code with
     C linkage using ``extern "C"``. Within C source, private C functions and
-    variables must be named with the ``_pw_`` prefix and should be declared
-    ``static`` whenever possible; for example, ``_pw__MyPrivateFunction``.
+    variables must be named with the ``_pw_my_module_*`` prefix and should be
+    declared ``static`` whenever possible; for example,
+    ``_pw_my_module_MyPrivateFunction``.
   * The C prefix rules apply to
 
-    * C functions (``int pw_FunctionName(void);``),
-    * variables used by C code (``int pw_variable_name;``),
-    * constant variables used by C code (``int pw_kConstantName;``), and
-    * structs used by C code (``typedef struct {} pw_StructName;``).
+    * C functions (``int pw_foo_FunctionName(void);``),
+    * variables used by C code (``int pw_foo_variable_name;``),
+    * constant variables used by C code (``int pw_foo_kConstantName;``),
+    * structs used by C code (``typedef struct {} pw_foo_StructName;``), and
+    * all of the above for ``extern "C"`` names in C++ code.
 
     The prefix does not apply to struct members, which use normal Google style.
 
 **Preprocessor macros**
-  * Public Pigweed macros must be prefixed with ``PW_``.
-  * Private Pigweed macros must be prefixed with ``_PW_``.
+  * Public Pigweed macros must be prefixed with the module name (e.g.
+    ``PW_MY_MODULE_*``).
+  * Private Pigweed macros must be prefixed with an underscore followed by the
+    module name (e.g. ``_PW_MY_MODULE_*``).
 
 **Example**
 
 .. code-block:: cpp
 
-  namespace pw {
+  namespace pw::my_module {
   namespace nested_namespace {
 
   // C++ names (types, variables, functions) must be in the pw namespace.
@@ -303,37 +317,37 @@ additional requirements.
   extern "C" {
 
   // Public Pigweed code used from C must be prefixed with pw_.
-  extern const int pw_kGlobalConstant;
+  extern const int pw_my_module_kGlobalConstant;
 
-  extern int pw_global_variable;
+  extern int pw_my_module_global_variable;
 
-  void pw_Function(void);
+  void pw_my_module_Function(void);
 
   typedef struct {
     int member_variable;
-  } pw_Struct;
+  } pw_my_module_Struct;
 
   // Private Pigweed code used from C must be prefixed with _pw_.
-  extern const int _pw_kPrivateGlobalConstant;
+  extern const int _pw_my_module_kPrivateGlobalConstant;
 
-  extern int _pw_private_global_variable;
+  extern int _pw_my_module_private_global_variable;
 
-  void _pw_PrivateFunction(void);
+  void _pw_my_module_PrivateFunction(void);
 
   typedef struct {
     int member_variable;
-  } _pw_PrivateStruct;
+  } _pw_my_module_PrivateStruct;
 
   }  // extern "C"
 
   // Public macros must be prefixed with PW_.
-  #define PW_PUBLIC_MACRO(arg) arg
+  #define PW_MY_MODULE_PUBLIC_MACRO(arg) arg
 
   // Private macros must be prefixed with _PW_.
-  #define _PW_PRIVATE_MACRO(arg) arg
+  #define _PW_MY_MODULE_PRIVATE_MACRO(arg) arg
 
   }  // namespace nested_namespace
-  }  // namespace pw
+  }  // namespace pw::my_module
 
 Namespace scope formatting
 ==========================
@@ -538,11 +552,11 @@ Build files: GN
 
 Each Pigweed source module will require a build file named BUILD.gn which
 encapsulates the build targets and specifies their sources and dependencies.
-The format of this file is simlar in structure to the
+The format of this file is similar in structure to the
 `Bazel/Blaze format <https://docs.bazel.build/versions/3.2.0/build-ref.html>`_
 (Googlers may also review `go/build-style <go/build-style>`_), but with
 nomenclature specific to Pigweed. For each target specified within the build
-file there are a list of depdency fields. Those fields, in their expected
+file there are a list of dependency fields. Those fields, in their expected
 order, are:
 
   * ``<public_config>`` -- external build configuration
@@ -566,10 +580,7 @@ Assets within each field must be listed in alphabetical order
 
   source_set("pw_sample_module") {
     public_configs = [ ":default_config" ]
-    public_deps = [
-      dir_pw_span,
-      dir_pw_status,
-    ]
+    public_deps = [ dir_pw_status ]
     public = [ "public/pw_sample_module/sample_module.h" ]
     sources = [
       "public/pw_sample_module/internal/sample_module.h",

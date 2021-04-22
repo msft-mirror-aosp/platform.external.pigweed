@@ -20,12 +20,7 @@
 #include "pw_preprocessor/compiler.h"
 #include "pw_sys_io/sys_io.h"
 
-extern "C" void pw_sys_io_Init() {
-  Serial.begin(115200);
-  // Wait for serial port to be available
-  while (!Serial) {
-  }
-}
+extern "C" void pw_sys_io_Init() { Serial.begin(115200); }
 
 namespace pw::sys_io {
 
@@ -36,7 +31,7 @@ namespace pw::sys_io {
 Status ReadByte(std::byte* dest) {
   while (true) {
     if (TryReadByte(dest).ok()) {
-      return Status::Ok();
+      return OkStatus();
     }
   }
 }
@@ -46,20 +41,14 @@ Status TryReadByte(std::byte* dest) {
     return Status::Unavailable();
   }
   *dest = static_cast<std::byte>(Serial.read());
-  return Status::Ok();
+  return OkStatus();
 }
 
-// Send a byte over USART1. Since this blocks on every byte, it's rather
-// inefficient. At the default baud rate of 115200, one byte blocks the CPU for
-// ~87 micro seconds. This means it takes only 10 bytes to block the CPU for
-// 1ms!
+// Send a byte over the default Arduino Serial port.
 Status WriteByte(std::byte b) {
-  // Wait for TX buffer to be empty. When the buffer is empty, we can write
-  // a value to be dumped out of UART.
-  while (Serial.availableForWrite() < 1) {
-  }
+  // Serial.write() will block until data can be written.
   Serial.write((uint8_t)b);
-  return Status::Ok();
+  return OkStatus();
 }
 
 // Writes a string using pw::sys_io, and add newline characters at the end.

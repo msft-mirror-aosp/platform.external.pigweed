@@ -24,15 +24,71 @@
 #include "pw_rpc/server_context.h"
 #include "pw_rpc/service.h"
 #include "pw_rpc_private/internal_test_utils.h"
+#include "pw_rpc_private/method_impl_tester.h"
 #include "pw_rpc_test_protos/test.pwpb.h"
 
 namespace pw::rpc::internal {
 namespace {
 
+// Create a fake service for use with the MethodImplTester.
+class TestRawService final : public Service {
+ public:
+  StatusWithSize Unary(ServerContext&, ConstByteSpan, ByteSpan) {
+    return StatusWithSize(0);
+  }
+
+  static StatusWithSize StaticUnary(ServerContext&, ConstByteSpan, ByteSpan) {
+    return StatusWithSize(0);
+  }
+
+  void ServerStreaming(ServerContext&, ConstByteSpan, RawServerWriter&) {}
+
+  static void StaticServerStreaming(ServerContext&,
+                                    ConstByteSpan,
+                                    RawServerWriter&) {}
+
+  StatusWithSize UnaryWrongArg(ServerContext&, ConstByteSpan, ConstByteSpan) {
+    return StatusWithSize(0);
+  }
+
+  static void StaticUnaryVoidReturn(ServerContext&, ConstByteSpan, ByteSpan) {}
+
+  Status ServerStreamingBadReturn(ServerContext&,
+                                  ConstByteSpan,
+                                  RawServerWriter&) {
+    return Status();
+  }
+
+  static void StaticServerStreamingMissingArg(ConstByteSpan, RawServerWriter&) {
+  }
+};
+
+// Test that the matches() function matches valid signatures.
+static_assert(RawMethod::template matches<&TestRawService::Unary>());
+static_assert(RawMethod::template matches<&TestRawService::ServerStreaming>());
+static_assert(RawMethod::template matches<&TestRawService::StaticUnary>());
+static_assert(
+    RawMethod::template matches<&TestRawService::StaticServerStreaming>());
+
+// Test that the matches() function does not match the wrong method type.
+static_assert(!RawMethod::template matches<&TestRawService::UnaryWrongArg>());
+static_assert(
+    !RawMethod::template matches<&TestRawService::StaticUnaryVoidReturn>());
+static_assert(
+    !RawMethod::template matches<&TestRawService::ServerStreamingBadReturn>());
+static_assert(!RawMethod::template matches<
+              &TestRawService::StaticServerStreamingMissingArg>());
+
+TEST(MethodImplTester, RawMethod) {
+  constexpr MethodImplTester<RawMethod, TestRawService> method_tester;
+  EXPECT_TRUE(method_tester.MethodImplIsValid());
+}
+
 struct {
   int64_t integer;
   uint32_t status_code;
 } last_request;
+
 RawServerWriter last_writer;
 
 void DecodeRawTestRequest(ConstByteSpan request) {
@@ -53,7 +109,9 @@ void DecodeRawTestRequest(ConstByteSpan request) {
   }
 };
 
-StatusWithSize AddFive(ServerCall&, ConstByteSpan request, ByteSpan response) {
+StatusWithSize AddFive(ServerContext&,
+                       ConstByteSpan request,
+                       ByteSpan response) {
   DecodeRawTestRequest(request);
 
   protobuf::NestedEncoder encoder(response);
@@ -65,7 +123,9 @@ StatusWithSize AddFive(ServerCall&, ConstByteSpan request, ByteSpan response) {
   return StatusWithSize::Unauthenticated(payload.size());
 }
 
-void StartStream(ServerCall&, ConstByteSpan request, RawServerWriter& writer) {
+void StartStream(ServerContext&,
+                 ConstByteSpan request,
+                 RawServerWriter& writer) {
   DecodeRawTestRequest(request);
   last_writer = std::move(writer);
 }
@@ -100,7 +160,7 @@ TEST(RawMethod, UnaryRpc_SendsResponse) {
   protobuf::Decoder decoder(response.payload());
   ASSERT_TRUE(decoder.Next().ok());
   int64_t value;
-  EXPECT_EQ(decoder.ReadInt64(&value), Status::Ok());
+  EXPECT_EQ(decoder.ReadInt64(&value), OkStatus());
   EXPECT_EQ(value, 461);
 }
 
@@ -120,7 +180,7 @@ TEST(RawMethod, ServerStreamingRpc_SendsNothingWhenInitiallyCalled) {
   EXPECT_EQ(777, last_request.integer);
   EXPECT_EQ(2u, last_request.status_code);
   EXPECT_TRUE(last_writer.open());
-  last_writer.Finish();
+  EXPECT_EQ(OkStatus(), last_writer.Finish());
 }
 
 TEST(RawServerWriter, Write_SendsPreviouslyAcquiredBuffer) {
@@ -134,15 +194,15 @@ TEST(RawServerWriter, Write_SendsPreviouslyAcquiredBuffer) {
   constexpr auto data = bytes::Array<0x0d, 0x06, 0xf0, 0x0d>();
   std::memcpy(buffer.data(), data.data(), data.size());
 
-  EXPECT_EQ(last_writer.Write(buffer.first(data.size())), Status::Ok());
+  EXPECT_EQ(last_writer.Write(buffer.first(data.size())), OkStatus());
 
   const internal::Packet& packet = context.output().sent_packet();
   EXPECT_EQ(packet.type(), internal::PacketType::RESPONSE);
-  EXPECT_EQ(packet.channel_id(), context.kChannelId);
-  EXPECT_EQ(packet.service_id(), context.kServiceId);
+  EXPECT_EQ(packet.channel_id(), context.channel_id());
+  EXPECT_EQ(packet.service_id(), context.service_id());
   EXPECT_EQ(packet.method_id(), context.get().method().id());
   EXPECT_EQ(std::memcmp(packet.payload().data(), data.data(), data.size()), 0);
-  EXPECT_EQ(packet.status(), Status::Ok());
+  EXPECT_EQ(packet.status(), OkStatus());
 }
 
 TEST(RawServerWriter, Write_SendsExternalBuffer) {
@@ -152,15 +212,26 @@ TEST(RawServerWriter, Write_SendsExternalBuffer) {
   method.Invoke(context.get(), context.packet({}));
 
   constexpr auto data = bytes::Array<0x0d, 0x06, 0xf0, 0x0d>();
-  EXPECT_EQ(last_writer.Write(data), Status::Ok());
+  EXPECT_EQ(last_writer.Write(data), OkStatus());
 
   const internal::Packet& packet = context.output().sent_packet();
   EXPECT_EQ(packet.type(), internal::PacketType::RESPONSE);
-  EXPECT_EQ(packet.channel_id(), context.kChannelId);
-  EXPECT_EQ(packet.service_id(), context.kServiceId);
+  EXPECT_EQ(packet.channel_id(), context.channel_id());
+  EXPECT_EQ(packet.service_id(), context.service_id());
   EXPECT_EQ(packet.method_id(), context.get().method().id());
   EXPECT_EQ(std::memcmp(packet.payload().data(), data.data(), data.size()), 0);
-  EXPECT_EQ(packet.status(), Status::Ok());
+  EXPECT_EQ(packet.status(), OkStatus());
+}
+
+TEST(RawServerWriter, Write_Closed_ReturnsFailedPrecondition) {
+  const RawMethod& method = std::get<1>(FakeService::kMethods).raw_method();
+  ServerContextForTest<FakeService> context(method);
+
+  method.Invoke(context.get(), context.packet({}));
+
+  EXPECT_EQ(OkStatus(), last_writer.Finish());
+  constexpr auto data = bytes::Array<0x0d, 0x06, 0xf0, 0x0d>();
+  EXPECT_EQ(last_writer.Write(data), Status::FailedPrecondition());
 }
 
 TEST(RawServerWriter, Write_BufferTooSmall_ReturnsOutOfRange) {

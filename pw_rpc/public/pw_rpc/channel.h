@@ -15,8 +15,9 @@
 
 #include <cstdint>
 #include <span>
+#include <type_traits>
 
-#include "pw_assert/assert.h"
+#include "pw_assert/light.h"
 #include "pw_status/status.h"
 
 namespace pw::rpc {
@@ -38,14 +39,22 @@ class ChannelOutput {
 
   constexpr const char* name() const { return name_; }
 
-  // Acquire a buffer into which to write an outgoing RPC packet.
+  // Acquire a buffer into which to write an outgoing RPC packet. The
+  // implementation is expected to handle synchronization if necessary.
   virtual std::span<std::byte> AcquireBuffer() = 0;
 
-  // Sends the contents of the buffer from AcquireBuffer(). Returns OK if the
-  // operation succeeded, on an implementation-defined Status value if there was
-  // an error. The implementation must NOT return FAILED_PRECONDITION or
-  // INTERNAL, which are reserved by pw_rpc.
-  virtual Status SendAndReleaseBuffer(size_t size) = 0;
+  // Sends the contents of a buffer previously obtained from AcquireBuffer().
+  // This may be called with an empty span, in which case the buffer should be
+  // released without sending any data.
+  //
+  // Returns OK if the operation succeeded, or an implementation-defined Status
+  // value if there was an error. The implementation must NOT return
+  // FAILED_PRECONDITION or INTERNAL, which are reserved by pw_rpc.
+  virtual Status SendAndReleaseBuffer(std::span<const std::byte> buffer) = 0;
+
+  void DiscardBuffer(std::span<const std::byte> buffer) {
+    SendAndReleaseBuffer(buffer.first(0));
+  }
 
  private:
   const char* name_;
@@ -62,10 +71,23 @@ class Channel {
   // Creates a channel with a static ID. The channel's output can also be
   // static, or it can set to null to allow dynamically opening connections
   // through the channel.
-  template <uint32_t id>
+  template <uint32_t kId>
   constexpr static Channel Create(ChannelOutput* output) {
-    static_assert(id != kUnassignedChannelId, "Channel ID cannot be 0");
-    return Channel(id, output);
+    static_assert(kId != kUnassignedChannelId, "Channel ID cannot be 0");
+    return Channel(kId, output);
+  }
+
+  // Creates a channel with a static ID from an enum value.
+  template <auto kId,
+            typename T = decltype(kId),
+            typename = std::enable_if_t<std::is_enum_v<T>>,
+            typename U = std::underlying_type_t<T>>
+  constexpr static Channel Create(ChannelOutput* output) {
+    constexpr U kIntId = static_cast<U>(kId);
+    static_assert(kIntId >= 0, "Channel ID cannot be negative");
+    static_assert(kIntId <= std::numeric_limits<uint32_t>::max(),
+                  "Channel ID must fit in a uint32");
+    return Create<static_cast<uint32_t>(kIntId)>(output);
   }
 
   constexpr uint32_t id() const { return id_; }
@@ -74,13 +96,11 @@ class Channel {
  protected:
   constexpr Channel(uint32_t id, ChannelOutput* output)
       : id_(id), output_(output), client_(nullptr) {
-    // TODO(pwbug/246): Use PW_ASSERT when that is available.
-    // PW_ASSERT(id != kUnassignedChannelId);
+    PW_ASSERT(id != kUnassignedChannelId);
   }
 
   ChannelOutput& output() const {
-    // TODO(pwbug/246): Use PW_ASSERT when that is available.
-    // PW_ASSERT(output_ != nullptr);
+    PW_ASSERT(output_ != nullptr);
     return *output_;
   }
 

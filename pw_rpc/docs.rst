@@ -6,11 +6,19 @@ pw_rpc
 The ``pw_rpc`` module provides a system for defining and invoking remote
 procedure calls (RPCs) on a device.
 
+This document discusses the ``pw_rpc`` protocol and its C++ implementation.
+``pw_rpc`` implementations for other languages are described in their own
+documents:
+
+.. toctree::
+  :maxdepth: 1
+
+  py/docs
+
 .. admonition:: Try it out!
 
   For a quick intro to ``pw_rpc``, see the
-  :ref:`module-pw_hdlc_lite-rpc-example` in the :ref:`module-pw_hdlc_lite`
-  module.
+  :ref:`module-pw_hdlc-rpc-example` in the :ref:`module-pw_hdlc` module.
 
 .. attention::
 
@@ -56,20 +64,98 @@ This protocol buffer is declared in a ``BUILD.gn`` file as follows:
     sources = [ "foo_bar/the_service.proto" ]
   }
 
-2. RPC service definition
--------------------------
-``pw_rpc`` generates a C++ base class for each RPC service declared in a .proto
-file. The serivce class is implemented by inheriting from this generated base
-and defining a method for each RPC.
+.. admonition:: proto2 or proto3 syntax?
 
-A service named ``TheService`` in package ``foo.bar`` will generate the
-following class:
+  Always use proto3 syntax rather than proto2 for new protocol buffers. Proto2
+  protobufs can be compiled for ``pw_rpc``, but they are not as well supported
+  as proto3. Specifically, ``pw_rpc`` lacks support for non-zero default values
+  in proto2. When using Nanopb with ``pw_rpc``, proto2 response protobufs with
+  non-zero field defaults should be manually initialized to the default struct.
+
+  In the past, proto3 was sometimes avoided because it lacked support for field
+  presence detection. Fortunately, this has been fixed: proto3 now supports
+  ``optional`` fields, which are equivalent to proto2 ``optional`` fields.
+
+  If you need to distinguish between a default-valued field and a missing field,
+  mark the field as ``optional``. The presence of the field can be detected
+  with a ``HasField(name)`` or ``has_<field>`` member, depending on the library.
+
+  Optional fields have some overhead --- default-valued fields are included in
+  the encoded proto, and, if using Nanopb, the proto structs have a
+  ``has_<field>`` flag for each optional field. Use plain fields if field
+  presence detection is not needed.
+
+  .. code-block:: protobuf
+
+    syntax = "proto3";
+
+    message MyMessage {
+      // Leaving this field unset is equivalent to setting it to 0.
+      int32 number = 1;
+
+      // Setting this field to 0 is different from leaving it unset.
+      optional int32 other_number = 2;
+    }
+
+2. RPC code generation
+----------------------
+``pw_rpc`` generates a C++ header file for each ``.proto`` file. This header is
+generated in the build output directory. Its exact location varies by build
+system and toolchain, but the C++ include path always matches the sources
+declaration in the ``pw_proto_library``. The ``.proto`` extension is replaced
+with an extension corresponding to the protobuf library in use.
+
+================== =============== =============== =============
+Protobuf libraries Build subtarget Protobuf header pw_rpc header
+================== =============== =============== =============
+Raw only           .raw_rpc        (none)          .raw_rpc.pb.h
+Nanopb or raw      .nanopb_rpc     .pb.h           .rpc.pb.h
+pw_protobuf or raw .pwpb_rpc       .pwpb.h         .rpc.pwpb.h
+================== =============== =============== =============
+
+For example, the generated RPC header for ``"foo_bar/the_service.proto"`` is
+``"foo_bar/the_service.rpc.pb.h"`` for Nanopb or
+``"foo_bar/the_service.raw_rpc.pb.h"`` for raw RPCs.
+
+The generated header defines a base class for each RPC service declared in the
+``.proto`` file. A service named ``TheService`` in package ``foo.bar`` would
+generate the following base class:
 
 .. cpp:class:: template <typename Implementation> foo::bar::generated::TheService
+
+3. RPC service definition
+-------------------------
+The serivce class is implemented by inheriting from the generated RPC service
+base class and defining a method for each RPC. The methods must match the name
+and function signature for one of the supported protobuf implementations.
+Services may mix and match protobuf implementations within one service.
+
+.. tip::
+
+  The generated code includes RPC service implementation stubs. You can
+  reference or copy and paste these to get started with implementing a service.
+  These stub classes are generated at the bottom of the pw_rpc proto header.
+
+  To use the stubs, do the following:
+
+  #. Locate the generated RPC header in the build directory. For example:
+
+     .. code-block:: sh
+
+       find out/ -name <proto_name>.rpc.pb.h
+
+  #. Scroll to the bottom of the generated RPC header.
+  #. Copy the stub class declaration to a header file.
+  #. Copy the member function definitions to a source file.
+  #. Rename the class or change the namespace, if desired.
+  #. List these files in a build target with a dependency on the
+     ``pw_proto_library``.
 
 A Nanopb implementation of this service would be as follows:
 
 .. code-block:: cpp
+
+  #include "foo_bar/the_service.rpc.pb.h"
 
   namespace foo::bar {
 
@@ -79,7 +165,7 @@ A Nanopb implementation of this service would be as follows:
                          const foo_bar_Request& request,
                          foo_bar_Response& response) {
       // implementation
-      return pw::Status::OK;
+      return pw::OkStatus();
     }
 
     void MethodTwo(ServerContext& ctx,
@@ -103,7 +189,7 @@ The Nanopb implementation would be declared in a ``BUILD.gn``:
   pw_source_set("the_service") {
     public_configs = [ ":public" ]
     public = [ "public/foo_bar/service.h" ]
-    public_deps = [ ":the_service_proto_nanopb_rpc" ]
+    public_deps = [ ":the_service_proto.nanopb_rpc" ]
   }
 
 .. attention::
@@ -111,9 +197,9 @@ The Nanopb implementation would be declared in a ``BUILD.gn``:
   pw_rpc's generated classes will support using ``pw_protobuf`` or raw buffers
   (no protobuf library) in the future.
 
-3. Register the service with a server
+4. Register the service with a server
 -------------------------------------
-This example code sets up an RPC server with an :ref:`HDLC<module-pw_hdlc_lite>`
+This example code sets up an RPC server with an :ref:`HDLC<module-pw_hdlc>`
 channel output and the example service.
 
 .. code-block:: cpp
@@ -123,7 +209,7 @@ channel output and the example service.
   // adapt this as necessary.
   pw::stream::SysIoWriter writer;
   pw::rpc::RpcChannelOutput<kMaxTransmissionUnit> hdlc_channel_output(
-      writer, pw::hdlc_lite::kDefaultRpcAddress, "HDLC output");
+      writer, pw::hdlc::kDefaultRpcAddress, "HDLC output");
 
   pw::rpc::Channel channels[] = {
       pw::rpc::Channel::Create<1>(&hdlc_channel_output)};
@@ -148,9 +234,36 @@ channel output and the example service.
     std::array<std::byte, kMaxTransmissionUnit> input_buffer;
 
     PW_LOG_INFO("Starting pw_rpc server");
-    pw::hdlc_lite::ReadAndProcessPackets(
+    pw::hdlc::ReadAndProcessPackets(
         server, hdlc_channel_output, input_buffer);
   }
+
+Channels
+========
+``pw_rpc`` sends all of its packets over channels. These are logical,
+application-layer routes used to tell the RPC system where a packet should go.
+
+Channels over a client-server connection must all have a unique ID, which can be
+assigned statically at compile time or dynamically.
+
+.. code-block:: cpp
+
+  // Creating a channel with the static ID 3.
+  pw::rpc::Channel static_channel = pw::rpc::Channel::Create<3>(&output);
+
+  // Grouping channel IDs within an enum can lead to clearer code.
+  enum ChannelId {
+    kUartChannel = 1,
+    kSpiChannel = 2,
+  };
+
+  // Creating a channel with a static ID defined within an enum.
+  pw::rpc::Channel another_static_channel =
+      pw::rpc::Channel::Create<ChannelId::kUartChannel>(&output);
+
+  // Creating a channel with a dynamic ID (note that no output is provided; it
+  // will be set when the channel is used.
+  pw::rpc::Channel dynamic_channel;
 
 Services
 ========
@@ -175,9 +288,9 @@ Testing a pw_rpc integration
 ============================
 After setting up a ``pw_rpc`` server in your project, you can test that it is
 working as intended by registering the provided ``EchoService``, defined in
-``pw_rpc_protos/echo.proto``, which echoes back a message that it receives.
+``echo.proto``, which echoes back a message that it receives.
 
-.. literalinclude:: pw_rpc_protos/echo.proto
+.. literalinclude:: echo.proto
   :language: protobuf
   :lines: 14-
 
@@ -209,9 +322,9 @@ Packet format
 -------------
 Pigweed RPC packets consist of a type and a set of fields. The packets are
 encoded as protocol buffers. The full packet format is described in
-``pw_rpc/pw_rpc_protos/packet.proto``.
+``pw_rpc/pw_rpc/internal/packet.proto``.
 
-.. literalinclude:: pw_rpc_protos/packet.proto
+.. literalinclude:: internal/packet.proto
   :language: protobuf
   :lines: 14-
 
@@ -604,26 +717,18 @@ The Method class
 ^^^^^^^^^^^^^^^^
 The RPC Server depends on the ``pw::rpc::internal::Method`` class. ``Method``
 serves as the bridge between the ``pw_rpc`` server library and the user-defined
-RPC functions. ``Method`` takes an RPC packet, decodes it using a protobuf
-library (if applicable), and calls the RPC function. Since ``Method`` interacts
-directly with the protobuf library, it must be implemented separately for each
-protobuf library.
+RPC functions. Each supported protobuf implementation extends ``Method`` to
+implement its request and response proto handling. The ``pw_rpc`` server
+calls into the ``Method`` implementation through the base class's ``Invoke``
+function.
 
-``pw::rpc::internal::Method`` is not implemented as a facade with different
-backends. Instead, there is a separate instance of the ``pw_rpc`` server library
-for each ``Method`` implementation. There are a few reasons for this.
+``Method`` implementations store metadata about each method, including a
+function pointer to the user-defined method implementation. They also provide
+``static constexpr`` functions for creating each type of method. ``Method``
+implementations must satisfy the ``MethodImplTester`` test class in
+``pw_rpc_private/method_impl_tester.h``.
 
-* ``Method`` is entirely internal to ``pw_rpc``. Users will never implement a
-  custom backend. Exposing a facade would unnecessarily expose implementation
-  details and make ``pw_rpc`` more difficult to use.
-* There is no common interface between ``pw_rpc`` / ``Method`` implementations.
-  It's not possible to swap between e.g. a Nanopb and a ``pw_protobuf`` RPC
-  server because the interface for the user-implemented RPCs changes completely.
-  This nullifies the primary benefit of facades.
-* The different ``Method`` implementations can be built easily alongside one
-  another in a cross-platform way. This makes testing simpler, since the tests
-  build with any backend configuration. Users can select which ``Method``
-  implementation to use simply by depending on the corresponding server library.
+See ``pw_rpc/internal/method.h`` for more details about ``Method``.
 
 Packet flow
 ^^^^^^^^^^^
@@ -743,3 +848,26 @@ interfaces for working with RPCs.
 The RPC server stores a list of all of active ``ClientCall`` objects. When an
 incoming packet is recieved, it dispatches to one of its active calls, which
 then decodes the payload and presents it to the user.
+
+ClientServer
+============
+Sometimes, a device needs to both process RPCs as a server, as well as making
+calls to another device as a client. To do this, both a client and server must
+be set up, and incoming packets must be sent to both of them.
+
+Pigweed simplifies this setup by providing a ``ClientServer`` class which wraps
+an RPC client and server with the same set of channels.
+
+.. code-block:: cpp
+
+  pw::rpc::Channel channels[] = {
+      pw::rpc::Channel::Create<1>(&channel_output)};
+
+  // Creates both a client and a server.
+  pw::rpc::ClientServer client_server(channels);
+
+  void ProcessRpcData(pw::ConstByteSpan packet) {
+    // Calls into both the client and the server, sending the packet to the
+    // appropriate one.
+    client_server.ProcessPacket(packet, output);
+  }

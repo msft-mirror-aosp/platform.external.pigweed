@@ -48,8 +48,8 @@ TEST(Client, ProcessPacket_InvokesARegisteredClientCall) {
   ClientContextForTest context;
 
   TestClientCall call(
-      &context.channel(), context.kServiceId, context.kMethodId);
-  EXPECT_EQ(context.SendResponse(Status::Ok(), {}), Status::Ok());
+      &context.channel(), context.service_id(), context.method_id());
+  EXPECT_EQ(context.SendResponse(OkStatus(), {}), OkStatus());
 
   EXPECT_TRUE(call.invoked());
 }
@@ -57,14 +57,14 @@ TEST(Client, ProcessPacket_InvokesARegisteredClientCall) {
 TEST(Client, ProcessPacket_SendsClientErrorOnUnregisteredCall) {
   ClientContextForTest context;
 
-  EXPECT_EQ(context.SendResponse(Status::OK, {}), Status::NotFound());
+  EXPECT_EQ(context.SendResponse(OkStatus(), {}), Status::NotFound());
 
   ASSERT_EQ(context.output().packet_count(), 1u);
   const Packet& packet = context.output().sent_packet();
   EXPECT_EQ(packet.type(), PacketType::CLIENT_ERROR);
-  EXPECT_EQ(packet.channel_id(), context.kChannelId);
-  EXPECT_EQ(packet.service_id(), context.kServiceId);
-  EXPECT_EQ(packet.method_id(), context.kMethodId);
+  EXPECT_EQ(packet.channel_id(), context.channel_id());
+  EXPECT_EQ(packet.service_id(), context.service_id());
+  EXPECT_EQ(packet.method_id(), context.method_id());
   EXPECT_TRUE(packet.payload().empty());
   EXPECT_EQ(packet.status(), Status::FailedPrecondition());
 }

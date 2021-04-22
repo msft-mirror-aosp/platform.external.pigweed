@@ -18,6 +18,7 @@
 #include <span>
 
 #include "pw_containers/intrusive_list.h"
+#include "pw_preprocessor/compiler.h"
 #include "pw_rpc/internal/method.h"
 #include "pw_rpc/internal/method_union.h"
 
@@ -34,13 +35,17 @@ class Service : public IntrusiveList<Service>::Item {
   uint32_t id() const { return id_; }
 
  protected:
-  template <typename T, size_t method_count>
-  constexpr Service(uint32_t id, const std::array<T, method_count>& methods)
+  template <typename T, size_t kMethodCount>
+  constexpr Service(uint32_t id, const std::array<T, kMethodCount>& methods)
       : id_(id),
         methods_(methods.data()),
         method_size_(sizeof(T)),
-        method_count_(static_cast<uint16_t>(method_count)) {
-    static_assert(method_count <= std::numeric_limits<uint16_t>::max());
+        method_count_(static_cast<uint16_t>(kMethodCount)) {
+    PW_MODIFY_DIAGNOSTICS_PUSH();
+    // GCC 10 emits spurious -Wtype-limits warnings for the static_assert.
+    PW_MODIFY_DIAGNOSTIC_GCC(ignored, "-Wtype-limits");
+    static_assert(kMethodCount <= std::numeric_limits<uint16_t>::max());
+    PW_MODIFY_DIAGNOSTICS_POP();
   }
 
   // For use by tests with only one method.

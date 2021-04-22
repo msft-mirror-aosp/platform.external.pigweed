@@ -11,6 +11,14 @@ As a modern embedded framework, Pigweed's goal is to collect these embedded use
 cases into a powerful and flexible build system, then extend it with support for
 modern software development practices.
 
+See :ref:`docs-python-build` for information about Python build automation with
+Pigweed.
+
+.. toctree::
+  :hidden:
+
+  python_build
+
 What's in a build system?
 =========================
 A quality build system provides a variety of features beyond compiling code.
@@ -60,8 +68,8 @@ See also
 
 * :ref:`module-pw_build-python-action`
 
-Python packaging
-----------------
+Python
+------
 Python is a favorite scripting language of many development teams, and here at
 Pigweed, we're no exception. Much of Pigweed's host-side tooling is written in
 Python. While Python works great for local development, problems can arise when
@@ -383,7 +391,7 @@ repository within the project.
 
 Module variables
 ----------------
-As Pigweed is inteded to be a subcomponent of a larger project, it cannot assume
+As Pigweed is intended to be a subcomponent of a larger project, it cannot assume
 where it or its modules is located. Therefore, Pigweed's upstream BUILD.gn files
 do not use absolute paths; instead, variables are defined pointing to each of
 Pigweed's modules, set relative to a project-specific ``dir_pigweed``.
@@ -401,7 +409,7 @@ reference these module variables.
 
 GN target type wrappers
 -----------------------
-To faciliate injecting global configuration options, Pigweed defines wrappers
+To facilitate injecting global configuration options, Pigweed defines wrappers
 around builtin GN target types such as ``source_set`` and ``executable``. These
 are defined within ``$dir_pw_build/target_types.gni``.
 

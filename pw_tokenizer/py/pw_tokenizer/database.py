@@ -28,8 +28,8 @@ from pathlib import Path
 import re
 import struct
 import sys
-from typing import (Callable, Dict, Iterable, Iterator, List, Pattern, Set,
-                    TextIO, Tuple, Union)
+from typing import (Any, Callable, Dict, Iterable, Iterator, List, Pattern,
+                    Set, TextIO, Tuple, Union)
 
 try:
     from pw_tokenizer import elf_reader, tokens
@@ -213,22 +213,25 @@ def load_token_database(
                                     for db in databases))
 
 
-def database_summary(db: tokens.Database) -> Dict[str, int]:
+def database_summary(db: tokens.Database) -> Dict[str, Any]:
     """Returns a simple report of properties of the database."""
     present = [entry for entry in db.entries() if not entry.date_removed]
-
-    # Add 1 to each string's size to account for the null terminator.
-    return {
-        'present_entries': len(present),
-        'present_size_bytes': sum(len(entry.string) + 1 for entry in present),
-        'total_entries': len(db.entries()),
-        'total_size_bytes':
-        sum(len(entry.string) + 1 for entry in db.entries()),
-        'collisions': len(db.collisions()),
+    collisions = {
+        token: list(e.string for e in entries)
+        for token, entries in db.collisions()
     }
 
+    # Add 1 to each string's size to account for the null terminator.
+    return dict(
+        present_entries=len(present),
+        present_size_bytes=sum(len(entry.string) + 1 for entry in present),
+        total_entries=len(db.entries()),
+        total_size_bytes=sum(len(entry.string) + 1 for entry in db.entries()),
+        collisions=collisions,
+    )
 
-_DatabaseReport = Dict[str, Dict[str, Dict[str, int]]]
+
+_DatabaseReport = Dict[str, Dict[str, Dict[str, Any]]]
 
 
 def generate_reports(paths: Iterable[Path]) -> _DatabaseReport:
@@ -293,8 +296,8 @@ def _handle_add(token_database, databases):
               len(token_database) - initial, token_database.path)
 
 
-def _handle_mark_removals(token_database, databases, date):
-    marked_removed = token_database.mark_removals(
+def _handle_mark_removed(token_database, databases, date):
+    marked_removed = token_database.mark_removed(
         (entry for entry in tokens.Database.merged(*databases).entries()
          if not entry.date_removed), date)
 
@@ -516,15 +519,15 @@ def _parse_args():
             'marked as removed.'))
     subparser.set_defaults(handler=_handle_add)
 
-    # The 'mark_removals' command marks removed entries to match a set of ELFs.
+    # The 'mark_removed' command marks removed entries to match a set of ELFs.
     subparser = subparsers.add_parser(
-        'mark_removals',
+        'mark_removed',
         parents=[option_db, option_tokens],
         help=(
             'Updates a database with tokenized strings from a set of strings. '
             'Strings not present in the set remain in the database but are '
             'marked as removed. New strings are NOT added.'))
-    subparser.set_defaults(handler=_handle_mark_removals)
+    subparser.set_defaults(handler=_handle_mark_removed)
     subparser.add_argument(
         '--date',
         type=year_month_day,

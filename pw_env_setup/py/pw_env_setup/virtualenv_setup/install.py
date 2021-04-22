@@ -121,6 +121,7 @@ def install(
         full_envsetup=True,
         requirements=(),
         gn_targets=(),
+        gn_out_dir=None,
         python=sys.executable,
         env=None,
 ):
@@ -129,7 +130,8 @@ def install(
     version = subprocess.check_output(
         (python, '--version'), stderr=subprocess.STDOUT).strip().decode()
     # We expect Python 3.8, but if it came from CIPD let it pass anyway.
-    if '3.8' not in version and 'chromium' not in version:
+    if ('3.8' not in version and '3.9' not in version
+            and 'chromium' not in version):
         print('=' * 60, file=sys.stderr)
         print('Unexpected Python version:', version, file=sys.stderr)
         print('=' * 60, file=sys.stderr)
@@ -161,6 +163,8 @@ def install(
     venv_python = os.path.join(venv_bin, 'python')
 
     pw_root = os.environ.get('PW_ROOT')
+    if not pw_root and env:
+        pw_root = env.PW_ROOT
     if not pw_root:
         pw_root = git_repo_root()
     if not pw_root:
@@ -187,13 +191,36 @@ def install(
                     *requirement_args)
 
     def install_packages(gn_target):
-        build = os.path.join(venv_path, gn_target.name)
+        if gn_out_dir is None:
+            build_dir = os.path.join(venv_path, gn_target.name)
+        else:
+            build_dir = gn_out_dir
+
+        env_log = 'env-{}.log'.format(gn_target.name)
+        env_log_path = os.path.join(venv_path, env_log)
+        with open(env_log_path, 'w') as outs:
+            for key, value in sorted(os.environ.items()):
+                if key.upper().endswith('PATH'):
+                    print(key, '=', file=outs)
+                    # pylint: disable=invalid-name
+                    for v in value.split(os.pathsep):
+                        print('   ', v, file=outs)
+                    # pylint: enable=invalid-name
+                else:
+                    print(key, '=', value, file=outs)
 
         gn_log = 'gn-gen-{}.log'.format(gn_target.name)
         gn_log_path = os.path.join(venv_path, gn_log)
         try:
             with open(gn_log_path, 'w') as outs:
-                subprocess.check_call(('gn', 'gen', build),
+                gn_cmd = (
+                    'gn',
+                    'gen',
+                    build_dir,
+                    '--args=dir_pigweed="{}"'.format(pw_root),
+                )
+                print(gn_cmd, file=outs)
+                subprocess.check_call(gn_cmd,
                                       cwd=os.path.join(project_root,
                                                        gn_target.directory),
                                       stdout=outs,
@@ -207,13 +234,20 @@ def install(
         ninja_log_path = os.path.join(venv_path, ninja_log)
         try:
             with open(ninja_log_path, 'w') as outs:
-                ninja_cmd = ['ninja', '-C', build]
+                ninja_cmd = ['ninja', '-C', build_dir]
                 ninja_cmd.append(gn_target.target)
+                print(ninja_cmd, file=outs)
                 subprocess.check_call(ninja_cmd, stdout=outs, stderr=outs)
         except subprocess.CalledProcessError as err:
             with open(ninja_log_path, 'r') as ins:
                 raise subprocess.CalledProcessError(err.returncode, err.cmd,
                                                     ins.read())
+
+        with open(os.path.join(venv_path, 'pip-list.log'), 'w') as outs:
+            subprocess.check_call(
+                [venv_python, '-m', 'pip', 'list'],
+                stdout=outs,
+            )
 
     if gn_targets:
         if env:
