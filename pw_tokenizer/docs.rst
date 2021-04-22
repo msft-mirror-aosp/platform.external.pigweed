@@ -233,8 +233,97 @@ than the other macros, so its per-use code size overhead is larger.
   widely expanded macros, such as a logging macro, because it will result in
   larger code size than its alternatives.
 
-Example: binary logging
-^^^^^^^^^^^^^^^^^^^^^^^
+.. _module-pw_tokenizer-custom-macro:
+
+Tokenize with a custom macro
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Projects may need more flexbility than the standard ``pw_tokenizer`` macros
+provide. To support this, projects may define custom tokenization macros. This
+requires the use of two low-level ``pw_tokenizer`` macros:
+
+.. c:macro:: PW_TOKENIZE_FORMAT_STRING(domain, mask, format, ...)
+
+  Tokenizes a format string and sets the ``_pw_tokenizer_token`` variable to the
+  token. Must be used in its own scope, since the same variable is used in every
+  invocation.
+
+  The tokenized string uses the specified :ref:`tokenization domain
+  <module-pw_tokenizer-domains>`.  Use ``PW_TOKENIZER_DEFAULT_DOMAIN`` for the
+  default. The token also may be masked; use ``UINT32_MAX`` to keep all bits.
+
+.. c:macro:: PW_TOKENIZER_ARG_TYPES(...)
+
+  Converts a series of arguments to a compact format that replaces the format
+  string literal.
+
+Use these two macros within the custom tokenization macro to call a function
+that does the encoding. The following example implements a custom tokenization
+macro for use with :ref:`module-pw_log_tokenized`.
+
+.. code-block:: cpp
+
+  #include "pw_tokenizer/tokenize.h"
+
+  #ifndef __cplusplus
+  extern "C" {
+  #endif
+
+  void EncodeTokenizedMessage(pw_tokenizer_Payload metadata,
+                              pw_tokenizer_Token token,
+                              pw_tokenizer_ArgTypes types,
+                              ...);
+
+  #ifndef __cplusplus
+  }  // extern "C"
+  #endif
+
+  #define PW_LOG_TOKENIZED_ENCODE_MESSAGE(metadata, format, ...)         \
+    do {                                                                 \
+      PW_TOKENIZE_FORMAT_STRING(                                         \
+          PW_TOKENIZER_DEFAULT_DOMAIN, UINT32_MAX, format, __VA_ARGS__); \
+      EncodeTokenizedMessage(payload,                                    \
+                             _pw_tokenizer_token,                        \
+                             PW_TOKENIZER_ARG_TYPES(__VA_ARGS__)         \
+                                 PW_COMMA_ARGS(__VA_ARGS__));            \
+    } while (0)
+
+In this example, the ``EncodeTokenizedMessage`` function would handle encoding
+and processing the message. Encoding is done by the
+``pw::tokenizer::EncodedMessage`` class or ``pw::tokenizer::EncodeArgs``
+function from ``pw_tokenizer/encode_args.h``. The encoded message can then be
+transmitted or stored as needed.
+
+.. code-block:: cpp
+
+  #include "pw_log_tokenized/log_tokenized.h"
+  #include "pw_tokenizer/encode_args.h"
+
+  void HandleTokenizedMessage(pw::log_tokenized::Metadata metadata,
+                              std::span<std::byte> message);
+
+  extern "C" void EncodeTokenizedMessage(const pw_tokenizer_Payload metadata,
+                                         const pw_tokenizer_Token token,
+                                         const pw_tokenizer_ArgTypes types,
+                                         ...) {
+    va_list args;
+    va_start(args, types);
+    pw::tokenizer::EncodedMessage encoded_message(token, types, args);
+    va_end(args);
+
+    HandleTokenizedMessage(metadata, encoded_message);
+  }
+
+.. admonition:: When to use a custom macro
+
+  Use existing tokenization macros whenever possible. A custom macro may be
+  needed to support use cases like the following:
+
+    * Variations of ``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD`` that take
+      different arguments.
+    * Supporting global handler macros that use different handler functions.
+
+Binary logging with pw_tokenizer
+--------------------------------
 String tokenization is perfect for logging. Consider the following log macro,
 which gathers the file, line number, and log message. It calls the ``RecordLog``
 function, which formats the log string, collects a timestamp, and transmits the
@@ -363,6 +452,8 @@ For consistency, C++ tokenization uses the same hash algorithm, but the
 calculated values will differ between C and C++ for strings longer than
 ``PW_TOKENIZER_CFG_C_HASH_LENGTH`` characters.
 
+.. _module-pw_tokenizer-domains:
+
 Tokenization domains
 --------------------
 ``pw_tokenizer`` supports having multiple tokenization domains. Domains are a
@@ -396,6 +487,101 @@ example, the following reads strings in ``some_domain`` from ``my_image.elf``.
 
 See `Managing token databases`_ for information about the ``database.py``
 command line tool.
+
+Smaller tokens with masking
+---------------------------
+``pw_tokenizer`` uses 32-bit tokens. On 32-bit or 64-bit architectures, using
+fewer than 32 bits does not improve runtime or code size efficiency. However,
+when tokens are packed into data structures or stored in arrays, the size of the
+token directly affects memory usage. In those cases, every bit counts, and it
+may be desireable to use fewer bits for the token.
+
+``pw_tokenizer`` allows users to provide a mask to apply to the token. This
+masked token is used in both the token database and the code. The masked token
+is not a masked version of the full 32-bit token, the masked token is the token.
+This makes it trivial to decode tokens that use fewer than 32 bits.
+
+Masking functionality is provided through the ``*_MASK`` versions of the macros.
+For example, the following generates 16-bit tokens and packs them into an
+existing value.
+
+.. code-block:: cpp
+
+  constexpr uint32_t token = PW_TOKENIZE_STRING_MASK("domain", 0xFFFF, "Pigweed!");
+  uint32_t packed_word = (other_bits << 16) | token;
+
+Tokens are hashes, so tokens of any size have a collision risk. The fewer bits
+used for tokens, the more likely two strings are to hash to the same token. See
+`token collisions`_.
+
+Token collisions
+----------------
+Tokens are calculated with a hash function. It is possible for different
+strings to hash to the same token. When this happens, multiple strings will have
+the same token in the database, and it may not be possible to unambiguously
+decode a token.
+
+The detokenization tools attempt to resolve collisions automatically. Collisions
+are resolved based on two things:
+
+  - whether the tokenized data matches the strings arguments' (if any), and
+  - if / when the string was marked as having been removed from the database.
+
+Working with collisions
+^^^^^^^^^^^^^^^^^^^^^^^
+Collisions may occur occasionally. Run the command
+``python -m pw_tokenizer.database report <database>`` to see information about a
+token database, including any collisions.
+
+If there are collisions, take the following steps to resolve them.
+
+  - Change one of the colliding strings slightly to give it a new token.
+  - In C (not C++), artificial collisions may occur if strings longer than
+    ``PW_TOKENIZER_CFG_C_HASH_LENGTH`` are hashed. If this is happening,
+    consider setting ``PW_TOKENIZER_CFG_C_HASH_LENGTH`` to a larger value.
+    See ``pw_tokenizer/public/pw_tokenizer/config.h``.
+  - Run the ``mark_removed`` command with the latest version of the build
+    artifacts to mark missing strings as removed. This deprioritizes them in
+    collision resolution.
+
+    .. code-block:: sh
+
+      python -m pw_tokenizer.database mark_removed --database <database> <ELF files>
+
+    The ``purge`` command may be used to delete these tokens from the database.
+
+Probability of collisions
+^^^^^^^^^^^^^^^^^^^^^^^^^
+Hashes of any size have a collision risk. The probability of one at least
+one collision occurring for a given number of strings is unintuitively high
+(this is known as the `birthday problem
+<https://en.wikipedia.org/wiki/Birthday_problem>`_). If fewer than 32 bits are
+used for tokens, the probability of collisions increases substantially.
+
+This table shows the approximate number of strings that can be hashed to have a
+1% or 50% probability of at least one collision (assuming a uniform, random
+hash).
+
++-------+---------------------------------------+
+| Token | Collision probability by string count |
+| bits  +--------------------+------------------+
+|       |         50%        |          1%      |
++=======+====================+==================+
+|   32  |       77000        |        9300      |
++-------+--------------------+------------------+
+|   31  |       54000        |        6600      |
++-------+--------------------+------------------+
+|   24  |        4800        |         580      |
++-------+--------------------+------------------+
+|   16  |         300        |          36      |
++-------+--------------------+------------------+
+|    8  |          19        |           3      |
++-------+--------------------+------------------+
+
+Keep this table in mind when masking tokens (see `Smaller tokens with
+masking`_). 16 bits might be acceptable when tokenizing a small set of strings,
+such as module names, but won't be suitable for large sets of strings, like log
+messages.
 
 Token databases
 ===============
@@ -500,21 +686,15 @@ database after each build.
 GN integration
 ^^^^^^^^^^^^^^
 Token databases may be updated or created as part of a GN build. The
-``pw_tokenizer_database`` template provided by ``dir_pw_tokenizer/database.gni``
-automatically updates an in-source tokenized strings database or creates a new
-database with artifacts from one or more GN targets or other database files.
+``pw_tokenizer_database`` template provided by
+``$dir_pw_tokenizer/database.gni`` automatically updates an in-source tokenized
+strings database or creates a new database with artifacts from one or more GN
+targets or other database files.
 
 To create a new database, set the ``create`` variable to the desired database
 type (``"csv"`` or ``"binary"``). The database will be created in the output
 directory. To update an existing database, provide the path to the database with
 the ``database`` variable.
-
-Each database in the source tree can only be updated from a single
-``pw_tokenizer_database`` rule. Updating the same database in multiple rules
-results in ``Duplicate output file`` GN errors or ``multiple rules generate
-<file>`` Ninja errors. To avoid these errors, ``pw_tokenizer_database`` rules
-should be defined in the default toolchain, and the input targets should be
-referenced with specific toolchains.
 
 .. code-block::
 
@@ -527,6 +707,24 @@ referenced with specific toolchains.
     targets = [ "//firmware/image:foo(//targets/my_board:some_toolchain)" ]
     input_databases = [ "other_database.csv" ]
   }
+
+Instead of specifying GN targets, paths or globs to output files may be provided
+with the ``paths`` option.
+
+.. code-block::
+
+  pw_tokenizer_database("my_database") {
+    database = "database_in_the_source_tree.csv"
+    deps = [ ":apps" ]
+    optional_paths = [ "$root_build_dir/**/*.elf" ]
+  }
+
+.. note::
+
+  The ``paths`` and ``optional_targets`` arguments do not add anything to
+  ``deps``, so there is no guarantee that the referenced artifacts will exist
+  when the database is updated. Provide ``targets`` or ``deps`` or build other
+  GN targets first if this is a concern.
 
 Detokenization
 ==============

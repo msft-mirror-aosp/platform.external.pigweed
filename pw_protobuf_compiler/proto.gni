@@ -16,6 +16,8 @@ import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/error.gni")
 import("$dir_pw_build/input_group.gni")
+import("$dir_pw_build/mirror_tree.gni")
+import("$dir_pw_build/python.gni")
 import("$dir_pw_build/python_action.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_third_party/nanopb/nanopb.gni")
@@ -33,57 +35,75 @@ _forwarded_vars = [
 # This creates the internal GN target $target_name.$language._gen that compiles
 # proto files with protoc.
 template("_pw_invoke_protoc") {
-  _output = rebase_path(get_target_outputs(":${invoker.base_target}._metadata"))
-
-  pw_python_action("$target_name._gen") {
-    forward_variables_from(invoker, [ "metadata" ])
-    script =
-        "$dir_pw_protobuf_compiler/py/pw_protobuf_compiler/generate_protos.py"
-
-    deps = [
-             ":${invoker.base_target}._metadata",
-             ":${invoker.base_target}._inputs",
-           ] + invoker.deps
-
-    args = [
-             "--language",
-             invoker.language,
-             "--module-path",
-             rebase_path("."),
-             "--include-file",
-             _output[0],
-             "--out-dir",
-             rebase_path(invoker.gen_dir),
-           ] + rebase_path(invoker.sources)
-
-    inputs = invoker.sources
-
-    if (defined(invoker.plugin)) {
-      inputs += [ invoker.plugin ]
-      args += [ "--plugin-path=" + rebase_path(invoker.plugin) ]
-    }
-
-    if (defined(invoker.include_paths)) {
-      args += [
-        "--include-paths",
-        string_join(";", rebase_path(invoker.include_paths)),
-      ]
-    }
-
-    outputs = []
-    foreach(extension, invoker.output_extensions) {
-      foreach(proto,
-              rebase_path(invoker.sources, get_path_info(".", "abspath"))) {
-        _output = string_replace(proto, ".proto", extension)
-        outputs += [ "${invoker.gen_dir}/$_output" ]
+  if (current_toolchain == default_toolchain) {
+    if (defined(invoker.out_dir)) {
+      _out_dir = invoker.out_dir
+    } else {
+      _out_dir = "${invoker.base_out_dir}/${invoker.language}"
+      if (defined(invoker.module_as_package) &&
+          invoker.module_as_package != "") {
+        assert(invoker.language == "python")
+        _out_dir = "$_out_dir/${invoker.module_as_package}"
       }
     }
 
-    if (outputs == []) {
-      stamp = true
-    }
+    _includes =
+        rebase_path(get_target_outputs(":${invoker.base_target}._includes"))
 
-    visibility = [ ":*" ]
+    pw_python_action("$target_name._gen") {
+      script =
+          "$dir_pw_protobuf_compiler/py/pw_protobuf_compiler/generate_protos.py"
+
+      python_deps = [ "$dir_pw_protobuf_compiler/py" ]
+      if (defined(invoker.python_deps)) {
+        python_deps += invoker.python_deps
+      }
+
+      deps = [
+        ":${invoker.base_target}._includes",
+        ":${invoker.base_target}._sources",
+      ]
+
+      foreach(dep, invoker.deps) {
+        deps += [ get_label_info(dep, "label_no_toolchain") + "._gen" ]
+      }
+
+      args = [
+               "--language",
+               invoker.language,
+               "--include-file",
+               _includes[0],
+               "--compile-dir",
+               rebase_path(invoker.compile_dir),
+               "--out-dir",
+               rebase_path(_out_dir),
+               "--sources",
+             ] + rebase_path(invoker.sources)
+
+      if (defined(invoker.plugin)) {
+        inputs = [ invoker.plugin ]
+        args += [ "--plugin-path=" + rebase_path(invoker.plugin) ]
+      }
+
+      if (defined(invoker.outputs)) {
+        outputs = invoker.outputs
+      } else {
+        stamp = true
+      }
+
+      if (defined(invoker.metadata)) {
+        metadata = invoker.metadata
+      } else {
+        metadata = {
+          protoc_outputs = rebase_path(outputs)
+          root = [ rebase_path(_out_dir) ]
+        }
+      }
+    }
+  } else {
+    # protoc is only ever invoked from the default toolchain.
+    not_needed([ "target_name" ])
+    not_needed(invoker, "*")
   }
 }
 
@@ -95,17 +115,21 @@ template("_pw_pwpb_proto_library") {
     forward_variables_from(invoker, "*", _forwarded_vars)
     language = "pwpb"
     plugin = "$dir_pw_protobuf/py/pw_protobuf/plugin.py"
-    deps += [ "$dir_pw_protobuf/py" ]
-    output_extensions = [ ".pwpb.h" ]
+    python_deps = [ "$dir_pw_protobuf/py" ]
   }
 
   # Create a library with the generated source files.
+  config("$target_name._include_path") {
+    include_dirs = [ "${invoker.base_out_dir}/pwpb" ]
+    visibility = [ ":*" ]
+  }
+
   pw_source_set(target_name) {
     forward_variables_from(invoker, _forwarded_vars)
-    public_configs = [ ":${invoker.base_target}._include_path" ]
-    deps = [ ":$target_name._gen" ]
+    public_configs = [ ":$target_name._include_path" ]
+    deps = [ ":$target_name._gen($default_toolchain)" ]
     public_deps = [ dir_pw_protobuf ] + invoker.deps
-    sources = get_target_outputs(":$target_name._gen")
+    sources = invoker.outputs
     public = filter_include(sources, [ "*.pwpb.h" ])
   }
 }
@@ -120,23 +144,26 @@ template("_pw_nanopb_rpc_proto_library") {
     forward_variables_from(invoker, "*", _forwarded_vars)
     language = "nanopb_rpc"
     plugin = "$dir_pw_rpc/py/pw_rpc/plugin_nanopb.py"
-    deps += [ "$dir_pw_rpc/py" ]
-    include_paths = [ "$dir_pw_third_party_nanopb/generator/proto" ]
-    output_extensions = [ ".rpc.pb.h" ]
+    python_deps = [ "$dir_pw_rpc/py" ]
   }
 
   # Create a library with the generated source files.
+  config("$target_name._include_path") {
+    include_dirs = [ "${invoker.base_out_dir}/nanopb_rpc" ]
+    visibility = [ ":*" ]
+  }
+
   pw_source_set(target_name) {
     forward_variables_from(invoker, _forwarded_vars)
-    public_configs = [ ":${invoker.base_target}._include_path" ]
-    deps = [ ":$target_name._gen" ]
+    public_configs = [ ":$target_name._include_path" ]
+    deps = [ ":$target_name._gen($default_toolchain)" ]
     public_deps = [
                     ":${invoker.base_target}.nanopb",
                     "$dir_pw_rpc:server",
                     "$dir_pw_rpc/nanopb:method_union",
                     "$dir_pw_third_party/nanopb",
                   ] + invoker.deps
-    public = get_target_outputs(":$target_name._gen")
+    public = invoker.outputs
   }
 }
 
@@ -144,27 +171,39 @@ template("_pw_nanopb_rpc_proto_library") {
 # files. This is internal and should not be used outside of this file. Use
 # pw_proto_library instead.
 template("_pw_nanopb_proto_library") {
-  # Create a target which runs protoc configured with the nanopb plugin to
-  # generate the C proto sources.
-  _pw_invoke_protoc(target_name) {
-    forward_variables_from(invoker, "*", _forwarded_vars)
-    language = "nanopb"
-    plugin = "$dir_pw_third_party_nanopb/generator/protoc-gen-nanopb"
-    include_paths = [ "$dir_pw_third_party_nanopb/generator/proto" ]
-    output_extensions = [
-      ".pb.h",
-      ".pb.c",
-    ]
-  }
+  # When compiling with the Nanopb plugin, the nanopb.proto file is already
+  # compiled internally, so skip recompiling it with protoc.
+  if (rebase_path(invoker.sources, invoker.compile_dir) == [ "nanopb.proto" ]) {
+    group("$target_name._gen") {
+      deps = [ ":${invoker.base_target}._sources" ]
+    }
 
-  # Create a library with the generated source files.
-  pw_source_set(target_name) {
-    forward_variables_from(invoker, _forwarded_vars)
-    public_configs = [ ":${invoker.base_target}._include_path" ]
-    deps = [ ":$target_name._gen" ]
-    public_deps = [ "$dir_pw_third_party/nanopb" ] + invoker.deps
-    sources = get_target_outputs(":$target_name._gen")
-    public = filter_include(sources, [ "*.pb.h" ])
+    group("$target_name") {
+      deps = invoker.deps + [ ":$target_name._gen($default_toolchain)" ]
+    }
+  } else {
+    # Create a target which runs protoc configured with the nanopb plugin to
+    # generate the C proto sources.
+    _pw_invoke_protoc(target_name) {
+      forward_variables_from(invoker, "*", _forwarded_vars)
+      language = "nanopb"
+      plugin = "$dir_pw_third_party_nanopb/generator/protoc-gen-nanopb"
+    }
+
+    # Create a library with the generated source files.
+    config("$target_name._include_path") {
+      include_dirs = [ "${invoker.base_out_dir}/nanopb" ]
+      visibility = [ ":*" ]
+    }
+
+    pw_source_set(target_name) {
+      forward_variables_from(invoker, _forwarded_vars)
+      public_configs = [ ":$target_name._include_path" ]
+      deps = [ ":$target_name._gen($default_toolchain)" ]
+      public_deps = [ "$dir_pw_third_party/nanopb" ] + invoker.deps
+      sources = invoker.outputs
+      public = filter_include(sources, [ "*.pb.h" ])
+    }
   }
 }
 
@@ -178,20 +217,24 @@ template("_pw_raw_rpc_proto_library") {
     forward_variables_from(invoker, "*", _forwarded_vars)
     language = "raw_rpc"
     plugin = "$dir_pw_rpc/py/pw_rpc/plugin_raw.py"
-    deps += [ "$dir_pw_rpc/py" ]
-    output_extensions = [ ".raw_rpc.pb.h" ]
+    python_deps = [ "$dir_pw_rpc/py" ]
   }
 
   # Create a library with the generated source files.
+  config("$target_name._include_path") {
+    include_dirs = [ "${invoker.base_out_dir}/raw_rpc" ]
+    visibility = [ ":*" ]
+  }
+
   pw_source_set(target_name) {
     forward_variables_from(invoker, _forwarded_vars)
-    public_configs = [ ":${invoker.base_target}._include_path" ]
-    deps = [ ":$target_name._gen" ]
+    public_configs = [ ":$target_name._include_path" ]
+    deps = [ ":$target_name._gen($default_toolchain)" ]
     public_deps = [
                     "$dir_pw_rpc:server",
                     "$dir_pw_rpc/raw:method_union",
                   ] + invoker.deps
-    public = get_target_outputs(":$target_name._gen")
+    public = invoker.outputs
   }
 }
 
@@ -210,12 +253,63 @@ template("_pw_go_proto_library") {
         "google.golang.org/grpc",
       ]
     }
-    output_extensions = []  # Don't enumerate the generated .go files.
-    gen_dir = "$_proto_gopath/src"
+
+    # Override the default "$base_out_dir/$language" output path.
+    out_dir = "$_proto_gopath/src"
   }
 
   group(target_name) {
-    deps = [ ":$target_name._gen" ]
+    deps = invoker.deps + [ ":$target_name._gen($default_toolchain)" ]
+  }
+}
+
+# Generates Python code for proto files, creating a pw_python_package containing
+# the generated files. This is internal and should not be used outside of this
+# file. Use pw_proto_library instead.
+template("_pw_python_proto_library") {
+  _pw_invoke_protoc(target_name) {
+    forward_variables_from(invoker, "*", _forwarded_vars + [ "python_package" ])
+    language = "python"
+    python_deps = [ "$dir_pw_protobuf_compiler:protobuf_requirements" ]
+  }
+
+  if (defined(invoker.python_package) && invoker.python_package != "") {
+    # If nested in a Python package, write the package's name to a file so
+    # pw_python_package can check that the dependencies are correct.
+    write_file("${invoker.base_out_dir}/python_package.txt",
+               get_label_info(invoker.python_package, "label_no_toolchain"))
+
+    # If anyone attempts to depend on this Python package, print an error.
+    pw_error(target_name) {
+      _pkg = get_label_info(invoker.python_package, "label_no_toolchain")
+      message_lines = [
+        "This proto Python package is embedded in the $_pkg Python package.",
+        "It cannot be used directly; instead, depend on $_pkg.",
+      ]
+    }
+    foreach(subtarget, pw_python_package_subtargets) {
+      group("$target_name.$subtarget") {
+        deps = [ ":${invoker.target_name}" ]
+      }
+    }
+  } else {
+    write_file("${invoker.base_out_dir}/python_package.txt", "")
+
+    # Create a Python package with the generated source files.
+    pw_python_package(target_name) {
+      forward_variables_from(invoker, _forwarded_vars)
+      generate_setup = {
+        name = invoker._package_dir
+        version = "0.0.1"  # TODO(hepler): Need to be able to set this verison.
+      }
+      sources = invoker.outputs
+      strip_prefix = "${invoker.base_out_dir}/python"
+      python_deps = invoker.deps
+      other_deps = [ ":$target_name._gen($default_toolchain)" ]
+      static_analysis = []
+
+      _pw_module_as_package = invoker.module_as_package != ""
+    }
   }
 }
 
@@ -224,19 +318,127 @@ template("_pw_go_proto_library") {
 #
 #   <target_name>.<generator>
 #
+# GN permits using abbreviated labels when the target name matches the directory
+# name (e.g. //foo for //foo:foo). For consistency with this, the sub-targets
+# for each generator are aliased to the directory when the target name is the
+# same. For example, these two labels are equivalent:
+#
+#   //path/to/my_protos:my_protos.pwpb
+#   //path/to/my_protos:pwpb
+#
+# pw_protobuf_library targets generate Python packages. As such, they must have
+# globally unique package names. The first directory of the prefix or the first
+# common directory of the sources is used as the Python package.
+#
 # Args:
-#  sources: List of input .proto files.
-#  deps: List of other pw_proto_library dependencies.
-#  inputs: Other files on which the protos depend (e.g. nanopb .options files).
+#   sources: List of input .proto files.
+#   deps: List of other pw_proto_library dependencies.
+#   inputs: Other files on which the protos depend (e.g. nanopb .options files).
+#   prefix: A prefix to add to the source protos prior to compilation. For
+#       example, a source called "foo.proto" with prefix = "nested" will be
+#       compiled with protoc as "nested/foo.proto".
+#   strip_prefix: Remove this prefix from the source protos. All source and
+#       input files must be nested under this path.
+#   python_package: Label of Python package to which to add the proto modules.
 #
 template("pw_proto_library") {
   assert(defined(invoker.sources) && invoker.sources != [],
          "pw_proto_library requires .proto source files")
 
+  if (defined(invoker.python_module_as_package)) {
+    _module_as_package = invoker.python_module_as_package
+
+    _must_be_one_source = invoker.sources
+    assert([ _must_be_one_source[0] ] == _must_be_one_source,
+           "'python_module_as_package' requires exactly one source file")
+    assert(_module_as_package != "",
+           "'python_module_as_package' cannot be be empty")
+    assert(string_split(_module_as_package, "/") == [ _module_as_package ],
+           "'python_module_as_package' cannot contain slashes")
+    assert(!defined(invoker.prefix),
+           "'prefix' cannot be provided with 'python_module_as_package'")
+  } else {
+    _module_as_package = ""
+  }
+
+  if (defined(invoker.strip_prefix)) {
+    _source_root = get_path_info(invoker.strip_prefix, "abspath")
+  } else {
+    _source_root = get_path_info(".", "abspath")
+  }
+
+  if (defined(invoker.prefix)) {
+    _prefix = invoker.prefix
+  } else {
+    _prefix = ""
+  }
+
   _common = {
     base_target = target_name
-    gen_dir = "$target_gen_dir/protos"
-    sources = invoker.sources
+
+    # This is the output directory for all files related to this proto library.
+    # Sources are mirrored to "$base_out_dir/sources" and protoc puts outputs in
+    # "$base_out_dir/$language" by default.
+    base_out_dir =
+        get_label_info(":$target_name($default_toolchain)", "target_gen_dir") +
+        "/$target_name.proto_library"
+
+    compile_dir = "$base_out_dir/sources"
+
+    # Refer to the source files as the are mirrored to the output directory.
+    sources = []
+    foreach(file, rebase_path(invoker.sources, _source_root)) {
+      sources += [ "$compile_dir/$_prefix/$file" ]
+    }
+  }
+
+  _package_dir = ""
+  _source_names = []
+
+  # Determine the Python package name to use for these protos. If there is no
+  # prefix, the first directory the sources are nested under is used.
+  foreach(source, rebase_path(invoker.sources, _source_root)) {
+    _path_components = []
+    _path_components = string_split(source, "/")
+
+    if (_package_dir == "") {
+      _package_dir = _path_components[0]
+    } else {
+      assert(_prefix != "" || _path_components[0] == _package_dir,
+             "Unless 'prefix' is supplied, all .proto sources in a " +
+                 "pw_proto_library must be in the same directory tree")
+    }
+
+    _source_names +=
+        [ get_path_info(source, "dir") + "/" + get_path_info(source, "name") ]
+  }
+
+  # If the 'prefix' was supplied, use that for the package directory.
+  if (_prefix != "") {
+    _prefix_path_components = string_split(_prefix, "/")
+    _package_dir = _prefix_path_components[0]
+  }
+
+  assert(_package_dir != "" && _package_dir != "." && _package_dir != "..",
+         "Either a 'prefix' must be specified or all sources must be nested " +
+             "under a common directory")
+
+  # Define an action that is never executed to prevent duplicate proto packages
+  # from being declared. The target name and the output file include only the
+  # package directory, so different targets that use the same proto package name
+  # will conflict.
+  action("pw_proto_library.$_package_dir") {
+    script = "$dir_pw_build/py/pw_build/nop.py"
+    visibility = []
+
+    # Place an error message in the output path (which is never created). If the
+    # package name conflicts occur in different BUILD.gn files, this results in
+    # an otherwise cryptic Ninja error, rather than a GN error.
+    outputs = [ "$root_out_dir/ " +
+                "ERROR - Multiple pw_proto_library targets create the " +
+                "'$_package_dir' package. Change the package name by setting " +
+                "the \"prefix\" arg or move the protos to a different " +
+                "directory, then re-run gn gen." ]
   }
 
   if (defined(invoker.deps)) {
@@ -247,35 +449,34 @@ template("pw_proto_library") {
 
   # For each proto target, create a file which collects the base directories of
   # all of its dependencies to list as include paths to protoc.
-  generated_file("$target_name._metadata") {
+  generated_file("$target_name._includes") {
     # Collect metadata from the include path files of each dependency.
-    deps = process_file_template(_deps, "{{source}}._metadata")
+
+    deps = []
+    foreach(dep, _deps) {
+      _base = get_label_info(dep, "label_no_toolchain")
+      deps += [ "$_base._includes(" + get_label_info(dep, "toolchain") + ")" ]
+    }
 
     data_keys = [ "protoc_includes" ]
-    outputs = [ "$target_gen_dir/${target_name}_includes.txt" ]
+    outputs = [ "${_common.base_out_dir}/includes.txt" ]
 
     # Indicate this library's base directory for its dependents.
     metadata = {
-      protoc_includes = [ rebase_path(".") ]
+      protoc_includes = [ rebase_path(_common.compile_dir) ]
     }
   }
 
-  # Toss any additional inputs into an input group dependency.
-  if (defined(invoker.inputs)) {
-    pw_input_group("$target_name._inputs") {
-      inputs = invoker.inputs
-      visibility = [ ":*" ]
-    }
-  } else {
-    group("$target_name._inputs") {
-      visibility = [ ":*" ]
-    }
-  }
+  # Mirror the proto sources to the output directory with the prefix added.
+  pw_mirror_tree("$target_name._sources") {
+    source_root = _source_root
+    sources = invoker.sources
 
-  # Create a config with the generated proto directory, which is used for C++.
-  config("$target_name._include_path") {
-    include_dirs = [ _common.gen_dir ]
-    visibility = [ ":*" ]
+    if (defined(invoker.inputs)) {
+      sources += invoker.inputs
+    }
+
+    directory = "${_common.compile_dir}/$_prefix"
   }
 
   # Enumerate all of the protobuf generator targets.
@@ -283,20 +484,53 @@ template("pw_proto_library") {
   _pw_pwpb_proto_library("$target_name.pwpb") {
     forward_variables_from(invoker, _forwarded_vars)
     forward_variables_from(_common, "*")
-    deps = process_file_template(_deps, "{{source}}.pwpb")
+
+    deps = []
+    foreach(dep, _deps) {
+      _base = get_label_info(dep, "label_no_toolchain")
+      deps += [ "$_base.pwpb(" + get_label_info(dep, "toolchain") + ")" ]
+    }
+
+    outputs = []
+    foreach(name, _source_names) {
+      outputs += [ "$base_out_dir/pwpb/$_prefix/${name}.pwpb.h" ]
+    }
   }
 
   if (dir_pw_third_party_nanopb != "") {
     _pw_nanopb_rpc_proto_library("$target_name.nanopb_rpc") {
       forward_variables_from(invoker, _forwarded_vars)
       forward_variables_from(_common, "*")
-      deps = process_file_template(_deps, "{{source}}.nanopb_rpc")
+
+      deps = []
+      foreach(dep, _deps) {
+        _lbl = get_label_info(dep, "label_no_toolchain")
+        deps += [ "$_lbl.nanopb_rpc(" + get_label_info(dep, "toolchain") + ")" ]
+      }
+
+      outputs = []
+      foreach(name, _source_names) {
+        outputs += [ "$base_out_dir/nanopb_rpc/$_prefix/${name}.rpc.pb.h" ]
+      }
     }
 
     _pw_nanopb_proto_library("$target_name.nanopb") {
       forward_variables_from(invoker, _forwarded_vars)
       forward_variables_from(_common, "*")
-      deps = process_file_template(_deps, "{{source}}.nanopb")
+
+      deps = []
+      foreach(dep, _deps) {
+        _base = get_label_info(dep, "label_no_toolchain")
+        deps += [ "$_base.nanopb(" + get_label_info(dep, "toolchain") + ")" ]
+      }
+
+      outputs = []
+      foreach(name, _source_names) {
+        outputs += [
+          "$base_out_dir/nanopb/$_prefix/${name}.pb.h",
+          "$base_out_dir/nanopb/$_prefix/${name}.pb.c",
+        ]
+      }
     }
   } else {
     pw_error("$target_name.nanopb_rpc") {
@@ -312,14 +546,56 @@ template("pw_proto_library") {
 
   _pw_raw_rpc_proto_library("$target_name.raw_rpc") {
     forward_variables_from(invoker, _forwarded_vars)
-    forward_variables_from(_common, "*", [ "deps" ])
-    deps = process_file_template(_deps, "{{source}}.raw_rpc")
+    forward_variables_from(_common, "*")
+
+    deps = []
+    foreach(dep, _deps) {
+      _base = get_label_info(dep, "label_no_toolchain")
+      deps += [ "$_base.raw_rpc(" + get_label_info(dep, "toolchain") + ")" ]
+    }
+
+    outputs = []
+    foreach(name, _source_names) {
+      outputs += [ "$base_out_dir/raw_rpc/$_prefix/${name}.raw_rpc.pb.h" ]
+    }
   }
 
   _pw_go_proto_library("$target_name.go") {
-    sources = invoker.sources
-    deps = process_file_template(_deps, "{{source}}.go")
-    base_target = _common.base_target
+    sources = _common.sources
+
+    deps = []
+    foreach(dep, _deps) {
+      _base = get_label_info(dep, "label_no_toolchain")
+      deps += [ "$_base.go(" + get_label_info(dep, "toolchain") + ")" ]
+    }
+
+    forward_variables_from(_common, "*")
+  }
+
+  _pw_python_proto_library("$target_name.python") {
+    forward_variables_from(_common, "*")
+    forward_variables_from(invoker, [ "python_package" ])
+    module_as_package = _module_as_package
+
+    deps = []
+    foreach(dep, _deps) {
+      _base = get_label_info(dep, "label_no_toolchain")
+      deps += [ "$_base.python(" + get_label_info(dep, "toolchain") + ")" ]
+    }
+
+    if (module_as_package == "") {
+      _python_prefix = "$base_out_dir/python/$_prefix"
+    } else {
+      _python_prefix = "$base_out_dir/python/$module_as_package"
+    }
+
+    outputs = []
+    foreach(name, _source_names) {
+      outputs += [
+        "$_python_prefix/${name}_pb2.py",
+        "$_python_prefix/${name}_pb2.pyi",
+      ]
+    }
   }
 
   # All supported pw_protobuf generators.
@@ -329,7 +605,23 @@ template("pw_proto_library") {
     "nanopb_rpc",
     "raw_rpc",
     "go",
+    "python",
   ]
+
+  # If the label matches the directory name, alias the subtargets to the
+  # directory (e.g. //foo:nanopb is an alias for //foo:foo.nanopb).
+  if (get_label_info(":$target_name", "name") ==
+      get_path_info(get_label_info(":$target_name", "dir"), "name")) {
+    foreach(_generator, _protobuf_generators - [ "python" ]) {
+      group(_generator) {
+        public_deps = [ ":${invoker.target_name}.$_generator" ]
+      }
+    }
+
+    pw_python_group("python") {
+      python_deps = [ ":${invoker.target_name}.python" ]
+    }
+  }
 
   # If the user attempts to use the target directly instead of one of the
   # generator targets, run a script which prints a nice error message.

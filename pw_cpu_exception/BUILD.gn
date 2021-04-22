@@ -61,10 +61,7 @@ pw_facade("entry") {
 pw_facade("handler") {
   backend = pw_cpu_exception_HANDLER_BACKEND
   public_configs = [ ":default_config" ]
-  public_deps = [
-    "$dir_pw_preprocessor",
-    "$dir_pw_span",
-  ]
+  public_deps = [ "$dir_pw_preprocessor" ]
   sources = [ "start_exception_handler.cc" ]
   public = [ "public/pw_cpu_exception/handler.h" ]
 }
@@ -72,11 +69,10 @@ pw_facade("handler") {
 # This library is technically optional. It is recommended to use `support` when
 # doing basic dumps of CPU state. As an alternative, projects may choose to
 # directly depend on the entry backend if they require direct access to
-# pw_CpuExceptionState members.
+# pw_cpu_exception_State members.
 pw_facade("support") {
   backend = pw_cpu_exception_SUPPORT_BACKEND
   public_configs = [ ":default_config" ]
-  public_deps = [ "$dir_pw_span" ]
   public = [ "public/pw_cpu_exception/support.h" ]
 }
 

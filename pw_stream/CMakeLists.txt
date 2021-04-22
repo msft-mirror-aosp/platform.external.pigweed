@@ -14,15 +14,26 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-pw_auto_add_simple_module(pw_stream
+pw_add_module_library(pw_stream
+  SOURCES
+    memory_stream.cc
   PUBLIC_DEPS
+    pw_assert
     pw_bytes
-    pw_containers
-    pw_log
     pw_result
     pw_span
     pw_status
+)
+
+pw_add_module_library(pw_stream.socket_stream
+  SOURCES
+    socket_stream.cc
   PRIVATE_DEPS
-    pw_assert
-    pw_string
+    pw_stream
+)
+
+pw_add_module_library(pw_stream.sys_io_stream
+  PRIVATE_DEPS
+    pw_stream
+    pw_sys_io
 )

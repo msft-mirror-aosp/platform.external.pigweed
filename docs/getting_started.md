@@ -43,7 +43,7 @@ Done. Made 1047 targets from 91 files in 114ms
 (4) Start the watcher. The watcher will invoke Ninja to build all the targets
 
 ```bash
-$ pw watch out default
+$ pw watch
 
  ▒█████▄   █▓  ▄███▒  ▒█    ▒█ ░▓████▒ ░▓████▒ ▒▓████▄
   ▒█░  █░ ░█▒ ██▒ ▀█▒ ▒█░ █ ▒█  ▒█   ▀  ▒█   ▀  ▒█  ▀█▌
@@ -52,7 +52,7 @@ $ pw watch out default
   ▒█      ░█░ ░▓███▀   ▒█▓▀▓█░ ░▓████▒ ░▓████▒ ▒▓████▀
 
 20200707 17:24:06 INF Starting Pigweed build watcher
-20200707 17:24:06 INF Will build [1/1]: out default
+20200707 17:24:06 INF Will build [1/1]: out
 20200707 17:24:06 INF Attaching filesystem watcher to $HOME/wrk/pigweed/...
 20200707 17:24:06 INF Triggering initial build...
 ...
@@ -89,6 +89,13 @@ installation of prerequisites beyond basics like `git` and `build-essential`.
 Make sure gcc is set to gcc-8.
 
 **macOS**<br/>
+To start using Pigweed on MacOS, you'll need to install XCode. Download it
+via the App Store, then install the relevant tools from the command line.
+
+```bash
+xcode-select --install
+```
+
 On macOS you may get SSL certificate errors with the system Python
 installation. Run `sudo pip install certifi` to fix this. If you get SSL
 errors with the Python from [Homebrew](https://brew.sh) try running the
@@ -241,7 +248,7 @@ build!
 If you want to build JUST for the device, you can kick of watch with:
 
 ```bash
-$ pw watch out stm32f429i
+$ pw watch stm32f429i
 ```
 
 This is equivalent to the following Ninja invocation:
@@ -307,10 +314,13 @@ See the demo below for an example of what this all looks like put together:
 ## Building the Documentation
 
 In addition to the markdown documentation, Pigweed has a collection of
-information-rich RST files that are built by the default invocation of GN. You
-will find the documents at `out/docs/gen/docs/html`.
+information-rich RST files that are used to generate HTML documentation. All the
+docs are hosted at https://pigweed.dev/, and are built as a part of the default
+build invocation. This makes it easier to make changes and see how they turn
+out. Once built, you can find the rendered HTML documentation at
+`out/docs/gen/docs/html`.
 
-You can build the documentation manually by with the command below.
+You can explicitly build just the documentation with the command below.
 
 ```shell
 $ ninja -C out docs
