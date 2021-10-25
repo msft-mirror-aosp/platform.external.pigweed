@@ -17,7 +17,7 @@
 #include <span>
 #include <type_traits>
 
-#include "pw_assert/light.h"
+#include "pw_assert/assert.h"
 #include "pw_status/status.h"
 
 namespace pw::rpc {
@@ -53,7 +53,7 @@ class ChannelOutput {
   virtual Status SendAndReleaseBuffer(std::span<const std::byte> buffer) = 0;
 
   void DiscardBuffer(std::span<const std::byte> buffer) {
-    SendAndReleaseBuffer(buffer.first(0));
+    SendAndReleaseBuffer(buffer.first(0)).IgnoreError();
   }
 
  private:
@@ -90,6 +90,35 @@ class Channel {
     return Create<static_cast<uint32_t>(kIntId)>(output);
   }
 
+  // Manually configures a dynamically-assignable channel with a specified ID
+  // and output. This is useful when a channel's parameters are not known until
+  // runtime. This can only be called once per channel.
+  constexpr void Configure(uint32_t id, ChannelOutput& output) {
+    PW_ASSERT(id_ == kUnassignedChannelId);
+    PW_ASSERT(id != kUnassignedChannelId);
+    id_ = id;
+    output_ = &output;
+  }
+
+  // Configure using an enum value channel ID.
+  template <typename T,
+            typename = std::enable_if_t<std::is_enum_v<T>>,
+            typename U = std::underlying_type_t<T>>
+  constexpr void Configure(T id, ChannelOutput& output) {
+    static_assert(sizeof(U) <= sizeof(uint32_t));
+    const U kIntId = static_cast<U>(id);
+    PW_ASSERT(kIntId > 0);
+    return Configure(static_cast<uint32_t>(kIntId), output);
+  }
+
+  // Reconfigures a channel with a new output. Depending on the output's
+  // implementatation, there might be unintended behavior if the output is in
+  // use.
+  constexpr void set_channel_output(ChannelOutput& output) {
+    PW_ASSERT(id_ != kUnassignedChannelId);
+    output_ = &output;
+  }
+
   constexpr uint32_t id() const { return id_; }
   constexpr bool assigned() const { return id_ != kUnassignedChannelId; }
 
@@ -99,21 +128,25 @@ class Channel {
     PW_ASSERT(id != kUnassignedChannelId);
   }
 
+  // TODO(pwbug/504): Remove client_'s setter/getter from Channel.
+  constexpr Client& client() const {
+    PW_DASSERT(client_ != nullptr);
+    return *client_;
+  }
+
+  constexpr void set_client(Client* client) { client_ = client; }
+
   ChannelOutput& output() const {
     PW_ASSERT(output_ != nullptr);
     return *output_;
   }
 
+  void set_channel_id(uint32_t channel_id) { id_ = channel_id; }
+
  private:
-  friend class internal::BaseClientCall;
-  friend class Client;
-
-  constexpr Client* client() const { return client_; }
-  constexpr void set_client(Client* client) { client_ = client; }
-
   uint32_t id_;
   ChannelOutput* output_;
-  Client* client_;
+  Client* client_;  // TODO(pwbug/504): Remove client_ from Channel.
 };
 
 }  // namespace pw::rpc

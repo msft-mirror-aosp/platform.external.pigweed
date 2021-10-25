@@ -28,6 +28,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 from typing import Callable, Collection, Dict, Iterable, List, NamedTuple
 from typing import Optional, Pattern, Tuple, Union
 
@@ -127,6 +128,26 @@ def check_gn_format(files: Iterable[Path]) -> Dict[Path, str]:
 def fix_gn_format(files: Iterable[Path]) -> None:
     """Fixes formatting for the provided files in place."""
     log_run(['gn', 'format', *files], check=True)
+
+
+def check_bazel_format(files: Iterable[Path]) -> Dict[Path, str]:
+    """Checks formatting; returns {path: diff} for files with bad formatting."""
+    def _format_temp(path: Union[Path, str], data: bytes) -> bytes:
+        # buildifier doesn't have an option to output the changed file, so
+        # copy the file to a temp location, run buildifier on it, read that
+        # modified copy, and return its contents.
+        with tempfile.TemporaryDirectory() as temp:
+            build = Path(temp) / os.path.basename(path)
+            build.write_bytes(data)
+            log_run(['buildifier', build], check=True)
+            return build.read_bytes()
+
+    return _check_files(files, _format_temp)
+
+
+def fix_bazel_format(files: Iterable[Path]) -> None:
+    """Fixes formatting for the provided files in place."""
+    log_run(['buildifier', *files], check=True)
 
 
 def check_go_format(files: Iterable[Path]) -> Dict[Path, str]:
@@ -267,8 +288,8 @@ GN_FORMAT: CodeFormat = CodeFormat('GN', ('.gn', '.gni'), (), check_gn_format,
                                    fix_gn_format)
 
 # TODO(pwbug/191): Add real code formatting support for Bazel and CMake
-BAZEL_FORMAT: CodeFormat = CodeFormat('Bazel', ('BUILD', ), (),
-                                      check_trailing_space, fix_trailing_space)
+BAZEL_FORMAT: CodeFormat = CodeFormat('Bazel', ('BUILD', '.bazel', '.bzl'), (),
+                                      check_bazel_format, fix_bazel_format)
 
 CMAKE_FORMAT: CodeFormat = CodeFormat('CMake', ('CMakeLists.txt', '.cmake'),
                                       (), check_trailing_space,

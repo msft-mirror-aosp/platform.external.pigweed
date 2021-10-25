@@ -32,10 +32,13 @@ namespace {
 
 class BlobStoreTest : public ::testing::Test {
  protected:
+  static constexpr char kBlobTitle[] = "TestBlobBlock";
+
   BlobStoreTest() : flash_(kFlashAlignment), partition_(&flash_) {}
 
   void InitFlashTo(std::span<const std::byte> contents) {
-    partition_.Erase();
+    partition_.Erase()
+        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
     std::memcpy(flash_.buffer().data(), contents.data(), contents.size());
   }
 
@@ -47,7 +50,8 @@ class BlobStoreTest : public ::testing::Test {
     std::memset(source_buffer_.data(),
                 static_cast<int>(flash_.erased_memory_content()),
                 source_buffer_.size());
-    rng.Get(std::span(source_buffer_).first(init_size_bytes));
+    rng.Get(std::span(source_buffer_).first(init_size_bytes))
+        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
   }
 
   void InitSourceBufferToFill(char fill,
@@ -69,14 +73,11 @@ class BlobStoreTest : public ::testing::Test {
     ConstByteSpan write_data =
         std::span(source_buffer_).first(write_size_bytes);
 
-    char name[16] = {};
-    snprintf(name, sizeof(name), "TestBlobBlock");
-
     BlobStoreBuffer<kBufferSize> blob(
-        name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+        kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
     EXPECT_EQ(OkStatus(), blob.Init());
 
-    BlobStore::BlobWriter writer(blob);
+    BlobStore::BlobWriterWithBuffer writer(blob);
     EXPECT_EQ(OkStatus(), writer.Open());
     ASSERT_EQ(OkStatus(), writer.Write(write_data));
     EXPECT_EQ(OkStatus(), writer.Close());
@@ -98,10 +99,9 @@ class BlobStoreTest : public ::testing::Test {
 
     VerifyFlash(flash_.buffer());
 
-    char name[16] = "TestBlobBlock";
     constexpr size_t kBufferSize = 16;
     BlobStoreBuffer<kBufferSize> blob(
-        name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+        kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
     EXPECT_EQ(OkStatus(), blob.Init());
 
     // Use reader to check for valid data.
@@ -166,20 +166,54 @@ TEST_F(BlobStoreTest, Init_Ok) {
   EXPECT_EQ(OkStatus(), blob.Init());
 }
 
+TEST_F(BlobStoreTest, Writer_ConservativeLimits) {
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      "Blob_OK", partition_, nullptr, kvs::TestKvs(), kBufferSize);
+  ASSERT_EQ(OkStatus(), blob.Init());
+
+  BlobStore::BlobWriterWithBuffer writer(blob);
+  ASSERT_EQ(OkStatus(), writer.Open());
+  EXPECT_EQ(writer.ConservativeReadLimit(), 0u);
+  EXPECT_EQ(writer.ConservativeWriteLimit(), kSectorSize * kSectorCount);
+  ASSERT_EQ(OkStatus(), writer.Close());
+
+  BlobStore::DeferredWriterWithBuffer deferred_writer(blob);
+  ASSERT_EQ(OkStatus(), deferred_writer.Open());
+  EXPECT_EQ(deferred_writer.ConservativeReadLimit(), 0u);
+  EXPECT_EQ(deferred_writer.ConservativeWriteLimit(), kBufferSize);
+}
+
+TEST_F(BlobStoreTest, Reader_ConservativeLimits) {
+  InitSourceBufferToRandom(0x11309);
+  WriteTestBlock();
+
+  kvs::ChecksumCrc16 checksum;
+  constexpr size_t kBufferSize = 16;
+  BlobStoreBuffer<kBufferSize> blob(
+      "TestBlobBlock", partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+
+  EXPECT_EQ(kBlobDataSize, reader.ConservativeReadLimit());
+  EXPECT_EQ(0u, reader.ConservativeWriteLimit());
+}
+
 TEST_F(BlobStoreTest, IsOpen) {
   constexpr size_t kBufferSize = 256;
   BlobStoreBuffer<kBufferSize> blob(
       "Blob_open", partition_, nullptr, kvs::TestKvs(), kBufferSize);
   EXPECT_EQ(OkStatus(), blob.Init());
 
-  BlobStore::DeferredWriter deferred_writer(blob);
+  BlobStore::DeferredWriterWithBuffer deferred_writer(blob);
   EXPECT_EQ(false, deferred_writer.IsOpen());
   EXPECT_EQ(OkStatus(), deferred_writer.Open());
   EXPECT_EQ(true, deferred_writer.IsOpen());
   EXPECT_EQ(OkStatus(), deferred_writer.Close());
   EXPECT_EQ(false, deferred_writer.IsOpen());
 
-  BlobStore::BlobWriter writer(blob);
+  BlobStore::BlobWriterWithBuffer writer(blob);
   EXPECT_EQ(false, writer.IsOpen());
   EXPECT_EQ(OkStatus(), writer.Open());
   EXPECT_EQ(true, writer.IsOpen());
@@ -198,6 +232,180 @@ TEST_F(BlobStoreTest, IsOpen) {
   EXPECT_EQ(false, reader.IsOpen());
 }
 
+TEST_F(BlobStoreTest, FileName) {
+  InitSourceBufferToRandom(0x8675309);
+  WriteTestBlock();
+  constexpr std::string_view kFileName("my_file_1.bin");
+  std::array<std::byte, 64> tmp_buffer = {};
+  static_assert(kFileName.size() <= tmp_buffer.size());
+  kvs::ChecksumCrc16 checksum;
+  constexpr size_t kBufferSize = 256;
+  {
+    // Create/init a blob store in a nested scope so it can be re-initialized
+    // later when checking the read.
+    BlobStoreBuffer<kBufferSize> blob(
+        kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+    EXPECT_EQ(OkStatus(), blob.Init());
+
+    BlobStore::BlobWriterWithBuffer<kFileName.size()> writer(blob);
+
+    EXPECT_EQ(OkStatus(), writer.Open());
+    EXPECT_EQ(OkStatus(), writer.SetFileName(kFileName));
+    EXPECT_EQ(OkStatus(), writer.Write(tmp_buffer));
+    EXPECT_EQ(OkStatus(), writer.Close());
+    EXPECT_EQ(OkStatus(),
+              kvs::TestKvs().acquire()->Get(kBlobTitle, tmp_buffer).status());
+  }
+
+  BlobStoreBuffer<kBufferSize> blob(
+      kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+
+  // Ensure the file name can be read from a reader.
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+
+  memset(tmp_buffer.data(), 0, tmp_buffer.size());
+  StatusWithSize sws = reader.GetFileName(
+      {reinterpret_cast<char*>(tmp_buffer.data()), tmp_buffer.size()});
+
+  EXPECT_EQ(OkStatus(), sws.status());
+  ASSERT_EQ(kFileName.size(), sws.size());
+  EXPECT_EQ(memcmp(kFileName.data(), tmp_buffer.data(), kFileName.size()), 0);
+}
+
+TEST_F(BlobStoreTest, FileNameUndersizedRead) {
+  InitSourceBufferToRandom(0x8675309);
+  WriteTestBlock();
+  constexpr std::string_view kFileName("my_file_1.bin");
+  std::array<std::byte, 4> tmp_buffer = {};
+  static_assert(kFileName.size() > tmp_buffer.size());
+
+  kvs::ChecksumCrc16 checksum;
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+
+  BlobStore::BlobWriterWithBuffer<kFileName.size()> writer(blob);
+
+  EXPECT_EQ(OkStatus(), writer.Open());
+  EXPECT_EQ(OkStatus(), writer.SetFileName(kFileName));
+  EXPECT_EQ(OkStatus(),
+            writer.Write(std::as_bytes(std::span("some interesting data"))));
+  EXPECT_EQ(OkStatus(), writer.Close());
+
+  // Ensure the file name can be read from a reader.
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+
+  StatusWithSize sws = reader.GetFileName(
+      {reinterpret_cast<char*>(tmp_buffer.data()), tmp_buffer.size()});
+  EXPECT_EQ(Status::ResourceExhausted(), sws.status());
+  ASSERT_EQ(tmp_buffer.size(), sws.size());
+  EXPECT_EQ(memcmp(kFileName.data(), tmp_buffer.data(), sws.size()), 0);
+}
+
+TEST_F(BlobStoreTest, FileNameUndersizedSet) {
+  InitSourceBufferToRandom(0x8675309);
+  WriteTestBlock();
+  constexpr std::string_view kFileName("my_file_1.bin");
+
+  kvs::ChecksumCrc16 checksum;
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+
+  BlobStore::BlobWriterWithBuffer<2> writer(blob);
+
+  EXPECT_EQ(OkStatus(), writer.Open());
+  EXPECT_EQ(Status::ResourceExhausted(), writer.SetFileName(kFileName));
+  EXPECT_EQ(OkStatus(), writer.Close());
+}
+
+TEST_F(BlobStoreTest, FileNameInvalidation) {
+  InitSourceBufferToRandom(0x8675309);
+  WriteTestBlock();
+
+  constexpr std::string_view kFileName("sliced_cheese.png");
+  std::array<std::byte, 64> tmp_buffer = {};
+  static_assert(kFileName.size() <= tmp_buffer.size());
+
+  kvs::ChecksumCrc16 checksum;
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+
+  BlobStore::BlobWriterWithBuffer<kFileName.size()> writer(blob);
+
+  EXPECT_EQ(OkStatus(), writer.Open());
+  EXPECT_EQ(OkStatus(), writer.SetFileName(kFileName));
+  EXPECT_EQ(OkStatus(), writer.Write(tmp_buffer));
+  EXPECT_EQ(OkStatus(), writer.Discard());
+  EXPECT_EQ(OkStatus(), writer.Write(tmp_buffer));
+  EXPECT_EQ(OkStatus(), writer.Close());
+
+  // Check that the file name was discarded by Discard().
+  memset(tmp_buffer.data(), 0, tmp_buffer.size());
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+  StatusWithSize sws = reader.GetFileName(
+      {reinterpret_cast<char*>(tmp_buffer.data()), tmp_buffer.size()});
+  EXPECT_EQ(Status::NotFound(), sws.status());
+  ASSERT_EQ(0u, sws.size());
+}
+
+TEST_F(BlobStoreTest, NoFileName) {
+  InitSourceBufferToRandom(0x8675309);
+  WriteTestBlock();
+
+  std::array<std::byte, 64> tmp_buffer = {};
+  kvs::ChecksumCrc16 checksum;
+  constexpr size_t kBufferSize = 256;
+  BlobStoreBuffer<kBufferSize> blob(
+      kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+
+  // Ensure blobs with no file names work as expected.
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+
+  StatusWithSize sws = reader.GetFileName(
+      {reinterpret_cast<char*>(tmp_buffer.data()), tmp_buffer.size()});
+  EXPECT_EQ(Status::NotFound(), sws.status());
+  ASSERT_EQ(0u, sws.size());
+}
+
+TEST_F(BlobStoreTest, V1MetadataBackwardsCompatible) {
+  constexpr size_t kWriteSize = 25;
+  WriteTestBlock(kWriteSize);
+
+  kvs::ChecksumCrc16 checksum;
+  constexpr size_t kBufferSize = 16;
+  BlobStoreBuffer<kBufferSize> blob(
+      kBlobTitle, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+
+  // Read the written data in the current format.
+  internal::BlobMetadataHeader current_metadata;
+  ASSERT_EQ(OkStatus(),
+            kvs::TestKvs().acquire()->Get(kBlobTitle, &current_metadata));
+
+  // Re-save only the V1 metadata contents.
+  ASSERT_EQ(
+      OkStatus(),
+      kvs::TestKvs().acquire()->Put(kBlobTitle, current_metadata.v1_metadata));
+
+  // Ensure the BlobStore's contents aren't invalid.
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+  ASSERT_EQ(kWriteSize, reader.ConservativeReadLimit());
+  ASSERT_EQ(current_metadata.v1_metadata.data_size_bytes,
+            reader.ConservativeReadLimit());
+}
+
 TEST_F(BlobStoreTest, Discard) {
   InitSourceBufferToRandom(0x8675309);
   WriteTestBlock();
@@ -214,24 +422,25 @@ TEST_F(BlobStoreTest, Discard) {
       blob_title, partition_, &checksum, kvs::TestKvs(), kBufferSize);
   EXPECT_EQ(OkStatus(), blob.Init());
 
-  BlobStore::BlobWriter writer(blob);
+  BlobStore::BlobWriterWithBuffer writer(blob);
 
   EXPECT_EQ(OkStatus(), writer.Open());
   EXPECT_EQ(OkStatus(), writer.Write(tmp_buffer));
 
   // The write does an implicit erase so there should be no key for this blob.
   EXPECT_EQ(Status::NotFound(),
-            kvs::TestKvs().Get(blob_title, tmp_buffer).status());
+            kvs::TestKvs().acquire()->Get(blob_title, tmp_buffer).status());
   EXPECT_EQ(OkStatus(), writer.Close());
 
-  EXPECT_EQ(OkStatus(), kvs::TestKvs().Get(blob_title, tmp_buffer).status());
+  EXPECT_EQ(OkStatus(),
+            kvs::TestKvs().acquire()->Get(blob_title, tmp_buffer).status());
 
   EXPECT_EQ(OkStatus(), writer.Open());
   EXPECT_EQ(OkStatus(), writer.Discard());
   EXPECT_EQ(OkStatus(), writer.Close());
 
   EXPECT_EQ(Status::NotFound(),
-            kvs::TestKvs().Get(blob_title, tmp_buffer).status());
+            kvs::TestKvs().acquire()->Get(blob_title, tmp_buffer).status());
 }
 
 TEST_F(BlobStoreTest, MultipleErase) {
@@ -240,7 +449,7 @@ TEST_F(BlobStoreTest, MultipleErase) {
       "Blob_OK", partition_, nullptr, kvs::TestKvs(), kBufferSize);
   EXPECT_EQ(OkStatus(), blob.Init());
 
-  BlobStore::BlobWriter writer(blob);
+  BlobStore::BlobWriterWithBuffer writer(blob);
   EXPECT_EQ(OkStatus(), writer.Open());
 
   EXPECT_EQ(OkStatus(), writer.Erase());
@@ -275,6 +484,34 @@ TEST_F(BlobStoreTest, OffsetRead) {
   VerifyFlash(read_buffer, kOffset);
 }
 
+TEST_F(BlobStoreTest, SeekOffsetRead) {
+  InitSourceBufferToRandom(0x11309);
+  WriteTestBlock();
+
+  constexpr size_t kOffset = 10;
+  ASSERT_LT(kOffset, kBlobDataSize);
+
+  kvs::ChecksumCrc16 checksum;
+
+  char name[16] = "TestBlobBlock";
+  constexpr size_t kBufferSize = 16;
+  BlobStoreBuffer<kBufferSize> blob(
+      name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+  ASSERT_EQ(OkStatus(), reader.Seek(kOffset));
+
+  std::array<std::byte, kBlobDataSize - kOffset> read_buffer;
+  ByteSpan read_span = read_buffer;
+  ASSERT_EQ(read_span.size_bytes(), reader.ConservativeReadLimit());
+
+  auto result = reader.Read(read_span);
+  ASSERT_EQ(result.status(), OkStatus());
+  EXPECT_EQ(OkStatus(), reader.Close());
+  VerifyFlash(read_buffer, kOffset);
+}
+
 TEST_F(BlobStoreTest, InvalidReadOffset) {
   InitSourceBufferToRandom(0x11309);
   WriteTestBlock();
@@ -290,6 +527,24 @@ TEST_F(BlobStoreTest, InvalidReadOffset) {
   EXPECT_EQ(OkStatus(), blob.Init());
   BlobStore::BlobReader reader(blob);
   ASSERT_EQ(Status::InvalidArgument(), reader.Open(kOffset));
+}
+
+TEST_F(BlobStoreTest, InvalidSeekOffset) {
+  InitSourceBufferToRandom(0x11309);
+  WriteTestBlock();
+
+  constexpr size_t kOffset = kBlobDataSize;
+
+  kvs::ChecksumCrc16 checksum;
+
+  char name[16] = "TestBlobBlock";
+  constexpr size_t kBufferSize = 16;
+  BlobStoreBuffer<kBufferSize> blob(
+      name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
+  EXPECT_EQ(OkStatus(), blob.Init());
+  BlobStore::BlobReader reader(blob);
+  ASSERT_EQ(OkStatus(), reader.Open());
+  ASSERT_EQ(Status::OutOfRange(), reader.Seek(kOffset));
 }
 
 // Test reading with a read buffer larger than the available data in the

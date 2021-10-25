@@ -14,15 +14,12 @@
 #pragma once
 
 #include "pw_assert/options.h"  // For PW_ASSERT_ENABLE_DEBUG
+#include "pw_preprocessor/compiler.h"
 #include "pw_preprocessor/util.h"
-
-// For backwards compatibility, include check.h from assert.h.
-// TODO(pwbug/350): Remove this include when projects have migrated.
-#include "pw_assert/check.h"
 
 PW_EXTERN_C_START
 
-void pw_assert_HandleFailure(void);
+PW_NO_RETURN void pw_assert_HandleFailure(void);
 
 PW_EXTERN_C_END
 

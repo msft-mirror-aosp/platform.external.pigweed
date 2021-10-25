@@ -14,6 +14,7 @@ documents:
   :maxdepth: 1
 
   py/docs
+  ts/docs
 
 .. admonition:: Try it out!
 
@@ -23,6 +24,51 @@ documents:
 .. attention::
 
   This documentation is under construction.
+
+RPC semantics
+=============
+The semantics of ``pw_rpc`` are similar to `gRPC
+<https://grpc.io/docs/what-is-grpc/core-concepts/>`_.
+
+RPC call lifecycle
+------------------
+In ``pw_rpc``, an RPC begins when the client sends a request packet. The server
+receives the request, looks up the relevant service method, then calls into the
+RPC function. The RPC is considered active until the server sends a response
+packet with the RPC's status. The client may terminate an ongoing RPC by
+cancelling it.
+
+``pw_rpc`` supports only one RPC invocation per service/method/channel. If a
+client calls an ongoing RPC on the same channel, the server cancels the ongoing
+call and reinvokes the RPC with the new request. This applies to unary and
+streaming RPCs, though the server may not have an opportunity to cancel a
+synchronously handled unary RPC before it completes. The same RPC may be invoked
+multiple times simultaneously if the invocations are on different channels.
+
+Unrequested responses
+---------------------
+``pw_rpc`` supports sending responses to RPCs that have not yet been invoked by
+a client. This is useful in testing and in situations like an RPC that triggers
+reboot. After the reboot, the device opens the writer object and sends its
+response to the client.
+
+The C++ API for opening a server reader/writer takes the generated RPC function
+as a template parameter. The server to use, channel ID, and service instance are
+passed as arguments. The API is the same for all RPC types, except the
+appropriate reader/writer class must be used.
+
+.. code-block:: c++
+
+  // Open a ServerWriter for a server streaming RPC.
+  auto writer = RawServerWriter::Open<pw_rpc::raw::ServiceName::MethodName>(
+      server, channel_id, service_instance);
+
+  // Send some responses, even though the client has not yet called this RPC.
+  CHECK_OK(writer.Write(encoded_response_1));
+  CHECK_OK(writer.Write(encoded_response_2));
+
+  // Finish the RPC.
+  CHECK_OK(writer.Finish(OkStatus()));
 
 Creating an RPC
 ===============
@@ -119,9 +165,9 @@ For example, the generated RPC header for ``"foo_bar/the_service.proto"`` is
 
 The generated header defines a base class for each RPC service declared in the
 ``.proto`` file. A service named ``TheService`` in package ``foo.bar`` would
-generate the following base class:
+generate the following base class for Nanopb:
 
-.. cpp:class:: template <typename Implementation> foo::bar::generated::TheService
+.. cpp:class:: template <typename Implementation> foo::bar::pw_rpc::nanopb::TheService::Service
 
 3. RPC service definition
 -------------------------
@@ -159,16 +205,16 @@ A Nanopb implementation of this service would be as follows:
 
   namespace foo::bar {
 
-  class TheService : public generated::TheService<TheService> {
+  class TheService : public pw_rpc::nanopb::TheService::Service<TheService> {
    public:
-    pw::Status MethodOne(ServerContext& ctx,
+    pw::Status MethodOne(ServerContext&,
                          const foo_bar_Request& request,
                          foo_bar_Response& response) {
       // implementation
       return pw::OkStatus();
     }
 
-    void MethodTwo(ServerContext& ctx,
+    void MethodTwo(ServerContext&,
                    const foo_bar_Request& request,
                    ServerWriter<foo_bar_Response>& response) {
       // implementation
@@ -265,6 +311,22 @@ assigned statically at compile time or dynamically.
   // will be set when the channel is used.
   pw::rpc::Channel dynamic_channel;
 
+Sometimes, the ID and output of a channel are not known at compile time as they
+depend on information stored on the physical device. To support this use case, a
+dynamically-assignable channel can be configured once at runtime with an ID and
+output.
+
+.. code-block:: cpp
+
+  // Create a dynamic channel without a compile-time ID or output.
+  pw::rpc::Channel dynamic_channel;
+
+  void Init() {
+    // Called during boot to pull the channel configuration from the system.
+    dynamic_channel.Configure(GetChannelId(), some_output);
+  }
+
+
 Services
 ========
 A service is a logical grouping of RPCs defined within a .proto file. ``pw_rpc``
@@ -309,8 +371,74 @@ For example, in C++ with nanopb:
   static pw::rpc::EchoService echo_service;
 
   void Init() {
-    server.RegisterService(&echo_service);
+    server.RegisterService(echo_service);
   }
+
+Benchmarking and stress testing
+-------------------------------
+
+.. toctree::
+  :maxdepth: 1
+  :hidden:
+
+  benchmark
+
+``pw_rpc`` provides an RPC service and Python module for stress testing and
+benchmarking a ``pw_rpc`` deployment. See :ref:`module-pw_rpc-benchmark`.
+
+Naming
+======
+
+Reserved names
+--------------
+``pw_rpc`` reserves a few service method names so they can be used for generated
+classes. The following names cannnot be used for service methods:
+
+- ``Client``
+- ``Service``
+- Any reserved words in the languages ``pw_rpc`` supports (e.g. ``class``).
+
+``pw_rpc`` does not reserve any service names, but the restriction of avoiding
+reserved words in supported languages applies.
+
+Service naming style
+--------------------
+``pw_rpc`` service names should use capitalized camel case and should not use
+the term "Service". Appending "Service" to a service name is redundant, similar
+to appending "Class" or "Function" to a class or function name. The
+C++ implementation class may use "Service" in its name, however.
+
+For example, a service for accessing a file system should simply be named
+``service FileSystem``, rather than ``service FileSystemService``, in the
+``.proto`` file.
+
+.. code-block:: protobuf
+
+  // file.proto
+  package pw.file;
+
+  service FileSystem {
+      rpc List(ListRequest) returns (stream ListResponse);
+  }
+
+The C++ service implementation class may append "Service" to the name.
+
+.. code-block:: cpp
+
+  // file_system_service.h
+  #include "pw_file/file.raw_rpc.pb.h"
+
+  namespace pw::file {
+
+  class FileSystemService : public pw_rpc::raw::FileSystem::Service<FileSystemService> {
+    void List(ServerContext&, ConstByteSpan request, RawServerWriter& writer);
+  };
+
+  }
+
+For upstream Pigweed services, this naming style is a requirement. Note that
+some services created before this was established may use non-compliant
+names. For Pigweed users, this naming style is a suggestion.
 
 Protocol description
 ====================
@@ -334,107 +462,126 @@ These tables describe the meaning of and fields included with each packet type.
 
 Client-to-server packets
 ^^^^^^^^^^^^^^^^^^^^^^^^
-+---------------------------+----------------------------------+
-| packet type               | description                      |
-+===========================+==================================+
-| REQUEST                   | RPC request                      |
-|                           |                                  |
-|                           | .. code-block:: text             |
-|                           |                                  |
-|                           |   - channel_id                   |
-|                           |   - service_id                   |
-|                           |   - method_id                    |
-|                           |   - payload                      |
-|                           |     (unless first client stream) |
-|                           |                                  |
-+---------------------------+----------------------------------+
-| CLIENT_STREAM_END         | Client stream finished           |
-|                           |                                  |
-|                           | .. code-block:: text             |
-|                           |                                  |
-|                           |   - channel_id                   |
-|                           |   - service_id                   |
-|                           |   - method_id                    |
-|                           |                                  |
-|                           |                                  |
-+---------------------------+----------------------------------+
-| CLIENT_ERROR              | Received unexpected packet       |
-|                           |                                  |
-|                           | .. code-block:: text             |
-|                           |                                  |
-|                           |   - channel_id                   |
-|                           |   - service_id                   |
-|                           |   - method_id                    |
-|                           |   - status                       |
-+---------------------------+----------------------------------+
-| CANCEL_SERVER_STREAM      | Cancel a server stream           |
-|                           |                                  |
-|                           | .. code-block:: text             |
-|                           |                                  |
-|                           |   - channel_id                   |
-|                           |   - service_id                   |
-|                           |   - method_id                    |
-|                           |                                  |
-+---------------------------+----------------------------------+
++-------------------+-------------------------------------+
+| packet type       | description                         |
++===================+=====================================+
+| REQUEST           | Invoke an RPC                       |
+|                   |                                     |
+|                   | .. code-block:: text                |
+|                   |                                     |
+|                   |   - channel_id                      |
+|                   |   - service_id                      |
+|                   |   - method_id                       |
+|                   |   - payload                         |
+|                   |     (unary & server streaming only) |
+|                   |   - call_id (optional)              |
+|                   |                                     |
++-------------------+-------------------------------------+
+| CLIENT_STREAM     | Message in a client stream          |
+|                   |                                     |
+|                   | .. code-block:: text                |
+|                   |                                     |
+|                   |   - channel_id                      |
+|                   |   - service_id                      |
+|                   |   - method_id                       |
+|                   |   - payload                         |
+|                   |   - call_id (if set in REQUEST)     |
+|                   |                                     |
++-------------------+-------------------------------------+
+| CLIENT_STREAM_END | Client stream is complete           |
+|                   |                                     |
+|                   | .. code-block:: text                |
+|                   |                                     |
+|                   |   - channel_id                      |
+|                   |   - service_id                      |
+|                   |   - method_id                       |
+|                   |   - call_id (if set in REQUEST)     |
+|                   |                                     |
++-------------------+-------------------------------------+
+| CLIENT_ERROR      | Abort an ongoing RPC                |
+|                   |                                     |
+|                   | .. code-block:: text                |
+|                   |                                     |
+|                   |   - channel_id                      |
+|                   |   - service_id                      |
+|                   |   - method_id                       |
+|                   |   - status                          |
+|                   |   - call_id (if set in REQUEST)     |
+|                   |                                     |
++-------------------+-------------------------------------+
 
-**Errors**
+**Client errors**
 
 The client sends ``CLIENT_ERROR`` packets to a server when it receives a packet
-it did not request. If the RPC is a streaming RPC, the server should abort it.
+it did not request. If possible, the server should abort it.
 
-The status code indicates the type of error. If the client does not distinguish
-between the error types, it can send whichever status is most relevant. The
-status code is logged, but all status codes result in the same action by the
-server: aborting the RPC.
+The status code indicates the type of error. The status code is logged, but all
+status codes result in the same action by the server: aborting the RPC.
 
+* ``CANCELLED`` -- The client requested that the RPC be cancelled.
 * ``NOT_FOUND`` -- Received a packet for a service method the client does not
   recognize.
 * ``FAILED_PRECONDITION`` -- Received a packet for a service method that the
   client did not invoke.
+* ``DATA_LOSS`` -- Received a corrupt packet for a pending service method.
+* ``INVALID_ARGUMENT`` -- The server sent a packet type to an RPC that does not
+  support it (a ``SERVER_STREAM`` was sent to an RPC with no server stream).
 
 Server-to-client packets
 ^^^^^^^^^^^^^^^^^^^^^^^^
-+-------------------+--------------------------------+
-| packet type       | description                    |
-+===================+================================+
-| RESPONSE          | RPC response                   |
-|                   |                                |
-|                   | .. code-block:: text           |
-|                   |                                |
-|                   |   - channel_id                 |
-|                   |   - service_id                 |
-|                   |   - method_id                  |
-|                   |   - payload                    |
-|                   |   - status                     |
-|                   |     (unless in server stream)  |
-+-------------------+--------------------------------+
-| SERVER_STREAM_END | Server stream and RPC finished |
-|                   |                                |
-|                   | .. code-block:: text           |
-|                   |                                |
-|                   |   - channel_id                 |
-|                   |   - service_id                 |
-|                   |   - method_id                  |
-|                   |   - status                     |
-+-------------------+--------------------------------+
-| SERVER_ERROR      | Received unexpected packet     |
-|                   |                                |
-|                   | .. code-block:: text           |
-|                   |                                |
-|                   |   - channel_id                 |
-|                   |   - service_id (if relevant)   |
-|                   |   - method_id (if relevant)    |
-|                   |   - status                     |
-+-------------------+--------------------------------+
++-------------------+-------------------------------------+
+| packet type       | description                         |
++===================+=====================================+
+| RESPONSE          | The RPC is complete                 |
+|                   |                                     |
+|                   | .. code-block:: text                |
+|                   |                                     |
+|                   |   - channel_id                      |
+|                   |   - service_id                      |
+|                   |   - method_id                       |
+|                   |   - status                          |
+|                   |   - payload                         |
+|                   |     (unary & client streaming only) |
+|                   |   - call_id (if set in REQUEST)     |
+|                   |                                     |
++-------------------+-------------------------------------+
+| SERVER_STREAM     | Message in a server stream          |
+|                   |                                     |
+|                   | .. code-block:: text                |
+|                   |                                     |
+|                   |   - channel_id                      |
+|                   |   - service_id                      |
+|                   |   - method_id                       |
+|                   |   - payload                         |
+|                   |   - call_id (if set in REQUEST)     |
+|                   |                                     |
++-------------------+-------------------------------------+
+| SERVER_ERROR      | Received unexpected packet          |
+|                   |                                     |
+|                   | .. code-block:: text                |
+|                   |                                     |
+|                   |   - channel_id                      |
+|                   |   - service_id (if relevant)        |
+|                   |   - method_id (if relevant)         |
+|                   |   - status                          |
+|                   |   - call_id (if set in REQUEST)     |
+|                   |                                     |
++-------------------+-------------------------------------+
 
-**Errors**
+All server packets contain the same client ID that was set in the initial
+request made by the client, if any.
+
+**Server errors**
 
 The server sends ``SERVER_ERROR`` packets when it receives a packet it cannot
 process. The client should abort any RPC for which it receives an error. The
 status field indicates the type of error.
 
 * ``NOT_FOUND`` -- The requested service or method does not exist.
-* ``FAILED_PRECONDITION`` -- Attempted to cancel an RPC that is not pending.
+* ``FAILED_PRECONDITION`` -- A client stream or cancel packet was sent for an
+  RPC that is not pending.
+* ``INVALID_ARGUMENT`` -- The client sent a packet type to an RPC that does not
+  support it (a ``CLIENT_STREAM`` was sent to an RPC with no client stream).
 * ``RESOURCE_EXHAUSTED`` -- The request came on a new channel, but a channel
   could not be allocated for it.
 * ``INTERNAL`` -- The server was unable to respond to an RPC due to an
@@ -446,250 +593,79 @@ Calling an RPC requires a specific sequence of packets. This section describes
 the protocol for calling service methods of each type: unary, server streaming,
 client streaming, and bidirectional streaming.
 
+The basic flow for all RPC invocations is as follows:
+
+  * Client sends a ``REQUEST`` packet. Includes a payload for unary & server
+    streaming RPCs.
+  * For client and bidirectional streaming RPCs, the client may send any number
+    of ``CLIENT_STREAM`` packets with payloads.
+  * For server and bidirectional streaming RPCs, the server may send any number
+    of ``SERVER_STREAM`` packets.
+  * The server sends a ``RESPONSE`` packet. Includes a payload for unary &
+    client streaming RPCs. The RPC is complete.
+
+The client may cancel an ongoing RPC at any time by sending a ``CLIENT_ERROR``
+packet with status ``CANCELLED``. The server may finish an ongoing RPC at any
+time by sending the ``RESPONSE`` packet.
+
 Unary RPC
 ^^^^^^^^^
 In a unary RPC, the client sends a single request and the server sends a single
 response.
 
-.. seqdiag::
-  :scale: 110
+.. image:: unary_rpc.svg
 
-  seqdiag {
-    default_note_color = aliceblue;
+The client may attempt to cancel a unary RPC by sending a ``CLIENT_ERROR``
+packet with status ``CANCELLED``. The server sends no response to a cancelled
+RPC. If the server processes the unary RPC synchronously (the handling thread
+sends the response), it may not be possible to cancel the RPC.
 
-    client -> server [
-        label = "request",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client <- server [
-        label = "response",
-        rightnote = "PacketType.RESPONSE\nchannel ID\nservice ID\nmethod ID\npayload\nstatus"
-    ];
-  }
+.. image:: unary_rpc_cancelled.svg
 
 Server streaming RPC
 ^^^^^^^^^^^^^^^^^^^^
 In a server streaming RPC, the client sends a single request and the server
-sends any number of responses followed by a ``SERVER_STREAM_END`` packet.
+sends any number of ``SERVER_STREAM`` packets followed by a ``RESPONSE`` packet.
 
-.. seqdiag::
-  :scale: 110
+.. image:: server_streaming_rpc.svg
 
-  seqdiag {
-    default_note_color = aliceblue;
+The client may terminate a server streaming RPC by sending a ``CLIENT_STREAM``
+packet with status ``CANCELLED``. The server sends no response.
 
-    client -> server [
-        label = "request",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client <-- server [
-        noactivate,
-        label = "responses (zero or more)",
-        rightnote = "PacketType.RESPONSE\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client <- server [
-        label = "done",
-        rightnote = "PacketType.SERVER_STREAM_END\nchannel ID\nservice ID\nmethod ID\nstatus"
-    ];
-  }
-
-Server streaming RPCs may be cancelled by the client. The client sends a
-``CANCEL_SERVER_STREAM`` packet to terminate the RPC.
-
-.. seqdiag::
-  :scale: 110
-
-  seqdiag {
-    default_note_color = aliceblue;
-
-    client -> server [
-        label = "request",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client <-- server [
-        noactivate,
-        label = "responses (zero or more)",
-        rightnote = "PacketType.RESPONSE\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client -> server [
-        noactivate,
-        label = "cancel",
-        leftnote  = "PacketType.CANCEL_SERVER_STREAM\nchannel ID\nservice ID\nmethod ID"
-    ];
-
-    client <- server [
-        label = "done",
-        rightnote = "PacketType.SERVER_STREAM_END\nchannel ID\nservice ID\nmethod ID\nstatus"
-    ];
-  }
+.. image:: server_streaming_rpc_cancelled.svg
 
 Client streaming RPC
 ^^^^^^^^^^^^^^^^^^^^
-In a client streaming RPC, the client sends any number of RPC requests followed
-by a ``CLIENT_STREAM_END`` packet. The server then sends a single response.
+In a client streaming RPC, the client starts the RPC by sending a ``REQUEST``
+packet with no payload. It then sends any number of messages in
+``CLIENT_STREAM`` packets, followed by a ``CLIENT_STREAM_END``. The server sends
+a single ``RESPONSE`` to finish the RPC.
 
-The first client-to-server RPC packet does not include a payload.
+.. image:: client_streaming_rpc.svg
 
-.. attention::
+The server may finish the RPC at any time by sending its ``RESPONSE`` packet,
+even if it has not yet received the ``CLIENT_STREAM_END`` packet. The client may
+terminate the RPC at any time by sending a ``CLIENT_ERROR`` packet with status
+``CANCELLED``.
 
-  ``pw_rpc`` does not yet support client streaming RPCs.
-
-.. seqdiag::
-  :scale: 110
-
-  seqdiag {
-    default_note_color = aliceblue;
-
-    client -> server [
-        label = "start",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID"
-    ];
-
-    client --> server [
-        noactivate,
-        label = "requests (zero or more)",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client -> server [
-        noactivate,
-        label = "done",
-        leftnote = "PacketType.CLIENT_STREAM_END\nchannel ID\nservice ID\nmethod ID"
-    ];
-
-    client <- server [
-        label = "response",
-        rightnote = "PacketType.RESPONSE\nchannel ID\nservice ID\nmethod ID\npayload\nstatus"
-    ];
-  }
-
-The server may terminate a client streaming RPC at any time by sending its
-response packet.
-
-.. seqdiag::
-  :scale: 110
-
-  seqdiag {
-    default_note_color = aliceblue;
-
-    client -> server [
-        label = "start",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID"
-    ];
-
-    client --> server [
-        noactivate,
-        label = "requests (zero or more)",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client <- server [
-        label = "response",
-        rightnote = "PacketType.RESPONSE\nchannel ID\nservice ID\nmethod ID\npayload\nstatus"
-    ];
-  }
+.. image:: client_streaming_rpc_cancelled.svg
 
 Bidirectional streaming RPC
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 In a bidirectional streaming RPC, the client sends any number of requests and
-the server sends any number of responses. The client sends a
-``CLIENT_STREAM_END`` packet when it has finished sending requests. The server
-sends a ``SERVER_STREAM_END`` packet after it receives the client's
-``CLIENT_STREAM_END`` and finished sending its responses.
+the server sends any number of responses. The client invokes the RPC by sending
+a ``REQUEST`` with no payload. It sends a ``CLIENT_STREAM_END`` packet when it
+has finished sending requests. The server sends a ``RESPONSE`` packet to finish
+the RPC.
 
-The first client-to-server RPC packet does not include a payload.
+.. image:: bidirectional_streaming_rpc.svg
 
-.. attention::
+The server may finish the RPC at any time by sending the ``RESPONSE`` packet,
+even if it has not received the ``CLIENT_STREAM_END`` packet. The client may
+terminate the RPC at any time by sending a ``CLIENT_ERROR`` packet with status
+``CANCELLED``.
 
-  ``pw_rpc`` does not yet support bidirectional streaming RPCs.
-
-.. seqdiag::
-  :scale: 110
-
-  seqdiag {
-    default_note_color = aliceblue;
-
-    client -> server [
-        label = "start",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID"
-    ];
-
-    client --> server [
-        noactivate,
-        label = "requests (zero or more)",
-        leftnote = "PacketType.REQUEST\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    ... (messages in any order) ...
-
-    client <-- server [
-        noactivate,
-        label = "responses (zero or more)",
-        rightnote = "PacketType.RESPONSE\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client -> server [
-        noactivate,
-        label = "done",
-        leftnote = "PacketType.CLIENT_STREAM_END\nchannel ID\nservice ID\nmethod ID"
-    ];
-
-    client <-- server [
-        noactivate,
-        label = "responses (zero or more)",
-        rightnote = "PacketType.RPC\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client <- server [
-        label = "done",
-        rightnote = "PacketType.SERVER_STREAM_END\nchannel ID\nservice ID\nmethod ID\nstatus"
-    ];
-  }
-
-The server may terminate the RPC at any time by sending a ``SERVER_STREAM_END``
-packet with the status, even if the client has not sent its ``STREAM_END``. The
-client may cancel the RPC at any time by sending a ``CANCEL_SERVER_STREAM``
-packet.
-
-.. seqdiag::
-  :scale: 110
-
-  seqdiag {
-    default_note_color = aliceblue;
-
-    client -> server [
-        label = "start",
-        leftnote = "PacketType.RPC\nchannel ID\nservice ID\nmethod ID"
-    ];
-
-    client --> server [
-        noactivate,
-        label = "requests (zero or more)",
-        leftnote = "PacketType.RPC\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client <-- server [
-        noactivate,
-        label = "responses (zero or more)",
-        rightnote = "PacketType.RPC\nchannel ID\nservice ID\nmethod ID\npayload"
-    ];
-
-    client -> server [
-        noactivate,
-        label = "cancel",
-        leftnote = "PacketType.CANCEL_SERVER_STREAM\nchannel ID\nservice ID\nmethod ID"
-    ];
-
-    client <- server [
-        label = "done",
-        rightnote = "PacketType.STREAM_END\nchannel ID\nservice ID\nmethod ID\nstatus"
-    ];
-  }
+.. image:: bidirectional_streaming_rpc_cancelled.svg
 
 RPC server
 ==========
@@ -726,7 +702,7 @@ function.
 function pointer to the user-defined method implementation. They also provide
 ``static constexpr`` functions for creating each type of method. ``Method``
 implementations must satisfy the ``MethodImplTester`` test class in
-``pw_rpc_private/method_impl_tester.h``.
+``pw_rpc/internal/method_impl_tester.h``.
 
 See ``pw_rpc/internal/method.h`` for more details about ``Method``.
 
@@ -736,51 +712,12 @@ Packet flow
 Requests
 ~~~~~~~~
 
-.. blockdiag::
-
-  blockdiag {
-    packets [shape = beginpoint];
-
-    group {
-      label = "pw_rpc library";
-
-      server [label = "Server"];
-      service [label = "Service"];
-      method [label = "internal::Method"];
-    }
-
-    stubs [label = "generated services", shape = ellipse];
-    user [label = "user-defined RPCs", shape = roundedbox];
-
-    packets -> server -> service -> method -> stubs -> user;
-    packets -> server [folded];
-    method -> stubs [folded];
-  }
+.. image:: request_packets.svg
 
 Responses
 ~~~~~~~~~
 
-.. blockdiag::
-
-  blockdiag {
-    user -> stubs [folded];
-
-    group {
-      label = "pw_rpc library";
-
-      server [label = "Server"];
-      method [label = "internal::Method"];
-      channel [label = "Channel"];
-    }
-
-    stubs [label = "generated services", shape = ellipse];
-    user [label = "user-defined RPCs", shape = roundedbox];
-    packets [shape = beginpoint];
-
-    user -> stubs -> method [folded];
-    method -> server -> channel;
-    channel -> packets [folded];
-  }
+.. image:: response_packets.svg
 
 RPC client
 ==========
@@ -833,6 +770,52 @@ call is only active as long as its ``ClientCall`` object is alive.
 .. tip::
   Use ``std::move`` when passing around ``ClientCall`` objects to keep RPCs
   alive.
+
+Example
+^^^^^^^
+.. code-block:: c++
+
+  #include "pw_rpc/echo_service_nanopb.h"
+
+  namespace {
+  // Generated clients are namespaced with their proto library.
+  using pw::rpc::nanopb::EchoServiceClient;
+
+  // RPC channel ID on which to make client calls.
+  constexpr uint32_t kDefaultChannelId = 1;
+
+  EchoServiceClient::EchoCall echo_call;
+
+  // Callback invoked when a response is received. This is called synchronously
+  // from Client::ProcessPacket.
+  void EchoResponse(const pw_rpc_EchoMessage& response,
+                    pw::Status status) {
+    if (status.ok()) {
+      PW_LOG_INFO("Received echo response: %s", response.msg);
+    } else {
+      PW_LOG_ERROR("Echo failed with status %d",
+                   static_cast<int>(status.code()));
+    }
+  }
+
+  }  // namespace
+
+  void CallEcho(const char* message) {
+    // Create a client to call the EchoService.
+    EchoServiceClient echo_client(my_rpc_client, kDefaultChannelId);
+
+    pw_rpc_EchoMessage request = pw_rpc_EchoMessage_init_default;
+    pw::string::Copy(message, request.msg);
+
+    // By assigning the returned ClientCall to the global echo_call, the RPC
+    // call is kept alive until it completes. When a response is received, it
+    // will be logged by the handler function and the call will complete.
+    echo_call = echo_client.Echo(request, EchoResponse);
+    if (!echo_call.active()) {
+      // The RPC call was not sent. This could occur due to, for example, an
+      // invalid channel ID. Handle if necessary.
+    }
+  }
 
 Client implementation details
 -----------------------------

@@ -34,6 +34,61 @@ using ``Format``.
 
 .. include:: format_size_report
 
+Safe Length Checking
+====================
+This module provides two safer alternatives to ``std::strlen`` in case the
+string is extremely long and/or potentially not null-terminated.
+
+First, a constexpr alternative to C11's ``strnlen_s`` is offerred through
+:cpp:func:`pw::string::ClampedCString`. This does not return a length by
+design and instead returns a string_view which does not require
+null-termination.
+
+Second, a constexpr specialized form is offered where null termination is
+required through :cpp:func:`pw::string::NullTerminatedLength`. This will only
+return a length if the string is null-terminated.
+
+.. cpp:function:: constexpr std::string_view pw::string::ClampedCString(std::span<const char> str)
+.. cpp:function:: constexpr std::string_view pw::string::ClampedCString(const char* str, size_t max_len)
+
+   Safe alternative to the string_view constructor to avoid the risk of an
+   unbounded implicit or explicit use of strlen.
+
+   This is strongly recommended over using something like C11's strnlen_s as
+   a string_view does not require null-termination.
+
+.. cpp:function:: constexpr pw::Result<size_t> pw::string::NullTerminatedLength(std::span<const char> str)
+.. cpp:function:: pw::Result<size_t> pw::string::NullTerminatedLength(const char* str, size_t max_len)
+
+   Safe alternative to strlen to calculate the null-terminated length of the
+   string within the specified span, excluding the null terminator. Like C11's
+   strnlen_s, the scan for the null-terminator is bounded.
+
+   Returns:
+     null-terminated length of the string excluding the null terminator.
+     OutOfRange - if the string is not null-terminated.
+
+   Precondition: The string shall be at a valid pointer.
+
+pw::string::Copy
+================
+The ``pw::string::Copy`` functions provide a safer alternative to
+``std::strncpy`` as it always null-terminates whenever the destination
+buffer has a non-zero size.
+
+.. cpp:function:: StatusWithSize Copy(const std::string_view& source, std::span<char> dest)
+.. cpp:function:: StatusWithSize Copy(const char* source, std::span<char> dest)
+.. cpp:function:: StatusWithSize Copy(const char* source, char* dest, size_t num)
+
+   Copies the source string to the dest, truncating if the full string does not
+   fit. Always null terminates if dest.size() or num > 0.
+
+   Returns the number of characters written, excluding the null terminator. If
+   the string is truncated, the status is ResourceExhausted.
+
+   Precondition: The destination and source shall not overlap.
+   Precondition: The source shall be a valid pointer.
+
 pw::StringBuilder
 =================
 ``pw::StringBuilder`` facilitates building formatted strings in a fixed-size
@@ -74,7 +129,7 @@ This example shows how to specialize ``pw::ToString``:
 
   template <>
   StatusWithSize ToString<MyStatus>(MyStatus value, std::span<char> buffer) {
-    return CopyString(MyStatusString(value), buffer);
+    return Copy(MyStatusString(value), buffer);
   }
 
   }  // namespace pw

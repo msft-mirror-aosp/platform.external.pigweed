@@ -24,7 +24,7 @@ class UnitTestService final : public generated::UnitTest<UnitTestService> {
  public:
   UnitTestService() : handler_(*this), verbose_(false) {}
 
-  void Run(ServerContext& ctx, ConstByteSpan request, RawServerWriter& writer);
+  void Run(ServerContext&, ConstByteSpan request, RawServerWriter& writer);
 
  private:
   friend class internal::RpcEventHandler;
@@ -34,11 +34,11 @@ class UnitTestService final : public generated::UnitTest<UnitTestService> {
   // migrated to it.
   template <typename WriteFunction>
   void WriteEvent(WriteFunction event_writer) {
-    protobuf::NestedEncoder<2, 3> encoder(writer_.PayloadBuffer());
-    Event::Encoder event(&encoder);
+    Event::MemoryEncoder event(writer_.PayloadBuffer());
     event_writer(event);
-    if (Result<ConstByteSpan> result = encoder.Encode(); result.ok()) {
-      writer_.Write(result.value());
+    if (event.status().ok()) {
+      writer_.Write(event)
+          .IgnoreError();  // TODO(pwbug/387): Handle Status properly
     }
   }
 

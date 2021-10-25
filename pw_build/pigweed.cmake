@@ -69,7 +69,8 @@ function(pw_auto_add_simple_module MODULE)
 
   # Create a library with all source files not ending in _test.
   set(sources "${all_sources}")
-  list(FILTER sources EXCLUDE REGEX "_test(\\.cc|(_c)?\\.c)$")
+  list(FILTER sources EXCLUDE REGEX "_test(\\.cc|(_c)?\\.c)$")  # *_test.cc
+  list(FILTER sources EXCLUDE REGEX "^test(\\.cc|(_c)?\\.c)$")  # test.cc
   list(FILTER sources EXCLUDE REGEX "_fuzzer\\.cc$")
 
   file(GLOB_RECURSE headers *.h)
@@ -219,7 +220,12 @@ function(pw_add_facade NAME)
   # instead. If the facade is used in the build, it fails with this error.
   add_custom_target("${NAME}._no_backend_set_message"
     COMMAND
-      python "$ENV{PW_ROOT}/pw_build/py/pw_build/null_backend.py" "${NAME}"
+      "${CMAKE_COMMAND}" -E echo
+        "ERROR: Attempted to build the ${NAME} facade with no backend."
+        "Configure the ${NAME} backend using pw_set_backend or remove all dependencies on it."
+        "See https://pigweed.dev/pw_build."
+    COMMAND
+      "${CMAKE_COMMAND}" -E false
   )
   add_library("${NAME}.NO_BACKEND_SET" INTERFACE)
   add_dependencies("${NAME}.NO_BACKEND_SET" "${NAME}._no_backend_set_message")
@@ -232,6 +238,14 @@ function(pw_add_facade NAME)
   # Declare the backend variable for this facade.
   set("${NAME}_BACKEND" "${arg_DEFAULT_BACKEND}" CACHE STRING
       "Backend for ${NAME}")
+
+  # This target is never used; it simply tests that the specified backend
+  # actually exists in the build. The generator expression will fail to evaluate
+  # if the target is not defined.
+  add_custom_target(_pw_check_that_backend_for_${NAME}_is_defined
+    COMMAND
+      ${CMAKE_COMMAND} -E echo "$<TARGET_PROPERTY:${${NAME}_BACKEND},TYPE>"
+  )
 
   # Define the facade library, which is used by the backend to avoid circular
   # dependencies.

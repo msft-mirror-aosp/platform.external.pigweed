@@ -47,7 +47,7 @@ bootloaders and the application boot code do not clobber it.
 
    .. code-block:: cpp
 
-      #include "pw_assert/assert.h"
+      #include "pw_assert/check.h"
       #include "pw_persistent_ram/persistent.h"
 
       // Provided for example through a linker script.
@@ -75,8 +75,8 @@ before the global static C++ constructors, but after the BSS and data sections
 are initialized in RAM.
 
 The preferred way to clear Persistent RAM is to simply zero entire persistent
-RAM sections and/or memory regions. Pigweed's persistents containers have picked
-integrity checks which work with zerod memory, meaning they do not hold a value
+RAM sections and/or memory regions. Pigweed's persistent containers have picked
+integrity checks which work with zeroed memory, meaning they do not hold a value
 after zeroing. Alternatively containers can be individually cleared.
 
 The boot sequence itself is tightly coupled to the number of persistent sections
@@ -204,11 +204,13 @@ object's checksum is updated to reflect the changes.
       if (persistent_crash_info.has_value()) {
         LogLastCrashInfo(persistent_crash_info.value());
         // Clear crash info once it has been dumped.
-        persistent_crash_info.reset();
+        persistent_crash_info.Invalidate();
       }
 
       // ... rest of main
     }
+
+.. _module-pw_persistent_ram-persistent_buffer:
 
 ------------------------------------
 pw::persistent_ram::PersistentBuffer

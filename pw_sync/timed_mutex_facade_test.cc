@@ -29,10 +29,10 @@ extern "C" {
 // Functions defined in mutex_facade_test_c.c which call the API from C.
 void pw_sync_TimedMutex_CallLock(pw_sync_TimedMutex* mutex);
 bool pw_sync_TimedMutex_CallTryLock(pw_sync_TimedMutex* mutex);
-bool pw_sync_TimedMutex_CallTryLockFor(
-    pw_sync_TimedMutex* mutex, pw_chrono_SystemClock_Duration for_at_least);
+bool pw_sync_TimedMutex_CallTryLockFor(pw_sync_TimedMutex* mutex,
+                                       pw_chrono_SystemClock_Duration timeout);
 bool pw_sync_TimedMutex_CallTryLockUntil(
-    pw_sync_TimedMutex* mutex, pw_chrono_SystemClock_TimePoint until_at_least);
+    pw_sync_TimedMutex* mutex, pw_chrono_SystemClock_TimePoint deadline);
 void pw_sync_TimedMutex_CallUnlock(pw_sync_TimedMutex* mutex);
 
 }  // extern "C"
@@ -112,6 +112,22 @@ TEST(TimedMutex, TryLockUnlockUntil) {
 
     mutex.unlock();
   }
+}
+
+TEST(VirtualTimedMutex, LockUnlock) {
+  pw::sync::VirtualTimedMutex mutex;
+  mutex.lock();
+  // TODO(pwbug/291): Ensure it fails to lock when already held.
+  // EXPECT_FALSE(mutex.try_lock());
+  mutex.unlock();
+}
+
+VirtualTimedMutex static_virtual_mutex;
+TEST(VirtualTimedMutex, LockUnlockStatic) {
+  static_virtual_mutex.lock();
+  // TODO(pwbug/291): Ensure it fails to lock when already held.
+  // EXPECT_FALSE(static_virtual_mutex.try_lock());
+  static_virtual_mutex.unlock();
 }
 
 TEST(TimedMutex, LockUnlockInC) {

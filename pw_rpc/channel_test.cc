@@ -16,7 +16,7 @@
 
 #include "gtest/gtest.h"
 #include "pw_rpc/internal/packet.h"
-#include "pw_rpc_private/internal_test_utils.h"
+#include "pw_rpc/internal/test_utils.h"
 
 namespace pw::rpc::internal {
 namespace {
@@ -37,10 +37,11 @@ TEST(ChannelOutput, Name) {
   EXPECT_EQ(nullptr, NameTester(nullptr).name());
 }
 
-constexpr Packet kTestPacket(PacketType::RESPONSE, 1, 42, 100);
+constexpr Packet kTestPacket(
+    PacketType::RESPONSE, 1, 42, 100, 0, {}, Status::NotFound());
 const size_t kReservedSize = 2 /* type */ + 2 /* channel */ + 5 /* service */ +
                              5 /* method */ + 2 /* payload key */ +
-                             2 /* status */;
+                             2 /* status (if not OK) */;
 
 enum class ChannelId {
   kOne = 1,
@@ -67,7 +68,7 @@ TEST(Channel, OutputBuffer_EmptyBuffer) {
 }
 
 TEST(Channel, OutputBuffer_TooSmall) {
-  TestOutput<kReservedSize - 1> output;
+  TestOutput<kReservedSize - 2 /* payload key & size */ - 1> output;
   internal::Channel channel(100, &output);
 
   Channel::OutputBuffer output_buffer = channel.AcquireBuffer();
@@ -121,6 +122,38 @@ TEST(Channel, OutputBuffer_ReturnsStatusFromChannelOutputSend) {
   output.set_send_status(Status::Aborted());
 
   EXPECT_EQ(Status::Aborted(), channel.Send(output_buffer, kTestPacket));
+}
+
+TEST(Channel, OutputBuffer_Contains_FalseWhenEmpty) {
+  Channel::OutputBuffer buffer;
+  EXPECT_FALSE(buffer.Contains({}));
+
+  std::byte data[1];
+  EXPECT_FALSE(buffer.Contains(data));
+}
+
+TEST(Channel, OutputBuffer_Contains_TrueIfContained) {
+  TestOutput<16> output;
+  internal::Channel channel(100, &output);
+
+  Channel::OutputBuffer buffer = channel.AcquireBuffer();
+  EXPECT_TRUE(buffer.Contains(output.buffer()));
+
+  channel.Release(buffer);
+}
+
+TEST(Channel, OutputBuffer_Contains_FalseIfOutside) {
+  TestOutput<16> output;
+  internal::Channel channel(100, &output);
+
+  Channel::OutputBuffer buffer = channel.AcquireBuffer();
+  std::span before(output.buffer().data() - 1, 5);
+  EXPECT_FALSE(buffer.Contains(before));
+
+  std::span after(output.buffer().data() + output.buffer().size() - 1, 2);
+  EXPECT_FALSE(buffer.Contains(after));
+
+  channel.Release(buffer);
 }
 
 }  // namespace

@@ -19,8 +19,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "pw_assert/light.h"
+#include "pw_assert/assert.h"
 #include "pw_checksum/crc16_ccitt.h"
+#include "pw_preprocessor/compiler.h"
 
 namespace pw::persistent_ram {
 
@@ -107,11 +108,14 @@ class Persistent {
   }
 
   // Destroys any contained value.
-  void reset() {
+  void Invalidate() {
     // The trivial destructor is skipped as it's trivial.
     std::memset(const_cast<T*>(&contents_), 0, sizeof(contents_));
     crc_ = 0;
   }
+
+  // This is deprecated, use Invalidate() instead.
+  [[deprecated]] void reset() { Invalidate(); }
 
   // Returns true if a value is held by the Persistent.
   bool has_value() const {

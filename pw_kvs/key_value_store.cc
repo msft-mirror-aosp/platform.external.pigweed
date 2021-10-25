@@ -22,7 +22,7 @@
 #include <cstring>
 #include <type_traits>
 
-#include "pw_assert/assert.h"
+#include "pw_assert/check.h"
 #include "pw_kvs_private/config.h"
 #include "pw_log/shorter.h"
 #include "pw_status/try.h"
@@ -462,7 +462,8 @@ void KeyValueStore::Item::ReadKey() {
 
   Entry entry;
   if (kvs_.ReadEntry(*iterator_, entry).ok()) {
-    entry.ReadKey(key_buffer_);
+    entry.ReadKey(key_buffer_)
+        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
   }
 }
 
@@ -1207,7 +1208,8 @@ Status KeyValueStore::Repair() {
   INF("Starting KVS repair");
 
   DBG("Reinitialize KVS metadata");
-  InitializeMetadata();
+  InitializeMetadata()
+      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
 
   return FixErrors();
 }

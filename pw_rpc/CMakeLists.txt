@@ -24,8 +24,10 @@ add_subdirectory(system_server)
 
 pw_add_module_library(pw_rpc.server
   SOURCES
-    base_server_writer.cc
+    call.cc
+    endpoint.cc
     server.cc
+    server_call.cc
     service.cc
   PUBLIC_DEPS
     pw_rpc.common
@@ -35,10 +37,11 @@ pw_add_module_library(pw_rpc.server
 
 pw_add_module_library(pw_rpc.client
   SOURCES
-    base_client_call.cc
     client.cc
+    client_call.cc
   PUBLIC_DEPS
     pw_rpc.common
+    pw_result
   PRIVATE_DEPS
     pw_log
 )
@@ -59,6 +62,7 @@ pw_add_module_library(pw_rpc.common
     pw_assert
     pw_bytes
     pw_containers
+    pw_function
     pw_span
     pw_status
     pw_rpc.protos.pwpb
@@ -72,8 +76,16 @@ pw_add_module_library(pw_rpc.synchronized_channel_output
     pw_sync.mutex
 )
 
-add_library(pw_rpc.test_utils INTERFACE)
-target_include_directories(pw_rpc.test_utils INTERFACE .)
+pw_add_module_library(pw_rpc.test_utils
+  SOURCES
+    fake_channel_output.cc
+  PUBLIC_DEPS
+    pw_assert
+    pw_bytes
+    pw_rpc.client
+    pw_rpc.server
+)
+target_include_directories(pw_rpc.test_utils PUBLIC .)
 
 pw_proto_library(pw_rpc.protos
   SOURCES

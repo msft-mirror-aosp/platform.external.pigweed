@@ -16,7 +16,7 @@
 
 #include <algorithm>
 
-#include "pw_assert/assert.h"
+#include "pw_assert/check.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_chrono_threadx/system_clock_constants.h"
 #include "pw_interrupt/context.h"
@@ -26,12 +26,12 @@ using pw::chrono::SystemClock;
 
 namespace pw::sync {
 
-bool BinarySemaphore::try_acquire_for(SystemClock::duration for_at_least) {
+bool BinarySemaphore::try_acquire_for(SystemClock::duration timeout) {
   // Enforce the pw::sync::BinarySemaphore IRQ contract.
   PW_DCHECK(!interrupt::InInterruptContext());
 
   // Use non-blocking try_acquire for negative and zero length durations.
-  if (for_at_least <= SystemClock::duration::zero()) {
+  if (timeout <= SystemClock::duration::zero()) {
     return try_acquire();
   }
 
@@ -39,7 +39,7 @@ bool BinarySemaphore::try_acquire_for(SystemClock::duration for_at_least) {
   // tick, ergo we add one whole tick to the final duration.
   constexpr SystemClock::duration kMaxTimeoutMinusOne =
       pw::chrono::threadx::kMaxTimeout - SystemClock::duration(1);
-  while (for_at_least > kMaxTimeoutMinusOne) {
+  while (timeout > kMaxTimeoutMinusOne) {
     const UINT result = tx_semaphore_get(
         &native_type_, static_cast<ULONG>(kMaxTimeoutMinusOne.count()));
     if (result != TX_NO_INSTANCE) {
@@ -47,10 +47,10 @@ bool BinarySemaphore::try_acquire_for(SystemClock::duration for_at_least) {
       PW_CHECK_UINT_EQ(TX_SUCCESS, result);
       return true;
     }
-    for_at_least -= kMaxTimeoutMinusOne;
+    timeout -= kMaxTimeoutMinusOne;
   }
-  const UINT result = tx_semaphore_get(
-      &native_type_, static_cast<ULONG>(for_at_least.count() + 1));
+  const UINT result =
+      tx_semaphore_get(&native_type_, static_cast<ULONG>(timeout.count() + 1));
   if (result == TX_NO_INSTANCE) {
     return false;  // We timed out, there's still no token.
   }

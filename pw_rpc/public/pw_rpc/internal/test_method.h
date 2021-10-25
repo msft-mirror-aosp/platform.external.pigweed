@@ -20,6 +20,8 @@
 #include "pw_rpc/internal/method.h"
 #include "pw_rpc/internal/method_union.h"
 #include "pw_rpc/internal/packet.h"
+#include "pw_rpc/internal/server_call.h"
+#include "pw_rpc/method_type.h"
 #include "pw_rpc/server_context.h"
 #include "pw_status/status_with_size.h"
 
@@ -29,22 +31,45 @@ namespace pw::rpc::internal {
 // channel ID, request, and payload buffer, and optionally provides a response.
 class TestMethod : public Method {
  public:
-  constexpr TestMethod(uint32_t id)
-      : Method(id, InvokeForTest), last_channel_id_(0) {}
+  constexpr TestMethod(uint32_t id, MethodType type = MethodType::kUnary)
+      : Method(id, GetInvoker(type)), last_channel_id_(0), invocations_(0) {}
 
   uint32_t last_channel_id() const { return last_channel_id_; }
   const Packet& last_request() const { return last_request_; }
+  size_t invocations() const { return invocations_; }
 
   void set_response(std::span<const std::byte> payload) { response_ = payload; }
   void set_status(Status status) { response_status_ = status; }
 
  private:
-  static void InvokeForTest(const Method& method,
-                            ServerCall& call,
-                            const Packet& request) {
-    const auto& test_method = static_cast<const TestMethod&>(method);
-    test_method.last_channel_id_ = call.channel().id();
+  class FakeServerCall : public ServerCall {
+   public:
+    FakeServerCall(const CallContext& context, MethodType type)
+        : ServerCall(context, type) {}
+  };
+
+  template <MethodType kType>
+  static void InvokeForTest(const CallContext& context, const Packet& request) {
+    const auto& test_method = static_cast<const TestMethod&>(context.method());
+    test_method.last_channel_id_ = context.channel().id();
     test_method.last_request_ = request;
+    test_method.invocations_ += 1;
+
+    // Create a call object so it registers / unregisters with the server.
+    FakeServerCall fake_call(context, kType);
+  }
+
+  static constexpr Invoker GetInvoker(MethodType type) {
+    switch (type) {
+      case MethodType::kUnary:
+        return InvokeForTest<MethodType::kUnary>;
+      case MethodType::kServerStreaming:
+        return InvokeForTest<MethodType::kServerStreaming>;
+      case MethodType::kClientStreaming:
+        return InvokeForTest<MethodType::kClientStreaming>;
+      case MethodType::kBidirectionalStreaming:
+        return InvokeForTest<MethodType::kBidirectionalStreaming>;
+    };
   }
 
   // Make these mutable so they can be set in the Invoke method, which is const.
@@ -52,6 +77,7 @@ class TestMethod : public Method {
   // allows tests to verify that the Method is invoked correctly.
   mutable uint32_t last_channel_id_;
   mutable Packet last_request_;
+  mutable size_t invocations_;
 
   std::span<const std::byte> response_;
   Status response_status_;

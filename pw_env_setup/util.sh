@@ -160,16 +160,20 @@ pw_deactivate() {
   _NEW_PW_ROOT="$PW_ROOT"
   _NEW_PW_PROJECT_ROOT="$PW_PROJECT_ROOT"
 
-  # Find deactivate script and run it.
+  # Find deactivate script, run it, and then delete it. This way if the
+  # deactivate script is doing something wrong subsequent bootstraps still
+  # have a chance to pass.
   _PW_DEACTIVATE_SH="$_PW_ACTUAL_ENVIRONMENT_ROOT/deactivate.sh"
   if [ -f "$_PW_DEACTIVATE_SH" ]; then
     . "$_PW_DEACTIVATE_SH"
+    rm -f "$_PW_DEACTIVATE_SH" &> /dev/null
   fi
 
   # If there's a _pw_deactivate function run it. Redirect output to /dev/null
-  # in case _pw_deactivate doesn't exist.
+  # in case _pw_deactivate doesn't exist. Remove _pw_deactivate when complete.
   if [ -n "$(command -v _pw_deactivate)" ]; then
-    _pw_deactivate &> /dev/null
+    _pw_deactivate > /dev/null 2> /dev/null
+    unset -f _pw_deactivate
   fi
 
   # Restore.
@@ -182,7 +186,6 @@ pw_deactivate() {
 # The next three functions use the following variables.
 # * PW_BANNER_FUNC: function to print banner
 # * PW_BOOTSTRAP_PYTHON: specific Python interpreter to use for bootstrap
-# * PW_USE_GCS_ENVSETUP: attempt to grab env setup executable from GCS if "true"
 # * PW_ROOT: path to Pigweed root
 # * PW_ENVSETUP_QUIET: limit output if "true"
 #
@@ -193,25 +196,35 @@ pw_deactivate() {
 pw_bootstrap() {
   _pw_hello "  BOOTSTRAP! Bootstrap may take a few minutes; please be patient.\n"
 
+  _pw_alias_check=0
+  alias python > /dev/null 2> /dev/null || _pw_alias_check=$?
+  if [ "$_pw_alias_check" -eq 0 ]; then
+    pw_bold_red "Error: 'python' is an alias"
+    pw_red "The shell has a 'python' alias set. This causes many obscure"
+    pw_red "Python-related issues both in and out of Pigweed. Please remove"
+    pw_red "the Python alias from your shell init file or at least run the"
+    pw_red "following command before bootstrapping Pigweed."
+    pw_red
+    pw_red "  unalias python"
+    pw_red
+    return
+  fi
+
   # Allow forcing a specific version of Python for testing pursposes.
   if [ -n "$PW_BOOTSTRAP_PYTHON" ]; then
     _PW_PYTHON="$PW_BOOTSTRAP_PYTHON"
-  elif which python &> /dev/null; then
-    _PW_PYTHON=python
-  elif which python3 &> /dev/null; then
+  elif command -v python3 > /dev/null 2> /dev/null; then
     _PW_PYTHON=python3
-  elif which python2 &> /dev/null; then
+  elif command -v python2 > /dev/null 2> /dev/null; then
     _PW_PYTHON=python2
+  elif command -v python > /dev/null 2> /dev/null; then
+    _PW_PYTHON=python
   else
     pw_bold_red "Error: No system Python present\n"
     pw_red "  Pigweed's bootstrap process requires a local system Python."
     pw_red "  Please install Python on your system, add it to your PATH"
     pw_red "  and re-try running bootstrap."
     return
-  fi
-
-  if [ -n "$PW_USE_GCS_ENVSETUP" ]; then
-    _PW_ENV_SETUP="$("$PW_ROOT/pw_env_setup/get_pw_env_setup.sh")"
   fi
 
   if [ -n "$_PW_ENV_SETUP" ]; then
@@ -257,6 +270,7 @@ pw_finalize() {
 pw_cleanup() {
   unset _PW_BANNER
   unset _PW_BANNER_FUNC
+  unset PW_BANNER_FUNC
   unset _PW_ENV_SETUP
   unset _PW_NAME
   unset _PW_PYTHON
@@ -284,4 +298,5 @@ pw_cleanup() {
   unset pw_activate
   unset pw_finalize
   unset _pw_cleanup
+  unset _pw_alias_check
 }

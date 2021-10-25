@@ -12,7 +12,7 @@ a crash if the condition is not met. Consistent use of asserts is one aspect of
 defensive programming that can lead to more reliable and less buggy code.
 
 The assert API facilitates flexible crash handling through Pigweed's facade
-mechanism. The API is desigend to enable features like:
+mechanism. The API is designed to enable features like:
 
 - Optional ancillary printf-style messages along assertions
 - Capturing actual values of binary operator assertions like ``a < b``
@@ -88,14 +88,10 @@ The module is split into two components:
    backend. This is also where application or product specific crash handling
    would go.
 
-.. blockdiag::
+.. mermaid::
 
-  blockdiag {
-    default_fontsize = 16;
-    facade  [label = "facade"];
-    backend [label = "backend"];
-    facade -> backend
-  }
+  graph LR
+    facade --> backend
 
 See the Backend API section below for more details.
 
@@ -470,7 +466,34 @@ PW_ASSERT API backend
 ---------------------
 The ``PW_ASSERT`` API ultimately calls the C function
 ``pw_assert_HandleFailure()``, which must be provided by the ``pw_assert``
-backend.
+backend. The ``pw_assert_HandleFailure()`` function must not return.
+
+.. _module-pw_assert-circular-deps:
+
+Avoiding circular dependencies with ``PW_ASSERT``
+-------------------------------------------------
+Because asserts are so widely used, including in low-level libraries, it is
+common for the ``pw_assert`` backend to cause circular dependencies. Because of
+this, assert backends may avoid declaring explicit dependencies, instead relying
+on include paths to access header files.
+
+In GN, the ``pw_assert`` backend's full implementation with true dependencies is
+made available through the ``$dir_pw_assert:impl`` group. When
+``pw_assert_BACKEND`` is set, ``$dir_pw_assert:impl`` must be listed in the
+``pw_build_LINK_DEPS`` variable. See :ref:`module-pw_build-link-deps`.
+
+In the ``pw_assert``, the backend's full implementation is placed in the
+``$pw_assert_BACKEND.impl`` target. ``$dir_pw_assert:impl`` depends on this
+backend target. The ``$pw_assert_BACKEND.impl`` target may be an empty group if
+the backend target can use its dependencies directly without causing circular
+dependencies.
+
+In order to break dependency cycles, the ``pw_assert_BACKEND`` target may need
+to directly provide dependencies through include paths only, rather than GN
+``public_deps``. In this case, GN header checking can be disabled with
+``check_includes = false``.
+
+.. _module-pw_assert-backend_api:
 
 -----------
 Backend API
@@ -487,8 +510,8 @@ This facade module (``pw_assert``) does not provide a backend. See
 .. attention::
 
   The facade macros (``PW_CRASH`` and related) are expected to behave like they
-  have the ``[[ noreturn ]]`` attribute set. This implies that the backend
-  handler functions, ``PW_HANDLE_*`` defined by the backend, must not return.
+  have the ``[[noreturn]]`` attribute set. This implies that the backend handler
+  functions, ``PW_HANDLE_*`` defined by the backend, must not return.
 
   In other words, the device must reboot.
 
@@ -557,6 +580,16 @@ header, but instead is in a ``.cc`` file.
   file, expression, or other rich assert information. Backends should do
   something reasonable in this case; typically, capturing the stack is useful.
 
+Backend build targets
+---------------------
+In GN, the backend must provide a ``pw_assert.impl`` build target in the same
+directory as the backend target. If the main backend target's dependencies would
+cause dependency cycles, the actual backend implementation with its full
+dependencies is placed in the ``pw_assert.impl`` target. If this is not
+necessary, ``pw_assert.impl`` can be an empty group. Circular dependencies are a
+common problem with ``pw_assert`` because it is so widely used. See
+:ref:`module-pw_assert-circular-deps`.
+
 --------------------------
 Frequently asked questions
 --------------------------
@@ -612,12 +645,12 @@ Pigweed uses these conventions to decide between ``CHECK_*`` and ``DCHECK_*``:
 
 How should objects be asserted against or compared?
 ---------------------------------------------------
-Unfortunatly, there is no native mechanism for this, and instead the way to
+Unfortunately, there is no native mechanism for this, and instead the way to
 assert object states or comparisons is with the normal ``PW_CHECK_*`` macros
 that operate on booleans, ints, and floats.
 
 This is due to the requirement of supporting C and also tokenization. It may be
-possible support rich object comparions by defining a convention for
+possible support rich object comparisons by defining a convention for
 stringifying objects; however, this hasn't been added yet. Additionally, such a
 mechanism would not work well with tokenization. In particular, it would
 require runtime stringifying arguments and rendering them with ``%s``, which

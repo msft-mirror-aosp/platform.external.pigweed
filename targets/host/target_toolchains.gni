@@ -38,6 +38,15 @@ _host_common = {
 
   # Configure backends for pw_sync's facades.
   pw_sync_INTERRUPT_SPIN_LOCK_BACKEND = "$dir_pw_sync_stl:interrupt_spin_lock"
+  pw_sync_BINARY_SEMAPHORE_BACKEND = "$dir_pw_sync_stl:binary_semaphore_backend"
+  pw_sync_COUNTING_SEMAPHORE_BACKEND =
+      "$dir_pw_sync_stl:counting_semaphore_backend"
+  pw_sync_MUTEX_BACKEND = "$dir_pw_sync_stl:mutex_backend"
+  pw_sync_TIMED_MUTEX_BACKEND = "$dir_pw_sync_stl:timed_mutex_backend"
+  pw_sync_THREAD_NOTIFICATION_BACKEND =
+      "$dir_pw_sync:binary_semaphore_thread_notification_backend"
+  pw_sync_TIMED_THREAD_NOTIFICATION_BACKEND =
+      "$dir_pw_sync:binary_semaphore_timed_thread_notification_backend"
 
   # Configure backend for pw_sys_io facade.
   pw_sys_io_BACKEND = "$dir_pw_sys_io_stdio"
@@ -51,8 +60,21 @@ _host_common = {
   # Tokenizer trace time.
   pw_trace_tokenizer_time = "$dir_pw_trace_tokenized:host_trace_time"
 
-  # Configure backend for pw_chrono's system_clock facade.
+  # Configure backend for pw_chrono's facades.
   pw_chrono_SYSTEM_CLOCK_BACKEND = "$dir_pw_chrono_stl:system_clock"
+  pw_chrono_SYSTEM_TIMER_BACKEND = "$dir_pw_chrono_stl:system_timer"
+
+  # Configure backends for pw_thread's facades.
+  pw_thread_ID_BACKEND = "$dir_pw_thread_stl:id"
+  pw_thread_YIELD_BACKEND = "$dir_pw_thread_stl:yield"
+  pw_thread_SLEEP_BACKEND = "$dir_pw_thread_stl:sleep"
+  pw_thread_THREAD_BACKEND = "$dir_pw_thread_stl:thread"
+
+  pw_build_LINK_DEPS = []  # Explicit list overwrite required by GN
+  pw_build_LINK_DEPS = [
+    "$dir_pw_assert:impl",
+    "$dir_pw_log:impl",
+  ]
 
   # Specify builtin GN variables.
   current_os = host_os
@@ -79,30 +101,11 @@ _win_config = {
   pw_unit_test_AUTOMATIC_RUNNER = get_path_info("run_test.bat", "abspath")
 }
 
-# TODO(amontanez): figure out why std::mutex doesn't work on Windows.
-# These current target configurations do not work on windows.
-_win_incompatible_config = {
-  # Configure backends for pw_sync's facades.
-  pw_sync_BINARY_SEMAPHORE_BACKEND = "$dir_pw_sync_stl:binary_semaphore_backend"
-  pw_sync_COUNTING_SEMAPHORE_BACKEND =
-      "$dir_pw_sync_stl:counting_semaphore_backend"
-  pw_sync_MUTEX_BACKEND = "$dir_pw_sync_stl:mutex_backend"
-  pw_sync_TIMED_MUTEX_BACKEND = "$dir_pw_sync_stl:timed_mutex_backend"
-
-  # Configure backends for pw_thread's facades.
-  pw_thread_ID_BACKEND = "$dir_pw_thread_stl:id"
-  pw_thread_SLEEP_BACKEND = "$dir_pw_thread_stl:sleep"
-  pw_thread_YIELD_BACKEND = "$dir_pw_thread_stl:yield"
-  pw_thread_THREAD_BACKEND = "$dir_pw_thread_stl:thread"
-}
-
 _os_specific_config = {
   if (host_os == "linux") {
     forward_variables_from(_linux_config, "*")
-    forward_variables_from(_win_incompatible_config, "*")
   } else if (host_os == "mac") {
     forward_variables_from(_mac_config, "*")
-    forward_variables_from(_win_incompatible_config, "*")
   } else if (host_os == "win") {
     forward_variables_from(_win_config, "*")
   }
