@@ -28,7 +28,7 @@ environment. The tooling is installed into your workspace, and makes no
 changes to your system. This tooling is designed to be reused by any
 project.
 
-.. _CIPD: https://github.com/luci/luci-go/tree/master/cipd
+.. _CIPD: https://github.com/luci/luci-go/tree/HEAD/cipd
 
 Users interact with  ``pw_env_setup`` with two commands: ``. bootstrap.sh`` and
 ``. activate.sh``. The bootstrap command always pulls down the current versions
@@ -90,6 +90,49 @@ assumes `bootstrap.sh` is at the top level of your repository.
   SETUP_SH="$_PW_ACTUAL_ENVIRONMENT_ROOT/activate.sh"
   pw_bootstrap --args...  # See below for details about args.
   pw_finalize bootstrap "$SETUP_SH"
+
+
+Bazel Usage
+-----------
+It is possible to pull in a CIPD dependency into Bazel using WORKSPACE rules
+rather than using `bootstrap.sh`. e.g.
+
+.. code:: python
+
+  # WORKSPACE
+
+  load("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "pigweed_deps")
+
+  # Setup CIPD client and packages.
+  # Required by: pigweed.
+  # Used by modules: all.
+  pigweed_deps()
+
+  load("@cipd_deps//:cipd_init.bzl", "cipd_init")
+
+  cipd_init()
+
+
+This will make the entire set of Pigweeds remote repositories available
+to your project. Though these repositories will only be donwloaded if
+you use them. To get a full list of the remote repositories that this
+configures, run:
+
+.. code:: sh
+
+  bazel query //external:all | grep cipd_
+
+All files and executables in each CIPD remote repository is exported
+and visible either directely (`@cipd_<dep>//:<file>`) or from 'all' filegroup
+(`@cipd_<dep>//:all`).
+
+From here it is possible to get access to the Bloaty binaries using the
+following command. For example;
+
+.. code:: sh
+
+  bazel run @cipd_pigweed_third_party_bloaty_embedded_linux_amd64//:bloaty \
+   -- --help
 
 User-Friendliness
 -----------------
@@ -164,11 +207,34 @@ that may require changes, like setting the ``PW_ROOT`` and ``PW_PROJECT_ROOT``
 environment variables. Explanations of parts of ``config.json`` are described
 here.
 
-.. _sample project: https://pigweed.googlesource.com/pigweed/sample_project/+/master
+.. _sample project: https://pigweed.googlesource.com/pigweed/sample_project/+/HEAD
+
+``root_variable``
+  Variable used to point to the root of the source tree. Optional, can always
+  use ``PW_PROJECT_ROOT`` instead. (That variable will be set regardless of
+  whether this is provided.)
 
 ``cipd_package_files``
-  CIPD package file. JSON file consisting of a list of dictionaries with "path"
-  and "tags" keys, where "tags" is a list of strings.
+  CIPD package file. JSON file consisting of a list of dictionaries with "path",
+  "platforms", and "tags" keys. An example is below.
+
+.. code-block:: json
+
+  {
+    "path": "infra/3pp/tools/go/${platform}",
+    "platforms": [
+        "linux-amd64",
+        "linux-arm64",
+        "mac-amd64",
+        "windows-amd64"
+    ],
+    "tags": [
+      "version:2@1.16.3"
+    ]
+  }
+
+``virtualenv.gn_args``
+  Any necessary GN args to be used when installing Python packages.
 
 ``virtualenv.gn_targets``
   Target for installing Python packages. Downstream projects will need to
@@ -180,11 +246,25 @@ here.
   only installing Pigweed Python packages, use the location of the Pigweed
   submodule.
 
+``virtualenv.system_packages``
+  A boolean value that can be used the give the Python virtual environment
+  access to the system site packages. Defaults to ``false``.
+
+``optional_submodules``
+  By default environment setup will check that all submodules are present in
+  the checkout. Any submodules in this list are excluded from that check.
+
+``required_submodules``
+  If this is specified instead of ``optional_submodules`` bootstrap will only
+  complain if one of the required submodules is not present. Combining this
+  with ``optional_submodules`` is not supported.
+
 An example of a config file is below.
 
 .. code-block:: json
 
   {
+    "root_variable": "EXAMPLE_ROOT",
     "cipd_package_files": [
       "pigweed/pw_env_setup/py/pw_env_setup/cipd_setup/pigweed.json",
       "pigweed/pw_env_setup/py/pw_env_setup/cipd_setup/luci.json"
@@ -194,8 +274,13 @@ An example of a config file is below.
       "gn_root": ".",
       "gn_targets": [
         ":python.install",
-      ]
-    }
+      ],
+      "system_packages": false
+    },
+    "optional_submodules": [
+      "optional/submodule/one",
+      "optional/submodule/two"
+    ]
   }
 
 In case the CIPD packages need to be referenced from other scripts, variables
@@ -209,17 +294,39 @@ set the following environment variables.
  - ``PW_MYPROJECTNAME_CIPD_INSTALL_DIR``
  - ``PW_PIGWEED_CIPD_INSTALL_DIR``
 
+Pinning Python Packages
+***********************
+Python modules usually express dependencies as ranges, which makes it easier to
+install many Python packages that might otherwise have conflicting dependencies.
+However, this means version of packages can often change underneath us and
+builds will not be hermetic.
+
+To ensure versions don't change without approval, run
+``pw python-packages list <path/to/constraints/file>`` and then add
+``pw_build_PIP_CONSTRAINTS = ["//path/to/constraints/file"]`` to your project's
+``.gn`` file (see `Pigweed's .gn file` for an example).
+
+.. _Pigweed's .gn file: https://cs.opensource.google/pigweed/pigweed/+/main:.gn
+
+To update packages, remove the ``pw_build_PIP_CONSTRAINTS`` line, delete the
+environment, and bootstrap again. Then run the ``list`` command from above
+again, and run ``pw presubmit``.
+
 Environment Variables
 *********************
 The following environment variables affect env setup behavior. Most users will
 never need to set these.
 
 ``CIPD_CACHE_DIR``
-  Location of CIPD cache dir. Defaults to ``$HOME/.cipd-cache-dir``.
+  Location of CIPD cache dir. Read by CIPD, but if unset will be defaulted to
+  ``$HOME/.cipd-cache-dir``.
 
 ``PW_ACTIVATE_SKIP_CHECKS``
   If set, skip running ``pw doctor`` at end of bootstrap/activate. Intended to
   be used by automated tools but not interactively.
+
+``PW_BANNER_FUNC``
+  Command to print a banner at the beginning of bootstrap.
 
 ``PW_BOOTSTRAP_PYTHON``
   Python executable to be used, for example "python2" or "python3". Defaults to
@@ -233,8 +340,89 @@ never need to set these.
   Disable the spinner during env setup. Intended to be used when the output is
   being redirected to a log.
 
+``PW_ENVSETUP_DISABLE_SPINNER``
+  Disable the console spinner that runs when waiting for env setup steps to
+  complete.
+
+``PW_ENVSETUP_NO_BANNER``
+  Skip printing the banner.
+
 ``PW_ENVSETUP_QUIET``
   Disables all non-error output.
+
+``PW_PROJECT_ROOT``
+  The absolute path of the project using Pigweed's env setup. For Pigweed this
+  is the same as ``PW_ROOT``. This should be set by the project's bootstrap
+  script.
+
+``PW_ROOT``
+  The absolute path to the Pigweed repository within ``PW_PROJECT_ROOT``. This
+  should be set by the project's bootstrap script.
+
+The following environment variables are set by env setup.
+
+``PATH``
+  System executable search path. Many of the environment variables below are
+  also added to this variable.
+
+``_PW_ACTUAL_ENVIRONMENT_ROOT``
+  Location the environment was installed into. Separate from
+  ``PW_ENVIRONMENT_ROOT`` because setting that implicitly and switching to
+  another project directory causes unexpected behavior.
+
+``PW_CIPD_INSTALL_DIR``
+  Top-level CIPD install directory. This is where the ``cipd`` executable is.
+
+``PW_*_CIPD_INSTALL_DIR``
+  Each CIPD package file is installed into its own directory. This allows other
+  tools to determine what those directories are. The ``*`` is replaced with an
+  all-caps version of the basename of the package file, without the extension.
+  (E.g., "path/foo.json" becomes ``PW_FOO_CIPD_INSTALL_DIR``.)
+
+``VIRTUAL_ENV``
+  Path to Pigweed's virtualenv.
+
+Non-Shell Environments
+**********************
+If using this outside of bash—for example directly from an IDE or CI
+system—users can process the ``actions.json`` file that's generated in the
+environment directory. It lists variables to set, clear, and modify. An
+example ``actions.json`` is shown below. The "append" and "prepend" actions
+are listed in the order they should be applied, so the
+``<pigweed-root>/out/host/host_tools`` entry should be at the beginning of
+``PATH`` and not in the middle somewhere.
+
+.. code-block:: json
+
+  {
+      "modify": {
+          "PATH": {
+              "append": [],
+              "prepend": [
+                  "<pigweed-root>/.environment/cipd",
+                  "<pigweed-root>/.environment/cipd/pigweed",
+                  "<pigweed-root>/.environment/cipd/pigweed/bin",
+                  "<pigweed-root>/.environment/cipd/luci",
+                  "<pigweed-root>/.environment/cipd/luci/bin",
+                  "<pigweed-root>/.environment/pigweed-venv/bin",
+                  "<pigweed-root>/out/host/host_tools"
+              ],
+              "remove": []
+          }
+      },
+      "set": {
+          "PW_PROJECT_ROOT": "<pigweed-root>",
+          "PW_ROOT": "<pigweed-root>",
+          "_PW_ACTUAL_ENVIRONMENT_ROOT": "<pigweed-root>/.environment",
+          "PW_CIPD_INSTALL_DIR": "<pigweed-root>/.environment/cipd",
+          "CIPD_CACHE_DIR": "/usr/local/google/home/mohrr/.cipd-cache-dir",
+          "PW_PIGWEED_CIPD_INSTALL_DIR": "<pigweed-root>/.environment/cipd/pigweed",
+          "PW_LUCI_CIPD_INSTALL_DIR": "<pigweed-root>/.environment/cipd/luci",
+          "VIRTUAL_ENV": "<pigweed-root>/.environment/pigweed-venv",
+          "PYTHONHOME": null,
+          "__PYVENV_LAUNCHER__": null
+      }
+  }
 
 Implementation
 **************

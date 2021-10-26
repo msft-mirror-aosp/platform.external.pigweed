@@ -24,11 +24,10 @@ from __future__ import print_function
 import argparse
 import json
 import os
+import platform
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 
 
 def parse(argv=None):
@@ -148,23 +147,42 @@ def check_auth(cipd, package_files, spin):
     return True
 
 
+def _platform():
+    osname = {
+        'darwin': 'mac',
+        'linux': 'linux',
+        'windows': 'windows',
+    }[platform.system().lower()]
+
+    if platform.machine().startswith(('aarch64', 'armv8')):
+        arch = 'arm64'
+    elif platform.machine() == 'x86_64':
+        arch = 'amd64'
+    elif platform.machine() == 'i686':
+        arch = 'i386'
+    else:
+        arch = platform.machine()
+
+    return '{}-{}'.format(osname, arch).lower()
+
+
 def write_ensure_file(package_file, ensure_file):
     with open(package_file, 'r') as ins:
-        data = json.load(ins)
-
-    # TODO(pwbug/103) Remove 30 days after bug fixed.
-    if os.path.isdir(ensure_file):
-        shutil.rmtree(ensure_file)
+        packages = json.load(ins)
 
     with open(ensure_file, 'w') as outs:
         outs.write('$VerifiedPlatform linux-amd64\n'
                    '$VerifiedPlatform mac-amd64\n'
                    '$ParanoidMode CheckPresence\n')
 
-        for entry in data:
-            outs.write('@Subdir {}\n'.format(entry.get('subdir', '')))
-            outs.write('{} {}\n'.format(entry['path'],
-                                        ' '.join(entry['tags'])))
+        for pkg in packages:
+            # If this is a new-style package manifest platform handling must
+            # be done here instead of by the cipd executable.
+            if 'platforms' in pkg and _platform() not in pkg['platforms']:
+                continue
+
+            outs.write('@Subdir {}\n'.format(pkg.get('subdir', '')))
+            outs.write('{} {}\n'.format(pkg['path'], ' '.join(pkg['tags'])))
 
 
 def update(
@@ -210,32 +228,35 @@ def update(
             root_install_dir,
             os.path.basename(os.path.splitext(package_file)[0]))
 
+        name = os.path.basename(install_dir)
+
         cmd = [
             cipd,
             'ensure',
             '-ensure-file', ensure_file,
             '-root', install_dir,
-            '-log-level', 'warning',
+            '-log-level', 'debug',
+            '-json-output',
+            os.path.join(root_install_dir, '{}-output.json'.format(name)),
             '-cache-dir', cache_dir,
             '-max-threads', '0',  # 0 means use CPU count.
         ]  # yapf: disable
 
         # TODO(pwbug/135) Use function from common utility module.
-        with tempfile.TemporaryFile(mode='w+') as temp:
-            print(*cmd, file=temp)
-            try:
+        log = os.path.join(root_install_dir, '{}.log'.format(name))
+        try:
+            with open(log, 'w') as outs:
+                print(*cmd, file=outs)
                 subprocess.check_call(cmd,
-                                      stdout=temp,
+                                      stdout=outs,
                                       stderr=subprocess.STDOUT)
-            except subprocess.CalledProcessError:
-                temp.seek(0)
-                sys.stderr.write(temp.read())
+        except subprocess.CalledProcessError:
+            with open(log, 'r') as ins:
+                sys.stderr.write(ins.read())
                 raise
 
         # Set environment variables so tools can later find things under, for
         # example, 'share'.
-        name = os.path.basename(install_dir)
-
         if env_vars:
             # Some executables get installed at top-level and some get
             # installed under 'bin'.

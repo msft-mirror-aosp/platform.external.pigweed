@@ -13,15 +13,19 @@
 // the License.
 #pragma once
 
-#include <atomic>
-
 #include "tx_api.h"
 
 namespace pw::sync::backend {
 
 struct NativeInterruptSpinLock {
-  std::atomic<bool> locked;  // Used to detect recursion.
+  enum class State {
+    kUnlocked = 0,  // This must be 0 to ensure it is bss eligible.
+    kLockedFromInterrupt = 1,
+    kLockedFromThread = 2,
+  };
+  State state;  // Used to detect recursion and interrupt context escapes.
   UINT saved_interrupt_mask;
+  UINT saved_preemption_threshold;
 };
 using NativeInterruptSpinLockHandle = NativeInterruptSpinLock&;
 

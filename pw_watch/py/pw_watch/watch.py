@@ -37,6 +37,7 @@ Usage examples:
 
 import argparse
 from dataclasses import dataclass
+import errno
 import logging
 import os
 from pathlib import Path
@@ -46,6 +47,8 @@ import sys
 import threading
 from typing import (Iterable, List, NamedTuple, NoReturn, Optional, Sequence,
                     Tuple)
+
+import httpwatcher  # type: ignore
 
 from watchdog.events import FileSystemEventHandler  # type: ignore[import]
 from watchdog.observers import Observer  # type: ignore[import]
@@ -125,23 +128,39 @@ def git_ignored(file: Path) -> bool:
 
     Returns true for ignored files that were manually added to a repo.
     """
-    returncode = subprocess.run(
-        ['git', 'check-ignore', '--quiet', '--no-index', file],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        cwd=file.parent).returncode
-    return returncode in (0, 128)
+    file = file.resolve()
+    directory = file.parent
+
+    # Run the Git command from file's parent so that the correct repo is used.
+    while True:
+        try:
+            returncode = subprocess.run(
+                ['git', 'check-ignore', '--quiet', '--no-index', file],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                cwd=directory).returncode
+            return returncode in (0, 128)
+        except FileNotFoundError:
+            # If the directory no longer exists, try parent directories until
+            # an existing directory is found or all directories have been
+            # checked. This approach makes it possible to check if a deleted
+            # path is ignored in the repo it was originally created in.
+            if directory == directory.parent:
+                return False
+
+            directory = directory.parent
 
 
 class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
     """Process filesystem events and launch builds if necessary."""
     def __init__(
         self,
+        build_commands: Sequence[BuildCommand],
         patterns: Sequence[str] = (),
         ignore_patterns: Sequence[str] = (),
-        build_commands: Sequence[BuildCommand] = (),
         charset: WatchCharset = _ASCII_CHARSET,
         restart: bool = True,
+        jobs: int = None,
     ):
         super().__init__()
 
@@ -152,6 +171,8 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
 
         self.restart_on_changes = restart
         self._current_build: subprocess.Popen
+
+        self._extra_ninja_args = [] if jobs is None else [f'-j{jobs}']
 
         self.debouncer = Debouncer(self)
 
@@ -236,25 +257,47 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
         env['PW_USE_COLOR'] = '1'
 
         for i, cmd in enumerate(self.build_commands, 1):
-            _LOG.info('[%d/%d] Starting build: %s', i, num_builds, cmd)
+            index = f'[{i}/{num_builds}]'
+            self.builds_succeeded.append(self._run_build(index, cmd, env))
 
-            # Run the build. Put a blank before/after for visual separation.
-            print()
-            self._current_build = subprocess.Popen(
-                ['ninja', '-C', *cmd.args()], env=env)
-            returncode = self._current_build.wait()
-            print()
-
-            build_ok = (returncode == 0)
-            if build_ok:
+            if self.builds_succeeded[-1]:
                 level = logging.INFO
                 tag = '(OK)'
             else:
                 level = logging.ERROR
                 tag = '(FAIL)'
-            _LOG.log(level, '[%d/%d] Finished build: %s %s', i, num_builds,
-                     cmd, tag)
-            self.builds_succeeded.append(build_ok)
+
+            _LOG.log(level, '%s Finished build: %s %s', index, cmd, tag)
+
+    def _run_build(self, index: str, cmd: BuildCommand, env: dict) -> bool:
+        # Make sure there is a build.ninja file for Ninja to use.
+        build_ninja = cmd.build_dir / 'build.ninja'
+        if not build_ninja.exists():
+            # If this is a CMake directory, prompt the user to re-run CMake.
+            if cmd.build_dir.joinpath('CMakeCache.txt').exists():
+                _LOG.error('%s %s does not exist; re-run CMake to generate it',
+                           index, build_ninja)
+                return False
+
+            _LOG.warning('%s %s does not exist; running gn gen %s', index,
+                         build_ninja, cmd.build_dir)
+            if not self._execute_command(['gn', 'gen', cmd.build_dir], env):
+                return False
+
+        command = ['ninja', *self._extra_ninja_args, '-C', *cmd.args()]
+        _LOG.info('%s Starting build: %s', index,
+                  ' '.join(shlex.quote(arg) for arg in command))
+
+        return self._execute_command(command, env)
+
+    def _execute_command(self, command: list, env: dict) -> bool:
+        """Runs a command with a blank before/after for visual separation."""
+        print()
+        self._current_build = subprocess.Popen(command, env=env)
+        returncode = self._current_build.wait()
+        print()
+
+        return returncode == 0
 
     # Implementation of DebouncedFunction.cancel()
     def cancel(self) -> bool:
@@ -315,6 +358,7 @@ _WATCH_PATTERNS = (
     '*.bloaty',
     '*.c',
     '*.cc',
+    '*.css',
     '*.cpp',
     '*.cmake',
     'CMakeLists.txt',
@@ -329,6 +373,8 @@ _WATCH_PATTERNS = (
     '*.proto',
     '*.py',
     '*.rst',
+    '*.s',
+    '*.S',
 )
 
 
@@ -361,9 +407,9 @@ def add_parser_arguments(parser: argparse.ArgumentParser) -> None:
         default=[],
         help=('Automatically locate a build directory and build these '
               'targets. For example, `host docs` searches for a Ninja '
-              'build directory (starting with out/) and builds the '
-              '`host` and `docs` targets. To specify one or more '
-              'directories, ust the -C / --build_directory option.'))
+              'build directory at out/ and builds the `host` and `docs` '
+              'targets. To specify one or more directories, ust the '
+              '-C / --build_directory option.'))
     parser.add_argument(
         '-C',
         '--build_directory',
@@ -375,6 +421,33 @@ def add_parser_arguments(parser: argparse.ArgumentParser) -> None:
         help=('Specify a build directory and optionally targets to '
               'build. `pw watch -C out tgt` is equivalent to `ninja '
               '-C out tgt`'))
+    parser.add_argument(
+        '--serve-docs',
+        dest='serve_docs',
+        action='store_true',
+        default=False,
+        help='Start a webserver for docs on localhost. The port for this '
+        ' webserver can be set with the --serve-docs-port option. '
+        ' Defaults to http://127.0.0.1:8000')
+    parser.add_argument(
+        '--serve-docs-port',
+        dest='serve_docs_port',
+        type=int,
+        default=8000,
+        help='Set the port for the docs webserver. Default to 8000.')
+
+    parser.add_argument(
+        '--serve-docs-path',
+        dest='serve_docs_path',
+        type=Path,
+        default="docs/gen/docs",
+        help='Set the path for the docs to serve. Default to docs/gen/docs'
+        ' in the build directory.')
+    parser.add_argument(
+        '-j',
+        '--jobs',
+        type=int,
+        help="Number of cores to use; defaults to Ninja's default")
 
 
 def _exit(code: int) -> NoReturn:
@@ -396,15 +469,27 @@ def _exit_due_to_interrupt() -> NoReturn:
     _exit(0)
 
 
-def _exit_due_to_inotify_limit():
+def _exit_due_to_inotify_watch_limit():
     # Show information and suggested commands in OSError: inotify limit reached.
-    _LOG.error('Inotify limit reached: run this in your terminal if you '
-               'are in Linux to temporarily increase inotify limit.  \n')
+    _LOG.error('Inotify watch limit reached: run this in your terminal if '
+               'you are in Linux to temporarily increase inotify limit.  \n')
     print(
         _COLOR.green('        sudo sysctl fs.inotify.max_user_watches='
                      '$NEW_LIMIT$\n'))
     print('  Change $NEW_LIMIT$ with an integer number, '
-          'e.g., 1000 should be enough.')
+          'e.g., 20000 should be enough.')
+    _exit(0)
+
+
+def _exit_due_to_inotify_instance_limit():
+    # Show information and suggested commands in OSError: inotify limit reached.
+    _LOG.error('Inotify instance limit reached: run this in your terminal if '
+               'you are in Linux to temporarily increase inotify limit.  \n')
+    print(
+        _COLOR.green('        sudo sysctl fs.inotify.max_user_instances='
+                     '$NEW_LIMIT$\n'))
+    print('  Change $NEW_LIMIT$ with an integer number, '
+          'e.g., 20000 should be enough.')
     _exit(0)
 
 
@@ -512,24 +597,11 @@ def get_common_excludes() -> List[Path]:
     return exclude_list
 
 
-def _find_build_dir(default_build_dir: Path = Path('out')) -> Optional[Path]:
-    """Searches for a build directory, returning the first it finds."""
-    # Give priority to out/, then something under out/.
-    if default_build_dir.joinpath('build.ninja').exists():
-        return default_build_dir
-
-    for path in default_build_dir.glob('**/build.ninja'):
-        return path.parent
-
-    for path in Path.cwd().glob('**/build.ninja'):
-        return path.parent
-
-    return None
-
-
+# pylint: disable=R0914 # too many local variables
 def watch(default_build_targets: List[str], build_directories: List[str],
           patterns: str, ignore_patterns_string: str, exclude_list: List[Path],
-          restart: bool):
+          restart: bool, jobs: Optional[int], serve_docs: bool,
+          serve_docs_port: int, serve_docs_path: Path):
     """Watches files and runs Ninja commands when they change."""
     _LOG.info('Starting Pigweed build watcher')
 
@@ -548,16 +620,14 @@ def watch(default_build_targets: List[str], build_directories: List[str],
         for build_dir in build_directories
     ]
 
-    # If no build directory was specified, search the tree for a build.ninja.
+    # If no build directory was specified, check for out/build.ninja.
     if default_build_targets or not build_directories:
-        build_dir = _find_build_dir()
-
         # Make sure we found something; if not, bail.
-        if build_dir is None:
+        if not Path('out').exists():
             _die("No build dirs found. Did you forget to run 'gn gen out'?")
 
         build_commands.append(
-            BuildCommand(build_dir, tuple(default_build_targets)))
+            BuildCommand(Path('out'), tuple(default_build_targets)))
 
     # Verify that the build output directories exist.
     for i, build_target in enumerate(build_commands, 1):
@@ -568,6 +638,22 @@ def watch(default_build_targets: List[str], build_directories: List[str],
                       build_target)
 
     _LOG.debug('Patterns: %s', patterns)
+
+    if serve_docs:
+
+        def _serve_docs():
+            # Disable logs from httpwatcher and deps
+            logging.getLogger('httpwatcher').setLevel(logging.CRITICAL)
+            logging.getLogger('tornado').setLevel(logging.CRITICAL)
+
+            docs_path = build_commands[0].build_dir.joinpath(
+                serve_docs_path.joinpath('html'))
+            httpwatcher.watch(docs_path,
+                              host="127.0.0.1",
+                              port=serve_docs_port)
+
+        # Spin up an httpwatcher in a new thread since it blocks
+        threading.Thread(None, _serve_docs, "httpwatcher").start()
 
     # Try to make a short display path for the watched directory that has
     # "$HOME" instead of the full home directory. This is nice for users
@@ -585,11 +671,12 @@ def watch(default_build_targets: List[str], build_directories: List[str],
         charset = _ASCII_CHARSET
 
     event_handler = PigweedBuildWatcher(
+        build_commands=build_commands,
         patterns=patterns.split(_WATCH_PATTERN_DELIMITER),
         ignore_patterns=ignore_patterns,
-        build_commands=build_commands,
         charset=charset,
         restart=restart,
+        jobs=jobs,
     )
 
     try:
@@ -624,9 +711,10 @@ def watch(default_build_targets: List[str], build_directories: List[str],
         _exit_due_to_interrupt()
     except OSError as err:
         if err.args[0] == _ERRNO_INOTIFY_LIMIT_REACHED:
-            _exit_due_to_inotify_limit()
-        else:
-            raise err
+            _exit_due_to_inotify_watch_limit()
+        if err.errno == errno.EMFILE:
+            _exit_due_to_inotify_instance_limit()
+        raise err
 
     _LOG.critical('Should never get here')
     observer.join()

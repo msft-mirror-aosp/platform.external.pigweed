@@ -84,12 +84,17 @@ Expected Behavior
 -----------------
 In most cases, the CPU state captured by the exception handler will contain the
 ARMv7-M basic register frame in addition to an extended set of registers (see
-``cpu_state.h``). The exception to this is when the program stack pointer is in
-an MPU-protected or otherwise invalid memory region when the CPU attempts to
-push the exception register frame to it. In this situation, the PC, LR, and PSR
-registers will NOT be captured and will be marked with 0xFFFFFFFF to indicate
-they are invalid. This backend will still be able to capture all the other
-registers though.
+``cpu_state.h``).
+
+The exception to this is when the program stack pointer is in an MPU-protected
+or otherwise invalid memory region when the CPU attempts to push the exception
+register frame to it. In this situation, the PC, LR, and PSR registers will NOT
+be captured and will be marked with ``0xFFFFFFFF`` to indicate they are invalid.
+This backend will still be able to capture all the other registers though.
+
+``0xFFFFFFFF`` is an illegal LR value, which is why it was selected for this
+purpose. PC and PSR values of 0xFFFFFFFF are dubious too, so this constant is
+clear enough at suggesting that the registers weren't properly captured.
 
 In the situation where the main stack pointer is in a memory protected or
 otherwise invalid region and fails to push CPU context, behavior is undefined.
@@ -97,9 +102,10 @@ otherwise invalid region and fails to push CPU context, behavior is undefined.
 Nested Exceptions
 -----------------
 To enable nested fault handling:
-  1. Enable separate detection of usage/bus/memory faults via the SHCSR.
-  2. Decrease the priority of the memory, bus, and usage fault handlers. This
-     gives headroom for escalation.
+
+1. Enable separate detection of usage/bus/memory faults via the SHCSR.
+2. Decrease the priority of the memory, bus, and usage fault handlers. This
+   gives headroom for escalation.
 
 While this allows some faults to nest, it doesn't guarantee all will properly
 nest.
@@ -107,12 +113,14 @@ nest.
 Configuration Options
 =====================
 
- - ``PW_CPU_EXCEPTION_EXTENDED_CFSR_DUMP``: Enable extended logging in
-   ``pw::cpu_exception::LogCpuState()`` that dumps the active CFSR fields with
-   help strings. This is disabled by default since it increases the binary size
-   by >1.5KB when using plain-text logs, or ~460 Bytes when using tokenized
-   logging. It's useful to enable this for device bringup until your application
-   has an end-to-end crash reporting solution.
+- ``PW_CPU_EXCEPTION_CORTEX_M_EXTENDED_CFSR_DUMP``: Enable extended logging in
+  ``pw::cpu_exception::LogCpuState()`` that dumps the active CFSR fields with
+  help strings. This is disabled by default since it increases the binary size
+  by >1.5KB when using plain-text logs, or ~460 Bytes when using tokenized
+  logging. It's useful to enable this for device bringup until your application
+  has an end-to-end crash reporting solution.
+- ``PW_CPU_EXCEPTION_CORTEX_M_LOG_LEVEL``: The log level to use for this module.
+  Logs below this level are omitted.
 
 Exception Analysis
 ==================
@@ -134,11 +142,54 @@ For example:
     20210412 15:11:14 INF Exception caused by a usage fault, bus fault.
 
     Active Crash Fault Status Register (CFSR) fields:
-    IBUSERR     Bus fault on instruction fetch.
+    IBUSERR     Instruction bus error.
+        The processor attempted to issue an invalid instruction. It
+        detects the instruction bus error on prefecting, but this
+        flag is only set to 1 if it attempts to issue the faulting
+        instruction. When this bit is set, the processor has not
+        written a fault address to the BFAR.
     UNDEFINSTR  Encountered invalid instruction.
+        The processor has attempted to execute an undefined
+        instruction. When this bit is set to 1, the PC value stacked
+        for the exception return points to the undefined instruction.
+        An undefined instruction is an instruction that the processor
+        cannot decode.
 
     All registers:
     cfsr       0x00010100
 
 .. note::
   The CFSR is not supported on ARMv6-M CPUs (Cortex M0, M0+, M1).
+
+--------------------
+Snapshot integration
+--------------------
+This ``pw_cpu_exception`` backend provides helper functions that capture CPU
+exception state to snapshot protos.
+
+SnapshotCpuState()
+==================
+``SnapshotCpuState()`` captures the ``pw_cpu_exception_State`` to a
+``pw.cpu_exception.cortex_m.ArmV7mCpuState`` protobuf encoder.
+
+
+SnapshotMainStackThread()
+=========================
+``SnapshotMainStackThread()`` captures the main stack's execution thread state
+if active either from a given ``pw_cpu_exception_State`` or from the current
+running context. It captures the thread name depending on the processor mode,
+either ``Main Stack (Handler Mode)`` or ``Main Stack (Thread Mode)``. The stack
+limits must be provided along with a stack processing callback. All of this
+information is captured by a ``pw::thread::Thread`` protobuf encoder.
+
+.. note::
+  We recommend providing the ``pw_cpu_exception_State``, for example through
+  ``pw_cpu_exception_DefaultHandler()`` instead of using the current running
+  context to capture the main stack to minimize how much of the snapshot
+  handling is captured in the stack.
+
+Python processor
+================
+This module's included Python exception analyzer tooling provides snapshot
+integration via a ``process_snapshot()`` function that produces a multi-line
+dump from a serialized snapshot proto.

@@ -34,6 +34,10 @@ declare_args() {
 
   # List of application image GN targets specific to the Pigweed target.
   pw_TARGET_APPLICATIONS = []
+
+  # Whether to run integration tests, which may involve multiple processes
+  # communicating over a socket.
+  pw_RUN_INTEGRATION_TESTS = host_os == "linux"
 }
 
 # Enumerate all of the different targets that upstream Pigweed will build by
@@ -42,14 +46,12 @@ declare_args() {
 group("default") {
   deps = [
     ":docs",
-    ":fuzzers",
     ":host",
+    ":integration_tests",
+    ":static_analysis",
     ":stm32f429i",
-    "$dir_pw_env_setup:python.install",
     "$dir_pw_env_setup:python.lint",
     "$dir_pw_env_setup:python.tests",
-    "$dir_pw_env_setup:target_support_packages.lint",
-    "$dir_pw_env_setup:target_support_packages.tests",
   ]
 }
 
@@ -102,7 +104,7 @@ _build_pigweed_default_at_all_optimization_levels("host_gcc") {
 }
 
 _build_pigweed_default_at_all_optimization_levels("stm32f429i") {
-  toolchain_prefix = "$dir_pigweed/targets/stm32f429i-disc1:stm32f429i_disc1_"
+  toolchain_prefix = "$dir_pigweed/targets/stm32f429i_disc1:stm32f429i_disc1_"
 }
 
 if (pw_arduino_build_CORE_PATH != "") {
@@ -113,16 +115,38 @@ if (pw_arduino_build_CORE_PATH != "") {
 
 _build_pigweed_default_at_all_optimization_levels("qemu_gcc") {
   toolchain_prefix =
-      "$dir_pigweed/targets/lm3s6965evb-qemu:lm3s6965evb_qemu_gcc_"
+      "$dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_gcc_"
 }
 
 _build_pigweed_default_at_all_optimization_levels("qemu_clang") {
   toolchain_prefix =
-      "$dir_pigweed/targets/lm3s6965evb-qemu:lm3s6965evb_qemu_clang_"
+      "$dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_clang_"
+}
+
+# Run clang-tidy on pigweed_default with host_clang_debug toolchain options.
+# Make sure to invoke gn clean out when any relevant .clang-tidy
+# file is updated.
+group("static_analysis") {
+  _toolchain = "$dir_pigweed/targets/host:host_clang_debug"
+  deps = [ ":pigweed_default($_toolchain.static_analysis)" ]
 }
 
 group("docs") {
   deps = [ "$dir_pigweed/docs($dir_pigweed/targets/docs)" ]
+}
+
+# Tests larger than unit tests, typically run in a specific configuration. Only
+# added if pw_RUN_INTEGRATION_TESTS is true.
+group("integration_tests") {
+  if (pw_RUN_INTEGRATION_TESTS) {
+    _default_tc = _default_toolchain_prefix + pw_default_optimization_level
+    deps = [
+      "$dir_pw_rpc:cpp_client_server_integration_test($_default_tc)",
+      "$dir_pw_rpc/py:python_client_cpp_server_test.action($_default_tc)",
+      "$dir_pw_transfer/py:python_cpp_transfer_test.action($_default_tc)",
+      "$dir_pw_unit_test/py:rpc_service_test.action($_default_tc)",
+    ]
+  }
 }
 
 # OSS-Fuzz uses this target to build fuzzers alone.
@@ -133,14 +157,20 @@ group("fuzzers") {
   }
 }
 
-# TODO(pwbug/325) Delete this target.
 pw_python_group("python") {
-  python_deps = [ "$dir_pw_env_setup:python" ]
+  python_deps = [
+    "$dir_pigweed/docs:sphinx_themes",
+    "$dir_pw_env_setup:python",
+    "$dir_pw_env_setup:target_support_packages",
+  ]
 }
 
-# TODO(pwbug/325) Delete this target.
-pw_python_group("target_support_packages") {
-  python_deps = [ "$dir_pw_env_setup:target_support_packages" ]
+# Build host-only tooling.
+group("host_tools") {
+  deps = [
+    "$dir_pw_target_runner/go:simple_client",
+    "$dir_pw_target_runner/go:simple_server",
+  ]
 }
 
 # By default, Pigweed will build this target when invoking ninja.
@@ -158,10 +188,6 @@ group("pigweed_default") {
       # build.
       deps += [ ":pw_module_tests.run" ]
     }
-  }
-  if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
-      pw_toolchain_SCOPE.is_host_toolchain && pw_build_HOST_TOOLS) {
-    deps += [ ":host_tools" ]
   }
 
   # Trace examples currently only support running on non-windows host
@@ -193,23 +219,18 @@ if (current_toolchain != default_toolchain) {
     }
   }
 
-  group("host_tools") {
-    deps = [
-      "$dir_pw_target_runner/go:simple_client",
-      "$dir_pw_target_runner/go:simple_server",
-    ]
-  }
-
   # All Pigweed modules that can be built using gn. This is not built by default.
   group("pw_modules") {
     deps = [
       "$dir_pigweed/docs",
       "$dir_pw_allocator",
+      "$dir_pw_analog",
       "$dir_pw_base64",
       "$dir_pw_blob_store",
       "$dir_pw_bytes",
       "$dir_pw_checksum",
       "$dir_pw_chrono",
+      "$dir_pw_console",
       "$dir_pw_cpu_exception",
       "$dir_pw_hdlc",
       "$dir_pw_i2c",
@@ -247,23 +268,27 @@ if (current_toolchain != default_toolchain) {
   pw_test_group("pw_module_tests") {
     group_deps = [
       "$dir_pw_allocator:tests",
+      "$dir_pw_analog:tests",
       "$dir_pw_assert:tests",
       "$dir_pw_base64:tests",
       "$dir_pw_blob_store:tests",
+      "$dir_pw_bluetooth_hci:tests",
       "$dir_pw_bytes:tests",
       "$dir_pw_checksum:tests",
       "$dir_pw_chrono:tests",
       "$dir_pw_containers:tests",
       "$dir_pw_cpu_exception_cortex_m:tests",
+      "$dir_pw_crypto:tests",
+      "$dir_pw_file:tests",
+      "$dir_pw_function:tests",
       "$dir_pw_fuzzer:tests",
       "$dir_pw_hdlc:tests",
       "$dir_pw_hex_dump:tests",
       "$dir_pw_i2c:tests",
+      "$dir_pw_libc:tests",
       "$dir_pw_log:tests",
-      "$dir_pw_log_multisink:tests",
       "$dir_pw_log_null:tests",
       "$dir_pw_log_rpc:tests",
-      "$dir_pw_log_sink:tests",
       "$dir_pw_log_tokenized:tests",
       "$dir_pw_malloc_freelist:tests",
       "$dir_pw_metric:tests",
@@ -278,6 +303,8 @@ if (current_toolchain != default_toolchain) {
       "$dir_pw_ring_buffer:tests",
       "$dir_pw_router:tests",
       "$dir_pw_rpc:tests",
+      "$dir_pw_snapshot:tests",
+      "$dir_pw_software_update:tests",
       "$dir_pw_span:tests",
       "$dir_pw_status:tests",
       "$dir_pw_stream:tests",
@@ -285,11 +312,15 @@ if (current_toolchain != default_toolchain) {
       "$dir_pw_sync:tests",
       "$dir_pw_thread:tests",
       "$dir_pw_thread_stl:tests",
+      "$dir_pw_tls_client:tests",
+      "$dir_pw_tls_client_boringssl:tests",
+      "$dir_pw_tls_client_mbedtls:tests",
       "$dir_pw_tokenizer:tests",
       "$dir_pw_trace:tests",
       "$dir_pw_trace_tokenized:tests",
       "$dir_pw_unit_test:tests",
       "$dir_pw_varint:tests",
+      "$dir_pw_work_queue:tests",
     ]
 
     if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
@@ -299,10 +330,12 @@ if (current_toolchain != default_toolchain) {
       # this requires a more complex capabilities-based build and configuration
       # system which allowing enabling specific tests for targets that support
       # them and modifying test parameters for different targets.
-      #
-      # Checking for pw_build_host_tools (which is only set by the host) is a
-      # temporary fix until the problem can be properly solved.
       group_deps += [ "$dir_pw_kvs:tests" ]
+
+      if (host_os != "win") {
+        # TODO(pwbug/441): Fix transfer tests on Windows.
+        group_deps += [ "$dir_pw_transfer:tests" ]
+      }
     }
 
     if (host_os != "win") {

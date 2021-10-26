@@ -49,10 +49,11 @@ Target types
 
 Pigweed defines wrappers around the four basic GN binary types ``source_set``,
 ``executable``, ``static_library``, and ``shared_library``. These wrappers apply
-default arguments to each target as specified in the ``default_configs`` and
-``default_public_deps`` build args. Additionally, they allow defaults to be
-removed on a per-target basis using ``remove_configs`` and
-``remove_public_deps`` variables, respectively.
+default arguments to each target, as defined in ``pw_build/default.gni``.
+Arguments may be added or removed globally using the ``default_configs``,
+``default_public_deps``, and ``remove_default_configs`` build args.
+Additionally, arguments may be removed on a per-target basis with the
+``remove_configs`` and ``remove_public_deps`` variables.
 
 The ``pw_executable`` template provides additional functionality around building
 complete binaries. As Pigweed is a collection of libraries, it does not know how
@@ -61,6 +62,11 @@ of Pigweed specify a global executable template for their target, and have
 Pigweed build against it. This is controlled by the build variable
 ``pw_executable_config.target_type``, specifying the name of the executable
 template for a project.
+
+In some uncommon cases, a project's ``pw_executable`` template definition may
+need to stamp out some ``pw_source_set``s. Since a pw_executable template can't
+import ``$dir_pw_build/target_types.gni`` due to circular imports, it should
+import ``$dir_pw_build/cc_library.gni`` instead.
 
 .. tip::
 
@@ -71,6 +77,21 @@ template for a project.
 
 All of the ``pw_*`` target type overrides accept any arguments, as they simply
 forward them through to the underlying target.
+
+.. _module-pw_build-link-deps:
+
+Link-only deps
+--------------
+It may be necessary to specify additional link-time dependencies that may not be
+explicitly depended on elsewhere in the build. One example of this is a
+``pw_assert`` backend, which may need to leave out dependencies to avoid
+circular dependencies. Its dependencies need to be linked for executables and
+libraries, even if they aren't pulled in elsewhere.
+
+The ``pw_build_LINK_DEPS`` build arg is a list of dependencies to add to all
+``pw_executable``, ``pw_static_library``, and ``pw_shared_library`` targets.
+This should only be used as a last resort when dependencies cannot be properly
+expressed in the build.
 
 Python packages
 ---------------
@@ -110,6 +131,14 @@ The ``pw_facade`` template declares two targets:
     public = [ "public/pw_foo/foo.h" ]
   }
 
+Low-level facades like ``pw_assert`` cannot express all of their dependencies
+due to the potential for dependency cycles. Facades with this issue may require
+backends to place their implementations in a separate build target to be listed
+in ``pw_build_LINK_DEPS`` (see :ref:`module-pw_build-link-deps`). The
+``require_link_deps`` variable in ``pw_facade`` asserts that all specified build
+targets are present in ``pw_build_LINK_DEPS`` if the facade's backend variable
+is set.
+
 .. _module-pw_build-python-action:
 
 pw_python_action
@@ -123,7 +152,7 @@ Another convenience provided by the template is to allow running scripts without
 any outputs. Sometimes scripts run in a build do not directly produce output
 files, but GN requires that all actions have an output. ``pw_python_action``
 solves this by accepting a boolean ``stamp`` argument which tells it to create a
-dummy output file for the action.
+placeholder output file for the action.
 
 **Arguments**
 
@@ -135,12 +164,10 @@ target. Additionally, it has some of its own arguments:
 * ``capture_output``: Optional boolean. If true, script output is hidden unless
   the script fails with an error. Defaults to true.
 * ``stamp``: Optional variable indicating whether to automatically create a
-  dummy output file for the script. This allows running scripts without
+  placeholder output file for the script. This allows running scripts without
   specifying ``outputs``. If ``stamp`` is true, a generic output file is
   used. If ``stamp`` is a file path, that file is used as a stamp file. Like any
   output file, ``stamp`` must be in the build directory. Defaults to false.
-* ``directory``: Optional path. Change to this directory before executing the
-  command. Paths in arguments may need to be adjusted.
 * ``environment``: Optional list of strings. Environment variables to set,
   passed as NAME=VALUE strings.
 
@@ -185,7 +212,7 @@ The following expressions are supported:
 
   ``TARGET_FILE`` only resolves GN target labels to their outputs. To resolve
   paths generally, use the standard GN approach of applying the
-  ``rebase_path(path)`` function. With default arguments, ``rebase_path``
+  ``rebase_path(path, root_build_dir)`` function. This function
   converts the provided GN path or list of paths to be relative to the build
   directory, from which all build commands and scripts are executed.
 
@@ -243,7 +270,7 @@ The following expressions are supported:
     script = "py/postprocess_binary.py"
     args = [
       "--database",
-      rebase_path("my/database.csv"),
+      rebase_path("my/database.csv", root_build_dir),
       "--binary=<TARGET_FILE(//firmware/images:main)>",
     ]
     stamp = true
@@ -376,8 +403,8 @@ This will result in a ``.zip`` file called ``foo.zip`` stored in
   ├── file1.txt
   └── renamed.txt
 
-CMake / Ninja
-=============
+CMake
+=====
 Pigweed's `CMake`_ support is provided primarily for projects that have an
 existing CMake build and wish to integrate Pigweed without switching to a new
 build system.
@@ -452,6 +479,18 @@ following ways:
 
 * Temporarily override a backend by setting it interactively with ``ccmake`` or
   ``cmake-gui``.
+
+If the backend is set to a build target that does not exist, there will be an
+error message like the following:
+
+.. code-block::
+
+  CMake Error at pw_build/pigweed.cmake:244 (add_custom_target):
+  Error evaluating generator expression:
+
+    $<TARGET_PROPERTY:my_backend_that_does_not_exist,TYPE>
+
+  Target "my_backend_that_does_not_exist" not found.
 
 Toolchain setup
 ---------------

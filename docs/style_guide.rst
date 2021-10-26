@@ -13,7 +13,6 @@ Style Guide and Conventions
 ---------
 C++ style
 ---------
-
 The Pigweed C++ style guide is closely based on Google's external C++ Style
 Guide, which is found on the web at
 https://google.github.io/styleguide/cppguide.html. The Google C++ Style Guide
@@ -27,6 +26,20 @@ memory allocation and the entirety of the C++ Standard Library.
 Recommendations in the :doc:`embedded_cpp_guide` are considered part of the
 Pigweed style guide, but are separated out since it covers more general
 embedded development beyond just C++ style.
+
+C++ standard
+============
+Pigweed primarily uses the C++17 standard. A few modules maintain support for
+C++14, however (e.g. :ref:`module-pw_kvs` and its dependencies).
+
+All Pigweed C++ code must compile with ``-std=C++17`` in Clang and GCC. C++20
+features may be used as long as the code still compiles unmodified with C++17.
+See ``pw_polyfill/language_feature_macros.h`` for macros that provide C++20
+features when supported.
+
+Compiler extensions should not be used unless wrapped in a macro or properly
+guarded in the preprocessor. See ``pw_processor/compiler.h`` for macros that
+wrap compiler-specific features.
 
 Automatic formatting
 ====================
@@ -260,10 +273,6 @@ additional requirements.
     duration of the program, the naming convention is ``kCamelCase``, and so
     that is the style we use in Pigweed.
 
-    **Note:** At time of writing much of Pigweed incorrectly follows the
-    ``snake_case`` naming for non-type template arguments. This is a bug that
-    will be fixed eventually.
-
 **C code**
 In general, C symbols should be prefixed with the module name. If the symbol is
 not associated with a module, use just ``pw`` as the module name. Facade
@@ -407,9 +416,7 @@ type.
 
 Prefer storing references over storing pointers. Pointers are required when the
 pointer can change its target or may be ``nullptr``. Otherwise, a reference or
-const reference should be used. In accordance with the Google C++ style guide,
-only const references are permitted as function arguments; pointers must be used
-in place of mutable references when passed as function arguments.
+const reference should be used.
 
 Preprocessor macros
 ===================
@@ -602,3 +609,11 @@ Assets within each field must be listed in alphabetical order
   pw_doc_group("docs") {
     sources = [ "docs.rst" ]
   }
+
+------------------
+Build files: Bazel
+------------------
+
+Similar to their BUILD.gn counterparts, build files for the Bazel build system
+must be named BUILD.bazel. Bazel can interpret files named just BUILD, but we
+use BUILD.bazel to avoid any ambiguity with other build systems or tooling.
