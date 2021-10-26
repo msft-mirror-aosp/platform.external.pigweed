@@ -37,11 +37,11 @@
 
 // clang-format off
 #define PW_ASSERT_USE_SHORT_NAMES 1
-#include "pw_assert/assert.h"
+#include "pw_assert/check.h"
 // clang-format on
 
-#include "pw_status/status.h"
 #include "gtest/gtest.h"
+#include "pw_status/status.h"
 
 // This is a global constant to feed into the formatter for tests.
 // Intended to pair with FAIL_IF_DISPLAYED_ARGS or FAIL_IF_HIDDEN_ARGS.

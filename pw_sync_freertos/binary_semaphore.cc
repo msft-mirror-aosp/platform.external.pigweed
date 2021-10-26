@@ -17,7 +17,7 @@
 #include <algorithm>
 
 #include "FreeRTOS.h"
-#include "pw_assert/assert.h"
+#include "pw_assert/check.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_chrono_freertos/system_clock_constants.h"
 #include "pw_interrupt/context.h"
@@ -33,11 +33,11 @@ static_assert(configSUPPORT_STATIC_ALLOCATION != 0,
 
 }  // namespace
 
-bool BinarySemaphore::try_acquire_for(SystemClock::duration for_at_least) {
+bool BinarySemaphore::try_acquire_for(SystemClock::duration timeout) {
   PW_DCHECK(!interrupt::InInterruptContext());
 
   // Use non-blocking try_acquire for negative and zero length durations.
-  if (for_at_least <= SystemClock::duration::zero()) {
+  if (timeout <= SystemClock::duration::zero()) {
     return try_acquire();
   }
 
@@ -45,17 +45,16 @@ bool BinarySemaphore::try_acquire_for(SystemClock::duration for_at_least) {
   // tick, ergo we add one whole tick to the final duration.
   constexpr SystemClock::duration kMaxTimeoutMinusOne =
       pw::chrono::freertos::kMaxTimeout - SystemClock::duration(1);
-  while (for_at_least > kMaxTimeoutMinusOne) {
-    if (xSemaphoreTake(&native_type_,
+  while (timeout > kMaxTimeoutMinusOne) {
+    if (xSemaphoreTake(reinterpret_cast<SemaphoreHandle_t>(&native_type_),
                        static_cast<TickType_t>(kMaxTimeoutMinusOne.count())) ==
         pdTRUE) {
       return true;
     }
-    for_at_least -= kMaxTimeoutMinusOne;
+    timeout -= kMaxTimeoutMinusOne;
   }
-  return xSemaphoreTake(&native_type_,
-                        static_cast<TickType_t>(for_at_least.count() + 1)) ==
-         pdTRUE;
+  return xSemaphoreTake(reinterpret_cast<SemaphoreHandle_t>(&native_type_),
+                        static_cast<TickType_t>(timeout.count() + 1)) == pdTRUE;
 }
 
 }  // namespace pw::sync

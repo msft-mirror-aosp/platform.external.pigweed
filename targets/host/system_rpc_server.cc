@@ -14,7 +14,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 
+#include "pw_assert/check.h"
 #include "pw_hdlc/rpc_channel.h"
 #include "pw_hdlc/rpc_packets.h"
 #include "pw_log/log.h"
@@ -25,8 +27,8 @@
 namespace pw::rpc::system_server {
 namespace {
 
-constexpr size_t kMaxTransmissionUnit = 256;
-constexpr uint16_t kSocketPort = 33000;
+constexpr size_t kMaxTransmissionUnit = 512;
+uint16_t socket_port = 33000;
 
 stream::SocketStream socket_stream;
 sync::Mutex channel_output_mutex;
@@ -41,12 +43,19 @@ rpc::Server server(channels);
 
 }  // namespace
 
+void set_socket_port(uint16_t new_socket_port) {
+  socket_port = new_socket_port;
+}
+
 void Init() {
   log_basic::SetOutput([](std::string_view log) {
-    hdlc::WriteUIFrame(1, std::as_bytes(std::span(log)), socket_stream);
+    std::fprintf(stderr, "%.*s\n", static_cast<int>(log.size()), log.data());
+    hdlc::WriteUIFrame(1, std::as_bytes(std::span(log)), socket_stream)
+        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
   });
 
-  socket_stream.Serve(kSocketPort);
+  PW_LOG_INFO("Starting pw_rpc server on port %d", socket_port);
+  PW_CHECK_OK(socket_stream.Serve(socket_port));
 }
 
 rpc::Server& Server() { return server; }
@@ -64,7 +73,8 @@ Status Start() {
         if (auto result = decoder.Process(byte); result.ok()) {
           hdlc::Frame& frame = result.value();
           if (frame.address() == hdlc::kDefaultRpcAddress) {
-            server.ProcessPacket(frame.data(), hdlc_channel_output);
+            server.ProcessPacket(frame.data(), hdlc_channel_output)
+                .IgnoreError();  // TODO(pwbug/387): Handle Status properly
           }
         }
       }

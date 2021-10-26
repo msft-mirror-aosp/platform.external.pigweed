@@ -10,6 +10,15 @@ two components:
 1. The facade (this module) which is only a macro interface layer
 2. The backend, provided elsewhere, that implements the low level logging
 
+``pw_log`` also defines a logging protobuf, helper utilities, and an RPC
+service for efficiently storing and transmitting log messages. See
+:ref:`module-pw_log-protobuf` for details.
+
+.. toctree::
+  :hidden:
+
+  protobuf
+
 Usage examples
 --------------
 Here is a typical usage example, showing setting the module name, and using the
@@ -59,32 +68,7 @@ Below is an example diagram showing how the modules connect together for the
 turn outputs to the STM32F429 bare metal backend for ``pw_sys_io``, which is
 ``pw_sys_io_baremetal_stm32f429i``.
 
-.. blockdiag::
-
-  blockdiag {
-    default_fontsize = 14;
-    orientation = portrait;
-
-    group {
-      color = "#AAAAAA";
-      label = "Microcontroller"
-
-      app       [label = "App code"];
-      facade    [label = "pw_log"];
-      backend   [label = "pw_log_basic"];
-      sys_io    [label = "pw_sys_io"];
-      sys_io_bm [label = "pw_sys_io_\nstm32f429"];
-      uart      [label = "UART pins"];
-    }
-    ftdi     [label = "FTDI cable"];
-    computer [label = "Minicom"];
-
-    app -> facade -> backend -> sys_io -> sys_io_bm -> uart -> ftdi -> computer;
-
-    //app -> facade [folded];
-    //backend -> sys_io [folded];
-    //uart -> ftdi [folded];
-  }
+.. image:: example_layer_diagram.svg
 
 Logging macros
 --------------
@@ -101,6 +85,8 @@ system, intended to be used directly.
   *flags* - Arbitrary flags the backend can leverage. The semantics of these
   flags are not defined in the facade, but are instead meant as a general
   mechanism for communication bits of information to the logging backend.
+  ``pw_log`` reserves 2 flag bits by default, but log backends may provide for
+  more or fewer flag bits.
 
   Here are some ideas for what a backend might use flags for:
 
@@ -202,7 +188,7 @@ source files, not headers. For example:
        PW_LOG_WARN("This is above INFO level, and will display");
      }
 
-.. c:function:: PW_LOG_ENABLE_IF(level, flags)
+.. c:macro:: PW_LOG_ENABLE_IF(level, flags)
 
    Filters logs by an arbitrary expression based on ``level`` and ``flags``.
    Source files that define ``PW_LOG_ENABLE_IF(level, flags)`` will display if
@@ -268,6 +254,31 @@ the following attributes:
 Each backend may decide to capture different attributes to balance the tradeoff
 between call site code size, call site run time, wire format size, logging
 complexity, and more.
+
+.. _module-pw_log-circular-deps:
+
+Avoiding circular dependencies with ``PW_LOG``
+-------------------------------------------------
+Because logs are so widely used, including in low-level libraries, it is
+common for the ``pw_log`` backend to cause circular dependencies. Because of
+this, log backends may avoid declaring explicit dependencies, instead relying
+on include paths to access header files.
+
+In GN, the ``pw_log`` backend's full implementation with true dependencies is
+made available through the ``$dir_pw_log:impl`` group. When ``pw_log_BACKEND``
+is set, ``$dir_pw_log:impl`` must be listed in the ``pw_build_LINK_DEPS``
+variable. See :ref:`module-pw_build-link-deps`.
+
+In the ``pw_log``, the backend's full implementation is placed in the
+``$pw_log_BACKEND.impl`` target. ``$dir_pw_log:impl`` depends on this
+backend target. The ``$pw_log_BACKEND.impl`` target may be an empty group if
+the backend target can use its dependencies directly without causing circular
+dependencies.
+
+In order to break dependency cycles, the ``pw_log_BACKEND`` target may need
+to directly provide dependencies through include paths only, rather than GN
+``public_deps``. In this case, GN header checking can be disabled with
+``check_includes = false``.
 
 Design discussion
 -----------------

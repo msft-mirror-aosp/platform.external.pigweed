@@ -31,7 +31,7 @@
 
 #ifdef __cplusplus
 
-#include <array>
+#include "pw_containers/to_array.h"
 
 namespace pw {
 namespace tokenizer {
@@ -50,11 +50,12 @@ Entry {
         token_(token),
         domain_size_(kDomainSize),
         string_size_(kStringSize),
-        domain_(std::to_array(domain)),
-        string_(std::to_array(string)) {}
+        domain_(containers::to_array(domain)),
+        string_(containers::to_array(string)) {}
 
  private:
-  static_assert(kStringSize > 0u && kDomainSize > 0u);
+  static_assert(kStringSize > 0u && kDomainSize > 0u,
+                "The string and domain must have at least a null terminator");
 
   uint32_t magic_;
   uint32_t token_;
@@ -130,7 +131,7 @@ Entry {
 // be added to this file.
 #error "Unsupported value for PW_TOKENIZER_CFG_C_HASH_LENGTH"
 
-// Define a dummy macro to give clearer compilation errors.
+// Define a placeholder macro to give clearer compilation errors.
 #define PW_TOKENIZER_STRING_TOKEN(unused) 0u
 
 #endif  // PW_TOKENIZER_CFG_C_HASH_LENGTH

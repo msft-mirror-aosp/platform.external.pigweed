@@ -30,6 +30,7 @@ class Channel : public rpc::Channel {
   constexpr Channel(uint32_t id, ChannelOutput* output)
       : rpc::Channel(id, output) {}
 
+  // Represents a buffer acquired from a ChannelOutput.
   class OutputBuffer {
    public:
     constexpr OutputBuffer() = default;
@@ -38,12 +39,12 @@ class Channel : public rpc::Channel {
 
     OutputBuffer(OutputBuffer&& other) { *this = std::move(other); }
 
-    ~OutputBuffer() { PW_DCHECK(buffer_.empty()); }
+    ~OutputBuffer() { PW_DASSERT(buffer_.empty()); }
 
     OutputBuffer& operator=(const OutputBuffer&) = delete;
 
     OutputBuffer& operator=(OutputBuffer&& other) {
-      PW_DCHECK(buffer_.empty());
+      PW_DASSERT(buffer_.empty());
       buffer_ = other.buffer_;
       other.buffer_ = {};
       return *this;
@@ -52,9 +53,9 @@ class Channel : public rpc::Channel {
     // Returns a portion of this OutputBuffer to use as the packet payload.
     std::span<std::byte> payload(const Packet& packet) const;
 
-    bool Contains(std::span<const std::byte> buffer) const {
-      return buffer.data() >= buffer_.data() &&
-             buffer.data() + buffer.size() <= buffer_.data() + buffer_.size();
+    bool Contains(std::span<const std::byte> other) const {
+      return !buffer_.empty() && other.data() >= buffer_.data() &&
+             other.data() + other.size() <= buffer_.data() + buffer_.size();
     }
 
     bool empty() const { return buffer_.empty(); }
@@ -84,6 +85,14 @@ class Channel : public rpc::Channel {
     output().DiscardBuffer(buffer.buffer_);
     buffer.buffer_ = {};
   }
+
+  // Allow setting the channel ID for tests.
+  using rpc::Channel::set_channel_id;
+
+  // Allow accessing the client from the channel.
+  // TODO(pwbug/504): Remove this when users have migrated off the old API.
+  using rpc::Channel::client;
+  using rpc::Channel::set_client;
 };
 
 }  // namespace pw::rpc::internal

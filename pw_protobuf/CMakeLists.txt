@@ -20,10 +20,13 @@ pw_add_module_library(pw_protobuf
     decoder.cc
     encoder.cc
     find.cc
+    stream_decoder.cc
   PUBLIC_DEPS
+    pw_assert
     pw_bytes
     pw_result
     pw_status
+    pw_stream
     pw_varint
 )
 
@@ -63,6 +66,16 @@ pw_add_test(pw_protobuf.codegen_test
   DEPS
     pw_protobuf
     pw_protobuf.codegen_test_protos.pwpb
+  GROUPS
+    modules
+    pw_protobuf
+)
+
+pw_add_test(pw_protobuf.stream_decoder_test
+  SOURCES
+    stream_decoder_test.cc
+  DEPS
+    pw_protobuf
   GROUPS
     modules
     pw_protobuf

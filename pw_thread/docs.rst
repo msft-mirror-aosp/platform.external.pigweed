@@ -6,10 +6,6 @@ pw_thread
 The ``pw_thread`` module contains utilities for thread creation and thread
 execution.
 
-.. contents::
-   :local:
-   :depth: 2
-
 .. Warning::
   This module is still under construction, the API is not yet stable.
 
@@ -26,6 +22,13 @@ thread's context. Unlike ``std::thread``, the API requires
 ``pw::thread::Options`` as an argument and is limited to only work with
 ``pw::thread::ThreadCore`` objects and functions which match the
 ``pw::thread::Thread::ThreadRoutine`` signature.
+
+We recognize that the C++11's STL ``std::thread``` API has some drawbacks where
+it is easy to forget to join or detach the thread handle. Because of this, we
+offer helper wrappers like the ``pw::thread::DetachedThread``. Soon we will
+extend this by also adding a ``pw::thread::JoiningThread`` helper wrapper which
+will also have a lighter weight C++20 ``std::jthread`` like cooperative
+cancellation contract to make joining safer and easier.
 
 Threads may begin execution immediately upon construction of the associated
 thread object (pending any OS scheduling delays), starting at the top-level
@@ -51,7 +54,7 @@ MoveAssignable.
   * - ThreadX
     - :ref:`module-pw_thread_threadx`
   * - embOS
-    - Planned
+    - :ref:`module-pw_thread_embos`
   * - STL
     - :ref:`module-pw_thread_stl`
   * - Zephyr
@@ -59,6 +62,16 @@ MoveAssignable.
   * - CMSIS-RTOS API v2 & RTX5
     - Planned
 
+Module Configuration Options
+============================
+The following configurations can be adjusted via compile-time configuration of
+this module, see the
+:ref:`module documentation <module-structure-compile-time-configuration>` for
+more details.
+
+.. c:macro:: PW_THREAD_CONFIG_LOG_LEVEL
+
+  The log level to use for this module. Logs below this level are omitted.
 
 Options
 =======
@@ -111,6 +124,27 @@ enable joining if it's not already enabled by default.
 .. Warning::
   A constructed ``pw::thread::Thread`` which represents a thread of execution
   must be EITHER detached or joined, else the destructor will assert!
+
+DetachedThread
+==============
+To make it slightly easier and cleaner to spawn detached threads without having
+to worry about thread handles, a wrapper ``DetachedThread()`` function is
+provided which creates a ``Thread`` and immediately detaches it. For example
+instead of:
+
+.. code-block:: cpp
+
+  Thread(options, foo).detach();
+
+You can instead use this helper wrapper to:
+
+.. code-block:: cpp
+
+   DetachedThread(options, foo);
+
+The arguments are directly forwarded to the Thread constructor and ergo exactly
+match the Thread constuctor arguments for creating a thread of execution.
+
 
 ThreadRoutine & ThreadCore
 ==========================
@@ -192,3 +226,33 @@ function without arguments. For example:
   Because the thread may start after the pw::Thread creation, an object which
   implements the ThreadCore MUST meet or exceed the lifetime of its thread of
   execution!
+
+-----------------------
+pw_snapshot integration
+-----------------------
+``pw_thread`` provides some light, optional integration with pw_snapshot through
+helper functions for populating a ``pw::thread::Thread`` proto. Some of these
+are directly integrated into the RTOS thread backends to simplify the thread
+state capturing for snapshots.
+
+SnapshotStack()
+===============
+The ``SnapshotStack()`` helper captures stack metadata (stack pointer and
+bounds) into a ``pw::thread::Thread`` proto. After the stack bounds are
+captured, execution is passed off to the thread stack collection callback to
+capture a backtrace or stack dump. Note that this function does NOT capture the
+thread name: that metadata is only required in cases where a stack overflow or
+underflow is detected.
+
+Python processor
+================
+Threads captured as a Thread proto message can be dumped or further analyzed
+using using ``pw_thread``'s Python module. This is directly integrated into
+pw_snapshot's processor tool to automatically provide rich thread state dumps.
+
+The ``ThreadSnapshotAnalyzer`` class may also be used directly to identify the
+currently running thread and produce symbolized thread dumps.
+
+.. Warning::
+  Snapshot integration is a work-in-progress and may see significant API
+  changes.
