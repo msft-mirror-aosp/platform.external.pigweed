@@ -16,26 +16,20 @@
 import unittest
 
 from pw_software_update.dev_sign import sign_root_metadata, sign_update_bundle
-from pw_software_update.root_metadata import gen_root_metadata
+from pw_software_update.root_metadata import (gen_root_metadata, RootKeys,
+                                              TargetsKeys)
 from pw_software_update.tuf_pb2 import SignedRootMetadata, SignedTargetsMetadata
 from pw_software_update.update_bundle_pb2 import UpdateBundle
 
 
 class RootMetadataSigningTest(unittest.TestCase):
     """Test Root Metadata signing."""
-    def setUp(self):
+    def setUp(self) -> None:
         self.root_key = (
             b'-----BEGIN PRIVATE KEY-----\n'
             b'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgyk3DEQdl346MS5N/'
             b'quNEneJa4HxkJBETGzlEEKkCmZOhRANCAAThdY5PejbtM2p6HtgXs/7YSsvPMWZz'
             b'9Ui1gAEKrDseHnPzC02MbKjQadRIFZ4hKDcsyz9aM6QKLCNrCOqYjw6t'
-            b'\n-----END PRIVATE KEY-----\n')
-
-        self.targets_key = (
-            b'-----BEGIN PRIVATE KEY-----\n'
-            b'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgkMEZ0u84HzC51nhh'
-            b'f2ZykPj6WfAjBxXVWndjVdn6bh6hRANCAAT1QzqpFknSAhbAuOjy2NuusFOUpeC6'
-            b'TBWM6WeC5JKJgys3gwOoyU0OdomAu9wK6I1Qoe706PUMbWLpyQ10ThVM'
             b'\n-----END PRIVATE KEY-----\n')
 
         self.root_key_public = (
@@ -50,12 +44,13 @@ class RootMetadataSigningTest(unittest.TestCase):
             b'ukwVjOlnguSSiYMrN4MDqMlNDnaJgLvcCuiNUKHu9Oj1DG1i6ckNdE4VTA=='
             b'\n-----END PUBLIC KEY-----\n')
 
+        root_metadata = gen_root_metadata(
+            RootKeys([self.root_key_public]),
+            TargetsKeys([self.targets_key_public]))
         self.root_metadata = SignedRootMetadata(
-            serialized_root_metadata=gen_root_metadata(
-                self.root_key_public,
-                self.targets_key_public).SerializeToString())
+            serialized_root_metadata=root_metadata.SerializeToString())
 
-        self.foreign_root_key = (
+        self.another_signing_key = (
             b'-----BEGIN PRIVATE KEY-----\n'
             b'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg5OIalt8DcZYeEf/4'
             b'5/iIX6jqM0I5t4dScAdcmgNF9vKhRANCAAQdMBqcn//pXIwss9nLEVjz+4Mz4oVt'
@@ -65,14 +60,8 @@ class RootMetadataSigningTest(unittest.TestCase):
     def test_typical_signing(self):
         signed = sign_root_metadata(self.root_metadata, self.root_key)
         self.assertEqual(len(signed.signatures), 1)
-
-    def test_unlisted_key_raises(self):
-        with self.assertRaises(ValueError):
-            sign_root_metadata(self.root_metadata, self.foreign_root_key)
-
-    def test_listed_non_root_key_raises(self):
-        with self.assertRaises(ValueError):
-            sign_root_metadata(self.root_metadata, self.targets_key)
+        signed = sign_root_metadata(signed, self.another_signing_key)
+        self.assertEqual(len(signed.signatures), 2)
 
 
 class BundleSigningTest(unittest.TestCase):

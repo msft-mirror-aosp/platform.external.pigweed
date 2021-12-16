@@ -58,10 +58,12 @@ transfer service using their transfer IDs.
   constexpr size_t kDefaultMaxBytesToReceive = 1024;
 
   // Instantiate a static transfer service.
-  pw::transfer::TransferService transfer_service(
-      kMaxChunkSizeBytes, kDefaultMaxBytesToReceive);
+  // The service requires a work queue, and a buffer to store data from a chunk.
+  // The helper class TransferServiceBuffer comes with a builtin buffer.
+  pw::transfer::TransferServiceBuffer<kMaxChunkSizeBytes> transfer_service(
+      GetSystemWorkQueue(), kDefaultMaxBytesToReceive);
 
-  // Instantiate a handler for the the data to be transferred.
+  // Instantiate a handler for the data to be transferred.
   constexpr uint32_t kBufferTransferId = 1;
   char buffer_to_transfer[256] = { /* ... */ };
   SimpleBufferReadHandler buffer_handler(kBufferTransferId, buffer_to_transfer);
@@ -74,6 +76,10 @@ transfer service using their transfer IDs.
     transfer_service.RegisterHandler(buffer_handler);
     GetSystemRpcServer().RegisterService(transfer_service);
   }
+
+Module Configuration Options
+----------------------------
+todo
 
 Python
 ======
@@ -106,6 +112,35 @@ Python
   except pw_transfer.Error as err:
     print('Failed to write:', err.status)
 
+Typescript
+==========
+
+Provides a simple interface for transferring bulk data over pw_rpc.
+
+**Example**
+
+.. code-block:: typescript
+
+    import {Manager} from '@pigweed/pw_transfer'
+
+    const client = new CustomRpcClient();
+    service = client.channel()!.service('pw.transfer.Transfer')!;
+
+    const manager = new Manager(service, DEFAULT_TIMEOUT_S);
+
+    manager.read(3, (stats: ProgressStats) => {
+      console.log(`Progress Update: ${stats}`);
+    }).then((data: Uint8Array) => {
+      console.log(`Completed read: ${data}`);
+    }).catch(error => {
+      console.log(`Failed to read: ${error.status}`);
+    });
+
+    manager.write(2, textEncoder.encode('hello world'))
+      .catch(error => {
+        console.log(`Failed to read: ${error.status}`);
+      });
+
 --------
 Protocol
 --------
@@ -126,6 +161,9 @@ Client to server transfer (write)
 
 Errors
 ======
+
+Protocol errors
+---------------
 At any point, either the client or server may terminate the transfer with a
 status code. The transfer chunk with the status is the final chunk of the
 transfer.
@@ -165,7 +203,11 @@ sender or the receiver (see `Transfer roles`_).
 | ``PERMISSION_DENIED``   | The transfer does not support the requested       |
 |                         | operation (either reading or writing).            |
 +-------------------------+-------------------------+-------------------------+
-| ``RESOURCE_EXHAUSTED``  | (not sent)              | Storage is full.        |
+| ``RESOURCE_EXHAUSTED``  | The receiver requested  | Storage is full.        |
+|                         | zero bytes, indicating  |                         |
+|                         | their storage is full,  |                         |
+|                         | but there is still data |                         |
+|                         | to send.                |                         |
 +-------------------------+-------------------------+-------------------------+
 | ``UNAVAILABLE``         | The service is busy with other transfers and      |
 |                         | cannot begin a new transfer at this time.         |
@@ -176,6 +218,24 @@ sender or the receiver (see `Transfer roles`_).
 +-------------------------+-------------------------+-------------------------+
 
 .. cpp:namespace-pop::
+
+Client errors
+-------------
+``pw_transfer`` clients may immediately return certain errors if they cannot
+start a transfer.
+
+.. list-table::
+
+  * - **Status**
+    - **Reason**
+  * - ``ALREADY_EXISTS``
+    - A transfer with the requested ID is already pending on this client.
+  * - ``DATA_LOSS``
+    - Sending the initial transfer chunk failed.
+  * - ``RESOURCE_EXHAUSTED``
+    - The client has insufficient resources to start an additional transfer at
+      this time.
+
 
 Transfer roles
 ==============

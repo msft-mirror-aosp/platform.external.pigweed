@@ -63,37 +63,35 @@ class FakeGeneratedService : public Service {
   };
 };
 
-pw_rpc_test_TestRequest last_request;
-NanopbServerWriter<pw_rpc_test_TestResponse> last_writer;
-RawServerWriter last_raw_writer;
-
 class FakeGeneratedServiceImpl
     : public FakeGeneratedService<FakeGeneratedServiceImpl> {
  public:
   FakeGeneratedServiceImpl(uint32_t id) : FakeGeneratedService(id) {}
 
-  Status AddFive(ServerContext&,
-                 const pw_rpc_test_TestRequest& request,
+  Status AddFive(const pw_rpc_test_TestRequest& request,
                  pw_rpc_test_TestResponse& response) {
     last_request = request;
     response.value = request.integer + 5;
     return Status::Unauthenticated();
   }
 
-  StatusWithSize DoNothing(ServerContext&, ConstByteSpan, ByteSpan) {
+  StatusWithSize DoNothing(ConstByteSpan, ByteSpan) {
     return StatusWithSize::Unknown();
   }
 
-  void RawStream(ServerContext&, ConstByteSpan, RawServerWriter& writer) {
+  void RawStream(ConstByteSpan, RawServerWriter& writer) {
     last_raw_writer = std::move(writer);
   }
 
-  void StartStream(ServerContext&,
-                   const pw_rpc_test_TestRequest& request,
+  void StartStream(const pw_rpc_test_TestRequest& request,
                    NanopbServerWriter<pw_rpc_test_TestResponse>& writer) {
     last_request = request;
     last_writer = std::move(writer);
   }
+
+  pw_rpc_test_TestRequest last_request;
+  NanopbServerWriter<pw_rpc_test_TestResponse> last_writer;
+  RawServerWriter last_raw_writer;
 };
 
 TEST(NanopbMethodUnion, Raw_CallsUnaryMethod) {
@@ -116,8 +114,8 @@ TEST(NanopbMethodUnion, Raw_CallsServerStreamingMethod) {
 
   method.Invoke(context.get(), context.request(request));
 
-  EXPECT_TRUE(last_raw_writer.active());
-  EXPECT_EQ(OkStatus(), last_raw_writer.Finish());
+  EXPECT_TRUE(context.service().last_raw_writer.active());
+  EXPECT_EQ(OkStatus(), context.service().last_raw_writer.Finish());
   EXPECT_EQ(context.output().sent_packet().type(), PacketType::RESPONSE);
 }
 
@@ -141,8 +139,8 @@ TEST(NanopbMethodUnion, Nanopb_CallsUnaryMethod) {
   EXPECT_EQ(0,
             std::memcmp(expected, response.payload().data(), sizeof(expected)));
 
-  EXPECT_EQ(123, last_request.integer);
-  EXPECT_EQ(3u, last_request.status_code);
+  EXPECT_EQ(123, context.service().last_request.integer);
+  EXPECT_EQ(3u, context.service().last_request.status_code);
 }
 
 TEST(NanopbMethodUnion, Nanopb_CallsServerStreamingMethod) {
@@ -155,10 +153,10 @@ TEST(NanopbMethodUnion, Nanopb_CallsServerStreamingMethod) {
 
   method.Invoke(context.get(), context.request(request));
 
-  EXPECT_EQ(555, last_request.integer);
-  EXPECT_TRUE(last_writer.active());
+  EXPECT_EQ(555, context.service().last_request.integer);
+  EXPECT_TRUE(context.service().last_writer.active());
 
-  EXPECT_EQ(OkStatus(), last_writer.Finish());
+  EXPECT_EQ(OkStatus(), context.service().last_writer.Finish());
   EXPECT_EQ(context.output().sent_packet().type(), PacketType::RESPONSE);
 }
 

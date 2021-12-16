@@ -108,6 +108,14 @@ TEST(ProtoHelper, AsProtoInteger) {
       0x49, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
       // type: sfixed64, k = 10, val = -72057594037927937
       0x51, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
+      // type: float, k = 11, val = 123456.00
+      0x5d, 0x00, 0x20, 0xf1, 0x47,
+      // type: double, k = 12, val = -123456.789
+      0x61, 0xc9, 0x76, 0xbe, 0x9f, 0x0c, 0x24, 0xfe, 0xc0,
+      // type: bool, k = 13, val = true
+      0x68, 0x01,
+      // type: bool, k = 14, val = false
+      0x70, 0x00
   };
   // clang-format on
 
@@ -172,6 +180,30 @@ TEST(ProtoHelper, AsProtoInteger) {
     Sfixed64 value = parser.AsSfixed64(10);
     ASSERT_OK(value.status());
     ASSERT_EQ(value.value(), static_cast<int64_t>(-72057594037927937));
+  }
+
+  {
+    Float value = parser.AsFloat(11);
+    ASSERT_OK(value.status());
+    ASSERT_EQ(value.value(), static_cast<float>(123456.00));
+  }
+
+  {
+    Double value = parser.AsDouble(12);
+    ASSERT_OK(value.status());
+    ASSERT_EQ(value.value(), static_cast<double>(-123456.789));
+  }
+
+  {
+    Bool value = parser.AsBool(13);
+    ASSERT_OK(value.status());
+    ASSERT_EQ(value.value(), static_cast<bool>(true));
+  }
+
+  {
+    Bool value = parser.AsBool(14);
+    ASSERT_OK(value.status());
+    ASSERT_EQ(value.value(), static_cast<bool>(false));
   }
 }
 

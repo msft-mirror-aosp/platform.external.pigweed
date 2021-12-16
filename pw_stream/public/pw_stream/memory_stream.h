@@ -26,6 +26,14 @@ namespace pw::stream {
 
 class MemoryWriter : public SeekableWriter {
  public:
+  using difference_type = ptrdiff_t;
+  using reference = const std::byte&;
+  using const_reference = const std::byte&;
+  using pointer = const std::byte*;
+  using const_pointer = const std::byte*;
+  using iterator = const std::byte*;
+  using const_iterator = const std::byte*;
+
   constexpr MemoryWriter(ByteSpan dest) : dest_(dest) {}
 
   // Construct writer with prepopulated data in the buffer. The number of
@@ -38,12 +46,24 @@ class MemoryWriter : public SeekableWriter {
     PW_ASSERT(position_ <= dest.size_bytes());
   }
 
-  size_t bytes_written() const { return position_; }
-
   ConstByteSpan WrittenData() const { return dest_.first(position_); }
+
+  void clear() { position_ = 0; }
 
   std::byte* data() { return dest_.data(); }
   const std::byte* data() const { return dest_.data(); }
+
+  const std::byte& operator[](size_t index) const { return dest_[index]; }
+
+  [[nodiscard]] bool empty() const { return size() == 0u; }
+
+  size_t size() const { return position_; }
+  size_t bytes_written() const { return size(); }
+
+  size_t capacity() const { return dest_.size(); }
+
+  const std::byte* begin() const { return dest_.begin(); }
+  const std::byte* end() const { return dest_.begin() + position_; }
 
  private:
   size_t ConservativeLimit(LimitType type) const override {
@@ -56,7 +76,7 @@ class MemoryWriter : public SeekableWriter {
   // perform a partial write and Status::ResourceExhausted() will be returned.
   Status DoWrite(ConstByteSpan data) final;
 
-  Status DoSeek(ssize_t offset, Whence origin) final {
+  Status DoSeek(ptrdiff_t offset, Whence origin) final {
     return CalculateSeek(offset, origin, dest_.size(), position_);
   }
 
@@ -89,7 +109,7 @@ class MemoryReader final : public SeekableReader {
     return type == LimitType::kRead ? source_.size_bytes() - position_ : 0;
   }
 
-  Status DoSeek(ssize_t offset, Whence origin) override {
+  Status DoSeek(ptrdiff_t offset, Whence origin) override {
     return CalculateSeek(offset, origin, source_.size(), position_);
   }
 

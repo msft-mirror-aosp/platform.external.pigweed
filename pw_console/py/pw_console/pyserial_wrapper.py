@@ -13,10 +13,13 @@
 # the License.
 """Wrapers for pyserial classes to log read and write data."""
 
+from contextvars import ContextVar
 import logging
 import textwrap
 
 import serial  # type: ignore
+
+from pw_console.widgets.event_count_history import EventCountHistory
 
 _LOG = logging.getLogger('pw_console.serial_debug_logger')
 
@@ -57,10 +60,27 @@ def _log_hex_strings(data, prefix=''):
                }))
 
 
+BANDWIDTH_HISTORY_CONTEXTVAR = (ContextVar('pw_console_bandwidth_history',
+                                           default={
+                                               'total':
+                                               EventCountHistory(interval=3),
+                                               'read':
+                                               EventCountHistory(interval=3),
+                                               'write':
+                                               EventCountHistory(interval=3),
+                                           }))
+
+
 class SerialWithLogging(serial.Serial):  # pylint: disable=too-many-ancestors
     """pyserial with read and write wrappers for logging."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pw_bps_history = BANDWIDTH_HISTORY_CONTEXTVAR.get()
+
     def read(self, *args, **kwargs):
         data = super().read(*args, **kwargs)
+        self.pw_bps_history['read'].log(len(data))
+        self.pw_bps_history['total'].log(len(data))
 
         if len(data) > 0:
             prefix = 'Read %2d B: ' % len(data)
@@ -68,7 +88,7 @@ class SerialWithLogging(serial.Serial):  # pylint: disable=too-many-ancestors
                        prefix,
                        data,
                        extra=dict(extra_metadata_fields={
-                           'mode': 'Write',
+                           'mode': 'Read',
                            'bytes': len(data),
                            'msg': str(data),
                        }))
@@ -77,16 +97,19 @@ class SerialWithLogging(serial.Serial):  # pylint: disable=too-many-ancestors
         return data
 
     def write(self, data, *args, **kwargs):
+        self.pw_bps_history['write'].log(len(data))
+        self.pw_bps_history['total'].log(len(data))
+
         if len(data) > 0:
             prefix = 'Write %2d B: ' % len(data)
-
             _LOG.debug('%s%s',
                        prefix,
                        data,
                        extra=dict(extra_metadata_fields={
-                           'mode': 'Read',
+                           'mode': 'Write',
                            'bytes': len(data),
                            'msg': str(data)
                        }))
             _log_hex_strings(data, prefix=prefix)
+
         super().write(data, *args, **kwargs)

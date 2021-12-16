@@ -95,6 +95,27 @@ Sfixed64 Message::Field::As<Sfixed64>() {
   return decoder.ReadSfixed64();
 }
 
+template <>
+Float Message::Field::As<Float>() {
+  protobuf::StreamDecoder decoder(field_reader_.Reset());
+  PW_TRY(decoder.Next());
+  return decoder.ReadFloat();
+}
+
+template <>
+Double Message::Field::As<Double>() {
+  protobuf::StreamDecoder decoder(field_reader_.Reset());
+  PW_TRY(decoder.Next());
+  return decoder.ReadDouble();
+}
+
+template <>
+Bool Message::Field::As<Bool>() {
+  protobuf::StreamDecoder decoder(field_reader_.Reset());
+  PW_TRY(decoder.Next());
+  return decoder.ReadBool();
+}
+
 Result<bool> Bytes::Equal(ConstByteSpan bytes) {
   stream::IntervalReader bytes_reader = GetBytesReader();
   if (bytes_reader.interval_size() != bytes.size()) {

@@ -12,11 +12,21 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+// clang-format off
+#include "pw_rpc/internal/log_config.h"  // PW_LOG_* macros must be first.
+
 #include "pw_rpc/internal/endpoint.h"
+// clang-format on
 
 #include "pw_log/log.h"
+#include "pw_rpc/internal/lock.h"
 
 namespace pw::rpc::internal {
+
+RpcLock& rpc_lock() {
+  static RpcLock lock;
+  return lock;
+}
 
 Endpoint::~Endpoint() {
   // Since the calls remove themselves from the Endpoint in
@@ -51,11 +61,14 @@ Result<Packet> Endpoint::ProcessPacket(std::span<const std::byte> data,
 }
 
 void Endpoint::RegisterCall(Call& call) {
+  LockGuard lock(rpc_lock());
+
   Call* const existing_call =
       FindCallById(call.channel_id(), call.service_id(), call.method_id());
 
   if (existing_call != nullptr) {
     existing_call->HandleError(Status::Cancelled());
+    rpc_lock().lock();  // Reacquire after releasing to call the user callback
   }
 
   RegisterUniqueCall(call);

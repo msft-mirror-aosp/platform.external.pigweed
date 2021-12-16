@@ -49,7 +49,7 @@ pw_cc_library(
     ],
 )
 
-# TODO(hepler): Build this as a cc_binary and use it in integration tests.
+# TODO(pwbug/507): Build this as a cc_binary and use it in integration tests.
 filegroup(
     name = "test_rpc_server",
     srcs = ["test_rpc_server.cc"],
@@ -83,6 +83,8 @@ pw_cc_library(
         "public/pw_rpc/internal/config.h",
         "public/pw_rpc/internal/endpoint.h",
         "public/pw_rpc/internal/hash.h",
+        "public/pw_rpc/internal/lock.h",
+        "public/pw_rpc/internal/log_config.h",
         "public/pw_rpc/internal/method.h",
         "public/pw_rpc/internal/method_info.h",
         "public/pw_rpc/internal/method_lookup.h",
@@ -91,6 +93,7 @@ pw_cc_library(
         "public/pw_rpc/internal/packet.h",
         "public/pw_rpc/internal/server_call.h",
         "public/pw_rpc/method_type.h",
+        "public/pw_rpc/writer.h",
         "server.cc",
         "server_call.cc",
         "service.cc",
@@ -100,7 +103,6 @@ pw_cc_library(
         "public/pw_rpc/client.h",
         "public/pw_rpc/internal/service_client.h",
         "public/pw_rpc/server.h",
-        "public/pw_rpc/server_context.h",
         "public/pw_rpc/service.h",
     ],
     includes = ["public"],
@@ -116,6 +118,7 @@ pw_cc_library(
         "//pw_rpc/system_server",
         "//pw_span",
         "//pw_status",
+        "//pw_sync:lock_annotations",
     ],
 )
 
@@ -157,6 +160,28 @@ pw_cc_library(
         "//pw_containers:wrapped_iterator",
         "//pw_span",
     ],
+)
+
+# TODO(pwbug/507): Enable this library when logging_event_handler can be used.
+filegroup(
+    name = "integration_testing",
+    srcs = [
+        "integration_testing.cc",
+        # ],
+        # hdrs = [
+        "public/pw_rpc/integration_test_socket_client.h",
+        "public/pw_rpc/integration_testing.h",
+    ],
+    #deps = [
+    #    ":client",
+    #    "//pw_assert",
+    #    "//pw_hdlc:pw_rpc",
+    #    "//pw_hdlc:rpc_channel_output",
+    #    "//pw_log",
+    #    "//pw_stream:socket_stream",
+    #    "//pw_unit_test",
+    #    "//pw_unit_test:logging_event_handler",
+    #],
 )
 
 # TODO(pwbug/507): Add the client integration test to the build.
@@ -246,13 +271,6 @@ pw_cc_test(
     ],
 )
 
-proto_library(
-    name = "packet_proto",
-    srcs = [
-        "internal/packet.proto",
-    ],
-)
-
 pw_cc_test(
     name = "server_test",
     srcs = [
@@ -291,7 +309,12 @@ proto_library(
 
 js_proto_library(
     name = "packet_proto_tspb",
-    protos = [":packet_proto"],
+    protos = [":internal_packet_proto"],
+)
+
+java_lite_proto_library(
+    name = "packet_proto_java_lite",
+    deps = [":internal_packet_proto"],
 )
 
 py_proto_library(
@@ -324,4 +347,11 @@ proto_plugin(
     tool = "@pigweed//pw_rpc/py:plugin",
     use_built_in_shell_environment = True,
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "echo",
+    srcs = [
+        "echo.proto",
+    ],
 )

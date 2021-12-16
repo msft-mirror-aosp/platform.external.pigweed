@@ -42,7 +42,10 @@ pw_source_set("server_api") {
     "..:server",
     dir_pw_bytes,
   ]
-  deps = [ dir_pw_log ]
+  deps = [
+    "..:log_config",
+    dir_pw_log,
+  ]
   allow_circular_includes_from = [ ":common" ]
 }
 
@@ -57,11 +60,14 @@ pw_source_set("client_api") {
 }
 
 pw_source_set("common") {
-  public_deps = [ dir_pw_bytes ]
+  public_deps = [
+    "..:common",
+    dir_pw_bytes,
+  ]
   public_configs = [ ":public" ]
   deps = [
     "..:client",
-    "..:common",
+    "..:log_config",
     dir_pw_log,
   ]
   public = [ "public/pw_rpc/nanopb/internal/common.h" ]
@@ -113,6 +119,7 @@ pw_source_set("client_integration_test") {
   public_configs = [ ":public" ]
   public_deps = [
     "$dir_pw_sync:binary_semaphore",
+    "..:integration_testing",
     "..:protos.nanopb_rpc",
     dir_pw_assert,
     dir_pw_unit_test,

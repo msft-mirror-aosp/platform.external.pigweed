@@ -21,7 +21,6 @@
 #include "pw_protobuf/decoder.h"
 #include "pw_protobuf/encoder.h"
 #include "pw_rpc/internal/test_utils.h"
-#include "pw_rpc/server_context.h"
 #include "pw_rpc/service.h"
 #include "pw_rpc_test_protos/test.pwpb.h"
 
@@ -44,24 +43,16 @@ class FakeGeneratedService : public Service {
   };
 };
 
-struct {
-  int64_t integer;
-  uint32_t status_code;
-} last_request;
-RawServerWriter last_writer;
-
 class FakeGeneratedServiceImpl
     : public FakeGeneratedService<FakeGeneratedServiceImpl> {
  public:
   FakeGeneratedServiceImpl(uint32_t id) : FakeGeneratedService(id) {}
 
-  StatusWithSize DoNothing(ServerContext&, ConstByteSpan, ByteSpan) {
+  StatusWithSize DoNothing(ConstByteSpan, ByteSpan) {
     return StatusWithSize::Unknown();
   }
 
-  StatusWithSize AddFive(ServerContext&,
-                         ConstByteSpan request,
-                         ByteSpan response) {
+  StatusWithSize AddFive(ConstByteSpan request, ByteSpan response) {
     DecodeRawTestRequest(request);
 
     TestResponse::MemoryEncoder test_response(response);
@@ -72,12 +63,16 @@ class FakeGeneratedServiceImpl
     return StatusWithSize::Unauthenticated(payload.size());
   }
 
-  void StartStream(ServerContext&,
-                   ConstByteSpan request,
-                   RawServerWriter& writer) {
+  void StartStream(ConstByteSpan request, RawServerWriter& writer) {
     DecodeRawTestRequest(request);
     last_writer = std::move(writer);
   }
+
+  struct {
+    int64_t integer;
+    uint32_t status_code;
+  } last_request;
+  RawServerWriter last_writer;
 
  private:
   void DecodeRawTestRequest(ConstByteSpan request) {
@@ -115,8 +110,8 @@ TEST(RawMethodUnion, InvokesUnary) {
   ServerContextForTest<FakeGeneratedServiceImpl> context(method);
   method.Invoke(context.get(), context.request(test_request));
 
-  EXPECT_EQ(last_request.integer, 456);
-  EXPECT_EQ(last_request.status_code, 7u);
+  EXPECT_EQ(context.service().last_request.integer, 456);
+  EXPECT_EQ(context.service().last_request.status_code, 7u);
 
   const Packet& response = context.output().sent_packet();
   EXPECT_EQ(response.status(), Status::Unauthenticated());
@@ -144,10 +139,10 @@ TEST(RawMethodUnion, InvokesServerStreaming) {
   method.Invoke(context.get(), context.request(test_request));
 
   EXPECT_EQ(0u, context.output().packet_count());
-  EXPECT_EQ(777, last_request.integer);
-  EXPECT_EQ(2u, last_request.status_code);
-  EXPECT_TRUE(last_writer.active());
-  EXPECT_EQ(OkStatus(), last_writer.Finish());
+  EXPECT_EQ(777, context.service().last_request.integer);
+  EXPECT_EQ(2u, context.service().last_request.status_code);
+  EXPECT_TRUE(context.service().last_writer.active());
+  EXPECT_EQ(OkStatus(), context.service().last_writer.Finish());
 }
 
 }  // namespace

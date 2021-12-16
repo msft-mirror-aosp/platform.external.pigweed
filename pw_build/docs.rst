@@ -68,6 +68,23 @@ need to stamp out some ``pw_source_set``s. Since a pw_executable template can't
 import ``$dir_pw_build/target_types.gni`` due to circular imports, it should
 import ``$dir_pw_build/cc_library.gni`` instead.
 
+Additionally ``pw_executable``, ``pw_source_set``, ``pw_static_library``, and
+``pw_shared_library`` track source files via the ``pw_source_files`` field the
+target's
+`GN metadata <https://gn.googlesource.com/gn/+/main/docs/reference.md#metadata_collection>`_.
+This list can be writen to a file at build time using ``generated_file``.  The
+primary use case for this is to generate a token database containing all the
+source files.  This allows PW_ASSERT to emit filename tokens even though it
+can't add them to the elf file because of the resons described at
+:ref:`module-pw_assert-assert-api`.
+
+.. note::
+  ``pw_source_files``, if not rebased will default to outputing module relative
+  paths from a ``generated_file`` target.  This is likely not useful.  Adding
+  a ``rebase`` argument to ``generated_file`` such as
+  ``rebase = root_build_dir`` will result in usable paths.  For an example,
+  see `//pw_tokenizer/database.gni`'s `pw_tokenizer_filename_database` template.
+
 .. tip::
 
   Prefer to use ``pw_executable`` over plain ``executable`` targets to allow
@@ -564,9 +581,9 @@ are wrapped with ``pw_cc_binary``, ``pw_cc_library``, and ``pw_cc_test``.
 These wrappers add parameters to calls to the compiler and linker.
 
 Currently Pigweed is making use of a set of
-[open source](https://github.com/silvergasp/bazel-embedded) toolchains. The host
-builds are only supported on Linux/Mac based systems. Additionally the host
-builds are not entirely hermetic, and will make use of system
+`open source <https://github.com/silvergasp/bazel-embedded>`_ toolchains. The
+host builds are only supported on Linux/Mac based systems. Additionally the
+host builds are not entirely hermetic, and will make use of system
 libraries and headers. This is close to the default configuration for Bazel,
 though slightly more hermetic. The host toolchain is based around clang-11 which
 has a system dependency on 'libtinfo.so.5' which is often included as part of

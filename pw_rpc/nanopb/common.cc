@@ -12,7 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+// clang-format off
+#include "pw_rpc/internal/log_config.h" // PW_LOG_* macros must be first.
+
 #include "pw_rpc/nanopb/internal/common.h"
+// clang-format on
 
 #include "pb_decode.h"
 #include "pb_encode.h"
@@ -42,7 +46,7 @@ using Fields = typename NanopbTraits<decltype(pb_decode)>::Fields;
 Result<ByteSpan> EncodeToPayloadBuffer(Call& call,
                                        const void* payload,
                                        NanopbSerde serde) {
-  std::span<std::byte> payload_buffer = call.AcquirePayloadBuffer();
+  std::span<std::byte> payload_buffer = call.PayloadBuffer();
 
   StatusWithSize result = serde.Encode(payload, payload_buffer);
   if (!result.ok()) {
@@ -97,8 +101,10 @@ void NanopbSendInitialRequest(ClientCall& call,
   PW_DCHECK(call.active());
 
   Result<ByteSpan> result = EncodeToPayloadBuffer(call, payload, serde);
+  rpc_lock().lock();
+
   if (result.ok()) {
-    call.SendInitialRequest(*result);
+    call.SendInitialRequestLocked(*result);
   } else {
     call.HandleError(result.status());
   }

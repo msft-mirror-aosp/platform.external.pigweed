@@ -15,10 +15,12 @@
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/module_config.gni")
+import("$dir_pw_crypto/backend.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
 import("$dir_pw_third_party/nanopb/nanopb.gni")
 import("$dir_pw_third_party/protobuf/protobuf.gni")
+import("$dir_pw_thread/backend.gni")
 import("$dir_pw_unit_test/test.gni")
 
 declare_args() {
@@ -77,27 +79,38 @@ pw_doc_group("docs") {
   sources = [ "docs.rst" ]
 }
 
-pw_source_set("update_bundle") {
-  public_configs = [ ":public_include_path" ]
-  public_deps = [
-    dir_pw_blob_store,
-    dir_pw_kvs,
-    dir_pw_protobuf,
-    dir_pw_result,
-    dir_pw_status,
-    dir_pw_stream,
-  ]
-  public = [
-    "public/pw_software_update/bundled_update_backend.h",
-    "public/pw_software_update/manifest_accessor.h",
-    "public/pw_software_update/update_bundle_accessor.h",
-  ]
-  deps = [
-    ":config",
-    ":protos.pwpb",
-    dir_pw_log,
-  ]
-  sources = [ "update_bundle_accessor.cc" ]
+if (pw_crypto_SHA256_BACKEND != "" && pw_crypto_ECDSA_BACKEND != "") {
+  pw_source_set("update_bundle") {
+    public_configs = [ ":public_include_path" ]
+    public_deps = [
+      "$dir_pw_crypto:ecdsa",
+      "$dir_pw_crypto:sha256",
+      "$dir_pw_stream:interval_reader",
+      dir_pw_blob_store,
+      dir_pw_kvs,
+      dir_pw_protobuf,
+      dir_pw_result,
+      dir_pw_status,
+      dir_pw_stream,
+    ]
+    public = [
+      "public/pw_software_update/bundled_update_backend.h",
+      "public/pw_software_update/manifest_accessor.h",
+      "public/pw_software_update/update_bundle_accessor.h",
+    ]
+    deps = [
+      ":config",
+      ":protos.pwpb",
+      dir_pw_log,
+    ]
+    sources = [
+      "manifest_accessor.cc",
+      "update_bundle_accessor.cc",
+    ]
+  }
+} else {
+  group("update_bundle") {
+  }
 }
 
 if (dir_pw_third_party_nanopb != "" && dir_pw_third_party_protobuf != "") {
@@ -143,9 +156,13 @@ config("generated_test_bundle_include") {
   include_dirs = [ get_path_info(_generated_outputs[0], "dir") ]
 }
 
+all_dependency_met =
+    dir_pw_third_party_nanopb != "" && dir_pw_third_party_protobuf != "" &&
+    pw_thread_THREAD_BACKEND != "" && pw_crypto_SHA256_BACKEND != "" &&
+    pw_crypto_ECDSA_BACKEND != ""
+
 pw_test("update_bundle_test") {
-  enable_if =
-      dir_pw_third_party_nanopb != "" && dir_pw_third_party_protobuf != ""
+  enable_if = all_dependency_met
   sources = [ "update_bundle_test.cc" ]
   public_deps = [
     ":bundled_update_service",
@@ -159,14 +176,13 @@ pw_test("update_bundle_test") {
 
 pw_test_group("tests") {
   tests = [
-    ":update_bundle_test",
     ":bundled_update_service_test",
+    ":update_bundle_test",
   ]
 }
 
 pw_test("bundled_update_service_test") {
-  enable_if =
-      dir_pw_third_party_nanopb != "" && dir_pw_third_party_protobuf != ""
+  enable_if = all_dependency_met
   sources = [ "bundled_update_service_test.cc" ]
   public_deps = [ ":bundled_update_service" ]
 }

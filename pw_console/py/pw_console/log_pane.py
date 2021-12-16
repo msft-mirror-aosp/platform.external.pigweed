@@ -16,7 +16,7 @@
 import functools
 import logging
 import re
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Union, TYPE_CHECKING
 
 from prompt_toolkit.application.current import get_app
 from prompt_toolkit.data_structures import Point
@@ -28,29 +28,36 @@ from prompt_toolkit.formatted_text import to_formatted_text
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.layout import (
     ConditionalContainer,
-    Dimension,
     Float,
     FloatContainer,
     FormattedTextControl,
-    HSplit,
     ScrollOffsets,
     UIContent,
     VerticalAlign,
     Window,
 )
-from prompt_toolkit.layout.dimension import AnyDimension
 from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 
 import pw_console.widgets.checkbox
 import pw_console.style
 from pw_console.log_view import LogView
 from pw_console.log_pane_toolbars import (
-    BottomToolbarBar,
     LineInfoBar,
     TableToolbar,
 )
 from pw_console.search_toolbar import SearchToolbar
 from pw_console.filter_toolbar import FilterToolbar
+from pw_console.widgets import (
+    ToolbarButton,
+    WindowPane,
+    WindowPaneHSplit,
+    WindowPaneToolbar,
+)
+
+if TYPE_CHECKING:
+    from pw_console.console_app import ConsoleApp
+
+_LOG_OUTPUT_SCROLL_AMOUNT = 5
 
 
 class LogContentControl(FormattedTextControl):
@@ -237,12 +244,12 @@ class LogContentControl(FormattedTextControl):
             return None
 
         if mouse_event.event_type == MouseEventType.SCROLL_DOWN:
-            self.log_pane.log_view.scroll_down(lines=5)
+            self.log_pane.log_view.scroll_down(lines=_LOG_OUTPUT_SCROLL_AMOUNT)
             # Mouse event handled, return None.
             return None
 
         if mouse_event.event_type == MouseEventType.SCROLL_UP:
-            self.log_pane.log_view.scroll_up(lines=5)
+            self.log_pane.log_view.scroll_up(lines=_LOG_OUTPUT_SCROLL_AMOUNT)
             # Mouse event handled, return None.
             return None
 
@@ -250,55 +257,20 @@ class LogContentControl(FormattedTextControl):
         return NotImplemented
 
 
-class LogLineHSplit(HSplit):
-    """PromptToolkit HSplit class with a write_to_screen function that saves the
-    width and height of the container to be rendered.
-    """
-    def __init__(self, log_pane: 'LogPane', *args, **kwargs):
-        # Save a reference to the parent LogPane.
-        self.log_pane = log_pane
-        super().__init__(*args, **kwargs)
-
-    def write_to_screen(
-        self,
-        screen,
-        mouse_handlers,
-        write_position,
-        parent_style: str,
-        erase_bg: bool,
-        z_index: Optional[int],
-    ) -> None:
-        # Save the width and height for the current render pass. This will be
-        # used by the log pane to render the correct amount of log lines.
-        self.log_pane.update_log_pane_size(write_position.width,
-                                           write_position.height)
-        # Continue writing content to the screen.
-        super().write_to_screen(screen, mouse_handlers, write_position,
-                                parent_style, erase_bg, z_index)
-
-
-class LogPane:
+class LogPane(WindowPane):
     """LogPane class."""
 
     # pylint: disable=too-many-instance-attributes,too-many-public-methods
     def __init__(
         self,
         application: Any,
-        pane_title: Optional[str] = None,
-        # Default width and height to 50% of the screen
-        height: Optional[AnyDimension] = None,
-        width: Optional[AnyDimension] = None,
+        pane_title: str = 'Logs',
     ):
-        self.application = application
-        self.show_bottom_toolbar = True
+        super().__init__(application, pane_title)
+
         # TODO(tonymd): Read these settings from a project (or user) config.
         self.wrap_lines = False
         self._table_view = True
-        self.height = height if height else Dimension(weight=50)
-        self.width = width if width else Dimension(weight=50)
-        self.show_pane = True
-        self._pane_title = pane_title
-        self._pane_subtitle = None
         self.is_a_duplicate = False
 
         self.horizontal_scroll_amount = 0
@@ -323,7 +295,32 @@ class LogPane:
         self.table_header_toolbar = TableToolbar(self)
 
         # Create the bottom toolbar for the whole log pane.
-        self.bottom_toolbar = BottomToolbarBar(self)
+        self.bottom_toolbar = WindowPaneToolbar(self)
+        self.bottom_toolbar.add_button(
+            ToolbarButton('/', 'Search', self.start_search))
+        self.bottom_toolbar.add_button(
+            ToolbarButton('Ctrl-c', 'Copy Lines',
+                          self.log_view.copy_visible_lines))
+        self.bottom_toolbar.add_button(
+            ToolbarButton('f',
+                          'Follow',
+                          self.toggle_follow,
+                          is_checkbox=True,
+                          checked=lambda: self.log_view.follow))
+        self.bottom_toolbar.add_button(
+            ToolbarButton('t',
+                          'Table',
+                          self.toggle_table_view,
+                          is_checkbox=True,
+                          checked=lambda: self.table_view))
+        self.bottom_toolbar.add_button(
+            ToolbarButton('w',
+                          'Wrap',
+                          self.toggle_wrap_lines,
+                          is_checkbox=True,
+                          checked=lambda: self.wrap_lines))
+        self.bottom_toolbar.add_button(
+            ToolbarButton('C', 'Clear', self.clear_history))
 
         self.log_content_control = LogContentControl(
             self,  # parent LogPane
@@ -365,7 +362,7 @@ class LogPane:
         self.container = ConditionalContainer(
             FloatContainer(
                 # Horizonal split containing the log lines and the toolbar.
-                LogLineHSplit(
+                WindowPaneHSplit(
                     self,  # LogPane reference
                     [
                         self.table_header_toolbar,
@@ -410,15 +407,6 @@ class LogPane:
             self.toggle_wrap_lines()
         self.horizontal_scroll_amount += 1
 
-    def pane_title(self):
-        title = self._pane_title
-        if not title:
-            title = 'Logs'
-        return title
-
-    def set_pane_title(self, title: str):
-        self._pane_title = title
-
     def menu_title(self):
         """Return the title to display in the Window menu."""
         title = self.pane_title()
@@ -460,15 +448,15 @@ class LogPane:
         # Focus on the search bar
         self.application.focus_on_container(self.search_toolbar)
 
-    def update_log_pane_size(self, width, height):
+    def update_pane_size(self, width, height):
         """Save width and height of the log pane for the current UI render
         pass."""
         if width:
             self.last_log_pane_width = self.current_log_pane_width
             self.current_log_pane_width = width
         if height:
-            # Subtract the height of the BottomToolbarBar
-            height -= BottomToolbarBar.TOOLBAR_HEIGHT
+            # Subtract the height of the bottom toolbar
+            height -= WindowPaneToolbar.TOOLBAR_HEIGHT
             if self._table_view:
                 height -= TableToolbar.TOOLBAR_HEIGHT
             if self.search_bar_active:
@@ -477,10 +465,6 @@ class LogPane:
                 height -= FilterToolbar.TOOLBAR_HEIGHT
             self.last_log_pane_height = self.current_log_pane_height
             self.current_log_pane_height = height
-
-    def redraw_ui(self):
-        """Trigger a prompt_toolkit UI redraw."""
-        self.application.redraw_ui()
 
     def toggle_table_view(self):
         """Enable or disable table view."""
@@ -503,13 +487,6 @@ class LogPane:
         """Erase stored log lines."""
         self.log_view.clear_scrollback()
         self.redraw_ui()
-
-    def __pt_container__(self):
-        """Return the prompt_toolkit root container for this log pane.
-
-        This allows self to be used wherever prompt_toolkit expects a container
-        object."""
-        return self.container
 
     def get_all_key_bindings(self) -> List:
         """Return all keybinds for this pane."""
@@ -588,10 +565,6 @@ class LogPane:
 
     def log_content_control_get_cursor_position(self):
         return self.log_view.get_cursor_position()
-
-    def focus_self(self):
-        """Switch prompt_toolkit focus to this LogPane."""
-        self.application.application.layout.focus(self)
 
     def apply_filters_from_config(self, window_options) -> None:
         if 'filters' not in window_options:

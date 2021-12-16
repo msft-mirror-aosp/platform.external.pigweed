@@ -33,7 +33,7 @@ namespace pw::file {
 // was "flat" (i.e. no directories). This means there's no concept of logical
 // directories, despite any "path like" naming that may be employed by a user.
 class FlatFileSystemService
-    : public generated::FileSystem<FlatFileSystemService> {
+    : public pw_rpc::raw::FileSystem::Service<FlatFileSystemService> {
  public:
   class Entry {
    public:
@@ -86,12 +86,12 @@ class FlatFileSystemService
       : file_name_buffer_(file_name_buffer), entries_(entry_list) {}
 
   // Method definitions for pw.file.FileSystem.
-  void List(ServerContext&, ConstByteSpan request, RawServerWriter& writer);
+  void List(ConstByteSpan request, RawServerWriter& writer);
 
   // Returns:
   //   OK - File successfully deleted.
   //   NOT_FOUND - Could not find
-  StatusWithSize Delete(ServerContext&, ConstByteSpan request, ByteSpan);
+  StatusWithSize Delete(ConstByteSpan request, ByteSpan);
 
  private:
   Result<Entry*> FindFile(std::string_view file_name);
