@@ -16,6 +16,7 @@
 
 #include "pw_cpu_exception_cortex_m/snapshot.h"
 
+#include "pw_cpu_exception/support.h"
 #include "pw_cpu_exception_cortex_m/proto_dump.h"
 #include "pw_cpu_exception_cortex_m_private/config.h"
 #include "pw_cpu_exception_cortex_m_private/cortex_m_constants.h"
@@ -79,9 +80,11 @@ Status SnapshotCpuState(
     cpu_exception::cortex_m::SnapshotCpuState::StreamEncoder&
         snapshot_encoder) {
   cpu_exception::LogCpuState(cpu_state);
-  cpu_exception::cortex_m::ArmV7mCpuState::StreamEncoder cpu_state_encoder =
-      snapshot_encoder.GetArmv7mCpuStateEncoder();
-  pw::cpu_exception::DumpCpuStateProto(cpu_state_encoder, cpu_state);
+  {
+    cpu_exception::cortex_m::ArmV7mCpuState::StreamEncoder cpu_state_encoder =
+        snapshot_encoder.GetArmv7mCpuStateEncoder();
+    pw::cpu_exception::DumpCpuStateProto(cpu_state_encoder, cpu_state);
+  }
   return snapshot_encoder.status();
 }
 

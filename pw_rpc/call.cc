@@ -95,20 +95,24 @@ void Call::MoveFrom(Call& other) {
   endpoint().RegisterUniqueCall(*this);
 }
 
-Status Call::CloseAndSendFinalPacket(PacketType type,
-                                     ConstByteSpan payload,
-                                     Status status) {
-  if (!active()) {
-    return Status::FailedPrecondition();
-  }
-  const Status packet_status = SendPacket(type, payload, status);
-  Close();
-  return packet_status;
+Status Call::EndClientStream() {
+  client_stream_state_ = kClientStreamInactive;
+  return SendPacket(PacketType::CLIENT_STREAM_END, {}, {});
 }
 
-ByteSpan Call::AcquirePayloadBuffer() {
-  PW_DCHECK(active());
+Status Call::CloseAndSendFinalPacket(PacketType type,
+                                     ConstByteSpan response,
+                                     Status status) {
+  rpc_lock().lock();
+  if (!active()) {
+    rpc_lock().unlock();
+    return Status::FailedPrecondition();
+  }
+  Close();
+  return SendPacket(type, response, status);
+}
 
+ByteSpan Call::PayloadBuffer() {
   // Only allow having one active buffer at a time.
   if (response_.empty()) {
     response_ = channel().AcquireBuffer();
@@ -121,7 +125,9 @@ ByteSpan Call::AcquirePayloadBuffer() {
 }
 
 Status Call::Write(ConstByteSpan payload) {
+  rpc_lock().lock();
   if (!active()) {
+    rpc_lock().unlock();
     return Status::FailedPrecondition();
   }
   return SendPacket(call_type_ == kServerCall ? PacketType::SERVER_STREAM
@@ -130,21 +136,21 @@ Status Call::Write(ConstByteSpan payload) {
 }
 
 Status Call::SendPacket(PacketType type, ConstByteSpan payload, Status status) {
-  PW_DCHECK(active());
   const Packet packet = MakePacket(type, payload, status);
 
-  if (buffer().Contains(payload)) {
-    return channel().Send(response_, packet);
+  if (!buffer().Contains(payload)) {
+    ByteSpan buffer = PayloadBuffer();
+
+    if (payload.size() > buffer.size()) {
+      ReleasePayloadBuffer();
+      rpc_lock().unlock();
+      return Status::OutOfRange();
+    }
+
+    std::copy_n(payload.data(), payload.size(), buffer.data());
   }
 
-  ByteSpan buffer = AcquirePayloadBuffer();
-
-  if (payload.size() > buffer.size()) {
-    ReleasePayloadBuffer();
-    return Status::OutOfRange();
-  }
-
-  std::memcpy(buffer.data(), payload.data(), payload.size());
+  rpc_lock().unlock();
   return channel().Send(response_, packet);
 }
 

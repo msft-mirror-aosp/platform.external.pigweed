@@ -11,13 +11,23 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-
 #pragma once
 
-namespace pw::software_update {
+#include "pw_stream/interval_reader.h"
+#include "pw_stream/stream.h"
 
-// TODO(pwbug/456): Place-holder declaration for now. To be implemented
-// and moved elsewhere.
-class ManifestAccessor {};
+namespace pw::software_update {
+// TODO(pwbug/456): There may be bettter solution to using a forward
+// declaration here.
+class UpdateBundleAccessor;
+class ManifestAccessor {
+ public:
+  explicit ManifestAccessor(UpdateBundleAccessor* update_bundle_accessor);
+  pw::stream::IntervalReader GetUserManifest();
+  Status WriteManifest(stream::Writer& writer);
+
+ private:
+  UpdateBundleAccessor* update_bundle_accessor_;
+};
 
 }  // namespace pw::software_update

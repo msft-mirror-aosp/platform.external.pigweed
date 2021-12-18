@@ -13,6 +13,15 @@
 # the License.
 include_guard(GLOBAL)
 
+# The PW_ROOT environment variable should be set in bootstrap. If it is not set,
+# set it to the root of the Pigweed repository.
+if("$ENV{PW_ROOT}" STREQUAL "")
+  get_filename_component(pw_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+  message("The PW_ROOT environment variable is not set; "
+          "using ${pw_root} within CMake")
+  set(ENV{PW_ROOT} "${pw_root}")
+endif()
+
 # Wrapper around cmake_parse_arguments that fails with an error if any arguments
 # remained unparsed.
 macro(_pw_parse_argv_strict function start_arg options one multi)
@@ -160,9 +169,11 @@ endmacro()
 #   PUBLIC_DEPS - public target_link_libraries arguments
 #   PRIVATE_DEPS - private target_link_libraries arguments
 #   IMPLEMENTS_FACADES - which facades this library implements
+#   PUBLIC_DEFINES - public target_compile_definitions arguments
+#   PRIVATE_DEFINES - private target_compile_definitions arguments
 #
 function(pw_add_module_library NAME)
-  _pw_library_args(list_args IMPLEMENTS_FACADES)
+  _pw_library_args(list_args IMPLEMENTS_FACADES PUBLIC_DEFINES PRIVATE_DEFINES)
   _pw_parse_argv_strict(pw_add_module_library 1 "" "" "${list_args}")
 
   # Check that the library's name is prefixed by the module name.
@@ -197,6 +208,14 @@ function(pw_add_module_library NAME)
   # Libraries require at least one source file.
   if(NOT arg_SOURCES)
     target_sources("${NAME}" PRIVATE $<TARGET_PROPERTY:pw_build.empty,SOURCES>)
+  endif()
+
+  if(NOT "${arg_PUBLIC_DEFINES}" STREQUAL "")
+    target_compile_definitions("${NAME}" PUBLIC ${arg_PUBLIC_DEFINES})
+  endif()
+
+  if(NOT "${arg_PRIVATE_DEFINES}" STREQUAL "")
+    target_compile_definitions("${NAME}" PRIVATE ${arg_PRIVATE_DEFINES})
   endif()
 endfunction(pw_add_module_library)
 

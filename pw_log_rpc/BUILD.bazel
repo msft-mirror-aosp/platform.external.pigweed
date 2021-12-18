@@ -24,14 +24,41 @@ licenses(["notice"])
 
 pw_cc_library(
     name = "log_service",
-    srcs = ["log_service.cc"],
+    srcs = [
+        "log_service.cc",
+        "public/pw_log_rpc/internal/log_config.h",
+    ],
     hdrs = ["public/pw_log_rpc/log_service.h"],
     includes = ["public"],
     deps = [
+        ":log_filter",
         ":rpc_log_drain",
         "//pw_log",
         "//pw_log:log_pwpb",
         "//pw_log:protos.raw_rpc",
+        "//pw_protobuf",
+        "//pw_protobuf:bytes_utils",
+    ],
+)
+
+pw_cc_library(
+    name = "log_filter",
+    srcs = ["log_filter.cc"],
+    hdrs = [
+        "public/pw_log_rpc/log_filter.h",
+        "public/pw_log_rpc/log_filter_map.h",
+    ],
+    includes = ["public"],
+    deps = [
+        "public/pw_log_rpc/internal/config.h",
+        "//pw_assert",
+        "//pw_bytes",
+        "//pw_containers:vector",
+        "//pw_log",
+        "//pw_log:log_pwpb",
+        "//pw_log:protos.pwpb",
+        "//pw_protobuf",
+        "//pw_status",
     ],
 )
 
@@ -44,6 +71,7 @@ pw_cc_library(
     ],
     includes = ["public"],
     deps = [
+        ":log_filter",
         "//pw_assert",
         "//pw_log:log_pwpb",
         "//pw_log:protos.raw_rpc",
@@ -51,7 +79,6 @@ pw_cc_library(
         "//pw_protobuf",
         "//pw_result",
         "//pw_status",
-        "//pw_string",
         "//pw_sync:lock_annotations",
         "//pw_sync:mutex",
     ],
@@ -62,7 +89,12 @@ pw_cc_library(
     hdrs = ["public/pw_log_rpc/rpc_log_drain_thread.h"],
     includes = ["public"],
     deps = [
+        ":log_service",
         ":rpc_log_drain",
+        "//pw_multisink",
+        "//pw_result",
+        "//pw_rpc/raw:server_api",
+        "//pw_status",
         "//pw_sync:thread_notification",
         "//pw_thread:thread",
     ],
@@ -70,29 +102,41 @@ pw_cc_library(
 
 pw_cc_test(
     name = "log_service_test",
-    srcs = [
-        "log_service_test.cc",
-    ],
+    srcs = ["log_service_test.cc"],
     deps = [
+        ":log_filter",
         ":log_service",
         "//pw_containers:vector",
         "//pw_log",
         "//pw_log:log_pwpb",
         "//pw_log:proto_utils",
+        "//pw_log_tokenized:metadata",
         "//pw_protobuf",
+        "//pw_protobuf:bytes_utils",
         "//pw_result",
         "//pw_rpc/raw:test_method_context",
         "//pw_status",
-        "//pw_string",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "log_filter_test",
+    srcs = ["log_filter_test.cc"],
+    deps = [
+        ":log_filter",
+        "//pw_log:log_pwpb",
+        "//pw_log:proto_utils",
+        "//pw_log_tokenized:metadata",
+        "//pw_result",
+        "//pw_status",
         "//pw_unit_test",
     ],
 )
 
 pw_cc_test(
     name = "rpc_log_drain_test",
-    srcs = [
-        "rpc_log_drain_test.cc",
-    ],
+    srcs = ["rpc_log_drain_test.cc"],
     deps = [
         ":log_service",
         ":rpc_log_drain",

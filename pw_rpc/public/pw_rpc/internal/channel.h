@@ -79,7 +79,7 @@ class Channel : public rpc::Channel {
     return Send(buffer, packet);
   }
 
-  Status Send(OutputBuffer& output, const internal::Packet& packet);
+  Status Send(OutputBuffer& buffer, const internal::Packet& packet);
 
   void Release(OutputBuffer& buffer) {
     output().DiscardBuffer(buffer.buffer_);
@@ -88,11 +88,6 @@ class Channel : public rpc::Channel {
 
   // Allow setting the channel ID for tests.
   using rpc::Channel::set_channel_id;
-
-  // Allow accessing the client from the channel.
-  // TODO(pwbug/504): Remove this when users have migrated off the old API.
-  using rpc::Channel::client;
-  using rpc::Channel::set_client;
 };
 
 }  // namespace pw::rpc::internal

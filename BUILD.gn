@@ -18,6 +18,8 @@ import("$dir_pw_arduino_build/arduino.gni")
 import("$dir_pw_build/host_tool.gni")
 import("$dir_pw_build/python.gni")
 import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_rpc/config.gni")
+import("$dir_pw_third_party/mcuxpresso/mcuxpresso.gni")
 import("$dir_pw_toolchain/generate_toolchain.gni")
 import("$dir_pw_unit_test/test.gni")
 
@@ -36,7 +38,7 @@ declare_args() {
   pw_TARGET_APPLICATIONS = []
 
   # Whether to run integration tests, which may involve multiple processes
-  # communicating over a socket.
+  # communicating over a socket. Integration tests require RPC synchronization.
   pw_RUN_INTEGRATION_TESTS = host_os == "linux"
 }
 
@@ -47,12 +49,19 @@ group("default") {
   deps = [
     ":docs",
     ":host",
-    ":integration_tests",
     ":static_analysis",
     ":stm32f429i",
     "$dir_pw_env_setup:python.lint",
     "$dir_pw_env_setup:python.tests",
   ]
+
+  if (pw_RUN_INTEGRATION_TESTS) {
+    deps += [ ":integration_tests" ]
+  }
+}
+
+group("stm32_freertos_demo") {
+  deps = [ "$dir_pigweed/targets/stm32f429i_disc1_stm32cube:demo_app" ]
 }
 
 # This template generates a group that builds pigweed_default with a particular
@@ -103,6 +112,12 @@ _build_pigweed_default_at_all_optimization_levels("host_gcc") {
   toolchain_prefix = "$dir_pigweed/targets/host:host_gcc_"
 }
 
+if (pw_third_party_mcuxpresso_SDK != "") {
+  _build_pigweed_default_at_all_optimization_levels("mimxrt595") {
+    toolchain_prefix = "$dir_pigweed/targets/mimxrt595_evk:mimxrt595_evk_"
+  }
+}
+
 _build_pigweed_default_at_all_optimization_levels("stm32f429i") {
   toolchain_prefix = "$dir_pigweed/targets/stm32f429i_disc1:stm32f429i_disc1_"
 }
@@ -138,15 +153,13 @@ group("docs") {
 # Tests larger than unit tests, typically run in a specific configuration. Only
 # added if pw_RUN_INTEGRATION_TESTS is true.
 group("integration_tests") {
-  if (pw_RUN_INTEGRATION_TESTS) {
-    _default_tc = _default_toolchain_prefix + pw_default_optimization_level
-    deps = [
-      "$dir_pw_rpc:cpp_client_server_integration_test($_default_tc)",
-      "$dir_pw_rpc/py:python_client_cpp_server_test.action($_default_tc)",
-      "$dir_pw_transfer/py:python_cpp_transfer_test.action($_default_tc)",
-      "$dir_pw_unit_test/py:rpc_service_test.action($_default_tc)",
-    ]
-  }
+  _default_tc = _default_toolchain_prefix + pw_default_optimization_level
+  deps = [
+    "$dir_pw_rpc:cpp_client_server_integration_test($_default_tc)",
+    "$dir_pw_rpc/py:python_client_cpp_server_test.action($_default_tc)",
+    "$dir_pw_transfer/py:python_cpp_transfer_test.action($_default_tc)",
+    "$dir_pw_unit_test/py:rpc_service_test.action($_default_tc)",
+  ]
 }
 
 # OSS-Fuzz uses this target to build fuzzers alone.
@@ -154,6 +167,50 @@ group("fuzzers") {
   # Fuzzing is only supported on Linux and MacOS using clang.
   if (host_os != "win") {
     deps = [ ":pw_module_tests($dir_pigweed/targets/host:host_clang_fuzz)" ]
+  }
+}
+
+group("asan") {
+  if (host_os != "win") {
+    deps = [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_asan)" ]
+  }
+}
+
+group("msan") {
+  if (host_os != "win") {
+    deps = [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_msan)" ]
+  }
+}
+
+group("tsan") {
+  if (host_os != "win") {
+    deps = [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_tsan)" ]
+  }
+}
+
+group("ubsan") {
+  if (host_os != "win") {
+    deps =
+        [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_ubsan)" ]
+  }
+}
+
+group("ubsan_heuristic") {
+  if (host_os != "win") {
+    deps = [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_ubsan_heuristic)" ]
+  }
+}
+
+group("runtime_sanitizers") {
+  if (host_os != "win") {
+    deps = [
+      ":asan",
+      ":msan",
+      ":tsan",
+      ":ubsan",
+
+      # No ubsan_heuristic, which may have false positives.
+    ]
   }
 }
 
@@ -240,11 +297,13 @@ if (current_toolchain != default_toolchain) {
       "$dir_pw_preprocessor",
       "$dir_pw_protobuf",
       "$dir_pw_result",
+      "$dir_pw_spi",
       "$dir_pw_status",
       "$dir_pw_stream",
       "$dir_pw_string",
       "$dir_pw_sync",
       "$dir_pw_sys_io",
+      "$dir_pw_system",
       "$dir_pw_thread",
       "$dir_pw_tool",
       "$dir_pw_trace",
@@ -306,6 +365,7 @@ if (current_toolchain != default_toolchain) {
       "$dir_pw_snapshot:tests",
       "$dir_pw_software_update:tests",
       "$dir_pw_span:tests",
+      "$dir_pw_spi:tests",
       "$dir_pw_status:tests",
       "$dir_pw_stream:tests",
       "$dir_pw_string:tests",

@@ -17,9 +17,11 @@ import collections
 import copy
 import functools
 from itertools import chain
+import logging
 import operator
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List
 
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import (
     Dimension,
     HSplit,
@@ -30,10 +32,13 @@ from prompt_toolkit.widgets import MenuItem
 from pw_console.console_prefs import ConsolePrefs, error_unknown_window
 from pw_console.log_pane import LogPane
 import pw_console.widgets.checkbox
+from pw_console.widgets import WindowPaneToolbar
 from pw_console.window_list import WindowList, DisplayMode
 
+_LOG = logging.getLogger(__package__)
+
 # Weighted amount for adjusting window dimensions when enlarging and shrinking.
-_WINDOW_SPLIT_ADJUST = 2
+_WINDOW_SPLIT_ADJUST = 1
 
 
 class WindowManager:
@@ -51,6 +56,61 @@ class WindowManager:
         self.application = application
         self.window_lists: collections.deque = collections.deque()
         self.window_lists.append(WindowList(self))
+        self.key_bindings = self._create_key_bindings()
+        self.top_toolbars: List[WindowPaneToolbar] = []
+        self.bottom_toolbars: List[WindowPaneToolbar] = []
+
+    def _create_key_bindings(self) -> KeyBindings:
+        bindings = KeyBindings()
+
+        @bindings.add('escape', 'c-left')  # Alt-Ctrl-
+        def move_pane_left(_event):
+            """Move window pane left."""
+            self.move_pane_left()
+
+        @bindings.add('escape', 'c-right')  # Alt-Ctrl-
+        def move_pane_right(_event):
+            """Move window pane right."""
+            self.move_pane_right()
+
+        # NOTE: c-up and c-down seem swapped in prompt_toolkit
+        @bindings.add('escape', 'c-up')  # Alt-Ctrl-
+        def move_pane_down(_event):
+            """Move window pane down."""
+            self.move_pane_down()
+
+        # NOTE: c-up and c-down seem swapped in prompt_toolkit
+        @bindings.add('escape', 'c-down')  # Alt-Ctrl-
+        def move_pane_up(_event):
+            """Move window pane up."""
+            self.move_pane_up()
+
+        @bindings.add('escape', '=')  # Alt-= (mnemonic: Alt Plus)
+        def enlarge_pane(_event):
+            """Enlarge the active window pane."""
+            self.enlarge_pane()
+
+        @bindings.add('escape', '-')  # Alt-minus (mnemonic: Alt Minus)
+        def shrink_pane(_event):
+            """Shrink the active window pane."""
+            self.shrink_pane()
+
+        @bindings.add('escape', ',')  # Alt-, (mnemonic: Alt <)
+        def shrink_split(_event):
+            """Shrink the current window split."""
+            self.shrink_split()
+
+        @bindings.add('escape', '.')  # Alt-. (mnemonic: Alt >)
+        def enlarge_split(_event):
+            """Enlarge the current window split."""
+            self.enlarge_split()
+
+        @bindings.add('c-u')
+        def balance_window_panes(_event):
+            """Balance all window sizes."""
+            self.balance_window_sizes()
+
+        return bindings
 
     def delete_empty_window_lists(self):
         empty_lists = [
@@ -59,6 +119,12 @@ class WindowManager:
         ]
         for empty_list in empty_lists:
             self.window_lists.remove(empty_list)
+
+    def add_top_toolbar(self, toolbar: WindowPaneToolbar) -> None:
+        self.top_toolbars.append(toolbar)
+
+    def add_bottom_toolbar(self, toolbar: WindowPaneToolbar) -> None:
+        self.bottom_toolbars.append(toolbar)
 
     def create_root_container(self):
         """Create a vertical or horizontal split container for all active
@@ -86,7 +152,12 @@ class WindowManager:
                 padding_char='│',
                 padding_style='class:pane_separator',
             )
-        return HSplit([split])
+
+        split_items = []
+        split_items.extend(self.top_toolbars)
+        split_items.append(split)
+        split_items.extend(self.bottom_toolbars)
+        return HSplit(split_items)
 
     def update_root_container_body(self):
         # Replace the root MenuContainer body with the new split.
@@ -229,10 +300,10 @@ class WindowManager:
         self.reset_split_sizes()
 
     def reset_split_sizes(self):
-        """Reset all active pane width and height to 50%"""
+        """Reset all active pane width and height to defaults"""
         for window_list in self.window_lists:
-            window_list.height = Dimension(weight=50)
-            window_list.width = Dimension(weight=50)
+            window_list.height = Dimension(preferred=10)
+            window_list.width = Dimension(preferred=10)
 
     def adjust_split_size(self,
                           window_list: WindowList,
@@ -254,22 +325,22 @@ class WindowManager:
         next_window_list = self.window_lists[next_window_list_index]
 
         # Get current weight values
-        old_weight = window_list.width.weight
-        next_old_weight = next_window_list.width.weight  # type: ignore
+        old_width = window_list.width.preferred
+        next_old_width = next_window_list.width.preferred  # type: ignore
 
         # Add to the current split
-        new_weight = old_weight + diff
-        if new_weight <= 0:
-            new_weight = old_weight
+        new_width = old_width + diff
+        if new_width <= 0:
+            new_width = old_width
 
         # Subtract from the next split
-        next_new_weight = next_old_weight - diff
-        if next_new_weight <= 0:
-            next_new_weight = next_old_weight
+        next_new_width = next_old_width - diff
+        if next_new_width <= 0:
+            next_new_width = next_old_width
 
         # Set new weight values
-        window_list.width.weight = new_weight
-        next_window_list.width.weight = next_new_weight  # type: ignore
+        window_list.width.preferred = new_width
+        next_window_list.width.preferred = next_new_width  # type: ignore
 
     def toggle_pane(self, pane):
         """Toggle a pane on or off."""
@@ -317,6 +388,10 @@ class WindowManager:
         return chain.from_iterable(
             map(operator.attrgetter('active_panes'), self.window_lists))
 
+    def start_resize_pane(self, pane):
+        window_list, pane_index = self._find_window_list_and_pane_index(pane)
+        window_list.start_resize(pane, pane_index)
+
     def _find_window_list_and_pane_index(self, pane: Any):
         pane_index = None
         parent_window_list = None
@@ -362,7 +437,7 @@ class WindowManager:
             # Apply new height
             new_height = options['height']
             assert isinstance(new_height, int)
-            pane.height.weight = new_height
+            pane.height.preferred = new_height
 
     def _set_window_list_display_modes(self, prefs: ConsolePrefs) -> None:
         # Set column display modes
@@ -413,7 +488,8 @@ class WindowManager:
             self.window_lists[column_index].display_mode = DisplayMode.STACK
 
             # Add windows to the this column (window_list)
-            for window_title, window_options in windows.items():
+            for window_title, window_dict in windows.items():
+                window_options = window_dict if window_dict else {}
                 new_pane = None
                 desired_window_title = window_title
                 # Check for duplicate_of: Title value

@@ -13,21 +13,18 @@
 # the License.
 """Utilities for address symbolization."""
 
-import subprocess
-import threading
-import json
-from typing import Optional, List
+import abc
+from typing import Iterable, List
 from dataclasses import dataclass
-from pathlib import Path
 
 
 @dataclass(frozen=True)
 class Symbol:
     """Symbols produced by a symbolizer."""
     address: int
-    name: str
-    file: str
-    line: int
+    name: str = ''
+    file: str = ''
+    line: int = 0
 
     def to_string(self, max_filename_len: int = 30) -> str:
         if not self.name:
@@ -52,62 +49,11 @@ class Symbol:
         return self.to_string()
 
 
-class LlvmSymbolizer:
-    """Symbolize addresses."""
-    def __init__(self, binary: Optional[Path] = None):
-        # Lets destructor return cleanly if the binary is not found.
-        self._symbolizer = None
-
-        if binary is not None:
-            if not binary.exists():
-                raise FileNotFoundError(binary)
-
-            cmd = [
-                'llvm-symbolizer',
-                '--no-inlines',
-                '--demangle',
-                '--functions',
-                '--output-style=JSON',
-                '--exe',
-                str(binary),
-            ]
-            self._symbolizer = subprocess.Popen(cmd,
-                                                stdout=subprocess.PIPE,
-                                                stdin=subprocess.PIPE)
-
-            self._lock = threading.Lock()
-
-    def __del__(self):
-        if self._symbolizer:
-            self._symbolizer.terminate()
-
+class Symbolizer(abc.ABC):
+    """An interface for symbolizing addresses."""
+    @abc.abstractmethod
     def symbolize(self, address: int) -> Symbol:
-        """Symbolizes an address using the loaded ELF file."""
-        if not self._symbolizer:
-            return Symbol(address=address, name='', file='', line=0)
-
-        with self._lock:
-            stdin = self._symbolizer.stdin
-            stdout = self._symbolizer.stdout
-
-            assert stdin is not None
-            assert stdout is not None
-
-            stdin.write(f'0x{address:08X}\n'.encode())
-            stdin.flush()
-
-            results = json.loads(stdout.readline().decode())
-            # The symbol resolution should give us at least one symbol, even
-            # if it's largely empty.
-            assert len(results["Symbol"]) > 0
-
-            # Get the first symbol.
-            symbol = results["Symbol"][0]
-
-            return Symbol(address=address,
-                          name=symbol['FunctionName'],
-                          file=symbol['FileName'],
-                          line=symbol['Line'])
+        """Symbolizes an address using a loaded binary or symbol database."""
 
     def dump_stack_trace(self,
                          addresses,
@@ -137,3 +83,19 @@ class LlvmSymbolizer:
             stack_trace.append(f'      in {symbol.file_and_line()}')
 
         return '\n'.join(stack_trace)
+
+
+class FakeSymbolizer(Symbolizer):
+    """A fake symbolizer that only knows a fixed set of symbols."""
+    def __init__(self, known_symbols: Iterable[Symbol] = None):
+        if known_symbols is not None:
+            self._db = {sym.address: sym for sym in known_symbols}
+        else:
+            self._db = {}
+
+    def symbolize(self, address: int) -> Symbol:
+        """Symbolizes a fixed symbol database."""
+        if address in self._db:
+            return self._db[address]
+
+        return Symbol(address)

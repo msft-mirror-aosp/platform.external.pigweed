@@ -27,7 +27,7 @@ namespace pw::software_update {
 // Implementation class for pw.software_update.BundledUpdate.
 // See bundled_update.proto for RPC method documentation.
 class BundledUpdateService
-    : public generated::BundledUpdate<BundledUpdateService> {
+    : public pw_rpc::nanopb::BundledUpdate::Service<BundledUpdateService> {
  public:
   BundledUpdateService(UpdateBundleAccessor& bundle,
                        BundledUpdateBackend& backend,
@@ -41,34 +41,28 @@ class BundledUpdateService
     status_.state = pw_software_update_BundledUpdateState_Enum_INACTIVE;
   }
 
-  Status GetStatus(ServerContext&,
-                   const pw_protobuf_Empty& request,
+  Status GetStatus(const pw_protobuf_Empty& request,
                    pw_software_update_BundledUpdateStatus& response);
 
   // Sync
-  Status Start(ServerContext&,
-               const pw_software_update_StartRequest& request,
+  Status Start(const pw_software_update_StartRequest& request,
                pw_software_update_BundledUpdateStatus& response);
 
   // Async
-  Status Verify(ServerContext&,
-                const pw_protobuf_Empty& request,
+  Status Verify(const pw_protobuf_Empty& request,
                 pw_software_update_BundledUpdateStatus& response);
 
   // Async
-  Status Apply(ServerContext&,
-               const pw_protobuf_Empty& request,
+  Status Apply(const pw_protobuf_Empty& request,
                pw_software_update_BundledUpdateStatus& response);
 
   // Currently sync, should be async.
   // TODO: Make this async to support aborting verify/apply.
-  Status Abort(ServerContext&,
-               const pw_protobuf_Empty& request,
+  Status Abort(const pw_protobuf_Empty& request,
                pw_software_update_BundledUpdateStatus& response);
 
   // Sync
-  Status Reset(ServerContext&,
-               const pw_protobuf_Empty& request,
+  Status Reset(const pw_protobuf_Empty& request,
                pw_software_update_BundledUpdateStatus& response);
 
   // Notify the service that the bundle transfer has completed. The service has
@@ -78,6 +72,9 @@ class BundledUpdateService
   // After this call, the service will be in TRANSFERRED state if and only if
   // it was in the TRANSFERRING state.
   void NotifyTransferSucceeded();
+
+  // TODO(davidrogers) Add a MaybeFinishApply() method that is called after
+  // reboot to finish any need apply and verify work.
 
   // TODO:
   // VerifyProgress - to update % complete.
@@ -94,6 +91,11 @@ class BundledUpdateService
 
   void DoVerify();
   void DoApply();
+  void Finish(_pw_software_update_BundledUpdateResult_Enum result)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool IsFinished() const PW_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    return status_.state == pw_software_update_BundledUpdateState_Enum_FINISHED;
+  }
 };
 
 }  // namespace pw::software_update

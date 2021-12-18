@@ -20,7 +20,6 @@
 #include "pw_rpc/internal/method_impl_tester.h"
 #include "pw_rpc/internal/test_utils.h"
 #include "pw_rpc/nanopb/internal/method_union.h"
-#include "pw_rpc/server_context.h"
 #include "pw_rpc/service.h"
 #include "pw_rpc_nanopb_private/internal_test_utils.h"
 #include "pw_rpc_test_protos/test.pb.h"
@@ -37,73 +36,56 @@ class TestNanopbService final : public Service {
  public:
   // Unary signatures
 
-  Status Unary(ServerContext&, const FakePb&, FakePb&) { return Status(); }
+  Status Unary(const FakePb&, FakePb&) { return Status(); }
 
-  static Status StaticUnary(ServerContext&, const FakePb&, FakePb&) {
-    return Status();
-  }
+  static Status StaticUnary(const FakePb&, FakePb&) { return Status(); }
 
-  void AsyncUnary(ServerContext&,
-                  const FakePb&,
-                  NanopbUnaryResponder<FakePb>&) {}
+  void AsyncUnary(const FakePb&, NanopbUnaryResponder<FakePb>&) {}
 
-  static void StaticAsyncUnary(ServerContext&,
-                               const FakePb&,
-                               NanopbUnaryResponder<FakePb>&) {}
+  static void StaticAsyncUnary(const FakePb&, NanopbUnaryResponder<FakePb>&) {}
 
-  Status UnaryWrongArg(ServerContext&, FakePb&, FakePb&) { return Status(); }
+  Status UnaryWrongArg(FakePb&, FakePb&) { return Status(); }
 
-  static void StaticUnaryVoidReturn(ServerContext&, const FakePb&, FakePb&) {}
+  static void StaticUnaryVoidReturn(const FakePb&, FakePb&) {}
 
   // Server streaming signatures
 
-  void ServerStreaming(ServerContext&,
-                       const FakePb&,
-                       NanopbServerWriter<FakePb>&) {}
+  void ServerStreaming(const FakePb&, NanopbServerWriter<FakePb>&) {}
 
-  static void StaticServerStreaming(ServerContext&,
-                                    const FakePb&,
+  static void StaticServerStreaming(const FakePb&,
                                     NanopbServerWriter<FakePb>&) {}
 
-  int ServerStreamingBadReturn(ServerContext&,
-                               const FakePb&,
-                               NanopbServerWriter<FakePb>&) {
+  int ServerStreamingBadReturn(const FakePb&, NanopbServerWriter<FakePb>&) {
     return 5;
   }
 
-  static void StaticServerStreamingMissingArg(const FakePb&,
-                                              NanopbServerWriter<FakePb>&) {}
+  static void StaticServerStreamingMissingArg(NanopbServerWriter<FakePb>&) {}
 
   // Client streaming signatures
 
-  void ClientStreaming(ServerContext&, NanopbServerReader<FakePb, FakePb>&) {}
+  void ClientStreaming(NanopbServerReader<FakePb, FakePb>&) {}
 
-  static void StaticClientStreaming(ServerContext&,
-                                    NanopbServerReader<FakePb, FakePb>&) {}
+  static void StaticClientStreaming(NanopbServerReader<FakePb, FakePb>&) {}
 
-  int ClientStreamingBadReturn(ServerContext&,
-                               NanopbServerReader<FakePb, FakePb>&) {
+  int ClientStreamingBadReturn(NanopbServerReader<FakePb, FakePb>&) {
     return 0;
   }
 
-  static void StaticClientStreamingMissingArg(
-      NanopbServerReader<FakePb, FakePb>&) {}
+  static void StaticClientStreamingMissingArg() {}
 
   // Bidirectional streaming signatures
 
-  void BidirectionalStreaming(ServerContext&,
-                              NanopbServerReaderWriter<FakePb, FakePb>&) {}
+  void BidirectionalStreaming(NanopbServerReaderWriter<FakePb, FakePb>&) {}
 
   static void StaticBidirectionalStreaming(
-      ServerContext&, NanopbServerReaderWriter<FakePb, FakePb>&) {}
+      NanopbServerReaderWriter<FakePb, FakePb>&) {}
 
   int BidirectionalStreamingBadReturn(
-      ServerContext&, NanopbServerReaderWriter<FakePb, FakePb>&) {
+      NanopbServerReaderWriter<FakePb, FakePb>&) {
     return 0;
   }
 
-  static void StaticBidirectionalStreamingMissingArg(
-      NanopbServerReaderWriter<FakePb, FakePb>&) {}
+  static void StaticBidirectionalStreamingMissingArg() {}
 };
 
 struct WrongPb;
@@ -130,84 +112,86 @@ static_assert(MethodImplTests<NanopbMethod, TestNanopbService>().Pass(
     std::tuple<const NanopbMethodSerde&>(
         kNanopbMethodSerde<nullptr, nullptr>)));
 
-pw_rpc_test_TestRequest last_request;
-NanopbServerWriter<pw_rpc_test_TestResponse> last_writer;
-NanopbServerReader<pw_rpc_test_TestRequest, pw_rpc_test_TestResponse>
-    last_reader;
-NanopbServerReaderWriter<pw_rpc_test_TestRequest, pw_rpc_test_TestResponse>
-    last_reader_writer;
-
-Status DoNothing(ServerContext&, const pw_rpc_test_Empty&, pw_rpc_test_Empty&) {
-  return Status::Unknown();
-}
-
-void AddFive(ServerContext&,
-             const pw_rpc_test_TestRequest& request,
-             NanopbUnaryResponder<pw_rpc_test_TestResponse>& responder) {
-  last_request = request;
-  ASSERT_EQ(
-      OkStatus(),
-      responder.Finish({.value = static_cast<int32_t>(request.integer + 5)},
-                       Status::Unauthenticated()));
-}
-
-void StartStream(ServerContext&,
-                 const pw_rpc_test_TestRequest& request,
-                 NanopbServerWriter<pw_rpc_test_TestResponse>& writer) {
-  last_request = request;
-  last_writer = std::move(writer);
-}
-
-void ClientStream(ServerContext&,
-                  NanopbServerReader<pw_rpc_test_TestRequest,
-                                     pw_rpc_test_TestResponse>& reader) {
-  last_reader = std::move(reader);
-}
-
-void BidirectionalStream(
-    ServerContext&,
-    NanopbServerReaderWriter<pw_rpc_test_TestRequest, pw_rpc_test_TestResponse>&
-        reader_writer) {
-  last_reader_writer = std::move(reader_writer);
-}
-
-class FakeService : public Service {
+template <typename Impl>
+class FakeServiceBase : public Service {
  public:
-  FakeService(uint32_t id) : Service(id, kMethods) {}
+  FakeServiceBase(uint32_t id) : Service(id, kMethods) {}
 
   static constexpr std::array<NanopbMethodUnion, 5> kMethods = {
-      NanopbMethod::SynchronousUnary<DoNothing>(
+      NanopbMethod::SynchronousUnary<&Impl::DoNothing>(
           10u,
           kNanopbMethodSerde<pw_rpc_test_Empty_fields,
                              pw_rpc_test_Empty_fields>),
-      NanopbMethod::AsynchronousUnary<AddFive>(
+      NanopbMethod::AsynchronousUnary<&Impl::AddFive>(
           11u,
           kNanopbMethodSerde<pw_rpc_test_TestRequest_fields,
                              pw_rpc_test_TestResponse_fields>),
-      NanopbMethod::ServerStreaming<StartStream>(
+      NanopbMethod::ServerStreaming<&Impl::StartStream>(
           12u,
           kNanopbMethodSerde<pw_rpc_test_TestRequest_fields,
                              pw_rpc_test_TestResponse_fields>),
-      NanopbMethod::ClientStreaming<ClientStream>(
+      NanopbMethod::ClientStreaming<&Impl::ClientStream>(
           13u,
           kNanopbMethodSerde<pw_rpc_test_TestRequest_fields,
                              pw_rpc_test_TestResponse_fields>),
-      NanopbMethod::BidirectionalStreaming<BidirectionalStream>(
+      NanopbMethod::BidirectionalStreaming<&Impl::BidirectionalStream>(
           14u,
           kNanopbMethodSerde<pw_rpc_test_TestRequest_fields,
                              pw_rpc_test_TestResponse_fields>)};
 };
 
+class FakeService : public FakeServiceBase<FakeService> {
+ public:
+  FakeService(uint32_t id) : FakeServiceBase(id) {}
+
+  Status DoNothing(const pw_rpc_test_Empty&, pw_rpc_test_Empty&) {
+    return Status::Unknown();
+  }
+
+  void AddFive(const pw_rpc_test_TestRequest& request,
+               NanopbUnaryResponder<pw_rpc_test_TestResponse>& responder) {
+    last_request = request;
+    ASSERT_EQ(
+        OkStatus(),
+        responder.Finish({.value = static_cast<int32_t>(request.integer + 5)},
+                         Status::Unauthenticated()));
+  }
+
+  void StartStream(const pw_rpc_test_TestRequest& request,
+                   NanopbServerWriter<pw_rpc_test_TestResponse>& writer) {
+    last_request = request;
+    last_writer = std::move(writer);
+  }
+
+  void ClientStream(NanopbServerReader<pw_rpc_test_TestRequest,
+                                       pw_rpc_test_TestResponse>& reader) {
+    last_reader = std::move(reader);
+  }
+
+  void BidirectionalStream(
+      NanopbServerReaderWriter<pw_rpc_test_TestRequest,
+                               pw_rpc_test_TestResponse>& reader_writer) {
+    last_reader_writer = std::move(reader_writer);
+  }
+
+  pw_rpc_test_TestRequest last_request;
+  NanopbServerWriter<pw_rpc_test_TestResponse> last_writer;
+  NanopbServerReader<pw_rpc_test_TestRequest, pw_rpc_test_TestResponse>
+      last_reader;
+  NanopbServerReaderWriter<pw_rpc_test_TestRequest, pw_rpc_test_TestResponse>
+      last_reader_writer;
+};
+
 constexpr const NanopbMethod& kSyncUnary =
-    std::get<0>(FakeService::kMethods).nanopb_method();
+    std::get<0>(FakeServiceBase<FakeService>::kMethods).nanopb_method();
 constexpr const NanopbMethod& kAsyncUnary =
-    std::get<1>(FakeService::kMethods).nanopb_method();
+    std::get<1>(FakeServiceBase<FakeService>::kMethods).nanopb_method();
 constexpr const NanopbMethod& kServerStream =
-    std::get<2>(FakeService::kMethods).nanopb_method();
+    std::get<2>(FakeServiceBase<FakeService>::kMethods).nanopb_method();
 constexpr const NanopbMethod& kClientStream =
-    std::get<3>(FakeService::kMethods).nanopb_method();
+    std::get<3>(FakeServiceBase<FakeService>::kMethods).nanopb_method();
 constexpr const NanopbMethod& kBidirectionalStream =
-    std::get<4>(FakeService::kMethods).nanopb_method();
+    std::get<4>(FakeServiceBase<FakeService>::kMethods).nanopb_method();
 
 TEST(NanopbMethod, AsyncUnaryRpc_SendsResponse) {
   PW_ENCODE_PB(
@@ -227,7 +211,7 @@ TEST(NanopbMethod, AsyncUnaryRpc_SendsResponse) {
   EXPECT_EQ(0,
             std::memcmp(expected, response.payload().data(), sizeof(expected)));
 
-  EXPECT_EQ(123, last_request.integer);
+  EXPECT_EQ(123, context.service().last_request.integer);
 }
 
 TEST(NanopbMethod, SyncUnaryRpc_InvalidPayload_SendsError) {
@@ -262,7 +246,7 @@ TEST(NanopbMethod, AsyncUnaryRpc_BufferTooSmallForResponse_SendsInternalError) {
   EXPECT_EQ(context.service_id(), packet.service_id());
   EXPECT_EQ(kAsyncUnary.id(), packet.method_id());
 
-  EXPECT_EQ(value, last_request.integer);
+  EXPECT_EQ(value, context.service().last_request.integer);
 }
 
 TEST(NanopbMethod, ServerStreamingRpc_SendsNothingWhenInitiallyCalled) {
@@ -274,7 +258,7 @@ TEST(NanopbMethod, ServerStreamingRpc_SendsNothingWhenInitiallyCalled) {
   kServerStream.Invoke(context.get(), context.request(request));
 
   EXPECT_EQ(0u, context.output().packet_count());
-  EXPECT_EQ(555, last_request.integer);
+  EXPECT_EQ(555, context.service().last_request.integer);
 }
 
 TEST(NanopbMethod, ServerWriter_SendsResponse) {
@@ -282,7 +266,7 @@ TEST(NanopbMethod, ServerWriter_SendsResponse) {
 
   kServerStream.Invoke(context.get(), context.request({}));
 
-  EXPECT_EQ(OkStatus(), last_writer.Write({.value = 100}));
+  EXPECT_EQ(OkStatus(), context.service().last_writer.Write({.value = 100}));
 
   PW_ENCODE_PB(pw_rpc_test_TestResponse, payload, .value = 100);
   std::array<byte, 128> encoded_response = {};
@@ -301,8 +285,10 @@ TEST(NanopbMethod, ServerWriter_WriteWhenClosed_ReturnsFailedPrecondition) {
 
   kServerStream.Invoke(context.get(), context.request({}));
 
-  EXPECT_EQ(OkStatus(), last_writer.Finish());
-  EXPECT_TRUE(last_writer.Write({.value = 100}).IsFailedPrecondition());
+  EXPECT_EQ(OkStatus(), context.service().last_writer.Finish());
+  EXPECT_TRUE(context.service()
+                  .last_writer.Write({.value = 100})
+                  .IsFailedPrecondition());
 }
 
 TEST(NanopbMethod, ServerWriter_WriteAfterMoved_ReturnsFailedPrecondition) {
@@ -310,12 +296,14 @@ TEST(NanopbMethod, ServerWriter_WriteAfterMoved_ReturnsFailedPrecondition) {
 
   kServerStream.Invoke(context.get(), context.request({}));
   NanopbServerWriter<pw_rpc_test_TestResponse> new_writer =
-      std::move(last_writer);
+      std::move(context.service().last_writer);
 
   EXPECT_EQ(OkStatus(), new_writer.Write({.value = 100}));
 
-  EXPECT_EQ(Status::FailedPrecondition(), last_writer.Write({.value = 100}));
-  EXPECT_EQ(Status::FailedPrecondition(), last_writer.Finish());
+  EXPECT_EQ(Status::FailedPrecondition(),
+            context.service().last_writer.Write({.value = 100}));
+  EXPECT_EQ(Status::FailedPrecondition(),
+            context.service().last_writer.Finish());
 
   EXPECT_EQ(OkStatus(), new_writer.Finish());
 }
@@ -338,8 +326,10 @@ TEST(NanopbMethod,
 
   kServerStream.Invoke(context.get(), context.request({}));
 
-  EXPECT_EQ(OkStatus(), last_writer.Write({}));  // Barely fits
-  EXPECT_EQ(Status::Internal(), last_writer.Write({.value = 1}));  // Too big
+  EXPECT_EQ(OkStatus(),
+            context.service().last_writer.Write({}));  // Barely fits
+  EXPECT_EQ(Status::Internal(),
+            context.service().last_writer.Write({.value = 1}));  // Too big
 }
 
 TEST(NanopbMethod, ServerReader_HandlesRequests) {
@@ -348,7 +338,7 @@ TEST(NanopbMethod, ServerReader_HandlesRequests) {
   kClientStream.Invoke(context.get(), context.request({}));
 
   pw_rpc_test_TestRequest request_struct{};
-  last_reader.set_on_next(
+  context.service().last_reader.set_on_next(
       [&request_struct](const pw_rpc_test_TestRequest& req) {
         request_struct = req;
       });
@@ -370,7 +360,8 @@ TEST(NanopbMethod, ServerReaderWriter_WritesResponses) {
 
   kBidirectionalStream.Invoke(context.get(), context.request({}));
 
-  EXPECT_EQ(OkStatus(), last_reader_writer.Write({.value = 100}));
+  EXPECT_EQ(OkStatus(),
+            context.service().last_reader_writer.Write({.value = 100}));
 
   PW_ENCODE_PB(pw_rpc_test_TestResponse, payload, .value = 100);
   std::array<byte, 128> encoded_response = {};
@@ -390,7 +381,7 @@ TEST(NanopbMethod, ServerReaderWriter_HandlesRequests) {
   kBidirectionalStream.Invoke(context.get(), context.request({}));
 
   pw_rpc_test_TestRequest request_struct{};
-  last_reader_writer.set_on_next(
+  context.service().last_reader_writer.set_on_next(
       [&request_struct](const pw_rpc_test_TestRequest& req) {
         request_struct = req;
       });

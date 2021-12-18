@@ -17,6 +17,7 @@
 
 #include "pw_assert/assert.h"
 #include "pw_function/function.h"
+#include "pw_rpc/raw/client_reader_writer.h"
 #include "pw_stream/stream.h"
 #include "pw_transfer/internal/context.h"
 
@@ -28,61 +29,52 @@ namespace internal {
 
 class ClientContext : public Context {
  public:
-  constexpr ClientContext()
-      : internal::Context(),
+  ClientContext()
+      : internal::Context(OnCompletion),
         client_(nullptr),
-        on_completion_(nullptr),
-        is_last_chunk_(false) {}
+        on_completion_(nullptr) {}
 
-  constexpr bool active() const { return client_ != nullptr; }
+  constexpr bool is_read_transfer() const { return type() == kReceive; }
+  constexpr bool is_write_transfer() const { return type() == kTransmit; }
 
-  constexpr bool is_read_transfer() const {
-    // A read transfer reads data from the server and writes it to the client.
-    return std::holds_alternative<stream::Writer*>(stream_);
-  }
-  constexpr bool is_write_transfer() const { return !is_read_transfer(); }
-
-  constexpr bool is_last_chunk() const { return is_last_chunk_; }
-  constexpr void set_is_last_chunk(bool is_last_chunk) {
-    is_last_chunk_ = is_last_chunk;
-  }
-
-  constexpr Client& client() {
+  Client& client() {
     PW_DASSERT(active());
     return *client_;
   }
 
-  constexpr stream::Reader& reader() const {
-    PW_DASSERT(active() && is_write_transfer());
-    return *std::get<stream::Reader*>(stream_);
-  }
-
-  constexpr stream::Writer& writer() const {
-    PW_DASSERT(active() && is_read_transfer());
-    return *std::get<stream::Writer*>(stream_);
-  }
-
   void StartRead(Client& client,
                  uint32_t transfer_id,
+                 work_queue::WorkQueue& work_queue,
                  stream::Writer& writer,
-                 Function<void(Status)> on_completion);
+                 rpc::RawClientReaderWriter& stream,
+                 Function<void(Status)>&& on_completion,
+                 chrono::SystemClock::duration chunk_timeout);
 
   void StartWrite(Client& client,
                   uint32_t transfer_id,
+                  work_queue::WorkQueue& work_queue,
                   stream::Reader& reader,
-                  Function<void(Status)> on_completion);
+                  rpc::RawClientReaderWriter& stream,
+                  Function<void(Status)>&& on_completion,
+                  chrono::SystemClock::duration chunk_timeout);
 
   void Finish(Status status) {
     PW_DASSERT(active());
-    on_completion_(status);
+    set_transfer_state(TransferState::kCompleted);
+    if (on_completion_ != nullptr) {
+      on_completion_(status);
+    }
     client_ = nullptr;
   }
 
  private:
+  static Status OnCompletion(Context& ctx, Status status) {
+    static_cast<ClientContext&>(ctx).Finish(status);
+    return OkStatus();
+  }
+
   Client* client_;
-  std::variant<std::monostate, stream::Reader*, stream::Writer*> stream_;
   Function<void(Status)> on_completion_;
-  bool is_last_chunk_;
 };
 
 }  // namespace internal

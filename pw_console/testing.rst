@@ -1,5 +1,6 @@
 .. _module-pw_console-testing:
 
+=====================
 Manual Test Procedure
 =====================
 
@@ -9,7 +10,7 @@ user interface are preferred but not always possible. For those situations
 manual tests should be added here to validate expected behavior.
 
 Run in Test Mode
-----------------
+================
 
 Begin each section below by running the console in test mode:
 
@@ -18,7 +19,7 @@ Begin each section below by running the console in test mode:
   pw console --test-mode
 
 Test Sections
--------------
+=============
 
 Log Pane: Basic Actions
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -354,6 +355,37 @@ Window Management
        | on the tab bar
      - |checkbox|
 
+Mouse Window Resizing
+^^^^^^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :widths: 5 45 45 5
+   :header-rows: 1
+
+   * - #
+     - Test Action
+     - Expected Result
+     - ✅
+
+   * - 1
+     - | Click the :guilabel:`Fake Device Logs` window
+     - Log pane is focused
+     - |checkbox|
+
+   * - 2
+     - | Left click and hold the :guilabel:`====` of that window
+       | Drag the mouse up and down
+     - This log pane is resized
+     - |checkbox|
+
+   * - 3
+     - | Left click and hold the :guilabel:`====`
+       | of the :guilabel:`PwConsole Debug` window
+       | Drag the mouse up and down
+     - | The :guilabel:`PwConsole Debug` should NOT be focused
+       | The window should be resized as expected
+     - |checkbox|
+
 Copy Paste
 ^^^^^^^^^^
 
@@ -470,11 +502,21 @@ Python Input & Output
      - ✅
 
    * - 1
-     - Click the ``Python Input`` window title
-     - Python Input pane is focused
+     - Click the ``Logs`` window title
+     - Log pane is focused
      - |checkbox|
 
    * - 2
+     - Click empty whitespace in the ``Python Results`` window
+     - Python Results pane is focused
+     - |checkbox|
+
+   * - 3
+     - Click empty whitespace in the ``Python Input`` window
+     - Python Input pane is focused
+     - |checkbox|
+
+   * - 4
      - | Enter the following text and press enter to run
        | ``[i for i in __builtins__ if not i.startswith('_')]``
      - | The results should appear pretty printed
@@ -488,8 +530,21 @@ Python Input & Output
        |
      - |checkbox|
 
+   * - 5
+     - | Enter the following text and press enter to run
+       | ``globals()``
+     - | The results should appear pretty printed
+     - |checkbox|
+
+   * - 6
+     - | With the cursor over the Python Output,
+       | use the mouse wheel to scroll up and down.
+     - | The output window should be able to scroll all
+       | the way to the beginning and end of the buffer.
+     - |checkbox|
+
 Add note to the commit message
-------------------------------
+==============================
 
 Add a ``Testing:`` line to your commit message and mention the steps
 executed. For example:
