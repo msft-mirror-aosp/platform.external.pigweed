@@ -20,11 +20,12 @@
 
 namespace pw::unit_test {
 
-class UnitTestService final : public generated::UnitTest<UnitTestService> {
+class UnitTestService final
+    : public pw_rpc::raw::UnitTest::Service<UnitTestService> {
  public:
   UnitTestService() : handler_(*this), verbose_(false) {}
 
-  void Run(ServerContext&, ConstByteSpan request, RawServerWriter& writer);
+  void Run(ConstByteSpan request, RawServerWriter& writer);
 
  private:
   friend class internal::RpcEventHandler;

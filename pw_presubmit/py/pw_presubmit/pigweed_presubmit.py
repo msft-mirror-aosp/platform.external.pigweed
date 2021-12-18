@@ -220,15 +220,23 @@ def gn_teensy_build(ctx: PresubmitContext):
 def gn_software_update_build(ctx: PresubmitContext):
     build.install_package(ctx.package_root, 'nanopb')
     build.install_package(ctx.package_root, 'protobuf')
-    build.gn_gen(ctx.root,
-                 ctx.output_dir,
-                 dir_pw_third_party_protobuf='"{}"'.format(ctx.package_root /
-                                                           'protobuf'),
-                 dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root /
-                                                         'nanopb'))
+    build.install_package(ctx.package_root, 'mbedtls')
+    build.install_package(ctx.package_root, 'micro-ecc')
+    build.gn_gen(
+        ctx.root,
+        ctx.output_dir,
+        dir_pw_third_party_protobuf='"{}"'.format(ctx.package_root /
+                                                  'protobuf'),
+        dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root / 'nanopb'),
+        dir_pw_third_party_micro_ecc='"{}"'.format(ctx.package_root /
+                                                   'micro-ecc'),
+        pw_crypto_ECDSA_BACKEND='"{}"'.format(ctx.root /
+                                              'pw_crypto:ecdsa_uecc'),
+        dir_pw_third_party_mbedtls='"{}"'.format(ctx.package_root / 'mbedtls'),
+        pw_crypto_SHA256_BACKEND='"{}"'.format(ctx.root /
+                                               'pw_crypto:sha256_mbedtls'))
     build.ninja(
         ctx.output_dir,
-        *_at_all_optimization_levels('stm32f429i'),
         *_at_all_optimization_levels('host_clang'),
     )
 
@@ -315,8 +323,8 @@ _MODULES_THAT_BUILD_WITH_BAZEL = [
     '//pw_multisink/...',
     '//pw_polyfill/...',
     '//pw_preprocessor/...',
-    '//pw_protobuf_compiler/...',
     '//pw_protobuf/...',
+    '//pw_protobuf_compiler/...',
     '//pw_random/...',
     '//pw_result/...',
     '//pw_rpc/...',
@@ -336,6 +344,7 @@ _MODULES_THAT_BUILD_WITH_BAZEL = [
     '//pw_thread_stl/...',
     '//pw_tool/...',
     '//pw_toolchain/...',
+    '//pw_transfer/...',
     '//pw_unit_test/...',
     '//pw_varint/...',
     '//pw_web_ui/...',
@@ -375,43 +384,17 @@ _MODULES_THAT_TEST_WITH_BAZEL = [
 
 @filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl',
                         'BUILD'))
-def bazel_test(ctx: PresubmitContext):
+def bazel_test(ctx: PresubmitContext) -> None:
     """Runs bazel test on each bazel compatible module"""
-    try:
-        call('bazel',
-             'test',
-             *_MODULES_THAT_TEST_WITH_BAZEL,
-             '--verbose_failures',
-             '--verbose_explanations',
-             '--worker_verbose',
-             '--test_output=errors',
-             cwd=ctx.root,
-             env=build.env_with_clang_vars())
-    except:
-        _LOG.info('If the Bazel build inexplicably fails while the '
-                  'other builds are passing, try deleting the Bazel cache:\n'
-                  '    rm -rf ~/.cache/bazel')
-        raise
+    build.bazel(ctx, 'test', *_MODULES_THAT_TEST_WITH_BAZEL,
+                '--test_output=errors')
 
 
 @filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl',
                         'BUILD'))
-def bazel_build(ctx: PresubmitContext):
-    """Runs Bazel build on each Bazel compatible module"""
-    try:
-        call('bazel',
-             'build',
-             *_MODULES_THAT_BUILD_WITH_BAZEL,
-             '--verbose_failures',
-             '--verbose_explanations',
-             '--worker_verbose',
-             cwd=ctx.root,
-             env=build.env_with_clang_vars())
-    except:
-        _LOG.info('If the Bazel build inexplicably fails while the '
-                  'other builds are passing, try deleting the Bazel cache:\n'
-                  '    rm -rf ~/.cache/bazel')
-        raise
+def bazel_build(ctx: PresubmitContext) -> None:
+    """Runs Bazel build on each Bazel compatible module."""
+    build.bazel(ctx, 'build', *_MODULES_THAT_BUILD_WITH_BAZEL)
 
 
 #
@@ -751,6 +734,7 @@ def renode_check(ctx: PresubmitContext):
 #
 
 OTHER_CHECKS = (
+    cpp_checks.all_sanitizers(),
     # Build that attempts to duplicate the build OSS-Fuzz does. Currently
     # failing.
     oss_fuzz_build,
@@ -787,6 +771,7 @@ LINTFORMAT = (
     _LINTFORMAT,
     static_analysis,
     pw_presubmit.python_checks.check_python_versions,
+    pw_presubmit.python_checks.gn_python_lint,
 )
 
 QUICK = (

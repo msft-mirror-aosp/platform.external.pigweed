@@ -47,14 +47,13 @@ def _user_args(method: ProtoServiceMethod) -> Iterable[str]:
         yield '::pw::ConstByteSpan request'
 
     if method.server_streaming():
-        yield '::pw::Function<void(ConstByteSpan)> on_next = nullptr'
-        yield '::pw::Function<void(::pw::Status)> on_completed = nullptr'
+        yield '::pw::Function<void(::pw::ConstByteSpan)>&& on_next = nullptr'
+        yield '::pw::Function<void(::pw::Status)>&& on_completed = nullptr'
     else:
-        yield (
-            '::pw::Function<void(ConstByteSpan, ::pw::Status)> on_completed '
-            '= nullptr')
+        yield ('::pw::Function<void(::pw::ConstByteSpan, ::pw::Status)>&& '
+               'on_completed = nullptr')
 
-    yield '::pw::Function<void(::pw::Status)> on_error = nullptr'
+    yield '::pw::Function<void(::pw::Status)>&& on_error = nullptr'
 
 
 class RawCodeGenerator(CodeGenerator):
@@ -137,7 +136,7 @@ class RawCodeGenerator(CodeGenerator):
 
 class StubGenerator(codegen.StubGenerator):
     def unary_signature(self, method: ProtoServiceMethod, prefix: str) -> str:
-        return (f'pw::StatusWithSize {prefix}{method.name()}(ServerContext&, '
+        return (f'pw::StatusWithSize {prefix}{method.name()}('
                 'pw::ConstByteSpan request, pw::ByteSpan response)')
 
     def unary_stub(self, method: ProtoServiceMethod,
@@ -151,17 +150,16 @@ class StubGenerator(codegen.StubGenerator):
     def server_streaming_signature(self, method: ProtoServiceMethod,
                                    prefix: str) -> str:
 
-        return (f'void {prefix}{method.name()}(ServerContext&, '
+        return (f'void {prefix}{method.name()}('
                 'pw::ConstByteSpan request, RawServerWriter& writer)')
 
     def client_streaming_signature(self, method: ProtoServiceMethod,
                                    prefix: str) -> str:
-        return (f'void {prefix}{method.name()}(ServerContext&, '
-                'RawServerReader& reader)')
+        return f'void {prefix}{method.name()}(RawServerReader& reader)'
 
     def bidirectional_streaming_signature(self, method: ProtoServiceMethod,
                                           prefix: str) -> str:
-        return (f'void {prefix}{method.name()}(ServerContext&, '
+        return (f'void {prefix}{method.name()}('
                 'RawServerReaderWriter& reader_writer)')
 
 
@@ -174,6 +172,6 @@ def process_proto_file(proto_file) -> Iterable[OutputFile]:
     generator = RawCodeGenerator(output_filename)
     codegen.generate_package(proto_file, package_root, generator)
 
-    codegen.package_stubs(package_root, generator.output, StubGenerator())
+    codegen.package_stubs(package_root, generator, StubGenerator())
 
     return [generator.output]

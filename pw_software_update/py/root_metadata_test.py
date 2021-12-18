@@ -15,7 +15,9 @@
 
 import unittest
 
-from pw_software_update.root_metadata import gen_root_metadata
+from pw_software_update import metadata
+from pw_software_update.root_metadata import (RootKeys, TargetsKeys,
+                                              gen_root_metadata)
 
 
 class GenRootMetadataTest(unittest.TestCase):
@@ -33,11 +35,12 @@ class GenRootMetadataTest(unittest.TestCase):
             b'ukwVjOlnguSSiYMrN4MDqMlNDnaJgLvcCuiNUKHu9Oj1DG1i6ckNdE4VTA=='
             b'\n-----END PUBLIC KEY-----\n')
 
-    def test_multiple_keys(self):
+    def test_multiple_keys(self) -> None:
         """Checks that multiple keys generates multiple KeyMappings and
         SignatureRequirements."""
-        root_metadata = gen_root_metadata(self.root_key_public,
-                                          self.targets_key_public,
+        root_metadata = gen_root_metadata(RootKeys([self.root_key_public]),
+                                          TargetsKeys(
+                                              [self.targets_key_public]),
                                           version=42)
 
         self.assertEqual(len(root_metadata.keys), 2)
@@ -49,6 +52,8 @@ class GenRootMetadataTest(unittest.TestCase):
         self.assertEqual(root_metadata.targets_signature_requirement.threshold,
                          1)
         self.assertEqual(root_metadata.common_metadata.version, 42)
+        self.assertEqual(root_metadata.common_metadata.role,
+                         metadata.RoleType.ROOT.value)
 
 
 if __name__ == '__main__':

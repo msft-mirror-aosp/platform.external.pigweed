@@ -13,6 +13,18 @@ Toolchains
 ``pw_toolchain`` provides GN toolchains that may be used to build Pigweed. The
 following toolchains are defined:
 
+ - pw_toolchain_arm_clang.cortex_m0plus_debug
+ - pw_toolchain_arm_clang.cortex_m0plus_speed_optimized
+ - pw_toolchain_arm_clang.cortex_m0plus_size_optimized
+ - pw_toolchain_arm_clang.cortex_m3_debug
+ - pw_toolchain_arm_clang.cortex_m3_speed_optimized
+ - pw_toolchain_arm_clang.cortex_m3_size_optimized
+ - pw_toolchain_arm_clang.cortex_m4_debug
+ - pw_toolchain_arm_clang.cortex_m4_speed_optimized
+ - pw_toolchain_arm_clang.cortex_m4_size_optimized
+ - pw_toolchain_arm_clang.cortex_m4f_debug
+ - pw_toolchain_arm_clang.cortex_m4f_speed_optimized
+ - pw_toolchain_arm_clang.cortex_m4f_size_optimized
  - pw_toolchain_arm_gcc.cortex_m0plus_debug
  - pw_toolchain_arm_gcc.cortex_m0plus_speed_optimized
  - pw_toolchain_arm_gcc.cortex_m0plus_size_optimized
@@ -89,10 +101,10 @@ toolchain ``${target_name}.static_analysis`` using
 
 Excluding files from checks
 ---------------------------
-The build argument ``pw_toolchain_STATIC_ANALYSIS_SKIP_SOURCES_GLOB`` is used
-used to exclude source files from the analysis. The list must contain
-POSIX-style globs for individual files, rather than directories. For example,
-provide ``"the_path/**/*"`` to exclude all files in all directories under
+The build argument ``pw_toolchain_STATIC_ANALYSIS_SKIP_SOURCES_RES`` is used
+used to exclude source files from the analysis. The list must contain regular
+expressions matching individual files, rather than directories. For example,
+provide ``"the_path/.*"`` to exclude all files in all directories under
 ``the_path``.
 
 The build argument ``pw_toolchain_STATIC_ANALYSIS_SKIP_INCLUDE_PATHS`` is used

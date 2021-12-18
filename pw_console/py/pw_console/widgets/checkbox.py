@@ -16,7 +16,7 @@
 """Functions to create checkboxes for menus and toolbars."""
 
 import sys
-from typing import Callable, Iterable, Optional
+from typing import Callable, Iterable, Optional, NamedTuple
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
@@ -25,6 +25,14 @@ _CHECKED_BOX = '[✓]'
 
 if sys.platform in ['win32']:
     _CHECKED_BOX = '[x]'
+
+
+class ToolbarButton(NamedTuple):
+    key: Optional[str] = None
+    description: Optional[str] = 'Button'
+    mouse_handler: Optional[Callable] = None
+    is_checkbox: bool = False
+    checked: Optional[Callable] = None
 
 
 def to_checkbox(checked: bool, mouse_handler=None, end=' '):
@@ -116,13 +124,15 @@ def to_keybind_indicator(
             append_fragment_with_base_style(fragments, fragment)
 
     # Separator and keybind
-    if mouse_handler:
-        fragments.append(
-            (base_style + 'class:keyhelp', _KEY_SEPARATOR, mouse_handler))
-        fragments.append((base_style + 'class:keybind', key, mouse_handler))
-    else:
-        fragments.append((base_style + 'class:keyhelp', _KEY_SEPARATOR))
-        fragments.append((base_style + 'class:keybind', key))
+    if key:
+        if mouse_handler:
+            fragments.append(
+                (base_style + 'class:keyhelp', _KEY_SEPARATOR, mouse_handler))
+            fragments.append(
+                (base_style + 'class:keybind', key, mouse_handler))
+        else:
+            fragments.append((base_style + 'class:keyhelp', _KEY_SEPARATOR))
+            fragments.append((base_style + 'class:keybind', key))
 
     fragments.append((base_style + 'class:toolbar-button-decoration', ' '))
     return fragments

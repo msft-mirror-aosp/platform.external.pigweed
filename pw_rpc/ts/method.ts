@@ -15,12 +15,22 @@
 import {Status} from '@pigweed/pw_status';
 import {Message} from 'google-protobuf';
 
-import {BidirectionalStreamingCall, Call, Callback, ClientStreamingCall, ServerStreamingCall, UnaryCall} from './call';
+import {
+  BidirectionalStreamingCall,
+  Call,
+  Callback,
+  ClientStreamingCall,
+  ServerStreamingCall,
+  UnaryCall,
+} from './call';
 import {Channel, Method, MethodType, Service} from './descriptors';
 import {PendingCalls, Rpc} from './rpc_classes';
 
 export function methodStubFactory(
-    rpcs: PendingCalls, channel: Channel, method: Method): MethodStub {
+  rpcs: PendingCalls,
+  channel: Channel,
+  method: Method
+): MethodStub {
   switch (method.type) {
     case MethodType.BIDIRECTIONAL_STREAMING:
       return new BidirectionalStreamingMethodStub(rpcs, channel, method);
@@ -43,114 +53,166 @@ export abstract class MethodStub {
     this.method = method;
     this.rpcs = rpcs;
     this.channel = channel;
-    this.rpc = new Rpc(channel, method.service, method)
+    this.rpc = new Rpc(channel, method.service, method);
+  }
+
+  get id(): number {
+    return this.method.id;
   }
 }
 
 export class UnaryMethodStub extends MethodStub {
   invoke(
-      request: Message,
-      onNext: Callback = () => {},
-      onCompleted: Callback = () => {},
-      onError: Callback = () => {}): UnaryCall {
-    const call =
-        new UnaryCall(this.rpcs, this.rpc, onNext, onCompleted, onError);
+    request: Message,
+    onNext: Callback = () => {},
+    onCompleted: Callback = () => {},
+    onError: Callback = () => {}
+  ): UnaryCall {
+    const call = new UnaryCall(
+      this.rpcs,
+      this.rpc,
+      onNext,
+      onCompleted,
+      onError
+    );
     call.invoke(request);
     return call;
   }
 
   open(
-      request: Message,
-      onNext: Callback = () => {},
-      onCompleted: Callback = () => {},
-      onError: Callback = () => {}): UnaryCall {
-    const call =
-        new UnaryCall(this.rpcs, this.rpc, onNext, onCompleted, onError);
+    request: Message,
+    onNext: Callback = () => {},
+    onCompleted: Callback = () => {},
+    onError: Callback = () => {}
+  ): UnaryCall {
+    const call = new UnaryCall(
+      this.rpcs,
+      this.rpc,
+      onNext,
+      onCompleted,
+      onError
+    );
     call.invoke(request, true);
     return call;
   }
 
-  async call(request: Message): Promise<[Status, Message]> {
-    return await this.invoke(request).complete();
+  async call(request: Message, timeout?: number): Promise<[Status, Message]> {
+    return await this.invoke(request).complete(timeout);
   }
 }
 
 export class ServerStreamingMethodStub extends MethodStub {
   invoke(
-      request?: Message,
-      onNext: Callback = () => {},
-      onCompleted: Callback = () => {},
-      onError: Callback = () => {}): ServerStreamingCall {
+    request?: Message,
+    onNext: Callback = () => {},
+    onCompleted: Callback = () => {},
+    onError: Callback = () => {}
+  ): ServerStreamingCall {
     const call = new ServerStreamingCall(
-        this.rpcs, this.rpc, onNext, onCompleted, onError);
+      this.rpcs,
+      this.rpc,
+      onNext,
+      onCompleted,
+      onError
+    );
     call.invoke(request);
     return call;
   }
 
   open(
-      request: Message,
-      onNext: Callback = () => {},
-      onCompleted: Callback = () => {},
-      onError: Callback = () => {}): UnaryCall {
-    const call =
-        new UnaryCall(this.rpcs, this.rpc, onNext, onCompleted, onError);
+    request: Message,
+    onNext: Callback = () => {},
+    onCompleted: Callback = () => {},
+    onError: Callback = () => {}
+  ): UnaryCall {
+    const call = new UnaryCall(
+      this.rpcs,
+      this.rpc,
+      onNext,
+      onCompleted,
+      onError
+    );
     call.invoke(request, true);
     return call;
   }
 
-  async call(request?: Message) {
-    return this.invoke(request).getResponses();
+  call(request?: Message, timeout?: number): Promise<[Status, Message[]]> {
+    return this.invoke(request).complete(timeout);
   }
 }
 
 export class ClientStreamingMethodStub extends MethodStub {
   invoke(
-      onNext: Callback = () => {},
-      onCompleted: Callback = () => {},
-      onError: Callback = () => {}): ClientStreamingCall {
+    onNext: Callback = () => {},
+    onCompleted: Callback = () => {},
+    onError: Callback = () => {}
+  ): ClientStreamingCall {
     const call = new ClientStreamingCall(
-        this.rpcs, this.rpc, onNext, onCompleted, onError);
+      this.rpcs,
+      this.rpc,
+      onNext,
+      onCompleted,
+      onError
+    );
     call.invoke();
     return call;
   }
 
   open(
-      onNext: Callback = () => {},
-      onCompleted: Callback = () => {},
-      onError: Callback = () => {}): ClientStreamingCall {
+    onNext: Callback = () => {},
+    onCompleted: Callback = () => {},
+    onError: Callback = () => {}
+  ): ClientStreamingCall {
     const call = new ClientStreamingCall(
-        this.rpcs, this.rpc, onNext, onCompleted, onError);
+      this.rpcs,
+      this.rpc,
+      onNext,
+      onCompleted,
+      onError
+    );
     call.invoke(undefined, true);
     return call;
   }
 
-  async call(requests: Array<Message> = []) {
-    return this.invoke().finishAndWait(requests);
+  async call(requests: Array<Message> = [], timeout?: number) {
+    return this.invoke().finishAndWait(requests, timeout);
   }
 }
 
 export class BidirectionalStreamingMethodStub extends MethodStub {
   invoke(
-      onNext: Callback = () => {},
-      onCompleted: Callback = () => {},
-      onError: Callback = () => {}): BidirectionalStreamingCall {
+    onNext: Callback = () => {},
+    onCompleted: Callback = () => {},
+    onError: Callback = () => {}
+  ): BidirectionalStreamingCall {
     const call = new BidirectionalStreamingCall(
-        this.rpcs, this.rpc, onNext, onCompleted, onError);
+      this.rpcs,
+      this.rpc,
+      onNext,
+      onCompleted,
+      onError
+    );
     call.invoke();
     return call;
   }
 
   open(
-      onNext: Callback = () => {},
-      onCompleted: Callback = () => {},
-      onError: Callback = () => {}): BidirectionalStreamingCall {
+    onNext: Callback = () => {},
+    onCompleted: Callback = () => {},
+    onError: Callback = () => {}
+  ): BidirectionalStreamingCall {
     const call = new BidirectionalStreamingCall(
-        this.rpcs, this.rpc, onNext, onCompleted, onError);
+      this.rpcs,
+      this.rpc,
+      onNext,
+      onCompleted,
+      onError
+    );
     call.invoke(undefined, true);
     return call;
   }
 
-  async call(requests: Array<Message> = []) {
-    return this.invoke().finishAndWait(requests);
+  async call(requests: Array<Message> = [], timeout?: number) {
+    return this.invoke().finishAndWait(requests, timeout);
   }
 }

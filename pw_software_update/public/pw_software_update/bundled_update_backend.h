@@ -18,7 +18,9 @@
 
 #include "pw_result/result.h"
 #include "pw_software_update/manifest_accessor.h"
+#include "pw_software_update/update_bundle_accessor.h"
 #include "pw_status/status.h"
+#include "pw_stream/interval_reader.h"
 #include "pw_stream/stream.h"
 
 namespace pw::software_update {
@@ -33,7 +35,7 @@ class BundledUpdateBackend {
   // (e.g. by checksum, if failed abort partial update and wipe/mark-invalid
   // running manifest)
   virtual Status VerifyTargetFile(
-      [[maybe_unused]] const ManifestAccessor& manifest,
+      [[maybe_unused]] ManifestAccessor manifest,
       [[maybe_unused]] std::string_view target_file_name) {
     return OkStatus();
   };
@@ -62,11 +64,9 @@ class BundledUpdateBackend {
   virtual Status BeforeBundleVerify() { return OkStatus(); };
 
   // Perform any product-specific bundle verification tasks (e.g. hw version
-  // match check), done after TUF bundle verification process if user_manifest
-  // was provided as part of the bundle.
-  virtual Status VerifyUserManifest(
-      [[maybe_unused]] stream::Reader& user_manifest,
-      [[maybe_unused]] size_t update_bundle_offset) {
+  // match check), done after TUF bundle verification process.
+  virtual Status VerifyManifest(
+      [[maybe_unused]] ManifestAccessor manifest_accessor) {
     return OkStatus();
   };
 
@@ -87,10 +87,9 @@ class BundledUpdateBackend {
                                  size_t update_bundle_offset) = 0;
 
   // Get reader of the device's current manifest.
-  virtual Status GetCurrentManifestReader(
-      [[maybe_unused]] stream::Reader* out) {
+  virtual Result<stream::SeekableReader*> GetCurrentManifestReader() {
     return Status::Unimplemented();
-  };
+  }
 
   // Use a reader that provides a new manifest for the device to save.
   virtual Status UpdateCurrentManifest(
@@ -98,34 +97,48 @@ class BundledUpdateBackend {
     return OkStatus();
   };
 
-  // Do any work needed to finalize the update including doing a required
-  // reboot of the device! This is called after all software update state and
-  // breadcrumbs have been cleaned up.
-  //
-  // After the reboot the update is fully complete.
+  // Do any work needed to finish the apply of the update and do a required
+  // reboot of the device!
   //
   // NOTE: If successful this method does not return and reboots the device, it
   // only returns on failure to finalize.
-  virtual Status FinalizeApply() = 0;
+  //
+  // NOTE: ApplyReboot shall be configured such to allow pending RPC or logs to
+  // send out the reply before the device reboots.
+  virtual Status ApplyReboot() = 0;
+
+  // Do any work needed to finalize the update including optionally doing a
+  // reboot of the device! The software update state and breadcrumbs are not
+  // cleaned up until this method returns OK.
+  //
+  // This method is called after the reboot done as part of ApplyReboot().
+  //
+  // If this method does an optional reboot, it will be called again after the
+  // reboot.
+  //
+  // NOTE: PostRebootFinalize shall be configured such to allow pending RPC or
+  // logs to send out the reply before the device reboots.
+  virtual Status PostRebootFinalize() { return OkStatus(); }
 
   // Get reader of the device's root metadata.
   //
-  // This method ALWAYS needs to be able to return a valid root metadata.
-  // Failure to have a safe update can result in inability to do future
-  // updates due to not having required metadata.
-  virtual Status GetRootMetadataReader([[maybe_unused]] stream::Reader* out) {
+  // This method MUST return a valid root metadata once verified OTA is enabled.
+  // An invalid or corrupted root metadata will result in permanent OTA
+  // failures.
+  virtual Result<stream::SeekableReader*> GetRootMetadataReader() {
     return Status::Unimplemented();
   };
 
-  // Use a reader that provides a new root metadata for the device to save.
+  // Write a given root metadata to persistent storage in a failsafe manner.
   //
-  // This method needs to do updates in a reliable and failsafe way with no
-  // window of vulnerability. It needs to ALWAYS be able to return a valid root
-  // metadata. Failure to have a safe update can result in inability to do
-  // future updates due to not having required metadata.
-  virtual Status UpdateRootMetadata(
-      [[maybe_unused]] stream::Reader& root_metadata) {
-    return OkStatus();
+  // The updating must be atomic/fail-safe. An invalid or corrupted root
+  // metadata will result in permanent OTA failures.
+  //
+  // TODO(pwbug/456): Investigate whether we should get a writer i.e.
+  // GetRootMetadataWriter() instead of passing a reader.
+  virtual Status SafelyPersistRootMetadata(
+      [[maybe_unused]] stream::IntervalReader root_metadata) {
+    return Status::Unimplemented();
   };
 };
 

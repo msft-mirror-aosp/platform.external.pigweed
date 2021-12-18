@@ -17,7 +17,7 @@ import argparse
 from pathlib import Path
 
 from pw_software_update import keys
-from pw_software_update.tuf_pb2 import (RootMetadata, SignedRootMetadata)
+from pw_software_update.tuf_pb2 import SignedRootMetadata
 from pw_software_update.update_bundle_pb2 import UpdateBundle
 
 
@@ -30,17 +30,8 @@ def sign_root_metadata(root_metadata: SignedRootMetadata,
       root_key_pem: The Root signing key in PEM.
     """
 
-    metadata = RootMetadata.FromString(root_metadata.serialized_root_metadata)
-
     signature = keys.create_ecdsa_signature(
         root_metadata.serialized_root_metadata, root_key_pem)
-
-    if signature.key_id not in [k.key_id for k in metadata.keys]:
-        raise ValueError('The root key is not listed in the root metadata.')
-
-    if signature.key_id not in metadata.root_signature_requirement.key_ids:
-        raise ValueError('The root key is not pinned to the root role.')
-
     root_metadata.signatures.append(signature)
 
     return root_metadata
@@ -75,6 +66,13 @@ def parse_args():
                         required=False,
                         help='Path to the bundle to be signed')
 
+    parser.add_argument(
+        '--output',
+        type=Path,
+        required=False,
+        help=('Path to save the signed root metadata or bundle '
+              'to; Defaults to the input path if unspecified'))
+
     parser.add_argument('--key',
                         type=Path,
                         required=True,
@@ -86,22 +84,28 @@ def parse_args():
         parser.error(
             'either "--root-metadata" or "--bundle" must be specified')
     if args.root_metadata and args.bundle:
-        parser.error('"--root-metadata" and "--bundle" are mutual exclusive')
+        parser.error('"--root-metadata" and "--bundle" are mutually exclusive')
 
     return args
 
 
-def main(root_metadata: Path, bundle: Path, key: Path) -> None:
+def main(root_metadata: Path, bundle: Path, key: Path, output: Path) -> None:
     """Signs or re-signs a root metadata or an update bundle."""
     if root_metadata:
         signed_root_metadata = sign_root_metadata(
             SignedRootMetadata.FromString(root_metadata.read_bytes()),
             key.read_bytes())
-        root_metadata.write_bytes(signed_root_metadata.SerializeToString())
+
+        if not output:
+            output = root_metadata
+        output.write_bytes(signed_root_metadata.SerializeToString())
     else:
         signed_bundle = sign_update_bundle(
             UpdateBundle.FromString(bundle.read_bytes()), key.read_bytes())
-        bundle.write_bytes(signed_bundle.SerializeToString())
+
+        if not output:
+            output = bundle
+        output.write_bytes(signed_bundle.SerializeToString())
 
 
 if __name__ == '__main__':

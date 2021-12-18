@@ -10,7 +10,7 @@ Usage
 =====
 To enable nanopb code generation, the build argument
 ``dir_pw_third_party_nanopb`` must be set to point to a local nanopb
-installation.
+installation. Nanopb 0.4 is recommended, but Nanopb 0.3 is also supported.
 
 Define a ``pw_proto_library`` containing the .proto file defining your service
 (and optionally other related protos), then depend on the ``nanopb_rpc``
@@ -91,7 +91,7 @@ the request succeeded.
 
 .. code:: c++
 
-  pw::Status GetRoomInformation(pw::rpc::ServerContext&,
+  pw::Status GetRoomInformation(pw::rpc::
                                 const RoomInfoRequest& request,
                                 RoomInfoResponse& response);
 
@@ -102,7 +102,7 @@ A server streaming RPC receives the client's request message alongside a
 
 .. code:: c++
 
-  void ListUsersInRoom(pw::rpc::ServerContext&,
+  void ListUsersInRoom(pw::rpc::
                        const ListUsersRequest& request,
                        pw::rpc::ServerWriter<ListUsersResponse>& writer);
 
@@ -227,17 +227,21 @@ service client and receive the response.
   #include "chat_protos/chat_service.rpc.pb.h"
 
   namespace {
+
+    using ChatClient = pw_rpc::nanopb::Chat::Client;
+
     MyChannelOutput output;
     pw::rpc::Channel channels[] = {pw::rpc::Channel::Create<1>(&output)};
     pw::rpc::Client client(channels);
 
     // Callback function for GetRoomInformation.
     void LogRoomInformation(const RoomInfoResponse& response, Status status);
-  }
+
+  }  // namespace
 
   void InvokeSomeRpcs() {
-    // Instantiate a service client to call ChatService methods on channel 1.
-    ChatServiceClient chat_client(client, 1);
+    // Instantiate a service client to call Chat service methods on channel 1.
+    ChatClient chat_client(client, 1);
 
     // The RPC will remain active as long as `call` is alive.
     auto call = chat_client.GetRoomInformation(

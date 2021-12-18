@@ -43,6 +43,22 @@
 #define PW_RPC_NANOPB_STRUCT_MIN_BUFFER_SIZE 64
 #endif  // PW_RPC_NANOPB_STRUCT_MIN_BUFFER_SIZE
 
+// Enable global synchronization for RPC calls. If this is set, a backend must
+// be configured for pw_sync:mutex.
+#ifndef PW_RPC_USE_GLOBAL_MUTEX
+#define PW_RPC_USE_GLOBAL_MUTEX 0
+#endif  // PW_RPC_USE_GLOBAL_MUTEX
+
+// The log level to use for this module. Logs below this level are omitted.
+#ifndef PW_RPC_CONFIG_LOG_LEVEL
+#define PW_RPC_CONFIG_LOG_LEVEL PW_LOG_LEVEL_INFO
+#endif  // PW_RPC_CONFIG_LOG_LEVEL
+
+// The log module name to use for this module.
+#ifndef PW_RPC_CONFIG_LOG_MODULE_NAME
+#define PW_RPC_CONFIG_LOG_MODULE_NAME "PW_RPC"
+#endif  // PW_RPC_CONFIG_LOG_MODULE_NAME
+
 namespace pw::rpc::cfg {
 
 template <typename...>

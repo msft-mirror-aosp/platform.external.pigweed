@@ -17,28 +17,16 @@
 #include <mutex>
 
 #include "pw_assert/check.h"
-#include "pw_log/log.h"
-#include "pw_string/string_builder.h"
 
 namespace pw::log_rpc {
 namespace {
-// When encoding LogEntry in LogEntries, there are kLogEntryEncodeFrameSize
-// bytes added to the encoded LogEntry.
-constexpr size_t kLogEntryEncodeFrameSize =
-    protobuf::SizeOfFieldKey(1)  // LogEntry
-    + protobuf::kMaxSizeOfLength;
 
 // Creates an encoded drop message on the provided buffer.
 Result<ConstByteSpan> CreateEncodedDropMessage(
     uint32_t drop_count, ByteSpan encoded_drop_message_buffer) {
-  StringBuffer<RpcLogDrain::kMaxDropMessageSize> message;
-  message.Format(RpcLogDrain::kDropMessageFormatString,
-                 static_cast<unsigned int>(drop_count));
-
   // Encode message in protobuf.
   log::LogEntry::MemoryEncoder encoder(encoded_drop_message_buffer);
-  encoder.WriteMessage(std::as_bytes(std::span(std::string_view(message))));
-  encoder.WriteLineLevel(PW_LOG_LEVEL_WARN & PW_LOG_LEVEL_BITMASK);
+  encoder.WriteDropped(drop_count);
   PW_TRY(encoder.status());
   return ConstByteSpan(encoder);
 }
@@ -68,9 +56,19 @@ Status RpcLogDrain::Flush() {
     log::LogEntries::MemoryEncoder encoder(server_writer_.PayloadBuffer());
     uint32_t packed_entry_count = 0;
     log_sink_state = EncodeOutgoingPacket(encoder, packed_entry_count);
+    // Avoid sending empty packets.
+    if (encoder.size() == 0) {
+      // Release buffer when still active to keep the writer in a replaceable
+      // state.
+      if (server_writer_.active()) {
+        server_writer_.ReleaseBuffer();
+      }
+      continue;
+    }
     if (const Status status = server_writer_.Write(encoder); !status.ok()) {
-      committed_entry_drop_count_ += packed_entry_count;
       if (error_handling_ == LogDrainErrorHandling::kCloseStreamOnWriterError) {
+        // Only update this drop count when writer errors are not ignored.
+        committed_entry_drop_count_ += packed_entry_count;
         server_writer_.Finish().IgnoreError();
         return Status::Aborted();
       }
@@ -116,6 +114,14 @@ RpcLogDrain::LogDrainState RpcLogDrain::EncodeOutgoingPacket(
     }
     // At this point all expected error modes have been handled.
     PW_CHECK_OK(possible_entry.status());
+
+    // TODO(pwbug/559): avoid sending multiple drop counts between filtered out
+    // log entries.
+    if (filter_ != nullptr &&
+        filter_->ShouldDropLog(possible_entry.value().entry())) {
+      PW_CHECK_OK(PopEntry(possible_entry.value()));
+      return LogDrainState::kMoreEntriesRemaining;
+    }
 
     // Check if the entry fits in encoder buffer.
     const size_t encoded_entry_size =

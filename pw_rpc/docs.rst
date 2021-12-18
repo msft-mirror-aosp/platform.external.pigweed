@@ -25,6 +25,35 @@ documents:
 
   This documentation is under construction.
 
+Implementations
+===============
+Pigweed provides several client and server implementations of ``pw_rpc``.
+
+.. list-table::
+  :header-rows: 1
+
+  * - Language
+    - Server
+    - Client
+  * - C++ (raw)
+    - ✅
+    - ✅
+  * - C++ (Nanopb)
+    - ✅
+    - ✅
+  * - C++ (pw_protobuf)
+    - planned
+    - planned
+  * - Java
+    -
+    - in development
+  * - Python
+    -
+    - ✅
+  * - TypeScript
+    -
+    - in development
+
 RPC semantics
 =============
 The semantics of ``pw_rpc`` are similar to `gRPC
@@ -207,15 +236,13 @@ A Nanopb implementation of this service would be as follows:
 
   class TheService : public pw_rpc::nanopb::TheService::Service<TheService> {
    public:
-    pw::Status MethodOne(ServerContext&,
-                         const foo_bar_Request& request,
+    pw::Status MethodOne(const foo_bar_Request& request,
                          foo_bar_Response& response) {
       // implementation
       return pw::OkStatus();
     }
 
-    void MethodTwo(ServerContext&,
-                   const foo_bar_Request& request,
+    void MethodTwo(const foo_bar_Request& request,
                    ServerWriter<foo_bar_Response>& response) {
       // implementation
       response.Write(foo_bar_Response{.number = 123});
@@ -326,7 +353,6 @@ output.
     dynamic_channel.Configure(GetChannelId(), some_output);
   }
 
-
 Services
 ========
 A service is a logical grouping of RPCs defined within a .proto file. ``pw_rpc``
@@ -431,7 +457,7 @@ The C++ service implementation class may append "Service" to the name.
   namespace pw::file {
 
   class FileSystemService : public pw_rpc::raw::FileSystem::Service<FileSystemService> {
-    void List(ServerContext&, ConstByteSpan request, RawServerWriter& writer);
+    void List(ConstByteSpan request, RawServerWriter& writer);
   };
 
   }
@@ -779,12 +805,12 @@ Example
 
   namespace {
   // Generated clients are namespaced with their proto library.
-  using pw::rpc::nanopb::EchoServiceClient;
+  using EchoClient = pw_rpc::nanopb::EchoService::Client;
 
   // RPC channel ID on which to make client calls.
   constexpr uint32_t kDefaultChannelId = 1;
 
-  EchoServiceClient::EchoCall echo_call;
+  EchoClient::EchoCall echo_call;
 
   // Callback invoked when a response is received. This is called synchronously
   // from Client::ProcessPacket.
@@ -802,7 +828,7 @@ Example
 
   void CallEcho(const char* message) {
     // Create a client to call the EchoService.
-    EchoServiceClient echo_client(my_rpc_client, kDefaultChannelId);
+    EchoClient echo_client(my_rpc_client, kDefaultChannelId);
 
     pw_rpc_EchoMessage request = pw_rpc_EchoMessage_init_default;
     pw::string::Copy(message, request.msg);
@@ -852,5 +878,163 @@ an RPC client and server with the same set of channels.
   void ProcessRpcData(pw::ConstByteSpan packet) {
     // Calls into both the client and the server, sending the packet to the
     // appropriate one.
-    client_server.ProcessPacket(packet, output);
+    client_server.ProcessPacket(packet);
   }
+
+Testing
+=======
+``pw_rpc`` provides utilities for unit testing RPC services and client calls.
+
+Client unit testing in C++
+--------------------------
+``pw_rpc`` supports invoking RPCs, simulating server responses, and checking
+what packets are sent by an RPC client in tests. Both raw and Nanopb interfaces
+are supported. Code that uses the raw API may be tested with the Nanopb test
+helpers, and vice versa.
+
+To test code that invokes RPCs, declare a ``RawClientTestContext`` or
+``NanopbClientTestContext``. These test context objects provide a
+preconfigured RPC client, channel, server fake, and buffer for encoding packets.
+These test classes are defined in ``pw_rpc/raw/client_testing.h`` and
+``pw_rpc/nanopb/client_testing.h``.
+
+Use the context's ``client()`` and ``channel()`` to invoke RPCs. Use the
+context's ``server()`` to simulate responses. To verify that the client sent the
+expected data, use the context's ``output()``, which is a ``FakeChannelOutput``.
+
+For example, the following tests a class that invokes an RPC. It checks that
+the expected data was sent and then simulates a response from the server.
+
+.. code-block:: cpp
+
+  #include "pw_rpc/raw/client_testing.h"
+
+  class ThingThatCallsRpcs {
+   public:
+    // To support injecting an RPC client for testing, classes that make RPC
+    // calls should take an RPC client and channel ID or an RPC service client
+    // (e.g. pw_rpc::raw::MyService::Client).
+    ThingThatCallsRpcs(pw::rpc::Client& client, uint32_t channel_id);
+
+    void DoSomethingThatInvokesAnRpc();
+
+    bool SetToTrueWhenRpcCompletes();
+  };
+
+  TEST(TestAThing, InvokesRpcAndHandlesResponse) {
+    RawClientTestContext context;
+    ThingThatCallsRpcs thing(context.client(), context.channel().id());
+
+    // Execute the code that invokes the MyService.TheMethod RPC.
+    things.DoSomethingThatInvokesAnRpc();
+
+    // Find and verify the payloads sent for the MyService.TheMethod RPC.
+    auto msgs = context.output().payloads<pw_rpc::raw::MyService::TheMethod>();
+    ASSERT_EQ(msgs.size(), 1u);
+
+    VerifyThatTheExpectedMessageWasSent(msgs.back());
+
+    // Send the response packet from the server and verify that the class reacts
+    // accordingly.
+    EXPECT_FALSE(thing.SetToTrueWhenRpcCompletes());
+
+    context_.server().SendResponse<pw_rpc::raw::MyService::TheMethod>(
+        final_message, OkStatus());
+
+    EXPECT_TRUE(thing.SetToTrueWhenRpcCompletes());
+  }
+
+Integration testing with ``pw_rpc``
+-----------------------------------
+``pw_rpc`` provides utilities to simplify writing integration tests for systems
+that communicate with ``pw_rpc``. The integration test utitilies set up a socket
+to use for IPC between an RPC server and client process.
+
+The server binary uses the system RPC server facade defined
+``pw_rpc_system_server/rpc_server.h``. The client binary uses the functions
+defined in ``pw_rpc/integration_testing.h``:
+
+.. cpp:var:: constexpr uint32_t kChannelId
+
+  The RPC channel for integration test RPCs.
+
+.. cpp:function:: pw::rpc::Client& pw::rpc::integration_test::Client()
+
+ Returns the global RPC client for integration test use.
+
+.. cpp:function:: pw::Status pw::rpc::integration_test::InitializeClient(int argc, char* argv[], const char* usage_args = "PORT")
+
+  Initializes logging and the global RPC client for integration testing. Starts
+  a background thread that processes incoming.
+
+Module Configuration Options
+============================
+The following configurations can be adjusted via compile-time configuration of
+this module, see the
+:ref:`module documentation <module-structure-compile-time-configuration>` for
+more details.
+
+.. c:macro:: PW_RPC_CLIENT_STREAM_END_CALLBACK
+
+  In client and bidirectional RPCs, pw_rpc clients may signal that they have
+  finished sending requests with a CLIENT_STREAM_END packet. While this can be
+  useful in some circumstances, it is often not necessary.
+
+  This option controls whether or not include a callback that is called when
+  the client stream ends. The callback is included in all ServerReader/Writer
+  objects as a pw::Function, so may have a significant cost.
+
+  This is disabled by default.
+
+.. c:macro:: PW_RPC_NANOPB_STRUCT_MIN_BUFFER_SIZE
+
+  The Nanopb-based pw_rpc implementation allocates memory to use for Nanopb
+  structs for the request and response protobufs. The template function that
+  allocates these structs rounds struct sizes up to this value so that
+  different structs can be allocated with the same function. Structs with sizes
+  larger than this value cause an extra function to be created, which slightly
+  increases code size.
+
+  Ideally, this value will be set to the size of the largest Nanopb struct used
+  as an RPC request or response. The buffer can be stack or globally allocated
+  (see ``PW_RPC_NANOPB_STRUCT_BUFFER_STACK_ALLOCATE``).
+
+  This defaults to 64 Bytes.
+
+.. c:macro:: PW_RPC_USE_GLOBAL_MUTEX
+
+  Enable global synchronization for RPC calls. If this is set, a backend must
+  be configured for pw_sync:mutex.
+
+  This is disabled by default.
+
+.. c:macro:: PW_RPC_CONFIG_LOG_LEVEL
+
+  The log level to use for this module. Logs below this level are omitted.
+
+  This defaults to ``PW_LOG_LEVEL_INFO``.
+
+.. c:macro:: PW_RPC_CONFIG_LOG_MODULE_NAME
+
+  The log module name to use for this module.
+
+  This defaults to ``"PW_RPC"``.
+
+.. c:macro:: PW_RPC_NANOPB_STRUCT_BUFFER_STACK_ALLOCATE
+
+  This option determines whether to allocate the Nanopb structs on the stack or
+  in a global variable. Globally allocated structs are NOT thread safe, but
+  work fine when the RPC server's ProcessPacket function is only called from
+  one thread.
+
+  This is enabled by default.
+
+Sharing server and client code
+==============================
+Streaming RPCs support writing multiple requests or responses. To facilitate
+sharing code between servers and clients, ``pw_rpc`` provides the
+``pw::rpc::Writer`` interface. On the client side, a client or bidirectional
+streaming RPC call object (``ClientWriter`` or ``ClientReaderWriter``) can be
+used as a ``pw::rpc::Writer&``. On the server side, a server or bidirectional
+streaming RPC call object (``ServerWriter`` or ``ServerReaderWriter``) can be
+used as a ``pw::rpc::Writer&``.

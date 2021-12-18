@@ -24,6 +24,9 @@
 #include "pw_stream/memory_stream.h"
 
 namespace pw::software_update {
+class BundledUpdateBackend;
+
+constexpr std::string_view kUserManifestTargetFileName = "user_manifest";
 
 // UpdateBundleAccessor is responsible for parsing, verifying and providing
 // target payload access of a software update bundle. It takes the following as
@@ -40,7 +43,7 @@ namespace pw::software_update {
 // Exmple of use:
 //
 // UpdateBundleAccessor bundle(blob,helper);
-// auto status = bundle.OpenAndVerify(current_manifest);
+// auto status = bundle.OpenAndVerify();
 // if (!status.ok()) {
 //   // handle error
 //   ...
@@ -58,7 +61,7 @@ namespace pw::software_update {
 // ...
 //
 // // Get bundle's manifest and write it to the given writer.
-// status = bundle.WriteManifest(staged_manifest_writer);
+// status = bundle.PersistManifest(staged_manifest_writer);
 // if (!status.ok()) {
 //   // handle error
 //   ...
@@ -72,18 +75,40 @@ namespace pw::software_update {
 class UpdateBundleAccessor {
  public:
   // UpdateBundleAccessor
-  // update_bundle - The software update bundle data on storage.
-  // backend - project-specific BundledUpdateBackend
-  constexpr UpdateBundleAccessor(blob_store::BlobStore& update_bundle,
-                                 BundledUpdateBackend& backend)
-      : bundle_(update_bundle), backend_(backend), bundle_reader_(bundle_) {}
+  // bundle - The software update bundle data on storage.
+  // backend - Project-specific BundledUpdateBackend.
+  // disable_verification - Disable verification.
+  constexpr UpdateBundleAccessor(blob_store::BlobStore& bundle,
+                                 BundledUpdateBackend& backend,
+                                 bool disable_verification = false)
+      : bundle_(bundle),
+        backend_(backend),
+        bundle_reader_(bundle_),
+        disable_verification_(disable_verification) {}
 
-  // Opens and verifies the software update bundle, using the TUF process.
+  // Opens and verifies the software update bundle.
+  //
+  // Specifically, the opening process opens a blob reader to the given bundle
+  // and initializes the bundle proto parser. No write will be allowed to the
+  // bundle until Close() is called.
+  //
+  // If bundle verification is enabled (see the `option` argument in
+  // the constructor), the verification process does the following:
+  //
+  // 1. Check whether the bundle contains an incoming new root metadata. If it
+  // does, it verifies the root against the current on-device root. If
+  // successful, the on-device root will be updated to the new root.
+  //
+  // 2. Verify the targets metadata against the current trusted root.
+  //
+  // 3. Either verify all target payloads (size and hash) or defer that
+  // verification till when a target is accessed.
+  //
+  // 4. Invoke the backend to do downstream verification of the bundle.
   //
   // Returns:
   // OK - Bundle was successfully opened and verified.
-  // TODO(pwbug/456): Add error codes.
-  Status OpenAndVerify(const ManifestAccessor& current_manifest);
+  Status OpenAndVerify();
 
   // Closes the bundle by invalidating the verification and closing
   // the reader to release the read-only lock
@@ -98,7 +123,7 @@ class UpdateBundleAccessor {
   // Returns:
   // FAILED_PRECONDITION - Bundle is not open and verified.
   // TODO(pwbug/456): Add other error codes if necessary.
-  Status WriteManifest(stream::Writer& staged_manifest_writer);
+  Status PersistManifest(stream::Writer& staged_manifest_writer);
 
   // Is the target payload present in the bundle (not personalized out).
   //
@@ -117,13 +142,71 @@ class UpdateBundleAccessor {
   // TODO(pwbug/456): Figure out a way to propagate error.
   stream::IntervalReader GetTargetPayload(std::string_view target_file);
 
-  protobuf::Message GetDecoder() { return decoder_; }
+  // Returns a protobuf::Message representation of the update bundle.
+  //
+  // Returns:
+  // An instance of protobuf::Message of the udpate bundle.
+  // FAILED_PRECONDITION - Bundle is not open and verified.
+  protobuf::Message GetDecoder();
+
+  ManifestAccessor GetManifestAccessor() { return ManifestAccessor(this); };
 
  private:
   blob_store::BlobStore& bundle_;
   BundledUpdateBackend& backend_;
   blob_store::BlobStore::BlobReader bundle_reader_;
   protobuf::Message decoder_;
+  bool disable_verification_;
+  bool bundle_verified_ = false;
+
+  // Opens the bundle for read-only access and readies the parser.
+  Status DoOpen();
+
+  // Performs TUF and downstream custom verification.
+  Status DoVerify();
+
+  // The method checks whether the update bundle contains a root metadata
+  // different from the on-device one. If it does, it performs the following
+  // verification and upgrade flow:
+  //
+  // 1. Verify the signatures according to the on-device trusted
+  // disable_verificationroot metadata
+  //    obtained from the backend.
+  // 2. Verify content of the new root metadata, including:
+  //    1) Check role magic field.
+  //    2) Check signature requirement. Specifically, check that no key is
+  //       reused across different roles and keys are unique in the same
+  //       requirement.
+  //    3) Check key mapping. Specifically, check that all keys are unique,
+  //       ECDSA keys, and the key ids are exactly the SHA256 of `key type +
+  //       key scheme + key value`.
+  // 3. Verify the signatures against the new root metadata.
+  // 4. Check rollback.
+  // 5. Update on-device root metadata.
+  Status UpgradeRoot();
+
+  // The method verifies the top-level targets metadata against the trusted
+  // root. The verification includes the following:
+  //
+  // 1. Verify the signatures of the targets metadata.
+  // 2. Check the content of the targets metadata.
+  // 3. Check rollback against the version from on-device manifest, if one
+  //    exists (the manifest may be reset in the case of key rotation).
+  //
+  // TODO(pwbug/456): Should manifest persisting be handled here? The current
+  // API design of this class exposes a PersistManifest() method, which implies
+  // that manifest persisting is handled by some higher level logic.
+  Status VerifyTargetsMetadata();
+
+  // A helper to get the on-device trusted root metadata. It returns an
+  // instance of SignedRootMetadata proto message.
+  protobuf::Message GetOnDeviceTrustedRoot();
+
+  // The method performs verification of the target payloads. Specifically, it
+  // 1. For target payloads found in the bundle, verify its size and hash.
+  // 2. For target payloads not found in the bundle, call downstream to verify
+  // it and report back.
+  Status VerifyTargetsPayloads();
 };
 
 }  // namespace pw::software_update
