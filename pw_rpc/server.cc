@@ -141,13 +141,13 @@ void Server::HandleClientStreamPacket(const internal::Packet& packet,
                                       internal::ServerCall* call) const {
   if (call == nullptr || call->id() != packet.call_id()) {
     internal::rpc_lock().unlock();
+    channel.Send(Packet::ServerError(packet, Status::FailedPrecondition()))
+        .IgnoreError();  // Errors are logged in Channel::Send.
     PW_LOG_DEBUG(
         "Received client stream packet for %u:%08x/%08x, which is not pending",
         static_cast<unsigned>(packet.channel_id()),
         static_cast<unsigned>(packet.service_id()),
         static_cast<unsigned>(packet.method_id()));
-    channel.Send(Packet::ServerError(packet, Status::FailedPrecondition()))
-        .IgnoreError();  // Errors are logged in Channel::Send.
     return;
   }
 

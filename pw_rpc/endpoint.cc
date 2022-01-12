@@ -61,17 +61,18 @@ Result<Packet> Endpoint::ProcessPacket(std::span<const std::byte> data,
 }
 
 void Endpoint::RegisterCall(Call& call) {
-  LockGuard lock(rpc_lock());
+  rpc_lock().lock();
 
-  Call* const existing_call =
-      FindCallById(call.channel_id(), call.service_id(), call.method_id());
-
-  if (existing_call != nullptr) {
-    existing_call->HandleError(Status::Cancelled());
-    rpc_lock().lock();  // Reacquire after releasing to call the user callback
-  }
+  Call* const existing_call = FindCallById(
+      call.channel_id_locked(), call.service_id(), call.method_id());
 
   RegisterUniqueCall(call);
+
+  if (existing_call != nullptr) {
+    existing_call->ReplaceWithNewInstance(call);
+  } else {
+    rpc_lock().unlock();
+  }
 }
 
 Channel* Endpoint::GetInternalChannel(uint32_t id) const {
@@ -98,8 +99,8 @@ Call* Endpoint::FindCallById(uint32_t channel_id,
                              uint32_t service_id,
                              uint32_t method_id) {
   for (Call& call : calls_) {
-    if (channel_id == call.channel_id() && service_id == call.service_id() &&
-        method_id == call.method_id()) {
+    if (channel_id == call.channel_id_locked() &&
+        service_id == call.service_id() && method_id == call.method_id()) {
       return &call;
     }
   }
