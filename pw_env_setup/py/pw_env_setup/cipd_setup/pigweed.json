@@ -9,7 +9,7 @@
       "windows-amd64"
     ],
     "tags": [
-      "git_revision:d417bc7ecb4e20b3b2cccec7c426831a6082f9fb"
+      "git_revision:f1b1412521b41e47118b29863224171e434a27a2"
     ]
   },
   {
@@ -26,14 +26,15 @@
     ]
   },
   {
-    "path": "infra/cmake/${platform}",
+    "path": "fuchsia/third_party/cmake/${platform}",
     "platforms": [
-      "linux-amd64",
       "mac-amd64",
+      "linux-amd64",
+      "linux-arm64",
       "windows-amd64"
     ],
     "tags": [
-      "version:3.16.1"
+      "version:3.22.20211026-geeb4540"
     ]
   },
   {
@@ -88,7 +89,7 @@
       "windows-amd64"
     ],
     "tags": [
-      "git_revision:e3a7f0e2f9ab566bd9b71fb54fe77e947b061a12"
+      "git_revision:1aa59ff2f789776ebfa2d4b315fd3ea589652b4a"
     ]
   },
   {
@@ -101,7 +102,7 @@
       "windows-amd64"
     ],
     "tags": [
-      "version:2@1.17.5"
+      "version:2@1.17.6"
     ]
   },
   {
@@ -143,7 +144,7 @@
       "windows-amd64"
     ],
     "tags": [
-      "git_revision:28072eb8427f2dac1c43fdfe7532daf690aaaa00"
+      "git_revision:0bf1eb95496db6eac66c6d547060f8a09cee3161"
     ]
   },
   {

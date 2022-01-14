@@ -64,9 +64,9 @@ Call::Call(Endpoint& endpoint_ref,
 }
 
 void Call::MoveFrom(Call& other) {
-  PW_DCHECK(!active());
+  PW_DCHECK(!active_locked());
 
-  if (!other.active()) {
+  if (!other.active_locked()) {
     return;  // Nothing else to do; this call is already closed.
   }
 
@@ -104,7 +104,7 @@ Status Call::CloseAndSendFinalPacket(PacketType type,
                                      ConstByteSpan response,
                                      Status status) {
   rpc_lock().lock();
-  if (!active()) {
+  if (!active_locked()) {
     rpc_lock().unlock();
     return Status::FailedPrecondition();
   }
@@ -113,20 +113,34 @@ Status Call::CloseAndSendFinalPacket(PacketType type,
 }
 
 ByteSpan Call::PayloadBuffer() {
+  rpc_lock().lock();
+
   // Only allow having one active buffer at a time.
   if (response_.empty()) {
-    response_ = channel().AcquireBuffer();
+    Channel& c = channel();
+    rpc_lock().unlock();
+
+    // Don't call AcquireBuffer with rpc_lock() held, as this may cause deadlock
+    // if the channel is also protected by a mutex.
+    Channel::OutputBuffer buffer = c.AcquireBuffer();
+
+    rpc_lock().lock();
+    response_ = std::move(buffer);
   }
 
   // The packet type is only used to size the payload buffer.
   // TODO(pwrev/506): Replace the packet header calculation with a constant
   //     rather than creating a packet.
-  return response_.payload(MakePacket(PacketType::CLIENT_STREAM, {}));
+  ByteSpan buffer =
+      response_.payload(MakePacket(PacketType::CLIENT_STREAM, {}));
+  rpc_lock().unlock();
+
+  return buffer;
 }
 
 Status Call::Write(ConstByteSpan payload) {
   rpc_lock().lock();
-  if (!active()) {
+  if (!active_locked()) {
     rpc_lock().unlock();
     return Status::FailedPrecondition();
   }
@@ -139,28 +153,30 @@ Status Call::SendPacket(PacketType type, ConstByteSpan payload, Status status) {
   const Packet packet = MakePacket(type, payload, status);
 
   if (!buffer().Contains(payload)) {
+    // TODO(pwbug/597): Ensure the call object is locked before releasing the
+    //     RPC lock.
+    rpc_lock().unlock();
     ByteSpan buffer = PayloadBuffer();
+    rpc_lock().lock();
 
     if (payload.size() > buffer.size()) {
-      ReleasePayloadBuffer();
-      rpc_lock().unlock();
+      ReleasePayloadBufferLocked();
       return Status::OutOfRange();
     }
 
     std::copy_n(payload.data(), payload.size(), buffer.data());
   }
 
-  rpc_lock().unlock();
-  return channel().Send(response_, packet);
+  return channel().SendBuffer(response_, packet);
 }
 
-void Call::ReleasePayloadBuffer() {
-  PW_DCHECK(active());
+void Call::ReleasePayloadBufferLocked() {
+  PW_DCHECK(active_locked());
   channel().Release(response_);
 }
 
 void Call::Close() {
-  if (active()) {
+  if (active_locked()) {
     endpoint().UnregisterCall(*this);
   }
 
