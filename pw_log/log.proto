@@ -135,6 +135,9 @@ message LogEntry {
   // The PW_LOG_MODULE_NAME for this log message.
   optional bytes module = 7 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
 
+  // The file path where this log was created, if not encoded in the message.
+  optional bytes file = 8 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
+
   // The following fields are planned but will not be added until they are
   // needed. Protobuf field numbers over 15 use an extra byte, so these fields
   // are left out for now to avoid reserving field numbers unnecessarily.
@@ -148,9 +151,6 @@ message LogEntry {
   // optional bytes thread_name = ?
   //     [(tokenizer.format) = TOKENIZATION_OPTIONAL];
 
-  // The file path where this log was created, if not encoded in the message.
-  // optional bytes file = ? [(tokenizer.format) = TOKENIZATION_OPTIONAL];
-
   // Some messages are associated with trace events, which may carry additional
   // contextual data. This is a tuple of a data format string which could be
   // used by the decoder to identify the data (e.g. printf-style tokens) and the
@@ -160,12 +160,15 @@ message LogEntry {
   // optional bytes data = ?;
 }
 
-message LogRequest {
-  // This will include fields for configuring log filtering.
-}
+message LogRequest {}
 
 message LogEntries {
   repeated LogEntry entries = 1;
+}
+
+// RPC service for accessing logs.
+service Logs {
+  rpc Listen(LogRequest) returns (stream LogEntries);
 }
 
 message FilterRule {
@@ -220,9 +223,8 @@ message FilterIdListResponse {
   repeated bytes filter_id = 1 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
 }
 
-// RPC service for accessing logs.
-service Logs {
-  rpc Listen(LogRequest) returns (stream LogEntries);
+// RPC service for retrieving and modifying log filters.
+service Filters {
   rpc SetFilter(SetFilterRequest) returns (pw.protobuf.Empty);
   rpc GetFilter(GetFilterRequest) returns (Filter);
   rpc ListFilterIds(FilterIdListRequest) returns (FilterIdListResponse);

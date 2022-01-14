@@ -1,4 +1,4 @@
-// Copyright 2020 The Pigweed Authors
+// Copyright 2021 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -13,15 +13,4 @@
 // the License.
 #pragma once
 
-#include <assert.h>
-
-// In C11, assert.h should define static_assert as _Static_assert.
-#if !defined(__cplusplus) && !defined(static_assert)
-
-#if __STDC_VERSION__ >= 201112L
-#define static_assert _Static_assert
-#else  // _Static_assert requires C11.
-#define static_assert(...)
-#endif  // __STDC_VERSION__ >= 201112L
-
-#endif  // !defined(__cplusplus) && !defined(static_assert)
+#define PW_LOG_ZEPHYR_MODULE_NAME pigweed

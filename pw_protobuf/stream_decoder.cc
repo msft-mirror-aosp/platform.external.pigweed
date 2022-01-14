@@ -14,7 +14,10 @@
 
 #include "pw_protobuf/stream_decoder.h"
 
+#include <limits>
+
 #include "pw_assert/check.h"
+#include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 #include "pw_status/try.h"
 #include "pw_varint/stream.h"
@@ -24,6 +27,9 @@ namespace pw::protobuf {
 
 Status StreamDecoder::BytesReader::DoSeek(ptrdiff_t offset, Whence origin) {
   PW_TRY(status_);
+  if (!decoder_.reader_.seekable()) {
+    return Status::Unimplemented();
+  }
 
   ptrdiff_t absolute_position = std::numeric_limits<ptrdiff_t>::min();
 
@@ -35,7 +41,7 @@ Status StreamDecoder::BytesReader::DoSeek(ptrdiff_t offset, Whence origin) {
       break;
 
     case Whence::kCurrent:
-      absolute_position = decoder_.reader_.Tell() + offset;
+      absolute_position = decoder_.position_ + offset;
       break;
 
     case Whence::kEnd:
@@ -52,7 +58,9 @@ Status StreamDecoder::BytesReader::DoSeek(ptrdiff_t offset, Whence origin) {
     return Status::OutOfRange();
   }
 
-  return decoder_.reader_.Seek(absolute_position, Whence::kBeginning);
+  PW_TRY(decoder_.reader_.Seek(absolute_position, Whence::kBeginning));
+  decoder_.position_ = absolute_position;
+  return OkStatus();
 }
 
 StatusWithSize StreamDecoder::BytesReader::DoRead(ByteSpan destination) {
@@ -61,22 +69,28 @@ StatusWithSize StreamDecoder::BytesReader::DoRead(ByteSpan destination) {
   }
 
   // Bound the read buffer to the size of the bytes field.
-  size_t max_length = end_offset_ - decoder_.reader_.Tell();
+  size_t max_length = end_offset_ - decoder_.position_;
   if (destination.size() > max_length) {
     destination = destination.first(max_length);
   }
 
-  pw::Result<ByteSpan> result = decoder_.reader_.Read(destination);
+  Result<ByteSpan> result = decoder_.reader_.Read(destination);
   if (!result.ok()) {
     return StatusWithSize(result.status(), 0);
   }
 
+  decoder_.position_ += result.value().size();
   return StatusWithSize(result.value().size());
 }
 
 StreamDecoder::~StreamDecoder() {
   if (parent_ != nullptr) {
     parent_->CloseNestedDecoder(*this);
+  } else if (stream_bounds_.high < std::numeric_limits<size_t>::max()) {
+    if (status_.ok()) {
+      // Advance the stream to the end of the bounds.
+      PW_CHECK(Advance(stream_bounds_.high).ok());
+    }
   }
 }
 
@@ -90,7 +104,7 @@ Status StreamDecoder::Next() {
     PW_TRY(SkipField());
   }
 
-  if (reader_.Tell() >= stream_bounds_.high) {
+  if (position_ >= stream_bounds_.high) {
     return Status::OutOfRange();
   }
 
@@ -164,7 +178,7 @@ StreamDecoder::BytesReader StreamDecoder::GetBytesReader() {
     return BytesReader(*this, status);
   }
 
-  size_t low = reader_.Tell();
+  size_t low = position_;
   size_t high = low + delimited_field_size_;
 
   return BytesReader(*this, low, high);
@@ -183,17 +197,33 @@ StreamDecoder StreamDecoder::GetNestedDecoder() {
     return StreamDecoder(reader_, this, status);
   }
 
-  size_t low = reader_.Tell();
+  size_t low = position_;
   size_t high = low + delimited_field_size_;
 
   return StreamDecoder(reader_, this, low, high);
+}
+
+Status StreamDecoder::Advance(size_t end_position) {
+  if (reader_.seekable()) {
+    PW_TRY(reader_.Seek(end_position - position_, stream::Stream::kCurrent));
+    position_ = end_position;
+    return OkStatus();
+  }
+
+  while (position_ < end_position) {
+    std::byte b;
+    PW_TRY(reader_.Read(std::span(&b, 1)));
+    position_++;
+  }
+  return OkStatus();
 }
 
 void StreamDecoder::CloseBytesReader(BytesReader& reader) {
   status_ = reader.status_;
   if (status_.ok()) {
     // Advance the stream to the end of the bytes field.
-    PW_CHECK(reader_.Seek(reader.end_offset_).ok());
+    // The BytesReader already updated our position_ field as bytes were read.
+    PW_CHECK(Advance(reader.end_offset_).ok());
   }
 
   field_consumed_ = true;
@@ -207,9 +237,10 @@ void StreamDecoder::CloseNestedDecoder(StreamDecoder& nested) {
   nested.parent_ = nullptr;
 
   status_ = nested.status_;
+  position_ = nested.position_;
   if (status_.ok()) {
     // Advance the stream to the end of the nested message field.
-    PW_CHECK(reader_.Seek(nested.stream_bounds_.high).ok());
+    PW_CHECK(Advance(nested.stream_bounds_.high).ok());
   }
 
   field_consumed_ = true;
@@ -220,9 +251,8 @@ Status StreamDecoder::ReadFieldKey() {
   PW_DCHECK(field_consumed_);
 
   uint64_t varint = 0;
-  if (StatusWithSize sws = varint::Read(reader_, &varint); !sws.ok()) {
-    return sws.status();
-  }
+  PW_TRY_ASSIGN(size_t bytes_read, varint::Read(reader_, &varint));
+  position_ += bytes_read;
 
   if (!FieldKey::IsValidKey(varint)) {
     return Status::DataLoss();
@@ -233,16 +263,15 @@ Status StreamDecoder::ReadFieldKey() {
   if (current_field_.wire_type() == WireType::kDelimited) {
     // Read the length varint of length-delimited fields immediately to simplify
     // later processing of the field.
-    if (StatusWithSize sws = varint::Read(reader_, &varint); !sws.ok()) {
-      return sws.status();
-    }
+    PW_TRY_ASSIGN(bytes_read, varint::Read(reader_, &varint));
+    position_ += bytes_read;
 
     if (varint > std::numeric_limits<uint32_t>::max()) {
       return Status::DataLoss();
     }
 
     delimited_field_size_ = varint;
-    delimited_field_offset_ = reader_.Tell();
+    delimited_field_offset_ = position_;
   }
 
   field_consumed_ = false;
@@ -264,11 +293,12 @@ Status StreamDecoder::SkipField() {
   uint64_t value = 0;
 
   switch (current_field_.wire_type()) {
-    case WireType::kVarint:
+    case WireType::kVarint: {
       // Consume the varint field; nothing more to skip afterward.
-      PW_TRY(varint::Read(reader_, &value));
+      PW_TRY_ASSIGN(size_t bytes_read, varint::Read(reader_, &value));
+      position_ += bytes_read;
       break;
-
+    }
     case WireType::kDelimited:
       bytes_to_skip = delimited_field_size_;
       break;
@@ -291,7 +321,7 @@ Status StreamDecoder::SkipField() {
       return status_;
     }
 
-    PW_TRY(reader_.Seek(bytes_to_skip, stream::Stream::kCurrent));
+    PW_TRY(Advance(position_ + bytes_to_skip));
   }
 
   field_consumed_ = true;
@@ -311,6 +341,7 @@ Status StreamDecoder::ReadVarintField(uint64_t* out) {
   }
   PW_TRY(sws);
 
+  position_ += sws.size();
   field_consumed_ = true;
   *out = value;
 
@@ -328,6 +359,7 @@ Status StreamDecoder::ReadFixedField(std::span<std::byte> out) {
   }
 
   PW_TRY(reader_.Read(out));
+  position_ += out.size();
   field_consumed_ = true;
 
   return OkStatus();
@@ -355,6 +387,7 @@ StatusWithSize StreamDecoder::ReadDelimitedField(std::span<std::byte> out) {
     return StatusWithSize(result.status(), 0);
   }
 
+  position_ += result.value().size();
   field_consumed_ = true;
   return StatusWithSize(result.value().size());
 }

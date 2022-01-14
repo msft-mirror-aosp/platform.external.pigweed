@@ -35,12 +35,22 @@ def add_path_arguments(parser) -> None:
         help=('Paths or patterns to which to restrict the checks. These are '
               'interpreted as Git pathspecs. If --base is provided, only '
               'paths changed since that commit are checked.'))
-    parser.add_argument(
+
+    base = parser.add_mutually_exclusive_group()
+    base.add_argument(
         '-b',
         '--base',
         metavar='commit',
+        default=git_repo.TRACKING_BRANCH_ALIAS,
         help=('Git revision against which to diff for changed files. '
-              'If none is provided, the entire repository is used.'))
+              'Default is the tracking branch of the current branch.'))
+    base.add_argument(
+        '--full',
+        dest='base',
+        action='store_const',
+        const=None,
+        help='Run presubmit on all files, not just changed files.')
+
     parser.add_argument(
         '-e',
         '--exclude',
