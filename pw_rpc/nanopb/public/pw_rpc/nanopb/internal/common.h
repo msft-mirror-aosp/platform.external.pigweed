@@ -45,6 +45,10 @@ class NanopbSerde {
   // Encodes a Nanopb protobuf struct to the serialized wire format.
   StatusWithSize Encode(const void* proto_struct, ByteSpan buffer) const;
 
+  // Calculates the encoded size of the provided protobuf struct without
+  // actually encoding it.
+  StatusWithSize EncodedSizeBytes(const void* proto_struct) const;
+
   // Decodes a serialized protobuf to a Nanopb struct.
   bool Decode(ConstByteSpan buffer, void* proto_struct) const;
 
@@ -99,16 +103,17 @@ class NanopbServerCall;
 void NanopbSendInitialRequest(ClientCall& call,
                               NanopbSerde serde,
                               const void* payload)
-    PW_LOCKS_EXCLUDED(rpc_lock());
+    PW_UNLOCK_FUNCTION(rpc_lock());
 
 // [Client/Server] Encodes and sends a client or server stream message.
 // active() must be true.
-Status NanopbSendStream(Call& call, const void* payload, NanopbSerde serde);
+Status NanopbSendStream(Call& call, const void* payload, NanopbSerde serde)
+    PW_LOCKS_EXCLUDED(rpc_lock());
 
 // [Server] Encodes and sends the final response message.
 // Returns Status::FailedPrecondition if active() is false.
 Status SendFinalResponse(NanopbServerCall& call,
                          const void* payload,
-                         Status status);
+                         Status status) PW_LOCKS_EXCLUDED(rpc_lock());
 
 }  // namespace pw::rpc::internal

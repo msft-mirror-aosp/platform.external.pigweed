@@ -69,6 +69,7 @@ group("module_docs") {
     "$dir_pw_assert:docs",
     "$dir_pw_assert_basic:docs",
     "$dir_pw_assert_log:docs",
+    "$dir_pw_assert_tokenized:docs",
     "$dir_pw_assert_zephyr:docs",
     "$dir_pw_base64:docs",
     "$dir_pw_bloat:docs",
@@ -111,6 +112,7 @@ group("module_docs") {
     "$dir_pw_log_basic:docs",
     "$dir_pw_log_null:docs",
     "$dir_pw_log_rpc:docs",
+    "$dir_pw_log_string:docs",
     "$dir_pw_log_tokenized:docs",
     "$dir_pw_malloc:docs",
     "$dir_pw_malloc_freelist:docs",
@@ -179,6 +181,7 @@ group("third_party_docs") {
   deps = [
     "$dir_pigweed/third_party/freertos:docs",
     "$dir_pigweed/third_party/nanopb:docs",
+    "$dir_pigweed/third_party/tinyusb:docs",
   ]
 }
 

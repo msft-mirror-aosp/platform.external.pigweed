@@ -22,8 +22,14 @@ Starting the Console
 Exiting
 ~~~~~~~
 
+There are a few ways to exit the Pigweed Console user interface:
+
 1.  Click the :guilabel:`[File]` menu and then :guilabel:`Exit`.
 2.  Type ``quit`` or ``exit`` in the Python Input window and press :kbd:`Enter`.
+3.  Press :kbd:`Ctrl-d` once to show the quit confirmation dialog. From there
+    pressing :kbd:`Ctrl-d` a second time or :kbd:`y` will exit.
+4.  Pressing :kbd:`Ctrl-x` quickly followed by :kbd:`Ctrl-c` will exit without
+    confirmation.
 
 
 Interface Layout
@@ -33,21 +39,21 @@ On startup the console will display multiple windows one on top of the other.
 
 ::
 
-  +-----------------------------------------------------+
-  | [File] [View] [Window] [Help]       Pigweed Console |
-  +=====================================================+
-  |                                                     |
-  |                                                     |
-  |                                                     |
-  | Log Window                                          |
-  +=====================================================+
-  |                                                     |
-  |                                                     |
-  | Python Results                                      |
-  +- - - - - - - - - - - - - - - - - - - - - - - - - - -+
-  |                                                     |
-  | Python Input                                        |
-  +-----------------------------------------------------+
+  +---------------------------------------------------------+
+  | [File] [Edit] [View] [Window] [Help]    Pigweed Console |
+  +=========================================================+
+  |                                                         |
+  |                                                         |
+  |                                                         |
+  | Log Window                                              |
+  +=========================================================+
+  |                                                         |
+  |                                                         |
+  | Python Results                                          |
+  +- - - - - - - - - - - - - - - - - - - - - - - - - - - - -+
+  |                                                         |
+  | Python Input                                            |
+  +---------------------------------------------------------+
 
 
 Navigation
@@ -64,10 +70,12 @@ Main Menu Navigation with the Keyboard
 ============================================  =====================
 Function                                      Keys
 ============================================  =====================
-Move focus between all active UI elements     :kbd:`Shift-Tab`
+Switch focus to the next window or tab        :kbd:`Ctrl-Alt-n`
+Switch focus to the previous window or tab    :kbd:`Ctrl-Alt-p`
 
-Move focus between windows and the main menu  :kbd:`Ctrl-Up`
-                                              :kbd:`Ctrl-Down`
+Switch focus to the next UI element           :kbd:`Shift-Tab`
+                                              :kbd:`Ctrl-Right`
+Switch focus to the previous UI element       :kbd:`Ctrl-Left`
 
 Move selection in the main menu               :kbd:`Up`
                                               :kbd:`Down`
@@ -90,42 +98,60 @@ shortcut highlighted in blue:
 Log Window
 ~~~~~~~~~~
 
-Log Window Scrolling
+Log Window Navigation
+^^^^^^^^^^^^^^^^^^^^^
+
+============================================  =====================
+Function                                      Keys
+============================================  =====================
+Move cursor up 1 line                         :kbd:`Up`
+                                              :kbd:`k`
+
+Move cursor down 1 line                       :kbd:`Down`
+                                              :kbd:`j`
+
+Move cursor up 5 lines                        :guilabel:`Mouse Wheel Up`
+Move cursor down 5 lines                      :guilabel:`Mouse Wheel Down`
+
+Move cursor up one page                       :kbd:`PageUp`
+Move cursor down one page                     :kbd:`PageDown`
+
+Jump to the beginning                         :kbd:`g`
+Jump to the end                               :kbd:`G`
+============================================  =====================
+
+Log Line Selection
+^^^^^^^^^^^^^^^^^^
+
+============================================  =====================
+Function                                      Keys
+============================================  =====================
+Select the next log line                      :kbd:`Shift-Down`
+Select the previous log line                  :kbd:`Shift-Up`
+
+Select a range of log lines                   :guilabel:`Left Mouse Drag`
+============================================  =====================
+
+When making log line selections a popup will appear in the upper right of the log
+window showing the number of lines selected along with copy and export options.
+
+::
+
+  +--------------------------------------------------------+
+  | 32 Selected  Format:  [✓] Table  [ ] Markdown          |
+  | [ Cancel ]  [ Select All ]   [ Save as File ] [ Copy ] |
+  +--------------------------------------------------------+
+
+
+Log Window Functions
 ^^^^^^^^^^^^^^^^^^^^
 
 ============================================  =====================
 Function                                      Keys
 ============================================  =====================
-Scroll logs up (1 line)                       :kbd:`Up`
-                                              :kbd:`k`
-
-Scroll logs down (1 line)                     :kbd:`Down`
-                                              :kbd:`j`
-
-Scroll logs up (5 lines)                      :guilabel:`Mouse Wheel Up`
-Scroll logs down (5 lines)                    :guilabel:`Mouse Wheel Down`
-
-Scroll logs up one page                       :kbd:`PageUp`
-Scroll logs down one page                     :kbd:`PageDown`
-
-Jump to the beginning                         :kbd:`g`
-Jump to the end                               :kbd:`G`
-
-Horizontal scroll left or right               :kbd:`Left`
-                                              :kbd:`Right`
-
-Horizontal scroll to the beginning            :kbd:`Home`
-                                              :kbd:`0`
-                                              :kbd:`^`
-============================================  =====================
-
-Log Window View Options
-^^^^^^^^^^^^^^^^^^^^^^^
-
-============================================  =====================
-Function                                      Keys
-============================================  =====================
-Copy visible log lines to the clipboard.      :kbd:`Ctrl-c`
+Open the search bar                           :kbd:`/`
+                                              :kbd:`Ctrl-f`
+Save a copy of logs to a file                 :kbd:`Ctrl-o`
 Toggle line following.                        :kbd:`f`
 Toggle table view.                            :kbd:`t`
 Toggle line wrapping.                         :kbd:`w`
@@ -179,20 +205,20 @@ parameters.
 
 - ``Matcher``: How the search input should be interpreted.
 
-    - ``REGEX``: Treat input text as a regex.
+  - ``REGEX``: Treat input text as a regex.
 
-    - ``STRING``: Treat input as a plain string. Any regex characters will be
-      escaped when search is performed.
+  - ``STRING``: Treat input as a plain string. Any regex characters will be
+    escaped when search is performed.
 
-    - ``FUZZY``: input text is split on spaces using the ``.*`` regex. For
-      example if you search for ``idle run`` the resulting search regex used
-      under the hood is ``(idle)(.*?)(run)``. This would match both of these
-      lines:
+  - ``FUZZY``: input text is split on spaces using the ``.*`` regex. For
+    example if you search for ``idle run`` the resulting search regex used
+    under the hood is ``(idle)(.*?)(run)``. This would match both of these
+    lines:
 
-      .. code-block:: text
+    .. code-block:: text
 
-         Idle task is running
-         Idle thread is running
+       Idle task is running
+       Idle thread is running
 
 **Active Search Shortcuts**
 
@@ -342,32 +368,32 @@ accessed under the :guilabel:`[Edit]` menu.
 If you need to copy text from any other part of the UI you will have to use your
 terminal's built in text selection:
 
-- **Linux**
+**Linux**
 
-  - Holding :kbd:`Shift` and dragging the mouse in most terminals.
+- Holding :kbd:`Shift` and dragging the mouse in most terminals.
 
-- **Mac**
+**Mac**
 
-  - **Apple Terminal**:
+- **Apple Terminal**:
 
-    Hold :kbd:`Fn` and drag the mouse
+  Hold :kbd:`Fn` and drag the mouse
 
-  - **iTerm2**:
+- **iTerm2**:
 
-    Hold :kbd:`Cmd+Option` and drag the mouse
+  Hold :kbd:`Cmd+Option` and drag the mouse
 
-- **Windows**
+**Windows**
 
-  - **Git CMD** (included in `Git for Windows <https://git-scm.com/downloads>`__)
+- **Git CMD** (included in `Git for Windows <https://git-scm.com/downloads>`__)
 
-    1. Click on the Git window icon in the upper left of the title bar
-    2. Click ``Edit`` then ``Mark``
-    3. Drag the mouse to select text and press Enter to copy.
+  1. Click on the Git window icon in the upper left of the title bar
+  2. Click ``Edit`` then ``Mark``
+  3. Drag the mouse to select text and press Enter to copy.
 
-  - **Windows Terminal**
+- **Windows Terminal**
 
-    1. Hold :kbd:`Shift` and drag the mouse to select text
-    2. Press :kbd:`Ctrl-Shift-C` to copy.
+  1. Hold :kbd:`Shift` and drag the mouse to select text
+  2. Press :kbd:`Ctrl-Shift-C` to copy.
 
 Pasting Text
 ^^^^^^^^^^^^
@@ -381,29 +407,29 @@ computer where you copied the text. In that case you will need to use your
 terminal emulator's paste function. How to do this depends on what terminal you
 are using and on which OS. Here's how on various platforms:
 
-- **Linux**
+**Linux**
 
-  - **XTerm**
+- **XTerm**
 
-    :kbd:`Shift-Insert` pastes text
+  :kbd:`Shift-Insert` pastes text
 
-  - **Gnome Terminal**
+- **Gnome Terminal**
 
-    :kbd:`Ctrl-Shift-V` pastes text
+  :kbd:`Ctrl-Shift-V` pastes text
 
-- **Windows**
+**Windows**
 
-  - **Git CMD** (included in `Git for Windows <https://git-scm.com/downloads>`__)
+- **Git CMD** (included in `Git for Windows <https://git-scm.com/downloads>`__)
 
-    1. Click on the Git icon in the upper left of the windows title bar and open
-       ``Properties``.
-    2. Checkmark the option ``Use Ctrl+Shift+C/V as Copy Paste`` and hit ok.
-    3. Then use :kbd:`Ctrl-Shift-V` to paste.
+  1. Click on the Git icon in the upper left of the windows title bar and open
+     ``Properties``.
+  2. Checkmark the option ``Use Ctrl+Shift+C/V as Copy Paste`` and hit ok.
+  3. Then use :kbd:`Ctrl-Shift-V` to paste.
 
-  - **Windows Terminal**
+- **Windows Terminal**
 
-   -  :kbd:`Ctrl-Shift-V` pastes text.
-   -  :kbd:`Shift-RightClick` also pastes text.
+  1. :kbd:`Ctrl-Shift-V` pastes text.
+  2. :kbd:`Shift-RightClick` also pastes text.
 
 
 Window Management
@@ -413,7 +439,9 @@ Any window can be hidden by clicking the :guilabel:`[x] Show Window` checkbox
 under the :guilabel:`[Window]` menu.
 
 The active window can be moved and resized with the following keys. There are
-also menu options under :guilabel:`[View]` for the same actions.
+also menu options under :guilabel:`[View]` for the same actions. Additionally,
+windows can be resized with the mouse by click dragging on the :guilabel:`====`
+text on the far right side of any toolbar.
 
 ============================================  =====================
 Function                                      Keys
@@ -650,9 +678,6 @@ Known Issues
 
 Log Window
 ~~~~~~~~~~
-
-- Rendering for log lines that include ``\n`` characters is broken and hidden if
-  Table view is turned on.
 
 - Tab character rendering will not work in the log pane view. They will
   appear as ``^I`` since prompt_toolkit can't render them. See this issue for details:

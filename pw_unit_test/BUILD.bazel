@@ -27,6 +27,9 @@ pw_cc_library(
     name = "config",
     hdrs = ["public/pw_unit_test/config.h"],
     includes = ["public"],
+    deps = [
+        "//pw_polyfill",
+    ],
 )
 
 pw_cc_library(
@@ -47,6 +50,7 @@ pw_cc_library(
         ":config",
         "//pw_polyfill",
         "//pw_preprocessor",
+        "//pw_span",
         "//pw_string",
     ],
 )
@@ -137,6 +141,7 @@ pw_cc_library(
         "//pw_hdlc:pw_rpc",
         "//pw_log",
         "//pw_rpc",
+        "//pw_rpc/system_server",
     ],
 )
 

@@ -58,6 +58,8 @@ pw_cc_library(
         ":config",
         "//pw_assert",
         "//pw_bytes",
+        "//pw_polyfill:bit",
+        "//pw_polyfill:overrides",
         "//pw_result",
         "//pw_span",
         "//pw_status",
@@ -112,6 +114,15 @@ pw_cc_fuzz_test(
 pw_cc_test(
     name = "find_test",
     srcs = ["find_test.cc"],
+    deps = [
+        ":pw_protobuf",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "serialized_size_test",
+    srcs = ["serialized_size_test.cc"],
     deps = [
         ":pw_protobuf",
         "//pw_unit_test",

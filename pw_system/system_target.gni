@@ -121,11 +121,10 @@ template("pw_system_target") {
   } else if (invoker.cpu == PW_SYSTEM_CPU.NATIVE) {
     _current_cpu = host_cpu
     _arch_build_args = {
+      pw_log_BACKEND = dir_pw_log_string
+      pw_log_string_BACKEND = "$dir_pw_system:log"
       pw_sys_io_BACKEND = "$dir_pw_sys_io_stdio"
-
-      # Don't use pw_sys_io, as stdio isn't great for RPC interaction on a host.
-      # TODO(amontanez): This should be a socket stream.
-      pw_system_IO_BACKEND = "$dir_pw_system:sys_io_target_io"
+      pw_system_IO_BACKEND = "$dir_pw_system:socket_target_io"
     }
 
     if (host_os != "win") {
@@ -178,19 +177,19 @@ template("pw_system_target") {
          "Unknown scheduler choice for $target_name: `${invoker.scheduler}`")
 
   # Configure malloc defaults.
-  _use_malloc = true
+  _use_pw_malloc = false
   if (defined(invoker.use_pw_malloc)) {
-    _use_malloc = invoker.use_pw_malloc
-  } else if (_current_os == "mac" || _current_os == "win") {
-    _use_malloc = false
+    _use_pw_malloc = invoker.use_pw_malloc
+  } else if (invoker.cpu != PW_SYSTEM_CPU.NATIVE) {
+    _use_pw_malloc = true
   }
 
-  if (_use_malloc) {
+  if (_use_pw_malloc) {
     _default_configs += [ "$dir_pw_malloc:pw_malloc_wrapper_config" ]
+    _link_deps += [ dir_pw_malloc ]
     _malloc_build_args = {
       pw_malloc_BACKEND = dir_pw_malloc_freelist
     }
-    _link_deps += [ dir_pw_malloc ]
   } else {
     _malloc_build_args = {
     }

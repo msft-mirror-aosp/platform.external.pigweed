@@ -16,12 +16,11 @@
 
 namespace pw::rpc::internal {
 
-void ClientCall::SendInitialRequestLocked(ConstByteSpan payload) {
-  if (const Status status = SendPacket(PacketType::REQUEST, payload);
-      !status.ok()) {
-    rpc_lock().lock();
-    HandleError(status);
+void ClientCall::CloseClientCall() {
+  if (client_stream_open()) {
+    CloseClientStreamLocked();
   }
+  UnregisterAndMarkClosed();
 }
 
 }  // namespace pw::rpc::internal
