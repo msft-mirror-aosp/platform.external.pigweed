@@ -14,7 +14,7 @@
 """Window pane base class."""
 
 from abc import ABC
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING, Union
 import functools
 
 from prompt_toolkit.layout.dimension import AnyDimension
@@ -71,7 +71,7 @@ class WindowPane(ABC):
     # pylint: disable=too-many-instance-attributes
     def __init__(
         self,
-        application: Optional['ConsoleApp'] = None,
+        application: Union['ConsoleApp', Any] = None,
         pane_title: str = 'Window',
         height: Optional[AnyDimension] = None,
         width: Optional[AnyDimension] = None,
@@ -100,6 +100,14 @@ class WindowPane(ABC):
         self.current_pane_height = 0
         self.last_pane_width = 0
         self.last_pane_height = 0
+
+    def __repr__(self) -> str:
+        """Create a repr with this pane's title and subtitle."""
+        repr_str = f'{type(self).__qualname__}(pane_title="{self.pane_title()}"'
+        if self.pane_subtitle():
+            repr_str += f', pane_subtitle="{self.pane_subtitle()}"'
+        repr_str += ')'
+        return repr_str
 
     def pane_title(self) -> str:
         return self._pane_title
@@ -165,6 +173,11 @@ class WindowPane(ABC):
         """
         # pylint: disable=no-self-use
         return []
+
+    def pane_resized(self) -> bool:
+        """Return True if the current window size has changed."""
+        return (self.last_pane_width != self.current_pane_width
+                or self.last_pane_height != self.current_pane_height)
 
     def update_pane_size(self, width, height) -> None:
         """Save pane width and height for the current UI render pass."""

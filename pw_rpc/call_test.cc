@@ -99,7 +99,8 @@ TEST(ServerWriter, Finish_SendsResponse) {
 
   EXPECT_EQ(OkStatus(), writer.Finish());
 
-  const Packet& packet = context.output().sent_packet();
+  ASSERT_EQ(context.output().total_packets(), 1u);
+  const Packet& packet = context.output().last_packet();
   EXPECT_EQ(packet.type(), PacketType::RESPONSE);
   EXPECT_EQ(packet.channel_id(), context.channel_id());
   EXPECT_EQ(packet.service_id(), context.service_id());
@@ -113,10 +114,11 @@ TEST(ServerWriter, Finish_ReturnsStatusFromChannelSend) {
   FakeServerWriter writer(context.get());
   context.output().set_send_status(Status::Unauthenticated());
 
-  EXPECT_EQ(Status::Unauthenticated(), writer.Finish());
+  // All non-OK statuses are remapped to UNKNOWN.
+  EXPECT_EQ(Status::Unknown(), writer.Finish());
 }
 
-TEST(ServerWriter, Close) {
+TEST(ServerWriter, Finish) {
   ServerContextForTest<TestService> context(TestService::method.method());
   FakeServerWriter writer(context.get());
 
@@ -124,19 +126,6 @@ TEST(ServerWriter, Close) {
   EXPECT_EQ(OkStatus(), writer.Finish());
   EXPECT_FALSE(writer.active());
   EXPECT_EQ(Status::FailedPrecondition(), writer.Finish());
-}
-
-TEST(ServerWriter, Close_ReleasesBuffer) {
-  ServerContextForTest<TestService> context(TestService::method.method());
-  FakeServerWriter writer(context.get());
-
-  ASSERT_TRUE(writer.active());
-  auto buffer = writer.PayloadBuffer();
-  buffer[0] = std::byte{0};
-  EXPECT_FALSE(writer.output_buffer().empty());
-  EXPECT_EQ(OkStatus(), writer.Finish());
-  EXPECT_FALSE(writer.active());
-  EXPECT_TRUE(writer.output_buffer().empty());
 }
 
 TEST(ServerWriter, Open_SendsPacketWithPayload) {
@@ -150,11 +139,9 @@ TEST(ServerWriter, Open_SendsPacketWithPayload) {
   auto result = context.server_stream(data).Encode(encoded);
   ASSERT_EQ(OkStatus(), result.status());
 
-  EXPECT_EQ(result.value().size(), context.output().sent_data().size());
-  EXPECT_EQ(
-      0,
-      std::memcmp(
-          encoded, context.output().sent_data().data(), result.value().size()));
+  ConstByteSpan payload = context.output().last_packet().payload();
+  EXPECT_EQ(sizeof(data), payload.size());
+  EXPECT_EQ(0, std::memcmp(data, payload.data(), sizeof(data)));
 }
 
 TEST(ServerWriter, Closed_IgnoresFinish) {

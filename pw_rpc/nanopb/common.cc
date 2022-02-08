@@ -43,14 +43,11 @@ struct NanopbTraits<bool(pb_istream_t*, FieldsType, void*)> {
 
 using Fields = typename NanopbTraits<decltype(pb_decode)>::Fields;
 
-Result<ByteSpan> EncodeToPayloadBuffer(Call& call,
-                                       const void* payload,
-                                       NanopbSerde serde) {
-  std::span<std::byte> payload_buffer = call.PayloadBuffer();
-
+Result<ByteSpan> EncodeToPayloadBuffer(const void* payload, NanopbSerde serde)
+    PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+  ByteSpan payload_buffer = GetPayloadBuffer();
   StatusWithSize result = serde.Encode(payload, payload_buffer);
   if (!result.ok()) {
-    call.ReleasePayloadBuffer();
     return result.status();
   }
   return payload_buffer.first(result.size());
@@ -83,6 +80,13 @@ StatusWithSize NanopbSerde::Encode(const void* proto_struct,
   return StatusWithSize(output.bytes_written);
 }
 
+StatusWithSize NanopbSerde::EncodedSizeBytes(const void* proto_struct) const {
+  size_t encoded_size = 0;
+  return pb_get_encoded_size(&encoded_size, fields_, proto_struct)
+             ? StatusWithSize(encoded_size)
+             : StatusWithSize::Unknown();
+}
+
 bool NanopbSerde::Decode(ConstByteSpan buffer, void* proto_struct) const {
   auto input = pb_istream_from_buffer(
       reinterpret_cast<const pb_byte_t*>(buffer.data()), buffer.size());
@@ -98,39 +102,43 @@ bool NanopbSerde::Decode(ConstByteSpan buffer, void* proto_struct) const {
 void NanopbSendInitialRequest(ClientCall& call,
                               NanopbSerde serde,
                               const void* payload) {
-  PW_DCHECK(call.active());
+  PW_DCHECK(call.active_locked());
 
-  Result<ByteSpan> result = EncodeToPayloadBuffer(call, payload, serde);
-  rpc_lock().lock();
+  Result<ByteSpan> result = EncodeToPayloadBuffer(payload, serde);
 
   if (result.ok()) {
-    call.SendInitialRequestLocked(*result);
+    call.SendInitialClientRequest(*result);
   } else {
     call.HandleError(result.status());
   }
 }
 
 Status NanopbSendStream(Call& call, const void* payload, NanopbSerde serde) {
-  PW_DCHECK(call.active());
+  LockGuard lock(rpc_lock());
+  if (!call.active_locked()) {
+    return Status::FailedPrecondition();
+  }
 
-  Result<ByteSpan> result = EncodeToPayloadBuffer(call, payload, serde);
+  Result<ByteSpan> result = EncodeToPayloadBuffer(payload, serde);
+
   PW_TRY(result.status());
-  return call.Write(*result);
+  return call.WriteLocked(*result);
 }
 
 Status SendFinalResponse(NanopbServerCall& call,
                          const void* payload,
                          const Status status) {
-  if (!call.active()) {
+  LockGuard lock(rpc_lock());
+  if (!call.active_locked()) {
     return Status::FailedPrecondition();
   }
 
   Result<ByteSpan> result =
-      EncodeToPayloadBuffer(call, payload, call.serde().response());
+      EncodeToPayloadBuffer(payload, call.serde().response());
   if (!result.ok()) {
-    return call.CloseAndSendServerError(Status::Internal());
+    return call.CloseAndSendServerErrorLocked(Status::Internal());
   }
-  return call.CloseAndSendResponse(*result, status);
+  return call.CloseAndSendResponseLocked(*result, status);
 }
 
 }  // namespace pw::rpc::internal

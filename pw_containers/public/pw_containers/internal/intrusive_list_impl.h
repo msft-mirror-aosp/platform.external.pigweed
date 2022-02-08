@@ -13,6 +13,7 @@
 // the License.
 #pragma once
 
+#include <cstddef>
 #include <iterator>
 #include <type_traits>
 
@@ -26,7 +27,7 @@ namespace intrusive_list_impl {
 template <typename T, typename I>
 class Iterator {
  public:
-  using difference_type = void;
+  using difference_type = std::ptrdiff_t;
   using value_type = std::remove_cv_t<T>;
   using pointer = T*;
   using reference = T&;
