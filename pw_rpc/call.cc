@@ -44,7 +44,7 @@ Call::Call(Endpoint& endpoint_ref,
            MethodType type,
            CallType call_type)
     : endpoint_(&endpoint_ref),
-      channel_(endpoint().GetInternalChannel(channel_id)),
+      channel_id_(channel_id),
       id_(call_id),
       service_id_(service_id),
       method_id_(method_id),
@@ -53,13 +53,6 @@ Call::Call(Endpoint& endpoint_ref,
       call_type_(call_type),
       client_stream_state_(HasClientStream(type) ? kClientStreamActive
                                                  : kClientStreamInactive) {
-  // TODO(pwbug/505): Defer channel lookup until it's needed to support dynamic
-  // registration/removal of channels.
-  PW_CHECK_NOTNULL(channel_,
-                   "An RPC call was created for channel %u, but that channel "
-                   "is not known to the server/client.",
-                   static_cast<unsigned>(channel_id));
-
   endpoint().RegisterCall(*this);
 }
 
@@ -72,7 +65,7 @@ void Call::MoveFrom(Call& other) {
 
   // Copy all members from the other call.
   endpoint_ = other.endpoint_;
-  channel_ = other.channel_;
+  channel_id_ = other.channel_id_;
   id_ = other.id_;
   service_id_ = other.service_id_;
   method_id_ = other.method_id_;
@@ -81,8 +74,6 @@ void Call::MoveFrom(Call& other) {
   type_ = other.type_;
   call_type_ = other.call_type_;
   client_stream_state_ = other.client_stream_state_;
-
-  response_ = std::move(other.response_);
 
   on_error_ = std::move(other.on_error_);
   on_next_ = std::move(other.on_next_);
@@ -95,93 +86,37 @@ void Call::MoveFrom(Call& other) {
   endpoint().RegisterUniqueCall(*this);
 }
 
-Status Call::EndClientStream() {
-  client_stream_state_ = kClientStreamInactive;
-  return SendPacket(PacketType::CLIENT_STREAM_END, {}, {});
-}
-
-Status Call::CloseAndSendFinalPacket(PacketType type,
-                                     ConstByteSpan response,
-                                     Status status) {
-  rpc_lock().lock();
+Status Call::SendPacket(PacketType type, ConstByteSpan payload, Status status) {
   if (!active_locked()) {
-    rpc_lock().unlock();
     return Status::FailedPrecondition();
   }
-  Close();
-  return SendPacket(type, response, status);
+
+  Channel* channel = endpoint_->GetInternalChannel(channel_id_);
+  if (channel == nullptr) {
+    return Status::Unavailable();
+  }
+  return channel->Send(MakePacket(type, payload, status));
 }
 
-ByteSpan Call::PayloadBuffer() {
-  rpc_lock().lock();
-
-  // Only allow having one active buffer at a time.
-  if (response_.empty()) {
-    Channel& c = channel();
-    rpc_lock().unlock();
-
-    // Don't call AcquireBuffer with rpc_lock() held, as this may cause deadlock
-    // if the channel is also protected by a mutex.
-    Channel::OutputBuffer buffer = c.AcquireBuffer();
-
-    rpc_lock().lock();
-    response_ = std::move(buffer);
-  }
-
-  // The packet type is only used to size the payload buffer.
-  // TODO(pwrev/506): Replace the packet header calculation with a constant
-  //     rather than creating a packet.
-  ByteSpan buffer =
-      response_.payload(MakePacket(PacketType::CLIENT_STREAM, {}));
-  rpc_lock().unlock();
-
-  return buffer;
+Status Call::CloseAndSendFinalPacketLocked(PacketType type,
+                                           ConstByteSpan response,
+                                           Status status) {
+  const Status send_status = SendPacket(type, response, status);
+  UnregisterAndMarkClosed();
+  return send_status;
 }
 
-Status Call::Write(ConstByteSpan payload) {
-  rpc_lock().lock();
-  if (!active_locked()) {
-    rpc_lock().unlock();
-    return Status::FailedPrecondition();
-  }
+Status Call::WriteLocked(ConstByteSpan payload) {
   return SendPacket(call_type_ == kServerCall ? PacketType::SERVER_STREAM
                                               : PacketType::CLIENT_STREAM,
                     payload);
 }
 
-Status Call::SendPacket(PacketType type, ConstByteSpan payload, Status status) {
-  const Packet packet = MakePacket(type, payload, status);
-
-  if (!buffer().Contains(payload)) {
-    // TODO(pwbug/597): Ensure the call object is locked before releasing the
-    //     RPC lock.
-    rpc_lock().unlock();
-    ByteSpan buffer = PayloadBuffer();
-    rpc_lock().lock();
-
-    if (payload.size() > buffer.size()) {
-      ReleasePayloadBufferLocked();
-      return Status::OutOfRange();
-    }
-
-    std::copy_n(payload.data(), payload.size(), buffer.data());
-  }
-
-  return channel().SendBuffer(response_, packet);
-}
-
-void Call::ReleasePayloadBufferLocked() {
-  PW_DCHECK(active_locked());
-  channel().Release(response_);
-}
-
-void Call::Close() {
+void Call::UnregisterAndMarkClosed() {
   if (active_locked()) {
     endpoint().UnregisterCall(*this);
+    MarkClosed();
   }
-
-  rpc_state_ = kInactive;
-  client_stream_state_ = kClientStreamInactive;
 }
 
 }  // namespace pw::rpc::internal

@@ -72,6 +72,7 @@ pw_cc_library(
     srcs = [
         "call.cc",
         "channel.cc",
+        "channel_list.cc",
         "client.cc",
         "client_call.cc",
         "endpoint.cc",
@@ -79,6 +80,7 @@ pw_cc_library(
         "public/pw_rpc/internal/call.h",
         "public/pw_rpc/internal/call_context.h",
         "public/pw_rpc/internal/channel.h",
+        "public/pw_rpc/internal/channel_list.h",
         "public/pw_rpc/internal/client_call.h",
         "public/pw_rpc/internal/config.h",
         "public/pw_rpc/internal/endpoint.h",
@@ -89,7 +91,6 @@ pw_cc_library(
         "public/pw_rpc/internal/method_info.h",
         "public/pw_rpc/internal/method_lookup.h",
         "public/pw_rpc/internal/method_union.h",
-        "public/pw_rpc/internal/open_call.h",
         "public/pw_rpc/internal/packet.h",
         "public/pw_rpc/internal/server_call.h",
         "public/pw_rpc/method_type.h",
@@ -115,21 +116,9 @@ pw_cc_library(
         "//pw_function",
         "//pw_log",
         "//pw_result",
-        "//pw_rpc/system_server",
         "//pw_span",
         "//pw_status",
         "//pw_sync:lock_annotations",
-    ],
-)
-
-pw_cc_library(
-    name = "synchronized_channel_output",
-    hdrs = ["public/pw_rpc/synchronized_channel_output.h"],
-    includes = ["public"],
-    deps = [
-        ":pw_rpc",
-        "//pw_sync:lock_annotations",
-        "//pw_sync:mutex",
     ],
 )
 
@@ -158,6 +147,7 @@ pw_cc_library(
         "//pw_containers:filtered_view",
         "//pw_containers:vector",
         "//pw_containers:wrapped_iterator",
+        "//pw_rpc/raw:fake_channel_output",
         "//pw_span",
     ],
 )
@@ -201,6 +191,7 @@ filegroup(
         "nanopb/codegen_test.cc",
         "nanopb/common.cc",
         "nanopb/echo_service_test.cc",
+        "nanopb/fake_channel_output_test.cc",
         "nanopb/method.cc",
         "nanopb/method_info_test.cc",
         "nanopb/method_lookup_test.cc",
@@ -216,6 +207,8 @@ filegroup(
         "nanopb/public/pw_rpc/nanopb/server_reader_writer.h",
         "nanopb/public/pw_rpc/nanopb/test_method_context.h",
         "nanopb/pw_rpc_nanopb_private/internal_test_utils.h",
+        "nanopb/serde_test.cc",
+        "nanopb/server_callback_test.cc",
         "nanopb/server_reader_writer.cc",
         "nanopb/server_reader_writer_test.cc",
         "nanopb/stub_generation_test.cc",

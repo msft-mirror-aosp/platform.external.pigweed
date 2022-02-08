@@ -25,6 +25,13 @@
 #include "pw_rpc/nanopb/internal/method.h"
 
 namespace pw::rpc {
+namespace internal::test::nanopb {
+
+// Forward declare for a friend statement.
+template <typename, auto, uint32_t, size_t, size_t>
+class NanopbInvocationContext;
+
+}  // namespace internal::test::nanopb
 
 // Supports iterating over payloads as decoded Nanopb structs.
 template <typename Payload>
@@ -71,7 +78,7 @@ class NanopbPayloadsView {
   using Base =
       containers::WrappedIterator<iterator, PayloadsView::iterator, Payload>;
 
-  template <size_t, size_t, size_t>
+  template <size_t, size_t>
   friend class NanopbFakeChannelOutput;
 
   template <typename... Args>
@@ -83,40 +90,53 @@ class NanopbPayloadsView {
 };
 
 // A ChannelOutput implementation that stores the outgoing payloads and status.
-template <size_t kMaxPackets,
-          size_t kOutputSize,
-          size_t kPayloadsBufferSizeBytes = 128>
+template <size_t kMaxPackets, size_t kPayloadsBufferSizeBytes = 128>
 class NanopbFakeChannelOutput final
-    : public internal::test::FakeChannelOutputBuffer<kOutputSize,
-                                                     kMaxPackets,
+    : public internal::test::FakeChannelOutputBuffer<kMaxPackets,
                                                      kPayloadsBufferSizeBytes> {
  private:
+  template <auto kMethod>
+  using Request = typename internal::MethodInfo<kMethod>::Request;
   template <auto kMethod>
   using Response = typename internal::MethodInfo<kMethod>::Response;
 
  public:
   NanopbFakeChannelOutput() = default;
 
+  // Iterates over request payloads from request or client stream packets.
   template <auto kMethod>
-  NanopbPayloadsView<Response<kMethod>> responses(
+  NanopbPayloadsView<Request<kMethod>> requests(
       uint32_t channel_id = Channel::kUnassignedChannelId) const {
-    return NanopbPayloadsView<Response<kMethod>>(
-        internal::MethodInfo<kMethod>::serde().response(),
+    constexpr internal::PacketType packet_type =
+        HasClientStream(internal::MethodInfo<kMethod>::kType)
+            ? internal::PacketType::CLIENT_STREAM
+            : internal::PacketType::REQUEST;
+    return NanopbPayloadsView<Request<kMethod>>(
+        internal::MethodInfo<kMethod>::serde().request(),
         Base::packets(),
-        internal::MethodInfo<kMethod>::kType,
+        packet_type,
+        packet_type,
         channel_id,
         internal::MethodInfo<kMethod>::kServiceId,
         internal::MethodInfo<kMethod>::kMethodId);
   }
 
-  template <typename ResponseType>
-  NanopbPayloadsView<ResponseType> responses(const internal::NanopbSerde& serde,
-                                             MethodType type,
-                                             uint32_t channel_id,
-                                             uint32_t service_id,
-                                             uint32_t method_id) const {
-    return NanopbPayloadsView<ResponseType>(
-        serde, Base::packets(), type, channel_id, service_id, method_id);
+  // Iterates over response payloads from response or server stream packets.
+  template <auto kMethod>
+  NanopbPayloadsView<Response<kMethod>> responses(
+      uint32_t channel_id = Channel::kUnassignedChannelId) const {
+    constexpr internal::PacketType packet_type =
+        HasServerStream(internal::MethodInfo<kMethod>::kType)
+            ? internal::PacketType::SERVER_STREAM
+            : internal::PacketType::RESPONSE;
+    return NanopbPayloadsView<Response<kMethod>>(
+        internal::MethodInfo<kMethod>::serde().response(),
+        Base::packets(),
+        packet_type,
+        packet_type,
+        channel_id,
+        internal::MethodInfo<kMethod>::kServiceId,
+        internal::MethodInfo<kMethod>::kMethodId);
   }
 
   template <auto kMethod>
@@ -127,10 +147,24 @@ class NanopbFakeChannelOutput final
   }
 
  private:
+  template <typename, auto, uint32_t, size_t, size_t>
+  friend class internal::test::nanopb::NanopbInvocationContext;
+
   using Base =
-      internal::test::FakeChannelOutputBuffer<kOutputSize,
-                                              kMaxPackets,
+      internal::test::FakeChannelOutputBuffer<kMaxPackets,
                                               kPayloadsBufferSizeBytes>;
+
+  using internal::test::FakeChannelOutput::last_packet;
+
+  template <typename T>
+  NanopbPayloadsView<T> payload_structs(const internal::NanopbSerde& serde,
+                                        MethodType type,
+                                        uint32_t channel_id,
+                                        uint32_t service_id,
+                                        uint32_t method_id) const {
+    return NanopbPayloadsView<T>(
+        serde, Base::packets(), type, channel_id, service_id, method_id);
+  }
 };
 
 }  // namespace pw::rpc

@@ -89,6 +89,16 @@ also be internal log readers, i.e. ``MultiSink::Drain``\s, attached to the
 
 Components Overview
 ===================
+LogEntry and LogEntries
+-----------------------
+RPC logging uses ``LogEntry`` to encapsulate each entry's data, such as level,
+timestamp, and message. ``LogEntries`` can hold multiple instances of
+``LogEntry`` to send more data using fewer transmissions. The ``LogEntries`` has
+an optional field for the first message's sequence ID that corresponds to the
+count of each ``LogEntry`` that passes the log filter and is sent. A client can
+use this sequence ID and the number of messages in a ``LogEntries`` to figure
+out if logs were dropped during transmission.
+
 RPC log service
 ---------------
 The ``LogService`` class is an RPC service that provides a way to request a log
@@ -140,13 +150,71 @@ channel ID.
 
 RpcLogDrainThread
 -----------------
-The module includes a sample thread that flushes each drain sequentially. Future
-work might replace this with enqueueing the flush work on a work queue. The user
-can also choose to have different threads flushing individual ``RpcLogDrain``\s
-with different priorities.
+The module includes a sample thread that flushes each drain sequentially.
+``RpcLogDrainThread`` takes an encoding buffer span at construction.
+``RpcLogDrainThreadWithBuffer`` takes a template parameter for the buffer size,
+which must be large enough to fit at least one log entry.
+
+Future work might replace this with enqueueing the flush work on a work queue.
+The user can also choose to have different threads flushing individual
+``RpcLogDrain``\s with different priorities.
+
+When creating a ``RpcLogDrainThread``, the thread can be configured to
+rate limit logs by introducing a limit to how many logs can be flushed from
+each sink before a configurable sleep period begins to give the sinks time to
+handle the flushed logs. For example, if the rate limiting is configured to 2
+log bundles per flush with minimum delay of 100ms between flushes, the logging
+thread will send at most 20 log bundles per second over each sink. Log bundle
+size is dictated by the size of the encode buffer provided to the
+RpcLogDrainThread.
+
+Rate limiting is helpful in cases where transient bursts of high volumes of logs
+cause transport buffers to saturate. By rate limiting the RPC log drain, the
+transport buffers are given time to send data. As long as the average logging
+rate is significantly less than the rate limit imposed by the
+``RpcLogDrainThread``, the logging pipeline should be more resilient high
+volume log bursts.
+
+Rate limiting log drains is particularly helpful for systems that collect logs
+to a multisink in bulk when communications aren't available (e.g. collecting
+early boot logs until the logging thread starts). If a very full log buffer is
+suddenly flushed to the sinks without rate limiting, it's possible to overwhelm
+the output buffers if they don't have sufficient headroom.
+
+.. note::
+  Introducing a logging drain rate limit will increase logging latency, but
+  usually not by much. It's important to tune the rate limit configuration to
+  ensure it doesn't unnecessarily introduce a logging bottleneck or
+  significantly increase latency.
 
 Calling ``OpenUnrequestedLogStream()`` is a convenient way to set up a log
 stream that is started without the need to receive an RCP request for logs.
+
+---------
+Log Drops
+---------
+Unfortunately, logs can be dropped and not reach the destination. This module
+expects to cover all cases and be able to notify the user of log drops when
+possible. Logs can be dropped when
+
+- They don't pass a filter. This is the expected behavior, so filtered logs will
+  not be tracked as dropped logs.
+- The drains are too slow to keep up. In this case, the ring buffer is full of
+  undrained entries; when new logs come in, old entries are dropped. [#f1]_
+- There is an error creating or adding a new log entry, and the ring buffer is
+  notified that the log had to be dropped. [#f1]_
+- A log entry is too large for the outbound buffer. [#f2]_
+- There are detected errors transmitting log entries. [#f2]_
+- There are undetected errors transmitting or receiving log entries, such as an
+  interface interruption. [#f3]_
+
+.. [#f1] The log stream will contain a ``LogEntry`` message with the number of
+         dropped logs.
+.. [#f2] The log stream will contain a ``LogEntry`` message with the number of
+         dropped logs the next time the stream is flushed only if the drain's
+         error handling is set to close the stream on error.
+.. [#f3] Clients can calculate the number of logs lost in transit using the
+         sequence ID and number of entries in each stream packet.
 
 -------------
 Log Filtering

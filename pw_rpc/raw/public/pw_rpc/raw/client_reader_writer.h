@@ -43,16 +43,11 @@ class RawClientReaderWriter : private internal::StreamResponseClientCall {
   using internal::StreamResponseClientCall::set_on_error;
   using internal::StreamResponseClientCall::set_on_next;
 
-  // Returns a buffer in which a request payload can be built.
-  using internal::Call::PayloadBuffer;
-
-  // Releases a buffer acquired from PayloadBuffer() without sending any data.
-  void ReleaseBuffer() { ReleasePayloadBuffer(); }
-
-  // Sends a stream request packet with the given raw payload. The payload can
-  // either be in the buffer previously acquired from PayloadBuffer(), or an
-  // arbitrary external buffer.
+  // Sends a stream request packet with the given raw payload.
   using internal::Call::Write;
+
+  // Notifies the server that no further client stream messages will be sent.
+  using internal::Call::CloseClientStream;
 
   // Cancels this RPC.
   using internal::Call::Cancel;
@@ -119,10 +114,8 @@ class RawClientWriter : private internal::UnaryResponseClientCall {
   using internal::UnaryResponseClientCall::set_on_error;
 
   using internal::Call::Cancel;
-  using internal::Call::PayloadBuffer;
+  using internal::Call::CloseClientStream;
   using internal::Call::Write;
-
-  void ReleaseBuffer() { ReleasePayloadBuffer(); }
 
   // Allow use as a generic RPC Writer.
   using internal::Call::operator Writer&;
