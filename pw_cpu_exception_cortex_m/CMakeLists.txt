@@ -18,27 +18,55 @@ include($ENV{PW_ROOT}/pw_protobuf_compiler/proto.cmake)
 pw_add_module_config(pw_cpu_exception_cortex_m_CONFIG)
 
 pw_add_module_library(pw_cpu_exception_cortex_m.config
-  PUBLIC_DEPS
-    ${pw_cpu_exception_cortex_m_CONFIG}
   HEADERS
     pw_cpu_exception_cortex_m_private/config.h
+  PUBLIC_DEPS
+    ${pw_cpu_exception_cortex_m_CONFIG}
+)
+
+pw_add_module_library(pw_cpu_exception_cortex_m.cpu_state
+  HEADERS
+    public/pw_cpu_exception_cortex_m/cpu_state.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_preprocessor
+    pw_preprocessor.arch
 )
 
 pw_add_module_library(pw_cpu_exception_cortex_m.cpu_exception
   IMPLEMENTS_FACADES
     pw_cpu_exception.entry
+  HEADERS
+    public_overrides/pw_cpu_exception_backend/state.h
+  PUBLIC_INCLUDES
+    public_overrides
   PUBLIC_DEPS
     pw_preprocessor
     pw_preprocessor.arch
+    pw_cpu_exception_cortex_m.cpu_state
   PRIVATE_DEPS
     pw_cpu_exception.handler
     pw_cpu_exception_cortex_m.config
     pw_cpu_exception_cortex_m.constants
   SOURCES
     entry.cc
+)
+
+pw_add_module_library(pw_cpu_exception_cortex_m.util
   HEADERS
-    public/pw_cpu_exception_cortex_m/cpu_state.h
-    public_overrides/pw_cpu_exception_backend/state.h
+    public/pw_cpu_exception_cortex_m/util.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_cpu_exception_cortex_m.cpu_state
+  PRIVATE_DEPS
+    pw_cpu_exception_cortex_m.config
+    pw_cpu_exception_cortex_m.constants
+    pw_log
+    pw_preprocessor.arch
+  SOURCES
+    util.cc
 )
 
 pw_add_module_library(pw_cpu_exception_cortex_m.support
@@ -47,11 +75,13 @@ pw_add_module_library(pw_cpu_exception_cortex_m.support
   PRIVATE_DEPS
     pw_cpu_exception_cortex_m.config
     pw_cpu_exception_cortex_m.constants
+    pw_cpu_exception_cortex_m.util
     pw_log
+    pw_polyfill.span
     pw_preprocessor.arch
     pw_string
   SOURCES
-    cpu_state.cc
+    support.cc
 )
 
 pw_proto_library(pw_cpu_exception_cortex_m.cpu_state_protos
@@ -60,8 +90,12 @@ pw_proto_library(pw_cpu_exception_cortex_m.cpu_state_protos
 )
 
 pw_add_module_library(pw_cpu_exception_cortex_m.proto_dump
+  HEADERS
+    public/pw_cpu_exception_cortex_m/proto_dump.h
+  PUBLIC_INCLUDES
+    public
   PUBLIC_DEPS
-    pw_cpu_exception.entry
+    pw_cpu_exception_cortex_m.cpu_state
     pw_protobuf
     pw_status
     pw_stream
@@ -70,21 +104,22 @@ pw_add_module_library(pw_cpu_exception_cortex_m.proto_dump
     pw_cpu_exception_cortex_m.cpu_state_protos.pwpb
   SOURCES
     proto_dump.cc
-  HEADERS
-    public/pw_cpu_exception_cortex_m/proto_dump.h
 )
 
 pw_add_module_library(pw_cpu_exception_cortex_m.snapshot
   PUBLIC_DEPS
+    pw_cpu_exception_cortex_m.cpu_state
     pw_cpu_exception_cortex_m.cpu_state_protos.pwpb
-    pw_cpu_exception_cortex_m.cpu_exception
     pw_protobuf
     pw_status
+    pw_thread.protos.pwpb
+    pw_thread.snapshot
   PRIVATE_DEPS
     pw_cpu_exception_cortex_m.config
     pw_cpu_exception_cortex_m.constants
     pw_cpu_exception_cortex_m.proto_dump
     pw_log
+    pw_polyfill.span
   SOURCES
     snapshot.cc
   HEADERS
@@ -97,3 +132,23 @@ pw_add_module_library(pw_cpu_exception_cortex_m.constants
   HEADERS
     pw_cpu_exception_cortex_m_private/cortex_m_constants.h
 )
+
+# TODO(pwbug/583): Add ARMv8-M mainline coverage.
+if("${pw_cpu_exception.entry_BACKEND}" STREQUAL
+   "pw_cpu_exception_cortex_m.cpu_exception")
+  pw_add_test(pw_cpu_exception_cortex_m.cpu_exception_entry_test
+    SOURCES
+      exception_entry_test.cc
+    DEPS
+      pw_cpu_exception.entry
+      pw_cpu_exception.handler
+      pw_cpu_exception.support
+      pw_cpu_exception_cortex_m.cortex_m_constants
+      pw_cpu_exception_cortex_m.cpu_exception
+      pw_cpu_exception_cortex_m.cpu_state
+      pw_polyfill.span
+    GROUPS
+      modules
+      pw_cpu_exception_cortex_m
+  )
+endif()

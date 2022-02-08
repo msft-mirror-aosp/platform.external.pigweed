@@ -13,10 +13,11 @@
 # the License.
 """Device classes to interact with targets via RPC."""
 
+import datetime
 import logging
 from pathlib import Path
 from types import ModuleType
-from typing import Any, List, Union, Optional
+from typing import Any, Callable, List, Union, Optional
 
 from pw_hdlc.rpc import HdlcRpcClient, default_channels
 import pw_log_tokenized
@@ -44,6 +45,7 @@ class Device:
                  write,
                  proto_library: List[Union[ModuleType, Path]],
                  detokenizer: Optional[Detokenizer],
+                 timestamp_decoder: Optional[Callable[[int], str]],
                  rpc_timeout_s=5):
         self.channel_id = channel_id
         self.protos = proto_library
@@ -51,6 +53,8 @@ class Device:
 
         self.logger = DEFAULT_DEVICE_LOGGER
         self.logger.setLevel(logging.DEBUG)  # Allow all device logs through.
+        self.timestamp_decoder = timestamp_decoder
+        self._expected_log_sequence_id = 0
 
         callback_client_impl = callback_client.Impl(
             default_unary_timeout_s=rpc_timeout_s,
@@ -91,12 +95,36 @@ class Device:
     def _handle_log_stream_error(self, error: Status):
         """Resets the log stream RPC on error to avoid losing logs."""
         _LOG.error('Log stream error: %s', error)
-        self.listen_to_log_stream()
+
+        # Only re-request logs if the RPC was not cancelled by the client.
+        if error != Status.CANCELLED:
+            self.listen_to_log_stream()
+
+    def _handle_log_drop_count(self, drop_count: int):
+        message = f'Dropped {drop_count} log'
+        if drop_count > 1:
+            message += 's'
+        self._emit_device_log(logging.WARNING, '', '', '', message)
+
+    def _check_for_dropped_logs(self, log_entries_proto: log_pb2.LogEntries):
+        # Count log messages received that don't use the dropped field.
+        messages_received = sum(1 if not log_proto.dropped else 0
+                                for log_proto in log_entries_proto.entries)
+        dropped_log_count = (log_entries_proto.first_entry_sequence_id -
+                             self._expected_log_sequence_id)
+        self._expected_log_sequence_id = (
+            log_entries_proto.first_entry_sequence_id + messages_received)
+        if dropped_log_count > 0:
+            self._handle_log_drop_count(dropped_log_count)
+        elif dropped_log_count < 0:
+            _LOG.error('Log sequence ID is smaller than expected')
 
     def _log_entries_proto_parser(self, log_entries_proto: log_pb2.LogEntries):
+        self._check_for_dropped_logs(log_entries_proto)
         for log_proto in log_entries_proto.entries:
-            timestamp = log_proto.timestamp
-            level = (log_proto.line_level & 0x7)
+            decoded_timestamp = self.decode_timestamp(log_proto.timestamp)
+            # Parse level and convert to logging module level number.
+            level = (log_proto.line_level & 0x7) * 10
             if self.detokenizer:
                 message = str(
                     decode_optionally_tokenized(self.detokenizer,
@@ -104,18 +132,38 @@ class Device:
             else:
                 message = log_proto.message.decode("utf-8")
             log = pw_log_tokenized.FormatStringWithMetadata(message)
-            self._emit_device_log(level, '', timestamp, log.module,
+
+            # Handle dropped count.
+            if log_proto.dropped:
+                self._handle_log_drop_count(log_proto.dropped)
+                return
+            self._emit_device_log(level, '', decoded_timestamp, log.module,
                                   log.message, **dict(log.fields))
 
-    def _emit_device_log(self, level: int, source_name: str, timestamp: float,
+    def _emit_device_log(self, level: int, source_name: str, timestamp: str,
                          module_name: str, message: str, **metadata_fields):
+        # Fields used for console table view
         fields = metadata_fields
         fields['source_name'] = source_name
         fields['timestamp'] = timestamp
-        self.logger.log(level * 10,
-                        '[%s] %16.3f %s%s',
+        fields['msg'] = message
+        fields['module'] = module_name
+
+        # Format used for file or stdout logging.
+        self.logger.log(level,
+                        '[%s] %s %s%s',
                         source_name,
                         timestamp,
                         f'{module_name} '.lstrip(),
                         message,
                         extra=dict(extra_metadata_fields=fields))
+
+    def decode_timestamp(self, timestamp: int) -> str:
+        """Decodes timestamp to a human-readable value.
+
+        Defaults to interpreting the input timestamp as nanoseconds since boot.
+        Devices can override this to match their timestamp units.
+        """
+        if self.timestamp_decoder:
+            return self.timestamp_decoder(timestamp)
+        return str(datetime.timedelta(seconds=timestamp / 1e9))[:-3]

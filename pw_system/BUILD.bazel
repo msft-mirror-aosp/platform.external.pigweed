@@ -42,6 +42,7 @@ pw_cc_library(
         ":logger",
         ":rpc",
         "//pw_bytes",
+        "//pw_chrono:system_clock",
         "//pw_log",
         "//pw_log:proto_utils",
         "//pw_log_rpc:log_service",
@@ -72,7 +73,6 @@ pw_cc_library(
         "//pw_assert",
         "//pw_hdlc:pw_rpc",
         "//pw_hdlc:rpc_channel_output",
-        "//pw_rpc:synchronized_channel_output",
         "//pw_rpc/system_server:facade",
         "//pw_sync:mutex",
         "//pw_thread:thread_core",
@@ -120,7 +120,6 @@ pw_cc_library(
     ],
 )
 
-# TODO(cachinchilla): Make the target provide this.
 pw_cc_library(
     name = "target_io",
     srcs = [
@@ -134,7 +133,21 @@ pw_cc_library(
     ],
 )
 
-# TODO(cachinchilla): Make the target provide this.
+pw_cc_library(
+    name = "socket_target_io",
+    srcs = [
+        "socket_target_io.cc",
+    ],
+    includes = ["public"],
+    deps = [
+        ":config",
+        ":io",
+        "//pw_assert",
+        "//pw_stream",
+        "//pw_stream:socket_stream",
+    ],
+)
+
 pw_cc_library(
     name = "target_hooks",
     hdrs = [

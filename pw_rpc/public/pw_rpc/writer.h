@@ -35,10 +35,9 @@ class Writer : private internal::Call {
   using internal::Call::active;
   using internal::Call::channel_id;
 
-  using internal::Call::PayloadBuffer;
-  using internal::Call::ReleasePayloadBuffer;
   using internal::Call::Write;
 
+ private:
   friend class internal::Call;
 };
 

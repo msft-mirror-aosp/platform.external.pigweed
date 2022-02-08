@@ -120,6 +120,96 @@ described in :ref:`module-pw_build-python`.
 
   python
 
+
+.. _module-pw_build-cc_blob_library:
+
+pw_cc_blob_library
+------------------
+The ``pw_cc_blob_library`` template is useful for embedding binary data into a
+program. The template takes in a mapping of symbol names to file paths, and
+generates a set of C++ source and header files that embed the contents of the
+passed-in files as arrays.
+
+**Arguments**
+
+* ``blobs``: A list of GN scopes, where each scope corresponds to a binary blob
+  to be transformed from file to byte array. This is a required field. Blob
+  fields include:
+
+  * ``symbol_name``: The C++ symbol for the byte array.
+  * ``file_path``: The file path for the binary blob.
+  * ``linker_section``: If present, places the byte array in the specified
+    linker section.
+
+* ``out_header``: The header file to generate. Users will include this file
+  exactly as it is written here to reference the byte arrays.
+* ``namespace``: An optional (but highly recommended!) C++ namespace to place
+  the generated blobs within.
+
+Example
+^^^^^^^
+
+**BUILD.gn**
+
+.. code-block::
+
+  pw_cc_blob_library("foo_bar_blobs") {
+    blobs: [
+      {
+        symbol_name: "kFooBlob"
+        file_path: "${target_out_dir}/stuff/bin/foo.bin"
+      },
+      {
+        symbol_name: "kBarBlob"
+        file_path: "//stuff/bin/bar.bin"
+        linker_section: ".bar_section"
+      },
+    ]
+    out_header: "my/stuff/foo_bar_blobs.h"
+    namespace: "my::stuff"
+    deps = [ ":generate_foo_bin" ]
+  }
+
+.. note:: If the binary blobs are generated as part of the build, be sure to
+          list them as deps to the pw_cc_blob_library target.
+
+**Generated Header**
+
+.. code-block::
+
+  #pragma once
+
+  #include <array>
+  #include <cstddef>
+
+  namespace my::stuff {
+
+  extern const std::array<std::byte, 100> kFooBlob;
+
+  extern const std::array<std::byte, 50> kBarBlob;
+
+  }  // namespace my::stuff
+
+**Generated Source**
+
+.. code-block::
+
+  #include "my/stuff/foo_bar_blobs.h"
+
+  #include <array>
+  #include <cstddef>
+
+  #include "pw_preprocessor/compiler.h"
+
+  namespace my::stuff {
+
+  const std::array<std::byte, 100> kFooBlob = { ... };
+
+  PW_PLACE_IN_SECTION(".bar_section")
+  const std::array<std::byte, 50> kBarBlob = { ... };
+
+  }  // namespace my::stuff
+
 .. _module-pw_build-facade:
 
 pw_facade
@@ -187,6 +277,9 @@ target. Additionally, it has some of its own arguments:
   output file, ``stamp`` must be in the build directory. Defaults to false.
 * ``environment``: Optional list of strings. Environment variables to set,
   passed as NAME=VALUE strings.
+* ``working_directory``: Optional file path. When provided the current working
+  directory will be set to this location before the Python module or script is
+  run.
 
 **Expressions**
 
@@ -291,6 +384,56 @@ The following expressions are supported:
       "--binary=<TARGET_FILE(//firmware/images:main)>",
     ]
     stamp = true
+  }
+
+pw_exec
+-------
+``pw_exec`` allows for execution of arbitrary programs. It is a wrapper around
+``pw_python_action`` but allows for specifying the program to execute.
+
+.. note:: Prefer to use ``pw_python_action`` instead of calling out to shell
+  scripts, as the python will be more portable. ``pw_exec`` should generally
+  only be used for interacting with legacy/existing scripts.
+
+**Arguments**
+
+* ``program``: The program to run. Can be a full path or just a name (in which
+  case $PATH is searched).
+* ``args``: Optional list of arguments to the program.
+* ``deps``: Dependencies for this target.
+* ``inputs``: Optional list of build inputs to the program.
+* ``outputs``: Optional list of artifacts produced by the program's execution.
+* ``env``: Optional list of key-value pairs defining environment variables for
+  the program.
+* ``env_file``: Optional path to a file containing a list of newline-separated
+  key-value pairs defining environment variables for the program.
+* ``args_file``: Optional path to a file containing additional positional
+  arguments to the program. Each line of the file is appended to the
+  invocation. Useful for specifying arguments from GN metadata.
+* ``skip_empty_args``: If args_file is provided, boolean indicating whether to
+  skip running the program if the file is empty. Used to avoid running
+  commands which error when called without arguments.
+* ``capture_output``: If true, output from the program is hidden unless the
+  program exits with an error. Defaults to true.
+* ``working_directory``: The working directory to execute the subprocess with.
+  If not specified it will not be set and the subprocess will have whatever
+  the parent current working directory is.
+
+**Example**
+
+.. code-block::
+
+  import("$dir_pw_build/exec.gni")
+
+  pw_exec("hello_world") {
+    program = "/bin/sh"
+    args = [
+      "-c",
+      "echo hello \$WORLD",
+    ]
+    env = [
+      "WORLD=world",
+    ]
   }
 
 pw_input_group
@@ -412,13 +555,109 @@ This will result in a ``.zip`` file called ``foo.zip`` stored in
 
   foo.zip
   ├── bar/
-  │   ├── file3.txt
-  │   └── some_dir/
-  │       ├── file4.txt
-  │       └── some_other_dir/
-  │           └── file5.txt
+  │   ├── file3.txt
+  │   └── some_dir/
+  │       ├── file4.txt
+  │       └── some_other_dir/
+  │           └── file5.txt
   ├── file1.txt
   └── renamed.txt
+
+.. _module-pw_build-relative-source-file-names:
+
+pw_relative_source_file_names
+-----------------------------
+This template recursively walks the listed dependencies and collects the names
+of all the headers and source files required by the targets, and then transforms
+them such that they reflect the ``__FILE__`` when pw_build's ``relative_paths``
+config is applied. This is primarily intended for side-band generation of
+pw_tokenizer tokens so file name tokens can be utilized in places where
+pw_tokenizer is unable to embed token information as part of C/C++ compilation.
+
+This template produces a JSON file containing an array of strings (file paths
+with ``-ffile-prefix-map``-like transformations applied) that can be used to
+`generate a token database <module-pw_tokenizer-database-creation>`_.
+
+**Arguments**
+
+* ``deps``: A required list of targets to recursively extract file names from.
+* ``outputs``: A required array with a single element: the path to write the
+  final JSON file to.
+
+**Example**
+
+Let's say we have the following project structure:
+
+.. code-block::
+
+  project root
+  ├── foo/
+  │   ├── foo.h
+  │   └── foo.cc
+  ├── bar/
+  │   ├── bar.h
+  │   └── bar.cc
+  ├── unused/
+  │   ├── unused.h
+  │   └── unused.cc
+  └── main.cc
+
+And a BUILD.gn at the root:
+
+.. code-block::
+
+  pw_source_set("bar") {
+    public_configs = [ ":bar_headers" ]
+    public = [ "bar/bar.h" ]
+    sources = [ "bar/bar.cc" ]
+  }
+
+  pw_source_set("foo") {
+    public_configs = [ ":foo_headers" ]
+    public = [ "foo/foo.h" ]
+    sources = [ "foo/foo.cc" ]
+    deps = [ ":bar" ]
+  }
+
+
+  pw_source_set("unused") {
+    public_configs = [ ":unused_headers" ]
+    public = [ "unused/unused.h" ]
+    sources = [ "unused/unused.cc" ]
+    deps = [ ":bar" ]
+  }
+
+  pw_executable("main") {
+    sources = [ "main.cc" ]
+    deps = [ ":foo" ]
+  }
+
+  pw_relative_source_file_names("main_source_files") {
+    deps = [ ":main" ]
+    outputs = [ "$target_gen_dir/main_source_files.json" ]
+  }
+
+The json file written to `out/gen/main_source_files.json` will contain:
+
+.. code-block::
+
+  [
+    "bar/bar.cc",
+    "bar/bar.h",
+    "foo/foo.cc",
+    "foo/foo.h",
+    "main.cc"
+  ]
+
+Since ``unused`` isn't a transitive dependency of ``main``, its source files
+are not included. Similarly, even though ``bar`` is not a direct dependency of
+``main``, its source files *are* included because ``foo`` brings in ``bar`` as
+a transitive dependency.
+
+Note how the file paths in this example are relative to the project root rather
+than being absolute paths (e.g. ``/home/user/ralph/coding/my_proj/main.cc``).
+This is a result of transformations applied to strip absolute pathing prefixes,
+matching the behavior of pw_build's ``$dir_pw_build:relative_paths`` config.
 
 CMake
 =====
@@ -517,6 +756,13 @@ These variables are typically set in a toolchain CMake file passed to ``cmake``
 with the ``-D`` option (``-DCMAKE_TOOLCHAIN_FILE=path/to/file.cmake``).
 For Pigweed embedded builds, set ``CMAKE_SYSTEM_NAME`` to the empty string
 (``""``).
+
+Toolchains may set the ``pw_build_WARNINGS`` variable to a list of ``INTERFACE``
+libraries with compilation options for Pigweed's upstream libraries. This
+defaults to a strict set of warnings. Projects may need to use less strict
+compilation warnings to compile backends exposed to Pigweed code (such as
+``pw_log``) that cannot compile with Pigweed's flags. If desired, Projects can
+access these warnings by depending on ``pw_build.warnings``.
 
 Third party libraries
 ---------------------
