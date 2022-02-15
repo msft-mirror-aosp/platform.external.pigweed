@@ -15,12 +15,23 @@
 
 #include "pb_common.h"
 #include "pw_bytes/span.h"
+#include "pw_rpc/internal/lock.h"
 #include "pw_status/status_with_size.h"
 
 namespace pw::rpc::internal {
 
-// Use a void* to cover both Nanopb 3's pb_field_s and Nanopb 4's pb_msgdesc_s.
-using NanopbMessageDescriptor = const pb_msgdesc_s*;
+// Nanopb 0.3 uses pb_field_t, but Nanopb 4 uses pb_msgdesc_t. Determine which
+// type to use by deducing it from the pb_field_iter_begin function.
+template <typename PbFieldIterBeginFunction>
+struct NanopbDescriptorTraits;
+
+template <typename T>
+struct NanopbDescriptorTraits<bool(pb_field_iter_t*, T, void*)> {
+  using Type = T;
+};
+
+using NanopbMessageDescriptor =
+    NanopbDescriptorTraits<decltype(pb_field_iter_begin)>::Type;
 
 // Serializer/deserializer for a Nanopb protobuf message.
 class NanopbSerde {
@@ -33,6 +44,10 @@ class NanopbSerde {
 
   // Encodes a Nanopb protobuf struct to the serialized wire format.
   StatusWithSize Encode(const void* proto_struct, ByteSpan buffer) const;
+
+  // Calculates the encoded size of the provided protobuf struct without
+  // actually encoding it.
+  StatusWithSize EncodedSizeBytes(const void* proto_struct) const;
 
   // Decodes a serialized protobuf to a Nanopb struct.
   bool Decode(ConstByteSpan buffer, void* proto_struct) const;
@@ -87,16 +102,18 @@ class NanopbServerCall;
 // active() must be true.
 void NanopbSendInitialRequest(ClientCall& call,
                               NanopbSerde serde,
-                              const void* payload);
+                              const void* payload)
+    PW_UNLOCK_FUNCTION(rpc_lock());
 
 // [Client/Server] Encodes and sends a client or server stream message.
 // active() must be true.
-Status NanopbSendStream(Call& call, const void* payload, NanopbSerde serde);
+Status NanopbSendStream(Call& call, const void* payload, NanopbSerde serde)
+    PW_LOCKS_EXCLUDED(rpc_lock());
 
 // [Server] Encodes and sends the final response message.
 // Returns Status::FailedPrecondition if active() is false.
 Status SendFinalResponse(NanopbServerCall& call,
                          const void* payload,
-                         Status status);
+                         Status status) PW_LOCKS_EXCLUDED(rpc_lock());
 
 }  // namespace pw::rpc::internal

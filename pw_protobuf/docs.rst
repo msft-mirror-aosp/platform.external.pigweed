@@ -12,8 +12,9 @@ the Protocol Buffer wire format.
   is supported, though the APIs are not final. C++ code generation exists for
   encoding, but not decoding.
 
+------
 Design
-======
+------
 Unlike other protobuf libraries, which typically provide in-memory data
 structures to represent protobuf messages, ``pw_protobuf`` operates directly on
 the wire format and leaves data storage to the user. This has a few benefits.
@@ -27,8 +28,9 @@ low-level wire format operations with a user-friendly API for processing
 specific protobuf messages. The code generation integrates with Pigweed's GN
 build system.
 
+-------------
 Configuration
-=============
+-------------
 ``pw_protobuf`` supports the following configuration options.
 
 * ``PW_PROTOBUF_CFG_MAX_VARINT_SIZE``:
@@ -53,9 +55,9 @@ Configuration
   | 5 bytes           | 4,294,967,295 or < 4GiB (max uint32_t) |
   +-------------------+----------------------------------------+
 
-========
+--------
 Encoding
-========
+--------
 
 Usage
 =====
@@ -261,9 +263,9 @@ Example ``example_client.cc``:
     PW_LOG_INFO("Failed to encode proto; %s", client.status().str());
   }
 
-========
+--------
 Decoding
-========
+--------
 ``pw_protobuf`` provides two decoder implementations, which are described below.
 
 Decoder
@@ -319,8 +321,7 @@ StreamDecoder
 =============
 Sometimes, a serialized protobuf message may be too large to fit into an
 in-memory buffer. To faciliate working with that type of data, ``pw_protobuf``
-provides a ``StreamDecoder`` which reads data from a
-``pw::stream::SeekableReader``.
+provides a ``StreamDecoder`` which reads data from a ``pw::stream::Reader``.
 
 .. admonition:: When to use a stream decoder
 
@@ -339,7 +340,7 @@ of the stream into a provided buffer.
   #include "pw_protobuf/decoder.h"
   #include "pw_status/try.h"
 
-  pw::Status DecodeProtoFromStream(pw::stream::SeekableReader& reader) {
+  pw::Status DecodeProtoFromStream(pw::stream::Reader& reader) {
     pw::protobuf::StreamDecoder decoder(reader);
     pw::Status status;
 
@@ -377,8 +378,20 @@ of the stream into a provided buffer.
     return status.IsOutOfRange() ? OkStatus() : status;
   }
 
-The ``StreamDecoder`` can also return a ``Stream::SeekableReader`` for reading
-bytes fields, avoiding the need to copy data out directly.
+Where the length of the protobuf message is known in advance, the decoder can
+be prevented from reading from the stream beyond the known bounds by specifying
+the known length to the decoder:
+
+.. code-block:: c++
+
+  pw::protobuf::StreamDecoder decoder(reader, message_length);
+
+When a decoder constructed in this way goes out of scope, it will consume any
+remaining bytes in `message_length` allowing the next `Read` to be data after
+the protobuf, even when it was not fully parsed.
+
+The ``StreamDecoder`` can also return a ``StreamDecoder::BytesReader`` for
+reading bytes fields, avoiding the need to copy data out directly.
 
 .. code-block:: c++
 
@@ -391,6 +404,9 @@ bytes fields, avoiding the need to copy data out directly.
     // active, any attempts to use the decoder will result in a crash. When the
     // reader goes out of scope, it will close itself and reactive the decoder.
   }
+
+This reader supports seeking only if the ``StreamDecoder``'s reader supports
+seeking.
 
 If the current field is a nested protobuf message, the ``StreamDecoder`` can
 provide a decoder for the nested message. While the nested decoder is active,
@@ -488,8 +504,15 @@ different fields in a proto message:
 
   // Parse repeated field `repeated string rep_str = 5;`
   RepeatedStrings rep_str = message.AsRepeatedString(5);
-  // Iterate through the entries. For iteration
+  // Iterate through the entries. If proto is malformed when
+  // iterating, the next element (`str` in this case) will be invalid
+  // and loop will end in the iteration after.
   for (String element : rep_str) {
+    // Check status
+    if (!str.ok()) {
+      // In the case of error, loop will end in the next iteration if
+      // continues. This is the chance for code to catch the error.
+    }
     // Process str
   }
 
@@ -497,6 +520,11 @@ different fields in a proto message:
   RepeatedStrings rep_str = message.AsRepeatedString(6);
   // Iterate through the entries. For iteration
   for (Message element : rep_rep_nestedstr) {
+    // Check status
+    if (!element.ok()) {
+      // In the case of error, loop will end in the next iteration if
+      // continues. This is the chance for code to catch the error.
+    }
     // Process element
   }
 
@@ -506,6 +534,11 @@ different fields in a proto message:
   Bytes bytes_for_key = str_to_bytes["key"];
   // Or iterate through map entries
   for (StringToBytesMapEntry entry : str_to_bytes) {
+    // Check status
+    if (!entry.ok()) {
+      // In the case of error, loop will end in the next iteration if
+      // continues. This is the chance for code to catch the error.
+    }
     String key = entry.Key();
     Bytes value = entry.Value();
     // process entry
@@ -517,6 +550,13 @@ different fields in a proto message:
   Message nested_for_key = str_to_nested["key"];
   // Or iterate through map entries
   for (StringToMessageMapEntry entry : str_to_nested) {
+    // Check status
+    if (!entry.ok()) {
+      // In the case of error, loop will end in the next iteration if
+      // continues. This is the chance for code to catch the error.
+      // However it is still recommended that the user breaks here.
+      break;
+    }
     String key = entry.Key();
     Message value = entry.Value();
     // process entry
@@ -535,6 +575,11 @@ single fields directly.
 .. code-block:: c++
 
   for (Message::Field field : message) {
+    // Check status
+    if (!field.ok()) {
+      // In the case of error, loop will end in the next iteration if
+      // continues. This is the chance for code to catch the error.
+    }
     if (field.field_number() == 1) {
       Uint32 integer = field.As<Uint32>();
       ...
@@ -576,9 +621,20 @@ fields in a message.
 
 .. include:: size_report/decoder_incremental
 
-==========================
+---------------------------
+Serialized size calculation
+---------------------------
+``pw_protobuf/serialized_size.h`` provides a set of functions for calculating
+how much memory serialized protocol buffer fields require. The
+``kMaxSizeBytes*`` variables provide the maximum encoded sizes of each field
+type. The ``SizeOfField*()`` functions calculate the encoded size of a field of
+the specified type, given a particular key and, for variable length fields
+(varint or delimited), a value. The ``SizeOf*Field`` functions calculate the
+encoded size of fields with a particular wire format (delimited, varint).
+
+--------------------------
 Available protobuf modules
-==========================
+--------------------------
 There are a handful of messages ready to be used in Pigweed projects. These are
 located in ``pw_protobuf/pw_protobuf_protos``.
 
@@ -603,9 +659,9 @@ Contains the enum for pw::Status.
     // Writing to a proto
     proto.status_field = static_cast<pw::protobuf::StatusCode>(status.code()));
 
-========================================
+----------------------------------------
 Comparison with other protobuf libraries
-========================================
+----------------------------------------
 
 protobuf-lite
 =============

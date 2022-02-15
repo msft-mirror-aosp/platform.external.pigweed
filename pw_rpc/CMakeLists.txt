@@ -34,6 +34,9 @@ pw_add_module_library(pw_rpc.server
   PRIVATE_DEPS
     pw_log
 )
+if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_SERVER)
+  zephyr_link_libraries(pw_rpc.server)
+endif()
 
 pw_add_module_library(pw_rpc.client
   SOURCES
@@ -45,6 +48,9 @@ pw_add_module_library(pw_rpc.client
   PRIVATE_DEPS
     pw_log
 )
+if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_CLIENT)
+  zephyr_link_libraries(pw_rpc.client)
+endif()
 
 pw_add_module_library(pw_rpc.client_server
   SOURCES
@@ -53,10 +59,14 @@ pw_add_module_library(pw_rpc.client_server
     pw_rpc.client
     pw_rpc.server
 )
+if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_CLIENT_SERVER)
+  zephyr_link_libraries(pw_rpc.client_server)
+endif()
 
 pw_add_module_library(pw_rpc.common
   SOURCES
     channel.cc
+    channel_list.cc
     packet.cc
   PUBLIC_DEPS
     pw_assert
@@ -65,16 +75,19 @@ pw_add_module_library(pw_rpc.common
     pw_function
     pw_span
     pw_status
+    pw_sync.lock_annotations
     pw_rpc.protos.pwpb
   PRIVATE_DEPS
     pw_log
 )
+if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_COMMON)
+  zephyr_link_libraries(pw_rpc.common)
+endif()
 
-pw_add_module_library(pw_rpc.synchronized_channel_output
-  PUBLIC_DEPS
-    pw_rpc.common
-    pw_sync.mutex
-)
+if (NOT "${pw_sync.mutex_BACKEND}" STREQUAL "pw_sync.mutex.NO_BACKEND_SET" AND
+    NOT "${pw_sync.mutex_BACKEND}" STREQUAL "")
+  target_link_libraries(pw_rpc.common PUBLIC pw_sync.mutex)
+endif()
 
 pw_add_module_library(pw_rpc.test_utils
   SOURCES

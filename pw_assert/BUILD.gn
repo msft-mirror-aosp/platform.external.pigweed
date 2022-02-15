@@ -15,12 +15,24 @@
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/facade.gni")
+import("$dir_pw_build/module_config.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
 
 declare_args() {
-  # Backend for the pw_assert module.
+  # The build target that overrides the default configuration options for this
+  # module. This should point to a source set that provides defines through a
+  # public config (which may -include a file or add defines directly).
+  pw_assert_CONFIG = pw_build_DEFAULT_MODULE_CONFIG
+
+  # Backend for the pw_assert module's CHECK facade.
   pw_assert_BACKEND = ""
+
+  # Backend for the pw_assert module's ASSERT facade.
+  #
+  # Warning: This naming is transitional. Modifying this build argument WILL
+  #     result in future breakages. (pwbug/246)
+  pw_assert_LITE_BACKEND = "${dir_pw_assert}:lite_compatibility_backend"
 }
 
 config("public_include_path") {
@@ -28,11 +40,28 @@ config("public_include_path") {
   visibility = [ ":*" ]
 }
 
+config("lite_backend_overrides") {
+  include_dirs = [ "assert_lite_public_overrides" ]
+  visibility = [ ":*" ]
+}
+
+config("print_and_abort_backend_overrides") {
+  include_dirs = [ "print_and_abort_public_overrides" ]
+  visibility = [ ":*" ]
+}
+
+pw_source_set("config") {
+  public = [ "public/pw_assert/config.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = [ pw_assert_CONFIG ]
+}
+
 # Depending on dir_pw_assert provides both assert and check.
 group("pw_assert") {
   public_deps = [
     ":assert",
     ":check",
+    ":config",
   ]
 }
 
@@ -56,33 +85,62 @@ pw_facade("check") {
   public = [
     "public/pw_assert/check.h",
     "public/pw_assert/internal/check_impl.h",
-    "public/pw_assert/options.h",
     "public/pw_assert/short.h",
   ]
-  public_deps = [ dir_pw_preprocessor ]
+  public_deps = [
+    ":config",
+    dir_pw_preprocessor,
+  ]
 
   require_link_deps = [ ":impl" ]
 }
 
 # Provide "pw_assert/assert.h" in its own source set, so it can be used without
-# depending on pw_assert_BACKEND. This makes it possible to use PW_ASSERT in
-# situations that might result in circular dependencies, such as in low-level
-# headers like polyfill or span. See the docs for more discussion around where
-# to use which assert headers.
-#
-# The implementation function pw_assert_HandleFailure() must be provided at link
-# time. It is linked by the pw_assert:pw_assert (or pw_assert:check) targets.
-pw_source_set("assert") {
+# depending on pw_assert_BACKEND.
+pw_facade("assert") {
+  backend = pw_assert_LITE_BACKEND
   public_configs = [ ":public_include_path" ]
-  public = [
-    "public/pw_assert/assert.h",
+  public = [ "public/pw_assert/assert.h" ]
+  public_deps = [ ":config" ]
+}
 
-    # Needed for PW_ASSERT_ENABLE_DEBUG. Note that depending on :pw_assert to
-    # get options.h won't work here since it will trigger the circular include
-    # problem that the :assert target is intended solve.
-    "public/pw_assert/options.h",
-  ]
+# This backend to pw_assert's PW_ASSERT()/PW_DASSERT() macros provides backwards
+# compatibility with pw_assert's previous C-symbol based API.
+#
+# Warning: The "lite" naming is transitional. assert_lite_backend.h headers
+# will be renamed as the pw_assert API is reassessed. (pwbug/246)
+pw_source_set("lite_compatibility_backend") {
+  public_configs = [ ":lite_backend_overrides" ]
   public_deps = [ dir_pw_preprocessor ]
+  public =
+      [ "assert_lite_public_overrides/pw_assert_backend/assert_lite_backend.h" ]
+}
+
+group("lite_compatibility_backend.impl") {
+}
+
+# This backend to pw_assert's PW_ASSERT()/PW_DASSERT() macros prints the assert
+# expression, file/line number, and function with printf, then aborts. It is
+# intended for use with host builds.
+#
+# Warning: The "lite" naming is transitional. assert_lite_backend.h headers
+# will be renamed as the pw_assert API is reassessed. (pwbug/246)
+pw_source_set("print_and_abort") {
+  public_configs = [
+    ":print_and_abort_backend_overrides",
+    ":public_include_path",
+  ]
+  public_deps = [
+    ":config",
+    dir_pw_preprocessor,
+  ]
+  public = [
+    "print_and_abort_public_overrides/pw_assert_backend/assert_lite_backend.h",
+  ]
+  sources = [ "public/pw_assert/internal/print_and_abort.h" ]
+}
+
+group("print_and_abort.impl") {
 }
 
 # pw_assert is low-level and ubiquitous. Because of this, it can often cause
@@ -101,6 +159,10 @@ group("impl") {
   if (pw_assert_BACKEND != "") {
     public_deps +=
         [ get_label_info(pw_assert_BACKEND, "label_no_toolchain") + ".impl" ]
+  }
+  if (pw_assert_LITE_BACKEND != "") {
+    public_deps += [ get_label_info(pw_assert_LITE_BACKEND,
+                                    "label_no_toolchain") + ".impl" ]
   }
 }
 

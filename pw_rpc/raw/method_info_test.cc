@@ -22,19 +22,19 @@ namespace pw::rpc::internal {
 namespace {
 
 class TestService final
-    : public pw::rpc::test::generated::TestService<TestService> {
+    : public pw::rpc::test::pw_rpc::raw::TestService::Service<TestService> {
  public:
-  static StatusWithSize TestUnaryRpc(ServerContext&, ConstByteSpan, ByteSpan) {
+  static StatusWithSize TestUnaryRpc(ConstByteSpan, ByteSpan) {
     return StatusWithSize(0);
   }
 
-  void TestAnotherUnaryRpc(ServerContext&, ConstByteSpan, RawUnaryResponder&) {}
+  void TestAnotherUnaryRpc(ConstByteSpan, RawUnaryResponder&) {}
 
-  void TestServerStreamRpc(ServerContext&, ConstByteSpan, RawServerWriter&) {}
+  void TestServerStreamRpc(ConstByteSpan, RawServerWriter&) {}
 
-  void TestClientStreamRpc(ServerContext&, RawServerReader&) {}
+  void TestClientStreamRpc(RawServerReader&) {}
 
-  void TestBidirectionalStreamRpc(ServerContext&, RawServerReaderWriter&) {}
+  void TestBidirectionalStreamRpc(RawServerReaderWriter&) {}
 };
 
 static_assert(

@@ -20,30 +20,38 @@ namespace pw::transfer::internal {
 
 void ClientContext::StartRead(Client& client,
                               uint32_t transfer_id,
+                              work_queue::WorkQueue& work_queue,
+                              EncodingBuffer& encoding_buffer,
                               stream::Writer& writer,
-                              Function<void(Status)> on_completion) {
+                              rpc::RawClientReaderWriter& stream,
+                              Function<void(Status)>&& on_completion,
+                              chrono::SystemClock::duration timeout) {
   PW_DCHECK(!active());
-  PW_DCHECK(on_completion_ != nullptr);
+  PW_DCHECK(on_completion != nullptr);
 
-  set_transfer_id(transfer_id);
   client_ = &client;
-  stream_ = &writer;
   on_completion_ = std::move(on_completion);
-  is_last_chunk_ = false;
+
+  InitializeForReceive(
+      transfer_id, work_queue, encoding_buffer, stream, writer, timeout);
 }
 
 void ClientContext::StartWrite(Client& client,
                                uint32_t transfer_id,
+                               work_queue::WorkQueue& work_queue,
+                               EncodingBuffer& encoding_buffer,
                                stream::Reader& reader,
-                               Function<void(Status)> on_completion) {
+                               rpc::RawClientReaderWriter& stream,
+                               Function<void(Status)>&& on_completion,
+                               chrono::SystemClock::duration timeout) {
   PW_DCHECK(!active());
-  PW_DCHECK(on_completion_ != nullptr);
+  PW_DCHECK(on_completion != nullptr);
 
-  set_transfer_id(transfer_id);
   client_ = &client;
-  stream_ = &reader;
   on_completion_ = std::move(on_completion);
-  is_last_chunk_ = false;
+
+  InitializeForTransmit(
+      transfer_id, work_queue, encoding_buffer, stream, reader, timeout);
 }
 
 }  // namespace pw::transfer::internal

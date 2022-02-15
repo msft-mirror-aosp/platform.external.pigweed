@@ -20,6 +20,7 @@
 #include "pw_bytes/span.h"
 #include "pw_rpc/channel.h"
 #include "pw_rpc/internal/client_call.h"
+#include "pw_rpc/writer.h"
 
 namespace pw::rpc {
 
@@ -42,19 +43,18 @@ class RawClientReaderWriter : private internal::StreamResponseClientCall {
   using internal::StreamResponseClientCall::set_on_error;
   using internal::StreamResponseClientCall::set_on_next;
 
-  // Returns a buffer in which a request payload can be built.
-  ByteSpan PayloadBuffer() { return AcquirePayloadBuffer(); }
-
-  // Releases a buffer acquired from PayloadBuffer() without sending any data.
-  void ReleaseBuffer() { ReleasePayloadBuffer(); }
-
-  // Sends a stream request packet with the given raw payload. The payload can
-  // either be in the buffer previously acquired from PayloadBuffer(), or an
-  // arbitrary external buffer.
+  // Sends a stream request packet with the given raw payload.
   using internal::Call::Write;
+
+  // Notifies the server that no further client stream messages will be sent.
+  using internal::Call::CloseClientStream;
 
   // Cancels this RPC.
   using internal::Call::Cancel;
+
+  // Allow use as a generic RPC Writer.
+  using internal::Call::operator Writer&;
+  using internal::Call::operator const Writer&;
 
  protected:
   friend class internal::StreamResponseClientCall;
@@ -113,11 +113,13 @@ class RawClientWriter : private internal::UnaryResponseClientCall {
   using internal::UnaryResponseClientCall::set_on_completed;
   using internal::UnaryResponseClientCall::set_on_error;
 
-  using internal::UnaryResponseClientCall::Cancel;
-  using internal::UnaryResponseClientCall::Write;
+  using internal::Call::Cancel;
+  using internal::Call::CloseClientStream;
+  using internal::Call::Write;
 
-  ByteSpan PayloadBuffer() { return AcquirePayloadBuffer(); }
-  void ReleaseBuffer() { ReleasePayloadBuffer(); }
+  // Allow use as a generic RPC Writer.
+  using internal::Call::operator Writer&;
+  using internal::Call::operator const Writer&;
 
  private:
   friend class internal::UnaryResponseClientCall;

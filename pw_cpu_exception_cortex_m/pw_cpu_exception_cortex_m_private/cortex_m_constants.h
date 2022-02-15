@@ -16,7 +16,9 @@
 
 #include <cstdint>
 
-namespace pw::cpu_exception {
+#include "pw_preprocessor/arch.h"
+
+namespace pw::cpu_exception::cortex_m {
 
 // CMSIS/Cortex-M/ARMv7 related constants.
 // These values are from the ARMv7-M Architecture Reference Manual DDI 0403E.b.
@@ -64,7 +66,9 @@ constexpr uint32_t kCfsrUndefinstrMask = (kCfsrUsageFaultStart << 0);
 constexpr uint32_t kCfsrInvstateMask = (kCfsrUsageFaultStart << 1);
 constexpr uint32_t kCfsrInvpcMask = (kCfsrUsageFaultStart << 2);
 constexpr uint32_t kCfsrNocpMask = (kCfsrUsageFaultStart << 3);
+#if _PW_ARCH_ARM_V8M_MAINLINE
 constexpr uint32_t kCfsrStkofMask = (kCfsrUsageFaultStart << 4);
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE
 constexpr uint32_t kCfsrUnalignedMask = (kCfsrUsageFaultStart << 8);
 constexpr uint32_t kCfsrDivbyzeroMask = (kCfsrUsageFaultStart << 9);
 
@@ -95,4 +99,4 @@ inline volatile uint32_t& cortex_m_hfsr =
 inline volatile uint32_t& cortex_m_shcsr =
     *reinterpret_cast<volatile uint32_t*>(0xE000ED24u);
 
-}  // namespace pw::cpu_exception
+}  // namespace pw::cpu_exception::cortex_m

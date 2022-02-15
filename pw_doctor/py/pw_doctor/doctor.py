@@ -333,8 +333,34 @@ def cipd_versions(ctx: DoctorContext):
                     'CIPD package %s is out of date, please rerun bootstrap',
                     installed['package_name'])
 
-    for package in json.loads(json_path.read_text()):
+    for package in json.loads(json_path.read_text()).get('packages', ()):
         ctx.submit(check_cipd, package)
+
+
+@register_into(CHECKS)
+def symlinks(ctx: DoctorContext):
+    """Check that the platform supports symlinks."""
+
+    try:
+        root = pathlib.Path(os.environ['PW_ROOT']).resolve()
+    except KeyError:
+        return  # This case is handled elsewhere.
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        dest = pathlib.Path(tmpdir).resolve() / 'symlink'
+        try:
+            os.symlink(root, dest)
+            failure = False
+        except OSError:
+            # TODO(pwbug/500) Find out what errno is set when symlinks aren't
+            # supported by the OS.
+            failure = True
+
+        if not os.path.islink(dest) or failure:
+            ctx.warning(
+                'Symlinks are not supported or current user does not have '
+                'permission to use them. This may cause build issues. If on '
+                'Windows, turn on Development Mode to enable symlink support.')
 
 
 def run_doctor(strict=False, checks=None):

@@ -21,9 +21,39 @@ documents:
   For a quick intro to ``pw_rpc``, see the
   :ref:`module-pw_hdlc-rpc-example` in the :ref:`module-pw_hdlc` module.
 
-.. attention::
+.. warning::
 
-  This documentation is under construction.
+  This documentation is under construction. Many sections are outdated or
+  incomplete. The content needs to be reorgnanized.
+
+Implementations
+===============
+Pigweed provides several client and server implementations of ``pw_rpc``.
+
+.. list-table::
+  :header-rows: 1
+
+  * - Language
+    - Server
+    - Client
+  * - C++ (raw)
+    - ✅
+    - ✅
+  * - C++ (Nanopb)
+    - ✅
+    - ✅
+  * - C++ (pw_protobuf)
+    - planned
+    - planned
+  * - Java
+    -
+    - in development
+  * - Python
+    -
+    - ✅
+  * - TypeScript
+    -
+    - in development
 
 RPC semantics
 =============
@@ -44,6 +74,18 @@ call and reinvokes the RPC with the new request. This applies to unary and
 streaming RPCs, though the server may not have an opportunity to cancel a
 synchronously handled unary RPC before it completes. The same RPC may be invoked
 multiple times simultaneously if the invocations are on different channels.
+
+Status codes
+------------
+``pw_rpc`` call objects (``ClientReaderWriter``, ``ServerReaderWriter``, etc.)
+use certain status codes to indicate what occurred. These codes are returned
+from functions like ``Write()`` or ``Finish()``.
+
+* ``OK`` -- The operation succeeded.
+* ``UNAVAILABLE`` -- The channel is not currently registered with the server or
+  client.
+* ``UNKNOWN`` -- Sending a packet failed due to an unrecoverable
+  :cpp:func:`pw::rpc::ChannelOutput::Send` error.
 
 Unrequested responses
 ---------------------
@@ -207,15 +249,13 @@ A Nanopb implementation of this service would be as follows:
 
   class TheService : public pw_rpc::nanopb::TheService::Service<TheService> {
    public:
-    pw::Status MethodOne(ServerContext&,
-                         const foo_bar_Request& request,
+    pw::Status MethodOne(const foo_bar_Request& request,
                          foo_bar_Response& response) {
       // implementation
       return pw::OkStatus();
     }
 
-    void MethodTwo(ServerContext&,
-                   const foo_bar_Request& request,
+    void MethodTwo(const foo_bar_Request& request,
                    ServerWriter<foo_bar_Response>& response) {
       // implementation
       response.Write(foo_bar_Response{.number = 123});
@@ -326,6 +366,24 @@ output.
     dynamic_channel.Configure(GetChannelId(), some_output);
   }
 
+Adding and removing channels
+----------------------------
+New channels may be registered with the ``OpenChannel`` function. If dynamic
+allocation is enabled (:c:macro:`PW_RPC_DYNAMIC_ALLOCATION` is 1), any number of
+channels may be registered. If dynamic allocation is disabled, new channels may
+only be registered if there are availale channel slots in the span provided to
+the RPC endpoint at construction.
+
+A channel may be closed and unregistered with an endpoint by calling
+``ChannelClose`` on the endpoint with the corresponding channel ID.  This
+will terminate any pending calls and call their ``on_error`` callback
+with the ``ABORTED`` status.
+
+.. code-block:: cpp
+
+  // When a channel is closed, any pending calls will receive
+  // on_error callbacks with ABORTED status.
+  client->CloseChannel(1);
 
 Services
 ========
@@ -431,7 +489,7 @@ The C++ service implementation class may append "Service" to the name.
   namespace pw::file {
 
   class FileSystemService : public pw_rpc::raw::FileSystem::Service<FileSystemService> {
-    void List(ServerContext&, ConstByteSpan request, RawServerWriter& writer);
+    void List(ConstByteSpan request, RawServerWriter& writer);
   };
 
   }
@@ -519,6 +577,7 @@ The status code indicates the type of error. The status code is logged, but all
 status codes result in the same action by the server: aborting the RPC.
 
 * ``CANCELLED`` -- The client requested that the RPC be cancelled.
+* ``ABORTED`` -- The RPC was aborted due its channel being closed.
 * ``NOT_FOUND`` -- Received a packet for a service method the client does not
   recognize.
 * ``FAILED_PRECONDITION`` -- Received a packet for a service method that the
@@ -526,6 +585,7 @@ status codes result in the same action by the server: aborting the RPC.
 * ``DATA_LOSS`` -- Received a corrupt packet for a pending service method.
 * ``INVALID_ARGUMENT`` -- The server sent a packet type to an RPC that does not
   support it (a ``SERVER_STREAM`` was sent to an RPC with no server stream).
+* ``UNAVAILABLE`` -- Received a packet for an unknown channel.
 
 Server-to-client packets
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -568,7 +628,7 @@ Server-to-client packets
 |                   |                                     |
 +-------------------+-------------------------------------+
 
-All server packets contain the same client ID that was set in the initial
+All server packets contain the same ``call_id`` that was set in the initial
 request made by the client, if any.
 
 **Server errors**
@@ -584,8 +644,10 @@ status field indicates the type of error.
   support it (a ``CLIENT_STREAM`` was sent to an RPC with no client stream).
 * ``RESOURCE_EXHAUSTED`` -- The request came on a new channel, but a channel
   could not be allocated for it.
+* ``ABORTED`` -- The RPC was aborted due its channel being closed.
 * ``INTERNAL`` -- The server was unable to respond to an RPC due to an
   unrecoverable internal error.
+* ``UNAVAILABLE`` -- Received a packet for an unknown channel.
 
 Inovking a service method
 -------------------------
@@ -779,12 +841,12 @@ Example
 
   namespace {
   // Generated clients are namespaced with their proto library.
-  using pw::rpc::nanopb::EchoServiceClient;
+  using EchoClient = pw_rpc::nanopb::EchoService::Client;
 
   // RPC channel ID on which to make client calls.
   constexpr uint32_t kDefaultChannelId = 1;
 
-  EchoServiceClient::EchoCall echo_call;
+  EchoClient::EchoCall echo_call;
 
   // Callback invoked when a response is received. This is called synchronously
   // from Client::ProcessPacket.
@@ -802,7 +864,7 @@ Example
 
   void CallEcho(const char* message) {
     // Create a client to call the EchoService.
-    EchoServiceClient echo_client(my_rpc_client, kDefaultChannelId);
+    EchoClient echo_client(my_rpc_client, kDefaultChannelId);
 
     pw_rpc_EchoMessage request = pw_rpc_EchoMessage_init_default;
     pw::string::Copy(message, request.msg);
@@ -852,5 +914,252 @@ an RPC client and server with the same set of channels.
   void ProcessRpcData(pw::ConstByteSpan packet) {
     // Calls into both the client and the server, sending the packet to the
     // appropriate one.
-    client_server.ProcessPacket(packet, output);
+    client_server.ProcessPacket(packet);
   }
+
+Testing
+=======
+``pw_rpc`` provides utilities for unit testing RPC services and client calls.
+
+Client unit testing in C++
+--------------------------
+``pw_rpc`` supports invoking RPCs, simulating server responses, and checking
+what packets are sent by an RPC client in tests. Both raw and Nanopb interfaces
+are supported. Code that uses the raw API may be tested with the Nanopb test
+helpers, and vice versa.
+
+To test code that invokes RPCs, declare a ``RawClientTestContext`` or
+``NanopbClientTestContext``. These test context objects provide a
+preconfigured RPC client, channel, server fake, and buffer for encoding packets.
+These test classes are defined in ``pw_rpc/raw/client_testing.h`` and
+``pw_rpc/nanopb/client_testing.h``.
+
+Use the context's ``client()`` and ``channel()`` to invoke RPCs. Use the
+context's ``server()`` to simulate responses. To verify that the client sent the
+expected data, use the context's ``output()``, which is a ``FakeChannelOutput``.
+
+For example, the following tests a class that invokes an RPC. It checks that
+the expected data was sent and then simulates a response from the server.
+
+.. code-block:: cpp
+
+  #include "pw_rpc/raw/client_testing.h"
+
+  class ThingThatCallsRpcs {
+   public:
+    // To support injecting an RPC client for testing, classes that make RPC
+    // calls should take an RPC client and channel ID or an RPC service client
+    // (e.g. pw_rpc::raw::MyService::Client).
+    ThingThatCallsRpcs(pw::rpc::Client& client, uint32_t channel_id);
+
+    void DoSomethingThatInvokesAnRpc();
+
+    bool SetToTrueWhenRpcCompletes();
+  };
+
+  TEST(TestAThing, InvokesRpcAndHandlesResponse) {
+    RawClientTestContext context;
+    ThingThatCallsRpcs thing(context.client(), context.channel().id());
+
+    // Execute the code that invokes the MyService.TheMethod RPC.
+    things.DoSomethingThatInvokesAnRpc();
+
+    // Find and verify the payloads sent for the MyService.TheMethod RPC.
+    auto msgs = context.output().payloads<pw_rpc::raw::MyService::TheMethod>();
+    ASSERT_EQ(msgs.size(), 1u);
+
+    VerifyThatTheExpectedMessageWasSent(msgs.back());
+
+    // Send the response packet from the server and verify that the class reacts
+    // accordingly.
+    EXPECT_FALSE(thing.SetToTrueWhenRpcCompletes());
+
+    context_.server().SendResponse<pw_rpc::raw::MyService::TheMethod>(
+        final_message, OkStatus());
+
+    EXPECT_TRUE(thing.SetToTrueWhenRpcCompletes());
+  }
+
+Integration testing with ``pw_rpc``
+-----------------------------------
+``pw_rpc`` provides utilities to simplify writing integration tests for systems
+that communicate with ``pw_rpc``. The integration test utitilies set up a socket
+to use for IPC between an RPC server and client process.
+
+The server binary uses the system RPC server facade defined
+``pw_rpc_system_server/rpc_server.h``. The client binary uses the functions
+defined in ``pw_rpc/integration_testing.h``:
+
+.. cpp:var:: constexpr uint32_t kChannelId
+
+  The RPC channel for integration test RPCs.
+
+.. cpp:function:: pw::rpc::Client& pw::rpc::integration_test::Client()
+
+ Returns the global RPC client for integration test use.
+
+.. cpp:function:: pw::Status pw::rpc::integration_test::InitializeClient(int argc, char* argv[], const char* usage_args = "PORT")
+
+  Initializes logging and the global RPC client for integration testing. Starts
+  a background thread that processes incoming.
+
+Module Configuration Options
+============================
+The following configurations can be adjusted via compile-time configuration of
+this module, see the
+:ref:`module documentation <module-structure-compile-time-configuration>` for
+more details.
+
+.. c:macro:: PW_RPC_CLIENT_STREAM_END_CALLBACK
+
+  In client and bidirectional RPCs, pw_rpc clients may signal that they have
+  finished sending requests with a CLIENT_STREAM_END packet. While this can be
+  useful in some circumstances, it is often not necessary.
+
+  This option controls whether or not include a callback that is called when
+  the client stream ends. The callback is included in all ServerReader/Writer
+  objects as a pw::Function, so may have a significant cost.
+
+  This is disabled by default.
+
+.. c:macro:: PW_RPC_NANOPB_STRUCT_MIN_BUFFER_SIZE
+
+  The Nanopb-based pw_rpc implementation allocates memory to use for Nanopb
+  structs for the request and response protobufs. The template function that
+  allocates these structs rounds struct sizes up to this value so that
+  different structs can be allocated with the same function. Structs with sizes
+  larger than this value cause an extra function to be created, which slightly
+  increases code size.
+
+  Ideally, this value will be set to the size of the largest Nanopb struct used
+  as an RPC request or response. The buffer can be stack or globally allocated
+  (see ``PW_RPC_NANOPB_STRUCT_BUFFER_STACK_ALLOCATE``).
+
+  This defaults to 64 Bytes.
+
+.. c:macro:: PW_RPC_USE_GLOBAL_MUTEX
+
+  Enable global synchronization for RPC calls. If this is set, a backend must
+  be configured for pw_sync:mutex.
+
+  This is disabled by default.
+
+.. c:macro:: PW_RPC_DYNAMIC_ALLOCATION
+
+  Whether pw_rpc should use dynamic memory allocation internally. If enabled,
+  pw_rpc dynamically allocates channels and its encoding buffers. RPC users may
+  use dynamic allocation independently of this option (e.g. to allocate pw_rpc
+  call objects).
+
+  The semantics for allocating and initializing channels change depending on
+  this option. If dynamic allocation is disabled, pw_rpc endpoints (servers or
+  clients) use an externally-allocated, fixed-size array of channels.
+  That array must include unassigned channels or existing channels must be
+  closed to add new channels.
+
+  If dynamic allocation is enabled, an span of channels may be passed to the
+  endpoint at construction, but these channels are only used to initialize its
+  internal std::vector of channels. External channel objects are NOT used by
+  the endpoint cannot be updated if dynamic allocation is enabled. No
+  unassigned channels should be passed to the endpoint; they will be ignored.
+  Any number of channels may be added to the endpoint, without closing existing
+  channels, but adding channels will use more memory.
+
+.. c:macro:: PW_RPC_CONFIG_LOG_LEVEL
+
+  The log level to use for this module. Logs below this level are omitted.
+
+  This defaults to ``PW_LOG_LEVEL_INFO``.
+
+.. c:macro:: PW_RPC_CONFIG_LOG_MODULE_NAME
+
+  The log module name to use for this module.
+
+  This defaults to ``"PW_RPC"``.
+
+.. c:macro:: PW_RPC_NANOPB_STRUCT_BUFFER_STACK_ALLOCATE
+
+  This option determines whether to allocate the Nanopb structs on the stack or
+  in a global variable. Globally allocated structs are NOT thread safe, but
+  work fine when the RPC server's ProcessPacket function is only called from
+  one thread.
+
+  This is enabled by default.
+
+Sharing server and client code
+==============================
+Streaming RPCs support writing multiple requests or responses. To facilitate
+sharing code between servers and clients, ``pw_rpc`` provides the
+``pw::rpc::Writer`` interface. On the client side, a client or bidirectional
+streaming RPC call object (``ClientWriter`` or ``ClientReaderWriter``) can be
+used as a ``pw::rpc::Writer&``. On the server side, a server or bidirectional
+streaming RPC call object (``ServerWriter`` or ``ServerReaderWriter``) can be
+used as a ``pw::rpc::Writer&``.
+
+Zephyr
+======
+To enable ``pw_rpc.*`` for Zephyr add ``CONFIG_PIGWEED_RPC=y`` to the project's
+configuration. This will enable the Kconfig menu for the following:
+
+* ``pw_rpc.server`` which can be enabled via ``CONFIG_PIGWEED_RPC_SERVER=y``.
+* ``pw_rpc.client`` which can be enabled via ``CONFIG_PIGWEED_RPC_CLIENT=y``.
+* ``pw_rpc.client_server`` which can be enabled via
+  ``CONFIG_PIGWEED_RPC_CLIENT_SERVER=y``.
+* ``pw_rpc.common` which can be enabled via ``CONFIG_PIGWEED_RPC_COMMON=y``.
+
+Encoding and sending packets
+============================
+``pw_rpc`` has to manage interactions among multiple RPC clients, servers,
+client calls, and server calls. To safely synchronize these interactions with
+minimal overhead, ``pw_rpc`` uses a single, global mutex (when
+``PW_RPC_USE_GLOBAL_MUTEX`` is enabled).
+
+Because ``pw_rpc`` uses a global mutex, it also uses a global buffer to encode
+outgoing packets. The size of the buffer is set with
+``PW_RPC_ENCODING_BUFFER_SIZE``, which defaults to 512 B.
+
+Users of ``pw_rpc`` must implement the :cpp:class:`pw::rpc::ChannelOutput`
+interface.
+
+.. cpp:class:: pw::rpc::ChannelOutput
+
+  ``pw_rpc`` endpoints use :cpp:class:`ChannelOutput` instances to send packets.
+  Systems that integrate pw_rpc must use one or more :cpp:class:`ChannelOutput`
+  instances.
+
+  .. cpp:member:: static constexpr size_t kUnlimited = std::numeric_limits<size_t>::max()
+
+    Value returned from :cpp:func:`MaximumTransmissionUnit` to indicate an
+    unlimited MTU.
+
+  .. cpp:function:: virtual size_t MaximumTransmissionUnit()
+
+    Returns the size of the largest packet the :cpp:class:`ChannelOutput` can
+    send. :cpp:class:`ChannelOutput` implementations should only override this
+    function if they impose a limit on the MTU. The default implementation
+    returns :cpp:member:`kUnlimited`, which indicates that there is no MTU
+    limit.
+
+  .. cpp:function:: virtual pw::Status Send(std::span<std::byte> packet)
+
+    Sends an encoded RPC packet. Returns OK if further packets may be sent, even
+    if the current packet could not be sent. Returns any other status if the
+    Channel is no longer able to send packets.
+
+    The RPC system's internal lock is held while this function is called. Avoid
+    long-running operations, since these will delay any other users of the RPC
+    system.
+
+    .. danger::
+
+      No ``pw_rpc`` APIs may be accessed in this function! Implementations MUST
+      NOT access any RPC endpoints (:cpp:class:`pw::rpc::Client`,
+      :cpp:class:`pw::rpc::Server`) or call objects
+      (:cpp:class:`pw::rpc::ServerReaderWriter`,
+      :cpp:class:`pw::rpc::ClientReaderWriter`, etc.) inside the :cpp:func:`Send`
+      function or any descendent calls. Doing so will result in deadlock! RPC APIs
+      may be used by other threads, just not within :cpp:func:`Send`.
+
+      The buffer provided in ``packet`` must NOT be accessed outside of this
+      function. It must be sent immediately or copied elsewhere before the
+      function returns.

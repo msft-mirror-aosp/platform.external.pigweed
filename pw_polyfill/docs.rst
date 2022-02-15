@@ -23,9 +23,17 @@ provided by the standard header, so ``pw_polyfill`` is safe to use when
 compiling with any standard C++14 or newer.
 
 The wrapper headers are in ``public_overrides``. These are provided through the
-``"$dir_pw_polyfill:overrides"`` library, which the GN build adds as a
-dependency for all targets. To apply overrides in Bazel or CMake, depend on the
-``//pw_polyfill:overrides`` or ``pw_polyfill.overrides`` targets.
+``"$dir_pw_polyfill"`` libraries, which the GN build adds as a
+dependency for all targets:
+
+* ``$dir_pw_polyfill:bit``
+* ``$dir_pw_polyfill:cstddef``
+* ``$dir_pw_polyfill:iterator``
+* ``$dir_pw_polyfill:span``
+* ``$dir_pw_polyfill:type_traits``
+
+To apply overrides in Bazel or CMake, depend on the targets you need such as
+``//pw_polyfill:span`` or ``pw_polyfill.span`` as an example.
 
 Backported features
 ===================
@@ -35,10 +43,8 @@ Header              Feature                           Level of support          
 <bit>               std::endian                       full                             __cpp_lib_endian
 <cstdlib>           std::byte                         full                             __cpp_lib_byte
 <iterator>          std::data, std::size              full                             __cpp_lib_nonmember_container_access
-<type_traits>       \*_t trait aliases                partial (can expand as needed)   __cpp_lib_transformation_trait_aliases
-<type_traits>       std::is_null_pointer              full                             __cpp_lib_is_null_pointer
-<utilty>            std::integer_sequence & helpers   full                             __cpp_lib_integer_sequence
-(language feature)  static_assert with no message     full                             __cpp_static_assert
+<type_traits>       std::bool_constant                full                             __cpp_lib_bool_constant
+<type_traits>       std::negation, etc.               full                             __cpp_lib_logical_traits
 ==================  ================================  ===============================  ========================================
 
 ----------------------------------------------------
@@ -71,3 +77,9 @@ systems, add ``pw_polyfill/standard_library_public`` and
 Compatibility
 -------------
 C++14
+
+Zephyr
+======
+To enable ``pw_polyfill`` for Zephyr add ``CONFIG_PIGWEED_POLYFILL=y`` to the
+project's configuration. Similarly, to enable ``pw_polyfill.overrides``, add
+``CONFIG_PIGWEED_POLYFILL_OVERRIDES=y`` to the project's configuration.

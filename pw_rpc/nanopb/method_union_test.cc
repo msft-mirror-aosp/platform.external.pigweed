@@ -11,6 +11,7 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+//
 
 #include "pw_rpc/nanopb/internal/method_union.h"
 
@@ -63,46 +64,45 @@ class FakeGeneratedService : public Service {
   };
 };
 
-pw_rpc_test_TestRequest last_request;
-NanopbServerWriter<pw_rpc_test_TestResponse> last_writer;
-RawServerWriter last_raw_writer;
-
 class FakeGeneratedServiceImpl
     : public FakeGeneratedService<FakeGeneratedServiceImpl> {
  public:
   FakeGeneratedServiceImpl(uint32_t id) : FakeGeneratedService(id) {}
 
-  Status AddFive(ServerContext&,
-                 const pw_rpc_test_TestRequest& request,
+  Status AddFive(const pw_rpc_test_TestRequest& request,
                  pw_rpc_test_TestResponse& response) {
     last_request = request;
     response.value = request.integer + 5;
     return Status::Unauthenticated();
   }
 
-  StatusWithSize DoNothing(ServerContext&, ConstByteSpan, ByteSpan) {
+  StatusWithSize DoNothing(ConstByteSpan, ByteSpan) {
     return StatusWithSize::Unknown();
   }
 
-  void RawStream(ServerContext&, ConstByteSpan, RawServerWriter& writer) {
+  void RawStream(ConstByteSpan, RawServerWriter& writer) {
     last_raw_writer = std::move(writer);
   }
 
-  void StartStream(ServerContext&,
-                   const pw_rpc_test_TestRequest& request,
+  void StartStream(const pw_rpc_test_TestRequest& request,
                    NanopbServerWriter<pw_rpc_test_TestResponse>& writer) {
     last_request = request;
     last_writer = std::move(writer);
   }
+
+  pw_rpc_test_TestRequest last_request;
+  NanopbServerWriter<pw_rpc_test_TestResponse> last_writer;
+  RawServerWriter last_raw_writer;
 };
 
 TEST(NanopbMethodUnion, Raw_CallsUnaryMethod) {
   const Method& method =
       std::get<0>(FakeGeneratedServiceImpl::kMethods).method();
   ServerContextForTest<FakeGeneratedServiceImpl> context(method);
+  rpc_lock().lock();
   method.Invoke(context.get(), context.request({}));
 
-  const Packet& response = context.output().sent_packet();
+  const Packet& response = context.output().last_packet();
   EXPECT_EQ(response.status(), Status::Unknown());
 }
 
@@ -114,11 +114,12 @@ TEST(NanopbMethodUnion, Raw_CallsServerStreamingMethod) {
       std::get<1>(FakeGeneratedServiceImpl::kMethods).method();
   ServerContextForTest<FakeGeneratedServiceImpl> context(method);
 
+  rpc_lock().lock();
   method.Invoke(context.get(), context.request(request));
 
-  EXPECT_TRUE(last_raw_writer.active());
-  EXPECT_EQ(OkStatus(), last_raw_writer.Finish());
-  EXPECT_EQ(context.output().sent_packet().type(), PacketType::RESPONSE);
+  EXPECT_TRUE(context.service().last_raw_writer.active());
+  EXPECT_EQ(OkStatus(), context.service().last_raw_writer.Finish());
+  EXPECT_EQ(context.output().last_packet().type(), PacketType::RESPONSE);
 }
 
 TEST(NanopbMethodUnion, Nanopb_CallsUnaryMethod) {
@@ -128,9 +129,10 @@ TEST(NanopbMethodUnion, Nanopb_CallsUnaryMethod) {
   const Method& method =
       std::get<2>(FakeGeneratedServiceImpl::kMethods).method();
   ServerContextForTest<FakeGeneratedServiceImpl> context(method);
+  rpc_lock().lock();
   method.Invoke(context.get(), context.request(request));
 
-  const Packet& response = context.output().sent_packet();
+  const Packet& response = context.output().last_packet();
   EXPECT_EQ(response.status(), Status::Unauthenticated());
 
   // Field 1 (encoded as 1 << 3) with 128 as the value.
@@ -141,8 +143,8 @@ TEST(NanopbMethodUnion, Nanopb_CallsUnaryMethod) {
   EXPECT_EQ(0,
             std::memcmp(expected, response.payload().data(), sizeof(expected)));
 
-  EXPECT_EQ(123, last_request.integer);
-  EXPECT_EQ(3u, last_request.status_code);
+  EXPECT_EQ(123, context.service().last_request.integer);
+  EXPECT_EQ(3u, context.service().last_request.status_code);
 }
 
 TEST(NanopbMethodUnion, Nanopb_CallsServerStreamingMethod) {
@@ -153,13 +155,14 @@ TEST(NanopbMethodUnion, Nanopb_CallsServerStreamingMethod) {
       std::get<3>(FakeGeneratedServiceImpl::kMethods).method();
   ServerContextForTest<FakeGeneratedServiceImpl> context(method);
 
+  rpc_lock().lock();
   method.Invoke(context.get(), context.request(request));
 
-  EXPECT_EQ(555, last_request.integer);
-  EXPECT_TRUE(last_writer.active());
+  EXPECT_EQ(555, context.service().last_request.integer);
+  EXPECT_TRUE(context.service().last_writer.active());
 
-  EXPECT_EQ(OkStatus(), last_writer.Finish());
-  EXPECT_EQ(context.output().sent_packet().type(), PacketType::RESPONSE);
+  EXPECT_EQ(OkStatus(), context.service().last_writer.Finish());
+  EXPECT_EQ(context.output().last_packet().type(), PacketType::RESPONSE);
 }
 
 }  // namespace

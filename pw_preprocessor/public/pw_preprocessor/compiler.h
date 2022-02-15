@@ -18,6 +18,10 @@
 
 #include <assert.h>
 
+// TODO(pwbug/593): compiler.h should be refactored out of pw_preprocessor as
+// the scope is outside of the module. Perhaps it should be split up and placed
+// under pw_compiler, e.g. pw_compiler/attributes.h & pw_compiler/builtins.h.
+
 // Marks a struct or class as packed.
 #define PW_PACKED(declaration) declaration __attribute__((packed))
 
@@ -59,6 +63,13 @@
 
 #define PW_PRINTF_FORMAT(format_index, parameter_index) \
   __attribute__((format(_PW_PRINTF_FORMAT_TYPE, format_index, parameter_index)))
+
+// Places a variable in the specified linker section.
+#ifdef __APPLE__
+#define PW_PLACE_IN_SECTION(name) __attribute__((section("__DATA," name)))
+#else
+#define PW_PLACE_IN_SECTION(name) __attribute__((section(name)))
+#endif  // __APPLE__
 
 // Places a variable in the specified linker section and directs the compiler
 // to keep the variable, even if it is not used. Depending on the linker

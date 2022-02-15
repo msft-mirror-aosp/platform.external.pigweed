@@ -16,14 +16,17 @@
 #include "pw_function/function.h"
 #include "pw_rpc/internal/call.h"
 #include "pw_rpc/internal/config.h"
+#include "pw_rpc/internal/lock.h"
 
 namespace pw::rpc::internal {
 
 // A Call object, as used by an RPC server.
 class ServerCall : public Call {
  public:
-  void EndClientStream() {
+  void HandleClientStreamEnd() PW_UNLOCK_FUNCTION(rpc_lock()) {
     MarkClientStreamCompleted();
+    // TODO(pwbug/597): Ensure on_client_stream_end_ is properly guarded.
+    rpc_lock().unlock();
 
 #if PW_RPC_CLIENT_STREAM_END_CALLBACK
     if (on_client_stream_end_) {
@@ -33,6 +36,8 @@ class ServerCall : public Call {
   }
 
  protected:
+  constexpr ServerCall() = default;
+
   ServerCall(ServerCall&& other) { *this = std::move(other); }
 
   ~ServerCall() {
@@ -40,9 +45,15 @@ class ServerCall : public Call {
     CloseAndSendResponse(OkStatus()).IgnoreError();
   }
 
-  ServerCall& operator=(ServerCall&& other);
+  // Version of operator= used by the raw call classes.
+  ServerCall& operator=(ServerCall&& other) PW_LOCKS_EXCLUDED(rpc_lock()) {
+    LockGuard lock(rpc_lock());
+    MoveServerCallFrom(other);
+    return *this;
+  }
 
-  constexpr ServerCall() = default;
+  void MoveServerCallFrom(ServerCall& other)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
   ServerCall(const CallContext& context, MethodType type)
       : Call(context, type) {}
@@ -51,7 +62,8 @@ class ServerCall : public Call {
   // disabled with a helpful static_assert message.
   template <typename UnusedType = void>
   void set_on_client_stream_end(
-      [[maybe_unused]] Function<void()> on_client_stream_end) {
+      [[maybe_unused]] Function<void()>&& on_client_stream_end) {
+    // TODO(pwbug/597): Ensure on_client_stream_end_ is properly guarded.
     static_assert(
         cfg::kClientStreamEndCallbackEnabled<UnusedType>,
         "The client stream end callback is disabled, so "

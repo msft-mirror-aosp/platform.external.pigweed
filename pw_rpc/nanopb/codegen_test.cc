@@ -13,34 +13,36 @@
 // the License.
 
 #include "gtest/gtest.h"
+#include "pw_preprocessor/compiler.h"
 #include "pw_rpc/internal/hash.h"
 #include "pw_rpc/internal/test_utils.h"
 #include "pw_rpc/nanopb/test_method_context.h"
 #include "pw_rpc_nanopb_private/internal_test_utils.h"
 #include "pw_rpc_test_protos/test.rpc.pb.h"
 
+PW_MODIFY_DIAGNOSTICS_PUSH();
+PW_MODIFY_DIAGNOSTIC(ignored, "-Wmissing-field-initializers");
+
 namespace pw::rpc {
 namespace test {
 
-class TestService final : public generated::TestService<TestService> {
+class TestService final
+    : public pw_rpc::nanopb::TestService::Service<TestService> {
  public:
-  Status TestUnaryRpc(ServerContext&,
-                      const pw_rpc_test_TestRequest& request,
+  Status TestUnaryRpc(const pw_rpc_test_TestRequest& request,
                       pw_rpc_test_TestResponse& response) {
     response.value = request.integer + 1;
     return static_cast<Status::Code>(request.status_code);
   }
 
   void TestAnotherUnaryRpc(
-      ServerContext& ctx,
       const pw_rpc_test_TestRequest& request,
       NanopbUnaryResponder<pw_rpc_test_TestResponse>& responder) {
     pw_rpc_test_TestResponse response{};
-    responder.Finish(response, TestUnaryRpc(ctx, request, response));
+    responder.Finish(response, TestUnaryRpc(request, response));
   }
 
   static void TestServerStreamRpc(
-      ServerContext&,
       const pw_rpc_test_TestRequest& request,
       ServerWriter<pw_rpc_test_TestStreamResponse>& writer) {
     for (int i = 0; i < request.integer; ++i) {
@@ -51,14 +53,12 @@ class TestService final : public generated::TestService<TestService> {
   }
 
   void TestClientStreamRpc(
-      ServerContext&,
       ServerReader<pw_rpc_test_TestRequest, pw_rpc_test_TestStreamResponse>&
           new_reader) {
     reader = std::move(new_reader);
   }
 
   void TestBidirectionalStreamRpc(
-      ServerContext&,
       ServerReaderWriter<pw_rpc_test_TestRequest,
                          pw_rpc_test_TestStreamResponse>& new_reader_writer) {
     reader_writer = std::move(new_reader_writer);
@@ -202,13 +202,13 @@ TEST(NanopbCodegen, ClientCall_DefaultConstructor) {
   NanopbClientReader<pw_rpc_test_TestStreamResponse> server_streaming_call;
 }
 
-using TestServiceClient = test::nanopb::TestServiceClient;
+using TestServiceClient = test::pw_rpc::nanopb::TestService::Client;
 
 TEST(NanopbCodegen, Client_InvokesUnaryRpcWithCallback) {
   constexpr uint32_t kServiceId = internal::Hash("pw.rpc.test.TestService");
   constexpr uint32_t kMethodId = internal::Hash("TestUnaryRpc");
 
-  ClientContextForTest<128, 128, 99, kServiceId, kMethodId> context;
+  ClientContextForTest<128, 99, kServiceId, kMethodId> context;
 
   TestServiceClient test_client(context.client(), context.channel().id());
 
@@ -226,8 +226,10 @@ TEST(NanopbCodegen, Client_InvokesUnaryRpcWithCallback) {
 
   EXPECT_TRUE(call.active());
 
-  EXPECT_EQ(context.output().packet_count(), 1u);
-  auto packet = context.output().sent_packet();
+  EXPECT_EQ(context.output().total_packets(), 1u);
+  auto packet =
+      static_cast<const internal::test::FakeChannelOutput&>(context.output())
+          .last_packet();
   EXPECT_EQ(packet.channel_id(), context.channel().id());
   EXPECT_EQ(packet.service_id(), kServiceId);
   EXPECT_EQ(packet.method_id(), kMethodId);
@@ -246,7 +248,7 @@ TEST(NanopbCodegen, Client_InvokesServerStreamingRpcWithCallback) {
   constexpr uint32_t kServiceId = internal::Hash("pw.rpc.test.TestService");
   constexpr uint32_t kMethodId = internal::Hash("TestServerStreamRpc");
 
-  ClientContextForTest<128, 128, 99, kServiceId, kMethodId> context;
+  ClientContextForTest<128, 99, kServiceId, kMethodId> context;
 
   TestServiceClient test_client(context.client(), context.channel().id());
 
@@ -269,8 +271,10 @@ TEST(NanopbCodegen, Client_InvokesServerStreamingRpcWithCallback) {
 
   EXPECT_TRUE(call.active());
 
-  EXPECT_EQ(context.output().packet_count(), 1u);
-  auto packet = context.output().sent_packet();
+  EXPECT_EQ(context.output().total_packets(), 1u);
+  auto packet =
+      static_cast<const internal::test::FakeChannelOutput&>(context.output())
+          .last_packet();
   EXPECT_EQ(packet.channel_id(), context.channel().id());
   EXPECT_EQ(packet.service_id(), kServiceId);
   EXPECT_EQ(packet.method_id(), kMethodId);
@@ -292,7 +296,7 @@ TEST(NanopbCodegen, Client_StaticMethod_InvokesUnaryRpcWithCallback) {
   constexpr uint32_t kServiceId = internal::Hash("pw.rpc.test.TestService");
   constexpr uint32_t kMethodId = internal::Hash("TestUnaryRpc");
 
-  ClientContextForTest<128, 128, 99, kServiceId, kMethodId> context;
+  ClientContextForTest<128, 99, kServiceId, kMethodId> context;
 
   struct {
     Status last_status = Status::Unknown();
@@ -310,8 +314,10 @@ TEST(NanopbCodegen, Client_StaticMethod_InvokesUnaryRpcWithCallback) {
 
   EXPECT_TRUE(call.active());
 
-  EXPECT_EQ(context.output().packet_count(), 1u);
-  auto packet = context.output().sent_packet();
+  EXPECT_EQ(context.output().total_packets(), 1u);
+  auto packet =
+      static_cast<const internal::test::FakeChannelOutput&>(context.output())
+          .last_packet();
   EXPECT_EQ(packet.channel_id(), context.channel().id());
   EXPECT_EQ(packet.service_id(), kServiceId);
   EXPECT_EQ(packet.method_id(), kMethodId);
@@ -328,7 +334,7 @@ TEST(NanopbCodegen, Client_StaticMethod_InvokesServerStreamingRpcWithCallback) {
   constexpr uint32_t kServiceId = internal::Hash("pw.rpc.test.TestService");
   constexpr uint32_t kMethodId = internal::Hash("TestServerStreamRpc");
 
-  ClientContextForTest<128, 128, 99, kServiceId, kMethodId> context;
+  ClientContextForTest<128, 99, kServiceId, kMethodId> context;
 
   struct {
     bool active = true;
@@ -351,8 +357,10 @@ TEST(NanopbCodegen, Client_StaticMethod_InvokesServerStreamingRpcWithCallback) {
 
   EXPECT_TRUE(call.active());
 
-  EXPECT_EQ(context.output().packet_count(), 1u);
-  auto packet = context.output().sent_packet();
+  EXPECT_EQ(context.output().total_packets(), 1u);
+  auto packet =
+      static_cast<const internal::test::FakeChannelOutput&>(context.output())
+          .last_packet();
   EXPECT_EQ(packet.channel_id(), context.channel().id());
   EXPECT_EQ(packet.service_id(), kServiceId);
   EXPECT_EQ(packet.method_id(), kMethodId);
@@ -372,3 +380,5 @@ TEST(NanopbCodegen, Client_StaticMethod_InvokesServerStreamingRpcWithCallback) {
 
 }  // namespace
 }  // namespace pw::rpc
+
+PW_MODIFY_DIAGNOSTICS_POP();

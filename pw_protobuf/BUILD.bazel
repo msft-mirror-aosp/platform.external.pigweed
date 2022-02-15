@@ -58,12 +58,27 @@ pw_cc_library(
         ":config",
         "//pw_assert",
         "//pw_bytes",
+        "//pw_polyfill:bit",
+        "//pw_polyfill:overrides",
         "//pw_result",
         "//pw_span",
         "//pw_status",
         "//pw_stream",
         "//pw_stream:interval_reader",
         "//pw_varint",
+        "//pw_varint:stream",
+    ],
+)
+
+pw_cc_library(
+    name = "bytes_utils",
+    hdrs = ["public/pw_protobuf/bytes_utils.h"],
+    includes = ["public"],
+    deps = [
+        ":pw_protobuf",
+        "//pw_bytes",
+        "//pw_result",
+        "//pw_status",
     ],
 )
 
@@ -106,6 +121,15 @@ pw_cc_test(
 )
 
 pw_cc_test(
+    name = "serialized_size_test",
+    srcs = ["serialized_size_test.cc"],
+    deps = [
+        ":pw_protobuf",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
     name = "stream_decoder_test",
     srcs = ["stream_decoder_test.cc"],
     deps = [
@@ -133,9 +157,17 @@ pw_cc_test(
 )
 
 proto_library(
-    name = "codegen_test_proto",
+    name = "common_protos",
     srcs = [
         "pw_protobuf_protos/common.proto",
+        "pw_protobuf_protos/status.proto",
+    ],
+    strip_import_prefix = "//pw_protobuf",
+)
+
+proto_library(
+    name = "codegen_test_proto",
+    srcs = [
         "pw_protobuf_test_protos/full_test.proto",
         "pw_protobuf_test_protos/imported.proto",
         "pw_protobuf_test_protos/importer.proto",
@@ -144,6 +176,7 @@ proto_library(
         "pw_protobuf_test_protos/repeated.proto",
     ],
     strip_import_prefix = "//pw_protobuf",
+    deps = [":common_protos"],
 )
 
 pw_proto_library(

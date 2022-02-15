@@ -1,15 +1,18 @@
 .. _module-pw_cpu_exception_cortex_m:
 
--------------------------
+=========================
 pw_cpu_exception_cortex_m
--------------------------
-This backend provides an ARMv7-M implementation for the CPU exception module
-frontend. See the CPU exception frontend module description for more
-information.
+=========================
+This backend provides an implementations for the CPU exception module frontend
+for the following Cortex-M architectures:
+
+* ARMv7-M - Cortex M3
+* ARMv7-EM - Cortex M4, M7
+* ARMv8-M Mainline - Cortex M33, M33P
 
 Setup
 =====
-There are a few ways to set up the ARMv7-M exception handler so the
+There are a few ways to set up the Cortex M exception handler so the
 application's exception handler is properly called during an exception.
 
 **1. Use existing CMSIS functions**
@@ -26,9 +29,9 @@ application's exception handler is properly called during an exception.
 **2. Modify a startup file**
   Assembly startup files for some microcontrollers initialize the interrupt
   vector table. The functions to call for fault handlers can be changed here.
-  For ARMv7-M, the fault handlers are indexes 3 to 6 of the interrupt vector
-  table. It's also may be helpful to redirect the NMI handler to the entry
-  function (if it's otherwise unused in your project).
+  For ARMv7-M and ARMv8-M, the fault handlers are indexes 3 to 6 of the
+  interrupt vector table. It's also may be helpful to redirect the NMI handler
+  to the entry function (if it's otherwise unused in your project).
 
   Default:
 
@@ -61,7 +64,7 @@ application's exception handler is properly called during an exception.
 
 **3. Modify interrupt vector table at runtime**
   Some applications may choose to modify their interrupt vector tables at
-  runtime. The ARMv7-M exception handler works with this use case (see the
+  runtime. The exception handler works with this use case (see the
   exception_entry_test integration test), but keep in mind that your
   application's exception handler will not be entered if an exception occurs
   before the vector table entries are updated to point to
@@ -83,8 +86,8 @@ state so that execution can safely continue.
 Expected Behavior
 -----------------
 In most cases, the CPU state captured by the exception handler will contain the
-ARMv7-M basic register frame in addition to an extended set of registers (see
-``cpu_state.h``).
+basic register frame in addition to an extended set of registers
+(see ``cpu_state.h``).
 
 The exception to this is when the program stack pointer is in an MPU-protected
 or otherwise invalid memory region when the CPU attempts to push the exception
@@ -192,4 +195,68 @@ Python processor
 ================
 This module's included Python exception analyzer tooling provides snapshot
 integration via a ``process_snapshot()`` function that produces a multi-line
-dump from a serialized snapshot proto.
+dump from a serialized snapshot proto, for example:
+
+.. code-block::
+
+  Exception caused by a usage fault.
+
+  Active Crash Fault Status Register (CFSR) fields:
+  UNDEFINSTR  Undefined Instruction UsageFault.
+      The processor has attempted to execute an undefined
+      instruction. When this bit is set to 1, the PC value stacked
+      for the exception return points to the undefined instruction.
+      An undefined instruction is an instruction that the processor
+      cannot decode.
+
+  All registers:
+  pc         0x0800e1c4 example::Service::Crash(_example_service_CrashRequest const&, _pw_protobuf_Empty&) (src/example_service/service.cc:131)
+  lr         0x0800e141 example::Service::Crash(_example_service_CrashRequest const&, _pw_protobuf_Empty&) (src/example_service/service.cc:128)
+  psr        0x81000000
+  msp        0x20040fd8
+  psp        0x20001488
+  exc_return 0xffffffed
+  cfsr       0x00010000
+  mmfar      0xe000ed34
+  bfar       0xe000ed38
+  icsr       0x00000803
+  hfsr       0x40000000
+  shcsr      0x00000000
+  control    0x00000000
+  r0         0xe03f7847
+  r1         0x714083dc
+  r2         0x0b36dc49
+  r3         0x7fbfbe1a
+  r4         0xc36e8efb
+  r5         0x69a14b13
+  r6         0x0ec35eaa
+  r7         0xa5df5543
+  r8         0xc892b931
+  r9         0xa2372c94
+  r10        0xbd15c968
+  r11        0x759b95ab
+  r12        0x00000000
+
+Module Configuration Options
+============================
+The following configurations can be adjusted via compile-time configuration of
+this module, see the
+:ref:`module documentation <module-structure-compile-time-configuration>` for
+more details.
+
+.. c:macro:: PW_CPU_EXCEPTION_CORTEX_M_LOG_LEVEL
+
+  The log level to use for this module. Logs below this level are omitted.
+
+  This defaults to ``PW_LOG_LEVEL_DEBUG``.
+
+.. c:macro:: PW_CPU_EXCEPTION_CORTEX_M_EXTENDED_CFSR_DUMP
+
+  Enables extended logging in pw::cpu_exception::LogCpuState() and
+  pw::cpu_exception::cortex_m::LogExceptionAnalysis() that dumps the active
+  CFSR fields with help strings. This is disabled by default since it
+  increases the binary size by >1.5KB when using plain-text logs, or ~460
+  Bytes when using tokenized logging. It's useful to enable this for device
+  bringup until your application has an end-to-end crash reporting solution.
+
+  This is disabled by default.

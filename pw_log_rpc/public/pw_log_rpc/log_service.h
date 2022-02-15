@@ -16,13 +16,14 @@
 
 #include "pw_log/proto/log.raw_rpc.pb.h"
 #include "pw_log_rpc/rpc_log_drain_map.h"
+#include "pw_status/status.h"
 
 namespace pw::log_rpc {
 
 // The RPC LogService provides a way to start a log stream on a known RPC
 // channel with a writer provided on a call. Log streams maintenance is flexible
 // and delegated outside the service.
-class LogService final : public log::generated::Logs<LogService> {
+class LogService final : public log::pw_rpc::raw::Logs::Service<LogService> {
  public:
   LogService(RpcLogDrainMap& drains) : drains_(drains) {}
 
@@ -31,7 +32,7 @@ class LogService final : public log::generated::Logs<LogService> {
   // an existent stream of logs for the given channel and previous writer, the
   // writer in this call is closed without finishing the RPC call and the log
   // stream using the previous writer continues.
-  void Listen(ServerContext&, ConstByteSpan, rpc::RawServerWriter& writer);
+  void Listen(ConstByteSpan, rpc::RawServerWriter& writer);
 
  private:
   RpcLogDrainMap& drains_;

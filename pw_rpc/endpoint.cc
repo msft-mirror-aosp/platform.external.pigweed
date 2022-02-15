@@ -12,11 +12,21 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+// clang-format off
+#include "pw_rpc/internal/log_config.h"  // PW_LOG_* macros must be first.
+
 #include "pw_rpc/internal/endpoint.h"
+// clang-format on
 
 #include "pw_log/log.h"
+#include "pw_rpc/internal/lock.h"
 
 namespace pw::rpc::internal {
+
+RpcLock& rpc_lock() {
+  static RpcLock lock;
+  return lock;
+}
 
 Endpoint::~Endpoint() {
   // Since the calls remove themselves from the Endpoint in
@@ -51,46 +61,56 @@ Result<Packet> Endpoint::ProcessPacket(std::span<const std::byte> data,
 }
 
 void Endpoint::RegisterCall(Call& call) {
-  Call* const existing_call =
-      FindCallById(call.channel_id(), call.service_id(), call.method_id());
-
-  if (existing_call != nullptr) {
-    existing_call->HandleError(Status::Cancelled());
-  }
+  Call* const existing_call = FindCallById(
+      call.channel_id_locked(), call.service_id(), call.method_id());
 
   RegisterUniqueCall(call);
-}
 
-Channel* Endpoint::GetInternalChannel(uint32_t id) const {
-  for (Channel& c : channels_) {
-    if (c.id() == id) {
-      return &c;
-    }
+  if (existing_call != nullptr) {
+    // TODO(pwbug/597): Ensure call object is locked when calling callback. For
+    //     on_error, could potentially move the callback and call it after the
+    //     lock is released.
+    existing_call->HandleError(Status::Cancelled());
+    rpc_lock().lock();
   }
-  return nullptr;
-}
-
-Channel* Endpoint::AssignChannel(uint32_t id, ChannelOutput& interface) {
-  internal::Channel* channel =
-      GetInternalChannel(Channel::kUnassignedChannelId);
-  if (channel == nullptr) {
-    return nullptr;
-  }
-
-  *channel = Channel(id, &interface);
-  return channel;
 }
 
 Call* Endpoint::FindCallById(uint32_t channel_id,
                              uint32_t service_id,
                              uint32_t method_id) {
   for (Call& call : calls_) {
-    if (channel_id == call.channel_id() && service_id == call.service_id() &&
-        method_id == call.method_id()) {
+    if (channel_id == call.channel_id_locked() &&
+        service_id == call.service_id() && method_id == call.method_id()) {
       return &call;
     }
   }
   return nullptr;
+}
+
+Status Endpoint::CloseChannel(uint32_t channel_id) {
+  LockGuard lock(rpc_lock());
+
+  Channel* channel = channels_.Get(channel_id);
+  if (channel == nullptr) {
+    return Status::NotFound();
+  }
+  channel->Close();
+
+  // Close pending calls on the channel that's going away.
+  auto previous = calls_.before_begin();
+  auto current = calls_.begin();
+
+  while (current != calls_.end()) {
+    if (channel_id == current->channel_id_locked()) {
+      current->HandleChannelClose();
+      current = calls_.erase_after(previous);  // previous stays the same
+    } else {
+      previous = current;
+      ++current;
+    }
+  }
+
+  return OkStatus();
 }
 
 }  // namespace pw::rpc::internal

@@ -41,11 +41,16 @@ Status BlobStore::Init() {
 
   PW_LOG_INFO("Init BlobStore");
 
-  const size_t write_buffer_size_alignment =
+  const size_t flash_write_size_alignment =
       flash_write_size_bytes_ % partition_.alignment_bytes();
-  PW_CHECK_UINT_EQ((write_buffer_size_alignment), 0);
-  PW_CHECK_UINT_GE(write_buffer_.size_bytes(), flash_write_size_bytes_);
+  PW_CHECK_UINT_EQ(flash_write_size_alignment, 0);
   PW_CHECK_UINT_GE(flash_write_size_bytes_, partition_.alignment_bytes());
+  const size_t partition_size_alignment =
+      partition_.size_bytes() % flash_write_size_bytes_;
+  PW_CHECK_UINT_EQ(partition_size_alignment, 0);
+  if (!write_buffer_.empty()) {
+    PW_CHECK_UINT_GE(write_buffer_.size_bytes(), flash_write_size_bytes_);
+  }
 
   ResetChecksum();
   initialized_ = true;
@@ -187,6 +192,10 @@ Status BlobStore::Write(ConstByteSpan data) {
   if (WriteBytesRemaining() < data.size_bytes()) {
     return Status::ResourceExhausted();
   }
+  if ((write_buffer_.empty()) &&
+      ((data.size_bytes() % flash_write_size_bytes_) != 0)) {
+    return Status::InvalidArgument();
+  }
 
   if (!EraseIfNeeded().ok()) {
     return Status::DataLoss();
@@ -201,6 +210,7 @@ Status BlobStore::Write(ConstByteSpan data) {
   // Step 1) If there is any data in the write buffer, finish filling write
   //         buffer and if full write it to flash.
   if (!WriteBufferEmpty()) {
+    PW_DCHECK(!write_buffer_.empty());
     size_t bytes_in_buffer = WriteBufferBytesUsed();
 
     // Non-deferred writes only use the first flash_write_size_bytes_ of the
@@ -227,11 +237,9 @@ Status BlobStore::Write(ConstByteSpan data) {
     }
 
     // The write buffer is full, flush to flash.
-    if (!CommitToFlash(write_buffer_).ok()) {
+    if (!CommitToFlash(write_buffer_.first(flash_write_size_bytes_)).ok()) {
       return Status::DataLoss();
     }
-
-    PW_DCHECK(WriteBufferEmpty());
   }
 
   // At this point, if data.size_bytes() > 0, the write buffer should be empty.
@@ -239,23 +247,31 @@ Status BlobStore::Write(ConstByteSpan data) {
 
   // Step 2) Write as many block-sized chunks as the data has remaining after
   //         step 1.
-  while (data.size_bytes() >= flash_write_size_bytes_) {
-    PW_DCHECK(WriteBufferEmpty());
+  PW_DCHECK(WriteBufferEmpty());
 
-    write_address_ += flash_write_size_bytes_;
-    if (!CommitToFlash(data.first(flash_write_size_bytes_)).ok()) {
+  const size_t final_partial_write_size_bytes =
+      data.size_bytes() % flash_write_size_bytes_;
+
+  if (data.size_bytes() >= flash_write_size_bytes_) {
+    const size_t write_size_bytes =
+        data.size_bytes() - final_partial_write_size_bytes;
+    write_address_ += write_size_bytes;
+    if (!CommitToFlash(data.first(write_size_bytes)).ok()) {
       return Status::DataLoss();
     }
-
-    data = data.subspan(flash_write_size_bytes_);
+    data = data.subspan(write_size_bytes);
   }
 
   // step 3) Put any remaining bytes to the buffer. Put the bytes starting at
   //         the begining of the buffer, since it must be empty if there are
   //         still bytes due to step 1 either cleaned out the buffer or didn't
   //         have any more data to write.
-  if (data.size_bytes() > 0) {
-    PW_DCHECK(WriteBufferEmpty());
+  if (final_partial_write_size_bytes > 0) {
+    PW_DCHECK_INT_LT(data.size_bytes(), flash_write_size_bytes_);
+    PW_DCHECK(!write_buffer_.empty());
+
+    // Don't need to DCHECK that buffer is empty, nothing writes to it since the
+    // previous time it was DCHECK'ed
     std::memcpy(write_buffer_.data(), data.data(), data.size_bytes());
     write_address_ += data.size_bytes();
   }
@@ -293,18 +309,21 @@ Status BlobStore::Flush() {
   // Don't need to check available space, AddToWriteBuffer() will not enqueue
   // more than can be written to flash.
 
+  // If there is no buffer there should never be any bytes enqueued.
+  PW_DCHECK(!write_buffer_.empty());
+
   if (!EraseIfNeeded().ok()) {
     return Status::DataLoss();
   }
 
   ByteSpan data = std::span(write_buffer_.data(), WriteBufferBytesUsed());
-  while (data.size_bytes() >= flash_write_size_bytes_) {
-    if (!CommitToFlash(data.first(flash_write_size_bytes_)).ok()) {
-      return Status::DataLoss();
-    }
-
-    data = data.subspan(flash_write_size_bytes_);
+  size_t write_size_bytes =
+      (data.size_bytes() / flash_write_size_bytes_) * flash_write_size_bytes_;
+  if (!CommitToFlash(data.first(write_size_bytes)).ok()) {
+    return Status::DataLoss();
   }
+  data = data.subspan(write_size_bytes);
+  PW_DCHECK_INT_LT(data.size_bytes(), flash_write_size_bytes_);
 
   // Only a multiple of flash_write_size_bytes_ are written in the flush. Any
   // remainder is held until later for either a flush with
@@ -328,6 +347,9 @@ Status BlobStore::FlushFinalPartialChunk() {
   PW_DCHECK_UINT_LE(bytes_in_buffer, flash_write_size_bytes_);
   PW_DCHECK_UINT_LE(flash_write_size_bytes_, WriteBytesRemaining());
 
+  // If there is no buffer there should never be any bytes enqueued.
+  PW_DCHECK(!write_buffer_.empty());
+
   PW_LOG_DEBUG(
       "  Remainder %u bytes in write buffer to zero-pad to flash write "
       "size and commit",
@@ -347,6 +369,7 @@ Status BlobStore::CommitToFlash(ConstByteSpan source, size_t data_bytes) {
   if (data_bytes == 0) {
     data_bytes = source.size_bytes();
   }
+
   flash_erased_ = false;
   StatusWithSize result = partition_.Write(flash_address_, source);
   flash_address_ += data_bytes;
@@ -511,7 +534,9 @@ Status BlobStore::CalculateChecksumFromFlash(size_t bytes_to_check) {
 }
 
 Status BlobStore::BlobWriter::SetFileName(std::string_view file_name) {
-  PW_DCHECK(open_);
+  if (!open_) {
+    return Status::FailedPrecondition();
+  }
   PW_DCHECK_NOTNULL(file_name.data());
   PW_DCHECK(store_.writer_open_);
 
@@ -598,7 +623,9 @@ Status BlobStore::BlobWriter::WriteMetadata() {
 }
 
 Status BlobStore::BlobWriter::Close() {
-  PW_DCHECK(open_);
+  if (!open_) {
+    return Status::FailedPrecondition();
+  }
   open_ = false;
 
   // This is a lambda so the BlobWriter will be unconditionally closed even if
@@ -650,6 +677,61 @@ Status BlobStore::BlobWriter::Close() {
     return Status::DataLoss();
   }
   return OkStatus();
+}
+
+size_t BlobStore::BlobReader::ConservativeLimit(LimitType limit) const {
+  if (open_ && limit == LimitType::kRead) {
+    return store_.ReadableDataBytes() - offset_;
+  }
+  return 0;
+}
+
+Status BlobStore::BlobReader::Open(size_t offset) {
+  PW_DCHECK(!open_);
+  if (!store_.ValidToRead()) {
+    return Status::FailedPrecondition();
+  }
+  if (offset >= store_.ReadableDataBytes()) {
+    return Status::InvalidArgument();
+  }
+
+  offset_ = offset;
+  Status status = store_.OpenRead();
+  if (status.ok()) {
+    open_ = true;
+  }
+  return status;
+}
+
+size_t BlobStore::BlobReader::DoTell() const {
+  return open_ ? offset_ : kUnknownPosition;
+}
+
+Status BlobStore::BlobReader::DoSeek(ptrdiff_t offset, Whence origin) {
+  if (!open_) {
+    return Status::FailedPrecondition();
+  }
+
+  // Note that Open ensures it is ValidToRead() which
+  // in turn guarantees store_.ReadableDataBytes() > 0.
+
+  size_t pos = offset_;
+  PW_TRY(CalculateSeek(offset, origin, store_.ReadableDataBytes() - 1, pos));
+  offset_ = pos;
+
+  return OkStatus();
+}
+
+StatusWithSize BlobStore::BlobReader::DoRead(ByteSpan dest) {
+  if (!open_) {
+    return StatusWithSize::FailedPrecondition();
+  }
+
+  StatusWithSize status = store_.Read(offset_, dest);
+  if (status.ok()) {
+    offset_ += status.size();
+  }
+  return status;
 }
 
 }  // namespace pw::blob_store

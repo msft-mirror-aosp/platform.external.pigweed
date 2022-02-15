@@ -85,6 +85,47 @@ TEST(ProtoHelper, MessageIterator) {
   ASSERT_EQ(iter, parser.end());
 }
 
+TEST(ProtoHelper, MessageIteratorMalformedProto) {
+  // clang-format off
+  std::uint8_t encoded_proto[] = {
+    // key = 1, str = "foo 1"
+    0x0a,0x05,'f','o','o',' ','1',
+    // key = 0, str = "foo 2" (invalid)
+    0x02,0x05,'f','o','o',' ','2',
+    // key = 3, str = "bar 1"
+    0x1a,0x05,'b','a','r',' ','1',
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(std::as_bytes(std::span(encoded_proto)));
+  Message parser = Message(reader, sizeof(encoded_proto));
+
+  Message::iterator iter = parser.begin();
+  ASSERT_OK(iter.status());
+
+  // Second field has invalid field number
+  ASSERT_FALSE((++iter).ok());
+
+  // Attempting to increment an invalid iterator result in it being end()
+  ASSERT_EQ((++iter), parser.end());
+
+  // Test the c++ std loop behavior.
+  bool expected_ok_status[] = {true, false};
+  size_t count = 0;
+  for (Message::Field field : parser) {
+    ASSERT_EQ(field.ok(), expected_ok_status[count++]);
+  }
+  // First element ok. Second element invalid. Iteration ends in the next
+  // iteration.
+  ASSERT_EQ(count, 2ULL);
+}
+
+TEST(ProtoHelper, InvalidMessageBeginIterator) {
+  Message parser(Status::Internal());
+  ASSERT_FALSE(parser.begin().ok());
+  ASSERT_EQ(parser.begin(), parser.end());
+}
+
 TEST(ProtoHelper, AsProtoInteger) {
   // clang-format off
   std::uint8_t encoded_proto[] = {
@@ -108,6 +149,14 @@ TEST(ProtoHelper, AsProtoInteger) {
       0x49, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
       // type: sfixed64, k = 10, val = -72057594037927937
       0x51, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
+      // type: float, k = 11, val = 123456.00
+      0x5d, 0x00, 0x20, 0xf1, 0x47,
+      // type: double, k = 12, val = -123456.789
+      0x61, 0xc9, 0x76, 0xbe, 0x9f, 0x0c, 0x24, 0xfe, 0xc0,
+      // type: bool, k = 13, val = true
+      0x68, 0x01,
+      // type: bool, k = 14, val = false
+      0x70, 0x00
   };
   // clang-format on
 
@@ -172,6 +221,30 @@ TEST(ProtoHelper, AsProtoInteger) {
     Sfixed64 value = parser.AsSfixed64(10);
     ASSERT_OK(value.status());
     ASSERT_EQ(value.value(), static_cast<int64_t>(-72057594037927937));
+  }
+
+  {
+    Float value = parser.AsFloat(11);
+    ASSERT_OK(value.status());
+    ASSERT_EQ(value.value(), static_cast<float>(123456.00));
+  }
+
+  {
+    Double value = parser.AsDouble(12);
+    ASSERT_OK(value.status());
+    ASSERT_EQ(value.value(), static_cast<double>(-123456.789));
+  }
+
+  {
+    Bool value = parser.AsBool(13);
+    ASSERT_OK(value.status());
+    ASSERT_EQ(value.value(), static_cast<bool>(true));
+  }
+
+  {
+    Bool value = parser.AsBool(14);
+    ASSERT_OK(value.status());
+    ASSERT_EQ(value.value(), static_cast<bool>(false));
   }
 }
 
@@ -326,6 +399,95 @@ TEST(ProtoHelper, RepeatedFieldIterator) {
   ASSERT_NE(first, iter);
   ASSERT_NE(second, iter);
   ASSERT_EQ(iter, repeated_str.end());
+}
+
+TEST(ProtoHelper, RepeatedFieldIteratorMalformedFieldID) {
+  // Repeated field of string i.e.
+  //
+  // message RepeatedString {
+  //   repeated string msg = 1;
+  // }
+  // clang-format off
+  std::uint8_t encoded_proto[] = {
+    // key = 1, str = "foo 1"
+    0x0a, 0x05, 'f', 'o', 'o', ' ', '1',
+    // key = 0, str = "foo 1" (invalid)
+    0x02, 0x05, 'f', 'o', 'o', ' ', '1',
+    // key = 1, str = "foo 1"
+    0x0a, 0x05, 'f', 'o', 'o', ' ', '1',
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(std::as_bytes(std::span(encoded_proto)));
+  Message parser = Message(reader, sizeof(encoded_proto));
+  RepeatedStrings repeated_str = parser.AsRepeatedStrings(1);
+
+  bool expected_ok[] = {true, false};
+  size_t count = 0;
+  for (String s : repeated_str) {
+    ASSERT_EQ(s.ok(), expected_ok[count++]);
+  }
+  // Iterator becomes invalid in the second iteration. Attempting to increment
+  // causes it to become end(); Therefore, count should be incremented twice.
+  ASSERT_EQ(count, 2ULL);
+}
+
+TEST(ProtoHelper, RepeatedFieldIteratorMalformedFieldIDBeginning) {
+  // Repeated field of string i.e.
+  //
+  // message RepeatedString {
+  //   repeated string msg = 1;
+  // }
+  // clang-format off
+  std::uint8_t encoded_proto[] = {
+    // key = 0, str = "foo 1" (invalid)
+    0x02, 0x05, 'f', 'o', 'o', ' ', '1',
+    // key = 1, str = "foo 1"
+    0x0a, 0x05, 'f', 'o', 'o', ' ', '1',
+    // key = 1, str = "foo 1"
+    0x0a, 0x05, 'f', 'o', 'o', ' ', '1',
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(std::as_bytes(std::span(encoded_proto)));
+  Message parser = Message(reader, sizeof(encoded_proto));
+  RepeatedStrings repeated_str = parser.AsRepeatedStrings(1);
+
+  bool expected_ok[] = {false};
+  size_t count = 0;
+  for (String s : repeated_str) {
+    ASSERT_EQ(s.ok(), expected_ok[count++]);
+  }
+  // Iterator becomes invalid in the second iteration. Attempting to increment
+  // causes it to become end(); Therefore, count should be incremented twice.
+  ASSERT_EQ(count, 1ULL);
+}
+
+TEST(ProtoHelper, RepeatedFieldIteratorMalformedDataLoss) {
+  // Repeated field of string i.e.
+  //
+  // message RepeatedString {
+  //   repeated string msg = 1;
+  // }
+  // clang-format off
+  std::uint8_t encoded_proto[] = {
+    // key = 1, str = "foo 1"
+    0x0a, 0x05, 'f', 'o', 'o', ' ', '1',
+    // key = 0, str = "foo 1" (invalid)
+    0x0a, 0x10, 'f', 'o', 'o', ' ', '1',
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(std::as_bytes(std::span(encoded_proto)));
+  Message parser = Message(reader, sizeof(encoded_proto));
+  RepeatedStrings repeated_str = parser.AsRepeatedStrings(1);
+
+  bool expected_ok[] = {true, false};
+  size_t count = 0;
+  for (String s : repeated_str) {
+    ASSERT_EQ(s.ok(), expected_ok[count++]);
+  }
+  ASSERT_EQ(count, 2ULL);
 }
 
 TEST(ProtoHelper, AsMessage) {
@@ -568,6 +730,43 @@ TEST(ProtoHelper, AsStringToMessageMap) {
   Result<bool> bar_email_cmp = bar_email.Equal("bar@email.com");
   ASSERT_OK(bar_email_cmp.status());
   ASSERT_TRUE(bar_email_cmp.value());
+}
+
+TEST(ProtoHelper, AsStringToBytesMapMalformed) {
+  // message Maps {
+  //   map<string, string> map_a = 1;
+  //   map<string, string> map_b = 2;
+  // }
+  // clang-format off
+  std::uint8_t encoded_proto[] = {
+    // map_a["key_bar"] = "bar_a", key = 1
+    0x0a, 0x10,
+    0x0a, 0x07, 'k', 'e', 'y', '_', 'b', 'a', 'r', // map key
+    0x12, 0x05, 'b', 'a', 'r', '_', 'a', // map value
+
+    // map_a["key_foo"] = "foo_a", key = 0 (invalid)
+    0x02, 0x10,
+    0x0a, 0x07, 'k', 'e', 'y', '_', 'f', 'o', 'o',
+    0x12, 0x05, 'f', 'o', 'o', '_', 'a',
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(std::as_bytes(std::span(encoded_proto)));
+  Message parser = Message(reader, sizeof(encoded_proto));
+
+  // Parse field 'map_a'
+  constexpr uint32_t kFieldNumber = 1;
+  StringMapParser<String> string_map = parser.AsStringToStringMap(kFieldNumber);
+
+  bool expected_ok_status[] = {true, false};
+  size_t count = 0;
+  for (StringToStringMapEntry entry : string_map) {
+    ASSERT_EQ(entry.ok(), expected_ok_status[count]);
+    ASSERT_EQ(entry.Key().ok(), expected_ok_status[count]);
+    ASSERT_EQ(entry.Value().ok(), expected_ok_status[count]);
+    count++;
+  }
+  ASSERT_EQ(count, 2ULL);
 }
 
 }  // namespace pw::protobuf

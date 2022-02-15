@@ -27,10 +27,7 @@ TEST(ChannelOutput, Name) {
   class NameTester : public ChannelOutput {
    public:
     NameTester(const char* name) : ChannelOutput(name) {}
-    std::span<std::byte> AcquireBuffer() override { return {}; }
-    Status SendAndReleaseBuffer(std::span<const std::byte>) override {
-      return OkStatus();
-    }
+    Status Send(std::span<const std::byte>) override { return OkStatus(); }
   };
 
   EXPECT_STREQ("hello_world", NameTester("hello_world").name());
@@ -57,103 +54,6 @@ TEST(Channel, Create_FromEnum) {
 
 TEST(Channel, TestPacket_ReservedSizeMatchesMinEncodedSizeBytes) {
   EXPECT_EQ(kReservedSize, kTestPacket.MinEncodedSizeBytes());
-}
-
-TEST(Channel, OutputBuffer_EmptyBuffer) {
-  TestOutput<0> output;
-  internal::Channel channel(100, &output);
-
-  Channel::OutputBuffer buffer = channel.AcquireBuffer();
-  EXPECT_TRUE(buffer.payload(kTestPacket).empty());
-}
-
-TEST(Channel, OutputBuffer_TooSmall) {
-  TestOutput<kReservedSize - 2 /* payload key & size */ - 1> output;
-  internal::Channel channel(100, &output);
-
-  Channel::OutputBuffer output_buffer = channel.AcquireBuffer();
-  EXPECT_TRUE(output_buffer.payload(kTestPacket).empty());
-
-  EXPECT_EQ(Status::Internal(), channel.Send(output_buffer, kTestPacket));
-}
-
-TEST(Channel, OutputBuffer_ExactFit) {
-  TestOutput<kReservedSize> output;
-  internal::Channel channel(100, &output);
-
-  Channel::OutputBuffer output_buffer(channel.AcquireBuffer());
-  const std::span payload = output_buffer.payload(kTestPacket);
-
-  EXPECT_EQ(payload.size(), output.buffer().size() - kReservedSize);
-  EXPECT_EQ(output.buffer().data() + kReservedSize, payload.data());
-
-  EXPECT_EQ(OkStatus(), channel.Send(output_buffer, kTestPacket));
-}
-
-TEST(Channel, OutputBuffer_PayloadDoesNotFit_ReportsError) {
-  TestOutput<kReservedSize> output;
-  internal::Channel channel(100, &output);
-
-  Packet packet = kTestPacket;
-  byte data[1] = {};
-  packet.set_payload(data);
-
-  EXPECT_EQ(Status::Internal(), channel.Send(packet));
-}
-
-TEST(Channel, OutputBuffer_ExtraRoom) {
-  TestOutput<kReservedSize * 3> output;
-  internal::Channel channel(100, &output);
-
-  Channel::OutputBuffer output_buffer = channel.AcquireBuffer();
-  const std::span payload = output_buffer.payload(kTestPacket);
-
-  EXPECT_EQ(payload.size(), output.buffer().size() - kReservedSize);
-  EXPECT_EQ(output.buffer().data() + kReservedSize, payload.data());
-
-  EXPECT_EQ(OkStatus(), channel.Send(output_buffer, kTestPacket));
-}
-
-TEST(Channel, OutputBuffer_ReturnsStatusFromChannelOutputSend) {
-  TestOutput<kReservedSize * 3> output;
-  internal::Channel channel(100, &output);
-
-  Channel::OutputBuffer output_buffer = channel.AcquireBuffer();
-  output.set_send_status(Status::Aborted());
-
-  EXPECT_EQ(Status::Aborted(), channel.Send(output_buffer, kTestPacket));
-}
-
-TEST(Channel, OutputBuffer_Contains_FalseWhenEmpty) {
-  Channel::OutputBuffer buffer;
-  EXPECT_FALSE(buffer.Contains({}));
-
-  std::byte data[1];
-  EXPECT_FALSE(buffer.Contains(data));
-}
-
-TEST(Channel, OutputBuffer_Contains_TrueIfContained) {
-  TestOutput<16> output;
-  internal::Channel channel(100, &output);
-
-  Channel::OutputBuffer buffer = channel.AcquireBuffer();
-  EXPECT_TRUE(buffer.Contains(output.buffer()));
-
-  channel.Release(buffer);
-}
-
-TEST(Channel, OutputBuffer_Contains_FalseIfOutside) {
-  TestOutput<16> output;
-  internal::Channel channel(100, &output);
-
-  Channel::OutputBuffer buffer = channel.AcquireBuffer();
-  std::span before(output.buffer().data() - 1, 5);
-  EXPECT_FALSE(buffer.Contains(before));
-
-  std::span after(output.buffer().data() + output.buffer().size() - 1, 2);
-  EXPECT_FALSE(buffer.Contains(after));
-
-  channel.Release(buffer);
 }
 
 }  // namespace

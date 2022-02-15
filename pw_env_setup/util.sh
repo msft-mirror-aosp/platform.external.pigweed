@@ -155,7 +155,7 @@ _pw_hello() {
 }
 
 pw_deactivate() {
-  # Assume PW_ROOT and PW_PROJECT_ROOT has already been set and we need to
+  # Assume PW_ROOT and PW_PROJECT_ROOT have already been set and we need to
   # preserve their values.
   _NEW_PW_ROOT="$PW_ROOT"
   _NEW_PW_PROJECT_ROOT="$PW_PROJECT_ROOT"
@@ -183,6 +183,16 @@ pw_deactivate() {
   export PW_PROJECT_ROOT
 }
 
+deactivate() {
+  pw_deactivate
+  unset -f pw_deactivate
+  unset -f deactivate
+  unset PW_ROOT
+  unset PW_PROJECT_ROOT
+  unset PW_BRANDING_BANNER
+  unset PW_BRANDING_BANNER_COLOR
+}
+
 # The next three functions use the following variables.
 # * PW_BANNER_FUNC: function to print banner
 # * PW_BOOTSTRAP_PYTHON: specific Python interpreter to use for bootstrap
@@ -196,7 +206,7 @@ pw_deactivate() {
 pw_bootstrap() {
   _pw_hello "  BOOTSTRAP! Bootstrap may take a few minutes; please be patient.\n"
 
-  _pw_alias_check=0
+  local _pw_alias_check=0
   alias python > /dev/null 2> /dev/null || _pw_alias_check=$?
   if [ "$_pw_alias_check" -eq 0 ]; then
     pw_bold_red "Error: 'python' is an alias"
@@ -234,6 +244,8 @@ pw_bootstrap() {
     "$_PW_PYTHON" "$PW_ROOT/pw_env_setup/py/pw_env_setup/env_setup.py" "$@"
     _PW_ENV_SETUP_STATUS="$?"
   fi
+
+  cp "$PW_ROOT/pw_env_setup/destination.md" "$_PW_ACTUAL_ENVIRONMENT_ROOT/README.md"
 }
 
 pw_activate() {
@@ -254,10 +266,15 @@ pw_finalize() {
 
     if [ "$?" -eq 0 ]; then
       if [ "$_PW_NAME" = "bootstrap" ] && [ -z "$PW_ENVSETUP_QUIET" ]; then
-        echo "To activate this environment in the future, run this in your "
+        echo "To reactivate this environment in the future, run this in your "
         echo "terminal:"
         echo
-        pw_green "  source ./activate.sh\n"
+        pw_green "  source ./activate.sh"
+        echo
+        echo "To deactivate this environment, run this:"
+        echo
+        pw_green "  deactivate"
+        echo
       fi
     else
       pw_red "Error during $_PW_NAME--see messages above."
@@ -279,24 +296,24 @@ pw_cleanup() {
   unset _NEW_PW_ROOT
   unset _PW_ENV_SETUP_STATUS
 
-  unset pw_none
-  unset pw_red
-  unset pw_bold_red
-  unset pw_yellow
-  unset pw_bold_yellow
-  unset pw_green
-  unset pw_bold_green
-  unset pw_blue
-  unset pw_cyan
-  unset pw_magenta
-  unset pw_bold_white
-  unset pw_eval_sourced
-  unset pw_check_root
-  unset pw_get_env_root
-  unset _pw_banner
-  unset pw_bootstrap
-  unset pw_activate
-  unset pw_finalize
-  unset _pw_cleanup
-  unset _pw_alias_check
+  unset -f pw_none
+  unset -f pw_red
+  unset -f pw_bold_red
+  unset -f pw_yellow
+  unset -f pw_bold_yellow
+  unset -f pw_green
+  unset -f pw_bold_green
+  unset -f pw_blue
+  unset -f pw_cyan
+  unset -f pw_magenta
+  unset -f pw_bold_white
+  unset -f pw_eval_sourced
+  unset -f pw_check_root
+  unset -f pw_get_env_root
+  unset -f _pw_banner
+  unset -f pw_bootstrap
+  unset -f pw_activate
+  unset -f pw_finalize
+  unset -f pw_cleanup
+  unset -f _pw_hello
 }

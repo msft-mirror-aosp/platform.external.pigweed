@@ -58,11 +58,13 @@ void FlatFileSystemService::EnumerateAllFiles(RawServerWriter& writer) {
   for (Entry* entry : entries_) {
     PW_DCHECK_NOTNULL(entry);
     // For now, don't try to pack entries.
-    pw::file::ListResponse::MemoryEncoder encoder(writer.PayloadBuffer());
+    pw::file::ListResponse::MemoryEncoder encoder(encoding_buffer_);
     if (Status status = EnumerateFile(*entry, encoder); !status.ok()) {
-      PW_LOG_ERROR("Failed to enumerate file (id: %u) with status %d",
-                   static_cast<unsigned>(entry->FileId()),
-                   static_cast<int>(status.code()));
+      if (status != Status::NotFound()) {
+        PW_LOG_ERROR("Failed to enumerate file (id: %u) with status %d",
+                     static_cast<unsigned>(entry->FileId()),
+                     static_cast<int>(status.code()));
+      }
       continue;
     }
 
@@ -75,8 +77,7 @@ void FlatFileSystemService::EnumerateAllFiles(RawServerWriter& writer) {
   writer.Finish(OkStatus());
 }
 
-void FlatFileSystemService::List(ServerContext&,
-                                 ConstByteSpan request,
+void FlatFileSystemService::List(ConstByteSpan request,
                                  RawServerWriter& writer) {
   protobuf::Decoder decoder(request);
   // If a file name was provided, try and find and enumerate the file.
@@ -100,7 +101,7 @@ void FlatFileSystemService::List(ServerContext&,
       return;
     }
 
-    pw::file::ListResponse::MemoryEncoder encoder(writer.PayloadBuffer());
+    pw::file::ListResponse::MemoryEncoder encoder(encoding_buffer_);
     Status proto_encode_status = EnumerateFile(*result.value(), encoder);
     if (!proto_encode_status.ok()) {
       writer.Finish(proto_encode_status);
@@ -115,9 +116,7 @@ void FlatFileSystemService::List(ServerContext&,
   EnumerateAllFiles(writer);
 }
 
-StatusWithSize FlatFileSystemService::Delete(ServerContext&,
-                                             ConstByteSpan request,
-                                             ByteSpan) {
+StatusWithSize FlatFileSystemService::Delete(ConstByteSpan request, ByteSpan) {
   protobuf::Decoder decoder(request);
   while (decoder.Next().ok()) {
     if (decoder.FieldNumber() !=

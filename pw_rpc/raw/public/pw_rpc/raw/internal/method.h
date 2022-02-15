@@ -116,35 +116,34 @@ class RawMethod : public Method {
       : Method(id, invoker), function_(function) {}
 
   static void SynchronousUnaryInvoker(const CallContext& context,
-                                      const Packet& request);
+                                      const Packet& request)
+      PW_UNLOCK_FUNCTION(rpc_lock());
 
   static void AsynchronousUnaryInvoker(const CallContext& context,
-                                       const Packet& request);
+                                       const Packet& request)
+      PW_UNLOCK_FUNCTION(rpc_lock());
 
   static void ServerStreamingInvoker(const CallContext& context,
-                                     const Packet& request);
+                                     const Packet& request)
+      PW_UNLOCK_FUNCTION(rpc_lock());
 
-  static void ClientStreamingInvoker(const CallContext& context, const Packet&);
+  static void ClientStreamingInvoker(const CallContext& context, const Packet&)
+      PW_UNLOCK_FUNCTION(rpc_lock());
 
   static void BidirectionalStreamingInvoker(const CallContext& context,
-                                            const Packet&);
+                                            const Packet&)
+      PW_UNLOCK_FUNCTION(rpc_lock());
 
   // Stores the user-defined RPC.
   Function function_;
 };
 
 // Expected function signatures for user-implemented RPC functions.
-using RawSynchronousUnary = StatusWithSize(ServerContext&,
-                                           ConstByteSpan,
-                                           ByteSpan);
-using RawAsynchronousUnary = void(ServerContext&,
-                                  ConstByteSpan,
-                                  RawUnaryResponder&);
-using RawServerStreaming = void(ServerContext&,
-                                ConstByteSpan,
-                                RawServerWriter&);
-using RawClientStreaming = void(ServerContext&, RawServerReader&);
-using RawBidirectionalStreaming = void(ServerContext&, RawServerReaderWriter&);
+using RawSynchronousUnary = StatusWithSize(ConstByteSpan, ByteSpan);
+using RawAsynchronousUnary = void(ConstByteSpan, RawUnaryResponder&);
+using RawServerStreaming = void(ConstByteSpan, RawServerWriter&);
+using RawClientStreaming = void(RawServerReader&);
+using RawBidirectionalStreaming = void(RawServerReaderWriter&);
 
 // MethodTraits specialization for a static synchronous raw unary method.
 template <>

@@ -500,12 +500,13 @@ class Check:
         endswith: Iterable[str] = '',
         exclude: Iterable[Union[Pattern[str], str]] = ()
     ) -> Check:
+        endswith = self.filter.endswith
+        if endswith:
+            endswith = endswith + _make_str_tuple(endswith)
+        exclude = self.filter.exclude + tuple(re.compile(e) for e in exclude)
+
         return Check(check_function=self._check,
-                     path_filter=_Filter(endswith=self.filter.endswith +
-                                         _make_str_tuple(endswith),
-                                         exclude=self.filter.exclude +
-                                         tuple(re.compile(e)
-                                               for e in exclude)),
+                     path_filter=_Filter(endswith=endswith, exclude=exclude),
                      always_run=self.always_run)
 
     @property
@@ -610,14 +611,6 @@ def filter_paths(endswith: Iterable[str] = '',
     return filter_paths_for_function
 
 
-# TODO(mohrr) Remove after updating downstream projects to use cpp_checks.
-@filter_paths(endswith=('.h'))
-def pragma_once(ctx: PresubmitContext):
-    # pylint: disable=import-outside-toplevel
-    from pw_presubmit import cpp_checks
-    return cpp_checks.pragma_once(ctx)
-
-
 def call(*args, **kwargs) -> None:
     """Optional subprocess wrapper that causes a PresubmitFailure on errors."""
     attributes, command = tools.format_command(args, kwargs)
@@ -648,11 +641,3 @@ def call(*args, **kwargs) -> None:
 
     if process.returncode:
         raise PresubmitFailure
-
-
-# TODO(mohrr) Remove after updating downstream projects to use build.bazel_lint.
-@filter_paths(endswith=('.bzl', '.bazel'))
-def bazel_lint(ctx: PresubmitContext):
-    # pylint: disable=import-outside-toplevel
-    from pw_presubmit import build
-    return build.bazel_lint(ctx)

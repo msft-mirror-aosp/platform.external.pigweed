@@ -58,7 +58,7 @@ Status PrefixedEntryRingBufferMulti::AttachReader(Reader& reader) {
   }
   reader.buffer_ = this;
 
-  if (readers_.size() == 0) {
+  if (readers_.empty()) {
     reader.read_idx_ = write_idx_;
     reader.entry_count_ = 0;
   } else {
@@ -85,7 +85,7 @@ Status PrefixedEntryRingBufferMulti::DetachReader(Reader& reader) {
 Status PrefixedEntryRingBufferMulti::InternalPushBack(
     std::span<const byte> data,
     uint32_t user_preamble_data,
-    bool drop_elements_if_needed) {
+    bool pop_front_if_needed) {
   if (buffer_ == nullptr) {
     return Status::FailedPrecondition();
   }
@@ -106,7 +106,7 @@ Status PrefixedEntryRingBufferMulti::InternalPushBack(
     return Status::OutOfRange();
   }
 
-  if (drop_elements_if_needed) {
+  if (pop_front_if_needed) {
     // PushBack() case: evict items as needed.
     // Drop old entries until we have space for the new entry.
     while (RawAvailableBytes() < total_write_bytes) {
@@ -245,7 +245,7 @@ const Reader& PrefixedEntryRingBufferMulti::GetSlowestReader() const {
 }
 
 Status PrefixedEntryRingBufferMulti::Dering() {
-  if (buffer_ == nullptr || readers_.size() == 0) {
+  if (buffer_ == nullptr || readers_.empty()) {
     return Status::FailedPrecondition();
   }
 
@@ -259,7 +259,7 @@ Status PrefixedEntryRingBufferMulti::Dering() {
 }
 
 Status PrefixedEntryRingBufferMulti::InternalDering(Reader& dering_reader) {
-  if (buffer_ == nullptr || readers_.size() == 0) {
+  if (buffer_ == nullptr || readers_.empty()) {
     return Status::FailedPrecondition();
   }
 
@@ -369,7 +369,7 @@ PrefixedEntryRingBufferMulti::RawFrontEntryInfo(size_t source_idx) const {
 size_t PrefixedEntryRingBufferMulti::RawAvailableBytes() const {
   // Compute slowest reader. If no readers exist, the entire buffer can be
   // written.
-  if (readers_.size() == 0) {
+  if (readers_.empty()) {
     return buffer_bytes_;
   }
 
@@ -392,6 +392,10 @@ size_t PrefixedEntryRingBufferMulti::RawAvailableBytes() const {
 }
 
 void PrefixedEntryRingBufferMulti::RawWrite(std::span<const std::byte> source) {
+  if (source.size_bytes() == 0) {
+    return;
+  }
+
   // Write until the end of the source or the backing buffer.
   size_t bytes_until_wrap = buffer_bytes_ - write_idx_;
   size_t bytes_to_copy = std::min(source.size(), bytes_until_wrap);
@@ -408,6 +412,10 @@ void PrefixedEntryRingBufferMulti::RawWrite(std::span<const std::byte> source) {
 void PrefixedEntryRingBufferMulti::RawRead(byte* destination,
                                            size_t source_idx,
                                            size_t length_bytes) const {
+  if (length_bytes == 0) {
+    return;
+  }
+
   // Read the pre-wrap bytes.
   size_t bytes_until_wrap = buffer_bytes_ - source_idx;
   size_t bytes_to_copy = std::min(length_bytes, bytes_until_wrap);

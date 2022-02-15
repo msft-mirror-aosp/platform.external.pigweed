@@ -39,6 +39,7 @@ pw_doc_group("core_docs") {
     "getting_started.rst",
     "module_structure.rst",
     "os_abstraction_layers.rst",
+    "size_optimizations.rst",
     "style_guide.rst",
   ]
 }
@@ -50,8 +51,11 @@ group("target_docs") {
     "$dir_pigweed/targets/arduino:target_docs",
     "$dir_pigweed/targets/docs:target_docs",
     "$dir_pigweed/targets/host:target_docs",
+    "$dir_pigweed/targets/host_device_simulator:target_docs",
     "$dir_pigweed/targets/lm3s6965evb_qemu:target_docs",
+    "$dir_pigweed/targets/mimxrt595_evk:target_docs",
     "$dir_pigweed/targets/stm32f429i_disc1:target_docs",
+    "$dir_pigweed/targets/stm32f429i_disc1_stm32cube:target_docs",
   ]
 }
 
@@ -65,6 +69,8 @@ group("module_docs") {
     "$dir_pw_assert:docs",
     "$dir_pw_assert_basic:docs",
     "$dir_pw_assert_log:docs",
+    "$dir_pw_assert_tokenized:docs",
+    "$dir_pw_assert_zephyr:docs",
     "$dir_pw_base64:docs",
     "$dir_pw_bloat:docs",
     "$dir_pw_blob_store:docs",
@@ -81,6 +87,7 @@ group("module_docs") {
     "$dir_pw_chrono_freertos:docs",
     "$dir_pw_chrono_stl:docs",
     "$dir_pw_chrono_threadx:docs",
+    "$dir_pw_chrono_zephyr:docs",
     "$dir_pw_cli:docs",
     "$dir_pw_console:docs",
     "$dir_pw_containers:docs",
@@ -98,12 +105,14 @@ group("module_docs") {
     "$dir_pw_i2c:docs",
     "$dir_pw_interrupt:docs",
     "$dir_pw_interrupt_cortex_m:docs",
+    "$dir_pw_interrupt_zephyr:docs",
     "$dir_pw_kvs:docs",
     "$dir_pw_libc:docs",
     "$dir_pw_log:docs",
     "$dir_pw_log_basic:docs",
     "$dir_pw_log_null:docs",
     "$dir_pw_log_rpc:docs",
+    "$dir_pw_log_string:docs",
     "$dir_pw_log_tokenized:docs",
     "$dir_pw_malloc:docs",
     "$dir_pw_malloc_freelist:docs",
@@ -126,6 +135,7 @@ group("module_docs") {
     "$dir_pw_snapshot:docs",
     "$dir_pw_software_update:docs",
     "$dir_pw_span:docs",
+    "$dir_pw_spi:docs",
     "$dir_pw_status:docs",
     "$dir_pw_stm32cube_build:docs",
     "$dir_pw_stream:docs",
@@ -137,10 +147,14 @@ group("module_docs") {
     "$dir_pw_sync_freertos:docs",
     "$dir_pw_sync_stl:docs",
     "$dir_pw_sync_threadx:docs",
+    "$dir_pw_sync_zephyr:docs",
     "$dir_pw_sys_io:docs",
     "$dir_pw_sys_io_arduino:docs",
     "$dir_pw_sys_io_baremetal_stm32f429:docs",
+    "$dir_pw_sys_io_mcuxpresso:docs",
     "$dir_pw_sys_io_stdio:docs",
+    "$dir_pw_sys_io_zephyr:docs",
+    "$dir_pw_system:docs",
     "$dir_pw_target_runner:docs",
     "$dir_pw_thread:docs",
     "$dir_pw_thread_embos:docs",
@@ -164,7 +178,11 @@ group("module_docs") {
 }
 
 group("third_party_docs") {
-  deps = [ "$dir_pigweed/third_party/freertos:docs" ]
+  deps = [
+    "$dir_pigweed/third_party/freertos:docs",
+    "$dir_pigweed/third_party/nanopb:docs",
+    "$dir_pigweed/third_party/tinyusb:docs",
+  ]
 }
 
 pw_doc_gen("docs") {
@@ -172,6 +190,7 @@ pw_doc_gen("docs") {
   sources = [
     # Note: These must use the "docs" prefix for links and image references. In
     # contrast, the pw_doc_group above should not use the docs prefix.
+    "automated_analysis.rst",
     "build_system.rst",
     "index.rst",
     "module_guides.rst",

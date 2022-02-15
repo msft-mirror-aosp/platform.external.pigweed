@@ -14,17 +14,19 @@
 #pragma once
 
 #include "pw_log/log.h"
+#include "pw_unit_test/config.h"
 #include "pw_unit_test/internal/rpc_event_handler.h"
 #include "pw_unit_test_proto/unit_test.pwpb.h"
 #include "pw_unit_test_proto/unit_test.raw_rpc.pb.h"
 
 namespace pw::unit_test {
 
-class UnitTestService final : public generated::UnitTest<UnitTestService> {
+class UnitTestService final
+    : public pw_rpc::raw::UnitTest::Service<UnitTestService> {
  public:
   UnitTestService() : handler_(*this), verbose_(false) {}
 
-  void Run(ServerContext&, ConstByteSpan request, RawServerWriter& writer);
+  void Run(ConstByteSpan request, RawServerWriter& writer);
 
  private:
   friend class internal::RpcEventHandler;
@@ -34,7 +36,7 @@ class UnitTestService final : public generated::UnitTest<UnitTestService> {
   // migrated to it.
   template <typename WriteFunction>
   void WriteEvent(WriteFunction event_writer) {
-    Event::MemoryEncoder event(writer_.PayloadBuffer());
+    Event::MemoryEncoder event(encoding_buffer_);
     event_writer(event);
     if (event.status().ok()) {
       writer_.Write(event)
@@ -52,6 +54,7 @@ class UnitTestService final : public generated::UnitTest<UnitTestService> {
   internal::RpcEventHandler handler_;
   RawServerWriter writer_;
   bool verbose_;
+  std::array<std::byte, config::kEventBufferSize> encoding_buffer_ = {};
 };
 
 }  // namespace pw::unit_test

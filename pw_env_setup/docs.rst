@@ -49,6 +49,8 @@ runs bootstrap.
 
 .. _send us a note: pigweed@googlegroups.com
 
+On POSIX systems, the environment can be deactivated by running ``deactivate``.
+
 ==================================
 Using pw_env_setup in your project
 ==================================
@@ -215,21 +217,29 @@ here.
   whether this is provided.)
 
 ``cipd_package_files``
-  CIPD package file. JSON file consisting of a list of dictionaries with "path",
-  "platforms", and "tags" keys. An example is below.
+  CIPD package file. JSON file consisting of a list of additional CIPD package
+  files to import and a list of dictionaries with "path", "platforms", and
+  "tags" keys. Both top-level lists are optional. An example is below.
 
 .. code-block:: json
 
   {
-    "path": "infra/3pp/tools/go/${platform}",
-    "platforms": [
-        "linux-amd64",
-        "linux-arm64",
-        "mac-amd64",
-        "windows-amd64"
+    "included_files": [
+      "foo.json"
     ],
-    "tags": [
-      "version:2@1.16.3"
+    "packages": [
+      {
+        "path": "infra/3pp/tools/go/${platform}",
+        "platforms": [
+            "linux-amd64",
+            "linux-arm64",
+            "mac-amd64",
+            "windows-amd64"
+        ],
+        "tags": [
+          "version:2@1.16.3"
+        ]
+      }
     ]
   }
 
@@ -259,6 +269,10 @@ here.
   complain if one of the required submodules is not present. Combining this
   with ``optional_submodules`` is not supported.
 
+``pw_packages``
+  A list of packages to install using :ref:`pw_package <module-pw_package>`
+  after the rest of bootstrap completes.
+
 An example of a config file is below.
 
 .. code-block:: json
@@ -277,6 +291,7 @@ An example of a config file is below.
       ],
       "system_packages": false
     },
+    "pw_packages": [],
     "optional_submodules": [
       "optional/submodule/one",
       "optional/submodule/two"
@@ -294,6 +309,30 @@ set the following environment variables.
  - ``PW_MYPROJECTNAME_CIPD_INSTALL_DIR``
  - ``PW_PIGWEED_CIPD_INSTALL_DIR``
 
+In addition, ``PW_${BASENAME}_CIPD_INSTALL_DIR`` and
+``PW_${BASENAME}_CIPD_INSTALL_DIR/bin`` are both added to ``PATH`` for each
+package directory.
+
+If multiple packages install executables with the same name, the file mentioned
+last topologically takes priority. For example, with the file contents below,
+``d.json``'s entries will appear in ``PATH`` before ``c.json``'s, which will
+appear before ``b.json``'s, which will appear before ``a.json``'s.
+
+``config.json``
+  ``{"cipd_package_files": ["a.json", "b.json", "d.json"], ...}``
+
+``a.json``
+  ``{"package_files": [...]}``
+
+``b.json``
+  ``{"included_files": ["c.json"], "package_files": [...]}``
+
+``c.json``
+  ``{"package_files": [...]}``
+
+``d.json``
+  ``{"package_files": [...]}``
+
 Pinning Python Packages
 ***********************
 Python modules usually express dependencies as ranges, which makes it easier to
@@ -301,14 +340,18 @@ install many Python packages that might otherwise have conflicting dependencies.
 However, this means version of packages can often change underneath us and
 builds will not be hermetic.
 
-To ensure versions don't change without approval, run
+To ensure versions don't change without approval, Pigweed by default pins the
+versions of packages it depends on using a `pip constraints file`_. To pin the
+versions of additional packages your project depends on, run
 ``pw python-packages list <path/to/constraints/file>`` and then add
 ``pw_build_PIP_CONSTRAINTS = ["//path/to/constraints/file"]`` to your project's
-``.gn`` file (see `Pigweed's .gn file` for an example).
+``.gn`` file (see `Pigweed's .gn file`_ for an example).
 
+.. _pip constraints file: https://pip.pypa.io/en/stable/user_guide/#constraints-files
+.. _default constraints: https://cs.opensource.google/pigweed/pigweed/+/main:pw_env_setup/py/pw_env_setup/virtualenv_setup/constraint.list
 .. _Pigweed's .gn file: https://cs.opensource.google/pigweed/pigweed/+/main:.gn
 
-To update packages, remove the ``pw_build_PIP_CONSTRAINTS`` line, delete the
+To update packages, set ``pw_build_PIP_CONSTRAINTS = []``, delete the
 environment, and bootstrap again. Then run the ``list`` command from above
 again, and run ``pw presubmit``.
 

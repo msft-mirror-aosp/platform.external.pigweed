@@ -19,9 +19,9 @@
 
 #include "pw_bytes/span.h"
 #include "pw_rpc/channel.h"
+#include "pw_rpc/internal/lock.h"
 #include "pw_rpc/internal/method_info.h"
 #include "pw_rpc/internal/method_lookup.h"
-#include "pw_rpc/internal/open_call.h"
 #include "pw_rpc/internal/server_call.h"
 #include "pw_rpc/nanopb/internal/common.h"
 #include "pw_rpc/server.h"
@@ -45,22 +45,32 @@ class NanopbServerCall : public internal::ServerCall {
 
   NanopbServerCall(const CallContext& context, MethodType type);
 
-  Status SendUnaryResponse(const void* payload, Status status) {
+  Status SendUnaryResponse(const void* payload, Status status)
+      PW_LOCKS_EXCLUDED(rpc_lock()) {
     return SendFinalResponse(*this, payload, status);
   }
 
   const NanopbMethodSerde& serde() const { return *serde_; }
 
  protected:
-  NanopbServerCall(NanopbServerCall&& other) { *this = std::move(other); }
+  NanopbServerCall(NanopbServerCall&& other) PW_LOCKS_EXCLUDED(rpc_lock()) {
+    *this = std::move(other);
+  }
 
-  NanopbServerCall& operator=(NanopbServerCall&& other) {
-    ServerCall::operator=(std::move(other));
-    serde_ = other.serde_;
+  NanopbServerCall& operator=(NanopbServerCall&& other)
+      PW_LOCKS_EXCLUDED(rpc_lock()) {
+    internal::LockGuard lock(internal::rpc_lock());
+    MoveNanopbServerCallFrom(other);
     return *this;
   }
 
-  Status SendServerStream(const void* payload);
+  void MoveNanopbServerCallFrom(NanopbServerCall& other)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    MoveServerCallFrom(other);
+    serde_ = other.serde_;
+  }
+
+  Status SendServerStream(const void* payload) PW_LOCKS_EXCLUDED(rpc_lock());
 
   bool DecodeRequest(ConstByteSpan payload, void* request_struct) const {
     return serde_->DecodeRequest(payload, request_struct);
@@ -82,20 +92,31 @@ class BaseNanopbServerReader : public NanopbServerCall {
  protected:
   constexpr BaseNanopbServerReader() = default;
 
-  BaseNanopbServerReader(BaseNanopbServerReader&& other) {
+  BaseNanopbServerReader(BaseNanopbServerReader&& other)
+      PW_LOCKS_EXCLUDED(rpc_lock()) {
     *this = std::move(other);
   }
 
-  BaseNanopbServerReader& operator=(BaseNanopbServerReader&& other) {
-    NanopbServerCall::operator=(std::move(other));
-    set_on_next(std::move(other.nanopb_on_next_));
+  BaseNanopbServerReader& operator=(BaseNanopbServerReader&& other)
+      PW_LOCKS_EXCLUDED(rpc_lock()) {
+    internal::LockGuard lock(internal::rpc_lock());
+    MoveNanopbServerCallFrom(other);
+    set_on_next_locked(std::move(other.nanopb_on_next_));
     return *this;
   }
 
-  void set_on_next(Function<void(const Request& request)> on_next) {
+  void set_on_next(Function<void(const Request& request)>&& on_next)
+      PW_LOCKS_EXCLUDED(rpc_lock()) {
+    internal::LockGuard lock(internal::rpc_lock());
+    set_on_next_locked(std::move(on_next));
+  }
+
+ private:
+  void set_on_next_locked(Function<void(const Request& request)>&& on_next)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     nanopb_on_next_ = std::move(on_next);
 
-    internal::Call::set_on_next([this](ConstByteSpan payload) {
+    internal::Call::set_on_next_locked([this](ConstByteSpan payload) {
       if (nanopb_on_next_) {
         Request request_struct{};
         if (DecodeRequest(payload, &request_struct)) {
@@ -105,7 +126,6 @@ class BaseNanopbServerReader : public NanopbServerCall {
     });
   }
 
- private:
   Function<void(const Request&)> nanopb_on_next_;
 };
 
@@ -134,8 +154,8 @@ class NanopbServerReaderWriter
     static_assert(std::is_same_v<Response, typename Info::Response>,
                   "The response type of a NanopbServerReaderWriter must match "
                   "the method.");
-    return {internal::OpenContext<kMethod, MethodType::kBidirectionalStreaming>(
-        server,
+    internal::LockGuard lock(internal::rpc_lock());
+    return {server.OpenContext<kMethod, MethodType::kBidirectionalStreaming>(
         channel_id,
         service,
         internal::MethodLookup::GetNanopbMethod<ServiceImpl,
@@ -201,8 +221,8 @@ class NanopbServerReader : private internal::BaseNanopbServerReader<Request> {
     static_assert(
         std::is_same_v<Response, typename Info::Response>,
         "The response type of a NanopbServerReader must match the method.");
-    return {internal::OpenContext<kMethod, MethodType::kClientStreaming>(
-        server,
+    internal::LockGuard lock(internal::rpc_lock());
+    return {server.OpenContext<kMethod, MethodType::kClientStreaming>(
         channel_id,
         service,
         internal::MethodLookup::GetNanopbMethod<ServiceImpl,
@@ -255,8 +275,8 @@ class NanopbServerWriter : private internal::NanopbServerCall {
     static_assert(
         std::is_same_v<Response, typename Info::Response>,
         "The response type of a NanopbServerWriter must match the method.");
-    return {internal::OpenContext<kMethod, MethodType::kServerStreaming>(
-        server,
+    internal::LockGuard lock(internal::rpc_lock());
+    return {server.OpenContext<kMethod, MethodType::kServerStreaming>(
         channel_id,
         service,
         internal::MethodLookup::GetNanopbMethod<ServiceImpl,
@@ -272,7 +292,6 @@ class NanopbServerWriter : private internal::NanopbServerCall {
 
   using internal::Call::active;
   using internal::Call::channel_id;
-  using internal::Call::open;
 
   // Writes a response struct. Returns the following Status codes:
   //
@@ -317,8 +336,8 @@ class NanopbUnaryResponder : private internal::NanopbServerCall {
     static_assert(
         std::is_same_v<Response, typename Info::Response>,
         "The response type of a NanopbUnaryResponder must match the method.");
-    return {internal::OpenContext<kMethod, MethodType::kUnary>(
-        server,
+    internal::LockGuard lock(internal::rpc_lock());
+    return {server.OpenContext<kMethod, MethodType::kUnary>(
         channel_id,
         service,
         internal::MethodLookup::GetNanopbMethod<ServiceImpl,

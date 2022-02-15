@@ -19,7 +19,6 @@ import enum
 import json
 import logging
 import os
-import shlex
 import subprocess
 import sys
 
@@ -45,8 +44,12 @@ def register_arguments(parser: argparse.ArgumentParser) -> None:
                         type=str,
                         required=True,
                         help='Executable which runs a test on the target')
+    parser.add_argument('-m',
+                        '--timeout',
+                        type=float,
+                        help='Timeout for test runner in seconds')
     parser.add_argument('runner_args',
-                        nargs=argparse.REMAINDER,
+                        nargs="*",
                         help='Arguments to forward to the test runner')
 
     # The runner script can either run binaries directly or groups.
@@ -123,11 +126,15 @@ class TestGroup:
 
 class TestRunner:
     """Runs unit tests by calling out to a runner script."""
-    def __init__(self, executable: str, args: Sequence[str],
-                 tests: Iterable[Test]):
+    def __init__(self,
+                 executable: str,
+                 args: Sequence[str],
+                 tests: Iterable[Test],
+                 timeout: Optional[float] = None):
         self._executable: str = executable
         self._args: Sequence[str] = args
         self._tests: List[Test] = list(tests)
+        self._timeout = timeout
 
     async def run_tests(self) -> None:
         """Runs all registered unit tests through the runner script."""
@@ -149,7 +156,8 @@ class TestRunner:
                 command.insert(0, sys.executable)
 
             try:
-                process = await pw_cli.process.run_async(*command)
+                process = await pw_cli.process.run_async(*command,
+                                                         timeout=self._timeout)
                 if process.returncode == 0:
                     test.status = TestResult.SUCCESS
                     test_result = 'PASS'
@@ -319,40 +327,22 @@ def tests_from_paths(paths: Sequence[str]) -> List[Test]:
     return tests
 
 
-# TODO(frolv): Try to figure out a better solution for passing through the
-# corrected sys.argv across all pw commands.
-async def find_and_run_tests(argv_copy: List[str],
-                             root: str,
-                             runner: str,
-                             runner_args: Sequence[str] = (),
-                             group: Optional[Sequence[str]] = None,
-                             test: Optional[Sequence[str]] = None) -> int:
+async def find_and_run_tests(
+    root: str,
+    runner: str,
+    timeout: Optional[float],
+    runner_args: Sequence[str] = (),
+    group: Optional[Sequence[str]] = None,
+    test: Optional[Sequence[str]] = None,
+) -> int:
     """Runs some unit tests."""
-
-    if runner_args:
-        if runner_args[0] != '--':
-            _LOG.error('Unrecognized argument: %s', runner_args[0])
-            _LOG.info('')
-            _LOG.info('Did you mean to pass this argument to the runner?')
-            _LOG.info('Insert a -- in front of it to forward it through:')
-            _LOG.info('')
-
-            index = argv_copy.index(runner_args[0])
-            fixed_cmd = [*argv_copy[:index], '--', *argv_copy[index:]]
-
-            _LOG.info('  %s', ' '.join(shlex.quote(arg) for arg in fixed_cmd))
-            _LOG.info('')
-
-            return 1
-
-        runner_args = runner_args[1:]
 
     if test:
         tests = tests_from_paths(test)
     else:
         tests = tests_from_groups(group, root)
 
-    test_runner = TestRunner(runner, runner_args, tests)
+    test_runner = TestRunner(runner, runner_args, tests, timeout)
     await test_runner.run_tests()
 
     return 0 if test_runner.all_passed() else 1
@@ -370,7 +360,7 @@ def main() -> int:
 
     args_as_dict = dict(vars(parser.parse_args()))
     del args_as_dict['verbose']
-    return asyncio.run(find_and_run_tests(sys.argv, **args_as_dict))
+    return asyncio.run(find_and_run_tests(**args_as_dict))
 
 
 if __name__ == '__main__':

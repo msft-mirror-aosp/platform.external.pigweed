@@ -12,9 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-import {Message} from 'google-protobuf';
 import {Status} from '@pigweed/pw_status';
-import WaitQueue = require('wait-queue')
+import {Message} from 'google-protobuf';
+
+import WaitQueue = require('wait-queue');
 
 import {PendingCalls, Rpc} from './rpc_classes';
 
@@ -31,15 +32,26 @@ class RpcError extends Error {
       message = ': an error occurred while decoding the RPC payload';
     }
 
-    super(`${rpc.method} failed with error ${Status[status]}${message}`);
+    super(`${rpc.method.name} failed with error ${Status[status]}${message}`);
     this.status = status;
+  }
+}
+
+class RpcTimeout extends Error {
+  readonly rpc: Rpc;
+  readonly timeoutMs: number;
+
+  constructor(rpc: Rpc, timeoutMs: number) {
+    super(`${rpc.method.name} timed out after ${timeoutMs} ms`);
+    this.rpc = rpc;
+    this.timeoutMs = timeoutMs;
   }
 }
 
 /** Represent an in-progress or completed RPC call. */
 export class Call {
   // Responses ordered by arrival time. Undefined signifies stream completion.
-  private responseQueue = new WaitQueue<Message|undefined>();
+  private responseQueue = new WaitQueue<Message | undefined>();
   protected responses: Message[] = [];
 
   private rpcs: PendingCalls;
@@ -49,18 +61,17 @@ export class Call {
   private onCompleted: Callback;
   private onError: Callback;
 
-  // TODO(jaredweinstein): support async timeout.
-  // private timeout: number;
   status?: Status;
   error?: Status;
   callbackException?: Error;
 
   constructor(
-      rpcs: PendingCalls,
-      rpc: Rpc,
-      onNext: Callback,
-      onCompleted: Callback,
-      onError: Callback) {
+    rpcs: PendingCalls,
+    rpc: Rpc,
+    onNext: Callback,
+    onCompleted: Callback,
+    onError: Callback
+  ) {
     this.rpcs = rpcs;
     this.rpc = rpc;
 
@@ -71,16 +82,20 @@ export class Call {
 
   /* Calls the RPC. This must be called immediately after construction. */
   invoke(request?: Message, ignoreErrors = false): void {
-    const previous =
-        this.rpcs.sendRequest(this.rpc, this, ignoreErrors, request);
+    const previous = this.rpcs.sendRequest(
+      this.rpc,
+      this,
+      ignoreErrors,
+      request
+    );
 
     if (previous !== undefined && !previous.completed) {
-      previous.handleError(Status.CANCELLED)
+      previous.handleError(Status.CANCELLED);
     }
   }
 
   get completed(): boolean {
-    return (this.status !== undefined || this.error !== undefined);
+    return this.status !== undefined || this.error !== undefined;
   }
 
   private invokeCallback(func: () => {}) {
@@ -89,7 +104,8 @@ export class Call {
     } catch (err: unknown) {
       if (err instanceof Error) {
         console.error(
-            `An exception was raised while invoking a callback: ${err}`);
+          `An exception was raised while invoking a callback: ${err}`
+        );
         this.callbackException = err;
       }
       console.error(`Unexpected item thrown while invoking callback: ${err}`);
@@ -99,19 +115,38 @@ export class Call {
   handleResponse(response: Message): void {
     this.responses.push(response);
     this.responseQueue.push(response);
-    this.invokeCallback(() => this.onNext(response))
+    this.invokeCallback(() => this.onNext(response));
   }
 
   handleCompletion(status: Status) {
     this.status = status;
     this.responseQueue.push(undefined);
-    this.invokeCallback(() => this.onCompleted(status))
+    this.invokeCallback(() => this.onCompleted(status));
   }
 
   handleError(error: Status): void {
     this.error = error;
     this.responseQueue.push(undefined);
     this.invokeCallback(() => this.onError(error));
+  }
+
+  private async queuePopWithTimeout(
+    timeoutMs: number
+  ): Promise<Message | undefined> {
+    return new Promise(async (resolve, reject) => {
+      let timeoutExpired = false;
+      const timeoutWatcher = setTimeout(() => {
+        timeoutExpired = true;
+        reject(new RpcTimeout(this.rpc, timeoutMs));
+      }, timeoutMs);
+      const response = await this.responseQueue.shift();
+      if (timeoutExpired) {
+        this.responseQueue.unshift(response);
+        return;
+      }
+      clearTimeout(timeoutWatcher);
+      resolve(response);
+    });
   }
 
   /**
@@ -130,8 +165,13 @@ export class Call {
    * @param {number} count The number of responses to read before returning.
    *    If no value is specified, getResponses will block until the stream
    *    either ends or hits an error.
+   * @param {number} timeout The number of milliseconds to wait for a response
+   *    before throwing an error.
    */
-  async * getResponses(count?: number): AsyncGenerator<Message> {
+  async *getResponses(
+    count?: number,
+    timeoutMs?: number
+  ): AsyncGenerator<Message> {
     this.checkErrors();
 
     if (this.completed && this.responseQueue.length == 0) {
@@ -140,8 +180,10 @@ export class Call {
 
     let remaining = count ?? Number.POSITIVE_INFINITY;
     while (remaining > 0) {
-      const response = await this.responseQueue.shift();
-
+      const response =
+        timeoutMs === undefined
+          ? await this.responseQueue.shift()
+          : await this.queuePopWithTimeout(timeoutMs!);
       this.checkErrors();
       if (response === undefined) {
         return;
@@ -156,7 +198,7 @@ export class Call {
       return false;
     }
 
-    this.error = Status.CANCELLED
+    this.error = Status.CANCELLED;
     return this.rpcs.sendCancel(this.rpc);
   }
 
@@ -169,8 +211,8 @@ export class Call {
     }
   }
 
-  protected async unaryWait(): Promise<[Status, Message]> {
-    for await (const response of this.getResponses(1)) {
+  protected async unaryWait(timeoutMs?: number): Promise<[Status, Message]> {
+    for await (const response of this.getResponses(1, timeoutMs)) {
     }
     if (this.status === undefined) {
       throw Error('Unexpected undefined status at end of stream');
@@ -181,8 +223,8 @@ export class Call {
     return [this.status!, this.responses[0]];
   }
 
-  protected async streamWait(): Promise<[Status, Message[]]> {
-    for await (const response of this.getResponses()) {
+  protected async streamWait(timeoutMs?: number): Promise<[Status, Message[]]> {
+    for await (const response of this.getResponses(undefined, timeoutMs)) {
     }
     if (this.status === undefined) {
       throw Error('Unexpected undefined status at end of stream');
@@ -199,7 +241,7 @@ export class Call {
   }
 
   protected finishClientStream(requests: Message[]) {
-    for (let request of requests) {
+    for (const request of requests) {
       this.sendClientStream(request);
     }
 
@@ -212,18 +254,18 @@ export class Call {
 /** Tracks the state of a unary RPC call. */
 export class UnaryCall extends Call {
   /** Awaits the server response */
-  async complete(): Promise<[Status, Message]> {
-    return await this.unaryWait();
+  async complete(timeoutMs?: number): Promise<[Status, Message]> {
+    return await this.unaryWait(timeoutMs);
   }
 }
 
 /** Tracks the state of a client streaming RPC call. */
 export class ClientStreamingCall extends Call {
   /** Gets the last server message, if it exists */
-  get response(): Message|undefined {
-    return (this.responses.length > 0) ?
-        this.responses[this.responses.length - 1] :
-        undefined;
+  get response(): Message | undefined {
+    return this.responses.length > 0
+      ? this.responses[this.responses.length - 1]
+      : undefined;
   }
 
   /** Sends a message from the client. */
@@ -232,15 +274,20 @@ export class ClientStreamingCall extends Call {
   }
 
   /** Ends the client stream and waits for the RPC to complete. */
-  async finishAndWait(requests: Message[] = []): Promise<[Status, Message[]]> {
+  async finishAndWait(
+    requests: Message[] = [],
+    timeoutMs?: number
+  ): Promise<[Status, Message[]]> {
     this.finishClientStream(requests);
-    return await this.streamWait();
+    return await this.streamWait(timeoutMs);
   }
 }
 
 /** Tracks the state of a server streaming RPC call. */
 export class ServerStreamingCall extends Call {
-  // TODO(jaredweinstein): Complete server streaming invocation logic.
+  complete(timeoutMs?: number): Promise<[Status, Message[]]> {
+    return this.streamWait(timeoutMs);
+  }
 }
 
 /** Tracks the state of a bidirectional streaming RPC call. */
@@ -251,9 +298,11 @@ export class BidirectionalStreamingCall extends Call {
   }
 
   /** Ends the client stream and waits for the RPC to complete. */
-  async finishAndWait(requests: Array<Message> = []):
-      Promise<[Status, Array<Message>]> {
+  async finishAndWait(
+    requests: Array<Message> = [],
+    timeoutMs?: number
+  ): Promise<[Status, Array<Message>]> {
     this.finishClientStream(requests);
-    return await this.streamWait();
+    return await this.streamWait(timeoutMs);
   }
 }

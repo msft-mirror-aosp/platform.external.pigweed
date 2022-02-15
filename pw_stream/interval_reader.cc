@@ -18,13 +18,15 @@
 
 namespace pw::stream {
 
-void IntervalReader::Check() {
-  PW_CHECK(ok(), "internal::IntervalReader is in an invalid state");
-  PW_CHECK_NOTNULL(source_reader_);
-}
-
 StatusWithSize IntervalReader::DoRead(ByteSpan destination) {
-  Check();
+  if (!source_reader_) {
+    return StatusWithSize(Status::FailedPrecondition(), 0);
+  }
+
+  if (!status_.ok()) {
+    return StatusWithSize(status_, 0);
+  }
+
   if (current_ == end_) {
     return StatusWithSize::OutOfRange();
   }
@@ -46,10 +48,8 @@ StatusWithSize IntervalReader::DoRead(ByteSpan destination) {
   return StatusWithSize(res.value().size());
 }
 
-Status IntervalReader::DoSeek(ssize_t offset, Whence origin) {
-  Check();
-
-  ssize_t absolute_position = std::numeric_limits<size_t>::max();
+Status IntervalReader::DoSeek(ptrdiff_t offset, Whence origin) {
+  ptrdiff_t absolute_position = std::numeric_limits<ptrdiff_t>::min();
 
   // Convert from the position within the interval to the position within the
   // source reader stream.

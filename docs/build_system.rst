@@ -340,6 +340,34 @@ host_tools
 ~~~~~~~~~~
 This group defines host-side tooling binaries built for Pigweed.
 
+runtime_sanitizers
+~~~~~~~~~~~~~~~~~~
+This group defines host-side build targets for Clang runtime sanitizers.
+Next runtime sanitizers supported:
+
+* ``asan`` -- `AddressSanitizer`_ is a fast memory error detector.
+* ``msan`` -- `MemorySanitizer`_ is a detector of uninitialized reads.
+* ``ubsan`` -- `UndefinedBehaviorSanitizer`_ is a fast undefined behavior detector.
+* ``ubsan_heuristic`` -- `UndefinedBehaviorSanitizer`_ with the following
+  additional checks enabled:
+
+   * ``integer``: Checks for undefined or suspicious integer behavior.
+   * ``float-divide-by-zero``: Checks for floating point division by zero.
+   * ``implicit-conversion"``: Checks for suspicious behavior of implicit conversions.
+   * ``nullability``: Checks for null as function arg, lvalue and return type.
+
+  These additional checks are heuristic and may not correspond to undefined
+  behavior.
+* ``tsan`` -- `ThreadSanitizer`_ is a tool that detects data races.
+
+Results of building this group are ``host_clang_<sanitizer>`` build directories
+with ``pw_module_tests`` per supported sanitizer.
+
+.. _AddressSanitizer: https://clang.llvm.org/docs/AddressSanitizer.html
+.. _MemorySanitizer: https://clang.llvm.org/docs/MemorySanitizer.html
+.. _UndefinedBehaviorSanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
+.. _ThreadSanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html
+
 pw_modules
 ~~~~~~~~~~
 This group lists the main libraries for all of Pigweed's modules.
@@ -536,7 +564,7 @@ containing some details about how Bazel works in general, this section is not
 intended to be a guide on how to use Bazel. To learn more about the tool itself,
 refer to the official `Bazel reference`_.
 
-.. _Bazel reference: https://docs.bazel.build/versions/4.0.0/bazel-overview.html
+.. _Bazel reference: https://www.bazel.build/
 
 General usage
 -------------

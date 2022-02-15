@@ -86,6 +86,21 @@ class Sfixed64 : public internal::ProtoIntegerBase<int64_t> {
   using ProtoIntegerBase<int64_t>::ProtoIntegerBase;
 };
 
+class Float : public internal::ProtoIntegerBase<float> {
+ public:
+  using ProtoIntegerBase<float>::ProtoIntegerBase;
+};
+
+class Double : public internal::ProtoIntegerBase<double> {
+ public:
+  using ProtoIntegerBase<double>::ProtoIntegerBase;
+};
+
+class Bool : public internal::ProtoIntegerBase<bool> {
+ public:
+  using ProtoIntegerBase<bool>::ProtoIntegerBase;
+};
+
 // An object that represents a parsed `bytes` field or an error code. The
 // bytes are available via an stream::IntervalReader by GetBytesReader().
 //
@@ -174,8 +189,16 @@ using StringToMessageMap = StringMapParser<Message>;
 //
 //   // Parse repeated field `repeated string rep_str = 4;`
 //   RepeatedStrings rep_str = message.AsRepeatedString(4);
-//   // Iterate through the entries
+//   // Iterate through the entries. If proto is malformed when
+//   // iterating, the next element (`str` in this case) will be invalid
+//   // and loop will end in the iteration after.
 //   for (String str : rep_str) {
+//     // Check status
+//     if (!str.ok()) {
+//       // In the case of error, loop will end in the next iteration if
+//       // continues. This is the chance for code to catch the error.
+//       ...
+//     }
 //     ...
 //   }
 //
@@ -187,6 +210,11 @@ using StringToMessageMap = StringMapParser<Message>;
 //
 //   // Or iterate through map entries
 //   for (StringToBytesMapEntry entry : str_to_bytes) {
+//     if (!entry.ok()) {
+//       // In the case of error, loop will end in the next iteration if
+//       // continues. This is the chance for code to catch the error.
+//       ...
+//     }
 //     String key = entry.Key();
 //     Bytes value = entry.Value();
 //     ...
@@ -202,6 +230,11 @@ using StringToMessageMap = StringMapParser<Message>;
 //   // multiple times. Therefore, whenever possible, it is recommended to use
 //   // the following iteration to iterate and process each field directly.
 //   for (Message::Field field : message) {
+//     if (!field.ok()) {
+//       // In the case of error, loop will end in the next iteration if
+//       // continues. This is the chance for code to catch the error.
+//       ...
+//     }
 //     if (field.field_number() == 1) {
 //       String str = field.As<String>();
 //       ...
@@ -224,6 +257,8 @@ class Message {
    public:
     uint32_t field_number() { return field_number_; }
     const stream::IntervalReader& field_reader() { return field_reader_; }
+    bool ok() { return field_reader_.ok(); }
+    Status status() { return field_reader_.status(); }
 
     // Create a helper parser type of `FieldType` for the field.
     // The default implementation below assumes the field is a length-delimited
@@ -231,6 +266,10 @@ class Message {
     // template specialization.
     template <typename FieldType>
     FieldType As() {
+      if (!field_reader_.ok()) {
+        return FieldType(field_reader_.status());
+      }
+
       StreamDecoder decoder(field_reader_.Reset());
       PW_TRY(decoder.Next());
       Result<StreamDecoder::Bounds> payload_bounds =
@@ -246,6 +285,7 @@ class Message {
 
    private:
     Field() = default;
+    Field(Status status) : field_reader_(status), field_number_(0) {}
     Field(stream::IntervalReader reader, uint32_t field_number)
         : field_reader_(reader), field_number_(field_number) {}
 
@@ -265,6 +305,8 @@ class Message {
       return iter;
     }
 
+    bool ok() { return status_.ok(); }
+    Status status() { return status_; }
     Field operator*() { return current_; }
     Field* operator->() { return &current_; }
     bool operator!=(const iterator& other) const { return !(*this == other); }
@@ -277,6 +319,7 @@ class Message {
     stream::IntervalReader reader_;
     bool eof_ = false;
     Field current_;
+    Status status_ = OkStatus();
 
     iterator(stream::IntervalReader reader) : reader_(reader) {
       this->operator++();
@@ -315,6 +358,11 @@ class Message {
   Sfixed64 AsSfixed64(uint32_t field_number) {
     return As<Sfixed64>(field_number);
   }
+
+  Float AsFloat(uint32_t field_number) { return As<Float>(field_number); }
+  Double AsDouble(uint32_t field_number) { return As<Double>(field_number); }
+
+  Bool AsBool(uint32_t field_number) { return As<Bool>(field_number); }
 
   // Parse a sub-field in the message given by `field_number` as another
   // message.
@@ -432,6 +480,15 @@ Fixed64 Message::Field::As<Fixed64>();
 template <>
 Sfixed64 Message::Field::As<Sfixed64>();
 
+template <>
+Float Message::Field::As<Float>();
+
+template <>
+Double Message::Field::As<Double>();
+
+template <>
+Bool Message::Field::As<Bool>();
+
 // A helper for parsing `repeated` field. It implements an iterator interface
 // that only iterates through the fields of a given `field_number`.
 //
@@ -455,6 +512,8 @@ class RepeatedFieldParser {
       return iter;
     }
 
+    bool ok() { return iter_.ok(); }
+    Status status() { return iter_.status(); }
     FieldType operator*() { return current_; }
     FieldType* operator->() { return &current_; }
     bool operator!=(const iterator& other) const { return !(*this == other); }
@@ -465,7 +524,6 @@ class RepeatedFieldParser {
    private:
     RepeatedFieldParser& host_;
     Message::iterator iter_;
-    bool eof_ = false;
     FieldType current_ = FieldType(Status::Unavailable());
 
     iterator(RepeatedFieldParser& host, Message::iterator init_iter)
@@ -477,7 +535,7 @@ class RepeatedFieldParser {
     void MoveToNext() {
       // Move the iterator to the next element with the target field number
       for (; iter_ != host_.message_.end(); ++iter_) {
-        if (iter_->field_number() == host_.field_number_) {
+        if (!iter_.ok() || iter_->field_number() == host_.field_number_) {
           current_ = iter_->As<FieldType>();
           break;
         }
@@ -491,6 +549,8 @@ class RepeatedFieldParser {
   // `field_number` -- The field number of the repeated field.
   RepeatedFieldParser(Message& message, uint32_t field_number)
       : message_(message), field_number_(field_number) {}
+
+  RepeatedFieldParser(Status status) : message_(status) {}
 
   // TODO(pwbug/363): Migrate this to Result<> once we have StatusOr like
   // support.
@@ -519,6 +579,8 @@ class RepeatedFieldParser {
 template <typename ValueParser>
 class StringMapEntryParser {
  public:
+  bool ok() { return entry_.ok(); }
+  Status status() { return entry_.status(); }
   StringMapEntryParser(Status status) : entry_(status) {}
   StringMapEntryParser(stream::IntervalReader reader) : entry_(reader) {}
   String Key() { return entry_.AsString(kMapKeyFieldNumber); }

@@ -77,7 +77,7 @@ http_archive(
 git_repository(
     name = "rules_cc_toolchain",
     commit = "80b51ba81f14eebe06684efa25261f6dc46e9b29",
-    remote = "https://github.com/silvergasp/rules_cc_toolchain.git",
+    remote = "https://github.com/bazelembedded/rules_cc_toolchain.git",
 )
 
 load("@rules_cc_toolchain//:rules_cc_toolchain_deps.bzl", "rules_cc_toolchain_deps")
@@ -184,7 +184,7 @@ browser_repositories(
 git_repository(
     name = "bazel_embedded",
     commit = "17c93d5fa52c4c78860b8bbd327325fba6c85555",
-    remote = "https://github.com/silvergasp/bazel-embedded.git",
+    remote = "https://github.com/bazelembedded/bazel-embedded.git",
 )
 
 # Instantiate Pigweed configuration for embedded toolchain,
@@ -308,3 +308,35 @@ rules_fuzzing_init()
 load("@build_bazel_rules_nodejs//toolchains/esbuild:esbuild_repositories.bzl", "esbuild_repositories")
 
 esbuild_repositories(npm_repository = "npm")  # Note, npm is the default value for npm_repository
+
+RULES_JVM_EXTERNAL_TAG = "2.8"
+
+RULES_JVM_EXTERNAL_SHA = "79c9850690d7614ecdb72d68394f994fef7534b292c4867ce5e7dec0aa7bdfad"
+
+http_archive(
+    name = "rules_jvm_external",
+    sha256 = RULES_JVM_EXTERNAL_SHA,
+    strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
+    url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
+)
+
+load("@rules_jvm_external//:defs.bzl", "maven_install")
+
+# Pull in packages for the pw_rpc Java client with Maven.
+maven_install(
+    artifacts = [
+        "com.google.auto.value:auto-value:1.8.2",
+        "com.google.auto.value:auto-value-annotations:1.8.2",
+        "com.google.code.findbugs:jsr305:3.0.2",
+        "com.google.flogger:flogger:0.7.1",
+        "com.google.flogger:flogger-system-backend:0.7.1",
+        "com.google.guava:guava:31.0.1-jre",
+        "com.google.truth:truth:1.1.3",
+        "org.mockito:mockito-core:4.1.0",
+    ],
+    repositories = [
+        "https://maven.google.com/",
+        "https://jcenter.bintray.com/",
+        "https://repo1.maven.org/maven2",
+    ],
+)

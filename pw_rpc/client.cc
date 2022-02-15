@@ -12,7 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+// clang-format off
+#include "pw_rpc/internal/log_config.h"  // PW_LOG_* macros must be first.
+
 #include "pw_rpc/client.h"
+// clang-format on
 
 #include "pw_log/log.h"
 #include "pw_rpc/internal/client_call.h"
@@ -33,11 +37,14 @@ Status Client::ProcessPacket(ConstByteSpan data) {
   Packet& packet = *result;
 
   // Find an existing call for this RPC, if any.
+  internal::rpc_lock().lock();
   internal::ClientCall* call =
       static_cast<internal::ClientCall*>(FindCall(packet));
 
   internal::Channel* channel = GetInternalChannel(packet.channel_id());
+
   if (channel == nullptr) {
+    internal::rpc_lock().unlock();
     PW_LOG_WARN("RPC client received a packet for an unregistered channel");
     return Status::Unavailable();
   }
@@ -47,10 +54,11 @@ Status Client::ProcessPacket(ConstByteSpan data) {
     // message, notify the server so that it can kill the stream. Otherwise,
     // silently drop the packet (as it would terminate the RPC anyway).
     if (packet.type() == PacketType::SERVER_STREAM) {
-      PW_LOG_WARN("RPC client received stream message for an unknown call");
       channel->Send(Packet::ClientError(packet, Status::FailedPrecondition()))
           .IgnoreError();
+      PW_LOG_WARN("RPC client received stream message for an unknown call");
     }
+    internal::rpc_lock().unlock();
     return OkStatus();  // OK since the packet was handled
   }
 
@@ -72,14 +80,15 @@ Status Client::ProcessPacket(ConstByteSpan data) {
       if (call->has_server_stream()) {
         call->HandlePayload(packet.payload());
       } else {
-        PW_LOG_DEBUG("Received SERVER_STREAM for RPC without a server stream");
-        call->HandleError(Status::InvalidArgument());
         // Report the error to the server so it can abort the RPC.
         channel->Send(Packet::ClientError(packet, Status::InvalidArgument()))
             .IgnoreError();  // Errors are logged in Channel::Send.
+        call->HandleError(Status::InvalidArgument());
+        PW_LOG_DEBUG("Received SERVER_STREAM for RPC without a server stream");
       }
       break;
     default:
+      internal::rpc_lock().unlock();
       PW_LOG_WARN("pw_rpc client unable to handle packet of type %u",
                   static_cast<unsigned>(packet.type()));
   }

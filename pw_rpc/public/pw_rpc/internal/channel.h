@@ -16,12 +16,17 @@
 #include <span>
 
 #include "pw_assert/assert.h"
+#include "pw_bytes/span.h"
 #include "pw_rpc/channel.h"
+#include "pw_rpc/internal/lock.h"
+#include "pw_rpc/internal/packet.h"
 #include "pw_status/status.h"
 
 namespace pw::rpc::internal {
 
-class Packet;
+// Returns a portion of the encoding buffer that may be used to encode an
+// outgoing payload.
+ByteSpan GetPayloadBuffer() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
 class Channel : public rpc::Channel {
  public:
@@ -30,69 +35,13 @@ class Channel : public rpc::Channel {
   constexpr Channel(uint32_t id, ChannelOutput* output)
       : rpc::Channel(id, output) {}
 
-  // Represents a buffer acquired from a ChannelOutput.
-  class OutputBuffer {
-   public:
-    constexpr OutputBuffer() = default;
-
-    OutputBuffer(const OutputBuffer&) = delete;
-
-    OutputBuffer(OutputBuffer&& other) { *this = std::move(other); }
-
-    ~OutputBuffer() { PW_DASSERT(buffer_.empty()); }
-
-    OutputBuffer& operator=(const OutputBuffer&) = delete;
-
-    OutputBuffer& operator=(OutputBuffer&& other) {
-      PW_DASSERT(buffer_.empty());
-      buffer_ = other.buffer_;
-      other.buffer_ = {};
-      return *this;
-    }
-
-    // Returns a portion of this OutputBuffer to use as the packet payload.
-    std::span<std::byte> payload(const Packet& packet) const;
-
-    bool Contains(std::span<const std::byte> other) const {
-      return !buffer_.empty() && other.data() >= buffer_.data() &&
-             other.data() + other.size() <= buffer_.data() + buffer_.size();
-    }
-
-    bool empty() const { return buffer_.empty(); }
-
-   private:
-    friend class Channel;
-
-    explicit constexpr OutputBuffer(std::span<std::byte> buffer)
-        : buffer_(buffer) {}
-
-    std::span<std::byte> buffer_;
-  };
-
-  // Acquires a buffer for the packet.
-  OutputBuffer AcquireBuffer() const {
-    return OutputBuffer(output().AcquireBuffer());
-  }
-
-  Status Send(const internal::Packet& packet) {
-    OutputBuffer buffer = AcquireBuffer();
-    return Send(buffer, packet);
-  }
-
-  Status Send(OutputBuffer& output, const internal::Packet& packet);
-
-  void Release(OutputBuffer& buffer) {
-    output().DiscardBuffer(buffer.buffer_);
-    buffer.buffer_ = {};
-  }
+  // Allow closing a channel for internal API users.
+  using rpc::Channel::Close;
 
   // Allow setting the channel ID for tests.
   using rpc::Channel::set_channel_id;
 
-  // Allow accessing the client from the channel.
-  // TODO(pwbug/504): Remove this when users have migrated off the old API.
-  using rpc::Channel::client;
-  using rpc::Channel::set_client;
+  Status Send(const Packet& packet) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 };
 
 }  // namespace pw::rpc::internal

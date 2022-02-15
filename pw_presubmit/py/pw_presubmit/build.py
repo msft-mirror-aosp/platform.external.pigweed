@@ -31,6 +31,7 @@ from pw_presubmit import (
     call,
     Check,
     filter_paths,
+    format_code,
     log_run,
     plural,
     PresubmitContext,
@@ -39,6 +40,22 @@ from pw_presubmit import (
 )
 
 _LOG = logging.getLogger(__name__)
+
+
+def bazel(ctx: PresubmitContext, cmd: str, *args: str) -> None:
+    """Invokes Bazel with some common flags set.
+
+    Intended for use with bazel build and test. May not work with others.
+    """
+    call('bazel',
+         cmd,
+         '--verbose_failures',
+         '--verbose_explanations',
+         '--worker_verbose',
+         f'--symlink_prefix={ctx.output_dir / "bazel-"}',
+         *args,
+         cwd=ctx.root,
+         env=env_with_clang_vars())
 
 
 def install_package(root: Path, name: str) -> None:
@@ -89,7 +106,7 @@ def gn_gen(gn_source_dir: Path,
            export_compile_commands: Union[bool, str] = True,
            **gn_arguments) -> None:
     """Runs gn gen in the specified directory with optional GN args."""
-    args_option = (gn_args(**gn_arguments), ) if gn_arguments else ()
+    args_option = gn_args(**gn_arguments)
 
     # Delete args.gn to ensure this is a clean build.
     args_gn = gn_output_dir / 'args.gn'
@@ -109,7 +126,7 @@ def gn_gen(gn_source_dir: Path,
          *(['--fail-on-unused-args'] if gn_fail_on_unused else []),
          *([export_commands_arg] if export_commands_arg else []),
          *args,
-         *args_option,
+         args_option,
          cwd=gn_source_dir)
 
     if gn_check:
@@ -234,9 +251,9 @@ def compiled_files(compile_commands: Path) -> Iterable[Path]:
 
 
 def check_compile_commands_for_files(
-        compile_commands: Union[Path, Iterable[Path]],
-        files: Iterable[Path],
-        extensions: Collection[str] = ('.c', '.cc', '.cpp'),
+    compile_commands: Union[Path, Iterable[Path]],
+    files: Iterable[Path],
+    extensions: Collection[str] = format_code.CPP_SOURCE_EXTS,
 ) -> List[Path]:
     """Checks for paths in one or more compile_commands.json files.
 

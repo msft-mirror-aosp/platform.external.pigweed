@@ -8,15 +8,30 @@ data. ``BlobStore`` is a flash-backed persistent storage system with integrated
 data integrity checking that serves as a lightweight alternative to a file
 system.
 
-=====
+-----
 Usage
-=====
+-----
 Most operations on a ``BlobStore`` are done using ``BlobReader`` and
 ``BlobWriter`` objects that have been constructed using a ``BlobStore``. Though
 a ``BlobStore`` may have multiple open ``BlobReader`` objects, no other
 readers/writers may be active if a ``BlobWriter`` is opened on a blob store.
 
-----------------------
+Write buffer
+============
+
+BlobStore uses a write buffer to allow writes smaller than and/or unaligned to
+the flash write aligment. BlobStore also supports using the write buffer for
+deferred writes that can be enqueued and written to flash at a later time or by
+a different thread/context.
+
+BlobStore can be used with a zero-size write buffer to reduce memory
+requirements. When using zero-size write buffer, the user is required to write
+maintain write sizes that are a multiple of the flash write size the blob is
+configured for.
+
+If a non-zero sized write buffer is used, the write buffer size must be a
+multiple of the flash write size.
+
 Writing to a BlobStore
 ----------------------
 ``BlobWriter`` objects are ``pw::stream::Writer`` compatible, but do not support
@@ -71,7 +86,6 @@ for the ``std::string_view`` to be invalidated after the function returns.
   // ...
   writer.Close();
 
-------------------------
 Reading from a BlobStore
 ------------------------
 
@@ -82,17 +96,17 @@ Reading from a BlobStore
      BlobReader::Seek() to read from a desired offset.
   3) BlobReader::Close().
 
-==========================
+--------------------------
 FileSystem RPC integration
-==========================
+--------------------------
 ``pw_blob_store`` provides an optional ``FileSystemEntry`` implementation for
 use with ``pw_file``'s ``FlatFileSystemService``. This simplifies the process of
 enumerating ``BlobStore`` objects as files via ``pw_file``'s ``FileSystem`` RPC
 service.
 
-===========
+-----------
 Size report
-===========
+-----------
 The following size report showcases the memory usage of the blob store.
 
 .. include:: blob_size

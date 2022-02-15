@@ -1,14 +1,19 @@
 .. _module-pw_log_rpc:
 
-----------
+==========
 pw_log_rpc
-----------
-An RPC-based logging backend for Pigweed.
+==========
+An RPC-based logging solution for Pigweed with log filtering and log drops
+reporting -- coming soon!
 
 .. warning::
   This module is under construction and might change in the future.
 
-How to use
+-----------
+RPC Logging
+-----------
+
+How to Use
 ==========
 1. Set up RPC
 -------------
@@ -27,13 +32,15 @@ Then, make the log backend handler,
 ``pw_tokenizer_HandleEncodedMessageWithPayload``, encode log entries in the
 ``log::LogEntry`` format, and add them to the ``MultiSink``.
 
-4. Create log drains
---------------------
+4. Create log drains and filters
+--------------------------------
 Create an ``RpcLogDrainMap`` with one ``RpcLogDrain`` for each RPC channel used
-to stream logs. Provide this map to the ``LogService`` and register the latter
+to stream logs. Optionally, create a ``FilterMap`` with ``Filter`` objects with
+different IDs. Provide these map to the ``LogService`` and register the latter
 with the application's RPC service. The ``RpcLogDrainMap`` provides a convenient
 way to access and maintain each ``RpcLogDrain``. Attach each ``RpcLogDrain`` to
-the ``MultiSink``.
+the ``MultiSink``. Optionally, set the ``RpcLogDrain`` callback to decide if a
+log should be kept or dropped. This callback can be ``Filter::ShouldDropLog``.
 
 5. Flush the log drains in the background
 -----------------------------------------
@@ -80,16 +87,29 @@ also be internal log readers, i.e. ``MultiSink::Drain``\s, attached to the
     pw_rpc-->computer[Computer];
     pw_rpc-->other_listener[Other log<br>listener];
 
+Components Overview
+===================
+LogEntry and LogEntries
+-----------------------
+RPC logging uses ``LogEntry`` to encapsulate each entry's data, such as level,
+timestamp, and message. ``LogEntries`` can hold multiple instances of
+``LogEntry`` to send more data using fewer transmissions. The ``LogEntries`` has
+an optional field for the first message's sequence ID that corresponds to the
+count of each ``LogEntry`` that passes the log filter and is sent. A client can
+use this sequence ID and the number of messages in a ``LogEntries`` to figure
+out if logs were dropped during transmission.
+
 RPC log service
-===============
+---------------
 The ``LogService`` class is an RPC service that provides a way to request a log
-stream sent via RPC. Thus, it helps avoid using a different protocol for logs
-and RPCs over the same interface(s). It requires a map of ``RpcLogDrains`` to
-assign stream writers and delegate the log stream flushing to the user's
-preferred method.
+stream sent via RPC and configure log filters. Thus, it helps avoid using a
+different protocol for logs and RPCs over the same interface(s).
+It requires a ``RpcLogDrainMap`` to assign stream writers and delegate the
+log stream flushing to the user's preferred method, as well as a ``FilterMap``
+to retrieve and modify filters.
 
 RpcLogDrain
-===========
+-----------
 An ``RpcLogDrain`` reads from the ``MultiSink`` instance that buffers logs, then
 packs, and sends the retrieved log entries to the log listener. One
 ``RpcLogDrain`` is needed for each log listener. An ``RpcLogDrain`` needs a
@@ -99,11 +119,13 @@ RPC server, to avoid blocking it.
 
 Each ``RpcLogDrain`` is identified by a known RPC channel ID and requires a
 ``rpc::RawServerWriter`` to write the packed multiple log entries. This writer
-is assigned by the ``LogService::Listen`` RPC. Future work will allow
-``RpcLogDrain``\s to have an open RPC writer, to constantly stream logs without
-the need to request them. This is useful in cases where the connection to the
-client is dropped silently because the log stream can continue when reconnected
-without the client requesting it.
+is assigned by the ``LogService::Listen`` RPC.
+
+``RpcLogDrain``\s can also be provided an open RPC writer, to constantly stream
+logs without the need to request them. This is useful in cases where the
+connection to the client is dropped silently because the log stream can continue
+when reconnected without the client requesting logs again if the error handling
+is set to ``kIgnoreWriterErrors`` otherwise the writer will be closed.
 
 An ``RpcLogDrain`` must be attached to a ``MultiSink`` containing multiple
 ``log::LogEntry``\s. When ``Flush`` is called, the drain acquires the
@@ -118,31 +140,149 @@ The user must provide a buffer large enough for the largest entry in the
 ``MultiSink`` while also accounting for the interface's Maximum Transmission
 Unit (MTU). If the ``RpcLogDrain`` finds a drop message count as it reads the
 ``MultiSink`` it will insert a message in the stream with the drop message
-count.
+count in the log proto dropped optional field. The receiving end can display the
+count with the logs if desired.
 
 RpcLogDrainMap
-==============
+--------------
 Provides a convenient way to access all or a single ``RpcLogDrain`` by its RPC
 channel ID.
 
 RpcLogDrainThread
-=================
-The module includes a sample thread that flushes each drain sequentially. Future
-work might replace this with enqueueing the flush work on a work queue. The user
-can also choose to have different threads flushing individual ``RpcLogDrain``\s
-with different priorities.
+-----------------
+The module includes a sample thread that flushes each drain sequentially.
+``RpcLogDrainThread`` takes an encoding buffer span at construction.
+``RpcLogDrainThreadWithBuffer`` takes a template parameter for the buffer size,
+which must be large enough to fit at least one log entry.
 
-Logging example
-===============
+Future work might replace this with enqueueing the flush work on a work queue.
+The user can also choose to have different threads flushing individual
+``RpcLogDrain``\s with different priorities.
+
+When creating a ``RpcLogDrainThread``, the thread can be configured to
+rate limit logs by introducing a limit to how many logs can be flushed from
+each sink before a configurable sleep period begins to give the sinks time to
+handle the flushed logs. For example, if the rate limiting is configured to 2
+log bundles per flush with minimum delay of 100ms between flushes, the logging
+thread will send at most 20 log bundles per second over each sink. Log bundle
+size is dictated by the size of the encode buffer provided to the
+RpcLogDrainThread.
+
+Rate limiting is helpful in cases where transient bursts of high volumes of logs
+cause transport buffers to saturate. By rate limiting the RPC log drain, the
+transport buffers are given time to send data. As long as the average logging
+rate is significantly less than the rate limit imposed by the
+``RpcLogDrainThread``, the logging pipeline should be more resilient high
+volume log bursts.
+
+Rate limiting log drains is particularly helpful for systems that collect logs
+to a multisink in bulk when communications aren't available (e.g. collecting
+early boot logs until the logging thread starts). If a very full log buffer is
+suddenly flushed to the sinks without rate limiting, it's possible to overwhelm
+the output buffers if they don't have sufficient headroom.
+
+.. note::
+  Introducing a logging drain rate limit will increase logging latency, but
+  usually not by much. It's important to tune the rate limit configuration to
+  ensure it doesn't unnecessarily introduce a logging bottleneck or
+  significantly increase latency.
+
+Calling ``OpenUnrequestedLogStream()`` is a convenient way to set up a log
+stream that is started without the need to receive an RCP request for logs.
+
+---------
+Log Drops
+---------
+Unfortunately, logs can be dropped and not reach the destination. This module
+expects to cover all cases and be able to notify the user of log drops when
+possible. Logs can be dropped when
+
+- They don't pass a filter. This is the expected behavior, so filtered logs will
+  not be tracked as dropped logs.
+- The drains are too slow to keep up. In this case, the ring buffer is full of
+  undrained entries; when new logs come in, old entries are dropped. [#f1]_
+- There is an error creating or adding a new log entry, and the ring buffer is
+  notified that the log had to be dropped. [#f1]_
+- A log entry is too large for the outbound buffer. [#f2]_
+- There are detected errors transmitting log entries. [#f2]_
+- There are undetected errors transmitting or receiving log entries, such as an
+  interface interruption. [#f3]_
+
+.. [#f1] The log stream will contain a ``LogEntry`` message with the number of
+         dropped logs.
+.. [#f2] The log stream will contain a ``LogEntry`` message with the number of
+         dropped logs the next time the stream is flushed only if the drain's
+         error handling is set to close the stream on error.
+.. [#f3] Clients can calculate the number of logs lost in transit using the
+         sequence ID and number of entries in each stream packet.
+
+-------------
+Log Filtering
+-------------
+A ``Filter`` anywhere in the path of a ``LogEntry`` proto, for example, in the
+``PW_LOG*`` macro implementation, or in an ``RpcLogDrain`` if using RPC logging.
+The log filtering service provides read and modify access to the ``Filter``\s
+registered in the ``FilterMap``.
+
+How to Use
+==========
+1. Set up RPC
+-------------
+Set up RPC for your target device. See :ref:`module-pw_rpc` for details.
+
+2. Create ``Filter``\s
+----------------------
+Provide each ``Filter`` with its own container for the ``FilterRules`` as big as
+the number of rules desired. These rules can be pre-poluated.
+
+3. Create a ``FilterMap`` and ``FilterService``
+-----------------------------------------------
+Set up the ``FilterMap`` with the filters than can be modified with the
+``FilterService``. Register the service with the RPC server.
+
+4. Use RPCs to retrieve and modify filter rules
+-----------------------------------------------
+
+Components Overview
+===================
+Filter::Rule
+------------
+Contains a set of values that are compared against a log when set. All
+conditions must be met for the rule to be met.
+
+- ``action``: drops or keeps the log if the other conditions match.
+  The rule is ignored when inactive.
+
+- ``any_flags_set``: the condition is met if this value is 0 or the log has any
+  of these flags set.
+
+- ``level_greater_than_or_equal``: the condition is met when the log level is
+  greater than or equal to this value.
+
+- ``module_equals``: the condition is met if this byte array is empty, or the
+  log module equals the contents of this byte array.
+
+Filter
+------
+Encapsulates a collection of zero or more ``Filter::Rule``\s and has
+an ID used to modify or retrieve its contents.
+
+FilterMap
+---------
+Provides a convenient way to retrieve register filters by ID.
+
+----------------------------
+Logging with filters example
+----------------------------
 The following code shows a sample setup to defer the log handling to the
 ``RpcLogDrainThread`` to avoid having the log streaming block at the log
 callsite.
 
 main.cc
--------
+=======
 .. code-block:: cpp
 
-  #include "foo/foo_log.h"
+  #include "foo/log.h"
   #include "pw_log/log.h"
   #include "pw_thread/detached_thread.h"
   #include "pw_thread_stl/options.h"
@@ -150,7 +290,8 @@ main.cc
   namespace {
 
   void RegisterServices() {
-    pw::rpc::system_server::Server().RegisterService(foo_log::log_service);
+    pw::rpc::system_server::Server().RegisterService(foo::log::log_service);
+    pw::rpc::system_server::Server().RegisterService(foo::log::filter_service);
   }
   }  // namespace
 
@@ -158,25 +299,28 @@ main.cc
     PW_LOG_INFO("Deferred logging over RPC example");
     pw::rpc::system_server::Init();
     RegisterServices();
-    pw::thread::DetachedThread(pw::thread::stl::Options(), foo_log::log_thread);
+    pw::thread::DetachedThread(pw::thread::stl::Options(), foo::log::log_thread);
     pw::rpc::system_server::Start();
     return 0;
   }
 
-foo_log.cc
-----------
+foo/log.cc
+==========
 Example of a log backend implementation, where logs enter the ``MultiSink`` and
-log drains are set up.
+log drains and filters are set up.
 
 .. code-block:: cpp
 
-  #include "foo/foo_log.h"
+  #include "foo/log.h"
 
   #include <array>
   #include <cstdint>
 
   #include "pw_chrono/system_clock.h"
   #include "pw_log/proto_utils.h"
+  #include "pw_log_rpc/log_filter.h"
+  #include "pw_log_rpc/log_filter_map.h"
+  #include "pw_log_rpc/log_filter_service.h"
   #include "pw_log_rpc/log_service.h"
   #include "pw_log_rpc/rpc_log_drain.h"
   #include "pw_log_rpc/rpc_log_drain_map.h"
@@ -187,7 +331,7 @@ log drains are set up.
   #include "pw_sync/mutex.h"
   #include "pw_tokenizer/tokenize_to_global_handler_with_payload.h"
 
-  namespace foo_log {
+  namespace foo::log {
   namespace {
   constexpr size_t kLogBufferSize = 5000;
   // Tokenized logs are typically 12-24 bytes.
@@ -221,6 +365,22 @@ log drains are set up.
   std::array<std::byte, kMaxLogEntrySize> log_encode_buffer
       PW_GUARDED_BY(log_encode_lock);
 
+  std::array<Filter::Rule, 2> logs_to_host_filter_rules;
+  std::array<Filter::Rule, 2> logs_to_server_filter_rules{{
+      {
+          .action = Filter::Rule::Action::kKeep,
+          .level_greater_than_or_equal = pw::log::FilterRule::Level::INFO_LEVEL,
+      },
+      {
+          .action = Filter::Rule::Action::kDrop,
+      },
+  }};
+  std::array<Filter, 2> filters{
+      Filter(std::as_bytes(std::span("HOST", 4)), logs_to_host_filter_rules),
+      Filter(std::as_bytes(std::span("WEB", 3)), logs_to_server_filter_rules),
+  };
+  pw::log_rpc::FilterMap filter_map(filters);
+
   extern "C" void pw_tokenizer_HandleEncodedMessageWithPayload(
       pw_tokenizer_Payload metadata, const uint8_t message[], size_t size_bytes) {
     int64_t timestamp =
@@ -241,15 +401,16 @@ log drains are set up.
   pw::log_rpc::RpcLogDrainMap drain_map(drains);
   pw::log_rpc::RpcLogDrainThread log_thread(GetMultiSink(), drain_map);
   pw::log_rpc::LogService log_service(drain_map);
+  pw::log_rpc::FilterService filter_service(filter_map);
 
   pw::multisink::MultiSink& GetMultiSink() {
     static pw::multisink::MultiSink multisink(multisink_buffer);
     return multisink;
   }
-  }  // namespace foo_log
+  }  // namespace foo::log
 
 Logging in other source files
 -----------------------------
 To defer logging, other source files must simply include ``pw_log/log.h`` and
 use the :ref:`module-pw_log` APIs, as long as the source set that includes
-``foo_log.cc`` is setup as the log backend.
+``foo/log.cc`` is setup as the log backend.

@@ -17,6 +17,7 @@
 
 #include "pw_bytes/span.h"
 #include "pw_rpc/internal/call_context.h"
+#include "pw_rpc/internal/server_call.h"
 #include "pw_rpc/method_type.h"
 
 namespace pw::rpc::internal::test {
@@ -61,8 +62,6 @@ class FakeServerReaderWriter : private internal::ServerCall {
 
   // Expose a few additional methods for test use.
   ServerCall& as_server_call() { return *this; }
-  ByteSpan PayloadBuffer() { return AcquirePayloadBuffer(); }
-  const Channel::OutputBuffer& output_buffer() { return buffer(); }
 };
 
 class FakeServerWriter : private FakeServerReaderWriter {
@@ -81,8 +80,6 @@ class FakeServerWriter : private FakeServerReaderWriter {
 
   // Functions for test use.
   using FakeServerReaderWriter::as_server_call;
-  using FakeServerReaderWriter::output_buffer;
-  using FakeServerReaderWriter::PayloadBuffer;
 };
 
 class FakeServerReader : private FakeServerReaderWriter {
@@ -96,9 +93,6 @@ class FakeServerReader : private FakeServerReaderWriter {
 
   using FakeServerReaderWriter::active;
   using FakeServerReaderWriter::as_server_call;
-
-  // Functions for test use.
-  using FakeServerReaderWriter::PayloadBuffer;
 };
 
 }  // namespace pw::rpc::internal::test

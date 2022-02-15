@@ -12,12 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_transfer/internal/client_connection.h"
-
 #define PW_LOG_MODULE_NAME "TRN"
 
+#include "pw_transfer/internal/client_connection.h"
+
 #include "pw_log/log.h"
-#include "pw_transfer_private/chunk.h"
+#include "pw_transfer/internal/chunk.h"
 
 namespace pw::transfer::internal {
 
@@ -28,19 +28,15 @@ void ClientConnection::SendStatusChunk(TransferType type,
   chunk.transfer_id = transfer_id;
   chunk.status = status.code();
 
-  rpc::RawServerReaderWriter& destination = stream(type);
-
-  Result<ConstByteSpan> result =
-      internal::EncodeChunk(chunk, destination.PayloadBuffer());
+  Result<ConstByteSpan> result = internal::EncodeChunk(chunk, encoding_buffer_);
 
   if (!result.ok()) {
     PW_LOG_ERROR("Failed to encode final chunk for transfer %u",
                  static_cast<unsigned>(transfer_id));
-    destination.ReleaseBuffer();
     return;
   }
 
-  if (!destination.Write(result.value()).ok()) {
+  if (!stream(type).Write(result.value()).ok()) {
     PW_LOG_ERROR("Failed to send final chunk for transfer %u",
                  static_cast<unsigned>(transfer_id));
     return;

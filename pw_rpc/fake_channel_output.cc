@@ -12,7 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+// clang-format off
+#include "pw_rpc/internal/log_config.h"  // PW_LOG_* macros must be first.
+
 #include "pw_rpc/internal/fake_channel_output.h"
+// clang-format on
 
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
@@ -28,10 +32,7 @@ void FakeChannelOutput::clear() {
   return_after_packet_count_ = -1;
 }
 
-Status FakeChannelOutput::SendAndReleaseBuffer(
-    std::span<const std::byte> buffer) {
-  PW_CHECK_PTR_EQ(buffer.data(), encoding_buffer_.data());
-
+Status FakeChannelOutput::Send(std::span<const std::byte> buffer) {
   // If the buffer is empty, this is just releasing an unused buffer.
   if (buffer.empty()) {
     return OkStatus();
@@ -56,10 +57,11 @@ Status FakeChannelOutput::SendAndReleaseBuffer(
            static_cast<unsigned>(packets_.size()));
 
   packets_.push_back(*result);
+  Packet& packet = packets_.back();
 
-  CopyPayloadToBuffer(packets_.back().payload());
+  CopyPayloadToBuffer(packet);
 
-  switch (result.value().type()) {
+  switch (packet.type()) {
     case PacketType::REQUEST:
       return OkStatus();
     case PacketType::RESPONSE:
@@ -68,15 +70,14 @@ Status FakeChannelOutput::SendAndReleaseBuffer(
     case PacketType::CLIENT_STREAM:
       return OkStatus();
     case PacketType::DEPRECATED_SERVER_STREAM_END:
-      PW_CRASH("Deprecated PacketType %d",
-               static_cast<int>(result.value().type()));
+      PW_CRASH("Deprecated PacketType %d", static_cast<int>(packet.type()));
     case PacketType::CLIENT_ERROR:
       PW_LOG_WARN("FakeChannelOutput received client error: %s",
-                  result.value().status().str());
+                  packet.status().str());
       return OkStatus();
     case PacketType::SERVER_ERROR:
       PW_LOG_WARN("FakeChannelOutput received server error: %s",
-                  result.value().status().str());
+                  packet.status().str());
       return OkStatus();
     case PacketType::DEPRECATED_CANCEL:
     case PacketType::SERVER_STREAM:
@@ -86,7 +87,8 @@ Status FakeChannelOutput::SendAndReleaseBuffer(
   PW_CRASH("Unhandled PacketType %d", static_cast<int>(result.value().type()));
 }
 
-void FakeChannelOutput::CopyPayloadToBuffer(const ConstByteSpan& payload) {
+void FakeChannelOutput::CopyPayloadToBuffer(Packet& packet) {
+  const ConstByteSpan& payload = packet.payload();
   if (payload.empty()) {
     return;
   }
@@ -101,7 +103,7 @@ void FakeChannelOutput::CopyPayloadToBuffer(const ConstByteSpan& payload) {
   const size_t start = payloads_.size();
   payloads_.resize(payloads_.size() + payload.size());
   std::memcpy(&payloads_[start], payload.data(), payload.size());
-  packets_.back().set_payload(std::span(&payloads_[start], payload.size()));
+  packet.set_payload(std::span(&payloads_[start], payload.size()));
 }
 
 void FakeChannelOutput::LogPackets() const {

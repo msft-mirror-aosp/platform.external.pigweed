@@ -16,9 +16,17 @@
 // The log level to use for this module. Logs below this level are omitted.
 #define PW_LOG_MODULE_NAME "PWSU"
 #ifndef PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL
-#define PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL PW_LOG_LEVEL_DEBUG
+#define PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL PW_LOG_LEVEL_ERROR
+#endif  // PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL
 
 // The size of the buffer to create on stack for streaming manifest data from
 // the bundle reader.
 #define WRITE_MANIFEST_STREAM_PIPE_BUFFER_SIZE 8
-#endif  // PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL
+
+// The maximum allowed length of a target name.
+#define MAX_TARGET_NAME_LENGTH 32
+
+// Not recommended. Disable compilation of bundle verification.
+#ifndef PW_SOFTWARE_UPDATE_DISABLE_BUNDLE_VERIFICATION
+#define PW_SOFTWARE_UPDATE_DISABLE_BUNDLE_VERIFICATION (false)
+#endif  // PW_SOFTWARE_UPDATE_DISABLE_BUNDLE_VERIFICATION

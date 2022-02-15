@@ -49,7 +49,7 @@ pw_cc_library(
     ],
 )
 
-# TODO(hepler): Build this as a cc_binary and use it in integration tests.
+# TODO(pwbug/507): Build this as a cc_binary and use it in integration tests.
 filegroup(
     name = "test_rpc_server",
     srcs = ["test_rpc_server.cc"],
@@ -72,6 +72,7 @@ pw_cc_library(
     srcs = [
         "call.cc",
         "channel.cc",
+        "channel_list.cc",
         "client.cc",
         "client_call.cc",
         "endpoint.cc",
@@ -79,18 +80,21 @@ pw_cc_library(
         "public/pw_rpc/internal/call.h",
         "public/pw_rpc/internal/call_context.h",
         "public/pw_rpc/internal/channel.h",
+        "public/pw_rpc/internal/channel_list.h",
         "public/pw_rpc/internal/client_call.h",
         "public/pw_rpc/internal/config.h",
         "public/pw_rpc/internal/endpoint.h",
         "public/pw_rpc/internal/hash.h",
+        "public/pw_rpc/internal/lock.h",
+        "public/pw_rpc/internal/log_config.h",
         "public/pw_rpc/internal/method.h",
         "public/pw_rpc/internal/method_info.h",
         "public/pw_rpc/internal/method_lookup.h",
         "public/pw_rpc/internal/method_union.h",
-        "public/pw_rpc/internal/open_call.h",
         "public/pw_rpc/internal/packet.h",
         "public/pw_rpc/internal/server_call.h",
         "public/pw_rpc/method_type.h",
+        "public/pw_rpc/writer.h",
         "server.cc",
         "server_call.cc",
         "service.cc",
@@ -100,7 +104,6 @@ pw_cc_library(
         "public/pw_rpc/client.h",
         "public/pw_rpc/internal/service_client.h",
         "public/pw_rpc/server.h",
-        "public/pw_rpc/server_context.h",
         "public/pw_rpc/service.h",
     ],
     includes = ["public"],
@@ -113,20 +116,9 @@ pw_cc_library(
         "//pw_function",
         "//pw_log",
         "//pw_result",
-        "//pw_rpc/system_server",
         "//pw_span",
         "//pw_status",
-    ],
-)
-
-pw_cc_library(
-    name = "synchronized_channel_output",
-    hdrs = ["public/pw_rpc/synchronized_channel_output.h"],
-    includes = ["public"],
-    deps = [
-        ":pw_rpc",
         "//pw_sync:lock_annotations",
-        "//pw_sync:mutex",
     ],
 )
 
@@ -155,8 +147,31 @@ pw_cc_library(
         "//pw_containers:filtered_view",
         "//pw_containers:vector",
         "//pw_containers:wrapped_iterator",
+        "//pw_rpc/raw:fake_channel_output",
         "//pw_span",
     ],
+)
+
+# TODO(pwbug/507): Enable this library when logging_event_handler can be used.
+filegroup(
+    name = "integration_testing",
+    srcs = [
+        "integration_testing.cc",
+        # ],
+        # hdrs = [
+        "public/pw_rpc/integration_test_socket_client.h",
+        "public/pw_rpc/integration_testing.h",
+    ],
+    #deps = [
+    #    ":client",
+    #    "//pw_assert",
+    #    "//pw_hdlc:pw_rpc",
+    #    "//pw_hdlc:rpc_channel_output",
+    #    "//pw_log",
+    #    "//pw_stream:socket_stream",
+    #    "//pw_unit_test",
+    #    "//pw_unit_test:logging_event_handler",
+    #],
 )
 
 # TODO(pwbug/507): Add the client integration test to the build.
@@ -176,6 +191,7 @@ filegroup(
         "nanopb/codegen_test.cc",
         "nanopb/common.cc",
         "nanopb/echo_service_test.cc",
+        "nanopb/fake_channel_output_test.cc",
         "nanopb/method.cc",
         "nanopb/method_info_test.cc",
         "nanopb/method_lookup_test.cc",
@@ -191,6 +207,8 @@ filegroup(
         "nanopb/public/pw_rpc/nanopb/server_reader_writer.h",
         "nanopb/public/pw_rpc/nanopb/test_method_context.h",
         "nanopb/pw_rpc_nanopb_private/internal_test_utils.h",
+        "nanopb/serde_test.cc",
+        "nanopb/server_callback_test.cc",
         "nanopb/server_reader_writer.cc",
         "nanopb/server_reader_writer_test.cc",
         "nanopb/stub_generation_test.cc",
@@ -246,13 +264,6 @@ pw_cc_test(
     ],
 )
 
-proto_library(
-    name = "packet_proto",
-    srcs = [
-        "internal/packet.proto",
-    ],
-)
-
 pw_cc_test(
     name = "server_test",
     srcs = [
@@ -291,7 +302,12 @@ proto_library(
 
 js_proto_library(
     name = "packet_proto_tspb",
-    protos = [":packet_proto"],
+    protos = [":internal_packet_proto"],
+)
+
+java_lite_proto_library(
+    name = "packet_proto_java_lite",
+    deps = [":internal_packet_proto"],
 )
 
 py_proto_library(
@@ -324,4 +340,11 @@ proto_plugin(
     tool = "@pigweed//pw_rpc/py:plugin",
     use_built_in_shell_environment = True,
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "echo",
+    srcs = [
+        "echo.proto",
+    ],
 )

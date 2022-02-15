@@ -46,7 +46,7 @@ class LogLine:
         self.formatted_log = self.formatted_log.replace(
             self.metadata.raw_string, self.metadata.message)
         # Remove any trailing line breaks.
-        self.formatted_log = self.formatted_log.strip()
+        self.formatted_log = self.formatted_log.rstrip()
 
         # 2. Check for a metadata Dict[str, str] stored in the log record in the
         # `extra_metadata_fields` attribute. This should be set using the
@@ -72,6 +72,11 @@ class LogLine:
         if extra_fields:
             for key, value in extra_fields.items():
                 self.metadata.fields[key] = value
+
+        lineno = self.record.lineno
+        file_name = str(self.record.filename)
+        self.metadata.fields['py_file'] = f'{file_name}:{lineno}'
+        self.metadata.fields['py_logger'] = str(self.record.name)
 
         return self.metadata
 

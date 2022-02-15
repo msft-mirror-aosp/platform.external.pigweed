@@ -45,7 +45,7 @@ class HighContrastDarkColors:
 
     red_accent = '#ffc0bf'
     orange_accent = '#f5ca80'
-    yellow_accent = '#d2e580'
+    yellow_accent = '#eedc82'
     green_accent = '#88ef88'
     cyan_accent = '#60e7e0'
     blue_accent = '#92d9ff'
@@ -57,7 +57,7 @@ class HighContrastDarkColors:
 class DarkColors:
     # pylint: disable=too-many-instance-attributes
     default_bg = '#2e2e2e'
-    default_fg = '#bbc2cf'
+    default_fg = '#eeeeee'
 
     dim_bg = '#262626'
     dim_fg = '#dfdfdf'
@@ -71,7 +71,7 @@ class DarkColors:
     inactive_bg = '#3f3f3f'
     inactive_fg = '#bfbfbf'
 
-    line_highlight_bg = '#1e1e1e'
+    line_highlight_bg = '#525252'
     dialog_bg = '#3c3c3c'
 
     red_accent = '#ff6c6b'
@@ -159,13 +159,12 @@ class MoonlightColors:
 
     red_accent = '#d95468'
     orange_accent = '#d98e48'
-    yellow_accent = '#8bd49c'
-    green_accent = '#ebbf83'
+    yellow_accent = '#ebbf83'
+    green_accent = '#8bd49c'
     cyan_accent = '#70e1e8'
     blue_accent = '#5ec4ff'
     purple_accent = '#b62d65'
     magenta_accent = '#e27e8d'
-
 
 
 _THEME_NAME_MAPPING = {
@@ -175,6 +174,12 @@ _THEME_NAME_MAPPING = {
     'dark': DarkColors(),
     'high-contrast-dark': HighContrastDarkColors(),
 } # yapf: disable
+
+
+def get_theme_colors(theme_name=''):
+    theme = _THEME_NAME_MAPPING.get(theme_name, DarkColors())
+    return theme
+
 
 def generate_styles(theme_name='dark'):
     """Return prompt_toolkit styles for the given theme name."""
@@ -261,6 +266,7 @@ def generate_styles(theme_name='dark'):
 
         # Highlighted line styles
         'selected-log-line': 'bg:{}'.format(theme.line_highlight_bg),
+        'marked-log-line': 'bg:{}'.format(theme.button_active_bg),
         'cursor-line': 'bg:{} nounderline'.format(theme.line_highlight_bg),
 
         # Messages like 'Window too small'
@@ -290,36 +296,93 @@ def generate_styles(theme_name='dark'):
         'log-table-column-6': '{}'.format(theme.orange_accent),
         'log-table-column-7': '{}'.format(theme.red_accent),
 
+        'search-bar': 'bg:{}'.format(theme.inactive_bg),
         'search-bar-title': 'bg:{} {}'.format(theme.cyan_accent,
                                               theme.default_bg),
         'search-bar-setting': '{}'.format(theme.cyan_accent),
-        'search-bar': 'bg:{}'.format(theme.inactive_bg),
+        'search-bar-border': 'bg:{} {}'.format(theme.inactive_bg,
+                                               theme.cyan_accent),
 
+        'filter-bar': 'bg:{}'.format(theme.inactive_bg),
         'filter-bar-title': 'bg:{} {}'.format(theme.red_accent,
                                               theme.default_bg),
         'filter-bar-setting': '{}'.format(theme.cyan_accent),
         'filter-bar-delete': '{}'.format(theme.red_accent),
-        'filter-bar': 'bg:{}'.format(theme.inactive_bg),
         'filter-bar-delimiter': '{}'.format(theme.purple_accent),
+
+        'saveas-dialog': 'bg:{}'.format(theme.inactive_bg),
+        'saveas-dialog-title': 'bg:{} {}'.format(theme.inactive_bg,
+                                                 theme.default_fg),
+        'saveas-dialog-setting': '{}'.format(theme.cyan_accent),
+        'saveas-dialog-border': 'bg:{} {}'.format(theme.inactive_bg,
+                                                  theme.cyan_accent),
+
+        'selection-dialog': 'bg:{}'.format(theme.inactive_bg),
+        'selection-dialog-title': '{}'.format(theme.yellow_accent),
+        'selection-dialog-default-fg': '{}'.format(theme.default_fg),
+        'selection-dialog-action-bg': 'bg:{}'.format(theme.yellow_accent),
+        'selection-dialog-action-fg': '{}'.format(theme.button_inactive_bg),
+        'selection-dialog-border': 'bg:{} {}'.format(theme.inactive_bg,
+                                                     theme.yellow_accent),
+
+        'quit-dialog': 'bg:{}'.format(theme.inactive_bg),
+        'quit-dialog-border': 'bg:{} {}'.format(theme.inactive_bg,
+                                                theme.red_accent),
 
         # Progress Bar Styles
         # Entire set of ProgressBars - no title is used in pw_console
-        "title": "",
-        # Bar title
-        "label": "bold",
-        "percentage": "{}".format(theme.green_accent),
-        "bar": "{}".format(theme.magenta_accent),
+        'title': '',
+        # Actual bar title
+        'label': 'bold',
+        'percentage': '{}'.format(theme.green_accent),
+        'bar': '{}'.format(theme.magenta_accent),
         # Filled part of the bar
-        "bar-a": "{} bold".format(theme.cyan_accent),
+        'bar-a': '{} bold'.format(theme.cyan_accent),
         # End of current progress
-        "bar-b": "{} bold".format(theme.purple_accent),
+        'bar-b': '{} bold'.format(theme.purple_accent),
         # Empty part of the bar
-        "bar-c": "",
+        'bar-c': '',
         # current/total counts
-        "current": "{}".format(theme.cyan_accent),
-        "total": "{}".format(theme.cyan_accent),
-        "time-elapsed": "{}".format(theme.purple_accent),
-        "time-left": "{}".format(theme.magenta_accent),
+        'current': '{}'.format(theme.cyan_accent),
+        'total': '{}'.format(theme.cyan_accent),
+        'time-elapsed': '{}'.format(theme.purple_accent),
+        'time-left': '{}'.format(theme.magenta_accent),
+
+        # Named theme color classes for use in user plugins.
+        'theme-fg-red': '{}'.format(theme.red_accent),
+        'theme-fg-orange': '{}'.format(theme.orange_accent),
+        'theme-fg-yellow': '{}'.format(theme.yellow_accent),
+        'theme-fg-green': '{}'.format(theme.green_accent),
+        'theme-fg-cyan': '{}'.format(theme.cyan_accent),
+        'theme-fg-blue': '{}'.format(theme.blue_accent),
+        'theme-fg-purple': '{}'.format(theme.purple_accent),
+        'theme-fg-magenta': '{}'.format(theme.magenta_accent),
+        'theme-bg-red': 'bg:{}'.format(theme.red_accent),
+        'theme-bg-orange': 'bg:{}'.format(theme.orange_accent),
+        'theme-bg-yellow': 'bg:{}'.format(theme.yellow_accent),
+        'theme-bg-green': 'bg:{}'.format(theme.green_accent),
+        'theme-bg-cyan': 'bg:{}'.format(theme.cyan_accent),
+        'theme-bg-blue': 'bg:{}'.format(theme.blue_accent),
+        'theme-bg-purple': 'bg:{}'.format(theme.purple_accent),
+        'theme-bg-magenta': 'bg:{}'.format(theme.magenta_accent),
+
+        'theme-bg-active': 'bg:{}'.format(theme.active_bg),
+        'theme-fg-active': '{}'.format(theme.active_fg),
+
+        'theme-bg-inactive': 'bg:{}'.format(theme.inactive_bg),
+        'theme-fg-inactive': '{}'.format(theme.inactive_fg),
+
+        'theme-fg-default': '{}'.format(theme.default_fg),
+        'theme-bg-default': 'bg:{}'.format(theme.default_bg),
+
+        'theme-fg-dim': '{}'.format(theme.dim_fg),
+        'theme-bg-dim': 'bg:{}'.format(theme.dim_bg),
+
+        'theme-bg-dialog': 'bg:{}'.format(theme.dialog_bg),
+        'theme-bg-line-highlight': 'bg:{}'.format(theme.line_highlight_bg),
+
+        'theme-bg-button-active': 'bg:{}'.format(theme.button_active_bg),
+        'theme-bg-button-inactive': 'bg:{}'.format(theme.button_inactive_bg),
     } # yapf: disable
 
     return Style.from_dict(pw_console_styles)
@@ -346,7 +409,10 @@ def get_pane_style(pt_container) -> str:
     return 'class:pane_inactive'
 
 
-def get_pane_indicator(pt_container, title, mouse_handler=None):
+def get_pane_indicator(pt_container,
+                       title,
+                       mouse_handler=None,
+                       hide_indicator=False):
     """Return formatted text for a pane indicator and title."""
     if mouse_handler:
         inactive_indicator = ('class:pane_indicator_inactive', ' ',
@@ -360,6 +426,13 @@ def get_pane_indicator(pt_container, title, mouse_handler=None):
         inactive_title = ('class:pane_title_inactive', title)
         active_title = ('class:pane_title_active', title)
 
+    fragments = []
     if has_focus(pt_container.__pt_container__())():
-        return [active_indicator, active_title]
-    return [inactive_indicator, inactive_title]
+        if not hide_indicator:
+            fragments.append(active_indicator)
+        fragments.append(active_title)
+    else:
+        if not hide_indicator:
+            fragments.append(inactive_indicator)
+        fragments.append(inactive_title)
+    return fragments

@@ -54,13 +54,16 @@ namespace {
 
 Status ForEachThreadInList(List_t* list,
                            const eTaskState default_list_state,
-                           ThreadCallback& cb) {
+                           const ThreadCallback& cb) {
   if (listCURRENT_LIST_LENGTH(list) == 0) {
     return OkStatus();
   }
 
   Status status = OkStatus();
-  TaskHandle_t current_thread, first_thread_in_list;
+  // Note that these are pointers to the thread control blocks, however the
+  // list macros from FreeRTOS do not cast the types and ergo we use void *.
+  void* current_thread;
+  void* first_thread_in_list;
   listGET_OWNER_OF_NEXT_ENTRY(first_thread_in_list, list);
   do {
     listGET_OWNER_OF_NEXT_ENTRY(current_thread, list);
@@ -69,8 +72,11 @@ Status ForEachThreadInList(List_t* list,
     if (status.ok()) {
       // Note that the lists do not contain the running state, so instead
       // check for each thread whether it is currently running.
-      if (!cb(current_thread,
-              current_thread == pxCurrentTCB ? eRunning : default_list_state)) {
+      const TaskHandle_t current_thread_handle =
+          reinterpret_cast<TaskHandle_t>(current_thread);
+      if (!cb(current_thread_handle,
+              current_thread_handle == pxCurrentTCB ? eRunning
+                                                    : default_list_state)) {
         status = Status::Aborted();
       }
     }
@@ -80,7 +86,7 @@ Status ForEachThreadInList(List_t* list,
 
 }  // namespace
 
-Status ForEachThread(ThreadCallback& cb) {
+Status ForEachThread(const ThreadCallback& cb) {
   if (xSchedulerRunning == pdFALSE) {
     return Status::FailedPrecondition();
   }

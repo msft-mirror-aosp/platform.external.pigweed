@@ -29,7 +29,8 @@ namespace multisink {
 
 void MultiSink::HandleEntry(ConstByteSpan entry) {
   std::lock_guard lock(lock_);
-  PW_DCHECK_OK(ring_buffer_.PushBack(entry, sequence_id_++));
+  const Status push_back_status = ring_buffer_.PushBack(entry, sequence_id_++);
+  PW_DCHECK_OK(push_back_status);
   NotifyListeners();
 }
 
@@ -166,8 +167,8 @@ void MultiSink::NotifyListeners() {
   }
 }
 
-Status MultiSink::UnsafeForEachEntry(pw::Function<void(ConstByteSpan)> callback,
-                                     size_t max_num_entries) {
+Status MultiSink::UnsafeForEachEntry(
+    const Function<void(ConstByteSpan)>& callback, size_t max_num_entries) {
   MultiSink::UnsafeIterationWrapper multisink_iteration = UnsafeIteration();
 
   // First count the number of entries.

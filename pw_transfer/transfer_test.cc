@@ -18,9 +18,9 @@
 #include "pw_bytes/array.h"
 #include "pw_rpc/raw/test_method_context.h"
 #include "pw_transfer/transfer.pwpb.h"
-#include "pw_transfer_private/chunk.h"
+#include "pw_transfer_private/chunk_testing.h"
 
-namespace pw::transfer {
+namespace pw::transfer::test {
 namespace {
 
 PW_MODIFY_DIAGNOSTICS_PUSH();
@@ -28,26 +28,12 @@ PW_MODIFY_DIAGNOSTIC(ignored, "-Wmissing-field-initializers");
 
 using internal::Chunk;
 
-Vector<std::byte, 64> EncodeChunk(const Chunk& chunk) {
-  Vector<std::byte, 64> buffer(64);
-  auto result = internal::EncodeChunk(chunk, buffer);
-  EXPECT_EQ(result.status(), OkStatus());
-  buffer.resize(result.value().size());
-  return buffer;
-}
-
-Chunk DecodeChunk(ConstByteSpan buffer) {
-  Chunk chunk = {};
-  EXPECT_EQ(internal::DecodeChunk(buffer, chunk), OkStatus());
-  return chunk;
-}
-
 class TestMemoryReader : public stream::SeekableReader {
  public:
   constexpr TestMemoryReader(std::span<const std::byte> data)
       : memory_reader_(data) {}
 
-  Status DoSeek(ssize_t offset, Whence origin) override {
+  Status DoSeek(ptrdiff_t offset, Whence origin) override {
     if (seek_status.ok()) {
       return memory_reader_.Seek(offset, origin);
     }
@@ -55,12 +41,17 @@ class TestMemoryReader : public stream::SeekableReader {
   }
 
   StatusWithSize DoRead(ByteSpan dest) final {
+    if (!read_status.ok()) {
+      return StatusWithSize(read_status, 0);
+    }
+
     auto result = memory_reader_.Read(dest);
     return result.ok() ? StatusWithSize(result->size())
                        : StatusWithSize(result.status(), 0);
   }
 
   Status seek_status;
+  Status read_status;
 
  private:
   stream::MemoryReader memory_reader_;
@@ -88,6 +79,7 @@ class SimpleReadTransfer final : public ReadOnlyHandler {
   }
 
   void set_seek_status(Status status) { reader_.seek_status = status; }
+  void set_read_status(Status status) { reader_.read_status = status; }
 
   bool prepare_read_called;
   bool finalize_read_called;
@@ -102,7 +94,10 @@ constexpr auto kData = bytes::Initialized<32>([](size_t i) { return i; });
 class ReadTransfer : public ::testing::Test {
  protected:
   ReadTransfer(size_t max_chunk_size_bytes = 64)
-      : handler_(3, kData), ctx_(max_chunk_size_bytes, 64) {
+      : handler_(3, kData),
+        ctx_(work_queue_,
+             std::span(data_buffer_).first(max_chunk_size_bytes),
+             64) {
     ctx_.service().RegisterHandler(handler_);
 
     ASSERT_FALSE(handler_.prepare_read_called);
@@ -113,9 +108,44 @@ class ReadTransfer : public ::testing::Test {
 
   SimpleReadTransfer handler_;
   PW_RAW_TEST_METHOD_CONTEXT(TransferService, Read) ctx_;
+  std::array<std::byte, 64> data_buffer_;
+
+  // Not currently used in the tests, so left uninitialized.
+  work_queue::WorkQueueWithBuffer<1> work_queue_;
 };
 
 TEST_F(ReadTransfer, SingleChunk) {
+  ctx_.SendClientStream(
+      EncodeChunk({.transfer_id = 3,
+                   .window_end_offset = 64,
+                   .pending_bytes = 64,
+                   .offset = 0,
+                   .type = Chunk::Type::kParametersRetransmit}));
+  EXPECT_TRUE(handler_.prepare_read_called);
+  EXPECT_FALSE(handler_.finalize_read_called);
+
+  ASSERT_EQ(ctx_.total_responses(), 2u);
+  Chunk c0 = DecodeChunk(ctx_.responses()[0]);
+  Chunk c1 = DecodeChunk(ctx_.responses()[1]);
+
+  // First chunk should have all the read data.
+  EXPECT_EQ(c0.transfer_id, 3u);
+  EXPECT_EQ(c0.offset, 0u);
+  ASSERT_EQ(c0.data.size(), kData.size());
+  EXPECT_EQ(std::memcmp(c0.data.data(), kData.data(), c0.data.size()), 0);
+
+  // Second chunk should be empty and set remaining_bytes = 0.
+  EXPECT_EQ(c1.transfer_id, 3u);
+  EXPECT_EQ(c1.data.size(), 0u);
+  ASSERT_TRUE(c1.remaining_bytes.has_value());
+  EXPECT_EQ(c1.remaining_bytes.value(), 0u);
+
+  ctx_.SendClientStream(EncodeChunk({.transfer_id = 3, .status = OkStatus()}));
+  EXPECT_TRUE(handler_.finalize_read_called);
+  EXPECT_EQ(handler_.finalize_read_status, OkStatus());
+}
+
+TEST_F(ReadTransfer, PendingBytes_SingleChunk) {
   ctx_.SendClientStream(
       EncodeChunk({.transfer_id = 3, .pending_bytes = 64, .offset = 0}));
   EXPECT_TRUE(handler_.prepare_read_called);
@@ -143,6 +173,57 @@ TEST_F(ReadTransfer, SingleChunk) {
 }
 
 TEST_F(ReadTransfer, MultiChunk) {
+  ctx_.SendClientStream(
+      EncodeChunk({.transfer_id = 3,
+                   .window_end_offset = 16,
+                   .pending_bytes = 16,
+                   .offset = 0,
+                   .type = Chunk::Type::kParametersRetransmit}));
+  EXPECT_TRUE(handler_.prepare_read_called);
+  EXPECT_FALSE(handler_.finalize_read_called);
+
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+  Chunk c0 = DecodeChunk(ctx_.responses()[0]);
+
+  EXPECT_EQ(c0.transfer_id, 3u);
+  EXPECT_EQ(c0.offset, 0u);
+  ASSERT_EQ(c0.data.size(), 16u);
+  EXPECT_EQ(std::memcmp(c0.data.data(), kData.data(), c0.data.size()), 0);
+
+  ctx_.SendClientStream(
+      EncodeChunk({.transfer_id = 3,
+                   .window_end_offset = 32,
+                   .pending_bytes = 16,
+                   .offset = 16,
+                   .type = Chunk::Type::kParametersContinue}));
+  ASSERT_EQ(ctx_.total_responses(), 2u);
+  Chunk c1 = DecodeChunk(ctx_.responses()[1]);
+
+  EXPECT_EQ(c1.transfer_id, 3u);
+  EXPECT_EQ(c1.offset, 16u);
+  ASSERT_EQ(c1.data.size(), 16u);
+  EXPECT_EQ(std::memcmp(c1.data.data(), kData.data() + 16, c1.data.size()), 0);
+
+  ctx_.SendClientStream(
+      EncodeChunk({.transfer_id = 3,
+                   .window_end_offset = 48,
+                   .pending_bytes = 16,
+                   .offset = 32,
+                   .type = Chunk::Type::kParametersContinue}));
+  ASSERT_EQ(ctx_.total_responses(), 3u);
+  Chunk c2 = DecodeChunk(ctx_.responses()[2]);
+
+  EXPECT_EQ(c2.transfer_id, 3u);
+  EXPECT_EQ(c2.data.size(), 0u);
+  ASSERT_TRUE(c2.remaining_bytes.has_value());
+  EXPECT_EQ(c2.remaining_bytes.value(), 0u);
+
+  ctx_.SendClientStream(EncodeChunk({.transfer_id = 3, .status = OkStatus()}));
+  EXPECT_TRUE(handler_.finalize_read_called);
+  EXPECT_EQ(handler_.finalize_read_status, OkStatus());
+}
+
+TEST_F(ReadTransfer, PendingBytes_MultiChunk) {
   ctx_.SendClientStream(
       EncodeChunk({.transfer_id = 3, .pending_bytes = 16, .offset = 0}));
   EXPECT_TRUE(handler_.prepare_read_called);
@@ -396,16 +477,74 @@ TEST_F(ReadTransfer, AbortAndRestartIfInitialPacketIsReceived) {
   EXPECT_EQ(handler_.finalize_read_status, OkStatus());
 }
 
-TEST_F(ReadTransfer, AbortTransferIfZeroBytesAreRequested) {
+TEST_F(ReadTransfer, ZeroPendingBytesWithRemainingData_Aborts) {
   ctx_.SendClientStream(EncodeChunk({.transfer_id = 3, .pending_bytes = 0}));
 
   ASSERT_EQ(ctx_.total_responses(), 1u);
-  EXPECT_TRUE(handler_.finalize_read_called);
-  EXPECT_EQ(handler_.finalize_read_status, Status::Internal());
+  ASSERT_TRUE(handler_.finalize_read_called);
+  EXPECT_EQ(handler_.finalize_read_status, Status::ResourceExhausted());
 
   Chunk chunk = DecodeChunk(ctx_.responses().back());
-  EXPECT_TRUE(chunk.status.has_value());
-  EXPECT_EQ(*chunk.status, Status::Internal());
+  EXPECT_EQ(chunk.status, Status::ResourceExhausted());
+}
+
+TEST_F(ReadTransfer, ZeroPendingBytesNoRemainingData_Completes) {
+  // Make the next read appear to be the end of the stream.
+  handler_.set_read_status(Status::OutOfRange());
+
+  ctx_.SendClientStream(EncodeChunk({.transfer_id = 3, .pending_bytes = 0}));
+
+  Chunk chunk = DecodeChunk(ctx_.responses().back());
+  EXPECT_EQ(chunk.transfer_id, 3u);
+  EXPECT_EQ(chunk.remaining_bytes, 0u);
+
+  ctx_.SendClientStream(EncodeChunk({.transfer_id = 3, .status = OkStatus()}));
+
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+  ASSERT_TRUE(handler_.finalize_read_called);
+  EXPECT_EQ(handler_.finalize_read_status, OkStatus());
+}
+
+TEST_F(ReadTransfer, SendsErrorIfChunkIsReceivedInCompletedState) {
+  ctx_.SendClientStream(
+      EncodeChunk({.transfer_id = 3, .pending_bytes = 64, .offset = 0}));
+  EXPECT_TRUE(handler_.prepare_read_called);
+  EXPECT_FALSE(handler_.finalize_read_called);
+
+  ASSERT_EQ(ctx_.total_responses(), 2u);
+  Chunk c0 = DecodeChunk(ctx_.responses()[0]);
+  Chunk c1 = DecodeChunk(ctx_.responses()[1]);
+
+  // First chunk should have all the read data.
+  EXPECT_EQ(c0.transfer_id, 3u);
+  EXPECT_EQ(c0.offset, 0u);
+  ASSERT_EQ(c0.data.size(), kData.size());
+  EXPECT_EQ(std::memcmp(c0.data.data(), kData.data(), c0.data.size()), 0);
+
+  // Second chunk should be empty and set remaining_bytes = 0.
+  EXPECT_EQ(c1.transfer_id, 3u);
+  EXPECT_EQ(c1.data.size(), 0u);
+  ASSERT_TRUE(c1.remaining_bytes.has_value());
+  EXPECT_EQ(c1.remaining_bytes.value(), 0u);
+
+  ctx_.SendClientStream(EncodeChunk({.transfer_id = 3, .status = OkStatus()}));
+  EXPECT_TRUE(handler_.finalize_read_called);
+  EXPECT_EQ(handler_.finalize_read_status, OkStatus());
+
+  // At this point the transfer should be in a completed state. Send a
+  // non-initial chunk as a continuation of the transfer.
+  handler_.finalize_read_called = false;
+
+  ctx_.SendClientStream(
+      EncodeChunk({.transfer_id = 3, .pending_bytes = 48, .offset = 16}));
+  ASSERT_EQ(ctx_.total_responses(), 3u);
+
+  Chunk c2 = DecodeChunk(ctx_.responses()[2]);
+  ASSERT_TRUE(c2.status.has_value());
+  EXPECT_EQ(c2.status.value(), Status::FailedPrecondition());
+
+  // FinalizeRead should not be called again.
+  EXPECT_FALSE(handler_.finalize_read_called);
 }
 
 class SimpleWriteTransfer final : public WriteOnlyHandler {
@@ -446,7 +585,9 @@ class SimpleWriteTransfer final : public WriteOnlyHandler {
 class WriteTransfer : public ::testing::Test {
  protected:
   WriteTransfer(size_t max_bytes_to_receive = 64)
-      : buffer{}, handler_(7, buffer), ctx_(64, max_bytes_to_receive) {
+      : buffer{},
+        handler_(7, buffer),
+        ctx_(work_queue_, data_buffer_, max_bytes_to_receive) {
     ctx_.service().RegisterHandler(handler_);
 
     ASSERT_FALSE(handler_.prepare_write_called);
@@ -459,6 +600,10 @@ class WriteTransfer : public ::testing::Test {
   SimpleWriteTransfer handler_;
 
   PW_RAW_TEST_METHOD_CONTEXT(TransferService, Write) ctx_;
+  std::array<std::byte, 64> data_buffer_;
+
+  // Not currently used in the tests, so left uninitialized.
+  work_queue::WorkQueueWithBuffer<1> work_queue_;
 };
 
 TEST_F(WriteTransfer, SingleChunk) {
@@ -500,6 +645,7 @@ TEST_F(WriteTransfer, FinalizeFails) {
                                          .data = std::span(kData),
                                          .remaining_bytes = 0}));
 
+  ASSERT_EQ(ctx_.total_responses(), 2u);
   Chunk chunk = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(chunk.transfer_id, 7u);
   ASSERT_TRUE(chunk.status.has_value());
@@ -522,12 +668,12 @@ TEST_F(WriteTransfer, MultiChunk) {
   EXPECT_EQ(chunk.pending_bytes.value(), 32u);
 
   ctx_.SendClientStream<64>(EncodeChunk(
-      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(16)}));
+      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(8)}));
   ASSERT_EQ(ctx_.total_responses(), 1u);
 
   ctx_.SendClientStream<64>(EncodeChunk({.transfer_id = 7,
-                                         .offset = 16,
-                                         .data = std::span(kData).subspan(16),
+                                         .offset = 8,
+                                         .data = std::span(kData).subspan(8),
                                          .remaining_bytes = 0}));
   ASSERT_EQ(ctx_.total_responses(), 2u);
   chunk = DecodeChunk(ctx_.responses()[1]);
@@ -540,10 +686,62 @@ TEST_F(WriteTransfer, MultiChunk) {
   EXPECT_EQ(std::memcmp(buffer.data(), kData.data(), kData.size()), 0);
 }
 
+TEST_F(WriteTransfer, ExtendWindow) {
+  ctx_.SendClientStream(EncodeChunk({.transfer_id = 7}));
+
+  EXPECT_TRUE(handler_.prepare_write_called);
+  EXPECT_FALSE(handler_.finalize_write_called);
+
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+  Chunk chunk = DecodeChunk(ctx_.responses()[0]);
+  EXPECT_EQ(chunk.transfer_id, 7u);
+  EXPECT_EQ(chunk.window_end_offset, 32u);
+  ASSERT_TRUE(chunk.pending_bytes.has_value());
+  EXPECT_EQ(chunk.pending_bytes.value(), 32u);
+
+  // Window starts at 32 bytes and should extend when half of that is sent.
+  ctx_.SendClientStream<64>(EncodeChunk(
+      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(4)}));
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+  ctx_.SendClientStream<64>(EncodeChunk(
+      {.transfer_id = 7, .offset = 4, .data = std::span(kData).subspan(4, 4)}));
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+  ctx_.SendClientStream<64>(EncodeChunk(
+      {.transfer_id = 7, .offset = 8, .data = std::span(kData).subspan(8, 4)}));
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+  ctx_.SendClientStream<64>(
+      EncodeChunk({.transfer_id = 7,
+                   .offset = 12,
+                   .data = std::span(kData).subspan(12, 4)}));
+  ASSERT_EQ(ctx_.total_responses(), 2u);
+
+  // Extend parameters chunk.
+  chunk = DecodeChunk(ctx_.responses()[1]);
+  EXPECT_EQ(chunk.transfer_id, 7u);
+  EXPECT_EQ(chunk.window_end_offset, 32u);
+  EXPECT_EQ(chunk.type, Chunk::Type::kParametersContinue);
+  ASSERT_TRUE(chunk.pending_bytes.has_value());
+  EXPECT_EQ(chunk.pending_bytes.value(), 16u);
+
+  ctx_.SendClientStream<64>(EncodeChunk({.transfer_id = 7,
+                                         .offset = 16,
+                                         .data = std::span(kData).subspan(16),
+                                         .remaining_bytes = 0}));
+  ASSERT_EQ(ctx_.total_responses(), 3u);
+
+  chunk = DecodeChunk(ctx_.responses()[2]);
+  EXPECT_EQ(chunk.transfer_id, 7u);
+  ASSERT_TRUE(chunk.status.has_value());
+  EXPECT_EQ(chunk.status.value(), OkStatus());
+
+  EXPECT_TRUE(handler_.finalize_write_called);
+  EXPECT_EQ(handler_.finalize_write_status, OkStatus());
+  EXPECT_EQ(std::memcmp(buffer.data(), kData.data(), kData.size()), 0);
+}
+
 class WriteTransferMaxBytes16 : public WriteTransfer {
  protected:
-  WriteTransferMaxBytes16()
-      : WriteTransfer(/*default_max_bytes_to_receive=*/16) {}
+  WriteTransferMaxBytes16() : WriteTransfer(/*max_bytes_to_receive=*/16) {}
 };
 
 TEST_F(WriteTransferMaxBytes16, MultipleParameters) {
@@ -560,13 +758,21 @@ TEST_F(WriteTransferMaxBytes16, MultipleParameters) {
 
   ctx_.SendClientStream<64>(EncodeChunk(
       {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(8)}));
-  ASSERT_EQ(ctx_.total_responses(), 1u);
-
-  ctx_.SendClientStream<64>(EncodeChunk(
-      {.transfer_id = 7, .offset = 8, .data = std::span(kData).subspan(8, 8)}));
   ASSERT_EQ(ctx_.total_responses(), 2u);
   chunk = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(chunk.transfer_id, 7u);
+  EXPECT_EQ(chunk.offset, 8u);
+  EXPECT_EQ(chunk.window_end_offset, 24u);
+  ASSERT_TRUE(chunk.pending_bytes.has_value());
+  EXPECT_EQ(chunk.pending_bytes.value(), 16u);
+
+  ctx_.SendClientStream<64>(EncodeChunk(
+      {.transfer_id = 7, .offset = 8, .data = std::span(kData).subspan(8, 8)}));
+  ASSERT_EQ(ctx_.total_responses(), 3u);
+  chunk = DecodeChunk(ctx_.responses()[2]);
+  EXPECT_EQ(chunk.transfer_id, 7u);
+  EXPECT_EQ(chunk.offset, 16u);
+  EXPECT_EQ(chunk.window_end_offset, 32u);
   ASSERT_TRUE(chunk.pending_bytes.has_value());
   EXPECT_EQ(chunk.pending_bytes.value(), 16u);
 
@@ -574,14 +780,20 @@ TEST_F(WriteTransferMaxBytes16, MultipleParameters) {
       EncodeChunk({.transfer_id = 7,
                    .offset = 16,
                    .data = std::span(kData).subspan(16, 8)}));
-  ASSERT_EQ(ctx_.total_responses(), 2u);
+  ASSERT_EQ(ctx_.total_responses(), 4u);
+  chunk = DecodeChunk(ctx_.responses()[3]);
+  EXPECT_EQ(chunk.transfer_id, 7u);
+  EXPECT_EQ(chunk.offset, 24u);
+  EXPECT_EQ(chunk.window_end_offset, 32u);
+  ASSERT_TRUE(chunk.pending_bytes.has_value());
+  EXPECT_EQ(chunk.pending_bytes.value(), 8u);
 
   ctx_.SendClientStream<64>(EncodeChunk({.transfer_id = 7,
                                          .offset = 24,
                                          .data = std::span(kData).subspan(24),
                                          .remaining_bytes = 0}));
-  ASSERT_EQ(ctx_.total_responses(), 3u);
-  chunk = DecodeChunk(ctx_.responses()[2]);
+  ASSERT_EQ(ctx_.total_responses(), 5u);
+  chunk = DecodeChunk(ctx_.responses()[4]);
   EXPECT_EQ(chunk.transfer_id, 7u);
   ASSERT_TRUE(chunk.status.has_value());
   EXPECT_EQ(chunk.status.value(), OkStatus());
@@ -594,6 +806,8 @@ TEST_F(WriteTransferMaxBytes16, MultipleParameters) {
 TEST_F(WriteTransferMaxBytes16, SetsDefaultPendingBytes) {
   // Default max bytes is smaller than buffer.
   ctx_.SendClientStream(EncodeChunk({.transfer_id = 7}));
+
+  ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses()[0]);
   EXPECT_EQ(chunk.transfer_id, 7u);
   EXPECT_EQ(chunk.pending_bytes.value(), 16u);
@@ -607,6 +821,8 @@ TEST_F(WriteTransfer, SetsWriterPendingBytes) {
   ctx_.service().RegisterHandler(handler_);
 
   ctx_.SendClientStream(EncodeChunk({.transfer_id = 987}));
+
+  ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses()[0]);
   EXPECT_EQ(chunk.transfer_id, 987u);
   EXPECT_EQ(chunk.pending_bytes.value(), 8u);
@@ -626,23 +842,23 @@ TEST_F(WriteTransfer, UnexpectedOffset) {
   EXPECT_EQ(chunk.pending_bytes.value(), 32u);
 
   ctx_.SendClientStream<64>(EncodeChunk(
-      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(16)}));
+      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(8)}));
   ASSERT_EQ(ctx_.total_responses(), 1u);
 
   ctx_.SendClientStream<64>(EncodeChunk({.transfer_id = 7,
-                                         .offset = 8,  // incorrect
+                                         .offset = 4,  // incorrect
                                          .data = std::span(kData).subspan(16),
                                          .remaining_bytes = 0}));
   ASSERT_EQ(ctx_.total_responses(), 2u);
   chunk = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(chunk.transfer_id, 7u);
-  EXPECT_EQ(chunk.offset, 16u);
+  EXPECT_EQ(chunk.offset, 8u);
   ASSERT_TRUE(chunk.pending_bytes.has_value());
-  EXPECT_EQ(chunk.pending_bytes.value(), 16u);
+  EXPECT_EQ(chunk.pending_bytes.value(), 24u);
 
   ctx_.SendClientStream<64>(EncodeChunk({.transfer_id = 7,
-                                         .offset = 16,  // incorrect
-                                         .data = std::span(kData).subspan(16),
+                                         .offset = 8,  // correct
+                                         .data = std::span(kData).subspan(8),
                                          .remaining_bytes = 0}));
   ASSERT_EQ(ctx_.total_responses(), 3u);
   chunk = DecodeChunk(ctx_.responses()[2]);
@@ -667,22 +883,11 @@ TEST_F(WriteTransferMaxBytes16, TooMuchData) {
   ASSERT_TRUE(chunk.pending_bytes.has_value());
   EXPECT_EQ(chunk.pending_bytes.value(), 16u);
 
-  // pending_bytes = 16
+  // pending_bytes = 16 but send 24
   ctx_.SendClientStream<64>(EncodeChunk(
-      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(8)}));
-  ASSERT_EQ(ctx_.total_responses(), 1u);
-
-  // pending_bytes = 8
-  ctx_.SendClientStream<64>(EncodeChunk(
-      {.transfer_id = 7, .offset = 8, .data = std::span(kData).subspan(8, 4)}));
-  ASSERT_EQ(ctx_.total_responses(), 1u);
-
-  // pending_bytes = 4 but send 8 instead
-  ctx_.SendClientStream<64>(
-      EncodeChunk({.transfer_id = 7,
-                   .offset = 12,
-                   .data = std::span(kData).subspan(12, 8)}));
+      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(24)}));
   ASSERT_EQ(ctx_.total_responses(), 2u);
+
   chunk = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(chunk.transfer_id, 7u);
   ASSERT_TRUE(chunk.status.has_value());
@@ -854,7 +1059,7 @@ TEST_F(WriteTransfer, AbortAndRestartIfInitialPacketIsReceived) {
   ASSERT_EQ(ctx_.total_responses(), 1u);
 
   ctx_.SendClientStream<64>(EncodeChunk(
-      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(16)}));
+      {.transfer_id = 7, .offset = 0, .data = std::span(kData).first(8)}));
 
   ASSERT_EQ(ctx_.total_responses(), 1u);
 
@@ -929,4 +1134,4 @@ TEST_F(ReadTransfer, PrepareError) {
 PW_MODIFY_DIAGNOSTICS_POP();
 
 }  // namespace
-}  // namespace pw::transfer
+}  // namespace pw::transfer::test

@@ -16,6 +16,7 @@ syntax = "proto3";
 
 package pw.log;
 
+import "pw_protobuf_protos/common.proto";
 import "pw_tokenizer/proto/options.proto";
 
 option java_outer_classname = "Log";
@@ -126,19 +127,20 @@ message LogEntry {
     int64 time_since_last_entry = 5;
   }
 
+  // When the log buffers are full but more logs come in, the logs are counted
+  // and a special log message is omitted with only counts for the number of
+  // messages dropped.
+  optional uint32 dropped = 6;
+
+  // The PW_LOG_MODULE_NAME for this log message.
+  optional bytes module = 7 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
+
+  // The file path where this log was created, if not encoded in the message.
+  optional bytes file = 8 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
+
   // The following fields are planned but will not be added until they are
   // needed. Protobuf field numbers over 15 use an extra byte, so these fields
   // are left out for now to avoid reserving field numbers unnecessarily.
-
-  // When the log buffers are full but more logs come in, the logs are counted
-  // and a special log message is omitted with only counts for the number of
-  // messages dropped. The timestamp indicates the time that the "missed logs"
-  // message was inserted into the queue.
-  //
-  // As an alternative to these fields, implementations may simply send a
-  // message stating the drop count.
-  // optional uint32 dropped = ?;
-  // optional uint32 dropped_warning_or_above = ?;
 
   // Represents the device from which the log originated. The meaning of this
   // field is implementation defined
@@ -149,14 +151,6 @@ message LogEntry {
   // optional bytes thread_name = ?
   //     [(tokenizer.format) = TOKENIZATION_OPTIONAL];
 
-  // The file path where this log was created, if not encoded in the message.
-  // optional bytes file = ? [(tokenizer.format) = TOKENIZATION_OPTIONAL];
-
-  // The PW_LOG_MODULE_NAME for this log message, if it is not encoded in the
-  // message.
-  // optional bytes module_name = ?
-  //    [(tokenizer.format) = TOKENIZATION_OPTIONAL];
-
   // Some messages are associated with trace events, which may carry additional
   // contextual data. This is a tuple of a data format string which could be
   // used by the decoder to identify the data (e.g. printf-style tokens) and the
@@ -166,15 +160,73 @@ message LogEntry {
   // optional bytes data = ?;
 }
 
-message LogRequest {
-  // This will include fields for configuring log filtering.
-}
+message LogRequest {}
 
 message LogEntries {
   repeated LogEntry entries = 1;
+  optional uint32 first_entry_sequence_id = 2;
 }
 
 // RPC service for accessing logs.
 service Logs {
   rpc Listen(LogRequest) returns (stream LogEntries);
+}
+
+message FilterRule {
+  // Log level values match pw_log/levels.h. Enum names avoid collissions with
+  // possible macros.
+  enum Level {
+    ANY_LEVEL = 0;
+    DEBUG_LEVEL = 1;
+    INFO_LEVEL = 2;
+    WARN_LEVEL = 3;
+    ERROR_LEVEL = 4;
+    CRITICAL_LEVEL = 5;
+    FATAL_LEVEL = 7;
+  };
+  // Condition 1: log.level >= level_greater_than_or_equal.
+  Level level_greater_than_or_equal = 1;
+
+  // Condition 2: (module_equals.size() == 0) || (log.module == module_equals);
+  bytes module_equals = 2 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
+
+  // Condition 3: (any_flags_set == 0) || (log.flags & any_flags_set) != 0))
+  uint32 any_flags_set = 3;
+
+  // Action to take if all conditions are met and rule is not inactive.
+  enum Action {
+    INACTIVE = 0;  // Ignore the rule entirely.
+    KEEP = 1;      // Keep the log entry if all conditions are met.
+    DROP = 2;      // Drop the log entry if all conditions are met
+  };
+  Action action = 4;
+}
+
+// A filter is a series of rules. First matching rule wins.
+message Filter {
+  repeated FilterRule rule = 1;
+}
+
+message SetFilterRequest {
+  // A filter can be identified by a human readable string, token, or number.
+  bytes filter_id = 1 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
+
+  Filter filter = 2;
+}
+
+message GetFilterRequest {
+  bytes filter_id = 1 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
+}
+
+message FilterIdListRequest {}
+
+message FilterIdListResponse {
+  repeated bytes filter_id = 1 [(tokenizer.format) = TOKENIZATION_OPTIONAL];
+}
+
+// RPC service for retrieving and modifying log filters.
+service Filters {
+  rpc SetFilter(SetFilterRequest) returns (pw.protobuf.Empty);
+  rpc GetFilter(GetFilterRequest) returns (Filter);
+  rpc ListFilterIds(FilterIdListRequest) returns (FilterIdListResponse);
 }

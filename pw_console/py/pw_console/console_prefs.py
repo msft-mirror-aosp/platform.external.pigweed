@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Union
 
 import yaml
 
+from pw_console.style import get_theme_colors
+
 _DEFAULT_REPL_HISTORY: Path = Path.home() / '.pw_console_history'
 _DEFAULT_SEARCH_HISTORY: Path = Path.home() / '.pw_console_search'
 
@@ -36,6 +38,8 @@ _DEFAULT_CONFIG = {
         'column_order_omit_unspecified_columns': False,
         'column_order': [],
         'column_colors': {},
+        'show_python_file': False,
+        'show_python_logger': False,
         'hide_date_from_log_time': False,
         # Window arrangement
         'windows': {},
@@ -56,12 +60,15 @@ def error_unknown_window(window_title: str,
     or duplicate_of: option set."""
 
     pane_title_text = '  ' + '\n  '.join(existing_pane_titles)
+    existing_pane_title_example = 'Window Title'
+    if existing_pane_titles:
+        existing_pane_title_example = existing_pane_titles[0]
     raise UnknownWindowTitle(
         f'\n\n"{window_title}" does not exist.\n'
         'Existing windows include:\n'
         f'{pane_title_text}\n'
         'If this window should be a duplicate of one of the above,\n'
-        f'add "duplicate_of: {existing_pane_titles[0]}" to your config.\n'
+        f'add "duplicate_of: {existing_pane_title_example}" to your config.\n'
         'If this is a brand new window, include a "loggers:" section.\n'
         'See also: '
         'https://pigweed.dev/pw_console/docs/user_guide.html#example-config')
@@ -90,9 +97,23 @@ class ConsolePrefs:
                 os.path.expandvars(str(self.user_file.expanduser())))
             self.load_config(self.user_file)
 
+        # Check for a config file specified by an environment variable.
+        environment_config = os.environ.get('PW_CONSOLE_CONFIG_FILE', None)
+        if environment_config:
+            env_file_path = Path(environment_config)
+            if not env_file_path.is_file():
+                raise FileNotFoundError(
+                    f'Cannot load config file: {env_file_path}')
+            self.reset_config()
+            self.load_config(env_file_path)
+
     def _update_config(self, cfg: Dict[Any, Any]) -> None:
         assert 'pw_console' in cfg
         self._config.update(cfg.get('pw_console', {}))
+
+    def reset_config(self) -> None:
+        self._config = {}
+        self._update_config(_DEFAULT_CONFIG)
 
     def load_config(self, file_path: Path) -> None:
         if not file_path.is_file():
@@ -103,6 +124,13 @@ class ConsolePrefs:
     @property
     def ui_theme(self) -> str:
         return self._config.get('ui_theme', '')
+
+    def set_ui_theme(self, theme_name: str):
+        self._config['ui_theme'] = theme_name
+
+    @property
+    def theme_colors(self):
+        return get_theme_colors(self.ui_theme)
 
     @property
     def code_theme(self) -> str:
@@ -137,6 +165,19 @@ class ConsolePrefs:
     @property
     def hide_date_from_log_time(self) -> bool:
         return self._config.get('hide_date_from_log_time', False)
+
+    @property
+    def show_python_file(self) -> bool:
+        return self._config.get('show_python_file', False)
+
+    @property
+    def show_python_logger(self) -> bool:
+        return self._config.get('show_python_logger', False)
+
+    def toggle_bool_option(self, name: str):
+        existing_setting = self._config[name]
+        assert isinstance(existing_setting, bool)
+        self._config[name] = not existing_setting
 
     @property
     def column_order(self) -> list:
@@ -177,7 +218,8 @@ class ConsolePrefs:
         titles = []
         for column in self.windows.values():
             for window_key_title, window_dict in column.items():
+                window_options = window_dict if window_dict else {}
                 # Use 'duplicate_of: Title' if it exists, otherwise use the key.
-                titles.append(window_dict.get('duplicate_of',
-                                              window_key_title))
+                titles.append(
+                    window_options.get('duplicate_of', window_key_title))
         return set(titles)

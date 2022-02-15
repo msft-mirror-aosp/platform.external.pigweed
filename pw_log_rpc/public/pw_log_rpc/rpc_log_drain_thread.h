@@ -14,9 +14,19 @@
 
 #pragma once
 
+#include <cstddef>
+#include <optional>
+#include <span>
+
+#include "pw_chrono/system_clock.h"
+#include "pw_log_rpc/log_service.h"
 #include "pw_log_rpc/rpc_log_drain_map.h"
 #include "pw_multisink/multisink.h"
-#include "pw_sync/thread_notification.h"
+#include "pw_result/result.h"
+#include "pw_rpc/raw/server_reader_writer.h"
+#include "pw_status/status.h"
+#include "pw_status/try.h"
+#include "pw_sync/timed_thread_notification.h"
 #include "pw_thread/thread_core.h"
 
 namespace pw::log_rpc {
@@ -25,11 +35,15 @@ namespace pw::log_rpc {
 // manages multiple log streams. It is a suitable option when a minimal
 // thread count is desired but comes with the cost of individual log streams
 // blocking each other's flushing.
-class RpcLogDrainThread final : public thread::ThreadCore,
-                                public multisink::MultiSink::Listener {
+class RpcLogDrainThread : public thread::ThreadCore,
+                          public multisink::MultiSink::Listener {
  public:
-  RpcLogDrainThread(multisink::MultiSink& multisink, RpcLogDrainMap& drain_map)
-      : drain_map_(drain_map), multisink_(multisink) {}
+  RpcLogDrainThread(multisink::MultiSink& multisink,
+                    RpcLogDrainMap& drain_map,
+                    std::span<std::byte> encoding_buffer)
+      : drain_map_(drain_map),
+        multisink_(multisink),
+        encoding_buffer_(encoding_buffer) {}
 
   void OnNewEntryAvailable() override {
     new_log_available_notification_.release();
@@ -41,18 +55,65 @@ class RpcLogDrainThread final : public thread::ThreadCore,
       multisink_.AttachDrain(drain);
     }
     multisink_.AttachListener(*this);
+
+    bool drains_pending = true;
+    std::optional<chrono::SystemClock::duration> min_delay =
+        chrono::SystemClock::duration::zero();
     while (true) {
-      new_log_available_notification_.acquire();
+      if (drains_pending && min_delay.has_value()) {
+        new_log_available_notification_.try_acquire_for(min_delay.value());
+      } else {
+        new_log_available_notification_.acquire();
+      }
+      drains_pending = false;
+      min_delay = std::nullopt;
       for (auto& drain : drain_map_.drains()) {
-        drain.Flush().IgnoreError();
+        std::optional<chrono::SystemClock::duration> drain_ready_in =
+            drain.Trickle(encoding_buffer_);
+        if (drain_ready_in.has_value()) {
+          min_delay = std::min(drain_ready_in.value(),
+                               min_delay.value_or(drain_ready_in.value()));
+          drains_pending = true;
+        }
       }
     }
   }
 
+  // Opens a server writer to set up an unrequested log stream.
+  Status OpenUnrequestedLogStream(uint32_t channel_id,
+                                  rpc::Server& rpc_server,
+                                  LogService& log_service) {
+    rpc::RawServerWriter writer =
+        rpc::RawServerWriter::Open<log::pw_rpc::raw::Logs::Listen>(
+            rpc_server, channel_id, log_service);
+    const Result<RpcLogDrain*> drain =
+        drain_map_.GetDrainFromChannelId(channel_id);
+    PW_TRY(drain.status());
+    return drain.value()->Open(writer);
+  }
+
  private:
-  sync::ThreadNotification new_log_available_notification_;
+  sync::TimedThreadNotification new_log_available_notification_;
   RpcLogDrainMap& drain_map_;
   multisink::MultiSink& multisink_;
+  std::span<std::byte> encoding_buffer_;
+};
+
+template <size_t kEncodingBufferSizeBytes>
+class RpcLogDrainThreadWithBuffer final : public RpcLogDrainThread {
+ public:
+  RpcLogDrainThreadWithBuffer(multisink::MultiSink& multisink,
+                              RpcLogDrainMap& drain_map)
+      : RpcLogDrainThread(multisink, drain_map, encoding_buffer_array_) {}
+
+ private:
+  static_assert(kEncodingBufferSizeBytes >=
+                    RpcLogDrain::kLogEntriesEncodeFrameSize +
+                        RpcLogDrain::kMinEntryBufferSize,
+                "RpcLogDrainThread's encoding buffer must be large enough for "
+                "at least one entry");
+
+  std::byte encoding_buffer_array_[kEncodingBufferSizeBytes];
 };
 
 }  // namespace pw::log_rpc

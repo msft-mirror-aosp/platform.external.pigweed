@@ -16,35 +16,11 @@
 
 namespace pw::rpc::internal {
 
-void ClientCall::SendInitialRequest(ConstByteSpan payload) {
-  if (const Status status = SendPacket(PacketType::REQUEST, payload);
-      !status.ok()) {
-    HandleError(status);
+void ClientCall::CloseClientCall() {
+  if (client_stream_open()) {
+    CloseClientStreamLocked();
   }
-}
-
-void ClientCall::CloseClientStream() {
-  if (has_client_stream()) {
-    CloseAndSendClientStreamEnd();
-  } else {
-    Close();  // Silently close this call if it is open.
-  }
-}
-
-UnaryResponseClientCall& UnaryResponseClientCall::operator=(
-    UnaryResponseClientCall&& other) {
-  MoveClientCallFrom(other);
-
-  on_completed_ = std::move(other.on_completed_);
-  return *this;
-}
-
-StreamResponseClientCall& StreamResponseClientCall::operator=(
-    StreamResponseClientCall&& other) {
-  MoveClientCallFrom(other);
-
-  on_completed_ = std::move(other.on_completed_);
-  return *this;
+  UnregisterAndMarkClosed();
 }
 
 }  // namespace pw::rpc::internal
