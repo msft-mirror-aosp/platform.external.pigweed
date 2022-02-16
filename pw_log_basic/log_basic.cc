@@ -84,8 +84,7 @@ const char* GetFileBasename(const char* filename) {
 #endif  // PW_LOG_SHOW_FILENAME
 
 void (*write_log)(std::string_view) = [](std::string_view log) {
-  sys_io::WriteLine(log)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  sys_io::WriteLine(log);
 };
 
 }  // namespace

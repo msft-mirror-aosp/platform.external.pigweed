@@ -14,12 +14,11 @@
 #pragma once
 
 #include "pw_kvs/key_value_store.h"
-#include "pw_sync/borrow.h"
 
 namespace pw {
 namespace kvs {
 
-sync::Borrowable<KeyValueStore>& TestKvs();
+KeyValueStore& TestKvs();
 
 }  // namespace kvs
 }  // namespace pw

@@ -25,8 +25,6 @@ namespace pw::rpc::internal {
 // union member in a constant expression, so this results in a compiler error.
 class MethodLookup {
  public:
-  MethodLookup() = delete;
-
   template <typename Service, uint32_t kMethodId>
   static constexpr const auto& GetRawMethod() {
     const auto& method = GetMethodUnion<Service, kMethodId>().raw_method();
@@ -51,11 +49,12 @@ class MethodLookup {
   }
 
   template <typename Service>
-  static constexpr typename decltype(Service::kPwRpcMethods)::const_pointer
-  GetMethodUnionPointer(uint32_t kMethodId) {
-    for (size_t i = 0; i < Service::kPwRpcMethodIds.size(); ++i) {
-      if (Service::kPwRpcMethodIds[i] == kMethodId) {
-        return &Service::kPwRpcMethods[i];
+  static constexpr
+      typename decltype(GeneratedService<Service>::kMethods)::const_pointer
+      GetMethodUnionPointer(uint32_t kMethodId) {
+    for (size_t i = 0; i < GeneratedService<Service>::kMethodIds.size(); ++i) {
+      if (GeneratedService<Service>::kMethodIds[i] == kMethodId) {
+        return &GeneratedService<Service>::kMethods[i];
       }
     }
     return nullptr;

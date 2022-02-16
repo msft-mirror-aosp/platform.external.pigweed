@@ -37,19 +37,19 @@ inline constexpr struct {
 } kHashTests[] = {
 
 {
-  std::string_view(),
+  std::string_view("", 0u),
   80u,  // fixed hash length
   UINT32_C(0),  // Python-calculated hash
   PW_TOKENIZER_65599_FIXED_LENGTH_80_HASH(""),  // macro-calculated hash
 },
 {
-  std::string_view(),
+  std::string_view("", 0u),
   96u,  // fixed hash length
   UINT32_C(0),  // Python-calculated hash
   PW_TOKENIZER_65599_FIXED_LENGTH_96_HASH(""),  // macro-calculated hash
 },
 {
-  std::string_view(),
+  std::string_view("", 0u),
   128u,  // fixed hash length
   UINT32_C(0),  // Python-calculated hash
   PW_TOKENIZER_65599_FIXED_LENGTH_128_HASH(""),  // macro-calculated hash

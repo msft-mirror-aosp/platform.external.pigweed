@@ -59,8 +59,7 @@ TEST_F(PersistentTest, DefaultConstructionAndDestruction) {
     auto writer = persistent.GetWriter();
     EXPECT_EQ(persistent.size(), 0u);
 
-    writer.Write(std::as_bytes(std::span(&kExpectedNumber, 1)))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    writer.Write(std::as_bytes(std::span(&kExpectedNumber, 1)));
     ASSERT_TRUE(persistent.has_value());
 
     persistent.~PersistentBuffer();  // Emulate shutdown / global destructors.
@@ -89,15 +88,12 @@ TEST_F(PersistentTest, LongData) {
 
     auto writer = persistent.GetWriter();
     for (size_t i = 0; i < kTestString.length(); i += kWriteSize) {
-      writer
-          .Write(kTestString.data() + i,
-                 std::min(kWriteSize, kTestString.length() - i))
-          .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      writer.Write(kTestString.data() + i,
+                   std::min(kWriteSize, kTestString.length() - i));
     }
     // Need to manually write a null terminator since std::string_view doesn't
     // include one in the string length.
-    writer.Write(std::byte(0))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    writer.Write(std::byte(0));
 
     persistent.~PersistentBuffer();  // Emulate shutdown / global destructors.
   }
@@ -133,8 +129,7 @@ TEST_F(PersistentTest, AppendingData) {
     EXPECT_EQ(persistent.size(), 0u);
 
     // Write an integer.
-    writer.Write(std::as_bytes(std::span(&kTestNumber, 1)))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    writer.Write(std::as_bytes(std::span(&kTestNumber, 1)));
     ASSERT_TRUE(persistent.has_value());
 
     persistent.~PersistentBuffer();  // Emulate shutdown / global destructors.
@@ -148,8 +143,7 @@ TEST_F(PersistentTest, AppendingData) {
     // Write more data.
     auto writer = persistent.GetWriter();
     EXPECT_EQ(persistent.size(), sizeof(kTestNumber));
-    writer.Write(std::as_bytes(std::span<const char>(kTestString)))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    writer.Write(std::as_bytes(std::span<const char>(kTestString)));
 
     persistent.~PersistentBuffer();  // Emulate shutdown / global destructors.
   }

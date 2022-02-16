@@ -14,7 +14,6 @@
 
 import("//build_overrides/pigweed.gni")
 
-import("$dir_pw_toolchain/static_analysis_toolchain.gni")
 import("$dir_pw_toolchain/universal_tools.gni")
 
 declare_args() {
@@ -265,15 +264,12 @@ template("generate_toolchain") {
         ]
       }
 
-      _rsp_file = "$_link_outfile.rsp"
-      _rsp_contents = []
-
       _link_group = defined(invoker.link_group) && invoker.link_group
       if (_link_group) {
-        _rsp_contents += [ "-Wl,--start-group" ]
+        _link_flags += [ "-Wl,--start-group" ]
       }
-      _rsp_contents += [ "{{inputs}}" ]
-      _rsp_contents += [ "{{frameworks}}" ]
+      _link_flags += [ "{{inputs}}" ]
+      _link_flags += [ "{{frameworks}}" ]
 
       if (defined(invoker.link_whole_archive) && invoker.link_whole_archive) {
         # Load all object files from all libraries to resolve symbols.
@@ -284,29 +280,24 @@ template("generate_toolchain") {
         # Make sure you use this with --gc-sections, otherwise the
         # resulting binary will contain every symbol defined in every
         # input file and every static library. That could be quite a lot.
-        _rsp_contents += [
+        _link_flags += [
           "-Wl,--whole-archive",
           "{{libs}}",
           "-Wl,--no-whole-archive",
         ]
       } else {
-        _rsp_contents += [ "{{libs}}" ]
+        _link_flags += [ "{{libs}}" ]
       }
 
       if (_link_group) {
-        _rsp_contents += [ "-Wl,--end-group" ]
+        _link_flags += [ "-Wl,--end-group" ]
       }
-      _rsp_command = string_join(" ", _rsp_contents)
-
-      _link_flags += [ "@$_rsp_file" ]
       _link_flags += [ "-o $_link_outfile" ]
 
       _link_command = string_join(" ", _link_flags)
 
       tool("link") {
         command = _link_command
-        rspfile = _rsp_file
-        rspfile_content = _rsp_command
         description = "ld $_link_outfile"
         outputs = [
           _link_outfile,
@@ -325,8 +316,6 @@ template("generate_toolchain") {
 
       tool("solink") {
         command = _link_command + " -shared"
-        rspfile = _rsp_file
-        rspfile_content = _rsp_command
         description = "ld -shared $_link_outfile"
         outputs = [
           _link_outfile,
@@ -367,15 +356,6 @@ template("generate_toolchain") {
           name = target_name
         }
         forward_variables_from(invoker_toolchain_args, "*")
-      }
-    }
-
-    _generate_static_analysis_toolchain =
-        defined(invoker.static_analysis) && invoker.static_analysis
-
-    if (_generate_static_analysis_toolchain) {
-      pw_static_analysis_toolchain(target_name + ".static_analysis") {
-        forward_variables_from(invoker, "*")
       }
     }
   } else {

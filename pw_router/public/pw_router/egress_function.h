@@ -15,7 +15,6 @@
 
 #include <span>
 
-#include "pw_function/function.h"
 #include "pw_router/egress.h"
 
 namespace pw::router {
@@ -23,16 +22,12 @@ namespace pw::router {
 // Router egress that dispatches to a free function.
 class EgressFunction final : public Egress {
  public:
-  EgressFunction(
-      Function<Status(ConstByteSpan, const PacketParser&)>&& function)
-      : func_(std::move(function)) {}
+  constexpr EgressFunction(Status (*func)(ConstByteSpan)) : func_(*func) {}
 
-  Status SendPacket(ConstByteSpan packet, const PacketParser& parser) final {
-    return func_(packet, parser);
-  }
+  Status SendPacket(ConstByteSpan packet) final { return func_(packet); }
 
  private:
-  Function<Status(ConstByteSpan, const PacketParser&)> func_;
+  Status (&func_)(ConstByteSpan);
 };
 
 }  // namespace pw::router

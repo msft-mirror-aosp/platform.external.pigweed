@@ -15,13 +15,12 @@
 
 import abc
 from datetime import datetime
-import enum
 import os
 import sys
 from typing import Dict, Iterable, List, Tuple
 from typing import cast
 
-from google.protobuf import descriptor_pb2
+import google.protobuf.descriptor_pb2 as descriptor_pb2
 
 from pw_protobuf.output_file import OutputFile
 from pw_protobuf.proto_tree import ProtoEnum, ProtoMessage, ProtoMessageField
@@ -34,30 +33,8 @@ PLUGIN_VERSION = '0.1.0'
 PROTO_H_EXTENSION = '.pwpb.h'
 PROTO_CC_EXTENSION = '.pwpb.cc'
 
-PROTOBUF_NAMESPACE = '::pw::protobuf'
-
-
-class EncoderType(enum.Enum):
-    MEMORY = 1
-    STREAMING = 2
-
-    def base_class_name(self) -> str:
-        """Returns the base class used by this encoder type."""
-        if self is self.STREAMING:
-            return 'StreamEncoder'
-        if self is self.MEMORY:
-            return 'MemoryEncoder'
-
-        raise ValueError('Unknown encoder type')
-
-    def codegen_class_name(self) -> str:
-        """Returns the base class used by this encoder type."""
-        if self is self.STREAMING:
-            return 'StreamEncoder'
-        if self is self.MEMORY:
-            return 'MemoryEncoder'
-
-        raise ValueError('Unknown encoder type')
+PROTOBUF_NAMESPACE = 'pw::protobuf'
+BASE_PROTO_CLASS = 'ProtoMessageEncoder'
 
 
 # protoc captures stdout, so we need to printf debug to stderr.
@@ -140,15 +117,9 @@ class ProtoMethod(abc.ABC):
         scope = self._root if from_root else self._scope
         type_node = self._field.type_node()
         assert type_node is not None
-
-        # If a class method is referencing its class, the namespace provided
-        # must be from the root or it will be empty.
-        if type_node == scope:
-            scope = self._root
-
         ancestor = scope.common_ancestor(type_node)
         namespace = type_node.cpp_namespace(ancestor)
-        assert namespace
+        assert namespace is not None
         return namespace
 
 
@@ -158,14 +129,13 @@ class SubMessageMethod(ProtoMethod):
         return 'Get{}Encoder'.format(self._field.name())
 
     def return_type(self, from_root: bool = False) -> str:
-        return '{}::StreamEncoder'.format(
-            self._relative_type_namespace(from_root))
+        return '{}::Encoder'.format(self._relative_type_namespace(from_root))
 
     def params(self) -> List[Tuple[str, str]]:
         return []
 
     def body(self) -> List[str]:
-        line = 'return {}::StreamEncoder(GetNestedEncoder({}));'.format(
+        line = 'return {}::Encoder(encoder_, {});'.format(
             self._relative_type_namespace(), self.field_cast())
         return [line]
 
@@ -193,8 +163,8 @@ class WriteMethod(ProtoMethod):
 
     def body(self) -> List[str]:
         params = ', '.join([pair[1] for pair in self.params()])
-        line = 'return {}({}, {});'.format(self._encoder_fn(),
-                                           self.field_cast(), params)
+        line = 'return encoder_->{}({}, {});'.format(self._encoder_fn(),
+                                                     self.field_cast(), params)
         return [line]
 
     def params(self) -> List[Tuple[str, str]]:
@@ -478,7 +448,7 @@ class StringLenMethod(WriteMethod):
 class StringMethod(WriteMethod):
     """Method which writes a proto string value."""
     def params(self) -> List[Tuple[str, str]]:
-        return [('std::string_view', 'value')]
+        return [('const char*', 'value')]
 
     def _encoder_fn(self) -> str:
         return 'WriteString'
@@ -490,7 +460,7 @@ class EnumMethod(WriteMethod):
         return [(self._relative_type_namespace(), 'value')]
 
     def body(self) -> List[str]:
-        line = 'return WriteUint32(' \
+        line = 'return encoder_->WriteUint32(' \
             '{}, static_cast<uint32_t>(value));'.format(self.field_cast())
         return [line]
 
@@ -538,40 +508,20 @@ PROTO_FIELD_METHODS: Dict[int, List] = {
 
 
 def generate_code_for_message(message: ProtoMessage, root: ProtoNode,
-                              output: OutputFile,
-                              encoder_type: EncoderType) -> None:
+                              output: OutputFile) -> None:
     """Creates a C++ class for a protobuf message."""
     assert message.type() == ProtoNode.Type.MESSAGE
 
-    base_class_name = encoder_type.base_class_name()
-    encoder_name = encoder_type.codegen_class_name()
-
     # Message classes inherit from the base proto message class in codegen.h
     # and use its constructor.
-    base_class = f'{PROTOBUF_NAMESPACE}::{base_class_name}'
+    base_class = f'{PROTOBUF_NAMESPACE}::{BASE_PROTO_CLASS}'
     output.write_line(
-        f'class {message.cpp_namespace(root)}::{encoder_name} ' \
-        f': public {base_class} {{'
+        f'class {message.cpp_namespace(root)}::Encoder : public {base_class} {{'
     )
     output.write_line(' public:')
 
     with output.indent():
-        # Inherit the constructors from the base encoder.
-        output.write_line(f'using {base_class}::{base_class_name};')
-
-        # Declare a move constructor that takes a base encoder.
-        output.write_line(f'constexpr {encoder_name}({base_class}&& parent) '
-                          f': {base_class}(std::move(parent)) {{}}')
-
-        # Allow MemoryEncoder& to be converted to StreamEncoder&.
-        if encoder_type == EncoderType.MEMORY:
-            stream_type = (f'::{message.cpp_namespace()}::'
-                           f'{EncoderType.STREAMING.codegen_class_name()}')
-            output.write_line(
-                f'operator {stream_type}&() '
-                f' {{ return static_cast<{stream_type}&>('
-                f'*static_cast<{PROTOBUF_NAMESPACE}::StreamEncoder*>(this));}}'
-            )
+        output.write_line(f'using {BASE_PROTO_CLASS}::{BASE_PROTO_CLASS};')
 
         # Generate methods for each of the message's fields.
         for field in message.fields():
@@ -601,8 +551,7 @@ def generate_code_for_message(message: ProtoMessage, root: ProtoNode,
 
 
 def define_not_in_class_methods(message: ProtoMessage, root: ProtoNode,
-                                output: OutputFile,
-                                encoder_type: EncoderType) -> None:
+                                output: OutputFile) -> None:
     """Defines methods for a message class that were previously declared."""
     assert message.type() == ProtoNode.Type.MESSAGE
 
@@ -613,8 +562,7 @@ def define_not_in_class_methods(message: ProtoMessage, root: ProtoNode,
                 continue
 
             output.write_line()
-            class_name = (f'{message.cpp_namespace(root)}::'
-                          f'{encoder_type.codegen_class_name()}')
+            class_name = f'{message.cpp_namespace(root)}::Encoder'
             method_signature = (
                 f'inline {method.return_type(from_root=True)} '
                 f'{class_name}::{method.name()}({method.param_string()})')
@@ -625,14 +573,14 @@ def define_not_in_class_methods(message: ProtoMessage, root: ProtoNode,
             output.write_line('}')
 
 
-def generate_code_for_enum(proto_enum: ProtoEnum, root: ProtoNode,
+def generate_code_for_enum(enum: ProtoEnum, root: ProtoNode,
                            output: OutputFile) -> None:
     """Creates a C++ enum for a proto enum."""
-    assert proto_enum.type() == ProtoNode.Type.ENUM
+    assert enum.type() == ProtoNode.Type.ENUM
 
-    output.write_line(f'enum class {proto_enum.cpp_namespace(root)} {{')
+    output.write_line(f'enum class {enum.cpp_namespace(root)} {{')
     with output.indent():
-        for name, number in proto_enum.values():
+        for name, number in enum.values():
             output.write_line(f'{name} = {number},')
     output.write_line('};')
 
@@ -653,32 +601,13 @@ def forward_declare(node: ProtoMessage, root: ProtoNode,
 
     # Declare the message's encoder class and all of its enums.
     output.write_line()
-    output.write_line('class StreamEncoder;')
-    output.write_line('class MemoryEncoder;')
-
+    output.write_line('class Encoder;')
     for child in node.children():
         if child.type() == ProtoNode.Type.ENUM:
             output.write_line()
             generate_code_for_enum(cast(ProtoEnum, child), node, output)
 
     output.write_line(f'}}  // namespace {namespace}')
-
-
-def generate_encoder_wrappers(package: ProtoNode, encoder_type: EncoderType,
-                              output: OutputFile):
-    # Run through all messages in the file, generating a class for each.
-    for node in package:
-        if node.type() == ProtoNode.Type.MESSAGE:
-            output.write_line()
-            generate_code_for_message(cast(ProtoMessage, node), package,
-                                      output, encoder_type)
-
-    # Run a second pass through the classes, this time defining all of the
-    # methods which were previously only declared.
-    for node in package:
-        if node.type() == ProtoNode.Type.MESSAGE:
-            define_not_in_class_methods(cast(ProtoMessage, node), package,
-                                        output, encoder_type)
 
 
 def _proto_filename_to_generated_header(proto_file: str) -> str:
@@ -698,9 +627,8 @@ def generate_code_for_package(file_descriptor_proto, package: ProtoNode,
     output.write_line('#pragma once\n')
     output.write_line('#include <cstddef>')
     output.write_line('#include <cstdint>')
-    output.write_line('#include <span>')
-    output.write_line('#include <string_view>\n')
-    output.write_line('#include "pw_protobuf/encoder.h"')
+    output.write_line('#include <span>\n')
+    output.write_line('#include "pw_protobuf/codegen.h"')
 
     for imported_file in file_descriptor_proto.dependency:
         generated_header = _proto_filename_to_generated_header(imported_file)
@@ -723,8 +651,19 @@ def generate_code_for_package(file_descriptor_proto, package: ProtoNode,
             output.write_line()
             generate_code_for_enum(cast(ProtoEnum, node), package, output)
 
-    generate_encoder_wrappers(package, EncoderType.STREAMING, output)
-    generate_encoder_wrappers(package, EncoderType.MEMORY, output)
+    # Run through all messages in the file, generating a class for each.
+    for node in package:
+        if node.type() == ProtoNode.Type.MESSAGE:
+            output.write_line()
+            generate_code_for_message(cast(ProtoMessage, node), package,
+                                      output)
+
+    # Run a second pass through the classes, this time defining all of the
+    # methods which were previously only declared.
+    for node in package:
+        if node.type() == ProtoNode.Type.MESSAGE:
+            define_not_in_class_methods(cast(ProtoMessage, node), package,
+                                        output)
 
     if package.cpp_namespace():
         output.write_line(f'\n}}  // namespace {package.cpp_namespace()}')
