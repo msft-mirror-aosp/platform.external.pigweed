@@ -20,31 +20,23 @@
 
 namespace pw::this_thread {
 
-inline void sleep_for(chrono::SystemClock::duration sleep_duration) {
-  sleep_duration =
-      std::max(sleep_duration, chrono::SystemClock::duration::zero());
+inline void sleep_for(chrono::SystemClock::duration for_at_least) {
+  for_at_least = std::max(for_at_least, chrono::SystemClock::duration::zero());
   // Although many implementations do yield with sleep_for(0), it is not
   // required, ergo we explicitly add handling.
-  if (sleep_duration == chrono::SystemClock::duration::zero()) {
+  if (for_at_least == chrono::SystemClock::duration::zero()) {
     return std::this_thread::yield();
   }
-#if defined(_WIN32)
-  // For some reason MinGW's implementation for sleep_for doesn't work
-  // correctly, however sleep_until does.
-  return std::this_thread::sleep_until(
-      chrono::SystemClock::TimePointAfterAtLeast(sleep_duration));
-#else
-  return std::this_thread::sleep_for(sleep_duration);
-#endif  // defined(_WIN32)
+  return std::this_thread::sleep_for(for_at_least);
 }
 
-inline void sleep_until(chrono::SystemClock::time_point wakeup_time) {
+inline void sleep_until(chrono::SystemClock::time_point until_at_least) {
   // Although many implementations do yield with deadlines in the past until
   // the current time, it is not required, ergo we explicitly add handling.
-  if (chrono::SystemClock::now() >= wakeup_time) {
+  if (chrono::SystemClock::now() >= until_at_least) {
     return std::this_thread::yield();
   }
-  return std::this_thread::sleep_until(wakeup_time);
+  return std::this_thread::sleep_until(until_at_least);
 }
 
 }  // namespace pw::this_thread

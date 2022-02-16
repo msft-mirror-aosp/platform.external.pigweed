@@ -29,20 +29,16 @@ namespace trace {
 class TraceToFile {
  public:
   TraceToFile(const char* file_name) {
-    Callbacks::Instance()
-        .RegisterSink(TraceSinkStartBlock,
-                      TraceSinkAddBytes,
-                      TraceSinkEndBlock,
-                      &out_,
-                      &sink_handle_)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    Callbacks::Instance().RegisterSink(TraceSinkStartBlock,
+                                       TraceSinkAddBytes,
+                                       TraceSinkEndBlock,
+                                       &out_,
+                                       &sink_handle_);
     out_.open(file_name, std::ios::out | std::ios::binary);
   }
 
   ~TraceToFile() {
-    Callbacks::Instance()
-        .UnregisterSink(sink_handle_)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    Callbacks::Instance().UnregisterSink(sink_handle_);
     out_.close();
   }
 

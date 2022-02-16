@@ -96,10 +96,7 @@ pw_source_set("flash_test_partition") {
 
 pw_source_set("test_key_value_store") {
   public = [ "public/pw_kvs/test_key_value_store.h" ]
-  public_deps = [
-    ":pw_kvs",
-    "$dir_pw_sync:borrow",
-  ]
+  public_deps = [ ":pw_kvs" ]
 }
 
 pw_source_set("fake_flash") {
@@ -114,6 +111,17 @@ pw_source_set("fake_flash") {
   deps = [
     ":config",
     dir_pw_log,
+  ]
+}
+
+pw_source_set("fake_flash_small_partition") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_kvs/flash_test_partition.h" ]
+  sources = [ "fake_flash_test_partition.cc" ]
+  public_deps = [ ":flash_test_partition" ]
+  deps = [
+    ":fake_flash",
+    dir_pw_kvs,
   ]
 }
 
@@ -133,38 +141,6 @@ pw_source_set("fake_flash_12_byte_partition") {
   ]
 }
 
-pw_source_set("fake_flash_1_aligned_partition") {
-  public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_kvs/flash_test_partition.h" ]
-  sources = [ "fake_flash_test_partition.cc" ]
-  public_deps = [ ":flash_test_partition" ]
-  deps = [
-    ":fake_flash",
-    dir_pw_kvs,
-  ]
-  defines = [
-    "PW_FLASH_TEST_SECTORS=6U",
-    "PW_FLASH_TEST_SECTOR_SIZE=4096U",
-    "PW_FLASH_TEST_ALIGNMENT=1U",
-  ]
-}
-
-pw_source_set("fake_flash_16_aligned_partition") {
-  public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_kvs/flash_test_partition.h" ]
-  sources = [ "fake_flash_test_partition.cc" ]
-  public_deps = [ ":flash_test_partition" ]
-  deps = [
-    ":fake_flash",
-    dir_pw_kvs,
-  ]
-  defines = [
-    "PW_FLASH_TEST_SECTORS=6U",
-    "PW_FLASH_TEST_SECTOR_SIZE=4096U",
-    "PW_FLASH_TEST_ALIGNMENT=16U",
-  ]
-}
-
 pw_source_set("fake_flash_64_aligned_partition") {
   public_configs = [ ":public_include_path" ]
   public = [ "public/pw_kvs/flash_test_partition.h" ]
@@ -174,11 +150,7 @@ pw_source_set("fake_flash_64_aligned_partition") {
     ":fake_flash",
     dir_pw_kvs,
   ]
-  defines = [
-    "PW_FLASH_TEST_SECTORS=6U",
-    "PW_FLASH_TEST_SECTOR_SIZE=4096U",
-    "PW_FLASH_TEST_ALIGNMENT=64U",
-  ]
+  defines = [ "PW_FLASH_TEST_ALIGNMENT=64" ]
 }
 
 pw_source_set("fake_flash_256_aligned_partition") {
@@ -190,11 +162,7 @@ pw_source_set("fake_flash_256_aligned_partition") {
     ":fake_flash",
     dir_pw_kvs,
   ]
-  defines = [
-    "PW_FLASH_TEST_SECTORS=6U",
-    "PW_FLASH_TEST_SECTOR_SIZE=4096U",
-    "PW_FLASH_TEST_ALIGNMENT=256U",
-  ]
+  defines = [ "PW_FLASH_TEST_ALIGNMENT=256" ]
 }
 
 pw_source_set("fake_flash_test_key_value_store") {
@@ -217,10 +185,7 @@ pw_source_set("flash_partition_test_100_iterations") {
     dir_pw_unit_test,
   ]
   sources = [ "flash_partition_test.cc" ]
-  defines = [
-    "PW_FLASH_TEST_ITERATIONS=100",
-    "PW_FLASH_TEST_WRITE_SIZE=1",
-  ]
+  defines = [ "PW_FLASH_TEST_ITERATIONS=100" ]
 }
 
 pw_source_set("flash_partition_test_2_iterations") {
@@ -232,40 +197,7 @@ pw_source_set("flash_partition_test_2_iterations") {
     dir_pw_unit_test,
   ]
   sources = [ "flash_partition_test.cc" ]
-  defines = [
-    "PW_FLASH_TEST_ITERATIONS=2",
-    "PW_FLASH_TEST_WRITE_SIZE=1",
-  ]
-}
-
-pw_source_set("flash_partition_test_100_iterations_256_write") {
-  deps = [
-    ":config",
-    ":flash_test_partition",
-    dir_pw_kvs,
-    dir_pw_log,
-    dir_pw_unit_test,
-  ]
-  sources = [ "flash_partition_test.cc" ]
-  defines = [
-    "PW_FLASH_TEST_ITERATIONS=100",
-    "PW_FLASH_TEST_WRITE_SIZE=256",
-  ]
-}
-
-pw_source_set("flash_partition_test_2_iterations_256_write") {
-  deps = [
-    ":config",
-    ":flash_test_partition",
-    dir_pw_kvs,
-    dir_pw_log,
-    dir_pw_unit_test,
-  ]
-  sources = [ "flash_partition_test.cc" ]
-  defines = [
-    "PW_FLASH_TEST_ITERATIONS=2",
-    "PW_FLASH_TEST_WRITE_SIZE=256",
-  ]
+  defines = [ "PW_FLASH_TEST_ITERATIONS=2" ]
 }
 
 pw_source_set("key_value_store_initialized_test") {
@@ -281,24 +213,10 @@ pw_source_set("key_value_store_initialized_test") {
   sources = [ "key_value_store_initialized_test.cc" ]
 }
 
-pw_source_set("key_value_store_fuzz_test") {
-  deps = [
-    ":crc16",
-    ":flash_test_partition",
-    ":pw_kvs",
-    dir_pw_bytes,
-    dir_pw_checksum,
-    dir_pw_log,
-    dir_pw_unit_test,
-  ]
-  sources = [ "key_value_store_fuzz_test.cc" ]
-}
-
 pw_source_set("test_key_value_store_test") {
   deps = [
     ":pw_kvs",
     ":test_key_value_store",
-    "$dir_pw_sync:borrow",
     dir_pw_unit_test,
   ]
   sources = [ "test_key_value_store_test.cc" ]
@@ -324,20 +242,15 @@ pw_test_group("tests") {
     ":converts_to_span_test",
     ":entry_test",
     ":entry_cache_test",
-    ":flash_partition_1_alignment_test",
-    ":flash_partition_16_alignment_test",
+    ":flash_partition_small_test",
     ":flash_partition_64_alignment_test",
     ":flash_partition_256_alignment_test",
-    ":flash_partition_256_write_size_test",
     ":key_value_store_test",
-    ":key_value_store_1_alignment_flash_test",
-    ":key_value_store_16_alignment_flash_test",
+    ":key_value_store_small_flash_test",
     ":key_value_store_64_alignment_flash_test",
     ":key_value_store_256_alignment_flash_test",
-    ":key_value_store_fuzz_1_alignment_flash_test",
-    ":key_value_store_fuzz_64_alignment_flash_test",
     ":key_value_store_binary_format_test",
-    ":key_value_store_put_test",
+    ":key_value_store_fuzz_test",
     ":key_value_store_map_test",
     ":fake_flash_test_key_value_store_test",
     ":sectors_test",
@@ -384,19 +297,10 @@ pw_test("entry_cache_test") {
   sources = [ "entry_cache_test.cc" ]
 }
 
-pw_test("flash_partition_1_alignment_test") {
+pw_test("flash_partition_small_test") {
   deps = [
     ":fake_flash",
-    ":fake_flash_1_aligned_partition",
-    ":flash_partition_test_100_iterations",
-    dir_pw_log,
-  ]
-}
-
-pw_test("flash_partition_16_alignment_test") {
-  deps = [
-    ":fake_flash",
-    ":fake_flash_16_aligned_partition",
+    ":fake_flash_small_partition",
     ":flash_partition_test_100_iterations",
     dir_pw_log,
   ]
@@ -420,15 +324,6 @@ pw_test("flash_partition_256_alignment_test") {
   ]
 }
 
-pw_test("flash_partition_256_write_size_test") {
-  deps = [
-    ":fake_flash",
-    ":fake_flash_1_aligned_partition",
-    ":flash_partition_test_100_iterations_256_write",
-    dir_pw_log,
-  ]
-}
-
 pw_test("key_value_store_test") {
   deps = [
     ":crc16",
@@ -441,16 +336,9 @@ pw_test("key_value_store_test") {
   sources = [ "key_value_store_test.cc" ]
 }
 
-pw_test("key_value_store_1_alignment_flash_test") {
+pw_test("key_value_store_small_flash_test") {
   deps = [
-    ":fake_flash_1_aligned_partition",
-    ":key_value_store_initialized_test",
-  ]
-}
-
-pw_test("key_value_store_16_alignment_flash_test") {
-  deps = [
-    ":fake_flash_16_aligned_partition",
+    ":fake_flash_small_partition",
     ":key_value_store_initialized_test",
   ]
 }
@@ -469,20 +357,6 @@ pw_test("key_value_store_256_alignment_flash_test") {
   ]
 }
 
-pw_test("key_value_store_fuzz_1_alignment_flash_test") {
-  deps = [
-    ":fake_flash_1_aligned_partition",
-    ":key_value_store_fuzz_test",
-  ]
-}
-
-pw_test("key_value_store_fuzz_64_alignment_flash_test") {
-  deps = [
-    ":fake_flash_64_aligned_partition",
-    ":key_value_store_fuzz_test",
-  ]
-}
-
 pw_test("key_value_store_binary_format_test") {
   deps = [
     ":crc16",
@@ -494,21 +368,20 @@ pw_test("key_value_store_binary_format_test") {
   sources = [ "key_value_store_binary_format_test.cc" ]
 }
 
-pw_test("key_value_store_put_test") {
+pw_test("key_value_store_fuzz_test") {
   deps = [
     ":crc16",
     ":fake_flash",
     ":pw_kvs",
     ":test_partition",
   ]
-  sources = [ "key_value_store_put_test.cc" ]
+  sources = [ "key_value_store_fuzz_test.cc" ]
 }
 
 pw_test("fake_flash_test_key_value_store_test") {
   deps = [
     ":fake_flash_test_key_value_store",
     ":test_key_value_store_test",
-    "$dir_pw_sync:borrow",
   ]
 }
 

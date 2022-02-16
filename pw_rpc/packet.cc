@@ -18,6 +18,8 @@
 
 namespace pw::rpc::internal {
 
+using std::byte;
+
 Result<Packet> Packet::FromBuffer(ConstByteSpan data) {
   Packet packet;
   Status status;
@@ -30,44 +32,33 @@ Result<Packet> Packet::FromBuffer(ConstByteSpan data) {
     switch (field) {
       case RpcPacket::Fields::TYPE: {
         uint32_t value;
-        // A decode error will propagate from Next() and terminate the loop.
-        decoder.ReadUint32(&value).IgnoreError();
+        decoder.ReadUint32(&value);
         packet.set_type(static_cast<PacketType>(value));
         break;
       }
 
       case RpcPacket::Fields::CHANNEL_ID:
-        // A decode error will propagate from Next() and terminate the loop.
-        decoder.ReadUint32(&packet.channel_id_).IgnoreError();
+        decoder.ReadUint32(&packet.channel_id_);
         break;
 
       case RpcPacket::Fields::SERVICE_ID:
-        // A decode error will propagate from Next() and terminate the loop.
-        decoder.ReadFixed32(&packet.service_id_).IgnoreError();
+        decoder.ReadFixed32(&packet.service_id_);
         break;
 
       case RpcPacket::Fields::METHOD_ID:
-        // A decode error will propagate from Next() and terminate the loop.
-        decoder.ReadFixed32(&packet.method_id_).IgnoreError();
+        decoder.ReadFixed32(&packet.method_id_);
         break;
 
       case RpcPacket::Fields::PAYLOAD:
-        // A decode error will propagate from Next() and terminate the loop.
-        decoder.ReadBytes(&packet.payload_).IgnoreError();
+        decoder.ReadBytes(&packet.payload_);
         break;
 
       case RpcPacket::Fields::STATUS: {
         uint32_t value;
-        // A decode error will propagate from Next() and terminate the loop.
-        decoder.ReadUint32(&value).IgnoreError();
+        decoder.ReadUint32(&value);
         packet.set_status(static_cast<Status::Code>(value));
         break;
       }
-
-      case RpcPacket::Fields::CALL_ID:
-        // A decode error will propagate from Next() and terminate the loop.
-        decoder.ReadUint32(&packet.call_id_).IgnoreError();
-        break;
     }
   }
 
@@ -75,48 +66,23 @@ Result<Packet> Packet::FromBuffer(ConstByteSpan data) {
     return status;
   }
 
-  // TODO(pwbug/512): CANCEL is equivalent to CLIENT_ERROR with status
-  //     CANCELLED. Remove this workaround when CANCEL is removed.
-  if (packet.type() == PacketType::DEPRECATED_CANCEL) {
-    packet.set_status(Status::Cancelled());
-  }
-
   return packet;
 }
 
 Result<ConstByteSpan> Packet::Encode(ByteSpan buffer) const {
-  RpcPacket::MemoryEncoder rpc_packet(buffer);
+  pw::protobuf::NestedEncoder encoder(buffer);
+  RpcPacket::Encoder rpc_packet(&encoder);
 
   // The payload is encoded first, as it may share the encode buffer.
-  if (!payload_.empty()) {
-    rpc_packet.WritePayload(payload_)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-  }
+  rpc_packet.WritePayload(payload_);
 
-  rpc_packet.WriteType(type_)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-  rpc_packet.WriteChannelId(channel_id_)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-  rpc_packet.WriteServiceId(service_id_)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-  rpc_packet.WriteMethodId(method_id_)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  rpc_packet.WriteType(type_);
+  rpc_packet.WriteChannelId(channel_id_);
+  rpc_packet.WriteServiceId(service_id_);
+  rpc_packet.WriteMethodId(method_id_);
+  rpc_packet.WriteStatus(status_.code());
 
-  // Status code 0 is OK. In protobufs, 0 is the default int value, so skip
-  // encoding it to save two bytes in the output.
-  if (status_.code() != 0) {
-    rpc_packet.WriteStatus(status_.code())
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-  }
-
-  if (call_id_ != 0) {
-    rpc_packet.WriteCallId(call_id_);
-  }
-
-  if (rpc_packet.status().ok()) {
-    return ConstByteSpan(rpc_packet);
-  }
-  return rpc_packet.status();
+  return encoder.Encode();
 }
 
 size_t Packet::MinEncodedSizeBytes() const {
@@ -130,7 +96,7 @@ size_t Packet::MinEncodedSizeBytes() const {
   // Packet type always takes two bytes to encode (varint key + varint enum).
   reserved_size += 2;
 
-  // Status field takes up to two bytes to encode (varint key + varint status).
+  // Status field always takes two bytes to encode (varint key + varint status).
   reserved_size += 2;
 
   // Payload field takes at least two bytes to encode (varint key + length).

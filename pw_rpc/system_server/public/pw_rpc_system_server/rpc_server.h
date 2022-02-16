@@ -14,6 +14,7 @@
 #pragma once
 
 #include "pw_rpc/server.h"
+#include "pw_stream/stream.h"
 
 namespace pw::rpc::system_server {
 

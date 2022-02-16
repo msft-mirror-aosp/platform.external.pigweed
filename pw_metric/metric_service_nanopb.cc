@@ -17,7 +17,7 @@
 #include <cstring>
 #include <span>
 
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 #include "pw_containers/vector.h"
 #include "pw_metric/metric.h"
 #include "pw_preprocessor/util.h"
@@ -27,8 +27,7 @@ namespace {
 
 class MetricWriter {
  public:
-  MetricWriter(
-      MetricService::ServerWriter<pw_metric_MetricResponse>& response_writer)
+  MetricWriter(rpc::ServerWriter<pw_metric_MetricResponse>& response_writer)
       : response_(pw_metric_MetricResponse_init_zero),
         response_writer_(response_writer) {}
 
@@ -79,7 +78,7 @@ class MetricWriter {
  private:
   pw_metric_MetricResponse response_;
   // This RPC stream writer handle must be valid for the metric writer lifetime.
-  MetricService::ServerWriter<pw_metric_MetricResponse>& response_writer_;
+  rpc::ServerWriter<pw_metric_MetricResponse>& response_writer_;
 };
 
 // Walk a metric tree recursively; passing metrics with their path (names) to a
@@ -128,7 +127,8 @@ class MetricWalker {
 
 }  // namespace
 
-void MetricService::Get(const pw_metric_MetricRequest& /* request */,
+void MetricService::Get(ServerContext&,
+                        const pw_metric_MetricRequest& /* request */,
                         ServerWriter<pw_metric_MetricResponse>& response) {
   // For now, ignore the request and just stream all the metrics back.
   MetricWriter writer(response);

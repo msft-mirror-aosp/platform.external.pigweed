@@ -16,6 +16,8 @@
 #include "pw_chrono/system_clock.h"
 #include "pw_sync/counting_semaphore.h"
 
+using pw::chrono::SystemClock;
+
 namespace pw::sync {
 
 inline CountingSemaphore::CountingSemaphore()
@@ -24,10 +26,9 @@ inline CountingSemaphore::CountingSemaphore()
 inline CountingSemaphore::~CountingSemaphore() {}
 
 inline bool CountingSemaphore::try_acquire_for(
-    pw::chrono::SystemClock::duration timeout) {
+    chrono::SystemClock::duration for_at_least) {
   // Due to spurious condition variable wakeups this cannot use wait_for().
-  return try_acquire_until(
-      pw::chrono::SystemClock::TimePointAfterAtLeast(timeout));
+  return try_acquire_until(chrono::SystemClock::now() + for_at_least);
 }
 
 inline CountingSemaphore::native_handle_type
