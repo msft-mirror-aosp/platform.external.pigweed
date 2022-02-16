@@ -15,8 +15,6 @@ syntax = "proto3";
 
 package pw.rpc;
 
-option java_package = "dev.pigweed.pw_rpc.proto";
-
 service EchoService {
   rpc Echo(EchoMessage) returns (EchoMessage) {}
 }

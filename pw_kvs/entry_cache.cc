@@ -118,9 +118,9 @@ StatusWithSize EntryCache::Find(FlashPartition& partition,
 }
 
 EntryMetadata EntryCache::AddNew(const KeyDescriptor& descriptor,
-                                 Address address) const {
+                                 Address entry_address) const {
   // TODO(hepler): DCHECK(!full());
-  Address* first_address = ResetAddresses(descriptors_.size(), address);
+  Address* first_address = ResetAddresses(descriptors_.size(), entry_address);
   descriptors_.push_back(descriptor);
   return EntryMetadata(descriptors_.back(), std::span(first_address, 1));
 }

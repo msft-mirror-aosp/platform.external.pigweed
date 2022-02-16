@@ -22,7 +22,6 @@ message TestRequest {
 
 message TestResponse {
   int32 value = 1;
-  repeated uint32 repeated_field = 2;
 }
 
 message TestStreamResponse {
@@ -33,10 +32,6 @@ message TestStreamResponse {
 message Empty {}
 
 service TestService {
-  rpc TestUnaryRpc(TestRequest) returns (TestResponse);
-  rpc TestAnotherUnaryRpc(TestRequest) returns (TestResponse);
-  rpc TestServerStreamRpc(TestRequest) returns (stream TestStreamResponse);
-  rpc TestClientStreamRpc(stream TestRequest) returns (TestStreamResponse);
-  rpc TestBidirectionalStreamRpc(stream TestRequest)
-      returns (stream TestStreamResponse);
+  rpc TestRpc(TestRequest) returns (TestResponse) {}
+  rpc TestStreamRpc(TestRequest) returns (stream TestStreamResponse) {}
 }

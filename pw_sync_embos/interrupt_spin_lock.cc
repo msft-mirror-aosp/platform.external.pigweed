@@ -15,28 +15,31 @@
 #include "pw_sync/interrupt_spin_lock.h"
 
 #include "RTOS.h"
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 
 namespace pw::sync {
 
 void InterruptSpinLock::lock() {
-  // Mask interrupts.
   OS_IncDI();
-
-  // Disable task switching to ensure kernel APIs cannot switch to other tasks
-  // which could then end up deadlocking recursively on this same lock.
-  OS_SuspendAllTasks();
-
   // We can't deadlock here so crash instead.
-  PW_DCHECK(!native_type_.locked,
-            "Recursive InterruptSpinLock::lock() detected");
-  native_type_.locked = true;
+  PW_CHECK(!native_type_.locked.load(std::memory_order_relaxed),
+           "Recursive InterruptSpinLock::lock() detected");
+  native_type_.locked.store(true, std::memory_order_relaxed);
+}
+
+bool InterruptSpinLock::try_lock() {
+  OS_IncDI();
+  if (native_type_.locked.load(std::memory_order_relaxed)) {
+    OS_DecRI();  // Already locked, restore interrupts and bail out.
+    return false;
+  }
+  native_type_.locked.store(true, std::memory_order_relaxed);
+  return true;
 }
 
 void InterruptSpinLock::unlock() {
-  native_type_.locked = false;
-  OS_ResumeAllSuspendedTasks();  // Restore task switching.
-  OS_DecRI();                    // Restore interrupts.
+  native_type_.locked.store(false, std::memory_order_relaxed);
+  OS_DecRI();
 }
 
 }  // namespace pw::sync

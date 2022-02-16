@@ -48,65 +48,65 @@ def varint_decode(encoded):
     return None
 
 
-# Token string: "event_type|flag|module|group|label|<optional DATA_FMT>"
+# Token string: "event_type|flag|module|group|label|<optional data_fmt>"
 class TokenIdx(IntEnum):
-    EVENT_TYPE = 0
-    FLAG = 1
-    MODULE = 2
-    GROUP = 3
-    LABEL = 4
-    DATA_FMT = 5  # optional
+    EventType = 0
+    Flag = 1
+    Module = 2
+    Group = 3
+    Label = 4
+    data_fmt = 5  # optional
 
 
 def get_trace_type(type_str):
     if type_str == "PW_TRACE_EVENT_TYPE_INSTANT":
-        return trace.TraceType.INSTANTANEOUS
+        return trace.TraceType.Instantaneous
     if type_str == "PW_TRACE_EVENT_TYPE_INSTANT_GROUP":
-        return trace.TraceType.INSTANTANEOUS_GROUP
+        return trace.TraceType.InstantaneousGroup
     if type_str == "PW_TRACE_EVENT_TYPE_ASYNC_START":
-        return trace.TraceType.ASYNC_START
+        return trace.TraceType.AsyncStart
     if type_str == "PW_TRACE_EVENT_TYPE_ASYNC_STEP":
-        return trace.TraceType.ASYNC_STEP
+        return trace.TraceType.AsyncStep
     if type_str == "PW_TRACE_EVENT_TYPE_ASYNC_END":
-        return trace.TraceType.ASYNC_END
+        return trace.TraceType.AsyncEnd
     if type_str == "PW_TRACE_EVENT_TYPE_DURATION_START":
-        return trace.TraceType.DURATION_START
+        return trace.TraceType.DurationStart
     if type_str == "PW_TRACE_EVENT_TYPE_DURATION_END":
-        return trace.TraceType.DURATION_END
+        return trace.TraceType.DurationEnd
     if type_str == "PW_TRACE_EVENT_TYPE_DURATION_GROUP_START":
-        return trace.TraceType.DURATION_GROUP_START
+        return trace.TraceType.DurationGroupStart
     if type_str == "PW_TRACE_EVENT_TYPE_DURATION_GROUP_END":
-        return trace.TraceType.DURATION_GROUP_END
-    return trace.TraceType.INVALID
+        return trace.TraceType.DurationGroupEnd
+    return trace.TraceType.Invalid
 
 
 def has_trace_id(token_string):
     token_values = token_string.split("|")
-    return trace.event_has_trace_id(token_values[TokenIdx.EVENT_TYPE])
+    return trace.event_has_trace_id(token_values[TokenIdx.EventType])
 
 
 def has_data(token_string):
     token_values = token_string.split("|")
-    return len(token_values) > TokenIdx.DATA_FMT
+    return len(token_values) > TokenIdx.data_fmt
 
 
 def create_trace_event(token_string, timestamp_us, trace_id, data):
     token_values = token_string.split("|")
     return trace.TraceEvent(event_type=get_trace_type(
-        token_values[TokenIdx.EVENT_TYPE]),
-                            module=token_values[TokenIdx.MODULE],
-                            label=token_values[TokenIdx.LABEL],
+        token_values[TokenIdx.EventType]),
+                            module=token_values[TokenIdx.Module],
+                            label=token_values[TokenIdx.Label],
                             timestamp_us=timestamp_us,
-                            group=token_values[TokenIdx.GROUP],
+                            group=token_values[TokenIdx.Group],
                             trace_id=trace_id,
-                            flags=token_values[TokenIdx.FLAG],
+                            flags=token_values[TokenIdx.Flag],
                             has_data=has_data(token_string),
-                            data_fmt=(token_values[TokenIdx.DATA_FMT]
+                            data_fmt=(token_values[TokenIdx.data_fmt]
                                       if has_data(token_string) else ""),
                             data=data if has_data(token_string) else b'')
 
 
-def parse_trace_event(buffer, db, last_time, ticks_per_second):
+def parse_trace_event(buffer, db, last_time, ticks_per_second=1000):
     """Parse a single trace event from bytes"""
     us_per_tick = 1000000 / ticks_per_second
     idx = 0
@@ -141,7 +141,7 @@ def parse_trace_event(buffer, db, last_time, ticks_per_second):
     return create_trace_event(token_string, timestamp_us, trace_id, data)
 
 
-def get_trace_events(databases, raw_trace_data, ticks_per_second):
+def get_trace_events(databases, raw_trace_data):
     """Handles the decoding traces."""
 
     db = tokens.Database.merged(*databases)
@@ -157,7 +157,7 @@ def get_trace_events(databases, raw_trace_data, ticks_per_second):
             break
 
         event = parse_trace_event(raw_trace_data[idx + 1:idx + 1 + size], db,
-                                  last_timestamp, ticks_per_second)
+                                  last_timestamp)
         if event:
             last_timestamp = event.timestamp_us
             events.append(event)
@@ -181,10 +181,10 @@ def save_trace_file(trace_lines, file_name):
         output_file.write("{}]")
 
 
-def get_trace_events_from_file(databases, input_file_name, ticks_per_second):
+def get_trace_events_from_file(databases, input_file_name):
     """Get trace events from a file."""
     raw_trace_data = get_trace_data_from_file(input_file_name)
-    return get_trace_events(databases, raw_trace_data, ticks_per_second)
+    return get_trace_events(databases, raw_trace_data)
 
 
 def _parse_args():
@@ -207,20 +207,12 @@ def _parse_args():
                         '--output',
                         dest='output_file',
                         help=('The json file to which to write the output.'))
-    parser.add_argument(
-        '-t',
-        '--ticks_per_second',
-        type=int,
-        dest='ticks_per_second',
-        default=1000,
-        help=('The clock rate of the trace events (Default 1000).'))
 
     return parser.parse_args()
 
 
 def _main(args):
-    events = get_trace_events_from_file(args.databases, args.input_file,
-                                        args.ticks_per_second)
+    events = get_trace_events_from_file(args.databases, args.input_file)
     json_lines = trace.generate_trace_json(events)
     save_trace_file(json_lines, args.output_file)
 

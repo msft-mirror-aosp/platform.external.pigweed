@@ -39,17 +39,10 @@ HELPER_GERRIT = 'pigweed-internal'
 HELPER_PROJECT = 'requires-helper'
 HELPER_REPO = 'sso://{}/{}'.format(HELPER_GERRIT, HELPER_PROJECT)
 
-# Pass checks that look for "DO NOT ..." and block submission.
-_DNS = ' '.join((
-    'DO',
-    'NOT',
-    'SUBMIT',
-))
-
 # Subset of the output from pushing to Gerrit.
 DEFAULT_OUTPUT = f'''
 remote:
-remote:   https://{HELPER_GERRIT}-review.git.corp.google.com/c/{HELPER_PROJECT}/+/123456789 {_DNS} [NEW]
+remote:   https://{HELPER_GERRIT}-review.git.corp.google.com/c/{HELPER_PROJECT}/+/123456789 DO NOT SUBMIT [NEW]
 remote:
 '''.strip()
 
@@ -110,7 +103,7 @@ def create_commit(requires_dir: Path, requirements) -> None:
     _run_command(['git', 'add', path], cwd=requires_dir)
 
     commit_message = [
-        f'{_DNS} {change_id[0:10]}',
+        f'DO NOT SUBMIT {change_id[0:10]}',
         '',
         f'Change-Id: I{change_id}',
     ]
@@ -131,7 +124,7 @@ def push_commit(requires_dir: Path, push=True) -> str:
     output = DEFAULT_OUTPUT
     if push:
         res = _run_command(
-            ['git', 'push', HELPER_REPO, '+HEAD:refs/for/main'],
+            ['git', 'push', HELPER_REPO, '+HEAD:refs/for/master'],
             cwd=requires_dir,
         )
         output = res.stderr.decode()

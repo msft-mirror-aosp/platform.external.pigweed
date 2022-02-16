@@ -1,4 +1,4 @@
-# Copyright 2021 The Pigweed Authors
+# Copyright 2020 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -11,8 +11,17 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""pw_trace"""
+"""The pw_trace package."""
 
 import setuptools  # type: ignore
 
-setuptools.setup()  # Package definition in setup.cfg
+setuptools.setup(
+    name='pw_trace',
+    version='0.0.1',
+    author='Pigweed Authors',
+    author_email='pigweed-developers@googlegroups.com',
+    description='Tools for dealing with trace data',
+    packages=setuptools.find_packages(),
+    package_data={'pw_trace': ['py.typed']},
+    zip_safe=False,
+)

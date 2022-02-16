@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 #include "pw_bloat/bloat_this_binary.h"
 #include "pw_log/log.h"
 #include "pw_rpc/server.h"
@@ -24,9 +24,15 @@ class Output : public pw::rpc::ChannelOutput {
  public:
   Output() : ChannelOutput("output") {}
 
-  pw::Status Send(std::span<const std::byte> buffer) override {
+  std::span<std::byte> AcquireBuffer() override { return buffer_; }
+
+  pw::Status SendAndReleaseBuffer(std::span<const std::byte> buffer) override {
+    PW_DCHECK_PTR_EQ(buffer.data(), buffer_);
     return pw::sys_io::WriteBytes(buffer).status();
   }
+
+ private:
+  std::byte buffer_[128];
 };
 
 namespace my_product {
@@ -45,13 +51,10 @@ int main() {
   PW_LOG_INFO("We care about optimizing: %d", *unoptimizable);
 
   std::byte packet_buffer[128];
-  pw::sys_io::ReadBytes(packet_buffer)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-  pw::sys_io::WriteBytes(packet_buffer)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  pw::sys_io::ReadBytes(packet_buffer);
+  pw::sys_io::WriteBytes(packet_buffer);
 
-  my_product::server.ProcessPacket(packet_buffer, my_product::output)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  my_product::server.ProcessPacket(packet_buffer, my_product::output);
 
   return static_cast<int>(packet_buffer[92]);
 }

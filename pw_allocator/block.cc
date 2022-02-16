@@ -16,8 +16,6 @@
 
 #include <cstring>
 
-#include "pw_assert/check.h"
-
 namespace pw::allocator {
 
 Status Block::Init(const std::span<std::byte> region, Block** block) {
