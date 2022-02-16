@@ -59,9 +59,7 @@ class AlignedWriter {
     // TODO(hepler): Add DCHECK to ensure that buffer.size() >= alignment_bytes.
   }
 
-  ~AlignedWriter() {
-    Flush().IgnoreError();  // TODO(pwbug/387): Handle Status properly
-  }
+  ~AlignedWriter() { Flush(); }
 
   // Writes bytes to the AlignedWriter. The output may be called if the internal
   // buffer is filled.

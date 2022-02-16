@@ -14,7 +14,7 @@
 
 #include "pw_i2c/address.h"
 
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 
 namespace pw::i2c {
 
