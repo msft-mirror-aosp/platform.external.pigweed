@@ -93,9 +93,6 @@ def check_version(manifest, cipd_path, package_name):
 
     with open(manifest, 'r') as ins:
         data = json.load(ins)
-    # TODO(pwbug/599) Always assume this is a dict.
-    if isinstance(data, dict):
-        data = data['packages']
 
     path = None
     expected_version = None

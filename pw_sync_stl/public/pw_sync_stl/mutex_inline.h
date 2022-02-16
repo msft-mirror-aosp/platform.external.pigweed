@@ -19,27 +19,14 @@ namespace pw::sync {
 
 inline Mutex::Mutex() : native_type_() {}
 
-inline void Mutex::lock() {
-  native_handle().lock();
-  native_type_.SetLockedState(true);
-}
+inline Mutex::~Mutex() {}
 
-inline bool Mutex::try_lock() {
-  if (native_handle().try_lock()) {
-    native_type_.SetLockedState(true);
-    return true;
-  }
-  return false;
-}
+inline void Mutex::lock() { native_type_.lock(); }
 
-inline void Mutex::unlock() {
-  native_type_.SetLockedState(false);
-  native_handle().unlock();
-}
+inline bool Mutex::try_lock() { return native_type_.try_lock(); }
 
-// Return a std::timed_mutex instead of the customized NativeMutex class.
-inline Mutex::native_handle_type Mutex::native_handle() {
-  return native_type_.mutex;
-}
+inline void Mutex::unlock() { native_type_.unlock(); }
+
+inline Mutex::native_handle_type Mutex::native_handle() { return native_type_; }
 
 }  // namespace pw::sync
