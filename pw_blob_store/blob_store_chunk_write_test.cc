@@ -34,22 +34,18 @@ class BlobStoreChunkTest : public ::testing::Test {
   BlobStoreChunkTest() : flash_(kFlashAlignment), partition_(&flash_) {}
 
   void InitFlashTo(std::span<const std::byte> contents) {
-    partition_.Erase()
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    partition_.Erase();
     std::memcpy(flash_.buffer().data(), contents.data(), contents.size());
   }
 
   void InitSourceBufferToRandom(uint64_t seed) {
-    partition_.Erase()
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    partition_.Erase();
     random::XorShiftStarRng64 rng(seed);
-    rng.Get(source_buffer_)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    rng.Get(source_buffer_);
   }
 
   void InitSourceBufferToFill(char fill) {
-    partition_.Erase()
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    partition_.Erase();
     std::memset(source_buffer_.data(), fill, source_buffer_.size());
   }
 
@@ -66,7 +62,7 @@ class BlobStoreChunkTest : public ::testing::Test {
         name, partition_, &checksum, kvs::TestKvs(), kBufferSize);
     EXPECT_EQ(OkStatus(), blob.Init());
 
-    BlobStore::BlobWriter writer(blob, metadata_buffer_);
+    BlobStore::BlobWriter writer(blob);
     EXPECT_EQ(OkStatus(), writer.Open());
     EXPECT_EQ(OkStatus(), writer.Erase());
 
@@ -110,12 +106,9 @@ class BlobStoreChunkTest : public ::testing::Test {
   static constexpr size_t kSectorSize = 2048;
   static constexpr size_t kSectorCount = 2;
   static constexpr size_t kBlobDataSize = (kSectorCount * kSectorSize);
-  static constexpr size_t kMetadataBufferSize =
-      BlobStore::BlobWriter::RequiredMetadataBufferSize(0);
 
   kvs::FakeFlashMemoryBuffer<kSectorSize, kSectorCount> flash_;
   kvs::FlashPartition partition_;
-  std::array<std::byte, kMetadataBufferSize> metadata_buffer_;
   std::array<std::byte, kBlobDataSize> source_buffer_;
 };
 

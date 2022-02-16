@@ -17,7 +17,7 @@
 #include "pw_protobuf/encoder.h"
 #include "pw_status/status.h"
 
-namespace pw::cpu_exception::cortex_m {
+namespace pw::cpu_exception {
 
 // Dumps the cpu state struct as a proto (defined in
 // pw_cpu_exception_cortex_m_protos/cpu_state.proto). The final proto is up to
@@ -27,7 +27,7 @@ namespace pw::cpu_exception::cortex_m {
 //   OK - Entire proto was written to the encoder.
 //   RESOURCE_EXHAUSTED - Insufficient space to encode proto.
 //   UNKNOWN - Some other proto encoding error occurred.
-Status DumpCpuStateProto(protobuf::StreamEncoder& dest,
+Status DumpCpuStateProto(protobuf::Encoder& dest,
                          const pw_cpu_exception_State& cpu_state);
 
-}  // namespace pw::cpu_exception::cortex_m
+}  // namespace pw::cpu_exception

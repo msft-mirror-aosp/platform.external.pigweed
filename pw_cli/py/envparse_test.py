@@ -16,7 +16,7 @@
 import math
 import unittest
 
-from pw_cli import envparse
+import pw_cli.envparse as envparse
 
 # pylint: disable=no-member
 
@@ -38,7 +38,7 @@ class TestEnvironmentParser(unittest.TestCase):
             'ReVeRsE': 'pigweed',
         }
 
-        self.parser = envparse.EnvironmentParser(error_on_unrecognized=True)
+        self.parser = envparse.EnvironmentParser()
         self.parser.add_var('PATH')
         self.parser.add_var('FOO', type=int)
         self.parser.add_var('BAR', type=bool)
@@ -100,8 +100,7 @@ class TestEnvironmentParserWithPrefix(unittest.TestCase):
         }
 
     def test_parse_unrecognized_variable(self):
-        parser = envparse.EnvironmentParser(prefix='PW_',
-                                            error_on_unrecognized=True)
+        parser = envparse.EnvironmentParser(prefix='PW_')
         parser.add_var('PW_FOO')
         parser.add_var('PW_BAR')
 
@@ -109,16 +108,14 @@ class TestEnvironmentParserWithPrefix(unittest.TestCase):
             parser.parse_env(env=self.raw_env)
 
     def test_parse_unrecognized_but_allowed_suffix(self):
-        parser = envparse.EnvironmentParser(prefix='PW_',
-                                            error_on_unrecognized=True)
+        parser = envparse.EnvironmentParser(prefix='PW_')
         parser.add_allowed_suffix('_ALLOWED_SUFFIX')
 
         env = parser.parse_env(env={'PW_FOO_ALLOWED_SUFFIX': '001'})
         self.assertEqual(env.PW_FOO_ALLOWED_SUFFIX, '001')
 
     def test_parse_allowed_suffix_but_not_suffix(self):
-        parser = envparse.EnvironmentParser(prefix='PW_',
-                                            error_on_unrecognized=True)
+        parser = envparse.EnvironmentParser(prefix='PW_')
         parser.add_allowed_suffix('_ALLOWED_SUFFIX')
 
         with self.assertRaises(ValueError):
@@ -135,8 +132,7 @@ class TestEnvironmentParserWithPrefix(unittest.TestCase):
         self.assertEqual(env.PW_BAR, self.raw_env['PW_BAR'])
 
     def test_add_var_without_prefix(self):
-        parser = envparse.EnvironmentParser(prefix='PW_',
-                                            error_on_unrecognized=True)
+        parser = envparse.EnvironmentParser(prefix='PW_')
         with self.assertRaises(ValueError):
             parser.add_var('FOO')
 

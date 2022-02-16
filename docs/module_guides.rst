@@ -8,7 +8,7 @@ Modules may contain code from multiple languages, including C, C++, Go, Rust,
 Shell, Batch and Python.
 
 .. toctree::
-  :titlesonly:
+  :maxdepth: 1
   :glob:
 
   */docs

@@ -20,56 +20,53 @@ namespace pw::protobuf {
 namespace {
 
 TEST(Encoder, SizeTypeIsConfigured) {
-  static_assert(config::kMaxVarintSize == sizeof(uint8_t));
+  static_assert(sizeof(Encoder::SizeType) == sizeof(uint8_t));
 }
 
 TEST(Encoder, NestedWriteSmallerThanVarintSize) {
   std::array<std::byte, 256> buffer;
+  NestedEncoder<2, 2> encoder(buffer);
 
-  MemoryEncoder encoder(buffer);
+  encoder.Push(1);
+  // 1 byte key + 1 byte size + 125 byte value = 127 byte nested length.
+  EXPECT_EQ(encoder.WriteBytes(2, bytes::Initialized<125>(0xaa)), OkStatus());
+  encoder.Pop();
 
-  {
-    StreamEncoder nested = encoder.GetNestedEncoder(1);
-    // 1 byte key + 1 byte size + 125 byte value = 127 byte nested length.
-    EXPECT_EQ(nested.WriteBytes(2, bytes::Initialized<125>(0xaa)), OkStatus());
-  }
-
-  EXPECT_EQ(encoder.status(), OkStatus());
+  auto result = encoder.Encode();
+  EXPECT_EQ(result.status(), OkStatus());
 }
 
-TEST(Encoder, NestedWriteLargerThanVarintSizeReturnsResourceExhausted) {
+TEST(Encoder, NestedWriteLargerThanVarintSizeReturnsOutOfRange) {
   std::array<std::byte, 256> buffer;
+  NestedEncoder<2, 2> encoder(buffer);
 
-  MemoryEncoder encoder(buffer);
+  // Try to write a larger nested message than the max nested varint value.
+  encoder.Push(1);
+  // 1 byte key + 1 byte size + 126 byte value = 128 byte nested length.
+  EXPECT_EQ(encoder.WriteBytes(2, bytes::Initialized<126>(0xaa)),
+            Status::OutOfRange());
+  EXPECT_EQ(encoder.WriteUint32(3, 42), Status::OutOfRange());
+  encoder.Pop();
 
-  {
-    // Try to write a larger nested message than the max nested varint value.
-    StreamEncoder nested = encoder.GetNestedEncoder(1);
-    // 1 byte key + 1 byte size + 126 byte value = 128 byte nested length.
-    EXPECT_EQ(nested.WriteBytes(2, bytes::Initialized<126>(0xaa)),
-              Status::ResourceExhausted());
-    EXPECT_EQ(nested.WriteUint32(3, 42), Status::ResourceExhausted());
-  }
-
-  EXPECT_EQ(encoder.status(), Status::ResourceExhausted());
+  auto result = encoder.Encode();
+  EXPECT_EQ(result.status(), Status::OutOfRange());
 }
 
-TEST(Encoder, NestedMessageLargerThanVarintSizeReturnsResourceExhausted) {
+TEST(Encoder, NestedMessageLargerThanVarintSizeReturnsOutOfRange) {
   std::array<std::byte, 256> buffer;
+  NestedEncoder<2, 2> encoder(buffer);
 
-  MemoryEncoder encoder(buffer);
+  // Try to write a larger nested message than the max nested varint value as
+  // multiple smaller writes.
+  encoder.Push(1);
+  EXPECT_EQ(encoder.WriteBytes(2, bytes::Initialized<60>(0xaa)), OkStatus());
+  EXPECT_EQ(encoder.WriteBytes(3, bytes::Initialized<60>(0xaa)), OkStatus());
+  EXPECT_EQ(encoder.WriteBytes(4, bytes::Initialized<60>(0xaa)),
+            Status::OutOfRange());
+  encoder.Pop();
 
-  {
-    // Try to write a larger nested message than the max nested varint value as
-    // multiple smaller writes.
-    StreamEncoder nested = encoder.GetNestedEncoder(1);
-    EXPECT_EQ(nested.WriteBytes(2, bytes::Initialized<60>(0xaa)), OkStatus());
-    EXPECT_EQ(nested.WriteBytes(3, bytes::Initialized<60>(0xaa)), OkStatus());
-    EXPECT_EQ(nested.WriteBytes(4, bytes::Initialized<60>(0xaa)),
-              Status::ResourceExhausted());
-  }
-
-  EXPECT_EQ(encoder.status(), Status::ResourceExhausted());
+  auto result = encoder.Encode();
+  EXPECT_EQ(result.status(), Status::OutOfRange());
 }
 
 }  // namespace

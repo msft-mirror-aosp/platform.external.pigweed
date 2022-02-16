@@ -26,8 +26,7 @@ namespace pw::this_thread {
 // particular on the mechanics of the OS scheduler in use and the state of the
 // system.
 //
-// Precondition: This can only be called from a thread, meaning the scheduler
-// must be running.
+// This can only be called from a thread, meaning the scheduler is running.
 void yield() noexcept;
 
 }  // namespace pw::this_thread
