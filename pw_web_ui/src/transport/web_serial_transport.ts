@@ -13,15 +13,14 @@
 // the License.
 
 /* eslint-env browser */
-import {BehaviorSubject, Observable, Subject, Subscription} from 'rxjs';
-
+import {BehaviorSubject, Subject, Subscription, Observable} from 'rxjs';
 import DeviceTransport from './device_transport';
 
 const DEFAULT_SERIAL_OPTIONS: SerialOptions & {baudRate: number} = {
   // Some versions of chrome use `baudrate` (linux)
-  baudrate: 115200,
+  baudrate: 921600,
   // Some versions use `baudRate` (chromebook)
-  baudRate: 115200,
+  baudRate: 921600,
   databits: 8,
   parity: 'none',
   stopbits: 1,
@@ -109,11 +108,11 @@ export class WebSerialTransport implements DeviceTransport {
 
     this.rxSubscriptions.push(
       this.activePortConnectionConnection.chunks.subscribe(
-        (chunk: any) => {
+        chunk => {
           this.chunks.next(chunk);
         },
-        (err: any) => {
-          throw new Error(`Chunks observable had an unexpected error ${err}`);
+        err => {
+          throw new Error(`Chunks observable had an unexpeted error ${err}`);
         },
         () => {
           this.connected.next(false);
@@ -125,7 +124,7 @@ export class WebSerialTransport implements DeviceTransport {
     );
 
     this.rxSubscriptions.push(
-      this.activePortConnectionConnection.errors.subscribe((error: any) => {
+      this.activePortConnectionConnection.errors.subscribe(error => {
         this.errors.next(error);
         if (error instanceof DeviceLostError) {
           // The device has been lost

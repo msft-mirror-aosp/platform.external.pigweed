@@ -14,9 +14,8 @@
 
 /* eslint-env browser, jasmine */
 import {last, take} from 'rxjs/operators';
-
 import {SerialMock} from './serial_mock';
-import {DeviceLockedError, WebSerialTransport} from './web_serial_transport';
+import {WebSerialTransport, DeviceLockedError} from './web_serial_transport';
 
 describe('WebSerialTransport', () => {
   let serialMock: SerialMock;

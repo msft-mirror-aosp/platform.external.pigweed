@@ -27,8 +27,7 @@ TEST(TokenizedTrace, DumpSmallBuffer) {
   PW_TRACE_SET_ENABLED(true);
   PW_TRACE_INSTANT("test1");
   PW_TRACE_INSTANT("test2");
-  pw::trace::DumpTraceBufferToLog()
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  pw::trace::DumpTraceBufferToLog();
 }
 
 TEST(TokenizedTrace, DumpLargeBuffer) {
@@ -40,6 +39,5 @@ TEST(TokenizedTrace, DumpLargeBuffer) {
   for (int i = 0; i < 100; i++) {
     PW_TRACE_INSTANT("test");
   }
-  pw::trace::DumpTraceBufferToLog()
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  pw::trace::DumpTraceBufferToLog();
 }

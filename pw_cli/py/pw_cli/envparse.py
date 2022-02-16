@@ -17,7 +17,6 @@ import argparse
 from dataclasses import dataclass
 import os
 from typing import Callable, Dict, Generic, IO, List, Mapping, Optional, TypeVar
-from typing import Union
 
 
 class EnvNamespace(argparse.Namespace):  # pylint: disable=too-few-public-methods
@@ -57,9 +56,7 @@ class EnvironmentParser:
           start with the specified string.
         error_on_unrecognized: If True and prefix is provided, will raise an
           exception if the environment contains a variable with the specified
-          prefix that is not registered on the EnvironmentParser. If None,
-          checks existence of PW_ENVIRONMENT_NO_ERROR_ON_UNRECOGNIZED (but not
-          value).
+          prefix that is not registered on the EnvironmentParser.
 
     Example:
 
@@ -73,13 +70,9 @@ class EnvironmentParser:
     """
     def __init__(self,
                  prefix: Optional[str] = None,
-                 error_on_unrecognized: Union[bool, None] = None) -> None:
+                 error_on_unrecognized: bool = True) -> None:
         self._prefix: Optional[str] = prefix
-        if error_on_unrecognized is None:
-            varname = 'PW_ENVIRONMENT_NO_ERROR_ON_UNRECOGNIZED'
-            error_on_unrecognized = varname not in os.environ
         self._error_on_unrecognized: bool = error_on_unrecognized
-
         self._variables: Dict[str, VariableDescriptor] = {}
         self._allowed_suffixes: List[str] = []
 
@@ -109,7 +102,7 @@ class EnvironmentParser:
         self._variables[name] = VariableDescriptor(name, type, default)
 
     def add_allowed_suffix(self, suffix: str) -> None:
-        """Registers an environment variable name suffix to be allowed."""
+        """Registers an environmant variable name suffix to be allowed."""
 
         self._allowed_suffixes.append(suffix)
 

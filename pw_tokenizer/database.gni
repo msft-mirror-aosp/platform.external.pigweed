@@ -91,12 +91,15 @@ template("pw_tokenizer_database") {
     not_needed([ "_domain" ])
   }
 
+  # Restrict parallelism for updating this database file to one thread. This
+  # makes it safe to update it from multiple toolchains.
+  pool("$target_name._pool") {
+    depth = 1
+  }
+
   pw_python_action(target_name) {
     script = "$dir_pw_tokenizer/py/pw_tokenizer/database.py"
-
-    # Restrict parallelism for updating this database file to one thread. This
-    # makes it safe to update it from multiple toolchains.
-    pool = "$dir_pw_tokenizer/pool:database($default_toolchain)"
+    pool = ":$target_name._pool"
 
     inputs = _input_databases
 
@@ -116,9 +119,9 @@ template("pw_tokenizer_database") {
 
     args += [
       "--database",
-      rebase_path(_database, root_build_dir),
+      rebase_path(_database),
     ]
-    args += rebase_path(_input_databases, root_build_dir)
+    args += rebase_path(_input_databases)
 
     foreach(target, _targets) {
       args += [ "<TARGET_FILE($target)>$_domain" ]
@@ -131,8 +134,9 @@ template("pw_tokenizer_database") {
     }
 
     if (defined(invoker.optional_paths)) {
-      _paths = rebase_path(invoker.optional_paths, root_build_dir)
-      assert(filter_include(_paths, [ "../*" ]) == [],
+      _paths = rebase_path(invoker.optional_paths)
+      _out_dir = rebase_path(root_build_dir)
+      assert(filter_include(_paths, [ "$_out_dir/*" ]) == _paths,
              "Paths in 'optional_paths' must be in the out directory. Use " +
                  "'input_databases' for files in the source tree.")
       args += _paths
