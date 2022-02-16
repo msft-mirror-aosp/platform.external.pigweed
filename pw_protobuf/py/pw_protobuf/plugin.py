@@ -20,9 +20,9 @@ protobuf messages in the pw_protobuf format.
 
 import sys
 
-from google.protobuf.compiler import plugin_pb2
+import google.protobuf.compiler.plugin_pb2 as plugin_pb2
 
-from pw_protobuf import codegen_pwpb
+import pw_protobuf.codegen_pwpb as codegen_pwpb
 
 
 def process_proto_request(req: plugin_pb2.CodeGeneratorRequest,

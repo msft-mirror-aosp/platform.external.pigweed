@@ -19,7 +19,11 @@
 // will abort. However, the assert_basic backend supports non-aborting assert;
 // see the note in assert_backend_compile_test.cc.
 
-#include "pw_assert/check.h"
+// The compile tests verifies that the short macros compile, so enable them.
+#undef PW_ASSERT_USE_SHORT_NAMES
+#define PW_ASSERT_USE_SHORT_NAMES 1
+
+#include "pw_assert/assert.h"
 
 static void EnsureNullIsIncluded(void) {
   // This is a compile check to ensure NULL is defined. It comes before the
@@ -30,8 +34,7 @@ static void EnsureNullIsIncluded(void) {
 
 #include <stdbool.h>
 
-#include "pw_assert/assert.h"
-#include "pw_assert/short.h"
+#include "pw_assert/light.h"
 #include "pw_status/status.h"
 
 #ifdef __cplusplus
@@ -168,6 +171,7 @@ void AssertBackendCompileTestsInC(void) {
     PW_CHECK_INT_LE(x_int, y_int, "INT: " FAIL_IF_DISPLAYED_ARGS, z);
   }
 
+  // Note: This requires enabling PW_ASSERT_USE_SHORT_NAMES 1 above.
   {  // TEST(Check, ShortNamesWork) {
     MAYBE_SKIP_TEST;
 

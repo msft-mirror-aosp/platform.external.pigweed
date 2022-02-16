@@ -17,7 +17,6 @@
 #include <cstring>
 #include <span>
 
-#include "pw_string/util.h"
 #include "pw_thread_threadx/config.h"
 #include "tx_api.h"
 #include "tx_thread.h"
@@ -35,15 +34,15 @@ namespace pw::thread::threadx {
 //
 // Example usage:
 //
-//   std::array<ULONG, kFooStackSizeWords> example_thread_stack;
+//   std::array<ULONG, 42> example_thread_stack;
 //   pw::thread::threadx::Context example_thread_context(example_thread_stack);
 //   void StartExampleThread() {
-//      pw::thread::DetachedThread(
+//      pw::thread::Thread(
 //        pw::thread::threadx::Options()
-//            .set_name("example_thread")
+//            .set_name("static_example_thread")
 //            .set_priority(kFooPriority)
-//            .set_context(example_thread_context),
-//        example_thread_function);
+//            .set_static_context(example_thread_context),
+//        example_thread_function).detach();
 //   }
 class Context {
  public:
@@ -64,12 +63,17 @@ class Context {
   void set_in_use(bool in_use = true) { in_use_ = in_use; }
 
   const char* name() const { return name_.data(); }
-  void set_name(const char* name) { string::Copy(name, name_); }
+  void set_name(const char* name) {
+    strncpy(name_.data(), name, name_.size() - 1);
+    // Forcefully NULL terminate as strncpy does not NULL terminate if the count
+    // limit is hit.
+    name_[name_.size() - 1] = '\0';
+  }
 
   using ThreadRoutine = void (*)(void* arg);
   void set_thread_routine(ThreadRoutine entry, void* arg) {
-    user_thread_entry_function_ = entry;
-    user_thread_entry_arg_ = arg;
+    entry_ = entry;
+    arg_ = arg;
   }
 
   bool detached() const { return detached_; }
@@ -82,14 +86,14 @@ class Context {
   TX_EVENT_FLAGS_GROUP& join_event_group() { return event_group_; }
 #endif  // PW_THREAD_JOINING_ENABLED
 
-  static void ThreadEntryPoint(ULONG void_context_ptr);
+  static void RunThread(ULONG void_context_ptr);
   static void DeleteThread(Context& context);
 
   TX_THREAD tcb_;
   std::span<ULONG> stack_span_;
 
-  ThreadRoutine user_thread_entry_function_ = nullptr;
-  void* user_thread_entry_arg_ = nullptr;
+  ThreadRoutine entry_ = nullptr;
+  void* arg_ = nullptr;
 #if PW_THREAD_JOINING_ENABLED
   // Note that the ThreadX life cycle of this event group is managed together
   // with the thread life cycle, not this object's life cycle.
@@ -100,16 +104,15 @@ class Context {
   bool thread_done_ = false;
 
   // The TCB does not have storage for the name, ergo we provide storage for
-  // the thread's name which can be truncated down to just a null delimiter.
-  std::array<char, config::kMaximumNameLength + 1> name_;
+  // the thread's name which can be truncated down to just a null delimeter.
+  std::array<char, config::kMaximumNameLength> name_;
 };
 
 // Static thread context allocation including the stack along with the Context.
 //
 // Example usage:
 //
-//   pw::thread::threadx::ContextWithStack<kFooStackSizeWords>
-//       example_thread_context;
+//   pw::thread::threadx::ContextWithStack<42> example_thread_context;
 //   void StartExampleThread() {
 //      pw::thread::Thread(
 //        pw::thread::threadx::Options()

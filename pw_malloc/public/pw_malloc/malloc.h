@@ -13,12 +13,10 @@
 // the License.
 #pragma once
 
-#include <stdint.h>
-
 #if __cplusplus
 extern "C" {
 #endif
-void pw_MallocInit(uint8_t* heap_low_addr, uint8_t* heap_high_addr);
+void pw_MallocInit();
 #if __cplusplus
 }
 #endif

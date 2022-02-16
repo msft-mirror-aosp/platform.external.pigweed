@@ -217,7 +217,7 @@ libraries.
 
   _library_args = [
     "--library-path",
-    rebase_path(arduino_core_library_path, root_build_dir),
+    rebase_path(arduino_core_library_path),
     "--library-names",
     "Time",
     "Wire",
