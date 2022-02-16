@@ -181,7 +181,7 @@ TEST_F(WriteUnnumberedFrame, PayloadTooLarge_WritesNothing) {
   EXPECT_EQ(0u, writer_.bytes_written());
 }
 
-class ErrorWriter : public stream::NonSeekableWriter {
+class ErrorWriter : public stream::Writer {
  private:
   Status DoWrite(ConstByteSpan) override { return Status::Unimplemented(); }
 };

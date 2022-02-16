@@ -22,7 +22,7 @@ import pw_rpc.client
 from pw_rpc.callback_client import OptionalTimeout, UseDefault
 from pw_unit_test_proto import unit_test_pb2
 
-_LOG = logging.getLogger(__package__)
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -36,11 +36,6 @@ class TestCase:
 
     def __repr__(self) -> str:
         return f'TestCase({str(self)})'
-
-
-def _test_case(raw_test_case: unit_test_pb2.TestCaseDescriptor) -> TestCase:
-    return TestCase(raw_test_case.suite_name, raw_test_case.test_name,
-                    raw_test_case.file_name)
 
 
 @dataclass(frozen=True)
@@ -128,21 +123,15 @@ def run_tests(rpcs: pw_rpc.client.Services,
     True if all tests pass.
     """
     unit_test_service = rpcs.pw.unit_test.UnitTest  # type: ignore[attr-defined]
-    request = unit_test_service.Run.request(
-        report_passed_expectations=report_passed_expectations,
-        test_suite=test_suites)
-    call = unit_test_service.Run.invoke(request, timeout_s=timeout_s)
-    test_responses = iter(call)
+
+    test_responses = iter(
+        unit_test_service.Run(
+            report_passed_expectations=report_passed_expectations,
+            test_suite=test_suites,
+            pw_rpc_timeout_s=timeout_s))
 
     # Read the first response, which must be a test_run_start message.
-    try:
-        first_response = next(test_responses)
-    except StopIteration:
-        _LOG.error(
-            'The "test_run_start" message was dropped! UnitTest.Run '
-            'concluded with %s.', call.status)
-        raise
-
+    first_response = next(test_responses)
     if not first_response.HasField('test_run_start'):
         raise ValueError(
             'Expected a "test_run_start" response from pw.unit_test.Run, '
@@ -157,7 +146,9 @@ def run_tests(rpcs: pw_rpc.client.Services,
     for response in test_responses:
         if response.HasField('test_case_start'):
             raw_test_case = response.test_case_start
-            current_test_case = _test_case(raw_test_case)
+            current_test_case = TestCase(raw_test_case.suite_name,
+                                         raw_test_case.test_name,
+                                         raw_test_case.file_name)
 
         for event_handler in event_handlers:
             if response.HasField('test_run_start'):
@@ -173,8 +164,7 @@ def run_tests(rpcs: pw_rpc.client.Services,
                 event_handler.test_case_end(current_test_case,
                                             response.test_case_end)
             elif response.HasField('test_case_disabled'):
-                event_handler.test_case_disabled(
-                    _test_case(response.test_case_disabled))
+                event_handler.test_case_disabled(current_test_case)
             elif response.HasField('test_case_expectation'):
                 raw_expectation = response.test_case_expectation
                 expectation = TestExpectation(

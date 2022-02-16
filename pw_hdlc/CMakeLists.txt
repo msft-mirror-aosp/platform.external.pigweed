@@ -30,7 +30,3 @@ pw_auto_add_simple_module(pw_hdlc
 )
 
 add_subdirectory(rpc_example)
-
-if(Zephyr_FOUND AND CONFIG_PIGWEED_HDLC)
-  zephyr_link_libraries(pw_hdlc)
-endif()
