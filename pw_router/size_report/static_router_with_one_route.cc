@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 #include "pw_bloat/bloat_this_binary.h"
 #include "pw_log/log.h"
 #include "pw_router/egress_function.h"
@@ -54,12 +54,12 @@ class BasicPacketParser : public pw::router::PacketParser {
   const BasicPacket* packet_;
 };
 
-pw::router::EgressFunction sys_io_egress(+[](pw::ConstByteSpan packet,
-                                             const pw::router::PacketParser&) {
+BasicPacketParser parser;
+pw::router::EgressFunction sys_io_egress(+[](pw::ConstByteSpan packet) {
   return pw::sys_io::WriteBytes(packet).status();
 });
 constexpr pw::router::StaticRouter::Route routes[] = {{1, sys_io_egress}};
-pw::router::StaticRouter router(routes);
+pw::router::StaticRouter router(parser, routes);
 
 }  // namespace
 
@@ -76,11 +76,9 @@ int main() {
   pw::sys_io::ReadBytes(packet_buffer);
   pw::sys_io::WriteBytes(packet_buffer);
 
-  BasicPacketParser parser;
-
   while (true) {
     pw::sys_io::ReadBytes(packet_buffer);
-    router.RoutePacket(packet_buffer, parser);
+    router.RoutePacket(packet_buffer);
   }
 
   return static_cast<int>(packet.payload);

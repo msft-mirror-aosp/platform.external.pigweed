@@ -45,7 +45,7 @@ namespace pw {
 //      At least for ARMv7-M, the returned struct is created on the stack, which
 //      increases code size.
 //
-class _PW_STATUS_NO_DISCARD StatusWithSize {
+class StatusWithSize {
  public:
   static constexpr StatusWithSize Cancelled(size_t size = 0) {
     return StatusWithSize(Status::Cancelled(), size);
@@ -114,22 +114,15 @@ class _PW_STATUS_NO_DISCARD StatusWithSize {
   constexpr StatusWithSize& operator=(const StatusWithSize&) = default;
 
   // Returns the size. The size is always present, even if status() is an error.
-  [[nodiscard]] constexpr size_t size() const { return size_ & kSizeMask; }
+  constexpr size_t size() const { return size_ & kSizeMask; }
 
   // The maximum valid value for size.
-  [[nodiscard]] static constexpr size_t max_size() { return kSizeMask; }
+  static constexpr size_t max_size() { return kSizeMask; }
 
   // True if status() == OkStatus().
-  [[nodiscard]] constexpr bool ok() const {
-    return (size_ & kStatusMask) == 0u;
-  }
+  constexpr bool ok() const { return (size_ & kStatusMask) == 0u; }
 
-  // Ignores any errors. This method does nothing except potentially suppress
-  // complaints from any tools that are checking that errors are not dropped on
-  // the floor.
-  constexpr void IgnoreError() const {}
-
-  [[nodiscard]] constexpr Status status() const {
+  constexpr Status status() const {
     return static_cast<Status::Code>((size_ & kStatusMask) >> kStatusShift);
   }
 

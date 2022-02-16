@@ -32,7 +32,7 @@ has several subcommands.
   ``--force`` to remove the package before installing.
 
 ``pw package status <package-name>``
-  Indicates whether ``<package-name>`` is installed.
+  Indicates whether ``<packagxe-name>`` is installed.
 
 ``pw package remove <package-name>``
   Removes ``<package-name>``.

@@ -28,8 +28,8 @@ int main() {
   // Assignment operator.
   persistent = 13u;
 
-  // Invalidate.
-  persistent.Invalidate();
+  // Reset.
+  persistent.reset();
 
   // Has value and value accesstors.
   if (persistent.has_value() && persistent.value() == 0u) {

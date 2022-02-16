@@ -13,20 +13,28 @@
 // the License.
 #pragma once
 
+#include <arpa/inet.h>
 #include <netinet/in.h>
+#include <stdio.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
-#include <cstdint>
+#include <array>
+#include <cstddef>
+#include <limits>
 #include <span>
 
 #include "pw_stream/stream.h"
 
 namespace pw::stream {
 
-class SocketStream : public NonSeekableReaderWriter {
- public:
-  constexpr SocketStream() = default;
+static constexpr int kExitCode = -1;
+static constexpr int kInvalidFd = -1;
 
-  ~SocketStream() { Close(); }
+class SocketStream : public Writer, public Reader {
+ public:
+  explicit SocketStream() {}
+  ~SocketStream();
 
   // Listen to the port and return after a client is connected
   Status Serve(uint16_t port);
@@ -39,8 +47,6 @@ class SocketStream : public NonSeekableReaderWriter {
   void Close();
 
  private:
-  static constexpr int kInvalidFd = -1;
-
   Status DoWrite(std::span<const std::byte> data) override;
 
   StatusWithSize DoRead(ByteSpan dest) override;
@@ -48,7 +54,7 @@ class SocketStream : public NonSeekableReaderWriter {
   uint16_t listen_port_ = 0;
   int socket_fd_ = kInvalidFd;
   int conn_fd_ = kInvalidFd;
-  struct sockaddr_in sockaddr_client_ = {};
+  struct sockaddr_in sockaddr_client_;
 };
 
 }  // namespace pw::stream

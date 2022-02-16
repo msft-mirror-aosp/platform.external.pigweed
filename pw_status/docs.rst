@@ -13,12 +13,12 @@ The primary feature of ``pw_status`` is the ``pw::Status`` class.
 object that wraps a status code.
 
 ``pw::Status`` uses Google's standard status codes (see the `Google APIs
-repository <https://github.com/googleapis/googleapis/blob/HEAD/google/rpc/code.proto>`_).
+repository <https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto>`_).
 These codes are used extensively in Google projects including `Abseil
 <https://abseil.io>`_ (`status/status.h
-<https://cs.opensource.google/abseil/abseil-cpp/+/HEAD:absl/status/status.h>`_
+<https://cs.opensource.google/abseil/abseil-cpp/+/master:absl/status/status.h>`_
 ) and `gRPC <https://grpc.io>`_ (`doc/statuscodes.md
-<https://github.com/grpc/grpc/blob/HEAD/doc/statuscodes.md>`_).
+<https://github.com/grpc/grpc/blob/master/doc/statuscodes.md>`_).
 
 An OK ``Status`` is created by the ``pw::OkStatus`` function or by the default
 ``Status`` constructor.  Non-OK ``Status`` is created with a static member
@@ -165,58 +165,19 @@ function that corresponds with the status code.
   // the authentication and try again.
   pw::Status::Unauthenticated()
 
-.. note::
-  Status enumerations are also supported for Python and Typescript.
+.. attention::
 
-Tracking the first error encountered
-------------------------------------
-In some contexts it is useful to track the first error encountered while
-allowing execution to continue. Manually writing out ``if`` statements to check
-and then assign quickly becomes verbose, and doesn't explicitly highlight the
-intended behavior of "latching" to the first error.
+  Some code may use all-caps status values such as ``Status::UNKNOWN`` instead
+  of ``Status::Unknown()``. These all-caps status codes are deprecated and will
+  be removed in the future. Do not use them; use the functions above instead.
 
-  .. code-block:: cpp
+  The all-caps status aliases were deprecated because they do not comply with
+  the style guide and potentially conflict with macro definitions. For example,
+  projects might define an ``INTERNAL`` macro, which would prevent ``status.h``
+  or code that uses ``Status::INTERNAL`` from compiling.
 
-    Status overall_status;
-    for (Sector& sector : sectors) {
-      Status erase_status = sector.Erase();
-      if (!overall_status.ok()) {
-        overall_status = erase_status;
-      }
-
-      if (erase_status.ok()) {
-        Status header_write_status = sector.WriteHeader();
-        if (!overall_status.ok()) {
-          overall_status = header_write_status;
-        }
-      }
-    }
-    return overall_status;
-
-``pw::Status`` has an ``Update()`` helper function that does exactly this to
-reduce visual clutter and succinctly highlight the intended behavior.
-
-  .. code-block:: cpp
-
-    Status overall_status;
-    for (Sector& sector : sectors) {
-      Status erase_status = sector.Erase();
-      overall_status.Update(erase_status);
-
-      if (erase_status.ok()) {
-        overall_status.Update(sector.WriteHeader());
-      }
-    }
-    return overall_status;
-
-Unused result warnings
-----------------------
-If the ``PW_STATUS_CFG_CHECK_IF_USED`` option is enabled, ``pw::Status`` objects
-returned from function calls must be used or it is a compilation error. To
-silence these warnings call ``IgnoreError()`` on the returned status object.
-``PW_STATUS_CFG_CHECK_IF_USED`` defaults to off. Pigweed and projects that use
-it will be updated to compile with this option enabled. After all projects have
-migrated, unused result warnings will be enabled unconditionally.
+  The Python tool ``pw_status/update_style.py`` may be used to migrate code in a
+  Git repo to the new status style.
 
 C compatibility
 ---------------
@@ -292,9 +253,4 @@ the size from the StatusWithSize on ok.
 
 Compatibility
 =============
-C++14
-
-Zephyr
-======
-To enable ``pw_status`` for Zephyr add ``CONFIG_PIGWEED_STATUS=y`` to the
-project's configuration.
+C++11
