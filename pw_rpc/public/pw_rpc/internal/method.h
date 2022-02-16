@@ -17,14 +17,9 @@
 #include <cstdint>
 #include <utility>
 
-#include "pw_rpc/internal/call_context.h"
-#include "pw_rpc/internal/lock.h"
+#include "pw_rpc/internal/call.h"
 
-namespace pw::rpc {
-
-class Service;
-
-namespace internal {
+namespace pw::rpc::internal {
 
 class Packet;
 
@@ -33,15 +28,15 @@ class Packet;
 /*
 class MethodImpl : public Method {
   // True if the provided function signature is valid for this method impl.
-  template <auto kMethod>
+  template <auto method>
   static constexpr bool matches();
 
   // Creates a unary method instance.
-  template <auto kMethod>
+  template <auto method>
   static constexpr MethodImpl Unary(uint32_t id, [optional args]);
 
   // Creates a server streaming method instance.
-  template <auto kMethod>
+  template <auto method>
   static constexpr MethodImpl ServerStreaming(uint32_t id, [optional args]);
 
   // Creates a client streaming method instance.
@@ -57,7 +52,7 @@ class MethodImpl : public Method {
 };
 */
 // Method implementations must pass a test that uses the MethodImplTester class
-// in pw_rpc/internal/method_impl_tester.h.
+// in pw_rpc_private/method_impl_tester.h.
 class Method {
  public:
   constexpr uint32_t id() const { return id_; }
@@ -66,18 +61,16 @@ class Method {
   // calls the invoker function, which handles the RPC request and response
   // according to the RPC type and protobuf implementation and calls the
   // user-defined RPC function.
-  //
-  // The rpc_lock() must be held through creating the call object and released
-  // before calling into the RPC body.
-  void Invoke(const CallContext& context, const Packet& request) const
-      PW_UNLOCK_FUNCTION(rpc_lock()) PW_NO_LOCK_SAFETY_ANALYSIS {
-    return invoker_(context, request);  // The invoker must unlock rpc_lock().
+  void Invoke(ServerCall& call, const Packet& request) const {
+    return invoker_(*this, call, request);
   }
 
  protected:
-  using Invoker = void (&)(const CallContext&, const Packet&);
+  using Invoker = void (&)(const Method&, ServerCall&, const Packet&);
 
-  static constexpr void InvalidInvoker(const CallContext&, const Packet&) {}
+  static constexpr void InvalidInvoker(const Method&,
+                                       ServerCall&,
+                                       const Packet&) {}
 
   constexpr Method(uint32_t id, Invoker invoker) : id_(id), invoker_(invoker) {}
 
@@ -86,9 +79,9 @@ class Method {
   Invoker invoker_;
 };
 
-// MethodTraits inspects an RPC implementation function. It determines which
-// Method API is in use and the type of the RPC based on the function signature.
-// pw_rpc Method implementations specialize MethodTraits for each RPC type.
+// Traits struct that determines the type of an RPC service method from its
+// signature. Derived Methods should provide specializations for their method
+// types.
 template <typename Method>
 struct MethodTraits {
   // Specializations must set Implementation as an alias for their method
@@ -100,7 +93,7 @@ struct MethodTraits {
 
   // Specializations for member function types must set Service to an alias to
   // for the implemented service class.
-  // using Service = (derived service class);
+  using Service = rpc::Service;
 
   // Specializations may provide the C++ types of the requests and responses if
   // relevant.
@@ -108,29 +101,33 @@ struct MethodTraits {
   using Response = void;
 };
 
-template <auto kMethod>
+template <auto method>
 using MethodImplementation =
-    typename MethodTraits<decltype(kMethod)>::Implementation;
+    typename MethodTraits<decltype(method)>::Implementation;
 
-template <auto kMethod>
-using Request = typename MethodTraits<decltype(kMethod)>::Request;
-
-template <auto kMethod>
-using Response = typename MethodTraits<decltype(kMethod)>::Response;
-
-// Function that calls a user-defined RPC function on the given Service.
-template <auto kMethod, typename... Args>
-constexpr auto CallMethodImplFunction(Service& service, Args&&... args) {
+// Function that calls a user-defined method implementation function from a
+// ServerCall object.
+template <auto method, typename... Args>
+constexpr auto CallMethodImplFunction(ServerCall& call, Args&&... args) {
   // If the method impl is a member function, deduce the type of the
   // user-defined service from it, then call the method on the service.
-  if constexpr (std::is_member_function_pointer_v<decltype(kMethod)>) {
-    return (static_cast<typename MethodTraits<decltype(kMethod)>::Service&>(
-                service).*
-            kMethod)(std::forward<Args>(args)...);
+  if constexpr (std::is_member_function_pointer_v<decltype(method)>) {
+    return (static_cast<typename MethodTraits<decltype(method)>::Service&>(
+                call.service()).*
+            method)(call.context(), std::forward<Args>(args)...);
   } else {
-    return kMethod(std::forward<Args>(args)...);
+    return method(call.context(), std::forward<Args>(args)...);
   }
 }
 
-}  // namespace internal
-}  // namespace pw::rpc
+// Identifies a base class from a member function it defines. This should be
+// used with decltype to retrieve the base service class.
+template <typename T, typename U>
+T BaseFromMember(U T::*);
+
+// The base generated service of an RPC service class.
+template <typename Service>
+using GeneratedService =
+    decltype(BaseFromMember(&Service::_PwRpcInternalGeneratedBase));
+
+}  // namespace pw::rpc::internal

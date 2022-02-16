@@ -22,7 +22,7 @@
 #include <cstring>
 #include <type_traits>
 
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 #include "pw_kvs_private/config.h"
 #include "pw_log/shorter.h"
 #include "pw_status/try.h"
@@ -462,8 +462,7 @@ void KeyValueStore::Item::ReadKey() {
 
   Entry entry;
   if (kvs_.ReadEntry(*iterator_, entry).ok()) {
-    entry.ReadKey(key_buffer_)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    entry.ReadKey(key_buffer_);
   }
 }
 
@@ -513,9 +512,9 @@ Status KeyValueStore::ReadEntry(const EntryMetadata& metadata,
   return read_result;
 }
 
-Status KeyValueStore::FindEntry(Key key, EntryMetadata* metadata_out) const {
+Status KeyValueStore::FindEntry(Key key, EntryMetadata* found_entry) const {
   StatusWithSize find_result =
-      entry_cache_.Find(partition_, sectors_, formats_, key, metadata_out);
+      entry_cache_.Find(partition_, sectors_, formats_, key, found_entry);
 
   if (find_result.size() > 0u) {
     error_detected_ = true;
@@ -523,13 +522,13 @@ Status KeyValueStore::FindEntry(Key key, EntryMetadata* metadata_out) const {
   return find_result.status();
 }
 
-Status KeyValueStore::FindExisting(Key key, EntryMetadata* metadata_out) const {
-  Status status = FindEntry(key, metadata_out);
+Status KeyValueStore::FindExisting(Key key, EntryMetadata* metadata) const {
+  Status status = FindEntry(key, metadata);
 
   // If the key's hash collides with an existing key or if the key is deleted,
   // treat it as if it is not in the KVS.
   if (status.IsAlreadyExists() ||
-      (status.ok() && metadata_out->state() == EntryState::kDeleted)) {
+      (status.ok() && metadata->state() == EntryState::kDeleted)) {
     return Status::NotFound();
   }
   return status;
@@ -738,11 +737,10 @@ Status KeyValueStore::GetAddressesForWrite(Address* write_addresses,
 //
 //                 OK: Sector found with needed space.
 // RESOURCE_EXHAUSTED: No sector available with the needed space.
-Status KeyValueStore::GetSectorForWrite(
-    SectorDescriptor** sector,
-    size_t entry_size,
-    std::span<const Address> reserved_addresses) {
-  Status result = sectors_.FindSpace(sector, entry_size, reserved_addresses);
+Status KeyValueStore::GetSectorForWrite(SectorDescriptor** sector,
+                                        size_t entry_size,
+                                        std::span<const Address> reserved) {
+  Status result = sectors_.FindSpace(sector, entry_size, reserved);
 
   size_t gc_sector_count = 0;
   bool do_auto_gc = options_.gc_on_write != GargbageCollectOnWrite::kDisabled;
@@ -755,7 +753,7 @@ Status KeyValueStore::GetSectorForWrite(
       do_auto_gc = false;
     }
     // Garbage collect and then try again to find the best sector.
-    Status gc_status = GarbageCollect(reserved_addresses);
+    Status gc_status = GarbageCollect(reserved);
     if (!gc_status.ok()) {
       if (gc_status.IsNotFound()) {
         // Not enough space, and no reclaimable bytes, this KVS is full!
@@ -764,7 +762,7 @@ Status KeyValueStore::GetSectorForWrite(
       return gc_status;
     }
 
-    result = sectors_.FindSpace(sector, entry_size, reserved_addresses);
+    result = sectors_.FindSpace(sector, entry_size, reserved);
 
     gc_sector_count++;
     // Allow total sectors + 2 number of GC cycles so that once reclaimable
@@ -1209,8 +1207,7 @@ Status KeyValueStore::Repair() {
   INF("Starting KVS repair");
 
   DBG("Reinitialize KVS metadata");
-  InitializeMetadata()
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  InitializeMetadata();
 
   return FixErrors();
 }

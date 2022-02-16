@@ -23,14 +23,14 @@
 
 namespace pw::stream {
 
-class SysIoWriter : public NonSeekableWriter {
+class SysIoWriter : public Writer {
  private:
   Status DoWrite(std::span<const std::byte> data) override {
     return pw::sys_io::WriteBytes(data).status();
   }
 };
 
-class SysIoReader : public NonSeekableReader {
+class SysIoReader : public Reader {
  private:
   StatusWithSize DoRead(ByteSpan dest) override {
     return pw::sys_io::ReadBytes(dest);

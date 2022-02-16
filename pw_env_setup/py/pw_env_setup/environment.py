@@ -124,18 +124,9 @@ class _VariableAction(_Action):
         else:
             env.pop(self.name, None)
 
-    def __repr__(self):
-        return '{}({}, {})'.format(self.__class__.__name__, self.name,
-                                   self.value)
-
 
 class Set(_VariableAction):
     """Set a variable."""
-    def __init__(self, *args, **kwargs):
-        deactivate = kwargs.pop('deactivate', True)
-        super(Set, self).__init__(*args, **kwargs)
-        self.deactivate = deactivate
-
     def accept(self, visitor):
         visitor.visit_set(self)
 
@@ -211,9 +202,6 @@ class Echo(_Action):
     def accept(self, visitor):
         visitor.visit_echo(self)
 
-    def __repr__(self):
-        return 'Echo({}, newline={})'.format(self.value, self.newline)
-
 
 class Comment(_Action):
     """Add a comment to the init script."""
@@ -223,9 +211,6 @@ class Comment(_Action):
 
     def accept(self, visitor):
         visitor.visit_comment(self)
-
-    def __repr__(self):
-        return 'Comment({})'.format(self.value)
 
 
 class Command(_Action):
@@ -240,9 +225,6 @@ class Command(_Action):
     def accept(self, visitor):
         visitor.visit_command(self)
 
-    def __repr__(self):
-        return 'Command({})'.format(self.command)
-
 
 class Doctor(Command):
     def __init__(self, *args, **kwargs):
@@ -255,17 +237,11 @@ class Doctor(Command):
     def accept(self, visitor):
         visitor.visit_doctor(self)
 
-    def __repr__(self):
-        return 'Doctor()'
-
 
 class BlankLine(_Action):
     """Write a blank line to the init script."""
     def accept(self, visitor):
         visitor.visit_blank_line(self)
-
-    def __repr__(self):
-        return 'BlankLine()'
 
 
 class Function(_Action):
@@ -277,16 +253,10 @@ class Function(_Action):
     def accept(self, visitor):
         visitor.visit_function(self)
 
-    def __repr__(self):
-        return 'Function({}, {})'.format(self.name, self.body)
-
 
 class Hash(_Action):
     def accept(self, visitor):
         visitor.visit_hash(self)
-
-    def __repr__(self):
-        return 'Hash()'
 
 
 class Join(object):  # pylint: disable=useless-object-inheritance
@@ -331,11 +301,11 @@ class Environment(object):
     # A newline is printed after each high-level operation. Top-level
     # operations should not invoke each other (this is why _remove() exists).
 
-    def set(self, name, value, deactivate=True):
+    def set(self, name, value):
         """Set a variable."""
         assert not self._finalized
         name = self.normalize_key(name)
-        self._actions.append(Set(name, value, deactivate=deactivate))
+        self._actions.append(Set(name, value))
         self._blankline()
 
     def clear(self, name):
