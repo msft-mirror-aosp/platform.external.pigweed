@@ -188,8 +188,6 @@ Example:
     BUILD.gn
     README.md
 
-.. _module-structure-compile-time-configuration:
-
 Compile-time configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 Pigweed modules are intended to be used in a wide variety of environments.
@@ -320,7 +318,7 @@ This example shows two ways to configure a module in the GN build system.
   config("set_options_in_header_file") {
     cflags = [
       "-include",
-      rebase_path("my_config_overrides.h", root_build_dir),
+      rebase_path("my_config_overrides.h"),
     ]
   }
 

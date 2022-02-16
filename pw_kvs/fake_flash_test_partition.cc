@@ -20,16 +20,16 @@ namespace pw::kvs {
 
 namespace {
 
-#if !defined(PW_FLASH_TEST_SECTORS) || (PW_FLASH_TEST_SECTORS <= 0)
-#error PW_FLASH_TEST_SECTORS must be defined and > 0
+#ifndef PW_FLASH_TEST_SECTORS
+#define PW_FLASH_TEST_SECTORS 6U
 #endif  // PW_FLASH_TEST_SECTORS
 
-#if !defined(PW_FLASH_TEST_SECTOR_SIZE) || (PW_FLASH_TEST_SECTOR_SIZE <= 0)
-#error PW_FLASH_TEST_SECTOR_SIZE must be defined and > 0
+#ifndef PW_FLASH_TEST_SECTOR_SIZE
+#define PW_FLASH_TEST_SECTOR_SIZE (4 * 1024U)
 #endif  // PW_FLASH_TEST_SECTOR_SIZE
 
-#if !defined(PW_FLASH_TEST_ALIGNMENT) || (PW_FLASH_TEST_ALIGNMENT <= 0)
-#error PW_FLASH_TEST_ALIGNMENT must be defined and > 0
+#ifndef PW_FLASH_TEST_ALIGNMENT
+#define PW_FLASH_TEST_ALIGNMENT 16U
 #endif  // PW_FLASH_TEST_ALIGNMENT
 
 constexpr size_t kFlashTestSectors = PW_FLASH_TEST_SECTORS;

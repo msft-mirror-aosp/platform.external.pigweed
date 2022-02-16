@@ -19,6 +19,3 @@ pw_auto_add_simple_module(pw_containers
     pw_assert
     pw_status
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_CONTAINERS)
-  zephyr_link_libraries(pw_containers)
-endif()
