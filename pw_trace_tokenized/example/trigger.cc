@@ -17,12 +17,12 @@
 // host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_trigger
 //
 // RUN
-// .out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_trigger
+// ./out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_trigger
 // trace.bin
 //
 // DECODE
 // python pw_trace_tokenized/py/trace_tokenized.py -i trace.bin -o trace.json
-// ./out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic
+// ./out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic#trace
 //
 // VIEW
 // In chrome navigate to chrome://tracing, and load the trace.json file.
@@ -77,8 +77,10 @@ int main(int argc, char** argv) {  // Take filename as arg
   }
 
   // Register trigger callback
-  pw::trace::Callbacks::Instance().RegisterEventCallback(
-      TraceEventCallback, pw::trace::CallbacksImpl::kCallOnEveryEvent);
+  pw::trace::Callbacks::Instance()
+      .RegisterEventCallback(TraceEventCallback,
+                             pw::trace::CallbacksImpl::kCallOnEveryEvent)
+      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
 
   // Ensure tracing is off at start, the trigger will turn it on.
   PW_TRACE_SET_ENABLED(false);
