@@ -7,6 +7,65 @@ pw_result
 data when the status is OK. This is meant for returning lightweight result
 types or references to larger results.
 
+``pw::Result`` is compatible with ``PW_TRY`` and ``PW_TRY_ASSIGN``, for example:
+
+.. code-block:: cpp
+
+  #include "pw_status/try.h"
+  #include "pw_result/result.h"
+
+  pw::Result<int> GetAnswer();  // Example function.
+
+  pw::Status UseAnswer() {
+    const pw::Result<int> answer = GetAnswer();
+    if (!answer.ok()) {
+      return answer.status();
+    }
+    if (answer.value() == 42) {
+      WhatWasTheUltimateQuestion();
+    }
+    return pw::OkStatus();
+  }
+
+  pw::Status UseAnswerWithTry() {
+    const pw::Result<int> answer = GetAnswer();
+    PW_TRY(answer.status());
+    if (answer.value() == 42) {
+      WhatWasTheUltimateQuestion();
+    }
+    return pw::OkStatus();
+  }
+
+  pw::Status UseAnswerWithTryAssign() {
+    PW_TRY_ASSIGN(const int answer, GetAnswer());
+    if (answer == 42) {
+      WhatWasTheUltimateQuestion();
+    }
+    return pw::OkStatus();
+  }
+
+``pw::Result`` can be used to directly access the contained type:
+
+.. code-block:: cpp
+
+  #include "pw_result/result.h"
+
+  pw::Result<Foo> foo = TryCreateFoo();
+  if (foo.ok()) {
+    foo->DoBar();
+  }
+
+or in C++17:
+
+.. code-block:: cpp
+
+  if (pw::Result<Foo> foo = TryCreateFoo(); foo.ok()) {
+    foo->DoBar();
+  }
+
+See `Abseil's StatusOr <https://abseil.io/tips/181>`_ for guidance on using a
+similar type.
+
 .. warning::
 
   Be careful not to use larger types by value as this can quickly consume
@@ -19,7 +78,7 @@ types or references to larger results.
 
 Compatibility
 =============
-Works with C++11, but some features require C++17.
+Works with C++14, but some features require C++17.
 
 Size report
 ===========
@@ -32,3 +91,8 @@ usage of Result in real code. Make sure to always run your own size reports to
 check if Result is suitable for you.
 
 .. include:: result_size
+
+Zephyr
+======
+To enable ``pw_result`` for Zephyr add ``CONFIG_PIGWEED_RESULT=y`` to the
+project's configuration.
