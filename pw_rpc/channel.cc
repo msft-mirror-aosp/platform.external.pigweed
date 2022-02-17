@@ -12,34 +12,53 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+// clang-format off
+#include "pw_rpc/internal/log_config.h"  // PW_LOG_* macros must be first.
+
 #include "pw_rpc/internal/channel.h"
+// clang-format on
 
 #include "pw_log/log.h"
-#include "pw_rpc/internal/packet.h"
+#include "pw_rpc/internal/config.h"
 
 namespace pw::rpc::internal {
 
-using std::byte;
+namespace {
 
-std::span<byte> Channel::OutputBuffer::payload(const Packet& packet) const {
-  const size_t reserved_size = packet.MinEncodedSizeBytes();
-  return reserved_size <= buffer_.size() ? buffer_.subspan(reserved_size)
-                                         : std::span<byte>();
+// TODO(pwbug/615): Dynamically allocate this buffer if
+//     PW_RPC_DYNAMIC_ALLOCATION is enabled.
+std::array<std::byte, cfg::kEncodingBufferSizeBytes> encoding_buffer
+    PW_GUARDED_BY(rpc_lock());
+
+}  // namespace
+
+ByteSpan GetPayloadBuffer() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+  return ByteSpan(encoding_buffer)
+      .subspan(Packet::kMinEncodedSizeWithoutPayload);
 }
 
-Status Channel::Send(OutputBuffer& buffer, const internal::Packet& packet) {
-  Result encoded = packet.Encode(buffer.buffer_);
+Status Channel::Send(const Packet& packet) {
+  Result encoded = packet.Encode(encoding_buffer);
 
   if (!encoded.ok()) {
-    PW_LOG_ERROR("Failed to encode RPC response packet to channel %u buffer",
-                 static_cast<unsigned>(id()));
-    output().DiscardBuffer(buffer.buffer_);
-    buffer.buffer_ = {};
+    PW_LOG_ERROR(
+        "Failed to encode RPC packet type %u to channel %u buffer, status %u",
+        static_cast<unsigned>(packet.type()),
+        static_cast<unsigned>(id()),
+        encoded.status().code());
     return Status::Internal();
   }
 
-  buffer.buffer_ = {};
-  return output().SendAndReleaseBuffer(encoded.value());
+  Status sent = output().Send(encoded.value());
+
+  if (!sent.ok()) {
+    PW_LOG_DEBUG("Channel %u failed to send packet with status %u",
+                 static_cast<unsigned>(id()),
+                 sent.code());
+
+    return Status::Unknown();
+  }
+  return OkStatus();
 }
 
 }  // namespace pw::rpc::internal
