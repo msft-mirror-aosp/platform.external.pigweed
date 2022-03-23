@@ -14,7 +14,7 @@
 
 #include "pw_sync/counting_semaphore.h"
 
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 
 using pw::chrono::SystemClock;
 
@@ -45,10 +45,11 @@ bool CountingSemaphore::try_acquire() noexcept {
   return false;
 }
 
-bool CountingSemaphore::try_acquire_until(SystemClock::time_point deadline) {
+bool CountingSemaphore::try_acquire_until(
+    SystemClock::time_point until_at_least) {
   std::unique_lock lock(native_type_.mutex);
   if (native_type_.condition.wait_until(
-          lock, deadline, [&] { return native_type_.count != 0; })) {
+          lock, until_at_least, [&] { return native_type_.count != 0; })) {
     --native_type_.count;
     return true;
   }

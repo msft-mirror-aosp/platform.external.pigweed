@@ -31,8 +31,7 @@
 
 #ifdef __cplusplus
 
-#include "pw_containers/to_array.h"
-#include "pw_preprocessor/compiler.h"
+#include <array>
 
 namespace pw {
 namespace tokenizer {
@@ -51,12 +50,11 @@ Entry {
         token_(token),
         domain_size_(kDomainSize),
         string_size_(kStringSize),
-        domain_(containers::to_array(domain)),
-        string_(containers::to_array(string)) {}
+        domain_(std::to_array(domain)),
+        string_(std::to_array(string)) {}
 
  private:
-  static_assert(kStringSize > 0u && kDomainSize > 0u,
-                "The string and domain must have at least a null terminator");
+  static_assert(kStringSize > 0u && kDomainSize > 0u);
 
   uint32_t magic_;
   uint32_t token_;
@@ -65,18 +63,6 @@ Entry {
   std::array<char, kDomainSize> domain_;
   std::array<char, kStringSize> string_;
 };
-
-// Use this MakeEntry function so that the type doesn't have to be specified in
-// the macro. Specifying the type causes problems when the tokenization macro is
-// used as an argument to another macro because it requires template arguments,
-// which the preprocessor misinterprets as macro arguments.
-template <uint32_t kDomainSize, uint32_t kStringSize>
-constexpr Entry<kDomainSize, kStringSize> MakeEntry(
-    uint32_t token,
-    const char (&domain)[kDomainSize],
-    const char (&string)[kStringSize]) {
-  return {token, domain, string};
-}
 
 }  // namespace internal
 }  // namespace tokenizer
@@ -144,7 +130,7 @@ constexpr Entry<kDomainSize, kStringSize> MakeEntry(
 // be added to this file.
 #error "Unsupported value for PW_TOKENIZER_CFG_C_HASH_LENGTH"
 
-// Define a placeholder macro to give clearer compilation errors.
+// Define a dummy macro to give clearer compilation errors.
 #define PW_TOKENIZER_STRING_TOKEN(unused) 0u
 
 #endif  // PW_TOKENIZER_CFG_C_HASH_LENGTH

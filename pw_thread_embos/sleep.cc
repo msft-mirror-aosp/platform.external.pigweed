@@ -17,7 +17,7 @@
 #include <algorithm>
 
 #include "RTOS.h"
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_chrono_embos/system_clock_constants.h"
 #include "pw_thread/id.h"
@@ -26,30 +26,24 @@ using pw::chrono::SystemClock;
 
 namespace pw::this_thread {
 
-void sleep_for(chrono::SystemClock::duration sleep_duration) {
-  // Ensure we are invoking this from a thread.
+void sleep_for(chrono::SystemClock::duration for_at_least) {
   PW_DCHECK(get_id() != thread::Id());
 
   // Yield for negative and zero length durations.
-  if (sleep_duration <= SystemClock::duration::zero()) {
+  if (for_at_least <= SystemClock::duration::zero()) {
     OS_Yield();
     return;
   }
 
-  // In case the timeout is too long for us to express through the native
-  // embOS API, we repeatedly wait with shorter durations. Note that on a tick
-  // based kernel we cannot tell how far along we are on the current tick, ergo
-  // we add one whole tick to the final duration. However, this also means that
-  // the loop must ensure that timeout + 1 is less than the max timeout.
-  constexpr SystemClock::duration kMaxTimeoutMinusOne =
-      pw::chrono::embos::kMaxTimeout - SystemClock::duration(1);
-  while (sleep_duration > kMaxTimeoutMinusOne) {
-    OS_Delay(static_cast<OS_TIME>(kMaxTimeoutMinusOne.count()));
-    sleep_duration -= kMaxTimeoutMinusOne;
-  }
   // On a tick based kernel we cannot tell how far along we are on the current
   // tick, ergo we add one whole tick to the final duration.
-  OS_Delay(static_cast<OS_TIME>(sleep_duration.count()) + 1);
+  constexpr SystemClock::duration kMaxTimeoutMinusOne =
+      pw::chrono::embos::kMaxTimeout - SystemClock::duration(1);
+  while (for_at_least > kMaxTimeoutMinusOne) {
+    OS_Delay(static_cast<OS_TIME>(kMaxTimeoutMinusOne.count()));
+    for_at_least -= kMaxTimeoutMinusOne;
+  }
+  OS_Delay(static_cast<OS_TIME>(for_at_least.count()));
 }
 
 }  // namespace pw::this_thread

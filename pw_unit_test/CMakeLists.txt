@@ -14,16 +14,6 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-pw_add_module_config(pw_unit_test_CONFIG)
-
-pw_add_module_library(pw_unit_test.config
-  PUBLIC_DEPS
-    ${pw_unit_test_CONFIG}
-    pw_polyfill
-  HEADERS
-    public/pw_unit_test/config.h
-)
-
 pw_add_module_library(pw_unit_test
   SOURCES
     framework.cc
@@ -31,7 +21,6 @@ pw_add_module_library(pw_unit_test
     pw_polyfill
     pw_preprocessor
     pw_string
-    pw_unit_test.config
 )
 
 # pw_unit_test overrides the gtest/gtest.h header.
