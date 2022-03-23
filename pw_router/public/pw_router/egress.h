@@ -13,11 +13,9 @@
 // the License.
 #pragma once
 
-#include <optional>
 #include <span>
 
 #include "pw_bytes/span.h"
-#include "pw_router/packet_parser.h"
 #include "pw_status/status.h"
 
 namespace pw::router {
@@ -28,12 +26,10 @@ class Egress {
   virtual ~Egress() = default;
 
   // Sends a complete packet/frame over the transport. Returns OK on success, or
-  // an error status on failure. Invoked with the packet data and the parser
-  // from the RoutePacket() call.
+  // an error status on failure.
   //
   // TODO(frolv): Document possible return values.
-  virtual Status SendPacket(ConstByteSpan packet,
-                            const PacketParser& parser) = 0;
+  virtual Status SendPacket(ConstByteSpan packet) = 0;
 };
 
 }  // namespace pw::router

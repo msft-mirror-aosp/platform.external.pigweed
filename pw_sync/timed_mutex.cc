@@ -25,14 +25,14 @@ extern "C" bool pw_sync_TimedMutex_TryLock(pw_sync_TimedMutex* mutex) {
 }
 
 extern "C" bool pw_sync_TimedMutex_TryLockFor(
-    pw_sync_TimedMutex* mutex, pw_chrono_SystemClock_Duration timeout) {
-  return mutex->try_lock_for(SystemClock::duration(timeout.ticks));
+    pw_sync_TimedMutex* mutex, pw_chrono_SystemClock_Duration for_at_least) {
+  return mutex->try_lock_for(SystemClock::duration(for_at_least.ticks));
 }
 
 extern "C" bool pw_sync_TimedMutex_TryLockUntil(
-    pw_sync_TimedMutex* mutex, pw_chrono_SystemClock_TimePoint deadline) {
+    pw_sync_TimedMutex* mutex, pw_chrono_SystemClock_TimePoint until_at_least) {
   return mutex->try_lock_until(SystemClock::time_point(
-      SystemClock::duration(deadline.duration_since_epoch.ticks)));
+      SystemClock::duration(until_at_least.duration_since_epoch.ticks)));
 }
 
 extern "C" void pw_sync_TimedMutex_Unlock(pw_sync_TimedMutex* mutex) {
