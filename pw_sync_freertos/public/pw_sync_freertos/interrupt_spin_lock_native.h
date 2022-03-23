@@ -13,12 +13,14 @@
 // the License.
 #pragma once
 
+#include <atomic>
+
 #include "FreeRTOS.h"
 
 namespace pw::sync::backend {
 
 struct NativeInterruptSpinLock {
-  bool locked;  // Used to detect recursion.
+  std::atomic<bool> locked;  // Used to detect recursion.
   UBaseType_t saved_interrupt_mask;
 };
 using NativeInterruptSpinLockHandle = NativeInterruptSpinLock&;

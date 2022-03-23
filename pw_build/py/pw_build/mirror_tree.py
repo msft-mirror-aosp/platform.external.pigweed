@@ -16,7 +16,6 @@
 import argparse
 import os
 from pathlib import Path
-import shutil
 from typing import Iterable, Iterator, List
 
 
@@ -55,16 +54,9 @@ def _link_files(source_root: Path, sources: Iterable[Path],
 
         # Use a hard link to avoid unnecessary copies. Resolve the source before
         # linking in case it is a symlink.
-        source = source.resolve()
-        try:
-            os.link(source, dest)
-            yield dest
+        os.link(source.resolve(), dest)
 
-        # If the link failed try copying. If copying fails re-raise the
-        # original exception.
-        except OSError:
-            shutil.copy(source, dest)
-            yield dest
+        yield dest
 
 
 def _link_files_or_dirs(paths: Iterable[Path],

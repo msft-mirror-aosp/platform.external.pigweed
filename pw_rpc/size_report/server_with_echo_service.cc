@@ -14,7 +14,7 @@
 
 #include "pb_decode.h"
 #include "pb_encode.h"
-#include "pw_assert/check.h"
+#include "pw_assert/assert.h"
 #include "pw_bloat/bloat_this_binary.h"
 #include "pw_log/log.h"
 #include "pw_rpc/echo_service_nanopb.h"
@@ -27,9 +27,15 @@ class Output : public pw::rpc::ChannelOutput {
  public:
   Output() : ChannelOutput("output") {}
 
-  pw::Status Send(std::span<const std::byte> buffer) override {
+  std::span<std::byte> AcquireBuffer() override { return buffer_; }
+
+  pw::Status SendAndReleaseBuffer(std::span<const std::byte> buffer) override {
+    PW_DCHECK_PTR_EQ(buffer.data(), buffer_);
     return pw::sys_io::WriteBytes(buffer).status();
   }
+
+ private:
+  std::byte buffer_[128];
 };
 
 namespace my_product {
