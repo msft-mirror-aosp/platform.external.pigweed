@@ -20,15 +20,24 @@
 #include "pw_cpu_exception/handler.h"
 #include "pw_cpu_exception_cortex_m/cpu_state.h"
 #include "pw_cpu_exception_cortex_m_private/cortex_m_constants.h"
-#include "pw_preprocessor/arch.h"
 #include "pw_preprocessor/compiler.h"
 
 // TODO(pwbug/311): Deprecated naming.
 PW_EXTERN_C PW_NO_PROLOGUE __attribute__((alias("pw_cpu_exception_Entry"))) void
 pw_CpuExceptionEntry(void);
 
-namespace pw::cpu_exception::cortex_m {
+namespace pw::cpu_exception {
 namespace {
+
+// If the CPU fails to capture some registers, the captured struct members will
+// be populated with this value. The only registers that this value should be
+// loaded into are pc, lr, and psr when the CPU fails to push an exception
+// context frame.
+//
+// 0xFFFFFFFF is an illegal lr value, which is why it was selected for this
+// purpose. pc and psr values of 0xFFFFFFFF are dubious too, so this constant
+// is clear enough at expressing that the registers weren't properly captured.
+constexpr uint32_t kInvalidRegisterValue = 0xFFFFFFFF;
 
 // Checks exc_return in the captured CPU state to determine which stack pointer
 // was in use prior to entering the exception handler.
@@ -49,9 +58,6 @@ bool FpuStateWasPushed(const pw_cpu_exception_State& cpu_state) {
 void CloneBaseRegistersFromPsp(pw_cpu_exception_State* cpu_state) {
   // If CPU succeeded in pushing context to PSP, copy it to the MSP.
   if (!(cpu_state->extended.cfsr & kCfsrStkerrMask) &&
-#if _PW_ARCH_ARM_V8M_MAINLINE
-      !(cpu_state->extended.cfsr & kCfsrStkofMask) &&
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
       !(cpu_state->extended.cfsr & kCfsrMstkerrMask)) {
     // TODO(amontanez): {r0-r3,r12} are captured in pw_cpu_exception_Entry(),
     //                  so this only really needs to copy pc, lr, and psr. Could
@@ -59,14 +65,14 @@ void CloneBaseRegistersFromPsp(pw_cpu_exception_State* cpu_state) {
     //                  complexity.
     std::memcpy(&cpu_state->base,
                 reinterpret_cast<void*>(cpu_state->extended.psp),
-                sizeof(ExceptionRegisters));
+                sizeof(CortexMExceptionRegisters));
   } else {
     // If CPU context wasn't pushed to stack on exception entry, we can't
     // recover psr, lr, and pc from exception-time. Make these values clearly
     // invalid.
-    cpu_state->base.lr = kUndefinedPcLrOrPsrRegValue;
-    cpu_state->base.pc = kUndefinedPcLrOrPsrRegValue;
-    cpu_state->base.psr = kUndefinedPcLrOrPsrRegValue;
+    cpu_state->base.lr = kInvalidRegisterValue;
+    cpu_state->base.pc = kInvalidRegisterValue;
+    cpu_state->base.psr = kInvalidRegisterValue;
   }
 }
 
@@ -81,21 +87,18 @@ void RestoreBaseRegistersToPsp(pw_cpu_exception_State* cpu_state) {
   // continue. Otherwise, don't attempt as we'll likely end up in an escalated
   // hard fault.
   if (!(cpu_state->extended.cfsr & kCfsrStkerrMask) &&
-#if _PW_ARCH_ARM_V8M_MAINLINE
-      !(cpu_state->extended.cfsr & kCfsrStkofMask) &&
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
       !(cpu_state->extended.cfsr & kCfsrMstkerrMask)) {
     std::memcpy(reinterpret_cast<void*>(cpu_state->extended.psp),
                 &cpu_state->base,
-                sizeof(ExceptionRegisters));
+                sizeof(CortexMExceptionRegisters));
   }
 }
 
 // Determines the size of the CPU-pushed context frame.
 uint32_t CpuContextSize(const pw_cpu_exception_State& cpu_state) {
-  uint32_t cpu_context_size = sizeof(ExceptionRegisters);
+  uint32_t cpu_context_size = sizeof(CortexMExceptionRegisters);
   if (FpuStateWasPushed(cpu_state)) {
-    cpu_context_size += sizeof(ExceptionRegistersFpu);
+    cpu_context_size += sizeof(CortexMExceptionRegistersFpu);
   }
   if (cpu_state.base.psr & kPsrExtraStackAlignBit) {
     // Account for the extra 4-bytes the processor
@@ -114,9 +117,6 @@ uint32_t CalculatePspDelta(const pw_cpu_exception_State& cpu_state) {
   // wasn't in use, or an error occurred when pushing context), the PSP doesn't
   // need to be shifted.
   if (!PspWasActive(cpu_state) || (cpu_state.extended.cfsr & kCfsrStkerrMask) ||
-#if _PW_ARCH_ARM_V8M_MAINLINE
-      (cpu_state.extended.cfsr & kCfsrStkofMask) ||
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
       (cpu_state.extended.cfsr & kCfsrMstkerrMask)) {
     return 0;
   }
@@ -133,10 +133,10 @@ uint32_t CalculateMspDelta(const pw_cpu_exception_State& cpu_state) {
     //                  it when patching MSP. To add FPU capture support,
     //                  delete this if block as CpuContextSize() will include
     //                  FPU context size in the calculation.
-    return sizeof(ExceptionRegisters) + sizeof(ExtraRegisters);
+    return sizeof(CortexMExceptionRegisters) + sizeof(CortexMExtraRegisters);
   }
 
-  return CpuContextSize(cpu_state) + sizeof(ExtraRegisters);
+  return CpuContextSize(cpu_state) + sizeof(CortexMExtraRegisters);
 }
 
 }  // namespace
@@ -211,9 +211,9 @@ void pw_cpu_exception_Entry(void) {
       // for more details)
       // The following block of assembly is equivalent to:
       //   if (lr & (1 << 2)) {
-      //     msp -= sizeof(ExceptionRegisters);
-      //     ExceptionRegisters* state =
-      //         (ExceptionRegisters*) msp;
+      //     msp -= sizeof(CortexMExceptionRegisters);
+      //     CortexMExceptionRegisters* state =
+      //         (CortexMExceptionRegisters*) msp;
       //     state->r0 = r0;
       //     state->r1 = r1;
       //     state->r2 = r2;
@@ -242,20 +242,8 @@ void pw_cpu_exception_Entry(void) {
       " mrs r3, psp                                           \n"
       " mrs r4, control                                       \n"
 
-#if _PW_ARCH_ARM_V7M || _PW_ARCH_ARM_V7EM
       // Store special registers to stack.
       " stmdb r0!, {r1-r4}                                    \n"
-
-#elif _PW_ARCH_ARM_V8M_MAINLINE
-      // Load ARMv8-M specific special registers.
-      " mrs r5, msplim                                        \n"
-      " mrs r6, psplim                                        \n"
-
-      // Store special registers to stack.
-      " stmdb r0!, {r1-r6}                                    \n"
-#else
-#error "Support required for your Cortex-M Arch"
-#endif  // defined(PW_CPU_EXCEPTION_CORTEX_M_ARMV7M)
 
       // Store a pointer to the beginning of special registers in r4 so they can
       // be restored later.
@@ -289,11 +277,11 @@ void pw_cpu_exception_Entry(void) {
       // Exit exception.
       " bx lr                                                 \n"
       : /*output=*/
-      : /*input=*/[base_state_size]"i"(sizeof(ExceptionRegisters)),
-                  [extra_state_size]"i"(sizeof(ExtraRegisters))
+      : /*input=*/[base_state_size]"i"(sizeof(CortexMExceptionRegisters)),
+                  [extra_state_size]"i"(sizeof(CortexMExtraRegisters))
       // clang-format on
   );
 }
 
 }  // extern "C"
-}  // namespace pw::cpu_exception::cortex_m
+}  // namespace pw::cpu_exception

@@ -22,7 +22,9 @@
 #include <cstdint>
 #include <span>
 
-#include "pw_cpu_exception/state.h"
+// Forward declaration of pw_cpu_exception_State. Definition provided by
+// backend.
+struct pw_cpu_exception_State;
 
 namespace pw::cpu_exception {
 
