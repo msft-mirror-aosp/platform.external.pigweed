@@ -13,8 +13,6 @@
 // the License.
 #pragma once
 
-#include <utility>
-
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 
@@ -37,7 +35,7 @@
   if (!result.ok()) {                               \
     return ::pw::internal::ConvertToStatus(result); \
   }                                                 \
-  lhs = ::pw::internal::ConvertToValue(result);
+  lhs = std::move(result.size())
 
 // Macro for cleanly working with Status or StatusWithSize objects in functions
 // that return StatusWithSize.
@@ -59,10 +57,6 @@ constexpr Status ConvertToStatus(Status status) { return status; }
 
 constexpr Status ConvertToStatus(StatusWithSize status_with_size) {
   return status_with_size.status();
-}
-
-constexpr size_t ConvertToValue(StatusWithSize status_with_size) {
-  return status_with_size.size();
 }
 
 constexpr StatusWithSize ConvertToStatusWithSize(Status status) {

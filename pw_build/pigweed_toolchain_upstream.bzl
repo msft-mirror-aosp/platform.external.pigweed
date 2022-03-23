@@ -11,7 +11,6 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""Implements the set of dependencies that bazel-embedded requires."""
 
 def _toolchain_upstream_repository_impl(rctx):
     """Creates a remote repository with a set of toolchain components.

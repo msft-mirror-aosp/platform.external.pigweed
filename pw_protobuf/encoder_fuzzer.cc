@@ -12,14 +12,15 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#include <pw_fuzzer/asan_interface.h>
+#include <pw_fuzzer/fuzzed_data_provider.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <span>
 #include <vector>
 
-#include "pw_fuzzer/asan_interface.h"
-#include "pw_fuzzer/fuzzed_data_provider.h"
 #include "pw_protobuf/encoder.h"
 
 namespace {
@@ -27,7 +28,8 @@ namespace {
 // Encodable values. The fuzzer will iteratively choose different field types to
 // generate and encode.
 enum FieldType : uint8_t {
-  kUint32 = 0,
+  kEncodeAndClear = 0,
+  kUint32,
   kPackedUint32,
   kUint64,
   kPackedUint64,
@@ -55,7 +57,8 @@ enum FieldType : uint8_t {
   kBytes,
   kString,
   kPush,
-  kMaxValue = kPush,
+  kPop,
+  kMaxValue = kPop,
 };
 
 // TODO(pwbug/181): Move this to pw_fuzzer/fuzzed_data_provider.h
@@ -129,7 +132,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   size_t poisoned_length = sizeof(buffer) - unpoisoned_length;
   ASAN_POISON_MEMORY_REGION(poisoned, poisoned_length);
 
-  pw::protobuf::MemoryEncoder encoder(unpoisoned);
+  pw::protobuf::NestedEncoder encoder(unpoisoned);
 
   // Storage for generated spans
   std::vector<uint32_t> u32s;
@@ -148,174 +151,133 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // set of inputs to the encoder to ensure it doesn't misbehave.
   while (provider.remaining_bytes() != 0) {
     switch (provider.ConsumeEnum<FieldType>()) {
+      case kEncodeAndClear:
+        // Special "field". Encode all the fields so far and reset the encoder.
+        encoder.Encode();
+        encoder.Clear();
+        break;
       case kUint32:
-        encoder
-            .WriteUint32(provider.ConsumeIntegral<uint32_t>(),
-                         provider.ConsumeIntegral<uint32_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteUint32(provider.ConsumeIntegral<uint32_t>(),
+                            provider.ConsumeIntegral<uint32_t>());
         break;
       case kPackedUint32:
-        encoder
-            .WritePackedUint32(provider.ConsumeIntegral<uint32_t>(),
-                               ConsumeSpan<uint32_t>(&provider, &u32s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedUint32(provider.ConsumeIntegral<uint32_t>(),
+                                  ConsumeSpan<uint32_t>(&provider, &u32s));
         break;
       case kUint64:
-        encoder
-            .WriteUint64(provider.ConsumeIntegral<uint32_t>(),
-                         provider.ConsumeIntegral<uint64_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteUint64(provider.ConsumeIntegral<uint32_t>(),
+                            provider.ConsumeIntegral<uint64_t>());
         break;
       case kPackedUint64:
-        encoder
-            .WritePackedUint64(provider.ConsumeIntegral<uint32_t>(),
-                               ConsumeSpan<uint64_t>(&provider, &u64s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedUint64(provider.ConsumeIntegral<uint32_t>(),
+                                  ConsumeSpan<uint64_t>(&provider, &u64s));
         break;
       case kInt32:
-        encoder
-            .WriteInt32(provider.ConsumeIntegral<uint32_t>(),
-                        provider.ConsumeIntegral<int32_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteInt32(provider.ConsumeIntegral<uint32_t>(),
+                           provider.ConsumeIntegral<int32_t>());
         break;
       case kPackedInt32:
-        encoder
-            .WritePackedInt32(provider.ConsumeIntegral<uint32_t>(),
-                              ConsumeSpan<int32_t>(&provider, &s32s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedInt32(provider.ConsumeIntegral<uint32_t>(),
+                                 ConsumeSpan<int32_t>(&provider, &s32s));
         break;
       case kInt64:
-        encoder
-            .WriteInt64(provider.ConsumeIntegral<uint32_t>(),
-                        provider.ConsumeIntegral<int64_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteInt64(provider.ConsumeIntegral<uint32_t>(),
+                           provider.ConsumeIntegral<int64_t>());
         break;
       case kPackedInt64:
-        encoder
-            .WritePackedInt64(provider.ConsumeIntegral<uint32_t>(),
-                              ConsumeSpan<int64_t>(&provider, &s64s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedInt64(provider.ConsumeIntegral<uint32_t>(),
+                                 ConsumeSpan<int64_t>(&provider, &s64s));
         break;
       case kSint32:
-        encoder
-            .WriteSint32(provider.ConsumeIntegral<uint32_t>(),
-                         provider.ConsumeIntegral<int32_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteSint32(provider.ConsumeIntegral<uint32_t>(),
+                            provider.ConsumeIntegral<int32_t>());
         break;
       case kPackedSint32:
-        encoder
-            .WritePackedSint32(provider.ConsumeIntegral<uint32_t>(),
-                               ConsumeSpan<int32_t>(&provider, &s32s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedSint32(provider.ConsumeIntegral<uint32_t>(),
+                                  ConsumeSpan<int32_t>(&provider, &s32s));
         break;
       case kSint64:
-        encoder
-            .WriteSint64(provider.ConsumeIntegral<uint32_t>(),
-                         provider.ConsumeIntegral<int64_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteSint64(provider.ConsumeIntegral<uint32_t>(),
+                            provider.ConsumeIntegral<int64_t>());
         break;
       case kPackedSint64:
-        encoder
-            .WritePackedSint64(provider.ConsumeIntegral<uint32_t>(),
-                               ConsumeSpan<int64_t>(&provider, &s64s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedSint64(provider.ConsumeIntegral<uint32_t>(),
+                                  ConsumeSpan<int64_t>(&provider, &s64s));
         break;
       case kBool:
-        encoder
-            .WriteBool(provider.ConsumeIntegral<uint32_t>(),
-                       provider.ConsumeBool())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteBool(provider.ConsumeIntegral<uint32_t>(),
+                          provider.ConsumeBool());
         break;
       case kFixed32:
-        encoder
-            .WriteFixed32(provider.ConsumeIntegral<uint32_t>(),
-                          provider.ConsumeIntegral<uint32_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteFixed32(provider.ConsumeIntegral<uint32_t>(),
+                             provider.ConsumeIntegral<uint32_t>());
         break;
       case kPackedFixed32:
-        encoder
-            .WritePackedFixed32(provider.ConsumeIntegral<uint32_t>(),
-                                ConsumeSpan<uint32_t>(&provider, &u32s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedFixed32(provider.ConsumeIntegral<uint32_t>(),
+                                   ConsumeSpan<uint32_t>(&provider, &u32s));
         break;
       case kFixed64:
-        encoder
-            .WriteFixed64(provider.ConsumeIntegral<uint32_t>(),
-                          provider.ConsumeIntegral<uint64_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteFixed64(provider.ConsumeIntegral<uint32_t>(),
+                             provider.ConsumeIntegral<uint64_t>());
         break;
       case kPackedFixed64:
-        encoder
-            .WritePackedFixed64(provider.ConsumeIntegral<uint32_t>(),
-                                ConsumeSpan<uint64_t>(&provider, &u64s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedFixed64(provider.ConsumeIntegral<uint32_t>(),
+                                   ConsumeSpan<uint64_t>(&provider, &u64s));
         break;
       case kSfixed32:
-        encoder
-            .WriteSfixed32(provider.ConsumeIntegral<uint32_t>(),
-                           provider.ConsumeIntegral<int32_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteSfixed32(provider.ConsumeIntegral<uint32_t>(),
+                              provider.ConsumeIntegral<int32_t>());
         break;
       case kPackedSfixed32:
-        encoder
-            .WritePackedSfixed32(provider.ConsumeIntegral<uint32_t>(),
-                                 ConsumeSpan<int32_t>(&provider, &s32s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedSfixed32(provider.ConsumeIntegral<uint32_t>(),
+                                    ConsumeSpan<int32_t>(&provider, &s32s));
         break;
       case kSfixed64:
-        encoder
-            .WriteSfixed64(provider.ConsumeIntegral<uint32_t>(),
-                           provider.ConsumeIntegral<int64_t>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteSfixed64(provider.ConsumeIntegral<uint32_t>(),
+                              provider.ConsumeIntegral<int64_t>());
         break;
       case kPackedSfixed64:
-        encoder
-            .WritePackedSfixed64(provider.ConsumeIntegral<uint32_t>(),
-                                 ConsumeSpan<int64_t>(&provider, &s64s))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedSfixed64(provider.ConsumeIntegral<uint32_t>(),
+                                    ConsumeSpan<int64_t>(&provider, &s64s));
         break;
       case kFloat:
-        encoder
-            .WriteFloat(provider.ConsumeIntegral<uint32_t>(),
-                        provider.ConsumeFloatingPoint<float>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteFloat(provider.ConsumeIntegral<uint32_t>(),
+                           provider.ConsumeFloatingPoint<float>());
         break;
       case kPackedFloat:
-        encoder
-            .WritePackedFloat(provider.ConsumeIntegral<uint32_t>(),
-                              ConsumeSpan<float>(&provider, &floats))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedFloat(provider.ConsumeIntegral<uint32_t>(),
+                                 ConsumeSpan<float>(&provider, &floats));
         break;
       case kDouble:
-        encoder
-            .WriteDouble(provider.ConsumeIntegral<uint32_t>(),
-                         provider.ConsumeFloatingPoint<double>())
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteDouble(provider.ConsumeIntegral<uint32_t>(),
+                            provider.ConsumeFloatingPoint<double>());
         break;
       case kPackedDouble:
-        encoder
-            .WritePackedDouble(provider.ConsumeIntegral<uint32_t>(),
-                               ConsumeSpan<double>(&provider, &doubles))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WritePackedDouble(provider.ConsumeIntegral<uint32_t>(),
+                                  ConsumeSpan<double>(&provider, &doubles));
         break;
       case kBytes:
-        encoder
-            .WriteBytes(provider.ConsumeIntegral<uint32_t>(),
-                        ConsumeBytes(&provider, &bytes))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteBytes(provider.ConsumeIntegral<uint32_t>(),
+                           ConsumeBytes(&provider, &bytes));
         break;
       case kString:
-        encoder
-            .WriteString(provider.ConsumeIntegral<uint32_t>(),
-                         ConsumeString(&provider, &strings))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        encoder.WriteString(provider.ConsumeIntegral<uint32_t>(),
+                            ConsumeString(&provider, &strings));
         break;
       case kPush:
         // Special "field". The marks the start of a nested message.
-        encoder.GetNestedEncoder(provider.ConsumeIntegral<uint32_t>());
+        encoder.Push(provider.ConsumeIntegral<uint32_t>());
+        break;
+      case kPop:
+        // Special "field". this marks the end of a nested message. No attempt
+        // is made to match pushes to pops, in order to test that the encoder
+        // behaves correctly when they are mismatched.
+        encoder.Pop();
         break;
     }
   }
+  // Ensure we call `Encode` at least once.
+  encoder.Encode();
 
   // Don't forget to unpoison for the next iteration!
   ASAN_UNPOISON_MEMORY_REGION(poisoned, poisoned_length);
