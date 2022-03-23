@@ -320,7 +320,6 @@ TEST(Utility, Move) {
 
   MoveTester moved(std::move(copied));
   EXPECT_EQ(123, moved.magic_value);
-  // NOLINTNEXTLINE(bugprone-use-after-move)
   EXPECT_EQ(0xffff, copied.magic_value);
   EXPECT_TRUE(moved.moved);
 }

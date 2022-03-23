@@ -63,8 +63,7 @@ class FlashPartitionWithStats : public FlashPartition {
   }
 
   size_t total_erase_count() const {
-    return std::accumulate(
-        sector_counters_.begin(), sector_counters_.end(), 0ul);
+    return std::accumulate(sector_counters_.begin(), sector_counters_.end(), 0);
   }
 
   void ResetCounters() { sector_counters_.assign(sector_count(), 0); }
