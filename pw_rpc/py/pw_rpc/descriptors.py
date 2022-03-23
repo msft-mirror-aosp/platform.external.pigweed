@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import enum
 from inspect import Parameter
 from typing import (Any, Callable, Collection, Dict, Generic, Iterable,
-                    Iterator, Optional, Tuple, TypeVar, Union)
+                    Iterator, Tuple, TypeVar, Union)
 
 from google.protobuf import descriptor_pb2, message_factory
 from google.protobuf.descriptor import (FieldDescriptor, MethodDescriptor,
@@ -213,17 +213,13 @@ class Method:
 
         return self.Type.UNARY
 
-    def get_request(self, proto: Optional[Message],
-                    proto_kwargs: Optional[Dict[str, Any]]) -> Message:
+    def get_request(self, proto, proto_kwargs: Dict[str, Any]):
         """Returns a request_type protobuf message.
 
         The client implementation may use this to support providing a request
         as either a message object or as keyword arguments for the message's
         fields (but not both).
         """
-        if proto_kwargs is None:
-            proto_kwargs = {}
-
         if proto and proto_kwargs:
             proto_str = repr(proto).strip() or "''"
             raise TypeError(

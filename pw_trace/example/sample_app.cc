@@ -78,8 +78,7 @@ class ProcessingTask : public SimpleRunnable {
     // Buffer is used for the job queue.
     std::span<std::byte> buf_span = std::span<std::byte>(
         reinterpret_cast<std::byte*>(jobs_buffer_), sizeof(jobs_buffer_));
-    jobs_.SetBuffer(buf_span)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    jobs_.SetBuffer(buf_span);
   }
   const char* Name() const override { return "Processing Task"; }
   bool ShouldRun() override { return jobs_.EntryCount() > 0; }
@@ -91,9 +90,8 @@ class ProcessingTask : public SimpleRunnable {
     size_t entry_count = jobs_.EntryCount();
 
     // Get the next job from the queue.
-    jobs_.PeekFront(job_bytes.bytes, &bytes_read)
-        .IgnoreError();              // TODO(pwbug/387): Handle Status properly
-    jobs_.PopFront().IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    jobs_.PeekFront(job_bytes.bytes, &bytes_read);
+    jobs_.PopFront();
     Job& job = job_bytes.job;
 
     // Process the job
@@ -137,8 +135,7 @@ class ProcessingTask : public SimpleRunnable {
   }
   void AddJobInternal(uint32_t job_id, uint8_t value) {
     JobBytes job{.job = {.job_id = job_id, .value = value}};
-    jobs_.PushBack(job.bytes)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    jobs_.PushBack(job.bytes);
   }
 } processing_task;
 
