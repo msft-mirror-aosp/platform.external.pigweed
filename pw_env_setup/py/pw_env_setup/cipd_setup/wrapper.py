@@ -122,7 +122,10 @@ def arch_normalized():
 
     machine = platform.machine()
     if machine.startswith(('arm', 'aarch')):
-        return machine.replace('aarch', 'arm')
+        machine = machine.replace('aarch', 'arm')
+        if machine == 'arm64':
+            return machine
+        return 'armv6l'
     if machine.endswith('64'):
         return 'amd64'
     if machine.endswith('86'):
@@ -241,11 +244,20 @@ brew uninstall python && brew install python
                 '\n'
                 '    sudo pip install certifi\n'
                 '\n'
+                'And if on the system Python on a Mac try\n'
+                '\n'
+                '    /Applications/Python 3.6/Install Certificates.command\n'
+                '\n'
                 'If using Homebrew Python try\n'
                 '\n'
                 '    brew install openssl\n'
                 '    brew uninstall python\n'
                 '    brew install python\n'
+                '\n'
+                "If those don't work, address all the potential issues shown \n"
+                'by the following command.\n'
+                '\n'
+                '    brew doctor\n'
                 '\n'
                 "Otherwise, check that your machine's Python can use SSL, "
                 'testing with the httplib module on Python 2 or http.client on '
