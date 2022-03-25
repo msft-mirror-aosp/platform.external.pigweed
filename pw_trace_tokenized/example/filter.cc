@@ -17,12 +17,12 @@
 // host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_filter
 //
 // RUN
-// .out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_filter
+// ./out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_filter
 // trace.bin
 //
 // DECODE
 // python pw_trace_tokenized/py/trace_tokenized.py -i trace.bin -o trace.json
-// ./out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic
+// ./out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic#trace
 //
 // VIEW
 // In chrome navigate to chrome://tracing, and load the trace.json file.
@@ -55,7 +55,9 @@ int main(int argc, char** argv) {  // Take filename as arg
   }
 
   // Register filter callback
-  pw::trace::Callbacks::Instance().RegisterEventCallback(TraceEventCallback);
+  pw::trace::Callbacks::Instance()
+      .RegisterEventCallback(TraceEventCallback)
+      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
 
   PW_TRACE_SET_ENABLED(true);  // Start with tracing enabled
 
