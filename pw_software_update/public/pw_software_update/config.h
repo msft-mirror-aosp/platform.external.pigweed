@@ -16,7 +16,7 @@
 // The log level to use for this module. Logs below this level are omitted.
 #define PW_LOG_MODULE_NAME "PWSU"
 #ifndef PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL
-#define PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL PW_LOG_LEVEL_ERROR
+#define PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL PW_LOG_LEVEL_WARN
 #endif  // PW_SOFTWARE_UPDATE_CONFIG_LOG_LEVEL
 
 // The size of the buffer to create on stack for streaming manifest data from
@@ -26,7 +26,20 @@
 // The maximum allowed length of a target name.
 #define MAX_TARGET_NAME_LENGTH 32
 
+// The maximum allowed payload size in bytes. This is used to mitigate DoS
+// attacks.
+#ifndef PW_SOFTWARE_UPDATE_MAX_TARGET_PAYLOAD_SIZE
+#define PW_SOFTWARE_UPDATE_MAX_TARGET_PAYLOAD_SIZE (100 * 1024 * 1024)
+#endif  // PW_SOFTWARE_UPDATE_MAX_TARGET_PAYLOAD_SIZE
+
 // Not recommended. Disable compilation of bundle verification.
 #ifndef PW_SOFTWARE_UPDATE_DISABLE_BUNDLE_VERIFICATION
 #define PW_SOFTWARE_UPDATE_DISABLE_BUNDLE_VERIFICATION (false)
 #endif  // PW_SOFTWARE_UPDATE_DISABLE_BUNDLE_VERIFICATION
+
+// Whether to support bundle "personalization", which is a feature that
+// strips some or all target files that a device claims to already have from an
+// incoming bundle in order to improve performance.
+#ifndef PW_SOFTWARE_UPDATE_WITH_PERSONALIZATION
+#define PW_SOFTWARE_UPDATE_WITH_PERSONALIZATION (true)
+#endif  // PW_SOFTWARE_UPDATE_WITH_PERSONALIZATION
