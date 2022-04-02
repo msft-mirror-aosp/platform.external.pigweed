@@ -17,7 +17,7 @@
 #include "pw_containers/intrusive_list.h"
 #include "pw_status/status.h"
 #include "pw_stream/stream.h"
-#include "pw_transfer/internal/client_connection.h"
+#include "pw_transfer/internal/event.h"
 
 namespace pw::transfer {
 namespace internal {
@@ -70,23 +70,18 @@ class Handler : public IntrusiveList<Handler>::Item {
   void set_writer(stream::Writer& writer) { writer_ = &writer; }
 
  private:
-  friend class ServerContext;
+  friend class Context;
 
   // Prepares for either a read or write transfer.
   Status Prepare(internal::TransferType type) {
-    return type == internal::kRead ? PrepareRead() : PrepareWrite();
+    return type == internal::TransferType::kTransmit ? PrepareRead()
+                                                     : PrepareWrite();
   }
 
-  // Only valid after a PrepareRead() call that returns OK.
-  stream::Reader& reader() const {
+  // Only valid after a PrepareRead() or PrepareWrite() call that returns OK.
+  stream::Stream& stream() const {
     PW_DASSERT(reader_ != nullptr);
     return *reader_;
-  }
-
-  // Only valid after a PrepareWrite() call that returns OK.
-  stream::Writer& writer() const {
-    PW_DASSERT(writer_ != nullptr);
-    return *writer_;
   }
 
   uint32_t transfer_id_;
@@ -116,6 +111,9 @@ class ReadOnlyHandler : public internal::Handler {
   Status PrepareWrite() final { return Status::PermissionDenied(); }
 
   using internal::Handler::set_reader;
+
+ private:
+  using internal::Handler::set_writer;
 };
 
 class WriteOnlyHandler : public internal::Handler {
@@ -134,6 +132,9 @@ class WriteOnlyHandler : public internal::Handler {
   Status PrepareWrite() override { return OkStatus(); }
 
   using internal::Handler::set_writer;
+
+ private:
+  using internal::Handler::set_reader;
 };
 
 class ReadWriteHandler : public internal::Handler {
