@@ -174,7 +174,7 @@ class EnvSetup(object):
     def __init__(self, pw_root, cipd_cache_dir, shell_file, quiet, install_dir,
                  virtualenv_root, strict, virtualenv_gn_out_dir, json_file,
                  project_root, config_file, use_existing_cipd,
-                 use_pinned_pip_packages):
+                 use_pinned_pip_packages, cipd_only, trust_cipd_hash):
         self._env = environment.Environment()
         self._project_root = project_root
         self._pw_root = pw_root
@@ -188,6 +188,8 @@ class EnvSetup(object):
         self._virtualenv_root = (virtualenv_root
                                  or os.path.join(install_dir, 'pigweed-venv'))
         self._strict = strict
+        self._cipd_only = cipd_only
+        self._trust_cipd_hash = trust_cipd_hash
 
         if os.path.isfile(shell_file):
             os.unlink(shell_file)
@@ -206,15 +208,15 @@ class EnvSetup(object):
         self._pw_packages = []
         self._root_variable = None
 
+        self._json_file = json_file
+        self._gni_file = None
+
         self._config_file_name = getattr(config_file, 'name', 'config file')
+        self._env.set('_PW_ENVIRONMENT_CONFIG_FILE', self._config_file_name)
         if config_file:
             self._parse_config_file(config_file)
 
         self._check_submodules()
-
-        self._json_file = json_file
-        if not self._json_file:
-            self._json_file = os.path.join(self._install_dir, 'actions.json')
 
         self._use_existing_cipd = use_existing_cipd
         self._virtualenv_gn_out_dir = virtualenv_gn_out_dir
@@ -257,6 +259,11 @@ class EnvSetup(object):
         config = json.load(config_file)
 
         self._root_variable = config.pop('root_variable', None)
+
+        if 'json_file' in config:
+            self._json_file = config.pop('json_file')
+
+        self._gni_file = config.pop('gni_file', None)
 
         self._optional_submodules.extend(config.pop('optional_submodules', ()))
         self._required_submodules.extend(config.pop('required_submodules', ()))
@@ -351,6 +358,15 @@ class EnvSetup(object):
 
             raise MissingSubmodulesError(', '.join(sorted(missing)))
 
+    def _write_gni_file(self):
+        gni_file = os.path.join(self._project_root, 'build_overrides',
+                                'pigweed_environment.gni')
+        if self._gni_file:
+            gni_file = os.path.join(self._project_root, self._gni_file)
+
+        with open(gni_file, 'w') as outs:
+            self._env.gni(outs, self._project_root)
+
     def _log(self, *args, **kwargs):
         # Not using logging module because it's awkward to flush a log handler.
         if self._quiet:
@@ -377,6 +393,9 @@ class EnvSetup(object):
 
         if self._is_windows:
             steps.append(("Windows scripts", self.win_scripts))
+
+        if self._cipd_only:
+            steps = [('CIPD package manager', self.cipd)]
 
         self._log(
             Color.bold('Downloading and installing packages into local '
@@ -438,6 +457,12 @@ Then use `set +x` to go back to normal.
             with open(actions_json, 'w') as outs:
                 self._env.json(outs)
 
+            # This file needs to be written after the CIPD step and before the
+            # Python virtualenv step. It also needs to be rewritten after the
+            # Python virtualenv step, so it's easiest to just write it after
+            # every step.
+            self._write_gni_file()
+
         self._log('')
         self._env.echo('')
 
@@ -452,6 +477,10 @@ Then use `set +x` to go back to normal.
         self._env.echo(
             Color.bold('Environment looks good, you are ready to go!'))
         self._env.echo()
+
+        # Don't write new files if all we did was update CIPD packages.
+        if self._cipd_only:
+            return 0
 
         with open(self._shell_file, 'w') as outs:
             self._env.write(outs)
@@ -475,9 +504,10 @@ Then use `set +x` to go back to normal.
             outs.write(
                 json.dumps(config, indent=4, separators=(',', ': ')) + '\n')
 
-        if self._json_file is not None:
-            with open(self._json_file, 'w') as outs:
-                self._env.json(outs)
+        json_file = (self._json_file
+                     or os.path.join(self._install_dir, 'actions.json'))
+        with open(json_file, 'w') as outs:
+            self._env.json(outs)
 
         return 0
 
@@ -513,7 +543,8 @@ Then use `set +x` to go back to normal.
                                   package_files=package_files,
                                   cache_dir=self._cipd_cache_dir,
                                   env_vars=self._env,
-                                  spin=spin):
+                                  spin=spin,
+                                  trust_hash=self._trust_cipd_hash):
             return result(_Result.Status.FAILED)
 
         return result(_Result.Status.DONE)
@@ -642,6 +673,14 @@ def parse(argv=None):
     )
 
     parser.add_argument(
+        '--trust-cipd-hash',
+        action='store_true',
+        help='Only run the cipd executable if the ensure file or command-line '
+        'has changed. Defaults to false since files could have been deleted '
+        'from the installation directory and cipd would add them back.',
+    )
+
+    parser.add_argument(
         '--shell-file',
         help='Where to write the file for shells to source.',
         required=True,
@@ -680,12 +719,7 @@ def parse(argv=None):
         default=None,
     )
 
-    parser.add_argument(
-        '--json-file',
-        help=('Dump environment variable operations to a JSON file. Default: '
-              '<install_dir>/actions.json'),
-        default=None,
-    )
+    parser.add_argument('--json-file', help=argparse.SUPPRESS, default=None)
 
     parser.add_argument(
         '--use-existing-cipd',
@@ -704,6 +738,12 @@ def parse(argv=None):
         dest='use_pinned_pip_packages',
         help='Do not use pins of pip packages.',
         action='store_false',
+    )
+
+    parser.add_argument(
+        '--cipd-only',
+        help='Skip non-CIPD steps.',
+        action='store_true',
     )
 
     args = parser.parse_args(argv)
