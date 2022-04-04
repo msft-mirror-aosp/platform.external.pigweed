@@ -400,7 +400,9 @@ describe('Encoder', () => {
     ]);
 
     await manager.write(4, textEncoder.encode('hello this is a message'));
-    expect(receivedData()).toEqual(textEncoder.encode('hello this is a message'));
+    expect(receivedData()).toEqual(
+      textEncoder.encode('hello this is a message')
+    );
     expect(sentChunks[1].getData()).toEqual(textEncoder.encode('hell'));
     expect(sentChunks[2].getData()).toEqual(textEncoder.encode('o th'));
     expect(sentChunks[3].getData()).toEqual(textEncoder.encode('is i'));
@@ -611,14 +613,17 @@ describe('Encoder', () => {
       .catch(error => {
         const expectedChunk1 = new Chunk();
         expectedChunk1.setTransferId(22);
+        expectedChunk1.setType(Chunk.Type.TRANSFER_START);
         const expectedChunk2 = new Chunk();
         expectedChunk2.setTransferId(22);
         expectedChunk2.setData(textEncoder.encode('01234'));
+        expectedChunk2.setType(Chunk.Type.TRANSFER_DATA);
         const lastChunk = new Chunk();
         lastChunk.setTransferId(22);
         lastChunk.setData(textEncoder.encode('56789'));
         lastChunk.setOffset(5);
         lastChunk.setRemainingBytes(0);
+        lastChunk.setType(Chunk.Type.TRANSFER_DATA);
 
         const expectedChunks = [
           expectedChunk1,

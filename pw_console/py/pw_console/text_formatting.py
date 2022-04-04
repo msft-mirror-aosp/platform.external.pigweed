@@ -15,7 +15,7 @@
 
 import copy
 import re
-from typing import Iterable, List
+from typing import Iterable, List, Tuple
 
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.formatted_text.base import OneStyleAndTextTuple
@@ -33,21 +33,26 @@ def split_lines(
         input_fragments: StyleAndTextTuples) -> List[StyleAndTextTuples]:
     """Break a flattened list of StyleAndTextTuples into a list of lines.
 
-    Ending line breaks are preserved."""
+    Ending line breaks are not preserved."""
     lines: List[StyleAndTextTuples] = []
     this_line: StyleAndTextTuples = []
     for item in input_fragments:
-        this_line.append(item)
         if item[1].endswith('\n'):
+            # If there are no elements in this line except for a linebreak add
+            # an empty StyleAndTextTuple so this line isn't an empty list.
+            if len(this_line) == 0 and item[1] == '\n':
+                this_line.append((item[0], item[1][:-1]))
             lines.append(this_line)
             this_line = []
+        else:
+            this_line.append(item)
     return lines
 
 
 def insert_linebreaks(
         input_fragments: StyleAndTextTuples,
         max_line_width: int,
-        truncate_long_lines: bool = True) -> tuple[StyleAndTextTuples, int]:
+        truncate_long_lines: bool = True) -> Tuple[StyleAndTextTuples, int]:
     """Add line breaks at max_line_width if truncate_long_lines is True.
 
     Returns input_fragments with each character as it's own formatted text

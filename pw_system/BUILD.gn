@@ -48,7 +48,7 @@ group("pw_system") {
     ":init",
     ":io",
     ":log",
-    ":rpc",
+    ":rpc_server",
     ":work_queue",
   ]
   deps = [ ":target_hooks" ]
@@ -61,47 +61,53 @@ pw_source_set("log") {
     "pw_system_private/log.h",
   ]
   public_deps = [
-    ":config",
     "$dir_pw_log_rpc:log_service",
     "$dir_pw_log_rpc:rpc_log_drain_thread",
+    "$dir_pw_multisink",
   ]
   deps = [
-    ":rpc",
+    ":config",
+    ":rpc_server",
+    "$dir_pw_log_rpc:rpc_log_drain",
+    "$dir_pw_sync:lock_annotations",
+    "$dir_pw_sync:mutex",
+  ]
+}
+
+# There is no public part to this backend which does not cause circular
+# dependencies, there is only the pw_build_LINK_DEPS "log_backend.impl".
+pw_source_set("log_backend") {
+}
+
+pw_source_set("log_backend.impl") {
+  sources = [ "log_backend.cc" ]
+  deps = [
+    ":config",
+    ":log",
     "$dir_pw_bytes",
     "$dir_pw_chrono:system_clock",
-    "$dir_pw_log",
     "$dir_pw_log:proto_utils",
-    "$dir_pw_log_rpc:rpc_log_drain",
+    "$dir_pw_log:pw_log.facade",
+    "$dir_pw_log_string:handler.facade",
     "$dir_pw_log_tokenized:metadata",
     "$dir_pw_multisink",
     "$dir_pw_result",
     "$dir_pw_string",
     "$dir_pw_sync:interrupt_spin_lock",
     "$dir_pw_sync:lock_annotations",
-    "$dir_pw_sync:mutex",
     "$dir_pw_tokenizer",
     "$dir_pw_tokenizer:global_handler_with_payload.facade",
   ]
 }
 
-pw_source_set("rpc") {
+pw_facade("rpc_server") {
+  backend = pw_system_RPC_SERVER_BACKEND
   visibility = [ ":*" ]
-  sources = [
-    "pw_system_private/rpc.h",
-    "rpc.cc",
-  ]
+  public = [ "public/pw_system/rpc_server.h" ]
   public_configs = [ ":public_include_path" ]
   public_deps = [
     ":config",
-    "$dir_pw_rpc/system_server:facade",
     "$dir_pw_thread:thread_core",
-  ]
-  deps = [
-    ":io",
-    "$dir_pw_assert",
-    "$dir_pw_hdlc:pw_rpc",
-    "$dir_pw_hdlc:rpc_channel_output",
-    "$dir_pw_sync:mutex",
   ]
 }
 
@@ -119,11 +125,25 @@ pw_source_set("init") {
   sources = [ "init.cc" ]
   deps = [
     ":log",
-    ":rpc",
+    ":rpc_server",
     ":target_hooks.facade",
     ":work_queue",
     "$dir_pw_rpc/nanopb:echo_service",
     "$dir_pw_thread:thread",
+  ]
+}
+
+pw_source_set("hdlc_rpc_server") {
+  sources = [ "hdlc_rpc_server.cc" ]
+  deps = [
+    ":config",
+    ":io",
+    ":rpc_server.facade",
+    "$dir_pw_assert",
+    "$dir_pw_hdlc:pw_rpc",
+    "$dir_pw_hdlc:rpc_channel_output",
+    "$dir_pw_log",
+    "$dir_pw_sync:mutex",
   ]
 }
 
