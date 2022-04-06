@@ -20,3 +20,10 @@ cc_library {
         "public",
     ],
 }
+
+android_library {
+    name: "pw_log_android_java",
+    srcs: ["java/android_main/dev/pigweed/pw_log/*.java"],
+    visibility: ["//visibility:public"],
+    sdk_version: "current",
+}
