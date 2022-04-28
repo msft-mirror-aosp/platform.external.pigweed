@@ -44,10 +44,13 @@ class TransferServiceIntegrationTest(unittest.TestCase):
         self.directory = Path(self._tempdir.name)
 
         command = (*self.test_server_command, str(self.directory))
+        self._outgoing_filter = rpc.PacketFilter('outgoing RPC')
+        self._incoming_filter = rpc.PacketFilter('incoming RPC')
         self._context = rpc.HdlcRpcLocalServerAndClient(
             command,
             self.port, [transfer_pb2, test_server_pb2],
-            for_testing=True)
+            outgoing_processor=self._outgoing_filter,
+            incoming_processor=self._incoming_filter)
 
         service = self._context.client.channel(1).rpcs.pw.transfer.Transfer
         self.manager = pw_transfer.Manager(
@@ -96,8 +99,9 @@ class TransferServiceIntegrationTest(unittest.TestCase):
 
     def test_read_large_amount_of_data(self) -> None:
         for _ in range(ITERATIONS):
-            self.set_content(27, '~' * 512)
-            self.assertEqual(self.manager.read(27), b'~' * 512)
+            size = 2**13  # TODO(hepler): Increase to 2**14 when it passes.
+            self.set_content(27, '~' * size)
+            self.assertEqual(self.manager.read(27), b'~' * size)
 
     def test_write_unknown_id(self) -> None:
         with self.assertRaises(pw_transfer.Error) as ctx:
@@ -147,12 +151,12 @@ class TransferServiceIntegrationTest(unittest.TestCase):
         self.set_content(34, 'junk')
 
         # Allow the initial packet and first chunk, then drop the second chunk.
-        self._context.outgoing_packets.keep(2)
-        self._context.outgoing_packets.drop(1)
+        self._outgoing_filter.keep(2)
+        self._outgoing_filter.drop(1)
 
         # Allow the initial transfer parameters updates, then drop the next two.
-        self._context.incoming_packets.keep(1)
-        self._context.incoming_packets.drop(2)
+        self._incoming_filter.keep(1)
+        self._incoming_filter.drop(2)
 
         with self.assertLogs('pw_transfer', 'DEBUG') as logs:
             self.manager.write(34, _DATA_4096B)
@@ -168,8 +172,8 @@ class TransferServiceIntegrationTest(unittest.TestCase):
     def test_write_regularly_drop_packets(self) -> None:
         self.set_content(35, 'junk')
 
-        self._context.outgoing_packets.drop_every(5)  # drop one per window
-        self._context.incoming_packets.drop_every(3)
+        self._outgoing_filter.drop_every(5)  # drop one per window
+        self._incoming_filter.drop_every(3)
 
         self.manager.write(35, _DATA_4096B)
 
@@ -183,16 +187,16 @@ class TransferServiceIntegrationTest(unittest.TestCase):
             self.set_content(seed, 'junk')
 
             rand = random.Random(seed)
-            self._context.incoming_packets.randomly_drop(3, rand)
-            self._context.outgoing_packets.randomly_drop(3, rand)
+            self._incoming_filter.randomly_drop(3, rand)
+            self._outgoing_filter.randomly_drop(3, rand)
 
             data = bytes(
                 rand.randrange(256) for _ in range(rand.randrange(16384)))
             self.manager.write(seed, data)
             self.assertEqual(self.get_content(seed), data)
 
-            self._context.incoming_packets.reset()
-            self._context.outgoing_packets.reset()
+            self._incoming_filter.reset()
+            self._outgoing_filter.reset()
 
 
 def _main(test_server_command: List[str], port: int,
