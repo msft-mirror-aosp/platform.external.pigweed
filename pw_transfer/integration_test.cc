@@ -35,12 +35,11 @@ namespace {
 
 using namespace std::chrono_literals;
 
-// TODO(hepler): Use more iterations when the pw_transfer synchronization issues
-//     that make this flaky are fixed.
-constexpr int kIterations = 1;
+constexpr int kIterations = 5;
 
 constexpr auto kData512 = bytes::Initialized<512>([](size_t i) { return i; });
 constexpr auto kData8192 = bytes::Initialized<8192>([](size_t i) { return i; });
+constexpr auto kDataHdlcEscape = bytes::Initialized<8192>(0x7e);
 
 std::filesystem::path directory;
 
@@ -66,27 +65,31 @@ ConstByteSpan AsByteSpan(const char (&data)[kLengthWithNull]) {
 
 constexpr ConstByteSpan AsByteSpan(ConstByteSpan data) { return data; }
 
+thread::Options& TransferThreadOptions() {
+  static thread::stl::Options options;
+  return options;
+}
+
 // Test fixture for pw_transfer tests. Clears the transfer files before and
 // after each test.
 class TransferIntegration : public ::testing::Test {
  protected:
   TransferIntegration()
-      : client_(rpc::integration_test::client(),
+      : transfer_thread_(chunk_buffer_, encode_buffer_),
+        system_thread_(TransferThreadOptions(), transfer_thread_),
+        client_(rpc::integration_test::client(),
                 rpc::integration_test::kChannelId,
-                work_queue_,
-                client_buffer_,
+                transfer_thread_,
                 256),
         test_server_client_(rpc::integration_test::client(),
-                            rpc::integration_test::kChannelId),
-        work_queue_thread_(kThreadOptions, work_queue_) {
+                            rpc::integration_test::kChannelId) {
     ClearFiles();
   }
 
   ~TransferIntegration() {
-    work_queue_.RequestStop();
-    work_queue_thread_.join();
-
     ClearFiles();
+    transfer_thread_.Terminate();
+    system_thread_.join();
   }
 
   // Sets the content of a transfer ID and returns a MemoryReader for that data.
@@ -163,18 +166,16 @@ class TransferIntegration : public ::testing::Test {
     }
   }
 
-  static constexpr thread::stl::Options kThreadOptions;
-
-  work_queue::WorkQueueWithBuffer<4> work_queue_;
+  std::byte chunk_buffer_[512];
+  std::byte encode_buffer_[512];
+  transfer::Thread<2, 2> transfer_thread_;
+  thread::Thread system_thread_;
 
   Client client_;
 
   pw_rpc::raw::TestServer::Client test_server_client_;
   Status last_status_ = Status::Unknown();
   sync::BinarySemaphore completed_;
-  std::byte client_buffer_[512];
-
-  thread::Thread work_queue_thread_;
 };
 
 TEST_F(TransferIntegration, Read_UnknownId) {
@@ -203,6 +204,7 @@ PW_TRANSFER_TEST_READ(SingleByte_1, "\0");
 PW_TRANSFER_TEST_READ(SingleByte_2, "?");
 PW_TRANSFER_TEST_READ(SmallData, "hunter2");
 PW_TRANSFER_TEST_READ(LargeData, kData512);
+PW_TRANSFER_TEST_READ(VeryLargeData, kData8192);
 
 TEST_F(TransferIntegration, Write_UnknownId) {
   constexpr std::byte kData[] = {std::byte{0}, std::byte{1}, std::byte{2}};
@@ -233,6 +235,8 @@ PW_TRANSFER_TEST_WRITE(SingleByte_1, "\0");
 PW_TRANSFER_TEST_WRITE(SingleByte_2, "?");
 PW_TRANSFER_TEST_WRITE(SmallData, "hunter2");
 PW_TRANSFER_TEST_WRITE(LargeData, kData512);
+PW_TRANSFER_TEST_WRITE(HdlcEscape, kDataHdlcEscape);
+PW_TRANSFER_TEST_WRITE(VeryLargeData, kData8192);
 
 }  // namespace
 }  // namespace pw::transfer
