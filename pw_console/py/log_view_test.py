@@ -24,7 +24,11 @@ from prompt_toolkit.data_structures import Point
 
 from pw_console.console_prefs import ConsolePrefs
 from pw_console.log_view import LogView
-from pw_console.text_formatting import join_adjacent_style_tuples
+from pw_console.log_screen import ScreenLine
+from pw_console.text_formatting import (
+    flatten_formatted_text_tuples,
+    join_adjacent_style_tuples,
+)
 
 _PYTHON_3_8 = sys.version_info >= (
     3,
@@ -39,7 +43,9 @@ def _create_log_view():
     log_pane.current_log_pane_height = 10
 
     application = MagicMock()
-    application.prefs = ConsolePrefs()
+    application.prefs = ConsolePrefs(project_file=False,
+                                     project_user_file=False,
+                                     user_file=False)
     application.prefs.reset_config()
     log_view = LogView(log_pane, application)
     return log_view, log_pane
@@ -213,27 +219,31 @@ class TestLogView(unittest.TestCase):
         self.assertEqual(log_view.get_cursor_position(), Point(x=0, y=9))
 
         expected_formatted_text = [
-            ('', '\n\n\n\n\n\n'),
+            ('', ''),
             ('class:log-time', '20210713 00:00:00'),
             ('', '  '),
             ('class:log-level-10', 'DEBUG'),
-            ('', '  Test log 0\n'),
+            ('', '  Test log 0'),
+
             ('class:log-time', '20210713 00:00:00'),
             ('', '  '),
             ('class:log-level-10', 'DEBUG'),
-            ('', '  Test log 1\n'),
+            ('', '  Test log 1'),
+
             ('class:log-time', '20210713 00:00:00'),
             ('', '  '),
             ('class:log-level-10', 'DEBUG'),
-            ('', '  Test log 2\n'),
+            ('', '  Test log 2'),
+
             ('class:selected-log-line class:log-time', '20210713 00:00:00'),
             ('class:selected-log-line ', '  '),
             ('class:selected-log-line class:log-level-10', 'DEBUG'),
             ('class:selected-log-line ',
-             '  Test log 3                                            \n')
+             '  Test log 3                                             ')
         ]  # yapf: disable
 
-        result_text = join_adjacent_style_tuples(log_view._line_fragment_cache)  # pylint: disable=protected-access
+        result_text = join_adjacent_style_tuples(
+            flatten_formatted_text_tuples(log_view._line_fragment_cache))  # pylint: disable=protected-access
 
         self.assertEqual(result_text, expected_formatted_text)
 
@@ -311,6 +321,107 @@ class TestLogView(unittest.TestCase):
         log_view.render_content()
         self.assertEqual(log_view.get_current_line(), 7)
 
+    def test_get_line_at_cursor_position(self) -> None:
+        """Tests fuctions that rely on getting a log_index for the current
+        cursor position.
+
+        Including:
+        - LogScreen.fetch_subline_up
+        - LogScreen.fetch_subline_down
+        - LogView._update_log_index
+        """
+        # pylint: disable=protected-access
+        # Create log_view with 4 logs
+        starting_log_count = 4
+        log_view, _pane = self._create_log_view_with_logs(
+            log_count=starting_log_count)
+        log_view.render_content()
+
+        # Check setup is correct
+        self.assertTrue(log_view.follow)
+        self.assertEqual(log_view.get_current_line(), 3)
+        self.assertEqual(log_view.get_total_count(), 4)
+        self.assertEqual(
+            list(log.record.message
+                 for log in log_view._get_visible_log_lines()),
+            ['Test log 0', 'Test log 1', 'Test log 2', 'Test log 3'])
+
+        self.assertEqual(log_view.log_screen.cursor_position, 9)
+        # Force the cursor_position to be larger than the log_screen
+        # line_buffer.
+        log_view.log_screen.cursor_position = 10
+        # Attempt to get the current line, no exception should be raised
+        result = log_view.log_screen.get_line_at_cursor_position()
+        # Log index should be None
+        self.assertEqual(result.log_index, None)
+
+        # Force the cursor_position to be < 0. This won't produce an error but
+        # would wrap around to the beginning.
+        log_view.log_screen.cursor_position = -1
+        # Attempt to get the current line, no exception should be raised
+        result = log_view.log_screen.get_line_at_cursor_position()
+        # Result should be a blank line
+        self.assertEqual(result, ScreenLine([('', '')]))
+        # Log index should be None
+        self.assertEqual(result.log_index, None)
+
+    def test_visual_select(self) -> None:
+        """Test log line selection."""
+        log_view, log_pane = self._create_log_view_with_logs(log_count=100)
+        self.assertEqual(100, log_view.get_total_count())
+
+        # Page scrolling needs to know the current window height.
+        log_pane.pane_resized = MagicMock(return_value=True)
+        log_pane.current_log_pane_width = 80
+        log_pane.current_log_pane_height = 10
+
+        log_view.log_screen.reset_logs = MagicMock(
+            wraps=log_view.log_screen.reset_logs)
+        log_view.log_screen.get_lines = MagicMock(
+            wraps=log_view.log_screen.get_lines)
+
+        log_view.render_content()
+        log_view.log_screen.reset_logs.assert_called_once()
+        log_view.log_screen.get_lines.assert_called_once_with(
+            marked_logs_start=None, marked_logs_end=None)
+        log_view.log_screen.get_lines.reset_mock()
+        log_view.log_screen.reset_logs.reset_mock()
+
+        self.assertIsNone(log_view.marked_logs_start)
+        self.assertIsNone(log_view.marked_logs_end)
+        log_view.visual_select_line(Point(0, 9))
+        self.assertEqual(
+            (99, 99), (log_view.marked_logs_start, log_view.marked_logs_end))
+
+        log_view.visual_select_line(Point(0, 8))
+        log_view.visual_select_line(Point(0, 7))
+        self.assertEqual(
+            (97, 99), (log_view.marked_logs_start, log_view.marked_logs_end))
+
+        log_view.clear_visual_selection()
+        self.assertIsNone(log_view.marked_logs_start)
+        self.assertIsNone(log_view.marked_logs_end)
+
+        log_view.visual_select_line(Point(0, 1))
+        log_view.visual_select_line(Point(0, 2))
+        log_view.visual_select_line(Point(0, 3))
+        log_view.visual_select_line(Point(0, 4))
+        self.assertEqual(
+            (91, 94), (log_view.marked_logs_start, log_view.marked_logs_end))
+
+        # Make sure the log screen was not re-generated.
+        log_view.log_screen.reset_logs.assert_not_called()
+        log_view.log_screen.reset_logs.reset_mock()
+
+        # Render the screen
+        log_view.render_content()
+        log_view.log_screen.reset_logs.assert_called_once()
+        # Check the visual selection was specified
+        log_view.log_screen.get_lines.assert_called_once_with(
+            marked_logs_start=91, marked_logs_end=94)
+        log_view.log_screen.get_lines.reset_mock()
+        log_view.log_screen.reset_logs.reset_mock()
+
 
 if _PYTHON_3_8:
     from unittest import IsolatedAsyncioTestCase  # type: ignore # pylint: disable=no-name-in-module
@@ -337,17 +448,24 @@ if _PYTHON_3_8:
 
         @parameterized.expand([
             (
+                # Test name
                 'regex filter',
+                # Search input_text
                 'log.*item',
+                # input_logs
                 [
                     ('Log some item', dict()),
                     ('Log another item', dict()),
                     ('Some exception', dict()),
                 ],
+                # expected_matched_lines
                 [
                     'Log some item',
                     'Log another item',
                 ],
+                # expected_match_line_numbers
+                {0: 0, 1: 1},
+                # expected_export_text
                 (
                     '  DEBUG  Log some item\n'
                     '  DEBUG  Log another item\n'
@@ -356,8 +474,11 @@ if _PYTHON_3_8:
                 False,  # invert
             ),
             (
+                # Test name
                 'regex filter with field',
+                # Search input_text
                 'earth',
+                # input_logs
                 [
                     ('Log some item',
                     dict(extra_metadata_fields={'planet': 'Jupiter'})),
@@ -366,10 +487,14 @@ if _PYTHON_3_8:
                     ('Some exception',
                     dict(extra_metadata_fields={'planet': 'Earth'})),
                 ],
+                # expected_matched_lines
                 [
                     'Log another item',
                     'Some exception',
                 ],
+                # expected_match_line_numbers
+                {1: 0, 2: 1},
+                # expected_export_text
                 (
                     '  DEBUG  Earth    Log another item\n'
                     '  DEBUG  Earth    Some exception\n'
@@ -378,8 +503,11 @@ if _PYTHON_3_8:
                 False,  # invert
             ),
             (
+                # Test name
                 'regex filter with field inverted',
+                # Search input_text
                 'earth',
+                # input_logs
                 [
                     ('Log some item',
                     dict(extra_metadata_fields={'planet': 'Jupiter'})),
@@ -388,9 +516,13 @@ if _PYTHON_3_8:
                     ('Some exception',
                     dict(extra_metadata_fields={'planet': 'Earth'})),
                 ],
+                # expected_matched_lines
                 [
                     'Log some item',
                 ],
+                # expected_match_line_numbers
+                {0: 0},
+                # expected_export_text
                 (
                     '  DEBUG  Jupiter  Log some item\n'
                 ),
@@ -400,20 +532,27 @@ if _PYTHON_3_8:
         ]) # yapf: disable
         async def test_log_filtering(
             self,
-            _name,
+            _test_name,
             input_text,
-            input_lines,
+            input_logs,
             expected_matched_lines,
+            expected_match_line_numbers,
             expected_export_text,
             field=None,
             invert=False,
         ) -> None:
             """Test run log view filtering."""
-            log_view, _log_pane = self._create_log_view_from_list(input_lines)
-            self.assertEqual(log_view.get_total_count(), len(input_lines))
+            log_view, _log_pane = self._create_log_view_from_list(input_logs)
+            log_view.render_content()
 
-            # Apply the filter and wait for the background task
+            self.assertEqual(log_view.get_total_count(), len(input_logs))
+            # Apply the search and wait for the match count background task
             log_view.new_search(input_text, invert=invert, field=field)
+            await log_view.search_match_count_task
+            self.assertEqual(log_view.search_matched_lines,
+                             expected_match_line_numbers)
+
+            # Apply the filter and wait for the filter background task
             log_view.apply_filter()
             await log_view.filter_existing_logs_task
 
@@ -447,7 +586,7 @@ if _PYTHON_3_8:
 
             # Clear filters and check the numbe of lines is back to normal.
             log_view.clear_filters()
-            self.assertEqual(log_view.get_total_count(), len(input_lines))
+            self.assertEqual(log_view.get_total_count(), len(input_logs))
 
 
 if __name__ == '__main__':
