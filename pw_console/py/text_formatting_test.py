@@ -212,9 +212,9 @@ class TestTextFormatting(unittest.TestCase):
                 'elit.\n'
             ).__pt_formatted_text__(),
             [
-                ANSI('Lorem\n').__pt_formatted_text__(),
-                ANSI(' ipsum dolor\n').__pt_formatted_text__(),
-                ANSI('elit.\n').__pt_formatted_text__(),
+                ANSI('Lorem').__pt_formatted_text__(),
+                ANSI(' ipsum dolor').__pt_formatted_text__(),
+                ANSI('elit.').__pt_formatted_text__(),
             ],  # expected_lines
         ),
         (
@@ -227,13 +227,26 @@ class TestTextFormatting(unittest.TestCase):
                 # [0] for the fragments, [1] is line_height
                 truncate_long_lines=False)[0],
             [
-                ANSI('Lorem\n').__pt_formatted_text__(),
-                ANSI(' ipsum dolor si\n').__pt_formatted_text__(),
-                ANSI('t amet, consect\n').__pt_formatted_text__(),
-                ANSI('etur adipiscing\n').__pt_formatted_text__(),
-                ANSI(' elit.\n').__pt_formatted_text__(),
+                ANSI('Lorem').__pt_formatted_text__(),
+                ANSI(' ipsum dolor si').__pt_formatted_text__(),
+                ANSI('t amet, consect').__pt_formatted_text__(),
+                ANSI('etur adipiscing').__pt_formatted_text__(),
+                ANSI(' elit.').__pt_formatted_text__(),
             ],
         ),
+        (
+            'empty lines',
+            # Each line should have at least one StyleAndTextTuple but without
+            # an ending line break.
+            [
+                ('', '\n'),
+                ('', '\n'),
+            ],
+            [
+                [('', '')],
+                [('', '')],
+            ],
+        )
     ]) # yapf: disable
     def test_split_lines(
         self,

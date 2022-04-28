@@ -58,6 +58,7 @@ pw_cc_library(
         ":config",
         "//pw_assert",
         "//pw_bytes",
+        "//pw_containers:vector",
         "//pw_polyfill:bit",
         "//pw_polyfill:overrides",
         "//pw_result",
@@ -180,17 +181,33 @@ proto_library(
 )
 
 pw_proto_library(
-    name = "codegen_test_protos_pwpb",
-    deps = [":codegen_test_proto"],
+    name = "codegen_test_proto_cc",
+    deps = [
+        ":codegen_test_proto",
+        ":common_protos",
+    ],
 )
 
 pw_cc_test(
-    name = "codegen_test",
+    name = "codegen_decoder_test",
     srcs = [
-        "codegen_test.cc",
+        "codegen_decoder_test.cc",
     ],
     deps = [
-        ":codegen_test_protos_pwpb",
+        ":codegen_test_proto_cc.pwpb",
+        ":pw_protobuf",
+        "//pw_span",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "codegen_encoder_test",
+    srcs = [
+        "codegen_encoder_test.cc",
+    ],
+    deps = [
+        ":codegen_test_proto_cc.pwpb",
         ":pw_protobuf",
         "//pw_span",
         "//pw_unit_test",
