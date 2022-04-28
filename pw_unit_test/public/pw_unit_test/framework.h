@@ -76,6 +76,11 @@
 // Generates a fatal failure with a generic message.
 #define GTEST_FAIL() return ADD_FAILURE()
 
+// Skips test at runtime, which is neither successful nor failed. Skip aborts
+// current function.
+#define GTEST_SKIP() \
+  return ::pw::unit_test::internal::Framework::Get().CurrentTestSkip(__LINE__)
+
 // Define either macro to 1 to omit the definition of FAIL(), which is a
 // generic name and clashes with some other libraries.
 #if !(defined(GTEST_DONT_DEFINE_FAIL) && GTEST_DONT_DEFINE_FAIL)
@@ -109,6 +114,19 @@
 //
 #define RUN_ALL_TESTS() \
   ::pw::unit_test::internal::Framework::Get().RunAllTests()
+
+// Death tests are not supported. The *_DEATH_IF_SUPPORTED macros do nothing.
+#define GTEST_HAS_DEATH_TEST 0
+
+#define EXPECT_DEATH_IF_SUPPORTED(statement, regex) \
+  if (0) {                                          \
+    static_cast<void>(statement);                   \
+    static_cast<void>(regex);                       \
+  }                                                 \
+  static_assert(true, "Macros must be termianted with a semicolon")
+
+#define ASSERT_DEATH_IF_SUPPORTED(statement, regex) \
+  EXPECT_DEATH_IF_SUPPORTED(statement, regex)
 
 namespace pw {
 
@@ -200,6 +218,9 @@ class Framework {
 
   bool ShouldRunTest(const TestInfo& test_info) const;
 
+  // Whether the current test is skipped.
+  bool IsSkipped() const { return current_result_ == TestResult::kSkipped; }
+
   // Constructs an instance of a unit test class and runs the test.
   //
   // Tests are constructed within a static memory pool at run time instead of
@@ -268,6 +289,9 @@ class Framework {
     return success;
   }
 
+  // Skips the current test and dispatches an event for it.
+  void CurrentTestSkip(int line);
+
   // Dispatches an event indicating the result of an expectation.
   void CurrentTestExpectSimple(const char* expression,
                                const char* evaluated_expression,
@@ -307,7 +331,7 @@ class Framework {
   // The current test case which is running.
   const TestInfo* current_test_;
 
-  // Overall result of the current test case (pass/fail).
+  // Overall result of the current test case (pass/fail/skip).
   TestResult current_result_;
 
   // Overall result of the ongoing test run, which covers multiple tests.
@@ -392,7 +416,10 @@ class Test {
   // Runs the unit test.
   void PigweedTestRun() {
     SetUp();
-    PigweedTestBody();
+    // TODO(deymo): Skip the test body if there's a fatal error in SetUp().
+    if (!Framework::Get().IsSkipped()) {
+      PigweedTestBody();
+    }
     TearDown();
   }
 
