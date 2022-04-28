@@ -30,13 +30,10 @@ class TableView:
     # Should allow for string format, column color, and column ordering.
     FLOAT_FORMAT = '%.3f'
     INT_FORMAT = '%s'
-    LAST_TABLE_COLUMN_NAMES = ['msg', 'message', 'file']
+    LAST_TABLE_COLUMN_NAMES = ['msg', 'message']
 
     def __init__(self, prefs: ConsolePrefs):
-        self.prefs = prefs
-        # Max column widths of each log field
-        self.column_padding = ' ' * self.prefs.spaces_between_columns
-
+        self.set_prefs(prefs)
         self.column_widths: collections.OrderedDict = collections.OrderedDict()
         self._header_fragment_cache = None
 
@@ -45,12 +42,14 @@ class TableView:
         self.column_widths['time'] = self._default_time_width
         self.column_widths['level'] = 3
         self._year_month_day_width: int = 9
-        if self.prefs.hide_date_from_log_time:
-            self.column_widths['time'] = (self._default_time_width -
-                                          self._year_month_day_width)
 
         # Width of all columns except the final message
         self.column_width_prefix_total = 0
+
+    def set_prefs(self, prefs: ConsolePrefs) -> None:
+        self.prefs = prefs
+        # Max column widths of each log field
+        self.column_padding = ' ' * self.prefs.spaces_between_columns
 
     def all_column_names(self):
         columns_names = [
@@ -90,6 +89,8 @@ class TableView:
             del ordered_columns['py_file']
         if not self.prefs.show_python_logger and 'py_logger' in ordered_columns:
             del ordered_columns['py_logger']
+        if not self.prefs.show_source_file and 'file' in ordered_columns:
+            del ordered_columns['file']
 
         return ordered_columns.items()
 
@@ -121,9 +122,15 @@ class TableView:
         default_style = 'bold'
         fragments: collections.deque = collections.deque()
 
+        # Update time column width to current prefs setting
+        self.column_widths['time'] = self._default_time_width
+        if self.prefs.hide_date_from_log_time:
+            self.column_widths['time'] = (self._default_time_width -
+                                          self._year_month_day_width)
+
         for name, width in self._ordered_column_widths():
             # These fields will be shown at the end
-            if name in ['msg', 'message', 'file']:
+            if name in ['msg', 'message']:
                 continue
             fragments.append(
                 (default_style, name.title()[:width].ljust(width)))
@@ -156,7 +163,7 @@ class TableView:
         columns = {}
         for name, width in self._ordered_column_widths():
             # Skip these modifying these fields
-            if name in ['msg', 'message', 'file']:
+            if name in ['msg', 'message']:
                 continue
 
             # hasattr checks are performed here since a log record may not have
@@ -222,9 +229,6 @@ class TableView:
             message = (message_style, message)
         # Add to columns
         columns['message'] = message
-
-        # TODO(tonymd): Display 'file' metadata right justified after the
-        # message? It could also appear in the column section.
 
         index_modifier = 0
         # Go through columns and convert to FormattedText where needed.
