@@ -14,6 +14,10 @@
 
 #include "pw_protobuf/stream_decoder.h"
 
+#include <algorithm>
+#include <bit>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 
 #include "pw_assert/check.h"
@@ -110,59 +114,6 @@ Status StreamDecoder::Next() {
 
   status_ = ReadFieldKey();
   return status_;
-}
-
-Result<int32_t> StreamDecoder::ReadInt32() {
-  uint64_t varint = 0;
-  PW_TRY(ReadVarintField(&varint));
-
-  int64_t signed_value = static_cast<int64_t>(varint);
-  if (signed_value > std::numeric_limits<int32_t>::max() ||
-      signed_value < std::numeric_limits<int32_t>::min()) {
-    return Status::OutOfRange();
-  }
-
-  return signed_value;
-}
-
-Result<uint32_t> StreamDecoder::ReadUint32() {
-  uint64_t varint = 0;
-  PW_TRY(ReadVarintField(&varint));
-
-  if (varint > std::numeric_limits<uint32_t>::max()) {
-    return Status::OutOfRange();
-  }
-  return varint;
-}
-
-Result<int64_t> StreamDecoder::ReadInt64() {
-  uint64_t varint = 0;
-  PW_TRY(ReadVarintField(&varint));
-  return varint;
-}
-
-Result<int32_t> StreamDecoder::ReadSint32() {
-  uint64_t varint = 0;
-  PW_TRY(ReadVarintField(&varint));
-
-  int64_t signed_value = varint::ZigZagDecode(varint);
-  if (signed_value > std::numeric_limits<int32_t>::max() ||
-      signed_value < std::numeric_limits<int32_t>::min()) {
-    return Status::OutOfRange();
-  }
-  return signed_value;
-}
-
-Result<int64_t> StreamDecoder::ReadSint64() {
-  uint64_t varint = 0;
-  PW_TRY(ReadVarintField(&varint));
-  return varint::ZigZagDecode(varint);
-}
-
-Result<bool> StreamDecoder::ReadBool() {
-  uint64_t varint = 0;
-  PW_TRY(ReadVarintField(&varint));
-  return varint;
 }
 
 StreamDecoder::BytesReader StreamDecoder::GetBytesReader() {
@@ -328,24 +279,68 @@ Status StreamDecoder::SkipField() {
   return OkStatus();
 }
 
-Status StreamDecoder::ReadVarintField(uint64_t* out) {
+Status StreamDecoder::ReadVarintField(std::span<std::byte> out,
+                                      VarintDecodeType decode_type) {
+  PW_CHECK(out.size() == sizeof(bool) || out.size() == sizeof(uint32_t) ||
+               out.size() == sizeof(uint64_t),
+           "Protobuf varints must only be used with bool, int32_t, uint32_t, "
+           "int64_t, or uint64_t");
   PW_TRY(CheckOkToRead(WireType::kVarint));
 
+  const StatusWithSize sws = ReadOneVarint(out, decode_type);
+  if (sws.status() != Status::DataLoss())
+    field_consumed_ = true;
+  return sws.status();
+}
+
+StatusWithSize StreamDecoder::ReadOneVarint(std::span<std::byte> out,
+                                            VarintDecodeType decode_type) {
   uint64_t value;
   StatusWithSize sws = varint::Read(reader_, &value);
   if (sws.IsOutOfRange()) {
     // Out of range indicates the end of the stream. As a value is expected
     // here, report it as a data loss and terminate the decode operation.
     status_ = Status::DataLoss();
-    return status_;
+    return StatusWithSize(status_, sws.size());
   }
-  PW_TRY(sws);
+  if (!sws.ok()) {
+    return sws;
+  }
 
   position_ += sws.size();
-  field_consumed_ = true;
-  *out = value;
 
-  return OkStatus();
+  if (out.size() == sizeof(uint64_t)) {
+    if (decode_type == VarintDecodeType::kUnsigned) {
+      std::memcpy(out.data(), &value, out.size());
+    } else {
+      const int64_t signed_value = decode_type == VarintDecodeType::kZigZag
+                                       ? varint::ZigZagDecode(value)
+                                       : static_cast<int64_t>(value);
+      std::memcpy(out.data(), &signed_value, out.size());
+    }
+  } else if (out.size() == sizeof(uint32_t)) {
+    if (decode_type == VarintDecodeType::kUnsigned) {
+      if (value > std::numeric_limits<uint32_t>::max()) {
+        return StatusWithSize(Status::OutOfRange(), sws.size());
+      }
+      std::memcpy(out.data(), &value, out.size());
+    } else {
+      const int64_t signed_value = decode_type == VarintDecodeType::kZigZag
+                                       ? varint::ZigZagDecode(value)
+                                       : static_cast<int64_t>(value);
+      if (signed_value > std::numeric_limits<int32_t>::max() ||
+          signed_value < std::numeric_limits<int32_t>::min()) {
+        return StatusWithSize(Status::OutOfRange(), sws.size());
+      }
+      std::memcpy(out.data(), &signed_value, out.size());
+    }
+  } else if (out.size() == sizeof(bool)) {
+    PW_CHECK(decode_type == VarintDecodeType::kUnsigned,
+             "Protobuf bool can never be signed");
+    std::memcpy(out.data(), &value, out.size());
+  }
+
+  return sws;
 }
 
 Status StreamDecoder::ReadFixedField(std::span<std::byte> out) {
@@ -361,6 +356,10 @@ Status StreamDecoder::ReadFixedField(std::span<std::byte> out) {
   PW_TRY(reader_.Read(out));
   position_ += out.size();
   field_consumed_ = true;
+
+  if (std::endian::native != std::endian::little) {
+    std::reverse(out.begin(), out.end());
+  }
 
   return OkStatus();
 }
@@ -392,17 +391,91 @@ StatusWithSize StreamDecoder::ReadDelimitedField(std::span<std::byte> out) {
   return StatusWithSize(result.value().size());
 }
 
+StatusWithSize StreamDecoder::ReadPackedFixedField(std::span<std::byte> out,
+                                                   size_t elem_size) {
+  if (Status status = CheckOkToRead(WireType::kDelimited); !status.ok()) {
+    return StatusWithSize(status, 0);
+  }
+
+  if (reader_.ConservativeReadLimit() < delimited_field_size_) {
+    status_ = Status::DataLoss();
+    return StatusWithSize(status_, 0);
+  }
+
+  if (out.size() < delimited_field_size_) {
+    // Value can't fit into the provided buffer. Don't advance the cursor so
+    // that the field can be re-read with a larger buffer or through the stream
+    // API.
+    return StatusWithSize::ResourceExhausted();
+  }
+
+  Result<ByteSpan> result = reader_.Read(out.first(delimited_field_size_));
+  if (!result.ok()) {
+    return StatusWithSize(result.status(), 0);
+  }
+
+  position_ += result.value().size();
+  field_consumed_ = true;
+
+  // Decode little-endian serialized packed fields.
+  if (std::endian::native != std::endian::little) {
+    for (auto out_start = out.begin(); out_start != out.end();
+         out_start += elem_size) {
+      std::reverse(out_start, out_start + elem_size);
+    }
+  }
+
+  return StatusWithSize(result.value().size() / elem_size);
+}
+
+StatusWithSize StreamDecoder::ReadPackedVarintField(
+    std::span<std::byte> out, size_t elem_size, VarintDecodeType decode_type) {
+  PW_CHECK(elem_size == sizeof(bool) || elem_size == sizeof(uint32_t) ||
+               elem_size == sizeof(uint64_t),
+           "Protobuf varints must only be used with bool, int32_t, uint32_t, "
+           "int64_t, or uint64_t");
+
+  if (Status status = CheckOkToRead(WireType::kDelimited); !status.ok()) {
+    return StatusWithSize(status, 0);
+  }
+
+  if (reader_.ConservativeReadLimit() < delimited_field_size_) {
+    status_ = Status::DataLoss();
+    return StatusWithSize(status_, 0);
+  }
+
+  size_t bytes_read = 0;
+  size_t number_out = 0;
+  while (bytes_read < delimited_field_size_ && !out.empty()) {
+    const StatusWithSize sws = ReadOneVarint(out.first(elem_size), decode_type);
+    if (!sws.ok()) {
+      return StatusWithSize(sws.status(), number_out);
+    }
+
+    bytes_read += sws.size();
+    out = out.subspan(elem_size);
+    ++number_out;
+  }
+
+  if (bytes_read < delimited_field_size_) {
+    return StatusWithSize(Status::ResourceExhausted(), number_out);
+  }
+
+  field_consumed_ = true;
+  return StatusWithSize(OkStatus(), number_out);
+}
+
 Status StreamDecoder::CheckOkToRead(WireType type) {
   PW_CHECK(!nested_reader_open_,
            "Cannot read from a decoder while a nested decoder is open");
-  PW_CHECK(
-      !field_consumed_,
-      "Attempting to read from protobuf decoder without first calling Next()");
+  PW_CHECK(!field_consumed_,
+           "Attempting to read from protobuf decoder without first calling "
+           "Next()");
 
-  // Attempting to read the wrong type is typically a programmer error; however,
-  // it could also occur due to data corruption. As we don't want to crash on
-  // bad data, return NOT_FOUND here to distinguish it from other corruption
-  // cases.
+  // Attempting to read the wrong type is typically a programmer error;
+  // however, it could also occur due to data corruption. As we don't want to
+  // crash on bad data, return NOT_FOUND here to distinguish it from other
+  // corruption cases.
   if (current_field_.wire_type() != type) {
     status_ = Status::NotFound();
   }
