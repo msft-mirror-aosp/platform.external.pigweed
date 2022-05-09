@@ -28,13 +28,17 @@ struct Chunk {
     kTransferStart = 1,
     kParametersRetransmit = 2,
     kParametersContinue = 3,
+    kTransferCompletion = 4,
+    kTransferCompletionAck = 5,  // Currently unused.
   };
 
   // The initial chunk always has an offset of 0 and no data or status.
   //
-  // Pending bytes is required in all read chunks, so that is checked elsewhere.
+  // TODO(frolv): Going forward, all users of transfer should set a type for
+  // all chunks. This initial chunk assumption should be removed.
   constexpr bool IsInitialChunk() const {
-    return offset == 0 && data.empty() && !status.has_value();
+    return type == Type::kTransferStart ||
+           (offset == 0 && data.empty() && !status.has_value());
   }
 
   // The final chunk from the transmitter sets remaining_bytes to 0 in both Read
@@ -52,6 +56,9 @@ struct Chunk {
   std::optional<Status> status;
   std::optional<Type> type;
 };
+
+// Partially decodes a transfer chunk to find its transfer ID field.
+Result<uint32_t> ExtractTransferId(ConstByteSpan message);
 
 Status DecodeChunk(ConstByteSpan message, Chunk& chunk);
 Result<ConstByteSpan> EncodeChunk(const Chunk& chunk, ByteSpan buffer);
