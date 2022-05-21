@@ -20,6 +20,11 @@ label_flag(
 )
 
 label_flag(
+    name = "pw_log_string_handler_backend",
+    build_setting_default = "@pigweed//pw_log_string:handler_backend_multiplexer",
+)
+
+label_flag(
     name = "pw_assert_backend",
     build_setting_default = "@pigweed//pw_assert:backend_multiplexer",
 )
@@ -72,6 +77,11 @@ label_flag(
 label_flag(
     name = "pw_sync_thread_notification_backend",
     build_setting_default = "@pigweed//pw_sync:thread_notification_backend_multiplexer",
+)
+
+label_flag(
+    name = "pw_sync_timed_thread_notification_backend",
+    build_setting_default = "@pigweed//pw_sync:timed_thread_notification_backend_multiplexer",
 )
 
 label_flag(
