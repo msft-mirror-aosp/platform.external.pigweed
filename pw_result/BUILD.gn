@@ -19,19 +19,17 @@ import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
 
-config("public_include_path") {
+config("default_config") {
   include_dirs = [ "public" ]
 }
 
 pw_source_set("pw_result") {
-  public_configs = [ ":public_include_path" ]
+  public_configs = [ ":default_config" ]
   public_deps = [
     "$dir_pw_assert",
-    "$dir_pw_preprocessor",
     "$dir_pw_status",
   ]
   public = [ "public/pw_result/result.h" ]
-  sources = [ "public/pw_result/internal/result_internal.h" ]
 }
 
 pw_test_group("tests") {
@@ -39,14 +37,8 @@ pw_test_group("tests") {
 }
 
 pw_test("result_test") {
-  deps = [
-    ":pw_result",
-    dir_pw_status,
-  ]
-  sources = [
-    "result_test.cc",
-    "statusor_test.cc",
-  ]
+  deps = [ ":pw_result" ]
+  sources = [ "result_test.cc" ]
 }
 
 pw_doc_group("docs") {

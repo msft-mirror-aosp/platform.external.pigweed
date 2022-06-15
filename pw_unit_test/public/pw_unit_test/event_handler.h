@@ -51,8 +51,6 @@ namespace unit_test {
 enum class TestResult {
   kSuccess = 0,
   kFailure = 1,
-  // Test skipped at runtime. This is neither a success nor a failure.
-  kSkipped = 2,
 };
 
 struct TestCase {

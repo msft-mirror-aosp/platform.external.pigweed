@@ -28,9 +28,6 @@ void SimplePrintingEventHandler::RunAllTestsEnd(
     const RunTestsSummary& run_tests_summary) {
   WriteLine("[==========] Done running all tests.");
   WriteLine("[  PASSED  ] %d test(s).", run_tests_summary.passed_tests);
-  if (run_tests_summary.skipped_tests) {
-    WriteLine("[  SKIPPED ] %d test(s).", run_tests_summary.skipped_tests);
-  }
   if (run_tests_summary.failed_tests) {
     WriteLine("[  FAILED  ] %d test(s).", run_tests_summary.failed_tests);
   }
@@ -51,10 +48,6 @@ void SimplePrintingEventHandler::TestCaseEnd(const TestCase& test_case,
     case TestResult::kFailure:
       WriteLine(
           "[  FAILED  ] %s.%s", test_case.suite_name, test_case.test_name);
-      break;
-    case TestResult::kSkipped:
-      WriteLine(
-          "[  SKIPPED ] %s.%s", test_case.suite_name, test_case.test_name);
       break;
   }
 }

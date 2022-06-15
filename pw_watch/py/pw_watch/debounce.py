@@ -18,7 +18,7 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 
-_LOG = logging.getLogger('pw_watch')
+_LOG = logging.getLogger(__name__)
 
 
 class DebouncedFunction(ABC):
@@ -97,12 +97,12 @@ class Debouncer:
             # re-try running afterwards.
 
             # Push an empty line to flush ongoing I/O in subprocess.
-            _LOG.error('')
+            print()
 
             # Surround the error message with newlines to make it stand out.
-            _LOG.error('')
+            print()
             _LOG.error('Event while running: %s', event_description)
-            _LOG.error('')
+            print()
 
             self.function.cancel()
             self._transition(State.INTERRUPTED)

@@ -15,4 +15,11 @@
 
 import setuptools  # type: ignore
 
-setuptools.setup()  # Package definition in setup.cfg
+setuptools.setup(name='pw_toolchain',
+                 version='0.0.1',
+                 author='Pigweed Authors',
+                 author_email='pigweed-developers@googlegroups.com',
+                 description='Pigweed toolchain wrapper',
+                 packages=setuptools.find_packages(),
+                 package_data={'pw_toolchain': ['py.typed']},
+                 zip_safe=False)

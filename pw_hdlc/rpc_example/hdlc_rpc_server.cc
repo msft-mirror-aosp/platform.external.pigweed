@@ -16,7 +16,6 @@
 #include <span>
 #include <string_view>
 
-#include "pw_assert/check.h"
 #include "pw_hdlc/encoder.h"
 #include "pw_hdlc/rpc_packets.h"
 #include "pw_log/log.h"
@@ -26,6 +25,8 @@
 
 namespace hdlc_example {
 namespace {
+
+using std::byte;
 
 pw::rpc::EchoService echo_service;
 
@@ -42,7 +43,7 @@ void Start() {
   RegisterServices();
 
   PW_LOG_INFO("Starting pw_rpc server");
-  PW_CHECK_OK(pw::rpc::system_server::Start());
+  pw::rpc::system_server::Start();
 }
 
 }  // namespace hdlc_example

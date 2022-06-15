@@ -23,13 +23,6 @@ from typing import Callable, Collection, Optional, Sequence
 from pw_presubmit import git_repo, presubmit
 
 _LOG = logging.getLogger(__name__)
-DEFAULT_PATH = Path('out', 'presubmit')
-
-_OUTPUT_PATH_README = '''\
-This directory was created by pw_presubmit to run presubmit checks for the
-{repo} repository. This directory is not used by the regular GN or CMake Ninja
-builds. It may be deleted safely.
-'''
 
 
 def add_path_arguments(parser) -> None:
@@ -42,22 +35,12 @@ def add_path_arguments(parser) -> None:
         help=('Paths or patterns to which to restrict the checks. These are '
               'interpreted as Git pathspecs. If --base is provided, only '
               'paths changed since that commit are checked.'))
-
-    base = parser.add_mutually_exclusive_group()
-    base.add_argument(
+    parser.add_argument(
         '-b',
         '--base',
         metavar='commit',
-        default=git_repo.TRACKING_BRANCH_ALIAS,
         help=('Git revision against which to diff for changed files. '
-              'Default is the tracking branch of the current branch.'))
-    base.add_argument(
-        '--full',
-        dest='base',
-        action='store_const',
-        const=None,
-        help='Run presubmit on all files, not just changed files.')
-
+              'If none is provided, the entire repository is used.'))
     parser.add_argument(
         '-e',
         '--exclude',
@@ -123,7 +106,7 @@ def add_arguments(parser: argparse.ArgumentParser,
     parser.add_argument(
         '--output-directory',
         type=Path,
-        help=f'Output directory (default: {"<repo root>" / DEFAULT_PATH})',
+        help='Output directory (default: <repo root>/.presubmit)',
     )
     parser.add_argument(
         '--package-root',
@@ -189,11 +172,7 @@ def run(
         repositories = [root]
 
     if output_directory is None:
-        output_directory = root / DEFAULT_PATH
-
-    output_directory.mkdir(parents=True, exist_ok=True)
-    output_directory.joinpath('README.txt').write_text(
-        _OUTPUT_PATH_README.format(repo=root))
+        output_directory = root / '.presubmit'
 
     if not package_root:
         package_root = output_directory / 'packages'
@@ -209,10 +188,14 @@ def run(
 
         return 0
 
+    if only_list_steps:
+        for step in program:
+            print(step.__name__)
+        return 0
+
     if presubmit.run(program,
                      root,
                      repositories,
-                     only_list_steps=only_list_steps,
                      output_directory=output_directory,
                      package_root=package_root,
                      **other_args):

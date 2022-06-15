@@ -12,17 +12,17 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 //==============================================================================
-// BUILD
+// BUID
 // ninja -C out
-// pw_strict_host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_trigger
+// host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_trigger
 //
 // RUN
-// ./out/pw_strict_host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_trigger
+// .out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_trigger
 // trace.bin
 //
 // DECODE
 // python pw_trace_tokenized/py/trace_tokenized.py -i trace.bin -o trace.json
-// ./out/pw_strict_host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic#trace
+// ./out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic
 //
 // VIEW
 // In chrome navigate to chrome://tracing, and load the trace.json file.
@@ -77,10 +77,8 @@ int main(int argc, char** argv) {  // Take filename as arg
   }
 
   // Register trigger callback
-  pw::trace::Callbacks::Instance()
-      .RegisterEventCallback(TraceEventCallback,
-                             pw::trace::CallbacksImpl::kCallOnEveryEvent)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  pw::trace::Callbacks::Instance().RegisterEventCallback(
+      TraceEventCallback, pw::trace::CallbacksImpl::kCallOnEveryEvent);
 
   // Ensure tracing is off at start, the trigger will turn it on.
   PW_TRACE_SET_ENABLED(false);

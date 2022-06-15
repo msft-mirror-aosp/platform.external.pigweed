@@ -20,8 +20,6 @@
 #include <cstddef>
 #include <iterator>
 
-#include "pw_polyfill/language_feature_macros.h"
-
 namespace pw::bytes {
 namespace internal {
 
@@ -32,7 +30,7 @@ constexpr bool UseBytesDirectly = std::is_integral_v<T> || std::is_enum_v<T>;
 // byte-sized elements or the underlying bytes of an integer (as little-endian).
 // std::memcpy cannot be used since it is not constexpr.
 template <typename B, typename T, typename... Args>
-PW_CONSTEVAL void CopyBytes(B* array, T value, Args... args) {
+consteval void CopyBytes(B* array, T value, Args... args) {
   static_assert(sizeof(B) == sizeof(std::byte));
 
   if constexpr (UseBytesDirectly<T>) {
@@ -58,7 +56,7 @@ PW_CONSTEVAL void CopyBytes(B* array, T value, Args... args) {
 
 // Evaluates to the size in bytes of an integer or byte array.
 template <typename T>
-PW_CONSTEVAL size_t SizeOfBytes(const T& arg) {
+consteval size_t SizeOfBytes(const T& arg) {
   if constexpr (UseBytesDirectly<T>) {
     return sizeof(arg);
   } else {
@@ -68,12 +66,12 @@ PW_CONSTEVAL size_t SizeOfBytes(const T& arg) {
 }
 
 template <typename B, typename T, size_t... kIndex>
-PW_CONSTEVAL auto String(const T& array, std::index_sequence<kIndex...>) {
+consteval auto String(const T& array, std::index_sequence<kIndex...>) {
   return std::array{static_cast<B>(array[kIndex])...};
 }
 
 template <typename T, typename U>
-PW_CONSTEVAL bool CanBeRepresentedAsByteType(const U& value) {
+consteval bool CanBeRepresentedAsByteType(const U& value) {
   return static_cast<U>(static_cast<T>(value)) == value;
 }
 
@@ -82,7 +80,7 @@ PW_CONSTEVAL bool CanBeRepresentedAsByteType(const U& value) {
 // Concatenates arrays or integers as a byte array at compile time. Integer
 // values are copied little-endian. Spans are copied byte-for-byte.
 template <typename B = std::byte, typename... Args>
-PW_CONSTEVAL auto Concat(Args... args) {
+consteval auto Concat(Args... args) {
   std::array<B, (internal::SizeOfBytes(args) + ...)> bytes{};
   internal::CopyBytes(bytes.begin(), args...);
   return bytes;
@@ -92,27 +90,27 @@ PW_CONSTEVAL auto Concat(Args... args) {
 template <typename B = std::byte,
           size_t kSize,
           typename Indices = std::make_index_sequence<kSize - 1>>
-PW_CONSTEVAL auto String(const char (&str)[kSize]) {
+consteval auto String(const char (&str)[kSize]) {
   return internal::String<B>(str, Indices{});
 }
 
 // String overload for the empty string "".
 template <typename B = std::byte>
-PW_CONSTEVAL auto String(const char (&)[1]) {
+consteval auto String(const char (&)[1]) {
   return std::array<B, 0>{};
 }
 
 // Creates an array of bytes from values passed as template parameters. The
 // values are guaranteed to be representable in the destination byte type.
 template <typename B, auto... values>
-PW_CONSTEVAL auto Array() {
+consteval auto Array() {
   static_assert((internal::CanBeRepresentedAsByteType<B>(values) && ...));
   return std::array<B, sizeof...(values)>{static_cast<B>(values)...};
 }
 
 // Array() defaults to using std::byte.
 template <auto... values>
-PW_CONSTEVAL auto Array() {
+consteval auto Array() {
   return Array<std::byte, values...>();
 }
 

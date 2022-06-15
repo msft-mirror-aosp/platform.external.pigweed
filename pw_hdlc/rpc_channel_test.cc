@@ -50,19 +50,21 @@ constexpr byte kControl = byte{0x3};  // UI-frame control sequence.
 constexpr size_t kSinkBufferSize = 15;
 
 TEST(RpcChannelOutput, 1BytePayload) {
+  std::array<byte, kSinkBufferSize> channel_output_buffer;
   stream::MemoryWriterBuffer<kSinkBufferSize> memory_writer;
 
-  RpcChannelOutput output(memory_writer, kAddress, "RpcChannelOutput");
+  RpcChannelOutput output(
+      memory_writer, channel_output_buffer, kAddress, "RpcChannelOutput");
 
   constexpr byte test_data = byte{'A'};
-  std::array<std::byte, 128> buffer;
+  auto buffer = output.AcquireBuffer();
   std::memcpy(buffer.data(), &test_data, sizeof(test_data));
 
   constexpr auto expected = bytes::Concat(
       kFlag, kEncodedAddress, kControl, 'A', uint32_t{0x653c9e82}, kFlag);
 
   EXPECT_EQ(OkStatus(),
-            output.Send(std::span(buffer).first(sizeof(test_data))));
+            output.SendAndReleaseBuffer(buffer.first(sizeof(test_data))));
 
   ASSERT_EQ(memory_writer.bytes_written(), expected.size());
   EXPECT_EQ(
@@ -72,12 +74,14 @@ TEST(RpcChannelOutput, 1BytePayload) {
 }
 
 TEST(RpcChannelOutput, EscapingPayloadTest) {
+  std::array<byte, kSinkBufferSize> channel_output_buffer;
   stream::MemoryWriterBuffer<kSinkBufferSize> memory_writer;
 
-  RpcChannelOutput output(memory_writer, kAddress, "RpcChannelOutput");
+  RpcChannelOutput output(
+      memory_writer, channel_output_buffer, kAddress, "RpcChannelOutput");
 
   constexpr auto test_data = bytes::Array<0x7D>();
-  std::array<std::byte, 128> buffer;
+  auto buffer = output.AcquireBuffer();
   std::memcpy(buffer.data(), test_data.data(), test_data.size());
 
   constexpr auto expected = bytes::Concat(kFlag,
@@ -87,7 +91,8 @@ TEST(RpcChannelOutput, EscapingPayloadTest) {
                                           byte{0x7d} ^ byte{0x20},
                                           uint32_t{0x4a53e205},
                                           kFlag);
-  EXPECT_EQ(OkStatus(), output.Send(std::span(buffer).first(test_data.size())));
+  EXPECT_EQ(OkStatus(),
+            output.SendAndReleaseBuffer(buffer.first(test_data.size())));
 
   ASSERT_EQ(memory_writer.bytes_written(), 10u);
   EXPECT_EQ(
@@ -99,17 +104,18 @@ TEST(RpcChannelOutput, EscapingPayloadTest) {
 TEST(RpcChannelOutputBuffer, 1BytePayload) {
   stream::MemoryWriterBuffer<kSinkBufferSize> memory_writer;
 
-  RpcChannelOutput output(memory_writer, kAddress, "RpcChannelOutput");
+  RpcChannelOutputBuffer<kSinkBufferSize> output(
+      memory_writer, kAddress, "RpcChannelOutput");
 
   constexpr byte test_data = byte{'A'};
-  std::array<std::byte, 128> buffer;
+  auto buffer = output.AcquireBuffer();
   std::memcpy(buffer.data(), &test_data, sizeof(test_data));
 
   constexpr auto expected = bytes::Concat(
       kFlag, kEncodedAddress, kControl, 'A', uint32_t{0x653c9e82}, kFlag);
 
   EXPECT_EQ(OkStatus(),
-            output.Send(std::span(buffer).first(sizeof(test_data))));
+            output.SendAndReleaseBuffer(buffer.first(sizeof(test_data))));
 
   ASSERT_EQ(memory_writer.bytes_written(), expected.size());
   EXPECT_EQ(
@@ -121,10 +127,11 @@ TEST(RpcChannelOutputBuffer, 1BytePayload) {
 TEST(RpcChannelOutputBuffer, MultibyteAddress) {
   stream::MemoryWriterBuffer<kSinkBufferSize> memory_writer;
 
-  RpcChannelOutput output(memory_writer, 0x3fff, "RpcChannelOutput");
+  RpcChannelOutputBuffer<kSinkBufferSize> output(
+      memory_writer, 0x3fff, "RpcChannelOutput");
 
   constexpr byte test_data = byte{'A'};
-  std::array<std::byte, 128> buffer;
+  auto buffer = output.AcquireBuffer();
   std::memcpy(buffer.data(), &test_data, sizeof(test_data));
 
   constexpr auto expected = bytes::Concat(kFlag,
@@ -135,7 +142,7 @@ TEST(RpcChannelOutputBuffer, MultibyteAddress) {
                                           kFlag);
 
   EXPECT_EQ(OkStatus(),
-            output.Send(std::span(buffer).first(sizeof(test_data))));
+            output.SendAndReleaseBuffer(buffer.first(sizeof(test_data))));
 
   ASSERT_EQ(memory_writer.bytes_written(), expected.size());
   EXPECT_EQ(

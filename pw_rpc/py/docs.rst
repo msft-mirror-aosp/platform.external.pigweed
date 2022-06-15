@@ -14,29 +14,10 @@ pw_rpc.client
 
 pw_rpc.callback_client
 ======================
-.. automodule:: pw_rpc.callback_client
+.. autoclass:: pw_rpc.callback_client.Impl
   :members:
-    UnaryResponse,
-    StreamResponse,
-    UnaryCall,
-    ServerStreamingCall,
-    ClientStreamingCall,
-    BidirectionalStreamingCall,
-
-pw_rpc.descriptors
-==================
-.. automodule:: pw_rpc.descriptors
-  :members:
-    Channel,
-    ChannelManipulator,
 
 pw_rpc.console_tools
 ====================
 .. automodule:: pw_rpc.console_tools
-  :members:
-     ClientInfo,
-     Context,
-     Watchdog,
-     alias_deprecated_command,
-     flattened_rpc_completions,
-     help_as_repr,
+  :members: Context, ClientInfo, Watchdog, help_as_repr

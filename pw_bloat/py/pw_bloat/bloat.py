@@ -199,10 +199,6 @@ def main() -> int:
     write_file(f'{args.target}.txt', complete_output)
     print(complete_output)
 
-    # TODO(frolv): Remove when custom output for full mode is added.
-    if args.full:
-        write_file(f'{args.target}', complete_output)
-
     return 0
 
 

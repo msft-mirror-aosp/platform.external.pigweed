@@ -12,17 +12,17 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 //==============================================================================
-// BUILD
+// BUID
 // ninja -C out
-// pw_strict_host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic
+// host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic
 //
 // RUN
-// ./out/pw_strict_host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic
+// .out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic
 // trace.bin
 //
 // DECODE
 // python pw_trace_tokenized/py/trace_tokenized.py -i trace.bin -o trace.json
-// ./out/pw_strict_host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic#trace
+// ./out/host_clang_debug/obj/pw_trace_tokenized/bin/trace_tokenized_example_basic
 //
 // VIEW
 // In chrome navigate to chrome://tracing, and load the trace.json file.
