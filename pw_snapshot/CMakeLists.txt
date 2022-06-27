@@ -22,7 +22,6 @@ pw_add_module_library(pw_snapshot.uuid
     public
   PUBLIC_DEPS
     pw_polyfill.span
-    pw_polyfill.cstddef
     pw_result
     pw_bytes
   SOURCES
@@ -58,9 +57,10 @@ pw_proto_library(pw_snapshot.snapshot_proto
   SOURCES
     pw_snapshot_protos/snapshot.proto
   DEPS
-    pw_snapshot.metadata_proto
+    pw_chrono.protos
     pw_cpu_exception_cortex_m.cpu_state_protos
     pw_log.protos
+    pw_snapshot.metadata_proto
     pw_thread.protos
 )
 
@@ -80,7 +80,6 @@ pw_add_test(pw_snapshot.uuid_test
     uuid_test.cc
   DEPS
     pw_bytes
-    pw_polyfill.cstddef
     pw_polyfill.span
     pw_protobuf
     pw_result

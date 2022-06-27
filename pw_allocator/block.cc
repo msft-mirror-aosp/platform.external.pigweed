@@ -15,6 +15,7 @@
 #include "pw_allocator/block.h"
 
 #include <cstring>
+#include <span>
 
 #include "pw_assert/check.h"
 
@@ -40,7 +41,8 @@ Status Block::Init(const std::span<std::byte> region, Block** block) {
   // with the following storage. Since the space between this block and the
   // next are implicitly part of the raw data, size can be computed by
   // subtracting the pointers.
-  aliased.block->next_ = reinterpret_cast<Block*>(region.end());
+  aliased.block->next_ =
+      reinterpret_cast<Block*>(region.data() + region.size_bytes());
   aliased.block->MarkLast();
 
   aliased.block->prev_ = nullptr;

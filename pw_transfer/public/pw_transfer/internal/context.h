@@ -74,7 +74,7 @@ class Context {
   Context& operator=(const Context&) = delete;
   Context& operator=(Context&&) = delete;
 
-  constexpr uint32_t transfer_id() const { return transfer_id_; }
+  constexpr uint32_t session_id() const { return session_id_; }
 
   // True if the context has been used for a transfer (it has an ID).
   bool initialized() const {
@@ -104,7 +104,7 @@ class Context {
   ~Context() = default;
 
   constexpr Context()
-      : transfer_id_(0),
+      : session_id_(0),
         flags_(0),
         transfer_state_(TransferState::kInactive),
         retries_(0),
@@ -114,7 +114,6 @@ class Context {
         offset_(0),
         window_size_(0),
         window_end_offset_(0),
-        pending_bytes_(0),
         max_chunk_size_bytes_(std::numeric_limits<uint32_t>::max()),
         max_parameters_(nullptr),
         thread_(nullptr),
@@ -160,10 +159,10 @@ class Context {
 
   void set_transfer_state(TransferState state) { transfer_state_ = state; }
 
-  // The transfer ID as unsigned instead of uint32_t so it can be used with %u.
+  // The session ID as unsigned instead of uint32_t so it can be used with %u.
   unsigned id_for_log() const {
-    static_assert(sizeof(unsigned) >= sizeof(transfer_id_));
-    return static_cast<unsigned>(transfer_id_);
+    static_assert(sizeof(unsigned) >= sizeof(session_id_));
+    return static_cast<unsigned>(session_id_);
   }
 
   stream::Reader& reader() {
@@ -266,6 +265,8 @@ class Context {
   // been exceeded.
   void Retry();
 
+  void LogTransferConfiguration();
+
   static constexpr uint8_t kFlagsType = 1 << 0;
   static constexpr uint8_t kFlagsDataSent = 1 << 1;
 
@@ -281,7 +282,7 @@ class Context {
   static constexpr chrono::SystemClock::time_point kNoTimeout =
       chrono::SystemClock::time_point(chrono::SystemClock::duration(0));
 
-  uint32_t transfer_id_;
+  uint32_t session_id_;
   uint8_t flags_;
   TransferState transfer_state_;
   uint8_t retries_;
@@ -294,8 +295,6 @@ class Context {
   uint32_t offset_;
   uint32_t window_size_;
   uint32_t window_end_offset_;
-  // TODO(pwbug/584): Remove pending_bytes in favor of window_end_offset.
-  uint32_t pending_bytes_;
   uint32_t max_chunk_size_bytes_;
 
   const TransferParameters* max_parameters_;

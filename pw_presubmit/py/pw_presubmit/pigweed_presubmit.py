@@ -21,6 +21,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 from typing import Sequence, IO, Tuple, Optional, Callable, List
@@ -50,8 +51,9 @@ from pw_presubmit import (
     PresubmitFailure,
     Programs,
     python_checks,
+    shell_checks,
 )
-from pw_presubmit.install_hook import install_hook
+from pw_presubmit.install_hook import install_git_hook
 
 _LOG = logging.getLogger(__name__)
 
@@ -99,12 +101,24 @@ def gn_quick_build_check(ctx: PresubmitContext):
 
 
 @filter_paths(endswith=_BUILD_EXTENSIONS)
-def gn_full_build_check(ctx: PresubmitContext):
+def gn_full_build_check(ctx: PresubmitContext) -> None:
+    build_targets = [
+        *_at_all_optimization_levels('stm32f429i'),
+        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+        'python.tests',
+        'python.lint',
+        'docs',
+        'fuzzers',
+        'pw_env_setup:build_pigweed_python_source_tree',
+    ]
+
+    # TODO(b/234645359): Re-enable on Windows when compatibility tests build.
+    if sys.platform != 'win32':
+        build_targets.append('cpp14_compatibility')
+        build_targets.append('cpp20_compatibility')
+
     build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, *_at_all_optimization_levels('stm32f429i'),
-                *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-                'python.tests', 'python.lint', 'docs', 'fuzzers',
-                'pw_env_setup:build_pigweed_python_source_tree')
+    build.ninja(ctx.output_dir, *build_targets)
 
 
 @filter_paths(endswith=_BUILD_EXTENSIONS)
@@ -113,8 +127,7 @@ def gn_full_qemu_check(ctx: PresubmitContext):
     build.ninja(
         ctx.output_dir,
         *_at_all_optimization_levels('qemu_gcc'),
-        # TODO(pwbug/321) Re-enable clang.
-        # *_at_all_optimization_levels('qemu_clang'),
+        *_at_all_optimization_levels('qemu_clang'),
     )
 
 
@@ -165,6 +178,7 @@ def gn_crypto_mbedtls_build(ctx: PresubmitContext):
     build.gn_gen(
         ctx.root,
         ctx.output_dir,
+        pw_RUN_INTEGRATION_TESTS=False,
         dir_pw_third_party_mbedtls='"{}"'.format(ctx.package_root / 'mbedtls'),
         pw_crypto_SHA256_BACKEND='"{}"'.format(ctx.root /
                                                'pw_crypto:sha256_mbedtls'),
@@ -179,6 +193,7 @@ def gn_crypto_boringssl_build(ctx: PresubmitContext):
     build.gn_gen(
         ctx.root,
         ctx.output_dir,
+        pw_RUN_INTEGRATION_TESTS=False,
         dir_pw_third_party_boringssl='"{}"'.format(ctx.package_root /
                                                    'boringssl'),
         pw_crypto_SHA256_BACKEND='"{}"'.format(ctx.root /
@@ -195,6 +210,7 @@ def gn_crypto_micro_ecc_build(ctx: PresubmitContext):
     build.gn_gen(
         ctx.root,
         ctx.output_dir,
+        pw_RUN_INTEGRATION_TESTS=False,
         dir_pw_third_party_micro_ecc='"{}"'.format(ctx.package_root /
                                                    'micro-ecc'),
         pw_crypto_ECDSA_BACKEND='"{}"'.format(ctx.root /
@@ -317,114 +333,112 @@ def cmake_gcc(ctx: PresubmitContext):
     build.ninja(ctx.output_dir, 'pw_apps', 'pw_run_tests.modules')
 
 
-# TODO(pwbug/180): Slowly add modules here that work with bazel until all
-# modules are added. Then replace with //...
-_MODULES_THAT_BUILD_WITH_BAZEL = [
-    '//pw_allocator/...',
-    '//pw_analog/...',
-    '//pw_assert/...',
-    '//pw_assert_basic/...',
-    '//pw_assert_log/...',
-    '//pw_base64/...',
-    '//pw_bloat/...',
-    '//pw_build/...',
-    '//pw_checksum/...',
-    '//pw_chrono_embos/...',
-    '//pw_chrono_freertos/...',
-    '//pw_chrono_stl/...',
-    '//pw_chrono_threadx/...',
-    '//pw_cli/...',
-    '//pw_containers/...',
-    '//pw_cpu_exception/...',
-    '//pw_docgen/...',
-    '//pw_doctor/...',
-    '//pw_env_setup/...',
-    '//pw_fuzzer/...',
-    '//pw_hex_dump/...',
-    '//pw_i2c/...',
-    '//pw_interrupt/...',
-    '//pw_interrupt_cortex_m/...',
-    '//pw_libc/...',
-    '//pw_log/...',
-    '//pw_log_basic/...',
-    '//pw_malloc/...',
-    '//pw_malloc_freelist/...',
-    '//pw_multisink/...',
-    '//pw_polyfill/...',
-    '//pw_preprocessor/...',
-    '//pw_protobuf/...',
-    '//pw_protobuf_compiler/...',
-    '//pw_random/...',
-    '//pw_result/...',
-    '//pw_rpc/...',
-    '//pw_span/...',
-    '//pw_status/...',
-    '//pw_stream/...',
-    '//pw_string/...',
-    '//pw_sync_baremetal/...',
-    '//pw_sync_embos/...',
-    '//pw_sync_freertos/...',
-    '//pw_sync_stl/...',
-    '//pw_sync_threadx/...',
-    '//pw_sys_io/...',
-    '//pw_sys_io_baremetal_lm3s6965evb/...',
-    '//pw_sys_io_baremetal_stm32f429/...',
-    '//pw_sys_io_stdio/...',
-    '//pw_thread_stl/...',
-    '//pw_tool/...',
-    '//pw_toolchain/...',
-    '//pw_transfer/...',
-    '//pw_unit_test/...',
-    '//pw_varint/...',
-    '//pw_web_ui/...',
-]
+# TODO(b/235882003): Slowly remove modules from here that work with bazel until
+# no modules remain.
+_MODULES_THAT_DO_NOT_BUILD_WITH_BAZEL = (
+    'docker',
+    'pw_android_toolchain',
+    'pw_arduino_build',
+    'pw_assert_tokenized',
+    'pw_assert_zephyr',
+    'pw_blob_store',
+    'pw_boot',
+    'pw_build_mcuxpresso',
+    'pw_bytes',
+    'pw_chrono_zephyr',
+    'pw_console',
+    'pw_cpu_exception_cortex_m',
+    'pw_crypto',
+    'pw_file',
+    'pw_function',
+    'pw_hdlc',
+    'pw_i2c_mcuxpresso',
+    'pw_interrupt_zephyr',
+    'pw_kvs',
+    'pw_log_android',
+    'pw_log_null',
+    'pw_log_rpc',
+    'pw_log_string',
+    'pw_log_tokenized',
+    'pw_log_zephyr',
+    'pw_metric',
+    'pw_minimal_cpp_stdlib',
+    'pw_module',
+    'pw_package',
+    'pw_persistent_ram',
+    'pw_presubmit',
+    'pw_ring_buffer',
+    'pw_software_update',
+    'pw_spi',
+    'pw_stm32cube_build',
+    'pw_sync_zephyr',
+    'pw_sys_io_arduino',
+    'pw_sys_io_mcuxpresso',
+    'pw_sys_io_stm32cube',
+    'pw_sys_io_zephyr',
+    'pw_system',
+    'pw_target_runner',
+    'pw_thread_embos',
+    'pw_thread_freertos',
+    'pw_thread_threadx',
+    'pw_tls_client',
+    'pw_tls_client_boringssl',
+    'pw_tls_client_mbedtls',
+    'pw_trace',
+    'pw_trace_tokenized',
+    'pw_watch',
+    'pw_web_ui',
+    'pw_work_queue',
+)
 
-# TODO(pwbug/180): Slowly add modules here that work with bazel until all
-# modules are added. Then replace with //...
-_MODULES_THAT_TEST_WITH_BAZEL = [
-    '//pw_allocator/...',
-    '//pw_analog/...',
-    '//pw_assert/...',
-    '//pw_base64/...',
-    '//pw_checksum/...',
-    '//pw_cli/...',
-    '//pw_containers/...',
-    '//pw_hex_dump/...',
-    '//pw_i2c/...',
-    '//pw_libc/...',
-    '//pw_log/...',
-    '//pw_multisink/...',
-    '//pw_polyfill/...',
-    '//pw_preprocessor/...',
-    '//pw_protobuf/...',
-    '//pw_protobuf_compiler/...',
-    '//pw_random/...',
-    '//pw_result/...',
-    '//pw_rpc/...',
-    '//pw_span/...',
-    '//pw_status/...',
-    '//pw_stream/...',
-    '//pw_string/...',
-    '//pw_thread_stl/...',
-    '//pw_unit_test/...',
-    '//pw_varint/...',
-    '//:buildifier_test',
-]
+# TODO(b/235882003): Slowly remove modules from here that work with bazel until
+# no modules remain.
+_MODULES_THAT_DO_NOT_TEST_WITH_BAZEL = _MODULES_THAT_DO_NOT_BUILD_WITH_BAZEL + (
+    'pw_malloc_freelist', )
+
+
+def all_modules():
+    return Path(os.environ['PW_ROOT'],
+                'PIGWEED_MODULES').read_text().splitlines()
 
 
 @filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl',
                         'BUILD'))
 def bazel_test(ctx: PresubmitContext) -> None:
     """Runs bazel test on each bazel compatible module"""
-    build.bazel(ctx, 'test', *_MODULES_THAT_TEST_WITH_BAZEL,
-                '--test_output=errors')
+    # TODO(b/231256840): Instead of relying on PIGWEED_MODULES it would be nicer
+    # to do something like `bazel build //... -//pw_boot -//pw_system`. This
+    # doesn't quite work; see bug.
+    modules = list()
+    for module in all_modules():
+        if module in _MODULES_THAT_DO_NOT_TEST_WITH_BAZEL:
+            continue
+        modules.append(f'//{module}/...:all')
+    build.bazel(ctx, 'test', *modules, '--test_output=errors')
 
 
 @filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl',
                         'BUILD'))
 def bazel_build(ctx: PresubmitContext) -> None:
     """Runs Bazel build on each Bazel compatible module."""
-    build.bazel(ctx, 'build', *_MODULES_THAT_BUILD_WITH_BAZEL)
+    modules = list()
+    for module in all_modules():
+        if module in _MODULES_THAT_DO_NOT_BUILD_WITH_BAZEL:
+            continue
+        modules.append(f'//{module}/...:all')
+    build.bazel(ctx, 'build', *modules)
+
+
+def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
+    """Runs the pw_transfer cross-language integration test only.
+
+    This test is not part of the regular bazel build because it's slow and
+    intended to run in CI only.
+    """
+    build.bazel(
+        ctx, 'test',
+        '//pw_transfer/integration_test:cross_language_integration_test',
+        '--test_output=errors')
 
 
 #
@@ -787,7 +801,9 @@ OTHER_CHECKS = (
     gn_clang_build,
     gn_gcc_build,
     gn_pw_system_demo_build,
+    pw_transfer_integration_test,
     renode_check,
+    static_analysis,
     stm32f429i,
 )
 
@@ -800,11 +816,11 @@ _LINTFORMAT = (
     cpp_checks.pragma_once,
     build.bazel_lint,
     source_is_in_build_files,
+    shell_checks.shellcheck if shutil.which('shellcheck') else (),
 )
 
 LINTFORMAT = (
     _LINTFORMAT,
-    static_analysis,
     pw_presubmit.python_checks.check_python_versions,
     pw_presubmit.python_checks.gn_python_lint,
 )
@@ -867,11 +883,10 @@ def run(install: bool, **presubmit_args) -> int:
     """Entry point for presubmit."""
 
     if install:
-        # TODO(pwbug/209, pwbug/386) inclusive-language: disable
-        install_hook(__file__, 'pre-push',
-                     ['--base', 'origin/master..HEAD', '--program', 'quick'],
-                     Path.cwd())
-        # TODO(pwbug/209, pwbug/386) inclusive-language: enable
+        install_git_hook('pre-push', [
+            'python', '-m', 'pw_presubmit.pigweed_presubmit', '--base',
+            'origin/main..HEAD', '--program', 'quick'
+        ])
         return 0
 
     return cli.run(**presubmit_args)
