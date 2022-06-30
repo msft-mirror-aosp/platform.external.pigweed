@@ -45,6 +45,7 @@ pw_source_set("pw_protobuf") {
   public_configs = [ ":public_include_path" ]
   public_deps = [
     ":config",
+    "$dir_pw_containers:vector",
     "$dir_pw_stream:interval_reader",
     "$dir_pw_varint:stream",
     dir_pw_assert,
@@ -97,7 +98,8 @@ pw_doc_group("docs") {
 
 pw_test_group("tests") {
   tests = [
-    ":codegen_test",
+    ":codegen_decoder_test",
+    ":codegen_encoder_test",
     ":decoder_test",
     ":encoder_test",
     ":encoder_fuzzer",
@@ -125,9 +127,14 @@ pw_test("find_test") {
   sources = [ "find_test.cc" ]
 }
 
-pw_test("codegen_test") {
+pw_test("codegen_decoder_test") {
   deps = [ ":codegen_test_protos.pwpb" ]
-  sources = [ "codegen_test.cc" ]
+  sources = [ "codegen_decoder_test.cc" ]
+}
+
+pw_test("codegen_encoder_test") {
+  deps = [ ":codegen_test_protos.pwpb" ]
+  sources = [ "codegen_encoder_test.cc" ]
 }
 
 pw_test("serialized_size_test") {
