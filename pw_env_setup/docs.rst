@@ -289,6 +289,11 @@ here.
   the environment, for reading by tools that don't inherit an environment from
   a sourced ``bootstrap.sh``.
 
+``rosetta``
+  Whether to use Rosetta to use amd64 packages on arm64 Macs. Accepted values
+  are  ``never``, ``allow``, and ``force``. For now, ``allow`` means ``force``.
+  At some point in the future ``allow`` will be changed to mean ``never``.
+
 An example of a config file is below.
 
 .. code-block:: json
@@ -313,7 +318,8 @@ An example of a config file is below.
       "optional/submodule/two"
     ],
     "gni_file": "tools/environment.gni",
-    "json_file": "tools/environment.json"
+    "json_file": "tools/environment.json",
+    "rosetta": "allow"
   }
 
 In case the CIPD packages need to be referenced from other scripts, variables

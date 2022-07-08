@@ -13,11 +13,13 @@
 // the License.
 #pragma once
 
+#include <cctype>
 #include <cstddef>
 #include <span>
 #include <string_view>
 
 #include "pw_assert/assert.h"
+#include "pw_polyfill/language_feature_macros.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
@@ -97,6 +99,18 @@ PW_CONSTEXPR_CPP20 inline StatusWithSize Copy(const char* source,
                                               char* dest,
                                               size_t num) {
   return Copy(source, std::span<char>(dest, num));
+}
+
+// Copies source string to the dest with same behavior as Copy, with the
+// difference that any non-printable characters are changed to '.'.
+PW_CONSTEXPR_CPP20 inline StatusWithSize PrintableCopy(
+    const std::string_view& source, std::span<char> dest) {
+  StatusWithSize copy_result = Copy(source, dest);
+  for (size_t i = 0; i < copy_result.size(); i++) {
+    dest[i] = std::isprint(dest[i]) ? dest[i] : '.';
+  }
+
+  return copy_result;
 }
 
 }  // namespace string

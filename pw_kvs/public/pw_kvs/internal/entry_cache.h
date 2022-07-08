@@ -97,7 +97,12 @@ class EntryCache {
       ++metadata_.descriptor_;
       return *this;
     }
-    Iterator& operator++(int) { return operator++(); }
+
+    Iterator operator++(int) {
+      Iterator original = *this;
+      operator++();
+      return original;
+    }
 
     // Updates the internal EntryMetadata object.
     value_type& operator*() const {
@@ -182,6 +187,10 @@ class EntryCache {
   Status AddNewOrUpdateExisting(const KeyDescriptor& descriptor,
                                 Address address,
                                 size_t sector_size_bytes) const;
+
+  // Removes an existing entry from the cache. Returns an iterator to the
+  // next entry so that iteration can continue.
+  iterator RemoveEntry(iterator& entry_it);
 
   // Returns a pointer to an array of redundancy() addresses for temporary use.
   // This is used by the KeyValueStore to track reserved addresses when finding

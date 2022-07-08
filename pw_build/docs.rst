@@ -715,13 +715,20 @@ CMake functions
 ---------------
 CMake convenience functions are defined in ``pw_build/pigweed.cmake``.
 
-* ``pw_auto_add_simple_module`` -- For modules with only one library,
-  automatically declare the library and its tests.
-* ``pw_auto_add_module_tests`` -- Create test targets for all tests in a module.
+* ``pw_add_library`` -- The base helper used to instantiate CMake libraries.
+  This is meant for use in downstream projects as upstream Pigweed modules are
+  expected to use ``pw_add_module_library`` and ``pw_add_facade``.
+* ``pw_add_module_library`` -- Add an upstream Pigweed library.
 * ``pw_add_facade`` -- Declare a module facade.
 * ``pw_set_backend`` -- Set the backend library to use for a facade.
-* ``pw_add_module_library`` -- Add a library that is part of a module.
+* ``pw_auto_add_simple_module`` -- For modules with only one library,
+  automatically declare the library and its tests. This has been deprecated,
+  please use ``pw_add_module_library`` instead.
 * ``pw_add_test`` -- Declare a test target.
+* ``pw_add_global_compile_options`` -- Applies compilation options to all
+  targets in the build. This should only be used to add essential compilation
+  options, such as those that affect the ABI. Use ``pw_add_library`` or
+  ``target_compile_options`` to apply other compile options.
 
 See ``pw_build/pigweed.cmake`` for the complete documentation of these
 functions.

@@ -83,6 +83,7 @@ buffer has a non-zero size.
 .. cpp:function:: StatusWithSize Copy(const std::string_view& source, std::span<char> dest)
 .. cpp:function:: StatusWithSize Copy(const char* source, std::span<char> dest)
 .. cpp:function:: StatusWithSize Copy(const char* source, char* dest, size_t num)
+.. cpp:function:: StatusWithSize Copy(const pw::Vector<char>& source, std::span<char> dest)
 
    Copies the source string to the dest, truncating if the full string does not
    fit. Always null terminates if dest.size() or num > 0.
@@ -92,6 +93,22 @@ buffer has a non-zero size.
 
    Precondition: The destination and source shall not overlap.
    Precondition: The source shall be a valid pointer.
+
+It also has variants that provide a destination of ``pw::Vector<char>``
+(see :ref:`module-pw_containers` for details) that do not store the null
+terminator in the vector.
+
+.. cpp:function:: StatusWithSize Copy(const std::string_view& source, pw::Vector<char>& dest)
+.. cpp:function:: StatusWithSize Copy(const char* source, pw::Vector<char>& dest)
+
+
+pw::string::PrintableCopy
+=========================
+The ``pw::string::PrintableCopy`` function provides a safe printable copy of a
+string. It functions with the same safety of ``pw::string::Copy`` while also
+converting any non-printable characters to a ``.`` char.
+
+.. cpp:function:: StatusWithSize PrintableCopy(const std::string_view& source, std::span<char> dest)
 
 pw::StringBuilder
 =================
@@ -180,6 +197,23 @@ function call, but one or two StringBuilder appends may have a smaller code size
 impact than a single ``snprintf`` call.
 
 .. include:: string_builder_size_report
+
+Module Configuration Options
+============================
+The following configuration options can be adjusted via compile-time
+configuration of this module.
+
+.. c:macro:: PW_STRING_ENABLE_DECIMAL_FLOAT_EXPANSION
+
+   Setting this to a non-zero value will result in the ``ToString`` function
+   outputting string representations of floating-point values with a decimal
+   expansion after the point, by using the ``Format`` function. The default
+   value of this configuration option is zero, which will result in floating
+   point values being rounded to the nearest integer in their string
+   representation.
+
+   Using a non-zero value for this configuration option may incur a code size
+   cost due to the dependency on ``Format``.
 
 -----------
 Future work
