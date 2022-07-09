@@ -17,9 +17,9 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "gtest/gtest.h"
 #include "pw_assert/check.h"
 #include "pw_containers/vector.h"
-#include "pw_unit_test/framework.h"
 
 using std::byte;
 
@@ -36,7 +36,7 @@ TEST(PrefixedEntryRingBuffer, NoBuffer) {
   size_t count;
 
   EXPECT_EQ(ring.EntryCount(), 0u);
-  EXPECT_EQ(ring.SetBuffer(std::span<byte>(nullptr, 10u)),
+  EXPECT_EQ(ring.SetBuffer(std::span<byte>(static_cast<byte*>(nullptr), 10u)),
             Status::InvalidArgument());
   EXPECT_EQ(ring.SetBuffer(std::span(buf, 0u)), Status::InvalidArgument());
   EXPECT_EQ(ring.FrontEntryDataSizeBytes(), 0u);
@@ -172,7 +172,7 @@ TEST(PrefixedEntryRingBuffer, SingleEntryWriteReadYesUserData) {
   SingleEntryWriteReadTest(true);
 }
 
-// TODO(pwbug/196): Increase this to 5000 once we have a way to detect targets
+// TODO(b/234883746): Increase this to 5000 once we have a way to detect targets
 // with more computation and memory oomph.
 constexpr size_t kOuterCycles = 50u;
 constexpr size_t kCountingUpMaxExpectedEntries =
@@ -323,8 +323,8 @@ void DeringTest(bool preload) {
   auto entry_data = std::span(single_entry_buffer);
   size_t i;
 
-  // TODO(pwbug/196): Increase this to 500 once we have a way to detect targets
-  // with more computation and memory oomph.
+  // TODO(b/234883746): Increase this to 500 once we have a way to detect
+  // targets with more computation and memory oomph.
   size_t loop_goal = preload ? 50 : 1;
 
   for (size_t main_loop_count = 0; main_loop_count < loop_goal;

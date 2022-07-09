@@ -80,7 +80,7 @@ pw_proto_library(pw_log.protos
   PREFIX
     pw_log/proto
   DEPS
-    pw_protobuf.common_protos
+    pw_protobuf.common_proto
     pw_tokenizer.proto
 )
 
@@ -117,6 +117,7 @@ if(NOT "${pw_log_BACKEND}" STREQUAL "pw_log.NO_BACKEND_SET")
       pw_preprocessor
       pw_protobuf
       pw_protobuf.bytes_utils
+      pw_containers
     GROUPS
       modules
       pw_log

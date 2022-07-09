@@ -135,6 +135,19 @@ def pw_plugins(ctx: DoctorContext):
         ctx.error('Not all pw plugins loaded successfully')
 
 
+def unames_are_equivalent(uname_actual: str, uname_expected: str) -> bool:
+    """Determine if uname values are equivalent for this tool's purposes."""
+
+    # Support `mac-arm64` through Rosetta until `mac-arm64` binaries are ready
+    # Expected and actual unames will not literally match on M1 Macs because
+    # they pretend to be Intel Macs for the purpose of environment setup. But
+    # that's intentional and doesn't require any user action.
+    if "Darwin" in uname_expected and "arm64" in uname_expected:
+        uname_expected = uname_expected.replace("arm64", "x86_64")
+
+    return uname_actual == uname_expected
+
+
 @register_into(CHECKS)
 def env_os(ctx: DoctorContext):
     """Check that the environment matches this machine."""
@@ -156,7 +169,7 @@ def env_os(ctx: DoctorContext):
     # redundant because it's contained in release or version, and
     # skipping it here simplifies logic.
     uname = ' '.join(getattr(os, 'uname', lambda: ())()[2:])
-    if data['uname'] != uname:
+    if not unames_are_equivalent(uname, data['uname']):
         ctx.warning(
             'Current uname (%s) does not match Bootstrap uname (%s), '
             'you may need to rerun bootstrap on this system', uname,
@@ -320,17 +333,21 @@ def cipd_versions(ctx: DoctorContext):
         # exist.
         if 'version_file' in package:
             path = install_path / package['version_file']
-            if not path.is_file():
-                ctx.error(f'no version file for {name} at {path}')
-                return
-
+            notify_method = ctx.error
         # Otherwise, follow a heuristic to find the file but don't require the
         # file to exist.
         else:
             path = install_path / '.versions' / f'{name}.cipd_version'
-            if not path.is_file():
-                ctx.debug(f'no version file for {name} at {path}')
-                return
+            notify_method = ctx.debug
+
+        # Check if a .exe cipd_version exists on Windows.
+        path_windows = install_path / '.versions' / f'{name}.exe.cipd_version'
+        if os.name == 'nt' and path_windows.is_file():
+            path = path_windows
+
+        if not path.is_file():
+            notify_method(f'no version file for {name} at {path}')
+            return
 
         with path.open() as ins:
             installed = json.load(ins)
@@ -360,6 +377,12 @@ def cipd_versions(ctx: DoctorContext):
 
     for json_path in json_paths:
         ctx.debug(f'Checking packages in {json_path}')
+        if not json_path.exists():
+            ctx.error(
+                'CIPD package file %s may have been deleted, please '
+                'rerun bootstrap', json_path)
+            continue
+
         install_path = pathlib.Path(
             cipd_update.package_installation_path(cipd_dir, json_path))
         for package in json.loads(json_path.read_text()).get('packages', ()):

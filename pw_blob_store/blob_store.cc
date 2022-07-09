@@ -689,6 +689,7 @@ size_t BlobStore::BlobReader::ConservativeLimit(LimitType limit) const {
 
 Status BlobStore::BlobReader::Open(size_t offset) {
   PW_DCHECK(!open_);
+  PW_TRY(store_.Init());
   if (!store_.HasData()) {
     return Status::FailedPrecondition();
   }
@@ -704,7 +705,7 @@ Status BlobStore::BlobReader::Open(size_t offset) {
   return status;
 }
 
-size_t BlobStore::BlobReader::DoTell() const {
+size_t BlobStore::BlobReader::DoTell() {
   return open_ ? offset_ : kUnknownPosition;
 }
 

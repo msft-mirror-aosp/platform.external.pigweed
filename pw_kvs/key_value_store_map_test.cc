@@ -34,6 +34,7 @@
 #include "pw_kvs/internal/entry.h"
 #include "pw_kvs/key_value_store.h"
 #include "pw_log/log.h"
+#include "pw_string/string_builder.h"
 
 namespace pw::kvs {
 namespace {
@@ -414,11 +415,13 @@ FakeFlashMemoryBuffer<kParams.sector_size,
                               (kParams.sector_count * kParams.redundancy)>(
             kParams.sector_alignment);
 
-#define _TEST(fixture, test, ...) \
-  _TEST_VARIANT(fixture, test, test, __VA_ARGS__)
+#define _TEST(fixture, test, ...)                  \
+  _TEST_VARIANT(fixture, test, test, __VA_ARGS__); \
+  static_assert(true, "Macros must be terminated with a semicolon")
 
-#define _TEST_VARIANT(fixture, test, variant, ...) \
-  TEST_F(fixture, test##variant) { tester_.Test_##test(__VA_ARGS__); }
+#define _TEST_VARIANT(fixture, test, variant, ...)                     \
+  TEST_F(fixture, test##variant) { tester_.Test_##test(__VA_ARGS__); } \
+  static_assert(true, "Macros must be terminated with a semicolon")
 
 // Defines a test fixture that runs all tests against a flash with the specified
 // parameters.

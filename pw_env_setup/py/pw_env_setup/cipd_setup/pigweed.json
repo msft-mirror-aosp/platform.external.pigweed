@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:f27bae882b2178ccc3c24f314c88db9a34118992"
+        "git_revision:29accf5ac2eadfc53e687081583b7bc1592a8839"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -24,7 +24,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "version:2@1.10.2"
+        "version:2@1.11.0.chromium.4"
       ]
     },
     {
@@ -36,7 +36,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "version:3.23.20220402-g6733ad4"
+        "version:3.24.20220625-g42984e7"
       ],
       "version_file": ".versions/cmake.cipd_version"
     },
@@ -52,6 +52,16 @@
       "version_file": ".versions/bloaty-embedded.cipd_version"
     },
     {
+      "path": "pigweed/third_party/doxygen/${platform}",
+      "platforms": [
+        "linux-amd64"
+      ],
+      "tags": [
+        "version:1.9.4"
+      ],
+      "version_file": ".versions/doxygen.cipd_version"
+    },
+    {
       "path": "infra/3pp/tools/protoc/${platform}",
       "platforms": [
         "linux-amd64",
@@ -64,7 +74,7 @@
       ]
     },
     {
-      "_comment": "Until there's an arm64 Mac version, get the amd64 Mac version on arm64 Macs.",
+      "_comment": "Always get the amd64 version on Mac until there's an arm64 version",
       "path": "infra/3pp/tools/protoc/mac-amd64",
       "platforms": [
         "mac-arm64"
@@ -96,7 +106,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "version:2@1.18"
+        "version:2@1.18.3"
       ]
     },
     {
@@ -140,7 +150,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:3f30a2e1ac848bd3dde1322ee2ace4d4f935c29d"
+        "git_revision:876b235af6456367c18efb5b6f6425fbbe9de404"
       ],
       "version_file": ".versions/host_tools.cipd_version"
     },
@@ -148,10 +158,12 @@
       "path": "infra/rbe/client/${platform}",
       "platforms": [
         "linux-amd64",
+        "mac-amd64",
+        "mac-arm64",
         "windows-amd64"
       ],
       "tags": [
-        "re_client_version:0.41.4.3f0d8bb"
+        "re_client_version:0.58.0.d457d5a"
       ]
     },
     {
@@ -162,7 +174,7 @@
         "mac-amd64"
       ],
       "tags": [
-        "git_revision:44f28df24767cf9dca1ddc9b23157737c4cbb645"
+        "version:v6.2.0"
       ],
       "version_file": ".versions/qemu.cipd_version"
     },
@@ -206,7 +218,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "version:2@5.0.1"
+        "version:2@5.1.0"
       ]
     }
   ]

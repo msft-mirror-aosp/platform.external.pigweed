@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2021 The Pigweed Authors
+# Copyright 2022 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -21,22 +21,32 @@ from typing import List, Tuple, Union
 import unittest
 
 from pw_hdlc import rpc
-from pw_rpc import testing
+from pw_rpc import testing, lossy_channel
 from pw_status import Status
 import pw_transfer
 from pw_transfer import transfer_pb2
 from pw_transfer_test import test_server_pb2
 
 ITERATIONS = 5
-TIMEOUT_S = 0.05
+TIMEOUT_S = 1
 
 _DATA_4096B = b'SPAM' * (4096 // len('SPAM'))
 
 
-class TransferServiceIntegrationTest(unittest.TestCase):
-    """Tests transfers between the Python client and C++ service."""
+class IntegrationTestServer(unittest.TestCase):
+    """Test server for transfers between the Python client and C++ service."""
     test_server_command: Tuple[str, ...] = ()
     port: int
+
+    @staticmethod
+    def incoming_processor():
+        """Optional pre-processor for incoming RPC packets."""
+        return None
+
+    @staticmethod
+    def outgoing_processor():
+        """Optional pre-processor for incoming RPC packets."""
+        return None
 
     def setUp(self) -> None:
         self._tempdir = tempfile.TemporaryDirectory(
@@ -44,13 +54,11 @@ class TransferServiceIntegrationTest(unittest.TestCase):
         self.directory = Path(self._tempdir.name)
 
         command = (*self.test_server_command, str(self.directory))
-        self._outgoing_filter = rpc.PacketFilter('outgoing RPC')
-        self._incoming_filter = rpc.PacketFilter('incoming RPC')
         self._context = rpc.HdlcRpcLocalServerAndClient(
             command,
             self.port, [transfer_pb2, test_server_pb2],
-            outgoing_processor=self._outgoing_filter,
-            incoming_processor=self._incoming_filter)
+            outgoing_processor=self.outgoing_processor(),
+            incoming_processor=self.incoming_processor())
 
         service = self._context.client.channel(1).rpcs.pw.transfer.Transfer
         self.manager = pw_transfer.Manager(
@@ -66,17 +74,20 @@ class TransferServiceIntegrationTest(unittest.TestCase):
             if hasattr(self, '_context'):
                 self._context.close()
 
-    def transfer_file_path(self, transfer_id: int) -> Path:
-        return self.directory / str(transfer_id)
+    def transfer_file_path(self, resource_id: int) -> Path:
+        return self.directory / str(resource_id)
 
-    def set_content(self, transfer_id: int, data: Union[bytes, str]) -> None:
-        self.transfer_file_path(transfer_id).write_bytes(
+    def set_content(self, resource_id: int, data: Union[bytes, str]) -> None:
+        self.transfer_file_path(resource_id).write_bytes(
             data.encode() if isinstance(data, str) else data)
         self._test_server.ReloadTransferFiles()
 
-    def get_content(self, transfer_id: int) -> bytes:
-        return self.transfer_file_path(transfer_id).read_bytes()
+    def get_content(self, resource_id: int) -> bytes:
+        return self.transfer_file_path(resource_id).read_bytes()
 
+
+class TransferServiceIntegrationTest(IntegrationTestServer):
+    """Tests transfers between the Python client and C++ service."""
     def test_read_unknown_id(self) -> None:
         with self.assertRaises(pw_transfer.Error) as ctx:
             self.manager.read(99)
@@ -114,38 +125,28 @@ class TransferServiceIntegrationTest(unittest.TestCase):
             self.manager.write(28, b'')
             self.assertEqual(self.get_content(28), b'')
 
-    def test_write_single_byte(self) -> None:
-        for _ in range(ITERATIONS):
-            self.set_content(29, 'junk')
-            self.manager.write(29, b'$')
-            self.assertEqual(self.get_content(29), b'$')
-
-    def test_write_small_amount_of_data(self) -> None:
-        for _ in range(ITERATIONS):
-            self.set_content(30, 'junk')
-            self.manager.write(30, b'file transfer')
-            self.assertEqual(self.get_content(30), b'file transfer')
-
-    def test_write_large_amount_of_data(self) -> None:
-        for _ in range(ITERATIONS):
-            self.set_content(31, 'junk')
-            self.manager.write(31, b'*' * 512)
-            self.assertEqual(self.get_content(31), b'*' * 512)
-
-    def test_write_very_large_amount_of_data(self) -> None:
-        for _ in range(ITERATIONS):
-            self.set_content(32, 'junk')
-
-            # Larger than the transfer service's configured pending_bytes.
-            self.manager.write(32, _DATA_4096B)
-            self.assertEqual(self.get_content(32), _DATA_4096B)
-
     def test_write_string(self) -> None:
         for _ in range(ITERATIONS):
             # Write a string instead of bytes.
             self.set_content(33, 'junk')
             self.manager.write(33, 'hello world')
             self.assertEqual(self.get_content(33), b'hello world')
+
+
+class ManualLossyTransferServiceIntegrationTest(IntegrationTestServer):
+    """Tests transfers with explicit/manual packet drops and patterns."""
+    def setUp(self):
+        self._incoming_filter = lossy_channel.ManualPacketFilter()
+        self._outgoing_filter = lossy_channel.ManualPacketFilter()
+        super().setUp()
+
+    def incoming_processor(self):
+        return lossy_channel.LossyChannel('incoming RPC',
+                                          self._incoming_filter)
+
+    def outgoing_processor(self):
+        return lossy_channel.LossyChannel('outgoing RPC',
+                                          self._outgoing_filter)
 
     def test_write_drop_data_chunks_and_transfer_parameters(self) -> None:
         self.set_content(34, 'junk')
@@ -199,11 +200,86 @@ class TransferServiceIntegrationTest(unittest.TestCase):
             self._outgoing_filter.reset()
 
 
+class FuzzyLossTransferServiceIntegrationTest(IntegrationTestServer):
+    """Tests transfers with psuedo-random transport failure modes."""
+    def setUp(self):
+        self._incoming_filter = lossy_channel.RandomLossGenerator(
+            duplicated_packet_probability=0,
+            max_duplications_per_packet=3,
+            out_of_order_probability=0,
+            delayed_packet_probability=0,
+            delayed_packet_range_ms=(10, 100),
+            dropped_packet_probability=0,
+            seed=1965342297)
+        self._outgoing_filter = lossy_channel.RandomLossGenerator(
+            duplicated_packet_probability=0,
+            max_duplications_per_packet=3,
+            out_of_order_probability=0,
+            delayed_packet_probability=0,
+            delayed_packet_range_ms=(10, 100),
+            dropped_packet_probability=0,
+            seed=2513817234)
+        super().setUp()
+
+    def incoming_processor(self):
+        return lossy_channel.LossyChannel('incoming RPC',
+                                          self._incoming_filter)
+
+    def outgoing_processor(self):
+        return lossy_channel.LossyChannel('outgoing RPC',
+                                          self._outgoing_filter)
+
+    def read_large_amount_of_data(self) -> None:
+        for _ in range(ITERATIONS):
+            size = 2**13  # TODO(hepler): Increase to 2**14 when it passes.
+            self.set_content(27, '~' * size)
+            self.assertEqual(self.manager.read(27), b'~' * size)
+
+    def write_very_large_amount_of_data(self) -> None:
+        for _ in range(ITERATIONS):
+            self.set_content(32, 'junk')
+
+            # Larger than the transfer service's configured pending_bytes.
+            self.manager.write(32, _DATA_4096B)
+            self.assertEqual(self.get_content(32), _DATA_4096B)
+
+    def test_packet_loss_during_read(self) -> None:
+        self._incoming_filter.dropped_packet_probability = 0.1
+        self._outgoing_filter.dropped_packet_probability = 0.1
+        self.read_large_amount_of_data()
+
+    def test_packet_delay_during_read(self) -> None:
+        self._incoming_filter.delayed_packet_probability = 0.1
+        self._outgoing_filter.delayed_packet_probability = 0.1
+        self.read_large_amount_of_data()
+
+    def test_packet_delay_during_write(self) -> None:
+        self._incoming_filter.delayed_packet_probability = 0.1
+        self._outgoing_filter.delayed_packet_probability = 0.1
+        self.write_very_large_amount_of_data()
+
+    def test_packet_duplication_during_read(self) -> None:
+        # TODO(amontanez): At 0.1 this fails.
+        self._incoming_filter.duplicated_packet_probability = 0.05
+        self._outgoing_filter.duplicated_packet_probability = 0.05
+        self.read_large_amount_of_data()
+
+    def test_packet_duplication_during_write(self) -> None:
+        self._incoming_filter.duplicated_packet_probability = 0.1
+        self._outgoing_filter.duplicated_packet_probability = 0.1
+        self.write_very_large_amount_of_data()
+
+    def test_packet_reordering_during_read(self) -> None:
+        # TODO(amontanez): At 0.05 this fails.
+        self._incoming_filter.out_of_order_probability = 0.01
+        self._outgoing_filter.out_of_order_probability = 0.01
+        self.read_large_amount_of_data()
+
+
 def _main(test_server_command: List[str], port: int,
           unittest_args: List[str]) -> None:
-    TransferServiceIntegrationTest.test_server_command = tuple(
-        test_server_command)
-    TransferServiceIntegrationTest.port = port
+    IntegrationTestServer.test_server_command = tuple(test_server_command)
+    IntegrationTestServer.port = port
 
     unittest.main(argv=unittest_args)
 

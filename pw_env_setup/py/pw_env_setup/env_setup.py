@@ -172,8 +172,8 @@ class MissingSubmodulesError(Exception):
 class EnvSetup(object):
     """Run environment setup for Pigweed."""
     def __init__(self, pw_root, cipd_cache_dir, shell_file, quiet, install_dir,
-                 virtualenv_root, strict, virtualenv_gn_out_dir, json_file,
-                 project_root, config_file, use_existing_cipd,
+                 strict, virtualenv_gn_out_dir, json_file, project_root,
+                 config_file, use_existing_cipd, check_submodules,
                  use_pinned_pip_packages, cipd_only, trust_cipd_hash):
         self._env = environment.Environment()
         self._project_root = project_root
@@ -185,8 +185,7 @@ class EnvSetup(object):
         self._is_windows = os.name == 'nt'
         self._quiet = quiet
         self._install_dir = install_dir
-        self._virtualenv_root = (virtualenv_root
-                                 or os.path.join(install_dir, 'pigweed-venv'))
+        self._virtualenv_root = os.path.join(self._install_dir, 'pigweed-venv')
         self._strict = strict
         self._cipd_only = cipd_only
         self._trust_cipd_hash = trust_cipd_hash
@@ -208,6 +207,8 @@ class EnvSetup(object):
         self._pw_packages = []
         self._root_variable = None
 
+        self._check_submodules = check_submodules
+
         self._json_file = json_file
         self._gni_file = None
 
@@ -216,7 +217,7 @@ class EnvSetup(object):
         if config_file:
             self._parse_config_file(config_file)
 
-        self._check_submodules()
+        self._check_submodule_presence()
 
         self._use_existing_cipd = use_existing_cipd
         self._virtualenv_gn_out_dir = virtualenv_gn_out_dir
@@ -259,6 +260,12 @@ class EnvSetup(object):
         config = json.load(config_file)
 
         self._root_variable = config.pop('root_variable', None)
+
+        rosetta = config.pop('rosetta', 'allow')
+        if rosetta not in ('never', 'allow', 'force'):
+            raise ValueError(rosetta)
+        self._rosetta = rosetta in ('allow', 'force')
+        self._env.set('_PW_ROSETTA', str(int(self._rosetta)))
 
         if 'json_file' in config:
             self._json_file = config.pop('json_file')
@@ -306,11 +313,14 @@ class EnvSetup(object):
             raise ConfigFileError('unrecognized option in {}: "{}"'.format(
                 self._config_file_name, next(iter(config))))
 
-    def _check_submodules(self):
+    def _check_submodule_presence(self):
         unitialized = set()
 
         # Don't check submodule presence if using the Android Repo Tool.
         if os.path.isdir(os.path.join(self._project_root, '.repo')):
+            return
+
+        if not self._check_submodules:
             return
 
         cmd = ['git', 'submodule', 'status', '--recursive']
@@ -335,7 +345,7 @@ class EnvSetup(object):
                 file=sys.stderr)
             print('', file=sys.stderr)
 
-            for miss in missing:
+            for miss in sorted(missing):
                 print('    git submodule update --init {}'.format(miss),
                       file=sys.stderr)
             print('', file=sys.stderr)
@@ -524,7 +534,11 @@ Then use `set +x` to go back to normal.
 
         else:
             try:
-                cipd_client = cipd_wrapper.init(install_dir, silent=True)
+                cipd_client = cipd_wrapper.init(
+                    install_dir,
+                    silent=True,
+                    rosetta=self._rosetta,
+                )
             except cipd_wrapper.UnsupportedPlatform as exc:
                 return result_func(('    {!r}'.format(exc), ))(
                     _Result.Status.SKIPPED,
@@ -543,6 +557,7 @@ Then use `set +x` to go back to normal.
                                   package_files=package_files,
                                   cache_dir=self._cipd_cache_dir,
                                   env_vars=self._env,
+                                  rosetta=self._rosetta,
                                   spin=spin,
                                   trust_hash=self._trust_cipd_hash):
             return result(_Result.Status.FAILED)
@@ -712,13 +727,6 @@ def parse(argv=None):
               'packages with GN; defaults to a unique path in the environment '
               'directory.'))
 
-    parser.add_argument(
-        '--virtualenv-root',
-        help=('Root of virtualenv directory. Default: '
-              '<install_dir>/pigweed-venv'),
-        default=None,
-    )
-
     parser.add_argument('--json-file', help=argparse.SUPPRESS, default=None)
 
     parser.add_argument(
@@ -744,6 +752,13 @@ def parse(argv=None):
         '--cipd-only',
         help='Skip non-CIPD steps.',
         action='store_true',
+    )
+
+    parser.add_argument(
+        '--skip-submodule-check',
+        help='Skip checking for submodule presence.',
+        dest='check_submodules',
+        action='store_false',
     )
 
     args = parser.parse_args(argv)

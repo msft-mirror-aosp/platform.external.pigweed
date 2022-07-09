@@ -36,8 +36,10 @@ namespace {
 using namespace pw::protobuf::test;
 
 TEST(Codegen, Codegen) {
-  std::byte encode_buffer[512];
-  std::byte temp_buffer[512];
+  std::byte encode_buffer[Pigweed::kMaxEncodedSizeBytes +
+                          DeviceInfo::kMaxEncodedSizeBytes];
+  std::byte temp_buffer[Pigweed::kScratchBufferSizeBytes +
+                        DeviceInfo::kMaxEncodedSizeBytes];
   stream::MemoryWriter writer(encode_buffer);
 
   Pigweed::StreamEncoder pigweed(writer, temp_buffer);
@@ -200,7 +202,9 @@ TEST(Codegen, Codegen) {
 }
 
 TEST(Codegen, RecursiveSubmessage) {
-  std::byte encode_buffer[512];
+  // 12 here represents the longest name. Note that all field structure is taken
+  // care of, we just have to multiply by how many crates we're encoding, ie. 4.
+  std::byte encode_buffer[(Crate::kMaxEncodedSizeBytes + 12) * 4];
 
   Crate::MemoryEncoder biggest_crate(encode_buffer);
   biggest_crate.WriteName("Huge crate")
@@ -249,7 +253,7 @@ TEST(Codegen, RecursiveSubmessage) {
 }
 
 TEST(CodegenRepeated, NonPackedScalar) {
-  std::byte encode_buffer[32];
+  std::byte encode_buffer[RepeatedTest::kMaxEncodedSizeBytes];
 
   stream::MemoryWriter writer(encode_buffer);
   RepeatedTest::StreamEncoder repeated_test(writer, ByteSpan());
@@ -286,7 +290,7 @@ TEST(CodegenRepeated, NonPackedScalar) {
 }
 
 TEST(CodegenRepeated, PackedScalar) {
-  std::byte encode_buffer[32];
+  std::byte encode_buffer[RepeatedTest::kMaxEncodedSizeBytes];
 
   stream::MemoryWriter writer(encode_buffer);
   RepeatedTest::StreamEncoder repeated_test(writer, ByteSpan());
@@ -321,7 +325,7 @@ TEST(CodegenRepeated, PackedScalar) {
 }
 
 TEST(CodegenRepeated, PackedBool) {
-  std::byte encode_buffer[32];
+  std::byte encode_buffer[RepeatedTest::kMaxEncodedSizeBytes];
 
   stream::MemoryWriter writer(encode_buffer);
   RepeatedTest::StreamEncoder repeated_test(writer, ByteSpan());
@@ -344,7 +348,7 @@ TEST(CodegenRepeated, PackedBool) {
 }
 
 TEST(CodegenRepeated, PackedScalarVector) {
-  std::byte encode_buffer[32];
+  std::byte encode_buffer[RepeatedTest::kMaxEncodedSizeBytes];
 
   stream::MemoryWriter writer(encode_buffer);
   RepeatedTest::StreamEncoder repeated_test(writer, ByteSpan());
@@ -378,8 +382,53 @@ TEST(CodegenRepeated, PackedScalarVector) {
             0);
 }
 
+TEST(CodegenRepeated, PackedEnum) {
+  std::byte encode_buffer[RepeatedTest::kMaxEncodedSizeBytes];
+
+  stream::MemoryWriter writer(encode_buffer);
+  RepeatedTest::StreamEncoder repeated_test(writer, ByteSpan());
+  constexpr Enum values[] = {Enum::RED, Enum::GREEN, Enum::AMBER, Enum::RED};
+  ASSERT_EQ(repeated_test.WriteEnums(std::span(values)), OkStatus());
+
+  // clang-format off
+  constexpr uint8_t expected_proto[] = {
+    // enums[], v={RED, GREEN, AMBER, RED}
+    0x4a, 0x04, 0x00, 0x02, 0x01, 0x00
+  };
+  // clang-format on
+
+  ConstByteSpan result = writer.WrittenData();
+  ASSERT_EQ(repeated_test.status(), OkStatus());
+  EXPECT_EQ(result.size(), sizeof(expected_proto));
+  EXPECT_EQ(std::memcmp(result.data(), expected_proto, sizeof(expected_proto)),
+            0);
+}
+
+TEST(CodegenRepeated, PackedEnumVector) {
+  std::byte encode_buffer[RepeatedTest::kMaxEncodedSizeBytes];
+
+  stream::MemoryWriter writer(encode_buffer);
+  RepeatedTest::StreamEncoder repeated_test(writer, ByteSpan());
+  const pw::Vector<Enum, 4> values = {
+      Enum::RED, Enum::GREEN, Enum::AMBER, Enum::RED};
+  ASSERT_EQ(repeated_test.WriteEnums(values), OkStatus());
+
+  // clang-format off
+  constexpr uint8_t expected_proto[] = {
+    // enums[], v={RED, GREEN, AMBER, RED}
+    0x4a, 0x04, 0x00, 0x02, 0x01, 0x00
+  };
+  // clang-format on
+
+  ConstByteSpan result = writer.WrittenData();
+  ASSERT_EQ(repeated_test.status(), OkStatus());
+  EXPECT_EQ(result.size(), sizeof(expected_proto));
+  EXPECT_EQ(std::memcmp(result.data(), expected_proto, sizeof(expected_proto)),
+            0);
+}
+
 TEST(CodegenRepeated, NonScalar) {
-  std::byte encode_buffer[32];
+  std::byte encode_buffer[RepeatedTest::kMaxEncodedSizeBytes];
 
   stream::MemoryWriter writer(encode_buffer);
   RepeatedTest::StreamEncoder repeated_test(writer, ByteSpan());
@@ -400,7 +449,7 @@ TEST(CodegenRepeated, NonScalar) {
 }
 
 TEST(CodegenRepeated, Message) {
-  std::byte encode_buffer[64];
+  std::byte encode_buffer[RepeatedTest::kMaxEncodedSizeBytes];
 
   RepeatedTest::MemoryEncoder repeated_test(encode_buffer);
   for (int i = 0; i < 3; ++i) {
@@ -425,7 +474,7 @@ TEST(CodegenRepeated, Message) {
 }
 
 TEST(Codegen, Proto2) {
-  std::byte encode_buffer[64];
+  std::byte encode_buffer[Foo::kMaxEncodedSizeBytes];
 
   Foo::MemoryEncoder foo(encode_buffer);
   foo.WriteInteger(3).IgnoreError();  // TODO(pwbug/387): Handle Status properly
@@ -449,7 +498,7 @@ TEST(Codegen, Proto2) {
 }
 
 TEST(Codegen, Import) {
-  std::byte encode_buffer[64];
+  std::byte encode_buffer[Period::kMaxEncodedSizeBytes];
 
   Period::MemoryEncoder period(encode_buffer);
   {
@@ -473,7 +522,7 @@ TEST(Codegen, Import) {
 
 TEST(Codegen, NonPigweedPackage) {
   using namespace non::pigweed::package::name;
-  std::byte encode_buffer[64];
+  std::byte encode_buffer[Packed::kMaxEncodedSizeBytes];
   std::array<const int64_t, 2> repeated = {0, 1};
   stream::MemoryWriter writer(encode_buffer);
   Packed::StreamEncoder packed(writer, ByteSpan());
@@ -483,6 +532,39 @@ TEST(Codegen, NonPigweedPackage) {
       .IgnoreError();  // TODO(pwbug/387): Handle Status properly
 
   EXPECT_EQ(packed.status(), OkStatus());
+}
+
+TEST(Codegen, MemoryToStreamConversion) {
+  std::byte encode_buffer[IntegerMetadata::kMaxEncodedSizeBytes];
+  IntegerMetadata::MemoryEncoder metadata(encode_buffer);
+  IntegerMetadata::StreamEncoder& streamed_metadata = metadata;
+  EXPECT_EQ(streamed_metadata.WriteBits(3), OkStatus());
+
+  constexpr uint8_t expected_proto[] = {0x08, 0x03};
+
+  ConstByteSpan result(metadata);
+  ASSERT_EQ(metadata.status(), OkStatus());
+  EXPECT_EQ(result.size(), sizeof(expected_proto));
+  EXPECT_EQ(std::memcmp(result.data(), expected_proto, sizeof(expected_proto)),
+            0);
+}
+
+TEST(Codegen, OverlayConversion) {
+  std::byte encode_buffer[BaseMessage::kMaxEncodedSizeBytes +
+                          Overlay::kMaxEncodedSizeBytes];
+  BaseMessage::MemoryEncoder base(encode_buffer);
+  Overlay::StreamEncoder& overlay =
+      StreamEncoderCast<Overlay::StreamEncoder>(base);
+  EXPECT_EQ(overlay.WriteHeight(15), OkStatus());
+  EXPECT_EQ(base.WriteLength(7), OkStatus());
+
+  constexpr uint8_t expected_proto[] = {0x10, 0x0f, 0x08, 0x07};
+
+  ConstByteSpan result(base);
+  ASSERT_EQ(base.status(), OkStatus());
+  EXPECT_EQ(result.size(), sizeof(expected_proto));
+  EXPECT_EQ(std::memcmp(result.data(), expected_proto, sizeof(expected_proto)),
+            0);
 }
 
 }  // namespace

@@ -420,8 +420,10 @@ TEST(Codegen, BytesReader) {
 TEST(Codegen, Enum) {
   // clang-format off
   constexpr uint8_t proto_data[] = {
-    // pigweed.bin (value value)
+    // pigweed.bin (valid value)
     0x40, 0x01,
+    // pigweed.bin (unknown value)
+    0x40, 0x7f,
     // pigweed.bin (invalid value)
     0x40, 0xff,
   };
@@ -434,7 +436,15 @@ TEST(Codegen, Enum) {
   EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
   Result<Pigweed::Protobuf::Binary> bin = pigweed.ReadBin();
   EXPECT_EQ(bin.status(), OkStatus());
+  EXPECT_TRUE(Pigweed::Protobuf::IsValidBinary(bin.value()));
   EXPECT_EQ(bin.value(), Pigweed::Protobuf::Binary::ZERO);
+
+  EXPECT_EQ(pigweed.Next(), OkStatus());
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
+  bin = pigweed.ReadBin();
+  EXPECT_EQ(bin.status(), OkStatus());
+  EXPECT_FALSE(Pigweed::Protobuf::IsValidBinary(bin.value()));
+  EXPECT_EQ(static_cast<uint32_t>(bin.value()), 0x7fu);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
   EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
@@ -445,8 +455,10 @@ TEST(Codegen, Enum) {
 TEST(Codegen, ImportedEnum) {
   // clang-format off
   constexpr uint8_t proto_data[] = {
-    // result.status (value value)
+    // result.status (valid value)
     0x08, 0x01,
+    // result.status (unknown value)
+    0x08, 0x7f,
     // result.status (invalid value)
     0x08, 0xff,
   };
@@ -459,7 +471,15 @@ TEST(Codegen, ImportedEnum) {
   EXPECT_EQ(test_result.Field().value(), TestResult::Fields::STATUS);
   Result<imported::Status> status = test_result.ReadStatus();
   EXPECT_EQ(status.status(), OkStatus());
+  EXPECT_TRUE(imported::IsValidStatus(status.value()));
   EXPECT_EQ(status.value(), imported::Status::NOT_OK);
+
+  EXPECT_EQ(test_result.Next(), OkStatus());
+  EXPECT_EQ(test_result.Field().value(), TestResult::Fields::STATUS);
+  status = test_result.ReadStatus();
+  EXPECT_EQ(status.status(), OkStatus());
+  EXPECT_FALSE(imported::IsValidStatus(status.value()));
+  EXPECT_EQ(static_cast<uint32_t>(status.value()), 0x7fu);
 
   EXPECT_EQ(test_result.Next(), OkStatus());
   EXPECT_EQ(test_result.Field().value(), TestResult::Fields::STATUS);
@@ -928,6 +948,66 @@ TEST(CodegenRepeated, NonScalar) {
                           kExpectedString[i].size()),
               0);
   }
+
+  EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
+}
+
+TEST(CodegenRepeated, PackedEnum) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // enums[], v={RED, GREEN, AMBER, RED}
+    0x4a, 0x04, 0x00, 0x02, 0x01, 0x00,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  RepeatedTest::StreamDecoder repeated_test(reader);
+
+  EXPECT_EQ(repeated_test.Next(), OkStatus());
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::ENUMS);
+  std::array<Enum, 4> enums{};
+  StatusWithSize sws = repeated_test.ReadEnums(enums);
+  EXPECT_EQ(sws.status(), OkStatus());
+  ASSERT_EQ(sws.size(), 4u);
+
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(IsValidEnum(enums[i]));
+  }
+
+  EXPECT_EQ(enums[0], Enum::RED);
+  EXPECT_EQ(enums[1], Enum::GREEN);
+  EXPECT_EQ(enums[2], Enum::AMBER);
+  EXPECT_EQ(enums[3], Enum::RED);
+
+  EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
+}
+
+TEST(CodegenRepeated, PackedEnumVector) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // enums[], v={RED, GREEN, AMBER, RED}
+    0x4a, 0x04, 0x00, 0x02, 0x01, 0x00,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  RepeatedTest::StreamDecoder repeated_test(reader);
+
+  EXPECT_EQ(repeated_test.Next(), OkStatus());
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::ENUMS);
+  pw::Vector<Enum, 4> enums{};
+  Status status = repeated_test.ReadEnums(enums);
+  EXPECT_EQ(status, OkStatus());
+  ASSERT_EQ(enums.size(), 4u);
+
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(IsValidEnum(enums[i]));
+  }
+
+  EXPECT_EQ(enums[0], Enum::RED);
+  EXPECT_EQ(enums[1], Enum::GREEN);
+  EXPECT_EQ(enums[2], Enum::AMBER);
+  EXPECT_EQ(enums[3], Enum::RED);
 
   EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
 }

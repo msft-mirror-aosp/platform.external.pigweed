@@ -104,6 +104,15 @@ Most Linux installations should work out of box, and not require any manual
 installation of prerequisites beyond basics like ``git`` and
 ``build-essential`` (or the equivalent for your distro).
 
+.. inclusive-language: disable
+
+To flash devices using OpenOCD, you may need to extend your system udev rules
+at ``/etc/udev/rules.d/``. The OpenOCD repository has a good
+`example udev rules file <https://github.com/openocd-org/openocd/blob/master/contrib/60-openocd.rules>`_
+that includes many popular hardware debuggers.
+
+.. inclusive-language: enable
+
 **macOS**
 
 To start using Pigweed on MacOS, you'll need to install XCode. Download it
@@ -254,8 +263,8 @@ the host automatically build and run the unit tests. Unit tests err on the side
 of being quiet in the success case, and only output test results when there's a
 failure.
 
-To see the a test failure, modify ``pw_status/status_test.cc`` to fail by
-changing one of the strings in the "KnownString" test.
+To see a test failure, modify ``pw_status/status_test.cc`` to fail by changing
+one of the strings in the "KnownString" test.
 
 .. image:: images/pw_watch_test_demo.gif
   :width: 800
@@ -270,7 +279,7 @@ Try running the ``pw_status`` test manually:
 
 .. code:: bash
 
-  $ ./out/host_{clang,gcc}_debug/obj/pw_status/test/status_test
+  $ ./out/pw_strict_host_{clang,gcc}_debug/obj/pw_status/test/status_test
 
 Depending on your host OS, the compiler will default to either ``clang`` or
 ``gcc``.

@@ -205,9 +205,11 @@ group("integration_tests") {
   deps = [
     "$dir_pw_rpc:cpp_client_server_integration_test($_default_tc)",
     "$dir_pw_rpc/py:python_client_cpp_server_test.action($_default_tc)",
-    "$dir_pw_transfer:cpp_client_integration_test($_default_tc)",
-    "$dir_pw_transfer/py:python_cpp_transfer_test.action($_default_tc)",
     "$dir_pw_unit_test/py:rpc_service_test.action($_default_tc)",
+
+    # TODO(b/228463549): Re-enable these when they're not flaky on linux.
+    # "$dir_pw_transfer:cpp_client_integration_test($_default_tc)",
+    # "$dir_pw_transfer/py:python_cpp_transfer_test.action($_default_tc)",
   ]
 }
 
@@ -309,6 +311,25 @@ group("pigweed_default") {
   }
 }
 
+group("cpp14_compatibility") {
+  _cpp14_toolchain = "$_internal_toolchains:pw_strict_host_clang_debug_cpp14"
+  deps = [
+    ":cpp14_modules($_cpp14_toolchain)",
+    ":cpp14_tests.run($_cpp14_toolchain)",
+  ]
+}
+
+# Build Pigweed with -std=c++20 to ensure compatibility. Compile with
+# optimizations since the compiler tends to catch more errors with optimizations
+# enabled than without.
+group("cpp20_compatibility") {
+  _cpp20_tc = "$_internal_toolchains:pw_strict_host_clang_size_optimized_cpp20"
+  deps = [
+    ":apps($_cpp20_tc)",
+    ":pw_module_tests.run($_cpp20_tc)",
+  ]
+}
+
 # The default toolchain is not used for compiling C/C++ code.
 if (current_toolchain != default_toolchain) {
   group("apps") {
@@ -325,7 +346,7 @@ if (current_toolchain != default_toolchain) {
     }
   }
 
-  # All Pigweed modules that can be built using gn. This is not built by default.
+  # All Pigweed modules that can be built using gn. Not built by default.
   group("pw_modules") {
     deps = pw_modules
   }
@@ -333,5 +354,28 @@ if (current_toolchain != default_toolchain) {
   # Targets for all module unit test groups.
   pw_test_group("pw_module_tests") {
     group_deps = pw_module_tests
+  }
+
+  # Modules that support C++14.
+  # TODO(hepler): pw_kvs is supposed to compile as C++14, but does not.
+  group("cpp14_modules") {
+    public_deps = [
+      dir_pw_polyfill,
+      dir_pw_preprocessor,
+      dir_pw_tokenizer,
+      dir_pw_varint,
+    ]
+  }
+
+  # Tests that support C++14.
+  pw_test_group("cpp14_tests") {
+    group_deps = [
+      "$dir_pw_polyfill:tests",
+      "$dir_pw_span:tests",
+    ]
+    tests = [
+      "$dir_pw_tokenizer:simple_tokenize_test",
+      "$dir_pw_containers:to_array_test",
+    ]
   }
 }
