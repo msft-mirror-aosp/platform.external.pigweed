@@ -58,11 +58,15 @@ from typing import (
     Tuple,
 )
 
-import httpwatcher  # type: ignore
+try:
+    import httpwatcher  # type: ignore[import]
+except ImportError:
+    httpwatcher = None
 
 from watchdog.events import FileSystemEventHandler  # type: ignore[import]
 from watchdog.observers import Observer  # type: ignore[import]
 
+from prompt_toolkit import prompt
 from prompt_toolkit.formatted_text.base import OneStyleAndTextTuple
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 
@@ -205,7 +209,11 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
         self.restart_on_changes = restart
         self.fullscreen_enabled = fullscreen
         self.watch_app: Optional[WatchApp] = None
-        self._current_build: subprocess.Popen
+
+        # Initialize self._current_build to an empty subprocess.
+        self._current_build = subprocess.Popen('',
+                                               shell=True,
+                                               errors='replace')
 
         self._extra_ninja_args = [] if jobs is None else [f'-j{jobs}']
         if keep_going:
@@ -224,7 +232,7 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
             self.wait_for_keypress_thread.start()
 
     def rebuild(self):
-        """ Rebuild command triggered from watch app."""
+        """Rebuild command triggered from watch app."""
         self._current_build.terminate()
         self._current_build.wait()
         self.debouncer.press('Manual build requested')
@@ -232,14 +240,14 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
     def _wait_for_enter(self) -> NoReturn:
         try:
             while True:
-                _ = input()
-                self._current_build.terminate()
-                self._current_build.wait()
-
-                self.debouncer.press('Manual build requested...')
+                _ = prompt('')
+                self.rebuild()
         # Ctrl-C on Unix generates KeyboardInterrupt
         # Ctrl-Z on Windows generates EOFError
         except (KeyboardInterrupt, EOFError):
+            # Force stop any running ninja builds.
+            if self._current_build:
+                self._current_build.terminate()
             _exit_due_to_interrupt()
 
     def _path_matches(self, path: Path) -> bool:
@@ -373,6 +381,12 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
                            index, build_ninja)
                 return False
 
+            if not cmd.build_dir.joinpath('args.gn').exists():
+                _LOG.error(
+                    '%s %s does not exist; run GN or CMake in %s to generate '
+                    'it', index, build_ninja, cmd.build_dir)
+                return False
+
             _LOG.warning('%s %s does not exist; running gn gen %s', index,
                          build_ninja, cmd.build_dir)
             if not self._execute_command(['gn', 'gen', cmd.build_dir], env):
@@ -393,7 +407,9 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
         if self.fullscreen_enabled:
             return self._execute_command_watch_app(command, env)
         print()
-        self._current_build = subprocess.Popen(command, env=env)
+        self._current_build = subprocess.Popen(command,
+                                               env=env,
+                                               errors='replace')
         returncode = self._current_build.wait()
         print()
         return returncode == 0
@@ -538,6 +554,8 @@ _WATCH_PATTERNS = (
     '*.cpp',
     '*.cmake',
     'CMakeLists.txt',
+    '*.dts',
+    '*.dtsi',
     '*.gn',
     '*.gni',
     '*.go',
@@ -548,9 +566,11 @@ _WATCH_PATTERNS = (
     '*.options',
     '*.proto',
     '*.py',
+    '*.rs',
     '*.rst',
     '*.s',
     '*.S',
+    '*.toml',
 )
 
 
@@ -579,7 +599,7 @@ def add_parser_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('-k',
                         '--keep-going',
                         action='store_true',
-                        help=('Keep building past the first failure. This is'
+                        help=('Keep building past the first failure. This is '
                               'equivalent to passing "-k 0" to ninja.'))
     parser.add_argument(
         'default_build_targets',
@@ -607,23 +627,23 @@ def add_parser_arguments(parser: argparse.ArgumentParser) -> None:
         dest='serve_docs',
         action='store_true',
         default=False,
-        help='Start a webserver for docs on localhost. The port for this '
-        ' webserver can be set with the --serve-docs-port option. '
-        ' Defaults to http://127.0.0.1:8000')
+        help=('Start a webserver for docs on localhost. The port for this '
+              'webserver can be set with the --serve-docs-port option. '
+              'Defaults to http://127.0.0.1:8000. This option requires '
+              'the httpwatcher package to be installed.'))
     parser.add_argument(
         '--serve-docs-port',
         dest='serve_docs_port',
         type=int,
         default=8000,
         help='Set the port for the docs webserver. Default to 8000.')
-
     parser.add_argument(
         '--serve-docs-path',
         dest='serve_docs_path',
         type=Path,
         default="docs/gen/docs",
-        help='Set the path for the docs to serve. Default to docs/gen/docs'
-        ' in the build directory.')
+        help=('Set the path for the docs to serve. Default to docs/gen/docs'
+              ' in the build directory.'))
     parser.add_argument(
         '-j',
         '--jobs',
@@ -656,6 +676,7 @@ def _exit(code: int) -> NoReturn:
 def _exit_due_to_interrupt() -> NoReturn:
     # To keep the log lines aligned with each other in the presence of
     # a '^C' from the keyboard interrupt, add a newline before the log.
+    print('')
     _LOG.info('Got Ctrl-C; exiting...')
     _exit(0)
 
@@ -788,6 +809,26 @@ def get_common_excludes() -> List[Path]:
     return exclude_list
 
 
+def _serve_docs(build_dir: Path, serve_docs_port: int,
+                serve_docs_path: Path) -> None:
+    if httpwatcher is None:
+        _LOG.warning(
+            '--serve-docs was specified, but httpwatcher is not available')
+        _LOG.info('Install httpwatcher to use --serve-docs')
+        return
+
+    def httpwatcher_thread():
+        # Disable logs from httpwatcher and deps
+        logging.getLogger('httpwatcher').setLevel(logging.CRITICAL)
+        logging.getLogger('tornado').setLevel(logging.CRITICAL)
+
+        docs_path = build_dir.joinpath(serve_docs_path.joinpath('html'))
+        httpwatcher.watch(docs_path, host='127.0.0.1', port=serve_docs_port)
+
+    # Spin up an httpwatcher in a new thread since it blocks
+    threading.Thread(None, httpwatcher_thread, 'httpwatcher').start()
+
+
 def watch_setup(
     default_build_targets: List[str],
     build_directories: List[str],
@@ -846,20 +887,8 @@ def watch_setup(
     _LOG.debug('Patterns: %s', patterns)
 
     if serve_docs:
-
-        def _serve_docs():
-            # Disable logs from httpwatcher and deps
-            logging.getLogger('httpwatcher').setLevel(logging.CRITICAL)
-            logging.getLogger('tornado').setLevel(logging.CRITICAL)
-
-            docs_path = build_commands[0].build_dir.joinpath(
-                serve_docs_path.joinpath('html'))
-            httpwatcher.watch(docs_path,
-                              host="127.0.0.1",
-                              port=serve_docs_port)
-
-        # Spin up an httpwatcher in a new thread since it blocks
-        threading.Thread(None, _serve_docs, "httpwatcher").start()
+        _serve_docs(build_commands[0].build_dir, serve_docs_port,
+                    serve_docs_path)
 
     # Try to make a short display path for the watched directory that has
     # "$HOME" instead of the full home directory. This is nice for users

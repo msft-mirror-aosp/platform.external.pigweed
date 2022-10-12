@@ -47,13 +47,15 @@ pw_add_module_library(pw_protobuf
     pw_containers.vector
     pw_function
     pw_protobuf.config
-    pw_polyfill.span
     pw_result
+    pw_span
     pw_status
     pw_stream
     pw_stream.interval_reader
     pw_varint
     pw_varint.stream
+  PRIVATE_DEPS
+    pw_string.string
   SOURCES
     decoder.cc
     encoder.cc
@@ -194,6 +196,13 @@ pw_proto_library(pw_protobuf.codegen_protos
     pw_protobuf_codegen_protos/options.proto
 )
 
+pw_proto_library(pw_protobuf.codegen_test_deps_protos
+  SOURCES
+    pw_protobuf_test_deps_protos/imported.proto
+  INPUTS
+    pw_protobuf_test_deps_protos/imported.options
+)
+
 pw_proto_library(pw_protobuf.codegen_test_protos
   SOURCES
     pw_protobuf_test_protos/full_test.proto
@@ -205,9 +214,11 @@ pw_proto_library(pw_protobuf.codegen_test_protos
     pw_protobuf_test_protos/repeated.proto
   INPUTS
     pw_protobuf_test_protos/full_test.options
+    pw_protobuf_test_protos/imported.options
     pw_protobuf_test_protos/optional.options
     pw_protobuf_test_protos/repeated.options
   DEPS
     pw_protobuf.common_proto
     pw_protobuf.status_proto
+    pw_protobuf.codegen_test_deps_protos
 )

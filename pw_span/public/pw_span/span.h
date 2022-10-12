@@ -16,12 +16,32 @@
 // implementation is shared with the std::span polyfill class.
 #pragma once
 
-// TODO(b/235237667): Make pw::span an alias of std::span when it is available.
+#include "pw_span/internal/config.h"
 
-#define _PW_SPAN_COMMON_NAMEPACE_BEGIN namespace pw {
-#define _PW_SPAN_COMMON_NAMEPACE_END }  // namespace pw
+#if __has_include(<version>)
+#include <version>
+#endif  // __has_include(<version>)
 
-#include "pw_span/internal/span_common.inc"
+// If the C++ library fully supports <span>, pw::span is an alias of std::span,
+// but only if PW_SPAN_ENABLE_ASSERTS is not enabled.
+#if !PW_SPAN_ENABLE_ASSERTS &&                               \
+    (defined(__cpp_lib_span) && __cpp_lib_span >= 202002L || \
+     defined(_PW_SPAN_POLYFILL_ENABLED))
 
-#undef _PW_SPAN_COMMON_NAMEPACE_BEGIN
-#undef _PW_SPAN_COMMON_NAMEPACE_END
+#include <span>
+
+namespace pw {
+
+using std::as_bytes;
+using std::as_writable_bytes;
+using std::dynamic_extent;
+using std::span;
+
+}  // namespace pw
+
+#else
+
+// If std::span is not available, use Pigweed's span implementation.
+#include "pw_span/internal/span_impl.h"  // IWYU pragma: export
+
+#endif  // defined(__cpp_lib_span) && __cpp_lib_span >= 202002L

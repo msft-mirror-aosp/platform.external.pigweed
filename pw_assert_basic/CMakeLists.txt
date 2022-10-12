@@ -23,7 +23,7 @@ pw_add_facade(pw_assert_basic.handler
     pw_preprocessor
 )
 
-# TODO(pwbug/246): This backend implements pw_assert's check backend and the
+# TODO(b/235149326): This backend implements pw_assert's check backend and the
 # temporary compatibility C ABI (pw_assert_HandleFailure()).
 pw_add_module_library(pw_assert_basic.check_backend
   HEADERS
@@ -49,6 +49,6 @@ pw_add_module_library(pw_assert_basic.basic_handler
     pw_assert_basic.handler.facade
     pw_assert.config
     pw_preprocessor
-    pw_string.string_builder
+    pw_string.builder
     pw_sys_io
 )

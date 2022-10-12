@@ -41,22 +41,25 @@ except ImportError:
         os.path.abspath(__file__))))
     import pw_presubmit
 
+import pw_cli.color
 import pw_cli.env
+from pw_presubmit.presubmit import FileFilter
 from pw_presubmit import cli, git_repo
 from pw_presubmit.tools import exclude_paths, file_summary, log_run, plural
 
 _LOG: logging.Logger = logging.getLogger(__name__)
+_COLOR = pw_cli.color.colors()
 
 
 def _colorize_diff_line(line: str) -> str:
     if line.startswith('--- ') or line.startswith('+++ '):
-        return pw_presubmit.color_bold_white(line)
+        return _COLOR.bold_white(line)
     if line.startswith('-'):
-        return pw_presubmit.color_red(line)
+        return _COLOR.red(line)
     if line.startswith('+'):
-        return pw_presubmit.color_green(line)
+        return _COLOR.green(line)
     if line.startswith('@@ '):
-        return pw_presubmit.color_aqua(line)
+        return _COLOR.cyan(line)
     return line
 
 
@@ -254,7 +257,6 @@ def print_format_check(errors: Dict[Path, str],
     if not errors:
         # Don't print anything in the all-good case.
         return
-
     # Show the format fixing diff suggested by the tooling (with colors).
     _LOG.warning('Found %d files with formatting errors. Format changes:',
                  len(errors))
@@ -264,7 +266,7 @@ def print_format_check(errors: Dict[Path, str],
     # Show a copy-and-pastable command to fix the issues.
     if show_fix_commands:
 
-        def path_relative_to_cwd(path):
+        def path_relative_to_cwd(path: Path):
             try:
                 return Path(path).resolve().relative_to(Path.cwd().resolve())
             except ValueError:
@@ -277,76 +279,104 @@ def print_format_check(errors: Dict[Path, str],
 
 class CodeFormat(NamedTuple):
     language: str
-    extensions: Collection[str]
-    exclude: Collection[str]
+    filter: FileFilter
     check: Callable[[Iterable], Dict[Path, str]]
     fix: Callable[[Iterable], Dict[Path, str]]
+
+    @property
+    def extensions(self):
+        # TODO(b/23842636): Switch calls of this to using "filter" and remove.
+        return self.filter.endswith
 
 
 CPP_HEADER_EXTS = frozenset(('.h', '.hpp', '.hxx', '.h++', '.hh', '.H'))
 CPP_SOURCE_EXTS = frozenset(
     ('.c', '.cpp', '.cxx', '.c++', '.cc', '.C', '.inc', '.inl'))
 CPP_EXTS = CPP_HEADER_EXTS.union(CPP_SOURCE_EXTS)
+CPP_FILE_FILTER = FileFilter(endswith=CPP_EXTS,
+                             exclude=(r'\.pb\.h$', r'\.pb\.c$'))
 
-C_FORMAT: CodeFormat = CodeFormat('C and C++', CPP_EXTS,
-                                  (r'\.pb\.h$', r'\.pb\.c$'),
-                                  clang_format_check, clang_format_fix)
+C_FORMAT = CodeFormat('C and C++', CPP_FILE_FILTER, clang_format_check,
+                      clang_format_fix)
 
-PROTO_FORMAT: CodeFormat = CodeFormat('Protocol buffer', ('.proto', ), (),
+PROTO_FORMAT: CodeFormat = CodeFormat('Protocol buffer',
+                                      FileFilter(endswith=('.proto', )),
                                       clang_format_check, clang_format_fix)
 
-JAVA_FORMAT: CodeFormat = CodeFormat('Java', ('.java', ), (),
+JAVA_FORMAT: CodeFormat = CodeFormat('Java', FileFilter(endswith=('.java', )),
                                      clang_format_check, clang_format_fix)
 
-JAVASCRIPT_FORMAT: CodeFormat = CodeFormat('JavaScript', ('.js', ), (),
+JAVASCRIPT_FORMAT: CodeFormat = CodeFormat('JavaScript',
+                                           FileFilter(endswith=('.js', )),
                                            clang_format_check,
                                            clang_format_fix)
 
-GO_FORMAT: CodeFormat = CodeFormat('Go', ('.go', ), (), check_go_format,
-                                   fix_go_format)
+GO_FORMAT: CodeFormat = CodeFormat('Go', FileFilter(endswith=('.go', )),
+                                   check_go_format, fix_go_format)
 
-PYTHON_FORMAT: CodeFormat = CodeFormat('Python', ('.py', ), (),
+PYTHON_FORMAT: CodeFormat = CodeFormat('Python',
+                                       FileFilter(endswith=('.py', )),
                                        check_py_format, fix_py_format)
 
-GN_FORMAT: CodeFormat = CodeFormat('GN', ('.gn', '.gni'), (), check_gn_format,
-                                   fix_gn_format)
+GN_FORMAT: CodeFormat = CodeFormat('GN', FileFilter(endswith=('.gn', '.gni')),
+                                   check_gn_format, fix_gn_format)
 
-# TODO(pwbug/191): Add real code formatting support for Bazel and CMake
-BAZEL_FORMAT: CodeFormat = CodeFormat('Bazel', ('BUILD', '.bazel', '.bzl'), (),
-                                      check_bazel_format, fix_bazel_format)
+BAZEL_FORMAT: CodeFormat = CodeFormat(
+    'Bazel',
+    FileFilter(endswith=('BUILD', '.bazel', '.bzl'), name=('WORKSPACE')),
+    check_bazel_format, fix_bazel_format)
 
-CMAKE_FORMAT: CodeFormat = CodeFormat('CMake', ('CMakeLists.txt', '.cmake'),
-                                      (), check_trailing_space,
-                                      fix_trailing_space)
+COPYBARA_FORMAT: CodeFormat = CodeFormat('Copybara',
+                                         FileFilter(endswith=('.bara.sky', )),
+                                         check_bazel_format, fix_bazel_format)
 
-RST_FORMAT: CodeFormat = CodeFormat('reStructuredText', ('.rst', ), (),
+# TODO(b/234881054): Add real code formatting support for CMake
+CMAKE_FORMAT: CodeFormat = CodeFormat(
+    'CMake', FileFilter(endswith=('CMakeLists.txt', '.cmake')),
+    check_trailing_space, fix_trailing_space)
+
+RST_FORMAT: CodeFormat = CodeFormat('reStructuredText',
+                                    FileFilter(endswith=('.rst', )),
                                     check_trailing_space, fix_trailing_space)
 
-MARKDOWN_FORMAT: CodeFormat = CodeFormat('Markdown', ('.md', ), (),
+MARKDOWN_FORMAT: CodeFormat = CodeFormat('Markdown',
+                                         FileFilter(endswith=('.md', )),
                                          check_trailing_space,
                                          fix_trailing_space)
 
 CODE_FORMATS: Tuple[CodeFormat, ...] = (
-    C_FORMAT,
-    JAVA_FORMAT,
-    JAVASCRIPT_FORMAT,
-    PROTO_FORMAT,
-    GO_FORMAT,
-    PYTHON_FORMAT,
-    GN_FORMAT,
+    # keep-sorted: start
     BAZEL_FORMAT,
     CMAKE_FORMAT,
-    RST_FORMAT,
+    COPYBARA_FORMAT,
+    C_FORMAT,
+    GN_FORMAT,
+    GO_FORMAT,
+    JAVASCRIPT_FORMAT,
+    JAVA_FORMAT,
     MARKDOWN_FORMAT,
+    PROTO_FORMAT,
+    PYTHON_FORMAT,
+    RST_FORMAT,
+    # keep-sorted: end
 )
 
 
-def presubmit_check(code_format: CodeFormat, **filter_paths_args) -> Callable:
-    """Creates a presubmit check function from a CodeFormat object."""
-    filter_paths_args.setdefault('endswith', code_format.extensions)
-    filter_paths_args.setdefault('exclude', code_format.exclude)
+def presubmit_check(
+    code_format: CodeFormat,
+    *,
+    exclude: Collection[Union[str, Pattern[str]]] = ()) -> Callable:
+    """Creates a presubmit check function from a CodeFormat object.
 
-    @pw_presubmit.filter_paths(**filter_paths_args)
+    Args:
+      exclude: Additional exclusion regexes to apply.
+    """
+
+    # Make a copy of the FileFilter and add in any additional excludes.
+    file_filter = FileFilter(**vars(code_format.filter))
+    file_filter.exclude += tuple(re.compile(e) for e in exclude)
+
+    @pw_presubmit.filter_paths(file_filter=file_filter)
     def check_code_format(ctx: pw_presubmit.PresubmitContext):
         errors = code_format.check(ctx.paths)
         print_format_check(
@@ -358,28 +388,43 @@ def presubmit_check(code_format: CodeFormat, **filter_paths_args) -> Callable:
             raise pw_presubmit.PresubmitFailure
 
     language = code_format.language.lower().replace('+', 'p').replace(' ', '_')
-    check_code_format.__name__ = f'{language}_format'
+    check_code_format.name = f'{language}_format'
 
     return check_code_format
 
 
-def presubmit_checks(**filter_paths_args) -> Tuple[Callable, ...]:
-    """Returns a tuple with all supported code format presubmit checks."""
-    return tuple(
-        presubmit_check(fmt, **filter_paths_args) for fmt in CODE_FORMATS)
+def presubmit_checks(
+    *,
+    exclude: Collection[Union[str, Pattern[str]]] = (),
+    code_formats: Collection[CodeFormat] = CODE_FORMATS
+) -> Tuple[Callable, ...]:
+    """Returns a tuple with all supported code format presubmit checks.
+
+    Args:
+      exclude: Additional exclusion regexes to apply.
+      code_formats: A list of CodeFormat objects to run checks with.
+    """
+
+    return tuple(presubmit_check(fmt, exclude=exclude) for fmt in code_formats)
 
 
 class CodeFormatter:
     """Checks or fixes the formatting of a set of files."""
-    def __init__(self, files: Iterable[Path]):
+    def __init__(self,
+                 files: Iterable[Path],
+                 code_formats: Collection[CodeFormat] = CODE_FORMATS):
         self.paths = list(files)
         self._formats: Dict[CodeFormat, List] = collections.defaultdict(list)
 
         for path in self.paths:
-            for code_format in CODE_FORMATS:
-                if any(path.as_posix().endswith(e)
-                       for e in code_format.extensions):
+            for code_format in code_formats:
+                if code_format.filter.matches(path):
+                    _LOG.debug('Formatting %s as %s', path,
+                               code_format.language)
                     self._formats[code_format].append(path)
+                    break
+            else:
+                _LOG.debug('No formatter found for %s', path)
 
     def check(self) -> Dict[Path, str]:
         """Returns {path: diff} for files with incorrect formatting."""
@@ -417,10 +462,14 @@ def _file_summary(files: Iterable[Union[Path, str]], base: Path) -> List[str]:
         return []
 
 
-def format_paths_in_repo(paths: Collection[Union[Path, str]],
-                         exclude: Collection[Pattern[str]], fix: bool,
-                         base: str) -> int:
+def format_paths_in_repo(
+        paths: Collection[Union[Path, str]],
+        exclude: Collection[Pattern[str]],
+        fix: bool,
+        base: str,
+        code_formats: Collection[CodeFormat] = CODE_FORMATS) -> int:
     """Checks or fixes formatting for files in a Git repo."""
+
     files = [Path(path).resolve() for path in paths if os.path.isfile(path)]
     repo = git_repo.root() if git_repo.is_repo() else None
 
@@ -449,14 +498,17 @@ def format_paths_in_repo(paths: Collection[Union[Path, str]],
             'A base commit may only be provided if running from a Git repo')
         return 1
 
-    return format_files(files, fix, repo=repo)
+    return format_files(files, fix, repo=repo, code_formats=code_formats)
 
 
 def format_files(paths: Collection[Union[Path, str]],
                  fix: bool,
-                 repo: Optional[Path] = None) -> int:
+                 repo: Optional[Path] = None,
+                 code_formats: Collection[CodeFormat] = CODE_FORMATS) -> int:
     """Checks or fixes formatting for the specified files."""
-    formatter = CodeFormatter(Path(p) for p in paths)
+
+    formatter = CodeFormatter(files=(Path(p) for p in paths),
+                              code_formats=code_formats)
 
     _LOG.info('Checking formatting for %s', plural(formatter.paths, 'file'))
 
@@ -518,6 +570,19 @@ def arguments(git_paths: bool) -> argparse.ArgumentParser:
 def main() -> int:
     """Check and fix formatting for source files."""
     return format_paths_in_repo(**vars(arguments(git_paths=True).parse_args()))
+
+
+def _pigweed_upstream_main() -> int:
+    """Check and fix formatting for source files in upstream Pigweed.
+
+    Excludes third party sources.
+    """
+    args = arguments(git_paths=True).parse_args()
+
+    # Exclude paths with third party code from formatting.
+    args.exclude.append(re.compile('^third_party/fuchsia/repo/'))
+
+    return format_paths_in_repo(**vars(args))
 
 
 if __name__ == '__main__':

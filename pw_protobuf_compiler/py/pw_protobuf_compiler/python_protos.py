@@ -27,7 +27,7 @@ from typing import (Dict, Generic, Iterable, Iterator, List, NamedTuple, Set,
 
 # Temporarily set the root logger level to critical while importing yapf.
 # This silences INFO level messages from
-# .environment/cipd/packages/python/lib/python3.9/lib2to3/driver.py
+# environment/cipd/packages/python/lib/python3.9/lib2to3/driver.py
 # when it writes Grammar3.*.pickle and PatternGrammar3.*.pickle files.
 _original_level = 0
 for handler in logging.getLogger().handlers:
@@ -36,7 +36,10 @@ for handler in logging.getLogger().handlers:
             _original_level = handler.level
         handler.level = logging.CRITICAL
 
-from yapf.yapflib import yapf_api  # type: ignore[import] # pylint: disable=wrong-import-position
+try:
+    from yapf.yapflib import yapf_api  # type: ignore[import] # pylint: disable=wrong-import-position
+except ImportError:
+    yapf_api = None
 
 # Restore the original stderr/out log handler level.
 for handler in logging.getLogger().handlers:
@@ -424,11 +427,12 @@ def proto_repr(message, *, wrap: bool = True) -> str:
 
     Args:
       message: The protobuf message to format
-      wrap: If true, the output is line wrapped according to PEP8 using YAPF.
+      wrap: If true and YAPF is available, the output is wrapped according to
+          PEP8 using YAPF.
     """
     raw = f'{message.DESCRIPTOR.full_name}({", ".join(_proto_repr(message))})'
 
-    if wrap:
+    if wrap and yapf_api is not None:
         return yapf_api.FormatCode(raw, style_config='PEP8')[0].rstrip()
 
     return raw

@@ -16,8 +16,13 @@
 #include "pw_chrono/system_clock.h"
 #include "pw_rpc/writer.h"
 #include "pw_stream/stream.h"
+#include "pw_transfer/internal/protocol.h"
 
-namespace pw::transfer::internal {
+namespace pw::transfer {
+
+class Handler;
+
+namespace internal {
 
 enum class TransferType : bool { kTransmit, kReceive };
 
@@ -62,12 +67,12 @@ enum class EventType {
 };
 
 // Forward declarations required for events.
-class Handler;
 class TransferParameters;
 class TransferThread;
 
 struct NewTransferEvent {
   TransferType type;
+  ProtocolVersion protocol_version;
   uint32_t session_id;
   uint32_t resource_id;
   rpc::Writer* rpc_writer;
@@ -80,10 +85,13 @@ struct NewTransferEvent {
     stream::Stream* stream;  // In client-side transfers.
     Handler* handler;        // In server-side transfers.
   };
+
+  const std::byte* raw_chunk_data;
+  size_t raw_chunk_size;
 };
 
 struct ChunkEvent {
-  uint32_t session_id;
+  uint32_t context_identifier;
   const std::byte* data;
   size_t size;
 };
@@ -96,6 +104,7 @@ struct EndTransferEvent {
 
 struct SendStatusChunkEvent {
   uint32_t session_id;
+  ProtocolVersion protocol_version;
   Status::Code status;
   TransferStream stream;
 };
@@ -114,4 +123,5 @@ struct Event {
   };
 };
 
-}  // namespace pw::transfer::internal
+}  // namespace internal
+}  // namespace pw::transfer

@@ -14,7 +14,6 @@
 
 #include <array>
 #include <cstring>
-#include <span>
 
 #include "gtest/gtest.h"
 #include "pw_checksum/crc16_ccitt.h"
@@ -22,7 +21,9 @@
 #include "pw_kvs/flash_memory.h"
 #include "pw_kvs/flash_test_partition.h"
 #include "pw_kvs/key_value_store.h"
+#include "pw_kvs_private/config.h"
 #include "pw_log/log.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_string/string_builder.h"
 
@@ -45,8 +46,7 @@ constexpr EntryFormat default_format{.magic = 0x749c361e,
 
 TEST(KvsFuzz, FuzzTest) {
   FlashPartition& test_partition = FlashTestPartition();
-  test_partition.Erase()
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  ASSERT_EQ(OkStatus(), test_partition.Erase());
 
   KeyValueStoreBuffer<kMaxEntries, kMaxUsableSectors> kvs_(&test_partition,
                                                            default_format);
@@ -84,9 +84,9 @@ TEST(KvsFuzz, FuzzTest) {
 
     // Delete and re-add everything except "some_data"
     ASSERT_EQ(OkStatus(), kvs_.Delete(key1));
-    ASSERT_EQ(OkStatus(), kvs_.Put(key1, std::span(buf1, size1)));
+    ASSERT_EQ(OkStatus(), kvs_.Put(key1, span(buf1, size1)));
     ASSERT_EQ(OkStatus(), kvs_.Delete(key2));
-    ASSERT_EQ(OkStatus(), kvs_.Put(key2, std::span(buf2, size2)));
+    ASSERT_EQ(OkStatus(), kvs_.Put(key2, span(buf2, size2)));
     for (size_t j = 0; j < keys.size(); j++) {
       ASSERT_EQ(OkStatus(), kvs_.Delete(keys[j]));
       ASSERT_EQ(OkStatus(), kvs_.Put(keys[j], j));
@@ -95,9 +95,9 @@ TEST(KvsFuzz, FuzzTest) {
     // Re-enable and verify
     ASSERT_EQ(OkStatus(), kvs_.Init());
     static byte buf[4 * 1024];
-    ASSERT_EQ(OkStatus(), kvs_.Get(key1, std::span(buf, size1)).status());
+    ASSERT_EQ(OkStatus(), kvs_.Get(key1, span(buf, size1)).status());
     ASSERT_EQ(std::memcmp(buf, buf1, size1), 0);
-    ASSERT_EQ(OkStatus(), kvs_.Get(key2, std::span(buf, size2)).status());
+    ASSERT_EQ(OkStatus(), kvs_.Get(key2, span(buf, size2)).status());
     ASSERT_EQ(std::memcmp(buf2, buf2, size2), 0);
     for (size_t j = 0; j < keys.size(); j++) {
       size_t ret = 1000;
@@ -147,7 +147,7 @@ TEST(KvsFuzz, FuzzTestWithGC) {
 
     // Delete and re-add everything except "some_data".
     ASSERT_EQ(OkStatus(), kvs_.Delete(key1));
-    ASSERT_EQ(OkStatus(), kvs_.Put(key1, std::span(buf1, size1)));
+    ASSERT_EQ(OkStatus(), kvs_.Put(key1, span(buf1, size1)));
     ASSERT_EQ(OkStatus(), kvs_.Delete(key2));
 
     // Throw some heavy maintenance in the middle to trigger some GC before
@@ -158,6 +158,13 @@ TEST(KvsFuzz, FuzzTestWithGC) {
     KeyValueStore::StorageStats stats = kvs_.GetStorageStats();
     EXPECT_GT(stats.sector_erase_count, 1u);
     EXPECT_EQ(stats.reclaimable_bytes, 0u);
+
+    if (!PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE) {
+      PW_LOG_INFO(
+          "PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE is "
+          "disabled; skipping remainder of test");
+      return;
+    }
 
     // Write out rotating keyvalue, read it, and delete kMaxEntries * 4.
     // This tests whether garbage collection is working on write.
@@ -175,7 +182,7 @@ TEST(KvsFuzz, FuzzTestWithGC) {
     // The KVS should contain key1, "some_data", and all of keys[].
     ASSERT_EQ(kvs_.size(), 2u + keys.size());
 
-    ASSERT_EQ(OkStatus(), kvs_.Put(key2, std::span(buf2, size2)));
+    ASSERT_EQ(OkStatus(), kvs_.Put(key2, span(buf2, size2)));
     for (size_t j = 0; j < keys.size(); j++) {
       ASSERT_EQ(OkStatus(), kvs_.Delete(keys[j]));
       ASSERT_EQ(OkStatus(), kvs_.Put(keys[j], j));
@@ -190,9 +197,9 @@ TEST(KvsFuzz, FuzzTestWithGC) {
     // Re-enable and verify (final check on store).
     ASSERT_EQ(OkStatus(), kvs_.Init());
     static byte buf[4 * 1024];
-    ASSERT_EQ(OkStatus(), kvs_.Get(key1, std::span(buf, size1)).status());
+    ASSERT_EQ(OkStatus(), kvs_.Get(key1, span(buf, size1)).status());
     ASSERT_EQ(std::memcmp(buf, buf1, size1), 0);
-    ASSERT_EQ(OkStatus(), kvs_.Get(key2, std::span(buf, size2)).status());
+    ASSERT_EQ(OkStatus(), kvs_.Get(key2, span(buf, size2)).status());
     ASSERT_EQ(std::memcmp(buf2, buf2, size2), 0);
     for (size_t j = 0; j < keys.size(); j++) {
       size_t ret = 1000;

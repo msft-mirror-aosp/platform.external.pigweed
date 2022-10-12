@@ -103,9 +103,8 @@ C++ module structure
 
 C++ public headers
 ~~~~~~~~~~~~~~~~~~
-Located ``{pw_module_dir}/public/<module>``. These are headers that must be
-exposed due to C++ limitations (i.e. are included from the public interface,
-but are not intended for public use).
+Located ``{pw_module_dir}/public/<module>``. These headers are the public
+interface for the module.
 
 **Public headers** should take the form:
 
@@ -442,6 +441,8 @@ To create a new Pigweed module, follow the below steps.
    - Declare tests in ``pw_test_group("tests")``
    - Declare docs in ``pw_docs_group("docs")``
 
+   Both ``tests`` and ``docs`` are required, even if the module is empty!
+
 6. Add Bazel build support in ``{pw_module_dir}/BUILD.bazel``
 
 7. Add CMake build support in ``{pw_module_dir}/CMakeLists.txt``
@@ -463,6 +464,6 @@ To create a new Pigweed module, follow the below steps.
 
 11. Run :ref:`module-pw_module-module-check`
 
-    - ``$ pw module-check {pw_module_dir}``
+    - ``$ pw module check {pw_module_dir}``
 
 12. Contribute your module to upstream Pigweed (optional but encouraged!)

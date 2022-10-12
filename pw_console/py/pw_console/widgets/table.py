@@ -94,8 +94,14 @@ class TableView:
 
         return ordered_columns.items()
 
-    def update_metadata_column_widths(self, log: LogLine):
+    def update_metadata_column_widths(self, log: LogLine) -> None:
         """Calculate the max widths for each metadata field."""
+        if log.metadata is None:
+            log.update_metadata()
+        # If extra fields still don't exist, no need to update column widths.
+        if log.metadata is None:
+            return
+
         for field_name, value in log.metadata.fields.items():
             value_string = str(value)
 
@@ -130,7 +136,7 @@ class TableView:
 
         for name, width in self._ordered_column_widths():
             # These fields will be shown at the end
-            if name in ['msg', 'message']:
+            if name in TableView.LAST_TABLE_COLUMN_NAMES:
                 continue
             fragments.append(
                 (default_style, name.title()[:width].ljust(width)))
@@ -163,7 +169,7 @@ class TableView:
         columns = {}
         for name, width in self._ordered_column_widths():
             # Skip these modifying these fields
-            if name in ['msg', 'message']:
+            if name in TableView.LAST_TABLE_COLUMN_NAMES:
                 continue
 
             # hasattr checks are performed here since a log record may not have

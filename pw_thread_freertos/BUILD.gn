@@ -14,6 +14,7 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pigweed/third_party/freertos/freertos.gni")
 import("$dir_pw_build/error.gni")
 import("$dir_pw_build/facade.gni")
 import("$dir_pw_build/module_config.gni")
@@ -131,6 +132,27 @@ pw_source_set("thread") {
   sources = [ "thread.cc" ]
 }
 
+# This target provides the backend for pw::thread::thread_iteration.
+if (pw_thread_freertos_FREERTOS_TSKTCB_BACKEND != "") {
+  pw_source_set("thread_iteration") {
+    public_configs = [ ":backend_config" ]
+    deps = [
+      ":freertos_tsktcb",
+      "$dir_pw_third_party/freertos",
+      "$dir_pw_thread:thread_info",
+      "$dir_pw_thread:thread_iteration.facade",
+      "$dir_pw_thread_freertos:util",
+      dir_pw_function,
+      dir_pw_span,
+      dir_pw_status,
+    ]
+    sources = [
+      "pw_thread_freertos_private/thread_iteration.h",
+      "thread_iteration.cc",
+    ]
+  }
+}
+
 # This target provides the backend for pw::this_thread::yield.
 pw_source_set("yield") {
   public_configs = [
@@ -160,6 +182,38 @@ pw_source_set("util") {
   public = [ "public/pw_thread_freertos/util.h" ]
   deps = [ dir_pw_log ]
   sources = [ "util.cc" ]
+}
+
+# Action to generate `freertos_tsktcb.h` for
+# pw_thread_freertos_FREERTOS_TSKTCB_BACKEND.
+if (dir_pw_third_party_freertos != "") {
+  pw_python_action("generate_freertos_tsktcb") {
+    _out_path = "${target_gen_dir}/public_overrides/pw_thread_freertos_backend/freertos_tsktcb.h"
+    script = "py/pw_thread_freertos/generate_freertos_tsktcb.py"
+    args = [
+      "--freertos-src-dir",
+      rebase_path(dir_pw_third_party_freertos, root_build_dir),
+      "-o",
+      rebase_path(_out_path, root_build_dir),
+    ]
+    outputs = [ _out_path ]
+    visibility = [ ":auto_freertos_tsktcb" ]
+  }
+
+  config("auto_freertos_include_path") {
+    include_dirs = [ "${target_gen_dir}/public_overrides" ]
+    visibility = [ ":auto_freertos_tsktcb" ]
+  }
+
+  # Source set that provides backend for automatically generated
+  # `freertos_tsktcb.h` header.
+  pw_source_set("auto_freertos_tsktcb") {
+    public_configs = [ ":auto_freertos_include_path" ]
+    public = [ "${target_gen_dir}/public_overrides/pw_thread_freertos_backend/freertos_tsktcb.h" ]
+    public_deps = [ "$dir_pw_third_party/freertos" ]
+    deps = [ ":generate_freertos_tsktcb" ]
+    visibility = [ ":freertos_tsktcb" ]
+  }
 }
 
 pw_facade("freertos_tsktcb") {
@@ -195,6 +249,34 @@ pw_test_group("tests") {
     ":dynamic_thread_backend_test",
     ":static_thread_backend_test",
   ]
+  if (pw_thread_freertos_FREERTOS_TSKTCB_BACKEND != "") {
+    tests += [ ":thread_iteration_test" ]
+  }
+}
+
+if (pw_thread_freertos_FREERTOS_TSKTCB_BACKEND != "") {
+  pw_test("thread_iteration_test") {
+    enable_if = pw_thread_THREAD_BACKEND == "$dir_pw_thread_freertos:thread"
+    sources = [
+      "pw_thread_freertos_private/thread_iteration.h",
+      "thread_iteration_test.cc",
+    ]
+    deps = [
+      ":freertos_tsktcb",
+      ":static_test_threads",
+      ":thread_iteration",
+      "$dir_pw_bytes",
+      "$dir_pw_span",
+      "$dir_pw_string:builder",
+      "$dir_pw_string:util",
+      "$dir_pw_sync:thread_notification",
+      "$dir_pw_third_party/freertos",
+      "$dir_pw_thread:test_threads",
+      "$dir_pw_thread:thread",
+      "$dir_pw_thread:thread_info",
+      "$dir_pw_thread:thread_iteration",
+    ]
+  }
 }
 
 pw_source_set("dynamic_test_threads") {

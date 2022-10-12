@@ -55,8 +55,8 @@ _PYTHON_IS_3_9_OR_HIGHER = sys.version_info >= (
 
 @filter_paths(endswith=_PYTHON_EXTENSIONS)
 def gn_python_check(ctx: PresubmitContext):
-    build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, 'python.tests', 'python.lint')
+    build.gn_gen(ctx)
+    build.ninja(ctx, 'python.tests', 'python.lint')
 
 
 def _transform_lcov_file_paths(lcov_file: Path, repo_root: Path) -> str:
@@ -79,10 +79,19 @@ def _transform_lcov_file_paths(lcov_file: Path, repo_root: Path) -> str:
         file_string = line[3:].rstrip()
         source_file_path = Path(file_string)
 
+        # TODO(b/248257406) Remove once we drop support for Python 3.8.
+        def is_relative_to(path: Path, other: Path) -> bool:
+            try:
+                path.relative_to(other)
+                return True
+            except ValueError:
+                return False
+
         # Attempt to map a generated Python package source file to the root
         # source tree.
         # pylint: disable=no-member
-        if not source_file_path.is_relative_to(  # type: ignore[attr-defined]
+        if not is_relative_to(
+                source_file_path,  # type: ignore[attr-defined]
                 repo_root):
             # pylint: enable=no-member
             source_file_path = repo_root / str(source_file_path).replace(
@@ -90,7 +99,8 @@ def _transform_lcov_file_paths(lcov_file: Path, repo_root: Path) -> str:
 
         # If mapping fails don't modify this line.
         # pylint: disable=no-member
-        if not source_file_path.is_relative_to(  # type: ignore[attr-defined]
+        if not is_relative_to(
+                source_file_path,  # type: ignore[attr-defined]
                 repo_root):
             # pylint: enable=no-member
             lcov_output += line + '\n'
@@ -105,8 +115,8 @@ def _transform_lcov_file_paths(lcov_file: Path, repo_root: Path) -> str:
 @filter_paths(endswith=_PYTHON_EXTENSIONS)
 def gn_python_test_coverage(ctx: PresubmitContext):
     """Run Python tests with coverage and create reports."""
-    build.gn_gen(ctx.root, ctx.output_dir, pw_build_PYTHON_TEST_COVERAGE=True)
-    build.ninja(ctx.output_dir, 'python.tests')
+    build.gn_gen(ctx, pw_build_PYTHON_TEST_COVERAGE=True)
+    build.ninja(ctx, 'python.tests')
 
     # Find coverage data files
     coverage_data_files = list(ctx.output_dir.glob('**/*.coverage'))
@@ -154,20 +164,24 @@ def gn_python_test_coverage(ctx: PresubmitContext):
 
 @filter_paths(endswith=_PYTHON_EXTENSIONS + ('.pylintrc', ))
 def gn_python_lint(ctx: pw_presubmit.PresubmitContext) -> None:
-    build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, 'python.lint')
+    build.gn_gen(ctx)
+    build.ninja(ctx, 'python.lint')
 
 
 @Check
 def check_python_versions(ctx: PresubmitContext):
     """Checks that the list of installed packages is as expected."""
 
-    build.gn_gen(ctx.root, ctx.output_dir)
+    build.gn_gen(ctx)
     constraint_file: Optional[str] = None
+    requirement_file: Optional[str] = None
     try:
         for arg in build.get_gn_args(ctx.output_dir):
             if arg['name'] == 'pw_build_PIP_CONSTRAINTS':
                 constraint_file = json.loads(
+                    arg['current']['value'])[0].strip('/')
+            if arg['name'] == 'pw_build_PIP_REQUIREMENTS':
+                requirement_file = json.loads(
                     arg['current']['value'])[0].strip('/')
     except json.JSONDecodeError:
         _LOG.warning('failed to parse GN args json')
@@ -176,7 +190,11 @@ def check_python_versions(ctx: PresubmitContext):
     if not constraint_file:
         _LOG.warning('could not find pw_build_PIP_CONSTRAINTS GN arg')
         return
+    ignored_requirements_arg = None
+    if requirement_file:
+        ignored_requirements_arg = [(ctx.root / requirement_file)]
 
-    with (ctx.root / constraint_file).open('r') as ins:
-        if python_packages.diff(ins) != 0:
-            raise PresubmitFailure
+    if python_packages.diff(
+            expected=(ctx.root / constraint_file),
+            ignore_requirements_file=ignored_requirements_arg) != 0:
+        raise PresubmitFailure

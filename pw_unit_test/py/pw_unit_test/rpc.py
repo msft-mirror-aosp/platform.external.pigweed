@@ -13,6 +13,7 @@
 # the License.
 """Utilities for running unit tests over Pigweed RPC."""
 
+import enum
 import abc
 from dataclasses import dataclass
 import logging
@@ -57,58 +58,66 @@ class TestExpectation:
         return f'TestExpectation({str(self)})'
 
 
+class TestCaseResult(enum.IntEnum):
+    SUCCESS = unit_test_pb2.TestCaseResult.SUCCESS
+    FAILURE = unit_test_pb2.TestCaseResult.FAILURE
+    SKIPPED = unit_test_pb2.TestCaseResult.SKIPPED
+
+
 class EventHandler(abc.ABC):
     @abc.abstractmethod
-    def run_all_tests_start(self):
+    def run_all_tests_start(self) -> None:
         """Called before all tests are run."""
 
     @abc.abstractmethod
-    def run_all_tests_end(self, passed_tests: int, failed_tests: int):
+    def run_all_tests_end(self, passed_tests: int, failed_tests: int) -> None:
         """Called after the test run is complete."""
 
     @abc.abstractmethod
-    def test_case_start(self, test_case: TestCase):
+    def test_case_start(self, test_case: TestCase) -> None:
         """Called when a new test case is started."""
 
     @abc.abstractmethod
-    def test_case_end(self, test_case: TestCase, result: int):
+    def test_case_end(self, test_case: TestCase,
+                      result: TestCaseResult) -> None:
         """Called when a test case completes with its overall result."""
 
     @abc.abstractmethod
-    def test_case_disabled(self, test_case: TestCase):
+    def test_case_disabled(self, test_case: TestCase) -> None:
         """Called when a disabled test case is encountered."""
 
     @abc.abstractmethod
     def test_case_expect(self, test_case: TestCase,
-                         expectation: TestExpectation):
+                         expectation: TestExpectation) -> None:
         """Called after each expect/assert statement within a test case."""
 
 
 class LoggingEventHandler(EventHandler):
     """Event handler that logs test events using Google Test format."""
-    def run_all_tests_start(self):
+    def run_all_tests_start(self) -> None:
         _LOG.info('[==========] Running all tests.')
 
-    def run_all_tests_end(self, passed_tests: int, failed_tests: int):
+    def run_all_tests_end(self, passed_tests: int, failed_tests: int) -> None:
         _LOG.info('[==========] Done running all tests.')
         _LOG.info('[  PASSED  ] %d test(s).', passed_tests)
         if failed_tests:
             _LOG.info('[  FAILED  ] %d test(s).', failed_tests)
 
-    def test_case_start(self, test_case: TestCase):
+    def test_case_start(self, test_case: TestCase) -> None:
         _LOG.info('[ RUN      ] %s', test_case)
 
-    def test_case_end(self, test_case: TestCase, result: int):
-        if result == unit_test_pb2.TestCaseResult.SUCCESS:
+    def test_case_end(self, test_case: TestCase,
+                      result: TestCaseResult) -> None:
+        if result == TestCaseResult.SUCCESS:
             _LOG.info('[       OK ] %s', test_case)
         else:
             _LOG.info('[  FAILED  ] %s', test_case)
 
-    def test_case_disabled(self, test_case: TestCase):
+    def test_case_disabled(self, test_case: TestCase) -> None:
         _LOG.info('Skipping disabled test %s', test_case)
 
     def test_case_expect(self, test_case: TestCase,
-                         expectation: TestExpectation):
+                         expectation: TestExpectation) -> None:
         result = 'Success' if expectation.success else 'Failure'
         log = _LOG.info if expectation.success else _LOG.error
         log('%s:%d: %s', test_case.file_name, expectation.line_number, result)
@@ -170,8 +179,8 @@ def run_tests(rpcs: pw_rpc.client.Services,
             elif response.HasField('test_case_start'):
                 event_handler.test_case_start(current_test_case)
             elif response.HasField('test_case_end'):
-                event_handler.test_case_end(current_test_case,
-                                            response.test_case_end)
+                result = TestCaseResult(response.test_case_end)
+                event_handler.test_case_end(current_test_case, result)
             elif response.HasField('test_case_disabled'):
                 event_handler.test_case_disabled(
                     _test_case(response.test_case_disabled))

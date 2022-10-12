@@ -98,20 +98,6 @@ git_repository(
     remote = "https://github.com/bazelbuild/stardoc.git",
 )
 
-# Set up Protobuf rules.
-# Required by: pigweed, com_github_bazelbuild_buildtools.
-# Used in modules: //pw_protobuf.
-http_archive(
-    name = "com_google_protobuf",
-    sha256 = "c6003e1d2e7fefa78a3039f19f383b4f3a61e81be8c19356f85b6461998ad3db",
-    strip_prefix = "protobuf-3.17.3",
-    url = "https://github.com/protocolbuffers/protobuf/archive/v3.17.3.tar.gz",
-)
-
-load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
-
-protobuf_deps()
-
 # Set up tools to build custom GRPC rules.
 # Required by: pigweed.
 # Used in modules: //pw_protobuf.
@@ -133,7 +119,7 @@ rules_proto_grpc_toolchains()
 rules_proto_grpc_repos()
 
 # Set up Protobuf rules.
-# Required by: pigweed, com_github_bazelbuild_buildtools.
+# Required by: pigweed.
 # Used in modules: //pw_protobuf.
 http_archive(
     name = "com_google_protobuf",
@@ -178,7 +164,7 @@ git_repository(
 
 # Set up NodeJs rules.
 # Required by: pigweed.
-# Used in modules: //pw_web_ui.
+# Used in modules: //pw_web.
 http_archive(
     name = "build_bazel_rules_nodejs",
     sha256 = "b32a4713b45095e9e1921a7fcb1adf584bc05959f3336e7351bcf77f015a2d7c",
@@ -202,7 +188,7 @@ yarn_install(
 
 # Set up web-testing rules.
 # Required by: pigweed.
-# Used in modules: //pw_web_ui.
+# Used in modules: //pw_web.
 http_archive(
     name = "io_bazel_rules_webtesting",
     sha256 = "9bb461d5ef08e850025480bab185fd269242d4e533bca75bfb748001ceb343c3",
@@ -265,54 +251,6 @@ register_gcc_arm_none_toolchain()
 
 # Registers platforms for use with toolchain resolution
 register_execution_platforms("//pw_build/platforms:all")
-
-# Set up Golang toolchain rules.
-# Required by: bazel_gazelle, com_github_bazelbuild_buildtools.
-# Used in modules: None.
-http_archive(
-    name = "io_bazel_rules_go",
-    sha256 = "d1ffd055969c8f8d431e2d439813e42326961d0942bdf734d2c95dc30c369566",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.24.5/rules_go-v0.24.5.tar.gz",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.24.5/rules_go-v0.24.5.tar.gz",
-    ],
-)
-
-load(
-    "@io_bazel_rules_go//go:deps.bzl",
-    "go_register_toolchains",
-    "go_rules_dependencies",
-)
-
-go_rules_dependencies()
-
-go_register_toolchains()
-
-# Set up bazel package manager for golang.
-# Required by: com_github_bazelbuild_buildtools.
-# Used in modules: None.
-http_archive(
-    name = "bazel_gazelle",
-    sha256 = "b85f48fa105c4403326e9525ad2b2cc437babaa6e15a3fc0b1dbab0ab064bc7c",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.22.2/bazel-gazelle-v0.22.2.tar.gz",
-        "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.22.2/bazel-gazelle-v0.22.2.tar.gz",
-    ],
-)
-
-load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
-
-gazelle_dependencies()
-
-# Set up bazel buildtools (bazel linter and formatter).
-# Required by: pigweed.
-# Used in modules: //:all (bazel specific tools).
-http_archive(
-    name = "com_github_bazelbuild_buildtools",
-    sha256 = "c28eef4d30ba1a195c6837acf6c75a4034981f5b4002dda3c5aa6e48ce023cf1",
-    strip_prefix = "buildtools-4.0.1",
-    url = "https://github.com/bazelbuild/buildtools/archive/4.0.1.tar.gz",
-)
 
 load("//pw_build:target_config.bzl", "pigweed_config")
 
@@ -378,8 +316,8 @@ maven_install(
 )
 
 new_git_repository(
-  name = "micro_ecc",
-  commit = "b335ee812bfcca4cd3fb0e2a436aab39553a555a",
-  remote = "https://github.com/kmackay/micro-ecc.git",
-  build_file = "//:third_party/micro_ecc/BUILD.bazel",
+    name = "micro_ecc",
+    build_file = "//:third_party/micro_ecc/BUILD.bazel",
+    commit = "b335ee812bfcca4cd3fb0e2a436aab39553a555a",
+    remote = "https://github.com/kmackay/micro-ecc.git",
 )

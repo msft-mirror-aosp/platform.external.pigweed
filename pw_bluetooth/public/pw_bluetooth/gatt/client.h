@@ -14,7 +14,6 @@
 #pragma once
 
 #include <memory>
-#include <span>
 
 #include "pw_bluetooth/gatt/constants.h"
 #include "pw_bluetooth/gatt/error.h"
@@ -24,6 +23,7 @@
 #include "pw_containers/vector.h"
 #include "pw_function/function.h"
 #include "pw_result/result.h"
+#include "pw_span/span.h"
 
 namespace pw::bluetooth::gatt {
 
@@ -116,7 +116,7 @@ class RemoteService {
 
   // Set a callback that will be called when there is an error with this
   // RemoteService, after which this RemoteService will be invalid.
-  void SetErrorCallback(Function<void(RemoteServiceError)> error_callback);
+  void SetErrorCallback(Function<void(RemoteServiceError)>&& error_callback);
 
   // Calls `characteristic_callback` with the characteristics and descriptors in
   // this service.
@@ -173,7 +173,7 @@ class RemoteService {
   // kWriteNotPermitted or kInsufficient* if the server rejects the request.
   // kFailure if the server returns an error not covered by the above errors.
   void WriteCharacteristic(Handle handle,
-                           std::span<const std::byte> value,
+                           span<const std::byte> value,
                            WriteOptions options,
                            Function<void(Result<Error>)>&& result_callback);
 
@@ -194,7 +194,7 @@ class RemoteService {
                       ReadCallback&& result_callback);
 
   void WriteDescriptor(Handle handle,
-                       std::span<const std::byte> value,
+                       span<const std::byte> value,
                        WriteOptions options,
                        Function<void(Result<Error>)>&& result_callback);
 
@@ -232,7 +232,7 @@ class RemoteService {
   void RegisterNotificationCallback(
       Handle handle,
       NotificationCallback&& notification_callback,
-      Function<void(Result<Error>)> result_callback);
+      Function<void(Result<Error>)>&& result_callback);
 
   // Stops notifications for the characteristic with the given `handle`.
   void StopNotifications(Handle handle);
@@ -263,7 +263,7 @@ class Client {
   // `uuid_allowlist` - The allowlist of UUIDs to filter services with.
   // `updated_callback` - Will be called with services that are
   //     updated/modified.
-  // `removed_callback` - Called with the handles of servies
+  // `removed_callback` - Called with the handles of services
   //     that have been removed. Note that handles may be reused.
   virtual void WatchServices(
       Vector<Uuid> uuid_allowlist,

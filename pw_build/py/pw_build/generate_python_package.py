@@ -17,7 +17,6 @@ import argparse
 from collections import defaultdict
 import configparser
 from dataclasses import dataclass
-from itertools import chain
 import json
 from pathlib import Path
 import sys
@@ -119,7 +118,7 @@ def _collect_all_files(
             # This allows imports with the same name to live in multiple
             # separate PYTHONPATH locations.
             initpy.write_text(
-                'from pkgutil import extend_path\n'
+                'from pkgutil import extend_path  # type: ignore\n'
                 '__path__ = extend_path(__path__, __name__)  # type: ignore\n')
         files.append(initpy)
 
@@ -135,7 +134,7 @@ def _collect_all_files(
     return pkg_data
 
 
-_PYPROJECT_FILE = '''\
+PYPROJECT_FILE = '''\
 # Generated file. Do not modify.
 [build-system]
 requires = ['setuptools', 'wheel']
@@ -251,15 +250,13 @@ def main(generated_root: Path, files: List[Path], module_as_package: bool,
         setup_keywords = json.load(setup_json)
         setup_keywords.setdefault('options', {})
 
-    install_requires = setup_keywords['options'].setdefault(
-        'install_requires', [])
-    install_requires += chain.from_iterable(i.deps for i in proto_infos)
+    setup_keywords['options'].setdefault('install_requires', [])
 
     if module_as_package:
         _import_module_in_package_init(files)
 
     # Create the pyproject.toml and setup.cfg files for this package.
-    generated_root.joinpath('pyproject.toml').write_text(_PYPROJECT_FILE)
+    generated_root.joinpath('pyproject.toml').write_text(PYPROJECT_FILE)
     _generate_setup_cfg(pkg_data,
                         setup_keywords,
                         config_file_path=generated_root.joinpath('setup.cfg'))

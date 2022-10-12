@@ -21,6 +21,7 @@ The stdout of this script is meant to be executed by the invoking shell.
 
 from __future__ import print_function
 
+import collections
 import hashlib
 import json
 import os
@@ -30,8 +31,12 @@ import subprocess
 import sys
 
 
-def check_auth(cipd, package_files, spin):
+def check_auth(cipd, package_files, cipd_service_account, spin):
     """Check have access to CIPD pigweed directory."""
+    cmd = [cipd]
+    extra_args = []
+    if cipd_service_account:
+        extra_args.extend(['-service-account-json', cipd_service_account])
 
     paths = []
     for package_file in package_files:
@@ -48,7 +53,7 @@ def check_auth(cipd, package_files, spin):
 
     username = None
     try:
-        output = subprocess.check_output([cipd, 'auth-info'],
+        output = subprocess.check_output(cmd + ['auth-info'] + extra_args,
                                          stderr=subprocess.STDOUT).decode()
         logged_in = True
 
@@ -66,7 +71,8 @@ def check_auth(cipd, package_files, spin):
             # Not catching CalledProcessError because 'cipd ls' seems to never
             # return an error code unless it can't reach the CIPD server.
             output = subprocess.check_output(
-                [cipd, 'ls', path], stderr=subprocess.STDOUT).decode()
+                cmd + ['ls', path] + extra_args,
+                stderr=subprocess.STDOUT).decode()
             if 'No matching packages' not in output:
                 continue
 
@@ -75,7 +81,7 @@ def check_auth(cipd, package_files, spin):
             # 'cipd instances' does use an error code if there's no such package
             # or that package is inaccessible.
             try:
-                subprocess.check_output([cipd, 'instances', path],
+                subprocess.check_output(cmd + ['instances', path] + extra_args,
                                         stderr=subprocess.STDOUT)
             except subprocess.CalledProcessError:
                 inaccessible_paths.append(path)
@@ -95,7 +101,8 @@ def check_auth(cipd, package_files, spin):
             stderr()
             stderr('Attempting CIPD login')
             try:
-                subprocess.check_call([cipd, 'auth-login'])
+                # Note that with -service-account-json, auth-login is a no-op.
+                subprocess.check_call(cmd + ['auth-login'] + extra_args)
             except subprocess.CalledProcessError:
                 stderr('CIPD login failed')
                 return False
@@ -110,6 +117,7 @@ def check_auth(cipd, package_files, spin):
             username_part = '({}) '.format(username)
         stderr('Your account {}does not have access to the following '
                'paths'.format(username_part))
+        stderr('(or they do not exist)')
         for path in inaccessible_paths:
             stderr('  {}'.format(path))
         stderr('=' * 60)
@@ -184,9 +192,8 @@ def all_package_files(env_vars, package_files):
     return result
 
 
-def write_ensure_file(package_files, ensure_file, platform):  # pylint: disable=redefined-outer-name
+def all_packages(package_files):
     packages = []
-
     for package_file in package_files:
         name = package_file_name(package_file)
         with open(package_file, 'r') as ins:
@@ -197,13 +204,28 @@ def write_ensure_file(package_files, ensure_file, platform):  # pylint: disable=
                 else:
                     package['subdir'] = name
             packages.extend(file_packages)
+    return packages
+
+
+def deduplicate_packages(packages):
+    deduped = collections.OrderedDict()
+    for package in reversed(packages):
+        if package['path'] in deduped:
+            del deduped[package['path']]
+        deduped[package['path']] = package
+    return reversed(list(deduped.values()))
+
+
+def write_ensure_file(package_files, ensure_file, platform):  # pylint: disable=redefined-outer-name
+    packages = all_packages(package_files)
+    deduped_packages = deduplicate_packages(packages)
 
     with open(ensure_file, 'w') as outs:
         outs.write('$VerifiedPlatform linux-amd64\n'
                    '$VerifiedPlatform mac-amd64\n'
                    '$ParanoidMode CheckPresence\n')
 
-        for pkg in packages:
+        for pkg in deduped_packages:
             # If this is a new-style package manifest platform handling must
             # be done here instead of by the cipd executable.
             if 'platforms' in pkg and platform not in pkg['platforms']:
@@ -283,6 +305,14 @@ def update(  # pylint: disable=too-many-locals
         '-max-threads', '0',  # 0 means use CPU count.
     ]  # yapf: disable
 
+    cipd_service_account = None
+    if env_vars:
+        cipd_service_account = env_vars.get('PW_CIPD_SERVICE_ACCOUNT_JSON')
+    if not cipd_service_account:
+        cipd_service_account = os.environ.get('PW_CIPD_SERVICE_ACCOUNT_JSON')
+    if cipd_service_account:
+        cmd.extend(['-service-account-json', cipd_service_account])
+
     hasher = hashlib.sha256()
     encoded = '\0'.join(cmd)
     if hasattr(encoded, 'encode'):
@@ -307,7 +337,7 @@ def update(  # pylint: disable=too-many-locals
                 if digest == digest_file:
                     return True
 
-    if not check_auth(cipd, package_files, spin):
+    if not check_auth(cipd, package_files, cipd_service_account, spin):
         return False
 
     # TODO(pwbug/135) Use function from common utility module.
@@ -327,7 +357,7 @@ def update(  # pylint: disable=too-many-locals
     # Set environment variables so tools can later find things under, for
     # example, 'share'.
     if env_vars:
-        for package_file in package_files:
+        for package_file in reversed(package_files):
             name = package_file_name(package_file)
             file_install_dir = os.path.join(install_dir, name)
             # Some executables get installed at top-level and some get

@@ -16,14 +16,16 @@
 import asyncio
 import builtins
 import functools
+import importlib.resources
 import logging
 import os
 from pathlib import Path
 import sys
+import time
 from threading import Thread
-from typing import Any, Callable, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-from jinja2 import Environment, FileSystemLoader, make_logging_undefined
+from jinja2 import Environment, DictLoader, make_logging_undefined
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.output import ColorDepth
@@ -60,23 +62,21 @@ from pw_console.help_window import HelpWindow
 import pw_console.key_bindings
 from pw_console.log_pane import LogPane
 from pw_console.log_store import LogStore
-from pw_console.plugins.twenty48_pane import Twenty48Pane
 from pw_console.pw_ptpython_repl import PwPtPythonRepl
 from pw_console.python_logging import all_loggers
 from pw_console.quit_dialog import QuitDialog
 from pw_console.repl_pane import ReplPane
 import pw_console.style
+from pw_console.test_mode import start_fake_logger
 import pw_console.widgets.checkbox
+from pw_console.widgets import FloatingWindowPane
 import pw_console.widgets.mouse_handlers
 from pw_console.window_manager import WindowManager
 
 _LOG = logging.getLogger(__package__)
+_ROOT_LOG = logging.getLogger('')
 
-# Fake logger for --test-mode
-FAKE_DEVICE_LOGGER_NAME = 'pw_console_fake_device'
-_FAKE_DEVICE_LOG = logging.getLogger(FAKE_DEVICE_LOGGER_NAME)
-# Don't send fake_device logs to the root Python logger.
-_FAKE_DEVICE_LOG.propagate = False
+_SYSTEM_COMMAND_LOG = logging.getLogger('pw_console_system_command')
 
 MAX_FPS = 30
 MIN_REDRAW_INTERVAL = (60.0 / MAX_FPS) / 60.0
@@ -136,9 +136,16 @@ class ConsoleApp:
         color_depth=None,
         extra_completers=None,
         prefs=None,
+        floating_window_plugins: Optional[List[Tuple[FloatingWindowPane,
+                                                     Dict]]] = None,
     ):
         self.prefs = prefs if prefs else ConsolePrefs()
         self.color_depth = get_default_colordepth(color_depth)
+
+        # Max frequency in seconds of prompt_toolkit UI redraws triggered by new
+        # log lines.
+        self.log_ui_update_frequency = 0.1  # 10 FPS
+        self._last_ui_update_time = time.time()
 
         # Create a default global and local symbol table. Values are the same
         # structure as what is returned by globals():
@@ -153,10 +160,16 @@ class ConsoleApp:
 
         local_vars = local_vars or global_vars
 
+        jinja_templates = {
+            t: importlib.resources.read_text('pw_console.templates', t)
+            for t in importlib.resources.contents('pw_console.templates')
+            if t.endswith('.jinja')
+        }
+
         # Setup the Jinja environment
         self.jinja_env = Environment(
             # Load templates automatically from pw_console/templates
-            loader=FileSystemLoader(Path(__file__).parent / 'templates'),
+            loader=DictLoader(jinja_templates),
             # Raise errors if variables are undefined in templates
             undefined=make_logging_undefined(
                 logger=logging.getLogger(__package__), ),
@@ -174,6 +187,7 @@ class ConsoleApp:
 
         # Event loop for executing user repl code.
         self.user_code_loop = asyncio.new_event_loop()
+        self.test_mode_log_loop = asyncio.new_event_loop()
 
         self.app_title = app_title if app_title else 'Pigweed Console'
 
@@ -212,8 +226,11 @@ class ConsoleApp:
         self.prefs_file_window.load_yaml_text(
             self.prefs.current_config_as_yaml())
 
-        self.game_2048 = Twenty48Pane(self, include_resize_handle=False)
-        self.game_2048.show_pane = False
+        self.floating_window_plugins: List[FloatingWindowPane] = []
+        if floating_window_plugins:
+            self.floating_window_plugins = [
+                plugin for plugin, _ in floating_window_plugins
+            ]
 
         # Used for tracking which pane was in focus before showing help window.
         self.last_focused_pane = None
@@ -234,6 +251,8 @@ class ConsoleApp:
             startup_message=repl_startup_message,
         )
         self.pw_ptpython_repl.use_code_colorscheme(self.prefs.code_theme)
+
+        self.system_command_output_pane: Optional[LogPane] = None
 
         if self.prefs.swap_light_and_dark:
             self.toggle_light_theme()
@@ -296,11 +315,15 @@ class ConsoleApp:
                 # Callable to get width
                 width=self.keybind_help_window.content_width,
             ),
-            Float(
-                content=self.game_2048,
-                top=3,
-                left=4,
-            ),
+        ]
+
+        if floating_window_plugins:
+            self.floats.extend([
+                Float(content=plugin_container, **float_args)
+                for plugin_container, float_args in floating_window_plugins
+            ])
+
+        self.floats.extend([
             # Completion menu that can overlap other panes since it lives in
             # the top level Float container.
             Float(
@@ -329,7 +352,7 @@ class ConsoleApp:
                 top=2,
                 left=2,
             ),
-        ]
+        ])
 
         # prompt_toolkit root container.
         self.root_container = MenuContainer(
@@ -390,9 +413,9 @@ class ConsoleApp:
         # Run the function for a particular menu item.
         return_value = function_to_run()
         # It's return value dictates if the main menu should close or not.
-        # - True: The main menu stays open. This is the default prompt_toolkit
+        # - False: The main menu stays open. This is the default prompt_toolkit
         #   menu behavior.
-        # - False: The main menu closes.
+        # - True: The main menu closes.
 
         # Update menu content. This will refresh checkboxes and add/remove
         # items.
@@ -462,6 +485,36 @@ class ConsoleApp:
             ))
         return completions
 
+    def open_command_runner_history(self) -> None:
+        self.command_runner.set_completions(
+            window_title='History',
+            load_completions=self._create_history_completions)
+        if not self.command_runner_is_open():
+            self.command_runner.open_dialog()
+
+    def _create_history_completions(self) -> List[Tuple[str, Callable]]:
+        return [(
+            description,
+            functools.partial(self.repl_pane.insert_text_into_input_buffer,
+                              text),
+        ) for description, text in self.repl_pane.history_completions()]
+
+    def open_command_runner_snippets(self) -> None:
+        self.command_runner.set_completions(
+            window_title='Snippets',
+            load_completions=self._create_snippet_completions)
+        if not self.command_runner_is_open():
+            self.command_runner.open_dialog()
+
+    def _create_snippet_completions(self) -> List[Tuple[str, Callable]]:
+        completions: List[Tuple[str, Callable]] = [(
+            description,
+            functools.partial(self.repl_pane.insert_text_into_input_buffer,
+                              text),
+        ) for description, text in self.prefs.snippet_completions()]
+
+        return completions
+
     def _create_menu_items(self):
         themes_submenu = [
             MenuItem('Toggle Light/Dark', handler=self.toggle_light_theme),
@@ -509,6 +562,10 @@ class ConsoleApp:
             MenuItem(
                 '[File]',
                 children=[
+                    MenuItem('Insert Repl Snippet',
+                             handler=self.open_command_runner_snippets),
+                    MenuItem('Insert Repl History',
+                             handler=self.open_command_runner_history),
                     MenuItem('Open Logger',
                              handler=self.open_command_runner_loggers),
                     MenuItem(
@@ -563,13 +620,6 @@ class ConsoleApp:
                         'Themes',
                         children=themes_submenu,
                     ),
-                    MenuItem('Games',
-                             children=[
-                                 MenuItem(
-                                     '2048',
-                                     handler=self.game_2048.open_dialog,
-                                 ),
-                             ]),
                     MenuItem('-'),
                     MenuItem('Exit', handler=self.exit_console),
                 ],
@@ -588,6 +638,11 @@ class ConsoleApp:
                              handler=self.repl_pane.copy_all_output_text),
                     MenuItem('Copy all Python Input',
                              handler=self.repl_pane.copy_all_input_text),
+                    MenuItem('-'),
+                    MenuItem('Clear Python Input',
+                             self.repl_pane.clear_input_buffer),
+                    MenuItem('Clear Python Output',
+                             self.repl_pane.clear_output_buffer),
                 ],
             ),
         ]
@@ -659,7 +714,43 @@ class ConsoleApp:
             ),
         ]
 
-        window_menu = self.window_manager.create_window_menu()
+        window_menu_items = self.window_manager.create_window_menu_items()
+
+        floating_window_items = []
+        if self.floating_window_plugins:
+            floating_window_items.append(MenuItem('-', None))
+            floating_window_items.extend(
+                MenuItem(
+                    'Floating Window {index}: {title}'.format(
+                        index=pane_index + 1,
+                        title=pane.menu_title(),
+                    ),
+                    children=[
+                        MenuItem(
+                            '{check} Show/Hide Window'.format(
+                                check=pw_console.widgets.checkbox.
+                                to_checkbox_text(pane.show_pane, end='')),
+                            handler=functools.partial(
+                                self.run_pane_menu_option, pane.toggle_dialog),
+                        ),
+                    ] + [
+                        MenuItem(text,
+                                 handler=functools.partial(
+                                     self.run_pane_menu_option, handler))
+                        for text, handler in pane.get_window_menu_options()
+                    ],
+                ) for pane_index, pane in enumerate(
+                    self.floating_window_plugins))
+            window_menu_items.extend(floating_window_items)
+
+        window_menu = [MenuItem('[Windows]', children=window_menu_items)]
+
+        top_level_plugin_menus = []
+        for pane in self.window_manager.active_panes():
+            top_level_plugin_menus.extend(pane.get_top_level_menus())
+        if self.floating_window_plugins:
+            for pane in self.floating_window_plugins:
+                top_level_plugin_menus.extend(pane.get_top_level_menus())
 
         help_menu_items = [
             MenuItem(self.user_guide_window.menu_title(),
@@ -686,7 +777,8 @@ class ConsoleApp:
             ),
         ]
 
-        return file_menu + edit_menu + view_menu + window_menu + help_menu
+        return (file_menu + edit_menu + view_menu + top_level_plugin_menus +
+                window_menu + help_menu)
 
     def focus_main_menu(self):
         """Set application focus to the main menu."""
@@ -784,6 +876,11 @@ class ConsoleApp:
                         daemon=True)
         thread.start()
 
+    def _test_mode_log_thread_entry(self):
+        """Entry point for the user code thread."""
+        asyncio.set_event_loop(self.test_mode_log_loop)
+        self.test_mode_log_loop.run_forever()
+
     def _update_help_window(self):
         """Generate the help window text based on active pane keybindings."""
         # Add global mouse bindings to the help text.
@@ -833,22 +930,34 @@ class ConsoleApp:
 
     def modal_window_is_open(self):
         """Return true if any modal window or dialog is open."""
+        floating_window_is_open = (self.keybind_help_window.show_window
+                                   or self.prefs_file_window.show_window
+                                   or self.user_guide_window.show_window
+                                   or self.quit_dialog.show_dialog
+                                   or self.command_runner.show_dialog)
+
         if self.app_help_text:
-            return (self.app_help_window.show_window
-                    or self.keybind_help_window.show_window
-                    or self.prefs_file_window.show_window
-                    or self.user_guide_window.show_window
-                    or self.quit_dialog.show_dialog or self.game_2048.show_pane
-                    or self.command_runner.show_dialog)
-        return (self.keybind_help_window.show_window
-                or self.prefs_file_window.show_window
-                or self.user_guide_window.show_window
-                or self.quit_dialog.show_dialog or self.game_2048.show_pane
-                or self.command_runner.show_dialog)
+            floating_window_is_open = (self.app_help_window.show_window
+                                       or floating_window_is_open)
+
+        floating_plugin_is_open = any(
+            plugin.show_pane for plugin in self.floating_window_plugins)
+
+        return floating_window_is_open or floating_plugin_is_open
 
     def exit_console(self):
         """Quit the console prompt_toolkit application UI."""
         self.application.exit()
+
+    def logs_redraw(self):
+        emit_time = time.time()
+        # Has enough time passed since last UI redraw due to new logs?
+        if emit_time > self._last_ui_update_time + self.log_ui_update_frequency:
+            # Update last log time
+            self._last_ui_update_time = emit_time
+
+            # Trigger Prompt Toolkit UI redraw.
+            self.redraw_ui()
 
     def redraw_ui(self):
         """Redraw the prompt_toolkit UI."""
@@ -857,10 +966,31 @@ class ConsoleApp:
             # loop.
             self.application.invalidate()
 
+    def setup_command_runner_log_pane(self) -> None:
+        if not self.system_command_output_pane is None:
+            return
+
+        self.system_command_output_pane = LogPane(application=self,
+                                                  pane_title='Shell Output')
+        self.system_command_output_pane.add_log_handler(_SYSTEM_COMMAND_LOG,
+                                                        level_name='INFO')
+        self.system_command_output_pane.log_view.log_store.formatter = (
+            logging.Formatter('%(message)s'))
+        self.system_command_output_pane.table_view = False
+        self.system_command_output_pane.show_pane = True
+        # Enable line wrapping
+        self.system_command_output_pane.toggle_wrap_lines()
+        # Blank right side toolbar text
+        self.system_command_output_pane._pane_subtitle = ' '  # pylint: disable=protected-access
+        self.window_manager.add_pane(self.system_command_output_pane)
+
     async def run(self, test_mode=False):
         """Start the prompt_toolkit UI."""
         if test_mode:
-            background_log_task = asyncio.create_task(self.log_forever())
+            background_log_task = start_fake_logger(
+                lines=self.user_guide_window.help_text_area.document.lines,
+                log_thread_entry=self._test_mode_log_thread_entry,
+                log_thread_loop=self.test_mode_log_loop)
 
         # Repl pane has focus by default, if it's hidden switch focus to another
         # visible pane.
@@ -873,44 +1003,6 @@ class ConsoleApp:
         finally:
             if test_mode:
                 background_log_task.cancel()
-
-    async def log_forever(self):
-        """Test mode async log generator coroutine that runs forever."""
-        message_count = 0
-        # Sample log line format:
-        # Log message [=         ] # 100
-
-        # Fake module column names.
-        module_names = ['APP', 'RADIO', 'BAT', 'USB', 'CPU']
-        while True:
-            if message_count > 32 or message_count < 2:
-                await asyncio.sleep(1)
-            bar_size = 10
-            position = message_count % bar_size
-            bar_content = " " * (bar_size - position - 1) + "="
-            if position > 0:
-                bar_content = "=".rjust(position) + " " * (bar_size - position)
-            new_log_line = 'Log message [{}] # {}'.format(
-                bar_content, message_count)
-            if message_count % 10 == 0:
-                new_log_line += (
-                    ' Lorem ipsum \033[34m\033[1mdolor sit amet\033[0m'
-                    ', consectetur '
-                    'adipiscing elit.') * 8
-            if message_count % 11 == 0:
-                new_log_line += ' '
-                new_log_line += (
-                    '[PYTHON] START\n'
-                    'In []: import time;\n'
-                    '        def t(s):\n'
-                    '            time.sleep(s)\n'
-                    '            return "t({}) seconds done".format(s)\n\n')
-
-            module_name = module_names[message_count % len(module_names)]
-            _FAKE_DEVICE_LOG.info(new_log_line,
-                                  extra=dict(extra_metadata_fields=dict(
-                                      module=module_name, file='fake_app.cc')))
-            message_count += 1
 
 
 # TODO(tonymd): Remove this alias when not used by downstream projects.

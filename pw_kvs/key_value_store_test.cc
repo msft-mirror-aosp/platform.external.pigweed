@@ -20,7 +20,8 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
-#include <span>
+
+#include "pw_span/span.h"
 
 #if DUMP_KVS_STATE_TO_FILE
 #include <vector>
@@ -34,6 +35,7 @@
 #include "pw_kvs/fake_flash_memory.h"
 #include "pw_kvs/flash_memory.h"
 #include "pw_kvs/internal/entry.h"
+#include "pw_kvs_private/config.h"
 #include "pw_log/log.h"
 #include "pw_log/shorter.h"
 #include "pw_status/status.h"
@@ -68,7 +70,7 @@ struct FlashWithPartitionFake {
     }
     std::vector<std::byte> out_vec(memory.size_bytes());
     Status status =
-        memory.Read(0, std::span<std::byte>(out_vec.data(), out_vec.size()));
+        memory.Read(0, span<std::byte>(out_vec.data(), out_vec.size()));
     if (status != OkStatus()) {
       fclose(out_file);
       return status;
@@ -204,8 +206,7 @@ TEST(InMemoryKvs, WriteOneKeyMultipleTimes) {
              sizeof(fname_buf),
              "WriteOneKeyMultipleTimes_%d.bin",
              reload);
-    flash.Dump(fname_buf)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    ASSERT_EQ(OkStatus(), flash.Dump(fname_buf));
   }
 }
 
@@ -234,8 +235,7 @@ TEST(InMemoryKvs, WritingMultipleKeysIncreasesSize) {
     EXPECT_OK(kvs.Put(key.view(), value));
     EXPECT_EQ(kvs.size(), i + 1);
   }
-  flash.Dump("WritingMultipleKeysIncreasesSize.bin")
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  ASSERT_EQ(OkStatus(), flash.Dump("WritingMultipleKeysIncreasesSize.bin"));
 }
 
 TEST(InMemoryKvs, WriteAndReadOneKey) {
@@ -315,7 +315,7 @@ TEST(InMemoryKvs, Basic) {
 
   // Add two entries with different keys and values.
   uint8_t value1 = 0xDA;
-  ASSERT_OK(kvs.Put(key1, std::as_bytes(std::span(&value1, sizeof(value1)))));
+  ASSERT_OK(kvs.Put(key1, as_bytes(span(&value1, sizeof(value1)))));
   EXPECT_EQ(kvs.size(), 1u);
 
   uint32_t value2 = 0xBAD0301f;
@@ -436,10 +436,16 @@ TEST_F(LargeEmptyInitializedKvs, KeyDeletionMaintenance) {
   // resulting in no reclaimable bytes and an erased sector.
   EXPECT_EQ(OkStatus(), kvs_.HeavyMaintenance());
   stats = kvs_.GetStorageStats();
-  EXPECT_GT(stats.sector_erase_count, 1u);
   EXPECT_EQ(stats.reclaimable_bytes, 0u);
   ASSERT_EQ(kvs_.size(), 0u);
-  ASSERT_EQ(kvs_.total_entries_with_deleted(), 0u);
+
+  if (PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE) {
+    EXPECT_GT(stats.sector_erase_count, 1u);
+    ASSERT_EQ(kvs_.total_entries_with_deleted(), 0u);
+  } else {  // The deleted entries are only removed if that feature is enabled.
+    EXPECT_EQ(stats.sector_erase_count, 1u);
+    ASSERT_EQ(kvs_.total_entries_with_deleted(), 1u);
+  }
 
   // Do it again but with 2 keys and keep one.
   ASSERT_EQ(OkStatus(), kvs_.Put(keys[0], kValue1));
@@ -457,7 +463,12 @@ TEST_F(LargeEmptyInitializedKvs, KeyDeletionMaintenance) {
   EXPECT_EQ(OkStatus(), kvs_.HeavyMaintenance());
   stats = kvs_.GetStorageStats();
   ASSERT_EQ(kvs_.size(), 1u);
-  ASSERT_EQ(kvs_.total_entries_with_deleted(), 1u);
+
+  if (PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE) {
+    ASSERT_EQ(kvs_.total_entries_with_deleted(), 1u);
+  } else {  // The deleted entries are only removed if that feature is enabled.
+    ASSERT_EQ(kvs_.total_entries_with_deleted(), 2u);
+  }
 
   // Read back the second key to make sure it is still valid.
   ASSERT_EQ(kvs_.Get(keys[1], &val), OkStatus());
@@ -485,7 +496,7 @@ TEST(InMemoryKvs, Put_MaxValueSize) {
 
   // Use the large_test_flash as a big chunk of data for the Put statement.
   ASSERT_GT(sizeof(large_test_flash), max_value_size + 2 * sizeof(EntryHeader));
-  auto big_data = std::as_bytes(std::span(&large_test_flash, 1));
+  auto big_data = as_bytes(span(&large_test_flash, 1));
 
   EXPECT_EQ(OkStatus(), kvs.Put("K", big_data.subspan(0, max_value_size)));
 

@@ -57,15 +57,7 @@ pw_source_set("config") {
 
 # pw_unit_test facade. This provides a GoogleTest-compatible test framework.
 pw_source_set("pw_unit_test") {
-  if (pw_unit_test_PUBLIC_DEPS == []) {
-    # TODO(b/233073669): For now, use pw_unit_test_GOOGLETEST_BACKEND only if
-    #     pw_unit_test_PUBLIC_DEPS is not set. Remove pw_unit_test_PUBLIC_DEPS
-    #     when projects have migrated. There is an assert in test.gni that
-    #     ensures both variables are not set.
-    public_deps = [ pw_unit_test_GOOGLETEST_BACKEND ]
-  } else {
-    public_deps = pw_unit_test_PUBLIC_DEPS
-  }
+  public_deps = [ pw_unit_test_GOOGLETEST_BACKEND ]
 }
 
 # Lightweight unit test backend that implements a subset of GoogleTest.
@@ -169,18 +161,12 @@ pw_source_set("logging_main") {
   sources = [ "logging_main.cc" ]
 }
 
-pw_build_assert("require_light_test_backend") {
-  # TODO(b/233073669): Simplify once pw_unit_test_PUBLIC_DEPS is removed.
-  condition = (pw_unit_test_PUBLIC_DEPS == [] &&
-               pw_unit_test_GOOGLETEST_BACKEND == "$dir_pw_unit_test:light") ||
-              filter_include(pw_unit_test_PUBLIC_DEPS,
-                             [ "$dir_pw_unit_test:light" ]) != []
+config("rpc_service_backend_light") {
+  include_dirs = [ "rpc_light_public" ]
+}
 
-  message = "The pw_unit_test RPC service only works with the 'light' test " +
-            "backend.\n(pw_unit_test_GOOGLETEST_BACKEND = " +
-            "$pw_unit_test_GOOGLETEST_BACKEND)\n" +
-            "(pw_unit_test_PUBLIC_DEPS = $pw_unit_test_PUBLIC_DEPS)"
-  visibility = [ ":*" ]
+config("rpc_service_backend_gtest") {
+  include_dirs = [ "rpc_gtest_public" ]
 }
 
 pw_source_set("rpc_service") {
@@ -191,18 +177,20 @@ pw_source_set("rpc_service") {
     ":unit_test_proto.raw_rpc",
     "$dir_pw_containers:vector",
   ]
-  deps = [
-    ":require_light_test_backend",
-    dir_pw_log,
-  ]
-  public = [
-    "public/pw_unit_test/internal/rpc_event_handler.h",
-    "public/pw_unit_test/unit_test_service.h",
-  ]
-  sources = [
-    "rpc_event_handler.cc",
-    "unit_test_service.cc",
-  ]
+  deps = [ dir_pw_log ]
+  public = [ "public/pw_unit_test/unit_test_service.h" ]
+  sources = [ "unit_test_service.cc" ]
+  defines = []
+
+  if (pw_unit_test_GOOGLETEST_BACKEND == "$dir_pw_unit_test:light") {
+    public_configs += [ ":rpc_service_backend_light" ]
+    sources += [ "rpc_light_event_handler.cc" ]
+    public += [ "rpc_light_public/pw_unit_test/internal/rpc_event_handler.h" ]
+  } else {
+    public_configs += [ ":rpc_service_backend_gtest" ]
+    sources += [ "rpc_gtest_event_handler.cc" ]
+    public += [ "rpc_gtest_public/pw_unit_test/internal/rpc_event_handler.h" ]
+  }
 }
 
 pw_source_set("rpc_main") {

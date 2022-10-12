@@ -79,6 +79,7 @@ pw_source_set("pw_protobuf") {
     "message.cc",
     "stream_decoder.cc",
   ]
+  deps = [ "$dir_pw_string:string" ]
 }
 
 pw_source_set("bytes_utils") {
@@ -93,10 +94,20 @@ pw_source_set("bytes_utils") {
 }
 
 pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
+  sources = [
+    "docs.rst",
+    "size_report.rst",
+  ]
+  inputs = [
+    "pw_protobuf_test_protos/size_report.options",
+    "pw_protobuf_test_protos/size_report.proto",
+  ]
   report_deps = [
-    "size_report:decoder_full",
     "size_report:decoder_incremental",
+    "size_report:decoder_partial",
+    "size_report:oneof_codegen_size_comparison",
+    "size_report:protobuf_overview",
+    "size_report:simple_codegen_size_comparison",
   ]
 }
 
@@ -145,7 +156,6 @@ pw_test("codegen_encoder_test") {
 pw_test("codegen_message_test") {
   deps = [
     ":codegen_test_protos.pwpb",
-    "$dir_pw_string:vector",
     dir_pw_string,
   ]
   sources = [ "codegen_message_test.cc" ]
@@ -200,6 +210,11 @@ pw_proto_library("common_protos") {
   ]
 }
 
+pw_proto_library("codegen_test_deps_protos") {
+  sources = [ "pw_protobuf_test_deps_protos/imported.proto" ]
+  inputs = [ "pw_protobuf_test_deps_protos/imported.options" ]
+}
+
 pw_proto_library("codegen_test_protos") {
   sources = [
     "pw_protobuf_test_protos/full_test.proto",
@@ -209,13 +224,18 @@ pw_proto_library("codegen_test_protos") {
     "pw_protobuf_test_protos/optional.proto",
     "pw_protobuf_test_protos/proto2.proto",
     "pw_protobuf_test_protos/repeated.proto",
+    "pw_protobuf_test_protos/size_report.proto",
   ]
   inputs = [
     "pw_protobuf_test_protos/full_test.options",
     "pw_protobuf_test_protos/optional.options",
+    "pw_protobuf_test_protos/imported.options",
     "pw_protobuf_test_protos/repeated.options",
   ]
-  deps = [ ":common_protos" ]
+  deps = [
+    ":codegen_test_deps_protos",
+    ":common_protos",
+  ]
 }
 
 pw_fuzzer("encoder_fuzzer") {

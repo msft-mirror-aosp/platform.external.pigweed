@@ -18,7 +18,6 @@
 #include <cstddef>
 #include <cstring>
 #include <optional>
-#include <span>
 
 #include "pw_assert/check.h"
 #include "pw_bytes/span.h"
@@ -26,13 +25,17 @@
 #include "pw_protobuf/serialized_size.h"
 #include "pw_protobuf/stream_decoder.h"
 #include "pw_protobuf/wire_format.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
 #include "pw_stream/memory_stream.h"
 #include "pw_stream/stream.h"
+#include "pw_string/string.h"
 #include "pw_varint/varint.h"
 
 namespace pw::protobuf {
+
+using internal::VarintType;
 
 StreamEncoder StreamEncoder::GetNestedEncoder(uint32_t field_number,
                                               bool write_when_empty) {
@@ -65,7 +68,7 @@ StreamEncoder StreamEncoder::GetNestedEncoder(uint32_t field_number,
   return StreamEncoder(*this, nested_buffer, write_when_empty);
 }
 
-StreamEncoder::~StreamEncoder() {
+void StreamEncoder::CloseEncoder() {
   // If this was an invalidated StreamEncoder which cannot be used, permit the
   // object to be cleanly destructed by doing nothing.
   if (nested_field_number_ == kFirstReservedNumber) {
@@ -122,7 +125,7 @@ Status StreamEncoder::WriteVarintField(uint32_t field_number, uint64_t value) {
       field_number, WireType::kVarint, varint::EncodedSize(value)));
 
   WriteVarint(FieldKey(field_number, WireType::kVarint))
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO(b/242598609): Handle Status properly
   return WriteVarint(value);
 }
 
@@ -177,7 +180,7 @@ Status StreamEncoder::WriteFixed(uint32_t field_number, ConstByteSpan data) {
   PW_TRY(UpdateStatusForWrite(field_number, type, data.size()));
 
   WriteVarint(FieldKey(field_number, type))
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO(b/242598609): Handle Status properly
   if (Status status = writer_.Write(data); !status.ok()) {
     status_ = status;
   }
@@ -185,7 +188,7 @@ Status StreamEncoder::WriteFixed(uint32_t field_number, ConstByteSpan data) {
 }
 
 Status StreamEncoder::WritePackedFixed(uint32_t field_number,
-                                       std::span<const std::byte> values,
+                                       span<const std::byte> values,
                                        size_t elem_size) {
   if (values.empty()) {
     return status_;
@@ -197,9 +200,9 @@ Status StreamEncoder::WritePackedFixed(uint32_t field_number,
   PW_TRY(UpdateStatusForWrite(
       field_number, WireType::kDelimited, values.size_bytes()));
   WriteVarint(FieldKey(field_number, WireType::kDelimited))
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO(b/242598609): Handle Status properly
   WriteVarint(values.size_bytes())
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO(b/242598609): Handle Status properly
 
   for (auto val_start = values.begin(); val_start != values.end();
        val_start += elem_size) {
@@ -211,7 +214,7 @@ Status StreamEncoder::WritePackedFixed(uint32_t field_number,
     } else {
       std::reverse_copy(val_start, val_start + elem_size, std::begin(data));
     }
-    status_.Update(writer_.Write(std::span(data).first(elem_size)));
+    status_.Update(writer_.Write(span(data).first(elem_size)));
     PW_TRY(status_);
   }
   return status_;
@@ -238,8 +241,8 @@ Status StreamEncoder::UpdateStatusForWrite(uint32_t field_number,
   return status_;
 }
 
-Status StreamEncoder::Write(std::span<const std::byte> message,
-                            std::span<const MessageField> table) {
+Status StreamEncoder::Write(span<const std::byte> message,
+                            span<const internal::MessageField> table) {
   PW_CHECK(!nested_encoder_open());
   PW_TRY(status_);
 
@@ -290,7 +293,7 @@ Status StreamEncoder::Write(std::span<const std::byte> message,
             if (!vector->empty()) {
               PW_TRY(WritePackedFixed(
                   field.field_number(),
-                  std::as_bytes(std::span(vector->data(), vector->size())),
+                  as_bytes(span(vector->data(), vector->size())),
                   field.elem_size()));
             }
           } else if (field.elem_size() == sizeof(uint32_t)) {
@@ -300,7 +303,7 @@ Status StreamEncoder::Write(std::span<const std::byte> message,
             if (!vector->empty()) {
               PW_TRY(WritePackedFixed(
                   field.field_number(),
-                  std::as_bytes(std::span(vector->data(), vector->size())),
+                  as_bytes(span(vector->data(), vector->size())),
                   field.elem_size()));
             }
           }
@@ -315,16 +318,16 @@ Status StreamEncoder::Write(std::span<const std::byte> message,
                 reinterpret_cast<const std::optional<uint64_t>*>(values.data());
             if (optional->has_value()) {
               uint64_t value = optional->value();
-              PW_TRY(WriteFixed(field.field_number(),
-                                std::as_bytes(std::span(&value, 1))));
+              PW_TRY(
+                  WriteFixed(field.field_number(), as_bytes(span(&value, 1))));
             }
           } else if (field.elem_size() == sizeof(uint32_t)) {
             const auto* optional =
                 reinterpret_cast<const std::optional<uint32_t>*>(values.data());
             if (optional->has_value()) {
               uint32_t value = optional->value();
-              PW_TRY(WriteFixed(field.field_number(),
-                                std::as_bytes(std::span(&value, 1))));
+              PW_TRY(
+                  WriteFixed(field.field_number(), as_bytes(span(&value, 1))));
             }
           }
         } else {
@@ -359,22 +362,22 @@ Status StreamEncoder::Write(std::span<const std::byte> message,
           if (field.elem_size() == sizeof(uint64_t)) {
             PW_TRY(WritePackedVarints(
                 field.field_number(),
-                std::span(reinterpret_cast<const uint64_t*>(values.data()),
-                          values.size() / field.elem_size()),
+                span(reinterpret_cast<const uint64_t*>(values.data()),
+                     values.size() / field.elem_size()),
                 field.varint_type()));
           } else if (field.elem_size() == sizeof(uint32_t)) {
             PW_TRY(WritePackedVarints(
                 field.field_number(),
-                std::span(reinterpret_cast<const uint32_t*>(values.data()),
-                          values.size() / field.elem_size()),
+                span(reinterpret_cast<const uint32_t*>(values.data()),
+                     values.size() / field.elem_size()),
                 field.varint_type()));
           } else if (field.elem_size() == sizeof(bool)) {
             static_assert(sizeof(bool) == sizeof(uint8_t),
                           "bool must be same size as uint8_t");
             PW_TRY(WritePackedVarints(
                 field.field_number(),
-                std::span(reinterpret_cast<const uint8_t*>(values.data()),
-                          values.size() / field.elem_size()),
+                span(reinterpret_cast<const uint8_t*>(values.data()),
+                     values.size() / field.elem_size()),
                 field.varint_type()));
           }
         } else if (field.is_repeated()) {
@@ -387,20 +390,18 @@ Status StreamEncoder::Write(std::span<const std::byte> message,
                 reinterpret_cast<const pw::Vector<const uint64_t>*>(
                     values.data());
             if (!vector->empty()) {
-              PW_TRY(
-                  WritePackedVarints(field.field_number(),
-                                     std::span(vector->data(), vector->size()),
-                                     field.varint_type()));
+              PW_TRY(WritePackedVarints(field.field_number(),
+                                        span(vector->data(), vector->size()),
+                                        field.varint_type()));
             }
           } else if (field.elem_size() == sizeof(uint32_t)) {
             const auto* vector =
                 reinterpret_cast<const pw::Vector<const uint32_t>*>(
                     values.data());
             if (!vector->empty()) {
-              PW_TRY(
-                  WritePackedVarints(field.field_number(),
-                                     std::span(vector->data(), vector->size()),
-                                     field.varint_type()));
+              PW_TRY(WritePackedVarints(field.field_number(),
+                                        span(vector->data(), vector->size()),
+                                        field.varint_type()));
             }
           } else if (field.elem_size() == sizeof(bool)) {
             static_assert(sizeof(bool) == sizeof(uint8_t),
@@ -409,10 +410,9 @@ Status StreamEncoder::Write(std::span<const std::byte> message,
                 reinterpret_cast<const pw::Vector<const uint8_t>*>(
                     values.data());
             if (!vector->empty()) {
-              PW_TRY(
-                  WritePackedVarints(field.field_number(),
-                                     std::span(vector->data(), vector->size()),
-                                     field.varint_type()));
+              PW_TRY(WritePackedVarints(field.field_number(),
+                                        span(vector->data(), vector->size()),
+                                        field.varint_type()));
             }
           }
         } else if (field.is_optional()) {
@@ -538,18 +538,18 @@ Status StreamEncoder::Write(std::span<const std::byte> message,
             PW_TRY(WriteLengthDelimitedField(field.field_number(), values));
           }
         } else {
-          // bytes or string field with a maximum size. Struct member is a
-          // pw::Vector<std::byte>. Use the contents as a span and call
-          // WriteLengthDelimitedField() to output it to the stream.
+          // bytes or string field with a maximum size. Struct member is
+          // pw::Vector<std::byte> for bytes or pw::InlineString<> for string.
+          // Use the contents as a span and call WriteLengthDelimitedField() to
+          // output it to the stream.
           PW_CHECK(field.elem_size() == sizeof(std::byte),
                    "Mismatched message field type and size");
-          const auto* vector =
-              reinterpret_cast<const pw::Vector<const std::byte>*>(
-                  values.data());
-          if (!vector->empty()) {
-            PW_TRY(WriteLengthDelimitedField(
-                field.field_number(),
-                std::span(vector->data(), vector->size())));
+          if (field.is_string()) {
+            PW_TRY(WriteStringOrBytes<const InlineString<>>(
+                field.field_number(), values.data()));
+          } else {
+            PW_TRY(WriteStringOrBytes<const Vector<const std::byte>>(
+                field.field_number(), values.data()));
           }
         }
         break;

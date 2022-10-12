@@ -19,7 +19,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../pw_build/pigweed.cmake)
 set(CMAKE_C_COMPILER clang)
 set(CMAKE_CXX_COMPILER clang++)
 
-# TODO(pwbug/606): set up this facade in CMake
+# TODO(b/235273743): set up this facade in CMake
 # Use logging-based test output on host.
 # pw_set_backend(pw_unit_test.main pw_unit_test.logging_main)
 
@@ -62,15 +62,22 @@ pw_set_backend(pw_thread.thread pw_thread_stl.thread)
 # TODO: Migrate this to match GN's tokenized trace setup.
 pw_set_backend(pw_trace pw_trace.null)
 
-# The CIPD provided Clang/LLVM toolchain must link against the matched
-# libc++ which is also from CIPD. However, by default, Clang on Mac (but
-# not on Linux) will fall back to the system libc++, which is
-# incompatible due to an ABI change.
-#
-# Pull the appropriate paths from our Pigweed env setup.
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # The CIPD provided Clang/LLVM toolchain must link against the matched
+    # libc++ which is also from CIPD. However, by default, Clang on Mac (but
+    # not on Linux) will fall back to the system libc++, which is
+    # incompatible due to an ABI change.
+    #
+    # Pull the appropriate paths from our Pigweed env setup.
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -nostdlib++ $ENV{PW_PIGWEED_CIPD_INSTALL_DIR}/lib/libc++.a")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Use the CIPD provided sysroot to make host builds more hermetic.
+    set(CMAKE_SYSROOT "$ENV{PW_PIGWEED_CIPD_INSTALL_DIR}/clang_sysroot")
 endif()
 
-set(pw_build_WARNINGS pw_build.strict_warnings pw_build.extra_strict_warnings
-    CACHE STRING "" FORCE)
+set(pw_build_WARNINGS
+    pw_build.strict_warnings
+    pw_build.extra_strict_warnings
+    pw_build.pedantic_warnings
+  CACHE STRING "" FORCE
+)
