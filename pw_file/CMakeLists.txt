@@ -24,7 +24,7 @@ pw_add_module_library(pw_file.flat_file_system
     pw_log
     pw_result
     pw_status
-  TEST_DEPS
+  PRIVATE_DEPS
     pw_rpc.test_utils
 )
 

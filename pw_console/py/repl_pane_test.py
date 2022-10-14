@@ -127,12 +127,13 @@ if _PYTHON_3_8:
                 repl_pane = app.repl_pane
 
                 # Mock update_output_buffer to track number of update calls
-                repl_pane.update_output_buffer = MagicMock(
+                repl_pane.update_output_buffer = MagicMock(  # type: ignore
                     wraps=repl_pane.update_output_buffer)
 
                 # Mock complete callback
-                pw_ptpython_repl.user_code_complete_callback = MagicMock(
-                    wraps=pw_ptpython_repl.user_code_complete_callback)
+                pw_ptpython_repl.user_code_complete_callback = (  # type: ignore
+                    MagicMock(
+                        wraps=pw_ptpython_repl.user_code_complete_callback))
 
                 # Repl done flag for tests
                 user_code_done = threading.Event()
@@ -159,7 +160,7 @@ if _PYTHON_3_8:
                 if user_code1.stdout_check_task:
                     await user_code1.stdout_check_task
                 # Wait for test done callback.
-                user_code_done.wait(timeout=3)
+                user_code_done.wait()
 
                 # Check user_code1 results
                 # NOTE: Avoid using assert_has_calls. Thread timing can make the
@@ -205,7 +206,7 @@ if _PYTHON_3_8:
                 if user_code2.stdout_check_task:
                     await user_code2.stdout_check_task
                 # Wait for test done callback.
-                user_code_done.wait(timeout=3)
+                user_code_done.wait()
 
                 # Check user_code2 results
                 # NOTE: Avoid using assert_has_calls. Thread timing can make the

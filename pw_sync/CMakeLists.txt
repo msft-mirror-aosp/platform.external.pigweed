@@ -58,6 +58,18 @@ pw_add_module_library(pw_sync.borrow
     pw_sync.virtual_basic_lockable
 )
 
+pw_add_module_library(pw_sync.inline_borrowable
+  HEADERS
+    public/pw_sync/inline_borrowable.h
+    public/pw_sync/internal/borrowable_storage.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_sync.borrow
+    pw_sync.mutex
+    pw_sync.virtual_basic_lockable
+)
+
 pw_add_module_library(pw_sync.virtual_basic_lockable
   HEADERS
     public/pw_sync/virtual_basic_lockable.h
@@ -93,6 +105,18 @@ pw_add_facade(pw_sync.timed_mutex
     pw_sync.virtual_basic_lockable
   SOURCES
     timed_mutex.cc
+)
+
+pw_add_facade(pw_sync.recursive_mutex
+  HEADERS
+    public/pw_sync/recursive_mutex.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_sync.lock_annotations
+    pw_preprocessor
+  SOURCES
+    recursive_mutex.cc
 )
 
 pw_add_facade(pw_sync.interrupt_spin_lock
@@ -161,6 +185,16 @@ pw_add_module_library(pw_sync.yield_core
     public
 )
 
+pw_add_facade(pw_sync.condition_variable
+  HEADERS
+    public/pw_sync/condition_variable.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_chrono.system_clock
+    pw_sync.mutex
+)
+
 pw_add_test(pw_sync.borrow_test
   SOURCES
     borrow_test.cc
@@ -168,6 +202,19 @@ pw_add_test(pw_sync.borrow_test
     pw_assert
     pw_sync.borrow
     pw_sync.virtual_basic_lockable
+  GROUPS
+    modules
+    pw_sync
+)
+
+pw_add_test(pw_sync.inline_borrowable_test
+  SOURCES
+    inline_borrowable_test.cc
+  DEPS
+    pw_sync.inline_borrowable
+    pw_sync.interrupt_spin_lock
+    pw_sync.lock_annotations
+    pw_sync.mutex
   GROUPS
     modules
     pw_sync
@@ -272,3 +319,17 @@ if(NOT "${pw_sync.timed_thread_notification_BACKEND}" STREQUAL
       pw_sync
   )
 endif()
+
+pw_add_module_library(pw_sync.condition_variable_test
+  PUBLIC_DEPS
+    pw_sync.condition_variable
+    pw_containers.vector
+    pw_sync.mutex
+    pw_sync.timed_thread_notification
+    pw_thread.sleep
+    pw_thread.test_threads
+    pw_thread.thread
+    pw_unit_test
+  SOURCES
+    condition_variable_test.cc
+)

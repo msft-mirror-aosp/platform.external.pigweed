@@ -262,6 +262,19 @@ here.
   only installing Pigweed Python packages, use the location of the Pigweed
   submodule.
 
+``virtualenv.requirements``
+  A list of Python Pip requirements files for installing into the Pigweed
+  virtualenv. Each file will be passed as additional ``--requirement`` argument
+  to a single ```pip install`` at the beginning of bootstrap's ``Python
+  environment`` setup stage. See the `Requirements Files documentation`_ for
+  details on what can be specified using requirements files.
+
+``virtualenv.constraints``
+  A list of Python Pip constraints files. These constraints will be passed to
+  every ``pip`` invocation as an additional ``--constraint`` argument during
+  bootstrap.  virtualenv. See the `Constraints Files documentation`_ for details
+  on formatting.
+
 ``virtualenv.system_packages``
   A boolean value that can be used the give the Python virtual environment
   access to the system site packages. Defaults to ``false``.
@@ -377,8 +390,8 @@ versions of additional packages your project depends on, run
 ``.gn`` file (see `Pigweed's .gn file`_ for an example).
 
 .. _pip constraints file: https://pip.pypa.io/en/stable/user_guide/#constraints-files
-.. _default constraints: https://cs.opensource.google/pigweed/pigweed/+/main:pw_env_setup/py/pw_env_setup/virtualenv_setup/constraint.list
-.. _Pigweed's .gn file: https://cs.opensource.google/pigweed/pigweed/+/main:.gn
+.. _default constraints: https://cs.pigweed.dev/pigweed/+/main:pw_env_setup/py/pw_env_setup/virtualenv_setup/constraint.list
+.. _Pigweed's .gn file: https://cs.pigweed.dev/pigweed/+/main:.gn
 
 To update packages, set ``pw_build_PIP_CONSTRAINTS = []``, delete the
 environment, and bootstrap again. Then run the ``list`` command from above
@@ -406,8 +419,13 @@ never need to set these.
   Python executable to be used, for example "python2" or "python3". Defaults to
   "python".
 
+``PW_CIPD_SERVICE_ACCOUNT_JSON``
+  Value to pass as ``-service-account-json`` to CIPD invocations. This should
+  point either to a service account JSON key file, or be the magical value
+  ``:gce`` to tell the tool to fetch tokens from GCE metadata server.
+
 ``PW_ENVIRONMENT_ROOT``
-  Location to which packages are installed. Defaults to ``.environment`` folder
+  Location to which packages are installed. Defaults to ``environment`` folder
   within the checkout root.
 
 ``PW_ENVSETUP_DISABLE_SPINNER``
@@ -455,6 +473,9 @@ The following environment variables are set by env setup.
   all-caps version of the basename of the package file, without the extension.
   (E.g., "path/foo.json" becomes ``PW_FOO_CIPD_INSTALL_DIR``.)
 
+``PW_PACKAGE_ROOT``
+  Location that packages installed by ``pw package`` will be installed to.
+
 ``VIRTUAL_ENV``
   Path to Pigweed's virtualenv.
 
@@ -475,12 +496,12 @@ and modify. An example ``actions.json`` is shown below. The "append" and
           "PATH": {
               "append": [],
               "prepend": [
-                  "<pigweed-root>/.environment/cipd",
-                  "<pigweed-root>/.environment/cipd/pigweed",
-                  "<pigweed-root>/.environment/cipd/pigweed/bin",
-                  "<pigweed-root>/.environment/cipd/luci",
-                  "<pigweed-root>/.environment/cipd/luci/bin",
-                  "<pigweed-root>/.environment/pigweed-venv/bin",
+                  "<pigweed-root>/environment/cipd",
+                  "<pigweed-root>/environment/cipd/pigweed",
+                  "<pigweed-root>/environment/cipd/pigweed/bin",
+                  "<pigweed-root>/environment/cipd/luci",
+                  "<pigweed-root>/environment/cipd/luci/bin",
+                  "<pigweed-root>/environment/pigweed-venv/bin",
                   "<pigweed-root>/out/host/host_tools"
               ],
               "remove": []
@@ -489,12 +510,12 @@ and modify. An example ``actions.json`` is shown below. The "append" and
       "set": {
           "PW_PROJECT_ROOT": "<pigweed-root>",
           "PW_ROOT": "<pigweed-root>",
-          "_PW_ACTUAL_ENVIRONMENT_ROOT": "<pigweed-root>/.environment",
-          "PW_CIPD_INSTALL_DIR": "<pigweed-root>/.environment/cipd",
+          "_PW_ACTUAL_ENVIRONMENT_ROOT": "<pigweed-root>/environment",
+          "PW_CIPD_INSTALL_DIR": "<pigweed-root>/environment/cipd",
           "CIPD_CACHE_DIR": "<home>/.cipd-cache-dir",
-          "PW_PIGWEED_CIPD_INSTALL_DIR": "<pigweed-root>/.environment/cipd/pigweed",
-          "PW_LUCI_CIPD_INSTALL_DIR": "<pigweed-root>/.environment/cipd/luci",
-          "VIRTUAL_ENV": "<pigweed-root>/.environment/pigweed-venv",
+          "PW_PIGWEED_CIPD_INSTALL_DIR": "<pigweed-root>/environment/cipd/pigweed",
+          "PW_LUCI_CIPD_INSTALL_DIR": "<pigweed-root>/environment/cipd/luci",
+          "VIRTUAL_ENV": "<pigweed-root>/environment/pigweed-venv",
           "PYTHONHOME": null,
           "__PYVENV_LAUNCHER__": null
       }
@@ -506,9 +527,10 @@ the GNI file specified in the environment config file.
 .. code-block::
 
   declare_args() {
-    dir_cipd_pigweed = "<pigweed-root>/.environment/cipd/packages/pigweed"
-    dir_cipd_luci = "<pigweed-root>/.environment/cipd/packages/luci"
-    dir_virtual_env = "<pigweed-root>/.environment/pigweed-venv"
+    pw_env_setup_CIPD_PIGWEED = "<environment-root>/cipd/packages/pigweed"
+    pw_env_setup_CIPD_LUCI = "<environment-root>/cipd/packages/luci"
+    pw_env_setup_VIRTUAL_ENV = "<environment-root>/pigweed-venv"
+    pw_env_setup_PACKAGE_ROOT = "<environment-root>/packages"
   }
 
 It's straightforward to use these variables.
@@ -517,13 +539,13 @@ It's straightforward to use these variables.
 
     import("//build_overrides/pigweed_environment.gni")
 
-    deps = [ "$dir_cipd_pigweed/..." ]
+    deps = [ "$pw_env_setup_CIPD_PIGWEED/..." ]
 
 Implementation
 **************
 
 The environment is set up by installing CIPD and Python packages in
-``PW_ENVIRONMENT_ROOT`` or ``<checkout>/.environment``, and saving modifications
+``PW_ENVIRONMENT_ROOT`` or ``<checkout>/environment``, and saving modifications
 to environment variables in setup scripts in those directories. To support
 multiple operating systems this is done in an operating system-agnostic manner
 and then written into operating system-specific files to be sourced now and in
@@ -534,3 +556,6 @@ high-level commands to system-specific initialization files is shown below.
 .. image:: doc_resources/pw_env_setup_output.png
    :alt: Mapping of high-level commands to system-specific commands.
    :align: left
+
+.. _Requirements Files documentation: https://pip.pypa.io/en/stable/user_guide/#requirements-files
+.. _Constraints Files documentation: https://pip.pypa.io/en/stable/user_guide/#constraints-files

@@ -25,7 +25,9 @@ from typing import (
     Dict,
     List,
     Optional,
+    Tuple,
     TYPE_CHECKING,
+    Union,
 )
 
 from prompt_toolkit.filters import (
@@ -285,6 +287,9 @@ class ReplPane(WindowPane):
                           self.copy_output_selection))
 
         results_toolbar.add_button(
+            ToolbarButton(description='Clear',
+                          mouse_handler=self.clear_output_buffer))
+        results_toolbar.add_button(
             ToolbarButton('Shift+Arrows / Mouse Drag', 'Select Text'))
 
         return results_toolbar
@@ -324,8 +329,21 @@ class ReplPane(WindowPane):
             'Show history.': ['F3'],
         }]
 
-    def get_all_menu_options(self):
-        return []
+    def get_window_menu_options(
+            self) -> List[Tuple[str, Union[Callable, None]]]:
+        return [
+            ('Python Input > Paste',
+             self.paste_system_clipboard_to_input_buffer),
+            ('Python Input > Copy or Clear', self.copy_or_clear_input_buffer),
+            ('Python Input > Run', self.run_code),
+            # Menu separator
+            ('-', None),
+            ('Python Output > Toggle Wrap lines',
+             self.toggle_wrap_output_lines),
+            ('Python Output > Copy All', self.copy_all_output_text),
+            ('Python Output > Copy Selection', self.copy_output_selection),
+            ('Python Output > Clear', self.clear_output_buffer),
+        ]
 
     def run_code(self):
         """Trigger a repl code execution on mouse click."""
@@ -339,6 +357,9 @@ class ReplPane(WindowPane):
         else:
             self.interrupt_last_code_execution()
 
+    def insert_text_into_input_buffer(self, text: str) -> None:
+        self.pw_ptpython_repl.default_buffer.insert_text(text)
+
     def paste_system_clipboard_to_input_buffer(self, erase_buffer=False):
         if erase_buffer:
             self.clear_input_buffer()
@@ -351,6 +372,10 @@ class ReplPane(WindowPane):
         self.pw_ptpython_repl.default_buffer.reset()
         # Clear any displayed function signatures.
         self.pw_ptpython_repl.on_reset()
+
+    def clear_output_buffer(self):
+        self.executed_code.clear()
+        self.update_output_buffer()
 
     def copy_or_clear_input_buffer(self):
         # Copy selected text if a selection is active.
@@ -469,3 +494,13 @@ class ReplPane(WindowPane):
             return False
 
         return test
+
+    def history_completions(self) -> List[Tuple[str, str]]:
+        return [
+            (
+                ' '.join([line.lstrip() for line in text.splitlines()]),
+                # Pass original text as the completion result.
+                text,
+            ) for text in list(
+                self.pw_ptpython_repl.history.load_history_strings())
+        ]

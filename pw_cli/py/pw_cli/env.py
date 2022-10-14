@@ -34,6 +34,7 @@ def pigweed_environment_parser() -> envparse.EnvironmentParser:
                    type=envparse.strict_bool,
                    default=False)
     parser.add_var('PW_ENVIRONMENT_ROOT')
+    parser.add_var('PW_PACKAGE_ROOT')
     parser.add_var('PW_PROJECT_ROOT')
     parser.add_var('PW_ROOT')
     parser.add_var('PW_SKIP_BOOTSTRAP')
@@ -61,8 +62,13 @@ def pigweed_environment_parser() -> envparse.EnvironmentParser:
     parser.add_var('PW_CONSOLE_CONFIG_FILE')
     parser.add_var('PW_ENVIRONMENT_NO_ERROR_ON_UNRECOGNIZED')
 
-    # TODO(b/231998579) Remove after a week or two.
-    parser.add_var('PW_BOOTSTRAP_USE_ROSETTA')
+    parser.add_var('PW_CIPD_SERVICE_ACCOUNT_JSON')
+
+    # RBE environment variables
+    parser.add_var('PW_USE_RBE', default=False)
+    parser.add_var('PW_RBE_DEBUG', default=False)
+    parser.add_var('PW_RBE_CLANG_CONFIG', default='')
+    parser.add_var('PW_RBE_ARM_GCC_CONFIG', default='')
 
     return parser
 

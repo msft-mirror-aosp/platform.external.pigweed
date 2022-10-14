@@ -43,11 +43,14 @@ _host_common = {
   pw_string_CONFIG = "$dir_pw_string:enable_decimal_float_expansion"
 
   # Configure backends for pw_sync's facades.
-  pw_sync_INTERRUPT_SPIN_LOCK_BACKEND = "$dir_pw_sync_stl:interrupt_spin_lock"
   pw_sync_BINARY_SEMAPHORE_BACKEND = "$dir_pw_sync_stl:binary_semaphore_backend"
+  pw_sync_CONDITION_VARIABLE_BACKEND =
+      "$dir_pw_sync_stl:condition_variable_backend"
   pw_sync_COUNTING_SEMAPHORE_BACKEND =
       "$dir_pw_sync_stl:counting_semaphore_backend"
+  pw_sync_INTERRUPT_SPIN_LOCK_BACKEND = "$dir_pw_sync_stl:interrupt_spin_lock"
   pw_sync_MUTEX_BACKEND = "$dir_pw_sync_stl:mutex_backend"
+  pw_sync_RECURSIVE_MUTEX_BACKEND = "$dir_pw_sync_stl:recursive_mutex_backend"
   pw_sync_TIMED_MUTEX_BACKEND = "$dir_pw_sync_stl:timed_mutex_backend"
   pw_sync_THREAD_NOTIFICATION_BACKEND =
       "$dir_pw_sync:binary_semaphore_thread_notification_backend"
@@ -303,6 +306,9 @@ pw_target_toolchain_host_list = [
 # Additional configuration intended only for upstream Pigweed use.
 _pigweed_internal = {
   pw_status_CONFIG = "$dir_pw_status:check_if_used"
+
+  # TODO(b/241565082): Enable NC testing in GN Windows when it is fixed.
+  pw_compilation_testing_NEGATIVE_COMPILATION_ENABLED = host_os != "win"
 }
 
 # Host toolchains exclusively for upstream Pigweed use. To give upstream Pigweed
@@ -395,6 +401,10 @@ pw_internal_host_toolchains = [
       # Set the C++ standard to C++14 instead of the default (C++17).
       pw_toolchain_CXX_STANDARD = pw_toolchain_STANDARD.CXX14
 
+      # Do not do negative compilation testing with C++14 since the code may
+      # fail to compile for different reasons than in C++17 or newer.
+      pw_compilation_testing_NEGATIVE_COMPILATION_ENABLED = false
+
       # Select C++14-compatible backends.
       pw_assert_BACKEND = "$dir_pw_assert:print_and_abort_check_backend"
       pw_log_BACKEND = "$dir_pw_log_null"
@@ -411,6 +421,11 @@ pw_internal_host_toolchains = [
       forward_variables_from(_pigweed_internal, "*")
       forward_variables_from(_os_specific_config, "*")
       default_configs += _internal_clang_default_configs
+
+      # Don't enable span asserts since C++20 provides the implementation for
+      # pw::span, and there's no way to ensure asserts are enabled for the C++
+      # standard library's std::span implementation.
+      pw_span_ENABLE_ASSERTS = false
 
       # Set the C++ standard to C++20 instead of the default.
       pw_toolchain_CXX_STANDARD = pw_toolchain_STANDARD.CXX20

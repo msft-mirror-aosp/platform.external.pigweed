@@ -18,7 +18,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <string_view>
 
 #include "pw_assert/check.h"
@@ -29,6 +28,7 @@
 #include "pw_protobuf/encoder.h"
 #include "pw_protobuf/serialized_size.h"
 #include "pw_rpc/raw/server_reader_writer.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 
@@ -73,12 +73,12 @@ void FlatFileSystemService::EnumerateAllFiles(RawServerWriter& writer) {
     Status write_status = writer.Write(encoder);
     if (!write_status.ok()) {
       writer.Finish(write_status)
-          .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+          .IgnoreError();  // TODO(b/242598609): Handle Status properly
       return;
     }
   }
   writer.Finish(OkStatus())
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO(b/242598609): Handle Status properly
 }
 
 void FlatFileSystemService::List(ConstByteSpan request,
@@ -95,7 +95,7 @@ void FlatFileSystemService::List(ConstByteSpan request,
     if (!decoder.ReadString(&file_name_view).ok() ||
         file_name_view.length() == 0) {
       writer.Finish(Status::DataLoss())
-          .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+          .IgnoreError();  // TODO(b/242598609): Handle Status properly
       return;
     }
 
@@ -103,7 +103,7 @@ void FlatFileSystemService::List(ConstByteSpan request,
     Result<Entry*> result = FindFile(file_name_view);
     if (!result.ok()) {
       writer.Finish(result.status())
-          .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+          .IgnoreError();  // TODO(b/242598609): Handle Status properly
       return;
     }
 
@@ -111,12 +111,12 @@ void FlatFileSystemService::List(ConstByteSpan request,
     Status proto_encode_status = EnumerateFile(*result.value(), encoder);
     if (!proto_encode_status.ok()) {
       writer.Finish(proto_encode_status)
-          .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+          .IgnoreError();  // TODO(b/242598609): Handle Status properly
       return;
     }
 
     writer.Finish(writer.Write(encoder))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        .IgnoreError();  // TODO(b/242598609): Handle Status properly
     return;
   }
 

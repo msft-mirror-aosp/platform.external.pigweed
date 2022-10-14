@@ -29,6 +29,8 @@ constexpr const char* kLocalhostAddress = "127.0.0.1";
 
 }  // namespace
 
+// TODO(b/240982565): Implement SocketStream for Windows.
+
 // Listen to the port and return after a client is connected
 Status SocketStream::Serve(uint16_t port) {
   listen_port_ = port;
@@ -117,7 +119,7 @@ void SocketStream::Close() {
   }
 }
 
-Status SocketStream::DoWrite(std::span<const std::byte> data) {
+Status SocketStream::DoWrite(span<const std::byte> data) {
   // Use MSG_NOSIGNAL to avoid getting a SIGPIPE signal when the remote
   // peer drops the connection.
   ssize_t bytes_sent =

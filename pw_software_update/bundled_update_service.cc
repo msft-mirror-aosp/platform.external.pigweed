@@ -136,6 +136,7 @@ Status BundledUpdateService::SetTransferred(const pw_protobuf_Empty&,
 
   if (state != pw_software_update_BundledUpdateState_Enum_TRANSFERRING &&
       state != pw_software_update_BundledUpdateState_Enum_INACTIVE) {
+    std::lock_guard lock(mutex_);
     SET_ERROR(pw_software_update_BundledUpdateResult_Enum_UNKNOWN_ERROR,
               "SetTransferred() can only be called from TRANSFERRING or "
               "INACTIVE state. State: %d",
@@ -373,7 +374,7 @@ void BundledUpdateService::DoApply() {
       SET_ERROR(pw_software_update_BundledUpdateResult_Enum_APPLY_FAILED,
                 "Could not open contents of file %s from bundle; "
                 "aborting update apply phase",
-                static_cast<int>(file_reader.status().code()));
+                MakeString<MAX_TARGET_NAME_LENGTH>(file_name_view).c_str());
       return;
     }
 

@@ -29,11 +29,10 @@ locations the repositories were downloaded to.
   pw package install nanopb
 
   gn args out
-    # Add these lines, replacing ${PW_ROOT} with the path to the location that
-    # Pigweed is checked out at.
-    dir_pw_third_party_freertos = "${PW_ROOT}/.environment/packages/freertos"
-    dir_pw_third_party_stm32cube_f4 = "${PW_ROOT}/.environment/packages/stm32cube_f4"
-    dir_pw_third_party_nanopb = "${PW_ROOT}/.environment/packages/nanopb"
+    # Add these lines.
+    dir_pw_third_party_freertos = pw_env_setup_PACKAGE_ROOT + "/freertos"
+    dir_pw_third_party_stm32cube_f4 = pw_env_setup_PACKAGE_ROOT + "/stm32cube_f4"
+    dir_pw_third_party_nanopb = pw_env_setup_PACKAGE_ROOT + "/nanopb"
 
 Building and running the demo
 =============================
@@ -63,5 +62,29 @@ the same message you sent to the device.
 
   >>> device.rpcs.pw.rpc.EchoService.Echo(msg="Hello, Pigweed!")
   (Status.OK, pw.rpc.EchoMessage(msg='Hello, Pigweed!'))
+
+You can also try out our thread snapshot RPC service, which should return a
+stack usage overview of all running threads on the device in Host Logs.
+
+.. code:: sh
+
+  >>> device.snapshot_peak_stack_usage()
+
+Example output:
+
+.. code:: sh
+
+  20220826 09:47:22  INF  PendingRpc(channel=1, method=pw.thread.ThreadSnapshotService.GetPeakStackUsage) completed: Status.OK
+  20220826 09:47:22  INF  Thread State
+  20220826 09:47:22  INF    5 threads running.
+  20220826 09:47:22  INF
+  20220826 09:47:22  INF  Thread (UNKNOWN): IDLE
+  20220826 09:47:22  INF  Est CPU usage: unknown
+  20220826 09:47:22  INF  Stack info
+  20220826 09:47:22  INF    Current usage:   0x20002da0 - 0x???????? (size unknown)
+  20220826 09:47:22  INF    Est peak usage:  390 bytes, 76.77%
+  20220826 09:47:22  INF    Stack limits:    0x20002da0 - 0x20002ba4 (508 bytes)
+  20220826 09:47:22  INF
+  20220826 09:47:22  INF  ...
 
 You are now up and running!

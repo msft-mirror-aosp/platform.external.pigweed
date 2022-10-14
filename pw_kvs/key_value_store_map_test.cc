@@ -15,11 +15,12 @@
 #include <cstdlib>
 #include <random>
 #include <set>
-#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+
+#include "pw_span/span.h"
 
 #define DUMP_KVS_CONTENTS 0
 
@@ -165,8 +166,9 @@ class KvsTester {
       label << ((options == kReinitWithPartialGC) ? "PartialGC" : "");
       label << ((kvs_.redundancy() > 1) ? "Redundant" : "");
 
-      partition_.SaveStorageStats(kvs_, label.data())
-          .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      // Ignore error to allow test to pass on platforms where writing out the
+      // stats is not possible.
+      partition_.SaveStorageStats(kvs_, label.data()).IgnoreError();
     }
   }
 
@@ -251,7 +253,7 @@ class KvsTester {
 
         char value[kMaxValueLength + 1] = {};
         EXPECT_EQ(OkStatus(),
-                  item.Get(std::as_writable_bytes(std::span(value))).status());
+                  item.Get(as_writable_bytes(span(value))).status());
         EXPECT_EQ(map_entry->second, std::string(value));
       }
     }
@@ -264,7 +266,7 @@ class KvsTester {
     StartOperation("Put", key);
     EXPECT_LE(value.size(), kMaxValueLength);
 
-    Status result = kvs_.Put(key, std::as_bytes(std::span(value)));
+    Status result = kvs_.Put(key, as_bytes(span(value)));
 
     if (key.empty() || key.size() > internal::Entry::kMaxKeyLength) {
       EXPECT_EQ(Status::InvalidArgument(), result);

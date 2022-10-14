@@ -15,6 +15,7 @@
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_arduino_build/arduino.gni")
+import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/facade.gni")
 import("$dir_pw_build/module_config.gni")
 import("$dir_pw_build/target_types.gni")
@@ -144,6 +145,7 @@ pw_source_set("base64") {
   sources = [ "base64.cc" ]
   public_deps = [
     ":pw_tokenizer",
+    "$dir_pw_string:string",
     dir_pw_base64,
     dir_pw_preprocessor,
   ]
@@ -151,10 +153,10 @@ pw_source_set("base64") {
 
 pw_source_set("decoder") {
   public_configs = [ ":public_include_path" ]
+  public_deps = [ dir_pw_span ]
   deps = [
     "$dir_pw_bytes:bit",
     dir_pw_bytes,
-    dir_pw_span,
     dir_pw_varint,
   ]
   public = [
@@ -364,4 +366,22 @@ pw_doc_group("docs") {
     "proto.rst",
   ]
   inputs = [ "py/pw_tokenizer/encode.py" ]
+  report_deps = [ ":tokenizer_size_report" ]
+}
+
+# Pigweed tokenizer size report.
+pw_size_diff("tokenizer_size_report") {
+  title = "Pigweed tokenizer size report"
+  binaries = [
+    {
+      target = "size_report:tokenize_string"
+      base = "size_report:tokenize_string_base"
+      label = "tokenize a string"
+    },
+    {
+      target = "size_report:tokenize_string_expr"
+      base = "size_report:tokenize_string_expr_base"
+      label = "tokenize a string expression"
+    },
+  ]
 }

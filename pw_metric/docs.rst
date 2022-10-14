@@ -423,8 +423,8 @@ hypothetical global ``Uart`` object:
     // Send/receive here...
 
    private:
-    std::span<std::byte> rx_buffer;
-    std::span<std::byte> tx_buffer;
+    pw::span<std::byte> rx_buffer;
+    pw::span<std::byte> tx_buffer;
   };
 
   std::array<std::byte, 512> uart_rx_buffer;
@@ -454,8 +454,8 @@ might consider the following approach:
     // Send/receive here which increment tx/rx_bytes.
 
    private:
-    std::span<std::byte> rx_buffer;
-    std::span<std::byte> tx_buffer;
+    pw::span<std::byte> rx_buffer;
+    pw::span<std::byte> tx_buffer;
 
     PW_METRIC(tx_bytes_, "tx_bytes", 0);
     PW_METRIC(rx_bytes_, "rx_bytes", 0);
@@ -503,8 +503,8 @@ correctly, even when the objects are allocated globally:
     // Send/receive here which increment tx/rx_bytes.
 
    private:
-    std::span<std::byte> rx_buffer;
-    std::span<std::byte> tx_buffer;
+    pw::span<std::byte> rx_buffer;
+    pw::span<std::byte> tx_buffer;
 
     PW_METRIC(tx_bytes_, "tx_bytes", 0);
     PW_METRIC(rx_bytes_, "rx_bytes", 0);
@@ -632,8 +632,9 @@ Below is an example that **is incorrect**. Don't do what follows!
 Exporting metrics
 -----------------
 Collecting metrics on a device is not useful without a mechanism to export
-those metrics for analysis and debugging. ``pw_metric`` offers an optional RPC
-service library (``:metric_service_nanopb``) that enables exporting a
+those metrics for analysis and debugging. ``pw_metric`` offers optional RPC
+service libraries (``:metric_service_nanopb`` based on nanopb, and
+``:metric_service_pwpb`` based on pw_protobuf) that enable exporting a
 user-supplied set of on-device metrics via RPC. This facility is intended to
 function from the early stages of device bringup through production in the
 field.

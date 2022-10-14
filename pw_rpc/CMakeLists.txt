@@ -80,7 +80,7 @@ pw_add_module_library(pw_rpc.synchronous_client_api
     public/pw_rpc/synchronous_call.h
     public/pw_rpc/synchronous_call_result.h
   PUBLIC_DEPS
-    pw_chono.system_clock
+    pw_chrono.system_clock
     pw_rpc.client
     pw_rpc.common
     pw_sync.timed_thread_notification
@@ -88,11 +88,15 @@ pw_add_module_library(pw_rpc.synchronous_client_api
 
 pw_add_module_library(pw_rpc.common
   HEADERS
+    public/pw_rpc/method_id.h
     public/pw_rpc/method_info.h
+    public/pw_rpc/packet_meta.h
+    public/pw_rpc/service_id.h
   SOURCES
     channel.cc
     channel_list.cc
     packet.cc
+    packet_meta.cc
   PUBLIC_DEPS
     pw_assert
     pw_bytes
@@ -121,8 +125,10 @@ pw_add_module_library(pw_rpc.test_utils
   PUBLIC_DEPS
     pw_assert
     pw_bytes
+    pw_containers
     pw_rpc.client
     pw_rpc.server
+    pw_span
   PRIVATE_DEPS
     pw_log
 )
@@ -159,6 +165,7 @@ pw_proto_library(pw_rpc.protos
 
 pw_proto_library(pw_rpc.test_protos
   SOURCES
+    pw_rpc_test_protos/no_package.proto
     pw_rpc_test_protos/test.proto
 )
 

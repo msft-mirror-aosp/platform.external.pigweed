@@ -17,7 +17,6 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
-#include <span>
 #include <string_view>
 
 #include "pw_assert/assert.h"
@@ -28,6 +27,7 @@
 #include "pw_protobuf/config.h"
 #include "pw_protobuf/internal/codegen.h"
 #include "pw_protobuf/wire_format.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
 #include "pw_stream/memory_stream.h"
@@ -67,7 +67,7 @@ inline Status WriteVarint(uint64_t value, stream::Writer& writer) {
   std::array<std::byte, varint::kMaxVarint64SizeBytes> varint_encode_buffer;
   const size_t varint_size =
       pw::varint::EncodeLittleEndianBase128(value, varint_encode_buffer);
-  return writer.Write(std::span(varint_encode_buffer).first(varint_size));
+  return writer.Write(span(varint_encode_buffer).first(varint_size));
 }
 
 // Write the field key and length prefix for a length-delimited field. It is
@@ -128,7 +128,7 @@ class StreamEncoder {
   //
   // Postcondition: If this encoder is a nested one, the parent encoder is
   //     unlocked and proto encoding may resume on the parent.
-  ~StreamEncoder();
+  ~StreamEncoder() { CloseEncoder(); }
 
   // Disallow copy/assign to avoid confusion about who owns the buffer.
   StreamEncoder& operator=(const StreamEncoder& other) = delete;
@@ -137,6 +137,19 @@ class StreamEncoder {
   // It's not safe to move an encoder as it could cause another encoder's
   // parent_ pointer to become invalid.
   StreamEncoder& operator=(StreamEncoder&& other) = delete;
+
+  // Closes this encoder, finalizing its output.
+  //
+  // This method is called automatically by `StreamEncoder`'s destructor, but
+  // may be invoked manually in order to close an encoder before the end of its
+  // lexical scope.
+  //
+  // Precondition: Encoder has no active child encoder.
+  //
+  // Postcondition: If this encoder is a nested one, the parent encoder is
+  //     unlocked and proto encoding may resume on the parent. No more writes
+  //     to this encoder may be performed.
+  void CloseEncoder();
 
   // Forwards the conservative write limit of the underlying
   // pw::stream::Writer.
@@ -147,6 +160,8 @@ class StreamEncoder {
     return writer_.ConservativeWriteLimit();
   }
 
+  enum class EmptyEncoderBehavior { kWriteFieldNumber, kWriteNothing };
+
   // Creates a nested encoder with the provided field number. Once this is
   // called, the parent encoder is locked and not available for use until the
   // nested encoder is finalized (either explicitly or through destruction).
@@ -155,8 +170,12 @@ class StreamEncoder {
   //
   // Postcondition: Until the nested child encoder has been destroyed, this
   //     encoder cannot be used.
-  StreamEncoder GetNestedEncoder(uint32_t field_number) {
-    return GetNestedEncoder(field_number, /*write_when_empty=*/true);
+  StreamEncoder GetNestedEncoder(uint32_t field_number,
+                                 EmptyEncoderBehavior empty_encoder_behavior =
+                                     EmptyEncoderBehavior::kWriteFieldNumber) {
+    return GetNestedEncoder(
+        field_number, /*write_when_empty=*/
+        empty_encoder_behavior == EmptyEncoderBehavior::kWriteFieldNumber);
   }
 
   // Returns the current encoder's status.
@@ -177,9 +196,9 @@ class StreamEncoder {
   // Writes a repeated uint32 using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedUint32(uint32_t field_number,
-                           std::span<const uint32_t> values) {
-    return WritePackedVarints(field_number, values, VarintType::kNormal);
+  Status WritePackedUint32(uint32_t field_number, span<const uint32_t> values) {
+    return WritePackedVarints(
+        field_number, values, internal::VarintType::kNormal);
   }
 
   // Writes a repeated uint32 using packed encoding.
@@ -188,8 +207,8 @@ class StreamEncoder {
   Status WriteRepeatedUint32(uint32_t field_number,
                              const pw::Vector<uint32_t>& values) {
     return WritePackedVarints(field_number,
-                              std::span(values.data(), values.size()),
-                              VarintType::kNormal);
+                              span(values.data(), values.size()),
+                              internal::VarintType::kNormal);
   }
 
   // Writes a proto uint64 key-value pair.
@@ -202,9 +221,9 @@ class StreamEncoder {
   // Writes a repeated uint64 using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedUint64(uint64_t field_number,
-                           std::span<const uint64_t> values) {
-    return WritePackedVarints(field_number, values, VarintType::kNormal);
+  Status WritePackedUint64(uint64_t field_number, span<const uint64_t> values) {
+    return WritePackedVarints(
+        field_number, values, internal::VarintType::kNormal);
   }
 
   // Writes a repeated uint64 using packed encoding.
@@ -213,8 +232,8 @@ class StreamEncoder {
   Status WriteRepeatedUint64(uint32_t field_number,
                              const pw::Vector<uint64_t>& values) {
     return WritePackedVarints(field_number,
-                              std::span(values.data(), values.size()),
-                              VarintType::kNormal);
+                              span(values.data(), values.size()),
+                              internal::VarintType::kNormal);
   }
 
   // Writes a proto int32 key-value pair.
@@ -227,13 +246,11 @@ class StreamEncoder {
   // Writes a repeated int32 using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedInt32(uint32_t field_number,
-                          std::span<const int32_t> values) {
+  Status WritePackedInt32(uint32_t field_number, span<const int32_t> values) {
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint32_t*>(values.data()),
-                  values.size()),
-        VarintType::kNormal);
+        span(reinterpret_cast<const uint32_t*>(values.data()), values.size()),
+        internal::VarintType::kNormal);
   }
 
   // Writes a repeated int32 using packed encoding.
@@ -243,9 +260,8 @@ class StreamEncoder {
                             const pw::Vector<int32_t>& values) {
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint32_t*>(values.data()),
-                  values.size()),
-        VarintType::kNormal);
+        span(reinterpret_cast<const uint32_t*>(values.data()), values.size()),
+        internal::VarintType::kNormal);
   }
 
   // Writes a proto int64 key-value pair.
@@ -258,13 +274,11 @@ class StreamEncoder {
   // Writes a repeated int64 using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedInt64(uint32_t field_number,
-                          std::span<const int64_t> values) {
+  Status WritePackedInt64(uint32_t field_number, span<const int64_t> values) {
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint64_t*>(values.data()),
-                  values.size()),
-        VarintType::kNormal);
+        span(reinterpret_cast<const uint64_t*>(values.data()), values.size()),
+        internal::VarintType::kNormal);
   }
 
   // Writes a repeated int64 using packed encoding.
@@ -274,9 +288,8 @@ class StreamEncoder {
                             const pw::Vector<int64_t>& values) {
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint64_t*>(values.data()),
-                  values.size()),
-        VarintType::kNormal);
+        span(reinterpret_cast<const uint64_t*>(values.data()), values.size()),
+        internal::VarintType::kNormal);
   }
 
   // Writes a proto sint32 key-value pair.
@@ -289,13 +302,11 @@ class StreamEncoder {
   // Writes a repeated sint32 using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedSint32(uint32_t field_number,
-                           std::span<const int32_t> values) {
+  Status WritePackedSint32(uint32_t field_number, span<const int32_t> values) {
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint32_t*>(values.data()),
-                  values.size()),
-        VarintType::kZigZag);
+        span(reinterpret_cast<const uint32_t*>(values.data()), values.size()),
+        internal::VarintType::kZigZag);
   }
 
   // Writes a repeated sint32 using packed encoding.
@@ -305,9 +316,8 @@ class StreamEncoder {
                              const pw::Vector<int32_t>& values) {
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint32_t*>(values.data()),
-                  values.size()),
-        VarintType::kZigZag);
+        span(reinterpret_cast<const uint32_t*>(values.data()), values.size()),
+        internal::VarintType::kZigZag);
   }
 
   // Writes a proto sint64 key-value pair.
@@ -320,13 +330,11 @@ class StreamEncoder {
   // Writes a repeated sint64 using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedSint64(uint32_t field_number,
-                           std::span<const int64_t> values) {
+  Status WritePackedSint64(uint32_t field_number, span<const int64_t> values) {
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint64_t*>(values.data()),
-                  values.size()),
-        VarintType::kZigZag);
+        span(reinterpret_cast<const uint64_t*>(values.data()), values.size()),
+        internal::VarintType::kZigZag);
   }
 
   // Writes a repeated sint64 using packed encoding.
@@ -336,9 +344,8 @@ class StreamEncoder {
                              const pw::Vector<int64_t>& values) {
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint64_t*>(values.data()),
-                  values.size()),
-        VarintType::kZigZag);
+        span(reinterpret_cast<const uint64_t*>(values.data()), values.size()),
+        internal::VarintType::kZigZag);
   }
 
   // Writes a proto bool key-value pair.
@@ -351,14 +358,13 @@ class StreamEncoder {
   // Writes a repeated bool using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedBool(uint32_t field_number, std::span<const bool> values) {
+  Status WritePackedBool(uint32_t field_number, span<const bool> values) {
     static_assert(sizeof(bool) == sizeof(uint8_t),
                   "bool must be same size as uint8_t");
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint8_t*>(values.data()),
-                  values.size()),
-        VarintType::kNormal);
+        span(reinterpret_cast<const uint8_t*>(values.data()), values.size()),
+        internal::VarintType::kNormal);
   }
 
   // Writes a repeated bool using packed encoding.
@@ -371,9 +377,8 @@ class StreamEncoder {
 
     return WritePackedVarints(
         field_number,
-        std::span(reinterpret_cast<const uint8_t*>(values.data()),
-                  values.size()),
-        VarintType::kNormal);
+        span(reinterpret_cast<const uint8_t*>(values.data()), values.size()),
+        internal::VarintType::kNormal);
   }
 
   // Writes a proto fixed32 key-value pair.
@@ -389,9 +394,8 @@ class StreamEncoder {
   //
   // Precondition: Encoder has no active child encoder.
   Status WritePackedFixed32(uint32_t field_number,
-                            std::span<const uint32_t> values) {
-    return WritePackedFixed(
-        field_number, std::as_bytes(values), sizeof(uint32_t));
+                            span<const uint32_t> values) {
+    return WritePackedFixed(field_number, as_bytes(values), sizeof(uint32_t));
   }
 
   // Writes a repeated fixed32 field using packed encoding.
@@ -399,10 +403,9 @@ class StreamEncoder {
   // Precondition: Encoder has no active child encoder.
   Status WriteRepeatedFixed32(uint32_t field_number,
                               const pw::Vector<uint32_t>& values) {
-    return WritePackedFixed(
-        field_number,
-        std::as_bytes(std::span(values.data(), values.size())),
-        sizeof(uint32_t));
+    return WritePackedFixed(field_number,
+                            as_bytes(span(values.data(), values.size())),
+                            sizeof(uint32_t));
   }
 
   // Writes a proto fixed64 key-value pair.
@@ -418,9 +421,8 @@ class StreamEncoder {
   //
   // Precondition: Encoder has no active child encoder.
   Status WritePackedFixed64(uint32_t field_number,
-                            std::span<const uint64_t> values) {
-    return WritePackedFixed(
-        field_number, std::as_bytes(values), sizeof(uint64_t));
+                            span<const uint64_t> values) {
+    return WritePackedFixed(field_number, as_bytes(values), sizeof(uint64_t));
   }
 
   // Writes a repeated fixed64 field using packed encoding.
@@ -428,10 +430,9 @@ class StreamEncoder {
   // Precondition: Encoder has no active child encoder.
   Status WriteRepeatedFixed64(uint32_t field_number,
                               const pw::Vector<uint64_t>& values) {
-    return WritePackedFixed(
-        field_number,
-        std::as_bytes(std::span(values.data(), values.size())),
-        sizeof(uint64_t));
+    return WritePackedFixed(field_number,
+                            as_bytes(span(values.data(), values.size())),
+                            sizeof(uint64_t));
   }
 
   // Writes a proto sfixed32 key-value pair.
@@ -445,9 +446,8 @@ class StreamEncoder {
   //
   // Precondition: Encoder has no active child encoder.
   Status WritePackedSfixed32(uint32_t field_number,
-                             std::span<const int32_t> values) {
-    return WritePackedFixed(
-        field_number, std::as_bytes(values), sizeof(int32_t));
+                             span<const int32_t> values) {
+    return WritePackedFixed(field_number, as_bytes(values), sizeof(int32_t));
   }
 
   // Writes a repeated fixed32 field using packed encoding.
@@ -455,10 +455,9 @@ class StreamEncoder {
   // Precondition: Encoder has no active child encoder.
   Status WriteRepeatedSfixed32(uint32_t field_number,
                                const pw::Vector<int32_t>& values) {
-    return WritePackedFixed(
-        field_number,
-        std::as_bytes(std::span(values.data(), values.size())),
-        sizeof(int32_t));
+    return WritePackedFixed(field_number,
+                            as_bytes(span(values.data(), values.size())),
+                            sizeof(int32_t));
   }
 
   // Writes a proto sfixed64 key-value pair.
@@ -472,20 +471,18 @@ class StreamEncoder {
   //
   // Precondition: Encoder has no active child encoder.
   Status WritePackedSfixed64(uint32_t field_number,
-                             std::span<const int64_t> values) {
-    return WritePackedFixed(
-        field_number, std::as_bytes(values), sizeof(int64_t));
+                             span<const int64_t> values) {
+    return WritePackedFixed(field_number, as_bytes(values), sizeof(int64_t));
   }
 
   // Writes a repeated fixed64 field using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WriteRepeatedFixed64(uint32_t field_number,
-                              const pw::Vector<int64_t>& values) {
-    return WritePackedFixed(
-        field_number,
-        std::as_bytes(std::span(values.data(), values.size())),
-        sizeof(int64_t));
+  Status WriteRepeatedSfixed64(uint32_t field_number,
+                               const pw::Vector<int64_t>& values) {
+    return WritePackedFixed(field_number,
+                            as_bytes(span(values.data(), values.size())),
+                            sizeof(int64_t));
   }
 
   // Writes a proto float key-value pair.
@@ -504,9 +501,8 @@ class StreamEncoder {
   // Writes a repeated float field using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedFloat(uint32_t field_number,
-                          std::span<const float> values) {
-    return WritePackedFixed(field_number, std::as_bytes(values), sizeof(float));
+  Status WritePackedFloat(uint32_t field_number, span<const float> values) {
+    return WritePackedFixed(field_number, as_bytes(values), sizeof(float));
   }
 
   // Writes a repeated float field using packed encoding.
@@ -514,10 +510,9 @@ class StreamEncoder {
   // Precondition: Encoder has no active child encoder.
   Status WriteRepeatedFloat(uint32_t field_number,
                             const pw::Vector<float>& values) {
-    return WritePackedFixed(
-        field_number,
-        std::as_bytes(std::span(values.data(), values.size())),
-        sizeof(float));
+    return WritePackedFixed(field_number,
+                            as_bytes(span(values.data(), values.size())),
+                            sizeof(float));
   }
 
   // Writes a proto double key-value pair.
@@ -536,10 +531,8 @@ class StreamEncoder {
   // Writes a repeated double field using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedDouble(uint32_t field_number,
-                           std::span<const double> values) {
-    return WritePackedFixed(
-        field_number, std::as_bytes(values), sizeof(double));
+  Status WritePackedDouble(uint32_t field_number, span<const double> values) {
+    return WritePackedFixed(field_number, as_bytes(values), sizeof(double));
   }
 
   // Writes a repeated double field using packed encoding.
@@ -547,10 +540,9 @@ class StreamEncoder {
   // Precondition: Encoder has no active child encoder.
   Status WriteRepeatedDouble(uint32_t field_number,
                              const pw::Vector<double>& values) {
-    return WritePackedFixed(
-        field_number,
-        std::as_bytes(std::span(values.data(), values.size())),
-        sizeof(double));
+    return WritePackedFixed(field_number,
+                            as_bytes(span(values.data(), values.size())),
+                            sizeof(double));
   }
 
   // Writes a proto `bytes` field as a key-value pair. This can also be used to
@@ -590,14 +582,14 @@ class StreamEncoder {
   //
   // Precondition: Encoder has no active child encoder.
   Status WriteString(uint32_t field_number, std::string_view value) {
-    return WriteBytes(field_number, std::as_bytes(std::span(value)));
+    return WriteBytes(field_number, as_bytes(span<const char>(value)));
   }
 
   // Writes a proto string key-value pair.
   //
   // Precondition: Encoder has no active child encoder.
   Status WriteString(uint32_t field_number, const char* value, size_t len) {
-    return WriteBytes(field_number, std::as_bytes(std::span(value, len)));
+    return WriteBytes(field_number, as_bytes(span(value, len)));
   }
 
   // Writes a proto 'string' field from the stream bytes_reader.
@@ -650,13 +642,12 @@ class StreamEncoder {
   // This is called by codegen subclass Write() functions that accept a typed
   // struct Message reference, using the appropriate codegen MessageField table
   // corresponding to that type.
-  Status Write(std::span<const std::byte> message,
-               std::span<const MessageField> table);
+  Status Write(span<const std::byte> message,
+               span<const internal::MessageField> table);
 
   // Protected method to create a nested encoder, specifying whether the field
-  // should be written when no fields were added to the nested encoder. Not
-  // part of the public API since callers can simply not create a nested encoder
-  // in those situations.
+  // should be written when no fields were added to the nested encoder. Exposed
+  // using an enum in the public API, for better readability.
   StreamEncoder GetNestedEncoder(uint32_t field_number, bool write_when_empty);
 
  private:
@@ -710,8 +701,8 @@ class StreamEncoder {
   // Writes a list of varints to the buffer in length-delimited packed encoding.
   template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
   Status WritePackedVarints(uint32_t field_number,
-                            std::span<T> values,
-                            VarintType encode_type) {
+                            span<T> values,
+                            internal::VarintType encode_type) {
     static_assert(std::is_same<T, const uint8_t>::value ||
                       std::is_same<T, const uint32_t>::value ||
                       std::is_same<T, const int32_t>::value ||
@@ -722,7 +713,7 @@ class StreamEncoder {
 
     size_t payload_size = 0;
     for (T val : values) {
-      if (encode_type == VarintType::kZigZag) {
+      if (encode_type == internal::VarintType::kZigZag) {
         int64_t integer =
             static_cast<int64_t>(static_cast<std::make_signed_t<T>>(val));
         payload_size += varint::EncodedSize(varint::ZigZagEncode(integer));
@@ -738,16 +729,16 @@ class StreamEncoder {
     }
 
     WriteVarint(FieldKey(field_number, WireType::kDelimited))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        .IgnoreError();  // TODO(b/242598609): Handle Status properly
     WriteVarint(payload_size)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        .IgnoreError();  // TODO(b/242598609): Handle Status properly
     for (T value : values) {
-      if (encode_type == VarintType::kZigZag) {
+      if (encode_type == internal::VarintType::kZigZag) {
         WriteZigzagVarint(static_cast<std::make_signed_t<T>>(value))
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+            .IgnoreError();  // TODO(b/242598609): Handle Status properly
       } else {
         WriteVarint(value)
-            .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+            .IgnoreError();  // TODO(b/242598609): Handle Status properly
       }
     }
 
@@ -758,8 +749,18 @@ class StreamEncoder {
   // packed encoding. Only float, double, uint32_t, int32_t, uint64_t, and
   // int64_t are permitted
   Status WritePackedFixed(uint32_t field_number,
-                          std::span<const std::byte> values,
+                          span<const std::byte> values,
                           size_t elem_size);
+
+  template <typename Container>
+  Status WriteStringOrBytes(uint32_t field_number,
+                            const std::byte* raw_container) {
+    const auto& container = *reinterpret_cast<Container*>(raw_container);
+    if (container.empty()) {
+      return OkStatus();
+    }
+    return WriteLengthDelimitedField(field_number, as_bytes(span(container)));
+  }
 
   // Checks if a write is invalid or will cause the encoder to enter an error
   // state, and preemptively sets this encoder's status to that error to block

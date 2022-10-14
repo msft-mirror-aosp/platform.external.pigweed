@@ -20,6 +20,7 @@ import sys
 
 from google.protobuf import text_format
 from pw_hdlc.rpc import HdlcRpcClient, default_channels
+from pw_status import Status
 import pw_transfer
 from pigweed.pw_transfer import transfer_pb2
 from pigweed.pw_transfer.integration_test import config_pb2
@@ -70,11 +71,13 @@ def _main() -> int:
         default_response_timeout_s=config.chunk_timeout_ms / 1000,
         initial_response_timeout_s=config.initial_chunk_timeout_ms / 1000,
         max_retries=config.max_retries,
+        default_protocol_version=pw_transfer.ProtocolVersion.VERSION_TWO,
     )
 
     # Perform the requested transfer actions.
     for action in config.transfer_actions:
-        if action.transfer_type == config_pb2.TransferAction.TransferType.WRITE_TO_SERVER:
+        if (action.transfer_type ==
+                config_pb2.TransferAction.TransferType.WRITE_TO_SERVER):
             try:
                 with open(action.file_path, 'rb') as f:
                     data = f.read()
@@ -85,12 +88,24 @@ def _main() -> int:
 
             try:
                 transfer_manager.write(action.resource_id, data)
+            except pw_transfer.client.Error as e:
+                if e.status != Status(action.expected_status):
+                    _LOG.exception(
+                        "Unexpected error encountered during write transfer")
+                    return 1
             except:
                 _LOG.exception("Transfer (write to server) failed")
                 return 1
-        elif action.transfer_type == config_pb2.TransferAction.TransferType.READ_FROM_SERVER:
+        elif (action.transfer_type ==
+              config_pb2.TransferAction.TransferType.READ_FROM_SERVER):
             try:
                 data = transfer_manager.read(action.resource_id)
+            except pw_transfer.client.Error as e:
+                if e.status != Status(action.expected_status):
+                    _LOG.exception(
+                        "Unexpected error encountered during read transfer")
+                    return 1
+                continue
             except:
                 _LOG.exception("Transfer (read from server) failed")
                 return 1

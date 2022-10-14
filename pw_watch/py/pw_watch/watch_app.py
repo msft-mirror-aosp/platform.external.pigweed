@@ -19,6 +19,7 @@ import logging
 from pathlib import Path
 import re
 import sys
+import time
 from typing import List, NoReturn, Optional
 
 from prompt_toolkit.application import Application
@@ -109,6 +110,9 @@ class WatchApp(PluginMixin):
         self._build_error_count = 0
         self._errors_in_output = False
 
+        self.log_ui_update_frequency = 0.1  # 10 FPS
+        self._last_ui_update_time = time.time()
+
         self.ninja_log_pane = LogPane(application=self,
                                       pane_title='Pigweed Watch')
         self.ninja_log_pane.add_log_handler(_NINJA_LOG, level_name='INFO')
@@ -118,8 +122,9 @@ class WatchApp(PluginMixin):
         self.ninja_log_pane.log_view.log_store.formatter = logging.Formatter(
             '%(message)s')
         self.ninja_log_pane.table_view = False
-        # Enable line wrapping
-        self.ninja_log_pane.toggle_wrap_lines()
+        # Disable line wrapping for improved error visibility.
+        if self.ninja_log_pane.wrap_lines:
+            self.ninja_log_pane.toggle_wrap_lines()
         # Blank right side toolbar text
         self.ninja_log_pane._pane_subtitle = ' '
         self.ninja_log_view = self.ninja_log_pane.log_view
@@ -147,7 +152,8 @@ class WatchApp(PluginMixin):
 
         self.window_manager.add_pane(self.ninja_log_pane)
 
-        self.time_waster = Twenty48Pane(self)
+        self.time_waster = Twenty48Pane(include_resize_handle=True)
+        self.time_waster.application = self
         self.time_waster.show_pane = False
         self.window_manager.add_pane(self.time_waster)
 
@@ -200,7 +206,7 @@ class WatchApp(PluginMixin):
             "Rebuild."
             self.run_build()
 
-        @key_bindings.add('c-g', filter=self.input_box_not_focused())
+        @key_bindings.add('c-t', filter=self.input_box_not_focused())
         def _pass_time(_event):
             "Rebuild."
             self.time_waster.show_pane = not self.time_waster.show_pane
@@ -252,6 +258,16 @@ class WatchApp(PluginMixin):
             plugin_callback_frequency=0.5,
             plugin_logger_name='pw_watch_stdout_checker',
         )
+
+    def logs_redraw(self):
+        emit_time = time.time()
+        # Has enough time passed since last UI redraw due to new logs?
+        if emit_time > self._last_ui_update_time + self.log_ui_update_frequency:
+            # Update last log time
+            self._last_ui_update_time = emit_time
+
+            # Trigger Prompt Toolkit UI redraw.
+            self.redraw_ui()
 
     def jump_to_error(self, backwards: bool = False) -> None:
         if not self.ninja_log_pane.log_view.search_text:
@@ -306,6 +322,9 @@ class WatchApp(PluginMixin):
         self.ninja_log_view.log_store.clear_logs()
         self.ninja_log_view._restart_filtering()  # pylint: disable=protected-access
         self.ninja_log_view.view_mode_changed()
+        # Re-enable follow if needed
+        if not self.ninja_log_view.follow:
+            self.ninja_log_view.toggle_follow()
 
     def run_build(self):
         """Manually trigger a rebuild."""

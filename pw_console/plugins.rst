@@ -19,7 +19,8 @@ Creating new plugins has a few high level steps:
      background tasks.
 
 2. Enable the plugin before pw_console startup by calling ``add_window_plugin``,
-   ``add_top_toolbar`` or ``add_bottom_toolbar``. See the
+   ``add_floating_window_plugin``, ``add_top_toolbar`` or
+   ``add_bottom_toolbar``. See the
    :ref:`module-pw_console-embedding-plugins` section of the
    :ref:`module-pw_console-embedding` for an example.
 
@@ -127,9 +128,15 @@ This is a plugin that demonstrates more complex user interaction by playing a
 game of 2048.
 
 Similar to the ``ClockPane`` the ``Twenty48Pane`` class inherits from
-``WindowPane`` and ``PluginMixin``. Game keybindings are set within the
-``Twenty48Control`` class which is the ``FormattedTextControl`` widget that is
-in focus while playing.
+``PluginMixin`` to manage background tasks. With a few differences:
+
+- Uses ``FloatingWindowPane`` to create a floating window instead of a
+  standard tiled window.
+- Implements the ``get_top_level_menus`` function to create a new ``[2048]``
+  menu in Pigweed Console's own main menu bar.
+- Adds custom game keybindings which are set within the ``Twenty48Control``
+  class. That is the prompt_toolkit ``FormattedTextControl`` widget which
+  receives keyboard input when the game is in focus.
 
 The ``Twenty48Game`` class is separate from the user interface and handles
 managing the game state as well as printing the game board. The
@@ -169,7 +176,7 @@ Code Listing: ``twenty48_pane.py``
    :linenos:
 
 
-.. _WindowPane: https://cs.opensource.google/pigweed/pigweed/+/main:pw_console/py/pw_console/widgets/window_pane.py
-.. _WindowPaneToolbar: https://cs.opensource.google/pigweed/pigweed/+/main:pw_console/py/pw_console/widgets/window_pane_toolbar.py
+.. _WindowPane: https://cs.pigweed.dev/pigweed/+/main:pw_console/py/pw_console/widgets/window_pane.py
+.. _WindowPaneToolbar: https://cs.pigweed.dev/pigweed/+/main:pw_console/py/pw_console/widgets/window_pane_toolbar.py
 .. _calculator.py example: https://github.com/prompt-toolkit/python-prompt-toolkit/blob/3.0.23/examples/full-screen/calculator.py
 .. _TextArea: https://python-prompt-toolkit.readthedocs.io/en/latest/pages/reference.html#prompt_toolkit.widgets.TextArea

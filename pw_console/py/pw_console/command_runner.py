@@ -473,6 +473,8 @@ class CommandRunner:
 
         # Actions that launch new command runners, close_dialog should not run.
         for command_text in [
+                '[File] > Insert Repl Snippet',
+                '[File] > Insert Repl History',
                 '[File] > Open Logger',
         ]:
             if command_text in self.selected_item_text:
@@ -489,6 +491,7 @@ class CommandRunner:
                 '[Help] > ',
                 # This focuses on a save dialog bor.
                 'Save/Export a copy',
+                '[Windows] > Floating ',
         ]:
             if command_text in self.selected_item_text:
                 close_dialog_first = True

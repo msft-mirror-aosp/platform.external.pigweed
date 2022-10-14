@@ -35,11 +35,13 @@ pw_source_set("pw_polyfill") {
 
 config("cstddef_overrides_config") {
   include_dirs = [ "cstddef_public_overrides" ]
+  cflags = [ "-Wno-gnu-include-next" ]
   visibility = [ ":*" ]
 }
 
 config("iterator_overrides_config") {
   include_dirs = [ "iterator_public_overrides" ]
+  cflags = [ "-Wno-gnu-include-next" ]
   visibility = [ ":*" ]
 }
 
@@ -47,8 +49,7 @@ config("standard_library_public") {
   include_dirs = [ "standard_library_public" ]
 }
 
-# Provides <cstddef>'s std::byte.
-# TODO(pwbug/603): Remove this polyfill.
+# Provides <cstddef>'s std::byte for C++14.
 pw_source_set("cstddef") {
   public_configs = [
     ":standard_library_public",
@@ -56,12 +57,11 @@ pw_source_set("cstddef") {
   ]
   public_deps = [ ":standard_library" ]
   remove_public_deps = [ "*" ]
-  inputs = [ "cstddef_public_overrides/cstddef" ]
+  public = [ "cstddef_public_overrides/cstddef" ]
   sources = [ "standard_library_public/pw_polyfill/standard_library/cstddef.h" ]
 }
 
-# Provides <iterator>'s std::data() and std::size().
-# TODO(pwbug/603): Remove this polyfill.
+# Provides <iterator>'s std::data and std::size for C++14.
 pw_source_set("iterator") {
   public_configs = [
     ":standard_library_public",
@@ -69,15 +69,9 @@ pw_source_set("iterator") {
   ]
   public_deps = [ ":standard_library" ]
   remove_public_deps = [ "*" ]
-  inputs = [ "iterator_public_overrides/iterator" ]
+  public = [ "iterator_public_overrides/iterator" ]
   sources =
       [ "standard_library_public/pw_polyfill/standard_library/iterator.h" ]
-}
-
-# Provides <span>.
-pw_source_set("span") {
-  remove_public_deps = [ "*" ]
-  public_deps = [ "$dir_pw_span:polyfill" ]
 }
 
 pw_source_set("standard_library") {

@@ -143,6 +143,7 @@ def generate_package(file_descriptor_proto, proto_package: ProtoNode,
         '#include "pw_rpc/internal/service_client.h"',
         '#include "pw_rpc/method_type.h"',
         '#include "pw_rpc/service.h"',
+        '#include "pw_rpc/service_id.h"',
     ]
     include_lines += gen.includes(file_descriptor_proto.name)
 
@@ -195,6 +196,12 @@ def _generate_service_and_client(gen: CodeGenerator,
         gen.line(f'{service.name()}() = delete;')
         gen.line()
 
+        gen.line('static constexpr ::pw::rpc::ServiceId service_id() {')
+        with gen.indent():
+            gen.line('return ::pw::rpc::internal::WrapServiceId(kServiceId);')
+        gen.line('}')
+        gen.line()
+
         _generate_service(gen, service)
 
         gen.line()
@@ -211,7 +218,16 @@ def _generate_service_and_client(gen: CodeGenerator,
 
 
 def _check_method_name(method: ProtoServiceMethod) -> None:
-    if method.name() in ('Service', 'Client'):
+    # Methods with the same name as their enclosing service will fail
+    # to compile because the generated method will be indistinguishable
+    # from a constructor.
+    if method.name() == method.service().name():
+        raise ValueError(
+            f'Attempted to compile `pw_rpc` for proto with method '
+            f'`{method.name()}` inside a service of the same name. '
+            '`pw_rpc` does not yet support methods with the same name as their '
+            'enclosing service.')
+    if method.name() in ('Service', 'ServiceInfo', 'Client'):
         raise ValueError(
             f'"{method.service().proto_path()}.{method.name()}" is not a '
             f'valid method name! The name "{method.name()}" is reserved '
@@ -228,6 +244,8 @@ def _generate_client(gen: CodeGenerator, service: ProtoService) -> None:
         gen.line(f'constexpr Client({RPC_NAMESPACE}::Client& client,'
                  ' uint32_t channel_id)')
         gen.line('    : ServiceClient(client, channel_id) {}')
+        gen.line()
+        gen.line(f'using ServiceInfo = {service.name()};')
 
         for method in service.methods():
             gen.line()
@@ -273,7 +291,8 @@ def _generate_info(gen: CodeGenerator, namespace: str,
 
             gen.line('}')
 
-            gen.line(f'using GeneratedClient = ::{namespace}'
+            gen.line('using GeneratedClient = '
+                     f'{"::" + namespace if namespace else ""}'
                      f'::pw_rpc::{gen.name()}::{service.name()}::Client;')
 
             gen.method_info_specialization(method)
@@ -300,7 +319,8 @@ def _generate_service(gen: CodeGenerator, service: ProtoService) -> None:
         gen.line()
         gen.line(f'static constexpr const char* name() '
                  f'{{ return "{service.name()}"; }}')
-
+        gen.line()
+        gen.line(f'using ServiceInfo = {service.name()};')
         gen.line()
 
     gen.line(' protected:')

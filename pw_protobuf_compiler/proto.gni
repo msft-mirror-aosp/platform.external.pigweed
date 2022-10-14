@@ -19,6 +19,7 @@ import("$dir_pw_build/input_group.gni")
 import("$dir_pw_build/mirror_tree.gni")
 import("$dir_pw_build/python.gni")
 import("$dir_pw_build/python_action.gni")
+import("$dir_pw_build/python_gn_args.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_third_party/nanopb/nanopb.gni")
 import("toolchain.gni")
@@ -56,7 +57,17 @@ template("_pw_invoke_protoc") {
       script =
           "$dir_pw_protobuf_compiler/py/pw_protobuf_compiler/generate_protos.py"
 
-      python_deps = [ "$dir_pw_protobuf_compiler/py" ]
+      # NOTE: A python_dep on "$dir_pw_protobuf_compiler/py" should not be
+      # included building that Python package which requires the build venv to
+      # be created. Instead, use python_metadata_deps to only add
+      # pw_protobuf_compiler to the PYTHONPATH.
+      python_deps = []
+
+      # Add pw_protobuf_compiler and its dependencies to the PYTHONPATH when
+      # running this action.
+      python_metadata_deps = [ "$dir_pw_protobuf_compiler/py" ]
+
+      python_deps = []
       if (defined(invoker.python_deps)) {
         python_deps += invoker.python_deps
       }
@@ -188,6 +199,7 @@ template("_pw_pwpb_proto_library") {
     deps = [ ":$target_name._gen($pw_protobuf_compiler_TOOLCHAIN)" ]
     public_deps = [
                     "$dir_pw_containers:vector",
+                    "$dir_pw_string:string",
                     dir_pw_assert,
                     dir_pw_function,
                     dir_pw_preprocessor,
@@ -345,7 +357,6 @@ template("_pw_python_proto_library") {
   _pw_invoke_protoc(target_name) {
     forward_variables_from(invoker, "*", _forwarded_vars + [ "python_package" ])
     language = "python"
-    python_deps = [ "$dir_pw_protobuf_compiler:protobuf_requirements" ]
 
     if (defined(invoker.python_package)) {
       python_package = invoker.python_package
@@ -371,9 +382,17 @@ template("_pw_python_proto_library") {
     # Create a Python package with the generated source files.
     pw_python_package(target_name) {
       forward_variables_from(invoker, _forwarded_vars)
+      _target_dir =
+          get_path_info(get_label_info(":${invoker.base_target}", "dir"),
+                        "abspath")
       generate_setup = {
         metadata = {
-          name = invoker._package_dir
+          # Default to a package name that include the full source path to avoid
+          # conflicts with other packages when collecting all the .whl files
+          # with pw_python_wheels().
+          name =
+              string_replace(string_replace(_target_dir, "//", ""), "/", "_") +
+              "_" + invoker.base_target
 
           # The package name should match where the __init__.py lives. If
           # module_as_package is specified use that for the Python package name.
@@ -457,7 +476,7 @@ template("pw_proto_library") {
     _prefix = ""
   }
 
-  _package_dir = ""
+  _root_dir_name = ""
   _source_names = []
 
   # Determine the Python package name to use for these protos. If there is no
@@ -466,10 +485,10 @@ template("pw_proto_library") {
     _path_components = []
     _path_components = string_split(source, "/")
 
-    if (_package_dir == "") {
-      _package_dir = _path_components[0]
+    if (_root_dir_name == "") {
+      _root_dir_name = _path_components[0]
     } else {
-      assert(_prefix != "" || _path_components[0] == _package_dir,
+      assert(_prefix != "" || _path_components[0] == _root_dir_name,
              "Unless 'prefix' is supplied, all .proto sources in a " +
                  "pw_proto_library must be in the same directory tree")
     }
@@ -481,30 +500,13 @@ template("pw_proto_library") {
   # If the 'prefix' was supplied, use that for the package directory.
   if (_prefix != "") {
     _prefix_path_components = string_split(_prefix, "/")
-    _package_dir = _prefix_path_components[0]
+    _root_dir_name = _prefix_path_components[0]
   }
 
-  assert(_package_dir != "" && _package_dir != "." && _package_dir != "..",
-         "Either a 'prefix' must be specified or all sources must be nested " +
-             "under a common directory")
-
-  # Define an action that is never executed to prevent duplicate proto packages
-  # from being declared. The target name and the output file include only the
-  # package directory, so different targets that use the same proto package name
-  # will conflict.
-  action("pw_proto_library.$_package_dir") {
-    script = "$dir_pw_build/py/pw_build/nop.py"
-    visibility = []
-
-    # Place an error message in the output path (which is never created). If the
-    # package name conflicts occur in different BUILD.gn files, this results in
-    # an otherwise cryptic Ninja error, rather than a GN error.
-    outputs = [ "$root_out_dir/ " +
-                "ERROR - Multiple pw_proto_library targets create the " +
-                "'$_package_dir' package. Change the package name by setting " +
-                "the \"prefix\" arg or move the protos to a different " +
-                "directory, then re-run gn gen." ]
-  }
+  assert(
+      _root_dir_name != "" && _root_dir_name != "." && _root_dir_name != "..",
+      "Either a 'prefix' must be specified or all sources must be nested " +
+          "under a common directory")
 
   if (defined(invoker.deps)) {
     _deps = invoker.deps
@@ -530,7 +532,7 @@ template("pw_proto_library") {
       sources += [ "$compile_dir/$_prefix/$file" ]
     }
 
-    package = _package_dir
+    package = _root_dir_name
   }
 
   # For each proto target, create a file which collects the base directories of

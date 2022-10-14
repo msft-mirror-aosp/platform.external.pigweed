@@ -36,7 +36,7 @@ void TransferThread::SimulateTimeout(EventType type, uint32_t session_id) {
 
   next_event_.type = type;
   next_event_.chunk = {};
-  next_event_.chunk.session_id = session_id;
+  next_event_.chunk.context_identifier = session_id;
 
   event_notification_.release();
 
@@ -99,8 +99,10 @@ chrono::SystemClock::time_point TransferThread::GetNextTransferTimeout() const {
 }
 
 void TransferThread::StartTransfer(TransferType type,
+                                   ProtocolVersion version,
                                    uint32_t session_id,
                                    uint32_t resource_id,
+                                   ConstByteSpan raw_chunk,
                                    stream::Stream* stream,
                                    const TransferParameters& max_parameters,
                                    Function<void(Status)>&& on_completion,
@@ -113,14 +115,22 @@ void TransferThread::StartTransfer(TransferType type,
 
   next_event_.type = is_client_transfer ? EventType::kNewClientTransfer
                                         : EventType::kNewServerTransfer;
+
+  if (!raw_chunk.empty()) {
+    std::memcpy(chunk_buffer_.data(), raw_chunk.data(), raw_chunk.size());
+  }
+
   next_event_.new_transfer = {
       .type = type,
+      .protocol_version = version,
       .session_id = session_id,
       .resource_id = resource_id,
       .max_parameters = &max_parameters,
       .timeout = timeout,
       .max_retries = max_retries,
       .transfer_thread = this,
+      .raw_chunk_data = chunk_buffer_.data(),
+      .raw_chunk_size = raw_chunk.size(),
   };
 
   staged_on_completion_ = std::move(on_completion);
@@ -146,7 +156,11 @@ void TransferThread::StartTransfer(TransferType type,
       // No handler exists for the transfer: return a NOT_FOUND.
       next_event_.type = EventType::kSendStatusChunk;
       next_event_.send_status_chunk = {
-          .session_id = session_id,
+          // Identify the status chunk using the requested resource ID rather
+          // than the session ID. In legacy, the two are the same, whereas in
+          // v2+ the client has not yet been assigned a session.
+          .session_id = resource_id,
+          .protocol_version = version,
           .status = Status::NotFound().code(),
           .stream = type == TransferType::kTransmit
                         ? TransferStream::kServerRead
@@ -165,9 +179,9 @@ void TransferThread::ProcessChunk(EventType type, ConstByteSpan chunk) {
   PW_CHECK(chunk.size() <= chunk_buffer_.size(),
            "Transfer received a larger chunk than it can handle.");
 
-  Result<uint32_t> session_id = Chunk::ExtractSessionId(chunk);
-  if (!session_id.ok()) {
-    PW_LOG_ERROR("Received a malformed chunk without a session ID");
+  Result<uint32_t> identifier = Chunk::ExtractIdentifier(chunk);
+  if (!identifier.ok()) {
+    PW_LOG_ERROR("Received a malformed chunk without a context identifier");
     return;
   }
 
@@ -178,7 +192,7 @@ void TransferThread::ProcessChunk(EventType type, ConstByteSpan chunk) {
 
   next_event_.type = type;
   next_event_.chunk = {
-      .session_id = *session_id,
+      .context_identifier = *identifier,
       .data = chunk_buffer_.data(),
       .size = chunk.size(),
   };
@@ -227,8 +241,7 @@ void TransferThread::SetServerStream(TransferStream type,
   event_notification_.release();
 }
 
-void TransferThread::TransferHandlerEvent(EventType type,
-                                          internal::Handler& handler) {
+void TransferThread::TransferHandlerEvent(EventType type, Handler& handler) {
   // Block until the last event has been processed.
   next_event_ownership_.acquire();
 
@@ -247,10 +260,10 @@ void TransferThread::HandleEvent(const internal::Event& event) {
     case EventType::kTerminate:
       // Terminate server contexts.
       for (ServerContext& server_context : server_transfers_) {
-        server_context.HandleEvent({
+        server_context.HandleEvent(Event{
             .type = EventType::kServerEndTransfer,
             .end_transfer =
-                {
+                EndTransferEvent{
                     .session_id = server_context.session_id(),
                     .status = Status::Aborted().code(),
                     .send_status_chunk = false,
@@ -260,10 +273,10 @@ void TransferThread::HandleEvent(const internal::Event& event) {
 
       // Terminate client contexts.
       for (ClientContext& client_context : client_transfers_) {
-        client_context.HandleEvent({
+        client_context.HandleEvent(Event{
             .type = EventType::kClientEndTransfer,
             .end_transfer =
-                {
+                EndTransferEvent{
                     .session_id = client_context.session_id(),
                     .status = Status::Aborted().code(),
                     .send_status_chunk = false,
@@ -309,10 +322,10 @@ void TransferThread::HandleEvent(const internal::Event& event) {
     case EventType::kRemoveTransferHandler:
       for (ServerContext& server_context : server_transfers_) {
         if (server_context.handler() == event.remove_transfer_handler) {
-          server_context.HandleEvent({
+          server_context.HandleEvent(Event{
               .type = EventType::kServerEndTransfer,
               .end_transfer =
-                  {
+                  EndTransferEvent{
                       .session_id = server_context.session_id(),
                       .status = Status::Aborted().code(),
                       .send_status_chunk = false,
@@ -323,20 +336,46 @@ void TransferThread::HandleEvent(const internal::Event& event) {
       handlers_.remove(*event.remove_transfer_handler);
       return;
 
+    case EventType::kNewClientTransfer:
+    case EventType::kNewServerTransfer:
+    case EventType::kClientChunk:
+    case EventType::kServerChunk:
+    case EventType::kClientTimeout:
+    case EventType::kServerTimeout:
+    case EventType::kClientEndTransfer:
+    case EventType::kServerEndTransfer:
     default:
       // Other events are handled by individual transfer contexts.
       break;
   }
 
-  if (Context* ctx = FindContextForEvent(event); ctx != nullptr) {
+  Context* ctx = FindContextForEvent(event);
+  if (ctx == nullptr) {
+    // No context was found. For new transfer events, report a
+    // RESOURCE_EXHAUSTED error with starting the transfer.
     if (event.type == EventType::kNewClientTransfer) {
-      // TODO(frolv): This is terrible.
-      static_cast<ClientContext*>(ctx)->set_on_completion(
-          std::move(staged_on_completion_));
+      // On the client, invoke the completion callback directly.
+      staged_on_completion_(Status::ResourceExhausted());
+    } else if (event.type == EventType::kNewServerTransfer) {
+      // On the server, send a status chunk back to the client.
+      SendStatusChunk(
+          {.session_id = event.new_transfer.resource_id,
+           .protocol_version = event.new_transfer.protocol_version,
+           .status = Status::ResourceExhausted().code(),
+           .stream = event.new_transfer.type == TransferType::kTransmit
+                         ? TransferStream::kServerRead
+                         : TransferStream::kServerWrite});
     }
-
-    ctx->HandleEvent(event);
+    return;
   }
+
+  if (event.type == EventType::kNewClientTransfer) {
+    // TODO(frolv): This is terrible.
+    static_cast<ClientContext*>(ctx)->set_on_completion(
+        std::move(staged_on_completion_));
+  }
+
+  ctx->HandleEvent(event);
 }
 
 Context* TransferThread::FindContextForEvent(
@@ -348,14 +387,18 @@ Context* TransferThread::FindContextForEvent(
       return FindNewTransfer(server_transfers_, event.new_transfer.session_id);
 
     case EventType::kClientChunk:
-      return FindActiveTransfer(client_transfers_, event.chunk.session_id);
+      return FindActiveTransfer(client_transfers_,
+                                event.chunk.context_identifier);
     case EventType::kServerChunk:
-      return FindActiveTransfer(server_transfers_, event.chunk.session_id);
+      return FindActiveTransfer(server_transfers_,
+                                event.chunk.context_identifier);
 
     case EventType::kClientTimeout:  // Manually triggered client timeout
-      return FindActiveTransfer(client_transfers_, event.chunk.session_id);
+      return FindActiveTransfer(client_transfers_,
+                                event.chunk.context_identifier);
     case EventType::kServerTimeout:  // Manually triggered server timeout
-      return FindActiveTransfer(server_transfers_, event.chunk.session_id);
+      return FindActiveTransfer(server_transfers_,
+                                event.chunk.context_identifier);
 
     case EventType::kClientEndTransfer:
       return FindActiveTransfer(client_transfers_,
@@ -364,6 +407,11 @@ Context* TransferThread::FindContextForEvent(
       return FindActiveTransfer(server_transfers_,
                                 event.end_transfer.session_id);
 
+    case EventType::kSendStatusChunk:
+    case EventType::kSetTransferStream:
+    case EventType::kAddTransferHandler:
+    case EventType::kRemoveTransferHandler:
+    case EventType::kTerminate:
     default:
       return nullptr;
   }
@@ -374,7 +422,7 @@ void TransferThread::SendStatusChunk(
   rpc::Writer& destination = stream_for(event.stream);
 
   Result<ConstByteSpan> result =
-      Chunk::Final(ProtocolVersion::kLegacy, event.session_id, event.status)
+      Chunk::Final(event.protocol_version, event.session_id, event.status)
           .Encode(chunk_buffer_);
 
   if (!result.ok()) {

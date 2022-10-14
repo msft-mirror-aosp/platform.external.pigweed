@@ -68,13 +68,6 @@ RPC function. The RPC is considered active until the server sends a response
 packet with the RPC's status. The client may terminate an ongoing RPC by
 cancelling it.
 
-``pw_rpc`` supports only one RPC invocation per service/method/channel. If a
-client calls an ongoing RPC on the same channel, the server cancels the ongoing
-call and reinvokes the RPC with the new request. This applies to unary and
-streaming RPCs, though the server may not have an opportunity to cancel a
-synchronously handled unary RPC before it completes. The same RPC may be invoked
-multiple times simultaneously if the invocations are on different channels.
-
 Status codes
 ------------
 ``pw_rpc`` call objects (``ClientReaderWriter``, ``ServerReaderWriter``, etc.)
@@ -291,7 +284,7 @@ channel output and the example service.
   // pw_rpc server to use HDLC over UART; projects not using UART and HDLC must
   // adapt this as necessary.
   pw::stream::SysIoWriter writer;
-  pw::rpc::RpcChannelOutput<kMaxTransmissionUnit> hdlc_channel_output(
+  pw::rpc::FixedMtuChannelOutput<kMaxTransmissionUnit> hdlc_channel_output(
       writer, pw::hdlc::kDefaultRpcAddress, "HDLC output");
 
   pw::rpc::Channel channels[] = {
@@ -316,8 +309,7 @@ channel output and the example service.
     std::array<std::byte, kMaxTransmissionUnit> input_buffer;
 
     PW_LOG_INFO("Starting pw_rpc server");
-    pw::hdlc::ReadAndProcessPackets(
-        server, hdlc_channel_output, input_buffer);
+    pw::hdlc::ReadAndProcessPackets(server, input_buffer);
   }
 
 Channels
@@ -389,6 +381,10 @@ user-defined RPCs are implemented.
 
 ``pw_rpc`` supports multiple protobuf libraries, and the generated code API
 depends on which is used.
+
+Services must be registered with a server in order to call their methods.
+Services may later be unregistered, which aborts calls for methods in that
+service and prevents future calls to them, until the service is re-registered.
 
 .. _module-pw_rpc-protobuf-library-apis:
 
@@ -489,11 +485,47 @@ The C++ service implementation class may append "Service" to the name.
     void List(ConstByteSpan request, RawServerWriter& writer);
   };
 
-  }
+  }  // namespace pw::file
 
 For upstream Pigweed services, this naming style is a requirement. Note that
 some services created before this was established may use non-compliant
 names. For Pigweed users, this naming style is a suggestion.
+
+C++ payload sizing limitations
+===============================
+The individual size of each sent RPC request or response is limited by
+``pw_rpc``'s ``PW_RPC_ENCODING_BUFFER_SIZE_BYTES`` configuration option when
+using Pigweed's C++ implementation. While multiple RPC messages can be enqueued
+(as permitted by the underlying transport), if a single individual sent message
+exceeds the limitations of the statically allocated encode buffer, the packet
+will fail to encode and be dropped.
+
+This applies to all C++ RPC service implementations (nanopb, raw, and pwpb),
+so it's important to ensure request and response message sizes do not exceed
+this limitation.
+
+As ``pw_rpc`` has some additional encoding overhead, a helper,
+``pw::rpc::MaxSafePayloadSize()`` is provided to expose the practical max RPC
+message payload size.
+
+.. code-block:: cpp
+
+  #include "pw_file/file.raw_rpc.pb.h"
+  #include "pw_rpc/channel.h"
+
+  namespace pw::file {
+
+  class FileSystemService : public pw_rpc::raw::FileSystem::Service<FileSystemService> {
+   public:
+    void List(ConstByteSpan request, RawServerWriter& writer);
+
+   private:
+    // Allocate a buffer for building proto responses.
+    static constexpr size_t kEncodeBufferSize = pw::rpc::MaxSafePayloadSize();
+    std::array<std::byte, kEncodeBufferSize> encode_buffer_;
+  };
+
+  }  // namespace pw::file
 
 Protocol description
 ====================
@@ -808,6 +840,14 @@ client, the client's ``ProcessPacket`` function is called with the packet data.
   void ProcessRpcPacket(ConstByteSpan packet) {
     my_client.ProcessPacket(packet);
   }
+
+Note that client processing such as callbacks will be invoked within
+the body of ``ProcessPacket``.
+
+If certain packets need to be filtered out, or if certain client processing
+needs to be invoked from a specific thread or context, the ``PacketMeta`` class
+can be used to determine which service or channel a packet is targeting. After
+filtering, ``ProcessPacket`` can be called from the appropriate environment.
 
 .. _module-pw_rpc-making-calls:
 
@@ -1399,7 +1439,7 @@ interface.
     returns :cpp:member:`kUnlimited`, which indicates that there is no MTU
     limit.
 
-  .. cpp:function:: virtual pw::Status Send(std::span<std::byte> packet)
+  .. cpp:function:: virtual pw::Status Send(span<std::byte> packet)
 
     Sends an encoded RPC packet. Returns OK if further packets may be sent, even
     if the current packet could not be sent. Returns any other status if the

@@ -45,7 +45,7 @@ pw_cc_library(
     ],
 )
 
-# TODO(pwbug/507): Build this as a cc_binary and use it in integration tests.
+# TODO(b/242059613): Build this as a cc_binary and use it in integration tests.
 filegroup(
     name = "test_rpc_server",
     srcs = ["test_rpc_server.cc"],
@@ -73,6 +73,7 @@ pw_cc_library(
         "client_call.cc",
         "endpoint.cc",
         "packet.cc",
+        "packet_meta.cc",
         "public/pw_rpc/internal/call.h",
         "public/pw_rpc/internal/call_context.h",
         "public/pw_rpc/internal/channel.h",
@@ -100,9 +101,12 @@ pw_cc_library(
         "public/pw_rpc/channel.h",
         "public/pw_rpc/client.h",
         "public/pw_rpc/internal/service_client.h",
+        "public/pw_rpc/method_id.h",
         "public/pw_rpc/method_info.h",
+        "public/pw_rpc/packet_meta.h",
         "public/pw_rpc/server.h",
         "public/pw_rpc/service.h",
+        "public/pw_rpc/service_id.h",
     ],
     includes = ["public"],
     deps = [
@@ -238,7 +242,7 @@ pw_cc_library(
     ],
 )
 
-# TODO(pwbug/507): Add the client integration test to the build.
+# TODO(b/242059613): Add the client integration test to the build.
 filegroup(
     name = "client_integration_test",
     srcs = ["client_integration_test.cc"],
@@ -277,6 +281,16 @@ pw_cc_test(
     name = "packet_test",
     srcs = [
         "packet_test.cc",
+    ],
+    deps = [
+        ":pw_rpc",
+    ],
+)
+
+pw_cc_test(
+    name = "packet_meta_test",
+    srcs = [
+        "packet_meta_test.cc",
     ],
     deps = [
         ":pw_rpc",
@@ -323,7 +337,7 @@ pw_cc_test(
     deps = [":internal_test_utils"],
 )
 
-# TODO(pwbug/628): Add test_helpers_test when it is possible to use .options
+# TODO(b/234874064): Add test_helpers_test when it is possible to use .options
 # in bazel build.
 filegroup(
     name = "test_helpers_test",
@@ -353,7 +367,10 @@ pw_proto_library(
 
 proto_library(
     name = "pw_rpc_test_proto",
-    srcs = ["pw_rpc_test_protos/test.proto"],
+    srcs = [
+        "pw_rpc_test_protos/no_package.proto",
+        "pw_rpc_test_protos/test.proto",
+    ],
     strip_import_prefix = "//pw_rpc",
 )
 
@@ -415,6 +432,11 @@ proto_library(
     srcs = [
         "echo.proto",
     ],
+)
+
+py_proto_library(
+    name = "echo_py_pb2",
+    srcs = ["echo.proto"],
 )
 
 pw_proto_library(

@@ -41,33 +41,30 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import copy
 import dataclasses
 import enum
 from inspect import Parameter, signature
 import itertools
+import json
 import logging
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
 from typing import (Callable, Collection, Dict, Iterable, Iterator, List,
-                    NamedTuple, Optional, Pattern, Sequence, Set, Tuple, Union)
+                    Optional, Pattern, Sequence, Set, Tuple, Union)
 
+import pw_cli.color
 import pw_cli.env
 from pw_presubmit import git_repo, tools
 from pw_presubmit.tools import plural
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
-color_red = tools.make_color(31)
-color_bold_red = tools.make_color(31, 1)
-color_black_on_red = tools.make_color(30, 41)
-color_yellow = tools.make_color(33, 1)
-color_green = tools.make_color(32)
-color_black_on_green = tools.make_color(30, 42)
-color_aqua = tools.make_color(36)
-color_bold_white = tools.make_color(37, 1)
+_COLOR = pw_cli.color.colors()
 
 _SUMMARY_BOX = '══╦╗ ║║══╩╝'
 _CHECK_UPPER = '━━━┓       '
@@ -104,8 +101,15 @@ def _box(style, left, middle, right, box=tools.make_box('><>')) -> str:
 
 class PresubmitFailure(Exception):
     """Optional exception to use for presubmit failures."""
-    def __init__(self, description: str = '', path=None):
-        super().__init__(f'{path}: {description}' if path else description)
+    def __init__(self,
+                 description: str = '',
+                 path: Path = None,
+                 line: int = None):
+        line_part: str = ''
+        if line is not None:
+            line_part = f'{line}:'
+        super().__init__(
+            f'{path}:{line_part} {description}' if path else description)
 
 
 class _Result(enum.Enum):
@@ -116,11 +120,11 @@ class _Result(enum.Enum):
 
     def colorized(self, width: int, invert: bool = False) -> str:
         if self is _Result.PASS:
-            color = color_black_on_green if invert else color_green
+            color = _COLOR.black_on_green if invert else _COLOR.green
         elif self is _Result.FAIL:
-            color = color_black_on_red if invert else color_red
+            color = _COLOR.black_on_red if invert else _COLOR.red
         elif self is _Result.CANCEL:
-            color = color_yellow
+            color = _COLOR.yellow
         else:
             color = lambda value: value
 
@@ -132,7 +136,15 @@ class Program(collections.abc.Sequence):
     """A sequence of presubmit checks; basically a tuple with a name."""
     def __init__(self, name: str, steps: Iterable[Callable]):
         self.name = name
-        self._steps = tuple({s: None for s in tools.flatten(steps)})
+
+        def ensure_check(step):
+            if isinstance(step, Check):
+                return step
+            return Check(step)
+
+        self._steps: tuple[Check, ...] = tuple(
+            {ensure_check(s): None
+             for s in tools.flatten(steps)})
 
     def __getitem__(self, i):
         return self._steps[i]
@@ -164,7 +176,7 @@ class Programs(collections.abc.Mapping):
         }
 
     def all_steps(self) -> Dict[str, Callable]:
-        return {c.__name__: c for c in itertools.chain(*self.values())}
+        return {c.name: c for c in itertools.chain(*self.values())}
 
     def __getitem__(self, item: str) -> Program:
         return self._programs[item]
@@ -176,7 +188,46 @@ class Programs(collections.abc.Mapping):
         return len(self._programs)
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass
+class LuciContext:
+    """LUCI-specific information about the environment."""
+    buildbucket_id: int
+    build_number: int
+    project: str
+    bucket: str
+    builder: str
+    swarming_task_id: str
+
+    @staticmethod
+    def create_from_environment():
+        luci_vars = [
+            'BUILDBUCKET_ID',
+            'BUILDBUCKET_NAME',
+            'BUILD_NUMBER',
+            'SWARMING_TASK_ID',
+        ]
+        if any(x for x in luci_vars if x not in os.environ):
+            return None
+
+        project, bucket, builder = os.environ['BUILDBUCKET_NAME'].split(':')
+
+        bbid: int = 0
+        try:
+            bbid = int(os.environ['BUILDBUCKET_ID'])
+        except ValueError:
+            pass
+
+        return LuciContext(
+            buildbucket_id=bbid,
+            build_number=int(os.environ['BUILD_NUMBER']),
+            project=project,
+            bucket=bucket,
+            builder=builder,
+            swarming_task_id=os.environ['SWARMING_TASK_ID'],
+        )
+
+
+@dataclasses.dataclass
 class PresubmitContext:
     """Context passed into presubmit checks."""
     root: Path
@@ -184,27 +235,97 @@ class PresubmitContext:
     output_dir: Path
     paths: Tuple[Path, ...]
     package_root: Path
+    luci: Optional[LuciContext]
+    override_gn_args: Dict[str, str]
+    num_jobs: Optional[int] = None
+    continue_after_build_error: bool = False
+    _failed: bool = False
 
-    def relative_paths(self, start: Optional[Path] = None) -> Tuple[Path, ...]:
-        return tuple(
-            tools.relative_paths(self.paths, start if start else self.root))
+    @property
+    def failed(self) -> bool:
+        return self._failed
 
-    def paths_by_repo(self) -> Dict[Path, List[Path]]:
-        repos = collections.defaultdict(list)
+    def fail(self, description: str, path: Path = None, line: int = None):
+        """Add a failure to this presubmit step.
 
-        for path in self.paths:
-            repos[git_repo.root(path)].append(path)
+        If this is called at least once the step fails, but not immediately—the
+        check is free to continue and possibly call this method again.
+        """
+        _LOG.warning('%s', PresubmitFailure(description, path, line))
+        self._failed = True
 
-        return repos
 
+class FileFilter:
+    """Allows checking if a path matches a series of filters.
 
-class _Filter(NamedTuple):
-    endswith: Tuple[str, ...] = ('', )
-    exclude: Tuple[Pattern[str], ...] = ()
+    Positive filters (e.g. the file name matches a regex) and negative filters
+    (path does not match a regular expression) may be applied.
+    """
 
-    def matches(self, path: str) -> bool:
-        return (any(path.endswith(end) for end in self.endswith)
-                and not any(exp.search(path) for exp in self.exclude))
+    _StrOrPattern = Union[Pattern, str]
+
+    def __init__(
+        self,
+        *,
+        exclude: Iterable[_StrOrPattern] = (),
+        endswith: Iterable[str] = (),
+        name: Iterable[_StrOrPattern] = (),
+        suffix: Iterable[str] = ()
+    ) -> None:
+        """Creates a FileFilter with the provided filters.
+
+        Args:
+            endswith: True if the end of the path is equal to any of the passed
+                      strings
+            exclude: If any of the passed regular expresion match return False.
+                     This overrides and other matches.
+            name: Regexs to match with file names(pathlib.Path.name). True if
+                  the resulting regex matches the entire file name.
+            suffix: True if final suffix (as determined by pathlib.Path) is
+                    matched by any of the passed str.
+        """
+        self.exclude = tuple(re.compile(i) for i in exclude)
+
+        self.endswith = tuple(endswith)
+        self.name = tuple(re.compile(i) for i in name)
+        self.suffix = tuple(suffix)
+
+    def matches(self, path: Union[str, Path]) -> bool:
+        """Returns true if the path matches any filter but not an exclude.
+
+        If no positive filters are specified, any paths that do not match a
+        negative filter are considered to match.
+
+        If 'path' is a Path object it is rendered as a posix path (i.e.
+        using "/" as the path seperator) before testing with 'exclude' and
+        'endswith'.
+        """
+
+        posix_path = path.as_posix() if isinstance(path, Path) else path
+        if any(bool(exp.search(posix_path)) for exp in self.exclude):
+            return False
+
+        # If there are no positive filters set, accept all paths.
+        no_filters = not self.endswith and not self.name and not self.suffix
+
+        path_obj = Path(path)
+        return (no_filters or path_obj.suffix in self.suffix
+                or any(regex.fullmatch(path_obj.name) for regex in self.name)
+                or any(posix_path.endswith(end) for end in self.endswith))
+
+    def apply_to_check(self, always_run: bool = False) -> Callable:
+        def wrapper(func: Callable) -> Check:
+            if isinstance(func, Check):
+                clone = copy.copy(func)
+                clone.filter = self
+                clone.always_run = clone.always_run or always_run
+                return clone
+
+            return Check(check_function=func,
+                         path_filter=self,
+                         always_run=always_run)
+
+        return wrapper
 
 
 def _print_ui(*args) -> None:
@@ -216,7 +337,8 @@ class Presubmit:
     """Runs a series of presubmit checks on a list of files."""
     def __init__(self, root: Path, repos: Sequence[Path],
                  output_directory: Path, paths: Sequence[Path],
-                 package_root: Path):
+                 package_root: Path, override_gn_args: Dict[str, str],
+                 continue_after_build_error: bool):
         self._root = root.resolve()
         self._repos = tuple(repos)
         self._output_directory = output_directory.resolve()
@@ -224,6 +346,8 @@ class Presubmit:
         self._relative_paths = tuple(
             tools.relative_paths(self._paths, self._root))
         self._package_root = package_root.resolve()
+        self._override_gn_args = override_gn_args
+        self._continue_after_build_error = continue_after_build_error
 
     def run(self, program: Program, keep_going: bool = False) -> bool:
         """Executes a series of presubmit checks on the paths."""
@@ -242,7 +366,7 @@ class Presubmit:
         _print_ui()
 
         if not self._paths:
-            _print_ui(color_yellow('No files are being checked!'))
+            _print_ui(_COLOR.yellow('No files are being checked!'))
 
         _LOG.debug('Checks:\n%s', '\n'.join(c.name for c, _ in checks))
 
@@ -257,7 +381,7 @@ class Presubmit:
             program: Sequence[Callable]) -> List[Tuple[Check, Sequence[Path]]]:
         """Returns list of (check, paths) for checks that should run."""
         checks = [c if isinstance(c, Check) else Check(c) for c in program]
-        filter_to_checks: Dict[_Filter,
+        filter_to_checks: Dict[FileFilter,
                                List[Check]] = collections.defaultdict(list)
 
         for check in checks:
@@ -267,7 +391,7 @@ class Presubmit:
         return [(c, check_to_paths[c]) for c in checks if c in check_to_paths]
 
     def _map_checks_to_paths(
-        self, filter_to_checks: Dict[_Filter, List[Check]]
+        self, filter_to_checks: Dict[FileFilter, List[Check]]
     ) -> Dict[Check, Sequence[Path]]:
         checks_to_paths: Dict[Check, Sequence[Path]] = {}
 
@@ -310,6 +434,11 @@ class Presubmit:
                 f'{total} checks on {plural(self._paths, "file")}: {summary}',
                 _format_time(time_s)))
 
+    def _create_presubmit_context(  # pylint: disable=no-self-use
+            self, **kwargs):
+        """Create a PresubmitContext. Override if needed in subclasses."""
+        return PresubmitContext(**kwargs)
+
     @contextlib.contextmanager
     def _context(self, name: str, paths: Tuple[Path, ...]):
         # There are many characters banned from filenames on Windows. To
@@ -326,12 +455,15 @@ class Presubmit:
         try:
             _LOG.addHandler(handler)
 
-            yield PresubmitContext(
+            yield self._create_presubmit_context(
                 root=self._root,
                 repos=self._repos,
                 output_dir=output_directory,
                 paths=paths,
                 package_root=self._package_root,
+                override_gn_args=self._override_gn_args,
+                continue_after_build_error=self._continue_after_build_error,
+                luci=LuciContext.create_from_environment(),
             )
 
         finally:
@@ -389,7 +521,8 @@ def _process_pathspecs(repos: Iterable[Path],
     return pathspecs_by_repo
 
 
-def run(program: Sequence[Callable],
+def run(  # pylint: disable=too-many-arguments
+        program: Sequence[Callable],
         root: Path,
         repos: Collection[Path] = (),
         base: Optional[str] = None,
@@ -398,7 +531,10 @@ def run(program: Sequence[Callable],
         output_directory: Optional[Path] = None,
         package_root: Path = None,
         only_list_steps: bool = False,
-        keep_going: bool = False) -> bool:
+        override_gn_args: Sequence[Tuple[str, str]] = (),
+        keep_going: bool = False,
+        continue_after_build_error: bool = False,
+        presubmit_class: type = Presubmit) -> bool:
     """Lists files in the current Git repo and runs a Presubmit with them.
 
     This changes the directory to the root of the Git repository after listing
@@ -422,17 +558,26 @@ def run(program: Sequence[Callable],
         output_directory: where to place output files
         package_root: where to place package files
         only_list_steps: print step names instead of running them
-        keep_going: whether to continue running checks if an error occurs
+        override_gn_args: additional GN args to set on steps
+        keep_going: continue running presubmit steps after a step fails
+        continue_after_build_error: continue building if a build step fails
+        presubmit_class: class to use to run Presubmits, should inherit from
+            Presubmit class above
 
     Returns:
         True if all presubmit checks succeeded
     """
     repos = [repo.resolve() for repo in repos]
 
+    non_empty_repos = []
     for repo in repos:
-        if git_repo.root(repo) != repo:
-            raise ValueError(f'{repo} is not the root of a Git repo; '
-                             'presubmit checks must be run from a Git repo')
+        if list(repo.iterdir()):
+            non_empty_repos.append(repo)
+            if git_repo.root(repo) != repo:
+                raise ValueError(
+                    f'{repo} is not the root of a Git repo; '
+                    'presubmit checks must be run from a Git repo')
+    repos = non_empty_repos
 
     pathspecs_by_repo = _process_pathspecs(repos, paths)
 
@@ -453,17 +598,22 @@ def run(program: Sequence[Callable],
     if package_root is None:
         package_root = output_directory / 'packages'
 
-    presubmit = Presubmit(
+    presubmit = presubmit_class(
         root=root,
         repos=repos,
         output_directory=output_directory,
         paths=files,
         package_root=package_root,
+        override_gn_args=dict(override_gn_args or {}),
+        continue_after_build_error=continue_after_build_error,
     )
 
     if only_list_steps:
+        steps = []
         for check, _ in presubmit.apply_filters(program):
-            print(check.name)
+            steps.append({'name': check.name})
+        json.dump(steps, sys.stdout, indent=2)
+        sys.stdout.write('\n')
         return True
 
     if not isinstance(program, Program):
@@ -484,35 +634,37 @@ class Check:
     """
     def __init__(self,
                  check_function: Callable,
-                 path_filter: _Filter = _Filter(),
-                 always_run: bool = True):
+                 path_filter: FileFilter = FileFilter(),
+                 always_run: bool = True,
+                 name: str = None) -> None:
         _ensure_is_valid_presubmit_check_function(check_function)
 
-        self._check: Callable = check_function
-        self.filter: _Filter = path_filter
-        self.always_run: bool = always_run
-
         # Since Check wraps a presubmit function, adopt that function's name.
-        self.__name__ = self._check.__name__
+        self.name: str
+        if name:
+            self.name = name
+        elif isinstance(check_function, Check):
+            self.name = check_function.name
+        else:
+            self.name = check_function.__name__
+
+        self._check: Callable = check_function
+        self.filter = path_filter
+        self.always_run: bool = always_run
 
     def with_filter(
         self,
         *,
-        endswith: Iterable[str] = '',
+        endswith: Iterable[str] = (),
         exclude: Iterable[Union[Pattern[str], str]] = ()
     ) -> Check:
-        endswith = self.filter.endswith
-        if endswith:
-            endswith = endswith + _make_str_tuple(endswith)
-        exclude = self.filter.exclude + tuple(re.compile(e) for e in exclude)
+        return self.with_file_filter(
+            FileFilter(endswith=_make_str_tuple(endswith), exclude=exclude))
 
-        return Check(check_function=self._check,
-                     path_filter=_Filter(endswith=endswith, exclude=exclude),
-                     always_run=self.always_run)
-
-    @property
-    def name(self):
-        return self.__name__
+    def with_file_filter(self, file_filter: FileFilter) -> Check:
+        clone = copy.copy(self)
+        clone.filter = file_filter
+        return clone
 
     def run(self, ctx: PresubmitContext, count: int, total: int) -> _Result:
         """Runs the presubmit check on the provided paths."""
@@ -548,6 +700,9 @@ class Check:
         except KeyboardInterrupt:
             _print_ui()
             return _Result.CANCEL
+
+        if ctx.failed:
+            return _Result.FAIL
 
         return _Result.PASS
 
@@ -586,8 +741,10 @@ def _ensure_is_valid_presubmit_check_function(check: Callable) -> None:
              if required_args else ''))
 
 
-def filter_paths(endswith: Iterable[str] = '',
+def filter_paths(*,
+                 endswith: Iterable[str] = (),
                  exclude: Iterable[Union[Pattern[str], str]] = (),
+                 file_filter: FileFilter = None,
                  always_run: bool = False) -> Callable[[Callable], Check]:
     """Decorator for filtering the paths list for a presubmit check function.
 
@@ -599,15 +756,24 @@ def filter_paths(endswith: Iterable[str] = '',
     Args:
         endswith: str or iterable of path endings to include
         exclude: regular expressions of paths to exclude
-
+        file_filter: FileFilter used to select files
+        always_run: Run check even when no files match
     Returns:
         a wrapped version of the presubmit function
     """
+
+    if file_filter:
+        real_file_filter = file_filter
+        if endswith or exclude:
+            raise ValueError('Must specify either file_filter or '
+                             'endswith/exclude args, not both')
+    else:
+        # TODO(b/238426363): Remove these arguments and use FileFilter only.
+        real_file_filter = FileFilter(endswith=_make_str_tuple(endswith),
+                                      exclude=exclude)
+
     def filter_paths_for_function(function: Callable):
-        return Check(function,
-                     _Filter(_make_str_tuple(endswith),
-                             tuple(re.compile(e) for e in exclude)),
-                     always_run=always_run)
+        return Check(function, real_file_filter, always_run=always_run)
 
     return filter_paths_for_function
 

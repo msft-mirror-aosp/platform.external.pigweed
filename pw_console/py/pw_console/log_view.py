@@ -23,7 +23,6 @@ import logging
 import operator
 from pathlib import Path
 import re
-import time
 from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from prompt_toolkit.data_structures import Point
@@ -128,10 +127,6 @@ class LogView:
         self._reset_log_screen_on_next_render: bool = True
         self._user_scroll_event: bool = False
 
-        # Max frequency in seconds of prompt_toolkit UI redraws triggered by new
-        # log lines.
-        self._ui_update_frequency = 0.05
-        self._last_ui_update_time = time.time()
         self._last_log_store_index = 0
         self._new_logs_since_last_render = True
 
@@ -539,19 +534,9 @@ class LogView:
             # Set the follow event flag for the next render_content call.
             self.follow_event = FollowEvent.STICKY_FOLLOW
 
-        # Trigger a UI update
-        self._update_prompt_toolkit_ui()
-
-    def _update_prompt_toolkit_ui(self):
-        """Update Prompt Toolkit UI if a certain amount of time has passed."""
-        emit_time = time.time()
-        # Has enough time passed since last UI redraw?
-        if emit_time > self._last_ui_update_time + self._ui_update_frequency:
-            # Update last log time
-            self._last_ui_update_time = emit_time
-
-            # Trigger Prompt Toolkit UI redraw.
-            self.log_pane.application.redraw_ui()
+        # Trigger a UI update if the log window is visible.
+        if self.log_pane.show_pane:
+            self.log_pane.application.logs_redraw()
 
     def get_cursor_position(self) -> Point:
         """Return the position of the cursor."""
@@ -738,7 +723,7 @@ class LogView:
         """Get pre-formatted table header."""
         return self.log_store.render_table_header()
 
-    def render_content(self) -> list:
+    def render_content(self) -> List:
         """Return logs to display on screen as a list of FormattedText tuples.
 
         This function determines when the log screen requires re-rendeing based

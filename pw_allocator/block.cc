@@ -15,13 +15,13 @@
 #include "pw_allocator/block.h"
 
 #include <cstring>
-#include <span>
 
 #include "pw_assert/check.h"
+#include "pw_span/span.h"
 
 namespace pw::allocator {
 
-Status Block::Init(const std::span<std::byte> region, Block** block) {
+Status Block::Init(const span<std::byte> region, Block** block) {
   // Ensure the region we're given is aligned and sized accordingly
   if (reinterpret_cast<uintptr_t>(region.data()) % alignof(Block) != 0) {
     return Status::InvalidArgument();
@@ -162,8 +162,8 @@ Status Block::MergePrev() {
   return prev_->MergeNext();
 }
 
-// TODO(pwbug/234): Add stack tracing to locate which call to the heap operation
-// caused the corruption.
+// TODO(b/234875269): Add stack tracing to locate which call to the heap
+// operation caused the corruption.
 // TODO: Add detailed information to log report and leave succinct messages
 // in the crash message.
 void Block::CrashIfInvalid() {
@@ -171,25 +171,28 @@ void Block::CrashIfInvalid() {
     case VALID:
       break;
     case MISALIGNED:
-      PW_DCHECK(false, "The block at address %p is not aligned.", this);
+      PW_DCHECK(false,
+                "The block at address %p is not aligned.",
+                static_cast<void*>(this));
       break;
     case NEXT_MISMATCHED:
       PW_DCHECK(false,
                 "The 'prev' field in the next block (%p) does not match the "
                 "address of the current block (%p).",
-                Next()->Prev(),
-                this);
+                static_cast<void*>(Next()->Prev()),
+                static_cast<void*>(this));
       break;
     case PREV_MISMATCHED:
       PW_DCHECK(false,
                 "The 'next' field in the previous block (%p) does not match "
                 "the address of the current block (%p).",
-                Prev()->Next(),
-                this);
+                static_cast<void*>(Prev()->Next()),
+                static_cast<void*>(this));
       break;
     case POISON_CORRUPTED:
-      PW_DCHECK(
-          false, "The poisoned pattern in the block at %p is corrupted.", this);
+      PW_DCHECK(false,
+                "The poisoned pattern in the block at %p is corrupted.",
+                static_cast<void*>(this));
       break;
   }
 }

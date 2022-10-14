@@ -19,6 +19,7 @@ import("$dir_pw_build/python.gni")
 import("$dir_pw_build/python_action.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_chrono/backend.gni")
+import("$dir_pw_compilation_testing/negative_compilation_test.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
 import("$dir_pw_sync/backend.gni")
@@ -168,7 +169,10 @@ pw_source_set("common") {
   ]
   public = [
     "public/pw_rpc/channel.h",
+    "public/pw_rpc/method_id.h",
     "public/pw_rpc/method_info.h",
+    "public/pw_rpc/packet_meta.h",
+    "public/pw_rpc/service_id.h",
     "public/pw_rpc/writer.h",
   ]
   sources = [
@@ -177,6 +181,7 @@ pw_source_set("common") {
     "channel_list.cc",
     "endpoint.cc",
     "packet.cc",
+    "packet_meta.cc",
     "public/pw_rpc/internal/call.h",
     "public/pw_rpc/internal/call_context.h",
     "public/pw_rpc/internal/channel.h",
@@ -396,7 +401,7 @@ pw_doc_group("docs") {
   report_deps = [ ":server_size" ]
 }
 
-pw_size_report("server_size") {
+pw_size_diff("server_size") {
   title = "Pigweed RPC server size report"
 
   binaries = [
@@ -428,6 +433,7 @@ pw_test_group("tests") {
     ":method_test",
     ":ids_test",
     ":packet_test",
+    ":packet_meta_test",
     ":server_test",
     ":service_test",
   ]
@@ -439,7 +445,10 @@ pw_test_group("tests") {
 }
 
 pw_proto_library("test_protos") {
-  sources = [ "pw_rpc_test_protos/test.proto" ]
+  sources = [
+    "pw_rpc_test_protos/no_package.proto",
+    "pw_rpc_test_protos/test.proto",
+  ]
   inputs = [ "pw_rpc_test_protos/test.options" ]
   visibility = [ "./*" ]
 }
@@ -486,6 +495,14 @@ pw_test("packet_test") {
     dir_pw_protobuf,
   ]
   sources = [ "packet_test.cc" ]
+}
+
+pw_test("packet_meta_test") {
+  deps = [
+    ":server",
+    dir_pw_bytes,
+  ]
+  sources = [ "packet_meta_test.cc" ]
 }
 
 pw_test("service_test") {

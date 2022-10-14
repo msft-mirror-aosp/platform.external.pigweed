@@ -16,13 +16,17 @@
 import configparser
 from contextlib import contextmanager
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+import io
 import json
 import os
 from pathlib import Path
+import pprint
 import re
 import shutil
-from typing import Dict, List, Optional, Iterable
+from typing import Any, Dict, List, Optional, Iterable
+
+_pretty_format = pprint.PrettyPrinter(indent=1, width=120).pformat
 
 # List of known environment markers supported by pip.
 # https://peps.python.org/pep-0508/#environment-markers
@@ -61,6 +65,18 @@ class MissingSetupSources(Exception):
 
     For example: setup.cfg and pyproject.toml.i
     """
+
+
+def _sanitize_install_requires(metadata_dict: dict) -> dict:
+    """Convert install_requires lists into strings joined with line breaks."""
+    try:
+        install_requires = metadata_dict['options']['install_requires']
+        if isinstance(install_requires, list):
+            metadata_dict['options']['install_requires'] = (
+                '\n'.join(install_requires))
+    except KeyError:
+        pass
+    return metadata_dict
 
 
 @dataclass
@@ -120,25 +136,44 @@ class PythonPackage:
             return None
         return setup_cfg[0]
 
+    def as_dict(self) -> Dict[Any, Any]:
+        """Return a dict representation of this class."""
+        self_dict = asdict(self)
+        if self.config:
+            # Expand self.config into text.
+            setup_cfg_text = io.StringIO()
+            self.config.write(setup_cfg_text)
+            self_dict['config'] = setup_cfg_text.getvalue()
+        return self_dict
+
     @property
     def package_name(self) -> str:
+        unknown_package_message = (
+            'Cannot determine the package_name for the Python '
+            f'library/package: {self.gn_target_name}\n\n'
+            'This could be due to a missing python dependency in GN for:\n'
+            f'{self.gn_target_name}\n\n')
+
         if self.config:
-            return self.config['metadata']['name']
+            try:
+                name = self.config['metadata']['name']
+            except KeyError:
+                raise UnknownPythonPackageName(unknown_package_message +
+                                               _pretty_format(self.as_dict()))
+            return name
         top_level_source_dir = self.top_level_source_dir
         if top_level_source_dir:
             return top_level_source_dir.name
 
         actual_gn_target_name = self.gn_target_name.split(':')
         if len(actual_gn_target_name) < 2:
-            raise UnknownPythonPackageName(
-                'Cannot determine the package_name for the Python '
-                f'library/package: {self}')
+            raise UnknownPythonPackageName(unknown_package_message)
 
         return actual_gn_target_name[-1]
 
     @property
     def package_dir(self) -> Path:
-        if self.setup_cfg:
+        if self.setup_cfg and self.setup_cfg.is_file():
             return self.setup_cfg.parent / self.package_name
         root_source_dir = self.top_level_source_dir
         if root_source_dir:
@@ -161,12 +196,31 @@ class PythonPackage:
 
     def _load_config(self) -> Optional[configparser.ConfigParser]:
         config = configparser.ConfigParser()
+
         # Check for a setup.cfg and load that config.
         if self.setup_cfg:
-            with self.setup_cfg.open() as config_file:
-                config.read_file(config_file)
+            if self.setup_cfg.is_file():
+                with self.setup_cfg.open() as config_file:
+                    config.read_file(config_file)
+                return config
+            if self.setup_cfg.with_suffix('.json').is_file():
+                return self._load_setup_json_config()
+
+        # Fallback on the generate_setup scope from GN
+        if self.generate_setup:
+            config.read_dict(_sanitize_install_requires(self.generate_setup))
             return config
         return None
+
+    def _load_setup_json_config(self) -> configparser.ConfigParser:
+        assert self.setup_cfg
+        setup_json = self.setup_cfg.with_suffix('.json')
+        config = configparser.ConfigParser()
+        with setup_json.open() as json_fp:
+            json_dict = _sanitize_install_requires(json.load(json_fp))
+
+        config.read_dict(json_dict)
+        return config
 
     def copy_sources_to(self, destination: Path) -> None:
         """Copy this PythonPackage source files to another path."""

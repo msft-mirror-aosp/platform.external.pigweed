@@ -117,7 +117,7 @@ class FakeService : public FakeServiceBase<FakeService> {
     ConstByteSpan payload(test_response);
 
     ASSERT_EQ(OkStatus(),
-              responder.Finish(std::span(response).first(payload.size()),
+              responder.Finish(span(response).first(payload.size()),
                                Status::Unauthenticated()));
   }
 
@@ -239,11 +239,10 @@ TEST(RawMethod, ServerReader_HandlesRequests) {
 
   constexpr const char kRequestValue[] = "This is a request payload!!!";
   std::array<std::byte, 128> encoded_request = {};
-  auto encoded = context.client_stream(std::as_bytes(std::span(kRequestValue)))
+  auto encoded = context.client_stream(as_bytes(span(kRequestValue)))
                      .Encode(encoded_request);
   ASSERT_EQ(OkStatus(), encoded.status());
-  ASSERT_EQ(OkStatus(),
-            context.server().ProcessPacket(*encoded, context.output()));
+  ASSERT_EQ(OkStatus(), context.server().ProcessPacket(*encoded));
 
   EXPECT_STREQ(reinterpret_cast<const char*>(request.data()), kRequestValue);
 }
@@ -254,7 +253,7 @@ TEST(RawMethod, ServerReaderWriter_WritesResponses) {
   kBidirectionalStream.Invoke(context.get(), context.request({}));
 
   constexpr const char kRequestValue[] = "O_o";
-  const auto kRequestBytes = std::as_bytes(std::span(kRequestValue));
+  const auto kRequestBytes = as_bytes(span(kRequestValue));
   EXPECT_EQ(OkStatus(),
             context.service().last_reader_writer.Write(kRequestBytes));
 
