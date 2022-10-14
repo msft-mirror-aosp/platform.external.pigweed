@@ -18,11 +18,11 @@
 #include <cinttypes>
 #include <cstdint>
 #include <cstring>
-#include <span>
 #include <string_view>
 
 #include "gtest/gtest.h"
 #include "pw_log/log.h"
+#include "pw_span/span.h"
 
 namespace pw::dump {
 namespace {
@@ -333,10 +333,9 @@ TEST_F(HexDump, FormattedHexDump_AbsolutePrefix) {
   constexpr size_t kTestBytesPerLine = 16;
   std::array<char, kHexAddrStringSize + 1> expected1;
   std::array<char, kHexAddrStringSize + 1> expected2;
-  DumpAddr(expected1, source_data.data())
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-  DumpAddr(expected2, source_data.data() + kTestBytesPerLine)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  ASSERT_EQ(OkStatus(), DumpAddr(expected1, source_data.data()));
+  ASSERT_EQ(OkStatus(),
+            DumpAddr(expected2, source_data.data() + kTestBytesPerLine));
 
   default_flags_.bytes_per_line = kTestBytesPerLine;
   default_flags_.prefix_mode = FormattedHexDumper::AddressMode::kAbsolute;
@@ -405,7 +404,7 @@ TEST_F(SmallBuffer, PrefixIncreasesBufferRequirement) {
 
 TEST(BadBuffer, ZeroSize) {
   char buffer[1] = {static_cast<char>(0xaf)};
-  FormattedHexDumper dumper(std::span<char>(buffer, 0));
+  FormattedHexDumper dumper(span<char>(buffer, 0));
   EXPECT_EQ(dumper.BeginDump(source_data), Status::FailedPrecondition());
   EXPECT_EQ(dumper.DumpLine(), Status::FailedPrecondition());
   EXPECT_EQ(buffer[0], static_cast<char>(0xaf));
@@ -413,7 +412,7 @@ TEST(BadBuffer, ZeroSize) {
 
 TEST(BadBuffer, NullPtrDest) {
   FormattedHexDumper dumper;
-  EXPECT_EQ(dumper.SetLineBuffer(std::span<char>()), Status::InvalidArgument());
+  EXPECT_EQ(dumper.SetLineBuffer(span<char>()), Status::InvalidArgument());
   EXPECT_EQ(dumper.BeginDump(source_data), Status::FailedPrecondition());
   EXPECT_EQ(dumper.DumpLine(), Status::FailedPrecondition());
 }

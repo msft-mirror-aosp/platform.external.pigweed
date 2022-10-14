@@ -20,6 +20,7 @@ import("$dir_pw_build/host_tool.gni")
 import("$dir_pw_build/python.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_rpc/config.gni")
+import("$dir_pw_rust/rust.gni")
 import("$dir_pw_third_party/mcuxpresso/mcuxpresso.gni")
 import("$dir_pw_toolchain/generate_toolchain.gni")
 import("$dir_pw_unit_test/test.gni")
@@ -37,10 +38,6 @@ declare_args() {
 
   # List of application image GN targets specific to the Pigweed target.
   pw_TARGET_APPLICATIONS = []
-
-  # Whether to run integration tests, which may involve multiple processes
-  # communicating over a socket. Integration tests require RPC synchronization.
-  pw_RUN_INTEGRATION_TESTS = host_os == "linux"
 }
 
 # Enumerate all of the different targets that upstream Pigweed will build by
@@ -58,10 +55,6 @@ group("default") {
     ":stm32f429i",
     "pw_rpc:test_protos.python.install",
   ]
-
-  if (pw_RUN_INTEGRATION_TESTS) {
-    deps += [ ":integration_tests" ]
-  }
 }
 
 # Verify that this BUILD.gn file is only used by Pigweed itself.
@@ -190,16 +183,18 @@ _build_pigweed_default_at_all_optimization_levels("qemu_clang") {
 # Make sure to invoke gn clean out when any relevant .clang-tidy
 # file is updated.
 group("static_analysis") {
-  _toolchain = "$_internal_toolchains:pw_strict_host_clang_debug"
-  deps = [ ":pigweed_default($_toolchain.static_analysis)" ]
+  # Static analysis is only supported on Linux and macOS using clang-tidy.
+  if (host_os != "win") {
+    _toolchain = "$_internal_toolchains:pw_strict_host_clang_debug"
+    deps = [ ":pigweed_default($_toolchain.static_analysis)" ]
+  }
 }
 
 group("docs") {
   deps = [ "$dir_pigweed/docs($dir_pigweed/targets/docs)" ]
 }
 
-# Tests larger than unit tests, typically run in a specific configuration. Only
-# added if pw_RUN_INTEGRATION_TESTS is true.
+# Tests larger than unit tests, typically run in a specific configuration.
 group("integration_tests") {
   _default_tc = _default_toolchain_prefix + pw_default_optimization_level
   deps = [
@@ -208,7 +203,6 @@ group("integration_tests") {
     "$dir_pw_unit_test/py:rpc_service_test.action($_default_tc)",
 
     # TODO(b/228463549): Re-enable these when they're not flaky on linux.
-    # "$dir_pw_transfer:cpp_client_integration_test($_default_tc)",
     # "$dir_pw_transfer/py:python_cpp_transfer_test.action($_default_tc)",
   ]
 }
@@ -227,6 +221,8 @@ group("asan") {
   }
 }
 
+# TODO(b/234876100): msan will not work until the C++ standard library included
+# in the sysroot has a variant built with msan.
 group("msan") {
   if (host_os != "win") {
     deps = [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_msan)" ]
@@ -256,9 +252,12 @@ group("runtime_sanitizers") {
   if (host_os != "win") {
     deps = [
       ":asan",
-      ":msan",
       ":tsan",
       ":ubsan",
+
+      # TODO(b/234876100): msan will not work until the C++ standard library
+      # included in the sysroot has a variant built with msan.
+      # ":msan",
 
       # No ubsan_heuristic, which may have false positives.
     ]
@@ -267,7 +266,6 @@ group("runtime_sanitizers") {
 
 pw_python_group("python") {
   python_deps = [
-    "$dir_pigweed/docs:sphinx_themes",
     "$dir_pw_env_setup:python",
     "$dir_pw_env_setup:target_support_packages",
   ]
@@ -279,6 +277,12 @@ group("host_tools") {
     "$dir_pw_target_runner/go:simple_client",
     "$dir_pw_target_runner/go:simple_server",
   ]
+
+  if (pw_rust_ENABLE_EXPERIMENTAL_BUILD) {
+    deps += [
+      "$dir_pw_rust/example:hello($dir_pigweed/targets/host:host_clang_debug)",
+    ]
+  }
 }
 
 # By default, Pigweed will build this target when invoking ninja.
@@ -376,6 +380,7 @@ if (current_toolchain != default_toolchain) {
     tests = [
       "$dir_pw_tokenizer:simple_tokenize_test",
       "$dir_pw_containers:to_array_test",
+      "$dir_pw_string:string_test",
     ]
   }
 }

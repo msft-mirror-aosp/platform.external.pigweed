@@ -39,7 +39,7 @@ constexpr bool InvalidKey(Key key) {
 }  // namespace
 
 KeyValueStore::KeyValueStore(FlashPartition* partition,
-                             std::span<const EntryFormat> formats,
+                             span<const EntryFormat> formats,
                              const Options& options,
                              size_t redundancy,
                              Vector<SectorDescriptor>& sector_descriptor_list,
@@ -386,7 +386,7 @@ Status KeyValueStore::ScanForEntry(const SectorDescriptor& sector,
        address += Entry::kMinAlignmentBytes) {
     uint32_t magic;
     StatusWithSize read_result =
-        partition_.Read(address, std::as_writable_bytes(std::span(&magic, 1)));
+        partition_.Read(address, as_writable_bytes(span(&magic, 1)));
     if (!read_result.ok()) {
       continue;
     }
@@ -399,6 +399,8 @@ Status KeyValueStore::ScanForEntry(const SectorDescriptor& sector,
 
   return Status::NotFound();
 }
+
+#if PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE
 
 Status KeyValueStore::RemoveDeletedKeyEntries() {
   for (internal::EntryCache::iterator it = entry_cache_.begin();
@@ -430,8 +432,10 @@ Status KeyValueStore::RemoveDeletedKeyEntries() {
   return OkStatus();
 }
 
+#endif  // PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE
+
 StatusWithSize KeyValueStore::Get(Key key,
-                                  std::span<byte> value_buffer,
+                                  span<byte> value_buffer,
                                   size_t offset_bytes) const {
   PW_TRY_WITH_SIZE(CheckReadOperation(key));
 
@@ -441,7 +445,7 @@ StatusWithSize KeyValueStore::Get(Key key,
   return Get(key, metadata, value_buffer, offset_bytes);
 }
 
-Status KeyValueStore::PutBytes(Key key, std::span<const byte> value) {
+Status KeyValueStore::PutBytes(Key key, span<const byte> value) {
   PW_TRY(CheckWriteOperation(key));
   DBG("Writing key/value; key length=%u, value length=%u",
       unsigned(key.size()),
@@ -493,7 +497,7 @@ void KeyValueStore::Item::ReadKey() {
   Entry entry;
   if (kvs_.ReadEntry(*iterator_, entry).ok()) {
     entry.ReadKey(key_buffer_)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        .IgnoreError();  // TODO(b/242598609): Handle Status properly
   }
 }
 
@@ -567,7 +571,7 @@ Status KeyValueStore::FindExisting(Key key, EntryMetadata* metadata_out) const {
 
 StatusWithSize KeyValueStore::Get(Key key,
                                   const EntryMetadata& metadata,
-                                  std::span<std::byte> value_buffer,
+                                  span<std::byte> value_buffer,
                                   size_t offset_bytes) const {
   Entry entry;
 
@@ -614,7 +618,7 @@ Status KeyValueStore::FixedSizeGet(Key key,
   }
 
   StatusWithSize result =
-      Get(key, metadata, std::span(static_cast<byte*>(value), size_bytes), 0);
+      Get(key, metadata, span(static_cast<byte*>(value), size_bytes), 0);
 
   return result.status();
 }
@@ -654,7 +658,7 @@ Status KeyValueStore::CheckReadOperation(Key key) const {
 Status KeyValueStore::WriteEntryForExistingKey(EntryMetadata& metadata,
                                                EntryState new_state,
                                                Key key,
-                                               std::span<const byte> value) {
+                                               span<const byte> value) {
   // Read the original entry to get the size for sector accounting purposes.
   Entry entry;
   PW_TRY(ReadEntry(metadata, entry));
@@ -662,10 +666,12 @@ Status KeyValueStore::WriteEntryForExistingKey(EntryMetadata& metadata,
   return WriteEntry(key, value, new_state, &metadata, &entry);
 }
 
-Status KeyValueStore::WriteEntryForNewKey(Key key,
-                                          std::span<const byte> value) {
-  // If we are trying to ensure that all possible writes are successful, and the
-  // cache is full, attempt heavy maintenance now.
+Status KeyValueStore::WriteEntryForNewKey(Key key, span<const byte> value) {
+  // If there is no room in the cache for a new entry, it is possible some cache
+  // entries could be freed by removing deleted keys. If deleted key removal is
+  // enabled and the KVS is configured to make all possible writes succeed,
+  // attempt heavy maintenance now.
+#if PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE
   if (options_.gc_on_write == GargbageCollectOnWrite::kAsManySectorsNeeded &&
       entry_cache_.full()) {
     Status maintenance_status = HeavyMaintenance();
@@ -674,6 +680,7 @@ Status KeyValueStore::WriteEntryForNewKey(Key key,
       return maintenance_status;
     }
   }
+#endif  // PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE
 
   if (entry_cache_.full()) {
     WRN("KVS full: trying to store a new entry, but can't. Have %u entries",
@@ -685,7 +692,7 @@ Status KeyValueStore::WriteEntryForNewKey(Key key,
 }
 
 Status KeyValueStore::WriteEntry(Key key,
-                                 std::span<const byte> value,
+                                 span<const byte> value,
                                  EntryState new_state,
                                  EntryMetadata* prior_metadata,
                                  const Entry* prior_entry) {
@@ -762,8 +769,7 @@ Status KeyValueStore::GetAddressesForWrite(Address* write_addresses,
                                            size_t write_size) {
   for (size_t i = 0; i < redundancy(); i++) {
     SectorDescriptor* sector;
-    PW_TRY(
-        GetSectorForWrite(&sector, write_size, std::span(write_addresses, i)));
+    PW_TRY(GetSectorForWrite(&sector, write_size, span(write_addresses, i)));
     write_addresses[i] = sectors_.NextWritableAddress(*sector);
 
     DBG("Found space for entry in sector %u at address %u",
@@ -782,7 +788,7 @@ Status KeyValueStore::GetAddressesForWrite(Address* write_addresses,
 Status KeyValueStore::GetSectorForWrite(
     SectorDescriptor** sector,
     size_t entry_size,
-    std::span<const Address> reserved_addresses) {
+    span<const Address> reserved_addresses) {
   Status result = sectors_.FindSpace(sector, entry_size, reserved_addresses);
 
   size_t gc_sector_count = 0;
@@ -836,7 +842,7 @@ Status KeyValueStore::MarkSectorCorruptIfNotOk(Status status,
 
 Status KeyValueStore::AppendEntry(const Entry& entry,
                                   Key key,
-                                  std::span<const byte> value) {
+                                  span<const byte> value) {
   const StatusWithSize result = entry.Write(key, value);
 
   SectorDescriptor& sector = sectors_.FromAddress(entry.address());
@@ -882,10 +888,9 @@ StatusWithSize KeyValueStore::CopyEntryToSector(Entry& entry,
   return result;
 }
 
-Status KeyValueStore::RelocateEntry(
-    const EntryMetadata& metadata,
-    KeyValueStore::Address& address,
-    std::span<const Address> reserved_addresses) {
+Status KeyValueStore::RelocateEntry(const EntryMetadata& metadata,
+                                    KeyValueStore::Address& address,
+                                    span<const Address> reserved_addresses) {
   Entry entry;
   PW_TRY(ReadEntry(metadata, entry));
 
@@ -972,16 +977,16 @@ Status KeyValueStore::FullMaintenanceHelper(MaintenanceType maintenance_type) {
   // old/state entries from flash and leave only current/valid entries.
   do_garbage_collect_pass();
 
+#if PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE
   // Step 4: (if heavy maintenance) garbage collect all the deleted keys.
   if (heavy) {
-    // Remove deleted keys from the entry cache, including freeing sector bytes
-    // used by those keys. This must only be done directly after a full garbage
-    // collection, otherwise the current deleted entry could be garbage
-    // collected before the older stale entry producing a window for an
+    // If enabled, remove deleted keys from the entry cache, including freeing
+    // sector bytes used by those keys. This must only be done directly after a
+    // full garbage collection, otherwise the current deleted entry could be
+    // garbage collected before the older stale entry producing a window for an
     // invalid/corrupted KVS state if there was a power-fault, crash or other
     // interruption.
-    Status rdk_status = RemoveDeletedKeyEntries();
-    overall_status.Update(rdk_status);
+    overall_status.Update(RemoveDeletedKeyEntries());
 
     // Do another garbage collect pass that will fully remove the deleted keys
     // from flash. Garbage collect will only touch sectors that have something
@@ -989,6 +994,7 @@ Status KeyValueStore::FullMaintenanceHelper(MaintenanceType maintenance_type) {
     // keys.
     do_garbage_collect_pass();
   }
+#endif  // PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE
 
   if (overall_status.ok()) {
     INF("Full maintenance complete");
@@ -1008,11 +1014,10 @@ Status KeyValueStore::PartialMaintenance() {
   if (error_detected_ && options_.recovery != ErrorRecovery::kManual) {
     PW_TRY(Repair());
   }
-  return GarbageCollect(std::span<const Address>());
+  return GarbageCollect(span<const Address>());
 }
 
-Status KeyValueStore::GarbageCollect(
-    std::span<const Address> reserved_addresses) {
+Status KeyValueStore::GarbageCollect(span<const Address> reserved_addresses) {
   DBG("Garbage Collect a single sector");
   for ([[maybe_unused]] Address address : reserved_addresses) {
     DBG("   Avoid address %u", unsigned(address));
@@ -1034,7 +1039,7 @@ Status KeyValueStore::GarbageCollect(
 Status KeyValueStore::RelocateKeyAddressesInSector(
     SectorDescriptor& sector_to_gc,
     const EntryMetadata& metadata,
-    std::span<const Address> reserved_addresses) {
+    span<const Address> reserved_addresses) {
   for (FlashPartition::Address& address : metadata.addresses()) {
     if (sectors_.AddressInSector(sector_to_gc, address)) {
       DBG("  Relocate entry for Key 0x%08" PRIx32 ", sector %u",
@@ -1048,8 +1053,7 @@ Status KeyValueStore::RelocateKeyAddressesInSector(
 }
 
 Status KeyValueStore::GarbageCollectSector(
-    SectorDescriptor& sector_to_gc,
-    std::span<const Address> reserved_addresses) {
+    SectorDescriptor& sector_to_gc, span<const Address> reserved_addresses) {
   DBG("  Garbage Collect sector %u", sectors_.Index(sector_to_gc));
 
   // Step 1: Move any valid entries in the GC sector to other sectors
@@ -1197,7 +1201,7 @@ Status KeyValueStore::EnsureFreeSectorExists() {
   }
   if (empty_sector_found == false) {
     DBG("   No empty sector found, attempting to GC a free sector");
-    Status sector_status = GarbageCollect(std::span<const Address, 0>());
+    Status sector_status = GarbageCollect(span<const Address, 0>());
     if (repair_status.ok() && !sector_status.ok()) {
       DBG("   Unable to free an empty sector");
       repair_status = sector_status;
@@ -1277,14 +1281,14 @@ Status KeyValueStore::Repair() {
 
   DBG("Reinitialize KVS metadata");
   InitializeMetadata()
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO(b/242598609): Handle Status properly
 
   return FixErrors();
 }
 
 KeyValueStore::Entry KeyValueStore::CreateEntry(Address address,
                                                 Key key,
-                                                std::span<const byte> value,
+                                                span<const byte> value,
                                                 EntryState state) {
   // Always bump the transaction ID when creating a new entry.
   //

@@ -28,13 +28,13 @@ pw_add_module_library(pw_function.config
 pw_add_module_library(pw_function
   HEADERS
     public/pw_function/function.h
-    public/pw_function/internal/function.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
     pw_assert
     pw_function.config
     pw_preprocessor
+    pw_third_party.fuchsia.fit
 )
 if(Zephyr_FOUND AND CONFIG_PIGWEED_FUNCTION)
   zephyr_link_libraries(pw_function)
@@ -44,6 +44,7 @@ pw_add_test(pw_function.function_test
   SOURCES
     function_test.cc
   DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
     pw_function
     pw_polyfill
   GROUPS

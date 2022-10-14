@@ -21,6 +21,7 @@ maintaining token databases.
 import argparse
 from datetime import datetime
 import glob
+import itertools
 import json
 import logging
 import os
@@ -28,8 +29,8 @@ from pathlib import Path
 import re
 import struct
 import sys
-from typing import (Any, Callable, Dict, Iterable, Iterator, List, Pattern,
-                    Set, TextIO, Tuple, Union)
+from typing import (Any, Callable, Dict, Iterable, Iterator, List, Optional,
+                    Pattern, Set, TextIO, Tuple, Union)
 
 try:
     from pw_tokenizer import elf_reader, tokens
@@ -54,9 +55,6 @@ _TOKENIZED_ENTRY_MAGIC = 0xBAA98DEE
 _ENTRY = struct.Struct('<4I')
 _TOKENIZED_ENTRY_SECTIONS = re.compile(
     r'^\.pw_tokenizer.entries(?:\.[_\d]+)?$')
-
-_LEGACY_STRING_SECTIONS = re.compile(
-    r'^\.pw_tokenized\.(?P<domain>[^.]+)(?:\.\d+)?$')
 
 _ERROR_HANDLER = 'surrogateescape'  # How to deal with UTF-8 decoding errors
 
@@ -100,21 +98,6 @@ def _read_tokenized_entries(
             yield entry
 
 
-def _read_tokenized_strings(sections: Dict[str, bytes],
-                            domain: Pattern[str]) -> Iterator[tokens.Database]:
-    # Legacy ELF files used "default" as the default domain instead of "". Remap
-    # the default if necessary.
-    if domain.pattern == tokens.DEFAULT_DOMAIN:
-        domain = re.compile('default')
-
-    for section, data in sections.items():
-        match = _LEGACY_STRING_SECTIONS.match(section)
-        if match and domain.match(match.group('domain')):
-            yield tokens.Database.from_strings(
-                (s.decode(errors=_ERROR_HANDLER) for s in data.split(b'\0')),
-                match.group('domain'))
-
-
 def _database_from_elf(elf, domain: Pattern[str]) -> tokens.Database:
     """Reads the tokenized strings from an elf_reader.Elf or ELF file object."""
     _LOG.debug('Reading tokenized strings in domain "%s" from %s', domain, elf)
@@ -125,12 +108,6 @@ def _database_from_elf(elf, domain: Pattern[str]) -> tokens.Database:
     section_data = reader.dump_section_contents(_TOKENIZED_ENTRY_SECTIONS)
     if section_data is not None:
         return tokens.Database(_read_tokenized_entries(section_data, domain))
-
-    # Read legacy null-terminated string entries.
-    sections = reader.dump_sections(_LEGACY_STRING_SECTIONS)
-    if sections:
-        return tokens.Database.merged(
-            *_read_tokenized_strings(sections, domain))
 
     return tokens.Database([])
 
@@ -143,11 +120,6 @@ def tokenization_domains(elf) -> Iterator[str]:
         yield from frozenset(
             e.domain
             for e in _read_tokenized_entries(section_data, re.compile('.*')))
-    else:  # Check for the legacy domain sections
-        for section in reader.sections:
-            match = _LEGACY_STRING_SECTIONS.match(section.name)
-            if match:
-                yield match.group('domain')
 
 
 def read_tokenizer_metadata(elf) -> Dict[str, int]:
@@ -168,11 +140,8 @@ def read_tokenizer_metadata(elf) -> Dict[str, int]:
 
 def _database_from_strings(strings: List[str]) -> tokens.Database:
     """Generates a C and C++ compatible database from untokenized strings."""
-    # Generate a C compatible database from the fixed length hash.
-    c_db = tokens.Database.from_strings(
-        strings,
-        tokenize=lambda string: tokens.pw_tokenizer_65599_hash(
-            string, tokens.DEFAULT_C_HASH_LENGTH))
+    # Generate a C-compatible database from the fixed length hash.
+    c_db = tokens.Database.from_strings(strings, tokenize=tokens.c_hash)
 
     # Generate a C++ compatible database by allowing the hash to follow the
     # string length.
@@ -187,7 +156,7 @@ def _database_from_json(fd) -> tokens.Database:
     return _database_from_strings(json.load(fd))
 
 
-def _load_token_database(db, domain: Pattern[str]) -> tokens.Database:
+def _load_token_database(db, domain: Pattern[str]) -> tokens.Database:  # pylint: disable=too-many-return-statements
     """Loads a Database from supported database types.
 
     Supports Database objects, JSONs, ELFs, CSVs, and binary databases.
@@ -207,6 +176,9 @@ def _load_token_database(db, domain: Pattern[str]) -> tokens.Database:
             raise FileNotFoundError(
                 f'"{db}" is not a path to a token database')
 
+        if Path(db).is_dir():
+            return tokens.DatabaseFile.load(Path(db))
+
         # Read the path as an ELF file.
         with open(db, 'rb') as fd:
             if elf_reader.compatible_file(fd):
@@ -218,7 +190,7 @@ def _load_token_database(db, domain: Pattern[str]) -> tokens.Database:
                 return _database_from_json(json_fd)
 
         # Read the path as a packed binary or CSV file.
-        return tokens.DatabaseFile(db)
+        return tokens.DatabaseFile.load(Path(db))
 
     # Assume that it's a file object and check if it's an ELF.
     if elf_reader.compatible_file(db):
@@ -230,7 +202,7 @@ def _load_token_database(db, domain: Pattern[str]) -> tokens.Database:
         if db.name.endswith('.json'):
             return _database_from_json(db)
 
-        return tokens.DatabaseFile(db.name)
+        return tokens.DatabaseFile.load(Path(db.name))
 
     # Read CSV directly from the file object.
     return tokens.Database(tokens.parse_csv(db))
@@ -275,11 +247,11 @@ def generate_reports(paths: Iterable[Path]) -> _DatabaseReport:
     reports: _DatabaseReport = {}
 
     for path in paths:
-        with path.open('rb') as file:
-            if elf_reader.compatible_file(file):
-                domains = list(tokenization_domains(file))
-            else:
-                domains = ['']
+        domains = ['']
+        if path.is_file():
+            with path.open('rb') as file:
+                if elf_reader.compatible_file(file):
+                    domains = list(tokenization_domains(file))
 
         domain_reports = {}
 
@@ -292,60 +264,81 @@ def generate_reports(paths: Iterable[Path]) -> _DatabaseReport:
     return reports
 
 
-def _handle_create(databases, database, force, output_type, include, exclude,
-                   replace):
+def _handle_create(databases, database: Path, force: bool, output_type: str,
+                   include: list, exclude: list, replace: list) -> None:
     """Creates a token database file from one or more ELF files."""
-
-    if database == '-':
-        # Must write bytes to stdout; use sys.stdout.buffer.
-        fd = sys.stdout.buffer
-    elif not force and os.path.exists(database):
+    if not force and database.exists():
         raise FileExistsError(
             f'The file {database} already exists! Use --force to overwrite.')
-    else:
-        fd = open(database, 'wb')
 
-    database = tokens.Database.merged(*databases)
-    database.filter(include, exclude, replace)
+    if output_type == 'directory':
+        if str(database) == '-':
+            raise ValueError(
+                'Cannot specify "-" (stdout) for directory databases')
+
+        database.mkdir(exist_ok=True)
+        database = database / f'database{tokens.DIR_DB_SUFFIX}'
+        output_type = 'csv'
+
+    if str(database) == '-':
+        # Must write bytes to stdout; use sys.stdout.buffer.
+        fd = sys.stdout.buffer
+    else:
+        fd = database.open('wb')
+
+    db = tokens.Database.merged(*databases)
+    db.filter(include, exclude, replace)
 
     with fd:
         if output_type == 'csv':
-            tokens.write_csv(database, fd)
+            tokens.write_csv(db, fd)
         elif output_type == 'binary':
-            tokens.write_binary(database, fd)
+            tokens.write_binary(db, fd)
         else:
             raise ValueError(f'Unknown database type "{output_type}"')
 
-    _LOG.info('Wrote database with %d entries to %s as %s', len(database),
-              fd.name, output_type)
+    _LOG.info('Wrote database with %d entries to %s as %s', len(db), fd.name,
+              output_type)
 
 
-def _handle_add(token_database, databases):
+def _handle_add(token_database: tokens.DatabaseFile,
+                databases: List[tokens.Database],
+                commit: Optional[str]) -> None:
     initial = len(token_database)
+    if commit:
+        entries = itertools.chain.from_iterable(db.entries()
+                                                for db in databases)
+        token_database.add_and_discard_temporary(entries, commit)
+    else:
+        for source in databases:
+            token_database.add(source.entries())
 
-    for source in databases:
-        token_database.add(source.entries())
+        token_database.write_to_file()
 
-    token_database.write_to_file()
+    number_of_changes = len(token_database) - initial
 
-    _LOG.info('Added %d entries to %s',
-              len(token_database) - initial, token_database.path)
+    if number_of_changes:
+        _LOG.info('Added %d entries to %s', number_of_changes,
+                  token_database.path)
 
 
-def _handle_mark_removed(token_database, databases, date):
+def _handle_mark_removed(token_database: tokens.DatabaseFile,
+                         databases: List[tokens.Database],
+                         date: Optional[datetime]):
     marked_removed = token_database.mark_removed(
         (entry for entry in tokens.Database.merged(*databases).entries()
          if not entry.date_removed), date)
 
-    token_database.write_to_file()
+    token_database.write_to_file(rewrite=True)
 
     _LOG.info('Marked %d of %d entries as removed in %s', len(marked_removed),
               len(token_database), token_database.path)
 
 
-def _handle_purge(token_database, before):
+def _handle_purge(token_database: tokens.DatabaseFile,
+                  before: Optional[datetime]):
     purged = token_database.purge(before)
-    token_database.write_to_file()
+    token_database.write_to_file(rewrite=True)
 
     _LOG.info('Removed %d entries from %s', len(purged), token_database.path)
 
@@ -460,12 +453,13 @@ def _parse_args():
 
     # Shared command line options.
     option_db = argparse.ArgumentParser(add_help=False)
-    option_db.add_argument('-d',
-                           '--database',
-                           dest='token_database',
-                           type=tokens.DatabaseFile,
-                           required=True,
-                           help='The database file to update.')
+    option_db.add_argument(
+        '-d',
+        '--database',
+        dest='token_database',
+        type=lambda arg: tokens.DatabaseFile.load(Path(arg)),
+        required=True,
+        help='The database file to update.')
 
     option_tokens = token_databases_parser('*')
 
@@ -489,12 +483,13 @@ def _parse_args():
         '-d',
         '--database',
         required=True,
+        type=Path,
         help='Path to the database file to create; use - for stdout.')
     subparser.add_argument(
         '-t',
         '--type',
         dest='output_type',
-        choices=('csv', 'binary'),
+        choices=('csv', 'binary', 'directory'),
         default='csv',
         help='Which type of database to create. (default: csv)')
     subparser.add_argument('-f',
@@ -555,6 +550,14 @@ def _parse_args():
             'of ELF files or other token databases. Missing entries are NOT '
             'marked as removed.'))
     subparser.set_defaults(handler=_handle_add)
+    subparser.add_argument(
+        '--discard-temporary',
+        dest='commit',
+        help=
+        ('Deletes temporary tokens in memory and on disk when a CSV exists '
+         'within a commit. Afterwards, new strings are added to the database '
+         'from a set of ELF files or other token databases. Missing entries '
+         'are NOT marked as removed.'))
 
     # The 'mark_removed' command marks removed entries to match a set of ELFs.
     subparser = subparsers.add_parser(

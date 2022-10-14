@@ -13,14 +13,17 @@
 # the License.
 """C++-related checks."""
 
+import logging
+
 from pw_presubmit import (
     build,
     Check,
     format_code,
     PresubmitContext,
-    PresubmitFailure,
     filter_paths,
 )
+
+_LOG: logging.Logger = logging.getLogger(__name__)
 
 
 @filter_paths(endswith=format_code.CPP_HEADER_EXTS, exclude=(r'\.pb\.h$', ))
@@ -28,43 +31,46 @@ def pragma_once(ctx: PresubmitContext) -> None:
     """Presubmit check that ensures all header files contain '#pragma once'."""
 
     for path in ctx.paths:
+        _LOG.debug('Checking %s', path)
         with open(path) as file:
             for line in file:
                 if line.startswith('#pragma once'):
                     break
             else:
-                raise PresubmitFailure('#pragma once is missing!', path=path)
+                ctx.fail('#pragma once is missing!', path=path)
 
 
 @Check
 def asan(ctx: PresubmitContext) -> None:
-    build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, 'asan')
+    build.gn_gen(ctx)
+    build.ninja(ctx, 'asan')
 
 
 @Check
 def msan(ctx: PresubmitContext) -> None:
-    build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, 'msan')
+    build.gn_gen(ctx)
+    build.ninja(ctx, 'msan')
 
 
 @Check
 def tsan(ctx: PresubmitContext) -> None:
-    build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, 'tsan')
+    build.gn_gen(ctx)
+    build.ninja(ctx, 'tsan')
 
 
 @Check
 def ubsan(ctx: PresubmitContext) -> None:
-    build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, 'ubsan')
+    build.gn_gen(ctx)
+    build.ninja(ctx, 'ubsan')
 
 
 @Check
 def runtime_sanitizers(ctx: PresubmitContext) -> None:
-    build.gn_gen(ctx.root, ctx.output_dir)
-    build.ninja(ctx.output_dir, 'runtime_sanitizers')
+    build.gn_gen(ctx)
+    build.ninja(ctx, 'runtime_sanitizers')
 
 
 def all_sanitizers():
-    return [asan, msan, tsan, ubsan, runtime_sanitizers]
+    # TODO(b/234876100): msan will not work until the C++ standard library
+    # included in the sysroot has a variant built with msan.
+    return [asan, tsan, ubsan, runtime_sanitizers]

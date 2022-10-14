@@ -15,7 +15,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <type_traits>
 
 #include "pw_bytes/span.h"
@@ -27,6 +26,7 @@
 #include "pw_rpc/pwpb/internal/common.h"
 #include "pw_rpc/pwpb/server_reader_writer.h"
 #include "pw_rpc/service.h"
+#include "pw_span/span.h"
 #include "pw_status/status_with_size.h"
 
 namespace pw::rpc::internal {
@@ -70,7 +70,7 @@ class PwpbMethod : public Method {
   }
 
   // Creates a PwpbMethod for a synchronous unary RPC.
-  // TODO(pwbug/661): Find a way to reduce the number of monomorphized copies
+  // TODO(b/234874001): Find a way to reduce the number of monomorphized copies
   // of this method.
   template <auto kMethod>
   static constexpr PwpbMethod SynchronousUnary(uint32_t id,
@@ -97,7 +97,7 @@ class PwpbMethod : public Method {
   }
 
   // Creates a PwpbMethod for an asynchronous unary RPC.
-  // TODO(pwbug/661): Find a way to reduce the number of monomorphized copies
+  // TODO(b/234874001): Find a way to reduce the number of monomorphized copies
   // of this method.
   template <auto kMethod>
   static constexpr PwpbMethod AsynchronousUnary(uint32_t id,
@@ -251,7 +251,8 @@ class PwpbMethod : public Method {
       return;
     }
 
-    internal::PwpbServerCall responder(context, MethodType::kUnary);
+    internal::PwpbServerCall responder(context.ClaimLocked(),
+                                       MethodType::kUnary);
     rpc_lock().unlock();
     const Status status = function_.synchronous_unary(
         context.service(), &request_struct, &response_struct);
@@ -269,7 +270,7 @@ class PwpbMethod : public Method {
       return;
     }
 
-    internal::PwpbServerCall server_writer(context, method_type);
+    internal::PwpbServerCall server_writer(context.ClaimLocked(), method_type);
     rpc_lock().unlock();
     function_.unary_request(context.service(), &request_struct, server_writer);
   }
@@ -337,7 +338,7 @@ class PwpbMethod : public Method {
   static void ClientStreamingInvoker(const CallContext& context, const Packet&)
       PW_UNLOCK_FUNCTION(rpc_lock()) {
     internal::BasePwpbServerReader<Request> reader(
-        context, MethodType::kClientStreaming);
+        context.ClaimLocked(), MethodType::kClientStreaming);
     rpc_lock().unlock();
     static_cast<const PwpbMethod&>(context.method())
         .function_.stream_request(context.service(), reader);
@@ -349,7 +350,7 @@ class PwpbMethod : public Method {
                                             const Packet&)
       PW_UNLOCK_FUNCTION(rpc_lock()) {
     internal::BasePwpbServerReader<Request> reader_writer(
-        context, MethodType::kBidirectionalStreaming);
+        context.ClaimLocked(), MethodType::kBidirectionalStreaming);
     rpc_lock().unlock();
     static_cast<const PwpbMethod&>(context.method())
         .function_.stream_request(context.service(), reader_writer);
@@ -363,7 +364,7 @@ class PwpbMethod : public Method {
 };
 
 // MethodTraits specialization for a static synchronous unary method.
-// TODO(pwbug/658): Further qualify this (and nanopb) definition so that they
+// TODO(b/234874320): Further qualify this (and nanopb) definition so that they
 // can co-exist in the same project.
 template <typename Req, typename Res>
 struct MethodTraits<PwpbSynchronousUnary<Req, Res>*> {

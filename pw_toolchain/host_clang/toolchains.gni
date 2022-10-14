@@ -47,7 +47,7 @@ _host_clang_toolchain = {
 
 # Common default scope shared by all host Clang toolchains.
 _defaults = {
-  # TODO(pwbug/461) amend toolchain declaration process to
+  # TODO(b/234888755) amend toolchain declaration process to
   # remove this hack.
   default_configs = []
   default_configs = [
@@ -55,6 +55,12 @@ _defaults = {
     "$dir_pw_toolchain/host_clang:no_system_libcpp",
     "$dir_pw_toolchain/host_clang:xcode_sysroot",
   ]
+
+  # OSS-Fuzz uses -stdlib=libc++, which isn't included in the CIPD-provided
+  # Linux sysroot (it instead provides libstdc++).
+  if (!pw_toolchain_OSS_FUZZ_ENABLED) {
+    default_configs += [ "$dir_pw_toolchain/host_clang:linux_sysroot" ]
+  }
 }
 
 pw_toolchain_host_clang = {
@@ -89,7 +95,7 @@ pw_toolchain_host_clang = {
     forward_variables_from(_host_clang_toolchain, "*")
     defaults = {
       forward_variables_from(_defaults, "*")
-      default_configs += [ "$dir_pw_build:optimize_size" ]
+      default_configs += [ "$dir_pw_build:optimize_size_clang" ]
       foreach(sanitizer, pw_toolchain_SANITIZERS) {
         default_configs +=
             [ "$dir_pw_toolchain/host_clang:sanitize_$sanitizer" ]

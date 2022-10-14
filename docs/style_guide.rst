@@ -28,9 +28,6 @@ embedded development beyond just C++ style.
 
 C++ standard
 ============
-Pigweed primarily uses the C++17 standard. A few modules maintain support for
-C++14, however (e.g. :ref:`module-pw_kvs` and its dependencies).
-
 All Pigweed C++ code must compile with ``-std=c++17`` in Clang and GCC. C++20
 features may be used as long as the code still compiles unmodified with C++17.
 See ``pw_polyfill/language_feature_macros.h`` for macros that provide C++20
@@ -559,7 +556,8 @@ Preprocessor macros
 * Public Pigweed macros must be prefixed with the module name (e.g.
   ``PW_MY_MODULE_*``).
 * Private Pigweed macros must be prefixed with an underscore followed by the
-  module name (e.g. ``_PW_MY_MODULE_*``).
+  module name (e.g. ``_PW_MY_MODULE_*``). (This style may change, see
+  `b/234886184 <https://issuetracker.google.com/issues/234886184>`_).
 
 **Example**
 
@@ -613,6 +611,8 @@ Preprocessor macros
 
   }  // namespace nested_namespace
   }  // namespace pw::my_module
+
+See :ref:`docs-pw-style-macros` for details about macro usage.
 
 Namespace scope formatting
 ==========================
@@ -696,6 +696,8 @@ Prefer storing references over storing pointers. Pointers are required when the
 pointer can change its target or may be ``nullptr``. Otherwise, a reference or
 const reference should be used.
 
+.. _docs-pw-style-macros:
+
 Preprocessor macros
 ===================
 Macros should only be used when they significantly improve upon the C++ code
@@ -711,8 +713,9 @@ to ensure the macros are hard to use wrong.
 Stand-alone statement macros
 ----------------------------
 Macros that are standalone statements must require the caller to terminate the
-macro invocation with a semicolon. For example, the following does *not* conform
-to Pigweed's macro style:
+macro invocation with a semicolon (see `Swalling the Semicolon
+<https://gcc.gnu.org/onlinedocs/cpp/Swallowing-the-Semicolon.html>`_). For
+example, the following does *not* conform to Pigweed's macro style:
 
 .. code-block:: cpp
 
@@ -747,8 +750,7 @@ contents can be placed in a ``do { ... } while (0)`` loop.
     } while (0)
 
 Standalone macros at global scope that do not already require a semicolon can
-add a ``static_assert`` or throwaway struct declaration statement as their
-last line.
+add a ``static_assert`` declaration statement as their last line.
 
 .. code-block:: cpp
 
@@ -836,10 +838,10 @@ Pigweed uses the standard Python style: PEP8, which is available on the web at
 https://www.python.org/dev/peps/pep-0008/. All Pigweed Python code should pass
 ``yapf`` when configured for PEP8 style.
 
-Python 3
-========
-Pigweed uses Python 3. Some modules may offer limited support for Python 2, but
-Python 3.6 or newer is required for most Pigweed code.
+Python versions
+===============
+Pigweed code must support Python 3.7.7, 3.8, and 3.9. The only exception is
+:ref:`module-pw_env_setup`, which also supports Python 2 and 3.6.
 
 ---------------
 Build files: GN
@@ -1275,7 +1277,8 @@ You are encouraged to use the following footers when appropriate:
       Bug: 123
       Bug: 456
 
-* ``Fixed``: Like ``Bug``, but automatically closes the bug when submitted.
+* ``Fixed`` or ``Fixes``: Like ``Bug``, but automatically closes the bug when
+  submitted.
 
   .. code:: none
 

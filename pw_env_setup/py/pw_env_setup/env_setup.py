@@ -35,11 +35,6 @@ import subprocess
 import sys
 import time
 
-# TODO(pwbug/67): Remove import hacks once the oxidized prebuilt binaries are
-# proven stable for first-time bootstrapping. For now, continue to support
-# running directly from source without assuming a functioning Python
-# environment when running for the first time.
-
 # If we're running oxidized, filesystem-centric import hacks won't work. In that
 # case, jump straight to the imports and assume oxidation brought in the deps.
 if not getattr(sys, 'oxidized', False):
@@ -76,7 +71,6 @@ from pw_env_setup import virtualenv_setup
 from pw_env_setup import windows_env_start
 
 
-# TODO(pwbug/67, pwbug/68) switch to shutil.which().
 def _which(executable,
            pathsep=os.pathsep,
            use_pathext=None,
@@ -198,6 +192,7 @@ class EnvSetup(object):
 
         self._cipd_package_file = []
         self._virtualenv_requirements = []
+        self._virtualenv_constraints = []
         self._virtualenv_gn_targets = []
         self._virtualenv_gn_args = []
         self._use_pinned_pip_packages = use_pinned_pip_packages
@@ -304,6 +299,14 @@ class EnvSetup(object):
         self._virtualenv_system_packages = virtualenv.pop(
             'system_packages', False)
 
+        for req_txt in virtualenv.pop('requirements', ()):
+            self._virtualenv_requirements.append(
+                os.path.join(self._project_root, req_txt))
+
+        for constraint_txt in virtualenv.pop('constraints', ()):
+            self._virtualenv_constraints.append(
+                os.path.join(self._project_root, constraint_txt))
+
         if virtualenv:
             raise ConfigFileError(
                 'unrecognized option in {}: "virtualenv.{}"'.format(
@@ -314,7 +317,7 @@ class EnvSetup(object):
                 self._config_file_name, next(iter(config))))
 
     def _check_submodule_presence(self):
-        unitialized = set()
+        uninitialized = set()
 
         # Don't check submodule presence if using the Android Repo Tool.
         if os.path.isdir(os.path.join(self._project_root, '.repo')):
@@ -332,11 +335,11 @@ class EnvSetup(object):
             # Anything but an initial '-' means the submodule is initialized.
             if not line.startswith('-'):
                 continue
-            unitialized.add(line.split()[1])
+            uninitialized.add(line.split()[1])
 
-        missing = unitialized - set(self._optional_submodules)
+        missing = uninitialized - set(self._optional_submodules)
         if self._required_submodules:
-            missing = set(self._required_submodules) & unitialized
+            missing = set(self._required_submodules) & uninitialized
 
         if missing:
             print(
@@ -369,6 +372,9 @@ class EnvSetup(object):
             raise MissingSubmodulesError(', '.join(sorted(missing)))
 
     def _write_gni_file(self):
+        if self._cipd_only:
+            return
+
         gni_file = os.path.join(self._project_root, 'build_overrides',
                                 'pigweed_environment.gni')
         if self._gni_file:
@@ -569,7 +575,11 @@ Then use `set +x` to go back to normal.
 
         requirements, req_glob_warnings = self._process_globs(
             self._virtualenv_requirements)
-        result = result_func(req_glob_warnings)
+
+        constraints, constraint_glob_warnings = self._process_globs(
+            self._virtualenv_constraints)
+
+        result = result_func(req_glob_warnings + constraint_glob_warnings)
 
         orig_python3 = _which('python3')
         with self._env():
@@ -594,6 +604,7 @@ Then use `set +x` to go back to normal.
                 project_root=self._project_root,
                 venv_path=self._virtualenv_root,
                 requirements=requirements,
+                constraints=constraints,
                 gn_args=self._virtualenv_gn_args,
                 gn_targets=self._virtualenv_gn_targets,
                 gn_out_dir=self._virtualenv_gn_out_dir,
@@ -611,18 +622,20 @@ Then use `set +x` to go back to normal.
 
         result = result_func()
 
+        pkg_dir = os.path.join(self._install_dir, 'packages')
+        self._env.set('PW_PACKAGE_ROOT', pkg_dir)
+
+        if not os.path.isdir(pkg_dir):
+            os.makedirs(pkg_dir)
+
         if not self._pw_packages:
             return result(_Result.Status.SKIPPED)
-
-        logdir = os.path.join(self._install_dir, 'packages')
-        if not os.path.isdir(logdir):
-            os.makedirs(logdir)
 
         for pkg in self._pw_packages:
             print('installing {}'.format(pkg))
             cmd = ['pw', 'package', 'install', pkg]
 
-            log = os.path.join(logdir, '{}.log'.format(pkg))
+            log = os.path.join(pkg_dir, '{}.log'.format(pkg))
             try:
                 with open(log, 'w') as outs, self._env():
                     print(*cmd, file=outs)
@@ -655,7 +668,7 @@ Then use `set +x` to go back to normal.
 
 def parse(argv=None):
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog="python -m pw_env_setup.env_setup")
 
     pw_root = os.environ.get('PW_ROOT', None)
     if not pw_root:

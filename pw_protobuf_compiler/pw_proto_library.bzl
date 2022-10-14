@@ -22,7 +22,7 @@ of rules_proto_grpc. However, the version checked in here does not yet support,
 
 In addition, nanopb proto files are not yet generated.
 
-TODO(pwbug/621): Close these gaps and start using this implementation.
+TODO(b/234873954): Close these gaps and start using this implementation.
 
 # Overview of implementation
 
@@ -51,7 +51,7 @@ instantiations (_pw_proto_compiler_aspect, etc).
 
 load("//pw_build:pigweed.bzl", "pw_cc_library")
 load("@rules_proto//proto:defs.bzl", "ProtoInfo")
-load("//pw_protobuf_compiler:pw_nanopb_cc_library", "pw_nanopb_cc_library")
+load("//pw_protobuf_compiler:pw_nanopb_cc_library.bzl", "pw_nanopb_cc_library")
 
 def pw_proto_library(
         name = "",
@@ -112,7 +112,7 @@ def pw_proto_library(
     def is_plugin_enabled(plugin):
         return (enabled_targets == None or plugin in enabled_targets)
 
-    if is_plugin_enabled("nanobp"):
+    if is_plugin_enabled("nanopb"):
         # Use nanopb to generate the pb.h and pb.c files, and the target
         # exposing them.
         pw_nanopb_cc_library(name + ".nanopb", deps, options = nanopb_options)
@@ -152,6 +152,16 @@ PwProtoInfo = provider(
     },
 )
 
+PwProtoOptionsInfo = provider(
+    "Allows `pw_proto_filegroup` targets to pass along `.options` files " +
+    "without polluting the `DefaultInfo` provider, which means they can " +
+    "still be used in the `srcs` of `proto_library` targets.",
+    fields = {
+        "options_files": (".options file(s) associated with a proto_library " +
+                          "for Pigweed codegen."),
+    },
+)
+
 def _get_short_path(source):
     return source.short_path
 
@@ -166,8 +176,26 @@ def _proto_compiler_aspect_impl(target, ctx):
         path = src.basename[:-len("proto")] + ctx.attr._extension
         genfiles.append(ctx.actions.declare_file(path, sibling = src))
 
+    # List the `.options` files from any `pw_proto_filegroup` targets listed
+    # under this target's `srcs`.
+    options_files = [
+        options_file
+        for src in ctx.rule.attr.srcs
+        if PwProtoOptionsInfo in src
+        for options_file in src[PwProtoOptionsInfo].options_files.to_list()
+    ]
+
+    # Convert include paths to a depset and back to deduplicate entries.
+    # Note that this will probably evaluate to either [] or ["."] in most cases.
+    options_file_include_paths = depset([
+        "." if options_file.root.path == "" else options_file.root.path
+        for options_file in options_files
+    ]).to_list()
+
     args = ctx.actions.args()
     args.add("--plugin=protoc-gen-pwpb={}".format(ctx.executable._protoc_plugin.path))
+    for options_file_include_path in options_file_include_paths:
+        args.add("--pwpb_opt=-I{}".format(options_file_include_path))
     args.add("--pwpb_out={}".format(ctx.bin_dir.path))
     args.add_joined(
         "--descriptor_set_in",
@@ -179,7 +207,10 @@ def _proto_compiler_aspect_impl(target, ctx):
     args.add_all(target[ProtoInfo].direct_sources, map_each = _get_short_path)
 
     ctx.actions.run(
-        inputs = depset(target[ProtoInfo].transitive_sources.to_list(), transitive = [target[ProtoInfo].transitive_descriptor_sets]),
+        inputs = depset(
+            target[ProtoInfo].transitive_sources.to_list() + options_files,
+            transitive = [target[ProtoInfo].transitive_descriptor_sets],
+        ),
         progress_message = "Generating %s C++ files for %s" % (ctx.attr._extension, ctx.label.name),
         tools = [ctx.executable._protoc_plugin],
         outputs = genfiles,
@@ -241,7 +272,7 @@ def _impl_pw_proto_library(ctx):
     # in srcs. We don't perform layering_check in Pigweed, so this is not a big
     # deal.
     #
-    # TODO(pwbug/621): Tidy this up.
+    # TODO(b/234873954): Tidy this up.
     all_genfiles = []
     for dep in ctx.attr.deps:
         for f in dep[PwProtoInfo].genfiles:
@@ -298,6 +329,74 @@ _pw_nanopb_rpc_proto_library = rule(
     },
 )
 
+def _pw_proto_filegroup_impl(ctx):
+    source_files = list()
+    options_files = list()
+
+    for src in ctx.attr.srcs:
+        source_files += src.files.to_list()
+
+    for options_src in ctx.attr.options_files:
+        for file in options_src.files.to_list():
+            if file.extension == "options":
+                options_files.append(file)
+            else:
+                fail((
+                    "Files provided as `options_files` to a " +
+                    "`pw_proto_filegroup` must have the `.options` " +
+                    "extension; the file `{}` was provided."
+                ).format(file.basename))
+
+    return [
+        DefaultInfo(files = depset(source_files)),
+        PwProtoOptionsInfo(options_files = depset(options_files)),
+    ]
+
+pw_proto_filegroup = rule(
+    doc = (
+        "Acts like a `filegroup`, but with an additional `options_files` " +
+        "attribute that accepts a list of `.options` files. These `.options` " +
+        "files should typically correspond to `.proto` files provided under " +
+        "the `srcs` attribute." +
+        "\n\n" +
+        "A `pw_proto_filegroup` is intended to be passed into the `srcs` of " +
+        "a `proto_library` target as if it were a normal `filegroup` " +
+        "containing only `.proto` files. For the purposes of the " +
+        "`proto_library` itself, the `pw_proto_filegroup` does indeed act " +
+        "just like a normal `filegroup`; the `options_files` attribute is " +
+        "ignored. However, if that `proto_library` target is then passed " +
+        "(directly or transitively) into the `deps` of a `pw_proto_library` " +
+        "for code generation, the `pw_proto_library` target will have access " +
+        "to the provided `.options` files and will pass them to the code " +
+        "generator." +
+        "\n\n" +
+        "Note that, in order for a `pw_proto_filegroup` to be a valid `srcs` " +
+        "entry for a `proto_library`, it must meet the same conditions " +
+        "required of a standard `filegroup` in that context. Namely, its " +
+        "`srcs` must provide at least one `.proto` (or `.protodevel`) file. " +
+        "Put simply, a `pw_proto_filegroup` cannot be used as a vector for " +
+        "injecting solely `.options` files; it must contain at least one " +
+        "proto as well (generally one associated with an included `.options` " +
+        "file in the interest of clarity)." +
+        "\n\n" +
+        "Regarding the somewhat unusual usage, this feature's design was " +
+        "mostly preordained by the combination of Bazel's strict access " +
+        "controls, the restrictions imposed on inputs to the `proto_library` " +
+        "rule, and the need to support `.options` files from transitive " +
+        "dependencies."
+    ),
+    implementation = _pw_proto_filegroup_impl,
+    attrs = {
+        "srcs": attr.label_list(
+            allow_files = True,
+        ),
+        "options_files": attr.label_list(
+            allow_files = True,
+        ),
+    },
+    provides = [PwProtoOptionsInfo],
+)
+
 PIGWEED_PLUGIN = {
     "pwpb": {
         "compiler": _pw_proto_library,
@@ -309,6 +408,7 @@ PIGWEED_PLUGIN = {
             "//pw_result",
             "//pw_span",
             "//pw_status",
+            "//pw_string:string",
         ],
         "include_nanopb_dep": False,
         "include_pwpb_dep": False,

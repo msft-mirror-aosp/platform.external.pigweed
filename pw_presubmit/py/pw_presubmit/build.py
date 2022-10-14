@@ -30,6 +30,7 @@ from pw_package import package_manager
 from pw_presubmit import (
     call,
     Check,
+    FileFilter,
     filter_paths,
     format_code,
     log_run,
@@ -47,19 +48,31 @@ def bazel(ctx: PresubmitContext, cmd: str, *args: str) -> None:
 
     Intended for use with bazel build and test. May not work with others.
     """
+
+    num_jobs: List[str] = []
+    if ctx.num_jobs is not None:
+        num_jobs.extend(('--jobs', str(ctx.num_jobs)))
+
+    keep_going: List[str] = []
+    if ctx.continue_after_build_error:
+        keep_going.append('--keep_going')
+
     call('bazel',
          cmd,
          '--verbose_failures',
          '--verbose_explanations',
          '--worker_verbose',
          f'--symlink_prefix={ctx.output_dir / ".bazel-"}',
+         *num_jobs,
+         *keep_going,
          *args,
          cwd=ctx.root,
          env=env_with_clang_vars())
 
 
-def install_package(root: Path, name: str) -> None:
+def install_package(ctx: PresubmitContext, name: str) -> None:
     """Install package with given name in given path."""
+    root = ctx.package_root
     mgr = package_manager.PackageManager(root)
 
     if not mgr.list():
@@ -98,8 +111,7 @@ def gn_args(**kwargs) -> str:
     return '--args=' + ' '.join(transformed_args)
 
 
-def gn_gen(gn_source_dir: Path,
-           gn_output_dir: Path,
+def gn_gen(ctx: PresubmitContext,
            *args: str,
            gn_check: bool = True,
            gn_fail_on_unused: bool = True,
@@ -108,10 +120,11 @@ def gn_gen(gn_source_dir: Path,
            **gn_arguments) -> None:
     """Runs gn gen in the specified directory with optional GN args."""
     args_option = gn_args(**gn_arguments)
+    override_args_option = gn_args(**ctx.override_gn_args)
 
     if not preserve_args_gn:
         # Delete args.gn to ensure this is a clean build.
-        args_gn = gn_output_dir / 'args.gn'
+        args_gn = ctx.output_dir / 'args.gn'
         if args_gn.is_file():
             args_gn.unlink()
 
@@ -123,44 +136,56 @@ def gn_gen(gn_source_dir: Path,
 
     call('gn',
          'gen',
-         gn_output_dir,
+         ctx.output_dir,
          '--color=always',
          *(['--fail-on-unused-args'] if gn_fail_on_unused else []),
          *([export_commands_arg] if export_commands_arg else []),
          *args,
          *([args_option] if gn_arguments else []),
-         cwd=gn_source_dir)
+         *([override_args_option] if ctx.override_gn_args else []),
+         cwd=ctx.root)
 
     if gn_check:
         call('gn',
              'check',
-             gn_output_dir,
+             ctx.output_dir,
              '--check-generated',
              '--check-system',
-             cwd=gn_source_dir)
+             cwd=ctx.root)
 
 
-def ninja(directory: Path,
+def ninja(ctx: PresubmitContext,
           *args,
           save_compdb=True,
           save_graph=True,
           **kwargs) -> None:
     """Runs ninja in the specified directory."""
+
+    num_jobs: List[str] = []
+    if ctx.num_jobs is not None:
+        num_jobs.extend(('-j', str(ctx.num_jobs)))
+
+    keep_going: List[str] = []
+    if ctx.continue_after_build_error:
+        keep_going.extend(('-k', '0'))
+
     if save_compdb:
         proc = subprocess.run(
-            ['ninja', '-C', directory, '-t', 'compdb', *args],
+            ['ninja', '-C', ctx.output_dir, '-t', 'compdb', *args],
             capture_output=True,
             **kwargs)
-        (directory / 'ninja.compdb').write_bytes(proc.stdout)
+        (ctx.output_dir / 'ninja.compdb').write_bytes(proc.stdout)
 
     if save_graph:
-        proc = subprocess.run(['ninja', '-C', directory, '-t', 'graph', *args],
-                              capture_output=True,
-                              **kwargs)
-        (directory / 'ninja.graph').write_bytes(proc.stdout)
+        proc = subprocess.run(
+            ['ninja', '-C', ctx.output_dir, '-t', 'graph', *args],
+            capture_output=True,
+            **kwargs)
+        (ctx.output_dir / 'ninja.graph').write_bytes(proc.stdout)
 
-    call('ninja', '-C', directory, *args, **kwargs)
-    (directory / '.ninja_log').rename(directory / 'ninja.log')
+    call('ninja', '-C', ctx.output_dir, *num_jobs, *keep_going, *args,
+         **kwargs)
+    (ctx.output_dir / '.ninja_log').rename(ctx.output_dir / 'ninja.log')
 
 
 def get_gn_args(directory: Path) -> List[Dict[str, Dict[str, str]]]:
@@ -170,16 +195,15 @@ def get_gn_args(directory: Path) -> List[Dict[str, Dict[str, str]]]:
     return json.loads(proc.stdout)
 
 
-def cmake(source_dir: Path,
-          output_dir: Path,
+def cmake(ctx: PresubmitContext,
           *args: str,
           env: Mapping['str', 'str'] = None) -> None:
     """Runs CMake for Ninja on the given source and output directories."""
     call('cmake',
          '-B',
-         output_dir,
+         ctx.output_dir,
          '-S',
-         source_dir,
+         ctx.root,
          '-G',
          'Ninja',
          *args,
@@ -315,7 +339,7 @@ def check_builds_for_files(
         for path in (p for p in files
                      if p.suffix in bazel_extensions_to_check):
             if path not in bazel_builds:
-                # TODO(pwbug/176) Replace this workaround for fuzzers.
+                # TODO(b/234883555) Replace this workaround for fuzzers.
                 if 'fuzz' not in str(path):
                     missing['Bazel'].append(path)
 
@@ -355,7 +379,8 @@ def test_server(executable: str, output_dir: Path):
             proc.terminate()
 
 
-@filter_paths(endswith=('.bzl', '.bazel'))
+@filter_paths(file_filter=FileFilter(endswith=('.bzl', '.bazel'),
+                                     name=('WORKSPACE', )))
 def bazel_lint(ctx: PresubmitContext):
     """Runs buildifier with lint on Bazel files.
 
@@ -377,5 +402,4 @@ def bazel_lint(ctx: PresubmitContext):
 @Check
 def gn_gen_check(ctx: PresubmitContext):
     """Runs gn gen --check to enforce correct header dependencies."""
-    pw_project_root = Path(os.environ['PW_PROJECT_ROOT'])
-    gn_gen(pw_project_root, ctx.output_dir, gn_check=True)
+    gn_gen(ctx, gn_check=True)

@@ -29,6 +29,7 @@
 #include "google/protobuf/text_format.h"
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
+#include "pw_rpc/channel.h"
 #include "pw_rpc/integration_testing.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
@@ -77,15 +78,15 @@ struct TransferResult {
 
 // Create a pw_transfer client and perform the transfer actions.
 pw::Status PerformTransferActions(const pw::transfer::ClientConfig& config) {
-  std::byte chunk_buffer[512];
-  std::byte encode_buffer[512];
+  constexpr size_t kMaxPayloadSize = rpc::MaxSafePayloadSize();
+  std::byte chunk_buffer[kMaxPayloadSize];
+  std::byte encode_buffer[kMaxPayloadSize];
   transfer::Thread<2, 2> transfer_thread(chunk_buffer, encode_buffer);
   thread::Thread system_thread(TransferThreadOptions(), transfer_thread);
 
   pw::transfer::Client client(rpc::integration_test::client(),
                               rpc::integration_test::kChannelId,
-                              transfer_thread,
-                              /*max_bytes_to_receive=*/256);
+                              transfer_thread);
 
   Status status = pw::OkStatus();
   for (const pw::transfer::TransferAction& action : config.transfer_actions()) {
@@ -94,10 +95,15 @@ pw::Status PerformTransferActions(const pw::transfer::ClientConfig& config) {
         pw::transfer::TransferAction::TransferType::
             TransferAction_TransferType_WRITE_TO_SERVER) {
       pw::stream::StdFileReader input(action.file_path().c_str());
-      client.Write(action.resource_id(), input, [&result](Status status) {
-        result.status = status;
-        result.completed.release();
-      });
+      client.Write(
+          action.resource_id(),
+          input,
+          [&result](Status status) {
+            result.status = status;
+            result.completed.release();
+          },
+          pw::transfer::cfg::kDefaultChunkTimeout,
+          pw::transfer::ProtocolVersion::kVersionTwo);
       // Wait for the transfer to complete. We need to do this here so that the
       // StdFileReader doesn't go out of scope.
       result.completed.acquire();
@@ -106,10 +112,15 @@ pw::Status PerformTransferActions(const pw::transfer::ClientConfig& config) {
                pw::transfer::TransferAction::TransferType::
                    TransferAction_TransferType_READ_FROM_SERVER) {
       pw::stream::StdFileWriter output(action.file_path().c_str());
-      client.Read(action.resource_id(), output, [&result](Status status) {
-        result.status = status;
-        result.completed.release();
-      });
+      client.Read(
+          action.resource_id(),
+          output,
+          [&result](Status status) {
+            result.status = status;
+            result.completed.release();
+          },
+          pw::transfer::cfg::kDefaultChunkTimeout,
+          pw::transfer::ProtocolVersion::kVersionTwo);
       // Wait for the transfer to complete.
       result.completed.acquire();
     } else {
@@ -119,7 +130,7 @@ pw::Status PerformTransferActions(const pw::transfer::ClientConfig& config) {
       break;
     }
 
-    if (!result.status.ok()) {
+    if (result.status.code() != action.expected_status()) {
       PW_LOG_ERROR("Failed to perform action:\n%s",
                    action.DebugString().c_str());
       status = result.status;

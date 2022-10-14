@@ -29,7 +29,7 @@ from pw_build.create_python_tree import (
     load_common_config,
     update_config_with_packages,
 )
-from pw_build.generate_python_package import _PYPROJECT_FILE as PYPROJECT_TEXT
+from pw_build.generate_python_package import PYPROJECT_FILE
 
 
 def _setup_cfg(package_name: str, install_requires: str = '') -> str:
@@ -64,7 +64,7 @@ def _create_fake_python_package(location: Path,
             text = _setup_cfg(package_name, install_requires)
         elif str(destination).endswith('pyproject.toml'):
             # Make sure pyproject.toml file has valid syntax.
-            text = PYPROJECT_TEXT
+            text = PYPROJECT_FILE
         destination.write_text(text)
 
 
@@ -105,6 +105,10 @@ description = Pigweed swiss-army knife
 
 [options]
 zip_safe = False
+
+[options.package_data]
+megapackage =
+    py.typed
 ''')
         config = load_common_config(common_config=common_config,
                                     append_git_sha=False,
@@ -230,6 +234,8 @@ install_requires =
     httpwatcher
 
 [options.package_data]
+megapackage =
+    py.typed
 mars =
     py.typed
 saturn =
@@ -244,7 +250,7 @@ saturn =
         expected_cfg_lines = [
             line.rstrip() for line in expected_cfg.splitlines() if line
         ]
-        self.assertEqual(result_cfg_lines, expected_cfg_lines)
+        self.assertEqual(expected_cfg_lines, result_cfg_lines)
 
 
     @parameterized.expand([

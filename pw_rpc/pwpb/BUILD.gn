@@ -71,7 +71,10 @@ pw_source_set("common") {
     dir_pw_log,
     dir_pw_stream,
   ]
-  public = [ "public/pw_rpc/pwpb/internal/common.h" ]
+  public = [
+    "public/pw_rpc/pwpb/internal/common.h",
+    "public/pw_rpc/pwpb/serde.h",
+  ]
 }
 
 pw_source_set("test_method_context") {
@@ -85,6 +88,7 @@ pw_source_set("test_method_context") {
     "..:test_utils",
     dir_pw_assert,
     dir_pw_containers,
+    dir_pw_span,
   ]
 }
 

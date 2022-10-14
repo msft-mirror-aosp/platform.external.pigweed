@@ -22,17 +22,20 @@ import re
 import shutil
 import subprocess
 import tempfile
-from typing import Iterable
+from typing import Iterable, Optional
 
 import setuptools  # type: ignore
 
 try:
     from pw_build.python_package import (PythonPackage, load_packages,
                                          change_working_dir)
+    from pw_build.generate_python_package import PYPROJECT_FILE
+
 except ImportError:
     # Load from python_package from this directory if pw_build is not available.
     from python_package import (  # type: ignore
         PythonPackage, load_packages, change_working_dir)
+    from generate_python_package import PYPROJECT_FILE  # type: ignore
 
 
 def _parse_args():
@@ -56,6 +59,13 @@ def _parse_args():
                         action='store_true',
                         help='Append the current date to the setup.cfg '
                         'version.')
+    parser.add_argument('--setupcfg-override-name',
+                        help='Override metadata.name in setup.cfg')
+    parser.add_argument('--setupcfg-override-version',
+                        help='Override metadata.version in setup.cfg')
+    parser.add_argument('--create-default-pyproject-toml',
+                        action='store_true',
+                        help='Generate a default pyproject.toml file')
 
     parser.add_argument(
         '--extra-files',
@@ -99,32 +109,32 @@ class UnexpectedConfigSection(Exception):
     "Exception thrown when the common configparser contains unexpected values."
 
 
-def load_common_config(common_config: Path,
+def load_common_config(common_config: Optional[Path] = None,
+                       package_name_override: Optional[str] = None,
+                       package_version_override: Optional[str] = None,
                        append_git_sha: bool = False,
                        append_date: bool = False) -> configparser.ConfigParser:
     """Load an existing ConfigParser file and update metadata.version."""
     config = configparser.ConfigParser()
-    config.read(common_config)
+    if common_config:
+        config.read(common_config)
+
+    # Metadata and option sections need to exist.
+    if not config.has_section('metadata'):
+        config['metadata'] = {}
+    if not config.has_section('options'):
+        config['options'] = {}
+
+    if package_name_override:
+        config['metadata']['name'] = package_name_override
+    if package_version_override:
+        config['metadata']['version'] = package_version_override
 
     # Check for existing values that should not be present
     if config.has_option('options', 'packages'):
         value = str(config['options']['packages'])
         raise UnexpectedConfigSection(
             f'[options] packages already defined as: {value}')
-
-    if config.has_section('options.package_data'):
-        raise UnexpectedConfigSection(
-            '[options.package_data] already defined as:\n' +
-            str(dict(config['options.package_data'].items())))
-
-    if config.has_section('options.entry_points'):
-        raise UnexpectedConfigSection(
-            '[options.entry_points] already defined as:\n' +
-            str(dict(config['options.entry_points'].items())))
-
-    # Metadata and option sections should already be defined.
-    assert config.has_section('metadata')
-    assert config.has_section('options')
 
     # Append build metadata if applicable.
     build_metadata = []
@@ -146,8 +156,10 @@ def update_config_with_packages(
 ) -> None:
     """Merge setup.cfg files from a set of python packages."""
     config['options']['packages'] = 'find:'
-    config['options.package_data'] = {}
-    config['options.entry_points'] = {}
+    if not config.has_section('options.package_data'):
+        config['options.package_data'] = {}
+    if not config.has_section('options.entry_points'):
+        config['options.entry_points'] = {}
 
     # Save a list of packages being bundled.
     included_packages = [pkg.package_name for pkg in python_packages]
@@ -175,7 +187,13 @@ def update_config_with_packages(
         # Collect package_data
         if pkg.config.has_section('options.package_data'):
             for key, value in pkg.config['options.package_data'].items():
-                config['options.package_data'][key] = value
+                existing_values = config['options.package_data'].get(
+                    key, '').splitlines()
+                new_value = '\n'.join(
+                    sorted(set(existing_values + value.splitlines())))
+                # Remove any empty lines
+                new_value = new_value.replace('\n\n', '\n')
+                config['options.package_data'][key] = new_value
 
         # Collect entry_points
         if pkg.config.has_section('options.entry_points'):
@@ -189,17 +207,19 @@ def update_config_with_packages(
 
 
 def write_config(
-    common_config: Path,
     final_config: configparser.ConfigParser,
     tree_destination_dir: Path,
+    common_config: Optional[Path] = None,
 ) -> None:
     """Write a the final setup.cfg file with license comment block."""
-    # Get the license comment block from the common_config.
     comment_block_text = ''
-    comment_block_match = re.search(r'((^#.*?[\r\n])*)([^#])',
-                                    common_config.read_text(), re.MULTILINE)
-    if comment_block_match:
-        comment_block_text = comment_block_match.group(1)
+    if common_config:
+        # Get the license comment block from the common_config.
+        comment_block_match = re.search(r'((^#.*?[\r\n])*)([^#])',
+                                        common_config.read_text(),
+                                        re.MULTILINE)
+        if comment_block_match:
+            comment_block_text = comment_block_match.group(1)
 
     setup_cfg_file = tree_destination_dir.resolve() / 'setup.cfg'
     setup_cfg_text = io.StringIO()
@@ -257,21 +277,17 @@ def build_python_tree(python_packages: Iterable[PythonPackage],
     shutil.rmtree(destination_path, ignore_errors=True)
     destination_path.mkdir(exist_ok=True)
 
-    # Define a temporary location to run setup.py build in.
-    with tempfile.TemporaryDirectory() as build_base_name:
-        build_base = Path(build_base_name)
+    for pkg in python_packages:
+        # Define a temporary location to run setup.py build in.
+        with tempfile.TemporaryDirectory() as build_base_name:
+            build_base = Path(build_base_name)
 
-        for pkg in python_packages:
             lib_dir_path = setuptools_build_with_base(
                 pkg, build_base, include_tests=include_tests)
 
             # Move installed files from the temp build-base into
             # destination_path.
-            for new_file in lib_dir_path.glob('*'):
-                # Use str(Path) since shutil.move only accepts path-like objects
-                # in Python 3.9 and up:
-                #   https://docs.python.org/3/library/shutil.html#shutil.move
-                shutil.move(str(new_file), str(destination_path))
+            shutil.copytree(lib_dir_path, destination_path, dirs_exist_ok=True)
 
             # Clean build base lib folder for next install
             shutil.rmtree(lib_dir_path, ignore_errors=True)
@@ -302,8 +318,12 @@ def copy_extra_files(extra_file_strings: Iterable[str]) -> None:
         shutil.copy(source_file, dest_file)
 
 
-def main():
+def _main():
     args = _parse_args()
+
+    # Check the common_config file exists if provided.
+    if args.setupcfg_common_file:
+        assert args.setupcfg_common_file.is_file()
 
     py_packages = load_packages(args.input_list_files)
 
@@ -312,9 +332,17 @@ def main():
                       include_tests=args.include_tests)
     copy_extra_files(args.extra_files)
 
-    if args.setupcfg_common_file:
+    if args.create_default_pyproject_toml:
+        pyproject_path = args.tree_destination_dir / 'pyproject.toml'
+        pyproject_path.write_text(PYPROJECT_FILE)
+
+    if (args.setupcfg_common_file or
+        (args.setupcfg_override_name and args.setupcfg_override_version)):
+
         config = load_common_config(
             common_config=args.setupcfg_common_file,
+            package_name_override=args.setupcfg_override_name,
+            package_version_override=args.setupcfg_override_version,
             append_git_sha=args.setupcfg_version_append_git_sha,
             append_date=args.setupcfg_version_append_date)
 
@@ -326,4 +354,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    _main()

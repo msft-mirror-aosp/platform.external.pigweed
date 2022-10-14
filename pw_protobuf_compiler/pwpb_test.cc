@@ -14,11 +14,34 @@
 
 #include "gtest/gtest.h"
 #include "pw_protobuf_compiler_pwpb_protos/pwpb_test.pwpb.h"
+#include "pw_string/string.h"
 
 TEST(Pwpb, CompilesProtobufs) {
   pw::protobuf_compiler::Point::Message point = {4, 8, "point"};
   EXPECT_EQ(point.x, 4u);
   EXPECT_EQ(point.y, 8u);
   EXPECT_EQ(point.name.size(), 5u);
-  EXPECT_EQ(point.name.view(), "point");
+  EXPECT_EQ(point.name, "point");
+}
+
+TEST(Pwpb, OptionsFilesAreApplied) {
+  pw::protobuf_compiler::OptionsFileExample::Message string_options_comparison;
+
+  static_assert(
+      std::is_same_v<decltype(string_options_comparison.thirty_two_chars),
+                     pw::InlineString<32>>,
+      "Field `thirty_two_chars` should be a `pw::InlineString<32>`.");
+
+  static_assert(
+      std::is_same_v<decltype(string_options_comparison.forty_two_chars),
+                     pw::InlineString<42>>,
+      "Field `forty_two_chars` should be a `pw::InlineString<42>`.");
+
+  static_assert(
+      std::is_same_v<
+          decltype(string_options_comparison.unspecified_length),
+          pw::protobuf::Callback<
+              pw::protobuf_compiler::OptionsFileExample::StreamEncoder,
+              pw::protobuf_compiler::OptionsFileExample::StreamDecoder>>,
+      "The field `unspecified_length` should be a `pw::protobuf::Callback`.");
 }

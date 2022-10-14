@@ -6,11 +6,11 @@ bazel-*
 docs/_build
 
 # Editors
+.pw_ide/
 .idea/
 .ijwb/
 .project
 .cproject
-.vscode
 # Clangd directories
 .clangd/
 /.cache/clangd/

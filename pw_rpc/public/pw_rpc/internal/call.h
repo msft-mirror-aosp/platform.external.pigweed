@@ -15,7 +15,7 @@
 
 #include <cassert>
 #include <cstddef>
-#include <span>
+#include <limits>
 #include <utility>
 
 #include "pw_containers/intrusive_list.h"
@@ -27,6 +27,7 @@
 #include "pw_rpc/internal/packet.h"
 #include "pw_rpc/method_type.h"
 #include "pw_rpc/service.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_sync/lock_annotations.h"
 
@@ -37,7 +38,13 @@ class Writer;
 namespace internal {
 
 class Endpoint;
+class LockedEndpoint;
 class Packet;
+
+// Unrequested RPCs always use this call ID. When a subsequent request
+// or response is sent with a matching channel + service + method,
+// it will match a calls with this ID if one exists.
+constexpr uint32_t kOpenCallId = std::numeric_limits<uint32_t>::max();
 
 // Internal RPC Call class. The Call is used to respond to any type of RPC.
 // Public classes like ServerWriters inherit from it with private inheritance
@@ -70,6 +77,8 @@ class Call : public IntrusiveList<Call>::Item {
   }
 
   uint32_t id() const PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) { return id_; }
+
+  void set_id(uint32_t id) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) { id_ = id; }
 
   uint32_t channel_id() const PW_LOCKS_EXCLUDED(rpc_lock()) {
     LockGuard lock(rpc_lock());
@@ -134,7 +143,7 @@ class Call : public IntrusiveList<Call>::Item {
   // is closed.
   void SendInitialClientRequest(ConstByteSpan payload)
       PW_UNLOCK_FUNCTION(rpc_lock()) {
-    // TODO(pwbug/597): Ensure the call object is locked before releasing the
+    // TODO(b/234876851): Ensure the call object is locked before releasing the
     //     RPC mutex.
     if (const Status status = SendPacket(PacketType::REQUEST, payload);
         !status.ok()) {
@@ -150,7 +159,7 @@ class Call : public IntrusiveList<Call>::Item {
   void HandlePayload(ConstByteSpan message) const
       PW_UNLOCK_FUNCTION(rpc_lock()) {
     const bool invoke = on_next_ != nullptr;
-    // TODO(pwbug/597): Ensure on_next_ is properly guarded.
+    // TODO(b/234876851): Ensure on_next_ is properly guarded.
     rpc_lock().unlock();
 
     if (invoke) {
@@ -165,12 +174,13 @@ class Call : public IntrusiveList<Call>::Item {
     CallOnError(status);
   }
 
-  // Aborts the RPC because its channel was closed. Does NOT unregister the
-  // call! The calls are removed when iterating over the list in the endpoint.
-  void HandleChannelClose() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+  // Aborts the RPC because of a change in the endpoint (e.g. channel closed,
+  // service unregistered). Does NOT unregister the call! The calls must be
+  // removed when iterating over the list in the endpoint.
+  void Abort() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     // Locking here is problematic because CallOnError releases rpc_lock().
     //
-    // pwbug/597 must be addressed before the locking here can be cleaned up.
+    // b/234876851 must be addressed before the locking here can be cleaned up.
     MarkClosed();
 
     CallOnError(Status::Aborted());
@@ -214,21 +224,15 @@ class Call : public IntrusiveList<Call>::Item {
   {}
 
   // Creates an active server-side Call.
-  Call(const CallContext& context, MethodType type)
-      : Call(context.server(),
-             context.call_id(),
-             context.channel_id(),
-             context.service().id(),
-             context.method().id(),
-             type,
-             kServerCall) {}
+  Call(const LockedCallContext& context, MethodType type)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
   // Creates an active client-side Call.
-  Call(Endpoint& client,
+  Call(LockedEndpoint& client,
        uint32_t channel_id,
        uint32_t service_id,
        uint32_t method_id,
-       MethodType type);
+       MethodType type) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
   // This call must be in a closed state when this is called.
   void MoveFrom(Call& other) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
@@ -258,7 +262,8 @@ class Call : public IntrusiveList<Call>::Item {
   void CallOnError(Status error) PW_UNLOCK_FUNCTION(rpc_lock()) {
     const bool invoke = on_error_ != nullptr;
 
-    // TODO(pwbug/597): Ensure on_error_ is properly guarded.
+    // TODO(b/234876851): Ensure on_error_ is properly guarded.
+
     rpc_lock().unlock();
     if (invoke) {
       on_error_(error);
@@ -294,7 +299,7 @@ class Call : public IntrusiveList<Call>::Item {
   enum CallType : bool { kServerCall, kClientCall };
 
   // Common constructor for server & client calls.
-  Call(Endpoint& endpoint,
+  Call(LockedEndpoint& endpoint,
        uint32_t id,
        uint32_t channel_id,
        uint32_t service_id,

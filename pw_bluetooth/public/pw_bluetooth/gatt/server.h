@@ -15,7 +15,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <span>
 
 #include "pw_bluetooth/gatt/error.h"
 #include "pw_bluetooth/gatt/types.h"
@@ -23,12 +22,16 @@
 #include "pw_bluetooth/types.h"
 #include "pw_containers/vector.h"
 #include "pw_function/function.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 
 namespace pw::bluetooth::gatt {
 
 // Parameters for registering a local GATT service.
 struct LocalServiceInfo {
+  // A unique (within a Server) handle identifying this service.
+  Handle handle;
+
   // Indicates whether this is a primary or secondary service.
   bool primary;
 
@@ -37,10 +40,10 @@ struct LocalServiceInfo {
   Uuid type;
 
   // The characteristics of this service.
-  Vector<Characteristic> characteristics;
+  span<const Characteristic> characteristics;
 
   // Handles of other services that are included by this service.
-  Vector<Handle> includes;
+  span<const Handle> includes;
 };
 
 // Interface for serving a local GATT service. This is implemented by the API
@@ -79,7 +82,7 @@ class LocalServiceDelegate {
                                            bool indicate) = 0;
 
   // Called when a peer requests to read the value of a characteristic or
-  // descriptor. It is guaranteed that the peer satisfies the permssions
+  // descriptor. It is guaranteed that the peer satisfies the permissions
   // associated with this attribute.
   //
   // Parameters:
@@ -89,12 +92,11 @@ class LocalServiceDelegate {
   // `result_callback` - Called with the value of the characteristic on success,
   //     or an Error on failure. The value will be truncated to fit in the MTU
   //     if necessary. It is OK to call `result_callback` in `ReadValue`.
-  virtual void ReadValue(
-      PeerId peer_id,
-      Handle handle,
-      uint32_t offset,
-      Function<void(Result<Error, std::span<const std::byte>>)>
-          result_callback) = 0;
+  virtual void ReadValue(PeerId peer_id,
+                         Handle handle,
+                         uint32_t offset,
+                         Function<void(Result<Error, span<const std::byte>>)>&&
+                             result_callback) = 0;
 
   // Called when a peer issues a request to write the value of a characteristic
   // or descriptor. It is guaranteed that the peer satisfies the permissions
@@ -112,8 +114,8 @@ class LocalServiceDelegate {
   virtual void WriteValue(PeerId peer_id,
                           Handle handle,
                           uint32_t offset,
-                          std::span<const std::byte> value,
-                          Function<void(Result<Error>)> status_callback) = 0;
+                          span<const std::byte> value,
+                          Function<void(Result<Error>)>&& status_callback) = 0;
 
   // Called when the MTU of a peer is updated. Also called for peers that are
   // already connected when the server is published. This method is safe to
@@ -132,17 +134,14 @@ class LocalService {
     // The PeerIds of the peers to signal. The LocalService should respect the
     // Characteristic Configuration associated with a peer+handle when deciding
     // whether to signal it. If empty, all peers are signalled.
-    Vector<PeerId> peer_ids;
+    span<const PeerId> peer_ids;
     // The handle of the characteristic value being signaled.
     Handle handle;
     // The new value for the descriptor/characteristic.
-    std::span<const std::byte> value;
+    span<const std::byte> value;
   };
 
   virtual ~LocalService() = default;
-
-  // Returns the unique handle assigned to this service.
-  virtual Handle GetHandle() = 0;
 
   // Sends a notification to peers. Notifications should be used instead of
   // indications when the service does *not* require peer confirmation of the
@@ -158,7 +157,7 @@ class LocalService {
   // `completion_callback` - Called when the notification has been sent.
   //     Additional values should not be notified until this callback is called.
   virtual void NotifyValue(const ValueChangedParameters& parameters,
-                           Closure completion_callback) = 0;
+                           Closure&& completion_callback) = 0;
 
   // Sends an indication to peers. Indications should be used instead of
   // notifications when the service *does* require peer confirmation of the
@@ -183,7 +182,7 @@ class LocalService {
   //     `parameters.peer_ids`. Additional values should not be indicated until
   //     this callback is called.
   virtual void IndicateValue(const ValueChangedParameters& parameters,
-                             Function<void(Result<Error>)> confirmation) = 0;
+                             Function<void(Result<Error>)>&& confirmation) = 0;
 };
 
 // Interface for a GATT server that serves many GATT services.
@@ -192,14 +191,17 @@ class Server {
   enum class PublishServiceError {
     kInternalError = 0,
 
-    /// Invalid service UUID provided.
-    kInvalidUuid = 1,
+    // The service handle provided was not unique.
+    kInvalidHandle = 1,
+
+    // Invalid service UUID provided.
+    kInvalidUuid = 2,
 
     // Invalid service characteristics provided.
-    kInvalidCharacteristics = 2,
+    kInvalidCharacteristics = 3,
 
     // Invalid service includes provided.
-    kInvalidIncludes = 3,
+    kInvalidIncludes = 4,
   };
 
   virtual ~Server() = default;
@@ -213,7 +215,7 @@ class Server {
   // `LocalService` is destroyed or an error occurs
   // (LocalServiceDelegate.OnError), the service will be unpublished.
   virtual void PublishService(
-      LocalServiceInfo info,
+      const LocalServiceInfo& info,
       LocalServiceDelegate* delegate,
       Function<
           void(Result<PublishServiceError, std::unique_ptr<LocalService>>)>&&

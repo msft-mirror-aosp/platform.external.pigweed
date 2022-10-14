@@ -16,9 +16,9 @@ import {
   BidirectionalStreamingCall,
   BidirectionalStreamingMethodStub,
   ServiceClient,
-} from '@pigweed/pw_rpc';
-import {Status} from '@pigweed/pw_status';
-import {Chunk} from 'transfer_proto_tspb/transfer_proto_tspb_pb/pw_transfer/transfer_pb';
+} from 'pigweedjs/pw_rpc';
+import {Status} from 'pigweedjs/pw_status';
+import {Chunk} from 'pigweedjs/protos/pw_transfer/transfer_pb';
 
 export class ProgressStats {
   constructor(

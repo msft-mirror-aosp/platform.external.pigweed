@@ -37,14 +37,14 @@ class FilterService final
   void GetFilter(ConstByteSpan request, rpc::RawUnaryResponder& responder) {
     std::byte buffer[kFilterResponseBufferSize] = {};
     StatusWithSize result = GetFilterImpl(request, buffer);
-    responder.Finish(std::span(buffer).first(result.size()), result.status())
+    responder.Finish(span(buffer).first(result.size()), result.status())
         .IgnoreError();
   }
 
   void ListFilterIds(ConstByteSpan, rpc::RawUnaryResponder& responder) {
     std::byte buffer[kFilterIdsResponseBufferSize] = {};
     StatusWithSize result = ListFilterIdsImpl(buffer);
-    responder.Finish(std::span(buffer).first(result.size()), result.status())
+    responder.Finish(span(buffer).first(result.size()), result.status())
         .IgnoreError();
   }
 
@@ -52,7 +52,7 @@ class FilterService final
   static constexpr size_t kMinSupportedFilters = 4;
 
   static constexpr size_t kFilterResponseBufferSize =
-      protobuf::FieldNumberSizeBytes(log::Filter::Fields::RULE) +
+      protobuf::TagSizeBytes(log::Filter::Fields::RULE) +
       protobuf::kMaxSizeOfLength +
       kMinSupportedFilters *
           (protobuf::SizeOfFieldEnum(

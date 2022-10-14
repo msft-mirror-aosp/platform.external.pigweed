@@ -15,6 +15,7 @@
 
 #include "pw_log/log.h"
 #include "pw_unit_test/config.h"
+#include "pw_unit_test/event_handler.h"
 #include "pw_unit_test/internal/rpc_event_handler.h"
 #include "pw_unit_test_proto/unit_test.pwpb.h"
 #include "pw_unit_test_proto/unit_test.raw_rpc.pb.h"
@@ -40,7 +41,7 @@ class UnitTestService final
     event_writer(event);
     if (event.status().ok()) {
       writer_.Write(event)
-          .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+          .IgnoreError();  // TODO(b/242598609): Handle Status properly
     }
   }
 

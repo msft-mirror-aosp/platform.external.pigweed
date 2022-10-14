@@ -8,15 +8,8 @@ C++20's `std::span <https://en.cppreference.com/w/cpp/container/span>`_.
 ``std::span`` is a non-owning view of an array of values. The intent is for
 :cpp:class:`pw::span` is to match the C++20 standard as closely as possible.
 
-:cpp:class:`pw::span` and ``std::span`` are fully compatible and
-interchangeable. The classes implicitly convert to one another.
-
-.. note::
-
- ``pw_span:polyfill`` provides ``<span>`` and a ``std::span`` class that is
- identical to :cpp:class:`pw::span`. The ``std::span`` polyfill is DEPRECATED;
- do NOT use it for new code.  Use :cpp:class:`pw::span` instead, or
- ``std::span`` if you are building with C++20.
+If C++20's ``std::span`` is available, :cpp:class:`pw::span` is simply an alias
+of it.
 
 --------------
 Using pw::span
@@ -71,6 +64,26 @@ Pointer and size arguments can be replaced with a :cpp:class:`pw::span`:
 
   ``pw_bytes/span.h`` provides ``ByteSpan`` and ``ConstByteSpan`` aliases for
   these types.
+
+----------------------------
+Module Configuration Options
+----------------------------
+The following configurations can be adjusted via compile-time configuration of
+this module, see the
+:ref:`module documentation <module-structure-compile-time-configuration>` for
+more details.
+
+.. c:macro:: PW_SPAN_ENABLE_ASSERTS
+
+  PW_SPAN_ENABLE_ASSERTS controls whether pw_span's implementation includes
+  asserts for detecting disallowed span operations at runtime. For C++20 and
+  later, this replaces std::span with the custom implementation in pw_span to
+  ensure bounds-checking asserts have been enabled.
+
+  This defaults to disabled because of the significant increase in code size
+  caused by enabling this feature. It's strongly recommended to enable this
+  in debug and testing builds. This can be done by setting
+  ``pw_span_ENABLE_ASSERTS`` to ``true`` in the GN build.
 
 -------------
 Compatibility

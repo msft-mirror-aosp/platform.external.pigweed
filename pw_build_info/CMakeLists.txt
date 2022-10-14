@@ -23,16 +23,13 @@ if((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows") AND
     PUBLIC_INCLUDES
       public
     PUBLIC_DEPS
-      pw_polyfill.span
+      pw_span
     PUBLIC_LINK_OPTIONS
       -Wl,--build-id=sha1
     SOURCES
       build_id.cc
     PRIVATE_DEPS
       pw_preprocessor
-    PRIVATE_COMPILE_OPTIONS
-      -Wno-array-bounds
-      -Wno-stringop-overflow
   )
 endif()
 
@@ -42,7 +39,7 @@ endif()
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   target_link_options(pw_build_info.build_id
     PUBLIC
-      "-T${CMAKE_CURRENT_SOURCE_DIR}/add_build_id_to_default_script.ld"
+      "-T${CMAKE_CURRENT_SOURCE_DIR}/add_build_id_to_default_linker_script.ld"
       "-L${CMAKE_CURRENT_SOURCE_DIR}"
   )
 endif()

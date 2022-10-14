@@ -103,6 +103,38 @@ such as a quick program for local use and a full program for automated use. The
 :ref:`example script <example-script>` uses ``pw_presubmit.Programs`` to define
 ``quick`` and ``full`` programs.
 
+``PresubmitContext`` has the following members:
+
+* ``root``: Source checkout root directory
+* ``repos``: Repositories (top-level and submodules) processed by
+  ``pw presubmit``
+* ``output_dir``: Output directory for the presubmit step
+* ``paths``: Modified files for the presubmit step to check (often used in
+  formatting steps but ignored in compile steps)
+* ``package_root``: Root directory for ``pw package`` installations
+* ``override_gn_args``: Additional GN args processed by ``build.gn_gen()``
+* ``luci``: Information about the LUCI build or None if not running in LUCI
+* ``num_jobs``: Number of jobs to run in parallel
+* ``continue_after_build_error``: For steps that compile, don't exit on the
+  first compilation error
+
+The ``luci`` member is of type ``LuciContext`` and has the following members:
+
+* ``buildbucket_id``: The globally-unique buildbucket id of the build
+* ``build_number``: The builder-specific incrementing build number, if
+  configured for this builder
+* ``project``: The LUCI project under which this build is running (often
+  ``pigweed`` or ``pigweed-internal``)
+* ``bucket``: The LUCI bucket under which this build is running (often ends
+  with ``ci`` or ``try``)
+* ``builder``: The builder being run
+* ``swarming_task_id``: The swarming task id of this build
+
+Additional members can be added by subclassing ``PresubmitContext`` and
+``Presubmit``. Then override ``Presubmit._create_presubmit_context()`` to
+return the subclass of ``PresubmitContext``. Finally, add
+``presubmit_class=PresubmitSubClass`` when calling ``cli.run()``.
+
 Existing Presubmit Checks
 -------------------------
 A small number of presubmit checks are made available through ``pw_presubmit``
@@ -118,11 +150,45 @@ all use language-specific formatters like clang-format or yapf.
 
 These will suggest fixes using ``pw format --fix``.
 
+Sorted Blocks
+^^^^^^^^^^^^^
+Blocks of code can be required to be kept in sorted order using comments like
+the following:
+
+.. code-block::
+
+  # keep-sorted: start
+  bar
+  baz
+  foo
+  # keep-sorted: end
+
+This can be included by adding ``pw_presubmit.keep_sorted.keep_sorted`` to a
+presubmit program. Adding ``ignore-case`` to the start line will use
+case-insensitive sorting.
+
+These will suggest fixes using ``pw keep-sorted --fix``.
+
+Future versions may support multiline list items.
+
 #pragma once
 ^^^^^^^^^^^^
 There's a ``pragma_once`` check that confirms the first non-comment line of
 C/C++ headers is ``#pragma once``. This is enabled by adding
-``pw_presubmit.pragma_once`` to a presubmit program.
+``pw_presubmit.cpp_checks.pragma_once`` to a presubmit program.
+
+.. todo-check: disable
+
+TODO(b/###) Formatting
+^^^^^^^^^^^^^^^^^^^^^^^^^
+There's a check that confirms ``TODO`` lines match a given format. Upstream
+Pigweed expects these to look like ``TODO(b/###): Explanation``, but makes it
+easy for projects to define their own pattern instead.
+
+To use this check add ``todo_check.create(todo_check.BUGS_OR_USERNAMES)`` to a
+presubmit program.
+
+.. todo-check: enable
 
 Python Checks
 ^^^^^^^^^^^^^
@@ -152,7 +218,7 @@ for entire blocks by using "inclusive-language: disable" before the block and
 pw_presubmit
 ------------
 .. automodule:: pw_presubmit
-   :members: filter_paths, call, PresubmitFailure, Programs
+   :members: filter_paths, FileFilter, call, PresubmitFailure, Programs
 
 .. _example-script:
 
@@ -228,13 +294,13 @@ See ``pigweed_presubmit.py`` for a more complex presubmit check script example.
   # Presubmit checks
   #
   def release_build(ctx: PresubmitContext):
-      build.gn_gen(PROJECT_ROOT, ctx.output_dir, build_type='release')
-      build.ninja(ctx.output_dir)
+      build.gn_gen(ctx, build_type='release')
+      build.ninja(ctx)
 
 
   def host_tests(ctx: PresubmitContext):
-      build.gn_gen(PROJECT_ROOT, ctx.output_dir, run_host_tests='true')
-      build.ninja(ctx.output_dir)
+      build.gn_gen(ctx, run_host_tests='true')
+      build.ninja(ctx)
 
 
   # Avoid running some checks on certain paths.
@@ -347,3 +413,44 @@ Code formatting tools
 The ``pw_presubmit.format_code`` module formats supported source files using
 external code format tools. The file ``format_code.py`` can be invoked directly
 from the command line or from ``pw`` as ``pw format``.
+
+Example
+=======
+A simple example of adding support for a custom format. This code wraps the
+built in formatter to add a new format. It could also be used to replace
+a formatter or remove/disable a PigWeed supplied one.
+
+.. code-block:: python
+
+  #!/usr/bin/env python
+  """Formats files in repository. """
+
+  import logging
+  import sys
+
+  import pw_cli.log
+  from pw_presubmit import format_code
+  from your_project import presubmit_checks
+  from your_project import your_check
+
+  YOUR_CODE_FORMAT = CodeFormat('YourFormat',
+                                filter=FileFilter(suffix=('.your', )),
+                                check=your_check.check,
+                                fix=your_check.fix)
+
+  CODE_FORMATS = (*format_code.CODE_FORMATS, YOUR_CODE_FORMAT)
+
+  def _run(exclude, **kwargs) -> int:
+      """Check and fix formatting for source files in the repo."""
+      return format_code.format_paths_in_repo(exclude=exclude,
+                                              code_formats=CODE_FORMATS,
+                                              **kwargs)
+
+
+  def main():
+      return _run(**vars(format_code.arguments(git_paths=True).parse_args()))
+
+
+  if __name__ == '__main__':
+      pw_cli.log.install(logging.INFO)
+      sys.exit(main())

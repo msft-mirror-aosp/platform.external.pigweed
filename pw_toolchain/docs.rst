@@ -134,3 +134,46 @@ List of traits
   macro. For example, ``201703`` corresponds to C++17. See
   https://en.cppreference.com/w/cpp/preprocessor/replace#Predefined_macros for
   further details.
+
+----------------------------
+Standard library integration
+----------------------------
+``pw_toolchain`` provides features for integrating with the standard library.
+
+``std:abort`` wrapper
+=====================
+The `std::abort <https://en.cppreference.com/w/cpp/utility/program/abort>`_
+function is used to terminate a program abnormally. This function may be called
+by standard library functions, so is often linked into binaries, even if users
+never intentionally call it.
+
+For embedded builds, the ``abort`` implementation likely does not work as
+intended. For example, it may pull in undesired dependencies (e.g.
+``std::raise``) and end in an infinite loop.
+
+``pw_toolchain`` provides the ``pw_toolchain:wrap_abort`` library that replaces
+``abort`` in builds where the default behavior is undesirable. It uses the
+``-Wl,--wrap=abort`` linker option to redirect to ``abort`` calls to
+``PW_CRASH`` instead.
+
+arm-none-eabi-gcc support
+=========================
+Targets building with the GNU Arm Embedded Toolchain (``arm-none-eabi-gcc``)
+should depend on the ``pw_toolchain/arm_gcc:arm_none_eabi_gcc_support`` library
+into their builds. In GN, that target should be included in
+``pw_build_LINK_DEPS``.
+
+Newlib OS interface
+-------------------
+`Newlib <https://sourceware.org/newlib/>`_, the C Standard Library
+implementation provided with ``arm-none-eabi-gcc``, defines a set of `OS
+interface functions <https://sourceware.org/newlib/libc.html#Stubs>`_ that
+should be implemented. A default is provided if these functions are not
+implemented, but using the default results in a compiler warning.
+
+Most of the OS interface functions should never be called in embedded builds.
+The ``pw_toolchain/arg_gcc:newlib_os_interface_stubs`` library, which is
+provided through ``pw_toolchain/arm_gcc:arm_none_eabi_gcc_support``, implements
+these functions and forces a linker error if they are used. It also wraps some
+functions related to use of ``stdout`` and ``stderr`` that abort if they are
+called.

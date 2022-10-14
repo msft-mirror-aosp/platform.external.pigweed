@@ -16,7 +16,6 @@
 from __future__ import annotations
 import collections
 import logging
-import sys
 from datetime import datetime
 from typing import Dict, List, Optional, TYPE_CHECKING
 
@@ -66,7 +65,7 @@ class LogStore(logging.Handler):
             loggers={
                 'Host Logs': [
                     logging.getLogger(__package__),
-                    logging.getLogger(__file__),
+                    logging.getLogger(__name__),
                 ],
                 # Set the LogStore as the value of this logger window.
                 'Device Logs': device_log_store,
@@ -90,9 +89,6 @@ class LogStore(logging.Handler):
         # Log storage deque for fast addition and deletion from the beginning
         # and end of the iterable.
         self.logs: collections.deque = collections.deque()
-
-        # Estimate of the logs in memory.
-        self.byte_size: int = 0
 
         # Only allow this many log lines in memory.
         self.max_history_size: int = 1000000
@@ -146,7 +142,6 @@ class LogStore(logging.Handler):
     def clear_logs(self):
         """Erase all stored pane lines."""
         self.logs = collections.deque()
-        self.byte_size = 0
         self.channel_counts = {}
         self.channel_formatted_prefix_widths = {}
         self.line_index = 0
@@ -216,8 +211,8 @@ class LogStore(logging.Handler):
         self.channel_counts[record.name] = self.channel_counts.get(
             record.name, 0) + 1
 
-        # TODO(pwbug/614): Revisit calculating prefix widths automatically when
-        # line wrapping indentation is supported.
+        # TODO(b/235271486): Revisit calculating prefix widths automatically
+        # when line wrapping indentation is supported.
         # Set the prefix width to 0
         self.channel_formatted_prefix_widths[record.name] = 0
 
@@ -226,12 +221,6 @@ class LogStore(logging.Handler):
 
         # Check for bigger column widths.
         self.table.update_metadata_column_widths(self.logs[-1])
-
-        # Update estimated byte_size.
-        self.byte_size += sys.getsizeof(self.logs[-1])
-        # If the total log lines is > max_history_size, delete the oldest line.
-        if self.get_total_count() > self.max_history_size:
-            self.byte_size -= sys.getsizeof(self.logs.popleft())
 
     def emit(self, record) -> None:
         """Process a new log record.

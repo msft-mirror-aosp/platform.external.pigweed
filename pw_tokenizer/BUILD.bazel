@@ -19,6 +19,7 @@ load(
     "pw_cc_test",
 )
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
+load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -95,6 +96,7 @@ pw_cc_library(
         "//pw_base64",
         "//pw_preprocessor",
         "//pw_span",
+        "//pw_string:string",
     ],
 )
 
@@ -130,6 +132,12 @@ proto_library(
     ],
 )
 
+# TODO(b/241456982): Not expected to build yet.
+py_proto_library(
+    name = "tokenizer_proto_py_pb2",
+    deps = [":tokenizer_proto"],
+)
+
 # Executable for generating test data for the C++ and Python detokenizers. This
 # target should only be built for the host.
 pw_cc_binary(
@@ -153,22 +161,6 @@ pw_cc_binary(
         "//pw_varint",
     ],
 )
-
-# Executable for generating a test ELF file for elf_reader_test.py. A host
-# version of this binary is checked in for use in elf_reader_test.py.
-# Commented out because it fails to compile with bazel, with the error
-# ld.lld: error: symbol 'main' has no type
-# cc_binary(
-#     name = "elf_reader_test_binary",
-#     srcs = [
-#         "py/elf_reader_test_binary.c",
-#     ],
-#     linkopts = ["-Wl,--unresolved-symbols=ignore-all"],  # main is not defined
-#     deps = [
-#         ":pw_tokenizer",
-#         "//pw_varint",
-#     ],
-# )
 
 pw_cc_test(
     name = "argument_types_test",

@@ -89,10 +89,12 @@ EMPTY_ELF = (
 #
 #   arm-none-eabi-objcopy -S --only-section ".pw_tokenizer*" <ELF> <OUTPUT>
 #
-ELF_WITH_TOKENIZER_SECTIONS = Path(__file__).parent.joinpath(
-    'example_binary_with_tokenized_strings.elf').read_bytes()
+ELF_WITH_TOKENIZER_SECTIONS_PATH = Path(__file__).parent.joinpath(
+    'example_binary_with_tokenized_strings.elf')
+ELF_WITH_TOKENIZER_SECTIONS = ELF_WITH_TOKENIZER_SECTIONS_PATH.read_bytes()
 
 TOKENS_IN_ELF = 22
+TOKENS_IN_ELF_WITH_TOKENIZER_SECTIONS = 26
 
 # 0x2e668cd6 is 'Jello, world!' (which is also used in database_test.py).
 JELLO_WORLD_TOKEN = b'\xd6\x8c\x66\x2e'
@@ -468,6 +470,17 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
             finally:
                 os.unlink(file.name)
 
+    def test_token_domains(self, _):
+        """Tests that token domains can be parsed from input filename"""
+        filename_and_domain = f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#.*'
+        detok_with_domain = detokenize.AutoUpdatingDetokenizer(
+            filename_and_domain, min_poll_period_s=0)
+        self.assertEqual(len(detok_with_domain.database),
+                         TOKENS_IN_ELF_WITH_TOKENIZER_SECTIONS)
+        detok = detokenize.AutoUpdatingDetokenizer(
+            str(ELF_WITH_TOKENIZER_SECTIONS_PATH), min_poll_period_s=0)
+        self.assertEqual(len(detok.database), TOKENS_IN_ELF)
+
 
 def _next_char(message: bytes) -> bytes:
     return bytes(b + 1 for b in message)
@@ -508,11 +521,11 @@ class DetokenizeBase64(unittest.TestCase):
 
     RECURSION_STRING = f'The secret message is "{JELLO.decode()}"'
     RECURSION = b'$' + base64.b64encode(
-        struct.pack('I', tokens.default_hash(RECURSION_STRING)))
+        struct.pack('I', tokens.c_hash(RECURSION_STRING)))
 
     RECURSION_STRING_2 = f"'{RECURSION.decode()}', said the spy."
     RECURSION_2 = b'$' + base64.b64encode(
-        struct.pack('I', tokens.default_hash(RECURSION_STRING_2)))
+        struct.pack('I', tokens.c_hash(RECURSION_STRING_2)))
 
     TEST_CASES = (
         (b'', b''),
@@ -539,7 +552,7 @@ class DetokenizeBase64(unittest.TestCase):
         db = database.load_token_database(
             io.BytesIO(ELF_WITH_TOKENIZER_SECTIONS))
         db.add(
-            tokens.TokenizedStringEntry(tokens.default_hash(s), s)
+            tokens.TokenizedStringEntry(tokens.c_hash(s), s)
             for s in [self.RECURSION_STRING, self.RECURSION_STRING_2])
         self.detok = detokenize.Detokenizer(db)
 

@@ -17,6 +17,7 @@ import("//build_overrides/pigweed.gni")
 import("$dir_pw_build/facade.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_unit_test/test.gni")
 import("backend.gni")
 
 config("public_include_path") {
@@ -36,7 +37,7 @@ pw_facade("handler") {
   public = [ "public/pw_assert_basic/handler.h" ]
 }
 
-# TODO(pwbug/246): This backend implements pw_assert's check backend and the
+# TODO(b/235149326): This backend implements pw_assert's check backend and the
 # temporary compatibility C ABI (pw_assert_HandleFailure()).
 #
 # pw_assert_basic only provides the backend's interface. The implementation is
@@ -88,4 +89,7 @@ pw_source_set("basic_handler") {
 
 pw_doc_group("docs") {
   sources = [ "docs.rst" ]
+}
+
+pw_test_group("tests") {
 }

@@ -25,6 +25,7 @@
 #include "pw_software_update/openable_reader.h"
 
 namespace pw::software_update {
+
 class BundledUpdateBackend;
 
 // Name of the top-level Targets metadata.
@@ -56,7 +57,8 @@ class UpdateBundleAccessor {
   constexpr UpdateBundleAccessor(OpenableReader& update_reader,
                                  BundledUpdateBackend& backend,
                                  bool self_verification = false)
-      : update_reader_(update_reader),
+      : optional_blob_store_reader_unused_(),
+        update_reader_(update_reader),
         backend_(backend),
         self_verification_(self_verification) {}
 
@@ -65,10 +67,16 @@ class UpdateBundleAccessor {
   constexpr UpdateBundleAccessor(blob_store::BlobStore& blob_store,
                                  BundledUpdateBackend& backend,
                                  bool self_verification = false)
-      : blob_reader_(blob_store),
-        update_reader_(blob_reader_.reader),
+      : optional_blob_store_openeable_reader_(blob_store),
+        update_reader_(optional_blob_store_openeable_reader_),
         backend_(backend),
         self_verification_(self_verification) {}
+
+  ~UpdateBundleAccessor() {
+    if (&update_reader_ == &optional_blob_store_openeable_reader_) {
+      optional_blob_store_openeable_reader_.~BlobStoreOpenableReader();
+    }
+  }
 
   // Opens and verifies the software update bundle.
   //
@@ -112,7 +120,6 @@ class UpdateBundleAccessor {
   //
   // Returns:
   // FAILED_PRECONDITION - Bundle is not open and verified.
-  // TODO(pwbug/456): Add other error codes if necessary.
   Status PersistManifest();
 
   // Returns a reader for the (verified) payload bytes of a specified target
@@ -120,7 +127,6 @@ class UpdateBundleAccessor {
   //
   // Returns:
   // A reader instance for the target file.
-  // TODO(pwbug/456): Figure out a way to propagate error.
   stream::IntervalReader GetTargetPayload(std::string_view target_name);
   stream::IntervalReader GetTargetPayload(protobuf::String target_name);
 
@@ -134,15 +140,13 @@ class UpdateBundleAccessor {
 
  private:
   // Union is a temporary measure to allow for migration from the BlobStore
-  // constructor to the OpenableReader constructor. The blob_reader_ should
-  // never be accessed directly. Access the reader through the update_reader_.
-  union blob_reader {
-    BlobStoreOpenableReader reader;
-    constexpr blob_reader() {}
-    constexpr blob_reader(blob_store::BlobStore& blob_store)
-        : reader(blob_store) {}
-    ~blob_reader() {}
-  } blob_reader_;
+  // constructor to the OpenableReader constructor. The BlobStoreOpenableReader
+  // should never be accessed directly. Access it through the update_reader_.
+  union {
+    BlobStoreOpenableReader optional_blob_store_openeable_reader_;
+    char optional_blob_store_reader_unused_;
+  };
+
   OpenableReader& update_reader_;
   BundledUpdateBackend& backend_;
   protobuf::Message bundle_;
