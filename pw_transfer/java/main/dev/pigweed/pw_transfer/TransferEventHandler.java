@@ -52,8 +52,9 @@ class TransferEventHandler {
 
   private final BlockingQueue<Event> events = new LinkedBlockingQueue<>();
 
-  // Maps resource ID to transfer
-  private final Map<Integer, Transfer<?>> transfers = new HashMap<>();
+  // Map resource ID to transfer, and session ID to resource ID.
+  private final Map<Integer, Transfer<?>> resourceIdToTransfer = new HashMap<>();
+  private final Map<Integer, Integer> sessionToResourceId = new HashMap<>();
 
   @Nullable private Call.ClientStreaming<Chunk> readStream = null;
   @Nullable private Call.ClientStreaming<Chunk> writeStream = null;
@@ -65,14 +66,13 @@ class TransferEventHandler {
   }
 
   ListenableFuture<Void> startWriteTransferAsClient(int resourceId,
-      int transferTimeoutMillis,
-      int initialTransferTimeoutMillis,
-      int maxRetries,
+      ProtocolVersion desiredProtocolVersion,
+      TransferTimeoutSettings settings,
       byte[] data,
       Consumer<TransferProgress> progressCallback,
       BooleanSupplier shouldAbortCallback) {
-    WriteTransfer transfer = new WriteTransfer(resourceId,
-        new TransferInterface() {
+    WriteTransfer transfer =
+        new WriteTransfer(resourceId, desiredProtocolVersion, new TransferInterface() {
           @Override
           Call.ClientStreaming<Chunk> getStream() throws ChannelOutputException {
             if (writeStream == null) {
@@ -85,26 +85,19 @@ class TransferEventHandler {
             }
             return writeStream;
           }
-        },
-        transferTimeoutMillis,
-        initialTransferTimeoutMillis,
-        maxRetries,
-        data,
-        progressCallback,
-        shouldAbortCallback);
+        }, settings, data, progressCallback, shouldAbortCallback);
     startTransferAsClient(transfer);
     return transfer.getFuture();
   }
 
   ListenableFuture<byte[]> startReadTransferAsClient(int resourceId,
-      int transferTimeoutMillis,
-      int initialTransferTimeoutMillis,
-      int maxRetries,
+      ProtocolVersion desiredProtocolVersion,
+      TransferTimeoutSettings settings,
       TransferParameters parameters,
       Consumer<TransferProgress> progressCallback,
       BooleanSupplier shouldAbortCallback) {
-    ReadTransfer transfer = new ReadTransfer(resourceId,
-        new TransferInterface() {
+    ReadTransfer transfer =
+        new ReadTransfer(resourceId, desiredProtocolVersion, new TransferInterface() {
           @Override
           Call.ClientStreaming<Chunk> getStream() throws ChannelOutputException {
             if (readStream == null) {
@@ -117,25 +110,21 @@ class TransferEventHandler {
             }
             return readStream;
           }
-        },
-        transferTimeoutMillis,
-        initialTransferTimeoutMillis,
-        maxRetries,
-        parameters,
-        progressCallback,
-        shouldAbortCallback);
+        }, settings, parameters, progressCallback, shouldAbortCallback);
     startTransferAsClient(transfer);
     return transfer.getFuture();
   }
 
   private void startTransferAsClient(Transfer<?> transfer) {
     enqueueEvent(() -> {
-      if (transfers.put(transfer.getResourceId(), transfer) != null) {
-        transfer.cleanUp(new TransferError("A transfer for resource ID " + transfer.getResourceId()
+      if (resourceIdToTransfer.containsKey(transfer.getResourceId())) {
+        transfer.terminate(new TransferError("A transfer for resource ID "
+                + transfer.getResourceId()
                 + " is already in progress! Only one read/write transfer per resource is supported at a time",
             Status.ALREADY_EXISTS));
         return;
       }
+      resourceIdToTransfer.put(transfer.getResourceId(), transfer);
       transfer.start();
     });
   }
@@ -144,14 +133,34 @@ class TransferEventHandler {
   void run() {
     while (processEvents) {
       handleNextEvent();
+      handleTimeouts();
     }
   }
 
+  /**
+   * Test version of run() that processes all enqueued events before checking for timeouts.
+   *
+   * Tests that need to time out should process all enqueued events first to prevent flaky failures.
+   * If handling one of several queued packets takes longer than the timeout (which must be short
+   * for a unit test), then the test may fail spuriously.
+   *
+   * This run function is not used outside of tests because processing all incoming packets before
+   * checking for timeouts could delay the transfer client's outgoing write packets if there are
+   * lots of inbound packets. This could delay transfers and cause unnecessary timeouts.
+   */
+  void runForTestsThatMustTimeOut() {
+    while (processEvents) {
+      while (!events.isEmpty()) {
+        handleNextEvent();
+      }
+      handleTimeouts();
+    }
+  }
   /** Stops the transfer event handler from processing events. */
   void stop() {
     enqueueEvent(() -> {
       logger.atFine().log("Terminating TransferEventHandler");
-      transfers.values().forEach(Transfer::handleTermination);
+      resourceIdToTransfer.values().forEach(Transfer::handleTermination);
       processEvents = false;
     });
   }
@@ -186,17 +195,19 @@ class TransferEventHandler {
         event.handle();
       }
     } catch (InterruptedException e) {
-      // If interrupted, check for timeouts anyway.
+      // If interrupted, continue around the loop.
     }
+  }
 
-    for (Transfer<?> transfer : transfers.values()) {
+  private void handleTimeouts() {
+    for (Transfer<?> transfer : resourceIdToTransfer.values()) {
       transfer.handleTimeoutIfDeadlineExceeded();
     }
   }
 
   private Instant getNextTimeout() {
     Optional<Transfer<?>> transfer =
-        transfers.values().stream().min(Comparator.comparing(Transfer::getDeadline));
+        resourceIdToTransfer.values().stream().min(Comparator.comparing(Transfer::getDeadline));
     return transfer.isPresent() ? transfer.get().getDeadline() : Transfer.NO_TIMEOUT;
   }
 
@@ -207,7 +218,7 @@ class TransferEventHandler {
     /**
      *  Sends the provided transfer chunk.
      *
-     *  Must be called on the transfer therad.
+     *  Must be called on the transfer thread.
      */
     void sendChunk(Chunk chunk) throws TransferError {
       try {
@@ -218,12 +229,22 @@ class TransferEventHandler {
     }
 
     /**
+     *  Associates the transfer's session ID with its resource ID.
+     *
+     *  Must be called on the transfer thread.
+     */
+    void assignSessionId(Transfer<?> transfer) {
+      sessionToResourceId.put(transfer.getSessionId(), transfer.getResourceId());
+    }
+
+    /**
      *  Removes this transfer from the list of active transfers.
      *
-     *  Must be called on the transfer therad.
+     *  Must be called on the transfer thread.
      */
-    void unregisterTransfer(int sessionId) {
-      transfers.remove(sessionId);
+    void unregisterTransfer(Transfer<?> transfer) {
+      resourceIdToTransfer.remove(transfer.getResourceId());
+      sessionToResourceId.remove(transfer.getSessionId());
     }
 
     /**
@@ -242,16 +263,25 @@ class TransferEventHandler {
   /** Handles responses on the pw_transfer RPCs. */
   private abstract class ChunkHandler implements StreamObserver<Chunk> {
     @Override
-    public final void onNext(Chunk chunk) {
+    public final void onNext(Chunk chunkProto) {
+      VersionedChunk chunk = VersionedChunk.fromMessage(chunkProto);
+
       enqueueEvent(() -> {
-        Transfer<?> transfer = transfers.get(chunk.getTransferId());
+        Transfer<?> transfer = null;
+        if (chunk.resourceId().isPresent()) {
+          transfer = resourceIdToTransfer.get(chunk.resourceId().getAsInt());
+        } else {
+          Integer resourceId = sessionToResourceId.get(chunk.sessionId());
+          if (resourceId != null) {
+            transfer = resourceIdToTransfer.get(resourceId);
+          }
+        }
+
         if (transfer != null) {
-          logger.atFinest().log(
-              "Transfer %d received chunk: %s", transfer.getSessionId(), chunkToString(chunk));
+          logger.atFinest().log("%s received chunk: %s", transfer, chunk);
           transfer.handleChunk(chunk);
         } else {
-          logger.atWarning().log(
-              "Ignoring unrecognized transfer session ID %d", chunk.getTransferId());
+          logger.atInfo().log("Ignoring unrecognized transfer chunk: %s", chunk);
         }
       });
     }
@@ -267,7 +297,7 @@ class TransferEventHandler {
         resetStream();
 
         // The transfers remove themselves from the Map during cleanup, iterate over a copied list.
-        List<Transfer<?>> activeTransfers = new ArrayList<>(transfers.values());
+        List<Transfer<?>> activeTransfers = new ArrayList<>(resourceIdToTransfer.values());
 
         // FAILED_PRECONDITION indicates that the stream packet was not recognized as the stream is
         // not open. This could occur if the server resets. Notify pending transfers that this has
@@ -277,46 +307,12 @@ class TransferEventHandler {
         } else {
           TransferError error = new TransferError(
               "Transfer stream RPC closed unexpectedly with status " + status, Status.INTERNAL);
-          activeTransfers.forEach(t -> t.cleanUp(error));
+          activeTransfers.forEach(t -> t.terminate(error));
         }
       });
     }
 
     abstract void resetStream();
-  }
-
-  private static String chunkToString(Chunk chunk) {
-    StringBuilder str = new StringBuilder();
-    str.append("transferId:").append(chunk.getTransferId()).append(" ");
-    str.append("windowEndOffset:").append(chunk.getWindowEndOffset()).append(" ");
-    str.append("offset:").append(chunk.getOffset()).append(" ");
-    // Don't include the actual data; it's too much.
-    str.append("len(data):").append(chunk.getData().size()).append(" ");
-    if (chunk.hasPendingBytes()) {
-      str.append("pendingBytes:").append(chunk.getPendingBytes()).append(" ");
-    }
-    if (chunk.hasMaxChunkSizeBytes()) {
-      str.append("maxChunkSizeBytes:").append(chunk.getMaxChunkSizeBytes()).append(" ");
-    }
-    if (chunk.hasMinDelayMicroseconds()) {
-      str.append("minDelayMicroseconds:").append(chunk.getMinDelayMicroseconds()).append(" ");
-    }
-    if (chunk.hasRemainingBytes()) {
-      str.append("remainingBytes:").append(chunk.getRemainingBytes()).append(" ");
-    }
-    if (chunk.hasStatus()) {
-      str.append("status:").append(chunk.getStatus()).append(" ");
-    }
-    if (chunk.hasType()) {
-      str.append("type:").append(chunk.getTypeValue()).append(" ");
-    }
-    if (chunk.hasResourceId()) {
-      str.append("resourceId:").append(chunk.getSessionId()).append(" ");
-    }
-    if (chunk.hasSessionId()) {
-      str.append("sessionId:").append(chunk.getSessionId()).append(" ");
-    }
-    return str.toString();
   }
 
   // Represents an event that occurs during a transfer

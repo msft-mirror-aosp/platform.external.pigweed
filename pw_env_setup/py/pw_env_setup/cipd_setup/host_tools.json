@@ -1,0 +1,16 @@
+{
+  "packages": [
+    {
+      "path": "pigweed/host_tools/${platform}",
+      "platforms": [
+        "linux-amd64",
+        "mac-amd64",
+        "windows-amd64"
+      ],
+      "tags": [
+        "git_revision:07a5fefdf96aae57864c30749f92a41ee9b2e0fa"
+      ],
+      "version_file": ".versions/host_tools.cipd_version"
+    }
+  ]
+}

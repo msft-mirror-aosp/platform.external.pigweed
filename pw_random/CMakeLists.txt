@@ -14,7 +14,7 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-pw_add_module_library(pw_random
+pw_add_library(pw_random INTERFACE
   HEADERS
     public/pw_random/random.h
     public/pw_random/xor_shift.h
@@ -29,7 +29,7 @@ pw_add_module_library(pw_random
 pw_add_test(pw_random.xor_shift_star_test
   SOURCES
     xor_shift_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_random
   GROUPS
     modules

@@ -18,9 +18,13 @@ if(NOT CONFIG_PIGWEED_INTERRUPT_CONTEXT)
   return()
 endif()
 
-pw_add_module_library(pw_interrupt_zephyr.context
-  IMPLEMENTS_FACADES
-    pw_interrupt.context
+pw_add_library(pw_interrupt_zephyr.context INTERFACE
+  HEADERS
+    public/pw_interrupt_zephyr/context_inline.h
+    public_overrides/pw_interrupt_backend/context_inline.h
+  PUBLIC_INCLUDES
+    public
+    public_overrides
 )
 zephyr_link_interface(pw_interrupt_zephyr.context)
 zephyr_link_libraries(pw_interrupt_zephyr.context)

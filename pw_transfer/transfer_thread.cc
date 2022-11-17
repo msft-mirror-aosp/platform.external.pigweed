@@ -107,7 +107,8 @@ void TransferThread::StartTransfer(TransferType type,
                                    const TransferParameters& max_parameters,
                                    Function<void(Status)>&& on_completion,
                                    chrono::SystemClock::duration timeout,
-                                   uint8_t max_retries) {
+                                   uint8_t max_retries,
+                                   uint32_t max_lifetime_retries) {
   // Block until the last event has been processed.
   next_event_ownership_.acquire();
 
@@ -128,6 +129,7 @@ void TransferThread::StartTransfer(TransferType type,
       .max_parameters = &max_parameters,
       .timeout = timeout,
       .max_retries = max_retries,
+      .max_lifetime_retries = max_lifetime_retries,
       .transfer_thread = this,
       .raw_chunk_data = chunk_buffer_.data(),
       .raw_chunk_size = raw_chunk.size(),
@@ -160,6 +162,7 @@ void TransferThread::StartTransfer(TransferType type,
           // than the session ID. In legacy, the two are the same, whereas in
           // v2+ the client has not yet been assigned a session.
           .session_id = resource_id,
+          .set_resource_id = version == ProtocolVersion::kVersionTwo,
           .protocol_version = version,
           .status = Status::NotFound().code(),
           .stream = type == TransferType::kTransmit
@@ -360,6 +363,8 @@ void TransferThread::HandleEvent(const internal::Event& event) {
       // On the server, send a status chunk back to the client.
       SendStatusChunk(
           {.session_id = event.new_transfer.resource_id,
+           .set_resource_id = event.new_transfer.protocol_version ==
+                              ProtocolVersion::kVersionTwo,
            .protocol_version = event.new_transfer.protocol_version,
            .status = Status::ResourceExhausted().code(),
            .stream = event.new_transfer.type == TransferType::kTransmit
@@ -421,10 +426,14 @@ void TransferThread::SendStatusChunk(
     const internal::SendStatusChunkEvent& event) {
   rpc::Writer& destination = stream_for(event.stream);
 
-  Result<ConstByteSpan> result =
-      Chunk::Final(event.protocol_version, event.session_id, event.status)
-          .Encode(chunk_buffer_);
+  Chunk chunk =
+      Chunk::Final(event.protocol_version, event.session_id, event.status);
 
+  if (event.set_resource_id) {
+    chunk.set_resource_id(event.session_id);
+  }
+
+  Result<ConstByteSpan> result = chunk.Encode(chunk_buffer_);
   if (!result.ok()) {
     PW_LOG_ERROR("Failed to encode final chunk for transfer %u",
                  static_cast<unsigned>(event.session_id));

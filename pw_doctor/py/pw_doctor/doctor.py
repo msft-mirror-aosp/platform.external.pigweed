@@ -24,7 +24,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Callable, Iterable, List, Set
+from typing import Callable, Iterable, List, Optional, Set
 
 import pw_cli.pw_command_plugins
 import pw_env_setup.cipd_setup.update as cipd_update
@@ -41,7 +41,10 @@ class _Fatal(Exception):
 
 
 class Doctor:
-    def __init__(self, *, log: logging.Logger = None, strict: bool = False):
+    def __init__(self,
+                 *,
+                 log: Optional[logging.Logger] = None,
+                 strict: bool = False):
         self.strict = strict
         self.log = log or logging.getLogger(__name__)
         self.failures: Set[str] = set()
@@ -183,6 +186,12 @@ def pw_root(ctx: DoctorContext):
         root = pathlib.Path(os.environ['PW_ROOT']).resolve()
     except KeyError:
         ctx.fatal('PW_ROOT not set')
+
+    # If pigweed is intentionally vendored and not in a git repo or submodule,
+    # set PW_DISABLE_ROOT_GIT_REPO_CHECK=1 during bootstrap to suppress the
+    # following check.
+    if os.environ.get('PW_DISABLE_ROOT_GIT_REPO_CHECK', '0') == '1':
+        return
 
     git_root = pathlib.Path(
         call_stdout(['git', 'rev-parse', '--show-toplevel'], cwd=root).strip())
@@ -373,6 +382,8 @@ def cipd_versions(ctx: DoctorContext):
                 ctx.debug('CIPD package %s in %s is current',
                           installed['package_name'], install_path)
 
+    deduped_packages = cipd_update.deduplicate_packages(
+        cipd_update.all_packages(json_paths))
     for json_path in json_paths:
         ctx.debug(f'Checking packages in {json_path}')
         if not json_path.exists():
@@ -384,6 +395,10 @@ def cipd_versions(ctx: DoctorContext):
         install_path = pathlib.Path(
             cipd_update.package_installation_path(cipd_dir, json_path))
         for package in json.loads(json_path.read_text()).get('packages', ()):
+            if package not in deduped_packages:
+                ctx.debug(f'Skipping overridden package {package["path"]} '
+                          f'with tag(s) {package["tags"]}')
+                continue
             ctx.submit(check_cipd, package, install_path)
 
 
@@ -430,7 +445,7 @@ def run_doctor(strict=False, checks=None):
             "Your environment setup has completed, but something isn't right "
             'and some things may not work correctly. You may continue with '
             'development, but please seek support at '
-            'https://bugs.pigweed.dev/new or by reaching out to your team.')
+            'https://issues.pigweed.dev/new or by reaching out to your team.')
     else:
         doctor.log.info('Environment passes all checks!')
     return len(doctor.failures)

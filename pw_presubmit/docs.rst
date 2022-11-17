@@ -163,13 +163,75 @@ the following:
   foo
   # keep-sorted: end
 
-This can be included by adding ``pw_presubmit.keep_sorted.keep_sorted`` to a
+This can be included by adding ``pw_presubmit.keep_sorted.presubmit_check`` to a
 presubmit program. Adding ``ignore-case`` to the start line will use
 case-insensitive sorting.
 
-These will suggest fixes using ``pw keep-sorted --fix``.
+By default, duplicates will be removed. Lines that are identical except in case
+are preserved, even with ``ignore-case``. To allow duplicates, add
+``allow-dupes`` to the start line.
 
-Future versions may support multiline list items.
+Prefixes can be ignored by adding ``ignore-prefix=`` followed by a
+comma-separated list of prefixes. The list below will be kept in this order.
+Neither commas nor whitespace are supported in prefixes.
+
+.. code-block::
+
+  # keep-sorted: start ignore-prefix=',"
+  'bar',
+  "baz",
+  'foo',
+  # keep-sorted: end
+
+Inline comments are assumed to be associated with the following line. For
+example, the following is already sorted. This can be disabled with
+``sticky-comments=no``.
+
+.. todo-check: disable
+
+.. code-block::
+
+  # keep-sorted: start
+  # TODO(b/1234) Fix this.
+  bar,
+  # TODO(b/5678) Also fix this.
+  foo,
+  # keep-sorted: end
+
+.. todo-check: enable
+
+By default, the prefix of the keep-sorted line is assumed to be the comment
+marker used by any inline comments. This can be overridden by adding lines like
+``sticky-comments=%,#`` to the start line.
+
+The presubmit check will suggest fixes using ``pw keep-sorted --fix``.
+
+Future versions may support additional multiline list items.
+
+.gitmodules
+^^^^^^^^^^^
+Various rules can be applied to .gitmodules files. This check can be included
+by adding ``pw_presubmit.gitmodules.create()`` to a presubmit program. This
+function takes an optional argument of type ``pw_presubmit.gitmodules.Config``.
+``Config`` objects have several properties.
+
+* ``allow_non_googlesource_hosts: bool = False`` — If false, all submodules URLs
+  must be on a Google-managed Gerrit server.
+* ``allowed_googlesource_hosts: Sequence[str] = ()`` — If set, any
+  Google-managed Gerrit URLs for submodules most be in this list. Entries
+  should be like ``pigweed`` for ``pigweed-review.googlesource.com``.
+* ``require_relative_urls: bool = False`` — If true, all submodules must be
+  relative to the superproject remote.
+* ``allow_sso: bool = True`` — If false, ``sso://`` and ``rpc://`` submodule
+  URLs are prohibited.
+* ``allow_git_corp_google_com: bool = True`` — If false, ``git.corp.google.com``
+  submodule URLs are prohibited.
+* ``require_branch: bool = False`` — If True, all submodules must reference a
+  branch.
+* ``validator: Callable[[PresubmitContext, Path, str, Dict[str, str]], None] = None``
+  — A function that can be used for arbitrary submodule validation. It's called
+  with the ``PresubmitContext``, the path to the ``.gitmodules`` file, the name
+  of the current submodule, and the properties of the current submodule.
 
 #pragma once
 ^^^^^^^^^^^^
@@ -333,7 +395,7 @@ See ``pigweed_presubmit.py`` for a more complex presubmit check script example.
       # Use the upstream formatting checks, with custom path filters applied.
       format_code.presubmit_checks(exclude=PATH_EXCLUSIONS),
       # Include the upstream inclusive language check.
-      inclusive_language.inclusive_language,
+      inclusive_language.presubmit_check,
       # Include just the lint-related Python checks.
       python_checks.gn_pylint.with_filter(exclude=PATH_EXCLUSIONS),
   )

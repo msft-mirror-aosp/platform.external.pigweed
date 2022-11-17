@@ -254,6 +254,15 @@ more details.
   The default maximum number of times a transfer should retry sending a chunk
   when no response is received. This can later be configured per-transfer.
 
+.. c:macro:: PW_TRANSFER_DEFAULT_MAX_LIFETIME_RETRIES
+
+  The default maximum number of times a transfer should retry sending any chunk
+  over the course of its entire lifetime.
+
+  This number should be high, particularly if long-running transfers are
+  expected. Its purpose is to prevent transfers from getting stuck in an
+  infinite loop.
+
 .. c:macro:: PW_TRANSFER_DEFAULT_TIMEOUT_MS
 
   The default amount of time, in milliseconds, to wait for a chunk to arrive
@@ -302,7 +311,6 @@ Python
 
 Typescript
 ==========
-
 Provides a simple interface for transferring bulk data over pw_rpc.
 
 **Example**
@@ -329,6 +337,42 @@ Provides a simple interface for transferring bulk data over pw_rpc.
      .catch(error => {
        console.log(`Failed to read: ${error.status}`);
      });
+
+Java
+====
+pw_transfer provides a Java client. The transfer client returns a
+`ListenableFuture <https://guava.dev/releases/21.0/api/docs/com/google/common/util/concurrent/ListenableFuture>`_
+to represent the results of a read or write transfer.
+
+.. code-block:: java
+
+  import dev.pigweed.pw_transfer.TransferClient;
+
+  public class TheClass  {
+    public void DoTransfer(MethodClient transferReadMethodClient,
+                           MethodClient transferWriteMethodClient) {
+      // Create a new transfer client.
+      TransferClient client = new TransferClient(
+          transferReadMethodClient,
+          transferWriteMethodClient,
+          TransferTimeoutSettings.builder()
+              .setTimeoutMillis(TRANSFER_TIMEOUT_MS)
+              .setMaxRetries(MAX_RETRIES)
+              .build());
+
+      // Start a read transfer.
+      ListenableFuture<byte[]> readTransfer = client.read(123);
+
+      // Start a write transfer.
+      ListenableFuture<Void> writeTransfer = client.write(123, dataToWrite);
+
+      // Get the data from the read transfer.
+      byte[] readData = readTransfer.get();
+
+      // Wait for the write transfer to complete.
+      writeTransfer.get();
+    }
+  }
 
 --------
 Protocol
@@ -594,6 +638,30 @@ pw_transfer against newer versions.
   # backed up to another directory.
   $ bazel run pw_transfer/integration_test:cross_language_medium_test -- \
       --cpp-client-binary ../old_pw_transfer_version/cpp_client
+
+Backwards compatibility tests
+=============================
+``pw_transfer`` includes a `suite of backwards-compatibility tests
+<https://cs.pigweed.dev/pigweed/+/main:pw_transfer/integration_test/legacy_binaries_test.py>`_
+that are intended to continuously validate a degree of backwards-compatibility
+with older pw_transfer servers and clients. This is done by retrieving older
+binaries hosted in CIPD and running tests between the older client/server
+binaries and the latest binaries.
+
+The CIPD package contents can be created with this command:
+
+.. code::bash
+
+  $ bazel build --features=c++17 pw_transfer/integration_test:server \
+                                 pw_transfer/integration_test:cpp_client
+  $ mkdir pw_transfer_test_binaries
+  $ cp bazel-bin/pw_transfer/integration_test/server \
+       pw_transfer_test_binaries
+  $ cp bazel-bin/pw_transfer/integration_test/cpp_client \
+       pw_transfer_test_binaries
+
+To update the CIPD package itself, follow the `internal documentation for
+updating a CIPD package <go/pigweed-cipd#installing-packages-into-cipd>`_.
 
 CI/CQ integration
 =================

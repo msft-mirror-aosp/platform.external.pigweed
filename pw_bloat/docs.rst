@@ -12,10 +12,97 @@ Bloat report cards allow tracking the memory usage of a system over time as code
 changes are made and provide a breakdown of which parts of the code have the
 largest size impact.
 
+``pw bloat`` CLI command
+========================
+``pw_bloat`` includes a plugin for the Pigweed command line capable of running
+size reports on ELF binaries.
+
+.. note::
+
+   The bloat CLI plugin is still experimental and only supports a small subset
+   of ``pw_bloat``'s capabilities. Notably, it currently only runs on binaries
+   which define memory region symbols; refer to the
+   :ref:`memoryregions documentation <module-pw_bloat-memoryregions>`
+   for details.
+
+Basic usage
+^^^^^^^^^^^
+
+**Running a size report on a single executable**
+
+.. code-block:: sh
+
+   $ pw bloat out/docs/obj/pw_result/size_report/bin/ladder_and_then.elf
+
+   ▒█████▄   █▓  ▄███▒  ▒█    ▒█ ░▓████▒ ░▓████▒ ▒▓████▄
+    ▒█░  █░ ░█▒ ██▒ ▀█▒ ▒█░ █ ▒█  ▒█   ▀  ▒█   ▀  ▒█  ▀█▌
+    ▒█▄▄▄█░ ░█▒ █▓░ ▄▄░ ▒█░ █ ▒█  ▒███    ▒███    ░█   █▌
+    ▒█▀     ░█░ ▓█   █▓ ░█░ █ ▒█  ▒█   ▄  ▒█   ▄  ░█  ▄█▌
+    ▒█      ░█░ ░▓███▀   ▒█▓▀▓█░ ░▓████▒ ░▓████▒ ▒▓████▀
+
+   +----------------------+---------+
+   |     memoryregions    |  sizes  |
+   +======================+=========+
+   |FLASH                 |1,048,064|
+   |RAM                   |  196,608|
+   |VECTOR_TABLE          |      512|
+   +======================+=========+
+   |Total                 |1,245,184|
+   +----------------------+---------+
+
+**Running a size report diff**
+
+.. code-block:: sh
+
+
+   $ pw bloat out/docs/obj/pw_metric/size_report/bin/one_metric.elf \
+         --diff out/docs/obj/pw_metric/size_report/bin/base.elf \
+         -d symbols
+
+   ▒█████▄   █▓  ▄███▒  ▒█    ▒█ ░▓████▒ ░▓████▒ ▒▓████▄
+    ▒█░  █░ ░█▒ ██▒ ▀█▒ ▒█░ █ ▒█  ▒█   ▀  ▒█   ▀  ▒█  ▀█▌
+    ▒█▄▄▄█░ ░█▒ █▓░ ▄▄░ ▒█░ █ ▒█  ▒███    ▒███    ░█   █▌
+    ▒█▀     ░█░ ▓█   █▓ ░█░ █ ▒█  ▒█   ▄  ▒█   ▄  ░█  ▄█▌
+    ▒█      ░█░ ░▓███▀   ▒█▓▀▓█░ ░▓████▒ ░▓████▒ ▒▓████▀
+
+   +-----------------------------------------------------------------------------------+
+   |                                                                                   |
+   +-----------------------------------------------------------------------------------+
+   | diff|     memoryregions    |                    symbols                    | sizes|
+   +=====+======================+===============================================+======+
+   |     |FLASH                 |                                               |    -4|
+   |     |                      |[section .FLASH.unused_space]                  |  -408|
+   |     |                      |main                                           |   +60|
+   |     |                      |__sf_fake_stdout                               |    +4|
+   |     |                      |pw_boot_PreStaticMemoryInit                    |    -2|
+   |     |                      |_isatty                                        |    -2|
+   |  NEW|                      |_GLOBAL__sub_I_group_foo                       |   +84|
+   |  NEW|                      |pw::metric::Group::~Group()                    |   +34|
+   |  NEW|                      |pw::intrusive_list_impl::List::insert_after()  |   +32|
+   |  NEW|                      |pw::metric::Metric::Increment()                |   +32|
+   |  NEW|                      |__cxa_atexit                                   |   +28|
+   |  NEW|                      |pw::metric::Metric::Metric()                   |   +28|
+   |  NEW|                      |pw::metric::Metric::as_int()                   |   +28|
+   |  NEW|                      |pw::intrusive_list_impl::List::Item::unlist()  |   +20|
+   |  NEW|                      |pw::metric::Group::Group()                     |   +18|
+   |  NEW|                      |pw::intrusive_list_impl::List::Item::previous()|   +14|
+   |  NEW|                      |pw::metric::TypedMetric<>::~TypedMetric()      |   +14|
+   |  NEW|                      |__aeabi_atexit                                 |   +12|
+   +-----+----------------------+-----------------------------------------------+------+
+   |     |RAM                   |                                               |     0|
+   |     |                      |[section .stack]                               |   -32|
+   |  NEW|                      |group_foo                                      |   +16|
+   |  NEW|                      |metric_x                                       |   +12|
+   |  NEW|                      |[section .static_init_ram]                     |    +4|
+   +=====+======================+===============================================+======+
+   |Total|                      |                                               |    -4|
+   +-----+----------------------+-----------------------------------------------+------+
+
+
 .. _bloat-howto:
 
-Defining size reports
-=====================
+Defining size reports in GN
+===========================
 
 Diff Size Reports
 ^^^^^^^^^^^^^^^^^
@@ -364,6 +451,7 @@ Note that linker scripts are not natively supported by GN and can't be provided
 through ``deps``, the ``bloat_macros.ld`` must be passed in the ``includes``
 list.
 
+.. _module-pw_bloat-memoryregions:
 
 ``memoryregions`` data source
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

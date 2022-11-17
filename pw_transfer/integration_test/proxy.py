@@ -22,17 +22,20 @@ server.
 import abc
 import argparse
 import asyncio
+from enum import Enum
 import logging
 import random
 import socket
 import sys
 import time
-from typing import (Any, Awaitable, Callable, List, Optional)
+from typing import Any, Awaitable, Callable, Iterable, List, Optional
 
 from google.protobuf import text_format
 
+from pigweed.pw_transfer import transfer_pb2
 from pigweed.pw_transfer.integration_test import config_pb2
 from pw_hdlc import decode
+from pw_transfer.chunk import Chunk
 
 _LOG = logging.getLogger('pw_transfer_intergration_test_proxy')
 
@@ -49,6 +52,10 @@ _LOG = logging.getLogger('pw_transfer_intergration_test_proxy')
 # For this to be effective, clients should also configure their sockets to a
 # smaller send buffer size.
 _RECEIVE_BUFFER_SIZE = 2048
+
+
+class Event(Enum):
+    TRANSFER_START = 1
 
 
 class Filter(abc.ABC):
@@ -117,6 +124,59 @@ class DataDropper(Filter):
             _LOG.info(f'{self._name} dropped {len(data)} bytes of data')
         else:
             await self.send_data(data)
+
+
+class KeepDropQueue(Filter):
+    """A filter which alternates between sending packets and dropping packets.
+
+    A KeepDropQueue filter will alternate between keeping packets and dropping
+    chunks of data based on a keep/drop queue provided during its creation. The
+    queue is looped over unless a negative element is found. A negative number
+    is effectively the same as a value of infinity.
+
+     This filter is typically most pratical when used with a packetizer so data
+     can be dropped as distinct packets.
+
+    Examples:
+
+      keep_drop_queue = [3, 2]:
+        Keeps 3 packets,
+        Drops 2 packets,
+        Keeps 3 packets,
+        Drops 2 packets,
+        ... [loops indefinitely]
+
+      keep_drop_queue = [5, 99, 1, -1]:
+        Keeps 5 packets,
+        Drops 99 packets,
+        Keeps 1 packet,
+        Drops all further packets.
+    """
+    def __init__(self, send_data: Callable[[bytes], Awaitable[None]],
+                 name: str, keep_drop_queue: Iterable[int]):
+        super().__init__(send_data)
+        self._keep_drop_queue = list(keep_drop_queue)
+        self._loop_idx = 0
+        self._current_count = self._keep_drop_queue[0]
+        self._keep = True
+        self._name = name
+
+    async def process(self, data: bytes) -> None:
+        # Move forward through the queue if neeeded.
+        while self._current_count == 0:
+            self._loop_idx += 1
+            self._current_count = self._keep_drop_queue[self._loop_idx % len(
+                self._keep_drop_queue)]
+            self._keep = not self._keep
+
+        if self._current_count > 0:
+            self._current_count -= 1
+
+        if self._keep:
+            await self.send_data(data)
+            _LOG.info(f'{self._name} forwarded {len(data)} bytes of data')
+        else:
+            _LOG.info(f'{self._name} dropped {len(data)} bytes of data')
 
 
 class RateLimiter(Filter):
@@ -193,16 +253,95 @@ class DataTransposer(Filter):
         await self._data_queue.put(data)
 
 
-async def _handle_simplex_connection(name: str, filter_stack_config: List[
-    config_pb2.FilterConfig], reader: asyncio.StreamReader,
-                                     writer: asyncio.StreamWriter) -> None:
+class ServerFailure(Filter):
+    """A filter to simulate the server stopping sending packets.
+
+    ServerFailure takes a list of numbers of packets to send before
+    dropping all subsequent packets until a TRANSFER_START packet
+    is seen.  This process is repeated for each element in
+    packets_before_failure.  After that list is exhausted, ServerFailure
+    will send all packets.
+
+    This filter should be instantiated in the same filter stack as an
+    HdlcPacketizer so that EventFilter can decode complete packets.
+    """
+    def __init__(self, send_data: Callable[[bytes], Awaitable[None]],
+                 name: str, packets_before_failure_list: List[int]):
+        super().__init__(send_data)
+        self._name = name
+        self._relay_packets = True
+        self._packets_before_failure_list = packets_before_failure_list
+        self.advance_packets_before_failure()
+
+    def advance_packets_before_failure(self):
+        if len(self._packets_before_failure_list) > 0:
+            self._packets_before_failure = self._packets_before_failure_list.pop(
+                0)
+        else:
+            self._packets_before_failure = None
+
+    async def process(self, data: bytes) -> None:
+        if self._packets_before_failure is None:
+            await self.send_data(data)
+        elif self._packets_before_failure > 0:
+            self._packets_before_failure -= 1
+            await self.send_data(data)
+
+    def handle_event(self, event: Event) -> None:
+        if event is Event.TRANSFER_START:
+            self.advance_packets_before_failure()
+
+
+class EventFilter(Filter):
+    """A filter that inspects packets and send events to other filters.
+
+    This filter should be instantiated in the same filter stack as an
+    HdlcPacketizer so that it can decode complete packets.
+    """
+    def __init__(self, send_data: Callable[[bytes], Awaitable[None]],
+                 name: str, event_queue: asyncio.Queue):
+        super().__init__(send_data)
+        self._queue = event_queue
+
+    async def process(self, data: bytes) -> None:
+        try:
+            raw_chunk = transfer_pb2.Chunk()
+            raw_chunk.ParseFromString(data)
+            chunk = Chunk.from_message(raw_chunk)
+            if chunk.type is Chunk.Type.START:
+                await self._queue.put(Event.TRANSFER_START)
+        except:
+            # Silently ignore invalid packets
+            pass
+
+        await self.send_data(data)
+
+
+async def _handle_simplex_events(event_queue: asyncio.Queue,
+                                 handlers: List[Callable[[Event], None]]):
+    while True:
+        event = await event_queue.get()
+        for handler in handlers:
+            handler(event)
+
+
+async def _handle_simplex_connection(
+    name: str,
+    filter_stack_config: List[config_pb2.FilterConfig],
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    inbound_event_queue: asyncio.Queue,
+    outbound_event_queue: asyncio.Queue,
+) -> None:
     """Handle a single direction of a bidirectional connection between
     server and client."""
     async def send(data: bytes):
         writer.write(data)
         await writer.drain()
 
-    filter_stack = send
+    filter_stack = EventFilter(send, name, outbound_event_queue)
+
+    event_handlers: List[Callable[[Event], None]] = []
 
     # Build the filter stack from the bottom up
     for config in reversed(filter_stack_config):
@@ -219,8 +358,20 @@ async def _handle_simplex_connection(name: str, filter_stack_config: List[
             transposer = config.data_transposer
             filter_stack = DataTransposer(filter_stack, name, transposer.rate,
                                           transposer.timeout, transposer.seed)
+        elif filter_name == "server_failure":
+            server_failure = config.server_failure
+            filter_stack = ServerFailure(filter_stack, name,
+                                         server_failure.packets_before_failure)
+            event_handlers.append(filter_stack.handle_event)
+        elif filter_name == "keep_drop_queue":
+            keep_drop_queue = config.keep_drop_queue
+            filter_stack = KeepDropQueue(filter_stack, name,
+                                         keep_drop_queue.keep_drop_queue)
         else:
             sys.exit(f'Unknown filter {filter_name}')
+
+    event_task = asyncio.create_task(
+        _handle_simplex_events(inbound_event_queue, event_handlers))
 
     while True:
         # Arbitrarily chosen "page sized" read.
@@ -244,22 +395,36 @@ async def _handle_connection(server_port: int, config: config_pb2.ProxyConfig,
 
     # Open a new connection to the server for each client connection.
     #
-    # TODO: catch exception and close client writer
+    # TODO(konkers): catch exception and close client writer
     server_reader, server_writer = await asyncio.open_connection(
         'localhost', server_port)
     _LOG.info(f'New connection opened to server')
+
+    # Queues for the simplex connections to pass events to each other.
+    server_event_queue = asyncio.Queue()
+    client_event_queue = asyncio.Queue()
 
     # Instantiate two simplex handler one for each direction of the connection.
     _, pending = await asyncio.wait(
         [
             asyncio.create_task(
                 _handle_simplex_connection(
-                    "client", config.client_filter_stack, client_reader,
-                    server_writer)),
+                    "client",
+                    config.client_filter_stack,
+                    client_reader,
+                    server_writer,
+                    server_event_queue,
+                    client_event_queue,
+                )),
             asyncio.create_task(
                 _handle_simplex_connection(
-                    "server", config.server_filter_stack, server_reader,
-                    client_writer)),
+                    "server",
+                    config.server_filter_stack,
+                    server_reader,
+                    client_writer,
+                    client_event_queue,
+                    server_event_queue,
+                )),
         ],
         return_when=asyncio.FIRST_COMPLETED,
     )

@@ -140,7 +140,7 @@ PLUGIN_INFO = {
         "compiler": nanopb_compile,
         "deps": ["@com_github_nanopb_nanopb//:nanopb"],
         "has_srcs": True,
-        # TODO: Find a way to get Nanopb to generate nested structs.
+        # TODO(tpudlik): Find a way to get Nanopb to generate nested structs.
         # Otherwise add the manual tag to the resulting library,
         # preventing it from being built unless directly depended on.
         # e.g. The 'Pigweed' message in
@@ -258,5 +258,9 @@ def pw_proto_library(name, **kwargs):  # buildifier: disable=function-docstring
             for plugin_name in PLUGIN_INFO.keys()
         ],
         tags = kwargs.get("tags", []) + additional_tags,
-        **{k: v for k, v in kwargs.items() if k not in ["deps", "protos"]}
+        **{
+            k: v
+            for k, v in kwargs.items()
+            if k not in ["deps", "protos", "tags"]
+        }
     )

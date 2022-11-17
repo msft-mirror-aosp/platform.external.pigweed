@@ -16,9 +16,9 @@
 #include <optional>
 #include <string_view>
 
+#include "pw_bluetooth/controller.h"
 #include "pw_bluetooth/gatt/client.h"
 #include "pw_bluetooth/gatt/server.h"
-#include "pw_bluetooth/hci.h"
 #include "pw_bluetooth/low_energy/bond_data.h"
 #include "pw_bluetooth/low_energy/central.h"
 #include "pw_bluetooth/low_energy/peripheral.h"
@@ -26,8 +26,8 @@
 #include "pw_bluetooth/pairing_delegate.h"
 #include "pw_bluetooth/peer.h"
 #include "pw_bluetooth/types.h"
-#include "pw_containers/vector.h"
 #include "pw_function/function.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 
 namespace pw::bluetooth {
@@ -51,7 +51,7 @@ class Host {
 
     // All bonds that use a public identity address must contain the same local
     // address.
-    Vector<low_energy::BondData> bonds;
+    span<const low_energy::BondData> bonds;
   };
 
   // The security level required for this pairing. This corresponds to the
@@ -96,13 +96,13 @@ class Host {
   // loading firmware) must be done before initializing `Host`.
   //
   // Parameters:
-  // `hci` - Pointer to a concrete `Hci` that the host stack should use to
-  //     communicate with the controller.
+  // `controller` - Pointer to a concrete `Controller` that the host stack
+  //     should use to communicate with the controller.
   // `data` - Data to persist from a previous instance of `Host`.
   // `on_initialization_complete` - Called when initialization is complete.
   //     Other methods should not be called until initialization completes.
   virtual void Initialize(
-      Hci* hci,
+      Controller* controller,
       PersistentData data,
       Function<void(Status)>&& on_initialization_complete) = 0;
 

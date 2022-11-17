@@ -43,11 +43,13 @@ from pw_presubmit import (
     cpp_checks,
     format_code,
     git_repo,
+    gitmodules,
     call,
     filter_paths,
     inclusive_language,
     keep_sorted,
     npm_presubmit,
+    owners_checks,
     plural,
     presubmit,
     PresubmitContext,
@@ -67,9 +69,11 @@ pw_package.pigweed_packages.initialize()
 _BUILD_FILE_FILTER = presubmit.FileFilter(
     suffix=(*format_code.C_FORMAT.extensions, '.py', '.rst', '.gn', '.gni'))
 
+_OPTIMIZATION_LEVELS = 'debug', 'size_optimized', 'speed_optimized'
+
 
 def _at_all_optimization_levels(target):
-    for level in ('debug', 'size_optimized', 'speed_optimized'):
+    for level in _OPTIMIZATION_LEVELS:
         yield f'{target}_{level}'
 
 
@@ -107,13 +111,13 @@ def gn_clang_build(ctx: PresubmitContext):
     if sys.platform.startswith('linux'):
         build_targets.append('integration_tests')
 
-    build.gn_gen(ctx)
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *build_targets)
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_gcc_build(ctx: PresubmitContext):
-    build.gn_gen(ctx)
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *_at_all_optimization_levels('host_gcc'))
 
 
@@ -121,7 +125,7 @@ _HOST_COMPILER = 'gcc' if sys.platform == 'win32' else 'clang'
 
 
 def gn_host_build(ctx: PresubmitContext):
-    build.gn_gen(ctx)
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'))
 
 
@@ -152,13 +156,15 @@ def gn_full_build_check(ctx: PresubmitContext) -> None:
     if sys.platform.startswith('linux'):
         build_targets.append('integration_tests')
 
-    build.gn_gen(ctx)
+    build.gn_gen(ctx,
+                 pw_unit_test_FACADE_TESTS_ENABLED=True,
+                 pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *build_targets)
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_full_qemu_check(ctx: PresubmitContext):
-    build.gn_gen(ctx)
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(
         ctx,
         *_at_all_optimization_levels('qemu_gcc'),
@@ -202,19 +208,21 @@ def gn_combined_build_check(ctx: PresubmitContext) -> None:
     if sys.platform.startswith('linux'):
         build_targets.append('integration_tests')
 
-    build.gn_gen(ctx)
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *build_targets)
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_arm_build(ctx: PresubmitContext):
-    build.gn_gen(ctx)
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
 def stm32f429i(ctx: PresubmitContext):
-    build.gn_gen(ctx, pw_use_test_server=True)
+    build.gn_gen(ctx,
+                 pw_use_test_server=True,
+                 pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     with build.test_server('stm32f429i_disc1_test_server', ctx.output_dir):
         build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
 
@@ -222,9 +230,12 @@ def stm32f429i(ctx: PresubmitContext):
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_boringssl_build(ctx: PresubmitContext):
     build.install_package(ctx, 'boringssl')
-    build.gn_gen(ctx,
-                 dir_pw_third_party_boringssl='"{}"'.format(ctx.package_root /
-                                                            'boringssl'))
+    build.gn_gen(
+        ctx,
+        dir_pw_third_party_boringssl='"{}"'.format(ctx.package_root /
+                                                   'boringssl'),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    )
     build.ninja(
         ctx,
         *_at_all_optimization_levels('stm32f429i'),
@@ -235,9 +246,11 @@ def gn_boringssl_build(ctx: PresubmitContext):
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_nanopb_build(ctx: PresubmitContext):
     build.install_package(ctx, 'nanopb')
-    build.gn_gen(ctx,
-                 dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root /
-                                                         'nanopb'))
+    build.gn_gen(
+        ctx,
+        dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root / 'nanopb'),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    )
     build.ninja(
         ctx,
         *_at_all_optimization_levels('stm32f429i'),
@@ -254,7 +267,9 @@ def gn_crypto_mbedtls_build(ctx: PresubmitContext):
         pw_crypto_SHA256_BACKEND='"{}"'.format(ctx.root /
                                                'pw_crypto:sha256_mbedtls'),
         pw_crypto_ECDSA_BACKEND='"{}"'.format(ctx.root /
-                                              'pw_crypto:ecdsa_mbedtls'))
+                                              'pw_crypto:ecdsa_mbedtls'),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    )
     build_targets = [*_at_all_optimization_levels(f'host_{_HOST_COMPILER}')]
 
     # TODO(b/240982565): SocketStream currently requires Linux.
@@ -275,6 +290,7 @@ def gn_crypto_boringssl_build(ctx: PresubmitContext):
                                                'pw_crypto:sha256_boringssl'),
         pw_crypto_ECDSA_BACKEND='"{}"'.format(ctx.root /
                                               'pw_crypto:ecdsa_boringssl'),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
     )
     build_targets = [*_at_all_optimization_levels(f'host_{_HOST_COMPILER}')]
 
@@ -294,6 +310,7 @@ def gn_crypto_micro_ecc_build(ctx: PresubmitContext):
                                                    'micro-ecc'),
         pw_crypto_ECDSA_BACKEND='"{}"'.format(ctx.root /
                                               'pw_crypto:ecdsa_uecc'),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
     )
     build_targets = [*_at_all_optimization_levels(f'host_{_HOST_COMPILER}')]
 
@@ -307,12 +324,14 @@ def gn_crypto_micro_ecc_build(ctx: PresubmitContext):
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_teensy_build(ctx: PresubmitContext):
     build.install_package(ctx, 'teensy')
-    build.gn_gen(ctx,
-                 pw_arduino_build_CORE_PATH='"{}"'.format(str(
-                     ctx.package_root)),
-                 pw_arduino_build_CORE_NAME='teensy',
-                 pw_arduino_build_PACKAGE_NAME='teensy/avr',
-                 pw_arduino_build_BOARD='teensy40')
+    build.gn_gen(
+        ctx,
+        pw_arduino_build_CORE_PATH='"{}"'.format(str(ctx.package_root)),
+        pw_arduino_build_CORE_NAME='teensy',
+        pw_arduino_build_PACKAGE_NAME='teensy/avr',
+        pw_arduino_build_BOARD='teensy40',
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    )
     build.ninja(ctx, *_at_all_optimization_levels('arduino'))
 
 
@@ -333,7 +352,9 @@ def gn_software_update_build(ctx: PresubmitContext):
                                               'pw_crypto:ecdsa_uecc'),
         dir_pw_third_party_mbedtls='"{}"'.format(ctx.package_root / 'mbedtls'),
         pw_crypto_SHA256_BACKEND='"{}"'.format(ctx.root /
-                                               'pw_crypto:sha256_mbedtls'))
+                                               'pw_crypto:sha256_mbedtls'),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    )
     build.ninja(
         ctx,
         *_at_all_optimization_levels('host_clang'),
@@ -358,13 +379,13 @@ def gn_pw_system_demo_build(ctx: PresubmitContext):
 
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_qemu_build(ctx: PresubmitContext):
-    build.gn_gen(ctx)
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *_at_all_optimization_levels('qemu_gcc'))
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_qemu_clang_build(ctx: PresubmitContext):
-    build.gn_gen(ctx)
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *_at_all_optimization_levels('qemu_clang'))
 
 
@@ -418,41 +439,11 @@ def cmake_gcc(ctx: PresubmitContext):
 # none remain.
 _TARGETS_THAT_DO_NOT_BUILD_WITH_BAZEL = (
     # keep-sorted: start
-    '-//pw_arduino_build',
-    '-//pw_blob_store/...:all',
     '-//pw_boot/...:all',
     '-//pw_chrono/py/...:all',
     '-//pw_chrono:chrono_proto_pb2',
     '-//pw_cpu_exception_cortex_m/...:all',
     '-//pw_crypto/...:all',  # TODO(b/236321905) Remove when passing.
-    '-//pw_file/...:all',
-    '-//pw_hdlc/rpc_example',  # TODO(b/241575924) Remove when passing.
-    '-//pw_i2c_mcuxpresso/...:all',
-    '-//pw_kvs/...:all',
-    '-//pw_log:log_proto_py_pb2',  # TODO(b/241456982) Remove when passing.
-    '-//pw_log:log_proto_py_pb2_genproto',
-    '-//pw_log_null/...:all',
-    '-//pw_log_string/...:all',
-    '-//pw_metric/...:all',
-    '-//pw_minimal_cpp_stdlib/...:all',
-    '-//pw_persistent_ram/...:all',
-    '-//pw_snapshot/py/...:all',
-    '-//pw_snapshot:metadata_proto_py_pb2',
-    '-//pw_snapshot:metadata_proto_py_pb2_genproto',
-    '-//pw_snapshot:snapshot_proto_py_pb2',
-    '-//pw_snapshot:snapshot_proto_py_pb2_genproto',
-    '-//pw_software_update:bundled_update_py_pb2',  # TODO(b/232427554): Fix
-    '-//pw_software_update:bundled_update_py_pb2_genproto',
-    '-//pw_software_update:bundled_update_service',
-    '-//pw_software_update:bundled_update_service_pwpb',
-    '-//pw_software_update:bundled_update_service_pwpb_test',
-    '-//pw_software_update:bundled_update_service_test',
-    '-//pw_software_update:update_bundle',
-    '-//pw_software_update:update_bundle_test',
-    '-//pw_spi/...:all',
-    '-//pw_sys_io_arduino/...:all',
-    '-//pw_sys_io_mcuxpresso/...:all',
-    '-//pw_sys_io_stm32cube/...:all',
     '-//pw_system/...:all',
     '-//pw_thread/py/...:all',
     '-//pw_thread:thread_proto_py_pb2',
@@ -461,13 +452,6 @@ _TARGETS_THAT_DO_NOT_BUILD_WITH_BAZEL = (
     '-//pw_thread:thread_snapshot_service_py_pb2_genproto',
     '-//pw_thread_embos/...:all',
     '-//pw_thread_freertos/...:all',
-    '-//pw_thread_threadx/...:all',
-    '-//pw_tls_client/...:all',
-    '-//pw_tls_client_boringssl/...:all',
-    '-//pw_tls_client_mbedtls/...:all',
-    '-//pw_tokenizer:tokenizer_proto_py_pb2',  # TODO(b/241456982) Fix
-    '-//pw_tokenizer:tokenizer_proto_py_pb2_genproto',
-    '-//pw_trace/...:all',
     '-//pw_trace_tokenized/...:all',
     '-//pw_work_queue/...:all',
     '-//targets/arduino/...:all',
@@ -478,14 +462,12 @@ _TARGETS_THAT_DO_NOT_BUILD_WITH_BAZEL = (
     '-//targets/stm32f429i_disc1/...:all',
     '-//targets/stm32f429i_disc1_stm32cube/...:all',
     '-//third_party/boringssl/...:all',
-    '-//third_party/micro_ecc/...:all',
     # keep-sorted: end
 )
 
 # TODO(b/235882003): Slowly remove targets from here that work with bazel until
 # none remain.
-_TARGETS_THAT_DO_NOT_TEST_WITH_BAZEL = _TARGETS_THAT_DO_NOT_BUILD_WITH_BAZEL + (
-    '-//pw_malloc_freelist/...:all', )
+_TARGETS_THAT_DO_NOT_TEST_WITH_BAZEL = _TARGETS_THAT_DO_NOT_BUILD_WITH_BAZEL
 
 
 @filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl',
@@ -513,10 +495,13 @@ def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
     build.bazel(
         ctx, 'test',
         '//pw_transfer/integration_test:cross_language_small_test',
-        '//pw_transfer/integration_test:cross_language_medium_test',
+        '//pw_transfer/integration_test:cross_language_medium_read_test',
+        '//pw_transfer/integration_test:cross_language_medium_write_test',
         '//pw_transfer/integration_test:cross_language_large_read_test',
         '//pw_transfer/integration_test:cross_language_large_write_test',
         '//pw_transfer/integration_test:multi_transfer_test',
+        '//pw_transfer/integration_test:expected_errors_test',
+        '//pw_transfer/integration_test:legacy_binaries_test',
         '--test_output=errors')
 
 
@@ -618,6 +603,10 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # keep-sorted: start
     r'\.diff$',
     r'\.patch$',
+    # keep-sorted: end
+    # Test data
+    # keep-sorted: start
+    r'\bpw_presubmit/py/test/owners_checks/',
     # keep-sorted: end
 )
 
@@ -852,9 +841,50 @@ def static_analysis(ctx: PresubmitContext):
     build.ninja(ctx, 'python.lint', 'static_analysis')
 
 
-def renode_check(ctx: PresubmitContext):
-    """Placeholder for future check."""
-    _LOG.info('%s %s', ctx.root, ctx.output_dir)
+_EXCLUDE_FROM_TODO_CHECK = (
+    # keep-sorted: start
+    r'.bazelrc$',
+    r'.dockerignore$',
+    r'.gitignore$',
+    r'.pylintrc$',
+    r'\bdocs/build_system.rst',
+    r'\bpw_assert_basic/basic_handler.cc',
+    r'\bpw_assert_basic/public/pw_assert_basic/handler.h',
+    r'\bpw_blob_store/public/pw_blob_store/flat_file_system_entry.h',
+    r'\bpw_build/linker_script.gni',
+    r'\bpw_build/py/pw_build/copy_from_cipd.py',
+    r'\bpw_cpu_exception/basic_handler.cc',
+    r'\bpw_cpu_exception_cortex_m/entry.cc',
+    r'\bpw_cpu_exception_cortex_m/exception_entry_test.cc',
+    r'\bpw_doctor/py/pw_doctor/doctor.py',
+    r'\bpw_env_setup/util.sh',
+    r'\bpw_fuzzer/fuzzer.gni',
+    r'\bpw_fuzzer/oss_fuzz.gni',
+    r'\bpw_i2c/BUILD.gn',
+    r'\bpw_i2c/public/pw_i2c/register_device.h',
+    r'\bpw_kvs/flash_memory.cc',
+    r'\bpw_kvs/key_value_store.cc',
+    r'\bpw_log_basic/log_basic.cc',
+    r'\bpw_package/py/pw_package/packages/chromium_verifier.py',
+    r'\bpw_protobuf/encoder.cc',
+    r'\bpw_rpc/docs.rst',
+    r'\bpw_watch/py/pw_watch/watch.py',
+    r'\btargets/mimxrt595_evk/BUILD.bazel',
+    r'\btargets/stm32f429i_disc1/boot.cc',
+    r'\bthird_party/chromium_verifier/BUILD.gn',
+    # keep-sorted: end
+)
+
+
+@filter_paths(exclude=_EXCLUDE_FROM_TODO_CHECK)
+def todo_check_with_exceptions(ctx: PresubmitContext):
+    todo_check.create(todo_check.BUGS_OR_USERNAMES)(ctx)
+
+
+@format_code.OWNERS_CODE_FORMAT.filter.apply_to_check()
+def owners_lint_checks(ctx: PresubmitContext):
+    """Runs OWNERS linter."""
+    owners_checks.presubmit_check(ctx.paths)
 
 
 #
@@ -863,10 +893,12 @@ def renode_check(ctx: PresubmitContext):
 
 OTHER_CHECKS = (
     # keep-sorted: start
-    bazel_test,  # TODO(b/235277910): Enable all Bazel tests when they're fixed.
+    # TODO(b/235277910): Enable all Bazel tests when they're fixed.
+    bazel_test,
     build.gn_gen_check,
     cmake_clang,
     cmake_gcc,
+    gitmodules.create(),
     gn_boringssl_build,
     gn_clang_build,
     gn_combined_build_check,
@@ -874,9 +906,9 @@ OTHER_CHECKS = (
     gn_full_qemu_check,
     gn_gcc_build,
     npm_presubmit.npm_test,
-    oss_fuzz_build,  # Attempts to duplicate OSS-Fuzz. Currently failing.
+    # Attempts to duplicate OSS-Fuzz. Currently failing.
+    oss_fuzz_build,
     pw_transfer_integration_test,
-    renode_check,
     static_analysis,
     stm32f429i,
     todo_check.create(todo_check.BUGS_OR_USERNAMES),
@@ -895,18 +927,13 @@ MISC = (
 
 SANITIZERS = (cpp_checks.all_sanitizers(), )
 
-# TODO(b/243380637) Merge into SECURITY.
-CRYPTO = (
+SECURITY = (
     # keep-sorted: start
     gn_crypto_boringssl_build,
     gn_crypto_mbedtls_build,
     gn_crypto_micro_ecc_build,
-    # keep-sorted: end
-)
-
-SECURITY = (
-    CRYPTO,
     gn_software_update_build,
+    # keep-sorted: end
 )
 
 # Avoid running all checks on specific paths.
@@ -916,15 +943,17 @@ _LINTFORMAT = (
     commit_message_format,
     copyright_notice,
     format_code.presubmit_checks(),
-    inclusive_language.inclusive_language.with_filter(exclude=(
+    inclusive_language.presubmit_check.with_filter(exclude=(
         r'\byarn.lock$',
         r'\bpackage-lock.json$',
     )),
     cpp_checks.pragma_once,
     build.bazel_lint,
+    owners_lint_checks,
     source_is_in_build_files,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
-    keep_sorted.keep_sorted,
+    keep_sorted.presubmit_check,
+    todo_check_with_exceptions,
 )
 
 LINTFORMAT = (
@@ -968,7 +997,6 @@ FULL = (
 
 PROGRAMS = Programs(
     # keep-sorted: start
-    crypto=CRYPTO,
     full=FULL,
     lintformat=LINTFORMAT,
     misc=MISC,

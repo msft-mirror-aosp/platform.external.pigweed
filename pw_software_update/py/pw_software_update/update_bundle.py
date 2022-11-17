@@ -75,11 +75,36 @@ def targets_from_directory(
     return targets
 
 
+def gen_empty_update_bundle(
+    targets_metadata_version: int = metadata.DEFAULT_METADATA_VERSION
+) -> UpdateBundle:
+    """Generates an empty bundle
+
+    Given an optional target metadata version, generates an empty bundle.
+
+    Args:
+      targets_metadata_version: default set to 1
+
+    Returns:
+      UpdateBundle: empty bundle
+    """
+
+    targets_metadata = metadata.gen_targets_metadata(
+        target_payloads={}, version=targets_metadata_version)
+    unsigned_targets_metadata = SignedTargetsMetadata(
+        serialized_targets_metadata=targets_metadata.SerializeToString())
+
+    return UpdateBundle(
+        root_metadata=None,
+        targets_metadata=dict(targets=unsigned_targets_metadata),
+        target_payloads=None)
+
+
 def gen_unsigned_update_bundle(
         targets: Dict[Path, str],
         persist: Optional[Path] = None,
         targets_metadata_version: int = metadata.DEFAULT_METADATA_VERSION,
-        root_metadata: SignedRootMetadata = None) -> UpdateBundle:
+        root_metadata: Optional[SignedRootMetadata] = None) -> UpdateBundle:
     """Given a set of targets, generates an unsigned UpdateBundle.
 
     Args:
@@ -186,10 +211,10 @@ def parse_args() -> argparse.Namespace:
 
 def main(targets: Iterable[str],
          out: Path,
-         persist: Path = None,
+         persist: Optional[Path] = None,
          targets_metadata_version: int = metadata.DEFAULT_METADATA_VERSION,
-         targets_metadata_version_file: Path = None,
-         signed_root_metadata: Path = None) -> None:
+         targets_metadata_version_file: Optional[Path] = None,
+         signed_root_metadata: Optional[Path] = None) -> None:
     """Generates an UpdateBundle and serializes it to disk."""
     target_dict = {}
     for target_arg in targets:

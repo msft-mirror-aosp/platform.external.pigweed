@@ -819,16 +819,23 @@ CMake functions
 ---------------
 CMake convenience functions are defined in ``pw_build/pigweed.cmake``.
 
-* ``pw_add_library`` -- The base helper used to instantiate CMake libraries.
-  This is meant for use in downstream projects as upstream Pigweed modules are
-  expected to use ``pw_add_module_library`` and ``pw_add_facade``.
-* ``pw_add_module_library`` -- Add an upstream Pigweed library.
-* ``pw_add_facade`` -- Declare a module facade.
+* ``pw_add_library_generic`` -- The base helper used to instantiate CMake
+  libraries. This is meant for use in downstream projects as upstream Pigweed
+  modules are expected to use ``pw_add_library``.
+* ``pw_add_library`` -- Add an upstream Pigweed library.
+* ``pw_add_facade_generic`` -- The base helper used to instantiate facade
+  libraries. This is meant for use in downstream projects as upstream Pigweed
+  modules are expected to use ``pw_add_facade``.
+* ``pw_add_facade`` -- Declare an upstream Pigweed facade.
 * ``pw_set_backend`` -- Set the backend library to use for a facade.
 * ``pw_auto_add_simple_module`` -- For modules with only one library,
   automatically declare the library and its tests. This has been deprecated,
-  please use ``pw_add_module_library`` instead.
-* ``pw_add_test`` -- Declare a test target.
+  please use ``pw_add_library`` instead.
+* ``pw_add_test_generic`` -- The base helper used to instantiate test targets.
+  This is meant for use in downstrema projects as upstream Pigweed modules are
+  expected to use ``pw_add_test``.
+* ``pw_add_test`` -- Declare an upstream Pigweed test target.
+* ``pw_add_test_group`` -- Declare a target to group and bundle test targets.
 * ``pw_target_link_targets`` -- Helper wrapper around ``target_link_libraries``
   which only supports CMake targets and detects when the target does not exist.
   Note that generator expressions are not supported.
@@ -836,6 +843,11 @@ CMake convenience functions are defined in ``pw_build/pigweed.cmake``.
   targets in the build. This should only be used to add essential compilation
   options, such as those that affect the ABI. Use ``pw_add_library`` or
   ``target_compile_options`` to apply other compile options.
+* ``pw_add_error_target`` -- Declares target which reports a message and causes
+  a build failure only when compiled. This is useful when ``FATAL_ERROR``
+  messages cannot be used to catch problems during the CMake configuration
+  phase.
+* ``pw_parse_arguments`` -- Helper to parse CMake function arguments.
 
 See ``pw_build/pigweed.cmake`` for the complete documentation of these
 functions.
@@ -851,7 +863,7 @@ similar to GN's build args set with ``gn args``. Unlike GN, CMake does not
 support multi-toolchain builds, so these variables have a single global value
 per build directory.
 
-The ``pw_add_facade`` function declares a cache variable named
+The ``pw_add_module_facade`` function declares a cache variable named
 ``<module_name>_BACKEND`` for each facade. Cache variables can be awkward to
 work with, since their values only change when they're assigned, but then
 persist accross CMake invocations. These variables should be set in one of the
@@ -878,12 +890,13 @@ error message like the following:
 
 .. code-block::
 
-  CMake Error at pw_build/pigweed.cmake:244 (add_custom_target):
-  Error evaluating generator expression:
+  CMake Error at pw_build/pigweed.cmake:257 (message):
+    my_module.my_facade's INTERFACE dep "my_nonexistent_backend" is not
+    a target.
+  Call Stack (most recent call first):
+    pw_build/pigweed.cmake:238:EVAL:1 (_pw_target_link_targets_deferred_check)
+    CMakeLists.txt:DEFERRED
 
-    $<TARGET_PROPERTY:my_backend_that_does_not_exist,TYPE>
-
-  Target "my_backend_that_does_not_exist" not found.
 
 Toolchain setup
 ---------------

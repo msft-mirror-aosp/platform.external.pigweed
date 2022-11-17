@@ -17,7 +17,7 @@ include($ENV{PW_ROOT}/pw_protobuf_compiler/proto.cmake)
 
 pw_add_module_config(pw_protobuf_CONFIG)
 
-pw_add_module_library(pw_protobuf.config
+pw_add_library(pw_protobuf.config INTERFACE
   HEADERS
     public/pw_protobuf/config.h
   PUBLIC_INCLUDES
@@ -26,7 +26,7 @@ pw_add_module_library(pw_protobuf.config
     ${pw_protobuf_CONFIG}
 )
 
-pw_add_module_library(pw_protobuf
+pw_add_library(pw_protobuf STATIC
   HEADERS
     public/pw_protobuf/decoder.h
     public/pw_protobuf/encoder.h
@@ -65,7 +65,7 @@ pw_add_module_library(pw_protobuf
     stream_decoder.cc
 )
 
-pw_add_module_library(pw_protobuf.bytes_utils
+pw_add_library(pw_protobuf.bytes_utils INTERFACE
   HEADERS
     public/pw_protobuf/bytes_utils.h
   PUBLIC_INCLUDES
@@ -80,7 +80,7 @@ pw_add_module_library(pw_protobuf.bytes_utils
 pw_add_test(pw_protobuf.decoder_test
   SOURCES
     decoder_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
   GROUPS
     modules
@@ -90,7 +90,7 @@ pw_add_test(pw_protobuf.decoder_test
 pw_add_test(pw_protobuf.encoder_test
   SOURCES
     encoder_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
   GROUPS
     modules
@@ -100,7 +100,7 @@ pw_add_test(pw_protobuf.encoder_test
 pw_add_test(pw_protobuf.find_test
   SOURCES
     find_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
   GROUPS
     modules
@@ -110,7 +110,7 @@ pw_add_test(pw_protobuf.find_test
 pw_add_test(pw_protobuf.codegen_decoder_test
   SOURCES
     codegen_decoder_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
     pw_protobuf.codegen_test_protos.pwpb
   GROUPS
@@ -121,7 +121,7 @@ pw_add_test(pw_protobuf.codegen_decoder_test
 pw_add_test(pw_protobuf.codegen_encoder_test
   SOURCES
     codegen_encoder_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
     pw_protobuf.codegen_test_protos.pwpb
   GROUPS
@@ -132,7 +132,7 @@ pw_add_test(pw_protobuf.codegen_encoder_test
 pw_add_test(pw_protobuf.codegen_message_test
   SOURCES
     codegen_message_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
     pw_protobuf.codegen_test_protos.pwpb
     pw_string
@@ -144,7 +144,7 @@ pw_add_test(pw_protobuf.codegen_message_test
 pw_add_test(pw_protobuf.serialized_size_test
   SOURCES
     serialized_size_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
   GROUPS
     modules
@@ -154,7 +154,7 @@ pw_add_test(pw_protobuf.serialized_size_test
 pw_add_test(pw_protobuf.stream_decoder_test
   SOURCES
     stream_decoder_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
   GROUPS
     modules
@@ -164,7 +164,7 @@ pw_add_test(pw_protobuf.stream_decoder_test
 pw_add_test(pw_protobuf.map_utils_test
   SOURCES
     map_utils_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
   GROUPS
     modules
@@ -174,7 +174,7 @@ pw_add_test(pw_protobuf.map_utils_test
 pw_add_test(pw_protobuf.message_test
   SOURCES
     message_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_protobuf
   GROUPS
     modules

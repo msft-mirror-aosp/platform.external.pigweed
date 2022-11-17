@@ -29,8 +29,18 @@ import re
 import subprocess
 import sys
 import tempfile
-from typing import Callable, Collection, Dict, Iterable, List, NamedTuple
-from typing import Optional, Pattern, Tuple, Union
+from typing import (
+    Callable,
+    Collection,
+    Dict,
+    Iterable,
+    List,
+    NamedTuple,
+    Optional,
+    Pattern,
+    Tuple,
+    Union,
+)
 
 try:
     import pw_presubmit
@@ -45,6 +55,7 @@ import pw_cli.color
 import pw_cli.env
 from pw_presubmit.presubmit import FileFilter
 from pw_presubmit import cli, git_repo
+from pw_presubmit import owners_checks
 from pw_presubmit.tools import exclude_paths, file_summary, log_run, plural
 
 _LOG: logging.Logger = logging.getLogger(__name__)
@@ -344,6 +355,11 @@ MARKDOWN_FORMAT: CodeFormat = CodeFormat('Markdown',
                                          check_trailing_space,
                                          fix_trailing_space)
 
+OWNERS_CODE_FORMAT = CodeFormat("OWNERS",
+                                filter=FileFilter(name=("OWNERS", )),
+                                check=owners_checks.run_owners_checks,
+                                fix=owners_checks.format_owners_file)
+
 CODE_FORMATS: Tuple[CodeFormat, ...] = (
     # keep-sorted: start
     BAZEL_FORMAT,
@@ -355,6 +371,7 @@ CODE_FORMATS: Tuple[CodeFormat, ...] = (
     JAVASCRIPT_FORMAT,
     JAVA_FORMAT,
     MARKDOWN_FORMAT,
+    OWNERS_CODE_FORMAT,
     PROTO_FORMAT,
     PYTHON_FORMAT,
     RST_FORMAT,

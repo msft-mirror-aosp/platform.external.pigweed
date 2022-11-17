@@ -57,7 +57,7 @@ class _Timer:
         self._callback = callback
         self._task: Optional[asyncio.Task[Any]] = None
 
-    def start(self, timeout_s: float = None) -> None:
+    def start(self, timeout_s: Optional[float] = None) -> None:
         """Starts a new timer.
 
         If a timer is already running, it is stopped and a new timer started.
@@ -117,15 +117,17 @@ class Transfer(abc.ABC):
 
     _UNASSIGNED_SESSION_ID = 0
 
-    def __init__(self,
-                 resource_id: int,
-                 send_chunk: Callable[[Chunk], None],
-                 end_transfer: Callable[['Transfer'], None],
-                 response_timeout_s: float,
-                 initial_response_timeout_s: float,
-                 max_retries: int,
-                 protocol_version: ProtocolVersion,
-                 progress_callback: ProgressCallback = None):
+    def __init__(  # pylint: disable=too-many-arguments
+            self,
+            resource_id: int,
+            send_chunk: Callable[[Chunk], None],
+            end_transfer: Callable[['Transfer'], None],
+            response_timeout_s: float,
+            initial_response_timeout_s: float,
+            max_retries: int,
+            max_lifetime_retries: int,
+            protocol_version: ProtocolVersion,
+            progress_callback: Optional[ProgressCallback] = None):
         self.status = Status.OK
         self.done = threading.Event()
 
@@ -152,6 +154,8 @@ class Transfer(abc.ABC):
 
         self._retries = 0
         self._max_retries = max_retries
+        self._lifetime_retries = 0
+        self._max_lifetime_retries = max_lifetime_retries
         self._response_timer = _Timer(response_timeout_s, self._on_timeout)
         self._initial_response_timeout_s = initial_response_timeout_s
 
@@ -306,7 +310,10 @@ class Transfer(abc.ABC):
             return
 
         self._retries += 1
-        if self._retries > self._max_retries:
+        self._lifetime_retries += 1
+
+        if (self._retries > self._max_retries
+                or self._lifetime_retries > self._max_lifetime_retries):
             if self._state is Transfer._State.TERMINATING:
                 # If the server never responded to the sent completion chunk,
                 # simply end the transfer locally with its original status.
@@ -374,7 +381,7 @@ class Transfer(abc.ABC):
 
 class WriteTransfer(Transfer):
     """A client -> server write transfer."""
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         resource_id: int,
         data: bytes,
@@ -383,12 +390,14 @@ class WriteTransfer(Transfer):
         response_timeout_s: float,
         initial_response_timeout_s: float,
         max_retries: int,
+        max_lifetime_retries: int,
         protocol_version: ProtocolVersion,
-        progress_callback: ProgressCallback = None,
+        progress_callback: Optional[ProgressCallback] = None,
     ):
         super().__init__(resource_id, send_chunk, end_transfer,
                          response_timeout_s, initial_response_timeout_s,
-                         max_retries, protocol_version, progress_callback)
+                         max_retries, max_lifetime_retries, protocol_version,
+                         progress_callback)
         self._data = data
 
         self._offset = 0
@@ -433,7 +442,7 @@ class WriteTransfer(Transfer):
 
     async def _transmit_next_chunk(self,
                                    window_id: int,
-                                   timeout_us: int = None) -> None:
+                                   timeout_us: Optional[int] = None) -> None:
         """Transmits a single data chunk to the server.
 
         If the chunk completes the active window, returns to a WAITING state.
@@ -552,14 +561,16 @@ class ReadTransfer(Transfer):
             response_timeout_s: float,
             initial_response_timeout_s: float,
             max_retries: int,
+            max_lifetime_retries: int,
             protocol_version: ProtocolVersion,
             max_bytes_to_receive: int = 8192,
             max_chunk_size: int = 1024,
-            chunk_delay_us: int = None,
-            progress_callback: ProgressCallback = None):
+            chunk_delay_us: Optional[int] = None,
+            progress_callback: Optional[ProgressCallback] = None):
         super().__init__(resource_id, send_chunk, end_transfer,
                          response_timeout_s, initial_response_timeout_s,
-                         max_retries, protocol_version, progress_callback)
+                         max_retries, max_lifetime_retries, protocol_version,
+                         progress_callback)
         self._max_bytes_to_receive = max_bytes_to_receive
         self._max_chunk_size = max_chunk_size
         self._chunk_delay_us = chunk_delay_us

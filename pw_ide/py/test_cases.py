@@ -20,7 +20,7 @@ import tempfile
 from typing import Generator, List, Optional, Tuple, Union
 import unittest
 
-from pw_ide.settings import IdeSettings
+from pw_ide.settings import PigweedIdeSettings
 
 
 class TempDirTestCase(unittest.TestCase):
@@ -51,6 +51,13 @@ class TempDirTestCase(unittest.TestCase):
             file.flush()
             file.seek(0)
             yield (file, path)
+
+    def touch_temp_file(self,
+                        filename: Union[Path, str],
+                        content: str = '') -> None:
+        """Create a temp file in the test case's temp dir, without context."""
+        with self.make_temp_file(filename, content):
+            pass
 
     @contextmanager
     def open_temp_file(
@@ -92,6 +99,12 @@ class TempDirTestCase(unittest.TestCase):
 
         for file in files:
             file.close()
+
+    def touch_temp_files(
+            self, files_data: List[Tuple[Union[Path, str], str]]) -> None:
+        """Create several temp files in the temp dir, without context."""
+        with self.make_temp_files(files_data):
+            pass
 
     @contextmanager
     def open_temp_files(
@@ -137,9 +150,10 @@ class PwIdeTestCase(TempDirTestCase):
     Provides a temp dir for testing file system actions and access to IDE
     settings that wrap the temp dir.
     """
-    def make_ide_settings(self,
-                          working_dir: Optional[Union[str, Path]] = None,
-                          targets: Optional[List[str]] = None) -> IdeSettings:
+    def make_ide_settings(
+            self,
+            working_dir: Optional[Union[str, Path]] = None,
+            targets: Optional[List[str]] = None) -> PigweedIdeSettings:
         """Make settings that wrap provided paths in the temp path."""
 
         if working_dir is not None:
@@ -150,10 +164,10 @@ class PwIdeTestCase(TempDirTestCase):
         if targets is None:
             targets = []
 
-        return IdeSettings(False,
-                           False,
-                           False,
-                           default_config={
-                               'working_dir': str(working_dir_path),
-                               'targets': targets,
-                           })
+        return PigweedIdeSettings(False,
+                                  False,
+                                  False,
+                                  default_config={
+                                      'working_dir': str(working_dir_path),
+                                      'targets': targets,
+                                  })

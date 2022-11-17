@@ -18,8 +18,15 @@ import("$dir_pw_toolchain/clang_tools.gni")
 
 declare_args() {
   # Sets the sanitizer to pass to clang. Valid values are "address", "memory",
-  # "thread", "undefined".
+  # "thread", "undefined", "undefined_heuristic", and "coverage".
   pw_toolchain_SANITIZERS = []
+
+  # Indicates if this toolchain supports generating coverage reports from
+  # pw_test targets.
+  #
+  # For example, the static analysis toolchains that run `clang-tidy` instead
+  # of the test binary itself cannot generate coverage reports.
+  pw_toolchain_COVERAGE_ENABLED = false
 
   # Indicates if this build is a part of OSS-Fuzz, which needs to be able to
   # provide its own compiler and flags. This violates the build hermeticisim and
@@ -74,6 +81,9 @@ pw_toolchain_host_clang = {
         default_configs +=
             [ "$dir_pw_toolchain/host_clang:sanitize_$sanitizer" ]
       }
+
+      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
+      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -87,6 +97,9 @@ pw_toolchain_host_clang = {
         default_configs +=
             [ "$dir_pw_toolchain/host_clang:sanitize_$sanitizer" ]
       }
+
+      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
+      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -100,6 +113,9 @@ pw_toolchain_host_clang = {
         default_configs +=
             [ "$dir_pw_toolchain/host_clang:sanitize_$sanitizer" ]
       }
+
+      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
+      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -108,6 +124,9 @@ pw_toolchain_host_clang = {
     forward_variables_from(_host_clang_toolchain, "*")
     defaults = {
       forward_variables_from(_defaults, "*")
+
+      # Always disable coverage generation.
+      pw_toolchain_COVERAGE_ENABLED = false
 
       # Fuzz faster.
       default_configs += [ "$dir_pw_build:optimize_speed" ]
@@ -136,6 +155,9 @@ pw_toolchain_host_clang = {
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_address" ]
+
+      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
+      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -148,6 +170,9 @@ pw_toolchain_host_clang = {
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_undefined" ]
+
+      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
+      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -161,6 +186,9 @@ pw_toolchain_host_clang = {
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs +=
           [ "$dir_pw_toolchain/host_clang:sanitize_undefined_heuristic" ]
+
+      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
+      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -173,6 +201,9 @@ pw_toolchain_host_clang = {
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_memory" ]
+
+      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
+      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -185,6 +216,9 @@ pw_toolchain_host_clang = {
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_thread" ]
+
+      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
+      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 }
