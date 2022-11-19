@@ -34,19 +34,22 @@ Which tests to run can be specified as command-line arguments:
 
 import asyncio
 from parameterized import parameterized
+import random
 import tempfile
+
+from google.protobuf import text_format
 
 from pigweed.pw_transfer.integration_test import config_pb2
 from pigweed.pw_protobuf.pw_protobuf_protos import status_pb2
 import test_fixture
-from test_fixture import TransferIntegrationTestHarness
+from test_fixture import TransferIntegrationTestHarness, TransferConfig
 
 
 class ErrorTransferIntegrationTest(test_fixture.TransferIntegrationTest):
     # Each set of transfer tests uses a different client/server port pair to
     # allow tests to be run in parallel.
-    HARNESS_CONFIG = TransferIntegrationTestHarness.Config(server_port=3310,
-                                                           client_port=3311)
+    HARNESS_CONFIG = TransferIntegrationTestHarness.Config(server_port=3312,
+                                                           client_port=3313)
 
     @parameterized.expand([
         ("cpp"),
@@ -85,20 +88,84 @@ class ErrorTransferIntegrationTest(test_fixture.TransferIntegrationTest):
         ("java"),
         ("python"),
     ])
+    def test_client_write_timeout(self, client_type):
+        payload = random.Random(67336391945).randbytes(4321)
+        config = TransferConfig(
+            self.default_server_config(), self.default_client_config(),
+            text_format.Parse(
+                """
+                client_filter_stack: [
+                    { hdlc_packetizer: {} },
+                    { server_failure: {packets_before_failure: [5]} }
+                ]
+
+                server_filter_stack: [
+                    { hdlc_packetizer: {} }
+            ]""", config_pb2.ProxyConfig()))
+        resource_id = 987654321
+
+        # This test deliberately tries to time out the transfer, so because of
+        # the retry process the resource ID might be re-initialized multiple
+        # times.
+        self.do_single_write(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            permanent_resource_id=True,
+            expected_status=status_pb2.StatusCode.DEADLINE_EXCEEDED)
+
+    @parameterized.expand([
+        ("cpp"),
+        ("java"),
+        ("python"),
+    ])
+    def test_server_write_timeout(self, client_type):
+        payload = random.Random(67336391945).randbytes(4321)
+        config = TransferConfig(
+            self.default_server_config(), self.default_client_config(),
+            text_format.Parse(
+                """
+                client_filter_stack: [
+                    { hdlc_packetizer: {} }
+                ]
+
+                server_filter_stack: [
+                    { hdlc_packetizer: {} },
+                    { server_failure: {packets_before_failure: [5]} }
+            ]""", config_pb2.ProxyConfig()))
+        resource_id = 987654321
+
+        # This test deliberately tries to time out the transfer, so because of
+        # the retry process the resource ID might be re-initialized multiple
+        # times.
+        self.do_single_write(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            permanent_resource_id=True,
+            expected_status=status_pb2.StatusCode.DEADLINE_EXCEEDED)
+
+    @parameterized.expand([
+        ("cpp"),
+        ("java"),
+        ("python"),
+    ])
     def test_read_from_unknown_id(self, client_type):
         payload = b"Rabbits are the best pets"
         config = self.default_config()
         resource_id = 5
 
         with tempfile.NamedTemporaryFile(
-        ) as f_payload, tempfile.NamedTemporaryFile() as f_server_output:
+        ) as f_payload, tempfile.NamedTemporaryFile() as f_client_output:
             # Add the resource at a different resource ID.
-            config.server.resources[resource_id + 1].destination_paths.append(
-                f_server_output.name)
+            config.server.resources[resource_id + 1].source_paths.append(
+                f_payload.name)
             config.client.transfer_actions.append(
                 config_pb2.TransferAction(
                     resource_id=resource_id,
-                    file_path=f_payload.name,
+                    file_path=f_client_output.name,
                     transfer_type=config_pb2.TransferAction.TransferType.
                     READ_FROM_SERVER,
                     expected_status=status_pb2.StatusCode.NOT_FOUND))
@@ -111,6 +178,70 @@ class ErrorTransferIntegrationTest(test_fixture.TransferIntegrationTest):
 
             self.assertEqual(exit_codes.client, 0)
             self.assertEqual(exit_codes.server, 0)
+
+    @parameterized.expand([
+        ("cpp"),
+        ("java"),
+        ("python"),
+    ])
+    def test_client_read_timeout(self, client_type):
+        payload = random.Random(67336391945).randbytes(4321)
+        config = TransferConfig(
+            self.default_server_config(), self.default_client_config(),
+            text_format.Parse(
+                """
+                client_filter_stack: [
+                    { hdlc_packetizer: {} },
+                    { server_failure: {packets_before_failure: [5]} }
+                ]
+
+                server_filter_stack: [
+                    { hdlc_packetizer: {} }
+            ]""", config_pb2.ProxyConfig()))
+        resource_id = 987654321
+
+        # This test deliberately tries to time out the transfer, so because of
+        # the retry process the resource ID might be re-initialized multiple
+        # times.
+        self.do_single_read(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            permanent_resource_id=True,
+            expected_status=status_pb2.StatusCode.DEADLINE_EXCEEDED)
+
+    @parameterized.expand([
+        ("cpp"),
+        ("java"),
+        ("python"),
+    ])
+    def test_server_read_timeout(self, client_type):
+        payload = random.Random(67336391945).randbytes(4321)
+        config = TransferConfig(
+            self.default_server_config(), self.default_client_config(),
+            text_format.Parse(
+                """
+                client_filter_stack: [
+                    { hdlc_packetizer: {} }
+                ]
+
+                server_filter_stack: [
+                    { hdlc_packetizer: {} },
+                    { server_failure: {packets_before_failure: [5]} }
+            ]""", config_pb2.ProxyConfig()))
+        resource_id = 987654321
+
+        # This test deliberately tries to time out the transfer, so because of
+        # the retry process the resource ID might be re-initialized multiple
+        # times.
+        self.do_single_read(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            permanent_resource_id=True,
+            expected_status=status_pb2.StatusCode.DEADLINE_EXCEEDED)
 
 
 if __name__ == '__main__':

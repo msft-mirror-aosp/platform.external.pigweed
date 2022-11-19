@@ -102,8 +102,8 @@ class LineMatch:
         return f'Found non-inclusive word "{self.word}" on line {self.line}'
 
 
-@presubmit.Check
-def inclusive_language(
+@presubmit.check(name='inclusive_language')
+def presubmit_check(
     ctx: presubmit.PresubmitContext,
     words_regex=NON_INCLUSIVE_WORDS_REGEX,
 ):

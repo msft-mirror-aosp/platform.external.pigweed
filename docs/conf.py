@@ -17,7 +17,7 @@ from datetime import date
 import sphinx
 
 # The suffix of source filenames.
-source_suffix = ['.rst']
+source_suffix = ['.rst', '.md']
 
 # The master toctree document.  # inclusive-language: ignore
 master_doc = 'index'
@@ -43,8 +43,24 @@ extensions = [
     'pw_docgen.sphinx.google_analytics',  # Enables optional Google Analytics
     'sphinx.ext.autodoc',  # Automatic documentation for Python code
     'sphinx.ext.napoleon',  # Parses Google-style docstrings
+    'sphinxarg.ext',  # Automatic documentation of Python argparse
     'sphinxcontrib.mermaid',
     'sphinx_design',
+    'myst_parser',
+]
+
+myst_enable_extensions = [
+    # "amsmath",
+    "colon_fence",
+    # "deflist",
+    "dollarmath",
+    # "html_admonition",
+    # "html_image",
+    # "linkify",
+    # "replacements",
+    # "smartquotes",
+    # "substitution",
+    # "tasklist",
 ]
 
 _DIAG_HTML_IMAGE_FORMAT = 'SVG'

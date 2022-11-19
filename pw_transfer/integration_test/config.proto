@@ -19,6 +19,14 @@ option java_package = "pw.transfer";
 option java_outer_classname = "ConfigProtos";
 
 message TransferAction {
+  enum ProtocolVersion {
+    option allow_alias = true;
+    UNKNOWN_VERSION = 0;
+    V1 = 1;
+    V2 = 2;
+    LATEST = 2;
+  }
+
   // As transfers are always client initiated, TransferType is from the client's
   // perspective.
   enum TransferType {
@@ -44,6 +52,9 @@ message TransferAction {
   // TODO(b/241456982): This should be a pw.protobuf.StatusCode, but importing
   // other Pigweed protos doesn't work in Bazel.
   uint32 expected_status = 4;
+
+  // Protocol version to initiate the transfer with.
+  ProtocolVersion protocol_version = 5;
 }
 
 // Configuration for the integration test client.
@@ -84,6 +95,14 @@ message ServerResourceLocations {
   // When a client writes to this server, this stack is used to determine which
   // file path to write data to.
   repeated string destination_paths = 4;
+
+  // If source_paths is exhausted or empty, this source path can be reused
+  // as a fallback indefinitely.
+  string default_source_path = 5;
+
+  // If destination_paths is exhausted or empty, this destination path can be
+  // reused as a fallback indefinitely.
+  string default_destination_path = 6;
 }
 
 // Configuration for the integration test server.
@@ -116,6 +135,33 @@ message DataDropperConfig {
   int64 seed = 2;
 }
 
+// Configuration for the KeepDropQueue proxy filter.
+message KeepDropQueueConfig {
+  // A KeepDropQueue filter will alternate between keeping packets and dropping
+  // chunks of data based on a keep/drop queue provided during its creation. The
+  // queue is looped over unless a negative element is found. A negative number
+  // is effectively the same as a value of infinity.
+  //
+  // This filter is typically most pratical when used with a packetizer so data
+  // can be dropped as distinct packets.
+  //
+  // Examples:
+  //
+  //   keep_drop_queue = [3, 2]:
+  //     Keeps 3 packets,
+  //     Drops 2 packets,
+  //     Keeps 3 packets,
+  //     Drops 2 packets,
+  //     ... [loops indefinitely]
+  //
+  //   keep_drop_queue = [5, 99, 1, -1]:
+  //     Keeps 5 packets,
+  //     Drops 99 packets,
+  //     Keeps 1 packet,
+  //     Drops all further packets.
+  repeated int32 keep_drop_queue = 1;
+}
+
 // Configuration for the RateLimiter proxy filter.
 message RateLimiterConfig {
   // Rate limit, in bytes/sec.
@@ -137,6 +183,15 @@ message DataTransposerConfig {
   int64 seed = 3;
 }
 
+// Configuration for the ServerFailure proxy filter.
+message ServerFailureConfig {
+  // A list of numbers of packets to send before dropping all subsequent
+  // packets until a TRANSFER_START packet is seen.  This process is
+  // repeated for each element in packets_before_failure.  After that list
+  // is exhausted, ServerFailure will send all packets.
+  repeated uint32 packets_before_failure = 1;
+}
+
 // Configuration for a single stage in the proxy filter stack.
 message FilterConfig {
   oneof filter {
@@ -144,6 +199,8 @@ message FilterConfig {
     DataDropperConfig data_dropper = 2;
     RateLimiterConfig rate_limiter = 3;
     DataTransposerConfig data_transposer = 4;
+    ServerFailureConfig server_failure = 5;
+    KeepDropQueueConfig keep_drop_queue = 6;
   }
 }
 

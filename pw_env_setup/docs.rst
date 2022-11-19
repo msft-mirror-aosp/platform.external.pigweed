@@ -10,7 +10,7 @@ of tools is needed for non-trivial production embedded projects. For example:
  - A C++ compiler for your target device, and also for your host
  - A build system or three; for example, GN, Ninja, CMake, Bazel
  - A code formatting program like clang-format
- - A debugger like OpenOCD to flash and debug your embedded device
+ - A debugger like OpenOCD to flash and debug your embedded device (OpenOCD support removed for Windows)
  - A known Python version with known modules installed for scripting
  - A Go compiler for the Go-based command line tools
 
@@ -334,6 +334,11 @@ An example of a config file is below.
     "json_file": "tools/environment.json",
     "rosetta": "allow"
   }
+
+Only the packages necessary for almost all projects based on Pigweed are
+included in the ``pigweed.json`` file. A number of other files are present in
+that directory for projects that need more than the minimum. Internal-Google
+projects using LUCI should at least include ``luci.json``.
 
 In case the CIPD packages need to be referenced from other scripts, variables
 like ``PW_${BASENAME}_CIPD_INSTALL_DIR`` point to the CIPD install directories,

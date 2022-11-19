@@ -1,4 +1,7 @@
 {
+  "included_files": [
+    "buildifier.json"
+  ],
   "packages": [
     {
       "path": "pigweed/third_party/bazel/${platform}",

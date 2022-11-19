@@ -19,7 +19,21 @@ workspace(
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
-load("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "pigweed_deps")
+load(
+    "//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
+    "cipd_client_repository",
+    "cipd_repository",
+    "pigweed_deps",
+)
+
+# Set up Bazel platforms.
+# Required by: pigweed.
+# Used in modules: //pw_build, (Assorted modules via select statements).
+git_repository(
+    name = "platforms",
+    commit = "380c85cc2c7b126c6e354f517dc16d89fe760c9f",
+    remote = "https://github.com/bazelbuild/platforms.git",
+)
 
 # Setup CIPD client and packages.
 # Required by: pigweed.
@@ -29,6 +43,14 @@ pigweed_deps()
 load("@cipd_deps//:cipd_init.bzl", "cipd_init")
 
 cipd_init()
+
+cipd_client_repository()
+
+cipd_repository(
+    name = "pw_transfer_test_binaries",
+    path = "pigweed/pw_transfer_test_binaries/${os=linux}-${arch=amd64}",
+    tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
+)
 
 # Set up Python support.
 # Required by: rules_fuzzing, com_github_nanopb_nanopb.
@@ -77,7 +99,7 @@ http_archive(
 # Used in modules: All cc targets.
 git_repository(
     name = "rules_cc_toolchain",
-    commit = "dd0ca09ea344fd705c71849aedaf2bc1428b9055",
+    commit = "d9a0905534f06a05c4b59b3e929778c1a97859c3",
     remote = "https://github.com/bazelembedded/rules_cc_toolchain.git",
 )
 
@@ -152,15 +174,6 @@ nanopb_python_deps()
 load("@com_github_nanopb_nanopb//:nanopb_workspace.bzl", "nanopb_workspace")
 
 nanopb_workspace()
-
-# Set up Bazel platforms.
-# Required by: pigweed.
-# Used in modules: //pw_build, (Assorted modules via select statements).
-git_repository(
-    name = "platforms",
-    commit = "d4c9d7f51a7c403814b60f66d20eeb425fbaaacb",
-    remote = "https://github.com/bazelbuild/platforms.git",
-)
 
 # Set up NodeJs rules.
 # Required by: pigweed.
@@ -317,7 +330,17 @@ maven_install(
 
 new_git_repository(
     name = "micro_ecc",
-    build_file = "//:third_party/micro_ecc/BUILD.bazel",
+    build_file = "//:third_party/micro_ecc/BUILD.micro_ecc",
     commit = "b335ee812bfcca4cd3fb0e2a436aab39553a555a",
     remote = "https://github.com/kmackay/micro-ecc.git",
+)
+
+git_repository(
+    name = "boringssl",
+    commit = "b9232f9e27e5668bc0414879dcdedb2a59ea75f2",
+    # Requires patching as pw_polyfill uses c++14, whereas boringssl uses c++11.
+    # This results in a scenario where std::conditional_t is disabled in the
+    # polyfill implementation.
+    patches = ["//third_party/boringssl:cc_version.patch"],
+    remote = "https://boringssl.googlesource.com/boringssl",
 )

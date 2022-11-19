@@ -29,8 +29,10 @@ Which tests to run can be specified as command-line arguments:
 
 """
 
+import itertools
 from parameterized import parameterized
 
+from pigweed.pw_transfer.integration_test import config_pb2
 import test_fixture
 from test_fixture import TransferIntegrationTestHarness
 
@@ -41,93 +43,102 @@ class SmallTransferIntegrationTest(test_fixture.TransferIntegrationTest):
     HARNESS_CONFIG = TransferIntegrationTestHarness.Config(server_port=3302,
                                                            client_port=3303)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
-    def test_empty_client_write(self, client_type):
+    @parameterized.expand(
+        itertools.product(("cpp", "java", "python"),
+                          (config_pb2.TransferAction.ProtocolVersion.V1,
+                           config_pb2.TransferAction.ProtocolVersion.V2)))
+    def test_empty_client_write(self, client_type, protocol_version):
         payload = b""
         config = self.default_config()
         resource_id = 5
-        self.do_single_write(client_type, config, resource_id, payload)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
-    def test_null_byte_client_write(self, client_type):
+        # Packet drops can cause the resource ID for this to be opened/closed
+        # multiple times due to the zero-size transfer. Use a
+        # permanent_resource_id so the retry process can succeed and the harness
+        # won't flake.
+        self.do_single_write(client_type,
+                             config,
+                             resource_id,
+                             payload,
+                             protocol_version,
+                             permanent_resource_id=True)
+
+    @parameterized.expand(
+        itertools.product(("cpp", "java", "python"),
+                          (config_pb2.TransferAction.ProtocolVersion.V1,
+                           config_pb2.TransferAction.ProtocolVersion.V2)))
+    def test_null_byte_client_write(self, client_type, protocol_version):
         payload = b"\0"
         config = self.default_config()
         resource_id = 5
-        self.do_single_write(client_type, config, resource_id, payload)
+        self.do_single_write(client_type, config, resource_id, payload,
+                             protocol_version)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
-    def test_single_byte_client_write(self, client_type):
+    @parameterized.expand(
+        itertools.product(("cpp", "java", "python"),
+                          (config_pb2.TransferAction.ProtocolVersion.V1,
+                           config_pb2.TransferAction.ProtocolVersion.V2)))
+    def test_single_byte_client_write(self, client_type, protocol_version):
         payload = b"?"
         config = self.default_config()
         resource_id = 5
-        self.do_single_write(client_type, config, resource_id, payload)
+        self.do_single_write(client_type, config, resource_id, payload,
+                             protocol_version)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
-    def test_small_client_write(self, client_type):
+    @parameterized.expand(
+        itertools.product(("cpp", "java", "python"),
+                          (config_pb2.TransferAction.ProtocolVersion.V1,
+                           config_pb2.TransferAction.ProtocolVersion.V2)))
+    def test_small_client_write(self, client_type, protocol_version):
         payload = b"some data"
         config = self.default_config()
         resource_id = 5
-        self.do_single_write(client_type, config, resource_id, payload)
+        self.do_single_write(client_type, config, resource_id, payload,
+                             protocol_version)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
-    def test_empty_client_read(self, client_type):
+    @parameterized.expand(
+        itertools.product(("cpp", "java", "python"),
+                          (config_pb2.TransferAction.ProtocolVersion.V1,
+                           config_pb2.TransferAction.ProtocolVersion.V2)))
+    def test_empty_client_read(self, client_type, protocol_version):
         payload = b""
         config = self.default_config()
         resource_id = 5
-        self.do_single_read(client_type, config, resource_id, payload)
+        self.do_single_read(client_type, config, resource_id, payload,
+                            protocol_version)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
-    def test_null_byte_client_read(self, client_type):
+    @parameterized.expand(
+        itertools.product(("cpp", "java", "python"),
+                          (config_pb2.TransferAction.ProtocolVersion.V1,
+                           config_pb2.TransferAction.ProtocolVersion.V2)))
+    def test_null_byte_client_read(self, client_type, protocol_version):
         payload = b"\0"
         config = self.default_config()
         resource_id = 5
-        self.do_single_read(client_type, config, resource_id, payload)
+        self.do_single_read(client_type, config, resource_id, payload,
+                            protocol_version)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
-    def test_single_byte_client_read(self, client_type):
+    @parameterized.expand(
+        itertools.product(("cpp", "java", "python"),
+                          (config_pb2.TransferAction.ProtocolVersion.V1,
+                           config_pb2.TransferAction.ProtocolVersion.V2)))
+    def test_single_byte_client_read(self, client_type, protocol_version):
         payload = b"?"
         config = self.default_config()
         resource_id = 5
-        self.do_single_read(client_type, config, resource_id, payload)
+        self.do_single_read(client_type, config, resource_id, payload,
+                            protocol_version)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
-    def test_small_client_read(self, client_type):
+    @parameterized.expand(
+        itertools.product(("cpp", "java", "python"),
+                          (config_pb2.TransferAction.ProtocolVersion.V1,
+                           config_pb2.TransferAction.ProtocolVersion.V2)))
+    def test_small_client_read(self, client_type, protocol_version):
         payload = b"some data"
         config = self.default_config()
         resource_id = 5
-        self.do_single_read(client_type, config, resource_id, payload)
+        self.do_single_read(client_type, config, resource_id, payload,
+                            protocol_version)
 
 
 if __name__ == '__main__':

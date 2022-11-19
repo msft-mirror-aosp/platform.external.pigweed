@@ -54,8 +54,21 @@ import re
 import subprocess
 import sys
 import time
-from typing import (Callable, Collection, Dict, Iterable, Iterator, List,
-                    Optional, Pattern, Sequence, Set, Tuple, Union)
+import types
+from typing import (
+    Callable,
+    Collection,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Pattern,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 import pw_cli.color
 import pw_cli.env
@@ -103,8 +116,8 @@ class PresubmitFailure(Exception):
     """Optional exception to use for presubmit failures."""
     def __init__(self,
                  description: str = '',
-                 path: Path = None,
-                 line: int = None):
+                 path: Optional[Path] = None,
+                 line: Optional[int] = None):
         line_part: str = ''
         if line is not None:
             line_part = f'{line}:'
@@ -175,7 +188,7 @@ class Programs(collections.abc.Mapping):
             for name, checks in programs.items()
         }
 
-    def all_steps(self) -> Dict[str, Callable]:
+    def all_steps(self) -> Dict[str, Check]:
         return {c.name: c for c in itertools.chain(*self.values())}
 
     def __getitem__(self, item: str) -> Program:
@@ -245,7 +258,10 @@ class PresubmitContext:
     def failed(self) -> bool:
         return self._failed
 
-    def fail(self, description: str, path: Path = None, line: int = None):
+    def fail(self,
+             description: str,
+             path: Optional[Path] = None,
+             line: Optional[int] = None):
         """Add a failure to this presubmit step.
 
         If this is called at least once the step fails, but not immediately—the
@@ -349,7 +365,11 @@ class Presubmit:
         self._override_gn_args = override_gn_args
         self._continue_after_build_error = continue_after_build_error
 
-    def run(self, program: Program, keep_going: bool = False) -> bool:
+    def run(
+        self,
+        program: Program,
+        keep_going: bool = False,
+    ) -> bool:
         """Executes a series of presubmit checks on the paths."""
 
         checks = self.apply_filters(program)
@@ -384,8 +404,8 @@ class Presubmit:
         filter_to_checks: Dict[FileFilter,
                                List[Check]] = collections.defaultdict(list)
 
-        for check in checks:
-            filter_to_checks[check.filter].append(check)
+        for chk in checks:
+            filter_to_checks[chk.filter].append(chk)
 
         check_to_paths = self._map_checks_to_paths(filter_to_checks)
         return [(c, check_to_paths[c]) for c in checks if c in check_to_paths]
@@ -402,11 +422,11 @@ class Presubmit:
                 path for path, filter_path in zip(self._paths, posix_paths)
                 if filt.matches(filter_path))
 
-            for check in checks:
-                if filtered_paths or check.always_run:
-                    checks_to_paths[check] = filtered_paths
+            for chk in checks:
+                if filtered_paths or chk.always_run:
+                    checks_to_paths[chk] = filtered_paths
                 else:
-                    _LOG.debug('Skipping "%s": no relevant files', check.name)
+                    _LOG.debug('Skipping "%s": no relevant files', chk.name)
 
         return checks_to_paths
 
@@ -474,9 +494,9 @@ class Presubmit:
         """Runs presubmit checks; returns (passed, failed, skipped) lists."""
         passed = failed = 0
 
-        for i, (check, paths) in enumerate(program, 1):
-            with self._context(check.name, paths) as ctx:
-                result = check.run(ctx, i, len(program))
+        for i, (chk, paths) in enumerate(program, 1):
+            with self._context(chk.name, paths) as ctx:
+                result = chk.run(ctx, i, len(program))
 
             if result is _Result.PASS:
                 passed += 1
@@ -521,20 +541,21 @@ def _process_pathspecs(repos: Iterable[Path],
     return pathspecs_by_repo
 
 
-def run(  # pylint: disable=too-many-arguments
-        program: Sequence[Callable],
+def run(  # pylint: disable=too-many-arguments,too-many-locals
+        program: Sequence[Check],
         root: Path,
         repos: Collection[Path] = (),
         base: Optional[str] = None,
         paths: Sequence[str] = (),
         exclude: Sequence[Pattern] = (),
         output_directory: Optional[Path] = None,
-        package_root: Path = None,
+        package_root: Optional[Path] = None,
         only_list_steps: bool = False,
         override_gn_args: Sequence[Tuple[str, str]] = (),
         keep_going: bool = False,
         continue_after_build_error: bool = False,
-        presubmit_class: type = Presubmit) -> bool:
+        presubmit_class: type = Presubmit,
+        list_steps_file: Optional[Path] = None) -> bool:
     """Lists files in the current Git repo and runs a Presubmit with them.
 
     This changes the directory to the root of the Git repository after listing
@@ -563,6 +584,8 @@ def run(  # pylint: disable=too-many-arguments
         continue_after_build_error: continue building if a build step fails
         presubmit_class: class to use to run Presubmits, should inherit from
             Presubmit class above
+        list_steps_file: File created by --only-list-steps, used to keep from
+            recalculating affected files.
 
     Returns:
         True if all presubmit checks succeeded
@@ -582,15 +605,25 @@ def run(  # pylint: disable=too-many-arguments
     pathspecs_by_repo = _process_pathspecs(repos, paths)
 
     files: List[Path] = []
+    list_steps_data: List = []
 
-    for repo, pathspecs in pathspecs_by_repo.items():
-        files += tools.exclude_paths(
-            exclude, git_repo.list_files(base, pathspecs, repo), root)
+    if list_steps_file:
+        with list_steps_file.open() as ins:
+            list_steps_data = json.load(ins)
+        for step in list_steps_data:
+            files.extend(Path(x) for x in step.get("paths", ()))
+        files = sorted(set(files))
+        _LOG.info('Loaded %d paths from file %s', len(files), list_steps_file)
 
-        _LOG.info(
-            'Checking %s',
-            git_repo.describe_files(repo, repo, base, pathspecs, exclude,
-                                    root))
+    else:
+        for repo, pathspecs in pathspecs_by_repo.items():
+            files += tools.exclude_paths(
+                exclude, git_repo.list_files(base, pathspecs, repo), root)
+
+            _LOG.info(
+                'Checking %s',
+                git_repo.describe_files(repo, repo, base, pathspecs, exclude,
+                                        root))
 
     if output_directory is None:
         output_directory = root / '.presubmit'
@@ -609,9 +642,12 @@ def run(  # pylint: disable=too-many-arguments
     )
 
     if only_list_steps:
-        steps = []
-        for check, _ in presubmit.apply_filters(program):
-            steps.append({'name': check.name})
+        steps: List[Dict] = []
+        for chk, filtered_paths in presubmit.apply_filters(program):
+            steps.append({
+                'name': chk.name,
+                'paths': [str(x) for x in filtered_paths],
+            })
         json.dump(steps, sys.stdout, indent=2)
         sys.stdout.write('\n')
         return True
@@ -626,6 +662,40 @@ def _make_str_tuple(value: Union[Iterable[str], str]) -> Tuple[str, ...]:
     return tuple([value] if isinstance(value, str) else value)
 
 
+def check(*args, **kwargs):
+    """Turn a function into a presubmit check.
+
+    Args:
+        *args: Passed through to function.
+        *kwargs: Passed through to function.
+
+    If only one argument is provided and it's a function, this function acts
+    as a decorator and creates a Check from the function. Example of this kind
+    of usage:
+
+    @check
+    def pragma_once(ctx: PresubmitContext):
+        pass
+
+    Otherwise, save the arguments, and return a decorator that turns a function
+    into a Check, but with the arguments added onto the Check constructor.
+    Example of this kind of usage:
+
+    @check(name='pragma_twice')
+    def pragma_once(ctx: PresubmitContext):
+        pass
+    """
+    if (len(args) == 1 and isinstance(args[0], types.FunctionType)
+            and not kwargs):
+        # Called as a regular decorator.
+        return Check(args[0])
+
+    def decorator(check_function):
+        return Check(check_function, *args, **kwargs)
+
+    return decorator
+
+
 class Check:
     """Wraps a presubmit check function.
 
@@ -636,7 +706,7 @@ class Check:
                  check_function: Callable,
                  path_filter: FileFilter = FileFilter(),
                  always_run: bool = True,
-                 name: str = None) -> None:
+                 name: Optional[str] = None) -> None:
         _ensure_is_valid_presubmit_check_function(check_function)
 
         # Since Check wraps a presubmit function, adopt that function's name.
@@ -652,18 +722,55 @@ class Check:
         self.filter = path_filter
         self.always_run: bool = always_run
 
+    def __repr__(self):
+        # This returns just the name so it's easy to show the entire list of
+        # steps with '--help'.
+        return self.name
+
+    def unfiltered(self) -> Check:
+        """Create a new check identical to this one, but without the filter."""
+        clone = copy.copy(self)
+        clone.filter = FileFilter()
+        return clone
+
     def with_filter(
         self,
         *,
         endswith: Iterable[str] = (),
         exclude: Iterable[Union[Pattern[str], str]] = ()
     ) -> Check:
+        """Create a new check identical to this one, but with extra filters.
+
+        Add to the existing filter, perhaps to exclude an additional directory.
+
+        Args:
+            endswith: Passed through to FileFilter.
+            exclude: Passed through to FileFilter.
+
+        Returns a new check.
+        """
         return self.with_file_filter(
             FileFilter(endswith=_make_str_tuple(endswith), exclude=exclude))
 
     def with_file_filter(self, file_filter: FileFilter) -> Check:
+        """Create a new check identical to this one, but with extra filters.
+
+        Add to the existing filter, perhaps to exclude an additional directory.
+
+        Args:
+            file_filter: Additional filter rules.
+
+        Returns a new check.
+        """
         clone = copy.copy(self)
-        clone.filter = file_filter
+        if clone.filter:
+            clone.filter.exclude = clone.filter.exclude + file_filter.exclude
+            clone.filter.endswith = (clone.filter.endswith +
+                                     file_filter.endswith)
+            clone.filter.name = file_filter.name or clone.filter.name
+            clone.filter.suffix = clone.filter.suffix + file_filter.suffix
+        else:
+            clone.filter = file_filter
         return clone
 
     def run(self, ctx: PresubmitContext, count: int, total: int) -> _Result:
@@ -724,19 +831,19 @@ def _required_args(function: Callable) -> Iterable[Parameter]:
             yield param
 
 
-def _ensure_is_valid_presubmit_check_function(check: Callable) -> None:
+def _ensure_is_valid_presubmit_check_function(chk: Callable) -> None:
     """Checks if a Callable can be used as a presubmit check."""
     try:
-        required_args = tuple(_required_args(check))
+        required_args = tuple(_required_args(chk))
     except (TypeError, ValueError):
         raise TypeError('Presubmit checks must be callable, but '
-                        f'{check!r} is a {type(check).__name__}')
+                        f'{chk!r} is a {type(chk).__name__}')
 
     if len(required_args) != 1:
         raise TypeError(
             f'Presubmit check functions must have exactly one required '
             f'positional argument (the PresubmitContext), but '
-            f'{check.__name__} has {len(required_args)} required arguments' +
+            f'{chk.__name__} has {len(required_args)} required arguments' +
             (f' ({", ".join(a.name for a in required_args)})'
              if required_args else ''))
 
@@ -744,7 +851,7 @@ def _ensure_is_valid_presubmit_check_function(check: Callable) -> None:
 def filter_paths(*,
                  endswith: Iterable[str] = (),
                  exclude: Iterable[Union[Pattern[str], str]] = (),
-                 file_filter: FileFilter = None,
+                 file_filter: Optional[FileFilter] = None,
                  always_run: bool = False) -> Callable[[Callable], Check]:
     """Decorator for filtering the paths list for a presubmit check function.
 
@@ -783,6 +890,8 @@ def call(*args, **kwargs) -> None:
     attributes, command = tools.format_command(args, kwargs)
     _LOG.debug('[RUN] %s\n%s', attributes, command)
 
+    tee = kwargs.pop('tee', None)
+
     env = pw_cli.env.pigweed_environment()
     kwargs['stdout'] = subprocess.PIPE
     kwargs['stderr'] = subprocess.STDOUT
@@ -796,8 +905,12 @@ def call(*args, **kwargs) -> None:
             if not line:
                 break
             _LOG.info(line.rstrip())
+            if tee:
+                tee.write(line)
 
     stdout, _ = process.communicate()
+    if tee:
+        tee.write(stdout.decode(errors='backslashreplace'))
 
     logfunc = _LOG.warning if process.returncode else _LOG.debug
     logfunc('[FINISHED]\n%s', command)

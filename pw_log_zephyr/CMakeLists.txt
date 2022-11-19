@@ -18,11 +18,18 @@ if(NOT CONFIG_PIGWEED_LOG)
   return()
 endif()
 
-pw_auto_add_simple_module(pw_log_zephyr
-  IMPLEMENTS_FACADE
-    pw_log
+pw_add_library(pw_log_zephyr STATIC
+  HEADERS
+    public/pw_log_zephyr/log_zephyr.h
+    public/pw_log_zephyr/config.h
+    public_overrides/pw_log_backend/log_backend.h
+  PUBLIC_INCLUDES
+    public
+    public_overrides
   PUBLIC_DEPS
     zephyr_interface
+  SOURCES
+    log_zephyr.cc
   PRIVATE_DEPS
     pw_preprocessor
 )

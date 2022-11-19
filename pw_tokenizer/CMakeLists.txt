@@ -14,10 +14,11 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 include($ENV{PW_ROOT}/pw_protobuf_compiler/proto.cmake)
+include($ENV{PW_ROOT}/pw_tokenizer/backend.cmake)
 
 pw_add_module_config(pw_tokenizer_CONFIG)
 
-pw_add_module_library(pw_tokenizer.config
+pw_add_library(pw_tokenizer.config INTERFACE
   HEADERS
     public/pw_tokenizer/config.h
   PUBLIC_INCLUDES
@@ -26,7 +27,7 @@ pw_add_module_library(pw_tokenizer.config
     ${pw_tokenizer_CONFIG}
 )
 
-pw_add_module_library(pw_tokenizer
+pw_add_library(pw_tokenizer STATIC
   HEADERS
     public/pw_tokenizer/encode_args.h
     public/pw_tokenizer/hash.h
@@ -67,7 +68,7 @@ elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" OR Zephyr_FOUND)
   )
 endif()
 
-pw_add_module_library(pw_tokenizer.base64
+pw_add_library(pw_tokenizer.base64 STATIC
   HEADERS
     public/pw_tokenizer/base64.h
   PUBLIC_INCLUDES
@@ -82,7 +83,7 @@ pw_add_module_library(pw_tokenizer.base64
     base64.cc
 )
 
-pw_add_module_library(pw_tokenizer.decoder
+pw_add_library(pw_tokenizer.decoder STATIC
   HEADERS
     public/pw_tokenizer/detokenize.h
     public/pw_tokenizer/token_database.h
@@ -102,9 +103,9 @@ pw_add_module_library(pw_tokenizer.decoder
     pw_varint
 )
 
-pw_add_facade(pw_tokenizer.global_handler
-  DEFAULT_BACKEND
-    pw_build.empty  # Default to an empty backend so the tests can run.
+pw_add_facade(pw_tokenizer.global_handler STATIC
+  BACKEND
+    pw_tokenizer.global_handler_BACKEND
   HEADERS
     public/pw_tokenizer/tokenize_to_global_handler.h
   PUBLIC_INCLUDES
@@ -116,9 +117,9 @@ pw_add_facade(pw_tokenizer.global_handler
     tokenize_to_global_handler.cc
 )
 
-pw_add_facade(pw_tokenizer.global_handler_with_payload
-  DEFAULT_BACKEND
-    pw_build.empty  # Default to an empty backend so the tests can run.
+pw_add_facade(pw_tokenizer.global_handler_with_payload STATIC
+  BACKEND
+    pw_tokenizer.global_handler_with_payload_BACKEND
   HEADERS
     public/pw_tokenizer/tokenize_to_global_handler_with_payload.h
   PUBLIC_INCLUDES
@@ -159,7 +160,7 @@ pw_add_test(pw_tokenizer.argument_types_test
   SOURCES
     argument_types_test_c.c
     argument_types_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_tokenizer
   GROUPS
     modules
@@ -169,7 +170,7 @@ pw_add_test(pw_tokenizer.argument_types_test
 pw_add_test(pw_tokenizer.base64_test
   SOURCES
     base64_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_tokenizer.base64
   GROUPS
     modules
@@ -179,7 +180,7 @@ pw_add_test(pw_tokenizer.base64_test
 pw_add_test(pw_tokenizer.decode_test
   SOURCES
     decode_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_varint
     pw_tokenizer.decoder
   GROUPS
@@ -190,29 +191,32 @@ pw_add_test(pw_tokenizer.decode_test
 pw_add_test(pw_tokenizer.detokenize_test
   SOURCES
     detokenize_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_tokenizer.decoder
   GROUPS
     modules
     pw_tokenizer
 )
 
-pw_add_test(pw_tokenizer.global_handlers_test
-  SOURCES
-    global_handlers_test_c.c
-    global_handlers_test.cc
-  DEPS
-    pw_tokenizer.global_handler
-    pw_tokenizer.global_handler_with_payload
-  GROUPS
-    modules
-    pw_tokenizer
-)
+if((NOT "${pw_tokenizer.global_handler_with_payload_BACKEND}" STREQUAL "") AND
+   (NOT "${pw_tokenizer.global_handler_BACKEND}" STREQUAL ""))
+  pw_add_test(pw_tokenizer.global_handlers_test
+    SOURCES
+      global_handlers_test_c.c
+      global_handlers_test.cc
+    PRIVATE_DEPS
+      pw_tokenizer.global_handler
+      pw_tokenizer.global_handler_with_payload
+    GROUPS
+      modules
+      pw_tokenizer
+  )
+endif()
 
 pw_add_test(pw_tokenizer.hash_test
   SOURCES
     hash_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_tokenizer
   GROUPS
     modules
@@ -222,7 +226,7 @@ pw_add_test(pw_tokenizer.hash_test
 pw_add_test(pw_tokenizer.token_database_test
   SOURCES
     token_database_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_tokenizer.decoder
   GROUPS
     modules
@@ -233,7 +237,7 @@ pw_add_test(pw_tokenizer.tokenize_test
   SOURCES
     tokenize_test_c.c
     tokenize_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_varint
     pw_tokenizer
   GROUPS

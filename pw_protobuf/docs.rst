@@ -68,7 +68,7 @@ This results in the following generated structure:
 
 .. code:: c++
 
-  enum class Customer::Status {
+  enum class Customer::Status : uint32_t {
     NEW = 1,
     ACTIVE = 2,
     INACTIVE = 3,
@@ -80,7 +80,7 @@ This results in the following generated structure:
 
   struct Customer::Message {
     int32_t age;
-    pw::Vector<char, 32> name;
+    pw::InlineString<32> name;
     Customer::Status status;
   };
 
@@ -605,8 +605,9 @@ Valid options are:
   instead of ``pw::Vector``.
 
 * ``max_size``:
-  Maximum size of `bytes` and `strings` fields. When set, these field types
-  will use the ``pw::Vector`` container type instead of a callback.
+  Maximum size of `bytes` or `string` fields. When set, `bytes` fields use
+  ``pw::Vector`` and `string` fields use ``pw::InlineString`` instead of a
+  callback.
 
 * ``fixed_size``:
   Specified with ``max_size`` to use a fixed length ``std::array`` container
@@ -677,7 +678,7 @@ that can hold the set of values encoded by it, following these rules.
 
   .. code:: c++
 
-    enum class Award::Service {
+    enum class Award::Service : uint32_t {
       BRONZE = 1,
       SILVER = 2,
       GOLD = 3,
@@ -705,7 +706,7 @@ that can hold the set of values encoded by it, following these rules.
 
   .. code:: c++
 
-    enum class Activity {
+    enum class Activity : uint32_t {
       ACTIVITY_CYCLING = 1,
       ACTIVITY_RUNNING = 2,
       ACTIVITY_SWIMMING = 3,
@@ -909,7 +910,7 @@ naming conflicts caused by user-defined macros are the user's responsibility
 
 .. code:: c++
 
-  enum class PosixSignal {
+  enum class PosixSignal : uint32_t {
     NONE = 0,
     SIGHUP = 1,
     SIGINT_ = 2,
@@ -971,14 +972,14 @@ the example below.
 .. code:: c++
 
   struct Function::Message_::Message {
-    pw::Vector<char, 128> content;
+    pw::InlineString<128> content;
   };
 
-  enum class Function::Message_::Fields {
+  enum class Function::Message_::Fields : uint32_t {
     CONTENT = 1,
   };
 
-  enum class Function::Fields_ {
+  enum class Function::Fields_ uint32_t {
     NONE = 0,
     COMPLEX_NUMBERS = 1,
     INTEGERS_MOD_5 = 2,
@@ -999,7 +1000,7 @@ the example below.
     Function::Fields_ codomain;
   };
 
-  enum class Function::Fields {
+  enum class Function::Fields : uint32_t {
     DESCRIPTION = 1,
     DOMAIN = 2,
     CODOMAIN = 3,
