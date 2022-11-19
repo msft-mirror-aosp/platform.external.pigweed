@@ -21,7 +21,16 @@ import os
 from pathlib import Path
 import re
 import sys
-from typing import Collection, List, Optional, Pattern, Sequence, Union
+from typing import (
+    Callable,
+    Collection,
+    List,
+    Optional,
+    Pattern,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import pw_cli
 from . import cli, git_repo, presubmit, tools
@@ -32,7 +41,10 @@ _LOG: logging.Logger = logging.getLogger(__name__)
 # Ignore a whole section. Please do not change the order of these lines.
 _START = re.compile(r'keep-sorted: (begin|start)', re.IGNORECASE)
 _END = re.compile(r'keep-sorted: (stop|end)', re.IGNORECASE)
-_IGNORE_CASE = re.compile(r'ignore\W*case', re.IGNORECASE)
+_IGNORE_CASE = re.compile(r'ignore-case', re.IGNORECASE)
+_ALLOW_DUPES = re.compile(r'allow-dupes', re.IGNORECASE)
+_IGNORE_PREFIX = re.compile(r'ignore-prefix=(\S+)', re.IGNORECASE)
+_STICKY_COMMENTS = re.compile(r'sticky-comments=(\S+)', re.IGNORECASE)
 
 # Only include these literals here so keep_sorted doesn't try to reorder later
 # test lines.
@@ -50,8 +62,8 @@ class KeepSortedContext:
 
     def fail(self,
              description: str = '',
-             path: Path = None,
-             line: int = None) -> None:
+             path: Optional[Path] = None,
+             line: Optional[int] = None) -> None:
         if not self.fix:
             self.failed = True
 
@@ -73,6 +85,35 @@ class KeepSortedParsingError(presubmit.PresubmitFailure):
     pass
 
 
+@dataclasses.dataclass
+class _Line:
+    value: str = ''
+    sticky_comments: Sequence[str] = ()
+
+    @property
+    def full(self):
+        return ''.join((*self.sticky_comments, self.value))
+
+    def __lt__(self, other):
+        if not isinstance(other, _Line):
+            return NotImplemented
+        if self.value != other.value:
+            return self.value < other.value
+        return self.sticky_comments < other.sticky_comments
+
+
+@dataclasses.dataclass
+class _Block:
+    ignore_case: bool = False
+    allow_dupes: bool = False
+    ignored_prefixes: Sequence[str] = dataclasses.field(default_factory=list)
+    sticky_comments: Tuple[str, ...] = ()
+    start_line_number: int = -1
+    start_line: str = ''
+    end_line: str = ''
+    lines: List[str] = dataclasses.field(default_factory=list)
+
+
 class _FileSorter:
     def __init__(self, ctx: Union[presubmit.PresubmitContext,
                                   KeepSortedContext], path: Path):
@@ -81,40 +122,91 @@ class _FileSorter:
         self.all_lines: List[str] = []
         self.changed: bool = False
 
-    def _process_block(self, start_line: str, lines: List[str], end_line: str,
-                       i: int, ignore_case: bool) -> Sequence[str]:
-        sort_key = lambda x: x
-        if ignore_case:
-            sort_key = lambda x: (x.lower(), x)
-        sorted_lines = sorted(lines, key=sort_key)
+    def _process_block(self, block: _Block) -> Sequence[str]:
+        raw_lines: List[str] = block.lines
+        lines: List[_Line] = []
 
-        if lines != sorted_lines:
+        if block.sticky_comments:
+            comments: List[str] = []
+            for raw_line in raw_lines:
+                if raw_line.lstrip().startswith(block.sticky_comments):
+                    _LOG.debug('found sticky %s', raw_line.strip())
+                    comments.append(raw_line)
+                else:
+                    _LOG.debug('non-sticky %s', raw_line.strip())
+                    line = _Line(raw_line, tuple(comments))
+                    _LOG.debug('line %s', line)
+                    lines.append(line)
+                    comments = []
+            if comments:
+                self.ctx.fail(
+                    f'sticky comment at end of block: {comments[0].strip()}',
+                    self.path, block.start_line_number)
+
+        else:
+            lines = [_Line(x) for x in block.lines]
+
+        if not block.allow_dupes:
+            lines = list({x.full: x for x in lines}.values())
+
+        StrLinePair = Tuple[str, _Line]
+        sort_key_funcs: List[Callable[[StrLinePair], StrLinePair]] = []
+
+        if block.ignored_prefixes:
+
+            def strip_ignored_prefixes(val):
+                """Remove one ignored prefix from val, if present."""
+                wo_white = val[0].lstrip()
+                white = val[0][0:-len(wo_white)]
+                for prefix in block.ignored_prefixes:
+                    if wo_white.startswith(prefix):
+                        return (f'{white}{wo_white[len(prefix):]}', val[1])
+                return (val[0], val[1])
+
+            sort_key_funcs.append(strip_ignored_prefixes)
+
+        if block.ignore_case:
+            sort_key_funcs.append(lambda val: (val[0].lower(), val[1]))
+
+        def sort_key(line):
+            vals = (line.value, line)
+            for sort_key_func in sort_key_funcs:
+                vals = sort_key_func(vals)
+            return vals
+
+        for val in lines:
+            _LOG.debug('For sorting: %r => %r', val, sort_key(val))
+
+        sorted_lines = sorted(lines, key=sort_key)
+        raw_sorted_lines: List[str] = []
+        for line in sorted_lines:
+            raw_sorted_lines.extend(line.sticky_comments)
+            raw_sorted_lines.append(line.value)
+
+        if block.lines != raw_sorted_lines:
             self.changed = True
-            self.ctx.fail('keep-sorted block is not sorted', self.path, i)
-            _LOG.info('  %s', start_line.rstrip())
+            self.ctx.fail('keep-sorted block is not sorted', self.path,
+                          block.start_line_number)
+            _LOG.info('  %s', block.start_line.rstrip())
             diff = difflib.Differ()
             for dline in diff.compare(
-                [x.rstrip() for x in lines],
-                [x.rstrip() for x in sorted_lines],
+                [x.rstrip() for x in block.lines],
+                [x.rstrip() for x in raw_sorted_lines],
             ):
                 if dline.startswith('-'):
                     dline = _COLOR.red(dline)
                 elif dline.startswith('+'):
                     dline = _COLOR.green(dline)
                 _LOG.info(dline)
-            _LOG.info('  %s', end_line.rstrip())
+            _LOG.info('  %s', block.end_line.rstrip())
 
-        return sorted_lines
+        return raw_sorted_lines
 
     def _parse_file(self, ins):
-        in_block: bool = False
-        ignore_case: bool = False
-        start_line: Optional[str] = None
-        end_line: Optional[str] = None
-        lines: List[str] = []
+        block: Optional[_Block] = None
 
         for i, line in enumerate(ins, start=1):
-            if in_block:
+            if block:
                 if _START.search(line):
                     raise KeepSortedParsingError(
                         f'found {line.strip()!r} inside keep-sorted block',
@@ -122,31 +214,59 @@ class _FileSorter:
 
                 if _END.search(line):
                     _LOG.debug('Found end line %d %r', i, line)
-                    end_line = line
-                    in_block = False
-                    assert start_line  # Implicitly cast from Optional.
-                    self.all_lines.extend(
-                        self._process_block(start_line, lines, end_line, i,
-                                            ignore_case))
-                    start_line = end_line = None
+                    block.end_line = line
+                    self.all_lines.extend(self._process_block(block))
+                    block = None
                     self.all_lines.append(line)
-                    lines = []
 
                 else:
                     _LOG.debug('Adding to block line %d %r', i, line)
-                    lines.append(line)
+                    block.lines.append(line)
 
             elif start_match := _START.search(line):
                 _LOG.debug('Found start line %d %r', i, line)
-                ignore_case = bool(_IGNORE_CASE.search(line))
-                _LOG.debug('ignore_case: %s', ignore_case)
-                start_line = line
-                in_block = True
+
+                block = _Block()
+
+                block.ignore_case = bool(_IGNORE_CASE.search(line))
+                _LOG.debug('ignore_case: %s', block.ignore_case)
+
+                block.allow_dupes = bool(_ALLOW_DUPES.search(line))
+                _LOG.debug('allow_dupes: %s', block.allow_dupes)
+
+                match = _IGNORE_PREFIX.search(line)
+                if match:
+                    block.ignored_prefixes = match.group(1).split(',')
+
+                    # We want to check the longest prefixes first, in case one
+                    # prefix is a prefix of another prefix.
+                    block.ignored_prefixes.sort(key=lambda x: (-len(x), x))
+                _LOG.debug('ignored_prefixes: %r', block.ignored_prefixes)
+
+                match = _STICKY_COMMENTS.search(line)
+                if match:
+                    if match.group(1) == 'no':
+                        block.sticky_comments = ()
+                    else:
+                        block.sticky_comments = tuple(
+                            match.group(1).split(','))
+                else:
+                    prefix = line[:start_match.start()].strip()
+                    if prefix and len(prefix) <= 3:
+                        block.sticky_comments = (prefix, )
+                _LOG.debug('sticky_comments: %s', block.sticky_comments)
+
+                block.start_line = line
+                block.start_line_number = i
                 self.all_lines.append(line)
 
                 remaining = line[start_match.end():].strip()
                 remaining = _IGNORE_CASE.sub('', remaining, count=1).strip()
-                if remaining:
+                remaining = _ALLOW_DUPES.sub('', remaining, count=1).strip()
+                remaining = _IGNORE_PREFIX.sub('', remaining, count=1).strip()
+                remaining = _STICKY_COMMENTS.sub('', remaining,
+                                                 count=1).strip()
+                if remaining.strip():
                     raise KeepSortedParsingError(
                         f'unrecognized directive on keep-sorted line: '
                         f'{remaining}', self.path, i)
@@ -159,7 +279,7 @@ class _FileSorter:
             else:
                 self.all_lines.append(line)
 
-        if in_block:
+        if block:
             raise KeepSortedParsingError(
                 f'found EOF while looking for "{END}"', self.path)
 
@@ -175,7 +295,7 @@ class _FileSorter:
             # File is not text, like a gif.
             _LOG.debug('File %s is not a text file', self.path)
 
-    def write(self, path: Path = None) -> None:
+    def write(self, path: Optional[Path] = None) -> None:
         if not self.changed:
             return
         if not path:
@@ -222,8 +342,8 @@ def _process_files(
     return changed_paths
 
 
-@presubmit.Check
-def keep_sorted(ctx: presubmit.PresubmitContext) -> None:
+@presubmit.check(name='keep_sorted')
+def presubmit_check(ctx: presubmit.PresubmitContext) -> None:
     """Presubmit check that ensures specified lists remain sorted."""
 
     changed_paths = _process_files(ctx)

@@ -40,6 +40,9 @@ py_binary(
     deps = [
         ":config_pb2",
         "//pw_hdlc/py:pw_hdlc",
+        "//pw_transfer:transfer_proto_pb2",
+        "//pw_transfer/py:pw_transfer",
+        "@com_google_protobuf//:protobuf_python",
     ],
 )
 
@@ -52,6 +55,8 @@ py_test(
     main = "proxy_test.py",
     deps = [
         ":config_pb2",
+        "//pw_transfer:transfer_proto_pb2",
+        "//pw_transfer/py:pw_transfer",
     ],
 )
 
@@ -106,11 +111,13 @@ py_library(
     ],
     deps = [
         ":config_pb2",
+        "//pw_protobuf:status_proto_pb2",
+        "@com_google_protobuf//:protobuf_python",
         "@rules_python//python/runfiles",
     ],
 )
 
-# Uses ports 33010 and 33011.
+# Uses ports 3310 and 3311.
 py_test(
     name = "cross_language_large_write_test",
     # Actually 1 hour, see
@@ -144,22 +151,41 @@ py_test(
 
 # Uses ports 3304 and 3305.
 py_test(
-    name = "cross_language_medium_test",
+    name = "cross_language_medium_read_test",
+    timeout = "long",
     srcs = [
-        "cross_language_medium_test.py",
+        "cross_language_medium_read_test.py",
     ],
     deps = [
+        ":config_pb2",
         ":integration_test_fixture",
+        "@com_google_protobuf//:protobuf_python",
+    ],
+)
+
+# Uses ports 3316 and 3317.
+py_test(
+    name = "cross_language_medium_write_test",
+    timeout = "long",
+    srcs = [
+        "cross_language_medium_write_test.py",
+    ],
+    deps = [
+        ":config_pb2",
+        ":integration_test_fixture",
+        "@com_google_protobuf//:protobuf_python",
     ],
 )
 
 # Uses ports 3302 and 3303.
 py_test(
     name = "cross_language_small_test",
+    timeout = "moderate",
     srcs = [
         "cross_language_small_test.py",
     ],
     deps = [
+        ":config_pb2",
         ":integration_test_fixture",
     ],
 )
@@ -167,6 +193,7 @@ py_test(
 # Uses ports 3308 and 3309.
 py_test(
     name = "multi_transfer_test",
+    timeout = "moderate",
     srcs = [
         "multi_transfer_test.py",
     ],
@@ -176,13 +203,32 @@ py_test(
     ],
 )
 
+# Uses ports 3312 and 3313.
 py_test(
     name = "expected_errors_test",
+    timeout = "moderate",
     srcs = ["expected_errors_test.py"],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
         "//pw_protobuf:status_proto_pb2",
+        "@com_google_protobuf//:protobuf_python",
+    ],
+)
+
+# Uses ports 3314 and 3315.
+py_test(
+    name = "legacy_binaries_test",
+    timeout = "moderate",
+    srcs = ["legacy_binaries_test.py"],
+    data = [
+        "@pw_transfer_test_binaries//:all",
+    ],
+    deps = [
+        ":config_pb2",
+        ":integration_test_fixture",
+        "//pw_protobuf:status_proto_pb2",
+        "@rules_python//python/runfiles",
     ],
 )
 
@@ -211,5 +257,6 @@ py_binary(
         "//pw_rpc/py:pw_rpc",
         "//pw_transfer:transfer_proto_pb2",
         "//pw_transfer/py:pw_transfer",
+        "@com_google_protobuf//:protobuf_python",
     ],
 )

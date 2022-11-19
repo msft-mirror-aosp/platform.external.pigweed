@@ -22,8 +22,18 @@ import threading
 import time
 import socket
 import subprocess
-from typing import (Any, BinaryIO, Callable, Dict, Iterable, List, NoReturn,
-                    Optional, Sequence, Union)
+from typing import (
+    Any,
+    BinaryIO,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    NoReturn,
+    Optional,
+    Sequence,
+    Union,
+)
 
 from pw_protobuf_compiler import python_protos
 import pw_rpc
@@ -135,10 +145,10 @@ class HdlcRpcClient:
                  paths_or_modules: PathsModulesOrProtoLibrary,
                  channels: Iterable[pw_rpc.Channel],
                  output: Callable[[bytes], Any] = write_to_file,
-                 client_impl: pw_rpc.client.ClientImpl = None,
+                 client_impl: Optional[pw_rpc.client.ClientImpl] = None,
                  *,
-                 _incoming_packet_filter_for_testing: pw_rpc.
-                 ChannelManipulator = None):
+                 _incoming_packet_filter_for_testing: Optional[
+                     pw_rpc.ChannelManipulator] = None):
         """Creates an RPC client configured to communicate using HDLC.
 
         Args:
@@ -174,7 +184,7 @@ class HdlcRpcClient:
                          args=(read, lambda exc: None,
                                frame_handlers)).start()
 
-    def rpcs(self, channel_id: int = None) -> Any:
+    def rpcs(self, channel_id: Optional[int] = None) -> Any:
         """Returns object for accessing services on the specified channel.
 
         This skips some intermediate layers to make it simpler to invoke RPCs

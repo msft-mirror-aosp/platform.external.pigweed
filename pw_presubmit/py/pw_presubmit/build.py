@@ -23,8 +23,18 @@ from pathlib import Path
 import re
 import subprocess
 from shutil import which
-from typing import (Collection, Container, Dict, Iterable, List, Mapping, Set,
-                    Tuple, Union)
+from typing import (
+    Collection,
+    Container,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 from pw_package import package_manager
 from pw_presubmit import (
@@ -34,6 +44,7 @@ from pw_presubmit import (
     filter_paths,
     format_code,
     log_run,
+    ninja_parser,
     plural,
     PresubmitContext,
     PresubmitFailure,
@@ -84,6 +95,22 @@ def install_package(ctx: PresubmitContext, name: str) -> None:
         mgr.install(name)
 
 
+def _gn_value(value) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+
+    if (isinstance(value, str) and '"' not in value
+            and not value.startswith("{") and not value.startswith("[")):
+        return f'"{value}"'
+
+    if isinstance(value, (list, tuple)):
+        return f'[{", ".join(_gn_value(a) for a in value)}]'
+
+    # Fall-back case handles integers as well as strings that already
+    # contain double quotation marks, or look like scopes or lists.
+    return str(value)
+
+
 def gn_args(**kwargs) -> str:
     """Builds a string to use for the --args argument to gn gen.
 
@@ -94,16 +121,8 @@ def gn_args(**kwargs) -> str:
     """
     transformed_args = []
     for arg, val in kwargs.items():
-        if isinstance(val, bool):
-            transformed_args.append(f'{arg}={str(val).lower()}')
-            continue
-        if (isinstance(val, str) and '"' not in val and not val.startswith("{")
-                and not val.startswith("[")):
-            transformed_args.append(f'{arg}="{val}"')
-            continue
-        # Fall-back case handles integers as well as strings that already
-        # contain double quotation marks, or look like scopes or lists.
-        transformed_args.append(f'{arg}={val}')
+        transformed_args.append(f'{arg}={_gn_value(val)}')
+
     # Use ccache if available for faster repeat presubmit runs.
     if which('ccache'):
         transformed_args.append('pw_command_launcher="ccache"')
@@ -183,9 +202,28 @@ def ninja(ctx: PresubmitContext,
             **kwargs)
         (ctx.output_dir / 'ninja.graph').write_bytes(proc.stdout)
 
-    call('ninja', '-C', ctx.output_dir, *num_jobs, *keep_going, *args,
-         **kwargs)
-    (ctx.output_dir / '.ninja_log').rename(ctx.output_dir / 'ninja.log')
+    failure_summary_log = ctx.output_dir / 'ninja-failure-summary.log'
+    failure_summary_log.unlink(missing_ok=True)
+
+    ninja_stdout = ctx.output_dir / 'ninja.stdout'
+    try:
+        with ninja_stdout.open('w') as outs:
+            call('ninja',
+                 '-C',
+                 ctx.output_dir,
+                 *num_jobs,
+                 *keep_going,
+                 *args,
+                 tee=outs,
+                 **kwargs)
+
+    except PresubmitFailure as exc:
+        failure = ninja_parser.parse_ninja_stdout(ninja_stdout)
+        if failure:
+            with failure_summary_log.open('w') as outs:
+                outs.write(failure)
+
+        raise exc
 
 
 def get_gn_args(directory: Path) -> List[Dict[str, Dict[str, str]]]:
@@ -197,7 +235,7 @@ def get_gn_args(directory: Path) -> List[Dict[str, Dict[str, str]]]:
 
 def cmake(ctx: PresubmitContext,
           *args: str,
-          env: Mapping['str', 'str'] = None) -> None:
+          env: Optional[Mapping['str', 'str']] = None) -> None:
     """Runs CMake for Ninja on the given source and output directories."""
     call('cmake',
          '-B',

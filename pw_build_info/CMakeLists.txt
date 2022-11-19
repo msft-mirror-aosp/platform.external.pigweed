@@ -15,9 +15,15 @@
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
 # GNU build IDs aren't supported by Windows and macOS.
-if((NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows") AND
-   (NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin"))
-  pw_add_module_library(pw_build_info.build_id
+if(("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows") OR
+   ("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin"))
+  pw_add_error_target(pw_build_info.build_id
+    MESSAGE
+      "Attempted to build the pw_build_info.build_id for an unsupported system "
+      "(${CMAKE_SYSTEM_NAME})."
+  )
+else()
+  pw_add_library(pw_build_info.build_id STATIC
     HEADERS
       public/pw_build_info/build_id.h
     PUBLIC_INCLUDES

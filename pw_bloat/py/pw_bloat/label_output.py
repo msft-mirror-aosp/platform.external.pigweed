@@ -14,8 +14,16 @@
 """Module for size report ASCII tables from DataSourceMaps."""
 
 import enum
-from typing import (Iterable, Tuple, Union, Type, List, Optional, NamedTuple,
-                    cast)
+from typing import (
+    Iterable,
+    Tuple,
+    Union,
+    Type,
+    List,
+    Optional,
+    NamedTuple,
+    cast,
+)
 
 from pw_bloat.label import DataSourceMap, DiffDataSourceMap, Label
 
@@ -77,6 +85,7 @@ class BloatTableOutput:
     """ASCII Table generator from DataSourceMap."""
 
     _RST_PADDING_WIDTH = 6
+    _DEFAULT_MAX_WIDTH = 80
 
     class _LabelContent(NamedTuple):
         name: str
@@ -85,11 +94,11 @@ class BloatTableOutput:
 
     def __init__(self,
                  ds_map: Union[DiffDataSourceMap, DataSourceMap],
-                 col_max_width: int,
+                 col_max_width: int = _DEFAULT_MAX_WIDTH,
                  charset: Union[Type[AsciiCharset],
                                 Type[LineCharset]] = AsciiCharset,
                  rst_output: bool = False,
-                 diff_label: str = None):
+                 diff_label: Optional[str] = None):
         self._data_source_map = ds_map
         self._cs = charset
         self._total_size = 0

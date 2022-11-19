@@ -27,6 +27,7 @@ START = keep_sorted.START
 END = keep_sorted.END
 
 # pylint: disable=attribute-defined-outside-init
+# pylint: disable=too-many-public-methods
 
 
 class TestKeepSorted(unittest.TestCase):
@@ -117,6 +118,132 @@ class TestKeepSorted(unittest.TestCase):
         self.ctx.fail.assert_called()
         self.assertEqual(self.contents,
                          f'{START} ignore-case\na\nB\nc\nD\n{END}\n')
+
+    def test_remove_dupes(self) -> None:
+        self._run(f'{START}\n1\n2\n2\n1\n{END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents, f'{START}\n1\n2\n{END}\n')
+
+    def test_allow_dupes(self) -> None:
+        self._run(f'{START} allow-dupes\n1\n2\n2\n1\n{END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents,
+                         f'{START} allow-dupes\n1\n1\n2\n2\n{END}\n')
+
+    def test_case_insensitive_dupes(self) -> None:
+        self._run(f'{START} ignore-case\na\nB\nA\n{END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents,
+                         f'{START} ignore-case\nA\na\nB\n{END}\n')
+
+    def test_ignored_prefixes(self) -> None:
+        self._run(f'{START} ignore-prefix=foo,bar\na\nb\nfoob\nbarc\n{END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_ignored_longest_prefixes(self) -> None:
+        self._run(f'{START} ignore-prefix=1,123\na\n123b\nb\n1c\n{END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_ignored_prefixes_whitespace(self) -> None:
+        self._run(f'{START} ignore-prefix=foo,bar\n'
+                  f' a\n b\n foob\n barc\n{END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_ignored_prefixes_insensitive(self) -> None:
+        self._run(f'{START} ignore-prefix=foo,bar ignore-case\n'
+                  f'a\nB\nfooB\nbarc\n{END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_python_comment_marks_sorted(self) -> None:
+        self._run(f'# {START}\n1\n2\n# {END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_python_comment_marks_not_sorted(self) -> None:
+        self._run(f'# {START}\n2\n1\n# {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents, f'# {START}\n1\n2\n# {END}\n')
+
+    def test_python_comment_sticky_sorted(self) -> None:
+        self._run(f'# {START}\n# A\n1\n2\n# {END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_python_comment_sticky_not_sorted(self) -> None:
+        self._run(f'# {START}\n2\n# A\n1\n# {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents, f'# {START}\n# A\n1\n2\n# {END}\n')
+
+    def test_python_comment_sticky_disabled(self) -> None:
+        self._run(f'# {START} sticky-comments=no\n1\n# B\n2\n# {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(
+            self.contents,
+            f'# {START} sticky-comments=no\n# B\n1\n2\n# {END}\n')
+
+    def test_cpp_comment_marks_sorted(self) -> None:
+        self._run(f'// {START}\n1\n2\n// {END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_cpp_comment_marks_not_sorted(self) -> None:
+        self._run(f'// {START}\n2\n1\n// {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents, f'// {START}\n1\n2\n// {END}\n')
+
+    def test_cpp_comment_sticky_sorted(self) -> None:
+        self._run(f'// {START}\n1\n// B\n2\n// {END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_cpp_comment_sticky_not_sorted(self) -> None:
+        self._run(f'// {START}\n// B\n2\n1\n// {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents, f'// {START}\n1\n// B\n2\n// {END}\n')
+
+    def test_cpp_comment_sticky_disabled(self) -> None:
+        self._run(f'// {START} sticky-comments=no\n1\n// B\n2\n// {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(
+            self.contents,
+            f'// {START} sticky-comments=no\n// B\n1\n2\n// {END}\n')
+
+    def test_custom_comment_sticky_sorted(self) -> None:
+        self._run(f'{START} sticky-comments=%\n1\n% B\n2\n{END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_custom_comment_sticky_not_sorted(self) -> None:
+        self._run(f'{START} sticky-comments=%\n% B\n2\n1\n{END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents,
+                         f'{START} sticky-comments=%\n1\n% B\n2\n{END}\n')
+
+    def test_multiline_comment_sticky_sorted(self) -> None:
+        self._run(f'# {START}\n# B\n# A\n1\n2\n# {END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_multiline_comment_sticky_not_sorted(self) -> None:
+        self._run(f'# {START}\n# B\n# A\n2\n1\n# {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents,
+                         f'# {START}\n1\n# B\n# A\n2\n# {END}\n')
+
+    def test_comment_sticky_sorted_fallback_sorted(self) -> None:
+        self._run(f'# {START}\n# A\n1\n# B\n1\n# {END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_comment_sticky_sorted_fallback_not_sorted(self) -> None:
+        self._run(f'# {START}\n# B\n1\n# A\n1\n# {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(self.contents,
+                         f'# {START}\n# A\n1\n# B\n1\n# {END}\n')
+
+    def test_comment_sticky_sorted_fallback_dupes(self) -> None:
+        self._run(f'# {START} allow-dupes\n# A\n1\n# A\n1\n# {END}\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_different_comment_sticky_not_sorted(self) -> None:
+        self._run(f'# {START} sticky-comments=%\n% A\n1\n# B\n2\n# {END}\n')
+        self.ctx.fail.assert_called()
+        self.assertEqual(
+            self.contents,
+            f'# {START} sticky-comments=%\n# B\n% A\n1\n2\n# {END}\n')
 
 
 if __name__ == '__main__':

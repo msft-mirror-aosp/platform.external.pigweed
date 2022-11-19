@@ -24,9 +24,21 @@ from pathlib import Path
 import re
 import struct
 import subprocess
-from typing import (BinaryIO, Callable, Dict, Iterable, Iterator, List,
-                    NamedTuple, Optional, Pattern, TextIO, Tuple, Union,
-                    ValuesView)
+from typing import (
+    BinaryIO,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Pattern,
+    TextIO,
+    Tuple,
+    Union,
+    ValuesView,
+)
 from uuid import uuid4
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -51,7 +63,7 @@ def _value(char: Union[int, str]) -> int:
 
 def pw_tokenizer_65599_hash(string: Union[str, bytes],
                             *,
-                            hash_length: int = None) -> int:
+                            hash_length: Optional[int] = None) -> int:
     """Hashes the string with the hash function used to generate tokens in C++.
 
     This hash function is used calculate tokens from strings in Python. It is

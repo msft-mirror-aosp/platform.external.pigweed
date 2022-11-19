@@ -51,7 +51,9 @@ class _LabelMap:
     def __init__(self):
         self._label_map = defaultdict(lambda: defaultdict(LabelInfo))
 
-    def remove(self, parent_label: str, child_label: str = None) -> None:
+    def remove(self,
+               parent_label: str,
+               child_label: Optional[str] = None) -> None:
         """Delete entire parent label or the child label."""
         if child_label:
             del self._label_map[parent_label][child_label]
@@ -110,6 +112,18 @@ class DataSourceMap:
 
     """
     _BASE_TOTAL_LABEL = 'total'
+
+    @classmethod
+    def from_bloaty_tsv(cls, raw_tsv: Iterable[str]) -> 'DataSourceMap':
+        """Read in Bloaty TSV output and store in DataSourceMap."""
+        reader = csv.reader(raw_tsv, delimiter='\t')
+        top_row = next(reader)
+        vmsize_index = top_row.index('vmsize')
+        ds_map_tsv = cls(top_row[:vmsize_index])
+        for row in reader:
+            ds_map_tsv.insert_label_hierachy(row[:vmsize_index],
+                                             int(row[vmsize_index]))
+        return ds_map_tsv
 
     def __init__(self, data_sources_names: Iterable[str]):
         self._data_sources = list(
@@ -244,15 +258,3 @@ class DiffDataSourceMap(DataSourceMap):
                                                             == top_ds_label):
                     return True
         return False
-
-
-def from_bloaty_tsv(raw_tsv: Iterable[str]) -> DataSourceMap:
-    """Read in Bloaty TSV output and store in DataSourceMap."""
-    reader = csv.reader(raw_tsv, delimiter='\t')
-    top_row = next(reader)
-    vmsize_index = top_row.index('vmsize')
-    ds_map_tsv = DataSourceMap(top_row[:vmsize_index])
-    for row in reader:
-        ds_map_tsv.insert_label_hierachy(row[:vmsize_index],
-                                         int(row[vmsize_index]))
-    return ds_map_tsv

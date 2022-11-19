@@ -143,3 +143,13 @@ label_flag(
     name = "target_rtos",
     build_setting_default = "@pigweed//pw_build/constraints/rtos:none",
 )
+
+label_flag(
+    name = "pw_perf_test_timer_backend",
+    build_setting_default = "@pigweed//pw_perf_test:timer_multiplexer",
+)
+
+label_flag(
+    name = "pw_trace_backend",
+    build_setting_default = "@pigweed//pw_trace:backend_multiplexer",
+)
