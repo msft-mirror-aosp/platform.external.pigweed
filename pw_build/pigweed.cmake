@@ -122,137 +122,6 @@ macro(pw_require_args FUNCTION_NAME ARG_PREFIX)
   endforeach()
 endmacro()
 
-# This method is deprecated, please use pw_add_library, pw_add_facade,
-# and pw_add_test.
-#
-# Automatically creates a library and test targets for the files in a module.
-# This function is only suitable for simple modules that meet the following
-# requirements:
-#
-#  - The module exposes exactly one library.
-#  - All source files in the module directory are included in the library.
-#  - Each test in the module has
-#    - exactly one source .cc file,
-#    - optionally, one .c source with the same base name as the .cc file,
-#    - only a dependency on the main module library.
-#  - The module is not a facade and does not implement facades.
-#
-# Modules that do not meet these requirements may not use
-# pw_auto_add_simple_module. Instead, define the module's libraries and tests
-# with pw_add_library, pw_add_facade, pw_add_test, and the
-# standard CMake functions, such as add_library, target_link_libraries, etc.
-#
-# This function does the following:
-#
-#   1. Find all .c and .cc files in the module's root directory.
-#   2. Create a library with the module name using pw_add_library with
-#      all source files that do not end with _test.cc.
-#   3. Declare a test for each source file that ends with _test.cc.
-#
-# Args:
-#
-#   PUBLIC_DEPS - public pw_target_link_targets arguments
-#   PRIVATE_DEPS - private pw_target_link_targets arguments
-#
-function(pw_auto_add_simple_module MODULE)
-  pw_parse_arguments(
-    NUM_POSITIONAL_ARGS
-      1
-    MULTI_VALUE_ARGS
-      PUBLIC_DEPS
-      PRIVATE_DEPS
-      TEST_DEPS
-  )
-
-  file(GLOB all_sources *.cc *.c)
-
-  # Create a library with all source files not ending in _test.
-  set(sources "${all_sources}")
-  list(FILTER sources EXCLUDE REGEX "_test(\\.cc|(_c)?\\.c)$")  # *_test.cc
-  list(FILTER sources EXCLUDE REGEX "^test(\\.cc|(_c)?\\.c)$")  # test.cc
-  list(FILTER sources EXCLUDE REGEX "_fuzzer\\.cc$")
-
-  file(GLOB_RECURSE headers *.h)
-
-  if("${sources}" STREQUAL "")
-    set(type "INTERFACE")
-  else()
-    set(type "STATIC")
-  endif()
-
-  if(NOT "${headers}" STREQUAL "")
-    set(public_includes "public")
-  endif()
-
-
-  pw_add_library("${MODULE}" "${type}"
-    PUBLIC_DEPS
-      ${arg_PUBLIC_DEPS}
-    PRIVATE_DEPS
-      ${arg_PRIVATE_DEPS}
-    SOURCES
-      ${sources}
-    HEADERS
-      ${headers}
-    PUBLIC_INCLUDES
-      ${public_includes}
-  )
-
-  pw_auto_add_module_tests("${MODULE}"
-    PRIVATE_DEPS
-      ${arg_PUBLIC_DEPS}
-      ${arg_PRIVATE_DEPS}
-      ${arg_TEST_DEPS}
-    GROUPS
-      modules
-      "${MODULE}"
-  )
-endfunction(pw_auto_add_simple_module)
-
-# Creates a test for each source file ending in _test. Tests with mutliple .cc
-# files or different dependencies than the module will not work correctly.
-#
-# Args:
-#
-#  PRIVATE_DEPS - dependencies to apply to all tests
-#  GROUPS - groups in addition to MODULE to which to add these tests
-#
-function(pw_auto_add_module_tests MODULE)
-  pw_parse_arguments(
-    NUM_POSITIONAL_ARGS
-      1
-    MULTI_VALUE_ARGS
-      PRIVATE_DEPS
-      GROUPS
-  )
-
-  file(GLOB cc_tests *_test.cc)
-
-  foreach(test IN LISTS cc_tests)
-    get_filename_component(test_name "${test}" NAME_WE)
-
-    # Find a .c test corresponding with the test .cc file, if any.
-    file(GLOB c_test "${test_name}.c" "${test_name}_c.c")
-
-    pw_add_test("${MODULE}.${test_name}"
-      SOURCES
-        "${test}"
-        ${c_test}
-      PRIVATE_DEPS
-        ${arg_PRIVATE_DEPS}
-      GROUPS
-        "${MODULE}"
-        ${arg_GROUPS}
-    )
-    # Generator expressions are not targets, ergo cannot be passed via the
-    # public pw_add_test_generic API.
-    target_link_libraries("${MODULE}.${test_name}.lib"
-      PRIVATE
-        "$<TARGET_NAME_IF_EXISTS:${MODULE}>"
-    )
-  endforeach()
-endfunction(pw_auto_add_module_tests)
-
 # pw_target_link_targets: CMake target only form of target_link_libraries.
 #
 # Helper wrapper around target_link_libraries which only supports CMake targets
@@ -369,26 +238,6 @@ function(pw_add_library_generic NAME TYPE)
       ${multi_value_args}
   )
 
-  add_library("${NAME}" "${TYPE}" EXCLUDE_FROM_ALL)
-
-  # Instead of forking all of the code below or injecting an empty source file,
-  # conditionally select PUBLIC vs INTERFACE depending on the type.
-  if("${TYPE}" STREQUAL "INTERFACE")
-    set(public_or_interface INTERFACE)
-    if(NOT "${arg_SOURCES}" STREQUAL "")
-      message(
-        SEND_ERROR "${NAME} cannot have sources as it's an INTERFACE library")
-    endif(NOT "${arg_SOURCES}" STREQUAL "")
-  else()  # ${TYPE} != INTERFACE
-    set(public_or_interface PUBLIC)
-    if("${arg_SOURCES}" STREQUAL "")
-      message(
-        SEND_ERROR "${NAME} must have SOURCES as it's not an INTERFACE library")
-    endif("${arg_SOURCES}" STREQUAL "")
-  endif("${TYPE}" STREQUAL "INTERFACE")
-
-  target_sources("${NAME}" PRIVATE ${arg_SOURCES} ${arg_HEADERS})
-
   # CMake 3.22 does not have a notion of target_headers yet, so in the mean
   # time we ask for headers to be specified for consistency with GN & Bazel and
   # to improve the IDE experience. However, we do want to ensure all the headers
@@ -403,61 +252,90 @@ function(pw_add_library_generic NAME TYPE)
     endif()
   endforeach()
 
-  # Public and private target_include_directories.
-  target_include_directories("${NAME}" PRIVATE ${arg_PRIVATE_INCLUDES})
-  target_include_directories(
-        "${NAME}" ${public_or_interface} ${arg_PUBLIC_INCLUDES})
-
-  # Public and private target_link_libraries.
-  if(NOT "${arg_SOURCES}" STREQUAL "")
-    pw_target_link_targets("${NAME}" PRIVATE ${arg_PRIVATE_DEPS})
-  endif(NOT "${arg_SOURCES}" STREQUAL "")
-  pw_target_link_targets("${NAME}" ${public_or_interface} ${arg_PUBLIC_DEPS})
-
-  # The target_compile_options are always added before target_link_libraries'
-  # target_compile_options. In order to support the enabling of warning
-  # compile options injected via arg_PRIVATE_DEPS (target_link_libraries
-  # dependencies) that are partially disabled via arg_PRIVATE_COMPILE_OPTIONS (
-  # target_compile_options), the defines, compile options, and link options are
-  # also added as target_link_libraries dependencies. This enables reasonable
-  # ordering between the enabling (target_link_libraries) and disabling (
-  # now also target_link_libraries) of compiler warnings.
+  # In order to more easily create the various types of libraries, two hidden
+  # targets are created: NAME._config and NAME._public_config which loosely
+  # mirror the GN configs although we also carry target link dependencies
+  # through these.
 
   # Add the NAME._config target_link_libraries dependency with the
-  # PRIVATE_DEFINES, PRIVATE_COMPILE_OPTIONS, and PRIVATE_LINK_OPTIONS.
-  if(NOT "${TYPE}" STREQUAL "INTERFACE")
-    pw_target_link_targets("${NAME}" PRIVATE "${NAME}._config")
-    add_library("${NAME}._config" INTERFACE EXCLUDE_FROM_ALL)
-    if(NOT "${arg_PRIVATE_DEFINES}" STREQUAL "")
-      target_compile_definitions(
-          "${NAME}._config" INTERFACE ${arg_PRIVATE_DEFINES})
-    endif(NOT "${arg_PRIVATE_DEFINES}" STREQUAL "")
-    if(NOT "${arg_PRIVATE_COMPILE_OPTIONS}" STREQUAL "")
-      target_compile_options(
-          "${NAME}._config" INTERFACE ${arg_PRIVATE_COMPILE_OPTIONS})
-    endif(NOT "${arg_PRIVATE_COMPILE_OPTIONS}" STREQUAL "")
-    if(NOT "${arg_PRIVATE_LINK_OPTIONS}" STREQUAL "")
-      target_link_options("${NAME}._config" INTERFACE ${arg_PRIVATE_LINK_OPTIONS})
-    endif(NOT "${arg_PRIVATE_LINK_OPTIONS}" STREQUAL "")
-  endif(NOT "${TYPE}" STREQUAL "INTERFACE")
+  # PRIVATE_INCLUDES, PRIVATE_DEFINES, PRIVATE_COMPILE_OPTIONS,
+  # PRIVATE_LINK_OPTIONS, and PRIVATE_DEPS.
+  add_library("${NAME}._config" INTERFACE EXCLUDE_FROM_ALL)
+  target_include_directories("${NAME}._config"
+    INTERFACE
+      ${arg_PRIVATE_INCLUDES}
+  )
+  target_compile_definitions("${NAME}._config"
+    INTERFACE
+      ${arg_PRIVATE_DEFINES}
+  )
+  target_compile_options("${NAME}._config"
+    INTERFACE
+      ${arg_PRIVATE_COMPILE_OPTIONS}
+  )
+  target_link_options("${NAME}._config"
+    INTERFACE
+      ${arg_PRIVATE_LINK_OPTIONS}
+  )
+  pw_target_link_targets("${NAME}._config"
+    INTERFACE
+      ${arg_PRIVATE_DEPS}
+  )
 
   # Add the NAME._public_config target_link_libraries dependency with the
-  # PUBLIC_DEFINES, PUBLIC_COMPILE_OPTIONS, and PUBLIC_LINK_OPTIONS.
+  # PUBLIC_INCLUDES, PUBLIC_DEFINES, PUBLIC_COMPILE_OPTIONS,
+  # PUBLIC_LINK_OPTIONS, and PUBLIC_DEPS.
   add_library("${NAME}._public_config" INTERFACE EXCLUDE_FROM_ALL)
-  pw_target_link_targets(
-      "${NAME}" ${public_or_interface} "${NAME}._public_config")
-  if(NOT "${arg_PUBLIC_DEFINES}" STREQUAL "")
-    target_compile_definitions(
-        "${NAME}._public_config" INTERFACE ${arg_PUBLIC_DEFINES})
-  endif(NOT "${arg_PUBLIC_DEFINES}" STREQUAL "")
-  if(NOT "${arg_PUBLIC_COMPILE_OPTIONS}" STREQUAL "")
-    target_compile_options(
-        "${NAME}._public_config" INTERFACE ${arg_PUBLIC_COMPILE_OPTIONS})
-  endif(NOT "${arg_PUBLIC_COMPILE_OPTIONS}" STREQUAL "")
-  if(NOT "${arg_PUBLIC_LINK_OPTIONS}" STREQUAL "")
-    target_link_options(
-        "${NAME}._public_config" INTERFACE ${arg_PUBLIC_LINK_OPTIONS})
-  endif(NOT "${arg_PUBLIC_LINK_OPTIONS}" STREQUAL "")
+  target_include_directories("${NAME}._public_config"
+    INTERFACE
+      ${arg_PUBLIC_INCLUDES}
+  )
+  target_compile_definitions("${NAME}._public_config"
+    INTERFACE
+      ${arg_PUBLIC_DEFINES}
+  )
+  target_compile_options("${NAME}._public_config"
+    INTERFACE
+      ${arg_PUBLIC_COMPILE_OPTIONS}
+  )
+  target_link_options("${NAME}._public_config"
+    INTERFACE
+      ${arg_PUBLIC_LINK_OPTIONS}
+  )
+  pw_target_link_targets("${NAME}._public_config"
+    INTERFACE
+      ${arg_PUBLIC_DEPS}
+  )
+
+  # Instantiate the library depending on the type using the NAME._config and
+  # NAME._public_config libraries we just created.
+  if("${TYPE}" STREQUAL "INTERFACE")
+    if(NOT "${arg_SOURCES}" STREQUAL "")
+      message(
+        SEND_ERROR "${NAME} cannot have sources as it's an INTERFACE library")
+    endif(NOT "${arg_SOURCES}" STREQUAL "")
+
+    add_library("${NAME}" INTERFACE EXCLUDE_FROM_ALL)
+    target_sources("${NAME}" PRIVATE ${arg_HEADERS})
+    pw_target_link_targets("${NAME}"
+      INTERFACE
+        "${NAME}._public_config"
+    )
+  else()
+    if("${arg_SOURCES}" STREQUAL "")
+      message(
+        SEND_ERROR "${NAME} must have SOURCES as it's not an INTERFACE library")
+    endif("${arg_SOURCES}" STREQUAL "")
+
+    add_library("${NAME}" "${TYPE}" EXCLUDE_FROM_ALL)
+    target_sources("${NAME}" PRIVATE ${arg_HEADERS} ${arg_SOURCES})
+    pw_target_link_targets("${NAME}"
+      PUBLIC
+        "${NAME}._public_config"
+      PRIVATE
+        "${NAME}._config"
+    )
+  endif()
 endfunction(pw_add_library_generic)
 
 # Checks that the library's name is prefixed by the relative path with dot
@@ -551,7 +429,6 @@ function(pw_add_library NAME TYPE)
       pw_build
       ${arg_PUBLIC_DEPS}
     PRIVATE_DEPS
-      pw_build.warnings
       ${arg_PRIVATE_DEPS}
     PUBLIC_INCLUDES
       ${arg_PUBLIC_INCLUDES}
@@ -570,6 +447,16 @@ function(pw_add_library NAME TYPE)
     PRIVATE_LINK_OPTIONS
       ${arg_PRIVATE_LINK_OPTIONS}
   )
+  # Add the compiler warnings by prefixing INTERFACE_COMPILE_OPTIONS instead of
+  # suffixing the list by using the `BEFORE` keyword. This way warnings can
+  # always be deterministically disabled/adjusted by callers of pw_add_library.
+  # Note that INTERFACE_COMPILE_OPTIONS are read from both the target and all
+  # of its dependencies.
+  if(NOT "${arg_SOURCES}" STREQUAL "")
+    target_compile_options("${NAME}" BEFORE PRIVATE
+        $<TARGET_PROPERTY:pw_build.warnings,INTERFACE_COMPILE_OPTIONS>
+    )
+  endif()
 endfunction(pw_add_library)
 
 # Declares a module as a facade.
@@ -612,7 +499,6 @@ function(pw_add_facade NAME TYPE)
       pw_build
       ${arg_PUBLIC_DEPS}
     PRIVATE_DEPS
-      pw_build.warnings
       ${arg_PRIVATE_DEPS}
     PUBLIC_INCLUDES
       ${arg_PUBLIC_INCLUDES}
@@ -631,6 +517,16 @@ function(pw_add_facade NAME TYPE)
     PRIVATE_LINK_OPTIONS
       ${arg_PRIVATE_LINK_OPTIONS}
   )
+  # Add the compiler warnings by prefixing INTERFACE_COMPILE_OPTIONS instead of
+  # suffixing the list by using the `BEFORE` keyword. This way warnings can
+  # always be deterministically disabled/adjusted by callers of pw_add_facade.
+  # Note that INTERFACE_COMPILE_OPTIONS are read from both the target and all
+  # of its dependencies.
+  if(NOT "${arg_SOURCES}" STREQUAL "")
+    target_compile_options("${NAME}" BEFORE PRIVATE
+        $<TARGET_PROPERTY:pw_build.warnings,INTERFACE_COMPILE_OPTIONS>
+    )
+  endif()
 endfunction(pw_add_facade)
 
 # pw_add_facade_generic: Creates a CMake facade library target.
