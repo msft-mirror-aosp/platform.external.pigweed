@@ -24,6 +24,7 @@ import("$dir_pw_rust/rust.gni")
 import("$dir_pw_third_party/mcuxpresso/mcuxpresso.gni")
 import("$dir_pw_toolchain/c_optimization.gni")
 import("$dir_pw_toolchain/generate_toolchain.gni")
+import("$dir_pw_toolchain/non_c_toolchain.gni")
 import("$dir_pw_unit_test/test.gni")
 
 # Main build file for upstream Pigweed.
@@ -44,6 +45,14 @@ declare_args() {
 
   # List of application image GN targets specific to the Pigweed target.
   pw_TARGET_APPLICATIONS = []
+}
+
+# This toolchain is used to force some dependencies to not be parsed by the
+# default toolchain. This is desirable because the default toolchain generates
+# build steps for all parsed targets, not just desired dependencies.
+if (current_toolchain == default_toolchain) {
+  pw_non_c_toolchain("non_default_toolchain") {
+  }
 }
 
 # List any optimization levels in pw_C_OPTIMIZATION_LEVELS that are not in
@@ -84,7 +93,6 @@ group("default") {
     ":python.tests",
     ":static_analysis",
     ":stm32f429i",
-    "pw_rpc:test_protos.python.install",
   ]
 }
 
@@ -110,11 +118,19 @@ _update_or_check_modules_lists = {
   ]
 }
 
+# There are races if the module check and module file update are run at the same
+# time. Force them to be serialized to prevent races. As long as the generated
+# module file is up to date, they'll pass.
+pool("module_check_pool") {
+  depth = 1
+}
+
 # Check that PIGWEED_MODULES is up-to-date and sorted.
 action("check_modules") {
   forward_variables_from(_update_or_check_modules_lists, "*")
   outputs = [ "$target_gen_dir/$target_name.passed" ]
   args += [ "--warn-only" ] + rebase_path(outputs, root_build_dir)
+  pool = ":module_check_pool"
 }
 
 # Run this command after adding an item to PIGWEED_MODULES to update the
@@ -122,10 +138,11 @@ action("check_modules") {
 action("update_modules") {
   forward_variables_from(_update_or_check_modules_lists, "*")
   outputs = [ "$target_gen_dir/$target_name.ALWAYS_RERUN" ]  # Never created
+  pool = ":module_check_pool"
 }
 
 group("pw_system_demo") {
-  deps = [ "$dir_pw_system:system_examples" ]
+  deps = [ "$dir_pw_system:system_examples(:non_default_toolchain)" ]
 }
 
 group("pi_pico") {
@@ -175,8 +192,13 @@ _build_pigweed_default_at_all_optimization_levels("host_clang") {
   toolchain_prefix = "$_internal_toolchains:pw_strict_host_clang_"
 }
 
-_build_pigweed_default_at_all_optimization_levels("host_gcc") {
-  toolchain_prefix = "$_internal_toolchains:pw_strict_host_gcc_"
+# GCC is only supported for Windows. Pigweed doesn't yet provide a Windows
+# clang toolchain, and Pigweed does not provide gcc toolchains for macOS and
+# Linux.
+if (host_os == "win") {
+  _build_pigweed_default_at_all_optimization_levels("host_gcc") {
+    toolchain_prefix = "$_internal_toolchains:pw_strict_host_gcc_"
+  }
 }
 
 if (pw_third_party_mcuxpresso_SDK != "") {
@@ -200,9 +222,18 @@ _build_pigweed_default_at_all_optimization_levels("qemu_gcc") {
       "$dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_gcc_"
 }
 
-_build_pigweed_default_at_all_optimization_levels("qemu_clang") {
-  toolchain_prefix =
-      "$dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_clang_"
+# TODO(b/244604080): Inline string tests are too big to fit in the QEMU firmware
+# except under a size-optimized build. For now, only build size-optimized.
+#
+# _build_pigweed_default_at_all_optimization_levels("qemu_clang") {
+#   toolchain_prefix =
+#       "$dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_clang_"
+# }
+group("qemu_clang_size_optimized") {
+  deps = [ ":pigweed_default($dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_clang_size_optimized)" ]
+}
+group("qemu_clang") {
+  deps = [ ":qemu_clang_size_optimized" ]
 }
 
 # Run clang-tidy on pigweed_default with pw_strict_host_clang_debug toolchain options.
@@ -247,7 +278,8 @@ group("asan") {
 # TODO(b/234876100): msan will not work until the C++ standard library included
 # in the sysroot has a variant built with msan.
 group("msan") {
-  if (host_os != "win") {
+  # TODO(b/259695498): msan doesn't work on macOS yet.
+  if (host_os != "win" && host_os != "mac" && host_os != "linux") {
     deps = [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_msan)" ]
   }
 }
@@ -259,14 +291,16 @@ group("tsan") {
 }
 
 group("ubsan") {
-  if (host_os != "win") {
+  # TODO(b/259695498): ubsan doesn't work on macOS yet.
+  if (host_os != "win" && host_os != "mac") {
     deps =
         [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_ubsan)" ]
   }
 }
 
 group("ubsan_heuristic") {
-  if (host_os != "win") {
+  # TODO(b/259695498): ubsan_heuristic doesn't work on macOS yet.
+  if (host_os != "win" && host_os != "mac") {
     deps = [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_ubsan_heuristic)" ]
   }
 }
@@ -289,16 +323,20 @@ group("runtime_sanitizers") {
 
 pw_python_group("python") {
   python_deps = [
-    "$dir_pw_env_setup:python",
-    "$dir_pw_env_setup:target_support_packages",
+    "$dir_pw_env_setup:python($pw_build_PYTHON_TOOLCHAIN)",
+    "$dir_pw_env_setup:target_support_packages($pw_build_PYTHON_TOOLCHAIN)",
   ]
+}
+
+group("pigweed_pypi_distribution") {
+  deps = [ "$dir_pw_env_setup:pypi_pigweed_python_source_tree($pw_build_PYTHON_TOOLCHAIN)" ]
 }
 
 # Build host-only tooling.
 group("host_tools") {
   deps = [
-    "$dir_pw_target_runner/go:simple_client",
-    "$dir_pw_target_runner/go:simple_server",
+    "$dir_pw_target_runner/go:simple_client(:non_default_toolchain)",
+    "$dir_pw_target_runner/go:simple_server(:non_default_toolchain)",
   ]
 
   if (pw_rust_ENABLE_EXPERIMENTAL_BUILD) {
@@ -323,18 +361,18 @@ group("pigweed_default") {
       # build.
       deps += [ ":pw_module_tests.run" ]
     }
-  }
 
-  # Trace examples currently only support running on non-windows host
-  if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
-      pw_toolchain_SCOPE.is_host_toolchain && host_os != "win") {
-    deps += [
-      "$dir_pw_trace:trace_example_basic",
-      "$dir_pw_trace_tokenized:trace_tokenized_example_basic",
-      "$dir_pw_trace_tokenized:trace_tokenized_example_filter",
-      "$dir_pw_trace_tokenized:trace_tokenized_example_rpc",
-      "$dir_pw_trace_tokenized:trace_tokenized_example_trigger",
-    ]
+    # Trace examples currently only support running on non-windows host
+    if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
+        pw_toolchain_SCOPE.is_host_toolchain && host_os != "win") {
+      deps += [
+        "$dir_pw_trace:trace_example_basic",
+        "$dir_pw_trace_tokenized:trace_tokenized_example_basic",
+        "$dir_pw_trace_tokenized:trace_tokenized_example_filter",
+        "$dir_pw_trace_tokenized:trace_tokenized_example_rpc",
+        "$dir_pw_trace_tokenized:trace_tokenized_example_trigger",
+      ]
+    }
   }
 }
 

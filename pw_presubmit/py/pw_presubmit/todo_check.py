@@ -16,7 +16,7 @@
 import logging
 from pathlib import Path
 import re
-from typing import Sequence
+from typing import Iterable, Pattern, Sequence, Union
 
 from pw_presubmit import PresubmitContext, filter_paths
 
@@ -84,11 +84,11 @@ def _process_file(ctx: PresubmitContext, todo_pattern: re.Pattern, path: Path):
 
 
 def create(todo_pattern: re.Pattern = BUGS_ONLY,
-           exclude: Sequence[str] = EXCLUDE):
+           exclude: Iterable[Union[Pattern[str], str]] = EXCLUDE):
     """Create a todo_check presubmit step that uses the given pattern."""
     @filter_paths(exclude=exclude)
     def todo_check(ctx: PresubmitContext):
-        """Presubmit check that makes sure todo lines match the pattern."""
+        """Check that TODO lines are valid."""  # todo-check: ignore
         for path in ctx.paths:
             _process_file(ctx, todo_pattern, path)
 

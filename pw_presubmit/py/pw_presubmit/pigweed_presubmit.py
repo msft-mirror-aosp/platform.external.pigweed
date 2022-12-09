@@ -144,7 +144,7 @@ def gn_full_build_check(ctx: PresubmitContext) -> None:
         'python.lint',
         'docs',
         'fuzzers',
-        'pw_env_setup:pypi_pigweed_python_source_tree',
+        'pigweed_pypi_distribution',
     ]
 
     # TODO(b/234645359): Re-enable on Windows when compatibility tests build.
@@ -182,7 +182,7 @@ def gn_combined_build_check(ctx: PresubmitContext) -> None:
         'python.lint',
         'docs',
         'fuzzers',
-        'pw_env_setup:pypi_pigweed_python_source_tree',
+        'pigweed_pypi_distribution',
     ]
 
     # TODO(b/234645359): Re-enable on Windows when compatibility tests build.
@@ -336,6 +336,17 @@ def gn_teensy_build(ctx: PresubmitContext):
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
+def gn_pico_build(ctx: PresubmitContext):
+    build.install_package(ctx, 'pico_sdk')
+    build.gn_gen(
+        ctx,
+        PICO_SRC_DIR='"{}"'.format(str(ctx.package_root / 'pico_sdk')),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    )
+    build.ninja(ctx, 'pi_pico')
+
+
+@_BUILD_FILE_FILTER.apply_to_check()
 def gn_software_update_build(ctx: PresubmitContext):
     build.install_package(ctx, 'nanopb')
     build.install_package(ctx, 'protobuf')
@@ -366,6 +377,7 @@ def gn_pw_system_demo_build(ctx: PresubmitContext):
     build.install_package(ctx, 'freertos')
     build.install_package(ctx, 'nanopb')
     build.install_package(ctx, 'stm32cube_f4')
+    build.install_package(ctx, 'pico_sdk')
     build.gn_gen(
         ctx,
         dir_pw_third_party_freertos='"{}"'.format(ctx.package_root /
@@ -373,6 +385,7 @@ def gn_pw_system_demo_build(ctx: PresubmitContext):
         dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root / 'nanopb'),
         dir_pw_third_party_stm32cube_f4='"{}"'.format(ctx.package_root /
                                                       'stm32cube_f4'),
+        PICO_SRC_DIR='"{}"'.format(str(ctx.package_root / 'pico_sdk')),
     )
     build.ninja(ctx, 'pw_system_demo')
 
@@ -442,24 +455,10 @@ _TARGETS_THAT_DO_NOT_BUILD_WITH_BAZEL = (
     '-//pw_boot/...:all',
     '-//pw_chrono/py/...:all',
     '-//pw_chrono:chrono_proto_pb2',
-    '-//pw_cpu_exception_cortex_m/...:all',
     '-//pw_crypto/...:all',  # TODO(b/236321905) Remove when passing.
     '-//pw_system/...:all',
     '-//pw_thread/py/...:all',
-    '-//pw_thread:thread_proto_py_pb2',
-    '-//pw_thread:thread_proto_py_pb2_genproto',
-    '-//pw_thread:thread_snapshot_service_py_pb2',
-    '-//pw_thread:thread_snapshot_service_py_pb2_genproto',
-    '-//pw_thread_embos/...:all',
-    '-//pw_thread_freertos/...:all',
-    '-//pw_trace_tokenized/...:all',
     '-//pw_work_queue/...:all',
-    '-//targets/arduino/...:all',
-    '-//targets/emcraft_sf2_som/...:all',
-    '-//targets/lm3s6965evb_qemu/...:all',
-    '-//targets/mimxrt595_evk/...:all',
-    '-//targets/rp2040/...:all',
-    '-//targets/stm32f429i_disc1/...:all',
     '-//targets/stm32f429i_disc1_stm32cube/...:all',
     '-//third_party/boringssl/...:all',
     # keep-sorted: end
@@ -473,7 +472,7 @@ _TARGETS_THAT_DO_NOT_TEST_WITH_BAZEL = _TARGETS_THAT_DO_NOT_BUILD_WITH_BAZEL
 @filter_paths(endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl',
                         'BUILD'))
 def bazel_test(ctx: PresubmitContext) -> None:
-    """Runs bazel test on each bazel compatible module"""
+    """Runs bazel test on each bazel compatible module."""
     build.bazel(ctx, 'test', '--test_output=errors', '--', '//...',
                 *_TARGETS_THAT_DO_NOT_TEST_WITH_BAZEL)
 
@@ -681,11 +680,10 @@ _BAZEL_SOURCES_IN_BUILD = tuple(format_code.C_FORMAT.extensions)
 _GN_SOURCES_IN_BUILD = ('setup.cfg', '.toml', '.rst', '.py',
                         *_BAZEL_SOURCES_IN_BUILD)
 
-SOURCE_FILES_FILTER = presubmit.FileFilter(endswith=_GN_SOURCES_IN_BUILD,
-                                           suffix=('.bazel', '.bzl', '.gn',
-                                                   '.gni'),
-                                           exclude=(r'zephyr.*/',
-                                                    r'android.*/'))
+SOURCE_FILES_FILTER = presubmit.FileFilter(
+    endswith=_GN_SOURCES_IN_BUILD,
+    suffix=('.bazel', '.bzl', '.gn', '.gni'),
+    exclude=(r'zephyr.*/', r'android.*/', r'^pyproject.toml'))
 
 
 @SOURCE_FILES_FILTER.apply_to_check()
@@ -788,7 +786,8 @@ def commit_message_format(_: PresubmitContext):
         errors += 1
 
     # Check that the first line matches the expected pattern.
-    match = re.match(r'^[\w/]+(?:{[\w ,]+})?: (?P<desc>.+)$', lines[0])
+    match = re.match(r'^[\w*/]+(?:{[\w* ,]+})?[\w*/]*: (?P<desc>.+)$',
+                     lines[0])
     if not match:
         _LOG.warning('The first line does not match the expected format')
         _LOG.warning(
@@ -878,6 +877,7 @@ _EXCLUDE_FROM_TODO_CHECK = (
 
 @filter_paths(exclude=_EXCLUDE_FROM_TODO_CHECK)
 def todo_check_with_exceptions(ctx: PresubmitContext):
+    """Check that non-legacy TODO lines are valid."""  # todo-check: ignore
     todo_check.create(todo_check.BUGS_OR_USERNAMES)(ctx)
 
 
@@ -920,6 +920,7 @@ OTHER_CHECKS = (
 MISC = (
     # keep-sorted: start
     gn_nanopb_build,
+    gn_pico_build,
     gn_pw_system_demo_build,
     gn_teensy_build,
     # keep-sorted: end
