@@ -36,22 +36,24 @@ import random
 from google.protobuf import text_format
 
 import test_fixture
-from test_fixture import (TransferConfig, TransferIntegrationTest,
-                          TransferIntegrationTestHarness)
+from test_fixture import (
+    TransferConfig,
+    TransferIntegrationTest,
+    TransferIntegrationTestHarness,
+)
 from pigweed.pw_transfer.integration_test import config_pb2
+
+_ALL_LANGUAGES = ("cpp", "java", "python")
 
 
 class LargeReadTransferIntegrationTest(TransferIntegrationTest):
     # Each set of transfer tests uses a different client/server port pair to
     # allow tests to be run in parallel.
-    HARNESS_CONFIG = TransferIntegrationTestHarness.Config(server_port=3306,
-                                                           client_port=3307)
+    HARNESS_CONFIG = TransferIntegrationTestHarness.Config(
+        server_port=3306, client_port=3307
+    )
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
+    @parameterized.expand(_ALL_LANGUAGES)
     def test_1mb_read_dropped_data(self, client_type):
         server_config = config_pb2.ServerConfig(
             chunk_size_bytes=216,
@@ -77,18 +79,16 @@ class LargeReadTransferIntegrationTest(TransferIntegrationTest):
                 { rate_limiter: {rate: 50000} },
                 { hdlc_packetizer: {} },
                 { data_dropper: {rate: 0.01, seed: 1649963713563718436} }
-        ]""", config_pb2.ProxyConfig())
+        ]""",
+            config_pb2.ProxyConfig(),
+        )
 
         payload = random.Random(1649963713563718437).randbytes(1 * 1024 * 1024)
         resource_id = 12
         config = TransferConfig(server_config, client_config, proxy_config)
         self.do_single_read(client_type, config, resource_id, payload)
 
-    @parameterized.expand([
-        ("cpp"),
-        ("java"),
-        ("python"),
-    ])
+    @parameterized.expand(_ALL_LANGUAGES)
     def test_1mb_read_reordered_data(self, client_type):
         server_config = config_pb2.ServerConfig(
             chunk_size_bytes=216,
@@ -114,7 +114,9 @@ class LargeReadTransferIntegrationTest(TransferIntegrationTest):
                 { rate_limiter: {rate: 50000} },
                 { hdlc_packetizer: {} },
                 { data_transposer: {rate: 0.005, timeout: 0.5, seed: 1649963713563718435} }
-        ]""", config_pb2.ProxyConfig())
+        ]""",
+            config_pb2.ProxyConfig(),
+        )
 
         payload = random.Random(1649963713563718437).randbytes(1 * 1024 * 1024)
         resource_id = 12

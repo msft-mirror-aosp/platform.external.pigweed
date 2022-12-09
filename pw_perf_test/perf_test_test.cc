@@ -16,6 +16,19 @@
 
 #include "gtest/gtest.h"
 
+void TestingFunction(pw::perf_test::State& state) {
+  [[maybe_unused]] int p = 0;
+  while (state.KeepRunning()) {
+    ++p;
+  }
+}
+
 namespace pw::perf_test {
-namespace {}  // namespace
+namespace {
+
+TEST(MacroTesting, RegisterTest) {
+  PW_PERF_TEST(TestingComponentRegistration, TestingFunction);
+}
+
+}  // namespace
 }  // namespace pw::perf_test
