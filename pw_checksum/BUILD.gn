@@ -18,6 +18,7 @@ import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/module_config.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_perf_test/perf_test.gni")
 import("$dir_pw_unit_test/test.gni")
 
 declare_args() {
@@ -54,6 +55,9 @@ pw_source_set("pw_checksum") {
     dir_pw_bytes,
     dir_pw_span,
   ]
+
+  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test_group("tests") {
@@ -72,6 +76,9 @@ pw_test("crc16_ccitt_test") {
     "crc16_ccitt_test.cc",
     "crc16_ccitt_test_c.c",
   ]
+
+  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("crc32_test") {
@@ -83,6 +90,22 @@ pw_test("crc32_test") {
     "crc32_test.cc",
     "crc32_test_c.c",
   ]
+
+  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
+}
+
+pw_perf_test("crc32_perf_tests") {
+  enable_if = pw_perf_test_TIMER_INTERFACE_BACKEND != ""
+  deps = [
+    ":pw_checksum",
+    dir_pw_bytes,
+  ]
+  sources = [ "crc32_perf_test.cc" ]
+}
+
+group("perf_tests") {
+  deps = [ ":crc32_perf_tests" ]
 }
 
 pw_size_diff("size_report") {

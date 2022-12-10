@@ -114,7 +114,6 @@ pw_cc_library(
         ":internal_packet_cc.pwpb",
         "//pw_assert",
         "//pw_bytes",
-        "//pw_containers",
         "//pw_containers:intrusive_list",
         "//pw_function",
         "//pw_log",
@@ -123,6 +122,7 @@ pw_cc_library(
         "//pw_status",
         "//pw_sync:lock_annotations",
         "//pw_sync:mutex",
+        "//pw_toolchain:no_destructor",
     ],
 )
 
@@ -257,6 +257,20 @@ pw_cc_test(
     deps = [
         ":internal_test_utils",
         ":pw_rpc",
+    ],
+)
+
+pw_cc_test(
+    name = "callback_test",
+    srcs = ["callback_test.cc"],
+    deps = [
+        ":pw_rpc",
+        ":pw_rpc_test_cc.raw_rpc",
+        "//pw_rpc/raw:client_testing",
+        "//pw_sync:binary_semaphore",
+        "//pw_thread:sleep",
+        "//pw_thread:test_threads_header",
+        "//pw_thread_stl:test_threads",
     ],
 )
 

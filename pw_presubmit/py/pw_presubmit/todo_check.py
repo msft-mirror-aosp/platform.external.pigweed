@@ -16,7 +16,7 @@
 import logging
 from pathlib import Path
 import re
-from typing import Sequence
+from typing import Iterable, Pattern, Sequence, Union
 
 from pw_presubmit import PresubmitContext, filter_paths
 
@@ -41,7 +41,8 @@ EXCLUDE: Sequence[str] = (
 # todo-check: disable
 BUGS_ONLY = re.compile(r'\bTODO\(b/\d+(?:, ?b/\d+)*\).*\w')
 BUGS_OR_USERNAMES = re.compile(
-    r'\bTODO\((?:b/\d+|[a-z]+)(?:, ?(?:b/\d+|[a-z]+))*\).*\w')
+    r'\bTODO\((?:b/\d+|[a-z]+)(?:, ?(?:b/\d+|[a-z]+))*\).*\w'
+)
 _TODO = re.compile(r'\bTODO\b')
 # todo-check: enable
 
@@ -83,12 +84,15 @@ def _process_file(ctx: PresubmitContext, todo_pattern: re.Pattern, path: Path):
             _LOG.debug('File %s is not a text file', path)
 
 
-def create(todo_pattern: re.Pattern = BUGS_ONLY,
-           exclude: Sequence[str] = EXCLUDE):
+def create(
+    todo_pattern: re.Pattern = BUGS_ONLY,
+    exclude: Iterable[Union[Pattern[str], str]] = EXCLUDE,
+):
     """Create a todo_check presubmit step that uses the given pattern."""
+
     @filter_paths(exclude=exclude)
     def todo_check(ctx: PresubmitContext):
-        """Presubmit check that makes sure todo lines match the pattern."""
+        """Check that TODO lines are valid."""  # todo-check: ignore
         for path in ctx.paths:
             _process_file(ctx, todo_pattern, path)
 

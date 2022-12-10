@@ -18,14 +18,21 @@ import("$dir_pw_build/facade.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_chrono/backend.gni")
 import("$dir_pw_docgen/docs.gni")
-import("$dir_pw_perf_test/backend.gni")
+import("$dir_pw_perf_test/perf_test.gni")
 import("$dir_pw_unit_test/test.gni")
 
 config("public_include_path") {
-  include_dirs = [
-    "public",
-    "chrono_public_overrides",
-  ]
+  include_dirs = [ "public" ]
+  visibility = [ ":*" ]
+}
+
+config("arm_config") {
+  include_dirs = [ "arm_cortex_cyccnt_public_overrides" ]
+  visibility = [ ":*" ]
+}
+
+config("chrono_config") {
+  include_dirs = [ "chrono_public_overrides" ]
   visibility = [ ":*" ]
 }
 
@@ -34,8 +41,15 @@ pw_test_group("tests") {
     ":perf_test_test",
     ":timer_facade_test",
     ":chrono_timer_test",
+    ":state_test",
   ]
 }
+
+group("perf_test_tests_test") {
+  deps = [ ":generic_perf_test" ]
+}
+
+# Timing interface variables
 
 pw_source_set("duration_unit") {
   public = [ "public/pw_perf_test/internal/duration_unit.h" ]
@@ -50,12 +64,53 @@ pw_facade("timer_interface") {
   visibility = [ ":*" ]
 }
 
+# Event Handler Configurations
+
+pw_source_set("event_handler") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_perf_test/event_handler.h" ]
+}
+
 pw_source_set("pw_perf_test") {
   public_configs = [ ":public_include_path" ]
   public = [ "public/pw_perf_test/perf_test.h" ]
-  public_deps = [ ":timer_interface" ]
+  public_deps = [
+    ":event_handler",
+    ":timer_interface",
+    dir_pw_assert,
+  ]
+  deps = [ dir_pw_log ]
   sources = [ "perf_test.cc" ]
 }
+
+pw_source_set("googletest_style_event_handler") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_perf_test/googletest_style_event_handler.h" ]
+}
+
+pw_source_set("log_perf_handler") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_perf_test/log_perf_handler.h" ]
+  public_deps = [
+    ":event_handler",
+    ":googletest_style_event_handler",
+    ":pw_perf_test",
+  ]
+  deps = [ dir_pw_log ]
+  sources = [ "log_perf_handler.cc" ]
+}
+
+pw_source_set("log_perf_handler_main") {
+  public_deps = [ ":log_perf_handler" ]
+  sources = [ "log_perf_handler_main.cc" ]
+}
+
+pw_perf_test("generic_perf_test") {
+  enable_if = pw_perf_test_TIMER_INTERFACE_BACKEND != ""
+  sources = [ "performance_test_generic.cc" ]
+}
+
+# Declaring module tests
 
 pw_test("perf_test_test") {
   enable_if = pw_perf_test_TIMER_INTERFACE_BACKEND != ""
@@ -73,11 +128,19 @@ pw_test("chrono_timer_test") {
   enable_if = pw_chrono_SYSTEM_CLOCK_BACKEND != ""
   sources = [ "chrono_test.cc" ]
   public_deps = [
-    ":timer_interface",
+    ":chrono_timer",
     "$dir_pw_chrono:system_timer",
     "$dir_pw_thread:sleep",
   ]
 }
+
+pw_test("state_test") {
+  enable_if = pw_perf_test_TIMER_INTERFACE_BACKEND != ""
+  sources = [ "state_test.cc" ]
+  public_deps = [ ":pw_perf_test" ]
+}
+
+# Documentation declaration
 
 pw_doc_group("docs") {
   sources = [ "docs.rst" ]
@@ -85,17 +148,40 @@ pw_doc_group("docs") {
 
 # Chrono Implementation
 pw_source_set("pw_perf_test_chrono") {
-  public_configs = [ ":public_overrides_include_path" ]
+  public_configs = [ ":chrono_config" ]
   public = [ "chrono_public_overrides/pw_perf_test_timer_backend/timer.h" ]
   public_deps = [ ":chrono_timer" ]
 }
 
 pw_source_set("chrono_timer") {
-  public_configs = [ ":public_include_path" ]
+  public_configs = [
+    ":public_include_path",
+    ":chrono_config",
+  ]
   public = [ "public/pw_perf_test/internal/chrono_timer_interface.h" ]
   public_deps = [
     ":duration_unit",
     "$dir_pw_chrono:system_clock",
   ]
   visibility = [ ":*" ]
+}
+
+# ARM Cortex Implementation
+
+pw_source_set("arm_cortex_timer") {
+  public_configs = [
+    ":public_include_path",
+    ":arm_config",
+  ]
+  public = [ "public/pw_perf_test/internal/cyccnt_timer_interface.h" ]
+  public_deps = [ ":duration_unit" ]
+  visibility = [ ":*" ]
+}
+
+pw_source_set("pw_perf_test_arm_cortex") {
+  public_configs = [ ":arm_config" ]
+  public = [
+    "arm_cortex_cyccnt_public_overrides/pw_perf_test_timer_backend/timer.h",
+  ]
+  public_deps = [ ":arm_cortex_timer" ]
 }
