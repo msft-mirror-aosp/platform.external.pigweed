@@ -16,10 +16,19 @@
 
 #include "gtest/gtest.h"
 
+void TestingFunction(pw::perf_test::State& state) {
+  [[maybe_unused]] int p = 0;
+  while (state.KeepRunning()) {
+    ++p;
+  }
+}
+
 namespace pw::perf_test {
 namespace {
 
-TEST(PerfTest, GeneratesCorrectly) { EXPECT_EQ(magic, 42); }
+TEST(MacroTesting, RegisterTest) {
+  PW_PERF_TEST(TestingComponentRegistration, TestingFunction);
+}
 
 }  // namespace
 }  // namespace pw::perf_test

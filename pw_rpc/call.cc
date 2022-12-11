@@ -22,6 +22,8 @@
 
 namespace pw::rpc::internal {
 
+using pwpb::PacketType;
+
 // Creates an active server-side Call.
 Call::Call(const LockedCallContext& context, MethodType type)
     : Call(context.server().ClaimLocked(),
@@ -64,6 +66,21 @@ Call::Call(LockedEndpoint& endpoint_ref,
       client_stream_state_(HasClientStream(type) ? kClientStreamActive
                                                  : kClientStreamInactive) {
   endpoint().RegisterCall(*this);
+}
+
+Call::~Call() {
+  // Note: this explicit deregistration is necessary to ensure that
+  // modifications to the endpoint call list occur while holding rpc_lock.
+  // Removing this explicit registration would result in unsynchronized
+  // modification of the endpoint call list via the destructor of the
+  // superclass `IntrusiveList<Call>::Item`.
+  LockGuard lock(rpc_lock());
+
+  // This `active_locked()` guard is necessary to ensure that `endpoint()` is
+  // still valid.
+  if (active_locked()) {
+    endpoint().UnregisterCall(*this);
+  }
 }
 
 void Call::MoveFrom(Call& other) {
