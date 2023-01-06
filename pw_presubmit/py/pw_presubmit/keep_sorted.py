@@ -24,6 +24,7 @@ import sys
 from typing import (
     Callable,
     Collection,
+    Dict,
     List,
     Optional,
     Pattern,
@@ -33,7 +34,9 @@ from typing import (
 )
 
 import pw_cli
-from . import cli, git_repo, presubmit, tools
+from . import cli, format_code, git_repo, presubmit, tools
+
+DEFAULT_PATH = Path('out', 'presubmit', 'keep_sorted')
 
 _COLOR = pw_cli.color.colors()
 _LOG: logging.Logger = logging.getLogger(__name__)
@@ -61,6 +64,8 @@ keep-sorted: end
 class KeepSortedContext:
     paths: List[Path]
     fix: bool
+    output_dir: Path
+    failure_summary_log: Path
     failed: bool = False
 
     def fail(
@@ -94,17 +99,18 @@ class KeepSortedParsingError(presubmit.PresubmitFailure):
 class _Line:
     value: str = ''
     sticky_comments: Sequence[str] = ()
+    continuations: Sequence[str] = ()
 
     @property
     def full(self):
-        return ''.join((*self.sticky_comments, self.value))
+        return ''.join((*self.sticky_comments, self.value, *self.continuations))
 
     def __lt__(self, other):
         if not isinstance(other, _Line):
             return NotImplemented
-        if self.value != other.value:
-            return self.value < other.value
-        return self.sticky_comments < other.sticky_comments
+        left = (self.value, self.continuations, self.sticky_comments)
+        right = (other.value, other.continuations, other.sticky_comments)
+        return left < right
 
 
 @dataclasses.dataclass
@@ -124,37 +130,54 @@ class _FileSorter:
         self,
         ctx: Union[presubmit.PresubmitContext, KeepSortedContext],
         path: Path,
+        errors: Optional[Dict[Path, Sequence[str]]] = None,
     ):
         self.ctx = ctx
         self.path: Path = path
         self.all_lines: List[str] = []
         self.changed: bool = False
+        self._errors: Dict[Path, Sequence[str]] = {}
+        if errors is not None:
+            self._errors = errors
 
     def _process_block(self, block: _Block) -> Sequence[str]:
         raw_lines: List[str] = block.lines
         lines: List[_Line] = []
 
-        if block.sticky_comments:
-            comments: List[str] = []
-            for raw_line in raw_lines:
-                if raw_line.lstrip().startswith(block.sticky_comments):
-                    _LOG.debug('found sticky %s', raw_line.strip())
-                    comments.append(raw_line)
-                else:
-                    _LOG.debug('non-sticky %s', raw_line.strip())
-                    line = _Line(raw_line, tuple(comments))
-                    _LOG.debug('line %s', line)
-                    lines.append(line)
-                    comments = []
-            if comments:
-                self.ctx.fail(
-                    f'sticky comment at end of block: {comments[0].strip()}',
-                    self.path,
-                    block.start_line_number,
-                )
+        prefix = lambda x: len(x) - len(x.lstrip())
 
-        else:
-            lines = [_Line(x) for x in block.lines]
+        prev_prefix: Optional[int] = None
+        comments: List[str] = []
+        for raw_line in raw_lines:
+            curr_prefix: int = prefix(raw_line)
+            _LOG.debug('prev_prefix %r', prev_prefix)
+            _LOG.debug('curr_prefix %r', curr_prefix)
+            # A "sticky" comment is a comment in the middle of a list of
+            # non-comments. The keep-sorted check keeps this comment with the
+            # following item in the list. For more details see
+            # https://pigweed.dev/pw_presubmit/#sorted-blocks.
+            if block.sticky_comments and raw_line.lstrip().startswith(
+                block.sticky_comments
+            ):
+                _LOG.debug('found sticky %r', raw_line)
+                comments.append(raw_line)
+            elif prev_prefix is not None and curr_prefix > prev_prefix:
+                _LOG.debug('found continuation %r', raw_line)
+                lines[-1].continuations = (*lines[-1].continuations, raw_line)
+                _LOG.debug('modified line %s', lines[-1])
+            else:
+                _LOG.debug('non-sticky %r', raw_line)
+                line = _Line(raw_line, tuple(comments))
+                _LOG.debug('line %s', line)
+                lines.append(line)
+                comments = []
+                prev_prefix = curr_prefix
+        if comments:
+            self.ctx.fail(
+                f'sticky comment at end of block: {comments[0].strip()}',
+                self.path,
+                block.start_line_number,
+            )
 
         if not block.allow_dupes:
             lines = list({x.full: x for x in lines}.values())
@@ -192,26 +215,19 @@ class _FileSorter:
         for line in sorted_lines:
             raw_sorted_lines.extend(line.sticky_comments)
             raw_sorted_lines.append(line.value)
+            raw_sorted_lines.extend(line.continuations)
 
         if block.lines != raw_sorted_lines:
             self.changed = True
-            self.ctx.fail(
-                'keep-sorted block is not sorted',
-                self.path,
-                block.start_line_number,
-            )
-            _LOG.info('  %s', block.start_line.rstrip())
             diff = difflib.Differ()
-            for dline in diff.compare(
-                [x.rstrip() for x in block.lines],
-                [x.rstrip() for x in raw_sorted_lines],
-            ):
-                if dline.startswith('-'):
-                    dline = _COLOR.red(dline)
-                elif dline.startswith('+'):
-                    dline = _COLOR.green(dline)
-                _LOG.info(dline)
-            _LOG.info('  %s', block.end_line.rstrip())
+            diff_lines = ''.join(diff.compare(block.lines, raw_sorted_lines))
+
+            self._errors.setdefault(self.path, [])
+            self._errors[self.path] = (
+                f'@@ {block.start_line_number},{len(block.lines)+2} '
+                f'{block.start_line_number},{len(raw_sorted_lines)+2} @@\n'
+                f'  {block.start_line}{diff_lines}  {block.end_line}'
+            )
 
         return raw_sorted_lines
 
@@ -339,37 +355,54 @@ def _print_howto_fix(paths: Sequence[Path]) -> None:
 
 def _process_files(
     ctx: Union[presubmit.PresubmitContext, KeepSortedContext]
-) -> Sequence[Path]:
+) -> Dict[Path, Sequence[str]]:
     fix = getattr(ctx, 'fix', False)
-    changed_paths = []
+    errors: Dict[Path, Sequence[str]] = {}
 
     for path in ctx.paths:
         if path.is_symlink() or path.is_dir():
             continue
 
         try:
-            sorter = _FileSorter(ctx, path)
+            sorter = _FileSorter(ctx, path, errors)
 
             sorter.sort()
             if sorter.changed:
-                changed_paths.append(path)
                 if fix:
                     sorter.write()
 
         except KeepSortedParsingError as exc:
             ctx.fail(str(exc))
 
-    return changed_paths
+    if not errors:
+        return errors
+
+    ctx.fail(f'Found {len(errors)} files with keep-sorted errors:')
+
+    with ctx.failure_summary_log.open('w') as outs:
+        for path, diffs in errors.items():
+            diff = ''.join(
+                [
+                    f'--- {path} (original)\n',
+                    f'+++ {path} (sorted)\n',
+                    *diffs,
+                ]
+            )
+
+            outs.write(diff)
+            print(format_code.colorize_diff(diff))
+
+    return errors
 
 
 @presubmit.check(name='keep_sorted')
 def presubmit_check(ctx: presubmit.PresubmitContext) -> None:
     """Presubmit check that ensures specified lists remain sorted."""
 
-    changed_paths = _process_files(ctx)
+    errors = _process_files(ctx)
 
-    if changed_paths:
-        _print_howto_fix(changed_paths)
+    if errors:
+        _print_howto_fix(list(errors.keys()))
 
 
 def parse_args() -> argparse.Namespace:
@@ -381,6 +414,12 @@ def parse_args() -> argparse.Namespace:
         '--fix', action='store_true', help='Apply fixes in place.'
     )
 
+    parser.add_argument(
+        '--output-directory',
+        type=Path,
+        help=f'Output directory (default: {"<repo root>" / DEFAULT_PATH})',
+    )
+
     return parser.parse_args()
 
 
@@ -389,6 +428,7 @@ def keep_sorted_in_repo(
     fix: bool,
     exclude: Collection[Pattern[str]],
     base: str,
+    output_directory: Optional[Path],
 ) -> int:
     """Checks or fixes keep-sorted blocks for files in a Git repo."""
 
@@ -406,8 +446,8 @@ def keep_sorted_in_repo(
         base = 'HEAD~1'
 
     # If this is a Git repo, list the original paths with git ls-files or diff.
+    project_root = Path(pw_cli.env.pigweed_environment().PW_PROJECT_ROOT)
     if repo:
-        project_root = Path(pw_cli.env.pigweed_environment().PW_PROJECT_ROOT)
         _LOG.info(
             'Sorting %s',
             git_repo.describe_files(
@@ -426,11 +466,22 @@ def keep_sorted_in_repo(
         )
         return 1
 
-    ctx = KeepSortedContext(paths=files, fix=fix)
-    changed_paths = _process_files(ctx)
+    if not output_directory:
+        if repo:
+            output_directory = repo / DEFAULT_PATH
+        else:
+            output_directory = project_root / DEFAULT_PATH
 
-    if not fix and changed_paths:
-        _print_howto_fix(changed_paths)
+    ctx = KeepSortedContext(
+        paths=files,
+        fix=fix,
+        output_dir=output_directory,
+        failure_summary_log=output_directory / 'failure-summary.log',
+    )
+    errors = _process_files(ctx)
+
+    if not fix and errors:
+        _print_howto_fix(list(errors.keys()))
 
     return int(ctx.failed)
 

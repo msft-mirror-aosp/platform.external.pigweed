@@ -136,22 +136,27 @@ class PwpbUnaryResponseClientCall : public UnaryResponseClientCall {
 
     UnaryResponseClientCall::set_on_completed_locked(
         [this](ConstByteSpan payload, Status status) {
-          if (pwpb_on_completed_) {
+          rpc_lock().lock();
+          auto pwpb_on_completed_local = std::move(pwpb_on_completed_);
+          rpc_lock().unlock();
+
+          if (pwpb_on_completed_local) {
             Response response{};
             const Status decode_status =
                 serde().DecodeResponse(payload, response);
             if (decode_status.ok()) {
-              pwpb_on_completed_(response, status);
+              pwpb_on_completed_local(response, status);
             } else {
               rpc_lock().lock();
-              CallOnError(Status::DataLoss());
+              HandleError(Status::DataLoss());
             }
           }
         });
   }
 
   const PwpbMethodSerde* serde_;
-  Function<void(const Response&, Status)> pwpb_on_completed_;
+  Function<void(const Response&, Status)> pwpb_on_completed_
+      PW_GUARDED_BY(rpc_lock());
 };
 
 // internal::PwpbStreamResponseClientCall extends
@@ -269,7 +274,7 @@ class PwpbStreamResponseClientCall : public StreamResponseClientCall {
           pwpb_on_next_(response);
         } else {
           rpc_lock().lock();
-          CallOnError(Status::DataLoss());
+          HandleError(Status::DataLoss());
         }
       }
     });
