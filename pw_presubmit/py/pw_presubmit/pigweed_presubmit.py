@@ -114,53 +114,13 @@ def gn_clang_build(ctx: PresubmitContext):
     build.ninja(ctx, *build_targets)
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_gcc_build(ctx: PresubmitContext):
-    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
-    build.ninja(ctx, *_at_all_optimization_levels('host_gcc'))
-
-
 _HOST_COMPILER = 'gcc' if sys.platform == 'win32' else 'clang'
-
-
-def gn_host_build(ctx: PresubmitContext):
-    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
-    build.ninja(ctx, *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'))
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_quick_build_check(ctx: PresubmitContext):
     """Checks the state of the GN build by running gn gen and gn check."""
     build.gn_gen(ctx)
-
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_full_build_check(ctx: PresubmitContext) -> None:
-    build_targets = [
-        *_at_all_optimization_levels('stm32f429i'),
-        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-        'python.tests',
-        'python.lint',
-        'docs',
-        'fuzzers',
-        'pigweed_pypi_distribution',
-    ]
-
-    # TODO(b/234645359): Re-enable on Windows when compatibility tests build.
-    if sys.platform != 'win32':
-        build_targets.append('cpp14_compatibility')
-        build_targets.append('cpp20_compatibility')
-
-    # TODO(b/240982565): SocketStream currently requires Linux.
-    if sys.platform.startswith('linux'):
-        build_targets.append('integration_tests')
-
-    build.gn_gen(
-        ctx,
-        pw_unit_test_FACADE_TESTS_ENABLED=True,
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build.ninja(ctx, *build_targets)
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
@@ -173,9 +133,7 @@ def gn_full_qemu_check(ctx: PresubmitContext):
     )
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_combined_build_check(ctx: PresubmitContext) -> None:
-    """Run most host and device (QEMU) tests."""
+def _gn_combined_build_check_targets() -> Sequence[str]:
     build_targets = [
         *_at_all_optimization_levels('stm32f429i'),
         *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
@@ -209,8 +167,16 @@ def gn_combined_build_check(ctx: PresubmitContext) -> None:
     if sys.platform.startswith('linux'):
         build_targets.append('integration_tests')
 
-    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
-    build.ninja(ctx, *build_targets)
+    return build_targets
+
+
+gn_combined_build_check = build.GnGenNinja(
+    name='gn_combined_build_check',
+    doc='Run most host and device (QEMU) tests.',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS),
+    ninja_targets=_gn_combined_build_check_targets(),
+)
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
@@ -230,161 +196,145 @@ def stm32f429i(ctx: PresubmitContext):
         build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_boringssl_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'boringssl')
-    build.gn_gen(
-        ctx,
-        dir_pw_third_party_boringssl='"{}"'.format(
-            ctx.package_root / 'boringssl'
+gn_nanopb_build = build.GnGenNinja(
+    name='gn_nanopb_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('nanopb',),
+    gn_args=dict(
+        dir_pw_third_party_nanopb=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'nanopb'
         ),
         pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build.ninja(
-        ctx,
+    ),
+    ninja_targets=(
         *_at_all_optimization_levels('stm32f429i'),
         *_at_all_optimization_levels('host_clang'),
-    )
+    ),
+)
 
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_nanopb_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'nanopb')
-    build.gn_gen(
-        ctx,
-        dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root / 'nanopb'),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build.ninja(
-        ctx,
-        *_at_all_optimization_levels('stm32f429i'),
-        *_at_all_optimization_levels('host_clang'),
-    )
-
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_crypto_mbedtls_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'mbedtls')
-    build.gn_gen(
-        ctx,
-        dir_pw_third_party_mbedtls='"{}"'.format(ctx.package_root / 'mbedtls'),
-        pw_crypto_SHA256_BACKEND='"{}"'.format(
+gn_crypto_mbedtls_build = build.GnGenNinja(
+    name='gn_crypto_mbedtls_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('mbedtls',),
+    gn_args={
+        'dir_pw_third_party_mbedtls': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'mbedtls'
+        ),
+        'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:sha256_mbedtls'
         ),
-        pw_crypto_ECDSA_BACKEND='"{}"'.format(
+        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:ecdsa_mbedtls'
         ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build_targets = [*_at_all_optimization_levels(f'host_{_HOST_COMPILER}')]
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=(
+        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+        # TODO(b/240982565): SocketStream currently requires Linux.
+        *(('integration_tests',) if sys.platform.startswith('linux') else ()),
+    ),
+)
 
-    # TODO(b/240982565): SocketStream currently requires Linux.
-    if sys.platform.startswith('linux'):
-        build_targets.append('integration_tests')
-
-    build.ninja(ctx, *build_targets)
-
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_crypto_boringssl_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'boringssl')
-    build.gn_gen(
-        ctx,
-        dir_pw_third_party_boringssl='"{}"'.format(
+gn_crypto_boringssl_build = build.GnGenNinja(
+    name='gn_crypto_boringssl_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('boringssl',),
+    gn_args={
+        'dir_pw_third_party_boringssl': lambda ctx: '"{}"'.format(
             ctx.package_root / 'boringssl'
         ),
-        pw_crypto_SHA256_BACKEND='"{}"'.format(
+        'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:sha256_boringssl'
         ),
-        pw_crypto_ECDSA_BACKEND='"{}"'.format(
+        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:ecdsa_boringssl'
         ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build_targets = [*_at_all_optimization_levels(f'host_{_HOST_COMPILER}')]
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=(
+        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+        # TODO(b/240982565): SocketStream currently requires Linux.
+        *(('integration_tests',) if sys.platform.startswith('linux') else ()),
+    ),
+)
 
-    # TODO(b/240982565): SocketStream currently requires Linux.
-    if sys.platform.startswith('linux'):
-        build_targets.append('integration_tests')
-
-    build.ninja(ctx, *build_targets)
-
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_crypto_micro_ecc_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'micro-ecc')
-    build.gn_gen(
-        ctx,
-        dir_pw_third_party_micro_ecc='"{}"'.format(
+gn_crypto_micro_ecc_build = build.GnGenNinja(
+    name='gn_crypto_micro_ecc_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('micro-ecc',),
+    gn_args={
+        'dir_pw_third_party_micro_ecc': lambda ctx: '"{}"'.format(
             ctx.package_root / 'micro-ecc'
         ),
-        pw_crypto_ECDSA_BACKEND='"{}"'.format(
+        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:ecdsa_uecc'
         ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build_targets = [*_at_all_optimization_levels(f'host_{_HOST_COMPILER}')]
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=(
+        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+        # TODO(b/240982565): SocketStream currently requires Linux.
+        *(('integration_tests',) if sys.platform.startswith('linux') else ()),
+    ),
+)
 
-    # TODO(b/240982565): SocketStream currently requires Linux.
-    if sys.platform.startswith('linux'):
-        build_targets.append('integration_tests')
+gn_teensy_build = build.GnGenNinja(
+    name='gn_teensy_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('teensy',),
+    gn_args={
+        'pw_arduino_build_CORE_PATH': lambda ctx: '"{}"'.format(
+            str(ctx.package_root)
+        ),
+        'pw_arduino_build_CORE_NAME': 'teensy',
+        'pw_arduino_build_PACKAGE_NAME': 'teensy/avr',
+        'pw_arduino_build_BOARD': 'teensy40',
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=_at_all_optimization_levels('arduino'),
+)
 
-    build.ninja(ctx, *build_targets)
-
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_teensy_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'teensy')
-    build.gn_gen(
-        ctx,
-        pw_arduino_build_CORE_PATH='"{}"'.format(str(ctx.package_root)),
-        pw_arduino_build_CORE_NAME='teensy',
-        pw_arduino_build_PACKAGE_NAME='teensy/avr',
-        pw_arduino_build_BOARD='teensy40',
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build.ninja(ctx, *_at_all_optimization_levels('arduino'))
-
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_pico_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'pico_sdk')
-    build.gn_gen(
-        ctx,
-        PICO_SRC_DIR='"{}"'.format(str(ctx.package_root / 'pico_sdk')),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build.ninja(ctx, 'pi_pico')
+gn_pico_build = build.GnGenNinja(
+    name='gn_pico_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('pico_sdk',),
+    gn_args={
+        'PICO_SRC_DIR': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'pico_sdk')
+        ),
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=('pi_pico',),
+)
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_software_update_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'nanopb')
-    build.install_package(ctx, 'protobuf')
-    build.install_package(ctx, 'mbedtls')
-    build.install_package(ctx, 'micro-ecc')
-    build.gn_gen(
-        ctx,
-        dir_pw_third_party_protobuf='"{}"'.format(
+gn_software_update_build = build.GnGenNinja(
+    name='gn_software_update_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('nanopb', 'protobuf', 'mbedtls', 'micro-ecc'),
+    gn_args={
+        'dir_pw_third_party_protobuf': lambda ctx: '"{}"'.format(
             ctx.package_root / 'protobuf'
         ),
-        dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root / 'nanopb'),
-        dir_pw_third_party_micro_ecc='"{}"'.format(
+        'dir_pw_third_party_nanopb': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'nanopb'
+        ),
+        'dir_pw_third_party_micro_ecc': lambda ctx: '"{}"'.format(
             ctx.package_root / 'micro-ecc'
         ),
-        pw_crypto_ECDSA_BACKEND='"{}"'.format(
+        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:ecdsa_uecc'
         ),
-        dir_pw_third_party_mbedtls='"{}"'.format(ctx.package_root / 'mbedtls'),
-        pw_crypto_SHA256_BACKEND='"{}"'.format(
+        'dir_pw_third_party_mbedtls': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'mbedtls'
+        ),
+        'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:sha256_mbedtls'
         ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    build.ninja(
-        ctx,
-        *_at_all_optimization_levels('host_clang'),
-    )
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=_at_all_optimization_levels('host_clang'),
+)
 
 
 @_BUILD_FILE_FILTER.apply_to_check()
@@ -407,32 +357,12 @@ def gn_pw_system_demo_build(ctx: PresubmitContext):
     build.ninja(ctx, 'pw_system_demo')
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_qemu_build(ctx: PresubmitContext):
-    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
-    build.ninja(ctx, *_at_all_optimization_levels('qemu_gcc'))
+gn_docs_build = build.GnGenNinja(name='gn_docs_build', ninja_targets=('docs',))
 
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_qemu_clang_build(ctx: PresubmitContext):
-    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
-    build.ninja(ctx, *_at_all_optimization_levels('qemu_clang'))
-
-
-def gn_docs_build(ctx: PresubmitContext):
-    build.gn_gen(ctx)
-    build.ninja(ctx, 'docs')
-
-
-def gn_host_tools(ctx: PresubmitContext):
-    build.gn_gen(ctx)
-    build.ninja(ctx, 'host_tools')
-
-
-@filter_paths(endswith=format_code.C_FORMAT.extensions)
-def oss_fuzz_build(ctx: PresubmitContext):
-    build.gn_gen(ctx, pw_toolchain_OSS_FUZZ_ENABLED=True)
-    build.ninja(ctx, "fuzzers")
+gn_host_tools = build.GnGenNinja(
+    name='gn_host_tools',
+    ninja_targets=('host_tools',),
+)
 
 
 def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
@@ -866,11 +796,19 @@ def commit_message_format(_: PresubmitContext):
         _LOG.warning('Ignoring Copybara import')
         return
 
-    # Check that the lines are 72 characters or less, but skip any lines that
-    # might possibly have a URL, path, or metadata in them. Also skip any lines
-    # with non-ASCII characters.
+    # Check that the lines are 72 characters or less.
     for i, line in enumerate(lines[2:], 3):
-        if any(c in line for c in ':/>') or not line.isascii():
+        # Skip any lines that might possibly have a URL, path, or metadata in
+        # them.
+        if any(c in line for c in ':/>'):
+            continue
+
+        # Skip any lines with non-ASCII characters.
+        if not line.isascii():
+            continue
+
+        # Skip any blockquoted lines.
+        if line.startswith('  '):
             continue
 
         if len(line) > 72:
@@ -951,15 +889,9 @@ OTHER_CHECKS = (
     cmake_clang,
     cmake_gcc,
     gitmodules.create(),
-    gn_boringssl_build,
     gn_clang_build,
     gn_combined_build_check,
-    gn_full_build_check,
-    gn_full_qemu_check,
-    gn_gcc_build,
     npm_presubmit.npm_test,
-    # Attempts to duplicate OSS-Fuzz. Currently failing.
-    oss_fuzz_build,
     pw_transfer_integration_test,
     static_analysis,
     stm32f429i,
@@ -1030,19 +962,10 @@ QUICK = (
 
 FULL = (
     _LINTFORMAT,
-    gn_host_build,
-    gn_arm_build,
-    gn_docs_build,
+    gn_combined_build_check,
     gn_host_tools,
     bazel_test if sys.platform == 'linux' else (),
     bazel_build if sys.platform == 'linux' else (),
-    # On Mac OS, system 'gcc' is a symlink to 'clang' by default, so skip GCC
-    # host builds on Mac for now. Skip it on Windows too, since gn_host_build
-    # already uses 'gcc' on Windows.
-    gn_gcc_build if sys.platform not in ('darwin', 'win32') else (),
-    # Windows doesn't support QEMU yet.
-    gn_qemu_build if sys.platform != 'win32' else (),
-    gn_qemu_clang_build if sys.platform != 'win32' else (),
     source_is_in_build_files,
     python_checks.gn_python_check,
     python_checks.gn_python_test_coverage,
