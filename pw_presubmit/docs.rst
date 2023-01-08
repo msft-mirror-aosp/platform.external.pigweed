@@ -109,6 +109,8 @@ such as a quick program for local use and a full program for automated use. The
 * ``repos``: Repositories (top-level and submodules) processed by
   ``pw presubmit``
 * ``output_dir``: Output directory for this specific presubmit step
+* ``failure_summary_log``: File path where steps should write a brief summary
+  of any failures
 * ``paths``: Modified files for the presubmit step to check (often used in
   formatting steps but ignored in compile steps)
 * ``package_root``: Root directory for ``pw package`` installations
@@ -129,11 +131,34 @@ The ``luci`` member is of type ``LuciContext`` and has the following members:
   with ``ci`` or ``try``)
 * ``builder``: The builder being run
 * ``swarming_task_id``: The swarming task id of this build
+* ``pipeline``: Information about the build pipeline, if applicable.
+
+The ``pipeline`` member, if present, is of type ``LuciPipeline`` and has the
+following members:
+
+* ``round``: The zero-indexed round number.
+* ``builds_from_previous_iteration``: A list of the buildbucket ids from the
+  previous round, if any.
 
 Additional members can be added by subclassing ``PresubmitContext`` and
 ``Presubmit``. Then override ``Presubmit._create_presubmit_context()`` to
 return the subclass of ``PresubmitContext``. Finally, add
 ``presubmit_class=PresubmitSubClass`` when calling ``cli.run()``.
+
+Substeps
+--------
+Presubmit steps can define substeps that can run independently in other tooling.
+These steps should subclass ``SubStepCheck`` and must define a ``substeps()``
+method that yields ``SubStep`` objects. ``SubStep`` objects have the following
+members:
+
+* ``name``: Name of the substep
+* ``_func``: Substep code
+* ``args``: Positional arguments for ``_func``
+* ``kwargs``: Keyword arguments for ``_func``
+
+``SubStep`` objects must have unique names. For a detailed example of a
+``SubStepCheck`` subclass see ``GnGenNinja`` in ``build.py``.
 
 Existing Presubmit Checks
 -------------------------
@@ -203,6 +228,19 @@ example, the following is already sorted. This can be disabled with
 By default, the prefix of the keep-sorted line is assumed to be the comment
 marker used by any inline comments. This can be overridden by adding lines like
 ``sticky-comments=%,#`` to the start line.
+
+Lines indented more than the preceding line are assumed to be continuations.
+Thus, the following block is already sorted. keep-sorted blocks can not be
+nested, so there's no ability to add a keep-sorted block for the sub-items.
+
+.. code-block::
+
+  # keep-sorted: start
+  * abc
+    * xyz
+    * uvw
+  * def
+  # keep-sorted: end
 
 The presubmit check will suggest fixes using ``pw keep-sorted --fix``.
 
