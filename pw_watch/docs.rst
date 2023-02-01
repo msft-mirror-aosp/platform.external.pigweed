@@ -1,8 +1,8 @@
 .. _module-pw_watch:
 
---------
+========
 pw_watch
---------
+========
 ``pw_watch`` is similar to file system watchers found in the web development
 space. These watchers trigger a web server reload on source change, increasing
 iteration. In the embedded space, file system watchers are less prevalent but no
@@ -15,8 +15,9 @@ flash, and run tests upon save.
 
   ``pw_watch`` currently only works with Pigweed's GN and CMake builds.
 
+------------
 Module Usage
-============
+------------
 The simplest way to get started with ``pw_watch`` is to launch it from a shell
 using the Pigweed environment as ``pw watch``. By default, ``pw_watch`` watches
 for repository changes and triggers the default Ninja build target at out/. To
@@ -42,6 +43,10 @@ override this behavior, provide the ``-C`` argument to ``pw watch``.
   # Build the default target, but only run up to 8 jobs in parallel.
   pw watch -j8
 
+  # Build the default target and keep building past the first error as far as
+  # possible.
+  pw watch --keep-going
+
   # Build the default target and start a docs server on http://127.0.0.1:8000
   pw watch --serve-docs
 
@@ -65,12 +70,20 @@ By default, ``pw watch`` automatically restarts an ongoing build when files
 change. This can be disabled with the ``--no-restart`` option. While running
 ``pw watch``, you may also press enter to immediately restart a build.
 
+When using ``--serve-docs``, by default the docs will be rebuilt when changed,
+just like code files. However, you will need to manually reload the page in
+your browser to see changes. If you install the ``httpwatcher`` Python package
+into your Pigweed environment (``pip install httpwatcher``), docs pages will
+automatically reload when changed.
+
 See ``pw watch -h`` for the full list of command line arguments.
 
+---------------------
 Unit Test Integration
-=====================
+---------------------
 Thanks to GN's understanding of the full dependency tree, only the tests
 affected by a file change are run when ``pw_watch`` triggers a build. By
 default, host builds using ``pw_watch`` will run unit tests. To run unit tests
 on a device as part of ``pw_watch``, refer to your device's
 :ref:`target documentation<docs-targets>`.
+

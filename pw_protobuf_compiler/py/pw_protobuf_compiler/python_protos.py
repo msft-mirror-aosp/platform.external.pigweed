@@ -22,8 +22,50 @@ import subprocess
 import shlex
 import tempfile
 from types import ModuleType
-from typing import (Dict, Generic, Iterable, Iterator, List, NamedTuple, Set,
-                    Tuple, TypeVar, Union)
+from typing import (
+    Dict,
+    Generic,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
+# Temporarily set the root logger level to critical while importing yapf.
+# This silences INFO level messages from
+# environment/cipd/packages/python/lib/python3.9/lib2to3/driver.py
+# when it writes Grammar3.*.pickle and PatternGrammar3.*.pickle files.
+_original_level = 0
+for handler in logging.getLogger().handlers:
+    # pylint: disable=unidiomatic-typecheck
+    if type(handler) == logging.StreamHandler:
+        if handler.level > _original_level:
+            _original_level = handler.level
+        handler.level = logging.CRITICAL
+    # pylint: enable=unidiomatic-typecheck
+
+try:
+    # pylint: disable=wrong-import-position
+    from yapf.yapflib import yapf_api  # type: ignore[import]
+
+    # pylint: enable=wrong-import-position
+except ImportError:
+    yapf_api = None
+
+# Restore the original stderr/out log handler level.
+for handler in logging.getLogger().handlers:
+    # Must use type() check here since isinstance returns True for FileHandlers
+    # and StreamHandler: isinstance(logging.FileHandler, logging.StreamHandler)
+    # pylint: disable=unidiomatic-typecheck
+    if type(handler) == logging.StreamHandler:
+        handler.level = _original_level
+    # pylint: enable=unidiomatic-typecheck
+del _original_level
 
 _LOG = logging.getLogger(__name__)
 
@@ -33,7 +75,8 @@ PathOrStr = Union[Path, str]
 def compile_protos(
     output_dir: PathOrStr,
     proto_files: Iterable[PathOrStr],
-    includes: Iterable[PathOrStr] = ()) -> None:
+    includes: Iterable[PathOrStr] = (),
+) -> None:
     """Compiles proto files for Python by invoking the protobuf compiler.
 
     Proto files not covered by one of the provided include paths will have their
@@ -59,9 +102,11 @@ def compile_protos(
     process = subprocess.run(cmd, capture_output=True)
 
     if process.returncode:
-        _LOG.error('protoc invocation failed!\n%s\n%s',
-                   ' '.join(shlex.quote(str(c)) for c in cmd),
-                   process.stderr.decode())
+        _LOG.error(
+            'protoc invocation failed!\n%s\n%s',
+            ' '.join(shlex.quote(str(c)) for c in cmd),
+            process.stderr.decode(),
+        )
         process.check_returncode()
 
 
@@ -84,13 +129,17 @@ def import_modules(directory: PathOrStr) -> Iterator:
             name, ext = os.path.splitext(file)
 
             if ext == '.py':
-                yield _import_module(f'{".".join(path_parts)}.{name}',
-                                     os.path.join(dirpath, file))
+                yield _import_module(
+                    f'{".".join(path_parts)}.{name}',
+                    os.path.join(dirpath, file),
+                )
 
 
-def compile_and_import(proto_files: Iterable[PathOrStr],
-                       includes: Iterable[PathOrStr] = (),
-                       output_dir: PathOrStr = None) -> Iterator:
+def compile_and_import(
+    proto_files: Iterable[PathOrStr],
+    includes: Iterable[PathOrStr] = (),
+    output_dir: Optional[PathOrStr] = None,
+) -> Iterator:
     """Compiles protos and imports their modules; yields the proto modules.
 
     Args:
@@ -112,16 +161,20 @@ def compile_and_import(proto_files: Iterable[PathOrStr],
             yield from import_modules(tempdir)
 
 
-def compile_and_import_file(proto_file: PathOrStr,
-                            includes: Iterable[PathOrStr] = (),
-                            output_dir: PathOrStr = None):
+def compile_and_import_file(
+    proto_file: PathOrStr,
+    includes: Iterable[PathOrStr] = (),
+    output_dir: Optional[PathOrStr] = None,
+):
     """Compiles and imports the module for a single .proto file."""
     return next(iter(compile_and_import([proto_file], includes, output_dir)))
 
 
-def compile_and_import_strings(contents: Iterable[str],
-                               includes: Iterable[PathOrStr] = (),
-                               output_dir: PathOrStr = None) -> Iterator:
+def compile_and_import_strings(
+    contents: Iterable[str],
+    includes: Iterable[PathOrStr] = (),
+    output_dir: Optional[PathOrStr] = None,
+) -> Iterator:
     """Compiles protos in one or more strings."""
 
     if isinstance(contents, str):
@@ -145,6 +198,7 @@ T = TypeVar('T')
 
 class _NestedPackage(Generic[T]):
     """Facilitates navigating protobuf packages as attributes."""
+
     def __init__(self, package: str):
         self._packages: Dict[str, _NestedPackage[T]] = {}
         self._items: List[T] = []
@@ -167,7 +221,8 @@ class _NestedPackage(Generic[T]):
                 return getattr(item, attr)
 
         raise AttributeError(
-            f'Proto package "{self._package}" does not contain "{attr}"')
+            f'Proto package "{self._package}" does not contain "{attr}"'
+        )
 
     def __getitem__(self, subpackage: str) -> '_NestedPackage[T]':
         """Support accessing nested packages by name."""
@@ -186,7 +241,8 @@ class _NestedPackage(Generic[T]):
             for attr, value in vars(item).items():
                 # Exclude private variables and modules from dir().
                 if not attr.startswith('_') and not isinstance(
-                        value, ModuleType):
+                    value, ModuleType
+                ):
                     attributes.append(attr)
 
         return attributes
@@ -199,7 +255,8 @@ class _NestedPackage(Generic[T]):
         msg = [f'ProtoPackage({self._package!r}']
 
         public_members = [
-            i for i in vars(self)
+            i
+            for i in vars(self)
             if i not in self._packages and not i.startswith('_')
         ]
         if public_members:
@@ -216,12 +273,14 @@ class _NestedPackage(Generic[T]):
 
 class Packages(NamedTuple):
     """Items in a protobuf package structure; returned from as_package."""
+
     items_by_package: Dict[str, List]
     packages: _NestedPackage
 
 
-def as_packages(items: Iterable[Tuple[str, T]],
-                packages: Packages = None) -> Packages:
+def as_packages(
+    items: Iterable[Tuple[str, T]], packages: Optional[Packages] = None
+) -> Packages:
     """Places items in a proto-style package structure navigable by attributes.
 
     Args:
@@ -240,8 +299,9 @@ def as_packages(items: Iterable[Tuple[str, T]],
         # pylint: disable=protected-access
         for i, subpackage in enumerate(subpackages, 1):
             if subpackage not in entry._packages:
-                entry._add_package(subpackage,
-                                   _NestedPackage('.'.join(subpackages[:i])))
+                entry._add_package(
+                    subpackage, _NestedPackage('.'.join(subpackages[:i]))
+                )
 
             entry = entry._packages[subpackage]
 
@@ -272,6 +332,7 @@ class Library:
     the list of modules in a particular package, and the modules() generator
     for iterating over all modules.
     """
+
     @classmethod
     def from_paths(cls, protos: Iterable[PathOrModule]) -> 'Library':
         """Creates a Library from paths to proto files or proto modules."""
@@ -289,10 +350,12 @@ class Library:
         return Library(modules)
 
     @classmethod
-    def from_strings(cls,
-                     contents: Iterable[str],
-                     includes: Iterable[PathOrStr] = (),
-                     output_dir: PathOrStr = None) -> 'Library':
+    def from_strings(
+        cls,
+        contents: Iterable[str],
+        includes: Iterable[PathOrStr] = (),
+        output_dir: Optional[PathOrStr] = None,
+    ) -> 'Library':
         """Creates a proto library from protos in the provided strings."""
         return cls(compile_and_import_strings(contents, includes, output_dir))
 
@@ -306,7 +369,8 @@ class Library:
         """
         self.modules_by_package, self.packages = as_packages(
             (m.DESCRIPTOR.package, m)  # type: ignore[attr-defined]
-            for m in modules)
+            for m in modules
+        )
 
     def modules(self) -> Iterable:
         """Iterates over all protobuf modules in this library."""
@@ -317,7 +381,8 @@ class Library:
         """Iterates over all protobuf messages in this library."""
         for module in self.modules():
             yield from _nested_messages(
-                module, module.DESCRIPTOR.message_types_by_name)
+                module, module.DESCRIPTOR.message_types_by_name
+            )
 
 
 def _nested_messages(scope, message_names: Iterable[str]) -> Iterator:
@@ -373,8 +438,10 @@ def _proto_repr(message) -> Iterator[str]:
                 continue
         except ValueError:
             # Skip default-valued fields that don't support HasField.
-            if (field.label != field.LABEL_REPEATED
-                    and value == field.default_value):
+            if (
+                field.label != field.LABEL_REPEATED
+                and value == field.default_value
+            ):
                 continue
 
         if field.label == field.LABEL_REPEATED:
@@ -385,7 +452,8 @@ def _proto_repr(message) -> Iterator[str]:
                 key_desc, value_desc = field.message_type.fields
                 values = ', '.join(
                     f'{_field_repr(key_desc, k)}: {_field_repr(value_desc, v)}'
-                    for k, v in value.items())
+                    for k, v in value.items()
+                )
                 yield f'{field.name}={{{values}}}'
             else:
                 values = ', '.join(_field_repr(field, v) for v in value)
@@ -394,6 +462,21 @@ def _proto_repr(message) -> Iterator[str]:
             yield f'{field.name}={_field_repr(field, value)}'
 
 
-def proto_repr(message) -> str:
-    """Creates a repr-like string for a protobuf."""
-    return f'{message.DESCRIPTOR.full_name}({", ".join(_proto_repr(message))})'
+def proto_repr(message, *, wrap: bool = True) -> str:
+    """Creates a repr-like string for a protobuf.
+
+    In an interactive console that imports proto objects into the namespace, the
+    output of proto_repr() can be used as Python source to create a proto
+    object.
+
+    Args:
+      message: The protobuf message to format
+      wrap: If true and YAPF is available, the output is wrapped according to
+          PEP8 using YAPF.
+    """
+    raw = f'{message.DESCRIPTOR.full_name}({", ".join(_proto_repr(message))})'
+
+    if wrap and yapf_api is not None:
+        return yapf_api.FormatCode(raw, style_config='PEP8')[0].rstrip()
+
+    return raw

@@ -29,6 +29,16 @@
 #include "pw_sync/lock_annotations.h"
 
 namespace pw::rpc {
+namespace internal {
+
+// Forward declare for a friend statement.
+template <class, size_t, size_t, size_t>
+class ForwardingChannelOutput;
+
+}  // namespace internal
+}  // namespace pw::rpc
+
+namespace pw::rpc {
 
 class FakeServer;
 
@@ -75,6 +85,29 @@ class FakeChannelOutput : public ChannelOutput {
     return PayloadsView(packets_, type, channel_id, service_id, method_id);
   }
 
+  // Returns a number of the payloads seen for this RPC.
+  template <auto kMethod>
+  size_t total_payloads(uint32_t channel_id = Channel::kUnassignedChannelId)
+      const PW_LOCKS_EXCLUDED(mutex_) {
+    LockGuard lock(mutex_);
+    return PayloadsView(packets_,
+                        MethodInfo<kMethod>::kType,
+                        channel_id,
+                        MethodInfo<kMethod>::kServiceId,
+                        MethodInfo<kMethod>::kMethodId)
+        .size();
+  }
+
+  // Returns a number of the payloads seen for this RPC.
+  size_t total_payloads(MethodType type,
+                        uint32_t channel_id,
+                        uint32_t service_id,
+                        uint32_t method_id) const PW_LOCKS_EXCLUDED(mutex_) {
+    LockGuard lock(mutex_);
+    return PayloadsView(packets_, type, channel_id, service_id, method_id)
+        .size();
+  }
+
   // Returns a view of the final statuses seen for this RPC. Only relevant for
   // checking packets sent by a server.
   //
@@ -88,8 +121,8 @@ class FakeChannelOutput : public ChannelOutput {
       const PW_LOCKS_EXCLUDED(mutex_) {
     LockGuard lock(mutex_);
     return StatusView(packets_,
-                      internal::PacketType::RESPONSE,
-                      internal::PacketType::RESPONSE,
+                      internal::pwpb::PacketType::RESPONSE,
+                      internal::pwpb::PacketType::RESPONSE,
                       channel_id,
                       MethodInfo<kMethod>::kServiceId,
                       MethodInfo<kMethod>::kMethodId);
@@ -107,8 +140,8 @@ class FakeChannelOutput : public ChannelOutput {
       PW_LOCKS_EXCLUDED(mutex_) {
     LockGuard lock(mutex_);
     return StatusView(packets_,
-                      internal::PacketType::CLIENT_ERROR,
-                      internal::PacketType::SERVER_ERROR,
+                      internal::pwpb::PacketType::CLIENT_ERROR,
+                      internal::pwpb::PacketType::SERVER_ERROR,
                       channel_id,
                       MethodInfo<kMethod>::kServiceId,
                       MethodInfo<kMethod>::kMethodId);
@@ -124,8 +157,8 @@ class FakeChannelOutput : public ChannelOutput {
     return internal::test::PacketsView(
                packets_,
                internal::test::PacketFilter(
-                   internal::PacketType::CLIENT_STREAM_END,
-                   internal::PacketType::CLIENT_STREAM_END,
+                   internal::pwpb::PacketType::CLIENT_STREAM_END,
+                   internal::pwpb::PacketType::CLIENT_STREAM_END,
                    channel_id,
                    MethodInfo<kMethod>::kServiceId,
                    MethodInfo<kMethod>::kMethodId))
@@ -215,10 +248,16 @@ class FakeChannelOutput : public ChannelOutput {
         packets_(packets),
         payloads_(payloads) {}
 
-  const Vector<Packet>& packets() const { return packets_; }
+  const Vector<Packet>& packets() const PW_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
+    return packets_;
+  }
+
+  RpcLock& mutex() const { return mutex_; }
 
  private:
   friend class rpc::FakeServer;
+  template <class, size_t, size_t, size_t>
+  friend class internal::ForwardingChannelOutput;
 
   Status HandlePacket(ConstByteSpan buffer) PW_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CopyPayloadToBuffer(Packet& packet) PW_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -239,8 +278,7 @@ template <size_t kMaxPackets, size_t kPayloadsBufferSizeBytes>
 class FakeChannelOutputBuffer : public FakeChannelOutput {
  protected:
   FakeChannelOutputBuffer()
-      : FakeChannelOutput(packets_array_, payloads_array_), payloads_array_ {}
-  {}
+      : FakeChannelOutput(packets_array_, payloads_array_), payloads_array_{} {}
 
   Vector<std::byte, kPayloadsBufferSizeBytes> payloads_array_;
   Vector<Packet, kMaxPackets> packets_array_;

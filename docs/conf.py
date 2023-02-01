@@ -17,7 +17,7 @@ from datetime import date
 import sphinx
 
 # The suffix of source filenames.
-source_suffix = ['.rst']
+source_suffix = ['.rst', '.md']
 
 # The master toctree document.  # inclusive-language: ignore
 master_doc = 'index'
@@ -35,16 +35,32 @@ version = '0.1'
 # The full version, including alpha/beta/rc tags.
 release = '0.1.0'
 
-# The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'pigweed-code-light'
-pygments_dark_style = 'pigweed-code'
+# The class of the Pygments (syntax highlighting) style to use.
+pygments_style = 'pw_console.pigweed_code_style.PigweedCodeLightStyle'
+pygments_dark_style = 'pw_console.pigweed_code_style.PigweedCodeStyle'
 
 extensions = [
     'pw_docgen.sphinx.google_analytics',  # Enables optional Google Analytics
     'sphinx.ext.autodoc',  # Automatic documentation for Python code
     'sphinx.ext.napoleon',  # Parses Google-style docstrings
+    'sphinxarg.ext',  # Automatic documentation of Python argparse
     'sphinxcontrib.mermaid',
     'sphinx_design',
+    'myst_parser',
+]
+
+myst_enable_extensions = [
+    # "amsmath",
+    "colon_fence",
+    # "deflist",
+    "dollarmath",
+    # "html_admonition",
+    # "html_image",
+    # "linkify",
+    # "replacements",
+    # "smartquotes",
+    # "substitution",
+    # "tasklist",
 ]
 
 _DIAG_HTML_IMAGE_FORMAT = 'SVG'
@@ -73,6 +89,9 @@ html_use_smartypants = True
 # If false, no module index is generated.
 html_domain_indices = True
 
+html_favicon = 'docs/_static/pw_logo.ico'
+html_logo = 'docs/_static/pw_logo.svg'
+
 # If false, no index is generated.
 html_use_index = True
 
@@ -92,9 +111,10 @@ html_static_path = ['docs/_static']
 # or fully qualified paths (eg. https://...)
 html_css_files = [
     'css/pigweed.css',
-
     # Needed for Inconsolata font.
     'https://fonts.googleapis.com/css2?family=Inconsolata&display=swap',
+    # FontAwesome for mermaid and sphinx-design
+    "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css",
 ]
 
 html_theme_options = {
@@ -121,9 +141,13 @@ html_theme_options = {
         'color-inline-code-border': '#cccccc',
         'color-text-selection-background': '#1d5fad',
         'color-text-selection-foreground': '#ffffff',
+        # Background color for focused headings.
+        'color-highlight-on-target': '#ffffcc',
+        # Background color emphasized code lines.
+        'color-code-hll-background': '#ffffcc',
     },
     'dark_css_variables': {
-        'color-sidebar-brand-text': '#e815a5',
+        'color-sidebar-brand-text': '#fb71fe',
         'color-sidebar-search-border': '#e815a5',
         'color-sidebar-link-text--top-level': '#ff79c6',
         'color-sidebar-link-text': '#8be9fd',
@@ -144,6 +168,10 @@ html_theme_options = {
         'color-inline-code-border': '#575757',
         'color-text-selection-background': '#2674bf',
         'color-text-selection-foreground': '#ffffff',
+        # Background color for focused headings.
+        'color-highlight-on-target': '#ffc55140',
+        # Background color emphasized code lines.
+        'color-code-hll-background': '#ffc55140',
     },
 }
 
@@ -158,8 +186,15 @@ man_pages = [('index', 'pigweed', 'Pigweed', ['Google'], 1)]
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    ('index', 'Pigweed', 'Pigweed', 'Google', 'Pigweed', 'Firmware framework',
-     'Miscellaneous'),
+    (
+        'index',
+        'Pigweed',
+        'Pigweed',
+        'Google',
+        'Pigweed',
+        'Firmware framework',
+        'Miscellaneous',
+    ),
 ]
 
 

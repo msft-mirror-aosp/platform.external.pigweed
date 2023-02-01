@@ -40,16 +40,16 @@ TEST(NanopbFakeChannelOutput, Requests) {
 
   std::array<std::byte, 128> buffer;
 
-  auto packet = Packet(PacketType::REQUEST,
+  auto packet = Packet(pwpb::PacketType::REQUEST,
                        1,
                        Info::kServiceId,
                        Info::kMethodId,
                        999,
-                       std::span(payload_buffer, payload.size()))
+                       span(payload_buffer, payload.size()))
                     .Encode(buffer);
   ASSERT_TRUE(packet.ok());
 
-  ASSERT_EQ(OkStatus(), output.Send(std::span(buffer).first(packet->size())));
+  ASSERT_EQ(OkStatus(), output.Send(span(buffer).first(packet->size())));
 
   ASSERT_TRUE(output.responses<TestService::TestUnaryRpc>().empty());
   ASSERT_EQ(output.requests<TestService::TestUnaryRpc>().size(), 1u);
@@ -70,16 +70,16 @@ TEST(NanopbFakeChannelOutput, Responses) {
 
   std::array<std::byte, 128> buffer;
 
-  auto packet = Packet(PacketType::RESPONSE,
+  auto packet = Packet(pwpb::PacketType::RESPONSE,
                        1,
                        Info::kServiceId,
                        Info::kMethodId,
                        999,
-                       std::span(payload_buffer, payload.size()))
+                       span(payload_buffer, payload.size()))
                     .Encode(buffer);
   ASSERT_TRUE(packet.ok());
 
-  ASSERT_EQ(OkStatus(), output.Send(std::span(buffer).first(packet->size())));
+  ASSERT_EQ(OkStatus(), output.Send(span(buffer).first(packet->size())));
 
   ASSERT_EQ(output.responses<TestService::TestUnaryRpc>().size(), 1u);
   ASSERT_TRUE(output.requests<TestService::TestUnaryRpc>().empty());

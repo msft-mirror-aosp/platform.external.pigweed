@@ -90,8 +90,10 @@ constexpr uint32_t kTxRegisterEmpty = 0x1u << 7;
 // to reasonable values and we don't need to change them.
 constexpr uint32_t kReceiveEnable = 0x1 << 2;
 constexpr uint32_t kTransmitEnable = 0x1 << 3;
-constexpr uint32_t kReadDataReady = 0x1u << 5;
 constexpr uint32_t kEnableUsart = 0x1 << 13;
+
+// USART configuration flags for status register.
+constexpr uint32_t kReadDataReady = 0x1u << 5;
 
 // Layout of memory mapped registers for USART blocks.
 PW_PACKED(struct) UsartBlock {
@@ -199,14 +201,14 @@ Status WriteByte(std::byte b) {
 // Writes a string using pw::sys_io, and add newline characters at the end.
 StatusWithSize WriteLine(const std::string_view& s) {
   size_t chars_written = 0;
-  StatusWithSize result = WriteBytes(std::as_bytes(std::span(s)));
+  StatusWithSize result = WriteBytes(as_bytes(span(s)));
   if (!result.ok()) {
     return result;
   }
   chars_written += result.size();
 
   // Write trailing newline.
-  result = WriteBytes(std::as_bytes(std::span("\r\n", 2)));
+  result = WriteBytes(as_bytes(span("\r\n", 2)));
   chars_written += result.size();
 
   return StatusWithSize(result.status(), chars_written);

@@ -73,7 +73,7 @@ def add_defaults(kwargs):
 
     copts = PW_DEFAULT_COPTS + kwargs.get("copts", [])
     kwargs["copts"] = select({
-        "//pw_build:kythe": copts + KYTHE_COPTS,
+        "@pigweed//pw_build:kythe": copts + KYTHE_COPTS,
         "//conditions:default": copts,
     })
     kwargs["linkopts"] = kwargs.get("linkopts", []) + PW_DEFAULT_LINKOPTS
@@ -140,7 +140,7 @@ def has_pw_assert_dep(deps):
         True if the list contains a pw_assert dependency.
     """
     pw_assert_targets = ["//pw_assert", "//pw_assert:pw_assert"]
-    pw_assert_targets.append(["@pigweed" + t for t in pw_assert_targets])
+    pw_assert_targets.extend(["@pigweed" + t for t in pw_assert_targets])
     for dep in deps:
         if dep in pw_assert_targets:
             return True
@@ -164,6 +164,11 @@ def _preprocess_linker_script_impl(ctx):
         cc_toolchain = cc_toolchain,
         user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.conlyopts,
     )
+    action_flags = cc_common.get_memory_inefficient_command_line(
+        feature_configuration = feature_configuration,
+        action_name = C_COMPILE_ACTION_NAME,
+        variables = c_compile_variables,
+    )
     env = cc_common.get_environment_variables(
         feature_configuration = feature_configuration,
         action_name = C_COMPILE_ACTION_NAME,
@@ -186,7 +191,7 @@ def _preprocess_linker_script_impl(ctx):
         ] + [
             "-D" + d
             for d in ctx.attr.defines
-        ] + ctx.attr.copts,
+        ] + action_flags + ctx.attr.copts,
         env = env,
     )
     return [DefaultInfo(files = depset([output_script]))]

@@ -39,7 +39,7 @@ namespace {
 Result<bool> VerifyEcdsaSignature(protobuf::Bytes public_key,
                                   ConstByteSpan digest,
                                   protobuf::Bytes signature) {
-  // TODO(pwbug/456): Move this logic into an variant of the API in
+  // TODO(b/237580538): Move this logic into an variant of the API in
   // pw_crypto:ecdsa that takes readers as inputs.
   std::byte public_key_bytes[65];
   std::byte signature_bytes[64];
@@ -166,8 +166,8 @@ Status VerifyMetadataSignatures(protobuf::Bytes message,
     return Status::NotFound();
   }
 
-  PW_LOG_ERROR("Insufficient signatures. Requires at least %u, verified %u",
-               threshold.value(),
+  PW_LOG_ERROR("Insufficient signatures. Requires at least %u, verified %zu",
+               static_cast<unsigned>(threshold.value()),
                verified_count);
   return Status::Unauthenticated();
 }
@@ -235,13 +235,13 @@ Result<uint32_t> GetMetadataVersion(protobuf::Message& metadata,
 
 // Reads a protobuf::String into a buffer and returns a std::string_view.
 Result<std::string_view> ReadProtoString(protobuf::String str,
-                                         std::span<char> buffer) {
+                                         span<char> buffer) {
   stream::IntervalReader reader = str.GetBytesReader();
   if (reader.interval_size() > buffer.size()) {
     return Status::ResourceExhausted();
   }
 
-  Result<ByteSpan> res = reader.Read(std::as_writable_bytes(buffer));
+  Result<ByteSpan> res = reader.Read(as_writable_bytes(buffer));
   PW_TRY(res.status());
   return std::string_view(buffer.data(), res.value().size());
 }
@@ -256,7 +256,7 @@ Status UpdateBundleAccessor::OpenAndVerify() {
 
   if (Status status = DoVerify(); !status.ok()) {
     PW_LOG_ERROR("Failed to verified staged bundle");
-    Close();
+    Close().IgnoreError();
     return status;
   }
 
@@ -272,7 +272,7 @@ Result<uint64_t> UpdateBundleAccessor::GetTotalPayloadSize() {
       static_cast<uint32_t>(UpdateBundle::Fields::TARGET_PAYLOADS));
   PW_TRY(bundled_payloads.status());
 
-  uint64_t total_bytes;
+  uint64_t total_bytes = 0;
   std::array<std::byte, MAX_TARGET_NAME_LENGTH> name_buffer = {};
   for (protobuf::Message target : manifested_targets) {
     protobuf::String target_name =
@@ -346,16 +346,15 @@ Status UpdateBundleAccessor::PersistManifest() {
 
 Status UpdateBundleAccessor::Close() {
   bundle_verified_ = false;
-  return blob_store_reader_.IsOpen() ? blob_store_reader_.Close() : OkStatus();
+  return update_reader_.IsOpen() ? update_reader_.Close() : OkStatus();
 }
 
 Status UpdateBundleAccessor::DoOpen() {
-  PW_TRY(blob_store_.Init());
-  PW_TRY(blob_store_reader_.Open());
-  bundle_ = protobuf::Message(blob_store_reader_,
-                              blob_store_reader_.ConservativeReadLimit());
+  PW_TRY(update_reader_.Open());
+  bundle_ = protobuf::Message(update_reader_.reader(),
+                              update_reader_.reader().ConservativeReadLimit());
   if (!bundle_.ok()) {
-    blob_store_reader_.Close();
+    update_reader_.Close().IgnoreError();
     return bundle_.status();
   }
   return OkStatus();
@@ -369,29 +368,37 @@ Status UpdateBundleAccessor::DoVerify() {
 #else   // PW_SOFTWARE_UPDATE_DISABLE_BUNDLE_VERIFICATION
   bundle_verified_ = false;
 
+  if (self_verification_) {
+    // Use root metadata in staged bundle for self-verification. This root
+    // metadata is optional and used opportunistically in the rest of the
+    // verification flow.
+    trusted_root_ = bundle_.AsMessage(
+        static_cast<uint32_t>(UpdateBundle::Fields::ROOT_METADATA));
+  } else {
+    // A provisioned on-device root metadata is *required* for formal
+    // verification.
+    if (trusted_root_ = GetOnDeviceTrustedRoot(); !trusted_root_.ok()) {
+      PW_LOG_CRITICAL("Missing on-device trusted root");
+      return Status::Unauthenticated();
+    }
+  }
+
   // Verify and upgrade the on-device trust to the incoming root metadata if
   // one is included.
   if (Status status = UpgradeRoot(); !status.ok()) {
-    PW_LOG_ERROR("Failed to upgrade to Root in staged bundle");
+    PW_LOG_ERROR("Failed to rotate root metadata");
     return status;
   }
 
-  // TODO(pwbug/456): Verify the targets metadata against the current trusted
-  // root.
   if (Status status = VerifyTargetsMetadata(); !status.ok()) {
     PW_LOG_ERROR("Failed to verify Targets metadata");
     return status;
   }
 
-  // TODO(pwbug/456): Investigate whether targets payload verification should
-  // be performed here or deferred until a specific target is requested.
   if (Status status = VerifyTargetsPayloads(); !status.ok()) {
     PW_LOG_ERROR("Failed to verify all manifested payloads");
     return status;
   }
-
-  // TODO(pwbug/456): Invoke the backend to do downstream verification of the
-  // bundle (e.g. compatibility and manifest completeness checks).
 
   bundle_verified_ = true;
   return OkStatus();
@@ -429,26 +436,17 @@ ManifestAccessor UpdateBundleAccessor::GetOnDeviceManifest() {
 }
 
 Status UpdateBundleAccessor::UpgradeRoot() {
+#if PW_SOFTWARE_UPDATE_WITH_ROOT_ROTATION
   protobuf::Message new_root = bundle_.AsMessage(
       static_cast<uint32_t>(UpdateBundle::Fields::ROOT_METADATA));
 
-  // Try self-verification even if verification is disabled by the caller. This
-  // minimizes surprises when the caller do decide to turn on verification.
-  bool self_verifying = disable_verification_;
-
-  // Choose and cache the root metadata to trust.
-  trusted_root_ = self_verifying ? new_root : GetOnDeviceTrustedRoot();
-
   if (!new_root.status().ok()) {
     // Don't bother upgrading if not found or invalid.
-    PW_LOG_WARN("Incoming root metadata not found or invalid");
+    PW_LOG_WARN("Skipping root metadata rotation: not found or invalid");
     return OkStatus();
   }
 
-  // A valid trust anchor is required onwards from here.
-  PW_TRY(trusted_root_.status());
-
-  // TODO(pwbug/456): Check whether the bundle contains a root metadata that
+  // TODO(b/237580538): Check whether the bundle contains a root metadata that
   // is different from the on-device trusted root.
 
   // Verify the signatures against the trusted root metadata.
@@ -459,7 +457,7 @@ Status UpdateBundleAccessor::UpgradeRoot() {
     return Status::Unauthenticated();
   }
 
-  // TODO(pwbug/456): Verifiy the content of the new root metadata, including:
+  // TODO(b/237580538): Verifiy the content of the new root metadata, including:
   //    1) Check role magic field.
   //    2) Check signature requirement. Specifically, check that no key is
   //       reused across different roles and keys are unique in the same
@@ -475,7 +473,6 @@ Status UpdateBundleAccessor::UpgradeRoot() {
     return Status::Unauthenticated();
   }
 
-  // TODO(pwbug/456): Check rollback.
   // Retrieves the trusted root metadata content message.
   protobuf::Message trusted_root_content =
       trusted_root_.AsMessage(static_cast<uint32_t>(
@@ -497,12 +494,12 @@ Status UpdateBundleAccessor::UpgradeRoot() {
 
   if (trusted_root_version.value() > new_root_version.value()) {
     PW_LOG_ERROR("Root attempts to rollback from %u to %u",
-                 trusted_root_version.value(),
-                 new_root_version.value());
+                 static_cast<unsigned>(trusted_root_version.value()),
+                 static_cast<unsigned>(new_root_version.value()));
     return Status::Unauthenticated();
   }
 
-  if (!self_verifying) {
+  if (!self_verification_) {
     // Persist the root immediately after it is successfully verified. This is
     // to make sure the trust anchor is up-to-date in storage as soon as
     // we are confident. Although targets metadata and product-specific
@@ -511,20 +508,26 @@ Status UpdateBundleAccessor::UpgradeRoot() {
     // compromise keys.
     stream::IntervalReader new_root_reader =
         new_root.ToBytes().GetBytesReader();
-    PW_TRY(backend_.SafelyPersistRootMetadata(new_root_reader));
+    if (Status status = backend_.SafelyPersistRootMetadata(new_root_reader);
+        !status.ok()) {
+      PW_LOG_ERROR("Failed to persist rotated root metadata");
+      return status;
+    }
   }
 
-  // TODO(pwbug/456): Implement key change detection to determine whether
+  // TODO(b/237580538): Implement key change detection to determine whether
   // rotation has occured or not. Delete the persisted targets metadata version
   // if any of the targets keys has been rotated.
 
   return OkStatus();
+#else
+  // Root metadata rotation opted out.
+  return OkStatus();
+#endif  // PW_SOFTWARE_UPDATE_WITH_ROOT_ROTATION
 }
 
 Status UpdateBundleAccessor::VerifyTargetsMetadata() {
-  bool self_verifying = disable_verification_;
-
-  if (self_verifying && !trusted_root_.status().ok()) {
+  if (self_verification_ && !trusted_root_.status().ok()) {
     PW_LOG_WARN(
         "Self-verification won't verify Targets metadata because there is no "
         "root");
@@ -580,7 +583,7 @@ Status UpdateBundleAccessor::VerifyTargetsMetadata() {
       static_cast<uint32_t>(RootMetadata::Fields::KEYS));
   PW_TRY(key_mapping.status());
 
-  // Get the targest metadtata siganture requirement from the trusted root.
+  // Get the target metadtata signature requirement from the trusted root.
   protobuf::Message signature_requirement =
       trusted_root.AsMessage(static_cast<uint32_t>(
           RootMetadata::Fields::TARGETS_SIGNATURE_REQUIREMENT));
@@ -593,7 +596,7 @@ Status UpdateBundleAccessor::VerifyTargetsMetadata() {
                                signature_requirement,
                                key_mapping);
 
-  if (self_verifying && sig_res.IsNotFound()) {
+  if (self_verification_ && sig_res.IsNotFound()) {
     PW_LOG_WARN("Self-verification ignoring unsigned bundle");
     return OkStatus();
   }
@@ -603,11 +606,9 @@ Status UpdateBundleAccessor::VerifyTargetsMetadata() {
     return Status::Unauthenticated();
   }
 
-  // TODO(pwbug/456): Check targets metadtata content.
-
-  if (self_verifying) {
+  if (self_verification_) {
     // Don't bother because it does not matter.
-    PW_LOG_WARN("Self verification does not do Targets metadata anti-rollback");
+    PW_LOG_WARN("Self verification skips Targets metadata anti-rollback");
     return OkStatus();
   }
 
@@ -629,8 +630,8 @@ Status UpdateBundleAccessor::VerifyTargetsMetadata() {
   PW_TRY(new_version.status());
   if (current_version.value() > new_version.value()) {
     PW_LOG_ERROR("Blocking Targets metadata rollback from %u to %u",
-                 current_version.value(),
-                 new_version.value());
+                 static_cast<unsigned>(current_version.value()),
+                 static_cast<unsigned>(new_version.value()));
     return Status::Unauthenticated();
   }
 
@@ -662,7 +663,7 @@ Status UpdateBundleAccessor::VerifyTargetsPayloads() {
         target_file.AsUint64(static_cast<uint32_t>(TargetFile::Fields::LENGTH));
     PW_TRY(target_length.status());
     if (target_length.value() > PW_SOFTWARE_UPDATE_MAX_TARGET_PAYLOAD_SIZE) {
-      PW_LOG_ERROR("Target payload too big. Maximum is %llu bytes",
+      PW_LOG_ERROR("Target payload too big. Maximum is %u bytes",
                    PW_SOFTWARE_UPDATE_MAX_TARGET_PAYLOAD_SIZE);
       return Status::OutOfRange();
     }
@@ -697,7 +698,7 @@ Status UpdateBundleAccessor::VerifyTargetsPayloads() {
 }
 
 Status UpdateBundleAccessor::VerifyTargetPayload(
-    ManifestAccessor manifest,
+    ManifestAccessor,
     std::string_view target_name,
     protobuf::Uint64 expected_length,
     protobuf::Bytes expected_sha256) {
@@ -724,8 +725,8 @@ Status UpdateBundleAccessor::VerifyTargetPayload(
 // TODO(alizhang): Add unit tests for all failure conditions.
 Status UpdateBundleAccessor::VerifyOutOfBundleTargetPayload(
     std::string_view target_name,
-    protobuf::Uint64 expected_length,
-    protobuf::Bytes expected_sha256) {
+    [[maybe_unused]] protobuf::Uint64 expected_length,
+    [[maybe_unused]] protobuf::Bytes expected_sha256) {
 #if PW_SOFTWARE_UPDATE_WITH_PERSONALIZATION
   // The target payload is "personalized out". We we can't take a measurement
   // without backend help. For now we will check against the device manifest
@@ -750,9 +751,9 @@ Status UpdateBundleAccessor::VerifyOutOfBundleTargetPayload(
       cached.AsUint64(static_cast<uint32_t>(TargetFile::Fields::LENGTH));
   PW_TRY(cached_length.status());
   if (cached_length.value() != expected_length.value()) {
-    PW_LOG_ERROR("Personalized-out target has bad length: %llu, expected: %llu",
-                 cached_length.value(),
-                 expected_length.value());
+    PW_LOG_ERROR("Personalized-out target has bad length: %u, expected: %u",
+                 static_cast<unsigned>(cached_length.value()),
+                 static_cast<unsigned>(expected_length.value()));
     return Status::Unauthenticated();
   }
 
@@ -781,7 +782,7 @@ Status UpdateBundleAccessor::VerifyOutOfBundleTargetPayload(
 
   return OkStatus();
 #else
-  PW_LOG_ERROR("Target file %s not found in bundle", target_name);
+  PW_LOG_ERROR("Target file %s not found in bundle", target_name.data());
   return Status::Unauthenticated();
 #endif  // PW_SOFTWARE_UPDATE_WITH_PERSONALIZATION
 }
@@ -794,9 +795,9 @@ Status UpdateBundleAccessor::VerifyInBundleTargetPayload(
   // measurement.
   uint64_t actual_length = payload_reader.interval_size();
   if (actual_length != expected_length.value()) {
-    PW_LOG_ERROR("Wrong payload length. Expected: %llu, actual: %llu",
-                 expected_length.value(),
-                 actual_length);
+    PW_LOG_ERROR("Wrong payload length. Expected: %u, actual: %u",
+                 static_cast<unsigned>(expected_length.value()),
+                 static_cast<unsigned>(actual_length));
     return Status::Unauthenticated();
   }
 

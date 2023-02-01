@@ -22,8 +22,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <span>
-
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_trace_tokenized/config.h"
 #include "pw_trace_tokenized/trace_tokenized.h"
@@ -157,8 +156,7 @@ class CallbacksImpl {
   pw::Status UnregisterSink(SinkHandle handle);
   pw::Status UnregisterAllSinks();
   SinkCallbacks* GetSink(SinkHandle handle);
-  void CallSinks(std::span<const std::byte> header,
-                 std::span<const std::byte> data);
+  void CallSinks(span<const std::byte> header, span<const std::byte> data);
 
   pw::Status RegisterEventCallback(
       EventCallback callback,
@@ -196,7 +194,7 @@ class CallbacksImpl {
 // Example: pw::trace::Callbacks::Instance().UnregisterAllSinks();
 class Callbacks {
  public:
-  static CallbacksImpl& Instance() { return instance_; };
+  static CallbacksImpl& Instance() { return instance_; }
 
  private:
   static CallbacksImpl instance_;
@@ -214,7 +212,7 @@ class RegisterCallbackWhenCreated {
       void* user_data = nullptr) {
     Callbacks::Instance()
         .RegisterEventCallback(event_callback, called_on_every_event, user_data)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        .IgnoreError();  // TODO(b/242598609): Handle Status properly
   }
   RegisterCallbackWhenCreated(CallbacksImpl::SinkStartBlock sink_start,
                               CallbacksImpl::SinkAddBytes sink_add_bytes,
@@ -222,7 +220,7 @@ class RegisterCallbackWhenCreated {
                               void* user_data = nullptr) {
     Callbacks::Instance()
         .RegisterSink(sink_start, sink_add_bytes, sink_end, user_data)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        .IgnoreError();  // TODO(b/242598609): Handle Status properly
   }
 };
 

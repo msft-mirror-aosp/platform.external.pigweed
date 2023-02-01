@@ -19,7 +19,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 
 #include "gtest/gtest.h"
 #include "pw_assert/assert.h"
@@ -29,6 +28,7 @@
 #include "pw_rpc/internal/packet.h"
 #include "pw_rpc/raw/fake_channel_output.h"
 #include "pw_rpc/server.h"
+#include "pw_span/span.h"
 
 namespace pw::rpc::internal {
 
@@ -46,7 +46,7 @@ class ServerContextForTest {
 
   ServerContextForTest(const internal::Method& method)
       : channel_(Channel::Create<kChannelId>(&output_)),
-        server_(std::span(&channel_, 1)),
+        server_(span(&channel_, 1)),
         service_(kServiceId),
         context_(
             static_cast<Server&>(server_), channel_.id(), service_, method, 0) {
@@ -54,8 +54,8 @@ class ServerContextForTest {
   }
 
   // Create packets for this context's channel, service, and method.
-  internal::Packet request(std::span<const std::byte> payload) const {
-    return internal::Packet(internal::PacketType::REQUEST,
+  internal::Packet request(span<const std::byte> payload) const {
+    return internal::Packet(internal::pwpb::PacketType::REQUEST,
                             kChannelId,
                             kServiceId,
                             context_.method().id(),
@@ -64,8 +64,8 @@ class ServerContextForTest {
   }
 
   internal::Packet response(Status status,
-                            std::span<const std::byte> payload = {}) const {
-    return internal::Packet(internal::PacketType::RESPONSE,
+                            span<const std::byte> payload = {}) const {
+    return internal::Packet(internal::pwpb::PacketType::RESPONSE,
                             kChannelId,
                             kServiceId,
                             context_.method().id(),
@@ -74,8 +74,8 @@ class ServerContextForTest {
                             status);
   }
 
-  internal::Packet server_stream(std::span<const std::byte> payload) const {
-    return internal::Packet(internal::PacketType::SERVER_STREAM,
+  internal::Packet server_stream(span<const std::byte> payload) const {
+    return internal::Packet(internal::pwpb::PacketType::SERVER_STREAM,
                             kChannelId,
                             kServiceId,
                             context_.method().id(),
@@ -83,8 +83,8 @@ class ServerContextForTest {
                             payload);
   }
 
-  internal::Packet client_stream(std::span<const std::byte> payload) const {
-    return internal::Packet(internal::PacketType::CLIENT_STREAM,
+  internal::Packet client_stream(span<const std::byte> payload) const {
+    return internal::Packet(internal::pwpb::PacketType::CLIENT_STREAM,
                             kChannelId,
                             kServiceId,
                             context_.method().id(),
@@ -118,7 +118,7 @@ class ClientContextForTest {
 
   ClientContextForTest()
       : channel_(Channel::Create<kChannelId>(&output_)),
-        client_(std::span(&channel_, 1)) {}
+        client_(span(&channel_, 1)) {}
 
   const internal::test::FakeChannelOutput& output() const { return output_; }
   Channel& channel() { return static_cast<Channel&>(channel_); }
@@ -126,9 +126,9 @@ class ClientContextForTest {
 
   // Sends a packet to be processed by the client. Returns the client's
   // ProcessPacket status.
-  Status SendPacket(internal::PacketType type,
+  Status SendPacket(internal::pwpb::PacketType type,
                     Status status = OkStatus(),
-                    std::span<const std::byte> payload = {}) {
+                    span<const std::byte> payload = {}) {
     uint32_t call_id =
         output().total_packets() > 0 ? output().last_packet().call_id() : 0;
 
@@ -140,12 +140,13 @@ class ClientContextForTest {
     return client_.ProcessPacket(result.value_or(ConstByteSpan()));
   }
 
-  Status SendResponse(Status status, std::span<const std::byte> payload = {}) {
-    return SendPacket(internal::PacketType::RESPONSE, status, payload);
+  Status SendResponse(Status status, span<const std::byte> payload = {}) {
+    return SendPacket(internal::pwpb::PacketType::RESPONSE, status, payload);
   }
 
-  Status SendServerStream(std::span<const std::byte> payload) {
-    return SendPacket(internal::PacketType::SERVER_STREAM, OkStatus(), payload);
+  Status SendServerStream(span<const std::byte> payload) {
+    return SendPacket(
+        internal::pwpb::PacketType::SERVER_STREAM, OkStatus(), payload);
   }
 
  private:

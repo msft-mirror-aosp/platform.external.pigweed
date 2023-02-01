@@ -1,4 +1,4 @@
-// Copyright 2021 The Pigweed Authors
+// Copyright 2022 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -38,6 +38,8 @@ class RawClientReaderWriter : private internal::StreamResponseClientCall {
   using internal::Call::active;
   using internal::Call::channel_id;
 
+  using internal::ClientCall::id;
+
   // Functions for setting the callbacks.
   using internal::StreamResponseClientCall::set_on_completed;
   using internal::StreamResponseClientCall::set_on_error;
@@ -59,11 +61,12 @@ class RawClientReaderWriter : private internal::StreamResponseClientCall {
  protected:
   friend class internal::StreamResponseClientCall;
 
-  RawClientReaderWriter(internal::Endpoint& client,
+  RawClientReaderWriter(internal::LockedEndpoint& client,
                         uint32_t channel_id,
                         uint32_t service_id,
                         uint32_t method_id,
                         MethodType type = MethodType::kBidirectionalStreaming)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock())
       : StreamResponseClientCall(
             client, channel_id, service_id, method_id, type) {}
 };
@@ -88,10 +91,11 @@ class RawClientReader : private internal::StreamResponseClientCall {
  private:
   friend class internal::StreamResponseClientCall;
 
-  RawClientReader(internal::Endpoint& client,
+  RawClientReader(internal::LockedEndpoint& client,
                   uint32_t channel_id,
                   uint32_t service_id,
                   uint32_t method_id)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock())
       : StreamResponseClientCall(client,
                                  channel_id,
                                  service_id,
@@ -124,10 +128,11 @@ class RawClientWriter : private internal::UnaryResponseClientCall {
  private:
   friend class internal::UnaryResponseClientCall;
 
-  RawClientWriter(internal::Endpoint& client,
+  RawClientWriter(internal::LockedEndpoint& client,
                   uint32_t channel_id,
                   uint32_t service_id,
                   uint32_t method_id)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock())
       : UnaryResponseClientCall(client,
                                 channel_id,
                                 service_id,
@@ -154,10 +159,11 @@ class RawUnaryReceiver : private internal::UnaryResponseClientCall {
  private:
   friend class internal::UnaryResponseClientCall;
 
-  RawUnaryReceiver(internal::Endpoint& client,
+  RawUnaryReceiver(internal::LockedEndpoint& client,
                    uint32_t channel_id,
                    uint32_t service_id,
                    uint32_t method_id)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock())
       : UnaryResponseClientCall(
             client, channel_id, service_id, method_id, MethodType::kUnary) {}
 };

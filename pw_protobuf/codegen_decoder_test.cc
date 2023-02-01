@@ -12,13 +12,13 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 #include <array>
-#include <span>
 #include <stdexcept>
 #include <string_view>
 
 #include "gtest/gtest.h"
 #include "pw_bytes/span.h"
 #include "pw_containers/vector.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 #include "pw_stream/memory_stream.h"
@@ -39,7 +39,20 @@
 namespace pw::protobuf {
 namespace {
 
-using namespace pw::protobuf::test;
+using test::pwpb::Bool;
+using test::pwpb::Enum;
+
+namespace DeviceInfo = test::pwpb::DeviceInfo;
+namespace KeyValuePair = test::pwpb::KeyValuePair;
+namespace Pigweed = test::pwpb::Pigweed;
+namespace Proto = test::pwpb::Proto;
+namespace RepeatedTest = test::pwpb::RepeatedTest;
+namespace TestResult = test::pwpb::TestResult;
+
+namespace imported {
+using ::pw::protobuf::test::imported::pwpb::IsValidStatus;
+using ::pw::protobuf::test::imported::pwpb::Status;
+}  // namespace imported
 
 TEST(Codegen, StreamDecoder) {
   // clang-format off
@@ -118,7 +131,7 @@ TEST(Codegen, StreamDecoder) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   Pigweed::StreamDecoder pigweed(reader);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
@@ -368,7 +381,7 @@ TEST(Codegen, ResourceExhausted) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   Pigweed::StreamDecoder pigweed(reader);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
@@ -390,7 +403,7 @@ TEST(Codegen, BytesReader) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   Pigweed::StreamDecoder pigweed(reader);
 
   constexpr std::string_view kExpectedErrorMessage{"not a typewriter"};
@@ -420,21 +433,31 @@ TEST(Codegen, BytesReader) {
 TEST(Codegen, Enum) {
   // clang-format off
   constexpr uint8_t proto_data[] = {
-    // pigweed.bin (value value)
+    // pigweed.bin (valid value)
     0x40, 0x01,
+    // pigweed.bin (unknown value)
+    0x40, 0x7f,
     // pigweed.bin (invalid value)
     0x40, 0xff,
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   Pigweed::StreamDecoder pigweed(reader);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
   EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
   Result<Pigweed::Protobuf::Binary> bin = pigweed.ReadBin();
   EXPECT_EQ(bin.status(), OkStatus());
+  EXPECT_TRUE(Pigweed::Protobuf::IsValidBinary(bin.value()));
   EXPECT_EQ(bin.value(), Pigweed::Protobuf::Binary::ZERO);
+
+  EXPECT_EQ(pigweed.Next(), OkStatus());
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
+  bin = pigweed.ReadBin();
+  EXPECT_EQ(bin.status(), OkStatus());
+  EXPECT_FALSE(Pigweed::Protobuf::IsValidBinary(bin.value()));
+  EXPECT_EQ(static_cast<uint32_t>(bin.value()), 0x7fu);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
   EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
@@ -445,21 +468,31 @@ TEST(Codegen, Enum) {
 TEST(Codegen, ImportedEnum) {
   // clang-format off
   constexpr uint8_t proto_data[] = {
-    // result.status (value value)
+    // result.status (valid value)
     0x08, 0x01,
+    // result.status (unknown value)
+    0x08, 0x7f,
     // result.status (invalid value)
     0x08, 0xff,
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   TestResult::StreamDecoder test_result(reader);
 
   EXPECT_EQ(test_result.Next(), OkStatus());
   EXPECT_EQ(test_result.Field().value(), TestResult::Fields::STATUS);
   Result<imported::Status> status = test_result.ReadStatus();
   EXPECT_EQ(status.status(), OkStatus());
+  EXPECT_TRUE(imported::IsValidStatus(status.value()));
   EXPECT_EQ(status.value(), imported::Status::NOT_OK);
+
+  EXPECT_EQ(test_result.Next(), OkStatus());
+  EXPECT_EQ(test_result.Field().value(), TestResult::Fields::STATUS);
+  status = test_result.ReadStatus();
+  EXPECT_EQ(status.status(), OkStatus());
+  EXPECT_FALSE(imported::IsValidStatus(status.value()));
+  EXPECT_EQ(static_cast<uint32_t>(status.value()), 0x7fu);
 
   EXPECT_EQ(test_result.Next(), OkStatus());
   EXPECT_EQ(test_result.Field().value(), TestResult::Fields::STATUS);
@@ -483,7 +516,7 @@ TEST(CodegenRepeated, NonPackedScalar) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   for (int i = 0; i < 4; ++i) {
@@ -523,7 +556,7 @@ TEST(CodegenRepeated, NonPackedScalarVector) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   pw::Vector<uint32_t, 8> uint32s{};
@@ -570,7 +603,7 @@ TEST(CodegenRepeated, NonPackedVarintScalarVectorFull) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   pw::Vector<uint32_t, 2> uint32s{};
@@ -609,7 +642,7 @@ TEST(CodegenRepeated, NonPackedFixedScalarVectorFull) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   pw::Vector<uint32_t, 2> fixed32s{};
@@ -655,7 +688,7 @@ TEST(CodegenRepeated, PackedScalar) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
@@ -695,7 +728,7 @@ TEST(CodegenRepeated, PackedVarintScalarExhausted) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
@@ -722,7 +755,7 @@ TEST(CodegenRepeated, PackedFixedScalarExhausted) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
@@ -751,7 +784,7 @@ TEST(CodegenRepeated, PackedScalarVector) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
@@ -791,7 +824,7 @@ TEST(CodegenRepeated, PackedVarintScalarVectorFull) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
@@ -818,7 +851,7 @@ TEST(CodegenRepeated, PackedFixedScalarVectorFull) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
@@ -859,7 +892,7 @@ TEST(CodegenRepeated, PackedScalarVectorRepeated) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
@@ -910,7 +943,7 @@ TEST(CodegenRepeated, NonScalar) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   constexpr std::array<std::string_view, 4> kExpectedString{
@@ -928,6 +961,66 @@ TEST(CodegenRepeated, NonScalar) {
                           kExpectedString[i].size()),
               0);
   }
+
+  EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
+}
+
+TEST(CodegenRepeated, PackedEnum) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // enums[], v={RED, GREEN, AMBER, RED}
+    0x4a, 0x04, 0x00, 0x02, 0x01, 0x00,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
+  RepeatedTest::StreamDecoder repeated_test(reader);
+
+  EXPECT_EQ(repeated_test.Next(), OkStatus());
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::ENUMS);
+  std::array<Enum, 4> enums{};
+  StatusWithSize sws = repeated_test.ReadEnums(enums);
+  EXPECT_EQ(sws.status(), OkStatus());
+  ASSERT_EQ(sws.size(), 4u);
+
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(IsValidEnum(enums[i]));
+  }
+
+  EXPECT_EQ(enums[0], Enum::RED);
+  EXPECT_EQ(enums[1], Enum::GREEN);
+  EXPECT_EQ(enums[2], Enum::AMBER);
+  EXPECT_EQ(enums[3], Enum::RED);
+
+  EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
+}
+
+TEST(CodegenRepeated, PackedEnumVector) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // enums[], v={RED, GREEN, AMBER, RED}
+    0x4a, 0x04, 0x00, 0x02, 0x01, 0x00,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
+  RepeatedTest::StreamDecoder repeated_test(reader);
+
+  EXPECT_EQ(repeated_test.Next(), OkStatus());
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::ENUMS);
+  pw::Vector<Enum, 4> enums{};
+  Status status = repeated_test.ReadEnums(enums);
+  EXPECT_EQ(status, OkStatus());
+  ASSERT_EQ(enums.size(), 4u);
+
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(IsValidEnum(enums[i]));
+  }
+
+  EXPECT_EQ(enums[0], Enum::RED);
+  EXPECT_EQ(enums[1], Enum::GREEN);
+  EXPECT_EQ(enums[2], Enum::AMBER);
+  EXPECT_EQ(enums[3], Enum::RED);
 
   EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
 }

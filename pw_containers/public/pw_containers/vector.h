@@ -20,6 +20,7 @@
 #include <iterator>
 #include <limits>
 #include <new>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -112,6 +113,18 @@ class Vector : public Vector<T, vector_impl::kGeneric> {
 
   Vector(std::initializer_list<T> list)
       : Vector<T, vector_impl::kGeneric>(kMaxSize, list) {}
+
+  static constexpr size_t max_size() { return kMaxSize; }
+
+  // Construct from std::string_view when T is char.
+  template <typename U = T,
+            typename = std::enable_if_t<std::is_same_v<U, char>>>
+  Vector(std::string_view source) : Vector(source.begin(), source.end()) {}
+
+  // Construct from const char* when T is char.
+  template <typename U = T,
+            typename = std::enable_if_t<std::is_same_v<U, char>>>
+  Vector(const char* source) : Vector(std::string_view(source)) {}
 
   Vector& operator=(const Vector& other) {
     Vector<T>::assign(other.begin(), other.end());

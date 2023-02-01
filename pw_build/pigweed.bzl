@@ -22,11 +22,11 @@ load(
 def pw_cc_binary(**kwargs):
     kwargs["deps"] = kwargs.get("deps", [])
 
-    # TODO(pwbug/440): Remove this implicit dependency once we have a better
+    # TODO(b/234877642): Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
     if not _has_pw_assert_dep(kwargs["deps"]):
-        kwargs["deps"].append("@pigweed//pw_assert")
+        kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert"]
     _add_cc_and_c_targets(native.cc_binary, kwargs)
 
 def pw_cc_library(**kwargs):
@@ -34,14 +34,22 @@ def pw_cc_library(**kwargs):
 
 def pw_cc_test(**kwargs):
     kwargs["deps"] = kwargs.get("deps", []) + \
-                     ["//pw_unit_test:main"]
+                     ["@pigweed//pw_unit_test:simple_printing_main"]
 
-    # TODO(pwbug/440): Remove this implicit dependency once we have a better
+    # TODO(b/234877642): Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
     if not _has_pw_assert_dep(kwargs["deps"]):
-        kwargs["deps"].append("@pigweed//pw_assert")
+        kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert"]
     _add_cc_and_c_targets(native.cc_test, kwargs)
+
+def pw_cc_perf_test(**kwargs):
+    kwargs["deps"] = kwargs.get("deps", []) + \
+                     ["@pigweed//pw_perf_test:logging_main"]
+
+    if not _has_pw_assert_dep(kwargs["deps"]):
+        kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert"]
+    _add_cc_and_c_targets(native.cc_binary, kwargs)
 
 def pw_cc_facade(**kwargs):
     # Bazel facades should be source only cc_library's this is to simplify

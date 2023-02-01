@@ -432,6 +432,11 @@ Example in C
     return true;
   }
 
+RecursiveMutex
+==============
+``pw_sync`` provides ``pw::sync::RecursiveMutex``, a recursive mutex
+implementation. At this time, this facade can only be used internally by
+Pigweed.
 
 InterruptSpinLock
 =================
@@ -750,9 +755,10 @@ Annotating Lock Usage
 
 .. cpp:function:: PW_LOCKS_EXCLUDED(...)
 
-  Documents the locks acquired in the body of the function. These locks
-  cannot be held when calling this function (as Pigweed's default locks are
-  non-reentrant).
+  Documents that the caller must not hold the given lock. This annotation is
+  often used to prevent deadlocks. Pigweed's mutex implementation is not
+  re-entrant, so a deadlock will occur if the function acquires the mutex a
+  second time.
 
   Example:
 
@@ -1190,10 +1196,135 @@ Example in C++
     return buffer;
   }
 
+InlineBorrowable
+=================
+``InlineBorrowable`` is a helper to simplify the common use case where an object
+is wrapped in a ``Borrowable`` for its entire lifetime. The InlineBorrowable
+owns the guarded object and the lock object.
+
+InlineBorrowable has a separate parameter for the concrete lock type
+that is instantiated and a (possibly virtual) lock interface type that is
+referenced by users of the guarded object. The default lock is
+``pw::sync::VirtualMutex`` and the default lock interface is
+``pw::sync::VirtualBasicLockable``.
+
+An InlineBorrowable is a Borrowable with the same guarded object and lock
+interface types, and it can be passed directly to APIs that expect a Borrowable
+reference.
+
+Why use InlineBorrowable?
+-------------------------
+It is a safer and simpler way to guard an object for its entire lifetime. The
+unguarded object is never exposed and doesn't need to be stored in a separate
+variable or data member. The guarded object and its lock are guaranteed to have
+the same lifetime, and the lock cannot be re-used for any other purpose.
+
+Constructing objects in-place
+-----------------------------
+The guarded object and its lock are constructed in-place by the
+InlineBorrowable, and any constructor parameters required by the object or
+its lock must be passed through the InlineBorrowable constructor. There are
+several ways to do this:
+
+* Pass the parameters for the guarded object inline to the constructor. This is
+  the recommended way to construct the object when the lock does not require any
+  constructor parameters. Use the ``std::in_place`` marker to invoke the inline
+  constructor.
+
+  .. code-block:: cpp
+
+    InlineBorrowable<Foo> foo(std::in_place, foo_arg1, foo_arg2);
+    InlineBorrowable<std::array<int, 2>> foo_array(std::in_place, 1, 2);
+
+* Pass the parameters inside tuples:
+
+  .. code-block:: cpp
+
+    InlineBorrowable<Foo> foo(std::forward_as_tuple(foo_arg1, foo_arg2));
+
+    InlineBorrowable<Foo, MyLock> foo_lock(
+        std::forward_as_tuple(foo_arg1, foo_arg2),
+        std::forward_as_tuple(lock_arg1, lock_arg2));
+
+  .. note:: This approach only supports list initialization starting with C++20.
+
+* Use callables to construct the guarded object and lock object:
+
+  .. code-block:: cpp
+
+    InlineBorrowable<Foo> foo([&]{ return Foo{foo_arg1, foo_arg2}; });
+
+    InlineBorrowable<Foo, MyLock> foo_lock(
+        [&]{ return Foo{foo_arg1, foo_arg2}; }
+        [&]{ return MyLock{lock_arg1, lock_arg2}; }
+
+  .. note:: It is possible to construct and return objects that are not copyable
+    or movable, thanks to mandatory copy ellision (return value optimization).
+
+C++
+---
+.. cpp:class:: template <typename GuardedType, typename Lock = pw::sync::VirtualMutex, typename LockInterface = pw::sync::VirtualBasicLockable> InlineBorrowable
+
+  Holds an instance of ``GuardedType`` and ``Lock``. Access to the members of
+  ``GuardedType`` are protected by the ``Lock``.
+
+  This class implements ``Borrowable<GuardedType, LockInterface>``.
+
+  .. cpp:function:: template <typename... Args> constexpr explicit InlineBorrowable(std::in_place_t, Args&&... args)
+
+    Construct the guarded object by providing its cosntructor parameters inline.
+    The lock is constructed using its default constructor.
+
+    This constructor supports list initialization for arrays, structs, and
+    other objects such as ``std::array``.
+
+  .. cpp:function:: template <typename... ObjectArgs, typename... LockArgs> constexpr explicit InlineBorrowable( std::tuple<ObjectArgs...>&& object_args, std::tuple<LockArgs...>&& lock_args)
+
+    Construct the guarded object and lock by providing their construction
+    parameters using separate tuples. The 2nd tuple can be ommitted to construct
+    the lock using its default constructor.
+
+  .. cpp:function:: template <typename ObjectConstructor, typename LockConstructor> constexpr explicit InlineBorrowable( const ObjectConstructor& object_ctor, const LockConstructor& lock_ctor)
+
+    Construct the guarded object and lock by invoking the given callables. The
+    2nd callable can be ommitted to construct the lock using its default
+    constructor.
+
+Example in C++
+^^^^^^^^^^^^^^
+.. code-block:: cpp
+
+  #include <utility>
+
+  #include "pw_bytes/span.h"
+  #include "pw_i2c/initiator.h"
+  #include "pw_status/result.h"
+  #include "pw_sync/inline_borrowable.h"
+
+  struct I2cOptions;
+
+  class ExampleI2c : public pw::i2c::Initiator {
+   public:
+    ExampleI2c(int bus_id, I2cOptions options);
+    // ...
+  };
+
+  int kBusId;
+  I2cOptions opts;
+
+  pw::sync::InlineBorrowable<ExampleI2c> i2c(std::in_place, kBusId, opts);
+
+  pw::Result<ConstByteSpan> ReadI2cData(
+    pw::sync::Borrowable<pw::i2c::Initiator>& initiator,
+    ByteSpan buffer);
+
+  pw::Result<ConstByteSpan> ReadData(ByteSpan buffer) {
+    return ReadI2cData(i2c, buffer);
+  }
+
 --------------------
 Signaling Primitives
 --------------------
-
 Native signaling primitives tend to vary more compared to critial section locks
 across different platforms. For example, although common signaling primtives
 like semaphores are in most if not all RTOSes and even POSIX, it was not in the
@@ -1237,6 +1368,8 @@ faster native APIs such as direct thread signaling. This should be
 backed by the most efficient native primitive for a target, regardless of
 whether that is a semaphore, event flag group, condition variable, or something
 else.
+
+The ThreadNotification is initialized to being empty (latch is not set).
 
 Generic BinarySemaphore-based Backend
 -------------------------------------
@@ -1361,6 +1494,8 @@ TimedThreadNotification
 =======================
 The TimedThreadNotification is an extension of the ThreadNotification which
 offers timeout and deadline based semantics.
+
+The TimedThreadNotification is initialized to being empty (latch is not set).
 
 .. Warning::
   This is a single consumer/waiter, multiple producer/notifier API!
@@ -1846,11 +1981,7 @@ Examples in C++
 
 Conditional Variables
 =====================
-We've decided for now to skip on conditional variables. These are constructs,
-which are typically not natively available on RTOSes. CVs would have to be
-backed by a multiple hidden semaphore(s) in addition to the explicit public
-mutex. In other words a CV typically ends up as a a composition of
-synchronization primitives on RTOSes. That being said, one could implement them
-using our semaphore and mutex layers and we may consider providing this in the
-future. However for most of our resource constrained customers they will mostly
-likely be using semaphores more often than CVs.
+``pw::sync::ConditionVariable`` provides a condition variable implementation
+that provides semantics and an API very similar to `std::condition_variable
+<https://en.cppreference.com/w/cpp/thread/condition_variable>`_ in the C++
+Standard Library.

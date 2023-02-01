@@ -52,6 +52,20 @@ TEST(TokenizeString, String_MatchesHash) {
   EXPECT_EQ(Hash("[:-)"), token);
 }
 
+TEST(TokenizeString, String_MatchesHashExpr) {
+  EXPECT_EQ(Hash("[:-)"), PW_TOKENIZE_STRING_EXPR("[:-)"));
+}
+
+TEST(TokenizeString, ExpressionWithStringVariable) {
+  constexpr char kTestString[] = "test";
+  EXPECT_EQ(Hash(kTestString), PW_TOKENIZE_STRING_EXPR(kTestString));
+  EXPECT_EQ(Hash(kTestString),
+            PW_TOKENIZE_STRING_DOMAIN_EXPR("TEST_DOMAIN", kTestString));
+  EXPECT_EQ(
+      Hash(kTestString) & 0xAAAAAAAA,
+      PW_TOKENIZE_STRING_MASK_EXPR("TEST_DOMAIN", 0xAAAAAAAA, kTestString));
+}
+
 constexpr uint32_t kGlobalToken = PW_TOKENIZE_STRING(">:-[]");
 
 TEST(TokenizeString, GlobalVariable_MatchesHash) {
@@ -68,6 +82,28 @@ TEST(TokenizeString, ClassMember_MatchesHash) {
   EXPECT_EQ(Hash("???"), TokenizedWithinClass().kThisToken);
 }
 
+TEST(TokenizeString, WithinNonCapturingLambda) {
+  uint32_t non_capturing_lambda = [] {
+    return PW_TOKENIZE_STRING("Lambda!");
+  }();
+
+  EXPECT_EQ(Hash("Lambda!"), non_capturing_lambda);
+}
+
+TEST(TokenizeString, WithinCapturingLambda) {
+  bool executed_lambda = false;
+  uint32_t capturing_lambda = [&executed_lambda] {
+    if (executed_lambda) {
+      return PW_TOKENIZE_STRING("Never should be returned!");
+    }
+    executed_lambda = true;
+    return PW_TOKENIZE_STRING("Capturing lambda!");
+  }();
+
+  ASSERT_TRUE(executed_lambda);
+  EXPECT_EQ(Hash("Capturing lambda!"), capturing_lambda);
+}
+
 TEST(TokenizeString, Mask) {
   [[maybe_unused]] constexpr uint32_t token = PW_TOKENIZE_STRING("(O_o)");
   [[maybe_unused]] constexpr uint32_t masked_1 =
@@ -82,6 +118,22 @@ TEST(TokenizeString, Mask) {
   static_assert((token & 0xAAAAAAAA) == masked_1);
   static_assert((token & 0x55555555) == masked_2);
   static_assert((token & 0xFFFF0000) == masked_3);
+}
+
+TEST(TokenizeString, MaskExpr) {
+  uint32_t token = PW_TOKENIZE_STRING("(O_o)");
+  uint32_t masked_1 =
+      PW_TOKENIZE_STRING_MASK_EXPR("domain", 0xAAAAAAAA, "(O_o)");
+  uint32_t masked_2 =
+      PW_TOKENIZE_STRING_MASK_EXPR("domain", 0x55555555, "(O_o)");
+  uint32_t masked_3 =
+      PW_TOKENIZE_STRING_MASK_EXPR("domain", 0xFFFF0000, "(O_o)");
+
+  EXPECT_TRUE(token != masked_1 && token != masked_2 && token != masked_3);
+  EXPECT_TRUE(masked_1 != masked_2 && masked_2 != masked_3);
+  EXPECT_TRUE((token & 0xAAAAAAAA) == masked_1);
+  EXPECT_TRUE((token & 0x55555555) == masked_2);
+  EXPECT_TRUE((token & 0xFFFF0000) == masked_3);
 }
 
 // Use a function with a shorter name to test tokenizing __func__ and
@@ -146,10 +198,28 @@ TEST(TokenizeString, MultipleTokenizationsInOneMacroExpansion) {
   THREE_FOR_ONE("hello", "yes", "something");
 }
 
+// Verify that we can tokenize multiple strings from one source line.
+#define THREE_FOR_ONE_EXPR(first, second, third)             \
+  [[maybe_unused]] uint32_t token_1 =                        \
+      PW_TOKENIZE_STRING_DOMAIN_EXPR("TEST_DOMAIN", first);  \
+  [[maybe_unused]] uint32_t token_2 =                        \
+      PW_TOKENIZE_STRING_DOMAIN_EXPR("TEST_DOMAIN", second); \
+  [[maybe_unused]] uint32_t token_3 =                        \
+      PW_TOKENIZE_STRING_DOMAIN_EXPR("TEST_DOMAIN", third);
+
+TEST(TokenizeString, MultipleTokenizationsInOneMacroExpansionExpr) {
+  // This verifies that we can safely tokenize multiple times in a single macro
+  // expansion. This can be useful when for example a name and description are
+  // both tokenized after being passed into a macro.
+  //
+  // This test only verifies that this compiles correctly; it does not test
+  // that the tokenizations make it to the final token database.
+  THREE_FOR_ONE_EXPR("hello", "yes", "something");
+}
+
 class TokenizeToBuffer : public ::testing::Test {
  public:
-  TokenizeToBuffer() : buffer_ {}
-  {}
+  TokenizeToBuffer() : buffer_{} {}
 
  protected:
   uint8_t buffer_[64];

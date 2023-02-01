@@ -1,6 +1,8 @@
 .. _docs-root:
 .. highlight:: sh
 
+.. TODO(b/256680603) Remove query string from issue tracker link.
+
 .. toctree::
   :maxdepth: 1
   :hidden:
@@ -9,11 +11,11 @@
   docs/getting_started
   docs/concepts/index
   docs/release_notes/index
-  Source Code <https://cs.opensource.google/pigweed/pigweed>
+  Source Code <https://cs.pigweed.dev/pigweed>
   Code Reviews <https://pigweed-review.googlesource.com>
   Mailing List <https://groups.google.com/forum/#!forum/pigweed>
   Chat Room <https://discord.gg/M9NSeTA>
-  Issue Tracker <https://bugs.pigweed.dev/>
+  Issue Tracker <https://issues.pigweed.dev/issues?q=status:open>
   docs/contributing
   docs/code_of_conduct
   docs/embedded_cpp_guide
@@ -24,6 +26,7 @@
   Build System <build_system>
   docs/size_optimizations
   FAQ <docs/faq>
+  SEEDs <seed/0000-index>
   docs/module_structure
   module_guides
   third_party_support
@@ -131,7 +134,7 @@ compatible with `Google Test <https://github.com/google/googletest>`_. Unlike
 Google Test, :ref:`module-pw_unit_test` is built on top of embedded friendly
 primitives; for example, it does not use dynamic memory allocation.
 Additionally, it is easy to port to new target platforms by implementing the
-`test event handler interface <https://cs.opensource.google/pigweed/pigweed/+/main:pw_unit_test/public/pw_unit_test/event_handler.h>`_.
+`test event handler interface <https://cs.pigweed.dev/pigweed/+/main:pw_unit_test/public/pw_unit_test/event_handler.h>`_.
 
 Like other modules in Pigweed, ``pw_unit_test`` is designed for use in
 established codebases with their own build system, without the rest of Pigweed
