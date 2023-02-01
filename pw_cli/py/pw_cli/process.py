@@ -18,7 +18,7 @@ import logging
 import os
 import shlex
 import tempfile
-from typing import IO, Tuple, Union, Optional
+from typing import Dict, IO, Tuple, Union, Optional
 
 import pw_cli.color
 import pw_cli.log
@@ -33,8 +33,12 @@ PW_SUBPROCESS_ENV = 'PW_SUBPROCESS'
 
 class CompletedProcess:
     """Information about a process executed in run_async."""
-    def __init__(self, process: 'asyncio.subprocess.Process',
-                 output: Union[bytes, IO[bytes]]):
+
+    def __init__(
+        self,
+        process: 'asyncio.subprocess.Process',
+        output: Union[bytes, IO[bytes]],
+    ):
         assert process.returncode is not None
         self.returncode: int = process.returncode
         self.pid = process.pid
@@ -58,7 +62,8 @@ async def _run_and_log(program: str, args: Tuple[str, ...], env: dict):
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
-        env=env)
+        env=env,
+    )
 
     output = bytearray()
 
@@ -69,31 +74,41 @@ async def _run_and_log(program: str, args: Tuple[str, ...], env: dict):
                 break
 
             output += line
-            _LOG.log(pw_cli.log.LOGLEVEL_STDOUT, '[%s] %s',
-                     _COLOR.bold_white(process.pid),
-                     line.decode(errors='replace').rstrip())
+            _LOG.log(
+                pw_cli.log.LOGLEVEL_STDOUT,
+                '[%s] %s',
+                _COLOR.bold_white(process.pid),
+                line.decode(errors='replace').rstrip(),
+            )
 
     return process, bytes(output)
 
 
-async def run_async(program: str,
-                    *args: str,
-                    log_output: bool = False,
-                    timeout: Optional[float] = None) -> CompletedProcess:
+async def run_async(
+    program: str,
+    *args: str,
+    env: Optional[Dict[str, str]] = None,
+    log_output: bool = False,
+    timeout: Optional[float] = None,
+) -> CompletedProcess:
     """Runs a command, capturing and optionally logging its output.
 
     Returns a CompletedProcess with details from the process.
     """
 
-    _LOG.debug('Running `%s`',
-               ' '.join(shlex.quote(arg) for arg in [program, *args]))
+    _LOG.debug(
+        'Running `%s`', ' '.join(shlex.quote(arg) for arg in [program, *args])
+    )
 
-    env = os.environ.copy()
-    env[PW_SUBPROCESS_ENV] = '1'
+    hydrated_env = os.environ.copy()
+    if env is not None:
+        for key, value in env.items():
+            hydrated_env[key] = value
+    hydrated_env[PW_SUBPROCESS_ENV] = '1'
     output: Union[bytes, IO[bytes]]
 
     if log_output:
-        process, output = await _run_and_log(program, args, env)
+        process, output = await _run_and_log(program, args, hydrated_env)
     else:
         output = tempfile.TemporaryFile()
         process = await asyncio.create_subprocess_exec(
@@ -101,7 +116,8 @@ async def run_async(program: str,
             *args,
             stdout=output,
             stderr=asyncio.subprocess.STDOUT,
-            env=env)
+            env=hydrated_env,
+        )
 
     try:
         await asyncio.wait_for(process.wait(), timeout)

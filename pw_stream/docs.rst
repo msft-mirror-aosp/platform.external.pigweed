@@ -86,7 +86,7 @@ Interface documentation
 =======================
 Summary documentation for the ``pw_stream`` interfaces is below. See the API
 comments in `pw_stream/public/pw_stream/stream.h
-<https://cs.opensource.google/pigweed/pigweed/+/main:pw_stream/public/pw_stream/stream.h>`_
+<https://cs.pigweed.dev/pigweed/+/main:pw_stream/public/pw_stream/stream.h>`_
 for full details.
 
 .. cpp:class:: Stream
@@ -414,6 +414,11 @@ Implementations
 
   ``StdFileReader`` wraps an ``std::ifstream`` with the :cpp:class:`Reader`
   interface.
+
+.. cpp:class:: SocketStream : public NonSeekableReaderWriter
+
+  ``SocketStream`` wraps posix-style sockets with the :cpp:class:`Reader` and
+  :cpp:class:`Writer` interfaces.
 
 ------------------
 Why use pw_stream?

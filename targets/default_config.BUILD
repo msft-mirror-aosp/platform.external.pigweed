@@ -14,6 +14,18 @@
 
 package(default_visibility = ["//visibility:public"])
 
+# TODO(b/236321905): Support backends other than boringSSL.
+label_flag(
+    name = "pw_crypto_sha256_backend",
+    build_setting_default = "@pigweed//pw_crypto:sha256_boringssl",
+)
+
+# TODO(b/236321905): Support backends other than boringSSL.
+label_flag(
+    name = "pw_crypto_ecdsa_backend",
+    build_setting_default = "@pigweed//pw_crypto:ecdsa_boringssl",
+)
+
 label_flag(
     name = "pw_log_backend",
     build_setting_default = "@pigweed//pw_log:backend_multiplexer",
@@ -70,6 +82,11 @@ label_flag(
 )
 
 label_flag(
+    name = "pw_sync_recursive_mutex_backend",
+    build_setting_default = "@pigweed//pw_sync:recursive_mutex_backend_multiplexer",
+)
+
+label_flag(
     name = "pw_sync_interrupt_spin_lock_backend",
     build_setting_default = "@pigweed//pw_sync:interrupt_spin_lock_backend_multiplexer",
 )
@@ -97,6 +114,11 @@ label_flag(
 label_flag(
     name = "pw_thread_id_backend",
     build_setting_default = "@pigweed//pw_thread:id_backend_multiplexer",
+)
+
+label_flag(
+    name = "pw_thread_iteration_backend",
+    build_setting_default = "@pigweed//pw_thread:iteration_backend_multiplexer",
 )
 
 label_flag(
@@ -130,6 +152,26 @@ label_flag(
 )
 
 label_flag(
+    name = "pw_system_target_hooks_backend",
+    build_setting_default = "@pigweed//pw_system:target_hooks_multiplexer",
+)
+
+label_flag(
+    name = "pw_unit_test_googletest_backend",
+    build_setting_default = "@pigweed//pw_unit_test:light",
+)
+
+label_flag(
     name = "target_rtos",
     build_setting_default = "@pigweed//pw_build/constraints/rtos:none",
+)
+
+label_flag(
+    name = "pw_perf_test_timer_backend",
+    build_setting_default = "@pigweed//pw_perf_test:timer_multiplexer",
+)
+
+label_flag(
+    name = "pw_trace_backend",
+    build_setting_default = "@pigweed//pw_trace:backend_multiplexer",
 )

@@ -19,7 +19,7 @@ import logging
 import os
 import pathlib
 import shutil
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -29,14 +29,22 @@ class Package:
 
     Subclass this to implement installation of a specific package.
     """
+
     def __init__(self, name):
         self._name = name
+        self._allow_use_in_downstream = True
 
     @property
     def name(self):
         return self._name
 
-    def install(self, path: pathlib.Path) -> None:  # pylint: disable=no-self-use
+    @property
+    def allow_use_in_downstream(self):
+        return self._allow_use_in_downstream
+
+    def install(
+        self, path: pathlib.Path
+    ) -> None:  # pylint: disable=no-self-use
         """Install the package at path.
 
         Install the package in path. Cannot assume this directory is empty—it
@@ -59,7 +67,9 @@ class Package:
         This method will be skipped if the directory does not exist.
         """
 
-    def info(self, path: pathlib.Path) -> Sequence[str]:  # pylint: disable=no-self-use
+    def info(
+        self, path: pathlib.Path
+    ) -> Sequence[str]:  # pylint: disable=no-self-use
         """Returns a short string explaining how to enable the package."""
 
 
@@ -78,14 +88,39 @@ class Packages:
     available: Tuple[str, ...]
 
 
+class UpstreamOnlyPackageError(Exception):
+    def __init__(self, pkg_name):
+        super().__init__(
+            f'Package {pkg_name} is an upstream-only package--it should be '
+            'imported as a submodule and not a package'
+        )
+
+
 class PackageManager:
     """Install and remove optional packages."""
+
     def __init__(self, root: pathlib.Path):
         self._pkg_root = root
         os.makedirs(root, exist_ok=True)
 
     def install(self, package: str, force: bool = False) -> None:
+        """Install the named package.
+
+        Args:
+            package: The name of the package to install.
+            force: Install the package regardless of whether it's already
+                installed or if it's not "allowed" to be installed on this
+                project.
+        """
+
         pkg = _PACKAGES[package]
+        if not pkg.allow_use_in_downstream:
+            if os.environ.get('PW_ROOT') != os.environ.get('PW_PROJECT_ROOT'):
+                if force:
+                    _LOG.warning(str(UpstreamOnlyPackageError(pkg.name)))
+                else:
+                    raise UpstreamOnlyPackageError(pkg.name)
+
         if force:
             self.remove(package)
         pkg.install(self._pkg_root / pkg.name)
@@ -122,6 +157,7 @@ class PackageManager:
 
 class PackageManagerCLI:
     """Command-line interface to PackageManager."""
+
     def __init__(self):
         self._mgr: PackageManager = None
 
@@ -171,15 +207,14 @@ class PackageManagerCLI:
         return getattr(self, command)(**kwargs)
 
 
-def parse_args(argv: List[str] = None) -> argparse.Namespace:
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser("Manage packages.")
     parser.add_argument(
         '--package-root',
         '-e',
         dest='pkg_root',
         type=pathlib.Path,
-        default=(pathlib.Path(os.environ['_PW_ACTUAL_ENVIRONMENT_ROOT']) /
-                 'packages'),
+        default=pathlib.Path(os.environ['PW_PACKAGE_ROOT']),
     )
     subparsers = parser.add_subparsers(dest='command', required=True)
     install = subparsers.add_parser('install')

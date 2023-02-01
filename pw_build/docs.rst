@@ -37,6 +37,29 @@ compiler defaults. (See Pigweed's ``//BUILDCONFIG.gn``)
 ``pw_build`` also provides several useful GN templates that are used throughout
 Pigweed.
 
+Build system philosophies
+-------------------------
+While Pigweed's GN build is not hermetic, it strives to adhere to principles of
+`hermeticity <https://bazel.build/concepts/hermeticity>`_. Some guidelines to
+move towards the ideal of hermeticity include:
+
+* Only rely on pre-compiled tools provided by CIPD (or some other versioned,
+  pre-compiled binary distribution mechanism). This eliminates build artifact
+  differences caused by different tool versions or variations (e.g. same tool
+  version built with slightly different compilation flags).
+* Do not use absolute paths in Ninja commands. Typically, these appear when
+  using ``rebase_path("//path/to/my_script.py")``. Most of the time, Ninja
+  steps should be passed paths rebased relative to the build directory (i.e.
+  ``rebase_path("//path/to/my_script.py", root_build_dir)``). This ensures build
+  commands are the same across different machines.
+* Prevent produced artifacts from relying on or referencing system state. This
+  includes time stamps, writing absolute paths to generated artifacts, or
+  producing artifacts that reference system state in a way that prevents them
+  from working the same way on a different machine.
+* Isolate build actions to the build directory. In general, the build system
+  should not add or modify files outside of the build directory. This can cause
+  confusion to users, and makes the concept of a clean build more ambiguous.
+
 Target types
 ------------
 .. code-block::
@@ -53,7 +76,10 @@ default arguments to each target, as defined in ``pw_build/default.gni``.
 Arguments may be added or removed globally using the ``default_configs``,
 ``default_public_deps``, and ``remove_default_configs`` build args.
 Additionally, arguments may be removed on a per-target basis with the
-``remove_configs`` and ``remove_public_deps`` variables.
+``remove_configs`` and ``remove_public_deps`` variables. These target types may
+also be set to have restricted visibility by default via
+``pw_build_DEFAULT_VISIBILITY`` for when projects want to selectively control
+which Pigweed libraries are used and where.
 
 The ``pw_executable`` template provides additional functionality around building
 complete binaries. As Pigweed is a collection of libraries, it does not know how
@@ -64,7 +90,7 @@ Pigweed build against it. This is controlled by the build variable
 template for a project.
 
 In some uncommon cases, a project's ``pw_executable`` template definition may
-need to stamp out some ``pw_source_set``s. Since a pw_executable template can't
+need to stamp out some ``pw_source_set``\s. Since a pw_executable template can't
 import ``$dir_pw_build/target_types.gni`` due to circular imports, it should
 import ``$dir_pw_build/cc_library.gni`` instead.
 
@@ -75,7 +101,7 @@ target's
 This list can be writen to a file at build time using ``generated_file``.  The
 primary use case for this is to generate a token database containing all the
 source files.  This allows PW_ASSERT to emit filename tokens even though it
-can't add them to the elf file because of the resons described at
+can't add them to the elf file because of the reasons described at
 :ref:`module-pw_assert-assert-api`.
 
 .. note::
@@ -128,7 +154,13 @@ pw_cc_blob_library
 The ``pw_cc_blob_library`` template is useful for embedding binary data into a
 program. The template takes in a mapping of symbol names to file paths, and
 generates a set of C++ source and header files that embed the contents of the
-passed-in files as arrays.
+passed-in files as arrays of ``std::byte``.
+
+The blob byte arrays are constant initialized and are safe to access at any
+time, including before ``main()``.
+
+``pw_cc_blob_library`` is also available in the CMake build. It is provided by
+``pw_build/cc_blob_library.cmake``.
 
 **Arguments**
 
@@ -140,6 +172,8 @@ passed-in files as arrays.
   * ``file_path``: The file path for the binary blob.
   * ``linker_section``: If present, places the byte array in the specified
     linker section.
+  * ``alignas``: If present, uses the specified string or integer verbatim in
+    the ``alignas()`` specifier for the byte array.
 
 * ``out_header``: The header file to generate. Users will include this file
   exactly as it is written here to reference the byte arrays.
@@ -250,9 +284,10 @@ is set.
 
 pw_python_action
 ----------------
-The ``pw_python_action`` template is a convenience wrapper around ``action`` for
-running Python scripts. The main benefit it provides is resolution of GN target
-labels to compiled binary files. This allows Python scripts to be written
+The ``pw_python_action`` template is a convenience wrapper around GN's `action
+function <https://gn.googlesource.com/gn/+/main/docs/reference.md#func_action>`_
+for running Python scripts. The main benefit it provides is resolution of GN
+target labels to compiled binary files. This allows Python scripts to be written
 independently of GN, taking only filesystem paths as arguments.
 
 Another convenience provided by the template is to allow running scripts without
@@ -280,8 +315,13 @@ target. Additionally, it has some of its own arguments:
 * ``working_directory``: Optional file path. When provided the current working
   directory will be set to this location before the Python module or script is
   run.
+* ``venv``: Optional gn target of the pw_python_venv that should be used to run
+  this action.
 
-**Expressions**
+.. _module-pw_build-python-action-expressions:
+
+Expressions
+^^^^^^^^^^^
 
 ``pw_python_action`` evaluates expressions in ``args``, the arguments passed to
 the script. These expressions function similarly to generator expressions in
@@ -295,7 +335,7 @@ about converting them to files.
 .. note::
 
   We intend to replace these expressions with native GN features when possible.
-  See `pwbug/347 <http://bugs.pigweed.dev/347>`_.
+  See `b/234886742 <http://issuetracker.google.com/234886742>`_.
 
 The following expressions are supported:
 
@@ -386,6 +426,69 @@ The following expressions are supported:
     stamp = true
   }
 
+.. _module-pw_build-evaluate-path-expressions:
+
+pw_evaluate_path_expressions
+----------------------------
+It is not always feasible to pass information to a script through command line
+arguments. If a script requires a large amount of input data, writing to a file
+is often more convenient. However, doing so bypasses ``pw_python_action``'s GN
+target label resolution, preventing such scripts from working with build
+artifacts in a build system-agnostic manner.
+
+``pw_evaluate_path_expressions`` is designed to address this use case. It takes
+a list of input files and resolves target expressions within them, modifying the
+files in-place.
+
+Refer to ``pw_python_action``'s :ref:`module-pw_build-python-action-expressions`
+section for the list of supported expressions.
+
+.. note::
+
+  ``pw_evaluate_path_expressions`` is typically used as an intermediate
+  sub-target of a larger template, rather than a standalone build target.
+
+**Arguments**
+
+* ``files``: A list of file paths to process.
+
+**Example**
+
+The following template defines an executable target which additionally outputs
+the list of object files from which it was compiled, making use of
+``pw_evaluate_path_expressions`` to resolve their paths.
+
+.. code-block::
+
+  import("$dir_pw_build/evaluate_path_expressions.gni")
+
+  template("executable_with_artifacts") {
+    executable("${target_name}.exe") {
+      sources = invoker.sources
+      if defined(invoker.deps) {
+        deps = invoker.deps
+      }
+    }
+
+    _artifacts_file = "$target_gen_dir/${target_name}_artifacts.json"
+    _artifacts = {
+      binary = "<TARGET_FILE(:${target_name}.exe)>"
+      objects = "<TARGET_OBJECTS(:${target_name}.exe)>"
+    }
+    write_file(_artifacts_file, _artifacts, "json")
+
+    pw_evaluate_path_expressions("${target_name}.evaluate") {
+      files = [ _artifacts_file ]
+    }
+
+    group(target_name) {
+      deps = [
+        ":${target_name}.exe",
+        ":${target_name}.evaluate",
+      ]
+    }
+  }
+
 .. _module-pw_build-pw_exec:
 
 pw_exec
@@ -424,6 +527,7 @@ pw_exec
 * ``working_directory``: The working directory to execute the subprocess with.
   If not specified it will not be set and the subprocess will have whatever
   the parent current working directory is.
+* ``visibility``: GN visibility to apply to the underlying target.
 
 **Example**
 
@@ -682,6 +786,42 @@ on without an error.
 
 The templates for build time errors are defined in ``pw_build/error.gni``.
 
+Improved Ninja progress output
+------------------------------
+Ninja includes a basic progress display, showing in a single line the number of
+targets finished, the total number of targets, and the name of the most recent
+target it has either started or finished.
+
+For additional insight into the status of the build, Pigweed includes a Ninja
+wrapper, ``pw-wrap-ninja``, that displays additional real-time information about
+the progress of the build. The wrapper is invoked the same way you'd normally
+invoke Ninja:
+
+.. code-block:: sh
+
+  pw-wrap-ninja -C out
+
+The script lists the progress of the build, as well as the list of targets that
+Ninja is currently building, along with a timer that measures how long each
+target has been building for:
+
+.. code-block::
+
+  [51.3s] Building [8924/10690] ...
+    [10.4s] c++ pw_strict_host_clang_debug/obj/pw_string/string_test.lib.string_test.cc.o
+    [ 9.5s] ACTION //pw_console/py:py.lint.mypy(//pw_build/python_toolchain:python)
+    [ 9.4s] ACTION //pw_console/py:py.lint.pylint(//pw_build/python_toolchain:python)
+    [ 6.1s] clang-tidy ../pw_log_rpc/log_service.cc
+    [ 6.1s] clang-tidy ../pw_log_rpc/log_service_test.cc
+    [ 6.1s] clang-tidy ../pw_log_rpc/rpc_log_drain.cc
+    [ 6.1s] clang-tidy ../pw_log_rpc/rpc_log_drain_test.cc
+    [ 5.4s] c++ pw_strict_host_clang_debug/obj/BUILD_DIR/pw_strict_host_clang_debug/gen/pw...
+    ... and 109 more
+
+This allows you to, at a glance, know what Ninja's currently building, which
+targets are bottlenecking the rest of the build, and which targets are taking
+an unusually long time to complete.
+
 CMake
 =====
 Pigweed's `CMake`_ support is provided primarily for projects that have an
@@ -715,13 +855,32 @@ CMake functions
 ---------------
 CMake convenience functions are defined in ``pw_build/pigweed.cmake``.
 
-* ``pw_auto_add_simple_module`` -- For modules with only one library,
-  automatically declare the library and its tests.
-* ``pw_auto_add_module_tests`` -- Create test targets for all tests in a module.
-* ``pw_add_facade`` -- Declare a module facade.
+* ``pw_add_library_generic`` -- The base helper used to instantiate CMake
+  libraries. This is meant for use in downstream projects as upstream Pigweed
+  modules are expected to use ``pw_add_library``.
+* ``pw_add_library`` -- Add an upstream Pigweed library.
+* ``pw_add_facade_generic`` -- The base helper used to instantiate facade
+  libraries. This is meant for use in downstream projects as upstream Pigweed
+  modules are expected to use ``pw_add_facade``.
+* ``pw_add_facade`` -- Declare an upstream Pigweed facade.
 * ``pw_set_backend`` -- Set the backend library to use for a facade.
-* ``pw_add_module_library`` -- Add a library that is part of a module.
-* ``pw_add_test`` -- Declare a test target.
+* ``pw_add_test_generic`` -- The base helper used to instantiate test targets.
+  This is meant for use in downstrema projects as upstream Pigweed modules are
+  expected to use ``pw_add_test``.
+* ``pw_add_test`` -- Declare an upstream Pigweed test target.
+* ``pw_add_test_group`` -- Declare a target to group and bundle test targets.
+* ``pw_target_link_targets`` -- Helper wrapper around ``target_link_libraries``
+  which only supports CMake targets and detects when the target does not exist.
+  Note that generator expressions are not supported.
+* ``pw_add_global_compile_options`` -- Applies compilation options to all
+  targets in the build. This should only be used to add essential compilation
+  options, such as those that affect the ABI. Use ``pw_add_library`` or
+  ``target_compile_options`` to apply other compile options.
+* ``pw_add_error_target`` -- Declares target which reports a message and causes
+  a build failure only when compiled. This is useful when ``FATAL_ERROR``
+  messages cannot be used to catch problems during the CMake configuration
+  phase.
+* ``pw_parse_arguments`` -- Helper to parse CMake function arguments.
 
 See ``pw_build/pigweed.cmake`` for the complete documentation of these
 functions.
@@ -737,11 +896,19 @@ similar to GN's build args set with ``gn args``. Unlike GN, CMake does not
 support multi-toolchain builds, so these variables have a single global value
 per build directory.
 
-The ``pw_add_facade`` function declares a cache variable named
+The ``pw_add_module_facade`` function declares a cache variable named
 ``<module_name>_BACKEND`` for each facade. Cache variables can be awkward to
 work with, since their values only change when they're assigned, but then
 persist accross CMake invocations. These variables should be set in one of the
 following ways:
+
+* Prior to setting a backend, your application should include
+  ``$ENV{PW_ROOT}/backends.cmake``. This file will setup all the backend targets
+  such that any misspelling of a facade or backend will yield a warning.
+
+  .. note::
+    Zephyr developers do not need to do this, backends can be set automatically
+    by enabling the appropriate Kconfig options.
 
 * Call ``pw_set_backend`` to set backends appropriate for the target in the
   target's toolchain file. The toolchain file is provided to ``cmake`` with
@@ -764,12 +931,13 @@ error message like the following:
 
 .. code-block::
 
-  CMake Error at pw_build/pigweed.cmake:244 (add_custom_target):
-  Error evaluating generator expression:
+  CMake Error at pw_build/pigweed.cmake:257 (message):
+    my_module.my_facade's INTERFACE dep "my_nonexistent_backend" is not
+    a target.
+  Call Stack (most recent call first):
+    pw_build/pigweed.cmake:238:EVAL:1 (_pw_target_link_targets_deferred_check)
+    CMakeLists.txt:DEFERRED
 
-    $<TARGET_PROPERTY:my_backend_that_does_not_exist,TYPE>
-
-  Target "my_backend_that_does_not_exist" not found.
 
 Toolchain setup
 ---------------

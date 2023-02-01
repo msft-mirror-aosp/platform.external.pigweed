@@ -18,8 +18,22 @@ workspace(
 )
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
-load("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "pigweed_deps")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
+load(
+    "//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
+    "cipd_client_repository",
+    "cipd_repository",
+    "pigweed_deps",
+)
+
+# Set up Bazel platforms.
+# Required by: pigweed.
+# Used in modules: //pw_build, (Assorted modules via select statements).
+git_repository(
+    name = "platforms",
+    commit = "380c85cc2c7b126c6e354f517dc16d89fe760c9f",
+    remote = "https://github.com/bazelbuild/platforms.git",
+)
 
 # Setup CIPD client and packages.
 # Required by: pigweed.
@@ -29,6 +43,14 @@ pigweed_deps()
 load("@cipd_deps//:cipd_init.bzl", "cipd_init")
 
 cipd_init()
+
+cipd_client_repository()
+
+cipd_repository(
+    name = "pw_transfer_test_binaries",
+    path = "pigweed/pw_transfer_test_binaries/${os=linux}-${arch=amd64}",
+    tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
+)
 
 # Set up Python support.
 # Required by: rules_fuzzing, com_github_nanopb_nanopb.
@@ -77,7 +99,7 @@ http_archive(
 # Used in modules: All cc targets.
 git_repository(
     name = "rules_cc_toolchain",
-    commit = "80b51ba81f14eebe06684efa25261f6dc46e9b29",
+    commit = "d9a0905534f06a05c4b59b3e929778c1a97859c3",
     remote = "https://github.com/bazelembedded/rules_cc_toolchain.git",
 )
 
@@ -89,19 +111,14 @@ load("@rules_cc_toolchain//cc_toolchain:cc_toolchain.bzl", "register_cc_toolchai
 
 register_cc_toolchains()
 
-# Set up Protobuf rules.
-# Required by: pigweed, com_github_bazelbuild_buildtools.
-# Used in modules: //pw_protobuf.
-http_archive(
-    name = "com_google_protobuf",
-    sha256 = "c6003e1d2e7fefa78a3039f19f383b4f3a61e81be8c19356f85b6461998ad3db",
-    strip_prefix = "protobuf-3.17.3",
-    url = "https://github.com/protocolbuffers/protobuf/archive/v3.17.3.tar.gz",
+# Sets up Bazels documentation generator.
+# Required by: rules_cc_toolchain.
+# Required by modules: All
+git_repository(
+    name = "io_bazel_stardoc",
+    commit = "2b801dc9b93f73812948ee4e505805511b0f55dc",
+    remote = "https://github.com/bazelbuild/stardoc.git",
 )
-
-load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
-
-protobuf_deps()
 
 # Set up tools to build custom GRPC rules.
 # Required by: pigweed.
@@ -124,7 +141,7 @@ rules_proto_grpc_toolchains()
 rules_proto_grpc_repos()
 
 # Set up Protobuf rules.
-# Required by: pigweed, com_github_bazelbuild_buildtools.
+# Required by: pigweed.
 # Used in modules: //pw_protobuf.
 http_archive(
     name = "com_google_protobuf",
@@ -158,18 +175,9 @@ load("@com_github_nanopb_nanopb//:nanopb_workspace.bzl", "nanopb_workspace")
 
 nanopb_workspace()
 
-# Set up Bazel platforms.
-# Required by: pigweed.
-# Used in modules: //pw_build, (Assorted modules via select statements).
-git_repository(
-    name = "platforms",
-    commit = "d4c9d7f51a7c403814b60f66d20eeb425fbaaacb",
-    remote = "https://github.com/bazelbuild/platforms.git",
-)
-
 # Set up NodeJs rules.
 # Required by: pigweed.
-# Used in modules: //pw_web_ui.
+# Used in modules: //pw_web.
 http_archive(
     name = "build_bazel_rules_nodejs",
     sha256 = "b32a4713b45095e9e1921a7fcb1adf584bc05959f3336e7351bcf77f015a2d7c",
@@ -193,7 +201,7 @@ yarn_install(
 
 # Set up web-testing rules.
 # Required by: pigweed.
-# Used in modules: //pw_web_ui.
+# Used in modules: //pw_web.
 http_archive(
     name = "io_bazel_rules_webtesting",
     sha256 = "9bb461d5ef08e850025480bab185fd269242d4e533bca75bfb748001ceb343c3",
@@ -222,15 +230,6 @@ git_repository(
     commit = "17c93d5fa52c4c78860b8bbd327325fba6c85555",
     remote = "https://github.com/bazelembedded/bazel-embedded.git",
 )
-
-# Instantiate Pigweed configuration for embedded toolchain,
-# this must be called before bazel_embedded_deps.
-load(
-    "//pw_build:pigweed_toolchain_upstream.bzl",
-    "toolchain_upstream_deps",
-)
-
-toolchain_upstream_deps()
 
 # Configure bazel_embedded toolchains and platforms.
 load(
@@ -265,54 +264,6 @@ register_gcc_arm_none_toolchain()
 
 # Registers platforms for use with toolchain resolution
 register_execution_platforms("//pw_build/platforms:all")
-
-# Set up Golang toolchain rules.
-# Required by: bazel_gazelle, com_github_bazelbuild_buildtools.
-# Used in modules: None.
-http_archive(
-    name = "io_bazel_rules_go",
-    sha256 = "d1ffd055969c8f8d431e2d439813e42326961d0942bdf734d2c95dc30c369566",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.24.5/rules_go-v0.24.5.tar.gz",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.24.5/rules_go-v0.24.5.tar.gz",
-    ],
-)
-
-load(
-    "@io_bazel_rules_go//go:deps.bzl",
-    "go_register_toolchains",
-    "go_rules_dependencies",
-)
-
-go_rules_dependencies()
-
-go_register_toolchains()
-
-# Set up bazel package manager for golang.
-# Required by: com_github_bazelbuild_buildtools.
-# Used in modules: None.
-http_archive(
-    name = "bazel_gazelle",
-    sha256 = "b85f48fa105c4403326e9525ad2b2cc437babaa6e15a3fc0b1dbab0ab064bc7c",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.22.2/bazel-gazelle-v0.22.2.tar.gz",
-        "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.22.2/bazel-gazelle-v0.22.2.tar.gz",
-    ],
-)
-
-load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
-
-gazelle_dependencies()
-
-# Set up bazel buildtools (bazel linter and formatter).
-# Required by: pigweed.
-# Used in modules: //:all (bazel specific tools).
-http_archive(
-    name = "com_github_bazelbuild_buildtools",
-    sha256 = "c28eef4d30ba1a195c6837acf6c75a4034981f5b4002dda3c5aa6e48ce023cf1",
-    strip_prefix = "buildtools-4.0.1",
-    url = "https://github.com/bazelbuild/buildtools/archive/4.0.1.tar.gz",
-)
 
 load("//pw_build:target_config.bzl", "pigweed_config")
 
@@ -375,4 +326,21 @@ maven_install(
         "https://jcenter.bintray.com/",
         "https://repo1.maven.org/maven2",
     ],
+)
+
+new_git_repository(
+    name = "micro_ecc",
+    build_file = "//:third_party/micro_ecc/BUILD.micro_ecc",
+    commit = "b335ee812bfcca4cd3fb0e2a436aab39553a555a",
+    remote = "https://github.com/kmackay/micro-ecc.git",
+)
+
+git_repository(
+    name = "boringssl",
+    commit = "b9232f9e27e5668bc0414879dcdedb2a59ea75f2",
+    # Requires patching as pw_polyfill uses c++14, whereas boringssl uses c++11.
+    # This results in a scenario where std::conditional_t is disabled in the
+    # polyfill implementation.
+    patches = ["//third_party/boringssl:cc_version.patch"],
+    remote = "https://boringssl.googlesource.com/boringssl",
 )

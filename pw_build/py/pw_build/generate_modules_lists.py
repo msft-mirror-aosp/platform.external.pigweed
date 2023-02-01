@@ -28,7 +28,7 @@ import os
 from pathlib import Path
 import sys
 import subprocess
-from typing import Iterator, List, Optional, Sequence, Tuple
+from typing import Iterator, Optional, Sequence
 
 _COPYRIGHT_NOTICE = '''\
 # Copyright 2022 The Pigweed Authors
@@ -48,7 +48,9 @@ _COPYRIGHT_NOTICE = '''\
 _WARNING = '\033[31m\033[1mWARNING:\033[0m '  # Red WARNING: prefix
 _ERROR = '\033[41m\033[37m\033[1mERROR:\033[0m '  # Red background ERROR: prefix
 
-_MISSING_MODULES_WARNING = _WARNING + '''\
+_MISSING_MODULES_WARNING = (
+    _WARNING
+    + '''\
 The PIGWEED_MODULES list is missing the following modules:
 {modules}
 
@@ -57,8 +59,11 @@ If the listed modules are Pigweed modules, add them to PIGWEED_MODULES.
 If the listed modules are not actual Pigweed modules, remove any stray pw_*
 directories in the Pigweed repository (git clean -fd).
 '''
+)
 
-_OUT_OF_DATE_WARNING = _ERROR + '''\
+_OUT_OF_DATE_WARNING = (
+    _ERROR
+    + '''\
 The generated Pigweed modules list .gni file is out of date!
 
 Regenerate the modules lists and commit it to fix this:
@@ -67,12 +72,16 @@ Regenerate the modules lists and commit it to fix this:
 
   git add {file}
 '''
+)
 
-_FORMAT_FAILED_WARNING = _ERROR + '''\
+_FORMAT_FAILED_WARNING = (
+    _ERROR
+    + '''\
 Failed to generate a valid .gni from PIGWEED_MODULES!
 
 This may be a Pigweed bug; please report this to the Pigweed team.
 '''
+)
 
 _DO_NOT_SET = 'DO NOT SET THIS BUILD ARGUMENT!'
 
@@ -80,46 +89,33 @@ _DO_NOT_SET = 'DO NOT SET THIS BUILD ARGUMENT!'
 def _module_list_warnings(root: Path, modules: Sequence[str]) -> Iterator[str]:
     missing = _missing_modules(root, modules)
     if missing:
-        yield _MISSING_MODULES_WARNING.format(modules=''.join(
-            f'\n  - {module}' for module in missing))
+        yield _MISSING_MODULES_WARNING.format(
+            modules=''.join(f'\n  - {module}' for module in missing)
+        )
 
     if any(modules[i] > modules[i + 1] for i in range(len(modules) - 1)):
         yield _WARNING + 'The PIGWEED_MODULES list is not sorted!'
         yield ''
         yield 'Apply the following diff to fix the order:'
         yield ''
-        yield from difflib.unified_diff(modules,
-                                        sorted(modules),
-                                        lineterm='',
-                                        n=1,
-                                        fromfile='PIGWEED_MODULES',
-                                        tofile='PIGWEED_MODULES')
+        yield from difflib.unified_diff(
+            modules,
+            sorted(modules),
+            lineterm='',
+            n=1,
+            fromfile='PIGWEED_MODULES',
+            tofile='PIGWEED_MODULES',
+        )
 
         yield ''
 
 
-# TODO(hepler): Add tests and docs targets to all modules.
-def _find_tests_and_docs(
-        root: Path, modules: Sequence[str]) -> Tuple[List[str], List[str]]:
-    """Lists "tests" and "docs" targets for modules that declare them."""
-    tests = []
-    docs = []
-
-    for module in modules:
-        build_gn_contents = root.joinpath(module, 'BUILD.gn').read_bytes()
-        if b'group("tests")' in build_gn_contents:
-            tests.append(f'"$dir_{module}:tests",')
-
-        if b'group("docs")' in build_gn_contents:
-            docs.append(f'"$dir_{module}:docs",')
-
-    return tests, docs
-
-
-def _generate_modules_gni(root: Path, prefix: Path,
-                          modules: Sequence[str]) -> Iterator[str]:
+def _generate_modules_gni(
+    prefix: Path, modules: Sequence[str]
+) -> Iterator[str]:
     """Generates a .gni file with variables and lists for Pigweed modules."""
-    script = Path(__file__).resolve().relative_to(root.resolve()).as_posix()
+    script_path = Path(__file__).resolve()
+    script = script_path.relative_to(script_path.parent.parent).as_posix()
 
     yield _COPYRIGHT_NOTICE
     yield ''
@@ -157,16 +153,20 @@ def _generate_modules_gni(root: Path, prefix: Path,
     yield ']'
     yield ''
 
-    tests, docs = _find_tests_and_docs(root, modules)
-
     yield f'# A list with all Pigweed module test groups. {_DO_NOT_SET}'
     yield 'pw_module_tests = ['
-    yield from tests
+
+    for module in modules:
+        yield f'"$dir_{module}:tests",'
+
     yield ']'
     yield ''
     yield f'# A list with all Pigweed modules docs groups. {_DO_NOT_SET}'
     yield 'pw_module_docs = ['
-    yield from docs
+
+    for module in modules:
+        yield f'"$dir_{module}:docs",'
+
     yield ']'
     yield ''
     yield '}'
@@ -175,27 +175,36 @@ def _generate_modules_gni(root: Path, prefix: Path,
 def _missing_modules(root: Path, modules: Sequence[str]) -> Sequence[str]:
     return sorted(
         frozenset(
-            str(p.relative_to(root))
-            for p in root.glob('pw_*') if p.is_dir()) - frozenset(modules))
+            str(p.relative_to(root)) for p in root.glob('pw_*') if p.is_dir()
+        )
+        - frozenset(modules)
+    )
 
 
 def _parse_args() -> dict:
     parser = argparse.ArgumentParser(
         description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument('root', type=Path, help='Root build dir')
     parser.add_argument('modules_list', type=Path, help='Input modules list')
     parser.add_argument('modules_gni_file', type=Path, help='Output .gni file')
     parser.add_argument(
         '--warn-only',
         type=Path,
-        help='Only check PIGWEED_MODULES; takes a path to a stamp file to use')
+        help='Only check PIGWEED_MODULES; takes a path to a stamp file to use',
+    )
 
     return vars(parser.parse_args())
 
 
-def _main(root: Path, modules_list: Path, modules_gni_file: Path,
-          warn_only: Optional[Path]) -> int:
+def main(
+    root: Path,
+    modules_list: Path,
+    modules_gni_file: Path,
+    warn_only: Optional[Path],
+) -> int:
+    """Manages the list of Pigweed modules."""
     prefix = Path(os.path.relpath(root, modules_gni_file.parent))
     modules = modules_list.read_text().splitlines()
 
@@ -208,26 +217,49 @@ def _main(root: Path, modules_list: Path, modules_gni_file: Path,
     # Check if the contents of the .gni file are out of date.
     if warn_only:
         text = io.StringIO()
-        for line in _generate_modules_gni(root, prefix, modules):
+        for line in _generate_modules_gni(prefix, modules):
             print(line, file=text)
 
-        process = subprocess.run(['gn', 'format', '--stdin'],
-                                 input=text.getvalue().encode('utf-8'),
-                                 stdout=subprocess.PIPE)
+        process = subprocess.run(
+            ['gn', 'format', '--stdin'],
+            input=text.getvalue().encode('utf-8'),
+            stdout=subprocess.PIPE,
+        )
         if process.returncode != 0:
             errors.append(_FORMAT_FAILED_WARNING)
-        elif modules_gni_file.read_bytes() != process.stdout:
+
+        # Make a diff of required changes
+        modules_gni_relpath = os.path.relpath(modules_gni_file, root)
+        diff = list(
+            difflib.unified_diff(
+                modules_gni_file.read_text().splitlines(),
+                process.stdout.decode('utf-8', errors='replace').splitlines(),
+                fromfile=os.path.join('a', modules_gni_relpath),
+                tofile=os.path.join('b', modules_gni_relpath),
+                lineterm='',
+                n=1,
+            )
+        )
+        # If any differences were found, print the error and the diff.
+        if diff:
             errors.append(
                 _OUT_OF_DATE_WARNING.format(
                     out_dir=os.path.relpath(os.curdir, root),
-                    file=os.path.relpath(modules_gni_file, root)))
+                    file=os.path.relpath(modules_gni_file, root),
+                )
+            )
+            errors.append('Expected Diff:\n')
+            errors.append('\n'.join(diff))
+            errors.append('\n')
+
     elif not warnings:  # Update the modules .gni file.
         with modules_gni_file.open('w', encoding='utf-8') as file:
-            for line in _generate_modules_gni(root, prefix, modules):
+            for line in _generate_modules_gni(prefix, modules):
                 print(line, file=file)
 
-        process = subprocess.run(['gn', 'format', modules_gni_file],
-                                 stdout=subprocess.DEVNULL)
+        process = subprocess.run(
+            ['gn', 'format', modules_gni_file], stdout=subprocess.DEVNULL
+        )
         if process.returncode != 0:
             errors.append(_FORMAT_FAILED_WARNING)
 
@@ -251,4 +283,4 @@ def _main(root: Path, modules_list: Path, modules_gni_file: Path,
 
 
 if __name__ == '__main__':
-    sys.exit(_main(**_parse_args()))
+    sys.exit(main(**_parse_args()))

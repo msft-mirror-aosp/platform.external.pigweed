@@ -11,6 +11,7 @@ pw_assert_zephyr
 pw_base64
 pw_bloat
 pw_blob_store
+pw_bluetooth
 pw_bluetooth_hci
 pw_boot
 pw_boot_cortex_m
@@ -26,11 +27,13 @@ pw_chrono_stl
 pw_chrono_threadx
 pw_chrono_zephyr
 pw_cli
+pw_compilation_testing
 pw_console
 pw_containers
 pw_cpu_exception
 pw_cpu_exception_cortex_m
 pw_crypto
+pw_digital_io
 pw_docgen
 pw_doctor
 pw_env_setup
@@ -41,9 +44,11 @@ pw_hdlc
 pw_hex_dump
 pw_i2c
 pw_i2c_mcuxpresso
+pw_ide
 pw_interrupt
 pw_interrupt_cortex_m
 pw_interrupt_zephyr
+pw_intrusive_ptr
 pw_kvs
 pw_libc
 pw_log
@@ -61,6 +66,7 @@ pw_minimal_cpp_stdlib
 pw_module
 pw_multisink
 pw_package
+pw_perf_test
 pw_persistent_ram
 pw_polyfill
 pw_preprocessor
@@ -72,6 +78,7 @@ pw_result
 pw_ring_buffer
 pw_router
 pw_rpc
+pw_rust
 pw_snapshot
 pw_software_update
 pw_span
@@ -94,6 +101,7 @@ pw_sys_io_baremetal_lm3s6965evb
 pw_sys_io_baremetal_stm32f429
 pw_sys_io_emcraft_sf2
 pw_sys_io_mcuxpresso
+pw_sys_io_pico
 pw_sys_io_stdio
 pw_sys_io_stm32cube
 pw_sys_io_zephyr
@@ -116,5 +124,5 @@ pw_transfer
 pw_unit_test
 pw_varint
 pw_watch
-pw_web_ui
+pw_web
 pw_work_queue

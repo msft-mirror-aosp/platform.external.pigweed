@@ -19,15 +19,20 @@
 #include "pw_rpc/internal/hash.h"
 #include "pw_rpc/raw/client_testing.h"
 #include "pw_rpc/raw/test_method_context.h"
+#include "pw_rpc_test_protos/no_package.raw_rpc.pb.h"
 #include "pw_rpc_test_protos/test.pwpb.h"
 #include "pw_rpc_test_protos/test.raw_rpc.pb.h"
 
 namespace pw::rpc {
 namespace {
 
+namespace TestRequest = ::pw::rpc::test::pwpb::TestRequest;
+namespace TestResponse = ::pw::rpc::test::pwpb::TestResponse;
+namespace TestStreamResponse = ::pw::rpc::test::pwpb::TestStreamResponse;
+
 Vector<std::byte, 64> EncodeRequest(int integer, Status status) {
   Vector<std::byte, 64> buffer(64);
-  test::TestRequest::MemoryEncoder test_request(buffer);
+  TestRequest::MemoryEncoder test_request(buffer);
 
   EXPECT_EQ(OkStatus(), test_request.WriteInteger(integer));
   EXPECT_EQ(OkStatus(), test_request.WriteStatusCode(status.code()));
@@ -39,7 +44,7 @@ Vector<std::byte, 64> EncodeRequest(int integer, Status status) {
 
 Vector<std::byte, 64> EncodeResponse(int number) {
   Vector<std::byte, 64> buffer(64);
-  test::TestStreamResponse::MemoryEncoder test_response(buffer);
+  TestStreamResponse::MemoryEncoder test_response(buffer);
 
   EXPECT_EQ(OkStatus(), test_response.WriteNumber(number));
 
@@ -69,9 +74,9 @@ class TestService final
     TestResponse::MemoryEncoder test_response(response);
     EXPECT_EQ(OkStatus(), test_response.WriteValue(integer + 1));
 
-    ASSERT_EQ(OkStatus(),
-              responder.Finish(std::span(response).first(test_response.size()),
-                               status));
+    ASSERT_EQ(
+        OkStatus(),
+        responder.Finish(span(response).first(test_response.size()), status));
   }
 
   void TestAnotherUnaryRpc(ConstByteSpan request,
@@ -176,13 +181,29 @@ class TestService final
   RawServerReaderWriter last_reader_writer_;
 };
 
+// Test that code generation succeeds when no proto package is specified.
+class NoPackageTestService final
+    : public ::pw_rpc::raw::PwRpcTestService::Service<NoPackageTestService> {
+ public:
+  static void TestUnaryRpc(ConstByteSpan, RawUnaryResponder&) {}
+
+  void TestAnotherUnaryRpc(ConstByteSpan, RawUnaryResponder&) {}
+
+  void TestServerStreamRpc(ConstByteSpan, RawServerWriter&) {}
+
+  void TestClientStreamRpc(RawServerReader&) {}
+
+  void TestBidirectionalStreamRpc(RawServerReaderWriter&) {}
+};
+
 }  // namespace test
 
 namespace {
 
 TEST(RawCodegen, Server_CompilesProperly) {
   test::TestService service;
-  EXPECT_EQ(service.id(), internal::Hash("pw.rpc.test.TestService"));
+  EXPECT_EQ(internal::UnwrapServiceId(service.service_id()),
+            internal::Hash("pw.rpc.test.TestService"));
   EXPECT_STREQ(service.name(), "TestService");
 }
 
@@ -195,14 +216,14 @@ TEST(RawCodegen, Server_InvokeUnaryRpc) {
   protobuf::Decoder decoder(context.response());
 
   while (decoder.Next().ok()) {
-    switch (static_cast<test::TestResponse::Fields>(decoder.FieldNumber())) {
-      case test::TestResponse::Fields::VALUE: {
+    switch (static_cast<TestResponse::Fields>(decoder.FieldNumber())) {
+      case TestResponse::Fields::VALUE: {
         int32_t value;
         EXPECT_EQ(OkStatus(), decoder.ReadInt32(&value));
         EXPECT_EQ(value, 124);
         break;
       }
-      case test::TestResponse::Fields::REPEATED_FIELD:
+      case TestResponse::Fields::REPEATED_FIELD:
         break;  // Ignore this field
     }
   }
@@ -217,14 +238,14 @@ TEST(RawCodegen, Server_InvokeAsyncUnaryRpc) {
   protobuf::Decoder decoder(context.response());
 
   while (decoder.Next().ok()) {
-    switch (static_cast<test::TestResponse::Fields>(decoder.FieldNumber())) {
-      case test::TestResponse::Fields::VALUE: {
+    switch (static_cast<TestResponse::Fields>(decoder.FieldNumber())) {
+      case TestResponse::Fields::VALUE: {
         int32_t value;
         EXPECT_EQ(OkStatus(), decoder.ReadInt32(&value));
         EXPECT_EQ(value, 124);
         break;
       }
-      case test::TestResponse::Fields::REPEATED_FIELD:
+      case TestResponse::Fields::REPEATED_FIELD:
         break;  // Ignore this field
     }
   }
@@ -304,15 +325,14 @@ TEST(RawCodegen, Server_InvokeServerStreamingRpc) {
 
   protobuf::Decoder decoder(context.responses().back());
   while (decoder.Next().ok()) {
-    switch (
-        static_cast<test::TestStreamResponse::Fields>(decoder.FieldNumber())) {
-      case test::TestStreamResponse::Fields::NUMBER: {
+    switch (static_cast<TestStreamResponse::Fields>(decoder.FieldNumber())) {
+      case TestStreamResponse::Fields::NUMBER: {
         int32_t value;
         EXPECT_EQ(OkStatus(), decoder.ReadInt32(&value));
         EXPECT_EQ(value, 4);
         break;
       }
-      case test::TestStreamResponse::Fields::CHUNK:
+      case TestStreamResponse::Fields::CHUNK:
         FAIL();
         break;
     }
@@ -323,12 +343,12 @@ int32_t ReadResponseNumber(ConstByteSpan data) {
   int32_t value = -1;
   protobuf::Decoder decoder(data);
   while (decoder.Next().ok()) {
-    switch (
-        static_cast<test::TestStreamResponse::Fields>(decoder.FieldNumber())) {
-      case test::TestStreamResponse::Fields::NUMBER: {
+    switch (static_cast<TestStreamResponse::Fields>(decoder.FieldNumber())) {
+      case TestStreamResponse::Fields::NUMBER: {
         EXPECT_EQ(OkStatus(), decoder.ReadInt32(&value));
         break;
       }
+      case TestStreamResponse::Fields::CHUNK:
       default:
         ADD_FAILURE();
         break;
@@ -427,12 +447,12 @@ TEST_F(RawCodegenClientTest, InvokeUnaryRpc_Ok) {
   RawUnaryReceiver call = test::pw_rpc::raw::TestService::TestUnaryRpc(
       context_.client(),
       context_.channel().id(),
-      std::as_bytes(std::span("This is the request")),
+      as_bytes(span("This is the request")),
       UnaryOnCompleted(),
       OnError());
 
   context_.server().SendResponse<test::pw_rpc::raw::TestService::TestUnaryRpc>(
-      std::as_bytes(std::span("(ㆆ_ㆆ)")), OkStatus());
+      as_bytes(span("(ㆆ_ㆆ)")), OkStatus());
 
   ASSERT_TRUE(payload_.has_value());
   EXPECT_STREQ(payload_.value(), "(ㆆ_ㆆ)");
@@ -442,9 +462,7 @@ TEST_F(RawCodegenClientTest, InvokeUnaryRpc_Ok) {
 
 TEST_F(RawCodegenClientTest, InvokeUnaryRpc_Error) {
   RawUnaryReceiver call = service_client_.TestUnaryRpc(
-      std::as_bytes(std::span("This is the request")),
-      UnaryOnCompleted(),
-      OnError());
+      as_bytes(span("This is the request")), UnaryOnCompleted(), OnError());
 
   context_.server()
       .SendServerError<test::pw_rpc::raw::TestService::TestUnaryRpc>(
@@ -459,21 +477,21 @@ TEST_F(RawCodegenClientTest, InvokeServerStreamRpc_Ok) {
   RawClientReader call = test::pw_rpc::raw::TestService::TestServerStreamRpc(
       context_.client(),
       context_.channel().id(),
-      std::as_bytes(std::span("This is the request")),
+      as_bytes(span("This is the request")),
       OnNext(),
       OnCompleted(),
       OnError());
 
   context_.server()
       .SendServerStream<test::pw_rpc::raw::TestService::TestServerStreamRpc>(
-          std::as_bytes(std::span("(⌐□_□)")));
+          as_bytes(span("(⌐□_□)")));
 
   ASSERT_TRUE(payload_.has_value());
   EXPECT_STREQ(payload_.value(), "(⌐□_□)");
 
   context_.server()
       .SendServerStream<test::pw_rpc::raw::TestService::TestServerStreamRpc>(
-          std::as_bytes(std::span("(o_O)")));
+          as_bytes(span("(o_O)")));
 
   EXPECT_STREQ(payload_.value(), "(o_O)");
 
@@ -486,11 +504,11 @@ TEST_F(RawCodegenClientTest, InvokeServerStreamRpc_Ok) {
 }
 
 TEST_F(RawCodegenClientTest, InvokeServerStreamRpc_Error) {
-  RawClientReader call = service_client_.TestServerStreamRpc(
-      std::as_bytes(std::span("This is the request")),
-      OnNext(),
-      OnCompleted(),
-      OnError());
+  RawClientReader call =
+      service_client_.TestServerStreamRpc(as_bytes(span("This is the request")),
+                                          OnNext(),
+                                          OnCompleted(),
+                                          OnError());
 
   context_.server()
       .SendServerError<test::pw_rpc::raw::TestService::TestServerStreamRpc>(
@@ -508,7 +526,7 @@ TEST_F(RawCodegenClientTest, InvokeClientStreamRpc_Ok) {
       UnaryOnCompleted(),
       OnError());
 
-  EXPECT_EQ(OkStatus(), call.Write(std::as_bytes(std::span("(•‿•)"))));
+  EXPECT_EQ(OkStatus(), call.Write(as_bytes(span("(•‿•)"))));
   EXPECT_STREQ(
       reinterpret_cast<const char*>(
           context_.output()
@@ -519,7 +537,7 @@ TEST_F(RawCodegenClientTest, InvokeClientStreamRpc_Ok) {
 
   context_.server()
       .SendResponse<test::pw_rpc::raw::TestService::TestClientStreamRpc>(
-          std::as_bytes(std::span("(⌐□_□)")), Status::InvalidArgument());
+          as_bytes(span("(⌐□_□)")), Status::InvalidArgument());
 
   ASSERT_TRUE(payload_.has_value());
   EXPECT_STREQ(payload_.value(), "(⌐□_□)");
@@ -591,7 +609,7 @@ TEST_F(RawCodegenClientTest, InvokeBidirectionalStreamRpc_Ok) {
           OnCompleted(),
           OnError());
 
-  EXPECT_EQ(OkStatus(), call.Write(std::as_bytes(std::span("(•‿•)"))));
+  EXPECT_EQ(OkStatus(), call.Write(as_bytes(span("(•‿•)"))));
   EXPECT_STREQ(
       reinterpret_cast<const char*>(
           context_.output()
@@ -604,7 +622,7 @@ TEST_F(RawCodegenClientTest, InvokeBidirectionalStreamRpc_Ok) {
   context_.server()
       .SendServerStream<
           test::pw_rpc::raw::TestService::TestBidirectionalStreamRpc>(
-          std::as_bytes(std::span("(⌐□_□)")));
+          as_bytes(span("(⌐□_□)")));
 
   ASSERT_TRUE(payload_.has_value());
   EXPECT_STREQ(payload_.value(), "(⌐□_□)");

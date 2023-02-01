@@ -43,8 +43,8 @@ Pigweed provides several client and server implementations of ``pw_rpc``.
     - ✅
     - ✅
   * - C++ (pw_protobuf)
-    - planned
-    - planned
+    - ✅
+    - ✅
   * - Java
     -
     - in development
@@ -67,13 +67,6 @@ receives the request, looks up the relevant service method, then calls into the
 RPC function. The RPC is considered active until the server sends a response
 packet with the RPC's status. The client may terminate an ongoing RPC by
 cancelling it.
-
-``pw_rpc`` supports only one RPC invocation per service/method/channel. If a
-client calls an ongoing RPC on the same channel, the server cancels the ongoing
-call and reinvokes the RPC with the new request. This applies to unary and
-streaming RPCs, though the server may not have an opportunity to cancel a
-synchronously handled unary RPC before it completes. The same RPC may be invoked
-multiple times simultaneously if the invocations are on different channels.
 
 Status codes
 ------------
@@ -166,10 +159,11 @@ This protocol buffer is declared in a ``BUILD.gn`` file as follows:
 
   If you need to distinguish between a default-valued field and a missing field,
   mark the field as ``optional``. The presence of the field can be detected
-  with a ``HasField(name)`` or ``has_<field>`` member, depending on the library.
+  with ``std::optional``, a ``HasField(name)``, or ``has_<field>`` member,
+  depending on the library.
 
-  Optional fields have some overhead --- default-valued fields are included in
-  the encoded proto, and, if using Nanopb, the proto structs have a
+  Optional fields have some overhead --- if using Nanopb, default-valued fields
+  are included in the encoded proto, and the proto structs have a
   ``has_<field>`` flag for each optional field. Use plain fields if field
   presence detection is not needed.
 
@@ -207,9 +201,9 @@ For example, the generated RPC header for ``"foo_bar/the_service.proto"`` is
 
 The generated header defines a base class for each RPC service declared in the
 ``.proto`` file. A service named ``TheService`` in package ``foo.bar`` would
-generate the following base class for Nanopb:
+generate the following base class for pw_protobuf:
 
-.. cpp:class:: template <typename Implementation> foo::bar::pw_rpc::nanopb::TheService::Service
+.. cpp:class:: template <typename Implementation> foo::bar::pw_rpc::pwpb::TheService::Service
 
 3. RPC service definition
 -------------------------
@@ -230,7 +224,7 @@ Services may mix and match protobuf implementations within one service.
 
      .. code-block:: sh
 
-       find out/ -name <proto_name>.rpc.pb.h
+       find out/ -name <proto_name>.rpc.pwpb.h
 
   #. Scroll to the bottom of the generated RPC header.
   #. Copy the stub class declaration to a header file.
@@ -239,32 +233,33 @@ Services may mix and match protobuf implementations within one service.
   #. List these files in a build target with a dependency on the
      ``pw_proto_library``.
 
-A Nanopb implementation of this service would be as follows:
+A pw_protobuf implementation of this service would be as follows:
 
 .. code-block:: cpp
 
-  #include "foo_bar/the_service.rpc.pb.h"
+  #include "foo_bar/the_service.rpc.pwpb.h"
 
   namespace foo::bar {
 
-  class TheService : public pw_rpc::nanopb::TheService::Service<TheService> {
+  class TheService : public pw_rpc::pwpb::TheService::Service<TheService> {
    public:
-    pw::Status MethodOne(const foo_bar_Request& request,
-                         foo_bar_Response& response) {
+    pw::Status MethodOne(const Request::Message& request,
+                         Response::Message& response) {
       // implementation
+      response.number = 123;
       return pw::OkStatus();
     }
 
-    void MethodTwo(const foo_bar_Request& request,
-                   ServerWriter<foo_bar_Response>& response) {
+    void MethodTwo(const Request::Message& request,
+                   ServerWriter<Response::Message>& response) {
       // implementation
-      response.Write(foo_bar_Response{.number = 123});
+      response.Write({.number = 123});
     }
   };
 
   }  // namespace foo::bar
 
-The Nanopb implementation would be declared in a ``BUILD.gn``:
+The pw_protobuf implementation would be declared in a ``BUILD.gn``:
 
 .. code-block:: python
 
@@ -275,13 +270,8 @@ The Nanopb implementation would be declared in a ``BUILD.gn``:
   pw_source_set("the_service") {
     public_configs = [ ":public" ]
     public = [ "public/foo_bar/service.h" ]
-    public_deps = [ ":the_service_proto.nanopb_rpc" ]
+    public_deps = [ ":the_service_proto.pwpb_rpc" ]
   }
-
-.. attention::
-
-  pw_rpc's generated classes will support using ``pw_protobuf`` or raw buffers
-  (no protobuf library) in the future.
 
 4. Register the service with a server
 -------------------------------------
@@ -294,9 +284,12 @@ channel output and the example service.
   // pw_rpc server to use HDLC over UART; projects not using UART and HDLC must
   // adapt this as necessary.
   pw::stream::SysIoWriter writer;
-  pw::rpc::RpcChannelOutput<kMaxTransmissionUnit> hdlc_channel_output(
+  pw::rpc::FixedMtuChannelOutput<kMaxTransmissionUnit> hdlc_channel_output(
       writer, pw::hdlc::kDefaultRpcAddress, "HDLC output");
 
+  // Allocate an array of channels for the server to use. If dynamic allocation
+  // is enabled (PW_RPC_DYNAMIC_ALLOCATION=1), the server can be initialized
+  // without any channels, and they can be added later.
   pw::rpc::Channel channels[] = {
       pw::rpc::Channel::Create<1>(&hdlc_channel_output)};
 
@@ -319,8 +312,7 @@ channel output and the example service.
     std::array<std::byte, kMaxTransmissionUnit> input_buffer;
 
     PW_LOG_INFO("Starting pw_rpc server");
-    pw::hdlc::ReadAndProcessPackets(
-        server, hdlc_channel_output, input_buffer);
+    pw::hdlc::ReadAndProcessPackets(server, input_buffer);
   }
 
 Channels
@@ -393,6 +385,10 @@ user-defined RPCs are implemented.
 ``pw_rpc`` supports multiple protobuf libraries, and the generated code API
 depends on which is used.
 
+Services must be registered with a server in order to call their methods.
+Services may later be unregistered, which aborts calls for methods in that
+service and prevents future calls to them, until the service is re-registered.
+
 .. _module-pw_rpc-protobuf-library-apis:
 
 Protobuf library APIs
@@ -401,6 +397,7 @@ Protobuf library APIs
 .. toctree::
   :maxdepth: 1
 
+  pwpb/docs
   nanopb/docs
 
 Testing a pw_rpc integration
@@ -413,14 +410,14 @@ working as intended by registering the provided ``EchoService``, defined in
   :language: protobuf
   :lines: 14-
 
-For example, in C++ with nanopb:
+For example, in C++ with pw_protobuf:
 
 .. code:: c++
 
   #include "pw_rpc/server.h"
 
   // Include the apporpriate header for your protobuf library.
-  #include "pw_rpc/echo_service_nanopb.h"
+  #include "pw_rpc/echo_service_pwpb.h"
 
   constexpr pw::rpc::Channel kChannels[] = { /* ... */ };
   static pw::rpc::Server server(kChannels);
@@ -491,11 +488,47 @@ The C++ service implementation class may append "Service" to the name.
     void List(ConstByteSpan request, RawServerWriter& writer);
   };
 
-  }
+  }  // namespace pw::file
 
 For upstream Pigweed services, this naming style is a requirement. Note that
 some services created before this was established may use non-compliant
 names. For Pigweed users, this naming style is a suggestion.
+
+C++ payload sizing limitations
+===============================
+The individual size of each sent RPC request or response is limited by
+``pw_rpc``'s ``PW_RPC_ENCODING_BUFFER_SIZE_BYTES`` configuration option when
+using Pigweed's C++ implementation. While multiple RPC messages can be enqueued
+(as permitted by the underlying transport), if a single individual sent message
+exceeds the limitations of the statically allocated encode buffer, the packet
+will fail to encode and be dropped.
+
+This applies to all C++ RPC service implementations (nanopb, raw, and pwpb),
+so it's important to ensure request and response message sizes do not exceed
+this limitation.
+
+As ``pw_rpc`` has some additional encoding overhead, a helper,
+``pw::rpc::MaxSafePayloadSize()`` is provided to expose the practical max RPC
+message payload size.
+
+.. code-block:: cpp
+
+  #include "pw_file/file.raw_rpc.pb.h"
+  #include "pw_rpc/channel.h"
+
+  namespace pw::file {
+
+  class FileSystemService : public pw_rpc::raw::FileSystem::Service<FileSystemService> {
+   public:
+    void List(ConstByteSpan request, RawServerWriter& writer);
+
+   private:
+    // Allocate a buffer for building proto responses.
+    static constexpr size_t kEncodeBufferSize = pw::rpc::MaxSafePayloadSize();
+    std::array<std::byte, kEncodeBufferSize> encode_buffer_;
+  };
+
+  }  // namespace pw::file
 
 Protocol description
 ====================
@@ -811,6 +844,14 @@ client, the client's ``ProcessPacket`` function is called with the packet data.
     my_client.ProcessPacket(packet);
   }
 
+Note that client processing such as callbacks will be invoked within
+the body of ``ProcessPacket``.
+
+If certain packets need to be filtered out, or if certain client processing
+needs to be invoked from a specific thread or context, the ``PacketMeta`` class
+can be used to determine which service or channel a packet is targeting. After
+filtering, ``ProcessPacket`` can be called from the appropriate environment.
+
 .. _module-pw_rpc-making-calls:
 
 Making RPC calls
@@ -836,7 +877,7 @@ Example
 ^^^^^^^
 .. code-block:: c++
 
-  #include "pw_rpc/echo_service_nanopb.h"
+  #include "pw_rpc/echo_service_pwpb.h"
 
   namespace {
   // Generated clients are namespaced with their proto library.
@@ -849,7 +890,7 @@ Example
 
   // Callback invoked when a response is received. This is called synchronously
   // from Client::ProcessPacket.
-  void EchoResponse(const pw_rpc_EchoMessage& response,
+  void EchoResponse(const EchoMessage::Message& response,
                     pw::Status status) {
     if (status.ok()) {
       PW_LOG_INFO("Received echo response: %s", response.msg);
@@ -865,7 +906,7 @@ Example
     // Create a client to call the EchoService.
     EchoClient echo_client(my_rpc_client, kDefaultChannelId);
 
-    pw_rpc_EchoMessage request = pw_rpc_EchoMessage_init_default;
+    EchoMessage::Message request{};
     pw::string::Copy(message, request.msg);
 
     // By assigning the returned ClientCall to the global echo_call, the RPC
@@ -876,6 +917,126 @@ Example
       // The RPC call was not sent. This could occur due to, for example, an
       // invalid channel ID. Handle if necessary.
     }
+  }
+
+RPC calls introspection
+-----------------------
+``pw_rpc`` provides ``pw_rpc/method_info.h`` header that allows to obtain
+information about the generated RPC method in compile time.
+
+For now it provides only two types: ``MethodRequestType<RpcMethod>`` and
+``MethodResponseType<RpcMethod>``. They are aliases to the types that are used
+as a request and response respectively for the given RpcMethod.
+
+Example
+^^^^^^^
+We have an RPC service ``SpecialService`` with ``MyMethod`` method:
+
+.. code-block:: protobuf
+
+  package some.package;
+  service SpecialService {
+    rpc MyMethod(MyMethodRequest) returns (MyMethodResponse) {}
+  }
+
+We also have a templated Storage type alias:
+
+.. code-block:: c++
+
+  template <auto kMethod>
+  using Storage =
+     std::pair<MethodRequestType<kMethod>, MethodResponseType<kMethod>>;
+
+``Storage<some::package::pw_rpc::pwpb::SpecialService::MyMethod>`` will
+instantiate as:
+
+.. code-block:: c++
+
+  std::pair<some::package::MyMethodRequest::Message,
+            some::package::MyMethodResponse::Message>;
+
+.. note::
+
+  Only nanopb and pw_protobuf have real types as
+  ``MethodRequestType<RpcMethod>``/``MethodResponseType<RpcMethod>``. Raw has
+  them both set as ``void``. In reality, they are ``pw::ConstByteSpan``. Any
+  helper/trait that wants to use this types for raw methods should do a custom
+  implemenation that copies the bytes under the span instead of copying just the
+  span.
+
+Client Synchronous Call wrappers
+--------------------------------
+If synchronous behavior is desired when making client calls, users can use one
+of the ``SynchronousCall<RpcMethod>`` wrapper functions to make their RPC call.
+These wrappers effectively wrap the asynchronous Client RPC call with a timed
+thread notification and return once a result is known or a timeout has occurred.
+These return a ``SynchronousCallResult<Response>`` object, which can be queried
+to determine whether any error scenarios occurred and, if not, access the
+response.
+
+``SynchronousCall<RpcMethod>`` will block indefinitely, whereas
+``SynchronousCallFor<RpcMethod>`` and ``SynchronousCallUntil<RpcMethod>`` will
+block for a given timeout or until a deadline, respectively. All wrappers work
+with both the standalone static RPC functions and the generated Client member
+methods.
+
+.. note:: Use of the SynchronousCall wrappers requires a TimedThreadNotification
+   backend.
+.. note:: Only nanopb and pw_protobuf Unary RPC methods are supported.
+
+Example
+^^^^^^^
+.. code-block:: c++
+
+  #include "pw_rpc/synchronous_call.h"
+
+  void InvokeUnaryRpc() {
+    pw::rpc::Client client;
+    pw::rpc::Channel channel;
+
+    RoomInfoRequest request;
+    SynchronousCallResult<RoomInfoResponse> result =
+      SynchronousCall<Chat::GetRoomInformation>(client, channel.id(), request);
+
+    if (result.is_rpc_error()) {
+      ShutdownClient(client);
+    } else if (result.is_server_error()) {
+      HandleServerError(result.status());
+    } else if (result.is_timeout()) {
+      // SynchronousCall will block indefinitely, so we should never get here.
+      PW_UNREACHABLE();
+    }
+    HandleRoomInformation(std::move(result).response());
+  }
+
+  void AnotherExample() {
+    pw_rpc::nanopb::Chat::Client chat_client(client, channel);
+    constexpr auto kTimeout = pw::chrono::SystemClock::for_at_least(500ms);
+
+    RoomInfoRequest request;
+    auto result = SynchronousCallFor<Chat::GetRoomInformation>(
+        chat_client, request, kTimeout);
+
+    if (result.is_timeout()) {
+      RetryRoomRequest();
+    } else {
+    ...
+    }
+  }
+
+The ``SynchronousCallResult<Response>`` is also compatible with the PW_TRY
+family of macros, but users should be aware that their use will lose information
+about the type of error. This should only be used if the caller will handle all
+error scenarios the same.
+
+.. code-block:: c++
+
+  pw::Status SyncRpc() {
+    const RoomInfoRequest request;
+    PW_TRY_ASSIGN(const RoomInfoResponse& response,
+                  SynchronousCall<Chat::GetRoomInformation>(client, request));
+    HandleRoomInformation(response);
+    return pw::OkStatus();
   }
 
 Client implementation details
@@ -923,15 +1084,18 @@ Testing
 Client unit testing in C++
 --------------------------
 ``pw_rpc`` supports invoking RPCs, simulating server responses, and checking
-what packets are sent by an RPC client in tests. Both raw and Nanopb interfaces
-are supported. Code that uses the raw API may be tested with the Nanopb test
-helpers, and vice versa.
+what packets are sent by an RPC client in tests. Raw, Nanopb and Pwpb interfaces
+are supported. Code that uses the raw API may be tested with the raw test
+helpers, and vice versa. The Nanopb and Pwpb APIs also provides a test helper
+with a real client-server pair that supports testing of asynchronous messaging.
 
-To test code that invokes RPCs, declare a ``RawClientTestContext`` or
-``NanopbClientTestContext``. These test context objects provide a
-preconfigured RPC client, channel, server fake, and buffer for encoding packets.
-These test classes are defined in ``pw_rpc/raw/client_testing.h`` and
-``pw_rpc/nanopb/client_testing.h``.
+To test sychronous code that invokes RPCs, declare a ``RawClientTestContext``,
+``PwpbClientTestContext``,  or ``NanopbClientTestContext``. These test context
+objects provide a preconfigured RPC client, channel, server fake, and buffer for
+encoding packets.
+
+These test classes are defined in ``pw_rpc/raw/client_testing.h``,
+``pw_rpc/pwpb/client_testing.h``, or ``pw_rpc/nanopb/client_testing.h``.
 
 Use the context's ``client()`` and ``channel()`` to invoke RPCs. Use the
 context's ``server()`` to simulate responses. To verify that the client sent the
@@ -944,12 +1108,12 @@ the expected data was sent and then simulates a response from the server.
 
   #include "pw_rpc/raw/client_testing.h"
 
-  class ThingThatCallsRpcs {
+  class ClientUnderTest {
    public:
     // To support injecting an RPC client for testing, classes that make RPC
     // calls should take an RPC client and channel ID or an RPC service client
     // (e.g. pw_rpc::raw::MyService::Client).
-    ThingThatCallsRpcs(pw::rpc::Client& client, uint32_t channel_id);
+    ClientUnderTest(pw::rpc::Client& client, uint32_t channel_id);
 
     void DoSomethingThatInvokesAnRpc();
 
@@ -958,7 +1122,7 @@ the expected data was sent and then simulates a response from the server.
 
   TEST(TestAThing, InvokesRpcAndHandlesResponse) {
     RawClientTestContext context;
-    ThingThatCallsRpcs thing(context.client(), context.channel().id());
+    ClientUnderTest thing(context.client(), context.channel().id());
 
     // Execute the code that invokes the MyService.TheMethod RPC.
     things.DoSomethingThatInvokesAnRpc();
@@ -978,6 +1142,144 @@ the expected data was sent and then simulates a response from the server.
 
     EXPECT_TRUE(thing.SetToTrueWhenRpcCompletes());
   }
+
+To test client code that uses asynchronous responses, encapsulates multiple
+rpc calls to one or more services, or uses a custom service implemenation,
+declare a ``NanopbClientServerTestContextThreaded`` or
+``PwpbClientServerTestContextThreaded``. These test object are defined in
+``pw_rpc/nanopb/client_server_testing_threaded.h`` and
+``pw_rpc/pwpb/client_server_testing_threaded.h``.
+
+Use the context's ``server()`` to register a ``Service`` implementation, and
+``client()`` and ``channel()`` to invoke RPCs. Create a ``Thread`` using the
+context as a ``ThreadCore`` to have it asycronously forward request/responses or
+call ``ForwardNewPackets`` to synchronously process all messages. To verify that
+the client/server sent the expected data, use the context's
+``request(uint32_t index)`` and ``response(uint32_t index)`` to retrieve the
+ordered messages.
+
+For example, the following tests a class that invokes an RPC and blocks till a
+response is received. It verifies that expected data was both sent and received.
+
+.. code-block:: cpp
+
+  #include "my_library_protos/my_service.rpc.pb.h"
+  #include "pw_rpc/nanopb/client_server_testing_threaded.h"
+  #include "pw_thread_stl/options.h"
+
+  class ClientUnderTest {
+   public:
+    // To support injecting an RPC client for testing, classes that make RPC
+    // calls should take an RPC client and channel ID or an RPC service client
+    // (e.g. pw_rpc::raw::MyService::Client).
+    ClientUnderTest(pw::rpc::Client& client, uint32_t channel_id);
+
+    Status BlockOnResponse(uint32_t value);
+  };
+
+
+  class TestService final : public MyService<TestService> {
+   public:
+    Status TheMethod(const pw_rpc_test_TheMethod& request,
+                        pw_rpc_test_TheMethod& response) {
+      response.value = request.integer + 1;
+      return pw::OkStatus();
+    }
+  };
+
+  TEST(TestServiceTest, ReceivesUnaryRpcReponse) {
+    NanopbClientServerTestContextThreaded<> ctx(pw::thread::stl::Options{});
+    TestService service;
+    ctx.server().RegisterService(service);
+    ClientUnderTest client(ctx.client(), ctx.channel().id());
+
+    // Execute the code that invokes the MyService.TheMethod RPC.
+    constexpr uint32_t value = 1;
+    const auto result = client.BlockOnResponse(value);
+    const auto request = ctx.request<MyService::TheMethod>(0);
+    const auto response = ctx.resonse<MyService::TheMethod>(0);
+
+    // Verify content of messages
+    EXPECT_EQ(result, pw::OkStatus());
+    EXPECT_EQ(request.value, value);
+    EXPECT_EQ(response.value, value + 1);
+  }
+
+Synchronous versions of these test contexts also exist that may be used on
+non-threaded systems ``NanopbClientServerTestContext`` and
+``PwpbClientServerTestContext``. While these do not allow for asynchronous
+messaging they support the use of service implemenations and use a similar
+syntax. When these are used ``.ForwardNewPackets()`` should be called after each
+rpc call to trigger sending of queued messages.
+
+For example, the following tests a class that invokes an RPC that is responded
+to with a test service implemenation.
+
+.. code-block:: cpp
+
+  #include "my_library_protos/my_service.rpc.pb.h"
+  #include "pw_rpc/nanopb/client_server_testing.h"
+
+  class ClientUnderTest {
+   public:
+    ClientUnderTest(pw::rpc::Client& client, uint32_t channel_id);
+
+    Status SendRpcCall(uint32_t value);
+  };
+
+
+  class TestService final : public MyService<TestService> {
+   public:
+    Status TheMethod(const pw_rpc_test_TheMethod& request,
+                        pw_rpc_test_TheMethod& response) {
+      response.value = request.integer + 1;
+      return pw::OkStatus();
+    }
+  };
+
+  TEST(TestServiceTest, ReceivesUnaryRpcReponse) {
+    NanopbClientServerTestContext<> ctx();
+    TestService service;
+    ctx.server().RegisterService(service);
+    ClientUnderTest client(ctx.client(), ctx.channel().id());
+
+    // Execute the code that invokes the MyService.TheMethod RPC.
+    constexpr uint32_t value = 1;
+    const auto result = client.SendRpcCall(value);
+    // Needed after ever RPC call to trigger forward of packets
+    ctx.ForwardNewPackets();
+    const auto request = ctx.request<MyService::TheMethod>(0);
+    const auto response = ctx.resonse<MyService::TheMethod>(0);
+
+    // Verify content of messages
+    EXPECT_EQ(result, pw::OkStatus());
+    EXPECT_EQ(request.value, value);
+    EXPECT_EQ(response.value, value + 1);
+  }
+
+SendResponseIfCalled() helper
+-----------------------------
+``SendResponseIfCalled()`` function waits on ``*ClientTestContext*`` output to
+have a call for the specified method and then responses to it. It supports
+timeout for the waiting part (default timeout is 100ms).
+
+.. code:: c++
+
+  #include "pw_rpc/test_helpers.h"
+
+  pw::rpc::PwpbClientTestContext client_context;
+  other::pw_rpc::pwpb::OtherService::Client other_service_client(
+      client_context.client(), client_context.channel().id());
+
+  PW_PWPB_TEST_METHOD_CONTEXT(MyService, GetData)
+  context(other_service_client);
+  context.call({});
+
+  ASSERT_OK(pw::rpc::test::SendResponseIfCalled<
+            other::pw_rpc::pwpb::OtherService::GetPart>(
+      client_context, {.value = 42}));
+
+  // At this point MyService::GetData handler received the GetPartResponse.
 
 Integration testing with ``pw_rpc``
 -----------------------------------
@@ -1041,7 +1343,7 @@ more details.
   Enable global synchronization for RPC calls. If this is set, a backend must
   be configured for pw_sync:mutex.
 
-  This is disabled by default.
+  This is enabled by default.
 
 .. c:macro:: PW_RPC_DYNAMIC_ALLOCATION
 
@@ -1058,11 +1360,31 @@ more details.
 
   If dynamic allocation is enabled, an span of channels may be passed to the
   endpoint at construction, but these channels are only used to initialize its
-  internal std::vector of channels. External channel objects are NOT used by
+  internal ``std::vector`` of channels. External channel objects are NOT used by
   the endpoint cannot be updated if dynamic allocation is enabled. No
   unassigned channels should be passed to the endpoint; they will be ignored.
   Any number of channels may be added to the endpoint, without closing existing
   channels, but adding channels will use more memory.
+
+.. c:macro:: PW_RPC_DYNAMIC_CONTAINER(type)
+
+  If :c:macro:`PW_RPC_DYNAMIC_ALLOCATION` is enabled, this macro must expand to
+  a container capable of storing objects of the provided type. This container
+  will be used internally be pw_rpc. Defaults to ``std::vector<type>``, but may
+  be set to any type that supports the following ``std::vector`` operations:
+
+  - Construction from iterators
+  - ``emplace_back()``
+  - ``pop_back()``
+  - Range-based for loop iteration
+
+.. c:macro:: PW_RPC_DYNAMIC_CONTAINER_INCLUDE
+
+  If :c:macro:`PW_RPC_DYNAMIC_ALLOCATION` is enabled, this header file is
+  included in files that use :c:macro:`PW_RPC_DYNAMIC_CONTAINER`. Defaults to
+  ``<vector>``, but may be set in conjunction with
+  :c:macro:`PW_RPC_DYNAMIC_CONTAINER` to use a different container type for
+  dynamic allocations in pw_rpc.
 
 .. c:macro:: PW_RPC_CONFIG_LOG_LEVEL
 
@@ -1115,7 +1437,7 @@ minimal overhead, ``pw_rpc`` uses a single, global mutex (when
 
 Because ``pw_rpc`` uses a global mutex, it also uses a global buffer to encode
 outgoing packets. The size of the buffer is set with
-``PW_RPC_ENCODING_BUFFER_SIZE``, which defaults to 512 B.
+``PW_RPC_ENCODING_BUFFER_SIZE_BYTES``, which defaults to 512 B.
 
 Users of ``pw_rpc`` must implement the :cpp:class:`pw::rpc::ChannelOutput`
 interface.
@@ -1140,7 +1462,7 @@ interface.
     returns :cpp:member:`kUnlimited`, which indicates that there is no MTU
     limit.
 
-  .. cpp:function:: virtual pw::Status Send(std::span<std::byte> packet)
+  .. cpp:function:: virtual pw::Status Send(span<std::byte> packet)
 
     Sends an encoded RPC packet. Returns OK if further packets may be sent, even
     if the current packet could not be sent. Returns any other status if the
