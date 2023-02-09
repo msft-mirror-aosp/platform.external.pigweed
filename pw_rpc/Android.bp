@@ -123,6 +123,7 @@ cc_library_static {
         "channel_list.cc",
         "client.cc",
         "client_call.cc",
+        "client_server.cc",
         "endpoint.cc",
         "packet.cc",
         "packet_meta.cc",
@@ -214,6 +215,25 @@ genrule_defaults {
         "aprotoc",
         "pw_protobuf_compiler_py",
         "pw_rpc_plugin_nanopb_py",
+    ],
+}
+
+// Generate the header raw RPC file.
+// The output file name is based on the srcs file name with a .raw_rpc.pb.h extension.
+genrule_defaults {
+    name: "pw_rpc_generate_raw_rpc_header",
+    cmd: "python3 $(location pw_protobuf_compiler_py) " +
+         "--plugin-path=$(location pw_rpc_plugin_rawpb_py) " +
+         "--out-dir=$(genDir) " +
+         "--compile-dir=$$(dirname $(in)) " +
+         "--language raw_rpc " +
+         "--sources $(in) " +
+         "--no-experimental-proto3-optional " +
+         "--protoc=$(location aprotoc)",
+    tools: [
+        "aprotoc",
+        "pw_protobuf_compiler_py",
+        "pw_rpc_plugin_rawpb_py",
     ],
 }
 

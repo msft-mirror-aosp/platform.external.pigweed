@@ -32,7 +32,8 @@ from typing import (
 from google.protobuf import descriptor_pb2
 
 from pw_protobuf import options, symbol_name_mapping
-from pw_protobuf_codegen_protos.options_pb2 import Options
+from pw_protobuf_codegen_protos.codegen_options_pb2 import CodegenOptions
+from pw_protobuf_protos.field_options_pb2 import pwpb as pwpb_field_options
 
 T = TypeVar('T')  # pylint: disable=invalid-name
 
@@ -487,7 +488,7 @@ class ProtoMessageField:
         type_node: Optional[ProtoNode] = None,
         optional: bool = False,
         repeated: bool = False,
-        field_options: Optional[Options] = None,
+        codegen_options: Optional[CodegenOptions] = None,
     ):
         self._field_name = symbol_name_mapping.fix_cc_identifier(field_name)
         self._number: int = field_number
@@ -495,7 +496,7 @@ class ProtoMessageField:
         self._type_node: Optional[ProtoNode] = type_node
         self._optional: bool = optional
         self._repeated: bool = repeated
-        self._options: Optional[Options] = field_options
+        self._options: Optional[CodegenOptions] = codegen_options
 
     def name(self) -> str:
         return self.upper_camel_case(self._field_name)
@@ -504,6 +505,9 @@ class ProtoMessageField:
         return self._field_name
 
     def enum_name(self) -> str:
+        return 'k' + self.name()
+
+    def legacy_enum_name(self) -> str:
         return self.upper_snake_case(
             symbol_name_mapping.fix_cc_enum_value_name(self._field_name)
         )
@@ -523,7 +527,7 @@ class ProtoMessageField:
     def is_repeated(self) -> bool:
         return self._repeated
 
-    def options(self) -> Optional[Options]:
+    def options(self) -> Optional[CodegenOptions]:
         return self._options
 
     @staticmethod
@@ -667,13 +671,34 @@ def _add_message_fields(
         repeated = (
             field.label == descriptor_pb2.FieldDescriptorProto.LABEL_REPEATED
         )
-        field_options = (
+
+        codegen_options = (
             options.match_options(
                 '.'.join((message.proto_path(), field.name)), proto_options
             )
             if proto_options is not None
             else None
         )
+
+        field_options = (
+            options.create_from_field_options(
+                field.options.Extensions[pwpb_field_options]
+            )
+            if field.options.HasExtension(pwpb_field_options)
+            else None
+        )
+
+        merged_options = None
+
+        if field_options and codegen_options:
+            merged_options = options.merge_field_and_codegen_options(
+                field_options, codegen_options
+            )
+        elif field_options:
+            merged_options = field_options
+        elif codegen_options:
+            merged_options = codegen_options
+
         message.add_field(
             ProtoMessageField(
                 field.name,
@@ -682,7 +707,7 @@ def _add_message_fields(
                 type_node,
                 optional,
                 repeated,
-                field_options,
+                merged_options,
             )
         )
 
@@ -724,7 +749,7 @@ def _populate_fields(
     proto_file: descriptor_pb2.FileDescriptorProto,
     global_root: ProtoNode,
     package_root: ProtoNode,
-    proto_options: Optional[options.FieldOptions],
+    proto_options: Optional[options.ParsedOptions],
 ) -> None:
     """Traverses a proto file, adding all message and enum fields to a tree."""
 
@@ -790,7 +815,7 @@ def _build_hierarchy(
 
 def build_node_tree(
     file_descriptor_proto: descriptor_pb2.FileDescriptorProto,
-    proto_options: Optional[options.FieldOptions] = None,
+    proto_options: Optional[options.ParsedOptions] = None,
 ) -> Tuple[ProtoNode, ProtoNode]:
     """Constructs a tree of proto nodes from a file descriptor.
 

@@ -154,11 +154,21 @@ pw_add_library(pw_rpc.common STATIC
     packet_meta.cc
   PRIVATE_DEPS
     pw_log
+    pw_preprocessor
     pw_rpc.log_config
 )
-if (NOT "${pw_sync.mutex_BACKEND}" STREQUAL "")
+if(NOT "${pw_sync.mutex_BACKEND}" STREQUAL "")
   pw_target_link_targets(pw_rpc.common PUBLIC pw_sync.mutex)
 endif()
+
+if(NOT "${pw_thread.sleep_BACKEND}" STREQUAL "")
+  pw_target_link_targets(pw_rpc.common PUBLIC pw_thread.sleep)
+endif()
+
+if(NOT "${pw_thread.yield_BACKEND}" STREQUAL "")
+  pw_target_link_targets(pw_rpc.common PUBLIC pw_thread.yield)
+endif()
+
 if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_COMMON)
   zephyr_link_libraries(pw_rpc.common)
 endif()
