@@ -47,6 +47,7 @@ from pw_presubmit import (
     filter_paths,
     inclusive_language,
     keep_sorted,
+    module_owners,
     npm_presubmit,
     owners_checks,
     plural,
@@ -66,7 +67,14 @@ pw_package.pigweed_packages.initialize()
 
 # Trigger builds if files with these extensions change.
 _BUILD_FILE_FILTER = presubmit.FileFilter(
-    suffix=(*format_code.C_FORMAT.extensions, '.py', '.rst', '.gn', '.gni')
+    suffix=(
+        *format_code.C_FORMAT.extensions,
+        '.py',
+        '.rst',
+        '.gn',
+        '.gni',
+        '.emb',
+    )
 )
 
 _OPTIMIZATION_LEVELS = 'debug', 'size_optimized', 'speed_optimized'
@@ -185,16 +193,34 @@ def gn_arm_build(ctx: PresubmitContext):
     build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
-def stm32f429i(ctx: PresubmitContext):
-    build.gn_gen(
-        ctx,
-        pw_use_test_server=True,
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    with build.test_server('stm32f429i_disc1_test_server', ctx.output_dir):
-        build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
+stm32f429i = build.GnGenNinja(
+    name='stm32f429i',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args={
+        'pw_use_test_server': True,
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_contexts=(
+        lambda ctx: build.test_server(
+            'stm32f429i_disc1_test_server',
+            ctx.output_dir,
+        ),
+    ),
+    ninja_targets=_at_all_optimization_levels('stm32f429i'),
+)
 
+
+gn_emboss_build = build.GnGenNinja(
+    name='gn_emboss_build',
+    packages=('emboss',),
+    gn_args=dict(
+        dir_pw_third_party_emboss=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'emboss'
+        ),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    ),
+    ninja_targets=(*_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),),
+)
 
 gn_nanopb_build = build.GnGenNinja(
     name='gn_nanopb_build',
@@ -336,26 +362,26 @@ gn_software_update_build = build.GnGenNinja(
     ninja_targets=_at_all_optimization_levels('host_clang'),
 )
 
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_pw_system_demo_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'freertos')
-    build.install_package(ctx, 'nanopb')
-    build.install_package(ctx, 'stm32cube_f4')
-    build.install_package(ctx, 'pico_sdk')
-    build.gn_gen(
-        ctx,
-        dir_pw_third_party_freertos='"{}"'.format(
+gn_pw_system_demo_build = build.GnGenNinja(
+    name='gn_pw_system_demo_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('freertos', 'nanopb', 'stm32cube_f4', 'pico_sdk'),
+    gn_args={
+        'dir_pw_third_party_freertos': lambda ctx: '"{}"'.format(
             ctx.package_root / 'freertos'
         ),
-        dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root / 'nanopb'),
-        dir_pw_third_party_stm32cube_f4='"{}"'.format(
+        'dir_pw_third_party_nanopb': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'nanopb'
+        ),
+        'dir_pw_third_party_stm32cube_f4': lambda ctx: '"{}"'.format(
             ctx.package_root / 'stm32cube_f4'
         ),
-        PICO_SRC_DIR='"{}"'.format(str(ctx.package_root / 'pico_sdk')),
-    )
-    build.ninja(ctx, 'pw_system_demo')
-
+        'PICO_SRC_DIR': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'pico_sdk')
+        ),
+    },
+    ninja_targets=('pw_system_demo',),
+)
 
 gn_docs_build = build.GnGenNinja(name='gn_docs_build', ninja_targets=('docs',))
 
@@ -403,7 +429,7 @@ def cmake_gcc(ctx: PresubmitContext):
     endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl', 'BUILD')
 )
 def bazel_test(ctx: PresubmitContext) -> None:
-    """Runs bazel test on each bazel compatible module."""
+    """Runs bazel test on the entire repo."""
     build.bazel(
         ctx,
         'test',
@@ -414,16 +440,44 @@ def bazel_test(ctx: PresubmitContext) -> None:
 
 
 @filter_paths(
-    endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl', 'BUILD')
+    endswith=(
+        *format_code.C_FORMAT.extensions,
+        '.bazel',
+        '.bzl',
+        '.py',
+        '.rs',
+        'BUILD',
+    )
 )
 def bazel_build(ctx: PresubmitContext) -> None:
-    """Runs Bazel build on each Bazel compatible module."""
+    """Runs Bazel build for each supported platform."""
     build.bazel(
         ctx,
         'build',
         '--',
         '//...',
     )
+
+    # Mapping from Bazel platforms to targets which should be built for those
+    # platforms.
+    targets_for_platform = {
+        "//pw_build/platforms:lm3s6965evb": [
+            "//pw_rust/examples/embedded_hello:hello",
+        ],
+        "//pw_build/platforms:microbit": [
+            "//pw_rust/examples/embedded_hello:hello",
+        ],
+    }
+
+    for cxxversion in ('c++17', 'c++20'):
+        for platform, targets in targets_for_platform.items():
+            build.bazel(
+                ctx,
+                'build',
+                f'--platforms={platform}',
+                f"--cxxopt='-std={cxxversion}'",
+                *targets,
+            )
 
 
 def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
@@ -646,7 +700,7 @@ _GN_SOURCES_IN_BUILD = (
 SOURCE_FILES_FILTER = presubmit.FileFilter(
     endswith=_GN_SOURCES_IN_BUILD,
     suffix=('.bazel', '.bzl', '.gn', '.gni'),
-    exclude=(r'zephyr.*/', r'android.*/', r'^pyproject.toml'),
+    exclude=(r'zephyr.*/', r'android.*/', r'^(.black|pyproject).toml'),
 )
 
 
@@ -762,7 +816,9 @@ def commit_message_format(_: PresubmitContext):
         errors += 1
 
     # Check that the first line matches the expected pattern.
-    match = re.match(r'^[\w*/]+(?:{[\w* ,]+})?[\w*/]*: (?P<desc>.+)$', lines[0])
+    match = re.match(
+        r'^(?:[\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
+    )
     if not match:
         _LOG.warning('The first line does not match the expected format')
         _LOG.warning(
@@ -891,6 +947,7 @@ OTHER_CHECKS = (
     gitmodules.create(),
     gn_clang_build,
     gn_combined_build_check,
+    module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
     static_analysis,
@@ -903,6 +960,7 @@ OTHER_CHECKS = (
 # program block CQ on Linux.
 MISC = (
     # keep-sorted: start
+    gn_emboss_build,
     gn_nanopb_build,
     gn_pico_build,
     gn_pw_system_demo_build,

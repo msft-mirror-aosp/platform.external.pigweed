@@ -49,6 +49,71 @@
 #define PW_RPC_USE_GLOBAL_MUTEX 1
 #endif  // PW_RPC_USE_GLOBAL_MUTEX
 
+// pw_rpc must yield the current thread when waiting for a callback to complete
+// in a different thread. PW_RPC_YIELD_MODE determines how to yield. There are
+// three supported settings:
+//
+//   PW_RPC_YIELD_MODE_BUSY_LOOP - Do nothing. Release and reacquire the RPC
+//       lock in a busy loop. PW_RPC_USE_GLOBAL_MUTEX must be 0.
+//   PW_RPC_YIELD_MODE_SLEEP - Yield with 1-tick calls to
+//       pw::this_thread::sleep_for(). A backend must be configured for
+//       pw_thread:sleep.
+//   PW_RPC_YIELD_MODE_YIELD - Yield with pw::this_thread::yield(). A backend
+//       must be configured for pw_thread:yield. IMPORTANT: On some platforms,
+//       pw::this_thread::yield() does not yield to lower priority tasks and
+//       should not be used here.
+//
+#define PW_RPC_YIELD_MODE_BUSY_LOOP 100
+#define PW_RPC_YIELD_MODE_SLEEP 101
+#define PW_RPC_YIELD_MODE_YIELD 102
+
+#ifndef PW_RPC_YIELD_MODE
+#if PW_RPC_USE_GLOBAL_MUTEX == 0
+#define PW_RPC_YIELD_MODE PW_RPC_YIELD_MODE_BUSY_LOOP
+#else
+#define PW_RPC_YIELD_MODE PW_RPC_YIELD_MODE_SLEEP
+#endif
+#endif  // PW_RPC_YIELD_MODE
+
+// If PW_RPC_YIELD_MODE == PW_RPC_YIELD_MODE_SLEEP, PW_RPC_YIELD_SLEEP_DURATION
+// sets how long to sleep during each iteration of the yield loop. The value
+// must be a constant expression that converts to a
+// pw::chrono::SystemClock::duration.
+#ifndef PW_RPC_YIELD_SLEEP_DURATION
+
+// When building for a desktop operating system, use a 1ms sleep by default.
+// 1-tick duration sleeps can result in spurious timeouts.
+#if defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
+#define PW_RPC_YIELD_SLEEP_DURATION std::chrono::milliseconds(1)
+#else
+#define PW_RPC_YIELD_SLEEP_DURATION pw::chrono::SystemClock::duration(1)
+#endif  // defined(_WIN32) || defined(__APPLE__) || defined(__linux__)
+
+#endif  // PW_RPC_YIELD_SLEEP_DURATION
+
+// PW_RPC_YIELD_SLEEP_DURATION is not needed for non-sleep yield modes.
+#if PW_RPC_YIELD_MODE != PW_RPC_YIELD_MODE_SLEEP
+#undef PW_RPC_YIELD_SLEEP_DURATION
+#endif  // PW_RPC_YIELD_MODE != PW_RPC_YIELD_MODE_SLEEP
+
+// pw_rpc call objects wait for their callbacks to complete before they are
+// moved or destoyed. Deadlocks occur if a callback:
+//
+//   - attempts to destroy its call object,
+//   - attempts to move its call object while the call is still active, or
+//   - never returns.
+//
+// If PW_RPC_CALLBACK_TIMEOUT_TICKS is greater than 0, then PW_CRASH is invoked
+// if a thread waits for an RPC callback to complete for more than the specified
+// tick count.
+//
+// A "tick" in this context is one iteration of a loop that yields releases the
+// RPC lock and yields the thread according to PW_RPC_YIELD_MODE. By default,
+// the thread yields with a 1-tick call to pw::this_thread::sleep_for.
+#ifndef PW_RPC_CALLBACK_TIMEOUT_TICKS
+#define PW_RPC_CALLBACK_TIMEOUT_TICKS 10000
+#endif  // PW_RPC_CALLBACK_TIMEOUT_TICKS
+
 // Whether pw_rpc should use dynamic memory allocation internally. If enabled,
 // pw_rpc dynamically allocates channels and its encoding buffers. RPC users may
 // use dynamic allocation independently of this option (e.g. to allocate pw_rpc

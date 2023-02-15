@@ -130,8 +130,11 @@ The ``luci`` member is of type ``LuciContext`` and has the following members:
 * ``bucket``: The LUCI bucket under which this build is running (often ends
   with ``ci`` or ``try``)
 * ``builder``: The builder being run
+* ``swarming_server``: The swarming server on which this build is running
 * ``swarming_task_id``: The swarming task id of this build
+* ``cas_instance``: The CAS instance accessible from this build
 * ``pipeline``: Information about the build pipeline, if applicable.
+* ``triggers``: Information about triggering commits, if applicable.
 
 The ``pipeline`` member, if present, is of type ``LuciPipeline`` and has the
 following members:
@@ -139,6 +142,19 @@ following members:
 * ``round``: The zero-indexed round number.
 * ``builds_from_previous_iteration``: A list of the buildbucket ids from the
   previous round, if any.
+
+The ``triggers`` member is a sequence of ``LuciTrigger`` objects, which have the
+following members:
+
+* ``number``: The number of the change in Gerrit.
+* ``patchset``: The number of the patchset of the change.
+* ``remote``: The full URL of the remote.
+* ``branch``: The name of the branch on which this change is being/was
+  submitted.
+* ``ref``: The ``refs/changes/..`` path that can be used to reference the
+  patch for unsubmitted changes and the hash for submitted changes.
+* ``gerrit_name``: The name of the googlesource.com Gerrit host.
+* ``submitted``: Whether the change has been submitted or is still pending.
 
 Additional members can be added by subclassing ``PresubmitContext`` and
 ``Presubmit``. Then override ``Presubmit._create_presubmit_context()`` to
@@ -171,7 +187,7 @@ Formatting checks for a variety of languages are available from
 ``pw_presubmit.format_code``. These include C/C++, Java, Go, Python, GN, and
 others. All of these checks can be included by adding
 ``pw_presubmit.format_code.presubmit_checks()`` to a presubmit program. These
-all use language-specific formatters like clang-format or yapf.
+all use language-specific formatters like clang-format or black.
 
 These will suggest fixes using ``pw format --fix``.
 
@@ -314,6 +330,16 @@ for entire blocks by using "inclusive-language: disable" before the block and
 
 .. In case things get moved around in the previous paragraphs the enable line
 .. is repeated here: inclusive-language: enable.
+
+OWNERS
+^^^^^^
+There's a check that requires folders matching specific patterns contain
+``OWNERS`` files. It can be included by adding
+``module_owners.presubmit_check()`` to a presubmit program. This function takes
+a callable as an argument that indicates, for a given file, where a controlling
+``OWNERS`` file should be, or returns None if no ``OWNERS`` file is necessary.
+Formatting of ``OWNERS`` files is handled similary to formatting of other
+source files and is discussed in `Code Formatting`.
 
 pw_presubmit
 ------------
