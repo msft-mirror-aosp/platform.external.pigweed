@@ -12,9 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-[tool.black]
-line-length = 80
-skip_string_normalization = true
-target-version = ['py310']
-include = '\.pyi?$'
-exclude = '^/(out|\.?environment)'
+declare_args() {
+  # To depend on pw_async, add targets to this list.
+  #
+  # WARNING: This is experimental and *not* guaranteed to work.
+  pw_async_EXPERIMENTAL_MODULE_VISIBILITY = []
+}

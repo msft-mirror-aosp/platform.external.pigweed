@@ -341,9 +341,7 @@ group("host_tools") {
   ]
 
   if (pw_rust_ENABLE_EXPERIMENTAL_BUILD) {
-    deps += [
-      "$dir_pw_rust/example:hello($dir_pigweed/targets/host:host_clang_debug)",
-    ]
+    deps += [ "$dir_pw_rust/examples/host_executable:hello($dir_pigweed/targets/host:host_clang_debug)" ]
   }
 }
 
@@ -393,10 +391,7 @@ group("cpp14_compatibility") {
 # enabled than without.
 group("cpp20_compatibility") {
   _cpp20_tc = "$_internal_toolchains:pw_strict_host_clang_size_optimized_cpp20"
-  deps = [
-    ":apps($_cpp20_tc)",
-    ":pw_module_tests.run($_cpp20_tc)",
-  ]
+  deps = [ ":pigweed_default($_cpp20_tc)" ]
 }
 
 group("build_with_pw_minimal_cpp_stdlib") {
@@ -418,10 +413,21 @@ if (current_toolchain != default_toolchain) {
     # Add target-specific images.
     deps += pw_TARGET_APPLICATIONS
 
-    # Add the pw_tool target to be built on host.
+    # Add host-only targets to the build.
     if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
         pw_toolchain_SCOPE.is_host_toolchain) {
       deps += [ "$dir_pw_tool" ]
+
+      # TODO(b/240982565): Build integration tests on Windows and macOS when
+      #     SocketStream supports those platforms.
+      if (host_os == "linux") {
+        # Build the integration test binaries, but don't run them by default.
+        deps += [
+          "$dir_pw_rpc:client_integration_test",
+          "$dir_pw_rpc:test_rpc_server",
+          "$dir_pw_unit_test:test_rpc_server",
+        ]
+      }
     }
   }
 
