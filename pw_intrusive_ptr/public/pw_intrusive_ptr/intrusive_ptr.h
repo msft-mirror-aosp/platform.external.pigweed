@@ -14,9 +14,11 @@
 #pragma once
 
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 
 #include "pw_intrusive_ptr/internal/ref_counted_base.h"
+#include "pw_intrusive_ptr/recyclable.h"
 
 namespace pw {
 
@@ -54,9 +56,10 @@ class IntrusivePtr final {
   // pointer should be done through IntrusivePtr after the wrapping or while at
   // least one IntrusivePtr object owning it is in scope.
   //
-  // Only heap-allocated pointers should be used with IntrusivePtr. An attempt
-  // to wrap the stack-allocated object with the IntrusivePtr will result in a
-  // crash on the destruction.
+  // IntrusivePtr can be used with either heap-allocated pointers or
+  // stack/static allocated objects if T is Recyclable. An attempt to wrap a
+  // stack-allocated object with a non-Recyclable IntrusivePtr will result in a
+  // crash on destruction.
   explicit IntrusivePtr(T* p) : ptr_(p) {
     if (ptr_) {
       ptr_->AddRef();
@@ -98,8 +101,11 @@ class IntrusivePtr final {
   }
 
   ~IntrusivePtr() {
-    if (ptr_ && ptr_->ReleaseRef()) {
-      delete ptr_;
+    T* ptr = ptr_;
+    // Clear ptr_ to help detect re-entrancy in ~T.
+    ptr_ = nullptr;
+    if (ptr && ptr->ReleaseRef()) {
+      recycle_or_delete(ptr);
     }
   }
 
@@ -128,6 +134,15 @@ class IntrusivePtr final {
             (std::has_virtual_destructor_v<T> || std::is_same_v<T, const U>),
         "Cannot convert IntrusivePtr<U> to IntrusivePtr<T> unless T has a "
         "virtual destructor or T == const U.");
+  }
+
+  // Support Ts that inherit from the Recyclable mixin.
+  static void recycle_or_delete(T* ptr) {
+    if constexpr (::pw::internal::has_pw_recycle_v<T>) {
+      ::pw::internal::recycle<T>(ptr);
+    } else {
+      delete ptr;
+    }
   }
 
   T* ptr_;
