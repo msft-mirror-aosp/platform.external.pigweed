@@ -57,16 +57,16 @@ class RawServerReaderWriter : private internal::ServerCall {
   template <auto kMethod, typename ServiceImpl>
   [[nodiscard]] static RawServerReaderWriter Open(Server& server,
                                                   uint32_t channel_id,
-                                                  ServiceImpl& service) {
-    internal::LockGuard lock(internal::rpc_lock());
-    return {server
-                .OpenContext<kMethod, MethodType::kBidirectionalStreaming>(
-                    channel_id,
-                    service,
-                    internal::MethodLookup::GetRawMethod<
-                        ServiceImpl,
-                        internal::MethodInfo<kMethod>::kMethodId>())
-                .ClaimLocked()};
+                                                  ServiceImpl& service)
+      PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
+    return server.OpenCall<RawServerReaderWriter,
+                           kMethod,
+                           MethodType::kBidirectionalStreaming>(
+        channel_id,
+        service,
+        internal::MethodLookup::GetRawMethod<
+            ServiceImpl,
+            internal::MethodInfo<kMethod>::kMethodId>());
   }
 
   using internal::Call::active;
@@ -90,17 +90,25 @@ class RawServerReaderWriter : private internal::ServerCall {
 
  protected:
   RawServerReaderWriter(const internal::LockedCallContext& context,
-                        MethodType type = MethodType::kBidirectionalStreaming)
+                        MethodType type)
       PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock())
-      : internal::ServerCall(context, type) {}
+      : internal::ServerCall(
+            context,
+            internal::CallProperties(
+                type, internal::kServerCall, internal::kRawProto)) {}
 
   using internal::Call::CloseAndSendResponse;
 
  private:
   friend class internal::RawMethod;  // Needed to construct
+  friend class Server;
 
   template <typename, typename, uint32_t>
   friend class internal::test::InvocationContext;
+
+  // Private constructor for test use
+  RawServerReaderWriter(const internal::LockedCallContext& context)
+      : RawServerReaderWriter(context, MethodType::kBidirectionalStreaming) {}
 };
 
 // The RawServerReader is used to receive messages and send a response in a
@@ -113,16 +121,15 @@ class RawServerReader : private RawServerReaderWriter {
   template <auto kMethod, typename ServiceImpl>
   [[nodiscard]] static RawServerReader Open(Server& server,
                                             uint32_t channel_id,
-                                            ServiceImpl& service) {
-    internal::LockGuard lock(internal::rpc_lock());
-    return {server
-                .OpenContext<kMethod, MethodType::kClientStreaming>(
-                    channel_id,
-                    service,
-                    internal::MethodLookup::GetRawMethod<
-                        ServiceImpl,
-                        internal::MethodInfo<kMethod>::kMethodId>())
-                .ClaimLocked()};
+                                            ServiceImpl& service)
+      PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
+    return server
+        .OpenCall<RawServerReader, kMethod, MethodType::kClientStreaming>(
+            channel_id,
+            service,
+            internal::MethodLookup::GetRawMethod<
+                ServiceImpl,
+                internal::MethodInfo<kMethod>::kMethodId>());
   }
 
   constexpr RawServerReader() = default;
@@ -143,6 +150,7 @@ class RawServerReader : private RawServerReaderWriter {
 
  private:
   friend class internal::RawMethod;  // Needed for conversions from ReaderWriter
+  friend class Server;
 
   template <typename, typename, uint32_t>
   friend class internal::test::InvocationContext;
@@ -161,16 +169,15 @@ class RawServerWriter : private RawServerReaderWriter {
   template <auto kMethod, typename ServiceImpl>
   [[nodiscard]] static RawServerWriter Open(Server& server,
                                             uint32_t channel_id,
-                                            ServiceImpl& service) {
-    internal::LockGuard lock(internal::rpc_lock());
-    return {server
-                .OpenContext<kMethod, MethodType::kServerStreaming>(
-                    channel_id,
-                    service,
-                    internal::MethodLookup::GetRawMethod<
-                        ServiceImpl,
-                        internal::MethodInfo<kMethod>::kMethodId>())
-                .ClaimLocked()};
+                                            ServiceImpl& service)
+      PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
+    return server
+        .OpenCall<RawServerWriter, kMethod, MethodType::kServerStreaming>(
+            channel_id,
+            service,
+            internal::MethodLookup::GetRawMethod<
+                ServiceImpl,
+                internal::MethodInfo<kMethod>::kMethodId>());
   }
 
   constexpr RawServerWriter() = default;
@@ -191,10 +198,11 @@ class RawServerWriter : private RawServerReaderWriter {
   using internal::Call::operator const Writer&;
 
  private:
+  friend class internal::RawMethod;
+  friend class Server;
+
   template <typename, typename, uint32_t>
   friend class internal::test::InvocationContext;
-
-  friend class internal::RawMethod;
 
   RawServerWriter(const internal::LockedCallContext& context)
       PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock())
@@ -210,16 +218,14 @@ class RawUnaryResponder : private RawServerReaderWriter {
   template <auto kMethod, typename ServiceImpl>
   [[nodiscard]] static RawUnaryResponder Open(Server& server,
                                               uint32_t channel_id,
-                                              ServiceImpl& service) {
-    internal::LockGuard lock(internal::rpc_lock());
-    return {server
-                .OpenContext<kMethod, MethodType::kUnary>(
-                    channel_id,
-                    service,
-                    internal::MethodLookup::GetRawMethod<
-                        ServiceImpl,
-                        internal::MethodInfo<kMethod>::kMethodId>())
-                .ClaimLocked()};
+                                              ServiceImpl& service)
+      PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
+    return server.OpenCall<RawUnaryResponder, kMethod, MethodType::kUnary>(
+        channel_id,
+        service,
+        internal::MethodLookup::GetRawMethod<
+            ServiceImpl,
+            internal::MethodInfo<kMethod>::kMethodId>());
   }
 
   constexpr RawUnaryResponder() = default;
@@ -237,10 +243,11 @@ class RawUnaryResponder : private RawServerReaderWriter {
   }
 
  private:
+  friend class internal::RawMethod;
+  friend class Server;
+
   template <typename, typename, uint32_t>
   friend class internal::test::InvocationContext;
-
-  friend class internal::RawMethod;
 
   RawUnaryResponder(const internal::LockedCallContext& context)
       PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock())

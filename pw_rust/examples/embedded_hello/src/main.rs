@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,23 +12,21 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-syntax = "proto3";
+#![no_main]
+#![no_std]
 
-package pw.protobuf;
+// Panic handler that halts the CPU on panic.
+use panic_halt as _;
 
-message Options {
-  // Maximum number of entries for repeated fields.
-  int32 max_count = 1;
+// Cortex M runtime entry macro.
+use cortex_m_rt::entry;
 
-  // Use a fixed length std::array for repeated fields instead of pw::Vector.
-  bool fixed_count = 2;
+// Semihosting support which is well supported for QEMU targets.
+use cortex_m_semihosting::{debug, hprintln};
 
-  // Maximum size for bytes and string fields.
-  int32 max_size = 3;
-
-  // Use a fixed size std::array for bytes fields instead of pw::Vector.
-  bool fixed_size = 4;
-
-  // Force the use of a callback function for the field.
-  bool use_callback = 5;
+#[entry]
+fn main() -> ! {
+    hprintln!("Hello, Pigweed!");
+    debug::exit(debug::EXIT_SUCCESS);
+    loop {}
 }

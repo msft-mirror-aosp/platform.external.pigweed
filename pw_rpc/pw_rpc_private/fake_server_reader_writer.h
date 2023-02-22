@@ -44,7 +44,7 @@ class FakeServerReaderWriter : private ServerCall {
   FakeServerReaderWriter(const LockedCallContext& context,
                          MethodType type = MethodType::kBidirectionalStreaming)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
-      : ServerCall(context, type) {}
+      : ServerCall(context, CallProperties(type, kServerCall, kRawProto)) {}
 
   FakeServerReaderWriter(FakeServerReaderWriter&&) = default;
   FakeServerReaderWriter& operator=(FakeServerReaderWriter&&) = default;
@@ -67,6 +67,9 @@ class FakeServerReaderWriter : private ServerCall {
 
   // Expose a few additional methods for test use.
   ServerCall& as_server_call() { return *this; }
+  using Call::channel_id_locked;
+  using Call::id;
+  using Call::set_id;
 };
 
 class FakeServerWriter : private FakeServerReaderWriter {
