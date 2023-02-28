@@ -20,7 +20,6 @@
 
 #include "pw_log/log.h"
 #include "pw_rpc/internal/lock.h"
-#include "pw_toolchain/no_destructor.h"
 
 #if PW_RPC_YIELD_MODE == PW_RPC_YIELD_MODE_BUSY_LOOP
 
@@ -74,11 +73,6 @@ static_assert(
 
 namespace pw::rpc::internal {
 
-RpcLock& rpc_lock() {
-  static NoDestructor<RpcLock> lock;
-  return *lock;
-}
-
 void YieldRpcLock() {
   rpc_lock().unlock();
 #if PW_RPC_YIELD_MODE == PW_RPC_YIELD_MODE_SLEEP
@@ -89,14 +83,6 @@ void YieldRpcLock() {
   this_thread::yield();
 #endif  // PW_RPC_YIELD_MODE
   rpc_lock().lock();
-}
-
-Endpoint::~Endpoint() {
-  // Since the calls remove themselves from the Endpoint in
-  // CloseAndSendResponse(), close responders until no responders remain.
-  while (!calls_.empty()) {
-    calls_.front().CloseAndSendResponse(OkStatus()).IgnoreError();
-  }
 }
 
 Result<Packet> Endpoint::ProcessPacket(span<const std::byte> data,
@@ -217,6 +203,21 @@ void Endpoint::CleanUpCalls() {
     }
 
     rpc_lock().lock();
+  }
+}
+
+void Endpoint::RemoveAllCalls() {
+  RpcLockGuard lock;
+
+  // Close all calls without invoking on_error callbacks, since the calls should
+  // have been closed before the Endpoint was deleted.
+  while (!calls_.empty()) {
+    calls_.front().CloseFromDeletedEndpoint();
+    calls_.pop_front();
+  }
+  while (!to_cleanup_.empty()) {
+    to_cleanup_.front().CloseFromDeletedEndpoint();
+    to_cleanup_.pop_front();
   }
 }
 

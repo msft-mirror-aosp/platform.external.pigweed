@@ -17,7 +17,7 @@
 Run arbitrary commands or invoke build systems (Ninja, Bazel and make) on one or
 more build directories whenever source files change.
 
-Usage examples:
+Examples:
 
   # Build the default target in out/ using ninja.
   pw watch -C out
@@ -199,11 +199,14 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
             )
             self.wait_for_keypress_thread.start()
 
+        if self.fullscreen_enabled:
+            BUILDER_CONTEXT.using_fullscreen = True
+
     def rebuild(self):
         """Rebuild command triggered from watch app."""
         self.debouncer.press('Manual build requested')
 
-    def _wait_for_enter(self) -> NoReturn:
+    def _wait_for_enter(self) -> None:
         try:
             while True:
                 _ = prompt('')
@@ -274,6 +277,9 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
         # Clear the screen and show a banner indicating the build is starting.
         self._clear_screen()
 
+        if self.banners:
+            for line in pw_cli.branding.banner().splitlines():
+                _LOG.info(line)
         if self.fullscreen_enabled:
             _LOG.info(
                 self.project_builder.color.green(
@@ -281,9 +287,6 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
                 )
             )
         else:
-            if self.banners:
-                for line in pw_cli.branding.banner().splitlines():
-                    _LOG.info(line)
             _LOG.info(
                 self.project_builder.color.green(
                     'Watching for changes. Ctrl-C to exit; enter to rebuild'
@@ -393,6 +396,8 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
         if not self.watch_app:
             return False
 
+        self.watch_app.redraw_ui()
+
         def new_line_callback(recipe: BuildRecipe) -> None:
             self.current_build_step = recipe.status.current_step
             self.current_build_percent = recipe.status.percent
@@ -413,11 +418,14 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
             line_processed_callback=new_line_callback,
         )
 
+        self.watch_app.redraw_ui()
+
         return result
 
     # Implementation of DebouncedFunction.cancel()
     def cancel(self) -> bool:
         if self.restart_on_changes:
+            BUILDER_CONTEXT.restart_flag = True
             BUILDER_CONTEXT.terminate_and_wait()
             return True
 
@@ -427,8 +435,9 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
     def on_complete(self, cancelled: bool = False) -> None:
         # First, use the standard logging facilities to report build status.
         if cancelled:
-            _LOG.error('Finished; build was interrupted')
-
+            _LOG.info('Build stopped.')
+        elif BUILDER_CONTEXT.interrupted():
+            pass  # Don't print anything.
         elif all(recipe.status.passed() for recipe in self.project_builder):
             _LOG.info('Finished; all successful')
         else:
@@ -443,13 +452,16 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
             self.project_builder.print_build_summary(
                 cancelled=cancelled, logger=_LOG
             )
+        self.project_builder.print_pass_fail_banner(
+            cancelled=cancelled, logger=_LOG
+        )
 
         if self.watch_app:
             self.watch_app.redraw_ui()
         self.matching_path = None
 
     # Implementation of DebouncedFunction.on_keyboard_interrupt()
-    def on_keyboard_interrupt(self) -> NoReturn:
+    def on_keyboard_interrupt(self) -> None:
         _exit_due_to_interrupt()
 
 
@@ -465,13 +477,12 @@ def _exit(code: int) -> NoReturn:
     os._exit(code)  # pylint: disable=protected-access
 
 
-def _exit_due_to_interrupt() -> NoReturn:
+def _exit_due_to_interrupt() -> None:
     # To keep the log lines aligned with each other in the presence of
     # a '^C' from the keyboard interrupt, add a newline before the log.
     print('')
     _LOG.info('Got Ctrl-C; exiting...')
-    BUILDER_CONTEXT.exit()
-    _exit(0)
+    BUILDER_CONTEXT.ctrl_c_interrupt()
 
 
 def _log_inotify_watch_limit_reached():
@@ -495,7 +506,7 @@ def _log_inotify_watch_limit_reached():
 
 def _exit_due_to_inotify_watch_limit():
     _log_inotify_watch_limit_reached()
-    _exit(0)
+    _exit(1)
 
 
 def _log_inotify_instance_limit_reached():
@@ -519,7 +530,7 @@ def _log_inotify_instance_limit_reached():
 
 def _exit_due_to_inotify_instance_limit():
     _log_inotify_instance_limit_reached()
-    _exit(0)
+    _exit(1)
 
 
 def _exit_due_to_pigweed_not_installed():
@@ -872,6 +883,7 @@ def watch(
         for observer in observers:
             while observer.is_alive():
                 observer.join(1)
+        _LOG.error('observers joined')
 
     # Ctrl-C on Unix generates KeyboardInterrupt
     # Ctrl-Z on Windows generates EOFError
@@ -885,7 +897,7 @@ def watch(
                 )
             elif event_handler.project_builder.should_use_progress_bars():
                 BUILDER_CONTEXT.exit(
-                    log_after_shutdown=_log_inotify_watch_limit_reached
+                    log_after_shutdown=_log_inotify_watch_limit_reached,
                 )
             else:
                 _exit_due_to_inotify_watch_limit()
@@ -932,13 +944,18 @@ def run_watch(
         watch(event_handler, exclude_list)
 
 
-def main() -> None:
-    """Watch files for changes and rebuild."""
+def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser = add_parser_arguments(parser)
+    return parser
+
+
+def main() -> None:
+    """Watch files for changes and rebuild."""
+    parser = get_parser()
     args = parser.parse_args()
 
     prefs = WatchAppPrefs(load_argparse_arguments=add_parser_arguments)
@@ -956,6 +973,9 @@ def main() -> None:
     if args.parallel:
         separate_logfiles = True
 
+    def _recipe_abort(*args) -> None:
+        _LOG.critical(*args)
+
     project_builder = ProjectBuilder(
         build_recipes=build_recipes,
         jobs=args.jobs,
@@ -967,6 +987,7 @@ def main() -> None:
         root_logfile=args.logfile,
         root_logger=_LOG,
         log_level=logging.DEBUG if args.debug_logging else logging.INFO,
+        abort_callback=_recipe_abort,
     )
 
     event_handler, exclude_list = watch_setup(project_builder, **vars(args))
