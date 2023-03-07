@@ -40,7 +40,9 @@ class LockedEndpoint;
 // Server or Client object, which derive from Endpoint.
 class Endpoint {
  public:
-  ~Endpoint();
+  // If an endpoint is deleted, all calls using it are closed without notifying
+  // the other endpoint.
+  ~Endpoint() PW_LOCKS_EXCLUDED(rpc_lock()) { RemoveAllCalls(); }
 
   // Public functions
 
@@ -56,7 +58,7 @@ class Endpoint {
   //
   Status OpenChannel(uint32_t id, ChannelOutput& interface)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return channels_.Add(id, interface);
   }
 
@@ -69,7 +71,7 @@ class Endpoint {
 
   // Returns the number calls in the RPC calls list.
   size_t active_call_count() const PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return calls_.size();
   }
 
@@ -104,13 +106,10 @@ class Endpoint {
  protected:
   _PW_RPC_CONSTEXPR Endpoint() = default;
 
-  // Initializes the endpoint with a span of channels. This is a template to
-  // avoid requiring an iterator constructor on the the underlying channels
-  // container.
-  template <typename Span>
-  _PW_RPC_CONSTEXPR Endpoint(Span&& channels)
-      : channels_(span(static_cast<internal::Channel*>(std::data(channels)),
-                       std::size(channels))) {}
+  // Initializes the endpoint from a span of channels.
+  _PW_RPC_CONSTEXPR Endpoint(span<rpc::Channel> channels)
+      : channels_(span(static_cast<internal::Channel*>(channels.data()),
+                       channels.size())) {}
 
   // Parses an RPC packet and sets ongoing_call to the matching call, if any.
   // Returns the parsed packet or an error.
@@ -222,6 +221,17 @@ class Endpoint {
                                 call.method_id(),
                                 call.id());
   }
+
+  // Silently closes all calls. Called by the destructor. This is a
+  // non-destructor function so that Clang's lock safety analysis applies.
+  //
+  // Endpoints are not deleted in normal RPC use, and especially would not be
+  // deleted before the calls that use them. To handle this unusual case, all
+  // calls are closed without invoking on_error callbacks. If cleanup tasks are
+  // required, users should perform them before deleting the Endpoint. Cleanup
+  // could be done individually for each call or by closing channels with
+  // CloseChannel.
+  void RemoveAllCalls() PW_LOCKS_EXCLUDED(rpc_lock());
 
   ChannelList channels_ PW_GUARDED_BY(rpc_lock());
 
