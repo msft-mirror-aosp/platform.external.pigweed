@@ -113,6 +113,7 @@ such as a quick program for local use and a full program for automated use. The
   of any failures
 * ``paths``: Modified files for the presubmit step to check (often used in
   formatting steps but ignored in compile steps)
+* ``all_paths``: All files in the repository tree.
 * ``package_root``: Root directory for ``pw package`` installations
 * ``override_gn_args``: Additional GN args processed by ``build.gn_gen()``
 * ``luci``: Information about the LUCI build or None if not running in LUCI
@@ -141,7 +142,7 @@ following members:
 
 * ``round``: The zero-indexed round number.
 * ``builds_from_previous_iteration``: A list of the buildbucket ids from the
-  previous round, if any.
+  previous round, if any, encoded as strs.
 
 The ``triggers`` member is a sequence of ``LuciTrigger`` objects, which have the
 following members:
@@ -340,6 +341,14 @@ a callable as an argument that indicates, for a given file, where a controlling
 ``OWNERS`` file should be, or returns None if no ``OWNERS`` file is necessary.
 Formatting of ``OWNERS`` files is handled similary to formatting of other
 source files and is discussed in `Code Formatting`.
+
+Source in Build
+^^^^^^^^^^^^^^^
+Pigweed provides checks that source files are configured as part of the build
+for GN, Bazel, and CMake. These can be included by adding
+``source_in_build.gn(filter)`` and similar functions to a presubmit check. The
+CMake check additionally requires a callable that invokes CMake with appropriate
+options.
 
 pw_presubmit
 ------------
