@@ -1115,25 +1115,25 @@ Destructors & moves wait for callbacks to complete
 
 .. warning::
 
- Deadlocks or crashes occur if a callback:
+   Deadlocks or crashes occur if a callback:
 
- - attempts to destroy its call object
- - attempts to move its call object while the call is still active
- - never returns
+   - attempts to destroy its call object
+   - attempts to move its call object while the call is still active
+   - never returns
 
-If ``pw_rpc`` a callback violates these restrictions, a crash may occur,
-depending on the value of :c:macro:`PW_RPC_CALLBACK_TIMEOUT_TICKS`. These
-crashes have a message like the following:
+   If ``pw_rpc`` a callback violates these restrictions, a crash may occur,
+   depending on the value of :c:macro:`PW_RPC_CALLBACK_TIMEOUT_TICKS`. These
+   crashes have a message like the following:
 
-.. code-block:: text
+   .. code-block:: text
 
-  A callback for RPC 1:cc0f6de0/31e616ce has not finished after 10000 ticks.
-  This may indicate that an RPC callback attempted to destroy or move its own
-  call object, which is not permitted. Fix this condition or change the value of
-  PW_RPC_CALLBACK_TIMEOUT_TICKS to avoid this crash.
+      A callback for RPC 1:cc0f6de0/31e616ce has not finished after 10000 ticks.
+      This may indicate that an RPC callback attempted to destroy or move its own
+      call object, which is not permitted. Fix this condition or change the value of
+      PW_RPC_CALLBACK_TIMEOUT_TICKS to avoid this crash.
 
-  See https://pigweed.dev/pw_rpc#destructors-moves-wait-for-callbacks-to-complete
-  for details.
+      See https://pigweed.dev/pw_rpc#destructors-moves-wait-for-callbacks-to-complete
+      for details.
 
 Only one thread at a time may execute ``on_next``
 .................................................
@@ -1527,143 +1527,8 @@ this module, see the
 :ref:`module documentation <module-structure-compile-time-configuration>` for
 more details.
 
-.. c:macro:: PW_RPC_CLIENT_STREAM_END_CALLBACK
-
-  In client and bidirectional RPCs, pw_rpc clients may signal that they have
-  finished sending requests with a CLIENT_STREAM_END packet. While this can be
-  useful in some circumstances, it is often not necessary.
-
-  This option controls whether or not include a callback that is called when
-  the client stream ends. The callback is included in all ServerReader/Writer
-  objects as a pw::Function, so may have a significant cost.
-
-  This is disabled by default.
-
-.. c:macro:: PW_RPC_NANOPB_STRUCT_MIN_BUFFER_SIZE
-
-  The Nanopb-based pw_rpc implementation allocates memory to use for Nanopb
-  structs for the request and response protobufs. The template function that
-  allocates these structs rounds struct sizes up to this value so that
-  different structs can be allocated with the same function. Structs with sizes
-  larger than this value cause an extra function to be created, which slightly
-  increases code size.
-
-  Ideally, this value will be set to the size of the largest Nanopb struct used
-  as an RPC request or response. The buffer can be stack or globally allocated
-  (see ``PW_RPC_NANOPB_STRUCT_BUFFER_STACK_ALLOCATE``).
-
-  This defaults to 64 Bytes.
-
-.. c:macro:: PW_RPC_USE_GLOBAL_MUTEX
-
-  Enable global synchronization for RPC calls. If this is set, a backend must
-  be configured for pw_sync:mutex.
-
-  This is enabled by default.
-
-.. c:macro:: PW_RPC_YIELD_MODE
-
-  pw_rpc must yield the current thread when waiting for a callback to complete
-  in a different thread. ``PW_RPC_YIELD_MODE`` determines how to yield. There
-  are three supported settings:
-
-  - ``PW_RPC_YIELD_MODE_BUSY_LOOP``. Do nothing. Release and reacquire the RPC
-    lock in a busy loop. :c:macro:`PW_RPC_USE_GLOBAL_MUTEX` must be 0 as well.
-  - ``PW_RPC_YIELD_MODE_SLEEP``. Yield with repeated
-    :c:macro:`PW_RPC_YIELD_SLEEP_DURATION`-length calls to
-    :cpp:func:`pw::this_thread::sleep_for`. A backend must be configured for
-    pw_thread:sleep.
-  - ``PW_RPC_YIELD_MODE_YIELD``. Yield with :cpp:func:`pw::this_thread::yield`.
-    A backend must be configured for pw_thread:yield. IMPORTANT: On some
-    platforms, :cpp:func:`pw::this_thread::yield` does not yield to lower
-    priority tasks and should not be used here.
-
-.. c:macro:: PW_RPC_YIELD_SLEEP_DURATION
-
-  If :c:macro:`PW_RPC_YIELD_MODE` is :c:macro:`PW_RPC_YIELD_MODE_SLEEP`,
-  ``PW_RPC_YIELD_SLEEP_DURATION`` sets how long to sleep during each iteration
-  of the yield loop. The value must be a constant expression that converts to a
-  :cpp:type:`pw::chrono::SystemClock::duration`.
-
-.. c:macro:: PW_RPC_CALLBACK_TIMEOUT_TICKS
-
-  pw_rpc call objects wait for their callbacks to complete before they are moved
-  or destoyed. Deadlocks occur if a callback:
-
-  - attempts to destroy its call object,
-  - attempts to move its call object while the call is still active, or
-  - never returns.
-
-  If ``PW_RPC_CALLBACK_TIMEOUT_TICKS`` is greater than 0, then ``PW_CRASH`` is
-  invoked if a thread waits for an RPC callback to complete for more than the
-  specified tick count.
-
-  A "tick" in this context is one iteration of a loop that yields releases the
-  RPC lock and yields the thread according to :c:macro:`PW_RPC_YIELD_MODE`. By
-  default, the thread yields with a 1-tick call to
-  :cpp:func:`pw::this_thread::sleep_for`.
-
-.. c:macro:: PW_RPC_DYNAMIC_ALLOCATION
-
-  Whether pw_rpc should use dynamic memory allocation internally. If enabled,
-  pw_rpc dynamically allocates channels and its encoding buffers. RPC users may
-  use dynamic allocation independently of this option (e.g. to allocate pw_rpc
-  call objects).
-
-  The semantics for allocating and initializing channels change depending on
-  this option. If dynamic allocation is disabled, pw_rpc endpoints (servers or
-  clients) use an externally-allocated, fixed-size array of channels.
-  That array must include unassigned channels or existing channels must be
-  closed to add new channels.
-
-  If dynamic allocation is enabled, an span of channels may be passed to the
-  endpoint at construction, but these channels are only used to initialize its
-  internal ``std::vector`` of channels. External channel objects are NOT used by
-  the endpoint cannot be updated if dynamic allocation is enabled. No
-  unassigned channels should be passed to the endpoint; they will be ignored.
-  Any number of channels may be added to the endpoint, without closing existing
-  channels, but adding channels will use more memory.
-
-.. c:macro:: PW_RPC_DYNAMIC_CONTAINER(type)
-
-  If :c:macro:`PW_RPC_DYNAMIC_ALLOCATION` is enabled, this macro must expand to
-  a container capable of storing objects of the provided type. This container
-  will be used internally be pw_rpc. Defaults to ``std::vector<type>``, but may
-  be set to any type that supports the following ``std::vector`` operations:
-
-  - Construction from iterators
-  - ``emplace_back()``
-  - ``pop_back()``
-  - Range-based for loop iteration
-
-.. c:macro:: PW_RPC_DYNAMIC_CONTAINER_INCLUDE
-
-  If :c:macro:`PW_RPC_DYNAMIC_ALLOCATION` is enabled, this header file is
-  included in files that use :c:macro:`PW_RPC_DYNAMIC_CONTAINER`. Defaults to
-  ``<vector>``, but may be set in conjunction with
-  :c:macro:`PW_RPC_DYNAMIC_CONTAINER` to use a different container type for
-  dynamic allocations in pw_rpc.
-
-.. c:macro:: PW_RPC_CONFIG_LOG_LEVEL
-
-  The log level to use for this module. Logs below this level are omitted.
-
-  This defaults to ``PW_LOG_LEVEL_INFO``.
-
-.. c:macro:: PW_RPC_CONFIG_LOG_MODULE_NAME
-
-  The log module name to use for this module.
-
-  This defaults to ``"PW_RPC"``.
-
-.. c:macro:: PW_RPC_NANOPB_STRUCT_BUFFER_STACK_ALLOCATE
-
-  This option determines whether to allocate the Nanopb structs on the stack or
-  in a global variable. Globally allocated structs are NOT thread safe, but
-  work fine when the RPC server's ProcessPacket function is only called from
-  one thread.
-
-  This is enabled by default.
+.. doxygenfile:: pw_rpc/public/pw_rpc/internal/config.h
+  :sections: define
 
 Sharing server and client code
 ==============================
@@ -1695,7 +1560,9 @@ minimal overhead, ``pw_rpc`` uses a single, global mutex (when
 
 Because ``pw_rpc`` uses a global mutex, it also uses a global buffer to encode
 outgoing packets. The size of the buffer is set with
-``PW_RPC_ENCODING_BUFFER_SIZE_BYTES``, which defaults to 512 B.
+``PW_RPC_ENCODING_BUFFER_SIZE_BYTES``, which defaults to 512 B. If dynamic
+allocation is enabled, this size does not affect how large RPC messages can be,
+but it is still used for sizing buffers in test utilities.
 
 Users of ``pw_rpc`` must implement the :cpp:class:`pw::rpc::ChannelOutput`
 interface.
