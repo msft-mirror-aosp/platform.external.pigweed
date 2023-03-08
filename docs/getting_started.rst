@@ -185,8 +185,10 @@ Below is a real-time demo with roughly what you should expect to see as output:
 
 Congratulations, you are now set up to start using Pigweed!
 
-Pigweed Environment
-===================
+.. _activate-pigweed-environment:
+
+Activate your Pigweed Environment
+=================================
 After going through the initial setup process, your current terminal will be in
 the Pigweed development environment that provides all the tools you should need
 to develop on Pigweed. If you leave that session, you can activate the
@@ -398,9 +400,9 @@ after the desired GN build step label as seen in the example below.
 .. code:: none
 
   $ gn outputs out "//pw_status:status_test.run(//targets/host/pigweed_internal:pw_strict_host_clang_debug)"
-  pw_strict_host_clang_debug/gen/pw_status/status_test.run.pw_pystamp
+  pw_strict_host_clang_debug/obj/pw_status/status_test.run.pw_pystamp
 
-  $ ninja -C out pw_strict_host_clang_debug/gen/pw_status/status_test.run.pw_pystamp
+  $ ninja -C out pw_strict_host_clang_debug/obj/pw_status/status_test.run.pw_pystamp
   ninja: Entering directory `out'
   [4/4] ACTION //pw_status:status_test.run(//targets/host/pigweed_internal:pw_strict_host_clang_debug)
 

@@ -18,6 +18,7 @@
 #include "pw_log/log.h"
 #include "pw_preprocessor/util.h"
 #include "pw_rpc/client.h"
+#include "pw_rpc/internal/encoding_buffer.h"
 #include "pw_rpc/internal/endpoint.h"
 #include "pw_rpc/internal/method.h"
 #include "pw_rpc/server.h"
@@ -101,7 +102,7 @@ Call::~Call() {
   // Removing this explicit registration would result in unsynchronized
   // modification of the endpoint call list via the destructor of the
   // superclass `IntrusiveList<Call>::Item`.
-  LockGuard lock(rpc_lock());
+  RpcLockGuard lock;
 
   // This `active_locked()` guard is necessary to ensure that `endpoint()` is
   // still valid.
@@ -186,7 +187,7 @@ void Call::CallOnError(Status error) {
   }
 
   // This mutex lock could be avoided by making callbacks_executing_ atomic.
-  LockGuard lock(rpc_lock());
+  RpcLockGuard lock;
   CallbackFinished();
 }
 
@@ -201,11 +202,13 @@ bool Call::CleanUpIfRequired() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
 
 Status Call::SendPacket(PacketType type, ConstByteSpan payload, Status status) {
   if (!active_locked()) {
+    encoding_buffer.ReleaseIfAllocated();
     return Status::FailedPrecondition();
   }
 
   Channel* channel = endpoint_->GetInternalChannel(channel_id_);
   if (channel == nullptr) {
+    encoding_buffer.ReleaseIfAllocated();
     return Status::Unavailable();
   }
   return channel->Send(MakePacket(type, payload, status));

@@ -3,11 +3,19 @@
 ===========
 Style Guide
 ===========
+- :ref:`cpp-style`
+- :ref:`owners-style`
+- :ref:`python-style`
+- :ref:`documentation-style`
+- :ref:`commit-style`
+
 .. tip::
-  Pigweed runs ``pw format`` as part of ``pw presubmit`` to perform some code
-  formatting checks. To speed up the review process, consider adding ``pw
-  presubmit`` as a git push hook using the following command:
-  ``pw presubmit --install``
+   Pigweed runs ``pw format`` as part of ``pw presubmit`` to perform some code
+   formatting checks. To speed up the review process, consider adding ``pw
+   presubmit`` as a git push hook using the following command:
+   ``pw presubmit --install``
+
+.. _cpp-style:
 
 ---------
 C++ style
@@ -110,7 +118,6 @@ Permitted Headers
    * ``<optional>``
    * ``<random>``
    * ``<ratio>``
-   * ``<span>``
    * ``<string_view>``
    * ``<tuple>``
    * ``<type_traits>``
@@ -124,8 +131,10 @@ Permitted Headers
    * ``<algorithm>`` -- be wary of potential memory allocation
    * ``<atomic>`` -- not all MCUs natively support atomic operations
    * ``<bitset>`` -- conversions to or from strings are disallowed
-   * ``<functional>`` -- do **not** use ``std::function``
-   * ``<mutex>`` -- can use ``std::lock_guard``, prefer :ref:`module-pw_sync`
+   * ``<functional>`` -- do **not** use ``std::function``; use
+     :ref:`module-pw_function`
+   * ``<mutex>`` -- can use ``std::lock_guard``, use :ref:`module-pw_sync` for
+     mutexes
    * ``<new>`` -- for placement new
    * ``<numeric>`` -- be wary of code size with multiple template instantiations
 
@@ -133,15 +142,17 @@ Permitted Headers
    :class: error
 
    * Dynamic containers (``<list>``, ``<map>``, ``<set>``, ``<vector>``, etc.)
-   * Streams (``<iostream>``, ``<ostream>``, ``<fstream>``, etc.)
-   * ``<exception>``
-   * ``<future>``, ``<thread>``
-   * ``<memory>``
+   * Streams (``<iostream>``, ``<ostream>``, ``<fstream>``, ``<sstream>`` etc.)
+     -- in some cases :ref:`module-pw_stream` can work instead
+   * ``<span>`` -- use :ref:`module-pw_span` instead. Downstream projects may
+     want to directly use ``std::span`` if it is available, but upstream must
+     use the ``pw::span`` version for compatability
+   * ``<string>`` -- can use :ref:`module-pw_string`
+   * ``<thread>`` -- can use :ref:`module-pw_thread`
+   * ``<future>`` -- eventually :ref:`module-pw_async` will offer this
+   * ``<exception>``, ``<stdexcept>`` -- no exceptions
+   * ``<memory>``, ``<scoped_allocator>`` -- no allocations
    * ``<regex>``
-   * ``<scoped_allocator>``
-   * ``<sstream>``
-   * ``<stdexcept>``
-   * ``<string>``
    * ``<valarray>``
 
 Headers not listed here should be carefully evaluated before they are used.
@@ -831,6 +842,8 @@ interacting with a POSIX API in intentionally non-portable code. Never use
 POSIX functions with suitable standard or Pigweed alternatives, such as
 ``strnlen`` (use ``pw::string::NullTerminatedLength`` instead).
 
+.. _owners-style:
+
 --------------------
 Code Owners (OWNERS)
 --------------------
@@ -840,10 +853,11 @@ plug-in enabled Pigweed can help you enforce consistent styling on those files
 and also detects some errors.
 
 The styling follows these rules.
+
 #. Content is grouped by type of line (Access grant, include, etc).
 #. Each grouping is sorted alphabetically.
 #. Groups are placed the following order with a blank line separating each
-grouping.
+   grouping.
 
     * "set noparent" line
     * "include" lines
@@ -852,6 +866,8 @@ grouping.
     * "per-file:" lines
 
 This plugin will, by default, act upon any file named "OWNERS".
+
+.. _python-style:
 
 ------------
 Python style
@@ -933,6 +949,8 @@ ambiguity with other build systems or tooling.
 
 Pigweed's Bazel files follow the `Bazel style guide
 <https://docs.bazel.build/versions/main/skylark/build-style.html>`_.
+
+.. _documentation-style:
 
 -------------
 Documentation
@@ -1116,11 +1134,292 @@ Consider using ``.. list-table::`` syntax, which is more maintainable and
 easier to edit for complex tables (`details
 <https://docutils.sourceforge.io/docs/ref/rst/directives.html#list-table>`_).
 
+Code Blocks
+===========
+Use code blocks from actual source code files wherever possible. This helps keep
+documentation fresh and removes duplicate code examples. There are a few ways to
+do this with Sphinx.
+
+Snippets
+--------
+The `literalinclude`_ directive creates a code blocks from source files. Entire
+files can be included or a just a subsection. The best way to do this is with
+the ``:start-after:`` and ``:end-before:`` options.
+
+Example:
+
+.. card::
+
+   Documentation Source (``.rst`` file)
+   ^^^
+
+   .. code-block:: rst
+
+      .. literalinclude:: run_doxygen.py
+         :start-after: [doxygen-environment-variables]
+         :end-before: [doxygen-environment-variables]
+
+.. card::
+
+   Source File
+   ^^^
+
+   .. code-block::
+
+      # DOCSTAG: [doxygen-environment-variables]
+      env = os.environ.copy()
+      env['PW_DOXYGEN_OUTPUT_DIRECTORY'] = str(output_dir.resolve())
+      env['PW_DOXYGEN_INPUT'] = ' '.join(pw_module_list)
+      env['PW_DOXYGEN_PROJECT_NAME'] = 'Pigweed'
+      # DOCSTAG: [doxygen-environment-variables]
+
+.. card::
+
+   Rendered Output
+   ^^^
+
+   .. code-block::
+
+      env = os.environ.copy()
+      env['PW_DOXYGEN_OUTPUT_DIRECTORY'] = str(output_dir.resolve())
+      env['PW_DOXYGEN_INPUT'] = ' '.join(pw_module_list)
+      env['PW_DOXYGEN_PROJECT_NAME'] = 'Pigweed'
+
+Python
+------
+Include Python API documentation from docstrings with `autodoc directives`_.
+Example:
+
+.. code-block:: rst
+
+   .. automodule:: pw_cli.log
+      :members:
+
+   .. automodule:: pw_console.embed
+      :members: PwConsoleEmbed
+      :undoc-members:
+      :show-inheritance:
+
+   .. autoclass:: pw_console.log_store.LogStore
+      :members: __init__
+      :undoc-members:
+      :show-inheritance:
+
+Include argparse command line help with the `argparse
+<https://sphinx-argparse.readthedocs.io/en/latest/usage.html>`_
+directive. Example:
+
+.. code-block:: rst
+
+   .. argparse::
+      :module: pw_watch.watch
+      :func: get_parser
+      :prog: pw watch
+      :nodefaultconst:
+      :nodescription:
+      :noepilog:
+
+
+Doxygen
+-------
+Doxygen comments in C, C++, and Java are surfaced in Sphinx using `Breathe
+<https://breathe.readthedocs.io/en/latest/index.html>`_.
+
+.. note::
+
+   Sources with doxygen comment blocks must be added to the
+   ``_doxygen_input_files`` list in ``//docs/BUILD.gn`` to be processed.
+
+Breathe provides various `directives
+<https://breathe.readthedocs.io/en/latest/directives.html>`_ for bringing
+Doxygen comments into Sphinx. These include the following:
+
+- `doxygenfile
+  <https://breathe.readthedocs.io/en/latest/directives.html#doxygenfile>`_ --
+  Documents everything in a source file.
+- `doxygenclass
+  <https://breathe.readthedocs.io/en/latest/directives.html#doxygenclass>`_ --
+  Documents a class and its members.
+
+  .. code-block:: rst
+
+     .. doxygenclass:: pw::sync::BinarySemaphore
+        :members:
+
+.. admonition:: See also
+
+  `Breathe directives to use in rst files <https://breathe.readthedocs.io/en/latest/directives.html>`_
+
+Example Doxygen Comment Block
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Start a Doxygen comment block using ``///`` (three forward slashes).
+
+.. code-block:: cpp
+
+   /// This is the documentation comment for the `PW_LOCK_RETURNED()` macro. It
+   /// describes how to use the macro.
+   ///
+   /// Doxygen comments can refer to other symbols using Sphinx cross
+   /// references. For example, @cpp_class{pw::InlineBasicString}, which is
+   /// shorthand for @crossref{cpp,class,pw::InlineBasicString}, links to a C++
+   /// class. @crossref{py,func,pw_tokenizer.proto.detokenize_fields} links to a
+   /// Python function.
+   ///
+   /// @param[out] dest The memory area to copy to.
+   /// @param[in]  src  The memory area to copy from.
+   /// @param[in]  n    The number of bytes to copy
+   ///
+   /// @retval OK         KVS successfully initialized.
+   /// @retval DATA_LOSS  KVS initialized and is usable, but contains corrupt data.
+   /// @retval UNKNOWN    Unknown error. KVS is not initialized.
+   ///
+   /// @rst
+   /// The ``@rst`` and ``@endrst`` commands form a block block of
+   /// reStructuredText that is rendered in Sphinx.
+   ///
+   /// .. warning::
+   ///    this is a warning admonition
+   ///
+   /// .. code-block:: cpp
+   ///
+   ///    void release(ptrdiff_t update = 1);
+   /// @endrst
+   ///
+   /// Example code block using Doxygen markup below. To override the language
+   /// use `@code{.cpp}`
+   ///
+   /// @code
+   ///   class Foo {
+   ///    public:
+   ///     Mutex* mu() PW_LOCK_RETURNED(mu) { return &mu; }
+   ///
+   ///    private:
+   ///     Mutex mu;
+   ///   };
+   /// @endcode
+   ///
+   /// @b The first word in this sentence is bold (The).
+   ///
+   #define PW_LOCK_RETURNED(x) __attribute__((lock_returned(x)))
+
+Doxygen Syntax
+^^^^^^^^^^^^^^
+Pigweed prefers to use rst wherever possible but there are a few Doxygen
+syntatic elements that may be needed.
+
+`Structural commands
+<https://doxygen.nl/manual/docblocks.html#structuralcommands>`_ for the first
+line of a Doxygen comment block.
+
+To group multiple things into a single comment block put them both at the
+start on their own lines. For example:
+
+- ``@class`` to document a Class.
+- ``@struct`` to document a C-struct.
+- ``@union`` to document a union.
+- ``@enum`` to document an enumeration type.
+- ``@fn`` to document a function.
+- ``@var`` to document a variable or typedef or enum value.
+- ``@def`` to document a #define.
+- ``@typedef`` to document a type definition.
+- ``@file`` to document a file.
+- ``@namespace`` to document a namespace.
+- ``@package`` to document a Java package.
+- ``@interface`` to document an IDL interface.
+
+.. code-block:: cpp
+
+   /// @def PW_ASSERT_EXCLUSIVE_LOCK
+   /// @def PW_ASSERT_SHARED_LOCK
+   ///
+   /// Documents functions that dynamically check to see if a lock is held, and
+   /// fail if it is not held.
+
+Common Doxygen commands for use within a comment block.
+
+- ``@rst`` To start a reStructuredText block. This is an alias for
+  ``\verbatim embed:rst:leading-asterisk``.
+- `@code <https://www.doxygen.nl/manual/commands.html#cmdcode>`_ Start a code block.
+- `@param <https://www.doxygen.nl/manual/commands.html#cmdparam>`_ Document
+  parameters, this may be repeated.
+- `@pre <https://www.doxygen.nl/manual/commands.html#cmdpre>`_ Starts a
+  paragraph where the precondition of an entity can be described.
+- `@return <https://www.doxygen.nl/manual/commands.html#cmdreturn>`_ Single
+  paragraph to describe return value(s).
+- `@retval <https://www.doxygen.nl/manual/commands.html#cmdretval>`_ Document
+  return values by name. This is rendered as a definition list.
+- `@note <https://www.doxygen.nl/manual/commands.html#cmdnote>`_ Add a note
+  admonition to the end of documentation.
+- `@b <https://www.doxygen.nl/manual/commands.html#cmdb>`_ To bold one word.
+
+.. seealso:: `All Doxygen commands <https://www.doxygen.nl/manual/commands.html>`_
+
+Cross-references
+^^^^^^^^^^^^^^^^
+Pigweed provides Doxygen aliases for creating Sphinx cross references within
+Doxygen comments. These should be used when referring to other symbols, such as
+functions, classes, or macros.
+
+.. inclusive-language: disable
+
+The basic alias is ``@crossref``, which supports any `Sphinx domain
+<https://www.sphinx-doc.org/en/master/usage/restructuredtext/domains.html>`_.
+For readability, aliases for commonnly used types are provided.
+
+.. inclusive-language: enable
+
+- ``@crossref{domain,type,identifier}`` Inserts a cross reference of any type in
+  any Sphinx domain. For example, ``@crossref{c,func,foo}`` is equivalent to
+  ``:c:func:`foo``` and links to the documentation for the C function ``foo``,
+  if it exists.
+- ``@c_macro{identifier}`` Equivalent to ``:c:macro:`identifier```.
+- ``@cpp_func{identifier}`` Equivalent to ``:cpp:func:`identifier```.
+- ``@cpp_class{identifier}`` Equivalent to ``:cpp:class:`identifier```.
+- ``@cpp_type{identifier}`` Equivalent to ``:cpp:type:`identifier```.
+
+.. note::
+
+   Use the `@` aliases described above for all cross references. Doxygen
+   provides other methods for cross references, but Sphinx cross references
+   offer several advantages:
+
+   - Sphinx cross references work for all identifiers known to Sphinx, including
+     those documented with e.g. ``.. cpp:class::`` or extracted from Python.
+     Doxygen references can only refer to identifiers known to Doxygen.
+   - Sphinx cross references always use consistent formatting. Doxygen cross
+     references sometimes render as plain text instead of code-style monospace,
+     or include ``()`` in macros that shouldn't have them.
+   - Sphinx cross references can refer to symbols that have not yet been
+     documented. They will be formatted correctly and become links once the
+     symbols are documented.
+   - Using Sphinx cross references in Doxygen comments makes cross reference
+     syntax more consistent within Doxygen comments and between RST and
+     Doxygen.
+
+Create cross reference links elsewhere in the document to symbols documented
+with Doxygen using standard Sphinx cross references, such as ``:cpp:class:`` and
+``:cpp:func:``.
+
+.. code-block:: rst
+
+   - :cpp:class:`pw::sync::BinarySemaphore::BinarySemaphore`
+   - :cpp:func:`pw::sync::BinarySemaphore::try_acquire`
+
+.. seealso::
+   - `C++ cross reference link syntax`_
+   - `C cross reference link syntax`_
+   - `Python cross reference link syntax`_
+
 .. _Sphinx: https://www.sphinx-doc.org/
 
 .. inclusive-language: disable
 
 .. _reStructuredText Primer: https://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html
+.. _literalinclude: https://www.sphinx-doc.org/en/master/usage/restructuredtext/directives.html#directive-literalinclude
+.. _C++ cross reference link syntax: https://www.sphinx-doc.org/en/master/usage/restructuredtext/domains.html#cross-referencing
+.. _C cross reference link syntax: https://www.sphinx-doc.org/en/master/usage/restructuredtext/domains.html#cross-referencing-c-constructs
+.. _Python cross reference link syntax: https://www.sphinx-doc.org/en/master/usage/restructuredtext/domains.html#cross-referencing-python-objects
+.. _autodoc directives: https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directives
 
 .. inclusive-language: enable
 
@@ -1317,3 +1616,17 @@ relatively rarely useful.
 .. _Chromium CQ footers: https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/infra/cq.md#options
 .. _git footers: https://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/git-footers.html
 
+Copy-to-clipboard feature on code blocks
+========================================
+
+.. _sphinx-copybutton: https://sphinx-copybutton.readthedocs.io/en/latest/
+.. _Remove copybuttons using a CSS selector: https://sphinx-copybutton.readthedocs.io/en/latest/use.html#remove-copybuttons-using-a-css-selector
+
+The copy-to-clipboard feature on code blocks is powered by `sphinx-copybutton`_.
+
+``sphinx-copybutton`` recognizes ``$`` as an input prompt and automatically
+removes it.
+
+There is a workflow for manually removing the copy-to-clipboard button for a
+particular code block but it has not been implemented yet. See
+`Remove copybuttons using a CSS selector`_.
