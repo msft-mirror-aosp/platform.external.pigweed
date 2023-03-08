@@ -52,8 +52,10 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import tempfile as tf
 import time
 import types
 from typing import (
@@ -71,9 +73,11 @@ from typing import (
     Tuple,
     Union,
 )
+import urllib
 
 import pw_cli.color
 import pw_cli.env
+from pw_package import package_manager
 from pw_presubmit import git_repo, tools
 from pw_presubmit.tools import plural
 
@@ -213,7 +217,32 @@ class Programs(collections.abc.Mapping):
 @dataclasses.dataclass
 class LuciPipeline:
     round: int
-    builds_from_previous_iteration: Sequence[int]
+    builds_from_previous_iteration: Sequence[str]
+
+    @staticmethod
+    def create(
+        bbid: int,
+        fake_pipeline_props: Optional[Dict[str, Any]] = None,
+    ) -> Optional['LuciPipeline']:
+        pipeline_props: Dict[str, Any]
+        if fake_pipeline_props is not None:
+            pipeline_props = fake_pipeline_props
+        else:
+            pipeline_props = (
+                get_buildbucket_info(bbid)
+                .get('input', {})
+                .get('properties', {})
+                .get('$pigweed/pipeline', {})
+            )
+        if not pipeline_props.get('inside_a_pipeline', False):
+            return None
+
+        return LuciPipeline(
+            round=int(pipeline_props['round']),
+            builds_from_previous_iteration=list(
+                pipeline_props['builds_from_previous_iteration']
+            ),
+        )
 
 
 def get_buildbucket_info(bbid) -> Dict[str, Any]:
@@ -226,6 +255,159 @@ def get_buildbucket_info(bbid) -> Dict[str, Any]:
     return json.loads(output)
 
 
+def download_cas_artifact(
+    ctx: PresubmitContext, digest: str, output_dir: str
+) -> None:
+    """Downloads the given digest to the given outputdirectory
+
+    Args:
+        ctx: the presubmit context
+        digest:
+        a string digest in the form "<digest hash>/<size bytes>"
+        i.e 693a04e41374150d9d4b645fccb49d6f96e10b527c7a24b1e17b331f508aa73b/86
+        output_dir: the directory we want to download the artifacts to
+    """
+    if ctx.luci is None:
+        raise PresubmitFailure('Lucicontext is None')
+    cmd = [
+        'cas',
+        'download',
+        '-cas-instance',
+        ctx.luci.cas_instance,
+        '-digest',
+        digest,
+        '-dir',
+        output_dir,
+    ]
+    try:
+        subprocess.check_call(cmd)
+    except subprocess.CalledProcessError as failure:
+        raise PresubmitFailure('cas download failed') from failure
+
+
+def archive_cas_artifact(
+    ctx: PresubmitContext, root: str, upload_paths: List[str]
+) -> str:
+    """Uploads the given artifacts into cas
+
+    Args:
+        ctx: the presubmit context
+        root: root directory of archived tree, should be absolutepath.
+        paths: path to archived files/dirs, should be absolute path.
+            If empty, [root] will be used.
+
+    Returns:
+        A string digest in the form "<digest hash>/<size bytes>"
+        i.e 693a04e41374150d9d4b645fccb49d6f96e10b527c7a24b1e17b331f508aa73b/86
+    """
+    if ctx.luci is None:
+        raise PresubmitFailure('Lucicontext is None')
+    assert os.path.abspath(root)
+    if not upload_paths:
+        upload_paths = [root]
+    for path in upload_paths:
+        assert os.path.abspath(path)
+
+    with tf.NamedTemporaryFile(mode='w+t') as tmp_digest_file:
+        with tf.NamedTemporaryFile(mode='w+t') as tmp_paths_file:
+            json_paths = json.dumps(
+                [
+                    [str(root), str(os.path.relpath(path, root))]
+                    for path in upload_paths
+                ]
+            )
+            tmp_paths_file.write(json_paths)
+            tmp_paths_file.seek(0)
+            cmd = [
+                'cas',
+                'archive',
+                '-cas-instance',
+                ctx.luci.cas_instance,
+                '-paths-json',
+                tmp_paths_file.name,
+                '-dump-digest',
+                tmp_digest_file.name,
+            ]
+            try:
+                subprocess.check_call(cmd)
+            except subprocess.CalledProcessError as failure:
+                raise PresubmitFailure('cas archive failed') from failure
+
+            tmp_digest_file.seek(0)
+            uploaded_digest = tmp_digest_file.read()
+            return uploaded_digest
+
+
+@dataclasses.dataclass
+class LuciTrigger:
+    """Details the pending change or submitted commit triggering the build."""
+
+    number: int
+    remote: str
+    branch: str
+    ref: str
+    gerrit_name: str
+    submitted: bool
+
+    @property
+    def gerrit_url(self):
+        if not self.number:
+            return self.gitiles_url
+        return 'https://{}-review.googlesource.com/c/{}'.format(
+            self.gerrit_name, self.number
+        )
+
+    @property
+    def gitiles_url(self):
+        return '{}/+/{}'.format(self.remote, self.ref)
+
+    @staticmethod
+    def create_from_environment(
+        env: Optional[Dict[str, str]] = None,
+    ) -> Sequence['LuciTrigger']:
+        if not env:
+            env = os.environ.copy()
+        raw_path = env.get('TRIGGERING_CHANGES_JSON')
+        if not raw_path:
+            return ()
+        path = Path(raw_path)
+        if not path.is_file():
+            return ()
+
+        result = []
+        with open(path, 'r') as ins:
+            for trigger in json.load(ins):
+                keys = {
+                    'number',
+                    'remote',
+                    'branch',
+                    'ref',
+                    'gerrit_name',
+                    'submitted',
+                }
+                if keys <= trigger.keys():
+                    result.append(LuciTrigger(**{x: trigger[x] for x in keys}))
+
+        return tuple(result)
+
+    @staticmethod
+    def create_for_testing():
+        change = {
+            'number': 123456,
+            'remote': 'https://pigweed.googlesource.com/pigweed/pigweed',
+            'branch': 'main',
+            'ref': 'refs/changes/56/123456/1',
+            'gerrit_name': 'pigweed',
+            'submitted': True,
+        }
+        with tf.TemporaryDirectory() as tempdir:
+            changes_json = Path(tempdir) / 'changes.json'
+            with changes_json.open('w') as outs:
+                json.dump([change], outs)
+            env = {'TRIGGERING_CHANGES_JSON': changes_json}
+            return LuciTrigger.create_from_environment(env)
+
+
 @dataclasses.dataclass
 class LuciContext:
     """LUCI-specific information about the environment."""
@@ -235,61 +417,102 @@ class LuciContext:
     project: str
     bucket: str
     builder: str
+    swarming_server: str
     swarming_task_id: str
+    cas_instance: str
     pipeline: Optional[LuciPipeline]
+    triggers: Sequence[LuciTrigger] = dataclasses.field(default_factory=tuple)
 
     @staticmethod
-    def create_from_environment():
+    def create_from_environment(
+        env: Optional[Dict[str, str]] = None,
+        fake_pipeline_props: Optional[Dict[str, Any]] = None,
+    ) -> Optional['LuciContext']:
         """Create a LuciContext from the environment."""
+
+        if not env:
+            env = os.environ.copy()
+
         luci_vars = [
             'BUILDBUCKET_ID',
             'BUILDBUCKET_NAME',
             'BUILD_NUMBER',
             'SWARMING_TASK_ID',
+            'SWARMING_SERVER',
         ]
-        if any(x for x in luci_vars if x not in os.environ):
+        if any(x for x in luci_vars if x not in env):
             return None
 
-        project, bucket, builder = os.environ['BUILDBUCKET_NAME'].split(':')
+        project, bucket, builder = env['BUILDBUCKET_NAME'].split(':')
 
         bbid: int = 0
         pipeline: Optional[LuciPipeline] = None
         try:
-            bbid = int(os.environ['BUILDBUCKET_ID'])
-
-            pipeline_props = (
-                get_buildbucket_info(bbid)
-                .get('input', {})
-                .get('properties', {})
-                .get('$pigweed/pipeline', {})
-            )
-            if pipeline_props.get('inside_a_pipeline', False):
-                pipeline = LuciPipeline(
-                    round=int(pipeline_props['round']),
-                    builds_from_previous_iteration=[
-                        int(x)
-                        for x in pipeline_props[
-                            'builds_from_previous_iteration'
-                        ]
-                    ],
-                )
+            bbid = int(env['BUILDBUCKET_ID'])
+            pipeline = LuciPipeline.create(bbid, fake_pipeline_props)
 
         except ValueError:
             pass
 
-        return LuciContext(
+        # Logic to identify cas instance from swarming server is derived from
+        # https://chromium.googlesource.com/infra/luci/recipes-py/+/main/recipe_modules/cas/api.py
+        swarm_server = env['SWARMING_SERVER']
+        cas_project = urllib.parse.urlparse(swarm_server).netloc.split('.')[0]
+        cas_instance = f'projects/{cas_project}/instances/default_instance'
+
+        result = LuciContext(
             buildbucket_id=bbid,
-            build_number=int(os.environ['BUILD_NUMBER']),
+            build_number=int(env['BUILD_NUMBER']),
             project=project,
             bucket=bucket,
             builder=builder,
-            swarming_task_id=os.environ['SWARMING_TASK_ID'],
+            swarming_server=env['SWARMING_SERVER'],
+            swarming_task_id=env['SWARMING_TASK_ID'],
+            cas_instance=cas_instance,
             pipeline=pipeline,
+            triggers=LuciTrigger.create_from_environment(env),
         )
+        _LOG.debug('%r', result)
+        return result
+
+    @staticmethod
+    def create_for_testing():
+        env = {
+            'BUILDBUCKET_ID': '881234567890',
+            'BUILDBUCKET_NAME': 'pigweed:bucket.try:builder-name',
+            'BUILD_NUMBER': '123',
+            'SWARMING_SERVER': 'https://chromium-swarm.appspot.com',
+            'SWARMING_TASK_ID': 'cd2dac62d2',
+        }
+        return LuciContext.create_from_environment(env, {})
 
 
 @dataclasses.dataclass
-class PresubmitContext:
+class FormatContext:
+    """Context passed into formatting helpers.
+
+    This class is a subset of PresubmitContext containing only what's needed by
+    formatters.
+
+    For full documentation on the members see the PresubmitContext section of
+    pw_presubmit/docs.rst.
+
+    Args:
+        root: Source checkout root directory
+        output_dir: Output directory for this specific language
+        paths: Modified files for the presubmit step to check (often used in
+            formatting steps but ignored in compile steps)
+        package_root: Root directory for pw package installations
+    """
+
+    root: Optional[Path]
+    output_dir: Path
+    paths: Tuple[Path, ...]
+    package_root: Path
+
+
+@dataclasses.dataclass
+class PresubmitContext:  # pylint: disable=too-many-instance-attributes
     """Context passed into presubmit checks.
 
     For full documentation on the members see pw_presubmit/docs.rst.
@@ -303,6 +526,7 @@ class PresubmitContext:
             any failures encountered for use by other tooling.
         paths: Modified files for the presubmit step to check (often used in
             formatting steps but ignored in compile steps)
+        all_paths: All files in the tree.
         package_root: Root directory for pw package installations
         override_gn_args: Additional GN args processed by build.gn_gen()
         luci: Information about the LUCI build or None if not running in LUCI
@@ -316,6 +540,7 @@ class PresubmitContext:
     output_dir: Path
     failure_summary_log: Path
     paths: Tuple[Path, ...]
+    all_paths: Tuple[Path, ...]
     package_root: Path
     luci: Optional[LuciContext]
     override_gn_args: Dict[str, str]
@@ -340,6 +565,23 @@ class PresubmitContext:
         """
         _LOG.warning('%s', PresubmitFailure(description, path, line))
         self._failed = True
+
+    @staticmethod
+    def create_for_testing():
+        parsed_env = pw_cli.env.pigweed_environment()
+        root = parsed_env.PW_PROJECT_ROOT
+        presubmit_root = root / 'out' / 'presubmit'
+        return PresubmitContext(
+            root=root,
+            repos=(root,),
+            output_dir=presubmit_root / 'test',
+            failure_summary_log=presubmit_root / 'failure-summary.log',
+            paths=(root / 'foo.cc', root / 'foo.py'),
+            all_paths=(root / 'BUILD.gn', root / 'foo.cc', root / 'foo.py'),
+            package_root=root / 'environment' / 'packages',
+            luci=None,
+            override_gn_args={},
+        )
 
 
 class FileFilter:
@@ -403,6 +645,9 @@ class FileFilter:
             or any(posix_path.endswith(end) for end in self.endswith)
         )
 
+    def filter(self, paths: Sequence[Union[str, Path]]) -> Sequence[Path]:
+        return [Path(x) for x in paths if self.matches(x)]
+
     def apply_to_check(self, always_run: bool = False) -> Callable:
         def wrapper(func: Callable) -> Check:
             if isinstance(func, Check):
@@ -444,6 +689,7 @@ class Presubmit:
         repos: Sequence[Path],
         output_directory: Path,
         paths: Sequence[Path],
+        all_paths: Sequence[Path],
         package_root: Path,
         override_gn_args: Dict[str, str],
         continue_after_build_error: bool,
@@ -452,6 +698,7 @@ class Presubmit:
         self._repos = tuple(repos)
         self._output_directory = output_directory.resolve()
         self._paths = tuple(paths)
+        self._all_paths = tuple(all_paths)
         self._relative_paths = tuple(
             tools.relative_paths(self._paths, self._root)
         )
@@ -607,6 +854,7 @@ class Presubmit:
                 output_dir=output_directory,
                 failure_summary_log=failure_summary_log,
                 paths=filtered_check.paths,
+                all_paths=self._all_paths,
                 package_root=self._package_root,
                 override_gn_args=self._override_gn_args,
                 continue_after_build_error=self._continue_after_build_error,
@@ -738,22 +986,38 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
 
     pathspecs_by_repo = _process_pathspecs(repos, paths)
 
-    files: List[Path] = []
-    list_steps_data: List = []
+    all_files: List[Path] = []
+    modified_files: List[Path] = []
+    list_steps_data: Dict[str, Any] = {}
 
     if list_steps_file:
         with list_steps_file.open() as ins:
             list_steps_data = json.load(ins)
-        for step in list_steps_data:
-            files.extend(Path(x) for x in step.get("paths", ()))
-        files = sorted(set(files))
-        _LOG.info('Loaded %d paths from file %s', len(files), list_steps_file)
+        all_files.extend(list_steps_data['all_files'])
+        for step in list_steps_data['steps']:
+            modified_files.extend(Path(x) for x in step.get("paths", ()))
+        modified_files = sorted(set(modified_files))
+        _LOG.info(
+            'Loaded %d paths from file %s',
+            len(modified_files),
+            list_steps_file,
+        )
 
     else:
         for repo, pathspecs in pathspecs_by_repo.items():
-            files += tools.exclude_paths(
-                exclude, git_repo.list_files(base, pathspecs, repo), root
+            all_files_repo = tuple(
+                tools.exclude_paths(
+                    exclude, git_repo.list_files(None, pathspecs, repo), root
+                )
             )
+            all_files += all_files_repo
+
+            if base is None:
+                modified_files += all_files_repo
+            else:
+                modified_files += tools.exclude_paths(
+                    exclude, git_repo.list_files(base, pathspecs, repo), root
+                )
 
             _LOG.info(
                 'Checking %s',
@@ -772,7 +1036,8 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
         root=root,
         repos=repos,
         output_directory=output_directory,
-        paths=files,
+        paths=modified_files,
+        all_paths=all_files,
         package_root=package_root,
         override_gn_args=dict(override_gn_args or {}),
         continue_after_build_error=continue_after_build_error,
@@ -789,7 +1054,12 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
             if len(substeps) > 1:
                 step['substeps'] = [x.name for x in substeps]
             steps.append(step)
-        json.dump(steps, sys.stdout, indent=2)
+
+        list_steps_data = {
+            'steps': steps,
+            'all_files': [str(x) for x in all_files],
+        }
+        json.dump(list_steps_data, sys.stdout, indent=2)
         sys.stdout.write('\n')
         return True
 
@@ -1138,6 +1408,7 @@ def call(*args, **kwargs) -> None:
     _LOG.debug('[RUN] %s\n%s', attributes, command)
 
     tee = kwargs.pop('tee', None)
+    propagate_sigterm = kwargs.pop('propagate_sigterm', False)
 
     env = pw_cli.env.pigweed_environment()
     kwargs['stdout'] = subprocess.PIPE
@@ -1145,6 +1416,17 @@ def call(*args, **kwargs) -> None:
 
     process = subprocess.Popen(args, **kwargs)
     assert process.stdout
+
+    # Set up signal handler if requested.
+    signaled = False
+    if propagate_sigterm:
+
+        def signal_handler(_signal_number: int, _stack_frame: Any) -> None:
+            nonlocal signaled
+            signaled = True
+            process.terminate()
+
+        previous_signal_handler = signal.signal(signal.SIGTERM, signal_handler)
 
     if env.PW_PRESUBMIT_DISABLE_SUBPROCESS_CAPTURE:
         while True:
@@ -1169,5 +1451,30 @@ def call(*args, **kwargs) -> None:
     if stdout:
         logfunc('[OUTPUT]\n%s', stdout.decode(errors='backslashreplace'))
 
+    if propagate_sigterm:
+        signal.signal(signal.SIGTERM, previous_signal_handler)
+        if signaled:
+            _LOG.warning('Exiting due to SIGTERM.')
+            sys.exit(1)
+
     if process.returncode:
         raise PresubmitFailure
+
+
+def install_package(
+    ctx: Union[FormatContext, PresubmitContext],
+    name: str,
+    force: bool = False,
+) -> None:
+    """Install package with given name in given path."""
+    root = ctx.package_root
+    mgr = package_manager.PackageManager(root)
+
+    if not mgr.list():
+        raise PresubmitFailure(
+            'no packages configured, please import your pw_package '
+            'configuration module'
+        )
+
+    if not mgr.status(name) or force:
+        mgr.install(name, force=force)

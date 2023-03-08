@@ -26,42 +26,52 @@ namespace pw::rpc::internal {
 // A Call object, as used by an RPC client.
 class ClientCall : public Call {
  public:
-  ~ClientCall() PW_LOCKS_EXCLUDED(rpc_lock()) {
-    rpc_lock().lock();
-    CloseClientCall();
-    rpc_lock().unlock();
-  }
+  ~ClientCall() PW_LOCKS_EXCLUDED(rpc_lock()) { Abandon(); }
 
   uint32_t id() const PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return Call::id();
   }
 
  protected:
+  // Initializes CallProperties for a struct-based client call impl.
+  static constexpr CallProperties StructCallProps(MethodType type) {
+    return CallProperties(type, kClientCall, kProtoStruct);
+  }
+
+  // Initializes CallProperties for a raw client call.
+  static constexpr CallProperties RawCallProps(MethodType type) {
+    return CallProperties(type, kClientCall, kRawProto);
+  }
+
   constexpr ClientCall() = default;
 
   ClientCall(LockedEndpoint& client,
              uint32_t channel_id,
              uint32_t service_id,
              uint32_t method_id,
-             MethodType type) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
-      : Call(client, channel_id, service_id, method_id, type) {}
+             CallProperties properties) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
+      : Call(client, channel_id, service_id, method_id, properties) {}
 
-  // Sends CLIENT_STREAM_END if applicable, releases any held payload buffer,
-  // and marks the call as closed.
+  // Public function that closes a call client-side without cancelling it on the
+  // server.
+  void Abandon() PW_LOCKS_EXCLUDED(rpc_lock()) {
+    RpcLockGuard lock;
+    CloseClientCall();
+  }
+
+  // Sends CLIENT_STREAM_END if applicable and marks the call as closed.
   void CloseClientCall() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
   void MoveClientCallFrom(ClientCall& other)
-      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
-    CloseClientCall();
-    MoveFrom(other);
-  }
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 };
 
 // Unary response client calls receive both a payload and the status in their
 // on_completed callback. The on_next callback is not used.
 class UnaryResponseClientCall : public ClientCall {
  public:
+  // Start call for raw unary response RPCs.
   template <typename CallType>
   static CallType Start(Endpoint& client,
                         uint32_t channel_id,
@@ -76,19 +86,12 @@ class UnaryResponseClientCall : public ClientCall {
     call.set_on_error_locked(std::move(on_error));
 
     call.SendInitialClientRequest(request);
+    client.CleanUpCalls();
     return call;
   }
 
   void HandleCompleted(ConstByteSpan response, Status status)
-      PW_UNLOCK_FUNCTION(rpc_lock()) {
-    UnregisterAndMarkClosed();
-    auto on_completed_local = std::move(on_completed_);
-    rpc_lock().unlock();
-
-    if (on_completed_local) {
-      on_completed_local(response, status);
-    }
-  }
+      PW_UNLOCK_FUNCTION(rpc_lock());
 
  protected:
   constexpr UnaryResponseClientCall() = default;
@@ -97,9 +100,9 @@ class UnaryResponseClientCall : public ClientCall {
                           uint32_t channel_id,
                           uint32_t service_id,
                           uint32_t method_id,
-                          MethodType type)
+                          CallProperties properties)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
-      : ClientCall(client, channel_id, service_id, method_id, type) {}
+      : ClientCall(client, channel_id, service_id, method_id, properties) {}
 
   UnaryResponseClientCall(UnaryResponseClientCall&& other) {
     *this = std::move(other);
@@ -107,7 +110,7 @@ class UnaryResponseClientCall : public ClientCall {
 
   UnaryResponseClientCall& operator=(UnaryResponseClientCall&& other)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     MoveUnaryResponseClientCallFrom(other);
     return *this;
   }
@@ -120,7 +123,7 @@ class UnaryResponseClientCall : public ClientCall {
 
   void set_on_completed(Function<void(ConstByteSpan, Status)>&& on_completed)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     set_on_completed_locked(std::move(on_completed));
   }
 
@@ -140,6 +143,7 @@ class UnaryResponseClientCall : public ClientCall {
 // callback. Payloads are sent through the on_next callback.
 class StreamResponseClientCall : public ClientCall {
  public:
+  // Start call for raw stream response RPCs.
   template <typename CallType>
   static CallType Start(Endpoint& client,
                         uint32_t channel_id,
@@ -157,18 +161,11 @@ class StreamResponseClientCall : public ClientCall {
     call.set_on_error_locked(std::move(on_error));
 
     call.SendInitialClientRequest(request);
+    client.CleanUpCalls();
     return call;
   }
 
-  void HandleCompleted(Status status) PW_UNLOCK_FUNCTION(rpc_lock()) {
-    UnregisterAndMarkClosed();
-    auto on_completed_local = std::move(on_completed_);
-    rpc_lock().unlock();
-
-    if (on_completed_local) {
-      on_completed_local(status);
-    }
-  }
+  void HandleCompleted(Status status) PW_UNLOCK_FUNCTION(rpc_lock());
 
  protected:
   constexpr StreamResponseClientCall() = default;
@@ -177,9 +174,9 @@ class StreamResponseClientCall : public ClientCall {
                            uint32_t channel_id,
                            uint32_t service_id,
                            uint32_t method_id,
-                           MethodType type)
+                           CallProperties properties)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
-      : ClientCall(client, channel_id, service_id, method_id, type) {}
+      : ClientCall(client, channel_id, service_id, method_id, properties) {}
 
   StreamResponseClientCall(StreamResponseClientCall&& other) {
     *this = std::move(other);
@@ -187,7 +184,7 @@ class StreamResponseClientCall : public ClientCall {
 
   StreamResponseClientCall& operator=(StreamResponseClientCall&& other)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     MoveStreamResponseClientCallFrom(other);
     return *this;
   }
@@ -200,7 +197,7 @@ class StreamResponseClientCall : public ClientCall {
 
   void set_on_completed(Function<void(Status)>&& on_completed)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     set_on_completed_locked(std::move(on_completed));
   }
 

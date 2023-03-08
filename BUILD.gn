@@ -252,6 +252,16 @@ group("docs") {
   deps = [ "$dir_pigweed/docs($dir_pigweed/targets/docs)" ]
 }
 
+# Tests that are run as host actions, such as tests of the build system.
+#
+# These are distinguished from `integration_tests` in that they are short
+# unit tests of specific functionality that should be tested in the default
+# build.
+group("action_tests") {
+  _default_tc = _default_toolchain_prefix + pw_DEFAULT_C_OPTIMIZATION_LEVEL
+  deps = [ "$dir_pw_unit_test:test_group_metadata_test.action($_default_tc)" ]
+}
+
 # Tests larger than unit tests, typically run in a specific configuration.
 group("integration_tests") {
   _default_tc = _default_toolchain_prefix + pw_DEFAULT_C_OPTIMIZATION_LEVEL
@@ -341,9 +351,7 @@ group("host_tools") {
   ]
 
   if (pw_rust_ENABLE_EXPERIMENTAL_BUILD) {
-    deps += [
-      "$dir_pw_rust/example:hello($dir_pigweed/targets/host:host_clang_debug)",
-    ]
+    deps += [ "$dir_pw_rust/examples/host_executable:hello($dir_pigweed/targets/host:host_clang_debug)" ]
   }
 }
 
@@ -365,6 +373,9 @@ group("pigweed_default") {
 
     # Add performance tests to the automatic build
     deps += [ ":pw_perf_tests" ]
+
+    # Add action tests to the automatic build
+    deps += [ ":action_tests" ]
 
     # Trace examples currently only support running on non-windows host
     if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
@@ -393,10 +404,7 @@ group("cpp14_compatibility") {
 # enabled than without.
 group("cpp20_compatibility") {
   _cpp20_tc = "$_internal_toolchains:pw_strict_host_clang_size_optimized_cpp20"
-  deps = [
-    ":apps($_cpp20_tc)",
-    ":pw_module_tests.run($_cpp20_tc)",
-  ]
+  deps = [ ":pigweed_default($_cpp20_tc)" ]
 }
 
 group("build_with_pw_minimal_cpp_stdlib") {
@@ -418,10 +426,21 @@ if (current_toolchain != default_toolchain) {
     # Add target-specific images.
     deps += pw_TARGET_APPLICATIONS
 
-    # Add the pw_tool target to be built on host.
+    # Add host-only targets to the build.
     if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
         pw_toolchain_SCOPE.is_host_toolchain) {
       deps += [ "$dir_pw_tool" ]
+
+      # TODO(b/240982565): Build integration tests on Windows and macOS when
+      #     SocketStream supports those platforms.
+      if (host_os == "linux") {
+        # Build the integration test binaries, but don't run them by default.
+        deps += [
+          "$dir_pw_rpc:client_integration_test",
+          "$dir_pw_rpc:test_rpc_server",
+          "$dir_pw_unit_test:test_rpc_server",
+        ]
+      }
     }
   }
 

@@ -47,6 +47,12 @@ def _argument_parser() -> argparse.ArgumentParser:
         '--plugin-path', type=Path, help='Path to the protoc plugin'
     )
     parser.add_argument(
+        '--proto-path',
+        type=Path,
+        help='Additional protoc include paths',
+        action='append',
+    )
+    parser.add_argument(
         '--include-file',
         type=argparse.FileType('r'),
         help='File containing additional protoc include paths',
@@ -81,6 +87,15 @@ def _argument_parser() -> argparse.ArgumentParser:
         action='store_false',
         help='Do not generate pyi files for python',
     )
+    parser.add_argument(
+        '--exclude-pwpb-legacy-snake-case-field-name-enums',
+        dest='exclude_pwpb_legacy_snake_case_field_name_enums',
+        action='store_true',
+        help=(
+            'If set, generates legacy SNAKE_CASE names for field name enums '
+            'in PWPB.'
+        ),
+    )
 
     return parser
 
@@ -95,14 +110,26 @@ def protoc_common_args(args: argparse.Namespace) -> Tuple[str, ...]:
 def protoc_pwpb_args(
     args: argparse.Namespace, include_paths: List[str]
 ) -> Tuple[str, ...]:
-    return (
+    out_args = [
         '--plugin',
         f'protoc-gen-custom={args.plugin_path}',
         f'--custom_opt=-I{args.compile_dir}',
         *[f'--custom_opt=-I{include_path}' for include_path in include_paths],
-        '--custom_out',
-        args.out_dir,
+    ]
+
+    if args.exclude_pwpb_legacy_snake_case_field_name_enums:
+        out_args.append(
+            '--custom_opt=--exclude-legacy-snake-case-field-name-enums'
+        )
+
+    out_args.extend(
+        [
+            '--custom_out',
+            args.out_dir,
+        ]
     )
+
+    return tuple(out_args)
 
 
 def protoc_pwpb_rpc_args(
@@ -215,7 +242,9 @@ def main() -> int:
 
     include_paths: List[str] = []
     if args.include_file:
-        include_paths = [line.strip() for line in args.include_file]
+        include_paths.extend(line.strip() for line in args.include_file)
+    if args.proto_path:
+        include_paths.extend(str(path) for path in args.proto_path)
 
     wrapper_script: Optional[Path] = None
 

@@ -18,6 +18,8 @@
 #include "pw_rpc/raw/client_testing.h"
 // clang-format on
 
+#include <mutex>
+
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
 #include "pw_rpc/client.h"
@@ -55,7 +57,7 @@ Status FakeServer::ProcessPacket(internal::pwpb::PacketType type,
                                  ConstByteSpan payload,
                                  Status status) const {
   if (!call_id.has_value()) {
-    internal::LockGuard lock(output_.mutex_);
+    std::lock_guard lock(output_.mutex_);
     auto view = internal::test::PacketsView(
         output_.packets(),
         internal::test::PacketFilter(internal::pwpb::PacketType::REQUEST,
@@ -71,8 +73,13 @@ Status FakeServer::ProcessPacket(internal::pwpb::PacketType type,
   }
 
   auto packet_encoding_result =
-      internal::Packet(
-          type, channel_id_, service_id, method_id, *call_id, payload, status)
+      internal::Packet(type,
+                       channel_id_,
+                       service_id,
+                       method_id,
+                       call_id.value_or(internal::Packet::kUnassignedId),
+                       payload,
+                       status)
           .Encode(packet_buffer_);
   PW_CHECK_OK(packet_encoding_result.status());
   return client_.ProcessPacket(*packet_encoding_result);

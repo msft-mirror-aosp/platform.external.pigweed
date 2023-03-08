@@ -13,10 +13,13 @@
 // the License.
 #pragma once
 
+#include <array>
+
 #include "pw_protobuf/encoder.h"
 #include "pw_protobuf/internal/codegen.h"
 #include "pw_protobuf/stream_decoder.h"
 #include "pw_span/span.h"
+#include "pw_stream/null_stream.h"
 
 namespace pw::rpc {
 
@@ -37,6 +40,22 @@ class PwpbSerde {
     return Encoder(buffer).Write(as_bytes(span(&message, 1)), table_);
   }
 
+  // Calculates the encoded size of the provided protobuf struct without
+  // actually encoding it.
+  template <typename Message>
+  StatusWithSize EncodedSizeBytes(const Message& message) const {
+    // TODO(b/269515470): Use kScratchBufferSizeBytes instead of a fixed size.
+    std::array<std::byte, 64> scratch_buffer;
+
+    stream::CountingNullStream output;
+    StreamEncoder encoder(output, scratch_buffer);
+    const Status result = encoder.Write(as_bytes(span(&message, 1)), *table_);
+
+    // TODO(b/269633514): Add 1 to the encoded size because pw_protobuf
+    //     sometimes fails to encode to buffers that exactly fit the output.
+    return StatusWithSize(result, output.bytes_written() + 1);
+  }
+
   // Decodes a serialized protobuf into a pw_protobuf message struct.
   template <typename Message>
   Status Decode(ConstByteSpan buffer, Message& message) const {
@@ -49,9 +68,17 @@ class PwpbSerde {
     constexpr Encoder(ByteSpan buffer) : protobuf::MemoryEncoder(buffer) {}
 
     StatusWithSize Write(ConstByteSpan message, PwpbMessageDescriptor table) {
-      const auto status = protobuf::MemoryEncoder::Write(message, *table);
+      const Status status = protobuf::MemoryEncoder::Write(message, *table);
       return StatusWithSize(status, size());
     }
+  };
+
+  class StreamEncoder : public protobuf::StreamEncoder {
+   public:
+    constexpr StreamEncoder(stream::Writer& writer, ByteSpan buffer)
+        : protobuf::StreamEncoder(writer, buffer) {}
+
+    using protobuf::StreamEncoder::Write;  // Make this method public
   };
 
   class Decoder : public protobuf::StreamDecoder {
@@ -80,30 +107,6 @@ class PwpbMethodSerde {
 
   PwpbMethodSerde(const PwpbMethodSerde&) = delete;
   PwpbMethodSerde& operator=(const PwpbMethodSerde&) = delete;
-
-  // Encodes the pw_protobuf request struct to the serialized wire format.
-  template <typename Request>
-  StatusWithSize EncodeRequest(const Request& request, ByteSpan buffer) const {
-    return request_serde_.Encode(request, buffer);
-  }
-
-  // Encodes the pw_protobuf response struct to the serialized wire format.
-  template <typename Response>
-  StatusWithSize EncodeResponse(const Response& response,
-                                ByteSpan buffer) const {
-    return response_serde_.Encode(response, buffer);
-  }
-  // Decodes a serialized protobuf into the pw_protobuf request struct.
-  template <typename Request>
-  Status DecodeRequest(ConstByteSpan buffer, Request& request) const {
-    return request_serde_.Decode(buffer, request);
-  }
-
-  // Decodes a serialized protobuf into the pw_protobuf response struct.
-  template <typename Response>
-  Status DecodeResponse(ConstByteSpan buffer, Response& response) const {
-    return response_serde_.Decode(buffer, response);
-  }
 
   const PwpbSerde& request() const { return request_serde_; }
   const PwpbSerde& response() const { return response_serde_; }

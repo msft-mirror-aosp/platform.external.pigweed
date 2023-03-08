@@ -37,11 +37,15 @@ declare_args() {
   dir_pw_assert_log = get_path_info("../pw_assert_log", "abspath")
   dir_pw_assert_tokenized = get_path_info("../pw_assert_tokenized", "abspath")
   dir_pw_assert_zephyr = get_path_info("../pw_assert_zephyr", "abspath")
+  dir_pw_async = get_path_info("../pw_async", "abspath")
+  dir_pw_async_basic = get_path_info("../pw_async_basic", "abspath")
   dir_pw_base64 = get_path_info("../pw_base64", "abspath")
   dir_pw_bloat = get_path_info("../pw_bloat", "abspath")
   dir_pw_blob_store = get_path_info("../pw_blob_store", "abspath")
   dir_pw_bluetooth = get_path_info("../pw_bluetooth", "abspath")
   dir_pw_bluetooth_hci = get_path_info("../pw_bluetooth_hci", "abspath")
+  dir_pw_bluetooth_profiles =
+      get_path_info("../pw_bluetooth_profiles", "abspath")
   dir_pw_boot = get_path_info("../pw_boot", "abspath")
   dir_pw_boot_cortex_m = get_path_info("../pw_boot_cortex_m", "abspath")
   dir_pw_build = get_path_info("../pw_build", "abspath")
@@ -181,11 +185,14 @@ declare_args() {
     dir_pw_assert_log,
     dir_pw_assert_tokenized,
     dir_pw_assert_zephyr,
+    dir_pw_async,
+    dir_pw_async_basic,
     dir_pw_base64,
     dir_pw_bloat,
     dir_pw_blob_store,
     dir_pw_bluetooth,
     dir_pw_bluetooth_hci,
+    dir_pw_bluetooth_profiles,
     dir_pw_boot,
     dir_pw_boot_cortex_m,
     dir_pw_build,
@@ -313,11 +320,14 @@ declare_args() {
     "$dir_pw_assert_log:tests",
     "$dir_pw_assert_tokenized:tests",
     "$dir_pw_assert_zephyr:tests",
+    "$dir_pw_async:tests",
+    "$dir_pw_async_basic:tests",
     "$dir_pw_base64:tests",
     "$dir_pw_bloat:tests",
     "$dir_pw_blob_store:tests",
     "$dir_pw_bluetooth:tests",
     "$dir_pw_bluetooth_hci:tests",
+    "$dir_pw_bluetooth_profiles:tests",
     "$dir_pw_boot:tests",
     "$dir_pw_boot_cortex_m:tests",
     "$dir_pw_build:tests",
@@ -445,11 +455,14 @@ declare_args() {
     "$dir_pw_assert_log:docs",
     "$dir_pw_assert_tokenized:docs",
     "$dir_pw_assert_zephyr:docs",
+    "$dir_pw_async:docs",
+    "$dir_pw_async_basic:docs",
     "$dir_pw_base64:docs",
     "$dir_pw_bloat:docs",
     "$dir_pw_blob_store:docs",
     "$dir_pw_bluetooth:docs",
     "$dir_pw_bluetooth_hci:docs",
+    "$dir_pw_bluetooth_profiles:docs",
     "$dir_pw_boot:docs",
     "$dir_pw_boot_cortex_m:docs",
     "$dir_pw_build:docs",

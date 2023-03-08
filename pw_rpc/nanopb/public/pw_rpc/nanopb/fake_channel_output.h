@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 
 #include "pw_assert/assert.h"
 #include "pw_bytes/span.h"
@@ -55,7 +56,7 @@ class NanopbPayloadsView {
     // Access the payload (rather than packet) with operator*.
     Payload operator*() const {
       Payload payload{};
-      PW_ASSERT(serde_.Decode(Base::value(), &payload));
+      PW_ASSERT_OK(serde_.Decode(Base::value(), payload));
       return payload;
     }
 
@@ -71,7 +72,7 @@ class NanopbPayloadsView {
 
   Payload operator[](size_t index) const {
     Payload payload{};
-    PW_ASSERT(serde_.Decode(view_[index], &payload));
+    PW_ASSERT_OK(serde_.Decode(view_[index], payload));
     return payload;
   }
 
@@ -166,7 +167,7 @@ class NanopbFakeChannelOutput final
 
   template <auto kMethod>
   Response<kMethod> last_response() const {
-    internal::LockGuard lock(internal::test::FakeChannelOutput::mutex());
+    std::lock_guard lock(internal::test::FakeChannelOutput::mutex());
     NanopbPayloadsView<Response<kMethod>> payloads = responses<kMethod>();
     PW_ASSERT(!payloads.empty());
     return payloads.back();
