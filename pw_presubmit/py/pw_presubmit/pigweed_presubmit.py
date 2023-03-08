@@ -57,6 +57,7 @@ from pw_presubmit import (
     Programs,
     python_checks,
     shell_checks,
+    source_in_build,
     todo_check,
 )
 from pw_presubmit.install_hook import install_git_hook
@@ -69,6 +70,7 @@ pw_package.pigweed_packages.initialize()
 _BUILD_FILE_FILTER = presubmit.FileFilter(
     suffix=(
         *format_code.C_FORMAT.extensions,
+        '.cfg',
         '.py',
         '.rst',
         '.gn',
@@ -451,6 +453,7 @@ def bazel_test(ctx: PresubmitContext) -> None:
 )
 def bazel_build(ctx: PresubmitContext) -> None:
     """Runs Bazel build for each supported platform."""
+    # Build everything with the default flags.
     build.bazel(
         ctx,
         'build',
@@ -470,6 +473,15 @@ def bazel_build(ctx: PresubmitContext) -> None:
     }
 
     for cxxversion in ('c++17', 'c++20'):
+        # Explicitly build for each supported C++ version.
+        build.bazel(
+            ctx,
+            'build',
+            f"--cxxopt=-std={cxxversion}",
+            '--',
+            '//...',
+        )
+
         for platform, targets in targets_for_platform.items():
             build.bazel(
                 ctx,
@@ -560,6 +572,7 @@ def edit_compile_commands(
 _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Configuration
     # keep-sorted: start
+    r'\bDoxyfile$',
     r'\bPW_PLUGINS$',
     r'\bconstraint.list$',
     r'^(?:.+/)?\..+$',
@@ -688,53 +701,20 @@ def copyright_notice(ctx: PresubmitContext):
         raise PresubmitFailure
 
 
-_BAZEL_SOURCES_IN_BUILD = tuple(format_code.C_FORMAT.extensions)
-_GN_SOURCES_IN_BUILD = (
-    'setup.cfg',
-    '.toml',
-    '.rst',
-    '.py',
-    *_BAZEL_SOURCES_IN_BUILD,
-)
-
-SOURCE_FILES_FILTER = presubmit.FileFilter(
-    endswith=_GN_SOURCES_IN_BUILD,
-    suffix=('.bazel', '.bzl', '.gn', '.gni'),
-    exclude=(r'zephyr.*/', r'android.*/', r'^(.black|pyproject).toml'),
-)
-
-
-@SOURCE_FILES_FILTER.apply_to_check()
-def source_is_in_build_files(ctx: PresubmitContext):
-    """Checks that source files are in the GN and Bazel builds."""
-    missing = build.check_builds_for_files(
-        _BAZEL_SOURCES_IN_BUILD,
-        _GN_SOURCES_IN_BUILD,
-        ctx.paths,
-        bazel_dirs=[ctx.root],
-        gn_build_files=git_repo.list_files(
-            pathspecs=['BUILD.gn', '*BUILD.gn'], repo_path=ctx.root
-        ),
-    )
-
-    if missing:
-        _LOG.warning('All source files must appear in BUILD and BUILD.gn files')
-        raise PresubmitFailure
+@filter_paths(endswith=format_code.CPP_SOURCE_EXTS)
+def source_is_in_cmake_build_warn_only(ctx: PresubmitContext):
+    """Checks that source files are in the CMake build."""
 
     _run_cmake(ctx)
-    cmake_missing = build.check_compile_commands_for_files(
+    missing = build.check_compile_commands_for_files(
         ctx.output_dir / 'compile_commands.json',
-        (f for f in ctx.paths if f.suffix in ('.c', '.cc')),
+        (f for f in ctx.paths if f.suffix in format_code.CPP_SOURCE_EXTS),
     )
-    if cmake_missing:
-        _LOG.warning('The CMake build is missing %d files', len(cmake_missing))
+    if missing:
         _LOG.warning(
             'Files missing from CMake:\n%s',
-            '\n'.join(str(f) for f in cmake_missing),
+            '\n'.join(str(f) for f in missing),
         )
-        # TODO(hepler): Many files are missing from the CMake build. Make this
-        #     check an error when the missing files are fixed.
-        # raise PresubmitFailure
 
 
 def build_env_setup(ctx: PresubmitContext):
@@ -933,6 +913,18 @@ def owners_lint_checks(ctx: PresubmitContext):
     owners_checks.presubmit_check(ctx.paths)
 
 
+SOURCE_FILES_FILTER = presubmit.FileFilter(
+    endswith=_BUILD_FILE_FILTER.endswith,
+    suffix=('.bazel', '.bzl', '.gn', '.gni', *_BUILD_FILE_FILTER.suffix),
+    exclude=(
+        r'zephyr.*',
+        r'android.*',
+        r'\.black.toml',
+        r'pyproject.toml',
+    ),
+)
+
+
 #
 # Presubmit check programs
 #
@@ -950,6 +942,9 @@ OTHER_CHECKS = (
     module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
+    # TODO(hepler): Many files are missing from the CMake build. Add this check
+    # to lintformat when the missing files are fixed.
+    source_in_build.cmake(SOURCE_FILES_FILTER, _run_cmake),
     static_analysis,
     stm32f429i,
     todo_check.create(todo_check.BUGS_OR_USERNAMES),
@@ -997,7 +992,9 @@ _LINTFORMAT = (
     cpp_checks.pragma_once,
     build.bazel_lint,
     owners_lint_checks,
-    source_is_in_build_files,
+    source_in_build.bazel(SOURCE_FILES_FILTER),
+    source_in_build.gn(SOURCE_FILES_FILTER),
+    source_is_in_cmake_build_warn_only,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
     keep_sorted.presubmit_check,
     todo_check_with_exceptions,
@@ -1024,7 +1021,6 @@ FULL = (
     gn_host_tools,
     bazel_test if sys.platform == 'linux' else (),
     bazel_build if sys.platform == 'linux' else (),
-    source_is_in_build_files,
     python_checks.gn_python_check,
     python_checks.gn_python_test_coverage,
     build_env_setup,

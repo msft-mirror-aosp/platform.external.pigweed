@@ -47,6 +47,8 @@ extensions = [
     'sphinxcontrib.mermaid',
     'sphinx_design',
     'myst_parser',
+    'breathe',
+    'sphinx_copybutton',  # Copy-to-clipboard button on code blocks
 ]
 
 myst_enable_extensions = [
@@ -62,6 +64,10 @@ myst_enable_extensions = [
     # "substitution",
     # "tasklist",
 ]
+
+# When a user clicks the copy-to-clipboard button the `$ ` prompt should not be
+# copied: https://sphinx-copybutton.readthedocs.io/en/latest/use.html
+copybutton_prompt_text = "$ "
 
 _DIAG_HTML_IMAGE_FORMAT = 'SVG'
 blockdiag_html_image_format = _DIAG_HTML_IMAGE_FORMAT
@@ -175,6 +181,14 @@ html_theme_options = {
     },
 }
 
+mermaid_version = '9.4.0'
+# TODO(tonymd): Investigate if ESM only v10 Mermaid can be used.
+# This does not work:
+# mermaid_init_js = '''
+#   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+#   mermaid.initialize({ startOnLoad: true });
+# '''
+
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'Pigweeddoc'
 
@@ -196,6 +210,40 @@ texinfo_documents = [
         'Miscellaneous',
     ),
 ]
+
+exclude_patterns = ['docs/templates/**']
+
+breathe_projects = {
+    # Assuming doxygen output is at out/docs/doxygen/
+    # This dir should be relative to out/docs/gen/docs/pw_docgen_tree/
+    "Pigweed": "./../../../doxygen/xml/",
+}
+
+breathe_default_project = "Pigweed"
+
+breathe_debug_trace_directives = True
+
+# Treat these as valid attributes in function signatures.
+cpp_id_attributes = [
+    "PW_EXTERN_C_START",
+    "PW_NO_LOCK_SAFETY_ANALYSIS",
+]
+# This allows directives like this to work:
+# .. cpp:function:: inline bool try_lock_for(
+#     chrono::SystemClock::duration timeout) PW_EXCLUSIVE_TRYLOCK_FUNCTION(true)
+cpp_paren_attributes = [
+    "PW_EXCLUSIVE_TRYLOCK_FUNCTION",
+    "PW_EXCLUSIVE_LOCK_FUNCTION",
+    "PW_UNLOCK_FUNCTION",
+    "PW_NO_SANITIZE",
+]
+# inclusive-language: disable
+# Info on cpp_id_attributes and cpp_paren_attributes
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-cpp_id_attributes
+# inclusive-language: enable
+
+# Disable Python type hints
+# autodoc_typehints = 'none'
 
 
 def do_not_skip_init(app, what, name, obj, would_skip, options):
