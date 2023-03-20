@@ -24,7 +24,7 @@
 ///
 /// This option controls whether or not include a callback that is called when
 /// the client stream ends. The callback is included in all ServerReader/Writer
-/// objects as a @cpp_class{pw::Function}, so may have a significant cost.
+/// objects as a @cpp_type{pw::Function}, so may have a significant cost.
 ///
 /// This is disabled by default.
 #ifndef PW_RPC_CLIENT_STREAM_END_CALLBACK
@@ -160,13 +160,16 @@ static_assert(
 
 /// If @c_macro{PW_RPC_DYNAMIC_ALLOCATION} is enabled, this macro must expand to
 /// a container capable of storing objects of the provided type. This container
-/// will be used internally be pw_rpc. Defaults to `std::vector<type>`, but may
-/// be set to any type that supports the following std::vector operations:
+/// will be used internally by pw_rpc to allocate the channels list and encoding
+/// buffer. Defaults to `std::vector<type>`, but may be set to any type that
+/// supports the following `std::vector` operations:
 ///
 ///   - Default construction
 ///   - `emplace_back()`
 ///   - `pop_back()`
 ///   - `back()`
+///   - `resize()`
+///   - `clear()`
 ///   - Range-based for loop iteration (`begin()`, `end()`)
 ///
 #ifndef PW_RPC_DYNAMIC_CONTAINER

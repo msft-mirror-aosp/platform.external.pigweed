@@ -252,7 +252,7 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
         log_message = f'File change detected: {os.path.relpath(matching_path)}'
         if self.restart_on_changes:
             if self.fullscreen_enabled and self.watch_app:
-                self.watch_app.rebuild_on_filechange()
+                self.watch_app.clear_log_panes()
             self.debouncer.press(f'{log_message} Triggering build...')
         else:
             _LOG.info('%s ; not rebuilding', log_message)
@@ -340,6 +340,11 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
         BUILDER_CONTEXT.set_idle()
 
     def run_recipe(self, index: int, cfg: BuildRecipe, env) -> None:
+        if BUILDER_CONTEXT.interrupted():
+            return
+        if not cfg.enabled:
+            return
+
         num_builds = len(self.project_builder)
         index_message = f'[{index}/{num_builds}]'
 
@@ -438,7 +443,11 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
             _LOG.info('Build stopped.')
         elif BUILDER_CONTEXT.interrupted():
             pass  # Don't print anything.
-        elif all(recipe.status.passed() for recipe in self.project_builder):
+        elif all(
+            recipe.status.passed()
+            for recipe in self.project_builder
+            if recipe.enabled
+        ):
             _LOG.info('Finished; all successful')
         else:
             _LOG.info('Finished; some builds failed')

@@ -92,7 +92,9 @@ class BuildStatus(Formatter):
                 continue
 
             build_status: StyleAndTextTuples = []
-            build_status.append(cfg.status.status_slug())
+            build_status.append(
+                cfg.status.status_slug(restarting=self.ctx.restart_flag)
+            )
             build_status.append(('', ' '))
             build_status.extend(cfg.status.current_step_formatted())
 
@@ -203,7 +205,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
             bottom_toolbar=self.bottom_toolbar,
             cancel_callback=self.ctrl_c_interrupt,
         )
-        self.progress_bar.__enter__()
+        self.progress_bar.__enter__()  # pylint: disable=unnecessary-dunder-call
 
         self.create_title_bar_container()
         self.progress_bar.app.layout.container.children[  # type: ignore
@@ -214,7 +216,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
     def exit_progress(self) -> None:
         if not self.progress_bar:
             return
-        self.progress_bar.__exit__()
+        self.progress_bar.__exit__()  # pylint: disable=unnecessary-dunder-call
 
     def clear_progress_scrollback(self) -> None:
         if not self.progress_bar:
@@ -230,16 +232,14 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
             self.progress_bar.invalidate()
 
     def get_title_style(self) -> str:
+        if self.restart_flag:
+            return 'fg:ansiyellow'
+
+        # Assume passing
         style = 'fg:ansigreen'
 
         if self.current_state == ProjectBuilderState.BUILDING:
             style = 'fg:ansiyellow'
-
-        if (
-            self.current_state != ProjectBuilderState.IDLE
-            and self.interrupted()
-        ):
-            return 'fg:ansiyellow'
 
         for cfg in self.recipes:
             if cfg.status.failed():
@@ -267,10 +267,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
             if cfg.status.done:
                 done_count += 1
 
-        if (
-            self.current_state != ProjectBuilderState.IDLE
-            and self.interrupted()
-        ):
+        if self.restart_flag:
             title = 'INTERRUPT'
         elif fail_count > 0:
             title = f'FAILED ({fail_count})'
@@ -438,13 +435,21 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
     ) -> None:
         """Exit function called when the user presses ctrl-c."""
 
+        # Note: The correct way to exit Python is via sys.exit() however this
+        # takes a number of seconds when running pw_watch with multiple parallel
+        # builds. Instead, this function calls os._exit() to shutdown
+        # immediately. This is similar to `pw_watch.watch._exit`:
+        # https://cs.opensource.google/pigweed/pigweed/+/main:pw_watch/py/pw_watch/watch.py?q=_exit.code
+
         if not self.progress_bar:
             self.restore_logging_and_shutdown(log_after_shutdown)
+            logging.shutdown()
             os._exit(exit_code)  # pylint: disable=protected-access
 
         # Shut everything down after the progress_bar exits.
         def _really_exit(future: asyncio.Future) -> NoReturn:
             self.restore_logging_and_shutdown(log_after_shutdown)
+            logging.shutdown()
             os._exit(future.result())  # pylint: disable=protected-access
 
         if self.progress_bar.app.future:
