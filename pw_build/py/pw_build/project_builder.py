@@ -730,7 +730,10 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             return
         # If restarting or interrupted.
         if BUILDER_CONTEXT.interrupted():
-            _LOG.info(self.color.yellow('Exited due to keyboard interrupt.'))
+            if BUILDER_CONTEXT.ctrl_c_pressed:
+                _LOG.info(
+                    self.color.yellow('Exited due to keyboard interrupt.')
+                )
             return
         # If any build is still pending.
         if any(recipe.status.pending() for recipe in self):
@@ -770,7 +773,7 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             logger.info(' ╔════════════════════════════════════')
             logger.info(' ║')
 
-            for (slug, cmd) in zip(build_status, build_descriptions):
+            for slug, cmd in zip(build_status, build_descriptions):
                 logger.info(' ║   %s  %s', slug, cmd)
 
             logger.info(' ║')
@@ -788,6 +791,11 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
 def run_recipe(
     index: int, project_builder: ProjectBuilder, cfg: BuildRecipe, env
 ) -> bool:
+    if BUILDER_CONTEXT.interrupted():
+        return False
+    if not cfg.enabled:
+        return False
+
     num_builds = len(project_builder)
     index_message = f'[{index}/{num_builds}]'
 
