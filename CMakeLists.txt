@@ -29,8 +29,14 @@ if(CONFIG_ZEPHYR_PIGWEED_MODULE)
       pw_chrono.system_clock pw_chrono_zephyr.system_clock pw_chrono/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_INTERRUPT_CONTEXT
       pw_interrupt.context pw_interrupt_zephyr.context pw_interrupt/backend.cmake)
-  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_LOG
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_LOG_ZEPHYR
       pw_log pw_log_zephyr pw_log/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_LOG_TOKENIZED
+      pw_log_tokenized.handler pw_log_zephyr.tokenized_handler pw_log_tokenized/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_LOG_TOKENIZED
+      pw_log pw_log_tokenized pw_log/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_THREAD_SLEEP
+      pw_thread.sleep pw_thread_zephyr.sleep pw_thread/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_MUTEX
       pw_sync.mutex pw_sync_zephyr.mutex_backend pw_sync/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_BINARY_SEMAPHORE
@@ -110,6 +116,7 @@ add_subdirectory(pw_system EXCLUDE_FROM_ALL)
 add_subdirectory(pw_thread EXCLUDE_FROM_ALL)
 add_subdirectory(pw_thread_freertos EXCLUDE_FROM_ALL)
 add_subdirectory(pw_thread_stl EXCLUDE_FROM_ALL)
+add_subdirectory(pw_thread_zephyr EXCLUDE_FROM_ALL)
 add_subdirectory(pw_tokenizer EXCLUDE_FROM_ALL)
 add_subdirectory(pw_toolchain EXCLUDE_FROM_ALL)
 add_subdirectory(pw_trace EXCLUDE_FROM_ALL)

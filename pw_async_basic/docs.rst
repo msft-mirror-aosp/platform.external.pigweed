@@ -7,9 +7,15 @@ pw_async_basic
 This module includes basic implementations of pw_async's Dispatcher and
 FakeDispatcher.
 
-Usage
-=====
+---
+API
+---
+.. doxygenclass:: pw::async::BasicDispatcher
+   :members:
 
+-----
+Usage
+-----
 First, set the following GN variables:
 
 .. code-block::
@@ -36,7 +42,7 @@ Next, construct and use a ``BasicDispatcher``.
   #include "pw_async_basic/dispatcher.h"
 
   void DelayedPrint(pw::async::Dispatcher& dispatcher) {
-    dispatcher.PostDelayedTask([](auto&){
+    dispatcher.PostAfter([](auto&){
        printf("hello world\n");
     }, 5s);
   }
@@ -48,8 +54,7 @@ Next, construct and use a ``BasicDispatcher``.
     return 0;
   }
 
-
+-----------
 Size Report
-===========
-
+-----------
 .. include:: docs_size_report

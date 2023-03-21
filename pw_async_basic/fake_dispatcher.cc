@@ -24,21 +24,28 @@ namespace pw::async::test::backend {
 NativeFakeDispatcher::NativeFakeDispatcher(Dispatcher& dispatcher)
     : dispatcher_(dispatcher) {}
 
-NativeFakeDispatcher::~NativeFakeDispatcher() { RequestStop(); }
+NativeFakeDispatcher::~NativeFakeDispatcher() {
+  RequestStop();
+  DrainTaskQueue();
+}
 
 void NativeFakeDispatcher::RunUntilIdle() {
-  while (!task_queue_.empty()) {
-    // Only advance to the due time of the next task because new tasks can be
-    // scheduled in the next task.
-    now_ = task_queue_.front().due_time();
-    RunLoopOnce();
+  ExecuteDueTasks();
+  if (stop_requested_) {
+    DrainTaskQueue();
   }
 }
 
 void NativeFakeDispatcher::RunUntil(chrono::SystemClock::time_point end_time) {
-  while (!task_queue_.empty() && task_queue_.front().due_time() <= end_time) {
+  while (!task_queue_.empty() && task_queue_.front().due_time() <= end_time &&
+         !stop_requested_) {
     now_ = task_queue_.front().due_time();
-    RunLoopOnce();
+    ExecuteDueTasks();
+  }
+
+  if (stop_requested_) {
+    DrainTaskQueue();
+    return;
   }
 
   if (now_ < end_time) {
@@ -50,8 +57,9 @@ void NativeFakeDispatcher::RunFor(chrono::SystemClock::duration duration) {
   RunUntil(now() + duration);
 }
 
-void NativeFakeDispatcher::RunLoopOnce() {
-  while (!task_queue_.empty() && task_queue_.front().due_time() <= now()) {
+void NativeFakeDispatcher::ExecuteDueTasks() {
+  while (!task_queue_.empty() && task_queue_.front().due_time() <= now() &&
+         !stop_requested_) {
     ::pw::async::backend::NativeTask& task = task_queue_.front();
     task_queue_.pop_front();
 
@@ -60,41 +68,50 @@ void NativeFakeDispatcher::RunLoopOnce() {
     }
 
     Context ctx{&dispatcher_, &task.task_};
-    task(ctx);
+    task(ctx, OkStatus());
   }
 }
 
 void NativeFakeDispatcher::RequestStop() {
   PW_LOG_DEBUG("stop requested");
-  task_queue_.clear();
+  stop_requested_ = true;
 }
 
-void NativeFakeDispatcher::PostTask(Task& task) {
-  PostTaskForTime(task, now());
+void NativeFakeDispatcher::DrainTaskQueue() {
+  while (!task_queue_.empty()) {
+    ::pw::async::backend::NativeTask& task = task_queue_.front();
+    task_queue_.pop_front();
+
+    PW_LOG_DEBUG("running cancelled task");
+    Context ctx{&dispatcher_, &task.task_};
+    task(ctx, Status::Cancelled());
+  }
 }
 
-void NativeFakeDispatcher::PostDelayedTask(
-    Task& task, chrono::SystemClock::duration delay) {
-  PostTaskForTime(task, now() + delay);
+void NativeFakeDispatcher::Post(Task& task) { PostAt(task, now()); }
+
+void NativeFakeDispatcher::PostAfter(Task& task,
+                                     chrono::SystemClock::duration delay) {
+  PostAt(task, now() + delay);
 }
 
-void NativeFakeDispatcher::PostTaskForTime(
-    Task& task, chrono::SystemClock::time_point time) {
+void NativeFakeDispatcher::PostAt(Task& task,
+                                  chrono::SystemClock::time_point time) {
   PW_LOG_DEBUG("posting task");
   PostTaskInternal(task.native_type(), time);
 }
 
-void NativeFakeDispatcher::SchedulePeriodicTask(
+void NativeFakeDispatcher::PostPeriodic(
     Task& task, chrono::SystemClock::duration interval) {
-  SchedulePeriodicTask(task, interval, now());
+  PostPeriodicAt(task, interval, now());
 }
 
-void NativeFakeDispatcher::SchedulePeriodicTask(
+void NativeFakeDispatcher::PostPeriodicAt(
     Task& task,
     chrono::SystemClock::duration interval,
     chrono::SystemClock::time_point start_time) {
   task.native_type().set_interval(interval);
-  PostTaskForTime(task, start_time);
+  PostAt(task, start_time);
 }
 
 bool NativeFakeDispatcher::Cancel(Task& task) {
