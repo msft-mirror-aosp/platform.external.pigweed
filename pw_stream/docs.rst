@@ -209,7 +209,7 @@ Reader interfaces
 -----------------
 .. cpp:class:: Reader : public Stream
 
-   A Stream that supports writing but not reading. The Write() method is hidden.
+   A Stream that supports reading but not writing. The Write() method is hidden.
 
    Use in APIs when:
      * Must read from, but not write to, a stream.
@@ -426,8 +426,14 @@ Implementations
 
 .. cpp:class:: SocketStream : public NonSeekableReaderWriter
 
-  ``SocketStream`` wraps posix-style sockets with the :cpp:class:`Reader` and
-  :cpp:class:`Writer` interfaces.
+  ``SocketStream`` wraps posix-style TCP sockets with the :cpp:class:`Reader`
+  and :cpp:class:`Writer` interfaces. It can be used to connect to a TCP server,
+  or to communicate with a client via the ``ServerSocket`` class.
+
+.. cpp:class:: ServerSocket
+
+  ``ServerSocket`` wraps a posix server socket, and produces a
+  :cpp:class:`SocketStream` for each accepted client connection.
 
 ------------------
 Why use pw_stream?

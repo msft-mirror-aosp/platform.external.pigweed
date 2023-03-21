@@ -145,6 +145,7 @@ def gn_full_qemu_check(ctx: PresubmitContext):
 
 def _gn_combined_build_check_targets() -> Sequence[str]:
     build_targets = [
+        'check_modules',
         *_at_all_optimization_levels('stm32f429i'),
         *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
         'python.tests',
@@ -490,6 +491,27 @@ def bazel_build(ctx: PresubmitContext) -> None:
                 f"--cxxopt='-std={cxxversion}'",
                 *targets,
             )
+
+    # Provide some coverage of the FreeRTOS build.
+    #
+    # This is just a minimal presubmit intended to ensure we don't break what
+    # support we have.
+    #
+    # TODO(b/271465588): Eventually just build the entire repo for this
+    # platform.
+    build.bazel(
+        ctx,
+        'build',
+        # Designated initializers produce a warning-treated-as-error when
+        # compiled with -std=c++17.
+        #
+        # TODO(b/271299438): Remove this.
+        '--copt=-Wno-pedantic',
+        '--platforms=//pw_build/platforms:testonly_freertos',
+        '//pw_sync/...',
+        '//pw_thread/...',
+        '//pw_thread_freertos/...',
+    )
 
 
 def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
@@ -884,7 +906,6 @@ _EXCLUDE_FROM_TODO_CHECK = (
     r'\bpw_doctor/py/pw_doctor/doctor.py',
     r'\bpw_env_setup/util.sh',
     r'\bpw_fuzzer/fuzzer.gni',
-    r'\bpw_fuzzer/oss_fuzz.gni',
     r'\bpw_i2c/BUILD.gn',
     r'\bpw_i2c/public/pw_i2c/register_device.h',
     r'\bpw_kvs/flash_memory.cc',
@@ -980,9 +1001,7 @@ PATH_EXCLUSIONS = (re.compile(r'\bthird_party/fuchsia/repo/'),)
 _LINTFORMAT = (
     commit_message_format,
     copyright_notice,
-    format_code.presubmit_checks(
-        code_formats=format_code.CODE_FORMATS_WITH_BLACK
-    ),
+    format_code.presubmit_checks(),
     inclusive_language.presubmit_check.with_filter(
         exclude=(
             r'\byarn.lock$',
@@ -992,7 +1011,6 @@ _LINTFORMAT = (
     cpp_checks.pragma_once,
     build.bazel_lint,
     owners_lint_checks,
-    source_in_build.bazel(SOURCE_FILES_FILTER),
     source_in_build.gn(SOURCE_FILES_FILTER),
     source_is_in_cmake_build_warn_only,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
@@ -1002,6 +1020,11 @@ _LINTFORMAT = (
 
 LINTFORMAT = (
     _LINTFORMAT,
+    # This check is excluded from _LINTFORMAT because it's not quick: it issues
+    # a bazel query that pulls in all of Pigweed's external dependencies
+    # (https://stackoverflow.com/q/71024130/1224002). These are cached, but
+    # after a roll it can be quite slow.
+    source_in_build.bazel(SOURCE_FILES_FILTER),
     pw_presubmit.python_checks.check_python_versions,
     pw_presubmit.python_checks.gn_python_lint,
 )
