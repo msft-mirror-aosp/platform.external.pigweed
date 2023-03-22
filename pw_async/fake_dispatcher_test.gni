@@ -26,6 +26,8 @@ import("$dir_pw_unit_test/test.gni")
 #   backend (required)
 #     [target] The FakeDispatcher backend to test.
 template("fake_dispatcher_test") {
+  assert(defined(invoker.backend))
+
   pw_test(target_name) {
     enable_if = pw_chrono_SYSTEM_CLOCK_BACKEND != "" &&
                 pw_sync_TIMED_THREAD_NOTIFICATION_BACKEND != "" &&

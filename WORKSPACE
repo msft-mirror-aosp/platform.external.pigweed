@@ -180,59 +180,12 @@ load("@com_github_nanopb_nanopb//:nanopb_workspace.bzl", "nanopb_workspace")
 
 nanopb_workspace()
 
-# Set up NodeJs rules.
-# Required by: pigweed.
-# Used in modules: //pw_web.
-http_archive(
-    name = "build_bazel_rules_nodejs",
-    sha256 = "b32a4713b45095e9e1921a7fcb1adf584bc05959f3336e7351bcf77f015a2d7c",
-    urls = ["https://github.com/bazelbuild/rules_nodejs/releases/download/4.1.0/rules_nodejs-4.1.0.tar.gz"],
-)
-
-# Get the latest LTS version of Node.
-load(
-    "@build_bazel_rules_nodejs//:index.bzl",
-    "node_repositories",
-    "yarn_install",
-)
-
-node_repositories(package_json = ["//:package.json"])
-
-yarn_install(
-    name = "npm",
-    package_json = "//:package.json",
-    yarn_lock = "//:yarn.lock",
-)
-
-# Set up web-testing rules.
-# Required by: pigweed.
-# Used in modules: //pw_web.
-http_archive(
-    name = "io_bazel_rules_webtesting",
-    sha256 = "9bb461d5ef08e850025480bab185fd269242d4e533bca75bfb748001ceb343c3",
-    urls = ["https://github.com/bazelbuild/rules_webtesting/releases/download/0.3.3/rules_webtesting.tar.gz"],
-)
-
-load("@io_bazel_rules_webtesting//web:repositories.bzl", "web_test_repositories")
-
-web_test_repositories()
-
-load(
-    "@io_bazel_rules_webtesting//web/versioned:browsers-0.3.2.bzl",
-    "browser_repositories",
-)
-
-browser_repositories(
-    chromium = True,
-    firefox = True,
-)
-
 # Set up embedded C/C++ toolchains.
 # Required by: pigweed.
 # Used in modules: //pw_polyfill, //pw_build (all pw_cc* targets).
 git_repository(
     name = "bazel_embedded",
-    commit = "17c93d5fa52c4c78860b8bbd327325fba6c85555",
+    commit = "91dcc13ebe5df755ca2fe896ff6f7884a971d05b",
     remote = "https://github.com/bazelembedded/bazel-embedded.git",
     shallow_since = "1631751909 +0800",
 )
@@ -375,11 +328,6 @@ load("@rules_fuzzing//fuzzing:init.bzl", "rules_fuzzing_init")
 
 rules_fuzzing_init()
 
-# esbuild setup
-load("@build_bazel_rules_nodejs//toolchains/esbuild:esbuild_repositories.bzl", "esbuild_repositories")
-
-esbuild_repositories(npm_repository = "npm")  # Note, npm is the default value for npm_repository
-
 RULES_JVM_EXTERNAL_TAG = "2.8"
 
 RULES_JVM_EXTERNAL_SHA = "79c9850690d7614ecdb72d68394f994fef7534b292c4867ce5e7dec0aa7bdfad"
@@ -425,4 +373,12 @@ git_repository(
     commit = "0fd67c76fc4bfb05a665c087ebfead77a3267f6d",
     remote = "https://boringssl.googlesource.com/boringssl",
     shallow_since = "1637714942 +0000",
+)
+
+http_archive(
+    name = "freertos",
+    build_file = "//:third_party/freertos/BUILD.bazel",
+    sha256 = "89af32b7568c504624f712c21fe97f7311c55fccb7ae6163cda7adde1cde7f62",
+    strip_prefix = "FreeRTOS-Kernel-10.5.1",
+    urls = ["https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V10.5.1.tar.gz"],
 )
