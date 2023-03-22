@@ -20,7 +20,7 @@ namespace pw::async {
 class Task;
 
 /// Asynchronous Dispatcher abstract class. A default implementation is provided
-/// in dispatcher_basic.h.
+/// in pw_async_basic.
 ///
 /// Dispatcher implements VirtualSystemClock so the Dispatcher's time can be
 /// injected into other modules under test. This is useful for consistently
@@ -30,46 +30,29 @@ class Dispatcher : public chrono::VirtualSystemClock {
  public:
   ~Dispatcher() override = default;
 
-  /// Stop processing tasks and break out of the task loop.
-  virtual void RequestStop() = 0;
-
   /// Post caller owned |task|.
-  virtual void PostTask(Task& task) = 0;
+  virtual void Post(Task& task) = 0;
 
   /// Post caller owned |task| to be run after |delay|.
-  virtual void PostDelayedTask(Task& task,
-                               chrono::SystemClock::duration delay) = 0;
+  virtual void PostAfter(Task& task, chrono::SystemClock::duration delay) = 0;
 
   /// Post caller owned |task| to be run at |time|.
-  virtual void PostTaskForTime(Task& task,
-                               chrono::SystemClock::time_point time) = 0;
+  virtual void PostAt(Task& task, chrono::SystemClock::time_point time) = 0;
 
   /// Post caller owned |task| to be run immediately then rerun at a regular
   /// |interval|.
-  virtual void SchedulePeriodicTask(Task& task,
-                                    chrono::SystemClock::duration interval) = 0;
-  /// Post caller owned |task| to be run at |start_time| then rerun at a regular
+  virtual void PostPeriodic(Task& task,
+                            chrono::SystemClock::duration interval) = 0;
+  /// Post caller owned |task| to be run at |time| then rerun at a regular
   /// |interval|. |interval| must not be zero.
-  virtual void SchedulePeriodicTask(
-      Task& task,
-      chrono::SystemClock::duration interval,
-      chrono::SystemClock::time_point start_time) = 0;
+  virtual void PostPeriodicAt(Task& task,
+                              chrono::SystemClock::duration interval,
+                              chrono::SystemClock::time_point time) = 0;
 
   /// Returns true if |task| is succesfully canceled.
   /// If cancelation fails, the task may be running or completed.
   /// Periodic tasks may be posted once more after they are canceled.
   virtual bool Cancel(Task& task) = 0;
-
-  /// Execute tasks until the Dispatcher enters a state where none are queued.
-  virtual void RunUntilIdle() = 0;
-
-  /// Run the Dispatcher until Now() has reached `end_time`, executing all tasks
-  /// that come due before then.
-  virtual void RunUntil(chrono::SystemClock::time_point end_time) = 0;
-
-  /// Run the Dispatcher until `duration` has elapsed, executing all tasks that
-  /// come due in that period.
-  virtual void RunFor(chrono::SystemClock::duration duration) = 0;
 };
 
 }  // namespace pw::async

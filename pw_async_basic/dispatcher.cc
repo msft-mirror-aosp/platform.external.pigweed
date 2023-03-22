@@ -23,26 +23,40 @@ namespace pw::async {
 
 const chrono::SystemClock::duration SLEEP_DURATION = 5s;
 
+BasicDispatcher::~BasicDispatcher() {
+  RequestStop();
+  lock_.lock();
+  DrainTaskQueue();
+  lock_.unlock();
+}
+
 void BasicDispatcher::Run() {
   lock_.lock();
   while (!stop_requested_) {
-    RunLoopOnce();
+    MaybeSleep();
+    ExecuteDueTasks();
   }
+  DrainTaskQueue();
   lock_.unlock();
 }
 
 void BasicDispatcher::RunUntilIdle() {
   lock_.lock();
-  while (!task_queue_.empty()) {
-    RunLoopOnce();
+  ExecuteDueTasks();
+  if (stop_requested_) {
+    DrainTaskQueue();
   }
   lock_.unlock();
 }
 
 void BasicDispatcher::RunUntil(chrono::SystemClock::time_point end_time) {
   lock_.lock();
-  while (end_time < now()) {
-    RunLoopOnce();
+  while (end_time < now() && !stop_requested_) {
+    MaybeSleep();
+    ExecuteDueTasks();
+  }
+  if (stop_requested_) {
+    DrainTaskQueue();
   }
   lock_.unlock();
 }
@@ -51,7 +65,7 @@ void BasicDispatcher::RunFor(chrono::SystemClock::duration duration) {
   RunUntil(now() + duration);
 }
 
-void BasicDispatcher::RunLoopOnce() {
+void BasicDispatcher::MaybeSleep() {
   if (task_queue_.empty() || task_queue_.front().due_time_ > now()) {
     // Sleep until a notification is received or until the due time of the
     // next task. Notifications are sent when tasks are posted or 'stop' is
@@ -64,11 +78,12 @@ void BasicDispatcher::RunLoopOnce() {
     PW_LOG_DEBUG("no task due; waiting for signal");
     timed_notification_.try_acquire_until(wake_time);
     lock_.lock();
-
-    return;
   }
+}
 
-  while (!task_queue_.empty() && task_queue_.front().due_time_ <= now()) {
+void BasicDispatcher::ExecuteDueTasks() {
+  while (!task_queue_.empty() && task_queue_.front().due_time_ <= now() &&
+         !stop_requested_) {
     backend::NativeTask& task = task_queue_.front();
     task_queue_.pop_front();
 
@@ -79,7 +94,7 @@ void BasicDispatcher::RunLoopOnce() {
     lock_.unlock();
     PW_LOG_DEBUG("running task");
     Context ctx{this, &task.task_};
-    task(ctx);
+    task(ctx, OkStatus());
     lock_.lock();
   }
 }
@@ -88,37 +103,49 @@ void BasicDispatcher::RequestStop() {
   std::lock_guard lock(lock_);
   PW_LOG_DEBUG("stop requested");
   stop_requested_ = true;
-  task_queue_.clear();
   timed_notification_.release();
 }
 
-void BasicDispatcher::PostTask(Task& task) { PostTaskForTime(task, now()); }
+void BasicDispatcher::DrainTaskQueue() {
+  PW_LOG_DEBUG("draining task queue");
+  while (!task_queue_.empty()) {
+    backend::NativeTask& task = task_queue_.front();
+    task_queue_.pop_front();
 
-void BasicDispatcher::PostDelayedTask(Task& task,
-                                      chrono::SystemClock::duration delay) {
-  PostTaskForTime(task, now() + delay);
+    lock_.unlock();
+    PW_LOG_DEBUG("running cancelled task");
+    Context ctx{this, &task.task_};
+    task(ctx, Status::Cancelled());
+    lock_.lock();
+  }
 }
 
-void BasicDispatcher::PostTaskForTime(Task& task,
-                                      chrono::SystemClock::time_point time) {
+void BasicDispatcher::Post(Task& task) { PostAt(task, now()); }
+
+void BasicDispatcher::PostAfter(Task& task,
+                                chrono::SystemClock::duration delay) {
+  PostAt(task, now() + delay);
+}
+
+void BasicDispatcher::PostAt(Task& task, chrono::SystemClock::time_point time) {
   lock_.lock();
   PW_LOG_DEBUG("posting task");
   PostTaskInternal(task.native_type(), time);
   lock_.unlock();
 }
 
-void BasicDispatcher::SchedulePeriodicTask(
-    Task& task, chrono::SystemClock::duration interval) {
-  SchedulePeriodicTask(task, interval, now());
+void BasicDispatcher::PostPeriodic(Task& task,
+                                   chrono::SystemClock::duration interval) {
+  PostPeriodicAt(task, interval, now());
 }
 
-void BasicDispatcher::SchedulePeriodicTask(
+void BasicDispatcher::PostPeriodicAt(
     Task& task,
     chrono::SystemClock::duration interval,
     chrono::SystemClock::time_point start_time) {
   PW_DCHECK(interval != chrono::SystemClock::duration::zero());
   task.native_type().set_interval(interval);
-  PostTaskForTime(task, start_time);
+  PostAt(task, start_time);
 }
 
 bool BasicDispatcher::Cancel(Task& task) {
@@ -126,7 +153,6 @@ bool BasicDispatcher::Cancel(Task& task) {
   return task_queue_.remove(task.native_type());
 }
 
-// Ensure lock_ is held when invoking this function.
 void BasicDispatcher::PostTaskInternal(
     backend::NativeTask& task, chrono::SystemClock::time_point time_due) {
   task.due_time_ = time_due;

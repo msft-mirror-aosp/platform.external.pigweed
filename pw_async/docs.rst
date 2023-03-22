@@ -119,7 +119,7 @@ Next, instantiate the Dispatcher and post a task:
      });
 
      // Execute `task` in 5 seconds.
-     dispatcher.PostDelayedTask(task, 5s);
+     dispatcher.PostAfter(task, 5s);
 
      // Blocks until `task` runs.
      work_thread.join();
@@ -133,21 +133,15 @@ the current/main thread:
 
    #include "pw_async_basic/dispatcher.h"
 
-   BasicDispatcher dispatcher;
-
-   void interrupt_handler() {
-      dispatcher.PostTask([](pw::async::Context& ctx){
-        // Handle interrupt
-      });
-   }
-
    int main() {
+     BasicDispatcher dispatcher;
+
      Task task([](pw::async::Context& ctx){
        printf("hello world\n");
      });
 
      // Execute `task` in 5 seconds.
-     dispatcher.PostDelayedTask(task, 5s);
+     dispatcher.PostAfter(task, 5s);
 
      dispatcher.Run();
      return 0;
@@ -156,23 +150,12 @@ the current/main thread:
 Fake Dispatcher
 ===============
 To test async code, FakeDispatcher should be dependency injected in place of
-Dispatcher. Then, time should be driven in unit tests.
+Dispatcher. Then, time should be driven in unit tests using the ``Run*()``
+methods. For convenience, you can use the test fixture
+FakeDispatcherFixture.
 
-.. code-block:: cpp
-
-   TEST(Example) {
-     FakeDispatcher dispatcher;
-
-     MyClass obj(&dispatcher);
-
-     obj.ScheduleSomeTasks();
-     dispatcher.RunUntilIdle();
-     EXPECT_TRUE(some condition);
-
-     obj.ScheduleTaskToRunIn30Seconds();
-     dispatcher.RunFor(30s);
-     EXPECT_TRUE(task ran);
-   }
+.. doxygenclass:: pw::async::test::FakeDispatcherFixture
+   :members:
 
 .. attention::
 
@@ -185,7 +168,6 @@ Dispatcher. Then, time should be driven in unit tests.
 Roadmap
 -------
 - Stabilize Task cancellation API
-- Create test fixture for FakeDispatcher
 - Utility for dynamically allocated Tasks
 - Bazel support
 - CMake support

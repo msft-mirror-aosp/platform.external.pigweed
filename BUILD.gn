@@ -86,7 +86,6 @@ assert(pw_toolchain_SUPPORTED_C_OPTIMIZATION_LEVELS +
 # exclusively to facilitate easy upstream development and testing.
 group("default") {
   deps = [
-    ":check_modules",
     ":docs",
     ":host",
     ":pi_pico",
@@ -94,6 +93,7 @@ group("default") {
     ":python.tests",
     ":static_analysis",
     ":stm32f429i",
+    ":warn_if_modules_out_of_date",
   ]
 }
 
@@ -126,11 +126,22 @@ pool("module_check_pool") {
   depth = 1
 }
 
-# Check that PIGWEED_MODULES is up-to-date and sorted.
-action("check_modules") {
+# Warns if PIGWEED_MODULES is not up-to-date and sorted.
+action("warn_if_modules_out_of_date") {
   forward_variables_from(_update_or_check_modules_lists, "*")
   outputs = [ "$target_gen_dir/$target_name.passed" ]
-  args += [ "--warn-only" ] + rebase_path(outputs, root_build_dir)
+  args += [
+            "--mode=WARN",
+            "--stamp",
+          ] + rebase_path(outputs, root_build_dir)
+  pool = ":module_check_pool"
+}
+
+# Fails if PIGWEED_MODULES is not up-to-date and sorted.
+action("check_modules") {
+  forward_variables_from(_update_or_check_modules_lists, "*")
+  outputs = [ "$target_gen_dir/$target_name.ALWAYS_RERUN" ]  # Never created
+  args += [ "--mode=CHECK" ]
   pool = ":module_check_pool"
 }
 
@@ -139,6 +150,7 @@ action("check_modules") {
 action("update_modules") {
   forward_variables_from(_update_or_check_modules_lists, "*")
   outputs = [ "$target_gen_dir/$target_name.ALWAYS_RERUN" ]  # Never created
+  args += [ "--mode=UPDATE" ]
   pool = ":module_check_pool"
 }
 
@@ -266,17 +278,33 @@ group("action_tests") {
 group("integration_tests") {
   _default_tc = _default_toolchain_prefix + pw_DEFAULT_C_OPTIMIZATION_LEVEL
   deps = [
+    "$dir_pw_cli/py:process_integration_test.action($_default_tc)",
     "$dir_pw_rpc:cpp_client_server_integration_test($_default_tc)",
     "$dir_pw_rpc/py:python_client_cpp_server_test.action($_default_tc)",
     "$dir_pw_unit_test/py:rpc_service_test.action($_default_tc)",
   ]
 }
 
-# OSS-Fuzz uses this target to build fuzzers alone.
+# Build-only target for fuzzers.
 group("fuzzers") {
-  # Fuzzing is only supported on Linux and MacOS using clang.
+  deps = []
+
+  # TODO(b/274437709): The client_fuzzer encounters build errors on macos. Limit
+  # it to Linux hosts for now.
+  if (host_os == "linux") {
+    _default_tc = _default_toolchain_prefix + pw_DEFAULT_C_OPTIMIZATION_LEVEL
+    deps += [ "$dir_pw_rpc/fuzz:client_fuzzer($_default_tc)" ]
+  }
+
   if (host_os != "win") {
-    deps = [ ":pw_module_tests($dir_pigweed/targets/host:host_clang_fuzz)" ]
+    # Coverage-guided fuzzing is only supported on Linux and MacOS using clang.
+    deps += [
+      "$dir_pw_bluetooth_hci:fuzzers($dir_pigweed/targets/host:host_clang_fuzz)",
+      "$dir_pw_fuzzer:fuzzers($dir_pigweed/targets/host:host_clang_fuzz)",
+      "$dir_pw_protobuf:fuzzers($dir_pigweed/targets/host:host_clang_fuzz)",
+      "$dir_pw_random:fuzzers($dir_pigweed/targets/host:host_clang_fuzz)",
+      "$dir_pw_tokenizer:fuzzers($dir_pigweed/targets/host:host_clang_fuzz)",
+    ]
   }
 }
 
