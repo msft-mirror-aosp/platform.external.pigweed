@@ -22,55 +22,73 @@
 
 namespace pw::async {
 
+/// BasicDispatcher is a generic implementation of Dispatcher.
 class BasicDispatcher final : public Dispatcher, public thread::ThreadCore {
  public:
-  explicit BasicDispatcher() : stop_requested_(false) {}
-  ~BasicDispatcher() override { RequestStop(); }
+  explicit BasicDispatcher() = default;
+  ~BasicDispatcher() override;
+
+  /// Execute all runnable tasks and return without waiting.
+  void RunUntilIdle();
+
+  /// Run the dispatcher until Now() has reached `end_time`, executing all tasks
+  /// that come due before then.
+  void RunUntil(chrono::SystemClock::time_point end_time);
+
+  /// Run the dispatcher until `duration` has elapsed, executing all tasks that
+  /// come due in that period.
+  void RunFor(chrono::SystemClock::duration duration);
+
+  /// Stop processing tasks. If the dispatcher is serving a task loop, break out
+  /// of the loop, dequeue all waiting tasks, and call their TaskFunctions with
+  /// a PW_STATUS_CANCELLED status. If no task loop is being served, execute the
+  /// dequeueing procedure the next time the Dispatcher is run.
+  void RequestStop() PW_LOCKS_EXCLUDED(lock_);
+
+  // ThreadCore overrides:
+
+  /// Run the dispatcher until RequestStop() is called. Overrides
+  /// ThreadCore::Run() so that BasicDispatcher is compatible with
+  /// pw::thread::Thread.
+  void Run() override PW_LOCKS_EXCLUDED(lock_);
 
   // Dispatcher overrides:
-  void RequestStop() override PW_LOCKS_EXCLUDED(lock_);
-  void PostTask(Task& task) override;
-  void PostDelayedTask(Task& task,
-                       chrono::SystemClock::duration delay) override;
-  void PostTaskForTime(Task& task,
-                       chrono::SystemClock::time_point time) override;
-  void SchedulePeriodicTask(Task& task,
-                            chrono::SystemClock::duration interval) override;
-  void SchedulePeriodicTask(
-      Task& task,
-      chrono::SystemClock::duration interval,
-      chrono::SystemClock::time_point start_time) override;
+  void Post(Task& task) override;
+  void PostAfter(Task& task, chrono::SystemClock::duration delay) override;
+  void PostAt(Task& task, chrono::SystemClock::time_point time) override;
+  void PostPeriodic(Task& task,
+                    chrono::SystemClock::duration interval) override;
+  void PostPeriodicAt(Task& task,
+                      chrono::SystemClock::duration interval,
+                      chrono::SystemClock::time_point start_time) override;
   bool Cancel(Task& task) override PW_LOCKS_EXCLUDED(lock_);
-  void RunUntilIdle() override;
-  void RunUntil(chrono::SystemClock::time_point end_time) override;
-  void RunFor(chrono::SystemClock::duration duration) override;
 
   // VirtualSystemClock overrides:
   chrono::SystemClock::time_point now() override {
     return chrono::SystemClock::now();
   }
 
-  // ThreadCore overrides:
-  void Run() override PW_LOCKS_EXCLUDED(lock_);
-
  private:
   // Insert |task| into task_queue_ maintaining its min-heap property, keyed by
-  // |time_due|. Must be holding lock_ when calling this function.
+  // |time_due|.
   void PostTaskInternal(backend::NativeTask& task,
                         chrono::SystemClock::time_point time_due)
       PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  // If no tasks are due, sleeps until a notification is received or until the
-  // due time of the next task.
-  //
-  // If at least one task is due, dequeues and runs each task that is due.
-  //
-  // Must be holding lock_ when calling this function.
-  void RunLoopOnce() PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  // If no tasks are due, sleep until a notification is received, the next task
+  // comes due, or a timeout elapses; whichever occurs first.
+  void MaybeSleep() PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Dequeue and run each task that is due.
+  void ExecuteDueTasks() PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Dequeue each task and call each TaskFunction with a PW_STATUS_CANCELLED
+  // status.
+  void DrainTaskQueue() PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   sync::InterruptSpinLock lock_;
   sync::TimedThreadNotification timed_notification_;
-  bool stop_requested_ PW_GUARDED_BY(lock_);
+  bool stop_requested_ PW_GUARDED_BY(lock_) = false;
   // A priority queue of scheduled Tasks sorted by earliest due times first.
   IntrusiveList<backend::NativeTask> task_queue_ PW_GUARDED_BY(lock_);
 };

@@ -151,20 +151,17 @@ class PendingRpcs:
             packets.encode_client_stream_end(rpc)
         )
 
-    def cancel(self, rpc: PendingRpc) -> Optional[bytes]:
-        """Cancels the RPC. Returns the CANCEL packet to send.
+    def cancel(self, rpc: PendingRpc) -> bytes:
+        """Cancels the RPC.
 
         Returns:
-          True if the RPC was cancelled; False if it was not pending
+          The CLIENT_ERROR packet to send.
 
         Raises:
           KeyError if the RPC is not pending
         """
         _LOG.debug('Cancelling %s', rpc)
         del self._pending[rpc]
-
-        if rpc.method.type is Method.Type.UNARY:
-            return None
 
         return packets.encode_cancel(rpc)
 
@@ -398,12 +395,6 @@ def _update_for_backwards_compatibility(
     """Adapts server streaming RPC packets to the updated protocol if needed."""
     # The protocol changes only affect server streaming RPCs.
     if rpc.method.type is not Method.Type.SERVER_STREAMING:
-        return
-
-    # SERVER_STREAM_END packets are deprecated. They are equivalent to a
-    # RESPONSE packet.
-    if packet.type == PacketType.DEPRECATED_SERVER_STREAM_END:
-        packet.type = PacketType.RESPONSE
         return
 
     # Prior to the introduction of SERVER_STREAM packets, RESPONSE packets with
