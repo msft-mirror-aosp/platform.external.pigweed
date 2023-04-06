@@ -26,14 +26,6 @@ import subprocess
 import sys
 from typing import Callable, Iterable, List, Sequence, TextIO
 
-try:
-    import pw_presubmit
-except ImportError:
-    # Append the pw_presubmit package path to the module search path to allow
-    # running this module without installing the pw_presubmit package.
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    import pw_presubmit
-
 import pw_package.pigweed_packages
 
 from pw_presubmit import (
@@ -43,23 +35,27 @@ from pw_presubmit import (
     format_code,
     git_repo,
     gitmodules,
-    call,
-    filter_paths,
     inclusive_language,
+    json_check,
     keep_sorted,
     module_owners,
     npm_presubmit,
     owners_checks,
-    plural,
-    presubmit,
-    PresubmitContext,
-    PresubmitFailure,
-    Programs,
     python_checks,
     shell_checks,
     source_in_build,
     todo_check,
 )
+from pw_presubmit.presubmit import (
+    FileFilter,
+    FormatOptions,
+    PresubmitContext,
+    PresubmitFailure,
+    Programs,
+    call,
+    filter_paths,
+)
+from pw_presubmit.tools import plural
 from pw_presubmit.install_hook import install_git_hook
 
 _LOG = logging.getLogger(__name__)
@@ -67,7 +63,7 @@ _LOG = logging.getLogger(__name__)
 pw_package.pigweed_packages.initialize()
 
 # Trigger builds if files with these extensions change.
-_BUILD_FILE_FILTER = presubmit.FileFilter(
+_BUILD_FILE_FILTER = FileFilter(
     suffix=(
         *format_code.C_FORMAT.extensions,
         '.cfg',
@@ -122,6 +118,7 @@ def gn_clang_build(ctx: PresubmitContext):
 
     build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *build_targets)
+    build.gn_check(ctx)
 
 
 _HOST_COMPILER = 'gcc' if sys.platform == 'win32' else 'clang'
@@ -141,6 +138,7 @@ def gn_full_qemu_check(ctx: PresubmitContext):
         *_at_all_optimization_levels('qemu_gcc'),
         *_at_all_optimization_levels('qemu_clang'),
     )
+    build.gn_check(ctx)
 
 
 def _gn_combined_build_check_targets() -> Sequence[str]:
@@ -194,6 +192,7 @@ gn_combined_build_check = build.GnGenNinja(
 def gn_arm_build(ctx: PresubmitContext):
     build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
+    build.gn_check(ctx)
 
 
 stm32f429i = build.GnGenNinja(
@@ -250,10 +249,10 @@ gn_crypto_mbedtls_build = build.GnGenNinja(
             ctx.package_root / 'mbedtls'
         ),
         'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:sha256_mbedtls'
+            ctx.root / 'pw_crypto:sha256_mbedtls_v3'
         ),
         'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:ecdsa_mbedtls'
+            ctx.root / 'pw_crypto:ecdsa_mbedtls_v3'
         ),
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
@@ -358,7 +357,7 @@ gn_software_update_build = build.GnGenNinja(
             ctx.package_root / 'mbedtls'
         ),
         'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:sha256_mbedtls'
+            ctx.root / 'pw_crypto:sha256_mbedtls_v3'
         ),
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
@@ -418,6 +417,7 @@ def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
 def cmake_clang(ctx: PresubmitContext):
     _run_cmake(ctx, toolchain='host_clang')
     build.ninja(ctx, 'pw_apps', 'pw_run_tests.modules')
+    build.gn_check(ctx)
 
 
 @filter_paths(
@@ -426,6 +426,7 @@ def cmake_clang(ctx: PresubmitContext):
 def cmake_gcc(ctx: PresubmitContext):
     _run_cmake(ctx, toolchain='host_gcc')
     build.ninja(ctx, 'pw_apps', 'pw_run_tests.modules')
+    build.gn_check(ctx)
 
 
 @filter_paths(
@@ -793,7 +794,7 @@ def commit_message_format(_: PresubmitContext):
     if (
         'Reland' in lines[0]
         and 'This is a reland of ' in git_repo.commit_message()
-        and "Original change's description: " in git_repo.commit_message()
+        and "Original change's description:" in git_repo.commit_message()
     ):
         _LOG.warning('Ignoring apparent Gerrit-generated reland')
         return
@@ -886,6 +887,7 @@ def static_analysis(ctx: PresubmitContext):
     """Runs all available static analysis tools."""
     build.gn_gen(ctx)
     build.ninja(ctx, 'python.lint', 'static_analysis')
+    build.gn_check(ctx)
 
 
 _EXCLUDE_FROM_TODO_CHECK = (
@@ -934,7 +936,7 @@ def owners_lint_checks(ctx: PresubmitContext):
     owners_checks.presubmit_check(ctx.paths)
 
 
-SOURCE_FILES_FILTER = presubmit.FileFilter(
+SOURCE_FILES_FILTER = FileFilter(
     endswith=_BUILD_FILE_FILTER.endswith,
     suffix=('.bazel', '.bzl', '.gn', '.gni', *_BUILD_FILE_FILTER.suffix),
     exclude=(
@@ -957,7 +959,7 @@ OTHER_CHECKS = (
     build.gn_gen_check,
     cmake_clang,
     cmake_gcc,
-    gitmodules.create(),
+    gitmodules.create(gitmodules.Config(allow_submodules=False)),
     gn_clang_build,
     gn_combined_build_check,
     module_owners.presubmit_check(),
@@ -996,7 +998,7 @@ SECURITY = (
 )
 
 # Avoid running all checks on specific paths.
-PATH_EXCLUSIONS = (re.compile(r'\bthird_party/fuchsia/repo/'),)
+PATH_EXCLUSIONS = FormatOptions.load().exclude
 
 _LINTFORMAT = (
     commit_message_format,
@@ -1014,6 +1016,7 @@ _LINTFORMAT = (
     source_in_build.gn(SOURCE_FILES_FILTER),
     source_is_in_cmake_build_warn_only,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
+    json_check.presubmit_check,
     keep_sorted.presubmit_check,
     todo_check_with_exceptions,
 )
@@ -1025,8 +1028,8 @@ LINTFORMAT = (
     # (https://stackoverflow.com/q/71024130/1224002). These are cached, but
     # after a roll it can be quite slow.
     source_in_build.bazel(SOURCE_FILES_FILTER),
-    pw_presubmit.python_checks.check_python_versions,
-    pw_presubmit.python_checks.gn_python_lint,
+    python_checks.check_python_versions,
+    python_checks.gn_python_lint,
 )
 
 QUICK = (

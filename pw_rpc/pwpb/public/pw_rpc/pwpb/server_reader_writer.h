@@ -222,13 +222,16 @@ class PwpbServerReaderWriter : private internal::BasePwpbServerReader<Request> {
   PwpbServerReaderWriter(PwpbServerReaderWriter&&) = default;
   PwpbServerReaderWriter& operator=(PwpbServerReaderWriter&&) = default;
 
+  ~PwpbServerReaderWriter() { internal::Call::DestroyServerCall(); }
+
   using internal::Call::active;
   using internal::Call::channel_id;
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
   using internal::BasePwpbServerReader<Request>::set_on_next;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
   // Writes a response. Returns the following Status codes:
   //
@@ -297,13 +300,16 @@ class PwpbServerReader : private internal::BasePwpbServerReader<Request> {
   PwpbServerReader(PwpbServerReader&&) = default;
   PwpbServerReader& operator=(PwpbServerReader&&) = default;
 
+  ~PwpbServerReader() { internal::Call::DestroyServerCall(); }
+
   using internal::Call::active;
   using internal::Call::channel_id;
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
   using internal::BasePwpbServerReader<Request>::set_on_next;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
   // Sends the response. Returns the following Status codes:
   //
@@ -365,12 +371,15 @@ class PwpbServerWriter : private internal::PwpbServerCall {
   PwpbServerWriter(PwpbServerWriter&&) = default;
   PwpbServerWriter& operator=(PwpbServerWriter&&) = default;
 
+  ~PwpbServerWriter() { DestroyServerCall(); }
+
   using internal::Call::active;
   using internal::Call::channel_id;
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
   // Writes a response. Returns the following Status codes:
   //
@@ -435,12 +444,13 @@ class PwpbUnaryResponder : private internal::PwpbServerCall {
   PwpbUnaryResponder(PwpbUnaryResponder&&) = default;
   PwpbUnaryResponder& operator=(PwpbUnaryResponder&&) = default;
 
+  ~PwpbUnaryResponder() { DestroyServerCall(); }
+
   using internal::ServerCall::active;
   using internal::ServerCall::channel_id;
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
 
   // Sends the response. Returns the following Status codes:
   //

@@ -28,6 +28,12 @@ using namespace std::chrono_literals;
 
 using test::pw_rpc::raw::TestService;
 
+// These tests cover interactions between a thread moving or destroying an RPC
+// call object and a thread running callbacks for that call. In order to test
+// that the first thread waits for callbacks to complete when trying to move or
+// destroy the call, it is necessary to have the callback thread yield to the
+// other thread. There isn't a good way to synchronize these threads without
+// changing the code under test.
 void YieldToOtherThread() {
   // Sleep for a while and then yield just to be sure the other thread runs.
   this_thread::sleep_for(100ms);
@@ -58,7 +64,7 @@ class CallbacksTest : public ::testing::Test {
 
   thread::Thread callback_thread_;
 
-  // Must be set to true by the RPC callback in each test.
+  // Must be incremented exactly once by the RPC callback in each test.
   volatile int callback_executed_ = 0;
 
   // Variables optionally used by tests. These are in this object so lambads
@@ -231,7 +237,8 @@ TEST_F(CallbacksTest, PacketDroppedIfOnNextIsBusy) {
 
   main_thread_sem_.acquire();  // Confirm that the callback is running
 
-  // Handle a few packets for this call, which should be dropped.
+  // Handle a few packets for this call, which should be dropped since on_next
+  // is busy. callback_executed_ should remain at 1.
   for (int i = 0; i < 5; ++i) {
     context_.server().SendServerStream<TestService::TestBidirectionalStreamRpc>(
         {}, call_1_.id());

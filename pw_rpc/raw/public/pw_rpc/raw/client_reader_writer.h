@@ -35,6 +35,10 @@ class RawClientReaderWriter : private internal::StreamResponseClientCall {
   RawClientReaderWriter(RawClientReaderWriter&&) = default;
   RawClientReaderWriter& operator=(RawClientReaderWriter&&) = default;
 
+  ~RawClientReaderWriter() PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
+    DestroyClientCall();
+  }
+
   using internal::Call::active;
   using internal::Call::channel_id;
 
@@ -48,16 +52,18 @@ class RawClientReaderWriter : private internal::StreamResponseClientCall {
   // Sends a stream request packet with the given raw payload.
   using internal::Call::Write;
 
-  // Notifies the server that no further client stream messages will be sent.
-  using internal::ClientCall::CloseClientStream;
+  // Notifies the server that the client has requested to stop communication by
+  // sending CLIENT_REQUEST_COMPLETION.
+  using internal::ClientCall::RequestCompletion;
 
   // Cancels this RPC. Closes the call locally and sends a CANCELLED error to
   // the server.
   using internal::Call::Cancel;
 
-  // Closes this RPC locally. Sends a CLIENT_STREAM_END, but no cancellation
-  // packet. Future packets for this RPC are dropped, and the client sends a
-  // FAILED_PRECONDITION error in response because the call is not active.
+  // Closes this RPC locally. Sends a CLIENT_REQUEST_COMPLETION, but no
+  // cancellation packet. Future packets for this RPC are dropped, and the
+  // client sends a FAILED_PRECONDITION error in response because the call is
+  // not active.
   using internal::ClientCall::Abandon;
 
   // Allow use as a generic RPC Writer.
@@ -88,6 +94,10 @@ class RawClientReader : private internal::StreamResponseClientCall {
   RawClientReader(RawClientReader&&) = default;
   RawClientReader& operator=(RawClientReader&&) = default;
 
+  ~RawClientReader() PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
+    DestroyClientCall();
+  }
+
   using internal::StreamResponseClientCall::active;
   using internal::StreamResponseClientCall::channel_id;
 
@@ -96,6 +106,7 @@ class RawClientReader : private internal::StreamResponseClientCall {
   using internal::StreamResponseClientCall::set_on_next;
 
   using internal::Call::Cancel;
+  using internal::Call::RequestCompletion;
   using internal::ClientCall::Abandon;
 
  private:
@@ -121,6 +132,10 @@ class RawClientWriter : private internal::UnaryResponseClientCall {
   RawClientWriter(RawClientWriter&&) = default;
   RawClientWriter& operator=(RawClientWriter&&) = default;
 
+  ~RawClientWriter() PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
+    DestroyClientCall();
+  }
+
   using internal::UnaryResponseClientCall::active;
   using internal::UnaryResponseClientCall::channel_id;
 
@@ -128,7 +143,7 @@ class RawClientWriter : private internal::UnaryResponseClientCall {
   using internal::UnaryResponseClientCall::set_on_error;
 
   using internal::Call::Cancel;
-  using internal::Call::CloseClientStream;
+  using internal::Call::RequestCompletion;
   using internal::Call::Write;
   using internal::ClientCall::Abandon;
 
@@ -158,6 +173,10 @@ class RawUnaryReceiver : private internal::UnaryResponseClientCall {
 
   RawUnaryReceiver(RawUnaryReceiver&&) = default;
   RawUnaryReceiver& operator=(RawUnaryReceiver&&) = default;
+
+  ~RawUnaryReceiver() PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
+    DestroyClientCall();
+  }
 
   using internal::UnaryResponseClientCall::active;
   using internal::UnaryResponseClientCall::channel_id;

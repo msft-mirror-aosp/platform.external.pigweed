@@ -201,11 +201,11 @@ pw_cc_library(
         "public/pw_rpc/internal/fake_channel_output.h",
         "public/pw_rpc/internal/method_impl_tester.h",
         "public/pw_rpc/internal/method_info_tester.h",
-        "public/pw_rpc/internal/test_method.h",
         "public/pw_rpc/internal/test_method_context.h",
         "public/pw_rpc/internal/test_utils.h",
         "public/pw_rpc/payloads_view.h",
         "pw_rpc_private/fake_server_reader_writer.h",
+        "pw_rpc_private/test_method.h",
     ],
     includes = [
         ".",
@@ -416,21 +416,6 @@ proto_plugin(
     ],
     protoc_plugin_name = "nanopb_rpc",
     tool = "@pigweed//pw_rpc/py:plugin_nanopb",
-    use_built_in_shell_environment = True,
-    visibility = ["//visibility:public"],
-)
-
-proto_plugin(
-    name = "nanopb_plugin",
-    options = [
-        "--library-include-format='#include\"%s\"'",
-    ],
-    outputs = [
-        "{protopath}.pb.h",
-        "{protopath}.pb.c",
-    ],
-    separate_options_flag = True,
-    tool = "@com_github_nanopb_nanopb//:bazel_generator",
     use_built_in_shell_environment = True,
     visibility = ["//visibility:public"],
 )

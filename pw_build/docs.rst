@@ -76,61 +76,61 @@ do several things:
 
 #. **Add default configs/deps**
 
-  Rather than binding the majority of compiler flags related to C++ standard,
-  cross-compilation, warning/error policy, etc. directly to toolchain
-  invocations, these flags are applied as configs to all ``pw_*`` C/C++ target
-  types. The primary motivations for this are to allow some targets to modify
-  the default set of flags when needed by specifying ``remove_configs``, and to
-  reduce the complexity of building novel toolchains.
+   Rather than binding the majority of compiler flags related to C++ standard,
+   cross-compilation, warning/error policy, etc.  directly to toolchain
+   invocations, these flags are applied as configs to all ``pw_*`` C/C++ target
+   types. The primary motivations for this are to allow some targets to modify
+   the default set of flags when needed by specifying ``remove_configs``, and to
+   reduce the complexity of building novel toolchains.
 
-  Pigweed's global default configs are set in ``pw_build/default.gni``, and
-  individual platform-specific toolchains extend the list by appending to the
-  ``default_configs`` build argument.
+   Pigweed's global default configs are set in ``pw_build/default.gni``, and
+   individual platform-specific toolchains extend the list by appending to the
+   ``default_configs`` build argument.
 
-  Default deps were added to support polyfill, which has since been
-  deprecated. Default dependency functionality continues to exist for
-  backwards compatibility.
+   Default deps were added to support polyfill, which has since been deprecated.
+   Default dependency functionality continues to exist for backwards
+   compatibility.
 
 #. **Optionally add link-time binding**
 
-  Some libraries like pw_assert and pw_log are borderline impossible to
-  implement well without introducing circular dependencies. One solution for
-  addressing this is to break apart the libraries into an interface with
-  minimal dependencies, and an implementation with the bulk of the
-  dependencies that would typically create dependency cycles. In order for the
-  implementation to be linked in, it must be added to the dependency tree of
-  linked artifacts (e.g. ``pw_executable``, ``pw_static_library``). Since
-  there's no way for the libraries themselves to just happily pull in the
-  implementation if someone depends on the interface, the implementation is
-  instead late-bound by adding it as a direct dependency of the final linked
-  artifact. This is all managed through ``pw_build_LINK_DEPS``, which is global
-  for each toolchain and applied to every ``pw_executable``,
-  ``pw_static_library``, and ``pw_shared_library``.
+   Some libraries like pw_assert and pw_log are borderline impossible to
+   implement well without introducing circular dependencies. One solution for
+   addressing this is to break apart the libraries into an interface with
+   minimal dependencies, and an implementation with the bulk of the
+   dependencies that would typically create dependency cycles. In order for the
+   implementation to be linked in, it must be added to the dependency tree of
+   linked artifacts (e.g. ``pw_executable``, ``pw_static_library``). Since
+   there's no way for the libraries themselves to just happily pull in the
+   implementation if someone depends on the interface, the implementation is
+   instead late-bound by adding it as a direct dependency of the final linked
+   artifact. This is all managed through ``pw_build_LINK_DEPS``, which is global
+   for each toolchain and applied to every ``pw_executable``,
+   ``pw_static_library``, and ``pw_shared_library``.
 
 #. **Apply a default visibility policy**
 
-  Projects can globally control the default visibility of pw_* target types by
-  specifying ``pw_build_DEFAULT_VISIBILITY``. This template applies that as the
-  default visibility for any pw_* targets that do not explicitly specify
-  a visibility.
+   Projects can globally control the default visibility of pw_* target types by
+   specifying ``pw_build_DEFAULT_VISIBILITY``. This template applies that as the
+   default visibility for any pw_* targets that do not explicitly specify a
+   visibility.
 
 #. **Add source file names as metadata**
 
-  All source file names are collected as
-  `GN metadata <https://gn.googlesource.com/gn/+/main/docs/reference.md#metadata_collection>`_.
-  This list can be writen to a file at build time using ``generated_file``. The
-  primary use case for this is to generate a token database containing all the
-  source files. This allows PW_ASSERT to emit filename tokens even though it
-  can't add them to the elf file because of the reasons described at
-  :ref:`module-pw_assert-assert-api`.
+   All source file names are collected as
+   `GN metadata <https://gn.googlesource.com/gn/+/main/docs/reference.md#metadata_collection>`_.
+   This list can be writen to a file at build time using ``generated_file``. The
+   primary use case for this is to generate a token database containing all the
+   source files. This allows :c:macro:`PW_ASSERT` to emit filename tokens even
+   though it can't add them to the elf file because of the reasons described at
+   :ref:`module-pw_assert-assert-api`.
 
-  .. note::
-    ``pw_source_files``, if not rebased will default to outputing module
-    relative paths from a ``generated_file`` target.  This is likely not
-    useful. Adding a ``rebase`` argument to ``generated_file`` such as
-    ``rebase = root_build_dir`` will result in usable paths.  For an example,
-    see ``//pw_tokenizer/database.gni``'s ``pw_tokenizer_filename_database``
-    template.
+   .. note::
+      ``pw_source_files``, if not rebased will default to outputing module
+      relative paths from a ``generated_file`` target.  This is likely not
+      useful. Adding a ``rebase`` argument to ``generated_file`` such as
+      ``rebase = root_build_dir`` will result in usable paths.  For an example,
+      see ``//pw_tokenizer/database.gni``'s ``pw_tokenizer_filename_database``
+      template.
 
 The ``pw_executable`` template provides additional functionality around building
 complete binaries. As Pigweed is a collection of libraries, it does not know how
@@ -549,9 +549,11 @@ pw_exec
 ``pw_exec`` allows for execution of arbitrary programs. It is a wrapper around
 ``pw_python_action`` but allows for specifying the program to execute.
 
-.. note:: Prefer to use ``pw_python_action`` instead of calling out to shell
-  scripts, as the python will be more portable. ``pw_exec`` should generally
-  only be used for interacting with legacy/existing scripts.
+.. note::
+
+   Prefer to use ``pw_python_action`` instead of calling out to shell
+   scripts, as the Python will be more portable. ``pw_exec`` should generally
+   only be used for interacting with legacy/existing scripts.
 
 **Arguments**
 
@@ -580,24 +582,26 @@ pw_exec
 * ``working_directory``: The working directory to execute the subprocess with.
   If not specified it will not be set and the subprocess will have whatever
   the parent current working directory is.
+* ``venv``: Python virtualenv to pass along to the underlying
+  :ref:`module-pw_build-pw_python_action`.
 * ``visibility``: GN visibility to apply to the underlying target.
 
 **Example**
 
 .. code-block::
 
-  import("$dir_pw_build/exec.gni")
+   import("$dir_pw_build/exec.gni")
 
-  pw_exec("hello_world") {
-    program = "/bin/sh"
-    args = [
-      "-c",
-      "echo hello \$WORLD",
-    ]
-    env = [
-      "WORLD=world",
-    ]
-  }
+   pw_exec("hello_world") {
+     program = "/bin/sh"
+     args = [
+       "-c",
+       "echo hello \$WORLD",
+     ]
+     env = [
+       "WORLD=world",
+     ]
+   }
 
 pw_input_group
 --------------
@@ -838,6 +842,165 @@ on without an error.
 ``pw_build_assert`` to enforce a condition at build time.
 
 The templates for build time errors are defined in ``pw_build/error.gni``.
+
+Generate code coverage reports: ``pw_coverage_report``
+------------------------------------------------------
+Pigweed supports generating coverage reports, in a variety of formats, for C/C++
+code using the ``pw_coverage_report`` GN template.
+
+Coverage Caveats
+^^^^^^^^^^^^^^^^
+There are currently two code coverage caveats when enabled:
+
+#. Coverage reports are only populated based on host tests that use a ``clang``
+   toolchain.
+
+#. Coverage reports will only show coverage information for headers included in
+   a test binary.
+
+These two caveats mean that all device-specific code that cannot be compiled for
+and run on the host will not be able to have reports generated for them, and
+that the existence of these files will not appear in any coverage report.
+
+Try to ensure that your code can be written in a way that it can be compiled
+into a host test for the purpose of coverage reporting, although this is
+sometimes impossible due to requiring hardware-specific APIs to be available.
+
+Coverage Instrumentation
+^^^^^^^^^^^^^^^^^^^^^^^^
+For the ``pw_coverage_report`` to generate meaningful output, you must ensure
+that it is invoked by a toolchain that instruments tests for code coverage
+collection and output.
+
+Instrumentation is controlled by a GN build argument:
+
+- ``pw_toolchain_COVERAGE_ENABLED`` being set to ``true``.
+
+.. note::
+
+  It is possible to also instrument binaries for UBSAN, ASAN, or TSAN at the
+  same time as coverage. However, TSAN will find issues in the coverage
+  instrumentation code and fail to properly build.
+
+This can most easily be done by using the ``host_clang_coverage`` toolchain
+provided in :ref:`module-pw_toolchain`, but you can also create custom
+toolchains that manually set these GN build arguments as well.
+
+``pw_coverage_report``
+^^^^^^^^^^^^^^^^^^^^^^
+``pw_coverage_report`` is bascially a GN frontend to the ``llvm-cov``
+`tool <https://llvm.org/docs/CommandGuide/llvm-cov.html>`_ that can be
+integrated into the normal build.
+
+It can be found at ``pw_build/coverage_report.gni`` and is available through
+``import("$dir_pw_build/coverage_report.gni")``.
+
+The supported report formats are:
+
+- ``text``: A text representation of the code coverage report. This
+  format is not suitable for further machine manipulation and is instead only
+  useful for cases where a human needs to interpret the report. The text format
+  provides a nice summary, but if you desire to drill down into the coverage
+  details more, please consider using ``html`` instead.
+
+  - This is equivalent to ``llvm-cov show --format text`` and similar to
+    ``llvm-cov report``.
+
+- ``html``: A static HTML site that provides an overall coverage summary and
+  per-file information. This format is not suitable for further machine
+  manipulation and is instead only useful for cases where a human needs to
+  interpret the report.
+
+  - This is equivalent to ``llvm-cov show --format html``.
+
+- ``lcov``: A machine-friendly coverage report format. This format is not human-
+  friendly. If that is necessary, use ``text`` or ``html`` instead.
+
+  - This is equivalent to ``llvm-cov export --format lcov``.
+
+- ``json``: A machine-friendly coverage report format. This format is not human-
+  friendly. If that is necessary, use ``text`` or ``html`` instead.
+
+  - This is equivalent to ``llvm-cov export --format text``.
+
+Arguments
+"""""""""
+There are three classes of ``template`` arguments: build, coverage, and test.
+
+**Build Arguments:**
+
+- ``enable_if``: Conditionally activates coverage report generation when set to
+  a boolean expression that evaluates to ``true``. This can be used to allow
+  project builds to conditionally enable or disable coverage reports to minimize
+  work needed for certain build configurations.
+
+**Coverage Arguments:**
+
+- ``filter_paths`` (optional): List of file paths to include when generating the
+  coverage report. These cannot be regular expressions, but can be concrete file
+  or folder paths. Folder paths will allow all files in that directory or any
+  recursive child directory.
+
+  - These are passed to ``llvm-cov`` by the optional trailing positional
+    ``[SOURCES]`` arguments.
+
+- ``ignore_filename_patterns`` (optional): List of file path regular expressions
+  to ignore when generating the coverage report.
+
+  - These are passed to ``llvm-cov`` via ``--ignore-filename-regex`` named
+    parameters.
+
+**Test Arguments (one of these is required to be provided):**
+
+- ``tests``: A list of ``pw_test`` :ref:`targets<module-pw_unit_test-pw_test>`.
+
+- ``group_deps``: A list of ``pw_test_group``
+  :ref:`targets<module-pw_unit_test-pw_test_group>`.
+
+.. note::
+
+  ``tests`` and ``group_deps`` are treated exactly the same by
+  ``pw_coverage_report``, so it is not that important to ensure they are used
+  properly.
+
+Target Expansion
+""""""""""""""""
+``pw_coverage_report(<target_name>)`` expands to one concrete target for each
+report format.
+
+- ``<target_name>.text``: Generates the ``text`` coverage report.
+
+- ``<target_name>.html``: Generates the ``html`` coverage report.
+
+- ``<target_name>.lcov``: Generates the ``lcov`` coverage report.
+
+- ``<target_name>.json``: Generates the ``json`` coverage report.
+
+To use any of these targets, you need only to add a dependency on the desired
+target somewhere in your build.
+
+There is also a ``<target_name>`` target generated that is a ``group`` that adds
+a dependency on all of the format-specific targets listed above.
+
+.. note::
+  These targets are always available, even when the toolchain executing the
+  target does not support coverage or coverage is not enabled. In these cases,
+  the targets are set to empty groups.
+
+Coverage Output
+^^^^^^^^^^^^^^^
+Coverage reports are currently generated and placed into the build output
+directory associated with the path to the GN file where the
+``pw_coverage_report`` is used in a subfolder named
+``<target_name>.<report_type>``.
+
+.. note::
+
+  Due to limitations with telling GN the entire output of coverage reports
+  (stemming from per-source-file generation for HTML and text representations),
+  it is not as simple as using GN's built-in ``copy`` to be able to move these
+  coverage reports to another output location. However, it seems possible to add
+  a target that can use Python to copy the entire output directory.
 
 Improved Ninja interface
 ------------------------

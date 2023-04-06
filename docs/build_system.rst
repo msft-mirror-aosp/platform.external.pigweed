@@ -163,6 +163,8 @@ and finally Bazel.
   To avoid confusing the two, we refer to the former as "GN/Bazel targets" and the
   latter as "Pigweed targets".
 
+.. _docs-build-system-gn:
+
 GN
 --
 A perhaps unfamiliar name, `GN (Generate Ninja)`_ is a meta-build system that
@@ -376,6 +378,10 @@ with ``pw_module_tests`` per supported sanitizer.
 .. _UndefinedBehaviorSanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
 .. _ThreadSanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html
 
+coverage
+~~~~~~~~~~
+This group defines host-side build target for Clang source-based code coverage.
+
 pw_modules
 ~~~~~~~~~~
 This group lists the main libraries for all of Pigweed's modules.
@@ -569,6 +575,8 @@ various proprietary projects. Its modular structure makes it a great fit for
 .. note::
   Bazel support is experimental and only for the brave for now. If you are
   looking for stable set of build API's please use GN.
+
+.. _docs-build-system-bazel:
 
 The Bazel build
 ===============

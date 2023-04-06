@@ -14,8 +14,6 @@
 #include "pw_async/fake_dispatcher.h"
 
 #include "gtest/gtest.h"
-#include "pw_thread/thread.h"
-#include "pw_thread_stl/options.h"
 
 #define ASSERT_OK(status) ASSERT_EQ(OkStatus(), status)
 #define ASSERT_CANCELLED(status) ASSERT_EQ(Status::Cancelled(), status)
@@ -173,6 +171,26 @@ TEST(FakeDispatcher, PeriodicTasks) {
 
   dispatcher.RunFor(300ms);
   dispatcher.RequestStop();
+  dispatcher.RunUntilIdle();
+  ASSERT_EQ(count, 3);
+}
+
+TEST(FakeDispatcher, PostPeriodicAfter) {
+  FakeDispatcher dispatcher;
+
+  int count = 0;
+  Task periodic_task([&count]([[maybe_unused]] Context& c, Status status) {
+    ASSERT_OK(status);
+    ++count;
+  });
+  dispatcher.PostPeriodicAfter(periodic_task, /*interval=*/5ms, /*delay=*/20ms);
+
+  dispatcher.RunUntilIdle();
+  ASSERT_EQ(count, 0);
+  dispatcher.RunFor(20ms);
+  ASSERT_EQ(count, 1);
+  dispatcher.RunFor(10ms);
+  ASSERT_EQ(count, 3);
   dispatcher.RunUntilIdle();
   ASSERT_EQ(count, 3);
 }

@@ -120,6 +120,8 @@ _doxygen_input_files = [
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/central.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/connection.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/peripheral.h",
+  "$dir_pw_containers/public/pw_containers/inline_deque.h",
+  "$dir_pw_containers/public/pw_containers/inline_queue.h",
   "$dir_pw_chrono/public/pw_chrono/system_clock.h",
   "$dir_pw_chrono/public/pw_chrono/system_timer.h",
   "$dir_pw_function/public/pw_function/scope_guard.h",
@@ -143,8 +145,10 @@ _doxygen_input_files = [
   "$dir_pw_sync/public/pw_sync/timed_mutex.h",
   "$dir_pw_sync/public/pw_sync/timed_thread_notification.h",
   "$dir_pw_sync/public/pw_sync/virtual_basic_lockable.h",
+  "$dir_pw_thread/public/pw_thread/test_thread_context.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/encode_args.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/tokenize.h",
+  "$dir_pw_toolchain/public/pw_toolchain/no_destructor.h",
 ]
 
 pw_python_action("generate_doxygen") {

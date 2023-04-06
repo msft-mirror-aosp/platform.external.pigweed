@@ -83,9 +83,8 @@ Call::Call(LockedEndpoint& endpoint_ref,
       id_(call_id),
       service_id_(service_id),
       method_id_(method_id),
-      state_(kActive | (HasClientStream(properties.method_type())
-                            ? static_cast<uint8_t>(kClientStreamActive)
-                            : 0u)),
+      // Note: Bit kActive set to 1 and kClientRequestedCompletion is set to 0.
+      state_(kActive),
       awaiting_cleanup_(OkStatus().code()),
       callbacks_executing_(0),
       properties_(properties) {
@@ -96,20 +95,20 @@ Call::Call(LockedEndpoint& endpoint_ref,
   endpoint().RegisterCall(*this);
 }
 
-Call::~Call() {
-  // Note: this explicit deregistration is necessary to ensure that
-  // modifications to the endpoint call list occur while holding rpc_lock.
-  // Removing this explicit registration would result in unsynchronized
-  // modification of the endpoint call list via the destructor of the
-  // superclass `IntrusiveList<Call>::Item`.
-  RpcLockGuard lock;
+void Call::DestroyServerCall() {
+  rpc_lock().lock();
+  // Any errors are logged in Channel::Send.
+  CloseAndSendResponseLocked(OkStatus()).IgnoreError();
+  WaitForCallbacksToComplete();
+}
 
-  // This `active_locked()` guard is necessary to ensure that `endpoint()` is
-  // still valid.
-  if (active_locked()) {
-    endpoint().UnregisterCall(*this);
-  }
+void Call::DestroyClientCall() {
+  rpc_lock().lock();
+  CloseClientCall();
+  WaitForCallbacksToComplete();
+}
 
+void Call::WaitForCallbacksToComplete() {
   do {
     int iterations = 0;
     while (CallbacksAreRunning()) {
@@ -119,8 +118,7 @@ Call::~Call() {
 
   } while (CleanUpIfRequired());
 
-  // Help prevent dangling references in callbacks by waiting for callbacks to
-  // complete before deleting this call.
+  rpc_lock().unlock();
 }
 
 void Call::MoveFrom(Call& other) {
@@ -282,6 +280,19 @@ void Call::HandlePayload(ConstByteSpan payload) {
 
   // Clean up calls in case decoding failed.
   endpoint_->CleanUpCalls();
+}
+
+void Call::CloseClientCall() {
+  // When a client call is closed, for bidirectional and client streaming RPCs,
+  // the server may be waiting for client stream messages, so we need to notify
+  // the server that the client has requested for completion and no further
+  // requests should be expected from the client. For unary and server streaming
+  // RPCs, since the client is not sending messages, server does not need to be
+  // notified.
+  if (has_client_stream() && !client_requested_completion()) {
+    RequestCompletionLocked().IgnoreError();
+  }
+  UnregisterAndMarkClosed();
 }
 
 void Call::UnregisterAndMarkClosed() {

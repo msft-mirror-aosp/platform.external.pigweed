@@ -171,6 +171,8 @@ class NanopbServerReaderWriter
   NanopbServerReaderWriter(NanopbServerReaderWriter&&) = default;
   NanopbServerReaderWriter& operator=(NanopbServerReaderWriter&&) = default;
 
+  ~NanopbServerReaderWriter() { internal::Call::DestroyServerCall(); }
+
   using internal::Call::active;
   using internal::Call::channel_id;
 
@@ -192,7 +194,8 @@ class NanopbServerReaderWriter
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
   using internal::BaseNanopbServerReader<Request>::set_on_next;
 
  private:
@@ -244,12 +247,15 @@ class NanopbServerReader : private internal::BaseNanopbServerReader<Request> {
   NanopbServerReader(NanopbServerReader&&) = default;
   NanopbServerReader& operator=(NanopbServerReader&&) = default;
 
+  ~NanopbServerReader() { internal::Call::DestroyServerCall(); }
+
   using internal::Call::active;
   using internal::Call::channel_id;
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
   using internal::BaseNanopbServerReader<Request>::set_on_next;
 
   Status Finish(const Response& response, Status status = OkStatus()) {
@@ -302,6 +308,8 @@ class NanopbServerWriter : private internal::NanopbServerCall {
   NanopbServerWriter(NanopbServerWriter&&) = default;
   NanopbServerWriter& operator=(NanopbServerWriter&&) = default;
 
+  ~NanopbServerWriter() { DestroyServerCall(); }
+
   using internal::Call::active;
   using internal::Call::channel_id;
 
@@ -322,7 +330,8 @@ class NanopbServerWriter : private internal::NanopbServerCall {
   }
 
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
  private:
   friend class internal::NanopbMethod;
@@ -366,6 +375,8 @@ class NanopbUnaryResponder : private internal::NanopbServerCall {
   NanopbUnaryResponder(NanopbUnaryResponder&&) = default;
   NanopbUnaryResponder& operator=(NanopbUnaryResponder&&) = default;
 
+  ~NanopbUnaryResponder() { DestroyServerCall(); }
+
   using internal::Call::active;
   using internal::Call::channel_id;
 
@@ -382,7 +393,6 @@ class NanopbUnaryResponder : private internal::NanopbServerCall {
   }
 
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
 
  private:
   friend class internal::NanopbMethod;

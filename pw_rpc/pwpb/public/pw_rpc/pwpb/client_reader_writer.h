@@ -91,6 +91,8 @@ class PwpbUnaryResponseClientCall : public UnaryResponseClientCall {
     return *this;
   }
 
+  ~PwpbUnaryResponseClientCall() { DestroyClientCall(); }
+
   // Implement moving by copying the serde pointer and on_completed function.
   void MovePwpbUnaryResponseClientCallFrom(PwpbUnaryResponseClientCall& other)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
@@ -207,6 +209,8 @@ class PwpbStreamResponseClientCall : public StreamResponseClientCall {
     return *this;
   }
 
+  ~PwpbStreamResponseClientCall() { DestroyClientCall(); }
+
   // Implement moving by copying the serde pointer and on_next function.
   void MovePwpbStreamResponseClientCallFrom(PwpbStreamResponseClientCall& other)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
@@ -288,16 +292,18 @@ class PwpbClientReaderWriter
         request);
   }
 
-  // Notifies the server that no further client stream messages will be sent.
-  using internal::ClientCall::CloseClientStream;
+  // Notifies the server that the client has requested to stop communication by
+  // sending CLIENT_REQUEST_COMPLETION.
+  using internal::ClientCall::RequestCompletion;
 
   // Cancels this RPC. Closes the call locally and sends a CANCELLED error to
   // the server.
   using internal::Call::Cancel;
 
-  // Closes this RPC locally. Sends a CLIENT_STREAM_END, but no cancellation
-  // packet. Future packets for this RPC are dropped, and the client sends a
-  // FAILED_PRECONDITION error in response because the call is not active.
+  // Closes this RPC locally. Sends a CLIENT_REQUEST_COMPLETION, but no
+  // cancellation packet. Future packets for this RPC are dropped, and the
+  // client sends a FAILED_PRECONDITION error in response because the call is
+  // not active.
   using internal::ClientCall::Abandon;
 
   // Functions for setting RPC event callbacks.
@@ -343,6 +349,7 @@ class PwpbClientReader
   using internal::StreamResponseClientCall::channel_id;
 
   using internal::Call::Cancel;
+  using internal::Call::RequestCompletion;
   using internal::ClientCall::Abandon;
 
   // Functions for setting RPC event callbacks.
@@ -401,7 +408,7 @@ class PwpbClientWriter
   }
 
   using internal::Call::Cancel;
-  using internal::Call::CloseClientStream;
+  using internal::Call::RequestCompletion;
   using internal::ClientCall::Abandon;
 
   // Functions for setting RPC event callbacks.

@@ -40,6 +40,8 @@ class FakeServerReaderWriter : private ServerCall {
  public:
   constexpr FakeServerReaderWriter() = default;
 
+  ~FakeServerReaderWriter() { DestroyServerCall(); }
+
   // On a real reader/writer, this constructor would not be exposed.
   FakeServerReaderWriter(const LockedCallContext& context,
                          MethodType type = MethodType::kBidirectionalStreaming)
@@ -57,7 +59,8 @@ class FakeServerReaderWriter : private ServerCall {
   using Call::active;
   using Call::set_on_error;
   using Call::set_on_next;
-  using ServerCall::set_on_client_stream_end;
+  using ServerCall::set_on_completion_requested;
+  using ServerCall::set_on_completion_requested_if_enabled;
 
   Status Finish(Status status = OkStatus()) {
     return CloseAndSendResponse(status);
@@ -85,6 +88,8 @@ class FakeServerWriter : private FakeServerReaderWriter {
   // Common reader/writer functions.
   using FakeServerReaderWriter::active;
   using FakeServerReaderWriter::Finish;
+  using FakeServerReaderWriter::set_on_completion_requested;
+  using FakeServerReaderWriter::set_on_completion_requested_if_enabled;
   using FakeServerReaderWriter::set_on_error;
   using FakeServerReaderWriter::Write;
 

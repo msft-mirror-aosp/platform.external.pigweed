@@ -21,11 +21,26 @@ cc_library_static {
     cpp_std: "c++2a",
     vendor_available: true,
     export_include_dirs: ["public"],
+    defaults: [
+        "pw_assert_log_defaults",
+    ],
     header_libs: [
+        "pw_assert_headers",
+        "pw_log_headers",
+        "pw_log_null_headers",
         "pw_preprocessor_headers",
         "pw_polyfill_headers",
         "pw_span_headers",
+        "pw_result_headers",
     ],
-    srcs: ["varint.cc"],
+    static_libs: [
+        "pw_bytes",
+        "pw_status",
+        "pw_stream",
+    ],
+    srcs: [
+        "stream.cc",
+        "varint.cc",
+    ],
     host_supported: true,
 }

@@ -31,6 +31,7 @@ from typing import (
     ContextManager,
     Dict,
     Iterable,
+    Iterator,
     List,
     Mapping,
     Optional,
@@ -40,23 +41,26 @@ from typing import (
     Union,
 )
 
-from pw_presubmit import (
-    bazel_parser,
+from pw_presubmit.presubmit import (
     call,
     Check,
     FileFilter,
     filter_paths,
-    format_code,
     install_package,
-    Iterator,
-    log_run,
-    ninja_parser,
-    plural,
     PresubmitContext,
     PresubmitFailure,
     PresubmitResult,
     SubStep,
-    tools,
+)
+from pw_presubmit import (
+    bazel_parser,
+    format_code,
+    ninja_parser,
+)
+from pw_presubmit.tools import (
+    plural,
+    log_run,
+    format_command,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -145,13 +149,17 @@ def gn_args(**kwargs) -> str:
 def gn_gen(
     ctx: PresubmitContext,
     *args: str,
-    gn_check: bool = True,
+    gn_check: bool = True,  # pylint: disable=redefined-outer-name
     gn_fail_on_unused: bool = True,
     export_compile_commands: Union[bool, str] = True,
     preserve_args_gn: bool = False,
     **gn_arguments,
 ) -> None:
-    """Runs gn gen in the specified directory with optional GN args."""
+    """Runs gn gen in the specified directory with optional GN args.
+
+    Runs with --check=system if gn_check=True. Note that this does not cover
+    generated files. Run gn_check() after building to check generated files.
+    """
     all_gn_args = dict(gn_arguments)
     all_gn_args.update(ctx.override_gn_args)
     _LOG.debug('%r', all_gn_args)
@@ -174,6 +182,7 @@ def gn_gen(
         'gen',
         ctx.output_dir,
         '--color=always',
+        *(['--check=system'] if gn_check else []),
         *(['--fail-on-unused-args'] if gn_fail_on_unused else []),
         *([export_commands_arg] if export_commands_arg else []),
         *args,
@@ -181,15 +190,18 @@ def gn_gen(
         cwd=ctx.root,
     )
 
-    if gn_check:
-        call(
-            'gn',
-            'check',
-            ctx.output_dir,
-            '--check-generated',
-            '--check-system',
-            cwd=ctx.root,
-        )
+
+def gn_check(ctx: PresubmitContext) -> PresubmitResult:
+    """Runs gn check, including on generated and system files."""
+    call(
+        'gn',
+        'check',
+        ctx.output_dir,
+        '--check-generated',
+        '--check-system',
+        cwd=ctx.root,
+    )
+    return PresubmitResult.PASS
 
 
 def ninja(
@@ -296,7 +308,7 @@ def _get_paths_from_command(source_dir: Path, *args, **kwargs) -> Set[Path]:
         )
         _LOG.error(
             '[COMMAND] %s\n%s\n%s',
-            *tools.format_command(args, kwargs),
+            *format_command(args, kwargs),
             process.stderr.decode(),
         )
         raise PresubmitFailure
@@ -555,7 +567,10 @@ _CtxMgrOrLambda = Union[ContextManager, _CtxMgrLambda]
 
 
 class GnGenNinja(Check):
-    """Thin wrapper of Check for steps that just call gn/ninja."""
+    """Thin wrapper of Check for steps that just call gn/ninja.
+
+    Runs gn gen, ninja, then gn check.
+    """
 
     def __init__(
         self,
@@ -641,7 +656,7 @@ class GnGenNinja(Check):
             return result
 
         args = {k: value(v) for k, v in self.gn_args.items()}
-        gn_gen(ctx, **args)  # type: ignore
+        gn_gen(ctx, gn_check=False, **args)  # type: ignore
         return PresubmitResult.PASS
 
     def _ninja(
@@ -654,6 +669,7 @@ class GnGenNinja(Check):
                 else:
                     stack.enter_context(mgr(ctx))  # type: ignore
             ninja(ctx, *targets)
+
         return PresubmitResult.PASS
 
     def _substeps(self) -> Iterator[SubStep]:
@@ -675,3 +691,6 @@ class GnGenNinja(Check):
             assert targets_part not in targets_parts
             targets_parts.add(targets_part)
             yield SubStep(f'ninja {targets_part}', self._ninja, (targets,))
+
+        # Run gn check after building so it can check generated files.
+        yield SubStep('gn check', gn_check)

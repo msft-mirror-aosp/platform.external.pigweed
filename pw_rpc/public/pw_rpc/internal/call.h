@@ -112,8 +112,6 @@ class Call : public IntrusiveList<Call>::Item {
   Call& operator=(const Call&) = delete;
   Call& operator=(Call&&) = delete;
 
-  ~Call() PW_LOCKS_EXCLUDED(rpc_lock());
-
   // True if the Call is active and ready to send responses.
   [[nodiscard]] bool active() const PW_LOCKS_EXCLUDED(rpc_lock()) {
     RpcLockGuard lock;
@@ -183,16 +181,24 @@ class Call : public IntrusiveList<Call>::Item {
         pwpb::PacketType::SERVER_ERROR, {}, error);
   }
 
-  // Public function that ends the client stream for a client call.
-  Status CloseClientStream() PW_LOCKS_EXCLUDED(rpc_lock()) {
+  // Public function that indicates that the client requests completion of the
+  // RPC, but is still active and listening to responses. For client streaming
+  // and bi-directional streaming RPCs, this also closes the client stream. If
+  // PW_RPC_COMPLETION_REQUEST_CALLBACK is enabled and
+  // on_client_requested_completion callback is set using the
+  // set_on_completion_requested_if_enabled, then the callback will be invoked
+  // on the server side. The server may then take an appropriate action to
+  // cleanup and stop server streaming.
+  Status RequestCompletion() PW_LOCKS_EXCLUDED(rpc_lock()) {
     RpcLockGuard lock;
-    return CloseClientStreamLocked();
+    return RequestCompletionLocked();
   }
 
-  // Internal function that closes the client stream.
-  Status CloseClientStreamLocked() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
-    MarkClientStreamCompleted();
-    return SendPacket(pwpb::PacketType::CLIENT_STREAM_END, {}, {});
+  // Internal function that closes the client stream (if applicable) and sends
+  // CLIENT_REQUEST_COMPLETION packet to request call completion.
+  Status RequestCompletionLocked() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    MarkStreamCompleted();
+    return SendPacket(pwpb::PacketType::CLIENT_REQUEST_COMPLETION, {}, {});
   }
 
   // Sends a payload in either a server or client stream packet.
@@ -254,8 +260,10 @@ class Call : public IntrusiveList<Call>::Item {
     return HasServerStream(properties_.method_type());
   }
 
-  bool client_stream_open() const PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
-    return (state_ & kClientStreamActive) != 0;
+  // Returns true if the client has already requested completion.
+  bool client_requested_completion() const
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    return (state_ & kClientRequestedCompletion) != 0;
   }
 
   // Closes a call without doing anything else. Called from the Endpoint
@@ -289,6 +297,21 @@ class Call : public IntrusiveList<Call>::Item {
        uint32_t service_id,
        uint32_t method_id,
        CallProperties properties) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
+
+  // Calls must be closed and unregistered, and their callbacks must have
+  // completed before reaching the base Call destructor. If this does not
+  // happen, callback objects would be destroyed before their functions finished
+  // and the endpoint call list would be modified without synchronization via
+  // the `IntrusiveList<Call>::Item` superclass destructor.
+  //
+  // Derived class destructors must call DestroyServerCall() or
+  // DestroyClientCall() as appropriate.
+  ~Call() { PW_DASSERT(!active_locked() && !CallbacksAreRunning()); }
+
+  // Closes the call and waits for their callbacks to complete so destructors
+  // can run safely.
+  void DestroyServerCall() PW_LOCKS_EXCLUDED(rpc_lock());
+  void DestroyClientCall() PW_LOCKS_EXCLUDED(rpc_lock());
 
   void CallbackStarted() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     callbacks_executing_ += 1;
@@ -331,10 +354,15 @@ class Call : public IntrusiveList<Call>::Item {
     on_error_ = std::move(on_error);
   }
 
-  void MarkClientStreamCompleted() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
-    state_ &= ~kClientStreamActive;
+  void MarkStreamCompleted() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    state_ |= kClientRequestedCompletion;
   }
 
+  // Closes a client call. Sends a CLIENT_REQUEST_COMPLETION for client /
+  // bidirectional streaming RPCs if not sent yet.
+  void CloseClientCall() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
+
+  // Closes a server call.
   Status CloseAndSendResponseLocked(Status status)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     return CloseAndSendFinalPacketLocked(
@@ -439,7 +467,7 @@ class Call : public IntrusiveList<Call>::Item {
  private:
   enum State : uint8_t {
     kActive = 0b01,
-    kClientStreamActive = 0b10,
+    kClientRequestedCompletion = 0b10,
   };
 
   // Common constructor for server & client calls.
@@ -468,7 +496,7 @@ class Call : public IntrusiveList<Call>::Item {
   void MarkClosed() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     channel_id_ = Channel::kUnassignedChannelId;
     id_ = 0;
-    state_ = 0;
+    state_ = kClientRequestedCompletion;
   }
 
   // Calls the on_error callback without closing the RPC. This is used when the
@@ -497,6 +525,9 @@ class Call : public IntrusiveList<Call>::Item {
   bool CallbacksAreRunning() const PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     return callbacks_executing_ != 0u;
   }
+
+  // Waits for callbacks to complete so that a call object can be destroyed.
+  void WaitForCallbacksToComplete() PW_UNLOCK_FUNCTION(rpc_lock());
 
   Endpoint* endpoint_ PW_GUARDED_BY(rpc_lock());
   uint32_t channel_id_ PW_GUARDED_BY(rpc_lock());
