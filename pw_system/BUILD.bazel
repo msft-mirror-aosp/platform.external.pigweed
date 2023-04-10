@@ -62,6 +62,7 @@ pw_cc_library(
         "//pw_log:facade",
         "//pw_log:proto_utils",
         "//pw_log_string:handler_facade",
+        "//pw_log_tokenized:handler_facade",
         "//pw_log_tokenized:headers",
         "//pw_metric:global",
         "//pw_multisink",
@@ -148,7 +149,7 @@ pw_cc_library(
     deps = [
         ":log",
         ":rpc_server",
-        ":target_hooks_headers",
+        ":target_hooks",
         ":thread_snapshot_service",
         ":work_queue",
         "//pw_metric:global",
@@ -232,10 +233,7 @@ pw_cc_library(
     visibility = ["@pigweed_config//:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:freertos": [":freertos_target_hooks"],
-        "//conditions:default": [
-            ":stl_target_hooks",
-            "//targets/host_device_simulator:boot",
-        ],
+        "//conditions:default": [":stl_target_hooks"],
     }),
 )
 
@@ -259,6 +257,7 @@ pw_cc_library(
         "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
+        ":target_hooks_headers",
         "//pw_thread:thread",
         "//pw_thread_freertos:thread",
     ],
@@ -274,5 +273,8 @@ pw_cc_binary(
         "//pw_stream",
         "//pw_stream:sys_io_stream",
         "//pw_unit_test:rpc_service",
-    ],
+    ] + select({
+        "//pw_build/constraints/rtos:freertos": [],
+        "//conditions:default": ["//targets/host_device_simulator:boot"],
+    }),
 )

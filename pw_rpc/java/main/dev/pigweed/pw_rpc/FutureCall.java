@@ -28,15 +28,20 @@ import javax.annotation.Nullable;
 
 /**
  * Call implementation that represents the call as a ListenableFuture.
+ *
+ * This class suppresses ShouldNotSubclass warnings from ListenableFuture. It implements
+ * ListenableFuture only because it cannot extend AbstractFuture since multiple inheritance is not
+ * supported. No Future funtionality is duplicated; FutureCall uses SettableFuture internally.
  */
+@SuppressWarnings("ShouldNotSubclass")
 abstract class FutureCall<RequestT extends MessageLite, ResponseT extends MessageLite, ResultT>
     extends AbstractCall<RequestT, ResponseT> implements ListenableFuture<ResultT> {
   private static final Logger logger = Logger.forClass(FutureCall.class);
 
   private final SettableFuture<ResultT> future = SettableFuture.create();
 
-  private FutureCall(Endpoint rpcs, PendingRpc rpc) {
-    super(rpcs, rpc);
+  private FutureCall(Endpoint endpoint, PendingRpc rpc) {
+    super(endpoint, rpc);
   }
 
   // Implement the ListenableFuture interface by forwarding the internal SettableFuture.
@@ -104,8 +109,8 @@ abstract class FutureCall<RequestT extends MessageLite, ResponseT extends Messag
       implements ClientStreamingFuture<RequestT, ResponseT> {
     @Nullable ResponseT response = null;
 
-    UnaryResponseFuture(Endpoint rpcs, PendingRpc rpc) {
-      super(rpcs, rpc);
+    UnaryResponseFuture(Endpoint endpoint, PendingRpc rpc) {
+      super(endpoint, rpc);
     }
 
     @Override
@@ -140,8 +145,8 @@ abstract class FutureCall<RequestT extends MessageLite, ResponseT extends Messag
       return (rpcManager, pendingRpc) -> new StreamResponseFuture<>(rpcManager, pendingRpc, onNext);
     }
 
-    private StreamResponseFuture(Endpoint rpcs, PendingRpc rpc, Consumer<ResponseT> onNext) {
-      super(rpcs, rpc);
+    private StreamResponseFuture(Endpoint endpoint, PendingRpc rpc, Consumer<ResponseT> onNext) {
+      super(endpoint, rpc);
       this.onNext = onNext;
     }
 

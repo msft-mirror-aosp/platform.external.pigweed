@@ -81,6 +81,7 @@ pw_cc_library(
         "public/pw_rpc/internal/channel_list.h",
         "public/pw_rpc/internal/client_call.h",
         "public/pw_rpc/internal/config.h",
+        "public/pw_rpc/internal/encoding_buffer.h",
         "public/pw_rpc/internal/endpoint.h",
         "public/pw_rpc/internal/hash.h",
         "public/pw_rpc/internal/lock.h",
@@ -117,11 +118,13 @@ pw_cc_library(
         "//pw_containers:intrusive_list",
         "//pw_function",
         "//pw_log",
+        "//pw_preprocessor",
         "//pw_result",
         "//pw_span",
         "//pw_status",
         "//pw_sync:lock_annotations",
         "//pw_sync:mutex",
+        "//pw_thread:sleep",
         "//pw_toolchain:no_destructor",
     ],
 )
@@ -270,6 +273,7 @@ pw_cc_test(
         "//pw_sync:binary_semaphore",
         "//pw_thread:sleep",
         "//pw_thread:test_threads_header",
+        "//pw_thread:yield",
         "//pw_thread_stl:test_threads",
     ],
 )
@@ -386,7 +390,7 @@ proto_library(
         "pw_rpc_test_protos/no_package.proto",
         "pw_rpc_test_protos/test.proto",
     ],
-    strip_import_prefix = "//pw_rpc",
+    strip_import_prefix = "/pw_rpc",
 )
 
 pw_proto_library(

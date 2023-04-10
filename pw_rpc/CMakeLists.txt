@@ -122,6 +122,7 @@ pw_add_library(pw_rpc.common STATIC
     public/pw_rpc/internal/call_context.h
     public/pw_rpc/internal/channel.h
     public/pw_rpc/internal/channel_list.h
+    public/pw_rpc/internal/encoding_buffer.h
     public/pw_rpc/internal/endpoint.h
     public/pw_rpc/internal/lock.h
     public/pw_rpc/internal/method_info.h
@@ -154,11 +155,21 @@ pw_add_library(pw_rpc.common STATIC
     packet_meta.cc
   PRIVATE_DEPS
     pw_log
+    pw_preprocessor
     pw_rpc.log_config
 )
-if (NOT "${pw_sync.mutex_BACKEND}" STREQUAL "")
+if(NOT "${pw_sync.mutex_BACKEND}" STREQUAL "")
   pw_target_link_targets(pw_rpc.common PUBLIC pw_sync.mutex)
 endif()
+
+if(NOT "${pw_thread.sleep_BACKEND}" STREQUAL "")
+  pw_target_link_targets(pw_rpc.common PUBLIC pw_thread.sleep)
+endif()
+
+if(NOT "${pw_thread.yield_BACKEND}" STREQUAL "")
+  pw_target_link_targets(pw_rpc.common PUBLIC pw_thread.yield)
+endif()
+
 if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_COMMON)
   zephyr_link_libraries(pw_rpc.common)
 endif()

@@ -46,7 +46,10 @@ class TestProjectBuilderPrefs(unittest.TestCase):
     def test_load_no_existing_files(self) -> None:
         # Create a prefs instance with no loaded config.
         prefs = ProjectBuilderPrefs(
-            load_argparse_arguments=add_project_builder_arguments
+            load_argparse_arguments=add_project_builder_arguments,
+            project_file=False,
+            project_user_file=False,
+            user_file=False,
         )
         # Construct an expected result config.
         expected_config: Dict[Any, Any] = {}
@@ -68,7 +71,10 @@ class TestProjectBuilderPrefs(unittest.TestCase):
 
         # Create a prefs instance with the test config file.
         prefs = ProjectBuilderPrefs(
-            load_argparse_arguments=add_project_builder_arguments
+            load_argparse_arguments=add_project_builder_arguments,
+            project_file=False,
+            project_user_file=False,
+            user_file=False,
         )
 
         # Construct an expected result config.
@@ -85,7 +91,10 @@ class TestProjectBuilderPrefs(unittest.TestCase):
         changed_args = {
             'jobs': 8,
             'colors': False,
-            'build_system_commands': [['default', 'bazel']],
+            'build_system_commands': [
+                ['out', 'bazel build'],
+                ['out', 'bazel test'],
+            ],
         }
         args_dict.update(changed_args)
 
@@ -94,7 +103,13 @@ class TestProjectBuilderPrefs(unittest.TestCase):
         # apply_command_line_args modifies build_system_commands to match the
         # prefs dict format.
         changed_args['build_system_commands'] = {
-            'default': {'command': 'bazel'}
+            'default': {'commands': [{'command': 'ninja', 'extra_args': []}]},
+            'out': {
+                'commands': [
+                    {'command': 'bazel', 'extra_args': ['build']},
+                    {'command': 'bazel', 'extra_args': ['test']},
+                ],
+            },
         }
 
         # Check that only args changed from their defaults are applied.

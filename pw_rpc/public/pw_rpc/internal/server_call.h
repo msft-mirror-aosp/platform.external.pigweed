@@ -28,13 +28,17 @@ class ServerCall : public Call {
 
 #if PW_RPC_CLIENT_STREAM_END_CALLBACK
     auto on_client_stream_end_local = std::move(on_client_stream_end_);
+    CallbackStarted();
     rpc_lock().unlock();
+
     if (on_client_stream_end_local) {
       on_client_stream_end_local();
     }
-#else
-    rpc_lock().unlock();
+
+    rpc_lock().lock();
+    CallbackFinished();
 #endif  // PW_RPC_CLIENT_STREAM_END_CALLBACK
+    rpc_lock().unlock();
   }
 
  protected:
@@ -49,7 +53,7 @@ class ServerCall : public Call {
 
   // Version of operator= used by the raw call classes.
   ServerCall& operator=(ServerCall&& other) PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     MoveServerCallFrom(other);
     return *this;
   }
@@ -57,9 +61,9 @@ class ServerCall : public Call {
   void MoveServerCallFrom(ServerCall& other)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
-  ServerCall(const LockedCallContext& context, MethodType type)
+  ServerCall(const LockedCallContext& context, CallProperties properties)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
-      : Call(context, type) {}
+      : Call(context, properties) {}
 
   // set_on_client_stream_end is templated so that it can be conditionally
   // disabled with a helpful static_assert message.
@@ -73,7 +77,7 @@ class ServerCall : public Call {
         "set_on_client_stream_end cannot be called. To enable the client end "
         "callback, set PW_RPC_CLIENT_STREAM_END_CALLBACK to 1.");
 #if PW_RPC_CLIENT_STREAM_END_CALLBACK
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     on_client_stream_end_ = std::move(on_client_stream_end);
 #endif  // PW_RPC_CLIENT_STREAM_END_CALLBACK
   }

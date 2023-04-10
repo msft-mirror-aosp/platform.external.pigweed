@@ -195,7 +195,7 @@ class TestTraceGenerateJson(unittest.TestCase):
             timestamp_us=10,
             has_data=True,
             data_fmt="@pw_py_struct_fmt:Hl",
-            data=struct.pack("Hl", 5, 2),
+            data=struct.pack("<Hl", 5, 2),
         )
         json_lines = trace.generate_trace_json([event])
         self.assertEqual(1, len(json_lines))
@@ -208,6 +208,190 @@ class TestTraceGenerateJson(unittest.TestCase):
                 "ts": 10,
                 "s": "p",
                 "args": {"data_0": 5, "data_1": 2},
+            },
+        )
+
+    def test_generate_error_json_data_struct_invalid_small_buffer(self):
+        event = trace.TraceEvent(
+            event_type=trace.TraceType.INSTANTANEOUS,
+            module="module",
+            label="counter",
+            timestamp_us=10,
+            has_data=True,
+            data_fmt="@pw_py_struct_fmt:Hl",
+            data=struct.pack("<H", 5),
+        )
+        json_lines = trace.generate_trace_json([event])
+        self.assertEqual(1, len(json_lines))
+        self.assertEqual(
+            json.loads(json_lines[0]),
+            {
+                "ph": "I",
+                "pid": "module",
+                "name": "counter",
+                "ts": 10,
+                "s": "p",
+                "args": {
+                    "error": f"Mismatched struct/data format {event.data_fmt} "
+                    f"expected data len {struct.calcsize('<Hl')} data "
+                    f"{event.data.hex()} data len {len(event.data)}"
+                },
+            },
+        )
+
+    def test_generate_error_json_data_struct_invalid_large_buffer(self):
+        event = trace.TraceEvent(
+            event_type=trace.TraceType.INSTANTANEOUS,
+            module="module",
+            label="counter",
+            timestamp_us=10,
+            has_data=True,
+            data_fmt="@pw_py_struct_fmt:Hl",
+            data=struct.pack("<Hll", 5, 2, 5),
+        )
+        json_lines = trace.generate_trace_json([event])
+        self.assertEqual(1, len(json_lines))
+        self.assertEqual(
+            json.loads(json_lines[0]),
+            {
+                "ph": "I",
+                "pid": "module",
+                "name": "counter",
+                "ts": 10,
+                "s": "p",
+                "args": {
+                    "error": f"Mismatched struct/data format {event.data_fmt} "
+                    f"expected data len {struct.calcsize('<Hl')} data "
+                    f"{event.data.hex()} data len {len(event.data)}"
+                },
+            },
+        )
+
+    def test_generate_json_data_map_fmt_single(self):
+        event = trace.TraceEvent(
+            event_type=trace.TraceType.INSTANTANEOUS,
+            module="module",
+            label="label",
+            timestamp_us=10,
+            has_data=True,
+            data_fmt="@pw_py_map_fmt:{Field:l}",
+            data=struct.pack("<l", 20),
+        )
+        json_lines = trace.generate_trace_json([event])
+        self.assertEqual(1, len(json_lines))
+        self.assertEqual(
+            json.loads(json_lines[0]),
+            {
+                "ph": "I",
+                "pid": "module",
+                "name": "label",
+                "ts": 10,
+                "s": "p",
+                "args": {"Field": 20},
+            },
+        )
+
+    def test_generate_json_data_map_fmt_multi(self):
+        event = trace.TraceEvent(
+            event_type=trace.TraceType.INSTANTANEOUS,
+            module="module",
+            label="label",
+            timestamp_us=10,
+            has_data=True,
+            data_fmt="@pw_py_map_fmt:{Field: l, Field2: l }",
+            data=struct.pack("<ll", 20, 40),
+        )
+        json_lines = trace.generate_trace_json([event])
+        self.assertEqual(1, len(json_lines))
+        self.assertEqual(
+            json.loads(json_lines[0]),
+            {
+                "ph": "I",
+                "pid": "module",
+                "name": "label",
+                "ts": 10,
+                "s": "p",
+                "args": {"Field": 20, "Field2": 40},
+            },
+        )
+
+    def test_generate_error_json_data_map_bad_fmt(self):
+        event = trace.TraceEvent(
+            event_type=trace.TraceType.INSTANTANEOUS,
+            module="module",
+            label="label",
+            timestamp_us=10,
+            has_data=True,
+            data_fmt="@pw_py_map_fmt:{Field;l,Field2;l}",
+            data=struct.pack("<ll", 20, 40),
+        )
+        json_lines = trace.generate_trace_json([event])
+        self.assertEqual(1, len(json_lines))
+        self.assertEqual(
+            json.loads(json_lines[0]),
+            {
+                "ph": "I",
+                "pid": "module",
+                "name": "label",
+                "ts": 10,
+                "s": "p",
+                "args": {"error": f"Invalid map format {event.data_fmt}"},
+            },
+        )
+
+    def test_generate_error_json_data_map_invalid_small_buffer(self):
+        event = trace.TraceEvent(
+            event_type=trace.TraceType.INSTANTANEOUS,
+            module="module",
+            label="label",
+            timestamp_us=10,
+            has_data=True,
+            data_fmt="@pw_py_map_fmt:{Field:l,Field2:l}",
+            data=struct.pack("<l", 20),
+        )
+        json_lines = trace.generate_trace_json([event])
+        self.assertEqual(1, len(json_lines))
+        self.assertEqual(
+            json.loads(json_lines[0]),
+            {
+                "ph": "I",
+                "pid": "module",
+                "name": "label",
+                "ts": 10,
+                "s": "p",
+                "args": {
+                    "error": f"Mismatched map/data format {event.data_fmt} "
+                    f"expected data len {struct.calcsize('<ll')} data "
+                    f"{event.data.hex()} data len {len(event.data)}"
+                },
+            },
+        )
+
+    def test_generate_error_json_data_map_invalid_large_buffer(self):
+        event = trace.TraceEvent(
+            event_type=trace.TraceType.INSTANTANEOUS,
+            module="module",
+            label="label",
+            timestamp_us=10,
+            has_data=True,
+            data_fmt="@pw_py_map_fmt:{Field:H,Field2:H}",
+            data=struct.pack("<ll", 20, 40),
+        )
+        json_lines = trace.generate_trace_json([event])
+        self.assertEqual(1, len(json_lines))
+        self.assertEqual(
+            json.loads(json_lines[0]),
+            {
+                "ph": "I",
+                "pid": "module",
+                "name": "label",
+                "ts": 10,
+                "s": "p",
+                "args": {
+                    "error": f"Mismatched map/data format {event.data_fmt} "
+                    f"expected data len {struct.calcsize('<HH')} data "
+                    f"{event.data.hex()} data len {len(event.data)}"
+                },
             },
         )
 

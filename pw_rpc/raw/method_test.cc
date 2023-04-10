@@ -142,10 +142,10 @@ class FakeService : public FakeServiceBase<FakeService> {
           static_cast<TestRequest::Fields>(decoder.FieldNumber());
 
       switch (field) {
-        case TestRequest::Fields::INTEGER:
+        case TestRequest::Fields::kInteger:
           ASSERT_EQ(OkStatus(), decoder.ReadInt64(&last_request.integer));
           break;
-        case TestRequest::Fields::STATUS_CODE:
+        case TestRequest::Fields::kStatusCode:
           ASSERT_EQ(OkStatus(), decoder.ReadUint32(&last_request.status_code));
           break;
       }
@@ -310,6 +310,12 @@ TEST(RawServerWriter, Write_Closed_ReturnsFailedPrecondition) {
 }
 
 TEST(RawServerWriter, Write_PayloadTooLargeForEncodingBuffer_ReturnsInternal) {
+  // The payload is never too large for the encoding buffer when dynamic
+  // allocation is enabled.
+#if PW_RPC_DYNAMIC_ALLOCATION
+  GTEST_SKIP();
+#endif  // !PW_RPC_DYNAMIC_ALLOCATION
+
   ServerContextForTest<FakeService> context(kServerStream);
   rpc_lock().lock();
   kServerStream.Invoke(context.get(), context.request({}));

@@ -47,6 +47,7 @@ from pw_presubmit import (
     filter_paths,
     inclusive_language,
     keep_sorted,
+    module_owners,
     npm_presubmit,
     owners_checks,
     plural,
@@ -56,6 +57,7 @@ from pw_presubmit import (
     Programs,
     python_checks,
     shell_checks,
+    source_in_build,
     todo_check,
 )
 from pw_presubmit.install_hook import install_git_hook
@@ -66,7 +68,15 @@ pw_package.pigweed_packages.initialize()
 
 # Trigger builds if files with these extensions change.
 _BUILD_FILE_FILTER = presubmit.FileFilter(
-    suffix=(*format_code.C_FORMAT.extensions, '.py', '.rst', '.gn', '.gni')
+    suffix=(
+        *format_code.C_FORMAT.extensions,
+        '.cfg',
+        '.py',
+        '.rst',
+        '.gn',
+        '.gni',
+        '.emb',
+    )
 )
 
 _OPTIMIZATION_LEVELS = 'debug', 'size_optimized', 'speed_optimized'
@@ -135,6 +145,7 @@ def gn_full_qemu_check(ctx: PresubmitContext):
 
 def _gn_combined_build_check_targets() -> Sequence[str]:
     build_targets = [
+        'check_modules',
         *_at_all_optimization_levels('stm32f429i'),
         *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
         'python.tests',
@@ -185,16 +196,34 @@ def gn_arm_build(ctx: PresubmitContext):
     build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
-def stm32f429i(ctx: PresubmitContext):
-    build.gn_gen(
-        ctx,
-        pw_use_test_server=True,
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    )
-    with build.test_server('stm32f429i_disc1_test_server', ctx.output_dir):
-        build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
+stm32f429i = build.GnGenNinja(
+    name='stm32f429i',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args={
+        'pw_use_test_server': True,
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_contexts=(
+        lambda ctx: build.test_server(
+            'stm32f429i_disc1_test_server',
+            ctx.output_dir,
+        ),
+    ),
+    ninja_targets=_at_all_optimization_levels('stm32f429i'),
+)
 
+
+gn_emboss_build = build.GnGenNinja(
+    name='gn_emboss_build',
+    packages=('emboss',),
+    gn_args=dict(
+        dir_pw_third_party_emboss=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'emboss'
+        ),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    ),
+    ninja_targets=(*_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),),
+)
 
 gn_nanopb_build = build.GnGenNinja(
     name='gn_nanopb_build',
@@ -336,26 +365,26 @@ gn_software_update_build = build.GnGenNinja(
     ninja_targets=_at_all_optimization_levels('host_clang'),
 )
 
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_pw_system_demo_build(ctx: PresubmitContext):
-    build.install_package(ctx, 'freertos')
-    build.install_package(ctx, 'nanopb')
-    build.install_package(ctx, 'stm32cube_f4')
-    build.install_package(ctx, 'pico_sdk')
-    build.gn_gen(
-        ctx,
-        dir_pw_third_party_freertos='"{}"'.format(
+gn_pw_system_demo_build = build.GnGenNinja(
+    name='gn_pw_system_demo_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('freertos', 'nanopb', 'stm32cube_f4', 'pico_sdk'),
+    gn_args={
+        'dir_pw_third_party_freertos': lambda ctx: '"{}"'.format(
             ctx.package_root / 'freertos'
         ),
-        dir_pw_third_party_nanopb='"{}"'.format(ctx.package_root / 'nanopb'),
-        dir_pw_third_party_stm32cube_f4='"{}"'.format(
+        'dir_pw_third_party_nanopb': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'nanopb'
+        ),
+        'dir_pw_third_party_stm32cube_f4': lambda ctx: '"{}"'.format(
             ctx.package_root / 'stm32cube_f4'
         ),
-        PICO_SRC_DIR='"{}"'.format(str(ctx.package_root / 'pico_sdk')),
-    )
-    build.ninja(ctx, 'pw_system_demo')
-
+        'PICO_SRC_DIR': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'pico_sdk')
+        ),
+    },
+    ninja_targets=('pw_system_demo',),
+)
 
 gn_docs_build = build.GnGenNinja(name='gn_docs_build', ninja_targets=('docs',))
 
@@ -403,7 +432,7 @@ def cmake_gcc(ctx: PresubmitContext):
     endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl', 'BUILD')
 )
 def bazel_test(ctx: PresubmitContext) -> None:
-    """Runs bazel test on each bazel compatible module."""
+    """Runs bazel test on the entire repo."""
     build.bazel(
         ctx,
         'test',
@@ -414,15 +443,74 @@ def bazel_test(ctx: PresubmitContext) -> None:
 
 
 @filter_paths(
-    endswith=(*format_code.C_FORMAT.extensions, '.bazel', '.bzl', 'BUILD')
+    endswith=(
+        *format_code.C_FORMAT.extensions,
+        '.bazel',
+        '.bzl',
+        '.py',
+        '.rs',
+        'BUILD',
+    )
 )
 def bazel_build(ctx: PresubmitContext) -> None:
-    """Runs Bazel build on each Bazel compatible module."""
+    """Runs Bazel build for each supported platform."""
+    # Build everything with the default flags.
     build.bazel(
         ctx,
         'build',
         '--',
         '//...',
+    )
+
+    # Mapping from Bazel platforms to targets which should be built for those
+    # platforms.
+    targets_for_platform = {
+        "//pw_build/platforms:lm3s6965evb": [
+            "//pw_rust/examples/embedded_hello:hello",
+        ],
+        "//pw_build/platforms:microbit": [
+            "//pw_rust/examples/embedded_hello:hello",
+        ],
+    }
+
+    for cxxversion in ('c++17', 'c++20'):
+        # Explicitly build for each supported C++ version.
+        build.bazel(
+            ctx,
+            'build',
+            f"--cxxopt=-std={cxxversion}",
+            '--',
+            '//...',
+        )
+
+        for platform, targets in targets_for_platform.items():
+            build.bazel(
+                ctx,
+                'build',
+                f'--platforms={platform}',
+                f"--cxxopt='-std={cxxversion}'",
+                *targets,
+            )
+
+    # Provide some coverage of the FreeRTOS build.
+    #
+    # This is just a minimal presubmit intended to ensure we don't break what
+    # support we have.
+    #
+    # TODO(b/271465588): Eventually just build the entire repo for this
+    # platform.
+    build.bazel(
+        ctx,
+        'build',
+        # Designated initializers produce a warning-treated-as-error when
+        # compiled with -std=c++17.
+        #
+        # TODO(b/271299438): Remove this.
+        '--copt=-Wno-pedantic',
+        '--platforms=//pw_build/platforms:testonly_freertos',
+        '//pw_sync/...',
+        '//pw_thread/...',
+        '//pw_thread_freertos/...',
     )
 
 
@@ -506,6 +594,7 @@ def edit_compile_commands(
 _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Configuration
     # keep-sorted: start
+    r'\bDoxyfile$',
     r'\bPW_PLUGINS$',
     r'\bconstraint.list$',
     r'^(?:.+/)?\..+$',
@@ -634,53 +723,20 @@ def copyright_notice(ctx: PresubmitContext):
         raise PresubmitFailure
 
 
-_BAZEL_SOURCES_IN_BUILD = tuple(format_code.C_FORMAT.extensions)
-_GN_SOURCES_IN_BUILD = (
-    'setup.cfg',
-    '.toml',
-    '.rst',
-    '.py',
-    *_BAZEL_SOURCES_IN_BUILD,
-)
-
-SOURCE_FILES_FILTER = presubmit.FileFilter(
-    endswith=_GN_SOURCES_IN_BUILD,
-    suffix=('.bazel', '.bzl', '.gn', '.gni'),
-    exclude=(r'zephyr.*/', r'android.*/', r'^pyproject.toml'),
-)
-
-
-@SOURCE_FILES_FILTER.apply_to_check()
-def source_is_in_build_files(ctx: PresubmitContext):
-    """Checks that source files are in the GN and Bazel builds."""
-    missing = build.check_builds_for_files(
-        _BAZEL_SOURCES_IN_BUILD,
-        _GN_SOURCES_IN_BUILD,
-        ctx.paths,
-        bazel_dirs=[ctx.root],
-        gn_build_files=git_repo.list_files(
-            pathspecs=['BUILD.gn', '*BUILD.gn'], repo_path=ctx.root
-        ),
-    )
-
-    if missing:
-        _LOG.warning('All source files must appear in BUILD and BUILD.gn files')
-        raise PresubmitFailure
+@filter_paths(endswith=format_code.CPP_SOURCE_EXTS)
+def source_is_in_cmake_build_warn_only(ctx: PresubmitContext):
+    """Checks that source files are in the CMake build."""
 
     _run_cmake(ctx)
-    cmake_missing = build.check_compile_commands_for_files(
+    missing = build.check_compile_commands_for_files(
         ctx.output_dir / 'compile_commands.json',
-        (f for f in ctx.paths if f.suffix in ('.c', '.cc')),
+        (f for f in ctx.paths if f.suffix in format_code.CPP_SOURCE_EXTS),
     )
-    if cmake_missing:
-        _LOG.warning('The CMake build is missing %d files', len(cmake_missing))
+    if missing:
         _LOG.warning(
             'Files missing from CMake:\n%s',
-            '\n'.join(str(f) for f in cmake_missing),
+            '\n'.join(str(f) for f in missing),
         )
-        # TODO(hepler): Many files are missing from the CMake build. Make this
-        #     check an error when the missing files are fixed.
-        # raise PresubmitFailure
 
 
 def build_env_setup(ctx: PresubmitContext):
@@ -762,7 +818,9 @@ def commit_message_format(_: PresubmitContext):
         errors += 1
 
     # Check that the first line matches the expected pattern.
-    match = re.match(r'^[\w*/]+(?:{[\w* ,]+})?[\w*/]*: (?P<desc>.+)$', lines[0])
+    match = re.match(
+        r'^(?:[\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
+    )
     if not match:
         _LOG.warning('The first line does not match the expected format')
         _LOG.warning(
@@ -848,7 +906,6 @@ _EXCLUDE_FROM_TODO_CHECK = (
     r'\bpw_doctor/py/pw_doctor/doctor.py',
     r'\bpw_env_setup/util.sh',
     r'\bpw_fuzzer/fuzzer.gni',
-    r'\bpw_fuzzer/oss_fuzz.gni',
     r'\bpw_i2c/BUILD.gn',
     r'\bpw_i2c/public/pw_i2c/register_device.h',
     r'\bpw_kvs/flash_memory.cc',
@@ -877,6 +934,18 @@ def owners_lint_checks(ctx: PresubmitContext):
     owners_checks.presubmit_check(ctx.paths)
 
 
+SOURCE_FILES_FILTER = presubmit.FileFilter(
+    endswith=_BUILD_FILE_FILTER.endswith,
+    suffix=('.bazel', '.bzl', '.gn', '.gni', *_BUILD_FILE_FILTER.suffix),
+    exclude=(
+        r'zephyr.*',
+        r'android.*',
+        r'\.black.toml',
+        r'pyproject.toml',
+    ),
+)
+
+
 #
 # Presubmit check programs
 #
@@ -891,8 +960,12 @@ OTHER_CHECKS = (
     gitmodules.create(),
     gn_clang_build,
     gn_combined_build_check,
+    module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
+    # TODO(hepler): Many files are missing from the CMake build. Add this check
+    # to lintformat when the missing files are fixed.
+    source_in_build.cmake(SOURCE_FILES_FILTER, _run_cmake),
     static_analysis,
     stm32f429i,
     todo_check.create(todo_check.BUGS_OR_USERNAMES),
@@ -903,6 +976,7 @@ OTHER_CHECKS = (
 # program block CQ on Linux.
 MISC = (
     # keep-sorted: start
+    gn_emboss_build,
     gn_nanopb_build,
     gn_pico_build,
     gn_pw_system_demo_build,
@@ -927,9 +1001,7 @@ PATH_EXCLUSIONS = (re.compile(r'\bthird_party/fuchsia/repo/'),)
 _LINTFORMAT = (
     commit_message_format,
     copyright_notice,
-    format_code.presubmit_checks(
-        code_formats=format_code.CODE_FORMATS_WITH_BLACK
-    ),
+    format_code.presubmit_checks(),
     inclusive_language.presubmit_check.with_filter(
         exclude=(
             r'\byarn.lock$',
@@ -939,7 +1011,8 @@ _LINTFORMAT = (
     cpp_checks.pragma_once,
     build.bazel_lint,
     owners_lint_checks,
-    source_is_in_build_files,
+    source_in_build.gn(SOURCE_FILES_FILTER),
+    source_is_in_cmake_build_warn_only,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
     keep_sorted.presubmit_check,
     todo_check_with_exceptions,
@@ -947,6 +1020,11 @@ _LINTFORMAT = (
 
 LINTFORMAT = (
     _LINTFORMAT,
+    # This check is excluded from _LINTFORMAT because it's not quick: it issues
+    # a bazel query that pulls in all of Pigweed's external dependencies
+    # (https://stackoverflow.com/q/71024130/1224002). These are cached, but
+    # after a roll it can be quite slow.
+    source_in_build.bazel(SOURCE_FILES_FILTER),
     pw_presubmit.python_checks.check_python_versions,
     pw_presubmit.python_checks.gn_python_lint,
 )
@@ -966,7 +1044,6 @@ FULL = (
     gn_host_tools,
     bazel_test if sys.platform == 'linux' else (),
     bazel_build if sys.platform == 'linux' else (),
-    source_is_in_build_files,
     python_checks.gn_python_check,
     python_checks.gn_python_test_coverage,
     build_env_setup,

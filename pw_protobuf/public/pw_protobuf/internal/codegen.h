@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -16,9 +16,15 @@
 #include <cstdint>
 
 #include "pw_function/function.h"
+#include "pw_preprocessor/compiler.h"
 #include "pw_protobuf/wire_format.h"
 #include "pw_span/span.h"
 #include "pw_status/status.h"
+
+// TODO(b/259746255): Remove this manual application of -Wconversion when all of
+//     Pigweed builds with it.
+PW_MODIFY_DIAGNOSTICS_PUSH();
+PW_MODIFY_DIAGNOSTIC(error, "-Wconversion");
 
 namespace pw::protobuf {
 namespace internal {
@@ -70,13 +76,15 @@ class MessageField {
                          size_t field_size,
                          const span<const MessageField>* nested_message_fields)
       : field_number_(field_number),
-        field_info_(
-            static_cast<unsigned int>(wire_type) << kWireTypeShift |
-            elem_size << kElemSizeShift |
-            static_cast<unsigned int>(varint_type) << kVarintTypeShift |
-            is_string << kIsStringShift | is_fixed_size << kIsFixedSizeShift |
-            is_repeated << kIsRepeatedShift | is_optional << kIsOptionalShift |
-            use_callback << kUseCallbackShift | field_size << kFieldSizeShift),
+        field_info_(static_cast<uint32_t>(wire_type) << kWireTypeShift |
+                    static_cast<uint32_t>(elem_size) << kElemSizeShift |
+                    static_cast<uint32_t>(varint_type) << kVarintTypeShift |
+                    static_cast<uint32_t>(is_string) << kIsStringShift |
+                    static_cast<uint32_t>(is_fixed_size) << kIsFixedSizeShift |
+                    static_cast<uint32_t>(is_repeated) << kIsRepeatedShift |
+                    static_cast<uint32_t>(is_optional) << kIsOptionalShift |
+                    static_cast<uint32_t>(use_callback) << kUseCallbackShift |
+                    static_cast<uint32_t>(field_size) << kFieldSizeShift),
         field_offset_(field_offset),
         nested_message_fields_(nested_message_fields) {}
 
@@ -163,6 +171,9 @@ class MessageField {
 static_assert(sizeof(MessageField) <= sizeof(size_t) * 4,
               "MessageField should be four words or less");
 
+template <typename...>
+constexpr std::false_type kInvalidMessageStruct{};
+
 }  // namespace internal
 
 // Callback for a structure member that cannot be represented by a data type.
@@ -222,4 +233,13 @@ union Callback {
   Function<Status(StreamDecoder& decoder)> decode_;
 };
 
+template <typename T>
+constexpr bool IsTriviallyComparable() {
+  static_assert(internal::kInvalidMessageStruct<T>,
+                "Not a generated message struct");
+  return false;
+}
+
 }  // namespace pw::protobuf
+
+PW_MODIFY_DIAGNOSTICS_POP();

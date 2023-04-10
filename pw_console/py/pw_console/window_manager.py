@@ -717,7 +717,7 @@ class WindowManager:
 
     def toggle_pane(self, pane):
         """Toggle a pane on or off."""
-        window_list, _pane_index = self._find_window_list_and_pane_index(pane)
+        window_list, _pane_index = self.find_window_list_and_pane_index(pane)
 
         # Don't hide the window if tabbed mode is enabled. Switching to a
         # separate tab is preffered.
@@ -764,7 +764,7 @@ class WindowManager:
         )
 
     def start_resize_pane(self, pane):
-        window_list, pane_index = self._find_window_list_and_pane_index(pane)
+        window_list, pane_index = self.find_window_list_and_pane_index(pane)
         window_list.start_resize(pane, pane_index)
 
     def mouse_resize(self, xpos, ypos):
@@ -880,7 +880,7 @@ class WindowManager:
         self.resize_current_row = 0
         self.resize_current_column = 0
 
-    def _find_window_list_and_pane_index(self, pane: Any):
+    def find_window_list_and_pane_index(self, pane: Any):
         pane_index = None
         parent_window_list = None
         for window_list in self.window_lists:
@@ -891,7 +891,7 @@ class WindowManager:
         return parent_window_list, pane_index
 
     def remove_pane(self, existing_pane: Any):
-        window_list, _pane_index = self._find_window_list_and_pane_index(
+        window_list, _pane_index = self.find_window_list_and_pane_index(
             existing_pane
         )
         if window_list:
@@ -953,7 +953,6 @@ class WindowManager:
         for logger_name, logger_options in window_options.get(
             'loggers', {}
         ).items():
-
             log_level_name = logger_options.get('level', None)
             new_pane.add_log_handler(logger_name, level_name=log_level_name)
         return new_pane

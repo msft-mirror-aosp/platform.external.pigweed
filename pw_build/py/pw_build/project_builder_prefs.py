@@ -15,19 +15,29 @@
 
 import argparse
 import copy
+import shlex
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Tuple, Union
 
-from pw_cli.toml_config_loader_mixin import TomlConfigLoaderMixin
+from pw_cli.toml_config_loader_mixin import YamlConfigLoaderMixin
 
 _DEFAULT_CONFIG: Dict[Any, Any] = {
     # Config settings not available as a command line options go here.
     'build_system_commands': {
         'default': {
-            'command': 'ninja',
-            'extra_args': [],
+            'commands': [
+                {
+                    'command': 'ninja',
+                    'extra_args': [],
+                },
+            ],
         },
     },
 }
+
+_DEFAULT_PROJECT_FILE = Path('$PW_PROJECT_ROOT/.pw_build.yaml')
+_DEFAULT_PROJECT_USER_FILE = Path('$PW_PROJECT_ROOT/.pw_build.user.yaml')
+_DEFAULT_USER_FILE = Path('$HOME/.pw_build.yaml')
 
 
 def load_defaults_from_argparse(
@@ -46,7 +56,7 @@ def load_defaults_from_argparse(
     return defaults_flags
 
 
-class ProjectBuilderPrefs(TomlConfigLoaderMixin):
+class ProjectBuilderPrefs(YamlConfigLoaderMixin):
     """Pigweed Watch preferences storage class."""
 
     def __init__(
@@ -54,17 +64,19 @@ class ProjectBuilderPrefs(TomlConfigLoaderMixin):
         load_argparse_arguments: Callable[
             [argparse.ArgumentParser], argparse.ArgumentParser
         ],
+        project_file: Union[Path, bool] = _DEFAULT_PROJECT_FILE,
+        project_user_file: Union[Path, bool] = _DEFAULT_PROJECT_USER_FILE,
+        user_file: Union[Path, bool] = _DEFAULT_USER_FILE,
     ) -> None:
         self.load_argparse_arguments = load_argparse_arguments
 
         self.config_init(
             config_section_title='pw_build',
-            # Don't load any config files
-            project_file=False,
-            project_user_file=False,
-            user_file=False,
+            project_file=project_file,
+            project_user_file=project_user_file,
+            user_file=user_file,
             default_config=_DEFAULT_CONFIG,
-            environment_var='PW_BUILD_RECIPE_FILE',
+            environment_var='PW_BUILD_CONFIG_FILE',
         )
 
     def reset_config(self) -> None:
@@ -78,9 +90,21 @@ class ProjectBuilderPrefs(TomlConfigLoaderMixin):
     ) -> Dict[str, Any]:
         result = copy.copy(_DEFAULT_CONFIG['build_system_commands'])
         for out_dir, command in argparse_input:
-            new_dir = result.get('out_dir', {})
-            new_dir['command'] = command
-            result[out_dir] = new_dir
+            new_dir_spec = result.get(out_dir, {})
+            # Get existing commands list
+            new_commands = new_dir_spec.get('commands', [])
+
+            # Convert 'ninja -k 1' to 'ninja' and ['-k', '1']
+            extra_args = []
+            command_tokens = shlex.split(command)
+            if len(command_tokens) > 1:
+                extra_args = command_tokens[1:]
+                command = command_tokens[0]
+
+            # Append the command step
+            new_commands.append({'command': command, 'extra_args': extra_args})
+            new_dir_spec['commands'] = new_commands
+            result[out_dir] = new_dir_spec
         return result
 
     def apply_command_line_args(self, new_args: argparse.Namespace) -> None:
@@ -150,12 +174,17 @@ class ProjectBuilderPrefs(TomlConfigLoaderMixin):
 
         return build_system_commands
 
-    def build_system_commands(self, build_dir: str) -> Tuple[str, List[str]]:
+    def build_system_commands(
+        self, build_dir: str
+    ) -> List[Tuple[str, List[str]]]:
         build_system_commands = self._get_build_system_commands_for(build_dir)
-        command: str = build_system_commands.get('command', 'ninja')
-        extra_args: List[str] = build_system_commands.get('extra_args', [])
-        if not extra_args:
-            extra_args = []
-        assert isinstance(command, str)
-        assert isinstance(extra_args, list)
-        return command, extra_args
+
+        command_steps: List[Tuple[str, List[str]]] = []
+        commands: List[Dict[str, Any]] = build_system_commands.get(
+            'commands', []
+        )
+        for command_step in commands:
+            command_steps.append(
+                (command_step['command'], command_step['extra_args'])
+            )
+        return command_steps

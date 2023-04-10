@@ -105,16 +105,17 @@ pw_check_root() {
     pw_error_info "  Pigweed's Python environment currently requires Pigweed to"
     pw_error_info "  be at a path without spaces. Please checkout Pigweed in a"
     pw_error_info "  directory without spaces and retry running bootstrap."
-    return
+    return -1
   fi
 }
 
 pw_get_env_root() {
-  # PW_ENVIRONMENT_ROOT allows developers to specify where the environment
-  # should be installed. bootstrap.sh scripts should not use that variable to
-  # store the result of this function. This separation allows scripts to assume
-  # PW_ENVIRONMENT_ROOT came from the developer and not from a previous
-  # bootstrap possibly from another workspace.
+  # PW_ENVIRONMENT_ROOT allows callers to specify where the environment should
+  # be installed. bootstrap.sh scripts should not use that variable to store the
+  # result of this function. This separation allows scripts to assume
+  # PW_ENVIRONMENT_ROOT came from the caller and not from a previous bootstrap
+  # possibly from another workspace. PW_ENVIRONMENT_ROOT will be cleared after
+  # environment setup completes.
   if [ -n "$PW_ENVIRONMENT_ROOT" ]; then
     echo "$PW_ENVIRONMENT_ROOT"
     return
@@ -361,6 +362,7 @@ pw_cleanup() {
   unset PW_BANNER_FUNC
   unset _PW_ENV_SETUP
   unset _PW_NAME
+  unset PW_ENVIRONMENT_ROOT
   unset _PW_PYTHON
   unset _PW_ENV_ROOT_TXT
   unset _PW_PREV_ENV_ROOT

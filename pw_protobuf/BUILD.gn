@@ -54,6 +54,7 @@ pw_source_set("pw_protobuf") {
     dir_pw_bytes,
     dir_pw_function,
     dir_pw_log,
+    dir_pw_preprocessor,
     dir_pw_result,
     dir_pw_span,
     dir_pw_status,
@@ -119,14 +120,21 @@ pw_test_group("tests") {
     ":codegen_message_test",
     ":decoder_test",
     ":encoder_test",
-    ":encoder_fuzzer",
-    ":decoder_fuzzer",
+    ":encoder_fuzzer_test",
+    ":decoder_fuzzer_test",
     ":find_test",
     ":map_utils_test",
     ":message_test",
     ":serialized_size_test",
     ":stream_decoder_test",
     ":varint_size_test",
+  ]
+}
+
+group("fuzzers") {
+  deps = [
+    ":decoder_fuzzer",
+    ":encoder_fuzzer",
   ]
 }
 
@@ -212,12 +220,13 @@ pw_facade_test("varint_size_test") {
 }
 
 pw_proto_library("codegen_protos") {
-  sources = [ "pw_protobuf_codegen_protos/options.proto" ]
+  sources = [ "pw_protobuf_codegen_protos/codegen_options.proto" ]
 }
 
 pw_proto_library("common_protos") {
   sources = [
     "pw_protobuf_protos/common.proto",
+    "pw_protobuf_protos/field_options.proto",
     "pw_protobuf_protos/status.proto",
   ]
 }
@@ -250,12 +259,27 @@ pw_proto_library("codegen_test_protos") {
   ]
 }
 
+# The tests below have a large amount of global and static data.
+# TODO(b/234883746): Replace this with a better size-based check.
+_small_executable_target_types = [
+  "stm32f429i_executable",
+  "lm3s6965evb_executable",
+]
+_supports_large_tests =
+    _small_executable_target_types + [ pw_build_EXECUTABLE_TARGET_TYPE ] -
+    _small_executable_target_types != []
+
 pw_fuzzer("encoder_fuzzer") {
   sources = [
     "encoder_fuzzer.cc",
     "fuzz.h",
   ]
-  deps = [ ":pw_protobuf" ]
+  deps = [
+    ":pw_protobuf",
+    dir_pw_fuzzer,
+    dir_pw_span,
+  ]
+  enable_test_if = _supports_large_tests
 }
 
 pw_fuzzer("decoder_fuzzer") {
@@ -263,5 +287,12 @@ pw_fuzzer("decoder_fuzzer") {
     "decoder_fuzzer.cc",
     "fuzz.h",
   ]
-  deps = [ ":pw_protobuf" ]
+  deps = [
+    ":pw_protobuf",
+    dir_pw_fuzzer,
+    dir_pw_span,
+    dir_pw_status,
+    dir_pw_stream,
+  ]
+  enable_test_if = _supports_large_tests
 }

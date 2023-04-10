@@ -15,6 +15,7 @@
 
 import logging
 from pathlib import Path
+import sys
 from typing import NamedTuple, Optional, Union, Iterator
 
 from pw_cli.color import colors as pw_cli_colors
@@ -91,6 +92,10 @@ def install(
     log_file: Optional[Union[str, Path]] = None,
     logger: Optional[logging.Logger] = None,
     debug_log: Optional[Union[str, Path]] = None,
+    time_format: str = '%Y%m%d %H:%M:%S',
+    msec_format: str = '%s,%03d',
+    include_msec: bool = False,
+    message_format: str = '%(levelname)s %(message)s',
 ) -> None:
     """Configures the system logger for the default pw command log format.
 
@@ -120,7 +125,15 @@ def install(
           Defaults to the Python root logger: `logging.getLogger()`.
       debug_log: File to log to from all levels, regardless of chosen log level.
           Logs will go here in addition to the terminal.
-
+      time_format: Default time format string.
+      msec_format: Default millisecond format string. This should be a format
+          string that accepts a both a string ``%s`` and an integer ``%d``. The
+          default Python format for this string is ``%s,%03d``.
+      include_msec: Whether or not to include the millisecond part of log
+          timestamps.
+      message_format: The message format string. By default this includes
+          levelname and message. The asctime field is prepended to this unless
+          hide_timestamp=True.
     """
     if not logger:
         logger = logging.getLogger()
@@ -138,9 +151,20 @@ def install(
         # colored text.
         timestamp_fmt = colors.black_on_white('%(asctime)s') + ' '
 
-    formatter = logging.Formatter(
-        timestamp_fmt + '%(levelname)s %(message)s', '%Y%m%d %H:%M:%S'
-    )
+    formatter = logging.Formatter(fmt=timestamp_fmt + message_format)
+
+    formatter.default_time_format = time_format
+    if include_msec:
+        formatter.default_msec_format = msec_format
+    else:
+        # Python 3.8 and lower does not check if default_msec_format is set.
+        # https://github.com/python/cpython/blob/3.8/Lib/logging/__init__.py#L611
+        # https://github.com/python/cpython/blob/3.9/Lib/logging/__init__.py#L605
+        if sys.version_info >= (
+            3,
+            9,
+        ):
+            formatter.default_msec_format = ''
 
     # Set the log level on the root logger to NOTSET, so that all logs
     # propagated from child loggers are handled.

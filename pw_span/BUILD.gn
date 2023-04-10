@@ -68,16 +68,9 @@ pw_source_set("span_asserts") {
 
 # Provides "pw_span/span.h" and pw::span.
 pw_source_set("pw_span") {
-  public = [ "public/pw_span/span.h" ]
-  public_deps = [ ":common" ]
-}
-
-pw_source_set("common") {
   public_configs = [ ":public_config" ]
-  public_deps = [
-    ":config",
-    "$dir_pw_polyfill",
-  ]
+  public = [ "public/pw_span/span.h" ]
+  public_deps = [ ":config" ]
 
   # Polyfill <cstddef> (std::byte) and <iterator> (std::size(), std::data) if
   # C++17 is not supported.
@@ -94,7 +87,6 @@ pw_source_set("common") {
   }
 
   sources = [ "public/pw_span/internal/span_impl.h" ]
-  visibility = [ ":*" ]
 }
 
 pw_test_group("tests") {
@@ -105,7 +97,10 @@ pw_test_group("tests") {
 }
 
 pw_test("pw_span_test") {
-  deps = [ ":pw_span" ]
+  deps = [
+    ":pw_span",
+    dir_pw_polyfill,
+  ]
   remove_configs = [ "$dir_pw_build:extra_strict_warnings" ]
   sources = [ "span_test.cc" ]
 }
