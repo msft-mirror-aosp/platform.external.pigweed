@@ -113,6 +113,7 @@ such as a quick program for local use and a full program for automated use. The
   of any failures
 * ``paths``: Modified files for the presubmit step to check (often used in
   formatting steps but ignored in compile steps)
+* ``all_paths``: All files in the repository tree.
 * ``package_root``: Root directory for ``pw package`` installations
 * ``override_gn_args``: Additional GN args processed by ``build.gn_gen()``
 * ``luci``: Information about the LUCI build or None if not running in LUCI
@@ -141,7 +142,7 @@ following members:
 
 * ``round``: The zero-indexed round number.
 * ``builds_from_previous_iteration``: A list of the buildbucket ids from the
-  previous round, if any.
+  previous round, if any, encoded as strs.
 
 The ``triggers`` member is a sequence of ``LuciTrigger`` objects, which have the
 following members:
@@ -190,6 +191,34 @@ others. All of these checks can be included by adding
 all use language-specific formatters like clang-format or black.
 
 These will suggest fixes using ``pw format --fix``.
+
+Options for code formatting can be specified in the ``pigweed.json`` file
+(see also :ref:`SEED-0101 <seed-0101>`). These apply to both ``pw presubmit``
+steps that check code formatting and ``pw format`` commands that either check
+or fix code formatting.
+
+* ``python_formatter``: Choice of Python formatter. Options are ``black`` (used
+  by Pigweed itself) and ``yapf`` (the default).
+* ``black_path``: If ``python_formatter`` is ``black``, use this as the
+  executable instead of ``black``.
+
+.. TODO(b/264578594) Add exclude to pigweed.json file.
+.. * ``exclude``: List of path regular expressions to ignore.
+
+Example section from a ``pigweed.json`` file:
+
+.. code-block::
+
+  {
+    "pw": {
+      "pw_presubmit": {
+        "format": {
+          "python_formatter": "black",
+          "black_path": "black"
+        }
+      }
+    }
+  }
 
 Sorted Blocks
 ^^^^^^^^^^^^^
@@ -340,6 +369,14 @@ a callable as an argument that indicates, for a given file, where a controlling
 ``OWNERS`` file should be, or returns None if no ``OWNERS`` file is necessary.
 Formatting of ``OWNERS`` files is handled similary to formatting of other
 source files and is discussed in `Code Formatting`.
+
+Source in Build
+^^^^^^^^^^^^^^^
+Pigweed provides checks that source files are configured as part of the build
+for GN, Bazel, and CMake. These can be included by adding
+``source_in_build.gn(filter)`` and similar functions to a presubmit check. The
+CMake check additionally requires a callable that invokes CMake with appropriate
+options.
 
 pw_presubmit
 ------------

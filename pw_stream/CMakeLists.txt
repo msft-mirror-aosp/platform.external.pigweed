@@ -47,6 +47,7 @@ pw_add_library(pw_stream.socket_stream STATIC
     socket_stream.cc
   PRIVATE_DEPS
     pw_log
+    pw_string
 )
 
 pw_add_library(pw_stream.sys_io_stream INTERFACE
@@ -86,6 +87,16 @@ pw_add_library(pw_stream.interval_reader STATIC
 pw_add_test(pw_stream.memory_stream_test
   SOURCES
     memory_stream_test.cc
+  PRIVATE_DEPS
+    pw_stream
+  GROUPS
+    modules
+    pw_stream
+)
+
+pw_add_test(pw_stream.null_stream_test
+  SOURCES
+    null_stream_test.cc
   PRIVATE_DEPS
     pw_stream
   GROUPS

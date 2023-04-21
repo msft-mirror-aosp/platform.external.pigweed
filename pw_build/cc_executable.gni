@@ -15,7 +15,7 @@
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/cc_library.gni")
-import("$dir_pw_build/gn_internal/c_language_build_target.gni")
+import("$dir_pw_build/gn_internal/build_target.gni")
 
 # Note: In general, prefer to import target_types.gni rather than this file.
 # cc_executable.gni and cc_library.gni are both provided by target_types.gni.
@@ -23,21 +23,6 @@ import("$dir_pw_build/gn_internal/c_language_build_target.gni")
 # cc_library.gni is split out from cc_executable.gni because pw_executable
 # templates may need to create pw_source_set targets internally, and can't
 # import target_types.gni because it creates a circular import path.
-
-declare_args() {
-  # The name of the GN target type used to build Pigweed executables.
-  #
-  # If this is a custom template, the .gni file containing the template must
-  # be imported at the top of the target configuration file to make it globally
-  # available.
-  pw_build_EXECUTABLE_TARGET_TYPE = "executable"
-
-  # The path to the .gni file that defines pw_build_EXECUTABLE_TARGET_TYPE.
-  #
-  # If pw_build_EXECUTABLE_TARGET_TYPE is not the default of `executable`, this
-  # .gni file is imported to provide the template definition.
-  pw_build_EXECUTABLE_TARGET_TYPE_FILE = ""
-}
 
 # This template wraps a configurable target type specified by the current
 # toolchain to be used for all pw_executable targets. This allows projects to
@@ -62,7 +47,7 @@ declare_args() {
 #    default public_deps specified by the current toolchain configuration.
 
 template("pw_executable") {
-  pw_internal_c_language_build_target(target_name) {
+  pw_internal_build_target(target_name) {
     forward_variables_from(invoker, "*")
     if (!defined(output_dir)) {
       output_dir = "${target_out_dir}/bin"

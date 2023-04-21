@@ -37,6 +37,11 @@ label_flag(
 )
 
 label_flag(
+    name = "pw_log_tokenized_handler_backend",
+    build_setting_default = "@pigweed//pw_log_tokenized:base64_over_hdlc",
+)
+
+label_flag(
     name = "pw_assert_backend",
     build_setting_default = "@pigweed//pw_assert:backend_multiplexer",
 )
@@ -137,16 +142,6 @@ label_flag(
 )
 
 label_flag(
-    name = "pw_tokenizer_global_handler_backend",
-    build_setting_default = "@pigweed//pw_tokenizer:test_backend",
-)
-
-label_flag(
-    name = "pw_tokenizer_global_handler_with_payload_backend",
-    build_setting_default = "@pigweed//pw_tokenizer:test_backend",
-)
-
-label_flag(
     name = "pw_sys_io_backend",
     build_setting_default = "@pigweed//pw_sys_io:backend_multiplexer",
 )
@@ -174,4 +169,9 @@ label_flag(
 label_flag(
     name = "pw_trace_backend",
     build_setting_default = "@pigweed//pw_trace:backend_multiplexer",
+)
+
+label_flag(
+    name = "freertos_config",
+    build_setting_default = "@pigweed//third_party/freertos:freertos_config",
 )

@@ -315,8 +315,12 @@ class BuildRecipeStatus:
         _LOG.error(" ╚════════════════════════════════════")
         _LOG.error('')
 
-    def status_slug(self) -> OneStyleAndTextTuple:
+    def status_slug(self, restarting: bool = False) -> OneStyleAndTextTuple:
         status = ('', '')
+        if not self.recipe.enabled:
+            return ('fg:ansidarkgray', 'Disabled')
+
+        waiting = False
         if self.done:
             if self.passed():
                 status = ('fg:ansigreen', 'OK      ')
@@ -325,8 +329,12 @@ class BuildRecipeStatus:
         elif self.started:
             status = ('fg:ansiyellow', 'Building')
         else:
-            status = ('fg:ansigray', 'Waiting ')
+            waiting = True
+            status = ('default', 'Waiting ')
 
+        # Only show Aborting if the process is building (or has failures).
+        if restarting and not waiting and not self.passed():
+            status = ('fg:ansiyellow', 'Aborting')
         return status
 
     def current_step_formatted(self) -> StyleAndTextTuples:
@@ -405,6 +413,7 @@ class BuildRecipe:
     build_dir: Path
     steps: List[BuildCommand] = field(default_factory=list)
     title: Optional[str] = None
+    enabled: bool = True
 
     def __hash__(self):
         return hash((self.build_dir, self.title, len(self.steps)))
@@ -421,6 +430,9 @@ class BuildRecipe:
         self._logfile: Optional[Path] = None
         self._status: BuildRecipeStatus = BuildRecipeStatus(self)
         self.project_builder: Optional['ProjectBuilder'] = None
+
+    def toggle_enabled(self) -> None:
+        self.enabled = not self.enabled
 
     def set_project_builder(self, project_builder) -> None:
         self.project_builder = project_builder

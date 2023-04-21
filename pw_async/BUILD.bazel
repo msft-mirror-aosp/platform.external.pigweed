@@ -15,13 +15,11 @@
 filegroup(
     name = "pw_async_files",
     srcs = [
-        "dispatcher_basic.cc",
-        "dispatcher_basic_test.cc",
-        "dispatcher_test.cc",
+        "fake_dispatcher_test.cc",
         "public/pw_async/dispatcher.h",
-        "public/pw_async/dispatcher_basic.h",
+        "public/pw_async/fake_dispatcher.h",
+        "public/pw_async/fake_dispatcher_fixture.h",
+        "public/pw_async/internal/types.h",
         "public/pw_async/task.h",
-        "public_test/pw_async/test_dispatcher.h",
-        "test_dispatcher.cc",
     ],
 )

@@ -41,9 +41,7 @@ class Server : public internal::Endpoint {
 
   // Creates a client that uses a set of RPC channels. Channels can be shared
   // between multiple clients and servers.
-  template <typename Span>
-  _PW_RPC_CONSTEXPR Server(Span&& channels)
-      : Endpoint(std::forward<Span>(channels)) {}
+  _PW_RPC_CONSTEXPR Server(span<Channel> channels) : Endpoint(channels) {}
 
   // Registers one or more services with the server. This should not be called
   // directly with a Service; instead, use a generated class which inherits
@@ -55,7 +53,7 @@ class Server : public internal::Endpoint {
   template <typename... OtherServices>
   void RegisterService(Service& service, OtherServices&... services)
       PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
-    internal::LockGuard lock(internal::rpc_lock());
+    internal::RpcLockGuard lock;
     services_.push_front(service);  // Register the first service
 
     // Register any additional services by expanding the parameter pack. This
@@ -69,7 +67,7 @@ class Server : public internal::Endpoint {
   // on your logic you might want to check if a service is currently registered.
   bool IsServiceRegistered(const Service& service) const
       PW_LOCKS_EXCLUDED(internal::rpc_lock()) {
-    internal::LockGuard lock(internal::rpc_lock());
+    internal::RpcLockGuard lock;
 
     for (const Service& svc : services_) {
       if (&svc == &service) {
