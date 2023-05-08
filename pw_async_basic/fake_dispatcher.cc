@@ -63,10 +63,6 @@ void NativeFakeDispatcher::ExecuteDueTasks() {
     ::pw::async::backend::NativeTask& task = task_queue_.front();
     task_queue_.pop_front();
 
-    if (task.interval().has_value()) {
-      PostTaskInternal(task, task.due_time() + task.interval().value());
-    }
-
     Context ctx{&dispatcher_, &task.task_};
     task(ctx, OkStatus());
   }
@@ -101,26 +97,6 @@ void NativeFakeDispatcher::PostAt(Task& task,
   PostTaskInternal(task.native_type(), time);
 }
 
-void NativeFakeDispatcher::PostPeriodic(
-    Task& task, chrono::SystemClock::duration interval) {
-  PostPeriodicAt(task, interval, now());
-}
-
-void NativeFakeDispatcher::PostPeriodicAfter(
-    Task& task,
-    chrono::SystemClock::duration interval,
-    chrono::SystemClock::duration delay) {
-  PostPeriodicAt(task, interval, now() + delay);
-}
-
-void NativeFakeDispatcher::PostPeriodicAt(
-    Task& task,
-    chrono::SystemClock::duration interval,
-    chrono::SystemClock::time_point start_time) {
-  task.native_type().set_interval(interval);
-  PostAt(task, start_time);
-}
-
 bool NativeFakeDispatcher::Cancel(Task& task) {
   return task_queue_.remove(task.native_type());
 }
@@ -128,10 +104,19 @@ bool NativeFakeDispatcher::Cancel(Task& task) {
 void NativeFakeDispatcher::PostTaskInternal(
     ::pw::async::backend::NativeTask& task,
     chrono::SystemClock::time_point time_due) {
+  if (!task.unlisted()) {
+    if (task.due_time() <= time_due) {
+      // No need to repost a task that was already queued to run.
+      return;
+    }
+    // The task needs its time updated, so we have to move it to
+    // a different part of the list.
+    task.unlist();
+  }
   task.set_due_time(time_due);
   auto it_front = task_queue_.begin();
   auto it_behind = task_queue_.before_begin();
-  while (it_front != task_queue_.end() && time_due > it_front->due_time()) {
+  while (it_front != task_queue_.end() && time_due >= it_front->due_time()) {
     ++it_front;
     ++it_behind;
   }

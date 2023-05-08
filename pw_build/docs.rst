@@ -179,6 +179,25 @@ The ``pw_build_LINK_DEPS`` build arg is a list of dependencies to add to all
 This should only be used as a last resort when dependencies cannot be properly
 expressed in the build.
 
+Third party libraries
+---------------------
+Pigweed includes build files for a selection of third-party libraries. For a
+given library, these include:
+
+* ``third_party/<library>/library.gni``: Declares build arguments like
+  ``dir_pw_third_party_<library>`` that default to ``""`` but can be set to the
+  absolute path of the library in order to use it.
+* ``third_party/<library>/BUILD.gn``: Describes how to build the library. This
+  should import ``third_party/<library>/library.gni`` and refer to source paths
+  relative to ``dir_pw_third_party_<library>``.
+
+To add or update GN build files for libraries that only offer Bazel build files,
+the Python script at ``pw_build/py/pw_build/generate_3p_gn.py`` may be used.
+
+  .. note::
+    The ``generate_3p_gn.py`` script is experimental, and may not work on an
+    arbitrary Bazel library.
+
 Python packages
 ---------------
 GN templates for :ref:`Python build automation <docs-python-build>` are
@@ -363,6 +382,12 @@ target. Additionally, it has some of its own arguments:
   fakeroot environment.
 * ``venv``: Optional gn target of the pw_python_venv that should be used to run
   this action.
+* ``python_deps``: Extra dependencies that are required for running the Python
+  script for the ``action``. This must be used with ``module`` to specify the
+  build dependency of the ``module`` if it is user-defined code.
+* ``python_metadata_deps``: Extra dependencies that are ensured completed before
+  generating a Python package metadata manifest, not the overall Python script
+  ``action``. This should rarely be used by non-Pigweed code.
 
 .. _module-pw_build-python-action-expressions:
 
@@ -872,9 +897,11 @@ For the ``pw_coverage_report`` to generate meaningful output, you must ensure
 that it is invoked by a toolchain that instruments tests for code coverage
 collection and output.
 
-Instrumentation is controlled by a GN build argument:
+Instrumentation is controlled by two GN build arguments:
 
 - ``pw_toolchain_COVERAGE_ENABLED`` being set to ``true``.
+- ``pw_toolchain_PROFILE_SOURCE_FILES`` is an optional argument that provides a
+  list of source files to selectively collect coverage.
 
 .. note::
 
@@ -888,7 +915,7 @@ toolchains that manually set these GN build arguments as well.
 
 ``pw_coverage_report``
 ^^^^^^^^^^^^^^^^^^^^^^
-``pw_coverage_report`` is bascially a GN frontend to the ``llvm-cov``
+``pw_coverage_report`` is basically a GN frontend to the ``llvm-cov``
 `tool <https://llvm.org/docs/CommandGuide/llvm-cov.html>`_ that can be
 integrated into the normal build.
 
@@ -921,7 +948,7 @@ The supported report formats are:
 - ``json``: A machine-friendly coverage report format. This format is not human-
   friendly. If that is necessary, use ``text`` or ``html`` instead.
 
-  - This is equivalent to ``llvm-cov export --format text``.
+  - This is equivalent to ``llvm-cov export --format json``.
 
 Arguments
 """""""""
@@ -929,10 +956,20 @@ There are three classes of ``template`` arguments: build, coverage, and test.
 
 **Build Arguments:**
 
-- ``enable_if``: Conditionally activates coverage report generation when set to
+- ``enable_if`` (optional): Conditionally activates coverage report generation when set to
   a boolean expression that evaluates to ``true``. This can be used to allow
   project builds to conditionally enable or disable coverage reports to minimize
   work needed for certain build configurations.
+
+- ``failure_mode`` (optional/unstable): Specify the failure mode for
+  ``llvm-profdata`` (used to merge inidividual profraw files from ``pw_test``
+  runs). Available options are ``"any"`` (default) or ``"all"``.
+
+  - This should be considered an unstable/deprecated argument that should only
+    be used as a last resort to get a build working again. Using
+    ``failure_mode = "all"`` usually indicates that there are underlying
+    problems in the build or test infrastructure that should be independently
+    resolved. Please reach out to the Pigweed team for assistance.
 
 **Coverage Arguments:**
 

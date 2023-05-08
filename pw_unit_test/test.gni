@@ -17,6 +17,7 @@ import("//build_overrides/pigweed.gni")
 import("$dir_pw_build/python_action.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_compilation_testing/negative_compilation_test.gni")
+import("$dir_pw_toolchain/generate_toolchain.gni")
 import("$dir_pw_toolchain/host_clang/toolchains.gni")
 
 declare_args() {
@@ -134,28 +135,38 @@ template("pw_internal_disableable_target") {
       if (defined(invoker.public)) {
         inputs += invoker.public
       }
+
+      if (defined(invoker.source_gen_deps)) {
+        deps = invoker.source_gen_deps
+      }
     }
   }
 
   target(invoker.target_type, _actual_target_name) {
+    sources = []
+    public_deps = []
+    deps = []
     forward_variables_from(invoker,
                            "*",
                            [
-                             "negative_compilation_tests",
                              "enable_if",
+                             "negative_compilation_tests",
+                             "source_gen_deps",
                              "target_type",
                              "test_automatic_runner_args",
                            ])
 
     # Remove "" from dependencies. This allows disabling targets if a variable
     # (e.g. a backend) is empty.
-    if (defined(public_deps)) {
-      public_deps += [ "" ]
-      public_deps -= [ "" ]
-    }
-    if (defined(deps)) {
-      deps += [ "" ]
-      deps -= [ "" ]
+    public_deps += [ "" ]
+    public_deps -= [ "" ]
+    deps += [ "" ]
+    deps -= [ "" ]
+    if (defined(invoker.source_gen_deps)) {
+      deps += invoker.source_gen_deps
+      foreach(source_gen_dep, invoker.source_gen_deps) {
+        sources += get_target_outputs(source_gen_dep)
+      }
     }
   }
 }
@@ -177,9 +188,16 @@ template("pw_internal_disableable_target") {
 #         disabled test can still be built and run with the
 #         <target_name>.DISABLED and <target_name>.DISABLED.run targets.
 #         Defaults to true (enable_if).
+#   - envvars: (optional) A list of `var_name=value` strings to set as
+#         environment variables when running the target exectuable.
 #   - extra_metadata: (optional) Extra metadata to include in test group
 #         metadata output. This can be used to pass information about this test
 #         to later build tasks.
+#   - source_gen_deps: (optional) List of targets which generate `sources` for
+#         this test. These `deps` will be included even if the test is disabled.
+#         `get_target_outputs` is used to add the generated `sources` to the
+#         test's `sources` list, so these targets must appear earlier in the
+#         same build file.
 #   - All of the regular "executable" target args are accepted.
 #
 template("pw_test") {
@@ -190,6 +208,7 @@ template("pw_test") {
   _test_target_name = target_name
 
   _test_is_enabled = !defined(invoker.enable_if) || invoker.enable_if
+
   if (pw_toolchain_COVERAGE_ENABLED) {
     _profraw_path = "$target_out_dir/test/$_test_target_name.profraw"
   }
@@ -261,6 +280,7 @@ template("pw_test") {
       "output_name",
       "public",
       "sources",
+      "source_gen_deps",
       "testonly",
       "visibility",
 
@@ -297,6 +317,7 @@ template("pw_test") {
                              "extra_metadata",
                              "metadata",
                              "sources",
+                             "source_gen_deps",
                              "public",
                            ])
 
@@ -393,6 +414,14 @@ template("pw_test") {
         "--test",
         "<TARGET_FILE(:$_test_to_run)>",
       ]
+      if (defined(invoker.envvars)) {
+        foreach(envvars, envvars) {
+          args += [
+            "--env",
+            envvar,
+          ]
+        }
+      }
       if (pw_unit_test_AUTOMATIC_RUNNER_TIMEOUT != "") {
         args += [
           "--timeout",
@@ -400,9 +429,10 @@ template("pw_test") {
         ]
       }
       if (pw_toolchain_COVERAGE_ENABLED) {
+        _llvm_profile_file = rebase_path(_profraw_path, root_build_dir)
         args += [
-          "--coverage-profraw",
-          rebase_path(_profraw_path, root_build_dir),
+          "--env",
+          "LLVM_PROFILE_FILE=" + _llvm_profile_file,
         ]
       }
 

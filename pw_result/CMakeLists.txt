@@ -24,9 +24,13 @@ pw_add_library(pw_result INTERFACE
     pw_status
     pw_preprocessor
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RESULT)
-  zephyr_link_libraries(pw_result)
-endif()
+
+pw_add_library(pw_result.expected INTERFACE
+  HEADERS
+    public/pw_result/expected.h
+  PUBLIC_INCLUDES
+    public
+)
 
 pw_add_test(pw_result.result_test
   SOURCES
@@ -34,6 +38,14 @@ pw_add_test(pw_result.result_test
   PRIVATE_DEPS
     pw_result
     pw_status
+  GROUPS
+    modules
+    pw_result
+)
+
+pw_add_test(pw_result.expected_test
+  SOURCES
+    expected_test.cc
   GROUPS
     modules
     pw_result

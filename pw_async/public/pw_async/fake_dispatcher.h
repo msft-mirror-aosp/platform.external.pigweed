@@ -18,13 +18,19 @@
 
 namespace pw::async::test {
 
-/// FakeDispatcher is a facade for an implementation of Dispatcher that is used
-/// in unit tests. FakeDispatcher uses simulated time. RunUntil() and RunFor()
-/// advance time immediately, and now() returns the current simulated time.
+/// `FakeDispatcher` is a `Dispatcher` implementation for use in unit tests.
 ///
-/// To support various Task backends, FakeDispatcher wraps a
-/// backend::NativeFakeDispatcher that implements standard FakeDispatcher
-/// behavior using backend::NativeTask objects.
+/// Threading: `FakeDispatcher` is *NOT* thread-safe and, unlike other
+/// `Dispatcher` implementations. This means that tasks must not be posted from
+/// multiple threads at once, and tasks cannot be posted from other threads
+/// while the dispatcher is executing.
+///
+/// Time: `FakeDispatcher` uses simulated time. `RunUntil()` and `RunFor()`
+/// advance time immediately, and `now()` returns the current simulated time.
+///
+/// To support various `Task` backends, `FakeDispatcher` wraps a
+/// `backend::NativeFakeDispatcher` that implements standard `FakeDispatcher`
+/// behavior using `backend::NativeTask` objects.
 class FakeDispatcher final : public Dispatcher {
  public:
   FakeDispatcher() : native_dispatcher_(*this) {}
@@ -56,20 +62,6 @@ class FakeDispatcher final : public Dispatcher {
   }
   void PostAt(Task& task, chrono::SystemClock::time_point time) override {
     native_dispatcher_.PostAt(task, time);
-  }
-  void PostPeriodic(Task& task,
-                    chrono::SystemClock::duration interval) override {
-    native_dispatcher_.PostPeriodic(task, interval);
-  }
-  void PostPeriodicAfter(Task& task,
-                         chrono::SystemClock::duration interval,
-                         chrono::SystemClock::duration delay) override {
-    native_dispatcher_.PostPeriodicAfter(task, interval, delay);
-  }
-  void PostPeriodicAt(Task& task,
-                      chrono::SystemClock::duration interval,
-                      chrono::SystemClock::time_point start_time) override {
-    native_dispatcher_.PostPeriodicAt(task, interval, start_time);
   }
   bool Cancel(Task& task) override { return native_dispatcher_.Cancel(task); }
 

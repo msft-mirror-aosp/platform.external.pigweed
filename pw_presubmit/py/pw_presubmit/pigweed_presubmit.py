@@ -188,6 +188,15 @@ gn_combined_build_check = build.GnGenNinja(
 )
 
 
+coverage = build.GnGenNinja(
+    name='coverage',
+    doc='Run coverage for the host build.',
+    path_filter=_BUILD_FILE_FILTER,
+    ninja_targets=('coverage',),
+    coverage=True,
+)
+
+
 @_BUILD_FILE_FILTER.apply_to_check()
 def gn_arm_build(ctx: PresubmitContext):
     build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
@@ -253,29 +262,6 @@ gn_crypto_mbedtls_build = build.GnGenNinja(
         ),
         'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:ecdsa_mbedtls_v3'
-        ),
-        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
-    },
-    ninja_targets=(
-        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-        # TODO(b/240982565): SocketStream currently requires Linux.
-        *(('integration_tests',) if sys.platform.startswith('linux') else ()),
-    ),
-)
-
-gn_crypto_boringssl_build = build.GnGenNinja(
-    name='gn_crypto_boringssl_build',
-    path_filter=_BUILD_FILE_FILTER,
-    packages=('boringssl',),
-    gn_args={
-        'dir_pw_third_party_boringssl': lambda ctx: '"{}"'.format(
-            ctx.package_root / 'boringssl'
-        ),
-        'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:sha256_boringssl'
-        ),
-        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:ecdsa_boringssl'
         ),
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
@@ -383,6 +369,52 @@ gn_pw_system_demo_build = build.GnGenNinja(
         ),
     },
     ninja_targets=('pw_system_demo',),
+)
+
+gn_googletest_build = build.GnGenNinja(
+    name='gn_googletest_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('googletest',),
+    gn_args={
+        'dir_pw_third_party_googletest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'googletest'
+        ),
+        'pw_unit_test_MAIN': lambda ctx: '"{}"'.format(
+            ctx.root / 'third_party/googletest:gmock_main'
+        ),
+        'pw_unit_test_GOOGLETEST_BACKEND': lambda ctx: '"{}"'.format(
+            ctx.root / 'third_party/googletest'
+        ),
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+)
+
+gn_fuzz_build = build.GnGenNinja(
+    name='gn_fuzz_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('abseil-cpp', 'fuzztest', 'googletest', 're2'),
+    gn_args={
+        'dir_pw_third_party_abseil_cpp': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'abseil-cpp'
+        ),
+        'dir_pw_third_party_fuzztest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'fuzztest'
+        ),
+        'dir_pw_third_party_googletest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'googletest'
+        ),
+        'dir_pw_third_party_re2': lambda ctx: '"{}"'.format(
+            ctx.package_root / 're2'
+        ),
+        'pw_unit_test_MAIN': lambda ctx: '"{}"'.format(
+            ctx.root / 'third_party/googletest:gmock_main'
+        ),
+        'pw_unit_test_GOOGLETEST_BACKEND': lambda ctx: '"{}"'.format(
+            ctx.root / 'third_party/googletest'
+        ),
+    },
+    ninja_targets=('host_clang_fuzz',),
 )
 
 gn_docs_build = build.GnGenNinja(name='gn_docs_build', ninja_targets=('docs',))
@@ -959,6 +991,7 @@ OTHER_CHECKS = (
     build.gn_gen_check,
     cmake_clang,
     cmake_gcc,
+    coverage,
     gitmodules.create(gitmodules.Config(allow_submodules=False)),
     gn_clang_build,
     gn_combined_build_check,
@@ -979,6 +1012,7 @@ OTHER_CHECKS = (
 MISC = (
     # keep-sorted: start
     gn_emboss_build,
+    gn_googletest_build,
     gn_nanopb_build,
     gn_pico_build,
     gn_pw_system_demo_build,
@@ -990,9 +1024,9 @@ SANITIZERS = (cpp_checks.all_sanitizers(),)
 
 SECURITY = (
     # keep-sorted: start
-    gn_crypto_boringssl_build,
     gn_crypto_mbedtls_build,
     gn_crypto_micro_ecc_build,
+    gn_fuzz_build,
     gn_software_update_build,
     # keep-sorted: end
 )

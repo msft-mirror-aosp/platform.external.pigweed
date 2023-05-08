@@ -1,8 +1,8 @@
 .. _module-pw_hdlc-rpc-example:
 
-=============================
-RPC over HDLC example project
-=============================
+======================================
+pw_hdlc: RPC over HDLC example project
+======================================
 The :ref:`module-pw_hdlc` module includes an example of bringing up a
 :ref:`module-pw_rpc` server that can be used to invoke RPCs. The example code
 is located at ``pw_hdlc/rpc_example``. This section walks through invoking RPCs
@@ -93,8 +93,8 @@ You should see this output:
 Local RPC example project
 -------------------------
 
-This example is similar to the above example, except it use socket to
-connect server and client running on the host.
+This example is similar to the above example, except it uses a socket to
+connect a server and a client running on the host.
 
 1. Build Pigweed
 ================
@@ -127,8 +127,14 @@ if needed.
 
 .. tip::
 
-   The ``--socket-addr`` may be replaced with IP and port separated by a colon. For
-   example: ``127.0.0.1:33000``.
+   The ``--socket-addr`` may be replaced with IP and port separated by a colon,
+   for example: ``127.0.0.1:33000``; or, if using a unix socket, the path to the
+   file follows "file:", for example ``file:/path/to/unix/socket``. Unix socket
+   Python support is pending `<https://bugs.python.org/issue33408>`_.
+
+.. tip::
+
+   The default RPC Channel ID (1) can be overriden with ``--channel-id``.
 
 Then you can invoke RPCs from the interactive console on the client side.
 

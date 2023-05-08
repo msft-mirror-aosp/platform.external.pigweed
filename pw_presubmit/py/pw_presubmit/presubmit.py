@@ -554,6 +554,9 @@ class PresubmitContext:  # pylint: disable=too-many-instance-attributes
         num_jobs: Number of jobs to run in parallel
         continue_after_build_error: For steps that compile, don't exit on the
             first compilation error
+        rng_seed: Seed for a random number generator, for the few steps that
+            need one
+        full: Whether this is a full or incremental presubmit run
     """
 
     root: Path
@@ -568,11 +571,17 @@ class PresubmitContext:  # pylint: disable=too-many-instance-attributes
     format_options: FormatOptions
     num_jobs: Optional[int] = None
     continue_after_build_error: bool = False
+    rng_seed: int = 1
+    full: bool = False
     _failed: bool = False
 
     @property
     def failed(self) -> bool:
         return self._failed
+
+    @property
+    def incremental(self) -> bool:
+        return not self.full
 
     def fail(
         self,
@@ -706,7 +715,7 @@ class FilteredCheck:
 class Presubmit:
     """Runs a series of presubmit checks on a list of files."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         root: Path,
         repos: Sequence[Path],
@@ -716,6 +725,8 @@ class Presubmit:
         package_root: Path,
         override_gn_args: Dict[str, str],
         continue_after_build_error: bool,
+        rng_seed: int,
+        full: bool,
     ):
         self._root = root.resolve()
         self._repos = tuple(repos)
@@ -728,6 +739,8 @@ class Presubmit:
         self._package_root = package_root.resolve()
         self._override_gn_args = override_gn_args
         self._continue_after_build_error = continue_after_build_error
+        self._rng_seed = rng_seed
+        self._full = full
 
     def run(
         self,
@@ -881,6 +894,8 @@ class Presubmit:
                 package_root=self._package_root,
                 override_gn_args=self._override_gn_args,
                 continue_after_build_error=self._continue_after_build_error,
+                rng_seed=self._rng_seed,
+                full=self._full,
                 luci=LuciContext.create_from_environment(),
                 format_options=FormatOptions.load(),
             )
@@ -956,6 +971,7 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
     override_gn_args: Sequence[Tuple[str, str]] = (),
     keep_going: bool = False,
     continue_after_build_error: bool = False,
+    rng_seed: int = 1,
     presubmit_class: type = Presubmit,
     list_steps_file: Optional[Path] = None,
     substep: Optional[str] = None,
@@ -986,6 +1002,8 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
         override_gn_args: additional GN args to set on steps
         keep_going: continue running presubmit steps after a step fails
         continue_after_build_error: continue building if a build step fails
+        rng_seed: seed for a random number generator, for the few steps that
+            need one
         presubmit_class: class to use to run Presubmits, should inherit from
             Presubmit class above
         list_steps_file: File created by --only-list-steps, used to keep from
@@ -1065,6 +1083,8 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
         package_root=package_root,
         override_gn_args=dict(override_gn_args or {}),
         continue_after_build_error=continue_after_build_error,
+        rng_seed=rng_seed,
+        full=bool(base is None),
     )
 
     if only_list_steps:

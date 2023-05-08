@@ -187,34 +187,49 @@ inline size_t Decode(span<const std::byte> input,
       input.data(), input.size(), value, static_cast<pw_varint_Format>(format));
 }
 
-// Returns a size of an integer when encoded as a varint.
+/// @brief Computes the size of an integer when encoded as a varint.
+///
+/// @param integer The integer whose encoded size is to be computed. `integer`
+/// can be signed or unsigned.
+///
+/// @returns The size of `integer` when encoded as a varint.
 constexpr size_t EncodedSize(uint64_t integer) {
   return integer == 0 ? 1 : (64 - __builtin_clzll(integer) + 6) / 7;
 }
 
-// Returns a size of an signed integer when ZigZag encoded as a varint.
+/// @brief Returns the size of a signed integer when
+/// [ZigZag](https://protobuf.dev/programming-guides/encoding/#signed-ints)-encoded
+/// as a variable-length integer (varint).
+///
+/// @param integer The signed integer that will be ZigZag-encoded as a varint.
+///
+/// @returns The size of `integer` when ZigZag-encoded as a varint.
 constexpr size_t ZigZagEncodedSize(int64_t integer) {
   return EncodedSize(ZigZagEncode(integer));
 }
 
-// Returns the maximum integer value that can be encoded in a varint of the
-// specified number of bytes.
-//
-// These values are also listed in the table below. Zigzag encoding cuts these
-// in half, as positive and negative integers are alternated.
-//
-//   Bytes          Max value
-//     1                          127
-//     2                       16,383
-//     3                    2,097,151
-//     4                  268,435,455
-//     5               34,359,738,367 -- needed for max uint32 value
-//     6            4,398,046,511,103
-//     7          562,949,953,421,311
-//     8       72,057,594,037,927,935
-//     9    9,223,372,036,854,775,807
-//     10            uint64 max value
-//
+/// @brief Returns the maximum (max) integer value that can be encoded as a
+/// varint into the specified number of bytes.
+///
+/// The following table lists the max value for each byte size:
+///
+/// | Bytes | Max value                 |
+/// | ----- | ------------------------- |
+/// | 1     |                       127 |
+/// | 2     |                    16,383 |
+/// | 3     |                 2,097,151 |
+/// | 4     |               268,435,455 |
+/// | 5     |            34,359,738,367 |
+/// | 6     |         4,398,046,511,103 |
+/// | 7     |       562,949,953,421,311 |
+/// | 8     |    72,057,594,037,927,935 |
+/// | 9     | 9,223,372,036,854,775,807 |
+/// | 10    |        (uint64 max value) |
+///
+/// @param bytes The size of the varint, in bytes. 5 bytes are needed for the
+/// max `uint32` value. 10 bytes are needed for the max `uint64` value.
+///
+/// @return The max integer value for a varint of size `bytes`.
 constexpr uint64_t MaxValueInBytes(size_t bytes) {
   return bytes >= kMaxVarint64SizeBytes ? std::numeric_limits<uint64_t>::max()
                                         : (uint64_t(1) << (7 * bytes)) - 1;

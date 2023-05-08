@@ -17,6 +17,7 @@ import("//build_overrides/pigweed.gni")
 import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_toolchain/traits.gni")
 import("$dir_pw_unit_test/test.gni")
 
 config("public_include_path") {
@@ -153,7 +154,10 @@ pw_test("filtered_view_test") {
 
 pw_test("flat_map_test") {
   sources = [ "flat_map_test.cc" ]
-  deps = [ ":flat_map" ]
+  deps = [
+    ":flat_map",
+    dir_pw_polyfill,
+  ]
 }
 
 pw_test("inline_deque_test") {

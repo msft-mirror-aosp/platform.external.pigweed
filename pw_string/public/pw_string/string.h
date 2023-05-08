@@ -137,7 +137,9 @@ class InlineBasicString final
   }
 
   constexpr InlineBasicString(std::initializer_list<T> list)
-      : InlineBasicString(list.begin(), list.size()) {}
+      : InlineBasicString(
+            list.begin(),
+            static_cast<pw::string_impl::size_type>(list.size())) {}
 
 #if PW_CXX_STANDARD_IS_SUPPORTED(17)  // std::string_view is a C++17 feature
   // Unlike std::string, pw::InlineString<> supports implicit conversions from
@@ -164,7 +166,8 @@ class InlineBasicString final
                 std::is_same<StringView, std::basic_string_view<T>>::value>* =
                 nullptr>
   constexpr InlineBasicString(const StringView& view)
-      : InlineBasicString(view.data(), view.size()) {}
+      : InlineBasicString(view.data(),
+                          pw::string_impl::CheckedCastToSize(view.size())) {}
 
   template <typename StringView,
             typename = string_impl::EnableIfStringViewLike<T, StringView>>
@@ -173,7 +176,11 @@ class InlineBasicString final
                               size_type count)
       : InlineBasicString() {
     const std::basic_string_view<T> view = string;
-    CopySubstr(data(), view.data(), view.size(), index, count);
+    CopySubstr(data(),
+               view.data(),
+               pw::string_impl::CheckedCastToSize(view.size()),
+               index,
+               count);
   }
 #endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
@@ -246,7 +253,8 @@ class InlineBasicString final
   }
 
   constexpr InlineBasicString& operator+=(std::initializer_list<T> list) {
-    return append(list.begin(), list.size());
+    return append(list.begin(),
+                  static_cast<pw::string_impl::size_type>(list.size()));
   }
 
 #if PW_CXX_STANDARD_IS_SUPPORTED(17)  // std::string_view is a C++17 feature
@@ -436,8 +444,9 @@ class InlineBasicString<T, string_impl::kGeneric> {
 //   InlineString my_string = "abc";  // deduces capacity of 3.
 //
 template <typename T, size_t kCharArraySize>
-InlineBasicString(const T (&)[kCharArraySize])
-    -> InlineBasicString<T, kCharArraySize - 1>;
+InlineBasicString(const T (&)[kCharArraySize]) -> InlineBasicString<
+    T,
+    static_cast<pw::string_impl::size_type>(kCharArraySize - 1)>;
 
 #endif  // __cpp_deduction_guides
 
@@ -632,7 +641,7 @@ InlineBasicString<T, string_impl::kGeneric>::CopyExtend(T* data,
                                                         size_type count) {
   PW_ASSERT(count <= max_size() - size());
   string_impl::char_traits<T>::copy(data + size(), source, count);
-  SetSizeAndTerminate(data, size() + count);
+  SetSizeAndTerminate(data, static_cast<size_type>(size() + count));
   return *this;
 }
 

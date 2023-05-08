@@ -48,7 +48,8 @@ pw_doc_group("core_docs") {
     "faq.rst",
     "getting_started.rst",
     "module_structure.rst",
-    "os_abstraction_layers.rst",
+    "os/index.rst",
+    "os/zephyr.rst",
     "size_optimizations.rst",
     "style_guide.rst",
   ]
@@ -111,7 +112,9 @@ group("third_party_docs") {
 _doxygen_input_files = [
   # All sources with doxygen comment blocks.
   "$dir_pw_async/public/pw_async/dispatcher.h",
+  "$dir_pw_async/public/pw_async/heap_dispatcher.h",
   "$dir_pw_async/public/pw_async/fake_dispatcher_fixture.h",
+  "$dir_pw_async/public/pw_async/function_dispatcher.h",
   "$dir_pw_async/public/pw_async/task.h",
   "$dir_pw_async_basic/public/pw_async_basic/dispatcher.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/gatt/client.h",
@@ -125,9 +128,11 @@ _doxygen_input_files = [
   "$dir_pw_chrono/public/pw_chrono/system_clock.h",
   "$dir_pw_chrono/public/pw_chrono/system_timer.h",
   "$dir_pw_function/public/pw_function/scope_guard.h",
+  "$dir_pw_hdlc/public/pw_hdlc/decoder.h",
   "$dir_pw_log_tokenized/public/pw_log_tokenized/handler.h",
   "$dir_pw_log_tokenized/public/pw_log_tokenized/metadata.h",
   "$dir_pw_rpc/public/pw_rpc/internal/config.h",
+  "$dir_pw_rpc/public/pw_rpc/synchronous_call.h",
   "$dir_pw_string/public/pw_string/format.h",
   "$dir_pw_string/public/pw_string/string.h",
   "$dir_pw_function/public/pw_function/function.h",
@@ -138,6 +143,7 @@ _doxygen_input_files = [
   "$dir_pw_sync/public/pw_sync/borrow.h",
   "$dir_pw_sync/public/pw_sync/counting_semaphore.h",
   "$dir_pw_sync/public/pw_sync/inline_borrowable.h",
+  "$dir_pw_status/public/pw_status/status.h",
   "$dir_pw_sync/public/pw_sync/interrupt_spin_lock.h",
   "$dir_pw_sync/public/pw_sync/lock_annotations.h",
   "$dir_pw_sync/public/pw_sync/mutex.h",
@@ -149,6 +155,8 @@ _doxygen_input_files = [
   "$dir_pw_tokenizer/public/pw_tokenizer/encode_args.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/tokenize.h",
   "$dir_pw_toolchain/public/pw_toolchain/no_destructor.h",
+  "$dir_pw_varint/public/pw_varint/varint.h",
+  "$dir_pw_varint/public/pw_varint/stream.h",
 ]
 
 pw_python_action("generate_doxygen") {

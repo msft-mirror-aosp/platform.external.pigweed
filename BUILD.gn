@@ -15,6 +15,7 @@
 import("//build_overrides/pi_pico.gni")
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_android_toolchain/android.gni")
 import("$dir_pw_arduino_build/arduino.gni")
 import("$dir_pw_build/coverage_report.gni")
 import("$dir_pw_build/host_tool.gni")
@@ -206,6 +207,10 @@ _build_pigweed_default_at_all_optimization_levels("host_clang") {
   toolchain_prefix = "$_internal_toolchains:pw_strict_host_clang_"
 }
 
+group("host_clang_fuzz") {
+  deps = [ ":pigweed_default($_internal_toolchains:pw_strict_host_clang_fuzz)" ]
+}
+
 # GCC is only supported for Windows. Pigweed doesn't yet provide a Windows
 # clang toolchain, and Pigweed does not provide gcc toolchains for macOS and
 # Linux.
@@ -258,6 +263,24 @@ group("static_analysis") {
   if (host_os != "win") {
     _toolchain = "$_internal_toolchains:pw_strict_host_clang_debug"
     deps = [ ":pigweed_default($_toolchain.static_analysis)" ]
+  }
+}
+
+if (pw_android_toolchain_NDK_PATH != "") {
+  group("android") {
+    deps = []
+    foreach(_cpu, pw_android_toolchain_cpu_targets) {
+      _toolchain_prefix = "$dir_pigweed/targets/android:${_cpu}_android_"
+      deps += [
+        ":pigweed_default($_toolchain_prefix$pw_DEFAULT_C_OPTIMIZATION_LEVEL)",
+      ]
+    }
+  }
+
+  foreach(_cpu, pw_android_toolchain_cpu_targets) {
+    _build_pigweed_default_at_all_optimization_levels("${_cpu}_android") {
+      toolchain_prefix = "$dir_pigweed/targets/android:${_cpu}_android_"
+    }
   }
 }
 
@@ -399,25 +422,33 @@ group("pigweed_default") {
 
   # Prevent the default toolchain from parsing any other BUILD.gn files.
   if (current_toolchain != default_toolchain) {
+    _is_host_toolchain = defined(pw_toolchain_SCOPE.is_host_toolchain) &&
+                         pw_toolchain_SCOPE.is_host_toolchain
+
     deps = [ ":apps" ]
-    if (pw_unit_test_AUTOMATIC_RUNNER == "") {
-      # Without a test runner defined, build the tests but don't run them.
-      deps += [ ":pw_module_tests" ]
-    } else {
-      # With a test runner, depend on the run targets so they run with the
-      # build.
-      deps += [ ":pw_module_tests.run" ]
+
+    # Upstream GoogleTest assumes the presence of a POSIX filesystem. If an
+    # external gtest backend has been provided, limit the tests to host-only.
+    if (pw_unit_test_GOOGLETEST_BACKEND == "$dir_pw_unit_test:light" ||
+        _is_host_toolchain) {
+      if (pw_unit_test_AUTOMATIC_RUNNER == "") {
+        # Without a test runner defined, build the tests but don't run them.
+        deps += [ ":pw_module_tests" ]
+      } else {
+        # With a test runner, depend on the run targets so they run with the
+        # build.
+        deps += [ ":pw_module_tests.run" ]
+      }
+
+      # Add performance tests to the automatic build
+      deps += [ ":pw_perf_tests" ]
+
+      # Add action tests to the automatic build
+      deps += [ ":action_tests" ]
     }
 
-    # Add performance tests to the automatic build
-    deps += [ ":pw_perf_tests" ]
-
-    # Add action tests to the automatic build
-    deps += [ ":action_tests" ]
-
     # Trace examples currently only support running on non-windows host
-    if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
-        pw_toolchain_SCOPE.is_host_toolchain && host_os != "win") {
+    if (_is_host_toolchain && host_os != "win") {
       deps += [
         "$dir_pw_trace:trace_example_basic",
         "$dir_pw_trace_tokenized:trace_tokenized_example_basic",

@@ -19,35 +19,18 @@ Compatibility
 API
 ===
 
-.. cpp:function:: size_t EncodedSize(uint64_t integer)
+.. doxygenfunction:: pw::varint::EncodedSize(uint64_t integer)
 
-Returns the size of an integer when encoded as a varint. Works on both signed
-and unsigned integers.
+.. doxygenfunction:: pw::varint::ZigZagEncodedSize(int64_t integer)
 
-.. cpp:function:: size_t ZigZagEncodedSize(int64_t integer)
-
-Returns the size of a signed integer when ZigZag encoded as a varint.
-
-.. cpp:function:: uint64_t MaxValueInBytes(size_t bytes)
-
-Returns the maximum integer value that can be encoded as a varint into the
-specified number of bytes.
-
+.. doxygenfunction:: pw::varint::MaxValueInBytes(size_t bytes)
 
 Stream API
 ----------
 
-.. cpp:function:: StatusWithSize Read(stream::Reader& reader, int64_t* output)
-.. cpp:function:: StatusWithSize Read(stream::Reader& reader, uint64_t* output)
+.. doxygenfunction:: pw::varint::Read(stream::Reader& reader, uint64_t* output, size_t max_size)
 
-Decoders a varint from the current position of a stream. If reading into a
-signed integer, the value is ZigZag decoded.
-
-Returns the number of bytes read from the stream, places the value in `output`,
-if successful. Returns `OutOfRange` if the varint does not fit in to the type,
-or if the input is exhausted before the number terminates.
-
-Reads a maximum of 10 bytes.
+.. doxygenfunction:: pw::varint::Read(stream::Reader& reader, int64_t* output, size_t max_size)
 
 Dependencies
 ============
@@ -57,3 +40,11 @@ Zephyr
 ======
 To enable ``pw_varint`` for Zephyr add ``CONFIG_PIGWEED_VARINT=y`` to the
 project's configuration.
+
+Rust
+====
+The Rust implementation is documented in
+`//pw_varint/rust/pw_varint.rs <https://pigweed.googlesource.com/pigweed/pigweed/+/refs/heads/main/pw_varint/rust/pw_varint.rs>`_
+
+..
+  TODO(b/280102965): Update above to point to rustdoc API docs

@@ -65,10 +65,10 @@ import json
 import os
 from pathlib import Path
 import platform
-from typing import Any, Dict, List, OrderedDict
+from typing import Any, Dict, List, Optional, OrderedDict
 
 from pw_ide.activate import BashShellModifier
-from pw_ide.cpp import ClangdSettings
+from pw_ide.cpp import ClangdSettings, CppIdeFeaturesState
 
 from pw_ide.editors import (
     EditorSettingsDict,
@@ -177,7 +177,18 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
         "[cpp]": OrderedDict(
             {"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"}
         ),
+        "python.analysis.diagnosticSeverityOverrides": OrderedDict(
+            # Due to our project structure, the linter spuriously thinks we're
+            # shadowing system modules any time we import them. This disables
+            # that check.
+            {"reportShadowedImports": "none"}
+        ),
+        # The "strict" mode is much more strict than what we currently enforce.
+        "python.analysis.typeCheckingMode": "basic",
         "python.formatting.provider": "yapf",
+        "python.linting.pylintEnabled": True,
+        "python.linting.mypyEnabled": True,
+        "python.testing.unittestEnabled": True,
         "[python]": OrderedDict({"editor.tabSize": 4}),
         "typescript.tsc.autoDetect": "off",
         "[gn]": OrderedDict({"editor.defaultFormatter": "msedge-dev.gnls"}),
@@ -187,21 +198,36 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
     }
 )
 
-# pylint: disable=line-too-long
 _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
     {
         "version": "2.0.0",
         "tasks": [
             {
-                "type": "shell",
+                "type": "process",
                 "label": "Pigweed IDE: Format",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw format --fix'",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw format --fix'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
+                "type": "process",
                 "label": "Pigweed IDE: Presubmit",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw presubmit'",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw presubmit'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
@@ -220,46 +246,76 @@ _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
-                "label": "Pigweed IDE: Process C++ Compilation Database from GN",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide cpp --gn --process out/compile_commands.json'",
+                "type": "process",
+                "label": "Pigweed IDE: Sync",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw ide sync'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
-                "label": "Pigweed IDE: Setup",
-                "command": "python3 ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide setup'",
-                "problemMatcher": [],
-            },
-            {
-                "type": "shell",
+                "type": "process",
                 "label": "Pigweed IDE: Current C++ Code Analysis Target",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide cpp'",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw ide cpp'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
+                "type": "process",
                 "label": "Pigweed IDE: List C++ Code Analysis Targets",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide cpp --list'",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw ide cpp --list'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
+                "type": "process",
+                "label": "Pigweed IDE: Change C++ Code Analysis Target",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw ide cpp --set ${input:availableTargets}'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
+                "problemMatcher": [],
+            },
+            {
                 "label": "Pigweed IDE: Set C++ Code Analysis Target",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide cpp --set ${input:target}'",
+                "dependsOrder": "sequence",
+                "dependsOn": [
+                    "Pigweed IDE: Change C++ Code Analysis Target",
+                    "Pigweed IDE: Restart C++ Language Server",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
-        ],
-        "inputs": [
-            {
-                "id": "target",
-                "type": "promptString",
-                "description": "C++ code analysis target",
-            }
         ],
     }
 )
-# pylint: enable=line-too-long
 
 _DEFAULT_EXTENSIONS: EditorSettingsDict = OrderedDict(
     {
@@ -281,6 +337,13 @@ _DEFAULT_EXTENSIONS: EditorSettingsDict = OrderedDict(
     }
 )
 
+_DEFAULT_LAUNCH: EditorSettingsDict = OrderedDict(
+    {
+        "version": "0.2.0",
+        "configurations": [],
+    }
+)
+
 
 def _default_settings(
     pw_ide_settings: PigweedIdeSettings,
@@ -295,14 +358,35 @@ def _default_settings(
     )
 
 
-def _default_tasks(_pw_ide_settings: PigweedIdeSettings) -> EditorSettingsDict:
-    return _DEFAULT_TASKS
+def _default_tasks(
+    pw_ide_settings: PigweedIdeSettings,
+    state: Optional[CppIdeFeaturesState] = None,
+) -> EditorSettingsDict:
+    if state is None:
+        state = CppIdeFeaturesState(pw_ide_settings)
+
+    inputs = [
+        {
+            "type": "pickString",
+            "id": "availableTargets",
+            "description": "Available targets",
+            "options": list(state.targets),
+        }
+    ]
+
+    return OrderedDict(**_DEFAULT_TASKS, inputs=inputs)
 
 
 def _default_extensions(
     _pw_ide_settings: PigweedIdeSettings,
 ) -> EditorSettingsDict:
     return _DEFAULT_EXTENSIONS
+
+
+def _default_launch(
+    _pw_ide_settings: PigweedIdeSettings,
+) -> EditorSettingsDict:
+    return _DEFAULT_LAUNCH
 
 
 DEFAULT_SETTINGS_PATH = Path(os.path.expandvars('$PW_PROJECT_ROOT')) / '.vscode'
@@ -312,12 +396,14 @@ class VscSettingsType(Enum):
     """Visual Studio Code settings files.
 
     VSC supports editor settings (``settings.json``), recommended
-    extensions (``extensions.json``), and tasks (``tasks.json``).
+    extensions (``extensions.json``), tasks (``tasks.json``), and
+    launch/debug configurations (``launch.json``).
     """
 
     SETTINGS = 'settings'
     TASKS = 'tasks'
     EXTENSIONS = 'extensions'
+    LAUNCH = 'launch'
 
     @classmethod
     def all(cls) -> List['VscSettingsType']:
@@ -334,4 +420,5 @@ class VscSettingsManager(EditorSettingsManager[VscSettingsType]):
         VscSettingsType.SETTINGS: _default_settings,
         VscSettingsType.TASKS: _default_tasks,
         VscSettingsType.EXTENSIONS: _default_extensions,
+        VscSettingsType.LAUNCH: _default_launch,
     }

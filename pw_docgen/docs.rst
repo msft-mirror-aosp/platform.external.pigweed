@@ -71,6 +71,9 @@ groups, causing them to be built with it.
 * ``group_deps``: Other ``pw_doc_group`` targets required by this one.
 * ``report_deps``: Report card generating targets (e.g. ``pw_size_diff``) on
   which the docs depend.
+* ``other_deps``: Any other GN targets that should be run before this
+  ``pw_doc_group`` runs that is not included in one of the above ``dep``
+  categories.
 
 **Example**
 
@@ -100,6 +103,9 @@ to tie everything together.
 * ``index``: Path to the top-level ``index.rst`` file.
 * ``output_directory``: Directory in which to render HTML output.
 * ``deps``: List of all ``pw_doc_group`` targets required for the documentation.
+* ``python_metadata_deps``: Python-related dependencies that are only used as
+  deps for generating Python package metadata list, not the overall
+  documentation generation. This should rarely be used by non-Pigweed code.
 
 **Example**
 

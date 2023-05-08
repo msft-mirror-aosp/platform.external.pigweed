@@ -251,6 +251,12 @@ register_gcc_arm_none_toolchain()
 
 http_archive(
     name = "rules_rust",
+    patch_args = ["-p1"],
+    patches = [
+        # Fix rustdoc test w/ proc macros
+        # https://github.com/bazelbuild/rules_rust/pull/1952
+        "//pw_rust/bazel_patches:0001-rustdoc_test-Apply-prefix-stripping-to-proc_macro-de.patch",
+    ],
     sha256 = "dc8d79fe9a5beb79d93e482eb807266a0e066e97a7b8c48d43ecf91f32a3a8f3",
     urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.19.0/rules_rust-v0.19.0.tar.gz"],
 )
@@ -303,7 +309,7 @@ rust_analyzer_dependencies()
 # Vendored third party rust crates.
 git_repository(
     name = "rust_crates",
-    commit = "c39c1d1d4e4bdf2d8145beb8882af6f6e4e6dbbc",
+    commit = "3d5b3a9260cbf98746f0e77be5a8251e1fc77af0",
     remote = "https://pigweed.googlesource.com/third_party/rust_crates",
     shallow_since = "1675359057 +0000",
 )
@@ -394,6 +400,15 @@ git_repository(
     commit = "0fd67c76fc4bfb05a665c087ebfead77a3267f6d",
     remote = "https://boringssl.googlesource.com/boringssl",
     shallow_since = "1637714942 +0000",
+)
+
+git_repository(
+    name = "mbedtls",
+    build_file = "//:third_party/mbedtls/BUILD.mbedtls",
+    # mbedtls-3.2.1 released 2022-07-12
+    commit = "869298bffeea13b205343361b7a7daf2b210e33d",
+    remote = "https://pigweed.googlesource.com/third_party/github/ARMmbed/mbedtls",
+    shallow_since = "1648504566 -0700",
 )
 
 http_archive(

@@ -61,9 +61,6 @@ pw_add_library(pw_rpc.server STATIC
     pw_log
     pw_rpc.log_config
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_SERVER)
-  zephyr_link_libraries(pw_rpc.server)
-endif()
 
 pw_add_library(pw_rpc.client STATIC
   HEADERS
@@ -83,9 +80,6 @@ pw_add_library(pw_rpc.client STATIC
     pw_log
     pw_rpc.log_config
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_CLIENT)
-  zephyr_link_libraries(pw_rpc.client)
-endif()
 
 pw_add_library(pw_rpc.client_server STATIC
   HEADERS
@@ -98,14 +92,12 @@ pw_add_library(pw_rpc.client_server STATIC
   SOURCES
     client_server.cc
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_CLIENT_SERVER)
-  zephyr_link_libraries(pw_rpc.client_server)
-endif()
 
 pw_add_library(pw_rpc.synchronous_client_api INTERFACE
   HEADERS
     public/pw_rpc/synchronous_call.h
     public/pw_rpc/synchronous_call_result.h
+    public/pw_rpc/internal/synchronous_call_impl.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -168,10 +160,6 @@ endif()
 
 if(NOT "${pw_thread.yield_BACKEND}" STREQUAL "")
   pw_target_link_targets(pw_rpc.common PUBLIC pw_thread.yield)
-endif()
-
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_COMMON)
-  zephyr_link_libraries(pw_rpc.common)
 endif()
 
 pw_add_library(pw_rpc.fake_channel_output STATIC

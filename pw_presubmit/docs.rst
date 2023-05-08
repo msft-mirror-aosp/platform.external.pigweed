@@ -120,6 +120,8 @@ such as a quick program for local use and a full program for automated use. The
 * ``num_jobs``: Number of jobs to run in parallel
 * ``continue_after_build_error``: For steps that compile, don't exit on the
   first compilation error
+* ``rng_seed``: Seed from ``--rng-seed`` or 1, for the few steps that need to
+  seed a random number generator
 
 The ``luci`` member is of type ``LuciContext`` and has the following members:
 
@@ -201,6 +203,7 @@ or fix code formatting.
   by Pigweed itself) and ``yapf`` (the default).
 * ``black_path``: If ``python_formatter`` is ``black``, use this as the
   executable instead of ``black``.
+* ``black_config_file``: Set the config file for the black formatter.
 * ``exclude``: List of path regular expressions to ignore. Will be evaluated
   against paths relative to the checkout root using ``re.search``.
 
@@ -213,6 +216,7 @@ Example section from a ``pigweed.json`` file:
       "pw_presubmit": {
         "format": {
           "python_formatter": "black",
+          "black_config_file": "$pw_env{PW_PROJECT_ROOT}/config/.black.toml"
           "black_path": "black",
           "exclude": [
             "\\bthird_party/foo/src"
@@ -330,8 +334,23 @@ C/C++ headers is ``#pragma once``. This is enabled by adding
 TODO(b/###) Formatting
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 There's a check that confirms ``TODO`` lines match a given format. Upstream
-Pigweed expects these to look like ``TODO(b/###): Explanation``, but makes it
+Pigweed expects these to look like ``TODO: b/### - Explanation``, but makes it
 easy for projects to define their own pattern instead.
+
+Some older forms are still allowed but discouraged. In order of preference we
+allow the following formats by default.
+
+.. todo-check: disable
+
+.. code-block::
+
+  # TODO: b/1234 - Explanation.
+  # TODO: username@ - Explanation.
+  # TODO: username@example.com - Explanation.
+  # TODO(b/1234): Explanation.
+  # TODO(username) Explanation.
+
+.. todo-check: enable
 
 To use this check add ``todo_check.create(todo_check.BUGS_OR_USERNAMES)`` to a
 presubmit program.

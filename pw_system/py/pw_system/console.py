@@ -47,6 +47,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
     Union,
 )
 import socket
@@ -60,6 +61,7 @@ from pw_console.log_store import LogStore
 from pw_console.plugins.bandwidth_toolbar import BandwidthToolbar
 from pw_console.pyserial_wrapper import SerialWithLogging
 from pw_console.python_logging import create_temp_log_file, JsonLogFormatter
+from pw_hdlc import rpc
 from pw_rpc.console_tools.console import flattened_rpc_completions
 from pw_system.device import Device
 from pw_tokenizer.detokenize import AutoUpdatingDetokenizer
@@ -77,12 +79,14 @@ _ROOT_LOG = logging.getLogger()
 
 PW_RPC_MAX_PACKET_SIZE = 256
 SOCKET_SERVER = 'localhost'
+SOCKET_FILE = 'file'
 SOCKET_PORT = 33000
 MKFIFO_MODE = 0o666
 
 
-def _parse_args():
-    """Parses and returns the command line arguments."""
+def get_parser() -> argparse.ArgumentParser:
+    """Gets argument parser with console arguments."""
+
     parser = argparse.ArgumentParser(
         prog="python -m pw_system.console", description=__doc__
     )
@@ -157,8 +161,12 @@ def _parse_args():
         '-s',
         '--socket-addr',
         type=str,
-        help='use socket to connect to server, type default for\
-            localhost:33000, or manually input the server address:port',
+        help=(
+            'Socket address used to connect to server. Type "default" to use '
+            'localhost:33000, pass the server address and port as '
+            'address:port, or prefix the path to a forwarded socket with '
+            '"file:" as file:path_to_file.'
+        ),
     )
     parser.add_argument(
         "--token-databases",
@@ -207,6 +215,35 @@ def _parse_args():
         help="Don't use pw_rpc based logging.",
     )
 
+    # TODO(b/248257406) Use argparse.BooleanOptionalAction when Python 3.8 is
+    # no longer supported.
+    parser.add_argument(
+        '--hdlc-encoding',
+        action='store_true',
+        default=True,
+        help='Use HDLC encoding on transfer interfaces.',
+    )
+
+    parser.add_argument(
+        '--no-hdlc-encoding',
+        action='store_false',
+        dest='hdlc_encoding',
+        help="Don't use HDLC encoding on transfer interface.",
+    )
+
+    parser.add_argument(
+        '--channel-id',
+        type=int,
+        default=rpc.DEFAULT_CHANNEL_ID,
+        help="Channel ID used in RPC communications.",
+    )
+
+    return parser
+
+
+def _parse_args():
+    """Parses and returns the command line arguments."""
+    parser = get_parser()
     return parser.parse_args()
 
 
@@ -308,18 +345,32 @@ def _start_python_terminal(  # pylint: disable=too-many-arguments
 
 
 class SocketClientImpl:
-    def __init__(self, config: str):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        socket_server = ''
-        socket_port = 0
+    """Socket transport implementation."""
 
+    def __init__(self, config: str):
+        connection_type: int
+        interface: Union[str, Tuple[str, int]]
         if config == 'default':
-            socket_server = SOCKET_SERVER
-            socket_port = SOCKET_PORT
+            connection_type = socket.AF_INET
+            interface = (SOCKET_SERVER, SOCKET_PORT)
         else:
-            socket_server, socket_port_str = config.split(':')
-            socket_port = int(socket_port_str)
-        self.socket.connect((socket_server, socket_port))
+            socket_server, socket_port_or_file = config.split(':')
+            if socket_server == SOCKET_FILE:
+                # Unix socket support is available on Windows 10 since April
+                # 2018. However, there is no Python support on Windows yet.
+                # See https://bugs.python.org/issue33408 for more information.
+                if not hasattr(socket, 'AF_UNIX'):
+                    raise TypeError(
+                        'Unix sockets are not supported in this environment.'
+                    )
+                connection_type = socket.AF_UNIX  # pylint: disable=no-member
+                interface = socket_port_or_file
+            else:
+                connection_type = socket.AF_INET
+                interface = (socket_server, int(socket_port_or_file))
+
+        self.socket = socket.socket(connection_type, socket.SOCK_STREAM)
+        self.socket.connect(interface)
 
     def write(self, data: bytes):
         self.socket.sendall(data)
@@ -347,6 +398,8 @@ def console(
     merge_device_and_host_logs: bool = False,
     rpc_logging: bool = True,
     use_ipython: bool = False,
+    channel_id: int = rpc.DEFAULT_CHANNEL_ID,
+    hdlc_encoding: bool = True,
 ) -> int:
     """Starts an interactive RPC console for HDLC."""
     # argparse.FileType doesn't correctly handle '-' for binary files.
@@ -483,7 +536,7 @@ def console(
             return 1
 
     device_client = Device(
-        1,
+        channel_id,
         read,
         write,
         protos,
@@ -491,6 +544,7 @@ def console(
         timestamp_decoder=timestamp_decoder,
         rpc_timeout_s=5,
         use_rpc_logging=rpc_logging,
+        use_hdlc_encoding=hdlc_encoding,
     )
 
     _start_python_terminal(
