@@ -15,6 +15,7 @@
 """ Prompt toolkit application for pw watch. """
 
 import asyncio
+import functools
 import logging
 import os
 import re
@@ -45,13 +46,14 @@ from prompt_toolkit.layout import (
 )
 from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.styles import (
+    ConditionalStyleTransformation,
     DynamicStyle,
+    SwapLightAndDarkStyleTransformation,
+    merge_style_transformations,
     merge_styles,
-    Style,
     style_from_pygments_cls,
 )
 from prompt_toolkit.formatted_text import StyleAndTextTuples
-from prompt_toolkit.mouse_events import MouseEvent, MouseEventType
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers.markup import MarkdownLexer  # type: ignore
 
@@ -70,6 +72,8 @@ from pw_console.widgets import (
     ToolbarButton,
     WindowPaneToolbar,
     create_border,
+    mouse_handlers,
+    to_checkbox,
 )
 from pw_console.window_list import DisplayMode
 from pw_console.window_manager import WindowManager
@@ -110,6 +114,33 @@ Move window pane right. ---------------------------  Ctrl-Alt-Right
 Move window pane down. ----------------------------  Ctrl-Alt-Down
 Move window pane up. ------------------------------  Ctrl-Alt-Up
 Balance all window sizes. -------------------------  Ctrl-U
+
+
+Bottom Toolbar Controls
+=======================
+
+Rebuild Enter --------------- Click or press Enter to trigger a rebuild.
+[x] Auto Rebuild ------------ Click to globaly enable or disable automatic
+                              rebuilding when files change.
+Help F1 --------------------- Click or press F1 to open this help window.
+Quit Ctrl-d ----------------- Click or press Ctrl-d to quit pw_watch.
+Next Tab Ctrl-Alt-n --------- Switch to the next log tab.
+Previous Tab Ctrl-Alt-p ----- Switch to the previous log tab.
+
+
+Build Status Bar
+================
+
+The build status bar shows the current status of all build directories outlined
+in a colored frame.
+
+  ┏━━ BUILDING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+  ┃ [✓] out_directory  Building  Last line of standard out.                ┃
+  ┃ [✓] out_dir2       Waiting   Last line of standard out.                ┃
+  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Each checkbox on the far left controls whether that directory is built when
+files change and manual builds are run.
 
 
 Copying Text
@@ -163,13 +194,12 @@ class WatchAppPrefs(ProjectBuilderPrefs):
         self.registered_commands = DEFAULT_KEY_BINDINGS
         self.registered_commands.update(self.user_key_bindings)
 
-        self.default_config.update(
-            {
-                'key_bindings': DEFAULT_KEY_BINDINGS,
-                'show_python_logger': True,
-            }
-        )
-        self.reset_config()
+        new_config_settings = {
+            'key_bindings': DEFAULT_KEY_BINDINGS,
+            'show_python_logger': True,
+        }
+        self.default_config.update(new_config_settings)
+        self._update_config(new_config_settings)
 
     # Required pw_console preferences for key bindings and themes
     @property
@@ -187,6 +217,10 @@ class WatchAppPrefs(ProjectBuilderPrefs):
     @property
     def theme_colors(self):
         return get_theme_colors(self.ui_theme)
+
+    @property
+    def swap_light_and_dark(self) -> bool:
+        return self._config.get('swap_light_and_dark', False)
 
     def get_function_keys(self, name: str) -> List:
         """Return the keys for the named function."""
@@ -254,38 +288,6 @@ class WatchAppPrefs(ProjectBuilderPrefs):
 class WatchWindowManager(WindowManager):
     def update_root_container_body(self):
         self.application.window_manager_container = self.create_root_container()
-
-
-class StatusBarControl(FormattedTextControl):
-    """Handles switching build tabs in the UI on mouse click."""
-
-    def __init__(self, watch_app: 'WatchApp', *args, **kwargs) -> None:
-        self.watch_app = watch_app
-        super().__init__(*args, **kwargs)
-
-    def mouse_handler(self, mouse_event: MouseEvent):
-        """Mouse handler for this control."""
-        _click_x = mouse_event.position.x
-        _click_y = mouse_event.position.y
-
-        # On left click
-        if mouse_event.event_type == MouseEventType.MOUSE_UP:
-            tab_index = _click_y
-            pane = self.watch_app.recipe_index_to_log_pane.get(tab_index, None)
-            if not pane:
-                return NotImplemented
-
-            (
-                window_list,
-                pane_index,
-            ) = self.watch_app.window_manager.find_window_list_and_pane_index(
-                pane
-            )
-            window_list.switch_to_tab(pane_index)
-            return None
-
-        # Mouse event not handled, return NotImplemented.
-        return NotImplemented
 
 
 class WatchApp(PluginMixin):
@@ -371,9 +373,7 @@ class WatchApp(PluginMixin):
 
         self.status_bar_border_style = 'class:command-runner-border'
 
-        self.status_bar_control = StatusBarControl(
-            self, self.get_status_bar_text
-        )
+        self.status_bar_control = FormattedTextControl(self.get_status_bar_text)
 
         self.status_bar_container = create_border(
             HSplit(
@@ -411,6 +411,17 @@ class WatchApp(PluginMixin):
             include_resize_handle=False,
             focus_action_callable=self.switch_to_root_log,
             click_to_focus_text='',
+        )
+        self.help_toolbar.add_button(
+            ToolbarButton('Enter', 'Rebuild', self.run_build)
+        )
+        self.help_toolbar.add_button(
+            ToolbarButton(
+                description='Auto Rebuild',
+                mouse_handler=self.toggle_restart_on_filechange,
+                is_checkbox=True,
+                checked=lambda: self.restart_on_changes,
+            )
         )
         self.help_toolbar.add_button(
             ToolbarButton('F1', 'Help', self.user_guide_window.toggle_display)
@@ -491,11 +502,16 @@ class WatchApp(PluginMixin):
         )
 
         self.current_theme = generate_styles(self.prefs.ui_theme)
-        self.style_overrides = Style.from_dict(
-            {
-                # 'search': 'bg:ansired ansiblack',
-            }
+
+        self.style_transformation = merge_style_transformations(
+            [
+                ConditionalStyleTransformation(
+                    SwapLightAndDarkStyleTransformation(),
+                    filter=Condition(lambda: self.prefs.swap_light_and_dark),
+                ),
+            ]
         )
+
         self.code_theme = style_from_pygments_cls(PigweedCodeStyle)
 
         self.layout = Layout(
@@ -513,11 +529,11 @@ class WatchApp(PluginMixin):
                 lambda: merge_styles(
                     [
                         self.current_theme,
-                        self.style_overrides,
                         self.code_theme,
                     ]
                 )
             ),
+            style_transformation=self.style_transformation,
             full_screen=True,
         )
 
@@ -645,13 +661,24 @@ class WatchApp(PluginMixin):
         instead."""
         self.window_manager.focus_first_visible_pane()
 
-    def switch_to_root_log(self):
+    def switch_to_root_log(self) -> None:
         (
             window_list,
             pane_index,
         ) = self.window_manager.find_window_list_and_pane_index(
             self.root_log_pane
         )
+        window_list.switch_to_tab(pane_index)
+
+    def switch_to_build_log(self, log_index: int) -> None:
+        pane = self.recipe_index_to_log_pane.get(log_index, None)
+        if not pane:
+            return
+
+        (
+            window_list,
+            pane_index,
+        ) = self.window_manager.find_window_list_and_pane_index(pane)
         window_list.switch_to_tab(pane_index)
 
     def command_runner_is_open(self) -> bool:
@@ -663,25 +690,34 @@ class WatchApp(PluginMixin):
             if isinstance(pane, LogPane):
                 yield pane
 
-    def clear_ninja_log(self) -> None:
+    def clear_log_panes(self) -> None:
+        """Erase all log pane content and turn on follow.
+
+        This is called whenever rebuilds occur. Either a manual build from
+        self.run_build or on file changes called from
+        pw_watch._handle_matched_event."""
         for pane in self.all_log_panes():
+            pane.log_view.clear_visual_selection()
+            pane.log_view.clear_filters()
             pane.log_view.log_store.clear_logs()
-            pane.log_view._restart_filtering()  # pylint: disable=protected-access
             pane.log_view.view_mode_changed()
             # Re-enable follow if needed
             if not pane.log_view.follow:
                 pane.log_view.toggle_follow()
 
-    def run_build(self):
-        """Manually trigger a rebuild."""
-        self.clear_ninja_log()
+    def run_build(self) -> None:
+        """Manually trigger a rebuild from the UI."""
+        self.clear_log_panes()
         self.event_handler.rebuild()
 
-    def rebuild_on_filechange(self):
-        for pane in self.all_log_panes():
-            pane.log_view.clear_visual_selection()
-            pane.log_view.log_store.clear_logs()
-            pane.log_view.view_mode_changed()
+    @property
+    def restart_on_changes(self) -> bool:
+        return self.event_handler.restart_on_changes
+
+    def toggle_restart_on_filechange(self) -> None:
+        self.event_handler.restart_on_changes = (
+            not self.event_handler.restart_on_changes
+        )
 
     def get_status_bar_text(self) -> StyleAndTextTuples:
         """Return formatted text for build status bar."""
@@ -696,21 +732,48 @@ class WatchApp(PluginMixin):
             pane,
         ) = self.window_manager._get_active_window_list_and_pane()
         # pylint: enable=protected-access
+        restarting = BUILDER_CONTEXT.restart_flag
 
-        for cfg in self.event_handler.project_builder:
+        for i, cfg in enumerate(self.event_handler.project_builder):
             # The build directory
             name_style = ''
-            if pane and pane.pane_title() == cfg.display_name:
+            if not pane:
+                formatted_text.append(('', '\n'))
+                continue
+
+            # Dim the build name if disabled
+            if not cfg.enabled:
+                name_style = 'class:theme-fg-inactive'
+
+            # If this build tab is selected, highlight with cyan.
+            if pane.pane_title() == cfg.display_name:
                 name_style = 'class:theme-fg-cyan'
+
+            formatted_text.append(
+                to_checkbox(
+                    cfg.enabled,
+                    functools.partial(
+                        mouse_handlers.on_click,
+                        cfg.toggle_enabled,
+                    ),
+                    end=' ',
+                    unchecked_style='class:checkbox',
+                    checked_style='class:checkbox-checked',
+                )
+            )
             formatted_text.append(
                 (
                     name_style,
                     f'{cfg.display_name}'.ljust(name_width),
+                    functools.partial(
+                        mouse_handlers.on_click,
+                        functools.partial(self.switch_to_build_log, i),
+                    ),
                 )
             )
             formatted_text.append(separator)
             # Status
-            formatted_text.append(cfg.status.status_slug())
+            formatted_text.append(cfg.status.status_slug(restarting=restarting))
             formatted_text.append(separator)
             # Current stdout line
             formatted_text.extend(cfg.status.current_step_formatted())
@@ -724,13 +787,15 @@ class WatchApp(PluginMixin):
         return formatted_text
 
     def set_tab_bar_colors(self) -> None:
+        restarting = BUILDER_CONTEXT.restart_flag
+
         for cfg in BUILDER_CONTEXT.recipes:
             pane = self.recipe_name_to_log_pane.get(cfg.display_name, None)
             if not pane:
                 continue
 
             pane.extra_tab_style = None
-            if cfg.status.failed():
+            if not restarting and cfg.status.failed():
                 pane.extra_tab_style = 'class:theme-fg-red'
 
     def exit(

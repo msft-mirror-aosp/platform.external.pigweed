@@ -26,16 +26,16 @@ class NativeFakeDispatcher final {
 
   void RequestStop();
 
-  void PostTask(Task& task);
+  void Post(Task& task);
 
-  void PostDelayedTask(Task& task, chrono::SystemClock::duration delay);
+  void PostAfter(Task& task, chrono::SystemClock::duration delay);
 
-  void PostTaskForTime(Task& task, chrono::SystemClock::time_point time);
+  void PostAt(Task& task, chrono::SystemClock::time_point time);
 
-  void SchedulePeriodicTask(Task& task, chrono::SystemClock::duration interval);
-  void SchedulePeriodicTask(Task& task,
-                            chrono::SystemClock::duration interval,
-                            chrono::SystemClock::time_point start_time);
+  void PostPeriodic(Task& task, chrono::SystemClock::duration interval);
+  void PostPeriodicAt(Task& task,
+                      chrono::SystemClock::duration interval,
+                      chrono::SystemClock::time_point start_time);
 
   bool Cancel(Task& task);
 
@@ -53,10 +53,15 @@ class NativeFakeDispatcher final {
   void PostTaskInternal(::pw::async::backend::NativeTask& task,
                         chrono::SystemClock::time_point time_due);
 
-  // Executes all pending tasks with a due time <= now().
-  void RunLoopOnce();
+  // Dequeue and run each task that is due.
+  void ExecuteDueTasks();
+
+  // Dequeue each task and run each TaskFunction with a PW_STATUS_CANCELLED
+  // status.
+  void DrainTaskQueue();
 
   Dispatcher& dispatcher_;
+  bool stop_requested_ = false;
 
   // A priority queue of scheduled tasks sorted by earliest due times first.
   IntrusiveList<::pw::async::backend::NativeTask> task_queue_;
