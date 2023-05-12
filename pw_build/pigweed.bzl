@@ -18,6 +18,12 @@ load(
     _add_defaults = "add_defaults",
 )
 
+# Used by `pw_cc_test`.
+FUZZTEST_OPTS = [
+    "-Wno-sign-compare",
+    "-Wno-unused-parameter",
+]
+
 def pw_cc_binary(**kwargs):
     """Wrapper for cc_binary providing some defaults.
 
@@ -70,13 +76,24 @@ def pw_cc_test(**kwargs):
       **kwargs: Passed to cc_test.
     """
     kwargs["deps"] = kwargs.get("deps", []) + \
-                     ["@pigweed//pw_unit_test:simple_printing_main"]
+                     ["@pigweed_config//:pw_unit_test_main"]
 
     # TODO(b/234877642): Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
     kwargs["deps"] = kwargs["deps"] + ["@pigweed_config//:pw_assert_backend"]
     _add_defaults(kwargs)
+
+    # Some tests may include FuzzTest, which includes headers that trigger
+    # warnings. This check must be done here and not in `add_defaults`, since
+    # the `use_fuzztest` config setting can refer by label to a library which
+    # itself calls `add_defaults`.
+    extra_copts = select({
+        "@pigweed//pw_fuzzer:use_fuzztest": FUZZTEST_OPTS,
+        "//conditions:default": [],
+    })
+    kwargs["copts"] = kwargs.get("copts", []) + extra_copts
+
     native.cc_test(**kwargs)
 
 def pw_cc_perf_test(**kwargs):

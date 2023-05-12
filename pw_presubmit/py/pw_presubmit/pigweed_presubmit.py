@@ -301,7 +301,7 @@ gn_teensy_build = build.GnGenNinja(
             str(ctx.package_root)
         ),
         'pw_arduino_build_CORE_NAME': 'teensy',
-        'pw_arduino_build_PACKAGE_NAME': 'teensy/avr',
+        'pw_arduino_build_PACKAGE_NAME': 'avr/1.58.1',
         'pw_arduino_build_BOARD': 'teensy40',
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
@@ -669,6 +669,10 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\.pb\.h$',
     r'\_pb2.pyi?$',
     # keep-sorted: end
+    # Generated third-party files
+    # keep-sorted: start
+    r'\bthird_party/.*\.bazelrc$',
+    # keep-sorted: end
     # Diff/Patch files
     # keep-sorted: start
     r'\.diff$',
@@ -1007,6 +1011,12 @@ OTHER_CHECKS = (
     # keep-sorted: end
 )
 
+ARDUINO_PICO = (
+    gn_teensy_build,
+    gn_pico_build,
+    gn_pw_system_demo_build,
+)
+
 # The misc program differs from other_checks in that checks in the misc
 # program block CQ on Linux.
 MISC = (
@@ -1014,9 +1024,6 @@ MISC = (
     gn_emboss_build,
     gn_googletest_build,
     gn_nanopb_build,
-    gn_pico_build,
-    gn_pw_system_demo_build,
-    gn_teensy_build,
     # keep-sorted: end
 )
 
@@ -1091,6 +1098,7 @@ FULL = (
 
 PROGRAMS = Programs(
     # keep-sorted: start
+    arduino_pico=ARDUINO_PICO,
     full=FULL,
     lintformat=LINTFORMAT,
     misc=MISC,

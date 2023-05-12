@@ -20,7 +20,7 @@ import subprocess
 from collections import defaultdict
 from pathlib import Path
 from string import Template
-from typing import Dict, List, IO, Iterable, Set
+from typing import Dict, List, IO, Iterable, Iterator, Set
 
 from pw_build.bazel_query import BazelWorkspace
 from pw_build.gn_config import consolidate_configs, GnConfig
@@ -69,6 +69,7 @@ The GN build files are generated from the third-party Bazel build files using
 $$dir_pw_build/py/pw_build/$script.
 
 The script uses data taken from ``$$dir_pw_third_party/$repo/repo.json``.
+The schema of ``repo.json`` is described in :ref:`module-pw_build-third-party`.
 
 The script should be re-run whenever the submodule is updated or the JSON file
 is modified. Specify the location of the Bazel repository can be specified using
@@ -79,12 +80,11 @@ the ``-w`` option, e.g.
   python pw_build/py/pw_build/$script \\
     -w third_party/$repo/src
 
-Version
-=======
-The update script was last run for revision:
-$revision
+.. DO NOT EDIT BELOW THIS LINE. Generated section.
 '''.lstrip()
 )
+
+_GIT_SHORT_REV_LEN = 8
 
 
 class GnGenerator:
@@ -292,7 +292,7 @@ class GnGenerator:
             build_gn.write_end()
 
     def write_docs_rst(self, docs_rst: IO, name: str) -> None:
-        """Write the top-level GN import that declares build arguments.
+        """Writes new, top-level documentation for the repo.
 
         Args:
             docs_rst: The output object.
@@ -306,9 +306,36 @@ class GnGenerator:
             repo=self._repo,
             repo_var=self._repo_var,
             url=self._workspace.url(),
-            revision=self._workspace.revision(),
         )
-        docs_rst.write(contents)
+        docs_rst.write('\n'.join(self.update_version(contents.split('\n'))))
+
+    def update_version(self, lines: Iterable[str]) -> Iterator[str]:
+        """Replaces the "Version" part of docs.rst with the latest revision.
+
+        This will truncate everything after the "generated section" comment and
+        add the comment and version information. If the file does not have the
+        comment, the comment and information will appended to the end of the
+        file.
+
+        Args:
+            lines: Iterator of lines.
+        """
+        comment = '.. DO NOT EDIT BELOW THIS LINE. Generated section.'
+        url = self._workspace.url().rstrip('.git')
+        revision = self._workspace.revision()
+        short = revision[:_GIT_SHORT_REV_LEN]
+        for line in lines:
+            if line == comment:
+                break
+            yield line
+        yield comment
+        yield ''
+        yield 'Version'
+        yield '======='
+        yield f'The update script was last run for revision `{short}`_.'
+        yield ''
+        yield f'.. _{short}: {url}/tree/{revision}'
+        yield ''
 
 
 def write_owners(owners: IO) -> None:
@@ -377,8 +404,16 @@ def _generate_gn(workspace_path: Path) -> None:
             build_gn.aliases = aliases
             generator.write_build_gn(package, build_gn)
 
-    with open(Path(output, 'docs.rst'), 'w') as docs_rst:
-        generator.write_docs_rst(docs_rst, name)
+    try:
+        with open(Path(output, 'docs.rst'), 'x') as docs_rst:
+            generator.write_docs_rst(docs_rst, name)
+    except OSError:
+        # docs.rst file already exists, just replace the version section.
+        with open(Path(output, 'docs.rst'), 'r') as docs_rst:
+            contents = '\n'.join(generator.update_version(docs_rst))
+        with open(Path(output, 'docs.rst'), 'w') as docs_rst:
+            docs_rst.write(contents)
+
     try:
         with open(Path(output, 'OWNERS'), 'x') as owners:
             write_owners(owners)

@@ -17,19 +17,49 @@ Add FuzzTest to your workspace with the following command.
 
 .. code-block:: sh
 
-  git submodule add git@github.com:nopsledder/fuzztest.git \
-    third_party/fuzztest/src
+  git submodule add https://github.com/google/fuzztest.git \
+    third_party/fuzztest
 
-GN
-==
-* Set the GN var ``dir_pw_third_party_fuzztest`` to the location of the
-  FuzzTest source.
+.. tab-set::
 
-  If you used the command above, this will be
-  ``//third_party/fuzztest/src``
+   .. tab-item:: GN
 
-  This can be set in your args.gn or .gn file like:
-  ``dir_pw_third_party_fuzztest = "//third_party/fuzztest/src"``
+      Set the GN var ``dir_pw_third_party_fuzztest`` to the location of the
+      FuzzTest source.
+
+      If you used the command above, this will be ``//third_party/fuzztest``.
+
+      This can be set in your args.gn or .gn file:
+      ``dir_pw_third_party_fuzztest = "//third_party/fuzztest"``
+
+   .. tab-item:: CMake
+
+      Set the following CMake variables:
+
+      * Set ``dir_pw_third_party_fuzztest`` to the location of the
+        FuzzTest source.
+
+      * Set ``dir_pw_third_party_googletest`` to the location of the
+        GoogleTest source.
+
+      * Set ``pw_unit_test_GOOGLETEST_BACKEND`` to ``pw_third_party.fuzztest``.
+
+   .. tab-item:: Bazel
+
+      Set the following `label flags`_, either in your `target config`_ or on
+      the command line:
+
+      * ``pw_fuzzer_fuzztest_backend`` to ``@com_google_fuzztest//fuzztest``.
+
+      For example:
+
+      .. code-block:: sh
+
+         bazel test //... \
+            --@pigweed_config//:pw_fuzzer_fuzztest_backend=@com_google_fuzztest//fuzztest
+
+.. _target config: :ref:`_docs-build_system-bazel_configuration`
+.. _label flags: :ref:`_docs-build_system-bazel_flags`
 
 Updating
 ========
