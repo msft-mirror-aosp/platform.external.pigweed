@@ -154,12 +154,19 @@ Once enabled, the tokenizer headers can be included like any Zephyr headers:
 
    #include <pw_tokenizer/tokenize.h>
 
+.. note::
+  Zephyr handles the additional linker sections via
+  ``pw_tokenizer_linker_rules.ld`` which is added to the end of the linker file
+  via a call to ``zephyr_linker_sources(SECTIONS ...)``.
+
 ------------
 Tokenization
 ------------
 Tokenization converts a string literal to a token. If it's a printf-style
 string, its arguments are encoded along with it. The results of tokenization can
 be sent off device or stored in place of a full string.
+
+.. doxygentypedef:: pw_tokenizer_Token
 
 Tokenization macros
 ===================
@@ -168,123 +175,110 @@ Adding tokenization to a project is simple. To tokenize a string, include
 
 Tokenize a string literal
 -------------------------
-The ``PW_TOKENIZE_STRING`` macro converts a string literal to a ``uint32_t``
-token.
+``pw_tokenizer`` provides macros for tokenizing string literals with no
+arguments.
 
-.. code-block:: cpp
+.. doxygendefine:: PW_TOKENIZE_STRING
+.. doxygendefine:: PW_TOKENIZE_STRING_DOMAIN
+.. doxygendefine:: PW_TOKENIZE_STRING_MASK
 
-   constexpr uint32_t token = PW_TOKENIZE_STRING("Any string literal!");
+The tokenization macros above cannot be used inside other expressions.
 
-.. admonition:: When to use this macro
+.. admonition:: **Yes**: Assign :c:macro:`PW_TOKENIZE_STRING` to a ``constexpr`` variable.
+  :class: checkmark
 
-   Use ``PW_TOKENIZE_STRING`` to tokenize string literals that do not have
-   %-style arguments.
+  .. code:: cpp
 
-Tokenize to a handler function
-------------------------------
-``PW_TOKENIZE_TO_GLOBAL_HANDLER`` is the most efficient tokenization function,
-since it takes the fewest arguments. It encodes a tokenized string to a
-buffer on the stack. The size of the buffer is set with
-``PW_TOKENIZER_CFG_ENCODING_BUFFER_SIZE_BYTES``.
+    constexpr uint32_t kGlobalToken = PW_TOKENIZE_STRING("Wowee Zowee!");
 
-This macro is provided by the ``pw_tokenizer:global_handler`` facade. The
-backend for this facade must define the ``pw_tokenizer_HandleEncodedMessage``
-C-linkage function.
+    void Function() {
+      constexpr uint32_t local_token = PW_TOKENIZE_STRING("Wowee Zowee?");
+    }
 
-.. code-block:: cpp
+.. admonition:: **No**: Use :c:macro:`PW_TOKENIZE_STRING` in another expression.
+  :class: error
 
-   PW_TOKENIZE_TO_GLOBAL_HANDLER(format_string_literal, arguments...);
+  .. code:: cpp
 
-   void pw_tokenizer_HandleEncodedMessage(const uint8_t encoded_message[],
-                                          size_t size_bytes);
+   void BadExample() {
+     ProcessToken(PW_TOKENIZE_STRING("This won't compile!"));
+   }
 
-``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD`` is similar, but passes a
-``uintptr_t`` argument to the global handler function. Values like a log level
-can be packed into the ``uintptr_t``.
+  Use :c:macro:`PW_TOKENIZE_STRING_EXPR` instead.
 
-This macro is provided by the ``pw_tokenizer:global_handler_with_payload``
-facade. The backend for this facade must define the
-``pw_tokenizer_HandleEncodedMessageWithPayload`` C-linkage function.
+An alternate set of macros are provided for use inside expressions. These make
+use of lambda functions, so while they can be used inside expressions, they
+require C++ and cannot be assigned to constexpr variables or be used with
+special function variables like ``__func__``.
 
-.. code-block:: cpp
-
-   PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD(payload,
-                                              format_string_literal,
-                                              arguments...);
-
-   void pw_tokenizer_HandleEncodedMessageWithPayload(
-       uintptr_t payload, const uint8_t encoded_message[], size_t size_bytes);
+.. doxygendefine:: PW_TOKENIZE_STRING_EXPR
+.. doxygendefine:: PW_TOKENIZE_STRING_DOMAIN_EXPR
+.. doxygendefine:: PW_TOKENIZE_STRING_MASK_EXPR
 
 .. admonition:: When to use these macros
 
-   Use anytime a global handler is sufficient, particularly for widely expanded
-   macros, like a logging macro. ``PW_TOKENIZE_TO_GLOBAL_HANDLER`` or
-   ``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD`` are the most efficient macros
-   for tokenizing printf-style strings.
+  Use :c:macro:`PW_TOKENIZE_STRING` and related macros to tokenize string
+  literals that do not need %-style arguments encoded.
 
-Tokenize to a callback
-----------------------
-``PW_TOKENIZE_TO_CALLBACK`` tokenizes to a buffer on the stack and calls a
-``void(const uint8_t* buffer, size_t buffer_size)`` callback that is provided at
-the call site. The size of the buffer is set with
-``PW_TOKENIZER_CFG_ENCODING_BUFFER_SIZE_BYTES``.
+.. admonition:: **Yes**: Use :c:macro:`PW_TOKENIZE_STRING_EXPR` within other expressions.
+  :class: checkmark
 
-.. code-block:: cpp
+  .. code:: cpp
 
-   PW_TOKENIZE_TO_CALLBACK(HandlerFunction, "Format string: %x", arguments...);
+    void GoodExample() {
+      ProcessToken(PW_TOKENIZE_STRING_EXPR("This will compile!"));
+    }
 
-.. admonition:: When to use this macro
+.. admonition:: **No**: Assign :c:macro:`PW_TOKENIZE_STRING_EXPR` to a ``constexpr`` variable.
+  :class: error
 
-   Use ``PW_TOKENIZE_TO_CALLBACK`` if the global handler version is already in
-   use for another purpose or more flexibility is needed.
+  .. code:: cpp
 
-Tokenize to a buffer
---------------------
-The most flexible tokenization macro is ``PW_TOKENIZE_TO_BUFFER``, which encodes
-to a caller-provided buffer.
+     constexpr uint32_t wont_work = PW_TOKENIZE_STRING_EXPR("This won't compile!"));
 
-.. code-block:: cpp
+  Instead, use :c:macro:`PW_TOKENIZE_STRING` to assign to a ``constexpr`` variable.
 
-   uint8_t buffer[BUFFER_SIZE];
-   size_t size_bytes = sizeof(buffer);
-   PW_TOKENIZE_TO_BUFFER(buffer, &size_bytes, format_string_literal, arguments...);
+.. admonition:: **No**: Tokenize ``__func__`` in :c:macro:`PW_TOKENIZE_STRING_EXPR`.
+  :class: error
 
-While ``PW_TOKENIZE_TO_BUFFER`` is maximally flexible, it takes more arguments
-than the other macros, so its per-use code size overhead is larger.
+  .. code:: cpp
 
-.. admonition:: When to use this macro
+    void BadExample() {
+      // This compiles, but __func__ will not be the outer function's name, and
+      // there may be compiler warnings.
+      constexpr uint32_t wont_work = PW_TOKENIZE_STRING_EXPR(__func__);
+    }
 
-   Use ``PW_TOKENIZE_TO_BUFFER`` to encode to a custom-sized buffer or if the
-   other macros are insufficient. Avoid using ``PW_TOKENIZE_TO_BUFFER`` in
-   widely expanded macros, such as a logging macro, because it will result in
-   larger code size than its alternatives.
+  Instead, use :c:macro:`PW_TOKENIZE_STRING` to tokenize ``__func__`` or similar macros.
 
 .. _module-pw_tokenizer-custom-macro:
 
-Tokenize with a custom macro
-----------------------------
-Projects may need more flexbility than the standard ``pw_tokenizer`` macros
-provide. To support this, projects may define custom tokenization macros. This
-requires the use of two low-level ``pw_tokenizer`` macros:
+Tokenize a message with arguments in a custom macro
+---------------------------------------------------
+Projects can leverage the tokenization machinery in whichever way best suits
+their needs. The most efficient way to use ``pw_tokenizer`` is to pass tokenized
+data to a global handler function. A project's custom tokenization macro can
+handle tokenized data in a function of their choosing.
 
-.. c:macro:: PW_TOKENIZE_FORMAT_STRING(domain, mask, format, ...)
+``pw_tokenizer`` provides two low-level macros for projects to use
+to create custom tokenization macros.
 
-   Tokenizes a format string and sets the ``_pw_tokenizer_token`` variable to the
-   token. Must be used in its own scope, since the same variable is used in every
-   invocation.
+.. doxygendefine:: PW_TOKENIZE_FORMAT_STRING
+.. doxygendefine:: PW_TOKENIZER_ARG_TYPES
 
-   The tokenized string uses the specified :ref:`tokenization domain
-   <module-pw_tokenizer-domains>`.  Use ``PW_TOKENIZER_DEFAULT_DOMAIN`` for the
-   default. The token also may be masked; use ``UINT32_MAX`` to keep all bits.
+The outputs of these macros are typically passed to an encoding function. That
+function encodes the token, argument types, and argument data to a buffer using
+helpers provided by ``pw_tokenizer/encode_args.h``.
 
-.. c:macro:: PW_TOKENIZER_ARG_TYPES(...)
+.. doxygenfunction:: pw::tokenizer::EncodeArgs
+.. doxygenclass:: pw::tokenizer::EncodedMessage
+   :members:
+.. doxygenfunction:: pw_tokenizer_EncodeArgs
 
-   Converts a series of arguments to a compact format that replaces the format
-   string literal.
-
-Use these two macros within the custom tokenization macro to call a function
-that does the encoding. The following example implements a custom tokenization
-macro for use with :ref:`module-pw_log_tokenized`.
+Example
+^^^^^^^
+The following example implements a custom tokenization macro similar to
+:ref:`module-pw_log_tokenized`.
 
 .. code-block:: cpp
 
@@ -294,7 +288,7 @@ macro for use with :ref:`module-pw_log_tokenized`.
    extern "C" {
    #endif
 
-   void EncodeTokenizedMessage(pw_tokenizer_Payload metadata,
+   void EncodeTokenizedMessage(uint32_t metadata,
                                pw_tokenizer_Token token,
                                pw_tokenizer_ArgTypes types,
                                ...);
@@ -315,9 +309,10 @@ macro for use with :ref:`module-pw_log_tokenized`.
 
 In this example, the ``EncodeTokenizedMessage`` function would handle encoding
 and processing the message. Encoding is done by the
-``pw::tokenizer::EncodedMessage`` class or ``pw::tokenizer::EncodeArgs``
-function from ``pw_tokenizer/encode_args.h``. The encoded message can then be
-transmitted or stored as needed.
+:cpp:class:`pw::tokenizer::EncodedMessage` class or
+:cpp:func:`pw::tokenizer::EncodeArgs` function from
+``pw_tokenizer/encode_args.h``. The encoded message can then be transmitted or
+stored as needed.
 
 .. code-block:: cpp
 
@@ -327,83 +322,44 @@ transmitted or stored as needed.
    void HandleTokenizedMessage(pw::log_tokenized::Metadata metadata,
                                pw::span<std::byte> message);
 
-   extern "C" void EncodeTokenizedMessage(const pw_tokenizer_Payload metadata,
+   extern "C" void EncodeTokenizedMessage(const uint32_t metadata,
                                           const pw_tokenizer_Token token,
                                           const pw_tokenizer_ArgTypes types,
                                           ...) {
      va_list args;
      va_start(args, types);
-     pw::tokenizer::EncodedMessage encoded_message(token, types, args);
+     pw::tokenizer::EncodedMessage<> encoded_message(token, types, args);
      va_end(args);
 
      HandleTokenizedMessage(metadata, encoded_message);
    }
 
-.. admonition:: When to use a custom macro
+.. admonition:: Why use a custom macro
 
-   Use existing tokenization macros whenever possible. A custom macro may be
-   needed to support use cases like the following:
+   - Optimal code size. Invoking a free function with the tokenized data results
+     in the smallest possible call site.
+   - Pass additional arguments, such as metadata, with the tokenized message.
+   - Integrate ``pw_tokenizer`` with other systems.
 
-   * Variations of ``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD`` that take
-     different arguments.
-   * Supporting global handler macros that use different handler functions.
+Tokenize a message with arguments to a buffer
+---------------------------------------------
+.. doxygendefine:: PW_TOKENIZE_TO_BUFFER
+.. doxygendefine:: PW_TOKENIZE_TO_BUFFER_DOMAIN
+.. doxygendefine:: PW_TOKENIZE_TO_BUFFER_MASK
+
+.. admonition:: Why use this macro
+
+   - Encode a tokenized message for consumption within a function.
+   - Encode a tokenized message into an existing buffer.
+
+   Avoid using ``PW_TOKENIZE_TO_BUFFER`` in widely expanded macros, such as a
+   logging macro, because it will result in larger code size than passing the
+   tokenized data to a function.
 
 Binary logging with pw_tokenizer
 ================================
-String tokenization is perfect for logging. Consider the following log macro,
-which gathers the file, line number, and log message. It calls the ``RecordLog``
-function, which formats the log string, collects a timestamp, and transmits the
-result.
-
-.. code-block:: cpp
-
-   #define LOG_INFO(format, ...) \
-       RecordLog(LogLevel_INFO, __FILE_NAME__, __LINE__, format, ##__VA_ARGS__)
-
-   void RecordLog(LogLevel level, const char* file, int line, const char* format,
-                  ...) {
-     if (level < current_log_level) {
-       return;
-     }
-
-     int bytes = snprintf(buffer, sizeof(buffer), "%s:%d ", file, line);
-
-     va_list args;
-     va_start(args, format);
-     bytes += vsnprintf(&buffer[bytes], sizeof(buffer) - bytes, format, args);
-     va_end(args);
-
-     TransmitLog(TimeSinceBootMillis(), buffer, size);
-   }
-
-It is trivial to convert this to a binary log using the tokenizer. The
-``RecordLog`` call is replaced with a
-``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD`` invocation. The
-``pw_tokenizer_HandleEncodedMessageWithPayload`` implementation collects the
-timestamp and transmits the message with ``TransmitLog``.
-
-.. code-block:: cpp
-
-   #define LOG_INFO(format, ...)                   \
-       PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD( \
-           (pw_tokenizer_Payload)LogLevel_INFO,    \
-           __FILE_NAME__ ":%d " format,            \
-           __LINE__,                               \
-           __VA_ARGS__);                           \
-
-   extern "C" void pw_tokenizer_HandleEncodedMessageWithPayload(
-       uintptr_t level, const uint8_t encoded_message[], size_t size_bytes) {
-     if (static_cast<LogLevel>(level) >= current_log_level) {
-       TransmitLog(TimeSinceBootMillis(), encoded_message, size_bytes);
-     }
-   }
-
-Note that the ``__FILE_NAME__`` string is directly included in the log format
-string. Since the string is tokenized, this has no effect on binary size. A
-``%d`` for the line number is added to the format string, so that changing the
-line of the log message does not generate a new token. There is no overhead for
-additional tokens, but it may not be desirable to fill a token database with
-duplicate log lines.
+String tokenization can be used to convert plain text logs to a compact,
+efficient binary format. See :ref:`module-pw_log_tokenized`.
 
 Tokenizing function names
 =========================
@@ -419,10 +375,6 @@ tokenized while compiling C++ with GCC or Clang.
    // Tokenize the special function name variables.
    constexpr uint32_t function = PW_TOKENIZE_STRING(__func__);
    constexpr uint32_t pretty_function = PW_TOKENIZE_STRING(__PRETTY_FUNCTION__);
-
-   // Tokenize the function name variables to a handler function.
-   PW_TOKENIZE_TO_GLOBAL_HANDLER(__func__)
-   PW_TOKENIZE_TO_GLOBAL_HANDLER(__PRETTY_FUNCTION__)
 
 Note that ``__func__`` and ``__PRETTY_FUNCTION__`` are not string literals.
 They are defined as static character arrays, so they cannot be implicitly
@@ -476,6 +428,10 @@ Arguments are encoded as follows:
    ``%s`` arguments can quickly fill a tokenization buffer. Keep ``%s``
    arguments short or avoid encoding them as strings (e.g. encode an enum as an
    integer instead of a string). See also `Tokenized strings as %s arguments`_.
+
+Buffer sizing helper
+--------------------
+.. doxygenfunction:: pw::tokenizer::MinEncodingBufferSizeBytes
 
 Encoding command line utility
 -----------------------------
@@ -551,6 +507,8 @@ example, the following reads strings in ``some_domain`` from ``my_image.elf``.
 
 See `Managing token databases`_ for information about the ``database.py``
 command line tool.
+
+.. _module-pw_tokenizer-masks:
 
 Smaller tokens with masking
 ===========================
@@ -652,32 +610,6 @@ masking`_). 16 bits might be acceptable when tokenizing a small set of strings,
 such as module names, but won't be suitable for large sets of strings, like log
 messages.
 
-Using tokenization in expressions
-=================================
-The tokenization macros above cannot be used inside expressions. For example,
-the following code snippet will fail to compile:
-
-.. code-block:: cpp
-
-   DoSomething(PW_TOKENIZE_STRING("Fail"));
-
-An alternate set of macros are provided for use inside expressions. These make
-use of lambda functions, so while they can be used inside expressions, they
-cannot be assigned to constexpr variables or be used with special function
-variables like ``__func__``.
-
-The following tokenization macros may be used inside epxressions:
-
-* ``PW_TOKENIZE_STRING_EXPR``
-* ``PW_TOKENIZE_STRING_DOMAIN_EXPR``
-* ``PW_TOKENIZE_STRING_MASK_EXPR``
-
-For example, the following code snippet will work:
-
-.. code-block:: cpp
-
-   DoSomething(PW_TOKENIZE_STRING_EXPR("Succeed"));
-
 ---------------
 Token databases
 ---------------
@@ -749,7 +681,20 @@ compared with the CSV database's 211 B.
 
 Directory database format
 -------------------------
-The directory format is a collection of CSV format databases in a directory.
+pw_tokenizer can consume directories of CSV databases. A directory database
+will be searched recursively for files with a `.pw_tokenizer.csv` suffix, all
+of which will be used for subsequent detokenization lookups.
+
+An example directory database might look something like this:
+
+.. code-block:: text
+
+   token_database
+   ├── chuck_e_cheese.pw_tokenizer.csv
+   ├── fungi_ble.pw_tokenizer.csv
+   └── some_more
+       └── arcade.pw_tokenizer.csv
+
 This format is optimized for storage in a Git repository alongside source code.
 The token database commands randomly generate unique file names for the CSVs in
 the database to prevent merge conflicts. Running ``mark_removed`` or ``purge``
@@ -933,6 +878,236 @@ determine the correct method to detokenize and always provide a printable
 string. For more information on this feature, see
 :ref:`module-pw_tokenizer-proto`.
 
+C99 ``printf`` Compatibility Notes
+----------------------------------
+This implementation is designed to align with the
+`C99 specification, section 7.19.6
+<https://www.dii.uchile.cl/~daespino/files/Iso_C_1999_definition.pdf>`_.
+Notably, this specification is slightly different than what is implemented
+in most compilers due to each compiler choosing to interpret undefined
+behavior in slightly different ways. Treat the following description as the
+source of truth.
+
+This implementation supports:
+
+- Overall Format: ``%[flags][width][.precision][length][specifier]``
+- Flags (Zero or More)
+   - ``-``: Left-justify within the given field width; Right justification is
+     the default (see Width modifier).
+   - ``+``: Forces to preceed the result with a plus or minus sign (``+`` or
+     ``-``) even for positive numbers. By default, only negative numbers are
+     preceded with a ``-`` sign.
+   - (space): If no sign is going to be written, a blank space is inserted
+     before the value.
+   - ``#``: Specifies an alternative print syntax should be used.
+      - Used with ``o``, ``x`` or ``X`` specifiers the value is preceeded with
+        ``0``, ``0x`` or ``0X``, respectively, for values different than zero.
+      - Used with ``a``, ``A``, ``e``, ``E``, ``f``, ``F``, ``g``, or ``G`` it
+        forces the written output to contain a decimal point even if no more
+        digits follow. By default, if no digits follow, no decimal point is
+        written.
+   - ``0``: Left-pads the number with zeroes (``0``) instead of spaces when
+     padding is specified (see width sub-specifier).
+- Width (Optional)
+   - ``(number)``: Minimum number of characters to be printed. If the value to
+     be printed is shorter than this number, the result is padded with blank
+     spaces or ``0`` if the ``0`` flag is present. The value is not truncated
+     even if the result is larger. If the value is negative and the ``0`` flag
+     is present, the ``0``\s are padded after the ``-`` symbol.
+   - ``*``: The width is not specified in the format string, but as an
+     additional integer value argument preceding the argument that has to be
+     formatted.
+- Precision (Optional)
+   - ``.(number)``
+      - For ``d``, ``i``, ``o``, ``u``, ``x``, ``X``, specifies the minimum
+        number of digits to be written. If the value to be written is shorter
+        than this number, the result is padded with leading zeros. The value is
+        not truncated even if the result is longer.
+
+        - A precision of ``0`` means that no character is written for the value
+          ``0``.
+
+      - For ``a``, ``A``, ``e``, ``E``, ``f``, and ``F``, specifies the number
+        of digits to be printed after the decimal point. By default, this is
+        ``6``.
+
+      - For ``g`` and ``G``, specifies the maximum number of significant digits
+        to be printed.
+
+      - For ``s``, specifies the maximum number of characters to be printed. By
+        default all characters are printed until the ending null character is
+        encountered.
+
+      - If the period is specified without an explicit value for precision,
+        ``0`` is assumed.
+   - ``.*``: The precision is not specified in the format string, but as an
+     additional integer value argument preceding the argument that has to be
+     formatted.
+- Length (Optional)
+   - ``hh``: Usable with ``d``, ``i``, ``o``, ``u``, ``x``, or ``X`` specifiers
+     to convey the argument will be a ``signed char`` or ``unsigned char``.
+     However, this is largely ignored in the implementation due to it not being
+     necessary for Python or argument decoding (since the argument is always
+     encoded at least as a 32-bit integer).
+   - ``h``: Usable with ``d``, ``i``, ``o``, ``u``, ``x``, or ``X`` specifiers
+     to convey the argument will be a ``signed short int`` or
+     ``unsigned short int``. However, this is largely ignored in the
+     implementation due to it not being necessary for Python or argument
+     decoding (since the argument is always encoded at least as a 32-bit
+     integer).
+   - ``l``: Usable with ``d``, ``i``, ``o``, ``u``, ``x``, or ``X`` specifiers
+     to convey the argument will be a ``signed long int`` or
+     ``unsigned long int``. Also is usable with ``c`` and ``s`` to specify that
+     the arguments will be encoded with ``wchar_t`` values (which isn't
+     different from normal ``char`` values). However, this is largely ignored in
+     the implementation due to it not being necessary for Python or argument
+     decoding (since the argument is always encoded at least as a 32-bit
+     integer).
+   - ``ll``: Usable with ``d``, ``i``, ``o``, ``u``, ``x``, or ``X`` specifiers
+     to convey the argument will be a ``signed long long int`` or
+     ``unsigned long long int``. This is required to properly decode the
+     argument as a 64-bit integer.
+   - ``L``: Usable with ``a``, ``A``, ``e``, ``E``, ``f``, ``F``, ``g``, or
+     ``G`` conversion specifiers applies to a long double argument. However,
+     this is ignored in the implementation due to floating point value encoded
+     that is unaffected by bit width.
+   - ``j``: Usable with ``d``, ``i``, ``o``, ``u``, ``x``, or ``X`` specifiers
+     to convey the argument will be a ``intmax_t`` or ``uintmax_t``.
+   - ``z``: Usable with ``d``, ``i``, ``o``, ``u``, ``x``, or ``X`` specifiers
+     to convey the argument will be a ``size_t``. This will force the argument
+     to be decoded as an unsigned integer.
+   - ``t``: Usable with ``d``, ``i``, ``o``, ``u``, ``x``, or ``X`` specifiers
+     to convey the argument will be a ``ptrdiff_t``.
+   - If a length modifier is provided for an incorrect specifier, it is ignored.
+- Specifier (Required)
+   - ``d`` / ``i``: Used for signed decimal integers.
+
+   - ``u``: Used for unsigned decimal integers.
+
+   - ``o``: Used for unsigned decimal integers and specifies formatting should
+     be as an octal number.
+
+   - ``x``: Used for unsigned decimal integers and specifies formatting should
+     be as a hexadecimal number using all lowercase letters.
+
+   - ``X``: Used for unsigned decimal integers and specifies formatting should
+     be as a hexadecimal number using all uppercase letters.
+
+   - ``f``: Used for floating-point values and specifies to use lowercase,
+     decimal floating point formatting.
+
+     - Default precision is ``6`` decimal places unless explicitly specified.
+
+   - ``F``: Used for floating-point values and specifies to use uppercase,
+     decimal floating point formatting.
+
+     - Default precision is ``6`` decimal places unless explicitly specified.
+
+   - ``e``: Used for floating-point values and specifies to use lowercase,
+     exponential (scientific) formatting.
+
+     - Default precision is ``6`` decimal places unless explicitly specified.
+
+   - ``E``: Used for floating-point values and specifies to use uppercase,
+     exponential (scientific) formatting.
+
+     - Default precision is ``6`` decimal places unless explicitly specified.
+
+   - ``g``: Used for floating-point values and specified to use ``f`` or ``e``
+     formatting depending on which would be the shortest representation.
+
+     - Precision specifies the number of significant digits, not just digits
+       after the decimal place.
+
+     - If the precision is specified as ``0``, it is interpreted to mean ``1``.
+
+     - ``e`` formatting is used if the the exponent would be less than ``-4`` or
+       is greater than or equal to the precision.
+
+     - Trailing zeros are removed unless the ``#`` flag is set.
+
+     - A decimal point only appears if it is followed by a digit.
+
+     - ``NaN`` or infinities always follow ``f`` formatting.
+
+   - ``G``: Used for floating-point values and specified to use ``f`` or ``e``
+     formatting depending on which would be the shortest representation.
+
+     - Precision specifies the number of significant digits, not just digits
+       after the decimal place.
+
+     - If the precision is specified as ``0``, it is interpreted to mean ``1``.
+
+     - ``E`` formatting is used if the the exponent would be less than ``-4`` or
+       is greater than or equal to the precision.
+
+     - Trailing zeros are removed unless the ``#`` flag is set.
+
+     - A decimal point only appears if it is followed by a digit.
+
+     - ``NaN`` or infinities always follow ``F`` formatting.
+
+   - ``c``: Used for formatting a ``char`` value.
+
+   - ``s``: Used for formatting a string of ``char`` values.
+
+     - If width is specified, the null terminator character is included as a
+       character for width count.
+
+     - If precision is specified, no more ``char``\s than that value will be
+       written from the string (padding is used to fill additional width).
+
+   - ``p``: Used for formatting a pointer address.
+
+   - ``%``: Prints a single ``%``. Only valid as ``%%`` (supports no flags,
+     width, precision, or length modifiers).
+
+Underspecified details:
+
+- If both ``+`` and (space) flags appear, the (space) is ignored.
+- The ``+`` and (space) flags will error if used with ``c`` or ``s``.
+- The ``#`` flag will error if used with ``d``, ``i``, ``u``, ``c``, ``s``, or
+  ``p``.
+- The ``0`` flag will error if used with ``c``, ``s``, or ``p``.
+- Both ``+`` and (space) can work with the unsigned integer specifiers ``u``,
+  ``o``, ``x``, and ``X``.
+- If a length modifier is provided for an incorrect specifier, it is ignored.
+- The ``z`` length modifier will decode arugments as signed as long as ``d`` or
+  ``i`` is used.
+- ``p`` is implementation defined.
+
+  - For this implementation, it will print with a ``0x`` prefix and then the
+    pointer value was printed using ``%08X``.
+
+  - ``p`` supports the ``+``, ``-``, and (space) flags, but not the ``#`` or
+    ``0`` flags.
+
+  - None of the length modifiers are usable with ``p``.
+
+  - This implementation will try to adhere to user-specified width (assuming the
+    width provided is larger than the guaranteed minimum of ``10``).
+
+  - Specifying precision for ``p`` is considered an error.
+- Only ``%%`` is allowed with no other modifiers. Things like ``%+%`` will fail
+  to decode. Some C stdlib implementations support any modifiers being
+  present between ``%``, but ignore any for the output.
+- If a width is specified with the ``0`` flag for a negative value, the padded
+  ``0``\s will appear after the ``-`` symbol.
+- A precision of ``0`` for ``d``, ``i``, ``u``, ``o``, ``x``, or ``X`` means
+  that no character is written for the value ``0``.
+- Precision cannot be specified for ``c``.
+- Using ``*`` or fixed precision with the ``s`` specifier still requires the
+  string argument to be null-terminated. This is due to argument encoding
+  happening on the C/C++-side while the precision value is not read or
+  otherwise used until decoding happens in this Python code.
+
+Non-conformant details:
+
+- ``n`` specifier: We do not support the ``n`` specifier since it is impossible
+  for us to retroactively tell the original program how many characters have
+  been printed since this decoding happens a great deal of time after the
+  device sent it, usually on a separate processing device entirely.
+
 C++
 ===
 The C++ detokenization libraries can be used in C++ or any language that can
@@ -1026,7 +1201,7 @@ string's token is 0x4b016e66.
 
 .. code-block:: text
 
-   Source code: PW_TOKENIZE_TO_GLOBAL_HANDLER("This is an example: %d!", -1);
+   Source code: PW_LOG("This is an example: %d!", -1);
 
     Plain text: This is an example: -1! [23 bytes]
 
@@ -1042,8 +1217,8 @@ in the tokenizer handler function. For example,
 
 .. code-block:: cpp
 
-   void pw_tokenizer_HandleEncodedMessage(const uint8_t encoded_message[],
-                                          size_t size_bytes) {
+   void TokenizedMessageHandler(const uint8_t encoded_message[],
+                                size_t size_bytes) {
      pw::InlineBasicString base64 = pw::tokenizer::PrefixedBase64Encode(
          pw::span(encoded_message, size_bytes));
 
@@ -1166,14 +1341,15 @@ insights.
 Firmware deployment
 ===================
 * In the project's logging macro, calls to the underlying logging function were
-  replaced with a ``PW_TOKENIZE_TO_GLOBAL_HANDLER_WITH_PAYLOAD`` invocation.
+  replaced with a tokenized log macro invocation.
 * The log level was passed as the payload argument to facilitate runtime log
   level control.
 * For this project, it was necessary to encode the log messages as text. In
-  ``pw_tokenizer_HandleEncodedMessageWithPayload``, the log messages were
-  encoded in the $-prefixed `Base64 format`_, then dispatched as normal log
-  messages.
-* Asserts were tokenized using ``PW_TOKENIZE_TO_CALLBACK``.
+  the handler function the log messages were encoded in the $-prefixed `Base64
+  format`_, then dispatched as normal log messages.
+* Asserts were tokenized a callback-based API that has been removed (a
+  :ref:`custom macro <module-pw_tokenizer-custom-macro>` is a better
+  alternative).
 
 .. attention::
   Do not encode line numbers in tokenized strings. This results in a huge
@@ -1330,7 +1506,7 @@ argument to the string represented by the integer.
 
    constexpr uint32_t answer_token = PW_TOKENIZE_STRING("Uh, who is there");
 
-   PW_TOKENIZE_TO_GLOBAL_HANDLER("Knock knock: %" PW_TOKEN_ARG "?", answer_token);
+   PW_TOKENIZE_STRING("Knock knock: %" PW_TOKEN_ARG "?", answer_token);
 
 Strings with arguments could be encoded to a buffer, but since printf strings
 are null-terminated, a binary encoding would not work. These strings can be

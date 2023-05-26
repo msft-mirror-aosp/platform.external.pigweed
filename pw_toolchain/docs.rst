@@ -16,9 +16,6 @@ Pigweed. Various GCC and Clang toolchains for multiple platforms are provided.
 Toolchains names typically include the compiler (``clang`` or ``gcc`` and
 optimization level (``debug``, ``size_optimized``, ``speed_optimized``).
 
- .. note::
-  The documentation for this module is currently incomplete.
-
 --------------------
 Non-C/C++ toolchains
 --------------------
@@ -56,10 +53,44 @@ the ``pw_static_analysis_toolchain`` template. This template creates toolchains
 that execute ``clang-tidy`` for C/C++ sources, and mock implementations of
 the ``link``, ``alink`` and ``solink`` tools.
 
-Additionally, ``generate_toolchain`` implements a boolean flag
-``static_analysis`` (default ``false``) which generates the derived
-toolchain ``${target_name}.static_analysis`` using
+In addition to the standard toolchain requirements (`cc`, `cxx`, etc..), the
+``pw_static_analysis_toolchain`` template requires a scope ``static_analysis``
+to be defined on the invoker.
+
+.. code-block::
+
+   static_analysis = {
+    # Configure whether static_analysis should be enabled for invoker toolchain.
+    # This is must be set true if using pw_static_analysis_toolchain.
+    enabled = true
+    # Optionally override clang-tidy binary to use by setting to proper path.
+    clang_tidy_path = ""
+    # Optionally specify additional command(s) to run as part of cc tool.
+    cc_post = ""
+    # Optionally specify additional command(s) to run as part of cxx tool.
+    cxx_post = ""
+   }
+
+The ``generate_toolchain`` supports the above mentioned ``static_analysis``
+scope, which if specified must at the very least define the bool ``enabled``
+within the scope. If the ``static_analysis`` scope is provided and
+``static_analysis.enabled = true``, the derived toolchain
+``${target_name}.static_analysis`` will be generated using
 ``pw_generate_static_analysis_toolchain`` and the toolchain options.
+
+An example on the utility of the ``static_analysis`` scope args is shown in the
+snippet below where we enable clang-tidy caching and add ``//.clang-tidy`` as a
+dependency to the generated ``.d`` files for the
+``pw_static_analysis_toolchain``.
+
+.. code-block::
+
+     static_analysis = {
+      clang_tidy_path = "//third_party/ctcache/clang-tidy"
+      _clang_tidy_cfg_path = rebase_path("//.clang-tidy", root_build_dir)
+      cc_post = "echo '-: $_clang_tidy_cfg_path' >> {{output}}.d"
+      cxx_post = "echo '-: $_clang_tidy_cfg_path' >> {{output}}.d"
+     }
 
 Excluding files from checks
 ===========================
@@ -89,34 +120,37 @@ Provided toolchains
 ``pw_toolchain`` provides static analysis GN toolchains that may be used to
 test host targets:
 
- - pw_toolchain_host_clang.debug.static_analysis
- - pw_toolchain_host_clang.speed_optimized.static_analysis
- - pw_toolchain_host_clang.size_optimized.static_analysis
- - pw_toolchain_host_clang.fuzz.static_analysis
-   (if pw_toolchain_OSS_FUZZ_ENABLED is false)
- - pw_toolchain_arm_clang.debug.static_analysis
- - pw_toolchain_arm_clang.speed_optimized.static_analysis
- - pw_toolchain_arm_clang.size_optimized.static_analysis
+- pw_toolchain_host_clang.debug.static_analysis
+- pw_toolchain_host_clang.speed_optimized.static_analysis
+- pw_toolchain_host_clang.size_optimized.static_analysis
+- pw_toolchain_host_clang.fuzz.static_analysis
+  (if pw_toolchain_OSS_FUZZ_ENABLED is false)
+- pw_toolchain_arm_clang.debug.static_analysis
+- pw_toolchain_arm_clang.speed_optimized.static_analysis
+- pw_toolchain_arm_clang.size_optimized.static_analysis
 
- For example, to run ``clang-tidy`` on all source dependencies of the
- ``default`` target:
+For example, to run ``clang-tidy`` on all source dependencies of the
+``default`` target:
 
 .. code-block::
 
-  generate_toolchain("my_toolchain") {
-    ..
-    static_analysis = true
-  }
+   generate_toolchain("my_toolchain") {
+     ..
+     static_analysis = {
+      enabled = true
+     }
+   }
 
-  group("static_analysis") {
-    deps = [ ":default(my_toolchain.static_analysis)" ]
-  }
+   group("static_analysis") {
+     deps = [ ":default(my_toolchain.static_analysis)" ]
+   }
 
 .. warning::
-    The status of the static analysis checks might change when
-    any relevant .clang-tidy file is updated. You should
-    clean the output directory before invoking
-    ``clang-tidy``.
+
+   The status of the static analysis checks might change when
+   any relevant .clang-tidy file is updated. You should
+   clean the output directory before invoking
+   ``clang-tidy``.
 
 -------------
 Target traits
@@ -132,6 +166,7 @@ Traits must never be set by the user (e.g. with ``gn args``). Traits are always
 set by the target.
 
 .. warning::
+
    This feature is under development and is likely to change significantly.
    See `b/234883746 <http://issuetracker.google.com/issues/234883746>`_.
 
@@ -190,42 +225,42 @@ pw_toolchain/no_destructor.h
 ============================
 .. cpp:class:: template <typename T> pw::NoDestructor
 
-  Helper type to create a function-local static variable of type ``T`` when
-  ``T`` has a non-trivial destructor. Storing a ``T`` in a
-  ``pw::NoDestructor<T>`` will prevent ``~T()`` from running, even when the
-  variable goes out of scope.
+   Helper type to create a function-local static variable of type ``T`` when
+   ``T`` has a non-trivial destructor. Storing a ``T`` in a
+   ``pw::NoDestructor<T>`` will prevent ``~T()`` from running, even when the
+   variable goes out of scope.
 
-  This class is useful when a variable has static storage duration but its type
-  has a non-trivial destructor. Destructor ordering is not defined and can
-  cause issues in multithreaded environments. Additionally, removing destructor
-  calls can save code size.
+   This class is useful when a variable has static storage duration but its type
+   has a non-trivial destructor. Destructor ordering is not defined and can
+   cause issues in multithreaded environments. Additionally, removing destructor
+   calls can save code size.
 
-  Except in generic code, do not use ``pw::NoDestructor<T>`` with trivially
-  destructible types. Use the type directly instead. If the variable can be
-  constexpr, make it constexpr.
+   Except in generic code, do not use ``pw::NoDestructor<T>`` with trivially
+   destructible types. Use the type directly instead. If the variable can be
+   constexpr, make it constexpr.
 
-  ``pw::NoDestructor<T>`` provides a similar API to std::optional. Use ``*`` or
-  ``->`` to access the wrapped type.
+   ``pw::NoDestructor<T>`` provides a similar API to std::optional. Use ``*`` or
+   ``->`` to access the wrapped type.
 
-  ``pw::NoDestructor<T>`` is based on Chromium's ``base::NoDestructor<T>`` in
-  `src/base/no_destructor.h <https://chromium.googlesource.com/chromium/src/base/+/5ea6e31f927aa335bfceb799a2007c7f9007e680/no_destructor.h>`_.
+   ``pw::NoDestructor<T>`` is based on Chromium's ``base::NoDestructor<T>`` in
+   `src/base/no_destructor.h <https://chromium.googlesource.com/chromium/src/base/+/5ea6e31f927aa335bfceb799a2007c7f9007e680/no_destructor.h>`_.
 
-  In Clang, ``pw::NoDestructor`` can be replaced with the `[[clang::no_destroy]]
-  <https://clang.llvm.org/docs/AttributeReference.html#no-destroy>`_.
-  attribute.
+   In Clang, ``pw::NoDestructor`` can be replaced with the `[[clang::no_destroy]]
+   <https://clang.llvm.org/docs/AttributeReference.html#no-destroy>`_.
+   attribute.
 
 Example usage
 -------------
 .. code-block:: cpp
 
-  pw::sync::Mutex& GetMutex() {
-    // Use NoDestructor to avoid running the mutex destructor when exit-time
-    // destructors run.
-    static const pw::NoDestructor<pw::sync::Mutex> global_mutex;
-    return *global_mutex;
-  }
+   pw::sync::Mutex& GetMutex() {
+     // Use NoDestructor to avoid running the mutex destructor when exit-time
+     // destructors run.
+     static const pw::NoDestructor<pw::sync::Mutex> global_mutex;
+     return *global_mutex;
+   }
 
 .. warning::
 
-  Misuse of :cpp:class:`pw::NoDestructor` can cause resource leaks and other
-  problems. Only skip destructors when you know it is safe to do so.
+   Misuse of :cpp:class:`pw::NoDestructor` can cause resource leaks and other
+   problems. Only skip destructors when you know it is safe to do so.

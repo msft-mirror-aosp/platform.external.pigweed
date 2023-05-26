@@ -259,6 +259,8 @@ enum OobDataPresent:
   P192_AND_P256 = 0x03
 
 # inclusive-language: disable
+
+
 enum AuthenticationRequirements:
   -- All options without MITM do not require MITM protection, and a numeric
   -- comparison with automatic accept is allowed.
@@ -271,6 +273,7 @@ enum AuthenticationRequirements:
   MITM_DEDICATED_BONDING = 0x03
   GENERAL_BONDING        = 0x04
   MITM_GENERAL_BONDING   = 0x05
+
 # inclusive-language: enable
 
 
@@ -312,6 +315,637 @@ enum LEExtendedDuplicateFilteringOption:
     -- Duplicate advertisements in a single scan period should not be sent to the
     -- Host in advertising report events; this setting shall only be used if the
     -- Period parameter is non-zero.
+
+
+enum MajorDeviceClass:
+  [maximum_bits: 5]
+  MISCELLANEOUS = 0x00
+  COMPUTER      = 0x01
+  PHONE         = 0x02
+  LAN           = 0x03
+  AUDIO_VIDEO   = 0x04
+  PERIPHERAL    = 0x05
+  IMAGING       = 0x06
+  WEARABLE      = 0x07
+  TOY           = 0x08
+  HEALTH        = 0x09
+  UNCATEGORIZED = 0x1F
+
+
+bits MajorServiceClasses:
+  0     [+1]  Flag  limited_discoverable_mode
+  $next [+1]  Flag  le_audio
+  $next [+1]  Flag  reserved
+  $next [+1]  Flag  positioning
+  $next [+1]  Flag  networking
+  $next [+1]  Flag  rendering
+  $next [+1]  Flag  capturing
+  $next [+1]  Flag  object_transfer
+  $next [+1]  Flag  audio
+  $next [+1]  Flag  telephony
+  $next [+1]  Flag  information
+
+
+enum ComputerMinorDeviceClass:
+  [maximum_bits: 6]
+  UNCATEGORIZED       = 0x00
+  DESKTOP_WORKSTATION = 0x01
+  SERVER_CLASS        = 0x02
+  LAPTOP              = 0x03
+  HANDHELD_PC         = 0x04
+  PALM_SIZE_PC        = 0x05
+  WEARABLE            = 0x06
+  TABLET              = 0x07
+
+
+enum PhoneMinorDeviceClass:
+  [maximum_bits: 6]
+  UNCATEGORIZED               = 0x00
+  CELLULAR                    = 0x01
+  CORDLESS                    = 0x02
+  SMARTPHONE                  = 0x03
+  WIRED_MODEM_OR_VOID_GATEWAY = 0x04
+  COMMON_ISDN_ACCESS          = 0x05
+
+
+enum LANMinorDeviceClass:
+  [maximum_bits: 6]
+  FULLY_AVAILABLE      = 0x00
+  UTILIZED_1_TO_17     = 0x08
+  UTILIZED_17_TO_33    = 0x10
+  UTILIZED_33_TO_50    = 0x18
+  UTILIZED_50_TO_67    = 0x20
+  UTILIZED_67_TO_83    = 0x28
+  UTILIZED_83_TO_99    = 0x30
+  NO_SERVICE_AVAILABLE = 0x38
+
+
+enum AudioVideoMinorDeviceClass:
+  [maximum_bits: 6]
+  UNCATEGORIZED                 = 0x00
+  WEARABLE_HEADSET_DEVICE       = 0x01
+  HANDS_FREE_DEVICE             = 0x02
+  RESERVED_0                    = 0x03
+  MICROPHONE                    = 0x04
+  LOUDSPEAKER                   = 0x05
+  HEADPHONES                    = 0x06
+  PORTABLE_AUDIO                = 0x07
+  CAR_AUDIO                     = 0x08
+  SET_TOP_BOX                   = 0x09
+  HIFI_AUDIO_DEVICE             = 0x0A
+  VCR                           = 0x0B
+  VIDEO_CAMERA                  = 0x0C
+  CAMCORDER                     = 0x0D
+  VIDEO_MONITOR                 = 0x0E
+  VIDEO_DISPLAY_AND_LOUDSPEAKER = 0x0F
+  VIDEO_CONFERENCING            = 0x10
+  RESERVED_1                    = 0x11
+  GAMING_TOY                    = 0x12
+
+
+enum PeripheralMinorDeviceClass0:
+  [maximum_bits: 4]
+  UNCATEGORIZED                  = 0x00
+  JOYSTICK                       = 0x01
+  GAMEPAD                        = 0x02
+  REMOTE_CONTROL                 = 0x03
+  SENSING_DEVICE                 = 0x04
+  DIGITIZER_TABLET               = 0x05
+  CARD_READER                    = 0x06
+  DIGITAL_PEN                    = 0x07
+  HANDHELD_SCANNER               = 0x08
+  HANDHELD_GESTURAL_INPUT_DEVICE = 0x09
+
+
+enum PeripheralMinorDeviceClass1:
+  [maximum_bits: 2]
+  UNCATEGORIZED                  = 0x00
+  KEYBOARD                       = 0x01
+  POINTING_DEVICE                = 0x02
+  COMBO_KEYBOARD_POINTING_DEVICE = 0x03
+
+
+bits PeripheralMinorDeviceClass:
+  0     [+4]  PeripheralMinorDeviceClass0  device_class_0
+  $next [+2]  PeripheralMinorDeviceClass1  device_class_1
+
+
+enum ImagingMinorDeviceClass:
+  [maximum_bits: 2]
+  UNCATEGORIZED = 0x00
+
+
+bits ImagingMinorDeviceClassBits:
+  0     [+2]  ImagingMinorDeviceClass  device_class
+  $next [+1]  Flag                     display
+  $next [+1]  Flag                     camera
+  $next [+1]  Flag                     scanner
+  $next [+1]  Flag                     printer
+
+
+enum WearableMinorDeviceClass:
+  [maximum_bits: 6]
+  WRISTWATCH = 0x01
+  PAGER      = 0x02
+  JACKET     = 0x03
+  HELMET     = 0x04
+  GLASSES    = 0x05
+
+
+enum ToyMinorDeviceClass:
+  [maximum_bits: 6]
+  ROBOT      = 0x01
+  VEHICLE    = 0x02
+  DOLL       = 0x03
+  CONTROLLER = 0x04
+  GAME       = 0x05
+
+
+enum HealthMinorDeviceClass:
+  [maximum_bits: 6]
+  UNDEFINED                 = 0x00
+  BLOOD_PRESSURE_MONITOR    = 0x01
+  THERMOMETER               = 0x02
+  WEIGHING_SCALE            = 0x03
+  GLUCOSE_METER             = 0x04
+  PULSE_OXIMETER            = 0x05
+  HEART_PULSE_RATE_MONITOR  = 0x06
+  HEALTH_DATA_DISPLAY       = 0x07
+  STEP_COUNTER              = 0x08
+  BODY_COMPOSITION_ANALYZER = 0x09
+  PEAK_FLOW_MONITOR         = 0x0A
+  MEDICATION_MONITOR        = 0x0B
+  KNEE_PROSTHESIS           = 0x0C
+  ANKLE_PROSTHESIS          = 0x0D
+  GENERIC_HEALTH_MANAGER    = 0x0E
+  PERSONAL_MOBILITY_DEVICE  = 0x0F
+
+
+bits ClassOfDevice:
+  -- Defined in Assigned Numbers for the Baseband
+  -- https://www.bluetooth.com/specifications/assigned-numbers/baseband
+  0     [+2]    UInt                         zero
+    [requires: this == 0]
+
+  if major_device_class == MajorDeviceClass.COMPUTER:
+    2     [+6]  ComputerMinorDeviceClass     computer_minor_device_class
+
+  if major_device_class == MajorDeviceClass.PHONE:
+    2     [+6]  PhoneMinorDeviceClass        phone_minor_device_class
+
+  if major_device_class == MajorDeviceClass.LAN:
+    2     [+6]  LANMinorDeviceClass          lan_minor_device_class
+
+  if major_device_class == MajorDeviceClass.AUDIO_VIDEO:
+    2     [+6]  AudioVideoMinorDeviceClass   audio_video_minor_device_class
+
+  if major_device_class == MajorDeviceClass.PERIPHERAL:
+    2     [+6]  PeripheralMinorDeviceClass   peripheral_minor_device_class
+
+  if major_device_class == MajorDeviceClass.IMAGING:
+    2     [+6]  ImagingMinorDeviceClassBits  imaging_minor_device_class
+
+  if major_device_class == MajorDeviceClass.WEARABLE:
+    2     [+6]  WearableMinorDeviceClass     wearable_minor_device_class
+
+  if major_device_class == MajorDeviceClass.TOY:
+    2     [+6]  ToyMinorDeviceClass          toy_minor_device_class
+
+  if major_device_class == MajorDeviceClass.HEALTH:
+    2     [+6]  HealthMinorDeviceClass       health_minor_device_class
+
+  8     [+5]    MajorDeviceClass             major_device_class
+  $next [+11]   MajorServiceClasses          major_service_classes
+
+
+enum LEPeriodicAdvertisingCreateSyncUseParams:
+  [maximum_bits: 1]
+
+  USE_PARAMS                   = 0x00
+    -- Use the Advertising_SID, Advertiser_Address_Type, and Adertiser_Address parameters to
+    -- determine which advertiser to listen to.
+
+  USE_PERIODIC_ADVERTISER_LIST = 0x01
+    -- Use the Periodic Advertiser List to determine which advertiser to listen to.
+
+
+bits LEPeriodicAdvertisingCreateSyncOptions:
+  -- First parameter to the LE Periodic Advertising Create Sync command
+
+  0     [+1]  LEPeriodicAdvertisingCreateSyncUseParams  advertiser_source
+
+  $next [+1]  Flag                                      enable_reporting
+    -- 0: Reporting initially enabled
+    -- 1: Reporting initially disabled
+
+  $next [+1]  Flag                                      enable_duplicate_filtering
+    -- 0: Duplicate filtering initially disabled
+    -- 1: Duplicate filtering initially enabled
+
+  $next [+5]  UInt                                      padding
+    -- Reserved for future use
+
+
+enum LEPeriodicAdvertisingAddressType:
+  -- Possible values that can be specified for the |advertiser_address_type| in an LE Periodic
+  -- Advertising Create Sync command.
+  [maximum_bits: 8]
+  PUBLIC = 0x00
+    -- Public Device Address or Public Identity Address
+
+  RANDOM = 0x01
+    -- Random Device Address or Random (static) Identity Address
+
+
+bits LEPeriodicAdvertisingSyncCTEType:
+  -- Bit definitions for a |sync_cte_type| field in an LE Periodic Advertising Create Sync command
+
+  0     [+1]  Flag  dont_sync_aoa
+    -- Do not sync to packets with an AoA Constant Tone Extension
+
+  $next [+1]  Flag  dont_sync_aod_1us
+    -- Do not sync to packets with an AoD Constant Tone Extension with 1 microsecond slots
+
+  $next [+1]  Flag  dont_sync_aod_2us
+    -- Do not sync to packets with an AoD Constant Tone Extension with 2 microsecond slots
+
+  $next [+1]  Flag  dont_sync_type_3
+    -- Do not sync to packets with a typoe 3 Constant Tone Extension (currently reserved for future
+    -- use)
+
+  $next [+1]  Flag  dont_sync_without_cte
+    -- Do not sync to packets without a Constant Tone Extension
+
+  $next [+3]  UInt  padding
+    -- Reserved for future use
+
+
+enum LEAddressType:
+  -- Possible values that can be reported for the |address_type| parameter in a LE
+  -- Advertising Report event.
+
+  [maximum_bits: 8]
+
+  PUBLIC            = 0x00
+    -- Public device address (default)
+
+  RANDOM            = 0x01
+    -- Random device address
+
+  PUBLIC_IDENTITY   = 0x02
+    -- Public Identity Address (Corresponds to Resolved Private Address)
+
+  RANDOM_IDENTITY   = 0x03
+    -- Random (static) Identity Address (Corresponds to Resolved Private Address)
+
+  RANDOM_UNRESOLVED = 0xFE
+    -- This is a special value used in LE Extended Advertising Report events to
+    -- indicate a random address that the controller was unable to resolve.
+
+  ANONYMOUS         = 0xFF
+    -- This is a special value that is only used in LE Directed Advertising Report
+    -- events.
+    -- Meaning: No address provided (anonymous advertisement)
+
+
+enum LEOwnAddressType:
+  -- Possible values that can be used for the |own_address_type| parameter in various HCI commands
+
+  [maximum_bits: 8]
+
+  PUBLIC                    = 0x00
+    -- Public Device Address
+
+  RANDOM                    = 0x01
+    -- Random Device Address
+
+  PRIVATE_DEFAULT_TO_PUBLIC = 0x02
+    -- Controller generates the Resolvable Private Address based on the local IRK from the resolving
+    -- list. If the resolving list contains no matching entry, then use the public address.
+
+  PRIVATE_DEFAULT_TO_RANDOM = 0x03
+    -- Controller generates the Resolvable Private Address based on the local IRK from the resolving
+    -- list. If the resolving list contains no matching entry, then use the random address from
+    -- LE_Set_Random_Address.
+
+
+enum LEPeerAddressType:
+  -- Possible values that can be used for the address_type parameters in various
+  -- HCI commands
+  [maximum_bits: 8]
+  PUBLIC    = 0x00
+  RANDOM    = 0x01
+  ANONYMOUS = 0xFF
+
+
+enum LEScanType:
+  -- Possible values that can be used for the |scan_type| parameter in various LE HCI commands.
+  [maximum_bits: 8]
+  PASSIVE = 0x00
+    -- Passive Scanning. No scanning PDUs shall be sent (default)
+
+  ACTIVE  = 0x01
+    -- Active scanning. Scanning PDUs may be sent.
+
+
+enum LEScanFilterPolicy:
+  -- Possible values that can be used for the |filter_policy| parameter in various LE HCI commands
+  [maximum_bits: 8]
+  BASIC_UNFILTERED    = 0x00
+  BASIC_FILTERED      = 0x01
+  EXTENDED_UNFILTERED = 0x02
+  EXTENDED_FILTERED   = 0x03
+
+
+bits LEPHYBits:
+  0     [+1]  Flag  le_1m
+    -- Scan advertisements on the LE 1M PHY
+
+  $next [+1]  Flag  padding1
+    -- Reserved for future use
+
+  $next [+1]  Flag  le_coded
+    -- Scan advertisements on the LE Coded PHY
+
+  $next [+5]  UInt  padding2
+    -- Reserved for future use
+
+
+enum LEPrivacyMode:
+  -- Possible values for the |privacy_mode| parameter in an LE Set Privacy Mode
+  -- command
+  [maximum_bits: 8]
+  NETWORK = 0x00
+    -- Use Network Privacy Mode for this peer device (default).
+
+  DEVICE  = 0x01
+    -- Use Device Privacy Mode for this peer device.
+
+
+enum InquiryMode:
+  [maximum_bits: 8]
+  STANDARD = 0x00
+    -- Standard Inquiry Result format (default)
+
+  RSSI     = 0x01
+    -- Inquiry Result format with RSSI
+
+  EXTENDED = 0x02
+    -- Inquiry Result format with RSSI or EIR format
+
+
+enum PageScanType:
+  [maximum_bits: 8]
+  STANDARD_SCAN   = 0x00
+    -- Standard scan (default) (mandatory)
+
+  INTERLACED_SCAN = 0x01
+    -- Interlaced scan (optional)
+
+
+bits LEEventMask:
+  0     [+1]  Flag  le_connection_complete
+  $next [+1]  Flag  le_advertising_report
+  $next [+1]  Flag  le_connection_update_complete
+  $next [+1]  Flag  le_read_remote_features_complete
+  $next [+1]  Flag  le_long_term_key_request
+  $next [+1]  Flag  le_remote_connection_parameter_request
+  $next [+1]  Flag  le_data_length_change
+  $next [+1]  Flag  le_read_local_p256_public_key_complete
+  $next [+1]  Flag  le_generate_dhkey_complete
+  $next [+1]  Flag  le_enhanced_connection_complete
+  $next [+1]  Flag  le_directed_advertising_report
+  $next [+1]  Flag  le_phy_update_complete
+  $next [+1]  Flag  le_extended_advertising_report
+  $next [+1]  Flag  le_periodic_advertising_sync_established
+  $next [+1]  Flag  le_periodic_advertising_report
+  $next [+1]  Flag  le_periodic_advertising_sync_lost
+  $next [+1]  Flag  le_extended_scan_timeout
+  $next [+1]  Flag  le_extended_advertising_set_terminated
+  $next [+1]  Flag  le_scan_request_received
+  $next [+1]  Flag  le_channel_selection_algorithm
+  $next [+1]  Flag  le_connectionless_iq_report
+  $next [+1]  Flag  le_connection_iq_report
+  $next [+1]  Flag  le_cte_request_failed
+  $next [+1]  Flag  le_periodic_advertising_sync_transfer_received_event
+  $next [+1]  Flag  le_cis_established_event
+  $next [+1]  Flag  le_cis_request_event
+  $next [+1]  Flag  le_create_big_complete_event
+  $next [+1]  Flag  le_terminate_big_complete_event
+  $next [+1]  Flag  le_big_sync_established_event
+  $next [+1]  Flag  le_big_sync_lost_event
+  $next [+1]  Flag  le_request_peer_sca_complete_event
+  $next [+1]  Flag  le_path_loss_threshold_event
+  $next [+1]  Flag  le_transmit_power_reporting_event
+  $next [+1]  Flag  le_biginfo_advertising_report_event
+  $next [+1]  Flag  le_subrate_change_event
+
+
+enum LEAdvertisingType:
+  [maximum_bits: 8]
+  CONNECTABLE_AND_SCANNABLE_UNDIRECTED = 0x00
+    -- ADV_IND
+
+  CONNECTABLE_HIGH_DUTY_CYCLE_DIRECTED = 0x01
+    -- ADV_DIRECT_IND
+
+  SCANNABLE_UNDIRECTED                 = 0x02
+    -- ADV_SCAN_IND
+
+  NOT_CONNECTABLE_UNDIRECTED           = 0x03
+    -- ADV_NONCONN_IND
+
+  CONNECTABLE_LOW_DUTY_CYCLE_DIRECTED  = 0x04
+    -- ADV_DIRECT_IND
+
+
+bits LEAdvertisingChannels:
+  0     [+1]  Flag  channel_37
+  $next [+1]  Flag  channel_38
+  $next [+1]  Flag  channel_39
+
+
+enum LEAdvertisingFilterPolicy:
+  [maximum_bits: 8]
+
+  ALLOW_ALL                                                  = 0x00
+    -- Process scan and connection requests from all devices (i.e., the Filter
+    -- Accept List is not in use) (default).
+
+  ALLOW_ALL_CONNECTIONS_AND_USE_FILTER_ACCEPT_LIST_FOR_SCANS = 0x01
+    -- Process connection requests from all devices and scan requests only from
+    -- devices that are in the Filter Accept List.
+
+  ALLOW_ALL_SCANS_AND_USE_FILTER_ACCEPT_LIST_FOR_CONNECTIONS = 0x02
+    -- Process scan requests from all devices and connection requests only from
+    -- devices that are in the Filter Accept List.
+
+  ALLOW_FILTER_ACCEPT_LIST_ONLY                              = 0x03
+    -- Process scan and connection requests only from devices in the Filter
+    -- Accept List.
+
+
+enum LESetExtendedAdvDataOp:
+  -- Potential values for the Operation parameter in a HCI_LE_Set_Extended_Advertising_Data command.
+  [maximum_bits: 8]
+  INTERMEDIATE_FRAGMENT = 0x00
+    -- Intermediate fragment of fragmented extended advertising data.
+
+  FIRST_FRAGMENT        = 0x01
+    -- First fragment of fragmented extended advertising data.
+
+  LAST_FRAGMENT         = 0x02
+    -- Last fragment of fragmented extended advertising data.
+
+  COMPLETE              = 0x03
+    -- Complete extended advertising data.
+
+  UNCHANGED_DATA        = 0x04
+    -- Unchanged data (just update the Advertising DID)
+
+
+enum LEExtendedAdvFragmentPreference:
+  -- Potential values for the Fragment_Preference parameter in a
+  -- HCI_LE_Set_Extended_Advertising_Data command.
+  [maximum_bits: 8]
+  MAY_FRAGMENT        = 0x00
+    -- The Controller may fragment all Host advertising data
+
+  SHOULD_NOT_FRAGMENT = 0x01
+    -- The Controller should not fragment or should minimize fragmentation of Host advertising data
+
+
+enum FlowControlMode:
+  [maximum_bits: 8]
+  PACKET_BASED     = 0x00
+  DATA_BLOCK_BASED = 0x01
+
+
+bits EventMaskPage2:
+  8  [+1]  Flag  number_of_completed_data_blocks_event
+  14 [+1]  Flag  triggered_clock_capture_event
+  15 [+1]  Flag  synchronization_train_complete_event
+  16 [+1]  Flag  synchronization_train_received_event
+  17 [+1]  Flag  connectionless_peripheral_broadcast_receive_event
+  18 [+1]  Flag  connectionless_peripheral_broadcast_timeout_event
+  19 [+1]  Flag  truncated_page_complete_event
+  20 [+1]  Flag  peripheral_page_response_timeout_event
+  21 [+1]  Flag  connectionless_peripheral_broadcast_channel_map_event
+  22 [+1]  Flag  inquiry_response_notification_event
+  23 [+1]  Flag  authenticated_payload_timeout_expired_event
+  24 [+1]  Flag  sam_status_change_event
+  25 [+1]  Flag  encryption_change_event_v2
+
+
+enum LinkType:
+  [maximum_bits: 8]
+  SCO  = 0x00
+  ACL  = 0x01
+  ESCO = 0x02
+
+
+enum EncryptionStatus:
+  OFF                                = 0x00
+  ON_WITH_E0_FOR_BREDR_OR_AES_FOR_LE = 0x01
+  ON_WITH_AES_FOR_BREDR              = 0x03
+
+
+bits LmpFeatures(page: UInt:8):
+  -- Bit mask of Link Manager Protocol features.
+  if page == 0:
+    0  [+1]  Flag  three_slot_packets
+    1  [+1]  Flag  five_slot_packets
+    2  [+1]  Flag  encryption
+    3  [+1]  Flag  slot_offset
+    4  [+1]  Flag  timing_accuracy
+    5  [+1]  Flag  role_switch
+    6  [+1]  Flag  hold_mode
+    7  [+1]  Flag  sniff_mode
+    # 8: previously used
+    9  [+1]  Flag  power_control_requests
+    10 [+1]  Flag  channel_quality_driven_data_rate
+    11 [+1]  Flag  sco_link
+    12 [+1]  Flag  hv2_packets
+    13 [+1]  Flag  hv3_packets
+    14 [+1]  Flag  mu_law_log_synchronous_data
+    15 [+1]  Flag  a_law_log_synchronous_data
+    16 [+1]  Flag  cvsd_synchronous_data
+    17 [+1]  Flag  paging_parameter_negotiation
+    18 [+1]  Flag  power_control
+    19 [+1]  Flag  transparent_synchronous_data
+    20 [+3]  UInt  flow_control_lag
+    23 [+1]  Flag  broadcast_encryption
+    # 24: reserved for future use
+    25 [+1]  Flag  enhanced_data_rate_acl_2_mbs_mode
+    26 [+1]  Flag  enhanced_data_rate_acl_3_mbs_mode
+    27 [+1]  Flag  enhanced_inquiry_scan
+    28 [+1]  Flag  interlaced_inquiry_scan
+    29 [+1]  Flag  interlaced_page_scan
+    30 [+1]  Flag  rssi_with_inquiry_results
+    31 [+1]  Flag  extended_sco_link_ev3_packets
+    32 [+1]  Flag  ev4_packets
+    33 [+1]  Flag  ev5_packets
+    # 34: reserved for future use
+    35 [+1]  Flag  afh_capable_peripheral
+    36 [+1]  Flag  afh_classification_peripheral
+    37 [+1]  Flag  bredr_not_supported
+    38 [+1]  Flag  le_supported_controller
+    39 [+1]  Flag  three_slot_enhanced_data_rate_acl_packets
+    40 [+1]  Flag  five_slot_enhanced_data_rate_acl_packets
+    41 [+1]  Flag  sniff_subrating
+    42 [+1]  Flag  pause_encryption
+    43 [+1]  Flag  afh_capable_central
+    44 [+1]  Flag  afh_classification_central
+    45 [+1]  Flag  enhanced_data_rate_esco_2_mbs_mode
+    46 [+1]  Flag  enhanced_data_rate_esco_3_mbs_mode
+    47 [+1]  Flag  three_slot_enhanced_data_rate_esco_packets
+    48 [+1]  Flag  extended_inquiry_response
+    49 [+1]  Flag  simultaneous_le_and_bredr_to_same_device_capable_controller
+    # 50: reserved for future use
+    51 [+1]  Flag  secure_simple_pairing_controller_support
+    52 [+1]  Flag  encapsulated_pdu
+    53 [+1]  Flag  erroneous_data_reporting
+    54 [+1]  Flag  non_flushable_packet_boundary_flag
+    # 55: reserved for future use
+    56 [+1]  Flag  hci_link_supervision_timeout_changed_event
+    57 [+1]  Flag  variable_inquiry_tx_power_level
+    58 [+1]  Flag  enhanced_power_control
+    # 59-62: reserved for future use
+    63 [+1]  Flag  extended_features
+
+  if page == 1:
+    0  [+1]  Flag  secure_simple_pairing_host_support
+    1  [+1]  Flag  le_supported_host
+    # 2: previously used
+    3  [+1]  Flag  secure_connection_host_support
+
+  if page == 2:
+    0  [+1]  Flag  connectionless_peripheral_broadcast_transmitter_operation
+    1  [+1]  Flag  connectionless_peripheral_broadcast_receiver_operation
+    2  [+1]  Flag  synchronization_train
+    3  [+1]  Flag  synchronization_scan
+    4  [+1]  Flag  hci_inquiry_response_notification_event
+    5  [+1]  Flag  generalized_interlaced_scan
+    6  [+1]  Flag  coarse_clock_adjustment
+    # 7: reserved for future use
+    8  [+1]  Flag  secure_connections_controller_support
+    9  [+1]  Flag  ping
+    10 [+1]  Flag  slot_availability_mask
+    11 [+1]  Flag  train_nudging
+
+
+enum LEClockAccuracy:
+  -- Possible values that can be reported for the |central_clock_accuracy| and
+  -- |advertiser_clock_accuracy| parameters.
+  [maximum_bits: 8]
+  PPM_500 = 0x00
+  PPM_250 = 0x01
+  PPM_150 = 0x02
+  PPM_100 = 0x03
+  PPM_75  = 0x04
+  PPM_50  = 0x05
+  PPM_30  = 0x06
+  PPM_20  = 0x07
 
 # ========================= HCI packet headers ==========================
 
@@ -886,32 +1520,132 @@ struct WriteSimplePairingModeCommand:
 struct LESetAdvertisingEnableCommand:
   -- LE Set Advertising Enable command (v4.0) (LE)
   let hdr_size = CommandHeader.$size_in_bytes
-  0      [+hdr_size]  CommandHeader       header
-  $next  [+1]         GenericEnableParam  advertising_enable
+  0     [+hdr_size]  CommandHeader       header
+  $next [+1]         GenericEnableParam  advertising_enable
 
 
 struct LESetExtendedAdvertisingEnableData:
   -- Data fields for variable-length portion of an LE Set Extended Advertising Enable command
-  0      [+1]  UInt  advertising_handle
-  $next  [+2]  UInt  duration
-  $next  [+1]  UInt  max_extended_advertising_events
+  0     [+1]  UInt  advertising_handle
+  $next [+2]  UInt  duration
+  $next [+1]  UInt  max_extended_advertising_events
+
+
+struct LESetExtendedAdvertisingDataCommand:
+  -- LE Set Extended Advertising Data Command (v5.0) (LE)
+
+  let hdr_size = CommandHeader.$size_in_bytes
+
+  0     [+hdr_size]  CommandHeader                    header
+
+  $next [+1]         UInt                             advertising_handle
+    -- Handle used to identify an advertising set.
+
+  $next [+1]         LESetExtendedAdvDataOp           operation
+
+  $next [+1]         LEExtendedAdvFragmentPreference  fragment_preference
+    -- Provides a hint to the Controller as to whether advertising data should be fragmented.
+
+  $next [+1]         UInt                             advertising_data_length (sz)
+    -- Length of the advertising data included in this command packet, up to
+    -- kMaxLEExtendedAdvertisingDataLength bytes. If the advertising set uses legacy advertising
+    -- PDUs that support advertising data then this shall not exceed kMaxLEAdvertisingDataLength
+    -- bytes.
+    [requires: 0 <= this <= 251]
+
+  $next [+sz]        UInt:8[sz]                       advertising_data
+    -- Variable length advertising data.
+
+
+struct LESetExtendedScanResponseDataCommand:
+  -- LE Set Extended Scan Response Data Command (v5.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader                    header
+  $next [+1]         UInt                             advertising_handle
+    -- Used to identify an advertising set
+    [requires: 0x00 <= this <= 0xEF]
+
+  $next [+1]         LESetExtendedAdvDataOp           operation
+  $next [+1]         LEExtendedAdvFragmentPreference  fragment_preference
+    -- Provides a hint to the controller as to whether advertising data should be fragmented
+
+  $next [+1]         UInt                             scan_response_data_length (sz)
+    -- The number of octets in the scan_response_data parameter
+    [requires: 0 <= this <= 251]
+
+  $next [+sz]        UInt:8[sz]                       scan_response_data
+    -- Scan response data formatted as defined in Core Spec v5.4, Vol 3, Part C, Section 11
 
 
 struct LESetExtendedAdvertisingEnableCommand:
   -- LE Set Extended Advertising Enable command (v5.0) (LE)
   let hdr_size = CommandHeader.$size_in_bytes
-  0      [+hdr_size]    CommandHeader       header
-  $next  [+1]           GenericEnableParam  enable
-  $next  [+1]           UInt                num_sets
+  0     [+hdr_size]                   CommandHeader                         header
+  $next [+1]                          GenericEnableParam                    enable
+  $next [+1]                          UInt                                  num_sets
   let single_data_size = LESetExtendedAdvertisingEnableData.$size_in_bytes
-  $next  [+single_data_size*num_sets]  LESetExtendedAdvertisingEnableData[]  data
+  $next [+single_data_size*num_sets]  LESetExtendedAdvertisingEnableData[]  data
+
+
+struct LEReadMaxAdvertisingDataLengthCommand:
+  -- LE Read Maximum Advertising Data Length Command (v5.0) (LE)
+  -- This command has no parameters
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEReadNumSupportedAdvertisingSetsCommand:
+  -- LE Read Number of Supported Advertising Sets Command (v5.0) (LE)
+  -- This command has no parameters
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
 
 
 struct LERemoveAdvertisingSetCommand:
   -- LE Remove Advertising Set command (v5.0) (LE)
   let hdr_size = CommandHeader.$size_in_bytes
-  0      [+hdr_size]  CommandHeader     header
-  $next  [+1]         UInt              advertising_handle
+  0     [+hdr_size]  CommandHeader  header
+  $next [+1]         UInt           advertising_handle
+
+
+struct LEClearAdvertisingSetsCommand:
+  -- LE Clear Advertising Sets Command (v5.0) (LE)
+  -- This command has no parameters
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LESetExtendedScanParametersData:
+  -- Data fields for variable-length portion of an LE Set Extneded Scan Parameters command
+
+  0     [+1]  LEScanType  scan_type
+
+  $next [+2]  UInt        scan_interval
+    -- Time interval from when the Controller started its last scan until it begins the subsequent
+    -- scan on the primary advertising physical channel.
+    -- Time = N × 0.625 ms
+    -- Time Range: 2.5 ms to 40.959375 s
+    [requires: 0x0004 <= this]
+
+  $next [+2]  UInt        scan_window
+    -- Duration of the scan on the primary advertising physical channel.
+    -- Time = N × 0.625 ms
+    -- Time Range: 2.5 ms to 40.959375 s
+    [requires: 0x0004 <= this]
+
+
+struct LESetExtendedScanParametersCommand(num_entries: UInt:8):
+  -- LE Set Extended Scan Parameters Command (v5.0) (LE)
+  -- num_entries corresponds to the number of bits set in the |scanning_phys| field
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]            CommandHeader                                 header
+  $next [+1]                   LEOwnAddressType                              own_address_type
+  $next [+1]                   LEScanFilterPolicy                            scanning_filter_policy
+  $next [+1]                   LEPHYBits                                     scanning_phys
+  let single_entry_size = LESetExtendedScanParametersData.$size_in_bytes
+  let total_entries_size = num_entries*single_entry_size
+  $next [+total_entries_size]  LESetExtendedScanParametersData[num_entries]  data
+    -- Indicates the type of address being used in the scan request packets (for active scanning).
 
 
 struct LESetExtendedScanEnableCommand:
@@ -940,6 +1674,700 @@ struct LESetExtendedScanEnableCommand:
     --   Scan_Duration until it begins the subsequent Scan_Duration, where:
     --     Time = N * 1.28 sec
     --     Time Range: 1.28 s to 83,884.8 s
+
+
+struct UserPasskeyRequestNegativeReplyCommand:
+  -- User Passkey Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader  header
+  $next [+BdAddr.$size_in_bytes]  BdAddr         bd_addr
+    -- The BD_ADDR of the remote device involved in the simple pairing process.
+
+
+struct IoCapabilityRequestNegativeReplyCommand:
+  -- IO Capability Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader  header
+  $next [+BdAddr.$size_in_bytes]  BdAddr         bd_addr
+    -- The BD_ADDR of the remote device involved in the simple pairing process.
+
+  $next [+1]                      StatusCode     reason
+    -- Reason that Simple Pairing was rejected. See 7.1.36 for valid error codes.
+
+
+struct ResetCommand:
+  -- Reset Command (v1.1)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadLocalNameCommand:
+  -- Read Local Name Command (v1.1) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadScanEnableCommand:
+  -- Read Scan Enable Command (v1.1) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadPageScanActivityCommand:
+  -- Read Page Scan Activity Command (v1.1) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadInquiryScanActivityCommand:
+  -- Read Inquiry Scan Activity Command (v1.1) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadClassOfDeviceCommand:
+  -- Read Class of Device Command (v1.1) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct WriteClassOfDeviceCommand:
+  -- Write Class Of Device Command (v1.1) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+3]         ClassOfDevice  class_of_device
+
+
+struct LEPeriodicAdvertisingCreateSyncCommand:
+  -- LE Periodic Advertising Create Sync Command (v5.0) (LE)
+
+  let hdr_size = CommandHeader.$size_in_bytes
+
+  0     [+hdr_size]               CommandHeader                           header
+
+  $next [+1]                      LEPeriodicAdvertisingCreateSyncOptions  options
+
+  $next [+1]                      UInt                                    advertising_sid
+    -- Advertising SID subfield in the ADI field used to identify the Periodic Advertising
+    [requires: 0x00 <= this <= 0x0F]
+
+  $next [+1]                      LEPeriodicAdvertisingAddressType        advertiser_address_type
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr                                  advertiser_address
+    -- Public Device Address, Random Device Address, Public Identity Address, or Random (static)
+    -- Identity Address of the advertiser
+
+  $next [+2]                      UInt                                    skip
+    -- The maximum number of periodic advertising events that can be skipped after a successful
+    -- receive
+    [requires: 0x0000 <= this <= 0x01F3]
+
+  $next [+2]                      UInt                                    sync_timeout
+    -- Synchronization timeout for the periodic advertising.
+    -- Time = N * 10 ms
+    -- Time Range: 100 ms to 163.84 s
+    [requires: 0x000A <= this <= 0x4000]
+
+  $next [+1]                      LEPeriodicAdvertisingSyncCTEType        sync_cte_type
+    -- Constant Tone Extension sync options
+
+
+struct LEPeriodicAdvertisingCreateSyncCancel:
+  -- LE Periodic Advertising Create Sync Cancel Command (v5.0) (LE)
+  -- Note that this command has no arguments
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEPeriodicAdvertisingTerminateSyncCommand:
+  -- LE Periodic Advertising Terminate Sync Command (v5.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+2]         UInt           sync_handle
+    -- Identifies the periodic advertising train
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+
+struct LEAddDeviceToPeriodicAdvertiserListCommand:
+  -- LE Add Device To Periodic Advertiser List command (v5.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader  header
+  $next [+1]                      LEAddressType  advertiser_address_type
+    -- Address type of the advertiser. The LEAddressType::kPublicIdentity and
+    -- LEAddressType::kRandomIdentity values are excluded for this command.
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr         advertiser_address
+    -- Public Device Address, Random Device Address, Public Identity Address, or
+    -- Random (static) Identity Address of the advertiser.
+
+  $next [+1]                      UInt           advertising_sid
+    -- Advertising SID subfield in the ADI field used to identify the Periodic
+    -- Advertising.
+
+
+struct LERemoveDeviceFromPeriodicAdvertiserListCommand:
+  -- LE Remove Device From Periodic Advertiser List command (v5.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader  header
+  $next [+1]                      UInt           advertiser_address_type
+    -- Address type of the advertiser. The LEAddressType::kPublicIdentity and
+    -- LEAddressType::kRandomIdentity values are excluded for this command.
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr         advertiser_address
+    -- Public Device Address, Random Device Address, Public Identity Address, or
+    -- Random (static) Identity Address of the advertiser.
+
+  $next [+1]                      UInt           advertising_sid
+    -- Advertising SID subfield in the ADI field used to identify the Periodic
+    -- Advertising.
+
+
+struct LEClearPeriodicAdvertiserListCommand:
+  -- LE Clear Periodic Advertiser List command (v5.0) (LE)
+  -- Note that this command has no arguments
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEReadPeriodicAdvertiserListSizeCommand:
+  -- LE Read Periodic Advertiser List Size command (v5.0) (LE)
+  -- Note that this command has no arguments
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEReadTransmitPowerCommand:
+  -- LE Read Transmit Power command (v5.0) (LE)
+  -- Note that this command has no arguments
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEReadRFPathCompensationCommand:
+  -- LE Read RF Path Compensation command (v5.0) (LE)
+  -- Note that this command has no arguments
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEWriteRFPathCompensationCommand:
+  -- LE Write RF Path Compensation command (v5.0) (LE)
+  -- Values provided are used in the Tx Power Level and RSSI calculation.
+  --   Range: -128.0 dB (0xFB00) ≤ N ≤ 128.0 dB (0x0500)
+  --   Units: 0.1 dB
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+2]         Int            rf_tx_path_compensation_value
+    [requires: -1280 <= this <= 1280]
+
+  $next [+2]         Int            rf_rx_path_compensation_value
+    [requires: -1280 <= this <= 1280]
+
+
+struct LESetPrivacyModeCommand:
+  -- LE Set Privacy Mode command (v5.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader      header
+  $next [+1]                      LEPeerAddressType  peer_identity_address_type
+    -- The peer identity address type (either Public Identity or Private
+    -- Identity).
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr             peer_identity_address
+    -- Public Identity Address or Random (static) Identity Address of the
+    -- advertiser.
+
+  $next [+1]                      LEPrivacyMode      privacy_mode
+    -- The privacy mode to be used for the given entry on the resolving list.
+
+
+struct ReadInquiryModeCommand:
+  -- Read Inquiry Mode (v1.2) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct WriteInquiryModeCommand:
+  -- Write Inquiry Mode (v1.2) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+1]         InquiryMode    inquiry_mode
+
+
+struct ReadPageScanTypeCommand:
+  -- Read Page Scan Type (v1.2) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct WritePageScanTypeCommand:
+  -- Write Page Scan Type (v1.2) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+1]         PageScanType   page_scan_type
+
+
+struct ReadSimplePairingModeCommand:
+  -- Read Simple Pairing Mode (v2.1 + EDR) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct WriteLEHostSupportCommand:
+  -- Write LE Host Support Command (v4.0) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader       header
+  $next [+1]         GenericEnableParam  le_supported_host
+    -- Sets the LE Supported (Host) Link Manager Protocol feature bit.
+
+  $next [+1]         UInt                unused
+    -- Core Spec v5.0, Vol 2, Part E, Section 6.35: This parameter was named
+    -- "Simultaneous_LE_Host" and the value is set to "disabled(0x00)" and
+    -- "shall be ignored".
+    -- Core Spec v5.3, Vol 4, Part E, Section 7.3.79: This parameter was renamed
+    -- to "Unused" and "shall be ignored by the controller".
+
+
+struct ReadLocalVersionInformationCommand:
+  -- Read Local Version Information Command (v1.1)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadLocalSupportedCommandsCommand:
+  -- Read Local Supported Commands Command (v1.2)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadBufferSizeCommand:
+  -- Read Buffer Size Command (v1.1)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadBdAddrCommand:
+  -- Read BD_ADDR Command (v1.1) (BR/EDR, LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadLocalSupportedFeaturesCommand:
+  -- Read Local Supported Features Command (v1.1)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct ReadLocalExtendedFeaturesCommand:
+  -- Read Local Extended Features Command (v1.2) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+1]         UInt           page_number
+    -- 0x00: Requests the normal LMP features as returned by
+    -- Read_Local_Supported_Features.
+    -- 0x01-0xFF: Return the corresponding page of features.
+
+
+struct ReadEncryptionKeySizeCommand:
+  -- Read Encryption Key Size (v1.1) (BR/EDR)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+2]         UInt           connection_handle
+    -- Identifies an active ACL link (only the lower 12 bits are meaningful).
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+
+struct LESetEventMaskCommand:
+  -- LE Set Event Mask Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+8]  bits:
+    0     [+35]      LEEventMask    le_event_mask
+      -- Bitmask that indicates which LE events are generated by the HCI for the Host.
+
+
+struct LEReadBufferSizeCommandV1:
+  -- LE Read Buffer Size Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEReadBufferSizeCommandV2:
+  -- LE Read Buffer Size Command (v5.2) (LE)
+  -- Version 2 of this command changed the opcode and added ISO return
+  -- parameters.
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEReadLocalSupportedFeaturesCommand:
+  -- LE Read Local Supported Features Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LESetRandomAddressCommand:
+  -- LE Set Random Address Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader  header
+  $next [+BdAddr.$size_in_bytes]  BdAddr         random_address
+
+
+struct LESetAdvertisingParametersCommand:
+  -- LE Set Advertising Parameters Command (v4.0) (LE)
+
+  [requires: advertising_interval_min <= advertising_interval_max]
+
+  let hdr_size = CommandHeader.$size_in_bytes
+
+  0     [+hdr_size]               CommandHeader              header
+
+  $next [+2]                      UInt                       advertising_interval_min
+    -- Default: 0x0800 (1.28 s)
+    -- Time: N * 0.625 ms
+    -- Time Range: 20 ms to 10.24 s
+    [requires: 0x0020 <= this <= 0x4000]
+
+  $next [+2]                      UInt                       advertising_interval_max
+    -- Default: 0x0800 (1.28 s)
+    -- Time: N * 0.625 ms
+    -- Time Range: 20 ms to 10.24 s
+    [requires: 0x0020 <= this <= 0x4000]
+
+  $next [+1]                      LEAdvertisingType          adv_type
+    -- Used to determine the packet type that is used for advertising when
+    -- advertising is enabled.
+
+  $next [+1]                      LEOwnAddressType           own_address_type
+
+  $next [+1]                      LEPeerAddressType          peer_address_type
+    -- ANONYMOUS address type not allowed.
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr                     peer_address
+    -- Public Device Address, Random Device Address, Public Identity Address, or
+    -- Random (static) Identity Address of the device to be connected.
+
+  $next [+1]  bits:
+
+    0     [+3]                    LEAdvertisingChannels      advertising_channel_map
+      -- Indicates the advertising channels that shall be used when transmitting
+      -- advertising packets. At least 1 channel must be enabled.
+      -- Default: all channels enabled
+
+  $next [+1]                      LEAdvertisingFilterPolicy  advertising_filter_policy
+    -- This parameter shall be ignored when directed advertising is enabled.
+
+
+struct LEReadAdvertisingChannelTxPowerCommand:
+  -- LE Read Advertising Channel Tx Power Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LESetAdvertisingDataCommand:
+  -- LE Set Advertising Data Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+1]         UInt           advertising_data_length
+    -- The number of significant octets in `advertising_data`.
+    [requires: 0x00 <= this <= 0x1F]
+
+  $next [+31]        UInt:8[31]     advertising_data
+    -- 31 octets of advertising data formatted as defined in Core Spec
+    -- v5.3, Vol 3, Part C, Section 11.
+    -- Default: All octets zero
+
+
+struct LESetScanResponseDataCommand:
+  -- LE Set Scan Response Data Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+1]         UInt           scan_response_data_length
+    -- The number of significant octets in `scan_response_data`.
+    [requires: 0x00 <= this <= 0x1F]
+
+  $next [+31]        UInt:8[31]     scan_response_data
+    -- 31 octets of scan response data formatted as defined in Core Spec
+    -- v5.3, Vol 3, Part C, Section 11.
+    -- Default: All octets zero
+
+
+struct LESetScanParametersCommand:
+  -- LE Set Scan Parameters Command (v4.0) (LE)
+
+  [requires: le_scan_window <= le_scan_interval]
+
+  let hdr_size = CommandHeader.$size_in_bytes
+
+  0     [+hdr_size]  CommandHeader       header
+
+  $next [+1]         LEScanType          le_scan_type
+    -- Controls the type of scan to perform.
+
+  $next [+2]         UInt                le_scan_interval
+    -- Default: 0x0010 (10ms)
+    -- Time: N * 0.625 ms
+    -- Time Range: 2.5 ms to 10.24 s
+    [requires: 0x0004 <= this <= 0x4000]
+
+  $next [+2]         UInt                le_scan_window
+    -- Default: 0x0010 (10ms)
+    -- Time: N * 0.625 ms
+    -- Time Range: 2.5ms to 10.24 s
+    [requires: 0x0004 <= this <= 0x4000]
+
+  $next [+1]         LEOwnAddressType    own_address_type
+    -- The type of address being used in the scan request packets.
+
+  $next [+1]         LEScanFilterPolicy  scanning_filter_policy
+
+
+struct LESetScanEnableCommand:
+  -- LE Set Scan Enable Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader       header
+  $next [+1]         GenericEnableParam  le_scan_enable
+  $next [+1]         GenericEnableParam  filter_duplicates
+    -- Controls whether the Link Layer should filter out duplicate advertising
+    -- reports to the Host, or if the Link Layer should generate advertising
+    -- reports for each packet received. Ignored if le_scan_enable is set to
+    -- disabled.
+    -- See Core Spec v5.3, Vol 6, Part B, Section 4.4.3.5
+
+
+struct LECreateConnectionCommand:
+  -- LE Create Connection Command (v4.0) (LE)
+
+  [requires: le_scan_window <= le_scan_interval && connection_interval_min <= connection_interval_max]
+
+  let hdr_size = CommandHeader.$size_in_bytes
+
+  0     [+hdr_size]               CommandHeader       header
+
+  $next [+2]                      UInt                le_scan_interval
+    -- The time interval from when the Controller started the last LE scan until
+    -- it begins the subsequent LE scan.
+    -- Time: N * 0.625 ms
+    -- Time Range: 2.5 ms to 10.24 s
+    [requires: 0x0004 <= this <= 0x4000]
+
+  $next [+2]                      UInt                le_scan_window
+    -- Amount of time for the duration of the LE scan.
+    -- Time: N * 0.625 ms
+    -- Time Range: 2.5 ms to 10.24 s
+    [requires: 0x0004 <= this <= 0x4000]
+
+  $next [+1]                      GenericEnableParam  initiator_filter_policy
+
+  $next [+1]                      LEAddressType       peer_address_type
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr              peer_address
+
+  $next [+1]                      LEOwnAddressType    own_address_type
+
+  $next [+2]                      UInt                connection_interval_min
+    -- Time: N * 1.25 ms
+    -- Time Range: 7.5 ms to 4 s.
+    [requires: 0x0006 <= this <= 0x0C80]
+
+  $next [+2]                      UInt                connection_interval_max
+    -- Time: N * 1.25 ms
+    -- Time Range: 7.5 ms to 4 s.
+    [requires: 0x0006 <= this <= 0x0C80]
+
+  $next [+2]                      UInt                max_latency
+    -- Maximum Peripheral latency for the connection in number of connection
+    -- events.
+    [requires: 0x0000 <= this <= 0x01F3]
+
+  $next [+2]                      UInt                supervision_timeout
+    -- See Core Spec v5.3, Vol 6, Part B, Section 4.5.2.
+    -- Time: N * 10 ms
+    -- Time Range: 100 ms to 32 s
+    [requires: 0x000A <= this <= 0x0C80]
+
+  $next [+2]                      UInt                min_connection_event_length
+    -- Time: N * 0.625 ms
+
+  $next [+2]                      UInt                max_connection_event_length
+    -- Time: N * 0.625 ms
+
+
+struct LECreateConnectionCancelCommand:
+  -- LE Create Connection Cancel Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEClearFilterAcceptListCommand:
+  -- LE Clear Filter Accept List Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEAddDeviceToFilterAcceptListCommand:
+  -- LE Add Device To Filter Accept List Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader      header
+  $next [+1]                      LEPeerAddressType  address_type
+    -- The address type of the peer.
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr             address
+    -- Public Device Address or Random Device Address of the device to be added
+    -- to the Filter Accept List. Ignored if `address_type` is ANONYMOUS.
+
+
+struct LERemoveDeviceFromFilterAcceptListCommand:
+  -- LE Remove Device From Filter Accept List Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader      header
+  $next [+1]                      LEPeerAddressType  address_type
+    -- The address type of the peer.
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr             address
+    -- Public Device Address or Random Device Address of the device to be added
+    -- to the Filter Accept List. Ignored if `address_type` is ANONYMOUS.
+
+
+struct LEConnectionUpdateCommand:
+  -- LE Connection Update Command (v4.0) (LE)
+
+  [requires: connection_interval_min <= connection_interval_max && min_connection_event_length <= max_connection_event_length]
+
+  let hdr_size = CommandHeader.$size_in_bytes
+
+  0     [+hdr_size]  CommandHeader  header
+
+  $next [+2]         UInt           connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+2]         UInt           connection_interval_min
+    -- Time: N * 1.25 ms
+    -- Time Range: 7.5 ms to 4 s.
+    [requires: 0x0006 <= this <= 0x0C80]
+
+  $next [+2]         UInt           connection_interval_max
+    -- Time: N * 1.25 ms
+    -- Time Range: 7.5 ms to 4 s.
+    [requires: 0x0006 <= this <= 0x0C80]
+
+  $next [+2]         UInt           max_latency
+    -- Maximum Peripheral latency for the connection in number of subrated
+    -- connection events.
+    [requires: 0x0000 <= this <= 0x01F3]
+
+  $next [+2]         UInt           supervision_timeout
+    -- See Core Spec v5.3, Vol 6, Part B, Section 4.5.2.
+    -- Time: N * 10 ms
+    -- Time Range: 100 ms to 32 s
+    [requires: 0x000A <= this <= 0x0C80]
+
+  $next [+2]         UInt           min_connection_event_length
+    -- Time: N * 0.625 ms
+
+  $next [+2]         UInt           max_connection_event_length
+    -- Time: N * 0.625 ms
+
+
+struct LEReadRemoteFeaturesCommand:
+  -- LE Read Remote Features Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+2]         UInt           connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+
+struct LEEnableEncryptionCommand:
+  -- LE Enable Encryption Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]                CommandHeader  header
+  $next [+2]                       UInt           connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+8]                       UInt           random_number
+  $next [+2]                       UInt           encrypted_diversifier
+  $next [+LinkKey.$size_in_bytes]  LinkKey        long_term_key
+
+
+struct LELongTermKeyRequestNegativeReplyCommand:
+  -- LE Long Term Key Request Negative Reply Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader  header
+  $next [+2]         UInt           connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+
+struct LEReadSupportedStatesCommand:
+  -- LE Read Supported States Command (v4.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LEClearResolvingListCommand:
+  -- LE Clear Resolving List Command (v4.2) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0 [+hdr_size]  CommandHeader  header
+
+
+struct LESetAddressResolutionEnableCommand:
+  -- LE Set Address Resolution Enable Command (v4.2) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]  CommandHeader       header
+  $next [+1]         GenericEnableParam  address_resolution_enable
+
+
+struct LESetAdvertisingSetRandomAddressCommand:
+  -- LE Set Advertising Set Random Address Command (v5.0) (LE)
+  let hdr_size = CommandHeader.$size_in_bytes
+  0     [+hdr_size]               CommandHeader  header
+  $next [+1]                      UInt           advertising_handle
+    -- Handle used to identify an advertising set.
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr         random_address
+    -- The random address to use in the advertising PDUs.
+
+
+struct WriteAuthenticatedPayloadTimeoutCommand:
+  -- Write Authenticated Payload Timeout Command (v4.1) (BR/EDR & LE)
+  0     [+CommandHeader.$size_in_bytes]  CommandHeader  header
+  $next [+2]                             UInt           connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+2]                             UInt           authenticated_payload_timeout
+    -- Default = 0x0BB8 (30 s)
+    -- Time = N * 10 ms
+    -- Time Range: 10 ms to 655,350 ms
+    [requires: 0x0001 <= this <= 0xFFFF]
+
+
+struct ReadAuthenticatedPayloadTimeoutCommand:
+  -- Read Authenticated Payload Timeout Command (v4.1) (BR/EDR & LE)
+  0     [+CommandHeader.$size_in_bytes]  CommandHeader  header
+  $next [+2]                             UInt           connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+
+struct ReadLEHostSupportCommand:
+  -- Read LE Host Support Command (v4.0) (BR/EDR)
+  0 [+CommandHeader.$size_in_bytes]  CommandHeader  header
+
+
+struct ReadFlowControlModeCommand:
+  -- Read Flow Control Mode Command (v3.0 + HS) (BR/EDR)
+  0 [+CommandHeader.$size_in_bytes]  CommandHeader  header
+
+
+struct WriteFlowControlModeCommand:
+  -- Write Flow Control Mode Command (v3.0 + HS) (BR/EDR)
+  0     [+CommandHeader.$size_in_bytes]  CommandHeader    header
+  $next [+1]                             FlowControlMode  flow_control_mode
+
+
+struct SetEventMaskPage2Command:
+  -- Set Event Mask Page 2 Command (v3.0 + HS)
+  0     [+CommandHeader.$size_in_bytes]  CommandHeader   header
+  $next [+8]  bits:
+    0     [+26]                          EventMaskPage2  event_mask_page_2
+      -- Bit mask used to control which HCI events are generated by the HCI for the Host.
 
 # ========================= HCI Event packets ===========================
 # Core Spec v5.3 Vol 4, Part E, Section 7.7
@@ -970,6 +2398,160 @@ struct CommandCompleteEvent:
   $next [+2]         OpCodeBits   command_opcode
   let event_fixed_size = $size_in_bytes-hdr_size
   let return_parameters_size = header.parameter_total_size-event_fixed_size
+
+
+struct ConnectionCompleteEvent:
+  -- Connection Complete Event (v1.1) (BR/EDR)
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]               EventHeader         header
+  $next [+1]                      StatusCode          status
+  $next [+2]                      UInt                connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+BdAddr.$size_in_bytes]  BdAddr              bd_addr
+    -- The address of the connected device
+
+  $next [+1]                      LinkType            link_type
+  $next [+1]                      GenericEnableParam  encryption_enabled
+
+
+struct ConnectionRequestEvent:
+  -- Connection Request Event (v1.1) (BR/EDR)
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]               EventHeader    header
+  $next [+BdAddr.$size_in_bytes]  BdAddr         bd_addr
+    -- The address of the device that's requesting the connection.
+
+  $next [+3]                      ClassOfDevice  class_of_device
+    -- The Class of Device of the device which requests the connection.
+
+  $next [+1]                      LinkType       link_type
+
+
+struct DisconnectionCompleteEvent:
+  -- Disconnection Complete Event (v1.1) (BR/EDR & LE)
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]  EventHeader  header
+  $next [+1]         StatusCode   status
+  $next [+2]         UInt         connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+1]         StatusCode   reason
+
+
+struct AuthenticationCompleteEvent:
+  -- Authentication Complete Event (v1.1) (BR/EDR)
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]  EventHeader  header
+  $next [+1]         StatusCode   status
+  $next [+2]         UInt         connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+
+struct RemoteNameRequestCompleteEvent:
+  -- Remote Name Request Complete Event (v1.1) (BR/EDR)
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]               EventHeader  header
+  $next [+1]                      StatusCode   status
+  $next [+BdAddr.$size_in_bytes]  BdAddr       bd_addr
+  $next [+248]                    UInt:8[248]  remote_name
+    -- UTF-8 encoded friendly name. If the name is less than 248 characters, it
+    -- is null terminated and the remaining bytes are not valid.
+
+
+struct EncryptionChangeEventV1:
+  -- Encryption Change Event (v1.1) (BR/EDR & LE)
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]  EventHeader       header
+  $next [+1]         StatusCode        status
+  $next [+2]         UInt              connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+1]         EncryptionStatus  encryption_enabled
+
+
+struct ChangeConnectionLinkKeyCompleteEvent:
+  -- Change Connection Link Key Complete Event (v1.1) (BR/EDR)
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]  EventHeader  header
+  $next [+1]         StatusCode   status
+  $next [+2]         UInt         connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+
+struct ReadRemoteSupportedFeaturesCompleteEvent:
+  -- Read Remote Supported Features Complete Event (v1.1) (BR/EDR)
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]  EventHeader     header
+  $next [+1]         StatusCode      status
+  $next [+2]         UInt            connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+8]         LmpFeatures(0)  lmp_features
+    -- Page 0 of the LMP features.
+
+
+struct LEMetaEvent:
+  let hdr_size = EventHeader.$size_in_bytes
+  0     [+hdr_size]  EventHeader  header
+  $next [+1]         UInt         subevent_code
+    -- The event code for the LE subevent.
+
+
+struct LEConnectionCompleteSubevent:
+  0     [+LEMetaEvent.$size_in_bytes]  LEMetaEvent        le_meta_event
+
+  $next [+1]                           StatusCode         status
+
+  $next [+2]                           UInt               connection_handle
+    -- Only the lower 12-bits are meaningful.
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+1]                           ConnectionRole     role
+
+  $next [+1]                           LEPeerAddressType  peer_address_type
+
+  $next [+BdAddr.$size_in_bytes]       BdAddr             peer_address
+    -- Public Device Address or Random Device Address of the peer device.
+
+  $next [+2]                           UInt               connection_interval
+    -- Time: N * 1.25 ms
+    -- Range: 7.5 ms to 4 s
+    [requires: 0x0006 <= this <= 0x0C80]
+
+  $next [+2]                           UInt               peripheral_latency
+    [requires: 0x0000 <= this <= 0x01F3]
+
+  $next [+2]                           UInt               supervision_timeout
+    -- Time: N * 10 ms
+    -- Range: 100 ms to 32 s
+    [requires: 0x000A <= this <= 0x0C80]
+
+  $next [+1]                           LEClockAccuracy    central_clock_accuracy
+    -- Only valid for a peripheral. On a central, this parameter shall be set to 0x00.
+
+
+struct LEConnectionUpdateCompleteSubevent:
+  0     [+LEMetaEvent.$size_in_bytes]  LEMetaEvent  le_meta_event
+
+  $next [+1]                           StatusCode   status
+
+  $next [+2]                           UInt         connection_handle
+    -- Only the lower 12-bits are meaningful.
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+2]                           UInt         connection_interval
+    -- Time: N * 1.25 ms
+    -- Range: 7.5 ms to 4 s
+    [requires: 0x0006 <= this <= 0x0C80]
+
+  $next [+2]                           UInt         peripheral_latency
+    [requires: 0x0000 <= this <= 0x01F3]
+
+  $next [+2]                           UInt         supervision_timeout
+    -- Time: N * 10 ms
+    -- Range: 100 ms to 32 s
+    [requires: 0x000A <= this <= 0x0C80]
 
 # ============================ Test packets =============================
 
