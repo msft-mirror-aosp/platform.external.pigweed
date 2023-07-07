@@ -421,8 +421,10 @@ class UnaryTest(_CallbackClientImplTestBase):
             self.assertTrue(call.cancel())
             self.assertFalse(call.cancel())  # Already cancelled, returns False
 
-            # Unary RPCs do not send a cancel request to the server.
-            self.assertFalse(self.requests)
+            self.assertEqual(
+                self.last_request().type, packet_pb2.PacketType.CLIENT_ERROR
+            )
+            self.assertEqual(self.last_request().status, Status.CANCELLED.value)
 
         callback.assert_not_called()
 
@@ -496,38 +498,6 @@ class ServerStreamingTest(_CallbackClientImplTestBase):
                 [rep1, rep2],
                 self._service.SomeServerStreaming(magic_number=4).responses,
             )
-
-            self.assertEqual(
-                4, self._sent_payload(self.method.request_type).magic_number
-            )
-
-    def test_deprecated_packet_format(self) -> None:
-        rep1 = self.method.response_type(payload='!!!')
-        rep2 = self.method.response_type(payload='?')
-
-        for _ in range(3):
-            # The original packet format used RESPONSE packets for the server
-            # stream and a SERVER_STREAM_END packet as the last packet. These
-            # are converted to SERVER_STREAM packets followed by a RESPONSE.
-            self._enqueue_response(1, self.method, payload=rep1)
-            self._enqueue_response(1, self.method, payload=rep2)
-
-            self._next_packets.append(
-                (
-                    packet_pb2.RpcPacket(
-                        type=packet_pb2.PacketType.DEPRECATED_SERVER_STREAM_END,
-                        channel_id=1,
-                        service_id=self.method.service.id,
-                        method_id=self.method.id,
-                        status=Status.INVALID_ARGUMENT.value,
-                    ).SerializeToString(),
-                    Status.OK,
-                )
-            )
-
-            status, replies = self._service.SomeServerStreaming(magic_number=4)
-            self.assertEqual([rep1, rep2], replies)
-            self.assertIs(status, Status.INVALID_ARGUMENT)
 
             self.assertEqual(
                 4, self._sent_payload(self.method.request_type).magic_number

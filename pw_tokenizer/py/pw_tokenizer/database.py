@@ -203,7 +203,7 @@ def _load_token_database(  # pylint: disable=too-many-return-statements
 
         # Generate a database from JSON.
         if str(db).endswith('.json'):
-            with open(db, 'r') as json_fd:
+            with open(db, 'r', encoding='utf-8') as json_fd:
                 return _database_from_json(json_fd)
 
         # Read the path as a packed binary or CSV file.
@@ -507,7 +507,7 @@ def _parse_args():
         if value == 'today':
             return datetime.now()
 
-        return datetime.strptime(value, tokens.DATE_FORMAT)
+        return datetime.fromisoformat(value)
 
     year_month_day.__name__ = 'year-month-day (YYYY-MM-DD)'
 
@@ -594,7 +594,7 @@ def _parse_args():
     def replacement(value: str) -> Tuple[Pattern, 'str']:
         try:
             find, sub = unescaped_slash.split(value, 1)
-        except ValueError as err:
+        except ValueError as _err:
             raise argparse.ArgumentTypeError(
                 'replacements must be specified as "search_regex/replacement"'
             )

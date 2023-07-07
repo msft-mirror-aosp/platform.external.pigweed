@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:84c8431f3e03cc6226c59dd49637c15ea31169a1"
+        "git_revision:41fef642de70ecdcaaa26be96d56a0398f95abd4"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -115,7 +115,7 @@
         "mac-amd64"
       ],
       "tags": [
-        "git_revision:823a3f11fb8f04c3c3cc0f95f968fef1bfc6534f"
+        "git_revision:823a3f11fb8f04c3c3cc0f95f968fef1bfc6534f,1"
       ],
       "version_file": ".versions/qemu.cipd_version"
     },

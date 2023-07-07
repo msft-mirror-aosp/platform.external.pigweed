@@ -14,7 +14,6 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 include($ENV{PW_ROOT}/pw_protobuf_compiler/proto.cmake)
-include($ENV{PW_ROOT}/pw_tokenizer/backend.cmake)
 
 pw_add_module_config(pw_tokenizer_CONFIG)
 
@@ -55,12 +54,15 @@ pw_add_library(pw_tokenizer STATIC
     pw_varint
 )
 
-if("${CMAKE_SYSTEM_NAME}" STREQUAL "")
+if(Zephyr_FOUND)
+  zephyr_linker_sources(SECTIONS "${CMAKE_CURRENT_SOURCE_DIR}/pw_tokenizer_linker_rules.ld")
+elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "")
   target_link_options(pw_tokenizer
     PUBLIC
       "-T${CMAKE_CURRENT_SOURCE_DIR}/pw_tokenizer_linker_sections.ld"
+      "-L${CMAKE_CURRENT_SOURCE_DIR}"
   )
-elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux" OR Zephyr_FOUND)
+elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
   target_link_options(pw_tokenizer
     PUBLIC
       "-T${CMAKE_CURRENT_SOURCE_DIR}/add_tokenizer_sections_to_default_script.ld"
@@ -101,34 +103,6 @@ pw_add_library(pw_tokenizer.decoder STATIC
     pw_bytes
     pw_bytes.bit
     pw_varint
-)
-
-pw_add_facade(pw_tokenizer.global_handler STATIC
-  BACKEND
-    pw_tokenizer.global_handler_BACKEND
-  HEADERS
-    public/pw_tokenizer/tokenize_to_global_handler.h
-  PUBLIC_INCLUDES
-    public
-  PUBLIC_DEPS
-    pw_preprocessor
-    pw_tokenizer
-  SOURCES
-    tokenize_to_global_handler.cc
-)
-
-pw_add_facade(pw_tokenizer.global_handler_with_payload STATIC
-  BACKEND
-    pw_tokenizer.global_handler_with_payload_BACKEND
-  HEADERS
-    public/pw_tokenizer/tokenize_to_global_handler_with_payload.h
-  PUBLIC_INCLUDES
-    public
-  PUBLIC_DEPS
-    pw_preprocessor
-    pw_tokenizer
-  SOURCES
-    tokenize_to_global_handler_with_payload.cc
 )
 
 pw_proto_library(pw_tokenizer.proto
@@ -198,20 +172,15 @@ pw_add_test(pw_tokenizer.detokenize_test
     pw_tokenizer
 )
 
-if((NOT "${pw_tokenizer.global_handler_with_payload_BACKEND}" STREQUAL "") AND
-   (NOT "${pw_tokenizer.global_handler_BACKEND}" STREQUAL ""))
-  pw_add_test(pw_tokenizer.global_handlers_test
-    SOURCES
-      global_handlers_test_c.c
-      global_handlers_test.cc
-    PRIVATE_DEPS
-      pw_tokenizer.global_handler
-      pw_tokenizer.global_handler_with_payload
-    GROUPS
-      modules
-      pw_tokenizer
-  )
-endif()
+pw_add_test(pw_tokenizer.encode_args_test
+  SOURCES
+    encode_args_test.cc
+  PRIVATE_DEPS
+    pw_tokenizer
+  GROUPS
+    modules
+    pw_tokenizer
+)
 
 pw_add_test(pw_tokenizer.hash_test
   SOURCES

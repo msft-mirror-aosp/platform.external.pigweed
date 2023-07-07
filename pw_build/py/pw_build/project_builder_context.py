@@ -52,7 +52,7 @@ _LOG = logging.getLogger('pw_build.watch')
 
 
 def _wait_for_terminate_then_kill(
-    proc: subprocess.Popen, timeout: int = 3
+    proc: subprocess.Popen, timeout: int = 5
 ) -> int:
     """Wait for a process to end, then kill it if the timeout expires."""
     returncode = 1
@@ -62,7 +62,7 @@ def _wait_for_terminate_then_kill(
         proc_command = proc.args
         if isinstance(proc.args, list):
             proc_command = ' '.join(proc.args)
-        _LOG.info('Killing %s', proc_command)
+        _LOG.debug('Killing %s', proc_command)
         proc.kill()
     return returncode
 
@@ -92,7 +92,9 @@ class BuildStatus(Formatter):
                 continue
 
             build_status: StyleAndTextTuples = []
-            build_status.append(cfg.status.status_slug())
+            build_status.append(
+                cfg.status.status_slug(restarting=self.ctx.restart_flag)
+            )
             build_status.append(('', ' '))
             build_status.extend(cfg.status.current_step_formatted())
 
@@ -131,7 +133,7 @@ class TimeElapsedIfStarted(TimeElapsed):
 
 
 @dataclass
-class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
+class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
     """Maintains the state of running builds and active subproccesses."""
 
     current_state: ProjectBuilderState = ProjectBuilderState.IDLE
@@ -174,11 +176,26 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
             char=self.horizontal_separator, height=1
         )
 
+        self.using_fullscreen: bool = False
+        self.restart_flag: bool = False
+        self.ctrl_c_pressed: bool = False
+
+    def using_progress_bars(self) -> bool:
+        return bool(self.progress_bar) or self.using_fullscreen
+
+    def interrupted(self) -> bool:
+        return self.ctrl_c_pressed or self.restart_flag
+
     def set_bottom_toolbar(self, text: AnyFormattedText) -> None:
         self.bottom_toolbar = text
 
     def set_enter_callback(self, callback: Callable) -> None:
         self._enter_callback = callback
+
+    def ctrl_c_interrupt(self) -> None:
+        """Abort function for when using ProgressBars."""
+        self.ctrl_c_pressed = True
+        self.exit(1)
 
     def startup_progress(self) -> None:
         self.progress_bar = ProgressBar(
@@ -186,9 +203,9 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
             key_bindings=self.key_bindings,
             title=self.get_title_bar_text,
             bottom_toolbar=self.bottom_toolbar,
-            cancel_callback=self.exit,
+            cancel_callback=self.ctrl_c_interrupt,
         )
-        self.progress_bar.__enter__()
+        self.progress_bar.__enter__()  # pylint: disable=unnecessary-dunder-call
 
         self.create_title_bar_container()
         self.progress_bar.app.layout.container.children[  # type: ignore
@@ -199,7 +216,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
     def exit_progress(self) -> None:
         if not self.progress_bar:
             return
-        self.progress_bar.__exit__()
+        self.progress_bar.__exit__()  # pylint: disable=unnecessary-dunder-call
 
     def clear_progress_scrollback(self) -> None:
         if not self.progress_bar:
@@ -215,6 +232,10 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
             self.progress_bar.invalidate()
 
     def get_title_style(self) -> str:
+        if self.restart_flag:
+            return 'fg:ansiyellow'
+
+        # Assume passing
         style = 'fg:ansigreen'
 
         if self.current_state == ProjectBuilderState.BUILDING:
@@ -225,6 +246,13 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
                 style = 'fg:ansired'
 
         return style
+
+    def exit_code(self) -> int:
+        """Returns a 0 for success, 1 for fail."""
+        for cfg in self.recipes:
+            if cfg.status.failed():
+                return 1
+        return 0
 
     def get_title_bar_text(
         self, include_separators: bool = True
@@ -239,7 +267,9 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
             if cfg.status.done:
                 done_count += 1
 
-        if fail_count > 0:
+        if self.restart_flag:
+            title = 'INTERRUPT'
+        elif fail_count > 0:
             title = f'FAILED ({fail_count})'
         elif self.current_state == ProjectBuilderState.IDLE and done_count > 0:
             title = 'PASS'
@@ -307,7 +337,10 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
     ) -> None:
         self.procs[recipe] = proc
 
-    def terminate_and_wait(self) -> None:
+    def terminate_and_wait(
+        self,
+        exit_message: Optional[str] = None,
+    ) -> None:
         """End a subproces either cleanly or with a kill signal."""
         if self.is_idle() or self.should_abort():
             return
@@ -325,7 +358,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
                 proc_command = proc.args
                 if isinstance(proc.args, list):
                     proc_command = ' '.join(proc.args)
-                _LOG.info('Stopping: %s', proc_command)
+                _LOG.debug('Stopping: %s', proc_command)
 
                 futures.append(
                     executor.submit(_wait_for_terminate_then_kill, proc)
@@ -333,13 +366,19 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
             for future in concurrent.futures.as_completed(futures):
                 future.result()
 
-        _LOG.info('Done; all processes stopped.')
+        if exit_message:
+            _LOG.info(exit_message)
         self.set_idle()
 
     def _signal_abort(self) -> None:
         self.desired_state = ProjectBuilderState.ABORT
 
+    def build_stopping(self) -> bool:
+        """Return True if the build is restarting or quitting."""
+        return self.should_abort() or self.interrupted()
+
     def should_abort(self) -> bool:
+        """Return True if the build is restarting."""
         return self.desired_state == ProjectBuilderState.ABORT
 
     def is_building(self) -> bool:
@@ -357,35 +396,60 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes
         self.desired_state = ProjectBuilderState.IDLE
 
     def set_building(self) -> None:
+        self.restart_flag = False
         self.current_state = ProjectBuilderState.BUILDING
         self.desired_state = ProjectBuilderState.BUILDING
 
     def restore_stdout_logging(self) -> None:  # pylint: disable=no-self-use
+        if not self.using_progress_bars():
+            return
+
         # Restore logging to STDOUT
         stdout_handler = logging.StreamHandler()
-        stdout_handler.setLevel(logging.INFO)
-        logging.getLogger().addHandler(stdout_handler)
+        if self.project_builder:
+            stdout_handler.setLevel(self.project_builder.default_log_level)
+        else:
+            stdout_handler.setLevel(logging.INFO)
+        root_logger = logging.getLogger()
+        if self.project_builder and self.project_builder.stdout_proxy:
+            self.project_builder.stdout_proxy.flush()
+            self.project_builder.stdout_proxy.close()
+        root_logger.addHandler(stdout_handler)
+
+    def restore_logging_and_shutdown(
+        self,
+        log_after_shutdown: Optional[Callable[[], None]] = None,
+    ) -> None:
+        self.restore_stdout_logging()
+        _LOG.warning('Abort signal recieved, stopping processes...')
+        if log_after_shutdown:
+            log_after_shutdown()
+        self.terminate_and_wait()
+        # Flush all log handlers
+        # logging.shutdown()
 
     def exit(
         self,
-        exit_code: int = 0,
+        exit_code: int = 1,
         log_after_shutdown: Optional[Callable[[], None]] = None,
     ) -> None:
-        def _cleanup() -> None:
-            self.restore_stdout_logging()
-            if log_after_shutdown:
-                log_after_shutdown()
-            self.terminate_and_wait()
-            # Flush all log handlers
-            logging.shutdown()
+        """Exit function called when the user presses ctrl-c."""
+
+        # Note: The correct way to exit Python is via sys.exit() however this
+        # takes a number of seconds when running pw_watch with multiple parallel
+        # builds. Instead, this function calls os._exit() to shutdown
+        # immediately. This is similar to `pw_watch.watch._exit`:
+        # https://cs.opensource.google/pigweed/pigweed/+/main:pw_watch/py/pw_watch/watch.py?q=_exit.code
 
         if not self.progress_bar:
-            _cleanup()
+            self.restore_logging_and_shutdown(log_after_shutdown)
+            logging.shutdown()
             os._exit(exit_code)  # pylint: disable=protected-access
 
         # Shut everything down after the progress_bar exits.
         def _really_exit(future: asyncio.Future) -> NoReturn:
-            _cleanup()
+            self.restore_logging_and_shutdown(log_after_shutdown)
+            logging.shutdown()
             os._exit(future.result())  # pylint: disable=protected-access
 
         if self.progress_bar.app.future:

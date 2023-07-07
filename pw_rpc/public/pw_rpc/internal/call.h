@@ -116,7 +116,7 @@ class Call : public IntrusiveList<Call>::Item {
 
   // True if the Call is active and ready to send responses.
   [[nodiscard]] bool active() const PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return active_locked();
   }
 
@@ -137,7 +137,7 @@ class Call : public IntrusiveList<Call>::Item {
   // Public function for accessing the channel ID of this call. Set to 0 when
   // the call is closed.
   uint32_t channel_id() const PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return channel_id_locked();
   }
 
@@ -163,7 +163,7 @@ class Call : public IntrusiveList<Call>::Item {
   // active.
   Status CloseAndSendResponse(ConstByteSpan response, Status status)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return CloseAndSendResponseLocked(response, status);
   }
 
@@ -185,7 +185,7 @@ class Call : public IntrusiveList<Call>::Item {
 
   // Public function that ends the client stream for a client call.
   Status CloseClientStream() PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return CloseClientStreamLocked();
   }
 
@@ -197,7 +197,7 @@ class Call : public IntrusiveList<Call>::Item {
 
   // Sends a payload in either a server or client stream packet.
   Status Write(ConstByteSpan payload) PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return WriteLocked(payload);
   }
 
@@ -258,6 +258,14 @@ class Call : public IntrusiveList<Call>::Item {
     return (state_ & kClientStreamActive) != 0;
   }
 
+  // Closes a call without doing anything else. Called from the Endpoint
+  // destructor.
+  void CloseFromDeletedEndpoint() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    MarkClosed();
+    awaiting_cleanup_ = OkStatus().code();
+    endpoint_ = nullptr;
+  }
+
  protected:
   // Creates an inactive Call.
   constexpr Call()
@@ -300,7 +308,7 @@ class Call : public IntrusiveList<Call>::Item {
   // Public function that sets the on_next function in the raw API.
   void set_on_next(Function<void(ConstByteSpan)>&& on_next)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     set_on_next_locked(std::move(on_next));
   }
 
@@ -313,7 +321,7 @@ class Call : public IntrusiveList<Call>::Item {
   // Public function that sets the on_error callback.
   void set_on_error(Function<void(Status)>&& on_error)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     set_on_error_locked(std::move(on_error));
   }
 
@@ -335,7 +343,7 @@ class Call : public IntrusiveList<Call>::Item {
 
   // Cancels an RPC. Public function for client calls only.
   Status Cancel() PW_LOCKS_EXCLUDED(rpc_lock()) {
-    LockGuard lock(rpc_lock());
+    RpcLockGuard lock;
     return CloseAndSendFinalPacketLocked(
         pwpb::PacketType::CLIENT_ERROR, {}, Status::Cancelled());
   }
@@ -455,6 +463,8 @@ class Call : public IntrusiveList<Call>::Item {
                   status);
   }
 
+  // Marks a call object closed without doing anything else. The call is not
+  // removed from the calls list and no callbacks are called.
   void MarkClosed() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     channel_id_ = Channel::kUnassignedChannelId;
     id_ = 0;
@@ -488,7 +498,7 @@ class Call : public IntrusiveList<Call>::Item {
     return callbacks_executing_ != 0u;
   }
 
-  internal::Endpoint* endpoint_ PW_GUARDED_BY(rpc_lock());
+  Endpoint* endpoint_ PW_GUARDED_BY(rpc_lock());
   uint32_t channel_id_ PW_GUARDED_BY(rpc_lock());
   uint32_t id_ PW_GUARDED_BY(rpc_lock());
   uint32_t service_id_ PW_GUARDED_BY(rpc_lock());
