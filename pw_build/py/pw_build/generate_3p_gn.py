@@ -26,7 +26,7 @@ from pw_build.bazel_query import BazelWorkspace
 from pw_build.gn_config import consolidate_configs, GnConfig
 from pw_build.gn_target import GnTarget
 from pw_build.gn_utils import GnLabel, GnPath
-from pw_build.gn_writer import GnFile, GnWriter, MalformedGnError
+from pw_build.gn_writer import gn_format, GnFile, GnWriter, MalformedGnError
 
 _DOCS_RST_TEMPLATE = Template(
     '''
@@ -106,6 +106,7 @@ class GnGenerator:
         self._repo: str
         self._repo_var: str
         self._repos: Dict[str, Set[str]] = defaultdict(set)
+        self._no_gn_check: List[GnLabel] = []
         self.configs: Dict[str, List[GnConfig]] = defaultdict(list)
         self.targets: Dict[str, List[GnTarget]] = defaultdict(list)
 
@@ -127,6 +128,16 @@ class GnGenerator:
         self._base_label = GnLabel(f'$dir_pw_third_party/{repo}')
         self._base_path = GnPath(f'$dir_pw_third_party_{self._repo_var}')
 
+    def exclude_from_gn_check(self, **kwargs) -> None:
+        """Mark a target as being excluding from `gn check`.
+
+        This should be called before loading or adding targets.
+
+        Args:
+            kwargs: Same as `GnLabel`.
+        """
+        self._no_gn_check.append(GnLabel(self._base_label, **kwargs))
+
     def load_workspace(self, workspace_path: Path) -> str:
         """Loads a Bazel workspace.
 
@@ -137,7 +148,7 @@ class GnGenerator:
         self.set_repo(self._workspace.repo)
         return self._repo
 
-    def loadtargets(self, kind: str, allow_testonly: bool) -> None:
+    def load_targets(self, kind: str, allow_testonly: bool) -> None:
         """Analyzes a Bazel workspace and loads target info from it.
 
         Target info will only be added for `kind` rules. Additionally,
@@ -161,6 +172,7 @@ class GnGenerator:
             Same as `GnTarget`.
         """
         target = GnTarget(self._base_label.dir(), self._base_path, **kwargs)
+        target.check_includes = target.label() not in self._no_gn_check
         if allow_testonly or not target.testonly:
             package = target.package()
             self.packages.add(package)
@@ -262,6 +274,7 @@ class GnGenerator:
         Args:
             package: The name of the package to write a BUILD.gn for.
             build_gn: The output writer object.
+            no_gn_check: List of targets with `check_includes = false`.
         """
         build_gn.write_imports(['//build_overrides/pigweed.gni'])
         build_gn.write_blank()
@@ -278,6 +291,9 @@ class GnGenerator:
             imports.add(f'$dir_pw_third_party/{self._repo}/{self._repo}.gni')
         build_gn.write_imports(sorted(list(imports)))
 
+        if not package:
+            build_gn.write_if(f'dir_pw_third_party_{self._repo_var} != ""')
+
         for config in sorted(self.configs[package], reverse=True):
             build_gn.write_config(config)
 
@@ -287,6 +303,7 @@ class GnGenerator:
             build_gn.write_target(target)
 
         if not package:
+            build_gn.write_end()
             build_gn.write_target_start('pw_doc_group', 'docs')
             build_gn.write_list('sources', ['docs.rst'])
             build_gn.write_end()
@@ -325,6 +342,7 @@ class GnGenerator:
         revision = self._workspace.revision()
         short = revision[:_GIT_SHORT_REV_LEN]
         for line in lines:
+            line = line.rstrip()
             if line == comment:
                 break
             yield line
@@ -336,6 +354,20 @@ class GnGenerator:
         yield ''
         yield f'.. _{short}: {url}/tree/{revision}'
         yield ''
+
+    def update_third_party_docs(self, contents: str) -> str:
+        """Adds a dep on the generated docs to a "third_party_docs" group."""
+        lines = contents.split('\n')
+        new_deps = f'deps = ["$dir_pigweed/third_party/{self._repo}:docs",'
+        for i in range(len(lines) - 1):
+            if lines[i] == 'group("third_party_docs") {':
+                lines[i + 1] = new_deps
+                return '\n'.join(lines)
+        raise ValueError('"third_party_docs" target not found')
+
+    def write_extra(self, extra: IO, label: str) -> None:
+        """Runs a Bazel target to generate an extra file."""
+        self._workspace.run(label, output=extra)
 
 
 def write_owners(owners: IO) -> None:
@@ -384,31 +416,44 @@ def _generate_gn(workspace_path: Path) -> None:
     output = Path(pw_root, 'third_party', repo)
 
     with open(output.joinpath('repo.json')) as file:
-        obj = json.load(file)
-        name = obj['name']
-        repos = obj.get('repos', {})
-        aliases = obj.get('aliases', {})
-        add_configs = obj.get('add', [])
-        removeconfigs = obj.get('remove', [])
-        allow_testonly = obj.get('allow_testonly', False)
+        repo_json = json.load(file)
 
-    generator.loadtargets('cc_library', allow_testonly)
-    generator.generate_configs(add_configs, removeconfigs)
+    for exclusion in repo_json.get('no_gn_check', []):
+        generator.exclude_from_gn_check(bazel=exclusion)
+    generator.load_targets('cc_library', repo_json.get('allow_testonly', False))
+    generator.generate_configs(
+        repo_json.get('add', []), repo_json.get('remove', [])
+    )
 
+    name = repo_json['name']
     with GnFile(Path(output, f'{repo}.gni')) as repo_gni:
         generator.write_repo_gni(repo_gni, name)
 
     for package in generator.packages:
         with GnFile(Path(output, package, 'BUILD.gn'), package) as build_gn:
-            build_gn.repos = repos
-            build_gn.aliases = aliases
+            build_gn.repos = repo_json.get('repos', {})
+            build_gn.aliases = repo_json.get('aliases', {})
             generator.write_build_gn(package, build_gn)
 
+    created_docs_rst = False
     try:
         with open(Path(output, 'docs.rst'), 'x') as docs_rst:
             generator.write_docs_rst(docs_rst, name)
+        created_docs_rst = True
     except OSError:
-        # docs.rst file already exists, just replace the version section.
+        pass  # docs.rst file already exists.
+
+    if created_docs_rst:
+        # Add the doc group to //docs:third_party_docs
+        docs_build_gn_path = Path(pw_root, 'docs', 'BUILD.gn')
+        with open(docs_build_gn_path, 'r') as docs_build_gn:
+            contents = docs_build_gn.read()
+        with open(docs_build_gn_path, 'w') as docs_build_gn:
+            docs_build_gn.write(generator.update_third_party_docs(contents))
+        gn_format(docs_build_gn_path)
+
+    else:
+        # Replace the version section of the existing docs.rst.
         with open(Path(output, 'docs.rst'), 'r') as docs_rst:
             contents = '\n'.join(generator.update_version(docs_rst))
         with open(Path(output, 'docs.rst'), 'w') as docs_rst:
@@ -419,6 +464,10 @@ def _generate_gn(workspace_path: Path) -> None:
             write_owners(owners)
     except OSError:
         pass  # OWNERS file already exists.
+
+    for filename, label in repo_json.get('extra_files', {}).items():
+        with open(Path(output, filename), 'w') as extra:
+            generator.write_extra(extra, label)
 
 
 if __name__ == '__main__':

@@ -70,6 +70,8 @@ declare_args() {
       get_path_info("../pw_cpu_exception_cortex_m", "abspath")
   dir_pw_crypto = get_path_info("../pw_crypto", "abspath")
   dir_pw_digital_io = get_path_info("../pw_digital_io", "abspath")
+  dir_pw_digital_io_mcuxpresso =
+      get_path_info("../pw_digital_io_mcuxpresso", "abspath")
   dir_pw_docgen = get_path_info("../pw_docgen", "abspath")
   dir_pw_doctor = get_path_info("../pw_doctor", "abspath")
   dir_pw_env_setup = get_path_info("../pw_env_setup", "abspath")
@@ -79,6 +81,7 @@ declare_args() {
   dir_pw_hdlc = get_path_info("../pw_hdlc", "abspath")
   dir_pw_hex_dump = get_path_info("../pw_hex_dump", "abspath")
   dir_pw_i2c = get_path_info("../pw_i2c", "abspath")
+  dir_pw_i2c_linux = get_path_info("../pw_i2c_linux", "abspath")
   dir_pw_i2c_mcuxpresso = get_path_info("../pw_i2c_mcuxpresso", "abspath")
   dir_pw_ide = get_path_info("../pw_ide", "abspath")
   dir_pw_interrupt = get_path_info("../pw_interrupt", "abspath")
@@ -122,9 +125,13 @@ declare_args() {
   dir_pw_software_update = get_path_info("../pw_software_update", "abspath")
   dir_pw_span = get_path_info("../pw_span", "abspath")
   dir_pw_spi = get_path_info("../pw_spi", "abspath")
+  dir_pw_spi_mcuxpresso = get_path_info("../pw_spi_mcuxpresso", "abspath")
   dir_pw_status = get_path_info("../pw_status", "abspath")
   dir_pw_stm32cube_build = get_path_info("../pw_stm32cube_build", "abspath")
   dir_pw_stream = get_path_info("../pw_stream", "abspath")
+  dir_pw_stream_uart_linux = get_path_info("../pw_stream_uart_linux", "abspath")
+  dir_pw_stream_uart_mcuxpresso =
+      get_path_info("../pw_stream_uart_mcuxpresso", "abspath")
   dir_pw_string = get_path_info("../pw_string", "abspath")
   dir_pw_symbolizer = get_path_info("../pw_symbolizer", "abspath")
   dir_pw_sync = get_path_info("../pw_sync", "abspath")
@@ -167,6 +174,7 @@ declare_args() {
   dir_pw_trace_tokenized = get_path_info("../pw_trace_tokenized", "abspath")
   dir_pw_transfer = get_path_info("../pw_transfer", "abspath")
   dir_pw_unit_test = get_path_info("../pw_unit_test", "abspath")
+  dir_pw_unit_test_zephyr = get_path_info("../pw_unit_test_zephyr", "abspath")
   dir_pw_varint = get_path_info("../pw_varint", "abspath")
   dir_pw_watch = get_path_info("../pw_watch", "abspath")
   dir_pw_web = get_path_info("../pw_web", "abspath")
@@ -218,6 +226,7 @@ declare_args() {
     dir_pw_cpu_exception_cortex_m,
     dir_pw_crypto,
     dir_pw_digital_io,
+    dir_pw_digital_io_mcuxpresso,
     dir_pw_docgen,
     dir_pw_doctor,
     dir_pw_env_setup,
@@ -227,6 +236,7 @@ declare_args() {
     dir_pw_hdlc,
     dir_pw_hex_dump,
     dir_pw_i2c,
+    dir_pw_i2c_linux,
     dir_pw_i2c_mcuxpresso,
     dir_pw_ide,
     dir_pw_interrupt,
@@ -268,9 +278,12 @@ declare_args() {
     dir_pw_software_update,
     dir_pw_span,
     dir_pw_spi,
+    dir_pw_spi_mcuxpresso,
     dir_pw_status,
     dir_pw_stm32cube_build,
     dir_pw_stream,
+    dir_pw_stream_uart_linux,
+    dir_pw_stream_uart_mcuxpresso,
     dir_pw_string,
     dir_pw_symbolizer,
     dir_pw_sync,
@@ -308,6 +321,7 @@ declare_args() {
     dir_pw_trace_tokenized,
     dir_pw_transfer,
     dir_pw_unit_test,
+    dir_pw_unit_test_zephyr,
     dir_pw_varint,
     dir_pw_watch,
     dir_pw_web,
@@ -356,6 +370,7 @@ declare_args() {
     "$dir_pw_cpu_exception_cortex_m:tests",
     "$dir_pw_crypto:tests",
     "$dir_pw_digital_io:tests",
+    "$dir_pw_digital_io_mcuxpresso:tests",
     "$dir_pw_docgen:tests",
     "$dir_pw_doctor:tests",
     "$dir_pw_env_setup:tests",
@@ -365,6 +380,7 @@ declare_args() {
     "$dir_pw_hdlc:tests",
     "$dir_pw_hex_dump:tests",
     "$dir_pw_i2c:tests",
+    "$dir_pw_i2c_linux:tests",
     "$dir_pw_i2c_mcuxpresso:tests",
     "$dir_pw_ide:tests",
     "$dir_pw_interrupt:tests",
@@ -406,9 +422,12 @@ declare_args() {
     "$dir_pw_software_update:tests",
     "$dir_pw_span:tests",
     "$dir_pw_spi:tests",
+    "$dir_pw_spi_mcuxpresso:tests",
     "$dir_pw_status:tests",
     "$dir_pw_stm32cube_build:tests",
     "$dir_pw_stream:tests",
+    "$dir_pw_stream_uart_linux:tests",
+    "$dir_pw_stream_uart_mcuxpresso:tests",
     "$dir_pw_string:tests",
     "$dir_pw_symbolizer:tests",
     "$dir_pw_sync:tests",
@@ -446,6 +465,7 @@ declare_args() {
     "$dir_pw_trace_tokenized:tests",
     "$dir_pw_transfer:tests",
     "$dir_pw_unit_test:tests",
+    "$dir_pw_unit_test_zephyr:tests",
     "$dir_pw_varint:tests",
     "$dir_pw_watch:tests",
     "$dir_pw_web:tests",
@@ -494,6 +514,7 @@ declare_args() {
     "$dir_pw_cpu_exception_cortex_m:docs",
     "$dir_pw_crypto:docs",
     "$dir_pw_digital_io:docs",
+    "$dir_pw_digital_io_mcuxpresso:docs",
     "$dir_pw_docgen:docs",
     "$dir_pw_doctor:docs",
     "$dir_pw_env_setup:docs",
@@ -503,6 +524,7 @@ declare_args() {
     "$dir_pw_hdlc:docs",
     "$dir_pw_hex_dump:docs",
     "$dir_pw_i2c:docs",
+    "$dir_pw_i2c_linux:docs",
     "$dir_pw_i2c_mcuxpresso:docs",
     "$dir_pw_ide:docs",
     "$dir_pw_interrupt:docs",
@@ -544,9 +566,12 @@ declare_args() {
     "$dir_pw_software_update:docs",
     "$dir_pw_span:docs",
     "$dir_pw_spi:docs",
+    "$dir_pw_spi_mcuxpresso:docs",
     "$dir_pw_status:docs",
     "$dir_pw_stm32cube_build:docs",
     "$dir_pw_stream:docs",
+    "$dir_pw_stream_uart_linux:docs",
+    "$dir_pw_stream_uart_mcuxpresso:docs",
     "$dir_pw_string:docs",
     "$dir_pw_symbolizer:docs",
     "$dir_pw_sync:docs",
@@ -584,6 +609,7 @@ declare_args() {
     "$dir_pw_trace_tokenized:docs",
     "$dir_pw_transfer:docs",
     "$dir_pw_unit_test:docs",
+    "$dir_pw_unit_test_zephyr:docs",
     "$dir_pw_varint:docs",
     "$dir_pw_watch:docs",
     "$dir_pw_web:docs",

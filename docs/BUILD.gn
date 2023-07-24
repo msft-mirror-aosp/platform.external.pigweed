@@ -30,7 +30,10 @@ pw_doc_group("static_assets") {
 # split out from the overall docgen target below.
 pw_doc_group("core_docs") {
   inputs = [
+    "$dir_pw_build/py/gn_tests/BUILD.gn",
+    "$dir_pw_build/py/pw_build/generate_python_wheel_cache.py",
     "$dir_pw_build/python.gni",
+    "$dir_pw_build/python_gn_args.gni",
     "images/pw_env_setup_demo.gif",
     "images/pw_status_test.png",
     "images/pw_watch_build_demo.gif",
@@ -38,6 +41,7 @@ pw_doc_group("core_docs") {
     "images/pw_watch_test_demo.gif",
     "images/pw_watch_test_demo2.gif",
     "images/stm32f429i-disc1_connected.jpg",
+    "layout/page.html",
     "run_doxygen.py",
   ]
   sources = [
@@ -49,7 +53,8 @@ pw_doc_group("core_docs") {
     "getting_started.rst",
     "module_structure.rst",
     "os/index.rst",
-    "os/zephyr.rst",
+    "os/zephyr/index.rst",
+    "os/zephyr/kconfig.rst",
     "size_optimizations.rst",
     "style_guide.rst",
   ]
@@ -99,24 +104,32 @@ group("module_docs") {
 
 group("third_party_docs") {
   deps = [
+    "$dir_pigweed/third_party/abseil-cpp:docs",
     "$dir_pigweed/third_party/boringssl:docs",
     "$dir_pigweed/third_party/emboss:docs",
     "$dir_pigweed/third_party/freertos:docs",
     "$dir_pigweed/third_party/fuchsia:docs",
+    "$dir_pigweed/third_party/fuzztest:docs",
     "$dir_pigweed/third_party/googletest:docs",
     "$dir_pigweed/third_party/nanopb:docs",
+    "$dir_pigweed/third_party/re2:docs",
     "$dir_pigweed/third_party/tinyusb:docs",
   ]
 }
 
 _doxygen_input_files = [
   # All sources with doxygen comment blocks.
+  "$dir_pw_allocator/public/pw_allocator/block.h",
+  "$dir_pw_allocator/public/pw_allocator/freelist.h",
+  "$dir_pw_async/public/pw_async/context.h",
   "$dir_pw_async/public/pw_async/dispatcher.h",
   "$dir_pw_async/public/pw_async/heap_dispatcher.h",
   "$dir_pw_async/public/pw_async/fake_dispatcher_fixture.h",
   "$dir_pw_async/public/pw_async/function_dispatcher.h",
   "$dir_pw_async/public/pw_async/task.h",
+  "$dir_pw_async/public/pw_async/task_function.h",
   "$dir_pw_async_basic/public/pw_async_basic/dispatcher.h",
+  "$dir_pw_base64/public/pw_base64/base64.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/gatt/client.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/gatt/server.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/host.h",
@@ -127,24 +140,31 @@ _doxygen_input_files = [
   "$dir_pw_containers/public/pw_containers/inline_queue.h",
   "$dir_pw_chrono/public/pw_chrono/system_clock.h",
   "$dir_pw_chrono/public/pw_chrono/system_timer.h",
+  "$dir_pw_digital_io/public/pw_digital_io/digital_io.h",
   "$dir_pw_function/public/pw_function/scope_guard.h",
   "$dir_pw_hdlc/public/pw_hdlc/decoder.h",
   "$dir_pw_hdlc/public/pw_hdlc/encoder.h",
+  "$dir_pw_interrupt/public/pw_interrupt/context.h",
+  "$dir_pw_i2c/public/pw_i2c/initiator.h",
+  "$dir_pw_i2c_linux/public/pw_i2c_linux/initiator.h",
   "$dir_pw_log_tokenized/public/pw_log_tokenized/handler.h",
   "$dir_pw_log_tokenized/public/pw_log_tokenized/metadata.h",
+  "$dir_pw_protobuf/public/pw_protobuf/find.h",
   "$dir_pw_rpc/public/pw_rpc/internal/config.h",
   "$dir_pw_rpc/public/pw_rpc/synchronous_call.h",
   "$dir_pw_string/public/pw_string/format.h",
   "$dir_pw_string/public/pw_string/string.h",
   "$dir_pw_function/public/pw_function/function.h",
   "$dir_pw_function/public/pw_function/pointer.h",
+  "$dir_pw_status/public/pw_status/status.h",
+  "$dir_pw_stream/public/pw_stream/stream.h",
+  "$dir_pw_stream_uart_linux/public/pw_stream_uart_linux/stream.h",
   "$dir_pw_string/public/pw_string/string_builder.h",
   "$dir_pw_string/public/pw_string/util.h",
   "$dir_pw_sync/public/pw_sync/binary_semaphore.h",
   "$dir_pw_sync/public/pw_sync/borrow.h",
   "$dir_pw_sync/public/pw_sync/counting_semaphore.h",
   "$dir_pw_sync/public/pw_sync/inline_borrowable.h",
-  "$dir_pw_status/public/pw_status/status.h",
   "$dir_pw_sync/public/pw_sync/interrupt_spin_lock.h",
   "$dir_pw_sync/public/pw_sync/lock_annotations.h",
   "$dir_pw_sync/public/pw_sync/mutex.h",
@@ -152,6 +172,7 @@ _doxygen_input_files = [
   "$dir_pw_sync/public/pw_sync/timed_mutex.h",
   "$dir_pw_sync/public/pw_sync/timed_thread_notification.h",
   "$dir_pw_sync/public/pw_sync/virtual_basic_lockable.h",
+  "$dir_pw_sys_io/public/pw_sys_io/sys_io.h",
   "$dir_pw_thread/public/pw_thread/test_thread_context.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/encode_args.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/tokenize.h",

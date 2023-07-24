@@ -17,19 +17,10 @@ pw::i2c::Initiator
 ------------------
 .. inclusive-language: disable
 
-The common interface for initiating transactions with devices on an I2C bus.
-Other documentation sources may call this style of interface an I2C "master",
-"central" or "controller".
+.. doxygenclass:: pw::i2c::Initiator
+   :members:
 
 .. inclusive-language: enable
-
-.. note::
-
-   ``Initiator`` uses internal synchronization, so it is safe to
-   initiate transactions from multiple threads. However, write+read transactions
-   may not be atomic with multiple controllers on the bus. Furthermore, devices
-   may require specific sequences of transactions, and application logic must
-   provide the synchronization to execute these sequences correctly.
 
 pw::i2c::Device
 ---------------
@@ -101,3 +92,42 @@ list. An example of this is shown below:
 pw::i2c::GmockInitiator
 -----------------------
 gMock of Initiator used for testing and mocking out the Initiator.
+
+I2c Debug Service
+=================
+This module implements an I2C register access service for debugging and bringup.
+To use, provide it with a callback function that returns an ``Initiator`` for
+the specified ``bus_index``.
+
+Example invocations
+-------------------
+Using the pigweed console, you can invoke the service to perform an I2C read:
+
+.. code:: python
+
+  device.rpcs.pw.i2c.I2c.I2cRead(bus_index=0, target_address=0x22, register_address=b'\x0e', read_size=1)
+
+The above shows reading register 0x0e on a device located at
+I2C address 0x22.
+
+For peripherals that support 4 byte register width, you can specify as:
+
+.. code:: python
+
+  device.rpcs.pw.i2c.I2c.I2cRead(bus_index=0, target_address=<address>, register_address=b'\x00\x00\x00\x00', read_size=4)
+
+
+And similarly, for performing I2C write:
+
+.. code:: python
+
+  device.rpcs.pw.i2c.I2c.I2cWrite(bus_index=0, target_address=0x22,register_address=b'\x0e', value=b'\xbc')
+
+
+Similarly, multi-byte writes can also be specified with the bytes fields for
+`register_address` and `value`.
+
+I2C peripherals that require multi-byte access may expect a specific endianness.
+The order of bytes specified in the bytes field will match the order of bytes
+sent/received on the bus. Maximum supported value for multi-byte access is
+4 bytes.

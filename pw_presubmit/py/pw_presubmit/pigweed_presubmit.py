@@ -48,14 +48,17 @@ from pw_presubmit import (
 )
 from pw_presubmit.presubmit import (
     FileFilter,
-    FormatOptions,
-    PresubmitContext,
-    PresubmitFailure,
     Programs,
     call,
     filter_paths,
 )
-from pw_presubmit.tools import plural
+from pw_presubmit.presubmit_context import (
+    FormatOptions,
+    PresubmitContext,
+    PresubmitFailure,
+)
+from pw_presubmit.tools import log_run, plural
+
 from pw_presubmit.install_hook import install_git_hook
 
 _LOG = logging.getLogger(__name__)
@@ -164,12 +167,11 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
 
     # QEMU doesn't run on Windows.
     if sys.platform != 'win32':
-        build_targets.extend(_at_all_optimization_levels('qemu_gcc'))
-
-        # TODO(b/244604080): For the pw::InlineString tests, qemu_clang_debug
-        #     and qemu_clang_speed_optimized produce a binary too large for the
+        # TODO(b/244604080): For the pw::InlineString tests, qemu_*_debug
+        #     and qemu_*_speed_optimized produce a binary too large for the
         #     QEMU target's 256KB flash. Restore debug and speed optimized
         #     builds when this is fixed.
+        build_targets.append('qemu_gcc_size_optimized')
         build_targets.append('qemu_clang_size_optimized')
 
     # TODO(b/240982565): SocketStream currently requires Linux.
@@ -186,7 +188,6 @@ gn_combined_build_check = build.GnGenNinja(
     gn_args=dict(pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS),
     ninja_targets=_gn_combined_build_check_targets(),
 )
-
 
 coverage = build.GnGenNinja(
     name='coverage',
@@ -220,7 +221,6 @@ stm32f429i = build.GnGenNinja(
     ninja_targets=_at_all_optimization_levels('stm32f429i'),
 )
 
-
 gn_emboss_build = build.GnGenNinja(
     name='gn_emboss_build',
     packages=('emboss',),
@@ -238,6 +238,25 @@ gn_nanopb_build = build.GnGenNinja(
     path_filter=_BUILD_FILE_FILTER,
     packages=('nanopb',),
     gn_args=dict(
+        dir_pw_third_party_nanopb=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'nanopb'
+        ),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    ),
+    ninja_targets=(
+        *_at_all_optimization_levels('stm32f429i'),
+        *_at_all_optimization_levels('host_clang'),
+    ),
+)
+
+gn_emboss_nanopb_build = build.GnGenNinja(
+    name='gn_emboss_nanopb_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('emboss', 'nanopb'),
+    gn_args=dict(
+        dir_pw_third_party_emboss=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'emboss'
+        ),
         dir_pw_third_party_nanopb=lambda ctx: '"{}"'.format(
             ctx.package_root / 'nanopb'
         ),
@@ -321,6 +340,41 @@ gn_pico_build = build.GnGenNinja(
     ninja_targets=('pi_pico',),
 )
 
+gn_mimxrt595_build = build.GnGenNinja(
+    name='gn_mimxrt595_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('mcuxpresso',),
+    gn_args={
+        'dir_pw_third_party_mcuxpresso': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'mcuxpresso')
+        ),
+        'pw_target_mimxrt595_evk_MANIFEST': '$dir_pw_third_party_mcuxpresso'
+        + '/EVK-MIMXRT595_manifest_v3_8.xml',
+        'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk:sample_sdk',
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=('mimxrt595'),
+)
+
+gn_mimxrt595_freertos_build = build.GnGenNinja(
+    name='gn_mimxrt595_freertos_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('freertos', 'mcuxpresso'),
+    gn_args={
+        'dir_pw_third_party_freertos': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'freertos')
+        ),
+        'dir_pw_third_party_mcuxpresso': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'mcuxpresso')
+        ),
+        'pw_target_mimxrt595_evk_freertos_MANIFEST': '{}/{}'.format(
+            "$dir_pw_third_party_mcuxpresso", "EVK-MIMXRT595_manifest_v3_8.xml"
+        ),
+        'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk_freertos:sdk',
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=('mimxrt595_freertos'),
+)
 
 gn_software_update_build = build.GnGenNinja(
     name='gn_software_update_build',
@@ -415,9 +469,78 @@ gn_fuzz_build = build.GnGenNinja(
         ),
     },
     ninja_targets=('host_clang_fuzz',),
+    ninja_contexts=(
+        lambda ctx: build.modified_env(
+            FUZZTEST_PRNG_SEED=build.fuzztest_prng_seed(ctx),
+        ),
+    ),
 )
 
-gn_docs_build = build.GnGenNinja(name='gn_docs_build', ninja_targets=('docs',))
+
+def _env_with_zephyr_vars(ctx: PresubmitContext) -> dict:
+    """Returns the environment variables with ... set for Zephyr."""
+    env = os.environ.copy()
+    # Set some variables here.
+    env['ZEPHYR_BASE'] = str(ctx.package_root / 'zephyr')
+    env['ZEPHYR_MODULES'] = str(ctx.root)
+    return env
+
+
+def zephyr_build(ctx: PresubmitContext) -> None:
+    """Run Zephyr compatible tests"""
+    # Install the Zephyr package
+    build.install_package(ctx, 'zephyr')
+    # Configure the environment
+    env = _env_with_zephyr_vars(ctx)
+    # Get the python twister runner
+    twister = ctx.package_root / 'zephyr' / 'scripts' / 'twister'
+    # Run twister
+    call(
+        sys.executable,
+        twister,
+        '--ninja',
+        '--integration',
+        '--clobber-output',
+        '--inline-logs',
+        '--verbose',
+        '--testsuite-root',
+        ctx.root / 'pw_unit_test_zephyr',
+        env=env,
+    )
+    # Produces reports at (ctx.root / 'twister_out' / 'twister*.xml')
+
+
+def docs_build(ctx: PresubmitContext) -> None:
+    """Build Pigweed docs"""
+
+    # Build main docs through GN/Ninja.
+    build.install_package(ctx, 'nanopb')
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
+    build.ninja(ctx, 'docs')
+    build.gn_check(ctx)
+
+    # Build Rust docs through Bazel.
+    build.bazel(
+        ctx,
+        'build',
+        '--',
+        '//pw_rust:docs',
+    )
+
+    # Copy rust docs from Bazel's out directory into where the GN build
+    # put the main docs.
+    rust_docs_bazel_dir = ctx.output_dir.joinpath(
+        '.bazel-bin', 'pw_rust', 'docs.rustdoc'
+    )
+    rust_docs_output_dir = ctx.output_dir.joinpath(
+        'docs', 'gen', 'docs', 'html', 'rustdoc'
+    )
+    shutil.copytree(rust_docs_bazel_dir, rust_docs_output_dir)
+
+
+def gn_docs_build(ctx: PresubmitContext) -> None:
+    docs_build(ctx)
+
 
 gn_host_tools = build.GnGenNinja(
     name='gn_host_tools',
@@ -589,7 +712,7 @@ def _clang_system_include_paths(lang: str) -> List[str]:
         f'{os.devnull}',
         '-fsyntax-only',
     ]
-    process = subprocess.run(
+    process = log_run(
         command, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
     )
 
@@ -630,6 +753,9 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\bDoxyfile$',
     r'\bPW_PLUGINS$',
     r'\bconstraint.list$',
+    r'\bconstraint_hashes.list$',
+    r'\bpython_base_requirements.txt$',
+    r'\bupstream_requirements_lock.txt$',
     r'^(?:.+/)?\..+$',
     # keep-sorted: end
     # Metadata
@@ -983,7 +1109,6 @@ SOURCE_FILES_FILTER = FileFilter(
     ),
 )
 
-
 #
 # Presubmit check programs
 #
@@ -996,18 +1121,23 @@ OTHER_CHECKS = (
     cmake_clang,
     cmake_gcc,
     coverage,
+    docs_build,
     gitmodules.create(gitmodules.Config(allow_submodules=False)),
     gn_clang_build,
     gn_combined_build_check,
+    gn_docs_build,
     module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
+    python_checks.update_upstream_python_constraints,
+    python_checks.vendor_python_wheels,
     # TODO(hepler): Many files are missing from the CMake build. Add this check
     # to lintformat when the missing files are fixed.
     source_in_build.cmake(SOURCE_FILES_FILTER, _run_cmake),
     static_analysis,
     stm32f429i,
     todo_check.create(todo_check.BUGS_OR_USERNAMES),
+    zephyr_build,
     # keep-sorted: end
 )
 
@@ -1017,13 +1147,14 @@ ARDUINO_PICO = (
     gn_pw_system_demo_build,
 )
 
+INTERNAL = (gn_mimxrt595_build, gn_mimxrt595_freertos_build)
+
 # The misc program differs from other_checks in that checks in the misc
 # program block CQ on Linux.
 MISC = (
     # keep-sorted: start
-    gn_emboss_build,
+    gn_emboss_nanopb_build,
     gn_googletest_build,
-    gn_nanopb_build,
     # keep-sorted: end
 )
 
@@ -1090,6 +1221,7 @@ FULL = (
     bazel_build if sys.platform == 'linux' else (),
     python_checks.gn_python_check,
     python_checks.gn_python_test_coverage,
+    python_checks.check_upstream_python_constraints,
     build_env_setup,
     # Skip gn_teensy_build if running on Windows. The Teensycore installer is
     # an exe that requires an admin role.
@@ -1100,6 +1232,7 @@ PROGRAMS = Programs(
     # keep-sorted: start
     arduino_pico=ARDUINO_PICO,
     full=FULL,
+    internal=INTERNAL,
     lintformat=LINTFORMAT,
     misc=MISC,
     other_checks=OTHER_CHECKS,

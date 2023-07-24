@@ -18,7 +18,7 @@
 
    :octicon:`calendar` Proposal Date: 2022-11-30
 
-   :octicon:`code-review` CL: `pwrev/123090 <https://pigweed-review.git.corp.google.com/c/pigweed/pigweed/+/123090>`_
+   :octicon:`code-review` CL: `pwrev/123090 <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/123090>`_
 
 -------
 Summary
@@ -32,13 +32,14 @@ Motivation
 Describe the purpose of this proposal. What problem is it trying to solve?
 Include any relevant background information.
 
----------------
-Guide reference
----------------
-In this section, detail the user-facing impacts if the proposal were to be
-accepted. Treat it as a reference for the new feature, describing the changes to
-a user without background context on the proposal, with explanations of key
-concepts and examples.
+--------
+Proposal
+--------
+In this section, provide a detailed treatment of your proposal, and the
+user-facing impacts if the proposal were to be accepted. Treat it as a
+reference for the new feature, describing the changes to a user without
+background context on the proposal, with explanations of key concepts and
+examples.
 
 For example, if the proposal adds a new library, this section should describe
 its public API, and be written in the style of API documentation.

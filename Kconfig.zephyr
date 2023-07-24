@@ -19,6 +19,7 @@ config ZEPHYR_PIGWEED_MODULE
 if ZEPHYR_PIGWEED_MODULE
 
 rsource "pw_assert_zephyr/Kconfig"
+rsource "pw_base64/Kconfig"
 rsource "pw_bytes/Kconfig"
 rsource "pw_checksum/Kconfig"
 rsource "pw_chrono_zephyr/Kconfig"
@@ -39,6 +40,7 @@ rsource "pw_stream/Kconfig"
 rsource "pw_string/Kconfig"
 rsource "pw_sync_zephyr/Kconfig"
 rsource "pw_sys_io_zephyr/Kconfig"
+rsource "pw_system/Kconfig"
 rsource "pw_thread_zephyr/Kconfig"
 rsource "pw_tokenizer/Kconfig"
 rsource "pw_varint/Kconfig"

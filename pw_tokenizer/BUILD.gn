@@ -36,10 +36,7 @@ config("public_include_path") {
 }
 
 config("linker_script") {
-  inputs = [
-    "pw_tokenizer_linker_sections.ld",
-    "pw_tokenizer_linker_rules.ld",
-  ]
+  inputs = [ "pw_tokenizer_linker_sections.ld" ]
   lib_dirs = [ "." ]
 
   # Automatically add the tokenizer linker sections when cross-compiling or
@@ -267,8 +264,7 @@ pw_fuzzer("token_database_fuzzer") {
   sources = [ "token_database_fuzzer.cc" ]
   deps = [
     ":decoder",
-    "$dir_pw_fuzzer",
-    "$dir_pw_preprocessor",
+    dir_pw_preprocessor,
     dir_pw_span,
   ]
 }
@@ -277,8 +273,7 @@ pw_fuzzer("detokenize_fuzzer") {
   sources = [ "detokenize_fuzzer.cc" ]
   deps = [
     ":decoder",
-    "$dir_pw_fuzzer",
-    "$dir_pw_preprocessor",
+    dir_pw_preprocessor,
   ]
 }
 
@@ -319,8 +314,11 @@ pw_shared_library("detokenizer_jni") {
 
 pw_doc_group("docs") {
   sources = [
+    "api.rst",
+    "cli.rst",
+    "design.rst",
     "docs.rst",
-    "proto.rst",
+    "guides.rst",
   ]
   inputs = [ "py/pw_tokenizer/encode.py" ]
   report_deps = [ ":tokenizer_size_report" ]

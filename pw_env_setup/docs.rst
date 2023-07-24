@@ -250,6 +250,45 @@ here.
      ]
    }
 
+``pw.pw_env_setup.project_actions``
+  A list of plugins to load and run after CIPD setup, but prior to virtualenv
+  setup, for e.g. downloading project-specific tools or artifacts needed by
+  later steps. Particularly useful for downstream projects with limited CIPD
+  access.
+
+  A plugin is specified as a dictionary with two keys: "import_path" and
+  "module_name"
+
+  The specified module must provide a "run_actions" method which takes a single
+  argument, "env_vars", which is a pw_env_setup.Environment instance.
+
+  NB: This feature is not supported when using a python2.7 system python.
+
+  Sample plugin and pigweed.json blob:
+
+.. code-block:: python
+
+   """Sample pw_env_setup project action plugin.
+
+   A sample/starter project action plugin template for pw_env_setup.
+   """
+   def run_action(**kwargs):
+       """Sample project action."""
+       if "env" not in kwargs:
+           raise ValueError(f"Missing required kwarg 'env', got %{kwargs}")
+
+       kwargs["env"].prepend("PATH", "PATH_TO_NEW_TOOLS")
+       raise NotImplementedError("Sample project action running!")
+
+.. code-block:: json
+
+   "project_actions" : [
+      {
+       "import_path": "pw_env_setup",
+       "module_name": "sample_project_action"
+      }
+   ],
+
 ``pw.pw_env_setup.virtualenv.gn_args``
   Any necessary GN args to be used when installing Python packages.
 
@@ -371,32 +410,66 @@ last topologically takes priority. For example, with the file contents below,
 ``d.json``'s entries will appear in ``PATH`` before ``c.json``'s, which will
 appear before ``b.json``'s, which will appear before ``a.json``'s.
 
-``pigweed.json``
-  .. code-block:: json
+.. code-block:: json
+   :caption: :octicon:`file;1em` pigweed.json
 
-     {
-       "pw": {
-         "pw_env_setup": {
-           "cipd_package_files": [
-             "a.json",
-             "b.json",
-             "d.json"
-           ]
-         }
+   {
+     "pw": {
+       "pw_env_setup": {
+         "cipd_package_files": [
+           "a.json",
+           "b.json",
+           "d.json"
+         ]
        }
      }
+   }
 
-``a.json``
-  ``{"package_files": [...]}``
+.. code-block:: json
+   :caption: :octicon:`file;1em` a.json
 
-``b.json``
-  ``{"included_files": ["c.json"], "package_files": [...]}``
+   {
+     "package_files": [
+       // ...
+     ]
+   }
 
-``c.json``
-  ``{"package_files": [...]}``
+.. code-block:: json
+   :caption: :octicon:`file;1em` b.json
 
-``d.json``
-  ``{"package_files": [...]}``
+   {
+     "included_files": ["c.json"],
+     "package_files": [
+       // ...
+     ]
+   }
+
+.. code-block:: json
+   :caption: :octicon:`file;1em` c.json
+
+   {
+     "package_files": [
+       // ...
+     ]
+   }
+
+.. code-block:: json
+   :caption: :octicon:`file;1em` d.json
+
+   {
+     "package_files": [
+       // ...
+     ]
+   }
+
+.. code-block::
+   :caption: Effective File Loading Order
+
+   pigweed.json
+   a.json
+   b.json
+   c.json
+   d.json
 
 Pinning Python Packages
 ***********************
@@ -576,9 +649,115 @@ the future when running ``activate.sh`` instead of ``bootstrap.sh``. In the
 future these could be extended to C shell and PowerShell. A logical mapping of
 high-level commands to system-specific initialization files is shown below.
 
-.. image:: doc_resources/pw_env_setup_output.png
-   :alt: Mapping of high-level commands to system-specific commands.
-   :align: left
+.. grid:: 1
+   :padding: 0
+
+   .. grid-item-card::
+      :columns: 12
+      :class-header: font-monospace
+
+      SET $PW_ROOT /home/$USER/pigweed
+      ^^^
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item:: **Windows**
+
+         .. grid-item:: **Linux & Mac (sh-compatible shells)**
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item::
+
+            .. code-block:: dosbatch
+
+               set PW_ROOT /home/%USER%/pigweed
+
+         .. grid-item::
+
+            .. code-block:: shell
+
+               PW_ROOT="/home/$USER/pigweed"
+               export PW_ROOT
+
+.. grid:: 1
+   :padding: 0
+
+   .. grid-item-card::
+      :columns: 12
+      :class-header: font-monospace
+
+      PREPEND $PATH $PW_ROOT/.env/bin
+      ^^^
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item:: **Windows**
+
+         .. grid-item:: **Linux & Mac (sh-compatible shells)**
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item::
+
+            .. code-block:: dosbatch
+
+               set PATH=%PW_ROOT%/.env/bin;%PATH%
+
+         .. grid-item::
+
+            .. code-block:: shell
+
+               PATH="$(\
+                 echo "$PATH" | \
+                 sed "s|:$PW_ROOT/.env/bin:|:|g;" | \
+                 sed "s|^$PW_ROOT/.env/bin:||g;" | \
+                 sed "s|:$PW_ROOT/.env/bin$||g;")"
+               PATH="$PW_ROOT/.env/bin;$PATH"
+               export PATH
+
+.. grid:: 1
+   :padding: 0
+
+   .. grid-item-card::
+      :columns: 12
+      :class-header: font-monospace
+
+      ECHO "Setup Complete!"
+      ^^^
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item:: **Windows**
+
+         .. grid-item:: **Linux & Mac (sh-compatible shells)**
+
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item::
+
+            .. code-block:: dosbatch
+
+               echo Setup Complete!
+
+         .. grid-item::
+
+            .. code-block:: shell
+
+               echo "Setup Complete!"
+
 
 .. _Requirements Files documentation: https://pip.pypa.io/en/stable/user_guide/#requirements-files
 .. _Constraints Files documentation: https://pip.pypa.io/en/stable/user_guide/#constraints-files

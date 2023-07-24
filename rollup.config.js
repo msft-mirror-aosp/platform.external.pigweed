@@ -16,11 +16,9 @@ import commonjs from '@rollup/plugin-commonjs';
 import resolve from '@rollup/plugin-node-resolve';
 import pluginTypescript from '@rollup/plugin-typescript';
 import path from 'path';
-import dts from 'rollup-plugin-dts';
 import nodePolyfills from 'rollup-plugin-node-polyfills';
+import postcss from 'rollup-plugin-postcss'
 import sourceMaps from 'rollup-plugin-sourcemaps';
-
-import tsConfig from './tsconfig.json';
 
 export default [
   // Bundle proto collection script
@@ -78,13 +76,35 @@ export default [
       sourceMaps()
     ]
   },
-  // Types for proto collection
+  // Bundle Pigweed log component and modules
   {
-    input: path.join(
-        'dist', 'protos', 'types', 'dist', 'protos', 'collection.d.ts'),
-    output:
-        [{file: path.join('dist', 'protos', 'collection.d.ts'), format: 'es'}],
-    plugins: [dts({compilerOptions: tsConfig.compilerOptions})]
+    input: path.join('ts', 'logging.ts'),
+    output: [
+      {
+        file: path.join('dist', 'logging.umd.js'),
+        format: 'umd',
+        sourcemap: true,
+        name: 'PigweedLogging',
+        inlineDynamicImports: true
+      },
+      {
+        file: path.join('dist', 'logging.mjs'),
+        format: 'esm',
+        sourcemap: true,
+        inlineDynamicImports: true
+      }
+    ],
+    plugins: [
+      postcss({plugins: []}),
+      pluginTypescript(
+          {tsconfig: './tsconfig.json', exclude: ['**/*_test.ts']}),
+      nodePolyfills(),
+      resolve(),
+      commonjs(),
+
+      // Resolve source maps to the original source
+      sourceMaps()
+    ]
   },
   // Bundle Pigweed modules
   {

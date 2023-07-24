@@ -40,13 +40,13 @@
 //! assert_eq!(div(4, 0), Err(Error::FailedPrecondition));
 //! ```
 
-#![cfg_attr(feature = "std", no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 /// Status code for no error.
 pub const OK: u32 = 0;
 
 #[cfg_attr(feature = "std", derive(Debug))]
-#[derive(Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 /// Error type compatible with Pigweed's [pw_status](https://pigweed.dev/pw_status).
 ///
 /// For an in depth explanation of the values of the `Error` enum, see

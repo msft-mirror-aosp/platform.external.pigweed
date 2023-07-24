@@ -77,11 +77,6 @@ dl.describe>dt {
     text-indent: 0em;
 }
 
-/* Diagram backgrounds should always be light */
-div>svg {
-  background: #ffffff;
-}
-
 /* Make inline code standout more */
 code.literal {
   border: 1px solid var(--color-inline-code-border);
@@ -101,6 +96,11 @@ body[data-theme="dark"] .highlight .hll {
 
 body[data-theme="light"] .highlight .hll {
   background-color: var(--color-code-hll-background);
+}
+
+/* Override pygments.css code block background color */
+body[data-theme="dark"] .highlight {
+  background-color: var(--color-code-background) !important;
 }
 
 /* Use normal mixed-case for h4, h5, and h6 */
@@ -133,46 +133,75 @@ h4, h5, h6 {
   font-size: var(--font-size--normal);
 }
 
-/* Support taglines inline with page titles */
-section.with-subtitle > h1 {
-  display: inline;
+/* Indicate in-progress SEEDs */
+a[href="seed/0000-index.html"] ~ ul > li > a.reference.external[href*="pigweed-review.googlesource.com"]::before {
+  content: "🚧 ";
 }
 
-/* Restore the padding to the top of the page that was removed by making the
-   h1 element inline */
-section.with-subtitle {
-  padding-top: 1.5em;
+div.pw-main {
+  display: flex;
+  flex-direction: column;
 }
 
-.section-subtitle {
-  display: inline-block;
+div.pw-topnav {
+  background-color: var(--color-background-primary);
+  padding: 0 3em;
+  width: 100%;
+}
+
+div.pw-topnav-inline {
+  display: flex;
+  flex-direction: row;
+  padding: 1em 0 0 0;
+}
+
+div.pw-topnav-inline h1 {
+  padding: 0;
+  margin: 0;
+}
+
+.pw-topnav-title {
+  font-size: 2.5em;
+  font-weight: 700;
+  line-height: 1.25;
+  padding: 0;
+  margin: 0;
+}
+
+.pw-topnav-subtitle {
+  display: block;
   font-size: larger;
   font-weight: bold;
-}
-
-/* Styling for module doc section buttons */
-ul.pw-module-section-buttons {
-  display: flex;
-  justify-content: center;
+  margin: 0.75em 0 0.5em 0;
   padding: 0;
 }
 
-li.pw-module-section-button {
+ul.pw-module-section-nav-group {
+  display: flex;
+  margin: 0 1em;
+  padding: 0;
+}
+
+li.pw-module-section-nav-link {
   display: inline;
   list-style-type: none;
-  padding: 0 4px;
+  margin: auto;
+  padding: 0 1em;
 }
 
-li.pw-module-section-button p {
+li.pw-module-section-nav-link p {
   display: inline;
+  font-size: large;
 }
 
-li.pw-module-section-button p a {
-  background-color: var(--color-section-button) !important;
-  border-color: var(--color-section-button) !important;
+li.pw-module-section-nav-link p a {
+  color: var(--color-section-button) !important;
 }
 
-li.pw-module-section-button p a:hover {
-  background-color: var(--color-section-button-hover) !important;
-  border-color: var(--color-section-button-hover) !important;
+li.pw-module-section-nav-link p a:hover {
+  color: var(--color-section-button-hover) !important;
+}
+
+div.font-monospace {
+  font-family: var(--font-stack--monospace);
 }

@@ -162,7 +162,7 @@ group("pw_system_demo") {
 
 group("pi_pico") {
   if (PICO_SRC_DIR != "") {
-    deps = [ ":pw_module_tests(targets/rp2040)" ]
+    deps = [ ":pigweed_default(targets/rp2040)" ]
   }
 }
 
@@ -224,6 +224,11 @@ if (pw_third_party_mcuxpresso_SDK != "") {
   _build_pigweed_default_at_all_optimization_levels("mimxrt595") {
     toolchain_prefix = "$dir_pigweed/targets/mimxrt595_evk:mimxrt595_evk_"
   }
+
+  _build_pigweed_default_at_all_optimization_levels("mimxrt595_freertos") {
+    toolchain_prefix =
+        "$dir_pigweed/targets/mimxrt595_evk_freertos:mimxrt595_evk_freertos_"
+  }
 }
 
 _build_pigweed_default_at_all_optimization_levels("stm32f429i") {
@@ -236,18 +241,23 @@ if (pw_arduino_build_CORE_PATH != "") {
   }
 }
 
-_build_pigweed_default_at_all_optimization_levels("qemu_gcc") {
-  toolchain_prefix =
-      "$dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_gcc_"
-}
-
 # TODO(b/244604080): Inline string tests are too big to fit in the QEMU firmware
 # except under a size-optimized build. For now, only build size-optimized.
 #
+# _build_pigweed_default_at_all_optimization_levels("qemu_gcc") {
+#   toolchain_prefix =
+#       "$dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_gcc_"
+# }
 # _build_pigweed_default_at_all_optimization_levels("qemu_clang") {
 #   toolchain_prefix =
 #       "$dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_clang_"
 # }
+group("qemu_gcc_size_optimized") {
+  deps = [ ":pigweed_default($dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_gcc_size_optimized)" ]
+}
+group("qemu_gcc") {
+  deps = [ ":qemu_gcc_size_optimized" ]
+}
 group("qemu_clang_size_optimized") {
   deps = [ ":pigweed_default($dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_clang_size_optimized)" ]
 }
@@ -302,11 +312,32 @@ group("action_tests") {
 group("integration_tests") {
   _default_tc = _default_toolchain_prefix + pw_DEFAULT_C_OPTIMIZATION_LEVEL
   deps = [
+    "$dir_pw_build/py/gn_tests:python_package_integration_tests",
     "$dir_pw_cli/py:process_integration_test.action($_default_tc)",
     "$dir_pw_rpc:cpp_client_server_integration_test($_default_tc)",
     "$dir_pw_rpc/py:python_client_cpp_server_test.action($_default_tc)",
     "$dir_pw_unit_test/py:rpc_service_test.action($_default_tc)",
   ]
+}
+
+group("pip_constraint_update") {
+  public_deps = []
+
+  if (current_toolchain == pw_build_PYTHON_TOOLCHAIN) {
+    public_deps += [ "$dir_pw_env_setup:pigweed_build_venv._compile_requirements($pw_build_PYTHON_TOOLCHAIN)" ]
+  } else {
+    public_deps = [ ":${target_name}($pw_build_PYTHON_TOOLCHAIN)" ]
+  }
+}
+
+group("pip_vendor_wheels") {
+  public_deps = []
+
+  if (current_toolchain == pw_build_PYTHON_TOOLCHAIN) {
+    public_deps += [ "$dir_pw_env_setup:pigweed_build_venv.vendor_wheels($pw_build_PYTHON_TOOLCHAIN)" ]
+  } else {
+    public_deps = [ ":${target_name}($pw_build_PYTHON_TOOLCHAIN)" ]
+  }
 }
 
 # Build-only target for fuzzers.
@@ -393,6 +424,7 @@ group("coverage") {
 pw_python_group("python") {
   python_deps = [
     "$dir_pw_env_setup:python($pw_build_PYTHON_TOOLCHAIN)",
+    "$dir_pw_env_setup:sample_project_action($pw_build_PYTHON_TOOLCHAIN)",
     "$dir_pw_env_setup:target_support_packages($pw_build_PYTHON_TOOLCHAIN)",
   ]
 }
@@ -409,10 +441,7 @@ group("host_tools") {
   ]
 
   if (pw_rust_ENABLE_EXPERIMENTAL_BUILD) {
-    deps += [
-      "$dir_pw_rust/examples/host_executable:hello($dir_pigweed/targets/host:host_clang_debug)",
-      "$dir_pw_rust/examples/host_executable:test_hello($dir_pigweed/targets/host:host_clang_debug)",
-    ]
+    deps += [ "$dir_pw_rust/examples/host_executable:host_executable($dir_pigweed/targets/host:host_clang_debug)" ]
   }
 }
 

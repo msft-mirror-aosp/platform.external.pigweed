@@ -17,7 +17,7 @@ import os
 import subprocess
 
 from datetime import datetime
-from pathlib import PurePath, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 from types import TracebackType
 from typing import Dict, IO, Iterable, Iterator, List, Optional, Type, Union
 
@@ -132,6 +132,8 @@ class GnWriter:
         visibility = [target.make_relative(scope) for scope in scopes]
         self.write_list('visibility', visibility)
 
+        if not target.check_includes:
+            self.write('check_includes = false')
         self.write_list('public', [str(path) for path in target.public])
         self.write_list('sources', [str(path) for path in target.sources])
         self.write_list('inputs', [str(path) for path in target.inputs])
@@ -323,6 +325,11 @@ class GnWriter:
             raise MalformedGnError(f'unclosed scope(s): {self._scopes}')
 
 
+def gn_format(gn_file: Path) -> None:
+    """Calls `gn format` on a BUILD.gn or GN import file."""
+    subprocess.check_call(['gn', 'format', gn_file])
+
+
 class GnFile:
     """Represents an open BUILD.gn file that is formatted on close.
 
@@ -369,4 +376,4 @@ class GnFile:
     ) -> None:
         """Closes the GN file and formats it."""
         self._file.close()
-        subprocess.check_call(['gn', 'format', self._pathname])
+        gn_format(Path(self._pathname))

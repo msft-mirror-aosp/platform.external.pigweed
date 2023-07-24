@@ -12,14 +12,27 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+menu "pw_thread"
+
 config PIGWEED_THREAD_SLEEP
-    bool "Enabled the Zephyr pw_thread.sleep backend"
+    bool "Link and set pw_thread.sleep library backend"
     select PIGWEED_CHRONO_SYSTEM_CLOCK
     select PIGWEED_ASSERT
+    help
+      See :ref:`module-pw_thread` for module details.
 
 config PIGWEED_THREAD
-    bool "Enables the Zephyr pw_thread.thread and pw_thread.id backends"
+    bool "Link and set pw_thread.thread and pw_thread.id backends"
     select PIGWEED_ASSERT
+    help
+      See :ref:`module-pw_thread` for module details.
+
+config PIGWEED_THREAD_ITERATION
+    bool "Link and set pw_thread.thread_iteration backend"
+    select PIGWEED_ASSERT
+    select PIGWEED_THREAD
+    help
+      See :ref:`module-pw_thread` for module details.
 
 if PIGWEED_THREAD
 
@@ -38,3 +51,5 @@ config PIGWEED_THREAD_NUM_PREEMPT_PRIORITIES
   range 0 NUM_PREEMPT_PRIORITIES
 
 endif # PIGWEED_THREAD
+
+endmenu

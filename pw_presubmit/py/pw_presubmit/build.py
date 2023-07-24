@@ -13,6 +13,7 @@
 # the License.
 """Functions for building code during presubmit checks."""
 
+import base64
 import contextlib
 import itertools
 import json
@@ -48,10 +49,12 @@ from pw_presubmit.presubmit import (
     FileFilter,
     filter_paths,
     install_package,
-    PresubmitContext,
-    PresubmitFailure,
     PresubmitResult,
     SubStep,
+)
+from pw_presubmit.presubmit_context import (
+    PresubmitContext,
+    PresubmitFailure,
 )
 from pw_presubmit import (
     bazel_parser,
@@ -82,6 +85,7 @@ def bazel(ctx: PresubmitContext, cmd: str, *args: str) -> None:
         keep_going.append('--keep_going')
 
     bazel_stdout = ctx.output_dir / 'bazel.stdout'
+    ctx.output_dir.mkdir(exist_ok=True, parents=True)
     try:
         with bazel_stdout.open('w') as outs:
             call(
@@ -97,6 +101,7 @@ def bazel(ctx: PresubmitContext, cmd: str, *args: str) -> None:
                 cwd=ctx.root,
                 env=env_with_clang_vars(),
                 tee=outs,
+                call_annotation={'build_system': 'bazel'},
             )
 
     except PresubmitFailure as exc:
@@ -166,7 +171,7 @@ def gn_gen(
     _LOG.debug('%r', all_gn_args)
     args_option = gn_args(**all_gn_args)
 
-    if not preserve_args_gn:
+    if not ctx.dry_run and not preserve_args_gn:
         # Delete args.gn to ensure this is a clean build.
         args_gn = ctx.output_dir / 'args.gn'
         if args_gn.is_file():
@@ -189,6 +194,10 @@ def gn_gen(
         *args,
         *([args_option] if all_gn_args else []),
         cwd=ctx.root,
+        call_annotation={
+            'gn_gen_args': all_gn_args,
+            'gn_gen_args_option': args_option,
+        },
     )
 
 
@@ -206,7 +215,11 @@ def gn_check(ctx: PresubmitContext) -> PresubmitResult:
 
 
 def ninja(
-    ctx: PresubmitContext, *args, save_compdb=True, save_graph=True, **kwargs
+    ctx: PresubmitContext,
+    *args,
+    save_compdb: bool = True,
+    save_graph: bool = True,
+    **kwargs,
 ) -> None:
     """Runs ninja in the specified directory."""
 
@@ -219,22 +232,25 @@ def ninja(
         keep_going.extend(('-k', '0'))
 
     if save_compdb:
-        proc = subprocess.run(
+        proc = log_run(
             ['ninja', '-C', ctx.output_dir, '-t', 'compdb', *args],
             capture_output=True,
             **kwargs,
         )
-        (ctx.output_dir / 'ninja.compdb').write_bytes(proc.stdout)
+        if not ctx.dry_run:
+            (ctx.output_dir / 'ninja.compdb').write_bytes(proc.stdout)
 
     if save_graph:
-        proc = subprocess.run(
+        proc = log_run(
             ['ninja', '-C', ctx.output_dir, '-t', 'graph', *args],
             capture_output=True,
             **kwargs,
         )
-        (ctx.output_dir / 'ninja.graph').write_bytes(proc.stdout)
+        if not ctx.dry_run:
+            (ctx.output_dir / 'ninja.graph').write_bytes(proc.stdout)
 
     ninja_stdout = ctx.output_dir / 'ninja.stdout'
+    ctx.output_dir.mkdir(exist_ok=True, parents=True)
     try:
         with ninja_stdout.open('w') as outs:
             if sys.platform == 'win32':
@@ -252,6 +268,7 @@ def ninja(
                 *args,
                 tee=outs,
                 propagate_sigterm=True,
+                call_annotation={'build_system': 'ninja'},
                 **kwargs,
             )
 
@@ -266,7 +283,7 @@ def ninja(
 
 def get_gn_args(directory: Path) -> List[Dict[str, Dict[str, str]]]:
     """Dumps GN variables to JSON."""
-    proc = subprocess.run(
+    proc = log_run(
         ['gn', 'args', directory, '--list', '--json'], stdout=subprocess.PIPE
     )
     return json.loads(proc.stdout)
@@ -536,6 +553,37 @@ def test_server(executable: str, output_dir: Path):
             proc.terminate()  # pylint: disable=used-before-assignment
 
 
+@contextlib.contextmanager
+def modified_env(**envvars):
+    """Context manager that sets environment variables.
+
+    Use by assigning values to variable names in the argument list, e.g.:
+        `modified_env(MY_FLAG="some value")`
+
+    Args:
+        envvars: Keyword arguments
+    """
+    saved_env = os.environ.copy()
+    os.environ.update(envvars)
+    try:
+        yield
+    finally:
+        os.environ = saved_env
+
+
+def fuzztest_prng_seed(ctx: PresubmitContext) -> str:
+    """Convert the RNG seed to the format expected by FuzzTest.
+
+    FuzzTest can be configured to use the seed by setting the
+    `FUZZTEST_PRNG_SEED` environment variable to this value.
+
+    Args:
+        ctx: The context that includes a pseudorandom number generator seed.
+    """
+    rng_bytes = ctx.rng_seed.to_bytes(32, sys.byteorder)
+    return base64.urlsafe_b64encode(rng_bytes).decode('ascii').rstrip('=')
+
+
 @filter_paths(
     file_filter=FileFilter(endswith=('.bzl', '.bazel'), name=('WORKSPACE',))
 )
@@ -653,6 +701,12 @@ class _NinjaBase(Check):
         else:
             self._ninja_target_lists = tuple(tuple(x) for x in ninja_targets)
 
+    @property
+    def ninja_targets(self) -> List[str]:
+        return list(
+            target for target in itertools.chain(*self._ninja_target_lists)
+        )
+
     def _install_package(  # pylint: disable=no-self-use
         self,
         ctx: PresubmitContext,
@@ -684,7 +738,8 @@ class _NinjaBase(Check):
         reports = ctx.output_dir / 'coverage_reports'
         os.makedirs(reports, exist_ok=True)
         for path in ctx.output_dir.rglob('coverage_report'):
-            name = str(path).replace('_', '').replace('/', '_')
+            name = str(path.relative_to(ctx.output_dir))
+            name = name.replace('_', '').replace('/', '_')
             with tarfile.open(reports / f'{name}.tar.gz', 'w:gz') as tar:
                 tar.add(path, arcname=name, recursive=True)
 
@@ -741,6 +796,10 @@ class GnGenNinja(_NinjaBase):
         """
         super().__init__(self._substeps(), *args, **kwargs)
         self._gn_args: Dict[str, Any] = gn_args or {}
+
+    @property
+    def gn_args(self) -> Dict[str, Any]:
+        return self._gn_args
 
     def _gn_gen(self, ctx: PresubmitContext) -> PresubmitResult:
         args: Dict[str, Any] = {}

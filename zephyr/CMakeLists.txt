@@ -15,12 +15,13 @@
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
 # Add library linkage for Zephyr
+pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_BASE64                  pw_base64)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_BYTES                   pw_bytes)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_CHECKSUM                pw_checksum)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_CONTAINERS              pw_containers)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_DIGITAL_IO              pw_digital_io)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_FUNCTION                pw_function)
-pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_HDLC_RPC                pw_hdlc.pw_rpc)
+pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_HDLC_RPC                pw_hdlc.pw_rpc pw_hdlc.encoder pw_hdlc.decoder )
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_MULTISINK               pw_multisink)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_MULTISINK_UTIL          pw_multisink.util)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_PREPROCESSOR            pw_preprocessor)
@@ -43,6 +44,7 @@ pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_SPAN                    pw_span)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_STATUS                  pw_status)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_STREAM                  pw_stream)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_STRING                  pw_string)
+pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_SYS_IO                  pw_sys_io)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_TOKENIZER               pw_tokenizer)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_TOKENIZER_BASE64        pw_tokenizer.base64)
 pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_DETOKENIZER             pw_tokenizer.decoder)
@@ -50,3 +52,8 @@ pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_VARINT                  pw_varint)
 
 # Set Pigweed configs from Kconfig
 pw_set_config_from_zephyr(CONFIG_PIGWEED_MULTISINK_LOCK_INTERRUPT_SAFE PW_MULTISINK_CONFIG_LOCK_INTERRUPT_SAFE)
+
+# Add test libraries
+if(CONFIG_TEST)
+target_link_libraries_ifdef(CONFIG_PIGWEED_BASE64 app PRIVATE pw_base64.base64_test.lib)
+endif(CONFIG_TEST)

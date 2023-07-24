@@ -159,7 +159,6 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
                 "bazel-out": True,
                 "bazel-pigweed": True,
                 "bazel-testlogs": True,
-                "build": True,
                 "environment": True,
                 "node_modules": True,
                 "out": True,
@@ -204,7 +203,7 @@ _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
         "tasks": [
             {
                 "type": "process",
-                "label": "Pigweed IDE: Format",
+                "label": "Pigweed: Format",
                 "command": "${config:python.defaultInterpreterPath}",
                 "args": [
                     "-m",
@@ -218,7 +217,7 @@ _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
             },
             {
                 "type": "process",
-                "label": "Pigweed IDE: Presubmit",
+                "label": "Pigweed: Presubmit",
                 "command": "${config:python.defaultInterpreterPath}",
                 "args": [
                     "-m",
@@ -231,23 +230,23 @@ _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
                 "problemMatcher": [],
             },
             {
-                "label": "Pigweed IDE: Set Python Virtual Environment",
+                "label": "Pigweed: Set Python Virtual Environment",
                 "command": "${command:python.setInterpreter}",
                 "problemMatcher": [],
             },
             {
-                "label": "Pigweed IDE: Restart Python Language Server",
+                "label": "Pigweed: Restart Python Language Server",
                 "command": "${command:python.analysis.restartLanguageServer}",
                 "problemMatcher": [],
             },
             {
-                "label": "Pigweed IDE: Restart C++ Language Server",
+                "label": "Pigweed: Restart C++ Language Server",
                 "command": "${command:clangd.restart}",
                 "problemMatcher": [],
             },
             {
                 "type": "process",
-                "label": "Pigweed IDE: Sync",
+                "label": "Pigweed: Sync IDE",
                 "command": "${config:python.defaultInterpreterPath}",
                 "args": [
                     "-m",
@@ -261,7 +260,7 @@ _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
             },
             {
                 "type": "process",
-                "label": "Pigweed IDE: Current C++ Code Analysis Target",
+                "label": "Pigweed: Current C++ Target Toolchain",
                 "command": "${config:python.defaultInterpreterPath}",
                 "args": [
                     "-m",
@@ -275,7 +274,7 @@ _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
             },
             {
                 "type": "process",
-                "label": "Pigweed IDE: List C++ Code Analysis Targets",
+                "label": "Pigweed: List C++ Target Toolchains",
                 "command": "${config:python.defaultInterpreterPath}",
                 "args": [
                     "-m",
@@ -289,12 +288,15 @@ _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
             },
             {
                 "type": "process",
-                "label": "Pigweed IDE: Change C++ Code Analysis Target",
+                "label": (
+                    "Pigweed: Change C++ Target Toolchain "
+                    "without LSP restart"
+                ),
                 "command": "${config:python.defaultInterpreterPath}",
                 "args": [
                     "-m",
                     "pw_ide.activate",
-                    "-x 'pw ide cpp --set ${input:availableTargets}'",
+                    "-x 'pw ide cpp --set ${input:availableTargetToolchains}'",
                 ],
                 "presentation": {
                     "focus": True,
@@ -302,11 +304,11 @@ _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
                 "problemMatcher": [],
             },
             {
-                "label": "Pigweed IDE: Set C++ Code Analysis Target",
+                "label": "Pigweed: Set C++ Target Toolchain",
                 "dependsOrder": "sequence",
                 "dependsOn": [
-                    "Pigweed IDE: Change C++ Code Analysis Target",
-                    "Pigweed IDE: Restart C++ Language Server",
+                    "Pigweed: Change C++ Target Toolchain without LSP restart",
+                    "Pigweed: Restart C++ Language Server",
                 ],
                 "presentation": {
                     "focus": True,
@@ -368,8 +370,8 @@ def _default_tasks(
     inputs = [
         {
             "type": "pickString",
-            "id": "availableTargets",
-            "description": "Available targets",
+            "id": "availableTargetToolchains",
+            "description": "Available target toolchains",
             "options": list(state.targets),
         }
     ]

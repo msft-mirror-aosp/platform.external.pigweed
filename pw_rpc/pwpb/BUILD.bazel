@@ -105,6 +105,7 @@ pw_cc_library(
     includes = ["public"],
     deps = [
         ":test_method_context",
+        "//pw_assert",
         "//pw_rpc:client_server_testing",
     ],
 )
@@ -182,6 +183,7 @@ pw_cc_test(
         ":client_api",
         ":client_server_testing",
         "//pw_rpc:pw_rpc_test_cc.pwpb_rpc",
+        "//pw_sync:mutex",
     ],
 )
 
@@ -196,8 +198,9 @@ pw_cc_test(
         ":client_server_testing_threaded",
         "//pw_rpc:pw_rpc_test_cc.pwpb_rpc",
         "//pw_sync:binary_semaphore",
-        "//pw_thread:test_threads_header",
-        "//pw_thread_stl:test_threads",
+        "//pw_sync:mutex",
+        "//pw_thread:non_portable_test_thread_options",
+        "//pw_thread_stl:non_portable_test_thread_options",
     ],
 )
 
@@ -271,14 +274,13 @@ pw_cc_test(
     ],
 )
 
-# TODO(b/234874064): Requires pwpb options file support to compile.
-filegroup(
+pw_cc_test(
     name = "echo_service_test",
     srcs = ["echo_service_test.cc"],
-    #     deps = [
-    #       ":echo_service",
-    #       ":test_method_context",
-    #     ],
+    deps = [
+        ":echo_service",
+        ":test_method_context",
+    ],
 )
 
 pw_cc_test(

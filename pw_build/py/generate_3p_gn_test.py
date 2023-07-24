@@ -264,6 +264,7 @@ class TestGenerator(unittest.TestCase):
         """Tests writing a complete BUILD.gn file."""
         generator = GnGenerator()
         generator.set_repo('test')
+        generator.exclude_from_gn_check(bazel='//bar:target3')
 
         generator.add_configs(
             '',
@@ -376,24 +377,26 @@ import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_third_party/test/test.gni")
 
-config("test_config1") {
-  cflags = [
-    "common",
-  ]
-}
+if (dir_pw_third_party_test != "") {
+  config("test_config1") {
+    cflags = [
+      "common",
+    ]
+  }
 
-# Generated from //:target0
-pw_executable("target0") {
-  sources = [
-    "$dir_pw_third_party_test/target0.cc",
-  ]
-  configs = [
-    ":test_config1",
-  ]
-  deps = [
-    "foo:target1",
-    "foo:target2",
-  ]
+  # Generated from //:target0
+  pw_executable("target0") {
+    sources = [
+      "$dir_pw_third_party_test/target0.cc",
+    ]
+    configs = [
+      ":test_config1",
+    ]
+    deps = [
+      "foo:target1",
+      "foo:target2",
+    ]
+  }
 }
 
 pw_doc_group("docs") {
@@ -485,6 +488,7 @@ config("bar_public_config1") {
 
 # Generated from //bar:target3
 pw_source_set("target3") {
+  check_includes = false
   cflags = [
     "bar-flag",
   ]
@@ -636,7 +640,12 @@ The update script was last run for revision `deadbeef`_.
             generator.write_docs_rst(output, 'Repo')
             contents = output.getvalue()
             original = contents.split('\n')
-            updated = list(generator.update_version(original))
+
+            # Convert the contents to a list of lines similar to those returned
+            # by iterating over an open file. In particular, include a newline
+            # at the end of each line.
+            with_newlines = [s + '\n' for s in original]
+            updated = list(generator.update_version(with_newlines))
 
         self.assertEqual(original[:-6], updated[:-6])
         self.assertEqual(
@@ -679,11 +688,52 @@ The update script was last run for revision `01234567`_.
 '''.lstrip(),
         )
 
+    def test_update_third_party_docs(self):
+        """Tests adding docs to //docs::third_party_docs."""
+        with GnGeneratorForTest() as generator:
+            contents = generator.update_third_party_docs(
+                '''
+group("third_party_docs") {
+  deps = [
+    "$dir_pigweed/third_party/existing:docs",
+  ]
+}
+'''
+            )
+        # Formatting is performed separately.
+        self.assertEqual(
+            contents,
+            '''
+group("third_party_docs") {
+deps = ["$dir_pigweed/third_party/repo:docs",
+    "$dir_pigweed/third_party/existing:docs",
+  ]
+}
+''',
+        )
+
+    def test_update_third_party_docs_no_target(self):
+        """Tests adding docs to a file without a "third_party_docs" target."""
+        with GnGeneratorForTest() as generator:
+            with self.assertRaises(ValueError):
+                generator.update_third_party_docs('')
+
+    @mock.patch('subprocess.run')
+    def test_write_extra(self, mock_run):
+        """Tests extra files produced via `bazel run`."""
+        attr = {'stdout.decode.return_value': 'hello, world!'}
+        mock_run.return_value = mock.MagicMock(**attr)
+
+        output = StringIO()
+        with GnGeneratorForTest() as generator:
+            generator.write_extra(output, 'some_label')
+        self.assertEqual(output.getvalue(), 'hello, world!')
+
     @mock.patch('subprocess.run')
     def test_write_owners(self, mock_run):
         """Tests writing an OWNERS file."""
-        attrs = {'stdout.decode.return_value': 'someone@pigweed.dev'}
-        mock_run.return_value = mock.MagicMock(**attrs)
+        attr = {'stdout.decode.return_value': 'someone@pigweed.dev'}
+        mock_run.return_value = mock.MagicMock(**attr)
 
         output = StringIO()
         write_owners(output)

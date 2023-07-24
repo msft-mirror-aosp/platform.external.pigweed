@@ -52,6 +52,13 @@ pw_add_library(pw_sync.lock_annotations INTERFACE
     pw_preprocessor
 )
 
+pw_add_library(pw_sync.lock_traits INTERFACE
+  HEADERS
+    public/pw_sync/lock_traits.h
+  PUBLIC_INCLUDES
+    public
+)
+
 pw_add_library(pw_sync.borrow INTERFACE
   HEADERS
     public/pw_sync/borrow.h
@@ -214,13 +221,33 @@ pw_add_facade(pw_sync.condition_variable INTERFACE
     pw_sync.mutex
 )
 
+pw_add_library(pw_sync.lock_testing STATIC
+  HEADERS
+    public/pw_sync/lock_testing.h
+  SOURCES
+    lock_testing.cc
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_sync.virtual_basic_lockable
+  PRIVATE_DEPS
+    pw_assert
+)
+
+pw_add_test(pw_sync.lock_traits_test
+  SOURCES
+    lock_traits_test.cc
+  PRIVATE_DEPS
+    pw_sync.lock_testing
+    pw_sync.lock_traits
+)
+
 pw_add_test(pw_sync.borrow_test
   SOURCES
     borrow_test.cc
   PRIVATE_DEPS
-    pw_assert
     pw_sync.borrow
-    pw_sync.virtual_basic_lockable
+    pw_sync.lock_testing
   GROUPS
     modules
     pw_sync
@@ -340,7 +367,7 @@ pw_add_library(pw_sync.condition_variable_test STATIC
     pw_sync.mutex
     pw_sync.timed_thread_notification
     pw_thread.sleep
-    pw_thread.test_threads
+    pw_thread.non_portable_test_thread_options
     pw_thread.thread
     pw_unit_test
   SOURCES

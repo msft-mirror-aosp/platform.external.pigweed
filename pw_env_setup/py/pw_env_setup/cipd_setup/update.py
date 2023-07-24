@@ -162,7 +162,6 @@ def platform(rosetta=False):
 def all_package_files(env_vars, package_files):
     """Recursively retrieve all package files."""
 
-    result = []
     to_process = []
     for pkg_file in package_files:
         args = []
@@ -178,20 +177,29 @@ def all_package_files(env_vars, package_files):
 
         to_process.append(path)
 
-    while to_process:
-        package_file = to_process.pop(0)
-        result.append(package_file)
+    processed_files = []
 
-        with open(package_file, 'r') as ins:
-            entries = json.load(ins).get('included_files', ())
+    def flatten_package_files(package_files):
+        """Flatten nested package files."""
+        for package_file in package_files:
+            yield package_file
+            processed_files.append(package_file)
 
-        for entry in entries:
-            entry = os.path.join(os.path.dirname(package_file), entry)
+            with open(package_file, 'r') as ins:
+                entries = json.load(ins).get('included_files', ())
+                entries = [
+                    os.path.join(os.path.dirname(package_file), entry)
+                    for entry in entries
+                ]
+                entries = [
+                    entry for entry in entries if entry not in processed_files
+                ]
 
-            if entry not in result and entry not in to_process:
-                to_process.append(entry)
+            if entries:
+                for entry in flatten_package_files(entries):
+                    yield entry
 
-    return result
+    return list(flatten_package_files(to_process))
 
 
 def all_packages(package_files):
@@ -202,7 +210,8 @@ def all_packages(package_files):
             file_packages = json.load(ins).get('packages', ())
             for package in file_packages:
                 if 'subdir' in package:
-                    package['subdir'] = os.path.join(name, package['subdir'])
+                    package['original_subdir'] = package['subdir']
+                    package['subdir'] = '/'.join([name, package['subdir']])
                 else:
                     package['subdir'] = name
             packages.extend(file_packages)
@@ -211,18 +220,30 @@ def all_packages(package_files):
 
 def deduplicate_packages(packages):
     deduped = collections.OrderedDict()
-    for package in reversed(packages):
-        if package['path'] in deduped:
-            del deduped[package['path']]
-        deduped[package['path']] = package
-    return reversed(list(deduped.values()))
+    for package in packages:
+        # Use the package + the subdir as the key
+        pkg_key = package['path']
+        pkg_key += package.get('original_subdir', '')
+
+        if pkg_key in deduped:
+            # Delete the old package
+            del deduped[pkg_key]
+
+        # Insert the new package at the end
+        deduped[pkg_key] = package
+    return list(deduped.values())
 
 
 def write_ensure_file(
     package_files, ensure_file, platform
 ):  # pylint: disable=redefined-outer-name
+    logdir = os.path.dirname(ensure_file)
     packages = all_packages(package_files)
+    with open(os.path.join(logdir, 'all-packages.json'), 'w') as outs:
+        json.dump(packages, outs, indent=4)
     deduped_packages = deduplicate_packages(packages)
+    with open(os.path.join(logdir, 'deduped-packages.json'), 'w') as outs:
+        json.dump(deduped_packages, outs, indent=4)
 
     with open(ensure_file, 'w') as outs:
         outs.write(
@@ -384,7 +405,8 @@ def update(  # pylint: disable=too-many-locals
                 if os.path.isdir(bin_dir):
                     env_vars.prepend('PATH', bin_dir)
             env_vars.set(
-                'PW_{}_CIPD_INSTALL_DIR'.format(name.upper()), file_install_dir
+                'PW_{}_CIPD_INSTALL_DIR'.format(name.upper().replace('-', '_')),
+                file_install_dir,
             )
 
             # Windows has its own special toolchain.

@@ -33,6 +33,9 @@ declare_args() {
   # coverage data file for each test will be saved. To generate reports from
   # this information run: pw presubmit --step gn_python_test_coverage
   pw_build_PYTHON_TEST_COVERAGE = false
+
+  # Output format for pylint. Options include "text" and "colorized".
+  pw_build_PYLINT_OUTPUT_FORMAT = "colorized"
 }
 
 # Python packages provide the following targets as $target_name.$subtarget.
@@ -45,7 +48,6 @@ pw_python_package_subtargets = [
   "wheel",
 
   # Internal targets that directly depend on one another.
-  "_run_pip_install",
   "_build_wheel",
 ]
 
@@ -125,7 +127,7 @@ template("_pw_python_static_analysis_pylint") {
     args = [
       rebase_path(".", root_build_dir) + "/{{source_target_relative}}",
       "--jobs=1",
-      "--output-format=colorized",
+      "--output-format=$pw_build_PYLINT_OUTPUT_FORMAT",
     ]
 
     if (defined(invoker.pylintrc)) {
@@ -522,38 +524,39 @@ template("pw_python_package") {
     }
 
     if (_is_package) {
-      # Stubs for non-package targets.
-      group("$target_name._run_pip_install") {
-      }
-
       # Builds a Python wheel for this package. Records the output directory
       # in the pw_python_package_wheels metadata key.
+
       pw_python_action("$target_name._build_wheel") {
+        _wheel_out_dir = "$target_out_dir/$target_name"
+        _wheel_requirement = "$_wheel_out_dir/requirements.txt"
         metadata = {
-          pw_python_package_wheels = [ "$target_out_dir/$target_name" ]
+          pw_python_package_wheels = [ _wheel_out_dir ]
         }
 
-        module = "build"
+        script = "$dir_pw_build/py/pw_build/generate_python_wheel.py"
 
-        args =
-            [
-              rebase_path(_setup_dir, root_build_dir),
-              "--wheel",
-              "--no-isolation",
-              "--outdir",
-            ] + rebase_path(metadata.pw_python_package_wheels, root_build_dir)
+        args = [
+          "--package-dir",
+          rebase_path(_setup_dir, root_build_dir),
+          "--out-dir",
+          rebase_path(_wheel_out_dir, root_build_dir),
+        ]
+
+        # Add hashes to the _wheel_requirement output.
+        if (pw_build_PYTHON_PIP_INSTALL_REQUIRE_HASHES) {
+          args += [ "--generate-hashes" ]
+        }
 
         deps = [ ":${invoker.target_name}" ]
         foreach(dep, _python_deps) {
           deps += [ string_replace(dep, "(", ".wheel(") ]
         }
 
-        stamp = true
+        outputs = [ _wheel_requirement ]
       }
     } else {
-      # Stubs for non-package targets.
-      group("$target_name._run_pip_install") {
-      }
+      # Stub for non-package targets.
       group("$target_name._build_wheel") {
       }
     }
@@ -566,10 +569,6 @@ template("pw_python_package") {
     # These targets just represent the source files if this isn't a package.
     group("$target_name.install") {
       public_deps = [ ":${invoker.target_name}" ]
-
-      if (_is_package) {
-        public_deps += [ ":${invoker.target_name}._run_pip_install" ]
-      }
 
       foreach(dep, _python_deps) {
         public_deps += [ string_replace(dep, "(", ".install(") ]

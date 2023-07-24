@@ -39,6 +39,15 @@ Module usage
 See backend docs for how to interact with the underlying system I/O
 implementation.
 
+API reference
+=============
+.. doxygenfunction:: pw::sys_io::ReadByte(std::byte* dest)
+.. doxygenfunction:: pw::sys_io::TryReadByte(std::byte* dest)
+.. doxygenfunction:: pw::sys_io::WriteByte(std::byte b)
+.. doxygenfunction:: pw::sys_io::WriteLine(const std::string_view& s)
+.. doxygenfunction:: pw::sys_io::ReadBytes(ByteSpan dest)
+.. doxygenfunction:: pw::sys_io::WriteBytes(ConstByteSpan src)
+
 Dependencies
 ============
   * pw_sys_io_backend

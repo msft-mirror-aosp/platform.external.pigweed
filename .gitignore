@@ -1,10 +1,12 @@
 # Build
 compile_commands.json
+rust-project.json
 out/
 bazel-*
 outbazel/
 .presubmit/
 docs/_build
+twister-out*/
 
 # Editors
 .pw_ide/

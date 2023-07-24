@@ -18,7 +18,9 @@ from pathlib import Path
 import re
 from typing import Iterable, Pattern, Sequence, Union
 
-from pw_presubmit.presubmit import PresubmitContext, filter_paths
+from pw_presubmit import presubmit_context
+from pw_presubmit.presubmit import filter_paths
+from pw_presubmit.presubmit_context import PresubmitContext
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -130,6 +132,7 @@ def create(
     @filter_paths(exclude=exclude)
     def todo_check(ctx: PresubmitContext):
         """Check that TODO lines are valid."""  # todo-check: ignore
+        ctx.paths = presubmit_context.apply_exclusions(ctx)
         for path in ctx.paths:
             _process_file(ctx, todo_pattern, path)
 

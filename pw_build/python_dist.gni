@@ -55,6 +55,15 @@ template("pw_python_wheels") {
     _packages += [ "${_pkg_name}.wheel(${_pkg_toolchain})" ]
   }
 
+  if (defined(invoker.venv)) {
+    _venv_target_label = pw_build_PYTHON_BUILD_VENV
+    _venv_target_label = invoker.venv
+    _venv_target_label =
+        get_label_info(_venv_target_label, "label_no_toolchain")
+    _packages +=
+        [ "${_venv_target_label}.vendor_wheels($pw_build_PYTHON_TOOLCHAIN)" ]
+  }
+
   # Build a list of relative paths containing all the wheels we depend on.
   generated_file("${target_name}._wheel_paths") {
     data_keys = [ "pw_python_package_wheels" ]
@@ -74,7 +83,7 @@ template("pw_python_wheels") {
       rebase_path(root_build_dir, root_build_dir),
       "--suffix",
       rebase_path(_wheel_paths_path, root_build_dir),
-      "--out_dir",
+      "--out-dir",
       rebase_path(_directory, root_build_dir),
     ]
 
@@ -120,7 +129,11 @@ template("pw_python_zip_with_setup") {
 
   pw_python_wheels("$target_name.wheels") {
     packages = invoker.packages
-    forward_variables_from(invoker, [ "deps" ])
+    forward_variables_from(invoker,
+                           [
+                             "deps",
+                             "venv",
+                           ])
   }
 
   pw_zip(target_name) {
@@ -136,6 +149,20 @@ template("pw_python_zip_with_setup") {
 
     # TODO(b/235245034): Remove the plumbing-through of invoker's public_deps.
     public_deps = _public_deps + [ ":${_outer_name}.wheels" ]
+
+    if (defined(invoker.venv)) {
+      _venv_target_label = get_label_info(invoker.venv, "label_no_toolchain")
+      _requirements_target_name =
+          get_label_info("${_venv_target_label}($pw_build_PYTHON_TOOLCHAIN)",
+                         "name")
+      _requirements_gen_dir =
+          get_label_info("${_venv_target_label}($pw_build_PYTHON_TOOLCHAIN)",
+                         "target_gen_dir")
+
+      inputs += [ "$_requirements_gen_dir/$_requirements_target_name/compiled_requirements.txt > /${target_name}/requirements.txt" ]
+
+      public_deps += [ "${_venv_target_label}._compile_requirements($pw_build_PYTHON_TOOLCHAIN)" ]
+    }
   }
 }
 
@@ -160,9 +187,23 @@ template("pw_python_zip_with_setup") {
 #   generate_setup_cfg: A scope containing either common_config_file or 'name'
 #     and 'version' If included this creates a merged setup.cfg for all python
 #     Packages using either a common_config_file as a base or name and version
-#     strings. This scope can optionally include: 'append_git_sha_to_version' or
-#     'append_date_to_version' whic append the current git SHA or date to the
-#     package version string after a + sign.
+#     strings. This scope can optionally include:
+#
+#     include_default_pyproject_file: Include a standard pyproject.toml file
+#       that uses setuptools.
+#
+#     append_git_sha_to_version: Append the current git SHA to the package
+#       version string after a + sign.
+#
+#     append_date_to_version: Append the current date to the package version
+#       string after a + sign.
+#
+#     include_extra_files_in_package_data: Add any extra_files to the setup.cfg
+#       file under the [options.package_data] section.
+#
+#     auto_create_package_data_init_py_files: Default: true
+#       Create __init__.py files as needed in all subdirs of extra_files when
+#       including in [options.package_data].
 #
 template("pw_python_distribution") {
   _metadata_path_list_suffix = "_pw_python_distribution_metadata_path_list.txt"
@@ -262,6 +303,14 @@ template("pw_python_distribution") {
     metadata = {
       pw_python_package_metadata_json = [ _package_metadata_json_file ]
     }
+
+    # Forward the package_metadata subtarget for all packages bundled in this
+    # distribution.
+    public_deps = []
+    foreach(dep, invoker.packages) {
+      public_deps += [ get_label_info(dep, "label_no_toolchain") +
+                       "._package_metadata($pw_build_PYTHON_TOOLCHAIN)" ]
+    }
   }
 
   _package_metadata_targets = []
@@ -335,6 +384,17 @@ template("pw_python_distribution") {
           generate_setup_cfg.include_default_pyproject_file == true) {
         args += [ "--create-default-pyproject-toml" ]
       }
+      if (defined(generate_setup_cfg.include_extra_files_in_package_data)) {
+        args += [ "--setupcfg-extra-files-in-package-data" ]
+      }
+      _auto_create_package_data_init_py_files = true
+      if (defined(generate_setup_cfg.auto_create_package_data_init_py_files)) {
+        _auto_create_package_data_init_py_files =
+            generate_setup_cfg.auto_create_package_data_init_py_files
+      }
+      if (_auto_create_package_data_init_py_files) {
+        args += [ "--auto-create-package-data-init-py-files" ]
+      }
     }
 
     if (_extra_file_args == []) {
@@ -355,16 +415,25 @@ template("pw_python_distribution") {
 
   # Template to build a bundled Python package wheel.
   pw_python_action("$target_name._build_wheel") {
+    _wheel_out_dir = "$target_out_dir/$target_name"
+    _wheel_requirement = "$_wheel_out_dir/requirements.txt"
     metadata = {
-      pw_python_package_wheels = [ "$target_out_dir/$target_name" ]
+      pw_python_package_wheels = [ _wheel_out_dir ]
     }
-    module = "build"
+
+    script = "$dir_pw_build/py/pw_build/generate_python_wheel.py"
+
     args = [
-             rebase_path(_output_dir, root_build_dir),
-             "--wheel",
-             "--no-isolation",
-             "--outdir",
-           ] + rebase_path(metadata.pw_python_package_wheels, root_build_dir)
+      "--package-dir",
+      rebase_path(_output_dir, root_build_dir),
+      "--out-dir",
+      rebase_path(_wheel_out_dir, root_build_dir),
+    ]
+
+    # Add hashes to the _wheel_requirement output.
+    if (pw_build_PYTHON_PIP_INSTALL_REQUIRE_HASHES) {
+      args += [ "--generate-hashes" ]
+    }
 
     public_deps = []
     if (defined(invoker.public_deps)) {
@@ -372,7 +441,7 @@ template("pw_python_distribution") {
     }
     public_deps += [ ":${invoker.target_name}" ]
 
-    stamp = true
+    outputs = [ _wheel_requirement ]
   }
   group("$target_name.wheel") {
     public_deps = [ ":${invoker.target_name}._build_wheel" ]
@@ -489,6 +558,33 @@ template("pw_python_pip_install") {
         "--no-build-isolation",
       ]
 
+      if (!_editable_install) {
+        if (pw_build_PYTHON_PIP_INSTALL_REQUIRE_HASHES) {
+          args += [ "--require-hashes" ]
+
+          # The --require-hashes option can only install wheels via
+          # requirement.txt files that contain hashes. Depend on this package's
+          # _build_wheel target.
+          foreach(pkg, _pkg_gn_labels) {
+            public_deps += [ "${pkg}._build_wheel" ]
+          }
+        }
+        if (pw_build_PYTHON_PIP_INSTALL_OFFLINE) {
+          args += [ "--no-index" ]
+        }
+        if (pw_build_PYTHON_PIP_INSTALL_DISABLE_CACHE) {
+          args += [ "--no-cache-dir" ]
+        }
+        if (pw_build_PYTHON_PIP_INSTALL_FIND_LINKS != []) {
+          foreach(link_dir, pw_build_PYTHON_PIP_INSTALL_FIND_LINKS) {
+            args += [
+              "--find-links",
+              rebase_path(link_dir, root_build_dir),
+            ]
+          }
+        }
+      }
+
       _force_reinstall = false
       if (defined(invoker.force_reinstall)) {
         _force_reinstall = true
@@ -498,6 +594,7 @@ template("pw_python_pip_install") {
       }
 
       inputs = pw_build_PIP_CONSTRAINTS
+
       foreach(_constraints_file, pw_build_PIP_CONSTRAINTS) {
         args += [
           "--constraint",

@@ -1305,9 +1305,9 @@ Start a Doxygen comment block using ``///`` (three forward slashes).
    /// @param[in]  src  The memory area to copy from.
    /// @param[in]  n    The number of bytes to copy
    ///
-   /// @retval OK         KVS successfully initialized.
-   /// @retval DATA_LOSS  KVS initialized and is usable, but contains corrupt data.
-   /// @retval UNKNOWN    Unknown error. KVS is not initialized.
+   /// @retval OK KVS successfully initialized.
+   /// @retval DATA_LOSS KVS initialized and is usable, but contains corrupt data.
+   /// @retval UNKNOWN Unknown error. KVS is not initialized.
    ///
    /// @rst
    /// The ``@rst`` and ``@endrst`` commands form a block block of
@@ -1452,6 +1452,25 @@ with Doxygen using standard Sphinx cross references, such as ``:cpp:class:`` and
 .. _autodoc directives: https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directives
 
 .. inclusive-language: enable
+
+Status codes in Doxygen comments
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Use the following syntax when referring to ``pw_status`` codes in Doxygen
+comments:
+
+.. code-block::
+
+   @pw_status{YOUR_STATUS_CODE_HERE}
+
+Replace ``YOUR_STATUS_CODE_HERE`` with a valid ``pw_status`` code.
+
+This syntax ensures that Doxygen links back to the status code's
+reference documentation in :ref:`module-pw_status`.
+
+.. note::
+
+   The guidance in this section only applies to Doxygen comments in C++ header
+   files.
 
 .. _commit-style:
 

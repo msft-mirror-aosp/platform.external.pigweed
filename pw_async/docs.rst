@@ -33,6 +33,11 @@ Dispatcher API
 
 Task API
 ==============
+.. doxygenstruct:: pw::async::Context
+   :members:
+
+.. doxygentypedef:: pw::async::TaskFunction
+
 .. doxygenclass:: pw::async::Task
    :members:
 
@@ -41,14 +46,26 @@ Facade API
 
 Task
 ----
-The Task type represents a work item that is submitted to a Dispatcher. The Task
-facade enables Dispatcher backends to specify custom state and methods.
+The ``Task`` type represents a work item that can be submitted to and executed
+by a ``Dispatcher``.
+
+To run work on a ``Dispatcher`` event loop, a ``Task`` can be constructed from
+a function or lambda (see ``pw::async::TaskFunction``) and submitted to run
+using the ``pw::async::Dispatcher::Post`` method (and its siblings, ``PostAt``
+etc.).
+
+The ``Task`` facade enables backends to provide custom storage containers for
+``Task`` s, as well as to keep per- ``Task`` data alongside the ``TaskFunction``
+(such as ``next`` pointers for intrusive linked-lists of ``Task``).
 
 The active Task backend is configured with the GN variable
 ``pw_async_TASK_BACKEND``. The specified target must define a class
 ``pw::async::backend::NativeTask`` in the header ``pw_async_backend/task.h``
 that meets the interface requirements in ``public/pw_async/task.h``. Task will
 then trivially wrap ``NativeTask``.
+
+The bazel build provides the ``pw_async_task_backend`` label flag to configure
+the active Task backend.
 
 FakeDispatcher
 --------------
@@ -58,12 +75,15 @@ code that uses Dispatcher. FakeDispatcher is a facade instead of a concrete
 implementation because it depends on Task state for processing tasks, which
 varies across Task backends.
 
-The active Task backend is configured with the GN variable
+The active FakeDispatcher backend is configured with the GN variable
 ``pw_async_FAKE_DISPATCHER_BACKEND``. The specified target must define a class
 ``pw::async::test::backend::NativeFakeDispatcher`` in the header
 ``pw_async_backend/fake_dispatcher.h`` that meets the interface requirements in
 ``public/pw_async/task.h``. FakeDispatcher will then trivially wrap
 ``NativeFakeDispatcher``.
+
+The bazel build provides the ``pw_async_fake_dispatcher_backend`` label flag to
+configure the FakeDispatcher backend.
 
 Testing FakeDispatcher
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -179,6 +199,5 @@ Roadmap
 -------
 - Stabilize Task cancellation API
 - Utility for dynamically allocated Tasks
-- Bazel support
 - CMake support
 - Support for C++20 coroutines

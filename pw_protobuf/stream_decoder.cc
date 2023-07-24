@@ -69,7 +69,7 @@ Status StreamDecoder::BytesReader::DoSeek(ptrdiff_t offset, Whence origin) {
   }
 
   if (static_cast<size_t>(absolute_position) < start_offset_ ||
-      static_cast<size_t>(absolute_position) >= end_offset_) {
+      static_cast<size_t>(absolute_position) > end_offset_) {
     return Status::OutOfRange();
   }
 
@@ -81,6 +81,10 @@ Status StreamDecoder::BytesReader::DoSeek(ptrdiff_t offset, Whence origin) {
 StatusWithSize StreamDecoder::BytesReader::DoRead(ByteSpan destination) {
   if (!status_.ok()) {
     return StatusWithSize(status_, 0);
+  }
+
+  if (decoder_.position_ >= end_offset_ || decoder_.position_ < start_offset_) {
+    return StatusWithSize::OutOfRange();
   }
 
   // Bound the read buffer to the size of the bytes field.
@@ -221,7 +225,8 @@ Status StreamDecoder::ReadFieldKey() {
     return Status::DataLoss();
   }
 
-  current_field_ = FieldKey(varint);
+  PW_DCHECK(varint <= std::numeric_limits<uint32_t>::max());
+  current_field_ = FieldKey(static_cast<uint32_t>(varint));
 
   if (current_field_.wire_type() == WireType::kDelimited) {
     // Read the length varint of length-delimited fields immediately to simplify

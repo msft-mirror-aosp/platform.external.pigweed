@@ -18,10 +18,10 @@ baremetal approach.
 -----
 Setup
 -----
-To use this target, Pigweed must be set up to use FreeRTOS and the STM32Cube HAL
-for the STM32F4 series. The supported repositories can be downloaded via
-``pw package``, and then the build must be manually configured to point to the
-locations the repositories were downloaded to.
+To use this target, Pigweed must be set up to use FreeRTOS and the Pico SDK
+HAL. The supported repositories can be downloaded via ``pw package``, and then
+the build must be manually configured to point to the locations the repositories
+were downloaded to.
 
 .. code:: sh
 
@@ -48,9 +48,9 @@ locations the repositories were downloaded to.
 
    .. code::
 
-      dir_pw_third_party_nanopb = pw_env_setup_PACKAGE_ROOT + "/nanopb"
-      dir_pw_third_party_freertos = pw_env_setup_PACKAGE_ROOT + "/freertos"
-      PICO_SRC_DIR = pw_env_setup_PACKAGE_ROOT + "/pico_sdk"
+      dir_pw_third_party_nanopb = getenv("PW_PACKAGE_ROOT") + "/nanopb"
+      dir_pw_third_party_freertos = getenv("PW_PACKAGE_ROOT") + "/freertos"
+      PICO_SRC_DIR = getenv("PW_PACKAGE_ROOT") + "/pico_sdk"
 
 -----------------------------
 Building and Running the Demo

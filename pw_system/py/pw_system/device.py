@@ -18,7 +18,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable, List, Union, Optional
 
-from pw_hdlc.rpc import HdlcRpcClient, default_channels
+from pw_hdlc.rpc import HdlcRpcClient, channel_output
 from pw_hdlc.rpc import NoEncodingSingleChannelRpcClient, RpcClient
 from pw_log.log_decoder import (
     Log,
@@ -53,8 +53,8 @@ class Device:
         read,
         write,
         proto_library: List[Union[ModuleType, Path]],
-        detokenizer: Optional[detokenize.Detokenizer],
-        timestamp_decoder: Optional[Callable[[int], str]],
+        detokenizer: Optional[detokenize.Detokenizer] = None,
+        timestamp_decoder: Optional[Callable[[int], str]] = None,
         rpc_timeout_s: float = 5,
         use_rpc_logging: bool = True,
         use_hdlc_encoding: bool = True,
@@ -87,7 +87,7 @@ class Device:
 
         self.client: RpcClient
         if use_hdlc_encoding:
-            channels = default_channels(write)
+            channels = [Channel(self.channel_id, channel_output(write))]
             self.client = HdlcRpcClient(
                 read,
                 self.protos,
@@ -113,7 +113,7 @@ class Device:
             self._log_decoder = LogStreamDecoder(
                 decoded_log_handler=decoded_log_handler,
                 detokenizer=self.detokenizer,
-                source_name='SamplelRpcDevice',
+                source_name='RpcDevice',
                 timestamp_parser=(
                     timestamp_decoder
                     if timestamp_decoder
@@ -157,9 +157,8 @@ class Device:
         return metrics
 
     def snapshot_peak_stack_usage(self, thread_name: Optional[str] = None):
-        _, rsp = self.rpcs.pw.thread.ThreadSnapshotService.GetPeakStackUsage(
-            name=thread_name
-        )
+        snapshot_service = self.rpcs.pw.thread.proto.ThreadSnapshotService
+        _, rsp = snapshot_service.GetPeakStackUsage(name=thread_name)
 
         thread_info = thread_pb2.SnapshotThreadInfo()
         for thread_info_block in rsp:

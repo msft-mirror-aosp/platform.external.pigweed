@@ -28,7 +28,6 @@ pw_cc_binary(
         "//pw_stream",
         "//pw_stream:std_file_stream",
         "//pw_thread:thread",
-        "//pw_thread_stl:thread_headers",
         "//pw_transfer",
         "@com_google_protobuf//:protobuf",
     ],
@@ -130,8 +129,11 @@ py_test(
     srcs = [
         "cross_language_large_write_test.py",
     ],
-    # This test is not run in CQ because it's too slow.
-    tags = ["manual"],
+    tags = [
+        # This test is not run in CQ because it's too slow.
+        "manual",
+        "integration",
+    ],
     deps = [
         ":integration_test_fixture",
     ],
@@ -146,8 +148,11 @@ py_test(
     srcs = [
         "cross_language_large_read_test.py",
     ],
-    # This test is not run in CQ because it's too slow.
-    tags = ["manual"],
+    tags = [
+        # This test is not run in CQ because it's too slow.
+        "manual",
+        "integration",
+    ],
     deps = [
         ":integration_test_fixture",
     ],
@@ -160,6 +165,7 @@ py_test(
     srcs = [
         "cross_language_medium_read_test.py",
     ],
+    tags = ["integration"],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
@@ -175,6 +181,7 @@ py_test(
     srcs = [
         "cross_language_medium_write_test.py",
     ],
+    tags = ["integration"],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
@@ -190,6 +197,7 @@ py_test(
     srcs = [
         "cross_language_small_test.py",
     ],
+    tags = ["integration"],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
@@ -204,6 +212,7 @@ py_test(
     srcs = [
         "multi_transfer_test.py",
     ],
+    tags = ["integration"],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
@@ -216,6 +225,7 @@ py_test(
     name = "expected_errors_test",
     timeout = "moderate",
     srcs = ["expected_errors_test.py"],
+    tags = ["integration"],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
@@ -233,6 +243,7 @@ py_test(
     data = [
         "@pw_transfer_test_binaries//:all",
     ],
+    tags = ["integration"],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",

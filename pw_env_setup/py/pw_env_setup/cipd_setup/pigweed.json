@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:5a004f9427a050c6c393c07ddb85cba8ff3849fa"
+        "git_revision:fae280eabe5d31accc53100137459ece19a7a295"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -66,10 +66,11 @@
         "linux-amd64",
         "linux-arm64",
         "mac-amd64",
+        "mac-arm64",
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:3a20597776a5d2920e511d81653b4d2b6ca0c855"
+        "git_revision:ebd0b8a0472b865b7eb6e1a32af97ae31d829033"
       ],
       "version_file": ".versions/clang.cipd_version"
     },
@@ -127,7 +128,7 @@
       ],
       "subdir": "clang_sysroot",
       "tags": [
-        "git_revision:b07475f83bae0e0744ce5ab5c07b602ececc7fd2"
+        "git_revision:d342388843734b6c5c50fb7e18cd3a76476b93aa"
       ]
     }
   ]

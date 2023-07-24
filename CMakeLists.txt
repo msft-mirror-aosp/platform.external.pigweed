@@ -12,9 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-project(Pigweed)
-
 cmake_minimum_required(VERSION 3.16)
+project(Pigweed)
 
 # Do not rely on the PW_ROOT environment variable being set through bootstrap.
 # Regardless of whether it's set or not the following include will ensure it is.
@@ -35,6 +34,16 @@ if(CONFIG_ZEPHYR_PIGWEED_MODULE)
       pw_log_tokenized.handler pw_log_zephyr.tokenized_handler pw_log_tokenized/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_LOG_TOKENIZED
       pw_log pw_log_tokenized pw_log/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYSTEM_HDLC_RPC_SERVER
+    pw_system.rpc_server pw_system.hdlc_rpc_server  pw_system/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYSTEM_LOG_BACKEND
+    pw_log pw_system.log_backend pw_log/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYSTEM_LOG_BACKEND
+    pw_log_tokenized.handler pw_system.log_backend pw_log_tokenized/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYSTEM_TARGET_HOOKS
+    pw_system.target_hooks pw_system.zephyr_target_hooks  pw_system/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_THREAD_ITERATION
+      pw_thread.thread_iteration pw_thread_zephyr.thread_iteration pw_thread/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_THREAD_SLEEP
       pw_thread.sleep pw_thread_zephyr.sleep pw_thread/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_THREAD
@@ -45,6 +54,10 @@ if(CONFIG_ZEPHYR_PIGWEED_MODULE)
       pw_sync.mutex pw_sync_zephyr.binary_semaphore_backend pw_sync/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_INTERRUPT_SPIN_LOCK
       pw_sync.interrupt_spin_lock pw_sync_zephyr.interrupt_spin_lock_backend pw_sync/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_THREAD_NOTIFICATION
+    pw_sync.thread_notification pw_sync_zephyr.thread_notification_backend pw_sync/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_TIMED_THREAD_NOTIFICATION
+      pw_sync.timed_thread_notification pw_sync_zephyr.timed_thread_notification_backend pw_sync/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_MUTEX
       pw_sync.mutex pw_sync_zephyr.mutex_backend pw_sync/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYS_IO
@@ -106,6 +119,7 @@ add_subdirectory(pw_result EXCLUDE_FROM_ALL)
 add_subdirectory(pw_ring_buffer EXCLUDE_FROM_ALL)
 add_subdirectory(pw_router EXCLUDE_FROM_ALL)
 add_subdirectory(pw_rpc EXCLUDE_FROM_ALL)
+add_subdirectory(pw_rpc_transport EXCLUDE_FROM_ALL)
 add_subdirectory(pw_snapshot EXCLUDE_FROM_ALL)
 add_subdirectory(pw_span EXCLUDE_FROM_ALL)
 add_subdirectory(pw_status EXCLUDE_FROM_ALL)

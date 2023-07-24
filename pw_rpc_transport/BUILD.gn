@@ -18,6 +18,7 @@ import("$dir_pw_build/target_types.gni")
 import("$dir_pw_chrono/backend.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
+import("$dir_pw_sync/backend.gni")
 import("$dir_pw_thread/backend.gni")
 import("$dir_pw_unit_test/test.gni")
 
@@ -32,17 +33,15 @@ pw_doc_group("docs") {
 
 pw_test_group("tests") {
   tests = [
+    ":egress_ingress_test",
     ":hdlc_framing_test",
+    ":local_rpc_egress_test",
     ":packet_buffer_queue_test",
+    ":rpc_integration_test",
     ":simple_framing_test",
+    ":socket_rpc_transport_test",
+    ":stream_rpc_dispatcher_test",
   ]
-
-  if (pw_thread_THREAD_BACKEND != "") {
-    tests += [
-      ":egress_ingress_test",
-      ":local_rpc_egress_test",
-    ]
-  }
 }
 
 pw_source_set("rpc_transport") {
@@ -114,6 +113,7 @@ pw_source_set("local_rpc_egress") {
 
 pw_test("local_rpc_egress_test") {
   sources = [ "local_rpc_egress_test.cc" ]
+  enable_if = pw_thread_THREAD_BACKEND == "$dir_pw_thread_stl:thread"
   deps = [
     ":local_rpc_egress",
     ":rpc_transport",
@@ -127,6 +127,7 @@ pw_test("local_rpc_egress_test") {
     "$dir_pw_sync:thread_notification",
     "$dir_pw_thread:sleep",
     "$dir_pw_thread:thread",
+    "$dir_pw_thread_stl:thread",
   ]
 }
 
@@ -138,6 +139,7 @@ pw_source_set("hdlc_framing") {
     "$dir_pw_bytes",
     "$dir_pw_hdlc:decoder",
     "$dir_pw_hdlc:encoder",
+    "$dir_pw_hdlc:pw_rpc",
     "$dir_pw_result",
     "$dir_pw_status",
     "$dir_pw_stream:pw_stream",
@@ -193,6 +195,7 @@ pw_source_set("egress_ingress") {
 
 pw_test("egress_ingress_test") {
   sources = [ "egress_ingress_test.cc" ]
+  enable_if = pw_thread_THREAD_BACKEND != ""
   deps = [
     ":egress_ingress",
     ":service_registry",
@@ -201,6 +204,95 @@ pw_test("egress_ingress_test") {
     "$dir_pw_metric",
     "$dir_pw_status",
     "$dir_pw_sync:thread_notification",
+  ]
+}
+
+pw_source_set("socket_rpc_transport") {
+  public = [ "public/pw_rpc_transport/socket_rpc_transport.h" ]
+  sources = [ "socket_rpc_transport.cc" ]
+  public_deps = [
+    ":rpc_transport",
+    "$dir_pw_assert",
+    "$dir_pw_chrono:system_clock",
+    "$dir_pw_status",
+    "$dir_pw_stream:pw_stream",
+    "$dir_pw_stream:socket_stream",
+    "$dir_pw_sync:condition_variable",
+    "$dir_pw_sync:lock_annotations",
+    "$dir_pw_sync:mutex",
+    "$dir_pw_sync:thread_notification",
+    "$dir_pw_thread:sleep",
+    "$dir_pw_thread:thread_core",
+  ]
+  deps = [ "$dir_pw_log" ]
+}
+
+pw_source_set("stream_rpc_frame_sender") {
+  public = [ "public/pw_rpc_transport/stream_rpc_frame_sender.h" ]
+  public_deps = [
+    ":rpc_transport",
+    "$dir_pw_status",
+    "$dir_pw_stream:pw_stream",
+  ]
+}
+
+pw_source_set("stream_rpc_dispatcher") {
+  public = [ "public/pw_rpc_transport/stream_rpc_dispatcher.h" ]
+  public_deps = [
+    ":egress_ingress",
+    "$dir_pw_status",
+    "$dir_pw_stream:pw_stream",
+  ]
+}
+
+pw_test("socket_rpc_transport_test") {
+  sources = [ "socket_rpc_transport_test.cc" ]
+  enable_if = pw_thread_THREAD_BACKEND == "$dir_pw_thread_stl:thread" &&
+              host_os != "win" && pw_sync_CONDITION_VARIABLE_BACKEND != ""
+  deps = [
+    ":socket_rpc_transport",
+    "$dir_pw_bytes",
+    "$dir_pw_log",
+    "$dir_pw_status",
+    "$dir_pw_sync:thread_notification",
+    "$dir_pw_thread:sleep",
+    "$dir_pw_thread:thread",
+    "$dir_pw_thread_stl:thread",
+  ]
+}
+
+pw_test("stream_rpc_dispatcher_test") {
+  sources = [ "stream_rpc_dispatcher_test.cc" ]
+  enable_if = pw_thread_THREAD_BACKEND == "$dir_pw_thread_stl:thread"
+  deps = [
+    ":stream_rpc_dispatcher",
+    "$dir_pw_bytes",
+    "$dir_pw_log",
+    "$dir_pw_status",
+    "$dir_pw_sync:mutex",
+    "$dir_pw_sync:thread_notification",
+    "$dir_pw_thread:thread",
+    "$dir_pw_thread_stl:thread",
+  ]
+}
+
+pw_test("rpc_integration_test") {
+  sources = [ "rpc_integration_test.cc" ]
+  enable_if = pw_thread_THREAD_BACKEND == "$dir_pw_thread_stl:thread" &&
+              host_os != "win" && pw_sync_CONDITION_VARIABLE_BACKEND != ""
+  deps = [
+    ":egress_ingress",
+    ":local_rpc_egress",
+    ":service_registry",
+    ":socket_rpc_transport",
+    ":test_protos.pwpb_rpc",
+    "$dir_pw_chrono:system_clock",
+    "$dir_pw_log",
+    "$dir_pw_rpc:client_server",
+    "$dir_pw_rpc:synchronous_client_api",
+    "$dir_pw_string",
+    "$dir_pw_thread:thread",
+    "$dir_pw_thread_stl:thread",
   ]
 }
 

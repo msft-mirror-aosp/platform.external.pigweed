@@ -1,6 +1,6 @@
 {
   "name": "pigweedjs",
-  "version": "0.0.8",
+  "version": "0.0.10",
   "description": "An open source collection of embedded-targeted libraries",
   "author": "The Pigweed Authors",
   "license": "Apache-2.0",
@@ -8,7 +8,8 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./protos": "./dist/protos/collection.umd.js",
-    "./protos/*": "./dist/protos/*"
+    "./protos/*": "./dist/protos/*",
+    "./logging": "./dist/logging.mjs"
   },
   "bin": {
     "pw_protobuf_compiler": "./dist/bin/pw_protobuf_compiler.js"
@@ -59,7 +60,6 @@
     "requirejs": "^2.3.6",
     "rimraf": "^3.0.2",
     "rollup": "^2.52.8",
-    "rollup-plugin-dts": "^4.2.2",
     "rollup-plugin-node-builtins": "^2.1.2",
     "rollup-plugin-node-globals": "^1.4.0",
     "rollup-plugin-node-polyfills": "^0.2.1",
@@ -77,6 +77,8 @@
     "google-protobuf": "^3.17.3",
     "long": "^5.2.1",
     "object-path": "^0.11.8",
+    "postcss": "^8.4.24",
+    "rollup-plugin-postcss": "^4.0.2",
     "ts-protoc-gen": "^0.15.0"
   },
   "config": {

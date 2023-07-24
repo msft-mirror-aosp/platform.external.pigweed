@@ -40,8 +40,6 @@ class FakeServerReaderWriter : private ServerCall {
  public:
   constexpr FakeServerReaderWriter() = default;
 
-  ~FakeServerReaderWriter() { DestroyServerCall(); }
-
   // On a real reader/writer, this constructor would not be exposed.
   FakeServerReaderWriter(const LockedCallContext& context,
                          MethodType type = MethodType::kBidirectionalStreaming)
@@ -71,6 +69,7 @@ class FakeServerReaderWriter : private ServerCall {
   // Expose a few additional methods for test use.
   ServerCall& as_server_call() { return *this; }
   using Call::channel_id_locked;
+  using Call::DebugLog;
   using Call::id;
   using Call::set_id;
 };

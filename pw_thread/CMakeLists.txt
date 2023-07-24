@@ -71,6 +71,56 @@ pw_add_library(pw_thread.thread_core INTERFACE
     public
 )
 
+pw_add_library(pw_thread.thread_info INTERFACE
+  HEADERS
+    public/pw_thread/thread_info.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_span
+)
+
+pw_add_facade(pw_thread.thread_iteration INTERFACE
+  BACKEND
+    pw_thread.thread_iteration_BACKEND
+  HEADERS
+    public/pw_thread/thread_iteration.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_thread.thread_info
+    pw_function
+    pw_status
+)
+
+pw_proto_library(pw_thread.thread_snapshot_service_cc
+  SOURCES
+    pw_thread_protos/thread_snapshot_service.proto
+  DEPS
+    pw_thread.protos
+)
+
+pw_add_library(pw_thread.thread_snapshot_service STATIC
+  HEADERS
+    public/pw_thread/thread_snapshot_service.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_protobuf
+    pw_rpc.raw.server_api
+    pw_span
+    pw_status
+    pw_thread.config
+    pw_thread.protos.pwpb
+    pw_thread.thread_info
+    pw_thread.thread_iteration
+    pw_thread.thread_snapshot_service_cc.pwpb
+    pw_thread.thread_snapshot_service_cc.raw_rpc
+  SOURCES
+    pw_thread_private/thread_snapshot_service.h
+    thread_snapshot_service.cc
+)
+
 pw_add_facade(pw_thread.test_thread_context INTERFACE
   BACKEND
     pw_thread.text_thread_context_BACKEND
@@ -146,9 +196,9 @@ if((NOT "${pw_thread.id_BACKEND}" STREQUAL "") AND
   )
 endif()
 
-pw_add_library(pw_thread.test_threads INTERFACE
+pw_add_library(pw_thread.non_portable_test_thread_options INTERFACE
   HEADERS
-    public/pw_thread/test_threads.h
+    public/pw_thread/non_portable_test_thread_options.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -165,7 +215,7 @@ pw_add_library(pw_thread.thread_facade_test STATIC
   PRIVATE_DEPS
     pw_thread.id
     pw_thread.sleep
-    pw_thread.test_threads
+    pw_thread.non_portable_test_thread_options
     pw_thread.thread
     pw_sync.binary_semaphore
     pw_unit_test

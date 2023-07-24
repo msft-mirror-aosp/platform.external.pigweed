@@ -31,6 +31,8 @@ pw_python_package("py") {
     "pw_env_setup/cipd_setup/wrapper.py",
     "pw_env_setup/colors.py",
     "pw_env_setup/config_file.py",
+    "pw_env_setup/entry_points/__init__.py",
+    "pw_env_setup/entry_points/arm_gdb.py",
     "pw_env_setup/env_setup.py",
     "pw_env_setup/environment.py",
     "pw_env_setup/gni_visitor.py",
@@ -44,9 +46,10 @@ pw_python_package("py") {
     "pw_env_setup/windows_env_start.py",
   ]
   tests = [
+    "cipd_setup_update_test.py",
     "environment_test.py",
-    "python_packages_test.py",
     "json_visitor_test.py",
+    "python_packages_test.py",
   ]
   pylintrc = "$dir_pigweed/.pylintrc"
   mypy_ini = "$dir_pigweed/.mypy.ini"

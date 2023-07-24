@@ -270,6 +270,17 @@ The ``python_module_as_package`` feature should only be used when absolutely
 necessary --- for example, to support proto files that include
 ``import "nanopb.proto"``.
 
+Specifying a custom ``protoc``
+------------------------------
+If your build needs to use a custom build of ``protoc`` rather than the one
+supplied by pigweed it can be specified by setting
+``pw_protobuf_compiler_PROTOC_TARGET`` to a GN target that produces a ``protoc``
+executable and ``pw_protobuf_compiler_PROTOC_BINARY`` to the path, relative to
+``root_build_dir``, of the ``protoc`` executable.
+
+For all ``protoc`` invocations, the build will add a dependency on that target
+and will invoke that executable.
+
 CMake
 =====
 CMake provides a ``pw_proto_library`` function with similar features as the
@@ -380,7 +391,7 @@ compile them. e.g.
 
   # BUILD ...
   load("@rules_proto//proto:defs.bzl", "proto_library")
-  load("@pigweed//pw_protobuf_compiler:proto.bzl",
+  load("@pigweed//pw_protobuf_compiler:pw_proto_library.bzl",
     "nanopb_proto_library",
     "nanopb_rpc_proto_library",
     "pwpb_proto_library",
@@ -482,7 +493,7 @@ The ``pw_proto_library`` target has a number of disadvantages:
    the ``pw_proto_library`` macro, and bazel will attempt to build them when
    you run ``bazel build //...``. This may cause build breakages, and has
    forced us to implement `awkward workarounds
-   <https://pigweed-review.git.corp.google.com/c/pigweed/pigweed/+/96980>`_.
+   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/96980>`_.
 
 ----------------------
 Python proto libraries

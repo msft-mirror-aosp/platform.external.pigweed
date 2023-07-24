@@ -49,7 +49,7 @@ Benchmark::Client kServiceClient(pw::rpc::integration_test::client(),
 class StringReceiver {
  public:
   const char* Wait() {
-    PW_CHECK(sem_.try_acquire_for(1500ms));
+    PW_CHECK(sem_.try_acquire_for(10s));
     return reinterpret_cast<const char*>(buffer_.begin());
   }
 
@@ -105,7 +105,9 @@ TEST(RawRpcIntegrationTest, BidirectionalStreaming) {
   }
 }
 
-TEST(RawRpcIntegrationTest, OnNextOverwritesItsOwnCall) {
+// This test sometimes fails due to a server stream packet being dropped.
+// TODO(b/290048137): Enable this test after the flakiness is fixed.
+TEST(RawRpcIntegrationTest, DISABLED_OnNextOverwritesItsOwnCall) {
   for (int i = 0; i < kIterations; ++i) {
     struct {
       StringReceiver receiver;

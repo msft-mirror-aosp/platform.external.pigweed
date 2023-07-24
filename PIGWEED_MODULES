@@ -38,6 +38,7 @@ pw_cpu_exception
 pw_cpu_exception_cortex_m
 pw_crypto
 pw_digital_io
+pw_digital_io_mcuxpresso
 pw_docgen
 pw_doctor
 pw_env_setup
@@ -47,6 +48,7 @@ pw_fuzzer
 pw_hdlc
 pw_hex_dump
 pw_i2c
+pw_i2c_linux
 pw_i2c_mcuxpresso
 pw_ide
 pw_interrupt
@@ -88,9 +90,12 @@ pw_snapshot
 pw_software_update
 pw_span
 pw_spi
+pw_spi_mcuxpresso
 pw_status
 pw_stm32cube_build
 pw_stream
+pw_stream_uart_linux
+pw_stream_uart_mcuxpresso
 pw_string
 pw_symbolizer
 pw_sync
@@ -128,6 +133,7 @@ pw_trace
 pw_trace_tokenized
 pw_transfer
 pw_unit_test
+pw_unit_test_zephyr
 pw_varint
 pw_watch
 pw_web

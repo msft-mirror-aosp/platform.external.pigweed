@@ -6,6 +6,8 @@ RE2
 The ``$dir_pw_third_party/re2/`` module provides build files to allow
 optionally including upstream RE2.
 
+.. _module-pw_third_party_re2-using_upstream:
+
 ------------------
 Using upstream RE2
 ------------------
@@ -49,5 +51,6 @@ the ``-w`` option, e.g.
 
 Version
 =======
-The update script was last run for revision:
-11073deb73b3d01018308863c0bcdfd0d51d3e70
+The update script was last run for revision `c9cba76`_.
+
+.. _c9cba76: https://github.com/google/re2/tree/c9cba76063cf4235c1a15dd14a24a4ef8d623761

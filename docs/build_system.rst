@@ -639,6 +639,23 @@ Bazel's '--run_under' flag. To make this work create a Bazel target
 
     bazel test //your:test --platforms=//your/platform --run_under=//your_handler
 
+Test tag conventions
+~~~~~~~~~~~~~~~~~~~~
+Pigweed observes the standard Bazel test `tag conventions
+<https://bazel.build/reference/test-encyclopedia#tag-conventions>`_. We also
+use the following additional tags:
+
+*  ``integration``: large, slow integration tests in upstream Pigweed are given
+   the ``integration`` tag.  You can skip running these tests using
+   `--test_tag_filters
+   <https://bazel.build/docs/user-manual#test-tag-filters>`_. For example,
+
+   .. code:: sh
+
+     bazel test --test_tag_filters=-integration //...
+
+   will run all tests *except* for these integration tests.
+
 Code Coverage
 ^^^^^^^^^^^^^
 Making use of the code coverage functionality in Bazel is straightforward.
@@ -906,11 +923,11 @@ right one. In this case it looks like;
     name = "system_clock_backend_multiplexer",
     visibility = ["@pigweed_config//:__pkg__"],
     deps = select({
-        "@pigweed//pw_build/constraints/rtos:freertos":
+        "@pigweed//pw_chrono_freertos:system_clock_backend":
             ["//pw_chrono_freertos:system_clock"],
-        "@pigweed//pw_build/constraints/rtos:embos":
+        "@pigweed//pw_chrono_embos:system_clock_backend":
             ["//pw_chrono_embos:system_clock"],
-        "@pigweed//pw_build/constraints/rtos:threadx":
+        "@pigweed//pw_chrono_threadx:system_clock_backend":
             ["//pw_chrono_threadx:system_clock"],
         "//conditions:default": ["//pw_chrono_stl:system_clock"],
     }),
@@ -955,111 +972,72 @@ requiring different combinations of different backends as you can't even reuse
 your command line entries. Instead you would have to memorize the correct
 combination of backends for each of your targets.
 
-So continuing on with our scenario, let's say we add a backup micro-controller,
+So continuing on with our scenario, let's say we add a backup microcontroller
 to our spacecraft. But this backup computer doesn't have a hardware RTC. We
 still want to share the bulk of the code between the two computers but now we
 need two separate implementations for our pw_chrono facade. Let's say we choose
-to keep the primary flight computer using the hardware RTC and switch the backup
-computer over to use Pigweeds default FreeRTOS backend. In this case we might,
-want to do something similar to
-'@pigweed//pw_chrono:system_clock_backend_multiplexer' and create selectable
-dependencies for the two different computers. Now because there are no default
-constraint_setting's that meet our requirements we are going to have to;
+to keep the primary flight computer using the hardware RTC and switch the
+backup computer over to use Pigweed's default FreeRTOS backend. In this case we
+might want to do something similar to
+``@pigweed//pw_chrono:system_clock_backend_multiplexer`` and create selectable
+dependencies for the two different computers:
 
-1. Create a constraint_setting and a set of constraint_value's for the flight
-   computer. For example;
+#. Create a constraint value corresponding to your custom backend:
 
-  .. code:: py
+   .. code-block:: python
 
-    # //platforms/flight_computer/BUILD
-    constraint_setting(
-      name = "flight_computer",
-    )
+     # //pw_chrono_my_hardware_rtc/BUILD.bazel
+     constraint_value(
+       name = "system_clock_backend",
+       constraint_setting = "//pw_chrono:system_clock_constraint_setting",
+     )
 
-    constraint_value(
-      name = "primary",
-      constraint_setting = ":flight_computer",
-    )
+#. Create a set of platforms that can be used to switch constraint values.
+   For example:
 
-    constraint_value(
-      name = "backup",
-      constraint_setting = ":flight_computer",
-    )
+   .. code-block:: python
 
-2. Create a set of platforms that can be used to switch constraint_value's.
-   For example;
+      # //platforms/BUILD.bazel
+      platform(
+        name = "primary_computer",
+        constraint_values = ["//pw_chrono_my_hardware_rtc:system_clock_backend"],
+      )
 
-  .. code:: py
+      platform(
+        name = "backup_computer",
+        constraint_values = ["@pigweed//pw_chrono_freertos:system_clock_backend"],
+      )
 
-    # //platforms/BUILD
-    platform(
-      name = "primary_computer",
-      constraint_values = ["//platforms/flight_computer:primary"],
-    )
+#. Create a target multiplexer that will select the right backend depending on
+   which computer you are using. For example:
 
-    platform(
-      name = "backup_computer",
-      constraint_values = ["//platforms/flight_computer:backup"],
-    )
+   .. code-block:: python
 
-3. Create a target multiplexer that will select the right backend depending on
-   which computer you are using. For example;
+     # //pw_chrono/BUILD
+     load("//pw_build:pigweed.bzl", "pw_cc_library")
 
-  .. code:: py
+     pw_cc_library(
+       name = "system_clock_backend_multiplexer",
+       deps = select({
+         "//pw_chrono_my_hardware_rtc:system_clock_backend": [
+           "//pw_chrono_my_hardware_rtc:system_clock",
+         ],
+         "@pigweed//pw_chrono_freertos:system_clock_backend": [
+           "@pigweed//pw_chrono_freertos:system_clock",
+         ],
+         "//conditions:default": [
+           "@pigweed//pw_chrono_stl:system_clock",
+         ],
+       }),
+     )
 
-    # //pw_chrono/BUILD
-    load("//pw_build:pigweed.bzl", "pw_cc_library")
+#. Add a build setting override for the ``pw_chrono_system_clock_backend`` label
+   flag to your ``.bazelrc`` file that points to your new target multiplexer.
 
-    pw_cc_library(
-      name = "system_clock_backend_multiplexer",
-      deps = select({
-        "//platforms/flight_computer:primary": [
-          "//pw_chrono_my_hardware_rtc:system_clock",
-        ],
-        "//platforms/flight_computer:backup": [
-          "@pigweed//pw_chrono_freertos:system_clock",
-        ],
-        "//conditions:default": [
-          "@pigweed//pw_chrono_stl:system_clock",
-        ],
-      }),
-    )
+   .. code-block:: python
 
-4. Copy and paste across the target/default_config.BUILD across from the
-   Pigweed repository and modifying the build_setting_default for the target
-   'pw_chrono_system_clock_backend' to point to your new system_clock_backend_multiplexer
-   target. For example;
-
-   This;
-
-  .. code:: py
-
-    # @pigweed//target:default_config.BUILD
-    label_flag(
-        name = "pw_chrono_system_clock_backend",
-        build_setting_default = "@pigweed//pw_chrono:system_clock_backend_multiplexer",
-    )
-
-  Becomes this;
-
-  .. code:: py
-
-    # @your_workspace//target:your_config.BUILD
-    label_flag(
-      name = "pw_chrono_system_clock_backend",
-      build_setting_default =
-        "@your_workspace//pw_chrono:system_clock_backend_multiplexer",
-    )
-
-5. Switch your workspace 'pigweed_config' rule over to use your custom config.
-
-  .. code:: py
-
-    # WORKSPACE
-    pigweed_config(
-      name = "pigweed_config",
-      build_file = "//target/your_config.BUILD",
-    )
+     # //.bazelrc
+     build --@pigweed_config//:pw_chrono_system_clock_backend=@your_workspace//pw_chrono:system_clock_backend_multiplexer
 
 Building your target now will result in slightly different build graph. For
 example, running;

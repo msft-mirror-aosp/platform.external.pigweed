@@ -19,13 +19,11 @@
 #include <cstring>
 #include <limits>
 
-#include "fuzztest/fuzztest.h"
 #include "gtest/gtest.h"
+#include "pw_fuzzer/fuzztest.h"
 
 namespace pw::varint {
 namespace {
-
-using namespace fuzztest;
 
 extern "C" {
 
@@ -497,7 +495,7 @@ void EncodeDecode_C(uint64_t value) {
 TEST(Varint, EncodeDecodeSigned32Incremental_C) {
   int32_t i = std::numeric_limits<int32_t>::min();
   while (true) {
-    EncodeDecode_C(i);
+    EncodeDecode_C(static_cast<uint64_t>(i));
 
     if (i > std::numeric_limits<int32_t>::max() - kIncrement) {
       break;
@@ -510,7 +508,7 @@ TEST(Varint, EncodeDecodeSigned32Incremental_C) {
 TEST(Varint, EncodeDecodeUnsigned32Incremental_C) {
   uint32_t i = 0;
   while (true) {
-    EncodeDecode_C(i);
+    EncodeDecode_C(static_cast<uint64_t>(i));
 
     if (i > std::numeric_limits<uint32_t>::max() - kIncrement) {
       break;
@@ -864,7 +862,7 @@ TEST_F(VarintWithBuffer, EncodeWithOptions_MultiByte) {
 }
 
 TEST(Varint, DecodeWithOptions_SingleByte) {
-  uint64_t value = -1234;
+  uint64_t value;
 
   EXPECT_EQ(
       Decode(
@@ -949,7 +947,7 @@ TEST(Varint, DecodeWithOptions_SingleByte) {
 }
 
 TEST(Varint, DecodeWithOptions_MultiByte) {
-  uint64_t value = -1234;
+  uint64_t value;
 
   EXPECT_EQ(Decode(MakeBuffer("\x01\x10"),
                    &value,

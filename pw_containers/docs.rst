@@ -112,14 +112,43 @@ That means two key things:
      }
    }
 
+Performance Considerations
+--------------------------
+Items only include pointers to the next item. To reach previous items, the list
+maintains a cycle of items so that the first item can be reached from the last.
+This structure means certain operations have linear complexity in terms of the
+number of items in the list, i.e. they are "O(n)":
+
+- Adding to the end of a list with ``pw::IntrusiveList<T>::push_back(T&)``.
+- Accessing the last item in a list with ``pw::IntrusiveList<T>::back()``.
+- Destroying an item with ``pw::IntrusiveList<T>::Item::~Item()``.
+- Moving an item with either ``pw::IntrusiveList<T>::Item::Item(Item&&)`` or
+  ``pw::IntrusiveList<T>::Item::operator=(Item&&)``.
+- Removing an item from a list using ``pw::IntrusiveList<T>::remove(const T&)``.
+- Getting the list size using ``pw::IntrusiveList<T>::size()``.
+
+When using a ``pw::IntrusiveList<T>`` in a performance critical section or with
+many items, authors should prefer to avoid these methods. For example, it may be
+preferrable to create items that together with their storage outlive the list.
+
+Notably, ``pw::IntrusiveList<T>::end()`` is constant complexity (i.e. "O(1)").
+As a result iterating over a list does not incur an additional penalty.
+
 pw::containers::FlatMap
 =======================
-FlatMap provides a simple, fixed-size associative array with lookup by key or
-value. ``pw::containers::FlatMap`` contains the same methods and features for
-looking up data as std::map. However, there are no methods that modify the
-underlying data.  The underlying array in ``pw::containers::FlatMap`` does not
-need to be sorted. During construction, ``pw::containers::FlatMap`` will
-perform a constexpr insertion sort.
+``FlatMap`` provides a simple, fixed-size associative array with `O`\ (log `n`)
+lookup by key.
+
+``pw::containers::FlatMap`` contains the same methods and features for looking
+up data as ``std::map``. However, modification of the underlying data is limited
+to the mapped values, via ``.at()`` (key must exist) and ``mapped_iterator``
+objects returned by ``.mapped_begin()`` and ``.mapped_end()``.
+``mapped_iterator`` objects are bidirectional iterators that can be dereferenced
+to access and mutate the mapped value objects.
+
+The underlying array in ``pw::containers::FlatMap`` does not need to be sorted.
+During construction, ``pw::containers::FlatMap`` will perform a constexpr
+insertion sort.
 
 pw::containers::FilteredView
 ============================

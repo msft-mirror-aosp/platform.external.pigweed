@@ -28,6 +28,8 @@ group("pw_containers") {
   public_deps = [
     ":algorithm",
     ":flat_map",
+    ":inline_deque",
+    ":inline_queue",
     ":intrusive_list",
     ":vector",
   ]
@@ -53,6 +55,7 @@ pw_source_set("filtered_view") {
 pw_source_set("flat_map") {
   public_configs = [ ":public_include_path" ]
   public = [ "public/pw_containers/flat_map.h" ]
+  public_deps = [ "$dir_pw_assert:assert" ]
 }
 
 pw_source_set("inline_deque") {
@@ -237,6 +240,7 @@ pw_test("intrusive_list_test") {
   sources = [ "intrusive_list_test.cc" ]
   deps = [
     ":intrusive_list",
+    ":vector",
     "$dir_pw_preprocessor",
   ]
   negative_compilation_tests = true

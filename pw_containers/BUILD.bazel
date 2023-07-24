@@ -27,6 +27,8 @@ pw_cc_library(
     deps = [
         ":algorithm",
         ":flat_map",
+        ":inline_deque",
+        ":inline_queue",
         ":intrusive_list",
         ":vector",
     ],
@@ -113,6 +115,7 @@ pw_cc_library(
     name = "flat_map",
     hdrs = ["public/pw_containers/flat_map.h"],
     includes = ["public"],
+    deps = ["//pw_assert"],
 )
 
 pw_cc_library(
@@ -246,6 +249,7 @@ pw_cc_test(
     ],
     deps = [
         ":intrusive_list",
+        ":vector",
         "//pw_unit_test",
     ],
 )

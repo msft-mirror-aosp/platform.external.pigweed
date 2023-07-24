@@ -81,7 +81,7 @@ load("@rules_python//python:pip.bzl", "pip_parse")
 pip_parse(
     name = "python_packages",
     python_interpreter_target = interpreter,
-    requirements_lock = "//pw_env_setup/py/pw_env_setup/virtualenv_setup:constraint.list",
+    requirements_lock = "//pw_env_setup/py/pw_env_setup/virtualenv_setup:upstream_requirements_lock.txt",
 )
 
 load("@python_packages//:requirements.bzl", "install_deps")
@@ -145,29 +145,6 @@ git_repository(
     remote = "https://github.com/bazelbuild/stardoc.git",
     shallow_since = "1651081130 -0400",
 )
-
-# Set up tools to build custom GRPC rules.
-#
-# We use a fork that silences some zlib compilation warnings.
-#
-# Required by: pigweed.
-# Used in modules: //pw_protobuf.
-git_repository(
-    name = "rules_proto_grpc",
-    commit = "2fbf774a5553b773372f7b91f9b1dc06ee0da2d3",
-    remote = "https://github.com/tpudlik/rules_proto_grpc.git",
-    shallow_since = "1675375991 -0800",
-)
-
-load(
-    "@rules_proto_grpc//:repositories.bzl",
-    "rules_proto_grpc_repos",
-    "rules_proto_grpc_toolchains",
-)
-
-rules_proto_grpc_toolchains()
-
-rules_proto_grpc_repos()
 
 # Set up Protobuf rules.
 # Required by: pigweed.
@@ -256,22 +233,27 @@ http_archive(
         # Fix rustdoc test w/ proc macros
         # https://github.com/bazelbuild/rules_rust/pull/1952
         "//pw_rust/bazel_patches:0001-rustdoc_test-Apply-prefix-stripping-to-proc_macro-de.patch",
+        # Allow `rust_repository_set` to specify `opt_level`
+        # https://github.com/bazelbuild/rules_rust/pull/2036
+        "//pw_rust/bazel_patches:0002-Add-opt_level-argument-to-rust_repository_set.patch",
+        # Adds prototype functionality for documenting multiple crates in one
+        # HTML output directory.  While the approach in this patch may have
+        # issues scaling to giant mono-repos, it is apporpriate for embedded
+        # projects and minimally invasive and should be easy to maintain.  Once
+        # the `rules_rust` community decides on a way to propperly support this,
+        # we will migrate to that solution.
+        # https://github.com/konkers/rules_rust/tree/wip/rustdoc
+        "//pw_rust/bazel_patches:0003-PROTOTYPE-Add-ability-to-document-multiple-crates-at.patch",
     ],
-    sha256 = "dc8d79fe9a5beb79d93e482eb807266a0e066e97a7b8c48d43ecf91f32a3a8f3",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.19.0/rules_rust-v0.19.0.tar.gz"],
+    sha256 = "190b5aeba104210f8ed9b1ff595d1f459297fe32db70f0a04f5c537a13ee0602",
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.24.1/rules_rust-v0.24.1.tar.gz"],
 )
 
 load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_analyzer_toolchain_repository", "rust_repository_set")
 
 rules_rust_dependencies()
 
-# Here we pull in a specific toolchain.  Unfortunately `rust_repository_set`
-# does not provide a way to add `target_compatible_with` options which are
-# needed to be compatible with `@bazel_embedded` (specifically
-# `@bazel_embedded//constraints/fpu:none` which is specified in
-# `//platforms`)
-#
-# See `//toolchain:rust_linux_x86_64` for how this is used.
+# Here we register a specific set of toolchains.
 #
 # Note: This statement creates name mangled remotes of the form:
 # `@{name}__{triplet}_tools`
@@ -280,17 +262,38 @@ rust_repository_set(
     name = "rust_linux_x86_64",
     edition = "2021",
     exec_triple = "x86_64-unknown-linux-gnu",
-    extra_target_triples = [
-        "thumbv7m-none-eabi",
-        "thumbv6m-none-eabi",
-    ],
+    extra_target_triples = {
+        "thumbv8m.main-none-eabihf": [
+            "@platforms//cpu:armv8-m",
+            "@bazel_embedded//constraints/fpu:fpv5-d16",
+        ],
+        "thumbv7m-none-eabi": [
+            "@platforms//cpu:armv7-m",
+            "@bazel_embedded//constraints/fpu:none",
+        ],
+        "thumbv6m-none-eabi": [
+            "@platforms//cpu:armv6-m",
+            "@bazel_embedded//constraints/fpu:none",
+        ],
+    },
+    opt_level = {
+        "thumbv8m.main-none-eabihf": {
+            "dbg": "0",
+            "fastbuild": "0",
+            "opt": "z",
+        },
+        "thumbv7m-none-eabi": {
+            "dbg": "0",
+            "fastbuild": "0",
+            "opt": "z",
+        },
+        "thumbv6m-none-eabi": {
+            "dbg": "0",
+            "fastbuild": "0",
+            "opt": "z",
+        },
+    },
     versions = ["1.67.0"],
-)
-
-# Registers our Rust toolchains that are compatable with `@bazel_embedded`.
-register_toolchains(
-    "//pw_toolchain:thumbv7m_rust_linux_x86_64",
-    "//pw_toolchain:thumbv6m_rust_linux_x86_64",
 )
 
 # Allows creation of a `rust-project.json` file to allow rust analyzer to work.
@@ -309,7 +312,7 @@ rust_analyzer_dependencies()
 # Vendored third party rust crates.
 git_repository(
     name = "rust_crates",
-    commit = "3d5b3a9260cbf98746f0e77be5a8251e1fc77af0",
+    commit = "e4dcd91091f0537e6b5482677f2007b32a94703e",
     remote = "https://pigweed.googlesource.com/third_party/rust_crates",
     shallow_since = "1675359057 +0000",
 )

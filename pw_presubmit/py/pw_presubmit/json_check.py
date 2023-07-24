@@ -15,13 +15,15 @@
 
 import json
 
-from . import presubmit
+from . import presubmit, presubmit_context
 
 
 @presubmit.filter_paths(endswith=('.json',))
 @presubmit.check(name='json_check')
-def presubmit_check(ctx: presubmit.PresubmitContext):
+def presubmit_check(ctx: presubmit_context.PresubmitContext):
     """Presubmit check that ensures JSON files are valid."""
+
+    ctx.paths = presubmit_context.apply_exclusions(ctx)
 
     for path in ctx.paths:
         with path.open('r') as ins:

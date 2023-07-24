@@ -20,22 +20,48 @@ import argparse
 import logging
 from pathlib import Path
 import re
-from typing import IO
+from typing import List, IO
 import sys
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
 # Assume any of these lines could be prefixed with ANSI color codes.
-_PREFIX = r'^(?:\x1b)?(?:\[\d+m\s*)?'
-_RULE_RE = re.compile(_PREFIX + r'\[\d+/\d+\] (\S+)')
-_FAILED_RE = re.compile(_PREFIX + r'FAILED: (.*)$')
-_FAILED_END_RE = re.compile(_PREFIX + r'ninja: build stopped:.*')
+_COLOR_CODES_PREFIX = r'^(?:\x1b)?(?:\[\d+m\s*)?'
+
+_GOOGLETEST_FAILED, _GOOGLETEST_RUN, _GOOGLETEST_OK, _GOOGLETEST_DISABLED = (
+    '[  FAILED  ]',
+    '[ RUN      ]',
+    '[       OK ]',
+    '[ DISABLED ]',
+)
+
+
+def _remove_passing_tests(failure_lines: List[str]) -> List[str]:
+    test_lines: List[str] = []
+    result = []
+    for line in failure_lines:
+        if test_lines:
+            if _GOOGLETEST_OK in line:
+                test_lines = []
+            elif _GOOGLETEST_FAILED in line:
+                result.extend(test_lines)
+                test_lines = []
+                result.append(line)
+            else:
+                test_lines.append(line)
+        elif _GOOGLETEST_RUN in line:
+            test_lines.append(line)
+        elif _GOOGLETEST_DISABLED in line:
+            pass
+        else:
+            result.append(line)
+    result.extend(test_lines)
+    return result
 
 
 def _parse_ninja(ins: IO) -> str:
-    failure_begins = False
-    failure_lines = []
-    last_line = ''
+    failure_lines: List[str] = []
+    last_line: str = ''
 
     for line in ins:
         _LOG.debug('processing %r', line)
@@ -43,22 +69,28 @@ def _parse_ninja(ins: IO) -> str:
         # way the line shows up in the logs. However, leading whitespace may
         # be significant, especially for compiler error messages.
         line = line.rstrip()
-        if failure_begins:
+
+        if failure_lines:
             _LOG.debug('inside failure block')
-            if not _RULE_RE.match(line) and not _FAILED_END_RE.match(line):
-                failure_lines.append(line)
-            else:
-                # Output of failed step ends, save its info.
-                _LOG.debug('ending failure block')
-                failure_begins = False
+
+            if re.match(_COLOR_CODES_PREFIX + r'\[\d+/\d+\] (\S+)', line):
+                _LOG.debug('next rule started, ending failure block')
+                break
+
+            if re.match(_COLOR_CODES_PREFIX + r'ninja: build stopped:.*', line):
+                _LOG.debug('ninja build stopped, ending failure block')
+                break
+            failure_lines.append(line)
+
         else:
-            failed_nodes_match = _FAILED_RE.match(line)
-            failure_begins = False
-            if failed_nodes_match:
+            if re.match(_COLOR_CODES_PREFIX + r'FAILED: (.*)$', line):
                 _LOG.debug('starting failure block')
-                failure_begins = True
                 failure_lines.extend([last_line, line])
+            elif 'FAILED' in line:
+                _LOG.debug('not a match')
         last_line = line
+
+    failure_lines = _remove_passing_tests(failure_lines)
 
     # Remove "Requirement already satisfied:" lines since many of those might
     # be printed during Python installation, and they usually have no relevance
@@ -69,7 +101,7 @@ def _parse_ninja(ins: IO) -> str:
         if not x.lstrip().startswith('Requirement already satisfied:')
     ]
 
-    result = '\n'.join(failure_lines)
+    result: str = '\n'.join(failure_lines)
     return re.sub(r'\n+', '\n', result)
 
 

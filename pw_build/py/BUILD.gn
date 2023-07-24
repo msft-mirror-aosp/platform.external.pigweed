@@ -39,6 +39,8 @@ pw_python_package("py") {
     "pw_build/generate_python_package.py",
     "pw_build/generate_python_package_gn.py",
     "pw_build/generate_python_requirements.py",
+    "pw_build/generate_python_wheel.py",
+    "pw_build/generate_python_wheel_cache.py",
     "pw_build/generate_report.py",
     "pw_build/generated_tests.py",
     "pw_build/gn_config.py",
@@ -57,7 +59,6 @@ pw_python_package("py") {
     "pw_build/project_builder_prefs.py",
     "pw_build/python_package.py",
     "pw_build/python_runner.py",
-    "pw_build/python_wheels.py",
     "pw_build/wrap_ninja.py",
     "pw_build/zip.py",
   ]
@@ -81,6 +82,7 @@ pw_python_package("py") {
     "$dir_pw_env_setup/py",
     "$dir_pw_presubmit/py",
   ]
+  python_test_deps = [ "gn_tests:test_dist1" ]
   pylintrc = "$dir_pigweed/.pylintrc"
   mypy_ini = "$dir_pigweed/.mypy.ini"
 }
