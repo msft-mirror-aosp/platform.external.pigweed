@@ -13,21 +13,15 @@
 // the License.
 
 package {
-    // See: http://go/android-license-faq
-    // A large-scale-change added 'default_applicable_licenses' to import
-    // all of the 'license_kinds' from "external_pigweed_license"
-    // to get the below license kinds:
-    //   SPDX-license-identifier-Apache-2.0
     default_applicable_licenses: ["external_pigweed_license"],
 }
 
-cc_library {
-    name: "libpw_log",
-    vendor_available: true,
+cc_library_headers {
+    name: "pw_log_headers",
     cpp_std: "c++2a",
-    export_include_dirs: [
-        "public",
-    ],
+    vendor_available: true,
+    export_include_dirs: ["public"],
+    host_supported: true,
 }
 
 android_library {
