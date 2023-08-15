@@ -36,6 +36,7 @@ from pw_presubmit import (
     git_repo,
     gitmodules,
     inclusive_language,
+    javascript_checks,
     json_check,
     keep_sorted,
     module_owners,
@@ -535,11 +536,19 @@ def docs_build(ctx: PresubmitContext) -> None:
     rust_docs_output_dir = ctx.output_dir.joinpath(
         'docs', 'gen', 'docs', 'html', 'rustdoc'
     )
-    shutil.copytree(rust_docs_bazel_dir, rust_docs_output_dir)
 
+    # Remove the docs tree to avoid including stale files from previous runs.
+    shutil.rmtree(rust_docs_output_dir, ignore_errors=True)
 
-def gn_docs_build(ctx: PresubmitContext) -> None:
-    docs_build(ctx)
+    # Bazel generates files and directories without write permissions.  In
+    # order to allow this rule to be run multiple times we use shutil.copyfile
+    # for the actual copies to not copy permissions of files.
+    shutil.copytree(
+        rust_docs_bazel_dir,
+        rust_docs_output_dir,
+        copy_function=shutil.copyfile,
+        dirs_exist_ok=True,
+    )
 
 
 gn_host_tools = build.GnGenNinja(
@@ -753,9 +762,13 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\bDoxyfile$',
     r'\bPW_PLUGINS$',
     r'\bconstraint.list$',
-    r'\bconstraint_hashes.list$',
+    r'\bconstraint_hashes_darwin.list$',
+    r'\bconstraint_hashes_linux.list$',
+    r'\bconstraint_hashes_windows.list$',
     r'\bpython_base_requirements.txt$',
-    r'\bupstream_requirements_lock.txt$',
+    r'\bupstream_requirements_darwin_lock.txt$',
+    r'\bupstream_requirements_linux_lock.txt$',
+    r'\bupstream_requirements_windows_lock.txt$',
     r'^(?:.+/)?\..+$',
     # keep-sorted: end
     # Metadata
@@ -782,6 +795,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\.json$',
     r'\.png$',
     r'\.svg$',
+    r'\.vsix$',
     r'\.xml$',
     # keep-sorted: end
     # Documentation
@@ -837,6 +851,8 @@ _COPYRIGHT = re.compile(
 
 _SKIP_LINE_PREFIXES = (
     '#!',
+    '#autoload',
+    '#compdef',
     '@echo off',
     ':<<',
     '/*',
@@ -873,9 +889,12 @@ def copyright_notice(ctx: PresubmitContext):
         if path.stat().st_size == 0:
             continue  # Skip empty files
 
-        with path.open() as file:
-            if not _COPYRIGHT.match(''.join(_read_notice_lines(file))):
-                errors.append(path)
+        try:
+            with path.open() as file:
+                if not _COPYRIGHT.match(''.join(_read_notice_lines(file))):
+                    errors.append(path)
+        except UnicodeDecodeError as exc:
+            raise PresubmitFailure(f'failed to read {path}') from exc
 
     if errors:
         _LOG.warning(
@@ -1125,7 +1144,6 @@ OTHER_CHECKS = (
     gitmodules.create(gitmodules.Config(allow_submodules=False)),
     gn_clang_build,
     gn_combined_build_check,
-    gn_docs_build,
     module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
@@ -1188,6 +1206,7 @@ _LINTFORMAT = (
     source_in_build.gn(SOURCE_FILES_FILTER),
     source_is_in_cmake_build_warn_only,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
+    javascript_checks.eslint if shutil.which('npx') else (),
     json_check.presubmit_check,
     keep_sorted.presubmit_check,
     todo_check_with_exceptions,

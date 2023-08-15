@@ -3,22 +3,12 @@
 ======================
 0001: The SEED Process
 ======================
-
-.. card::
-   :fas:`seedling` SEED-0001: :ref:`The SEED Process<seed-0001>`
-
-   :octicon:`comment-discussion` Status:
-   :bdg-secondary-line:`Open for Comments`
-   :octicon:`chevron-right`
-   :bdg-secondary-line:`Last Call`
-   :octicon:`chevron-right`
-   :bdg-primary:`Accepted`
-   :octicon:`kebab-horizontal`
-   :bdg-secondary-line:`Rejected`
-
-   :octicon:`calendar` Proposal Date: 2022-10-31
-
-   :octicon:`code-review` CL: `pwrev/116577 <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/116577>`_
+.. seed::
+   :number: 1
+   :name: The SEED Process
+   :status: Accepted
+   :proposal_date: 2022-10-31
+   :cl: 116577
 
 -------
 Summary
@@ -151,6 +141,9 @@ Suppose you'd like to propose a new Pigweed RPC Over Smoke Signals protocol.
 #. When you feel you have enough substantive content in your proposal to be
    reviewed, push it up to Gerrit and switch the change from WIP to Active.
    This will begin the open comments period.
+
+#. Create a thread for your SEED in the ``#seed`` channel of Pigweed's
+   `Discord server <https://discord.gg/M9NSeTA>`_.
 
 #. Engage with reviewers to iterate on your proposal through its comment period.
 

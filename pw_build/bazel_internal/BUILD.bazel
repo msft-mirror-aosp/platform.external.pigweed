@@ -24,7 +24,7 @@ pw_linker_script(
         "PW_BOOT_RAM_BEGIN=0x20000000",
         "PW_BOOT_RAM_SIZE=192K",
         "PW_BOOT_VECTOR_TABLE_BEGIN=0x08000000",
-        "PW_BOOT_VECTOR_TABLE_SIZE=512",
+        "PW_BOOT_VECTOR_TABLE_SIZE=1M",
     ],
     linker_script = "linker_script.ld",
 )
@@ -34,6 +34,12 @@ pw_linker_script(
 cc_binary(
     name = "test_linker_script",
     srcs = ["test.cc"],
+    # Only compatible with platforms that support linker scripts.
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [":linker_script_test"],
 )
 
@@ -47,6 +53,12 @@ cc_library(
 cc_binary(
     name = "test_transitive_linker_script",
     srcs = ["test.cc"],
+    # Only compatible with platforms that support linker scripts.
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [":lib_linker_script"],
 )
 
@@ -56,4 +68,10 @@ cc_binary(
     srcs = ["test.cc"],
     additional_linker_inputs = [":linker_script_test"],
     linkopts = ["-T $(location :linker_script_test)"],
+    # Only compatible with platforms that support linker scripts.
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
 )

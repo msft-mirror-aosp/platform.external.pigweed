@@ -126,10 +126,67 @@ def _exit_due_to_interrupt() -> None:
 
 
 _NINJA_BUILD_STEP = re.compile(
-    r'^\[(?P<step>[0-9]+)/(?P<total_steps>[0-9]+)\] (?P<action>.*)$'
+    # Start of line
+    r'^'
+    # Step count: [1234/5678]
+    r'\[(?P<step>[0-9]+)/(?P<total_steps>[0-9]+)\]'
+    # whitespace
+    r' *'
+    # Build step text
+    r'(?P<action>.*)$'
 )
 
-_NINJA_FAILURE_TEXT = '\033[31mFAILED: '
+_BAZEL_BUILD_STEP = re.compile(
+    # Start of line
+    r'^'
+    # Optional starting green color
+    r'(?:\x1b\[32m)?'
+    # Step count: [1,234 / 5,678]
+    r'\[(?P<step>[0-9,]+) */ *(?P<total_steps>[0-9,]+)\]'
+    # Optional ending clear color and space
+    r'(?:\x1b\[0m)? *'
+    # Build step text
+    r'(?P<action>.*)$'
+)
+
+_NINJA_FAILURE = re.compile(
+    # Start of line
+    r'^'
+    # Optional red color
+    r'(?:\x1b\[31m)?'
+    r'FAILED:'
+    r' '
+    # Optional color reset
+    r'(?:\x1b\[0m)?'
+)
+
+_BAZEL_FAILURE = re.compile(
+    # Start of line
+    r'^'
+    # Optional red color
+    r'(?:\x1b\[31m)?'
+    # Optional bold color
+    r'(?:\x1b\[1m)?'
+    r'FAIL:'
+    # Optional color reset
+    r'(?:\x1b\[0m)?'
+    # whitespace
+    r' *'
+    r'.*bazel-out.*'
+)
+
+_BAZEL_ELAPSED_TIME = re.compile(
+    # Start of line
+    r'^'
+    # Optional green color
+    r'(?:\x1b\[32m)?'
+    r'INFO:'
+    # single space
+    r' '
+    # Optional color reset
+    r'(?:\x1b\[0m)?'
+    r'Elapsed time:'
+)
 
 
 def execute_command_no_logging(
@@ -147,7 +204,11 @@ def execute_command_no_logging(
     returncode = None
     while returncode is None:
         if BUILDER_CONTEXT.build_stopping():
-            proc.terminate()
+            try:
+                proc.terminate()
+            except ProcessLookupError:
+                # Process already stopped.
+                pass
         returncode = proc.poll()
         time.sleep(0.05)
     print()
@@ -167,6 +228,19 @@ def execute_command_with_logging(
     current_stdout = ''
     returncode = None
 
+    starting_failure_regex = _NINJA_FAILURE
+    ending_failure_regex = _NINJA_BUILD_STEP
+    build_step_regex = _NINJA_BUILD_STEP
+
+    if command[0].endswith('ninja'):
+        build_step_regex = _NINJA_BUILD_STEP
+        starting_failure_regex = _NINJA_FAILURE
+        ending_failure_regex = _NINJA_BUILD_STEP
+    elif command[0].endswith('bazel'):
+        build_step_regex = _BAZEL_BUILD_STEP
+        starting_failure_regex = _BAZEL_FAILURE
+        ending_failure_regex = _BAZEL_ELAPSED_TIME
+
     with subprocess.Popen(
         command,
         env=env,
@@ -175,6 +249,7 @@ def execute_command_with_logging(
         errors='replace',
     ) as proc:
         BUILDER_CONTEXT.register_process(recipe, proc)
+        should_log_build_steps = BUILDER_CONTEXT.log_build_steps
         # Empty line at the start.
         logger.info('')
 
@@ -194,24 +269,31 @@ def execute_command_with_logging(
                 returncode = proc.poll()
                 continue
 
-            line_match_result = _NINJA_BUILD_STEP.match(output)
+            line_match_result = build_step_regex.match(output)
             if line_match_result:
                 if failure_line and not BUILDER_CONTEXT.build_stopping():
                     recipe.status.log_last_failure()
                 failure_line = False
                 matches = line_match_result.groupdict()
                 recipe.status.current_step = line_match_result.group(0)
-                step = int(matches.get('step', 0))
-                total_steps = int(matches.get('total_steps', 1))
+                # Remove commas from step and total_steps strings
+                step = int(matches.get('step', '0').replace(',', ''))
+                total_steps = int(
+                    matches.get('total_steps', '1').replace(',', '')
+                )
                 recipe.status.percent = float(step / total_steps)
 
             logger_method = logger.info
-            if output.startswith(_NINJA_FAILURE_TEXT):
+            if starting_failure_regex.match(output):
                 logger_method = logger.error
                 if failure_line and not BUILDER_CONTEXT.build_stopping():
                     recipe.status.log_last_failure()
                 recipe.status.increment_error_count()
                 failure_line = True
+            elif ending_failure_regex.match(output):
+                if failure_line and not BUILDER_CONTEXT.build_stopping():
+                    recipe.status.log_last_failure()
+                failure_line = False
 
             # Mypy output mixes character encoding in color coded output
             # and uses the 'sgr0' (or exit_attribute_mode) capability from the
@@ -226,7 +308,14 @@ def execute_command_with_logging(
             # sequences.
             stripped_output = output.replace('\x1b(B', '').strip()
 
-            if not line_match_result:
+            # If this isn't a build step.
+            if not line_match_result or (
+                # Or if this is a build step and logging build steps is
+                # requested:
+                line_match_result
+                and should_log_build_steps
+            ):
+                # Log this line.
                 logger_method(stripped_output)
             recipe.status.current_step = stripped_output
 
@@ -239,7 +328,11 @@ def execute_command_with_logging(
                 line_processed_callback(recipe)
 
             if BUILDER_CONTEXT.build_stopping():
-                proc.terminate()
+                try:
+                    proc.terminate()
+                except ProcessLookupError:
+                    # Process already stopped.
+                    pass
 
         recipe.status.return_code = returncode
 
@@ -401,6 +494,8 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             the ``-k`` option.
         banners: Print the project banner at the start of each build.
         allow_progress_bars: If False progress bar output will be disabled.
+        log_build_steps: If True all build step lines will be logged to the
+            screen and logfiles. Default: False.
         colors: Print ANSI colors to stdout and logfiles
         log_level: Optional log_level, defaults to logging.INFO.
         root_logfile: Optional root logfile.
@@ -437,6 +532,7 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
         log_level: int = logging.INFO,
         allow_progress_bars: bool = True,
         use_verbatim_error_log_formatting: bool = False,
+        log_build_steps: bool = False,
     ):
         self.charset: ProjectBuilderCharset = charset
         self.abort_callback = abort_callback
@@ -478,6 +574,7 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
 
         # Progress bar enable/disable flag
         self.allow_progress_bars = allow_progress_bars
+        self.log_build_steps = log_build_steps
         self.stdout_proxy: Optional[StdoutProxy] = None
 
         # Logger configuration

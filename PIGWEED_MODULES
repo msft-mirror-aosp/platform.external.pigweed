@@ -53,6 +53,7 @@ pw_i2c_mcuxpresso
 pw_ide
 pw_interrupt
 pw_interrupt_cortex_m
+pw_interrupt_xtensa
 pw_interrupt_zephyr
 pw_intrusive_ptr
 pw_kvs
@@ -94,6 +95,7 @@ pw_spi_mcuxpresso
 pw_status
 pw_stm32cube_build
 pw_stream
+pw_stream_shmem_mcuxpresso
 pw_stream_uart_linux
 pw_stream_uart_mcuxpresso
 pw_string
@@ -129,6 +131,7 @@ pw_tls_client_mbedtls
 pw_tokenizer
 pw_tool
 pw_toolchain
+pw_toolchain_bazel
 pw_trace
 pw_trace_tokenized
 pw_transfer

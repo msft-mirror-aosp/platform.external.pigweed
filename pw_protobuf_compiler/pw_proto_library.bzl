@@ -376,6 +376,13 @@ def _proto_compiler_aspect_impl(target, ctx):
     args.add("--custom_out={}".format(out_path))
     args.add_all(proto_info.direct_sources)
 
+    all_tools = [
+        ctx.executable._protoc,
+        ctx.executable._python_runtime,
+        ctx.executable._protoc_plugin,
+    ]
+    run_path = [tool.dirname for tool in all_tools]
+
     ctx.actions.run(
         inputs = depset(
             direct = proto_info.direct_sources +
@@ -384,10 +391,18 @@ def _proto_compiler_aspect_impl(target, ctx):
             transitive = [proto_info.transitive_descriptor_sets],
         ),
         progress_message = "Generating %s C++ files for %s" % (ctx.attr._extensions, ctx.label.name),
-        tools = [ctx.executable._protoc_plugin],
+        tools = all_tools,
         outputs = srcs + hdrs,
         executable = ctx.executable._protoc,
         arguments = [args],
+        env = {
+            "PATH": ":".join(run_path),
+
+            # The nanopb protobuf plugin likes to compile some temporary protos
+            # next to source files. This forces them to be written to Bazel's
+            # genfiles directory.
+            "NANOPB_PB2_TEMP_DIR": str(ctx.genfiles_dir),
+        },
     )
 
     transitive_srcs = srcs
@@ -428,6 +443,12 @@ def _proto_compiler_aspect(extensions, protoc_plugin, plugin_options = []):
             ),
             "_protoc_plugin": attr.label(
                 default = Label(protoc_plugin),
+                executable = True,
+                cfg = "exec",
+            ),
+            "_python_runtime": attr.label(
+                default = Label("//:python3_interpreter"),
+                allow_single_file = True,
                 executable = True,
                 cfg = "exec",
             ),

@@ -17,6 +17,8 @@
 #include <array>
 
 #include "gtest/gtest.h"
+#include "pw_containers/algorithm.h"
+#include "pw_containers/flat_map.h"
 #include "pw_containers/intrusive_list.h"
 #include "pw_span/span.h"
 
@@ -108,6 +110,23 @@ TEST(FilteredView, IntrusiveList_MatchAll) {
       std::all_of(found.begin(), found.end(), [](bool b) { return b; }));
 }
 
+TEST(FilteredView, IntrusiveList_CopyPredicate) {
+  Item item_1{1};
+  Item item_2{2};
+  Item item_3{3};
+  IntrusiveList<Item> intrusive_list({&item_1, &item_2, &item_3});
+
+  auto filter_to_copy = [](const Item& i) { return i.value % 2 != 0; };
+  FilteredView view(intrusive_list, filter_to_copy);
+
+  auto it = view.begin();
+  ASSERT_EQ(it->value, 1);
+  ++it;
+  ASSERT_EQ((*it).value, 3);
+  ++it;
+  EXPECT_EQ(it, view.end());
+}
+
 TEST(FilteredView, IntrusiveList_MatchNone) {
   Item item_1{0};
   Item item_2{1};
@@ -170,6 +189,20 @@ TEST(FilteredView, Size_AllElements) {
   EXPECT_EQ(FilteredView(kArray, [](int) { return true; }).size(), 6u);
 
   EXPECT_FALSE(FilteredView(kArray, [](int x) { return x < 5; }).empty());
+}
+
+TEST(FilteredView, FlatMap) {
+  pw::containers::FlatMap<char, int, 3> map({{{'A', 1}, {'B', 2}, {'C', 3}}});
+
+  auto odd_pred = [](pw::containers::Pair<char, int> p) {
+    return p.second % 2 != 0;
+  };
+
+  auto odd_map = pw::containers::FilteredView(map, std::move(odd_pred));
+
+  pw::containers::FlatMap<char, int, 2> odd_expect({{{'A', 1}, {'C', 3}}});
+
+  ASSERT_TRUE(pw::containers::Equal(odd_map, odd_expect));
 }
 
 }  // namespace

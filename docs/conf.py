@@ -43,6 +43,7 @@ extensions = [
     'pw_docgen.sphinx.google_analytics',  # Enables optional Google Analytics
     'pw_docgen.sphinx.kconfig',
     'pw_docgen.sphinx.module_metadata',
+    'pw_docgen.sphinx.seed_metadata',
     'sphinx.ext.autodoc',  # Automatic documentation for Python code
     'sphinx.ext.napoleon',  # Parses Google-style docstrings
     'sphinxarg.ext',  # Automatic documentation of Python argparse
@@ -125,6 +126,8 @@ html_css_files = [
     # FontAwesome for mermaid and sphinx-design
     "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css",
 ]
+
+html_js_files = ['js/pigweed.js']
 
 # Furo color theme variables based on:
 # https://github.com/pradyunsg/furo/blob/main/src/furo/assets/styles/variables/_colors.scss

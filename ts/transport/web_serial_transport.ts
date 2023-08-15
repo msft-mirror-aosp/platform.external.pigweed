@@ -13,11 +13,17 @@
 // the License.
 
 /* eslint-env browser */
-import {BehaviorSubject, Observable, Subject, Subscription} from 'rxjs';
+import { BehaviorSubject, Observable, Subject, Subscription } from 'rxjs';
 import DeviceTransport from './device_transport';
-import type {SerialPort, Serial, SerialOptions, Navigator, SerialPortFilter} from "pigweedjs/types/serial"
+import type {
+  SerialPort,
+  Serial,
+  SerialOptions,
+  Navigator,
+  SerialPortFilter,
+} from '../types/serial';
 
-const DEFAULT_SERIAL_OPTIONS: SerialOptions & {baudRate: number} = {
+const DEFAULT_SERIAL_OPTIONS: SerialOptions & { baudRate: number } = {
   // Some versions of chrome use `baudrate` (linux)
   baudrate: 115200,
   // Some versions use `baudRate` (chromebook)
@@ -37,11 +43,11 @@ interface PortConnection extends PortReadConnection {
 }
 
 export class DeviceLostError extends Error {
-  message = 'The device has been lost';
+  override message = 'The device has been lost';
 }
 
 export class DeviceLockedError extends Error {
-  message =
+  override message =
     "The device's port is locked. Try unplugging it" +
     ' and plugging it back in.';
 }
@@ -57,14 +63,14 @@ export class WebSerialTransport implements DeviceTransport {
   private portConnections: Map<SerialPort, PortConnection> = new Map();
   private activePortConnectionConnection: PortConnection | undefined;
   private rxSubscriptions: Subscription[] = [];
-  private writer: WritableStreamDefaultWriter<Uint8Array>;
-  private abortController: AbortController;
+  private writer: WritableStreamDefaultWriter<Uint8Array> | undefined;
+  private abortController: AbortController | undefined;
 
   constructor(
     private serial: Serial = (navigator as unknown as Navigator).serial,
     private filters: SerialPortFilter[] = [],
-    private serialOptions = DEFAULT_SERIAL_OPTIONS
-  ) { }
+    private serialOptions = DEFAULT_SERIAL_OPTIONS,
+  ) {}
 
   /**
    * Send a UInt8Array chunk of data to the connected device.
@@ -83,7 +89,7 @@ export class WebSerialTransport implements DeviceTransport {
    * be called in response to user interaction.
    */
   async connect(): Promise<void> {
-    const port = await this.serial.requestPort({filters: this.filters});
+    const port = await this.serial.requestPort({ filters: this.filters });
     await this.connectPort(port);
   }
 
@@ -99,9 +105,8 @@ export class WebSerialTransport implements DeviceTransport {
 
     try {
       await this.writer?.close();
-    }
-    catch (err) {
-      this.errors.next(err);
+    } catch (err) {
+      this.errors.next(err as Error);
     }
     this.connected.next(false);
   }
@@ -129,8 +134,8 @@ export class WebSerialTransport implements DeviceTransport {
           this.portConnections.delete(port);
           // Don't complete the chunks observable because then it would not
           // be able to forward any future chunks.
-        }
-      )
+        },
+      ),
     );
 
     this.rxSubscriptions.push(
@@ -140,7 +145,7 @@ export class WebSerialTransport implements DeviceTransport {
           // The device has been lost
           this.connected.next(false);
         }
-      })
+      }),
     );
   }
 
@@ -154,9 +159,9 @@ export class WebSerialTransport implements DeviceTransport {
       await writer.write(chunk);
     }
 
-    const {chunks, errors} = this.getChunks(port);
+    const { chunks, errors } = this.getChunks(port);
 
-    const connection: PortConnection = {sendChunk, chunks, errors};
+    const connection: PortConnection = { sendChunk, chunks, errors };
     this.portConnections.set(port, connection);
     return connection;
   }
@@ -176,18 +181,20 @@ export class WebSerialTransport implements DeviceTransport {
       }
       await port.readable.pipeTo(
         new WritableStream({
-          write: chunk => {
+          write: (chunk) => {
             chunks.next(chunk);
           },
           close: () => {
             chunks.complete();
             errors.complete();
           },
-        }), {signal: abortController.signal});
+        }),
+        { signal: abortController.signal },
+      );
     }
 
     function connect() {
-      read().catch(err => {
+      read().catch((err) => {
         // Don't error the chunks observable since that stops it from
         // reading any more packets, and we often want to continue
         // despite an error. Instead, push errors to the 'errors'
@@ -198,6 +205,6 @@ export class WebSerialTransport implements DeviceTransport {
 
     connect();
 
-    return {chunks, errors};
+    return { chunks, errors };
   }
 }

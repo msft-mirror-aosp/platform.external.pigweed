@@ -28,6 +28,7 @@ import("$dir_pw_third_party/mcuxpresso/mcuxpresso.gni")
 import("$dir_pw_toolchain/c_optimization.gni")
 import("$dir_pw_toolchain/generate_toolchain.gni")
 import("$dir_pw_toolchain/non_c_toolchain.gni")
+import("$dir_pw_trace/backend.gni")
 import("$dir_pw_unit_test/test.gni")
 
 # Main build file for upstream Pigweed.
@@ -305,19 +306,13 @@ group("docs") {
 # build.
 group("action_tests") {
   _default_tc = _default_toolchain_prefix + pw_DEFAULT_C_OPTIMIZATION_LEVEL
-  deps = [ "$dir_pw_unit_test:test_group_metadata_test.action($_default_tc)" ]
+  deps = [ ":pw_action_tests.run($_default_tc)" ]
 }
 
 # Tests larger than unit tests, typically run in a specific configuration.
 group("integration_tests") {
   _default_tc = _default_toolchain_prefix + pw_DEFAULT_C_OPTIMIZATION_LEVEL
-  deps = [
-    "$dir_pw_build/py/gn_tests:python_package_integration_tests",
-    "$dir_pw_cli/py:process_integration_test.action($_default_tc)",
-    "$dir_pw_rpc:cpp_client_server_integration_test($_default_tc)",
-    "$dir_pw_rpc/py:python_client_cpp_server_test.action($_default_tc)",
-    "$dir_pw_unit_test/py:rpc_service_test.action($_default_tc)",
-  ]
+  deps = [ ":pw_integration_tests.run($_default_tc)" ]
 }
 
 group("pip_constraint_update") {
@@ -471,20 +466,27 @@ group("pigweed_default") {
 
       # Add performance tests to the automatic build
       deps += [ ":pw_perf_tests" ]
+    }
 
-      # Add action tests to the automatic build
-      deps += [ ":action_tests" ]
+    # Add action tests to the automatic build
+    if (_is_host_toolchain) {
+      deps += [ ":pw_action_tests.run" ]
     }
 
     # Trace examples currently only support running on non-windows host
     if (_is_host_toolchain && host_os != "win") {
-      deps += [
-        "$dir_pw_trace:trace_example_basic",
-        "$dir_pw_trace_tokenized:trace_tokenized_example_basic",
-        "$dir_pw_trace_tokenized:trace_tokenized_example_filter",
-        "$dir_pw_trace_tokenized:trace_tokenized_example_rpc",
-        "$dir_pw_trace_tokenized:trace_tokenized_example_trigger",
-      ]
+      deps += [ "$dir_pw_trace:trace_example_basic" ]
+
+      if (get_label_info(pw_trace_BACKEND, "label_no_toolchain") ==
+          get_label_info(":pw_trace_tokenized", "label_no_toolchain")) {
+        deps += [
+          "$dir_pw_trace_tokenized:trace_tokenized_example_basic",
+          "$dir_pw_trace_tokenized:trace_tokenized_example_filter",
+          "$dir_pw_trace_tokenized:trace_tokenized_example_linux_group_by_tid",
+          "$dir_pw_trace_tokenized:trace_tokenized_example_rpc",
+          "$dir_pw_trace_tokenized:trace_tokenized_example_trigger",
+        ]
+      }
     }
   }
 }
@@ -550,14 +552,32 @@ if (current_toolchain != default_toolchain) {
   # Targets for all module unit test groups.
   pw_test_group("pw_module_tests") {
     group_deps = pw_module_tests
+    output_metadata = true
   }
 
-  group("pw_perf_tests") {
-    deps = [
+  pw_test_group("pw_action_tests") {
+    tests = [ "$dir_pw_unit_test:test_group_metadata_test" ]
+  }
+
+  pw_test_group("pw_integration_tests") {
+    tests = [
+      "$dir_pw_build/py/gn_tests:python_package_integration_tests",
+      "$dir_pw_cli/py:process_integration_test",
+      "$dir_pw_rpc:cpp_client_server_integration_test",
+      "$dir_pw_rpc/py:python_client_cpp_server_test",
+      "$dir_pw_unit_test/py:rpc_service_test",
+    ]
+
+    output_metadata = true
+  }
+
+  pw_test_group("pw_perf_tests") {
+    tests = [
       "$dir_pw_checksum:perf_tests",
       "$dir_pw_perf_test:perf_test_tests_test",
       "$dir_pw_protobuf:perf_tests",
     ]
+    output_metadata = true
   }
 
   # Modules that support C++14.
@@ -582,6 +602,7 @@ if (current_toolchain != default_toolchain) {
       "$dir_pw_containers:to_array_test",
       "$dir_pw_string:string_test",
     ]
+    output_metadata = true
   }
 
   pw_coverage_report("coverage_report") {

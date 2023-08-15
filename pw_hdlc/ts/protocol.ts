@@ -13,8 +13,7 @@
 // the License.
 
 /** Low-level HDLC protocol features. */
-import {Buffer} from 'buffer';
-import {crc32} from 'crc';
+import { crc32 } from './crc32';
 
 /** Special flag character for delimiting HDLC frames. */
 export const FLAG = 0x7e;
@@ -64,6 +63,7 @@ export function escape(byte: number): number {
 /** Encodes an HDLC address as a one-terminated LSB varint. */
 export function encodeAddress(address: number): Uint8Array {
   const byteList = [];
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     byteList.push((address & 0x7f) << 1);
     address >>= 7;

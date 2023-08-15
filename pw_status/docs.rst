@@ -443,6 +443,11 @@ codes.  For ease of use, :cpp:class:`pw::Status` implicitly converts to and from
 :c:enum:`pw_Status`.  However, the :c:enum:`pw_Status` enum should never be used
 in C++; instead use the :cpp:class:`pw::Status` class.
 
+Rust API
+========
+``pw_status``'s Rust API is documented in our
+`rustdoc API docs </rustdoc/pw_status>`_.
+
 --------------
 StatusWithSize
 --------------
@@ -506,7 +511,8 @@ the size from the ``StatusWithSize`` on ok.
     // following code executed if the PW_TRY_ASSIGN function above returns OK.
   }
 
+------
 Zephyr
-======
+------
 To enable ``pw_status`` for Zephyr add ``CONFIG_PIGWEED_STATUS=y`` to the
 project's configuration.

@@ -36,6 +36,18 @@ pw_cc_library(
 )
 
 pw_cc_library(
+    name = "responder",
+    hdrs = [
+        "public/pw_spi/responder.h",
+    ],
+    includes = ["public"],
+    deps = [
+        "//pw_bytes",
+        "//pw_status",
+    ],
+)
+
+pw_cc_library(
     name = "chip_selector",
     hdrs = [
         "public/pw_spi/chip_selector.h",
@@ -112,6 +124,9 @@ pw_cc_library(
     srcs = ["linux_spi.cc"],
     hdrs = ["public/pw_spi/linux_spi.h"],
     includes = ["public"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
     deps = [
         ":device",
         "//pw_bytes",

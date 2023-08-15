@@ -49,7 +49,11 @@ from pw_ide.settings import (
 from pw_ide.status_reporter import StatusReporter
 
 from pw_ide import vscode
-from pw_ide.vscode import VscSettingsManager, VscSettingsType
+from pw_ide.vscode import (
+    install_extension_from_vsix,
+    VscSettingsManager,
+    VscSettingsType,
+)
 
 _LOG = logging.getLogger(__package__)
 env = pigweed_environment()
@@ -118,6 +122,7 @@ def cmd_setup(
 def cmd_vscode(
     include: Optional[List[VscSettingsType]] = None,
     exclude: Optional[List[VscSettingsType]] = None,
+    should_install_extension: bool = False,
     reporter: StatusReporter = StatusReporter(),
     pw_ide_settings: PigweedIdeSettings = PigweedIdeSettings(),
 ) -> None:
@@ -241,6 +246,18 @@ def cmd_vscode(
             reporter.new(
                 f'{verb} Visual Studio Code active ' f'{settings_type.value}'
             )
+
+    if should_install_extension:
+        reporter.new("Installing Visual Studio Code extension")
+
+        try:
+            install_extension_from_vsix(reporter)
+        except FileNotFoundError:
+            reporter.err("Could not find Visual Studio Code")
+            sys.exit(1)
+        except subprocess.CalledProcessError:
+            reporter.err("Failed to install extension!")
+            sys.exit(1)
 
 
 def _process_compdbs(  # pylint: disable=too-many-locals
@@ -579,11 +596,10 @@ def cmd_cpp(  # pylint: disable=too-many-arguments, too-many-locals, too-many-br
     default = True
 
     state = CppIdeFeaturesState(pw_ide_settings)
-    should_update_ides = False
 
     if process:
         default = False
-        should_update_ides = _process_compdbs(reporter, pw_ide_settings)
+        _process_compdbs(reporter, pw_ide_settings)
 
         if state.current_target is None:
             use_default_target = True
@@ -641,7 +657,6 @@ def cmd_cpp(  # pylint: disable=too-many-arguments, too-many-locals, too-many-br
                 )
                 sys.exit(1)
 
-            should_update_ides = True
         except InvalidTargetException:
             reporter.err(
                 f'Invalid target toolchain! {target_to_set} not among the '
@@ -658,10 +673,6 @@ def cmd_cpp(  # pylint: disable=too-many-arguments, too-many-locals, too-many-br
             'Set C/C++ language server analysis target toolchain to: '
             f'{CppIdeFeaturesState(pw_ide_settings).current_target}'
         )
-
-    if should_update_ides:
-        if pw_ide_settings.editor_enabled('vscode'):
-            cmd_vscode()
 
     if clangd_command:
         default = False

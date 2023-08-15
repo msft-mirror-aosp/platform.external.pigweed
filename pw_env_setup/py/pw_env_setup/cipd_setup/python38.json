@@ -1,0 +1,29 @@
+{
+  "packages": [
+    {
+      "path": "infra/3pp/tools/cpython3/${platform}",
+      "platforms": [
+        "linux-amd64",
+        "linux-arm64",
+        "mac-amd64",
+        "mac-arm64",
+        "windows-amd64"
+      ],
+      "tags": [
+        "version:2@3.8.10.chromium.24"
+      ]
+    },
+    {
+      "path": "pigweed/third_party/python_packages/38/${platform}",
+      "platforms": [
+        "linux-amd64",
+        "mac-amd64",
+        "windows-amd64"
+      ],
+      "tags": [
+        "git_revision:797baaed66ab642510ca07e9478754a11000a5f5"
+      ],
+      "subdir": "pip_cache"
+    }
+  ]
+}

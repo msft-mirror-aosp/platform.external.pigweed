@@ -12,21 +12,38 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-export enum Severity {
-    DEBUG = 'DEBUG',
-    INFO = 'INFO',
-    WARNING = 'WARNING',
-    ERROR = 'ERROR',
-    CRITICAL = 'CRITICAL',
+export interface FieldData {
+  key: string;
+  value: string | boolean | number | object;
+}
+
+export interface LogColumnState {
+  hidden: boolean;
+  name: string;
+  width?: string;
 }
 
 export interface LogEntry {
-    severity?: Severity;
-    timestamp: Date;
-    fields: FieldData[];
+  severity?: Severity;
+  timestamp: Date;
+  fields: FieldData[];
 }
 
-export interface FieldData {
-    key: string;
-    value: string | boolean | number | object;
+export interface LogViewConfig {
+  columns: LogColumnState[];
+  search: string;
+  viewID: string;
+  viewTitle: string;
+}
+
+export enum Severity {
+  DEBUG = 'DEBUG',
+  INFO = 'INFO',
+  WARNING = 'WARNING',
+  ERROR = 'ERROR',
+  CRITICAL = 'CRITICAL',
+}
+
+export interface State {
+  logViewConfig: LogViewConfig[];
 }

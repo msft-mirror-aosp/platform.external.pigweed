@@ -26,6 +26,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -155,6 +156,30 @@ def clang_format_check(ctx: _Context) -> Dict[Path, str]:
 def clang_format_fix(ctx: _Context) -> Dict[Path, str]:
     """Fixes formatting for the provided files in place."""
     _clang_format('-i', *ctx.paths)
+    return {}
+
+
+def _typescript_format(*args: Union[Path, str], **kwargs) -> bytes:
+    return log_run(
+        ['npx', 'prettier@3.0.1', *args],
+        stdout=subprocess.PIPE,
+        check=True,
+        **kwargs,
+    ).stdout
+
+
+def typescript_format_check(ctx: _Context) -> Dict[Path, str]:
+    """Checks formatting; returns {path: diff} for files with bad formatting."""
+    return _check_files(
+        ctx.paths,
+        lambda path, _: _typescript_format(path),
+        ctx.dry_run,
+    )
+
+
+def typescript_format_fix(ctx: _Context) -> Dict[Path, str]:
+    """Fixes formatting for the provided files in place."""
+    _typescript_format('--write', *ctx.paths)
     return {}
 
 
@@ -495,7 +520,7 @@ CPP_SOURCE_EXTS = frozenset(
 )
 CPP_EXTS = CPP_HEADER_EXTS.union(CPP_SOURCE_EXTS)
 CPP_FILE_FILTER = FileFilter(
-    endswith=CPP_EXTS, exclude=(r'\.pb\.h$', r'\.pb\.c$')
+    endswith=CPP_EXTS, exclude=[r'\.pb\.h$', r'\.pb\.c$']
 )
 
 C_FORMAT = CodeFormat(
@@ -504,50 +529,57 @@ C_FORMAT = CodeFormat(
 
 PROTO_FORMAT: CodeFormat = CodeFormat(
     'Protocol buffer',
-    FileFilter(endswith=('.proto',)),
+    FileFilter(endswith=['.proto']),
     clang_format_check,
     clang_format_fix,
 )
 
 JAVA_FORMAT: CodeFormat = CodeFormat(
     'Java',
-    FileFilter(endswith=('.java',)),
+    FileFilter(endswith=['.java']),
     clang_format_check,
     clang_format_fix,
 )
 
 JAVASCRIPT_FORMAT: CodeFormat = CodeFormat(
     'JavaScript',
-    FileFilter(endswith=('.js',)),
-    clang_format_check,
-    clang_format_fix,
+    FileFilter(endswith=['.js']),
+    typescript_format_check,
+    typescript_format_fix,
+)
+
+TYPESCRIPT_FORMAT: CodeFormat = CodeFormat(
+    'TypeScript',
+    FileFilter(endswith=['.ts']),
+    typescript_format_check,
+    typescript_format_fix,
 )
 
 GO_FORMAT: CodeFormat = CodeFormat(
-    'Go', FileFilter(endswith=('.go',)), check_go_format, fix_go_format
+    'Go', FileFilter(endswith=['.go']), check_go_format, fix_go_format
 )
 
 PYTHON_FORMAT: CodeFormat = CodeFormat(
     'Python',
-    FileFilter(endswith=('.py',)),
+    FileFilter(endswith=['.py']),
     check_py_format,
     fix_py_format,
 )
 
 GN_FORMAT: CodeFormat = CodeFormat(
-    'GN', FileFilter(endswith=('.gn', '.gni')), check_gn_format, fix_gn_format
+    'GN', FileFilter(endswith=['.gn', '.gni']), check_gn_format, fix_gn_format
 )
 
 BAZEL_FORMAT: CodeFormat = CodeFormat(
     'Bazel',
-    FileFilter(endswith=('BUILD', '.bazel', '.bzl'), name=('WORKSPACE')),
+    FileFilter(endswith=['.bazel', '.bzl'], name=['^BUILD$', '^WORKSPACE$']),
     check_bazel_format,
     fix_bazel_format,
 )
 
 COPYBARA_FORMAT: CodeFormat = CodeFormat(
     'Copybara',
-    FileFilter(endswith=('.bara.sky',)),
+    FileFilter(endswith=['.bara.sky']),
     check_bazel_format,
     fix_bazel_format,
 )
@@ -555,65 +587,60 @@ COPYBARA_FORMAT: CodeFormat = CodeFormat(
 # TODO(b/234881054): Add real code formatting support for CMake
 CMAKE_FORMAT: CodeFormat = CodeFormat(
     'CMake',
-    FileFilter(endswith=('CMakeLists.txt', '.cmake')),
+    FileFilter(endswith=['.cmake'], name=['^CMakeLists.txt$']),
     check_trailing_space,
     fix_trailing_space,
 )
 
 RST_FORMAT: CodeFormat = CodeFormat(
     'reStructuredText',
-    FileFilter(endswith=('.rst',)),
+    FileFilter(endswith=['.rst']),
     check_trailing_space,
     fix_trailing_space,
 )
 
 MARKDOWN_FORMAT: CodeFormat = CodeFormat(
     'Markdown',
-    FileFilter(endswith=('.md',)),
+    FileFilter(endswith=['.md']),
     check_trailing_space,
     fix_trailing_space,
 )
 
 OWNERS_CODE_FORMAT = CodeFormat(
     'OWNERS',
-    filter=FileFilter(name=('OWNERS',)),
+    filter=FileFilter(name=['^OWNERS$']),
     check=check_owners_format,
     fix=fix_owners_format,
 )
 
-CODE_FORMATS: Tuple[CodeFormat, ...] = (
-    # keep-sorted: start
-    BAZEL_FORMAT,
-    CMAKE_FORMAT,
-    COPYBARA_FORMAT,
-    C_FORMAT,
-    GN_FORMAT,
-    GO_FORMAT,
-    JAVASCRIPT_FORMAT,
-    JAVA_FORMAT,
-    MARKDOWN_FORMAT,
-    OWNERS_CODE_FORMAT,
-    PROTO_FORMAT,
-    PYTHON_FORMAT,
-    RST_FORMAT,
-    # keep-sorted: end
+CODE_FORMATS: Tuple[CodeFormat, ...] = tuple(
+    filter(
+        None,
+        (
+            # keep-sorted: start
+            BAZEL_FORMAT,
+            CMAKE_FORMAT,
+            COPYBARA_FORMAT,
+            C_FORMAT,
+            GN_FORMAT,
+            GO_FORMAT,
+            JAVASCRIPT_FORMAT if shutil.which('npx') else None,
+            JAVA_FORMAT,
+            MARKDOWN_FORMAT,
+            OWNERS_CODE_FORMAT,
+            PROTO_FORMAT,
+            PYTHON_FORMAT,
+            RST_FORMAT,
+            TYPESCRIPT_FORMAT if shutil.which('npx') else None,
+            # keep-sorted: end
+        ),
+    )
 )
+
 
 # TODO(b/264578594) Remove these lines when these globals aren't referenced.
 CODE_FORMATS_WITH_BLACK: Tuple[CodeFormat, ...] = CODE_FORMATS
 CODE_FORMATS_WITH_YAPF: Tuple[CodeFormat, ...] = CODE_FORMATS
-
-
-def _filter_paths(
-    paths: Iterable[Path],
-    filters: Sequence[re.Pattern],
-) -> Tuple[Path, ...]:
-    root = Path(pw_cli.env.pigweed_environment().PW_PROJECT_ROOT)
-    relpaths = [x.relative_to(root) for x in paths]
-
-    for filt in filters:
-        relpaths = [x for x in relpaths if not filt.search(str(x))]
-    return tuple(root / x for x in relpaths)
 
 
 def presubmit_check(
@@ -692,9 +719,7 @@ class CodeFormatter:
         self.package_root = package_root or output_dir / 'packages'
         self._format_options = FormatOptions.load()
         raw_paths = files
-        self.paths: Tuple[Path, ...] = _filter_paths(
-            files, self._format_options.exclude
-        )
+        self.paths: Tuple[Path, ...] = self._format_options.filter_paths(files)
 
         filtered_paths = set(raw_paths) - set(self.paths)
         for path in sorted(filtered_paths):

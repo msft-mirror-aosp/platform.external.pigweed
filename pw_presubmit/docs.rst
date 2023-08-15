@@ -28,6 +28,8 @@ system. If it's not Bazel formatting passes without checking.)
 The ``pw_presubmit`` package includes presubmit checks that can be used with any
 project. These checks include:
 
+.. todo-check: disable
+
 * Check code format of several languages including C, C++, and Python
 * Initialize a Python environment
 * Run all Python tests
@@ -36,7 +38,15 @@ project. These checks include:
 * Ensure source files are included in the GN and Bazel builds
 * Build and run all tests with GN
 * Build and run all tests with Bazel
-* Ensure all header files contain ``#pragma once``
+* Ensure all header files contain ``#pragma once`` (or, that they have matching
+  ``#ifndef``/``#define`` lines)
+* Ensure lists are kept in alphabetical order
+* Forbid non-inclusive language
+* Check format of TODO lines
+* Apply various rules to ``.gitmodules`` or ``OWNERS`` files
+* Ensure all source files are in the build
+
+.. todo-check: enable
 
 -------------
 Compatibility
@@ -150,6 +160,9 @@ The ``luci`` member is of type ``LuciContext`` and has the following members:
 * ``cas_instance``: The CAS instance accessible from this build
 * ``pipeline``: Information about the build pipeline, if applicable.
 * ``triggers``: Information about triggering commits, if applicable.
+* ``is_try``: True if the bucket is a try bucket.
+* ``is_ci``: True if the bucket is a ci bucket.
+* ``is_dev``: True if the bucket is a dev bucket.
 
 The ``pipeline`` member, if present, is of type ``LuciPipeline`` and has the
 following members:
@@ -171,6 +184,9 @@ following members:
   patch for unsubmitted changes and the hash for submitted changes.
 * ``gerrit_name``: The name of the googlesource.com Gerrit host.
 * ``submitted``: Whether the change has been submitted or is still pending.
+* ``gerrit_host``: The scheme and hostname of the googlesource.com Gerrit host.
+* ``gerrit_url``: The full URL to this change on the Gerrit host.
+* ``gitiles_url``: The full URL to this commit in Gitiles.
 
 Additional members can be added by subclassing ``PresubmitContext`` and
 ``Presubmit``. Then override ``Presubmit._create_presubmit_context()`` to
@@ -341,6 +357,17 @@ function takes an optional argument of type ``pw_presubmit.gitmodules.Config``.
 There's a ``pragma_once`` check that confirms the first non-comment line of
 C/C++ headers is ``#pragma once``. This is enabled by adding
 ``pw_presubmit.cpp_checks.pragma_once`` to a presubmit program.
+
+#ifndef/#define
+^^^^^^^^^^^^^^^
+There's an ``ifndef_guard`` check that confirms the first two non-comment lines
+of C/C++ headers are ``#ifndef HEADER_H`` and ``#define HEADER_H``. This is
+enabled by adding ``pw_presubmit.cpp_checks.include_guard_check()`` to a
+presubmit program. ``include_guard_check()`` has options for specifying what the
+header guard should be based on the path.
+
+This check is not used in Pigweed itself but is available to projects using
+Pigweed.
 
 .. todo-check: disable
 

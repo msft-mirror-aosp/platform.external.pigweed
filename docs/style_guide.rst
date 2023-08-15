@@ -1472,6 +1472,133 @@ reference documentation in :ref:`module-pw_status`.
    The guidance in this section only applies to Doxygen comments in C++ header
    files.
 
+Customize the depth of a page's table of contents
+=================================================
+Put ``:tocdepth: X`` on the first line of the page, where ``X`` equals how many
+levels of section heading you want to show in the page's table of contents. See
+``//docs/changelog.rst`` for an example.
+
+Changelog
+=========
+
+This section explains how we update the changelog.
+
+#. On the Friday before Pigweed Live, use
+   `changelog <https://kaycebasques.github.io/changelog/>`_ to generate a first
+   draft of the changelog.
+
+#. Copy-paste the reStructuredText output from the changelog tool to the top
+   of ``//docs/changelog.rst``.
+
+#. Delete these lines from the previous update in ``changelog.rst``
+   (which is no longer the latest update):
+
+   * ``.. _docs-changelog-latest:``
+   * ``.. changelog_highlights_start``
+   * ``.. changelog_highlights_end``
+
+#. Polish up the auto-generated first draft into something more readable:
+
+   * Don't change the section headings. The text in each section heading
+     should map to one of the categories that we allow in our commit
+     messages, such as ``bazel``, ``docs``, ``pw_base64``, and so on.
+   * Add a 1-paragraph summary to each section.
+   * Focus on features, important bug fixes, and breaking changes. Delete
+     internal commits that Pigweed customers won't care about.
+
+#. Push your change up to Gerrit and kick off a dry run. After a few minutes
+   the docs will get staged.
+
+#. Copy the rendered content from the staging site into the Pigweed Live
+   Google Doc.
+
+#. Make sure to land the changelog updates the same week as Pigweed Live.
+
+There is no need to update ``//docs/index.rst``. The ``What's new in Pigweed``
+content on the homepage is pulled from the changelog (that's what the
+``docs-changelog-latest``, ``changelog_highlights_start``, and
+``changelog_highlights_end`` labels are for).
+
+Why "changelog" and not "release notes"?
+----------------------------------------
+Because Pigweed doesn't have releases.
+
+Why organize by module / category?
+----------------------------------
+Why is the changelog organized by category / module? Why not the usual
+3 top-level sections: features, fixes, breaking changes?
+
+* Because some Pigweed customers only use a few modules. Organizing by module
+  helps them filter out all the changes that aren't relevant to them faster.
+* If we keep the changelog section heading text fairly structured, we may
+  be able to present the changelog in other interesting ways. For example,
+  it should be possible to collect every ``pw_base64`` section in the changelog
+  and then provide a changelog for only ``pw_base64`` over in the ``pw_base64``
+  docs.
+* The changelog tool is easily able to organize by module / category due to
+  how we annotate our commits. We will not be able to publish changelog updates
+  every 2 weeks if there is too much manual work involved.
+
+Site nav scrolling
+==================
+The site nav was customized (`change #162410`_) to scroll on initial page load
+so that the current page is visible in the site nav. The scrolling logic is
+handled in ``//docs/_static/js/pigweed.js``.
+
+The site nav scrolling logic runs on a 1-second delay after the ``load`` event
+to protect against a race condition between our scrolling logic and Sphinx's
+scrolling logic. For example, if the user visits
+``https://pigweed.dev/pw_tokenizer/design.html#bit-tokenization``, the page
+should first scroll to the ``#bit-tokenization`` section and then the site
+nav can scroll to the current page.
+
+.. _change #162410: https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/162410
+
+Call-to-action buttons on sales pitch pages (docs.rst)
+======================================================
+Use the following directive to put call-to-action buttons on a ``docs.rst``
+page:
+
+.. code-block::
+
+   .. grid:: 2
+
+      .. grid-item-card:: :octicon:`zap` Get started & guides
+         :link: <REF>
+         :link-type: ref
+         :class-item: sales-pitch-cta-primary
+
+         Learn how to integrate <MODULE> into your project and implement
+         common use cases.
+
+      .. grid-item-card:: :octicon:`info` API reference
+         :link: <REF>
+         :link-type: ref
+         :class-item: sales-pitch-cta-secondary
+
+         Get detailed reference information about the <MODULE> API.
+
+   .. grid:: 2
+
+      .. grid-item-card:: :octicon:`info` CLI reference
+         :link: <REF>
+         :link-type: ref
+         :class-item: sales-pitch-cta-secondary
+
+         Get usage information about <MODULE> command line utilities.
+
+      .. grid-item-card:: :octicon:`table` Design
+         :link: <REF>
+         :link-type: ref
+         :class-item: sales-pitch-cta-secondary
+
+         Read up on how <MODULE> is designed.
+
+* Remove cards for content that does not exist. For example, if the module
+  doesn't have a CLI reference, remove the card for that doc.
+* Replace ``<REF>`` and ``<MODULE>``. Don't change anything else. We want
+  a consistent call-to-action experience across all the modules.
+
 .. _commit-style:
 
 --------------

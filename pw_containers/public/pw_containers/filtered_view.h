@@ -21,11 +21,25 @@
 
 namespace pw::containers {
 
-// FilteredView supports iterating over only elements that match a filter in a
-// container. FilteredView works with any container with an incrementable
-// iterator. The back() function currently requires a bidirectional iterator.
-//
-// FilteredView is similar to C++20's std::filter_view.
+/// `pw::containers::FilteredView` provides a view of a container with only
+/// elements that match the specified filter. This class is similar to C++20's
+/// [std::ranges::filter_view](
+/// https://en.cppreference.com/w/cpp/ranges/filter_view>).
+///
+/// `FilteredView` works with any container with an incrementable iterator. The
+/// `back()` function currently requires a bidirectional iterator.
+///
+/// To create a `FilteredView`, pass a container and a filter predicate, which
+/// may be any callable type including a function pointer, lambda, or
+/// `pw::Function`.
+///
+/// @code{cpp}
+///   std::array<int, 99> kNumbers = {3, 1, 4, 1, ...};
+///
+///   for (int n : FilteredView(kNumbers, [](int v) { return v % 2 == 0; })) {
+///     PW_LOG_INFO("This number is even: %d", n);
+///   }
+/// @endcode
 template <typename Container, typename Filter>
 class FilteredView {
  public:
@@ -97,8 +111,11 @@ class FilteredView {
 
   using const_iterator = iterator;
 
-  template <typename... FilterArgs>
-  constexpr FilteredView(const Container& container, Filter&& filter)
+  constexpr explicit FilteredView(const Container& container,
+                                  const Filter& filter)
+      : container_(container), filter_(filter) {}
+
+  constexpr explicit FilteredView(const Container& container, Filter&& filter)
       : container_(container), filter_(std::move(filter)) {}
 
   constexpr FilteredView(const FilteredView&) = delete;

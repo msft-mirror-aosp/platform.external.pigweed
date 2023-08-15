@@ -11,12 +11,14 @@
   docs/getting_started
   docs/concepts/index
   targets
-  module_guides
-  docs/release_notes/index
+  Modules <module_guides>
+  docs/module_structure
+  changelog
   Mailing List <https://groups.google.com/forum/#!forum/pigweed>
   Chat Room <https://discord.gg/M9NSeTA>
   docs/os/index
   docs/size_optimizations
+  Code Editor Support <docs/editors>
   FAQ <docs/faq>
   third_party_support
   Source Code <https://cs.pigweed.dev/pigweed>
@@ -43,6 +45,15 @@ STM32L452 or the Nordic nRF52832.
    production already. If you're interested in using Pigweed, please reach out
    in our `chat room <https://discord.gg/M9NSeTA>`_ or on the `mailing list
    <https://groups.google.com/forum/#!forum/pigweed>`_.
+
+---------------------
+What's new in Pigweed
+---------------------
+.. include:: changelog.rst
+   :start-after: .. changelog_highlights_start
+   :end-before: .. changelog_highlights_end
+
+See :ref:`docs-changelog-latest` in our changelog for details.
 
 ---------------
 Getting Started

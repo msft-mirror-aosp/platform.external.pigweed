@@ -21,6 +21,7 @@ import("$dir_pw_docgen/docs.gni")
 pw_doc_group("static_assets") {
   inputs = [
     "_static/css/pigweed.css",
+    "_static/js/pigweed.js",
     "_static/pw_logo.ico",
     "_static/pw_logo.svg",
   ]
@@ -48,6 +49,7 @@ pw_doc_group("core_docs") {
     "code_of_conduct.rst",
     "concepts/index.rst",
     "contributing.rst",
+    "editors.rst",
     "embedded_cpp_guide.rst",
     "faq.rst",
     "getting_started.rst",
@@ -57,13 +59,6 @@ pw_doc_group("core_docs") {
     "os/zephyr/kconfig.rst",
     "size_optimizations.rst",
     "style_guide.rst",
-  ]
-}
-
-pw_doc_group("release_notes") {
-  sources = [
-    "release_notes/2022_jan.rst",
-    "release_notes/index.rst",
   ]
 }
 
@@ -136,11 +131,14 @@ _doxygen_input_files = [
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/central.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/connection.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/peripheral.h",
+  "$dir_pw_containers/public/pw_containers/filtered_view.h",
   "$dir_pw_containers/public/pw_containers/inline_deque.h",
   "$dir_pw_containers/public/pw_containers/inline_queue.h",
   "$dir_pw_chrono/public/pw_chrono/system_clock.h",
   "$dir_pw_chrono/public/pw_chrono/system_timer.h",
   "$dir_pw_digital_io/public/pw_digital_io/digital_io.h",
+  "$dir_pw_function/public/pw_function/function.h",
+  "$dir_pw_function/public/pw_function/pointer.h",
   "$dir_pw_function/public/pw_function/scope_guard.h",
   "$dir_pw_hdlc/public/pw_hdlc/decoder.h",
   "$dir_pw_hdlc/public/pw_hdlc/encoder.h",
@@ -150,12 +148,11 @@ _doxygen_input_files = [
   "$dir_pw_log_tokenized/public/pw_log_tokenized/handler.h",
   "$dir_pw_log_tokenized/public/pw_log_tokenized/metadata.h",
   "$dir_pw_protobuf/public/pw_protobuf/find.h",
+  "$dir_pw_random/public/pw_random/random.h",
   "$dir_pw_rpc/public/pw_rpc/internal/config.h",
   "$dir_pw_rpc/public/pw_rpc/synchronous_call.h",
   "$dir_pw_string/public/pw_string/format.h",
   "$dir_pw_string/public/pw_string/string.h",
-  "$dir_pw_function/public/pw_function/function.h",
-  "$dir_pw_function/public/pw_function/pointer.h",
   "$dir_pw_status/public/pw_status/status.h",
   "$dir_pw_stream/public/pw_stream/stream.h",
   "$dir_pw_stream_uart_linux/public/pw_stream_uart_linux/stream.h",
@@ -211,6 +208,7 @@ pw_doc_gen("docs") {
     # contrast, the pw_doc_group above should not use the docs prefix.
     "automated_analysis.rst",
     "build_system.rst",
+    "changelog.rst",
     "index.rst",
     "module_guides.rst",
     "python_build.rst",
@@ -222,7 +220,6 @@ pw_doc_gen("docs") {
     ":core_docs",
     ":generate_doxygen",
     ":module_docs",
-    ":release_notes",
     ":static_assets",
     ":target_docs",
     ":templates",

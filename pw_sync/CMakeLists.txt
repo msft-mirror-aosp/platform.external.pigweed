@@ -67,6 +67,7 @@ pw_add_library(pw_sync.borrow INTERFACE
   PUBLIC_DEPS
     pw_assert
     pw_sync.lock_annotations
+    pw_sync.lock_traits
     pw_sync.virtual_basic_lockable
 )
 
@@ -234,6 +235,14 @@ pw_add_library(pw_sync.lock_testing STATIC
     pw_assert
 )
 
+pw_add_library(pw_sync.borrow_lockable_tests INTERFACE
+  HEADERS
+    pw_sync_private/borrow_lockable_tests.h
+  PUBLIC_DEPS
+    pw_sync.borrow
+    pw_sync.lock_traits
+)
+
 pw_add_test(pw_sync.lock_traits_test
   SOURCES
     lock_traits_test.cc
@@ -247,6 +256,7 @@ pw_add_test(pw_sync.borrow_test
     borrow_test.cc
   PRIVATE_DEPS
     pw_sync.borrow
+    pw_sync.borrow_lockable_tests
     pw_sync.lock_testing
   GROUPS
     modules
@@ -302,6 +312,7 @@ if(NOT "${pw_sync.mutex_BACKEND}" STREQUAL "")
     PRIVATE_DEPS
       pw_preprocessor
       pw_sync.mutex
+      pw_sync.borrow_lockable_tests
     GROUPS
       modules
       pw_sync
@@ -316,6 +327,7 @@ if(NOT "${pw_sync.timed_mutex_BACKEND}" STREQUAL "")
     PRIVATE_DEPS
       pw_preprocessor
       pw_sync.timed_mutex
+      pw_sync.borrow_lockable_tests
     GROUPS
       modules
       pw_sync
@@ -330,6 +342,7 @@ if(NOT "${pw_sync.interrupt_spin_lock_BACKEND}" STREQUAL "")
     PRIVATE_DEPS
       pw_preprocessor
       pw_sync.interrupt_spin_lock
+      pw_sync.borrow_lockable_tests
     GROUPS
       modules
       pw_sync

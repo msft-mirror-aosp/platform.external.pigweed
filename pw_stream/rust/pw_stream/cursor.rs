@@ -46,16 +46,23 @@ impl<T: AsRef<[u8]>> Cursor<T> {
         self.inner
     }
 
-    fn remaining(&self) -> usize {
+    /// Returns the number of remaining bytes in the Cursor.
+    pub fn remaining(&self) -> usize {
         self.len() - self.pos
+    }
+
+    /// Returns the total length of the Cursor.
+    pub fn len(&self) -> usize {
+        self.inner.as_ref().len()
+    }
+
+    /// Returns current IO position of the Cursor.
+    pub fn position(&self) -> usize {
+        self.pos
     }
 
     fn remaining_slice(&mut self) -> &[u8] {
         &self.inner.as_ref()[self.pos..]
-    }
-
-    fn len(&self) -> usize {
-        self.inner.as_ref().len()
     }
 }
 
@@ -147,13 +154,13 @@ macro_rules! cursor_read_type_impl {
           fn [<read_ $ty _ $endian>](&mut self) -> Result<$ty> {
             const NUM_BYTES: usize = $ty::BITS as usize / 8;
             if NUM_BYTES > self.remaining() {
-                return Err(Error::ResourceExhausted);
+                return Err(Error::OutOfRange);
             }
             let sub_slice = self
                 .inner
                 .as_ref()
                 .get(self.pos..self.pos + NUM_BYTES)
-                .ok_or_else(|| Error::Unknown)?;
+                .ok_or_else(|| Error::InvalidArgument)?;
             // Because we are code size conscious we want an infallible way to
             // turn `sub_slice` into a fixed sized array as opposed to using
             // something like `.try_into()?`.
@@ -187,14 +194,14 @@ macro_rules! cursor_write_type_impl {
           fn [<write_ $ty _ $endian>](&mut self, value: &$ty) -> Result<()> {
             const NUM_BYTES: usize = $ty::BITS as usize / 8;
             if NUM_BYTES > self.remaining() {
-                return Err(Error::ResourceExhausted);
+                return Err(Error::OutOfRange);
             }
             let value_bytes = $ty::[<to_ $endian _bytes>](*value);
             let sub_slice = self
                 .inner
                 .as_mut()
                 .get_mut(self.pos..self.pos + NUM_BYTES)
-                .ok_or_else(|| Error::Unknown)?;
+                .ok_or_else(|| Error::InvalidArgument)?;
 
             sub_slice.copy_from_slice(&value_bytes[..]);
 
@@ -266,12 +273,30 @@ mod tests {
     use crate::{test_utils::*, ReadInteger, ReadVarint, WriteInteger, WriteVarint};
 
     #[test]
+    fn cursor_len_returns_total_bytes() {
+        let cursor = Cursor {
+            inner: &[0u8; 64],
+            pos: 31,
+        };
+        assert_eq!(cursor.len(), 64);
+    }
+
+    #[test]
     fn cursor_remaining_returns_remaining_bytes() {
         let cursor = Cursor {
             inner: &[0u8; 64],
-            pos: 32,
+            pos: 31,
         };
-        assert_eq!(cursor.remaining(), 32);
+        assert_eq!(cursor.remaining(), 33);
+    }
+
+    #[test]
+    fn cursor_position_returns_current_position() {
+        let cursor = Cursor {
+            inner: &[0u8; 64],
+            pos: 31,
+        };
+        assert_eq!(cursor.position(), 31);
     }
 
     #[test]

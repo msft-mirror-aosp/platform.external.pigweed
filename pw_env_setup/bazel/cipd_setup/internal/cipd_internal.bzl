@@ -71,6 +71,11 @@ def get_client_cipd_version(rctx):
     return rctx.read(rctx.attr._cipd_version_file).strip()
 
 def _platform(rctx):
+    """Generates a normalized platform string from the host OS/architecture.
+
+    Args:
+        rctx: Repository context.
+    """
     return "{}-{}".format(platform_normalized(rctx), arch_normalized(rctx))
 
 def get_client_cipd_digest(rctx):
@@ -101,6 +106,11 @@ def get_client_cipd_digest(rctx):
     fail("Could not find CIPD digest that matches this platform.")
 
 def cipd_client_impl(rctx):
+    """Initializes the CIPD client repository.
+
+    Args:
+        rctx: Repository context.
+    """
     platform = _platform(rctx)
     path = "/client?platform={}&version={}".format(
         platform,
@@ -115,7 +125,12 @@ def cipd_client_impl(rctx):
     rctx.file("BUILD", "exports_files([\"cipd\"])")
 
 def cipd_repository_base(rctx):
-    cipd_path = rctx.path(rctx.attr._cipd_client).basename
+    """Populates the base contents of a CIPD repository.
+
+    Args:
+        rctx: Repository context.
+    """
+    cipd_path = rctx.path(rctx.attr._cipd_client)
     ensure_path = rctx.name + ".ensure"
     rctx.template(
         ensure_path,
@@ -125,19 +140,30 @@ def cipd_repository_base(rctx):
             "%{tag}": rctx.attr.tag,
         },
     )
-    rctx.execute([cipd_path, "ensure", "-root", ".", "-ensure-file", ensure_path])
+    result = rctx.execute([cipd_path, "ensure", "-root", ".", "-ensure-file", ensure_path])
+
+    if result.return_code != 0:
+        fail("Failed to fetch CIPD repsoitory `{}`:\n{}".format(rctx.name, result.stderr))
 
 def cipd_repository_impl(rctx):
+    """Generates an external repository from a CIPD package.
+
+    Args:
+        rctx: Repository context.
+    """
     cipd_repository_base(rctx)
-    rctx.file("BUILD", """
-exports_files(glob([\"**/*\"]))
+    if rctx.attr.build_file:
+        rctx.file("BUILD", rctx.read(rctx.attr.build_file))
+    else:
+        rctx.file("BUILD", """
+exports_files(glob(["**"]))
 
 filegroup(
     name = "all",
-    srcs = glob(["**/*"]),
+    srcs = glob(["**"]),
     visibility = ["//visibility:public"],
 )
-""")
+  """)
 
 def _cipd_path_to_repository_name(path, platform):
     """ Converts a cipd path to a repository name
@@ -176,8 +202,6 @@ def cipd_deps_impl(repository_ctx):
     """ Generates a CIPD dependencies file """
     pigweed_deps = json.decode(
         repository_ctx.read(repository_ctx.attr._pigweed_packages_json),
-    )["packages"] + json.decode(
-        repository_ctx.read(repository_ctx.attr._python_packages_json),
     )["packages"]
     repository_ctx.file("BUILD", "exports_files(glob([\"**/*\"]))\n")
 

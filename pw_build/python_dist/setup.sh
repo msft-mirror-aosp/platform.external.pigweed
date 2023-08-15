@@ -30,12 +30,12 @@ fi
 
 CONSTRAINTS_ARG=""
 if [ -f "${CONSTRAINTS_PATH}" ]; then
-    CONSTRAINTS_ARG="-c""${CONSTRAINTS_PATH}"
+    CONSTRAINTS_ARG="-c ""${CONSTRAINTS_PATH}"
 fi
 
 EXTRA_REQUIREMENT_ARG=""
 if [ -f "${EXTRA_REQUIREMENT_PATH}" ]; then
-    EXTRA_REQUIREMENT_ARG="-r""${EXTRA_REQUIREMENT_PATH}"
+    EXTRA_REQUIREMENT_ARG="-r ""${EXTRA_REQUIREMENT_PATH}"
 fi
 
 PY_MAJOR_VERSION=$(${PY_TO_TEST} -c "import sys; print(sys.version_info[0])")
@@ -56,6 +56,6 @@ fi
 # in the requirement.txt file.
 "${VENV}/bin/python" -m pip install \
   --find-links="${DIR}/python_wheels" \
-  -r requirements.txt ${EXTRA_REQUIREMENT_ARG} ${CONSTRAINTS_ARG}
+  -r ${DIR}/requirements.txt ${EXTRA_REQUIREMENT_ARG} ${CONSTRAINTS_ARG}
 
 exit 0

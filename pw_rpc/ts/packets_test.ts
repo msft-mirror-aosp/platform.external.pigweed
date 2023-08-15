@@ -17,7 +17,7 @@ import {
   PacketType,
   RpcPacket,
 } from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
-import {Status} from 'pigweedjs/pw_status';
+import { Status } from 'pigweedjs/pw_status';
 
 import * as packets from './packets';
 
@@ -31,7 +31,9 @@ function addTestData(packet: RpcPacket) {
 }
 
 describe('Packets', () => {
-  beforeEach(() => { });
+  beforeEach(() => {
+    // Do nothing.
+  });
 
   it('encodeRequest sets packet fields', () => {
     const goldenRequest = new RpcPacket();
@@ -95,7 +97,7 @@ describe('Packets', () => {
     addTestData(request);
 
     expect(request.toObject()).toEqual(
-      packets.decode(request.serializeBinary()).toObject()
+      packets.decode(request.serializeBinary()).toObject(),
     );
   });
 

@@ -4,26 +4,28 @@
 pw_spi
 ======
 Pigweed's SPI module provides a set of interfaces for communicating with SPI
-peripherals attached to a target.
+responders attached to a target. It also provides an interface for implementing
+SPI responders.
 
 --------
 Overview
 --------
 The ``pw_spi`` module provides a series of interfaces that facilitate the
-development of SPI peripheral drivers that are abstracted from the target's
-SPI hardware implementation.  The interface consists of three main classes:
+development of SPI responder drivers that are abstracted from the target's
+SPI hardware implementation.  The interface consists of these main classes:
 
 - ``pw::spi::Initiator`` - Interface for configuring a SPI bus, and using it
   to transmit and receive data.
 - ``pw::spi::ChipSelector`` - Interface for enabling/disabling a SPI
-  peripheral attached to the bus.
+  responder attached to the bus.
 - ``pw::spi::Device`` - primary HAL interface used to interact with a SPI
-  peripheral.
+  responder.
+- ``pw::spi::Responder`` - Interface for implementing a SPI responder.
 
 ``pw_spi`` relies on a target-specific implementations of
 ``pw::spi::Initiator`` and ``pw::spi::ChipSelector`` to be defined, and
 injected into ``pw::spi::Device`` objects which are used to communicate with a
-given peripheral attached to a target's SPI bus.
+given responder attached to a target's SPI bus.
 
 Example - Constructing a SPI Device:
 
@@ -54,7 +56,7 @@ that transactions cannot be interrupted or corrupted by other concurrent
 workloads making use of the same SPI bus.
 
 Once constructed, the ``device`` object can then be passed to functions used to
-perform SPI transfers with a target peripheral.
+perform SPI transfers with a target responder.
 
 Example - Performing a Transfer:
 
@@ -118,6 +120,7 @@ The SPI API consists of the following components:
   structs.
 - The ``pw::spi::ChipSelector`` interface.
 - The ``pw::spi::Device`` class.
+- The ``pw::spi::Responder`` interface.
 
 pw::spi::Initiator
 ------------------
@@ -142,14 +145,10 @@ method.
 
 .. Note:
 
-   Throughout ``pw_spi``, the terms "controller" and "peripheral" are used to
+   Throughout ``pw_spi``, the terms "initiator" and "responder" are used to
    describe the two roles SPI devices can implement.  These terms correspond
    to the  "master" and "slave" roles described in legacy documentation
    related to the SPI protocol.
-
-   ``pw_spi`` only supports SPI transfers where the target implements the
-   "controller" role, and does not support the target acting in the
-   "peripheral" role.
 
 .. inclusive-language: enable
 
@@ -180,7 +179,7 @@ method.
 pw::spi::ChipSelector
 ---------------------
 The ChipSelector class provides an abstract interface for controlling the
-chip-select signal associated with a specific SPI peripheral.
+chip-select signal associated with a specific SPI responder.
 
 This interface provides a ``SetActive()`` method, which activates/deactivates
 the device based on the value of the `active` parameter.  The associated
@@ -188,7 +187,7 @@ the device based on the value of the `active` parameter.  The associated
 ``SetActive(true)`` and ``SetActive(false)``, respectively.
 
 A concrete implementation of this interface class must be provided in order to
-use the SPI HAL to communicate with a peripheral.
+use the SPI HAL to communicate with a responder.
 
 .. Note::
 
@@ -251,7 +250,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status Read(Bytespan read_buffer)
 
-      Synchronously read data from the SPI peripheral until the provided
+      Synchronously read data from the SPI responder until the provided
       `read_buffer` is full.
       This call will configure the bus and activate/deactivate chip select
       for the transfer
@@ -264,7 +263,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status Write(ConstByteSpan write_buffer)
 
-      Synchronously write the contents of `write_buffer` to the SPI peripheral.
+      Synchronously write the contents of `write_buffer` to the SPI responder.
       This call will configure the bus and activate/deactivate chip select
       for the transfer
 
@@ -276,7 +275,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status WriteRead(ConstByteSpan write_buffer, ByteSpan read_buffer)
 
-      Perform a synchronous read/write transfer with the SPI peripheral. Data
+      Perform a synchronous read/write transfer with the SPI responder. Data
       from the `write_buffer` object is written to the bus, while the
       `read_buffer` is populated with incoming data on the bus.  In the event
       the read buffer is smaller than the write buffer (or zero-size), any
@@ -307,7 +306,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status Read(Bytespan read_buffer)
 
-      Synchronously read data from the SPI peripheral until the provided
+      Synchronously read data from the SPI responder until the provided
       `read_buffer` is full.
 
       Returns OkStatus() on success, and implementation-specific values on
@@ -315,7 +314,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status Write(ConstByteSpan write_buffer)
 
-      Synchronously write the contents of `write_buffer` to the SPI peripheral
+      Synchronously write the contents of `write_buffer` to the SPI responder
 
       Returns OkStatus() on success, and implementation-specific values on
       failure.
@@ -372,3 +371,23 @@ list. An example of this is shown below:
   // Alternatively this is also called from MockInitiator::~MockInitiator().
   EXPECT_EQ(spi_mock.Finalize(), OkStatus());
 
+pw::spi::Responder
+------------------
+The common interface for implementing a SPI responder. It provides a way to
+respond to SPI transactions coming from a SPI initiator in a non-target specific
+way. A concrete implementation of the ``Responder`` class should be provided for
+the target hardware. Applications can then use it to implement their specific
+protocols.
+
+.. code-block:: cpp
+
+   MyResponder responder;
+   responder.SetCompletionHandler([](ByteSpan rx_data, Status status) {
+     // Handle incoming data from initiator.
+     // ...
+     // Prepare data to send back to initiator during next SPI transaction.
+     responder.WriteReadAsync(tx_data, rx_data);
+   });
+
+   // Prepare data to send back to initiator during next SPI transaction.
+   responder.WriteReadAsync(tx_data, rx_data)
