@@ -21,7 +21,7 @@ from graphlib import CycleError, TopologicalSorter  # type: ignore
 from itertools import takewhile
 import os
 import sys
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Type
 from typing import cast
 
 from google.protobuf import descriptor_pb2
@@ -416,7 +416,7 @@ class MessageProperty(ProtoMember):
         return False
 
     @staticmethod
-    def repeated_field_container(type_name: str, max_size: int) -> str:
+    def repeated_field_container(type_name: str, max_size: str) -> str:
         """Returns the container type used for repeated fields.
 
         Defaults to ::pw::Vector<type, max_size>. String fields use
@@ -464,41 +464,35 @@ class MessageProperty(ProtoMember):
     def sub_table(self) -> str:  # pylint: disable=no-self-use
         return '{}'
 
-    def struct_member(self, from_root: bool = False) -> Tuple[str, str]:
-        """Returns the structure member."""
+    def struct_member_type(self, from_root: bool = False) -> str:
+        """Returns the structure member type."""
         if self.use_callback():
             return (
-                f'{PROTOBUF_NAMESPACE}::Callback'
-                '<StreamEncoder, StreamDecoder>',
-                self.name(),
+                f'{PROTOBUF_NAMESPACE}::Callback<StreamEncoder, StreamDecoder>'
             )
 
         # Optional fields are wrapped in std::optional
         if self.is_optional():
-            return (
-                'std::optional<{}>'.format(self.type_name(from_root)),
-                self.name(),
-            )
+            return 'std::optional<{}>'.format(self.type_name(from_root))
 
         # Non-repeated fields have a member of just the type name.
         max_size = self.max_size()
         if max_size == 0:
-            return (self.type_name(from_root), self.name())
+            return self.type_name(from_root)
 
         # Fixed size fields use std::array.
         if self.is_fixed_size():
-            return (
-                'std::array<{}, {}>'.format(
-                    self.type_name(from_root), max_size
-                ),
-                self.name(),
+            return 'std::array<{}, {}>'.format(
+                self.type_name(from_root), self.max_size_constant_name()
             )
 
         # Otherwise prefer pw::Vector for repeated fields.
-        return (
-            self.repeated_field_container(self.type_name(from_root), max_size),
-            self.name(),
+        return self.repeated_field_container(
+            self.type_name(from_root), self.max_size_constant_name()
         )
+
+    def max_size_constant_name(self) -> str:
+        return f'k{self._field.name()}MaxSize'
 
     def _varint_type_table_entry(self) -> str:
         if self.wire_type() == 'kVarint':
@@ -2021,7 +2015,7 @@ class BytesProperty(MessageProperty):
     def _size_length(self) -> Optional[str]:
         if self.use_callback():
             return None
-        return f'{self.max_size()}'
+        return self.max_size_constant_name()
 
 
 class StringLenWriteMethod(WriteMethod):
@@ -2142,7 +2136,7 @@ class StringProperty(MessageProperty):
         return True
 
     @staticmethod
-    def repeated_field_container(type_name: str, max_size: int) -> str:
+    def repeated_field_container(type_name: str, max_size: str) -> str:
         return f'::pw::InlineBasicString<{type_name}, {max_size}>'
 
     def _size_fn(self) -> str:
@@ -2154,7 +2148,7 @@ class StringProperty(MessageProperty):
     def _size_length(self) -> Optional[str]:
         if self.use_callback():
             return None
-        return f'{self.max_size()}'
+        return self.max_size_constant_name()
 
 
 class EnumWriteMethod(WriteMethod):
@@ -2560,25 +2554,48 @@ PROTO_FIELD_FIND_METHODS: Dict[int, List] = {
     ],
 }
 
-PROTO_FIELD_PROPERTIES: Dict[int, List] = {
-    descriptor_pb2.FieldDescriptorProto.TYPE_DOUBLE: [DoubleProperty],
-    descriptor_pb2.FieldDescriptorProto.TYPE_FLOAT: [FloatProperty],
-    descriptor_pb2.FieldDescriptorProto.TYPE_INT32: [Int32Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_SINT32: [Sint32Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_SFIXED32: [Sfixed32Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_INT64: [Int64Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_SINT64: [Sint64Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_SFIXED64: [Sfixed32Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_UINT32: [Uint32Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_FIXED32: [Fixed32Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_UINT64: [Uint64Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_FIXED64: [Fixed64Property],
-    descriptor_pb2.FieldDescriptorProto.TYPE_BOOL: [BoolProperty],
-    descriptor_pb2.FieldDescriptorProto.TYPE_BYTES: [BytesProperty],
-    descriptor_pb2.FieldDescriptorProto.TYPE_STRING: [StringProperty],
-    descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE: [SubMessageProperty],
-    descriptor_pb2.FieldDescriptorProto.TYPE_ENUM: [EnumProperty],
+PROTO_FIELD_PROPERTIES: Dict[int, Type[MessageProperty]] = {
+    descriptor_pb2.FieldDescriptorProto.TYPE_DOUBLE: DoubleProperty,
+    descriptor_pb2.FieldDescriptorProto.TYPE_FLOAT: FloatProperty,
+    descriptor_pb2.FieldDescriptorProto.TYPE_INT32: Int32Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_SINT32: Sint32Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_SFIXED32: Sfixed32Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_INT64: Int64Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_SINT64: Sint64Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_SFIXED64: Sfixed32Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_UINT32: Uint32Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_FIXED32: Fixed32Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_UINT64: Uint64Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_FIXED64: Fixed64Property,
+    descriptor_pb2.FieldDescriptorProto.TYPE_BOOL: BoolProperty,
+    descriptor_pb2.FieldDescriptorProto.TYPE_BYTES: BytesProperty,
+    descriptor_pb2.FieldDescriptorProto.TYPE_STRING: StringProperty,
+    descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE: SubMessageProperty,
+    descriptor_pb2.FieldDescriptorProto.TYPE_ENUM: EnumProperty,
 }
+
+
+def proto_message_field_props(
+    message: ProtoMessage,
+    root: ProtoNode,
+) -> Iterable[MessageProperty]:
+    """Yields a MessageProperty for each field in a ProtoMessage.
+
+    Only properties which should_appear() is True are returned.
+
+    Args:
+      message: The ProtoMessage whose fields are iterated.
+      root: The root ProtoNode of the tree.
+
+    Yields:
+      An appropriately-typed MessageProperty object for each field
+      in the message, to which the property refers.
+    """
+    for field in message.fields():
+        property_class = PROTO_FIELD_PROPERTIES[field.type()]
+        prop = property_class(field, message, root)
+        if prop.should_appear():
+            yield prop
 
 
 def proto_field_methods(class_type: ClassType, field_type: int) -> List:
@@ -2836,30 +2853,40 @@ def generate_to_string_for_enum(
 
 
 def forward_declare(
-    node: ProtoMessage,
+    message: ProtoMessage,
     root: ProtoNode,
     output: OutputFile,
     exclude_legacy_snake_case_field_name_enums: bool,
 ) -> None:
     """Generates code forward-declaring entities in a message's namespace."""
-    namespace = node.cpp_namespace(root=root)
+    namespace = message.cpp_namespace(root=root)
     output.write_line()
     output.write_line(f'namespace {namespace} {{')
 
     # Define an enum defining each of the message's fields and their numbers.
     output.write_line('enum class Fields : uint32_t {')
     with output.indent():
-        for field in node.fields():
+        for field in message.fields():
             output.write_line(f'{field.enum_name()} = {field.number()},')
 
         # Migration support from SNAKE_CASE to kConstantCase.
         if not exclude_legacy_snake_case_field_name_enums:
-            for field in node.fields():
+            for field in message.fields():
                 output.write_line(
                     f'{field.legacy_enum_name()} = {field.number()},'
                 )
 
     output.write_line('};')
+
+    # Define constants for fixed-size fields.
+    output.write_line()
+    for prop in proto_message_field_props(message, root):
+        max_size = prop.max_size()
+        if max_size:
+            output.write_line(
+                f'static constexpr size_t {prop.max_size_constant_name()} '
+                f'= {max_size};'
+            )
 
     # Declare the message's message struct.
     output.write_line()
@@ -2875,14 +2902,14 @@ def forward_declare(
     output.write_line('class StreamDecoder;')
 
     # Declare the message's enums.
-    for child in node.children():
+    for child in message.children():
         if child.type() == ProtoNode.Type.ENUM:
             output.write_line()
-            generate_code_for_enum(cast(ProtoEnum, child), node, output)
+            generate_code_for_enum(cast(ProtoEnum, child), message, output)
             output.write_line()
-            generate_function_for_enum(cast(ProtoEnum, child), node, output)
+            generate_function_for_enum(cast(ProtoEnum, child), message, output)
             output.write_line()
-            generate_to_string_for_enum(cast(ProtoEnum, child), node, output)
+            generate_to_string_for_enum(cast(ProtoEnum, child), message, output)
 
     output.write_line(f'}}  // namespace {namespace}')
 
@@ -2898,17 +2925,13 @@ def generate_struct_for_message(
     # Generate members for each of the message's fields.
     with output.indent():
         cmp: List[str] = []
-        for field in message.fields():
-            for property_class in PROTO_FIELD_PROPERTIES[field.type()]:
-                prop = property_class(field, message, root)
-                if not prop.should_appear():
-                    continue
+        for prop in proto_message_field_props(message, root):
+            type_name = prop.struct_member_type()
+            name = prop.name()
+            output.write_line(f'{type_name} {name};')
 
-                (type_name, name) = prop.struct_member()
-                output.write_line(f'{type_name} {name};')
-
-                if not prop.use_callback():
-                    cmp.append(f'{name} == other.{name}')
+            if not prop.use_callback():
+                cmp.append(f'{name} == other.{name}')
 
         # Equality operator
         output.write_line()
@@ -2937,12 +2960,7 @@ def generate_table_for_message(
     namespace = message.cpp_namespace(root=root)
     output.write_line(f'namespace {namespace} {{')
 
-    properties = []
-    for field in message.fields():
-        for property_class in PROTO_FIELD_PROPERTIES[field.type()]:
-            prop = property_class(field, message, root)
-            if prop.should_appear():
-                properties.append(prop)
+    properties = list(proto_message_field_props(message, root))
 
     output.write_line('PW_MODIFY_DIAGNOSTICS_PUSH();')
     output.write_line('PW_MODIFY_DIAGNOSTIC(ignored, "-Winvalid-offsetof");')
@@ -2989,7 +3007,7 @@ def generate_table_for_message(
         )
 
         member_list = ', '.join(
-            [f'message.{prop.struct_member()[1]}' for prop in properties]
+            [f'message.{prop.name()}' for prop in properties]
         )
 
         # Generate std::tuple for Message fields.
@@ -3025,15 +3043,10 @@ def generate_sizes_for_message(
 
     property_sizes: List[str] = []
     scratch_sizes: List[str] = []
-    for field in message.fields():
-        for property_class in PROTO_FIELD_PROPERTIES[field.type()]:
-            prop = property_class(field, message, root)
-            if not prop.should_appear():
-                continue
-
-            property_sizes.append(prop.max_encoded_size())
-            if prop.include_in_scratch_size():
-                scratch_sizes.append(prop.max_encoded_size())
+    for prop in proto_message_field_props(message, root):
+        property_sizes.append(prop.max_encoded_size())
+        if prop.include_in_scratch_size():
+            scratch_sizes.append(prop.max_encoded_size())
 
     output.write_line('inline constexpr size_t kMaxEncodedSizeBytes =')
     with output.indent():
@@ -3103,15 +3116,10 @@ def generate_is_trivially_comparable_specialization(
     message: ProtoMessage, root: ProtoNode, output: OutputFile
 ) -> None:
     is_trivially_comparable = True
-    for field in message.fields():
-        for property_class in PROTO_FIELD_PROPERTIES[field.type()]:
-            prop = property_class(field, message, root)
-            if not prop.should_appear():
-                continue
-
-            if prop.use_callback():
-                is_trivially_comparable = False
-                break
+    for prop in proto_message_field_props(message, root):
+        if prop.use_callback():
+            is_trivially_comparable = False
+            break
 
     qualified_message = f'{message.cpp_namespace()}::Message'
 

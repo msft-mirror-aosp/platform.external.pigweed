@@ -54,6 +54,7 @@ declare_args() {
   dir_pw_build_mcuxpresso = get_path_info("../pw_build_mcuxpresso", "abspath")
   dir_pw_bytes = get_path_info("../pw_bytes", "abspath")
   dir_pw_checksum = get_path_info("../pw_checksum", "abspath")
+  dir_pw_chre = get_path_info("../pw_chre", "abspath")
   dir_pw_chrono = get_path_info("../pw_chrono", "abspath")
   dir_pw_chrono_embos = get_path_info("../pw_chrono_embos", "abspath")
   dir_pw_chrono_freertos = get_path_info("../pw_chrono_freertos", "abspath")
@@ -145,6 +146,7 @@ declare_args() {
   dir_pw_sync_threadx = get_path_info("../pw_sync_threadx", "abspath")
   dir_pw_sync_zephyr = get_path_info("../pw_sync_zephyr", "abspath")
   dir_pw_sys_io = get_path_info("../pw_sys_io", "abspath")
+  dir_pw_sys_io_ambiq_sdk = get_path_info("../pw_sys_io_ambiq_sdk", "abspath")
   dir_pw_sys_io_arduino = get_path_info("../pw_sys_io_arduino", "abspath")
   dir_pw_sys_io_baremetal_lm3s6965evb =
       get_path_info("../pw_sys_io_baremetal_lm3s6965evb", "abspath")
@@ -216,6 +218,7 @@ declare_args() {
     dir_pw_build_mcuxpresso,
     dir_pw_bytes,
     dir_pw_checksum,
+    dir_pw_chre,
     dir_pw_chrono,
     dir_pw_chrono_embos,
     dir_pw_chrono_freertos,
@@ -300,6 +303,7 @@ declare_args() {
     dir_pw_sync_threadx,
     dir_pw_sync_zephyr,
     dir_pw_sys_io,
+    dir_pw_sys_io_ambiq_sdk,
     dir_pw_sys_io_arduino,
     dir_pw_sys_io_baremetal_lm3s6965evb,
     dir_pw_sys_io_baremetal_stm32f429,
@@ -363,6 +367,7 @@ declare_args() {
     "$dir_pw_build_mcuxpresso:tests",
     "$dir_pw_bytes:tests",
     "$dir_pw_checksum:tests",
+    "$dir_pw_chre:tests",
     "$dir_pw_chrono:tests",
     "$dir_pw_chrono_embos:tests",
     "$dir_pw_chrono_freertos:tests",
@@ -447,6 +452,7 @@ declare_args() {
     "$dir_pw_sync_threadx:tests",
     "$dir_pw_sync_zephyr:tests",
     "$dir_pw_sys_io:tests",
+    "$dir_pw_sys_io_ambiq_sdk:tests",
     "$dir_pw_sys_io_arduino:tests",
     "$dir_pw_sys_io_baremetal_lm3s6965evb:tests",
     "$dir_pw_sys_io_baremetal_stm32f429:tests",
@@ -510,6 +516,7 @@ declare_args() {
     "$dir_pw_build_mcuxpresso:docs",
     "$dir_pw_bytes:docs",
     "$dir_pw_checksum:docs",
+    "$dir_pw_chre:docs",
     "$dir_pw_chrono:docs",
     "$dir_pw_chrono_embos:docs",
     "$dir_pw_chrono_freertos:docs",
@@ -594,6 +601,7 @@ declare_args() {
     "$dir_pw_sync_threadx:docs",
     "$dir_pw_sync_zephyr:docs",
     "$dir_pw_sys_io:docs",
+    "$dir_pw_sys_io_ambiq_sdk:docs",
     "$dir_pw_sys_io_arduino:docs",
     "$dir_pw_sys_io_baremetal_lm3s6965evb:docs",
     "$dir_pw_sys_io_baremetal_stm32f429:docs",

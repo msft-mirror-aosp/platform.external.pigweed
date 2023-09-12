@@ -80,21 +80,60 @@ if (dir_pw_third_party_emboss != "") {
     visibility = [ ":*" ]
   }
 
-  emboss_cc_library("emboss_hci") {
+  emboss_cc_library("emboss_hci_common") {
     public_configs = [ ":emboss_include_path" ]
-    source = "public/pw_bluetooth/hci.emb"
+    source = "public/pw_bluetooth/hci_common.emb"
   }
 
-  emboss_cc_library("emboss_vendor") {
+  emboss_cc_library("emboss_hci_commands") {
     public_configs = [ ":emboss_include_path" ]
-    source = "public/pw_bluetooth/vendor.emb"
-    imports = [ "public/pw_bluetooth/hci.emb" ]
-    deps = [ ":emboss_hci" ]
+    source = "public/pw_bluetooth/hci_commands.emb"
+    imports = [ "public/pw_bluetooth/hci_common.emb" ]
+    deps = [ ":emboss_hci_common" ]
+  }
+
+  emboss_cc_library("emboss_hci_events") {
+    public_configs = [ ":emboss_include_path" ]
+    source = "public/pw_bluetooth/hci_events.emb"
+    imports = [ "public/pw_bluetooth/hci_common.emb" ]
+    deps = [ ":emboss_hci_common" ]
+  }
+
+  emboss_cc_library("emboss_hci_vendor") {
+    public_configs = [ ":emboss_include_path" ]
+    source = "public/pw_bluetooth/hci_vendor.emb"
+    imports = [ "public/pw_bluetooth/hci_common.emb" ]
+    deps = [ ":emboss_hci_common" ]
+  }
+
+  emboss_cc_library("emboss_hci_test") {
+    public_configs = [ ":emboss_include_path" ]
+    source = "public/pw_bluetooth/hci_test.emb"
+    imports = [ "public/pw_bluetooth/hci_common.emb" ]
+    deps = [ ":emboss_hci_common" ]
+  }
+
+  group("emboss_hci_group") {
+    public_configs = [ ":emboss_include_path" ]
+    public_deps = [
+      ":emboss_hci_commands",
+      ":emboss_hci_common",
+      ":emboss_hci_events",
+      ":emboss_hci_vendor",
+    ]
   }
 } else {
-  group("emboss_hci") {
+  group("emboss_hci_common") {
   }
-  group("emboss_vendor") {
+  group("emboss_hci_commands") {
+  }
+  group("emboss_hci_events") {
+  }
+  group("emboss_hci_vendor") {
+  }
+  group("emboss_hci_test") {
+  }
+  group("emboss_hci_group") {
   }
 }
 
@@ -131,11 +170,12 @@ pw_test("uuid_test") {
 
 pw_test("emboss_test") {
   enable_if = dir_pw_third_party_emboss != ""
-  configs = [ "$dir_pigweed/third_party/emboss:flags" ]
   sources = [ "emboss_test.cc" ]
   deps = [
-    ":emboss_hci",
-    ":emboss_vendor",
+    ":emboss_hci_commands",
+    ":emboss_hci_events",
+    ":emboss_hci_test",
+    ":emboss_hci_vendor",
   ]
 }
 
