@@ -17,7 +17,7 @@ pw_string
    *Pick three!* If you know how to use ``std::string``, just use
    :cpp:type:`pw::InlineString` in the same way:
 
-   .. code:: cpp
+   .. code-block:: cpp
 
       // Create a string from a C-style char array; storage is pre-allocated!
       pw::InlineString<16> my_string = "Literally";
@@ -33,7 +33,7 @@ pw_string
    ``std::ostringstream``, but with most of the efficiency and memory benefits
    of :cpp:type:`pw::InlineString`:
 
-   .. code:: cpp
+   .. code-block:: cpp
 
       // Create a pw::StringBuilder with a built-in buffer
       pw::StringBuffer<32> my_string_builder = "Is it really this easy?";
@@ -92,14 +92,14 @@ meets your needs.
 Getting Started
 ---------------
 
-.. tabs::
+.. tab-set::
 
-   .. group-tab:: GN
+   .. tab-item:: GN
 
       Add ``$dir_pw_string`` to the ``deps`` list in your ``pw_executable()``
       build target:
 
-      .. code::
+      .. code-block::
 
          pw_executable("...") {
            # ...
@@ -113,7 +113,7 @@ Getting Started
       See `//source/BUILD.gn <https://pigweed.googlesource.com/pigweed/sample_project/+/refs/heads/main/source/BUILD.gn>`_
       in the Pigweed Sample Project for an example.
 
-   .. group-tab:: Zephyr
+   .. tab-item:: Zephyr
 
       Add ``CONFIG_PIGWEED_STRING=y`` to the Zephyr project's configuration.
 

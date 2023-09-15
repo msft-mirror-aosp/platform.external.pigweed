@@ -17,7 +17,7 @@ from datetime import date
 import sphinx
 
 # The suffix of source filenames.
-source_suffix = ['.rst', '.md']
+source_suffix = ['.rst']
 
 # The master toctree document.  # inclusive-language: ignore
 master_doc = 'index'
@@ -49,24 +49,8 @@ extensions = [
     'sphinxarg.ext',  # Automatic documentation of Python argparse
     'sphinxcontrib.mermaid',
     'sphinx_design',
-    'myst_parser',
     'breathe',
     'sphinx_copybutton',  # Copy-to-clipboard button on code blocks
-    'sphinx_tabs.tabs',
-]
-
-myst_enable_extensions = [
-    # "amsmath",
-    "colon_fence",
-    # "deflist",
-    "dollarmath",
-    # "html_admonition",
-    # "html_image",
-    # "linkify",
-    # "replacements",
-    # "smartquotes",
-    # "substitution",
-    # "tasklist",
 ]
 
 # When a user clicks the copy-to-clipboard button the `$ ` prompt should not be
@@ -233,7 +217,8 @@ html_theme_options = {
 
 mermaid_init_js = '''
 mermaid.initialize({
-  startOnLoad: true,
+  // Mermaid is manually started in //docs/_static/js/pigweed.js.
+  startOnLoad: false,
   // sequenceDiagram Note text alignment
   noteAlign: "left",
   // Set mermaid theme to the current furo theme
@@ -297,6 +282,11 @@ cpp_paren_attributes = [
 
 # Disable Python type hints
 # autodoc_typehints = 'none'
+
+# Break class and function signature arguments into one arg per line if the
+# total length exceeds 130 characters. 130 seems about right for keeping one or
+# two parameters on a single line.
+maximum_signature_line_length = 130
 
 
 def do_not_skip_init(app, what, name, obj, would_skip, options):
