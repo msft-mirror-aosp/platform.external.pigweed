@@ -33,7 +33,7 @@ void pw_sync_Mutex_CallUnlock(pw_sync_Mutex* mutex);
 // TODO(b/235284163): Add real concurrency tests once we have pw::thread.
 
 TEST(Mutex, LockUnlock) {
-  Mutex mutex;
+  pw::sync::Mutex mutex;
   mutex.lock();
   // TODO(b/235284163): Ensure it fails to lock when already held.
   // EXPECT_FALSE(mutex.try_lock());
@@ -49,7 +49,7 @@ TEST(Mutex, LockUnlockStatic) {
 }
 
 TEST(Mutex, TryLockUnlock) {
-  Mutex mutex;
+  pw::sync::Mutex mutex;
   const bool locked = mutex.try_lock();
   EXPECT_TRUE(locked);
   if (locked) {
@@ -62,7 +62,7 @@ TEST(Mutex, TryLockUnlock) {
 PW_SYNC_ADD_BORROWABLE_LOCK_NAMED_TESTS(BorrowableMutex, Mutex);
 
 TEST(VirtualMutex, LockUnlock) {
-  VirtualMutex mutex;
+  pw::sync::VirtualMutex mutex;
   mutex.lock();
   // TODO(b/235284163): Ensure it fails to lock when already held.
   // EXPECT_FALSE(mutex.try_lock());
@@ -77,25 +77,16 @@ TEST(VirtualMutex, LockUnlockStatic) {
   static_virtual_mutex.unlock();
 }
 
-TEST(VirtualMutex, LockUnlockExternal) {
-  VirtualMutex virtual_mutex;
-  auto& mutex = virtual_mutex.mutex();
-  mutex.lock();
-  // TODO(b/235284163): Ensure it fails to lock when already held.
-  // EXPECT_FALSE(mutex.try_lock());
-  mutex.unlock();
-}
-
 PW_SYNC_ADD_BORROWABLE_LOCK_NAMED_TESTS(BorrowableVirtualMutex, VirtualMutex);
 
 TEST(Mutex, LockUnlockInC) {
-  Mutex mutex;
+  pw::sync::Mutex mutex;
   pw_sync_Mutex_CallLock(&mutex);
   pw_sync_Mutex_CallUnlock(&mutex);
 }
 
 TEST(Mutex, TryLockUnlockInC) {
-  Mutex mutex;
+  pw::sync::Mutex mutex;
   ASSERT_TRUE(pw_sync_Mutex_CallTryLock(&mutex));
   // TODO(b/235284163): Ensure it fails to lock when already held.
   // EXPECT_FALSE(pw_sync_Mutex_CallTryLock(&mutex));

@@ -20,10 +20,10 @@
         "mac-amd64",
         "windows-amd64"
       ],
-      "subdir": "pip_cache",
       "tags": [
-        "git_revision:b7a3673c074997f0011732393d10868213effa48"
-      ]
+        "git_revision:797baaed66ab642510ca07e9478754a11000a5f5"
+      ],
+      "subdir": "pip_cache"
     }
   ]
 }

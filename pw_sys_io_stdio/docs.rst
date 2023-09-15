@@ -8,6 +8,7 @@ stdio.
 
 Why not just use stdio directly?
 --------------------------------
+
 The nice thing about using ``pw_sys_io`` is that it's rather easy to get a
 board up and running with a target-specific backend. This means when drafting
 out a quick application you can write it against ``pw_sys_io`` and, with some
@@ -20,8 +21,8 @@ Setup
 =====
 This module requires relatively minimal setup:
 
-1. Write code against the ``pw_sys_io`` facade.
-2. Direct the ``pw_sys_io_BACKEND`` GN build arg to point to this backend.
+  1. Write code against the ``pw_sys_io`` facade.
+  2. Direct the ``pw_sys_io_BACKEND`` GN build arg to point to this backend.
 
 Module usage
 ============
@@ -30,4 +31,4 @@ to an application built directly against stdio.
 
 Dependencies
 ============
-- :ref:`module-pw_sys_io`
+  * ``pw_sys_io`` facade

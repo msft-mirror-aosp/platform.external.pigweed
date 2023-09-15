@@ -219,18 +219,16 @@ use the ``pw_perf_test`` template to register your code.
 
 .. code-block::
 
-   import("$dir_pw_perf_test/perf_test.gni")
+ import("$dir_pw_perf_test/perf_test.gni")
 
-   pw_perf_test("foo_perf_test") {
-     sources = [ "foo_perf_test.cc" ]
-   }
+ pw_perf_test("foo_perf_test") {
+   sources = [ "foo_perf_test.cc" ]
+ }
 
 .. note::
    If you use ``pw_watch``, the template is configured to build automatically
    with ``pw_watch``. However you will still need to add your test group to the
    pw_perf_tests group in the top level BUILD.gn.
-
-.. _module-pw_perf_test-pw_perf_test:
 
 pw_perf_test template
 ---------------------
@@ -249,14 +247,14 @@ pw_perf_test template
 
 **Example**
 
-.. code-block::
+.. code::
 
-   import("$dir_pw_perf_test/perf_test.gni")
+ import("$dir_pw_perf_test/perf_test.gni")
 
-   pw_perf_test("large_test") {
-     sources = [ "large_test.cc" ]
-     enable_if = device_has_1m_flash
-   }
+ pw_perf_test("large_test") {
+   sources = [ "large_test.cc" ]
+   enable_if = device_has_1m_flash
+ }
 
 Grouping
 --------
@@ -265,24 +263,24 @@ For grouping tests, no special template is required. Simply create a basic GN
 
 **Example**
 
-.. code-block::
+.. code::
 
-   import("$dir_pw_perf_test/perf_test.gni")
+  import("$dir_pw_perf_test/perf_test.gni")
 
-   pw_perf_test("foo_test") {
-     sources = [ "foo.cc" ]
-   }
+  pw_perf_test("foo_test") {
+    sources = [ "foo.cc" ]
+  }
 
-   pw_perf_test("bar_test") {
-     sources = [ "bar.cc" ]
-   }
+  pw_perf_test("bar_test") {
+    sources = [ "bar.cc" ]
+  }
 
-   group("my_perf_tests_collection") {
-     deps = [
-       ":foo_test",
-       ":bar_test",
-     ]
-   }
+  group("my_perf_tests_collection") {
+    deps = [
+      ":foo_test",
+      ":bar_test",
+    ]
+  }
 
 Running
 -------
@@ -308,17 +306,17 @@ template from ``//pw_build:pigweed.bzl``.
 
 **Example**
 
-.. code-block::
+.. code::
 
-   load(
-     "//pw_build:pigweed.bzl",
-     "pw_cc_test",
-   )
+  load(
+    "//pw_build:pigweed.bzl",
+    "pw_cc_test",
+  )
 
-   pw_cc_perf_test(
-     name = "foo_test",
-     srcs = ["foo_perf_test.cc"],
-   )
+  pw_cc_perf_test(
+    name = "foo_test",
+    srcs = ["foo_perf_test.cc"],
+  )
 
 Running
 -------

@@ -101,10 +101,12 @@ def _pw_macos_sysroot_impl(ctx):
         ToolchainFeatureInfo
     """
     sdk_path = ctx.attr.sdk[XcodeSdkInfo].sdk_path
+    flags = ["--sysroot=" + sdk_path]
     return build_toolchain_feature_info(
         ctx = ctx,
-        cxx_builtin_include_directories = ["%sysroot%/usr/include"],
-        builtin_sysroot = sdk_path,
+        copts = flags,
+        linkopts = flags,
+        cxx_builtin_include_directories = [sdk_path],
     )
 
 pw_macos_sysroot = rule(

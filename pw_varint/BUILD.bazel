@@ -26,7 +26,6 @@ pw_cc_library(
     name = "pw_varint",
     srcs = [
         "varint.cc",
-        "varint_c.c",
     ],
     hdrs = [
         "public/pw_varint/varint.h",
@@ -36,7 +35,6 @@ pw_cc_library(
         "//pw_polyfill",
         "//pw_preprocessor",
         "//pw_span",
-        "//third_party/fuchsia:stdcompat",
     ],
 )
 

@@ -77,14 +77,14 @@ groups, causing them to be built with it.
 
 **Example**
 
-.. code-block::
+.. code::
 
-   pw_doc_group("my_doc_group") {
-     sources = [ "docs.rst" ]
-     inputs = [ "face-with-tears-of-joy-emoji.svg" ]
-     group_deps = [ ":sub_doc_group" ]
-     report_deps = [ ":my_size_report" ]
-   }
+  pw_doc_group("my_doc_group") {
+    sources = [ "docs.rst" ]
+    inputs = [ "face-with-tears-of-joy-emoji.svg" ]
+    group_deps = [ ":sub_doc_group" ]
+    report_deps = [ ":my_size_report" ]
+  }
 
 pw_doc_gen
 __________
@@ -109,16 +109,16 @@ to tie everything together.
 
 **Example**
 
-.. code-block::
+.. code::
 
-   pw_doc_gen("my_docs") {
-     conf = "//my_docs/conf.py"
-     index = "//my_docs/index.rst"
-     output_directory = target_gen_dir
-     deps = [
-       "//my_module:my_doc_group",
-     ]
-   }
+  pw_doc_gen("my_docs") {
+    conf = "//my_docs/conf.py"
+    index = "//my_docs/index.rst"
+    output_directory = target_gen_dir
+    deps = [
+      "//my_module:my_doc_group",
+    ]
+  }
 
 Generating Documentation
 ------------------------
@@ -129,18 +129,18 @@ using a subset of Pigweed's core documentation.
 
 Consider the following target in ``$dir_pigweed/docs/BUILD.gn``:
 
-.. code-block::
+.. code::
 
-   pw_doc_gen("docs") {
-     conf = "conf.py"
-     index = "index.rst"
-     output_directory = target_gen_dir
-     deps = [
-       "$dir_pw_bloat:docs",
-       "$dir_pw_docgen:docs",
-       "$dir_pw_preprocessor:docs",
-     ]
-   }
+  pw_doc_gen("docs") {
+    conf = "conf.py"
+    index = "index.rst"
+    output_directory = target_gen_dir
+    deps = [
+      "$dir_pw_bloat:docs",
+      "$dir_pw_docgen:docs",
+      "$dir_pw_preprocessor:docs",
+    ]
+  }
 
 A documentation tree is created under the output directory. Each of the sources
 and inputs in the target's dependency graph is copied under this tree in the
@@ -148,19 +148,19 @@ same directory structure as they appear under the root GN build directory
 (``$dir_pigweed`` in this case). The ``conf.py`` and ``index.rst`` provided
 directly to the ``pw_doc_gen`` template are copied in at the root of the tree.
 
-.. code-block::
+.. code::
 
-   out/gen/docs/pw_docgen_tree/
-   ├── conf.py
-   ├── index.rst
-   ├── pw_bloat
-   │   ├── bloat.rst
-   │   └── examples
-   │       └── simple_bloat.rst
-   ├── pw_docgen
-   │   └── docgen.rst
-   └── pw_preprocessor
-       └── docs.rst
+  out/gen/docs/pw_docgen_tree/
+  ├── conf.py
+  ├── index.rst
+  ├── pw_bloat
+  │   ├── bloat.rst
+  │   └── examples
+  │       └── simple_bloat.rst
+  ├── pw_docgen
+  │   └── docgen.rst
+  └── pw_preprocessor
+      └── docs.rst
 
 This is the documentation tree which gets passed to Sphinx to build HTML output.
 Imports within documentation files must be relative to this structure. In
@@ -230,20 +230,20 @@ To step through your Pigweed extension code with
 
 #. Set a breakpoint in your extension code:
 
-   .. code-block::
+   .. code::
 
       breakpoint()
 
 #. Build ``python.install`` to install the code change into the bootstrap venv
    (``environment/pigweed-venv/lib/python3.8/site-packages/pw_docgen``):
 
-   .. code-block::
+   .. code::
 
       ninja -C out python.install
 
 #. Manually invoke Sphinx to build the docs and trigger your breakpoint:
 
-   .. code-block::
+   .. code::
 
       cd out
       sphinx-build -W -b html -d docs/gen/docs/help docs/gen/docs/pw_docgen_tree docs/gen/docs/html -v -v -v

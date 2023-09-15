@@ -25,11 +25,11 @@ import {
 import { WebSerialTransport } from '../transport/web_serial_transport';
 import { ProtoCollection } from 'pigweedjs/pw_protobuf_compiler';
 
-function protoFieldToMethodName(fieldName: string) {
-  return fieldName.split('_').map(titleCase).join('');
+function protoFieldToMethodName(string) {
+  return string.split('_').map(titleCase).join('');
 }
-function titleCase(title: string) {
-  return title.charAt(0).toUpperCase() + title.slice(1);
+function titleCase(string) {
+  return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
 export class Device {
@@ -76,26 +76,26 @@ export class Device {
     });
   }
 
-  getMethodArguments(fullPath: string) {
+  getMethodArguments(fullPath) {
     return this.nameToMethodArgumentsMap[fullPath];
   }
 
   private setupRpcs() {
     const rpcMap = {};
-    const channel = this.client.channel()!;
+    const channel = this.client.channel();
     const servicesKeys = Array.from(channel.services.keys());
     servicesKeys.forEach((serviceKey) => {
       setPathOnObject(
         rpcMap,
         serviceKey,
-        this.mapServiceMethods(channel.services.get(serviceKey)!),
+        this.mapServiceMethods(channel.services.get(serviceKey)),
       );
     });
     this.rpcs = rpcMap;
   }
 
   private mapServiceMethods(service: ServiceClient) {
-    const methodMap: { [index: string]: any } = {};
+    const methodMap = {};
     const methodKeys = Array.from(service.methodsByName.keys());
     methodKeys
       .filter(
@@ -106,7 +106,7 @@ export class Device {
       )
       .forEach((key) => {
         const fn = this.createMethodWrapper(
-          service.methodsByName.get(key)!,
+          service.methodsByName.get(key),
           key,
           `${service.name}.${key}`,
         );
@@ -133,7 +133,6 @@ export class Device {
         fullMethodPath,
       );
     }
-    throw new Error(`Unknown method: ${realMethod}`);
   }
 
   private createUnaryMethodWrapper(
@@ -145,8 +144,8 @@ export class Device {
       .getInputType()
       .replace(/^\./, '');
     const requestProtoDescriptor =
-      this.protoCollection.getDescriptorProto(requestType)!;
-    const requestFields = requestProtoDescriptor.getFieldList()!;
+      this.protoCollection.getDescriptorProto(requestType);
+    const requestFields = requestProtoDescriptor.getFieldList();
     const functionArguments = requestFields
       .map((field) => field.getName())
       .concat('return this(arguments);');
@@ -158,7 +157,7 @@ export class Device {
 
     // We create a new JS function dynamically here that takes
     // proto message fields as arguments and calls the actual RPC method.
-    const fn = new Function(...functionArguments).bind((args: any[]) => {
+    const fn = new Function(...functionArguments).bind((args) => {
       const request = new realMethod.method.requestType();
       requestFields.forEach((field, index) => {
         request[`set${titleCase(field.getName())}`](args[index]);
@@ -177,7 +176,7 @@ export class Device {
       .getInputType()
       .replace(/^\./, '');
     const requestProtoDescriptor =
-      this.protoCollection.getDescriptorProto(requestType)!;
+      this.protoCollection.getDescriptorProto(requestType);
     const requestFields = requestProtoDescriptor.getFieldList();
     const functionArguments = requestFields
       .map((field) => field.getName())
@@ -190,19 +189,17 @@ export class Device {
 
     // We create a new JS function dynamically here that takes
     // proto message fields as arguments and calls the actual RPC method.
-    const fn = new Function(...functionArguments).bind((args: any[]) => {
+    const fn = new Function(...functionArguments).bind((args) => {
       const request = new realMethod.method.requestType();
       requestFields.forEach((field, index) => {
         request[`set${protoFieldToMethodName(field.getName())}`](args[index]);
       });
       const callbacks = Array.from(args).slice(requestFields.length);
+      // @ts-ignore
       return realMethod.invoke(
         request,
-        // @ts-ignore
         callbacks[0],
-        // @ts-ignore
         callbacks[1],
-        // @ts-ignore
         callbacks[2],
       );
     });

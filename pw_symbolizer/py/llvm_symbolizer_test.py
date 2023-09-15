@@ -14,7 +14,6 @@
 """Tests for pw_symbolizer's llvm-symbolizer based symbolization."""
 
 import os
-import shutil
 import subprocess
 import tempfile
 import unittest
@@ -43,7 +42,7 @@ class TestSymbolizer(unittest.TestCase):
                 self.assertEqual(result.file, _CPP_TEST_FILE_NAME)
                 self.assertEqual(result.line, expected_symbol['Line'])
 
-    def _parameterized_test_symbolization(self, **llvm_symbolizer_kwargs):
+    def test_symbolization(self):
         """Tests that the symbolizer can symbolize addresses properly."""
         self.assertTrue('PW_PIGWEED_CIPD_INSTALL_DIR' in os.environ)
         sysroot = Path(os.environ['PW_PIGWEED_CIPD_INSTALL_DIR']).joinpath(
@@ -86,39 +85,15 @@ class TestSymbolizer(unittest.TestCase):
                 for line in process.stdout.decode().splitlines()
             ]
 
-            with self.subTest("non-legacy"):
-                symbolizer = pw_symbolizer.LlvmSymbolizer(
-                    exe_file, **llvm_symbolizer_kwargs
-                )
-                self._test_symbolization_results(expected_symbols, symbolizer)
-                symbolizer.close()
+            symbolizer = pw_symbolizer.LlvmSymbolizer(exe_file)
+            self._test_symbolization_results(expected_symbols, symbolizer)
 
-            with self.subTest("backwards-compability"):
-                # Test backwards compatibility with older versions of
-                # llvm-symbolizer.
-                symbolizer = pw_symbolizer.LlvmSymbolizer(
-                    exe_file, force_legacy=True, **llvm_symbolizer_kwargs
-                )
-                self._test_symbolization_results(expected_symbols, symbolizer)
-                symbolizer.close()
-
-    def test_symbolization_default_binary(self):
-        self._parameterized_test_symbolization()
-
-    def test_symbolization_specified_binary(self):
-        location = Path(
-            subprocess.run(
-                ['which', 'llvm-symbolizer'], check=True, stdout=subprocess.PIPE
+            # Test backwards compatibility with older versions of
+            # llvm-symbolizer.
+            symbolizer = pw_symbolizer.LlvmSymbolizer(
+                exe_file, force_legacy=True
             )
-            .stdout.decode()
-            .strip()
-        )
-        with tempfile.TemporaryDirectory() as copy_dir:
-            copy_location = Path(copy_dir) / "copy-llvm-symbolizer"
-            shutil.copy(location, copy_location)
-            self._parameterized_test_symbolization(
-                llvm_symbolizer_binary=copy_location
-            )
+            self._test_symbolization_results(expected_symbols, symbolizer)
 
 
 if __name__ == '__main__':

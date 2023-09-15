@@ -23,10 +23,8 @@ import '@material/web/checkbox/checkbox.js';
 import '@material/web/field/outlined-field.js';
 import '@material/web/textfield/outlined-text-field.js';
 import '@material/web/textfield/filled-text-field.js';
+import '@material/web/iconbutton/standard-icon-button.js';
 import '@material/web/icon/icon.js';
-import '@material/web/iconbutton/icon-button.js';
-import '@material/web/menu/menu.js';
-import '@material/web/menu/menu-item.js';
 
 export function createLogViewer(
   logSource: LogSource,
@@ -36,19 +34,12 @@ export function createLogViewer(
   const logViewer = new RootComponent(state);
   const logs: LogEntry[] = [];
   root.appendChild(logViewer);
-  let lastUpdateTimeoutId: NodeJS.Timeout;
 
   // Define an event listener for the 'logEntry' event
   const logEntryListener = (logEntry: LogEntry) => {
     logs.push(logEntry);
     logViewer.logs = logs;
-    if (lastUpdateTimeoutId) {
-      clearTimeout(lastUpdateTimeoutId);
-    }
-    // Call requestUpdate at most once every 100 milliseconds.
-    lastUpdateTimeoutId = setTimeout(() => {
-      logViewer.requestUpdate('logs', []);
-    }, 100);
+    logViewer.requestUpdate('logs', []);
   };
 
   // Add the event listener to the LogSource instance

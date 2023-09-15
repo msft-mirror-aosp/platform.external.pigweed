@@ -74,8 +74,6 @@ class Decoder {
 
   Decoder(const Decoder&) = delete;
   Decoder& operator=(const Decoder&) = delete;
-  Decoder(Decoder&&) = default;
-  Decoder& operator=(Decoder&&) = default;
 
   /// @brief Parses a single byte of an HDLC stream.
   ///
@@ -143,7 +141,7 @@ class Decoder {
 
   bool VerifyFrameCheckSequence() const;
 
-  ByteSpan buffer_;
+  const ByteSpan buffer_;
 
   // Ring buffer of the last four bytes read into the current frame, to allow
   // calculating the frame's CRC incrementally. As data is evicted from this

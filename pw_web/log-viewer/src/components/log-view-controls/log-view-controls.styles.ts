@@ -25,7 +25,6 @@ export const styles = css`
     height: 3rem;
     justify-content: space-between;
     padding: 0 1rem;
-    --md-list-item-leading-icon-size: 1.5rem;
   }
 
   :host > * {
@@ -67,25 +66,16 @@ export const styles = css`
     width: 100%;
   }
 
-  .input-facade {
-    align-items: center;
+  input {
     background-color: var(--sys-log-viewer-color-controls-input-bg);
-    border: 1px solid var(--sys-log-viewer-color-controls-input-outline);
+    border: none;
     border-radius: 1.5rem;
-    cursor: text;
-    display: inline-flex;
     font-family: 'Google Sans';
-    font-size: 14px;
-    height: 1rem;
-    line-height: 1;
-    max-width: 100%;
-    min-width: 20rem;
-    padding: 0.5rem 1rem;
-    width: fit-content;
-  }
-
-  input[type='text'] {
-    display: none;
+    height: 1.75rem;
+    max-width: 20rem;
+    padding: 0 1rem;
+    width: 100%;
+    border: 1px solid var(--sys-log-viewer-color-controls-input-outline);
   }
 
   input::placeholder {

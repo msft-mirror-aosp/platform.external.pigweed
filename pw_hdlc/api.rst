@@ -17,9 +17,9 @@ Encoder
 The Encoder API provides a single function that encodes data as an HDLC
 unnumbered information frame.
 
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: C++
+   .. group-tab:: C++
 
       .. doxygenfunction:: pw::hdlc::WriteUIFrame(uint64_t address, ConstByteSpan data, stream::Writer &writer)
 
@@ -44,7 +44,7 @@ unnumbered information frame.
            }
          }
 
-   .. tab-item:: Python
+   .. group-tab:: Python
 
       .. automodule:: pw_hdlc.encode
          :members:
@@ -65,7 +65,7 @@ unnumbered information frame.
          address = 123
          ser.write(encode.ui_frame(address, b'your data here!'))
 
-   .. tab-item:: TypeScript
+   .. group-tab:: TypeScript
 
       The Encoder class provides a way to build complete, escaped HDLC UI frames.
 
@@ -82,9 +82,9 @@ Decoder
 =======
 
 
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: C++
+   .. group-tab:: C++
 
       .. doxygenclass:: pw::hdlc::Decoder
          :members:
@@ -114,7 +114,7 @@ Decoder
            }
          }
 
-   .. tab-item:: Python
+   .. group-tab:: Python
 
       .. autoclass:: pw_hdlc.decode.FrameDecoder
          :members:
@@ -149,7 +149,7 @@ Decoder
         :members:
         :noindex:
 
-   .. tab-item:: TypeScript
+   .. group-tab:: TypeScript
 
       The decoder class unescapes received bytes and adds them to a buffer. Complete,
       valid HDLC frames are yielded as they are received.
@@ -172,9 +172,9 @@ Decoder
 RPC
 ===
 
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: C++
+   .. group-tab:: C++
 
       .. autoclass:: pw_hdlc.rpc.HdlcRpcClient
          :members:

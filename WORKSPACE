@@ -16,8 +16,8 @@ workspace(
     name = "pigweed",
 )
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
 load(
     "//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
     "cipd_client_repository",
@@ -58,52 +58,10 @@ cipd_init()
 
 cipd_client_repository()
 
-# Set up legacy pw_transfer test binaries.
-# Required by: pigweed.
-# Used in modules: //pw_transfer.
 cipd_repository(
     name = "pw_transfer_test_binaries",
     path = "pigweed/pw_transfer_test_binaries/${os=linux}-${arch=amd64}",
     tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
-)
-
-# Fetch llvm toolchain.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "llvm_toolchain",
-    path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:ebd0b8a0472b865b7eb6e1a32af97ae31d829033",
-)
-
-# Fetch linux sysroot for host builds.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "linux_sysroot",
-    path = "fuchsia/third_party/sysroot/linux",
-    tag = "git_revision:d342388843734b6c5c50fb7e18cd3a76476b93aa",
-)
-
-register_toolchains(
-    "//pw_toolchain/host_clang:host_cc_toolchain_linux",
-    "//pw_toolchain/host_clang:host_cc_toolchain_macos",
-)
-
-# Fetch gcc-arm-none-eabi toolchain.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "gcc_arm_none_eabi_toolchain",
-    path = "fuchsia/third_party/armgcc/${os}-${arch}",
-    tag = "version:2@12.2.mpacbti-rel1.1",
-)
-
-register_toolchains(
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m0",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m3",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4+nofp",
 )
 
 # Set up Starlark library.
@@ -122,6 +80,12 @@ http_archive(
 load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 
 bazel_skylib_workspace()
+
+cipd_repository(
+    name = "llvm_toolchain",
+    path = "fuchsia/third_party/clang/${os}-${arch}",
+    tag = "git_revision:ebd0b8a0472b865b7eb6e1a32af97ae31d829033",
+)
 
 # Set up Python support.
 # Required by: rules_fuzzing, com_github_nanopb_nanopb.
@@ -172,7 +136,26 @@ http_archive(
     ],
 )
 
+# Set up host hermetic host toolchain.
+# Required by: All cc targets.
+# Used in modules: All cc targets.
+git_repository(
+    name = "rules_cc_toolchain",
+    commit = "9f209fda87414285bc66accd3612575b29760fba",
+    remote = "https://github.com/bazelembedded/rules_cc_toolchain",
+    shallow_since = "1675385535 -0800",
+)
+
+load("@rules_cc_toolchain//:rules_cc_toolchain_deps.bzl", "rules_cc_toolchain_deps")
+
+rules_cc_toolchain_deps()
+
+load("@rules_cc_toolchain//cc_toolchain:cc_toolchain.bzl", "register_cc_toolchains")
+
+register_cc_toolchains()
+
 # Sets up Bazels documentation generator.
+# Required by: rules_cc_toolchain.
 # Required by modules: All
 git_repository(
     name = "io_bazel_stardoc",
@@ -268,6 +251,9 @@ http_archive(
         # Fix rustdoc test w/ proc macros
         # https://github.com/bazelbuild/rules_rust/pull/1952
         "//pw_rust/bazel_patches:0001-rustdoc_test-Apply-prefix-stripping-to-proc_macro-de.patch",
+        # Allow `rust_repository_set` to specify `opt_level`
+        # https://github.com/bazelbuild/rules_rust/pull/2036
+        "//pw_rust/bazel_patches:0002-Add-opt_level-argument-to-rust_repository_set.patch",
         # Adds prototype functionality for documenting multiple crates in one
         # HTML output directory.  While the approach in this patch may have
         # issues scaling to giant mono-repos, it is apporpriate for embedded
@@ -275,37 +261,101 @@ http_archive(
         # the `rules_rust` community decides on a way to propperly support this,
         # we will migrate to that solution.
         # https://github.com/konkers/rules_rust/tree/wip/rustdoc
-        "//pw_rust/bazel_patches:0002-PROTOTYPE-Add-ability-to-document-multiple-crates-at.patch",
+        "//pw_rust/bazel_patches:0003-PROTOTYPE-Add-ability-to-document-multiple-crates-at.patch",
     ],
-    sha256 = "9d04e658878d23f4b00163a72da3db03ddb451273eb347df7d7c50838d698f49",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/rules_rust-v0.26.0.tar.gz"],
+    sha256 = "190b5aeba104210f8ed9b1ff595d1f459297fe32db70f0a04f5c537a13ee0602",
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.24.1/rules_rust-v0.24.1.tar.gz"],
 )
 
-load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies")
+load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_analyzer_toolchain_repository", "rust_repository_set")
 
 rules_rust_dependencies()
 
-load(
-    "//pw_toolchain/rust:defs.bzl",
-    "pw_rust_register_toolchain_and_target_repos",
-    "pw_rust_register_toolchains",
+RUST_EMBEDDED_TARGET_TRIPLES = {
+    "thumbv8m.main-none-eabihf": [
+        "@platforms//cpu:armv8-m",
+        "@bazel_embedded//constraints/fpu:fpv5-d16",
+    ],
+    "thumbv7m-none-eabi": [
+        "@platforms//cpu:armv7-m",
+        "@bazel_embedded//constraints/fpu:none",
+    ],
+    "thumbv6m-none-eabi": [
+        "@platforms//cpu:armv6-m",
+        "@bazel_embedded//constraints/fpu:none",
+    ],
+}
+
+RUST_OPT_LEVELS = {
+    "thumbv8m.main-none-eabihf": {
+        "dbg": "0",
+        "fastbuild": "0",
+        "opt": "z",
+    },
+    "thumbv7m-none-eabi": {
+        "dbg": "0",
+        "fastbuild": "0",
+        "opt": "z",
+    },
+    "thumbv6m-none-eabi": {
+        "dbg": "0",
+        "fastbuild": "0",
+        "opt": "z",
+    },
+}
+
+# Here we register a specific set of toolchains.
+#
+# Note: This statement creates name mangled remotes of the form:
+# `@{name}__{triplet}_tools`
+# (example: `@rust_linux_x86_64__thumbv7m-none-eabi_tools/`)
+rust_repository_set(
+    name = "rust_linux_x86_64",
+    edition = "2021",
+    exec_triple = "x86_64-unknown-linux-gnu",
+    extra_target_triples = RUST_EMBEDDED_TARGET_TRIPLES,
+    opt_level = RUST_OPT_LEVELS,
+    versions = ["1.67.0"],
 )
 
-pw_rust_register_toolchain_and_target_repos(
-    cipd_tag = "rust_revision:faee636ebfff793ea9dcff17960a611b580e3cd5",
+rust_repository_set(
+    name = "rust_macos_x86_64",
+    edition = "2021",
+    exec_triple = "x86_64-apple-darwin",
+    extra_target_triples = RUST_EMBEDDED_TARGET_TRIPLES,
+    opt_level = RUST_OPT_LEVELS,
+    versions = ["1.67.0"],
 )
 
 # Allows creation of a `rust-project.json` file to allow rust analyzer to work.
 load("@rules_rust//tools/rust_analyzer:deps.bzl", "rust_analyzer_dependencies")
 
-rust_analyzer_dependencies()
+# Since we do not use rust_register_toolchains, we need to define a
+# rust_analyzer_toolchain.
+register_toolchains(rust_analyzer_toolchain_repository(
+    name = "linux_rust_analyzer_toolchain",
+    exec_compatible_with = ["@platforms//os:linux"],
+    # This should match the currently registered linux toolchain.
+    version = "1.67.0",
+))
 
-pw_rust_register_toolchains()
+register_toolchains(rust_analyzer_toolchain_repository(
+    name = "macos_rust_analyzer_toolchain",
+    exec_compatible_with = ["@platforms//os:macos"],
+    # This should match the currently registered macos toolchain.
+    version = "1.67.0",
+))
+
+register_toolchains(
+    "//pw_toolchain/host_clang:host_cc_toolchain_macos",
+)
+
+rust_analyzer_dependencies()
 
 # Vendored third party rust crates.
 git_repository(
     name = "rust_crates",
-    commit = "6d975531f7672cc6aa54bdd7517e1beeffa578da",
+    commit = "e4dcd91091f0537e6b5482677f2007b32a94703e",
     remote = "https://pigweed.googlesource.com/third_party/rust_crates",
     shallow_since = "1675359057 +0000",
 )

@@ -24,7 +24,6 @@ pw_add_library(pw_log_string.config INTERFACE
     public
   PUBLIC_DEPS
     ${pw_log_string_CONFIG}
-    pw_preprocessor
 )
 
 pw_add_library(pw_log_string INTERFACE

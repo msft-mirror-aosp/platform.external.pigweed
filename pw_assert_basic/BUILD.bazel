@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_facade",
     "pw_cc_library",
 )
 
@@ -22,15 +21,8 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-# Note: to avoid circular dependencies, this target only includes the headers
-# for pw_assert_basic. The source file and its dependencies are in the separate
-# ":impl" target.
-#
-# If you point the @pigweed_config//pw_assert_backend to //pw_assert_basic,
-# then @pigweed_config//pw_assert_backend_impl should point to
-# //pw_assert_basic:impl.
 pw_cc_library(
-    name = "pw_assert_basic",
+    name = "headers",
     hdrs = [
         "public/pw_assert_basic/assert_basic.h",
         "public_overrides/pw_assert_backend/check_backend.h",
@@ -40,28 +32,24 @@ pw_cc_library(
         "public_overrides",
     ],
     deps = [
-        ":handler_facade",
         "//pw_preprocessor",
     ],
 )
 
 pw_cc_library(
-    name = "impl",
+    name = "pw_assert_basic",
     srcs = [
         "assert_basic.cc",
     ],
     deps = [
-        ":pw_assert_basic",
+        ":headers",
         ":pw_assert_basic_handler",
         "//pw_assert:facade",
         "//pw_preprocessor",
     ],
-    # Other libraries may not always depend on this library, even if it is
-    # necessary at link time.
-    alwayslink = 1,
 )
 
-pw_cc_facade(
+pw_cc_library(
     name = "handler_facade",
     hdrs = [
         "public/pw_assert_basic/handler.h",
@@ -78,12 +66,9 @@ pw_cc_library(
     ],
     deps = [
         ":handler_facade",
-        ":pw_assert_basic",
+        ":headers",
         "//pw_preprocessor",
         "//pw_string:builder",
         "//pw_sys_io",
     ],
-    # Other libraries may not always depend on this library, even if it is
-    # necessary at link time.
-    alwayslink = 1,
 )

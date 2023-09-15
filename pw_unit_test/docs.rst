@@ -12,7 +12,7 @@ Pigweed. The default implementation is the embedded-friendly
 
 .. note::
 
-   This documentation is currently incomplete.
+  This documentation is currently incomplete.
 
 -------------------------------------------
 pw_unit_test:light: GoogleTest for Embedded
@@ -33,29 +33,22 @@ for examples of how to define unit test cases.
 expected in a complete testing framework; nevertheless, it is already used
 heavily within Pigweed.
 
-GoogleTest compatibility
-========================
-pw_unit_test implements a subset of GoogleTest. Supported features include:
+.. note::
 
-* Test and test suite declarations.
-* Most ``EXPECT`` and ``ASSERT`` macros.
-* Stream-style expectation messages, such as
-  ``EXPECT_EQ(val, 5) << "Inputs: " << input``. Messages are currently ignored.
+  Many of GoogleTest's more advanced features are not yet implemented. Missing
+  features include:
 
-Many of GoogleTest's advanced features are not yet implemented. Missing features
-include:
+  * Any GoogleMock features (e.g. :c:macro:`EXPECT_THAT`)
+  * Floating point comparison macros (e.g. :c:macro:`EXPECT_FLOAT_EQ`)
+  * Death tests (e.g. :c:macro:`EXPECT_DEATH`); ``EXPECT_DEATH_IF_SUPPORTED``
+    does nothing but silently passes
+  * Value-parameterized tests
 
-* Any GoogleMock features (e.g. :c:macro:`EXPECT_THAT`)
-* Floating point comparison macros (e.g. :c:macro:`EXPECT_FLOAT_EQ`)
-* Death tests (e.g. :c:macro:`EXPECT_DEATH`); ``EXPECT_DEATH_IF_SUPPORTED``
-  does nothing but silently passes
-* Value-parameterized tests
+  To request a feature addition, please
+  `let us know <mailto:pigweed@googlegroups.com>`_.
 
-To request a feature addition, please `let us know
-<mailto:pigweed@googlegroups.com>`_.
-
-See `Using upstream GoogleTest`_ below for information
-about using upstream GoogleTest instead.
+  See `Using upstream GoogleTest`_ below for information
+  about using upstream GoogleTest instead.
 
 The EventHandler interface
 ==========================
@@ -256,7 +249,7 @@ pw_test template
 
 **Example**
 
-.. code-block::
+.. code::
 
    import("$dir_pw_unit_test/test.gni")
 
@@ -292,7 +285,7 @@ several sub-targets:
 
 **Example**
 
-.. code-block::
+.. code::
 
    import("$dir_pw_unit_test/test.gni")
 
@@ -461,7 +454,7 @@ sub-targets.
 
 **Example**
 
-.. code-block::
+.. code::
 
    include($ENV{PW_ROOT}/pw_unit_test/test.cmake)
 
@@ -501,7 +494,7 @@ creates several sub-targets:
 
 **Example**
 
-.. code-block::
+.. code::
 
    include($ENV{PW_ROOT}/pw_unit_test/test.cmake)
 
@@ -670,7 +663,7 @@ however some features (such as test suite filtering) are missing.
 To set up RPC-based unit tests in your application, instantiate a
 ``pw::unit_test::UnitTestService`` and register it with your RPC server.
 
-.. code-block:: c++
+.. code:: c++
 
    #include "pw_rpc/server.h"
    #include "pw_unit_test/unit_test_service.h"
@@ -690,10 +683,9 @@ To set up RPC-based unit tests in your application, instantiate a
 All tests flashed to an attached device can be run via python by calling
 ``pw_unit_test.rpc.run_tests()`` with a RPC client services object that has
 the unit testing RPC service enabled. By default, the results will output via
-logging. This method returns a ``TestRecord`` dataclass instance, containing
-the results of the test run.
+logging.
 
-.. code-block:: python
+.. code:: python
 
    from pw_hdlc.rpc import HdlcRpcClient
    from pw_unit_test.rpc import run_tests
@@ -707,7 +699,7 @@ the results of the test run.
 pw_unit_test.rpc
 ----------------
 .. automodule:: pw_unit_test.rpc
-   :members: EventHandler, run_tests, TestRecord
+   :members: EventHandler, run_tests
 
 ----------------------------
 Module Configuration Options
@@ -742,23 +734,23 @@ of `RegisterEventHandler` that wraps event handlers in an adapter. This allows
 the `main` functions written for `pw_unit_test:light` to work with upstream
 GoogleTest without modification, as shown below.
 
-.. code-block:: c++
+  .. code-block:: c++
 
-   #include "gtest/gtest.h"
-   #include "pw_unit_test/logging_event_handler.h"
+    #include "gtest/gtest.h"
+    #include "pw_unit_test/logging_event_handler.h"
 
-   int main() {
-     testing::InitGoogleTest();
-     pw::unit_test::LoggingEventHandler logger;
-     pw::unit_test::RegisterEventHandler(&logger);
-     return RUN_ALL_TESTS();
-   }
+    int main() {
+      testing::InitGoogleTest();
+      pw::unit_test::LoggingEventHandler logger;
+      pw::unit_test::RegisterEventHandler(&logger);
+      return RUN_ALL_TESTS();
+    }
 
 .. cpp:namespace-push:: pw::unit_test
 
 .. cpp:class:: GoogleTestHandlerAdapter
 
-   A GoogleTest Event Listener that fires GoogleTest emitted events to an
-   appropriate ``EventHandler``.
+  A GoogleTest Event Listener that fires GoogleTest emitted events to an
+  appropriate ``EventHandler``.
 
 .. cpp::namespace-pop::

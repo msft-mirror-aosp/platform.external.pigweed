@@ -13,8 +13,6 @@
 // the License.
 #pragma once
 
-#include <cstddef>
-
 #include "lib/fit/function.h"
 #include "pw_function/config.h"
 
@@ -48,19 +46,13 @@ namespace pw {
 ///   }
 ///
 /// @endcode
-///
-/// @tparam Allocator The Allocator used to dynamically allocate the callable,
-/// if it exceeds `inline_target_size` and dynamic allocation is enabled. Its
-/// `value_type` is irrelevant, since it must support rebinding.
-template <typename FunctionType,
-          std::size_t inline_target_size =
-              function_internal::config::kInlineCallableSize,
-          typename Allocator = fit::default_callable_allocator>
+template <typename Callable,
+          size_t inline_target_size =
+              function_internal::config::kInlineCallableSize>
 using Function = fit::function_impl<
     inline_target_size,
     /*require_inline=*/!function_internal::config::kEnableDynamicAllocation,
-    FunctionType,
-    Allocator>;
+    Callable>;
 
 /// Version of `pw::Function` that exclusively uses inline storage.
 ///
@@ -70,10 +62,10 @@ using Function = fit::function_impl<
 ///
 // TODO(b/252852651): Remove warning above when conversion from
 // `fit::inline_function` to `fit::function` doesn't allocate anymore.
-template <typename FunctionType,
-          std::size_t inline_target_size =
+template <typename Callable,
+          size_t inline_target_size =
               function_internal::config::kInlineCallableSize>
-using InlineFunction = fit::inline_function<FunctionType, inline_target_size>;
+using InlineFunction = fit::inline_function<Callable, inline_target_size>;
 
 using Closure = Function<void()>;
 
@@ -87,33 +79,18 @@ using Closure = Function<void()>;
 ///
 /// A `pw::Callback` in the "already called" state has the same state as a
 /// `pw::Callback` that has been assigned to `nullptr`.
-template <typename FunctionType,
-          std::size_t inline_target_size =
-              function_internal::config::kInlineCallableSize,
-          typename Allocator = fit::default_callable_allocator>
+template <typename Callable,
+          size_t inline_target_size =
+              function_internal::config::kInlineCallableSize>
 using Callback = fit::callback_impl<
     inline_target_size,
     /*require_inline=*/!function_internal::config::kEnableDynamicAllocation,
-    FunctionType,
-    Allocator>;
+    Callable>;
 
 /// Version of `pw::Callback` that exclusively uses inline storage.
-template <typename FunctionType,
-          std::size_t inline_target_size =
+template <typename Callable,
+          size_t inline_target_size =
               function_internal::config::kInlineCallableSize>
-using InlineCallback = fit::inline_callback<FunctionType, inline_target_size>;
-
-/// Returns a `Callable` which, when called, invokes `method` on `instance`
-/// using the arguments provided.
-///
-/// This is useful for binding the `this` argument of a callable.
-///
-/// `pw::bind_member<&T::MethodName>(instance)` is roughly equivalent to
-/// `[instance](Arg arg1, ...) { instance->MethodName(arg1, ...) }`, albeit with
-/// proper support for overloads and argument forwarding.
-template <auto method, typename T>
-auto bind_member(T* instance) {
-  return fit::bind_member<method, T>(instance);
-}
+using InlineCallback = fit::inline_callback<Callable, inline_target_size>;
 
 }  // namespace pw

@@ -16,14 +16,17 @@ import { LitElement, PropertyValues, html } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { styles } from './log-view.styles';
 import { LogList } from '../log-list/log-list';
-import { LogColumnState, LogEntry, State } from '../../shared/interfaces';
+import {
+  FieldData,
+  LogColumnState,
+  LogEntry,
+  State,
+} from '../../shared/interfaces';
 import { LocalStorageState, StateStore } from '../../shared/state';
-import { LogFilter } from '../../utils/log-filter/log-filter';
 import '../log-list/log-list';
 import '../log-view-controls/log-view-controls';
-import { titleCaseToKebabCase } from '../../utils/strings';
 
-type FilterFunction = (logEntry: LogEntry) => boolean;
+type LogFilter = (logEntry: LogEntry) => boolean;
 
 /**
  * A component that filters and displays incoming log entries in an encapsulated
@@ -68,14 +71,14 @@ export class LogView extends LitElement {
 
   /** A function used for filtering rows that contain a certain substring. */
   @state()
-  private _stringFilter: FilterFunction = () => true;
+  private _stringFilter: LogFilter = () => true;
 
   /**
    * A function used for filtering rows that contain a timestamp within a
    * certain window.
    */
   @state()
-  private _timeFilter: FilterFunction = () => true;
+  private _timeFilter: LogFilter = () => true;
 
   /** A string representing the value contained in the search field. */
   @state()
@@ -88,15 +91,9 @@ export class LogView extends LitElement {
   @state()
   _state: State;
 
-  @state()
-  _colsHidden: (boolean | undefined)[] = [];
+  colsHidden: (boolean | undefined)[] = [];
 
   @query('log-list') _logList!: LogList;
-
-  private _debounceTimeout: NodeJS.Timeout | null = null;
-
-  /** The amount of time, in ms, before the filter expression is executed. */
-  private readonly FILTER_DELAY = 100;
 
   constructor() {
     super();
@@ -104,7 +101,7 @@ export class LogView extends LitElement {
   }
 
   protected firstUpdated(): void {
-    this._colsHidden = [];
+    this.colsHidden = [];
 
     if (this._state) {
       const viewConfigArr = this._state.logViewConfig;
@@ -113,9 +110,9 @@ export class LogView extends LitElement {
       if (index !== -1) {
         viewConfigArr[index].search = this.searchText;
         viewConfigArr[index].columns.map((i: LogColumnState) => {
-          this._colsHidden.push(i.hidden);
+          this.colsHidden.push(i.hidden);
         });
-        this._colsHidden.unshift(undefined);
+        this.colsHidden.unshift(undefined);
       }
     }
   }
@@ -136,41 +133,24 @@ export class LogView extends LitElement {
    *   to update the filter.
    */
   private updateFilter(event: CustomEvent) {
-    this.searchText = event.detail.inputValue;
-    const viewConfigArr = this._state.logViewConfig;
-    const index = viewConfigArr.findIndex((i) => this.id === i.viewID);
-
     switch (event.type) {
       case 'input-change':
-        if (this._debounceTimeout) {
-          clearTimeout(this._debounceTimeout);
-        }
-
-        if (index !== -1) {
-          viewConfigArr[index].search = this.searchText;
-          this._state = { logViewConfig: viewConfigArr };
-          this._stateStore.setState({ logViewConfig: viewConfigArr });
-        }
+        this.searchText = event.detail.inputValue;
 
         if (!this.searchText) {
           this._stringFilter = () => true;
           return;
         }
 
-        // Run the filter after the timeout delay
-        this._debounceTimeout = setTimeout(() => {
-          const filters = LogFilter.parseSearchQuery(this.searchText).map(
-            (condition) => LogFilter.createFilterFunction(condition),
-          );
-          this._stringFilter =
-            filters.length > 0
-              ? (logEntry: LogEntry) =>
-                  filters.some((filter) => filter(logEntry))
-              : () => true;
-
-          this.filterLogs();
-          this.requestUpdate();
-        }, this.FILTER_DELAY);
+        this._stringFilter = (logEntry: LogEntry) =>
+          logEntry.fields
+            .filter(
+              // Exclude severity field, since its text is omitted from the table
+              (field: FieldData) => field.key !== 'severity',
+            )
+            .some((field: FieldData) =>
+              new RegExp(this.searchText, 'i').test(field.value.toString()),
+            );
         break;
       case 'clear-logs':
         this._timeFilter = (logEntry) =>
@@ -178,6 +158,14 @@ export class LogView extends LitElement {
         break;
       default:
         break;
+    }
+
+    const viewConfigArr = this._state.logViewConfig;
+    const index = viewConfigArr.findIndex((i) => this.id === i.viewID);
+    if (index !== -1) {
+      viewConfigArr[index].search = this.searchText;
+      this._state = { logViewConfig: viewConfigArr };
+      this._stateStore.setState({ logViewConfig: viewConfigArr });
     }
 
     this.filterLogs();
@@ -216,16 +204,16 @@ export class LogView extends LitElement {
     const viewConfigArr = this._state.logViewConfig;
     let colIndex = -1;
 
-    this._colsHidden = [];
+    this.colsHidden = [];
     const index = viewConfigArr
       .map((i) => {
         return i.viewID;
       })
       .indexOf(this.id);
     viewConfigArr[index].columns.map((i: LogColumnState) => {
-      this._colsHidden.push(i.hidden);
+      this.colsHidden.push(i.hidden);
     });
-    this._colsHidden.unshift(undefined);
+    this.colsHidden.unshift(undefined);
 
     this._fieldKeys.forEach((field: string, i: number) => {
       if (field == event.detail.field) {
@@ -234,8 +222,8 @@ export class LogView extends LitElement {
       }
     });
 
-    this._colsHidden[colIndex + 1] = !event.detail.isChecked; // Exclude first column (severity)
-    this._logList.colsHidden = [...this._colsHidden];
+    this.colsHidden[colIndex + 1] = !event.detail.isChecked; // Exclude first column (severity)
+    this._logList.colsHidden = [...this.colsHidden];
 
     this._state = { logViewConfig: viewConfigArr };
     this._stateStore.setState({ logViewConfig: viewConfigArr });
@@ -263,50 +251,9 @@ export class LogView extends LitElement {
     );
   }
 
-  /**
-   * Generates a log file in the specified format and initiates its download.
-   *
-   * @param {CustomEvent} event - The click event.
-   */
-  private downloadLogs(event: CustomEvent) {
-    const headers = this.logs[0]?.fields.map((field) => field.key) || [];
-    const maxWidths = headers.map((header) => header.length);
-    const viewTitle = event.detail.viewTitle;
-    const fileName = viewTitle ? titleCaseToKebabCase(viewTitle) : 'logs';
-
-    this.logs.forEach((log) => {
-      log.fields.forEach((field, columnIndex) => {
-        maxWidths[columnIndex] = Math.max(
-          maxWidths[columnIndex],
-          field.value.toString().length,
-        );
-      });
-    });
-
-    const headerRow = headers
-      .map((header, columnIndex) => header.padEnd(maxWidths[columnIndex]))
-      .join('\t');
-    const separator = '';
-    const logRows = this.logs.map((log) => {
-      const values = log.fields.map((field, columnIndex) =>
-        field.value.toString().padEnd(maxWidths[columnIndex]),
-      );
-      return values.join('\t');
-    });
-
-    const formattedLogs = [headerRow, separator, ...logRows].join('\n');
-    const blob = new Blob([formattedLogs], { type: 'text/plain' });
-    const downloadLink = document.createElement('a');
-    downloadLink.href = URL.createObjectURL(blob);
-    downloadLink.download = `${fileName}.txt`;
-    downloadLink.click();
-
-    URL.revokeObjectURL(downloadLink.href);
-  }
-
   render() {
     return html` <log-view-controls
-        .colsHidden=${[...this._colsHidden]}
+        .colsHidden=${[...this.colsHidden]}
         .viewId=${this.id}
         .fieldKeys=${this._fieldKeys}
         .hideCloseButton=${!this.isOneOfMany}
@@ -315,13 +262,12 @@ export class LogView extends LitElement {
         @clear-logs="${this.updateFilter}"
         @column-toggle="${this.toggleColumns}"
         @wrap-toggle="${this.toggleWrapping}"
-        @download-logs="${this.downloadLogs}"
         role="toolbar"
       >
       </log-view-controls>
 
       <log-list
-        .colsHidden=${[...this._colsHidden]}
+        .colsHidden=${[...this.colsHidden]}
         .lineWrap=${this._lineWrap}
         .viewId=${this.id}
         .logs=${this._filteredLogs}

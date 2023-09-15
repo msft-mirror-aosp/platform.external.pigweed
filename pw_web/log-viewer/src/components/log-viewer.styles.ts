@@ -23,7 +23,7 @@ export const styles = css`
     display: flex;
     flex-direction: column;
     gap: 2rem;
-    height: var(--sys-log-viewer-height);
+    height: 100%;
   }
 
   button {

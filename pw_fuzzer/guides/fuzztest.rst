@@ -196,15 +196,13 @@ FuzzTest provides more detailed documentation on these topics. For example:
 ------------------------------------
 Step 4: Add the fuzzer to your build
 ------------------------------------
-Next, indicate that the unit test includes one or more fuzz tests.
+Indicate that the unit test includes one or more fuzz tests by adding a
+dependency on FuzzTest.
 
 .. tab-set::
 
    .. tab-item:: GN
       :sync: gn
-
-      The ``pw_fuzz_test`` template can be used to add the necessary FuzzTest
-      dependency and generate test metadata.
 
       For example, consider the following ``BUILD.gn``:
 
@@ -216,9 +214,6 @@ Next, indicate that the unit test includes one or more fuzz tests.
    .. tab-item:: CMake
       :sync: cmake
 
-      Unit tests can support fuzz tests by simply adding a dependency on
-      FuzzTest.
-
       For example, consider the following ``CMakeLists.txt``:
 
       .. literalinclude:: ../examples/fuzztest/CMakeLists.txt
@@ -228,9 +223,6 @@ Next, indicate that the unit test includes one or more fuzz tests.
 
    .. tab-item:: Bazel
       :sync: bazel
-
-      Unit tests can support fuzz tests by simply adding a dependency on
-      FuzzTest.
 
       For example, consider the following ``BUILD.bazel``:
 
@@ -250,14 +242,13 @@ Step 5: Build the fuzzer
       Build using ``ninja`` on a target that includes your fuzzer with a
       :ref:`fuzzing toolchain<module-pw_fuzzer-guides-using_fuzztest-toolchain>`.
 
-      Pigweed includes a ``//:fuzzers`` target that builds all tests, including
-      those with fuzzers, using a fuzzing toolchain. You may wish to add a
-      similar top-level to your project. For example:
+      For example, Pigweed itself includes a ``//:host_clang_fuzz`` target that
+      builds all tests, including those with fuzzers, using a fuzzing toolchain:
 
       .. code-block::
 
-         group("fuzzers") {
-           deps = [ ":pw_module_tests.run($dir_pigweed/targets/host:host_clang_fuzz)" ]
+         group("host_clang_fuzz") {
+           deps = [ ":pigweed_default($_internal_toolchains:pw_strict_host_clang_fuzz)" ]
          }
 
    .. tab-item:: CMake
@@ -300,15 +291,6 @@ Step 6: Running the fuzzer locally
       :ref:`fuzzing toolchain<module-pw_fuzzer-guides-using_fuzztest-toolchain>`
       will include the fuzzers, but only run them for a limited time. This makes
       them suitable for automated testing as in CQ.
-
-      If you used the top-level ``//:fuzzers`` described in the previous
-      section, you can find available fuzzers using the generated JSON test
-      metadata file:
-
-      .. code-block:: sh
-
-         jq '.[] | select(contains({tags: ["fuzztest"]}))' \
-           out/host_clang_fuzz/obj/pw_module_tests.testinfo.json
 
       To run a fuzz with different options, you can pass additional flags to the
       fuzzer binary. This binary will be in a subdirectory related to the
@@ -355,12 +337,12 @@ Step 6: Running the fuzzer locally
 
       .. code-block:: sh
 
-         bazel run //my_module:metrics_test --config=fuzztest \
+         bazel run //my_module:metrics_test --config=fuzztest
            --fuzz=MetricsTest.Roundtrip
 
 Running the fuzzer should produce output similar to the following:
 
-.. code-block::
+.. code::
 
    [.] Sanitizer coverage enabled. Counter map size: 21290, Cmp map size: 262144
    Note: Google Test filter = MetricsTest.Roundtrip

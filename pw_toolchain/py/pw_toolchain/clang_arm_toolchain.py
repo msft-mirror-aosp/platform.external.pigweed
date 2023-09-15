@@ -175,6 +175,11 @@ def get_ldflags(compiler_info: Dict[str, str]) -> List[str]:
         + str(
             Path(compiler_info['sysroot']) / 'lib' / compiler_info['multi_dir']
         ),
+        # Add libraries to link.
+        '-lc_nano',
+        '-lm',
+        '-lgcc',
+        '-lstdc++_nano',
     ]
 
     # Add C runtime object files.

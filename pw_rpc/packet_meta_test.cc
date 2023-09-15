@@ -15,22 +15,21 @@
 #include "pw_rpc/packet_meta.h"
 
 #include "gtest/gtest.h"
-#include "pw_fuzzer/fuzztest.h"
 #include "pw_rpc/internal/packet.h"
 
 namespace pw::rpc {
 namespace {
 
-using namespace fuzzer;
+TEST(PacketMeta, FromBufferDecodesValidMinimalPacket) {
+  const uint32_t kChannelId = 12;
+  const ServiceId kServiceId = internal::WrapServiceId(0xdeadbeef);
+  const uint32_t kMethodId = 44;
 
-void FromBufferDecodesValidMinimalPacket(uint32_t channel_id,
-                                         uint32_t service_id,
-                                         uint32_t method_id) {
   internal::Packet packet;
-  packet.set_channel_id(channel_id);
-  packet.set_service_id(service_id);
+  packet.set_channel_id(kChannelId);
+  packet.set_service_id(internal::UnwrapServiceId(kServiceId));
   packet.set_type(internal::pwpb::PacketType::RESPONSE);
-  packet.set_method_id(method_id);
+  packet.set_method_id(kMethodId);
 
   std::byte buffer[128];
   Result<ConstByteSpan> encode_result = packet.Encode(buffer);
@@ -38,20 +37,10 @@ void FromBufferDecodesValidMinimalPacket(uint32_t channel_id,
 
   Result<PacketMeta> decode_result = PacketMeta::FromBuffer(*encode_result);
   ASSERT_EQ(decode_result.status(), OkStatus());
-  EXPECT_EQ(decode_result->channel_id(), channel_id);
-  EXPECT_EQ(decode_result->service_id(), internal::WrapServiceId(service_id));
+  EXPECT_EQ(decode_result->channel_id(), kChannelId);
+  EXPECT_EQ(decode_result->service_id(), kServiceId);
   EXPECT_TRUE(decode_result->destination_is_client());
 }
-
-TEST(PacketMeta, FromBufferDecodesValidMinimalPacketConst) {
-  const uint32_t kChannelId = 12;
-  const uint32_t kServiceId = 0xdeadbeef;
-  const uint32_t kMethodId = 44;
-  FromBufferDecodesValidMinimalPacket(kChannelId, kServiceId, kMethodId);
-}
-
-FUZZ_TEST(PacketMeta, FromBufferDecodesValidMinimalPacket)
-    .WithDomains(NonZero<uint32_t>(), NonZero<uint32_t>(), NonZero<uint32_t>());
 
 TEST(PacketMeta, FromBufferFailsOnIncompletePacket) {
   internal::Packet packet;

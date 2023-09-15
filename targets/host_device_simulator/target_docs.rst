@@ -20,7 +20,7 @@ package to build for the
 :bdg-ref-primary-line:`target-stm32f429i-disc1-stm32cube` target at the same
 time.
 
-.. code-block:: sh
+.. code:: sh
 
    pw package install nanopb
    pw package install freertos
@@ -37,13 +37,13 @@ time.
    Instead of the ``gn gen out`` with args set on the command line above you can
    run:
 
-   .. code-block:: sh
+   .. code:: sh
 
       gn args out
 
    Then add the following lines to that text file:
 
-   .. code-block::
+   .. code::
 
       dir_pw_third_party_nanopb = getenv("PW_PACKAGE_ROOT") + "/nanopb"
       dir_pw_third_party_freertos = getenv("PW_PACKAGE_ROOT") + "/freertos"
@@ -55,17 +55,17 @@ Building and Running the Demo
 This target has an associated demo application that can be built and then
 run with the following commands:
 
-.. code-block:: sh
+.. code:: sh
 
    ninja -C out pw_system_demo
 
-.. code-block:: sh
+.. code:: sh
 
    ./out/host_device_simulator.speed_optimized/obj/pw_system/bin/system_example
 
 To communicate with the launched process run this in a separate shell:
 
-.. code-block:: sh
+.. code:: sh
 
    pw-system-console -s default --proto-globs pw_rpc/echo.proto \
      --token-databases out/host_device_simulator.speed_optimized/obj/pw_system/bin/system_example
@@ -75,7 +75,7 @@ To communicate with the launched process run this in a separate shell:
    Alternatively you can run the system_example app in the background, then
    launch the console on the same line with:
 
-   .. code-block:: sh
+   .. code:: sh
 
       ./out/host_device_simulator.speed_optimized/obj/pw_system/bin/system_example
         & \
@@ -86,7 +86,7 @@ To communicate with the launched process run this in a separate shell:
    Exit the console via the menu or pressing :kbd:`Ctrl-d` twice. Then stop the
    system_example app with:
 
-   .. code-block:: sh
+   .. code:: sh
 
       killall system_example
 
@@ -94,14 +94,14 @@ In the bottom-most pane labeled ``Python Repl`` you should be able to send RPC
 commands to the simulated device process. For example, you can send an RPC
 message that will be echoed back:
 
-.. code-block:: pycon
+.. code:: pycon
 
    >>> device.rpcs.pw.rpc.EchoService.Echo(msg='Hello, world!')
    (Status.OK, pw.rpc.EchoMessage(msg='Hello, world!'))
 
 Or run unit tests included on the simulated device:
 
-.. code-block:: pycon
+.. code:: pycon
 
    >>> device.run_tests()
    True

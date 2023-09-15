@@ -13,9 +13,9 @@ This page shows you how to use the :ref:`module-pw_hdlc-api-encoder` and
 --------
 Encoding
 --------
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: C++
+   .. group-tab:: C++
 
       ..
         TODO(b/279648188): Share this code between api.rst and guide.rst.
@@ -37,7 +37,7 @@ Encoding
            }
          }
 
-   .. tab-item:: Python
+   .. group-tab:: Python
 
       ..
         TODO(b/279648188): Share this code between api.rst and guide.rst.
@@ -55,9 +55,9 @@ Encoding
 
 Allocating buffers when encoding
 ================================
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: C++
+   .. group-tab:: C++
 
       Since HDLC's encoding overhead changes with payload size and what data is being
       encoded, this module provides helper functions that are useful for determining
@@ -86,9 +86,9 @@ Allocating buffers when encoding
 --------
 Decoding
 --------
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: C++
+   .. group-tab:: C++
 
       ..
         TODO(b/279648188): Share this code between api.rst and guide.rst.
@@ -114,7 +114,7 @@ Decoding
            }
          }
 
-   .. tab-item:: Python
+   .. group-tab:: Python
 
       ..
         TODO(b/279648188): Share this code between api.rst and guide.rst.
@@ -135,9 +135,9 @@ Decoding
 
 Allocating buffers when decoding
 ================================
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: C++
+   .. group-tab:: C++
 
       The HDLC ``Decoder`` has its own helper for allocating a buffer since it doesn't
       need the entire escaped frame in-memory to decode, and therefore has slightly

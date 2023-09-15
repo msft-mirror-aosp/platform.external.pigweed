@@ -15,15 +15,12 @@
 """Tests for detokenize."""
 
 import base64
-import concurrent
 import datetime as dt
-import functools
 import io
 import os
 from pathlib import Path
 import struct
 import tempfile
-from typing import Any, Callable, NamedTuple, Tuple
 import unittest
 from unittest import mock
 
@@ -454,35 +451,6 @@ class DetokenizeWithCollisions(unittest.TestCase):
         self.assertIn('#0 -1', repr(unambiguous))
 
 
-class ManualPoolExecutor(concurrent.futures.Executor):
-    """A stubbed pool executor that captures the most recent work request
-    and holds it until the public process method is manually called."""
-
-    def __init__(self):
-        super().__init__()
-        self._func = None
-
-    # pylint: disable=arguments-differ
-    def submit(self, func, *args, **kwargs):
-        """Submits work to the pool, stashing the partial for later use."""
-        self._func = functools.partial(func, *args, **kwargs)
-
-    def process(self):
-        """Processes the latest func submitted to the pool."""
-        if self._func is not None:
-            self._func()
-            self._func = None
-
-
-class InlinePoolExecutor(concurrent.futures.Executor):
-    """A stubbed pool executor that runs work immediately, inline."""
-
-    # pylint: disable=arguments-differ
-    def submit(self, func, *args, **kwargs):
-        """Submits work to the pool, stashing the partial for later use."""
-        func(*args, **kwargs)
-
-
 @mock.patch('os.path.getmtime')
 class AutoUpdatingDetokenizerTest(unittest.TestCase):
     """Tests the AutoUpdatingDetokenizer class."""
@@ -510,78 +478,17 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
             try:
                 file.close()
 
-                pool = ManualPoolExecutor()
                 detok = detokenize.AutoUpdatingDetokenizer(
-                    file.name, min_poll_period_s=0, pool=pool
+                    file.name, min_poll_period_s=0
                 )
                 self.assertFalse(detok.detokenize(JELLO_WORLD_TOKEN).ok())
 
                 with open(file.name, 'wb') as fd:
                     tokens.write_binary(db, fd)
 
-                # After the change but before the pool runs in another thread,
-                # the token should not exist.
-                self.assertFalse(detok.detokenize(JELLO_WORLD_TOKEN).ok())
-
-                # After the pool is allowed to process, it should.
-                pool.process()
                 self.assertTrue(detok.detokenize(JELLO_WORLD_TOKEN).ok())
             finally:
                 os.unlink(file.name)
-
-    def test_update_with_directory(self, mock_getmtime):
-        """Tests the update command with a directory format database."""
-        db = database.load_token_database(
-            io.BytesIO(ELF_WITH_TOKENIZER_SECTIONS)
-        )
-        self.assertEqual(len(db), TOKENS_IN_ELF)
-
-        the_time = [100]
-
-        def move_back_time_if_file_exists(path):
-            if os.path.exists(path):
-                the_time[0] -= 1
-                return the_time[0]
-
-            raise FileNotFoundError
-
-        mock_getmtime.side_effect = move_back_time_if_file_exists
-
-        with tempfile.TemporaryDirectory() as dbdir:
-            with tempfile.NamedTemporaryFile(
-                'wb', delete=False, suffix='.pw_tokenizer.csv', dir=dbdir
-            ) as matching_suffix_file, tempfile.NamedTemporaryFile(
-                'wb', delete=False, suffix='.not.right', dir=dbdir
-            ) as mismatched_suffix_file:
-                try:
-                    matching_suffix_file.close()
-                    mismatched_suffix_file.close()
-
-                    pool = ManualPoolExecutor()
-                    detok = detokenize.AutoUpdatingDetokenizer(
-                        dbdir, min_poll_period_s=0, pool=pool
-                    )
-                    self.assertFalse(detok.detokenize(JELLO_WORLD_TOKEN).ok())
-
-                    with open(mismatched_suffix_file.name, 'wb') as fd:
-                        tokens.write_csv(db, fd)
-                    pool.process()
-                    self.assertFalse(detok.detokenize(JELLO_WORLD_TOKEN).ok())
-
-                    with open(matching_suffix_file.name, 'wb') as fd:
-                        tokens.write_csv(db, fd)
-
-                    # After the change but before the pool runs in another
-                    # thread, the token should not exist.
-                    self.assertFalse(detok.detokenize(JELLO_WORLD_TOKEN).ok())
-                    pool.process()
-
-                    # After the pool is allowed to process, it should.
-                    self.assertTrue(detok.detokenize(JELLO_WORLD_TOKEN).ok())
-                finally:
-                    os.unlink(mismatched_suffix_file.name)
-                    os.unlink(matching_suffix_file.name)
-                    os.rmdir(dbdir)
 
         # The database stays around if the file is deleted.
         self.assertTrue(detok.detokenize(JELLO_WORLD_TOKEN).ok())
@@ -600,7 +507,7 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
                 file.close()
 
                 detok = detokenize.AutoUpdatingDetokenizer(
-                    file.name, min_poll_period_s=0, pool=InlinePoolExecutor()
+                    file.name, min_poll_period_s=0
                 )
                 self.assertTrue(detok.detokenize(JELLO_WORLD_TOKEN).ok())
 
@@ -620,9 +527,7 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
     def test_token_domain_in_str(self, _) -> None:
         """Tests a str containing a domain"""
         detok = detokenize.AutoUpdatingDetokenizer(
-            f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#.*',
-            min_poll_period_s=0,
-            pool=InlinePoolExecutor(),
+            f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#.*', min_poll_period_s=0
         )
         self.assertEqual(
             len(detok.database), TOKENS_IN_ELF_WITH_TOKENIZER_SECTIONS
@@ -631,9 +536,7 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
     def test_token_domain_in_path(self, _) -> None:
         """Tests a Path() containing a domain"""
         detok = detokenize.AutoUpdatingDetokenizer(
-            Path(f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#.*'),
-            min_poll_period_s=0,
-            pool=InlinePoolExecutor(),
+            Path(f'{ELF_WITH_TOKENIZER_SECTIONS_PATH}#.*'), min_poll_period_s=0
         )
         self.assertEqual(
             len(detok.database), TOKENS_IN_ELF_WITH_TOKENIZER_SECTIONS
@@ -642,18 +545,14 @@ class AutoUpdatingDetokenizerTest(unittest.TestCase):
     def test_token_no_domain_in_str(self, _) -> None:
         """Tests a str without a domain"""
         detok = detokenize.AutoUpdatingDetokenizer(
-            str(ELF_WITH_TOKENIZER_SECTIONS_PATH),
-            min_poll_period_s=0,
-            pool=InlinePoolExecutor(),
+            str(ELF_WITH_TOKENIZER_SECTIONS_PATH), min_poll_period_s=0
         )
         self.assertEqual(len(detok.database), TOKENS_IN_ELF)
 
     def test_token_no_domain_in_path(self, _) -> None:
         """Tests a Path() without a domain"""
         detok = detokenize.AutoUpdatingDetokenizer(
-            ELF_WITH_TOKENIZER_SECTIONS_PATH,
-            min_poll_period_s=0,
-            pool=InlinePoolExecutor(),
+            ELF_WITH_TOKENIZER_SECTIONS_PATH, min_poll_period_s=0
         )
         self.assertEqual(len(detok.database), TOKENS_IN_ELF)
 
@@ -662,122 +561,40 @@ def _next_char(message: bytes) -> bytes:
     return bytes(b + 1 for b in message)
 
 
-class NestedMessageParserTest(unittest.TestCase):
-    """Tests parsing prefixed messages."""
+class PrefixedMessageDecoderTest(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.decode = detokenize.PrefixedMessageDecoder('$', 'abcdefg')
 
-    class _Case(NamedTuple):
-        data: bytes
-        expected: bytes
-        title: str
-        transform: Callable[[bytes], bytes] = _next_char
+    def test_transform_single_message(self):
+        self.assertEqual(
+            b'%bcde',
+            b''.join(self.decode.transform(io.BytesIO(b'$abcd'), _next_char)),
+        )
 
-    TRANSFORM_TEST_CASES = (
-        _Case(b'$abcd', b'%bcde', 'single message'),
-        _Case(
-            b'$$WHAT?$abc$WHY? is this $ok $',
+    def test_transform_message_amidst_other_only_affects_message(self):
+        self.assertEqual(
             b'%%WHAT?%bcd%WHY? is this %ok %',
-            'message and non-message',
-        ),
-        _Case(b'$1$', b'%1%', 'empty message'),
-        _Case(b'$abc$defgh', b'%bcd%efghh', 'sequential message'),
-        _Case(
-            b'w$abcx$defygh$$abz',
-            b'w$ABCx$DEFygh$$ABz',
-            'interspersed start/end non-message',
-            bytes.upper,
-        ),
-        _Case(
-            b'$abcx$defygh$$ab',
-            b'$ABCx$DEFygh$$AB',
-            'interspersed start/end message ',
-            bytes.upper,
-        ),
-    )
-
-    def setUp(self) -> None:
-        self.decoder = detokenize.NestedMessageParser('$', 'abcdefg')
-
-    def test_transform_io(self) -> None:
-        for data, expected, title, transform in self.TRANSFORM_TEST_CASES:
-            self.assertEqual(
-                expected,
-                b''.join(
-                    self.decoder.transform_io(io.BytesIO(data), transform)
-                ),
-                f'{title}: {data!r}',
-            )
-
-    def test_transform_bytes_with_flush(self) -> None:
-        for data, expected, title, transform in self.TRANSFORM_TEST_CASES:
-            self.assertEqual(
-                expected,
-                self.decoder.transform(data, transform, flush=True),
-                f'{title}: {data!r}',
-            )
-
-    def test_transform_bytes_sequential(self) -> None:
-        transform = lambda message: message.upper().replace(b'$', b'*')
-
-        self.assertEqual(self.decoder.transform(b'abc$abcd', transform), b'abc')
-        self.assertEqual(self.decoder.transform(b'$', transform), b'*ABCD')
-        self.assertEqual(self.decoder.transform(b'$b', transform), b'*')
-        self.assertEqual(self.decoder.transform(b'', transform), b'')
-        self.assertEqual(self.decoder.transform(b' ', transform), b'*B ')
-        self.assertEqual(self.decoder.transform(b'hello', transform), b'hello')
-        self.assertEqual(self.decoder.transform(b'?? $ab', transform), b'?? ')
-        self.assertEqual(
-            self.decoder.transform(b'123$ab4$56$a', transform), b'*AB123*AB4*56'
-        )
-        self.assertEqual(
-            self.decoder.transform(b'bc', transform, flush=True), b'*ABC'
+            b''.join(
+                self.decode.transform(
+                    io.BytesIO(b'$$WHAT?$abc$WHY? is this $ok $'), _next_char
+                )
+            ),
         )
 
-    MESSAGES_TEST: Any = (
-        (b'123$abc456$a', (False, b'123'), (True, b'$abc'), (False, b'456')),
-        (b'7$abcd', (True, b'$a'), (False, b'7')),
-        (b'e',),
-        (b'',),
-        (b'$', (True, b'$abcde')),
-        (b'$', (True, b'$')),
-        (b'$a$b$c', (True, b'$'), (True, b'$a'), (True, b'$b')),
-        (b'1', (True, b'$c'), (False, b'1')),
-        (b'',),
-        (b'?', (False, b'?')),
-        (b'!@', (False, b'!@')),
-        (b'%^&', (False, b'%^&')),
-    )
-
-    def test_read_messages(self) -> None:
-        for step in self.MESSAGES_TEST:
-            data: bytes = step[0]
-            pieces: Tuple[Tuple[bool, bytes], ...] = step[1:]
-            self.assertEqual(tuple(self.decoder.read_messages(data)), pieces)
-
-    def test_read_messages_flush(self) -> None:
+    def test_transform_empty_message(self):
         self.assertEqual(
-            list(self.decoder.read_messages(b'123$a')), [(False, b'123')]
-        )
-        self.assertEqual(list(self.decoder.read_messages(b'b')), [])
-        self.assertEqual(
-            list(self.decoder.read_messages(b'', flush=True)), [(True, b'$ab')]
+            b'%1%',
+            b''.join(self.decode.transform(io.BytesIO(b'$1$'), _next_char)),
         )
 
-    def test_read_messages_io(self) -> None:
-        # Rework the read_messages test data for stream input.
-        data = io.BytesIO(b''.join(step[0] for step in self.MESSAGES_TEST))
-        expected_pieces = sum((step[1:] for step in self.MESSAGES_TEST), ())
-
-        result = self.decoder.read_messages_io(data)
-        for expected_is_message, expected_data in expected_pieces:
-            if expected_is_message:
-                is_message, piece = next(result)
-                self.assertTrue(is_message)
-                self.assertEqual(expected_data, piece)
-            else:  # the IO version yields non-messages byte by byte
-                for byte in expected_data:
-                    is_message, piece = next(result)
-                    self.assertFalse(is_message)
-                    self.assertEqual(bytes([byte]), piece)
+    def test_transform_sequential_messages(self):
+        self.assertEqual(
+            b'%bcd%efghh',
+            b''.join(
+                self.decode.transform(io.BytesIO(b'$abc$defgh'), _next_char)
+            ),
+        )
 
 
 class DetokenizeBase64(unittest.TestCase):
@@ -810,10 +627,6 @@ class DetokenizeBase64(unittest.TestCase):
         (JELLO + b'$a' + JELLO + b'bcd', b'Jello, world!$aJello, world!bcd'),
         (b'$3141', b'$3141'),
         (JELLO + b'$3141', b'Jello, world!$3141'),
-        (
-            JELLO + b'$a' + JELLO + b'b' + JELLO + b'c',
-            b'Jello, world!$aJello, world!bJello, world!c',
-        ),
         (RECURSION, b'The secret message is "Jello, world!"'),
         (
             RECURSION_2,
@@ -837,7 +650,7 @@ class DetokenizeBase64(unittest.TestCase):
             output = io.BytesIO()
             self.detok.detokenize_base64_live(io.BytesIO(data), output, '$')
 
-            self.assertEqual(expected, output.getvalue(), f'Input: {data!r}')
+            self.assertEqual(expected, output.getvalue())
 
     def test_detokenize_base64_to_file(self):
         for data, expected in self.TEST_CASES:

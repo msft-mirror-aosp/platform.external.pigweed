@@ -279,7 +279,6 @@ Arguments
      setup.cfg files
      <https://setuptools.pypa.io/en/latest/userguide/declarative_config.html>`_
 
-- ``output_logs``: (Default: true) If this is true then the virtual environment will output to logs.
 
 .. _module-pw_build-pw_python_pip_install:
 

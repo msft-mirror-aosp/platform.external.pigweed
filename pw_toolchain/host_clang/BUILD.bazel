@@ -27,42 +27,15 @@ filegroup(name = "empty")
 pw_cc_toolchain_feature(
     name = "macos_stdlib",
     cxx_builtin_include_directories = [
-        "%package(@llvm_toolchain//)%/include/c++/v1",
-        "%package(@llvm_toolchain//)%/lib/clang/17/include",
+        "@llvm_toolchain//:include/c++/v1",
+        "@llvm_toolchain//:lib/clang/17/include",
     ],
     linker_files = ["@llvm_toolchain//:lib/libc++.a"],
     target_compatible_with = ["@platforms//os:macos"],
 )
 
-pw_cc_toolchain_feature(
-    name = "linux_sysroot",
-    builtin_sysroot = "external/linux_sysroot",
-    cxx_builtin_include_directories = [
-        "%package(@llvm_toolchain//)%/include/x86_64-unknown-linux-gnu/c++/v1",
-        "%package(@llvm_toolchain//)%/include/c++/v1",
-        "%package(@llvm_toolchain//)%/lib/clang/17/include",
-        "%sysroot%/usr/local/include",
-        "%sysroot%/usr/include/x86_64-linux-gnu",
-        "%sysroot%/usr/include",
-    ],
-    linkopts = [
-        "-pthread",
-        "-stdlib=libc++",
-        "--rtlib=compiler-rt",
-        "--unwindlib=libunwind",
-    ],
-)
-
-filegroup(
-    name = "all_linux_files",
-    srcs = [
-        "@linux_sysroot//:all",
-        "@llvm_toolchain//:all",
-    ],
-)
-
 pw_cc_toolchain(
-    name = "host_toolchain_macos",
+    name = "host_toolchain",
     abi_libc_version = "unknown",
     abi_version = "unknown",
     all_files = "@llvm_toolchain//:all",
@@ -89,13 +62,10 @@ pw_cc_toolchain(
     strip = "@llvm_toolchain//:bin/llvm-strip",
     strip_files = "@llvm_toolchain//:all",
     supports_param_files = 0,
-    # The implementations of some "legacy features" built into Bazel use
-    # `target_libc` to determine if a toolchain targets MacOS,
-    # https://github.com/bazelbuild/bazel/blob/release-7.0.0-pre.20230816.3rc1/src/main/java/com/google/devtools/build/lib/rules/cpp/CcModule.java#L1301-L1304
-    target_cpu = "darwin",
-    target_libc = "macosx",
+    target_cpu = "unknown",
+    target_libc = "unknown",
     target_system_name = "unknown",
-    toolchain_identifier = "host-toolchain-macos",
+    toolchain_identifier = "host-toolchain",
 )
 
 toolchain(
@@ -106,50 +76,6 @@ toolchain(
     target_compatible_with = [
         "@platforms//os:macos",
     ],
-    toolchain = ":host_toolchain_macos",
-    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
-)
-
-pw_cc_toolchain(
-    name = "host_toolchain_linux",
-    abi_libc_version = "unknown",
-    abi_version = "unknown",
-    all_files = ":all_linux_files",
-    ar = "@llvm_toolchain//:bin/llvm-ar",
-    ar_files = ":all_linux_files",
-    as_files = ":all_linux_files",
-    compiler = "unknown",
-    compiler_files = ":all_linux_files",
-    coverage_files = ":all_linux_files",
-    cpp = "@llvm_toolchain//:bin/clang++",
-    dwp_files = ":all_linux_files",
-    feature_deps = [
-        ":linux_sysroot",
-        "@pw_toolchain//features:no_canonical_prefixes",
-    ],
-    gcc = "@llvm_toolchain//:bin/clang",
-    gcov = "@llvm_toolchain//:bin/llvm-cov",
-    host_system_name = "unknown",
-    ld = "@llvm_toolchain//:bin/clang++",
-    linker_files = ":all_linux_files",
-    objcopy_files = ":all_linux_files",
-    strip = "@llvm_toolchain//:bin/llvm-strip",
-    strip_files = ":all_linux_files",
-    supports_param_files = 0,
-    target_cpu = "unknown",
-    target_libc = "unknown",
-    target_system_name = "unknown",
-    toolchain_identifier = "host-toolchain-linux",
-)
-
-toolchain(
-    name = "host_cc_toolchain_linux",
-    exec_compatible_with = [
-        "@platforms//os:linux",
-    ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
-    toolchain = ":host_toolchain_linux",
+    toolchain = ":host_toolchain",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )

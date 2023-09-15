@@ -26,8 +26,6 @@ namespace pw::stream {
 class SocketStream : public NonSeekableReaderWriter {
  public:
   constexpr SocketStream() = default;
-  // Construct a SocketStream directly from a file descriptor.
-  explicit SocketStream(int connection_fd) : connection_fd_(connection_fd) {}
 
   // SocketStream objects are moveable but not copyable.
   SocketStream& operator=(SocketStream&& other) {

@@ -44,8 +44,9 @@ API reference
 
 pw::analog::AnalogInput
 =======================
-.. doxygenclass:: pw::analog::AnalogInput
-   :members:
+.. literalinclude:: public/pw_analog/analog_input.h
+   :start-after: #pragma once
+   :end-before: }  // namespace pw::analog
 
 pw::analog::GmockAnalogInput
 ============================

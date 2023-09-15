@@ -39,7 +39,8 @@ extern "C" void pw_log_tokenized_HandleLog(uint32_t metadata,
 
   // Encode the tokenized message as Base64.
   const InlineBasicString base64_string =
-      log_tokenized::PrefixedBase64Encode(log_buffer, size_bytes);
+      tokenizer::PrefixedBase64Encode<log_tokenized::kEncodingBufferSizeBytes>(
+          span(log_buffer, size_bytes));
 
   if (base64_string.empty()) {
     return;

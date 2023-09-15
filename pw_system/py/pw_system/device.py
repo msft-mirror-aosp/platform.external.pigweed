@@ -33,7 +33,7 @@ from pw_thread.thread_analyzer import ThreadSnapshotAnalyzer
 from pw_thread_protos import thread_pb2
 from pw_tokenizer import detokenize
 from pw_tokenizer.proto import decode_optionally_tokenized
-from pw_unit_test.rpc import run_tests as pw_unit_test_run_tests, TestRecord
+from pw_unit_test.rpc import run_tests as pw_unit_test_run_tests
 
 # Internal log for troubleshooting this tool (the console).
 _LOG = logging.getLogger('tools')
@@ -144,7 +144,7 @@ class Device:
         """Returns an object for accessing services on the specified channel."""
         return next(iter(self.client.client.channels())).rpcs
 
-    def run_tests(self, timeout_s: Optional[float] = 5) -> TestRecord:
+    def run_tests(self, timeout_s: Optional[float] = 5) -> bool:
         """Runs the unit tests on this device."""
         return pw_unit_test_run_tests(self.rpcs, timeout_s=timeout_s)
 

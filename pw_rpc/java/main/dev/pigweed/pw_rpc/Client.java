@@ -188,7 +188,7 @@ public class Client {
       throw new InvalidRpcServiceException(serviceId);
     }
 
-    Method method = service.method(methodId);
+    Method method = service.methods().get(methodId);
     if (method == null) {
       throw new InvalidRpcServiceMethodException(service, methodId);
     }

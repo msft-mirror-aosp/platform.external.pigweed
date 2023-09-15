@@ -88,37 +88,6 @@ TEST(PigweedTest, SkipMacro) {
   EXPECT_TRUE(false);
 }
 
-TEST(PigweedTest, Logs) {
-  EXPECT_TRUE(true) << "This message is ignored";
-  EXPECT_FALSE(false) << "This message is ignored";
-  EXPECT_EQ(0, 0) << "This message is ignored";
-  EXPECT_NE(0, 1) << "This message is ignored";
-  EXPECT_GT(1, 0) << "This message is ignored";
-  EXPECT_GE(0, 0) << "This message is ignored";
-  EXPECT_LT(0, 1) << "This message is ignored";
-  EXPECT_LE(0, 0) << "This message is ignored";
-  EXPECT_STREQ("", "") << "This message is ignored";
-  EXPECT_STRNE("", "?") << "This message is ignored";
-
-  ASSERT_TRUE(true) << "This message is ignored";
-  ASSERT_FALSE(false) << "This message is ignored";
-  ASSERT_EQ(0, 0) << "This message is ignored";
-  ASSERT_NE(0, 1) << "This message is ignored";
-  ASSERT_GT(1, 0) << "This message is ignored";
-  ASSERT_GE(0, 0) << "This message is ignored";
-  ASSERT_LT(0, 1) << "This message is ignored";
-  ASSERT_LE(0, 0) << "This message is ignored";
-  ASSERT_STREQ("", "") << "This message is ignored";
-  ASSERT_STRNE("", "?") << "This message is ignored";
-
-  if (false) {
-    ADD_FAILURE() << "This failed!" << 123;
-    GTEST_FAIL() << "This failed!" << 123 << '?';
-    GTEST_SKIP() << 1.0f << " skips!";
-  }
-  GTEST_SUCCEED() << "This message is ignored";
-}
-
 class SkipOnSetUpTest : public ::testing::Test {
  public:
   void SetUp() override { GTEST_SKIP(); }
@@ -178,13 +147,6 @@ TEST(PigweedTest, MacroArgumentsOnlyAreEvaluatedOnce) {
   EXPECT_EQ(i, 4);
 }
 
-class ClassWithPrivateMethod {
-  FRIEND_TEST(FixtureTest, FriendClass);
-
- private:
-  int Return314() { return 314; }
-};
-
 class FixtureTest : public ::testing::Test {
  public:
   FixtureTest() : string_("hello world") {}
@@ -199,10 +161,6 @@ class FixtureTest : public ::testing::Test {
 TEST_F(FixtureTest, CustomFixture) {
   EXPECT_TRUE(ReturnTrue());
   EXPECT_EQ(StringLength(), 11);
-}
-
-TEST_F(FixtureTest, FriendClass) {
-  EXPECT_EQ(ClassWithPrivateMethod().Return314(), 314);
 }
 
 class PigweedTestFixture : public ::testing::Test {
@@ -240,7 +198,6 @@ class SetUpAndTearDown : public ::testing::Test {
   static int value;
 
   static void SetUpTestSuite() {
-    value = 1;
     EXPECT_EQ(value, 1);
     value++;
   }

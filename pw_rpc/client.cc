@@ -42,8 +42,7 @@ Status Client::ProcessPacket(ConstByteSpan data) {
 
   if (channel == nullptr) {
     internal::rpc_lock().unlock();
-    PW_LOG_WARN("RPC client received a packet for an unregistered channel: %lu",
-                static_cast<unsigned long>(packet.channel_id()));
+    PW_LOG_WARN("RPC client received a packet for an unregistered channel");
     return Status::Unavailable();
   }
 

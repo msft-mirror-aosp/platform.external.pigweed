@@ -26,7 +26,6 @@
 
 #include "pw_assert/assert.h"
 #include "pw_polyfill/language_feature_macros.h"
-#include "pw_preprocessor/compiler.h"
 
 namespace pw {
 namespace vector_impl {
@@ -317,7 +316,7 @@ class Vector<T, vector_impl::kGeneric>
 
   // Returns the number of elements in the Vector. Uses size_t instead of
   // size_type for consistency with other containers.
-  size_t size() const noexcept PW_NO_SANITIZE("memory") { return size_; }
+  size_t size() const noexcept { return size_; }
 
   // Returns the maximum number of elements in this Vector.
   size_t max_size() const noexcept { return max_size_; }

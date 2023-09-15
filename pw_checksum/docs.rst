@@ -124,7 +124,7 @@ Compatibility
 
 Dependencies
 ============
-- :ref:`module-pw_span`
+* ``pw_span``
 
 .. _Module Configuration Options:
 

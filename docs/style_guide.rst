@@ -225,7 +225,7 @@ All loops and conditional statements must use braces, and be on their own line.
 .. admonition:: **Yes**: Always use braces for line conditionals and loops:
    :class: checkmark
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       while (SomeCondition()) {
         x += 2;
@@ -238,7 +238,7 @@ All loops and conditional statements must use braces, and be on their own line.
 .. admonition:: **No**: Missing braces
    :class: error
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       while (SomeCondition())
         x += 2;
@@ -248,7 +248,7 @@ All loops and conditional statements must use braces, and be on their own line.
 .. admonition:: **No**: Statement on same line as condition
    :class: error
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       while (SomeCondition()) { x += 2; }
       if (OtherCondition()) { DoTheThing(); }
@@ -259,7 +259,7 @@ The syntax ``while (true)`` is preferred over ``for (;;)`` for infinite loops.
 .. admonition:: **Yes**:
    :class: checkmark
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       while (true) {
         DoSomethingForever();
@@ -268,7 +268,7 @@ The syntax ``while (true)`` is preferred over ``for (;;)`` for infinite loops.
 .. admonition:: **No**:
    :class: error
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       for (;;) {
         DoSomethingForever();
@@ -308,7 +308,7 @@ The guidance applies in two cases:
    at the bottom and de-dentend.
    :class: checkmark
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       Status DoSomething(Parameter parameter) {
         // Parameter validation first; detecting incoming use errors.
@@ -339,7 +339,7 @@ The guidance applies in two cases:
    the early bail structure; so pay close attention.
    :class: error
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       Status DoSomething(Parameter parameter) {
         // Parameter validation first; detecting incoming use errors.
@@ -365,7 +365,7 @@ The guidance applies in two cases:
    the bottom and de-dentend.
    :class: checkmark
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       for (int i = 0; i < LoopSize(); ++i) {
         // Early skip of item based on edge condition.
@@ -390,7 +390,7 @@ The guidance applies in two cases:
    main purpose of the loop versus what is edge case handling.
    :class: error
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       for (int i = 0; i < LoopSize(); ++i) {
         if (CommonCase()) {
@@ -420,7 +420,7 @@ and standardize loop/function structure.
 .. admonition:: **Yes**: No else after return or continue
    :class: checkmark
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       // Note lack of else block due to return.
       if (Failure()) {
@@ -443,7 +443,7 @@ and standardize loop/function structure.
 .. admonition:: **No**: Else after return needlessly creeps right
    :class: error
 
-   .. code-block:: cpp
+   .. code:: cpp
 
       if (Failure()) {
         DoTheThing();
@@ -859,11 +859,11 @@ The styling follows these rules.
 #. Groups are placed the following order with a blank line separating each
    grouping.
 
-   * "set noparent" line
-   * "include" lines
-   * "file:" lines
-   * user grants (some examples: "*", "foo@example.com")
-   * "per-file:" lines
+    * "set noparent" line
+    * "include" lines
+    * "file:" lines
+    * user grants (some examples: "*", "foo@example.com")
+    * "per-file:" lines
 
 This plugin will, by default, act upon any file named "OWNERS".
 
@@ -989,7 +989,7 @@ Headings
 Use headings according to the following hierarchy, with the shown characters
 for the ReST heading syntax.
 
-.. code-block:: rst
+.. code:: rst
 
    ==================================
    Document Title: Two Bars of Equals
@@ -1030,7 +1030,7 @@ Do not put blank lines after headings.
 .. admonition:: **Yes**: No blank after heading
    :class: checkmark
 
-   .. code-block:: rst
+   .. code:: rst
 
       Here is a heading
       -----------------
@@ -1039,7 +1039,7 @@ Do not put blank lines after headings.
 .. admonition:: **No**: Unnecessary blank line
    :class: error
 
-   .. code-block:: rst
+   .. code:: rst
 
       Here is a heading
       -----------------
@@ -1051,7 +1051,7 @@ Do not put multiple blank lines before a heading.
 .. admonition:: **Yes**: Just one blank after section content before the next heading
    :class: checkmark
 
-   .. code-block:: rst
+   .. code:: rst
 
       There is some text here in the section before the next. It's just here to
       illustrate the spacing standard. Note that there is just one blank line
@@ -1064,7 +1064,7 @@ Do not put multiple blank lines before a heading.
 .. admonition:: **No**: Extra blank lines
    :class: error
 
-   .. code-block:: rst
+   .. code:: rst
 
       There is some text here in the section before the next. It's just here to
       illustrate the spacing standard. Note that there are too many blank lines
@@ -1084,7 +1084,7 @@ content. This aligns the directive content with the directive name.
 .. admonition:: **Yes**: Three space indent for directives; and nested
    :class: checkmark
 
-   .. code-block:: none
+   .. code:: none
 
       Here is a paragraph that has some content. After this content is a
       directive.
@@ -1105,7 +1105,7 @@ content. This aligns the directive content with the directive name.
    for directives
    :class: error
 
-   .. code-block:: none
+   .. code:: none
 
       Here is a paragraph with some content.
 
@@ -1121,7 +1121,7 @@ content. This aligns the directive content with the directive name.
 .. admonition:: **No**: Missing blank between directive and content.
    :class: error
 
-   .. code-block:: none
+   .. code:: none
 
       Here is a paragraph with some content.
 
@@ -1628,7 +1628,7 @@ Pigweed commit messages should conform to the following style:
 .. admonition:: **Yes**:
    :class: checkmark
 
-   .. code-block:: none
+   .. code:: none
 
       pw_some_module: Short capitalized description
 
@@ -1641,7 +1641,7 @@ Pigweed commit messages should conform to the following style:
 .. admonition:: **Yes**: Small number of modules affected; use {} syntax.
    :class: checkmark
 
-   .. code-block:: none
+   .. code:: none
 
       pw_{foo, bar, baz}: Change something in a few places
 
@@ -1652,14 +1652,14 @@ Pigweed commit messages should conform to the following style:
    nested, so they get a ``/`` character.
    :class: checkmark
 
-   .. code-block:: none
+   .. code:: none
 
       targets/xyz123: Tweak support for XYZ's PQR
 
 .. admonition:: **Yes**: Uses imperative style for subject and text.
    :class: checkmark
 
-   .. code-block:: none
+   .. code:: none
 
       pw_something: Add foo and bar functions
 
@@ -1668,7 +1668,7 @@ Pigweed commit messages should conform to the following style:
 .. admonition:: **No**: Uses non-imperative style for subject and text.
    :class: error
 
-   .. code-block:: none
+   .. code:: none
 
       pw_something: Adds more things
 
@@ -1679,7 +1679,7 @@ Pigweed commit messages should conform to the following style:
    single CL. Prefer smaller CLs, but larger CLs are a practical reality.
    :class: checkmark
 
-   .. code-block:: none
+   .. code:: none
 
       pw_complicated_module: Pre-work for refactor
 
@@ -1694,7 +1694,7 @@ Pigweed commit messages should conform to the following style:
 .. admonition:: **No**: Run on paragraph instead of bulleted list
    :class: error
 
-   .. code-block:: none
+   .. code:: none
 
       pw_foo: Many things in a giant BWOT
 
@@ -1706,7 +1706,7 @@ Pigweed commit messages should conform to the following style:
 .. admonition:: **No**: Doesn't capitalize the subject
    :class: error
 
-   .. code-block:: none
+   .. code:: none
 
       pw_foo: do a thing
 
@@ -1716,7 +1716,7 @@ Pigweed commit messages should conform to the following style:
    word is a lowercase identifier.
    :class: checkmark
 
-   .. code-block:: none
+   .. code:: none
 
       pw_foo: std::unique_lock cleanup
 
@@ -1727,28 +1727,28 @@ Pigweed commit messages should conform to the following style:
    However, imperative style subjects often have the identifier elsewhere in
    the subject; for example:
 
-   .. code-block:: none
+   .. code:: none
 
      pw_foo: Improve use of std::unique_lock
 
 .. admonition:: **No**: Uses a non-standard ``[]`` to indicate module:
    :class: error
 
-   .. code-block:: none
+   .. code:: none
 
       [pw_foo]: Do a thing
 
 .. admonition:: **No**: Has a period at the end of the subject
    :class: error
 
-   .. code-block:: none
+   .. code:: none
 
       pw_bar: Do something great.
 
 .. admonition:: **No**: Puts extra stuff after the module which isn't a module.
    :class: error
 
-   .. code-block:: none
+   .. code:: none
 
       pw_bar/byte_builder: Add more stuff to builder
 
@@ -1757,7 +1757,7 @@ Footer
 We support a number of `git footers`_ in the commit message, such as ``Bug:
 123`` in the message below:
 
-.. code-block:: none
+.. code:: none
 
    pw_something: Add foo and bar functions
 
@@ -1769,7 +1769,7 @@ You are encouraged to use the following footers when appropriate:
   bug will be automatically updated when the change is submitted. When a change
   is relevant to more than one bug, include multiple ``Bug`` lines, like so:
 
-  .. code-block:: none
+  .. code:: none
 
       pw_something: Add foo and bar functions
 
@@ -1779,7 +1779,7 @@ You are encouraged to use the following footers when appropriate:
 * ``Fixed`` or ``Fixes``: Like ``Bug``, but automatically closes the bug when
   submitted.
 
-  .. code-block:: none
+  .. code:: none
 
       pw_something: Fix incorrect use of foo
 
@@ -1809,164 +1809,150 @@ particular code block but it has not been implemented yet. See
 
 Grouping related content with tabs
 ==================================
-Use the ``tab-set`` directive to group related content together. This feature is
-powered by `sphinx-design Tabs
-<https://sphinx-design.readthedocs.io/en/furo-theme/tabs.html>`_
+Use the ``tabs`` directive to group related content together. This feature is
+powered by `sphinx-tabs <https://sphinx-tabs.readthedocs.io>`_.
 
 Tabs for code-only content
 --------------------------
 Use the ``tabs`` and ``code-tab`` directives together. Example:
 
-.. code-block:: rst
+.. code:: none
 
-   .. tab-set-code::
+   .. tabs::
 
-      .. code-block:: c++
+      .. code-tab:: c++
 
          // C++ code...
 
-      .. code-block:: python
+      .. code-tab:: py
 
          # Python code...
 
 Rendered output:
 
-.. tab-set-code::
+.. tabs::
 
-   .. code-block:: c++
+   .. code-tab:: c++
 
       // C++ code...
 
-   .. code-block:: python
+   .. code-tab:: py
 
       # Python code...
 
 Tabs for all other content
 --------------------------
-Use the ``tabs`` and ``tab-item`` directives together. Example:
+Use the ``tabs`` and ``group-tab`` directives together. Example:
 
-.. code-block:: rst
+.. code:: none
 
-   .. tab-set::
+   .. tabs::
 
-      .. tab-item:: Linux
+      .. group-tab:: Linux
 
          Linux instructions...
 
-      .. tab-item:: Windows
+      .. group-tab:: Windows
 
          Windows instructions...
 
 Rendered output:
 
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: Linux
+   .. group-tab:: Linux
 
       Linux instructions...
 
-   .. tab-item:: Windows
+   .. group-tab:: Windows
 
       Windows instructions...
 
 Tab synchronization
 -------------------
-Tabs are synchronized in two ways:
+Tabs are synchronized based on ``group-tab`` and ``code-tab`` values. Example:
 
-1. ``tab-set-code::`` ``code-block`` languages names.
-2. ``tab-item::`` ``:sync:`` values.
+.. code:: none
 
-For Example:
+   .. tabs::
 
-.. code-block:: rst
-
-   .. tabs-set-code::
-
-      .. code-block:: c++
+      .. code-tab:: c++
 
          // C++ code...
 
-      .. code-block:: py
+      .. code-tab:: py
 
          # Python code...
 
-   .. tabs-set-code::
+   .. tabs::
 
-      .. code-block:: c++
+      .. code-tab:: c++
 
          // More C++ code...
 
-      .. code-block:: py
+      .. code-tab:: py
 
          # More Python code...
 
-   .. tab-set::
+   .. tabs::
 
-      .. tab-item:: Linux
-         :sync: key1
+      .. group-tab:: Linux
 
          Linux instructions...
 
-      .. tab-item:: Windows
-         :sync: key2
+      .. group-tab:: Windows
 
          Windows instructions...
 
-   .. tab-set::
+   .. tabs::
 
-      .. tab-item:: Linux
-         :sync: key1
+      .. group-tab:: Linux
 
          More Linux instructions...
 
-      .. tab-item:: Windows
-         :sync: key2
+      .. group-tab:: Windows
 
          More Windows instructions...
 
 Rendered output:
 
-.. tab-set-code::
+.. tabs::
 
-   .. code-block:: c++
+   .. code-tab:: c++
 
       // C++ code...
 
-   .. code-block:: py
+   .. code-tab:: py
 
       # Python code...
 
-.. tab-set-code::
+.. tabs::
 
-   .. code-block:: c++
+   .. code-tab:: c++
 
       // More C++ code...
 
-   .. code-block:: py
+   .. code-tab:: py
 
       # More Python code...
 
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: Linux
-      :sync: key1
+   .. group-tab:: Linux
 
       Linux instructions...
 
-   .. tab-item:: Windows
-      :sync: key2
+   .. group-tab:: Windows
 
       Windows instructions...
 
-.. tab-set::
+.. tabs::
 
-   .. tab-item:: Linux
-      :sync: key1
+   .. group-tab:: Linux
 
       More Linux instructions...
 
-   .. tab-item:: Windows
-      :sync: key2
+   .. group-tab:: Windows
 
       More Windows instructions...
 

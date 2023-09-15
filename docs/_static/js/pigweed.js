@@ -12,10 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-window.pigweed = {};
-
-// Scroll the site nav so that the current page is visible.
-window.pigweed.scrollSiteNav = () => {
+function scrollSiteNavToCurrentPage() {
   const siteNav = document.querySelector('.sidebar-scroll');
   // The node within the site nav that represents the page that the user is
   // currently looking at.
@@ -37,15 +34,12 @@ window.pigweed.scrollSiteNav = () => {
     targetNode.getBoundingClientRect().top -
     siteNav.getBoundingClientRect().top;
   siteNav.scrollTop = scrollDistance;
-};
+}
 
-window.addEventListener('DOMContentLoaded', () => {
-  // (b/297384789) Start Mermaid diagram rendering as early as possible to
-  // prevent a race condition between Furo's scrolling logic and the Mermaid
-  // diagram rendering logic.
-  if (window.mermaid) {
-    // https://mermaid.js.org/config/usage.html#using-mermaid-run
-    window.mermaid.run();
-  }
-  window.pigweed.scrollSiteNav();
+window.addEventListener('load', () => {
+  // Run the scrolling function with a 1-second delay so that it doesn't
+  // interfere with Sphinx's scrolling function. E.g. when you visit
+  // https://pigweed.dev/pw_tokenizer/design.html#bit-tokenization we need
+  // to give Sphinx a chance to scroll to the #bit-tokenization section.
+  setTimeout(scrollSiteNavToCurrentPage, 1000);
 });

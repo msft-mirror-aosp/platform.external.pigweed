@@ -12,30 +12,26 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-type ObjectType = {
-  [index: number | string]: any;
-};
-
-function hasOwnProperty(obj: ObjectType, prop: number | string) {
+function hasOwnProperty(obj: object, prop: number | string) {
   if (obj == null) {
     return false;
   }
   //to handle objects with null prototypes (too edge case?)
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
-function hasShallowProperty(obj: ObjectType, prop: number | string) {
+function hasShallowProperty(obj: object, prop: number | string) {
   return (
     (typeof prop === 'number' && Array.isArray(obj)) ||
     hasOwnProperty(obj, prop)
   );
 }
 
-function getShallowProperty(obj: ObjectType, prop: number | string) {
+function getShallowProperty(obj: object, prop: number | string) {
   if (hasShallowProperty(obj, prop)) {
     return obj[prop];
   }
 }
-function getKey(key: string) {
+function getKey(key) {
   const intKey = parseInt(key);
   if (intKey.toString() === key) {
     return intKey;
@@ -44,7 +40,7 @@ function getKey(key: string) {
 }
 
 export function setPathOnObject(
-  obj: ObjectType,
+  obj: object,
   path: number | string | Array<number | string>,
   value: any,
   doNotReplace: boolean = false,

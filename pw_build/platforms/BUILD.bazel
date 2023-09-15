@@ -96,21 +96,17 @@ platform(
 platform(
     name = "lm3s6965evb",
     constraint_values = [
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m3",
         "//pw_build/constraints/chipset:lm3s6965evb",
-        "//pw_sys_io_baremetal_lm3s6965evb:backend",
-        "@platforms//cpu:armv7-m",
         "@rust_crates//:no_std",
+        "//pw_sys_io_baremetal_lm3s6965evb:backend",
     ],
+    parents = [":cortex_m3"],
 )
 
 platform(
     name = "nrf52833",
-    constraint_values = [
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m0",
-        "//pw_build/constraints/chipset:nrf52833",
-        "@platforms//cpu:armv6-m",
-    ],
+    constraint_values = ["//pw_build/constraints/chipset:nrf52833"],
+    parents = [":cortex_m0"],
 )
 
 # --- Boards ---
@@ -148,16 +144,11 @@ platform(
         # Use the baremetal pw_sys_io backend (because the default
         # pw_sys_io_stdio backend is not compatible with FreeRTOS).
         "//pw_sys_io_baremetal_stm32f429:backend",
-        # Select cortex-m backends
-        "//pw_cpu_exception:basic_handler_backend",
-        "//pw_cpu_exception_cortex_m:entry_backend",
-        "//pw_cpu_exception_cortex_m:support_backend",
-        "//pw_interrupt_cortex_m:backend",
         # os:none means, we're not building for any host platform (Windows,
         # Linux, or Mac). The pw_sys_io_baremetal_stm32f429 backend is only
         # compatible with os:none.
         "@platforms//os:none",
-        # For toolchain resolution.
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m4",
     ],
+    # Inherit from cortex_m4_fpu to use the appropriate Arm toolchain.
+    parents = [":cortex_m4_fpu"],
 )

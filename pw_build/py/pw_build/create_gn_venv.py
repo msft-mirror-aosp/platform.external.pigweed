@@ -16,9 +16,7 @@
 import argparse
 import os
 import pathlib
-import platform
 import shutil
-import stat
 import sys
 import venv
 
@@ -46,22 +44,6 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _rm_dir(path_to_delete: pathlib.Path) -> None:
-    """Delete a directory recursively.
-
-    On Windows if a file can't be deleted, mark it as writable then delete.
-    """
-
-    def make_writable_and_delete(_func, path, _exc_info):
-        os.chmod(path, stat.S_IWRITE)
-        os.unlink(path)
-
-    on_rm_error = None
-    if platform.system() == 'Windows':
-        on_rm_error = make_writable_and_delete
-    shutil.rmtree(path_to_delete, onerror=on_rm_error)
-
-
 def main(
     depfile: pathlib.Path,
     destination_dir: pathlib.Path,
@@ -69,7 +51,7 @@ def main(
 ) -> None:
     # Create the virtualenv.
     if destination_dir.exists():
-        _rm_dir(destination_dir)
+        shutil.rmtree(destination_dir)
     venv.create(destination_dir, symlinks=True, with_pip=True)
 
     # Write out the depfile, making sure the Python path is

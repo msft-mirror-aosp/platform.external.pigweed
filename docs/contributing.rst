@@ -94,20 +94,24 @@ Gerrit requires all changes to have a ``Change-Id`` tag at the bottom of each
 commit message. You should set this up to be done automatically using the
 instructions below.
 
-The commands below assume that your current working directory is the root
-of your Pigweed repository.
-
 **Linux/macOS**
 
-.. code-block:: bash
+The command below assumes that your current working directory is the root
+of your Pigweed repository.
 
-   f=`git rev-parse --git-dir`/hooks/commit-msg ; mkdir -p $(dirname $f) ; curl -Lo $f https://gerrit-review.googlesource.com/tools/hooks/commit-msg ; chmod +x $f
+.. code:: bash
+
+  $ f=`git rev-parse --git-dir`/hooks/commit-msg ; mkdir -p $(dirname $f) ; curl -Lo $f https://gerrit-review.googlesource.com/tools/hooks/commit-msg ; chmod +x $f
 
 **Windows**
 
-.. code-block:: batch
+Download `the Gerrit commit hook
+<https://gerrit-review.googlesource.com/tools/hooks/commit-msg>`_ and then copy
+it to the ``.git\hooks`` directory in the Pigweed repository.
 
-   git rev-parse --git-dir > gitrepopath.txt & set /p "g="< gitrepopath.txt & del gitrepopath.txt & call set "f=%g%/hooks" & call mkdir "%f%" & call curl -Lo "%f%/commit-msg" https://gerrit-review.googlesource.com/tools/hooks/commit-msg
+.. code::
+
+  copy %HOMEPATH%\Downloads\commit-msg %HOMEPATH%\pigweed\.git\hooks\commit-msg
 
 Commit Message
 --------------
@@ -250,7 +254,7 @@ browsers.
 
 Apache header for C and C++ files:
 
-.. code-block:: none
+.. code:: none
 
   // Copyright 2021 The Pigweed Authors
   //
@@ -268,7 +272,7 @@ Apache header for C and C++ files:
 
 Apache header for Python and GN files:
 
-.. code-block:: none
+.. code:: none
 
   # Copyright 2020 The Pigweed Authors
   #
@@ -342,14 +346,14 @@ git push hook using the following command:
 
 Linux/macOS
 ^^^^^^^^^^^
-.. code-block:: bash
+.. code:: bash
 
   $ pw presubmit --install
 
 This will be effectively the same as running the following command before every
 ``git push``:
 
-.. code-block:: bash
+.. code:: bash
 
   $ pw presubmit
 
@@ -361,7 +365,7 @@ This will be effectively the same as running the following command before every
 If you ever need to bypass the presubmit hook (due to it being broken, for
 example) you may push using this command:
 
-.. code-block:: bash
+.. code:: bash
 
   $ git push origin HEAD:refs/for/main --no-verify
 
@@ -370,7 +374,7 @@ Presubmit and branch management
 When creating new feature branches, make sure to specify the upstream branch to
 track, e.g.
 
-.. code-block:: bash
+.. code:: bash
 
   $ git checkout -b myfeature origin/main
 

@@ -630,7 +630,7 @@ correctness of implementations in different languages.
 
 To run the tests on your machine, run
 
-.. code-block:: bash
+.. code:: bash
 
   $ bazel test --features=c++17 \
         pw_transfer/integration_test:cross_language_small_test \
@@ -645,7 +645,7 @@ The integration tests permit injection of client/server/proxy binaries to use
 when running the tests. This allows manual testing of older versions of
 pw_transfer against newer versions.
 
-.. code-block:: bash
+.. code:: bash
 
   # Test a newer version of pw_transfer against an old C++ client that was
   # backed up to another directory.
@@ -663,7 +663,7 @@ binaries and the latest binaries.
 
 The CIPD package contents can be created with this command:
 
-.. code-block::bash
+.. code::bash
 
   $ bazel build --features=c++17 pw_transfer/integration_test:server \
                                  pw_transfer/integration_test:cpp_client
@@ -684,7 +684,6 @@ By default, these tests are not run in CQ (on presubmit) because they are too
 slow. However, you can request that the tests be run in presubmit on your
 change by adding to following line to the commit message footer:
 
-.. code-block::
+.. code::
 
-   Cq-Include-Trybots: luci.pigweed.try:pigweed-integration-transfer
-
+  Cq-Include-Trybots: luci.pigweed.try:pigweed-integration-transfer

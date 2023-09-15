@@ -536,7 +536,6 @@ template("pw_test_group") {
           "unit_tests",
           "action_tests",
           "perf_tests",
-          "fuzz_tests",
         ]
         walk_keys = [ "test_barrier" ]
         output_conversion = "json"

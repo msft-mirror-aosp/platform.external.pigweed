@@ -38,7 +38,6 @@ pw_add_library(pw_tokenizer STATIC
     pw_span
     pw_preprocessor
     pw_tokenizer.config
-    pw_varint
   SOURCES
     encode_args.cc
     hash.cc
@@ -51,6 +50,8 @@ pw_add_library(pw_tokenizer STATIC
     public/pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_96_hash_macro.h
     public/pw_tokenizer/internal/tokenize_string.h
     tokenize.cc
+  PRIVATE_DEPS
+    pw_varint
 )
 
 if(Zephyr_FOUND AND CONFIG_PIGWEED_TOKENIZER)
@@ -91,11 +92,8 @@ pw_add_library(pw_tokenizer.decoder STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_log_tokenized.config
     pw_span
-    pw_string
     pw_tokenizer
-    pw_tokenizer.base64
   SOURCES
     decode.cc
     detokenize.cc

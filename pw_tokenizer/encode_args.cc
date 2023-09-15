@@ -20,10 +20,6 @@
 #include "pw_preprocessor/compiler.h"
 #include "pw_varint/varint.h"
 
-static_assert((PW_TOKENIZER_CFG_ARG_TYPES_SIZE_BYTES == 4) ||
-                  (PW_TOKENIZER_CFG_ARG_TYPES_SIZE_BYTES == 8),
-              "PW_TOKENIZER_CFG_ARG_TYPES_SIZE_BYTES must be 4 or 8");
-
 namespace pw {
 namespace tokenizer {
 namespace {
@@ -37,12 +33,11 @@ enum class ArgType : uint8_t {
 };
 
 size_t EncodeInt(int value, const span<std::byte>& output) {
-  // Use the 64-bit function to avoid instantiating both 32-bit and 64-bit.
-  return pw_tokenizer_EncodeInt64(value, output.data(), output.size());
+  return varint::Encode(value, as_writable_bytes(output));
 }
 
 size_t EncodeInt64(int64_t value, const span<std::byte>& output) {
-  return pw_tokenizer_EncodeInt64(value, output.data(), output.size());
+  return varint::Encode(value, as_writable_bytes(output));
 }
 
 size_t EncodeFloat(float value, const span<std::byte>& output) {

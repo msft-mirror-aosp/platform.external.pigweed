@@ -24,7 +24,7 @@
 
 #include "pw_assert/check.h"
 #include "pw_kvs_private/config.h"
-#include "pw_log/log.h"
+#include "pw_log/shorter.h"
 #include "pw_status/try.h"
 
 namespace pw::kvs {
@@ -61,10 +61,9 @@ Status KeyValueStore::Init() {
   error_detected_ = false;
   last_transaction_id_ = 0;
 
-  PW_LOG_INFO("Initializing key value store");
+  INF("Initializing key value store");
   if (partition_.sector_count() > sectors_.max_size()) {
-    PW_LOG_ERROR(
-        "KVS init failed: kMaxUsableSectors (=%u) must be at least as "
+    ERR("KVS init failed: kMaxUsableSectors (=%u) must be at least as "
         "large as the number of sectors in the flash partition (=%u)",
         unsigned(sectors_.max_size()),
         unsigned(partition_.sector_count()));
@@ -72,8 +71,7 @@ Status KeyValueStore::Init() {
   }
 
   if (partition_.sector_count() < 2) {
-    PW_LOG_ERROR(
-        "KVS init failed: FlashParition sector count (=%u) must be at 2. KVS "
+    ERR("KVS init failed: FlashParition sector count (=%u) must be at 2. KVS "
         "requires at least 1 working sector + 1 free/reserved sector",
         unsigned(partition_.sector_count()));
     return Status::FailedPrecondition();
@@ -84,8 +82,7 @@ Status KeyValueStore::Init() {
   // TODO(davidrogers): investigate doing this as a static assert/compile-time
   // check.
   if (sector_size_bytes > SectorDescriptor::max_sector_size()) {
-    PW_LOG_ERROR(
-        "KVS init failed: sector_size_bytes (=%u) is greater than maximum "
+    ERR("KVS init failed: sector_size_bytes (=%u) is greater than maximum "
         "allowed sector size (=%u)",
         unsigned(sector_size_bytes),
         unsigned(SectorDescriptor::max_sector_size()));
@@ -108,24 +105,22 @@ Status KeyValueStore::Init() {
         if (metadata_result.IsOutOfRange()) {
           internal_stats_.missing_redundant_entries_recovered =
               pre_fix_redundancy_errors;
-          PW_LOG_INFO("KVS init: Redundancy level successfully updated");
+          INF("KVS init: Redundancy level successfully updated");
         } else {
-          PW_LOG_WARN("KVS init: Corruption detected and fully repaired");
+          WRN("KVS init: Corruption detected and fully repaired");
         }
         initialized_ = InitializationState::kReady;
       } else if (recovery_status.IsResourceExhausted()) {
-        PW_LOG_WARN("KVS init: Unable to maintain required free sector");
+        WRN("KVS init: Unable to maintain required free sector");
       } else {
-        PW_LOG_WARN("KVS init: Corruption detected and unable repair");
+        WRN("KVS init: Corruption detected and unable repair");
       }
     } else {
-      PW_LOG_WARN(
-          "KVS init: Corruption detected, no repair attempted due to options");
+      WRN("KVS init: Corruption detected, no repair attempted due to options");
     }
   }
 
-  PW_LOG_INFO(
-      "KeyValueStore init complete: active keys %u, deleted keys %u, sectors "
+  INF("KeyValueStore init complete: active keys %u, deleted keys %u, sectors "
       "%u, logical sector size %u bytes",
       unsigned(size()),
       unsigned(entry_cache_.total_entries() - size()),
@@ -134,8 +129,7 @@ Status KeyValueStore::Init() {
 
   // Report any corruption was not repaired.
   if (error_detected_) {
-    PW_LOG_WARN(
-        "KVS init: Corruption found but not repaired, KVS unavailable until "
+    WRN("KVS init: Corruption found but not repaired, KVS unavailable until "
         "successful maintenance.");
     return Status::DataLoss();
   }
@@ -149,7 +143,7 @@ Status KeyValueStore::InitializeMetadata() {
   sectors_.Reset();
   entry_cache_.Reset();
 
-  PW_LOG_DEBUG("First pass: Read all entries from all sectors");
+  DBG("First pass: Read all entries from all sectors");
   Address sector_address = 0;
 
   size_t total_corrupt_bytes = 0;
@@ -163,21 +157,20 @@ Status KeyValueStore::InitializeMetadata() {
     size_t sector_corrupt_bytes = 0;
 
     for (int num_entries_in_sector = 0; true; num_entries_in_sector++) {
-      PW_LOG_DEBUG("Load entry: sector=%u, entry#=%d, address=%u",
-                   unsigned(sector_address),
-                   num_entries_in_sector,
-                   unsigned(entry_address));
+      DBG("Load entry: sector=%u, entry#=%d, address=%u",
+          unsigned(sector_address),
+          num_entries_in_sector,
+          unsigned(entry_address));
 
       if (!sectors_.AddressInSector(sector, entry_address)) {
-        PW_LOG_DEBUG("Fell off end of sector; moving to the next sector");
+        DBG("Fell off end of sector; moving to the next sector");
         break;
       }
 
       Address next_entry_address;
       Status status = LoadEntry(entry_address, &next_entry_address);
       if (status.IsNotFound()) {
-        PW_LOG_DEBUG(
-            "Hit un-written data in sector; moving to the next sector");
+        DBG("Hit un-written data in sector; moving to the next sector");
         break;
       } else if (!status.ok()) {
         // The entry could not be read, indicating likely data corruption within
@@ -218,9 +211,9 @@ Status KeyValueStore::InitializeMetadata() {
       sector.mark_corrupt();
       error_detected_ = true;
 
-      PW_LOG_WARN("Sector %u contains %uB of corrupt data",
-                  sectors_.Index(sector),
-                  unsigned(sector_corrupt_bytes));
+      WRN("Sector %u contains %uB of corrupt data",
+          sectors_.Index(sector),
+          unsigned(sector_corrupt_bytes));
     }
 
     if (sector.Empty(sector_size_bytes)) {
@@ -230,7 +223,7 @@ Status KeyValueStore::InitializeMetadata() {
     total_corrupt_bytes += sector_corrupt_bytes;
   }
 
-  PW_LOG_DEBUG("Second pass: Count valid bytes in each sector");
+  DBG("Second pass: Count valid bytes in each sector");
   Address newest_key = 0;
 
   // For every valid entry, for each address, count the valid bytes in that
@@ -239,10 +232,10 @@ Status KeyValueStore::InitializeMetadata() {
   // initializing last_new_sector_.
   for (EntryMetadata& metadata : entry_cache_) {
     if (metadata.addresses().size() < redundancy()) {
-      PW_LOG_DEBUG("Key 0x%08x missing copies, has %u, needs %u",
-                   unsigned(metadata.hash()),
-                   unsigned(metadata.addresses().size()),
-                   unsigned(redundancy()));
+      DBG("Key 0x%08x missing copies, has %u, needs %u",
+          unsigned(metadata.hash()),
+          unsigned(metadata.addresses().size()),
+          unsigned(redundancy()));
       entry_copies_missing++;
     }
     size_t index = 0;
@@ -279,7 +272,7 @@ Status KeyValueStore::InitializeMetadata() {
   sectors_.set_last_new_sector(newest_key);
 
   if (!empty_sector_found) {
-    PW_LOG_DEBUG("No empty sector found");
+    DBG("No empty sector found");
     error_detected_ = true;
   }
 
@@ -288,16 +281,14 @@ Status KeyValueStore::InitializeMetadata() {
     error_detected_ = true;
 
     if (!other_errors && entry_copies_missing == entry_cache_.total_entries()) {
-      PW_LOG_INFO(
-          "KVS configuration changed to redundancy of %u total copies per key",
+      INF("KVS configuration changed to redundancy of %u total copies per key",
           unsigned(redundancy()));
       return Status::OutOfRange();
     }
   }
 
   if (error_detected_) {
-    PW_LOG_WARN(
-        "Corruption detected. Found %u corrupt bytes, %u corrupt entries, "
+    WRN("Corruption detected. Found %u corrupt bytes, %u corrupt entries, "
         "and %u keys missing redundant copies.",
         unsigned(total_corrupt_bytes),
         unsigned(corrupt_entries),
@@ -383,9 +374,9 @@ Status KeyValueStore::LoadEntry(Address entry_address,
 Status KeyValueStore::ScanForEntry(const SectorDescriptor& sector,
                                    Address start_address,
                                    Address* next_entry_address) {
-  PW_LOG_DEBUG("Scanning sector %u for entries starting from address %u",
-               sectors_.Index(sector),
-               unsigned(start_address));
+  DBG("Scanning sector %u for entries starting from address %u",
+      sectors_.Index(sector),
+      unsigned(start_address));
 
   // Entries must start at addresses which are aligned on a multiple of
   // Entry::kMinAlignmentBytes. However, that multiple can vary between entries.
@@ -401,7 +392,7 @@ Status KeyValueStore::ScanForEntry(const SectorDescriptor& sector,
       continue;
     }
     if (formats_.KnownMagic(magic)) {
-      PW_LOG_DEBUG("Found entry magic at address %u", unsigned(address));
+      DBG("Found entry magic at address %u", unsigned(address));
       *next_entry_address = address;
       return OkStatus();
     }
@@ -457,14 +448,14 @@ StatusWithSize KeyValueStore::Get(Key key,
 
 Status KeyValueStore::PutBytes(Key key, span<const byte> value) {
   PW_TRY(CheckWriteOperation(key));
-  PW_LOG_DEBUG("Writing key/value; key length=%u, value length=%u",
-               unsigned(key.size()),
-               unsigned(value.size()));
+  DBG("Writing key/value; key length=%u, value length=%u",
+      unsigned(key.size()),
+      unsigned(value.size()));
 
   if (Entry::size(partition_, key, value) > partition_.sector_size_bytes()) {
-    PW_LOG_DEBUG("%u B value with %u B key cannot fit in one sector",
-                 unsigned(value.size()),
-                 unsigned(key.size()));
+    DBG("%u B value with %u B key cannot fit in one sector",
+        unsigned(value.size()),
+        unsigned(key.size()));
     return Status::InvalidArgument();
   }
 
@@ -473,10 +464,10 @@ Status KeyValueStore::PutBytes(Key key, span<const byte> value) {
 
   if (status.ok()) {
     // TODO(davidrogers): figure out logging how to support multiple addresses.
-    PW_LOG_DEBUG("Overwriting entry for key 0x%08x in %u sectors including %u",
-                 unsigned(metadata.hash()),
-                 unsigned(metadata.addresses().size()),
-                 sectors_.Index(metadata.first_address()));
+    DBG("Overwriting entry for key 0x%08x in %u sectors including %u",
+        unsigned(metadata.hash()),
+        unsigned(metadata.addresses().size()),
+        sectors_.Index(metadata.first_address()));
     return WriteEntryForExistingKey(metadata, EntryState::kValid, key, value);
   }
 
@@ -494,10 +485,10 @@ Status KeyValueStore::Delete(Key key) {
   PW_TRY(FindExisting(key, &metadata));
 
   // TODO(davidrogers): figure out logging how to support multiple addresses.
-  PW_LOG_DEBUG("Writing tombstone for key 0x%08x in %u sectors including %u",
-               unsigned(metadata.hash()),
-               unsigned(metadata.addresses().size()),
-               sectors_.Index(metadata.first_address()));
+  DBG("Writing tombstone for key 0x%08x in %u sectors including %u",
+      unsigned(metadata.hash()),
+      unsigned(metadata.addresses().size()),
+      sectors_.Index(metadata.first_address()));
   return WriteEntryForExistingKey(metadata, EntryState::kDeleted, key, {});
 }
 
@@ -553,7 +544,7 @@ Status KeyValueStore::ReadEntry(const EntryMetadata& metadata,
     sectors_.FromAddress(address).mark_corrupt();
   }
 
-  PW_LOG_ERROR("No valid entries for key. Data has been lost!");
+  ERR("No valid entries for key. Data has been lost!");
   return read_result;
 }
 
@@ -621,9 +612,9 @@ Status KeyValueStore::FixedSizeGet(Key key,
   PW_TRY_ASSIGN(const size_t actual_size, ValueSize(metadata));
 
   if (actual_size != size_bytes) {
-    PW_LOG_DEBUG("Requested %u B read, but value is %u B",
-                 unsigned(size_bytes),
-                 unsigned(actual_size));
+    DBG("Requested %u B read, but value is %u B",
+        unsigned(size_bytes),
+        unsigned(actual_size));
     return Status::InvalidArgument();
   }
 
@@ -686,16 +677,14 @@ Status KeyValueStore::WriteEntryForNewKey(Key key, span<const byte> value) {
       entry_cache_.full()) {
     Status maintenance_status = HeavyMaintenance();
     if (!maintenance_status.ok()) {
-      PW_LOG_WARN("KVS Maintenance failed for write: %s",
-                  maintenance_status.str());
+      WRN("KVS Maintenance failed for write: %s", maintenance_status.str());
       return maintenance_status;
     }
   }
 #endif  // PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE
 
   if (entry_cache_.full()) {
-    PW_LOG_WARN(
-        "KVS full: trying to store a new entry, but can't. Have %u entries",
+    WRN("KVS full: trying to store a new entry, but can't. Have %u entries",
         unsigned(entry_cache_.total_entries()));
     return Status::ResourceExhausted();
   }
@@ -717,8 +706,8 @@ Status KeyValueStore::WriteEntry(Key key,
       prior_entry->ValueMatches(value).ok()) {
     // The new value matches the prior value, don't need to write anything. Just
     // keep the existing entry.
-    PW_LOG_DEBUG("Write for key 0x%08x with matching value skipped",
-                 unsigned(prior_metadata->hash()));
+    DBG("Write for key 0x%08x with matching value skipped",
+        unsigned(prior_metadata->hash()));
     return OkStatus();
   }
 
@@ -784,9 +773,9 @@ Status KeyValueStore::GetAddressesForWrite(Address* write_addresses,
     PW_TRY(GetSectorForWrite(&sector, write_size, span(write_addresses, i)));
     write_addresses[i] = sectors_.NextWritableAddress(*sector);
 
-    PW_LOG_DEBUG("Found space for entry in sector %u at address %u",
-                 sectors_.Index(sector),
-                 unsigned(write_addresses[i]));
+    DBG("Found space for entry in sector %u at address %u",
+        sectors_.Index(sector),
+        unsigned(write_addresses[i]));
   }
 
   return OkStatus();
@@ -831,13 +820,13 @@ Status KeyValueStore::GetSectorForWrite(
     // moving entries for keys other than the one being worked on in to sectors
     // that have copies of the key trying to be written.
     if (gc_sector_count > (partition_.sector_count() + 2)) {
-      PW_LOG_ERROR("Did more GC sectors than total sectors!!!!");
+      ERR("Did more GC sectors than total sectors!!!!");
       return Status::ResourceExhausted();
     }
   }
 
   if (!result.ok()) {
-    PW_LOG_WARN("Unable to find sector to write %u B", unsigned(entry_size));
+    WRN("Unable to find sector to write %u B", unsigned(entry_size));
   }
   return result;
 }
@@ -845,7 +834,7 @@ Status KeyValueStore::GetSectorForWrite(
 Status KeyValueStore::MarkSectorCorruptIfNotOk(Status status,
                                                SectorDescriptor* sector) {
   if (!status.ok()) {
-    PW_LOG_DEBUG("  Sector %u corrupt", sectors_.Index(sector));
+    DBG("  Sector %u corrupt", sectors_.Index(sector));
     sector->mark_corrupt();
     error_detected_ = true;
   }
@@ -860,10 +849,10 @@ Status KeyValueStore::AppendEntry(const Entry& entry,
   SectorDescriptor& sector = sectors_.FromAddress(entry.address());
 
   if (!result.ok()) {
-    PW_LOG_ERROR("Failed to write %u bytes at %#x. %u actually written",
-                 unsigned(entry.size()),
-                 unsigned(entry.address()),
-                 unsigned(result.size()));
+    ERR("Failed to write %u bytes at %#x. %u actually written",
+        unsigned(entry.size()),
+        unsigned(entry.address()),
+        unsigned(result.size()));
     PW_TRY(MarkSectorCorruptIfNotOk(result.status(), &sector));
   }
 
@@ -934,7 +923,7 @@ Status KeyValueStore::FullMaintenanceHelper(MaintenanceType maintenance_type) {
 
   // Full maintenance can be a potentially heavy operation, and should be
   // relatively infrequent, so log start/end at INFO level.
-  PW_LOG_INFO("Beginning full maintenance");
+  INF("Beginning full maintenance");
   CheckForErrors();
 
   // Step 1: Repair errors
@@ -947,7 +936,7 @@ Status KeyValueStore::FullMaintenanceHelper(MaintenanceType maintenance_type) {
   Status overall_status = update_status.status();
 
   if (!overall_status.ok()) {
-    PW_LOG_ERROR("Failed to update all entries to the primary format");
+    ERR("Failed to update all entries to the primary format");
   }
 
   SectorDescriptor* sector = sectors_.last_new();
@@ -976,7 +965,7 @@ Status KeyValueStore::FullMaintenanceHelper(MaintenanceType maintenance_type) {
           (force_gc || sector->valid_bytes() == 0)) {
         gc_status = GarbageCollectSector(*sector, {});
         if (!gc_status.ok()) {
-          PW_LOG_ERROR("Failed to garbage collect all sectors");
+          ERR("Failed to garbage collect all sectors");
           break;
         }
       }
@@ -1010,9 +999,9 @@ Status KeyValueStore::FullMaintenanceHelper(MaintenanceType maintenance_type) {
 #endif  // PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE
 
   if (overall_status.ok()) {
-    PW_LOG_INFO("Full maintenance complete");
+    INF("Full maintenance complete");
   } else {
-    PW_LOG_ERROR("Full maintenance finished with some errors");
+    ERR("Full maintenance finished with some errors");
   }
   return overall_status;
 }
@@ -1031,9 +1020,9 @@ Status KeyValueStore::PartialMaintenance() {
 }
 
 Status KeyValueStore::GarbageCollect(span<const Address> reserved_addresses) {
-  PW_LOG_DEBUG("Garbage Collect a single sector");
+  DBG("Garbage Collect a single sector");
   for ([[maybe_unused]] Address address : reserved_addresses) {
-    PW_LOG_DEBUG("   Avoid address %u", unsigned(address));
+    DBG("   Avoid address %u", unsigned(address));
   }
 
   // Step 1: Find the sector to garbage collect
@@ -1055,9 +1044,9 @@ Status KeyValueStore::RelocateKeyAddressesInSector(
     span<const Address> reserved_addresses) {
   for (FlashPartition::Address& address : metadata.addresses()) {
     if (sectors_.AddressInSector(sector_to_gc, address)) {
-      PW_LOG_DEBUG("  Relocate entry for Key 0x%08" PRIx32 ", sector %u",
-                   metadata.hash(),
-                   sectors_.Index(sectors_.FromAddress(address)));
+      DBG("  Relocate entry for Key 0x%08" PRIx32 ", sector %u",
+          metadata.hash(),
+          sectors_.Index(sectors_.FromAddress(address)));
       PW_TRY(RelocateEntry(metadata, address, reserved_addresses));
     }
   }
@@ -1067,7 +1056,7 @@ Status KeyValueStore::RelocateKeyAddressesInSector(
 
 Status KeyValueStore::GarbageCollectSector(
     SectorDescriptor& sector_to_gc, span<const Address> reserved_addresses) {
-  PW_LOG_DEBUG("  Garbage Collect sector %u", sectors_.Index(sector_to_gc));
+  DBG("  Garbage Collect sector %u", sectors_.Index(sector_to_gc));
 
   // Step 1: Move any valid entries in the GC sector to other sectors
   if (sector_to_gc.valid_bytes() != 0) {
@@ -1078,8 +1067,7 @@ Status KeyValueStore::GarbageCollectSector(
   }
 
   if (sector_to_gc.valid_bytes() != 0) {
-    PW_LOG_ERROR(
-        "  Failed to relocate valid entries from sector being garbage "
+    ERR("  Failed to relocate valid entries from sector being garbage "
         "collected, %u valid bytes remain",
         unsigned(sector_to_gc.valid_bytes()));
     return Status::Internal();
@@ -1093,8 +1081,7 @@ Status KeyValueStore::GarbageCollectSector(
     sector_to_gc.set_writable_bytes(partition_.sector_size_bytes());
   }
 
-  PW_LOG_DEBUG("  Garbage Collect sector %u complete",
-               sectors_.Index(sector_to_gc));
+  DBG("  Garbage Collect sector %u complete", sectors_.Index(sector_to_gc));
   return OkStatus();
 }
 
@@ -1108,8 +1095,7 @@ StatusWithSize KeyValueStore::UpdateEntriesToPrimaryFormat() {
       continue;
     }
 
-    PW_LOG_DEBUG(
-        "Updating entry 0x%08x from old format [0x%08x] to new format "
+    DBG("Updating entry 0x%08x from old format [0x%08x] to new format "
         "[0x%08x]",
         unsigned(prior_metadata.hash()),
         unsigned(entry.magic()),
@@ -1185,11 +1171,10 @@ Status KeyValueStore::RepairCorruptSectors() {
       repair_status = OkStatus();
     }
 
-    PW_LOG_DEBUG("   Pass %u", unsigned(loop_count));
+    DBG("   Pass %u", unsigned(loop_count));
     for (SectorDescriptor& sector : sectors_) {
       if (sector.corrupt()) {
-        PW_LOG_DEBUG("   Found sector %u with corruption",
-                     sectors_.Index(sector));
+        DBG("   Found sector %u with corruption", sectors_.Index(sector));
         Status sector_status = GarbageCollectSector(sector, {});
         if (sector_status.ok()) {
           internal_stats_.corrupt_sectors_recovered += 1;
@@ -1198,7 +1183,7 @@ Status KeyValueStore::RepairCorruptSectors() {
         }
       }
     }
-    PW_LOG_DEBUG("   Pass %u complete", unsigned(loop_count));
+    DBG("   Pass %u complete", unsigned(loop_count));
   } while (!repair_status.ok() && loop_count < 2);
 
   return repair_status;
@@ -1208,19 +1193,19 @@ Status KeyValueStore::EnsureFreeSectorExists() {
   Status repair_status = OkStatus();
   bool empty_sector_found = false;
 
-  PW_LOG_DEBUG("   Find empty sector");
+  DBG("   Find empty sector");
   for (SectorDescriptor& sector : sectors_) {
     if (sector.Empty(partition_.sector_size_bytes())) {
       empty_sector_found = true;
-      PW_LOG_DEBUG("   Empty sector found");
+      DBG("   Empty sector found");
       break;
     }
   }
   if (empty_sector_found == false) {
-    PW_LOG_DEBUG("   No empty sector found, attempting to GC a free sector");
+    DBG("   No empty sector found, attempting to GC a free sector");
     Status sector_status = GarbageCollect(span<const Address, 0>());
     if (repair_status.ok() && !sector_status.ok()) {
-      PW_LOG_DEBUG("   Unable to free an empty sector");
+      DBG("   Unable to free an empty sector");
       repair_status = sector_status;
     }
   }
@@ -1232,12 +1217,11 @@ Status KeyValueStore::EnsureEntryRedundancy() {
   Status repair_status = OkStatus();
 
   if (redundancy() == 1) {
-    PW_LOG_DEBUG("   Redundancy not in use, nothting to check");
+    DBG("   Redundancy not in use, nothting to check");
     return OkStatus();
   }
 
-  PW_LOG_DEBUG(
-      "   Write any needed additional duplicate copies of keys to fulfill %u"
+  DBG("   Write any needed additional duplicate copies of keys to fulfill %u"
       " redundancy",
       unsigned(redundancy()));
   for (EntryMetadata& metadata : entry_cache_) {
@@ -1245,15 +1229,15 @@ Status KeyValueStore::EnsureEntryRedundancy() {
       continue;
     }
 
-    PW_LOG_DEBUG("   Key with %u of %u copies found, adding missing copies",
-                 unsigned(metadata.addresses().size()),
-                 unsigned(redundancy()));
+    DBG("   Key with %u of %u copies found, adding missing copies",
+        unsigned(metadata.addresses().size()),
+        unsigned(redundancy()));
     Status fill_status = AddRedundantEntries(metadata);
     if (fill_status.ok()) {
       internal_stats_.missing_redundant_entries_recovered += 1;
-      PW_LOG_DEBUG("   Key missing copies added");
+      DBG("   Key missing copies added");
     } else {
-      PW_LOG_DEBUG("   Failed to add key missing copies");
+      DBG("   Failed to add key missing copies");
       if (repair_status.ok()) {
         repair_status = fill_status;
       }
@@ -1264,7 +1248,7 @@ Status KeyValueStore::EnsureEntryRedundancy() {
 }
 
 Status KeyValueStore::FixErrors() {
-  PW_LOG_DEBUG("Fixing KVS errors");
+  DBG("Fixing KVS errors");
 
   // Step 1: Garbage collect any sectors marked as corrupt.
   Status overall_status = RepairCorruptSectors();
@@ -1295,9 +1279,9 @@ Status KeyValueStore::FixErrors() {
 Status KeyValueStore::Repair() {
   // If errors have been detected, just reinit the KVS metadata. This does a
   // full deep error check and any needed repairs. Then repair any errors.
-  PW_LOG_INFO("Starting KVS repair");
+  INF("Starting KVS repair");
 
-  PW_LOG_DEBUG("Reinitialize KVS metadata");
+  DBG("Reinitialize KVS metadata");
   InitializeMetadata()
       .IgnoreError();  // TODO(b/242598609): Handle Status properly
 
@@ -1336,88 +1320,83 @@ KeyValueStore::Entry KeyValueStore::CreateEntry(Address address,
 
 void KeyValueStore::LogDebugInfo() const {
   const size_t sector_size_bytes = partition_.sector_size_bytes();
-  PW_LOG_DEBUG(
-      "====================== KEY VALUE STORE DUMP =========================");
-  PW_LOG_DEBUG(" ");
-  PW_LOG_DEBUG("Flash partition:");
-  PW_LOG_DEBUG("  Sector count     = %u", unsigned(partition_.sector_count()));
-  PW_LOG_DEBUG("  Sector max count = %u", unsigned(sectors_.max_size()));
-  PW_LOG_DEBUG("  Sectors in use   = %u", unsigned(sectors_.size()));
-  PW_LOG_DEBUG("  Sector size      = %u", unsigned(sector_size_bytes));
-  PW_LOG_DEBUG("  Total size       = %u", unsigned(partition_.size_bytes()));
-  PW_LOG_DEBUG("  Alignment        = %u",
-               unsigned(partition_.alignment_bytes()));
-  PW_LOG_DEBUG(" ");
-  PW_LOG_DEBUG("Key descriptors:");
-  PW_LOG_DEBUG("  Entry count     = %u",
-               unsigned(entry_cache_.total_entries()));
-  PW_LOG_DEBUG("  Max entry count = %u", unsigned(entry_cache_.max_entries()));
-  PW_LOG_DEBUG(" ");
-  PW_LOG_DEBUG("      #     hash        version    address   address (hex)");
+  DBG("====================== KEY VALUE STORE DUMP =========================");
+  DBG(" ");
+  DBG("Flash partition:");
+  DBG("  Sector count     = %u", unsigned(partition_.sector_count()));
+  DBG("  Sector max count = %u", unsigned(sectors_.max_size()));
+  DBG("  Sectors in use   = %u", unsigned(sectors_.size()));
+  DBG("  Sector size      = %u", unsigned(sector_size_bytes));
+  DBG("  Total size       = %u", unsigned(partition_.size_bytes()));
+  DBG("  Alignment        = %u", unsigned(partition_.alignment_bytes()));
+  DBG(" ");
+  DBG("Key descriptors:");
+  DBG("  Entry count     = %u", unsigned(entry_cache_.total_entries()));
+  DBG("  Max entry count = %u", unsigned(entry_cache_.max_entries()));
+  DBG(" ");
+  DBG("      #     hash        version    address   address (hex)");
   size_t count = 0;
   for (const EntryMetadata& metadata : entry_cache_) {
-    PW_LOG_DEBUG("   |%3zu: | %8zx  |%8zu  | %8zu | %8zx",
-                 count++,
-                 size_t(metadata.hash()),
-                 size_t(metadata.transaction_id()),
-                 size_t(metadata.first_address()),
-                 size_t(metadata.first_address()));
+    DBG("   |%3zu: | %8zx  |%8zu  | %8zu | %8zx",
+        count++,
+        size_t(metadata.hash()),
+        size_t(metadata.transaction_id()),
+        size_t(metadata.first_address()),
+        size_t(metadata.first_address()));
   }
-  PW_LOG_DEBUG(" ");
+  DBG(" ");
 
-  PW_LOG_DEBUG("Sector descriptors:");
-  PW_LOG_DEBUG("      #     tail free  valid    has_space");
+  DBG("Sector descriptors:");
+  DBG("      #     tail free  valid    has_space");
   for (const SectorDescriptor& sd : sectors_) {
-    PW_LOG_DEBUG("   |%3u: | %8zu  |%8zu  | %s",
-                 sectors_.Index(sd),
-                 size_t(sd.writable_bytes()),
-                 sd.valid_bytes(),
-                 sd.writable_bytes() ? "YES" : "");
+    DBG("   |%3u: | %8zu  |%8zu  | %s",
+        sectors_.Index(sd),
+        size_t(sd.writable_bytes()),
+        sd.valid_bytes(),
+        sd.writable_bytes() ? "YES" : "");
   }
-  PW_LOG_DEBUG(" ");
+  DBG(" ");
 
   // TODO(keir): This should stop logging after some threshold.
   // size_t dumped_bytes = 0;
-  PW_LOG_DEBUG("Sector raw data:");
+  DBG("Sector raw data:");
   for (size_t sector_id = 0; sector_id < sectors_.size(); ++sector_id) {
     // Read sector data. Yes, this will blow the stack on embedded.
     std::array<byte, 500> raw_sector_data;  // TODO!!!
     [[maybe_unused]] StatusWithSize sws =
         partition_.Read(sector_id * sector_size_bytes, raw_sector_data);
-    PW_LOG_DEBUG("Read: %u bytes", unsigned(sws.size()));
+    DBG("Read: %u bytes", unsigned(sws.size()));
 
-    PW_LOG_DEBUG("  base    addr  offs   0  1  2  3  4  5  6  7");
+    DBG("  base    addr  offs   0  1  2  3  4  5  6  7");
     for (size_t i = 0; i < sector_size_bytes; i += 8) {
-      PW_LOG_DEBUG("  %3zu %8zx %5zu | %02x %02x %02x %02x %02x %02x %02x %02x",
-                   sector_id,
-                   (sector_id * sector_size_bytes) + i,
-                   i,
-                   static_cast<unsigned int>(raw_sector_data[i + 0]),
-                   static_cast<unsigned int>(raw_sector_data[i + 1]),
-                   static_cast<unsigned int>(raw_sector_data[i + 2]),
-                   static_cast<unsigned int>(raw_sector_data[i + 3]),
-                   static_cast<unsigned int>(raw_sector_data[i + 4]),
-                   static_cast<unsigned int>(raw_sector_data[i + 5]),
-                   static_cast<unsigned int>(raw_sector_data[i + 6]),
-                   static_cast<unsigned int>(raw_sector_data[i + 7]));
+      DBG("  %3zu %8zx %5zu | %02x %02x %02x %02x %02x %02x %02x %02x",
+          sector_id,
+          (sector_id * sector_size_bytes) + i,
+          i,
+          static_cast<unsigned int>(raw_sector_data[i + 0]),
+          static_cast<unsigned int>(raw_sector_data[i + 1]),
+          static_cast<unsigned int>(raw_sector_data[i + 2]),
+          static_cast<unsigned int>(raw_sector_data[i + 3]),
+          static_cast<unsigned int>(raw_sector_data[i + 4]),
+          static_cast<unsigned int>(raw_sector_data[i + 5]),
+          static_cast<unsigned int>(raw_sector_data[i + 6]),
+          static_cast<unsigned int>(raw_sector_data[i + 7]));
 
       // TODO(keir): Fix exit condition.
       if (i > 128) {
         break;
       }
     }
-    PW_LOG_DEBUG(" ");
+    DBG(" ");
   }
 
-  PW_LOG_DEBUG(
-      "////////////////////// KEY VALUE STORE DUMP END /////////////////////");
+  DBG("////////////////////// KEY VALUE STORE DUMP END /////////////////////");
 }
 
 void KeyValueStore::LogSectors() const {
-  PW_LOG_DEBUG("Sector descriptors: count %u", unsigned(sectors_.size()));
+  DBG("Sector descriptors: count %u", unsigned(sectors_.size()));
   for (auto& sector : sectors_) {
-    PW_LOG_DEBUG(
-        "  - Sector %u: valid %u, recoverable %u, free %u",
+    DBG("  - Sector %u: valid %u, recoverable %u, free %u",
         sectors_.Index(sector),
         unsigned(sector.valid_bytes()),
         unsigned(sector.RecoverableBytes(partition_.sector_size_bytes())),
@@ -1426,14 +1405,13 @@ void KeyValueStore::LogSectors() const {
 }
 
 void KeyValueStore::LogKeyDescriptor() const {
-  PW_LOG_DEBUG("Key descriptors: count %u",
-               unsigned(entry_cache_.total_entries()));
+  DBG("Key descriptors: count %u", unsigned(entry_cache_.total_entries()));
   for (const EntryMetadata& metadata : entry_cache_) {
-    PW_LOG_DEBUG("  - Key: %s, hash %#x, transaction ID %u, first address %#x",
-                 metadata.state() == EntryState::kDeleted ? "Deleted" : "Valid",
-                 unsigned(metadata.hash()),
-                 unsigned(metadata.transaction_id()),
-                 unsigned(metadata.first_address()));
+    DBG("  - Key: %s, hash %#x, transaction ID %u, first address %#x",
+        metadata.state() == EntryState::kDeleted ? "Deleted" : "Valid",
+        unsigned(metadata.hash()),
+        unsigned(metadata.transaction_id()),
+        unsigned(metadata.first_address()));
   }
 }
 

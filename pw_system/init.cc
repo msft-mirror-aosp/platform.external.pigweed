@@ -42,7 +42,7 @@ void InitImpl() {
 
   // Setup logging.
   const Status status = GetLogThread().OpenUnrequestedLogStream(
-      kLoggingRpcChannelId, GetRpcServer(), GetLogService());
+      kDefaultRpcChannelId, GetRpcServer(), GetLogService());
   if (!status.ok()) {
     PW_LOG_ERROR("Error opening unrequested log streams %d",
                  static_cast<int>(status.code()));

@@ -36,7 +36,7 @@ To get setup:
 #. Clone Pigweed and bootstrap the environment (compiler setup & more). **Be
    patient, this step downloads ~1GB of LLVM, GCC, and other tooling**.
 
-   .. code-block:: bash
+   .. code:: bash
 
      $ cd ~
      $ git clone https://pigweed.googlesource.com/pigweed/pigweed
@@ -48,14 +48,14 @@ To get setup:
 
 #. Configure the GN build.
 
-   .. code-block:: bash
+   .. code:: bash
 
      $ gn gen out
      Done. Made 1047 targets from 91 files in 114ms
 
 #. Start the watcher. The watcher will invoke Ninja to build all the targets
 
-   .. code-block:: bash
+   .. code:: bash
 
      $ pw watch
 
@@ -118,7 +118,7 @@ that includes many popular hardware debuggers.
 To start using Pigweed on MacOS, you'll need to install XCode. Download it
 via the App Store, then install the relevant tools from the command line.
 
-.. code-block:: none
+.. code:: none
 
   $ xcode-select --install
 
@@ -137,13 +137,6 @@ To start using Pigweed on Windows, you'll need to do the following:
 * Ensure that `Developer Mode
   <https://docs.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development>`_
   is enabled.
-* Enable long file paths. This can be done using ``regedit`` or by running the
-  following command as an administrator:
-
-  .. code:: bat
-
-     REG ADD HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\FileSystem /v LongPathsEnabled /t REG_DWORD /d 1 /f
-
 
 If you plan to flash devices with firmware, you'll need to install OpenOCD and
 ensure it's on your system path.
@@ -157,7 +150,7 @@ bootstrap may take several minutes to complete, so please be patient.
 
 **Linux & macOS**
 
-.. code-block:: bash
+.. code:: bash
 
   $ git clone https://pigweed.googlesource.com/pigweed/pigweed ~/pigweed
   $ cd ~/pigweed
@@ -165,7 +158,7 @@ bootstrap may take several minutes to complete, so please be patient.
 
 **Windows**
 
-.. code-block:: batch
+.. code:: batch
 
   :: Run git commands from the shell you set up to use with Git during install.
   > git clone https://pigweed.googlesource.com/pigweed/pigweed %HOMEPATH%\pigweed
@@ -191,13 +184,13 @@ environment in a new session with the following command:
 
 **Linux & macOS**
 
-.. code-block:: bash
+.. code:: bash
 
   $ source ./activate.sh
 
 **Windows**
 
-.. code-block:: batch
+.. code:: batch
 
   > activate.bat
 
@@ -219,7 +212,7 @@ invocation.
 
 Run GN as seen below:
 
-.. code-block:: bash
+.. code:: bash
 
   $ gn gen out
 
@@ -245,7 +238,7 @@ time you make a change, but that's tedious. Instead, let's use ``pw_watch``.
 
 Go ahead and start ``pw_watch``:
 
-.. code-block:: bash
+.. code:: bash
 
   $ pw watch
 
@@ -285,7 +278,7 @@ will be re-built and re-run.
 
 Try running the ``pw_status`` test manually:
 
-.. code-block:: bash
+.. code:: bash
 
   $ ./out/pw_strict_host_{clang,gcc}_debug/obj/pw_status/test/status_test
 
@@ -302,13 +295,13 @@ build!
 
 If you want to build JUST for the device, you can kick of watch with:
 
-.. code-block:: bash
+.. code:: bash
 
   $ pw watch stm32f429i
 
 This is equivalent to the following Ninja invocation:
 
-.. code-block:: bash
+.. code:: bash
 
   $ ninja -C out stm32f429i
 
@@ -341,7 +334,7 @@ test requests to a server running in the background. Launch the server in
 another window using the command below (remember, you'll need to activate the
 Pigweed environment first).
 
-.. code-block:: bash
+.. code:: bash
 
   $ stm32f429i_disc1_test_server
 
@@ -353,7 +346,7 @@ need to relaunch this server.
 Tell GN to use the testing server by enabling a build arg specific to the
 stm32f429i-disc1 target.
 
-.. code-block:: bash
+.. code:: bash
 
   $ gn args out
   # Append this line to the file that opens in your editor to tell GN to run
@@ -382,7 +375,7 @@ turn out. Once built, you can find the rendered HTML documentation at
 
 You can explicitly build just the documentation with the command below.
 
-.. code-block:: bash
+.. code:: bash
 
   $ ninja -C out docs
 
@@ -398,7 +391,7 @@ specify which target to build the test under (e.g. host, SM32F529I-DISC1).
 This can be done by appending the GN path to the target toolchain in parenthesis
 after the desired GN build step label as seen in the example below.
 
-.. code-block:: none
+.. code:: none
 
   $ gn outputs out "//pw_status:status_test.run(//targets/host/pigweed_internal:pw_strict_host_clang_debug)"
   pw_strict_host_clang_debug/obj/pw_status/status_test.run.pw_pystamp
@@ -413,7 +406,7 @@ not attempt to run.
 
 In macOS and Linux, ``xargs`` can be used to turn this into a single command:
 
-.. code-block:: bash
+.. code:: bash
 
   $ gn outputs out "//pw_status:status_test.run(//targets/host/pigweed_internal:pw_strict_host_clang_debug)" | xargs ninja -C out
 
@@ -425,7 +418,7 @@ Editor setup
 Check out the :ref:`module-pw_ide` for setting up editor configurations or run
 the following for a quick setup:
 
-.. code-block:: bash
+.. code:: bash
 
   pw ide sync
 

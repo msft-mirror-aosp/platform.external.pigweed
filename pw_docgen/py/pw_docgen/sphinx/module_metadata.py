@@ -114,6 +114,7 @@ def concat_tags(*tag_lists: List[str]) -> List[str]:
 
 
 def create_topnav(
+    title: str,
     subtitle: str,
     extra_classes: Optional[List[str]] = None,
 ) -> nodes.Node:
@@ -124,6 +125,15 @@ def create_topnav(
     )
 
     topnav_container = nodes.container(classes=topnav_classes)
+    topnav_inline_container = nodes.container(classes=['pw-topnav-inline'])
+    topnav_container += topnav_inline_container
+
+    title_node = nodes.paragraph(
+        classes=['pw-topnav-title'],
+        text=title,
+    )
+
+    topnav_inline_container += title_node
 
     subtitle_node = nodes.paragraph(
         classes=['pw-topnav-subtitle'],
@@ -215,6 +225,7 @@ class PigweedModuleDirective(SphinxDirective):
         )
 
         topbar = create_topnav(
+            module_name,
             tagline,
             ['pw-module-index'],
         )
@@ -235,9 +246,11 @@ class PigweedModuleSubpageDirective(PigweedModuleDirective):
     }
 
     def run(self) -> List[nodes.Node]:
+        module_name = self._try_get_option('name')
         tagline = self._try_get_option('tagline')
 
         topbar = create_topnav(
+            module_name,
             tagline,
             ['pw-module-subpage'],
         )
@@ -348,6 +361,7 @@ def setup_parse_body(_app, _pagename, _templatename, context, _doctree):
 def setup(app: SphinxApplication):
     app.add_directive('pigweed-module', PigweedModuleDirective)
     app.add_directive('pigweed-module-subpage', PigweedModuleSubpageDirective)
+    app.connect('html-page-context', setup_parse_body)
 
     return {
         'parallel_read_safe': True,

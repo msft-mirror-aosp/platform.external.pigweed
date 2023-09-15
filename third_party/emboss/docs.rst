@@ -34,9 +34,8 @@ installation. If using the submodule path from above, add the following to the
 Optionally, configure the Emboss defines documented at
 `dir_pw_third_party_emboss/runtime/cpp/emboss_defines.h
 <https://github.com/google/emboss/blob/master/runtime/cpp/emboss_defines.h>`_
-by setting the ``pw_third_party_emboss_CONFIG`` variable to a source set that
-includes a public config overriding the defines. By default, checks will
-use PW_DASSERT.
+by setting the ``pw_third_party_emboss_CONFIG`` variable to a config that
+overrides the defines. By default, checks will use PW_DCHECK.
 
 ..
    inclusive-language: enable
@@ -49,11 +48,11 @@ To generate its bindings, you can add the following to ``//some/path/to/BUILD.gn
 
 .. code-block::
 
-   import("$dir_pw_third_party/emboss/build_defs.gni")
+  import("$dir_pw_third_party/emboss/build_defs.gni")
 
-   emboss_cc_library("protocol") {
-     source = "my-protocol.emb"
-   }
+  emboss_cc_library("protocol") {
+    source = "my-protocol.emb"
+  }
 
 This generates a source set of the same name as the target, in this case "protocol".
 To use the bindings, list this target as a dependency in GN and include the generated
@@ -61,5 +60,4 @@ header by adding ``.h`` to the path of your Emboss source file:
 
 .. code-block::
 
-   #include <some/path/to/protocol.emb.h>
-
+  #include <some/path/to/protocol.emb.h>
