@@ -153,7 +153,6 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
         'python.tests',
         'python.lint',
         'docs',
-        'fuzzers',
         'pigweed_pypi_distribution',
     ]
 
@@ -248,6 +247,19 @@ gn_nanopb_build = build.GnGenNinja(
         *_at_all_optimization_levels('stm32f429i'),
         *_at_all_optimization_levels('host_clang'),
     ),
+)
+
+gn_chre_build = build.GnGenNinja(
+    name='gn_chre_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('chre',),
+    gn_args=dict(
+        dir_pw_third_party_chre=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'chre'
+        ),
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    ),
+    ninja_targets=(*_at_all_optimization_levels('host_clang'),),
 )
 
 gn_emboss_nanopb_build = build.GnGenNinja(
@@ -469,12 +481,21 @@ gn_fuzz_build = build.GnGenNinja(
             ctx.root / 'third_party/googletest'
         ),
     },
-    ninja_targets=('host_clang_fuzz',),
+    ninja_targets=('fuzzers',),
     ninja_contexts=(
         lambda ctx: build.modified_env(
             FUZZTEST_PRNG_SEED=build.fuzztest_prng_seed(ctx),
         ),
     ),
+)
+
+oss_fuzz_build = build.GnGenNinja(
+    name='oss_fuzz_build',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args={
+        'pw_toolchain_OSS_FUZZ_ENABLED': True,
+    },
+    ninja_targets=('oss_fuzz',),
 )
 
 
@@ -676,6 +697,8 @@ def bazel_build(ctx: PresubmitContext) -> None:
         '//pw_sync/...',
         '//pw_thread/...',
         '//pw_thread_freertos/...',
+        '//pw_interrupt/...',
+        '//pw_cpu_exception/...',
     )
 
 
@@ -1140,6 +1163,8 @@ OTHER_CHECKS = (
     cmake_clang,
     cmake_gcc,
     coverage,
+    # TODO(b/234876100): Remove once msan is added to all_sanitizers().
+    cpp_checks.msan,
     docs_build,
     gitmodules.create(gitmodules.Config(allow_submodules=False)),
     gn_clang_build,
@@ -1171,6 +1196,7 @@ INTERNAL = (gn_mimxrt595_build, gn_mimxrt595_freertos_build)
 # program block CQ on Linux.
 MISC = (
     # keep-sorted: start
+    gn_chre_build,
     gn_emboss_nanopb_build,
     gn_googletest_build,
     # keep-sorted: end
@@ -1184,6 +1210,7 @@ SECURITY = (
     gn_crypto_micro_ecc_build,
     gn_fuzz_build,
     gn_software_update_build,
+    oss_fuzz_build,
     # keep-sorted: end
 )
 
@@ -1236,8 +1263,8 @@ FULL = (
     _LINTFORMAT,
     gn_combined_build_check,
     gn_host_tools,
-    bazel_test if sys.platform == 'linux' else (),
-    bazel_build if sys.platform == 'linux' else (),
+    bazel_test,
+    bazel_build,
     python_checks.gn_python_check,
     python_checks.gn_python_test_coverage,
     python_checks.check_upstream_python_constraints,

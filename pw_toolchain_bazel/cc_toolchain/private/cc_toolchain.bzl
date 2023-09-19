@@ -15,6 +15,15 @@
 
 load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
 load(
+    "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
+    "action_config",
+    "feature",
+    "flag_group",
+    "flag_set",
+    "tool",
+    "variable_with_value",
+)
+load(
     "//cc_toolchain/private:providers.bzl",
     "ToolchainFeatureInfo",
 )
@@ -25,11 +34,6 @@ load(
     "ALL_C_COMPILER_ACTIONS",
     "ALL_LINK_ACTIONS",
     "check_deps",
-)
-load(
-    "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
-    "action_config",
-    "tool",
 )
 
 PW_CC_TOOLCHAIN_CONFIG_ATTRS = {
@@ -50,7 +54,6 @@ PW_CC_TOOLCHAIN_CONFIG_ATTRS = {
     "compiler": "See documentation for cc_common.create_cc_toolchain_config_info()",
     "abi_version": "See documentation for cc_common.create_cc_toolchain_config_info()",
     "abi_libc_version": "See documentation for cc_common.create_cc_toolchain_config_info()",
-    "builtin_sysroot": "See documentation for cc_common.create_cc_toolchain_config_info()",
     "cc_target_os": "See documentation for cc_common.create_cc_toolchain_config_info()",
 }
 
@@ -64,6 +67,7 @@ PW_CC_TOOLCHAIN_BLOCKED_ATTRS = {
     "cxx_builtin_include_directories": "Use a pw_cc_toolchain_feature to add cxx_builtin_include_directories",
     "tool_paths": "pw_cc_toolchain does not support tool_paths, use \"ar\", \"cpp\", \"gcc\", \"gcov\", \"ld\", and \"strip\" attributes to set toolchain tools",
     "make_variables": "pw_cc_toolchain does not yet support make variables",
+    "builtin_sysroot": "Use a pw_cc_toolchain_feature to add a builtin_sysroot",
 }
 
 def _action_configs(action_tool, action_list):
@@ -89,6 +93,86 @@ def _action_configs(action_tool, action_list):
         for action in action_list
     ]
 
+def _archiver_flags_feature(is_mac):
+    """Returns our implementation of the legacy archiver_flags feature.
+
+    We provide our own implementation of the archiver_flags.  The default
+    implementation of this legacy feature at
+    https://github.com/bazelbuild/bazel/blob/252d36384b8b630d77d21fac0d2c5608632aa393/src/main/java/com/google/devtools/build/lib/rules/cpp/CppActionConfigs.java#L620-L660
+    contains a bug that prevents it from working with llvm-libtool-darwin only
+    fixed in
+    https://github.com/bazelbuild/bazel/commit/ae7cfa59461b2c694226be689662d387e9c38427,
+    which has not yet been released.
+
+    However, we don't merely fix the bug. Part of the Pigweed build involves
+    linking some empty libraries (with no object files). This leads to invoking
+    the archiving tool with no input files. Such an invocation is considered a
+    success by llvm-ar, but not by llvm-libtool-darwin. So for now, we use
+    flags appropriate for llvm-ar here, even on MacOS.
+
+    Args:
+        is_mac: Does the toolchain this feature will be included in target MacOS?
+
+    Returns:
+        The archiver_flags feature.
+    """
+
+    # TODO(b/297413805): Remove this implementation.
+    return feature(
+        name = "archiver_flags",
+        flag_sets = [
+            flag_set(
+                actions = [
+                    ACTION_NAMES.cpp_link_static_library,
+                ],
+                flag_groups = [
+                    flag_group(
+                        flags = _archiver_flags(is_mac),
+                    ),
+                    flag_group(
+                        expand_if_available = "output_execpath",
+                        flags = ["%{output_execpath}"],
+                    ),
+                ],
+            ),
+            flag_set(
+                actions = [
+                    ACTION_NAMES.cpp_link_static_library,
+                ],
+                flag_groups = [
+                    flag_group(
+                        expand_if_available = "libraries_to_link",
+                        iterate_over = "libraries_to_link",
+                        flag_groups = [
+                            flag_group(
+                                expand_if_equal = variable_with_value(
+                                    name = "libraries_to_link.type",
+                                    value = "object_file",
+                                ),
+                                flags = ["%{libraries_to_link.name}"],
+                            ),
+                            flag_group(
+                                expand_if_equal = variable_with_value(
+                                    name = "libraries_to_link.type",
+                                    value = "object_file_group",
+                                ),
+                                flags = ["%{libraries_to_link.object_files}"],
+                                iterate_over = "libraries_to_link.object_files",
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    )
+
+def _archiver_flags(is_mac):
+    """Returns flags for llvm-ar."""
+    if is_mac:
+        return ["--format=darwin", "rcs"]
+    else:
+        return ["rcsD"]
+
 def _pw_cc_toolchain_config_impl(ctx):
     """Rule that provides a CcToolchainConfigInfo.
 
@@ -108,7 +192,7 @@ def _pw_cc_toolchain_config_impl(ctx):
     all_actions += [
         action_config(
             action_name = ACTION_NAMES.cpp_link_static_library,
-            implies = ["archiver_flags"],
+            implies = ["archiver_flags", "linker_param_file"],
             tools = [
                 tool(
                     tool = ctx.executable.ar,
@@ -134,9 +218,18 @@ def _pw_cc_toolchain_config_impl(ctx):
     ]
 
     features = [dep[ToolchainFeatureInfo].feature for dep in ctx.attr.feature_deps]
+    features.append(_archiver_flags_feature(ctx.attr.target_libc == "macosx"))
     builtin_include_dirs = []
     for dep in ctx.attr.feature_deps:
         builtin_include_dirs.extend(dep[ToolchainFeatureInfo].cxx_builtin_include_directories)
+
+    sysroot_dir = None
+    for dep in ctx.attr.feature_deps:
+        dep_sysroot = dep[ToolchainFeatureInfo].builtin_sysroot
+        if dep_sysroot:
+            if sysroot_dir:
+                fail("Failed to set sysroot at `{}`, already have sysroot at `{}` ".format(dep_sysroot, sysroot_dir))
+            sysroot_dir = dep_sysroot
 
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
@@ -151,7 +244,7 @@ def _pw_cc_toolchain_config_impl(ctx):
         compiler = ctx.attr.compiler,
         abi_version = ctx.attr.abi_version,
         abi_libc_version = ctx.attr.abi_libc_version,
-        builtin_sysroot = ctx.attr.builtin_sysroot,
+        builtin_sysroot = sysroot_dir,
         cc_target_os = ctx.attr.cc_target_os,
     )
 
@@ -176,7 +269,6 @@ pw_cc_toolchain_config = rule(
         "compiler": attr.string(),
         "abi_version": attr.string(),
         "abi_libc_version": attr.string(),
-        "builtin_sysroot": attr.string(),
         "cc_target_os": attr.string(),
     },
     provides = [CcToolchainConfigInfo],

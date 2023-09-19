@@ -20,11 +20,11 @@ or a file object for an ELF file or CSV. Then, call the detokenize method with
 encoded messages, one at a time. The detokenize method returns a
 DetokenizedString object with the result.
 
-For example,
+For example::
 
   from pw_tokenizer import detokenize
 
-  detok = detokenize.Detokenizer('path/to/my/image.elf')
+  detok = detokenize.Detokenizer('path/to/firmware/image.elf')
   print(detok.detokenize(b'\x12\x34\x56\x78\x03hi!'))
 
 This module also provides a command line interface for decoding and detokenizing
@@ -34,6 +34,8 @@ messages from a file or stdin.
 import argparse
 import base64
 import binascii
+from concurrent.futures import Executor, ThreadPoolExecutor
+import enum
 import io
 import logging
 import os
@@ -42,6 +44,7 @@ import re
 import string
 import struct
 import sys
+import threading
 import time
 from typing import (
     AnyStr,
@@ -71,9 +74,11 @@ _LOG = logging.getLogger('pw_tokenizer')
 
 ENCODED_TOKEN = struct.Struct('<I')
 BASE64_PREFIX = encode.BASE64_PREFIX.encode()
+_BASE64_CHARS = string.ascii_letters + string.digits + '+/-_='
 DEFAULT_RECURSION = 9
 
 _RawIo = Union[io.RawIOBase, BinaryIO]
+_RawIoOrBytes = Union[_RawIo, bytes]
 
 
 class DetokenizedString:
@@ -186,26 +191,32 @@ class Detokenizer:
         """
         self.show_errors = show_errors
 
+        self._database_lock = threading.Lock()
+
         # Cache FormatStrings for faster lookup & formatting.
         self._cache: Dict[int, List[_TokenizedFormatString]] = {}
 
         self._initialize_database(token_database_or_elf)
 
     def _initialize_database(self, token_sources: Iterable) -> None:
-        self.database = database.load_token_database(*token_sources)
-        self._cache.clear()
+        with self._database_lock:
+            self.database = database.load_token_database(*token_sources)
+            self._cache.clear()
 
     def lookup(self, token: int) -> List[_TokenizedFormatString]:
         """Returns (TokenizedStringEntry, FormatString) list for matches."""
-        try:
-            return self._cache[token]
-        except KeyError:
-            format_strings = [
-                _TokenizedFormatString(entry, decode.FormatString(str(entry)))
-                for entry in self.database.token_to_entries[token]
-            ]
-            self._cache[token] = format_strings
-            return format_strings
+        with self._database_lock:
+            try:
+                return self._cache[token]
+            except KeyError:
+                format_strings = [
+                    _TokenizedFormatString(
+                        entry, decode.FormatString(str(entry))
+                    )
+                    for entry in self.database.token_to_entries[token]
+                ]
+                self._cache[token] = format_strings
+                return format_strings
 
     def detokenize(self, encoded_message: bytes) -> DetokenizedString:
         """Decodes and detokenizes a message as a DetokenizedString."""
@@ -281,9 +292,9 @@ class Detokenizer:
                 self._detokenize_prefixed_base64(prefix_bytes, recursion), data
             )
 
-        for message in PrefixedMessageDecoder(
-            prefix, string.ascii_letters + string.digits + '+/-_='
-        ).transform(input_file, transform):
+        for message in NestedMessageParser(prefix, _BASE64_CHARS).transform_io(
+            input_file, transform
+        ):
             output.write(message)
 
             # Flush each line to prevent delays when piping between processes.
@@ -364,6 +375,12 @@ class AutoUpdatingDetokenizer(Detokenizer):
             return True
 
         def _last_modified_time(self) -> Optional[float]:
+            if self.path.is_dir():
+                mtime = -1.0
+                for child in self.path.glob(tokens.DIR_DB_GLOB):
+                    mtime = max(mtime, os.path.getmtime(child))
+                return mtime if mtime >= 0 else None
+
             try:
                 return os.path.getmtime(self.path)
             except FileNotFoundError:
@@ -380,12 +397,24 @@ class AutoUpdatingDetokenizer(Detokenizer):
                 return database.load_token_database()
 
     def __init__(
-        self, *paths_or_files: _PathOrStr, min_poll_period_s: float = 1.0
+        self,
+        *paths_or_files: _PathOrStr,
+        min_poll_period_s: float = 1.0,
+        pool: Executor = ThreadPoolExecutor(max_workers=1),
     ) -> None:
         self.paths = tuple(self._DatabasePath(path) for path in paths_or_files)
         self.min_poll_period_s = min_poll_period_s
         self._last_checked_time: float = time.time()
+        # Thread pool to use for loading the databases. Limit to a single
+        # worker since this is low volume and not time critical.
+        self._pool = pool
         super().__init__(*(path.load() for path in self.paths))
+
+    def __del__(self) -> None:
+        self._pool.shutdown(wait=False)
+
+    def _reload_paths(self) -> None:
+        self._initialize_database([path.load() for path in self.paths])
 
     def _reload_if_changed(self) -> None:
         if time.time() - self._last_checked_time >= self.min_poll_period_s:
@@ -393,82 +422,143 @@ class AutoUpdatingDetokenizer(Detokenizer):
 
             if any(path.updated() for path in self.paths):
                 _LOG.info('Changes detected; reloading token database')
-                self._initialize_database(path.load() for path in self.paths)
+                self._pool.submit(self._reload_paths)
 
     def lookup(self, token: int) -> List[_TokenizedFormatString]:
         self._reload_if_changed()
         return super().lookup(token)
 
 
-class PrefixedMessageDecoder:
-    """Parses messages that start with a prefix character from a byte stream."""
+class NestedMessageParser:
+    """Parses nested tokenized messages from a byte stream or string."""
 
-    def __init__(self, prefix: Union[str, bytes], chars: Union[str, bytes]):
-        """Parses prefixed messages.
+    class _State(enum.Enum):
+        MESSAGE = 1
+        NON_MESSAGE = 2
+
+    def __init__(
+        self,
+        prefix: Union[str, bytes] = BASE64_PREFIX,
+        chars: Union[str, bytes] = _BASE64_CHARS,
+    ) -> None:
+        """Initializes a parser.
 
         Args:
-          prefix: one character that signifies the start of a message
-          chars: characters allowed in a message
+            prefix: one character that signifies the start of a message (``$``).
+            chars: characters allowed in a message
         """
-        self._prefix = prefix.encode() if isinstance(prefix, str) else prefix
+        self._prefix = ord(prefix)
 
         if isinstance(chars, str):
             chars = chars.encode()
 
-        # Store the valid message bytes as a set of binary strings.
-        self._message_bytes = frozenset(
-            chars[i : i + 1] for i in range(len(chars))
-        )
+        # Store the valid message bytes as a set of byte values.
+        self._message_bytes = frozenset(chars)
 
-        if len(self._prefix) != 1 or self._prefix in self._message_bytes:
+        if len(prefix) != 1 or self._prefix in self._message_bytes:
             raise ValueError(
-                'Invalid prefix {!r}: the prefix must be a single '
-                'character that is not a valid message character.'.format(
-                    prefix
-                )
+                f'Invalid prefix {prefix!r}: the prefix must be a single '
+                'character that is not a valid message character.'
             )
 
-        self.data = bytearray()
+        self._buffer = bytearray()
+        self._state: NestedMessageParser._State = self._State.NON_MESSAGE
 
-    def _read_next(self, fd: _RawIo) -> Tuple[bytes, int]:
-        """Returns the next character and its index."""
-        char = fd.read(1) or b''
-        index = len(self.data)
-        self.data += char
-        return char, index
+    def read_messages_io(
+        self, binary_io: _RawIo
+    ) -> Iterator[Tuple[bool, bytes]]:
+        """Reads prefixed messages from a byte stream (BinaryIO object).
 
-    def read_messages(self, binary_fd: _RawIo) -> Iterator[Tuple[bool, bytes]]:
-        """Parses prefixed messages; yields (is_message, contents) chunks."""
-        message_start = None
+        Reads until EOF. If the stream is nonblocking (``read(1)`` returns
+        ``None``), then this function returns and may be called again with the
+        same IO object to continue parsing. Partial messages are preserved
+        between calls.
 
-        while True:
-            # This reads the file character-by-character. Non-message characters
-            # are yielded right away; message characters are grouped.
-            char, index = self._read_next(binary_fd)
-
-            # If in a message, keep reading until the message completes.
-            if message_start is not None:
-                if char in self._message_bytes:
-                    continue
-
-                yield True, self.data[message_start:index]
-                message_start = None
-
-            # Handle a non-message character.
-            if not char:
+        Yields:
+            ``(is_message, contents)`` chunks.
+        """
+        # The read may block indefinitely, depending on the IO object.
+        while (read_byte := binary_io.read(1)) != b'':
+            # Handle non-blocking IO by returning when no bytes are available.
+            if read_byte is None:
                 return
 
-            if char == self._prefix:
-                message_start = index
-            else:
-                yield False, char
+            for byte in read_byte:
+                yield from self._handle_byte(byte)
 
-    def transform(
-        self, binary_fd: _RawIo, transform: Callable[[bytes], bytes]
+            if self._state is self._State.NON_MESSAGE:  # yield non-message byte
+                yield from self._flush()
+
+        yield from self._flush()  # Always flush after EOF
+        self._state = self._State.NON_MESSAGE
+
+    def read_messages(
+        self, chunk: bytes, *, flush: bool = False
+    ) -> Iterator[Tuple[bool, bytes]]:
+        """Reads prefixed messages from a byte string.
+
+        This function may be called repeatedly with chunks of a stream. Partial
+        messages are preserved between calls, unless ``flush=True``.
+
+        Args:
+            chunk: byte string that may contain nested messagses
+            flush: whether to flush any incomplete messages after processing
+                this chunk
+
+        Yields:
+            ``(is_message, contents)`` chunks.
+        """
+        for byte in chunk:
+            yield from self._handle_byte(byte)
+
+        if flush or self._state is self._State.NON_MESSAGE:
+            yield from self._flush()
+
+    def _handle_byte(self, byte: int) -> Iterator[Tuple[bool, bytes]]:
+        if self._state is self._State.MESSAGE:
+            if byte not in self._message_bytes:
+                yield from self._flush()
+                if byte != self._prefix:
+                    self._state = self._State.NON_MESSAGE
+        elif self._state is self._State.NON_MESSAGE:
+            if byte == self._prefix:
+                yield from self._flush()
+                self._state = self._State.MESSAGE
+        else:
+            raise NotImplementedError(f'Unsupported state: {self._state}')
+
+        self._buffer.append(byte)
+
+    def _flush(self) -> Iterator[Tuple[bool, bytes]]:
+        data = bytes(self._buffer)
+        self._buffer.clear()
+        if data:
+            yield self._state is self._State.MESSAGE, data
+
+    def transform_io(
+        self,
+        binary_io: _RawIo,
+        transform: Callable[[bytes], bytes],
     ) -> Iterator[bytes]:
         """Yields the file with a transformation applied to the messages."""
-        for is_message, chunk in self.read_messages(binary_fd):
+        for is_message, chunk in self.read_messages_io(binary_io):
             yield transform(chunk) if is_message else chunk
+
+    def transform(
+        self,
+        chunk: bytes,
+        transform: Callable[[bytes], bytes],
+        *,
+        flush: bool = False,
+    ) -> bytes:
+        """Yields the chunk with a transformation applied to the messages.
+
+        Partial messages are preserved between calls unless ``flush=True``.
+        """
+        return b''.join(
+            transform(data) if is_message else data
+            for is_message, data in self.read_messages(chunk, flush=flush)
+        )
 
 
 def _base64_message_regex(prefix: bytes) -> Pattern[bytes]:
@@ -492,7 +582,10 @@ def detokenize_base64(
     prefix: Union[str, bytes] = BASE64_PREFIX,
     recursion: int = DEFAULT_RECURSION,
 ) -> bytes:
-    """Alias for detokenizer.detokenize_base64 for backwards compatibility."""
+    """Alias for detokenizer.detokenize_base64 for backwards compatibility.
+
+    This function is deprecated; do not call it.
+    """
     return detokenizer.detokenize_base64(data, prefix, recursion)
 
 
