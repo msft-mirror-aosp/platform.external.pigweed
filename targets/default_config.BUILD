@@ -39,6 +39,11 @@ label_flag(
 )
 
 label_flag(
+    name = "pw_assert_backend_impl",
+    build_setting_default = "@pigweed//pw_assert:backend_impl_multiplexer",
+)
+
+label_flag(
     name = "pw_async_task_backend",
     build_setting_default = "@pigweed//pw_async_basic:task",
 )

@@ -3,10 +3,9 @@
 ------
 pw_i2c
 ------
-
 .. warning::
-  This module is under construction, not ready for use, and the documentation
-  is incomplete.
+   This module is under construction, not ready for use, and the documentation
+   is incomplete.
 
 pw_i2c contains interfaces and utility functions for using I2C.
 
@@ -15,12 +14,8 @@ Features
 
 pw::i2c::Initiator
 ------------------
-.. inclusive-language: disable
-
 .. doxygenclass:: pw::i2c::Initiator
    :members:
-
-.. inclusive-language: enable
 
 pw::i2c::Device
 ---------------
@@ -30,7 +25,6 @@ Common use case includes streaming arbitrary data (Read/Write). Only works
 with devices with a single device address.
 
 .. note::
-
    ``Device`` is intended to represent ownership of a specific responder.
    Individual transactions are atomic (as described under ``Initiator``), but
    there is no synchronization for sequences of transactions. Therefore, shared
@@ -103,7 +97,7 @@ Example invocations
 -------------------
 Using the pigweed console, you can invoke the service to perform an I2C read:
 
-.. code:: python
+.. code-block:: python
 
   device.rpcs.pw.i2c.I2c.I2cRead(bus_index=0, target_address=0x22, register_address=b'\x0e', read_size=1)
 
@@ -112,14 +106,14 @@ I2C address 0x22.
 
 For responders that support 4 byte register width, you can specify as:
 
-.. code:: python
+.. code-block:: python
 
   device.rpcs.pw.i2c.I2c.I2cRead(bus_index=0, target_address=<address>, register_address=b'\x00\x00\x00\x00', read_size=4)
 
 
 And similarly, for performing I2C write:
 
-.. code:: python
+.. code-block:: python
 
   device.rpcs.pw.i2c.I2c.I2cWrite(bus_index=0, target_address=0x22,register_address=b'\x0e', value=b'\xbc')
 

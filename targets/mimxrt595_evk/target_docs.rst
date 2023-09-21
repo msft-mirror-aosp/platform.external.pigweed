@@ -29,7 +29,7 @@ the manifest file within the unpacked SDK, and then setting the
 ``pw_third_party_mcuxpresso_SDK`` to the ``sample_sdk`` source set within the
 Pigweed target directory.
 
-.. code:: sh
+.. code-block:: sh
 
   $ gn args out
   # Modify and save the args file to use the sample SDK.
@@ -41,7 +41,7 @@ Building
 Once configured, to build for this Pigweed target, simply build the top-level
 "mimxrt595" Ninja target.
 
-.. code:: sh
+.. code-block:: sh
 
   $ ninja -C out mimxrt595
 
@@ -103,29 +103,29 @@ Use ``arm-none-eabi-gdb`` to load an executable into the target, debug, and run
 it.
 
 .. code-block::
-  :emphasize-lines: 1,6,10,12,20
+   :emphasize-lines: 1,6,10,12,20
 
-  (gdb) target remote :2331
-  Remote debugging using :2331
-  warning: No executable has been specified and target does not support
-  determining executable automatically.  Try using the "file" command.
-  0x08000000 in ?? ()
-  (gdb) file out/mimxrt595_evk_debug/obj/pw_status/test/status_test.elf
-  A program is being debugged already.
-  Are you sure you want to change the file? (y or n) y
-  Reading symbols from out/mimxrt595_evk_debug/obj/pw_status/test/status_test.elf...
-  (gdb) monitor reset
-  Resetting target
-  (gdb) load
-  Loading section .flash_config, size 0x200 lma 0x8000400
-  Loading section .vector_table, size 0x168 lma 0x8001000
-  Loading section .code, size 0xb34c lma 0x8001180
-  Loading section .ARM, size 0x8 lma 0x800c4d0
-  Loading section .static_init_ram, size 0x3c8 lma 0x800c4d8
-  Start address 0x080048d0, load size 47748
-  Transfer rate: 15542 KB/sec, 6821 bytes/write.
-  (gdb) monitor reset
-  Resetting target
+   (gdb) target remote :2331
+   Remote debugging using :2331
+   warning: No executable has been specified and target does not support
+   determining executable automatically.  Try using the "file" command.
+   0x08000000 in ?? ()
+   (gdb) file out/mimxrt595_evk_debug/obj/pw_status/test/status_test.elf
+   A program is being debugged already.
+   Are you sure you want to change the file? (y or n) y
+   Reading symbols from out/mimxrt595_evk_debug/obj/pw_status/test/status_test.elf...
+   (gdb) monitor reset
+   Resetting target
+   (gdb) load
+   Loading section .flash_config, size 0x200 lma 0x8000400
+   Loading section .vector_table, size 0x168 lma 0x8001000
+   Loading section .code, size 0xb34c lma 0x8001180
+   Loading section .ARM, size 0x8 lma 0x800c4d0
+   Loading section .static_init_ram, size 0x3c8 lma 0x800c4d8
+   Start address 0x080048d0, load size 47748
+   Transfer rate: 15542 KB/sec, 6821 bytes/write.
+   (gdb) monitor reset
+   Resetting target
 
 You can now set any breakpoints you wish, and ``continue`` to run the
 executable.

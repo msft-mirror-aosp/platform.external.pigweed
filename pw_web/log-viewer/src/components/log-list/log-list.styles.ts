@@ -26,13 +26,14 @@ export const styles = css`
     font-family: 'Roboto Mono', monospace;
     font-size: 1rem;
     height: 100%;
+    overflow: hidden;
     position: relative;
   }
 
   .table-container {
+    display: grid;
     height: 100%;
-    overflow: auto;
-    padding-bottom: 3rem;
+    overflow: scroll;
     scroll-behavior: auto;
     width: 100%;
   }
@@ -118,7 +119,8 @@ export const styles = css`
   }
 
   th[hidden],
-  td[hidden] {
+  td[hidden],
+  .jump-to-bottom-btn[hidden] {
     display: none;
   }
 
@@ -132,6 +134,16 @@ export const styles = css`
     position: relative;
     vertical-align: top;
     align-items: flex-start;
+  }
+
+  .jump-to-bottom-btn {
+    --md-filled-button-container-elevation: 4;
+    --md-filled-button-hover-container-elevation: 4;
+    bottom: 2rem;
+    font-family: 'Google Sans', sans-serif;
+    left: 50%;
+    position: absolute;
+    transform: translate(-50%);
   }
 
   .resize-handle {
@@ -179,24 +191,27 @@ export const styles = css`
       'wght' 400,
       'GRAD' 200,
       'opsz' 58;
+    font-size: 1.25rem;
     user-select: none;
   }
 
   .overflow-indicator {
-    height: 100%;
     pointer-events: none;
     position: absolute;
-    top: 0;
     width: 8rem;
   }
 
-  .right-indicator {
+  .bottom-indicator {
+    align-self: flex-end;
     background: linear-gradient(
-      to right,
+      to bottom,
       transparent,
       var(--sys-log-viewer-color-overflow-indicator)
     );
-    right: 0;
+    height: 8rem;
+    pointer-events: none;
+    position: absolute;
+    width: calc(100% - 1rem);
   }
 
   .left-indicator {
@@ -205,7 +220,18 @@ export const styles = css`
       transparent,
       var(--sys-log-viewer-color-overflow-indicator)
     );
-    left: 0;
+    height: calc(100% - 1rem);
+    justify-self: flex-start;
+  }
+
+  .right-indicator {
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--sys-log-viewer-color-overflow-indicator)
+    );
+    height: calc(100% - 1rem);
+    justify-self: flex-end;
   }
 
   mark {
@@ -213,5 +239,41 @@ export const styles = css`
     border-radius: 2px;
     color: var(--md-sys-color-on-primary-container);
     outline: 1px solid var(--sys-log-viewer-color-table-mark);
+  }
+
+  ::-webkit-scrollbar {
+    -webkit-appearance: auto;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: var(--md-sys-color-surface-container-low);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    min-height: 3rem;
+  }
+
+  ::-webkit-scrollbar-thumb:horizontal {
+    border-radius: 20px;
+    box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-outline-variant);
+    border: inset 3px transparent;
+    border-top: inset 4px transparent;
+  }
+
+  ::-webkit-scrollbar-thumb:vertical {
+    border-radius: 20px;
+    box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-outline-variant);
+    border: inset 3px transparent;
+    border-left: inset 4px transparent;
+  }
+
+  ::-webkit-scrollbar-track:horizontal {
+    box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-surface-container-low);
+    border-top: solid 1px var(--md-sys-color-outline-variant);
+  }
+
+  ::-webkit-scrollbar-track:vertical {
+    box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-surface-container-low);
+    border-left: solid 1px var(--md-sys-color-outline-variant);
   }
 `;

@@ -18,16 +18,20 @@ the reported tokens.
   number of the assert statement. By default, it is passed to the logging system
   to produce a string like this:
 
-    PW_ASSERT() or PW_DASSERT() failure at
-    pw_result/public/pw_result/result.h:63
+  .. code-block:: text
+
+     PW_ASSERT() or PW_DASSERT() failure at
+     pw_result/public/pw_result/result.h:63
 
 * **PW_CHECK_\*()**: The ``PW_CHECK_*()`` macros work in contexts where
   tokenization is fully supported, so they are able to capture the CHECK
   statement expression and any provided string literal in addition to the file
   name in the pw_log_tokenized key/value format:
 
-    "■msg♦Check failure: \*unoptimizable >= 0, Ensure this CHECK logic
-    stays■module♦KVS■file♦pw_kvs/size_report/base.cc"
+  .. code-block:: text
+
+     "■msg♦Check failure: \*unoptimizable >= 0, Ensure this CHECK logic
+     stays■module♦KVS■file♦pw_kvs/size_report/base.cc"
 
   Evaluated values of ``PW_CHECK_*()`` statements are not captured, and any
   string formatting arguments are also not captured. This minimizes call-site
@@ -66,29 +70,29 @@ Example file name token database setup
 
 .. code-block::
 
-  pw_executable("main") {
-    deps = [
-      # ...
-    ]
-    sources = [ "main.cc" ]
-  }
+   pw_executable("main") {
+     deps = [
+       # ...
+     ]
+     sources = [ "main.cc" ]
+   }
 
-  pw_tokenizer_database("log_tokens") {
-    database = "tools/tokenized_logs.csv"
-    deps = [
-      ":source_file_names",
-      ":main",
-    ]
-    optional_paths = [ "$root_build_dir/**/*.elf" ]
-    input_databases = [ "$target_gen_dir/source_file_names.json" ]
-  }
+   pw_tokenizer_database("log_tokens") {
+     database = "tools/tokenized_logs.csv"
+     deps = [
+       ":source_file_names",
+       ":main",
+     ]
+     optional_paths = [ "$root_build_dir/**/*.elf" ]
+     input_databases = [ "$target_gen_dir/source_file_names.json" ]
+   }
 
-  # Extracts all source/header file names from "main" and its transitive
-  # dependencies for tokenization.
-  pw_relative_source_file_names("source_file_names") {
-    deps = [ ":main" ]
-    outputs = [ "$target_gen_dir/source_file_names.json" ]
-  }
+   # Extracts all source/header file names from "main" and its transitive
+   # dependencies for tokenization.
+   pw_relative_source_file_names("source_file_names") {
+     deps = [ ":main" ]
+     outputs = [ "$target_gen_dir/source_file_names.json" ]
+   }
 
 
 .. warning::
