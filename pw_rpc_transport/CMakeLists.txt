@@ -38,6 +38,18 @@ pw_add_library(pw_rpc_transport.service_registry INTERFACE
     pw_status
 )
 
+pw_add_library(pw_rpc_transport.test_loopback_service_registry INTERFACE
+  HEADERS
+    public/pw_rpc_transport/test_loopback_service_registry.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_rpc_transport.egress_ingress
+    pw_rpc_transport.service_registry
+    pw_work_queue
+    pw_work_queue.test_thread
+)
+
 pw_add_library(pw_rpc_transport.packet_buffer_queue INTERFACE
   HEADERS
     public/pw_rpc_transport/internal/packet_buffer_queue.h
@@ -178,6 +190,7 @@ pw_add_library(pw_rpc_transport.egress_ingress STATIC
     pw_metric
     pw_rpc.client
     pw_status
+    pw_sync.mutex
   PRIVATE_DEPS
     pw_log
 )

@@ -40,10 +40,10 @@ export const styles = css`
 
   table {
     border-collapse: collapse;
+    display: block;
     height: 100%;
-    min-width: 100vw;
     table-layout: fixed;
-    width: auto;
+    width: 100%;
   }
 
   thead,
@@ -56,6 +56,8 @@ export const styles = css`
   thead {
     background-color: var(--sys-log-viewer-color-table-header-bg);
     color: var(--sys-log-viewer-color-table-header-text);
+    display: block;
+    width: 100%;
   }
 
   tr {
@@ -63,6 +65,7 @@ export const styles = css`
     display: grid;
     justify-content: flex-start;
     width: 100%;
+    will-change: transform;
   }
 
   .log-row--warning {
@@ -98,14 +101,35 @@ export const styles = css`
     color: var(--text-color);
   }
 
-  .log-row--nowrap .cell-content {
+  .log-row .cell-content {
+    display: inline-flex;
     overflow: hidden;
-    white-space: nowrap;
     text-overflow: ellipsis;
+    white-space: pre-wrap;
   }
 
-  tr:hover > td {
-    background-color: rgba(var(--md-sys-inverse-surface-rgb), 0.05);
+  .log-row--nowrap .cell-content {
+    white-space: pre;
+  }
+
+  tbody tr::before {
+    background-color: transparent;
+    bottom: 0;
+    content: '';
+    display: block;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 100%;
+    z-index: -1;
+  }
+
+  tbody tr:hover::before {
+    background-color: rgba(
+      var(--sys-log-viewer-color-table-row-highlight),
+      0.05
+    );
   }
 
   th,
@@ -119,14 +143,17 @@ export const styles = css`
   }
 
   th[hidden],
-  td[hidden],
-  .jump-to-bottom-btn[hidden] {
+  td[hidden] {
     display: none;
   }
 
   th {
     grid-row: 1;
     white-space: nowrap;
+  }
+
+  th[title='severity'] {
+    visibility: hidden;
   }
 
   td {
@@ -136,14 +163,18 @@ export const styles = css`
     align-items: flex-start;
   }
 
+  .cell-text {
+    line-height: normal;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
   .jump-to-bottom-btn {
-    --md-filled-button-container-elevation: 4;
-    --md-filled-button-hover-container-elevation: 4;
-    bottom: 2rem;
-    font-family: 'Google Sans', sans-serif;
-    left: 50%;
+    bottom: 2.25rem;
+    font-family: 'Roboto Flex', sans-serif;
     position: absolute;
-    transform: translate(-50%);
+    place-self: center;
+    transform: translateY(15%) scale(0.9);
   }
 
   .resize-handle {
@@ -165,9 +196,9 @@ export const styles = css`
   }
 
   .resize-handle:hover {
-    background-color: var(--md-sys-color-primary);
+    background-color: var(--sys-log-viewer-color-primary);
     mix-blend-mode: unset;
-    outline: 1px solid var(--md-sys-color-primary);
+    outline: 1px solid var(--sys-log-viewer-color-primary);
   }
 
   .resize-handle::before {
@@ -237,11 +268,30 @@ export const styles = css`
   mark {
     background-color: var(--sys-log-viewer-color-table-mark);
     border-radius: 2px;
-    color: var(--md-sys-color-on-primary-container);
+    color: var(--sys-log-viewer-color-table-mark);
     outline: 1px solid var(--sys-log-viewer-color-table-mark);
   }
 
+  .jump-to-bottom-btn,
+  .bottom-indicator {
+    opacity: 0;
+    transition:
+      opacity 100ms ease,
+      transform 100ms ease,
+      visibility 100ms ease;
+    visibility: hidden;
+  }
+
+  .jump-to-bottom-btn[data-visible='true'],
+  .bottom-indicator[data-visible='true'] {
+    transition:
+      opacity 250ms ease,
+      transform 250ms ease,
+      250ms ease;
+  }
+
   ::-webkit-scrollbar {
+    box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-surface-container-low);
     -webkit-appearance: auto;
   }
 
@@ -250,30 +300,25 @@ export const styles = css`
   }
 
   ::-webkit-scrollbar-thumb {
-    min-height: 3rem;
-  }
-
-  ::-webkit-scrollbar-thumb:horizontal {
     border-radius: 20px;
     box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-outline-variant);
     border: inset 3px transparent;
+  }
+
+  ::-webkit-scrollbar-thumb:horizontal {
     border-top: inset 4px transparent;
   }
 
   ::-webkit-scrollbar-thumb:vertical {
-    border-radius: 20px;
-    box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-outline-variant);
-    border: inset 3px transparent;
     border-left: inset 4px transparent;
+    height: calc(100% / 3);
   }
 
   ::-webkit-scrollbar-track:horizontal {
-    box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-surface-container-low);
     border-top: solid 1px var(--md-sys-color-outline-variant);
   }
 
   ::-webkit-scrollbar-track:vertical {
-    box-shadow: inset 0 0 2rem 2rem var(--md-sys-color-surface-container-low);
     border-left: solid 1px var(--md-sys-color-outline-variant);
   }
 `;

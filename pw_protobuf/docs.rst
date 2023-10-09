@@ -307,7 +307,7 @@ value are final, and can't be referenced or modified as a later step in the
 encode process.
 
 Casting between generated StreamEncoder types
-=============================================
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 pw_protobuf guarantees that all generated ``StreamEncoder`` classes can be
 converted among each other. It's also safe to convert any ``MemoryEncoder`` to
 any other ``StreamEncoder``.
@@ -633,7 +633,7 @@ order to avoid clashes for projects that link against multiple C++ proto
 libraries in the same library.
 
 ..
-  TODO(b/258832150) Remove this section, if possible
+  TODO: b/258832150 - Remove this section, if possible
 
 In some cases, pw_protobuf codegen may encounter external message references
 during parsing, where it is unable to resolve the package name of the message.

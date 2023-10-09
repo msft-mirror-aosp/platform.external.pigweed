@@ -15,9 +15,6 @@
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_library",
-)
-load(
-    "//pw_build/bazel_internal:pigweed_internal.bzl",
     "pw_linker_script",
 )
 
@@ -59,7 +56,7 @@ pw_cc_library(
         "//pw_boot_cortex_m",
         "//pw_preprocessor",
         "//pw_sys_io_mcuxpresso",
-        "@pigweed_config//:mcuxpresso_sdk",
+        "@pigweed//targets:mcuxpresso_sdk",
     ],
     alwayslink = 1,
 )

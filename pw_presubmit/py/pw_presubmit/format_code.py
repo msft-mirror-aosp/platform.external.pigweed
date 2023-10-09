@@ -22,6 +22,7 @@ code. These tools must be available on the path when this script is invoked!
 import argparse
 import collections
 import difflib
+import json
 import logging
 import os
 from pathlib import Path
@@ -80,7 +81,15 @@ _DEFAULT_PATH = Path('out', 'format')
 _Context = Union[PresubmitContext, FormatContext]
 
 
+def _ensure_newline(orig: bytes) -> bytes:
+    if orig.endswith(b'\n'):
+        return orig
+    return orig + b'\nNo newline at end of file\n'
+
+
 def _diff(path, original: bytes, formatted: bytes) -> str:
+    original = _ensure_newline(original)
+    formatted = _ensure_newline(formatted)
     return ''.join(
         difflib.unified_diff(
             original.decode(errors='replace').splitlines(True),
@@ -249,7 +258,7 @@ def fix_go_format(ctx: _Context) -> Dict[Path, str]:
     return {}
 
 
-# TODO(b/259595799) Remove yapf support.
+# TODO: b/259595799 - Remove yapf support.
 def _yapf(*args, **kwargs) -> subprocess.CompletedProcess:
     return log_run(
         ['python', '-m', 'yapf', '--parallel', *args],
@@ -439,6 +448,47 @@ def _check_trailing_space(paths: Iterable[Path], fix: bool) -> Dict[Path, str]:
     return errors
 
 
+def _format_json(contents: bytes) -> bytes:
+    return json.dumps(json.loads(contents), indent=2).encode() + b'\n'
+
+
+def _json_error(exc: json.JSONDecodeError, path: Path) -> str:
+    return f'{path}: {exc.msg} {exc.lineno}:{exc.colno}\n'
+
+
+def check_json_format(ctx: _Context) -> Dict[Path, str]:
+    errors = {}
+
+    for path in ctx.paths:
+        orig = path.read_bytes()
+        try:
+            formatted = _format_json(orig)
+        except json.JSONDecodeError as exc:
+            errors[path] = _json_error(exc, path)
+            continue
+
+        if orig != formatted:
+            errors[path] = _diff(path, orig, formatted)
+
+    return errors
+
+
+def fix_json_format(ctx: _Context) -> Dict[Path, str]:
+    errors = {}
+    for path in ctx.paths:
+        orig = path.read_bytes()
+        try:
+            formatted = _format_json(orig)
+        except json.JSONDecodeError as exc:
+            errors[path] = _json_error(exc, path)
+            continue
+
+        if orig != formatted:
+            path.write_bytes(formatted)
+
+    return errors
+
+
 def check_trailing_space(ctx: _Context) -> Dict[Path, str]:
     return _check_trailing_space(ctx.paths, fix=False)
 
@@ -515,7 +565,7 @@ class CodeFormat(NamedTuple):
 
     @property
     def extensions(self):
-        # TODO(b/23842636): Switch calls of this to using 'filter' and remove.
+        # TODO: b/23842636 - Switch calls of this to using 'filter' and remove.
         return self.filter.endswith
 
 
@@ -589,7 +639,7 @@ COPYBARA_FORMAT: CodeFormat = CodeFormat(
     fix_bazel_format,
 )
 
-# TODO(b/234881054): Add real code formatting support for CMake
+# TODO: b/234881054 - Add real code formatting support for CMake
 CMAKE_FORMAT: CodeFormat = CodeFormat(
     'CMake',
     FileFilter(endswith=['.cmake'], name=['^CMakeLists.txt$']),
@@ -618,6 +668,13 @@ OWNERS_CODE_FORMAT = CodeFormat(
     fix=fix_owners_format,
 )
 
+JSON_FORMAT: CodeFormat = CodeFormat(
+    'JSON',
+    FileFilter(endswith=['.json']),
+    check=check_json_format,
+    fix=fix_json_format,
+)
+
 CODE_FORMATS: Tuple[CodeFormat, ...] = tuple(
     filter(
         None,
@@ -631,6 +688,7 @@ CODE_FORMATS: Tuple[CodeFormat, ...] = tuple(
             GO_FORMAT,
             JAVASCRIPT_FORMAT if shutil.which('npx') else None,
             JAVA_FORMAT,
+            JSON_FORMAT,
             MARKDOWN_FORMAT,
             OWNERS_CODE_FORMAT,
             PROTO_FORMAT,
@@ -643,7 +701,7 @@ CODE_FORMATS: Tuple[CodeFormat, ...] = tuple(
 )
 
 
-# TODO(b/264578594) Remove these lines when these globals aren't referenced.
+# TODO: b/264578594 - Remove these lines when these globals aren't referenced.
 CODE_FORMATS_WITH_BLACK: Tuple[CodeFormat, ...] = CODE_FORMATS
 CODE_FORMATS_WITH_YAPF: Tuple[CodeFormat, ...] = CODE_FORMATS
 

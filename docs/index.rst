@@ -1,7 +1,7 @@
 .. _docs-root:
 .. highlight:: sh
 
-.. TODO(b/256680603) Remove query string from issue tracker link.
+.. TODO: b/256680603 - Remove query string from issue tracker link.
 
 .. toctree::
   :maxdepth: 1
@@ -14,6 +14,7 @@
   Modules <module_guides>
   docs/module_structure
   changelog
+  glossary
   Mailing List <https://groups.google.com/forum/#!forum/pigweed>
   Chat Room <https://discord.gg/M9NSeTA>
   docs/os/index
@@ -25,6 +26,7 @@
   Code Reviews <https://pigweed-review.googlesource.com>
   Issue Tracker <https://issues.pigweed.dev/issues?q=status:open>
   docs/contributing
+  docs/infra/index
   docs/code_of_conduct
   Automated Analysis <automated_analysis>
   Build System <build_system>
@@ -34,10 +36,10 @@
 Pigweed
 =======
 Pigweed is an open source collection of embedded-targeted libraries--or as we
-like to call them, modules. These modules are building blocks and
-infrastructure that enable faster and more reliable development on
-small-footprint MMU-less 32-bit microcontrollers like the STMicroelectronics
-STM32L452 or the Nordic nRF52832.
+like to call them, :ref:`modules <docs-glossary-module>`. These modules are
+building blocks and infrastructure that enable faster and more reliable
+development on small-footprint MMU-less 32-bit microcontrollers like the
+STMicroelectronics STM32L452 or the Nordic nRF52832.
 
 .. attention::
 
@@ -47,7 +49,7 @@ STM32L452 or the Nordic nRF52832.
    <https://groups.google.com/forum/#!forum/pigweed>`_.
 
 ---------------------
-What's new in Pigweed
+What's New In Pigweed
 ---------------------
 .. include:: changelog.rst
    :start-after: .. changelog_highlights_start

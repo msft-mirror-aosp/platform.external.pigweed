@@ -30,6 +30,7 @@ pw_add_library(pw_tokenizer STATIC
   HEADERS
     public/pw_tokenizer/encode_args.h
     public/pw_tokenizer/hash.h
+    public/pw_tokenizer/nested_tokenization.h
     public/pw_tokenizer/tokenize.h
   PUBLIC_INCLUDES
     public
@@ -91,9 +92,7 @@ pw_add_library(pw_tokenizer.decoder STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_log_tokenized.config
     pw_span
-    pw_string
     pw_tokenizer
     pw_tokenizer.base64
   SOURCES

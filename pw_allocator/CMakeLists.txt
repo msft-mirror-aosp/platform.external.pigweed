@@ -14,6 +14,35 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
+pw_add_library(pw_allocator.allocator STATIC
+  HEADERS
+    public/pw_allocator/allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_status
+  PRIVATE_DEPS
+    pw_assert
+    pw_bytes
+  SOURCES
+    allocator.cc
+)
+
+pw_add_library(pw_allocator.allocator_metric_proxy STATIC
+  HEADERS
+    public/pw_allocator/allocator_metric_proxy.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_metric
+    pw_status
+  PRIVATE_DEPS
+    pw_assert
+  SOURCES
+    allocator_metric_proxy.cc
+)
+
 pw_add_library(pw_allocator.block STATIC
   HEADERS
     public/pw_allocator/block.h
@@ -25,6 +54,19 @@ pw_add_library(pw_allocator.block STATIC
     pw_status
   SOURCES
     block.cc
+)
+
+pw_add_library(pw_allocator.fallback_allocator STATIC
+  HEADERS
+    public/pw_allocator/fallback_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_assert
+    pw_status
+  SOURCES
+    fallback_allocator.cc
 )
 
 pw_add_library(pw_allocator.freelist STATIC
@@ -56,12 +98,98 @@ pw_add_library(pw_allocator.freelist_heap STATIC
     freelist_heap.cc
 )
 
+pw_add_library(pw_allocator.split_free_list_allocator STATIC
+  SOURCES
+    split_free_list_allocator.cc
+  HEADERS
+    public/pw_allocator/split_free_list_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_status
+  PRIVATE_DEPS
+    pw_assert
+    pw_bytes
+)
+
+pw_add_library(pw_allocator.libc_allocator STATIC
+  SOURCES
+    libc_allocator.cc
+  HEADERS
+    public/pw_allocator/libc_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_status
+  PRIVATE_DEPS
+    pw_assert
+    pw_bytes
+)
+
+pw_add_library(pw_allocator.null_allocator INTERFACE
+  HEADERS
+    public/pw_allocator/null_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+)
+
+pw_add_library(pw_allocator.allocator_testing STATIC
+  HEADERS
+    pw_allocator_private/allocator_testing.h
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_allocator.block
+    pw_assert
+    pw_bytes
+  SOURCES
+    allocator_testing.cc
+)
+
+pw_add_test(pw_allocator.allocator_test
+  SOURCES
+    allocator_test.cc
+  PRIVATE_DEPS
+    pw_allocator.allocator
+    pw_allocator.allocator_testing
+    pw_bytes
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.allocator_metric_proxy_test
+  SOURCES
+    allocator_metric_proxy_test.cc
+  PRIVATE_DEPS
+    pw_allocator.allocator_metric_proxy
+    pw_allocator.allocator_testing
+  GROUPS
+    modules
+    pw_allocator
+)
+
 pw_add_test(pw_allocator.block_test
   SOURCES
     block_test.cc
   PRIVATE_DEPS
     pw_allocator.block
     pw_span
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.fallback_allocator_test
+  PRIVATE_DEPS
+    pw_allocator.allocator_testing
+    pw_allocator.fallback_allocator
+    pw_status
+  SOURCES
+    fallback_allocator_test.cc
   GROUPS
     modules
     pw_allocator
@@ -84,6 +212,41 @@ pw_add_test(pw_allocator.freelist_heap_test
     freelist_heap_test.cc
   PRIVATE_DEPS
     pw_allocator.freelist_heap
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.libc_allocator_test
+  SOURCES
+    libc_allocator_test.cc
+  PRIVATE_DEPS
+    pw_allocator.libc_allocator
+    pw_unit_test
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.null_allocator_test
+  SOURCES
+    null_allocator_test.cc
+  PRIVATE_DEPS
+    pw_allocator.null_allocator
+    pw_unit_test
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.split_free_list_allocator_test
+  SOURCES
+    split_free_list_allocator_test.cc
+  PRIVATE_DEPS
+    pw_allocator.split_free_list_allocator
+    pw_containers.vector
+    pw_bytes
+    pw_unit_test
   GROUPS
     modules
     pw_allocator

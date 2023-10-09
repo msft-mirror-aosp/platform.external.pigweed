@@ -76,7 +76,7 @@ template("_pw_python_static_analysis_mypy") {
       "--pretty",
       "--show-error-codes",
 
-      # TODO(b/265836842): Namespace packages are enabled by default starting in
+      # TODO: b/265836842 - Namespace packages are enabled by default starting in
       #     mypy 0.991. This caused problems in some configurations, so return
       #     to the prior behavior for now.
       "--no-namespace-packages",
@@ -830,6 +830,7 @@ template("pw_python_script") {
   if (defined(invoker.action)) {
     pw_python_action("$target_name.action") {
       forward_variables_from(invoker.action, "*", [ "python_deps" ])
+      forward_variables_from(invoker, [ "testonly" ])
       python_deps = [ ":${invoker.target_name}" ]
 
       if (!defined(script) && !defined(module) && defined(invoker.sources)) {
@@ -873,7 +874,7 @@ template("pw_python_requirements") {
   # Use the same subtargets as pw_python_package so these targets can be listed
   # as python_deps of pw_python_packages.
   group("$target_name.install") {
-    # TODO(b/232800695): Remove reliance on this subtarget existing.
+    # TODO: b/232800695 - Remove reliance on this subtarget existing.
   }
 
   # Create stubs for the unused subtargets so that pw_python_requirements can be

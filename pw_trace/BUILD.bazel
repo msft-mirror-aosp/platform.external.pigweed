@@ -45,13 +45,13 @@ pw_cc_library(
     includes = ["public"],
     deps = [
         "//pw_preprocessor",
-        "@pigweed_config//:pw_trace_backend",
+        "@pigweed//targets:pw_trace_backend",
     ],
 )
 
 pw_cc_library(
     name = "backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = ["//pw_trace:null"],
 )
 
@@ -138,7 +138,7 @@ pw_cc_library(
     srcs = ["example/sample_app.cc"],
     hdrs = ["example/public/pw_trace/example/sample_app.h"],
     includes = ["example/public"],
-    # TODO(b/258071921): Fix puzzling compiler errors
+    # TODO: b/258071921 - Fix puzzling compiler errors
     tags = ["manual"],
     deps = [
         "//pw_ring_buffer",
@@ -149,7 +149,7 @@ pw_cc_library(
 pw_cc_binary(
     name = "trace_example_basic",
     srcs = ["example/basic.cc"],
-    # TODO(b/258071921): Fix puzzling compiler errors
+    # TODO: b/258071921 - Fix puzzling compiler errors
     tags = ["manual"],
     deps = [
         ":pw_trace_sample_app",

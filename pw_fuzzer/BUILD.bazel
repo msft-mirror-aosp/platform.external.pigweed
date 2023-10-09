@@ -31,7 +31,7 @@ config_setting(
     name = "use_fuzztest",
     testonly = True,
     flag_values = {
-        "@pigweed_config//:pw_fuzzer_fuzztest_backend": "@com_google_fuzztest//fuzztest",
+        "@pigweed//targets:pw_fuzzer_fuzztest_backend": "@com_google_fuzztest//fuzztest",
     },
 )
 
@@ -51,7 +51,7 @@ pw_cc_library(
         "//pw_result",
         "//pw_status",
         "//pw_string",
-        "@pigweed_config//:pw_fuzzer_fuzztest_backend",
+        "@pigweed//targets:pw_fuzzer_fuzztest_backend",
     ],
 )
 

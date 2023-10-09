@@ -22,7 +22,7 @@ import {
 } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { styles } from './log-list.styles';
-import { FieldData, LogEntry, Severity } from '../../shared/interfaces';
+import { LogEntry, Severity, TableColumn } from '../../shared/interfaces';
 import { virtualize } from '@lit-labs/virtualizer/virtualize.js';
 import '@lit-labs/virtualizer';
 
@@ -52,9 +52,8 @@ export class LogList extends LitElement {
   @property({ type: Boolean })
   lineWrap = false;
 
-  /** The field keys (column values) for the incoming log entries. */
-  @state()
-  private _fieldKeys = new Set<string>();
+  @property({ type: Array })
+  columnData: TableColumn[] = [];
 
   /** Indicates whether the table content is overflowing to the right. */
   @state()
@@ -64,18 +63,17 @@ export class LogList extends LitElement {
   @state()
   private _scrollPercentageLeft = 0;
 
-  /** A number representing visibility of vertical scroll indicator. */
+  /** Indicates whether to enable autosizing of incoming log entries. */
   @state()
-  private _scrollDownOpacity = 0;
+  private _autosizeLocked = false;
 
   /**
-   * Indicates whether to automatically scroll the table container to the
-   * bottom when new log entries are added.
+   * Indicates whether to automatically scroll the table container to the bottom
+   * when new log entries are added.
    */
   @state()
   private _autoscrollIsEnabled = true;
 
-  @query('.jump-to-bottom-btn') private _jumpBottomBtn!: HTMLButtonElement;
   @query('.table-container') private _tableContainer!: HTMLDivElement;
   @query('table') private _table!: HTMLTableElement;
   @query('tbody') private _tableBody!: HTMLTableSectionElement;
@@ -91,21 +89,28 @@ export class LogList extends LitElement {
     startWidth: number;
   } | null = null;
 
+  /** The number of times the `logs` array has been updated. */
+  private logUpdateCount: number = 0;
   /** The maximum number of log entries to render in the list. */
   private readonly MAX_ENTRIES = 100_000;
-
-  @property({ type: Array })
-  colsHidden: (boolean | undefined)[] = [];
+  /** The maximum number of log updates until autosize is disabled. */
+  private readonly AUTOSIZE_LIMIT: number = 8;
+  /** The minimum width (in px) for table columns. */
+  private readonly MIN_COL_WIDTH: number = 52;
+  /** The last known vertical scroll position of the table container. */
+  private lastScrollTop: number = 0;
 
   firstUpdated() {
     setInterval(() => this.updateHorizontalOverflowState(), 1000);
 
-    window.addEventListener('scroll', this.handleTableScroll);
+    this._tableContainer.addEventListener('scroll', this.handleTableScroll);
     this._tableBody.addEventListener('rangeChanged', this.onRangeChanged);
 
-    if (this.logs.length > 0) {
-      this.performUpdate();
-    }
+    const newRowObserver = new MutationObserver(this.onTableRowAdded);
+    newRowObserver.observe(this._table, {
+      childList: true,
+      subtree: true,
+    });
   }
 
   updated(changedProperties: PropertyValues) {
@@ -119,13 +124,12 @@ export class LogList extends LitElement {
     }
 
     if (changedProperties.has('logs')) {
-      this.setFieldNames(this.logs);
+      this.logUpdateCount++;
       this.handleTableScroll();
     }
 
-    if (changedProperties.has('colsHidden')) {
-      this.clearGridTemplateColumns();
-      this.updateGridTemplateColumns();
+    if (changedProperties.has('columnData')) {
+      this.updateColumnWidths();
     }
   }
 
@@ -135,27 +139,40 @@ export class LogList extends LitElement {
     this._tableBody.removeEventListener('rangeChanged', this.onRangeChanged);
   }
 
-  /**
-   * Sets the field names based on the provided log entries; used to define
-   * the table columns.
-   *
-   * @param logs An array of LogEntry objects.
-   */
-  private setFieldNames(logs: LogEntry[]) {
-    logs.forEach((logEntry) => {
-      logEntry.fields.forEach((fieldData) => {
-        if (fieldData.key === 'severity') {
-          this._fieldKeys.add('');
+  private onTableRowAdded = (mutations: MutationRecord[]) => {
+    mutations.forEach((mutation) => {
+      // Check for added nodes
+      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+        const addedRows = Array.from(mutation.addedNodes).filter(
+          (node) => node.nodeName === 'TR',
+        ) as HTMLTableRowElement[];
+
+        if (addedRows.length <= 0) {
           return;
         }
-        this._fieldKeys.add(fieldData.key);
-      });
+
+        // Force repaint to prevent flickering
+        this._table.offsetTop;
+
+        // Update header row alongside newly-added rows
+        const rowsToUpdate = [this._tableRows[0], ...addedRows];
+
+        if (!this._autosizeLocked) {
+          this.autosizeColumns();
+        } else {
+          this.updateColumnWidths(rowsToUpdate);
+        }
+
+        // Disable auto-sizing once a certain number of updates to the logs array have been made
+        if (this.logUpdateCount >= this.AUTOSIZE_LIMIT) {
+          this._autosizeLocked = true;
+        }
+      }
     });
-  }
+  };
 
   /** Called when the Lit virtualizer updates its range of entries. */
   private onRangeChanged = () => {
-    this.updateGridTemplateColumns();
     if (this._autoscrollIsEnabled) {
       this.scrollTableToBottom();
     }
@@ -165,48 +182,17 @@ export class LogList extends LitElement {
   private scrollTableToBottom() {
     const container = this._tableContainer;
 
-    // TODO(b/289101398): Refactor `setTimeout` usage
+    // TODO: b/298097109 - Refactor `setTimeout` usage
     setTimeout(() => {
       container.scrollTop = container.scrollHeight;
-      this._jumpBottomBtn.hidden = true;
-      this._scrollDownOpacity = 0;
     }, 0); // Complete any rendering tasks before scrolling
   }
 
-  /** Clears the `gridTemplateColumns` value for all rows in the table. */
-  private clearGridTemplateColumns() {
-    this._tableRows.forEach((row) => {
-      row.style.gridTemplateColumns = '';
-    });
-  }
-
   /**
-   * Updates column visibility and calculates maximum column widths for the
-   * table.
+   * Calculates the maximum column widths for the table and updates the table
+   * rows.
    */
-  private updateGridTemplateColumns = () => {
-    const rows = this._tableRows;
-
-    // Set column visibility based on `colsHidden` array
-    rows.forEach((row) => {
-      const cells = Array.from(row.querySelectorAll('td, th'));
-      cells.forEach((cell, index: number) => {
-        const colHidden = this.colsHidden[index];
-
-        const cellEl = cell as HTMLElement;
-        cellEl.hidden = colHidden as boolean;
-      });
-    });
-
-    // Get the number of visible columns
-    const columnCount =
-      Array.from(rows[0]?.children || []).filter(
-        (child) => !child.hasAttribute('hidden'),
-      ).length || 0;
-
-    // Initialize an array to store the maximum width of each column
-    const columnWidths: number[] = new Array(columnCount).fill(0);
-
+  private autosizeColumns = (rows = this._tableRows) => {
     // Iterate through each row to find the maximum width in each column
     rows.forEach((row) => {
       const cells = Array.from(row.children).filter(
@@ -214,30 +200,71 @@ export class LogList extends LitElement {
       ) as HTMLTableCellElement[];
 
       cells.forEach((cell, columnIndex) => {
-        const cellWidth = cell.getBoundingClientRect().width;
-        columnWidths[columnIndex] = Math.max(
-          columnWidths[columnIndex],
-          cellWidth,
-        );
+        if (columnIndex === 0) return;
+
+        const textLength = cell.textContent?.trim().length || 0;
+
+        if (!this._autosizeLocked) {
+          // Update the preferred width if it's smaller than the new one
+          if (this.columnData[columnIndex]) {
+            this.columnData[columnIndex].characterLength = Math.max(
+              this.columnData[columnIndex].characterLength,
+              textLength,
+            );
+          } else {
+            // Initialize if the column data for this index does not exist
+            this.columnData[columnIndex] = {
+              fieldName: '',
+              characterLength: textLength,
+              manualWidth: null,
+              isVisible: true,
+            };
+          }
+        }
       });
     });
 
-    // Generate the gridTemplateColumns value for each row
-    rows.forEach((row) => {
-      const gridTemplateColumns = columnWidths
-        .map((width, index) => {
-          if (index === columnWidths.length - 1) {
-            return '1fr';
-          }
-          if (index === 0) {
-            return '3.25rem';
-          }
-          return `${width}px`;
-        })
-        .join(' ');
-      row.style.gridTemplateColumns = gridTemplateColumns;
-    });
+    this.updateColumnWidths(rows);
   };
+
+  private generateGridTemplateColumns(
+    newWidth?: number,
+    resizingIndex?: number,
+  ): string {
+    let gridTemplateColumns = '';
+
+    this.columnData.forEach((col, i) => {
+      let columnValue = '';
+
+      if (col.isVisible) {
+        if (i === resizingIndex) {
+          columnValue = `${newWidth}px`;
+        } else if (col.manualWidth !== null) {
+          columnValue = `${col.manualWidth}px`;
+        } else {
+          if (i === 0) {
+            columnValue = '3.25rem';
+          } else {
+            const chWidth = col.characterLength;
+            const padding = 34;
+            columnValue = `clamp(${this.MIN_COL_WIDTH}px, ${chWidth}ch + ${padding}px, 80ch)`;
+          }
+        }
+
+        gridTemplateColumns += columnValue + ' ';
+      }
+    });
+
+    return gridTemplateColumns.trim();
+  }
+
+  private updateColumnWidths(rows: HTMLTableRowElement[] = this._tableRows) {
+    const gridTemplateColumns = this.generateGridTemplateColumns();
+
+    for (const row of rows) {
+      row.style.gridTemplateColumns = gridTemplateColumns;
+    }
+  }
 
   /**
    * Highlights text content within the table cell based on the current filter
@@ -246,11 +273,12 @@ export class LogList extends LitElement {
    * @param {string} text - The table cell text to be processed.
    */
   private highlightMatchedText(text: string): TemplateResult[] {
-    if (!this.searchText) {
+    const searchPhrase = this.searchText?.replace(/(^"|')|("|'$)/g, '');
+    if (!searchPhrase) {
       return [html`${text}`];
     }
 
-    const escapedsearchText = this.searchText.replace(
+    const escapedsearchText = searchPhrase.replace(
       /[.*+?^${}()|[\]\\]/g,
       '\\$&',
     );
@@ -270,31 +298,44 @@ export class LogList extends LitElement {
   }
 
   /**
-   * Calculates scroll-related properties and updates the component's state
-   * when the user scrolls the table.
+   * Calculates scroll-related properties and updates the component's state when
+   * the user scrolls the table.
    */
   private handleTableScroll = () => {
     const container = this._tableContainer;
+    const currentScrollTop = container.scrollTop;
     const containerWidth = container.offsetWidth;
     const scrollLeft = container.scrollLeft;
     const scrollY =
-      container.scrollHeight - container.scrollTop - container.clientHeight;
+      container.scrollHeight - currentScrollTop - container.clientHeight;
     const maxScrollLeft = container.scrollWidth - containerWidth;
     const rowHeight = this._tableRows[0].offsetHeight;
 
-    this._scrollPercentageLeft = scrollLeft / maxScrollLeft || 0;
+    // Determine scroll direction and update the last known scroll position
+    const isScrollingVertically = currentScrollTop !== this.lastScrollTop;
+    const isScrollingUp = currentScrollTop < this.lastScrollTop;
+    this.lastScrollTop = currentScrollTop;
 
+    // Only run autoscroll logic if the user is scrolling vertically
+    if (!isScrollingVertically) {
+      this._scrollPercentageLeft = scrollLeft / maxScrollLeft || 0;
+      return;
+    }
+
+    // User is scrolling up, disable autoscroll
+    if (isScrollingUp) {
+      this._autoscrollIsEnabled = false;
+      return;
+    }
+
+    // User is scrolling down, enable autoscroll if they're near the bottom
     if (Math.abs(scrollY) <= 1) {
       this._autoscrollIsEnabled = true;
-      this.requestUpdate();
       return;
     }
 
     if (Math.round(scrollY - rowHeight) >= 1) {
       this._autoscrollIsEnabled = false;
-      this._jumpBottomBtn.hidden = false;
-      this._scrollDownOpacity = 1;
-      this.requestUpdate();
     }
   };
 
@@ -303,20 +344,38 @@ export class LogList extends LitElement {
    *
    * @param {MouseEvent} event - The mouse event triggered during column
    *   resizing.
-   * @param {number} columnIndex - An index specifying the column being
-   *   resized.
+   * @param {number} columnIndex - An index specifying the column being resized.
    */
   private handleColumnResizeStart(event: MouseEvent, columnIndex: number) {
     event.preventDefault();
+
+    // Check if the corresponding index in columnData is not visible. If not,
+    // check the columnIndex - 1th element until one isn't hidden.
+    while (
+      this.columnData[columnIndex] &&
+      !this.columnData[columnIndex].isVisible
+    ) {
+      columnIndex--;
+      if (columnIndex < 0) {
+        // Exit the loop if we've checked all possible columns
+        return;
+      }
+    }
+
+    // If no visible columns are found, return early
+    if (columnIndex < 0) return;
 
     const startX = event.clientX;
     const columnHeader = this._table.querySelector(
       `th:nth-child(${columnIndex + 1})`,
     ) as HTMLTableCellElement;
+
+    if (!columnHeader) return;
+
     const startWidth = columnHeader.offsetWidth;
 
     this.columnResizeData = {
-      columnIndex,
+      columnIndex: columnIndex,
       startX,
       startWidth,
     };
@@ -329,6 +388,13 @@ export class LogList extends LitElement {
       this.columnResizeData = null;
       document.removeEventListener('mousemove', handleColumnResize);
       document.removeEventListener('mouseup', handleColumnResizeEnd);
+
+      // Communicate column data changes back to parent Log View
+      const updateColumnData = new CustomEvent('update-column-data', {
+        detail: this.columnData,
+      });
+
+      this.dispatchEvent(updateColumnData);
     };
 
     document.addEventListener('mousemove', handleColumnResize);
@@ -342,29 +408,22 @@ export class LogList extends LitElement {
    */
   private handleColumnResize(event: MouseEvent) {
     if (!this.columnResizeData) return;
+
     const { columnIndex, startX, startWidth } = this.columnResizeData;
-    const columnHeader = this._table.querySelector(
-      `th:nth-child(${columnIndex + 1})`,
-    ) as HTMLTableCellElement;
     const offsetX = event.clientX - startX;
-    const newWidth = Math.max(startWidth + offsetX, 48); // Minimum width
-    const totalColumns = this._table.querySelectorAll('th').length;
-    let gridTemplateColumns = '';
+    const newWidth = Math.max(startWidth + offsetX, this.MIN_COL_WIDTH);
 
-    columnHeader.style.width = `${newWidth}px`;
-
-    for (let i = 0; i < totalColumns; i++) {
-      if (i === columnIndex) {
-        gridTemplateColumns += `${newWidth}px `;
-        continue;
-      }
-      const otherColumnHeader = this._table.querySelector(
-        `th:nth-child(${i + 1})`,
-      ) as HTMLElement;
-      const otherColumnWidth = otherColumnHeader.offsetWidth;
-      gridTemplateColumns += `${otherColumnWidth}px `;
+    // Ensure the column index exists in columnData
+    if (this.columnData[columnIndex]) {
+      this.columnData[columnIndex].manualWidth = newWidth;
     }
 
+    const gridTemplateColumns = this.generateGridTemplateColumns(
+      newWidth,
+      columnIndex,
+    );
+
+    // Update the grid layout for each row
     this._tableRows.forEach((row) => {
       row.style.gridTemplateColumns = gridTemplateColumns;
     });
@@ -391,33 +450,32 @@ export class LogList extends LitElement {
             })}
           </tbody>
         </table>
-        ${this.overflowIndicators()}
+        ${this.overflowIndicators()} ${this.jumpToBottomButton()}
       </div>
-      <md-filled-button
-        class="jump-to-bottom-btn"
-        title="Jump to Bottom"
-        @click="${this.scrollTableToBottom}"
-        trailing-icon
-      >
-        <md-icon slot="icon" aria-hidden="true">arrow_downward</md-icon>
-        Jump to Bottom
-      </md-filled-button>
     `;
   }
 
   private tableHeaderRow() {
     return html`
       <tr>
-        ${Array.from(this._fieldKeys).map((fieldKey, columnIndex) =>
-          this.tableHeaderCell(fieldKey, columnIndex),
+        ${this.columnData.map((columnData, columnIndex) =>
+          this.tableHeaderCell(
+            columnData.fieldName,
+            columnIndex,
+            columnData.isVisible,
+          ),
         )}
       </tr>
     `;
   }
 
-  private tableHeaderCell(fieldKey: string, columnIndex: number) {
+  private tableHeaderCell(
+    fieldKey: string,
+    columnIndex: number,
+    isVisible: boolean,
+  ) {
     return html`
-      <th>
+      <th title="${fieldKey}" ?hidden=${!isVisible}>
         ${fieldKey}
         ${columnIndex > 0 ? this.resizeHandle(columnIndex - 1) : html``}
       </th>
@@ -451,14 +509,29 @@ export class LogList extends LitElement {
 
     return html`
       <tr class="${classMap(classes)}">
-        ${log.fields.map((field, columnIndex) =>
-          this.tableDataCell(field, columnIndex),
+        ${this.columnData.map((columnData, columnIndex) =>
+          this.tableDataCell(
+            log,
+            columnData.fieldName,
+            columnIndex,
+            columnData.isVisible,
+          ),
         )}
       </tr>
     `;
   }
 
-  private tableDataCell(field: FieldData, columnIndex: number) {
+  private tableDataCell(
+    log: LogEntry,
+    fieldKey: string,
+    columnIndex: number,
+    isVisible: boolean,
+  ) {
+    const field = log.fields.find((f) => f.key === fieldKey) || {
+      key: fieldKey,
+      value: '',
+    };
+
     if (field.key == 'severity') {
       const severityIcons = new Map<Severity, string>([
         [Severity.WARNING, 'warning'],
@@ -476,7 +549,7 @@ export class LogList extends LitElement {
       };
 
       return html`
-        <td>
+        <td ?hidden=${!isVisible}>
           <div class="cell-content cell-content--icon">
             <md-icon
               class="cell-icon"
@@ -490,14 +563,13 @@ export class LogList extends LitElement {
     }
 
     return html`
-      <td>
+      <td ?hidden=${!isVisible}>
         <div class="cell-content">
-          ${this.highlightMatchedText(field.value.toString())}
+          <span class="cell-text"
+            >${this.highlightMatchedText(field.value.toString())}</span
+          >
         </div>
-        <!-- Don't add resize handles for default columns 'severity' and 'timestamp' -->
-        ${!['severity', 'timestamp'].includes(field.key) && columnIndex > 0
-          ? this.resizeHandle(columnIndex - 1)
-          : html``}
+        ${columnIndex > 0 ? this.resizeHandle(columnIndex - 1) : html``}
       </td>
     `;
   }
@@ -505,7 +577,7 @@ export class LogList extends LitElement {
   private overflowIndicators = () => html`
     <div
       class="bottom-indicator"
-      style="opacity: ${this._scrollDownOpacity}"
+      data-visible="${this._autoscrollIsEnabled ? 'false' : 'true'}"
     ></div>
 
     <div
@@ -519,5 +591,18 @@ export class LogList extends LitElement {
       style="opacity: ${1 - this._scrollPercentageLeft}"
       ?hidden="${!this._isOverflowingToRight}"
     ></div>
+  `;
+
+  private jumpToBottomButton = () => html`
+    <md-filled-button
+      class="jump-to-bottom-btn"
+      title="Jump to Bottom"
+      @click="${this.scrollTableToBottom}"
+      leading-icon
+      data-visible="${this._autoscrollIsEnabled ? 'false' : 'true'}"
+    >
+      <md-icon slot="icon" aria-hidden="true">arrow_downward</md-icon>
+      Jump to Bottom
+    </md-filled-button>
   `;
 }
