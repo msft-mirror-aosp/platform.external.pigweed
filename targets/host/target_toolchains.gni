@@ -338,7 +338,7 @@ pw_target_toolchain_host_list = [
 _pigweed_internal = {
   pw_status_CONFIG = "$dir_pw_status:check_if_used"
 
-  # TODO(b/241565082): Enable NC testing in GN Windows when it is fixed.
+  # TODO: b/241565082 - Enable NC testing in GN Windows when it is fixed.
   pw_compilation_testing_NEGATIVE_COMPILATION_ENABLED = host_os != "win"
 }
 
@@ -488,7 +488,22 @@ pw_internal_host_toolchains = [
       forward_variables_from(_pigweed_internal, "*")
       forward_variables_from(_os_specific_config, "*")
       default_configs += _internal_clang_default_configs
-      default_configs += [ "$dir_pw_minimal_cpp_stdlib:use_minimal_cpp_stdlib" ]
+      default_public_deps = [ "$dir_pw_minimal_cpp_stdlib" ]
+    }
+  },
+  {
+    name = "pw_strict_host_clang_debug_dynamic_allocation"
+    _toolchain_base = pw_toolchain_host_clang.debug
+    forward_variables_from(_toolchain_base, "*", _excluded_members)
+    defaults = {
+      forward_variables_from(_toolchain_base.defaults, "*")
+      forward_variables_from(_host_common, "*")
+      forward_variables_from(_pigweed_internal, "*")
+      forward_variables_from(_os_specific_config, "*")
+      default_configs += _internal_clang_default_configs
+
+      pw_function_CONFIG = "$dir_pw_function:enable_dynamic_allocation"
+      pw_rpc_CONFIG = "$dir_pw_rpc:use_dynamic_allocation"
     }
   },
 ]

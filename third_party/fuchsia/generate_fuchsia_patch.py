@@ -84,7 +84,7 @@ def _clone_fuchsia(temp_path: Path) -> Path:
     return temp_path / 'fuchsia'
 
 
-# TODO(b/248257406): Replace typing.List with list.  # pylint: disable=fixme
+# TODO: b/248257406 - Replace typing.List with list.  # pylint: disable=fixme
 def _read_files(script: Path) -> List[Path]:
     with script.open() as file:
         paths_list: List[str] = eval(  # pylint: disable=eval-used
@@ -112,9 +112,24 @@ def _patch_assert(text: str) -> str:
     return _add_include_before_namespace(replaced, 'pw_assert/assert.h')
 
 
+_CONSTINIT = re.compile(r'\b__CONSTINIT\b')
+
+
+def _patch_constinit(text: str) -> str:
+    replaced = _CONSTINIT.sub('PW_CONSTINIT', text)
+
+    if replaced == text:
+        return text
+
+    replaced = replaced.replace('#include <zircon/compiler.h>\n', '')
+    return _add_include_before_namespace(
+        replaced, "pw_polyfill/language_feature_macros.h"
+    )
+
+
 _INVOKE_PATCH = (
     '\n'
-    '  // TODO(b/241567321): Remove "no sanitize" after pw_protobuf is fixed.\n'
+    '  // TODO: b/241567321 - Remove "no sanitize" after pw_protobuf is fixed.\n'
     '  Result invoke(Args... args) const PW_NO_SANITIZE("function") {'
 )
 
@@ -133,6 +148,7 @@ def _patch_invoke(file: Path, text: str) -> str:
 def _patch(file: Path) -> Optional[str]:
     text = file.read_text()
     updated = _patch_assert(text)
+    updated = _patch_constinit(updated)
     updated = _patch_invoke(file, updated)
     return None if text == updated else updated
 

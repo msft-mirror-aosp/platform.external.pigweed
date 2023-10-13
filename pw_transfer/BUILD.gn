@@ -169,7 +169,7 @@ pw_test_group("tests") {
   ]
 }
 
-# TODO(b/235345886): Fix transfer tests on Windows and non-host builds.
+# TODO: b/235345886 - Fix transfer tests on Windows and non-host builds.
 _is_host_toolchain = defined(pw_toolchain_SCOPE.is_host_toolchain) &&
                      pw_toolchain_SCOPE.is_host_toolchain
 not_needed([ "_is_host_toolchain" ])
@@ -246,31 +246,14 @@ pw_test("client_test") {
 }
 
 pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
+  sources = [
+    "api.rst",
+    "docs.rst",
+  ]
   inputs = [
     "transfer.proto",
     "read.svg",
     "write.svg",
-  ]
-}
-
-pw_proto_library("test_server_proto") {
-  sources = [ "test_server.proto" ]
-  prefix = "pw_transfer_test"
-  deps = [ "$dir_pw_protobuf:common_protos" ]
-}
-
-pw_executable("test_rpc_server") {
-  sources = [ "test_rpc_server.cc" ]
-  deps = [
-    ":atomic_file_transfer_handler",
-    ":pw_transfer",
-    ":test_server_proto.raw_rpc",
-    "$dir_pw_rpc/system_server",
-    "$dir_pw_rpc/system_server:socket",
-    "$dir_pw_stream:std_file_stream",
-    "$dir_pw_thread:thread",
-    dir_pw_log,
   ]
 }
 
@@ -303,62 +286,62 @@ pw_executable("integration_test_client") {
   ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("integration_test_python_client") {
   sources = [ "integration_test/python_client.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("integration_test_proxy") {
   sources = [ "integration_test/proxy.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("integration_test_proxy_test") {
   sources = [ "integration_test/proxy_test.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("integration_test_fixture") {
   sources = [ "integration_test/test_fixture.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("cross_language_small_test") {
   sources = [ "integration_test/cross_language_small_test.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("cross_language_medium_read_test") {
   sources = [ "integration_test/cross_language_medium_read_test.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("cross_language_medium_write_test") {
   sources = [ "integration_test/cross_language_medium_write_test.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("cross_language_large_read_test") {
   sources = [ "integration_test/cross_language_large_read_test.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("cross_language_large_write_test") {
   sources = [ "integration_test/cross_language_large_write_test.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("multi_transfer_test") {
   sources = [ "integration_test/multi_transfer_test.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("expected_errors_test") {
   sources = [ "integration_test/expected_errors_test.py" ]
 }
 
-# TODO(b/228516801): Make this actually work; this is just a placeholder.
+# TODO: b/228516801 - Make this actually work; this is just a placeholder.
 pw_python_script("legacy_binaries_test") {
   sources = [ "integration_test/legacy_binaries_test.py" ]
 }

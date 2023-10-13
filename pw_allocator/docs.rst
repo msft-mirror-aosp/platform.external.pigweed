@@ -11,6 +11,8 @@ for a dynamic allocator. This is composed of the following parts:
   splitting and merging of blocks.
 - ``freelist``: A freelist, suitable for fast lookups of available memory chunks
   (i.e. ``block`` s).
+- ``allocator``: An interface for memory allocators. Several concrete
+  implementations are also provided.
 
 Heap Integrity Check
 ====================
@@ -23,6 +25,24 @@ FreeList
 ========
 .. doxygenclass:: pw::allocator::FreeList
    :members:
+
+Allocator
+=========
+.. doxygenclass:: pw::allocator::Allocator
+   :members:
+
+Provided implementations of the ``Allocator`` interface include:
+
+- ``AllocatorMetricProxy``: Wraps another allocator and records its usage.
+- ``FallbackAllocator``: Dispatches first to a primary allocator, and, if that
+  fails, to a secondary alloator.
+- ``LibCAllocator``: Uses ``malloc``, ``realloc``, and ``free``. This should
+  only be used if the ``libc`` in use provides those functions.
+- ``NullAllocator``: Always fails. This may be useful if allocations should be
+  disallowed under specific circumstances.
+- ``SplitFreeListAllocator``: Tracks free blocks using a free list, and splits
+  large and small allocations between the front and back, respectively, of its
+  memory region in order to reduce fragmentation.
 
 Heap Poisoning
 ==============

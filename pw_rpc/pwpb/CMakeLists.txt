@@ -335,7 +335,7 @@ pw_add_test(pw_rpc.pwpb.stub_generation_test
     pw_rpc.pwpb
 )
 
-# TODO(b/231950909) Test disabled as pw_work_queue lacks CMakeLists.txt
+# TODO: b/231950909 - Test disabled as pw_work_queue lacks CMakeLists.txt
 if((TARGET pw_work_queue.pw_work_queue) AND
    ("${pw_thread.thread_BACKEND}" STREQUAL "pw_thread_stl.thread") AND
    (NOT "${pw_sync.timed_thread_notification_BACKEND}" STREQUAL
@@ -347,6 +347,7 @@ if((TARGET pw_work_queue.pw_work_queue) AND
       pw_rpc.pwpb.test_method_context
       pw_rpc.synchronous_client_api
       pw_rpc.test_protos.pwpb_rpc
+      pw_rpc_transport.test_loopback_service_registry
       pw_thread.thread
       pw_work_queue.pw_work_queue
       pw_work_queue.stl_test_thread

@@ -90,6 +90,14 @@ def _at_all_optimization_levels(target):
 #
 # Build presubmit checks
 #
+gn_all = build.GnGenNinja(
+    name='gn_all',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS),
+    ninja_targets=('all',),
+)
+
+
 def gn_clang_build(ctx: PresubmitContext):
     """Checks all compile targets that rely on LLVM tooling."""
     build_targets = [
@@ -100,7 +108,7 @@ def gn_clang_build(ctx: PresubmitContext):
         'tsan',
         'ubsan',
         'runtime_sanitizers',
-        # TODO(b/234876100): msan will not work until the C++ standard library
+        # TODO: b/234876100 - msan will not work until the C++ standard library
         # included in the sysroot has a variant built with msan.
     ]
 
@@ -110,13 +118,13 @@ def gn_clang_build(ctx: PresubmitContext):
 
     # QEMU doesn't run on Windows.
     if sys.platform != 'win32':
-        # TODO(b/244604080): For the pw::InlineString tests, qemu_clang_debug
+        # TODO: b/244604080 - For the pw::InlineString tests, qemu_clang_debug
         #     and qemu_clang_speed_optimized produce a binary too large for the
         #     QEMU target's 256KB flash. Restore debug and speed optimized
         #     builds when this is fixed.
         build_targets.append('qemu_clang_size_optimized')
 
-    # TODO(b/240982565): SocketStream currently requires Linux.
+    # TODO: b/240982565 - SocketStream currently requires Linux.
     if sys.platform.startswith('linux'):
         build_targets.append('integration_tests')
 
@@ -156,7 +164,12 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
         'pigweed_pypi_distribution',
     ]
 
-    # TODO(b/234645359): Re-enable on Windows when compatibility tests build.
+    # C headers seem to be missing when building with pw_minimal_cpp_stdlib, so
+    # skip it on Windows.
+    if sys.platform != 'win32':
+        build_targets.append('build_with_pw_minimal_cpp_stdlib')
+
+    # TODO: b/234645359 - Re-enable on Windows when compatibility tests build.
     if sys.platform != 'win32':
         build_targets.append('cpp14_compatibility')
         build_targets.append('cpp20_compatibility')
@@ -167,16 +180,20 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
 
     # QEMU doesn't run on Windows.
     if sys.platform != 'win32':
-        # TODO(b/244604080): For the pw::InlineString tests, qemu_*_debug
+        # TODO: b/244604080 - For the pw::InlineString tests, qemu_*_debug
         #     and qemu_*_speed_optimized produce a binary too large for the
         #     QEMU target's 256KB flash. Restore debug and speed optimized
         #     builds when this is fixed.
         build_targets.append('qemu_gcc_size_optimized')
         build_targets.append('qemu_clang_size_optimized')
 
-    # TODO(b/240982565): SocketStream currently requires Linux.
+    # TODO: b/240982565 - SocketStream currently requires Linux.
     if sys.platform.startswith('linux'):
         build_targets.append('integration_tests')
+
+    # TODO: b/269354373 - clang is not supported on windows yet
+    if sys.platform != 'win32':
+        build_targets.append('host_clang_debug_dynamic_allocation')
 
     return build_targets
 
@@ -299,7 +316,7 @@ gn_crypto_mbedtls_build = build.GnGenNinja(
     },
     ninja_targets=(
         *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-        # TODO(b/240982565): SocketStream currently requires Linux.
+        # TODO: b/240982565 - SocketStream currently requires Linux.
         *(('integration_tests',) if sys.platform.startswith('linux') else ()),
     ),
 )
@@ -319,7 +336,7 @@ gn_crypto_micro_ecc_build = build.GnGenNinja(
     },
     ninja_targets=(
         *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-        # TODO(b/240982565): SocketStream currently requires Linux.
+        # TODO: b/240982565 - SocketStream currently requires Linux.
         *(('integration_tests',) if sys.platform.startswith('linux') else ()),
     ),
 )
@@ -492,7 +509,20 @@ gn_fuzz_build = build.GnGenNinja(
 oss_fuzz_build = build.GnGenNinja(
     name='oss_fuzz_build',
     path_filter=_BUILD_FILE_FILTER,
+    packages=('abseil-cpp', 'fuzztest', 'googletest', 're2'),
     gn_args={
+        'dir_pw_third_party_abseil_cpp': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'abseil-cpp'
+        ),
+        'dir_pw_third_party_fuzztest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'fuzztest'
+        ),
+        'dir_pw_third_party_googletest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'googletest'
+        ),
+        'dir_pw_third_party_re2': lambda ctx: '"{}"'.format(
+            ctx.package_root / 're2'
+        ),
         'pw_toolchain_OSS_FUZZ_ENABLED': True,
     },
     ninja_targets=('oss_fuzz',),
@@ -683,16 +713,11 @@ def bazel_build(ctx: PresubmitContext) -> None:
     # This is just a minimal presubmit intended to ensure we don't break what
     # support we have.
     #
-    # TODO(b/271465588): Eventually just build the entire repo for this
+    # TODO: b/271465588 - Eventually just build the entire repo for this
     # platform.
     build.bazel(
         ctx,
         'build',
-        # Designated initializers produce a warning-treated-as-error when
-        # compiled with -std=c++17.
-        #
-        # TODO(b/271299438): Remove this.
-        '--copt=-Wno-pedantic',
         '--platforms=//pw_build/platforms:testonly_freertos',
         '//pw_sync/...',
         '//pw_thread/...',
@@ -806,6 +831,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\brequirements.txt$',
     r'\byarn.lock$',
     r'^docker/tag$',
+    r'^patches.json$',
     # keep-sorted: end
     # Data files
     # keep-sorted: start
@@ -1024,7 +1050,7 @@ def commit_message_format(_: PresubmitContext):
 
     # Check that the first line matches the expected pattern.
     match = re.match(
-        r'^(?:[\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
+        r'^(?:[.\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
     )
     if not match:
         _LOG.warning('The first line does not match the expected format')
@@ -1157,16 +1183,17 @@ SOURCE_FILES_FILTER = FileFilter(
 
 OTHER_CHECKS = (
     # keep-sorted: start
-    # TODO(b/235277910): Enable all Bazel tests when they're fixed.
+    # TODO: b/235277910 - Enable all Bazel tests when they're fixed.
     bazel_test,
     build.gn_gen_check,
     cmake_clang,
     cmake_gcc,
     coverage,
-    # TODO(b/234876100): Remove once msan is added to all_sanitizers().
+    # TODO: b/234876100 - Remove once msan is added to all_sanitizers().
     cpp_checks.msan,
     docs_build,
     gitmodules.create(gitmodules.Config(allow_submodules=False)),
+    gn_all,
     gn_clang_build,
     gn_combined_build_check,
     module_owners.presubmit_check(),
@@ -1253,7 +1280,7 @@ LINTFORMAT = (
 QUICK = (
     _LINTFORMAT,
     gn_quick_build_check,
-    # TODO(b/34884583): Re-enable CMake and Bazel for Mac after we have fixed
+    # TODO: b/34884583 - Re-enable CMake and Bazel for Mac after we have fixed
     # the clang issues. The problem is that all clang++ invocations need the
     # two extra flags: "-nostdc++" and "${clang_prefix}/../lib/libc++.a".
     cmake_clang if sys.platform != 'darwin' else (),

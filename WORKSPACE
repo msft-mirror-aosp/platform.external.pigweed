@@ -73,7 +73,7 @@ cipd_repository(
 cipd_repository(
     name = "llvm_toolchain",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:ebd0b8a0472b865b7eb6e1a32af97ae31d829033",
+    tag = "git_revision:8475d0a2b853f6184948b428ec679edf84ed2688",
 )
 
 # Fetch linux sysroot for host builds.
@@ -217,47 +217,6 @@ load("@com_github_nanopb_nanopb//extra/bazel:nanopb_workspace.bzl", "nanopb_work
 
 nanopb_workspace()
 
-# Set up embedded C/C++ toolchains.
-# Required by: pigweed.
-# Used in modules: //pw_polyfill, //pw_build (all pw_cc* targets).
-git_repository(
-    name = "bazel_embedded",
-    commit = "91dcc13ebe5df755ca2fe896ff6f7884a971d05b",
-    remote = "https://github.com/bazelembedded/bazel-embedded.git",
-    shallow_since = "1631751909 +0800",
-)
-
-# Configure bazel_embedded toolchains and platforms.
-load(
-    "@bazel_embedded//:bazel_embedded_deps.bzl",
-    "bazel_embedded_deps",
-)
-
-bazel_embedded_deps()
-
-load(
-    "@bazel_embedded//platforms:execution_platforms.bzl",
-    "register_platforms",
-)
-
-register_platforms()
-
-# Fetch gcc-arm-none-eabi compiler and register for toolchain
-# resolution.
-load(
-    "@bazel_embedded//toolchains/compilers/gcc_arm_none_eabi:gcc_arm_none_repository.bzl",
-    "gcc_arm_none_compiler",
-)
-
-gcc_arm_none_compiler()
-
-load(
-    "@bazel_embedded//toolchains/gcc_arm_none_eabi:gcc_arm_none_toolchain.bzl",
-    "register_gcc_arm_none_toolchain",
-)
-
-register_gcc_arm_none_toolchain()
-
 # Rust Support
 #
 
@@ -311,15 +270,7 @@ git_repository(
 )
 
 # Registers platforms for use with toolchain resolution
-register_execution_platforms("//pw_build/platforms:all")
-
-load("//pw_build:target_config.bzl", "pigweed_config")
-
-# Configure Pigweeds backend.
-pigweed_config(
-    name = "pigweed_config",
-    build_file = "//targets:default_config.BUILD",
-)
+register_execution_platforms("@local_config_platform//:host", "//pw_build/platforms:all")
 
 # Required by: rules_fuzzing, fuzztest
 #

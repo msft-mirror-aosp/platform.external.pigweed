@@ -19,8 +19,6 @@ using namespace std::chrono_literals;
 
 namespace pw::async {
 
-const chrono::SystemClock::duration SLEEP_DURATION = 5s;
-
 BasicDispatcher::~BasicDispatcher() {
   RequestStop();
   lock_.lock();
@@ -68,12 +66,16 @@ void BasicDispatcher::MaybeSleep() {
     // Sleep until a notification is received or until the due time of the
     // next task. Notifications are sent when tasks are posted or 'stop' is
     // requested.
-    chrono::SystemClock::time_point wake_time =
-        task_queue_.empty() ? now() + SLEEP_DURATION
-                            : task_queue_.front().due_time_;
-
+    std::optional<chrono::SystemClock::time_point> wake_time = std::nullopt;
+    if (!task_queue_.empty()) {
+      wake_time = task_queue_.front().due_time_;
+    }
     lock_.unlock();
-    timed_notification_.try_acquire_until(wake_time);
+    if (wake_time.has_value()) {
+      timed_notification_.try_acquire_until(*wake_time);
+    } else {
+      timed_notification_.acquire();
+    }
     lock_.lock();
   }
 }
@@ -92,8 +94,10 @@ void BasicDispatcher::ExecuteDueTasks() {
 }
 
 void BasicDispatcher::RequestStop() {
-  std::lock_guard lock(lock_);
-  stop_requested_ = true;
+  {
+    std::lock_guard lock(lock_);
+    stop_requested_ = true;
+  }
   timed_notification_.release();
 }
 
@@ -110,9 +114,7 @@ void BasicDispatcher::DrainTaskQueue() {
 }
 
 void BasicDispatcher::PostAt(Task& task, chrono::SystemClock::time_point time) {
-  lock_.lock();
   PostTaskInternal(task.native_type(), time);
-  lock_.unlock();
 }
 
 bool BasicDispatcher::Cancel(Task& task) {
@@ -122,6 +124,7 @@ bool BasicDispatcher::Cancel(Task& task) {
 
 void BasicDispatcher::PostTaskInternal(
     backend::NativeTask& task, chrono::SystemClock::time_point time_due) {
+  lock_.lock();
   task.due_time_ = time_due;
   auto it_front = task_queue_.begin();
   auto it_behind = task_queue_.before_begin();
@@ -130,6 +133,7 @@ void BasicDispatcher::PostTaskInternal(
     ++it_behind;
   }
   task_queue_.insert_after(it_behind, task);
+  lock_.unlock();
   timed_notification_.release();
 }
 

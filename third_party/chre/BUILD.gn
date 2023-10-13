@@ -32,9 +32,6 @@ if (dir_pw_third_party_chre == "") {
       "-Wno-int-in-bool-context",
       "-Wno-thread-safety-analysis",
     ]
-
-    # TODO(b/294106526): Fill out the rest of the implementation and remove this.
-    cflags += [ "-Wno-unused-parameter" ]
     visibility = [ ":*" ]
   }
 
@@ -79,6 +76,34 @@ if (dir_pw_third_party_chre == "") {
     public_deps = [ ":config" ]
   }
 
+  pw_source_set("shared_platform") {
+    public_configs = [ ":disable_warnings" ]
+    sources = [
+      "$dir_pw_third_party_chre/platform/shared/assert.cc",
+      "$dir_pw_third_party_chre/platform/shared/chre_api_core.cc",
+      "$dir_pw_third_party_chre/platform/shared/chre_api_re.cc",
+      "$dir_pw_third_party_chre/platform/shared/chre_api_user_settings.cc",
+      "$dir_pw_third_party_chre/platform/shared/chre_api_version.cc",
+      "$dir_pw_third_party_chre/platform/shared/memory_manager.cc",
+      "$dir_pw_third_party_chre/platform/shared/nanoapp/nanoapp_dso_util.cc",
+      "$dir_pw_third_party_chre/platform/shared/pal_system_api.cc",
+      "$dir_pw_third_party_chre/platform/shared/system_time.cc",
+    ]
+
+    # TODO(b/300633363): Use CHRE's version when it compiles on MacOS.
+    if (current_os == "mac") {
+      sources += [ "version.cc" ]
+    } else {
+      sources += [ "$dir_pw_third_party_chre/platform/shared/version.cc" ]
+    }
+
+    public_deps = [
+      ":chre_headers",
+      "$pw_chre_PLATFORM_BACKEND_HEADERS",
+    ]
+    remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  }
+
   pw_source_set("chre") {
     public_configs = [ ":disable_warnings" ]
     sources = [
@@ -95,16 +120,6 @@ if (dir_pw_third_party_chre == "") {
       "$dir_pw_third_party_chre/core/settings.cc",
       "$dir_pw_third_party_chre/core/static_nanoapps.cc",
       "$dir_pw_third_party_chre/core/timer_pool.cc",
-      "$dir_pw_third_party_chre/platform/shared/assert.cc",
-      "$dir_pw_third_party_chre/platform/shared/chre_api_core.cc",
-      "$dir_pw_third_party_chre/platform/shared/chre_api_re.cc",
-      "$dir_pw_third_party_chre/platform/shared/chre_api_user_settings.cc",
-      "$dir_pw_third_party_chre/platform/shared/chre_api_version.cc",
-      "$dir_pw_third_party_chre/platform/shared/memory_manager.cc",
-      "$dir_pw_third_party_chre/platform/shared/nanoapp/nanoapp_dso_util.cc",
-      "$dir_pw_third_party_chre/platform/shared/pal_system_api.cc",
-      "$dir_pw_third_party_chre/platform/shared/system_time.cc",
-      "$dir_pw_third_party_chre/platform/shared/version.cc",
       "$dir_pw_third_party_chre/util/buffer_base.cc",
       "$dir_pw_third_party_chre/util/dynamic_vector_base.cc",
       "$dir_pw_third_party_chre/util/nanoapp/audio.cc",

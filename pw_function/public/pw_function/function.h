@@ -28,7 +28,7 @@ namespace pw {
 ///
 ///   template <typename T>
 ///   bool All(const pw::Vector<T>& items,
-///            pw::Function<bool(const T& item)> predicate) {
+///            const pw::Function<bool(const T& item)>& predicate) {
 ///     for (const T& item : items) {
 ///       if (!predicate(item)) {
 ///         return false;
@@ -55,7 +55,7 @@ namespace pw {
 template <typename FunctionType,
           std::size_t inline_target_size =
               function_internal::config::kInlineCallableSize,
-          typename Allocator = fit::default_callable_allocator>
+          typename Allocator = PW_FUNCTION_DEFAULT_ALLOCATOR_TYPE>
 using Function = fit::function_impl<
     inline_target_size,
     /*require_inline=*/!function_internal::config::kEnableDynamicAllocation,
@@ -68,7 +68,7 @@ using Function = fit::function_impl<
 /// any attempt to convert `pw::InlineFunction` to `pw::Function` will ALWAYS
 /// allocate.
 ///
-// TODO(b/252852651): Remove warning above when conversion from
+// TODO: b/252852651 - Remove warning above when conversion from
 // `fit::inline_function` to `fit::function` doesn't allocate anymore.
 template <typename FunctionType,
           std::size_t inline_target_size =
@@ -90,7 +90,7 @@ using Closure = Function<void()>;
 template <typename FunctionType,
           std::size_t inline_target_size =
               function_internal::config::kInlineCallableSize,
-          typename Allocator = fit::default_callable_allocator>
+          typename Allocator = PW_FUNCTION_DEFAULT_ALLOCATOR_TYPE>
 using Callback = fit::callback_impl<
     inline_target_size,
     /*require_inline=*/!function_internal::config::kEnableDynamicAllocation,

@@ -23,6 +23,39 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 pw_cc_library(
+    name = "allocator",
+    srcs = [
+        "allocator.cc",
+    ],
+    hdrs = [
+        "public/pw_allocator/allocator.h",
+    ],
+    includes = ["public"],
+    deps = [
+        "//pw_assert",
+        "//pw_bytes",
+        "//pw_status",
+    ],
+)
+
+pw_cc_library(
+    name = "allocator_metric_proxy",
+    srcs = [
+        "allocator_metric_proxy.cc",
+    ],
+    hdrs = [
+        "public/pw_allocator/allocator_metric_proxy.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":allocator",
+        "//pw_assert",
+        "//pw_metric:metric",
+        "//pw_status",
+    ],
+)
+
+pw_cc_library(
     name = "block",
     srcs = [
         "block.cc",
@@ -34,6 +67,22 @@ pw_cc_library(
     deps = [
         "//pw_assert",
         "//pw_span",
+        "//pw_status",
+    ],
+)
+
+pw_cc_library(
+    name = "fallback_allocator",
+    srcs = [
+        "fallback_allocator.cc",
+    ],
+    hdrs = [
+        "public/pw_allocator/fallback_allocator.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":allocator",
+        "//pw_assert",
         "//pw_status",
     ],
 )
@@ -70,6 +119,92 @@ pw_cc_library(
     ],
 )
 
+pw_cc_library(
+    name = "split_free_list_allocator",
+    srcs = [
+        "split_free_list_allocator.cc",
+    ],
+    hdrs = [
+        "public/pw_allocator/split_free_list_allocator.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":allocator",
+        "//pw_assert",
+        "//pw_bytes",
+        "//pw_status",
+    ],
+)
+
+pw_cc_library(
+    name = "libc_allocator",
+    srcs = [
+        "libc_allocator.cc",
+    ],
+    hdrs = [
+        "public/pw_allocator/libc_allocator.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":allocator",
+        "//pw_assert",
+        "//pw_bytes",
+        "//pw_status",
+    ],
+)
+
+pw_cc_library(
+    name = "null_allocator",
+    hdrs = [
+        "public/pw_allocator/null_allocator.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":allocator",
+    ],
+)
+
+pw_cc_library(
+    name = "allocator_testing",
+    srcs = [
+        "allocator_testing.cc",
+    ],
+    hdrs = [
+        "pw_allocator_private/allocator_testing.h",
+    ],
+    deps = [
+        ":allocator",
+        ":block",
+        "//pw_assert",
+        "//pw_bytes",
+    ],
+)
+
+pw_cc_test(
+    name = "allocator_test",
+    srcs = [
+        "allocator_test.cc",
+    ],
+    deps = [
+        ":allocator",
+        ":allocator_testing",
+        "//pw_bytes",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "allocator_metric_proxy_test",
+    srcs = [
+        "allocator_metric_proxy_test.cc",
+    ],
+    deps = [
+        ":allocator_metric_proxy",
+        ":allocator_testing",
+        "//pw_unit_test",
+    ],
+)
+
 pw_cc_test(
     name = "block_test",
     srcs = [
@@ -78,6 +213,19 @@ pw_cc_test(
     deps = [
         ":block",
         "//pw_span",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "fallback_allocator_test",
+    srcs = [
+        "fallback_allocator_test.cc",
+    ],
+    deps = [
+        ":allocator_testing",
+        ":fallback_allocator",
+        "//pw_status",
         "//pw_unit_test",
     ],
 )
@@ -102,5 +250,40 @@ pw_cc_test(
     ],
     deps = [
         ":freelist_heap",
+    ],
+)
+
+pw_cc_test(
+    name = "libc_allocator_test",
+    srcs = [
+        "libc_allocator_test.cc",
+    ],
+    deps = [
+        ":libc_allocator",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "null_allocator_test",
+    srcs = [
+        "null_allocator_test.cc",
+    ],
+    deps = [
+        ":null_allocator",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "split_free_list_allocator_test",
+    srcs = [
+        "split_free_list_allocator_test.cc",
+    ],
+    deps = [
+        ":split_free_list_allocator",
+        "//pw_bytes",
+        "//pw_containers:vector",
+        "//pw_unit_test",
     ],
 )
