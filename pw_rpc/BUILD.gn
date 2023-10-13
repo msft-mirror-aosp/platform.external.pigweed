@@ -60,6 +60,16 @@ group("use_global_mutex") {
   public_configs = [ ":global_mutex_config" ]
 }
 
+config("dynamic_allocation_config") {
+  defines = [ "PW_RPC_DYNAMIC_ALLOCATION=1" ]
+  visibility = [ ":*" ]
+}
+
+# Use this for pw_rpc_CONFIG to enable dynamic allocation.
+pw_source_set("use_dynamic_allocation") {
+  public_configs = [ ":dynamic_allocation_config" ]
+}
+
 pw_source_set("config") {
   sources = [ "public/pw_rpc/internal/config.h" ]
   public_configs = [ ":public_include_path" ]
@@ -311,6 +321,7 @@ pw_source_set("test_utils") {
 }
 
 pw_source_set("integration_testing") {
+  testonly = pw_unit_test_TESTONLY
   public = [
     "public/pw_rpc/integration_test_socket_client.h",
     "public/pw_rpc/integration_testing.h",
@@ -341,6 +352,7 @@ pw_executable("test_rpc_server") {
 }
 
 pw_executable("client_integration_test") {
+  testonly = pw_unit_test_TESTONLY
   sources = [ "client_integration_test.cc" ]
   deps = [
     ":client",
@@ -359,6 +371,7 @@ pw_executable("client_integration_test") {
 }
 
 pw_python_action_test("cpp_client_server_integration_test") {
+  testonly = pw_unit_test_TESTONLY
   script = "py/pw_rpc/testing.py"
   args = [
     "--server",
@@ -469,7 +482,7 @@ pw_test("call_test") {
   ]
   sources = [ "call_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -488,7 +501,7 @@ pw_test("callback_test") {
   ]
   sources = [ "callback_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -499,7 +512,7 @@ pw_test("channel_test") {
   ]
   sources = [ "channel_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -518,7 +531,7 @@ pw_test("ids_test") {
   deps = [ ":server" ]
   source_gen_deps = [ ":generate_ids_test" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -531,7 +544,7 @@ pw_test("packet_test") {
   ]
   sources = [ "packet_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -543,7 +556,7 @@ pw_test("packet_meta_test") {
   ]
   sources = [ "packet_meta_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -555,7 +568,7 @@ pw_test("service_test") {
   ]
   sources = [ "service_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -567,7 +580,7 @@ pw_test("client_server_test") {
   ]
   sources = [ "client_server_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -578,7 +591,7 @@ pw_test("method_test") {
   ]
   sources = [ "method_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -591,7 +604,7 @@ pw_test("server_test") {
   ]
   sources = [ "server_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -599,7 +612,7 @@ pw_test("fake_channel_output_test") {
   deps = [ ":test_utils" ]
   sources = [ "fake_channel_output_test.cc" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -620,6 +633,6 @@ pw_test("test_helpers_test") {
               pw_sync_COUNTING_SEMAPHORE_BACKEND != "" &&
               pw_chrono_SYSTEM_CLOCK_BACKEND != ""
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }

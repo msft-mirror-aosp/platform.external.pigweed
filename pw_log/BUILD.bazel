@@ -54,7 +54,7 @@ pw_cc_library(
     includes = ["public"],
     deps = [
         "//pw_preprocessor",
-        "@pigweed_config//:pw_log_backend",
+        "@pigweed//targets:pw_log_backend",
     ],
 )
 
@@ -105,7 +105,7 @@ proto_library(
     ],
 )
 
-# TODO(b/241456982): Not expected to build yet.
+# TODO: b/241456982 - Not expected to build yet.
 py_proto_library(
     name = "log_proto_py_pb2",
     tags = ["manual"],
@@ -124,7 +124,7 @@ pw_proto_library(
 
 pw_cc_library(
     name = "backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = ["//pw_log_basic"],
 )
 

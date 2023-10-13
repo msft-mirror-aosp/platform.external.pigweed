@@ -196,7 +196,7 @@ def get_parser() -> argparse.ArgumentParser:
         help='Use IPython instead of pw_console.',
     )
 
-    # TODO(b/248257406) Use argparse.BooleanOptionalAction when Python 3.8 is
+    # TODO: b/248257406 - Use argparse.BooleanOptionalAction when Python 3.8 is
     # no longer supported.
     parser.add_argument(
         '--rpc-logging',
@@ -212,7 +212,7 @@ def get_parser() -> argparse.ArgumentParser:
         help="Don't use pw_rpc based logging.",
     )
 
-    # TODO(b/248257406) Use argparse.BooleanOptionalAction when Python 3.8 is
+    # TODO: b/248257406 - Use argparse.BooleanOptionalAction when Python 3.8 is
     # no longer supported.
     parser.add_argument(
         '--hdlc-encoding',
@@ -238,8 +238,11 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _parse_args():
+def _parse_args(args: Optional[argparse.Namespace] = None):
     """Parses and returns the command line arguments."""
+    if args is not None:
+        return args
+
     parser = get_parser()
     return parser.parse_args()
 
@@ -478,7 +481,7 @@ def console(
             # https://pythonhosted.org/pyserial/pyserial_api.html#serial.Serial
             timeout=0.1,
         )
-        read = lambda: serial_device.read(8192)
+        reader = rpc.SerialReader(serial_device, 8192)
         write = serial_device.write
 
         # Overwrite decoder for serial device.
@@ -506,46 +509,49 @@ def console(
             socket_device = socket_impl(
                 socket_addr, on_disconnect=disconnect_handler
             )
-            read = socket_device.read
+            reader = rpc.SelectableReader(socket_device)
             write = socket_device.write
         except ValueError:
             _LOG.exception('Failed to initialize socket at %s', socket_addr)
             return 1
 
-    device_client = Device(
-        channel_id,
-        read,
-        write,
-        protos,
-        detokenizer=detokenizer,
-        timestamp_decoder=timestamp_decoder,
-        rpc_timeout_s=5,
-        use_rpc_logging=rpc_logging,
-        use_hdlc_encoding=hdlc_encoding,
-    )
-
-    _start_python_terminal(
-        device=device_client,
-        device_log_store=device_log_store,
-        root_log_store=root_log_store,
-        serial_debug_log_store=serial_debug_log_store,
-        log_file=logfile,
-        host_logfile=host_logfile,
-        device_logfile=device_logfile,
-        json_logfile=json_logfile,
-        serial_debug=serial_debug,
-        config_file_path=config_file,
-        use_ipython=use_ipython,
-    )
+    with reader:
+        device_client = Device(
+            channel_id,
+            reader,
+            write,
+            protos,
+            detokenizer=detokenizer,
+            timestamp_decoder=timestamp_decoder,
+            rpc_timeout_s=5,
+            use_rpc_logging=rpc_logging,
+            use_hdlc_encoding=hdlc_encoding,
+        )
+        with device_client:
+            _start_python_terminal(
+                device=device_client,
+                device_log_store=device_log_store,
+                root_log_store=root_log_store,
+                serial_debug_log_store=serial_debug_log_store,
+                log_file=logfile,
+                host_logfile=host_logfile,
+                device_logfile=device_logfile,
+                json_logfile=json_logfile,
+                serial_debug=serial_debug,
+                config_file_path=config_file,
+                use_ipython=use_ipython,
+            )
     return 0
 
 
-def main() -> int:
-    return console(**vars(_parse_args()))
+def main(args: Optional[argparse.Namespace] = None) -> int:
+    return console(**vars(_parse_args(args)))
 
 
-def main_with_compiled_protos(compiled_protos):
-    return console(**vars(_parse_args()), compiled_protos=compiled_protos)
+def main_with_compiled_protos(
+    compiled_protos, args: Optional[argparse.Namespace] = None
+):
+    return console(**vars(_parse_args(args)), compiled_protos=compiled_protos)
 
 
 if __name__ == '__main__':

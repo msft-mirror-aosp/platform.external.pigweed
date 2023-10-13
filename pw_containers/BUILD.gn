@@ -63,6 +63,7 @@ pw_source_set("inline_deque") {
   public_deps = [
     ":raw_storage",
     dir_pw_assert,
+    dir_pw_preprocessor,
     dir_pw_span,
   ]
   public = [ "public/pw_containers/inline_deque.h" ]
@@ -95,6 +96,17 @@ pw_source_set("test_helpers") {
 pw_source_set("to_array") {
   public_configs = [ ":public_include_path" ]
   public = [ "public/pw_containers/to_array.h" ]
+}
+
+pw_source_set("variable_length_entry_queue") {
+  public_configs = [ ":public_include_path" ]
+  public_deps = [ dir_pw_varint ]
+  deps = [ dir_pw_assert ]
+  public = [ "public/pw_containers/variable_length_entry_queue.h" ]
+  sources = [ "variable_length_entry_queue.c" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_source_set("vector") {
@@ -132,6 +144,7 @@ pw_test_group("tests") {
     ":intrusive_list_test",
     ":raw_storage_test",
     ":to_array_test",
+    ":variable_length_entry_queue_test",
     ":vector_test",
     ":wrapped_iterator_test",
   ]
@@ -147,7 +160,7 @@ pw_test("algorithm_test") {
     dir_pw_span,
   ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -161,7 +174,7 @@ pw_test("filtered_view_test") {
     dir_pw_span,
   ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -172,7 +185,7 @@ pw_test("flat_map_test") {
     dir_pw_polyfill,
   ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -185,7 +198,7 @@ pw_test("inline_deque_test") {
   ]
   negative_compilation_tests = true
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -198,7 +211,7 @@ pw_test("inline_queue_test") {
   ]
   negative_compilation_tests = true
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -209,7 +222,7 @@ pw_test("raw_storage_test") {
     ":test_helpers",
   ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -217,7 +230,21 @@ pw_test("to_array_test") {
   sources = [ "to_array_test.cc" ]
   deps = [ ":to_array" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
+}
+
+pw_test("variable_length_entry_queue_test") {
+  sources = [
+    "pw_containers_private/variable_length_entry_queue_test_oracle.h",
+    "variable_length_entry_queue_test.cc",
+  ]
+  deps = [
+    ":variable_length_entry_queue",
+    dir_pw_bytes,
+  ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -228,7 +255,7 @@ pw_test("vector_test") {
     ":vector",
   ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -236,7 +263,7 @@ pw_test("wrapped_iterator_test") {
   sources = [ "wrapped_iterator_test.cc" ]
   deps = [ ":wrapped_iterator" ]
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
@@ -249,7 +276,7 @@ pw_test("intrusive_list_test") {
   ]
   negative_compilation_tests = true
 
-  # TODO(b/259746255): Remove this when everything compiles with -Wconversion.
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
   configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 

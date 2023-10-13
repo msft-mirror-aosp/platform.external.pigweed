@@ -34,12 +34,24 @@ rule for handling linker scripts with Bazel. e.g.
     ],
   )
 
-  pw_cc_binary(
+  # You can include the linker script in the deps.
+  cc_binary(
     name = "some_binary",
-    srcs = ["some_source.c"],
+    srcs = ["some_source.cc"],
+    deps = [":some_linker_script"],
+  )
+
+  # Alternatively, you can use additional_linker_inputs and linkopts. This
+  # allows you to explicitly specify the command line order of linker scripts,
+  # and may be useful if your project defines more than one.
+  cc_binary(
+    name = "some_binary",
+    srcs = ["some_source.cc"],
     additional_linker_inputs = [":some_linker_script"],
     linkopts = ["-T $(location :some_linker_script)"],
   )
+
+.. _module-pw_build-bazel-pw_cc_facade:
 
 pw_cc_facade
 ------------
@@ -95,7 +107,7 @@ components:
              "//pw_chrono:system_clock",
              "//pw_preprocessor",
              # The backend, hidden behind a label_flag.
-             "@pigweed_config//:pw_sync_binary_semaphore_backend",
+             "@pigweed//targets:pw_sync_binary_semaphore_backend",
          ],
      )
 
@@ -111,7 +123,7 @@ components:
    <https://bazel.build/extending/config#label-typed-build-settings>`_: a
    dependency edge in the build graph that can be overridden by downstream projects.
    For facades defined in upstream Pigweed, the ``label_flags`` are collected in
-   the :ref:`pigweed_config <docs-build_system-bazel_configuration>`.
+   ``//targets/BUILD.bazel``.
 
 #. The **backend target** implements a particular backend for a facade. It's
    just a plain ``pw_cc_library``, with a dependency on the facade target. For example,
@@ -214,6 +226,105 @@ components:
              "//conditions:default": "@pigweed//pw_build:unspecified_backend",
          }),
      )
+
+pw_cc_blob_library
+------------------
+The ``pw_cc_blob_library`` rule is useful for embedding binary data into a
+program. The rule takes in a mapping of symbol names to file paths, and
+generates a set of C++ source and header files that embed the contents of the
+passed-in files as arrays of ``std::byte``.
+
+The blob byte arrays are constant initialized and are safe to access at any
+time, including before ``main()``.
+
+``pw_cc_blob_library`` is also available in the :ref:`GN <module-pw_build-cc_blob_library>`
+and CMake builds.
+
+Arguments
+^^^^^^^^^
+* ``blobs``: A list of ``pw_cc_blob_info`` targets, where each target
+  corresponds to a binary blob to be transformed from file to byte array. This
+  is a required field. ``pw_cc_blob_info`` attributes include:
+
+  * ``symbol_name``: The C++ symbol for the byte array.
+  * ``file_path``: The file path for the binary blob.
+  * ``linker_section``: If present, places the byte array in the specified
+    linker section.
+  * ``alignas``: If present, uses the specified string verbatim in
+    the ``alignas()`` specifier for the byte array.
+
+* ``out_header``: The header file to generate. Users will include this file
+  exactly as it is written here to reference the byte arrays.
+* ``namespace``: C++ namespace to place the generated blobs within.
+
+Example
+^^^^^^^
+**BUILD.bazel**
+
+.. code-block::
+
+   pw_cc_blob_info(
+     name = "foo_blob",
+     file_path = "foo.bin",
+     symbol_name = "kFooBlob",
+   )
+
+   pw_cc_blob_info(
+     name = "bar_blob",
+     file_path = "bar.bin",
+     symbol_name = "kBarBlob",
+     linker_section = ".bar_section",
+   )
+
+   pw_cc_blob_library(
+     name = "foo_bar_blobs",
+     blobs = [
+       ":foo_blob",
+       ":bar_blob",
+     ],
+     out_header = "my/stuff/foo_bar_blobs.h",
+     namespace = "my::stuff",
+   )
+
+.. note:: If the binary blobs are generated as part of the build, be sure to
+          list them as deps to the pw_cc_blob_library target.
+
+**Generated Header**
+
+.. code-block::
+
+   #pragma once
+
+   #include <array>
+   #include <cstddef>
+
+   namespace my::stuff {
+
+   extern const std::array<std::byte, 100> kFooBlob;
+
+   extern const std::array<std::byte, 50> kBarBlob;
+
+   }  // namespace my::stuff
+
+**Generated Source**
+
+.. code-block::
+
+   #include "my/stuff/foo_bar_blobs.h"
+
+   #include <array>
+   #include <cstddef>
+
+   #include "pw_preprocessor/compiler.h"
+
+   namespace my::stuff {
+
+   const std::array<std::byte, 100> kFooBlob = { ... };
+
+   PW_PLACE_IN_SECTION(".bar_section")
+   const std::array<std::byte, 50> kBarBlob = { ... };
+
+   }  // namespace my::stuff
 
 Toolchains and platforms
 ------------------------
