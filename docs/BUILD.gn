@@ -46,6 +46,8 @@ pw_doc_group("core_docs") {
     "run_doxygen.py",
   ]
   sources = [
+    "blog/01-kudzu.rst",
+    "blog/index.rst",
     "code_of_conduct.rst",
     "code_reviews.rst",
     "concepts/index.rst",
@@ -53,7 +55,8 @@ pw_doc_group("core_docs") {
     "editors.rst",
     "embedded_cpp_guide.rst",
     "faq.rst",
-    "getting_started.rst",
+    "get_started/index.rst",
+    "get_started/upstream.rst",
     "infra/ci_cq_intro.rst",
     "infra/index.rst",
     "infra/rollers.rst",
@@ -159,6 +162,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_i2c/public/pw_i2c/initiator.h",
   "$dir_pw_i2c_linux/public/pw_i2c_linux/initiator.h",
   "$dir_pw_interrupt/public/pw_interrupt/context.h",
+  "$dir_pw_log/public/pw_log/tokenized_args.h",
   "$dir_pw_log_string/public/pw_log_string/handler.h",
   "$dir_pw_log_tokenized/public/pw_log_tokenized/base64.h",
   "$dir_pw_log_tokenized/public/pw_log_tokenized/handler.h",
@@ -190,6 +194,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_thread/public/pw_thread/test_thread_context.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/config.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/encode_args.h",
+  "$dir_pw_tokenizer/public/pw_tokenizer/nested_tokenization.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/token_database.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/tokenize.h",
   "$dir_pw_toolchain/public/pw_toolchain/no_destructor.h",
@@ -246,6 +251,7 @@ pw_doc_gen("docs") {
     ":target_docs",
     ":templates",
     ":third_party_docs",
+    "$dir_pigweed/kudzu:docs",
     "$dir_pigweed/seed:docs",
     "$dir_pw_env_setup:python.install",
   ]
