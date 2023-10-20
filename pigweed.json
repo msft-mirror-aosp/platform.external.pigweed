@@ -23,6 +23,10 @@
           "module": "pw_system.console",
           "function": "main"
         },
+        "emu": {
+          "module": "pw_emu.__main__",
+          "function": "main"
+        },
         "format": {
           "module": "pw_presubmit.format_code",
           "function": "main"
@@ -86,6 +90,14 @@
     },
     "pw_doctor": {
       "new_bug_url": "https://issues.pigweed.dev/new"
+    },
+    "pw_emu": {
+      "target_files": [
+        "pw_emu/qemu-lm3s6965evb.json",
+        "pw_emu/qemu-stm32vldiscovery.json",
+        "pw_emu/qemu-netduinoplus2.json",
+        "pw_emu/renode-stm32f4_discovery.json"
+      ]
     }
   }
 }
