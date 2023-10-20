@@ -24,8 +24,11 @@ pw_doc_group("docs") {
     ":0101",
     ":0102",
     ":0104",
+    ":0105",
     ":0107",
     ":0108",
+    ":0109",
+    ":0111",
   ]
 }
 
@@ -50,10 +53,22 @@ pw_doc_group("0104") {
   sources = [ "0104-display-support.rst" ]
 }
 
+pw_doc_group("0105") {
+  sources = [ "0105-pw_tokenizer-pw_log-nested-tokens.rst" ]
+}
+
 pw_doc_group("0107") {
   sources = [ "0107-communications.rst" ]
 }
 
 pw_doc_group("0108") {
   sources = [ "0108-pw_emu-emulators-frontend.rst" ]
+}
+
+pw_doc_group("0109") {
+  sources = [ "0109-comms-buffers.rst" ]
+}
+
+pw_doc_group("0111") {
+  sources = [ "0111-build-systems.rst" ]
 }

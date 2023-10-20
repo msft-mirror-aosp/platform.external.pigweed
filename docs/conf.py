@@ -43,6 +43,7 @@ extensions = [
     'pw_docgen.sphinx.google_analytics',  # Enables optional Google Analytics
     'pw_docgen.sphinx.kconfig',
     'pw_docgen.sphinx.module_metadata',
+    'pw_docgen.sphinx.pigweed_live',
     'pw_docgen.sphinx.seed_metadata',
     'sphinx.ext.autodoc',  # Automatic documentation for Python code
     'sphinx.ext.napoleon',  # Parses Google-style docstrings
@@ -51,6 +52,7 @@ extensions = [
     'sphinx_design',
     'breathe',
     'sphinx_copybutton',  # Copy-to-clipboard button on code blocks
+    'sphinx_sitemap',
 ]
 
 # When a user clicks the copy-to-clipboard button the `$ ` prompt should not be
@@ -214,6 +216,13 @@ html_theme_options = {
         'sd-color-card-border': 'var(--color-background-border)',
     },
 }
+
+# sphinx-sitemap needs this:
+# https://sphinx-sitemap.readthedocs.io/en/latest/getting-started.html#usage
+html_baseurl = 'https://pigweed.dev/'
+
+# https://sphinx-sitemap.readthedocs.io/en/latest/advanced-configuration.html
+sitemap_url_scheme = '{link}'
 
 mermaid_init_js = '''
 mermaid.initialize({

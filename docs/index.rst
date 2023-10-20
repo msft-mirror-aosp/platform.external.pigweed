@@ -8,7 +8,7 @@
   :hidden:
 
   Home <self>
-  docs/getting_started
+  docs/get_started/index
   docs/concepts/index
   targets
   Modules <module_guides>
@@ -31,6 +31,8 @@
   Automated Analysis <automated_analysis>
   Build System <build_system>
   SEEDs <seed/0000-index>
+  kudzu/docs
+  Eng Blog <docs/blog/index>
 
 =======
 Pigweed
@@ -48,6 +50,11 @@ STMicroelectronics STM32L452 or the Nordic nRF52832.
    in our `chat room <https://discord.gg/M9NSeTA>`_ or on the `mailing list
    <https://groups.google.com/forum/#!forum/pigweed>`_.
 
+--------------------------
+Talk to us at Pigweed Live
+--------------------------
+.. pigweed-live::
+
 ---------------------
 What's New In Pigweed
 ---------------------
@@ -63,7 +70,7 @@ Getting Started
 Check out `Pigweed Sample Project <https://pigweed.googlesource.com/pigweed/sample_project/+/main/README.md>`_
 to see how to use Pigweed as a library in your broader project.
 
-Visit the :ref:`docs-getting-started` guide to learn how to bootstrap and
+Visit the :ref:`docs-get-started-upstream` guide to learn how to bootstrap and
 activate a Pigweed environment, build Pigweed for a specific host or device,
 run tests, and more.
 
