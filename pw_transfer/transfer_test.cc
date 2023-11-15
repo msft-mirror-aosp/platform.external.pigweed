@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -114,7 +114,10 @@ class ReadTransfer : public ::testing::Test {
       : handler_(3, kData),
         transfer_thread_(span(data_buffer_).first(max_chunk_size_bytes),
                          encode_buffer_),
-        ctx_(transfer_thread_, 64),
+        ctx_(transfer_thread_,
+             64,
+             // Use a long timeout to avoid accidentally triggering timeouts.
+             std::chrono::minutes(1)),
         system_thread_(TransferThreadOptions(), transfer_thread_) {
     ctx_.service().RegisterHandler(handler_);
 
@@ -394,10 +397,12 @@ TEST_F(ReadTransfer, MaxChunkSize_Client) {
 }
 
 TEST_F(ReadTransfer, HandlerIsClearedAfterTransfer) {
+  // Request an end offset smaller than the data size to prevent the server
+  // from sending a final chunk.
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kLegacy, Chunk::Type::kStart)
                       .set_session_id(3)
-                      .set_window_end_offset(64)
+                      .set_window_end_offset(16)
                       .set_offset(0)));
   ctx_.SendClientStream(
       EncodeChunk(Chunk::Final(ProtocolVersion::kLegacy, 3, OkStatus())));
@@ -413,10 +418,12 @@ TEST_F(ReadTransfer, HandlerIsClearedAfterTransfer) {
   handler_.prepare_read_called = false;
   handler_.finalize_read_called = false;
 
+  // Request an end offset smaller than the data size to prevent the server
+  // from sending a final chunk.
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kLegacy, Chunk::Type::kStart)
                       .set_session_id(3)
-                      .set_window_end_offset(64)
+                      .set_window_end_offset(16)
                       .set_offset(0)));
   transfer_thread_.WaitUntilEventIsProcessed();
 

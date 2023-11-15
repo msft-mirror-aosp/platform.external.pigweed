@@ -8,26 +8,24 @@
   :hidden:
 
   Home <self>
+  docs/overview
   docs/get_started/index
   docs/concepts/index
   targets
   Modules <module_guides>
   docs/module_structure
   changelog
-  glossary
   Mailing List <https://groups.google.com/forum/#!forum/pigweed>
   Chat Room <https://discord.gg/M9NSeTA>
   docs/os/index
   docs/size_optimizations
   Code Editor Support <docs/editors>
-  FAQ <docs/faq>
   third_party_support
   Source Code <https://cs.pigweed.dev/pigweed>
   Code Reviews <https://pigweed-review.googlesource.com>
   Issue Tracker <https://issues.pigweed.dev/issues?q=status:open>
-  docs/contributing
+  docs/contributing/index
   docs/infra/index
-  docs/code_of_conduct
   Automated Analysis <automated_analysis>
   Build System <build_system>
   SEEDs <seed/0000-index>
@@ -67,16 +65,10 @@ See :ref:`docs-changelog-latest` in our changelog for details.
 ---------------
 Getting Started
 ---------------
-Check out `Pigweed Sample Project <https://pigweed.googlesource.com/pigweed/sample_project/+/main/README.md>`_
-to see how to use Pigweed as a library in your broader project.
-
-Visit the :ref:`docs-get-started-upstream` guide to learn how to bootstrap and
-activate a Pigweed environment, build Pigweed for a specific host or device,
-run tests, and more.
-
-Zephyr
-======
-See :ref:`docs-os-zephyr-get-started`.
+Check out our :ref:`docs-get-started` landing page. We've got a guide that
+shows you how to use Pigweed in a new, Bazel-based project (the recommended
+path), sample code for GN-based projects, a tutorial on getting set up to
+contribute to upstream Pigweed, and more.
 
 ------------------------
 What does Pigweed offer?
@@ -101,7 +93,7 @@ and verifying the test runs as expected. Once this is set up, you can attach
 multiple devices to run tests in a distributed manner to reduce the time it
 takes to run tests.
 
-.. image:: docs/images/pw_watch_on_device_demo.gif
+.. image:: https://storage.googleapis.com/pigweed-media/pw_watch_on_device_demo.gif
   :width: 800
   :alt: pw watch running on-device tests
 
@@ -119,7 +111,7 @@ With ``pw format``, you can format C, C++, Python, GN, and Go code according to
 configurations defined by your project. ``pw format`` leverages existing tools
 like ``clang-format``, and it’s simple to add support for new languages.
 
-.. image:: pw_presubmit/docs/pw_presubmit_demo.gif
+.. image:: https://storage.googleapis.com/pigweed-media/pw_presubmit_demo.gif
   :width: 800
   :alt: pw presubmit demo
 
@@ -150,7 +142,7 @@ turn inflates a virtual environment. The tooling is installed into your
 workspace, and makes no changes to your system. This tooling is designed to be
 reused by any project.
 
-.. image:: docs/images/pw_env_setup_demo.gif
+.. image:: https://storage.googleapis.com/pigweed-media/pw_env_setup_demo.gif
    :width: 800
    :alt: pw environment setup demo
 
@@ -170,7 +162,7 @@ build, the result is a flexible and powerful setup that enables easily
 developing code on your desktop (with tests), then running the same tests
 on-device.
 
-.. image:: docs/images/pw_status_test.png
+.. image:: https://storage.googleapis.com/pigweed-media/pw_status_test.png
    :width: 800
    :alt: pw_status test run natively on host
 
@@ -192,8 +184,8 @@ Here is a selection of interesting modules:
       :link: module-pw_polyfill
       :link-type: ref
 
-      Similar to JavaScript “polyfill” libraries, this module provides selected
-      C++17 standard library components that are compatible with C++14.
+      This module makes it easier to work with different C++ standards in one
+      codebase.
 
    .. grid-item-card:: :octicon:`container` pw_tokenizer
       :link: module-pw_tokenizer

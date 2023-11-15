@@ -22,7 +22,8 @@ namespace pw::allocator {
 
 // Test fixtures.
 
-struct LibCAllocatorTest : ::testing::Test {
+class LibCAllocatorTest : public ::testing::Test {
+ protected:
   LibCAllocator allocator;
 };
 
@@ -42,7 +43,7 @@ TEST_F(LibCAllocatorTest, AllocateLargeAlignment) {
   /// allocator has a maximum alignment of `std::align_max_t`.
   size_t size = 16;
   size_t alignment = alignof(std::max_align_t) * 2;
-  void* ptr = allocator.AllocateUnchecked(size, alignment);
+  void* ptr = allocator.Allocate(Layout(size, alignment));
   EXPECT_EQ(ptr, nullptr);
 }
 

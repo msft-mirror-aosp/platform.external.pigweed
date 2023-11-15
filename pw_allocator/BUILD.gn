@@ -1,4 +1,4 @@
-# Copyright 2020 The Pigweed Authors
+# Copyright 2023 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -14,6 +14,7 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
@@ -69,10 +70,13 @@ pw_source_set("block") {
   configs = [ ":enable_heap_poison" ]
   public = [ "public/pw_allocator/block.h" ]
   public_deps = [
-    dir_pw_assert,
+    "$dir_pw_third_party/fuchsia:stdcompat",
+    dir_pw_bytes,
+    dir_pw_result,
     dir_pw_span,
     dir_pw_status,
   ]
+  deps = [ dir_pw_assert ]
   sources = [ "block.cc" ]
 }
 
@@ -132,18 +136,49 @@ pw_source_set("null_allocator") {
   public_deps = [ ":allocator" ]
 }
 
+pw_source_set("simple_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/simple_allocator.h" ]
+  public_deps = [
+    ":allocator",
+    ":block",
+    dir_pw_bytes,
+  ]
+}
+
 pw_source_set("split_free_list_allocator") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/split_free_list_allocator.h" ]
   public_deps = [
     ":allocator",
+    ":block",
+    dir_pw_bytes,
+    dir_pw_result,
     dir_pw_status,
   ]
-  deps = [
-    dir_pw_assert,
-    dir_pw_bytes,
-  ]
+  deps = [ dir_pw_assert ]
   sources = [ "split_free_list_allocator.cc" ]
+}
+
+pw_size_diff("allocator_size_report") {
+  title = "Sizes of various pw_allocator implementations"
+  binaries = [
+    {
+      target = "size_report:split_free_list_allocator"
+      base = "$dir_pw_bloat:bloat_base"
+      label = "SplitFreeListAllocator"
+    },
+    {
+      target = "size_report:split_free_list_allocator_with_unique_ptr"
+      base = "size_report:split_free_list_allocator"
+      label = "Allocator::MakeUnique and UniquePtr"
+    },
+    {
+      target = "size_report:split_free_list_allocator_with_metric_proxy"
+      base = "size_report:split_free_list_allocator"
+      label = "AllocatorMetricProxy wrapping another allocator"
+    },
+  ]
 }
 
 pw_test_group("tests") {
@@ -156,18 +191,22 @@ pw_test_group("tests") {
     ":freelist_heap_test",
     ":libc_allocator_test",
     ":null_allocator_test",
+    ":simple_allocator_test",
     ":split_free_list_allocator_test",
+    ":unique_ptr_test",
   ]
 }
 
 pw_source_set("allocator_testing") {
-  public = [ "pw_allocator_private/allocator_testing.h" ]
+  public = [ "public/pw_allocator/allocator_testing.h" ]
   public_deps = [
     ":allocator",
     ":block",
-    dir_pw_assert,
+    ":simple_allocator",
     dir_pw_bytes,
+    dir_pw_unit_test,
   ]
+  deps = [ dir_pw_assert ]
   sources = [ "allocator_testing.cc" ]
 }
 
@@ -232,8 +271,19 @@ pw_test("null_allocator_test") {
   sources = [ "null_allocator_test.cc" ]
 }
 
-pw_test("split_free_list_allocator_test") {
+pw_test("simple_allocator_test") {
+  configs = [ ":enable_heap_poison" ]
   deps = [
+    ":allocator_testing",
+    ":simple_allocator",
+  ]
+  sources = [ "simple_allocator_test.cc" ]
+}
+
+pw_test("split_free_list_allocator_test") {
+  configs = [ ":enable_heap_poison" ]
+  deps = [
+    ":allocator_testing",
     ":split_free_list_allocator",
     "$dir_pw_containers:vector",
     dir_pw_bytes,
@@ -241,7 +291,16 @@ pw_test("split_free_list_allocator_test") {
   sources = [ "split_free_list_allocator_test.cc" ]
 }
 
+pw_test("unique_ptr_test") {
+  deps = [ ":allocator_testing" ]
+  sources = [ "unique_ptr_test.cc" ]
+}
+
 pw_doc_group("docs") {
-  inputs = [ "doc_resources/pw_allocator_heap_visualizer_demo.png" ]
+  inputs = [
+    "doc_resources/pw_allocator_heap_visualizer_demo.png",
+    "public/pw_allocator/simple_allocator.h",
+  ]
   sources = [ "docs.rst" ]
+  report_deps = [ ":allocator_size_report" ]
 }

@@ -49,9 +49,13 @@ pw_add_library(pw_allocator.block STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_assert
+    pw_bytes
+    pw_result
     pw_span
     pw_status
+    pw_third_party.fuchsia.stdcompat
+  PRIVATE_DEPS
+    pw_assert
   SOURCES
     block.cc
 )
@@ -98,21 +102,6 @@ pw_add_library(pw_allocator.freelist_heap STATIC
     freelist_heap.cc
 )
 
-pw_add_library(pw_allocator.split_free_list_allocator STATIC
-  SOURCES
-    split_free_list_allocator.cc
-  HEADERS
-    public/pw_allocator/split_free_list_allocator.h
-  PUBLIC_INCLUDES
-    public
-  PUBLIC_DEPS
-    pw_allocator.allocator
-    pw_status
-  PRIVATE_DEPS
-    pw_assert
-    pw_bytes
-)
-
 pw_add_library(pw_allocator.libc_allocator STATIC
   SOURCES
     libc_allocator.cc
@@ -137,14 +126,45 @@ pw_add_library(pw_allocator.null_allocator INTERFACE
     pw_allocator.allocator
 )
 
-pw_add_library(pw_allocator.allocator_testing STATIC
+pw_add_library(pw_allocator.simple_allocator INTERFACE
   HEADERS
-    pw_allocator_private/allocator_testing.h
+    public/pw_allocator/simple_allocator.h
   PUBLIC_DEPS
     pw_allocator.allocator
     pw_allocator.block
-    pw_assert
     pw_bytes
+)
+
+pw_add_library(pw_allocator.split_free_list_allocator STATIC
+  HEADERS
+    public/pw_allocator/split_free_list_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_allocator.block
+    pw_bytes
+    pw_result
+    pw_status
+  PRIVATE_DEPS
+    pw_assert
+  SOURCES
+    split_free_list_allocator.cc
+)
+
+pw_add_library(pw_allocator.allocator_testing STATIC
+  HEADERS
+    public/pw_allocator/allocator_testing.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_allocator.block
+    pw_allocator.simple_allocator
+    pw_bytes
+  PRIVATE_DEPS
+    pw_assert
+    pw_unit_test
   SOURCES
     allocator_testing.cc
 )
@@ -239,14 +259,34 @@ pw_add_test(pw_allocator.null_allocator_test
     pw_allocator
 )
 
+pw_add_test(pw_allocator.simple_allocator_test
+  SOURCES
+    simple_allocator_test.cc
+  PRIVATE_DEPS
+    pw_allocator.allocator_testing
+    pw_allocator.simple_allocator
+)
+
 pw_add_test(pw_allocator.split_free_list_allocator_test
   SOURCES
     split_free_list_allocator_test.cc
   PRIVATE_DEPS
+    pw_allocator.allocator_testing
     pw_allocator.split_free_list_allocator
     pw_containers.vector
     pw_bytes
     pw_unit_test
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.unique_ptr_test
+  SOURCES
+    unique_ptr_test.cc
+  PRIVATE_DEPS
+    pw_allocator.allocator
+    pw_allocator.allocator_testing
   GROUPS
     modules
     pw_allocator

@@ -7,17 +7,15 @@ pw_allocator
 This module provides various building blocks
 for a dynamic allocator. This is composed of the following parts:
 
-- ``block``: An implementation of a linked list of memory blocks, supporting
-  splitting and merging of blocks.
+- ``block``: An implementation of a doubly-linked list of memory blocks,
+  supporting splitting and merging of blocks.
 - ``freelist``: A freelist, suitable for fast lookups of available memory chunks
   (i.e. ``block`` s).
 - ``allocator``: An interface for memory allocators. Several concrete
   implementations are also provided.
 
-Heap Integrity Check
-====================
-The ``Block`` class provides two check functions:
-
+Block
+=====
 .. doxygenclass:: pw::allocator::Block
    :members:
 
@@ -31,6 +29,19 @@ Allocator
 .. doxygenclass:: pw::allocator::Allocator
    :members:
 
+Example
+-------
+As an example, the following implements a simple allocator that tracks memory
+using ``Block``.
+
+.. literalinclude:: public/pw_allocator/simple_allocator.h
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator_examples_simple_allocator]
+   :end-before: [pw_allocator_examples_simple_allocator]
+
+Other Implemetations
+--------------------
 Provided implementations of the ``Allocator`` interface include:
 
 - ``AllocatorMetricProxy``: Wraps another allocator and records its usage.
@@ -40,9 +51,14 @@ Provided implementations of the ``Allocator`` interface include:
   only be used if the ``libc`` in use provides those functions.
 - ``NullAllocator``: Always fails. This may be useful if allocations should be
   disallowed under specific circumstances.
-- ``SplitFreeListAllocator``: Tracks free blocks using a free list, and splits
-  large and small allocations between the front and back, respectively, of its
-  memory region in order to reduce fragmentation.
+- ``SplitFreeListAllocator``: Tracks memory using ``Block``, and splits large
+  and small allocations between the front and back, respectively, of it memory
+  region in order to reduce fragmentation.
+
+UniquePtr
+=========
+.. doxygenclass:: pw::allocator::UniquePtr
+   :members:
 
 Heap Poisoning
 ==============
@@ -124,5 +140,11 @@ Options include the following:
 - ``--pointer-size <integer of pointer size>``: The size of a pointer on the
   machine where ``malloc/free`` is called. The default value is ``4``.
 
-Note, this module, and its documentation, is currently incomplete and
-experimental.
+.. _module-pw_allocator-size:
+
+Size report
+===========
+``pw_allocator`` provides some of its own implementations of the ``Allocator``
+interface, whos costs are shown below.
+
+.. include:: allocator_size_report

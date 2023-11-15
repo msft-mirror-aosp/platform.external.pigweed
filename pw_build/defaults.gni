@@ -77,7 +77,7 @@ pigweed_default_configs = [
 # compatibilty. Using these is not recommended; prefer to use the pw_* target
 # types directly.
 pw_build_defaults = {
-  configs = pw_build_INTERNAL_DEFAULTS.default_configs + pigweed_default_configs
+  configs = pw_build_INTERNAL_DEFAULTS.default_configs
   public_deps = pw_build_INTERNAL_DEFAULTS.default_public_deps
   if (pw_build_INTERNAL_DEFAULTS.remove_default_configs != []) {
     # Add them first to ensure they are present to be removed.

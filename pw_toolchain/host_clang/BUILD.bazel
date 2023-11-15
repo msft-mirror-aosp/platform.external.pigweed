@@ -14,6 +14,9 @@
 
 load(
     "@pw_toolchain//cc_toolchain:defs.bzl",
+    "ALL_CPP_COMPILER_ACTIONS",
+    "ALL_C_COMPILER_ACTIONS",
+    "pw_cc_flag_set",
     "pw_cc_toolchain",
     "pw_cc_toolchain_feature",
 )
@@ -53,6 +56,30 @@ pw_cc_toolchain_feature(
     ],
 )
 
+# Although we use similar warnings for clang and arm_gcc, we don't have one
+# centralized list, since we might want to use different warnings based on the
+# compiler in the future.
+pw_cc_flag_set(
+    name = "warnings",
+    actions = ALL_C_COMPILER_ACTIONS + ALL_CPP_COMPILER_ACTIONS,
+    flags = [
+        "-Wall",
+        "-Wextra",
+        # Make all warnings errors, except for the exemptions below.
+        "-Werror",
+        "-Wno-error=cpp",  # preprocessor #warning statement
+        "-Wno-error=deprecated-declarations",  # [[deprecated]] attribute
+    ],
+)
+
+pw_cc_flag_set(
+    name = "no_unknown_warning_option",
+    actions = ALL_C_COMPILER_ACTIONS + ALL_CPP_COMPILER_ACTIONS,
+    flags = [
+        "-Wno-unknown-warning-option",
+    ],
+)
+
 filegroup(
     name = "all_linux_files",
     srcs = [
@@ -65,6 +92,9 @@ pw_cc_toolchain(
     name = "host_toolchain_macos",
     abi_libc_version = "unknown",
     abi_version = "unknown",
+    action_config_flag_sets = [
+        ":warnings",
+    ],
     all_files = "@llvm_toolchain//:all",
     ar = "@llvm_toolchain//:bin/llvm-ar",
     ar_files = "@llvm_toolchain//:all",
@@ -79,6 +109,8 @@ pw_cc_toolchain(
         ":macos_stdlib",
         "@pw_toolchain//features/macos:macos_sysroot",
         "@pw_toolchain//features:c++17",
+        "@pw_toolchain//features:debugging",
+        "@pw_toolchain//features:reduced_size",
         "@pw_toolchain//features:no_canonical_prefixes",
         "@pw_toolchain//features:no_rtti",
         "@pw_toolchain//features:wno_register",
@@ -91,6 +123,7 @@ pw_cc_toolchain(
     linker_files = "@llvm_toolchain//:all",
     objcopy = "@llvm_toolchain//:bin/llvm-objcopy",
     objcopy_files = "@llvm_toolchain//:all",
+    objdump = "@llvm_toolchain//:bin/llvm-objdump",
     strip = "@llvm_toolchain//:bin/llvm-strip",
     strip_files = "@llvm_toolchain//:all",
     supports_param_files = 0,
@@ -119,6 +152,9 @@ pw_cc_toolchain(
     name = "host_toolchain_linux",
     abi_libc_version = "unknown",
     abi_version = "unknown",
+    action_config_flag_sets = [
+        ":warnings",
+    ],
     all_files = ":all_linux_files",
     ar = "@llvm_toolchain//:bin/llvm-ar",
     ar_files = ":all_linux_files",
@@ -131,6 +167,8 @@ pw_cc_toolchain(
     feature_deps = [
         ":linux_sysroot",
         "@pw_toolchain//features:c++17",
+        "@pw_toolchain//features:debugging",
+        "@pw_toolchain//features:reduced_size",
         "@pw_toolchain//features:no_canonical_prefixes",
         "@pw_toolchain//features:no_rtti",
         "@pw_toolchain//features:wno_register",
@@ -143,6 +181,53 @@ pw_cc_toolchain(
     linker_files = ":all_linux_files",
     objcopy = "@llvm_toolchain//:bin/llvm-objcopy",
     objcopy_files = ":all_linux_files",
+    objdump = "@llvm_toolchain//:bin/llvm-objdump",
+    strip = "@llvm_toolchain//:bin/llvm-strip",
+    strip_files = ":all_linux_files",
+    supports_param_files = 0,
+    target_cpu = "unknown",
+    target_libc = "unknown",
+    target_system_name = "unknown",
+    toolchain_identifier = "host-toolchain-linux",
+)
+
+# A toolchain for Kythe. Identical to the regular Linux toolchain except for
+# one extra feature, ":no_unknown_warning_option".
+pw_cc_toolchain(
+    name = "host_toolchain_linux_kythe",
+    abi_libc_version = "unknown",
+    abi_version = "unknown",
+    action_config_flag_sets = [
+        ":warnings",
+        ":no_unknown_warning_option",
+    ],
+    all_files = ":all_linux_files",
+    ar = "@llvm_toolchain//:bin/llvm-ar",
+    ar_files = ":all_linux_files",
+    as_files = ":all_linux_files",
+    compiler = "unknown",
+    compiler_files = ":all_linux_files",
+    coverage_files = ":all_linux_files",
+    cpp = "@llvm_toolchain//:bin/clang++",
+    dwp_files = ":all_linux_files",
+    feature_deps = [
+        ":linux_sysroot",
+        "@pw_toolchain//features:c++17",
+        "@pw_toolchain//features:debugging",
+        "@pw_toolchain//features:reduced_size",
+        "@pw_toolchain//features:no_canonical_prefixes",
+        "@pw_toolchain//features:no_rtti",
+        "@pw_toolchain//features:wno_register",
+        "@pw_toolchain//features:wnon_virtual_dtor",
+    ],
+    gcc = "@llvm_toolchain//:bin/clang",
+    gcov = "@llvm_toolchain//:bin/llvm-cov",
+    host_system_name = "unknown",
+    ld = "@llvm_toolchain//:bin/clang++",
+    linker_files = ":all_linux_files",
+    objcopy = "@llvm_toolchain//:bin/llvm-objcopy",
+    objcopy_files = ":all_linux_files",
+    objdump = "@llvm_toolchain//:bin/llvm-objdump",
     strip = "@llvm_toolchain//:bin/llvm-strip",
     strip_files = ":all_linux_files",
     supports_param_files = 0,
@@ -161,5 +246,20 @@ toolchain(
         "@platforms//os:linux",
     ],
     toolchain = ":host_toolchain_linux",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
+toolchain(
+    name = "host_cc_toolchain_linux_kythe",
+    exec_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    # This toolchain will only be selected in toolchain resolution if this
+    # config_setting is active.
+    target_settings = ["//pw_build:kythe"],
+    toolchain = ":host_toolchain_linux_kythe",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 )
