@@ -17,60 +17,6 @@
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
-DEBUGGING = [
-    "-g",
-]
-
-# Standard compiler flags to reduce output binary size.
-REDUCED_SIZE_COPTS = [
-    "-fno-common",
-    "-fno-exceptions",
-    "-ffunction-sections",
-    "-fdata-sections",
-]
-
-STRICT_WARNINGS_COPTS = [
-    "-Wall",
-    "-Wextra",
-    # Make all warnings errors, except for the exemptions below.
-    "-Werror",
-    "-Wno-error=cpp",  # preprocessor #warning statement
-    "-Wno-error=deprecated-declarations",  # [[deprecated]] attribute
-]
-
-PW_DEFAULT_COPTS = (
-    DEBUGGING +
-    REDUCED_SIZE_COPTS +
-    STRICT_WARNINGS_COPTS
-)
-
-KYTHE_COPTS = [
-    "-Wno-unknown-warning-option",
-]
-
-def add_defaults(kwargs):
-    """Adds default arguments suitable for both C and C++ code to kwargs.
-
-    Args:
-        kwargs: cc_* arguments to be modified.
-    """
-
-    copts = PW_DEFAULT_COPTS + kwargs.get("copts", [])
-    kwargs["copts"] = select({
-        "@pigweed//pw_build:kythe": copts + KYTHE_COPTS,
-        "//conditions:default": copts,
-    })
-
-    # Set linkstatic to avoid building .so files.
-    kwargs["linkstatic"] = True
-
-    kwargs.setdefault("features", [])
-
-    # Crosstool--adding this line to features disables header modules, which
-    # don't work with -fno-rtti. Note: this is not a command-line argument,
-    # it's "minus use_header_modules".
-    kwargs["features"].append("-use_header_modules")
-
 def _print_platform_impl(_, ctx):
     if hasattr(ctx.rule.attr, "constraint_values"):
         for cv in ctx.rule.attr.constraint_values:

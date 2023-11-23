@@ -38,7 +38,13 @@ GoogleTest compatibility
 pw_unit_test implements a subset of GoogleTest. Supported features include:
 
 * Test and test suite declarations.
-* Most ``EXPECT`` and ``ASSERT`` macros.
+* Most ``EXPECT`` and ``ASSERT`` macros, including ``EXPECT_OK`` and
+  ``ASSERT_OK`` for functions returning a status.
+* ``ASSERT_OK_AND_ASSIGN`` to test assigning a value when status is ``OK`` or
+  fail the test.
+* ``StatusIs`` matcher to expect a specific ``pw::Status`` other that ``OK``.
+* ``IsOkAndHolds`` matcher to expect an object's status is ``OK`` and the value
+  matches an expected value.
 * Stream-style expectation messages, such as
   ``EXPECT_EQ(val, 5) << "Inputs: " << input``. Messages are currently ignored.
 
@@ -56,6 +62,49 @@ To request a feature addition, please `let us know
 
 See `Using upstream GoogleTest`_ below for information
 about using upstream GoogleTest instead.
+
+API Reference
+-------------
+
+Expectations
+````````````
+Expectations perform a check that when fails continues the test's execution
+while still marking the test as a failure. They're particularly handy when
+verifying multiple dimensions of the same feature so we can see all the errors
+at the same time.
+
+.. doxygendefine:: EXPECT_TRUE
+.. doxygendefine:: EXPECT_FALSE
+.. doxygendefine:: EXPECT_EQ
+.. doxygendefine:: EXPECT_NE
+.. doxygendefine:: EXPECT_GT
+.. doxygendefine:: EXPECT_GE
+.. doxygendefine:: EXPECT_LT
+.. doxygendefine:: EXPECT_LE
+.. doxygendefine:: EXPECT_NEAR
+.. doxygendefine:: EXPECT_FLOAT_EQ
+.. doxygendefine:: EXPECT_DOUBLE_EQ
+.. doxygendefine:: EXPECT_STREQ
+.. doxygendefine:: EXPECT_STRNE
+
+Assertions
+``````````
+Assertions work exactly the same as expectations, but stop the execution of the
+test as soon as a failed condition is met.
+
+.. doxygendefine:: ASSERT_TRUE
+.. doxygendefine:: ASSERT_FALSE
+.. doxygendefine:: ASSERT_EQ
+.. doxygendefine:: ASSERT_NE
+.. doxygendefine:: ASSERT_GT
+.. doxygendefine:: ASSERT_GE
+.. doxygendefine:: ASSERT_LT
+.. doxygendefine:: ASSERT_LE
+.. doxygendefine:: ASSERT_NEAR
+.. doxygendefine:: ASSERT_FLOAT_EQ
+.. doxygendefine:: ASSERT_DOUBLE_EQ
+.. doxygendefine:: ASSERT_STREQ
+.. doxygendefine:: ASSERT_STRNE
 
 The EventHandler interface
 ==========================
@@ -116,8 +165,7 @@ GoogleTest-style output using the shared
 
 .. cpp:class:: PrintfEventHandler : public GoogleTestStyleEventHandler
 
-   A C++14-compatible event handler that uses ``std::printf`` to output test
-   results.
+   Event handler that uses ``std::printf`` to output test results.
 
 .. cpp:namespace-pop::
 
@@ -702,14 +750,21 @@ the results of the test run.
 
 .. code-block:: python
 
-   from pw_hdlc.rpc import HdlcRpcClient
+   import serial
+
+   from pw_hdlc import rpc
    from pw_unit_test.rpc import run_tests
 
-   PROTO = Path(os.environ['PW_ROOT'],
-                'pw_unit_test/pw_unit_test_proto/unit_test.proto')
-
-   client = HdlcRpcClient(serial.Serial(device, baud), PROTO)
-   run_tests(client.rpcs())
+   PROTO = Path(
+       os.environ['PW_ROOT'],
+       'pw_unit_test/pw_unit_test_proto/unit_test.proto'
+   )
+   serial_device = serial.Serial(device, baud)
+   with rpc.SerialReader(serial_device) as reader:
+       with rpc.HdlcRpcClient(
+           reader, PROTO, rpc.default_channels(serial_device.write)
+       ) as client:
+           run_tests(client.rpcs())
 
 pw_unit_test.rpc
 ----------------

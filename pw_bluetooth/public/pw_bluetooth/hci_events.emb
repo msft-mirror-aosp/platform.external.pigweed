@@ -63,7 +63,8 @@ enum LEAdvertisingDataStatus:
 
 
 enum LEDirectAddressType:
-  -- Possible values that can be reported for the |direct_address_type| parameter in LE Advertising Report events.
+  -- Possible values that can be reported for the |direct_address_type| parameter in LE Advertising
+  -- Report events.
   [maximum_bits: 8]
   PUBLIC                                = 0x00
     -- Public Device Address
@@ -673,6 +674,12 @@ bits SupportedCommands(octet: UInt:8):
   if octet == 47:
     0 [+1]  Flag  le_extended_create_connection_v2
     1 [+1]  Flag  le_set_periodic_advertising_parameters_v2
+
+
+enum LEChannelSelectionAlgorithm:
+  [maximum_bits: 8]
+  ALGORITHM1 = 0x00
+  ALGORITHM2 = 0x01
 
 # ========================= HCI Event packets ===========================
 # Core Spec v5.3 Vol 4, Part E, Section 7.7
@@ -1454,6 +1461,35 @@ struct LELongTermKeyRequestSubevent:
 # TODO: b/265052417 - Definition needs to be added
 
 
+struct LEEnhancedConnectionCompleteSubeventV1:
+  -- 7.7.65.10 LE Enhanced Connection Complete event
+  -- HCI_LE_Enhanced_Connection_Complete
+  0     [+LEMetaEvent.$size_in_bytes]  LEMetaEvent         le_meta_event
+  $next [+1]                           hci.StatusCode      status
+  $next [+2]                           UInt                connection_handle
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+1]                           hci.ConnectionRole  role
+  $next [+1]                           hci.LEAddressType   peer_address_type
+  $next [+hci.BdAddr.$size_in_bytes]   hci.BdAddr          peer_address
+  $next [+hci.BdAddr.$size_in_bytes]   hci.BdAddr          local_resolvable_private_address
+  $next [+hci.BdAddr.$size_in_bytes]   hci.BdAddr          peer_resolvable_private_address
+  $next [+2]                           UInt                connection_interval
+    -- Time: N * 1.25 ms
+    -- Range: 7.5 ms to 4 s
+    [requires: 0x0006 <= this <= 0x0C80]
+
+  $next [+2]                           UInt                peripheral_latency
+    [requires: 0x0000 <= this <= 0x01F3]
+
+  $next [+2]                           UInt                supervision_timeout
+    -- Time: N * 10 ms
+    -- Range: 100 ms to 32 s
+    [requires: 0x000A <= this <= 0x0C80]
+
+  $next [+1]                           LEClockAccuracy     central_clock_accuracy
+    -- Only valid for a peripheral. On a central, this parameter shall be set to 0x00.
+
 # 7.7.65.10 LE Enhanced Connection Complete event
 # HCI_LE_Enhanced_Connection_Complete
 # TODO: b/265052417 - Definition needs to be added
@@ -1474,7 +1510,7 @@ struct LEExtendedAdvertisingReportData:
 
     0     [+LEExtendedAdvertisingEventType.$size_in_bits]  LEExtendedAdvertisingEventType  event_type
 
-  $next [+1]                                               hci.LEAddressType               address_type
+  $next [+1]                                               hci.LEExtendedAddressType       address_type
     -- Address type of the advertiser.
 
   $next [+hci.BdAddr.$size_in_bytes]                       hci.BdAddr                      address
@@ -1550,10 +1586,10 @@ struct LEExtendedAdvertisingReportSubevent(reports_size: UInt:8):
 # TODO: b/265052417 - Definition needs to be added
 
 
-# 7.7.65.17 LE Scan Timeout event
-# HCI_LE_Scan_Timeout
-# TODO: b/265052417 - Definition needs to be added
-
+struct LEScanTimeoutSubevent:
+  -- 7.7.65.17 LE Scan Timeout event
+  -- HCI_LE_Scan_Timeout
+  0 [+LEMetaEvent.$size_in_bytes]  LEMetaEvent  le_meta_event
 
 # 7.7.65.18 LE Advertising Set Terminated event
 # HCI_LE_Advertising_Set_Terminated
@@ -1565,10 +1601,15 @@ struct LEExtendedAdvertisingReportSubevent(reports_size: UInt:8):
 # TODO: b/265052417 - Definition needs to be added
 
 
-# 7.7.65.20 LE Channel Selection Algorithm event
-# HCI_LE_Channel_Selection_Algorithm
-# TODO: b/265052417 - Definition needs to be added
+struct LEChannelSelectionAlgorithmSubevent:
+  -- 7.7.65.20 LE Channel Selection Algorithm event
+  -- HCI_LE_Channel_Selection_Algorithm
+  0     [+LEMetaEvent.$size_in_bytes]  LEMetaEvent                  le_meta_event
+  $next [+2]                           UInt                         connection_handle
+    -- Only the lower 12-bits are meaningful.
+    [requires: 0x0000 <= this <= 0x0EFF]
 
+  $next [+1]                           LEChannelSelectionAlgorithm  channel_selection_algorithm
 
 # 7.7.65.21 LE Connectionless IQ Report event
 # HCI_LE_Connectionless_IQ_Report

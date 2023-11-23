@@ -12,32 +12,35 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_allocator_private/allocator_testing.h"
+#include "pw_allocator/allocator_testing.h"
 
 #include "pw_assert/check.h"
-#include "pw_bytes/alignment.h"
 
 namespace pw::allocator::test {
 
-static Block* NextBlock(Block* block) {
-  return block->Last() ? nullptr : block->Next();
-}
-
-Status FakeAllocator::Initialize(ByteSpan buffer) {
-  if (auto status = Block::Init(buffer, &head_); !status.ok()) {
-    return status;
+AllocatorForTest::~AllocatorForTest() {
+  for (auto* block : allocator_.blocks()) {
+    PW_DCHECK(
+        !block->Used(),
+        "The block at %p was still in use when its allocator was "
+        "destroyed. All memory allocated by an allocator must be released "
+        "before the allocator goes out of scope.",
+        static_cast<void*>(block));
   }
-  ResetParameters();
-  return OkStatus();
 }
 
-void FakeAllocator::Exhaust() {
-  for (Block* block = head_; block != nullptr; block = NextBlock(block)) {
+Status AllocatorForTest::Init(ByteSpan bytes) {
+  ResetParameters();
+  return allocator_.Init(bytes);
+}
+
+void AllocatorForTest::Exhaust() {
+  for (auto* block : allocator_.blocks()) {
     block->MarkUsed();
   }
 }
 
-void FakeAllocator::ResetParameters() {
+void AllocatorForTest::ResetParameters() {
   allocate_size_ = 0;
   deallocate_ptr_ = nullptr;
   deallocate_size_ = 0;
@@ -46,75 +49,33 @@ void FakeAllocator::ResetParameters() {
   resize_new_size_ = 0;
 }
 
-Status FakeAllocator::DoQuery(const void* ptr, size_t size, size_t) const {
-  PW_CHECK(head_ != nullptr);
-  if (size == 0 || ptr == nullptr) {
-    return Status::OutOfRange();
+void AllocatorForTest::DeallocateAll() {
+  for (auto* block : allocator_.blocks()) {
+    BlockType::Free(block);
   }
-  const auto* bytes = static_cast<const std::byte*>(ptr);
-  Block* block = Block::FromUsableSpace(const_cast<std::byte*>(bytes));
-  if (!block->IsValid()) {
-    return Status::OutOfRange();
-  }
-  size = AlignUp(size, alignof(Block));
-  for (Block* curr = head_; curr != nullptr; curr = NextBlock(curr)) {
-    if (curr == block && curr->InnerSize() == size) {
-      return OkStatus();
-    }
-  }
-  return Status::OutOfRange();
+  ResetParameters();
 }
 
-void* FakeAllocator::DoAllocate(size_t size, size_t) {
-  PW_CHECK(head_ != nullptr);
-  allocate_size_ = size;
-  for (Block* block = head_; block != nullptr; block = NextBlock(block)) {
-    Block* fragment = nullptr;
-    if (!block->Used() && block->Split(size, &fragment).ok()) {
-      block->MarkUsed();
-      return block->UsableSpace();
-    }
-  }
-  return nullptr;
+Status AllocatorForTest::DoQuery(const void* ptr, Layout layout) const {
+  return allocator_.Query(ptr, layout);
 }
 
-void FakeAllocator::DoDeallocate(void* ptr, size_t size, size_t alignment) {
-  PW_CHECK(head_ != nullptr);
+void* AllocatorForTest::DoAllocate(Layout layout) {
+  allocate_size_ = layout.size();
+  return allocator_.Allocate(layout);
+}
+
+void AllocatorForTest::DoDeallocate(void* ptr, Layout layout) {
   deallocate_ptr_ = ptr;
-  deallocate_size_ = size;
-  if (!DoQuery(ptr, size, alignment).ok()) {
-    return;
-  }
-  Block* block = Block::FromUsableSpace(static_cast<std::byte*>(ptr));
-  block->MarkFree();
-  block->MergeNext().IgnoreError();
-  block->MergePrev().IgnoreError();
+  deallocate_size_ = layout.size();
+  return allocator_.Deallocate(ptr, layout);
 }
 
-bool FakeAllocator::DoResize(void* ptr,
-                             size_t old_size,
-                             size_t old_alignment,
-                             size_t new_size) {
-  PW_CHECK(head_ != nullptr);
+bool AllocatorForTest::DoResize(void* ptr, Layout layout, size_t new_size) {
   resize_ptr_ = ptr;
-  resize_old_size_ = old_size;
+  resize_old_size_ = layout.size();
   resize_new_size_ = new_size;
-  if (!DoQuery(ptr, old_size, old_alignment).ok() || old_size == 0 ||
-      new_size == 0) {
-    return false;
-  }
-  if (old_size == new_size) {
-    return true;
-  }
-  Block* block = Block::FromUsableSpace(static_cast<std::byte*>(ptr));
-  block->MarkFree();
-  block->MergeNext().IgnoreError();
-  Block* fragment = nullptr;
-  if (block->Split(new_size, &fragment) == Status::OutOfRange()) {
-    block->Split(old_size, &fragment).IgnoreError();
-  }
-  block->MarkUsed();
-  return block->InnerSize() >= new_size;
+  return allocator_.Resize(ptr, layout, new_size);
 }
 
 }  // namespace pw::allocator::test

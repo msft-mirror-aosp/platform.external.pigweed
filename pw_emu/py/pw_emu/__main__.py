@@ -42,7 +42,7 @@ def _cmd_load(emu: Emulator, args: argparse.Namespace) -> None:
     """Load an executable image via gdb start executing it if pause is
     not set"""
 
-    args.command = ['load']
+    args.gdb_cmd = ['load']
     _cmd_gdb_cmds(emu, args)
 
 
@@ -163,8 +163,7 @@ def _cmd_gdb(emu: Emulator, args: argparse.Namespace) -> None:
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
-        cmd = [
-            emu.get_gdb_cmd(),
+        cmd = emu.get_gdb_cmd() + [
             '-ex',
             f'target remote {emu.get_gdb_remote()}',
             executable,
@@ -206,6 +205,12 @@ def _cmd_term(emu: Emulator, args: argparse.Namespace) -> None:
         miniterm.close()
     except SerialException as err:
         raise Error(f'error connecting to channel `{args.channel}`: {err}')
+
+
+def _cmd_resume(emu: Emulator, _args: argparse.Namespace) -> None:
+    """Resume the execution of a paused emulator."""
+
+    emu.cont()
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -399,6 +404,8 @@ def get_parser() -> argparse.ArgumentParser:
         help='channel name',
     )
 
+    resume = add_cmd('resume', _cmd_resume)
+
     parser.epilog = f"""commands usage:
         {start.format_usage().strip()}
         {restart.format_usage().strip()}
@@ -412,6 +419,7 @@ def get_parser() -> argparse.ArgumentParser:
         {prop_set.format_usage().strip()}
         {gdb_cmds.format_usage().strip()}
         {term.format_usage().strip()}
+        {resume.format_usage().strip()}
     """
 
     return parser
