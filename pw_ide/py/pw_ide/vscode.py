@@ -180,7 +180,6 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
         "gulp.autoDetect": "off",
         "jake.autoDetect": "off",
         "npm.autoDetect": "off",
-        "clangd.onConfigChanged": "restart",
         "C_Cpp.intelliSenseEngine": "Disabled",
         "[cpp]": OrderedDict(
             {"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"}
@@ -203,6 +202,7 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
         "[proto3]": OrderedDict(
             {"editor.defaultFormatter": "zxh404.vscode-proto3"}
         ),
+        "[restructuredtext]": OrderedDict({"editor.tabSize": 3}),
     }
 )
 
@@ -337,13 +337,11 @@ _DEFAULT_EXTENSIONS: EditorSettingsDict = OrderedDict(
             "msedge-dev.gnls",
             "zxh404.vscode-proto3",
             "josetr.cmake-language-support-vscode",
-            "swyddfa.esbonio",
         ],
         "unwantedRecommendations": [
             "ms-vscode.cpptools",
             "persidskiy.vscode-gnformat",
             "lextudio.restructuredtext",
-            "trond-snekvik.simple-rst",
         ],
     }
 )

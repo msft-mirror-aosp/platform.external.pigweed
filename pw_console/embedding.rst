@@ -3,6 +3,9 @@
 ===============
 Embedding Guide
 ===============
+.. pigweed-module-subpage::
+   :name: pw_console
+   :tagline: pw_console: Multi-purpose pluggable interactive console for dev & manufacturing
 
 -------------
 Using embed()
@@ -113,7 +116,16 @@ Logging data with sockets
 
    from pw_console.socket_client import SocketClientWithLogging
 
+   # Name resolution with explicit port
    serial_device = SocketClientWithLogging('localhost:1234')
+   # Name resolution with default port.
+   serial_device = SocketClientWithLogging('pigweed.dev')
+   # Link-local IPv6 address with explicit port.
+   serial_device = SocketClientWithLogging('[fe80::100%enp1s0]:1234')
+   # Link-local IPv6 address with default port.
+   serial_device = SocketClientWithLogging('[fe80::100%enp1s0]')
+   # IPv4 address with port.
+   serial_device = SocketClientWithLogging('1.2.3.4:5678')
 
 .. tip::
    The ``SocketClient`` takes an optional callback called when a disconnect is

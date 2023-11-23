@@ -17,7 +17,7 @@
 #include <cstddef>
 
 #include "gtest/gtest.h"
-#include "pw_allocator_private/allocator_testing.h"
+#include "pw_allocator/allocator_testing.h"
 #include "pw_bytes/alignment.h"
 
 namespace pw::allocator {
@@ -25,14 +25,15 @@ namespace {
 
 // Test fixtures.
 
-struct AllocatorTest : ::testing::Test {
+class AllocatorTest : public ::testing::Test {
+ protected:
+  void SetUp() override { EXPECT_EQ(allocator.Init(buffer), OkStatus()); }
+  void TearDown() override { allocator.DeallocateAll(); }
+
+  test::AllocatorForTest allocator;
+
  private:
   std::array<std::byte, 256> buffer = {};
-
- public:
-  test::FakeAllocator allocator;
-
-  void SetUp() override { EXPECT_EQ(allocator.Initialize(buffer), OkStatus()); }
 };
 
 // Unit tests
@@ -41,11 +42,6 @@ TEST_F(AllocatorTest, ReallocateNull) {
   constexpr Layout old_layout = Layout::Of<uint32_t>();
   size_t new_size = old_layout.size();
   void* new_ptr = allocator.Reallocate(nullptr, old_layout, new_size);
-
-  // Reallocate should call Resize.
-  EXPECT_EQ(allocator.resize_ptr(), nullptr);
-  EXPECT_EQ(allocator.resize_old_size(), old_layout.size());
-  EXPECT_EQ(allocator.resize_new_size(), new_size);
 
   // Resize should fail and Reallocate should call Allocate.
   EXPECT_EQ(allocator.allocate_size(), new_size);

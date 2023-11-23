@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <utility>
 
 #include "pw_status/status.h"
 
@@ -35,22 +36,29 @@ namespace pw::allocator {
 /// @endcode
 class Layout {
  public:
+  constexpr Layout(size_t size, size_t alignment = alignof(std::max_align_t))
+      : size_(size), alignment_(alignment) {}
+
   /// Creates a Layout for the given type.
   template <typename T>
   static constexpr Layout Of() {
     return Layout(sizeof(T), alignof(T));
   }
 
+  constexpr Layout Extend(size_t size) {
+    return Layout(size_ + size, alignment_);
+  }
+
   size_t size() const { return size_; }
   size_t alignment() const { return alignment_; }
 
  private:
-  constexpr Layout(size_t size, size_t alignment)
-      : size_(size), alignment_(alignment) {}
-
   size_t size_;
   size_t alignment_;
 };
+
+template <typename T>
+class UniquePtr;
 
 /// Abstract interface for memory allocation.
 ///
@@ -93,15 +101,7 @@ class Allocator {
   ///                               object.
   /// @retval OK                    This object can re/deallocate the pointer.
   Status Query(const void* ptr, Layout layout) const {
-    return DoQuery(ptr, layout.size(), layout.alignment());
-  }
-
-  /// Like `Query`, but takes its parameters directly instead of as a `Layout`.
-  ///
-  /// Callers should almost always prefer `Query`. This method is meant for use
-  /// by tests and other allocators implementing the virtual functions below.
-  Status QueryUnchecked(const void* ptr, size_t size, size_t alignment) const {
-    return DoQuery(ptr, size, alignment);
+    return DoQuery(ptr, layout);
   }
 
   /// Allocates a block of memory with the specified size and alignment.
@@ -110,18 +110,18 @@ class Allocator {
   /// size of 0.
   ///
   /// @param[in]  layout      Describes the memory to be allocated.
-  void* Allocate(Layout layout) {
-    return DoAllocate(layout.size(), layout.alignment());
-  }
+  void* Allocate(Layout layout) { return DoAllocate(layout); }
 
-  /// Like `Allocate`, but takes its parameters directly instead of as a
-  /// `Layout`.
-  ///
-  /// Callers should almost always prefer `Allocate`. This method is meant for
-  /// use by tests and other allocators implementing the virtual functions
-  /// below.
-  void* AllocateUnchecked(size_t size, size_t alignment) {
-    return DoAllocate(size, alignment);
+  template <typename T, typename... Args>
+  std::optional<UniquePtr<T>> MakeUnique(Args&&... args) {
+    static constexpr Layout kStaticLayout = Layout::Of<T>();
+    void* void_ptr = Allocate(kStaticLayout);
+    if (void_ptr == nullptr) {
+      return std::nullopt;
+    }
+    T* ptr = new (void_ptr) T(std::forward<Args>(args)...);
+    return std::make_optional<UniquePtr<T>>(
+        UniquePtr<T>::kPrivateConstructor, ptr, &kStaticLayout, this);
   }
 
   /// Releases a previously-allocated block of memory.
@@ -132,17 +132,7 @@ class Allocator {
   /// @param[in]  ptr           Pointer to previously-allocated memory.
   /// @param[in]  layout        Describes the memory to be deallocated.
   void Deallocate(void* ptr, Layout layout) {
-    return DoDeallocate(ptr, layout.size(), layout.alignment());
-  }
-
-  /// Like `Deallocate`, but takes its parameters directly instead of as a
-  /// `Layout`.
-  ///
-  /// Callers should almost always prefer `Deallocate`. This method is meant for
-  /// use by tests and other allocators implementing the virtual functions
-  /// below.
-  void DeallocateUnchecked(void* ptr, size_t size, size_t alignment) {
-    return DoDeallocate(ptr, size, alignment);
+    return DoDeallocate(ptr, layout);
   }
 
   /// Modifies the size of an previously-allocated block of memory without
@@ -152,25 +142,17 @@ class Allocator {
   /// allocation; otherwise returns false.
   ///
   /// In particular, it always returns true if the `old_layout.size()` equals
-  /// `new_szie`, and always returns false if the given pointer is null, the
+  /// `new_size`, and always returns false if the given pointer is null, the
   /// `old_layout.size()` is 0, or the `new_size` is 0.
   ///
   /// @param[in]  ptr           Pointer to previously-allocated memory.
   /// @param[in]  old_layout    Describes the previously-allocated memory.
   /// @param[in]  new_size      Requested new size for the memory allocation.
-  bool Resize(void* ptr, Layout old_layout, size_t new_size) {
-    return DoResize(ptr, old_layout.size(), old_layout.alignment(), new_size);
-  }
-
-  /// Like `Resize`, but takes its parameters directly instead of as a `Layout`.
-  ///
-  /// Callers should almost always prefer `Resize`. This method is meant for use
-  /// by tests and other allocators implementing the virtual functions below.
-  bool ResizeUnchecked(void* ptr,
-                       size_t old_size,
-                       size_t old_alignment,
-                       size_t new_size) {
-    return DoResize(ptr, old_size, old_alignment, new_size);
+  bool Resize(void* ptr, Layout layout, size_t new_size) {
+    if (ptr == nullptr || layout.size() == 0 || new_size == 0) {
+      return false;
+    }
+    return DoResize(ptr, layout, new_size);
   }
 
   /// Modifies the size of a previously-allocated block of memory.
@@ -190,24 +172,10 @@ class Allocator {
   /// 0 will return a new allocation.
   ///
   /// @param[in]  ptr         Pointer to previously-allocated memory.
-  /// @param[in]  old_layout  Describes the previously-allocated memory.
+  /// @param[in]  layout  Describes the previously-allocated memory.
   /// @param[in]  new_size    Requested new size for the memory allocation.
-  void* Reallocate(void* ptr, Layout old_layout, size_t new_size) {
-    return DoReallocate(
-        ptr, old_layout.size(), old_layout.alignment(), new_size);
-  }
-
-  /// Like `Reallocate`, but takes its parameters directly instead of as a
-  /// `Layout`.
-  ///
-  /// Callers should almost always prefer `Reallocate`. This method is meant for
-  /// use by tests and other allocators implementing the virtual functions
-  /// below.
-  void* ReallocateUnchecked(void* ptr,
-                            size_t old_size,
-                            size_t old_alignment,
-                            size_t new_size) {
-    return DoReallocate(ptr, old_size, old_alignment, new_size);
+  void* Reallocate(void* ptr, Layout layout, size_t new_size) {
+    return DoReallocate(ptr, layout, new_size);
   }
 
  private:
@@ -217,31 +185,196 @@ class Allocator {
   /// Allocators which dispatch to other allocators need to override this method
   /// in order to be able to direct reallocations and deallocations to
   /// appropriate allocator.
-  virtual Status DoQuery(const void*, size_t, size_t) const {
+  virtual Status DoQuery(const void*, Layout) const {
     return Status::Unimplemented();
   }
 
   /// Virtual `Allocate` function implemented by derived classes.
-  virtual void* DoAllocate(size_t size, size_t alignment) = 0;
+  virtual void* DoAllocate(Layout layout) = 0;
 
   /// Virtual `Deallocate` function implemented by derived classes.
-  virtual void DoDeallocate(void* ptr, size_t size, size_t alignment) = 0;
+  virtual void DoDeallocate(void* ptr, Layout layout) = 0;
 
   /// Virtual `Resize` function implemented by derived classes.
-  virtual bool DoResize(void* ptr,
-                        size_t old_size,
-                        size_t old_alignment,
-                        size_t new_size) = 0;
+  ///
+  /// The default implementation simply returns `false`, indicating that
+  /// resizing is not supported.
+  virtual bool DoResize(void* /*ptr*/, Layout /*layout*/, size_t /*new_size*/) {
+    return false;
+  }
 
   /// Virtual `Reallocate` function that can be overridden by derived classes.
   ///
   /// The default implementation will first try to `Resize` the data. If that is
   /// unsuccessful, it will allocate an entirely new block, copy existing data,
   /// and deallocate the given block.
-  virtual void* DoReallocate(void* ptr,
-                             size_t old_size,
-                             size_t old_alignment,
-                             size_t new_size);
+  virtual void* DoReallocate(void* ptr, Layout layout, size_t new_size);
+};
+
+/// An RAII pointer to a value of type ``T`` stored within an ``Allocator``.
+///
+/// This is analogous to ``std::unique_ptr``, but includes a few differences
+/// in order to support ``Allocator`` and encourage safe usage. Most notably,
+/// ``UniquePtr<T>`` cannot be constructed from a ``T*``.
+template <typename T>
+class UniquePtr {
+ public:
+  /// Creates an empty (``nullptr``) instance.
+  ///
+  /// NOTE: Instances of this type are most commonly constructed using
+  /// ``Allocator::MakeUnique``.
+  constexpr UniquePtr()
+      : value_(nullptr), layout_(nullptr), allocator_(nullptr) {}
+
+  /// Creates an empty (``nullptr``) instance.
+  ///
+  /// NOTE: Instances of this type are most commonly constructed using
+  /// ``Allocator::MakeUnique``.
+  constexpr UniquePtr(std::nullptr_t)
+      : value_(nullptr), layout_(nullptr), allocator_(nullptr) {}
+
+  /// Move-constructs a ``UniquePtr<T>`` from a ``UniquePtr<U>``.
+  ///
+  /// This allows not only pure move construction where ``T == U``, but also
+  /// converting construction where ``T`` is a base class of ``U``, like
+  /// ``UniquePtr<Base> base(allocator.MakeUnique<Child>());``.
+  template <typename U>
+  UniquePtr(UniquePtr<U>&& other) noexcept
+      : value_(other.value_),
+        layout_(other.layout_),
+        allocator_(other.allocator_) {
+    static_assert(
+        std::is_assignable_v<T*&, U*>,
+        "Attempted to construct a UniquePtr<T> from a UniquePtr<U> where "
+        "U* is not assignable to T*.");
+    other.Release();
+  }
+
+  /// Move-assigns a ``UniquePtr<T>`` from a ``UniquePtr<U>``.
+  ///
+  /// This operation destructs and deallocates any value currently stored in
+  /// ``this``.
+  ///
+  /// This allows not only pure move assignment where ``T == U``, but also
+  /// converting assignment where ``T`` is a base class of ``U``, like
+  /// ``UniquePtr<Base> base = allocator.MakeUnique<Child>();``.
+  template <typename U>
+  UniquePtr& operator=(UniquePtr<U>&& other) noexcept {
+    static_assert(std::is_assignable_v<T*&, U*>,
+                  "Attempted to assign a UniquePtr<U> to a UniquePtr<T> where "
+                  "U* is not assignable to T*.");
+    Reset();
+    value_ = other.value_;
+    layout_ = other.layout_;
+    allocator_ = other.allocator_;
+    other.Release();
+  }
+
+  /// Sets this ``UniquePtr`` to null, destructing and deallocating any
+  /// currently-held value.
+  ///
+  /// After this function returns, this ``UniquePtr`` will be in an "empty"
+  /// (``nullptr``) state until a new value is assigned.
+  UniquePtr& operator=(std::nullptr_t) { Reset(); }
+
+  /// Destructs and deallocates any currently-held value.
+  ~UniquePtr() { Reset(); }
+
+  /// Sets this ``UniquePtr`` to an "empty" (``nullptr``) value without
+  /// destructing any currently-held value or deallocating any underlying
+  /// memory.
+  void Release() {
+    value_ = nullptr;
+    layout_ = nullptr;
+    allocator_ = nullptr;
+  }
+
+  /// Destructs and deallocates any currently-held value.
+  ///
+  /// After this function returns, this ``UniquePtr`` will be in an "empty"
+  /// (``nullptr``) state until a new value is assigned.
+  void Reset() {
+    if (value_ != nullptr) {
+      value_->~T();
+      allocator_->Deallocate(value_, *layout_);
+      Release();
+    }
+  }
+
+  /// ``operator bool`` is not provided in order to ensure that there is no
+  /// confusion surrounding ``if (foo)`` vs. ``if (*foo)``.
+  ///
+  /// ``nullptr`` checking should instead use ``if (foo == nullptr)``.
+  explicit operator bool() const = delete;
+
+  /// Returns whether this ``UniquePtr`` is in an "empty" (``nullptr``) state.
+  bool operator==(std::nullptr_t) const { return value_ == nullptr; }
+
+  /// Returns whether this ``UniquePtr`` is not in an "empty" (``nullptr``)
+  /// state.
+  bool operator!=(std::nullptr_t) const { return value_ != nullptr; }
+
+  /// Returns the underlying (possibly null) pointer.
+  T* get() { return value_; }
+  /// Returns the underlying (possibly null) pointer.
+  const T* get() const { return value_; }
+
+  /// Permits accesses to members of ``T`` via ``my_unique_ptr->Member``.
+  ///
+  /// The behavior of this operation is undefined if this ``UniquePtr`` is in an
+  /// "empty" (``nullptr``) state.
+  T* operator->() { return value_; }
+  const T* operator->() const { return value_; }
+
+  /// Returns a reference to any underlying value.
+  ///
+  /// The behavior of this operation is undefined if this ``UniquePtr`` is in an
+  /// "empty" (``nullptr``) state.
+  T& operator*() { return *value_; }
+  const T& operator*() const { return *value_; }
+
+ private:
+  /// A pointer to the contained value.
+  T* value_;
+
+  /// The ``layout_` with which ``value_``'s allocation was initially created.
+  ///
+  /// Unfortunately this is not simply ``Layout::Of<T>()`` since ``T`` may be
+  /// a base class of the original allocated type.
+  const Layout* layout_;
+
+  /// The ``allocator_`` in which ``value_`` is stored.
+  /// This must be tracked in order to deallocate the memory upon destruction.
+  Allocator* allocator_;
+
+  /// Allow converting move constructor and assignment to access fields of
+  /// this class.
+  ///
+  /// Without this, ``UniquePtr<U>`` would not be able to access fields of
+  /// ``UniquePtr<T>``.
+  template <typename U>
+  friend class UniquePtr;
+
+  class PrivateConstructorType {};
+  static constexpr PrivateConstructorType kPrivateConstructor{};
+
+ public:
+  /// Private constructor that is public only for use with `emplace` and
+  /// other in-place construction functions.
+  ///
+  /// Constructs a ``UniquePtr`` from an already-allocated value.
+  ///
+  /// NOTE: Instances of this type are most commonly constructed using
+  /// ``Allocator::MakeUnique``.
+  UniquePtr(PrivateConstructorType,
+            T* value,
+            const Layout* layout,
+            Allocator* allocator)
+      : value_(value), layout_(layout), allocator_(allocator) {}
+
+  // Allow construction with ``kPrivateConstructor`` to the implementation
+  // of ``MakeUnique``.
+  friend class Allocator;
 };
 
 }  // namespace pw::allocator

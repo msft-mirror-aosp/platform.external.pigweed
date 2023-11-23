@@ -49,6 +49,9 @@
 
 namespace pw::fuzzer {
 
+template <typename T>
+using Domain = fuzztest::Domain<T>;
+
 ////////////////////////////////////////////////////////////////
 // Arbitrary domains
 // Additional specializations are provided with the Pigweed domains.
@@ -395,7 +398,7 @@ struct ArbitraryImpl<StatusWithSize> {
 
 /// Like @cpp_func{pw::fuzzer::Arbitrary<Status>}, except that
 /// @cpp_func{pw::OkStatus} is filtered out.
-auto NonOkStatus() {
+inline auto NonOkStatus() {
   return ConstructorOf<pw::Status>(
       Map([](int code) { return static_cast<pw_Status>(code); },
           InRange<int>(PW_STATUS_CANCELLED, PW_STATUS_UNAUTHENTICATED)));

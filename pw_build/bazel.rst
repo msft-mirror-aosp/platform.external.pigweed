@@ -1,3 +1,5 @@
+.. _module-pw_build-bazel:
+
 Bazel
 =====
 Bazel is currently very experimental, and only builds for host and ARM Cortex-M
@@ -10,7 +12,8 @@ Wrapper rules
 The common configuration for Bazel for all modules is in the ``pigweed.bzl``
 file. The built-in Bazel rules ``cc_binary``, ``cc_library``, and ``cc_test``
 are wrapped with ``pw_cc_binary``, ``pw_cc_library``, and ``pw_cc_test``.
-These wrappers add parameters to calls to the compiler and linker.
+
+.. _module-pw_build-bazel-pw_linker_script:
 
 pw_linker_script
 ----------------
@@ -325,6 +328,24 @@ Example
    const std::array<std::byte, 50> kBarBlob = { ... };
 
    }  // namespace my::stuff
+
+Miscellaneous utilities
+-----------------------
+
+.. _module-pw_build-bazel-empty_cc_library:
+
+empty_cc_library
+^^^^^^^^^^^^^^^^
+This empty library is used as a placeholder for label flags that need to point
+to a library of some kind, but don't actually need the dependency to amount to
+anything.
+
+unspecified_backend
+^^^^^^^^^^^^^^^^^^^
+A special target used instead of a cc_library as the default condition in
+backend multiplexer select statements to signal that a facade is in an
+unconfigured state. This produces better error messages than e.g. using an
+invalid label.
 
 Toolchains and platforms
 ------------------------
