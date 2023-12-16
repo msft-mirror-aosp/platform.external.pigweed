@@ -95,6 +95,8 @@ path is ``out/presubmit``.  A subdirectory is created for each presubmit step.
 This directory persists between presubmit runs and can be cleaned by deleting it
 or running ``pw presubmit --clean``.
 
+.. _module-pw_presubmit-presubmit-checks:
+
 Presubmit checks
 ================
 A presubmit check is defined as a function or other callable. The function must
@@ -179,6 +181,13 @@ Formatting checks for a variety of languages are available from
 others. All of these checks can be included by adding
 ``pw_presubmit.format_code.presubmit_checks()`` to a presubmit program. These
 all use language-specific formatters like clang-format or black.
+
+Example changes demonstrating how to add formatters:
+
+* `CSS <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/178810>`_
+* `JSON <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/171991>`_
+* `reStructuredText <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/168541>`_
+* `TypeScript <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/164825>`_
 
 These will suggest fixes using ``pw format --fix``.
 

@@ -47,6 +47,7 @@ pw_doctor
 pw_emu
 pw_env_setup
 pw_file
+pw_format
 pw_function
 pw_fuzzer
 pw_hdlc
@@ -62,6 +63,7 @@ pw_interrupt_zephyr
 pw_intrusive_ptr
 pw_kvs
 pw_libc
+pw_libcxx
 pw_log
 pw_log_android
 pw_log_basic
@@ -75,6 +77,7 @@ pw_malloc_freelist
 pw_metric
 pw_minimal_cpp_stdlib
 pw_module
+pw_multibuf
 pw_multisink
 pw_package
 pw_perf_test

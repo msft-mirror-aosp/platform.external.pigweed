@@ -30,10 +30,10 @@ load(
 # Used in modules: //pw_build, (Assorted modules via select statements).
 http_archive(
     name = "platforms",
-    sha256 = "5308fc1d8865406a49427ba24a9ab53087f17f5266a7aabbfc28823f3916e1ca",
+    sha256 = "8150406605389ececb6da07cbcb509d5637a3ab9a24bc69b1101531367d89d74",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.6/platforms-0.0.6.tar.gz",
-        "https://github.com/bazelbuild/platforms/releases/download/0.0.6/platforms-0.0.6.tar.gz",
+        "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.8/platforms-0.0.8.tar.gz",
+        "https://github.com/bazelbuild/platforms/releases/download/0.0.8/platforms-0.0.8.tar.gz",
     ],
 )
 
@@ -85,7 +85,11 @@ cipd_repository(
     tag = "git_revision:d342388843734b6c5c50fb7e18cd3a76476b93aa",
 )
 
+# Note that the order of registration matters: Bazel will use the first
+# toolchain compatible with the target platform. So, they should be listed from
+# most-restrive to least-restrictive.
 register_toolchains(
+    "//pw_toolchain/host_clang:host_cc_toolchain_linux_kythe",
     "//pw_toolchain/host_clang:host_cc_toolchain_linux",
     "//pw_toolchain/host_clang:host_cc_toolchain_macos",
 )
@@ -138,6 +142,8 @@ load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 # Use Python 3.10 for bazel Python rules.
 python_register_toolchains(
     name = "python3_10",
+    # Allows building as root in a docker container. Required by oss-fuzz.
+    ignore_root_user_error = True,
     python_version = "3.10",
 )
 
@@ -198,11 +204,11 @@ protobuf_deps()
 # Setup Nanopb protoc plugin.
 # Required by: Pigweed.
 # Used in modules: pw_protobuf.
-git_repository(
+http_archive(
     name = "com_github_nanopb_nanopb",
-    commit = "ee27d70d329e1718f39eea1f425178e747263173",
-    remote = "https://github.com/nanopb/nanopb.git",
-    shallow_since = "1641373017 +0800",
+    sha256 = "3f78bf63722a810edb6da5ab5f0e76c7db13a961c2aad4ab49296e3095d0d830",
+    strip_prefix = "nanopb-0.4.8",
+    url = "https://github.com/nanopb/nanopb/archive/refs/tags/0.4.8.tar.gz",
 )
 
 load("@com_github_nanopb_nanopb//extra/bazel:nanopb_deps.bzl", "nanopb_deps")
@@ -386,4 +392,28 @@ http_archive(
     sha256 = "89af32b7568c504624f712c21fe97f7311c55fccb7ae6163cda7adde1cde7f62",
     strip_prefix = "FreeRTOS-Kernel-10.5.1",
     urls = ["https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V10.5.1.tar.gz"],
+)
+
+http_archive(
+    name = "stm32f4xx_hal_driver",
+    build_file = "//third_party/stm32cube:stm32_hal_driver.BUILD.bazel",
+    sha256 = "c8741e184555abcd153f7bdddc65e4b0103b51470d39ee0056ce2f8296b4e835",
+    strip_prefix = "stm32f4xx_hal_driver-1.8.0",
+    urls = ["https://github.com/STMicroelectronics/stm32f4xx_hal_driver/archive/refs/tags/v1.8.0.tar.gz"],
+)
+
+http_archive(
+    name = "cmsis_device_f4",
+    build_file = "//third_party/stm32cube:cmsis_device.BUILD.bazel",
+    sha256 = "6390baf3ea44aff09d0327a3c112c6ca44418806bfdfe1c5c2803941c391fdce",
+    strip_prefix = "cmsis_device_f4-2.6.8",
+    urls = ["https://github.com/STMicroelectronics/cmsis_device_f4/archive/refs/tags/v2.6.8.tar.gz"],
+)
+
+http_archive(
+    name = "cmsis_core",
+    build_file = "//third_party/stm32cube:cmsis_core.BUILD.bazel",
+    sha256 = "f711074a546bce04426c35e681446d69bc177435cd8f2f1395a52db64f52d100",
+    strip_prefix = "cmsis_core-5.4.0_cm4",
+    urls = ["https://github.com/STMicroelectronics/cmsis_core/archive/refs/tags/v5.4.0_cm4.tar.gz"],
 )

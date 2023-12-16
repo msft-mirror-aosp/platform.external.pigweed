@@ -80,6 +80,7 @@ declare_args() {
   dir_pw_emu = get_path_info("../pw_emu", "abspath")
   dir_pw_env_setup = get_path_info("../pw_env_setup", "abspath")
   dir_pw_file = get_path_info("../pw_file", "abspath")
+  dir_pw_format = get_path_info("../pw_format", "abspath")
   dir_pw_function = get_path_info("../pw_function", "abspath")
   dir_pw_fuzzer = get_path_info("../pw_fuzzer", "abspath")
   dir_pw_hdlc = get_path_info("../pw_hdlc", "abspath")
@@ -96,6 +97,7 @@ declare_args() {
   dir_pw_intrusive_ptr = get_path_info("../pw_intrusive_ptr", "abspath")
   dir_pw_kvs = get_path_info("../pw_kvs", "abspath")
   dir_pw_libc = get_path_info("../pw_libc", "abspath")
+  dir_pw_libcxx = get_path_info("../pw_libcxx", "abspath")
   dir_pw_log = get_path_info("../pw_log", "abspath")
   dir_pw_log_android = get_path_info("../pw_log_android", "abspath")
   dir_pw_log_basic = get_path_info("../pw_log_basic", "abspath")
@@ -110,6 +112,7 @@ declare_args() {
   dir_pw_minimal_cpp_stdlib =
       get_path_info("../pw_minimal_cpp_stdlib", "abspath")
   dir_pw_module = get_path_info("../pw_module", "abspath")
+  dir_pw_multibuf = get_path_info("../pw_multibuf", "abspath")
   dir_pw_multisink = get_path_info("../pw_multisink", "abspath")
   dir_pw_package = get_path_info("../pw_package", "abspath")
   dir_pw_perf_test = get_path_info("../pw_perf_test", "abspath")
@@ -244,6 +247,7 @@ declare_args() {
     dir_pw_emu,
     dir_pw_env_setup,
     dir_pw_file,
+    dir_pw_format,
     dir_pw_function,
     dir_pw_fuzzer,
     dir_pw_hdlc,
@@ -259,6 +263,7 @@ declare_args() {
     dir_pw_intrusive_ptr,
     dir_pw_kvs,
     dir_pw_libc,
+    dir_pw_libcxx,
     dir_pw_log,
     dir_pw_log_android,
     dir_pw_log_basic,
@@ -272,6 +277,7 @@ declare_args() {
     dir_pw_metric,
     dir_pw_minimal_cpp_stdlib,
     dir_pw_module,
+    dir_pw_multibuf,
     dir_pw_multisink,
     dir_pw_package,
     dir_pw_perf_test,
@@ -396,6 +402,7 @@ declare_args() {
     "$dir_pw_emu:tests",
     "$dir_pw_env_setup:tests",
     "$dir_pw_file:tests",
+    "$dir_pw_format:tests",
     "$dir_pw_function:tests",
     "$dir_pw_fuzzer:tests",
     "$dir_pw_hdlc:tests",
@@ -411,6 +418,7 @@ declare_args() {
     "$dir_pw_intrusive_ptr:tests",
     "$dir_pw_kvs:tests",
     "$dir_pw_libc:tests",
+    "$dir_pw_libcxx:tests",
     "$dir_pw_log:tests",
     "$dir_pw_log_android:tests",
     "$dir_pw_log_basic:tests",
@@ -424,6 +432,7 @@ declare_args() {
     "$dir_pw_metric:tests",
     "$dir_pw_minimal_cpp_stdlib:tests",
     "$dir_pw_module:tests",
+    "$dir_pw_multibuf:tests",
     "$dir_pw_multisink:tests",
     "$dir_pw_package:tests",
     "$dir_pw_perf_test:tests",
@@ -548,6 +557,7 @@ declare_args() {
     "$dir_pw_emu:docs",
     "$dir_pw_env_setup:docs",
     "$dir_pw_file:docs",
+    "$dir_pw_format:docs",
     "$dir_pw_function:docs",
     "$dir_pw_fuzzer:docs",
     "$dir_pw_hdlc:docs",
@@ -563,6 +573,7 @@ declare_args() {
     "$dir_pw_intrusive_ptr:docs",
     "$dir_pw_kvs:docs",
     "$dir_pw_libc:docs",
+    "$dir_pw_libcxx:docs",
     "$dir_pw_log:docs",
     "$dir_pw_log_android:docs",
     "$dir_pw_log_basic:docs",
@@ -576,6 +587,7 @@ declare_args() {
     "$dir_pw_metric:docs",
     "$dir_pw_minimal_cpp_stdlib:docs",
     "$dir_pw_module:docs",
+    "$dir_pw_multibuf:docs",
     "$dir_pw_multisink:docs",
     "$dir_pw_package:docs",
     "$dir_pw_perf_test:docs",

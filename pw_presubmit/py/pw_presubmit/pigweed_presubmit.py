@@ -102,7 +102,6 @@ def gn_clang_build(ctx: PresubmitContext):
     """Checks all compile targets that rely on LLVM tooling."""
     build_targets = [
         *_at_all_optimization_levels('host_clang'),
-        'cpp14_compatibility',
         'cpp20_compatibility',
         'asan',
         'tsan',
@@ -171,7 +170,6 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
 
     # TODO: b/234645359 - Re-enable on Windows when compatibility tests build.
     if sys.platform != 'win32':
-        build_targets.append('cpp14_compatibility')
         build_targets.append('cpp20_compatibility')
 
     # clang-tidy doesn't run on Windows.
@@ -214,7 +212,17 @@ coverage = build.GnGenNinja(
     doc='Run coverage for the host build.',
     path_filter=_BUILD_FILE_FILTER,
     ninja_targets=('coverage',),
-    coverage=True,
+    coverage_options=build.CoverageOptions(
+        target_bucket_root='gs://ng3-metrics/ng3-pigweed-coverage',
+        target_bucket_project='pigweed',
+        project='codesearch',
+        trace_type='LLVM',
+        trim_prefix='/b/s/w/ir/x/w/co',
+        ref='refs/heads/main',
+        source='infra:main',
+        owner='pigweed-infra@google.com',
+        bug_component='503634',
+    ),
 )
 
 
@@ -729,6 +737,14 @@ def bazel_build(ctx: PresubmitContext) -> None:
         '//pw_cpu_exception/...',
     )
 
+    # Build the pw_system example for the Discovery board using STM32Cube.
+    build.bazel(
+        ctx,
+        'build',
+        '--config=stm32f429i',
+        '//pw_system:system_example',
+    )
+
 
 def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
     """Runs the pw_transfer cross-language integration test only.
@@ -1130,6 +1146,7 @@ _EXCLUDE_FROM_TODO_CHECK = (
     r'.gitignore$',
     r'.pylintrc$',
     r'\bdocs/build_system.rst',
+    r'\bdocs/code_reviews.rst',
     r'\bpw_assert_basic/basic_handler.cc',
     r'\bpw_assert_basic/public/pw_assert_basic/handler.h',
     r'\bpw_blob_store/public/pw_blob_store/flat_file_system_entry.h',

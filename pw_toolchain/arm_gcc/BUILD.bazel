@@ -35,6 +35,7 @@ pw_cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = ["//pw_assert"],
+    alwayslink = 1,
 )
 
 pw_cc_library(
@@ -43,6 +44,21 @@ pw_cc_library(
     deps = [
         ":newlib_os_interface_stubs",
         "//pw_toolchain:wrap_abort",
+    ],
+)
+
+# Although we use similar warnings for clang and arm_gcc, we don't have one
+# centralized list, since we might want to use different warnings based on the
+# compiler in the future.
+pw_cc_toolchain_feature(
+    name = "warnings",
+    copts = [
+        "-Wall",
+        "-Wextra",
+        # Make all warnings errors, except for the exemptions below.
+        "-Werror",
+        "-Wno-error=cpp",  # preprocessor #warning statement
+        "-Wno-error=deprecated-declarations",  # [[deprecated]] attribute
     ],
 )
 
@@ -68,7 +84,6 @@ pw_cc_toolchain_feature(
     ],
     copts = [
         "-ffreestanding",
-        "-fno-common",
         "-Wno-psabi",
         "-specs=nano.specs",
         "-specs=nosys.specs",
@@ -187,6 +202,8 @@ pw_cc_toolchain_feature(
     feature_deps = [
         "@pw_toolchain//features:o2",
         "@pw_toolchain//features:c++17",
+        "@pw_toolchain//features:debugging",
+        "@pw_toolchain//features:reduced_size",
         "@pw_toolchain//features:no_canonical_prefixes",
         "@pw_toolchain//features:no_rtti",
         "@pw_toolchain//features:wno_register",
@@ -194,6 +211,7 @@ pw_cc_toolchain_feature(
         ":" + mcpu,
         ":sysroot",
         ":cortex_common",
+        ":warnings",
     ],
     gcc = "@gcc_arm_none_eabi_toolchain//:bin/arm-none-eabi-gcc",
     gcov = "@gcc_arm_none_eabi_toolchain//:bin/arm-none-eabi-gcov",
@@ -202,6 +220,7 @@ pw_cc_toolchain_feature(
     linker_files = "@gcc_arm_none_eabi_toolchain//:all",
     objcopy = "@gcc_arm_none_eabi_toolchain//:bin/arm-none-eabi-objcopy",
     objcopy_files = "@gcc_arm_none_eabi_toolchain//:all",
+    objdump = "@gcc_arm_none_eabi_toolchain//:bin/arm-none-eabi-objdump",
     strip = "@gcc_arm_none_eabi_toolchain//:bin/arm-none-eabi-strip",
     strip_files = "@gcc_arm_none_eabi_toolchain//:all",
     supports_param_files = 0,
