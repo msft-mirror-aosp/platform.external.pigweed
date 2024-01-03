@@ -24,8 +24,7 @@ import unittest
 from pigweed.pw_rpc.internal import packet_pb2
 from pigweed.pw_transfer import transfer_pb2
 from pw_hdlc import encode
-from pw_transfer import ProtocolVersion
-from pw_transfer.chunk import Chunk
+from pw_transfer.chunk import Chunk, ProtocolVersion
 
 import proxy
 
@@ -45,10 +44,13 @@ class MockRng(abc.ABC):
 class ProxyTest(unittest.IsolatedAsyncioTestCase):
     async def test_transposer_simple(self):
         sent_packets: List[bytes] = []
+        new_packets_event: asyncio.Event = asyncio.Event()
 
         # Async helper so DataTransposer can await on it.
         async def append(list: List[bytes], data: bytes):
             list.append(data)
+            # Notify that a new packet was "sent".
+            new_packets_event.set()
 
         transposer = proxy.DataTransposer(
             lambda data: append(sent_packets, data),
@@ -61,10 +63,21 @@ class ProxyTest(unittest.IsolatedAsyncioTestCase):
         await transposer.process(b'aaaaaaaaaa')
         await transposer.process(b'bbbbbbbbbb')
 
-        # Give the transposer task time to process the data.
-        await asyncio.sleep(0.05)
+        expected_packets = [b'bbbbbbbbbb', b'aaaaaaaaaa']
+        while True:
+            # Wait for new packets with a generous timeout.
+            try:
+                await asyncio.wait_for(new_packets_event.wait(), timeout=60.0)
+            except TimeoutError:
+                self.fail(
+                    f'Timeout waiting for data.  Packets sent: {sent_packets}'
+                )
 
-        self.assertEqual(sent_packets, [b'bbbbbbbbbb', b'aaaaaaaaaa'])
+            # Only assert the sent packets are corrected when we've sent the
+            # expected number.
+            if len(sent_packets) == len(expected_packets):
+                self.assertEqual(sent_packets, expected_packets)
+                return
 
     async def test_transposer_timeout(self):
         sent_packets: List[bytes] = []

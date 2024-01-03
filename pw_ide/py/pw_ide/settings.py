@@ -48,6 +48,7 @@ _DEFAULT_SUPPORTED_EDITORS: Dict[SupportedEditorName, bool] = {
 _DEFAULT_CONFIG: Dict[str, Any] = {
     'cascade_targets': False,
     'clangd_additional_query_drivers': [],
+    'compdb_gen_cmd': None,
     'compdb_search_paths': [_DEFAULT_BUILD_DIR_NAME],
     'default_target': None,
     'editors': _DEFAULT_SUPPORTED_EDITORS,
@@ -136,6 +137,15 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         directory) nor should it be committed to source control.
         """
         return Path(self._config.get('working_dir', PW_IDE_DEFAULT_DIR))
+
+    @property
+    def compdb_gen_cmd(self) -> Optional[str]:
+        """The command that should be run to generate a compilation database.
+
+        Defining this allows ``pw_ide`` to automatically generate a compilation
+        database if it suspects one has not been generated yet before a sync.
+        """
+        return self._config.get('compdb_gen_cmd')
 
     @property
     def compdb_search_paths(self) -> List[Tuple[Path, str]]:
@@ -262,7 +272,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         """
         return self._config.get('clangd_additional_query_drivers', list())
 
-    def clangd_query_drivers(self) -> List[str]:
+    def clangd_query_drivers(self, host_clang_cc_path: Path) -> List[str]:
         drivers = [
             *[
                 _expand_any_vars_str(p)
@@ -270,16 +280,15 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
             ],
         ]
 
-        if (env_var := env_vars.get('PW_PIGWEED_CIPD_INSTALL_DIR')) is not None:
-            drivers.append(str(Path(env_var) / 'bin' / '*'))
+        drivers.append(str(host_clang_cc_path.parent / '*'))
 
         if (env_var := env_vars.get('PW_ARM_CIPD_INSTALL_DIR')) is not None:
             drivers.append(str(Path(env_var) / 'bin' / '*'))
 
         return drivers
 
-    def clangd_query_driver_str(self) -> str:
-        return ','.join(self.clangd_query_drivers())
+    def clangd_query_driver_str(self, host_clang_cc_path: Path) -> str:
+        return ','.join(self.clangd_query_drivers(host_clang_cc_path))
 
     @property
     def editors(self) -> Dict[str, bool]:

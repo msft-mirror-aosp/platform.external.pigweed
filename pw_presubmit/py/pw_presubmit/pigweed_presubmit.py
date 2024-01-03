@@ -20,6 +20,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import subprocess
@@ -87,10 +88,18 @@ def _at_all_optimization_levels(target):
         yield f'{target}_{level}'
 
 
+class PigweedGnGenNinja(build.GnGenNinja):
+    """Add Pigweed-specific defaults to GnGenNinja."""
+
+    def add_default_gn_args(self, args):
+        """Add project-specific default GN args to 'args'."""
+        args['pw_C_OPTIMIZATION_LEVELS'] = ('debug',)
+
+
 #
 # Build presubmit checks
 #
-gn_all = build.GnGenNinja(
+gn_all = PigweedGnGenNinja(
     name='gn_all',
     path_filter=_BUILD_FILE_FILTER,
     gn_args=dict(pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS),
@@ -196,7 +205,7 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
     return build_targets
 
 
-gn_combined_build_check = build.GnGenNinja(
+gn_combined_build_check = PigweedGnGenNinja(
     name='gn_combined_build_check',
     doc='Run most host and device (QEMU) tests.',
     path_filter=_BUILD_FILE_FILTER,
@@ -207,21 +216,29 @@ gn_combined_build_check = build.GnGenNinja(
     ninja_targets=_gn_combined_build_check_targets(),
 )
 
-coverage = build.GnGenNinja(
+coverage = PigweedGnGenNinja(
     name='coverage',
     doc='Run coverage for the host build.',
     path_filter=_BUILD_FILE_FILTER,
     ninja_targets=('coverage',),
     coverage_options=build.CoverageOptions(
-        target_bucket_root='gs://ng3-metrics/ng3-pigweed-coverage',
-        target_bucket_project='pigweed',
-        project='codesearch',
-        trace_type='LLVM',
-        trim_prefix='/b/s/w/ir/x/w/co',
-        ref='refs/heads/main',
-        source='infra:main',
-        owner='pigweed-infra@google.com',
-        bug_component='503634',
+        common=build.CommonCoverageOptions(
+            target_bucket_project='pigweed',
+            target_bucket_root='gs://ng3-metrics/ng3-pigweed-coverage',
+            trace_type='LLVM',
+            owner='pigweed-infra@google.com',
+            bug_component='503634',
+        ),
+        codesearch=build.CodeSearchCoverageOptions(
+            host='pigweed-internal',
+            project='codesearch',
+            add_prefix='pigweed',
+            ref='refs/heads/main',
+            source='infra:main',
+        ),
+        gerrit=build.GerritCoverageOptions(
+            project='pigweed/pigweed',
+        ),
     ),
 )
 
@@ -233,7 +250,7 @@ def gn_arm_build(ctx: PresubmitContext):
     build.gn_check(ctx)
 
 
-stm32f429i = build.GnGenNinja(
+stm32f429i = PigweedGnGenNinja(
     name='stm32f429i',
     path_filter=_BUILD_FILE_FILTER,
     gn_args={
@@ -249,67 +266,7 @@ stm32f429i = build.GnGenNinja(
     ninja_targets=_at_all_optimization_levels('stm32f429i'),
 )
 
-gn_emboss_build = build.GnGenNinja(
-    name='gn_emboss_build',
-    packages=('emboss',),
-    gn_args=dict(
-        dir_pw_third_party_emboss=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'emboss'
-        ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    ),
-    ninja_targets=(*_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),),
-)
-
-gn_nanopb_build = build.GnGenNinja(
-    name='gn_nanopb_build',
-    path_filter=_BUILD_FILE_FILTER,
-    packages=('nanopb',),
-    gn_args=dict(
-        dir_pw_third_party_nanopb=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'nanopb'
-        ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    ),
-    ninja_targets=(
-        *_at_all_optimization_levels('stm32f429i'),
-        *_at_all_optimization_levels('host_clang'),
-    ),
-)
-
-gn_chre_build = build.GnGenNinja(
-    name='gn_chre_build',
-    path_filter=_BUILD_FILE_FILTER,
-    packages=('chre',),
-    gn_args=dict(
-        dir_pw_third_party_chre=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'chre'
-        ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    ),
-    ninja_targets=(*_at_all_optimization_levels('host_clang'),),
-)
-
-gn_emboss_nanopb_build = build.GnGenNinja(
-    name='gn_emboss_nanopb_build',
-    path_filter=_BUILD_FILE_FILTER,
-    packages=('emboss', 'nanopb'),
-    gn_args=dict(
-        dir_pw_third_party_emboss=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'emboss'
-        ),
-        dir_pw_third_party_nanopb=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'nanopb'
-        ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    ),
-    ninja_targets=(
-        *_at_all_optimization_levels('stm32f429i'),
-        *_at_all_optimization_levels('host_clang'),
-    ),
-)
-
-gn_crypto_mbedtls_build = build.GnGenNinja(
+gn_crypto_mbedtls_build = PigweedGnGenNinja(
     name='gn_crypto_mbedtls_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('mbedtls',),
@@ -332,7 +289,7 @@ gn_crypto_mbedtls_build = build.GnGenNinja(
     ),
 )
 
-gn_crypto_micro_ecc_build = build.GnGenNinja(
+gn_crypto_micro_ecc_build = PigweedGnGenNinja(
     name='gn_crypto_micro_ecc_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('micro-ecc',),
@@ -352,7 +309,7 @@ gn_crypto_micro_ecc_build = build.GnGenNinja(
     ),
 )
 
-gn_teensy_build = build.GnGenNinja(
+gn_teensy_build = PigweedGnGenNinja(
     name='gn_teensy_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('teensy',),
@@ -368,7 +325,7 @@ gn_teensy_build = build.GnGenNinja(
     ninja_targets=_at_all_optimization_levels('arduino'),
 )
 
-gn_pico_build = build.GnGenNinja(
+gn_pico_build = PigweedGnGenNinja(
     name='gn_pico_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('pico_sdk',),
@@ -381,7 +338,7 @@ gn_pico_build = build.GnGenNinja(
     ninja_targets=('pi_pico',),
 )
 
-gn_mimxrt595_build = build.GnGenNinja(
+gn_mimxrt595_build = PigweedGnGenNinja(
     name='gn_mimxrt595_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('mcuxpresso',),
@@ -397,7 +354,7 @@ gn_mimxrt595_build = build.GnGenNinja(
     ninja_targets=('mimxrt595'),
 )
 
-gn_mimxrt595_freertos_build = build.GnGenNinja(
+gn_mimxrt595_freertos_build = PigweedGnGenNinja(
     name='gn_mimxrt595_freertos_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('freertos', 'mcuxpresso'),
@@ -417,7 +374,7 @@ gn_mimxrt595_freertos_build = build.GnGenNinja(
     ninja_targets=('mimxrt595_freertos'),
 )
 
-gn_software_update_build = build.GnGenNinja(
+gn_software_update_build = PigweedGnGenNinja(
     name='gn_software_update_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('nanopb', 'protobuf', 'mbedtls', 'micro-ecc'),
@@ -445,7 +402,7 @@ gn_software_update_build = build.GnGenNinja(
     ninja_targets=_at_all_optimization_levels('host_clang'),
 )
 
-gn_pw_system_demo_build = build.GnGenNinja(
+gn_pw_system_demo_build = PigweedGnGenNinja(
     name='gn_pw_system_demo_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('freertos', 'nanopb', 'stm32cube_f4', 'pico_sdk'),
@@ -466,26 +423,48 @@ gn_pw_system_demo_build = build.GnGenNinja(
     ninja_targets=('pw_system_demo',),
 )
 
-gn_googletest_build = build.GnGenNinja(
-    name='gn_googletest_build',
+gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
+    name='gn_chre_googletest_nanopb_sapphire_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('googletest',),
-    gn_args={
-        'dir_pw_third_party_googletest': lambda ctx: '"{}"'.format(
+    packages=('boringssl', 'chre', 'emboss', 'googletest', 'icu', 'nanopb'),
+    gn_args=dict(
+        dir_pw_third_party_chre=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'chre'
+        ),
+        dir_pw_third_party_nanopb=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'nanopb'
+        ),
+        dir_pw_third_party_googletest=lambda ctx: '"{}"'.format(
             ctx.package_root / 'googletest'
         ),
-        'pw_unit_test_MAIN': lambda ctx: '"{}"'.format(
+        dir_pw_third_party_emboss=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'emboss'
+        ),
+        dir_pw_third_party_boringssl=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'boringssl'
+        ),
+        dir_pw_third_party_icu=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'icu'
+        ),
+        pw_unit_test_MAIN=lambda ctx: '"{}"'.format(
             ctx.root / 'third_party/googletest:gmock_main'
         ),
-        'pw_unit_test_GOOGLETEST_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'third_party/googletest'
+        pw_unit_test_BACKEND=lambda ctx: '"{}"'.format(
+            ctx.root / 'pw_unit_test:googletest'
         ),
-        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
-    },
-    ninja_targets=_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+        pw_function_CONFIG=lambda ctx: '"{}"'.format(
+            ctx.root / 'pw_function:enable_dynamic_allocation'
+        ),
+        pw_bluetooth_sapphire_ENABLED=True,
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    ),
+    ninja_targets=(
+        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+        *_at_all_optimization_levels('stm32f429i'),
+    ),
 )
 
-gn_fuzz_build = build.GnGenNinja(
+gn_fuzz_build = PigweedGnGenNinja(
     name='gn_fuzz_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('abseil-cpp', 'fuzztest', 'googletest', 're2'),
@@ -505,8 +484,8 @@ gn_fuzz_build = build.GnGenNinja(
         'pw_unit_test_MAIN': lambda ctx: '"{}"'.format(
             ctx.root / 'third_party/googletest:gmock_main'
         ),
-        'pw_unit_test_GOOGLETEST_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'third_party/googletest'
+        'pw_unit_test_BACKEND': lambda ctx: '"{}"'.format(
+            ctx.root / 'pw_unit_test:googletest'
         ),
     },
     ninja_targets=('fuzzers',),
@@ -517,7 +496,7 @@ gn_fuzz_build = build.GnGenNinja(
     ),
 )
 
-oss_fuzz_build = build.GnGenNinja(
+oss_fuzz_build = PigweedGnGenNinja(
     name='oss_fuzz_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('abseil-cpp', 'fuzztest', 'googletest', 're2'),
@@ -546,6 +525,7 @@ def _env_with_zephyr_vars(ctx: PresubmitContext) -> dict:
     # Set some variables here.
     env['ZEPHYR_BASE'] = str(ctx.package_root / 'zephyr')
     env['ZEPHYR_MODULES'] = str(ctx.root)
+    env['ZEPHYR_TOOLCHAIN_VARIANT'] = 'llvm'
     return env
 
 
@@ -557,6 +537,28 @@ def zephyr_build(ctx: PresubmitContext) -> None:
     env = _env_with_zephyr_vars(ctx)
     # Get the python twister runner
     twister = ctx.package_root / 'zephyr' / 'scripts' / 'twister'
+    # Get a list of the test roots
+    testsuite_roots = [
+        ctx.pw_root / dir
+        for dir in os.listdir(ctx.pw_root)
+        if dir.startswith('pw_')
+    ]
+    testsuite_roots_list = [
+        args for dir in testsuite_roots for args in ('--testsuite-root', dir)
+    ]
+    sysroot_dir = (
+        ctx.pw_root
+        / 'environment'
+        / 'cipd'
+        / 'packages'
+        / 'pigweed'
+        / 'clang_sysroot'
+    )
+    platform_filters = (
+        ['-P', 'native_posix', '-P', 'native_sim']
+        if platform.system() in ['Windows', 'Darwin']
+        else []
+    )
     # Run twister
     call(
         sys.executable,
@@ -566,8 +568,12 @@ def zephyr_build(ctx: PresubmitContext) -> None:
         '--clobber-output',
         '--inline-logs',
         '--verbose',
-        '--testsuite-root',
-        ctx.root / 'pw_unit_test_zephyr',
+        *platform_filters,
+        '-x=CONFIG_LLVM_USE_LLD=y',
+        '-x=CONFIG_COMPILER_RT_RTLIB=y',
+        f'-x=TOOLCHAIN_C_FLAGS=--sysroot={sysroot_dir}',
+        f'-x=TOOLCHAIN_LD_FLAGS=--sysroot={sysroot_dir}',
+        *testsuite_roots_list,
         env=env,
     )
     # Produces reports at (ctx.root / 'twister_out' / 'twister*.xml')
@@ -613,7 +619,7 @@ def docs_build(ctx: PresubmitContext) -> None:
     )
 
 
-gn_host_tools = build.GnGenNinja(
+gn_host_tools = PigweedGnGenNinja(
     name='gn_host_tools',
     ninja_targets=('host_tools',),
 )
@@ -710,11 +716,11 @@ def bazel_build(ctx: PresubmitContext) -> None:
             '//...',
         )
 
-        for platform, targets in targets_for_platform.items():
+        for platforms, targets in targets_for_platform.items():
             build.bazel(
                 ctx,
                 'build',
-                f'--platforms={platform}',
+                f'--platforms={platforms}',
                 f"--cxxopt='-std={cxxversion}'",
                 *targets,
             )
@@ -735,6 +741,14 @@ def bazel_build(ctx: PresubmitContext) -> None:
         '//pw_thread_freertos/...',
         '//pw_interrupt/...',
         '//pw_cpu_exception/...',
+    )
+
+    build.bazel(
+        ctx,
+        'build',
+        '--//pw_thread_freertos:config_override=//pw_build:test_module_config',
+        '--platforms=//pw_build/platforms:testonly_freertos',
+        '//pw_build:module_config_test',
     )
 
     # Build the pw_system example for the Discovery board using STM32Cube.
@@ -1243,9 +1257,7 @@ INTERNAL = (gn_mimxrt595_build, gn_mimxrt595_freertos_build)
 # program block CQ on Linux.
 MISC = (
     # keep-sorted: start
-    gn_chre_build,
-    gn_emboss_nanopb_build,
-    gn_googletest_build,
+    gn_chre_googletest_nanopb_sapphire_build,
     # keep-sorted: end
 )
 
@@ -1255,11 +1267,11 @@ SECURITY = (
     # keep-sorted: start
     gn_crypto_mbedtls_build,
     gn_crypto_micro_ecc_build,
-    gn_fuzz_build,
     gn_software_update_build,
-    oss_fuzz_build,
     # keep-sorted: end
 )
+
+FUZZ = (gn_fuzz_build, oss_fuzz_build)
 
 # Avoid running all checks on specific paths.
 PATH_EXCLUSIONS = FormatOptions.load().exclude
@@ -1280,7 +1292,7 @@ _LINTFORMAT = (
     source_in_build.gn(SOURCE_FILES_FILTER),
     source_is_in_cmake_build_warn_only,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
-    javascript_checks.eslint if shutil.which('npx') else (),
+    javascript_checks.eslint if shutil.which('npm') else (),
     json_check.presubmit_check,
     keep_sorted.presubmit_check,
     todo_check_with_exceptions,
@@ -1325,6 +1337,7 @@ PROGRAMS = Programs(
     # keep-sorted: start
     arduino_pico=ARDUINO_PICO,
     full=FULL,
+    fuzz=FUZZ,
     internal=INTERNAL,
     lintformat=LINTFORMAT,
     misc=MISC,

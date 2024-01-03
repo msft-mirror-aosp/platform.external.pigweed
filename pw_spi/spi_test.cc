@@ -15,7 +15,6 @@
 #include <array>
 #include <optional>
 
-#include "gtest/gtest.h"
 #include "pw_spi/chip_selector.h"
 #include "pw_spi/device.h"
 #include "pw_spi/initiator.h"
@@ -23,6 +22,7 @@
 #include "pw_status/status.h"
 #include "pw_sync/borrow.h"
 #include "pw_sync/mutex.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::spi {
 namespace {
@@ -70,7 +70,16 @@ class SpiResponderTestDevice : public ::testing::Test {
 
  private:
   // Stub SPI Responder, used to exercise public API surface.
-  class TestResponder : public Responder {};
+  class TestResponder : public Responder {
+   private:
+    void DoSetCompletionHandler(
+        Function<void(ByteSpan, Status)> /* callback */) override {}
+    Status DoWriteReadAsync(ConstByteSpan /* tx_data */,
+                            ByteSpan /* rx_data */) override {
+      return OkStatus();
+    }
+    void DoCancel() override {}
+  };
 
   TestResponder responder_;
 };

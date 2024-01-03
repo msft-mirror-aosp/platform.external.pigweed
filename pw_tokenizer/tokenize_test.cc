@@ -20,9 +20,9 @@
 #include <iterator>
 #include <limits>
 
-#include "gtest/gtest.h"
 #include "pw_tokenizer/hash.h"
 #include "pw_tokenizer_private/tokenize_test.h"
+#include "pw_unit_test/framework.h"
 #include "pw_varint/varint.h"
 
 namespace pw::tokenizer {
@@ -573,6 +573,13 @@ TEST_F(TokenizeToBuffer, Domain_Specified) {
   EXPECT_STREQ(tokenizer_domain, "._.");
   EXPECT_STREQ(string_literal, "The answer is: %s");
 }
+
+#undef _PW_TOKENIZER_RECORD_ORIGINAL_STRING
+#define _PW_TOKENIZER_RECORD_ORIGINAL_STRING(token, domain, string)        \
+  static_assert(false,                                                     \
+                "The internal _PW_TOKENIZER_RECORD_ORIGINAL_STRING was "   \
+                "repurposed earlier in this test! The macro or any macro " \
+                "that calls it cannot be used here!")
 
 }  // namespace
 }  // namespace pw::tokenizer

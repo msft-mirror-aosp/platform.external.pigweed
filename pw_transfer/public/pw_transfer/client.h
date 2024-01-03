@@ -57,14 +57,15 @@ class Client {
          TransferThread& transfer_thread,
          size_t max_bytes_to_receive = 0,
          uint32_t extend_window_divisor = cfg::kDefaultExtendWindowDivisor)
-      : client_(rpc_client, channel_id),
+      : default_protocol_version(ProtocolVersion::kLatest),
+        client_(rpc_client, channel_id),
         transfer_thread_(transfer_thread),
         max_parameters_(max_bytes_to_receive > 0
                             ? max_bytes_to_receive
                             : transfer_thread.max_chunk_size(),
                         transfer_thread.max_chunk_size(),
                         extend_window_divisor),
-        max_retries_(cfg::kDefaultMaxRetries),
+        max_retries_(cfg::kDefaultMaxClientRetries),
         max_lifetime_retries_(cfg::kDefaultMaxLifetimeRetries),
         has_read_stream_(false),
         has_write_stream_(false) {}
@@ -73,13 +74,29 @@ class Client {
   // the server is written to the provided writer. Returns OK if the transfer is
   // successfully started. When the transfer finishes (successfully or not), the
   // completion callback is invoked with the overall status.
-  Status Read(uint32_t resource_id,
-              stream::Writer& output,
-              CompletionFunc&& on_completion,
-              chrono::SystemClock::duration timeout = cfg::kDefaultChunkTimeout,
-              chrono::SystemClock::duration initial_chunk_timeout =
-                  cfg::kDefaultInitialChunkTimeout,
-              ProtocolVersion version = kDefaultProtocolVersion);
+  Status Read(
+      uint32_t resource_id,
+      stream::Writer& output,
+      CompletionFunc&& on_completion,
+      ProtocolVersion version,
+      chrono::SystemClock::duration timeout = cfg::kDefaultClientTimeout,
+      chrono::SystemClock::duration initial_chunk_timeout =
+          cfg::kDefaultInitialChunkTimeout);
+
+  Status Read(
+      uint32_t resource_id,
+      stream::Writer& output,
+      CompletionFunc&& on_completion,
+      chrono::SystemClock::duration timeout = cfg::kDefaultClientTimeout,
+      chrono::SystemClock::duration initial_chunk_timeout =
+          cfg::kDefaultInitialChunkTimeout) {
+    return Read(resource_id,
+                output,
+                std::move(on_completion),
+                default_protocol_version,
+                timeout,
+                initial_chunk_timeout);
+  }
 
   // Begins a new write transfer for the given resource ID. Data from the
   // provided reader is sent to the server. When the transfer finishes
@@ -89,10 +106,25 @@ class Client {
       uint32_t resource_id,
       stream::Reader& input,
       CompletionFunc&& on_completion,
-      chrono::SystemClock::duration timeout = cfg::kDefaultChunkTimeout,
+      ProtocolVersion version,
+      chrono::SystemClock::duration timeout = cfg::kDefaultClientTimeout,
       chrono::SystemClock::duration initial_chunk_timeout =
-          cfg::kDefaultInitialChunkTimeout,
-      ProtocolVersion version = kDefaultProtocolVersion);
+          cfg::kDefaultInitialChunkTimeout);
+
+  Status Write(
+      uint32_t resource_id,
+      stream::Reader& input,
+      CompletionFunc&& on_completion,
+      chrono::SystemClock::duration timeout = cfg::kDefaultClientTimeout,
+      chrono::SystemClock::duration initial_chunk_timeout =
+          cfg::kDefaultInitialChunkTimeout) {
+    return Write(resource_id,
+                 input,
+                 std::move(on_completion),
+                 default_protocol_version,
+                 timeout,
+                 initial_chunk_timeout);
+  }
 
   // Terminates an ongoing transfer for the specified resource ID.
   //
@@ -125,9 +157,12 @@ class Client {
     return OkStatus();
   }
 
+  constexpr void set_protocol_version(ProtocolVersion new_version) {
+    default_protocol_version = new_version;
+  }
+
  private:
-  static constexpr ProtocolVersion kDefaultProtocolVersion =
-      ProtocolVersion::kLegacy;
+  ProtocolVersion default_protocol_version;
 
   using Transfer = pw_rpc::raw::Transfer;
 

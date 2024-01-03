@@ -364,10 +364,9 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         help='do not update these settings types',
     )
     parser_vscode.add_argument(
-        '--install-extension',
-        dest='should_install_extension',
+        '--build-extension',
         action='store_true',
-        help='install the experimental extension',
+        help='build the extension from source',
     )
 
     return parser_root

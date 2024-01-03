@@ -40,12 +40,17 @@ use quote::{format_ident, quote, ToTokens};
 use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
+    spanned::Spanned,
     Expr, LitStr, Token,
 };
 
 use crate::{
     ConversionSpec, FormatFragment, FormatString, Length, MinFieldWidth, Precision, Specifier,
 };
+
+mod keywords {
+    syn::custom_keyword!(PW_FMT_CONCAT);
+}
 
 type TokenStream2 = proc_macro2::TokenStream;
 
@@ -173,6 +178,10 @@ pub trait FormatMacroGenerator {
 /// `FormatAndArgs` implements [`syn::parse::Parse`] and can be used to parse
 /// arguments to proc maros that take format strings.  Arguments are parsed
 /// according to the pattern: `($format_string:literal, $($args:expr),*)`
+///
+/// To support uses where format strings need to be built by macros at compile
+/// time, the format string can be specified as a set of string literals
+/// separated by the custom `PW_FMT_CONCAT` keyword.
 #[derive(Debug)]
 pub struct FormatAndArgs {
     format_string: LitStr,
@@ -182,7 +191,16 @@ pub struct FormatAndArgs {
 
 impl Parse for FormatAndArgs {
     fn parse(input: ParseStream) -> syn::parse::Result<Self> {
-        let format_string = input.parse::<LitStr>()?;
+        let punctuated =
+            Punctuated::<LitStr, keywords::PW_FMT_CONCAT>::parse_separated_nonempty(input)?;
+        let span = punctuated.span();
+        let format_string = LitStr::new(
+            &punctuated.into_iter().fold(String::new(), |mut acc, s| {
+                acc.push_str(&s.value());
+                acc
+            }),
+            span,
+        );
 
         let args = if input.is_empty() {
             // If there are no more tokens, no arguments were specified.
@@ -369,6 +387,10 @@ pub trait PrintfFormatMacroGenerator {
     /// Process a string fragment.
     ///
     /// **NOTE**: This string may contain unescaped `%` characters.
+    /// However, most implementations of this train can simply ignore string
+    /// fragments as they will be included (with properly escaped `%`
+    /// characters) as part of the format string passed to
+    /// [`PrintfFormatMacroGenerator::finalize`].
     ///
     /// See [`FormatMacroGenerator::string_fragment`] for a disambiguation
     /// between a string fragment and string conversion.
@@ -480,6 +502,120 @@ pub fn generate_printf(
     format_and_args: FormatAndArgs,
 ) -> core::result::Result<TokenStream2, syn::Error> {
     let generator = PrintfGenerator {
+        inner: generator,
+        format_string: "".into(),
+    };
+    generate(generator, format_and_args)
+}
+
+/// A specialized generator for proc macros that produce [`core::fmt`] style format strings.
+///
+/// For proc macros that need to translate a `pw_format` invocation into a
+/// [`core::fmt`] style format string, `CoreFmtFormatMacroGenerator` offer a
+/// specialized form of [`FormatMacroGenerator`] that builds the format string
+/// and provides it as an argument to
+/// [`finalize`](CoreFmtFormatMacroGenerator::finalize).
+///
+/// In cases where a generator needs to override the conversion specifier (i.e.
+/// `{}`, it can return it from its appropriate conversion method.
+pub trait CoreFmtFormatMacroGenerator {
+    /// Called by [`generate_core_fmt`] at the end of code generation.
+    ///
+    /// Works like [`FormatMacroGenerator::finalize`] with the addition of
+    /// being provided a [`core::fmt`] format string.
+    fn finalize(self, format_string: String) -> Result<TokenStream2>;
+
+    /// Process a string fragment.
+    ///
+    /// **NOTE**: This string may contain unescaped `{` and `}` characters.
+    /// However, most implementations of this train can simply ignore string
+    /// fragments as they will be included (with properly escaped `{` and `}`
+    /// characters) as part of the format string passed to
+    /// [`CoreFmtFormatMacroGenerator::finalize`].
+    ///
+    ///
+    /// See [`FormatMacroGenerator::string_fragment`] for a disambiguation
+    /// between a string fragment and string conversion.
+    fn string_fragment(&mut self, string: &str) -> Result<()>;
+
+    /// Process an integer conversion.
+    fn integer_conversion(&mut self, ty: Ident, expression: Expr) -> Result<Option<String>>;
+
+    /// Process a string conversion.
+    fn string_conversion(&mut self, expression: Expr) -> Result<Option<String>>;
+
+    /// Process a character conversion.
+    fn char_conversion(&mut self, expression: Expr) -> Result<Option<String>>;
+}
+
+// Wraps a `CoreFmtFormatMacroGenerator` in a `FormatMacroGenerator` that
+// generates the format string as it goes.
+struct CoreFmtGenerator<GENERATOR: CoreFmtFormatMacroGenerator> {
+    inner: GENERATOR,
+    format_string: String,
+}
+
+impl<GENERATOR: CoreFmtFormatMacroGenerator> FormatMacroGenerator for CoreFmtGenerator<GENERATOR> {
+    fn finalize(self) -> Result<TokenStream2> {
+        self.inner.finalize(self.format_string)
+    }
+
+    fn string_fragment(&mut self, string: &str) -> Result<()> {
+        // Escape '{' and '} characters.
+        let format_string = string.replace("{", "{{").replace("}", "}}");
+
+        self.format_string.push_str(&format_string);
+        self.inner.string_fragment(string)
+    }
+
+    fn integer_conversion(
+        &mut self,
+        display: IntegerDisplayType,
+        type_width: u8, // in bits
+        expression: Expr,
+    ) -> Result<()> {
+        let (conversion, ty) = match display {
+            IntegerDisplayType::Signed => ("{}", format_ident!("i{type_width}")),
+            IntegerDisplayType::Unsigned => ("{}", format_ident!("u{type_width}")),
+            IntegerDisplayType::Octal => ("{:o}", format_ident!("u{type_width}")),
+            IntegerDisplayType::Hex => ("{:x}", format_ident!("u{type_width}")),
+            IntegerDisplayType::UpperHex => ("{:X}", format_ident!("u{type_width}")),
+        };
+
+        match self.inner.integer_conversion(ty, expression)? {
+            Some(s) => self.format_string.push_str(&s),
+            None => self.format_string.push_str(conversion),
+        }
+
+        Ok(())
+    }
+
+    fn string_conversion(&mut self, expression: Expr) -> Result<()> {
+        match self.inner.string_conversion(expression)? {
+            Some(s) => self.format_string.push_str(&s),
+            None => self.format_string.push_str("{}"),
+        }
+        Ok(())
+    }
+
+    fn char_conversion(&mut self, expression: Expr) -> Result<()> {
+        match self.inner.char_conversion(expression)? {
+            Some(s) => self.format_string.push_str(&s),
+            None => self.format_string.push_str("{}"),
+        }
+        Ok(())
+    }
+}
+
+/// Generate code for a `pw_format` style proc macro that needs a [`core::fmt`] format string.
+///
+/// `generate_core_fmt` is a specialized version of [`generate`] which works with
+/// [`CoreFmtFormatMacroGenerator`]
+pub fn generate_core_fmt(
+    generator: impl CoreFmtFormatMacroGenerator,
+    format_and_args: FormatAndArgs,
+) -> core::result::Result<TokenStream2, syn::Error> {
+    let generator = CoreFmtGenerator {
         inner: generator,
         format_string: "".into(),
     };

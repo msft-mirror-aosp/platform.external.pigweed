@@ -14,14 +14,11 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_allocator/allocator.gni")
 import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
-
-declare_args() {
-  pw_allocator_POISON_HEAP = false
-}
 
 config("default_config") {
   include_dirs = [ "public" ]
@@ -30,6 +27,12 @@ config("default_config") {
 config("enable_heap_poison") {
   if (pw_allocator_POISON_HEAP) {
     defines = [ "PW_ALLOCATOR_POISON_ENABLE=1" ]
+  }
+}
+
+config("collect_metrics") {
+  if (pw_allocator_COLLECT_METRICS) {
+    defines = [ "PW_ALLOCATOR_COLLECT_METRICS=1" ]
   }
 }
 
@@ -58,16 +61,18 @@ pw_source_set("allocator_metric_proxy") {
   public = [ "public/pw_allocator/allocator_metric_proxy.h" ]
   public_deps = [
     ":allocator",
+    ":metrics",
     dir_pw_metric,
     dir_pw_status,
   ]
   deps = [ dir_pw_assert ]
-  sources = [ "allocator_metric_proxy.cc" ]
 }
 
 pw_source_set("block") {
-  public_configs = [ ":default_config" ]
-  configs = [ ":enable_heap_poison" ]
+  public_configs = [
+    ":default_config",
+    ":enable_heap_poison",
+  ]
   public = [ "public/pw_allocator/block.h" ]
   public_deps = [
     "$dir_pw_third_party/fuchsia:stdcompat",
@@ -80,20 +85,26 @@ pw_source_set("block") {
   sources = [ "block.cc" ]
 }
 
+pw_source_set("buffer") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/buffer.h" ]
+}
+
 pw_source_set("fallback_allocator") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/fallback_allocator.h" ]
   public_deps = [
     ":allocator",
-    dir_pw_assert,
+    ":allocator_metric_proxy",
+    ":metrics",
+    dir_pw_metric,
     dir_pw_status,
+    dir_pw_tokenizer,
   ]
-  sources = [ "fallback_allocator.cc" ]
 }
 
 pw_source_set("freelist") {
   public_configs = [ ":default_config" ]
-  configs = [ ":enable_heap_poison" ]
   public = [ "public/pw_allocator/freelist.h" ]
   public_deps = [
     "$dir_pw_containers:vector",
@@ -105,7 +116,6 @@ pw_source_set("freelist") {
 
 pw_source_set("freelist_heap") {
   public_configs = [ ":default_config" ]
-  configs = [ ":enable_heap_poison" ]
   public = [ "public/pw_allocator/freelist_heap.h" ]
   public_deps = [
     ":block",
@@ -128,6 +138,30 @@ pw_source_set("libc_allocator") {
     dir_pw_bytes,
   ]
   sources = [ "libc_allocator.cc" ]
+}
+
+pw_source_set("metrics") {
+  public_configs = [
+    ":default_config",
+    ":collect_metrics",
+  ]
+  public = [ "public/pw_allocator/metrics.h" ]
+  public_deps = [
+    ":allocator",
+    dir_pw_metric,
+  ]
+  deps = [ dir_pw_assert ]
+  sources = [ "metrics.cc" ]
+}
+
+pw_source_set("multiplex_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/multiplex_allocator.h" ]
+  public_deps = [
+    ":allocator",
+    ":allocator_metric_proxy",
+    dir_pw_metric,
+  ]
 }
 
 pw_source_set("null_allocator") {
@@ -190,6 +224,7 @@ pw_test_group("tests") {
     ":freelist_test",
     ":freelist_heap_test",
     ":libc_allocator_test",
+    ":multiplex_allocator_test",
     ":null_allocator_test",
     ":simple_allocator_test",
     ":split_free_list_allocator_test",
@@ -201,13 +236,40 @@ pw_source_set("allocator_testing") {
   public = [ "public/pw_allocator/allocator_testing.h" ]
   public_deps = [
     ":allocator",
+    ":allocator_metric_proxy",
     ":block",
+    ":buffer",
+    ":metrics",
     ":simple_allocator",
     dir_pw_bytes,
+    dir_pw_status,
     dir_pw_unit_test,
   ]
   deps = [ dir_pw_assert ]
   sources = [ "allocator_testing.cc" ]
+}
+
+pw_source_set("allocator_test_harness") {
+  public = [ "public/pw_allocator/allocator_test_harness.h" ]
+  public_deps = [
+    ":allocator",
+    "$dir_pw_containers",
+    dir_pw_random,
+  ]
+  deps = [
+    "$dir_pw_third_party/fuchsia:stdcompat",
+    dir_pw_assert,
+  ]
+  sources = [ "allocator_test_harness.cc" ]
+}
+
+pw_source_set("allocator_fuzzing") {
+  public = [ "public/pw_allocator/allocator_fuzzing.h" ]
+  public_deps = [
+    ":allocator_test_harness",
+    "$dir_pw_fuzzer:fuzztest",
+  ]
+  sources = [ "allocator_fuzzing.cc" ]
 }
 
 pw_test("allocator_test") {
@@ -220,10 +282,7 @@ pw_test("allocator_test") {
 }
 
 pw_test("allocator_metric_proxy_test") {
-  deps = [
-    ":allocator_metric_proxy",
-    ":allocator_testing",
-  ]
+  deps = [ ":allocator_testing" ]
   sources = [ "allocator_metric_proxy_test.cc" ]
 }
 
@@ -246,7 +305,6 @@ pw_test("fallback_allocator_test") {
 }
 
 pw_test("freelist_test") {
-  configs = [ ":enable_heap_poison" ]
   deps = [
     ":freelist",
     dir_pw_span,
@@ -256,7 +314,6 @@ pw_test("freelist_test") {
 }
 
 pw_test("freelist_heap_test") {
-  configs = [ ":enable_heap_poison" ]
   deps = [ ":freelist_heap" ]
   sources = [ "freelist_heap_test.cc" ]
 }
@@ -266,13 +323,21 @@ pw_test("libc_allocator_test") {
   sources = [ "libc_allocator_test.cc" ]
 }
 
+pw_test("multiplex_allocator_test") {
+  deps = [
+    ":allocator_testing",
+    ":multiplex_allocator",
+    dir_pw_tokenizer,
+  ]
+  sources = [ "multiplex_allocator_test.cc" ]
+}
+
 pw_test("null_allocator_test") {
   deps = [ ":null_allocator" ]
   sources = [ "null_allocator_test.cc" ]
 }
 
 pw_test("simple_allocator_test") {
-  configs = [ ":enable_heap_poison" ]
   deps = [
     ":allocator_testing",
     ":simple_allocator",
@@ -281,7 +346,6 @@ pw_test("simple_allocator_test") {
 }
 
 pw_test("split_free_list_allocator_test") {
-  configs = [ ":enable_heap_poison" ]
   deps = [
     ":allocator_testing",
     ":split_free_list_allocator",

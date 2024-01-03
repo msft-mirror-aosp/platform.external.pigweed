@@ -22,7 +22,6 @@ load(
     "//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
     "cipd_client_repository",
     "cipd_repository",
-    "pigweed_deps",
 )
 
 # Set up Bazel platforms.
@@ -42,21 +41,14 @@ local_repository(
     path = "pw_toolchain_bazel",
 )
 
-# Setup xcode on mac.
-load("@pw_toolchain//features/macos:generate_xcode_repository.bzl", "pw_xcode_command_line_tools_repository")
-
-pw_xcode_command_line_tools_repository()
-
 # Setup CIPD client and packages.
 # Required by: pigweed.
 # Used by modules: all.
-pigweed_deps()
-
-load("@cipd_deps//:cipd_init.bzl", "cipd_init")
-
-cipd_init()
-
 cipd_client_repository()
+
+load("//pw_toolchain:register_toolchains.bzl", "register_pigweed_cxx_toolchains")
+
+register_pigweed_cxx_toolchains()
 
 # Set up legacy pw_transfer test binaries.
 # Required by: pigweed.
@@ -65,49 +57,6 @@ cipd_repository(
     name = "pw_transfer_test_binaries",
     path = "pigweed/pw_transfer_test_binaries/${os=linux}-${arch=amd64}",
     tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
-)
-
-# Fetch llvm toolchain.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "llvm_toolchain",
-    path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:8475d0a2b853f6184948b428ec679edf84ed2688",
-)
-
-# Fetch linux sysroot for host builds.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "linux_sysroot",
-    path = "fuchsia/third_party/sysroot/linux",
-    tag = "git_revision:d342388843734b6c5c50fb7e18cd3a76476b93aa",
-)
-
-# Note that the order of registration matters: Bazel will use the first
-# toolchain compatible with the target platform. So, they should be listed from
-# most-restrive to least-restrictive.
-register_toolchains(
-    "//pw_toolchain/host_clang:host_cc_toolchain_linux_kythe",
-    "//pw_toolchain/host_clang:host_cc_toolchain_linux",
-    "//pw_toolchain/host_clang:host_cc_toolchain_macos",
-)
-
-# Fetch gcc-arm-none-eabi toolchain.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "gcc_arm_none_eabi_toolchain",
-    path = "fuchsia/third_party/armgcc/${os}-${arch}",
-    tag = "version:2@12.2.mpacbti-rel1.1",
-)
-
-register_toolchains(
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m0",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m3",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4+nofp",
 )
 
 # Set up Starlark library.
@@ -127,27 +76,38 @@ load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 
 bazel_skylib_workspace()
 
+http_archive(
+    name = "rules_proto",
+    sha256 = "dc3fb206a2cb3441b485eb1e423165b231235a1ea9b031b4433cf7bc1fa460dd",
+    strip_prefix = "rules_proto-5.3.0-21.7",
+    urls = [
+        "https://github.com/bazelbuild/rules_proto/archive/refs/tags/5.3.0-21.7.tar.gz",
+    ],
+)
+
 # Set up Python support.
 # Required by: rules_fuzzing, com_github_nanopb_nanopb.
 # Used in modules: None.
 http_archive(
     name = "rules_python",
-    sha256 = "0a8003b044294d7840ac7d9d73eef05d6ceb682d7516781a4ec62eeb34702578",
-    strip_prefix = "rules_python-0.24.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.24.0/rules_python-0.24.0.tar.gz",
+    sha256 = "9acc0944c94adb23fba1c9988b48768b1bacc6583b52a2586895c5b7491e2e31",
+    strip_prefix = "rules_python-0.27.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.27.0/rules_python-0.27.0.tar.gz",
 )
 
-load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
+
+py_repositories()
 
 # Use Python 3.10 for bazel Python rules.
 python_register_toolchains(
-    name = "python3_10",
+    name = "python3",
     # Allows building as root in a docker container. Required by oss-fuzz.
     ignore_root_user_error = True,
     python_version = "3.10",
 )
 
-load("@python3_10//:defs.bzl", "interpreter")
+load("@python3//:defs.bzl", "interpreter")
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 # Specify third party Python package versions with pip_parse.
@@ -293,11 +253,12 @@ http_archive(
 # Set up rules for fuzz testing.
 # Required by: pigweed.
 # Used in modules: //pw_protobuf, //pw_tokenizer, //pw_fuzzer.
-http_archive(
+#
+# TODO(b/311746469): Switch back to a released version when possible.
+git_repository(
     name = "rules_fuzzing",
-    sha256 = "d9002dd3cd6437017f08593124fdd1b13b3473c7b929ceb0e60d317cb9346118",
-    strip_prefix = "rules_fuzzing-0.3.2",
-    urls = ["https://github.com/bazelbuild/rules_fuzzing/archive/v0.3.2.zip"],
+    commit = "67ba0264c46c173a75825f2ae0a0b4b9b17c5e59",
+    remote = "https://github.com/bazelbuild/rules_fuzzing",
 )
 
 load("@rules_fuzzing//fuzzing:repositories.bzl", "rules_fuzzing_dependencies")
