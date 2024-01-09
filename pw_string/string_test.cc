@@ -18,9 +18,9 @@
 #include <iterator>
 #include <type_traits>
 
-#include "gtest/gtest.h"
 #include "pw_compilation_testing/negative_compilation.h"
 #include "pw_polyfill/standard.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw {
 
@@ -445,7 +445,7 @@ TEST(InlineString, Construct_Iterator) {
 TEST(InlineString, Construct_CopySameCapacity) {
   static_assert(std::is_trivially_copyable<InlineString<0>>(), "Copy");
   static_assert(std::is_trivially_copyable<InlineString<10>>(), "Copy");
-  static_assert(std::is_trivially_copyable<InlineBasicString<int, 10>>(),
+  static_assert(std::is_trivially_copyable<InlineBasicString<char, 10>>(),
                 "Copy");
 
   TEST_STRING(InlineString<0>(kEmptyCapacity0), , "");

@@ -36,9 +36,8 @@ cc_library {
     host_supported: true,
     srcs: [
         "allocator.cc",
-        "allocator_metric_proxy.cc",
-        "fallback_allocator.cc",
         "libc_allocator.cc",
+        "metrics.cc",
         "split_free_list_allocator.cc",
     ],
     static_libs: [

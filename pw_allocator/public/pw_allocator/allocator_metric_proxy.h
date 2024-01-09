@@ -16,6 +16,7 @@
 #include <cstddef>
 
 #include "pw_allocator/allocator.h"
+#include "pw_allocator/metrics.h"
 #include "pw_metric/metric.h"
 #include "pw_status/status.h"
 
@@ -23,49 +24,78 @@ namespace pw::allocator {
 
 /// Wraps an `Allocator` and records details of its usage.
 ///
-/// In order for this object to record memory usage metrics correctly, all calls
-/// to, e.g., `Allocate`, `Deallocate`, etc. must be made through it and not the
-/// allocator it wraps.
-///
-/// As a rule, the wrapped allocator is always invoked before any conditions are
-/// asserted by this class, with the exception of checking that a wrapped
-/// allocator has been set via `Initialize`. This allows the wrapped allocator
-/// to issue a more detailed error in case of misuse.
-class AllocatorMetricProxy : public Allocator {
+/// Metric collection is performed using the provided template parameter type.
+/// Callers can not instantiate this class directly, as it lacks a public
+/// constructor. Instead, callers should use derived classes which provide the
+/// template parameter type, such as `AllocatorMetricProxy` which uses the
+/// default metrics implementation, or `AllocatorMetricProxyForTest` which
+/// always uses the real metrics implementation.
+template <typename MetricsType>
+class AllocatorMetricProxyImpl : public AllocatorWithMetrics<MetricsType> {
  public:
-  constexpr explicit AllocatorMetricProxy(metric::Token token)
-      : memusage_(token) {}
+  using metrics_type = MetricsType;
+
+  constexpr explicit AllocatorMetricProxyImpl(metric::Token token)
+      : allocator_(nullptr), metrics_(token) {}
 
   /// Sets the wrapped allocator.
   ///
   /// This must be called exactly once and before any other method.
   ///
   /// @param[in]  allocator   The allocator to wrap and record.
-  void Initialize(Allocator& allocator);
+  void Init(Allocator& allocator) {
+    allocator_ = &allocator;
+    metrics_.Init();
+  }
 
-  metric::Group& memusage() { return memusage_; }
-  size_t used() const { return used_.value(); }
-  size_t peak() const { return peak_.value(); }
-  size_t count() const { return count_.value(); }
+  /// @copydoc `Init`.
+  void Initialize(Allocator& allocator) { Init(allocator); }
+
+  metrics_type& metric_group() override { return metrics_; }
+  const metrics_type& metric_group() const override { return metrics_; }
 
  private:
   /// @copydoc Allocator::Query
-  Status DoQuery(const void* ptr, Layout layout) const override;
+  Status DoQuery(const void* ptr, Layout layout) const override {
+    return allocator_->Query(ptr, layout);
+  }
 
   /// @copydoc Allocator::Allocate
-  void* DoAllocate(Layout layout) override;
+  void* DoAllocate(Layout layout) override {
+    void* ptr = allocator_->Allocate(layout);
+    if (ptr == nullptr) {
+      return nullptr;
+    }
+    metrics_.Update(0, layout.size());
+    return ptr;
+  }
 
   /// @copydoc Allocator::Deallocate
-  void DoDeallocate(void* ptr, Layout layout) override;
+  void DoDeallocate(void* ptr, Layout layout) override {
+    if (ptr != nullptr) {
+      allocator_->Deallocate(ptr, layout);
+      metrics_.Update(layout.size(), 0);
+    }
+  }
 
   /// @copydoc Allocator::Resize
-  bool DoResize(void* ptr, Layout layout, size_t new_size) override;
+  bool DoResize(void* ptr, Layout layout, size_t new_size) override {
+    if (!allocator_->Resize(ptr, layout, new_size)) {
+      return false;
+    }
+    metrics_.Update(layout.size(), new_size);
+    return true;
+  }
 
-  metric::Group memusage_;
-  Allocator* allocator_ = nullptr;
-  PW_METRIC(used_, "used", 0U);
-  PW_METRIC(peak_, "peak", 0U);
-  PW_METRIC(count_, "count", 0U);
+  Allocator* allocator_;
+  metrics_type metrics_;
 };
+
+/// Allocator metric proxy that uses the default metrics implementation.
+///
+/// Depending on the value of the `pw_allocator_COLLECT_METRICS` build argument,
+/// the `internal::DefaultMetrics` type is an alias for either the real or stub
+/// metrics implementation.
+using AllocatorMetricProxy = AllocatorMetricProxyImpl<internal::DefaultMetrics>;
 
 }  // namespace pw::allocator

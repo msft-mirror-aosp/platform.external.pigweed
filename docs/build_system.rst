@@ -646,8 +646,13 @@ use the following additional tags:
 
    will run all tests *except* for these integration tests.
 
+.. _docs-build_system-bazel_coverage:
+
 Code Coverage
 ^^^^^^^^^^^^^
+TODO(`b/304833225 <https://issues.pigweed.dev/issues/304833225>`_): Fix code
+coverage when using the (default) hermetic toolchains.
+
 Making use of the code coverage functionality in Bazel is straightforward.
 
 1. Add the following lines to your '.bazelrc'.

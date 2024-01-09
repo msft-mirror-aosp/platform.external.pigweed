@@ -32,6 +32,7 @@ from pw_ide.cpp import (
     CppCompilationDatabasesMap,
     CppIdeFeaturesState,
     CppIdeFeaturesTarget,
+    find_cipd_installed_exe_path,
 )
 
 from pw_ide.exceptions import (
@@ -51,7 +52,7 @@ from pw_ide.status_reporter import LoggingStatusReporter, StatusReporter
 
 from pw_ide import vscode
 from pw_ide.vscode import (
-    install_extension_from_vsix,
+    build_extension as build_vscode_extension,
     VscSettingsManager,
     VscSettingsType,
 )
@@ -142,7 +143,7 @@ def cmd_setup(
 def cmd_vscode(
     include: Optional[List[VscSettingsType]] = None,
     exclude: Optional[List[VscSettingsType]] = None,
-    should_install_extension: bool = False,
+    build_extension: bool = False,
     reporter: StatusReporter = StatusReporter(),
     pw_ide_settings: PigweedIdeSettings = PigweedIdeSettings(),
 ) -> None:
@@ -201,6 +202,16 @@ def cmd_vscode(
     Likewise, it can be enabled by setting that value to true. It is enabled by
     default.
     """
+    if build_extension:
+        reporter.info('Building the Visual Studio Code extension')
+
+        try:
+            build_vscode_extension(Path(env.PW_ROOT))
+        except subprocess.CalledProcessError:
+            reporter.err("Failed! See output for more info.")
+        else:
+            reporter.ok('Built successfully!')
+
     if not pw_ide_settings.editor_enabled('vscode'):
         reporter.wrn(
             'Visual Studio Code support is disabled in settings! If this is '
@@ -266,18 +277,6 @@ def cmd_vscode(
             reporter.new(
                 f'{verb} Visual Studio Code active ' f'{settings_type.value}'
             )
-
-    if should_install_extension:
-        reporter.new("Installing Visual Studio Code extension")
-
-        try:
-            install_extension_from_vsix(reporter)
-        except FileNotFoundError:
-            reporter.err("Could not find Visual Studio Code")
-            sys.exit(1)
-        except subprocess.CalledProcessError:
-            reporter.err("Failed to install extension!")
-            sys.exit(1)
 
 
 def _process_compdbs(  # pylint: disable=too-many-locals
@@ -383,7 +382,9 @@ def _process_compdbs(  # pylint: disable=too-many-locals
         # We haven't seen this database before. Process it.
         processed_compdbs = compdb.process(
             settings=pw_ide_settings,
-            path_globs=pw_ide_settings.clangd_query_drivers(),
+            path_globs=pw_ide_settings.clangd_query_drivers(
+                find_cipd_installed_exe_path("clang++")
+            ),
             always_output_new=always_output_new,
         )
 
@@ -515,6 +516,10 @@ def _process_compdbs(  # pylint: disable=too-many-locals
     return False
 
 
+class TryAgainException(Exception):
+    """A signal to retry an action."""
+
+
 @_inject_reporter
 def cmd_cpp(  # pylint: disable=too-many-arguments, too-many-locals, too-many-branches, too-many-statements
     should_list_targets: bool,
@@ -524,6 +529,7 @@ def cmd_cpp(  # pylint: disable=too-many-arguments, too-many-locals, too-many-br
     use_default_target: bool = False,
     clangd_command: bool = False,
     clangd_command_system: Optional[str] = None,
+    should_try_compdb_gen_cmd: bool = True,
     reporter: StatusReporter = StatusReporter(),
     pw_ide_settings: PigweedIdeSettings = PigweedIdeSettings(),
 ) -> None:
@@ -676,8 +682,34 @@ def cmd_cpp(  # pylint: disable=too-many-arguments, too-many-locals, too-many-br
                         'generate a compilation database.',
                     ]
                 )
+
+                if (
+                    should_try_compdb_gen_cmd
+                    and pw_ide_settings.compdb_gen_cmd is not None
+                ):
+                    raise TryAgainException
+
                 sys.exit(1)
 
+        except TryAgainException:
+            if pw_ide_settings.compdb_gen_cmd is not None:
+                reporter.info(
+                    'Will try to generate a compilation database with: '
+                    f'{pw_ide_settings.compdb_gen_cmd}'
+                )
+
+                subprocess.run(shlex.split(pw_ide_settings.compdb_gen_cmd))
+
+                cmd_cpp(
+                    should_list_targets=should_list_targets,
+                    should_get_target=should_get_target,
+                    target_to_set=target_to_set,
+                    process=process,
+                    use_default_target=use_default_target,
+                    clangd_command=clangd_command,
+                    clangd_command_system=clangd_command_system,
+                    should_try_compdb_gen_cmd=False,
+                )
         except InvalidTargetException:
             reporter.err(
                 f'Invalid target toolchain! {target_to_set} not among the '

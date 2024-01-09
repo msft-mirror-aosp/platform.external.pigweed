@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:e4702d7409069c4f12d45ea7b7f0890717ca3f4b"
+        "git_revision:85944ebc24a90ec1e489e85a46fdc68542c3146f"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -44,17 +44,8 @@
         "linux-amd64",
         "linux-arm64",
         "mac-amd64",
+        "mac-arm64",
         "windows-amd64"
-      ],
-      "tags": [
-        "version:2@24.4"
-      ]
-    },
-    {
-      "_comment": "Always get the amd64 version on Mac until there's an arm64 version",
-      "path": "infra/3pp/tools/protoc/mac-amd64",
-      "platforms": [
-        "mac-arm64"
       ],
       "tags": [
         "version:2@24.4"
@@ -70,7 +61,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:00396e6a1a0b79fda008cb4e86b616d7952b33c8"
+        "git_revision:725656bdd885483c39f482a01ea25d67acf39c46"
       ],
       "version_file": ".versions/clang.cipd_version"
     },

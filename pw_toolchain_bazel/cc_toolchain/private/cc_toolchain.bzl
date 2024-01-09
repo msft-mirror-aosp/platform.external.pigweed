@@ -16,34 +16,31 @@
 load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
 load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
+    "ActionConfigInfo",
     "FlagSetInfo",
     "action_config",
     "feature",
     "flag_group",
     "flag_set",
-    "tool",
     "variable_with_value",
 )
 load(
+    "//cc_toolchain/private:action_config_files.bzl",
+    "pw_cc_action_config_file_collector",
+)
+load(
     "//cc_toolchain/private:providers.bzl",
-    "ToolchainFeatureInfo",
+    "ActionConfigListInfo",
 )
 load(
     "//cc_toolchain/private:utils.bzl",
-    "ALL_ASM_ACTIONS",
-    "ALL_CPP_COMPILER_ACTIONS",
-    "ALL_C_COMPILER_ACTIONS",
-    "ALL_LINK_ACTIONS",
-    "check_deps",
+    "ALL_FILE_GROUPS",
+    "actionless_flag_set",
+    "check_deps_provide",
 )
 
-# TODO(b/301004620): Remove when bazel 7 is released and this constant exists in
-# ACTION_NAMES
-OBJ_COPY_ACTION_NAME = "objcopy_embed_data"
-OBJ_DUMP_ACTION_NAME = "objdump_embed_data"
-
-PW_CC_TOOLCHAIN_CONFIG_ATTRS = {
-    "feature_deps": "`pw_cc_toolchain_feature` labels that provide features for this toolchain",
+# These attributes of pw_cc_toolchain are deprecated.
+PW_CC_TOOLCHAIN_DEPRECATED_TOOL_ATTRS = {
     "ar": "Path to the tool to use for `ar` (static link) actions",
     "cpp": "Path to the tool to use for C++ compile actions",
     "gcc": "Path to the tool to use for C compile actions",
@@ -52,7 +49,11 @@ PW_CC_TOOLCHAIN_CONFIG_ATTRS = {
     "strip": "Path to the tool to use for strip actions",
     "objcopy": "Path to the tool to use for objcopy actions",
     "objdump": "Path to the tool to use for objdump actions",
-    "action_config_flag_sets": "List of flag sets to apply to the respective `action_config`s",
+}
+
+PW_CC_TOOLCHAIN_CONFIG_ATTRS = {
+    "action_configs": "List of `pw_cc_action_config` labels that bind tools to the appropriate actions",
+    "action_config_flag_sets": "List of `pw_cc_flag_set`s to apply to their respective action configs",
 
     # Attributes originally part of create_cc_toolchain_config_info.
     "toolchain_identifier": "See documentation for cc_common.create_cc_toolchain_config_info()",
@@ -64,6 +65,8 @@ PW_CC_TOOLCHAIN_CONFIG_ATTRS = {
     "abi_version": "See documentation for cc_common.create_cc_toolchain_config_info()",
     "abi_libc_version": "See documentation for cc_common.create_cc_toolchain_config_info()",
     "cc_target_os": "See documentation for cc_common.create_cc_toolchain_config_info()",
+    "builtin_sysroot": "See documentation for cc_common.create_cc_toolchain_config_info()",
+    "cxx_builtin_include_directories": "See documentation for cc_common.create_cc_toolchain_config_info()",
 }
 
 PW_CC_TOOLCHAIN_SHARED_ATTRS = ["toolchain_identifier"]
@@ -71,38 +74,10 @@ PW_CC_TOOLCHAIN_SHARED_ATTRS = ["toolchain_identifier"]
 PW_CC_TOOLCHAIN_BLOCKED_ATTRS = {
     "toolchain_config": "pw_cc_toolchain includes a generated toolchain config",
     "artifact_name_patterns": "pw_cc_toolchain does not yet support artifact name patterns",
-    "features": "Use feature_deps to add pw_cc_toolchain_feature deps to the toolchain",
-    "action_configs": "pw_cc_toolchain does not yet support action configs, use the \"ar\", \"cpp\", \"gcc\", \"gcov\", \"ld\", and \"strip\" attributes to set toolchain tools",
-    "cxx_builtin_include_directories": "Use a pw_cc_toolchain_feature to add cxx_builtin_include_directories",
-    "tool_paths": "pw_cc_toolchain does not support tool_paths, use \"ar\", \"cpp\", \"gcc\", \"gcov\", \"ld\", and \"strip\" attributes to set toolchain tools",
+    "features": "pw_cc_toolchain does not yet support features",
+    "tool_paths": "pw_cc_toolchain does not support tool_paths, use \"action_configs\" to set toolchain tools",
     "make_variables": "pw_cc_toolchain does not yet support make variables",
-    "builtin_sysroot": "Use a pw_cc_toolchain_feature to add a builtin_sysroot",
 }
-
-def _action_configs(action_tool, action_list, flag_sets_by_action):
-    """Binds a tool to an action.
-
-    Args:
-        action_tool (File): Tool to bind to the specified actions.
-        action_list (List[str]): List of actions to bind to the specified tool.
-        flag_sets_by_action: Dictionary mapping action names to lists of applicable flag sets.
-
-    Returns:
-        action_config: A action_config binding the provided tool to the
-          specified actions.
-    """
-    return [
-        action_config(
-            action_name = action,
-            tools = [
-                tool(
-                    tool = action_tool,
-                ),
-            ],
-            flag_sets = flag_sets_by_action.get(action, default = []),
-        )
-        for action in action_list
-    ]
 
 def _archiver_flags_feature(is_mac):
     """Returns our implementation of the legacy archiver_flags feature.
@@ -177,6 +152,52 @@ def _archiver_flags_feature(is_mac):
         ],
     )
 
+def _extend_action_set_flags(action, flag_sets_by_action):
+    extended_flags = flag_sets_by_action.get(action.action_name, default = [])
+    for x in extended_flags:
+        for y in action.flag_sets:
+            if x == y:
+                # TODO: b/311679764 - Propagate labels so we can raise the label
+                # as part of the warning.
+                fail("Flag set in `action_config_flag_sets` is already bound to the `{}` tool".format(action.action_name))
+    return action_config(
+        action_name = action.action_name,
+        enabled = action.enabled,
+        tools = action.tools,
+        flag_sets = action.flag_sets + extended_flags,
+        implies = action.implies,
+    )
+
+def _collect_action_configs(ctx, flag_sets_by_action):
+    known_actions = {}
+    action_configs = []
+    for ac_dep in ctx.attr.action_configs:
+        temp_actions = []
+        if ActionConfigInfo in ac_dep:
+            temp_actions.append(ac_dep[ActionConfigInfo])
+        if ActionConfigListInfo in ac_dep:
+            temp_actions.extend([ac for ac in ac_dep[ActionConfigListInfo].action_configs])
+        if ActionConfigListInfo not in ac_dep and ActionConfigInfo not in ac_dep:
+            fail(
+                "{} in `action_configs` is not a `pw_cc_action_config`".format(
+                    ac_dep.label,
+                ),
+            )
+        for action in temp_actions:
+            if action.action_name in known_actions:
+                fail("In {} both {} and {} implement `{}`".format(
+                    ctx.label,
+                    ac_dep.label,
+                    known_actions[action.action_name],
+                    action.action_name,
+                ))
+
+            # Track which labels implement each action name for better error
+            # reporting.
+            known_actions[action.action_name] = ac_dep.label
+            action_configs.append(_extend_action_set_flags(action, flag_sets_by_action))
+    return action_configs
+
 def _archiver_flags(is_mac):
     """Returns flags for llvm-ar."""
     if is_mac:
@@ -184,24 +205,12 @@ def _archiver_flags(is_mac):
     else:
         return ["rcsD"]
 
-def _strip_actions(flag_set_to_copy):
-    """Copies a flag_set, stripping `actions`.
-
-    Args:
-        flag_set_to_copy: The base flag_set to copy.
-    Returns:
-        flag_set with empty `actions` list.
-    """
-    return flag_set(
-        with_features = flag_set_to_copy.with_features,
-        flag_groups = flag_set_to_copy.flag_groups,
-    )
-
 def _create_action_flag_set_map(flag_sets):
     """Creates a mapping of action names to flag sets.
 
     Args:
         flag_sets: the flag sets to expand.
+
     Returns:
         Dictionary mapping action names to lists of FlagSetInfo providers.
     """
@@ -215,7 +224,7 @@ def _create_action_flag_set_map(flag_sets):
             # Dedupe action set list.
             if action not in handled_actions:
                 handled_actions[action] = True
-                flag_sets_by_action[action].append(_strip_actions(fs))
+                flag_sets_by_action[action].append(actionless_flag_set(fs))
     return flag_sets_by_action
 
 def _pw_cc_toolchain_config_impl(ctx):
@@ -227,78 +236,18 @@ def _pw_cc_toolchain_config_impl(ctx):
     Returns:
         CcToolchainConfigInfo
     """
-    check_deps(ctx)
+    check_deps_provide(ctx, "action_config_flag_sets", FlagSetInfo, "pw_cc_flag_set")
 
     flag_sets_by_action = _create_action_flag_set_map([dep[FlagSetInfo] for dep in ctx.attr.action_config_flag_sets])
+    all_actions = _collect_action_configs(ctx, flag_sets_by_action)
+    builtin_include_dirs = ctx.attr.cxx_builtin_include_directories if ctx.attr.cxx_builtin_include_directories else []
+    sysroot_dir = ctx.attr.builtin_sysroot if ctx.attr.builtin_sysroot else None
 
-    all_actions = []
-    all_actions += _action_configs(ctx.executable.gcc, ALL_ASM_ACTIONS, flag_sets_by_action)
-    all_actions += _action_configs(ctx.executable.gcc, ALL_C_COMPILER_ACTIONS, flag_sets_by_action)
-    all_actions += _action_configs(ctx.executable.cpp, ALL_CPP_COMPILER_ACTIONS, flag_sets_by_action)
-    all_actions += _action_configs(ctx.executable.cpp, ALL_LINK_ACTIONS, flag_sets_by_action)
+    # TODO: b/309533028 - Support features.
+    features = []
 
-    all_actions += [
-        action_config(
-            action_name = ACTION_NAMES.cpp_link_static_library,
-            implies = ["archiver_flags", "linker_param_file"],
-            tools = [
-                tool(
-                    tool = ctx.executable.ar,
-                ),
-            ],
-            flag_sets = flag_sets_by_action.get(ACTION_NAMES.cpp_link_static_library, default = []),
-        ),
-        action_config(
-            action_name = ACTION_NAMES.llvm_cov,
-            tools = [
-                tool(
-                    tool = ctx.executable.gcov,
-                ),
-            ],
-            flag_sets = flag_sets_by_action.get(ACTION_NAMES.llvm_cov, default = []),
-        ),
-        action_config(
-            action_name = OBJ_COPY_ACTION_NAME,
-            tools = [
-                tool(
-                    tool = ctx.executable.objcopy,
-                ),
-            ],
-            flag_sets = flag_sets_by_action.get(OBJ_COPY_ACTION_NAME, default = []),
-        ),
-        action_config(
-            action_name = OBJ_DUMP_ACTION_NAME,
-            tools = [
-                tool(
-                    tool = ctx.executable.objdump,
-                ),
-            ],
-            flag_sets = flag_sets_by_action.get(OBJ_DUMP_ACTION_NAME, default = []),
-        ),
-        action_config(
-            action_name = ACTION_NAMES.strip,
-            tools = [
-                tool(
-                    tool = ctx.executable.strip,
-                ),
-            ],
-            flag_sets = flag_sets_by_action.get(ACTION_NAMES.strip, default = []),
-        ),
-    ]
-
-    features = [dep[ToolchainFeatureInfo].feature for dep in ctx.attr.feature_deps]
+    # TODO: b/297413805 - This could be externalized.
     features.append(_archiver_flags_feature(ctx.attr.target_libc == "macosx"))
-    builtin_include_dirs = []
-    for dep in ctx.attr.feature_deps:
-        builtin_include_dirs.extend(dep[ToolchainFeatureInfo].cxx_builtin_include_directories)
-
-    sysroot_dir = None
-    for dep in ctx.attr.feature_deps:
-        dep_sysroot = dep[ToolchainFeatureInfo].builtin_sysroot
-        if dep_sysroot:
-            if sysroot_dir:
-                fail("Failed to set sysroot at `{}`, already have sysroot at `{}` ".format(dep_sysroot, sysroot_dir))
-            sysroot_dir = dep_sysroot
 
     return cc_common.create_cc_toolchain_config_info(
         ctx = ctx,
@@ -321,15 +270,7 @@ pw_cc_toolchain_config = rule(
     implementation = _pw_cc_toolchain_config_impl,
     attrs = {
         # Attributes new to this rule.
-        "feature_deps": attr.label_list(),
-        "gcc": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
-        "ld": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
-        "ar": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
-        "cpp": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
-        "gcov": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
-        "objcopy": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
-        "objdump": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
-        "strip": attr.label(allow_single_file = True, executable = True, cfg = "exec"),
+        "action_configs": attr.label_list(),
         "action_config_flag_sets": attr.label_list(),
 
         # Attributes from create_cc_toolchain_config_info.
@@ -342,6 +283,8 @@ pw_cc_toolchain_config = rule(
         "abi_version": attr.string(),
         "abi_libc_version": attr.string(),
         "cc_target_os": attr.string(),
+        "builtin_sysroot": attr.string(),
+        "cxx_builtin_include_directories": attr.string_list(),
     },
     provides = [CcToolchainConfigInfo],
 )
@@ -378,7 +321,7 @@ def _split_args(kwargs, filter_dict):
         kwargs: Dictionary of args to split.
         filter_dict: The dictionary used as the filter.
 
-    Returns
+    Returns:
         Tuple[Dict, Dict]
     """
     filtered_args = {}
@@ -392,16 +335,102 @@ def _split_args(kwargs, filter_dict):
 
     return filtered_args, remainder
 
-def pw_cc_toolchain(**kwargs):
-    """A bound cc_toolchain and pw_cc_toolchain_config pair.
+def _generate_file_group(kwargs, attr_name, action_names):
+    """Generates rules to collect files from pw_cc_action_config rules.
+
+    All items in the kwargs dictionary whose keys are present in the filter
+    dictionary are returned as a new dictionary as the first item in the tuple.
+    All remaining arguments are returned as a dictionary in the second item of
+    the tuple.
 
     Args:
-        **kwargs: All attributes supported by cc_toolchain and pw_cc_toolchain_config.
+        kwargs: Dictionary of all pw_cc_toolchain arguments.
+        attr_name: The attr name of the file group to collect files for.
+        action_names: The actions that apply to the `attr_name` group.
+
+    Returns:
+        Name of the generated filegroup rule.
+    """
+    file_group_name = "{}_{}".format(kwargs["name"], attr_name)
+    pw_cc_action_config_file_collector(
+        name = file_group_name,
+        all_action_configs = kwargs["action_configs"],
+        extra_files = kwargs[attr_name] if attr_name in kwargs else None,
+        collect_files_from_actions = action_names,
+        visibility = ["//visibility:private"],
+    )
+    return file_group_name
+
+def _generate_misc_file_group(kwargs):
+    """Generate the misc_files group.
+
+    Some actions aren't enumerated in ALL_FILE_GROUPS because they don't
+    necessarily have an associated *_files group. This group collects
+    all the other files and enumerates them in a group so they still appear in
+    all_files.
+
+    Args:
+        kwargs: Dictionary of all pw_cc_toolchain arguments.
+
+    Returns:
+        Name of the generated filegroup rule.
+    """
+    file_group_name = "{}_misc_files".format(kwargs["name"])
+
+    all_known_actions = []
+    for action_names in ALL_FILE_GROUPS.values():
+        all_known_actions.extend(action_names)
+
+    pw_cc_action_config_file_collector(
+        name = file_group_name,
+        all_action_configs = kwargs["action_configs"],
+        collect_files_not_from_actions = all_known_actions,
+        visibility = ["//visibility:private"],
+    )
+    return file_group_name
+
+def pw_cc_toolchain(**kwargs):
+    """A suite of cc_toolchain, pw_cc_toolchain_config, and *_files rules.
+
+    Generated rules:
+        {name}: A `cc_toolchain` for this toolchain.
+        {name}_config: A `pw_cc_toolchain_config` for this toolchain.
+        {name}_*_files: Generated rules that group together files for
+            "all_files", "ar_files", "as_files", "compiler_files",
+            "coverage_files", "dwp_files", "linker_files", "objcopy_files", and
+            "strip_files" normally enumerated as part of the `cc_toolchain`
+            rule.
+        {name}_misc_files: Generated rule that groups together files for action
+            configs not associated with any other *_files group.
+
+    Args:
+        **kwargs: All attributes supported by either cc_toolchain or pw_cc_toolchain_config.
     """
 
     _check_args(native.package_relative_label(kwargs["name"]), kwargs)
 
-    cc_toolchain_config_args, cc_toolchain_args = _split_args(kwargs, PW_CC_TOOLCHAIN_CONFIG_ATTRS)
+    # Generate *_files groups.
+    # `all_files` is skipped here because it is handled differently below.
+    for group_name, action_names in ALL_FILE_GROUPS.items():
+        kwargs[group_name] = _generate_file_group(kwargs, group_name, action_names)
+
+    # The `all_files` group must be a superset of all the smaller file groups.
+    all_files_name = "{}_all_files".format(kwargs["name"])
+    all_file_inputs = [":{}".format(kwargs[file_group]) for file_group in ALL_FILE_GROUPS.keys()]
+
+    all_file_inputs.append(":{}".format(_generate_misc_file_group(kwargs)))
+
+    if "all_files" in kwargs:
+        all_file_inputs.append(kwargs["all_files"])
+    native.filegroup(
+        name = all_files_name,
+        srcs = all_file_inputs,
+        visibility = ["//visibility:private"],
+    )
+    kwargs["all_files"] = ":{}".format(all_files_name)
+
+    # Split args between `pw_cc_toolchain_config` and `native.cc_toolchain`.
+    cc_toolchain_config_args, cc_toolchain_args = _split_args(kwargs, PW_CC_TOOLCHAIN_CONFIG_ATTRS | PW_CC_TOOLCHAIN_DEPRECATED_TOOL_ATTRS)
 
     # Bind pw_cc_toolchain_config and the cc_toolchain.
     config_name = "{}_config".format(cc_toolchain_args["name"])

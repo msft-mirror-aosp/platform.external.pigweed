@@ -20,9 +20,9 @@
 #include <cstring>
 #include <string_view>
 
-#include "gtest/gtest.h"
 #include "pw_span/span.h"
 #include "pw_string/format.h"
+#include "pw_unit_test/framework.h"
 
 namespace this_pw_test {
 
@@ -344,9 +344,7 @@ TEST(StringBuilder, StreamOutput_ExhaustBuffer_InOneString) {
   EXPECT_STREQ("01234567", sb.data());  // only can fit 8
   EXPECT_EQ(8u, sb.size());
 
-  sb << "no"
-     << " more "
-     << "room" << '?';
+  sb << "no" << " more " << "room" << '?';
   EXPECT_STREQ("01234567", sb.data());
 }
 

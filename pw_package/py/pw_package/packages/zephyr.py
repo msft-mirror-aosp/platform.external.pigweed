@@ -15,7 +15,6 @@
 import importlib.resources
 import json
 import pathlib
-import os
 import subprocess
 import sys
 import tempfile
@@ -39,7 +38,7 @@ class Zephyr(pw_package.git_repo.GitRepo):
                 'https://pigweed.googlesource.com/third_party/'
                 'github/zephyrproject-rtos/zephyr'
             ),
-            commit='a6eef0ba3755f2530c5ce93524e5ac4f5be30194',  # v3.5 release
+            commit='04fd1c40cc9f72648f2607be8a18a166242484e5',  # v3.5-branch
             **kwargs,
         )
 
@@ -107,14 +106,11 @@ class Zephyr(pw_package.git_repo.GitRepo):
             ]
         )
         # Setup Zephyr SDK
-        setup_file = 'setup.cmd' if os.name == 'nt' else 'setup.sh'
         subprocess.check_call(
             [
-                str(core_cache_path / setup_file),
-                '-t',
-                'all',
-                '-c',
-                '-h',
+                'cmake',
+                '-P',
+                str(core_cache_path / 'cmake' / 'zephyr_sdk_export.cmake'),
             ]
         )
 
