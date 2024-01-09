@@ -14,7 +14,9 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_allocator/allocator.gni")
 import("$dir_pw_async/backend.gni")
+import("$dir_pw_async2/backend.gni")
 import("$dir_pw_chrono/backend.gni")
 import("$dir_pw_perf_test/perf_test.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
@@ -35,15 +37,18 @@ _host_common = {
   pw_unit_test_MAIN = "$dir_pw_unit_test:logging_main"
 
   # Used to configure logging-based perftest on host
-  pw_perf_test_MAIN_FUNCTION = "$dir_pw_perf_test:log_perf_handler_main"
+  pw_perf_test_MAIN_FUNCTION = "$dir_pw_perf_test:logging_main"
 
   # Configure backend for assert facade.
   pw_assert_BACKEND = "$dir_pw_assert:print_and_abort_check_backend"
   pw_assert_LITE_BACKEND = "$dir_pw_assert:print_and_abort_assert_backend"
 
-  # Configure backend for async facade.
+  # Configure backend for legacy facade.
   pw_async_TASK_BACKEND = "$dir_pw_async_basic:task"
   pw_async_FAKE_DISPATCHER_BACKEND = "$dir_pw_async_basic:fake_dispatcher"
+
+  # Configure backend for async facade.
+  pw_async2_DISPATCHER_BACKEND = "$dir_pw_async2_basic:dispatcher_backend"
 
   # Configure backend for logging facade.
   pw_log_BACKEND = "$dir_pw_log_basic"
@@ -202,7 +207,7 @@ pw_target_toolchain_host = {
 
       # Always use the FuzzTest wrappers around gtest and gtest_main.
       pw_unit_test_MAIN = "$dir_pw_fuzzer:fuzztest_main"
-      pw_unit_test_GOOGLETEST_BACKEND = "$dir_pw_fuzzer:gtest"
+      pw_unit_test_BACKEND = "$dir_pw_fuzzer:gtest"
     }
   }
 
@@ -215,6 +220,9 @@ pw_target_toolchain_host = {
       forward_variables_from(_host_common, "*")
       forward_variables_from(_os_specific_config, "*")
       default_configs += _clang_default_configs
+
+      # Also poison dynamic allocations using Pigweed.
+      pw_allocator_POISON_HEAP = true
     }
   }
 
@@ -395,7 +403,7 @@ pw_internal_host_toolchains = [
 
       # Always use the FuzzTest wrapper around gtest_main.
       pw_unit_test_MAIN = "$dir_pw_fuzzer:fuzztest_main"
-      pw_unit_test_GOOGLETEST_BACKEND = "$dir_pw_fuzzer:gtest"
+      pw_unit_test_BACKEND = "$dir_pw_fuzzer:gtest"
     }
   },
   {

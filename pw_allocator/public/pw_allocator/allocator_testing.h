@@ -13,25 +13,39 @@
 // the License.
 #pragma once
 
-#include <array>
 #include <cstddef>
 
-#include "gtest/gtest.h"
 #include "pw_allocator/allocator.h"
+#include "pw_allocator/allocator_metric_proxy.h"
 #include "pw_allocator/block.h"
+#include "pw_allocator/buffer.h"
+#include "pw_allocator/metrics.h"
 #include "pw_allocator/simple_allocator.h"
 #include "pw_bytes/span.h"
+#include "pw_status/status.h"
+#include "pw_tokenizer/tokenize.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::allocator::test {
+namespace internal {
+
+using pw::allocator::internal::Metrics;
 
 /// Simple memory allocator for testing.
 ///
 /// This allocator records the most recent parameters passed to the `Allocator`
 /// interface methods, and returns them via accessors.
-class AllocatorForTest : public Allocator {
+class AllocatorForTestImpl : public AllocatorWithMetrics<Metrics> {
  public:
-  constexpr AllocatorForTest() = default;
-  ~AllocatorForTest() override;
+  using metrics_type = Metrics;
+
+  AllocatorForTestImpl() : proxy_(PW_TOKENIZE_STRING_EXPR("test")) {}
+  ~AllocatorForTestImpl() override;
+
+  metrics_type& metric_group() override { return proxy_.metric_group(); }
+  const metrics_type& metric_group() const override {
+    return proxy_.metric_group();
+  }
 
   size_t allocate_size() const { return allocate_size_; }
   void* deallocate_ptr() const { return deallocate_ptr_; }
@@ -41,6 +55,9 @@ class AllocatorForTest : public Allocator {
   size_t resize_new_size() const { return resize_new_size_; }
 
   /// Provides memory for the allocator to allocate from.
+  ///
+  /// If this method is called, then `Reset` MUST be called before the object is
+  /// destroyed.
   Status Init(ByteSpan bytes);
 
   /// Allocates all the memory from this object.
@@ -49,8 +66,12 @@ class AllocatorForTest : public Allocator {
   /// Resets the recorded parameters to an initial state.
   void ResetParameters();
 
-  /// This frees all memory associated with this allocator.
-  void DeallocateAll();
+  /// Resets the object to an initial state.
+  ///
+  /// This frees all memory associated with this allocator and disassociates the
+  /// allocator from its memory region. If `Init` is called, then this method
+  /// MUST be called before the object is destroyed.
+  void Reset();
 
  private:
   using BlockType = Block<>;
@@ -68,6 +89,9 @@ class AllocatorForTest : public Allocator {
   bool DoResize(void* ptr, Layout layout, size_t new_size) override;
 
   SimpleAllocator allocator_;
+  AllocatorMetricProxyImpl<metrics_type> proxy_;
+
+  bool initialized_ = false;
   size_t allocate_size_ = 0;
   void* deallocate_ptr_ = nullptr;
   size_t deallocate_size_ = 0;
@@ -76,56 +100,23 @@ class AllocatorForTest : public Allocator {
   size_t resize_new_size_ = 0;
 };
 
-/// Wraps a default-constructed type a buffer holding a region of memory.
-///
-/// Although the type is arbitrary, the intended purpose of of this class is to
-/// provide allocators with memory to use when testing.
-///
-/// This class uses composition instead of inheritance in order to allow the
-/// wrapped type's destructor to reference the memory without risk of a
-/// use-after-free. As a result, the specific methods of the wrapped type
-/// are not directly accesible. Instead, they can be accessed using the `*` and
-/// `->` operators, e.g.
-///
-/// @code{.cpp}
-/// WithBuffer<MyAllocator, 256> allocator;
-/// allocator->MethodSpecificToMyAllocator();
-/// @endcode
-///
-/// Note that this class does NOT initialize the allocator, since initialization
-/// is not specified as part of the `Allocator` interface and may vary from
-/// allocator to allocator. As a result, typical usgae includes deriving a class
-/// that initializes the wrapped allocator with the buffer in a constructor. See
-/// `AllocatorForTestWithBuffer` below for an example.
-///
-/// @tparam   T             The wrapped object.
-/// @tparam   kBufferSize   The size of the backing memory, in bytes.
-/// @tparam   AlignType     Buffer memory will be aligned to this type's
-///                         alignment boundary.
-template <typename T, size_t kBufferSize, typename AlignType = uint8_t>
-class WithBuffer {
- public:
-  static constexpr size_t kCapacity = kBufferSize;
-
-  std::byte* data() { return buffer_.data(); }
-  size_t size() const { return buffer_.size(); }
-
-  T& operator*() { return obj_; }
-  T* operator->() { return &obj_; }
-
- private:
-  alignas(AlignType) std::array<std::byte, kBufferSize> buffer_;
-  T obj_;
-};
+}  // namespace internal
 
 /// An `AllocatorForTest` that is automatically initialized on construction.
 template <size_t kBufferSize>
-class AllocatorForTestWithBuffer
-    : public WithBuffer<AllocatorForTest, kBufferSize> {
+class AllocatorForTest
+    : public WithBuffer<internal::AllocatorForTestImpl, kBufferSize> {
  public:
-  AllocatorForTestWithBuffer() {
+  using allocator_type = internal::AllocatorForTestImpl;
+  using metrics_type = allocator_type::metrics_type;
+
+  AllocatorForTest() {
     EXPECT_EQ((*this)->Init(ByteSpan(this->data(), this->size())), OkStatus());
   }
+  ~AllocatorForTest() { (*this)->Reset(); }
+
+  /// Helper method to get a pointer to underlying allocator.
+  AllocatorWithMetrics<metrics_type>* get() { return &**this; }
 };
 
 }  // namespace pw::allocator::test

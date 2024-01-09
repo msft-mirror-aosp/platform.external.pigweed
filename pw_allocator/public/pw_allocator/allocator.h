@@ -22,8 +22,9 @@
 namespace pw::allocator {
 /// Describes the layout of a block of memory.
 ///
-/// Layouts are passed to allocators, and consist of a size and a power-of-two
-/// alignment. Layouts can be constructed for a type `T` using `Layout::Of`.
+/// Layouts are passed to allocators, and consist of a (possibly padded) size
+/// and a power-of-two alignment no larger than the size. Layouts can be
+/// constructed for a type `T` using `Layout::Of`.
 ///
 /// Example:
 ///
@@ -36,6 +37,7 @@ namespace pw::allocator {
 /// @endcode
 class Layout {
  public:
+  constexpr Layout() = default;
   constexpr Layout(size_t size, size_t alignment = alignof(std::max_align_t))
       : size_(size), alignment_(alignment) {}
 
@@ -53,8 +55,8 @@ class Layout {
   size_t alignment() const { return alignment_; }
 
  private:
-  size_t size_;
-  size_t alignment_;
+  size_t size_ = 0;
+  size_t alignment_ = 1;
 };
 
 template <typename T>

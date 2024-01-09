@@ -148,7 +148,7 @@ To build the documentation, follow the :ref:`getting
 started<docs-get-started-upstream>` guide so you can build Pigweed. Then:
 
 #. Change to your checkout directory and ``. activate.sh`` if necessary
-#. Run ``pw watch out`` to build the code, run tests, and build docs
+#. Run ``pw watch -C out`` to build the code, run tests, and build docs
 #. Wait for the build to finish (see a ``PASS``)
 #. Navigate to  ``<CHECKOUT>/out/docs/gen/docs/html/index.html``
 #. Edit the relevant ``.rst`` file. Save when ready
@@ -216,48 +216,6 @@ Community Guidelines
 This project follows `Google's Open Source Community Guidelines
 <https://opensource.google/conduct/>`_ and the :ref:`docs-code-of-conduct`.
 
-Source Code Headers
--------------------
-Every Pigweed file containing source code must include copyright and license
-information. This includes any JS/CSS files that you might be serving out to
-browsers.
-
-Apache header for C and C++ files:
-
-.. code-block:: none
-
-  // Copyright 2021 The Pigweed Authors
-  //
-  // Licensed under the Apache License, Version 2.0 (the "License"); you may not
-  // use this file except in compliance with the License. You may obtain a copy of
-  // the License at
-  //
-  //     https://www.apache.org/licenses/LICENSE-2.0
-  //
-  // Unless required by applicable law or agreed to in writing, software
-  // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-  // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-  // License for the specific language governing permissions and limitations under
-  // the License.
-
-Apache header for Python and GN files:
-
-.. code-block:: none
-
-  # Copyright 2020 The Pigweed Authors
-  #
-  # Licensed under the Apache License, Version 2.0 (the "License"); you may not
-  # use this file except in compliance with the License. You may obtain a copy of
-  # the License at
-  #
-  #     https://www.apache.org/licenses/LICENSE-2.0
-  #
-  # Unless required by applicable law or agreed to in writing, software
-  # distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-  # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-  # License for the specific language governing permissions and limitations under
-  # the License.
-
 Presubmit Checks and Continuous Integration
 -------------------------------------------
 All Pigweed change lists (CLs) must adhere to Pigweed's style guide and pass a
@@ -268,7 +226,7 @@ continuous integration infrastructure (see `Pigweed's build console
 <https://ci.chromium.org/p/pigweed/g/pigweed/console>`_).
 
 Running Presubmit Checks
-------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^
 To run automated presubmit checks on a pending CL, click the ``CQ DRY RUN``
 button in the Gerrit UI. The results appear in the Tryjobs section, below the
 source listing. Jobs that passed are green; jobs that failed are red.
@@ -284,7 +242,7 @@ even if all visible checks passed. Reach out to the Pigweed team for help
 addressing these issues.
 
 Project Presubmit Checks
-------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^
 In addition to Pigweed's presubmit checks, some projects that use Pigweed run
 their presubmit checks in Pigweed's infrastructure. This supports a development
 flow where projects automatically update their Pigweed submodule if their tests
@@ -308,6 +266,30 @@ In these situations, Pigweed's commit queue submission process will fail for all
 changes. If a change passes all presubmit checks except for known failures, the
 Pigweed team may permit manual submission of the CL. Contact the Pigweed team
 for submission approval.
+
+Code coverage in Gerrit
+^^^^^^^^^^^^^^^^^^^^^^^
+Unit test coverage data for C++ is computed by the ``coverage`` builder and
+displayed in Gerrit.
+
+.. image:: https://storage.googleapis.com/pigweed-media/gerrit_code_coverage.png
+   :width: 800
+   :alt: Code coverage display in Gerrit
+
+#. **When will coverage data be visible on my CL?** The coverage builder needs
+   to finish running (about 6 minutes), and then the data needs to be ingested
+   by the coverage pipeline (ran every 30 minutes).
+
+#. **What tests is this based on?** Only the C++ unit tests of the modules ran
+   as part of the GN build. (There's no coverage data for Python or Rust yet.)
+
+#. **Can I generate a coverage report locally?** Yes. Running ``pw
+   presubmit --step coverage`` will generate a HTML report at
+   ``out/presubmit/coverage/host_clang_coverage/obj/coverage_report/html/index.html``.
+
+#. **I'd love to have this in my Pigweed-based project!** See
+   :ref:`module-pw_build-gn-pw_coverage_report` for GN and
+   :ref:`docs-build_system-bazel_coverage` for Bazel.
 
 Running local presubmits
 ------------------------
@@ -424,3 +406,4 @@ See the warning about caching Python packages for multiple platforms in
    ../code_reviews
    ../code_of_conduct
    module_docs
+   changelog

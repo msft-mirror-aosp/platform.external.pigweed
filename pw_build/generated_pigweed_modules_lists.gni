@@ -39,6 +39,8 @@ declare_args() {
   dir_pw_assert_tokenized = get_path_info("../pw_assert_tokenized", "abspath")
   dir_pw_assert_zephyr = get_path_info("../pw_assert_zephyr", "abspath")
   dir_pw_async = get_path_info("../pw_async", "abspath")
+  dir_pw_async2 = get_path_info("../pw_async2", "abspath")
+  dir_pw_async2_basic = get_path_info("../pw_async2_basic", "abspath")
   dir_pw_async_basic = get_path_info("../pw_async_basic", "abspath")
   dir_pw_base64 = get_path_info("../pw_base64", "abspath")
   dir_pw_bloat = get_path_info("../pw_bloat", "abspath")
@@ -47,6 +49,8 @@ declare_args() {
   dir_pw_bluetooth_hci = get_path_info("../pw_bluetooth_hci", "abspath")
   dir_pw_bluetooth_profiles =
       get_path_info("../pw_bluetooth_profiles", "abspath")
+  dir_pw_bluetooth_sapphire =
+      get_path_info("../pw_bluetooth_sapphire", "abspath")
   dir_pw_boot = get_path_info("../pw_boot", "abspath")
   dir_pw_boot_cortex_m = get_path_info("../pw_boot_cortex_m", "abspath")
   dir_pw_build = get_path_info("../pw_build", "abspath")
@@ -108,6 +112,7 @@ declare_args() {
   dir_pw_log_zephyr = get_path_info("../pw_log_zephyr", "abspath")
   dir_pw_malloc = get_path_info("../pw_malloc", "abspath")
   dir_pw_malloc_freelist = get_path_info("../pw_malloc_freelist", "abspath")
+  dir_pw_malloc_freertos = get_path_info("../pw_malloc_freertos", "abspath")
   dir_pw_metric = get_path_info("../pw_metric", "abspath")
   dir_pw_minimal_cpp_stdlib =
       get_path_info("../pw_minimal_cpp_stdlib", "abspath")
@@ -210,6 +215,8 @@ declare_args() {
     dir_pw_assert_tokenized,
     dir_pw_assert_zephyr,
     dir_pw_async,
+    dir_pw_async2,
+    dir_pw_async2_basic,
     dir_pw_async_basic,
     dir_pw_base64,
     dir_pw_bloat,
@@ -217,6 +224,7 @@ declare_args() {
     dir_pw_bluetooth,
     dir_pw_bluetooth_hci,
     dir_pw_bluetooth_profiles,
+    dir_pw_bluetooth_sapphire,
     dir_pw_boot,
     dir_pw_boot_cortex_m,
     dir_pw_build,
@@ -274,6 +282,7 @@ declare_args() {
     dir_pw_log_zephyr,
     dir_pw_malloc,
     dir_pw_malloc_freelist,
+    dir_pw_malloc_freertos,
     dir_pw_metric,
     dir_pw_minimal_cpp_stdlib,
     dir_pw_module,
@@ -365,6 +374,8 @@ declare_args() {
     "$dir_pw_assert_tokenized:tests",
     "$dir_pw_assert_zephyr:tests",
     "$dir_pw_async:tests",
+    "$dir_pw_async2:tests",
+    "$dir_pw_async2_basic:tests",
     "$dir_pw_async_basic:tests",
     "$dir_pw_base64:tests",
     "$dir_pw_bloat:tests",
@@ -372,6 +383,7 @@ declare_args() {
     "$dir_pw_bluetooth:tests",
     "$dir_pw_bluetooth_hci:tests",
     "$dir_pw_bluetooth_profiles:tests",
+    "$dir_pw_bluetooth_sapphire:tests",
     "$dir_pw_boot:tests",
     "$dir_pw_boot_cortex_m:tests",
     "$dir_pw_build:tests",
@@ -429,6 +441,7 @@ declare_args() {
     "$dir_pw_log_zephyr:tests",
     "$dir_pw_malloc:tests",
     "$dir_pw_malloc_freelist:tests",
+    "$dir_pw_malloc_freertos:tests",
     "$dir_pw_metric:tests",
     "$dir_pw_minimal_cpp_stdlib:tests",
     "$dir_pw_module:tests",
@@ -520,6 +533,8 @@ declare_args() {
     "$dir_pw_assert_tokenized:docs",
     "$dir_pw_assert_zephyr:docs",
     "$dir_pw_async:docs",
+    "$dir_pw_async2:docs",
+    "$dir_pw_async2_basic:docs",
     "$dir_pw_async_basic:docs",
     "$dir_pw_base64:docs",
     "$dir_pw_bloat:docs",
@@ -527,6 +542,7 @@ declare_args() {
     "$dir_pw_bluetooth:docs",
     "$dir_pw_bluetooth_hci:docs",
     "$dir_pw_bluetooth_profiles:docs",
+    "$dir_pw_bluetooth_sapphire:docs",
     "$dir_pw_boot:docs",
     "$dir_pw_boot_cortex_m:docs",
     "$dir_pw_build:docs",
@@ -584,6 +600,7 @@ declare_args() {
     "$dir_pw_log_zephyr:docs",
     "$dir_pw_malloc:docs",
     "$dir_pw_malloc_freelist:docs",
+    "$dir_pw_malloc_freertos:docs",
     "$dir_pw_metric:docs",
     "$dir_pw_minimal_cpp_stdlib:docs",
     "$dir_pw_module:docs",

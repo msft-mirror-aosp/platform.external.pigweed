@@ -50,7 +50,7 @@ class TestTodoCheck(unittest.TestCase):
         self._run(todo_check.BUGS_ONLY, contents)
 
     def test_one_bug_legacy(self) -> None:
-        contents = 'TODO: b/123 - foo\n'
+        contents = 'TODO(b/123): foo\n'
         self._run_bugs_users(contents)
         self.ctx.fail.assert_not_called()
         self._run_bugs(contents)
@@ -58,6 +58,13 @@ class TestTodoCheck(unittest.TestCase):
 
     def test_one_bug_new(self) -> None:
         contents = 'TODO: b/123 - foo\n'
+        self._run_bugs_users(contents)
+        self.ctx.fail.assert_not_called()
+        self._run_bugs(contents)
+        self.ctx.fail.assert_not_called()
+
+    def test_one_bug_full_url(self) -> None:
+        contents = 'TODO: https://issues.pigweed.dev/issues/123 - foo\n'
         self._run_bugs_users(contents)
         self.ctx.fail.assert_not_called()
         self._run_bugs(contents)
@@ -270,6 +277,14 @@ class TestTodoCheck(unittest.TestCase):
     def test_bare_bugsusers_new(self) -> None:
         self._run_bugs_users('TODO: foo\n')
         self.ctx.fail.assert_called()
+
+    def test_fuchsia(self) -> None:
+        self._run_bugs_users('TODO(fxbug.dev/123): foo\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_fuchsia_two_bugs(self) -> None:
+        self._run_bugs_users('TODO(fxbug.dev/123,fxbug.dev/321): bar\n')
+        self.ctx.fail.assert_not_called()
 
 
 if __name__ == '__main__':

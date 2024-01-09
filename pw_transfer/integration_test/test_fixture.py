@@ -27,7 +27,7 @@ import unittest
 
 from google.protobuf import text_format
 
-from pigweed.pw_protobuf.pw_protobuf_protos import status_pb2
+from pw_protobuf_protos import status_pb2
 from pigweed.pw_transfer.integration_test import config_pb2
 from rules_python.python.runfiles import runfiles
 
@@ -432,7 +432,7 @@ class TransferIntegrationTest(unittest.TestCase):
                     file_path=f_payload.name,
                     transfer_type=config_pb2.TransferAction.TransferType.WRITE_TO_SERVER,
                     protocol_version=protocol_version,
-                    expected_status=int(expected_status),
+                    expected_status=expected_status,
                 )
             )
 
@@ -475,7 +475,7 @@ class TransferIntegrationTest(unittest.TestCase):
                     file_path=f_client_output.name,
                     transfer_type=config_pb2.TransferAction.TransferType.READ_FROM_SERVER,
                     protocol_version=protocol_version,
-                    expected_status=int(expected_status),
+                    expected_status=expected_status,
                 )
             )
 

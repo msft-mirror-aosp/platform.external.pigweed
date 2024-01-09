@@ -58,7 +58,7 @@ class NanopbUnaryResponseClientCall : public UnaryResponseClientCall {
   ~NanopbUnaryResponseClientCall() { DestroyClientCall(); }
 
  protected:
-  constexpr NanopbUnaryResponseClientCall() = default;
+  constexpr NanopbUnaryResponseClientCall() : serde_(nullptr) {}
 
   NanopbUnaryResponseClientCall(LockedEndpoint& client,
                                 uint32_t channel_id,
@@ -112,8 +112,8 @@ class NanopbUnaryResponseClientCall : public UnaryResponseClientCall {
   }
 
   const NanopbMethodSerde* serde_ PW_GUARDED_BY(rpc_lock());
-  Function<void(const Response&, Status)> nanopb_on_completed_
-      PW_GUARDED_BY(rpc_lock());
+  Function<void(const Response&, Status)> nanopb_on_completed_ PW_GUARDED_BY(
+      rpc_lock());
 };
 
 // Base class for server and bidirectional streaming calls.
@@ -151,7 +151,7 @@ class NanopbStreamResponseClientCall : public StreamResponseClientCall {
   ~NanopbStreamResponseClientCall() { DestroyClientCall(); }
 
  protected:
-  constexpr NanopbStreamResponseClientCall() = default;
+  constexpr NanopbStreamResponseClientCall() : serde_(nullptr) {}
 
   NanopbStreamResponseClientCall(NanopbStreamResponseClientCall&& other)
       PW_LOCKS_EXCLUDED(rpc_lock()) {

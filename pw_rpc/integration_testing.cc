@@ -16,9 +16,9 @@
 
 #include <limits>
 
-#include "gtest/gtest.h"
 #include "pw_log/log.h"
 #include "pw_rpc/integration_test_socket_client.h"
+#include "pw_unit_test/framework.h"
 #include "pw_unit_test/logging_event_handler.h"
 
 namespace pw::rpc::integration_test {
@@ -33,7 +33,12 @@ unit_test::LoggingEventHandler log_test_events;
 
 Client& client() { return context.client(); }
 
-int GetClientSocketFd() { return context.GetSocketFd(); }
+int SetClientSockOpt(int level,
+                     int optname,
+                     const void* optval,
+                     unsigned int optlen) {
+  return context.SetSockOpt(level, optname, optval, optlen);
+}
 
 void SetEgressChannelManipulator(ChannelManipulator* new_channel_manipulator) {
   context.SetEgressChannelManipulator(new_channel_manipulator);

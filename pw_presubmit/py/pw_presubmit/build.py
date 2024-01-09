@@ -691,28 +691,71 @@ def _value(ctx: PresubmitContext, val: InputValue) -> Value:
 _CtxMgrLambda = Callable[[PresubmitContext], ContextManager]
 _CtxMgrOrLambda = Union[ContextManager, _CtxMgrLambda]
 
-_INCREMENTAL_COVERAGE_TOOL = 'cloud_client'
-_ABSOLUTE_COVERAGE_TOOL = 'raw_coverage_cloud_uploader'
+
+@dataclass(frozen=True)
+class CommonCoverageOptions:
+    """Coverage options shared by both CodeSearch and Gerrit.
+
+    For Google use only.
+    """
+
+    # The "root" of the Kalypsi GCS bucket path to which the coverage data
+    # should be uploaded. Typically gs://ng3-metrics/ng3-<teamname>-coverage.
+    target_bucket_root: str
+
+    # The project name in the Kalypsi GCS bucket path.
+    target_bucket_project: str
+
+    # See go/kalypsi-abs#trace-type-required.
+    trace_type: str
+
+    # go/kalypsi-abs#owner-required.
+    owner: str
+
+    # go/kalypsi-abs#bug-component-required.
+    bug_component: str
+
+
+@dataclass(frozen=True)
+class CodeSearchCoverageOptions:
+    """CodeSearch-specific coverage options. For Google use only."""
+
+    # The name of the Gerrit host containing the CodeSearch repo. Just the name
+    # ("pigweed"), not the full URL ("pigweed.googlesource.com"). This may be
+    # different from the host from which the code was originally checked out.
+    host: str
+
+    # The name of the project, as expected by CodeSearch. Typically
+    # 'codesearch'.
+    project: str
+
+    # See go/kalypsi-abs#ref-required.
+    ref: str
+
+    # See go/kalypsi-abs#source-required.
+    source: str
+
+    # See go/kalypsi-abs#add-prefix-optional.
+    add_prefix: str = ''
+
+
+@dataclass(frozen=True)
+class GerritCoverageOptions:
+    """Gerrit-specific coverage options. For Google use only."""
+
+    # The name of the project, as expected by Gerrit. This is typically the
+    # repository name, e.g. 'pigweed/pigweed' for upstream Pigweed.
+    # See go/kalypsi-inc#project-required.
+    project: str
 
 
 @dataclass(frozen=True)
 class CoverageOptions:
-    """Coverage collection configuration.
+    """Coverage collection configuration. For Google use only."""
 
-    For Google use only. See go/kalypsi-abs and go/kalypsi-inc for documentation
-    of the metadata fields.
-    """
-
-    target_bucket_root: str
-    target_bucket_project: str
-    project: str
-    trace_type: str
-    ref: str
-    source: str
-    owner: str
-    bug_component: str
-    trim_prefix: str = ''
-    add_prefix: str = ''
+    common: CommonCoverageOptions
+    codesearch: CodeSearchCoverageOptions
+    gerrit: GerritCoverageOptions
 
 
 class _NinjaBase(Check):
@@ -826,16 +869,16 @@ class _NinjaBase(Check):
         coverage_json = coverage_jsons[0]
 
         if ctx.luci:
-            if ctx.luci.is_dev:
-                _LOG.warning('Not uploading coverage since running in dev')
+            if not ctx.luci.is_prod:
+                _LOG.warning('Not uploading coverage since not running in prod')
                 return PresubmitResult.PASS
 
             with self._context(ctx):
                 # GCS bucket paths are POSIX-like.
                 coverage_gcs_path = posixpath.join(
-                    options.target_bucket_root,
+                    options.common.target_bucket_root,
                     'incremental' if ctx.luci.is_try else 'absolute',
-                    options.target_bucket_project,
+                    options.common.target_bucket_project,
                     str(ctx.luci.buildbucket_id),
                 )
                 _copy_to_gcs(
@@ -901,38 +944,34 @@ def _write_coverage_metadata(
     change = ctx.luci.triggers[0]
 
     metadata = {
-        'host': change.gerrit_host,
-        'project': options.project,
-        'trace_type': options.trace_type,
-        'trim_prefix': options.trim_prefix,
+        'trace_type': options.common.trace_type,
+        'trim_prefix': str(ctx.root),
         'patchset_num': change.patchset,
         'change_id': change.number,
-        'owner': options.owner,
-        'bug_component': options.bug_component,
+        'owner': options.common.owner,
+        'bug_component': options.common.bug_component,
     }
 
     if ctx.luci.is_try:
         # Running in CQ: uploading incremental coverage
         metadata.update(
             {
-                # Note: no `add_prefix`. According to the documentation, that's
-                # only supported for absolute coverage.
-                #
-                # TODO(tpudlik): Follow up with Kalypsi team, since this is
-                # surprising (given that trim_prefix is supported for both types
-                # of coverage). This might be an error in the docs.
-                'patchset_num': change.patchset,
                 'change_id': change.number,
+                'host': change.gerrit_name,
+                'patchset_num': change.patchset,
+                'project': options.gerrit.project,
             }
         )
     else:
         # Running in CI: uploading absolute coverage
         metadata.update(
             {
-                'add_prefix': options.add_prefix,
+                'add_prefix': options.codesearch.add_prefix,
                 'commit_id': change.ref,
-                'ref': options.ref,
-                'source': options.source,
+                'host': options.codesearch.host,
+                'project': options.codesearch.project,
+                'ref': options.codesearch.ref,
+                'source': options.codesearch.source,
             }
         )
 
@@ -966,6 +1005,9 @@ class GnGenNinja(_NinjaBase):
         super().__init__(self._substeps(), *args, **kwargs)
         self._gn_args: Dict[str, Any] = gn_args or {}
 
+    def add_default_gn_args(self, args):
+        """Add any project-specific default GN args to 'args'."""
+
     @property
     def gn_args(self) -> Dict[str, Any]:
         return self._gn_args
@@ -975,7 +1017,7 @@ class GnGenNinja(_NinjaBase):
         if self._coverage_options is not None:
             args['pw_toolchain_COVERAGE_ENABLED'] = True
             args['pw_build_PYTHON_TEST_COVERAGE'] = True
-            args['pw_C_OPTIMIZATION_LEVELS'] = ('debug',)
+            self.add_default_gn_args(args)
 
             if ctx.incremental:
                 args['pw_toolchain_PROFILE_SOURCE_FILES'] = [

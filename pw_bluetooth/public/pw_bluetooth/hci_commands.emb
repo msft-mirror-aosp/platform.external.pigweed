@@ -492,19 +492,6 @@ struct LESetCIGParametersCISOptions:
     -- Central
 
 
-enum LESleepClockAccuracyRange:
-  -- Accuracy of the sleep clock, provided as a range
-  [maximum_bits: 8]
-  PPM_251_TO_500 = 0x00
-  PPM_151_TO_250 = 0x01
-  PPM_101_TO_150 = 0x02
-  PPM_76_TO_100  = 0x03
-  PPM_51_TO_75   = 0x04
-  PPM_31_TO_50   = 0x05
-  PPM_21_TO_30   = 0x06
-  PPM_0_TO_20    = 0x07
-
-
 enum LECISPacking:
   -- Preferred method of arranging subevents of multiple CISes
   [maximum_bits: 8]
@@ -1761,10 +1748,34 @@ struct ReadBdAddrCommand:
 # TODO: b/265052417 - Definition needs to be added
 
 
-# 7.4.11 Read Local Supported Controller Delay command
-# HCI_Read_Local_Supported_Controller_Delay
-# TODO: b/265052417 - Definition needs to be added
+enum LogicalTransportType:
+  [maximum_bits: 8]
+  BR_EDR_ACL         = 0x00
+    -- BR/EDR ACL
 
+  BR_EDR_SCO_OR_ESCO = 0x01
+    -- BR/EDR SCO or eSCO
+
+  LE_CIS             = 0x02
+    -- LE CIS
+
+  LE_BIS             = 0x03
+    -- LE BIS
+
+
+struct ReadLocalSupportedControllerDelayCommand:
+  -- 7.4.11 Read Local Supported Controller Delay command (v5.2)
+  -- HCI_Read_Local_Supported_Controller_Delay
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+  0     [+hdr_size]                    hci.CommandHeader                   header
+  $next [+CodecId.$size_in_bytes]      CodecId                             codec_id
+  $next [+1]                           LogicalTransportType                logical_transport_type
+  $next [+1]                           DataPathDirection                   direction
+  $next [+1]                           UInt                                codec_configuration_length
+    -- Length of codec configuration
+
+  $next [+codec_configuration_length]  UInt:8[codec_configuration_length]  codec_configuration
+    -- Codec-specific configuration data
 
 # ========== 7.5 Status Parameters ==========
 
@@ -2470,7 +2481,7 @@ struct LEClearAdvertisingSetsCommand:
 
 
 struct LESetExtendedScanParametersData:
-  -- Data fields for variable-length portion of an LE Set Extneded Scan Parameters command
+  -- Data fields for variable-length portion of an LE Set Extended Scan Parameters command
 
   0     [+1]  LEScanType  scan_type
 
@@ -2534,51 +2545,65 @@ struct LESetExtendedScanEnableCommand:
     --     Time Range: 1.28 s to 83,884.8 s
 
 
-struct LEExtendedCreateConnectionV1:
-  -- 7.8.66 LE Extended Create Connection command version 1
-  -- HCI_LE_Extended_Create_Connection v1
-  let hdr_size = hci.CommandHeader.$size_in_bytes
-  0     [+hdr_size]                             hci.CommandHeader       header
-  $next [+1]                                    hci.GenericEnableParam  initiator_filter_policy
-  $next [+1]                                    LEOwnAddressType        own_address_type
-  $next [+1]                                    hci.LEPeerAddressType   peer_address_type
-  $next [+hci.BdAddr.$size_in_bytes]            hci.BdAddr              peer_address
-  $next [+1]  bits:
-    0     [+LEInitiatingPHYBits.$size_in_bits]  LEInitiatingPHYBits     initiating_phys
+struct LEExtendedCreateConnectionData:
+  -- Data fields for variable-length portion of an LE Extneded Create Connection command
 
-  let num_entries = (initiating_phys.le_1m ? 1 : 0)+(initiating_phys.le_2m ? 1 : 0)+(initiating_phys.le_coded ? 1 : 0)
-  $next [+2*num_entries]                        UInt:16[num_entries]    scan_interval
+  0     [+2]  UInt  scan_interval
     -- Time interval from when the Controller started its last scan until it begins the subsequent
     -- scan on the primary advertising physical channel.
     -- Time = N × 0.625 ms
     -- Time Range: 2.5 ms to 40.959375 s
+    [requires: 0x0004 <= this]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    scan_window
+  $next [+2]  UInt  scan_window
     -- Duration of the scan on the primary advertising physical channel.
     -- Time = N × 0.625 ms
     -- Time Range: 2.5 ms to 40.959375 s
+    [requires: 0x0004 <= this]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    connection_interval_min
+  $next [+2]  UInt  connection_interval_min
     -- Time: N * 1.25 ms
     -- Time Range: 7.5 ms to 4 s.
+    [requires: 0x0006 <= this <= 0x0C80]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    connection_interval_max
+  $next [+2]  UInt  connection_interval_max
     -- Time: N * 1.25 ms
     -- Time Range: 7.5 ms to 4 s.
+    [requires: 0x0006 <= this <= 0x0C80]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    max_latency
+  $next [+2]  UInt  max_latency
     -- Maximum Peripheral latency for the connection in number of connection events.
+    [requires: this <= 0x01F3]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    supervision_timeout
+  $next [+2]  UInt  supervision_timeout
     -- See Core Spec v5.3, Vol 6, Part B, Section 4.5.2.
     -- Time: N * 10 ms
     -- Time Range: 100 ms to 32 s
+    [requires: 0x000A <= this <= 0x0C80]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    min_connection_event_length
+  $next [+2]  UInt  min_connection_event_length
     -- Time: N * 0.625 ms
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    max_connection_event_length
+  $next [+2]  UInt  max_connection_event_length
     -- Time: N * 0.625 ms
+
+
+struct LEExtendedCreateConnectionCommandV1:
+  -- 7.8.66 LE Extended Create Connection command version 1
+  -- HCI_LE_Extended_Create_Connection v1
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+  0     [+hdr_size]                             hci.CommandHeader                            header
+  $next [+1]                                    hci.GenericEnableParam                       initiator_filter_policy
+  $next [+1]                                    LEOwnAddressType                             own_address_type
+  $next [+1]                                    hci.LEPeerAddressType                        peer_address_type
+  $next [+hci.BdAddr.$size_in_bytes]            hci.BdAddr                                   peer_address
+  $next [+1]  bits:
+    0     [+LEInitiatingPHYBits.$size_in_bits]  LEInitiatingPHYBits                          initiating_phys
+
+  let num_entries = (initiating_phys.le_1m ? 1 : 0)+(initiating_phys.le_2m ? 1 : 0)+(initiating_phys.le_coded ? 1 : 0)
+  let single_entry_size = LEExtendedCreateConnectionData.$size_in_bytes
+  let total_entries_size = num_entries*single_entry_size
+  $next [+total_entries_size]                   LEExtendedCreateConnectionData[num_entries]  data
 
 # 7.8.66 LE Extended Create Connection command version 2
 # HCI_LE_Extended_Create_Connection v2
@@ -2776,7 +2801,7 @@ struct LESetCIGParametersCommand:
     -- The interval, in microseconds, of periodic SDUs (Peripheral => Central)
     [requires: 0x0000FF <= this <= 0x0FFFFF]
 
-  $next [+1]                       LESleepClockAccuracyRange                worst_case_sca
+  $next [+1]                       hci.LESleepClockAccuracyRange            worst_case_sca
     -- Worst-case sleep clock accuracy of all Peripherals that will participate in the CIG
 
   $next [+1]                       LECISPacking                             packing
@@ -2932,3 +2957,16 @@ struct LERemoveISODataPathCommand:
 # 7.8.112 LE ISO Receive Test command
 # 7.8.113 LE ISO Read Test Counters command
 # 7.8.114 LE ISO Test End command
+
+
+struct LESetHostFeatureCommand:
+  -- 7.8.115 LE Set Host Feature command
+  -- HCI_LE_Set_Host_Feature
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+  0     [+hdr_size]  hci.CommandHeader       header
+  $next [+1]         UInt                    bit_number
+    -- Bit position in the Feature Set
+    [requires: 0x00 <= this <= 0x3F]
+
+  $next [+1]         hci.GenericEnableParam  bit_value
+    -- Indicates if Host feature is enabled or disabled

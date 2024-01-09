@@ -83,11 +83,8 @@ from pw_ide.editors import (
 
 from pw_ide.python import PythonPaths
 from pw_ide.settings import PigweedIdeSettings
-from pw_ide.status_reporter import StatusReporter
 
 env = pigweed_environment()
-
-_VSIX_DIR = Path(env.PW_ROOT) / 'pw_ide' / 'vscode'
 
 
 def _vsc_os(system: str = platform.system()):
@@ -138,7 +135,6 @@ def _local_python_settings() -> Dict[str, Any]:
     paths = PythonPaths()
     return {
         'python.defaultInterpreterPath': str(paths.interpreter),
-        'python.formatting.yapfPath': str(paths.bin_dir / 'yapf'),
     }
 
 
@@ -180,7 +176,7 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
         "gulp.autoDetect": "off",
         "jake.autoDetect": "off",
         "npm.autoDetect": "off",
-        "C_Cpp.intelliSenseEngine": "Disabled",
+        "C_Cpp.intelliSenseEngine": "disabled",
         "[cpp]": OrderedDict(
             {"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"}
         ),
@@ -192,9 +188,6 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
         ),
         # The "strict" mode is much more strict than what we currently enforce.
         "python.analysis.typeCheckingMode": "basic",
-        "python.formatting.provider": "yapf",
-        "python.linting.pylintEnabled": True,
-        "python.linting.mypyEnabled": True,
         "python.testing.unittestEnabled": True,
         "[python]": OrderedDict({"editor.tabSize": 4}),
         "typescript.tsc.autoDetect": "off",
@@ -332,7 +325,9 @@ _DEFAULT_EXTENSIONS: EditorSettingsDict = OrderedDict(
     {
         "recommendations": [
             "llvm-vs-code-extensions.vscode-clangd",
+            "ms-python.mypy-type-checker",
             "ms-python.python",
+            "ms-python.pylint",
             "npclaudiu.vscode-gn",
             "msedge-dev.gnls",
             "zxh404.vscode-proto3",
@@ -379,7 +374,7 @@ def _default_tasks(
             "type": "pickString",
             "id": "availableTargetToolchains",
             "description": "Available target toolchains",
-            "options": list(state.targets),
+            "options": sorted(list(state.targets)),
         }
     ]
 
@@ -433,120 +428,23 @@ class VscSettingsManager(EditorSettingsManager[VscSettingsType]):
     }
 
 
-def _prompt_for_path(reporter: StatusReporter) -> Path:
-    reporter.info(
-        [
-            "Hmmm... I can't seem to find your Visual Studio Code binary path!",
-            "You can provide it manually here, or Ctrl-C to cancel.",
-        ]
-    )
+def build_extension(pw_root: Path):
+    """Build the VS Code extension."""
 
-    path = Path(input("> "))
+    license_path = pw_root / 'LICENSE'
+    icon_path = pw_root.parent / 'icon.png'
 
-    if path.exists():
-        return path
+    vsc_ext_path = pw_root / 'pw_ide' / 'ts' / 'pigweed-vscode'
+    temp_license_path = vsc_ext_path / 'LICENSE'
+    temp_icon_path = vsc_ext_path / 'icon.png'
 
-    reporter.err("Nothing found there!")
-    raise FileNotFoundError()
+    shutil.copy(license_path, temp_license_path)
+    shutil.copy(icon_path, temp_icon_path)
 
-
-# TODO(chadnorvell): Replace this when we support Python 3.11 with:
-# _PathData = Tuple[Optional[str], *Tuple[str]]
-_PathData = List[Optional[str]]
-
-
-def _try_code_path(path_list: _PathData) -> Optional[Path]:
-    root, *rest = path_list
-
-    if root is None:
-        return None
-
-    path = Path(root)
-
-    for part in rest:
-        if part is None:
-            return None
-
-        path /= part
-
-    return path
-
-
-def _try_each_code_path(
-    reporter: StatusReporter, *path_lists: _PathData
-) -> Path:
-    for path_list in path_lists:
-        if (path := _try_code_path(path_list)) is not None:
-            return path
-
-    if (path_str := shutil.which('code')) is not None:
-        return Path(path_str)
-
-    return _prompt_for_path(reporter)
-
-
-def _get_vscode_exe_path(
-    reporter: StatusReporter, system: str = platform.system()
-) -> Path:
-    if system == 'Darwin':
-        return _try_each_code_path(
-            reporter,
-            [
-                '/Applications',
-                'Visual Studio Code.app',
-                'Contents',
-                'Resources',
-                'app',
-                'bin',
-                'code',
-            ],
-        )
-
-    if system == 'Windows':
-        return _try_each_code_path(
-            reporter,
-            [
-                os.getenv('APPDATA'),
-                'Local',
-                'Programs',
-                'Microsoft VS Code',
-                'bin',
-                'code.exe',
-            ],
-            [
-                os.getenv('LOCALAPPDATA'),
-                'Local',
-                'Programs',
-                'Microsoft VS Code',
-                'bin',
-                'code.exe',
-            ],
-        )
-
-    if system == 'Linux':
-        return _try_each_code_path(
-            reporter,
-            ['/usr', 'bin', 'code'],
-            ['/usr', 'local', 'bin', 'code'],
-        )
-
-    return _prompt_for_path(reporter)
-
-
-def _get_latest_extension_vsix() -> Path:
-    return sorted(_VSIX_DIR.glob('*.vsix'), reverse=True)[0]
-
-
-def install_extension_from_vsix(reporter: StatusReporter) -> None:
-    """Install the latest pre-built VSC extension from its VSIX file.
-
-    Normally, extensions are installed from the VSC extension marketplace.
-    This will instead install the extension directly from a file.
-    """
-    extension_path = _get_latest_extension_vsix()
-    vscode_exe_path = _get_vscode_exe_path(reporter)
-
-    reporter.info(f"Path: {vscode_exe_path}")
-    subprocess.run(
-        [vscode_exe_path, '--install-extension', extension_path], check=True
-    )
+    try:
+        subprocess.run(['vsce', 'package'], check=True, cwd=vsc_ext_path)
+    except subprocess.CalledProcessError as e:
+        raise e
+    finally:
+        temp_license_path.unlink()
+        temp_icon_path.unlink()
