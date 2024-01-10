@@ -2931,7 +2931,7 @@ def generate_struct_for_message(
             output.write_line(f'{type_name} {name};')
 
             if not prop.use_callback():
-                cmp.append(f'{name} == other.{name}')
+                cmp.append(f'this->{name} == other.{name}')
 
         # Equality operator
         output.write_line()
@@ -3121,7 +3121,7 @@ def generate_is_trivially_comparable_specialization(
             is_trivially_comparable = False
             break
 
-    qualified_message = f'{message.cpp_namespace()}::Message'
+    qualified_message = f'::{message.cpp_namespace()}::Message'
 
     output.write_line('template <>')
     output.write_line(

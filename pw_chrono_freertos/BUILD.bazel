@@ -12,16 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "system_clock",
     srcs = [
         "system_clock.cc",
@@ -40,6 +35,7 @@ pw_cc_library(
         "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
+        ":config_override",
         "//pw_chrono:epoch",
         "//pw_chrono:system_clock_facade",
         "//pw_interrupt:context",
@@ -48,7 +44,12 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+cc_library(
     name = "system_timer",
     srcs = [
         "system_timer.cc",

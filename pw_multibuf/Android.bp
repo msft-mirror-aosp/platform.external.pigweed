@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -16,38 +16,37 @@ package {
     default_applicable_licenses: ["external_pigweed_license"],
 }
 
-cc_library {
-    name: "pw_allocator",
+cc_library_static {
+    name: "pw_multibuf",
     cpp_std: "c++20",
+    host_supported: true,
     vendor_available: true,
     export_include_dirs: ["public"],
+    srcs: [
+        "chunk.cc",
+        "multibuf.cc",
+    ],
     header_libs: [
         "pw_assert_headers",
         "pw_assert_log_headers",
+        "pw_span_headers",
+        "pw_sync_headers",
     ],
     export_header_lib_headers: [
         "pw_assert_headers",
         "pw_assert_log_headers",
+        "pw_span_headers",
+        "pw_sync_headers",
     ],
-    export_static_lib_headers: [
-        "pw_metric",
-        "pw_status",
-    ],
-    host_supported: true,
-    srcs: [
-        "allocator.cc",
-        "block.cc",
-        "libc_allocator.cc",
-        "metrics.cc",
-        "split_free_list_allocator.cc",
+    defaults: [
+        "pw_assert_log_defaults",
+        "pw_chrono_stl_defaults",
+        "pw_sync_stl_defaults",
     ],
     static_libs: [
-        "pw_base64",
         "pw_bytes",
-        "pw_containers",
-        "pw_metric",
-        "pw_status",
-        "pw_tokenizer",
-        "pw_tokenizer_base64",
+    ],
+    export_static_lib_headers: [
+        "pw_bytes",
     ],
 }
