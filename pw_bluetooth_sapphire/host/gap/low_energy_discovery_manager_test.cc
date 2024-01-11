@@ -207,7 +207,7 @@ class LowEnergyDiscoveryManagerTest : public TestingBase {
         '0');
     auto fake_peer =
         std::make_unique<FakePeer>(kAddress0, dispatcher(), true, true);
-    fake_peer->SetAdvertisingData(kAdvData0);
+    fake_peer->set_advertising_data(kAdvData0);
     test_device()->AddPeer(std::move(fake_peer));
 
     // Peer 1
@@ -223,7 +223,7 @@ class LowEnergyDiscoveryManagerTest : public TestingBase {
         0x0d,
         0x18);
     fake_peer = std::make_unique<FakePeer>(kAddress1, dispatcher(), true, true);
-    fake_peer->SetAdvertisingData(kAdvData1);
+    fake_peer->set_advertising_data(kAdvData1);
     test_device()->AddPeer(std::move(fake_peer));
 
     // Peer 2
@@ -246,7 +246,7 @@ class LowEnergyDiscoveryManagerTest : public TestingBase {
         '2');
     fake_peer =
         std::make_unique<FakePeer>(kAddress2, dispatcher(), false, false);
-    fake_peer->SetAdvertisingData(kAdvData2);
+    fake_peer->set_advertising_data(kAdvData2);
     test_device()->AddPeer(std::move(fake_peer));
 
     // Peer 3
@@ -269,7 +269,7 @@ class LowEnergyDiscoveryManagerTest : public TestingBase {
         '3');
     fake_peer =
         std::make_unique<FakePeer>(kAddress3, dispatcher(), false, false);
-    fake_peer->SetAdvertisingData(kAdvData3);
+    fake_peer->set_advertising_data(kAdvData3);
     test_device()->AddPeer(std::move(fake_peer));
   }
 
@@ -915,7 +915,7 @@ TEST_F(LowEnergyDiscoveryManagerTest, DirectedAdvertisingEventFromUnknownPeer) {
                                               dispatcher(),
                                               /*connectable=*/true,
                                               /*scannable=*/false);
-  fake_peer->enable_directed_advertising(true);
+  fake_peer->set_directed_advertising_enabled(true);
   test_device()->AddPeer(std::move(fake_peer));
 
   int connectable_count = 0;
@@ -945,7 +945,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
                                               dispatcher(),
                                               /*connectable=*/false,
                                               /*scannable=*/false);
-  fake_peer->enable_directed_advertising(true);
+  fake_peer->set_directed_advertising_enabled(true);
   test_device()->AddPeer(std::move(fake_peer));
   Peer* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/false);
   ASSERT_TRUE(peer);
@@ -977,7 +977,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
                                               dispatcher(),
                                               /*connectable=*/true,
                                               /*scannable=*/false);
-  fake_peer->enable_directed_advertising(true);
+  fake_peer->set_directed_advertising_enabled(true);
   test_device()->AddPeer(std::move(fake_peer));
   Peer* peer = peer_cache()->NewPeer(kAddress0, /*connectable=*/true);
   ASSERT_TRUE(peer);
@@ -1230,7 +1230,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
                                            dispatcher(),
                                            /*connectable=*/false,
                                            /*scannable=*/false);
-    peer->enable_directed_advertising(true);
+    peer->set_directed_advertising_enabled(true);
     test_device()->AddPeer(std::move(peer));
   }
   // Address 4: directed connectable; added to cache below
@@ -1239,7 +1239,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
                                            dispatcher(),
                                            /*connectable=*/true,
                                            /*scannable=*/false);
-    peer->enable_directed_advertising(true);
+    peer->set_directed_advertising_enabled(true);
     test_device()->AddPeer(std::move(peer));
   }
   // Address 5: directed connectable; NOT in cache
@@ -1248,7 +1248,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
                                            dispatcher(),
                                            /*connectable=*/true,
                                            /*scannable=*/false);
-    peer->enable_directed_advertising(true);
+    peer->set_directed_advertising_enabled(true);
     test_device()->AddPeer(std::move(peer));
   }
 

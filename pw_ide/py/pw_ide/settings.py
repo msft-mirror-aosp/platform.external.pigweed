@@ -47,6 +47,7 @@ _DEFAULT_SUPPORTED_EDITORS: Dict[SupportedEditorName, bool] = {
 
 _DEFAULT_CONFIG: Dict[str, Any] = {
     'cascade_targets': False,
+    'clangd_alternate_path': None,
     'clangd_additional_query_drivers': [],
     'compdb_gen_cmd': None,
     'compdb_search_paths': [_DEFAULT_BUILD_DIR_NAME],
@@ -262,6 +263,22 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return self._config.get('sync', list())
 
     @property
+    def clangd_alternate_path(self) -> Optional[Path]:
+        """An alternate path to ``clangd`` to use instead of Pigweed's.
+
+        Pigweed provides the ``clang`` toolchain, including ``clangd``, via
+        CIPD, and by default, ``pw_ide`` will look for that toolchain in the
+        CIPD directory at ``$PW_PIGWEED_CIPD_INSTALL_DIR`` *or* in an alternate
+        CIPD directory specified by ``$PW_{project name}_CIPD_INSTALL_DIR`` if
+        it exists.
+
+        If your project needs to use a ``clangd`` located somewhere else not
+        covered by the cases described above, you can define the path to that
+        ``clangd`` here.
+        """
+        return self._config.get('clangd_alternate_path', None)
+
+    @property
     def clangd_additional_query_drivers(self) -> List[str]:
         """Additional query driver paths that clangd should use.
 
@@ -375,6 +392,11 @@ _docstring_set_default(
     PigweedIdeSettings.working_dir, PW_IDE_DIR_NAME, literal=True
 )
 _docstring_set_default(
+    PigweedIdeSettings.compdb_gen_cmd,
+    _DEFAULT_CONFIG['compdb_gen_cmd'],
+    literal=True,
+)
+_docstring_set_default(
     PigweedIdeSettings.compdb_search_paths,
     [_DEFAULT_BUILD_DIR_NAME],
     literal=True,
@@ -399,6 +421,11 @@ _docstring_set_default(
 )
 _docstring_set_default(
     PigweedIdeSettings.sync, _DEFAULT_CONFIG['sync'], literal=True
+)
+_docstring_set_default(
+    PigweedIdeSettings.clangd_alternate_path,
+    _DEFAULT_CONFIG['clangd_alternate_path'],
+    literal=True,
 )
 _docstring_set_default(
     PigweedIdeSettings.clangd_additional_query_drivers,

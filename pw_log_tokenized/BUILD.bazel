@@ -15,7 +15,6 @@
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -23,7 +22,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "headers",
     hdrs = [
         "public/pw_log_tokenized/config.h",
@@ -34,12 +33,18 @@ pw_cc_library(
         "public",
     ],
     deps = [
+        ":config_override",
         "//pw_log:facade",
         "//pw_tokenizer",
     ],
 )
 
-pw_cc_library(
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+cc_library(
     name = "pw_log_tokenized",
     srcs = ["log_tokenized.cc"],
     hdrs = [
@@ -56,7 +61,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "gcc_partially_tokenized",
     srcs = ["log_tokenized.cc"],
     hdrs = [
@@ -87,7 +92,7 @@ pw_cc_facade(
     deps = ["//pw_preprocessor"],
 )
 
-pw_cc_library(
+cc_library(
     name = "handler",
     hdrs = ["public/pw_log_tokenized/handler.h"],
     includes = ["public"],
@@ -98,12 +103,12 @@ pw_cc_library(
 )
 
 # There is no default backend for now.
-pw_cc_library(
+cc_library(
     name = "backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
 )
 
-pw_cc_library(
+cc_library(
     name = "base64",
     hdrs = ["public/pw_log_tokenized/base64.h"],
     includes = ["public"],
@@ -113,7 +118,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "base64_over_hdlc",
     srcs = ["base64_over_hdlc.cc"],
     deps = [
