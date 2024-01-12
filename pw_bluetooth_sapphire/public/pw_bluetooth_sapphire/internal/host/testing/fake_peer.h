@@ -20,7 +20,6 @@
 #include "pw_bluetooth_sapphire/internal/host/common/macros.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/le_connection_parameters.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
-#include "pw_bluetooth_sapphire/internal/host/hci/connection.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_gatt_server.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_l2cap.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_sdp_server.h"
@@ -43,16 +42,37 @@ class FakePeer {
                     bool connectable = true,
                     bool scannable = true);
 
-  void SetAdvertisingData(const ByteBuffer& data);
+  const ByteBuffer& advertising_data() const { return adv_data_; }
+  void set_advertising_data(const ByteBuffer& data) {
+    adv_data_ = DynamicByteBuffer(data);
+  }
 
+  // |should_batch_reports| indicates to the FakeController that the SCAN_IND
+  // report should be included in the same HCI LE Advertising Report Event
+  // payload that includes the original advertising data (see comments for
+  // should_batch_reports()).
+  void set_scan_response(bool should_batch_reports, const ByteBuffer& data);
+  const ByteBuffer& scan_response() const { return scan_rsp_; }
+
+  bool advertising_enabled() const { return advertising_enabled_; }
   void set_advertising_enabled(bool enabled) { advertising_enabled_ = enabled; }
 
-  // Mark this device for directed advertising. CreateAdvertisingReportEvent
-  // will return directed advertisements only.
-  void enable_directed_advertising(bool enable) { directed_ = enable; }
+  // Mark this device for directed advertising.
+  bool directed_advertising_enabled() const { return directed_; }
+  void set_directed_advertising_enabled(bool enable) { directed_ = enable; }
 
   // Toggles whether the address of this device represents a resolved RPA.
+  bool address_resolved() const { return address_resolved_; }
   void set_address_resolved(bool value) { address_resolved_ = value; }
+
+  // Extended advertising PDUs are used when advertising but allow for a greater
+  // set of features and a larger payload versus legacy advertising PDUs.
+  bool use_extended_advertising_pdus() const {
+    return use_extended_advertising_pdus_;
+  }
+  void set_use_extended_advertising_pdus(bool value) {
+    use_extended_advertising_pdus_ = value;
+  }
 
   // TODO(armansito): Come up with a better scheme to determine supported
   // transport type instead of relying on address type, which doesn't translate
@@ -69,32 +89,18 @@ class FakePeer {
     return address().type() != DeviceAddress::Type::kBREDR;
   }
 
-  // Generates and returns a LE Advertising Report Event payload. If
-  // |include_scan_rsp| is true, then the returned PDU will contain two reports
-  // including the SCAN_IND report.
-  DynamicByteBuffer CreateAdvertisingReportEvent(bool include_scan_rsp) const;
-
-  // Generates a LE Advertising Report Event payload containing the scan
-  // response.
-  DynamicByteBuffer CreateScanResponseReportEvent() const;
-
-  // |should_batch_reports| indicates to the FakeController that the SCAN_IND
-  // report should be included in the same HCI LE Advertising Report Event
-  // payload that includes the original advertising data (see comments for
-  // should_batch_reports()).
-  void SetScanResponse(bool should_batch_reports, const ByteBuffer& data);
-
   // Generates a Inquiry Response Event payload containing a inquiry result
   // response.
   DynamicByteBuffer CreateInquiryResponseEvent(
       pw::bluetooth::emboss::InquiryMode mode) const;
 
   const DeviceAddress& address() const { return address_; }
+  int8_t rssi() const { return -1; }
+  int8_t tx_power() const { return -2; }
 
   // The local name of the device. Used in HCI Remote Name Request event.
   std::string name() const { return name_; }
-
-  void set_name(std::string name) { name_ = name; }
+  void set_name(const std::string& name) { name_ = name; }
 
   // Indicates whether or not this device should include the scan response and
   // the advertising data in the same HCI LE Advertising Report Event. This is
@@ -106,9 +112,6 @@ class FakePeer {
   // it is a hint to the corresponding FakeController which decides how the
   // reports should be generated.
   bool should_batch_reports() const { return should_batch_reports_; }
-
-  // Returns true if this device should send advertisements.
-  bool advertising_enabled() const { return advertising_enabled_; }
 
   // Returns true if this device is scannable. We use this to tell
   // FakeController whether or not it should send scan response PDUs.
@@ -165,13 +168,13 @@ class FakePeer {
   bool force_pending_connect() const { return force_pending_connect_; }
   void set_force_pending_connect(bool value) { force_pending_connect_ = value; }
 
-  void set_last_connection_request_link_type(
-      std::optional<pw::bluetooth::emboss::LinkType> type) {
-    last_connection_request_link_type_ = type;
-  }
   const std::optional<pw::bluetooth::emboss::LinkType>&
   last_connection_request_link_type() const {
     return last_connection_request_link_type_;
+  }
+  void set_last_connection_request_link_type(
+      std::optional<pw::bluetooth::emboss::LinkType> type) {
+    last_connection_request_link_type_ = type;
   }
 
   void AddLink(hci_spec::ConnectionHandle handle);
@@ -186,7 +189,7 @@ class FakePeer {
   HandleSet Disconnect();
 
   // Returns the FakeController that has been assigned to this device.
-  FakeController* ctrl() const { return ctrl_; }
+  FakeController* controller() const { return controller_; }
 
   // Returns the FakeSdpServer associated with this device.
   FakeSdpServer* sdp_server() { return &sdp_server_; }
@@ -195,7 +198,7 @@ class FakePeer {
   friend class FakeController;
 
   // Called by a FakeController when a FakePeer is registered with it.
-  void set_ctrl(FakeController* ctrl) { ctrl_ = ctrl; }
+  void set_controller(FakeController* ctrl) { controller_ = ctrl; }
 
   void WriteScanResponseReport(hci_spec::LEAdvertisingReportData* report) const;
 
@@ -210,10 +213,10 @@ class FakePeer {
   //  packet header.
   void SendPacket(hci_spec::ConnectionHandle conn,
                   l2cap::ChannelId cid,
-                  const ByteBuffer& packet);
+                  const ByteBuffer& packet) const;
 
   // The FakeController that this FakePeer has been assigned to.
-  FakeController* ctrl_;  // weak
+  FakeController* controller_;  // weak
 
   DeviceAddress address_;
   std::string name_;
@@ -223,6 +226,7 @@ class FakePeer {
   bool advertising_enabled_;
   bool directed_;
   bool address_resolved_;
+  bool use_extended_advertising_pdus_;
 
   pw::bluetooth::emboss::StatusCode connect_status_;
   pw::bluetooth::emboss::StatusCode connect_response_;
