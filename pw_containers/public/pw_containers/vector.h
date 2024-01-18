@@ -26,6 +26,7 @@
 
 #include "pw_assert/assert.h"
 #include "pw_polyfill/language_feature_macros.h"
+#include "pw_preprocessor/compiler.h"
 
 namespace pw {
 namespace vector_impl {
@@ -316,7 +317,7 @@ class Vector<T, vector_impl::kGeneric>
 
   // Returns the number of elements in the Vector. Uses size_t instead of
   // size_type for consistency with other containers.
-  size_t size() const noexcept { return size_; }
+  size_t size() const noexcept PW_NO_SANITIZE("memory") { return size_; }
 
   // Returns the maximum number of elements in this Vector.
   size_t max_size() const noexcept { return max_size_; }
@@ -335,8 +336,13 @@ class Vector<T, vector_impl::kGeneric>
 
   iterator insert(const_iterator index, T&& value);
 
-  template <typename Iterator>
-  iterator insert(const_iterator index, Iterator first, Iterator last);
+  template <
+      typename Iterator,
+      int&... ExplicitArgumentBarrier,
+      typename = std::enable_if_t<vector_impl::IsIterator<Iterator>::value>>
+  iterator insert(const_iterator index, Iterator first, Iterator last) {
+    return InsertFrom(index, first, last);
+  }
 
   iterator insert(const_iterator index, std::initializer_list<T> list) {
     return insert(index, list.begin(), list.end());
@@ -358,9 +364,9 @@ class Vector<T, vector_impl::kGeneric>
 
   void pop_back();
 
-  void resize(size_type new_size) { resize(new_size, T()); }
+  void resize(size_t new_size) { resize(new_size, T()); }
 
-  void resize(size_type new_size, const T& value);
+  void resize(size_t new_size, const T& value);
 
  protected:
   // Vectors without an explicit size cannot be constructed directly. Instead,
@@ -402,6 +408,9 @@ class Vector<T, vector_impl::kGeneric>
   void MoveFrom(Vector& other) noexcept;
 
   void Append(size_type count, const T& value);
+
+  template <typename Iterator>
+  iterator InsertFrom(const_iterator index, Iterator first, Iterator last);
 
   const size_type max_size_;
   size_type size_ = 0;
@@ -476,10 +485,12 @@ void Vector<T, vector_impl::kGeneric>::pop_back() {
 }
 
 template <typename T>
-void Vector<T, vector_impl::kGeneric>::resize(size_type new_size,
-                                              const T& value) {
+void Vector<T, vector_impl::kGeneric>::resize(size_t new_size, const T& value) {
+  PW_DASSERT(new_size <= std::numeric_limits<size_type>::max());
   if (size() < new_size) {
-    Append(std::min(max_size(), size_t(new_size)) - size(), value);
+    size_type count =
+        static_cast<size_type>(std::min(max_size(), new_size) - size());
+    Append(count, value);
   } else {
     while (size() > new_size) {
       pop_back();
@@ -506,40 +517,6 @@ typename Vector<T>::iterator Vector<T>::insert(Vector<T>::const_iterator index,
 
   // Return an iterator pointing to the inserted value.
   return insertion_point;
-}
-
-template <typename T>
-template <typename Iterator>
-typename Vector<T>::iterator Vector<T>::insert(Vector<T>::const_iterator index,
-                                               Iterator first,
-                                               Iterator last) {
-  PW_DASSERT(index >= cbegin());
-  PW_DASSERT(index <= cend());
-  PW_DASSERT(!full());
-
-  iterator insertion_point = begin() + std::distance(cbegin(), index);
-
-  const size_t insertion_count = std::distance(first, last);
-  if (insertion_count == 0) {
-    return insertion_point;
-  }
-  PW_DASSERT(size() + insertion_count <= max_size());
-
-  iterator return_value = insertion_point;
-
-  if (insertion_point != end()) {
-    std::move_backward(insertion_point, end(), end() + insertion_count);
-  }
-
-  while (first != last) {
-    *insertion_point = *first;
-    ++first;
-    ++insertion_point;
-  }
-  size_ += insertion_count;
-
-  // Return an iterator pointing to the first element inserted.
-  return return_value;
 }
 
 template <typename T>
@@ -585,7 +562,7 @@ typename Vector<T>::iterator Vector<T>::erase(Vector<T>::const_iterator first,
   iterator destination = begin() + std::distance(cbegin(), first);
   iterator new_end = std::move(source, end(), destination);
 
-  size_ = std::distance(begin(), new_end);
+  size_ = static_cast<size_type>(std::distance(begin(), new_end));
 
   // Return an iterator following the last removed element.
   return new_end;
@@ -612,6 +589,27 @@ void Vector<T, vector_impl::kGeneric>::Append(size_type count, const T& value) {
   for (size_t i = 0; i < count; ++i) {
     push_back(value);
   }
+}
+
+template <typename T>
+template <typename Iterator>
+typename Vector<T>::iterator Vector<T, vector_impl::kGeneric>::InsertFrom(
+    Vector<T>::const_iterator index, Iterator first, Iterator last) {
+  PW_DASSERT(index >= cbegin());
+  PW_DASSERT(index <= cend());
+
+  // Return an iterator pointing to the first element inserted.
+  iterator retval = begin() + std::distance(cbegin(), index);
+  size_t count = static_cast<size_t>(std::distance(first, last));
+  PW_DASSERT(count <= max_size() - size());
+
+  if (retval != end()) {
+    std::move_backward(retval, end(), end() + count);
+  }
+  std::move(first, last, retval);
+
+  size_ += static_cast<size_type>(count);
+  return retval;
 }
 
 }  // namespace pw

@@ -22,7 +22,6 @@ import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_fuzzer/fuzzer.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
 import("$dir_pw_unit_test/test.gni")
-import("backend.gni")
 
 declare_args() {
   # The build target that overrides the default configuration options for this
@@ -37,10 +36,7 @@ config("public_include_path") {
 }
 
 config("linker_script") {
-  inputs = [
-    "pw_tokenizer_linker_sections.ld",
-    "pw_tokenizer_linker_rules.ld",
-  ]
+  inputs = [ "pw_tokenizer_linker_sections.ld" ]
   lib_dirs = [ "." ]
 
   # Automatically add the tokenizer linker sections when cross-compiling or
@@ -81,11 +77,12 @@ pw_source_set("pw_tokenizer") {
     dir_pw_polyfill,
     dir_pw_preprocessor,
     dir_pw_span,
+    dir_pw_varint,
   ]
-  deps = [ dir_pw_varint ]
   public = [
     "public/pw_tokenizer/encode_args.h",
     "public/pw_tokenizer/hash.h",
+    "public/pw_tokenizer/nested_tokenization.h",
     "public/pw_tokenizer/tokenize.h",
   ]
   sources = [
@@ -116,19 +113,16 @@ pw_source_set("base64") {
   ]
 }
 
-# TODO(hepler): Remove this backwards compatibility header after projects have
-#     migrated.
-pw_source_set("global_handler_with_payload") {
-  public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_tokenizer/tokenize_to_global_handler_with_payload.h" ]
-  public_deps = [ dir_pw_preprocessor ]
-}
-
 pw_source_set("decoder") {
   public_configs = [ ":public_include_path" ]
-  public_deps = [ dir_pw_span ]
+  public_deps = [
+    dir_pw_preprocessor,
+    dir_pw_span,
+  ]
   deps = [
+    ":base64",
     "$dir_pw_bytes:bit",
+    dir_pw_base64,
     dir_pw_bytes,
     dir_pw_varint,
   ]
@@ -172,20 +166,22 @@ pw_test_group("tests") {
     ":argument_types_test",
     ":base64_test",
     ":decode_test",
-    ":detokenize_fuzzer_test",
     ":detokenize_test",
     ":encode_args_test",
     ":hash_test",
     ":simple_tokenize_test",
-    ":token_database_fuzzer_test",
     ":token_database_test",
     ":tokenize_test",
+    ":tokenize_c99_test",
   ]
-  group_deps = [ "$dir_pw_preprocessor:tests" ]
+  group_deps = [
+    ":fuzzers",
+    "$dir_pw_preprocessor:tests",
+  ]
 }
 
-group("fuzzers") {
-  deps = [
+pw_fuzzer_group("fuzzers") {
+  fuzzers = [
     ":detokenize_fuzzer",
     ":token_database_fuzzer",
   ]
@@ -272,23 +268,32 @@ pw_test("tokenize_test") {
   ]
 }
 
+pw_test("tokenize_c99_test") {
+  cflags_c = [ "-std=c99" ]
+  sources = [
+    "tokenize_c99_test.c",
+    "tokenize_c99_test_entry_point.cc",
+  ]
+  deps = [
+    ":pw_tokenizer",
+    "$dir_pw_containers:variable_length_entry_queue",
+  ]
+}
+
 pw_fuzzer("token_database_fuzzer") {
   sources = [ "token_database_fuzzer.cc" ]
   deps = [
     ":decoder",
-    "$dir_pw_fuzzer",
-    "$dir_pw_preprocessor",
+    dir_pw_preprocessor,
     dir_pw_span,
   ]
-  enable_test_if = false
 }
 
 pw_fuzzer("detokenize_fuzzer") {
   sources = [ "detokenize_fuzzer.cc" ]
   deps = [
     ":decoder",
-    "$dir_pw_fuzzer",
-    "$dir_pw_preprocessor",
+    dir_pw_preprocessor,
   ]
 }
 
@@ -329,8 +334,12 @@ pw_shared_library("detokenizer_jni") {
 
 pw_doc_group("docs") {
   sources = [
+    "api.rst",
+    "detokenization.rst",
     "docs.rst",
-    "proto.rst",
+    "get_started.rst",
+    "token_databases.rst",
+    "tokenization.rst",
   ]
   inputs = [ "py/pw_tokenizer/encode.py" ]
   report_deps = [ ":tokenizer_size_report" ]

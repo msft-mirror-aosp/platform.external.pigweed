@@ -32,10 +32,10 @@ public final class StreamObserverCallTest {
   @Rule public final MockitoRule mockito = MockitoJUnit.rule();
 
   private static final Service SERVICE = new Service("pw.rpc.test1.TheTestService",
-      Service.unaryMethod("SomeUnary", SomeMessage.class, AnotherMessage.class),
-      Service.clientStreamingMethod("SomeClient", SomeMessage.class, AnotherMessage.class),
+      Service.unaryMethod("SomeUnary", SomeMessage.parser(), AnotherMessage.parser()),
+      Service.clientStreamingMethod("SomeClient", SomeMessage.parser(), AnotherMessage.parser()),
       Service.bidirectionalStreamingMethod(
-          "SomeBidirectional", SomeMessage.class, AnotherMessage.class));
+          "SomeBidirectional", SomeMessage.parser(), AnotherMessage.parser()));
   private static final Method METHOD = SERVICE.method("SomeUnary");
   private static final int CHANNEL_ID = 555;
 
@@ -130,7 +130,7 @@ public final class StreamObserverCallTest {
     streamObserverCall.finish();
 
     verify(mockOutput)
-        .send(packetBuilder().setType(PacketType.CLIENT_STREAM_END).build().toByteArray());
+        .send(packetBuilder().setType(PacketType.CLIENT_REQUEST_COMPLETION).build().toByteArray());
   }
 
   @Test

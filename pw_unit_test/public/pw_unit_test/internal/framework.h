@@ -47,40 +47,184 @@
   _PW_TEST_SUITE_NAMES_MUST_BE_UNIQUE(int /* TEST_F */, test_fixture); \
   _PW_TEST(test_fixture, test_name, test_fixture)
 
-#define EXPECT_TRUE(expr) static_cast<void>(_PW_TEST_BOOL(expr, true))
-#define EXPECT_FALSE(expr) static_cast<void>(_PW_TEST_BOOL(expr, false))
-#define EXPECT_EQ(lhs, rhs) static_cast<void>(_PW_TEST_OP(lhs, rhs, ==))
-#define EXPECT_NE(lhs, rhs) static_cast<void>(_PW_TEST_OP(lhs, rhs, !=))
-#define EXPECT_GT(lhs, rhs) static_cast<void>(_PW_TEST_OP(lhs, rhs, >))
-#define EXPECT_GE(lhs, rhs) static_cast<void>(_PW_TEST_OP(lhs, rhs, >=))
-#define EXPECT_LT(lhs, rhs) static_cast<void>(_PW_TEST_OP(lhs, rhs, <))
-#define EXPECT_LE(lhs, rhs) static_cast<void>(_PW_TEST_OP(lhs, rhs, <=))
-#define EXPECT_STREQ(lhs, rhs) static_cast<void>(_PW_TEST_C_STR(lhs, rhs, ==))
-#define EXPECT_STRNE(lhs, rhs) static_cast<void>(_PW_TEST_C_STR(lhs, rhs, !=))
+// Use of the FRIEND_TEST() macro is discouraged, because it induces coupling
+// between testing and implementation code. Consider this a last resort only.
+#define FRIEND_TEST(test_suite_name, test_name) \
+  friend class test_suite_name##_##test_name##_Test
 
+/// @def EXPECT_TRUE
+/// Verifies that @p expr evaluates to true.
+/// @param expr Condition to evaluate
+#define EXPECT_TRUE(expr) _PW_TEST_EXPECT(_PW_TEST_BOOL(expr, true))
+
+/// @def EXPECT_FALSE
+/// Verifies that @p expr evaluates to false.
+/// @param expr Condition to evaluate
+#define EXPECT_FALSE(expr) _PW_TEST_EXPECT(_PW_TEST_BOOL(expr, false))
+
+/// @def EXPECT_EQ
+/// Verifies that @p lhs == @p rhs
+/// <p>
+/// Does pointer equality on pointers. If used on two C strings, it tests if
+/// they are in the same memory location, not if they have the same value. Use
+/// #EXPECT_STREQ to compare C strings (e.g. <code>const char*</code>) by value.
+/// <p>
+/// When comparing a pointer to <code>NULL</code> use
+/// <code>EXPECT_EQ(ptr, nullptr)</code> instead of
+/// <code>EXPECT_EQ(ptr, NULL)</code>.
+/// @param lhs The left side of the equality comparison
+/// @param rhs The right side of the equality comparison
+#define EXPECT_EQ(lhs, rhs) _PW_TEST_EXPECT(_PW_TEST_OP(lhs, rhs, ==))
+
+/// @def EXPECT_NE
+/// Verifies that @p lhs != @p rhs
+/// <p>
+/// Does pointer equality on pointers. If used on two C strings, it tests if
+/// they are in different memory locations, not if they have different values.
+/// Use #EXPECT_STRNE to compare C strings (e.g. <code>const char*</code>) by
+/// value.
+/// <p>
+/// When comparing a pointer to <code>NULL</code>, use
+/// <code>EXPECT_NE(ptr, nullptr)</code> instead of
+/// <code>EXPECT_NE(ptr, NULL)</code>.
+/// @param lhs The left side of the inequality comparison
+/// @param rhs The right side of the inequality comparison
+#define EXPECT_NE(lhs, rhs) _PW_TEST_EXPECT(_PW_TEST_OP(lhs, rhs, !=))
+
+/// @def EXPECT_GT
+/// Verifies that @p lhs > @p rhs
+/// @param lhs The left side of the comparison
+/// @param rhs The right side of the comparison
+#define EXPECT_GT(lhs, rhs) _PW_TEST_EXPECT(_PW_TEST_OP(lhs, rhs, >))
+
+/// @def EXPECT_GE
+/// Verifies that @p lhs >= @p rhs
+/// @param lhs The left side of the comparison
+/// @param rhs The right side of the comparison
+#define EXPECT_GE(lhs, rhs) _PW_TEST_EXPECT(_PW_TEST_OP(lhs, rhs, >=))
+
+/// @def EXPECT_LT
+/// Verifies that @p lhs < @p rhs
+/// @param lhs The left side of the comparison
+/// @param rhs The right side of the comparison
+#define EXPECT_LT(lhs, rhs) _PW_TEST_EXPECT(_PW_TEST_OP(lhs, rhs, <))
+
+/// @def EXPECT_LE
+/// Verifies that @p lhs <= @p rhs
+/// @param lhs The left side of the comparison
+/// @param rhs The right side of the comparison
+#define EXPECT_LE(lhs, rhs) _PW_TEST_EXPECT(_PW_TEST_OP(lhs, rhs, <=))
+
+/// @def EXPECT_NEAR
+/// Verifies that the difference between @p lhs and @p rhs does not exceed the
+/// absolute error bound @p epsilon.
+/// @param lhs The left side of the comparison
+/// @param rhs The right side of the comparison
+/// @param epsilon The maximum difference between @p lhs and @p rhs
+#define EXPECT_NEAR(lhs, rhs, epsilon) \
+  _PW_TEST_EXPECT(_PW_TEST_NEAR(lhs, rhs, epsilon))
+
+/// @def EXPECT_FLOAT_EQ
+/// Verifies that the two float values @p rhs and @p lhs are approximately
+/// equal, to within 4 ULPs from each other.
+/// @param lhs The left side of the equality comparison
+/// @param rhs The right side of the equality comparison
+#define EXPECT_FLOAT_EQ(lhs, rhs) \
+  _PW_TEST_EXPECT(                \
+      _PW_TEST_NEAR(lhs, rhs, 4 * std::numeric_limits<float>::epsilon()))
+
+/// @def EXPECT_DOUBLE_EQ
+/// Verifies that the two double values @p rhs and @p lhs are approximately
+/// equal, to within 4 ULPs from each other.
+/// @param lhs The left side of the equality comparison
+/// @param rhs The right side of the equality comparison
+#define EXPECT_DOUBLE_EQ(lhs, rhs) \
+  _PW_TEST_EXPECT(                 \
+      _PW_TEST_NEAR(lhs, rhs, 4 * std::numeric_limits<double>::epsilon()))
+
+/// @def EXPECT_STREQ
+/// Verifies that the two C strings @p lhs and @p rhs have the same contents.
+/// @param lhs The left side of the equality comparison
+/// @param rhs The right side of the equality comparison
+#define EXPECT_STREQ(lhs, rhs) _PW_TEST_EXPECT(_PW_TEST_C_STR(lhs, rhs, ==))
+
+/// @def EXPECT_STRNE
+/// Verifies that the two C strings @p lhs and @p rhs have different content
+/// @param lhs The left side of the inequality comparison
+/// @param rhs The right side of the inequality comparison
+#define EXPECT_STRNE(lhs, rhs) _PW_TEST_EXPECT(_PW_TEST_C_STR(lhs, rhs, !=))
+
+/// @def ASSERT_TRUE
+/// @see EXPECT_TRUE
 #define ASSERT_TRUE(expr) _PW_TEST_ASSERT(_PW_TEST_BOOL(expr, true))
+
+/// @def ASSERT_FALSE
+/// @see EXPECT_FALSE
 #define ASSERT_FALSE(expr) _PW_TEST_ASSERT(_PW_TEST_BOOL(expr, false))
+
+/// @def ASSERT_EQ
+/// @see EXPECT_EQ
 #define ASSERT_EQ(lhs, rhs) _PW_TEST_ASSERT(_PW_TEST_OP(lhs, rhs, ==))
+
+/// @def ASSERT_NE
+/// @see EXPECT_NE
 #define ASSERT_NE(lhs, rhs) _PW_TEST_ASSERT(_PW_TEST_OP(lhs, rhs, !=))
+
+/// @def ASSERT_GT
+/// @see EXPECT_GT
 #define ASSERT_GT(lhs, rhs) _PW_TEST_ASSERT(_PW_TEST_OP(lhs, rhs, >))
+
+/// @def ASSERT_GE
+/// @see EXPECT_GE
 #define ASSERT_GE(lhs, rhs) _PW_TEST_ASSERT(_PW_TEST_OP(lhs, rhs, >=))
+
+/// @def ASSERT_LT
+/// @see EXPECT_LT
 #define ASSERT_LT(lhs, rhs) _PW_TEST_ASSERT(_PW_TEST_OP(lhs, rhs, <))
+
+/// @def ASSERT_LE
+/// @see EXPECT_LE
 #define ASSERT_LE(lhs, rhs) _PW_TEST_ASSERT(_PW_TEST_OP(lhs, rhs, <=))
+
+/// @def ASSERT_NEAR
+/// @see EXPECT_NEAR
+#define ASSERT_NEAR(lhs, rhs, epsilon) \
+  _PW_TEST_ASSERT(_PW_TEST_NEAR(lhs, rhs, epsilon))
+
+/// @def ASSERT_FLOAT_EQ
+/// @see EXPECT_FLOAT_EQ
+#define ASSERT_FLOAT_EQ(lhs, rhs) \
+  _PW_TEST_ASSERT(                \
+      _PW_TEST_NEAR(lhs, rhs, 4 * std::numeric_limits<float>::epsilon()))
+
+/// @def ASSERT_DOUBLE_EQ
+/// @see EXPECT_DOUBLE_EQ
+#define ASSERT_DOUBLE_EQ(lhs, rhs) \
+  _PW_TEST_ASSERT(                 \
+      _PW_TEST_NEAR(lhs, rhs, 4 * std::numeric_limits<double>::epsilon()))
+
+/// @def ASSERT_STREQ
+/// @see EXPECT_STREQ
 #define ASSERT_STREQ(lhs, rhs) _PW_TEST_ASSERT(_PW_TEST_C_STR(lhs, rhs, ==))
+
+/// @def ASSERT_STRNE
+/// @see EXPECT_STRNE
 #define ASSERT_STRNE(lhs, rhs) _PW_TEST_ASSERT(_PW_TEST_C_STR(lhs, rhs, !=))
 
 // Generates a non-fatal failure with a generic message.
-#define ADD_FAILURE()                                                  \
-  ::pw::unit_test::internal::Framework::Get().CurrentTestExpectSimple( \
-      "(line is not executed)", "(line was executed)", __LINE__, false)
+#define ADD_FAILURE()                                                    \
+  ::pw::unit_test::internal::Framework::Get().CurrentTestExpectSimple(   \
+      "(line is not executed)", "(line was executed)", __LINE__, false); \
+  _PW_UNIT_TEST_LOG
 
 // Generates a fatal failure with a generic message.
 #define GTEST_FAIL() return ADD_FAILURE()
 
 // Skips test at runtime, which is neither successful nor failed. Skip aborts
 // current function.
-#define GTEST_SKIP() \
-  return ::pw::unit_test::internal::Framework::Get().CurrentTestSkip(__LINE__)
+#define GTEST_SKIP()                                                     \
+  ::pw::unit_test::internal::Framework::Get().CurrentTestSkip(__LINE__); \
+  return _PW_UNIT_TEST_LOG
 
 // Define either macro to 1 to omit the definition of FAIL(), which is a
 // generic name and clashes with some other libraries.
@@ -91,7 +235,8 @@
 // Generates a success with a generic message.
 #define GTEST_SUCCEED()                                                \
   ::pw::unit_test::internal::Framework::Get().CurrentTestExpectSimple( \
-      "(success)", "(success)", __LINE__, true)
+      "(success)", "(success)", __LINE__, true);                       \
+  _PW_UNIT_TEST_LOG
 
 // Define either macro to 1 to omit the definition of SUCCEED(), which
 // is a generic name and clashes with some other libraries.
@@ -107,7 +252,8 @@
 // In order to receive test output, an event handler must be registered before
 // this is called:
 //
-//   int main() {
+//   int main(int argc, char** argv) {
+//     testing::InitGoogleTest(&argc, argv);
 //     MyEventHandler handler;
 //     pw::unit_test::RegisterEventHandler(&handler);
 //     return RUN_ALL_TESTS();
@@ -155,7 +301,39 @@ namespace string {
 template <typename T>
 StatusWithSize UnknownTypeToString(const T& value, span<char> buffer) {
   StringBuilder sb(buffer);
-  sb << '<' << sizeof(value) << "-byte object at 0x" << &value << '>';
+  sb << '<' << sizeof(value) << "-byte object at 0x" << &value;
+
+  // How many bytes of the object to print.
+  //
+  // WARNING: Printing the contents of an object may be undefined behavior!
+  // Accessing unintialized memory is undefined behavior, and objects sometimes
+  // contiain uninitialized regions, such as padding bytes or unalloacted
+  // storage (e.g. std::optional). kPrintMaybeUnintializedBytes MUST stay at 0,
+  // except when changed locally to help with debugging.
+  constexpr size_t kPrintMaybeUnintializedBytes = 0;
+
+  constexpr size_t kBytesToPrint =
+      std::min(sizeof(value), kPrintMaybeUnintializedBytes);
+
+  if (kBytesToPrint != 0u) {
+    sb << " |";
+
+    // reinterpret_cast to std::byte is permitted by C++'s type aliasing rules.
+    const std::byte* bytes = reinterpret_cast<const std::byte*>(&value);
+
+    for (size_t i = 0; i < kBytesToPrint; ++i) {
+      sb << ' ' << bytes[i];
+    }
+
+    // If there's just one more byte, output it. Otherwise, output ellipsis.
+    if (sizeof(value) == kBytesToPrint + 1) {
+      sb << ' ' << bytes[sizeof(value) - 1];
+    } else if (sizeof(value) > kBytesToPrint) {
+      sb << " …";
+    }
+  }
+
+  sb << '>';
   return sb.status_with_size();
 }
 
@@ -164,15 +342,14 @@ StatusWithSize UnknownTypeToString(const T& value, span<char> buffer) {
 #endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 namespace unit_test {
-
-// Sets the event handler for a test run. Must be called before RUN_ALL_TESTS()
-// to receive test output.
-void RegisterEventHandler(EventHandler* event_handler);
-
 namespace internal {
 
 class Test;
 class TestInfo;
+
+// Types of SetUpTestSuite() and TearDownTestSuite() functions.
+using SetUpTestSuiteFunc = void (*)();
+using TearDownTestSuiteFunc = void (*)();
 
 // Used to tag arguments to EXPECT_STREQ/EXPECT_STRNE so they are treated like C
 // strings rather than pointers.
@@ -204,7 +381,7 @@ class Framework {
 
   // Sets the handler to which the framework dispatches test events. During a
   // test run, the framework owns the event handler.
-  void RegisterEventHandler(EventHandler* event_handler) {
+  inline void RegisterEventHandler(EventHandler* event_handler) {
     event_handler_ = event_handler;
   }
 
@@ -226,6 +403,9 @@ class Framework {
 
   // Whether the current test is skipped.
   bool IsSkipped() const { return current_result_ == TestResult::kSkipped; }
+
+  // Whether the current test has failed.
+  bool HasFailure() const { return current_result_ == TestResult::kFailure; }
 
   // Constructs an instance of a unit test class and runs the test.
   //
@@ -250,6 +430,8 @@ class Framework {
     // uninitialized memory.
     std::memset(&framework.memory_pool_, 0xa5, sizeof(framework.memory_pool_));
 
+    framework.SetUpTestSuiteIfNeeded(TestInstance::SetUpTestSuite);
+
     // Construct the test object within the static memory pool. The StartTest
     // function has already been called by the TestInfo at this point.
     TestInstance* test_instance = new (&framework.memory_pool_) TestInstance;
@@ -259,7 +441,40 @@ class Framework {
     // objects constructed using placement new.
     test_instance->~TestInstance();
 
+    framework.TearDownTestSuiteIfNeeded(TestInstance::TearDownTestSuite);
+
     framework.EndCurrentTest();
+  }
+
+  template <typename Expectation, typename Lhs, typename Rhs, typename Epsilon>
+  bool CurrentTestExpect(Expectation expectation,
+                         const Lhs& lhs,
+                         const Rhs& rhs,
+                         const Epsilon& epsilon,
+                         const char* expression,
+                         int line) {
+    // Size of the buffer into which to write the string with the evaluated
+    // version of the arguments. This buffer is allocated on the unit test's
+    // stack, so it shouldn't be too large.
+    // TODO(hepler): Make this configurable.
+    [[maybe_unused]] constexpr size_t kExpectationBufferSizeBytes = 192;
+
+    const bool success = expectation(lhs, rhs, epsilon);
+    CurrentTestExpectSimple(
+        expression,
+#if PW_CXX_STANDARD_IS_SUPPORTED(17)
+        MakeString<kExpectationBufferSizeBytes>(ConvertForPrint(lhs),
+                                                " within ",
+                                                ConvertForPrint(epsilon),
+                                                " of ",
+                                                ConvertForPrint(rhs))
+            .c_str(),
+#else
+        "(evaluation requires C++17)",
+#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
+        line,
+        success);
+    return success;
   }
 
   // Runs an expectation function for the currently active test case.
@@ -274,7 +489,7 @@ class Framework {
     // version of the arguments. This buffer is allocated on the unit test's
     // stack, so it shouldn't be too large.
     // TODO(hepler): Make this configurable.
-    [[maybe_unused]] constexpr size_t kExpectationBufferSizeBytes = 128;
+    [[maybe_unused]] constexpr size_t kExpectationBufferSizeBytes = 192;
 
     const bool success = expectation(lhs, rhs);
     CurrentTestExpectSimple(
@@ -319,6 +534,12 @@ class Framework {
   static constexpr T ConvertForPrint(T&& value) {
     return std::forward<T>(value);
   }
+
+  // If current_test_ will be first of its suite, call set_up_ts
+  void SetUpTestSuiteIfNeeded(SetUpTestSuiteFunc set_up_ts) const;
+
+  // If current_test_ was the last of its suite, call tear_down_ts
+  void TearDownTestSuiteIfNeeded(TearDownTestSuiteFunc tear_down_ts) const;
 
   // Sets current_test_ and dispatches an event indicating that a test started.
   void StartTest(const TestInfo& test);
@@ -418,6 +639,11 @@ class Test {
 
   virtual ~Test() = default;
 
+  static void SetUpTestSuite() {}
+  static void TearDownTestSuite() {}
+
+  static bool HasFailure() { return Framework::Get().HasFailure(); }
+
   // Runs the unit test.
   void PigweedTestRun() {
     SetUp();
@@ -465,6 +691,35 @@ constexpr bool HasNoUnderscores(const char* suite) {
   return true;
 }
 
+// GoogleTest supports stream-style messages, but pw_unit_test does not. This
+// class accepts and ignores C++ <<-style logs. This could be replaced with
+// pw_log/glog_adapter.h.
+class IgnoreLogs {
+ public:
+  constexpr IgnoreLogs() = default;
+
+  template <typename T>
+  constexpr const IgnoreLogs& operator<<(const T&) const {
+    return *this;
+  }
+};
+
+// Used to ignore a stream-style message in an assert, which returns. This uses
+// a similar approach as upstream GoogleTest, but drops any messages.
+class ReturnHelper {
+ public:
+  constexpr ReturnHelper() = default;
+
+  // Return void so that assigning to ReturnHelper converts the log expression
+  // to void without blocking the stream-style log with a closing parenthesis.
+  // NOLINTNEXTLINE(misc-unconventional-assign-operator)
+  constexpr void operator=(const IgnoreLogs&) const {}
+};
+
+#define _PW_UNIT_TEST_LOG                     \
+  ::pw::unit_test::internal::ReturnHelper() = \
+      ::pw::unit_test::internal::IgnoreLogs()
+
 }  // namespace internal
 
 #if PW_CXX_STANDARD_IS_SUPPORTED(17)
@@ -510,12 +765,13 @@ inline void SetTestSuitesToRun(span<std::string_view> test_suites) {
                                                                             \
   void class_name::PigweedTestBody()
 
-#define _PW_TEST_ASSERT(expectation)                                           \
-  do {                                                                         \
-    if (!(expectation)) {                                                      \
-      return static_cast<void>(0); /* Prevent using ASSERT in constructors. */ \
-    }                                                                          \
-  } while (0)
+#define _PW_TEST_ASSERT(expectation) \
+  if (!(expectation))                \
+  return _PW_UNIT_TEST_LOG
+
+#define _PW_TEST_EXPECT(expectation) \
+  if (!(expectation))                \
+  _PW_UNIT_TEST_LOG
 
 #define _PW_TEST_BOOL(expr, value)                               \
   ::pw::unit_test::internal::Framework::Get().CurrentTestExpect( \
@@ -537,10 +793,27 @@ inline void SetTestSuitesToRun(span<std::string_view> test_suites) {
       #lhs " " #op " " #rhs,                                     \
       __LINE__)
 
+#define _PW_TEST_NEAR(lhs, rhs, epsilon)                                      \
+  ::pw::unit_test::internal::Framework::Get().CurrentTestExpect(              \
+      [](const auto& _pw_lhs, const auto& _pw_rhs, const auto& _pw_epsilon) { \
+        return std::abs(_pw_lhs - _pw_rhs) <= _pw_epsilon;                    \
+      },                                                                      \
+      (lhs),                                                                  \
+      (rhs),                                                                  \
+      (epsilon),                                                              \
+      #lhs " within " #epsilon " of " #rhs,                                   \
+      __LINE__)
+
 #define _PW_TEST_C_STR(lhs, rhs, op)                             \
   ::pw::unit_test::internal::Framework::Get().CurrentTestExpect( \
       [](const auto& _pw_lhs, const auto& _pw_rhs) {             \
-        return std::strcmp(_pw_lhs.c_str, _pw_rhs.c_str) op 0;   \
+        auto cmp = [](const char* l, const char* r) -> int {     \
+          if (!l || !r) {                                        \
+            return l != r;                                       \
+          }                                                      \
+          return std::strcmp(l, r);                              \
+        };                                                       \
+        return cmp(_pw_lhs.c_str, _pw_rhs.c_str) op 0;           \
       },                                                         \
       ::pw::unit_test::internal::CStringArg{lhs},                \
       ::pw::unit_test::internal::CStringArg{rhs},                \
@@ -568,9 +841,12 @@ inline void SetTestSuitesToRun(span<std::string_view> test_suites) {
   PW_MODIFY_DIAGNOSTICS_POP()
 #endif  // GCC8 or older.
 
-// Alias Test as ::testing::Test for GoogleTest compatibility.
 namespace testing {
 
+// Alias Test as ::testing::Test for GoogleTest compatibility.
 using Test = ::pw::unit_test::internal::Test;
+
+// Provide a no-op init routine for GoogleTest compatibility.
+inline void InitGoogleTest(int*, char**) {}
 
 }  // namespace testing

@@ -81,7 +81,7 @@ SETUP_SH="$_PW_ACTUAL_ENVIRONMENT_ROOT/activate.sh"
 if [ "$(basename "$_PW_BOOTSTRAP_PATH")" = "bootstrap.sh" ] || \
   [ ! -f "$SETUP_SH" ] || \
   [ ! -s "$SETUP_SH" ]; then
-  pw_bootstrap --shell-file "$SETUP_SH" --install-dir "$_PW_ACTUAL_ENVIRONMENT_ROOT" --config-file "$PW_ROOT/pw_env_setup/config.json"
+  pw_bootstrap --shell-file "$SETUP_SH" --install-dir "$_PW_ACTUAL_ENVIRONMENT_ROOT"
   pw_finalize bootstrap "$SETUP_SH"
 else
   pw_activate
@@ -92,6 +92,18 @@ unset _pw_sourced
 unset _PW_BOOTSTRAP_PATH
 unset SETUP_SH
 unset _bootstrap_abspath
+
+if [[ "$TERM" != dumb ]]; then
+  # Shell completion: bash.
+  if test -n "$BASH"; then
+    . "$PW_ROOT/pw_cli/py/pw_cli/shell_completion/pw.bash"
+    . "$PW_ROOT/pw_cli/py/pw_cli/shell_completion/pw_build.bash"
+  # Shell completion: zsh.
+  elif test -n "$ZSH_NAME"; then
+    . "$PW_ROOT/pw_cli/py/pw_cli/shell_completion/pw.zsh"
+    . "$PW_ROOT/pw_cli/py/pw_cli/shell_completion/pw_build.zsh"
+  fi
+fi
 
 pw_cleanup
 

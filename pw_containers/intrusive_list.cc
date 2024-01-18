@@ -14,9 +14,31 @@
 
 #include "pw_containers/intrusive_list.h"
 
+#include <utility>
+
 #include "pw_assert/check.h"
 
 namespace pw::intrusive_list_impl {
+
+List::Item::Item(Item&& other) {
+  // Ensure `next_` is valid on instantiation.
+  next_ = this;
+  *this = std::move(other);
+}
+
+List::Item& List::Item::operator=(List::Item&& other) {
+  // Remove `this` object from its current list.
+  if (!unlisted()) {
+    unlist();
+  }
+  // If `other` is listed, remove it from its list and put `this` in its place.
+  if (!other.unlisted()) {
+    List::Item* prev = other.previous();
+    other.unlist(prev);
+    List::insert_after(prev, *this);
+  }
+  return *this;
+}
 
 void List::Item::unlist(Item* prev) {
   if (prev == nullptr) {

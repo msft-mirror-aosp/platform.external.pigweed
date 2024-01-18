@@ -13,11 +13,11 @@ otherwise be clobbered by an application's exception handler.
 -----
 Setup
 -----
-This module has three facades, each of whose backends are set with a
-different GN variable.
+This module has three facades, each of whose backends must be provided by the
+target or application.
 
-``pw_cpu_exception_ENTRY_BACKEND``
-==================================
+Entry facade
+============
 This is the library that handles early exception entry and prepares any CPU
 state that must be available to the exception handler via the
 pw_cpu_exception_State object. The backend for this facade is
@@ -28,8 +28,11 @@ the platform's CPU exception handler interrupt so ``pw_cpu_exception_Entry()`` i
 called immediately upon a CPU exception. For specifics on how this may be done,
 see the backend documentation for your architecture.
 
-``pw_cpu_exception_HANDLER_BACKEND``
-====================================
+The GN variable to set the backend for this facade is
+``pw_cpu_exception_ENTRY_BACKEND``.
+
+Handler facade
+==============
 This facade is backed by an application-specific handler that determines what to
 do when an exception is encountered. This may be capturing a crash report before
 resetting the device, or in some cases handling the exception to allow execution
@@ -39,21 +42,27 @@ Applications must also provide an implementation for
 ``pw_cpu_exception_DefaultHandler()``. The behavior of this functions is entirely
 up to the application/project, but some examples are provided below:
 
-  * Enter an infinite loop so the device can be debugged by JTAG.
-  * Reset the device.
-  * Attempt to handle the exception so execution can continue.
-  * Capture and record additional device state and save to flash for a crash
-    report.
-  * A combination of the above, using logic that fits the needs of your project.
+* Enter an infinite loop so the device can be debugged by JTAG.
+* Reset the device.
+* Attempt to handle the exception so execution can continue.
+* Capture and record additional device state and save to flash for a crash
+  report.
+* A combination of the above, using logic that fits the needs of your project.
 
-``pw_cpu_exception_SUPPORT_BACKEND``
-====================================
+The GN variable to set the backend for this facade is
+``pw_cpu_exception_HANDLER_BACKEND``.
+
+Support facade
+==============
 This facade provides architecture-independent functions that may be helpful for
 dumping CPU state in various forms. This allows an application to create an
 application-specific handler that is portable across multiple architectures.
 
-Avoiding circular dependencies with ``pw_cpu_exception_ENTRY_BACKEND``
-======================================================================
+The GN variable to set the backend for this facade is
+``pw_cpu_exception_SUPPORT_BACKEND``.
+
+Avoiding circular dependencies with the entry facade
+====================================================
 The entry facade is hard tied to the definition of the
 ``pw_cpu_exception_State``, so spliting them into separate facades would require
 extra configurations along with extra compatibility checks to ensure they are
@@ -67,6 +76,12 @@ is set, ``$dir_pw_cpu_exception:entry_impl`` must listed in the
 
 Entry backends must provide their own ``*.impl`` target that collects their
 entry implementation.
+
+In Bazel, this circular dependency is avoided by putting the backend's full
+implementation including the entry method into a separate override-able
+``entry_backend_impl`` library. When the entry facade is being used, the
+application should add a dependency on the
+``//pw_cpu_exception:entry_backend_impl`` label_flag.
 
 ------------
 Module Usage
@@ -102,22 +117,20 @@ CPU exception backends do not provide an exception handler, but instead provide
 mechanisms to capture CPU state for use by an application's exception handler,
 and allow recovery from CPU exceptions when possible.
 
-  * The entry backend should provide a definition for the
-    ``pw_cpu_exception_State`` object through
-    ``pw_cpu_exception_backend/state.h``.
-  * In GN, the entry backend should also provide a ``.impl`` suffixed form of
-    the entry backend target which collects the actual entry implementation to
-    avoid circular dependencies due to the state definition in the entry backend
-    target.
-  * The entry backend should implement the ``pw_cpu_exception_Entry()`` function
-    that will call ``pw_cpu_exception_HandleException()`` after performing any
-    necessary actions prior to handing control to the application's exception
-    handler (e.g. capturing necessary CPU state).
-  * If an application's exception handler backend modifies the captured CPU
-    state, the state should be treated as though it were the original state of
-    the CPU when the exception occurred. The backend may need to manually
-    restore some of the modified state to ensure this on exception handler
-    return.
+* The entry backend should provide a definition for the
+  ``pw_cpu_exception_State`` object through
+  ``pw_cpu_exception_backend/state.h``.
+* In GN, the entry backend should also provide a ``.impl`` suffixed form of the
+  entry backend target which collects the actual entry implementation to avoid
+  circular dependencies due to the state definition in the entry backend target.
+* The entry backend should implement the ``pw_cpu_exception_Entry()`` function
+  that will call ``pw_cpu_exception_HandleException()`` after performing any
+  necessary actions prior to handing control to the application's exception
+  handler (e.g. capturing necessary CPU state).
+* If an application's exception handler backend modifies the captured CPU state,
+  the state should be treated as though it were the original state of the CPU
+  when the exception occurred. The backend may need to manually restore some of
+  the modified state to ensure this on exception handler return.
 
 -------------
 Compatibility
@@ -128,5 +141,5 @@ the "support" facade and library, which requires C++.
 ------------
 Dependencies
 ------------
-  * ``pw_span``
-  * ``pw_preprocessor``
+- :ref:`module-pw_span`
+- :ref:`module-pw_preprocessor`

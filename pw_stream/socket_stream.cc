@@ -14,25 +14,32 @@
 
 #include "pw_stream/socket_stream.h"
 
+#if defined(_WIN32) && _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define SHUT_RDWR SD_BOTH
+#else
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif  // defined(_WIN32) && _WIN32
 
 #include <cerrno>
 #include <cstring>
 
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
+#include "pw_status/status.h"
 #include "pw_string/to_string.h"
 
 namespace pw::stream {
 namespace {
 
 constexpr uint32_t kServerBacklogLength = 1;
-constexpr const char* kLocalhostAddress = "127.0.0.1";
+constexpr const char* kLocalhostAddress = "localhost";
 
 // Set necessary options on a socket file descriptor.
 void ConfigureSocket([[maybe_unused]] int socket) {
@@ -46,62 +53,30 @@ void ConfigureSocket([[maybe_unused]] int socket) {
 #endif  // defined(__APPLE__)
 }
 
+#if defined(_WIN32) && _WIN32
+int close(SOCKET s) { return closesocket(s); }
+
+class WinsockInitializer {
+ public:
+  WinsockInitializer() {
+    WSADATA data = {};
+    PW_CHECK_INT_EQ(
+        WSAStartup(MAKEWORD(2, 2), &data), 0, "Failed to initialize winsock");
+  }
+  ~WinsockInitializer() {
+    // TODO: b/301545011 - This currently fails, probably a cleanup race.
+    WSACleanup();
+  }
+};
+
+[[maybe_unused]] WinsockInitializer initializer;
+
+#endif  // defined(_WIN32) && _WIN32
+
 }  // namespace
 
-// TODO(b/240982565): Implement SocketStream for Windows.
-
-// Listen to the port and return after a client is connected
-Status SocketStream::Serve(uint16_t port) {
-  listen_port_ = port;
-  socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
-  if (socket_fd_ == kInvalidFd) {
-    PW_LOG_ERROR("Failed to create socket: %s", std::strerror(errno));
-    return Status::Unknown();
-  }
-
-  struct sockaddr_in addr = {};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(listen_port_);
-  addr.sin_addr.s_addr = INADDR_ANY;
-
-  // Configure the socket to allow reusing the address. Closing a socket does
-  // not immediately close it. Instead, the socket waits for some period of time
-  // before it is actually closed. Setting SO_REUSEADDR allows this socket to
-  // bind to an address that may still be in use by a recently closed socket.
-  // Without this option, running a program multiple times in series may fail
-  // unexpectedly.
-  constexpr int value = 1;
-
-  if (setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(int)) <
-      0) {
-    PW_LOG_WARN("Failed to set SO_REUSEADDR: %s", std::strerror(errno));
-  }
-
-  if (bind(socket_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-    PW_LOG_ERROR("Failed to bind socket to localhost:%hu: %s",
-                 listen_port_,
-                 std::strerror(errno));
-    return Status::Unknown();
-  }
-
-  if (listen(socket_fd_, kServerBacklogLength) < 0) {
-    PW_LOG_ERROR("Failed to listen to socket: %s", std::strerror(errno));
-    return Status::Unknown();
-  }
-
-  socklen_t len = sizeof(sockaddr_client_);
-
-  connection_fd_ =
-      accept(socket_fd_, reinterpret_cast<sockaddr*>(&sockaddr_client_), &len);
-  if (connection_fd_ < 0) {
-    return Status::Unknown();
-  }
-  ConfigureSocket(connection_fd_);
-  return OkStatus();
-}
-
 Status SocketStream::SocketStream::Connect(const char* host, uint16_t port) {
-  if (host == nullptr || std::strcmp(host, "localhost") == 0) {
+  if (host == nullptr) {
     host = kLocalhostAddress;
   }
 
@@ -111,35 +86,41 @@ Status SocketStream::SocketStream::Connect(const char* host, uint16_t port) {
   PW_CHECK(ToString(port, port_buffer).ok());
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV | AI_PASSIVE;
+  hints.ai_flags = AI_NUMERICSERV;
   if (getaddrinfo(host, port_buffer, &hints, &res) != 0) {
     PW_LOG_ERROR("Failed to configure connection address for socket");
     return Status::InvalidArgument();
   }
 
-  connection_fd_ = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-  ConfigureSocket(connection_fd_);
-  if (connect(connection_fd_, res->ai_addr, res->ai_addrlen) < 0) {
-    close(connection_fd_);
-    connection_fd_ = kInvalidFd;
+  struct addrinfo* rp;
+  for (rp = res; rp != nullptr; rp = rp->ai_next) {
+    connection_fd_ = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+    if (connection_fd_ != kInvalidFd) {
+      break;
+    }
   }
-  freeaddrinfo(res);
 
   if (connection_fd_ == kInvalidFd) {
-    PW_LOG_ERROR(
-        "Failed to connect to %s:%d: %s", host, port, std::strerror(errno));
+    PW_LOG_ERROR("Failed to create a socket: %s", std::strerror(errno));
+    freeaddrinfo(res);
     return Status::Unknown();
   }
 
+  ConfigureSocket(connection_fd_);
+  if (connect(connection_fd_, rp->ai_addr, rp->ai_addrlen) == -1) {
+    close(connection_fd_);
+    connection_fd_ = kInvalidFd;
+    PW_LOG_ERROR(
+        "Failed to connect to %s:%d: %s", host, port, std::strerror(errno));
+    freeaddrinfo(res);
+    return Status::Unknown();
+  }
+
+  freeaddrinfo(res);
   return OkStatus();
 }
 
 void SocketStream::Close() {
-  if (socket_fd_ != kInvalidFd) {
-    close(socket_fd_);
-    socket_fd_ = kInvalidFd;
-  }
-
   if (connection_fd_ != kInvalidFd) {
     close(connection_fd_);
     connection_fd_ = kInvalidFd;
@@ -154,8 +135,10 @@ Status SocketStream::DoWrite(span<const std::byte> data) {
   send_flags |= MSG_NOSIGNAL;
 #endif  // defined(__linux__)
 
-  ssize_t bytes_sent =
-      send(connection_fd_, data.data(), data.size_bytes(), send_flags);
+  ssize_t bytes_sent = send(connection_fd_,
+                            reinterpret_cast<const char*>(data.data()),
+                            data.size_bytes(),
+                            send_flags);
 
   if (bytes_sent < 0 || static_cast<size_t>(bytes_sent) != data.size()) {
     if (errno == EPIPE) {
@@ -170,8 +153,15 @@ Status SocketStream::DoWrite(span<const std::byte> data) {
 }
 
 StatusWithSize SocketStream::DoRead(ByteSpan dest) {
-  ssize_t bytes_rcvd = recv(connection_fd_, dest.data(), dest.size_bytes(), 0);
+  ssize_t bytes_rcvd = recv(connection_fd_,
+                            reinterpret_cast<char*>(dest.data()),
+                            dest.size_bytes(),
+                            0);
   if (bytes_rcvd == 0) {
+    // Remote peer has closed the connection.
+    Close();
+    return StatusWithSize::OutOfRange();
+  } else if (bytes_rcvd < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       // Socket timed out when trying to read.
       // This should only occur if SO_RCVTIMEO was configured to be nonzero, or
@@ -179,10 +169,6 @@ StatusWithSize SocketStream::DoRead(ByteSpan dest) {
       // blocking when performing reads or writes.
       return StatusWithSize::ResourceExhausted();
     }
-    // Remote peer has closed the connection.
-    Close();
-    return StatusWithSize::OutOfRange();
-  } else if (bytes_rcvd < 0) {
     return StatusWithSize::Unknown();
   }
   return StatusWithSize(bytes_rcvd);
@@ -199,7 +185,11 @@ Status ServerSocket::Listen(uint16_t port) {
 
   // Allow binding to an address that may still be in use by a closed socket.
   constexpr int value = 1;
-  setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(int));
+  setsockopt(socket_fd_,
+             SOL_SOCKET,
+             SO_REUSEADDR,
+             reinterpret_cast<const char*>(&value),
+             sizeof(int));
 
   if (port != 0) {
     struct sockaddr_in6 addr = {};
@@ -221,7 +211,7 @@ Status ServerSocket::Listen(uint16_t port) {
   socklen_t addr_len = sizeof(addr);
   if (getsockname(socket_fd_, reinterpret_cast<sockaddr*>(&addr), &addr_len) <
           0 ||
-      addr_len > sizeof(addr)) {
+      static_cast<size_t>(addr_len) > sizeof(addr)) {
     close(socket_fd_);
     return Status::Unknown();
   }

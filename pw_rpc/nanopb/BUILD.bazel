@@ -131,7 +131,22 @@ pw_cc_library(
     ],
 )
 
-# TODO(b/242059613): Enable this library when logging_event_handler can be used.
+pw_cc_test(
+    name = "callback_test",
+    srcs = ["callback_test.cc"],
+    deps = [
+        ":client_testing",
+        "//pw_rpc",
+        "//pw_rpc:pw_rpc_test_cc.nanopb_rpc",
+        "//pw_sync:binary_semaphore",
+        "//pw_thread:non_portable_test_thread_options",
+        "//pw_thread:sleep",
+        "//pw_thread:yield",
+        "//pw_thread_stl:non_portable_test_thread_options",
+    ],
+)
+
+# TODO: b/242059613 - Enable this library when logging_event_handler can be used.
 filegroup(
     name = "client_integration_test",
     srcs = [
@@ -178,6 +193,7 @@ pw_cc_test(
         ":client_api",
         ":client_server_testing",
         "//pw_rpc:pw_rpc_test_cc.nanopb_rpc",
+        "//pw_sync:mutex",
     ],
 )
 
@@ -192,8 +208,9 @@ pw_cc_test(
         ":client_server_testing_threaded",
         "//pw_rpc:pw_rpc_test_cc.nanopb_rpc",
         "//pw_sync:binary_semaphore",
-        "//pw_thread:test_threads_header",
-        "//pw_thread_stl:test_threads",
+        "//pw_sync:mutex",
+        "//pw_thread:non_portable_test_thread_options",
+        "//pw_thread_stl:non_portable_test_thread_options",
     ],
 )
 
@@ -267,7 +284,7 @@ pw_cc_test(
     ],
 )
 
-# TODO(b/234874064): Requires nanopb options file support to compile.
+# TODO: b/234874064 - Requires nanopb options file support to compile.
 filegroup(
     name = "echo_service_test",
     srcs = ["echo_service_test.cc"],

@@ -18,6 +18,7 @@ import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/python.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_fuzzer/fuzz_test.gni")
 import("$dir_pw_unit_test/test.gni")
 
 config("default_config") {
@@ -161,11 +162,17 @@ pw_test("encoded_size_test") {
     "$dir_pw_varint",
   ]
   sources = [ "encoded_size_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("encoder_test") {
   deps = [ ":pw_hdlc" ]
   sources = [ "encoder_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_python_action("generate_decoder_test") {
@@ -178,12 +185,13 @@ pw_python_action("generate_decoder_test") {
   ]
 }
 
-pw_test("decoder_test") {
-  deps = [
-    ":generate_decoder_test",
-    ":pw_hdlc",
-  ]
-  sources = [ "decoder_test.cc" ] + get_target_outputs(":generate_decoder_test")
+pw_fuzz_test("decoder_test") {
+  deps = [ ":pw_hdlc" ]
+  source_gen_deps = [ ":generate_decoder_test" ]
+  sources = [ "decoder_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("rpc_channel_test") {
@@ -192,6 +200,9 @@ pw_test("rpc_channel_test") {
     ":rpc_channel_output",
   ]
   sources = [ "rpc_channel_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("wire_packet_parser_test") {
@@ -200,6 +211,9 @@ pw_test("wire_packet_parser_test") {
     dir_pw_bytes,
   ]
   sources = [ "wire_packet_parser_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_size_diff("size_report") {
@@ -221,7 +235,10 @@ pw_size_diff("size_report") {
 
 pw_doc_group("docs") {
   sources = [
+    "api.rst",
+    "design.rst",
     "docs.rst",
+    "guide.rst",
     "rpc_example/docs.rst",
   ]
   inputs = [

@@ -21,6 +21,7 @@ import("$dir_pw_docgen/docs.gni")
 pw_doc_group("static_assets") {
   inputs = [
     "_static/css/pigweed.css",
+    "_static/js/pigweed.js",
     "_static/pw_logo.ico",
     "_static/pw_logo.svg",
   ]
@@ -30,47 +31,44 @@ pw_doc_group("static_assets") {
 # split out from the overall docgen target below.
 pw_doc_group("core_docs") {
   inputs = [
+    "$dir_pw_build/py/gn_tests/BUILD.gn",
+    "$dir_pw_build/py/pw_build/generate_python_wheel_cache.py",
     "$dir_pw_build/python.gni",
-    "images/pw_env_setup_demo.gif",
-    "images/pw_status_test.png",
-    "images/pw_watch_build_demo.gif",
-    "images/pw_watch_on_device_demo.gif",
-    "images/pw_watch_test_demo.gif",
-    "images/pw_watch_test_demo2.gif",
-    "images/stm32f429i-disc1_connected.jpg",
+    "$dir_pw_build/python_gn_args.gni",
+    "layout/page.html",
     "run_doxygen.py",
   ]
   sources = [
+    "blog/01-kudzu.rst",
+    "blog/index.rst",
     "code_of_conduct.rst",
+    "code_reviews.rst",
     "concepts/index.rst",
-    "contributing.rst",
+    "contributing/index.rst",
+    "contributing/module_docs.rst",
+    "editors.rst",
     "embedded_cpp_guide.rst",
+    "facades.rst",
     "faq.rst",
-    "getting_started.rst",
+    "get_started/bazel.rst",
+    "get_started/index.rst",
+    "get_started/upstream.rst",
+    "glossary.rst",
+    "infra/ci_cq_intro.rst",
+    "infra/index.rst",
+    "infra/rollers.rst",
+    "mission.rst",
     "module_structure.rst",
-    "os_abstraction_layers.rst",
+    "os/index.rst",
+    "os/zephyr/index.rst",
+    "os/zephyr/kconfig.rst",
+    "overview.rst",
     "size_optimizations.rst",
+    "style/commit_message.rst",
+    "style/cpp.rst",
+    "style/doxygen.rst",
+    "style/sphinx.rst",
     "style_guide.rst",
-  ]
-}
-
-pw_doc_group("release_notes") {
-  sources = [
-    "release_notes/2022_jan.rst",
-    "release_notes/index.rst",
-  ]
-}
-
-pw_doc_group("templates") {
-  sources = [
-    "templates/docs/api.rst",
-    "templates/docs/cli.rst",
-    "templates/docs/concepts.rst",
-    "templates/docs/design.rst",
-    "templates/docs/docs.rst",
-    "templates/docs/gui.rst",
-    "templates/docs/guides.rst",
-    "templates/docs/tutorials/index.rst",
   ]
 }
 
@@ -78,6 +76,8 @@ pw_doc_group("templates") {
 group("target_docs") {
   deps = [
     "$dir_pigweed/targets/android:target_docs",
+    "$dir_pigweed/targets/apollo4:target_docs",
+    "$dir_pigweed/targets/apollo4_pw_system:target_docs",
     "$dir_pigweed/targets/arduino:target_docs",
     "$dir_pigweed/targets/docs:target_docs",
     "$dir_pigweed/targets/emcraft_sf2_som:docs",
@@ -98,38 +98,77 @@ group("module_docs") {
 
 group("third_party_docs") {
   deps = [
+    "$dir_pigweed/third_party/abseil-cpp:docs",
     "$dir_pigweed/third_party/boringssl:docs",
     "$dir_pigweed/third_party/emboss:docs",
     "$dir_pigweed/third_party/freertos:docs",
     "$dir_pigweed/third_party/fuchsia:docs",
+    "$dir_pigweed/third_party/fuzztest:docs",
     "$dir_pigweed/third_party/googletest:docs",
     "$dir_pigweed/third_party/nanopb:docs",
+    "$dir_pigweed/third_party/re2:docs",
     "$dir_pigweed/third_party/tinyusb:docs",
   ]
 }
 
-_doxygen_input_files = [
-  # All sources with doxygen comment blocks.
+# All sources with doxygen comment blocks.
+_doxygen_input_files = [  # keep-sorted: start
+  "$dir_pw_allocator/public/pw_allocator/allocator.h",
+  "$dir_pw_allocator/public/pw_allocator/block.h",
+  "$dir_pw_allocator/public/pw_allocator/freelist.h",
+  "$dir_pw_analog/public/pw_analog/analog_input.h",
+  "$dir_pw_analog/public/pw_analog/microvolt_input.h",
+  "$dir_pw_async/public/pw_async/context.h",
   "$dir_pw_async/public/pw_async/dispatcher.h",
   "$dir_pw_async/public/pw_async/fake_dispatcher_fixture.h",
+  "$dir_pw_async/public/pw_async/function_dispatcher.h",
+  "$dir_pw_async/public/pw_async/heap_dispatcher.h",
   "$dir_pw_async/public/pw_async/task.h",
+  "$dir_pw_async/public/pw_async/task_function.h",
   "$dir_pw_async_basic/public/pw_async_basic/dispatcher.h",
+  "$dir_pw_base64/public/pw_base64/base64.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/gatt/client.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/gatt/server.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/host.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/central.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/connection.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/peripheral.h",
+  "$dir_pw_chre/public/pw_chre/chre.h",
+  "$dir_pw_chre/public/pw_chre/host_link.h",
   "$dir_pw_chrono/public/pw_chrono/system_clock.h",
   "$dir_pw_chrono/public/pw_chrono/system_timer.h",
-  "$dir_pw_function/public/pw_function/scope_guard.h",
-  "$dir_pw_log_tokenized/public/pw_log_tokenized/handler.h",
-  "$dir_pw_log_tokenized/public/pw_log_tokenized/metadata.h",
-  "$dir_pw_rpc/public/pw_rpc/internal/config.h",
-  "$dir_pw_string/public/pw_string/format.h",
-  "$dir_pw_string/public/pw_string/string.h",
+  "$dir_pw_containers/public/pw_containers/filtered_view.h",
+  "$dir_pw_containers/public/pw_containers/inline_deque.h",
+  "$dir_pw_containers/public/pw_containers/inline_queue.h",
+  "$dir_pw_containers/public/pw_containers/variable_length_entry_queue.h",
+  "$dir_pw_crypto/public/pw_crypto/ecdsa.h",
+  "$dir_pw_crypto/public/pw_crypto/sha256.h",
+  "$dir_pw_digital_io/public/pw_digital_io/digital_io.h",
   "$dir_pw_function/public/pw_function/function.h",
   "$dir_pw_function/public/pw_function/pointer.h",
+  "$dir_pw_function/public/pw_function/scope_guard.h",
+  "$dir_pw_hdlc/public/pw_hdlc/decoder.h",
+  "$dir_pw_hdlc/public/pw_hdlc/encoder.h",
+  "$dir_pw_i2c/public/pw_i2c/initiator.h",
+  "$dir_pw_i2c_linux/public/pw_i2c_linux/initiator.h",
+  "$dir_pw_interrupt/public/pw_interrupt/context.h",
+  "$dir_pw_log/public/pw_log/tokenized_args.h",
+  "$dir_pw_log_string/public/pw_log_string/handler.h",
+  "$dir_pw_log_tokenized/public/pw_log_tokenized/base64.h",
+  "$dir_pw_log_tokenized/public/pw_log_tokenized/handler.h",
+  "$dir_pw_log_tokenized/public/pw_log_tokenized/metadata.h",
+  "$dir_pw_multibuf/public/pw_multibuf/chunk.h",
+  "$dir_pw_multibuf/public/pw_multibuf/multibuf.h",
+  "$dir_pw_protobuf/public/pw_protobuf/find.h",
+  "$dir_pw_random/public/pw_random/random.h",
+  "$dir_pw_random/public/pw_random/xor_shift.h",
+  "$dir_pw_rpc/public/pw_rpc/internal/config.h",
+  "$dir_pw_rpc/public/pw_rpc/synchronous_call.h",
+  "$dir_pw_status/public/pw_status/status.h",
+  "$dir_pw_stream/public/pw_stream/stream.h",
+  "$dir_pw_stream_uart_linux/public/pw_stream_uart_linux/stream.h",
+  "$dir_pw_string/public/pw_string/format.h",
+  "$dir_pw_string/public/pw_string/string.h",
   "$dir_pw_string/public/pw_string/string_builder.h",
   "$dir_pw_string/public/pw_string/util.h",
   "$dir_pw_sync/public/pw_sync/binary_semaphore.h",
@@ -143,9 +182,20 @@ _doxygen_input_files = [
   "$dir_pw_sync/public/pw_sync/timed_mutex.h",
   "$dir_pw_sync/public/pw_sync/timed_thread_notification.h",
   "$dir_pw_sync/public/pw_sync/virtual_basic_lockable.h",
+  "$dir_pw_sys_io/public/pw_sys_io/sys_io.h",
+  "$dir_pw_thread/public/pw_thread/test_thread_context.h",
+  "$dir_pw_tokenizer/public/pw_tokenizer/config.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/encode_args.h",
+  "$dir_pw_tokenizer/public/pw_tokenizer/nested_tokenization.h",
+  "$dir_pw_tokenizer/public/pw_tokenizer/token_database.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/tokenize.h",
-]
+  "$dir_pw_toolchain/public/pw_toolchain/no_destructor.h",
+  "$dir_pw_transfer/public/pw_transfer/atomic_file_transfer_handler.h",
+  "$dir_pw_unit_test/public/pw_unit_test/internal/framework.h",
+  "$dir_pw_varint/public/pw_varint/stream.h",
+  "$dir_pw_varint/public/pw_varint/varint.h",
+  "$dir_pw_work_queue/public/pw_work_queue/work_queue.h",
+]  # keep-sorted: end
 
 pw_python_action("generate_doxygen") {
   _output_dir = "docs/doxygen"
@@ -177,6 +227,7 @@ pw_doc_gen("docs") {
     # contrast, the pw_doc_group above should not use the docs prefix.
     "automated_analysis.rst",
     "build_system.rst",
+    "changelog.rst",
     "index.rst",
     "module_guides.rst",
     "python_build.rst",
@@ -188,11 +239,10 @@ pw_doc_gen("docs") {
     ":core_docs",
     ":generate_doxygen",
     ":module_docs",
-    ":release_notes",
     ":static_assets",
     ":target_docs",
-    ":templates",
     ":third_party_docs",
+    "$dir_pigweed/kudzu:docs",
     "$dir_pigweed/seed:docs",
     "$dir_pw_env_setup:python.install",
   ]

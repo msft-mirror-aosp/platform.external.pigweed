@@ -12,9 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-project(Pigweed)
-
 cmake_minimum_required(VERSION 3.16)
+project(Pigweed)
 
 # Do not rely on the PW_ROOT environment variable being set through bootstrap.
 # Regardless of whether it's set or not the following include will ensure it is.
@@ -35,12 +34,32 @@ if(CONFIG_ZEPHYR_PIGWEED_MODULE)
       pw_log_tokenized.handler pw_log_zephyr.tokenized_handler pw_log_tokenized/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_LOG_TOKENIZED
       pw_log pw_log_tokenized pw_log/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYSTEM_HDLC_RPC_SERVER
+    pw_system.rpc_server pw_system.hdlc_rpc_server  pw_system/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYSTEM_LOG_BACKEND
+    pw_log pw_system.log_backend pw_log/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYSTEM_LOG_BACKEND
+    pw_log_tokenized.handler pw_system.log_backend pw_log_tokenized/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYSTEM_TARGET_HOOKS
+    pw_system.target_hooks pw_system.zephyr_target_hooks  pw_system/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_THREAD_ITERATION
+      pw_thread.thread_iteration pw_thread_zephyr.thread_iteration pw_thread/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_THREAD_SLEEP
       pw_thread.sleep pw_thread_zephyr.sleep pw_thread/backend.cmake)
-  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_MUTEX
-      pw_sync.mutex pw_sync_zephyr.mutex_backend pw_sync/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_THREAD
+      pw_thread.id pw_thread_zephyr.id pw_thread/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_THREAD
+      pw_thread.thread pw_thread_zephyr.thread pw_thread/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_BINARY_SEMAPHORE
       pw_sync.mutex pw_sync_zephyr.binary_semaphore_backend pw_sync/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_INTERRUPT_SPIN_LOCK
+      pw_sync.interrupt_spin_lock pw_sync_zephyr.interrupt_spin_lock_backend pw_sync/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_THREAD_NOTIFICATION
+    pw_sync.thread_notification pw_sync_zephyr.thread_notification_backend pw_sync/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_TIMED_THREAD_NOTIFICATION
+      pw_sync.timed_thread_notification pw_sync_zephyr.timed_thread_notification_backend pw_sync/backend.cmake)
+  pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYNC_MUTEX
+      pw_sync.mutex pw_sync_zephyr.mutex_backend pw_sync/backend.cmake)
   pw_set_zephyr_backend_ifdef(CONFIG_PIGWEED_SYS_IO
       pw_sys_io pw_sys_io_zephyr pw_sys_io/backend.cmake)
 
@@ -54,6 +73,8 @@ add_subdirectory(pw_assert EXCLUDE_FROM_ALL)
 add_subdirectory(pw_assert_basic EXCLUDE_FROM_ALL)
 add_subdirectory(pw_assert_log EXCLUDE_FROM_ALL)
 add_subdirectory(pw_assert_zephyr EXCLUDE_FROM_ALL)
+add_subdirectory(pw_async EXCLUDE_FROM_ALL)
+add_subdirectory(pw_async_basic EXCLUDE_FROM_ALL)
 add_subdirectory(pw_base64 EXCLUDE_FROM_ALL)
 add_subdirectory(pw_blob_store EXCLUDE_FROM_ALL)
 add_subdirectory(pw_bluetooth EXCLUDE_FROM_ALL)
@@ -72,7 +93,9 @@ add_subdirectory(pw_cpu_exception_cortex_m EXCLUDE_FROM_ALL)
 add_subdirectory(pw_digital_io EXCLUDE_FROM_ALL)
 add_subdirectory(pw_file EXCLUDE_FROM_ALL)
 add_subdirectory(pw_function EXCLUDE_FROM_ALL)
+add_subdirectory(pw_fuzzer EXCLUDE_FROM_ALL)
 add_subdirectory(pw_hdlc EXCLUDE_FROM_ALL)
+add_subdirectory(pw_i2c EXCLUDE_FROM_ALL)
 add_subdirectory(pw_interrupt EXCLUDE_FROM_ALL)
 add_subdirectory(pw_interrupt_cortex_m EXCLUDE_FROM_ALL)
 add_subdirectory(pw_interrupt_zephyr EXCLUDE_FROM_ALL)
@@ -99,8 +122,10 @@ add_subdirectory(pw_result EXCLUDE_FROM_ALL)
 add_subdirectory(pw_ring_buffer EXCLUDE_FROM_ALL)
 add_subdirectory(pw_router EXCLUDE_FROM_ALL)
 add_subdirectory(pw_rpc EXCLUDE_FROM_ALL)
+add_subdirectory(pw_rpc_transport EXCLUDE_FROM_ALL)
 add_subdirectory(pw_snapshot EXCLUDE_FROM_ALL)
 add_subdirectory(pw_span EXCLUDE_FROM_ALL)
+add_subdirectory(pw_spi EXCLUDE_FROM_ALL)
 add_subdirectory(pw_status EXCLUDE_FROM_ALL)
 add_subdirectory(pw_stream EXCLUDE_FROM_ALL)
 add_subdirectory(pw_string EXCLUDE_FROM_ALL)
@@ -129,9 +154,16 @@ add_subdirectory(pw_work_queue EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/nanopb EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/freertos EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/fuchsia EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/fuzztest EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/googletest EXCLUDE_FROM_ALL)
 
-if(NOT ZEPHYR_PIGWEED_MODULE_DIR)
+if(CONFIG_ZEPHYR_PIGWEED_MODULE)
+  add_subdirectory(zephyr)
+  if(CONFIG_PIGWEED_MINIMAL_CPP_STDLIB)
+    # Add include path to pw_minimal_cpp_stdlib to compiler
+    zephyr_compile_options(-isystem ${ZEPHYR_PIGWEED_MODULE_DIR}/pw_minimal_cpp_stdlib/public)
+  endif()
+else()
   add_subdirectory(targets/host EXCLUDE_FROM_ALL)
 
   add_custom_target(pw_apps)

@@ -16,12 +16,31 @@ import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/target_types.gni")
 
+group("host_executable") {
+  deps = [
+    ":hello",
+    ":proc_macro",
+    ":test_hello",
+    ":test_proc_macro",
+  ]
+}
+
 pw_rust_executable("hello") {
   sources = [
     "main.rs",
     "other.rs",
   ]
+  deps = [
+    ":a",
+    ":c",
+  ]
+}
 
+pw_rust_test("test_hello") {
+  sources = [
+    "main.rs",
+    "other.rs",
+  ]
   deps = [
     ":a",
     ":c",
@@ -45,4 +64,14 @@ pw_rust_library("b") {
 pw_rust_library("c") {
   crate_root = "c/lib.rs"
   sources = [ "c/lib.rs" ]
+}
+
+pw_rust_proc_macro("proc_macro") {
+  crate_root = "proc_macro/lib.rs"
+  sources = [ "proc_macro/lib.rs" ]
+}
+
+pw_rust_test("test_proc_macro") {
+  sources = [ "proc_macro/test.rs" ]
+  deps = [ ":proc_macro" ]
 }

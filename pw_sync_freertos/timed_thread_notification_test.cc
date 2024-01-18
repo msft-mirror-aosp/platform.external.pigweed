@@ -15,12 +15,13 @@
 #include "pw_sync/timed_thread_notification.h"
 
 #include <chrono>
+#include <optional>
 
 #include "FreeRTOS.h"
 #include "gtest/gtest.h"
 #include "pw_chrono/system_clock.h"
+#include "pw_thread/non_portable_test_thread_options.h"
 #include "pw_thread/sleep.h"
-#include "pw_thread/test_threads.h"
 #include "pw_thread/thread.h"
 #include "pw_thread/thread_core.h"
 #include "task.h"
@@ -38,7 +39,7 @@ using pw::thread::Thread;
 // the FreeRTOS optimized TimedThreadNotification backend.
 #if INCLUDE_vTaskSuspend == 1
 
-class NotificationAcquirer : public thread::ThreadCore {
+class TimedNotificationAcquirer : public thread::ThreadCore {
  public:
   void WaitUntilRunning() { started_notification_.acquire(); }
   void Release() { unblock_notification_.release(); }
@@ -67,7 +68,8 @@ class NotificationAcquirer : public thread::ThreadCore {
 };
 
 TEST(TimedThreadNotification, AcquireWithoutSuspend) {
-  NotificationAcquirer notification_acquirer;
+  TimedNotificationAcquirer notification_acquirer;
+  // TODO: b/290860904 - Replace TestOptionsThread0 with TestThreadContext.
   Thread thread =
       Thread(thread::test::TestOptionsThread0(), notification_acquirer);
 
@@ -89,7 +91,7 @@ TEST(TimedThreadNotification, AcquireWithoutSuspend) {
 }
 
 TEST(TimedThreadNotification, AcquireWithSuspend) {
-  NotificationAcquirer notification_acquirer;
+  TimedNotificationAcquirer notification_acquirer;
   Thread thread =
       Thread(thread::test::TestOptionsThread0(), notification_acquirer);
 

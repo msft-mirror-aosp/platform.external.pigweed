@@ -268,6 +268,16 @@ more details.
   The default amount of time, in milliseconds, to wait for a chunk to arrive
   before retrying. This can later be configured per-transfer.
 
+.. c:macro:: PW_TRANSFER_DEFAULT_INITIAL_TIMEOUT_MS
+
+  The default amount of time, in milliseconds, to wait for an initial server
+  response to a transfer before retrying. This can later be configured
+  per-transfer.
+
+  This is set separately to PW_TRANSFER_DEFAULT_TIMEOUT_MS as transfers may
+  require additional time for resource initialization (e.g. erasing a flash
+  region before writing to it).
+
 .. c:macro:: PW_TRANSFER_DEFAULT_EXTEND_WINDOW_DIVISOR
 
   The fractional position within a window at which a receive transfer should
@@ -397,8 +407,9 @@ defined by the implementers of the server-side transfer node.
 The series of chunks exchanged in an individual transfer operation for a
 resource constitute a transfer *session*. The session runs from its opening
 chunk until either a terminating chunk is received or the transfer times out.
-Sessions are assigned unique IDs by the transfer server in response to an
-initiating chunk from the client.
+Sessions are assigned IDs by the client that starts them, which are unique over
+the RPC channel between the client and server, allowing the server to identify
+transfers across multiple clients.
 
 Reliability
 ===========
@@ -421,15 +432,16 @@ resource being transferred, assign a session ID, and synchronize the protocol
 version to use.
 
 A read or write transfer for a resource is initiated by a transfer client. The
-client sends the ID of the resource to the server in a ``START`` chunk,
-indicating that it wishes to begin a new transfer. This chunk additionally
-encodes the protocol version which the client is configured to use.
+client sends the ID of the resource to the server alongside a unique session ID
+in a ``START`` chunk, indicating that it wishes to begin a new transfer. This
+chunk additionally encodes the protocol version which the client is configured
+to use.
 
 Upon receiving a ``START`` chunk, the transfer server checks whether the
 requested resource is available. If so, it prepares the resource for the
 operation, which typically involves opening a data stream, alongside any
-additional user-specified setup. The server generates a session ID, then
-responds to the client with a ``START_ACK`` chunk containing the resource,
+additional user-specified setup. The server accepts the client's session ID,
+then responds to the client with a ``START_ACK`` chunk containing the resource,
 session, and configured protocol version for the transfer.
 
 Transfer completion
@@ -618,7 +630,7 @@ correctness of implementations in different languages.
 
 To run the tests on your machine, run
 
-.. code:: bash
+.. code-block:: bash
 
   $ bazel test --features=c++17 \
         pw_transfer/integration_test:cross_language_small_test \
@@ -633,7 +645,7 @@ The integration tests permit injection of client/server/proxy binaries to use
 when running the tests. This allows manual testing of older versions of
 pw_transfer against newer versions.
 
-.. code:: bash
+.. code-block:: bash
 
   # Test a newer version of pw_transfer against an old C++ client that was
   # backed up to another directory.
@@ -651,7 +663,7 @@ binaries and the latest binaries.
 
 The CIPD package contents can be created with this command:
 
-.. code::bash
+.. code-block::bash
 
   $ bazel build --features=c++17 pw_transfer/integration_test:server \
                                  pw_transfer/integration_test:cpp_client
@@ -672,6 +684,11 @@ By default, these tests are not run in CQ (on presubmit) because they are too
 slow. However, you can request that the tests be run in presubmit on your
 change by adding to following line to the commit message footer:
 
-.. code::
+.. code-block::
 
-  Cq-Include-Trybots: luci.pigweed.try:pigweed-integration-transfer
+   Cq-Include-Trybots: luci.pigweed.try:pigweed-integration-transfer
+
+.. toctree::
+   :hidden:
+
+   API reference <api>

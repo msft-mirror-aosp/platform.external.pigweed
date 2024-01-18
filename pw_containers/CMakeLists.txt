@@ -18,12 +18,11 @@ pw_add_library(pw_containers INTERFACE
   PUBLIC_DEPS
     pw_containers.algorithm
     pw_containers.flat_map
+    pw_containers.inline_deque
+    pw_containers.inline_queue
     pw_containers.intrusive_list
     pw_containers.vector
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_CONTAINERS)
-  zephyr_link_libraries(pw_containers)
-endif()
 
 pw_add_library(pw_containers.algorithm INTERFACE
   HEADERS
@@ -48,6 +47,29 @@ pw_add_library(pw_containers.flat_map INTERFACE
     public/pw_containers/flat_map.h
   PUBLIC_INCLUDES
     public
+  PUBLIC_DEPS
+    pw_assert.assert
+)
+
+pw_add_library(pw_containers.inline_deque INTERFACE
+  HEADERS
+    public/pw_containers/inline_deque.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert.assert
+    pw_containers._raw_storage
+    pw_preprocessor
+    pw_span
+)
+
+pw_add_library(pw_containers.inline_queue INTERFACE
+  HEADERS
+    public/pw_containers/inline_queue.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.inline_deque
 )
 
 pw_add_library(pw_containers.iterator INTERFACE
@@ -57,11 +79,38 @@ pw_add_library(pw_containers.iterator INTERFACE
     public
 )
 
+pw_add_library(pw_containers._raw_storage INTERFACE
+  HEADERS
+    public/pw_containers/internal/raw_storage.h
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_library(pw_containers._test_helpers STATIC
+  HEADERS
+    pw_containers_private/test_helpers.h
+  SOURCES
+    test_helpers.cc
+)
+
 pw_add_library(pw_containers.to_array INTERFACE
   HEADERS
     public/pw_containers/to_array.h
   PUBLIC_INCLUDES
     public
+)
+
+pw_add_library(pw_containers.variable_length_entry_queue STATIC
+  HEADERS
+    public/pw_containers/variable_length_entry_queue.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_varint
+  PRIVATE_DEPS
+    pw_assert
+  SOURCES
+    variable_length_entry_queue.c
 )
 
 pw_add_library(pw_containers.vector INTERFACE
@@ -72,6 +121,7 @@ pw_add_library(pw_containers.vector INTERFACE
   PUBLIC_DEPS
     pw_assert
     pw_polyfill
+    pw_preprocessor
 )
 
 pw_add_library(pw_containers.wrapped_iterator INTERFACE
@@ -98,6 +148,7 @@ pw_add_test(pw_containers.algorithm_test
     algorithm_test.cc
   PRIVATE_DEPS
     pw_containers.algorithm
+    pw_containers.flat_map
     pw_containers.intrusive_list
     pw_containers.vector
     pw_span
@@ -110,7 +161,9 @@ pw_add_test(pw_containers.filtered_view_test
   SOURCES
     filtered_view_test.cc
   PRIVATE_DEPS
+    pw_containers.algorithm
     pw_containers.filtered_view
+    pw_containers.flat_map
     pw_containers.intrusive_list
     pw_span
   GROUPS
@@ -123,6 +176,45 @@ pw_add_test(pw_containers.flat_map_test
     flat_map_test.cc
   PRIVATE_DEPS
     pw_containers.flat_map
+    pw_polyfill
+  GROUPS
+    modules
+    pw_containers
+    pw_polyfill
+)
+
+pw_add_test(pw_containers.inline_deque_test
+  SOURCES
+    inline_deque_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.algorithm
+    pw_containers.inline_deque
+    pw_containers._test_helpers
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.inline_queue_test
+  SOURCES
+    inline_queue_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.algorithm
+    pw_containers.inline_queue
+    pw_containers._test_helpers
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.raw_storage_test
+  SOURCES
+    raw_storage_test.cc
+  PRIVATE_DEPS
+    pw_containers._raw_storage
+    pw_containers._test_helpers
   GROUPS
     modules
     pw_containers
@@ -138,10 +230,20 @@ pw_add_test(pw_containers.to_array_test
     pw_containers
 )
 
+pw_add_test(pw_containers.variable_length_entry_queue_test
+  SOURCES
+    pw_containers_private/variable_length_entry_queue_test_oracle.h
+    variable_length_entry_queue_test.cc
+  PRIVATE_DEPS
+    pw_bytes
+    pw_containers.variable_length_entry_queue
+)
+
 pw_add_test(pw_containers.vector_test
   SOURCES
     vector_test.cc
   PRIVATE_DEPS
+    pw_containers._test_helpers
     pw_containers.vector
   GROUPS
     modules

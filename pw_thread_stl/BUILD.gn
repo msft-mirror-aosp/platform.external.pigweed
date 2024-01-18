@@ -135,8 +135,26 @@ pw_test_group("tests") {
   tests = [ ":thread_backend_test" ]
 }
 
-pw_source_set("test_threads") {
-  public_deps = [ "$dir_pw_thread:test_threads" ]
+config("test_thread_context_public_overrides") {
+  include_dirs = [ "test_thread_context_public_overrides" ]
+  visibility = [ ":*" ]
+}
+
+pw_source_set("test_thread_context") {
+  public_deps = [ ":thread" ]
+  public_configs = [
+    ":public_include_path",
+    ":test_thread_context_public_overrides",
+  ]
+  public = [
+    "public/pw_thread_stl/test_thread_context_native.h",
+    "test_thread_context_public_overrides/pw_thread_backend/test_thread_context_native.h",
+  ]
+  deps = [ "$dir_pw_thread:test_thread_context.facade" ]
+}
+
+pw_source_set("non_portable_test_thread_options") {
+  public_deps = [ "$dir_pw_thread:non_portable_test_thread_options" ]
   sources = [ "test_threads.cc" ]
   deps = [ "$dir_pw_thread:thread" ]
 }
@@ -145,7 +163,7 @@ pw_test("thread_backend_test") {
   enable_if = pw_thread_THREAD_BACKEND == "$dir_pw_thread_stl:thread" &&
               pw_thread_SLEEP_BACKEND != ""
   deps = [
-    ":test_threads",
+    ":non_portable_test_thread_options",
     "$dir_pw_thread:thread_facade_test",
   ]
 }

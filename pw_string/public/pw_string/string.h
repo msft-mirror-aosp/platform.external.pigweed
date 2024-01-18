@@ -59,7 +59,7 @@ namespace pw {
 ///
 /// See also `pw::InlineString`, which is an alias of
 /// `pw::InlineBasicString<char>` and is equivalent to `std::string`.
-template <typename T, string_impl::size_type kCapacity = string_impl::kGeneric>
+template <typename T, size_t kCapacity = string_impl::kGeneric>
 class InlineBasicString final
     : public InlineBasicString<T, string_impl::kGeneric> {
  public:
@@ -84,19 +84,19 @@ class InlineBasicString final
   constexpr InlineBasicString() noexcept
       : InlineBasicString<T, string_impl::kGeneric>(kCapacity), buffer_() {}
 
-  constexpr InlineBasicString(size_type count, T ch) : InlineBasicString() {
+  constexpr InlineBasicString(size_t count, T ch) : InlineBasicString() {
     Fill(data(), ch, count);
   }
 
-  template <size_type kOtherCapacity>
+  template <size_t kOtherCapacity>
   constexpr InlineBasicString(const InlineBasicString<T, kOtherCapacity>& other,
-                              size_type index,
-                              size_type count = npos)
+                              size_t index,
+                              size_t count = npos)
       : InlineBasicString() {
     CopySubstr(data(), other.data(), other.size(), index, count);
   }
 
-  constexpr InlineBasicString(const T* string, size_type count)
+  constexpr InlineBasicString(const T* string, size_t count)
       : InlineBasicString() {
     Copy(data(), string, count);
   }
@@ -120,7 +120,7 @@ class InlineBasicString final
             typename = string_impl::EnableIfInputIterator<InputIterator>>
   constexpr InlineBasicString(InputIterator start, InputIterator finish)
       : InlineBasicString() {
-    IteratorCopy(start, finish, data(), data() + max_size());
+    CopyIterator(data(), start, finish);
   }
 
   // Use the default copy for InlineBasicString with the same capacity.
@@ -128,7 +128,7 @@ class InlineBasicString final
 
   // When copying from an InlineBasicString with a different capacity, check
   // that the destination capacity is at least as large as the source capacity.
-  template <size_type kOtherCapacity>
+  template <size_t kOtherCapacity>
   constexpr InlineBasicString(const InlineBasicString<T, kOtherCapacity>& other)
       : InlineBasicString(other.data(), other.size()) {
     static_assert(
@@ -169,8 +169,8 @@ class InlineBasicString final
   template <typename StringView,
             typename = string_impl::EnableIfStringViewLike<T, StringView>>
   constexpr InlineBasicString(const StringView& string,
-                              size_type index,
-                              size_type count)
+                              size_t index,
+                              size_t count)
       : InlineBasicString() {
     const std::basic_string_view<T> view = string;
     CopySubstr(data(), view.data(), view.size(), index, count);
@@ -185,7 +185,7 @@ class InlineBasicString final
       default;
 
   // Checks capacity rather than current size.
-  template <size_type kOtherCapacity>
+  template <size_t kOtherCapacity>
   constexpr InlineBasicString& operator=(
       const InlineBasicString<T, kOtherCapacity>& other) {
     return assign<kOtherCapacity>(other);  // NOLINT
@@ -223,7 +223,7 @@ class InlineBasicString final
 
   constexpr InlineBasicString& operator=(std::nullptr_t) = delete;
 
-  template <size_type kOtherCapacity>
+  template <size_t kOtherCapacity>
   constexpr InlineBasicString& operator+=(
       const InlineBasicString<T, kOtherCapacity>& string) {
     return append(string);
@@ -269,7 +269,7 @@ class InlineBasicString final
   // Use the size() function from the base, but define max_size() to return the
   // kCapacity template parameter instead of reading the stored capacity value.
   using InlineBasicString<T, string_impl::kGeneric>::size;
-  constexpr size_type max_size() const noexcept { return kCapacity; }
+  constexpr size_t max_size() const noexcept { return kCapacity; }
 
   // Most string functions are defined in separate file so they can be shared
   // between the known capacity and generic capacity versions of
@@ -282,11 +282,12 @@ class InlineBasicString final
   using InlineBasicString<T, string_impl::kGeneric>::Copy;
   using InlineBasicString<T, string_impl::kGeneric>::CopySubstr;
   using InlineBasicString<T, string_impl::kGeneric>::Fill;
-  using InlineBasicString<T, string_impl::kGeneric>::IteratorCopy;
+  using InlineBasicString<T, string_impl::kGeneric>::CopyIterator;
   using InlineBasicString<T, string_impl::kGeneric>::CopyExtend;
   using InlineBasicString<T, string_impl::kGeneric>::CopyExtendSubstr;
   using InlineBasicString<T, string_impl::kGeneric>::FillExtend;
-  using InlineBasicString<T, string_impl::kGeneric>::IteratorExtend;
+  using InlineBasicString<T, string_impl::kGeneric>::MoveExtend;
+  using InlineBasicString<T, string_impl::kGeneric>::CopyIteratorExtend;
   using InlineBasicString<T, string_impl::kGeneric>::Resize;
   using InlineBasicString<T, string_impl::kGeneric>::SetSizeAndTerminate;
 
@@ -313,7 +314,7 @@ class InlineBasicString<T, string_impl::kGeneric> {
   using reverse_iterator = std::reverse_iterator<iterator>;
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-  static constexpr size_type npos = string_impl::kGeneric;
+  static constexpr size_t npos = string_impl::kGeneric;
 
   InlineBasicString() = delete;  // Must specify capacity to construct a string.
 
@@ -328,8 +329,8 @@ class InlineBasicString<T, string_impl::kGeneric> {
     return static_cast<const InlineBasicString<T, 0>*>(this)->data();
   }
 
-  constexpr size_type size() const noexcept { return length_; }
-  constexpr size_type max_size() const noexcept { return capacity_; }
+  constexpr size_t size() const noexcept { return length_; }
+  constexpr size_t max_size() const noexcept { return capacity_; }
 
   // Most string functions are defined in separate file so they can be shared
   // between the known capacity and generic capacity versions of
@@ -337,8 +338,8 @@ class InlineBasicString<T, string_impl::kGeneric> {
 #include "pw_string/internal/string_common_functions.inc"
 
  protected:
-  explicit constexpr InlineBasicString(size_type capacity)
-      : capacity_(capacity), length_(0) {}
+  explicit constexpr InlineBasicString(size_t capacity)
+      : capacity_(string_impl::CheckedCastToSize(capacity)), length_(0) {}
 
   // The generic-capacity InlineBasicString<T> is not copyable or movable, but
   // BasicStrings can copied or assigned through a fixed capacity derived class.
@@ -353,56 +354,52 @@ class InlineBasicString<T, string_impl::kGeneric> {
     SetSizeAndTerminate(data, size() - 1);
   }
 
-  constexpr InlineBasicString& Copy(T* data,
-                                    const T* source,
-                                    size_type new_size);
+  constexpr InlineBasicString& Copy(T* data, const T* source, size_t new_size);
 
-  constexpr InlineBasicString& CopySubstr(T* data,
-                                          const T* source,
-                                          size_type source_size,
-                                          size_type index,
-                                          size_type count);
+  constexpr InlineBasicString& CopySubstr(
+      T* data, const T* source, size_t source_size, size_t index, size_t count);
 
-  constexpr InlineBasicString& Fill(T* data, T fill_char, size_type new_size);
+  constexpr InlineBasicString& Fill(T* data, T fill_char, size_t new_size);
 
   template <typename InputIterator>
-  constexpr InlineBasicString& IteratorCopy(InputIterator start,
-                                            InputIterator finish,
-                                            T* data_start,
-                                            const T* data_finish) {
-    set_size(string_impl::IteratorCopyAndTerminate(
-        start, finish, data_start, data_finish));
-    return *this;
-  }
+  constexpr InlineBasicString& CopyIterator(T* data_start,
+                                            InputIterator begin,
+                                            InputIterator end);
 
   constexpr InlineBasicString& CopyExtend(T* data,
+                                          size_t index,
                                           const T* source,
-                                          size_type count);
+                                          size_t count);
 
   constexpr InlineBasicString& CopyExtendSubstr(T* data,
+                                                size_t index,
                                                 const T* source,
-                                                size_type source_size,
-                                                size_type index,
-                                                size_type count);
+                                                size_t source_size,
+                                                size_t source_index,
+                                                size_t count);
 
   constexpr InlineBasicString& FillExtend(T* data,
+                                          size_t index,
                                           T fill_char,
-                                          size_type count);
+                                          size_t count);
 
   template <typename InputIterator>
-  constexpr InlineBasicString& IteratorExtend(InputIterator start,
-                                              InputIterator finish,
-                                              T* data_start,
-                                              const T* data_finish) {
-    length_ += string_impl::IteratorCopyAndTerminate(
-        start, finish, data_start, data_finish);
-    return *this;
+  constexpr InlineBasicString& CopyIteratorExtend(T* data,
+                                                  size_t index,
+                                                  InputIterator begin,
+                                                  InputIterator end);
+
+  constexpr InlineBasicString& MoveExtend(T* data,
+                                          size_t index,
+                                          size_t new_index);
+
+  constexpr void Resize(T* data, size_t new_size, T ch);
+
+  constexpr void set_size(size_t length) {
+    length_ = string_impl::CheckedCastToSize(length);
   }
-
-  constexpr void Resize(T* data, size_type new_size, T ch);
-
-  constexpr void set_size(size_type length) { length_ = length; }
-  constexpr void SetSizeAndTerminate(T* data, size_type length) {
+  constexpr void SetSizeAndTerminate(T* data, size_t length) {
+    PW_ASSERT(length <= max_size());
     string_impl::char_traits<T>::assign(data[length], T());
     set_size(length);
   }
@@ -414,7 +411,7 @@ class InlineBasicString<T, string_impl::kGeneric> {
   // Provide this constant for static_assert checks. If the capacity is unknown,
   // use the maximum value so that compile-time capacity checks pass. If
   // overflow occurs, the operation triggers a PW_ASSERT at runtime.
-  static constexpr size_type kCapacity = string_impl::kGeneric;
+  static constexpr size_t kCapacity = string_impl::kGeneric;
 
   size_type capacity_;
   size_type length_;
@@ -443,141 +440,129 @@ InlineBasicString(const T (&)[kCharArraySize])
 
 // Operators
 
-// TODO(b/239996007): Implement operator+
+// TODO: b/239996007 - Implement operator+
 
-template <typename T,
-          string_impl::size_type kLhsCapacity,
-          string_impl::size_type kRhsCapacity>
+template <typename T, size_t kLhsCapacity, size_t kRhsCapacity>
 constexpr bool operator==(
     const InlineBasicString<T, kLhsCapacity>& lhs,
     const InlineBasicString<T, kRhsCapacity>& rhs) noexcept {
   return lhs.compare(rhs) == 0;
 }
 
-template <typename T,
-          string_impl::size_type kLhsCapacity,
-          string_impl::size_type kRhsCapacity>
+template <typename T, size_t kLhsCapacity, size_t kRhsCapacity>
 constexpr bool operator!=(
     const InlineBasicString<T, kLhsCapacity>& lhs,
     const InlineBasicString<T, kRhsCapacity>& rhs) noexcept {
   return lhs.compare(rhs) != 0;
 }
 
-template <typename T,
-          string_impl::size_type kLhsCapacity,
-          string_impl::size_type kRhsCapacity>
+template <typename T, size_t kLhsCapacity, size_t kRhsCapacity>
 constexpr bool operator<(
     const InlineBasicString<T, kLhsCapacity>& lhs,
     const InlineBasicString<T, kRhsCapacity>& rhs) noexcept {
   return lhs.compare(rhs) < 0;
 }
 
-template <typename T,
-          string_impl::size_type kLhsCapacity,
-          string_impl::size_type kRhsCapacity>
+template <typename T, size_t kLhsCapacity, size_t kRhsCapacity>
 constexpr bool operator<=(
     const InlineBasicString<T, kLhsCapacity>& lhs,
     const InlineBasicString<T, kRhsCapacity>& rhs) noexcept {
   return lhs.compare(rhs) <= 0;
 }
 
-template <typename T,
-          string_impl::size_type kLhsCapacity,
-          string_impl::size_type kRhsCapacity>
+template <typename T, size_t kLhsCapacity, size_t kRhsCapacity>
 constexpr bool operator>(
     const InlineBasicString<T, kLhsCapacity>& lhs,
     const InlineBasicString<T, kRhsCapacity>& rhs) noexcept {
   return lhs.compare(rhs) > 0;
 }
 
-template <typename T,
-          string_impl::size_type kLhsCapacity,
-          string_impl::size_type kRhsCapacity>
+template <typename T, size_t kLhsCapacity, size_t kRhsCapacity>
 constexpr bool operator>=(
     const InlineBasicString<T, kLhsCapacity>& lhs,
     const InlineBasicString<T, kRhsCapacity>& rhs) noexcept {
   return lhs.compare(rhs) >= 0;
 }
 
-template <typename T, string_impl::size_type kLhsCapacity>
+template <typename T, size_t kLhsCapacity>
 constexpr bool operator==(const InlineBasicString<T, kLhsCapacity>& lhs,
                           const T* rhs) {
   return lhs.compare(rhs) == 0;
 }
 
-template <typename T, string_impl::size_type kRhsCapacity>
+template <typename T, size_t kRhsCapacity>
 constexpr bool operator==(const T* lhs,
                           const InlineBasicString<T, kRhsCapacity>& rhs) {
   return rhs.compare(lhs) == 0;
 }
 
-template <typename T, string_impl::size_type kLhsCapacity>
+template <typename T, size_t kLhsCapacity>
 constexpr bool operator!=(const InlineBasicString<T, kLhsCapacity>& lhs,
                           const T* rhs) {
   return lhs.compare(rhs) != 0;
 }
 
-template <typename T, string_impl::size_type kRhsCapacity>
+template <typename T, size_t kRhsCapacity>
 constexpr bool operator!=(const T* lhs,
                           const InlineBasicString<T, kRhsCapacity>& rhs) {
   return rhs.compare(lhs) != 0;
 }
 
-template <typename T, string_impl::size_type kLhsCapacity>
+template <typename T, size_t kLhsCapacity>
 constexpr bool operator<(const InlineBasicString<T, kLhsCapacity>& lhs,
                          const T* rhs) {
   return lhs.compare(rhs) < 0;
 }
 
-template <typename T, string_impl::size_type kRhsCapacity>
+template <typename T, size_t kRhsCapacity>
 constexpr bool operator<(const T* lhs,
                          const InlineBasicString<T, kRhsCapacity>& rhs) {
   return rhs.compare(lhs) >= 0;
 }
 
-template <typename T, string_impl::size_type kLhsCapacity>
+template <typename T, size_t kLhsCapacity>
 constexpr bool operator<=(const InlineBasicString<T, kLhsCapacity>& lhs,
                           const T* rhs) {
   return lhs.compare(rhs) <= 0;
 }
 
-template <typename T, string_impl::size_type kRhsCapacity>
+template <typename T, size_t kRhsCapacity>
 constexpr bool operator<=(const T* lhs,
                           const InlineBasicString<T, kRhsCapacity>& rhs) {
   return rhs.compare(lhs) >= 0;
 }
 
-template <typename T, string_impl::size_type kLhsCapacity>
+template <typename T, size_t kLhsCapacity>
 constexpr bool operator>(const InlineBasicString<T, kLhsCapacity>& lhs,
                          const T* rhs) {
   return lhs.compare(rhs) > 0;
 }
 
-template <typename T, string_impl::size_type kRhsCapacity>
+template <typename T, size_t kRhsCapacity>
 constexpr bool operator>(const T* lhs,
                          const InlineBasicString<T, kRhsCapacity>& rhs) {
   return rhs.compare(lhs) <= 0;
 }
 
-template <typename T, string_impl::size_type kLhsCapacity>
+template <typename T, size_t kLhsCapacity>
 constexpr bool operator>=(const InlineBasicString<T, kLhsCapacity>& lhs,
                           const T* rhs) {
   return lhs.compare(rhs) >= 0;
 }
 
-template <typename T, string_impl::size_type kRhsCapacity>
+template <typename T, size_t kRhsCapacity>
 constexpr bool operator>=(const T* lhs,
                           const InlineBasicString<T, kRhsCapacity>& rhs) {
   return rhs.compare(lhs) <= 0;
 }
 
-// TODO(b/239996007): Implement other comparison operator overloads.
+// TODO: b/239996007 - Implement other comparison operator overloads.
 
 // Aliases
 
 /// @brief `pw::InlineString` is an alias of `pw::InlineBasicString<char>` and
 /// is equivalent to `std::string`.
-template <string_impl::size_type kCapacity = string_impl::kGeneric>
+template <size_t kCapacity = string_impl::kGeneric>
 using InlineString = InlineBasicString<char, kCapacity>;
 
 // Function implementations
@@ -594,7 +579,7 @@ template <typename T>
 constexpr InlineBasicString<T, string_impl::kGeneric>&
 InlineBasicString<T, string_impl::kGeneric>::Copy(T* data,
                                                   const T* source,
-                                                  size_type new_size) {
+                                                  size_t new_size) {
   PW_ASSERT(new_size <= max_size());
   string_impl::char_traits<T>::copy(data, source, new_size);
   SetSizeAndTerminate(data, new_size);
@@ -603,22 +588,70 @@ InlineBasicString<T, string_impl::kGeneric>::Copy(T* data,
 
 template <typename T>
 constexpr InlineBasicString<T, string_impl::kGeneric>&
-InlineBasicString<T, string_impl::kGeneric>::CopySubstr(T* data,
-                                                        const T* source,
-                                                        size_type source_size,
-                                                        size_type index,
-                                                        size_type count) {
+InlineBasicString<T, string_impl::kGeneric>::CopySubstr(
+    T* data, const T* source, size_t source_size, size_t index, size_t count) {
   PW_ASSERT(index <= source_size);
-  return Copy(data,
-              source + index,
-              std::min(count, static_cast<size_type>(source_size - index)));
+  return Copy(data, source + index, std::min(count, source_size - index));
+}
+
+template <typename T>
+constexpr InlineBasicString<T, string_impl::kGeneric>&
+InlineBasicString<T, string_impl::kGeneric>::CopyExtend(T* data,
+                                                        size_t index,
+                                                        const T* source,
+                                                        size_t count) {
+  PW_ASSERT(index <= size());
+  PW_ASSERT(count <= max_size() - index);
+  string_impl::char_traits<T>::copy(data + index, source, count);
+  SetSizeAndTerminate(data, std::max(size(), index + count));
+  return *this;
+}
+
+template <typename T>
+constexpr InlineBasicString<T, string_impl::kGeneric>&
+InlineBasicString<T, string_impl::kGeneric>::CopyExtendSubstr(
+    T* data,
+    size_t index,
+    const T* source,
+    size_t source_size,
+    size_t source_index,
+    size_t count) {
+  PW_ASSERT(source_index <= source_size);
+  return CopyExtend(data,
+                    index,
+                    source + source_index,
+                    std::min(count, source_size - source_index));
+  return *this;
+}
+
+template <typename T>
+template <typename InputIterator>
+constexpr InlineBasicString<T, string_impl::kGeneric>&
+InlineBasicString<T, string_impl::kGeneric>::CopyIterator(T* data,
+                                                          InputIterator begin,
+                                                          InputIterator end) {
+  size_t length =
+      string_impl::IteratorCopy(begin, end, data, data + max_size());
+  SetSizeAndTerminate(data, length);
+  return *this;
+}
+
+template <typename T>
+template <typename InputIterator>
+constexpr InlineBasicString<T, string_impl::kGeneric>&
+InlineBasicString<T, string_impl::kGeneric>::CopyIteratorExtend(
+    T* data, size_t index, InputIterator begin, InputIterator end) {
+  size_t length =
+      string_impl::IteratorCopy(begin, end, data + index, data + max_size());
+  SetSizeAndTerminate(data, std::max(size(), index + length));
+  return *this;
 }
 
 template <typename T>
 constexpr InlineBasicString<T, string_impl::kGeneric>&
 InlineBasicString<T, string_impl::kGeneric>::Fill(T* data,
                                                   T fill_char,
-                                                  size_type new_size) {
+                                                  size_t new_size) {
   PW_ASSERT(new_size <= max_size());
   string_impl::char_traits<T>::assign(data, new_size, fill_char);
   SetSizeAndTerminate(data, new_size);
@@ -627,45 +660,34 @@ InlineBasicString<T, string_impl::kGeneric>::Fill(T* data,
 
 template <typename T>
 constexpr InlineBasicString<T, string_impl::kGeneric>&
-InlineBasicString<T, string_impl::kGeneric>::CopyExtend(T* data,
-                                                        const T* source,
-                                                        size_type count) {
-  PW_ASSERT(count <= max_size() - size());
-  string_impl::char_traits<T>::copy(data + size(), source, count);
-  SetSizeAndTerminate(data, size() + count);
-  return *this;
-}
-
-template <typename T>
-constexpr InlineBasicString<T, string_impl::kGeneric>&
-InlineBasicString<T, string_impl::kGeneric>::CopyExtendSubstr(
-    T* data,
-    const T* source,
-    size_type source_size,
-    size_type index,
-    size_type count) {
-  PW_ASSERT(index <= source_size);
-  return CopyExtend(
-      data,
-      source + index,
-      std::min(count, static_cast<size_type>(source_size - index)));
-  return *this;
-}
-
-template <typename T>
-constexpr InlineBasicString<T, string_impl::kGeneric>&
 InlineBasicString<T, string_impl::kGeneric>::FillExtend(T* data,
+                                                        size_t index,
                                                         T fill_char,
-                                                        size_type count) {
-  PW_ASSERT(count <= max_size() - size());
-  string_impl::char_traits<T>::assign(data + size(), count, fill_char);
-  SetSizeAndTerminate(data, size() + count);
+                                                        size_t count) {
+  PW_ASSERT(index <= size());
+  PW_ASSERT(count <= max_size() - index);
+  string_impl::char_traits<T>::assign(data + index, count, fill_char);
+  SetSizeAndTerminate(data, std::max(size(), index + count));
+  return *this;
+}
+
+template <typename T>
+constexpr InlineBasicString<T, string_impl::kGeneric>&
+InlineBasicString<T, string_impl::kGeneric>::MoveExtend(T* data,
+                                                        size_t index,
+                                                        size_t new_index) {
+  PW_ASSERT(index <= size());
+  PW_ASSERT(new_index <= max_size());
+  PW_ASSERT(size() - index <= max_size() - new_index);
+  string_impl::char_traits<T>::move(
+      data + new_index, data + index, size() - index);
+  SetSizeAndTerminate(data, size() - index + new_index);
   return *this;
 }
 
 template <typename T>
 constexpr void InlineBasicString<T, string_impl::kGeneric>::Resize(
-    T* data, size_type new_size, T ch) {
+    T* data, size_t new_size, T ch) {
   PW_ASSERT(new_size <= max_size());
 
   if (new_size > size()) {

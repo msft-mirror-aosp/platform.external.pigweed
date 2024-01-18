@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -129,6 +129,7 @@ class Context {
         last_chunk_sent_(Chunk::Type::kData),
         last_chunk_offset_(0),
         chunk_timeout_(chrono::SystemClock::duration::zero()),
+        initial_chunk_timeout_(chrono::SystemClock::duration::zero()),
         interchunk_delay_(chrono::SystemClock::for_at_least(
             std::chrono::microseconds(kDefaultChunkDelayMicroseconds))),
         next_timeout_(kNoTimeout) {}
@@ -276,8 +277,8 @@ class Context {
   // Processes a data chunk in a received while in the kWaiting state.
   void HandleReceivedData(const Chunk& chunk);
 
-  // Sends the first chunk in a transmit transfer.
-  void SendInitialTransmitChunk();
+  // Sends the first chunk in a legacy transmit transfer.
+  void SendInitialLegacyTransmitChunk();
 
   // Updates the current receive transfer parameters based on the context's
   // configuration.
@@ -347,7 +348,7 @@ class Context {
   // status chunk will be re-sent for every non-ACK chunk received,
   // continually notifying the other end that the transfer is over.
   static constexpr chrono::SystemClock::duration kFinalChunkAckTimeout =
-      std::chrono::milliseconds(5000);
+      chrono::SystemClock::for_at_least(std::chrono::milliseconds(5000));
 
   static constexpr chrono::SystemClock::time_point kNoTimeout =
       chrono::SystemClock::time_point(chrono::SystemClock::duration(0));
@@ -390,6 +391,9 @@ class Context {
 
   // How long to wait for a chunk from the other end.
   chrono::SystemClock::duration chunk_timeout_;
+
+  // How long for a client to wait for an initial server response.
+  chrono::SystemClock::duration initial_chunk_timeout_;
 
   // How long to delay between transmitting subsequent data chunks within a
   // window.

@@ -19,7 +19,7 @@ load(
     "pw_cc_test",
 )
 load("//pw_build/bazel_internal:py_proto_library.bzl", "py_proto_library")
-load("//pw_protobuf_compiler:proto.bzl", "pw_proto_library")
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -35,15 +35,18 @@ pw_cc_facade(
 
 pw_cc_library(
     name = "id",
+    hdrs = [
+        "public/pw_thread/id.h",
+    ],
+    includes = ["public"],
     deps = [
-        ":id_facade",
-        "@pigweed_config//:pw_thread_id_backend",
+        "@pigweed//targets:pw_thread_id_backend",
     ],
 )
 
 pw_cc_library(
     name = "id_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:id"],
         "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:id"],
@@ -80,15 +83,21 @@ pw_cc_facade(
 
 pw_cc_library(
     name = "thread_iteration",
+    hdrs = [
+        "public/pw_thread/thread_iteration.h",
+    ],
+    includes = ["public"],
     deps = [
-        ":thread_iteration_facade",
-        "@pigweed_config//:pw_thread_iteration_backend",
+        ":thread_info",
+        "//pw_function",
+        "//pw_status",
+        "@pigweed//targets:pw_thread_iteration_backend",
     ],
 )
 
 pw_cc_library(
     name = "iteration_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:thread_iteration"],
         "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:thread_iteration"],
@@ -114,16 +123,21 @@ pw_cc_library(
     srcs = [
         "sleep.cc",
     ],
+    hdrs = [
+        "public/pw_thread/sleep.h",
+    ],
+    includes = ["public"],
     deps = [
         ":id",
-        ":sleep_facade",
-        "@pigweed_config//:pw_thread_sleep_backend",
+        "//pw_chrono:system_clock",
+        "//pw_preprocessor",
+        "@pigweed//targets:pw_thread_sleep_backend",
     ],
 )
 
 pw_cc_library(
     name = "sleep_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:sleep"],
         "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:sleep"],
@@ -150,19 +164,22 @@ pw_cc_library(
     srcs = [
         "thread.cc",
     ],
-    hdrs = ["public/pw_thread/config.h"],
+    hdrs = [
+        "public/pw_thread/config.h",
+        "public/pw_thread/detached_thread.h",
+        "public/pw_thread/thread.h",
+    ],
     includes = ["public"],
     deps = [
         ":id",
         ":thread_core",
-        ":thread_facade",
-        "@pigweed_config//:pw_thread_thread_backend",
+        "@pigweed//targets:pw_thread_thread_backend",
     ],
 )
 
 pw_cc_library(
     name = "thread_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:thread"],
         "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:thread"],
@@ -207,6 +224,33 @@ pw_cc_library(
     ],
 )
 
+pw_cc_library(
+    name = "test_thread_context_backend_multiplexer",
+    visibility = ["@pigweed//targets:__pkg__"],
+    deps = select({
+        "//conditions:default": ["//pw_thread_stl:test_thread_context"],
+    }),
+)
+
+pw_cc_facade(
+    name = "test_thread_context_facade",
+    hdrs = [
+        "public/pw_thread/test_thread_context.h",
+    ],
+    includes = ["public"],
+)
+
+pw_cc_library(
+    name = "test_thread_context",
+    hdrs = [
+        "public/pw_thread/test_thread_context.h",
+    ],
+    includes = ["public"],
+    deps = [
+        "@pigweed//targets:pw_thread_test_thread_context_backend",
+    ],
+)
+
 pw_cc_facade(
     name = "yield_facade",
     hdrs = [
@@ -223,16 +267,20 @@ pw_cc_library(
     srcs = [
         "yield.cc",
     ],
+    hdrs = [
+        "public/pw_thread/yield.h",
+    ],
+    includes = ["public"],
     deps = [
         ":id",
-        ":yield_facade",
-        "@pigweed_config//:pw_thread_yield_backend",
+        "//pw_preprocessor",
+        "@pigweed//targets:pw_thread_yield_backend",
     ],
 )
 
 pw_cc_library(
     name = "yield_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:yield"],
         "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:yield"],
@@ -261,9 +309,9 @@ pw_cc_library(
 )
 
 pw_cc_library(
-    name = "test_threads_header",
+    name = "non_portable_test_thread_options",
     hdrs = [
-        "public/pw_thread/test_threads.h",
+        "public/pw_thread/non_portable_test_thread_options.h",
     ],
     deps = [
         ":thread",
@@ -271,8 +319,8 @@ pw_cc_library(
 )
 
 # To instantiate this as a pw_cc_test, depend on this pw_cc_library and the
-# pw_cc_library which implements the backend for test_threads_header. See
-# //pw_thread:thread_backend_test as an example.
+# pw_cc_library which implements the backend for non_portable_test_thread_options. See
+# //pw_thread_stl:thread_backend_test as an example.
 pw_cc_library(
     name = "thread_facade_test",
     srcs = [
@@ -280,9 +328,22 @@ pw_cc_library(
     ],
     deps = [
         ":id",
-        ":test_threads_header",
+        ":non_portable_test_thread_options",
         ":thread",
         "//pw_chrono:system_clock",
+        "//pw_sync:binary_semaphore",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "test_thread_context_facade_test",
+    srcs = [
+        "test_thread_context_facade_test.cc",
+    ],
+    deps = [
+        ":test_thread_context",
+        ":thread",
         "//pw_sync:binary_semaphore",
         "//pw_unit_test",
     ],
@@ -364,7 +425,7 @@ proto_library(
     ],
 )
 
-# TODO(b/241456982): Not expected to build yet.
+# TODO: b/241456982 - Not expected to build yet.
 py_proto_library(
     name = "thread_proto_py_pb2",
     tags = ["manual"],
@@ -385,7 +446,7 @@ pw_proto_library(
     deps = [":thread_snapshot_service_proto"],
 )
 
-# TODO(b/241456982): Not expected to build yet.
+# TODO: b/241456982 - Not expected to build yet.
 py_proto_library(
     name = "thread_snapshot_service_py_pb2",
     tags = ["manual"],

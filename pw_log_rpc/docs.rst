@@ -1,5 +1,7 @@
 .. _module-pw_log_rpc:
 
+:tocdepth: 4
+
 ==========
 pw_log_rpc
 ==========
@@ -88,6 +90,32 @@ also be internal log readers, i.e. ``MultiSink::Drain``\s, attached to the
     pw_rpc-->computer[Computer];
     pw_rpc-->other_listener[Other log<br>listener];
 
+Relation to pw_log and pw_log_tokenized
+=======================================
+``pw_log_rpc`` is often used in combination with ``pw_log`` and
+``pw_log_tokenized``. The diagram below shows the order of execution after
+invoking a ``pw_log`` macro.
+
+.. mermaid::
+
+   flowchart TD
+     project["`**your project code**`"]
+     --> pw_log["`**pw_log**
+                  *facade*`"]
+     --> token_backend["`**pw_log_tokenized**
+                         *backend for pw_log*`"]
+     --> token_facade["`**pw_log_tokenized:handler**
+                        *facade*`"]
+     --> custom_backend["`**your custom code**
+                          *backend for pw_log_tokenized:handler*`"]
+     --> pw_log_rpc["`**pw_log_rpc**`"];
+
+* See :ref:`docs-module-structure-facades` for an explanation of facades and
+  backends.
+* See ``pw_log_tokenized_HandleLog()`` and ``pw_log_tokenized_HandleMessageVaList()``
+  in ``//pw_system/log_backend.cc`` for an example of how :ref:`module-pw_system`
+  implements ``your custom code (pw_log_tokenized backend)``.
+
 Components Overview
 ===================
 LogEntry and LogEntries
@@ -103,11 +131,17 @@ out if logs were dropped during transmission.
 RPC log service
 ---------------
 The ``LogService`` class is an RPC service that provides a way to request a log
-stream sent via RPC and configure log filters. Thus, it helps avoid using a
-different protocol for logs and RPCs over the same interface(s).
+stream sent via RPC and configure log filters. Thus, it helps avoid
+using a different protocol for logs and RPCs over the same interface(s).
 It requires a ``RpcLogDrainMap`` to assign stream writers and delegate the
 log stream flushing to the user's preferred method, as well as a ``FilterMap``
-to retrieve and modify filters.
+to retrieve and modify filters. The client may also stop streaming the logs by
+calling ``Cancel()`` or ``RequestCompletion()`` using the ``RawClientReader``
+interface. Note that ``Cancel()`` may lead to dropped logs. To prevent dropped
+logs use ``RequestCompletion()`` and enable :c:macro:`PW_RPC_REQUEST_COMPLETION_CALLBACK`
+e.g. ``-DPW_RPC_REQUEST_COMPLETION_CALLBACK=1``.
+If ``PW_RPC_REQUEST_COMPLETION_CALLBACK`` is not enabled, RequestCompletion()
+call will not stop the logging stream.
 
 RpcLogDrain
 -----------
@@ -449,3 +483,23 @@ Logging in other source files
 To defer logging, other source files must simply include ``pw_log/log.h`` and
 use the :ref:`module-pw_log` APIs, as long as the source set that includes
 ``foo/log.cc`` is setup as the log backend.
+
+--------------------
+pw_log_rpc in Python
+--------------------
+``pw_log_rpc`` provides client utilities for dealing with RPC logging.
+
+The ``LogStreamHandler`` offers APIs to start a log stream:``listen_to_logs``,
+to handle RPC stream errors: ``handle_log_stream_error``, and RPC stream
+completed events: ``handle_log_stream_completed``. It uses a provided
+``LogStreamDecoder`` to delegate log parsing to.
+
+Python API
+==========
+
+pw_log_rpc.rpc_log_stream
+-------------------------
+.. automodule:: pw_log_rpc.rpc_log_stream
+    :members: LogStreamHandler
+    :undoc-members:
+    :show-inheritance:

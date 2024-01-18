@@ -28,7 +28,7 @@ class Packet {
  public:
   static constexpr uint32_t kUnassignedId = 0;
 
-  // TODO(b/236156534): This can use the pwpb generated
+  // TODO: b/236156534 - This can use the pwpb generated
   // pw::rpc::internal::pwpb::RpcPacket::kMaxEncodedSizeBytes once the max value
   // of enums is properly accounted for and when `status` is changed from a
   // uint32 to a StatusCode.
@@ -140,6 +140,9 @@ class Packet {
   constexpr void set_call_id(uint32_t call_id) { call_id_ = call_id; }
   constexpr void set_payload(ConstByteSpan payload) { payload_ = payload; }
   constexpr void set_status(Status status) { status_ = status; }
+
+  // Logs detailed info about this packet at INFO level. NOT for production use!
+  void DebugLog() const;
 
  private:
   pwpb::PacketType type_;

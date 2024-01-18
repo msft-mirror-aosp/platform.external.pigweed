@@ -1,44 +1,45 @@
 .. _docs-root:
 .. highlight:: sh
 
-.. TODO(b/256680603) Remove query string from issue tracker link.
+.. TODO: b/256680603 - Remove query string from issue tracker link.
 
 .. toctree::
   :maxdepth: 1
   :hidden:
 
   Home <self>
-  docs/getting_started
+  docs/overview
+  docs/get_started/index
   docs/concepts/index
-  module_guides
-  docs/release_notes/index
+  targets
+  Modules <module_guides>
+  docs/module_structure
+  changelog
   Mailing List <https://groups.google.com/forum/#!forum/pigweed>
   Chat Room <https://discord.gg/M9NSeTA>
-  docs/os_abstraction_layers
+  docs/os/index
   docs/size_optimizations
-  FAQ <docs/faq>
+  Code Editor Support <docs/editors>
   third_party_support
   Source Code <https://cs.pigweed.dev/pigweed>
   Code Reviews <https://pigweed-review.googlesource.com>
   Issue Tracker <https://issues.pigweed.dev/issues?q=status:open>
-  docs/contributing
-  docs/code_of_conduct
-  docs/embedded_cpp_guide
-  Style Guide <docs/style_guide>
+  docs/contributing/index
+  docs/infra/index
   Automated Analysis <automated_analysis>
-  targets
   Build System <build_system>
   SEEDs <seed/0000-index>
-  docs/module_structure
+  kudzu/docs
+  Eng Blog <docs/blog/index>
 
 =======
 Pigweed
 =======
 Pigweed is an open source collection of embedded-targeted libraries--or as we
-like to call them, modules. These modules are building blocks and
-infrastructure that enable faster and more reliable development on
-small-footprint MMU-less 32-bit microcontrollers like the STMicroelectronics
-STM32L452 or the Nordic nRF52832.
+like to call them, :ref:`modules <docs-glossary-module>`. These modules are
+building blocks and infrastructure that enable faster and more reliable
+development on small-footprint MMU-less 32-bit microcontrollers like the
+STMicroelectronics STM32L452 or the Nordic nRF52832.
 
 .. attention::
 
@@ -47,15 +48,29 @@ STM32L452 or the Nordic nRF52832.
    in our `chat room <https://discord.gg/M9NSeTA>`_ or on the `mailing list
    <https://groups.google.com/forum/#!forum/pigweed>`_.
 
+--------------------------
+Talk to us at Pigweed Live
+--------------------------
+.. pigweed-live::
+
+---------------------
+What's New In Pigweed
+---------------------
+.. include:: changelog.rst
+   :start-after: .. changelog_highlights_start
+   :end-before: .. changelog_highlights_end
+
+See :ref:`docs-changelog-latest` in our changelog for details.
+
+---------------
 Getting Started
 ---------------
-Check out `Pigweed Sample Project <https://pigweed.googlesource.com/pigweed/sample_project/+/main/README.md>`_
-to see how to use Pigweed as a library in your broader project.
+Check out our :ref:`docs-get-started` landing page. We've got a guide that
+shows you how to use Pigweed in a new, Bazel-based project (the recommended
+path), sample code for GN-based projects, a tutorial on getting set up to
+contribute to upstream Pigweed, and more.
 
-Visit the :ref:`docs-getting-started` guide to learn how to bootstrap and
-activate a Pigweed environment, build Pigweed for a specific host or device,
-run tests, and more.
-
+------------------------
 What does Pigweed offer?
 ------------------------
 There are many modules in Pigweed; this section showcases a selection that
@@ -63,7 +78,7 @@ produce visual output. For more information about the different Pigweed module
 offerings, refer to :ref:`docs-module-guides` section.
 
 ``pw_watch`` - Build, flash, run, & test on save
-------------------------------------------------
+================================================
 In the web development space, file system watchers are prevalent. These
 watchers trigger a web server reload on source change, making development much
 faster. In the embedded space, file system watchers are less prevalent;
@@ -78,12 +93,12 @@ and verifying the test runs as expected. Once this is set up, you can attach
 multiple devices to run tests in a distributed manner to reduce the time it
 takes to run tests.
 
-.. image:: docs/images/pw_watch_on_device_demo.gif
+.. image:: https://storage.googleapis.com/pigweed-media/pw_watch_on_device_demo.gif
   :width: 800
   :alt: pw watch running on-device tests
 
 ``pw_presubmit`` - Vacuum lint on every commit
-----------------------------------------------
+==============================================
 Presubmit checks are essential tools, but they take work to set up, and
 projects don’t always get around to it. The :ref:`module-pw_presubmit` module
 provides tools for setting up high quality presubmit checks for any project. We
@@ -96,12 +111,12 @@ With ``pw format``, you can format C, C++, Python, GN, and Go code according to
 configurations defined by your project. ``pw format`` leverages existing tools
 like ``clang-format``, and it’s simple to add support for new languages.
 
-.. image:: pw_presubmit/docs/pw_presubmit_demo.gif
+.. image:: https://storage.googleapis.com/pigweed-media/pw_presubmit_demo.gif
   :width: 800
   :alt: pw presubmit demo
 
 ``pw_env_setup`` - Cross platform embedded compiler setup
----------------------------------------------------------
+=========================================================
 A classic problem in the embedded space is reducing the **time from git clone
 to having a binary executing on a device**. An entire suite of tools is needed
 for building non-trivial production embedded projects, and need to be
@@ -127,12 +142,12 @@ turn inflates a virtual environment. The tooling is installed into your
 workspace, and makes no changes to your system. This tooling is designed to be
 reused by any project.
 
-.. image:: docs/images/pw_env_setup_demo.gif
+.. image:: https://storage.googleapis.com/pigweed-media/pw_env_setup_demo.gif
    :width: 800
    :alt: pw environment setup demo
 
 ``pw_unit_test`` - Embedded testing for MCUs
---------------------------------------------
+============================================
 Unit testing is important, and Pigweed offers a portable library that’s broadly
 compatible with `Google Test <https://github.com/google/googletest>`_. Unlike
 Google Test, :ref:`module-pw_unit_test` is built on top of embedded friendly
@@ -147,34 +162,66 @@ build, the result is a flexible and powerful setup that enables easily
 developing code on your desktop (with tests), then running the same tests
 on-device.
 
-.. image:: docs/images/pw_status_test.png
+.. image:: https://storage.googleapis.com/pigweed-media/pw_status_test.png
    :width: 800
    :alt: pw_status test run natively on host
 
 And more!
----------
+=========
 Here is a selection of interesting modules:
 
-- :ref:`module-pw_cpu_exception_cortex_m` - Robust low level hardware fault
-  handler for ARM Cortex-M; the handler even has unit tests written in assembly
-  to verify nested-hardware-fault handling!
+.. grid:: 3
 
-- :ref:`module-pw_polyfill` - Similar to JavaScript “polyfill” libraries, this
-  module provides selected C++17 standard library components that are compatible
-  with C++14.
+   .. grid-item-card:: :octicon:`cpu` pw_cpu_exception
+      :link: module-pw_cpu_exception_cortex_m
+      :link-type: ref
 
-- :ref:`module-pw_tokenizer` - Replace string literals from log statements with
-  32-bit tokens, to reduce flash use, reduce logging bandwidth, and save
-  formatting cycles from log statements at runtime.
+      An interface for entering CPU exception handlers. Includes robust low
+      level hardware fault handling for ARM Cortex-M; the handler even has unit
+      tests written in assembly to verify nested-hardware-fault handling!
 
-- :ref:`module-pw_kvs` - A key-value-store implementation for flash-backed
-  persistent storage with integrated wear levelling. This is a lightweight
-  alternative to a file system for embedded devices.
+   .. grid-item-card:: :octicon:`code-square` pw_polyfill
+      :link: module-pw_polyfill
+      :link-type: ref
 
-- :ref:`module-pw_protobuf` - An early preview of our wire-format-oriented
-  protocol buffer implementation. This protobuf compiler makes a different set
-  of implementation tradeoffs than the most popular protocol buffer library in
-  this space, nanopb.
+      This module makes it easier to work with different C++ standards in one
+      codebase.
+
+   .. grid-item-card:: :octicon:`container` pw_tokenizer
+      :link: module-pw_tokenizer
+      :link-type: ref
+
+      Replace string literals from log statements with 32-bit tokens, to reduce
+      flash use, reduce logging bandwidth, and save formatting cycles from log
+      statements at runtime.
+
+.. grid:: 3
+
+   .. grid-item-card:: :octicon:`database` pw_kvs
+      :link: module-pw_kvs
+      :link-type: ref
+
+      A key-value-store implementation for flash-backed persistent storage with
+      integrated wear levelling. This is a lightweight alternative to a file
+      system for embedded devices.
+
+   .. grid-item-card:: :octicon:`paper-airplane` pw_protobuf
+      :link: module-pw_protobuf
+      :link-type: ref
+
+      An early preview of our wire-format-oriented protocol buffer
+      implementation. This protobuf compiler makes a different set of
+      implementation tradeoffs than the most popular protocol buffer library in
+      this space, nanopb.
+
+   .. grid-item-card:: :octicon:`device-desktop` pw_console
+      :link: module-pw_console
+      :link-type: ref
+
+      Interactive Python repl and log viewer designed to be a a complete
+      solution for interacting with hardware devices using :ref:`module-pw_rpc`
+      over a :ref:`module-pw_hdlc` transport.
+
 
 See the :ref:`docs-module-guides` for the complete list of modules and their
 documentation.

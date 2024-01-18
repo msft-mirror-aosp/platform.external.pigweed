@@ -35,12 +35,12 @@ PW_MODIFY_DIAGNOSTIC_GCC(ignored, "-Wtype-limits");
 
 // Assignment functions
 
-constexpr InlineBasicString& assign(size_type count, T ch) {
+constexpr InlineBasicString& assign(size_t count, T ch) {
   return static_cast<InlineBasicString&>(Fill(data(), ch, count));
 }
 
 // Checks capacity rather than current size.
-template <size_type kOtherCapacity>
+template <size_t kOtherCapacity>
 constexpr InlineBasicString& assign(
     const InlineBasicString<T, kOtherCapacity>& other) {
   static_assert(
@@ -51,13 +51,13 @@ constexpr InlineBasicString& assign(
 }
 
 constexpr InlineBasicString& assign(const InlineBasicString& other,
-                                    size_type index,
-                                    size_type count = npos) {
+                                    size_t index,
+                                    size_t count = npos) {
   return static_cast<InlineBasicString&>(
       CopySubstr(data(), other.data(), other.size(), index, count));
 }
 
-constexpr InlineBasicString& assign(const T* string, size_type count) {
+constexpr InlineBasicString& assign(const T* string, size_t count) {
   return static_cast<InlineBasicString&>(Copy(data(), string, count));
 }
 
@@ -81,8 +81,7 @@ constexpr InlineBasicString& assign(const T (&array)[kCharArraySize]) {
 template <typename InputIterator,
           typename = string_impl::EnableIfInputIterator<InputIterator>>
 constexpr InlineBasicString& assign(InputIterator start, InputIterator finish) {
-  return static_cast<InlineBasicString&>(
-      IteratorCopy(start, finish, data(), data() + max_size()));
+  return static_cast<InlineBasicString&>(CopyIterator(data(), start, finish));
 }
 
 constexpr InlineBasicString& assign(std::initializer_list<T> list) {
@@ -102,12 +101,12 @@ constexpr InlineBasicString& assign(const StringView& string) {
 template <typename StringView,
           typename = string_impl::EnableIfStringViewLike<T, StringView>>
 constexpr InlineBasicString& assign(const StringView& string,
-                                    size_type index,
-                                    size_type count = npos) {
+                                    size_t index,
+                                    size_t count = npos) {
   const std::basic_string_view<T> view = string;
   PW_ASSERT(view.size() < npos);
-  return static_cast<InlineBasicString&>(CopySubstr(
-      data(), view.data(), static_cast<size_type>(view.size()), index, count));
+  return static_cast<InlineBasicString&>(
+      CopySubstr(data(), view.data(), view.size(), index, count));
 }
 
 #endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
@@ -116,17 +115,17 @@ constexpr InlineBasicString& assign(std::nullptr_t) = delete;
 
 // Element access
 
-constexpr reference at(size_type index) {
+constexpr reference at(size_t index) {
   PW_ASSERT(index < length());
   return data()[index];
 }
-constexpr const_reference at(size_type index) const {
+constexpr const_reference at(size_t index) const {
   PW_ASSERT(index < length());
   return data()[index];
 }
 
-constexpr reference operator[](size_type index) { return data()[index]; }
-constexpr const_reference operator[](size_type index) const {
+constexpr reference operator[](size_t index) { return data()[index]; }
+constexpr const_reference operator[](size_t index) const {
   return data()[index];
 }
 
@@ -173,15 +172,160 @@ constexpr const_reverse_iterator crend() const noexcept {
 [[nodiscard]] constexpr bool empty() const noexcept { return size() == 0u; }
 
 // The number of characters in the string.
-constexpr size_type length() const noexcept { return size(); }
+constexpr size_t length() const noexcept { return size(); }
 
-constexpr size_type capacity() const noexcept { return max_size(); }
+constexpr size_t capacity() const noexcept { return max_size(); }
 
 // Operations
 
 constexpr void clear() { SetSizeAndTerminate(data(), 0); }
 
-// TODO(b/239996007): Implement insert and erase.
+constexpr InlineBasicString& insert(size_t index, size_t count, T ch) {
+  MoveExtend(data(), index, index + count);
+  return static_cast<InlineBasicString&>(FillExtend(data(), index, ch, count));
+}
+
+constexpr InlineBasicString& insert(size_t index,
+                                    const T* string,
+                                    size_t count) {
+  MoveExtend(data(), index, index + count);
+  return static_cast<InlineBasicString&>(
+      CopyExtend(data(), index, string, count));
+}
+
+template <size_t kCharArraySize>
+constexpr InlineBasicString& insert(size_t index,
+                                    const T (&array)[kCharArraySize]) {
+  return insert(
+      index, array, string_impl::ArrayStringLength(array, max_size()));
+}
+
+template <typename U, typename = string_impl::EnableIfNonArrayCharPointer<T, U>>
+constexpr InlineBasicString& insert(size_t index, U c_string) {
+  return insert(
+      index, c_string, string_impl::BoundedStringLength(c_string, max_size()));
+}
+
+template <size_t kOtherCapacity>
+constexpr InlineBasicString& insert(
+    size_t index, const InlineBasicString<T, kOtherCapacity>& string) {
+  return insert(index, string.data(), string.size());
+}
+
+template <size_t kOtherCapacity>
+constexpr InlineBasicString& insert(
+    size_t index,
+    const InlineBasicString<T, kOtherCapacity>& other,
+    size_t other_index,
+    size_t count = npos) {
+  PW_ASSERT(other_index <= other.size());
+  if (count == npos || count > other.size() - other_index) {
+    count = other.size() - other_index;
+  }
+  PW_ASSERT(index <= index + count);
+  MoveExtend(data(), index, index + count);
+  return static_cast<InlineBasicString&>(CopyExtendSubstr(
+      data(), index, other.data(), other.size(), other_index, count));
+}
+
+// Use a templated type rather than `const_iterator` to convince the compiler
+// to prefer `0` as an index rather than as a `nullptr`.
+template <typename U>
+constexpr iterator insert(const U* pos, size_t count, T ch) {
+  PW_ASSERT(cbegin() <= pos && pos <= cend());
+  size_t index = static_cast<size_t>(pos - cbegin());
+  PW_ASSERT(index <= index + count);
+  MoveExtend(data(), index, index + count);
+  FillExtend(data(), index, ch, count);
+  return begin() + index;
+}
+
+template <typename U>
+constexpr iterator insert(const U* pos, T ch) {
+  return insert(pos, 1, ch);
+}
+
+template <typename U, class InputIt>
+constexpr iterator insert(const U* pos, InputIt first, InputIt last) {
+  PW_ASSERT(cbegin() <= pos && pos <= cend());
+  size_t index = static_cast<size_t>(pos - cbegin());
+  size_t count = 0;
+  for (auto tmp = first; tmp != last; ++tmp) {
+    PW_ASSERT(count < max_size());
+    ++count;
+  }
+  PW_ASSERT(index <= index + count);
+  MoveExtend(data(), index, index + count);
+  CopyIteratorExtend(data(), index, first, last);
+  return begin() + index;
+}
+
+template <typename U>
+constexpr iterator insert(const U* pos, std::initializer_list<T> list) {
+  return insert(pos, list.begin(), list.end());
+}
+
+#if PW_CXX_STANDARD_IS_SUPPORTED(17)  // std::string_view is a C++17 feature
+
+template <typename StringView,
+          typename = string_impl::EnableIfStringViewLike<T, StringView>>
+constexpr InlineBasicString& insert(size_t index,
+                                    const StringView& string,
+                                    size_t string_index,
+                                    size_t count = npos) {
+  const std::basic_string_view<T> view = string;
+  PW_ASSERT(view.size() < npos);
+  PW_ASSERT(string_index <= view.size());
+  if (count == npos || count > view.size() - string_index) {
+    count = view.size() - string_index;
+  }
+  PW_ASSERT(index <= index + count);
+  MoveExtend(data(), index, index + count);
+  return static_cast<InlineBasicString&>(CopyExtendSubstr(
+      data(), index, view.data(), view.size(), string_index, count));
+}
+
+template <typename StringView,
+          typename = string_impl::EnableIfStringViewLike<T, StringView>>
+constexpr InlineBasicString& insert(size_t index, const StringView& string) {
+  return insert(index, string, 0);
+}
+
+#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
+
+constexpr InlineBasicString& erase(size_t index = 0, size_t count = npos) {
+  PW_ASSERT(index <= size());
+  size_t old_index =
+      index + std::min(count == npos ? size() : count, size() - index);
+  return static_cast<InlineBasicString&>(MoveExtend(data(), old_index, index));
+}
+
+// Use a templated type rather than `const_iterator` to convince the compiler
+// to prefer `0` as an index rather than as a `nullptr`.
+template <typename U>
+constexpr iterator erase(const U* pos) {
+  PW_ASSERT(cbegin() <= pos && pos <= cend());
+  size_t index = static_cast<size_t>(pos - cbegin());
+  size_t old_index = index + 1;
+  if (old_index <= size()) {
+    MoveExtend(data(), old_index, index);
+  }
+  return old_index <= size() ? begin() + index : end();
+}
+
+template <typename U>
+constexpr iterator erase(const U* first, const U* last) {
+  PW_ASSERT(cbegin() <= first && first <= cend());
+  size_t old_index =
+      first == cend() ? size() : static_cast<size_t>(first - cbegin());
+  size_t index = old_index;
+  for (auto tmp = first; tmp != last; ++tmp) {
+    PW_ASSERT(index < size());
+    ++old_index;
+  }
+  MoveExtend(data(), old_index, index);
+  return old_index <= size() ? begin() + index : end();
+}
 
 constexpr void push_back(value_type ch) {
   static_assert(kCapacity != 0,
@@ -195,11 +339,11 @@ constexpr void pop_back() {
   PopBack(data());
 }
 
-constexpr InlineBasicString& append(size_type count, T ch) {
-  return static_cast<InlineBasicString&>(FillExtend(data(), ch, count));
+constexpr InlineBasicString& append(size_t count, T ch) {
+  return static_cast<InlineBasicString&>(FillExtend(data(), size(), ch, count));
 }
 
-template <size_type kOtherCapacity>
+template <size_t kOtherCapacity>
 constexpr InlineBasicString& append(
     const InlineBasicString<T, kOtherCapacity>& string) {
   static_assert(
@@ -208,17 +352,18 @@ constexpr InlineBasicString& append(
   return append(string.data(), string.size());
 }
 
-template <size_type kOtherCapacity>
+template <size_t kOtherCapacity>
 constexpr InlineBasicString& append(
     const InlineBasicString<T, kOtherCapacity>& other,
-    size_type index,
-    size_type count = npos) {
-  return static_cast<InlineBasicString&>(
-      CopyExtendSubstr(data(), other.data(), other.size(), index, count));
+    size_t index,
+    size_t count = npos) {
+  return static_cast<InlineBasicString&>(CopyExtendSubstr(
+      data(), size(), other.data(), other.size(), index, count));
 }
 
-constexpr InlineBasicString& append(const T* string, size_type count) {
-  return static_cast<InlineBasicString&>(CopyExtend(data(), string, count));
+constexpr InlineBasicString& append(const T* string, size_t count) {
+  return static_cast<InlineBasicString&>(
+      CopyExtend(data(), size(), string, count));
 }
 
 template <size_t kCharArraySize>
@@ -239,7 +384,7 @@ template <typename InputIterator,
           typename = string_impl::EnableIfInputIterator<InputIterator>>
 constexpr InlineBasicString& append(InputIterator first, InputIterator last) {
   return static_cast<InlineBasicString&>(
-      IteratorExtend(first, last, data() + size(), data() + max_size()));
+      CopyIteratorExtend(data(), size(), first, last));
 }
 
 constexpr InlineBasicString& append(std::initializer_list<T> list) {
@@ -259,17 +404,17 @@ constexpr InlineBasicString& append(const StringView& string) {
 template <typename StringView,
           typename = string_impl::EnableIfStringViewLike<T, StringView>>
 constexpr InlineBasicString& append(const StringView& string,
-                                    size_type index,
-                                    size_type count = npos) {
+                                    size_t index,
+                                    size_t count = npos) {
   const std::basic_string_view<T> view = string;
   PW_ASSERT(view.size() < npos);
-  return static_cast<InlineBasicString&>(CopyExtendSubstr(
-      data(), view.data(), static_cast<size_type>(view.size()), index, count));
+  return static_cast<InlineBasicString&>(
+      CopyExtendSubstr(data(), size(), view.data(), view.size(), index, count));
 }
 
 #endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
-template <size_type kOtherCapacity>
+template <size_t kOtherCapacity>
 constexpr int compare(
     const InlineBasicString<T, kOtherCapacity>& other) const noexcept {
   return string_impl::Compare(data(), size(), other.data(), other.size());
@@ -283,9 +428,9 @@ constexpr int compare(const T* other) const {
       string_impl::BoundedStringLength(other, max_size()));
 }
 
-// TODO(b/239996007): Implement other compare overloads.
+// TODO: b/239996007 - Implement other compare overloads.
 
-// TODO(b/239996007): Implement other std::string functions:
+// TODO: b/239996007 - Implement other std::string functions:
 //
 //   - starts_with
 //   - ends_with
@@ -293,9 +438,9 @@ constexpr int compare(const T* other) const {
 //   - substr
 //   - copy
 
-constexpr void resize(size_type new_size) { resize(new_size, T()); }
+constexpr void resize(size_t new_size) { resize(new_size, T()); }
 
-constexpr void resize(size_type new_size, T ch) {
+constexpr void resize(size_t new_size, T ch) {
   return Resize(data(), new_size, ch);
 }
 
@@ -303,16 +448,17 @@ constexpr void resize(size_type new_size, T ch) {
 // buffer has a fixed size.
 template <typename Operation>
 constexpr void resize_and_overwrite(Operation operation) {
-  const auto new_size = std::move(operation)(data(), max_size());
-  PW_ASSERT(static_cast<size_t>(new_size) <= max_size());
+  const auto new_size =
+      static_cast<size_t>(std::move(operation)(data(), max_size()));
+  PW_ASSERT(new_size <= max_size());
   SetSizeAndTerminate(data(), new_size);
 }
 
-// TODO(b/239996007): Implement swap
+// TODO: b/239996007 - Implement swap
 
 // Search
 
-// TODO(b/239996007): Implement std::string search functions:
+// TODO: b/239996007 - Implement std::string search functions:
 //
 // - find
 // - rfind

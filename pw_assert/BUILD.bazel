@@ -44,9 +44,21 @@ pw_cc_facade(
 
 pw_cc_library(
     name = "pw_assert",
+    hdrs = [
+        "assert_compatibility_public_overrides/pw_assert_backend/assert_backend.h",
+        "public/pw_assert/assert.h",
+        "public/pw_assert/check.h",
+        "public/pw_assert/internal/check_impl.h",
+        "public/pw_assert/short.h",
+    ],
+    includes = [
+        "assert_compatibility_public_overrides",
+        "public",
+    ],
     deps = [
-        ":facade",
-        "@pigweed_config//:pw_assert_backend",
+        ":config",
+        "//pw_preprocessor",
+        "@pigweed//targets:pw_assert_backend",
     ],
 )
 
@@ -101,10 +113,16 @@ pw_cc_library(
 
 pw_cc_library(
     name = "backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = [
         "@pigweed//pw_assert_basic",
     ],
+)
+
+alias(
+    name = "backend_impl_multiplexer",
+    actual = "@pigweed//pw_assert_basic:impl",
+    visibility = ["@pigweed//targets:__pkg__"],
 )
 
 pw_cc_test(
