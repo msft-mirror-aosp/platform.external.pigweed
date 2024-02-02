@@ -60,6 +60,7 @@ cc_library_static {
     header_libs: [
         "pw_assert_headers",
         "pw_assert_log_headers",
+        "pw_polyfill_headers",
     ],
     export_header_lib_headers: [
         "pw_assert_headers",
