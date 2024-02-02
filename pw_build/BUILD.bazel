@@ -14,6 +14,7 @@
 
 load(
     "//pw_build:pigweed.bzl",
+    "pw_cc_binary_with_map",
     "pw_cc_blob_info",
     "pw_cc_blob_library",
     "pw_cc_test",
@@ -57,6 +58,17 @@ pw_cc_test(
     name = "cc_blob_library_test",
     srcs = ["cc_blob_library_test.cc"],
     deps = [":test_blob"],
+)
+
+pw_cc_binary_with_map(
+    name = "cc_binary_with_map",
+    srcs = ["empty_main.cc"],
+    # Only enable on platforms that support -Map linker flag
+    target_compatible_with = select({
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
 )
 
 # Bazel produces root-relative file paths without the -ffile-prefix-map option.
@@ -118,4 +130,17 @@ cc_library(
 cc_library(
     name = "unspecified_backend",
     target_compatible_with = ["@platforms//:incompatible"],
+)
+
+# Additional libraries that all binaries using Pigweed should be linked against.
+#
+# This is analogous to GN's pw_build_LINK_DEPS. See
+# https://pigweed.dev/build_system.html#docs-build-system-bazel-link-extra-lib
+# for more details.
+cc_library(
+    name = "default_link_extra_lib",
+    deps = [
+        "//pw_log:backend_impl",
+        "//targets:pw_assert_backend_impl",
+    ],
 )

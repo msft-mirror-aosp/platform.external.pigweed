@@ -249,6 +249,28 @@ pw_cc_binary(
     ],
 )
 
+cc_library(
+    name = "multi_event_handler",
+    hdrs = [
+        "public/pw_unit_test/multi_event_handler.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":event_handler",
+    ],
+)
+
+pw_cc_test(
+    name = "multi_event_handler_test",
+    srcs = ["multi_event_handler_test.cc"],
+    deps = [
+        ":multi_event_handler",
+        ":pw_unit_test",
+    ],
+)
+
 proto_library(
     name = "unit_test_proto",
     srcs = ["pw_unit_test_proto/unit_test.proto"],
@@ -303,7 +325,7 @@ cc_library(
     deps = [
         ":pw_unit_test",
         ":rpc_service",
-        "//pw_hdlc:pw_rpc",
+        "//pw_hdlc:default_addresses",
         "//pw_log",
         "//pw_rpc",
         "//pw_rpc/system_server",

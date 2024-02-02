@@ -352,10 +352,27 @@ channel output and the example service.
      RegisterServices();
 
      // Declare a buffer for decoding incoming HDLC frames.
-     std::array<std::byte, kMaxTransmissionUnit> input_buffer;
+     constexpr size_t kDecoderBufferSize =
+       pw::hdlc::Decoder::RequiredBufferSizeForFrameSize(kMaxTransmissionUnit);
+
+     std::array<std::byte, kDecoderBufferSize> input_buffer;
 
      PW_LOG_INFO("Starting pw_rpc server");
-     pw::hdlc::ReadAndProcessPackets(server, input_buffer);
+     pw::hdlc::Decoder decoder(input_buffer);
+
+     while (true) {
+       std::byte byte;
+       pw::Status ret_val = pw::sys_io::ReadByte(&byte);
+       if (!ret_val.ok()) {
+         return ret_val;
+       }
+       if (auto result = decoder.Process(byte); result.ok()) {
+         pw::hdlc::Frame& frame = result.value();
+         if (frame.address() == pw::hdlc::kDefaultRpcAddress) {
+           server.ProcessPacket(frame.data());
+         }
+       }
+     }
    }
 
 --------
@@ -1744,7 +1761,8 @@ sharing code between servers and clients, ``pw_rpc`` provides the
 streaming RPC call object (``ClientWriter`` or ``ClientReaderWriter``) can be
 used as a ``pw::rpc::Writer&``. On the server side, a server or bidirectional
 streaming RPC call object (``ServerWriter`` or ``ServerReaderWriter``) can be
-used as a ``pw::rpc::Writer&``.
+used as a ``pw::rpc::Writer&``. Call ``as_writer()`` to get a ``Writer&`` of the
+client or server call object.
 
 Zephyr
 ======
