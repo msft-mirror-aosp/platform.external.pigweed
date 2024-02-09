@@ -14,44 +14,57 @@
 """Implementation of pw_cc_action_config and pw_cc_tool."""
 
 load(
-    "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
-    "FlagSetInfo",
-    "ToolInfo",
-    "action_config",
-    config_lib_tool = "tool",  # This is renamed to reduce name aliasing.
+    ":providers.bzl",
+    "PwActionConfigInfo",
+    "PwActionConfigSetInfo",
+    "PwActionNameSetInfo",
+    "PwFeatureConstraintInfo",
+    "PwFeatureSetInfo",
+    "PwFlagSetInfo",
+    "PwToolInfo",
 )
-load(
-    "//cc_toolchain/private:providers.bzl",
-    "ActionConfigListInfo",
-)
-load(
-    "//cc_toolchain/private:utils.bzl",
-    "actionless_flag_set",
-    "check_deps_provide",
-)
+
+def _bin_to_files(target, extra_files = []):
+    if not target:
+        return depset(extra_files)
+    info = target[DefaultInfo]
+    exe = info.files_to_run.executable
+    if not exe:
+        return depset(extra_files)
+    return depset(
+        [exe] + extra_files,
+        transitive = [info.files, info.data_runfiles.files],
+    )
 
 def _pw_cc_tool_impl(ctx):
     """Implementation for pw_cc_tool."""
 
     # Remaps empty strings to `None` to match behavior of the default values.
-    tool = ctx.executable.tool if ctx.executable.tool else None
-    path = ctx.attr.path if ctx.attr.path else None
+    exe = ctx.executable.tool or None
+    path = ctx.attr.path or None
+
+    if (exe == None) == (path == None):
+        fail("Exactly one of tool and path must be provided. Prefer tool")
+
+    tool = PwToolInfo(
+        label = ctx.label,
+        exe = exe,
+        path = path,
+        files = _bin_to_files(ctx.attr.tool, ctx.files.additional_files),
+        requires_any_of = tuple([fc[PwFeatureConstraintInfo] for fc in ctx.attr.requires_any_of]),
+        execution_requirements = tuple(ctx.attr.execution_requirements),
+    )
+
     return [
-        config_lib_tool(
-            tool = tool,
-            path = path,
-            execution_requirements = ctx.attr.execution_requirements,
-        ),
-        DefaultInfo(
-            files = depset(ctx.files.additional_files + [tool]),
-        ),
+        tool,
+        DefaultInfo(files = tool.files),
     ]
 
 pw_cc_tool = rule(
     implementation = _pw_cc_tool_impl,
     attrs = {
         "tool": attr.label(
-            allow_single_file = True,
+            allow_files = True,
             executable = True,
             cfg = "exec",
             doc = """The underlying tool that this rule represents.
@@ -83,6 +96,13 @@ escape hatch for edge cases. Prefer using `tool` whenever possible.
         "execution_requirements": attr.string_list(
             doc = "A list of strings that provide hints for execution environment compatibility (e.g. `requires-darwin`).",
         ),
+        "requires_any_of": attr.label_list(
+            providers = [PwFeatureConstraintInfo],
+            doc = """This will be enabled when any of the constraints are met.
+
+If omitted, this tool will be enabled unconditionally.
+""",
+        ),
         "additional_files": attr.label_list(
             allow_files = True,
             doc = """Additional files that are required for this tool to correctly operate.
@@ -92,14 +112,12 @@ need to explicitly specify the `*_files` attributes on a `pw_cc_toolchain`.
 """,
         ),
     },
-    provides = [ToolInfo, DefaultInfo],
+    provides = [PwToolInfo, DefaultInfo],
     doc = """Declares a singular tool that can be bound to action configs.
 
 `pw_cc_tool` rules are intended to be consumed exclusively by
 `pw_cc_action_config` rules. These rules declare an underlying tool that can
 be used to fulfill various actions. Many actions may reuse a shared tool.
-
-Note: `with_features` is not yet supported.
 
 Example:
 
@@ -117,36 +135,37 @@ Example:
 """,
 )
 
-def _generate_action_config(ctx, action_name):
+def _generate_action_config(ctx, action_name, **kwargs):
     flag_sets = []
     for fs in ctx.attr.flag_sets:
-        provided_fs = fs[FlagSetInfo]
+        provided_fs = fs[PwFlagSetInfo]
         if action_name in provided_fs.actions:
-            flag_sets.append(actionless_flag_set(provided_fs))
-    return action_config(
+            flag_sets.append(provided_fs)
+
+    return PwActionConfigInfo(
         action_name = action_name,
-        enabled = ctx.attr.enabled,
-        tools = [tool[ToolInfo] for tool in ctx.attr.tools],
-        flag_sets = flag_sets,
-        implies = ctx.attr.implies,
+        flag_sets = tuple(flag_sets),
+        **kwargs
     )
 
 def _pw_cc_action_config_impl(ctx):
     """Implementation for pw_cc_tool."""
     if not ctx.attr.tools:
         fail("Action configs are not valid unless they specify at least one `pw_cc_tool` in `tools`")
-    if not ctx.attr.action_names:
-        fail("Action configs are not valid unless they specify at least one action name in `action_names`")
 
-    check_deps_provide(ctx, "tools", ToolInfo, "pw_cc_tool")
+    action_names = depset(transitive = [
+        action[PwActionNameSetInfo].actions
+        for action in ctx.attr.action_names
+    ]).to_list()
+    if not action_names:
+        fail("Action configs are not valid unless they specify at least one action name in `action_names`")
 
     # Check that the listed flag sets apply to at least one action in this group
     # of action configs.
-    check_deps_provide(ctx, "flag_sets", FlagSetInfo, "pw_cc_flag_set")
     for fs in ctx.attr.flag_sets:
-        provided_fs = fs[FlagSetInfo]
+        provided_fs = fs[PwFlagSetInfo]
         flag_set_applies = False
-        for action in ctx.attr.action_names:
+        for action in action_names:
             if action in provided_fs.actions:
                 flag_set_applies = True
         if not flag_set_applies:
@@ -154,33 +173,43 @@ def _pw_cc_action_config_impl(ctx):
                 fs.label,
                 ctx.label,
             ))
+    tools = tuple([tool[PwToolInfo] for tool in ctx.attr.tools])
+
+    files = depset(transitive = [dep[DefaultInfo].files for dep in ctx.attr.tools])
+    common_kwargs = dict(
+        label = ctx.label,
+        tools = tools,
+        implies_features = depset(transitive = [
+            ft_set[PwFeatureSetInfo].features
+            for ft_set in ctx.attr.implies
+        ]),
+        implies_action_configs = depset([]),
+        enabled = ctx.attr.enabled,
+        files = files,
+    )
+    action_configs = [
+        _generate_action_config(ctx, action, **common_kwargs)
+        for action in action_names
+    ]
 
     return [
-        ActionConfigListInfo(
-            action_configs = [_generate_action_config(ctx, action) for action in ctx.attr.action_names],
+        PwActionConfigSetInfo(
+            label = ctx.label,
+            action_configs = depset(action_configs),
         ),
-        DefaultInfo(
-            files = depset(None, transitive = [dep[DefaultInfo].files for dep in ctx.attr.tools]),
-        ),
+        DefaultInfo(files = files),
     ]
 
 pw_cc_action_config = rule(
     implementation = _pw_cc_action_config_impl,
     attrs = {
-        "action_names": attr.string_list(
-            # inclusive-language: disable
+        "action_names": attr.label_list(
+            providers = [PwActionNameSetInfo],
             mandatory = True,
             doc = """A list of action names to apply this action to.
 
-Valid choices are listed here:
-
-    https://github.com/bazelbuild/bazel/blob/master/tools/build_defs/cc/action_names.bzl
-
-It is possible for some needed action names to not be enumerated in this list,
-so there is not rigid validation for these strings. Prefer using constants
-rather than manually typing action names.
+See @pw_toolchain//actions:all for valid options.
 """,
-            # inclusive-language: enable
         ),
         "enabled": attr.bool(
             default = True,
@@ -193,6 +222,7 @@ default.
         ),
         "tools": attr.label_list(
             mandatory = True,
+            providers = [PwToolInfo],
             doc = """The `pw_cc_tool` to use for the specified actions.
 
 If multiple tools are specified, the first tool that has `with_features` that
@@ -200,6 +230,7 @@ satisfy the currently enabled feature set is used.
 """,
         ),
         "flag_sets": attr.label_list(
+            providers = [PwFlagSetInfo],
             doc = """Labels that point to `pw_cc_flag_set`s that are
 unconditionally bound to the specified actions.
 
@@ -208,18 +239,12 @@ If an action is listed in this rule's `action_names`, but is NOT listed in the
 `pw_cc_flag_set`'s `actions`, the flag will not be applied to that action.
 """,
         ),
-        "implies": attr.string_list(
-            doc = """Names of features that should be automatically enabled when
-this tool is used.
-
-WARNING: If this action config implies an unknown feature, this action config
-will silently be disabled. This behavior is native to Bazel itself, and there's
-no way to detect this and emit an error instead. For this reason, be very
-cautious when listing implied features!
-""",
+        "implies": attr.label_list(
+            providers = [PwFeatureSetInfo],
+            doc = "Features that should be enabled when this action is used.",
         ),
     },
-    provides = [ActionConfigListInfo],
+    provides = [PwActionConfigSetInfo],
     doc = """Declares the configuration and selection of `pw_cc_tool` rules.
 
 Action configs are bound to a toolchain through `action_configs`, and are the
@@ -235,17 +260,20 @@ Examples:
 
     pw_cc_action_config(
         name = "ar",
-        action_names = ALL_AR_ACTIONS,
+        action_names = ["@pw_toolchain//actions:all_ar_actions"],
         implies = [
-            "archiver_flags",
-            "linker_param_file",
+            "@pw_toolchain//features/legacy:archiver_flags",
+            "@pw_toolchain//features/legacy:linker_param_file",
         ],
         tools = [":ar_tool"],
     )
 
     pw_cc_action_config(
         name = "clang",
-        action_names = ALL_ASM_ACTIONS + ALL_C_COMPILER_ACTIONS,
+        action_names = [
+            "@pw_toolchain//actions:all_asm_actions",
+            "@pw_toolchain//actions:all_c_compiler_actions",
+        ],
         tools = [":clang_tool"],
     )
 """,

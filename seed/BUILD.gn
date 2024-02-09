@@ -176,9 +176,13 @@ pw_seed("0118") {
 }
 
 pw_seed("0119") {
-  changelist = 182673
-  title = "pw_sensor Sensor drivers and framework"
-  status = "Draft"
+  sources = [ "0119-pw-sensor.rst" ]
+  title = "pw_sensor A sensor framework"
+  status = "Accepted"
+  inputs = [
+    "0119-pw-sensor/high-level-view.svg",
+    "0119-pw-sensor/data-pipeline.svg",
+  ]
   author = "Yuval Peress"
 }
 
@@ -197,10 +201,27 @@ pw_seed("0121") {
 }
 
 pw_seed("0122") {
-  changelist = 187121
+  sources = [ "0122-code-samples.rst" ]
   title = "Organize Pigweed code samples"
+  status = "Accepted"
+  author = "Ted Pudlik"
+  facilitator = "Kayce Basques"
+}
+
+pw_seed("0123") {
+  changelist = 188141
+  title = "Sprout Bazel C++ toolchain API into a separate repository"
   status = "Draft"
   author = "Ted Pudlik"
+  facilitator = "Armando Montanez"
+}
+
+pw_seed("0124") {
+  changelist = 188670
+  title = "Interfaces for Retrieving Size Information from Multisink"
+  status = "Draft"
+  author = "Jiacheng Lu"
+  facilitator = "Carlos Chinchilla"
 }
 
 # This must be defined after all `pw_seed` targets, as it relies on information
@@ -232,5 +253,7 @@ pw_seed_index("seeds") {
     ":0120",
     ":0121",
     ":0122",
+    ":0123",
+    ":0124",
   ]
 }

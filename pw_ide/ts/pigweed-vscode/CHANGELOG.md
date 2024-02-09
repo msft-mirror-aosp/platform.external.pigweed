@@ -1,5 +1,14 @@
 # Change Log
 
+## [0.1.4]
+
+You can now launch terminals that are activated with the Pigweed environment
+by running `Pigweed: Launch Activated Terminal`.
+
+## [0.1.3]
+
+Minor bugfix for `Pigweeed: File Bug`.
+
 ## [0.1.2]
 
 - You can now submit bugs to the [Pigweed issue tracker](https://issues.pigweed.dev/issues?q=status:open)

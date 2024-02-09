@@ -53,6 +53,7 @@ pw_file
 pw_format
 pw_function
 pw_fuzzer
+pw_grpc
 pw_hdlc
 pw_hex_dump
 pw_i2c
@@ -141,7 +142,6 @@ pw_tls_client
 pw_tls_client_boringssl
 pw_tls_client_mbedtls
 pw_tokenizer
-pw_tool
 pw_toolchain
 pw_toolchain_bazel
 pw_trace

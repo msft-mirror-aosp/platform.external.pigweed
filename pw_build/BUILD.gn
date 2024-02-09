@@ -27,11 +27,13 @@ import("target_types.gni")
 #            the CMake flags pw_build/CMakeLists.txt.
 
 config("colorize_output") {
-  cflags = [
-    # Colorize output. Ninja's Clang invocation disables color by default.
-    "-fdiagnostics-color",
-  ]
-  ldflags = cflags
+  if (pw_build_COLORIZE_OUTPUT) {
+    cflags = [
+      # Colorize output. Ninja's Clang invocation disables color by default.
+      "-fdiagnostics-color",
+    ]
+    ldflags = cflags
+  }
 }
 
 config("debugging") {
@@ -335,8 +337,13 @@ config("relative_paths") {
 # pw_assert relies on pw_build_LINK_DEPS to avoid circular dependencies
 # in GN. In almost all other cases, build targets should explicitly depend on
 # the other targets they use.
+#
+# pw_build_TOOLCHAIN_LINK_DEPS is used to define dependencies introduced by
+# the various toolchains created under pw_toolchain module in GN. For example,
+# LLVM compiler-rt builtin libraries, or the arm-none-eabi newlib interface
+# stubs.
 group("link_deps") {
-  deps = pw_build_LINK_DEPS
+  deps = pw_build_LINK_DEPS + pw_build_TOOLCHAIN_LINK_DEPS
 }
 
 # This empty target is used as the default value for module configurations.
@@ -431,6 +438,11 @@ if (current_toolchain != default_toolchain) {
     defines = _path_test_define +
               [ "PW_BUILD_EXPECTED_SOURCE_PATH=\"out/$_source_path\"" ]
     include_dirs = [ "." ]  # Allow accessing file_prefix_map_test.h
+    visibility = [ ":*" ]
+  }
+
+  pw_source_set("empty_main") {
+    sources = [ "empty_main.cc" ]
     visibility = [ ":*" ]
   }
 
