@@ -81,6 +81,7 @@ cc_library(
         "public/pw_rpc/internal/config.h",
         "public/pw_rpc/internal/encoding_buffer.h",
         "public/pw_rpc/internal/endpoint.h",
+        "public/pw_rpc/internal/grpc.h",
         "public/pw_rpc/internal/hash.h",
         "public/pw_rpc/internal/lock.h",
         "public/pw_rpc/internal/log_config.h",
@@ -131,6 +132,20 @@ cc_library(
 label_flag(
     name = "config_override",
     build_setting_default = "//pw_build:default_module_config",
+)
+
+cc_library(
+    name = "completion_request_callback_config_enabled",
+    defines = [
+        "PW_RPC_COMPLETION_REQUEST_CALLBACK=1",
+    ],
+)
+
+config_setting(
+    name = "completion_request_callback_config_setting",
+    flag_values = {
+        ":config_override": ":completion_request_callback_config_enabled",
+    },
 )
 
 cc_library(
@@ -242,7 +257,8 @@ cc_library(
     deps = [
         ":pw_rpc",
         "//pw_assert",
-        "//pw_hdlc:pw_rpc",
+        "//pw_hdlc",
+        "//pw_hdlc:default_addresses",
         "//pw_hdlc:rpc_channel_output",
         "//pw_log",
         "//pw_stream:socket_stream",

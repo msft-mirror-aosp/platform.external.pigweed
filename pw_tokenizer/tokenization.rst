@@ -513,60 +513,26 @@ Limitations, bugs, and future work
 
 GCC bug: tokenization in template functions
 -------------------------------------------
-GCC incorrectly ignores the section attribute for template `functions
-<https://gcc.gnu.org/bugzilla/show_bug.cgi?id=70435>`_ and `variables
-<https://gcc.gnu.org/bugzilla/show_bug.cgi?id=88061>`_. For example, the
-following won't work when compiling with GCC and tokenized logging:
+GCC releases prior to 14 incorrectly ignore the section attribute for template
+`functions <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=70435>`_ and `variables
+<https://gcc.gnu.org/bugzilla/show_bug.cgi?id=88061>`_. The bug causes tokenized
+strings in template functions to be emitted into ``.rodata`` instead of the
+tokenized string section, so they cannot be extracted for detokenization.
 
-.. code-block:: cpp
+Fortunately, this is simple to work around in the linker script.
+``pw_tokenizer_linker_sections.ld`` includes a statement that pulls tokenized
+string entries from ``.rodata`` into the tokenized string section. See
+`b/321306079 <https://issues.pigweed.dev/issues/321306079>`_ for details.
 
-   template <...>
-   void DoThings() {
-     int value = GetValue();
-     // This log won't work with tokenized logs due to the templated context.
-     PW_LOG_INFO("Got value: %d", value);
-     ...
-   }
+If tokenization is working, but strings in templates are not appearing in token
+databases, check the following:
 
-The bug causes tokenized strings in template functions to be emitted into
-``.rodata`` instead of the special tokenized string section. This causes two
-problems:
-
-1. Tokenized strings will not be discovered by the token database tools.
-2. Tokenized strings may not be removed from the final binary.
-
-There are two workarounds.
-
-#. **Use Clang.** Clang puts the string data in the requested section, as
-   expected. No extra steps are required.
-
-#. **Move tokenization calls to a non-templated context.** Creating a separate
-   non-templated function and invoking it from the template resolves the issue.
-   This enables tokenizing in most cases encountered in practice with
-   templates.
-
-   .. code-block:: cpp
-
-      // In .h file:
-      void LogThings(value);
-
-      template <...>
-      void DoThings() {
-        int value = GetValue();
-        // This log will work: calls non-templated helper.
-        LogThings(value);
-        ...
-      }
-
-      // In .cc file:
-      void LogThings(int value) {
-        // Tokenized logging works as expected in this non-templated context.
-        PW_LOG_INFO("Got value %d", value);
-      }
-
-There is a third option, which isn't implemented yet, which is to compile the
-binary twice: once to extract the tokens, and once for the production binary
-(without tokens). If this is interesting to you please get in touch.
+- The full contents of the latest version of ``pw_tokenizer_linker_sections.ld``
+  are included with the linker script. The linker script was updated in
+  `pwrev.dev/188424 <http://pwrev.dev/188424>`_.
+- The ``-fdata-sections`` compilation option is in use. This places each
+  variable in its own section, which is necessary for pulling tokenized string
+  entries from ``.rodata`` into the proper section.
 
 64-bit tokenization
 -------------------

@@ -15,10 +15,14 @@
 
 load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
-    "FlagGroupInfo",
-    "FlagSetInfo",
     "flag_group",
-    "flag_set",
+)
+load(
+    ":providers.bzl",
+    "PwActionNameSetInfo",
+    "PwFeatureConstraintInfo",
+    "PwFlagGroupInfo",
+    "PwFlagSetInfo",
 )
 
 def _pw_cc_flag_group_impl(ctx):
@@ -52,7 +56,7 @@ pw_cc_flag_group = rule(
 
 For extremely complex expressions of flags that require nested flag groups with
 multiple layers of expansion, prefer creating a custom rule in Starlark that
-provides `FlagGroupInfo` or `FlagSetInfo`.
+provides `PwFlagGroupInfo` or `PwFlagSetInfo`.
 """,
         ),
         "iterate_over": attr.string(
@@ -94,7 +98,7 @@ Example:
             doc = "Expands the expression in `flags` if the specified build variable is NOT set.",
         ),
     },
-    provides = [FlagGroupInfo],
+    provides = [PwFlagGroupInfo],
     doc = """Declares an (optionally parametric) ordered set of flags.
 
 `pw_cc_flag_group` rules are expected to be consumed exclusively by
@@ -148,38 +152,44 @@ def _pw_cc_flag_set_impl(ctx):
         flag_groups.append(flag_group(flags = ctx.attr.flags))
     elif ctx.attr.flag_groups:
         for dep in ctx.attr.flag_groups:
-            if not dep[FlagGroupInfo]:
-                fail("{} in `flag_groups` of {} does not provide FlagGroupInfo".format(dep.label, ctx.label))
+            if not dep[PwFlagGroupInfo]:
+                fail("{} in `flag_groups` of {} does not provide PwFlagGroupInfo".format(dep.label, ctx.label))
 
-        flag_groups = [dep[FlagGroupInfo] for dep in ctx.attr.flag_groups]
-    return flag_set(
-        actions = ctx.attr.actions,
-        flag_groups = flag_groups,
-    )
+        flag_groups = [dep[PwFlagGroupInfo] for dep in ctx.attr.flag_groups]
+
+    actions = depset(transitive = [
+        action[PwActionNameSetInfo].actions
+        for action in ctx.attr.actions
+    ]).to_list()
+    if not actions:
+        fail("Each pw_cc_flag_set must specify at least one action")
+
+    requires = [fc[PwFeatureConstraintInfo] for fc in ctx.attr.requires_any_of]
+    return [
+        PwFlagSetInfo(
+            label = ctx.label,
+            actions = tuple(actions),
+            requires_any_of = tuple(requires),
+            flag_groups = tuple(flag_groups),
+        ),
+    ]
 
 pw_cc_flag_set = rule(
     implementation = _pw_cc_flag_set_impl,
     attrs = {
-        "actions": attr.string_list(
+        "actions": attr.label_list(
+            providers = [PwActionNameSetInfo],
             mandatory = True,
-            # inclusive-language: disable
             doc = """A list of action names that this flag set applies to.
 
-Valid choices are listed here:
-
-    https://github.com/bazelbuild/bazel/blob/master/tools/build_defs/cc/action_names.bzl
-
-It is possible for some needed action names to not be enumerated in this list,
-so there is not rigid validation for these strings. Prefer using constants
-rather than manually typing action names.
+See @pw_toolchain//actions:all for valid options.
 """,
-            # inclusive-language: enable
         ),
         "flag_groups": attr.label_list(
             doc = """Labels pointing to `pw_cc_flag_group` rules.
 
 This is intended to be compatible with any other rules that provide
-`FlagGroupInfo`. These are evaluated in order, with earlier flag groups
+`PwFlagGroupInfo`. These are evaluated in order, with earlier flag groups
 appearing earlier in the invocation of the underlying tool.
 
 Note: `flag_groups` and `flags` are mutually exclusive.
@@ -191,13 +201,20 @@ Note: `flag_groups` and `flags` are mutually exclusive.
 These are evaluated in order, with earlier flags appearing earlier in the
 invocation of the underlying tool. If you need expansion logic, prefer
 enumerating flags in a `pw_cc_flag_group` or create a custom rule that provides
-`FlagGroupInfo`.
+`PwFlagGroupInfo`.
 
 Note: `flags` and `flag_groups` are mutually exclusive.
 """,
         ),
+        "requires_any_of": attr.label_list(
+            providers = [PwFeatureConstraintInfo],
+            doc = """This will be enabled when any of the constraints are met.
+
+If omitted, this flag set will be enabled unconditionally.
+""",
+        ),
     },
-    provides = [FlagSetInfo],
+    provides = [PwFlagSetInfo],
     doc = """Declares an ordered set of flags bound to a set of actions.
 
 Flag sets can be attached to a `pw_cc_toolchain` via `action_config_flag_sets`.

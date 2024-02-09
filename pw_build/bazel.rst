@@ -329,6 +329,25 @@ Example
 
    }  // namespace my::stuff
 
+.. _module-pw_build-bazel-pw_cc_binary_with_map:
+
+pw_cc_binary_with_map
+---------------------
+The ``pw_cc_binary_with_map`` rule can be used to build a binary like
+``cc_binary`` does but also generate a .map file from the linking step.
+
+.. code-block::
+
+   pw_cc_binary_with_map(
+     name = "test",
+     srcs = ["empty_main.cc"],
+   )
+
+This should result in a ``test.map`` file generated next to the ``test`` binary.
+
+Note that it's only partially compatible with the ``cc_binary`` interface and
+certain things are not implemented like make variable substitution.
+
 Miscellaneous utilities
 -----------------------
 
@@ -339,6 +358,12 @@ empty_cc_library
 This empty library is used as a placeholder for label flags that need to point
 to a library of some kind, but don't actually need the dependency to amount to
 anything.
+
+default_link_extra_lib
+^^^^^^^^^^^^^^^^^^^^^^
+This library groups together all libraries commonly required at link time by
+Pigweed modules. See :ref:`docs-build_system-bazel_link-extra-lib` for more
+details.
 
 unspecified_backend
 ^^^^^^^^^^^^^^^^^^^

@@ -14,9 +14,7 @@
 
 load(
     "@pw_toolchain//cc_toolchain:defs.bzl",
-    "ALL_CPP_COMPILER_ACTIONS",
-    "ALL_C_COMPILER_ACTIONS",
-    "ALL_LINK_ACTIONS",
+    "pw_cc_feature",
     "pw_cc_flag_set",
     "pw_cc_toolchain",
 )
@@ -30,14 +28,14 @@ filegroup(name = "empty")
 
 pw_cc_flag_set(
     name = "macos_stdlib",
-    actions = ALL_LINK_ACTIONS,
+    actions = ["@pw_toolchain//actions:all_link_actions"],
     flags = ["external/llvm_toolchain/lib/libc++.a"],
     target_compatible_with = ["@platforms//os:macos"],
 )
 
 pw_cc_flag_set(
     name = "linux_link_libs",
-    actions = ALL_LINK_ACTIONS,
+    actions = ["@pw_toolchain//actions:all_link_actions"],
     flags = [
         "-pthread",
         "-stdlib=libc++",
@@ -52,7 +50,10 @@ pw_cc_flag_set(
 # compiler in the future.
 pw_cc_flag_set(
     name = "warnings",
-    actions = ALL_C_COMPILER_ACTIONS + ALL_CPP_COMPILER_ACTIONS,
+    actions = [
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+    ],
     flags = [
         "-Wall",
         "-Wextra",
@@ -63,9 +64,48 @@ pw_cc_flag_set(
     ],
 )
 
+# Thread safety warnings are only supported by Clang.
+pw_cc_flag_set(
+    name = "thread_safety_warnings",
+    actions = [
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+    ],
+    flags = [
+        "-Wthread-safety",
+        "-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS=1",
+    ],
+)
+
+pw_cc_flag_set(
+    name = "verbose_compiler_flags",
+    actions = [
+        "@pw_toolchain//actions:all_asm_actions",
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+        "@pw_toolchain//actions:all_link_actions",
+    ],
+    flags = ["-v"],
+)
+
+# A feature that can be easily toggled to include extra compiler output to help
+# debug things like include search path ordering and showing all the flags
+# passed to the compiler.
+#
+# Add `--features=verbose_compiler_output` to your Bazel invocation to enable.
+pw_cc_feature(
+    name = "verbose_compiler_output",
+    enabled = False,
+    feature_name = "verbose_compiler_output",
+    flag_sets = [":verbose_compiler_flags"],
+)
+
 pw_cc_flag_set(
     name = "no_unknown_warning_option",
-    actions = ALL_C_COMPILER_ACTIONS + ALL_CPP_COMPILER_ACTIONS,
+    actions = [
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+    ],
     flags = [
         "-Wno-unknown-warning-option",
     ],
@@ -93,6 +133,7 @@ pw_cc_toolchain(
         ],
     }) + [
         ":warnings",
+        ":thread_safety_warnings",
         "@pw_toolchain//flag_sets:c++17",
         "@pw_toolchain//flag_sets:debugging",
         "@pw_toolchain//flag_sets:reduced_size",
@@ -147,6 +188,10 @@ pw_cc_toolchain(
         "@platforms//os:macos": "macosx",
         "//conditions:default": None,
     }),
+    target_system_name = "unknown",
+    toolchain_features = [
+        ":verbose_compiler_output",
+    ],
     toolchain_identifier = "host-toolchain",
 )
 

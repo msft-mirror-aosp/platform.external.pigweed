@@ -28,6 +28,11 @@ Usually, `Pigweed: Sync IDE` will automatically configure Visual Studio Code to
 use the correct Pigweed Python virtual environment. But if you need to change
 this manually, you can do so with `Pigweed: Set Python Virtual Environment`.
 
+### Launch Pigweed activated terminals
+
+Run `Pigweed: Launch Activated Terminal`, or
+`Pigweed: Bootstrap Activated Terminal` if you need to bootstrap first.
+
 ### Other tasks
 
 - `Pigweed: Format` == `pw format --fix`
@@ -37,6 +42,15 @@ this manually, you can do so with `Pigweed: Set Python Virtual Environment`.
 
 Run `Pigweed: File Bug` to let us know!
 
+## Configuration
+
+This extension provides the following configuration options:
+
+- `pigweed.enforceExtensionRecommendations`: If set to `true`, recommendations
+  in your project's `extensions.json` will be enforced. Recommended extensions
+  will need to be installed, and non-recommended extensions will need to be
+  disabled in the project's workspace.
+
 ## Developing
 
 If you want to contribute to this extension, here's how you can get started:
@@ -44,7 +58,8 @@ If you want to contribute to this extension, here's how you can get started:
 - Ensure that you have `npm` installed globally; this doesn't use the
   distribution provided by Pigweed yet.
 
-- Open the `pigweed/pw_ide/vscode` directory directly in Visual Studio Code.
+- Open the `pigweed/pw_ide/ts/pigweed-vscode` directory directly in Visual
+  Studio Code.
 
 - Run `npm install` to add all dependencies.
 
@@ -55,8 +70,10 @@ If you want to contribute to this extension, here's how you can get started:
   circle-with-an-arrow icon at the top of your development window to update
   the extension development host with the new build.
 
+- Run tests: `npm run test`
+
 ### Building
 
 - Install the build tool: `npm install -g @vscode/vsce`
 
-- Build the VSIX: `vsce package`
+- Run `pw ide vscode --build-extension`
