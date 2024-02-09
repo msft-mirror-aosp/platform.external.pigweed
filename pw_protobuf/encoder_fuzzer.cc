@@ -81,6 +81,10 @@ span<const std::byte> ConsumeBytes(FuzzedDataProvider& provider,
   size_t off = data->size();
   num = added.size();
   data->insert(data->end(), added.begin(), added.end());
+  // It's possible nothing was added, and the vector was empty to begin with.
+  if (data->empty()) {
+    return span<const std::byte>();
+  }
   return span(&((*data)[off]), num);
 }
 

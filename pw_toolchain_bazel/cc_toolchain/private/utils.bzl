@@ -13,97 +13,227 @@
 # the License.
 """Private utilities and global variables."""
 
-load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES", "STRIP_ACTION_NAME")
 load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
-    "flag_set",
+    rules_cc_action_config = "action_config",
+    rules_cc_feature = "feature",
+    rules_cc_feature_set = "feature_set",
+    rules_cc_flag_set = "flag_set",
+    rules_cc_tool = "tool",
+    rules_cc_with_feature_set = "with_feature_set",
 )
+load(":providers.bzl", "PwFlagSetInfo")
 
-# A potentially more complete set of these constants are available at
-# @rules_cc//cc:action_names.bzl, but it's not clear if they should be depended
-# on.
-ALL_ASM_ACTIONS = [
-    ACTION_NAMES.assemble,
-    ACTION_NAMES.preprocess_assemble,
-]
-ALL_C_COMPILER_ACTIONS = [
-    ACTION_NAMES.c_compile,
-    ACTION_NAMES.cc_flags_make_variable,
-]
-ALL_CPP_COMPILER_ACTIONS = [
-    ACTION_NAMES.cpp_compile,
-    ACTION_NAMES.cpp_header_parsing,
-]
-ALL_LINK_ACTIONS = [
-    ACTION_NAMES.cpp_link_executable,
-    ACTION_NAMES.cpp_link_dynamic_library,
-    ACTION_NAMES.cpp_link_nodeps_dynamic_library,
-]
-ALL_AR_ACTIONS = [
-    ACTION_NAMES.cpp_link_static_library,
-]
+visibility(["//cc_toolchain/tests/..."])
 
-ACTION_MAP = {
-    "aropts": ALL_AR_ACTIONS,
-    "asmopts": ALL_ASM_ACTIONS,
-    "copts": ALL_C_COMPILER_ACTIONS + ALL_CPP_COMPILER_ACTIONS,
-    "conlyopts": ALL_C_COMPILER_ACTIONS,
-    "cxxopts": ALL_CPP_COMPILER_ACTIONS,
-    "linkopts": ALL_LINK_ACTIONS,
-}
-
-# TODO(b/301004620): Remove when bazel 7 is released and these constants exists
-# in ACTION_NAMES.
-LLVM_COV = "llvm-cov"
-OBJ_COPY_ACTION_NAME = "objcopy_embed_data"
-
-# This action name isn't yet a well-known action name.
-OBJ_DUMP_ACTION_NAME = "objdump_embed_data"
-
-# A dictionary mapping the `*_files` attribute names of a `cc_toolchain` rule
-# to their respective applicable actions.
-#
-# `all_files` is intentionally omitted from this, as it applies to all actions.
 ALL_FILE_GROUPS = {
-    "ar_files": ALL_AR_ACTIONS,
-    "as_files": ALL_ASM_ACTIONS,
-    "compiler_files": ALL_C_COMPILER_ACTIONS + ALL_CPP_COMPILER_ACTIONS,
-    "coverage_files": [LLVM_COV],
+    "ar_files": ["@pw_toolchain//actions:all_ar_actions"],
+    "as_files": ["@pw_toolchain//actions:all_asm_actions"],
+    "compiler_files": ["@pw_toolchain//actions:all_compiler_actions"],
+    "coverage_files": ["@pw_toolchain//actions:llvm_cov"],
     "dwp_files": [],
-    "linker_files": ALL_LINK_ACTIONS,
-    "objcopy_files": [OBJ_COPY_ACTION_NAME],
-    "strip_files": [STRIP_ACTION_NAME],
+    "linker_files": ["@pw_toolchain//actions:all_link_actions"],
+    "objcopy_files": ["@pw_toolchain//actions:objcopy_embed_data"],
+    "strip_files": ["@pw_toolchain//actions:strip"],
 }
 
-def check_deps_provide(ctx, list_name, provider, what_provides):
-    """Ensures that each dep in the specified list offers the required provider.
+def _ensure_fulfillable(any_of, known, label, fail = fail):
+    # Requirements can be fulfilled if there are no requirements.
+    fulfillable = not any_of
+    for group in any_of:
+        all_met = True
+        for entry in group.to_list():
+            if entry.label not in known:
+                all_met = False
+                break
+        if all_met:
+            fulfillable = True
+            break
 
-    Args:
-        ctx: The rule context to pull the dependency list from.
-        list_name: The name of the attr to scan the dependencies from.
-        provider: The concrete provider to ensure exists.
-        what_provides: The name of the build rule that offers the required
-            provider.
-    """
-    for dep in getattr(ctx.attr, list_name):
-        if provider not in dep:
-            fail(
-                "{} in `{}` is not a {}".format(
-                    dep.label,
-                    list_name,
-                    what_provides,
+    if not fulfillable:
+        fail("%s cannot possibly be enabled (none of the constraints it requires fully exist). Either remove it from your toolchain, or add the requirements." % label)
+
+def _to_untyped_flag_set(flag_set, known, fail = fail):
+    """Converts a PwFlagSet to rules_cc's flag set."""
+    _ensure_fulfillable(
+        any_of = [constraint.all_of for constraint in flag_set.requires_any_of],
+        known = known,
+        label = flag_set.label,
+        fail = fail,
+    )
+    return rules_cc_flag_set(
+        actions = list(flag_set.actions),
+        flag_groups = list(flag_set.flag_groups),
+        with_features = [
+            _to_untyped_feature_constraint(fc)
+            for fc in flag_set.requires_any_of
+        ],
+    )
+
+def _to_untyped_env_set(env_set):
+    return env_set
+
+def _to_untyped_feature_set(feature_set):
+    return rules_cc_feature_set([
+        feature.name
+        for feature in feature_set.features.to_list()
+    ])
+
+def _to_untyped_feature_constraint(feature_constraint):
+    return rules_cc_with_feature_set(
+        features = [ft.name for ft in feature_constraint.all_of.to_list()],
+        not_features = [ft.name for ft in feature_constraint.none_of.to_list()],
+    )
+
+def _to_untyped_implies(provider, known, fail = fail):
+    implies = []
+    for feature in provider.implies_features.to_list():
+        if feature.label not in known:
+            fail("%s implies %s, which is not explicitly mentioned in your toolchain configuration" % (provider.label, feature.label))
+        implies.append(feature.name)
+    for action_config in provider.implies_action_configs.to_list():
+        if action_config.label not in known:
+            fail("%s implies %s, which is not explicitly mentioned in your toolchain configuration" % (provider.label, action_config.label))
+        implies.append(action_config.action_name)
+    return implies
+
+def _to_untyped_feature(feature, known, fail = fail):
+    if feature.known:
+        return None
+
+    _ensure_fulfillable(
+        any_of = [fs.features for fs in feature.requires_any_of],
+        known = known,
+        label = feature.label,
+        fail = fail,
+    )
+
+    return rules_cc_feature(
+        name = feature.name,
+        enabled = feature.enabled,
+        flag_sets = [
+            _to_untyped_flag_set(flag_set, known, fail = fail)
+            for flag_set in feature.flag_sets.to_list()
+        ],
+        env_sets = [
+            _to_untyped_env_set(env_set)
+            for env_set in feature.env_sets.to_list()
+        ],
+        implies = _to_untyped_implies(feature, known, fail = fail),
+        requires = [_to_untyped_feature_set(requirement) for requirement in feature.requires_any_of],
+        provides = list(feature.provides),
+    )
+
+def _to_untyped_tool(tool, known, fail = fail):
+    _ensure_fulfillable(
+        any_of = [constraint.all_of for constraint in tool.requires_any_of],
+        known = known,
+        label = tool.label,
+        fail = fail,
+    )
+
+    return rules_cc_tool(
+        path = tool.path,
+        tool = tool.exe,
+        execution_requirements = list(tool.execution_requirements),
+        with_features = [
+            _to_untyped_feature_constraint(fc)
+            for fc in tool.requires_any_of
+        ],
+    )
+
+def _to_untyped_action_config(action_config, extra_flag_sets, known, fail = fail):
+    # De-dupe, in case the same flag set was specified for both unconditional
+    # and for a specific action config.
+    flag_sets = depset(
+        list(action_config.flag_sets) + extra_flag_sets,
+        order = "preorder",
+    ).to_list()
+
+    return rules_cc_action_config(
+        action_name = action_config.action_name,
+        enabled = action_config.enabled,
+        tools = [
+            _to_untyped_tool(tool, known, fail = fail)
+            for tool in action_config.tools
+        ],
+        flag_sets = [
+            _to_untyped_flag_set(
+                # Make the flag sets actionless.
+                PwFlagSetInfo(
+                    label = flag_set.label,
+                    actions = tuple(),
+                    requires_any_of = flag_set.requires_any_of,
+                    flag_groups = flag_set.flag_groups,
                 ),
+                known = known,
+                fail = fail,
             )
+            for flag_set in flag_sets
+        ],
+        implies = _to_untyped_implies(action_config, known, fail = fail),
+    )
 
-def actionless_flag_set(flag_set_to_copy):
-    """Copies a flag_set, stripping `actions`.
+def to_untyped_config(feature_set, action_config_set, flag_sets, fail = fail):
+    """Converts Pigweed providers into a format suitable for rules_cc.
 
     Args:
-        flag_set_to_copy: The base flag_set to copy.
+        feature_set: PwFeatureSetInfo: Features available in the toolchain
+        action_config_set: ActionConfigSetInfo: Set of defined action configs
+        flag_sets: Flag sets that are unconditionally applied
+        fail: The fail function. Only change this during testing.
     Returns:
-        flag_set with empty `actions` list.
+        A struct containing parameters suitable to pass to
+          cc_common.create_cc_toolchain_config_info.
     """
-    return flag_set(
-        with_features = flag_set_to_copy.with_features,
-        flag_groups = flag_set_to_copy.flag_groups,
+    flag_sets_by_action = {}
+    for flag_set in flag_sets:
+        for action in flag_set.actions:
+            flag_sets_by_action.setdefault(action, []).append(flag_set)
+
+    known_labels = {}
+    known_feature_names = {}
+    feature_list = feature_set.features.to_list()
+    for feature in feature_list:
+        known_labels[feature.label] = None
+        existing_feature = known_feature_names.get(feature.name, None)
+        if existing_feature != None and feature.overrides != existing_feature and existing_feature.overrides != feature:
+            fail("Conflicting features: %s and %s both have feature name %s" % (feature.label, existing_feature.label, feature.name))
+
+        known_feature_names[feature.name] = feature
+
+    untyped_features = []
+    for feature in feature_list:
+        untyped_feature = _to_untyped_feature(feature, known = known_labels, fail = fail)
+        if untyped_feature != None:
+            untyped_features.append(untyped_feature)
+
+    acs = action_config_set.action_configs.to_list()
+    known_actions = {}
+    untyped_acs = []
+    for ac in acs:
+        if ac.action_name in known_actions:
+            fail("In %s, both %s and %s implement %s" % (
+                action_config_set.label,
+                ac.label,
+                known_actions[ac.action_name],
+                ac.action_name,
+            ))
+        known_actions[ac.action_name] = ac.label
+        untyped_acs.append(_to_untyped_action_config(
+            ac,
+            extra_flag_sets = flag_sets_by_action.get(ac.action_name, []),
+            known = known_labels,
+            fail = fail,
+        ))
+
+    action_to_files = {
+        ac.action_name: ac.files
+        for ac in acs
+    }
+
+    return struct(
+        features = untyped_features,
+        action_configs = untyped_acs,
+        action_to_files = action_to_files,
     )

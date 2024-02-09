@@ -15,6 +15,7 @@
 import * as vscode from 'vscode';
 
 import { getExtensionsJson } from './config';
+import { launchBootstrapTerminal, launchTerminal } from './terminal';
 
 const bugUrl =
   'https://issues.pigweed.dev/issues/new?component=1194524&template=1911548';
@@ -92,7 +93,8 @@ async function installRecommendedExtensions(recs: string[]): Promise<void> {
 
   vscode.window.showInformationMessage(
     `This Pigweed project needs you to install ${totalNumUnavailableRecs} ` +
-      'required extensions. Install the extensions shown the extensions tab.',
+      'required extensions. ' +
+      'Install the extensions shown in the extensions tab.',
     { modal: true },
     'Ok',
   );
@@ -256,19 +258,41 @@ async function checkExtensions() {
   }
 }
 
-export function activate(context: vscode.ExtensionContext) {
-  const pwFileBug = vscode.commands.registerCommand('pigweed.file-bug', () =>
-    fileBug(),
+function registerCommands(context: vscode.ExtensionContext) {
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.file-bug', () => fileBug()),
   );
 
-  const pwCheckExtensions = vscode.commands.registerCommand(
-    'pigweed.check-extensions',
-    () => checkExtensions(),
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.check-extensions', () =>
+      checkExtensions(),
+    ),
   );
 
-  context.subscriptions.push(pwFileBug);
-  context.subscriptions.push(pwCheckExtensions);
-  checkExtensions();
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.launch-terminal', () =>
+      launchTerminal(),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.bootstrap-terminal', () =>
+      launchBootstrapTerminal(),
+    ),
+  );
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+  registerCommands(context);
+
+  const shouldEnforce = vscode.workspace
+    .getConfiguration('pigweed')
+    .get('enforceExtensionRecommendations') as string;
+
+  if (shouldEnforce === 'true') {
+    console.log('pigweed.enforceExtensionRecommendations: true');
+    await checkExtensions();
+  }
 }
 
 export function deactivate() {
