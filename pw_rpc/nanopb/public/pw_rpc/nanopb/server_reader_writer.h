@@ -46,6 +46,8 @@ class NanopbServerCall : public ServerCall {
   NanopbServerCall(const LockedCallContext& context, MethodType type)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
+  ~NanopbServerCall() { DestroyServerCall(); }
+
   Status SendUnaryResponse(const void* payload, Status status)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
     return SendFinalResponse(*this, payload, status);
@@ -92,6 +94,8 @@ class BaseNanopbServerReader : public NanopbServerCall {
   BaseNanopbServerReader(const LockedCallContext& context, MethodType type)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
       : NanopbServerCall(context, type) {}
+
+  ~BaseNanopbServerReader() { DestroyServerCall(); }
 
  protected:
   constexpr BaseNanopbServerReader() = default;
@@ -192,7 +196,8 @@ class NanopbServerReaderWriter
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
   using internal::BaseNanopbServerReader<Request>::set_on_next;
 
  private:
@@ -249,7 +254,8 @@ class NanopbServerReader : private internal::BaseNanopbServerReader<Request> {
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
   using internal::BaseNanopbServerReader<Request>::set_on_next;
 
   Status Finish(const Response& response, Status status = OkStatus()) {
@@ -322,7 +328,8 @@ class NanopbServerWriter : private internal::NanopbServerCall {
   }
 
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
  private:
   friend class internal::NanopbMethod;
@@ -382,7 +389,6 @@ class NanopbUnaryResponder : private internal::NanopbServerCall {
   }
 
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
 
  private:
   friend class internal::NanopbMethod;

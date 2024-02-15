@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,10 +21,11 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_varint",
     srcs = [
         "varint.cc",
+        "varint_c.c",
     ],
     hdrs = [
         "public/pw_varint/varint.h",
@@ -35,10 +35,11 @@ pw_cc_library(
         "//pw_polyfill",
         "//pw_preprocessor",
         "//pw_span",
+        "//third_party/fuchsia:stdcompat",
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "stream",
     srcs = [
         "stream.cc",
@@ -63,7 +64,7 @@ pw_cc_test(
     ],
     deps = [
         ":pw_varint",
-        "//pw_unit_test",
+        "//pw_fuzzer:fuzztest",
     ],
 )
 

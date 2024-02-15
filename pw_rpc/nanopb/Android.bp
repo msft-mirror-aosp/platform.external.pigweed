@@ -27,6 +27,7 @@ filegroup {
 
 cc_library_headers {
     name: "pw_rpc_nanopb_include_dirs",
+    cpp_std: "c++20",
     export_include_dirs: [
         "public",
     ],
@@ -58,7 +59,7 @@ cc_library_headers {
 //       name: "pw_rpc_cflags_<instance_name>",
 //       cflags: [
 //           "-DPW_RPC_USE_GLOBAL_MUTEX=0",
-//           "-DPW_RPC_CLIENT_STREAM_END_CALLBACK",
+//           "-DPW_RPC_COMPLETION_REQUEST_CALLBACK",
 //           "-DPW_RPC_DYNAMIC_ALLOCATION",
 //       ],
 //   }
@@ -66,7 +67,7 @@ cc_library_headers {
 // see pw_rpc_defaults, pw_rpc_raw_defaults
 cc_defaults {
     name: "pw_rpc_nanopb_defaults",
-    cpp_std: "c++2a",
+    cpp_std: "c++20",
     static_libs: [
         "libprotobuf-c-nano",
     ],
@@ -79,6 +80,4 @@ cc_defaults {
     srcs: [
         ":pw_rpc_nanopb_src_files",
     ],
-    host_supported: true,
-    vendor_available: true,
 }

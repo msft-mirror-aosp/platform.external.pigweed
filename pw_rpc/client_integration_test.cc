@@ -12,25 +12,21 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include <sys/socket.h>
-
+#include <algorithm>
+#include <array>
 #include <cstring>
 
-#include "gtest/gtest.h"
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
 #include "pw_rpc/benchmark.raw_rpc.pb.h"
 #include "pw_rpc/integration_testing.h"
 #include "pw_sync/binary_semaphore.h"
+#include "pw_unit_test/framework.h"
 
 namespace rpc_test {
 namespace {
 
 constexpr int kIterations = 3;
-
-// This client configures a socket read timeout to allow the RPC dispatch thread
-// to exit gracefully.
-constexpr timeval kSocketReadTimeout = {.tv_sec = 1, .tv_usec = 0};
 
 using namespace std::chrono_literals;
 using pw::ByteSpan;
@@ -47,28 +43,35 @@ Benchmark::Client kServiceClient(pw::rpc::integration_test::client(),
 class StringReceiver {
  public:
   const char* Wait() {
-    PW_CHECK(sem_.try_acquire_for(1500ms));
-    return buffer_;
+    PW_CHECK(sem_.try_acquire_for(10s));
+    return reinterpret_cast<const char*>(buffer_.begin());
   }
 
   Function<void(ConstByteSpan, Status)> UnaryOnCompleted() {
-    return [this](ConstByteSpan data, Status) { CopyPayload(data); };
+    return [this](ConstByteSpan data, Status) { CopyStringPayload(data); };
   }
 
   Function<void(ConstByteSpan)> OnNext() {
-    return [this](ConstByteSpan data) { CopyPayload(data); };
+    return [this](ConstByteSpan data) { CopyStringPayload(data); };
   }
 
- private:
-  void CopyPayload(ConstByteSpan data) {
-    std::memset(buffer_, 0, sizeof(buffer_));
-    PW_CHECK_UINT_LE(data.size(), sizeof(buffer_));
-    std::memcpy(buffer_, data.data(), data.size());
+  void CopyStringPayload(ConstByteSpan data) {
+    std::memset(buffer_.data(), 0, buffer_.size());
+    PW_CHECK_UINT_LE(data.size(), buffer_.size());
+    std::copy(data.begin(), data.end(), buffer_.begin());
     sem_.release();
   }
 
+  void ReverseCopyStringPayload(ConstByteSpan data) {
+    std::memset(buffer_.data(), 0, buffer_.size());
+    PW_CHECK_UINT_LE(data.size(), buffer_.size());
+    std::reverse_copy(data.begin(), data.end() - 1, buffer_.begin());
+    sem_.release();
+  }
+
+ private:
   pw::sync::BinarySemaphore sem_;
-  char buffer_[64];
+  std::array<std::byte, 64> buffer_;
 };
 
 TEST(RawRpcIntegrationTest, Unary) {
@@ -96,6 +99,38 @@ TEST(RawRpcIntegrationTest, BidirectionalStreaming) {
   }
 }
 
+// This test sometimes fails due to a server stream packet being dropped.
+// TODO: b/290048137 - Enable this test after the flakiness is fixed.
+TEST(RawRpcIntegrationTest, DISABLED_OnNextOverwritesItsOwnCall) {
+  for (int i = 0; i < kIterations; ++i) {
+    struct {
+      StringReceiver receiver;
+      pw::rpc::RawClientReaderWriter call;
+    } ctx;
+
+    // Chain together three calls. The first and third copy the string in normal
+    // order, while the second copies the string in reverse order.
+    ctx.call = kServiceClient.BidirectionalEcho([&ctx](ConstByteSpan data) {
+      ctx.call = kServiceClient.BidirectionalEcho([&ctx](ConstByteSpan data) {
+        ctx.receiver.ReverseCopyStringPayload(data);
+        ctx.call = kServiceClient.BidirectionalEcho(ctx.receiver.OnNext());
+      });
+      ctx.receiver.CopyStringPayload(data);
+    });
+
+    ASSERT_EQ(OkStatus(), ctx.call.Write(pw::as_bytes(pw::span("Window"))));
+    EXPECT_STREQ(ctx.receiver.Wait(), "Window");
+
+    ASSERT_EQ(OkStatus(), ctx.call.Write(pw::as_bytes(pw::span("Door"))));
+    EXPECT_STREQ(ctx.receiver.Wait(), "rooD");
+
+    ASSERT_EQ(OkStatus(), ctx.call.Write(pw::as_bytes(pw::span("Roof"))));
+    EXPECT_STREQ(ctx.receiver.Wait(), "Roof");
+
+    ASSERT_EQ(OkStatus(), ctx.call.Cancel());
+  }
+}
+
 }  // namespace
 }  // namespace rpc_test
 
@@ -103,18 +138,6 @@ int main(int argc, char* argv[]) {
   if (!pw::rpc::integration_test::InitializeClient(argc, argv).ok()) {
     return 1;
   }
-
-  // Set read timout on socket to allow
-  // pw::rpc::integration_test::TerminateClient() to complete.
-  int retval = setsockopt(pw::rpc::integration_test::GetClientSocketFd(),
-                          SOL_SOCKET,
-                          SO_RCVTIMEO,
-                          &rpc_test::kSocketReadTimeout,
-                          sizeof(rpc_test::kSocketReadTimeout));
-  PW_CHECK_INT_EQ(retval,
-                  0,
-                  "Failed to configure socket receive timeout with errno=%d",
-                  errno);
 
   int test_retval = RUN_ALL_TESTS();
 

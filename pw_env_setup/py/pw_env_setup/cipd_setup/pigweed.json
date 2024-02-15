@@ -10,12 +10,12 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:41fef642de70ecdcaaa26be96d56a0398f95abd4"
+        "git_revision:a2e2717ea670249a34b0de4b3e54f268d320bdfa"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
     {
-      "path": "infra/3pp/tools/ninja/${platform}",
+      "path": "fuchsia/third_party/ninja/${platform}",
       "platforms": [
         "linux-amd64",
         "linux-arm64",
@@ -24,7 +24,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "version:2@1.11.1.chromium.7"
+        "git_revision:a4366bd29bc0bfc20e87d8304558d3c2847d54cb"
       ]
     },
     {
@@ -44,20 +44,11 @@
         "linux-amd64",
         "linux-arm64",
         "mac-amd64",
+        "mac-arm64",
         "windows-amd64"
       ],
       "tags": [
-        "version:2@3.17.3"
-      ]
-    },
-    {
-      "_comment": "Always get the amd64 version on Mac until there's an arm64 version",
-      "path": "infra/3pp/tools/protoc/mac-amd64",
-      "platforms": [
-        "mac-arm64"
-      ],
-      "tags": [
-        "version:2@3.17.3"
+        "version:2@24.4"
       ]
     },
     {
@@ -66,10 +57,11 @@
         "linux-amd64",
         "linux-arm64",
         "mac-amd64",
+        "mac-arm64",
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:3a20597776a5d2920e511d81653b4d2b6ca0c855"
+        "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005"
       ],
       "version_file": ".versions/clang.cipd_version"
     },
@@ -83,8 +75,7 @@
       "subdir": "rust",
       "tags": [
         "git_revision:b7b7f2716ee1655a696d3d64c3e12638d0dd19c0"
-      ],
-      "version_file": ".versions/rust.cipd_version"
+      ]
     },
     {
       "path": "infra/3pp/tools/openocd/${platform}",
@@ -95,7 +86,7 @@
         "mac-arm64"
       ],
       "tags": [
-        "version:2@0.11.0-3"
+        "version:2@0.12.0-2"
       ]
     },
     {
@@ -112,10 +103,11 @@
       "platforms": [
         "linux-amd64",
         "linux-arm64",
-        "mac-amd64"
+        "mac-amd64",
+        "mac-arm64"
       ],
       "tags": [
-        "git_revision:823a3f11fb8f04c3c3cc0f95f968fef1bfc6534f,1"
+        "git_revision:1600b9f46b1bd08b00fe86c46ef6dbb48cbe10d6"
       ],
       "version_file": ".versions/qemu.cipd_version"
     },
@@ -127,7 +119,16 @@
       ],
       "subdir": "clang_sysroot",
       "tags": [
-        "git_revision:b07475f83bae0e0744ce5ab5c07b602ececc7fd2"
+        "git_revision:d342388843734b6c5c50fb7e18cd3a76476b93aa"
+      ]
+    },
+    {
+      "path": "infra/3pp/tools/renode/${platform}",
+      "platforms": [
+        "linux-amd64"
+      ],
+      "tags": [
+        "version:2@renode-1.14.0"
       ]
     }
   ]

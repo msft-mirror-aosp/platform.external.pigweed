@@ -74,18 +74,20 @@ class Decoder {
 
   Decoder(const Decoder&) = delete;
   Decoder& operator=(const Decoder&) = delete;
+  Decoder(Decoder&&) = default;
+  Decoder& operator=(Decoder&&) = default;
 
-  // Parses a single byte of an HDLC stream. Returns a Result with the complete
-  // frame if the byte completes a frame. The status is the following:
-  //
-  //     OK - A frame was successfully decoded. The Result contains the Frame,
-  //         which is invalidated by the next Process call.
-  //     UNAVAILABLE - No frame is available.
-  //     RESOURCE_EXHAUSTED - A frame completed, but it was too large to fit in
-  //         the decoder's buffer.
-  //     DATA_LOSS - A frame completed, but it was invalid. The frame was
-  //         incomplete or the frame check sequence verification failed.
-  //
+  /// @brief Parses a single byte of an HDLC stream.
+  ///
+  /// @returns A `pw::Result` with the complete frame if the byte completes a
+  /// frame. The status can be one of the following:
+  /// * @pw_status{OK} - A frame was successfully decoded. The `Result` contains
+  ///   the `Frame`, which is invalidated by the next `Process()` call.
+  /// * @pw_status{UNAVAILABLE} - No frame is available.
+  /// * @pw_status{RESOURCE_EXHAUSTED} - A frame completed, but it was too large
+  ///   to fit in the decoder's buffer.
+  /// * @pw_status{DATA_LOSS} - A frame completed, but it was invalid. The frame
+  ///   was incomplete or the frame check sequence verification failed.
   Result<Frame> Process(std::byte new_byte);
 
   // Returns the buffer space required for a `Decoder` to successfully decode a
@@ -99,8 +101,8 @@ class Decoder {
                : max_frame_size - 2;
   }
 
-  // Processes a span of data and calls the provided callback with each frame or
-  // error.
+  /// @brief Processes a span of data and calls the provided callback with each
+  /// frame or error.
   template <typename F, typename... Args>
   void Process(ConstByteSpan data, F&& callback, Args&&... args) {
     for (std::byte b : data) {
@@ -141,7 +143,7 @@ class Decoder {
 
   bool VerifyFrameCheckSequence() const;
 
-  const ByteSpan buffer_;
+  ByteSpan buffer_;
 
   // Ring buffer of the last four bytes read into the current frame, to allow
   // calculating the frame's CRC incrementally. As data is evicted from this

@@ -71,17 +71,20 @@ groups, causing them to be built with it.
 * ``group_deps``: Other ``pw_doc_group`` targets required by this one.
 * ``report_deps``: Report card generating targets (e.g. ``pw_size_diff``) on
   which the docs depend.
+* ``other_deps``: Any other GN targets that should be run before this
+  ``pw_doc_group`` runs that is not included in one of the above ``dep``
+  categories.
 
 **Example**
 
-.. code::
+.. code-block::
 
-  pw_doc_group("my_doc_group") {
-    sources = [ "docs.rst" ]
-    inputs = [ "face-with-tears-of-joy-emoji.svg" ]
-    group_deps = [ ":sub_doc_group" ]
-    report_deps = [ ":my_size_report" ]
-  }
+   pw_doc_group("my_doc_group") {
+     sources = [ "docs.rst" ]
+     inputs = [ "face-with-tears-of-joy-emoji.svg" ]
+     group_deps = [ ":sub_doc_group" ]
+     report_deps = [ ":my_size_report" ]
+   }
 
 pw_doc_gen
 __________
@@ -100,19 +103,22 @@ to tie everything together.
 * ``index``: Path to the top-level ``index.rst`` file.
 * ``output_directory``: Directory in which to render HTML output.
 * ``deps``: List of all ``pw_doc_group`` targets required for the documentation.
+* ``python_metadata_deps``: Python-related dependencies that are only used as
+  deps for generating Python package metadata list, not the overall
+  documentation generation. This should rarely be used by non-Pigweed code.
 
 **Example**
 
-.. code::
+.. code-block::
 
-  pw_doc_gen("my_docs") {
-    conf = "//my_docs/conf.py"
-    index = "//my_docs/index.rst"
-    output_directory = target_gen_dir
-    deps = [
-      "//my_module:my_doc_group",
-    ]
-  }
+   pw_doc_gen("my_docs") {
+     conf = "//my_docs/conf.py"
+     index = "//my_docs/index.rst"
+     output_directory = target_gen_dir
+     deps = [
+       "//my_module:my_doc_group",
+     ]
+   }
 
 Generating Documentation
 ------------------------
@@ -123,18 +129,18 @@ using a subset of Pigweed's core documentation.
 
 Consider the following target in ``$dir_pigweed/docs/BUILD.gn``:
 
-.. code::
+.. code-block::
 
-  pw_doc_gen("docs") {
-    conf = "conf.py"
-    index = "index.rst"
-    output_directory = target_gen_dir
-    deps = [
-      "$dir_pw_bloat:docs",
-      "$dir_pw_docgen:docs",
-      "$dir_pw_preprocessor:docs",
-    ]
-  }
+   pw_doc_gen("docs") {
+     conf = "conf.py"
+     index = "index.rst"
+     output_directory = target_gen_dir
+     deps = [
+       "$dir_pw_bloat:docs",
+       "$dir_pw_docgen:docs",
+       "$dir_pw_preprocessor:docs",
+     ]
+   }
 
 A documentation tree is created under the output directory. Each of the sources
 and inputs in the target's dependency graph is copied under this tree in the
@@ -142,19 +148,19 @@ same directory structure as they appear under the root GN build directory
 (``$dir_pigweed`` in this case). The ``conf.py`` and ``index.rst`` provided
 directly to the ``pw_doc_gen`` template are copied in at the root of the tree.
 
-.. code::
+.. code-block::
 
-  out/gen/docs/pw_docgen_tree/
-  ├── conf.py
-  ├── index.rst
-  ├── pw_bloat
-  │   ├── bloat.rst
-  │   └── examples
-  │       └── simple_bloat.rst
-  ├── pw_docgen
-  │   └── docgen.rst
-  └── pw_preprocessor
-      └── docs.rst
+   out/gen/docs/pw_docgen_tree/
+   ├── conf.py
+   ├── index.rst
+   ├── pw_bloat
+   │   ├── bloat.rst
+   │   └── examples
+   │       └── simple_bloat.rst
+   ├── pw_docgen
+   │   └── docgen.rst
+   └── pw_preprocessor
+       └── docs.rst
 
 This is the documentation tree which gets passed to Sphinx to build HTML output.
 Imports within documentation files must be relative to this structure. In
@@ -162,6 +168,15 @@ practice, relative imports from within modules' documentation groups are
 identical to the project's directory structure. The only special case is the
 top-level ``index.rst`` file's imports; they must start from the project's build
 root.
+
+Viewing Documentation
+---------------------
+``pw_docgen`` includes a web server that serves locally-generated documentation
+at ``pw_docgen.docserver``. It supports hot-reloading, so the rendered docs in
+your browser will refresh as you make changes to the source files.
+
+In most cases, you will not need to run the docs server directly. Instead, it
+will be run via :ref:`module-pw_watch`.
 
 Sphinx Extensions
 =================
@@ -190,12 +205,8 @@ example:
       :name: pw_string
       :tagline: Efficient, easy, and safe string manipulation
       :status: stable
-      :languages: C++14, C++17
+      :languages: C++17, Rust
       :code-size-impact: 500 to 1500 bytes
-      :get-started: module-pw_string-get-started
-      :design: module-pw_string-design
-      :guides: module-pw_string-guide
-      :api: module-pw_string-api
 
       Module sales pitch goes here!
 
@@ -205,14 +216,17 @@ _________________
 - ``tagline``: A very short tagline that summarizes the module (required)
 - ``status``: One of ``experimental``, ``unstable``, and ``stable`` (required)
 - ``is-deprecated``: A flag indicating that the module is deprecated
-- ``languages``: A comma-separated list of languages the module supports
+- ``languages``: A comma-separated list of languages the module supports.  If
+  the language has API docs (Rust), they will be linked from the metadata block.
 - ``code-size-impact``: A summarize of the average code size impact
-- ``get-started``: A reference to the getting started section (required)
-- ``tutorials``: A reference to the tutorials section
-- ``guides``: A reference to the guides section
-- ``design``: A reference to the design considerations section (required)
-- ``concepts``: A reference to the concepts documentation
-- ``api``: A reference to the API documentation
+
+Canonical URL configuration
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``module_metadata`` fixes the canonical URLs for module homepages. Sphinx
+outputs the canonical URL as ``https://pigweed.dev/pw_*/docs.html`` whereas we
+actually need it to be ``https://pigweed.dev/pw_*/`` because that's how our
+server is configured. Context: `b/323077749
+<https://issues.pigweed.dev/323077749>`_
 
 google_analytics
 ----------------
@@ -225,3 +239,31 @@ automatically based on the value of the GN argument
 ``pw_docs_google_analytics_id``, allowing you to control whether tracking is
 enabled or not in your build configuration. Typically, you would only enable
 this for documentation builds intended for deployment on the web.
+
+Debugging Pigweed's Sphinx extensions
+-------------------------------------
+To step through your Pigweed extension code with
+`pdb <https://docs.python.org/3/library/pdb.html>`_:
+
+#. Set a breakpoint in your extension code:
+
+   .. code-block::
+
+      breakpoint()
+
+#. Build ``python.install`` to install the code change into the bootstrap venv
+   (``environment/pigweed-venv/lib/python3.8/site-packages/pw_docgen``):
+
+   .. code-block::
+
+      ninja -C out python.install
+
+#. Manually invoke Sphinx to build the docs and trigger your breakpoint:
+
+   .. code-block::
+
+      cd out
+      sphinx-build -W -b html -d docs/gen/docs/help docs/gen/docs/pw_docgen_tree docs/gen/docs/html -v -v -v
+
+   You should see build output from Sphinx. The build should pause at your
+   breakpoint and you should then see pdb's prompt (``(Pdb)``).

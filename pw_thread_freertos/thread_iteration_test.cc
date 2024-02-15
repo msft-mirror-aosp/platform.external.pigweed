@@ -18,17 +18,17 @@
 #include <string_view>
 
 #include "FreeRTOS.h"
-#include "gtest/gtest.h"
 #include "pw_bytes/span.h"
 #include "pw_span/span.h"
 #include "pw_string/string_builder.h"
 #include "pw_string/util.h"
 #include "pw_sync/thread_notification.h"
-#include "pw_thread/test_threads.h"
+#include "pw_thread/non_portable_test_thread_options.h"
 #include "pw_thread/thread.h"
 #include "pw_thread/thread_info.h"
 #include "pw_thread_freertos/freertos_tsktcb.h"
 #include "pw_thread_freertos_private/thread_iteration.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::thread::freertos {
 namespace {

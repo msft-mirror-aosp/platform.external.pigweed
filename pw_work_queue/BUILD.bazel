@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 load(
@@ -26,15 +25,15 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_work_queue",
     srcs = ["work_queue.cc"],
     hdrs = [
-        "public/pw_work_queue/internal/circular_buffer.h",
         "public/pw_work_queue/work_queue.h",
     ],
     includes = ["public"],
     deps = [
+        "//pw_containers:inline_queue",
         "//pw_function",
         "//pw_metric:metric",
         "//pw_status",
@@ -45,13 +44,13 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "test_thread_header",
     hdrs = ["public/pw_work_queue/test_thread.h"],
     includes = ["public"],
 )
 
-pw_cc_library(
+cc_library(
     name = "work_queue_test",
     srcs = [
         "work_queue_test.cc",
@@ -64,7 +63,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "stl_test_thread",
     srcs = [
         "stl_test_thread.cc",

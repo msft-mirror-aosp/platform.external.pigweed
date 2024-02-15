@@ -11,7 +11,7 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-// TODO(b/235289499): Add verification of the actually logged statements.
+// TODO: b/235289499 - Add verification of the actually logged statements.
 
 // clang-format off
 #define PW_LOG_MODULE_NAME "TST"
@@ -19,7 +19,7 @@
 
 #include "pw_log/glog_adapter.h"
 
-#include "gtest/gtest.h"
+#include "pw_unit_test/framework.h"
 // clang-format on
 
 namespace pw::log {
@@ -72,8 +72,8 @@ TEST(Glog, Fatal) {
 
 TEST(Glog, ConditionalFatal) {
   conditional = false;
-  LOG_IF(FATAL, conditional) << "LOG_IF(FATAL, false) compiles but you should "
-                             << "not see this log";
+  LOG_IF(FATAL, conditional)
+      << "LOG_IF(FATAL, false) compiles but you should " << "not see this log";
 }
 
 TEST(Glog, Dfatal) {
@@ -94,8 +94,8 @@ TEST(Glog, ConditionalDfatal) {
                               << "PW_LOG_ERROR as NDEBUG is set";
 #endif  // defined(NDEBUG)
   conditional = false;
-  LOG_IF(DFATAL, conditional) << "LOG_IF(DFATAL, false) compiles but you "
-                              << "should not see this log";
+  LOG_IF(DFATAL, conditional)
+      << "LOG_IF(DFATAL, false) compiles but you " << "should not see this log";
 }
 
 }  // namespace

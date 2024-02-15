@@ -162,7 +162,6 @@ def platform(rosetta=False):
 def all_package_files(env_vars, package_files):
     """Recursively retrieve all package files."""
 
-    result = []
     to_process = []
     for pkg_file in package_files:
         args = []
@@ -178,51 +177,78 @@ def all_package_files(env_vars, package_files):
 
         to_process.append(path)
 
-    while to_process:
-        package_file = to_process.pop(0)
-        result.append(package_file)
+    processed_files = []
 
-        with open(package_file, 'r') as ins:
-            entries = json.load(ins).get('included_files', ())
+    def flatten_package_files(package_files):
+        """Flatten nested package files."""
+        for package_file in package_files:
+            yield package_file
+            processed_files.append(package_file)
 
-        for entry in entries:
-            entry = os.path.join(os.path.dirname(package_file), entry)
+            with open(package_file, 'r') as ins:
+                entries = json.load(ins).get('included_files', ())
+                entries = [
+                    os.path.join(os.path.dirname(package_file), entry)
+                    for entry in entries
+                ]
+                entries = [
+                    entry for entry in entries if entry not in processed_files
+                ]
 
-            if entry not in result and entry not in to_process:
-                to_process.append(entry)
+            if entries:
+                for entry in flatten_package_files(entries):
+                    yield entry
 
-    return result
+    return list(flatten_package_files(to_process))
+
+
+def update_subdir(package, package_file):
+    """Updates subdir in package and saves original."""
+    name = package_file_name(package_file)
+    if 'subdir' in package:
+        package['original_subdir'] = package['subdir']
+        package['subdir'] = '/'.join([name, package['subdir']])
+    else:
+        package['subdir'] = name
 
 
 def all_packages(package_files):
     packages = []
     for package_file in package_files:
-        name = package_file_name(package_file)
         with open(package_file, 'r') as ins:
             file_packages = json.load(ins).get('packages', ())
             for package in file_packages:
-                if 'subdir' in package:
-                    package['subdir'] = os.path.join(name, package['subdir'])
-                else:
-                    package['subdir'] = name
+                update_subdir(package, package_file)
             packages.extend(file_packages)
     return packages
 
 
 def deduplicate_packages(packages):
     deduped = collections.OrderedDict()
-    for package in reversed(packages):
-        if package['path'] in deduped:
-            del deduped[package['path']]
-        deduped[package['path']] = package
-    return reversed(list(deduped.values()))
+    for package in packages:
+        # Use the package + the subdir as the key
+        pkg_key = package['path']
+        pkg_key += package.get('original_subdir', '')
+
+        if pkg_key in deduped:
+            # Delete the old package
+            del deduped[pkg_key]
+
+        # Insert the new package at the end
+        deduped[pkg_key] = package
+    return list(deduped.values())
 
 
 def write_ensure_file(
     package_files, ensure_file, platform
 ):  # pylint: disable=redefined-outer-name
+    logdir = os.path.dirname(ensure_file)
     packages = all_packages(package_files)
+    with open(os.path.join(logdir, 'all-packages.json'), 'w') as outs:
+        json.dump(packages, outs, indent=4)
     deduped_packages = deduplicate_packages(packages)
+    with open(os.path.join(logdir, 'deduped-packages.json'), 'w') as outs:
+        json.dump(deduped_packages, outs, indent=4)
 
     with open(ensure_file, 'w') as outs:
         outs.write(
@@ -286,7 +312,8 @@ def update(  # pylint: disable=too-many-locals
     if env_vars:
         env_vars.prepend('PATH', root_install_dir)
         env_vars.set('PW_CIPD_INSTALL_DIR', root_install_dir)
-        env_vars.set('CIPD_CACHE_DIR', cache_dir)
+        if cache_dir:
+            env_vars.set('CIPD_CACHE_DIR', cache_dir)
 
     pw_root = None
 
@@ -313,11 +340,12 @@ def update(  # pylint: disable=too-many-locals
         'debug',
         '-json-output',
         os.path.join(root_install_dir, 'packages.json'),
-        '-cache-dir',
-        cache_dir,
         '-max-threads',
         '0',  # 0 means use CPU count.
     ]
+
+    if cache_dir:
+        cmd.extend(('-cache-dir', cache_dir))
 
     cipd_service_account = None
     if env_vars:
@@ -373,6 +401,27 @@ def update(  # pylint: disable=too-many-locals
         for package_file in reversed(package_files):
             name = package_file_name(package_file)
             file_install_dir = os.path.join(install_dir, name)
+
+            # The MinGW package isn't always structured correctly, and might
+            # live nested in a `mingw64` subdirectory.
+            maybe_mingw = os.path.join(file_install_dir, 'mingw64', 'bin')
+            if os.name == 'nt' and os.path.isdir(maybe_mingw):
+                env_vars.prepend('PATH', maybe_mingw)
+
+            # If this package file has no packages and just includes one other
+            # file, there won't be any contents of the folder for this package.
+            # In that case, point the variable that would point to this folder
+            # to the folder of the included file.
+            with open(package_file) as ins:
+                contents = json.load(ins)
+                entries = contents.get('included_files', ())
+                file_packages = contents.get('packages', ())
+                if not file_packages and len(entries) == 1:
+                    file_install_dir = os.path.join(
+                        install_dir,
+                        package_file_name(os.path.basename(entries[0])),
+                    )
+
             # Some executables get installed at top-level and some get
             # installed under 'bin'. A small number of old packages prefix the
             # entire tree with the platform (e.g., chromium/third_party/tcl).
@@ -384,13 +433,8 @@ def update(  # pylint: disable=too-many-locals
                 if os.path.isdir(bin_dir):
                     env_vars.prepend('PATH', bin_dir)
             env_vars.set(
-                'PW_{}_CIPD_INSTALL_DIR'.format(name.upper()), file_install_dir
+                'PW_{}_CIPD_INSTALL_DIR'.format(name.upper().replace('-', '_')),
+                file_install_dir,
             )
-
-            # Windows has its own special toolchain.
-            if os.name == 'nt':
-                env_vars.prepend(
-                    'PATH', os.path.join(file_install_dir, 'mingw64', 'bin')
-                )
 
     return True

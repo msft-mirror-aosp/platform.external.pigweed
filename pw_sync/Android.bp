@@ -18,7 +18,27 @@ package {
 
 cc_library_headers {
     name: "pw_sync_headers",
+    cpp_std: "c++20",
     vendor_available: true,
     export_include_dirs: ["public"],
+    host_supported: true,
+    header_libs: [
+        "pw_chrono_include_dirs",
+        "pw_polyfill_headers",
+    ],
+    export_header_lib_headers: [
+        "pw_chrono_include_dirs",
+        "pw_polyfill_headers",
+    ],
+}
+
+cc_library_headers {
+    name: "pw_sync_binary_semaphore_thread_notification_backend_headers",
+    cpp_std: "c++20",
+    vendor_available: true,
+    export_include_dirs: [
+      "public",
+      "public_overrides",
+    ],
     host_supported: true,
 }

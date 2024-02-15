@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -13,10 +13,12 @@
 // the License.
 
 #define PW_LOG_MODULE_NAME "TRN"
+#define PW_LOG_LEVEL PW_LOG_LEVEL_INFO
 
 #include "pw_transfer/internal/context.h"
 
 #include <chrono>
+#include <limits>
 
 #include "pw_assert/check.h"
 #include "pw_chrono/system_clock.h"
@@ -33,6 +35,15 @@ void Context::HandleEvent(const Event& event) {
     case EventType::kNewClientTransfer:
     case EventType::kNewServerTransfer: {
       if (active()) {
+        if (event.type == EventType::kNewServerTransfer &&
+            event.new_transfer.session_id == session_id_ &&
+            last_chunk_sent_ == Chunk::Type::kStartAck) {
+          // The client is retrying its initial chunk as the response may not
+          // have made it back. Re-send the handshake response without going
+          // through handler reinitialization.
+          RetryHandshake();
+          return;
+        }
         Abort(Status::Aborted());
       }
 
@@ -78,6 +89,8 @@ void Context::HandleEvent(const Event& event) {
     case EventType::kAddTransferHandler:
     case EventType::kRemoveTransferHandler:
     case EventType::kTerminate:
+    case EventType::kUpdateClientTransfer:
+    case EventType::kGetResourceStatus:
       // These events are intended for the transfer thread and should never be
       // forwarded through to a context.
       PW_CRASH("Transfer context received a transfer thread event");
@@ -87,7 +100,7 @@ void Context::HandleEvent(const Event& event) {
 void Context::InitiateTransferAsClient() {
   PW_DCHECK(active());
 
-  SetTimeout(chunk_timeout_);
+  SetTimeout(initial_chunk_timeout_);
 
   PW_LOG_INFO("Starting transfer for resource %u",
               static_cast<unsigned>(resource_id_));
@@ -104,7 +117,7 @@ void Context::InitiateTransferAsClient() {
     if (type() == TransferType::kReceive) {
       SendTransferParameters(TransmitAction::kBegin);
     } else {
-      SendInitialTransmitChunk();
+      SendInitialLegacyTransmitChunk();
     }
 
     LogTransferConfiguration();
@@ -113,7 +126,9 @@ void Context::InitiateTransferAsClient() {
 
   // In newer protocol versions, begin the initial transfer handshake.
   Chunk start_chunk(desired_protocol_version_, Chunk::Type::kStart);
+  start_chunk.set_desired_session_id(session_id_);
   start_chunk.set_resource_id(resource_id_);
+  start_chunk.set_initial_offset(offset_);
 
   if (type() == TransferType::kReceive) {
     // Parameters should still be set on the initial chunk for backwards
@@ -125,15 +140,17 @@ void Context::InitiateTransferAsClient() {
 }
 
 bool Context::StartTransferAsServer(const NewTransferEvent& new_transfer) {
-  PW_LOG_INFO("Starting %s transfer %u for resource %u",
+  PW_LOG_INFO("Starting %s transfer %u for resource %u with offset %u",
               new_transfer.type == TransferType::kTransmit ? "read" : "write",
               static_cast<unsigned>(new_transfer.session_id),
-              static_cast<unsigned>(new_transfer.resource_id));
+              static_cast<unsigned>(new_transfer.resource_id),
+              static_cast<unsigned>(new_transfer.initial_offset));
   LogTransferConfiguration();
 
   flags_ |= kFlagsContactMade;
 
-  if (Status status = new_transfer.handler->Prepare(new_transfer.type);
+  if (Status status = new_transfer.handler->Prepare(
+          new_transfer.type, new_transfer.initial_offset);
       !status.ok()) {
     PW_LOG_WARN("Transfer handler %u prepare failed with status %u",
                 static_cast<unsigned>(new_transfer.handler->id()),
@@ -144,7 +161,10 @@ bool Context::StartTransferAsServer(const NewTransferEvent& new_transfer) {
     // the desired version here, as that comes from the client.
     configured_protocol_version_ = desired_protocol_version_;
 
-    status = status.IsPermissionDenied() ? status : Status::DataLoss();
+    status = (status.IsPermissionDenied() || status.IsUnimplemented() ||
+              status.IsResourceExhausted())
+                 ? status
+                 : Status::DataLoss();
     TerminateTransfer(status, /*with_resource_id=*/true);
     return false;
   }
@@ -159,11 +179,11 @@ bool Context::StartTransferAsServer(const NewTransferEvent& new_transfer) {
   return true;
 }
 
-void Context::SendInitialTransmitChunk() {
+void Context::SendInitialLegacyTransmitChunk() {
   // A transmitter begins a transfer by sending the ID of the resource to which
   // it wishes to write.
   Chunk chunk(ProtocolVersion::kLegacy, Chunk::Type::kStart);
-  chunk.set_session_id(session_id_);
+  chunk.set_session_id(resource_id_);
 
   EncodeAndSendChunk(chunk);
 }
@@ -229,6 +249,10 @@ void Context::SendTransferParameters(TransmitAction action) {
 void Context::EncodeAndSendChunk(const Chunk& chunk) {
   last_chunk_sent_ = chunk.type();
 
+  PW_LOG_DEBUG("Transfer %u sending chunk type %u",
+               id_for_log(),
+               static_cast<unsigned>(last_chunk_sent_));
+
   Result<ConstByteSpan> data = chunk.Encode(thread_->encode_buffer());
   if (!data.ok()) {
     PW_LOG_ERROR("Failed to encode chunk for transfer %u: %d",
@@ -283,7 +307,8 @@ void Context::Initialize(const NewTransferEvent& new_transfer) {
   rpc_writer_ = new_transfer.rpc_writer;
   stream_ = new_transfer.stream;
 
-  offset_ = 0;
+  offset_ = new_transfer.initial_offset;
+  initial_offset_ = new_transfer.initial_offset;
   window_size_ = 0;
   window_end_offset_ = 0;
   max_chunk_size_bytes_ = new_transfer.max_parameters->max_chunk_size_bytes();
@@ -294,6 +319,7 @@ void Context::Initialize(const NewTransferEvent& new_transfer) {
   last_chunk_sent_ = Chunk::Type::kStart;
   last_chunk_offset_ = 0;
   chunk_timeout_ = new_transfer.timeout;
+  initial_chunk_timeout_ = new_transfer.initial_timeout;
   interchunk_delay_ = chrono::SystemClock::for_at_least(
       std::chrono::microseconds(kDefaultChunkDelayMicroseconds));
   next_timeout_ = kNoTimeout;
@@ -338,27 +364,33 @@ void Context::PerformInitialHandshake(const Chunk& chunk) {
     case Chunk::Type::kStart: {
       UpdateLocalProtocolConfigurationFromPeer(chunk);
 
+      if (type() == TransferType::kReceive) {
+        // Update window end offset so it is valid.
+        window_end_offset_ = offset_;
+      }
+
       // This cast is safe as we know we're running in a transfer server.
       uint32_t resource_id = static_cast<ServerContext&>(*this).handler()->id();
 
       Chunk start_ack(configured_protocol_version_, Chunk::Type::kStartAck);
-      start_ack.set_session_id(session_id_).set_resource_id(resource_id);
+      start_ack.set_session_id(session_id_);
+      start_ack.set_resource_id(resource_id);
+      start_ack.set_initial_offset(offset_);
 
       EncodeAndSendChunk(start_ack);
       break;
     }
 
-    // Response packet sent from a server to a client. Contains the assigned
-    // session_id of the transfer.
+    // Response packet sent from a server to a client, confirming the protocol
+    // version and session_id of the transfer.
     case Chunk::Type::kStartAck: {
-      UpdateLocalProtocolConfigurationFromPeer(chunk);
+      // This should confirm the offset we're starting at
+      if (offset_ != chunk.initial_offset()) {
+        TerminateTransfer(Status::Unimplemented());
+        break;
+      }
 
-      // Accept the assigned session_id and tell the server that the transfer
-      // can begin.
-      session_id_ = chunk.session_id();
-      PW_LOG_DEBUG("Transfer for resource %u was assigned session ID %u",
-                   static_cast<unsigned>(resource_id_),
-                   static_cast<unsigned>(session_id_));
+      UpdateLocalProtocolConfigurationFromPeer(chunk);
 
       Chunk start_ack_confirmation(configured_protocol_version_,
                                    Chunk::Type::kStartAckConfirmation);
@@ -398,11 +430,20 @@ void Context::PerformInitialHandshake(const Chunk& chunk) {
     case Chunk::Type::kData:
     case Chunk::Type::kParametersRetransmit:
     case Chunk::Type::kParametersContinue:
-      // Update the local context's session ID in case it was expecting one to
-      // be assigned by the server.
+
+      // Update the local session_id, which will map to the transfer_id of the
+      // legacy chunk.
       session_id_ = chunk.session_id();
 
       configured_protocol_version_ = ProtocolVersion::kLegacy;
+      // Cancel if we are not using at least version 2, and we tried to start a
+      // non-zero offset transfer
+      if (chunk.initial_offset() != 0) {
+        PW_LOG_ERROR("Legacy transfer does not support offset transfers!");
+        TerminateTransfer(Status::Internal());
+        break;
+      }
+
       set_transfer_state(TransferState::kWaiting);
 
       PW_LOG_DEBUG(
@@ -493,8 +534,7 @@ void Context::HandleTransferParametersUpdate(const Chunk& chunk) {
     // readers support seeking; abort with UNIMPLEMENTED if this handler
     // doesn't.
     if (offset_ != chunk.offset()) {
-      if (Status seek_status = reader().Seek(chunk.offset());
-          !seek_status.ok()) {
+      if (Status seek_status = SeekReader(chunk.offset()); !seek_status.ok()) {
         PW_LOG_WARN("Transfer %u seek to %u failed with status %u",
                     static_cast<unsigned>(session_id_),
                     static_cast<unsigned>(chunk.offset()),
@@ -599,6 +639,11 @@ void Context::TransmitNextChunk(bool retransmit_requested) {
     chunk.set_payload(data.value());
     last_chunk_offset_ = offset_;
     offset_ += data.value().size();
+
+    size_t total_size = TransferSizeBytes();
+    if (total_size != std::numeric_limits<size_t>::max()) {
+      chunk.set_remaining_bytes(total_size - offset_);
+    }
   } else {
     PW_LOG_ERROR("Transfer %u Read() failed with status %u",
                  static_cast<unsigned>(session_id_),
@@ -944,7 +989,14 @@ void Context::HandleTimeout() {
       // A timeout occurring in a transfer or handshake state indicates that no
       // chunk has been received from the other side. The transfer should retry
       // its previous operation.
-      SetTimeout(chunk_timeout_);  // Retry() clears the timeout if it fails
+      //
+      // The timeout is set immediately. Retry() will clear it if it fails.
+      if (transfer_state_ == TransferState::kInitiating &&
+          last_chunk_sent_ == Chunk::Type::kStart) {
+        SetTimeout(initial_chunk_timeout_);
+      } else {
+        SetTimeout(chunk_timeout_);
+      }
       Retry();
       break;
 
@@ -1004,13 +1056,13 @@ void Context::Retry() {
     PW_LOG_DEBUG(
         "Transmit transfer %u timed out waiting for initial parameters",
         static_cast<unsigned>(session_id_));
-    SendInitialTransmitChunk();
+    SendInitialLegacyTransmitChunk();
     return;
   }
 
   // Otherwise, resend the most recent chunk. If the reader doesn't support
   // seeking, this isn't possible, so just terminate the transfer immediately.
-  if (!reader().Seek(last_chunk_offset_).ok()) {
+  if (!SeekReader(last_chunk_offset_).ok()) {
     PW_LOG_ERROR("Transmit transfer %u timed out waiting for new parameters.",
                  id_for_log());
     PW_LOG_ERROR("Retrying requires a seekable reader. Alas, ours is not.");
@@ -1032,6 +1084,7 @@ void Context::RetryHandshake() {
       // No protocol version is yet configured at the time of sending the start
       // chunk, so we use the client's desired version instead.
       retry_chunk.set_protocol_version(desired_protocol_version_)
+          .set_desired_session_id(session_id_)
           .set_resource_id(resource_id_);
       if (type() == TransferType::kReceive) {
         SetTransferParameters(retry_chunk);

@@ -18,14 +18,12 @@ pw_add_library(pw_polyfill INTERFACE
   HEADERS
     public/pw_polyfill/language_feature_macros.h
     public/pw_polyfill/standard.h
+    public/pw_polyfill/static_assert.h
   PUBLIC_INCLUDES
     public
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_POLYFILL)
-  zephyr_link_libraries(pw_polyfill)
-endif()
 
-pw_add_library(pw_polyfill.standard_library INTERFACE
+pw_add_library(pw_polyfill._standard_library INTERFACE
   HEADERS
     standard_library_public/pw_polyfill/standard_library/namespace.h
   PUBLIC_INCLUDES

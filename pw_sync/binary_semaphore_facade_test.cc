@@ -14,9 +14,9 @@
 
 #include <chrono>
 
-#include "gtest/gtest.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_sync/binary_semaphore.h"
+#include "pw_unit_test/framework.h"
 
 using pw::chrono::SystemClock;
 using namespace std::chrono_literals;
@@ -53,7 +53,7 @@ TEST(BinarySemaphore, EmptyInitialState) {
   EXPECT_FALSE(semaphore.try_acquire());
 }
 
-// TODO(b/235284163): Add real concurrency tests once we have pw::thread.
+// TODO: b/235284163 - Add real concurrency tests once we have pw::thread.
 
 TEST(BinarySemaphore, Release) {
   BinarySemaphore semaphore;

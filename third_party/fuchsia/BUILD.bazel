@@ -12,22 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
-    name = "config",
-    hdrs = ["public/pw_function/config.h"],
-    includes = ["public"],
-)
-
-pw_cc_library(
+cc_library(
     name = "fit",
     srcs = [
         "repo/sdk/lib/fit/include/lib/fit/internal/compiler.h",
@@ -48,12 +37,13 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "stdcompat",
     srcs = [
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/bit.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/constructors.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/exception.h",
+        "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/functional.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/storage.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/type_traits.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/utility.h",

@@ -12,14 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
-    "pw_cc_library",
     "pw_cc_test",
 )
-load("//pw_protobuf_compiler:proto.bzl", "pw_proto_library")
-load("//pw_build/bazel_internal:py_proto_library.bzl", "py_proto_library")
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -37,19 +36,41 @@ pw_cc_facade(
     ],
     includes = ["public"],
     deps = [
+        ":config_override",
         "//pw_preprocessor",
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "pw_log",
+    hdrs = [
+        "public/pw_log/config.h",
+        "public/pw_log/levels.h",
+        "public/pw_log/log.h",
+        "public/pw_log/options.h",
+        "public/pw_log/short.h",
+        "public/pw_log/shorter.h",
+        "public/pw_log/tokenized_args.h",
+    ],
+    includes = ["public"],
     deps = [
-        ":facade",
-        "@pigweed_config//:pw_log_backend",
+        ":config_override",
+        "//pw_preprocessor",
+        "@pigweed//targets:pw_log_backend",
     ],
 )
 
-pw_cc_library(
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+label_flag(
+    name = "backend_impl",
+    build_setting_default = "//pw_log_basic:impl",
+)
+
+cc_library(
     name = "glog_adapter",
     hdrs = [
         "public/pw_log/glog_adapter.h",
@@ -58,6 +79,7 @@ pw_cc_library(
     ],
     includes = ["public"],
     deps = [
+        ":glog_adapter_config_override",
         "//pw_assert",
         "//pw_log",
         "//pw_preprocessor",
@@ -65,7 +87,12 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+label_flag(
+    name = "glog_adapter_config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+cc_library(
     name = "proto_utils",
     srcs = [
         "proto_utils.cc",
@@ -96,10 +123,8 @@ proto_library(
     ],
 )
 
-# TODO(b/241456982): Not expected to build yet.
 py_proto_library(
     name = "log_proto_py_pb2",
-    tags = ["manual"],
     deps = [":log_proto"],
 )
 
@@ -113,9 +138,9 @@ pw_proto_library(
     deps = [":log_proto"],
 )
 
-pw_cc_library(
+cc_library(
     name = "backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = ["//pw_log_basic"],
 )
 

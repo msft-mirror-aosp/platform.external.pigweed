@@ -28,7 +28,7 @@
 
 #else
 
-// If testing is disbaled, always evaluate false to disable the test case.
+// If testing is disabled, always evaluate false to disable the test case.
 #define PW_NC_TEST(test_case) 0 && PW_NC_TEST_EXECUTE_CASE_##test_case
 
 #endif  // PW_NEGATIVE_COMPILATION_TESTS_ENABLED
@@ -38,12 +38,12 @@
 // string is taken directly from the C++ source, interpreted as a regular string
 // literal, and compiled as a regular expression.
 #define PW_NC_EXPECT(regex) \
-  static_assert(PW_NEGATIVE_COMPILATION_TESTS_ENABLED == 1, "")
+  static_assert(PW_NEGATIVE_COMPILATION_TESTS_ENABLED == 1, regex)
 
 // Checks that the compilation output matches the regex in Clang compilers only.
 #define PW_NC_EXPECT_CLANG(regex) \
-  static_assert(PW_NEGATIVE_COMPILATION_TESTS_ENABLED == 1, "")
+  static_assert(PW_NEGATIVE_COMPILATION_TESTS_ENABLED == 1, regex)
 
 // Checks that the compilation output matches the regex in GCC compilers only.
 #define PW_NC_EXPECT_GCC(regex) \
-  static_assert(PW_NEGATIVE_COMPILATION_TESTS_ENABLED == 1, "")
+  static_assert(PW_NEGATIVE_COMPILATION_TESTS_ENABLED == 1, regex)

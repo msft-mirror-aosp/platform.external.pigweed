@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,7 +21,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_tls_client_mbedtls",
     srcs = ["tls_client_mbedtls.cc"],
     hdrs = [
@@ -33,7 +32,7 @@ pw_cc_library(
         "public",
         "public_overrides",
     ],
-    # TODO(b/258068735): Get this target to build. Requires adding mbedtls
+    # TODO: b/258068735 - Get this target to build. Requires adding mbedtls
     # build targets.
     tags = ["manual"],
     deps = [
@@ -47,7 +46,7 @@ pw_cc_test(
     srcs = [
         "tls_client_mbedtls_test.cc",
     ],
-    # TODO(b/258068735): Get this target to build. Requires adding mbedtls
+    # TODO: b/258068735 - Get this target to build. Requires adding mbedtls
     # build targets.
     tags = ["manual"],
     deps = [

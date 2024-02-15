@@ -13,11 +13,15 @@
 // the License.
 #include "pw_async_basic/dispatcher.h"
 
-#include "gtest/gtest.h"
+#include <vector>
+
+#include "pw_chrono/system_clock.h"
 #include "pw_log/log.h"
+#include "pw_sync/lock_annotations.h"
 #include "pw_sync/thread_notification.h"
 #include "pw_thread/thread.h"
 #include "pw_thread_stl/options.h"
+#include "pw_unit_test/framework.h"
 
 #define ASSERT_OK(status) ASSERT_EQ(OkStatus(), status)
 #define ASSERT_CANCELLED(status) ASSERT_EQ(Status::Cancelled(), status)
@@ -63,13 +67,6 @@ TEST(DispatcherBasic, PostTasks) {
   ASSERT_EQ(tp.count, 3);
 }
 
-struct TaskPair {
-  Task task_a;
-  Task task_b;
-  int count = 0;
-  sync::ThreadNotification notification;
-};
-
 TEST(DispatcherBasic, ChainedTasks) {
   BasicDispatcher dispatcher;
   thread::Thread work_thread(thread::stl::Options(), dispatcher);
@@ -94,6 +91,45 @@ TEST(DispatcherBasic, ChainedTasks) {
   notification.acquire();
   dispatcher.RequestStop();
   work_thread.join();
+}
+
+TEST(DispatcherBasic, TaskOrdering) {
+  struct TestState {
+    std::mutex lock;
+    std::vector<int> tasks PW_GUARDED_BY(lock);
+    sync::ThreadNotification notification;
+  };
+
+  BasicDispatcher dispatcher;
+  thread::Thread work_thread(thread::stl::Options(), dispatcher);
+  TestState state;
+
+  Task task1([&state](Context&, Status status) {
+    ASSERT_OK(status);
+    std::lock_guard lock(state.lock);
+    state.tasks.push_back(1);
+  });
+
+  Task task2([&state](Context&, Status status) {
+    ASSERT_OK(status);
+    std::lock_guard lock(state.lock);
+    state.tasks.push_back(2);
+    state.notification.release();
+  });
+
+  // Task posted at same time should be ordered FIFO.
+  auto due_time = chrono::SystemClock::now();
+  dispatcher.PostAt(task1, due_time);
+  dispatcher.PostAt(task2, due_time);
+
+  state.notification.acquire();
+  dispatcher.RequestStop();
+  work_thread.join();
+
+  std::lock_guard lock(state.lock);
+  ASSERT_EQ(state.tasks.size(), 2U);
+  EXPECT_EQ(state.tasks[0], 1);
+  EXPECT_EQ(state.tasks[1], 2);
 }
 
 // Test RequestStop() from inside task.

@@ -32,6 +32,12 @@ config("public_include_path") {
   visibility = [ ":*" ]
 }
 
+# TODO: b/297280281 - Windows+gcc+mingw-w64 thinks that some variables are not
+# always initialized. This is a toolchain bug, not a real issue.
+config("disable_warning") {
+  cflags = [ "-Wno-maybe-uninitialized" ]
+}
+
 pw_source_set("config") {
   sources = [ "public/pw_log_rpc/internal/config.h" ]
   public_configs = [ ":public_include_path" ]
@@ -139,9 +145,15 @@ pw_source_set("rpc_log_drain_thread") {
     "$dir_pw_sync:timed_thread_notification",
     "$dir_pw_thread:thread",
   ]
+  if (current_os == "win") {
+    public_configs += [ ":disable_warning" ]
+  }
 }
 
 pw_source_set("test_utils") {
+  # TODO: b/303282642 - Remove this testonly
+  testonly = pw_unit_test_TESTONLY
+
   public_deps = [
     "$dir_pw_bytes",
     "$dir_pw_containers:vector",

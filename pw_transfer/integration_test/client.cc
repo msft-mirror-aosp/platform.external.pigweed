@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -57,10 +57,6 @@ namespace {
 // smaller receive buffer size.
 constexpr int kMaxSocketSendBufferSize = 1;
 
-// This client configures a socket read timeout to allow the RPC dispatch thread
-// to exit gracefully.
-constexpr timeval kSocketReadTimeout = {.tv_sec = 1, .tv_usec = 0};
-
 thread::Options& TransferThreadOptions() {
   static thread::stl::Options options;
   return options;
@@ -84,6 +80,15 @@ pw::Status PerformTransferActions(const pw::transfer::ClientConfig& config) {
   transfer::Thread<2, 2> transfer_thread(chunk_buffer, encode_buffer);
   thread::Thread system_thread(TransferThreadOptions(), transfer_thread);
 
+  // As much as we don't want to dynamically allocate an array,
+  // variable length arrays (VLA) are nonstandard, and a std::vector could cause
+  // references to go stale if the vector's underlying buffer is resized. This
+  // array of TransferResults needs to outlive the loop that performs the
+  // actual transfer actions due to how some references to TransferResult
+  // may persist beyond the lifetime of a transfer.
+  const int num_actions = config.transfer_actions().size();
+  auto transfer_results = std::make_unique<TransferResult[]>(num_actions);
+
   pw::transfer::Client client(rpc::integration_test::client(),
                               rpc::integration_test::kChannelId,
                               transfer_thread);
@@ -92,8 +97,9 @@ pw::Status PerformTransferActions(const pw::transfer::ClientConfig& config) {
   client.set_max_lifetime_retries(config.max_lifetime_retries());
 
   Status status = pw::OkStatus();
-  for (const pw::transfer::TransferAction& action : config.transfer_actions()) {
-    TransferResult result;
+  for (int i = 0; i < num_actions; i++) {
+    const pw::transfer::TransferAction& action = config.transfer_actions()[i];
+    TransferResult& result = transfer_results[i];
     // If no protocol version is specified, default to the latest version.
     pw::transfer::ProtocolVersion protocol_version =
         action.protocol_version() ==
@@ -106,34 +112,50 @@ pw::Status PerformTransferActions(const pw::transfer::ClientConfig& config) {
         pw::transfer::TransferAction::TransferType::
             TransferAction_TransferType_WRITE_TO_SERVER) {
       pw::stream::StdFileReader input(action.file_path().c_str());
-      client.Write(
+      pw::Result<pw::transfer::Client::TransferHandle> handle = client.Write(
           action.resource_id(),
           input,
           [&result](Status status) {
             result.status = status;
             result.completed.release();
           },
-          pw::transfer::cfg::kDefaultChunkTimeout,
-          protocol_version);
-      // Wait for the transfer to complete. We need to do this here so that the
-      // StdFileReader doesn't go out of scope.
-      result.completed.acquire();
+          protocol_version,
+          pw::transfer::cfg::kDefaultClientTimeout,
+          pw::transfer::cfg::kDefaultInitialChunkTimeout,
+          action.initial_offset());
+      if (handle.ok()) {
+        // Wait for the transfer to complete. We need to do this here so that
+        // the StdFileReader doesn't go out of scope.
+        result.completed.acquire();
+      } else {
+        result.status = handle.status();
+      }
+
+      input.Close();
 
     } else if (action.transfer_type() ==
                pw::transfer::TransferAction::TransferType::
                    TransferAction_TransferType_READ_FROM_SERVER) {
       pw::stream::StdFileWriter output(action.file_path().c_str());
-      client.Read(
+      pw::Result<pw::transfer::Client::TransferHandle> handle = client.Read(
           action.resource_id(),
           output,
           [&result](Status status) {
             result.status = status;
             result.completed.release();
           },
-          pw::transfer::cfg::kDefaultChunkTimeout,
-          protocol_version);
-      // Wait for the transfer to complete.
-      result.completed.acquire();
+          protocol_version,
+          pw::transfer::cfg::kDefaultClientTimeout,
+          pw::transfer::cfg::kDefaultInitialChunkTimeout,
+          action.initial_offset());
+      if (handle.ok()) {
+        // Wait for the transfer to complete.
+        result.completed.acquire();
+      } else {
+        result.status = handle.status();
+      }
+
+      output.Close();
     } else {
       PW_LOG_ERROR("Unrecognized transfer action type %d",
                    action.transfer_type());
@@ -141,10 +163,10 @@ pw::Status PerformTransferActions(const pw::transfer::ClientConfig& config) {
       break;
     }
 
-    if (result.status.code() != action.expected_status()) {
+    if (int(result.status.code()) != int(action.expected_status())) {
       PW_LOG_ERROR("Failed to perform action:\n%s",
                    action.DebugString().c_str());
-      status = result.status;
+      status = result.status.ok() ? Status::Unknown() : result.status;
       break;
     }
   }
@@ -191,8 +213,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  int retval = setsockopt(
-      pw::rpc::integration_test::GetClientSocketFd(),
+  int retval = pw::rpc::integration_test::SetClientSockOpt(
       SOL_SOCKET,
       SO_SNDBUF,
       &pw::transfer::integration_test::kMaxSocketSendBufferSize,
@@ -200,17 +221,6 @@ int main(int argc, char* argv[]) {
   PW_CHECK_INT_EQ(retval,
                   0,
                   "Failed to configure socket send buffer size with errno=%d",
-                  errno);
-
-  retval =
-      setsockopt(pw::rpc::integration_test::GetClientSocketFd(),
-                 SOL_SOCKET,
-                 SO_RCVTIMEO,
-                 &pw::transfer::integration_test::kSocketReadTimeout,
-                 sizeof(pw::transfer::integration_test::kSocketReadTimeout));
-  PW_CHECK_INT_EQ(retval,
-                  0,
-                  "Failed to configure socket receive timeout with errno=%d",
                   errno);
 
   if (!pw::transfer::integration_test::PerformTransferActions(config).ok()) {

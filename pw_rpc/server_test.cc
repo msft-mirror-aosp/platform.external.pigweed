@@ -17,17 +17,26 @@
 #include <array>
 #include <cstdint>
 
-#include "gtest/gtest.h"
 #include "pw_assert/check.h"
 #include "pw_rpc/internal/call.h"
 #include "pw_rpc/internal/method.h"
 #include "pw_rpc/internal/packet.h"
-#include "pw_rpc/internal/test_method.h"
 #include "pw_rpc/internal/test_utils.h"
 #include "pw_rpc/service.h"
 #include "pw_rpc_private/fake_server_reader_writer.h"
+#include "pw_rpc_private/test_method.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
+
+class ServerTestHelper {
+ public:
+  static std::tuple<Service*, const internal::Method*> FindMethod(
+      Server& server, uint32_t service_id, uint32_t method_id) {
+    return server.FindMethod(service_id, method_id);
+  }
+};
+
 namespace {
 
 using std::byte;
@@ -344,7 +353,7 @@ TEST_F(BasicServer, CloseChannel_PendingCall) {
   EXPECT_NE(nullptr, GetChannel(server_, 1));
   EXPECT_EQ(static_cast<internal::Endpoint&>(server_).active_call_count(), 0u);
 
-  internal::TestMethod::FakeServerCall call;
+  internal::test::FakeServerReaderWriter call;
   service_42_.method(100).keep_call_active(call);
 
   EXPECT_EQ(
@@ -394,6 +403,31 @@ TEST_F(BasicServer, OpenChannel_AdditionalSlot) {
   constexpr Status kExpected =
       PW_RPC_DYNAMIC_ALLOCATION == 0 ? Status::ResourceExhausted() : OkStatus();
   EXPECT_EQ(kExpected, server_.OpenChannel(19823, output_));
+}
+
+TEST_F(BasicServer, FindMethod_FoundOkOptionallyCheckType) {
+  const auto [service, method] = ServerTestHelper::FindMethod(server_, 1, 100);
+  ASSERT_TRUE(service != nullptr);
+  ASSERT_TRUE(method != nullptr);
+#if PW_RPC_METHOD_STORES_TYPE
+  EXPECT_EQ(MethodType::kBidirectionalStreaming, method->type());
+#endif
+}
+
+TEST_F(BasicServer, FindMethod_NotFound) {
+  {
+    const auto [service, method] =
+        ServerTestHelper::FindMethod(server_, 2, 100);
+    ASSERT_TRUE(service == nullptr);
+    ASSERT_TRUE(method == nullptr);
+  }
+
+  {
+    const auto [service, method] =
+        ServerTestHelper::FindMethod(server_, 1, 101);
+    ASSERT_TRUE(service != nullptr);
+    ASSERT_TRUE(method == nullptr);
+  }
 }
 
 class BidiMethod : public BasicServer {
@@ -617,26 +651,45 @@ TEST_F(BidiMethod, UnregsiterService_AbortsActiveCalls) {
   EXPECT_EQ(Status::Aborted(), on_error_status);
 }
 
-#if PW_RPC_CLIENT_STREAM_END_CALLBACK
-
-TEST_F(BidiMethod, ClientStreamEnd_CallsCallback) {
+TEST_F(BidiMethod, ClientRequestedCompletion_CallsCallback) {
   bool called = false;
-  responder_.set_on_client_stream_end([&called]() { called = true; });
-
+#if PW_RPC_COMPLETION_REQUEST_CALLBACK
+  responder_.set_on_completion_requested([&called]() { called = true; });
+#endif
   ASSERT_EQ(OkStatus(),
-            server_.ProcessPacket(PacketForRpc(PacketType::CLIENT_STREAM_END)));
+            server_.ProcessPacket(
+                PacketForRpc(PacketType::CLIENT_REQUEST_COMPLETION)));
 
   EXPECT_EQ(output_.total_packets(), 0u);
-  EXPECT_TRUE(called);
+  EXPECT_EQ(called, PW_RPC_COMPLETION_REQUEST_CALLBACK);
 }
 
-TEST_F(BidiMethod, ClientStreamEnd_ErrorWhenClosed) {
-  const auto end = PacketForRpc(PacketType::CLIENT_STREAM_END);
+TEST_F(BidiMethod, ClientRequestedCompletion_CallsCallbackIfEnabled) {
+  bool called = false;
+  responder_.set_on_completion_requested_if_enabled(
+      [&called]() { called = true; });
+
+  ASSERT_EQ(OkStatus(),
+            server_.ProcessPacket(
+                PacketForRpc(PacketType::CLIENT_REQUEST_COMPLETION)));
+
+  EXPECT_EQ(output_.total_packets(), 0u);
+  EXPECT_EQ(called, PW_RPC_COMPLETION_REQUEST_CALLBACK);
+}
+
+TEST_F(BidiMethod, ClientRequestedCompletion_ErrorWhenClosed) {
+  const auto end = PacketForRpc(PacketType::CLIENT_REQUEST_COMPLETION);
+  ASSERT_EQ(OkStatus(), server_.ProcessPacket(end));
   ASSERT_EQ(OkStatus(), server_.ProcessPacket(end));
 
-  bool called = false;
-  responder_.set_on_client_stream_end([&called]() { called = true; });
+  ASSERT_EQ(output_.total_packets(), 0u);
+}
 
+TEST_F(BidiMethod, ClientRequestedCompletion_ErrorWhenAlreadyClosed) {
+  ASSERT_EQ(OkStatus(), server_.ProcessPacket(EncodeCancel()));
+  EXPECT_FALSE(responder_.active());
+
+  const auto end = PacketForRpc(PacketType::CLIENT_REQUEST_COMPLETION);
   ASSERT_EQ(OkStatus(), server_.ProcessPacket(end));
 
   ASSERT_EQ(output_.total_packets(), 1u);
@@ -645,8 +698,6 @@ TEST_F(BidiMethod, ClientStreamEnd_ErrorWhenClosed) {
   EXPECT_EQ(packet.type(), PacketType::SERVER_ERROR);
   EXPECT_EQ(packet.status(), Status::FailedPrecondition());
 }
-
-#endif  // PW_RPC_CLIENT_STREAM_END_CALLBACK
 
 class ServerStreamingMethod : public BasicServer {
  protected:
@@ -677,15 +728,55 @@ TEST_F(ServerStreamingMethod, ClientStream_InvalidArgumentError) {
   EXPECT_EQ(packet.status(), Status::InvalidArgument());
 }
 
-TEST_F(ServerStreamingMethod, ClientStreamEnd_InvalidArgumentError) {
+TEST_F(ServerStreamingMethod, ClientRequestedCompletion_CallsCallback) {
+  bool called = false;
+#if PW_RPC_COMPLETION_REQUEST_CALLBACK
+  responder_.set_on_completion_requested([&called]() { called = true; });
+#endif
+
   ASSERT_EQ(OkStatus(),
-            server_.ProcessPacket(PacketForRpc(PacketType::CLIENT_STREAM_END)));
+            server_.ProcessPacket(
+                PacketForRpc(PacketType::CLIENT_REQUEST_COMPLETION)));
+
+  EXPECT_EQ(output_.total_packets(), 0u);
+  EXPECT_EQ(called, PW_RPC_COMPLETION_REQUEST_CALLBACK);
+}
+
+TEST_F(ServerStreamingMethod,
+       ClientRequestedCompletion_CallsCallbackIfEnabled) {
+  bool called = false;
+  responder_.set_on_completion_requested_if_enabled(
+      [&called]() { called = true; });
+
+  ASSERT_EQ(OkStatus(),
+            server_.ProcessPacket(
+                PacketForRpc(PacketType::CLIENT_REQUEST_COMPLETION)));
+
+  EXPECT_EQ(output_.total_packets(), 0u);
+  EXPECT_EQ(called, PW_RPC_COMPLETION_REQUEST_CALLBACK);
+}
+
+TEST_F(ServerStreamingMethod, ClientRequestedCompletion_ErrorWhenClosed) {
+  const auto end = PacketForRpc(PacketType::CLIENT_REQUEST_COMPLETION);
+  ASSERT_EQ(OkStatus(), server_.ProcessPacket(end));
+  ASSERT_EQ(OkStatus(), server_.ProcessPacket(end));
+
+  ASSERT_EQ(output_.total_packets(), 0u);
+}
+
+TEST_F(ServerStreamingMethod,
+       ClientRequestedCompletion_ErrorWhenAlreadyClosed) {
+  ASSERT_EQ(OkStatus(), server_.ProcessPacket(EncodeCancel()));
+  EXPECT_FALSE(responder_.active());
+
+  const auto end = PacketForRpc(PacketType::CLIENT_REQUEST_COMPLETION);
+  ASSERT_EQ(OkStatus(), server_.ProcessPacket(end));
 
   ASSERT_EQ(output_.total_packets(), 1u);
   const Packet& packet =
       static_cast<internal::test::FakeChannelOutput&>(output_).last_packet();
   EXPECT_EQ(packet.type(), PacketType::SERVER_ERROR);
-  EXPECT_EQ(packet.status(), Status::InvalidArgument());
+  EXPECT_EQ(packet.status(), Status::FailedPrecondition());
 }
 
 }  // namespace

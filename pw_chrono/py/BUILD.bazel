@@ -20,6 +20,7 @@ py_library(
         "pw_chrono/__init__.py",
         "pw_chrono/timestamp_analyzer.py",
     ],
+    imports = ["."],
     deps = [
         "//pw_chrono:chrono_proto_pb2",
     ],

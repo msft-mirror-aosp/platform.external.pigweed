@@ -18,11 +18,17 @@ package {
 
 cc_library_headers {
     name: "pw_log_null_headers",
-    cpp_std: "c++2a",
+    cpp_std: "c++20",
     vendor_available: true,
     export_include_dirs: [
         "public",
         "public_overrides",
     ],
     host_supported: true,
+    header_libs: [
+        "pw_preprocessor_headers",
+    ],
+    export_header_lib_headers: [
+        "pw_preprocessor_headers",
+    ],
 }

@@ -12,33 +12,34 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-// Features from the <bit> header introduced in C++20.
+// Low-level bit operations including std::endian from C++20.
 #pragma once
 
-#if __has_include(<bit>)
-#include <bit>
-#endif  // __has_include(<bit>)
+#include <climits>
+
+#include "lib/stdcompat/bit.h"
 
 namespace pw {
 
-#ifdef __cpp_lib_endian
+using ::cpp20::endian;
 
-using std::endian;
+namespace bytes {
 
-#elif defined(__GNUC__)
+/// Extends the nth bit to the left. Useful for expanding singed values into
+/// larger integer types.
+template <std::size_t kBitWidth, typename T>
+constexpr T SignExtend(T nbit_value) {
+  static_assert(std::is_integral_v<T>);
+  static_assert(kBitWidth < (sizeof(T) * CHAR_BIT));
 
-enum class endian {
-  little = __ORDER_LITTLE_ENDIAN__,
-  big = __ORDER_BIG_ENDIAN__,
-  native = __BYTE_ORDER__,
-};
+  using SignedT = std::make_signed_t<T>;
 
-#else
+  constexpr std::size_t extension_bits =
+      (sizeof(SignedT) * CHAR_BIT) - kBitWidth;
 
-static_assert(false,
-              "The pw::endian enum is not defined for this compiler. Add a "
-              "definition to pw_bytes/bit.h.");
+  SignedT nbit_temp = static_cast<SignedT>(nbit_value);
+  return ((nbit_temp << extension_bits) >> extension_bits);
+}
 
-#endif  // __cpp_lib_endian
-
+}  // namespace bytes
 }  // namespace pw

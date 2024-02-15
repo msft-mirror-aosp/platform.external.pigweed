@@ -12,12 +12,18 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-import {Message} from 'google-protobuf';
-import {Status} from 'pigweedjs/pw_status';
+import { Message } from 'google-protobuf';
+import { Status } from 'pigweedjs/pw_status';
 
-import {Call} from './call';
-import {Channel, Method, Service} from './descriptors';
+import { Call } from './call';
+import { Channel, Method, Service } from './descriptors';
 import * as packets from './packets';
+
+/** Max number that can fit into a 2-byte varint */
+const MAX_CALL_ID = 1 << 14;
+/** Calls with ID of `kOpenCallId` were unrequested, and are updated to have the
+    call ID of the first matching request. */
+const OPEN_CALL_ID = 2 ** 32 - 1;
 
 /** Data class for a pending RPC call. */
 export class Rpc {
@@ -31,19 +37,19 @@ export class Rpc {
     this.method = method;
   }
 
-  /** Returns channel service method id tuple */
-  get idSet(): [number, number, number] {
-    return [this.channel.id, this.service.id, this.method.id];
+  /** Returns channel service method callId tuple */
+  getIdSet(callId: number): [number, number, number, number] {
+    return [this.channel.id, this.service.id, this.method.id, callId];
   }
 
   /**
-   * Returns a string sequence to uniquely identify channel, service, and
-   * method. This can be used to hash the Rpc.
+   * Returns a string sequence to uniquely identify channel, service, method
+   * and call ID. This can be used to hash the Rpc.
    *
-   * For example: "12346789.23452345.12341234"
+   * For example: "12346789.23452345.12341234.34"
    */
-  get idString(): string {
-    return `${this.channel.id}.${this.service.id}.${this.method.id}`;
+  getIdString(callId: number): string {
+    return `${this.channel.id}.${this.service.id}.${this.method.id}.${callId}`;
   }
 
   toString(): string {
@@ -57,12 +63,19 @@ export class Rpc {
 /** Tracks pending RPCs and encodes outgoing RPC packets. */
 export class PendingCalls {
   pending: Map<string, Call> = new Map();
+  nextCallId: number = 0;
 
   /** Starts the provided RPC and returns the encoded packet to send. */
   request(rpc: Rpc, request: Message, call: Call): Uint8Array {
     this.open(rpc, call);
     console.log(`Starting ${rpc}`);
-    return packets.encodeRequest(rpc.idSet, request);
+    return packets.encodeRequest(rpc.getIdSet(call.callId), request);
+  }
+
+  allocateCallId(): number {
+    const callId = this.nextCallId;
+    this.nextCallId = (this.nextCallId + 1) % MAX_CALL_ID;
+    return callId;
   }
 
   /** Calls request and sends the resulting packet to the channel. */
@@ -70,10 +83,10 @@ export class PendingCalls {
     rpc: Rpc,
     call: Call,
     ignoreError: boolean,
-    request?: Message
+    request?: Message,
   ): Call | undefined {
     const previous = this.open(rpc, call);
-    const packet = packets.encodeRequest(rpc.idSet, request);
+    const packet = packets.encodeRequest(rpc.getIdSet(call.callId), request);
     try {
       rpc.channel.send(packet);
     } catch (error) {
@@ -93,37 +106,37 @@ export class PendingCalls {
    */
   open(rpc: Rpc, call: Call): Call | undefined {
     console.debug(`Starting ${rpc}`);
-    const previous = this.pending.get(rpc.idString);
-    this.pending.set(rpc.idString, call);
+    const previous = this.pending.get(rpc.getIdString(call.callId));
+    this.pending.set(rpc.getIdString(call.callId), call);
     return previous;
   }
 
-  sendClientStream(rpc: Rpc, message: Message) {
-    if (this.getPending(rpc) === undefined) {
+  sendClientStream(rpc: Rpc, message: Message, callId: number) {
+    if (this.getPending(rpc, callId) === undefined) {
       throw new Error(`Attempt to send client stream for inactive RPC: ${rpc}`);
     }
-    rpc.channel.send(packets.encodeClientStream(rpc.idSet, message));
+    rpc.channel.send(packets.encodeClientStream(rpc.getIdSet(callId), message));
   }
 
-  sendClientStreamEnd(rpc: Rpc) {
-    if (this.getPending(rpc) === undefined) {
+  sendClientStreamEnd(rpc: Rpc, callId: number) {
+    if (this.getPending(rpc, callId) === undefined) {
       throw new Error(`Attempt to send client stream for inactive RPC: ${rpc}`);
     }
-    rpc.channel.send(packets.encodeClientStreamEnd(rpc.idSet));
+    rpc.channel.send(packets.encodeClientStreamEnd(rpc.getIdSet(callId)));
   }
 
   /** Cancels the RPC. Returns the CLIENT_ERROR packet to send. */
-  cancel(rpc: Rpc): Uint8Array {
+  cancel(rpc: Rpc, callId: number): Uint8Array {
     console.debug(`Cancelling ${rpc}`);
-    this.pending.delete(rpc.idString);
-    return packets.encodeCancel(rpc.idSet);
+    this.pending.delete(rpc.getIdString(callId));
+    return packets.encodeCancel(rpc.getIdSet(callId));
   }
 
   /** Calls cancel and sends the cancel packet, if any, to the channel. */
-  sendCancel(rpc: Rpc): boolean {
+  sendCancel(rpc: Rpc, callId: number): boolean {
     let packet: Uint8Array | undefined;
     try {
-      packet = this.cancel(rpc);
+      packet = this.cancel(rpc, callId);
     } catch (err) {
       return false;
     }
@@ -135,13 +148,25 @@ export class PendingCalls {
   }
 
   /** Gets the pending RPC's call. If status is set, clears the RPC. */
-  getPending(rpc: Rpc, status?: Status): Call | undefined {
+  getPending(rpc: Rpc, callId: number, status?: Status): Call | undefined {
+    let call: Call | undefined = this.pending.get(rpc.getIdString(callId));
+    if (callId === OPEN_CALL_ID) {
+      // Calls with ID `OPEN_CALL_ID` were unrequested, and are updated to
+      // have the call ID of the first matching request.
+      const allPendingCalls = Array.from(this.pending.values());
+      for (const pending in allPendingCalls) {
+        const curCall = allPendingCalls[pending];
+        if (curCall.rpc.getIdString(0) === rpc.getIdString(0)) {
+          call = curCall;
+          break;
+        }
+      }
+    }
     if (status === undefined) {
-      return this.pending.get(rpc.idString);
+      return call;
     }
 
-    const call = this.pending.get(rpc.idString);
-    this.pending.delete(rpc.idString);
+    this.pending.delete(rpc.getIdString(callId));
     return call;
   }
 }

@@ -13,27 +13,33 @@
 # the License.
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
+    "pw_cc_test",
 )
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_i2c_mcuxpresso",
     srcs = ["initiator.cc"],
     hdrs = ["public/pw_i2c_mcuxpresso/initiator.h"],
     includes = ["public"],
-    # TODO(b/259153338): Get this to build.
-    tags = ["manual"],
     deps = [
         "//pw_chrono:system_clock",
+        "//pw_i2c:address",
         "//pw_i2c:initiator",
         "//pw_status",
         "//pw_sync:interrupt_spin_lock",
         "//pw_sync:lock_annotations",
         "//pw_sync:mutex",
         "//pw_sync:timed_thread_notification",
+        "@pigweed//targets:mcuxpresso_sdk",
     ],
+)
+
+pw_cc_test(
+    name = "initiator_test",
+    srcs = ["initiator_test.cc"],
+    deps = [":pw_i2c_mcuxpresso"],
 )

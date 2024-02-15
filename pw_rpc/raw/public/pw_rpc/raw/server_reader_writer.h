@@ -75,7 +75,8 @@ class RawServerReaderWriter : private internal::ServerCall {
   // Functions for setting the callbacks.
   using internal::Call::set_on_error;
   using internal::Call::set_on_next;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
   // Sends a response packet with the given raw payload.
   using internal::Call::Write;
@@ -85,8 +86,7 @@ class RawServerReaderWriter : private internal::ServerCall {
   }
 
   // Allow use as a generic RPC Writer.
-  using internal::Call::operator Writer&;
-  using internal::Call::operator const Writer&;
+  using internal::Call::as_writer;
 
  protected:
   RawServerReaderWriter(const internal::LockedCallContext& context,
@@ -140,7 +140,8 @@ class RawServerReader : private RawServerReaderWriter {
   using RawServerReaderWriter::active;
   using RawServerReaderWriter::channel_id;
 
-  using RawServerReaderWriter::set_on_client_stream_end;
+  using RawServerReaderWriter::set_on_completion_requested;
+  using RawServerReaderWriter::set_on_completion_requested_if_enabled;
   using RawServerReaderWriter::set_on_error;
   using RawServerReaderWriter::set_on_next;
 
@@ -188,14 +189,15 @@ class RawServerWriter : private RawServerReaderWriter {
   using RawServerReaderWriter::active;
   using RawServerReaderWriter::channel_id;
 
+  using RawServerReaderWriter::set_on_completion_requested;
+  using RawServerReaderWriter::set_on_completion_requested_if_enabled;
   using RawServerReaderWriter::set_on_error;
 
   using RawServerReaderWriter::Finish;
   using RawServerReaderWriter::Write;
 
   // Allow use as a generic RPC Writer.
-  using internal::Call::operator Writer&;
-  using internal::Call::operator const Writer&;
+  using internal::Call::as_writer;
 
  private:
   friend class internal::RawMethod;

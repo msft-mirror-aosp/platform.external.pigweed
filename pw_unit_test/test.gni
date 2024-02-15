@@ -16,17 +16,29 @@ import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/python_action.gni")
 import("$dir_pw_build/target_types.gni")
+import("$dir_pw_build/test_info.gni")
 import("$dir_pw_compilation_testing/negative_compilation_test.gni")
+import("$dir_pw_toolchain/generate_toolchain.gni")
 import("$dir_pw_toolchain/host_clang/toolchains.gni")
 
 declare_args() {
-  # The GoogleTest implementation to use for Pigweed unit tests. This library
-  # provides "gtest/gtest.h" and related headers. Defaults to
-  # pw_unit_test:light, which implements a subset of GoogleTest.
+  # The unit test framework implementation. Defaults to
+  # pw_unit_test:light, which implements a subset of GoogleTest safe to run on
+  # device. Set to //pw_unit_test:googletest when using GoogleTest.
   #
   # Type: string (GN path to a source set)
   # Usage: toolchain-controlled only
-  pw_unit_test_GOOGLETEST_BACKEND = "$dir_pw_unit_test:light"
+  pw_unit_test_BACKEND = "$dir_pw_unit_test:light"
+
+  # The GoogleTest library target. This is not a pw_unit_test backend (anymore).
+  # Use this to depend on the GoogleTest library directly *WITHOUT* using the
+  # pw_unit_test facade. The //pw_unit_test:googletest backend depends on this
+  # library target.
+  # Defaults to //third_party/googletest.
+  #
+  # Type: string (GN path to a source set)
+  # Usage: toolchain-controlled only
+  pw_unit_test_GOOGLETEST_BACKEND = "$dir_pw_third_party/googletest"
 
   # Implementation of a main function for ``pw_test`` unit test binaries. Must
   # be set to an appropriate target for the pw_unit_test backend.
@@ -98,6 +110,11 @@ declare_args() {
   # Type: string (path to a .gni file)
   # Usage: toolchain-controlled only
   pw_unit_test_EXECUTABLE_TARGET_TYPE_FILE = ""
+
+  # If true, the pw_unit_test target, pw_test targets, and pw_test_group targets
+  # will define `testonly = true`.  This is false by default for backwards
+  # compatibility.
+  pw_unit_test_TESTONLY = false
 }
 
 if (pw_unit_test_EXECUTABLE_TARGET_TYPE != "pw_executable" &&
@@ -134,28 +151,38 @@ template("pw_internal_disableable_target") {
       if (defined(invoker.public)) {
         inputs += invoker.public
       }
+
+      if (defined(invoker.source_gen_deps)) {
+        deps = invoker.source_gen_deps
+      }
     }
   }
 
   target(invoker.target_type, _actual_target_name) {
+    sources = []
+    public_deps = []
+    deps = []
     forward_variables_from(invoker,
                            "*",
                            [
-                             "negative_compilation_tests",
                              "enable_if",
+                             "negative_compilation_tests",
+                             "source_gen_deps",
                              "target_type",
                              "test_automatic_runner_args",
                            ])
 
     # Remove "" from dependencies. This allows disabling targets if a variable
     # (e.g. a backend) is empty.
-    if (defined(public_deps)) {
-      public_deps += [ "" ]
-      public_deps -= [ "" ]
-    }
-    if (defined(deps)) {
-      deps += [ "" ]
-      deps -= [ "" ]
+    public_deps += [ "" ]
+    public_deps -= [ "" ]
+    deps += [ "" ]
+    deps -= [ "" ]
+    if (defined(invoker.source_gen_deps)) {
+      deps += invoker.source_gen_deps
+      foreach(source_gen_dep, invoker.source_gen_deps) {
+        sources += get_target_outputs(source_gen_dep)
+      }
     }
   }
 }
@@ -171,15 +198,30 @@ template("pw_internal_disableable_target") {
 # creates a "${test_name}.run" target which runs the unit test executable after
 # building it.
 #
+# Targets defined using this template will produce test metadata with a
+# `test_type` of "unit_test" and an additional `test_directory` value describing
+# the location of the test binary within the build output.
+#
 # Args:
 #   - enable_if: (optional) Conditionally enables or disables this test. The
 #         test target and *.run target do nothing when the test is disabled. The
 #         disabled test can still be built and run with the
 #         <target_name>.DISABLED and <target_name>.DISABLED.run targets.
 #         Defaults to true (enable_if).
+#   - envvars: (optional) A list of `var_name=value` strings to set as
+#         environment variables when running the target exectuable.
+#   - tags: (optional) List of strings to include in the test metadata. These
+#         have no effect on the build, but may be used by external tools to
+#         distinguish between tests. For example, a tool may want to skip tests
+#         tagged as "slow".
 #   - extra_metadata: (optional) Extra metadata to include in test group
 #         metadata output. This can be used to pass information about this test
 #         to later build tasks.
+#   - source_gen_deps: (optional) List of targets which generate `sources` for
+#         this test. These `deps` will be included even if the test is disabled.
+#         `get_target_outputs` is used to add the generated `sources` to the
+#         test's `sources` list, so these targets must appear earlier in the
+#         same build file.
 #   - All of the regular "executable" target args are accepted.
 #
 template("pw_test") {
@@ -190,10 +232,8 @@ template("pw_test") {
   _test_target_name = target_name
 
   _test_is_enabled = !defined(invoker.enable_if) || invoker.enable_if
-  _is_coverage_run =
-      pw_toolchain_COVERAGE_ENABLED &&
-      filter_include(pw_toolchain_SANITIZERS, [ "coverage" ]) == [ "coverage" ]
-  if (_is_coverage_run) {
+
+  if (pw_toolchain_COVERAGE_ENABLED) {
     _profraw_path = "$target_out_dir/test/$_test_target_name.profraw"
   }
 
@@ -202,12 +242,6 @@ template("pw_test") {
   _test_output_dir = "${target_out_dir}/test"
   if (defined(invoker.output_dir)) {
     _test_output_dir = invoker.output_dir
-  }
-
-  _extra_metadata = {
-  }
-  if (defined(invoker.extra_metadata)) {
-    _extra_metadata = invoker.extra_metadata
   }
 
   _test_main = pw_unit_test_MAIN
@@ -219,6 +253,7 @@ template("pw_test") {
   pw_internal_disableable_target("$target_name.lib") {
     target_type = "pw_source_set"
     enable_if = _test_is_enabled
+    testonly = pw_unit_test_TESTONLY
 
     # It is possible that the executable target type has been overriden by
     # pw_unit_test_EXECUTABLE_TARGET_TYPE, which may allow for additional
@@ -264,7 +299,7 @@ template("pw_test") {
       "output_name",
       "public",
       "sources",
-      "testonly",
+      "source_gen_deps",
       "visibility",
 
       # pw_source_set variables
@@ -288,36 +323,50 @@ template("pw_test") {
     }
   }
 
+  # Metadata for this test when used as part of a pw_test_group target.
+  _test_metadata = "${target_name}.metadata"
+  _extra_metadata = {
+    forward_variables_from(invoker, [ "extra_metadata" ])
+    test_directory = rebase_path(_test_output_dir, root_build_dir)
+  }
+  pw_test_info(_test_metadata) {
+    test_type = "unit_test"
+    test_name = _test_target_name
+    forward_variables_from(invoker, [ "tags" ])
+    extra_metadata = _extra_metadata
+  }
+
   pw_internal_disableable_target(_test_target_name) {
     target_type = pw_unit_test_EXECUTABLE_TARGET_TYPE
     enable_if = _test_is_enabled
+    testonly = pw_unit_test_TESTONLY
 
     # Include configs, deps, etc. from the pw_test in the executable as well as
     # the library to ensure that linker flags propagate to the executable.
+    deps = []
     forward_variables_from(invoker,
                            "*",
                            [
                              "extra_metadata",
                              "metadata",
                              "sources",
+                             "source_gen_deps",
                              "public",
                            ])
+    deps += [
+      ":$_test_metadata",
+      ":$_test_target_name.lib",
+    ]
+    if (_test_main != "") {
+      deps += [ _test_main ]
+    }
+    output_dir = _test_output_dir
 
-    # Metadata for this test when used as part of a pw_test_group target.
     metadata = {
-      tests = [
-        {
-          type = "test"
-          test_name = _test_target_name
-          test_directory = rebase_path(_test_output_dir, root_build_dir)
-          extra_metadata = _extra_metadata
-        },
-      ]
-
       # N.B.: This is placed here instead of in $_test_target_name._run because
       # pw_test_group only forwards the metadata from _test_target_name and not
       # _test_target_name._run or _test_target_name.run.
-      if (_is_coverage_run) {
+      if (pw_toolchain_COVERAGE_ENABLED) {
         profraws = [
           {
             type = "profraw"
@@ -325,23 +374,17 @@ template("pw_test") {
           },
         ]
       }
-    }
 
-    if (!defined(deps)) {
-      deps = []
+      # Only collect test metadata for the test itself.
+      test_barrier = [ ":$_test_metadata" ]
     }
-    deps += [ ":$_test_target_name.lib" ]
-    if (_test_main != "") {
-      deps += [ _test_main ]
-    }
-
-    output_dir = _test_output_dir
   }
 
   if (defined(invoker.negative_compilation_tests) &&
       invoker.negative_compilation_tests) {
     pw_cc_negative_compilation_test("$target_name.nc_test") {
       forward_variables_from(invoker, "*")
+      testonly = pw_unit_test_TESTONLY
 
       # Add a dependency on pw_unit_test since it is implied for pw_unit_test
       # targets.
@@ -363,6 +406,7 @@ template("pw_test") {
 
       # Create a placeholder .run target for the regular version of the test.
       group(_test_target_name + ".run") {
+        testonly = pw_unit_test_TESTONLY
         deps = [ ":$_test_target_name" ]
       }
     }
@@ -396,16 +440,25 @@ template("pw_test") {
         "--test",
         "<TARGET_FILE(:$_test_to_run)>",
       ]
+      if (defined(invoker.envvars)) {
+        foreach(envvars, envvars) {
+          args += [
+            "--env",
+            envvar,
+          ]
+        }
+      }
       if (pw_unit_test_AUTOMATIC_RUNNER_TIMEOUT != "") {
         args += [
           "--timeout",
           pw_unit_test_AUTOMATIC_RUNNER_TIMEOUT,
         ]
       }
-      if (_is_coverage_run) {
+      if (pw_toolchain_COVERAGE_ENABLED) {
+        _llvm_profile_file = rebase_path(_profraw_path, root_build_dir)
         args += [
-          "--coverage-profraw",
-          rebase_path(_profraw_path, root_build_dir),
+          "--env",
+          "LLVM_PROFILE_FILE=" + _llvm_profile_file,
         ]
       }
 
@@ -414,17 +467,19 @@ template("pw_test") {
       }
 
       outputs = []
-      if (_is_coverage_run) {
+      if (pw_toolchain_COVERAGE_ENABLED) {
         outputs += [ _profraw_path ]
       }
       stamp = true
     }
 
     group(_test_to_run + ".run") {
+      testonly = pw_unit_test_TESTONLY
       public_deps = [ ":$_test_to_run._run" ]
     }
   } else {
     group(_test_target_name + ".run") {
+      testonly = pw_unit_test_TESTONLY
       public_deps = [ ":$_test_target_name" ]
     }
   }
@@ -432,16 +487,21 @@ template("pw_test") {
 
 # Defines a related collection of unit tests.
 #
-# pw_test_group targets output a JSON metadata file for the Pigweed test runner.
+# Targets defined using this template will produce test metadata with a
+# `test_type` of "test_group" and an additional `deps` list describing the tests
+# collected by this target.
 #
 # Args:
 #   - tests: List of pw_test targets for each of the tests in the group.
 #   - group_deps: (optional) pw_test_group targets on which this group depends.
 #   - enable_if: (optional) Conditionally enables or disables this test group.
 #         If false, an empty group is created. Defaults to true.
+#   - output_metadata: (optional) If true, generates a JSON file containing the
+#         test metadata for this group and all of its dependencies. Defaults to
+#         false.
+#
 template("pw_test_group") {
   _group_target = target_name
-  _group_deps_metadata = []
   if (defined(invoker.tests)) {
     _deps = invoker.tests
   } else {
@@ -457,22 +517,11 @@ template("pw_test_group") {
 
   if (_group_is_enabled) {
     if (defined(invoker.group_deps)) {
-      # If the group specified any other group dependencies, create a metadata
-      # entry for each of them indicating that they are another group and a
-      # group target to collect that metadata.
-      foreach(dep, invoker.group_deps) {
-        _group_deps_metadata += [
-          {
-            type = "dep"
-            group = get_label_info(dep, "label_no_toolchain")
-          },
-        ]
-      }
-
       _deps += invoker.group_deps
     }
 
     group(_group_target + ".lib") {
+      testonly = pw_unit_test_TESTONLY
       deps = []
       foreach(_target, _deps) {
         _dep_target = get_label_info(_target, "label_no_toolchain")
@@ -481,46 +530,53 @@ template("pw_test_group") {
       }
     }
 
-    _metadata_group_target = "${target_name}_pw_test_group_metadata"
-    group(_metadata_group_target) {
-      metadata = {
-        group_deps = _group_deps_metadata
-        self = [
-          {
-            type = "self"
-            name = get_label_info(":$_group_target", "label_no_toolchain")
-          },
-        ]
-
-        # Metadata from the group's own unit test targets is forwarded through
-        # the group dependencies group. This entry is listed as a "walk_key" in
-        # the generated file so that only test targets' metadata (not group
-        # targets) appear in the output.
-        if (defined(invoker.tests)) {
-          propagate_metadata_from = invoker.tests
+    # Create a manifest entry to indicate which tests are a part of this group.
+    _test_group_metadata = "${target_name}_pw_test_group_metadata"
+    _extra_metadata = {
+      forward_variables_from(invoker, [ "extra_metadata" ])
+      if (_deps != []) {
+        deps = []
+        foreach(dep, _deps) {
+          deps += [ get_label_info(dep, "label_no_toolchain") ]
         }
       }
+    }
+    pw_test_info(_test_group_metadata) {
+      testonly = pw_unit_test_TESTONLY
+      build_label = _group_target
+      test_type = "test_group"
+      test_name = rebase_path(get_label_info(_group_target, "dir"), "//")
+      extra_metadata = _extra_metadata
       deps = _deps
     }
 
-    _test_group_deps = [ ":$_metadata_group_target" ]
-
-    generated_file(_group_target) {
-      outputs = [ "$target_out_dir/$target_name.testinfo.json" ]
-      data_keys = [
-        "group_deps",
-        "self",
-        "tests",
-      ]
-      walk_keys = [ "propagate_metadata_from" ]
-      output_conversion = "json"
-      deps = _test_group_deps
+    if (defined(invoker.output_metadata) && invoker.output_metadata) {
+      generated_file(_group_target) {
+        testonly = pw_unit_test_TESTONLY
+        outputs = [ "$target_out_dir/$target_name.testinfo.json" ]
+        data_keys = [
+          "test_groups",
+          "unit_tests",
+          "action_tests",
+          "perf_tests",
+          "fuzz_tests",
+        ]
+        walk_keys = [ "test_barrier" ]
+        output_conversion = "json"
+        deps = [ ":$_test_group_metadata" ]
+      }
+    } else {
+      group(_group_target) {
+        testonly = pw_unit_test_TESTONLY
+        deps = [ ":$_test_group_metadata" ]
+      }
     }
 
     # If automatic test running is enabled, create a *.run group that collects
     # all of the individual *.run targets and groups.
     if (pw_unit_test_AUTOMATIC_RUNNER != "") {
       group(_group_target + ".run") {
+        testonly = pw_unit_test_TESTONLY
         deps = [ ":$_group_target" ]
         foreach(_target, _deps) {
           _dep_target = get_label_info(_target, "label_no_toolchain")

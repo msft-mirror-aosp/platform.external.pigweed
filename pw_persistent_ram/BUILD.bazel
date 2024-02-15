@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,7 +21,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_persistent_ram",
     srcs = ["persistent_buffer.cc"],
     hdrs = [
@@ -35,6 +34,18 @@ pw_cc_library(
         "//pw_bytes",
         "//pw_checksum",
         "//pw_stream",
+    ],
+)
+
+cc_library(
+    name = "flat_file_system_entry",
+    hdrs = [
+        "public/pw_persistent_ram/flat_file_system_entry.h",
+    ],
+    includes = ["public"],
+    deps = [
+        "//pw_file:flat_file_system",
+        "//pw_persistent_ram",
     ],
 )
 
@@ -63,5 +74,15 @@ pw_cc_test(
         ":pw_persistent_ram",
         "//pw_random",
         "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "flat_file_system_entry_test",
+    srcs = [
+        "flat_file_system_entry_test.cc",
+    ],
+    deps = [
+        ":flat_file_system_entry",
     ],
 )

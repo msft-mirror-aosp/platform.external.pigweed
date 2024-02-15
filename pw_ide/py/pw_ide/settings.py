@@ -15,31 +15,23 @@
 
 import enum
 from inspect import cleandoc
-import glob
 import os
 from pathlib import Path
-from typing import Any, cast, Dict, List, Literal, Optional, Union
+from typing import Any, cast, Dict, List, Literal, Optional, Tuple, Union
 import yaml
 
+from pw_cli.env import pigweed_environment
 from pw_cli.yaml_config_loader_mixin import YamlConfigLoaderMixin
 
+env = pigweed_environment()
+env_vars = vars(env)
+
 PW_IDE_DIR_NAME = '.pw_ide'
-PW_IDE_DEFAULT_DIR = (
-    Path(os.path.expandvars('$PW_PROJECT_ROOT')) / PW_IDE_DIR_NAME
-)
-
-PW_PIGWEED_CIPD_INSTALL_DIR = Path(
-    os.path.expandvars('$PW_PIGWEED_CIPD_INSTALL_DIR')
-)
-
-PW_ARM_CIPD_INSTALL_DIR = Path(os.path.expandvars('$PW_ARM_CIPD_INSTALL_DIR'))
+PW_IDE_DEFAULT_DIR = Path(env.PW_PROJECT_ROOT) / PW_IDE_DIR_NAME
 
 _DEFAULT_BUILD_DIR_NAME = 'out'
-_DEFAULT_BUILD_DIR = (
-    Path(os.path.expandvars('$PW_PROJECT_ROOT')) / _DEFAULT_BUILD_DIR_NAME
-)
+_DEFAULT_BUILD_DIR = env.PW_PROJECT_ROOT / _DEFAULT_BUILD_DIR_NAME
 
-_DEFAULT_COMPDB_PATHS = [_DEFAULT_BUILD_DIR]
 _DEFAULT_TARGET_INFERENCE = '?'
 
 SupportedEditorName = Literal['vscode']
@@ -54,12 +46,14 @@ _DEFAULT_SUPPORTED_EDITORS: Dict[SupportedEditorName, bool] = {
 }
 
 _DEFAULT_CONFIG: Dict[str, Any] = {
+    'cascade_targets': False,
+    'clangd_alternate_path': None,
     'clangd_additional_query_drivers': [],
-    'build_dir': _DEFAULT_BUILD_DIR,
-    'compdb_paths': _DEFAULT_BUILD_DIR_NAME,
+    'compdb_gen_cmd': None,
+    'compdb_search_paths': [_DEFAULT_BUILD_DIR_NAME],
     'default_target': None,
     'editors': _DEFAULT_SUPPORTED_EDITORS,
-    'setup': ['pw --no-banner ide cpp --gn --set-default --no-override'],
+    'sync': ['pw --no-banner ide cpp --process'],
     'targets': [],
     'target_inference': _DEFAULT_TARGET_INFERENCE,
     'working_dir': PW_IDE_DEFAULT_DIR,
@@ -68,6 +62,49 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
 _DEFAULT_PROJECT_FILE = Path('$PW_PROJECT_ROOT/.pw_ide.yaml')
 _DEFAULT_PROJECT_USER_FILE = Path('$PW_PROJECT_ROOT/.pw_ide.user.yaml')
 _DEFAULT_USER_FILE = Path('$HOME/.pw_ide.yaml')
+
+
+def _expand_any_vars(input_path: Path) -> Path:
+    """Expand any environment variables in a path.
+
+    Python's ``os.path.expandvars`` will only work on an isolated environment
+    variable name. In shell, you can expand variables within a larger command
+    or path. We replicate that functionality here.
+    """
+    outputs = []
+
+    for token in input_path.parts:
+        expanded_var = os.path.expandvars(token)
+
+        if expanded_var == token:
+            outputs.append(token)
+        else:
+            outputs.append(expanded_var)
+
+    # pylint: disable=no-value-for-parameter
+    return Path(os.path.join(*outputs))
+    # pylint: enable=no-value-for-parameter
+
+
+def _expand_any_vars_str(input_path: str) -> str:
+    """`_expand_any_vars`, except takes and returns a string instead of path."""
+    return str(_expand_any_vars(Path(input_path)))
+
+
+def _parse_dir_path(input_path_str: str) -> Path:
+    if (path := Path(input_path_str)).is_absolute():
+        return path
+
+    return Path.cwd() / path
+
+
+def _parse_compdb_search_path(
+    input_data: Union[str, Tuple[str, str]], default_inference: str
+) -> Tuple[Path, str]:
+    if isinstance(input_data, (tuple, list)):
+        return _parse_dir_path(input_data[0]), input_data[1]
+
+    return _parse_dir_path(input_data), default_inference
 
 
 class PigweedIdeSettings(YamlConfigLoaderMixin):
@@ -103,30 +140,34 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return Path(self._config.get('working_dir', PW_IDE_DEFAULT_DIR))
 
     @property
-    def build_dir(self) -> Path:
-        """The build system's root output directory.
+    def compdb_gen_cmd(self) -> Optional[str]:
+        """The command that should be run to generate a compilation database.
 
-        We will use this as the output directory when automatically running
-        build system commands, and will use it to resolve target names using
-        target name inference when processing compilation databases. This can
-        be the same build directory used for general-purpose builds, but it
-        does not have to be.
+        Defining this allows ``pw_ide`` to automatically generate a compilation
+        database if it suspects one has not been generated yet before a sync.
         """
-        return Path(self._config.get('build_dir', _DEFAULT_BUILD_DIR))
+        return self._config.get('compdb_gen_cmd')
 
     @property
-    def compdb_paths(self) -> str:
-        """A path glob to search for compilation databases.
+    def compdb_search_paths(self) -> List[Tuple[Path, str]]:
+        """Paths to directories to search for compilation databases.
 
-        These paths can be to files or to directories. Paths that are
-        directories will be appended with the default file name for
-        ``clangd`` compilation databases, ``compile_commands.json``.
+        If you're using a build system to generate compilation databases, this
+        may simply be your build output directory. However, you can add
+        additional directories to accommodate compilation databases from other
+        sources.
+
+        Entries can be just directories, in which case the default target
+        inference pattern will be used. Or entries can be tuples of a directory
+        and a target inference pattern. See the documentation for
+        ``target_inference`` for more information.
         """
-        return self._config.get('compdb_paths', _DEFAULT_BUILD_DIR_NAME)
-
-    @property
-    def compdb_paths_expanded(self) -> List[Path]:
-        return [Path(node) for node in glob.iglob(self.compdb_paths)]
+        return [
+            _parse_compdb_search_path(search_path, self.target_inference)
+            for search_path in self._config.get(
+                'compdb_search_paths', _DEFAULT_BUILD_DIR
+            )
+        ]
 
     @property
     def targets(self) -> List[str]:
@@ -184,6 +225,14 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         ignored. For example, a glob indicating that the directory two levels
         down from the build directory root has the target name would be
         expressed with ``*/*/?``.
+
+        Note that the build artifact path is relative to the compilation
+        database search path that found the file. For example, for a compilation
+        database search path of ``{project dir}/out``, for the purposes of
+        target inference, the build artifact path is relative to the ``{project
+        dir}/out`` directory. Target inference patterns can be defined for each
+        compilation database search path. See the documentation for
+        ``compdb_search_paths`` for more information.
         """
         return self._config.get('target_inference', _DEFAULT_TARGET_INFERENCE)
 
@@ -200,10 +249,10 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return self._config.get('default_target', None)
 
     @property
-    def setup(self) -> List[str]:
+    def sync(self) -> List[str]:
         """A sequence of commands to automate IDE features setup.
 
-        ``pw ide setup`` should do everything necessary to get the project from
+        ``pw ide sync`` should do everything necessary to get the project from
         a fresh checkout to a working default IDE experience. This defines the
         list of commands that makes that happen, which will be executed
         sequentially in subprocesses. These commands should be idempotent, so
@@ -211,7 +260,23 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         configuration without the risk of putting those features in a bad or
         unexpected state.
         """
-        return self._config.get('setup', list())
+        return self._config.get('sync', list())
+
+    @property
+    def clangd_alternate_path(self) -> Optional[Path]:
+        """An alternate path to ``clangd`` to use instead of Pigweed's.
+
+        Pigweed provides the ``clang`` toolchain, including ``clangd``, via
+        CIPD, and by default, ``pw_ide`` will look for that toolchain in the
+        CIPD directory at ``$PW_PIGWEED_CIPD_INSTALL_DIR`` *or* in an alternate
+        CIPD directory specified by ``$PW_{project name}_CIPD_INSTALL_DIR`` if
+        it exists.
+
+        If your project needs to use a ``clangd`` located somewhere else not
+        covered by the cases described above, you can define the path to that
+        ``clangd`` here.
+        """
+        return self._config.get('clangd_alternate_path', None)
 
     @property
     def clangd_additional_query_drivers(self) -> List[str]:
@@ -224,15 +289,23 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         """
         return self._config.get('clangd_additional_query_drivers', list())
 
-    def clangd_query_drivers(self) -> List[str]:
-        return [
-            *[str(Path(p)) for p in self.clangd_additional_query_drivers],
-            str(PW_PIGWEED_CIPD_INSTALL_DIR / 'bin' / '*'),
-            str(PW_ARM_CIPD_INSTALL_DIR / 'bin' / '*'),
+    def clangd_query_drivers(self, host_clang_cc_path: Path) -> List[str]:
+        drivers = [
+            *[
+                _expand_any_vars_str(p)
+                for p in self.clangd_additional_query_drivers
+            ],
         ]
 
-    def clangd_query_driver_str(self) -> str:
-        return ','.join(self.clangd_query_drivers())
+        drivers.append(str(host_clang_cc_path.parent / '*'))
+
+        if (env_var := env_vars.get('PW_ARM_CIPD_INSTALL_DIR')) is not None:
+            drivers.append(str(Path(env_var) / 'bin' / '*'))
+
+        return drivers
+
+    def clangd_query_driver_str(self, host_clang_cc_path: Path) -> str:
+        return ','.join(self.clangd_query_drivers(host_clang_cc_path))
 
     @property
     def editors(self) -> Dict[str, bool]:
@@ -253,6 +326,37 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         they can do so in the appropriate settings file.
         """
         return self._config.get('editors', {}).get(editor, False)
+
+    @property
+    def cascade_targets(self) -> bool:
+        """Mix compile commands for multiple targets to maximize code coverage.
+
+        By default (with this set to ``False``), the compilation database for
+        each target is consistent in the sense that it only contains compile
+        commands for one build target, so the code intelligence that database
+        provides is related to a single, known compilation artifact. However,
+        this means that code intelligence may not be provided for every source
+        file in a project, because some source files may be relevant to targets
+        other than the one you have currently set. Those source files won't
+        have compile commands for the current target, and no code intelligence
+        will appear in your editor.
+
+        If this is set to ``True``, compilation databases will still be
+        separated by target, but compile commands for *all other targets* will
+        be appended to the list of compile commands for *that* target. This
+        will maximize code coverage, ensuring that you have code intelligence
+        for every file that is built for any target, at the cost of
+        consistency—the code intelligence for some files may show information
+        that is incorrect or irrelevant to the currently selected build target.
+
+        The currently set target's compile commands will take priority at the
+        top of the combined file, then all other targets' commands will come
+        after in order of the number of commands they have (i.e. in the order of
+        their code coverage). This relies on the fact that ``clangd`` parses the
+        compilation database from the top down, using the first compile command
+        it encounters for each compilation unit.
+        """
+        return self._config.get('cascade_targets', False)
 
 
 def _docstring_set_default(
@@ -288,11 +392,13 @@ _docstring_set_default(
     PigweedIdeSettings.working_dir, PW_IDE_DIR_NAME, literal=True
 )
 _docstring_set_default(
-    PigweedIdeSettings.build_dir, _DEFAULT_BUILD_DIR_NAME, literal=True
+    PigweedIdeSettings.compdb_gen_cmd,
+    _DEFAULT_CONFIG['compdb_gen_cmd'],
+    literal=True,
 )
 _docstring_set_default(
-    PigweedIdeSettings.compdb_paths,
-    _DEFAULT_CONFIG['compdb_paths'],
+    PigweedIdeSettings.compdb_search_paths,
+    [_DEFAULT_BUILD_DIR_NAME],
     literal=True,
 )
 _docstring_set_default(
@@ -304,12 +410,22 @@ _docstring_set_default(
     literal=True,
 )
 _docstring_set_default(
+    PigweedIdeSettings.cascade_targets,
+    _DEFAULT_CONFIG['cascade_targets'],
+    literal=True,
+)
+_docstring_set_default(
     PigweedIdeSettings.target_inference,
     _DEFAULT_CONFIG['target_inference'],
     literal=True,
 )
 _docstring_set_default(
-    PigweedIdeSettings.setup, _DEFAULT_CONFIG['setup'], literal=True
+    PigweedIdeSettings.sync, _DEFAULT_CONFIG['sync'], literal=True
+)
+_docstring_set_default(
+    PigweedIdeSettings.clangd_alternate_path,
+    _DEFAULT_CONFIG['clangd_alternate_path'],
+    literal=True,
 )
 _docstring_set_default(
     PigweedIdeSettings.clangd_additional_query_drivers,

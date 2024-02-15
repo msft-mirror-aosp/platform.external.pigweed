@@ -16,16 +16,14 @@
 import argparse
 import enum
 from inspect import cleandoc
-from pathlib import Path
 import re
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
 from pw_ide.commands import (
-    cmd_clear,
     cmd_cpp,
     cmd_python,
-    cmd_reset,
     cmd_setup,
+    cmd_sync,
     cmd_vscode,
 )
 
@@ -44,7 +42,13 @@ class _ParsedDocstring:
         self.description = ''
         self.epilog = ''
 
-        if obj is not None and (doc := _get_docstring(obj)) is not None:
+        if obj is not None:
+            if not (doc := _get_docstring(obj)):
+                raise ValueError(
+                    'Trying to use docstring for documentation, '
+                    'but no docstring is defined!'
+                )
+
             lines = doc.split('\n')
             self.description = lines.pop(0)
 
@@ -264,18 +268,19 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         func=lambda *_args, **_kwargs: parser_root.print_help()
     )
 
+    parser_root.add_argument(
+        '-o',
+        '--output',
+        choices=['stdout', 'log'],
+        default='pretty',
+        help='where program output should go',
+    )
+
     subcommand_parser = parser_root.add_subparsers(help='Subcommands')
     add_parser = _parser_adder(subcommand_parser)
 
+    add_parser(cmd_sync, 'sync')
     add_parser(cmd_setup, 'setup')
-
-    parser_reset = add_parser(cmd_reset, 'reset')
-    parser_reset.add_argument(
-        '--hard',
-        action='store_true',
-        help='completely remove the .pw_ide working '
-        'dir and supported editor files',
-    )
 
     parser_cpp = add_parser(cmd_cpp, 'cpp')
     parser_cpp.add_argument(
@@ -283,65 +288,43 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         '--list',
         dest='should_list_targets',
         action='store_true',
-        help='list the targets available for C/C++ ' 'language analysis',
+        help='list the target toolchains available for C/C++ language analysis',
     )
     parser_cpp.add_argument(
         '-g',
         '--get',
         dest='should_get_target',
         action='store_true',
-        help='print the current target used for C/C++ ' 'language analysis',
+        help=(
+            'print the current target toolchain '
+            'used for C/C++ language analysis'
+        ),
     )
     parser_cpp.add_argument(
         '-s',
         '--set',
         dest='target_to_set',
         metavar='TARGET',
-        help='set the target to use for C/C++ language ' 'server analysis',
+        help=(
+            'set the target toolchain to '
+            'use for C/C++ language server analysis'
+        ),
     )
     parser_cpp.add_argument(
         '--set-default',
         dest='use_default_target',
         action='store_true',
-        help='set the C/C++ analysis target to the default '
-        'defined in pw_ide settings',
-    )
-    parser_cpp.add_argument(
-        '--no-override',
-        dest='override_current_target',
-        action='store_const',
-        const=False,
-        default=True,
-        help='if called with --set, don\'t override the '
-        'current target if one is already set',
-    )
-    parser_cpp.add_argument(
-        '--ninja',
-        dest='should_run_ninja',
-        action='store_true',
-        help='use Ninja to generate a compilation database',
-    )
-    parser_cpp.add_argument(
-        '--gn',
-        dest='should_run_gn',
-        action='store_true',
-        help='run gn gen {out} --export-compile-commands, '
-        'along with any other arguments defined in args.gn',
+        help=(
+            'set the C/C++ analysis target toolchain to the default '
+            'defined in pw_ide settings'
+        ),
     )
     parser_cpp.add_argument(
         '-p',
         '--process',
-        dest='compdb_file_paths',
-        metavar='COMPILATION_DATABASE_FILES',
-        type=Path,
-        nargs='*',
+        action='store_true',
         help='process a file or several files matching '
         'the clang compilation database format',
-    )
-    parser_cpp.add_argument(
-        '--build-dir',
-        type=Path,
-        help='override the build directory defined in ' 'pw_ide settings',
     )
     parser_cpp.add_argument(
         '--clangd-command',
@@ -363,7 +346,12 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         '--venv',
         dest='should_print_venv',
         action='store_true',
-        help='print the path to the Pigweed Python ' 'virtual environment',
+        help='print the path to the Pigweed Python virtual environment',
+    )
+    parser_python.add_argument(
+        '--install-editable',
+        metavar='MODULE',
+        help='install a Pigweed Python module in editable mode',
     )
 
     parser_vscode = add_parser(cmd_vscode, 'vscode')
@@ -382,34 +370,9 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         help='do not update these settings types',
     )
     parser_vscode.add_argument(
-        '--no-override',
+        '--build-extension',
         action='store_true',
-        help='don\'t overwrite existing active ' 'settings files',
-    )
-
-    parser_clear = add_parser(cmd_clear, 'clear')
-    parser_clear.add_argument(
-        '--compdb',
-        action='store_true',
-        help='delete all compilation database from ' 'the working directory',
-    )
-    parser_clear.add_argument(
-        '--cache',
-        action='store_true',
-        help='delete all compilation database caches '
-        'from the working directory',
-    )
-    parser_clear.add_argument(
-        '--editor',
-        metavar='EDITOR',
-        help='delete the active settings file for '
-        'the provided supported editor',
-    )
-    parser_clear.add_argument(
-        '--editor-backups',
-        metavar='EDITOR',
-        help='delete backup settings files for '
-        'the provided supported editor',
+        help='build the extension from source',
     )
 
     return parser_root

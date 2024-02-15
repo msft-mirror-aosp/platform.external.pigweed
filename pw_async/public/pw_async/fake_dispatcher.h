@@ -18,30 +18,39 @@
 
 namespace pw::async::test {
 
-/// FakeDispatcher is a facade for an implementation of Dispatcher that is used
-/// in unit tests. FakeDispatcher uses simulated time. RunUntil() and RunFor()
-/// advance time immediately, and now() returns the current simulated time.
+/// `FakeDispatcher` is a `Dispatcher` implementation for use in unit tests.
 ///
-/// To support various Task backends, FakeDispatcher wraps a
-/// backend::NativeFakeDispatcher that implements standard FakeDispatcher
-/// behavior using backend::NativeTask objects.
+/// Threading: `FakeDispatcher` is *NOT* thread-safe and, unlike other
+/// `Dispatcher` implementations. This means that tasks must not be posted from
+/// multiple threads at once, and tasks cannot be posted from other threads
+/// while the dispatcher is executing.
+///
+/// Time: `FakeDispatcher` uses simulated time. `RunUntil()` and `RunFor()`
+/// advance time immediately, and `now()` returns the current simulated time.
+///
+/// To support various `Task` backends, `FakeDispatcher` wraps a
+/// `backend::NativeFakeDispatcher` that implements standard `FakeDispatcher`
+/// behavior using `backend::NativeTask` objects.
 class FakeDispatcher final : public Dispatcher {
  public:
   FakeDispatcher() : native_dispatcher_(*this) {}
 
   /// Execute all runnable tasks and return without advancing simulated time.
-  void RunUntilIdle() { native_dispatcher_.RunUntilIdle(); }
+  /// Returns true iff any tasks were invoked during the run.
+  bool RunUntilIdle() { return native_dispatcher_.RunUntilIdle(); }
 
   /// Run the dispatcher until Now() has reached `end_time`, executing all tasks
   /// that come due before then.
-  void RunUntil(chrono::SystemClock::time_point end_time) {
-    native_dispatcher_.RunUntil(end_time);
+  /// Returns true iff any tasks were invoked during the run.
+  bool RunUntil(chrono::SystemClock::time_point end_time) {
+    return native_dispatcher_.RunUntil(end_time);
   }
 
   /// Run the Dispatcher until `duration` has elapsed, executing all tasks that
   /// come due in that period.
-  void RunFor(chrono::SystemClock::duration duration) {
-    native_dispatcher_.RunFor(duration);
+  /// Returns true iff any tasks were invoked during the run.
+  bool RunFor(chrono::SystemClock::duration duration) {
+    return native_dispatcher_.RunFor(duration);
   }
 
   /// Stop processing tasks. After calling RequestStop(), the next time the
@@ -56,15 +65,6 @@ class FakeDispatcher final : public Dispatcher {
   }
   void PostAt(Task& task, chrono::SystemClock::time_point time) override {
     native_dispatcher_.PostAt(task, time);
-  }
-  void PostPeriodic(Task& task,
-                    chrono::SystemClock::duration interval) override {
-    native_dispatcher_.PostPeriodic(task, interval);
-  }
-  void PostPeriodicAt(Task& task,
-                      chrono::SystemClock::duration interval,
-                      chrono::SystemClock::time_point start_time) override {
-    native_dispatcher_.PostPeriodicAt(task, interval, start_time);
   }
   bool Cancel(Task& task) override { return native_dispatcher_.Cancel(task); }
 

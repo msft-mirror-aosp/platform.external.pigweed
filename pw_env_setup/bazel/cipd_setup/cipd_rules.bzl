@@ -48,9 +48,20 @@ def cipd_client_repository():
 cipd_repository = repository_rule(
     _cipd_repository_impl,
     attrs = {
-        "_cipd_client": attr.label(default = "@cipd_client//:cipd"),
-        "path": attr.string(),
-        "tag": attr.string(),
+        "_cipd_client": attr.label(
+            default = "@cipd_client//:cipd",
+            doc = "Location of the CIPD client binary (internal).",
+        ),
+        "build_file": attr.label(
+            allow_single_file = True,
+            doc = "A BUILD file to use instead of generating one internally.",
+        ),
+        "path": attr.string(
+            doc = "Path within CIPD where this repository lives.",
+        ),
+        "tag": attr.string(
+            doc = "Tag specifying which version of the repository to fetch.",
+        ),
     },
     doc = """
 Downloads a singular CIPD dependency to the root of a remote repository.
@@ -79,9 +90,6 @@ _pigweed_deps = repository_rule(
     attrs = {
         "_pigweed_packages_json": attr.label(
             default = "@pigweed//pw_env_setup:py/pw_env_setup/cipd_setup/pigweed.json",
-        ),
-        "_python_packages_json": attr.label(
-            default = "@pigweed//pw_env_setup:py/pw_env_setup/cipd_setup/python.json",
         ),
         "_upstream_testing_packages_json": attr.label(
             default = "@pigweed//pw_env_setup:py/pw_env_setup/cipd_setup/testing.json",

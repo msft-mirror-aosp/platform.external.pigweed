@@ -35,8 +35,9 @@ from typing import (
     Set,
     Union,
 )
+
 from pw_presubmit import git_repo
-from pw_presubmit.presubmit import PresubmitFailure
+from pw_presubmit.presubmit_context import PresubmitFailure
 
 _LOG = logging.getLogger(__name__)
 
@@ -73,10 +74,6 @@ _LINE_TYPERS: OrderedDict[
 
 class OwnersError(Exception):
     """Generic level OWNERS file error."""
-
-    def __init__(self, message: str, *args: object) -> None:
-        super().__init__(*args)
-        self.message = message
 
 
 class FormatterError(OwnersError):
@@ -126,8 +123,9 @@ class OwnersFile:
 
     def __init__(self, path: pathlib.Path) -> None:
         if not path.exists():
-            error_msg = f"Tried to import {path} but it does not exists"
-            raise OwnersDependencyError(error_msg)
+            raise OwnersDependencyError(
+                f"Tried to import {path} but it does not exist"
+            )
         self.path = path
 
         self.original_lines = self.load_owners_file(self.path)
@@ -335,9 +333,10 @@ class OwnersFile:
         # all file: rules:
         for file_rule in self.sections.get(LineType.FILE_RULE, []):
             file_str = file_rule.content[len("file:") :]
-            if ":" in file_str:
+            path = self.__complete_path(file_str)
+            if ":" in file_str and not path.is_file():
                 _LOG.warning(
-                    "TODO(b/254322931): This check does not yet support "
+                    "TODO: b/254322931 - This check does not yet support "
                     "<project> or <branch> in a file: rule"
                 )
                 _LOG.warning(
@@ -346,7 +345,8 @@ class OwnersFile:
                     self.path,
                 )
 
-            dependencies.append(self.__complete_path(file_str))
+            else:
+                dependencies.append(path)
 
         # all the per-file rule includes
         for per_file in self.sections.get(LineType.PER_FILE, []):
@@ -393,7 +393,8 @@ def _format_owners_file(owners_obj: OwnersFile) -> None:
 
 
 def _list_unwrapper(
-    func, list_or_path: Union[Iterable[pathlib.Path], pathlib.Path]
+    func: Callable[[OwnersFile], None],
+    list_or_path: Union[Iterable[pathlib.Path], pathlib.Path],
 ) -> Dict[pathlib.Path, str]:
     """Decorator that accepts Paths or list of Paths and iterates as needed."""
     errors: Dict[pathlib.Path, str] = {}
@@ -415,10 +416,8 @@ def _list_unwrapper(
         try:
             func(current_owners)
         except OwnersError as err:
-            errors[current_owners.path] = err.message
-            _LOG.error(
-                "%s: %s", str(current_owners.path.absolute()), err.message
-            )
+            errors[current_owners.path] = str(err)
+            _LOG.error("%s: %s", current_owners.path.absolute(), err)
     return errors
 
 
@@ -452,7 +451,7 @@ def main() -> int:
         owners_obj.look_for_owners_errors()
         owners_obj.check_style()
     except OwnersError as err:
-        _LOG.error("%s %s", err, err.message)
+        _LOG.error("%s", err)
         return 1
     return 0
 

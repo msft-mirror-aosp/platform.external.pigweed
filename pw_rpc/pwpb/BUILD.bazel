@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 load(
@@ -26,7 +25,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "server_api",
     srcs = [
         "server_reader_writer.cc",
@@ -43,7 +42,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "client_api",
     hdrs = [
         "public/pw_rpc/pwpb/client_reader_writer.h",
@@ -54,7 +53,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "common",
     hdrs = [
         "public/pw_rpc/pwpb/internal/common.h",
@@ -67,7 +66,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "test_method_context",
     hdrs = [
         "public/pw_rpc/pwpb/fake_channel_output.h",
@@ -84,7 +83,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "client_testing",
     hdrs = [
         "public/pw_rpc/pwpb/client_testing.h",
@@ -97,7 +96,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "client_server_testing",
     hdrs = [
         "public/pw_rpc/pwpb/client_server_testing.h",
@@ -105,11 +104,12 @@ pw_cc_library(
     includes = ["public"],
     deps = [
         ":test_method_context",
+        "//pw_assert",
         "//pw_rpc:client_server_testing",
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "client_server_testing_threaded",
     hdrs = [
         "public/pw_rpc/pwpb/client_server_testing_threaded.h",
@@ -121,13 +121,13 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "internal_test_utils",
     hdrs = ["pw_rpc_pwpb_private/internal_test_utils.h"],
     deps = ["//pw_rpc:internal_test_utils"],
 )
 
-pw_cc_library(
+cc_library(
     name = "echo_service",
     hdrs = ["public/pw_rpc/echo_service_pwpb.h"],
     deps = [
@@ -135,7 +135,7 @@ pw_cc_library(
     ],
 )
 
-# TODO(b/242059613): Enable this library when logging_event_handler can be used.
+# TODO: b/242059613 - Enable this library when logging_event_handler can be used.
 filegroup(
     name = "client_integration_test",
     srcs = [
@@ -182,6 +182,7 @@ pw_cc_test(
         ":client_api",
         ":client_server_testing",
         "//pw_rpc:pw_rpc_test_cc.pwpb_rpc",
+        "//pw_sync:mutex",
     ],
 )
 
@@ -196,8 +197,9 @@ pw_cc_test(
         ":client_server_testing_threaded",
         "//pw_rpc:pw_rpc_test_cc.pwpb_rpc",
         "//pw_sync:binary_semaphore",
-        "//pw_thread:test_threads_header",
-        "//pw_thread_stl:test_threads",
+        "//pw_sync:mutex",
+        "//pw_thread:non_portable_test_thread_options",
+        "//pw_thread_stl:non_portable_test_thread_options",
     ],
 )
 
@@ -271,14 +273,13 @@ pw_cc_test(
     ],
 )
 
-# TODO(b/234874064): Requires pwpb options file support to compile.
-filegroup(
+pw_cc_test(
     name = "echo_service_test",
     srcs = ["echo_service_test.cc"],
-    #     deps = [
-    #       ":echo_service",
-    #       ":test_method_context",
-    #     ],
+    deps = [
+        ":echo_service",
+        ":test_method_context",
+    ],
 )
 
 pw_cc_test(
@@ -326,6 +327,7 @@ pw_cc_test(
         ":test_method_context",
         "//pw_rpc:pw_rpc_test_cc.pwpb_rpc",
         "//pw_rpc:synchronous_client_api",
+        "//pw_rpc_transport:test_loopback_service_registry",
         "//pw_work_queue",
         "//pw_work_queue:stl_test_thread",
         "//pw_work_queue:test_thread_header",

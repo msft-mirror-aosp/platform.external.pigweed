@@ -16,10 +16,12 @@ include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
 pw_add_library(pw_bytes STATIC
   HEADERS
+    public/pw_bytes/alignment.h
     public/pw_bytes/array.h
     public/pw_bytes/byte_builder.h
     public/pw_bytes/endian.h
     public/pw_bytes/span.h
+    public/pw_bytes/suffix.h
     public/pw_bytes/units.h
   PUBLIC_INCLUDES
     public
@@ -33,15 +35,24 @@ pw_add_library(pw_bytes STATIC
   SOURCES
     byte_builder.cc
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_BYTES)
-  zephyr_link_libraries(pw_bytes)
-endif()
 
 pw_add_library(pw_bytes.bit INTERFACE
   HEADERS
     public/pw_bytes/bit.h
   PUBLIC_INCLUDES
     public
+  PUBLIC_DEPS
+    pw_third_party.fuchsia.stdcompat
+)
+
+pw_add_test(pw_bytes.alignment_test
+  SOURCES
+    alignment_test.cc
+  PRIVATE_DEPS
+    pw_bytes
+  GROUPS
+    modules
+    pw_bytes
 )
 
 pw_add_test(pw_bytes.array_test
@@ -78,6 +89,17 @@ pw_add_test(pw_bytes.endian_test
   SOURCES
     endian_test.cc
   PRIVATE_DEPS
+    pw_bytes
+  GROUPS
+    modules
+    pw_bytes
+)
+
+pw_add_test(pw_bytes.suffix_test
+  SOURCES
+    suffix_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
     pw_bytes
   GROUPS
     modules

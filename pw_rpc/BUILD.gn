@@ -17,6 +17,7 @@ import("//build_overrides/pigweed.gni")
 import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/python.gni")
 import("$dir_pw_build/python_action.gni")
+import("$dir_pw_build/python_action_test.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_chrono/backend.gni")
 import("$dir_pw_compilation_testing/negative_compilation_test.gni")
@@ -57,6 +58,16 @@ config("global_mutex_config") {
 # enabled by default, so this is a no-op.
 group("use_global_mutex") {
   public_configs = [ ":global_mutex_config" ]
+}
+
+config("dynamic_allocation_config") {
+  defines = [ "PW_RPC_DYNAMIC_ALLOCATION=1" ]
+  visibility = [ ":*" ]
+}
+
+# Use this for pw_rpc_CONFIG to enable dynamic allocation.
+pw_source_set("use_dynamic_allocation") {
+  public_configs = [ ":dynamic_allocation_config" ]
 }
 
 pw_source_set("config") {
@@ -146,6 +157,7 @@ pw_source_set("synchronous_client_api") {
     "public/pw_rpc/synchronous_call.h",
     "public/pw_rpc/synchronous_call_result.h",
   ]
+  sources = [ "public/pw_rpc/internal/synchronous_call_impl.h" ]
 }
 
 # Classes shared by the server and client.
@@ -203,6 +215,7 @@ pw_source_set("common") {
     "public/pw_rpc/internal/channel_list.h",
     "public/pw_rpc/internal/encoding_buffer.h",
     "public/pw_rpc/internal/endpoint.h",
+    "public/pw_rpc/internal/grpc.h",
     "public/pw_rpc/internal/lock.h",
     "public/pw_rpc/internal/method_info.h",
     "public/pw_rpc/internal/packet.h",
@@ -290,10 +303,10 @@ pw_source_set("test_utils") {
     "public/pw_rpc/internal/fake_channel_output.h",
     "public/pw_rpc/internal/method_impl_tester.h",
     "public/pw_rpc/internal/method_info_tester.h",
-    "public/pw_rpc/internal/test_method.h",
     "public/pw_rpc/internal/test_method_context.h",
     "public/pw_rpc/internal/test_utils.h",
     "pw_rpc_private/fake_server_reader_writer.h",
+    "pw_rpc_private/test_method.h",
   ]
   public_configs = [ ":public_include_path" ]
   public_deps = [
@@ -309,6 +322,7 @@ pw_source_set("test_utils") {
 }
 
 pw_source_set("integration_testing") {
+  testonly = pw_unit_test_TESTONLY
   public = [
     "public/pw_rpc/integration_test_socket_client.h",
     "public/pw_rpc/integration_testing.h",
@@ -316,10 +330,11 @@ pw_source_set("integration_testing") {
   sources = [ "integration_testing.cc" ]
   public_deps = [
     ":client",
-    "$dir_pw_hdlc:pw_rpc",
+    "$dir_pw_hdlc:decoder",
+    "$dir_pw_hdlc:default_addresses",
     "$dir_pw_hdlc:rpc_channel_output",
     "$dir_pw_stream:socket_stream",
-    "$dir_pw_unit_test:logging_event_handler",
+    "$dir_pw_unit_test:logging",
     dir_pw_assert,
     dir_pw_function,
     dir_pw_unit_test,
@@ -339,6 +354,7 @@ pw_executable("test_rpc_server") {
 }
 
 pw_executable("client_integration_test") {
+  testonly = pw_unit_test_TESTONLY
   sources = [ "client_integration_test.cc" ]
   deps = [
     ":client",
@@ -356,7 +372,8 @@ pw_executable("client_integration_test") {
   }
 }
 
-pw_python_action("cpp_client_server_integration_test") {
+pw_python_action_test("cpp_client_server_integration_test") {
+  testonly = pw_unit_test_TESTONLY
   script = "py/pw_rpc/testing.py"
   args = [
     "--server",
@@ -370,8 +387,7 @@ pw_python_action("cpp_client_server_integration_test") {
     ":client_integration_test",
     ":test_rpc_server",
   ]
-
-  stamp = true
+  tags = [ "integration" ]
 }
 
 pw_proto_library("protos") {
@@ -397,16 +413,6 @@ pw_doc_group("docs") {
     "benchmark.proto",
     "echo.proto",
     "internal/packet.proto",
-    "unary_rpc.svg",
-    "unary_rpc_cancelled.svg",
-    "server_streaming_rpc.svg",
-    "server_streaming_rpc_cancelled.svg",
-    "client_streaming_rpc.svg",
-    "client_streaming_rpc_cancelled.svg",
-    "bidirectional_streaming_rpc.svg",
-    "bidirectional_streaming_rpc_cancelled.svg",
-    "request_packets.svg",
-    "response_packets.svg",
   ]
   group_deps = [
     "nanopb:docs",
@@ -477,6 +483,9 @@ pw_test("call_test") {
     ":test_utils",
   ]
   sources = [ "call_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("callback_test") {
@@ -486,13 +495,16 @@ pw_test("callback_test") {
     ":server",
     ":test_protos.raw_rpc",
     "$dir_pw_sync:binary_semaphore",
+    "$dir_pw_thread:non_portable_test_thread_options",
     "$dir_pw_thread:sleep",
-    "$dir_pw_thread:test_threads",
     "$dir_pw_thread:yield",
-    "$dir_pw_thread_stl:test_threads",
+    "$dir_pw_thread_stl:non_portable_test_thread_options",
     "raw:client_testing",
   ]
   sources = [ "callback_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("channel_test") {
@@ -501,6 +513,9 @@ pw_test("channel_test") {
     ":test_utils",
   ]
   sources = [ "channel_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_python_action("generate_ids_test") {
@@ -515,28 +530,36 @@ pw_python_action("generate_ids_test") {
 }
 
 pw_test("ids_test") {
-  deps = [
-    ":generate_ids_test",
-    ":server",
-  ]
-  sources = get_target_outputs(":generate_ids_test")
+  deps = [ ":server" ]
+  source_gen_deps = [ ":generate_ids_test" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("packet_test") {
   deps = [
     ":server",
+    "$dir_pw_fuzzer:fuzztest",
     dir_pw_bytes,
     dir_pw_protobuf,
   ]
   sources = [ "packet_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("packet_meta_test") {
   deps = [
     ":server",
+    "$dir_pw_fuzzer:fuzztest",
     dir_pw_bytes,
   ]
   sources = [ "packet_meta_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("service_test") {
@@ -546,6 +569,9 @@ pw_test("service_test") {
     dir_pw_assert,
   ]
   sources = [ "service_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("client_server_test") {
@@ -555,6 +581,9 @@ pw_test("client_server_test") {
     "raw:server_api",
   ]
   sources = [ "client_server_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("method_test") {
@@ -563,6 +592,9 @@ pw_test("method_test") {
     ":test_utils",
   ]
   sources = [ "method_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("server_test") {
@@ -573,11 +605,17 @@ pw_test("server_test") {
     dir_pw_assert,
   ]
   sources = [ "server_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("fake_channel_output_test") {
   deps = [ ":test_utils" ]
   sources = [ "fake_channel_output_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("test_helpers_test") {
@@ -596,4 +634,7 @@ pw_test("test_helpers_test") {
   enable_if = pw_sync_TIMED_THREAD_NOTIFICATION_BACKEND != "" &&
               pw_sync_COUNTING_SEMAPHORE_BACKEND != "" &&
               pw_chrono_SYSTEM_CLOCK_BACKEND != ""
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }

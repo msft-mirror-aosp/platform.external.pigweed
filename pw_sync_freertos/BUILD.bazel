@@ -12,17 +12,15 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
-    name = "binary_semaphore_headers",
+cc_library(
+    name = "binary_semaphore",
+    srcs = [
+        "binary_semaphore.cc",
+    ],
     hdrs = [
         "public/pw_sync_freertos/binary_semaphore_inline.h",
         "public/pw_sync_freertos/binary_semaphore_native.h",
@@ -39,29 +37,17 @@ pw_cc_library(
     deps = [
         "//pw_assert",
         "//pw_chrono:system_clock",
-        "//pw_chrono_freertos:system_clock_headers",
+        "//pw_interrupt:context",
+        "//pw_sync:binary_semaphore_facade",
         "@freertos",
     ],
 )
 
-pw_cc_library(
-    name = "binary_semaphore",
+cc_library(
+    name = "counting_semaphore",
     srcs = [
-        "binary_semaphore.cc",
+        "counting_semaphore.cc",
     ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
-    deps = [
-        ":binary_semaphore_headers",
-        "//pw_assert",
-        "//pw_interrupt:context",
-        "//pw_sync:binary_semaphore_facade",
-    ],
-)
-
-pw_cc_library(
-    name = "counting_semaphore_headers",
     hdrs = [
         "public/pw_sync_freertos/counting_semaphore_inline.h",
         "public/pw_sync_freertos/counting_semaphore_native.h",
@@ -71,23 +57,6 @@ pw_cc_library(
     includes = [
         "public",
         "public_overrides",
-    ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
-    deps = [
-        "//pw_assert",
-        "//pw_chrono:system_clock",
-        "//pw_chrono_freertos:system_clock_headers",
-        "//pw_sync:counting_semaphore_facade",
-        "@freertos",
-    ],
-)
-
-pw_cc_library(
-    name = "counting_semaphore",
-    srcs = [
-        "counting_semaphore.cc",
     ],
     target_compatible_with = select({
         # Not compatible with this FreeRTOS config, because it does not enable
@@ -101,15 +70,16 @@ pw_cc_library(
         ],
     }),
     deps = [
-        ":counting_semaphore_headers",
         "//pw_assert",
+        "//pw_chrono:system_clock",
         "//pw_interrupt:context",
         "//pw_sync:counting_semaphore_facade",
+        "@freertos",
     ],
 )
 
-pw_cc_library(
-    name = "mutex_headers",
+cc_library(
+    name = "mutex",
     hdrs = [
         "public/pw_sync_freertos/mutex_inline.h",
         "public/pw_sync_freertos/mutex_native.h",
@@ -126,23 +96,16 @@ pw_cc_library(
     deps = [
         "//pw_assert",
         "//pw_interrupt:context",
+        "//pw_sync:mutex_facade",
         "@freertos",
     ],
 )
 
-pw_cc_library(
-    name = "mutex",
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
+cc_library(
+    name = "thread_notification",
+    srcs = [
+        "thread_notification.cc",
     ],
-    deps = [
-        ":mutex_headers",
-        "//pw_sync:mutex_facade",
-    ],
-)
-
-pw_cc_library(
-    name = "thread_notification_headers",
     hdrs = [
         "public/pw_sync_freertos/config.h",
         "public/pw_sync_freertos/thread_notification_inline.h",
@@ -158,33 +121,27 @@ pw_cc_library(
         "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
+        ":config_override",
         "//pw_assert",
         "//pw_interrupt:context",
         "//pw_polyfill",
         "//pw_sync:interrupt_spin_lock",
         "//pw_sync:lock_annotations",
+        "//pw_sync:thread_notification_facade",
         "@freertos",
     ],
 )
 
-pw_cc_library(
-    name = "thread_notification",
-    srcs = [
-        "thread_notification.cc",
-    ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
-    deps = [
-        ":thread_notification_headers",
-        "//pw_assert",
-        "//pw_interrupt:context",
-        "//pw_sync:thread_notification_facade",
-    ],
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
 )
 
-pw_cc_library(
-    name = "timed_thread_notification_headers",
+cc_library(
+    name = "timed_thread_notification",
+    srcs = [
+        "timed_thread_notification.cc",
+    ],
     hdrs = [
         "public/pw_sync_freertos/timed_thread_notification_inline.h",
         "public_overrides/timed_thread_notification/pw_sync_backend/timed_thread_notification_inline.h",
@@ -197,31 +154,19 @@ pw_cc_library(
         "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
+        "//pw_assert",
         "//pw_chrono:system_clock",
+        "//pw_interrupt:context",
         "//pw_sync:timed_thread_notification_facade",
         "@freertos",
     ],
 )
 
-pw_cc_library(
-    name = "timed_thread_notification",
+cc_library(
+    name = "timed_mutex",
     srcs = [
-        "timed_thread_notification.cc",
+        "timed_mutex.cc",
     ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
-    deps = [
-        ":timed_thread_notification_headers",
-        "//pw_assert",
-        "//pw_chrono_freertos:system_clock_headers",
-        "//pw_interrupt:context",
-        "//pw_sync:timed_thread_notification_facade",
-    ],
-)
-
-pw_cc_library(
-    name = "timed_mutex_headers",
     hdrs = [
         "public/pw_sync_freertos/timed_mutex_inline.h",
         "public_overrides/pw_sync_backend/timed_mutex_inline.h",
@@ -234,32 +179,20 @@ pw_cc_library(
         "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
+        "//pw_assert",
         "//pw_chrono:system_clock",
+        "//pw_interrupt:context",
+        "//pw_sync:mutex",
         "//pw_sync:timed_mutex_facade",
         "@freertos",
     ],
 )
 
-pw_cc_library(
-    name = "timed_mutex",
+cc_library(
+    name = "interrupt_spin_lock",
     srcs = [
-        "timed_mutex.cc",
+        "interrupt_spin_lock.cc",
     ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
-    deps = [
-        ":mutex_headers",
-        ":timed_mutex_headers",
-        "//pw_assert",
-        "//pw_chrono_freertos:system_clock_headers",
-        "//pw_interrupt:context",
-        "//pw_sync:timed_mutex_facade",
-    ],
-)
-
-pw_cc_library(
-    name = "interrupt_spin_lock_headers",
     hdrs = [
         "public/pw_sync_freertos/interrupt_spin_lock_inline.h",
         "public/pw_sync_freertos/interrupt_spin_lock_native.h",
@@ -274,30 +207,17 @@ pw_cc_library(
         "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
+        "//pw_assert",
+        "//pw_interrupt:context",
+        "//pw_sync:interrupt_spin_lock_facade",
         "@freertos",
     ],
 )
 
-pw_cc_library(
-    name = "interrupt_spin_lock",
-    srcs = [
-        "interrupt_spin_lock.cc",
-    ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
-    deps = [
-        ":interrupt_spin_lock_headers",
-        "//pw_assert",
-        "//pw_interrupt:context",
-        "//pw_sync:interrupt_spin_lock_facade",
-    ],
-)
-
-# TODO(b/228998350): Figure out how to conditionally enable this test like GN
+# TODO: b/228998350 - Figure out how to conditionally enable this test like GN
 #
 # You can instantiate this with your own implementation of
-# "//pw_thread:test_threads_header", see
+# "//pw_thread:non_portable_test_thread_options", see
 # ":thread_notification_test_with_static_threads" below as an example.
 # pw_cc_library(
 #     name = "thread_notification_test",
@@ -307,13 +227,13 @@ pw_cc_library(
 #     target_compatible_with = [
 #         "//pw_build/constraints/rtos:freertos",
 #     ],
-#     # TODO(b/234876414): This should depend on FreeRTOS but our third parties
+#     # TODO: b/234876414 - This should depend on FreeRTOS but our third parties
 #     # currently do not have Bazel support.
 #     deps = [
 #         "//pw_chrono:system_clock",
 #         "//pw_sync:thread_notification",
 #         "//pw_thread:sleep",
-#         "//pw_thread:test_threads_header",
+#         "//pw_thread:non_portable_test_thread_options",
 #         "//pw_thread:thread",
 #         "//pw_unit_test",
 #     ],
@@ -326,7 +246,7 @@ filegroup(
     ],
 )
 
-# TODO(b/228998350): Figure out how to conditionally enable this test like GN
+# TODO: b/228998350 - Figure out how to conditionally enable this test like GN
 # with:
 #    enable_if = pw_sync_THREAD_NOTIFICATION_BACKEND ==
 #                "$dir_pw_sync_freertos:thread_notification" &&
@@ -344,23 +264,23 @@ filegroup(
 #     ],
 # )
 
-# TODO(b/228998350): Figure out how to conditionally enable this test like GN
+# TODO: b/228998350 - Figure out how to conditionally enable this test like GN
 #
 # You can instantiate this with your own implementation of
-# "//pw_thread:test_threads_header", see
+# "//pw_thread:non_portable_test_thread_options", see
 # ":timed_thread_notification_test_with_static_threads" below as an example.
 #pw_cc_library(
 #    name = "timed_thread_notification_test",
 #    srcs = [
 #        "timed_thread_notification_test.cc",
 #    ],
-#    # TODO(b/234876414): This should depend on FreeRTOS but our third parties
+#    # TODO: b/234876414 - This should depend on FreeRTOS but our third parties
 #    # currently do not have Bazel support.
 #    deps = [
 #        "//pw_chrono:system_clock",
 #        "//pw_sync:timed_thread_notification",
 #        "//pw_thread:sleep",
-#        "//pw_thread:test_threads_header",
+#        "//pw_thread:non_portable_test_thread_options",
 #        "//pw_thread:thread",
 #        "//pw_unit_test",
 #    ],
@@ -372,7 +292,7 @@ filegroup(
     ],
 )
 
-# TODO(b/228998350): Figure out how to conditionally enable this test like GN
+# TODO: b/228998350 - Figure out how to conditionally enable this test like GN
 # with:
 #    enable_if = pw_sync_TIMED_THREAD_NOTIFICATION_BACKEND ==
 #                "$dir_pw_sync_freertos:timed_thread_notification" &&

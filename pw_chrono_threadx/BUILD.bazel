@@ -12,17 +12,15 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
-    name = "system_clock_headers",
+cc_library(
+    name = "system_clock",
+    srcs = [
+        "system_clock.cc",
+    ],
     hdrs = [
         "public/pw_chrono_threadx/config.h",
         "public/pw_chrono_threadx/system_clock_config.h",
@@ -36,23 +34,16 @@ pw_cc_library(
     target_compatible_with = [
         "//pw_build/constraints/rtos:threadx",
     ],
+    # TODO: b/290362542 - This should depend on ThreadX.
     deps = [
+        ":config_override",
         "//pw_chrono:epoch",
+        "//pw_chrono:system_clock_facade",
+        "//pw_polyfill",
     ],
 )
 
-pw_cc_library(
-    name = "system_clock",
-    srcs = [
-        "system_clock.cc",
-    ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:threadx",
-    ],
-    deps = [
-        ":system_clock_headers",
-        "//pw_chrono:system_clock_facade",
-        # TODO(ewout): This should depend on ThreadX but our third parties
-        # currently do not have Bazel support.
-    ],
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
 )

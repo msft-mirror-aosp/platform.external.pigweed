@@ -20,7 +20,6 @@ pw_python_package("py") {
   setup = [
     "pyproject.toml",
     "setup.cfg",
-    "setup.py",
   ]
   sources = [
     "pw_ide/__init__.py",
@@ -33,12 +32,14 @@ pw_python_package("py") {
     "pw_ide/exceptions.py",
     "pw_ide/python.py",
     "pw_ide/settings.py",
+    "pw_ide/status_reporter.py",
     "pw_ide/symlinks.py",
     "pw_ide/vscode.py",
   ]
   tests = [
     "commands_test.py",
     "cpp_test.py",
+    "cpp_test_fake_env.py",
     "editors_test.py",
     "test_cases.py",
     "vscode_test.py",

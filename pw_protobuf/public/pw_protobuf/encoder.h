@@ -32,6 +32,7 @@
 #include "pw_status/try.h"
 #include "pw_stream/memory_stream.h"
 #include "pw_stream/stream.h"
+#include "pw_toolchain/internal/sibling_cast.h"
 #include "pw_varint/varint.h"
 
 namespace pw::protobuf {
@@ -221,7 +222,7 @@ class StreamEncoder {
   // Writes a repeated uint64 using packed encoding.
   //
   // Precondition: Encoder has no active child encoder.
-  Status WritePackedUint64(uint64_t field_number, span<const uint64_t> values) {
+  Status WritePackedUint64(uint32_t field_number, span<const uint64_t> values) {
     return WritePackedVarints(
         field_number, values, internal::VarintType::kNormal);
   }
@@ -240,7 +241,8 @@ class StreamEncoder {
   //
   // Precondition: Encoder has no active child encoder.
   Status WriteInt32(uint32_t field_number, int32_t value) {
-    return WriteUint64(field_number, value);
+    // Signed numbers are sent as 2's complement so this cast is correct.
+    return WriteUint64(field_number, static_cast<uint64_t>(value));
   }
 
   // Writes a repeated int32 using packed encoding.
@@ -268,7 +270,8 @@ class StreamEncoder {
   //
   // Precondition: Encoder has no active child encoder.
   Status WriteInt64(uint32_t field_number, int64_t value) {
-    return WriteUint64(field_number, value);
+    // Signed numbers are sent as 2's complement so this cast is correct.
+    return WriteUint64(field_number, static_cast<uint64_t>(value));
   }
 
   // Writes a repeated int64 using packed encoding.
@@ -656,13 +659,21 @@ class StreamEncoder {
   constexpr StreamEncoder(StreamEncoder& parent,
                           ByteSpan scratch_buffer,
                           bool write_when_empty = true)
-      : status_(scratch_buffer.empty() ? Status::ResourceExhausted()
-                                       : OkStatus()),
+      : status_(OkStatus()),
         write_when_empty_(write_when_empty),
         parent_(&parent),
         nested_field_number_(0),
         memory_writer_(scratch_buffer),
-        writer_(memory_writer_) {}
+        writer_(memory_writer_) {
+    // If this encoder was spawned from a failed encoder, it should also start
+    // in a failed state.
+    if (&parent != this) {
+      status_.Update(parent.status_);
+    }
+    if (scratch_buffer.empty()) {
+      status_.Update(Status::ResourceExhausted());
+    }
+  }
 
   bool nested_encoder_open() const { return nested_field_number_ != 0; }
 
@@ -729,16 +740,16 @@ class StreamEncoder {
     }
 
     WriteVarint(FieldKey(field_number, WireType::kDelimited))
-        .IgnoreError();  // TODO(b/242598609): Handle Status properly
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
     WriteVarint(payload_size)
-        .IgnoreError();  // TODO(b/242598609): Handle Status properly
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
     for (T value : values) {
       if (encode_type == internal::VarintType::kZigZag) {
         WriteZigzagVarint(static_cast<std::make_signed_t<T>>(value))
-            .IgnoreError();  // TODO(b/242598609): Handle Status properly
+            .IgnoreError();  // TODO: b/242598609 - Handle Status properly
       } else {
         WriteVarint(value)
-            .IgnoreError();  // TODO(b/242598609): Handle Status properly
+            .IgnoreError();  // TODO: b/242598609 - Handle Status properly
       }
     }
 
@@ -900,7 +911,7 @@ inline ToStreamEncoder& StreamEncoderCast(FromStreamEncoder& encoder) {
   static_assert(std::is_base_of<StreamEncoder, ToStreamEncoder>::value,
                 "Cannot cast to a type that is not a derived class of "
                 "pw::protobuf::StreamEncoder");
-  return static_cast<ToStreamEncoder&>(static_cast<StreamEncoder&>(encoder));
+  return pw::internal::SiblingCast<ToStreamEncoder&, StreamEncoder>(encoder);
 }
 
 }  // namespace pw::protobuf

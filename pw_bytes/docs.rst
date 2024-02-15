@@ -21,6 +21,10 @@ Dependencies
 Features
 --------
 
+pw_bytes/alignment.h
+====================
+Functions for aligning sizes and addresses to memory alignment boundaries.
+
 pw_bytes/array.h
 ================
 Functions for working with byte arrays, primarily for building fixed-size byte
@@ -28,15 +32,11 @@ arrays at compile time.
 
 pw_bytes/byte_builder.h
 =======================
-.. cpp:class:: ByteBuilder
+.. doxygenclass:: pw::ByteBuilder
+   :members:
 
-  ``ByteBuilder`` is a class that facilitates building or reading arrays of
-  bytes in a fixed-size buffer. ByteBuilder handles reading and writing integers
-  with varying endianness.
-
-.. cpp:class:: template <size_t kMaxSize> ByteBuffer
-
-  ``ByteBuilder`` with an internally allocated buffer.
+.. doxygenclass:: pw::ByteBuffer
+   :members:
 
 Size report: using ByteBuffer
 -----------------------------
@@ -50,9 +50,20 @@ features:
 * ``pw::endian`` -- Implementation of the ``std::endian`` enum. If
   ``std::endian`` is available, ``pw::endian`` is an alias of it.
 
+* Additional functions for bit-level operations.
+
+  .. doxygenfunction:: pw::bytes::SignExtend
+
 pw_bytes/endian.h
 =================
 Functions for converting the endianness of integral values.
+
+pw_bytes/suffix.h
+=================
+This module exports a single ``_b`` literal, making it easier to create
+``std::byte`` values for tests.
+
+.. cpp:function:: constexpr std::byte operator"" _b(unsigned long long value)
 
 pw_bytes/units.h
 ================

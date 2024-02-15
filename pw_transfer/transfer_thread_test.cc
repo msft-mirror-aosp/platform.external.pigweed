@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -14,7 +14,6 @@
 
 #include "pw_transfer/transfer_thread.h"
 
-#include "gtest/gtest.h"
 #include "pw_assert/check.h"
 #include "pw_bytes/array.h"
 #include "pw_rpc/raw/client_testing.h"
@@ -26,11 +25,16 @@
 #include "pw_transfer/transfer.h"
 #include "pw_transfer/transfer.raw_rpc.pb.h"
 #include "pw_transfer_private/chunk_testing.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::transfer::test {
 namespace {
 
 using internal::Chunk;
+
+// Effectively unlimited timeout as these tests should never hit it.
+constexpr chrono::SystemClock::duration kNeverTimeout =
+    std::chrono::seconds(60);
 
 // TODO(frolv): Have a generic way to obtain a thread for testing on any system.
 thread::Options& TransferThreadOptions() {
@@ -111,7 +115,7 @@ TEST_F(TransferThreadTest, AddTransferHandler) {
                                        3,
                                        {},
                                        max_parameters_,
-                                       std::chrono::seconds(2),
+                                       kNeverTimeout,
                                        3,
                                        10);
 
@@ -136,7 +140,7 @@ TEST_F(TransferThreadTest, RemoveTransferHandler) {
                                        3,
                                        {},
                                        max_parameters_,
-                                       std::chrono::seconds(2),
+                                       kNeverTimeout,
                                        3,
                                        10);
 
@@ -173,7 +177,7 @@ TEST_F(TransferThreadTest, ProcessChunk_SendsWindow) {
                 .set_max_chunk_size_bytes(8)
                 .set_offset(0)),
         max_parameters_,
-        std::chrono::seconds(2),
+        kNeverTimeout,
         3,
         10);
   });
@@ -216,11 +220,12 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Server) {
       EncodeChunk(
           Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersRetransmit)
               .set_session_id(3)
+              // Ensure only one chunk is sent as end offset equals max size.
               .set_window_end_offset(16)
-              .set_max_chunk_size_bytes(8)
+              .set_max_chunk_size_bytes(16)
               .set_offset(0)),
       max_parameters_,
-      std::chrono::seconds(2),
+      kNeverTimeout,
       3,
       10);
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -240,11 +245,12 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Server) {
       EncodeChunk(
           Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersRetransmit)
               .set_session_id(4)
+              // Ensure only one chunk is sent as end offset equals max size.
               .set_window_end_offset(16)
-              .set_max_chunk_size_bytes(8)
+              .set_max_chunk_size_bytes(16)
               .set_offset(0)),
       max_parameters_,
-      std::chrono::seconds(2),
+      kNeverTimeout,
       3,
       10);
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -275,11 +281,13 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Client) {
   transfer_thread_.StartClientTransfer(
       internal::TransferType::kReceive,
       ProtocolVersion::kLegacy,
-      3,
+      /*resource_id=*/3,
+      /*handle_id=*/27,
       &buffer3,
       max_parameters_,
       [&status3](Status status) { status3 = status; },
-      std::chrono::seconds(2),
+      kNeverTimeout,
+      kNeverTimeout,
       3,
       10);
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -292,11 +300,13 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Client) {
   transfer_thread_.StartClientTransfer(
       internal::TransferType::kReceive,
       ProtocolVersion::kLegacy,
-      4,
+      /*resource_id=*/4,
+      /*handle_id=*/27,
       &buffer4,
       max_parameters_,
       [&status4](Status status) { status4 = status; },
-      std::chrono::seconds(2),
+      kNeverTimeout,
+      kNeverTimeout,
       3,
       10);
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -322,7 +332,7 @@ TEST_F(TransferThreadTest, VersionTwo_NoHandler) {
                                        /*resource_id=*/7,
                                        {},
                                        max_parameters_,
-                                       std::chrono::seconds(2),
+                                       kNeverTimeout,
                                        3,
                                        10);
 
@@ -333,10 +343,10 @@ TEST_F(TransferThreadTest, VersionTwo_NoHandler) {
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Result<Chunk::Identifier> id = Chunk::ExtractIdentifier(ctx_.response());
   ASSERT_TRUE(id.ok());
-  EXPECT_EQ(id->value(), 7u);
+  EXPECT_EQ(id->value(), 421u);
   auto chunk = DecodeChunk(ctx_.response());
-  EXPECT_EQ(chunk.session_id(), 7u);
-  EXPECT_EQ(chunk.resource_id(), 7u);
+  EXPECT_EQ(chunk.session_id(), 421u);
+  EXPECT_FALSE(chunk.resource_id().has_value());
   ASSERT_TRUE(chunk.status().has_value());
   EXPECT_EQ(chunk.status().value(), Status::NotFound());
 

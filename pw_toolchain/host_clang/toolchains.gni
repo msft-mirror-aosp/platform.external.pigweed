@@ -14,11 +14,12 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_build/defaults.gni")
 import("$dir_pw_toolchain/clang_tools.gni")
 
 declare_args() {
   # Sets the sanitizer to pass to clang. Valid values are "address", "memory",
-  # "thread", "undefined", "undefined_heuristic", and "coverage".
+  # "thread", "undefined", "undefined_heuristic".
   pw_toolchain_SANITIZERS = []
 
   # Indicates if this toolchain supports generating coverage reports from
@@ -26,7 +27,12 @@ declare_args() {
   #
   # For example, the static analysis toolchains that run `clang-tidy` instead
   # of the test binary itself cannot generate coverage reports.
+  #
+  # This is typically set by individual toolchains and not by GN args.
   pw_toolchain_COVERAGE_ENABLED = false
+
+  # List of source files to selectively collect coverage.
+  pw_toolchain_PROFILE_SOURCE_FILES = []
 
   # Indicates if this toolchain supports building fuzzers. This is typically
   # set by individual toolchains and not by GN args.
@@ -40,43 +46,33 @@ declare_args() {
 
 # Specifies the tools used by host Clang toolchains.
 _host_clang_toolchain = {
-  if (pw_toolchain_OSS_FUZZ_ENABLED) {
-    # OSS-Fuzz sets compiler and linker paths. See
-    # google.github.io/oss-fuzz/getting-started/new-project-guide/#Requirements.
-
-    # Just use the "llvm-ar" on the system path.
-    ar = "llvm-ar"
-    cc = getenv("CC")
-    cxx = getenv("CXX")
-  } else {
-    forward_variables_from(pw_toolchain_clang_tools, "*")
-  }
-
+  forward_variables_from(pw_toolchain_clang_tools, "*")
   is_host_toolchain = true
-
   static_analysis = {
-    # Enable static analysis for host clang based toolchains,
-    # even with OSS-Fuzz enabled.
+    # Enable static analysis for host clang based toolchains.
     enabled = true
   }
 }
 
 # Common default scope shared by all host Clang toolchains.
 _defaults = {
-  # TODO(b/234888755) amend toolchain declaration process to
+  # TODO: b/234888755 - amend toolchain declaration process to
   # remove this hack.
   default_configs = []
-  default_configs = [
-    "$dir_pw_build:extra_debugging",
-    "$dir_pw_toolchain/host_clang:no_system_libcpp",
-    "$dir_pw_toolchain/host_clang:xcode_sysroot",
-  ]
+  default_configs = pigweed_default_configs + [
+                      "$dir_pw_build:extra_debugging",
+                      "$dir_pw_toolchain/host_clang:no_system_libcpp",
+                      "$dir_pw_toolchain/host_clang:xcode_sysroot",
+                      "$dir_pw_toolchain/host_clang:no_ms_compatibility",
+                    ]
 
   # OSS-Fuzz uses -stdlib=libc++, which isn't included in the CIPD-provided
   # Linux sysroot (it instead provides libstdc++).
   if (!pw_toolchain_OSS_FUZZ_ENABLED) {
     default_configs += [ "$dir_pw_toolchain/host_clang:linux_sysroot" ]
   }
+
+  pw_build_LINK_DEPS = [ dir_pw_libc ]
 }
 
 pw_toolchain_host_clang = {
@@ -90,9 +86,6 @@ pw_toolchain_host_clang = {
         default_configs +=
             [ "$dir_pw_toolchain/host_clang:sanitize_$sanitizer" ]
       }
-
-      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
-      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -106,9 +99,6 @@ pw_toolchain_host_clang = {
         default_configs +=
             [ "$dir_pw_toolchain/host_clang:sanitize_$sanitizer" ]
       }
-
-      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
-      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -122,29 +112,47 @@ pw_toolchain_host_clang = {
         default_configs +=
             [ "$dir_pw_toolchain/host_clang:sanitize_$sanitizer" ]
       }
-
-      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
-      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
   fuzz = {
     name = "host_clang_fuzz"
-    forward_variables_from(_host_clang_toolchain, "*")
+    cc = ""
+    cxx = ""
+    forward_variables_from(_host_clang_toolchain,
+                           "*",
+                           [
+                             "cc",
+                             "cxx",
+                           ])
+
+    # OSS-Fuzz sets compiler paths. See
+    # google.github.io/oss-fuzz/getting-started/new-project-guide/#Requirements.
+    if (pw_toolchain_OSS_FUZZ_ENABLED) {
+      cc = getenv("CC")
+      cxx = getenv("CXX")
+    }
+    if (cc == "") {
+      cc = _host_clang_toolchain.cc
+    }
+    if (cxx == "") {
+      cxx = _host_clang_toolchain.cxx
+    }
     defaults = {
       forward_variables_from(_defaults, "*")
 
       pw_toolchain_FUZZING_ENABLED = true
-      default_configs += [ "$dir_pw_fuzzer:instrumentation" ]
-
-      # Always disable coverage generation.
-      pw_toolchain_COVERAGE_ENABLED = false
+      if (pw_toolchain_OSS_FUZZ_ENABLED) {
+        default_configs += [ "$dir_pw_fuzzer:oss_fuzz_instrumentation" ]
+      } else {
+        default_configs += [ "$dir_pw_fuzzer:instrumentation" ]
+      }
 
       # Fuzz faster.
       default_configs += [ "$dir_pw_build:optimize_speed" ]
 
+      # Default to ASan for fuzzing, which is what we typically care about.
       if (pw_toolchain_SANITIZERS == []) {
-        # Default to ASan for fuzzing, which is what we typically care about.
         pw_toolchain_SANITIZERS = [ "address" ]
       }
       foreach(sanitizer, pw_toolchain_SANITIZERS) {
@@ -163,9 +171,6 @@ pw_toolchain_host_clang = {
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_address" ]
-
-      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
-      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -178,9 +183,6 @@ pw_toolchain_host_clang = {
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_undefined" ]
-
-      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
-      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -194,9 +196,6 @@ pw_toolchain_host_clang = {
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs +=
           [ "$dir_pw_toolchain/host_clang:sanitize_undefined_heuristic" ]
-
-      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
-      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -209,9 +208,6 @@ pw_toolchain_host_clang = {
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_memory" ]
-
-      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
-      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -224,9 +220,6 @@ pw_toolchain_host_clang = {
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
       default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_thread" ]
-
-      # Allow coverage generation if pw_toolchain_SANITIZERS = ["coverage"].
-      pw_toolchain_COVERAGE_ENABLED = true
     }
   }
 
@@ -238,14 +231,10 @@ pw_toolchain_host_clang = {
 
       # Use debug mode to get proper debug information.
       default_configs += [ "$dir_pw_build:optimize_debugging" ]
-      default_configs += [ "$dir_pw_toolchain/host_clang:sanitize_coverage" ]
+      default_configs += [ "$dir_pw_toolchain/host_clang:coverage" ]
 
       # Enable PW toolchain arguments for coverage. This will only apply to
       # binaries built using this toolchain.
-      #
-      # "coverage" works with "address", "memory", "thread", "undefined", and
-      # "undefined_heuristic" sanitizers.
-      pw_toolchain_SANITIZERS += [ "coverage" ]
       pw_toolchain_COVERAGE_ENABLED = true
     }
   }

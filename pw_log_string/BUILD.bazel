@@ -15,49 +15,68 @@
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
-    "pw_cc_library",
 )
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_log_string",
     hdrs = [
-        "public/pw_log_string/log_string.h",
         "public_overrides/pw_log_backend/log_backend.h",
     ],
     includes = [
-        "public",
         "public_overrides",
     ],
     deps = [
-        ":handler",
+        ":handler_facade",
         "//pw_preprocessor",
     ],
 )
 
 pw_cc_facade(
     name = "handler_facade",
-    hdrs = ["public/pw_log_string/handler.h"],
+    hdrs = [
+        "public/pw_log_string/config.h",
+        "public/pw_log_string/handler.h",
+    ],
     includes = ["public"],
-    deps = ["//pw_preprocessor"],
-)
-
-pw_cc_library(
-    name = "handler",
-    srcs = ["handler.cc"],
     deps = [
-        ":handler_facade",
-        "@pigweed_config//:pw_log_string_handler_backend",
+        ":config_override",
+        "//pw_preprocessor",
     ],
 )
 
-pw_cc_library(
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+alias(
+    name = "impl",
+    actual = ":handler",
+)
+
+cc_library(
+    name = "handler",
+    srcs = ["handler.cc"],
+    hdrs = [
+        "public/pw_log_string/config.h",
+        "public/pw_log_string/handler.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":handler_facade",
+        "//pw_preprocessor",
+        "@pigweed//targets:pw_log_string_handler_backend",
+    ],
+)
+
+cc_library(
     name = "handler_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
-    # TODO(b/257539200): This probably should default to
+    visibility = ["@pigweed//targets:__pkg__"],
+    # TODO: b/257539200 - This probably should default to
     # //pw_system:log_backend, but that target does not yet build in Bazel.
     # deps = ["//pw_system:log_backend"],
 )

@@ -72,6 +72,12 @@ pw_facade("thread") {
   sources = [ "thread.cc" ]
 }
 
+pw_facade("test_thread_context") {
+  backend = pw_thread_TEST_THREAD_CONTEXT_BACKEND
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_thread/test_thread_context.h" ]
+}
+
 pw_source_set("thread_core") {
   public_configs = [ ":public_include_path" ]
   public = [ "public/pw_thread/thread_core.h" ]
@@ -151,7 +157,21 @@ pw_test_group("tests") {
     ":sleep_facade_test",
     ":thread_info_test",
     ":yield_facade_test",
+    ":test_thread_context_facade_test",
     ":thread_snapshot_service_test",
+  ]
+}
+
+pw_test("test_thread_context_facade_test") {
+  # TODO: b/317922402 - On Windows, this test can easily hang indefinitely.
+  # Disable on Windows until we can test with the native Windows SDK libraries
+  # for threading.
+  enable_if = pw_thread_TEST_THREAD_CONTEXT_BACKEND != "" && current_os != "win"
+  sources = [ "test_thread_context_facade_test.cc" ]
+  deps = [
+    ":test_thread_context",
+    ":thread",
+    "$dir_pw_sync:binary_semaphore",
   ]
 }
 
@@ -191,9 +211,9 @@ pw_test("sleep_facade_test") {
   ]
 }
 
-pw_source_set("test_threads") {
+pw_source_set("non_portable_test_thread_options") {
   public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_thread/test_threads.h" ]
+  public = [ "public/pw_thread/non_portable_test_thread_options.h" ]
   public_deps = [ ":thread" ]
 }
 
@@ -202,11 +222,12 @@ pw_source_set("test_threads") {
 # pw_source_set and a pw_source_set which provides the implementation of
 # test_threads. See "$dir_pw_thread_stl:thread_backend_test" as an example.
 pw_source_set("thread_facade_test") {
+  testonly = pw_unit_test_TESTONLY
   sources = [ "thread_facade_test.cc" ]
   deps = [
     ":id",
+    ":non_portable_test_thread_options",
     ":sleep",
-    ":test_threads",
     ":thread",
     "$dir_pw_sync:binary_semaphore",
     dir_pw_unit_test,
@@ -242,5 +263,7 @@ pw_proto_library("protos") {
 }
 
 pw_doc_group("docs") {
+  inputs =
+      [ "$dir_pw_thread_stl/public/pw_thread_stl/test_thread_context_native.h" ]
   sources = [ "docs.rst" ]
 }

@@ -17,6 +17,7 @@ import("//build_overrides/pigweed.gni")
 import("$dir_pw_async/async.gni")
 import("$dir_pw_async/fake_dispatcher_fixture.gni")
 import("$dir_pw_async/fake_dispatcher_test.gni")
+import("$dir_pw_async/heap_dispatcher.gni")
 import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_chrono/backend.gni")
@@ -103,10 +104,10 @@ pw_source_set("dispatcher") {
     "$dir_pw_sync:interrupt_spin_lock",
     "$dir_pw_sync:timed_thread_notification",
     "$dir_pw_thread:thread_core",
-    dir_pw_log,
   ]
   visibility = [
                  ":*",
+                 "$dir_pw_grpc/*",
                  "size_report:*",
                ] + pw_async_EXPERIMENTAL_MODULE_VISIBILITY
 }
@@ -116,10 +117,33 @@ pw_test("dispatcher_test") {
               pw_thread_THREAD_BACKEND == "$dir_pw_thread_stl:thread"
   public_deps = [
     ":dispatcher",
+    "$dir_pw_sync:lock_annotations",
     "$dir_pw_thread:thread",
     dir_pw_log,
   ]
   sources = [ "dispatcher_test.cc" ]
+}
+
+# This target cannot be labeled "heap_dispatcher" or else the outpath Ninja uses
+# for heap_dispatcher.cc will collide with $dir_pw_async:heap_dispatcher.
+pw_async_heap_dispatcher_source_set("heap_dispatcher_basic") {
+  task_backend = ":task"
+  visibility = [ ":*" ]
+}
+
+group("heap_dispatcher") {
+  public_deps = [ ":heap_dispatcher_basic" ]
+  visibility = [ ":*" ] + pw_async_EXPERIMENTAL_MODULE_VISIBILITY
+}
+
+pw_test("heap_dispatcher_test") {
+  enable_if = pw_chrono_SYSTEM_CLOCK_BACKEND != "" &&
+              pw_thread_THREAD_BACKEND == "$dir_pw_thread_stl:thread"
+  sources = [ "heap_dispatcher_test.cc" ]
+  deps = [
+    ":fake_dispatcher_fixture",
+    ":heap_dispatcher",
+  ]
 }
 
 pw_test_group("tests") {
@@ -127,6 +151,7 @@ pw_test_group("tests") {
     ":dispatcher_test",
     ":fake_dispatcher_test",
     ":fake_dispatcher_fixture_test",
+    ":heap_dispatcher_test",
   ]
 }
 

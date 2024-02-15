@@ -1,6 +1,6 @@
 {
   "name": "pigweedjs",
-  "version": "0.0.8",
+  "version": "0.0.13",
   "description": "An open source collection of embedded-targeted libraries",
   "author": "The Pigweed Authors",
   "license": "Apache-2.0",
@@ -8,12 +8,14 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./protos": "./dist/protos/collection.umd.js",
-    "./protos/*": "./dist/protos/*"
+    "./protos/*": "./dist/protos/*",
+    "./logging": "./dist/logging.mjs"
   },
   "bin": {
     "pw_protobuf_compiler": "./dist/bin/pw_protobuf_compiler.js"
   },
   "scripts": {
+    "postinstall": "cd pw_web/log-viewer && npm install --quiet --no-progress --loglevel=error",
     "prebuild": "rimraf dist && npm run build-protos",
     "build-protos": "ts-node -P tsconfig.json ts/buildprotos.ts",
     "build": "npm run rollup",
@@ -39,14 +41,13 @@
     "@types/node": "^16.0.1",
     "@types/react": "^17.0.14",
     "@types/react-dom": "^17.0.9",
+    "@typescript-eslint/eslint-plugin": "^6.4.0",
     "ansi_up": "^5.1.0",
     "arg": "^5.0.2",
     "base64-js": "^1.5.1",
-    "buffer": "^6.0.3",
-    "crc": "^4.1.1",
     "debug": "^4.3.2",
-    "eslint": "^7.30.0",
-    "eslint-plugin-react": "^7.24.0",
+    "eslint": "^8.47.0",
+    "eslint-plugin-lit-a11y": "^4.1.0",
     "grpc-tools": "^1.11.2",
     "grpc-web": "^1.2.1",
     "gts": "^3.1.0",
@@ -54,12 +55,12 @@
     "http-server": "^13.0.2",
     "install-peers": "^1.0.3",
     "jest-environment-jsdom": "^28.1.3",
+    "prettier": "^3.1.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "requirejs": "^2.3.6",
     "rimraf": "^3.0.2",
     "rollup": "^2.52.8",
-    "rollup-plugin-dts": "^4.2.2",
     "rollup-plugin-node-builtins": "^2.1.2",
     "rollup-plugin-node-globals": "^1.4.0",
     "rollup-plugin-node-polyfills": "^0.2.1",
@@ -74,9 +75,11 @@
   },
   "dependencies": {
     "@protobuf-ts/protoc": "^2.7.0",
+    "buffer": "^6.0.3",
     "google-protobuf": "^3.17.3",
     "long": "^5.2.1",
-    "object-path": "^0.11.8",
+    "postcss": "^8.4.24",
+    "rollup-plugin-postcss": "^4.0.2",
     "ts-protoc-gen": "^0.15.0"
   },
   "config": {

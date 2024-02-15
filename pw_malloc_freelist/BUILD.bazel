@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,7 +21,12 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+constraint_value(
+    name = "backend",
+    constraint_setting = "//pw_malloc:backend_constraint_setting",
+)
+
+cc_library(
     name = "headers",
     hdrs = [
         "public/pw_malloc_freelist/freelist_malloc.h",
@@ -32,7 +36,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "pw_malloc_freelist",
     srcs = [
         "freelist_malloc.cc",
@@ -63,7 +67,7 @@ pw_cc_test(
     srcs = [
         "freelist_malloc_test.cc",
     ],
-    # TODO(b/257530518): Get this test to work with Bazel.
+    # TODO: b/257530518 - Get this test to work with Bazel.
     tags = ["manual"],
     deps = [
         ":headers",
