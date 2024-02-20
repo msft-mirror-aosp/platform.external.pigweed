@@ -16,6 +16,7 @@
 load(
     "//cc_toolchain/private:providers.bzl",
     "PwActionConfigSetInfo",
+    "PwExtraActionFilesSetInfo",
     "PwFeatureConstraintInfo",
     "PwFeatureInfo",
     "PwFeatureSetInfo",
@@ -94,12 +95,17 @@ _RULES = {
     PwFeatureInfo: "features",
     PwFeatureSetInfo: "feature_sets",
     PwActionConfigSetInfo: "action_configs",
+    PwExtraActionFilesSetInfo: "extra_action_files",
 }
 
 _PROVIDERS = {
     "//cc_toolchain/tests/action_configs:all_c_compile": [PwActionConfigSetInfo],
+    "//cc_toolchain/tests/action_configs:assemble_from_bin": [PwActionConfigSetInfo],
     "//cc_toolchain/tests/action_configs:c_compile": [PwActionConfigSetInfo],
     "//cc_toolchain/tests/action_configs:cpp_compile_from_tool": [PwActionConfigSetInfo],
+    "//cc_toolchain/tests/action_configs:c_compiler_data": [PwExtraActionFilesSetInfo],
+    "//cc_toolchain/tests/action_configs:cpp_compiler_data": [PwExtraActionFilesSetInfo],
+    "//cc_toolchain/tests/action_configs:data": [PwExtraActionFilesSetInfo],
     "//cc_toolchain/tests/action_configs:requires_foo": [PwActionConfigSetInfo],
     "//cc_toolchain/tests/features:bar": [PwFeatureInfo, PwFeatureSetInfo],
     "//cc_toolchain/tests/features:baz": [PwFeatureInfo, PwFeatureSetInfo],
@@ -119,6 +125,7 @@ _PROVIDERS = {
     "//cc_toolchain/tests/features:mutex_label": [PwFeatureInfo],
     "//cc_toolchain/tests/flag_sets:bar": [PwFlagSetInfo],
     "//cc_toolchain/tests/flag_sets:baz": [PwFlagSetInfo],
+    "//cc_toolchain/tests/flag_sets:env": [PwFlagSetInfo],
     "//cc_toolchain/tests/flag_sets:flag_group": [PwFlagGroupInfo],
     "//cc_toolchain/tests/flag_sets:foo": [PwFlagSetInfo],
     "//cc_toolchain/tests/flag_sets:multiple_actions": [PwFlagSetInfo],
@@ -140,7 +147,7 @@ def generate_test_rule(implementation):
             for provider in _PROVIDERS["//%s:%s" % (pkg, name)]:
                 providers[_RULES[provider]][name] = target[provider]
 
-        def to_untyped_config(features = [], feature_sets = [], action_configs = [], flag_sets = [], fail = fail):
+        def to_untyped_config(features = [], feature_sets = [], action_configs = [], flag_sets = [], extra_action_files = [], fail = fail):
             feature_set = PwFeatureSetInfo(features = depset(
                 features + [ft[PwFeatureInfo] for ft in ctx.attr.builtin_features],
                 transitive = [fs.features for fs in feature_sets],
@@ -152,7 +159,11 @@ def generate_test_rule(implementation):
                     for acs in action_configs
                 ]),
             )
-            return _to_untyped_config(feature_set, action_config_set, flag_sets, fail = fail)
+            extra_action_files_combined = PwExtraActionFilesSetInfo(srcs = depset(transitive = [
+                ffa.srcs
+                for ffa in extra_action_files
+            ]))
+            return _to_untyped_config(feature_set, action_config_set, flag_sets, extra_action_files_combined, fail = fail)
 
         kwargs = {k: struct(**v) for k, v in providers.items()}
         return implementation(ctx, to_untyped_config = to_untyped_config, **kwargs)

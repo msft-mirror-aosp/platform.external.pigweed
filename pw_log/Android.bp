@@ -31,6 +31,9 @@ cc_library_headers {
     header_libs: [
         "pw_toolchain",
     ],
+    export_header_lib_headers: [
+        "pw_toolchain",
+    ],
     host_supported: true,
     generated_headers: [
         "google_protobuf_descriptor_pwpb_h",
