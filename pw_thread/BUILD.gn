@@ -196,6 +196,12 @@ pw_test("thread_snapshot_service_test") {
     "$dir_pw_thread:thread_info",
     "$dir_pw_thread:thread_snapshot_service",
   ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("sleep_facade_test") {
@@ -265,5 +271,8 @@ pw_proto_library("protos") {
 pw_doc_group("docs") {
   inputs =
       [ "$dir_pw_thread_stl/public/pw_thread_stl/test_thread_context_native.h" ]
-  sources = [ "docs.rst" ]
+  sources = [
+    "backends.rst",
+    "docs.rst",
+  ]
 }

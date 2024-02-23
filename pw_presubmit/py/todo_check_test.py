@@ -63,6 +63,26 @@ class TestTodoCheck(unittest.TestCase):
         self._run_bugs(contents)
         self.ctx.fail.assert_not_called()
 
+    def test_one_bug_short_url(self) -> None:
+        contents = 'TODO: https://pwbug.dev/123 - foo\n'
+        self._run_bugs_users(contents)
+        self.ctx.fail.assert_not_called()
+        self._run_bugs(contents)
+        self.ctx.fail.assert_not_called()
+
+    def test_one_bug_shorter_url(self) -> None:
+        contents = 'TODO: pwbug.dev/123 - foo\n'
+        self._run_bugs_users(contents)
+        self.ctx.fail.assert_not_called()
+        self._run_bugs(contents)
+
+    def test_one_bug_shorter_markdown_url(self) -> None:
+        contents = 'TODO: <pwbug.dev/123> - foo\n'
+        self._run_bugs_users(contents)
+        self.ctx.fail.assert_not_called()
+        self._run_bugs(contents)
+        self.ctx.fail.assert_not_called()
+
     def test_one_bug_full_url(self) -> None:
         contents = 'TODO: https://issues.pigweed.dev/issues/123 - foo\n'
         self._run_bugs_users(contents)
@@ -284,6 +304,26 @@ class TestTodoCheck(unittest.TestCase):
 
     def test_fuchsia_two_bugs(self) -> None:
         self._run_bugs_users('TODO(fxbug.dev/123,fxbug.dev/321): bar\n')
+        self.ctx.fail.assert_not_called()
+
+    def test_bazel_gh_issue(self) -> None:
+        contents = (
+            'TODO: https://github.com/bazelbuild/bazel/issues/12345 - '
+            'Bazel sometimes works\n'
+        )
+        self._run_bugs_users(contents)
+        self.ctx.fail.assert_not_called()
+        self._run_bugs(contents)
+        self.ctx.fail.assert_not_called()
+
+    def test_bazel_gh_issue_underscore(self) -> None:
+        contents = (
+            'TODO: https://github.com/bazelbuild/rules_cc/issues/678910 - '
+            'Sometimes it does not work\n'
+        )
+        self._run_bugs_users(contents)
+        self.ctx.fail.assert_not_called()
+        self._run_bugs(contents)
         self.ctx.fail.assert_not_called()
 
 

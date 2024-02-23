@@ -13,19 +13,12 @@
 # the License.
 """Implementation of the pw_cc_toolchain rule."""
 
-load("@bazel_tools//tools/build_defs/cc:action_names.bzl", "ACTION_NAMES")
-load(
-    "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
-    "feature",
-    "flag_group",
-    "flag_set",
-    "variable_with_value",
-)
 load("//features:builtin_features.bzl", "BUILTIN_FEATURES")
 load(
     ":providers.bzl",
     "PwActionConfigSetInfo",
     "PwActionNameSetInfo",
+    "PwExtraActionFilesSetInfo",
     "PwFeatureInfo",
     "PwFeatureSetInfo",
     "PwFlagSetInfo",
@@ -51,8 +44,9 @@ PW_CC_TOOLCHAIN_DEPRECATED_TOOL_ATTRS = {
 
 PW_CC_TOOLCHAIN_CONFIG_ATTRS = {
     "action_configs": "List of `pw_cc_action_config` labels that bind tools to the appropriate actions",
-    "unconditional_flag_sets": "List of `pw_cc_flag_set`s to apply to their respective action configs",
+    "flag_sets": "List of `pw_cc_flag_set`s to unconditionally apply to their respective action configs",
     "toolchain_features": "List of `pw_cc_feature`s that this toolchain supports",
+    "extra_action_files": "Files that are required to run specific actions.",
 
     # Attributes originally part of create_cc_toolchain_config_info.
     "toolchain_identifier": "See documentation for cc_common.create_cc_toolchain_config_info()",
@@ -77,86 +71,6 @@ PW_CC_TOOLCHAIN_BLOCKED_ATTRS = {
     "tool_paths": "pw_cc_toolchain does not support tool_paths, use \"action_configs\" to set toolchain tools",
     "make_variables": "pw_cc_toolchain does not yet support make variables",
 }
-
-def _archiver_flags_feature(is_mac):
-    """Returns our implementation of the legacy archiver_flags feature.
-
-    We provide our own implementation of the archiver_flags.  The default
-    implementation of this legacy feature at
-    https://github.com/bazelbuild/bazel/blob/252d36384b8b630d77d21fac0d2c5608632aa393/src/main/java/com/google/devtools/build/lib/rules/cpp/CppActionConfigs.java#L620-L660
-    contains a bug that prevents it from working with llvm-libtool-darwin only
-    fixed in
-    https://github.com/bazelbuild/bazel/commit/ae7cfa59461b2c694226be689662d387e9c38427,
-    which has not yet been released.
-
-    However, we don't merely fix the bug. Part of the Pigweed build involves
-    linking some empty libraries (with no object files). This leads to invoking
-    the archiving tool with no input files. Such an invocation is considered a
-    success by llvm-ar, but not by llvm-libtool-darwin. So for now, we use
-    flags appropriate for llvm-ar here, even on MacOS.
-
-    Args:
-        is_mac: Does the toolchain this feature will be included in target MacOS?
-
-    Returns:
-        The archiver_flags feature.
-    """
-
-    # TODO: b/297413805 - Remove this implementation.
-    return feature(
-        name = "archiver_flags",
-        flag_sets = [
-            flag_set(
-                actions = [
-                    ACTION_NAMES.cpp_link_static_library,
-                ],
-                flag_groups = [
-                    flag_group(
-                        flags = _archiver_flags(is_mac),
-                    ),
-                    flag_group(
-                        expand_if_available = "output_execpath",
-                        flags = ["%{output_execpath}"],
-                    ),
-                ],
-            ),
-            flag_set(
-                actions = [
-                    ACTION_NAMES.cpp_link_static_library,
-                ],
-                flag_groups = [
-                    flag_group(
-                        expand_if_available = "libraries_to_link",
-                        iterate_over = "libraries_to_link",
-                        flag_groups = [
-                            flag_group(
-                                expand_if_equal = variable_with_value(
-                                    name = "libraries_to_link.type",
-                                    value = "object_file",
-                                ),
-                                flags = ["%{libraries_to_link.name}"],
-                            ),
-                            flag_group(
-                                expand_if_equal = variable_with_value(
-                                    name = "libraries_to_link.type",
-                                    value = "object_file_group",
-                                ),
-                                flags = ["%{libraries_to_link.object_files}"],
-                                iterate_over = "libraries_to_link.object_files",
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        ],
-    )
-
-def _archiver_flags(is_mac):
-    """Returns flags for llvm-ar."""
-    if is_mac:
-        return ["--format=darwin", "rcs"]
-    else:
-        return ["rcsD"]
 
 def _pw_cc_toolchain_config_impl(ctx):
     """Rule that provides a CcToolchainConfigInfo.
@@ -184,15 +98,14 @@ def _pw_cc_toolchain_config_impl(ctx):
             for acs in ctx.attr.action_configs
         ]),
     )
-    flag_sets = [fs[PwFlagSetInfo] for fs in ctx.attr.unconditional_flag_sets]
-    out = to_untyped_config(feature_set, action_config_set, flag_sets)
-
-    # TODO: b/297413805 - This could be externalized.
-    out.features.append(_archiver_flags_feature(ctx.attr.target_libc == "macosx"))
+    extra_action_files = PwExtraActionFilesSetInfo(srcs = depset(transitive = [
+        ffa[PwExtraActionFilesSetInfo].srcs
+        for ffa in ctx.attr.extra_action_files
+    ]))
+    flag_sets = [fs[PwFlagSetInfo] for fs in ctx.attr.flag_sets]
+    out = to_untyped_config(feature_set, action_config_set, flag_sets, extra_action_files)
 
     extra = []
-    if ctx.attr.extra_files:
-        extra.append(ctx.attr.extra_files[DefaultInfo].files)
     return [
         cc_common.create_cc_toolchain_config_info(
             ctx = ctx,
@@ -219,9 +132,9 @@ pw_cc_toolchain_config = rule(
     attrs = {
         # Attributes new to this rule.
         "action_configs": attr.label_list(providers = [PwActionConfigSetInfo]),
-        "unconditional_flag_sets": attr.label_list(providers = [PwFlagSetInfo]),
+        "flag_sets": attr.label_list(providers = [PwFlagSetInfo]),
         "toolchain_features": attr.label_list(providers = [PwFeatureSetInfo]),
-        "extra_files": attr.label(),
+        "extra_action_files": attr.label_list(providers = [PwExtraActionFilesSetInfo]),
 
         # Attributes from create_cc_toolchain_config_info.
         "toolchain_identifier": attr.string(),
@@ -279,7 +192,9 @@ def _split_args(kwargs, filter_dict):
     remainder = {}
 
     for attr_name, val in kwargs.items():
-        if attr_name in filter_dict:
+        if attr_name in ALL_FILE_GROUPS:
+            fail("Don't use %s. Instead, use pw_cc_action_files" % attr_name)
+        elif attr_name in filter_dict:
             filtered_args[attr_name] = val
         else:
             remainder[attr_name] = val
@@ -294,8 +209,6 @@ def _cc_file_collector_impl(ctx):
     action_to_files = ctx.attr.config[PwToolchainConfigInfo].action_to_files
 
     extra = []
-    if ctx.attr.extra_files:
-        extra.append(ctx.attr.extra_files[DefaultInfo].files)
     return [DefaultInfo(files = depset(transitive = [
         action_to_files[action]
         for action in actions
@@ -306,7 +219,6 @@ _cc_file_collector = rule(
     attrs = {
         "config": attr.label(providers = [PwToolchainConfigInfo], mandatory = True),
         "actions": attr.label_list(providers = [PwActionNameSetInfo], mandatory = True),
-        "extra_files": attr.label(),
     },
 )
 
@@ -329,7 +241,7 @@ def pw_cc_toolchain(name, action_config_flag_sets = None, **kwargs):
 
     # TODO(b/322872628): Remove this once it's no longer in use.
     if action_config_flag_sets != None:
-        kwargs["unconditional_flag_sets"] = action_config_flag_sets
+        kwargs["flag_sets"] = action_config_flag_sets
 
     _check_args(native.package_relative_label(name), kwargs)
 
@@ -340,43 +252,30 @@ def pw_cc_toolchain(name, action_config_flag_sets = None, **kwargs):
     config_name = "_{}_config".format(name)
     pw_cc_toolchain_config(
         name = config_name,
-        extra_files = cc_toolchain_args.pop("all_files", None),
         visibility = ["//visibility:private"],
         **cc_toolchain_config_args
     )
 
-    all_files_srcs = [config_name]
     for group, actions in ALL_FILE_GROUPS.items():
         group_name = "_{}_{}".format(name, group)
         _cc_file_collector(
             name = group_name,
             config = config_name,
             actions = actions,
-            extra_files = cc_toolchain_args.pop(group, None),
             visibility = ["//visibility:private"],
         )
         cc_toolchain_args[group] = group_name
-        all_files_srcs.append(group_name)
 
     # Copy over arguments that should be shared by both rules.
     for arg_name in PW_CC_TOOLCHAIN_SHARED_ATTRS:
         if arg_name in cc_toolchain_config_args:
             cc_toolchain_args[arg_name] = cc_toolchain_config_args[arg_name]
 
-    all_files_name = "_{}_all_files".format(name)
-    native.filegroup(
-        name = all_files_name,
-        srcs = all_files_srcs,
-    )
-
     native.cc_toolchain(
         name = name,
         toolchain_config = config_name,
         # TODO: b/321268080 - Remove after transition of this option is complete.
         exec_transition_for_inputs = False,
-        # TODO(b/323448214): Replace with `all_files = config_name`.
-        # This is currently required in case the user passes in compiler_files,
-        # for example (since it won't propagate to the config.
-        all_files = all_files_name,
+        all_files = config_name,
         **cc_toolchain_args
     )

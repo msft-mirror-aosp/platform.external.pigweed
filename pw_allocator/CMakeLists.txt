@@ -15,10 +15,6 @@
 include("$ENV{PW_ROOT}/pw_build/pigweed.cmake")
 include("$ENV{PW_ROOT}/pw_allocator/allocator.cmake")
 
-if(pw_allocator_POISON_HEAP)
-  set(enable_heap_poison "PW_ALLOCATOR_POISON_ENABLE=1")
-endif()
-
 if(pw_allocator_COLLECT_METRICS)
   set(collect_metrics "PW_ALLOCATOR_COLLECT_METRICS=1")
 endif()
@@ -29,43 +25,46 @@ pw_add_library(pw_allocator.allocator STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_status
-  PRIVATE_DEPS
     pw_assert
-    pw_bytes
+    pw_preprocessor
+    pw_result
+    pw_status
   SOURCES
     allocator.cc
 )
 
-pw_add_library(pw_allocator.allocator_metric_proxy INTERFACE
-  HEADERS
-    public/pw_allocator/allocator_metric_proxy.h
-  PUBLIC_INCLUDES
-    public
-  PUBLIC_DEPS
-    pw_allocator.allocator
-    pw_allocator.metrics
-    pw_metric
-    pw_status
-)
-
 pw_add_library(pw_allocator.block STATIC
-  PUBLIC_DEFINES
-    ${enable_heap_poison}
   HEADERS
     public/pw_allocator/block.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_allocator.allocator
     pw_bytes
+    pw_bytes.alignment
     pw_result
-    pw_span
     pw_status
-    pw_third_party.fuchsia.stdcompat
   PRIVATE_DEPS
     pw_assert
   SOURCES
     block.cc
+)
+
+pw_add_library(pw_allocator.block_allocator STATIC
+  HEADERS
+    public/pw_allocator/block_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_allocator.block
+    pw_bytes
+    pw_result
+    pw_status
+  PRIVATE_DEPS
+    pw_assert
+  SOURCES
+    block_allocator.cc
 )
 
 pw_add_library(pw_allocator.buffer INTERFACE
@@ -82,9 +81,10 @@ pw_add_library(pw_allocator.fallback_allocator INTERFACE
     public
   PUBLIC_DEPS
     pw_allocator.allocator
-    pw_allocator.allocator_metric_proxy
     pw_allocator.metrics
+    pw_allocator.tracking_allocator
     pw_metric
+    pw_result
     pw_status
     pw_tokenizer
 )
@@ -127,10 +127,6 @@ pw_add_library(pw_allocator.libc_allocator STATIC
     public
   PUBLIC_DEPS
     pw_allocator.allocator
-    pw_status
-  PRIVATE_DEPS
-    pw_assert
-    pw_bytes
 )
 
 pw_add_library(pw_allocator.metrics STATIC
@@ -158,6 +154,8 @@ pw_add_library(pw_allocator.multiplex_allocator INTERFACE
     pw_allocator.allocator
     pw_allocator.metrics
     pw_containers.flat_map
+    pw_result
+    pw_status
     pw_tokenizer
 )
 
@@ -177,6 +175,8 @@ pw_add_library(pw_allocator.simple_allocator INTERFACE
     pw_allocator.allocator
     pw_allocator.block
     pw_bytes
+    pw_result
+    pw_status
 )
 
 pw_add_library(pw_allocator.split_free_list_allocator STATIC
@@ -206,6 +206,18 @@ pw_add_library(pw_allocator.synchronized_allocator INTERFACE
     pw_sync.borrow
 )
 
+pw_add_library(pw_allocator.tracking_allocator INTERFACE
+  HEADERS
+    public/pw_allocator/tracking_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_allocator.metrics
+    pw_metric
+    pw_status
+)
+
 pw_add_library(pw_allocator.allocator_testing STATIC
   HEADERS
     public/pw_allocator/allocator_testing.h
@@ -213,11 +225,12 @@ pw_add_library(pw_allocator.allocator_testing STATIC
     public
   PUBLIC_DEPS
     pw_allocator.allocator
-    pw_allocator.allocator_metric_proxy
     pw_allocator.block
     pw_allocator.buffer
     pw_allocator.simple_allocator
+    pw_allocator.tracking_allocator
     pw_bytes
+    pw_result
     pw_status
     pw_unit_test
   PRIVATE_DEPS
@@ -260,17 +273,6 @@ pw_add_test(pw_allocator.allocator_test
   PRIVATE_DEPS
     pw_allocator.allocator
     pw_allocator.allocator_testing
-    pw_bytes
-  GROUPS
-    modules
-    pw_allocator
-)
-
-pw_add_test(pw_allocator.allocator_metric_proxy_test
-  SOURCES
-    allocator_metric_proxy_test.cc
-  PRIVATE_DEPS
-    pw_allocator.allocator_testing
   GROUPS
     modules
     pw_allocator
@@ -282,6 +284,19 @@ pw_add_test(pw_allocator.block_test
   PRIVATE_DEPS
     pw_allocator.block
     pw_span
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.block_allocator_test
+  SOURCES
+    block_allocator_test.cc
+  PRIVATE_DEPS
+    pw_allocator.block
+    pw_allocator.block_allocator
+    pw_allocator.buffer
+    pw_bytes
   GROUPS
     modules
     pw_allocator
@@ -395,6 +410,16 @@ pw_add_test(pw_allocator.synchronized_allocator_test
     pw_thread.yield
     pw_random
     GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.tracking_allocator_test
+  SOURCES
+    tracking_allocator_test.cc
+  PRIVATE_DEPS
+    pw_allocator.allocator_testing
+  GROUPS
     modules
     pw_allocator
 )

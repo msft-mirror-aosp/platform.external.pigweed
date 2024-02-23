@@ -59,6 +59,18 @@ cc_library(
 )
 
 cc_library(
+    name = "chip_selector_digital_out",
+    hdrs = [
+        "public/pw_spi/chip_selector_digital_out.h",
+    ],
+    includes = ["public"],
+    deps = [
+        "//pw_digital_io",
+        "//pw_status",
+    ],
+)
+
+cc_library(
     name = "initiator_mock",
     testonly = True,
     srcs = ["initiator_mock.cc"],
@@ -136,5 +148,19 @@ cc_library(
         "//pw_status",
         "//pw_sync:borrow",
         "//pw_sync:mutex",
+    ],
+)
+
+pw_cc_test(
+    name = "linux_spi_test",
+    srcs = [
+        "linux_spi_test.cc",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        ":linux_spi",
+        "//pw_unit_test",
     ],
 )

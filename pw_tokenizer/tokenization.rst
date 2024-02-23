@@ -83,6 +83,8 @@ string.
 
 .. code-block:: protobuf
 
+  import "pw_tokenizer_proto/options.proto";
+
   message MessageWithOptionallyTokenizedField {
     bytes just_bytes = 1;
     bytes maybe_tokenized = 2 [(pw.tokenizer.format) = TOKENIZATION_OPTIONAL];
@@ -510,6 +512,8 @@ the ``database.py`` command line tool.
 
 Limitations, bugs, and future work
 ==================================
+
+.. _module-pw_tokenizer-gcc-template-bug:
 
 GCC bug: tokenization in template functions
 -------------------------------------------

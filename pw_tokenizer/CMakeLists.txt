@@ -108,9 +108,7 @@ pw_add_library(pw_tokenizer.decoder STATIC
 
 pw_proto_library(pw_tokenizer.proto
   SOURCES
-    options.proto
-  PREFIX
-    pw_tokenizer/proto
+    pw_tokenizer_proto/options.proto
 )
 
 # Executable for generating test data for the C++ and Python detokenizers. This

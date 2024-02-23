@@ -57,6 +57,7 @@ declare_args() {
   dir_pw_build_info = get_path_info("../pw_build_info", "abspath")
   dir_pw_build_mcuxpresso = get_path_info("../pw_build_mcuxpresso", "abspath")
   dir_pw_bytes = get_path_info("../pw_bytes", "abspath")
+  dir_pw_channel = get_path_info("../pw_channel", "abspath")
   dir_pw_checksum = get_path_info("../pw_checksum", "abspath")
   dir_pw_chre = get_path_info("../pw_chre", "abspath")
   dir_pw_chrono = get_path_info("../pw_chrono", "abspath")
@@ -69,6 +70,7 @@ declare_args() {
   dir_pw_cli = get_path_info("../pw_cli", "abspath")
   dir_pw_compilation_testing =
       get_path_info("../pw_compilation_testing", "abspath")
+  dir_pw_config_loader = get_path_info("../pw_config_loader", "abspath")
   dir_pw_console = get_path_info("../pw_console", "abspath")
   dir_pw_containers = get_path_info("../pw_containers", "abspath")
   dir_pw_cpu_exception = get_path_info("../pw_cpu_exception", "abspath")
@@ -83,6 +85,7 @@ declare_args() {
   dir_pw_doctor = get_path_info("../pw_doctor", "abspath")
   dir_pw_emu = get_path_info("../pw_emu", "abspath")
   dir_pw_env_setup = get_path_info("../pw_env_setup", "abspath")
+  dir_pw_env_setup_zephyr = get_path_info("../pw_env_setup_zephyr", "abspath")
   dir_pw_file = get_path_info("../pw_file", "abspath")
   dir_pw_format = get_path_info("../pw_format", "abspath")
   dir_pw_function = get_path_info("../pw_function", "abspath")
@@ -140,6 +143,7 @@ declare_args() {
   dir_pw_span = get_path_info("../pw_span", "abspath")
   dir_pw_spi = get_path_info("../pw_spi", "abspath")
   dir_pw_spi_mcuxpresso = get_path_info("../pw_spi_mcuxpresso", "abspath")
+  dir_pw_spi_rp2040 = get_path_info("../pw_spi_rp2040", "abspath")
   dir_pw_status = get_path_info("../pw_status", "abspath")
   dir_pw_stm32cube_build = get_path_info("../pw_stm32cube_build", "abspath")
   dir_pw_stream = get_path_info("../pw_stream", "abspath")
@@ -231,6 +235,7 @@ declare_args() {
     dir_pw_build_info,
     dir_pw_build_mcuxpresso,
     dir_pw_bytes,
+    dir_pw_channel,
     dir_pw_checksum,
     dir_pw_chre,
     dir_pw_chrono,
@@ -242,6 +247,7 @@ declare_args() {
     dir_pw_chrono_zephyr,
     dir_pw_cli,
     dir_pw_compilation_testing,
+    dir_pw_config_loader,
     dir_pw_console,
     dir_pw_containers,
     dir_pw_cpu_exception,
@@ -254,6 +260,7 @@ declare_args() {
     dir_pw_doctor,
     dir_pw_emu,
     dir_pw_env_setup,
+    dir_pw_env_setup_zephyr,
     dir_pw_file,
     dir_pw_format,
     dir_pw_function,
@@ -309,6 +316,7 @@ declare_args() {
     dir_pw_span,
     dir_pw_spi,
     dir_pw_spi_mcuxpresso,
+    dir_pw_spi_rp2040,
     dir_pw_status,
     dir_pw_stm32cube_build,
     dir_pw_stream,
@@ -390,6 +398,7 @@ declare_args() {
     "$dir_pw_build_info:tests",
     "$dir_pw_build_mcuxpresso:tests",
     "$dir_pw_bytes:tests",
+    "$dir_pw_channel:tests",
     "$dir_pw_checksum:tests",
     "$dir_pw_chre:tests",
     "$dir_pw_chrono:tests",
@@ -401,6 +410,7 @@ declare_args() {
     "$dir_pw_chrono_zephyr:tests",
     "$dir_pw_cli:tests",
     "$dir_pw_compilation_testing:tests",
+    "$dir_pw_config_loader:tests",
     "$dir_pw_console:tests",
     "$dir_pw_containers:tests",
     "$dir_pw_cpu_exception:tests",
@@ -413,6 +423,7 @@ declare_args() {
     "$dir_pw_doctor:tests",
     "$dir_pw_emu:tests",
     "$dir_pw_env_setup:tests",
+    "$dir_pw_env_setup_zephyr:tests",
     "$dir_pw_file:tests",
     "$dir_pw_format:tests",
     "$dir_pw_function:tests",
@@ -468,6 +479,7 @@ declare_args() {
     "$dir_pw_span:tests",
     "$dir_pw_spi:tests",
     "$dir_pw_spi_mcuxpresso:tests",
+    "$dir_pw_spi_rp2040:tests",
     "$dir_pw_status:tests",
     "$dir_pw_stm32cube_build:tests",
     "$dir_pw_stream:tests",
@@ -549,6 +561,7 @@ declare_args() {
     "$dir_pw_build_info:docs",
     "$dir_pw_build_mcuxpresso:docs",
     "$dir_pw_bytes:docs",
+    "$dir_pw_channel:docs",
     "$dir_pw_checksum:docs",
     "$dir_pw_chre:docs",
     "$dir_pw_chrono:docs",
@@ -560,6 +573,7 @@ declare_args() {
     "$dir_pw_chrono_zephyr:docs",
     "$dir_pw_cli:docs",
     "$dir_pw_compilation_testing:docs",
+    "$dir_pw_config_loader:docs",
     "$dir_pw_console:docs",
     "$dir_pw_containers:docs",
     "$dir_pw_cpu_exception:docs",
@@ -572,6 +586,7 @@ declare_args() {
     "$dir_pw_doctor:docs",
     "$dir_pw_emu:docs",
     "$dir_pw_env_setup:docs",
+    "$dir_pw_env_setup_zephyr:docs",
     "$dir_pw_file:docs",
     "$dir_pw_format:docs",
     "$dir_pw_function:docs",
@@ -627,6 +642,7 @@ declare_args() {
     "$dir_pw_span:docs",
     "$dir_pw_spi:docs",
     "$dir_pw_spi_mcuxpresso:docs",
+    "$dir_pw_spi_rp2040:docs",
     "$dir_pw_status:docs",
     "$dir_pw_stm32cube_build:docs",
     "$dir_pw_stream:docs",

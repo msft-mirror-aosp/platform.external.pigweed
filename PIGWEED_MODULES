@@ -26,6 +26,7 @@ pw_build
 pw_build_info
 pw_build_mcuxpresso
 pw_bytes
+pw_channel
 pw_checksum
 pw_chre
 pw_chrono
@@ -37,6 +38,7 @@ pw_chrono_threadx
 pw_chrono_zephyr
 pw_cli
 pw_compilation_testing
+pw_config_loader
 pw_console
 pw_containers
 pw_cpu_exception
@@ -49,6 +51,7 @@ pw_docgen
 pw_doctor
 pw_emu
 pw_env_setup
+pw_env_setup_zephyr
 pw_file
 pw_format
 pw_function
@@ -104,6 +107,7 @@ pw_software_update
 pw_span
 pw_spi
 pw_spi_mcuxpresso
+pw_spi_rp2040
 pw_status
 pw_stm32cube_build
 pw_stream
