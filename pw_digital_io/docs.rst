@@ -5,9 +5,6 @@
 =============
 pw_digital_io
 =============
-.. warning::
-   This module is under construction and may not be ready for use.
-
 ``pw_digital_io`` provides a set of interfaces for using General Purpose Input
 and Output (GPIO) lines for simple Digital I/O. This module can either be used
 directly by the application code or wrapped in a device driver for more complex
@@ -326,3 +323,10 @@ Zephyr
 ======
 To enable ``pw_digital_io`` for Zephyr add ``CONFIG_PIGWEED_DIGITAL_IO=y`` to
 the project's configuration.
+
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Backends <backends>
