@@ -59,13 +59,17 @@
         "update": {
           "module": "pw_software_update.cli",
           "function": "main"
+        },
+        "west": {
+          "module": "pw_env_setup_zephyr.zephyr",
+          "function": "main"
         }
       }
     },
     "pw_env_setup": {
       "root_variable": "PW_ROOT",
       "relative_pigweed_root": ".",
-      "rosetta": "allow",
+      "rosetta": "never",
       "project_actions": [
         {
           "import_path": "pw_env_setup",

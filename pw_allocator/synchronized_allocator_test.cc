@@ -125,13 +125,13 @@ class Background final {
 template <typename LockType>
 void TestAllocate() {
   test::AllocatorForTest<kCapacity> allocator;
-  AllocatorSyncProxy<LockType> sync_proxy(*(allocator.get()));
-  Background background(sync_proxy);
+  SynchronizedAllocator<LockType> synchronized(allocator);
+  Background background(synchronized);
 
   Vector<Allocation, kNumAllocations> allocations;
   while (!allocations.full()) {
     Layout layout(kSize, kAlignment);
-    void* ptr = sync_proxy.Allocate(layout);
+    void* ptr = synchronized.Allocate(layout);
     Allocation allocation{ptr, layout};
     allocation.Paint();
     allocations.push_back(allocation);
@@ -140,28 +140,28 @@ void TestAllocate() {
 
   for (const auto& allocation : allocations) {
     EXPECT_EQ(allocation.Inspect(), allocation.layout.size());
-    sync_proxy.Deallocate(allocation.ptr, allocation.layout);
+    synchronized.Deallocate(allocation.ptr, allocation.layout);
   }
 }
 
-TEST(AllocatorSyncProxyTest, AllocateDeallocateInterruptSpinLock) {
+TEST(SynchronizedAllocatorTest, AllocateDeallocateInterruptSpinLock) {
   TestAllocate<sync::InterruptSpinLock>();
 }
 
-TEST(AllocatorSyncProxyTest, AllocateDeallocateMutex) {
+TEST(SynchronizedAllocatorTest, AllocateDeallocateMutex) {
   TestAllocate<sync::Mutex>();
 }
 
 template <typename LockType>
 void TestQuery() {
   test::AllocatorForTest<kCapacity> allocator;
-  AllocatorSyncProxy<LockType> sync_proxy(*(allocator.get()));
-  Background background(sync_proxy);
+  SynchronizedAllocator<LockType> synchronized(allocator);
+  Background background(synchronized);
 
   Vector<Allocation, kNumAllocations> allocations;
   while (!allocations.full()) {
     Layout layout(kSize, kAlignment);
-    void* ptr = sync_proxy.Allocate(layout);
+    void* ptr = synchronized.Allocate(layout);
     Allocation allocation{ptr, layout};
     allocation.Paint();
     allocations.push_back(allocation);
@@ -170,29 +170,29 @@ void TestQuery() {
 
   for (const auto& allocation : allocations) {
     if (allocation.ptr != nullptr) {
-      EXPECT_EQ(sync_proxy.Query(allocation.ptr, allocation.layout),
+      EXPECT_EQ(synchronized.Query(allocation.ptr, allocation.layout),
                 OkStatus());
     }
     this_thread::yield();
   }
 }
 
-TEST(AllocatorSyncProxyTest, QueryInterruptSpinLock) {
+TEST(SynchronizedAllocatorTest, QueryInterruptSpinLock) {
   TestQuery<sync::InterruptSpinLock>();
 }
 
-TEST(AllocatorSyncProxyTest, QueryMutex) { TestQuery<sync::Mutex>(); }
+TEST(SynchronizedAllocatorTest, QueryMutex) { TestQuery<sync::Mutex>(); }
 
 template <typename LockType>
 void TestResize() {
   test::AllocatorForTest<kCapacity> allocator;
-  AllocatorSyncProxy<LockType> sync_proxy(*(allocator.get()));
-  Background background(sync_proxy);
+  SynchronizedAllocator<LockType> synchronized(allocator);
+  Background background(synchronized);
 
   Vector<Allocation, kNumAllocations> allocations;
   while (!allocations.full()) {
     Layout layout(kSize, kAlignment);
-    void* ptr = sync_proxy.Allocate(layout);
+    void* ptr = synchronized.Allocate(layout);
     Allocation allocation{ptr, layout};
     allocation.Paint();
     allocations.push_back(allocation);
@@ -203,7 +203,7 @@ void TestResize() {
   for (auto& allocation : allocations) {
     EXPECT_EQ(allocation.Inspect(), allocation.layout.size());
     size_t new_size = allocation.layout.size() / 2;
-    if (!sync_proxy.Resize(allocation.ptr, allocation.layout, new_size)) {
+    if (!synchronized.Resize(allocation.ptr, allocation.layout, new_size)) {
       continue;
     }
     allocation.layout = Layout(new_size, allocation.layout.alignment());
@@ -215,7 +215,7 @@ void TestResize() {
   for (auto& allocation : allocations) {
     EXPECT_EQ(allocation.Inspect(), allocation.layout.size());
     size_t old_size = allocation.layout.size() * 2;
-    if (!sync_proxy.Resize(allocation.ptr, allocation.layout, old_size)) {
+    if (!synchronized.Resize(allocation.ptr, allocation.layout, old_size)) {
       continue;
     }
     allocation.layout = Layout(old_size, allocation.layout.alignment());
@@ -224,11 +224,11 @@ void TestResize() {
   }
 }
 
-TEST(AllocatorSyncProxyTest, ResizeInterruptSpinLock) {
+TEST(SynchronizedAllocatorTest, ResizeInterruptSpinLock) {
   TestResize<sync::InterruptSpinLock>();
 }
 
-TEST(AllocatorSyncProxyTest, ResizeMutex) { TestResize<sync::Mutex>(); }
+TEST(SynchronizedAllocatorTest, ResizeMutex) { TestResize<sync::Mutex>(); }
 
 }  // namespace
 }  // namespace pw::allocator

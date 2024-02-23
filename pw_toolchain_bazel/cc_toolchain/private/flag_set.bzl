@@ -14,7 +14,7 @@
 """Implementation of pw_cc_flag_set and pw_cc_flag_group."""
 
 load(
-    "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
+    "@rules_cc//cc:cc_toolchain_config_lib.bzl",
     "flag_group",
 )
 load(
@@ -171,6 +171,8 @@ def _pw_cc_flag_set_impl(ctx):
             actions = tuple(actions),
             requires_any_of = tuple(requires),
             flag_groups = tuple(flag_groups),
+            env = ctx.attr.env,
+            env_expand_if_available = ctx.attr.env_expand_if_available,
         ),
     ]
 
@@ -195,6 +197,12 @@ appearing earlier in the invocation of the underlying tool.
 Note: `flag_groups` and `flags` are mutually exclusive.
 """,
         ),
+        "env": attr.string_dict(
+            doc = "Environment variables to be added to these actions",
+        ),
+        "env_expand_if_available": attr.string(
+            doc = "A build variable that needs to be available in order to expand the env entries",
+        ),
         "flags": attr.string_list(
             doc = """Flags that should be applied to the specified actions.
 
@@ -217,7 +225,7 @@ If omitted, this flag set will be enabled unconditionally.
     provides = [PwFlagSetInfo],
     doc = """Declares an ordered set of flags bound to a set of actions.
 
-Flag sets can be attached to a `pw_cc_toolchain` via `action_config_flag_sets`.
+Flag sets can be attached to a `pw_cc_toolchain` via `flag_sets`.
 
 Examples:
 
