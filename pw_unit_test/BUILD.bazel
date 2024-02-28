@@ -39,19 +39,17 @@ label_flag(
     build_setting_default = "//pw_build:default_module_config",
 )
 
-alias(
-    name = "pw_unit_test",
-    actual = "@pigweed//targets:pw_unit_test_backend",
-)
-
 cc_library(
-    name = "framework",
+    name = "pw_unit_test",
+    testonly = True,
     hdrs = ["public/pw_unit_test/framework.h"],
     includes = ["public"],
+    deps = ["@pigweed//targets:pw_unit_test_backend"],
 )
 
 cc_library(
     name = "light",
+    testonly = True,
     srcs = ["framework_light.cc"],
     hdrs = [
         "light_public_overrides/pw_unit_test/framework_backend.h",
@@ -69,7 +67,6 @@ cc_library(
     deps = [
         ":config",
         ":event_handler",
-        ":framework",
         "//pw_assert",
         "//pw_polyfill",
         "//pw_preprocessor",
@@ -80,12 +77,13 @@ cc_library(
 
 cc_library(
     name = "googletest",
+    testonly = True,
     hdrs = [
         "googletest_public_overrides/pw_unit_test/framework_backend.h",
     ],
     includes = ["googletest_public_overrides"],
     deps = [
-        ":framework",
+        ":googletest_handler_adapter",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -93,16 +91,26 @@ cc_library(
 # Identifies when the light framework is being used.
 config_setting(
     name = "light_setting",
+    testonly = True,
     flag_values = {
         "@pigweed//targets:pw_unit_test_backend": "@pigweed//pw_unit_test:light",
     },
+    # Do not depend on this config_setting outside upstream Pigweed. Config
+    # settings based on label flags are unreliable. See
+    # https://github.com/bazelbuild/bazel/issues/21189.
+    visibility = ["//:__subpackages__"],
 )
 
 config_setting(
     name = "gtest_setting",
+    testonly = True,
     flag_values = {
         "@pigweed//targets:pw_unit_test_backend": "@pigweed//pw_unit_test:googletest",
     },
+    # Do not depend on this config_setting outside upstream Pigweed. Config
+    # settings based on label flags are unreliable. See
+    # https://github.com/bazelbuild/bazel/issues/21189.
+    visibility = ["//:__subpackages__"],
 )
 
 cc_library(
@@ -127,10 +135,6 @@ cc_library(
     srcs = ["googletest_handler_adapter.cc"],
     hdrs = ["public/pw_unit_test/googletest_handler_adapter.h"],
     includes = ["public"],
-    target_compatible_with = select({
-        ":gtest_setting": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
         ":event_handler",
         "//pw_preprocessor",
@@ -143,10 +147,6 @@ cc_library(
     testonly = True,
     hdrs = ["public/pw_unit_test/googletest_test_matchers.h"],
     includes = ["public"],
-    target_compatible_with = select({
-        ":gtest_setting": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
         "//pw_result",
         "//pw_status",
@@ -157,10 +157,6 @@ cc_library(
 pw_cc_test(
     name = "googletest_test_matchers_test",
     srcs = ["googletest_test_matchers_test.cc"],
-    target_compatible_with = select({
-        ":gtest_setting": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
         ":googletest_test_matchers",
     ],
@@ -168,6 +164,7 @@ pw_cc_test(
 
 cc_library(
     name = "simple_printing_event_handler",
+    testonly = True,
     srcs = ["simple_printing_event_handler.cc"],
     hdrs = [
         "public/pw_unit_test/simple_printing_event_handler.h",
@@ -183,6 +180,7 @@ cc_library(
 
 cc_library(
     name = "simple_printing_main",
+    testonly = True,
     srcs = [
         "simple_printing_main.cc",
     ],
@@ -196,6 +194,7 @@ cc_library(
 
 cc_library(
     name = "printf_event_handler",
+    testonly = True,
     hdrs = ["public/pw_unit_test/printf_event_handler.h"],
     deps = [
         ":googletest_style_event_handler",
@@ -205,6 +204,7 @@ cc_library(
 
 cc_library(
     name = "printf_main",
+    testonly = True,
     srcs = ["printf_main.cc"],
     deps = [
         ":printf_event_handler",
@@ -212,8 +212,16 @@ cc_library(
     ],
 )
 
-cc_library(
+# TODO: b/324116813 - Remove this alias once no downstream project depends on
+# it.
+alias(
     name = "logging_event_handler",
+    actual = "logging",
+)
+
+cc_library(
+    name = "logging",
+    testonly = True,
     srcs = [
         "logging_event_handler.cc",
     ],
@@ -229,17 +237,9 @@ cc_library(
     ],
 )
 
-# Provides logging to either the light framework or an external GoogleTest.
-cc_library(
-    name = "logging",
-    deps = [":logging_event_handler"] + select({
-        ":gtest_setting": [":googletest_handler_adapter"],
-        "//conditions:default": [],
-    }),
-)
-
 pw_cc_binary(
     name = "logging_main",
+    testonly = True,
     srcs = [
         "logging_main.cc",
     ],
@@ -251,6 +251,7 @@ pw_cc_binary(
 
 cc_library(
     name = "multi_event_handler",
+    testonly = True,
     hdrs = [
         "public/pw_unit_test/multi_event_handler.h",
     ],
@@ -289,6 +290,7 @@ pw_proto_library(
 
 cc_library(
     name = "rpc_service",
+    testonly = True,
     srcs = ["unit_test_service.cc"] + select({
         ":light_setting": ["rpc_light_event_handler.cc"],
         "//conditions:default": [":rpc_gtest_event_handler.cc"],
@@ -319,6 +321,7 @@ cc_library(
 
 cc_library(
     name = "rpc_main",
+    testonly = True,
     srcs = [
         "rpc_main.cc",
     ],
@@ -334,14 +337,21 @@ cc_library(
 
 cc_library(
     name = "static_library_support",
+    testonly = True,
     srcs = ["static_library_support.cc"],
     hdrs = ["public/pw_unit_test/static_library_support.h"],
     includes = ["public"],
-    deps = [":light"],  # This library only works with the light backend
+    # This library only works with the light backend
+    target_compatible_with = select({
+        ":light_setting": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [":pw_unit_test"],
 )
 
 cc_library(
     name = "tests_in_archive",
+    testonly = True,
     srcs = [
         "static_library_archived_tests.cc",
         "static_library_missing_archived_tests.cc",
@@ -354,11 +364,8 @@ cc_library(
 pw_cc_test(
     name = "static_library_support_test",
     srcs = ["static_library_support_test.cc"],
-    target_compatible_with = select({
-        "//pw_unit_test:light_setting": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
+        ":pw_unit_test",
         ":static_library_support",
         ":tests_in_archive",
         "//pw_assert",
@@ -368,10 +375,6 @@ pw_cc_test(
 pw_cc_test(
     name = "framework_test",
     srcs = ["framework_test.cc"],
-    target_compatible_with = select({
-        "//pw_unit_test:light_setting": [],
-        "//conditions:default": ["@platforms//:incompatible"],
-    }),
     deps = [
         ":pw_unit_test",
         "//pw_assert",
@@ -383,7 +386,7 @@ pw_cc_test(
     name = "framework_light_test",
     srcs = ["framework_light_test.cc"],
     target_compatible_with = select({
-        "//pw_unit_test:light_setting": [],
+        ":light_setting": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [
