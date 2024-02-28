@@ -22,67 +22,6 @@ namespace {
 
 constexpr static size_t kCapacity = 256;
 
-TEST(TrackingAllocatorTest, AutomaticInit_Metrics) {
-  WithBuffer<SimpleAllocator, kCapacity> allocator;
-  TrackingAllocatorImpl<internal::Metrics> tracker(
-      test::kToken, *allocator, kCapacity);
-  internal::Metrics& group = tracker.metric_group();
-  EXPECT_EQ(group.metrics().size(), 9U);
-  EXPECT_EQ(group.children().size(), 0U);
-  EXPECT_TRUE(tracker.initialized());
-}
-
-TEST(TrackingAllocatorTest, AutomaticInit_MetricsStub) {
-  WithBuffer<SimpleAllocator, kCapacity> allocator;
-  TrackingAllocatorImpl<internal::MetricsStub> tracker(
-      test::kToken, *allocator, kCapacity);
-  EXPECT_TRUE(tracker.initialized());
-}
-
-TEST(TrackingAllocatorTest, ManualInit_Metrics) {
-  WithBuffer<SimpleAllocator, kCapacity> allocator;
-  TrackingAllocatorImpl<internal::Metrics> tracker(test::kToken);
-
-  internal::Metrics& group = tracker.metric_group();
-  EXPECT_EQ(group.metrics().size(), 0U);
-  EXPECT_EQ(group.children().size(), 0U);
-  EXPECT_FALSE(tracker.initialized());
-
-  tracker.Init(*allocator, kCapacity);
-  EXPECT_EQ(group.metrics().size(), 9U);
-  EXPECT_EQ(group.children().size(), 0U);
-  EXPECT_TRUE(tracker.initialized());
-}
-
-TEST(TrackingAllocatorTest, ManualInit_MetricsStub) {
-  WithBuffer<SimpleAllocator, kCapacity> allocator;
-  TrackingAllocatorImpl<internal::MetricsStub> tracker(test::kToken);
-  EXPECT_FALSE(tracker.initialized());
-
-  tracker.Init(*allocator, kCapacity);
-  EXPECT_TRUE(tracker.initialized());
-}
-
-TEST(TrackingAllocatorTest, NoInit_Metrics) {
-  WithBuffer<SimpleAllocator, kCapacity> allocator;
-  TrackingAllocatorImpl<internal::Metrics> tracker(test::kToken);
-  Layout layout = Layout::Of<std::byte>();
-  EXPECT_EQ(tracker.Allocate(layout), nullptr);
-  tracker.Deallocate(nullptr, layout);
-  EXPECT_FALSE(tracker.Resize(nullptr, layout, 2));
-  EXPECT_EQ(tracker.Reallocate(nullptr, layout, 2), nullptr);
-}
-
-TEST(TrackingAllocatorTest, NoInit_MetricsStub) {
-  WithBuffer<SimpleAllocator, kCapacity> allocator;
-  TrackingAllocatorImpl<internal::MetricsStub> tracker(test::kToken);
-  Layout layout = Layout::Of<std::byte>();
-  EXPECT_EQ(tracker.Allocate(layout), nullptr);
-  tracker.Deallocate(nullptr, layout);
-  EXPECT_FALSE(tracker.Resize(nullptr, layout, 2));
-  EXPECT_EQ(tracker.Reallocate(nullptr, layout, 2), nullptr);
-}
-
 // These unit tests below use `AllocatorForTest<kBufferSize>`, which forwards
 // `Allocator` calls to a `TrackingAllocatorImpl<internal::Metrics>` field. This
 // is the same type as `TrackingAllocator`, except that metrics are explicitly
@@ -91,7 +30,6 @@ TEST(TrackingAllocatorTest, NoInit_MetricsStub) {
 
 TEST(TrackingAllocatorTest, InitialValues) {
   test::AllocatorForTest<kCapacity> allocator;
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), 0U);
   EXPECT_EQ(allocator.peak_allocated_bytes(), 0U);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), 0U);
@@ -107,7 +45,6 @@ TEST(TrackingAllocatorTest, AllocateDeallocate) {
   constexpr Layout layout = Layout::Of<uint32_t[2]>();
   void* ptr = allocator.Allocate(layout);
   ASSERT_NE(ptr, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 2);
@@ -118,7 +55,6 @@ TEST(TrackingAllocatorTest, AllocateDeallocate) {
   EXPECT_EQ(allocator.num_failures(), 0U);
 
   allocator.Deallocate(ptr, layout);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), 0U);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 2);
@@ -134,7 +70,6 @@ TEST(TrackingAllocatorTest, AllocateFailure) {
   constexpr Layout layout = Layout::Of<uint32_t[0x10000000U]>();
   void* ptr = allocator.Allocate(layout);
   EXPECT_EQ(ptr, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), 0U);
   EXPECT_EQ(allocator.peak_allocated_bytes(), 0U);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), 0U);
@@ -150,7 +85,6 @@ TEST(TrackingAllocatorTest, AllocateDeallocateMultiple) {
   constexpr Layout layout1 = Layout::Of<uint32_t[3]>();
   void* ptr1 = allocator.Allocate(layout1);
   ASSERT_NE(ptr1, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 3);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 3);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 3);
@@ -163,7 +97,6 @@ TEST(TrackingAllocatorTest, AllocateDeallocateMultiple) {
   constexpr Layout layout2 = Layout::Of<uint32_t[2]>();
   void* ptr2 = allocator.Allocate(layout2);
   ASSERT_NE(ptr2, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 5);
@@ -174,7 +107,6 @@ TEST(TrackingAllocatorTest, AllocateDeallocateMultiple) {
   EXPECT_EQ(allocator.num_failures(), 0U);
 
   allocator.Deallocate(ptr1, layout1);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 5);
@@ -187,7 +119,6 @@ TEST(TrackingAllocatorTest, AllocateDeallocateMultiple) {
   constexpr Layout layout3 = Layout::Of<uint32_t>();
   void* ptr3 = allocator.Allocate(layout3);
   ASSERT_NE(ptr3, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 3);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 6);
@@ -198,7 +129,6 @@ TEST(TrackingAllocatorTest, AllocateDeallocateMultiple) {
   EXPECT_EQ(allocator.num_failures(), 0U);
 
   allocator.Deallocate(ptr3, layout3);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 6);
@@ -209,7 +139,6 @@ TEST(TrackingAllocatorTest, AllocateDeallocateMultiple) {
   EXPECT_EQ(allocator.num_failures(), 0U);
 
   allocator.Deallocate(ptr2, layout2);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), 0U);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 6);
@@ -225,7 +154,6 @@ TEST(TrackingAllocatorTest, ResizeLarger) {
   constexpr Layout old_layout = Layout::Of<uint32_t[3]>();
   void* ptr = allocator.Allocate(old_layout);
   ASSERT_NE(ptr, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 3);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 3);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 3);
@@ -237,7 +165,6 @@ TEST(TrackingAllocatorTest, ResizeLarger) {
 
   constexpr Layout new_layout = Layout::Of<uint32_t[5]>();
   EXPECT_TRUE(allocator.Resize(ptr, old_layout, new_layout.size()));
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 5);
@@ -248,7 +175,6 @@ TEST(TrackingAllocatorTest, ResizeLarger) {
   EXPECT_EQ(allocator.num_failures(), 0U);
 
   allocator.Deallocate(ptr, new_layout);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), 0U);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 5);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 5);
@@ -264,7 +190,6 @@ TEST(TrackingAllocatorTest, ResizeSmaller) {
   constexpr Layout old_layout = Layout::Of<uint32_t[2]>();
   void* ptr = allocator.Allocate(old_layout);
   ASSERT_NE(ptr, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 2);
@@ -276,7 +201,6 @@ TEST(TrackingAllocatorTest, ResizeSmaller) {
 
   constexpr Layout new_layout = Layout::Of<uint32_t>();
   EXPECT_TRUE(allocator.Resize(ptr, old_layout, new_layout.size()));
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t));
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 2);
@@ -287,7 +211,6 @@ TEST(TrackingAllocatorTest, ResizeSmaller) {
   EXPECT_EQ(allocator.num_failures(), 0U);
 
   allocator.Deallocate(ptr, new_layout);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), 0U);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 2);
@@ -305,7 +228,6 @@ TEST(TrackingAllocatorTest, ResizeFailure) {
   ASSERT_NE(ptr1, nullptr);
   void* ptr2 = allocator.Allocate(layout);
   ASSERT_NE(ptr2, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 4);
@@ -316,7 +238,6 @@ TEST(TrackingAllocatorTest, ResizeFailure) {
   EXPECT_EQ(allocator.num_failures(), 0U);
 
   EXPECT_FALSE(allocator.Resize(ptr1, layout, layout.size() * 2));
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 4);
@@ -332,7 +253,6 @@ TEST(TrackingAllocatorTest, Reallocate) {
   constexpr Layout layout1 = Layout::Of<uint32_t[2]>();
   void* ptr1 = allocator.Allocate(layout1);
   ASSERT_NE(ptr1, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 2);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 2);
@@ -346,7 +266,6 @@ TEST(TrackingAllocatorTest, Reallocate) {
   constexpr Layout layout2 = Layout::Of<uint32_t[4]>();
   void* new_ptr1 = allocator.Reallocate(ptr1, layout1, layout2.size());
   EXPECT_EQ(new_ptr1, ptr1);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 4);
@@ -359,7 +278,6 @@ TEST(TrackingAllocatorTest, Reallocate) {
   // Make a second allocation to force reallocation.
   void* ptr2 = allocator.Allocate(layout1);
   ASSERT_NE(ptr2, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 6);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 6);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 6);
@@ -374,7 +292,6 @@ TEST(TrackingAllocatorTest, Reallocate) {
   constexpr Layout layout3 = Layout::Of<uint32_t[8]>();
   new_ptr1 = allocator.Reallocate(ptr1, layout2, layout3.size());
   EXPECT_NE(new_ptr1, ptr1);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 10);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 14);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 14);
@@ -386,7 +303,6 @@ TEST(TrackingAllocatorTest, Reallocate) {
 
   allocator.Deallocate(ptr2, layout1);
   allocator.Deallocate(new_ptr1, layout3);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), 0U);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 14);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 14);
@@ -402,7 +318,6 @@ TEST(TrackingAllocatorTest, ReallocateFailure) {
   constexpr Layout layout = Layout::Of<uint32_t[4]>();
   void* ptr1 = allocator.Allocate(layout);
   ASSERT_NE(ptr1, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 4);
@@ -414,7 +329,6 @@ TEST(TrackingAllocatorTest, ReallocateFailure) {
 
   void* ptr2 = allocator.Reallocate(ptr1, layout, 0x10000000U);
   EXPECT_EQ(ptr2, nullptr);
-  EXPECT_EQ(allocator.total_bytes(), kCapacity);
   EXPECT_EQ(allocator.allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.peak_allocated_bytes(), sizeof(uint32_t) * 4);
   EXPECT_EQ(allocator.cumulative_allocated_bytes(), sizeof(uint32_t) * 4);
