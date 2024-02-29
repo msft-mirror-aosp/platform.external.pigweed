@@ -118,6 +118,7 @@ def pw_cc_perf_test(**kwargs):
     kwargs["deps"] = kwargs.get("deps", []) + \
                      ["@pigweed//pw_perf_test:logging_main"]
     kwargs["deps"] = kwargs["deps"] + ["@pigweed//targets:pw_assert_backend_impl"]
+    kwargs["testonly"] = True
     native.cc_binary(**kwargs)
 
 def pw_cc_facade(**kwargs):
@@ -284,7 +285,7 @@ pw_cc_blob_library = rule(
 )
 
 def _pw_cc_binary_with_map_impl(ctx):
-    [_, cc_info] = _compile_cc(
+    [cc_info] = _compile_cc(
         ctx,
         ctx.files.srcs,
         [],

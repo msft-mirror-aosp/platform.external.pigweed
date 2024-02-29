@@ -21,8 +21,6 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-# TODO(b/310035978): Support heap poisoning.
-
 cc_library(
     name = "allocator",
     srcs = [
@@ -34,22 +32,8 @@ cc_library(
     includes = ["public"],
     deps = [
         "//pw_assert",
-        "//pw_bytes",
-        "//pw_status",
-    ],
-)
-
-cc_library(
-    name = "allocator_metric_proxy",
-    hdrs = [
-        "public/pw_allocator/allocator_metric_proxy.h",
-    ],
-    includes = ["public"],
-    deps = [
-        ":allocator",
-        ":metrics",
-        "//pw_assert",
-        "//pw_metric:metric",
+        "//pw_preprocessor",
+        "//pw_result",
         "//pw_status",
     ],
 )
@@ -62,12 +46,27 @@ cc_library(
     ],
     includes = ["public"],
     deps = [
+        ":allocator",
+        "//pw_bytes",
+        "//pw_bytes:alignment",
+        "//pw_result",
+        "//pw_status",
+    ],
+)
+
+cc_library(
+    name = "block_allocator",
+    srcs = ["block_allocator.cc"],
+    hdrs = [
+        "public/pw_allocator/block_allocator.h",
+    ],
+    deps = [
+        ":allocator",
+        ":block",
         "//pw_assert",
         "//pw_bytes",
         "//pw_result",
-        "//pw_span",
         "//pw_status",
-        "//third_party/fuchsia:stdcompat",
     ],
 )
 
@@ -87,9 +86,10 @@ cc_library(
     includes = ["public"],
     deps = [
         ":allocator",
-        ":allocator_metric_proxy",
         ":metrics",
+        ":tracking_allocator",
         "//pw_metric:metric",
+        "//pw_result",
         "//pw_status",
         "//pw_tokenizer",
     ],
@@ -138,9 +138,6 @@ cc_library(
     includes = ["public"],
     deps = [
         ":allocator",
-        "//pw_assert",
-        "//pw_bytes",
-        "//pw_status",
     ],
 )
 
@@ -170,6 +167,8 @@ cc_library(
         ":allocator",
         ":metrics",
         "//pw_containers:flat_map",
+        "//pw_result",
+        "//pw_status",
         "//pw_tokenizer",
     ],
 )
@@ -195,6 +194,8 @@ cc_library(
         ":allocator",
         ":block",
         "//pw_bytes",
+        "//pw_result",
+        "//pw_status",
     ],
 )
 
@@ -230,6 +231,21 @@ cc_library(
 )
 
 cc_library(
+    name = "tracking_allocator",
+    hdrs = [
+        "public/pw_allocator/tracking_allocator.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":allocator",
+        ":metrics",
+        "//pw_assert",
+        "//pw_metric:metric",
+        "//pw_status",
+    ],
+)
+
+cc_library(
     name = "allocator_testing",
     testonly = True,
     srcs = [
@@ -241,12 +257,13 @@ cc_library(
     includes = ["public"],
     deps = [
         ":allocator",
-        ":allocator_metric_proxy",
         ":block",
         ":buffer",
         ":simple_allocator",
+        ":tracking_allocator",
         "//pw_assert",
         "//pw_bytes",
+        "//pw_result",
         "//pw_status",
         "//pw_unit_test",
     ],
@@ -295,19 +312,6 @@ pw_cc_test(
     deps = [
         ":allocator",
         ":allocator_testing",
-        "//pw_bytes",
-        "//pw_unit_test",
-    ],
-)
-
-pw_cc_test(
-    name = "allocator_metric_proxy_test",
-    srcs = [
-        "allocator_metric_proxy_test.cc",
-    ],
-    deps = [
-        ":allocator_metric_proxy",
-        ":allocator_testing",
         "//pw_unit_test",
     ],
 )
@@ -320,6 +324,20 @@ pw_cc_test(
     deps = [
         ":block",
         "//pw_span",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "block_allocator_test",
+    srcs = [
+        "block_allocator_test.cc",
+    ],
+    deps = [
+        ":block",
+        ":block_allocator",
+        ":buffer",
+        "//pw_bytes",
         "//pw_unit_test",
     ],
 )
@@ -440,6 +458,18 @@ pw_cc_test(
         "//pw_thread:thread",
         "//pw_thread:thread_core",
         "//pw_thread:yield",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "tracking_allocator_test",
+    srcs = [
+        "tracking_allocator_test.cc",
+    ],
+    deps = [
+        ":allocator_testing",
+        ":tracking_allocator",
         "//pw_unit_test",
     ],
 )

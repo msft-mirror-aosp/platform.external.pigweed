@@ -6,18 +6,885 @@
 What's New In Pigweed
 =====================
 
-----------------------------------------
-Discuss what's new with the Pigweed team
-----------------------------------------
+--------------------------------
+Talk to the team at Pigweed Live
+--------------------------------
 .. pigweed-live::
 
 .. _docs-changelog-latest:
 
 ------------
-Jan 26, 2024
+Feb 23, 2024
 ------------
+
 .. changelog_highlights_start
 
+Highlights (Feb 9, 2024 to Feb 23, 2024):
+
+* The new :ref:`module-pw_json` module provides classes for serializing JSON.
+* Raspberry Pi RP2040 support was expanded, including a new
+  ``pw::digital_io::Rp2040Config`` struct enables you to configure polarity for
+  RP2040 GPIO pins, and a new ``pw::spi::Rp2040Initiator`` class which is a
+  Pico SDK userspace implementation of Pigweed's SPI ``Initiator`` class.
+* The new ``pw::spi::DigitalOutChipSelector`` class sets the state of a
+  :ref:`module-pw_digital_io` output when activated.
+* The :ref:`module-pw_kvs` docs were overhauled.
+
+.. changelog_highlights_end
+
+Active SEEDs
+============
+Help shape the future of Pigweed! Please visit :ref:`seed-0000`
+and leave feedback on the RFCs (i.e. SEEDs) marked
+``Open for Comments``.
+
+Modules
+=======
+
+pw_allocator
+------------
+* `Remove total_bytes metric
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193251>`__
+* `Expose TrackingAllocator's initialization state
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192570>`__
+
+pw_assert
+---------
+* `Apply formatting changes
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193496>`__
+
+pw_assert_log
+-------------
+* `Fix Soong rules
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190602>`__
+  (issue `#324266698 <https://issues.pigweed.dev/issues/324266698>`__)
+* `Fix missing lib in soong rule
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192259>`__
+
+pw_bluetooth
+------------
+* `Add Emboss rules to BUILD.bazel
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192513>`__
+* `Update emboss imports to match Bazel rule
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192392>`__
+
+pw_build
+--------
+* `Silence warnings from linker script test
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191850>`__
+
+pw_bytes
+--------
+* `Add missing export in soong rule
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192257>`__
+
+pw_chrono_rp2040
+----------------
+* `Minor tweaks to documentation and test
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/183730>`__
+  (issue `#303297807 <https://issues.pigweed.dev/issues/303297807>`__)
+
+pw_cli
+------
+* `Add exit codes
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192897>`__
+
+pw_config_loader
+----------------
+The new ``skip_files__without_sections`` option enables you to just move on
+to the next file rather than raise an exception if a relevant section doesn't
+exist in a config file.
+
+* `Allow skipping files
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191970>`__
+
+pw_containers
+-------------
+* `Add default move operator for FilteredView
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192830>`__
+* `Add move constructor to FiltertedView
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191832>`__
+
+pw_digital_io_rp2040
+--------------------
+The new ``pw::digital_io::Rp2040Config`` struct enables you to configure
+polarity for RP2040 GPIO pins.
+
+* `Config with polarity
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/176290>`__
+  (issue `#303255049 <https://issues.pigweed.dev/issues/303255049>`__)
+
+pw_env_setup
+------------
+* `Use amd64 host tools on arm64
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192763>`__
+  (issue `#325498131 <https://issues.pigweed.dev/issues/325498131>`__)
+
+pw_function
+-----------
+The new ``//third_party/fuchsia:fit`` label flag enables Bazel-based projects
+to provide an alternate implementation for ``fit()`` when needed.
+
+* `//third_party/fuchsia:fit label_flag
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192391>`__
+
+pw_fuzzer
+---------
+* `Fix Bazel example, add presubmit test
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191310>`__
+  (issue `#324617297 <https://issues.pigweed.dev/issues/324617297>`__)
+
+pw_grpc
+-------
+* `Fix some minor bugs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191831>`__
+
+pw_hdlc
+-------
+* `Add android_library targets
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190930>`__
+  (issue `#321155919 <https://issues.pigweed.dev/issues/321155919>`__)
+
+pw_i2c
+------
+The API reference for :cpp:class:`pw::i2c::RegisterDevice` is now published on
+``pigweed.dev``.
+
+* `Doxygenify RegisterDevice
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191833>`__
+
+pw_ide
+------
+* `Fix environment inference
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191371>`__
+
+pw_json
+-------
+The new :ref:`module-pw_json` module provides classes for serializing JSON.
+
+* `Classes for serializing JSON
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190458>`__
+
+pw_kvs
+------
+The :ref:`module-pw_kvs` docs were overhauled.
+
+* `Follow new module docs guidelines
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189430>`__
+
+pw_log
+------
+* `Add android_library targets
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190930>`__
+  (issue `#321155919 <https://issues.pigweed.dev/issues/321155919>`__)
+
+pw_log_android
+--------------
+* `Fix missing libs in soong rule
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192258>`__
+
+pw_metric
+---------
+* `Fix Bazel build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190971>`__
+  (issue `#258078909 <https://issues.pigweed.dev/issues/258078909>`__)
+
+pw_module
+---------
+* `Add exit codes
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192897>`__
+
+pw_multibuf
+-----------
+* `Fix soong support
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192894>`__
+  (issue `#325320103 <https://issues.pigweed.dev/issues/325320103>`__)
+
+pw_package
+----------
+* `Update GoogleTest
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193250>`__
+* `Remove capture_output=True
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192530>`__
+
+pw_preprocessor
+---------------
+The :ref:`module-pw_preprocessor` reference is now being generated via Doxygen.
+
+* `Do not check for __VA_OPT__ on older compilers
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193434>`__
+  (issue `#326135018 <https://issues.pigweed.dev/issues/326135018>`__)
+* `Switch to Doxygen
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192730>`__
+* `Use __VA_OPT__ when available
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187099>`__
+
+pw_presubmit
+------------
+.. todo-check: disable
+
+* `Allow markdown style TODOs and adjust rustdocs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192253>`__
+  (issue `#315389119 <https://issues.pigweed.dev/issues/315389119>`__)
+* `Log format --fix output
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192394>`__
+* `Fix formatting of typescript code
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192393>`__
+* `Disallow FIXME and recommend TODO
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/188367>`__
+* `Allow pwbug.dev in TODOs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191795>`__
+* `Allow Bazel issues in TODOs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190970>`__
+
+.. todo-check: disable
+
+.. _docs-changelog-20240226-pw_rpc:
+
+pw_rpc
+------
+``pw_rpc`` clients will once again accept unsolicited responses from ``pw_rpc``
+servers that were built prior to September 2022. Unsolicited responses, also
+known as "open" requests, let a server send a message to a client prior to the
+client sending a request. This change fixed an incompatibility in which
+``pw_rpc`` clients built after September 2022 would not accept unsolicited
+responses from servers built before September 2022 (specifically,
+change `#109077 <https://pwrev.dev/109077>`_).
+
+* `Remove use of deprecated Python API
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187491>`__
+  (issue `#306195999 <https://issues.pigweed.dev/issues/306195999>`__)
+* `Add android_library targets
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190930>`__
+  (issue `#321155919 <https://issues.pigweed.dev/issues/321155919>`__)
+* `Support legacy unsolicited responses
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192311>`__
+
+pw_software_update
+------------------
+* `Add java build objects
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193410>`__
+
+pw_spi
+------
+The new ``pw::spi::DigitalOutChipSelector`` class is an implementation of
+``pw::spi::ChipSelector`` that sets the state of a :ref:`module-pw_digital_io`
+output when activated.
+
+* `Add Android.bp
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192590>`__
+  (issue `#316067629 <https://issues.pigweed.dev/issues/316067629>`__)
+* `DigitalOutChipSelector
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192790>`__
+  (issue `#303255049 <https://issues.pigweed.dev/issues/303255049>`__)
+* `Correct full-duplex behavior of linux_spi
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192591>`__
+  (issue `#316067628 <https://issues.pigweed.dev/issues/316067628>`__)
+
+pw_spi_rp2040
+-------------
+The new ``pw::spi::Rp2040Initiator`` class is a Pico SDK userspace
+implementation of Pigweed's SPI ``Initiator`` class.
+
+* `Initiator implementation
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192791>`__
+  (issue `#303255049 <https://issues.pigweed.dev/issues/303255049>`__)
+
+pw_stream
+---------
+* `Fix Pigweed build after sync
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191250>`__
+  (issue `#277108894 <https://issues.pigweed.dev/issues/277108894>`__)
+
+pw_string
+---------
+Debug error messages for assertions containing ``std::optional`` types have
+been improved.
+
+* `Add ToString for std::optional
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192514>`__
+
+pw_sync
+-------
+* `Add missing lib in soong rule
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192260>`__
+
+pw_tokenizer
+------------
+The :ref:`module-pw_tokenizer` and :ref:`module-pw_snapshot` Python
+libraries can now be used from Bazel as a result of the proto
+migration. See issue `#322850978 <https://issues.pigweed.dev/issues/322850978>`__).
+
+* `Fix link breakage on linux
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192511>`__
+  (issue `#321306079 <https://issues.pigweed.dev/issues/321306079>`__)
+* `Proto migration stage 5/5
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191270>`__
+  (issue `#322850978 <https://issues.pigweed.dev/issues/322850978>`__)
+* `Proto migration stage 3/5
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189696>`__
+  (issue `#322850978 <https://issues.pigweed.dev/issues/322850978>`__)
+* `Proto migration stage 1.5/5
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191834>`__
+  (issue `#322850978 <https://issues.pigweed.dev/issues/322850978>`__)
+* `Proto migration stage 1/5
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191135>`__
+  (issue `#322850978 <https://issues.pigweed.dev/issues/322850978>`__)
+
+pw_toolchain
+------------
+* `Add missing #include
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193430>`__
+* `Rename `action_config_flag_sets` to `flag_sets`
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192911>`__
+* `Simplify macOS -nostdlib++ usage
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192898>`__
+* `Remove unnecessary toolchain arguments
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192896>`__
+* `Add missing macOS cxx_builtin_include_directories
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192270>`__
+  (issue `#324652164 <https://issues.pigweed.dev/issues/324652164>`__)
+
+pw_toolchain_bazel
+------------------
+* `Use llvm-libtool-darwin on macOS
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190896>`__
+  (issue `#297413805 <https://issues.pigweed.dev/issues/297413805>`__)
+* `Explicitly depend on rules_cc
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191430>`__
+
+pw_transfer
+-----------
+* `Add an android_library for the Java client
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193534>`__
+* `Change class to parser
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193550>`__
+* `Fix integration test START packet issue
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192755>`__
+  (issue `#322497491 <https://issues.pigweed.dev/issues/322497491>`__)
+* `Add GetResourceStatus method
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192810>`__
+* `Limit test to sending a single chunk
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192510>`__
+* `Remove/hide deprecated handle interfaces
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190972>`__
+
+pw_watch
+--------
+* `Add exit codes
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192897>`__
+
+pw_web
+------
+The log viewer now supports multiple log sources.
+
+* `NPM version bump to 0.0.14
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193510>`__
+* `Enable multiple log sources
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192370>`__
+  (issue `#325096310 <https://issues.pigweed.dev/issues/325096310>`__)
+
+Build
+=====
+* `Fix docs build on mac-arm64
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192910>`__
+* `Use correct host_cpu when disabling docs on Arm Macs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192757>`__
+* `Remove docs from default build on Arm Macs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192754>`__
+  (issue `#315998985 <https://issues.pigweed.dev/issues/315998985>`__)
+* `Build for Java 11
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191830>`__
+
+Bazel
+-----
+* `Remove shallow_since attributes
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193473>`__
+* `Upgrade protobuf to 4.24.4
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187431>`__
+  (issue `#319717451 <https://issues.pigweed.dev/issues/319717451>`__)
+
+Targets
+=======
+* (rp2040) `Replace rp2040 target with rp2040_pw_system
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192516>`__
+* (rp2040) `Custom libusb backend
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192630>`__
+
+OS support
+==========
+* (Zephyr) `Change the pinned Zephyr commit
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192690>`__
+* (Zephyr) `Add zephyr's west CLI
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190547>`__
+
+Docs
+====
+`Breadcrumbs <https://en.wikipedia.org/wiki/Breadcrumb_navigation>`_ are now
+shown at the top of all docs pages except the homepage.
+
+* `Add breadcrumbs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193508>`__
+* `Fix incorrect module name in changelog
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193331>`__
+* `Fix canonical URLs for all */docs.html pages
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/193431>`__
+* `Fix typo in facades documentation
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192710>`__
+* `Fix 404s
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192251>`__
+  (issue `#325086274 <https://issues.pigweed.dev/issues/325086274>`__)
+
+SEEDs
+=====
+* (SEED-0125) `Claim SEED number
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192110>`__
+* `Mark legacy Sensor SEED as Rejected
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192250>`__
+
+Third party
+===========
+* `Roll FuzzTest and Abseil
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189419>`__
+
+Miscellaneous
+=============
+* `Disable tests incompatible with rp2040
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192764>`__
+  (issue `#260624583 <https://issues.pigweed.dev/issues/260624583>`__)
+* `Fix uses of std::chrono literals
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192515>`__
+* (pigweed.json) `Disallow Rosetta
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/188251>`__
+  (issue `#315998985 <https://issues.pigweed.dev/issues/315998985>`__)
+* (renode) `Update renode to latest daily build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192254>`__
+
+-----------
+Feb 9, 2024
+-----------
+Highlights (Jan 26, 2024 to Feb 9, 2024):
+
+* The new :ref:`module-pw_grpc` module provides classes that map between
+  ``pw_rpc`` packets and HTTP/2 gRPC frames, allowing ``pw_rpc`` services to
+  be exposed as gRPC services.
+* A lot of the remaining ``pw_toolchain_bazel`` feature work from
+  :ref:`seed-0113` was finished and rough edges were polished up.
+* The new generic ``pw::allocator::BlockAllocator`` interface supported several
+  derived types that enable fine-grained control over how a block satisfies an
+  allocation request.
+
+* ``pw_transfer`` now supports :ref:`resumable transfers
+  <pw_transfer-nonzero-transfers>`.
+
+Active SEEDs
+============
+Help shape the future of Pigweed! Please visit :ref:`seed-0000`
+and leave feedback on the RFCs (i.e. SEEDs) marked
+``Open for Comments``.
+
+Modules
+=======
+
+pw_alignment
+------------
+* `Add CMake & Soong support
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189360>`__
+
+pw_allocator
+------------
+The new generic :cpp:class:`pw::allocator::BlockAllocator` interface supports
+:ref:`several derived types <module-pw_allocator-other-impls>` that enable
+fine-grained control over how a block satisfies an allocation request. The new
+:cpp:func:`pw::allocator::GetLayout()` method retrieves the layout that was
+used to allocate a given pointer. The new
+:cpp:class:`pw::allocator::AllocatorSyncProxy` interface synchronizes access to
+another allocator, allowing it to be used by multiple threads.
+
+* `Refactor metric collection for tests
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190105>`__
+* `Add Allocator::GetLayout
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187764>`__
+* `Add BlockAllocator
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187657>`__
+* `Fix SynchronizedAllocator typo
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190721>`__
+* `Streamline Block and improve testing
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187656>`__
+* `Separate metrics from Fallback-, MultiplexAllocator
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190253>`__
+* `Make TrackingAllocator::Init optional
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190454>`__
+* `Check for integer overflow in Layout
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187654>`__
+* `Add additional metrics
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190250>`__
+* `Rename AllocatorMetricProxy to TrackingAllocator
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190230>`__
+* `Add SynchronizedAllocator
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189690>`__
+* `Fix typo
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189717>`__
+* `Fix Allocator::Reallocate
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189691>`__
+
+pw_assert
+---------
+* `Break out compatibility backend target
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189106>`__
+  (issue `#322057191 <https://issues.pigweed.dev/issues/322057191>`__)
+
+pw_async_basic
+--------------
+* `Remove unneeded locks from test
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190238>`__
+* `Test flake fix
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189938>`__
+  (issue `#323251704 <https://issues.pigweed.dev/issues/323251704>`__)
+* `Fix data race in newly added test
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189879>`__
+* `Fix ordering of tasks posted at same time
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189784>`__
+
+pw_bloat
+--------
+The new boolean argument ``ignore_unused_labels`` for ``pw_size_report()``
+enables you to remove labels from the JSON size report that have a size of 0.
+
+* `Allow removal of zero sized labels
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190599>`__
+  (issue `#282057969 <https://issues.pigweed.dev/issues/282057969>`__)
+
+pw_bluetooth
+------------
+* `Add l2cap_frames.emb
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/185751>`__
+* `Fix typo in SbcAllocationMethod
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190130>`__
+
+pw_boot
+-------
+* `Update status and general doc cleanup
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189298>`__
+
+pw_build
+--------
+The new ``PW_USE_COLOR``, ``NO_COLOR``, and ``CLICOLOR_FORCE`` OS environment
+variables enable you to control whether output in CI/CQ is color formatted.
+
+* `Add Fuchsia to TARGET_COMPATIBLE_WITH_HOST_SELECT
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190714>`__
+* `Enable fixed point types for clang builds
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190097>`__
+  (issue `#323425639 <https://issues.pigweed.dev/issues/323425639>`__)
+* `Support disabling colors
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189611>`__
+  (issue `#323056074 <https://issues.pigweed.dev/issues/323056074>`__)
+
+pw_bytes
+--------
+* `Check for integer overflow
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187655>`__
+
+pw_channel
+----------
+The initial ``pw::channel::Channel`` class from :ref:`seed-0114` has been
+introduced but it is experimental and should not be used yet.
+
+* `Docs fix
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190624>`__
+* `Module for async data exchange with minimal copying
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189284>`__
+
+pw_cli
+------
+* `Add json_config_loader_mixin
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190540>`__
+
+pw_compilation_testing
+----------------------
+* `Do not expand regexes
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/191030>`__
+* `Minor improvements
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189788>`__
+
+pw_config_loader
+----------------
+The code from ``pw_cli`` related to looking up user-specific configuration
+files has been moved to this separate module.
+
+* `Add support for nested keys
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190673>`__
+* `Add tests
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190672>`__
+* `Initial commit
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190671>`__
+
+pw_cpu_exception_cortex_m
+-------------------------
+* `Handle ARM v8.1 case
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189828>`__
+  (issue `#311766664 <https://issues.pigweed.dev/issues/311766664>`__)
+
+pw_digital_io
+-------------
+* `[[nodiscard]] on as() conversion functions
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189815>`__
+* `Use pw::internal::SiblingCast
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189015>`__
+
+pw_env_setup
+------------
+* `Roll cipd
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190737>`__
+  (issue `#315378787 <https://issues.pigweed.dev/issues/315378787>`__)
+* `Make npm actions more robust
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189358>`__
+  (issues `#323378974 <https://issues.pigweed.dev/issues/305042957>`__,
+  `#322437881 <https://issues.pigweed.dev/issues/322437881>`__,
+  `#323378974 <https://issues.pigweed.dev/issues/323378974>`__)
+* `Only add mingw to PATH once
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190030>`__
+  (issue `#322437881 <https://issues.pigweed.dev/issues/322437881>`__)
+
+pw_format
+---------
+* `Fix safe buildifier warnings
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189716>`__
+  (issue `#242181811 <https://issues.pigweed.dev/issues/242181811>`__)
+
+pw_function
+-----------
+* `Follow new docs guidelines
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/188362>`__
+
+pw_fuzzer
+---------
+* `Fix Bazel run target instructions
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/188363>`__
+
+pw_grpc
+-------
+The new :ref:`module-pw_grpc` module is an implementation of the gRPC HTTP/2
+protocol. It provides classes that map between :ref:`module-pw_rpc` packets
+and ``pw_grpc`` HTTP/2 frames, allowing ``pw_rpc`` services to be exposed as
+gRPC services.
+
+* `Fix off-by-one error when handling DATA frames
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190470>`__
+  (issue `#323924487 <https://issues.pigweed.dev/issues/323924487>`__)
+* `Add new module
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/186796>`__
+
+pw_ide
+------
+* `Disable Python terminal activation in VSC
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190592>`__
+* `Remove terminal env vars from VSC settings
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/188470>`__
+* `VSC extension 0.1.4 release
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/188742>`__
+
+pw_presubmit
+------------
+Color formatting in CI/CQ has been improved for readability.
+
+* `Simplify 'gn gen' color logic
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190239>`__
+* `Use color logic in gn gen call
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189827>`__
+* `Apply color logic in more cases
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189829>`__
+* `Support disabling colors
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189611>`__
+  (issue `#323056074 <https://issues.pigweed.dev/issues/323056074>`__)
+
+pw_protobuf
+-----------
+* `Use pw::internal::SiblingCast
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189015>`__
+
+pw_random
+---------
+* `Clean up build files
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189779>`__
+
+pw_result
+---------
+* `Add missing libs in Soong blueprint
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190950>`__
+
+pw_rpc
+------
+* `Avoid undefined behavior when casting to rpc::Writer
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189648>`__
+
+pw_stream
+---------
+* `Use pw::internal::SiblingCast
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189015>`__
+
+pw_target_runner
+----------------
+* `Remove .dev from path name
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190450>`__
+
+pw_thread
+---------
+* `Incease the sleep duration in tests
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190270>`__
+  (issue `#321832803 <https://issues.pigweed.dev/issues/321832803>`__)
+
+pw_tokenizer
+------------
+:ref:`Troubleshooting docs <module-pw_tokenizer-gcc-template-bug>` were added
+that explain how to workaround GCC's template function tokenization bug in GCC
+releases prior to 14.
+
+* `Mention GCC template bug in the docs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189820>`__
+
+pw_toolchain
+------------
+* `Disable unstable features in rust toolchains
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189948>`__
+* `Fix divergent configuration in arm_clang M0+ toolchain
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190196>`__
+* `Use less generic names for B1-B5
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189732>`__
+* `Use LLVM compiler-rt builtins
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/186232>`__
+* `Internal wrapper for casting between siblings
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189014>`__
+  (issue `#319144706 <https://issues.pigweed.dev/issues/319144706>`__)
+* `Small docs update
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189278>`__
+  (issue `#300471936 <https://issues.pigweed.dev/issues/300471936>`__)
+
+pw_toolchain_bazel
+------------------
+A lot of the remaining ``pw_toolchain_bazel`` feature work from
+:ref:`seed-0113` was finished and rough edges were polished up.
+
+* `Remove support for *_files
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190810>`__
+  (issue `#323448214 <https://issues.pigweed.dev/issues/323448214>`__)
+* `Add support for setting environment variables
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190154>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+* `Implement per-action files
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190152>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+* `Migrate to PwToolInfo
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190150>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+* `Pull file collection into config rule
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189971>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+* `Implement pw_cc_provides
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189112>`__
+  (issue `#320177248 <https://issues.pigweed.dev/issues/320177248>`__)
+* `Implement PwActionConfigInfo
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189990>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+* `Create temporary variable
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189970>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+* `Add a concept of well-known features
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189050>`__
+  (issue `#320177248 <https://issues.pigweed.dev/issues/320177248>`__)
+* `Implement requires_any_of for flag sets
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189111>`__
+  (issue `#320177248 <https://issues.pigweed.dev/issues/320177248>`__)
+* `Migrate to custom PwFeatureInfo
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189030>`__
+  (issue `#320177248 <https://issues.pigweed.dev/issues/320177248>`__)
+* `Add custom PwFlagSetInfo
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/188990>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+* `Replace bazel_tools providers with PW providers
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189110>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+* `Support regular binaries as tools
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190151>`__
+  (issue `#322872628 <https://issues.pigweed.dev/issues/322872628>`__)
+
+pw_transfer
+-----------
+``pw_transfer`` now supports :ref:`resumable transfers
+<pw_transfer-nonzero-transfers>`.
+
+* `Account for remaining_bytes in payload buffer
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190572>`__
+* `Rename TransferHandle -> Handle
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189097>`__
+* `Add resumeable transfers
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/182830>`__
+* `Make cancellation a method on handles
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189096>`__
+* `Allow setting a transfer resource size in C++
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189095>`__
+  (issue `#319731837 <https://issues.pigweed.dev/issues/319731837>`__)
+
+pw_unit_test
+------------
+* `Remove obsolete label flag
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190557>`__
+
+Build
+=====
+* (Bazel) `Update clang version
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190256>`__
+
+OS support
+==========
+* (Zephyr) `Fix default logging in chromium CQ
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190696>`__
+
+Docs
+====
+* `Nest backends under respective facades in sitenav
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190245>`__
+* `Add doxygengroup to the style guide
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190625>`__
+* `Update homepage
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190018>`__
+* `Update README links
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189731>`__
+* `Fix module homepage canonical URLs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189773>`__
+  (issue `#323077749 <https://issues.pigweed.dev/issues/323077749>`__)
+* `Update Bazel quickstart output sample
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189412>`__
+  (issue `#300471936 <https://issues.pigweed.dev/issues/300471936>`__)
+
+SEEDs
+=====
+* (SEED-0122) `Update status, add bug reference
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189612>`__
+* `Fix pw_seed_index template deps
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190675>`__
+* `Add authors to SEED document headers
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189870>`__
+* (SEED-0119) `Add sensors SEED
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/182653>`__
+
+Miscellaneous
+=============
+* `Update the bootstrap script to have start/end guards
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190451>`__
+* `Migrate bug numbers
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189353>`__
+  (issue `#298074672 <https://issues.pigweed.dev/issues/298074672>`__)
+* `Upgrade mbedtls to 3.5.0
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/189273>`__
+  (issue `#319289775 <https://issues.pigweed.dev/issues/319289775>`__)
+* `Fix clang-format findings
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/190090>`__
+
+------------
+Jan 26, 2024
+------------
 Highlights (Jan 12, 2024 to Jan 26, 2024):
 
 * The new :ref:`docs-bazel-integration` guide shows you how to integrate a
@@ -27,8 +894,6 @@ Highlights (Jan 12, 2024 to Jan 26, 2024):
   :ref:`module-pw_toolchain_bazel`.
 * A longstanding GCC bug that caused tokenized logging within a function
   template to not work has been fixed.
-
-.. changelog_highlights_end
 
 Active SEEDs
 ============
@@ -175,8 +1040,8 @@ See :ref:`module-pw_polyfill-static_assert`.
 pw_preprocessor
 ---------------
 The new ``PW_ADD_OVERFLOW``, ``PW_SUB_OVERFLOW``, and ``PW_MUL_OVERFLOW``
-macros can be used to `check for integer overflows
-<module-pw_preprocessor-integer-overflow>`_.
+macros can be used to :ref:`check for integer overflows
+<module-pw_preprocessor-integer-overflow>`.
 
 * `Add integer-overflow macros
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/187653>`__
@@ -871,7 +1736,7 @@ pw_bluetooth_sapphire
   (issue `#311639040 <https://issues.pigweed.dev/issues/311639040>`__)
 * `Fix BrEdrConnectionManager.Inspect test
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/183304>`__
-  (issue `#136961 <https://issues.pigweed.dev/issues/136961>`__)
+  (issue `#42086629 <https://issues.fuchsia.dev/issues/42086629>`__)
 
 pw_build
 --------
@@ -1190,7 +2055,7 @@ See ``PW_TRANSFER_DEFAULT_MAX_CLIENT_RETRIES`` and
 
 * `Remove small hardcoded timeout in proxy_test
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/184638>`__
-  (issue `#315459788 <https://issues.pigweed.dev/issues/pwbug.dev/315459788>`__)
+  (issue `#315459788 <https://issues.pigweed.dev/issues/315459788>`__)
 * `Allow setting different timeouts for client and server
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/184210>`__
 * `Update integration test documentation
@@ -1374,7 +2239,7 @@ Migration of :ref:`module-pw_bluetooth_sapphire` into Pigweed has begun.
   (issue `#312287470 <https://issues.pigweed.dev/issues/312287470>`__)
 * `Add testonly to testing targets
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/182890>`__
-  (issue `#fuchsia:136961 <https://issues.pigweed.dev/issues/fuchsia:136961>`__)
+  (issue `#136961 <https://issues.fuchsia.dev/issues/136961>`__)
 * `Revert commits to get to a known working state
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/183014>`__
 * `Use Write instead of UncheckedWrite
@@ -1417,7 +2282,7 @@ Migration of :ref:`module-pw_bluetooth_sapphire` into Pigweed has begun.
   (issue `#311449154 <https://issues.pigweed.dev/issues/311449154>`__)
 * `Refactor pw_bluetooth_sapphire & fix errors
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/173484>`__
-  (issue `#100593 <https://issues.pigweed.dev/issues/fxb/100593>`__)
+  (issue `#42051324 <https://issues.fuchsia.dev/issues/42051324>`__)
 * `Update copyright headers
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/177800>`__
 
@@ -1517,7 +2382,7 @@ pw_presubmit
   (issue `#307951383 <https://issues.pigweed.dev/issues/307951383>`__)
 * `Create Sapphire presubmit step
   <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/177453>`__
-  (issue `#100593 <https://issues.pigweed.dev/issues/fxb/100593>`__)
+  (issue `#42051324 <https://issues.fuchsia.dev/issues/42051324>`__)
 
 .. todo-check: enable
 
@@ -2154,7 +3019,8 @@ The :ref:`module-pw_build-bazel-empty_cc_library` Bazel utility was added.
   (issue `#260111641 <https://issues.pigweed.dev/issues/260111641>`__)
 * `Fix blob attribute ordering <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/177458>`__
 * `Only use -Wextra-semi on C++ files with GCC <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/177171>`__
-  (issue `#301262374 <https://issues.pigweed.dev/issues/306734552, b/301262374>`__)
+  (issues `#301262374 <https://issues.pigweed.dev/issues/306734552>`__,
+  `#301262374 <https://issues.pigweed.dev/issues/301262374>`__)
 * `Silence Windows-specific warnings <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/177172>`__
 
 pw_bytes

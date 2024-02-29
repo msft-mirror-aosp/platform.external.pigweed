@@ -15,6 +15,7 @@
 load(
     "@pw_toolchain//cc_toolchain:defs.bzl",
     "pw_cc_action_config",
+    "pw_cc_action_files",
     "pw_cc_tool",
 )
 
@@ -27,8 +28,9 @@ licenses(["notice"])
 
 exports_files(glob(["**"]))
 
-filegroup(
+pw_cc_action_files(
     name = "all",
+    actions = ["@pw_toolchain//actions:all_actions"],
     srcs = glob(["**"]),
     visibility = ["//visibility:public"],
 )
@@ -41,6 +43,10 @@ pw_cc_tool(
 pw_cc_action_config(
     name = "arm-none-eabi-ar",
     action_names = ["@pw_toolchain//actions:all_ar_actions"],
+    # Unlike most legacy features required to compile code, these features
+    # aren't enabled by default, and are instead only implied by the built-in
+    # action configs. We imply the features here to match the behavior of the
+    # built-in action configs so flags are actually passed to `ar`.
     implies = [
         "@pw_toolchain//features/legacy:archiver_flags",
         "@pw_toolchain//features/legacy:linker_param_file",
