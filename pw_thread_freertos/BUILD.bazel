@@ -25,7 +25,7 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 pw_cc_library(
-    name = "id_headers",
+    name = "id",
     hdrs = [
         "id_public_overrides/pw_thread_backend/id_inline.h",
         "id_public_overrides/pw_thread_backend/id_native.h",
@@ -36,35 +36,13 @@ pw_cc_library(
         "id_public_overrides",
         "public",
     ],
-    deps = [
-        "//pw_interrupt:context",
-        "@freertos",
-    ],
-)
-
-pw_cc_library(
-    name = "id",
     target_compatible_with = [
         "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
-        ":id_headers",
+        "//pw_interrupt:context",
         "//pw_thread:id_facade",
-    ],
-)
-
-pw_cc_library(
-    name = "sleep_headers",
-    hdrs = [
-        "public/pw_thread_freertos/sleep_inline.h",
-        "sleep_public_overrides/pw_thread_backend/sleep_inline.h",
-    ],
-    includes = [
-        "public",
-        "sleep_public_overrides",
-    ],
-    deps = [
-        "//pw_chrono:system_clock",
+        "@freertos",
     ],
 )
 
@@ -73,22 +51,31 @@ pw_cc_library(
     srcs = [
         "sleep.cc",
     ],
+    hdrs = [
+        "public/pw_thread_freertos/sleep_inline.h",
+        "sleep_public_overrides/pw_thread_backend/sleep_inline.h",
+    ],
+    includes = [
+        "public",
+        "sleep_public_overrides",
+    ],
     target_compatible_with = [
         "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
-        ":sleep_headers",
         "//pw_assert",
         "//pw_chrono:system_clock",
-        "//pw_chrono_freertos:system_clock_headers",
         "//pw_thread:id",
         "//pw_thread:sleep_facade",
+        "@freertos",
     ],
 )
 
-# This target provides the FreeRTOS specific headers needs for thread creation.
 pw_cc_library(
-    name = "thread_headers",
+    name = "thread",
+    srcs = [
+        "thread.cc",
+    ],
     hdrs = [
         "public/pw_thread_freertos/config.h",
         "public/pw_thread_freertos/context.h",
@@ -115,21 +102,6 @@ pw_cc_library(
 )
 
 pw_cc_library(
-    name = "thread",
-    srcs = [
-        "thread.cc",
-    ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
-    deps = [
-        ":id",
-        ":thread_headers",
-        "//pw_assert",
-    ],
-)
-
-pw_cc_library(
     name = "dynamic_test_threads",
     srcs = [
         "dynamic_test_threads.cc",
@@ -139,15 +111,15 @@ pw_cc_library(
     ],
     deps = [
         "//pw_chrono:system_clock",
+        "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:sleep",
-        "//pw_thread:test_threads_header",
         "//pw_thread:thread_facade",
     ],
 )
 
 pw_cc_test(
     name = "dynamic_thread_backend_test",
-    # TODO(b/271465588): Get this test to build.
+    # TODO: b/271465588 - Get this test to build.
     tags = ["manual"],
     deps = [
         ":dynamic_test_threads",
@@ -165,15 +137,15 @@ pw_cc_library(
     ],
     deps = [
         "//pw_chrono:system_clock",
+        "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:sleep",
-        "//pw_thread:test_threads_header",
         "//pw_thread:thread_facade",
     ],
 )
 
 pw_cc_test(
     name = "static_thread_backend_test",
-    # TODO(b/271465588): Get this test to build.
+    # TODO: b/271465588 - Get this test to build.
     tags = ["manual"],
     deps = [
         ":static_test_threads",
@@ -182,7 +154,7 @@ pw_cc_test(
 )
 
 pw_cc_library(
-    name = "yield_headers",
+    name = "yield",
     hdrs = [
         "public/pw_thread_freertos/yield_inline.h",
         "yield_public_overrides/pw_thread_backend/yield_inline.h",
@@ -191,19 +163,9 @@ pw_cc_library(
         "public",
         "yield_public_overrides",
     ],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
     deps = [
-        "@freertos",
-    ],
-)
-
-pw_cc_library(
-    name = "yield",
-    deps = [
-        ":yield_headers",
         "//pw_thread:yield_facade",
+        "@freertos",
     ],
 )
 
@@ -233,7 +195,7 @@ pw_cc_test(
         "pw_thread_freertos_private/thread_iteration.h",
         "thread_iteration_test.cc",
     ],
-    # TODO(b/271465588): Get this test to build.
+    # TODO: b/271465588 - Get this test to build.
     tags = ["manual"],
     deps = [
         ":freertos_tasktcb",
@@ -244,7 +206,7 @@ pw_cc_test(
         "//pw_string:builder",
         "//pw_string:util",
         "//pw_sync:thread_notification",
-        "//pw_thread:test_threads_header",
+        "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:thread",
         "//pw_thread:thread_info",
         "//pw_thread:thread_iteration",
@@ -266,6 +228,7 @@ pw_cc_library(
     deps = [
         "//pw_function",
         "//pw_log",
+        "//pw_span",
         "//pw_status",
         "@freertos",
     ],
@@ -279,7 +242,7 @@ pw_cc_library(
     hdrs = [
         "public/pw_thread_freertos/snapshot.h",
     ],
-    # TODO(b/269204725): Put this in the toolchain configuration instead.  I
+    # TODO: b/269204725 - Put this in the toolchain configuration instead.  I
     # would like to say `copts = ["-Wno-c++20-designator"]`, but arm-gcc tells
     # me that's an "unrecognized command line option"; I think it may be a
     # clang-only flag.
@@ -313,11 +276,12 @@ pw_cc_facade(
 pw_cc_library(
     name = "freertos_tasktcb",
     hdrs = [
+        "public/pw_thread_freertos/freertos_tsktcb.h",
         ":generate_freertos_tsktcb",
     ],
-    includes = ["thread_public_overrides"],
-    deps = [
-        ":freertos_tasktcb_facade",
+    includes = [
+        "public",
+        "thread_public_overrides",
     ],
 )
 

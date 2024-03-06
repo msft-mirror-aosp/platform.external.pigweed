@@ -67,6 +67,11 @@ struct Config {
   ClockPhase phase;
   BitsPerWord bits_per_word;
   BitOrder bit_order;
+
+  bool operator==(const Config& rhs) const {
+    return polarity == rhs.polarity && phase == rhs.phase &&
+           bits_per_word() == rhs.bits_per_word() && bit_order == rhs.bit_order;
+  }
 };
 static_assert(sizeof(Config) == sizeof(uint32_t),
               "Ensure that the config struct fits in 32-bits");
@@ -77,7 +82,7 @@ class Initiator {
  public:
   virtual ~Initiator() = default;
 
-  // Configure the SPI bus to communicate with peripherals using a given set of
+  // Configure the SPI bus to communicate with responders using a given set of
   // properties, including the clock polarity, clock phase, bit-order, and
   // bits-per-word.
   // Returns OkStatus() on success, and implementation-specific values on

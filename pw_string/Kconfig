@@ -12,10 +12,16 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+menu "pw_string"
+
 config PIGWEED_STRING
-    bool "Enable Pigweed string library (pw_string)"
+    bool "Link pw_string library"
     select PIGWEED_ASSERT
     select PIGWEED_PREPROCESSOR
     select PIGWEED_RESULT
     select PIGWEED_SPAN
     select PIGWEED_STATUS
+    help
+      See :ref:`module-pw_string` for module details.
+
+endmenu

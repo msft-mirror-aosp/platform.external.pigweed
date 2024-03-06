@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -21,7 +21,6 @@
 #include "pw_bytes/array.h"
 #include "pw_rpc/raw/client_testing.h"
 #include "pw_rpc/test_helpers.h"
-#include "pw_thread/sleep.h"
 #include "pw_thread/thread.h"
 #include "pw_thread_stl/options.h"
 #include "pw_transfer_private/chunk_testing.h"
@@ -611,8 +610,8 @@ TEST_F(ReadTransfer, ResendsParametersIfSentRepeatedChunkDuringRecovery) {
   EXPECT_EQ(transfer_status, OkStatus());
 }
 
-constexpr chrono::SystemClock::duration kTestTimeout =
-    std::chrono::milliseconds(50);
+// Use a long timeout to avoid accidentally triggering timeouts.
+constexpr chrono::SystemClock::duration kTestTimeout = std::chrono::seconds(30);
 constexpr uint8_t kTestRetries = 3;
 
 TEST_F(ReadTransfer, Timeout_ResendsCurrentParameters) {
@@ -780,7 +779,7 @@ TEST_F(ReadTransfer, Timeout_EndsTransferAfterMaxRetries) {
     EXPECT_EQ(transfer_status, Status::Unknown());
   }
 
-  // Sleep one more time after the final retry. The client should cancel the
+  // Time out one more time after the final retry. The client should cancel the
   // transfer at this point. As no packets were received from the server, no
   // final status chunk should be sent.
   transfer_thread_.SimulateClientTimeout(14);
@@ -788,9 +787,10 @@ TEST_F(ReadTransfer, Timeout_EndsTransferAfterMaxRetries) {
 
   EXPECT_EQ(transfer_status, Status::DeadlineExceeded());
 
-  // After finishing the transfer, nothing else should be sent. Verify this by
-  // waiting for a bit.
-  this_thread::sleep_for(kTestTimeout * 4);
+  // After finishing the transfer, nothing else should be sent.
+  transfer_thread_.SimulateClientTimeout(14);
+  transfer_thread_.SimulateClientTimeout(14);
+  transfer_thread_.SimulateClientTimeout(14);
   ASSERT_EQ(payloads.size(), 4u);
 }
 
@@ -1466,7 +1466,7 @@ TEST_F(WriteTransfer, Timeout_EndsTransferAfterMaxRetries) {
     EXPECT_EQ(transfer_status, Status::Unknown());
   }
 
-  // Sleep one more time after the final retry. The client should cancel the
+  // Time out one more time after the final retry. The client should cancel the
   // transfer at this point. As no packets were received from the server, no
   // final status chunk should be sent.
   transfer_thread_.SimulateClientTimeout(13);
@@ -1474,9 +1474,10 @@ TEST_F(WriteTransfer, Timeout_EndsTransferAfterMaxRetries) {
 
   EXPECT_EQ(transfer_status, Status::DeadlineExceeded());
 
-  // After finishing the transfer, nothing else should be sent. Verify this by
-  // waiting for a bit.
-  this_thread::sleep_for(kTestTimeout * 4);
+  // After finishing the transfer, nothing else should be sent.
+  transfer_thread_.SimulateClientTimeout(13);
+  transfer_thread_.SimulateClientTimeout(13);
+  transfer_thread_.SimulateClientTimeout(13);
   ASSERT_EQ(payloads.size(), 4u);
 
   // Ensure we don't leave a dangling reference to transfer_status.
@@ -1580,12 +1581,14 @@ TEST_F(WriteTransfer, ManualCancel) {
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
 
   // Get a response from the server, then cancel the transfer.
+  // This must request a smaller chunk than the entire available write data to
+  // prevent the client from trying to send an additional finish chunk.
   context_.server().SendServerStream<Transfer::Write>(EncodeChunk(
       Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersRetransmit)
           .set_session_id(15)
           .set_offset(0)
-          .set_window_end_offset(64)
-          .set_max_chunk_size_bytes(32)));
+          .set_window_end_offset(16)
+          .set_max_chunk_size_bytes(16)));
   transfer_thread_.WaitUntilEventIsProcessed();
   ASSERT_EQ(payloads.size(), 2u);
 
@@ -1644,85 +1647,6 @@ TEST_F(ReadTransfer, Version2_SingleChunk) {
                 writer,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
-                ProtocolVersion::kVersionTwo));
-
-  transfer_thread_.WaitUntilEventIsProcessed();
-
-  // Initial chunk of the transfer is sent. This chunk should contain all the
-  // fields from both legacy and version 2 protocols for backwards
-  // compatibility.
-  rpc::PayloadsView payloads =
-      context_.output().payloads<Transfer::Read>(context_.channel().id());
-  ASSERT_EQ(payloads.size(), 1u);
-  EXPECT_EQ(transfer_status, Status::Unknown());
-
-  Chunk chunk = DecodeChunk(payloads[0]);
-  EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
-  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
-  EXPECT_EQ(chunk.resource_id(), 3u);
-  EXPECT_EQ(chunk.offset(), 0u);
-  EXPECT_EQ(chunk.window_end_offset(), 64u);
-  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
-
-  // The server responds with a START_ACK, continuing the version 2 handshake
-  // and assigning a session_id to the transfer.
-  context_.server().SendServerStream<Transfer::Read>(
-      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
-                      .set_session_id(29)
-                      .set_resource_id(3)));
-  transfer_thread_.WaitUntilEventIsProcessed();
-
-  ASSERT_EQ(payloads.size(), 2u);
-
-  // Client should accept the session_id with a START_ACK_CONFIRMATION,
-  // additionally containing the initial parameters for the read transfer.
-  chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
-  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 29u);
-  EXPECT_FALSE(chunk.resource_id().has_value());
-  EXPECT_EQ(chunk.offset(), 0u);
-  EXPECT_EQ(chunk.window_end_offset(), 64u);
-  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
-
-  // Send all the transfer data. Client should accept it and complete the
-  // transfer.
-  context_.server().SendServerStream<Transfer::Read>(
-      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(29)
-                      .set_offset(0)
-                      .set_payload(kData32)
-                      .set_remaining_bytes(0)));
-  transfer_thread_.WaitUntilEventIsProcessed();
-
-  ASSERT_EQ(payloads.size(), 3u);
-
-  chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.session_id(), 29u);
-  EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
-  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  ASSERT_TRUE(chunk.status().has_value());
-  EXPECT_EQ(chunk.status().value(), OkStatus());
-
-  EXPECT_EQ(transfer_status, OkStatus());
-  EXPECT_EQ(std::memcmp(writer.data(), kData32.data(), writer.bytes_written()),
-            0);
-
-  context_.server().SendServerStream<Transfer::Read>(EncodeChunk(
-      Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
-          .set_session_id(29)));
-}
-
-TEST_F(ReadTransfer, Version2_ServerRunsLegacy) {
-  stream::MemoryWriterBuffer<64> writer;
-  Status transfer_status = Status::Unknown();
-
-  ASSERT_EQ(OkStatus(),
-            client_.Read(
-                3,
-                writer,
-                [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
 
@@ -1739,7 +1663,88 @@ TEST_F(ReadTransfer, Version2_ServerRunsLegacy) {
   Chunk chunk = DecodeChunk(payloads[0]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
+  EXPECT_EQ(chunk.resource_id(), 3u);
+  EXPECT_EQ(chunk.offset(), 0u);
+  EXPECT_EQ(chunk.window_end_offset(), 64u);
+  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
+
+  // The server responds with a START_ACK, continuing the version 2 handshake.
+  context_.server().SendServerStream<Transfer::Read>(
+      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
+                      .set_session_id(1)
+                      .set_resource_id(3)));
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  ASSERT_EQ(payloads.size(), 2u);
+
+  // Client should accept the session_id with a START_ACK_CONFIRMATION,
+  // additionally containing the initial parameters for the read transfer.
+  chunk = DecodeChunk(payloads.back());
+  EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_FALSE(chunk.desired_session_id().has_value());
+  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_FALSE(chunk.resource_id().has_value());
+  EXPECT_EQ(chunk.offset(), 0u);
+  EXPECT_EQ(chunk.window_end_offset(), 64u);
+  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
+
+  // Send all the transfer data. Client should accept it and complete the
+  // transfer.
+  context_.server().SendServerStream<Transfer::Read>(
+      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
+                      .set_session_id(1)
+                      .set_offset(0)
+                      .set_payload(kData32)
+                      .set_remaining_bytes(0)));
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  ASSERT_EQ(payloads.size(), 3u);
+
+  chunk = DecodeChunk(payloads.back());
+  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  ASSERT_TRUE(chunk.status().has_value());
+  EXPECT_EQ(chunk.status().value(), OkStatus());
+
+  EXPECT_EQ(transfer_status, OkStatus());
+  EXPECT_EQ(std::memcmp(writer.data(), kData32.data(), writer.bytes_written()),
+            0);
+
+  context_.server().SendServerStream<Transfer::Read>(EncodeChunk(
+      Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
+          .set_session_id(1)));
+}
+
+TEST_F(ReadTransfer, Version2_ServerRunsLegacy) {
+  stream::MemoryWriterBuffer<64> writer;
+  Status transfer_status = Status::Unknown();
+
+  ASSERT_EQ(OkStatus(),
+            client_.Read(
+                3,
+                writer,
+                [&transfer_status](Status status) { transfer_status = status; },
+                cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
+                ProtocolVersion::kVersionTwo));
+
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  // Initial chunk of the transfer is sent. This chunk should contain all the
+  // fields from both legacy and version 2 protocols for backwards
+  // compatibility.
+  rpc::PayloadsView payloads =
+      context_.output().payloads<Transfer::Read>(context_.channel().id());
+  ASSERT_EQ(payloads.size(), 1u);
+  EXPECT_EQ(transfer_status, Status::Unknown());
+
+  Chunk chunk = DecodeChunk(payloads[0]);
+  EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
@@ -1760,6 +1765,7 @@ TEST_F(ReadTransfer, Version2_ServerRunsLegacy) {
   ASSERT_EQ(payloads.size(), 2u);
 
   chunk = DecodeChunk(payloads.back());
+  EXPECT_FALSE(chunk.desired_session_id().has_value());
   EXPECT_EQ(chunk.session_id(), 3u);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kLegacy);
@@ -1781,6 +1787,7 @@ TEST_F(ReadTransfer, Version2_TimeoutDuringHandshake) {
                 writer,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1796,7 +1803,7 @@ TEST_F(ReadTransfer, Version2_TimeoutDuringHandshake) {
   Chunk chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
@@ -1804,13 +1811,13 @@ TEST_F(ReadTransfer, Version2_TimeoutDuringHandshake) {
 
   // Wait for the timeout to expire without doing anything. The client should
   // resend the initial chunk.
-  transfer_thread_.SimulateClientTimeout(3);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 2u);
 
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
@@ -1819,7 +1826,7 @@ TEST_F(ReadTransfer, Version2_TimeoutDuringHandshake) {
   // This time, the server responds, continuing the handshake and transfer.
   context_.server().SendServerStream<Transfer::Read>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
-                      .set_session_id(31)
+                      .set_session_id(1)
                       .set_resource_id(3)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -1828,7 +1835,7 @@ TEST_F(ReadTransfer, Version2_TimeoutDuringHandshake) {
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 31u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_FALSE(chunk.resource_id().has_value());
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
@@ -1836,7 +1843,7 @@ TEST_F(ReadTransfer, Version2_TimeoutDuringHandshake) {
 
   context_.server().SendServerStream<Transfer::Read>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(31)
+                      .set_session_id(1)
                       .set_offset(0)
                       .set_payload(kData32)
                       .set_remaining_bytes(0)));
@@ -1845,7 +1852,7 @@ TEST_F(ReadTransfer, Version2_TimeoutDuringHandshake) {
   ASSERT_EQ(payloads.size(), 4u);
 
   chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.session_id(), 31u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   ASSERT_TRUE(chunk.status().has_value());
@@ -1857,7 +1864,7 @@ TEST_F(ReadTransfer, Version2_TimeoutDuringHandshake) {
 
   context_.server().SendServerStream<Transfer::Read>(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
-          .set_session_id(31)));
+          .set_session_id(1)));
 }
 
 TEST_F(ReadTransfer, Version2_TimeoutAfterHandshake) {
@@ -1870,98 +1877,6 @@ TEST_F(ReadTransfer, Version2_TimeoutAfterHandshake) {
                 writer,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
-                ProtocolVersion::kVersionTwo));
-
-  transfer_thread_.WaitUntilEventIsProcessed();
-
-  // Initial chunk of the transfer is sent. This chunk should contain all the
-  // fields from both legacy and version 2 protocols for backwards
-  // compatibility.
-  rpc::PayloadsView payloads =
-      context_.output().payloads<Transfer::Read>(context_.channel().id());
-  ASSERT_EQ(payloads.size(), 1u);
-  EXPECT_EQ(transfer_status, Status::Unknown());
-
-  Chunk chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
-  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
-  EXPECT_EQ(chunk.resource_id(), 3u);
-  EXPECT_EQ(chunk.offset(), 0u);
-  EXPECT_EQ(chunk.window_end_offset(), 64u);
-  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
-
-  // The server responds with a START_ACK, continuing the version 2 handshake
-  // and assigning a session_id to the transfer.
-  context_.server().SendServerStream<Transfer::Read>(
-      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
-                      .set_session_id(33)
-                      .set_resource_id(3)));
-  transfer_thread_.WaitUntilEventIsProcessed();
-
-  ASSERT_EQ(payloads.size(), 2u);
-
-  // Client should accept the session_id with a START_ACK_CONFIRMATION,
-  // additionally containing the initial parameters for the read transfer.
-  chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
-  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 33u);
-  EXPECT_FALSE(chunk.resource_id().has_value());
-  EXPECT_EQ(chunk.offset(), 0u);
-  EXPECT_EQ(chunk.window_end_offset(), 64u);
-  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
-
-  // Wait for the timeout to expire without doing anything. The client should
-  // resend the confirmation chunk.
-  transfer_thread_.SimulateClientTimeout(33);
-  ASSERT_EQ(payloads.size(), 3u);
-
-  chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
-  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 33u);
-  EXPECT_FALSE(chunk.resource_id().has_value());
-  EXPECT_EQ(chunk.offset(), 0u);
-  EXPECT_EQ(chunk.window_end_offset(), 64u);
-  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
-
-  // The server responds and the transfer should continue normally.
-  context_.server().SendServerStream<Transfer::Read>(
-      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(33)
-                      .set_offset(0)
-                      .set_payload(kData32)
-                      .set_remaining_bytes(0)));
-  transfer_thread_.WaitUntilEventIsProcessed();
-
-  ASSERT_EQ(payloads.size(), 4u);
-
-  chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.session_id(), 33u);
-  EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
-  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  ASSERT_TRUE(chunk.status().has_value());
-  EXPECT_EQ(chunk.status().value(), OkStatus());
-
-  EXPECT_EQ(transfer_status, OkStatus());
-  EXPECT_EQ(std::memcmp(writer.data(), kData32.data(), writer.bytes_written()),
-            0);
-
-  context_.server().SendServerStream<Transfer::Read>(EncodeChunk(
-      Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
-          .set_session_id(33)));
-}
-
-TEST_F(ReadTransfer, Version2_ServerErrorDuringHandshake) {
-  stream::MemoryWriterBuffer<64> writer;
-  Status transfer_status = Status::Unknown();
-
-  ASSERT_EQ(OkStatus(),
-            client_.Read(
-                3,
-                writer,
-                [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
 
@@ -1978,7 +1893,101 @@ TEST_F(ReadTransfer, Version2_ServerErrorDuringHandshake) {
   Chunk chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
+  EXPECT_EQ(chunk.resource_id(), 3u);
+  EXPECT_EQ(chunk.offset(), 0u);
+  EXPECT_EQ(chunk.window_end_offset(), 64u);
+  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
+
+  // The server responds with a START_ACK, continuing the version 2 handshake
+  // and assigning a session_id to the transfer.
+  context_.server().SendServerStream<Transfer::Read>(
+      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
+                      .set_session_id(1)
+                      .set_resource_id(3)));
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  ASSERT_EQ(payloads.size(), 2u);
+
+  // Client should accept the session_id with a START_ACK_CONFIRMATION,
+  // additionally containing the initial parameters for the read transfer.
+  chunk = DecodeChunk(payloads.back());
+  EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_FALSE(chunk.resource_id().has_value());
+  EXPECT_EQ(chunk.offset(), 0u);
+  EXPECT_EQ(chunk.window_end_offset(), 64u);
+  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
+
+  // Wait for the timeout to expire without doing anything. The client should
+  // resend the confirmation chunk.
+  transfer_thread_.SimulateClientTimeout(1);
+  ASSERT_EQ(payloads.size(), 3u);
+
+  chunk = DecodeChunk(payloads.back());
+  EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_FALSE(chunk.resource_id().has_value());
+  EXPECT_EQ(chunk.offset(), 0u);
+  EXPECT_EQ(chunk.window_end_offset(), 64u);
+  EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
+
+  // The server responds and the transfer should continue normally.
+  context_.server().SendServerStream<Transfer::Read>(
+      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
+                      .set_session_id(1)
+                      .set_offset(0)
+                      .set_payload(kData32)
+                      .set_remaining_bytes(0)));
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  ASSERT_EQ(payloads.size(), 4u);
+
+  chunk = DecodeChunk(payloads.back());
+  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  ASSERT_TRUE(chunk.status().has_value());
+  EXPECT_EQ(chunk.status().value(), OkStatus());
+
+  EXPECT_EQ(transfer_status, OkStatus());
+  EXPECT_EQ(std::memcmp(writer.data(), kData32.data(), writer.bytes_written()),
+            0);
+
+  context_.server().SendServerStream<Transfer::Read>(EncodeChunk(
+      Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
+          .set_session_id(1)));
+}
+
+TEST_F(ReadTransfer, Version2_ServerErrorDuringHandshake) {
+  stream::MemoryWriterBuffer<64> writer;
+  Status transfer_status = Status::Unknown();
+
+  ASSERT_EQ(OkStatus(),
+            client_.Read(
+                3,
+                writer,
+                [&transfer_status](Status status) { transfer_status = status; },
+                cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
+                ProtocolVersion::kVersionTwo));
+
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  // Initial chunk of the transfer is sent. This chunk should contain all the
+  // fields from both legacy and version 2 protocols for backwards
+  // compatibility.
+  rpc::PayloadsView payloads =
+      context_.output().payloads<Transfer::Read>(context_.channel().id());
+  ASSERT_EQ(payloads.size(), 1u);
+  EXPECT_EQ(transfer_status, Status::Unknown());
+
+  Chunk chunk = DecodeChunk(payloads.back());
+  EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
@@ -1986,7 +1995,7 @@ TEST_F(ReadTransfer, Version2_ServerErrorDuringHandshake) {
 
   // The server responds to the start request with an error.
   context_.server().SendServerStream<Transfer::Read>(EncodeChunk(Chunk::Final(
-      ProtocolVersion::kVersionTwo, 3, Status::Unauthenticated())));
+      ProtocolVersion::kVersionTwo, 1, Status::Unauthenticated())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   EXPECT_EQ(payloads.size(), 1u);
@@ -2003,6 +2012,7 @@ TEST_F(ReadTransfer, Version2_TimeoutWaitingForCompletionAckRetries) {
                 writer,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2018,17 +2028,16 @@ TEST_F(ReadTransfer, Version2_TimeoutWaitingForCompletionAckRetries) {
   Chunk chunk = DecodeChunk(payloads[0]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
   EXPECT_EQ(chunk.max_chunk_size_bytes(), 37u);
 
-  // The server responds with a START_ACK, continuing the version 2 handshake
-  // and assigning a session_id to the transfer.
+  // The server responds with a START_ACK, continuing the version 2 handshake.
   context_.server().SendServerStream<Transfer::Read>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
-                      .set_session_id(29)
+                      .set_session_id(1)
                       .set_resource_id(3)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2039,7 +2048,7 @@ TEST_F(ReadTransfer, Version2_TimeoutWaitingForCompletionAckRetries) {
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_FALSE(chunk.resource_id().has_value());
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
@@ -2049,7 +2058,7 @@ TEST_F(ReadTransfer, Version2_TimeoutWaitingForCompletionAckRetries) {
   // transfer.
   context_.server().SendServerStream<Transfer::Read>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(29)
+                      .set_session_id(1)
                       .set_offset(0)
                       .set_payload(kData32)
                       .set_remaining_bytes(0)));
@@ -2058,7 +2067,7 @@ TEST_F(ReadTransfer, Version2_TimeoutWaitingForCompletionAckRetries) {
   ASSERT_EQ(payloads.size(), 3u);
 
   chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   ASSERT_TRUE(chunk.status().has_value());
@@ -2070,14 +2079,14 @@ TEST_F(ReadTransfer, Version2_TimeoutWaitingForCompletionAckRetries) {
 
   // Time out instead of sending a completion ACK. THe transfer should resend
   // its completion chunk.
-  transfer_thread_.SimulateClientTimeout(29);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 4u);
 
   // Reset transfer_status to check whether the handler is called again.
   transfer_status = Status::Unknown();
 
   chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   ASSERT_TRUE(chunk.status().has_value());
@@ -2090,11 +2099,11 @@ TEST_F(ReadTransfer, Version2_TimeoutWaitingForCompletionAckRetries) {
   // Send a completion ACK to end the transfer.
   context_.server().SendServerStream<Transfer::Read>(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
-          .set_session_id(29)));
+          .set_session_id(1)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   // No further chunks should be sent following the ACK.
-  transfer_thread_.SimulateClientTimeout(29);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 4u);
 }
 
@@ -2109,6 +2118,7 @@ TEST_F(ReadTransfer,
                 writer,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2124,7 +2134,7 @@ TEST_F(ReadTransfer,
   Chunk chunk = DecodeChunk(payloads[0]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
@@ -2134,7 +2144,7 @@ TEST_F(ReadTransfer,
   // and assigning a session_id to the transfer.
   context_.server().SendServerStream<Transfer::Read>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
-                      .set_session_id(29)
+                      .set_session_id(1)
                       .set_resource_id(3)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2145,7 +2155,7 @@ TEST_F(ReadTransfer,
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_FALSE(chunk.resource_id().has_value());
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 64u);
@@ -2155,7 +2165,7 @@ TEST_F(ReadTransfer,
   // transfer.
   context_.server().SendServerStream<Transfer::Read>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(29)
+                      .set_session_id(1)
                       .set_offset(0)
                       .set_payload(kData32)
                       .set_remaining_bytes(0)));
@@ -2164,7 +2174,7 @@ TEST_F(ReadTransfer,
   ASSERT_EQ(payloads.size(), 3u);
 
   chunk = DecodeChunk(payloads.back());
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   ASSERT_TRUE(chunk.status().has_value());
@@ -2177,16 +2187,16 @@ TEST_F(ReadTransfer,
   // Time out instead of sending a completion ACK. THe transfer should resend
   // its completion chunk at first, then terminate after the maximum number of
   // retries.
-  transfer_thread_.SimulateClientTimeout(29);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 4u);  // Retry 1.
 
-  transfer_thread_.SimulateClientTimeout(29);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 5u);  // Retry 2.
 
-  transfer_thread_.SimulateClientTimeout(29);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 6u);  // Retry 3.
 
-  transfer_thread_.SimulateClientTimeout(29);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 6u);  // No more retries; transfer has ended.
 }
 
@@ -2200,6 +2210,7 @@ TEST_F(WriteTransfer, Version2_SingleChunk) {
                 reader,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2212,14 +2223,13 @@ TEST_F(WriteTransfer, Version2_SingleChunk) {
   Chunk chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
-  // The server responds with a START_ACK, continuing the version 2 handshake
-  // and assigning a session_id to the transfer.
+  // The server responds with a START_ACK, continuing the version 2 handshake.
   context_.server().SendServerStream<Transfer::Write>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
-                      .set_session_id(29)
+                      .set_session_id(1)
                       .set_resource_id(3)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2229,7 +2239,7 @@ TEST_F(WriteTransfer, Version2_SingleChunk) {
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_FALSE(chunk.resource_id().has_value());
 
   // The server can then begin the data transfer by sending its transfer
@@ -2237,7 +2247,7 @@ TEST_F(WriteTransfer, Version2_SingleChunk) {
   rpc::test::WaitForPackets(context_.output(), 2, [this] {
     context_.server().SendServerStream<Transfer::Write>(EncodeChunk(
         Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kParametersRetransmit)
-            .set_session_id(29)
+            .set_session_id(1)
             .set_offset(0)
             .set_window_end_offset(64)
             .set_max_chunk_size_bytes(32)));
@@ -2248,7 +2258,7 @@ TEST_F(WriteTransfer, Version2_SingleChunk) {
   chunk = DecodeChunk(payloads[2]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_TRUE(chunk.has_payload());
   EXPECT_EQ(std::memcmp(
@@ -2258,7 +2268,7 @@ TEST_F(WriteTransfer, Version2_SingleChunk) {
   chunk = DecodeChunk(payloads[3]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   ASSERT_TRUE(chunk.remaining_bytes().has_value());
   EXPECT_EQ(chunk.remaining_bytes().value(), 0u);
 
@@ -2266,7 +2276,7 @@ TEST_F(WriteTransfer, Version2_SingleChunk) {
 
   // Send the final status chunk to complete the transfer.
   context_.server().SendServerStream<Transfer::Write>(
-      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 29, OkStatus())));
+      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 1, OkStatus())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   // Client should acknowledge the completion of the transfer.
@@ -2275,7 +2285,7 @@ TEST_F(WriteTransfer, Version2_SingleChunk) {
   chunk = DecodeChunk(payloads[4]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletionAck);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 29u);
+  EXPECT_EQ(chunk.session_id(), 1u);
 
   EXPECT_EQ(transfer_status, OkStatus());
 }
@@ -2290,6 +2300,7 @@ TEST_F(WriteTransfer, Version2_ServerRunsLegacy) {
                 reader,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2302,7 +2313,7 @@ TEST_F(WriteTransfer, Version2_ServerRunsLegacy) {
   Chunk chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // Instead of continuing the handshake with a START_ACK, the server
@@ -2357,6 +2368,7 @@ TEST_F(WriteTransfer, Version2_RetryDuringHandshake) {
                 reader,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2369,25 +2381,25 @@ TEST_F(WriteTransfer, Version2_RetryDuringHandshake) {
   Chunk chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // Time out waiting for a server response. The client should resend the
   // initial packet.
-  transfer_thread_.SimulateClientTimeout(3);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 2u);
 
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // This time, respond with the correct continuation packet. The transfer
   // should resume and complete normally.
   context_.server().SendServerStream<Transfer::Write>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
-                      .set_session_id(31)
+                      .set_session_id(1)
                       .set_resource_id(3)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2396,13 +2408,13 @@ TEST_F(WriteTransfer, Version2_RetryDuringHandshake) {
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 31u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_FALSE(chunk.resource_id().has_value());
 
   rpc::test::WaitForPackets(context_.output(), 2, [this] {
     context_.server().SendServerStream<Transfer::Write>(EncodeChunk(
         Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kParametersRetransmit)
-            .set_session_id(31)
+            .set_session_id(1)
             .set_offset(0)
             .set_window_end_offset(64)
             .set_max_chunk_size_bytes(32)));
@@ -2413,7 +2425,7 @@ TEST_F(WriteTransfer, Version2_RetryDuringHandshake) {
   chunk = DecodeChunk(payloads[3]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 31u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_TRUE(chunk.has_payload());
   EXPECT_EQ(std::memcmp(
@@ -2423,14 +2435,14 @@ TEST_F(WriteTransfer, Version2_RetryDuringHandshake) {
   chunk = DecodeChunk(payloads[4]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 31u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   ASSERT_TRUE(chunk.remaining_bytes().has_value());
   EXPECT_EQ(chunk.remaining_bytes().value(), 0u);
 
   EXPECT_EQ(transfer_status, Status::Unknown());
 
   context_.server().SendServerStream<Transfer::Write>(
-      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 31, OkStatus())));
+      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 1, OkStatus())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   // Client should acknowledge the completion of the transfer.
@@ -2439,7 +2451,7 @@ TEST_F(WriteTransfer, Version2_RetryDuringHandshake) {
   chunk = DecodeChunk(payloads[5]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletionAck);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 31u);
+  EXPECT_EQ(chunk.session_id(), 1u);
 
   EXPECT_EQ(transfer_status, OkStatus());
 }
@@ -2454,6 +2466,7 @@ TEST_F(WriteTransfer, Version2_RetryAfterHandshake) {
                 reader,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2466,14 +2479,13 @@ TEST_F(WriteTransfer, Version2_RetryAfterHandshake) {
   Chunk chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
-  // The server responds with a START_ACK, continuing the version 2 handshake
-  // and assigning a session_id to the transfer.
+  // The server responds with a START_ACK, continuing the version 2 handshake.
   context_.server().SendServerStream<Transfer::Write>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAck)
-                      .set_session_id(33)
+                      .set_session_id(1)
                       .set_resource_id(3)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2483,18 +2495,18 @@ TEST_F(WriteTransfer, Version2_RetryAfterHandshake) {
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 33u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_FALSE(chunk.resource_id().has_value());
 
   // Time out waiting for a server response. The client should resend the
   // initial packet.
-  transfer_thread_.SimulateClientTimeout(33);
+  transfer_thread_.SimulateClientTimeout(1);
   ASSERT_EQ(payloads.size(), 3u);
 
   chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAckConfirmation);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 33u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_FALSE(chunk.resource_id().has_value());
 
   // This time, respond with the first transfer parameters chunk. The transfer
@@ -2502,7 +2514,7 @@ TEST_F(WriteTransfer, Version2_RetryAfterHandshake) {
   rpc::test::WaitForPackets(context_.output(), 2, [this] {
     context_.server().SendServerStream<Transfer::Write>(EncodeChunk(
         Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kParametersRetransmit)
-            .set_session_id(33)
+            .set_session_id(1)
             .set_offset(0)
             .set_window_end_offset(64)
             .set_max_chunk_size_bytes(32)));
@@ -2513,7 +2525,7 @@ TEST_F(WriteTransfer, Version2_RetryAfterHandshake) {
   chunk = DecodeChunk(payloads[3]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 33u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_TRUE(chunk.has_payload());
   EXPECT_EQ(std::memcmp(
@@ -2523,14 +2535,14 @@ TEST_F(WriteTransfer, Version2_RetryAfterHandshake) {
   chunk = DecodeChunk(payloads[4]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 33u);
+  EXPECT_EQ(chunk.session_id(), 1u);
   ASSERT_TRUE(chunk.remaining_bytes().has_value());
   EXPECT_EQ(chunk.remaining_bytes().value(), 0u);
 
   EXPECT_EQ(transfer_status, Status::Unknown());
 
   context_.server().SendServerStream<Transfer::Write>(
-      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 33, OkStatus())));
+      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 1, OkStatus())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   // Client should acknowledge the completion of the transfer.
@@ -2539,7 +2551,7 @@ TEST_F(WriteTransfer, Version2_RetryAfterHandshake) {
   chunk = DecodeChunk(payloads[5]);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletionAck);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 33u);
+  EXPECT_EQ(chunk.session_id(), 1u);
 
   EXPECT_EQ(transfer_status, OkStatus());
 }
@@ -2554,6 +2566,7 @@ TEST_F(WriteTransfer, Version2_ServerErrorDuringHandshake) {
                 reader,
                 [&transfer_status](Status status) { transfer_status = status; },
                 cfg::kDefaultChunkTimeout,
+                cfg::kDefaultChunkTimeout,
                 ProtocolVersion::kVersionTwo));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -2566,12 +2579,12 @@ TEST_F(WriteTransfer, Version2_ServerErrorDuringHandshake) {
   Chunk chunk = DecodeChunk(payloads.back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStart);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
-  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.desired_session_id(), 1u);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // The server responds to the start request with an error.
   context_.server().SendServerStream<Transfer::Write>(EncodeChunk(
-      Chunk::Final(ProtocolVersion::kVersionTwo, 3, Status::NotFound())));
+      Chunk::Final(ProtocolVersion::kVersionTwo, 1, Status::NotFound())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   EXPECT_EQ(payloads.size(), 1u);

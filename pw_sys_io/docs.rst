@@ -30,17 +30,27 @@ Setup
 =====
 This module requires relatively minimal setup:
 
-  1. Choose a ``pw_sys_io`` backend, or write one yourself.
-  2. If using GN build, Specify the ``pw_sys_io_BACKEND`` GN build arg to point
-     the library that provides a ``pw_sys_io`` backend.
+1. Choose a ``pw_sys_io`` backend, or write one yourself.
+2. If using GN build, Specify the ``pw_sys_io_BACKEND`` GN build arg to point
+   the library that provides a ``pw_sys_io`` backend.
 
 Module usage
 ============
 See backend docs for how to interact with the underlying system I/O
 implementation.
 
+API reference
+=============
+.. doxygenfunction:: pw::sys_io::ReadByte(std::byte* dest)
+.. doxygenfunction:: pw::sys_io::TryReadByte(std::byte* dest)
+.. doxygenfunction:: pw::sys_io::WriteByte(std::byte b)
+.. doxygenfunction:: pw::sys_io::WriteLine(const std::string_view& s)
+.. doxygenfunction:: pw::sys_io::ReadBytes(ByteSpan dest)
+.. doxygenfunction:: pw::sys_io::WriteBytes(ConstByteSpan src)
+
 Dependencies
 ============
-  * pw_sys_io_backend
-  * pw_span
-  * pw_status
+- :ref:`module-pw_sys_io`
+- :ref:`module-pw_span`
+- :ref:`module-pw_status`
+

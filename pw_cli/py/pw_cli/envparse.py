@@ -22,6 +22,7 @@ from typing import (
     Generic,
     IO,
     List,
+    Literal,
     Mapping,
     Optional,
     TypeVar,
@@ -173,7 +174,10 @@ class EnvironmentParser:
                     and var not in self._variables
                     and not var.endswith(allowed_suffixes)
                 ):
-                    raise ValueError(f'Unrecognized environment variable {var}')
+                    raise ValueError(
+                        f'Unrecognized environment variable {var}, please '
+                        'remove it from your environment'
+                    )
 
         return namespace
 
@@ -202,9 +206,7 @@ def strict_bool(value: str) -> bool:
     )
 
 
-# TODO(mohrr) Switch to Literal when no longer supporting Python 3.7.
-# OpenMode = Literal['r', 'rb', 'w', 'wb']
-OpenMode = str
+OpenMode = Literal['r', 'rb', 'w', 'wb']
 
 
 class FileType:

@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 
 #include "pw_assert/assert.h"
 #include "pw_kvs/alignment.h"
@@ -42,7 +43,7 @@ class FlashMemory {
   // The flash address is in the range of: 0 to FlashSize.
   typedef uint32_t Address;
 
-  // TODO(b/235149326): This can be constexpr when tokenized asserts are fixed.
+  // TODO: b/235149326 - This can be constexpr when tokenized asserts are fixed.
   FlashMemory(size_t sector_size,
               size_t sector_count,
               size_t alignment,
@@ -167,11 +168,26 @@ class FlashPartition {
 
   class Reader final : public stream::SeekableReader {
    public:
-    constexpr Reader(kvs::FlashPartition& partition)
-        : partition_(partition), position_(0) {}
+    /// @brief Stream seekable reader for FlashPartitions.
+    ///
+    /// @param partition The partiion to read.
+    /// @param read_limit_bytes Optional limit to read less than the full
+    /// FlashPartition. Reader will use the lesser of read_limit_bytes and
+    /// partition size. Situations needing a subset that starts somewhere other
+    /// than 0 can seek to the desired start point.
+    Reader(kvs::FlashPartition& partition,
+           size_t read_limit_bytes = std::numeric_limits<size_t>::max())
+        : partition_(partition),
+          read_limit_(std::min(read_limit_bytes, partition_.size_bytes())),
+          position_(0) {}
 
     Reader(const Reader&) = delete;
     Reader& operator=(const Reader&) = delete;
+
+    void SetReadLimit(size_t read_limit_bytes) {
+      read_limit_ = std::min(read_limit_bytes, partition_.size_bytes());
+      position_ = std::min(position_, read_limit_);
+    }
 
    private:
     StatusWithSize DoRead(ByteSpan data) override;
@@ -179,14 +195,15 @@ class FlashPartition {
     size_t DoTell() override { return position_; }
 
     Status DoSeek(ptrdiff_t offset, Whence origin) override {
-      return CalculateSeek(offset, origin, partition_.size_bytes(), position_);
+      return CalculateSeek(offset, origin, read_limit_, position_);
     }
 
     size_t ConservativeLimit(LimitType type) const override {
-      return type == LimitType::kRead ? partition_.size_bytes() - position_ : 0;
+      return type == LimitType::kRead ? read_limit_ - position_ : 0;
     }
 
     FlashPartition& partition_;
+    size_t read_limit_;
     size_t position_;
   };
 #endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)

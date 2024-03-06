@@ -34,11 +34,10 @@ from typing import (
 )
 
 import pw_cli
-from . import cli, format_code, git_repo, presubmit, tools
+from . import cli, git_repo, presubmit, presubmit_context, tools
 
 DEFAULT_PATH = Path('out', 'presubmit', 'keep_sorted')
 
-_COLOR = pw_cli.color.colors()
 _LOG: logging.Logger = logging.getLogger(__name__)
 
 # Ignore a whole section. Please do not change the order of these lines.
@@ -182,7 +181,7 @@ class _FileSorter:
         if not block.allow_dupes:
             lines = list({x.full: x for x in lines}.values())
 
-        StrLinePair = Tuple[str, _Line]
+        StrLinePair = Tuple[str, _Line]  # pylint: disable=invalid-name
         sort_key_funcs: List[Callable[[StrLinePair], StrLinePair]] = []
 
         if block.ignored_prefixes:
@@ -377,7 +376,7 @@ def _process_files(
     if not errors:
         return errors
 
-    ctx.fail(f'Found {len(errors)} files with keep-sorted errors:')
+    ctx.fail(f'Found {tools.plural(errors, "file")} with keep-sorted errors:')
 
     with ctx.failure_summary_log.open('w') as outs:
         for path, diffs in errors.items():
@@ -390,7 +389,7 @@ def _process_files(
             )
 
             outs.write(diff)
-            print(format_code.colorize_diff(diff))
+            print(tools.colorize_diff(diff))
 
     return errors
 
@@ -399,6 +398,7 @@ def _process_files(
 def presubmit_check(ctx: presubmit.PresubmitContext) -> None:
     """Presubmit check that ensures specified lists remain sorted."""
 
+    ctx.paths = presubmit_context.apply_exclusions(ctx)
     errors = _process_files(ctx)
 
     if errors:

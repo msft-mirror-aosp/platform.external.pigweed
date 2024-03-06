@@ -22,7 +22,6 @@ import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
 
 pw_doc_group("docs") {
-  inputs = [ "doc_resources/pw_env_setup_output.png" ]
   sources = [ "docs.rst" ]
 }
 
@@ -38,13 +37,19 @@ pw_python_group("core_pigweed_python_packages") {
     "$dir_pw_cli/py",
     "$dir_pw_compilation_testing/py",
     "$dir_pw_console/py",
+    "$dir_pw_containers/py",
     "$dir_pw_cpu_exception_cortex_m/py",
+    "$dir_pw_digital_io:protos.python",
     "$dir_pw_docgen/py",
     "$dir_pw_doctor/py",
+    "$dir_pw_emu/py",
     "$dir_pw_env_setup/py",
     "$dir_pw_hdlc/py",
+    "$dir_pw_i2c:protos.python",
     "$dir_pw_ide/py",
     "$dir_pw_log:protos.python",
+    "$dir_pw_log/py",
+    "$dir_pw_log_rpc/py",
     "$dir_pw_log_tokenized/py",
     "$dir_pw_metric/py",
     "$dir_pw_module/py",
@@ -72,6 +77,17 @@ pw_python_group("core_pigweed_python_packages") {
     "$dir_pw_watch/py",
   ]
 }
+
+# Python packages for supporting specific targets. This includes flashing tools
+# and unit test runners.
+pw_python_group("pigweed_target_support_packages") {
+  python_deps = [
+    "$dir_pigweed/targets/lm3s6965evb_qemu/py",
+    "$dir_pigweed/targets/rp2040/py",
+    "$dir_pigweed/targets/stm32f429i_disc1/py",
+  ]
+}
+
 pw_python_group("python") {
   python_deps = [
     ":core_pigweed_python_packages",
@@ -82,11 +98,10 @@ pw_python_group("python") {
 
     # Standalone scripts
     # These targets are included here in order to ensure they are linted.
-    "$dir_pw_hdlc/rpc_example:example_script",
-    "$dir_pw_rpc/py:python_client_cpp_server_test",
+    "$dir_pw_emu/py:mock_emu",
+    "$dir_pw_emu/py:mock_emu_frontend",
     "$dir_pw_third_party/fuchsia:generate_fuchsia_patch",
     "$dir_pw_third_party/nanopb:generate_nanopb_proto",
-    "$dir_pw_unit_test:test_group_metadata_test",
   ]
 }
 
@@ -95,13 +110,18 @@ pw_python_venv("pigweed_build_venv") {
   source_packages = [ ":core_pigweed_python_packages" ]
 }
 
-# Python packages for supporting specific targets.
 pw_python_pip_install("target_support_packages") {
-  packages = [
-    "$dir_pigweed/targets/lm3s6965evb_qemu/py",
-    "$dir_pigweed/targets/stm32f429i_disc1/py",
-  ]
-  editable = true
+  packages = [ ":target_support_package_distribution" ]
+}
+
+pw_python_distribution("target_support_package_distribution") {
+  packages = [ ":pigweed_target_support_packages" ]
+  generate_setup_cfg = {
+    name = "pigweed_target_support"
+    version = "0.0.1"
+    include_default_pyproject_file = true
+    append_date_to_version = true
+  }
 }
 
 # This target is responsible for building the Python source uploaded to PyPI:
@@ -208,4 +228,8 @@ pw_python_distribution("generate_hdlc_proto_rpc_tokenizer_distribution") {
 if (current_toolchain != default_toolchain) {
   pw_test_group("tests") {
   }
+}
+
+pw_python_script("sample_project_action") {
+  sources = [ "sample_project_action/__init__.py" ]
 }

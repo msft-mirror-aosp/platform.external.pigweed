@@ -19,10 +19,75 @@
 
 #include "pw_bytes/bit.h"
 #include "pw_bytes/endian.h"
+#include "pw_tokenizer/base64.h"
 #include "pw_tokenizer/internal/decode.h"
+#include "pw_tokenizer/nested_tokenization.h"
 
 namespace pw::tokenizer {
 namespace {
+
+class NestedMessageDetokenizer {
+ public:
+  NestedMessageDetokenizer(const Detokenizer& detokenizer)
+      : detokenizer_(detokenizer) {}
+
+  void Detokenize(std::string_view chunk) {
+    for (char next_char : chunk) {
+      Detokenize(next_char);
+    }
+  }
+
+  void Detokenize(char next_char) {
+    switch (state_) {
+      case kNonMessage:
+        if (next_char == PW_TOKENIZER_NESTED_PREFIX) {
+          message_buffer_.push_back(next_char);
+          state_ = kMessage;
+        } else {
+          output_.push_back(next_char);
+        }
+        break;
+      case kMessage:
+        if (base64::IsValidChar(next_char)) {
+          message_buffer_.push_back(next_char);
+        } else {
+          HandleEndOfMessage();
+          if (next_char == PW_TOKENIZER_NESTED_PREFIX) {
+            message_buffer_.push_back(next_char);
+          } else {
+            output_.push_back(next_char);
+            state_ = kNonMessage;
+          }
+        }
+        break;
+    }
+  }
+
+  std::string Flush() {
+    if (state_ == kMessage) {
+      HandleEndOfMessage();
+      state_ = kNonMessage;
+    }
+    return std::move(output_);
+  }
+
+ private:
+  void HandleEndOfMessage() {
+    if (auto result = detokenizer_.DetokenizeBase64Message(message_buffer_);
+        result.ok()) {
+      output_ += result.BestString();
+    } else {
+      output_ += message_buffer_;  // Keep the original if it doesn't decode.
+    }
+    message_buffer_.clear();
+  }
+
+  const Detokenizer& detokenizer_;
+  std::string output_;
+  std::string message_buffer_;
+
+  enum { kNonMessage, kMessage } state_ = kNonMessage;
+};
 
 std::string UnknownTokenMessage(uint32_t value) {
   std::string output(PW_TOKENIZER_ARG_DECODING_ERROR_PREFIX "unknown token ");
@@ -124,6 +189,19 @@ DetokenizedString Detokenizer::Detokenize(
                                 : span(result->second),
       encoded.size() < sizeof(token) ? span<const uint8_t>()
                                      : encoded.subspan(sizeof(token)));
+}
+
+DetokenizedString Detokenizer::DetokenizeBase64Message(
+    std::string_view text) const {
+  std::string buffer(text);
+  buffer.resize(PrefixedBase64DecodeInPlace(buffer));
+  return Detokenize(buffer);
+}
+
+std::string Detokenizer::DetokenizeBase64(std::string_view text) const {
+  NestedMessageDetokenizer nested_detokenizer(*this);
+  nested_detokenizer.Detokenize(text);
+  return nested_detokenizer.Flush();
 }
 
 }  // namespace pw::tokenizer

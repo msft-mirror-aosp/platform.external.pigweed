@@ -43,78 +43,35 @@ platform(
     constraint_values = ["@platforms//os:none"],
 )
 
-# --- CPU's ---
-platform(
-    name = "cortex_m0",
-    constraint_values = ["@pigweed_config//:target_rtos"],
-    parents = ["@bazel_embedded//platforms:cortex_m0"],
-)
-
-platform(
-    name = "cortex_m1",
-    constraint_values = ["@pigweed_config//:target_rtos"],
-    parents = ["@bazel_embedded//platforms:cortex_m1"],
-)
-
-platform(
-    name = "cortex_m3",
-    constraint_values = ["@pigweed_config//:target_rtos"],
-    parents = ["@bazel_embedded//platforms:cortex_m3"],
-)
-
-platform(
-    name = "cortex_m4",
-    constraint_values = ["@pigweed_config//:target_rtos"],
-    parents = ["@bazel_embedded//platforms:cortex_m4"],
-)
-
-platform(
-    name = "cortex_m4_fpu",
-    constraint_values = ["@pigweed_config//:target_rtos"],
-    parents = ["@bazel_embedded//platforms:cortex_m4_fpu"],
-)
-
-platform(
-    name = "cortex_m7",
-    constraint_values = ["@pigweed_config//:target_rtos"],
-    parents = ["@bazel_embedded//platforms:cortex_m7"],
-)
-
-platform(
-    name = "cortex_m7_fpu",
-    constraint_values = ["@pigweed_config//:target_rtos"],
-    parents = ["@bazel_embedded//platforms:cortex_m7_fpu"],
-)
-
-# --- Chipsets ---
-platform(
-    name = "stm32f429",
-    constraint_values = ["//pw_build/constraints/chipset:stm32f429"],
-    parents = [":cortex_m4"],
-)
-
 platform(
     name = "lm3s6965evb",
-    constraint_values = ["//pw_build/constraints/chipset:lm3s6965evb"],
-    parents = [":cortex_m3"],
+    constraint_values = [
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m3",
+        "//pw_build/constraints/chipset:lm3s6965evb",
+        "//pw_sys_io_baremetal_lm3s6965evb:backend",
+        "@platforms//cpu:armv7-m",
+        "@rust_crates//:no_std",
+    ],
 )
 
 platform(
     name = "nrf52833",
-    constraint_values = ["//pw_build/constraints/chipset:nrf52833"],
-    parents = [":cortex_m0"],
+    constraint_values = [
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m0",
+        "//pw_build/constraints/chipset:nrf52833",
+        "@platforms//cpu:armv6-m",
+    ],
 )
 
-# --- Boards ---
-platform(
-    name = "stm32f429i-disc1",
-    constraint_values = ["//pw_build/constraints/board:stm32f429i-disc1"],
-    parents = [":stm32f429"],
-)
-
+# Primarily a QEMU supported m0 target for rust development, based on the
+# nRF51822.
 platform(
     name = "microbit",
-    constraint_values = ["//pw_build/constraints/board:microbit"],
+    constraint_values = [
+        "//pw_build/constraints/board:microbit",
+        "@rust_crates//:no_std",
+        # We have no pw_sys_io backend for this platform.
+    ],
     parents = [":nrf52833"],
 )
 
@@ -131,14 +88,19 @@ platform(
         "//targets/stm32f429i_disc1_stm32cube:freertos_config_cv",
         # Use the ARM_CM4F port of FreeRTOS.
         "@freertos//:port_ARM_CM4F",
-        # Specify this chipset to use the baremetal pw_sys_io backend (because
-        # the default pw_sys_io_stdio backend is not compatible with FreeRTOS).
-        "//pw_build/constraints/chipset:stm32f429",
+        # Use the baremetal pw_sys_io backend (because the default
+        # pw_sys_io_stdio backend is not compatible with FreeRTOS).
+        "//pw_sys_io_baremetal_stm32f429:backend",
+        # Select cortex-m backends
+        "//pw_cpu_exception:basic_handler_backend",
+        "//pw_cpu_exception_cortex_m:entry_backend",
+        "//pw_cpu_exception_cortex_m:support_backend",
+        "//pw_interrupt_cortex_m:backend",
         # os:none means, we're not building for any host platform (Windows,
         # Linux, or Mac). The pw_sys_io_baremetal_stm32f429 backend is only
         # compatible with os:none.
         "@platforms//os:none",
+        # For toolchain resolution.
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m4",
     ],
-    # Inherit from cortex_m4_fpu to use the appropriate Arm toolchain.
-    parents = [":cortex_m4_fpu"],
 )

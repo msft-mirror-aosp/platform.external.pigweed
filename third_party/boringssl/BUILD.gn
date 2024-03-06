@@ -50,6 +50,9 @@ if (pw_third_party_boringssl_ALIAS != "") {
       # The ARM assembly code is only for cortex-A.
       "OPENSSL_NO_ASM",
 
+      # socklen_t is not defined
+      "OPENSSL_NO_SOCK",
+
       # Disable assert, which may additionally link in unwanted binaries via
       # argument evaluation.
       "NDEBUG",
@@ -77,7 +80,7 @@ if (pw_third_party_boringssl_ALIAS != "") {
   ]
 
   pw_source_set("boringssl") {
-    sources = [ "crypto_sysrand.cc" ]
+    sources = []
     foreach(source, crypto_sources - excluded_sources + ssl_sources) {
       sources += [ "$dir_pw_third_party_boringssl/$source" ]
     }
@@ -88,7 +91,16 @@ if (pw_third_party_boringssl_ALIAS != "") {
     # Can be removed once posix socket layer in Pigweed is supported.
     include_dirs = [ "sysdeps" ]
 
-    public_deps = [ "$dir_pw_tls_client:time" ]
+    public_deps = [
+      "$dir_pw_assert",
+      "$dir_pw_tls_client:time",
+    ]
+
+    # Consume //third_party/boringssl via a Pigweed module only.
+    visibility = [
+      "$dir_pw_tls_client:*",
+      "$dir_pw_tls_client_boringssl:*",
+    ]
   }
 } else {
   group("boringssl") {

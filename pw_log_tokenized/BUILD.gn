@@ -20,7 +20,6 @@ import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_log/backend.gni")
 import("$dir_pw_log_tokenized/backend.gni")
-import("$dir_pw_tokenizer/backend.gni")
 import("$dir_pw_unit_test/test.gni")
 
 declare_args() {
@@ -40,6 +39,11 @@ config("backend_config") {
   visibility = [ ":*" ]
 }
 
+config("gcc_partially_tokenized_backend_config") {
+  include_dirs = [ "public_overrides" ]
+  visibility = [ ":*" ]
+}
+
 # This target provides the backend for pw_log.
 pw_source_set("pw_log_tokenized") {
   public_configs = [ ":backend_config" ]
@@ -47,14 +51,12 @@ pw_source_set("pw_log_tokenized") {
     ":handler.facade",  # Depend on the facade to avoid circular dependencies.
     ":headers",
   ]
-  public = [ "public_overrides/pw_log_backend/log_backend.h" ]
+  public = [
+    "public_overrides/pw_log_backend/log_backend.h",
+    "public_overrides/pw_log_backend/log_backend_uses_pw_tokenizer.h",
+  ]
 
   sources = [ "log_tokenized.cc" ]
-}
-
-config("backwards_compatibility_config") {
-  defines = [ "_PW_LOG_TOKENIZED_GLOBAL_HANDLER_BACKWARDS_COMPAT" ]
-  visibility = [ ":*" ]
 }
 
 pw_source_set("headers") {
@@ -63,63 +65,38 @@ pw_source_set("headers") {
   public_deps = [
     ":config",
     ":metadata",
-
-    # TODO(hepler): Remove this dependency when all projects have migrated to
-    #     the new pw_log_tokenized handler.
-    "$dir_pw_tokenizer:global_handler_with_payload",
     dir_pw_preprocessor,
     dir_pw_tokenizer,
   ]
   public = [ "public/pw_log_tokenized/log_tokenized.h" ]
 }
 
-# The old pw_tokenizer_GLOBAL_HANDLER_WITH_PAYLOAD_BACKEND backend may still be
-# in use by projects that have not switched to the new pw_log_tokenized facade.
-# Use the old backend as a stand-in for the new backend if it is set.
-_old_backend_is_set = pw_tokenizer_GLOBAL_HANDLER_WITH_PAYLOAD_BACKEND != ""
-_new_backend_is_set = pw_log_tokenized_HANDLER_BACKEND != ""
+# This target provides the backend for pw_log for GCC which tokenizes as much as
+# it can and uses pw_log_string:handler for the rest.
+pw_source_set("gcc_partially_tokenized") {
+  public_configs = [
+    ":gcc_partially_tokenized_backend_config",
+    ":public_include_path",
+  ]
+  public_deps = [
+    ":handler.facade",  # Depend on the facade to avoid circular dependencies.
+    ":headers",
+    "$dir_pw_log_string:handler",
+  ]
+  public = [
+    "gcc_partially_tokenized_public_overrides/pw_log_backend/log_backend.h",
+    "public/pw_log_tokenized/gcc_partially_tokenized.h",
+  ]
+  sources = [ "log_tokenized.cc" ]
+}
 
 pw_facade("handler") {
   public_configs = [ ":public_include_path" ]
-  public_deps = [
-    # TODO(hepler): Remove this dependency when all projects have migrated to
-    #     the new pw_log_tokenized handler.
-    "$dir_pw_tokenizer:global_handler_with_payload",
-    dir_pw_preprocessor,
-  ]
+  public_deps = [ dir_pw_preprocessor ]
 
   public = [ "public/pw_log_tokenized/handler.h" ]
 
-  # If the global handler backend is set, redirect the new facade to the old
-  # facade. If no backend is set, the old facade may still be in use through
-  # link deps, so provide the compatibility layer.
-  #
-  # TODO(hepler): Remove these backwards compatibility workarounds when projects
-  #     have migrated.
-  if (_old_backend_is_set || (!_old_backend_is_set && !_new_backend_is_set)) {
-    assert(pw_log_tokenized_HANDLER_BACKEND == "",
-           "pw_tokenizer_GLOBAL_HANDLER_WITH_PAYLOAD_BACKEND is deprecated; " +
-               "only pw_log_tokenized_HANDLER_BACKEND should be set")
-
-    backend = pw_tokenizer_GLOBAL_HANDLER_WITH_PAYLOAD_BACKEND
-
-    # There is only one pw_log_tokenized backend in Pigweed, and it has been
-    # updated to the new API.
-    if (_old_backend_is_set &&
-        get_label_info(pw_tokenizer_GLOBAL_HANDLER_WITH_PAYLOAD_BACKEND,
-                       "label_no_toolchain") ==
-        get_label_info(":base64_over_hdlc", "label_no_toolchain")) {
-      defines = [ "PW_LOG_TOKENIZED_BACKEND_USES_NEW_API=1" ]
-    } else {
-      defines = [ "PW_LOG_TOKENIZED_BACKEND_USES_NEW_API=0" ]
-    }
-
-    public_configs += [ ":backwards_compatibility_config" ]
-    deps = [ dir_pw_tokenizer ]
-    sources = [ "compatibility.cc" ]
-  } else {
-    backend = pw_log_tokenized_HANDLER_BACKEND
-  }
+  backend = pw_log_tokenized_HANDLER_BACKEND
 }
 
 pw_source_set("metadata") {
@@ -132,6 +109,7 @@ pw_source_set("config") {
   public_configs = [ ":public_include_path" ]
   public_deps = [
     "$dir_pw_log:facade",
+    "$dir_pw_tokenizer:config",
     pw_log_tokenized_CONFIG,
   ]
   public = [ "public/pw_log_tokenized/config.h" ]
@@ -143,18 +121,26 @@ pw_source_set("config") {
 pw_source_set("pw_log_tokenized.impl") {
   deps = [ ":pw_log_tokenized" ]
 
-  if (_new_backend_is_set || _old_backend_is_set) {
+  if (pw_log_tokenized_HANDLER_BACKEND != "") {
     deps += [ ":handler" ]
   }
+}
+
+pw_source_set("base64") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_log_tokenized/base64.h" ]
+  public_deps = [
+    ":config",
+    "$dir_pw_tokenizer:base64",
+  ]
 }
 
 # This target provides a backend for pw_tokenizer that encodes tokenized logs as
 # Base64, encodes them into HDLC frames, and writes them over sys_io.
 pw_source_set("base64_over_hdlc") {
-  public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_log_tokenized/base64_over_hdlc.h" ]
   sources = [ "base64_over_hdlc.cc" ]
   deps = [
+    ":base64",
     ":handler.facade",
     "$dir_pw_hdlc:encoder",
     "$dir_pw_stream:sys_io_stream",
@@ -177,6 +163,7 @@ pw_test("log_tokenized_test") {
     "pw_log_tokenized_private/test_utils.h",
   ]
   deps = [
+    ":base64",
     ":headers",
     dir_pw_preprocessor,
   ]

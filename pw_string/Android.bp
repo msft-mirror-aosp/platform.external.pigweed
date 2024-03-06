@@ -22,6 +22,7 @@ cc_library_static {
     vendor_available: true,
     export_include_dirs: ["public"],
     header_libs: [
+        "fuchsia_sdk_lib_stdcompat",
         "pw_assert_headers",
         "pw_assert_log_headers",
         "pw_log_headers",
@@ -30,6 +31,15 @@ cc_library_static {
         "pw_preprocessor_headers",
         "pw_result_headers",
         "pw_span_headers",
+    ],
+    export_header_lib_headers: [
+        "pw_assert_headers",
+        "pw_assert_log_headers",
+        "pw_polyfill_headers",
+        "pw_result_headers",
+    ],
+    export_static_lib_headers: [
+        "pw_status",
     ],
     host_supported: true,
     srcs: [

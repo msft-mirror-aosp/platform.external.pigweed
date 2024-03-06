@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -106,6 +106,7 @@ class SimpleReadTransfer final : public ReadOnlyHandler {
 };
 
 constexpr auto kData = bytes::Initialized<32>([](size_t i) { return i; });
+constexpr uint32_t kArbitrarySessionId = 123;
 
 class ReadTransfer : public ::testing::Test {
  protected:
@@ -113,7 +114,10 @@ class ReadTransfer : public ::testing::Test {
       : handler_(3, kData),
         transfer_thread_(span(data_buffer_).first(max_chunk_size_bytes),
                          encode_buffer_),
-        ctx_(transfer_thread_, 64),
+        ctx_(transfer_thread_,
+             64,
+             // Use a long timeout to avoid accidentally triggering timeouts.
+             std::chrono::minutes(1)),
         system_thread_(TransferThreadOptions(), transfer_thread_) {
     ctx_.service().RegisterHandler(handler_);
 
@@ -393,10 +397,12 @@ TEST_F(ReadTransfer, MaxChunkSize_Client) {
 }
 
 TEST_F(ReadTransfer, HandlerIsClearedAfterTransfer) {
+  // Request an end offset smaller than the data size to prevent the server
+  // from sending a final chunk.
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kLegacy, Chunk::Type::kStart)
                       .set_session_id(3)
-                      .set_window_end_offset(64)
+                      .set_window_end_offset(16)
                       .set_offset(0)));
   ctx_.SendClientStream(
       EncodeChunk(Chunk::Final(ProtocolVersion::kLegacy, 3, OkStatus())));
@@ -412,10 +418,12 @@ TEST_F(ReadTransfer, HandlerIsClearedAfterTransfer) {
   handler_.prepare_read_called = false;
   handler_.finalize_read_called = false;
 
+  // Request an end offset smaller than the data size to prevent the server
+  // from sending a final chunk.
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kLegacy, Chunk::Type::kStart)
                       .set_session_id(3)
-                      .set_window_end_offset(64)
+                      .set_window_end_offset(16)
                       .set_offset(0)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -1605,6 +1613,7 @@ TEST_F(WriteTransferMaxBytes16, Service_SetMaxPendingBytes) {
 TEST_F(ReadTransfer, Version2_SimpleTransfer) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(3)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1612,13 +1621,14 @@ TEST_F(ReadTransfer, Version2_SimpleTransfer) {
   EXPECT_TRUE(handler_.prepare_read_called);
   EXPECT_FALSE(handler_.finalize_read_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_FALSE(chunk.desired_session_id().has_value());
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // Complete the handshake by confirming the server's ACK and sending the first
@@ -1626,7 +1636,7 @@ TEST_F(ReadTransfer, Version2_SimpleTransfer) {
   rpc::test::WaitForPackets(ctx_.output(), 2, [this] {
     ctx_.SendClientStream(EncodeChunk(
         Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-            .set_session_id(1)
+            .set_session_id(kArbitrarySessionId)
             .set_window_end_offset(64)
             .set_offset(0)));
 
@@ -1640,7 +1650,7 @@ TEST_F(ReadTransfer, Version2_SimpleTransfer) {
   Chunk c1 = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(c1.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c1.type(), Chunk::Type::kData);
-  EXPECT_EQ(c1.session_id(), 1u);
+  EXPECT_EQ(c1.session_id(), kArbitrarySessionId);
   EXPECT_EQ(c1.offset(), 0u);
   ASSERT_TRUE(c1.has_payload());
   ASSERT_EQ(c1.payload().size(), kData.size());
@@ -1650,12 +1660,12 @@ TEST_F(ReadTransfer, Version2_SimpleTransfer) {
   Chunk c2 = DecodeChunk(ctx_.responses()[2]);
   EXPECT_EQ(c2.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c2.type(), Chunk::Type::kData);
-  EXPECT_EQ(c2.session_id(), 1u);
+  EXPECT_EQ(c2.session_id(), kArbitrarySessionId);
   EXPECT_FALSE(c2.has_payload());
   EXPECT_EQ(c2.remaining_bytes(), 0u);
 
-  ctx_.SendClientStream(
-      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 1, OkStatus())));
+  ctx_.SendClientStream(EncodeChunk(Chunk::Final(
+      ProtocolVersion::kVersionTwo, kArbitrarySessionId, OkStatus())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   EXPECT_TRUE(handler_.finalize_read_called);
@@ -1665,6 +1675,7 @@ TEST_F(ReadTransfer, Version2_SimpleTransfer) {
 TEST_F(ReadTransfer, Version2_MultiChunk) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(3)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1672,13 +1683,13 @@ TEST_F(ReadTransfer, Version2_MultiChunk) {
   EXPECT_TRUE(handler_.prepare_read_called);
   EXPECT_FALSE(handler_.finalize_read_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // Complete the handshake by confirming the server's ACK and sending the first
@@ -1686,7 +1697,7 @@ TEST_F(ReadTransfer, Version2_MultiChunk) {
   rpc::test::WaitForPackets(ctx_.output(), 3, [this] {
     ctx_.SendClientStream(EncodeChunk(
         Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-            .set_session_id(1)
+            .set_session_id(kArbitrarySessionId)
             .set_window_end_offset(64)
             .set_max_chunk_size_bytes(16)
             .set_offset(0)));
@@ -1699,7 +1710,7 @@ TEST_F(ReadTransfer, Version2_MultiChunk) {
   Chunk c1 = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(c1.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c1.type(), Chunk::Type::kData);
-  EXPECT_EQ(c1.session_id(), 1u);
+  EXPECT_EQ(c1.session_id(), kArbitrarySessionId);
   EXPECT_EQ(c1.offset(), 0u);
   ASSERT_TRUE(c1.has_payload());
   ASSERT_EQ(c1.payload().size(), 16u);
@@ -1709,7 +1720,7 @@ TEST_F(ReadTransfer, Version2_MultiChunk) {
   Chunk c2 = DecodeChunk(ctx_.responses()[2]);
   EXPECT_EQ(c2.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c2.type(), Chunk::Type::kData);
-  EXPECT_EQ(c2.session_id(), 1u);
+  EXPECT_EQ(c2.session_id(), kArbitrarySessionId);
   EXPECT_EQ(c2.offset(), 16u);
   ASSERT_TRUE(c2.has_payload());
   ASSERT_EQ(c2.payload().size(), 16u);
@@ -1721,12 +1732,12 @@ TEST_F(ReadTransfer, Version2_MultiChunk) {
   Chunk c3 = DecodeChunk(ctx_.responses()[3]);
   EXPECT_EQ(c3.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c3.type(), Chunk::Type::kData);
-  EXPECT_EQ(c3.session_id(), 1u);
+  EXPECT_EQ(c3.session_id(), kArbitrarySessionId);
   EXPECT_FALSE(c3.has_payload());
   EXPECT_EQ(c3.remaining_bytes(), 0u);
 
-  ctx_.SendClientStream(
-      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 1, OkStatus())));
+  ctx_.SendClientStream(EncodeChunk(Chunk::Final(
+      ProtocolVersion::kVersionTwo, kArbitrarySessionId, OkStatus())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   EXPECT_TRUE(handler_.finalize_read_called);
@@ -1736,6 +1747,7 @@ TEST_F(ReadTransfer, Version2_MultiChunk) {
 TEST_F(ReadTransfer, Version2_MultiParameters) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(3)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1743,20 +1755,20 @@ TEST_F(ReadTransfer, Version2_MultiParameters) {
   EXPECT_TRUE(handler_.prepare_read_called);
   EXPECT_FALSE(handler_.finalize_read_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // Complete the handshake by confirming the server's ACK and sending the first
   // read transfer parameters.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-          .set_session_id(1)
+          .set_session_id(kArbitrarySessionId)
           .set_window_end_offset(16)
           .set_offset(0)));
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1766,7 +1778,7 @@ TEST_F(ReadTransfer, Version2_MultiParameters) {
   Chunk c1 = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(c1.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c1.type(), Chunk::Type::kData);
-  EXPECT_EQ(c1.session_id(), 1u);
+  EXPECT_EQ(c1.session_id(), kArbitrarySessionId);
   EXPECT_EQ(c1.offset(), 0u);
   ASSERT_TRUE(c1.has_payload());
   ASSERT_EQ(c1.payload().size(), 16u);
@@ -1776,7 +1788,7 @@ TEST_F(ReadTransfer, Version2_MultiParameters) {
   rpc::test::WaitForPackets(ctx_.output(), 2, [this] {
     ctx_.SendClientStream(EncodeChunk(
         Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kParametersContinue)
-            .set_session_id(1)
+            .set_session_id(kArbitrarySessionId)
             .set_window_end_offset(64)
             .set_offset(16)));
     transfer_thread_.WaitUntilEventIsProcessed();
@@ -1787,7 +1799,7 @@ TEST_F(ReadTransfer, Version2_MultiParameters) {
   Chunk c2 = DecodeChunk(ctx_.responses()[2]);
   EXPECT_EQ(c2.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c2.type(), Chunk::Type::kData);
-  EXPECT_EQ(c2.session_id(), 1u);
+  EXPECT_EQ(c2.session_id(), kArbitrarySessionId);
   EXPECT_EQ(c2.offset(), 16u);
   ASSERT_TRUE(c2.has_payload());
   ASSERT_EQ(c2.payload().size(), 16u);
@@ -1799,12 +1811,12 @@ TEST_F(ReadTransfer, Version2_MultiParameters) {
   Chunk c3 = DecodeChunk(ctx_.responses()[3]);
   EXPECT_EQ(c3.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c3.type(), Chunk::Type::kData);
-  EXPECT_EQ(c3.session_id(), 1u);
+  EXPECT_EQ(c3.session_id(), kArbitrarySessionId);
   EXPECT_FALSE(c3.has_payload());
   EXPECT_EQ(c3.remaining_bytes(), 0u);
 
-  ctx_.SendClientStream(
-      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo, 1, OkStatus())));
+  ctx_.SendClientStream(EncodeChunk(Chunk::Final(
+      ProtocolVersion::kVersionTwo, kArbitrarySessionId, OkStatus())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   EXPECT_TRUE(handler_.finalize_read_called);
@@ -1814,6 +1826,7 @@ TEST_F(ReadTransfer, Version2_MultiParameters) {
 TEST_F(ReadTransfer, Version2_ClientTerminatesDuringHandshake) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(3)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1821,18 +1834,19 @@ TEST_F(ReadTransfer, Version2_ClientTerminatesDuringHandshake) {
   EXPECT_TRUE(handler_.prepare_read_called);
   EXPECT_FALSE(handler_.finalize_read_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // Send a terminating chunk instead of the third part of the handshake.
-  ctx_.SendClientStream(EncodeChunk(Chunk::Final(
-      ProtocolVersion::kVersionTwo, 1, Status::ResourceExhausted())));
+  ctx_.SendClientStream(EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo,
+                                                 kArbitrarySessionId,
+                                                 Status::ResourceExhausted())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   EXPECT_TRUE(handler_.finalize_read_called);
@@ -1842,6 +1856,7 @@ TEST_F(ReadTransfer, Version2_ClientTerminatesDuringHandshake) {
 TEST_F(ReadTransfer, Version2_ClientSendsWrongProtocolVersion) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(3)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1849,20 +1864,20 @@ TEST_F(ReadTransfer, Version2_ClientSendsWrongProtocolVersion) {
   EXPECT_TRUE(handler_.prepare_read_called);
   EXPECT_FALSE(handler_.finalize_read_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // Complete the handshake by confirming the server's ACK and sending the first
   // read transfer parameters.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-          .set_session_id(1)
+          .set_session_id(kArbitrarySessionId)
           .set_window_end_offset(16)
           .set_offset(0)));
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1872,7 +1887,7 @@ TEST_F(ReadTransfer, Version2_ClientSendsWrongProtocolVersion) {
   Chunk c1 = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(c1.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c1.type(), Chunk::Type::kData);
-  EXPECT_EQ(c1.session_id(), 1u);
+  EXPECT_EQ(c1.session_id(), kArbitrarySessionId);
   EXPECT_EQ(c1.offset(), 0u);
   ASSERT_TRUE(c1.has_payload());
   ASSERT_EQ(c1.payload().size(), 16u);
@@ -1883,7 +1898,7 @@ TEST_F(ReadTransfer, Version2_ClientSendsWrongProtocolVersion) {
   // server should terminate the transfer.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersContinue)
-          .set_session_id(1)
+          .set_session_id(3)
           .set_window_end_offset(64)
           .set_offset(16)));
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1893,7 +1908,7 @@ TEST_F(ReadTransfer, Version2_ClientSendsWrongProtocolVersion) {
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   ASSERT_TRUE(chunk.status().has_value());
   EXPECT_EQ(chunk.status().value(), Status::Internal());
 
@@ -1904,6 +1919,7 @@ TEST_F(ReadTransfer, Version2_ClientSendsWrongProtocolVersion) {
 TEST_F(ReadTransfer, Version2_BadParametersInHandshake) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(3)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1915,14 +1931,14 @@ TEST_F(ReadTransfer, Version2_BadParametersInHandshake) {
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 3u);
 
   // Complete the handshake, but send an invalid parameters chunk. The server
   // should terminate the transfer.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-          .set_session_id(1)
+          .set_session_id(kArbitrarySessionId)
           .set_window_end_offset(0)
           .set_offset(0)));
 
@@ -1933,7 +1949,7 @@ TEST_F(ReadTransfer, Version2_BadParametersInHandshake) {
   Chunk c1 = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(c1.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(c1.type(), Chunk::Type::kCompletion);
-  EXPECT_EQ(c1.session_id(), 1u);
+  EXPECT_EQ(c1.session_id(), kArbitrarySessionId);
   ASSERT_TRUE(c1.status().has_value());
   EXPECT_EQ(c1.status().value(), Status::ResourceExhausted());
 }
@@ -1941,6 +1957,7 @@ TEST_F(ReadTransfer, Version2_BadParametersInHandshake) {
 TEST_F(ReadTransfer, Version2_InvalidResourceId) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(99)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1949,6 +1966,7 @@ TEST_F(ReadTransfer, Version2_InvalidResourceId) {
 
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
   EXPECT_EQ(chunk.status().value(), Status::NotFound());
 }
@@ -1959,6 +1977,7 @@ TEST_F(ReadTransfer, Version2_PrepareError) {
 
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(99)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
@@ -1966,6 +1985,7 @@ TEST_F(ReadTransfer, Version2_PrepareError) {
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 99u);
   EXPECT_EQ(chunk.status().value(), Status::DataLoss());
 }
@@ -1973,6 +1993,7 @@ TEST_F(ReadTransfer, Version2_PrepareError) {
 TEST_F(WriteTransfer, Version2_SimpleTransfer) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(7)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -1980,19 +2001,19 @@ TEST_F(WriteTransfer, Version2_SimpleTransfer) {
   EXPECT_TRUE(handler_.prepare_write_called);
   EXPECT_FALSE(handler_.finalize_write_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 7u);
 
   // Complete the handshake by confirming the server's ACK.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-          .set_session_id(1)));
+          .set_session_id(kArbitrarySessionId)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   // Server should respond by sending its initial transfer parameters.
@@ -2001,7 +2022,7 @@ TEST_F(WriteTransfer, Version2_SimpleTransfer) {
   chunk = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kParametersRetransmit);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 32u);
   ASSERT_TRUE(chunk.max_chunk_size_bytes().has_value());
@@ -2010,7 +2031,7 @@ TEST_F(WriteTransfer, Version2_SimpleTransfer) {
   // Send all of our data.
   ctx_.SendClientStream<64>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(1)
+                      .set_session_id(kArbitrarySessionId)
                       .set_offset(0)
                       .set_payload(kData)
                       .set_remaining_bytes(0)));
@@ -2021,14 +2042,14 @@ TEST_F(WriteTransfer, Version2_SimpleTransfer) {
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   ASSERT_TRUE(chunk.status().has_value());
   EXPECT_EQ(chunk.status().value(), OkStatus());
 
   // Send the completion acknowledgement.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
-          .set_session_id(1)));
+          .set_session_id(kArbitrarySessionId)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   ASSERT_EQ(ctx_.total_responses(), 3u);
@@ -2041,6 +2062,7 @@ TEST_F(WriteTransfer, Version2_SimpleTransfer) {
 TEST_F(WriteTransfer, Version2_Multichunk) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(7)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2048,19 +2070,19 @@ TEST_F(WriteTransfer, Version2_Multichunk) {
   EXPECT_TRUE(handler_.prepare_write_called);
   EXPECT_FALSE(handler_.finalize_write_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 7u);
 
   // Complete the handshake by confirming the server's ACK.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-          .set_session_id(1)));
+          .set_session_id(kArbitrarySessionId)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   // Server should respond by sending its initial transfer parameters.
@@ -2069,7 +2091,7 @@ TEST_F(WriteTransfer, Version2_Multichunk) {
   chunk = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kParametersRetransmit);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 32u);
   ASSERT_TRUE(chunk.max_chunk_size_bytes().has_value());
@@ -2078,12 +2100,12 @@ TEST_F(WriteTransfer, Version2_Multichunk) {
   // Send all of our data across two chunks.
   ctx_.SendClientStream<64>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(1)
+                      .set_session_id(kArbitrarySessionId)
                       .set_offset(0)
                       .set_payload(span(kData).first(8))));
   ctx_.SendClientStream<64>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(1)
+                      .set_session_id(kArbitrarySessionId)
                       .set_offset(8)
                       .set_payload(span(kData).subspan(8))
                       .set_remaining_bytes(0)));
@@ -2094,14 +2116,14 @@ TEST_F(WriteTransfer, Version2_Multichunk) {
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   ASSERT_TRUE(chunk.status().has_value());
   EXPECT_EQ(chunk.status().value(), OkStatus());
 
   // Send the completion acknowledgement.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
-          .set_session_id(1)));
+          .set_session_id(kArbitrarySessionId)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   ASSERT_EQ(ctx_.total_responses(), 3u);
@@ -2114,6 +2136,7 @@ TEST_F(WriteTransfer, Version2_Multichunk) {
 TEST_F(WriteTransfer, Version2_ContinueParameters) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(7)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2121,19 +2144,19 @@ TEST_F(WriteTransfer, Version2_ContinueParameters) {
   EXPECT_TRUE(handler_.prepare_write_called);
   EXPECT_FALSE(handler_.finalize_write_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 7u);
 
   // Complete the handshake by confirming the server's ACK.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-          .set_session_id(1)));
+          .set_session_id(kArbitrarySessionId)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   // Server should respond by sending its initial transfer parameters.
@@ -2142,7 +2165,7 @@ TEST_F(WriteTransfer, Version2_ContinueParameters) {
   chunk = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kParametersRetransmit);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 32u);
   ASSERT_TRUE(chunk.max_chunk_size_bytes().has_value());
@@ -2151,7 +2174,7 @@ TEST_F(WriteTransfer, Version2_ContinueParameters) {
   // Send all of our data across several chunks.
   ctx_.SendClientStream<64>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(1)
+                      .set_session_id(kArbitrarySessionId)
                       .set_offset(0)
                       .set_payload(span(kData).first(8))));
 
@@ -2160,7 +2183,7 @@ TEST_F(WriteTransfer, Version2_ContinueParameters) {
 
   ctx_.SendClientStream<64>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(1)
+                      .set_session_id(kArbitrarySessionId)
                       .set_offset(8)
                       .set_payload(span(kData).subspan(8, 8))));
 
@@ -2170,13 +2193,13 @@ TEST_F(WriteTransfer, Version2_ContinueParameters) {
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kParametersContinue);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.offset(), 16u);
   EXPECT_EQ(chunk.window_end_offset(), 32u);
 
   ctx_.SendClientStream<64>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(1)
+                      .set_session_id(kArbitrarySessionId)
                       .set_offset(16)
                       .set_payload(span(kData).subspan(16, 8))));
 
@@ -2186,13 +2209,13 @@ TEST_F(WriteTransfer, Version2_ContinueParameters) {
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kParametersContinue);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.offset(), 24u);
   EXPECT_EQ(chunk.window_end_offset(), 32u);
 
   ctx_.SendClientStream<64>(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kData)
-                      .set_session_id(1)
+                      .set_session_id(kArbitrarySessionId)
                       .set_offset(24)
                       .set_payload(span(kData).subspan(24))
                       .set_remaining_bytes(0)));
@@ -2203,14 +2226,14 @@ TEST_F(WriteTransfer, Version2_ContinueParameters) {
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   ASSERT_TRUE(chunk.status().has_value());
   EXPECT_EQ(chunk.status().value(), OkStatus());
 
   // Send the completion acknowledgement.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
-          .set_session_id(1)));
+          .set_session_id(kArbitrarySessionId)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   ASSERT_EQ(ctx_.total_responses(), 5u);
@@ -2223,6 +2246,7 @@ TEST_F(WriteTransfer, Version2_ContinueParameters) {
 TEST_F(WriteTransfer, Version2_ClientTerminatesDuringHandshake) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(7)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2230,18 +2254,20 @@ TEST_F(WriteTransfer, Version2_ClientTerminatesDuringHandshake) {
   EXPECT_TRUE(handler_.prepare_write_called);
   EXPECT_FALSE(handler_.finalize_write_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 7u);
 
   // Send an error chunk instead of completing the handshake.
-  ctx_.SendClientStream(EncodeChunk(Chunk::Final(
-      ProtocolVersion::kVersionTwo, 1, Status::FailedPrecondition())));
+  ctx_.SendClientStream(
+      EncodeChunk(Chunk::Final(ProtocolVersion::kVersionTwo,
+                               kArbitrarySessionId,
+                               Status::FailedPrecondition())));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   EXPECT_TRUE(handler_.finalize_write_called);
@@ -2251,6 +2277,7 @@ TEST_F(WriteTransfer, Version2_ClientTerminatesDuringHandshake) {
 TEST_F(WriteTransfer, Version2_ClientSendsWrongProtocolVersion) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(7)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2258,19 +2285,19 @@ TEST_F(WriteTransfer, Version2_ClientSendsWrongProtocolVersion) {
   EXPECT_TRUE(handler_.prepare_write_called);
   EXPECT_FALSE(handler_.finalize_write_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 7u);
 
   // Complete the handshake by confirming the server's ACK.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-          .set_session_id(1)));
+          .set_session_id(kArbitrarySessionId)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   // Server should respond by sending its initial transfer parameters.
@@ -2279,7 +2306,7 @@ TEST_F(WriteTransfer, Version2_ClientSendsWrongProtocolVersion) {
   chunk = DecodeChunk(ctx_.responses()[1]);
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kParametersRetransmit);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.offset(), 0u);
   EXPECT_EQ(chunk.window_end_offset(), 32u);
   ASSERT_TRUE(chunk.max_chunk_size_bytes().has_value());
@@ -2289,7 +2316,7 @@ TEST_F(WriteTransfer, Version2_ClientSendsWrongProtocolVersion) {
   // instead.
   ctx_.SendClientStream<64>(
       EncodeChunk(Chunk(ProtocolVersion::kLegacy, Chunk::Type::kData)
-                      .set_session_id(1)
+                      .set_session_id(7)
                       .set_offset(0)
                       .set_payload(kData)
                       .set_remaining_bytes(0)));
@@ -2306,7 +2333,7 @@ TEST_F(WriteTransfer, Version2_ClientSendsWrongProtocolVersion) {
   // Send the completion acknowledgement.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kCompletionAck)
-          .set_session_id(1)));
+          .set_session_id(kArbitrarySessionId)));
   transfer_thread_.WaitUntilEventIsProcessed();
 
   ASSERT_EQ(ctx_.total_responses(), 3u);
@@ -2315,6 +2342,7 @@ TEST_F(WriteTransfer, Version2_ClientSendsWrongProtocolVersion) {
 TEST_F(WriteTransfer, Version2_InvalidResourceId) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(99)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2323,6 +2351,8 @@ TEST_F(WriteTransfer, Version2_InvalidResourceId) {
 
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
+  EXPECT_FALSE(chunk.resource_id().has_value());
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
   EXPECT_EQ(chunk.status().value(), Status::NotFound());
 }
@@ -2448,6 +2478,7 @@ TEST_F(ReadTransferLowMaxRetries, FailsAfterLifetimeRetryCount) {
 TEST_F(ReadTransferLowMaxRetries, Version2_FailsAfterLifetimeRetryCount) {
   ctx_.SendClientStream(
       EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
                       .set_resource_id(9)));
 
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2455,18 +2486,18 @@ TEST_F(ReadTransferLowMaxRetries, Version2_FailsAfterLifetimeRetryCount) {
   EXPECT_TRUE(handler_.prepare_read_called);
   EXPECT_FALSE(handler_.finalize_read_called);
 
-  // First, the server responds with a START_ACK, assigning a session ID and
+  // First, the server responds with a START_ACK, accepting the session ID and
   // confirming the protocol version.
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Chunk chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
-  EXPECT_EQ(chunk.session_id(), 1u);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
   EXPECT_EQ(chunk.resource_id(), 9u);
 
   // Time out twice. Server should retry both times.
-  transfer_thread_.SimulateServerTimeout(1);
-  transfer_thread_.SimulateServerTimeout(1);
+  transfer_thread_.SimulateServerTimeout(kArbitrarySessionId);
+  transfer_thread_.SimulateServerTimeout(kArbitrarySessionId);
   ASSERT_EQ(ctx_.total_responses(), 3u);
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
@@ -2474,7 +2505,7 @@ TEST_F(ReadTransferLowMaxRetries, Version2_FailsAfterLifetimeRetryCount) {
   // Complete the handshake, allowing the transfer to continue.
   ctx_.SendClientStream(EncodeChunk(
       Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStartAckConfirmation)
-          .set_session_id(1)
+          .set_session_id(kArbitrarySessionId)
           .set_window_end_offset(16)
           .set_offset(0)));
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -2484,21 +2515,88 @@ TEST_F(ReadTransferLowMaxRetries, Version2_FailsAfterLifetimeRetryCount) {
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
 
   // Time out three more times. The transfer should terminate.
-  transfer_thread_.SimulateServerTimeout(1);
+  transfer_thread_.SimulateServerTimeout(kArbitrarySessionId);
   ASSERT_EQ(ctx_.total_responses(), 5u);
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
 
-  transfer_thread_.SimulateServerTimeout(1);
+  transfer_thread_.SimulateServerTimeout(kArbitrarySessionId);
   ASSERT_EQ(ctx_.total_responses(), 6u);
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kData);
 
-  transfer_thread_.SimulateServerTimeout(1);
+  transfer_thread_.SimulateServerTimeout(kArbitrarySessionId);
   ASSERT_EQ(ctx_.total_responses(), 7u);
   chunk = DecodeChunk(ctx_.responses().back());
   EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
   EXPECT_EQ(chunk.status(), Status::DeadlineExceeded());
+}
+
+TEST_F(WriteTransfer, Version2_ClientRetriesOpeningChunk) {
+  ctx_.SendClientStream(
+      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
+                      .set_resource_id(7)));
+
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  EXPECT_TRUE(handler_.prepare_write_called);
+  EXPECT_FALSE(handler_.finalize_write_called);
+
+  // First, the server responds with a START_ACK, accepting the session ID and
+  // confirming the protocol version.
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+  Chunk chunk = DecodeChunk(ctx_.responses().back());
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
+  EXPECT_EQ(chunk.resource_id(), 7u);
+
+  // Reset prepare_write_called to ensure it isn't called again.
+  handler_.prepare_write_called = false;
+
+  // Client re-sends the same chunk instead of finishing the handshake.
+  ctx_.SendClientStream(
+      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_desired_session_id(kArbitrarySessionId)
+                      .set_resource_id(7)));
+
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  // The server should re-send the same START_ACK without reinitializing the
+  // handler.
+  ASSERT_EQ(ctx_.total_responses(), 2u);
+  chunk = DecodeChunk(ctx_.responses().back());
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.type(), Chunk::Type::kStartAck);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
+  EXPECT_EQ(chunk.resource_id(), 7u);
+
+  EXPECT_FALSE(handler_.prepare_write_called);
+  EXPECT_FALSE(handler_.finalize_write_called);
+}
+
+TEST_F(WriteTransfer, Version2_RegularSessionIdInStartChunk) {
+  // Client incorrectly sets session_id instead of desired_session_id in its
+  // START chunk. Server should immediately respond with a protocol error.
+  ctx_.SendClientStream(
+      EncodeChunk(Chunk(ProtocolVersion::kVersionTwo, Chunk::Type::kStart)
+                      .set_session_id(kArbitrarySessionId)
+                      .set_resource_id(99)));
+
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  EXPECT_FALSE(handler_.prepare_write_called);
+  EXPECT_FALSE(handler_.finalize_write_called);
+
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+
+  Chunk chunk = DecodeChunk(ctx_.responses().back());
+  EXPECT_EQ(chunk.protocol_version(), ProtocolVersion::kVersionTwo);
+  EXPECT_EQ(chunk.session_id(), kArbitrarySessionId);
+  EXPECT_FALSE(chunk.resource_id().has_value());
+  EXPECT_EQ(chunk.type(), Chunk::Type::kCompletion);
+  EXPECT_EQ(chunk.status().value(), Status::DataLoss());
 }
 
 }  // namespace

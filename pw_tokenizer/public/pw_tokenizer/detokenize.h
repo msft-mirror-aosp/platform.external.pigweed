@@ -84,7 +84,16 @@ class Detokenizer {
   // that stores all possible detokenized string results.
   DetokenizedString Detokenize(const span<const uint8_t>& encoded) const;
 
-  DetokenizedString Detokenize(const std::string_view& encoded) const {
+  // Decodes and detokenizes a Base64 encoded message. Returns a
+  // DetokenizedString that stores all possible detokenized string results.
+  DetokenizedString DetokenizeBase64Message(std::string_view text) const;
+
+  // Decodes and detokenizes nested Base64 messages in a string. Returns the
+  // original string with Base64 tokenized messages decoded in context. Messages
+  // that fail to decode are left as is.
+  std::string DetokenizeBase64(std::string_view text) const;
+
+  DetokenizedString Detokenize(std::string_view encoded) const {
     return Detokenize(encoded.data(), encoded.size());
   }
 

@@ -27,9 +27,20 @@ pw_add_library(pw_checksum STATIC
     crc16_ccitt.cc
     crc32.cc
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_CHECKSUM)
-  zephyr_link_libraries(pw_checksum)
-endif()
+
+# TODO: b/284002266 - Unresolved linker error when using pw_checksum above.
+# Created this crc32 library and linker error is resolved.
+pw_add_library(pw_checksum.crc32 STATIC
+  HEADERS
+    public/pw_checksum/crc32.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_bytes
+    pw_span
+  SOURCES
+    crc32.cc
+)
 
 pw_add_test(pw_checksum.crc16_ccitt_test
   SOURCES

@@ -14,6 +14,8 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_build/defaults.gni")
+
 declare_args() {
   # Additional build targets to add as dependencies for pw_executable,
   # pw_static_library, and pw_shared_library targets. The
@@ -85,6 +87,7 @@ template("pw_internal_build_target") {
   _builtin_target_types = [
     "executable",
     "rust_library",
+    "rust_proc_macro",
     "shared_library",
     "source_set",
     "static_library",
@@ -103,9 +106,6 @@ template("pw_internal_build_target") {
   }
 
   target(invoker.underlying_target_type, target_name) {
-    # TODO(b/260111641): This import is terrible, and breaks typical Pigweed GN
-    # build arg naming patterns.
-    import("$dir_pw_build/defaults.gni")
     forward_variables_from(
         invoker,
         "*",
@@ -120,36 +120,44 @@ template("pw_internal_build_target") {
       }
     }
 
+    _default_configs =
+        filter_exclude(pw_build_INTERNAL_DEFAULTS.default_configs,
+                       pw_build_INTERNAL_DEFAULTS.remove_default_configs)
+    if (!defined(remove_configs)) {
+      remove_configs = []
+    }
+
+    # Check if configs is already defined.
+    # configs will already exist if set_defaults() is used.
     if (!defined(configs)) {
       configs = []
     }
-    if (defined(pw_build_defaults.configs)) {
-      configs += pw_build_defaults.configs
-    }
-    if (defined(remove_configs)) {
-      if (remove_configs != [] && remove_configs[0] == "*") {
-        configs = []
-      } else {
-        configs -= filter_include(configs, remove_configs)
-      }
-    }
+
+    # `configs` was not forwarded initially to support flag ordering.
+    configs += filter_exclude(_default_configs, remove_configs)
+
+    # Add the public_deps from the actual target last so they are prioritized.
+    # This set of public_deps MUST be added last because it affects flag
+    # ordering. If this list is added later, flags from the default list will
+    # take precedence.
     if (defined(invoker.configs)) {
       configs += invoker.configs
     }
 
-    if (defined(pw_build_defaults.public_deps)) {
-      public_deps = pw_build_defaults.public_deps
-    } else {
-      public_deps = []
+    _default_public_deps =
+        filter_exclude(pw_build_INTERNAL_DEFAULTS.default_public_deps,
+                       pw_build_INTERNAL_DEFAULTS.remove_default_public_deps)
+    if (!defined(remove_public_deps)) {
+      remove_public_deps = []
     }
-    if (defined(remove_public_deps)) {
-      if (remove_public_deps != [] && remove_public_deps[0] == "*") {
-        public_deps = []
-      } else {
-        public_deps += remove_public_deps
-        public_deps -= remove_public_deps
-      }
-    }
+
+    # `public_deps` was not forwarded initially to support flag ordering.
+    public_deps = filter_exclude(_default_public_deps, remove_public_deps)
+
+    # Add the public_deps from the actual target last so they are prioritized.
+    # This set of public_deps MUST be added last because it affects flag
+    # ordering. If this list is added later, flags from the default list will
+    # take precedence.
     if (defined(invoker.public_deps)) {
       public_deps += invoker.public_deps
     }
@@ -163,8 +171,8 @@ template("pw_internal_build_target") {
       deps += [ "$dir_pw_build:link_deps" ]
     }
 
-    if (defined(pw_build_defaults.visibility) && !defined(visibility)) {
-      visibility = pw_build_defaults.visibility
+    if (!defined(visibility)) {
+      visibility = pw_build_DEFAULT_VISIBILITY
     }
   }
 }

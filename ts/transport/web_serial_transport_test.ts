@@ -13,11 +13,11 @@
 // the License.
 
 /* eslint-env browser */
-import {last, take} from 'rxjs/operators';
+import { last, take } from 'rxjs/operators';
 
-import {SerialMock} from './serial_mock';
-import {WebSerialTransport, DeviceLockedError} from './web_serial_transport';
-import type {Serial} from "pigweedjs/types/serial"
+import { SerialMock } from './serial_mock';
+import { WebSerialTransport, DeviceLockedError } from './web_serial_transport';
+import type { Serial } from 'pigweedjs/types/serial';
 
 describe('WebSerialTransport', () => {
   let serialMock: SerialMock;
@@ -69,7 +69,7 @@ describe('WebSerialTransport', () => {
     const dataToDevice = serialMock.dataToDevice.pipe(take(1)).toPromise();
 
     let writtenData: Uint8Array | undefined = undefined;
-    dataToDevice.then(data => {
+    dataToDevice.then((data) => {
       writtenData = data;
     });
 
@@ -104,7 +104,7 @@ describe('WebSerialTransport', () => {
     await transport.connect();
 
     const reportedErrorPromise = transport.errors.pipe(take(1)).toPromise();
-    serialMock.serialPort.errorFromDevice(new Error());
+    serialMock.serialPort.errorFromDevice(new DeviceLockedError());
 
     expect(await reportedErrorPromise).toEqual(new DeviceLockedError());
   });

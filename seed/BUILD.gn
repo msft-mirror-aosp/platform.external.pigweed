@@ -23,6 +23,15 @@ pw_doc_group("docs") {
     ":0002",
     ":0101",
     ":0102",
+    ":0104",
+    ":0105",
+    ":0107",
+    ":0108",
+    ":0109",
+    ":0110",
+    ":0111",
+    ":0112",
+    ":0113",
   ]
 }
 
@@ -41,4 +50,40 @@ pw_doc_group("0101") {
 
 pw_doc_group("0102") {
   sources = [ "0102-module-docs.rst" ]
+}
+
+pw_doc_group("0104") {
+  sources = [ "0104-display-support.rst" ]
+}
+
+pw_doc_group("0105") {
+  sources = [ "0105-pw_tokenizer-pw_log-nested-tokens.rst" ]
+}
+
+pw_doc_group("0107") {
+  sources = [ "0107-communications.rst" ]
+}
+
+pw_doc_group("0108") {
+  sources = [ "0108-pw_emu-emulators-frontend.rst" ]
+}
+
+pw_doc_group("0109") {
+  sources = [ "0109-comms-buffers.rst" ]
+}
+
+pw_doc_group("0110") {
+  sources = [ "0110-memory-allocation-interfaces.rst" ]
+}
+
+pw_doc_group("0111") {
+  sources = [ "0111-build-systems.rst" ]
+}
+
+pw_doc_group("0112") {
+  sources = [ "0112-async-poll.rst" ]
+}
+
+pw_doc_group("0113") {
+  sources = [ "0113-bazel-cc-toolchain-api.rst" ]
 }

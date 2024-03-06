@@ -21,8 +21,13 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
+constraint_value(
+    name = "backend",
+    constraint_setting = "//pw_interrupt:backend_constraint_setting",
+)
+
 pw_cc_library(
-    name = "context_headers",
+    name = "context",
     hdrs = [
         "public/pw_interrupt_cortex_m/context_inline.h",
         "public_overrides/pw_interrupt_backend/context_inline.h",
@@ -31,44 +36,9 @@ pw_cc_library(
         "public",
         "public_overrides",
     ],
+    target_compatible_with = [":backend"],
     deps = [
-        "//pw_preprocessor:cortex_m",
-    ],
-)
-
-pw_cc_library(
-    name = "context",
-    deps = [
-        ":context_headers",
         "//pw_interrupt:context_facade",
-    ],
-)
-
-# The following targets are deprecated, depend on ":context" instead.
-pw_cc_library(
-    name = "context_armv7m_headers",
-    deps = [
-        ":context_headers",
-    ],
-)
-
-pw_cc_library(
-    name = "context_armv7m",
-    deps = [
-        ":context",
-    ],
-)
-
-pw_cc_library(
-    name = "context_armv8m_headers",
-    deps = [
-        ":context_headers",
-    ],
-)
-
-pw_cc_library(
-    name = "context_armv8m",
-    deps = [
-        ":context",
+        "//pw_preprocessor:cortex_m",
     ],
 )

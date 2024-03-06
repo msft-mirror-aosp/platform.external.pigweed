@@ -1,8 +1,8 @@
 .. _docs-targets:
 
-=======
-Targets
-=======
+================
+Hardware targets
+================
 Pigweed is designed to be portable to many different hardware platforms.
 Pigweed's GN build comes with an extensible target system that allows it to be
 configured to build for any number of platforms, which all build simultaneously.
@@ -49,9 +49,7 @@ build argument defined in Pigweed. Some notable arguments include:
   template. This is typically used to set compiler flags, optimization levels,
   global #defines, etc.
 * ``default_public_deps``: List of GN targets which are added as a dependency
-  to all ``pw_*`` GN targets. This is used to add global module dependencies;
-  for example, in upstream, ``pw_polyfill`` is added here to provide C++17
-  features in C++14 code.
+  to all ``pw_*`` GN targets. This is used to add global module dependencies.
 * Facade backends: Pigweed defines facades to provide a common interface for
   core system features such as logging without assuming an implementation.
   When building a Pigweed target, the implementations for each of these must be
@@ -69,31 +67,31 @@ targets.
 
 .. code-block::
 
-  import("//build_overrides/pigweed.gni")
+   import("//build_overrides/pigweed.gni")
 
-  import("$dir_pw_toolchain/arm_gcc/toolchains.gni")
-  import("$dir_pw_toolchain/generate_toolchain.gni")
+   import("$dir_pw_toolchain/arm_gcc/toolchains.gni")
+   import("$dir_pw_toolchain/generate_toolchain.gni")
 
-  my_target_scope = {
-    # Use Pigweed's Cortex M4 toolchain as a base.
-    _toolchain_base = pw_toolchain_arm_gcc.cortex_m4f_debug
+   my_target_scope = {
+     # Use Pigweed's Cortex M4 toolchain as a base.
+     _toolchain_base = pw_toolchain_arm_gcc.cortex_m4f_debug
 
-    # Forward everything except the defaults scope from that toolchain.
-    forward_variables_from(_toolchain_base, "*", [ "defaults" ])
+     # Forward everything except the defaults scope from that toolchain.
+     forward_variables_from(_toolchain_base, "*", [ "defaults" ])
 
-    defaults = {
-      # Forward everything from the base toolchain's defaults.
-      forward_variables_from(_toolchain_base.defaults, "*")
+     defaults = {
+       # Forward everything from the base toolchain's defaults.
+       forward_variables_from(_toolchain_base.defaults, "*")
 
-      # Extend with custom build arguments for the target.
-      pw_log_BACKEND = dir_pw_log_tokenized
-    }
-  }
+       # Extend with custom build arguments for the target.
+       pw_log_BACKEND = dir_pw_log_tokenized
+     }
+   }
 
-  # Create the actual GN toolchain from the scope.
-  generate_toolchain("my_target") {
-    forward_variables_from(my_target_scope, "*")
-  }
+   # Create the actual GN toolchain from the scope.
+   generate_toolchain("my_target") {
+     forward_variables_from(my_target_scope, "*")
+   }
 
 Upstream targets
 ================
@@ -104,3 +102,8 @@ The following is a list of targets used for upstream Pigweed development.
   :glob:
 
   targets/*/target_docs
+
+Work-in-progress targets
+------------------------
+You can see a list of hardware targets that are under development but not
+yet landed `here <https://issues.pigweed.dev/issues/300646347/dependencies>`_.

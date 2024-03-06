@@ -18,8 +18,8 @@ load(
     "pw_cc_library",
     "pw_cc_test",
 )
-load("//pw_protobuf_compiler:proto.bzl", "pw_proto_library")
 load("//pw_build/bazel_internal:py_proto_library.bzl", "py_proto_library")
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -43,10 +43,25 @@ pw_cc_facade(
 
 pw_cc_library(
     name = "pw_log",
-    deps = [
-        ":facade",
-        "@pigweed_config//:pw_log_backend",
+    hdrs = [
+        "public/pw_log/config.h",
+        "public/pw_log/levels.h",
+        "public/pw_log/log.h",
+        "public/pw_log/options.h",
+        "public/pw_log/short.h",
+        "public/pw_log/shorter.h",
+        "public/pw_log/tokenized_args.h",
     ],
+    includes = ["public"],
+    deps = [
+        "//pw_preprocessor",
+        "@pigweed//targets:pw_log_backend",
+    ],
+)
+
+label_flag(
+    name = "backend_impl",
+    build_setting_default = "//pw_log_basic:impl",
 )
 
 pw_cc_library(
@@ -96,7 +111,7 @@ proto_library(
     ],
 )
 
-# TODO(b/241456982): Not expected to build yet.
+# TODO: b/241456982 - Not expected to build yet.
 py_proto_library(
     name = "log_proto_py_pb2",
     tags = ["manual"],
@@ -115,7 +130,7 @@ pw_proto_library(
 
 pw_cc_library(
     name = "backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = ["//pw_log_basic"],
 )
 

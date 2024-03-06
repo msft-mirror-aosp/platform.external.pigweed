@@ -15,6 +15,7 @@
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/module_config.gni")
+import("$dir_pw_build/python_action_test.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
@@ -57,6 +58,7 @@ pw_source_set("config") {
 
 # pw_unit_test facade. This provides a GoogleTest-compatible test framework.
 pw_source_set("pw_unit_test") {
+  testonly = pw_unit_test_TESTONLY
   public_deps = [ pw_unit_test_GOOGLETEST_BACKEND ]
 }
 
@@ -106,12 +108,28 @@ pw_source_set("googletest_style_event_handler") {
 pw_source_set("googletest_handler_adapter") {
   public_configs = [ ":public_include_path" ]
   public_deps = [
-    ":logging_event_handler",
+    ":event_handler",
     "$dir_pw_third_party/googletest",
     dir_pw_preprocessor,
   ]
   public = [ "public/pw_unit_test/googletest_handler_adapter.h" ]
   sources = [ "googletest_handler_adapter.cc" ]
+}
+
+pw_source_set("googletest_test_matchers") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_unit_test/googletest_test_matchers.h" ]
+  public_deps = [
+    "$dir_pw_third_party/googletest",
+    dir_pw_result,
+    dir_pw_status,
+  ]
+}
+
+pw_test("googletest_test_matchers_test") {
+  enable_if = pw_unit_test_GOOGLETEST_BACKEND != ""
+  sources = [ "googletest_test_matchers_test.cc" ]
+  deps = [ ":googletest_test_matchers" ]
 }
 
 # Library providing an event handler which outputs human-readable text.
@@ -128,6 +146,7 @@ pw_source_set("simple_printing_event_handler") {
 # framework. Unit test files can link against this library to build runnable
 # unit test executables.
 pw_source_set("simple_printing_main") {
+  testonly = pw_unit_test_TESTONLY
   deps = [
     ":pw_unit_test",
     ":simple_printing_event_handler",
@@ -146,6 +165,7 @@ pw_source_set("printf_event_handler") {
 }
 
 pw_source_set("printf_main") {
+  testonly = pw_unit_test_TESTONLY
   deps = [
     ":printf_event_handler",
     ":pw_unit_test",
@@ -163,9 +183,19 @@ pw_source_set("logging_event_handler") {
   sources = [ "logging_event_handler.cc" ]
 }
 
+# Provides logging to either the light framework or an external GoogleTest.
+group("logging") {
+  public_deps = [ ":logging_event_handler" ]
+  deps = []
+  if (pw_unit_test_GOOGLETEST_BACKEND != "$dir_pw_unit_test:light") {
+    deps += [ ":googletest_handler_adapter" ]
+  }
+}
+
 pw_source_set("logging_main") {
+  testonly = pw_unit_test_TESTONLY
   deps = [
-    ":logging_event_handler",
+    ":logging",
     ":pw_unit_test",
   ]
   sources = [ "logging_main.cc" ]
@@ -180,6 +210,7 @@ config("rpc_service_backend_gtest") {
 }
 
 pw_source_set("rpc_service") {
+  testonly = pw_unit_test_TESTONLY
   public_configs = [ ":public_include_path" ]
   public_deps = [
     ":event_handler",
@@ -205,6 +236,7 @@ pw_source_set("rpc_service") {
 }
 
 pw_source_set("rpc_main") {
+  testonly = pw_unit_test_TESTONLY
   public_deps = [ ":pw_unit_test" ]
   deps = [
     ":rpc_service",
@@ -222,6 +254,7 @@ pw_source_set("static_library_support") {
 }
 
 pw_executable("test_rpc_server") {
+  testonly = pw_unit_test_TESTONLY
   sources = [ "test_rpc_server.cc" ]
   deps = [
     ":pw_unit_test",
@@ -238,6 +271,7 @@ pw_proto_library("unit_test_proto") {
 
 pw_doc_group("docs") {
   sources = [ "docs.rst" ]
+  other_deps = [ "py" ]
 }
 
 pw_test("metadata_only_test") {
@@ -249,26 +283,27 @@ pw_test("metadata_only_test") {
 # pw_test_group produces the metadata file for its tests.
 pw_test_group("metadata_only_group") {
   tests = [ ":metadata_only_test" ]
+  output_metadata = true
 }
 
-pw_python_script("test_group_metadata_test") {
+pw_python_action_test("test_group_metadata_test") {
+  testonly = pw_unit_test_TESTONLY
   sources = [ "py/test_group_metadata_test.py" ]
-  action = {
-    args = [
-      "--stamp-path",
-      "<TARGET_FILE(:metadata_only_group)>",
-    ]
-    deps = [ ":metadata_only_group" ]
-    stamp = true
-  }
+  args = [
+    "--stamp-path",
+    "<TARGET_FILE(:metadata_only_group)>",
+  ]
+  deps = [ ":metadata_only_group" ]
 }
 
 pw_test("framework_test") {
+  enable_if = pw_unit_test_GOOGLETEST_BACKEND == "$dir_pw_unit_test:light"
   sources = [ "framework_test.cc" ]
   deps = [ dir_pw_assert ]
 }
 
 pw_static_library("tests_in_archive") {
+  testonly = pw_unit_test_TESTONLY
   sources = [
     "static_library_archived_tests.cc",
     "static_library_missing_archived_tests.cc",
@@ -278,6 +313,7 @@ pw_static_library("tests_in_archive") {
 }
 
 pw_test("static_library_support_test") {
+  enable_if = pw_unit_test_GOOGLETEST_BACKEND == "$dir_pw_unit_test:light"
   sources = [ "static_library_support_test.cc" ]
   deps = [
     ":static_library_support",
@@ -291,4 +327,7 @@ pw_test_group("tests") {
     ":framework_test",
     ":static_library_support_test",
   ]
+  if (dir_pw_third_party_googletest != "") {
+    tests += [ ":googletest_test_matchers_test" ]
+  }
 }

@@ -14,7 +14,9 @@
 
 fuchsia_repo_files = [
     ".clang-format",
+    "LICENSE",
     # fit
+    "sdk/lib/fit/include/lib/fit/defer.h",
     "sdk/lib/fit/include/lib/fit/function.h",
     "sdk/lib/fit/include/lib/fit/internal/compiler.h",
     "sdk/lib/fit/include/lib/fit/internal/function.h",
@@ -35,14 +37,19 @@ fuchsia_repo_files = [
     "sdk/lib/stdcompat/include/lib/stdcompat/internal/bit.h",
     "sdk/lib/stdcompat/include/lib/stdcompat/internal/constructors.h",
     "sdk/lib/stdcompat/include/lib/stdcompat/internal/exception.h",
+    "sdk/lib/stdcompat/include/lib/stdcompat/internal/functional.h",
     "sdk/lib/stdcompat/include/lib/stdcompat/internal/storage.h",
     "sdk/lib/stdcompat/include/lib/stdcompat/internal/type_traits.h",
     "sdk/lib/stdcompat/include/lib/stdcompat/internal/utility.h",
+    # lazy_init
+    "zircon/system/ulib/lazy_init/include/lib/lazy_init/internal/storage.h",
+    "zircon/system/ulib/lazy_init/include/lib/lazy_init/lazy_init.h",
+    "zircon/system/ulib/lazy_init/include/lib/lazy_init/options.h",
 ]
 
 core.workflow(
     name = "default",
-    description = "Imports files from Fuchsia's fit library",
+    description = "Imports files from Fuchsia's fit, stdcompat and lazy_init libraries",
     origin = git.origin(
         url = "https://fuchsia.googlesource.com/fuchsia",
         ref = "main",
@@ -55,7 +62,8 @@ core.workflow(
         checker = leakr.disable_check("Syncing between OSS projects"),
     ),
     origin_files = glob(fuchsia_repo_files),
-    destination_files = glob(["third_party/fuchsia/repo/**"]),
+    # Exclude BUILD.gn files to keep Pigweed's versions.
+    destination_files = glob(["third_party/fuchsia/repo/**"], exclude = ["**/BUILD.gn"]),
     authoring = authoring.pass_thru("Fuchsia Authors <noreply@google.com>"),
     transformations = [
         core.move("", "third_party/fuchsia/repo"),
@@ -65,7 +73,7 @@ core.workflow(
         core.replace("#include <zxtest/zxtest.h>", "#include \"gtest/gtest.h\""),
         # Show all commits but exclude the author to reduce line length.
         metadata.squash_notes(
-            "third_party/fuchsia: Copybara import of the fit library\n\n",
+            "third_party/fuchsia: Copybara import\n\n",
             show_author = False,
         ),
     ],
