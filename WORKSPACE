@@ -270,7 +270,7 @@ load(
 )
 
 pw_rust_register_toolchain_and_target_repos(
-    cipd_tag = "rust_revision:faee636ebfff793ea9dcff17960a611b580e3cd5",
+    cipd_tag = "rust_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72",
 )
 
 # Allows creation of a `rust-project.json` file to allow rust analyzer to work.
@@ -283,7 +283,7 @@ pw_rust_register_toolchains()
 # Vendored third party rust crates.
 git_repository(
     name = "rust_crates",
-    commit = "6d975531f7672cc6aa54bdd7517e1beeffa578da",
+    commit = "de54de1a2683212d8edb4e15ec7393eb013c849c",
     remote = "https://pigweed.googlesource.com/third_party/rust_crates",
 )
 
@@ -386,13 +386,13 @@ git_repository(
 
 git_repository(
     name = "com_google_emboss",
-    commit = "69bb1372053fc3cb8a16180497970465ae2ed66d",
+    commit = "35e21b10019ded9ae14041af9b8e49659d9b327a",
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
 )
 
 http_archive(
     name = "freertos",
-    build_file = "//:third_party/freertos/BUILD.bazel",
+    build_file = "//third_party/freertos:freertos.BUILD.bazel",
     sha256 = "89af32b7568c504624f712c21fe97f7311c55fccb7ae6163cda7adde1cde7f62",
     strip_prefix = "FreeRTOS-Kernel-10.5.1",
     urls = ["https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V10.5.1.tar.gz"],

@@ -14,7 +14,10 @@
 
 #include "pw_async2/poll.h"
 
+#include <type_traits>
+
 #include "gtest/gtest.h"
+#include "pw_result/result.h"
 
 namespace pw::async2 {
 namespace {
@@ -59,9 +62,50 @@ TEST(Poll, ConstructsReadyFromValueType) {
   EXPECT_EQ(mr->value(), 5);
 }
 
+TEST(Poll, ConstructsFromValueConvertibleToValueType) {
+  Poll<Immovable> mr(MoveOnly(5));
+  EXPECT_TRUE(mr.IsReady());
+  EXPECT_EQ(mr->value(), 5);
+}
+
+TEST(Poll, ConstructsFromPollWithValueConvertibleToValueType) {
+  Poll<MoveOnly> move_poll(MoveOnly(5));
+  Poll<Immovable> no_move_poll(std::move(move_poll));
+  EXPECT_TRUE(no_move_poll.IsReady());
+  EXPECT_EQ(no_move_poll->value(), 5);
+}
+
 TEST(Poll, ConstructsPendingFromPendingType) {
   Poll<MoveOnly> mr(Pending());
   EXPECT_FALSE(mr.IsReady());
+}
+
+TEST(Poll, ConstructorInfersValueType) {
+  auto res = Poll("hello");
+  static_assert(std::is_same_v<decltype(res), Poll<const char*>>);
+  EXPECT_TRUE(res.IsReady());
+  EXPECT_STREQ(res.value(), "hello");
+}
+
+TEST(Poll, ReadyToString) {
+  char buffer[128] = {};
+  Poll<> v = Ready();
+  EXPECT_EQ(5u, ToString(v, buffer).size());
+  EXPECT_STREQ("Ready", buffer);
+}
+
+TEST(Poll, ReadyValueToString) {
+  char buffer[128] = {};
+  Poll<uint16_t> v = 5;
+  EXPECT_EQ(8u, ToString(v, buffer).size());
+  EXPECT_STREQ("Ready(5)", buffer);
+}
+
+TEST(Poll, PendingToString) {
+  char buffer[128] = {};
+  Poll<uint16_t> v = Pending();
+  EXPECT_EQ(7u, ToString(v, buffer).size());
+  EXPECT_STREQ("Pending", buffer);
 }
 
 TEST(PendingFunction, ReturnsValueConvertibleToPendingPoll) {
@@ -85,6 +129,66 @@ TEST(ReadyFunction, ConstructsReadyFromValueType) {
   Poll<MoveOnly> mr = Ready(MoveOnly(5));
   EXPECT_TRUE(mr.IsReady());
   EXPECT_EQ(mr->value(), 5);
+}
+
+Poll<Result<int>> EndToEndTest(int input) {
+  if (input == 0) {
+    // Check that returning plain ``Status`` works.
+    return Status::PermissionDenied();
+  }
+  if (input == 1) {
+    // Check that returning ``Pending`` works.
+    return Pending();
+  }
+  if (input == 2) {
+    // Check that returning ``Result<int>`` works.
+    Result<int> v = 2;
+    return v;
+  }
+  if (input == 3) {
+    // Check that returning plain ``int`` works.
+    return 3;
+  }
+  if (input == 4) {
+    // Check that returning ``Poll<int>`` works.
+    return Ready(4);
+  }
+  if (input == 5) {
+    // Check that returning ``Poll<Status>`` works.
+    return Ready(Status::DataLoss());
+  }
+  return Status::Unknown();
+}
+
+TEST(EndToEndTest, ReturnsStatus) {
+  Poll<Result<int>> result = EndToEndTest(0);
+  ASSERT_TRUE(result.IsReady());
+  EXPECT_EQ(result->status(), Status::PermissionDenied());
+}
+
+TEST(EndToEndTest, ReturnsPending) {
+  Poll<Result<int>> result = EndToEndTest(1);
+  EXPECT_FALSE(result.IsReady());
+}
+
+TEST(EndToEndTest, ReturnsValue) {
+  Poll<Result<int>> result = EndToEndTest(3);
+  ASSERT_TRUE(result.IsReady());
+  ASSERT_TRUE(result->ok());
+  EXPECT_EQ(**result, 3);
+}
+
+TEST(EndToEndTest, ReturnsReady) {
+  Poll<Result<int>> result = EndToEndTest(4);
+  ASSERT_TRUE(result.IsReady());
+  ASSERT_TRUE(result->ok());
+  EXPECT_EQ(**result, 4);
+}
+
+TEST(EndToEndTest, ReturnsPollStatus) {
+  Poll<Result<int>> result = EndToEndTest(5);
+  ASSERT_TRUE(result.IsReady());
+  EXPECT_EQ(result->status(), Status::DataLoss());
 }
 
 }  // namespace

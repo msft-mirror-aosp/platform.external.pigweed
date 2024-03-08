@@ -37,7 +37,7 @@ class OwnedChunk;
 ///
 /// In order to support zero-copy DMA of communications buffers, allocators can
 /// create properly-aligned ``Chunk`` regions in appropriate memory. The driver
-/// can then ``DiscardFront`` in order to reserve bytes for headers,
+/// can then ``DiscardPrefix`` in order to reserve bytes for headers,
 /// ``Truncate`` in order to reserve bytes for footers, and then pass the
 /// ``Chunk`` to the user to fill in. The header and footer space can then
 /// be reclaimed using the ``ClaimPrefix`` and ``ClaimSuffix`` methods.
@@ -50,20 +50,9 @@ class Chunk {
   Chunk(Chunk&&) = delete;
   Chunk& operator=(Chunk&&) = delete;
 
-  /// Creates the first ``Chunk`` referencing a whole region of memory.
-  ///
-  /// This must only be called once per ``ChunkRegionTracker``, when the region
-  /// is first created. Multiple calls will result in undefined behavior.
-  ///
-  /// Returns ``std::nullopt`` if ``AllocateChunkStorage`` returns ``nullptr``.
-  static std::optional<OwnedChunk> CreateFirstForRegion(
-      ChunkRegionTracker& region_tracker);
-
   std::byte* data() { return span_.data(); }
   const std::byte* data() const { return span_.data(); }
   size_t size() const { return span_.size(); }
-  ByteSpan span() { return span_; }
-  ConstByteSpan span() const { return span_; }
 
   std::byte& operator[](size_t index) { return span_[index]; }
   const std::byte& operator[](size_t index) const { return span_[index]; }
@@ -83,8 +72,10 @@ class Chunk {
   using const_reverse_iterator = const std::byte*;
 
   std::byte* begin() { return span_.data(); }
+  const std::byte* begin() const { return cbegin(); }
   const std::byte* cbegin() const { return span_.data(); }
   std::byte* end() { return span_.data() + span_.size(); }
+  const std::byte* end() const { return cend(); }
   const std::byte* cend() const { return span_.data() + span_.size(); }
 
   /// Returns if ``next_chunk`` is mergeable into the end of this ``Chunk``.
@@ -111,7 +102,7 @@ class Chunk {
   ///
   /// This will only succeed if this ``Chunk`` points to a section of a region
   /// that has unreferenced bytes preceeding it. For example, a ``Chunk`` which
-  /// has been shrunk using ``DiscardFront`` can be re-expanded using
+  /// has been shrunk using ``DiscardPrefix`` can be re-expanded using
   /// ``ClaimPrefix``.
   ///
   /// This method will acquire a mutex and is not IRQ safe.
@@ -125,7 +116,7 @@ class Chunk {
   /// that has unreferenced bytes following it. For example, a ``Chunk`` which
   /// has been shrunk using ``Truncate`` can be re-expanded using
   ///
-  /// This method will acquire a mutex and is not IRQ safe. /// ``ClaimSuffix``.
+  /// This method will acquire a mutex and is not IRQ safe.
   [[nodiscard]] bool ClaimSuffix(size_t bytes_to_claim);
 
   /// Shrinks this handle to refer to the data beginning at offset
@@ -134,7 +125,13 @@ class Chunk {
   /// Does not modify the underlying data.
   ///
   /// This method will acquire a mutex and is not IRQ safe.
-  void DiscardFront(size_t bytes_to_discard);
+  void DiscardPrefix(size_t bytes_to_discard);
+
+  // TODO(b/327033010): remove once all callers have migrated.
+  /// Deprecated alias for DiscardPrefix.
+  [[deprecated]] void DiscardFront(size_t bytes_to_discard) {
+    DiscardPrefix(bytes_to_discard);
+  }
 
   /// Shrinks this handle to refer to data in the range ``begin..<end``.
   ///
@@ -158,7 +155,7 @@ class Chunk {
   /// will return ``std::nullopt` and this handle's span will not change.
   ///
   /// This method will acquire a mutex and is not IRQ safe.
-  std::optional<OwnedChunk> TakeFront(size_t bytes_to_take);
+  std::optional<OwnedChunk> TakePrefix(size_t bytes_to_take);
 
   /// Attempts to shrink this handle to refer only the first
   /// ``len - bytes_to_take`` bytes, returning the last ``bytes_to_take``
@@ -168,7 +165,7 @@ class Chunk {
   /// will return ``std::nullopt`` and this handle's span will not change.
   ///
   /// This method will acquire a mutex and is not IRQ safe.
-  std::optional<OwnedChunk> TakeTail(size_t bytes_to_take);
+  std::optional<OwnedChunk> TakeSuffix(size_t bytes_to_take);
 
  private:
   Chunk(ChunkRegionTracker* region_tracker, ByteSpan span)
@@ -240,8 +237,9 @@ class Chunk {
   /// acquire ``region_tracker_->lock_`` before changing ``span_``.
   ByteSpan span_;
 
-  friend class OwnedChunk;  // for ``Free``.
-  friend class MultiBuf;    // for ``Free`` and ``next_in_buf_``.
+  friend class ChunkRegionTracker;  // For the constructor
+  friend class OwnedChunk;          // for ``Free``.
+  friend class MultiBuf;            // for ``Free`` and ``next_in_buf_``.
 };
 
 /// An object that manages a single allocated region which is referenced by one
@@ -267,6 +265,15 @@ class Chunk {
 ///   existing generic allocator such as ``malloc`` or a
 ///   ``pw::allocator::Allocator`` implementation.
 class ChunkRegionTracker {
+ public:
+  /// Creates the first ``Chunk`` referencing a whole region of memory.
+  ///
+  /// This must only be called once per ``ChunkRegionTracker``, when the region
+  /// is first created. Multiple calls will result in undefined behavior.
+  ///
+  /// Returns ``std::nullopt`` if ``AllocateChunkStorage`` returns ``nullptr``.
+  std::optional<OwnedChunk> CreateFirstChunk();
+
  protected:
   ChunkRegionTracker() = default;
   virtual ~ChunkRegionTracker() = default;
@@ -282,11 +289,13 @@ class ChunkRegionTracker {
   /// ``Chunk`` s referencing this tracker will not expand beyond this region,
   /// nor into one another's portions of the region.
   ///
+  /// This region does not provide any alignment guarantees by default.
+  ///
   /// This region must not change for the lifetime of this
   /// ``ChunkRegionTracker``.
   virtual ByteSpan Region() const = 0;
 
-  /// Returns a pointer to ``sizeof(Chunk)`` bytes.
+  /// Returns a pointer to ``sizeof(Chunk)`` bytes with `alignas(Chunk)`.
   /// Returns ``nullptr`` on failure.
   virtual void* AllocateChunkClass() = 0;
 
@@ -321,16 +330,38 @@ class OwnedChunk {
   /// This method will acquire a mutex and is not IRQ safe.
   ~OwnedChunk() { Release(); }
 
-  std::byte* data() { return span().data(); }
-  const std::byte* data() const { return span().data(); }
-  size_t size() const { return span().size(); }
-  ByteSpan span() { return inner_ == nullptr ? ByteSpan() : inner_->span(); }
-  ConstByteSpan span() const {
-    return inner_ == nullptr ? ConstByteSpan() : inner_->span();
+  std::byte* data() {
+    return const_cast<std::byte*>(std::as_const(*this).data());
+  }
+  const std::byte* data() const {
+    return inner_ == nullptr ? nullptr : inner_->data();
   }
 
-  std::byte& operator[](size_t index) { return span()[index]; }
-  std::byte operator[](size_t index) const { return span()[index]; }
+  size_t size() const { return inner_ == nullptr ? 0 : inner_->size(); }
+
+  std::byte& operator[](size_t index) { return data()[index]; }
+  std::byte operator[](size_t index) const { return data()[index]; }
+
+  // Container declarations
+  using element_type = std::byte;
+  using value_type = std::byte;
+  using size_type = size_t;
+  using difference_type = ptrdiff_t;
+  using pointer = std::byte*;
+  using const_pointer = const std::byte*;
+  using reference = std::byte&;
+  using const_reference = const std::byte&;
+  using iterator = std::byte*;
+  using const_iterator = const std::byte*;
+  using reverse_iterator = std::byte*;
+  using const_reverse_iterator = const std::byte*;
+
+  std::byte* begin() { return data(); }
+  const std::byte* begin() const { return cbegin(); }
+  const std::byte* cbegin() const { return data(); }
+  std::byte* end() { return data() + size(); }
+  const std::byte* end() const { return cend(); }
+  const std::byte* cend() const { return data() + size(); }
 
   Chunk& operator*() { return *inner_; }
   const Chunk& operator*() const { return *inner_; }
@@ -364,9 +395,10 @@ class OwnedChunk {
   /// A pointer to the owned ``Chunk``.
   Chunk* inner_;
 
-  /// Allow ``Chunk`` and ``MultiBuf`` to create ``OwnedChunk``s using the
-  /// private constructor above.
+  /// Allow ``ChunkRegionTracker`` and ``MultiBuf`` to create ``OwnedChunk``s
+  /// using the private constructor above.
   friend class Chunk;
+  friend class ChunkRegionTracker;
   friend class MultiBuf;
 };
 

@@ -45,10 +45,9 @@ constexpr size_t kSplitFreeListThreshold = 128;
 int main() {
   pw::bloat::BloatThisBinary();
 
-  allocator.Init(
-      pw::ByteSpan(reinterpret_cast<std::byte*>(kFakeMemoryRegionStart),
-                   kFakeMemoryRegionSize),
-      kSplitFreeListThreshold);
+  auto* buffer = reinterpret_cast<std::byte*>(kFakeMemoryRegionStart);
+  allocator.Init(pw::ByteSpan(buffer, kFakeMemoryRegionSize));
+  allocator.set_threshold(kSplitFreeListThreshold);
 
   struct Foo {
     char name[16];
@@ -107,7 +106,7 @@ int main() {
       return 1;
     }
 
-    pw::allocator::UniquePtr<Point> point = *maybe_point;
+    pw::allocator::UniquePtr<Point> point = std::move(maybe_point.value());
     point->x = point->y * 2;
   }
 
