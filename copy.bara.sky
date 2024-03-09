@@ -8,7 +8,7 @@ core.workflow(
     url = "rpc://googleplex-android/platform/external/pigweed",
     fetch = "main",
     reviewers = ["bduddie@google.com", "cachinchilla@google.com",
-                 "helper@google.com", "matthewsedam@google.com"]
+                 "hepler@google.com", "matthewsedam@google.com"]
   ),
   origin_files = glob(
     include = ["**"],
