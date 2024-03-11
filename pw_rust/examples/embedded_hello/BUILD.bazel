@@ -21,8 +21,8 @@ rust_binary(
     srcs = ["src/main.rs"],
     edition = "2021",
     linker_script = select({
-        "//pw_build/constraints/board:microbit": "qemu-rust-nrf51822.ld",
-        "//pw_build/constraints/chipset:lm3s6965evb": "qemu-rust-lm3s6965.ld",
+        "//pw_build/constraints/board:microbit": "//pw_rust/examples/linker_scripts:qemu-rust-nrf51822",
+        "//pw_build/constraints/chipset:lm3s6965evb": "//pw_rust/examples/linker_scripts:qemu-rust-lm3s6965",
     }),
     target_compatible_with = select({
         "@platforms//os:linux": ["@platforms//:incompatible"],
