@@ -71,7 +71,6 @@ pw_add_library(pw_string.string INTERFACE
     public
   PUBLIC_DEPS
     pw_assert
-    pw_polyfill
 )
 
 pw_add_library(pw_string.to_string STATIC
@@ -81,6 +80,7 @@ pw_add_library(pw_string.to_string STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_result
     pw_string.config
     pw_string.format
     pw_string.util

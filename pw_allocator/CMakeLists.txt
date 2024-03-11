@@ -13,11 +13,6 @@
 # the License.
 
 include("$ENV{PW_ROOT}/pw_build/pigweed.cmake")
-include("$ENV{PW_ROOT}/pw_allocator/allocator.cmake")
-
-if(pw_allocator_COLLECT_METRICS)
-  set(collect_metrics "PW_ALLOCATOR_COLLECT_METRICS=1")
-endif()
 
 pw_add_library(pw_allocator.allocator STATIC
   HEADERS
@@ -40,6 +35,7 @@ pw_add_library(pw_allocator.block STATIC
     public
   PUBLIC_DEPS
     pw_allocator.allocator
+    pw_assert
     pw_bytes
     pw_bytes.alignment
     pw_result
@@ -81,7 +77,6 @@ pw_add_library(pw_allocator.fallback_allocator INTERFACE
     public
   PUBLIC_DEPS
     pw_allocator.allocator
-    pw_allocator.metrics
     pw_allocator.tracking_allocator
     pw_metric
     pw_result
@@ -129,22 +124,6 @@ pw_add_library(pw_allocator.libc_allocator STATIC
     pw_allocator.allocator
 )
 
-pw_add_library(pw_allocator.metrics STATIC
-  PUBLIC_DEFINES
-    ${collect_metrics}
-  SOURCES
-    metrics.cc
-  HEADERS
-    public/pw_allocator/metrics.h
-  PUBLIC_INCLUDES
-    public
-  PUBLIC_DEPS
-    pw_allocator.allocator
-    pw_metric
-  PRIVATE_DEPS
-    pw_assert
-)
-
 pw_add_library(pw_allocator.multiplex_allocator INTERFACE
   HEADERS
     public/pw_allocator/multiplex_allocator.h
@@ -152,7 +131,6 @@ pw_add_library(pw_allocator.multiplex_allocator INTERFACE
     public
   PUBLIC_DEPS
     pw_allocator.allocator
-    pw_allocator.metrics
     pw_containers.flat_map
     pw_result
     pw_status
@@ -179,21 +157,13 @@ pw_add_library(pw_allocator.simple_allocator INTERFACE
     pw_status
 )
 
-pw_add_library(pw_allocator.split_free_list_allocator STATIC
+pw_add_library(pw_allocator.split_free_list_allocator INTERFACE
   HEADERS
     public/pw_allocator/split_free_list_allocator.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_allocator.allocator
-    pw_allocator.block
-    pw_bytes
-    pw_result
-    pw_status
-  PRIVATE_DEPS
-    pw_assert
-  SOURCES
-    split_free_list_allocator.cc
+    pw_allocator.block_allocator
 )
 
 pw_add_library(pw_allocator.synchronized_allocator INTERFACE
@@ -208,12 +178,12 @@ pw_add_library(pw_allocator.synchronized_allocator INTERFACE
 
 pw_add_library(pw_allocator.tracking_allocator INTERFACE
   HEADERS
+    public/pw_allocator/metrics.h
     public/pw_allocator/tracking_allocator.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
     pw_allocator.allocator
-    pw_allocator.metrics
     pw_metric
     pw_status
 )
@@ -226,8 +196,8 @@ pw_add_library(pw_allocator.allocator_testing STATIC
   PUBLIC_DEPS
     pw_allocator.allocator
     pw_allocator.block
+    pw_allocator.block_allocator
     pw_allocator.buffer
-    pw_allocator.simple_allocator
     pw_allocator.tracking_allocator
     pw_bytes
     pw_result
@@ -378,22 +348,6 @@ pw_add_test(pw_allocator.simple_allocator_test
     pw_allocator.simple_allocator
 )
 
-pw_add_test(pw_allocator.split_free_list_allocator_test
-  SOURCES
-    split_free_list_allocator_test.cc
-  PRIVATE_DEPS
-    pw_allocator.allocator_fuzzing
-    pw_allocator.buffer
-    pw_allocator.split_free_list_allocator
-    pw_containers.vector
-    pw_bytes
-    pw_fuzzer.fuzztest
-    pw_unit_test
-  GROUPS
-    modules
-    pw_allocator
-)
-
 pw_add_test(pw_allocator.synchronized_allocator_test
   SOURCES
     synchronized_allocator_test.cc
@@ -419,6 +373,7 @@ pw_add_test(pw_allocator.tracking_allocator_test
     tracking_allocator_test.cc
   PRIVATE_DEPS
     pw_allocator.allocator_testing
+    pw_allocator.tracking_allocator
   GROUPS
     modules
     pw_allocator

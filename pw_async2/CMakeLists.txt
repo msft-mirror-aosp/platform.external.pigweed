@@ -18,6 +18,10 @@ include($ENV{PW_ROOT}/pw_async2/backend.cmake)
 pw_add_library(pw_async2.poll INTERFACE
   HEADERS
     public/pw_async2/poll.h
+  PUBLIC_DEPS
+    pw_polyfill
+    pw_string.to_string
+    pw_third_party.fuchsia.stdcompat
   PUBLIC_INCLUDES
     public
 )

@@ -198,7 +198,7 @@ pw_cc_test(
 
 pw_cc_blob_info(
     name = "detokenizer_example_elf_blob",
-    file_path = "//pw_tokenizer/py:example_binary_with_tokenized_strings.elf",
+    file_path = "//pw_tokenizer/py:example_binary_with_tokenized_strings",
     symbol_name = "kElfSection",
 )
 
@@ -312,7 +312,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":pw_tokenizer",
-        "//pw_containers:variable_length_entry_queue",
+        "//pw_containers:inline_var_len_entry_queue",
     ],
 )
 

@@ -51,8 +51,7 @@ bool Chunk::Merge(OwnedChunk& next_chunk_owned) {
   if (!CanMerge(*next_chunk_owned)) {
     return false;
   }
-  Chunk* next_chunk = next_chunk_owned.inner_;
-  next_chunk_owned.inner_ = nullptr;
+  Chunk* next_chunk = std::move(next_chunk_owned).Take();
 
   // Note: Both chunks have the same ``region_tracker_``.
   //
@@ -98,14 +97,13 @@ void Chunk::RemoveFromRegionList()
   next_in_region_ = nullptr;
 }
 
-std::optional<OwnedChunk> Chunk::CreateFirstForRegion(
-    ChunkRegionTracker& region_tracker) {
-  void* memory = region_tracker.AllocateChunkClass();
+std::optional<OwnedChunk> ChunkRegionTracker::CreateFirstChunk() {
+  void* memory = AllocateChunkClass();
   if (memory == nullptr) {
     return std::nullopt;
   }
   // Note: `Region()` is `const`, so no lock is required.
-  Chunk* chunk = new (memory) Chunk(&region_tracker, region_tracker.Region());
+  Chunk* chunk = new (memory) Chunk(this, Region());
   return OwnedChunk(chunk);
 }
 
@@ -157,7 +155,7 @@ bool Chunk::ClaimPrefix(size_t bytes_to_claim) {
   // If there are any chunks before this one, they must not end after
   // `new_start`.
   Chunk* prev = prev_in_region_;
-  if (prev != nullptr && EndPtr(prev->span()) > new_start) {
+  if (prev != nullptr && EndPtr(*prev) > new_start) {
     return false;
   }
 
@@ -172,7 +170,7 @@ bool Chunk::ClaimSuffix(size_t bytes_to_claim) {
   }
   // In order to expand forward `bytes_to_claim`, the current chunk must start
   // at least `subytes` before the end of the current region.
-  std::byte* new_end = CheckedAdd(EndPtr(span()), bytes_to_claim);
+  std::byte* new_end = CheckedAdd(EndPtr(*this), bytes_to_claim);
   // Note: `Region()` is `const`, so no lock is required.
   if (new_end == nullptr || new_end > EndPtr(region_tracker_->Region())) {
     return false;
@@ -193,7 +191,7 @@ bool Chunk::ClaimSuffix(size_t bytes_to_claim) {
   return true;
 }
 
-void Chunk::DiscardFront(size_t bytes_to_discard) {
+void Chunk::DiscardPrefix(size_t bytes_to_discard) {
   Slice(bytes_to_discard, size());
 }
 
@@ -208,7 +206,7 @@ void Chunk::Slice(size_t begin, size_t end) {
 
 void Chunk::Truncate(size_t len) { Slice(0, len); }
 
-std::optional<OwnedChunk> Chunk::TakeFront(size_t bytes_to_take) {
+std::optional<OwnedChunk> Chunk::TakePrefix(size_t bytes_to_take) {
   void* new_chunk_memory = region_tracker_->AllocateChunkClass();
   if (new_chunk_memory == nullptr) {
     return std::nullopt;
@@ -226,7 +224,7 @@ std::optional<OwnedChunk> Chunk::TakeFront(size_t bytes_to_take) {
   return OwnedChunk(new_chunk);
 }
 
-std::optional<OwnedChunk> Chunk::TakeTail(size_t bytes_to_take) {
+std::optional<OwnedChunk> Chunk::TakeSuffix(size_t bytes_to_take) {
   void* new_chunk_memory = region_tracker_->AllocateChunkClass();
   if (new_chunk_memory == nullptr) {
     return std::nullopt;
@@ -234,8 +232,7 @@ std::optional<OwnedChunk> Chunk::TakeTail(size_t bytes_to_take) {
 
   PW_DCHECK(bytes_to_take <= size());
   ByteSpan first_span = ByteSpan(data(), size() - bytes_to_take);
-  ByteSpan second_span =
-      ByteSpan(EndPtr(span()) - bytes_to_take, bytes_to_take);
+  ByteSpan second_span = ByteSpan(EndPtr(*this) - bytes_to_take, bytes_to_take);
 
   std::lock_guard lock(region_tracker_->lock_);
   span_ = first_span;

@@ -150,17 +150,6 @@ def gn_quick_build_check(ctx: PresubmitContext):
     build.gn_gen(ctx)
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_full_qemu_check(ctx: PresubmitContext):
-    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
-    build.ninja(
-        ctx,
-        *_at_all_optimization_levels('qemu_gcc'),
-        *_at_all_optimization_levels('qemu_clang'),
-    )
-    build.gn_check(ctx)
-
-
 def _gn_combined_build_check_targets() -> Sequence[str]:
     build_targets = [
         'check_modules',
@@ -464,6 +453,9 @@ gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
             ctx.root / 'pw_function:enable_dynamic_allocation'
         ),
         pw_bluetooth_sapphire_ENABLED=True,
+        # Pigweed uses Python 3.8 and must use the old version of Emboss until
+        # updated to Python 3.9.
+        pw_third_party_emboss_USE_NEW_SOURCES=False,
         pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
     ),
     ninja_targets=(
@@ -635,6 +627,7 @@ gn_host_tools = PigweedGnGenNinja(
 
 def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
     build.install_package(ctx, 'nanopb')
+    build.install_package(ctx, 'emboss')
 
     env = None
     if 'clang' in toolchain:
@@ -647,6 +640,7 @@ def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
         '-DCMAKE_EXPORT_COMPILE_COMMANDS=1',
         f'-Ddir_pw_third_party_nanopb={ctx.package_root / "nanopb"}',
         '-Dpw_third_party_nanopb_ADD_SUBDIRECTORY=ON',
+        f'-Ddir_pw_third_party_emboss={ctx.package_root / "emboss"}',
         env=env,
     )
 
@@ -656,7 +650,12 @@ def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
 )
 def cmake_clang(ctx: PresubmitContext):
     _run_cmake(ctx, toolchain='host_clang')
-    build.ninja(ctx, 'pw_apps', 'pw_run_tests.modules')
+    build.ninja(
+        ctx,
+        'pw_apps',
+        'pw_run_tests.modules',
+        'pw_run_tests.pw_bluetooth',
+    )
     build.gn_check(ctx)
 
 

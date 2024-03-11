@@ -19,7 +19,12 @@ core.workflow(
   ),
   destination_files = glob(
     include = ["**"],
-    exclude = [],
+    exclude = [
+      "copy.bara.sky",
+      "METADATA",
+      "MODULE_LICENSE_APACHE2",
+      "OWNERS"
+    ],
   ),
   mode = "SQUASH",
   transformations = [],

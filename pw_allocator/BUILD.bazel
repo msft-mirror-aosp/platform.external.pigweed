@@ -47,6 +47,7 @@ cc_library(
     includes = ["public"],
     deps = [
         ":allocator",
+        "//pw_assert",
         "//pw_bytes",
         "//pw_bytes:alignment",
         "//pw_result",
@@ -86,7 +87,6 @@ cc_library(
     includes = ["public"],
     deps = [
         ":allocator",
-        ":metrics",
         ":tracking_allocator",
         "//pw_metric:metric",
         "//pw_result",
@@ -142,22 +142,6 @@ cc_library(
 )
 
 cc_library(
-    name = "metrics",
-    srcs = [
-        "metrics.cc",
-    ],
-    hdrs = [
-        "public/pw_allocator/metrics.h",
-    ],
-    includes = ["public"],
-    deps = [
-        ":allocator",
-        "//pw_assert",
-        "//pw_metric:metric",
-    ],
-)
-
-cc_library(
     name = "multiplex_allocator",
     hdrs = [
         "public/pw_allocator/multiplex_allocator.h",
@@ -165,7 +149,6 @@ cc_library(
     includes = ["public"],
     deps = [
         ":allocator",
-        ":metrics",
         "//pw_containers:flat_map",
         "//pw_result",
         "//pw_status",
@@ -201,20 +184,12 @@ cc_library(
 
 cc_library(
     name = "split_free_list_allocator",
-    srcs = [
-        "split_free_list_allocator.cc",
-    ],
     hdrs = [
         "public/pw_allocator/split_free_list_allocator.h",
     ],
     includes = ["public"],
     deps = [
-        ":allocator",
-        ":block",
-        "//pw_assert",
-        "//pw_bytes",
-        "//pw_result",
-        "//pw_status",
+        ":block_allocator",
     ],
 )
 
@@ -233,12 +208,12 @@ cc_library(
 cc_library(
     name = "tracking_allocator",
     hdrs = [
+        "public/pw_allocator/metrics.h",
         "public/pw_allocator/tracking_allocator.h",
     ],
     includes = ["public"],
     deps = [
         ":allocator",
-        ":metrics",
         "//pw_assert",
         "//pw_metric:metric",
         "//pw_status",
@@ -258,8 +233,8 @@ cc_library(
     deps = [
         ":allocator",
         ":block",
+        ":block_allocator",
         ":buffer",
-        ":simple_allocator",
         ":tracking_allocator",
         "//pw_assert",
         "//pw_bytes",
@@ -421,22 +396,6 @@ pw_cc_test(
     deps = [
         ":buffer",
         ":simple_allocator",
-    ],
-)
-
-pw_cc_test(
-    name = "split_free_list_allocator_test",
-    srcs = [
-        "split_free_list_allocator_test.cc",
-    ],
-    deps = [
-        ":allocator_fuzzing",
-        ":buffer",
-        ":split_free_list_allocator",
-        "//pw_bytes",
-        "//pw_containers:vector",
-        "//pw_fuzzer:fuzztest",
-        "//pw_unit_test",
     ],
 )
 

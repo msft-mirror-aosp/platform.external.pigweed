@@ -41,6 +41,7 @@ inline pw::sync::InterruptSpinLock& dispatcher_lock() {
 
 class DispatcherBase;
 class Waker;
+class WaitReason;
 
 // Forward-declare ``Dispatcher``.
 // This concrete type must be provided by a backend.
@@ -66,9 +67,19 @@ class Context {
   /// ``dispatcher().Post(task);``.
   Dispatcher& dispatcher() { return *dispatcher_; }
 
+  /// Queues the current ``Task::Pend`` to run again in the future, possibly
+  /// after other work is performed.
+  ///
+  /// This may be used by ``Task`` implementations that wish to provide
+  /// additional fairness by yielding to the dispatch loop rather than perform
+  /// too much work in a single iteration.
+  ///
+  /// This is semantically equivalent to calling ``GetWaker(...).Wake()``
+  void ReEnqueue();
+
   /// Returns a ``Waker`` which, when awoken, will cause the current task to be
   /// ``Pend``'d by its dispatcher.
-  Waker& waker() { return *waker_; }
+  Waker GetWaker(WaitReason reason);
 
  private:
   Dispatcher* dispatcher_;
@@ -248,7 +259,12 @@ class Waker {
  public:
   Waker() = default;
   Waker(Waker&& other) noexcept PW_LOCKS_EXCLUDED(dispatcher_lock());
+
+  /// Replace this ``Waker`` with another.
+  ///
+  /// This operation is guaranteed to be thread-safe.
   Waker& operator=(Waker&& other) noexcept PW_LOCKS_EXCLUDED(dispatcher_lock());
+
   ~Waker() noexcept { RemoveFromTaskWakerList(); }
 
   /// Wakes up the ``Waker``'s creator, alerting it that an asynchronous
@@ -258,6 +274,8 @@ class Waker {
   /// that the event that was waited on has been complete. This makes it
   /// possible to track the outstanding events that may cause a ``Task`` to
   /// wake up and make progress.
+  ///
+  /// This operation is guaranteed to be thread-safe.
   void Wake() && PW_LOCKS_EXCLUDED(dispatcher_lock());
 
   /// Creates a second ``Waker`` from this ``Waker``.
@@ -268,7 +286,29 @@ class Waker {
   /// The ``WaitReason`` argument can be used to provide information about
   /// what event the ``Waker`` is waiting on. This can be useful for
   /// debugging purposes.
+  ///
+  /// This operation is guaranteed to be thread-safe.
   Waker Clone(WaitReason reason) & PW_LOCKS_EXCLUDED(dispatcher_lock());
+
+  /// Returns whether this ``Waker`` is empty.
+  ///
+  /// Empty wakers are those that perform no action upon wake. These may be
+  /// created either via the default no-argument constructor or by
+  /// calling ``Clear`` or ``std::move`` on a ``Waker``, after which the
+  /// moved-from ``Waker`` will be empty.
+  ///
+  /// This operation is guaranteed to be thread-safe.
+  [[nodiscard]] bool IsEmpty() const PW_LOCKS_EXCLUDED(dispatcher_lock());
+
+  /// Clears this ``Waker``.
+  ///
+  /// After this call, ``Wake`` will no longer perform any action, and
+  /// ``IsEmpty`` will return ``true``.
+  ///
+  /// This operation is guaranteed to be thread-safe.
+  void Clear() PW_LOCKS_EXCLUDED(dispatcher_lock()) {
+    RemoveFromTaskWakerList();
+  }
 
  private:
   Waker(Task& task) PW_LOCKS_EXCLUDED(dispatcher_lock()) : task_(&task) {
@@ -298,11 +338,6 @@ class Waker {
 /// and to prevent build system cycles due to ``Task`` needing to refer
 /// to the ``Dispatcher`` class.
 class DispatcherBase {
-  friend class Task;
-  friend class Waker;
-  template <typename Impl>
-  friend class DispatcherImpl;
-
  public:
   DispatcherBase() = default;
   DispatcherBase(DispatcherBase&) = delete;
@@ -328,6 +363,11 @@ class DispatcherBase {
   void Deregister() PW_LOCKS_EXCLUDED(dispatcher_lock());
 
  private:
+  friend class Task;
+  friend class Waker;
+  template <typename Impl>
+  friend class DispatcherImpl;
+
   /// Sends a wakeup signal to this ``Dispatcher``.
   ///
   /// This method's implementation should ensure that the ``Dispatcher`` comes
@@ -519,7 +559,7 @@ class DispatcherImpl : public DispatcherBase {
     {
       Waker waker(*task);
       Context context(self(), waker);
-      complete = task->DoPend(context).IsReady();
+      complete = task->Pend(context).IsReady();
     }
     if (complete) {
       bool all_complete;
