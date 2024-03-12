@@ -31,9 +31,9 @@ pw_add_library(pw_multibuf.chunk STATIC
     chunk.cc
 )
 
-pw_add_library(pw_multibuf.chunk_region_tracker STATIC
+pw_add_library(pw_multibuf.header_chunk_region_tracker STATIC
   SOURCES
-    public/pw_multibuf/chunk_region_tracker.h
+    public/pw_multibuf/header_chunk_region_tracker.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -59,19 +59,19 @@ pw_add_test(pw_multibuf.chunk_test
   PRIVATE_DEPS
     pw_allocator.allocator_testing
     pw_multibuf.chunk
-    pw_multibuf.chunk_region_tracker
+    pw_multibuf.header_chunk_region_tracker
   GROUPS
     modules
     pw_multibuf
 )
 
-pw_add_test(pw_multibuf.chunk_region_tracker_test
+pw_add_test(pw_multibuf.header_chunk_region_tracker_test
   SOURCES
-    chunk_region_tracker_test.cc
+    header_chunk_region_tracker_test.cc
   PRIVATE_DEPS
-    pw_allocator.simple_allocator
+    pw_allocator.allocator_testing
     pw_multibuf.chunk
-    pw_multibuf.chunk_region_tracker
+    pw_multibuf.header_chunk_region_tracker
     pw_status
   GROUPS
     modules
@@ -96,6 +96,7 @@ pw_add_library(pw_multibuf STATIC
     public
   PUBLIC_DEPS
     pw_multibuf.chunk
+    pw_preprocessor
   SOURCES
     multibuf.cc
 )
@@ -106,8 +107,34 @@ pw_add_test(pw_multibuf.multibuf_test
   PRIVATE_DEPS
     pw_assert
     pw_multibuf
-    pw_multibuf.chunk_region_tracker
+    pw_multibuf.header_chunk_region_tracker
     pw_allocator.allocator_testing
+  GROUPS
+    modules
+    pw_multibuf
+)
+
+pw_add_library(pw_multibuf.allocator STATIC
+  HEADERS
+    public/pw_multibuf/allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+    pw_async2.poll
+    pw_multibuf
+    pw_result
+  SOURCES
+    allocator.cc
+)
+
+pw_add_test(pw_multibuf.allocator_test
+  SOURCES
+    allocator_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_async2.poll
+    pw_multibuf.allocator
   GROUPS
     modules
     pw_multibuf

@@ -161,12 +161,12 @@ class TestByteReader : public pw::channel::ByteChannel<kReliable, kReadable> {
   pw::async2::Poll<pw::Result<pw::multibuf::MultiBuf>> DoPollRead(
       pw::async2::Context& cx, size_t) override {
     if (read_size_ == 0) {
-      read_waker_ = cx.waker().Clone(pw::async2::WaitReason::Unspecified());
+      read_waker_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
       return pw::async2::Pending();
     }
 
     // This seems like a lot of steps to get a multibuf of a span.
-    auto chunk = pw::multibuf::Chunk::CreateFirstForRegion(region_);
+    auto chunk = region_.CreateFirstChunk();
     (*chunk)->Truncate(read_size_);
     pw::multibuf::MultiBuf mb;
     mb.PushFrontChunk(std::move(*chunk));
@@ -194,7 +194,7 @@ class TestDatagramWriter : public pw::channel::DatagramWriter {
   }
 
   pw::multibuf::MultiBuf GetMultiBuf() {
-    auto chunk = pw::multibuf::Chunk::CreateFirstForRegion(region_);
+    auto chunk = region_.CreateFirstChunk();
     pw::multibuf::MultiBuf mb;
     mb.PushFrontChunk(std::move(*chunk));
     return mb;
@@ -231,7 +231,7 @@ class TestDatagramWriter : public pw::channel::DatagramWriter {
       return pw::async2::Ready();
     }
 
-    write_waker_ = cx.waker().Clone(pw::async2::WaitReason::Unspecified());
+    write_waker_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
     return pw::async2::Pending();
   }
 
@@ -249,7 +249,7 @@ class TestDatagramWriter : public pw::channel::DatagramWriter {
   pw::async2::Poll<pw::Result<pw::channel::WriteToken>> DoPollFlush(
       pw::async2::Context& cx) override {
     if (state_ != kReadyToFlush) {
-      flush_waker_ = cx.waker().Clone(pw::async2::WaitReason::Unspecified());
+      flush_waker_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
       return pw::async2::Pending();
     }
     last_flush_ = last_write_;
