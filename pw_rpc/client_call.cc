@@ -16,13 +16,6 @@
 
 namespace pw::rpc::internal {
 
-void ClientCall::CloseClientCall() {
-  if (client_stream_open()) {
-    CloseClientStreamLocked().IgnoreError();
-  }
-  UnregisterAndMarkClosed();
-}
-
 void ClientCall::MoveClientCallFrom(ClientCall& other)
     PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
   WaitUntilReadyForMove(*this, other);

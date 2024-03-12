@@ -12,12 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-import {Status} from 'pigweedjs/pw_status';
-import {Message} from 'google-protobuf';
+import { Status } from 'pigweedjs/pw_status';
+import { Message } from 'google-protobuf';
 
-import WaitQueue from "./queue";
+import WaitQueue from './queue';
 
-import {PendingCalls, Rpc} from './rpc_classes';
+import { PendingCalls, Rpc } from './rpc_classes';
 
 export type Callback = (a: any) => any;
 
@@ -70,7 +70,7 @@ export class Call {
     rpc: Rpc,
     onNext: Callback,
     onCompleted: Callback,
-    onError: Callback
+    onError: Callback,
   ) {
     this.rpcs = rpcs;
     this.rpc = rpc;
@@ -86,7 +86,7 @@ export class Call {
       this.rpc,
       this,
       ignoreErrors,
-      request
+      request,
     );
 
     if (previous !== undefined && !previous.completed) {
@@ -98,13 +98,14 @@ export class Call {
     return this.status !== undefined || this.error !== undefined;
   }
 
+  // eslint-disable-next-line @typescript-eslint/ban-types
   private invokeCallback(func: () => {}) {
     try {
       func();
     } catch (err: unknown) {
       if (err instanceof Error) {
         console.error(
-          `An exception was raised while invoking a callback: ${err}`
+          `An exception was raised while invoking a callback: ${err}`,
         );
         this.callbackException = err;
       }
@@ -131,8 +132,9 @@ export class Call {
   }
 
   private async queuePopWithTimeout(
-    timeoutMs: number
+    timeoutMs: number,
   ): Promise<Message | undefined> {
+    // eslint-disable-next-line no-async-promise-executor
     return new Promise(async (resolve, reject) => {
       let timeoutExpired = false;
       const timeoutWatcher = setTimeout(() => {
@@ -170,7 +172,7 @@ export class Call {
    */
   async *getResponses(
     count?: number,
-    timeoutMs?: number
+    timeoutMs?: number,
   ): AsyncGenerator<Message> {
     this.checkErrors();
 
@@ -213,6 +215,7 @@ export class Call {
 
   protected async unaryWait(timeoutMs?: number): Promise<[Status, Message]> {
     for await (const response of this.getResponses(1, timeoutMs)) {
+      // Do nothing.
     }
     if (this.status === undefined) {
       throw Error('Unexpected undefined status at end of stream');
@@ -225,6 +228,7 @@ export class Call {
 
   protected async streamWait(timeoutMs?: number): Promise<[Status, Message[]]> {
     for await (const response of this.getResponses(undefined, timeoutMs)) {
+      // Do nothing.
     }
     if (this.status === undefined) {
       throw Error('Unexpected undefined status at end of stream');
@@ -276,7 +280,7 @@ export class ClientStreamingCall extends Call {
   /** Ends the client stream and waits for the RPC to complete. */
   async finishAndWait(
     requests: Message[] = [],
-    timeoutMs?: number
+    timeoutMs?: number,
   ): Promise<[Status, Message[]]> {
     this.finishClientStream(requests);
     return await this.streamWait(timeoutMs);
@@ -300,7 +304,7 @@ export class BidirectionalStreamingCall extends Call {
   /** Ends the client stream and waits for the RPC to complete. */
   async finishAndWait(
     requests: Array<Message> = [],
-    timeoutMs?: number
+    timeoutMs?: number,
   ): Promise<[Status, Array<Message>]> {
     this.finishClientStream(requests);
     return await this.streamWait(timeoutMs);

@@ -75,6 +75,7 @@ struct NewTransferEvent {
   rpc::Writer* rpc_writer;
   const TransferParameters* max_parameters;
   chrono::SystemClock::duration timeout;
+  chrono::SystemClock::duration initial_timeout;
   uint32_t max_retries;
   uint32_t max_lifetime_retries;
   TransferThread* transfer_thread;
@@ -109,7 +110,6 @@ struct EndTransferEvent {
 
 struct SendStatusChunkEvent {
   uint32_t session_id;
-  bool set_resource_id;
   ProtocolVersion protocol_version;
   Status::Code status;
   TransferStream stream;

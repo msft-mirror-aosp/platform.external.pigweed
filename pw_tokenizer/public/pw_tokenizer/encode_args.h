@@ -20,6 +20,7 @@
 #include "pw_polyfill/standard.h"
 #include "pw_preprocessor/util.h"
 #include "pw_tokenizer/internal/argument_types.h"
+#include "pw_varint/varint.h"
 
 #if PW_CXX_STANDARD_IS_SUPPORTED(17)
 
@@ -82,10 +83,8 @@ size_t EncodeArgs(pw_tokenizer_ArgTypes types,
                   va_list args,
                   span<std::byte> output);
 
-/// Encodes a tokenized message to a fixed size buffer. By default, the buffer
-/// size is set by the @c_macro{PW_TOKENIZER_CFG_ENCODING_BUFFER_SIZE_BYTES}
-/// config macro. This class is used to encode tokenized messages passed in from
-/// tokenization macros.
+/// Encodes a tokenized message to a fixed size buffer. This class is used to
+/// encode tokenized messages passed in from tokenization macros.
 ///
 /// To use `pw::tokenizer::EncodedMessage`, construct it with the token,
 /// argument types, and `va_list` from the variadic arguments:
@@ -104,7 +103,7 @@ size_t EncodeArgs(pw_tokenizer_ArgTypes types,
 ///     SendLogMessage(encoded_message);  // EncodedMessage converts to span
 ///   }
 /// @endcode
-template <size_t kMaxSizeBytes = PW_TOKENIZER_CFG_ENCODING_BUFFER_SIZE_BYTES>
+template <size_t kMaxSizeBytes>
 class EncodedMessage {
  public:
   // Encodes a tokenized message to an internal buffer.
@@ -149,4 +148,23 @@ size_t pw_tokenizer_EncodeArgs(pw_tokenizer_ArgTypes types,
                                va_list args,
                                void* output_buffer,
                                size_t output_buffer_size);
+
+/// Encodes an `int` with the standard integer encoding: zig-zag + LEB128.
+/// This function is only necessary when manually encoding tokenized messages.
+static inline size_t pw_tokenizer_EncodeInt(int value,
+                                            void* output,
+                                            size_t output_size_bytes) {
+  return pw_varint_Encode32(
+      pw_varint_ZigZagEncode32(value), output, output_size_bytes);
+}
+
+/// Encodes an `int64_t` with the standard integer encoding: zig-zag + LEB128.
+/// This function is only necessary when manually encoding tokenized messages.
+static inline size_t pw_tokenizer_EncodeInt64(int64_t value,
+                                              void* output,
+                                              size_t output_size_bytes) {
+  return pw_varint_Encode64(
+      pw_varint_ZigZagEncode64(value), output, output_size_bytes);
+}
+
 PW_EXTERN_C_END

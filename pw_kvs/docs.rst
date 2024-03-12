@@ -83,7 +83,17 @@ they are part of. Partition logical sectors may be smaller due to partition
 overhead (encryption, wear tracking, etc) or larger due to combining raw
 sectors into larger logical sectors.
 
-FlashPartition supports access via NonSeekableWriter and SeekableReader.
+FlashPartition supports access via NonSeekableWriter and SeekableReader. The
+reader defaults to the full size of the partition but can optionally be limited
+to a smaller range.
+
+
+FlashMemory has a variant FakeFlashMemory that uses RAM rather than flash as
+the storage media. This is helpful for unit tests and development without wear
+on the phyisical flash of a device.
+
+FlashPartition has several variants (FlashPartitionWithStats and
+FlashPartitionWithLogicalSectors) that are helpful in some situations.
 
 Size report
 ===========

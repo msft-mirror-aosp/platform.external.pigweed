@@ -21,6 +21,10 @@ Dependencies
 Features
 --------
 
+pw_bytes/alignment.h
+====================
+Functions for aligning sizes and addresses to memory alignment boundaries.
+
 pw_bytes/array.h
 ================
 Functions for working with byte arrays, primarily for building fixed-size byte
@@ -53,6 +57,13 @@ features:
 pw_bytes/endian.h
 =================
 Functions for converting the endianness of integral values.
+
+pw_bytes/suffix.h
+=================
+This module exports a single ``_b`` literal, making it easier to create
+``std::byte`` values for tests.
+
+.. cpp:function:: constexpr std::byte operator"" _b(unsigned long long value)
 
 pw_bytes/units.h
 ================

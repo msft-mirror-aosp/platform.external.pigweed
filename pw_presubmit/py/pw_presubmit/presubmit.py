@@ -51,11 +51,10 @@ import logging
 import os
 from pathlib import Path
 import re
-import shutil
 import signal
 import subprocess
 import sys
-import tempfile as tf
+import tempfile
 import time
 import types
 from typing import (
@@ -73,14 +72,22 @@ from typing import (
     Tuple,
     Union,
 )
-import urllib
 
 import pw_cli.color
 import pw_cli.env
-import pw_env_setup.config_file
 from pw_package import package_manager
+
 from pw_presubmit import git_repo, tools
 from pw_presubmit.tools import plural
+from pw_presubmit.presubmit_context import (
+    FormatContext,
+    FormatOptions,
+    LuciContext,
+    PRESUBMIT_CONTEXT,
+    PresubmitContext,
+    PresubmitFailure,
+    log_check_traces,
+)
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -119,23 +126,6 @@ def _box(style, left, middle, right, box=tools.make_box('><>')) -> str:
         section3=right + ' ',
         width3=_RIGHT,
     )
-
-
-class PresubmitFailure(Exception):
-    """Optional exception to use for presubmit failures."""
-
-    def __init__(
-        self,
-        description: str = '',
-        path: Optional[Path] = None,
-        line: Optional[int] = None,
-    ):
-        line_part: str = ''
-        if line is not None:
-            line_part = f'{line}:'
-        super().__init__(
-            f'{path}:{line_part} {description}' if path else description
-        )
 
 
 class PresubmitResult(enum.Enum):
@@ -214,66 +204,6 @@ class Programs(collections.abc.Mapping):
         return len(self._programs)
 
 
-@dataclasses.dataclass(frozen=True)
-class FormatOptions:
-    python_formatter: Optional[str] = 'yapf'
-    black_path: Optional[str] = 'black'
-
-    # TODO(b/264578594) Add exclude to pigweed.json file.
-    # exclude: Sequence[re.Pattern] = dataclasses.field(default_factory=list)
-
-    @staticmethod
-    def load() -> 'FormatOptions':
-        config = pw_env_setup.config_file.load()
-        fmt = config.get('pw', {}).get('pw_presubmit', {}).get('format', {})
-        return FormatOptions(
-            python_formatter=fmt.get('python_formatter', 'yapf'),
-            black_path=fmt.get('black_path', 'black'),
-            # exclude=tuple(re.compile(x) for x in fmt.get('exclude', ())),
-        )
-
-
-@dataclasses.dataclass
-class LuciPipeline:
-    round: int
-    builds_from_previous_iteration: Sequence[str]
-
-    @staticmethod
-    def create(
-        bbid: int,
-        fake_pipeline_props: Optional[Dict[str, Any]] = None,
-    ) -> Optional['LuciPipeline']:
-        pipeline_props: Dict[str, Any]
-        if fake_pipeline_props is not None:
-            pipeline_props = fake_pipeline_props
-        else:
-            pipeline_props = (
-                get_buildbucket_info(bbid)
-                .get('input', {})
-                .get('properties', {})
-                .get('$pigweed/pipeline', {})
-            )
-        if not pipeline_props.get('inside_a_pipeline', False):
-            return None
-
-        return LuciPipeline(
-            round=int(pipeline_props['round']),
-            builds_from_previous_iteration=list(
-                pipeline_props['builds_from_previous_iteration']
-            ),
-        )
-
-
-def get_buildbucket_info(bbid) -> Dict[str, Any]:
-    if not bbid or not shutil.which('bb'):
-        return {}
-
-    output = subprocess.check_output(
-        ['bb', 'get', '-json', '-p', f'{bbid}'], text=True
-    )
-    return json.loads(output)
-
-
 def download_cas_artifact(
     ctx: PresubmitContext, digest: str, output_dir: str
 ) -> None:
@@ -327,8 +257,8 @@ def archive_cas_artifact(
     for path in upload_paths:
         assert os.path.abspath(path)
 
-    with tf.NamedTemporaryFile(mode='w+t') as tmp_digest_file:
-        with tf.NamedTemporaryFile(mode='w+t') as tmp_paths_file:
+    with tempfile.NamedTemporaryFile(mode='w+t') as tmp_digest_file:
+        with tempfile.NamedTemporaryFile(mode='w+t') as tmp_paths_file:
             json_paths = json.dumps(
                 [
                     [str(root), str(os.path.relpath(path, root))]
@@ -355,257 +285,6 @@ def archive_cas_artifact(
             tmp_digest_file.seek(0)
             uploaded_digest = tmp_digest_file.read()
             return uploaded_digest
-
-
-@dataclasses.dataclass
-class LuciTrigger:
-    """Details the pending change or submitted commit triggering the build."""
-
-    number: int
-    remote: str
-    branch: str
-    ref: str
-    gerrit_name: str
-    submitted: bool
-
-    @property
-    def gerrit_url(self):
-        if not self.number:
-            return self.gitiles_url
-        return 'https://{}-review.googlesource.com/c/{}'.format(
-            self.gerrit_name, self.number
-        )
-
-    @property
-    def gitiles_url(self):
-        return '{}/+/{}'.format(self.remote, self.ref)
-
-    @staticmethod
-    def create_from_environment(
-        env: Optional[Dict[str, str]] = None,
-    ) -> Sequence['LuciTrigger']:
-        if not env:
-            env = os.environ.copy()
-        raw_path = env.get('TRIGGERING_CHANGES_JSON')
-        if not raw_path:
-            return ()
-        path = Path(raw_path)
-        if not path.is_file():
-            return ()
-
-        result = []
-        with open(path, 'r') as ins:
-            for trigger in json.load(ins):
-                keys = {
-                    'number',
-                    'remote',
-                    'branch',
-                    'ref',
-                    'gerrit_name',
-                    'submitted',
-                }
-                if keys <= trigger.keys():
-                    result.append(LuciTrigger(**{x: trigger[x] for x in keys}))
-
-        return tuple(result)
-
-    @staticmethod
-    def create_for_testing():
-        change = {
-            'number': 123456,
-            'remote': 'https://pigweed.googlesource.com/pigweed/pigweed',
-            'branch': 'main',
-            'ref': 'refs/changes/56/123456/1',
-            'gerrit_name': 'pigweed',
-            'submitted': True,
-        }
-        with tf.TemporaryDirectory() as tempdir:
-            changes_json = Path(tempdir) / 'changes.json'
-            with changes_json.open('w') as outs:
-                json.dump([change], outs)
-            env = {'TRIGGERING_CHANGES_JSON': changes_json}
-            return LuciTrigger.create_from_environment(env)
-
-
-@dataclasses.dataclass
-class LuciContext:
-    """LUCI-specific information about the environment."""
-
-    buildbucket_id: int
-    build_number: int
-    project: str
-    bucket: str
-    builder: str
-    swarming_server: str
-    swarming_task_id: str
-    cas_instance: str
-    pipeline: Optional[LuciPipeline]
-    triggers: Sequence[LuciTrigger] = dataclasses.field(default_factory=tuple)
-
-    @staticmethod
-    def create_from_environment(
-        env: Optional[Dict[str, str]] = None,
-        fake_pipeline_props: Optional[Dict[str, Any]] = None,
-    ) -> Optional['LuciContext']:
-        """Create a LuciContext from the environment."""
-
-        if not env:
-            env = os.environ.copy()
-
-        luci_vars = [
-            'BUILDBUCKET_ID',
-            'BUILDBUCKET_NAME',
-            'BUILD_NUMBER',
-            'SWARMING_TASK_ID',
-            'SWARMING_SERVER',
-        ]
-        if any(x for x in luci_vars if x not in env):
-            return None
-
-        project, bucket, builder = env['BUILDBUCKET_NAME'].split(':')
-
-        bbid: int = 0
-        pipeline: Optional[LuciPipeline] = None
-        try:
-            bbid = int(env['BUILDBUCKET_ID'])
-            pipeline = LuciPipeline.create(bbid, fake_pipeline_props)
-
-        except ValueError:
-            pass
-
-        # Logic to identify cas instance from swarming server is derived from
-        # https://chromium.googlesource.com/infra/luci/recipes-py/+/main/recipe_modules/cas/api.py
-        swarm_server = env['SWARMING_SERVER']
-        cas_project = urllib.parse.urlparse(swarm_server).netloc.split('.')[0]
-        cas_instance = f'projects/{cas_project}/instances/default_instance'
-
-        result = LuciContext(
-            buildbucket_id=bbid,
-            build_number=int(env['BUILD_NUMBER']),
-            project=project,
-            bucket=bucket,
-            builder=builder,
-            swarming_server=env['SWARMING_SERVER'],
-            swarming_task_id=env['SWARMING_TASK_ID'],
-            cas_instance=cas_instance,
-            pipeline=pipeline,
-            triggers=LuciTrigger.create_from_environment(env),
-        )
-        _LOG.debug('%r', result)
-        return result
-
-    @staticmethod
-    def create_for_testing():
-        env = {
-            'BUILDBUCKET_ID': '881234567890',
-            'BUILDBUCKET_NAME': 'pigweed:bucket.try:builder-name',
-            'BUILD_NUMBER': '123',
-            'SWARMING_SERVER': 'https://chromium-swarm.appspot.com',
-            'SWARMING_TASK_ID': 'cd2dac62d2',
-        }
-        return LuciContext.create_from_environment(env, {})
-
-
-@dataclasses.dataclass
-class FormatContext:
-    """Context passed into formatting helpers.
-
-    This class is a subset of PresubmitContext containing only what's needed by
-    formatters.
-
-    For full documentation on the members see the PresubmitContext section of
-    pw_presubmit/docs.rst.
-
-    Args:
-        root: Source checkout root directory
-        output_dir: Output directory for this specific language
-        paths: Modified files for the presubmit step to check (often used in
-            formatting steps but ignored in compile steps)
-        package_root: Root directory for pw package installations
-        format_options: Formatting options, derived from pigweed.json
-    """
-
-    root: Optional[Path]
-    output_dir: Path
-    paths: Tuple[Path, ...]
-    package_root: Path
-    format_options: FormatOptions
-
-
-@dataclasses.dataclass
-class PresubmitContext:  # pylint: disable=too-many-instance-attributes
-    """Context passed into presubmit checks.
-
-    For full documentation on the members see pw_presubmit/docs.rst.
-
-    Args:
-        root: Source checkout root directory
-        repos: Repositories (top-level and submodules) processed by
-            pw presubmit
-        output_dir: Output directory for this specific presubmit step
-        failure_summary_log: Path where steps should write a brief summary of
-            any failures encountered for use by other tooling.
-        paths: Modified files for the presubmit step to check (often used in
-            formatting steps but ignored in compile steps)
-        all_paths: All files in the tree.
-        package_root: Root directory for pw package installations
-        override_gn_args: Additional GN args processed by build.gn_gen()
-        luci: Information about the LUCI build or None if not running in LUCI
-        format_options: Formatting options, derived from pigweed.json
-        num_jobs: Number of jobs to run in parallel
-        continue_after_build_error: For steps that compile, don't exit on the
-            first compilation error
-    """
-
-    root: Path
-    repos: Tuple[Path, ...]
-    output_dir: Path
-    failure_summary_log: Path
-    paths: Tuple[Path, ...]
-    all_paths: Tuple[Path, ...]
-    package_root: Path
-    luci: Optional[LuciContext]
-    override_gn_args: Dict[str, str]
-    format_options: FormatOptions
-    num_jobs: Optional[int] = None
-    continue_after_build_error: bool = False
-    _failed: bool = False
-
-    @property
-    def failed(self) -> bool:
-        return self._failed
-
-    def fail(
-        self,
-        description: str,
-        path: Optional[Path] = None,
-        line: Optional[int] = None,
-    ):
-        """Add a failure to this presubmit step.
-
-        If this is called at least once the step fails, but not immediately—the
-        check is free to continue and possibly call this method again.
-        """
-        _LOG.warning('%s', PresubmitFailure(description, path, line))
-        self._failed = True
-
-    @staticmethod
-    def create_for_testing():
-        parsed_env = pw_cli.env.pigweed_environment()
-        root = parsed_env.PW_PROJECT_ROOT
-        presubmit_root = root / 'out' / 'presubmit'
-        return PresubmitContext(
-            root=root,
-            repos=(root,),
-            output_dir=presubmit_root / 'test',
-            failure_summary_log=presubmit_root / 'failure-summary.log',
-            paths=(root / 'foo.cc', root / 'foo.py'),
-            all_paths=(root / 'BUILD.gn', root / 'foo.cc', root / 'foo.py'),
-            package_root=root / 'environment' / 'packages',
-            luci=None,
-            override_gn_args={},
-            format_options=FormatOptions(),
-        )
 
 
 class FileFilter:
@@ -707,7 +386,7 @@ class FilteredCheck:
 class Presubmit:
     """Runs a series of presubmit checks on a list of files."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         root: Path,
         repos: Sequence[Path],
@@ -717,6 +396,8 @@ class Presubmit:
         package_root: Path,
         override_gn_args: Dict[str, str],
         continue_after_build_error: bool,
+        rng_seed: int,
+        full: bool,
     ):
         self._root = root.resolve()
         self._repos = tuple(repos)
@@ -729,15 +410,17 @@ class Presubmit:
         self._package_root = package_root.resolve()
         self._override_gn_args = override_gn_args
         self._continue_after_build_error = continue_after_build_error
+        self._rng_seed = rng_seed
+        self._full = full
 
     def run(
         self,
         program: Program,
         keep_going: bool = False,
         substep: Optional[str] = None,
+        dry_run: bool = False,
     ) -> bool:
         """Executes a series of presubmit checks on the paths."""
-
         checks = self.apply_filters(program)
         if substep:
             assert (
@@ -767,7 +450,9 @@ class Presubmit:
         _LOG.debug('Checks:\n%s', '\n'.join(c.name for c in checks))
 
         start_time: float = time.time()
-        passed, failed, skipped = self._execute_checks(checks, keep_going)
+        passed, failed, skipped = self._execute_checks(
+            checks, keep_going, dry_run
+        )
         self._log_summary(time.time() - start_time, passed, failed, skipped)
 
         return not failed and not skipped
@@ -853,7 +538,7 @@ class Presubmit:
         return PresubmitContext(**kwargs)
 
     @contextlib.contextmanager
-    def _context(self, filtered_check: FilteredCheck):
+    def _context(self, filtered_check: FilteredCheck, dry_run: bool = False):
         # There are many characters banned from filenames on Windows. To
         # simplify things, just strip everything that's not a letter, digit,
         # or underscore.
@@ -882,21 +567,27 @@ class Presubmit:
                 package_root=self._package_root,
                 override_gn_args=self._override_gn_args,
                 continue_after_build_error=self._continue_after_build_error,
+                rng_seed=self._rng_seed,
+                full=self._full,
                 luci=LuciContext.create_from_environment(),
                 format_options=FormatOptions.load(),
+                dry_run=dry_run,
             )
 
         finally:
             _LOG.removeHandler(handler)
 
     def _execute_checks(
-        self, program: List[FilteredCheck], keep_going: bool
+        self,
+        program: List[FilteredCheck],
+        keep_going: bool,
+        dry_run: bool = False,
     ) -> Tuple[int, int, int]:
         """Runs presubmit checks; returns (passed, failed, skipped) lists."""
         passed = failed = 0
 
         for i, filtered_check in enumerate(program, 1):
-            with self._context(filtered_check) as ctx:
+            with self._context(filtered_check, dry_run) as ctx:
                 result = filtered_check.run(ctx, i, len(program))
 
             if result is PresubmitResult.PASS:
@@ -944,6 +635,48 @@ def _process_pathspecs(
     return pathspecs_by_repo
 
 
+def fetch_file_lists(
+    root: Path,
+    repo: Path,
+    pathspecs: List[str],
+    exclude: Sequence[Pattern] = (),
+    base: Optional[str] = None,
+) -> Tuple[List[Path], List[Path]]:
+    """Returns lists of all files and modified files for the given repo.
+
+    Args:
+        root: root path of the project
+        repo: path to the roots of Git repository to check
+        base: optional base Git commit to list files against
+        pathspecs: optional list of Git pathspecs to run the checks against
+        exclude: regular expressions for Posix-style paths to exclude
+    """
+
+    all_files: List[Path] = []
+    modified_files: List[Path] = []
+
+    all_files_repo = tuple(
+        tools.exclude_paths(
+            exclude, git_repo.list_files(None, pathspecs, repo), root
+        )
+    )
+    all_files += all_files_repo
+
+    if base is None:
+        modified_files += all_files_repo
+    else:
+        modified_files += tools.exclude_paths(
+            exclude, git_repo.list_files(base, pathspecs, repo), root
+        )
+
+    _LOG.info(
+        'Checking %s',
+        git_repo.describe_files(repo, repo, base, pathspecs, exclude, root),
+    )
+
+    return all_files, modified_files
+
+
 def run(  # pylint: disable=too-many-arguments,too-many-locals
     program: Sequence[Check],
     root: Path,
@@ -957,9 +690,11 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
     override_gn_args: Sequence[Tuple[str, str]] = (),
     keep_going: bool = False,
     continue_after_build_error: bool = False,
+    rng_seed: int = 1,
     presubmit_class: type = Presubmit,
     list_steps_file: Optional[Path] = None,
     substep: Optional[str] = None,
+    dry_run: bool = False,
 ) -> bool:
     """Lists files in the current Git repo and runs a Presubmit with them.
 
@@ -987,6 +722,8 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
         override_gn_args: additional GN args to set on steps
         keep_going: continue running presubmit steps after a step fails
         continue_after_build_error: continue building if a build step fails
+        rng_seed: seed for a random number generator, for the few steps that
+            need one
         presubmit_class: class to use to run Presubmits, should inherit from
             Presubmit class above
         list_steps_file: File created by --only-list-steps, used to keep from
@@ -1030,26 +767,11 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
 
     else:
         for repo, pathspecs in pathspecs_by_repo.items():
-            all_files_repo = tuple(
-                tools.exclude_paths(
-                    exclude, git_repo.list_files(None, pathspecs, repo), root
-                )
+            new_all_files_items, new_modified_file_items = fetch_file_lists(
+                root, repo, pathspecs, exclude, base
             )
-            all_files += all_files_repo
-
-            if base is None:
-                modified_files += all_files_repo
-            else:
-                modified_files += tools.exclude_paths(
-                    exclude, git_repo.list_files(base, pathspecs, repo), root
-                )
-
-            _LOG.info(
-                'Checking %s',
-                git_repo.describe_files(
-                    repo, repo, base, pathspecs, exclude, root
-                ),
-            )
+            all_files.extend(new_all_files_items)
+            modified_files.extend(new_modified_file_items)
 
     if output_directory is None:
         output_directory = root / '.presubmit'
@@ -1066,6 +788,8 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
         package_root=package_root,
         override_gn_args=dict(override_gn_args or {}),
         continue_after_build_error=continue_after_build_error,
+        rng_seed=rng_seed,
+        full=bool(base is None),
     )
 
     if only_list_steps:
@@ -1091,7 +815,7 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
     if not isinstance(program, Program):
         program = Program('', program)
 
-    return presubmit.run(program, keep_going, substep=substep)
+    return presubmit.run(program, keep_going, substep=substep, dry_run=dry_run)
 
 
 def _make_str_tuple(value: Union[Iterable[str], str]) -> Tuple[str, ...]:
@@ -1195,6 +919,8 @@ class Check:
         self.filter = path_filter
         self.always_run: bool = always_run
 
+        self._is_presubmit_check_object = True
+
     def substeps(self) -> Sequence[SubStep]:
         """Return the SubSteps of the current step.
 
@@ -1293,6 +1019,9 @@ class Check:
             result = self(ctx)
         time_str = _format_time(time.time() - start_time_s)
         _LOG.debug('%s %s', self.name, result.value)
+
+        if ctx.dry_run:
+            log_check_traces(ctx)
 
         _print_ui(
             _box(_CHECK_LOWER, result.colorized(_LEFT), self.name, time_str)
@@ -1416,7 +1145,7 @@ def filter_paths(
                 'endswith/exclude args, not both'
             )
     else:
-        # TODO(b/238426363): Remove these arguments and use FileFilter only.
+        # TODO: b/238426363 - Remove these arguments and use FileFilter only.
         real_file_filter = FileFilter(
             endswith=_make_str_tuple(endswith), exclude=exclude
         )
@@ -1427,8 +1156,19 @@ def filter_paths(
     return filter_paths_for_function
 
 
-def call(*args, **kwargs) -> None:
+def call(
+    *args, call_annotation: Optional[Dict[Any, Any]] = None, **kwargs
+) -> None:
     """Optional subprocess wrapper that causes a PresubmitFailure on errors."""
+    ctx = PRESUBMIT_CONTEXT.get()
+    if ctx:
+        call_annotation = call_annotation if call_annotation else {}
+        ctx.append_check_command(
+            *args, call_annotation=call_annotation, **kwargs
+        )
+        if ctx.dry_run:
+            return
+
     attributes, command = tools.format_command(args, kwargs)
     _LOG.debug('[RUN] %s\n%s', attributes, command)
 
@@ -1494,6 +1234,16 @@ def install_package(
     """Install package with given name in given path."""
     root = ctx.package_root
     mgr = package_manager.PackageManager(root)
+
+    ctx.append_check_command(
+        'pw',
+        'package',
+        'install',
+        name,
+        call_annotation={'pw_package_install': name},
+    )
+    if ctx.dry_run:
+        return
 
     if not mgr.list():
         raise PresubmitFailure(

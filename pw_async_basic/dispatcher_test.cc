@@ -14,6 +14,7 @@
 #include "pw_async_basic/dispatcher.h"
 
 #include "gtest/gtest.h"
+#include "pw_chrono/system_clock.h"
 #include "pw_log/log.h"
 #include "pw_sync/thread_notification.h"
 #include "pw_thread/thread.h"

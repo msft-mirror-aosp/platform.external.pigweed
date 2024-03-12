@@ -53,6 +53,7 @@ pw_add_library(pw_hdlc.decoder STATIC
     pw_hdlc.common
     pw_bytes
     pw_checksum
+    pw_checksum.crc32
     pw_result
     pw_span
     pw_status
@@ -71,6 +72,7 @@ pw_add_library(pw_hdlc.encoder STATIC
     pw_hdlc.common
     pw_bytes
     pw_checksum
+    pw_checksum.crc32
     pw_span
     pw_status
     pw_stream
@@ -131,15 +133,12 @@ pw_add_library(pw_hdlc.hdlc_sys_io_system_server STATIC
     hdlc_sys_io_system_server.cc
 )
 
-if(Zephyr_FOUND AND CONFIG_PIGWEED_HDLC_RPC)
-  zephyr_link_libraries(pw_hdlc.pw_rpc)
-endif()
-
 pw_add_test(pw_hdlc.decoder_test
   SOURCES
     decoder_test.cc
   PRIVATE_DEPS
     pw_bytes
+    pw_fuzzer.fuzztest
     pw_hdlc
   GROUPS
     modules

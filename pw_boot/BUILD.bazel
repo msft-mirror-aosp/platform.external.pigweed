@@ -35,18 +35,22 @@ pw_cc_facade(
 
 pw_cc_library(
     name = "pw_boot",
+    hdrs = [
+        "public/pw_boot/boot.h",
+    ],
+    includes = ["public"],
     deps = [
-        ":facade",
-        "@pigweed_config//:pw_boot_backend",
+        "//pw_preprocessor",
+        "@pigweed//targets:pw_boot_backend",
     ],
 )
 
 pw_cc_library(
     name = "backend_multiplexer",
     deps = select({
-        "@platforms//cpu:armv7-m": ["//pw_boot_cortex_m:pw_boot_cortex_m"],
-        "@platforms//cpu:armv7e-m": ["//pw_boot_cortex_m:pw_boot_cortex_m"],
-        "@platforms//cpu:armv8-m": ["//pw_boot_cortex_m:pw_boot_cortex_m"],
+        "@platforms//cpu:armv7-m": ["//pw_boot_cortex_m"],
+        "@platforms//cpu:armv7e-m": ["//pw_boot_cortex_m"],
+        "@platforms//cpu:armv8-m": ["//pw_boot_cortex_m"],
         # When building for the host, we don't need a pw_boot implementation.
         "//conditions:default": [],
     }),

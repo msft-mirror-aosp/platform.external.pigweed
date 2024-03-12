@@ -21,11 +21,32 @@ cc_library_static {
     cpp_std: "c++20",
     vendor_available: true,
     export_include_dirs: ["public"],
+    defaults: [
+        "pw_assert_log_defaults",
+    ],
     header_libs: [
-        "pw_preprocessor_headers",
+        "fuchsia_sdk_lib_stdcompat",
+        "pw_assert_headers",
+        "pw_log_headers",
+        "pw_log_null_headers",
         "pw_polyfill_headers",
+        "pw_preprocessor_headers",
+        "pw_result_headers",
         "pw_span_headers",
     ],
-    srcs: ["varint.cc"],
+    export_header_lib_headers: [
+        "fuchsia_sdk_lib_stdcompat",
+        "pw_polyfill_headers",
+    ],
+    static_libs: [
+        "pw_bytes",
+        "pw_status",
+        "pw_stream",
+    ],
+    srcs: [
+        "stream.cc",
+        "varint_c.c",
+        "varint.cc",
+    ],
     host_supported: true,
 }

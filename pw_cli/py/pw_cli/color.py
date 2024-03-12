@@ -68,13 +68,21 @@ def colors(enabled: Optional[bool] = None) -> Union[_Color, _NoColor]:
     """
     if enabled is None:
         env = pw_cli.env.pigweed_environment()
-        enabled = env.PW_USE_COLOR or (
-            sys.stdout.isatty() and sys.stderr.isatty()
-        )
+        if 'PW_USE_COLOR' in os.environ:
+            enabled = env.PW_USE_COLOR
+        else:
+            enabled = sys.stdout.isatty() and sys.stderr.isatty()
 
     if enabled and os.name == 'nt':
         # Enable ANSI color codes in Windows cmd.exe.
         kernel32 = ctypes.windll.kernel32  # type: ignore
         kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+
+    # These are semi-standard ways to turn colors off or on for many projects.
+    # See https://bixense.com/clicolors/ and https://no-color.org/ for more.
+    if 'NO_COLOR' in os.environ:
+        enabled = False
+    elif 'CLICOLOR_FORCE' in os.environ:
+        enabled = True
 
     return _Color() if enabled else _NoColor()

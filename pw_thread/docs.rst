@@ -162,7 +162,7 @@ thread's context. Unlike ``std::thread``, the API requires
 ``pw::thread::ThreadCore`` objects and functions which match the
 ``pw::thread::Thread::ThreadRoutine`` signature.
 
-We recognize that the C++11's STL ``std::thread``` API has some drawbacks where
+We recognize that the C++11's STL ``std::thread`` API has some drawbacks where
 it is easy to forget to join or detach the thread handle. Because of this, we
 offer helper wrappers like the ``pw::thread::DetachedThread``. Soon we will
 extend this by also adding a ``pw::thread::JoiningThread`` helper wrapper which
@@ -329,7 +329,6 @@ something like:
 
   }  // namespace my_app
 
-
 Detaching & Joining
 ===================
 The ``Thread::detach()`` API is always available, to let you separate the
@@ -374,7 +373,7 @@ match the Thread constuctor arguments for creating a thread of execution.
 ThreadRoutine & ThreadCore
 ==========================
 Threads must either be invoked through a
-``pw::thread::Thread::ThreadRoutine``` style function or implement the
+``pw::thread::Thread::ThreadRoutine`` style function or implement the
 ``pw::thread::ThreadCore`` interface.
 
 .. code-block:: cpp
@@ -452,6 +451,19 @@ function without arguments. For example:
   implements the ThreadCore MUST meet or exceed the lifetime of its thread of
   execution!
 
+-------------------------
+Unit testing with threads
+-------------------------
+.. doxygenclass:: pw::thread::test::TestThreadContext
+   :members:
+
+As an example, the STL :cpp:class:`TestThreadContext` backend implementation in
+``test_thread_context_native.h`` is shown below.
+
+.. literalinclude:: ../pw_thread_stl/public/pw_thread_stl/test_thread_context_native.h
+   :language: cpp
+   :lines: 18-36
+
 ----------------
 Thread Iteration
 ----------------
@@ -498,7 +510,7 @@ To expose a ``ThreadSnapshotService`` in your application, do the following:
 
 For example:
 
-.. code::
+.. code-block::
 
    #include "pw_rpc/server.h"
    #include "pw_thread/thread_snapshot_service.h"

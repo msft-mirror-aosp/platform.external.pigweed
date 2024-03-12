@@ -160,6 +160,11 @@ class MissingSubmodulesError(Exception):
     pass
 
 
+def _assert_sequence(value):
+    assert isinstance(value, (list, tuple))
+    return value
+
+
 # TODO(mohrr) remove disable=useless-object-inheritance once in Python 3.
 # pylint: disable=useless-object-inheritance
 # pylint: disable=too-many-instance-attributes
@@ -184,6 +189,7 @@ class EnvSetup(object):
         use_pinned_pip_packages,
         cipd_only,
         trust_cipd_hash,
+        additional_cipd_file,
     ):
         self._env = environment.Environment()
         self._project_root = project_root
@@ -200,6 +206,7 @@ class EnvSetup(object):
         self._strict = strict
         self._cipd_only = cipd_only
         self._trust_cipd_hash = trust_cipd_hash
+        self._additional_cipd_file = additional_cipd_file
 
         if os.path.isfile(shell_file):
             os.unlink(shell_file)
@@ -208,10 +215,15 @@ class EnvSetup(object):
             self._pw_root = self._pw_root.decode()
 
         self._cipd_package_file = []
+        self._project_actions = []
         self._virtualenv_requirements = []
         self._virtualenv_constraints = []
         self._virtualenv_gn_targets = []
         self._virtualenv_gn_args = []
+        self._virtualenv_pip_install_disable_cache = False
+        self._virtualenv_pip_install_find_links = []
+        self._virtualenv_pip_install_offline = False
+        self._virtualenv_pip_install_require_hashes = False
         self._use_pinned_pip_packages = use_pinned_pip_packages
         self._optional_submodules = []
         self._required_submodules = []
@@ -224,8 +236,10 @@ class EnvSetup(object):
         self._json_file = json_file
         self._gni_file = None
 
-        self._config_file_name = getattr(config_file, 'name', 'config file')
-        self._env.set('_PW_ENVIRONMENT_CONFIG_FILE', self._config_file_name)
+        self._config_file_name = config_file
+        self._env.set(
+            '_PW_ENVIRONMENT_CONFIG_FILE', os.path.abspath(config_file)
+        )
         if config_file:
             self._parse_config_file(config_file)
 
@@ -239,6 +253,7 @@ class EnvSetup(object):
         self._env.set('PW_PROJECT_ROOT', project_root, deactivate=False)
         self._env.set('PW_ROOT', pw_root, deactivate=False)
         self._env.set('_PW_ACTUAL_ENVIRONMENT_ROOT', install_dir)
+        self._env.set('VIRTUAL_ENV', self._virtualenv_root)
         self._env.add_replacement('_PW_ACTUAL_ENVIRONMENT_ROOT', install_dir)
         self._env.add_replacement('PW_ROOT', pw_root)
 
@@ -269,9 +284,30 @@ class EnvSetup(object):
         return files, warnings
 
     def _parse_config_file(self, config_file):
-        config = json.load(config_file)
+        # This should use pw_env_setup.config_file instead.
+        with open(config_file, 'r') as ins:
+            config = json.load(ins)
+
+            # While transitioning, allow environment config to be at the top of
+            # the JSON file or at '.["pw"]["pw_env_setup"]'.
+            config = config.get('pw', config)
+            config = config.get('pw_env_setup', config)
 
         self._root_variable = config.pop('root_variable', None)
+
+        # This variable is not used by env setup since we already have it.
+        # However, other tools may use it, so we double-check that it's correct.
+        pigweed_root = os.path.join(
+            self._project_root,
+            config.pop('relative_pigweed_root', self._pw_root),
+        )
+        if os.path.abspath(self._pw_root) != os.path.abspath(pigweed_root):
+            raise ValueError(
+                'expected Pigweed root {!r} in config but found {!r}'.format(
+                    os.path.relpath(self._pw_root, self._project_root),
+                    os.path.relpath(pigweed_root, self._project_root),
+                )
+            )
 
         rosetta = config.pop('rosetta', 'allow')
         if rosetta not in ('never', 'allow', 'force'):
@@ -284,8 +320,12 @@ class EnvSetup(object):
 
         self._gni_file = config.pop('gni_file', None)
 
-        self._optional_submodules.extend(config.pop('optional_submodules', ()))
-        self._required_submodules.extend(config.pop('required_submodules', ()))
+        self._optional_submodules.extend(
+            _assert_sequence(config.pop('optional_submodules', ()))
+        )
+        self._required_submodules.extend(
+            _assert_sequence(config.pop('required_submodules', ()))
+        )
 
         if self._optional_submodules and self._required_submodules:
             raise ValueError(
@@ -296,10 +336,21 @@ class EnvSetup(object):
 
         self._cipd_package_file.extend(
             os.path.join(self._project_root, x)
-            for x in config.pop('cipd_package_files', ())
+            for x in _assert_sequence(config.pop('cipd_package_files', ()))
+        )
+        self._cipd_package_file.extend(
+            os.path.join(self._project_root, x)
+            for x in self._additional_cipd_file or ()
         )
 
-        for pkg in config.pop('pw_packages', ()):
+        for action in config.pop('project_actions', {}):
+            # We can add a 'phase' option in the future if we end up needing to
+            # support project actions at more than one point in the setup flow.
+            self._project_actions.append(
+                (action['import_path'], action['module_name'])
+            )
+
+        for pkg in _assert_sequence(config.pop('pw_packages', ())):
             self._pw_packages.append(pkg)
 
         virtualenv = config.pop('virtualenv', {})
@@ -309,26 +360,45 @@ class EnvSetup(object):
         else:
             root = self._project_root
 
-        for target in virtualenv.pop('gn_targets', ()):
+        for target in _assert_sequence(virtualenv.pop('gn_targets', ())):
             self._virtualenv_gn_targets.append(
                 virtualenv_setup.GnTarget('{}#{}'.format(root, target))
             )
 
-        self._virtualenv_gn_args = virtualenv.pop('gn_args', ())
+        self._virtualenv_gn_args = _assert_sequence(
+            virtualenv.pop('gn_args', ())
+        )
 
         self._virtualenv_system_packages = virtualenv.pop(
             'system_packages', False
         )
 
-        for req_txt in virtualenv.pop('requirements', ()):
+        for req_txt in _assert_sequence(virtualenv.pop('requirements', ())):
             self._virtualenv_requirements.append(
                 os.path.join(self._project_root, req_txt)
             )
 
-        for constraint_txt in virtualenv.pop('constraints', ()):
+        for constraint_txt in _assert_sequence(
+            virtualenv.pop('constraints', ())
+        ):
             self._virtualenv_constraints.append(
                 os.path.join(self._project_root, constraint_txt)
             )
+
+        for pip_cache_dir in _assert_sequence(
+            virtualenv.pop('pip_install_find_links', ())
+        ):
+            self._virtualenv_pip_install_find_links.append(pip_cache_dir)
+
+        self._virtualenv_pip_install_disable_cache = virtualenv.pop(
+            'pip_install_disable_cache', False
+        )
+        self._virtualenv_pip_install_offline = virtualenv.pop(
+            'pip_install_offline', False
+        )
+        self._virtualenv_pip_install_require_hashes = virtualenv.pop(
+            'pip_install_require_hashes', False
+        )
 
         if virtualenv:
             raise ConfigFileError(
@@ -417,6 +487,7 @@ class EnvSetup(object):
 
         with open(gni_file, 'w') as outs:
             self._env.gni(outs, self._project_root)
+        shutil.copy(gni_file, os.path.join(self._install_dir, 'logs'))
 
     def _log(self, *args, **kwargs):
         # Not using logging module because it's awkward to flush a log handler.
@@ -437,6 +508,7 @@ class EnvSetup(object):
 
         steps = [
             ('CIPD package manager', self.cipd),
+            ('Project actions', self.project_actions),
             ('Python environment', self.virtualenv),
             ('pw packages', self.pw_package),
             ('Host tools', self.host_tools),
@@ -625,6 +697,35 @@ Then use `set +x` to go back to normal.
 
         return result(_Result.Status.DONE)
 
+    def project_actions(self, unused_spin):
+        """Perform project install actions.
+
+        This is effectively a limited plugin system for performing
+        project-specific actions (e.g. fetching tools) after CIPD but before
+        virtualenv setup.
+        """
+        result = result_func()
+
+        if not self._project_actions:
+            return result(_Result.Status.SKIPPED)
+
+        if sys.version_info[0] < 3:
+            raise ValueError(
+                'Project Actions require Python 3 or higher. '
+                'The current python version is %s' % sys.version_info
+            )
+
+        # Once Keir okays removing 2.7 support for env_setup, move this import
+        # to the main list of imports at the top of the file.
+        import importlib  # pylint: disable=import-outside-toplevel
+
+        for import_path, module_name in self._project_actions:
+            sys.path.append(import_path)
+            mod = importlib.import_module(module_name)
+            mod.run_action(env=self._env)
+
+        return result(_Result.Status.DONE)
+
     def virtualenv(self, unused_spin):
         """Setup virtualenv."""
 
@@ -663,6 +764,14 @@ Then use `set +x` to go back to normal.
             venv_path=self._virtualenv_root,
             requirements=requirements,
             constraints=constraints,
+            pip_install_find_links=self._virtualenv_pip_install_find_links,
+            pip_install_offline=self._virtualenv_pip_install_offline,
+            pip_install_require_hashes=(
+                self._virtualenv_pip_install_require_hashes
+            ),
+            pip_install_disable_cache=(
+                self._virtualenv_pip_install_disable_cache
+            ),
             gn_args=self._virtualenv_gn_args,
             gn_targets=self._virtualenv_gn_targets,
             gn_out_dir=self._virtualenv_gn_out_dir,
@@ -691,7 +800,7 @@ Then use `set +x` to go back to normal.
 
         for pkg in self._pw_packages:
             print('installing {}'.format(pkg))
-            cmd = ['pw', 'package', 'install', '--force', pkg]
+            cmd = ['pw', 'package', 'install', pkg]
 
             log = os.path.join(pkg_dir, '{}.log'.format(pkg))
             try:
@@ -755,11 +864,19 @@ def parse(argv=None):
         required=not project_root,
     )
 
+    default_cipd_cache_dir = os.environ.get(
+        'CIPD_CACHE_DIR', os.path.expanduser('~/.cipd-cache-dir')
+    )
+    if 'PW_NO_CIPD_CACHE_DIR' in os.environ:
+        default_cipd_cache_dir = None
+
+    parser.add_argument('--cipd-cache-dir', default=default_cipd_cache_dir)
+
     parser.add_argument(
-        '--cipd-cache-dir',
-        default=os.environ.get(
-            'CIPD_CACHE_DIR', os.path.expanduser('~/.cipd-cache-dir')
-        ),
+        '--no-cipd-cache-dir',
+        action='store_const',
+        const=None,
+        dest='cipd_cache_dir',
     )
 
     parser.add_argument(
@@ -791,9 +908,17 @@ def parse(argv=None):
 
     parser.add_argument(
         '--config-file',
-        help='JSON file describing CIPD and virtualenv requirements.',
-        type=argparse.FileType('r'),
-        required=True,
+        help='Path to pigweed.json file.',
+        default=os.path.join(project_root, 'pigweed.json'),
+    )
+
+    parser.add_argument(
+        '--additional-cipd-file',
+        help=(
+            'Path to additional CIPD files, in addition to those referenced by '
+            'the --config-file file.'
+        ),
+        action='append',
     )
 
     parser.add_argument(

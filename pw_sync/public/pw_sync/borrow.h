@@ -19,6 +19,7 @@
 
 #include "pw_assert/assert.h"
 #include "pw_sync/lock_annotations.h"
+#include "pw_sync/lock_traits.h"
 #include "pw_sync/virtual_basic_lockable.h"
 
 namespace pw::sync {
@@ -107,13 +108,29 @@ class BorrowedPointer {
 /// Users who need access to the guarded object can ask to acquire a
 /// `BorrowedPointer` which permits access while the lock is held.
 ///
+/// Thread-safety analysis is not supported for this class, as the
+/// `BorrowedPointer`s it creates conditionally releases the lock. See also
+/// https://clang.llvm.org/docs/ThreadSafetyAnalysis.html#no-conditionally-held-locks
+///
 /// This class is compatible with locks which comply with `BasicLockable`,
 /// `Lockable`, and `TimedLockable` C++ named requirements.
+///
+/// `Borrowable<T>` is covariant with respect to `T`, so that `Borrowable<U>`
+/// can be converted to `Borrowable<T>`, if `U` is a subclass of `T`.
+///
+/// `Borrowable` has pointer-like semantics and should be passed by value.
 template <typename GuardedType, typename Lock = pw::sync::VirtualBasicLockable>
 class Borrowable {
  public:
+  static_assert(is_basic_lockable_v<Lock>,
+                "lock type must satisfy BasicLockable");
+
   constexpr Borrowable(GuardedType& object, Lock& lock) noexcept
       : lock_(&lock), object_(&object) {}
+
+  template <typename U>
+  constexpr Borrowable(const Borrowable<U, Lock>& other)
+      : lock_(other.lock_), object_(other.object_) {}
 
   Borrowable(const Borrowable&) = default;
   Borrowable& operator=(const Borrowable&) = default;
@@ -121,14 +138,19 @@ class Borrowable {
   Borrowable& operator=(Borrowable&& other) = default;
 
   /// Blocks indefinitely until the object can be borrowed. Failures are fatal.
-  BorrowedPointer<GuardedType, Lock> acquire() PW_NO_LOCK_SAFETY_ANALYSIS {
+  BorrowedPointer<GuardedType, Lock> acquire() const
+      PW_NO_LOCK_SAFETY_ANALYSIS {
     lock_->lock();
     return BorrowedPointer<GuardedType, Lock>(*lock_, *object_);
   }
 
   /// Tries to borrow the object in a non-blocking manner. Returns a
   /// BorrowedPointer on success, otherwise `std::nullopt` (nothing).
-  std::optional<BorrowedPointer<GuardedType, Lock>> try_acquire() {
+  template <int&... ExplicitArgumentBarrier,
+            typename T = Lock,
+            typename = std::enable_if_t<is_lockable_v<T>>>
+  std::optional<BorrowedPointer<GuardedType, Lock>> try_acquire() const
+      PW_NO_LOCK_SAFETY_ANALYSIS {
     if (!lock_->try_lock()) {
       return std::nullopt;
     }
@@ -138,9 +160,15 @@ class Borrowable {
   /// Tries to borrow the object. Blocks until the specified timeout has elapsed
   /// or the object has been borrowed, whichever comes first. Returns a
   /// `BorrowedPointer` on success, otherwise `std::nullopt` (nothing).
-  template <class Rep, class Period>
+  template <class Rep,
+            class Period,
+            int&... ExplicitArgumentBarrier,
+            typename T = Lock,
+            typename = std::enable_if_t<
+                is_lockable_for_v<T, std::chrono::duration<Rep, Period>>>>
   std::optional<BorrowedPointer<GuardedType, Lock>> try_acquire_for(
-      std::chrono::duration<Rep, Period> timeout) {
+      std::chrono::duration<Rep, Period> timeout) const
+      PW_NO_LOCK_SAFETY_ANALYSIS {
     if (!lock_->try_lock_for(timeout)) {
       return std::nullopt;
     }
@@ -150,9 +178,16 @@ class Borrowable {
   /// Tries to borrow the object. Blocks until the specified deadline has passed
   /// or the object has been borrowed, whichever comes first. Returns a
   /// `BorrowedPointer` on success, otherwise `std::nullopt` (nothing).
-  template <class Clock, class Duration>
+  template <
+      class Clock,
+      class Duration,
+      int&... ExplicitArgumentBarrier,
+      typename T = Lock,
+      typename = std::enable_if_t<
+          is_lockable_until_v<T, std::chrono::time_point<Clock, Duration>>>>
   std::optional<BorrowedPointer<GuardedType, Lock>> try_acquire_until(
-      std::chrono::time_point<Clock, Duration> deadline) {
+      std::chrono::time_point<Clock, Duration> deadline) const
+      PW_NO_LOCK_SAFETY_ANALYSIS {
     if (!lock_->try_lock_until(deadline)) {
       return std::nullopt;
     }
@@ -162,6 +197,10 @@ class Borrowable {
  private:
   Lock* lock_;
   GuardedType* object_;
+
+  // Befriend all template instantiations of this class.
+  template <typename, typename>
+  friend class Borrowable;
 };
 
 }  // namespace pw::sync

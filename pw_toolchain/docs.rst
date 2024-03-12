@@ -85,12 +85,12 @@ dependency to the generated ``.d`` files for the
 
 .. code-block::
 
-     static_analysis = {
-      clang_tidy_path = "//third_party/ctcache/clang-tidy"
-      _clang_tidy_cfg_path = rebase_path("//.clang-tidy", root_build_dir)
-      cc_post = "echo '-: $_clang_tidy_cfg_path' >> {{output}}.d"
-      cxx_post = "echo '-: $_clang_tidy_cfg_path' >> {{output}}.d"
-     }
+   static_analysis = {
+    clang_tidy_path = "//third_party/ctcache/clang-tidy"
+    _clang_tidy_cfg_path = rebase_path("//.clang-tidy", root_build_dir)
+    cc_post = "echo '-: $_clang_tidy_cfg_path' >> {{output}}.d"
+    cxx_post = "echo '-: $_clang_tidy_cfg_path' >> {{output}}.d"
+   }
 
 Excluding files from checks
 ===========================
@@ -211,56 +211,30 @@ Newlib OS interface
 `Newlib <https://sourceware.org/newlib/>`_, the C Standard Library
 implementation provided with ``arm-none-eabi-gcc``, defines a set of `OS
 interface functions <https://sourceware.org/newlib/libc.html#Stubs>`_ that
-should be implemented. A default is provided if these functions are not
-implemented, but using the default results in a compiler warning.
+should be implemented. Newlib provides default implementations, but using these
+results in linker warnings like the following:
+
+.. code-block:: none
+
+   readr.c:(.text._read_r+0x10): warning: _read is not implemented and will always fail
 
 Most of the OS interface functions should never be called in embedded builds.
 The ``pw_toolchain/arg_gcc:newlib_os_interface_stubs`` library, which is
 provided through ``pw_toolchain/arm_gcc:arm_none_eabi_gcc_support``, implements
-these functions and forces a linker error if they are used. It also wraps some
-functions related to use of ``stdout`` and ``stderr`` that abort if they are
-called.
+these functions and forces a linker error if they are used. It also
+automatically includes a wrapper for ``abort`` for use of ``stdout`` and
+``stderr`` which abort if they are called.
+
+If you need to use your own wrapper for ``abort``, include the library directly
+using ``pw_toolchain/arm_gcc:newlib_os_interface_stubs``.
 
 pw_toolchain/no_destructor.h
 ============================
-.. cpp:class:: template <typename T> pw::NoDestructor
+.. doxygenclass:: pw::NoDestructor
 
-   Helper type to create a function-local static variable of type ``T`` when
-   ``T`` has a non-trivial destructor. Storing a ``T`` in a
-   ``pw::NoDestructor<T>`` will prevent ``~T()`` from running, even when the
-   variable goes out of scope.
-
-   This class is useful when a variable has static storage duration but its type
-   has a non-trivial destructor. Destructor ordering is not defined and can
-   cause issues in multithreaded environments. Additionally, removing destructor
-   calls can save code size.
-
-   Except in generic code, do not use ``pw::NoDestructor<T>`` with trivially
-   destructible types. Use the type directly instead. If the variable can be
-   constexpr, make it constexpr.
-
-   ``pw::NoDestructor<T>`` provides a similar API to std::optional. Use ``*`` or
-   ``->`` to access the wrapped type.
-
-   ``pw::NoDestructor<T>`` is based on Chromium's ``base::NoDestructor<T>`` in
-   `src/base/no_destructor.h <https://chromium.googlesource.com/chromium/src/base/+/5ea6e31f927aa335bfceb799a2007c7f9007e680/no_destructor.h>`_.
-
-   In Clang, ``pw::NoDestructor`` can be replaced with the `[[clang::no_destroy]]
-   <https://clang.llvm.org/docs/AttributeReference.html#no-destroy>`_.
-   attribute.
-
-Example usage
--------------
-.. code-block:: cpp
-
-   pw::sync::Mutex& GetMutex() {
-     // Use NoDestructor to avoid running the mutex destructor when exit-time
-     // destructors run.
-     static const pw::NoDestructor<pw::sync::Mutex> global_mutex;
-     return *global_mutex;
-   }
-
-.. warning::
-
-   Misuse of :cpp:class:`pw::NoDestructor` can cause resource leaks and other
-   problems. Only skip destructors when you know it is safe to do so.
+builtins
+========
+builtins are LLVM's equivalent of libgcc, the compiler will insert calls to
+these routines. Setting the ``dir_pw_third_party_builtins`` gn var to your
+compiler-rt/builtins checkout will enable building builtins from source instead
+of relying on the shipped libgcc.

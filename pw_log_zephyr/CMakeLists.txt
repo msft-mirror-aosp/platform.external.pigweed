@@ -14,34 +14,77 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-if(CONFIG_PIGWEED_LOG_ZEPHYR)
-  pw_add_library(pw_log_zephyr STATIC
-    HEADERS
-      public/pw_log_zephyr/log_zephyr.h
-      public/pw_log_zephyr/config.h
-      public_overrides/pw_log_backend/log_backend.h
-    PUBLIC_INCLUDES
-      public
-      public_overrides
-    PUBLIC_DEPS
-      pw_log.facade
-      zephyr_interface
-    SOURCES
-      log_zephyr.cc
-    PRIVATE_DEPS
-      pw_preprocessor
-  )
-  zephyr_link_libraries(pw_log_zephyr)
+pw_add_library(pw_log_zephyr STATIC
+  HEADERS
+    public/pw_log_zephyr/log_zephyr.h
+    public/pw_log_zephyr/config.h
+    public_overrides/pw_log_backend/log_backend.h
+  PUBLIC_INCLUDES
+    public
+    public_overrides
+  PUBLIC_DEPS
+    pw_log.facade
+  SOURCES
+    log_zephyr.cc
+  PRIVATE_DEPS
+    pw_preprocessor
+)
+pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_LOG_ZEPHYR
+    pw_log.facade
+    pw_log_zephyr
+)
+
+pw_add_library(pw_log_zephyr.tokenized_lib INTERFACE
+  HEADERS
+    zephyr_public_overrides/zephyr_custom_log.h
+  PUBLIC_INCLUDES
+    zephyr_public_overrides
+  PUBLIC_DEPS
+    pw_log.facade
+    pw_log_tokenized
+    pw_log_tokenized.base64
+    pw_tokenizer
+)
+
+pw_add_library(pw_log_zephyr.tokenized_handler STATIC
+  SOURCES
+    pw_log_zephyr_tokenized_handler.cc
+  PUBLIC_DEPS
+    pw_log_tokenized.handler
+    pw_log_zephyr.tokenized_lib
+)
+
+pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_LOG_TOKENIZED
+    pw_log.facade
+    pw_log_tokenized
+    pw_log_zephyr.tokenized_handler
+)
+if(CONFIG_PIGWEED_LOG_TOKENIZED)
+  zephyr_include_directories(zephyr_public_overrides)
 endif()
 
-if(CONFIG_PIGWEED_LOG_TOKENIZED)
-  pw_add_library(pw_log_zephyr.tokenized_handler STATIC
-    SOURCES
-      pw_log_zephyr_tokenized_handler.cc
-    PRIVATE_DEPS
-      pw_log_tokenized.handler
-      pw_tokenizer
-  )
-  zephyr_link_libraries(pw_log pw_log_zephyr.tokenized_handler)
-  zephyr_include_directories(public_overrides)
+pw_add_library(pw_log_zephyr.tokenized_rpc_handler INTERFACE
+  PUBLIC_DEPS
+    pw_checksum
+    pw_sys_io
+    pw_system.init
+    pw_metric.global
+    pw_system.log_backend
+  HEADERS
+    zephyr_public_overrides/zephyr_custom_log.h
+)
+
+pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_LOG_TOKENIZED_RPC
+    pw_log.facade
+    pw_log_tokenized
+    pw_log_zephyr.tokenized_rpc_handler
+)
+if(CONFIG_PIGWEED_LOG_TOKENIZED_RPC)
+  zephyr_include_directories(zephyr_public_overrides)
 endif()
+
+# Map tokenized configuration options
+pw_set_config_from_zephyr(CONFIG_PIGWEED_LOG_TOKENIZED_LEVEL_BITS PW_LOG_TOKENIZED_LEVEL_BITS)
+pw_set_config_from_zephyr(CONFIG_PIGWEED_LOG_TOKENIZED_LINE_BITS PW_LOG_TOKENIZED_LINE_BITS)
+pw_set_config_from_zephyr(CONFIG_PIGWEED_LOG_TOKENIZED_FLAG_BITS PW_LOG_TOKENIZED_FLAG_BITS)
+pw_set_config_from_zephyr(CONFIG_PIGWEED_LOG_TOKENIZED_MODULE_BITS PW_LOG_TOKENIZED_MODULE_BITS)
