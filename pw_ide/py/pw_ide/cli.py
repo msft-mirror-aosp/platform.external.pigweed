@@ -17,7 +17,7 @@ import argparse
 import enum
 from inspect import cleandoc
 import re
-from typing import Any, Callable, Dict, List, Optional, Protocol
+from typing import Any, Callable, Protocol
 
 from pw_ide.commands import (
     cmd_cpp,
@@ -30,8 +30,8 @@ from pw_ide.commands import (
 from pw_ide.vscode import VscSettingsType
 
 
-def _get_docstring(obj: Any) -> Optional[str]:
-    doc: Optional[str] = getattr(obj, '__doc__', None)
+def _get_docstring(obj: Any) -> str | None:
+    doc: str | None = getattr(obj, '__doc__', None)
     return doc
 
 
@@ -79,8 +79,8 @@ class SphinxStripper:
         self.handler = handler
         self.directive: str = ''
         self.tag: str = ''
-        self.lines_to_handle: List[str] = []
-        self.handled_lines: List[str] = []
+        self.lines_to_handle: list[str] = []
+        self.handled_lines: list[str] = []
         self._prev_state: SphinxStripperState = SphinxStripperState.SEARCHING
         self._curr_state: SphinxStripperState = SphinxStripperState.SEARCHING
 
@@ -186,8 +186,8 @@ class RawDescriptionSphinxStrippedHelpFormatter(
         return super()._format_text(self._reformat(text))
 
     def _handle_directive_code_block(  # pylint: disable=no-self-use
-        self, tag: str, lines: List[str]
-    ) -> List[str]:
+        self, tag: str, lines: list[str]
+    ) -> list[str]:
         if tag == 'bash':
             processed_lines = []
 
@@ -383,7 +383,7 @@ def _parse_args() -> argparse.Namespace:
     return args
 
 
-def _dispatch_command(func: Callable, **kwargs: Dict[str, Any]) -> int:
+def _dispatch_command(func: Callable, **kwargs: dict[str, Any]) -> int:
     """Dispatch arguments to a subcommand handler.
 
     Each CLI subcommand is handled by handler function, which is registered

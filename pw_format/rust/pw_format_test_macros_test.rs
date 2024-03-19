@@ -22,9 +22,11 @@ pub enum TestGeneratorOps {
     IntegerConversion {
         display_type: IntegerDisplayType,
         type_width: u8,
+        arg: String,
     },
-    StringConversion,
-    CharConversion,
+    StringConversion(String),
+    CharConversion(String),
+    UntypedConversion(String),
 }
 
 // Used to record calls into the test generator from `printf_generator_test_macro!` and friends.
@@ -32,14 +34,14 @@ pub enum TestGeneratorOps {
 pub enum PrintfTestGeneratorOps {
     Finalize,
     StringFragment(String),
-    IntegerConversion { ty: String },
-    StringConversion,
-    CharConversion,
+    IntegerConversion { ty: String, arg: String },
+    StringConversion(String),
+    CharConversion(String),
+    UntypedConversion(String),
 }
 
 #[cfg(test)]
 mod tests {
-    use pw_format::macros::IntegerDisplayType;
     use pw_format_test_macros::{
         char_sub_core_fmt_generator_test_macro, char_sub_printf_generator_test_macro,
         core_fmt_generator_test_macro, generator_test_macro,
@@ -56,17 +58,20 @@ mod tests {
     #[test]
     fn generate_calls_generator_correctly() {
         assert_eq!(
-            generator_test_macro!("test %ld %s %c", 5, "test", 'c'),
+            generator_test_macro!("test %ld %s %c %v", 5, "test", 'c', 1),
             vec![
                 TestGeneratorOps::StringFragment("test ".to_string()),
                 TestGeneratorOps::IntegerConversion {
                     display_type: IntegerDisplayType::Signed,
                     type_width: 32,
+                    arg: "5".to_string(),
                 },
                 TestGeneratorOps::StringFragment(" ".to_string()),
-                TestGeneratorOps::StringConversion,
+                TestGeneratorOps::StringConversion("\"test\"".to_string()),
                 TestGeneratorOps::StringFragment(" ".to_string()),
-                TestGeneratorOps::CharConversion,
+                TestGeneratorOps::CharConversion("'c'".to_string()),
+                TestGeneratorOps::StringFragment(" ".to_string()),
+                TestGeneratorOps::UntypedConversion("1".to_string()),
                 TestGeneratorOps::Finalize
             ]
         );
@@ -75,20 +80,33 @@ mod tests {
     #[test]
     fn generate_printf_calls_generator_correctly() {
         assert_eq!(
-            printf_generator_test_macro!("test %ld %s %c", 5, "test", 'c'),
+            printf_generator_test_macro!(
+                "test %ld %s %c %v %v",
+                5,
+                "test",
+                'c',
+                1 as i32,
+                "string" as &str
+            ),
             (
                 // %ld gets converted to %d because they are equivalent for 32 bit
                 // systems.
-                "test %d %s %c",
+                // %v gets converted to %d since we pass in a signed integer.
+                "test %d %s %c %d %s",
                 vec![
                     PrintfTestGeneratorOps::StringFragment("test ".to_string()),
                     PrintfTestGeneratorOps::IntegerConversion {
                         ty: "i32".to_string(),
+                        arg: "5".to_string(),
                     },
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::StringConversion,
+                    PrintfTestGeneratorOps::StringConversion("\"test\"".to_string()),
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::CharConversion,
+                    PrintfTestGeneratorOps::CharConversion("'c'".to_string()),
+                    PrintfTestGeneratorOps::StringFragment(" ".to_string()),
+                    PrintfTestGeneratorOps::UntypedConversion("1 as i32".to_string()),
+                    PrintfTestGeneratorOps::StringFragment(" ".to_string()),
+                    PrintfTestGeneratorOps::UntypedConversion("\"string\" as & str".to_string()),
                     PrintfTestGeneratorOps::Finalize
                 ]
             )
@@ -107,11 +125,12 @@ mod tests {
                     PrintfTestGeneratorOps::StringFragment("test ".to_string()),
                     PrintfTestGeneratorOps::IntegerConversion {
                         ty: "i32".to_string(),
+                        arg: "5".to_string(),
                     },
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::StringConversion,
+                    PrintfTestGeneratorOps::StringConversion("\"test\"".to_string()),
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::CharConversion,
+                    PrintfTestGeneratorOps::CharConversion("'c'".to_string()),
                     PrintfTestGeneratorOps::Finalize
                 ]
             )
@@ -132,11 +151,12 @@ mod tests {
                     PrintfTestGeneratorOps::StringFragment("test ".to_string()),
                     PrintfTestGeneratorOps::IntegerConversion {
                         ty: "i32".to_string(),
+                        arg: "5".to_string(),
                     },
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::StringConversion,
+                    PrintfTestGeneratorOps::StringConversion("\"test\"".to_string()),
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::CharConversion,
+                    PrintfTestGeneratorOps::CharConversion("'c'".to_string()),
                     PrintfTestGeneratorOps::Finalize
                 ]
             )
@@ -157,11 +177,12 @@ mod tests {
                     PrintfTestGeneratorOps::StringFragment("test ".to_string()),
                     PrintfTestGeneratorOps::IntegerConversion {
                         ty: "i32".to_string(),
+                        arg: "5".to_string()
                     },
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::StringConversion,
+                    PrintfTestGeneratorOps::StringConversion("\"test\"".to_string()),
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::CharConversion,
+                    PrintfTestGeneratorOps::CharConversion("'c'".to_string()),
                     PrintfTestGeneratorOps::Finalize
                 ]
             )
@@ -171,18 +192,21 @@ mod tests {
     #[test]
     fn generate_core_fmt_calls_generator_correctly() {
         assert_eq!(
-            core_fmt_generator_test_macro!("test %ld %s %c", 5, "test", 'c'),
+            core_fmt_generator_test_macro!("test %ld %s %c %v", 5, "test", 'c', 1),
             (
-                "test {} {} {}",
+                "test {} {} {} {}",
                 vec![
                     PrintfTestGeneratorOps::StringFragment("test ".to_string()),
                     PrintfTestGeneratorOps::IntegerConversion {
                         ty: "i32".to_string(),
+                        arg: "5".to_string()
                     },
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::StringConversion,
+                    PrintfTestGeneratorOps::StringConversion("\"test\"".to_string()),
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::CharConversion,
+                    PrintfTestGeneratorOps::CharConversion("'c'".to_string()),
+                    PrintfTestGeneratorOps::StringFragment(" ".to_string()),
+                    PrintfTestGeneratorOps::UntypedConversion("1".to_string()),
                     PrintfTestGeneratorOps::Finalize
                 ]
             )
@@ -201,11 +225,12 @@ mod tests {
                     PrintfTestGeneratorOps::StringFragment("test ".to_string()),
                     PrintfTestGeneratorOps::IntegerConversion {
                         ty: "i32".to_string(),
+                        arg: "5".to_string()
                     },
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::StringConversion,
+                    PrintfTestGeneratorOps::StringConversion("\"test\"".to_string()),
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::CharConversion,
+                    PrintfTestGeneratorOps::CharConversion("'c'".to_string()),
                     PrintfTestGeneratorOps::Finalize
                 ]
             )
@@ -224,11 +249,12 @@ mod tests {
                     PrintfTestGeneratorOps::StringFragment("test ".to_string()),
                     PrintfTestGeneratorOps::IntegerConversion {
                         ty: "i32".to_string(),
+                        arg: "5".to_string(),
                     },
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::StringConversion,
+                    PrintfTestGeneratorOps::StringConversion("\"test\"".to_string()),
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::CharConversion,
+                    PrintfTestGeneratorOps::CharConversion("'c'".to_string()),
                     PrintfTestGeneratorOps::Finalize
                 ]
             )
@@ -247,11 +273,12 @@ mod tests {
                     PrintfTestGeneratorOps::StringFragment("test ".to_string()),
                     PrintfTestGeneratorOps::IntegerConversion {
                         ty: "i32".to_string(),
+                        arg: "5".to_string(),
                     },
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::StringConversion,
+                    PrintfTestGeneratorOps::StringConversion("\"test\"".to_string()),
                     PrintfTestGeneratorOps::StringFragment(" ".to_string()),
-                    PrintfTestGeneratorOps::CharConversion,
+                    PrintfTestGeneratorOps::CharConversion("'c'".to_string()),
                     PrintfTestGeneratorOps::Finalize
                 ]
             )

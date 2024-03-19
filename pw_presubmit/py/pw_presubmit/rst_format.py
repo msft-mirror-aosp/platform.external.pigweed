@@ -21,7 +21,6 @@ import difflib
 from functools import cached_property
 from pathlib import Path
 import textwrap
-from typing import List, Optional
 
 from pw_presubmit.tools import colorize_diff
 
@@ -85,10 +84,10 @@ class CodeBlock:
 
     directive_lineno: int
     directive_line: str
-    first_line_indent: Optional[int] = None
-    end_lineno: Optional[int] = None
-    option_lines: List[str] = field(default_factory=list)
-    code_lines: List[str] = field(default_factory=list)
+    first_line_indent: int | None = None
+    end_lineno: int | None = None
+    option_lines: list[str] = field(default_factory=list)
+    code_lines: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self._blank_line_after_options_found = False
@@ -117,10 +116,13 @@ class CodeBlock:
                 line_words
                 and line_words[0].startswith(':')
                 and line_words[0].endswith(':')
+                # In case the first word starts with two colons '::'
+                and len(line_words[0]) > 2
             ):
                 self.option_lines.append(line.rstrip())
                 return
-            # Check for a blank line
+
+            # Step 1: Check for a blank line
             if len(line.strip()) == 0:
                 if (
                     self.option_lines
@@ -128,11 +130,20 @@ class CodeBlock:
                 ):
                     self._blank_line_after_options_found = True
                 return
-            # Check for a line that is a continuation of a previous option.
+
+            # Step 2: Check for a line that is a continuation of a previous
+            # option.
             if self.option_lines and not self._blank_line_after_options_found:
                 self.option_lines.append(line.rstrip())
                 return
 
+            # Step 3: Check a line with content.
+            if len(line.strip()) > 0:
+                # Line is not a directive and not blank: it is content.
+                # Flag the end of the options
+                self._blank_line_after_options_found = True
+
+            # Set the content indentation amount.
             self.first_line_indent = _indent_amount(line)
 
         # Save this line as code.
@@ -171,7 +182,7 @@ class CodeBlock:
 def reindent_code_blocks(in_text: str) -> str:
     """Reindent code blocks to 3 spaces."""
     out_text = ''
-    current_block: Optional[CodeBlock] = None
+    current_block: CodeBlock | None = None
     for index, line in enumerate(in_text.splitlines(keepends=True)):
         # If a code block is active, process this line.
         if current_block:
@@ -183,9 +194,7 @@ def reindent_code_blocks(in_text: str) -> str:
                 # Erase this code_block variable
                 current_block = None
         # Check for new code block start
-        elif line.lstrip().startswith('.. code') and line.rstrip().endswith(
-            '::'
-        ):
+        elif line.lstrip().startswith('.. code-block'):
             current_block = CodeBlock(
                 directive_lineno=index, directive_line=line
             )
@@ -203,7 +212,7 @@ def reformat_rst(
     diff: bool = False,
     in_place: bool = False,
     tab_width: int = DEFAULT_TAB_WIDTH,
-) -> List[str]:
+) -> list[str]:
     """Reformat an rst file.
 
     Returns a list of diff lines."""
@@ -233,7 +242,7 @@ def reformat_rst(
 
 
 def rst_format_main(
-    rst_files: List[Path],
+    rst_files: list[Path],
     diff: bool = False,
     in_place: bool = False,
     tab_width: int = DEFAULT_TAB_WIDTH,

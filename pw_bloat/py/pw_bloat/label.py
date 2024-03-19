@@ -18,7 +18,7 @@ The label module defines a class to store and manipulate size reports.
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Iterable, Dict, Sequence, Tuple, List, Optional
+from typing import Iterable, Sequence
 import csv
 
 
@@ -28,9 +28,9 @@ class Label:
 
     name: str
     size: int
-    capacity: Optional[int] = None
-    exists_both: Optional[bool] = None
-    parents: Tuple[str, ...] = ()
+    capacity: int | None = None
+    exists_both: bool | None = None
+    parents: tuple[str, ...] = ()
 
     def is_new(self) -> bool:
         return (not self.exists_both) and self.size > 0
@@ -42,35 +42,33 @@ class Label:
 @dataclass
 class LabelInfo:
     size: int = 0
-    capacity: Optional[int] = None
-    exists_both: Optional[bool] = None
+    capacity: int | None = None
+    exists_both: bool | None = None
 
 
 class _LabelMap:
     """Private module to hold parent and child labels with their size."""
 
-    _label_map: Dict[str, Dict[str, LabelInfo]]
+    _label_map: dict[str, dict[str, LabelInfo]]
 
     def __init__(self):
         self._label_map = defaultdict(lambda: defaultdict(LabelInfo))
 
-    def remove(
-        self, parent_label: str, child_label: Optional[str] = None
-    ) -> None:
+    def remove(self, parent_label: str, child_label: str | None = None) -> None:
         """Delete entire parent label or the child label."""
         if child_label:
             del self._label_map[parent_label][child_label]
         else:
             del self._label_map[parent_label]
 
-    def __getitem__(self, parent_label: str) -> Dict[str, LabelInfo]:
+    def __getitem__(self, parent_label: str) -> dict[str, LabelInfo]:
         """Indexing LabelMap using '[]' operators by specifying a label."""
         return self._label_map[parent_label]
 
     def __contains__(self, parent_label: str) -> bool:
         return parent_label in self._label_map
 
-    def map_items(self) -> Iterable[Tuple[str, Dict[str, LabelInfo]]]:
+    def map_items(self) -> Iterable[tuple[str, dict[str, LabelInfo]]]:
         return self._label_map.items()
 
 
@@ -89,20 +87,20 @@ class _DataSource:
         parent_label: str,
         child_label: str,
         size: int,
-        diff_exist: Optional[bool] = None,
+        diff_exist: bool | None = None,
     ) -> None:
         curr_label_info = self._ds_label_map[parent_label][child_label]
         curr_label_info.size += size
         if curr_label_info.exists_both is None:
             curr_label_info.exists_both = diff_exist
 
-    def __getitem__(self, parent_label: str) -> Dict[str, LabelInfo]:
+    def __getitem__(self, parent_label: str) -> dict[str, LabelInfo]:
         return self._ds_label_map[parent_label]
 
     def __contains__(self, parent_label: str) -> bool:
         return parent_label in self._ds_label_map
 
-    def label_map_items(self) -> Iterable[Tuple[str, Dict[str, LabelInfo]]]:
+    def label_map_items(self) -> Iterable[tuple[str, dict[str, LabelInfo]]]:
         return self._ds_label_map.map_items()
 
 
@@ -134,7 +132,7 @@ class DataSourceMap:
         self._data_sources = list(
             _DataSource(name) for name in ['base', *data_sources_names]
         )
-        self._capacity_array: List[Tuple[str, int]] = []
+        self._capacity_array: list[tuple[str, int]] = []
 
     def label_exists(
         self, ds_index: int, parent_label: str, child_label: str
@@ -147,7 +145,7 @@ class DataSourceMap:
         self,
         label_hierarchy: Iterable[str],
         size: int,
-        diff_exist: Optional[bool] = None,
+        diff_exist: bool | None = None,
     ) -> None:
         """Insert a hierarchy of labels with its size."""
 
@@ -227,14 +225,14 @@ class DataSourceMap:
     def get_total_size(self) -> int:
         return self._data_sources[0]['__base__'][self._BASE_TOTAL_LABEL].size
 
-    def get_ds_names(self) -> Tuple[str, ...]:
+    def get_ds_names(self) -> tuple[str, ...]:
         """List of DataSource names for easy indexing and reference."""
         return tuple(
             data_source.get_name() for data_source in self._data_sources[1:]
         )
 
     @lru_cache
-    def labels(self, ds_index: Optional[int] = None) -> Iterable[Label]:
+    def labels(self, ds_index: int | None = None) -> Iterable[Label]:
         """Generator that yields a Label depending on specified data source.
 
         Args:
@@ -250,7 +248,7 @@ class DataSourceMap:
 
     def _per_data_source_labels(
         self,
-        parent_labels: Tuple[str, ...],
+        parent_labels: tuple[str, ...],
         data_sources: Sequence[_DataSource],
     ) -> Iterable[Label]:
         """Recursive generator to return Label based off parent labels."""

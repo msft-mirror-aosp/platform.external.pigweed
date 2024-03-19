@@ -26,12 +26,9 @@ import re
 import struct
 from typing import (
     Iterable,
-    List,
     NamedTuple,
     Match,
-    Optional,
     Sequence,
-    Tuple,
 )
 
 
@@ -420,11 +417,11 @@ class FormatSpec:
 
     def _merge_decoded_args(
         self,
-        width: Optional['DecodedArg'],
-        precision: Optional['DecodedArg'],
+        width: 'DecodedArg | None',
+        precision: 'DecodedArg | None',
         main: 'DecodedArg',
     ) -> 'DecodedArg':
-        def merge_optional_str(*args: Optional[str]) -> Optional[str]:
+        def merge_optional_str(*args: str | None) -> str | None:
             return ' '.join(a for a in args if a) or None
 
         if width is not None and precision is not None:
@@ -741,7 +738,7 @@ class FormattedString(NamedTuple):
         """Arg data decoded successfully and all expected args were found."""
         return all(arg.ok() for arg in self.args) and not self.remaining
 
-    def score(self, date_removed: Optional[datetime] = None) -> tuple:
+    def score(self, date_removed: datetime | None = None) -> tuple:
         """Returns a key for sorting by how successful a decode was.
 
         Decoded strings are sorted by whether they
@@ -777,7 +774,7 @@ class FormatString:
         # List of non-specifier string pieces with room for formatted arguments.
         self._segments = self._parse_string_segments()
 
-    def _parse_string_segments(self) -> List:
+    def _parse_string_segments(self) -> list:
         """Splits the format string by format specifiers."""
         if not self.specifiers:
             return [self.format_string]
@@ -794,12 +791,12 @@ class FormatString:
         string_pieces.append(self.format_string[spec_spans[-1][1] :])
 
         # Make a list with spots for the replacements between the string pieces.
-        segments: List = [None] * (len(string_pieces) + len(self.specifiers))
+        segments: list = [None] * (len(string_pieces) + len(self.specifiers))
         segments[::2] = string_pieces
 
         return segments
 
-    def decode(self, encoded: bytes) -> Tuple[Sequence[DecodedArg], bytes]:
+    def decode(self, encoded: bytes) -> tuple[Sequence[DecodedArg], bytes]:
         """Decodes arguments according to the format string.
 
         Args:

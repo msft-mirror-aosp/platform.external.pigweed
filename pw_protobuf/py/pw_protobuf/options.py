@@ -16,7 +16,6 @@
 from fnmatch import fnmatchcase
 from pathlib import Path
 import re
-from typing import List, Tuple
 
 from google.protobuf import text_format
 
@@ -28,7 +27,7 @@ _SINGLE_LINE_COMMENT_RE = re.compile(r'//.*?$', flags=re.MULTILINE)
 _SHELL_STYLE_COMMENT_RE = re.compile(r'#.*?$', flags=re.MULTILINE)
 
 # A list of (proto field path, CodegenOptions) tuples.
-ParsedOptions = List[Tuple[str, CodegenOptions]]
+ParsedOptions = list[tuple[str, CodegenOptions]]
 
 
 def load_options_from(options: ParsedOptions, options_file_name: Path):
@@ -55,7 +54,7 @@ def load_options_from(options: ParsedOptions, options_file_name: Path):
 
 
 def load_options(
-    include_paths: List[Path], proto_file_name: Path
+    include_paths: list[Path], proto_file_name: Path
 ) -> ParsedOptions:
     """Loads the .options for the given .proto."""
     options: ParsedOptions = []

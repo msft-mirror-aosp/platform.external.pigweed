@@ -14,7 +14,7 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_facade",
+    "pw_facade",
 )
 
 package(default_visibility = ["//visibility:public"])
@@ -25,9 +25,8 @@ licenses(["notice"])
 # for pw_assert_basic. The source file and its dependencies are in the separate
 # ":impl" target.
 #
-# If you point @pigweed//targets:pw_assert_backend to //pw_assert_basic, then
-# @pigweed//targets:pw_assert_backend_impl should point to
-# //pw_assert_basic:impl.
+# If you point @pigweed//pw_assert:backend to //pw_assert_basic, then
+# @pigweed//pw_assert:backend_impl should point to //pw_assert_basic:impl.
 cc_library(
     name = "pw_assert_basic",
     hdrs = [
@@ -45,15 +44,34 @@ cc_library(
     ],
 )
 
+pw_facade(
+    name = "handler",
+    hdrs = [
+        "public/pw_assert_basic/handler.h",
+    ],
+    backend = ":handler_backend",
+    includes = [
+        "public",
+    ],
+    deps = [
+        "//pw_preprocessor",
+    ],
+)
+
+label_flag(
+    name = "handler_backend",
+    build_setting_default = ":pw_assert_basic_handler",
+)
+
 cc_library(
     name = "impl",
     srcs = [
         "assert_basic.cc",
     ],
     deps = [
+        ":handler",
         ":pw_assert_basic",
-        ":pw_assert_basic_handler",
-        "//pw_assert:facade",
+        "//pw_assert:pw_assert.facade",
         "//pw_preprocessor",
     ],
     # Other libraries may not always depend on this library, even if it is
@@ -61,28 +79,17 @@ cc_library(
     alwayslink = 1,
 )
 
-pw_cc_facade(
-    name = "handler_facade",
-    hdrs = [
-        "public/pw_assert_basic/handler.h",
-    ],
-    deps = [
-        "//pw_preprocessor",
-    ],
-)
-
 cc_library(
     name = "pw_assert_basic_handler",
     srcs = [
         "basic_handler.cc",
     ],
-    deps = [
-        ":handler_facade",
-        ":pw_assert_basic",
+    implementation_deps = [
         "//pw_preprocessor",
         "//pw_string:builder",
         "//pw_sys_io",
     ],
+    deps = [":handler.facade"],
     # Other libraries may not always depend on this library, even if it is
     # necessary at link time.
     alwayslink = 1,

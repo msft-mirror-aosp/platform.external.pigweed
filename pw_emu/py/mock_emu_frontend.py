@@ -17,7 +17,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional, List, Union
+from typing import Any
 import time
 
 from pw_emu.core import (
@@ -35,7 +35,7 @@ _mock_emu = [
 
 
 def wait_for_file_size(
-    path: Union[os.PathLike, str], size: int, timeout: int = 5
+    path: os.PathLike | str, size: int, timeout: int = 5
 ) -> None:
     deadline = time.monotonic() + timeout
     while not os.path.exists(path):
@@ -57,17 +57,17 @@ class MockEmuLauncher(Launcher):
         config_path: Path,
     ):
         super().__init__('mock-emu', config_path)
-        self._wdir: Optional[Path] = None
+        self._wdir: Path | None = None
         self.log = True
 
     def _pre_start(
         self,
         target: str,
-        file: Optional[Path] = None,
+        file: Path | None = None,
         pause: bool = False,
         debug: bool = False,
-        args: Optional[str] = None,
-    ) -> List[str]:
+        args: str | None = None,
+    ) -> list[str]:
         channels = []
         if self._config.get_target(['pre-start-cmds']):
             self._handles.add_channel_tcp('test_subst_tcp', 'localhost', 1234)
@@ -126,7 +126,7 @@ class MockEmuConnector(Connector):
     def cont(self) -> None:
         Path(os.path.join(self._wdir, 'cont')).touch()
 
-    def list_properties(self, path: str) -> List[Any]:
+    def list_properties(self, path: str) -> list[Any]:
         try:
             return list(self._props[path].keys())
         except KeyError:

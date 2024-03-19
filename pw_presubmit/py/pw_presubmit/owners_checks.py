@@ -28,12 +28,9 @@ from typing import (
     Callable,
     Collection,
     DefaultDict,
-    Dict,
     Iterable,
-    List,
     OrderedDict,
     Set,
-    Union,
 )
 
 from pw_presubmit import git_repo
@@ -110,16 +107,16 @@ class OwnersStyleError(OwnersError):
 @dataclasses.dataclass
 class Line:
     content: str
-    comments: List[str] = dataclasses.field(default_factory=list)
+    comments: list[str] = dataclasses.field(default_factory=list)
 
 
 class OwnersFile:
     """Holds OWNERS file in easy to use parsed structure."""
 
     path: pathlib.Path
-    original_lines: List[str]
-    sections: Dict[LineType, List[Line]]
-    formatted_lines: List[str]
+    original_lines: list[str]
+    sections: dict[LineType, list[Line]]
+    formatted_lines: list[str]
 
     def __init__(self, path: pathlib.Path) -> None:
         if not path.exists():
@@ -134,11 +131,11 @@ class OwnersFile:
         self.formatted_lines = self.format_sections(self.sections)
 
     @staticmethod
-    def load_owners_file(owners_file: pathlib.Path) -> List[str]:
+    def load_owners_file(owners_file: pathlib.Path) -> list[str]:
         return owners_file.read_text().split("\n")
 
     @staticmethod
-    def clean_lines(dirty_lines: List[str]) -> List[str]:
+    def clean_lines(dirty_lines: list[str]) -> list[str]:
         """Removes extra whitespace from list of strings."""
 
         cleaned_lines = []
@@ -166,16 +163,16 @@ class OwnersFile:
 
     @staticmethod
     def parse_owners(
-        cleaned_lines: List[str],
-    ) -> DefaultDict[LineType, List[Line]]:
+        cleaned_lines: list[str],
+    ) -> DefaultDict[LineType, list[Line]]:
         """Converts text lines of OWNERS into structured object."""
-        sections: DefaultDict[LineType, List[Line]] = collections.defaultdict(
+        sections: DefaultDict[LineType, list[Line]] = collections.defaultdict(
             list
         )
-        comment_buffer: List[str] = []
+        comment_buffer: list[str] = []
 
         def add_line_to_sections(
-            sections, section: LineType, line: str, comment_buffer: List[str]
+            sections, section: LineType, line: str, comment_buffer: list[str]
         ):
             if any(
                 seen_line.content == line for seen_line in sections[section]
@@ -200,8 +197,8 @@ class OwnersFile:
 
     @staticmethod
     def format_sections(
-        sections: DefaultDict[LineType, List[Line]]
-    ) -> List[str]:
+        sections: DefaultDict[LineType, list[Line]]
+    ) -> list[str]:
         """Returns ideally styled OWNERS file.
 
         The styling rules are
@@ -232,7 +229,7 @@ class OwnersFile:
             LineType.PER_FILE,
             LineType.TRAILING_COMMENTS,
         ]
-        formatted_lines: List[str] = []
+        formatted_lines: list[str] = []
 
         def append_section(line_type):
             # Add a line of separation if there was a previous section and our
@@ -322,7 +319,7 @@ class OwnersFile:
             full_path = self.path.parent / sub_owners_file_path
         return full_path.resolve()
 
-    def get_dependencies(self) -> List[pathlib.Path]:
+    def get_dependencies(self) -> list[pathlib.Path]:
         """Finds owners files this file includes."""
         dependencies = []
         # All the includes
@@ -363,7 +360,7 @@ class OwnersFile:
         self.path.write_text("\n".join(self.formatted_lines))
 
 
-def resolve_owners_tree(root_owners: pathlib.Path) -> List[OwnersFile]:
+def resolve_owners_tree(root_owners: pathlib.Path) -> list[OwnersFile]:
     """Given a starting OWNERS file return it and all of it's dependencies."""
     found = []
     todo = collections.deque((root_owners,))
@@ -394,16 +391,16 @@ def _format_owners_file(owners_obj: OwnersFile) -> None:
 
 def _list_unwrapper(
     func: Callable[[OwnersFile], None],
-    list_or_path: Union[Iterable[pathlib.Path], pathlib.Path],
-) -> Dict[pathlib.Path, str]:
+    list_or_path: Iterable[pathlib.Path] | pathlib.Path,
+) -> dict[pathlib.Path, str]:
     """Decorator that accepts Paths or list of Paths and iterates as needed."""
-    errors: Dict[pathlib.Path, str] = {}
+    errors: dict[pathlib.Path, str] = {}
     if isinstance(list_or_path, Iterable):
         files = list_or_path
     else:
         files = (list_or_path,)
 
-    all_owners_obj: List[OwnersFile] = []
+    all_owners_obj: list[OwnersFile] = []
     for file in files:
         all_owners_obj.extend(resolve_owners_tree(file))
 
@@ -428,9 +425,7 @@ run_owners_checks = functools.partial(_list_unwrapper, _run_owners_checks)
 format_owners_file = functools.partial(_list_unwrapper, _format_owners_file)
 
 
-def presubmit_check(
-    files: Union[pathlib.Path, Collection[pathlib.Path]]
-) -> None:
+def presubmit_check(files: pathlib.Path | Collection[pathlib.Path]) -> None:
     errors = run_owners_checks(files)
     if errors:
         for file in errors:

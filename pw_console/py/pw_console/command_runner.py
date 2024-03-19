@@ -22,8 +22,6 @@ from typing import (
     Callable,
     Iterable,
     Iterator,
-    List,
-    Optional,
     TYPE_CHECKING,
 )
 
@@ -70,11 +68,11 @@ _LOG = logging.getLogger(__package__)
 class CommandRunnerItem:
     title: str
     handler: Callable
-    description: Optional[str] = None
+    description: str | None = None
 
 
 def flatten_menu_items(
-    items: List[MenuItem], prefix: str = ''
+    items: list[MenuItem], prefix: str = ''
 ) -> Iterator[CommandRunnerItem]:
     """Flatten nested prompt_toolkit MenuItems into text and callable tuples."""
     for item in items:
@@ -130,10 +128,8 @@ class CommandRunner:
     def __init__(
         self,
         application: ConsoleApp,
-        window_title: Optional[str] = None,
-        load_completions: Optional[
-            Callable[[], List[CommandRunnerItem]]
-        ] = None,
+        window_title: str | None = None,
+        load_completions: Callable[[], list[CommandRunnerItem]] | None = None,
         width: int = 80,
         height: int = 10,
     ):
@@ -146,15 +142,15 @@ class CommandRunner:
         self.last_focused_pane = None
 
         # List of all possible completion items
-        self.completions: List[CommandRunnerItem] = []
+        self.completions: list[CommandRunnerItem] = []
         # Formatted text fragments of matched items
-        self.completion_fragments: List[StyleAndTextTuples] = []
+        self.completion_fragments: list[StyleAndTextTuples] = []
 
         # Current selected item tracking variables
         self.selected_item: int = 0
         self.selected_item_title: str = ''
-        self.selected_item_handler: Optional[Callable] = None
-        self.selected_item_description: Optional[str] = None
+        self.selected_item_handler: Callable | None = None
+        self.selected_item_description: str | None = None
         # Previous input text
         self.last_input_field_text: str = 'EMPTY'
         # Previous selected item
@@ -166,7 +162,7 @@ class CommandRunner:
         self.window_title: str
 
         # Callable to fetch completion items
-        self.load_completions: Callable[[], List[CommandRunnerItem]]
+        self.load_completions: Callable[[], list[CommandRunnerItem]]
 
         # Command runner text input field
         self.input_field = TextArea(
@@ -356,10 +352,8 @@ class CommandRunner:
 
     def set_completions(
         self,
-        window_title: Optional[str] = None,
-        load_completions: Optional[
-            Callable[[], List[CommandRunnerItem]]
-        ] = None,
+        window_title: str | None = None,
+        load_completions: Callable[[], list[CommandRunnerItem]] | None = None,
     ) -> None:
         """Set window title and callable to fetch possible completions.
 
@@ -383,16 +377,16 @@ class CommandRunner:
     def reload_completions(self) -> None:
         self.completions = self.load_completions()
 
-    def load_menu_items(self) -> List[CommandRunnerItem]:
+    def load_menu_items(self) -> list[CommandRunnerItem]:
         # pylint: disable=no-self-use
         return list(flatten_menu_items(self.application.menu_items))
 
     def _get_input_field_text(self) -> str:
         return self.input_field.buffer.text
 
-    def _make_regexes(self, input_text) -> List[re.Pattern]:
+    def _make_regexes(self, input_text) -> list[re.Pattern]:
         # pylint: disable=no-self-use
-        regexes: List[re.Pattern] = []
+        regexes: list[re.Pattern] = []
         if not input_text:
             return regexes
 
@@ -405,7 +399,7 @@ class CommandRunner:
 
         return regexes
 
-    def _matches_orderless(self, regexes: List[re.Pattern], text) -> bool:
+    def _matches_orderless(self, regexes: list[re.Pattern], text) -> bool:
         """Check if all supplied regexs match the input text."""
         # pylint: disable=no-self-use
         return all(regex.search(text) for regex in regexes)

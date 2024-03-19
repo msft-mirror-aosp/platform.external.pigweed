@@ -26,7 +26,7 @@ import time
 from abc import ABC, abstractmethod
 from importlib import import_module
 from pathlib import Path
-from typing import Optional, Dict, List, Union, Any, Type
+from typing import Any, Type
 
 import psutil  # type: ignore
 
@@ -73,7 +73,7 @@ class Error(Exception):
 class ConfigError(Error):
     """Exception raised for configuration errors."""
 
-    def __init__(self, config: Optional[Path], err: str) -> None:
+    def __init__(self, config: Path | None, err: str) -> None:
         msg = f'{config}: {err}\n'
         try:
             if config:
@@ -108,7 +108,7 @@ class InvalidEmulator(Error):
 class InvalidTarget(Error):
     """Exception raised if the target is invalid."""
 
-    def __init__(self, config: Path, emu: Optional[str], target: str) -> None:
+    def __init__(self, config: Path, emu: str | None, target: str) -> None:
         emu_str = f'for `{emu}`' if emu else ''
         super().__init__(f'{config}: invalid target `{target}` {emu_str}')
 
@@ -240,10 +240,10 @@ class Handles:
     def __init__(self, emu: str, config: str) -> None:
         self.emu = emu
         self.config = config
-        self.gdb_cmd: List[str] = []
+        self.gdb_cmd: list[str] = []
         self.target = ''
-        self.channels: Dict[str, Handles.Channel] = {}
-        self.procs: Dict[str, Handles.Proc] = {}
+        self.channels: dict[str, Handles.Channel] = {}
+        self.procs: dict[str, Handles.Proc] = {}
 
     def add_channel_tcp(self, name: str, host: str, port: int) -> None:
         """Adds a TCP channel."""
@@ -265,7 +265,7 @@ class Handles:
 
         self.target = target
 
-    def set_gdb_cmd(self, cmd: List[str]) -> None:
+    def set_gdb_cmd(self, cmd: list[str]) -> None:
         """Sets the ``gdb`` command."""
 
         self.gdb_cmd = cmd.copy()
@@ -289,9 +289,9 @@ class Config:
 
     def __init__(
         self,
-        config_path: Optional[Path] = None,
-        target: Optional[str] = None,
-        emu: Optional[str] = None,
+        config_path: Path | None = None,
+        target: str | None = None,
+        emu: str | None = None,
     ) -> None:
         """Loads the emulator configuration.
 
@@ -349,7 +349,7 @@ class Config:
         except ConfigError:
             raise InvalidTarget(self.path, self._emu, self._target)
 
-    def get_targets(self) -> List[str]:
+    def get_targets(self) -> list[str]:
         return list(self.get(['targets'], entry_type=dict).keys())
 
     def _subst(self, string: str) -> str:
@@ -371,7 +371,7 @@ class Config:
 
         raise ConfigError(self.path, f'Invalid substitution type: {subst_type}')
 
-    def _subst_list(self, items: List[Any]) -> List[Any]:
+    def _subst_list(self, items: list[Any]) -> list[Any]:
         new_list = []
         for item in items:
             if isinstance(item, str):
@@ -382,9 +382,9 @@ class Config:
 
     def get(
         self,
-        keys: List[str],
+        keys: list[str],
         optional: bool = True,
-        entry_type: Optional[Type] = None,
+        entry_type: Type | None = None,
     ) -> Any:
         """Gets a config entry.
 
@@ -405,7 +405,7 @@ class Config:
         """
 
         keys_str = ': '.join(keys)
-        entry: Optional[Dict[str, Any]] = self._config
+        entry: dict[str, Any] | None = self._config
 
         for key in keys:
             if not isinstance(entry, dict):
@@ -436,9 +436,9 @@ class Config:
 
     def get_target(
         self,
-        keys: List[str],
+        keys: list[str],
         optional: bool = True,
-        entry_type: Optional[Type] = None,
+        entry_type: Type | None = None,
     ) -> Any:
         """Gets a config option starting at ``['targets'][target]``."""
 
@@ -448,9 +448,9 @@ class Config:
 
     def get_emu(
         self,
-        keys: List[str],
+        keys: list[str],
         optional: bool = True,
-        entry_type: Optional[Type] = None,
+        entry_type: Type | None = None,
     ) -> Any:
         """Gets a config option starting at ``[emu]``."""
 
@@ -460,9 +460,9 @@ class Config:
 
     def get_target_emu(
         self,
-        keys: List[str],
+        keys: list[str],
         optional: bool = True,
-        entry_type: Optional[Type] = None,
+        entry_type: Type | None = None,
     ) -> Any:
         """Gets a config option starting at ``['targets'][target][emu]``."""
 
@@ -500,7 +500,7 @@ class Connector(ABC):
 
         return self._handles.emu
 
-    def get_gdb_cmd(self) -> List[str]:
+    def get_gdb_cmd(self) -> list[str]:
         """Returns the configured ``gdb`` command."""
         return self._handles.gdb_cmd
 
@@ -509,7 +509,7 @@ class Connector(ABC):
 
         return self._handles.config
 
-    def get_procs(self) -> Dict[str, Handles.Proc]:
+    def get_procs(self) -> dict[str, Handles.Proc]:
         """Returns the running processes indexed by the process name."""
 
         return self._handles.procs
@@ -552,7 +552,7 @@ class Connector(ABC):
     def get_channel_stream(
         self,
         name: str,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> io.RawIOBase:
         """Returns a file object for a given host-exposed device.
 
@@ -581,7 +581,7 @@ class Connector(ABC):
             return ser
         raise InvalidChannelType(chan_type)
 
-    def get_channels(self) -> List[str]:
+    def get_channels(self) -> list[str]:
         return self._handles.channels.keys()
 
     def get_logs(self) -> str:
@@ -623,7 +623,7 @@ class Connector(ABC):
         """Resumes the emulator's execution."""
 
     @abstractmethod
-    def list_properties(self, path: str) -> List[Any]:
+    def list_properties(self, path: str) -> list[Any]:
         """Returns the property list for an emulator object."""
 
     @abstractmethod
@@ -641,17 +641,17 @@ class Launcher(ABC):
     def __init__(
         self,
         emu: str,
-        config_path: Optional[Path] = None,
+        config_path: Path | None = None,
     ) -> None:
         """Initializes a ``Launcher`` instance."""
 
-        self._wdir: Optional[Path] = None
+        self._wdir: Path | None = None
         """Working directory"""
 
         self._emu = emu
         """Emulator type (e.g. "qemu", "renode")."""
 
-        self._target: Optional[str] = None
+        self._target: str | None = None
         """Target, initialized to None and set with _prep_start."""
 
         self._config = Config(config_path, emu=emu)
@@ -665,7 +665,7 @@ class Launcher(ABC):
             self._handles.set_gdb_cmd(gdb_cmd)
 
     @staticmethod
-    def get(emu: str, config_path: Optional[Path] = None) -> Any:
+    def get(emu: str, config_path: Path | None = None) -> Any:
         """Returns a launcher for a given emulator type."""
         config = Config(config_path)
         try:
@@ -679,11 +679,11 @@ class Launcher(ABC):
     def _pre_start(
         self,
         target: str,
-        file: Optional[Path] = None,
+        file: Path | None = None,
         pause: bool = False,
         debug: bool = False,
-        args: Optional[str] = None,
-    ) -> List[str]:
+        args: str | None = None,
+    ) -> list[str]:
         """Pre-start work, returns command to start the emulator.
 
         The target and emulator configuration can be accessed through
@@ -713,7 +713,7 @@ class Launcher(ABC):
     def _get_connector(self, wdir: Path) -> Connector:
         """Gets a connector for this emulator type."""
 
-    def _path(self, name: Union[Path, str]) -> Path:
+    def _path(self, name: Path | str) -> Path:
         """Returns the full path for a given emulator file."""
         if self._wdir is None:
             raise Error('internal error')
@@ -769,7 +769,7 @@ class Launcher(ABC):
     def _daemonize(
         self,
         name: str,
-        cmd: List[str],
+        cmd: list[str],
     ) -> None:
         """Daemonize process for UNIX hosts."""
 
@@ -813,9 +813,9 @@ class Launcher(ABC):
     def _start_proc(
         self,
         name: str,
-        cmd: List[str],
+        cmd: list[str],
         foreground: bool = False,
-    ) -> Union[subprocess.Popen, None]:
+    ) -> subprocess.Popen | None:
         """Run the main emulator process.
 
         The process pid is stored and can later be accessed by its name to
@@ -900,11 +900,11 @@ class Launcher(ABC):
         self,
         wdir: Path,
         target: str,
-        file: Optional[Path] = None,
+        file: Path | None = None,
         pause: bool = False,
         debug: bool = False,
         foreground: bool = False,
-        args: Optional[str] = None,
+        args: str | None = None,
     ) -> Connector:
         """Starts the emulator for the given target.
 

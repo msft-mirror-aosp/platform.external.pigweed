@@ -17,7 +17,7 @@ import enum
 import os
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Sequence
 
 import yaml
 
@@ -60,12 +60,12 @@ class YamlConfigLoaderMixin:
 
     def config_init(
         self,
-        config_section_title: Union[str, Sequence[str]],
-        project_file: Optional[Union[Path, bool]] = None,
-        project_user_file: Optional[Union[Path, bool]] = None,
-        user_file: Optional[Union[Path, bool]] = None,
-        default_config: Optional[Dict[Any, Any]] = None,
-        environment_var: Optional[str] = None,
+        config_section_title: str | Sequence[str],
+        project_file: Path | bool | None = None,
+        project_user_file: Path | bool | None = None,
+        user_file: Path | bool | None = None,
+        default_config: dict[Any, Any] | None = None,
+        environment_var: str | None = None,
         skip_files_without_sections: bool = False,
     ) -> None:
         """Call this to load YAML config files in order of precedence.
@@ -110,7 +110,7 @@ class YamlConfigLoaderMixin:
                 move on to the next file.
         """
 
-        self._config_section_title: Tuple[str, ...]
+        self._config_section_title: tuple[str, ...]
         if isinstance(config_section_title, (list, tuple)):
             self._config_section_title = tuple(config_section_title)
         elif isinstance(config_section_title, str):
@@ -169,7 +169,7 @@ class YamlConfigLoaderMixin:
                 stage=Stage.ENVIRONMENT_VAR_FILE,
             )
 
-    def _update_config(self, cfg: Dict[Any, Any], stage: Stage) -> None:
+    def _update_config(self, cfg: dict[Any, Any], stage: Stage) -> None:
         if cfg is None:
             cfg = {}
         for key, value in cfg.items():
@@ -194,12 +194,12 @@ class YamlConfigLoaderMixin:
         return overriding_value
 
     def reset_config(self) -> None:
-        self._config: Dict[Any, Any] = {}
+        self._config: dict[Any, Any] = {}
         self._update_config(self.default_config, Stage.DEFAULT)
 
     def _load_config_from_string(  # pylint: disable=no-self-use
         self, file_contents: str
-    ) -> List[Dict[Any, Any]]:
+    ) -> list[dict[Any, Any]]:
         return list(yaml.safe_load_all(file_contents))
 
     def load_config_file(
