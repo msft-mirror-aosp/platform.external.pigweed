@@ -19,7 +19,7 @@ import shlex
 import shutil
 import subprocess
 import sys
-from typing import cast, Dict, List, Optional, Set, Tuple
+from typing import cast, Set
 
 from pw_cli.env import pigweed_environment
 
@@ -144,8 +144,8 @@ def cmd_setup(
 
 @_inject_reporter
 def cmd_vscode(
-    include: Optional[List[VscSettingsType]] = None,
-    exclude: Optional[List[VscSettingsType]] = None,
+    include: list[VscSettingsType] | None = None,
+    exclude: list[VscSettingsType] | None = None,
     build_extension: bool = False,
     reporter: StatusReporter = StatusReporter(),
     pw_ide_settings: PigweedIdeSettings = PigweedIdeSettings(),
@@ -246,7 +246,7 @@ def cmd_vscode(
         exclude_set = set(exclude if exclude is not None else [])
 
     types_to_update = cast(
-        List[VscSettingsType], tuple(include_set - exclude_set)
+        list[VscSettingsType], tuple(include_set - exclude_set)
     )
 
     for settings_type in types_to_update:
@@ -307,21 +307,21 @@ def _process_compdbs(  # pylint: disable=too-many-locals
     prev_compdb_targets = state.compdb_targets
     new_compdb_targets: CppCompilationDatabaseFileTargets = {}
 
-    targets: List[CppIdeFeaturesTarget] = []
+    targets: list[CppIdeFeaturesTarget] = []
     num_new_unprocessed_targets = 0
     num_new_processed_targets = 0
     num_carried_over_targets = 0
     num_removed_targets = len(state.targets.values())
 
-    unprocessed_compdb_files: List[Path] = []
-    processed_compdb_files: List[Path] = []
+    unprocessed_compdb_files: list[Path] = []
+    processed_compdb_files: list[Path] = []
 
     # Associate processed compilation databases with their original sources
-    all_processed_compdbs: Dict[Path, CppCompilationDatabasesMap] = {}
+    all_processed_compdbs: dict[Path, CppCompilationDatabasesMap] = {}
 
     # Get a list of paths to search for compilation databases.
-    compdb_search_paths: List[
-        Tuple[Path, str]
+    compdb_search_paths: list[
+        tuple[Path, str]
     ] = pw_ide_settings.compdb_search_paths
     # Get the list of files for each search path, tupled with the search path.
     compdb_file_path_groups = [
@@ -329,7 +329,7 @@ def _process_compdbs(  # pylint: disable=too-many-locals
         for search_path in compdb_search_paths
     ]
     # Flatten that list.
-    compdb_file_paths: List[Tuple[Path, Path, str]] = [
+    compdb_file_paths: list[tuple[Path, Path, str]] = [
         (search_path, file_path, target_inference)
         for (
             (search_path, target_inference),
@@ -527,11 +527,11 @@ class TryAgainException(Exception):
 def cmd_cpp(  # pylint: disable=too-many-arguments, too-many-locals, too-many-branches, too-many-statements
     should_list_targets: bool,
     should_get_target: bool,
-    target_to_set: Optional[str],
+    target_to_set: str | None,
     process: bool = True,
     use_default_target: bool = False,
     clangd_command: bool = False,
-    clangd_command_system: Optional[str] = None,
+    clangd_command_system: str | None = None,
     should_try_compdb_gen_cmd: bool = True,
     reporter: StatusReporter = StatusReporter(),
     pw_ide_settings: PigweedIdeSettings = PigweedIdeSettings(),
@@ -817,7 +817,7 @@ def install_py_module_as_editable(
 @_inject_reporter
 def cmd_python(
     should_print_venv: bool,
-    install_editable: Optional[str] = None,
+    install_editable: str | None = None,
     reporter: StatusReporter = StatusReporter(),
 ) -> None:
     """Configure Python code intelligence support.

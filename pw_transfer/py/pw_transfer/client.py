@@ -17,7 +17,7 @@ import asyncio
 import ctypes
 import logging
 import threading
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable
 
 from pw_rpc.callback_client import BidirectionalStreamingCall
 from pw_status import Status
@@ -39,7 +39,7 @@ except ImportError:
 
 _LOG = logging.getLogger(__package__)
 
-_TransferDict = Dict[int, Transfer]
+_TransferDict = dict[int, Transfer]
 
 
 class _TransferStream:
@@ -53,7 +53,7 @@ class _TransferStream:
         self._method = method
         self._chunk_handler = chunk_handler
         self._error_handler = error_handler
-        self._call: Optional[BidirectionalStreamingCall] = None
+        self._call: BidirectionalStreamingCall | None = None
         self._reopen_attempts = 0
         self._max_reopen_attempts = max_reopen_attempts
 
@@ -194,10 +194,10 @@ class Manager:  # pylint: disable=too-many-instance-attributes
     def read(
         self,
         resource_id: int,
-        progress_callback: Optional[ProgressCallback] = None,
-        protocol_version: Optional[ProtocolVersion] = None,
-        chunk_timeout_s: Optional[float] = None,
-        initial_timeout_s: Optional[float] = None,
+        progress_callback: ProgressCallback | None = None,
+        protocol_version: ProtocolVersion | None = None,
+        chunk_timeout_s: float | None = None,
+        initial_timeout_s: float | None = None,
         initial_offset: int = 0,
     ) -> bytes:
         """Receives ("downloads") data from the server.
@@ -274,11 +274,11 @@ class Manager:  # pylint: disable=too-many-instance-attributes
     def write(
         self,
         resource_id: int,
-        data: Union[bytes, str],
-        progress_callback: Optional[ProgressCallback] = None,
-        protocol_version: Optional[ProtocolVersion] = None,
-        chunk_timeout_s: Optional[Any] = None,
-        initial_timeout_s: Optional[Any] = None,
+        data: bytes | str,
+        progress_callback: ProgressCallback | None = None,
+        protocol_version: ProtocolVersion | None = None,
+        chunk_timeout_s: Any | None = None,
+        initial_timeout_s: Any | None = None,
         initial_offset: int = 0,
     ) -> None:
         """Transmits ("uploads") data to the server.

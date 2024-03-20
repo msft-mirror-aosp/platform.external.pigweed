@@ -51,11 +51,9 @@ from pathlib import Path
 from typing import (
     Any,
     Callable,
-    Dict,
     Generator,
     Generic,
     Literal,
-    Optional,
     OrderedDict,
     Type,
     TypeVar,
@@ -171,17 +169,17 @@ class YamlFileFormat(_StructuredFileFormat):
 
 # Allows constraining to dicts and dict subclasses, while also constraining to
 # the *same* dict subclass.
-_DictLike = TypeVar('_DictLike', bound=Dict)
+_DictLike = TypeVar('_DictLike', bound=dict)
 
 # Likewise, constrain to a specific dict subclass, but one that can be different
 # from that of _DictLike.
-_AnotherDictLike = TypeVar('_AnotherDictLike', bound=Dict)
+_AnotherDictLike = TypeVar('_AnotherDictLike', bound=dict)
 
 
 def dict_deep_merge(
     src: _DictLike,
     dest: _DictLike,
-    ctor: Optional[Callable[[], _DictLike]] = None,
+    ctor: Callable[[], _DictLike] | None = None,
 ) -> _DictLike:
     """Deep merge dict-like `src` into dict-like `dest`.
 
@@ -315,8 +313,8 @@ class EditorSettingsDefinition:
 
     def __init__(
         self,
-        pw_ide_settings: Optional[PigweedIdeSettings] = None,
-        data: Optional[DefaultSettingsCallback] = None,
+        pw_ide_settings: PigweedIdeSettings | None = None,
+        data: DefaultSettingsCallback | None = None,
     ):
         self._data: EditorSettingsDict = OrderedDict()
 
@@ -508,7 +506,7 @@ class SettingsLevel(enum.Enum):
 
 # A map of configurable settings levels and the string that will be prepended
 # to their files to indicate their settings level.
-SettingsFilePrefixes = Dict[SettingsLevel, str]
+SettingsFilePrefixes = dict[SettingsLevel, str]
 
 # Each editor will have one or more settings types that typically reflect each
 # of the files used to define their settings. So each editor should have an
@@ -521,7 +519,7 @@ _SettingsTypeT = TypeVar('_SettingsTypeT')
 
 # Maps each settings type with the callback that generates the default settings
 # for that settings type.
-EditorSettingsTypesWithDefaults = Dict[_SettingsTypeT, DefaultSettingsCallback]
+EditorSettingsTypesWithDefaults = dict[_SettingsTypeT, DefaultSettingsCallback]
 
 
 class EditorSettingsManager(Generic[_SettingsTypeT]):
@@ -551,11 +549,11 @@ class EditorSettingsManager(Generic[_SettingsTypeT]):
     def __init__(
         self,
         pw_ide_settings: PigweedIdeSettings,
-        settings_dir: Optional[Path] = None,
-        file_format: Optional[_StructuredFileFormat] = None,
-        types_with_defaults: Optional[
-            EditorSettingsTypesWithDefaults[_SettingsTypeT]
-        ] = None,
+        settings_dir: Path | None = None,
+        file_format: _StructuredFileFormat | None = None,
+        types_with_defaults: (
+            EditorSettingsTypesWithDefaults[_SettingsTypeT] | None
+        ) = None,
     ):
         if SettingsLevel.ACTIVE in self.__class__.prefixes:
             raise ValueError(
@@ -600,8 +598,8 @@ class EditorSettingsManager(Generic[_SettingsTypeT]):
         # For each of the settings levels, there is a settings definition for
         # each settings type. Those settings definitions may be stored in files
         # or not.
-        self._settings_definitions: Dict[
-            SettingsLevel, Dict[_SettingsTypeT, EditorSettingsDefinition]
+        self._settings_definitions: dict[
+            SettingsLevel, dict[_SettingsTypeT, EditorSettingsDefinition]
         ] = {}
 
         self._settings_types = tuple(self._types_with_defaults.keys())

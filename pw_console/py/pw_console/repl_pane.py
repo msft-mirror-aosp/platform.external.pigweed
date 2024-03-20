@@ -23,12 +23,7 @@ from typing import (
     Any,
     Awaitable,
     Callable,
-    Dict,
-    List,
-    Optional,
-    Tuple,
     TYPE_CHECKING,
-    Union,
 )
 
 from prompt_toolkit.filters import (
@@ -68,7 +63,7 @@ if TYPE_CHECKING:
 
 _LOG = logging.getLogger(__package__)
 
-_Namespace = Dict[str, Any]
+_Namespace = dict[str, Any]
 _GetNamespace = Callable[[], _Namespace]
 
 _REPL_OUTPUT_SCROLL_AMOUNT = 5
@@ -83,20 +78,20 @@ class UserCodeExecution:
     output: str
     stdout: str
     stderr: str
-    stdout_check_task: Optional[Awaitable] = None
-    result_object: Optional[Any] = None
-    result_str: Optional[str] = None
-    exception_text: Optional[str] = None
+    stdout_check_task: Awaitable | None = None
+    result_object: Any | None = None
+    result_str: str | None = None
+    exception_text: str | None = None
 
     @property
     def is_running(self):
         return not self.future.done()
 
-    def update_stdout(self, text: Optional[str]):
+    def update_stdout(self, text: str | None):
         if text:
             self.stdout = text
 
-    def update_stderr(self, text: Optional[str]):
+    def update_stderr(self, text: str | None):
         if text:
             self.stderr = text
 
@@ -110,11 +105,11 @@ class ReplPane(WindowPane):
         application: 'ConsoleApp',
         python_repl: PwPtPythonRepl,
         pane_title: str = 'Python Repl',
-        startup_message: Optional[str] = None,
+        startup_message: str | None = None,
     ) -> None:
         super().__init__(application, pane_title)
 
-        self.executed_code: List[UserCodeExecution] = []
+        self.executed_code: list[UserCodeExecution] = []
         self.application = application
 
         self.pw_ptpython_repl = python_repl
@@ -339,7 +334,7 @@ class ReplPane(WindowPane):
         )
 
     # pylint: disable=no-self-use
-    def get_all_key_bindings(self) -> List:
+    def get_all_key_bindings(self) -> list:
         """Return all keybinds for this plugin."""
         # ptpython native bindings:
         # return [load_python_bindings(self.pw_ptpython_repl)]
@@ -357,7 +352,7 @@ class ReplPane(WindowPane):
 
     def get_window_menu_options(
         self,
-    ) -> List[Tuple[str, Union[Callable, None]]]:
+    ) -> list[tuple[str, Callable | None]]:
         return [
             (
                 'Python Input > Paste',
@@ -507,7 +502,7 @@ class ReplPane(WindowPane):
 
     def get_output_buffer_text(
         self,
-        code_items: Optional[List[UserCodeExecution]] = None,
+        code_items: list[UserCodeExecution] | None = None,
         show_index: bool = True,
     ):
         executed_code = code_items or self.executed_code
@@ -542,7 +537,7 @@ class ReplPane(WindowPane):
 
         return test
 
-    def history_completions(self) -> List[Tuple[str, str]]:
+    def history_completions(self) -> list[tuple[str, str]]:
         return [
             (
                 ' '.join([line.lstrip() for line in text.splitlines()]),

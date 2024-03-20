@@ -28,13 +28,9 @@ import subprocess
 import tempfile
 from typing import (
     Any,
-    Dict,
-    List,
     Iterable,
     NamedTuple,
-    Optional,
     Sequence,
-    Tuple,
     TYPE_CHECKING,
 )
 import urllib
@@ -50,27 +46,27 @@ _COLOR = pw_cli.color.colors()
 _LOG: logging.Logger = logging.getLogger(__name__)
 
 PRESUBMIT_CHECK_TRACE: ContextVar[
-    Dict[str, List['PresubmitCheckTrace']]
+    dict[str, list['PresubmitCheckTrace']]
 ] = ContextVar('pw_presubmit_check_trace', default={})
 
 
 @dataclasses.dataclass(frozen=True)
 class FormatOptions:
-    python_formatter: Optional[str] = 'yapf'
-    black_path: Optional[str] = 'black'
+    python_formatter: str | None = 'black'
+    black_path: str | None = 'black'
     exclude: Sequence[re.Pattern] = dataclasses.field(default_factory=list)
 
     @staticmethod
-    def load(env: Optional[Dict[str, str]] = None) -> 'FormatOptions':
+    def load(env: dict[str, str] | None = None) -> 'FormatOptions':
         config = pw_env_setup.config_file.load(env=env)
         fmt = config.get('pw', {}).get('pw_presubmit', {}).get('format', {})
         return FormatOptions(
-            python_formatter=fmt.get('python_formatter', 'yapf'),
+            python_formatter=fmt.get('python_formatter', 'black'),
             black_path=fmt.get('black_path', 'black'),
             exclude=tuple(re.compile(x) for x in fmt.get('exclude', ())),
         )
 
-    def filter_paths(self, paths: Iterable[Path]) -> Tuple[Path, ...]:
+    def filter_paths(self, paths: Iterable[Path]) -> tuple[Path, ...]:
         root = Path(pw_cli.env.pigweed_environment().PW_PROJECT_ROOT)
         relpaths = [x.relative_to(root) for x in paths]
 
@@ -79,7 +75,7 @@ class FormatOptions:
         return tuple(root / x for x in relpaths)
 
 
-def get_buildbucket_info(bbid) -> Dict[str, Any]:
+def get_buildbucket_info(bbid) -> dict[str, Any]:
     if not bbid or not shutil.which('bb'):
         return {}
 
@@ -105,9 +101,9 @@ class LuciPipeline:
     @staticmethod
     def create(
         bbid: int,
-        fake_pipeline_props: Optional[Dict[str, Any]] = None,
-    ) -> Optional['LuciPipeline']:
-        pipeline_props: Dict[str, Any]
+        fake_pipeline_props: dict[str, Any] | None = None,
+    ) -> 'LuciPipeline | None':
+        pipeline_props: dict[str, Any]
         if fake_pipeline_props is not None:
             pipeline_props = fake_pipeline_props
         else:
@@ -174,7 +170,7 @@ class LuciTrigger:
 
     @staticmethod
     def create_from_environment(
-        env: Optional[Dict[str, str]] = None,
+        env: dict[str, str] | None = None,
     ) -> Sequence['LuciTrigger']:
         if not env:
             env = os.environ.copy()
@@ -260,7 +256,7 @@ class LuciContext:
     swarming_task_id: str
     cas_instance: str
     context_file: Path
-    pipeline: Optional[LuciPipeline]
+    pipeline: LuciPipeline | None
     triggers: Sequence[LuciTrigger] = dataclasses.field(default_factory=tuple)
 
     @property
@@ -285,9 +281,9 @@ class LuciContext:
 
     @staticmethod
     def create_from_environment(
-        env: Optional[Dict[str, str]] = None,
-        fake_pipeline_props: Optional[Dict[str, Any]] = None,
-    ) -> Optional['LuciContext']:
+        env: dict[str, str] | None = None,
+        fake_pipeline_props: dict[str, Any] | None = None,
+    ) -> 'LuciContext | None':
         """Create a LuciContext from the environment."""
 
         if not env:
@@ -307,7 +303,7 @@ class LuciContext:
         project, bucket, builder = env['BUILDBUCKET_NAME'].split(':')
 
         bbid: int = 0
-        pipeline: Optional[LuciPipeline] = None
+        pipeline: LuciPipeline | None = None
         try:
             bbid = int(env['BUILDBUCKET_ID'])
             pipeline = LuciPipeline.create(bbid, fake_pipeline_props)
@@ -372,9 +368,9 @@ class FormatContext:
         dry_run: Whether to just report issues or also fix them.
     """
 
-    root: Optional[Path]
+    root: Path | None
     output_dir: Path
-    paths: Tuple[Path, ...]
+    paths: tuple[Path, ...]
     package_root: Path
     format_options: FormatOptions
     dry_run: bool = False
@@ -389,8 +385,8 @@ class PresubmitFailure(Exception):
     def __init__(
         self,
         description: str = '',
-        path: Optional[Path] = None,
-        line: Optional[int] = None,
+        path: Path | None = None,
+        line: int | None = None,
     ):
         line_part: str = ''
         if line is not None:
@@ -431,16 +427,16 @@ class PresubmitContext:  # pylint: disable=too-many-instance-attributes
     """
 
     root: Path
-    repos: Tuple[Path, ...]
+    repos: tuple[Path, ...]
     output_dir: Path
     failure_summary_log: Path
-    paths: Tuple[Path, ...]
-    all_paths: Tuple[Path, ...]
+    paths: tuple[Path, ...]
+    all_paths: tuple[Path, ...]
     package_root: Path
-    luci: Optional[LuciContext]
-    override_gn_args: Dict[str, str]
+    luci: LuciContext | None
+    override_gn_args: dict[str, str]
     format_options: FormatOptions
-    num_jobs: Optional[int] = None
+    num_jobs: int | None = None
     continue_after_build_error: bool = False
     rng_seed: int = 1
     full: bool = False
@@ -459,8 +455,8 @@ class PresubmitContext:  # pylint: disable=too-many-instance-attributes
     def fail(
         self,
         description: str,
-        path: Optional[Path] = None,
-        line: Optional[int] = None,
+        path: Path | None = None,
+        line: int | None = None,
     ):
         """Add a failure to this presubmit step.
 
@@ -493,7 +489,7 @@ class PresubmitContext:  # pylint: disable=too-many-instance-attributes
     def append_check_command(
         self,
         *command_args,
-        call_annotation: Optional[Dict[Any, Any]] = None,
+        call_annotation: dict[Any, Any] | None = None,
         **command_kwargs,
     ) -> None:
         """Save a subprocess command annotation to this presubmit context.
@@ -519,7 +515,7 @@ class PresubmitContext:  # pylint: disable=too-many-instance-attributes
                 subprocess.run.
         """
         call_annotation = call_annotation if call_annotation else {}
-        calling_func: Optional[str] = None
+        calling_func: str | None = None
         calling_check = None
 
         # Loop through the current call stack looking for `self`, and stopping
@@ -568,7 +564,7 @@ class PresubmitContext:  # pylint: disable=too-many-instance-attributes
         )
 
 
-PRESUBMIT_CONTEXT: ContextVar[Optional[PresubmitContext]] = ContextVar(
+PRESUBMIT_CONTEXT: ContextVar[PresubmitContext | None] = ContextVar(
     'pw_presubmit_context', default=None
 )
 
@@ -586,11 +582,11 @@ class PresubmitCheckTraceType(enum.Enum):
 
 class PresubmitCheckTrace(NamedTuple):
     ctx: 'PresubmitContext'
-    check: Optional['Check']
-    func: Optional[str]
+    check: 'Check | None'
+    func: str | None
     args: Iterable[Any]
-    kwargs: Dict[Any, Any]
-    call_annotation: Dict[Any, Any]
+    kwargs: dict[Any, Any]
+    call_annotation: dict[Any, Any]
 
     def __repr__(self) -> str:
         return f'''CheckTrace(
@@ -610,7 +606,7 @@ def save_check_trace(output_dir: Path, trace: PresubmitCheckTrace) -> None:
     PRESUBMIT_CHECK_TRACE.get()[trace_key] = trace_list
 
 
-def get_check_traces(ctx: 'PresubmitContext') -> List[PresubmitCheckTrace]:
+def get_check_traces(ctx: 'PresubmitContext') -> list[PresubmitCheckTrace]:
     trace_key = str(ctx.output_dir.resolve())
     return PRESUBMIT_CHECK_TRACE.get().get(trace_key, [])
 
@@ -635,6 +631,6 @@ def log_check_traces(ctx: 'PresubmitContext') -> None:
 
 def apply_exclusions(
     ctx: PresubmitContext,
-    paths: Optional[Sequence[Path]] = None,
-) -> Tuple[Path, ...]:
+    paths: Sequence[Path] | None = None,
+) -> tuple[Path, ...]:
     return ctx.format_options.filter_paths(paths or ctx.paths)

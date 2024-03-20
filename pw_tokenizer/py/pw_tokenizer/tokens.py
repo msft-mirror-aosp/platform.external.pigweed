@@ -27,16 +27,11 @@ import subprocess
 from typing import (
     BinaryIO,
     Callable,
-    Dict,
     Iterable,
     Iterator,
-    List,
     NamedTuple,
-    Optional,
     Pattern,
     TextIO,
-    Tuple,
-    Union,
     ValuesView,
 )
 from uuid import uuid4
@@ -56,12 +51,12 @@ TOKENIZER_HASH_CONSTANT = 65599
 _LOG = logging.getLogger('pw_tokenizer')
 
 
-def _value(char: Union[int, str]) -> int:
+def _value(char: int | str) -> int:
     return char if isinstance(char, int) else ord(char)
 
 
 def pw_tokenizer_65599_hash(
-    string: Union[str, bytes], *, hash_length: Optional[int] = None
+    string: str | bytes, *, hash_length: int | None = None
 ) -> int:
     """Hashes the string with the hash function used to generate tokens in C++.
 
@@ -80,7 +75,7 @@ def pw_tokenizer_65599_hash(
 
 
 def c_hash(
-    string: Union[str, bytes], hash_length: int = DEFAULT_C_HASH_LENGTH
+    string: str | bytes, hash_length: int = DEFAULT_C_HASH_LENGTH
 ) -> int:
     """Hashes the string with the hash function used in C."""
     return pw_tokenizer_65599_hash(string, hash_length=hash_length)
@@ -100,13 +95,13 @@ class TokenizedStringEntry:
     token: int
     string: str
     domain: str = DEFAULT_DOMAIN
-    date_removed: Optional[datetime] = None
+    date_removed: datetime | None = None
 
     def key(self) -> _EntryKey:
         """The key determines uniqueness for a tokenized string."""
         return _EntryKey(self.token, self.string)
 
-    def update_date_removed(self, new_date_removed: Optional[datetime]) -> None:
+    def update_date_removed(self, new_date_removed: datetime | None) -> None:
         """Sets self.date_removed if the other date is newer."""
         # No removal date (None) is treated as the newest date.
         if self.date_removed is None:
@@ -139,10 +134,10 @@ class Database:
     def __init__(self, entries: Iterable[TokenizedStringEntry] = ()):
         """Creates a token database."""
         # The database dict stores each unique (token, string) entry.
-        self._database: Dict[_EntryKey, TokenizedStringEntry] = {}
+        self._database: dict[_EntryKey, TokenizedStringEntry] = {}
 
         # This is a cache for fast token lookup that is built as needed.
-        self._cache: Optional[Dict[int, List[TokenizedStringEntry]]] = None
+        self._cache: dict[int, list[TokenizedStringEntry]] | None = None
 
         self.add(entries)
 
@@ -169,7 +164,7 @@ class Database:
         return db
 
     @property
-    def token_to_entries(self) -> Dict[int, List[TokenizedStringEntry]]:
+    def token_to_entries(self) -> dict[int, list[TokenizedStringEntry]]:
         """Returns a dict that maps tokens to a list of TokenizedStringEntry."""
         if self._cache is None:  # build cache token -> entry cache
             self._cache = collections.defaultdict(list)
@@ -182,7 +177,7 @@ class Database:
         """Returns iterable over all TokenizedStringEntries in the database."""
         return self._database.values()
 
-    def collisions(self) -> Iterator[Tuple[int, List[TokenizedStringEntry]]]:
+    def collisions(self) -> Iterator[tuple[int, list[TokenizedStringEntry]]]:
         """Returns tuple of (token, entries_list)) for all colliding tokens."""
         for token, entries in self.token_to_entries.items():
             if len(entries) > 1:
@@ -191,8 +186,8 @@ class Database:
     def mark_removed(
         self,
         all_entries: Iterable[TokenizedStringEntry],
-        removal_date: Optional[datetime] = None,
-    ) -> List[TokenizedStringEntry]:
+        removal_date: datetime | None = None,
+    ) -> list[TokenizedStringEntry]:
         """Marks entries missing from all_entries as having been removed.
 
         The entries are assumed to represent the complete set of entries for the
@@ -255,8 +250,8 @@ class Database:
                 )
 
     def purge(
-        self, date_removed_cutoff: Optional[datetime] = None
-    ) -> List[TokenizedStringEntry]:
+        self, date_removed_cutoff: datetime | None = None
+    ) -> list[TokenizedStringEntry]:
         """Removes and returns entries removed on/before date_removed_cutoff."""
         self._cache = None
 
@@ -289,9 +284,9 @@ class Database:
 
     def filter(
         self,
-        include: Iterable[Union[str, Pattern[str]]] = (),
-        exclude: Iterable[Union[str, Pattern[str]]] = (),
-        replace: Iterable[Tuple[Union[str, Pattern[str]], str]] = (),
+        include: Iterable[str | Pattern[str]] = (),
+        exclude: Iterable[str | Pattern[str]] = (),
+        replace: Iterable[tuple[str | Pattern[str], str]] = (),
     ) -> None:
         """Filters the database using regular expressions (strings or compiled).
 
@@ -302,7 +297,7 @@ class Database:
         """
         self._cache = None
 
-        to_delete: List[_EntryKey] = []
+        to_delete: list[_EntryKey] = []
 
         if include:
             include_re = [re.compile(pattern) for pattern in include]
@@ -464,7 +459,7 @@ def parse_binary(fd: BinaryIO) -> Iterable[TokenizedStringEntry]:
         )
 
         try:
-            date_removed: Optional[datetime] = datetime(year, month, day)
+            date_removed: datetime | None = datetime(year, month, day)
         except ValueError:
             date_removed = None
 
@@ -644,7 +639,7 @@ class _DirectoryDatabase(DatabaseFile):
                 with self._create_filename().open('wb') as fd:
                     write_csv(new_entries, fd)
 
-    def _git_paths(self, commands: List) -> List[Path]:
+    def _git_paths(self, commands: list) -> list[Path]:
         """Returns a list of database CSVs from a Git command."""
         try:
             output = subprocess.run(

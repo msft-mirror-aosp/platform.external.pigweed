@@ -21,7 +21,6 @@ import shlex
 import string
 import sys
 import subprocess
-from typing import Dict, List, Optional
 
 import pw_cli.log
 
@@ -34,7 +33,7 @@ _NINJA_VARIABLE = re.compile('^([a-zA-Z0-9_]+) = ?')
 
 
 # TODO(hepler): Could do this step just once and output the results.
-def find_cc_rule(toolchain_ninja_file: Path) -> Optional[str]:
+def find_cc_rule(toolchain_ninja_file: Path) -> str | None:
     """Searches the toolchain.ninja file for the cc rule."""
     cmd_prefix = '  command = '
 
@@ -57,8 +56,8 @@ def find_cc_rule(toolchain_ninja_file: Path) -> Optional[str]:
     return None
 
 
-def _parse_ninja_variables(target_ninja_file: Path) -> Dict[str, str]:
-    variables: Dict[str, str] = {}
+def _parse_ninja_variables(target_ninja_file: Path) -> dict[str, str]:
+    variables: dict[str, str] = {}
 
     with target_ninja_file.open() as fd:
         for line in fd:
@@ -132,7 +131,7 @@ def _check_results(
     compiler = Compiler.from_command(compiler_str)
 
     _LOG.debug('%s is %s', compiler_str, compiler)
-    expectations: List[Expectation] = [
+    expectations: list[Expectation] = [
         e for e in test.expectations if compiler.matches(e.compiler)
     ]
 
@@ -223,8 +222,8 @@ def _should_skip_test(base_command: str) -> bool:
 def _execute_test(
     test: TestCase,
     command: str,
-    variables: Dict[str, str],
-    all_tests: List[str],
+    variables: dict[str, str],
+    all_tests: list[str],
 ) -> None:
     variables['in'] = str(test.source)
 

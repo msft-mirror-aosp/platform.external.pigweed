@@ -61,16 +61,11 @@ from typing import (
     Any,
     Callable,
     Collection,
-    Dict,
     Iterable,
     Iterator,
-    List,
-    Optional,
     Pattern,
     Sequence,
     Set,
-    Tuple,
-    Union,
 )
 
 import pw_cli.color
@@ -187,11 +182,11 @@ class Programs(collections.abc.Mapping):
         A program is a sequence of presubmit check functions. The sequence may
         contain nested sequences, which are flattened.
         """
-        self._programs: Dict[str, Program] = {
+        self._programs: dict[str, Program] = {
             name: Program(name, checks) for name, checks in programs.items()
         }
 
-    def all_steps(self) -> Dict[str, Check]:
+    def all_steps(self) -> dict[str, Check]:
         return {c.name: c for c in itertools.chain(*self.values())}
 
     def __getitem__(self, item: str) -> Program:
@@ -235,7 +230,7 @@ def download_cas_artifact(
 
 
 def archive_cas_artifact(
-    ctx: PresubmitContext, root: str, upload_paths: List[str]
+    ctx: PresubmitContext, root: str, upload_paths: list[str]
 ) -> str:
     """Uploads the given artifacts into cas
 
@@ -294,14 +289,12 @@ class FileFilter:
     (path does not match a regular expression) may be applied.
     """
 
-    _StrOrPattern = Union[Pattern, str]
-
     def __init__(
         self,
         *,
-        exclude: Iterable[_StrOrPattern] = (),
+        exclude: Iterable[Pattern | str] = (),
         endswith: Iterable[str] = (),
-        name: Iterable[_StrOrPattern] = (),
+        name: Iterable[Pattern | str] = (),
         suffix: Iterable[str] = (),
     ) -> None:
         """Creates a FileFilter with the provided filters.
@@ -322,7 +315,7 @@ class FileFilter:
         self.name = tuple(re.compile(i) for i in name)
         self.suffix = tuple(suffix)
 
-    def matches(self, path: Union[str, Path]) -> bool:
+    def matches(self, path: str | Path) -> bool:
         """Returns true if the path matches any filter but not an exclude.
 
         If no positive filters are specified, any paths that do not match a
@@ -348,7 +341,7 @@ class FileFilter:
             or any(posix_path.endswith(end) for end in self.endswith)
         )
 
-    def filter(self, paths: Sequence[Union[str, Path]]) -> Sequence[Path]:
+    def filter(self, paths: Sequence[str | Path]) -> Sequence[Path]:
         return [Path(x) for x in paths if self.matches(x)]
 
     def apply_to_check(self, always_run: bool = False) -> Callable:
@@ -373,7 +366,7 @@ def _print_ui(*args) -> None:
 class FilteredCheck:
     check: Check
     paths: Sequence[Path]
-    substep: Optional[str] = None
+    substep: str | None = None
 
     @property
     def name(self) -> str:
@@ -394,7 +387,7 @@ class Presubmit:
         paths: Sequence[Path],
         all_paths: Sequence[Path],
         package_root: Path,
-        override_gn_args: Dict[str, str],
+        override_gn_args: dict[str, str],
         continue_after_build_error: bool,
         rng_seed: int,
         full: bool,
@@ -417,7 +410,7 @@ class Presubmit:
         self,
         program: Program,
         keep_going: bool = False,
-        substep: Optional[str] = None,
+        substep: str | None = None,
         dry_run: bool = False,
     ) -> bool:
         """Executes a series of presubmit checks on the paths."""
@@ -457,11 +450,11 @@ class Presubmit:
 
         return not failed and not skipped
 
-    def apply_filters(self, program: Sequence[Callable]) -> List[FilteredCheck]:
+    def apply_filters(self, program: Sequence[Callable]) -> list[FilteredCheck]:
         """Returns list of FilteredCheck for checks that should run."""
         checks = [c if isinstance(c, Check) else Check(c) for c in program]
-        filter_to_checks: Dict[
-            FileFilter, List[Check]
+        filter_to_checks: dict[
+            FileFilter, list[Check]
         ] = collections.defaultdict(list)
 
         for chk in checks:
@@ -475,9 +468,9 @@ class Presubmit:
         ]
 
     def _map_checks_to_paths(
-        self, filter_to_checks: Dict[FileFilter, List[Check]]
-    ) -> Dict[Check, Sequence[Path]]:
-        checks_to_paths: Dict[Check, Sequence[Path]] = {}
+        self, filter_to_checks: dict[FileFilter, list[Check]]
+    ) -> dict[Check, Sequence[Path]]:
+        checks_to_paths: dict[Check, Sequence[Path]] = {}
 
         posix_paths = tuple(p.as_posix() for p in self._relative_paths)
 
@@ -579,10 +572,10 @@ class Presubmit:
 
     def _execute_checks(
         self,
-        program: List[FilteredCheck],
+        program: list[FilteredCheck],
         keep_going: bool,
         dry_run: bool = False,
-    ) -> Tuple[int, int, int]:
+    ) -> tuple[int, int, int]:
         """Runs presubmit checks; returns (passed, failed, skipped) lists."""
         passed = failed = 0
 
@@ -604,8 +597,8 @@ class Presubmit:
 
 def _process_pathspecs(
     repos: Iterable[Path], pathspecs: Iterable[str]
-) -> Dict[Path, List[str]]:
-    pathspecs_by_repo: Dict[Path, List[str]] = {repo: [] for repo in repos}
+) -> dict[Path, list[str]]:
+    pathspecs_by_repo: dict[Path, list[str]] = {repo: [] for repo in repos}
     repos_with_paths: Set[Path] = set()
 
     for pathspec in pathspecs:
@@ -638,10 +631,10 @@ def _process_pathspecs(
 def fetch_file_lists(
     root: Path,
     repo: Path,
-    pathspecs: List[str],
+    pathspecs: list[str],
     exclude: Sequence[Pattern] = (),
-    base: Optional[str] = None,
-) -> Tuple[List[Path], List[Path]]:
+    base: str | None = None,
+) -> tuple[list[Path], list[Path]]:
     """Returns lists of all files and modified files for the given repo.
 
     Args:
@@ -652,8 +645,8 @@ def fetch_file_lists(
         exclude: regular expressions for Posix-style paths to exclude
     """
 
-    all_files: List[Path] = []
-    modified_files: List[Path] = []
+    all_files: list[Path] = []
+    modified_files: list[Path] = []
 
     all_files_repo = tuple(
         tools.exclude_paths(
@@ -681,19 +674,19 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
     program: Sequence[Check],
     root: Path,
     repos: Collection[Path] = (),
-    base: Optional[str] = None,
+    base: str | None = None,
     paths: Sequence[str] = (),
     exclude: Sequence[Pattern] = (),
-    output_directory: Optional[Path] = None,
-    package_root: Optional[Path] = None,
+    output_directory: Path | None = None,
+    package_root: Path | None = None,
     only_list_steps: bool = False,
-    override_gn_args: Sequence[Tuple[str, str]] = (),
+    override_gn_args: Sequence[tuple[str, str]] = (),
     keep_going: bool = False,
     continue_after_build_error: bool = False,
     rng_seed: int = 1,
     presubmit_class: type = Presubmit,
-    list_steps_file: Optional[Path] = None,
-    substep: Optional[str] = None,
+    list_steps_file: Path | None = None,
+    substep: str | None = None,
     dry_run: bool = False,
 ) -> bool:
     """Lists files in the current Git repo and runs a Presubmit with them.
@@ -748,9 +741,9 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
 
     pathspecs_by_repo = _process_pathspecs(repos, paths)
 
-    all_files: List[Path] = []
-    modified_files: List[Path] = []
-    list_steps_data: Dict[str, Any] = {}
+    all_files: list[Path] = []
+    modified_files: list[Path] = []
+    list_steps_data: dict[str, Any] = {}
 
     if list_steps_file:
         with list_steps_file.open() as ins:
@@ -793,7 +786,7 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
     )
 
     if only_list_steps:
-        steps: List[Dict] = []
+        steps: list[dict] = []
         for filtered_check in presubmit.apply_filters(program):
             step = {
                 'name': filtered_check.name,
@@ -818,7 +811,7 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
     return presubmit.run(program, keep_going, substep=substep, dry_run=dry_run)
 
 
-def _make_str_tuple(value: Union[Iterable[str], str]) -> Tuple[str, ...]:
+def _make_str_tuple(value: Iterable[str] | str) -> tuple[str, ...]:
     return tuple([value] if isinstance(value, str) else value)
 
 
@@ -861,10 +854,10 @@ def check(*args, **kwargs):
 
 @dataclasses.dataclass
 class SubStep:
-    name: Optional[str]
+    name: str | None
     _func: Callable[..., PresubmitResult]
     args: Sequence[Any] = ()
-    kwargs: Dict[str, Any] = dataclasses.field(default_factory=lambda: {})
+    kwargs: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
 
     def __call__(self, ctx: PresubmitContext) -> PresubmitResult:
         if self.name:
@@ -881,13 +874,13 @@ class Check:
 
     def __init__(
         self,
-        check: Union[  # pylint: disable=redefined-outer-name
-            Callable, Iterable[SubStep]
-        ],
+        check: (  # pylint: disable=redefined-outer-name
+            Callable | Iterable[SubStep]
+        ),
         path_filter: FileFilter = FileFilter(),
         always_run: bool = True,
-        name: Optional[str] = None,
-        doc: Optional[str] = None,
+        name: str | None = None,
+        doc: str | None = None,
     ) -> None:
         # Since Check wraps a presubmit function, adopt that function's name.
         self.name: str = ''
@@ -947,7 +940,7 @@ class Check:
         self,
         *,
         endswith: Iterable[str] = (),
-        exclude: Iterable[Union[Pattern[str], str]] = (),
+        exclude: Iterable[Pattern[str] | str] = (),
     ) -> Check:
         """Create a new check identical to this one, but with extra filters.
 
@@ -988,7 +981,7 @@ class Check:
         ctx: PresubmitContext,
         count: int,
         total: int,
-        substep: Optional[str] = None,
+        substep: str | None = None,
     ) -> PresubmitResult:
         """Runs the presubmit check on the provided paths."""
 
@@ -1059,7 +1052,7 @@ class Check:
             return PresubmitResult.CANCEL
 
     def run_substep(
-        self, ctx: PresubmitContext, name: Optional[str]
+        self, ctx: PresubmitContext, name: str | None
     ) -> PresubmitResult:
         for substep in self.substeps():
             if substep.name == name:
@@ -1117,8 +1110,8 @@ def _ensure_is_valid_presubmit_check_function(chk: Callable) -> None:
 def filter_paths(
     *,
     endswith: Iterable[str] = (),
-    exclude: Iterable[Union[Pattern[str], str]] = (),
-    file_filter: Optional[FileFilter] = None,
+    exclude: Iterable[Pattern[str] | str] = (),
+    file_filter: FileFilter | None = None,
     always_run: bool = False,
 ) -> Callable[[Callable], Check]:
     """Decorator for filtering the paths list for a presubmit check function.
@@ -1157,7 +1150,7 @@ def filter_paths(
 
 
 def call(
-    *args, call_annotation: Optional[Dict[Any, Any]] = None, **kwargs
+    *args, call_annotation: dict[Any, Any] | None = None, **kwargs
 ) -> None:
     """Optional subprocess wrapper that causes a PresubmitFailure on errors."""
     ctx = PRESUBMIT_CONTEXT.get()
@@ -1227,7 +1220,7 @@ def call(
 
 
 def install_package(
-    ctx: Union[FormatContext, PresubmitContext],
+    ctx: FormatContext | PresubmitContext,
     name: str,
     force: bool = False,
 ) -> None:

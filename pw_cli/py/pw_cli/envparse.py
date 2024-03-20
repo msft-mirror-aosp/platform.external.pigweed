@@ -18,15 +18,11 @@ from dataclasses import dataclass
 import os
 from typing import (
     Callable,
-    Dict,
     Generic,
     IO,
-    List,
     Literal,
     Mapping,
-    Optional,
     TypeVar,
-    Union,
 )
 
 
@@ -44,7 +40,7 @@ TypeConversion = Callable[[str], T]
 class VariableDescriptor(Generic[T]):
     name: str
     type: TypeConversion[T]
-    default: Optional[T]
+    default: T | None
 
 
 class EnvironmentValueError(Exception):
@@ -88,17 +84,17 @@ class EnvironmentParser:
 
     def __init__(
         self,
-        prefix: Optional[str] = None,
-        error_on_unrecognized: Union[bool, None] = None,
+        prefix: str | None = None,
+        error_on_unrecognized: bool | None = None,
     ) -> None:
-        self._prefix: Optional[str] = prefix
+        self._prefix: str | None = prefix
         if error_on_unrecognized is None:
             varname = 'PW_ENVIRONMENT_NO_ERROR_ON_UNRECOGNIZED'
             error_on_unrecognized = varname not in os.environ
         self._error_on_unrecognized: bool = error_on_unrecognized
 
-        self._variables: Dict[str, VariableDescriptor] = {}
-        self._allowed_suffixes: List[str] = []
+        self._variables: dict[str, VariableDescriptor] = {}
+        self._allowed_suffixes: list[str] = []
 
     def add_var(
         self,
@@ -106,7 +102,7 @@ class EnvironmentParser:
         # pylint: disable=redefined-builtin
         type: TypeConversion[T] = str,  # type: ignore[assignment]
         # pylint: enable=redefined-builtin
-        default: Optional[T] = None,
+        default: T | None = None,
     ) -> None:
         """Registers an environment variable.
 
@@ -131,13 +127,11 @@ class EnvironmentParser:
 
         self._allowed_suffixes.append(suffix)
 
-    def parse_env(
-        self, env: Optional[Mapping[str, str]] = None
-    ) -> EnvNamespace:
+    def parse_env(self, env: Mapping[str, str] | None = None) -> EnvNamespace:
         """Parses known environment variables into a namespace.
 
         Args:
-            env: Dictionary of environment variables. Defaults to os.environ.
+            env: dictionary of environment variables. Defaults to os.environ.
 
         Raises:
             EnvironmentValueError: If the type conversion fails.

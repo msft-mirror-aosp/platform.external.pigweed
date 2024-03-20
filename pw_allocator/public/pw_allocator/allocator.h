@@ -14,7 +14,6 @@
 #pragma once
 
 #include <cstddef>
-#include <optional>
 #include <utility>
 
 #include "pw_assert/assert.h"
@@ -23,6 +22,7 @@
 #include "pw_status/status.h"
 
 namespace pw::allocator {
+
 /// Describes the layout of a block of memory.
 ///
 /// Layouts are passed to allocators, and consist of a (possibly padded) size
@@ -63,6 +63,14 @@ class Layout {
   size_t alignment_ = 1;
 };
 
+inline bool operator==(const Layout& lhs, const Layout& rhs) {
+  return lhs.size() == rhs.size() && lhs.alignment() == rhs.alignment();
+}
+
+inline bool operator!=(const Layout& lhs, const Layout& rhs) {
+  return !(lhs == rhs);
+}
+
 template <typename T>
 class UniquePtr;
 
@@ -89,25 +97,37 @@ class Allocator {
   /// size of 0.
   ///
   /// @param[in]  layout      Describes the memory to be allocated.
-  void* Allocate(Layout layout) { return DoAllocate(layout); }
+  void* Allocate(Layout layout) {
+    return layout.size() != 0 ? DoAllocate(layout) : nullptr;
+  }
+
+  /// Constructs and object of type `T` from the given `args`
+  ///
+  /// The return value is nullable, as allocating memory for the object may
+  /// fail. Callers must check for this error before using the resulting
+  /// pointer.
+  ///
+  /// @param[in]  args...     Arguments passed to the object constructor.
+  template <typename T, int&... ExplicitGuard, typename... Args>
+  T* New(Args&&... args) {
+    void* ptr = Allocate(Layout::Of<T>());
+    return ptr != nullptr ? new (ptr) T(std::forward<Args>(args)...) : nullptr;
+  }
 
   /// Constructs and object of type `T` from the given `args`, and wraps it in a
   /// `UniquePtr`
   ///
-  /// The return value is optional, as allocating memory for the object may
-  /// fail. Callers must check for this error before using the `UniquePtr`.
+  /// The returned value may contain null if allocating memory for the object
+  /// fails. Callers must check for null before using the `UniquePtr`.
   ///
   /// @param[in]  args...     Arguments passed to the object constructor.
-  template <typename T, typename... Args>
-  std::optional<UniquePtr<T>> MakeUnique(Args&&... args) {
+  template <typename T, int&... ExplicitGuard, typename... Args>
+  [[nodiscard]] UniquePtr<T> MakeUnique(Args&&... args) {
     static constexpr Layout kStaticLayout = Layout::Of<T>();
-    void* void_ptr = Allocate(kStaticLayout);
-    if (void_ptr == nullptr) {
-      return std::nullopt;
-    }
-    T* ptr = new (void_ptr) T(std::forward<Args>(args)...);
-    return std::make_optional<UniquePtr<T>>(
-        UniquePtr<T>::kPrivateConstructor, ptr, &kStaticLayout, this);
+    return UniquePtr<T>(UniquePtr<T>::kPrivateConstructor,
+                        New<T>(std::forward<Args>(args)...),
+                        &kStaticLayout,
+                        this);
   }
 
   /// Releases a previously-allocated block of memory.
@@ -118,7 +138,30 @@ class Allocator {
   /// @param[in]  ptr           Pointer to previously-allocated memory.
   /// @param[in]  layout        Describes the memory to be deallocated.
   void Deallocate(void* ptr, Layout layout) {
-    return DoDeallocate(ptr, layout);
+    if (ptr != nullptr) {
+      DoDeallocate(ptr, layout);
+    }
+  }
+
+  /// Destroys the object at ``ptr`` and deallocates the associated memory.
+  ///
+  /// The given pointer must have been previously obtained from a call to
+  /// ``New`` using the same allocator; otherwise the behavior is undefined.
+  ///
+  /// This functions is only callable with objects whose type is ``final``.
+  /// This limitation is unfortunately required due to the fact that it is not
+  /// possible to inspect the size of the underlying memory allocation for
+  /// virtual objects.
+  ///
+  /// @param[in] ptr      Pointer to previously-allocated object.
+  template <typename T>
+  void Delete(T* ptr) {
+    static_assert(
+        std::is_final_v<T>,
+        "``pw::allocator::Allocator::Delete`` can only be used with ``final`` "
+        "types, as the allocated size of virtual objects is unknowable.");
+    std::destroy_at(ptr);
+    Deallocate(ptr, Layout::Of<T>());
   }
 
   /// Modifies the size of an previously-allocated block of memory without
@@ -135,10 +178,8 @@ class Allocator {
   /// @param[in]  old_layout    Describes the previously-allocated memory.
   /// @param[in]  new_size      Requested new size for the memory allocation.
   bool Resize(void* ptr, Layout layout, size_t new_size) {
-    if (ptr == nullptr || layout.size() == 0 || new_size == 0) {
-      return false;
-    }
-    return DoResize(ptr, layout, new_size);
+    return ptr != nullptr && new_size != 0 &&
+           (layout.size() == new_size || DoResize(ptr, layout, new_size));
   }
 
   /// Modifies the size of a previously-allocated block of memory.
@@ -158,10 +199,10 @@ class Allocator {
   /// 0 will return a new allocation.
   ///
   /// @param[in]  ptr         Pointer to previously-allocated memory.
-  /// @param[in]  layout  Describes the previously-allocated memory.
+  /// @param[in]  layout      Describes the previously-allocated memory.
   /// @param[in]  new_size    Requested new size for the memory allocation.
   void* Reallocate(void* ptr, Layout layout, size_t new_size) {
-    return DoReallocate(ptr, layout, new_size);
+    return new_size != 0 ? DoReallocate(ptr, layout, new_size) : nullptr;
   }
 
   /// Returns the layout used to allocate a given pointer.
@@ -211,17 +252,40 @@ class Allocator {
     return DoQuery(ptr, layout);
   }
 
+  /// Returns whether the given allocator is the same as this one.
+  ///
+  /// This method is used instead of ``operator==`` in keeping with
+  /// ``std::pmr::memory_resource::is_equal``. There currently is no
+  /// corresponding virtual ``DoIsEqual``, as allocators that would require
+  /// ``dynamic_cast`` to properly determine equality are not supported.
+  /// This method will allow the interface to remain unchanged should a future
+  /// need for such allocators arise.
+  ///
+  /// @param[in]  other       Allocator to compare with this object.
+  bool IsEqual(const Allocator& other) const { return this == &other; }
+
  private:
   /// Virtual `Allocate` function implemented by derived classes.
+  ///
+  /// @param[in]  layout        Describes the memory to be allocated. Guaranteed
+  ///                           to have a non-zero size.
   virtual void* DoAllocate(Layout layout) = 0;
 
   /// Virtual `Deallocate` function implemented by derived classes.
+  ///
+  /// @param[in]  ptr           Pointer to memory, guaranteed to not be null.
+  /// @param[in]  layout        Describes the memory to be deallocated.
   virtual void DoDeallocate(void* ptr, Layout layout) = 0;
 
   /// Virtual `Resize` function implemented by derived classes.
   ///
   /// The default implementation simply returns `false`, indicating that
   /// resizing is not supported.
+  ///
+  /// @param[in]  ptr           Pointer to memory, guaranteed to not be null.
+  /// @param[in]  old_layout    Describes the previously-allocated memory.
+  /// @param[in]  new_size      Requested size, guaranteed to be non-zero and
+  ///                           differ from ``old_layout.size()``.
   virtual bool DoResize(void* /*ptr*/, Layout /*layout*/, size_t /*new_size*/) {
     return false;
   }
@@ -231,6 +295,10 @@ class Allocator {
   /// The default implementation will first try to `Resize` the data. If that is
   /// unsuccessful, it will allocate an entirely new block, copy existing data,
   /// and deallocate the given block.
+  ///
+  /// @param[in]  ptr           Pointer to memory..
+  /// @param[in]  old_layout    Describes the previously-allocated memory.
+  /// @param[in]  new_size      Requested size, guaranteed to be non-zero.
   virtual void* DoReallocate(void* ptr, Layout layout, size_t new_size);
 
   /// Virtual `Query` function that can be overridden by derived classes.
@@ -328,13 +396,19 @@ class UniquePtr {
   /// Destructs and deallocates any currently-held value.
   ~UniquePtr() { Reset(); }
 
-  /// Sets this ``UniquePtr`` to an "empty" (``nullptr``) value without
-  /// destructing any currently-held value or deallocating any underlying
-  /// memory.
-  void Release() {
+  const Layout* layout() const { return layout_; }
+  Allocator* allocator() const { return allocator_; }
+
+  /// Releases a value from the ``UniquePtr`` without destructing or
+  /// deallocating it.
+  ///
+  /// After this call, the object will have an "empty" (``nullptr``) value.
+  T* Release() {
+    T* value = value_;
     value_ = nullptr;
     layout_ = nullptr;
     allocator_ = nullptr;
+    return value;
   }
 
   /// Destructs and deallocates any currently-held value.

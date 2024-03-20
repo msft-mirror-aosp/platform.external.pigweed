@@ -23,13 +23,9 @@ import sys
 from pathlib import Path
 from typing import (
     Callable,
-    Dict,
-    List,
     Iterable,
     Iterator,
     NamedTuple,
-    Optional,
-    Tuple,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -69,7 +65,7 @@ class Label:
     name: str
     dir: Path
     relative_dir: Path
-    toolchain: Optional['Label']
+    toolchain: 'Label | None'
     out_dir: Path
     gen_dir: Path
 
@@ -120,7 +116,7 @@ class Label:
 
 class _Artifact(NamedTuple):
     path: Path
-    variables: Dict[str, str]
+    variables: dict[str, str]
 
 
 # Matches a non-phony build statement.
@@ -132,7 +128,7 @@ _OBJECTS_EXTENSIONS = ('.o',)
 _MAIN_ARTIFACTS = '', '.elf', '.a', '.so', '.dylib', '.exe', '.lib', '.dll'
 
 
-def _get_artifact(entries: List[str]) -> _Artifact:
+def _get_artifact(entries: list[str]) -> _Artifact:
     """Attempts to resolve which artifact to use if there are multiple.
 
     Selects artifacts based on extension. This will not work if a toolchain
@@ -165,7 +161,7 @@ def _parse_build_artifacts(fd) -> Iterator[_Artifact]:
             return None
 
     # Serves as the parse state (only two states)
-    artifact: Optional[_Artifact] = None
+    artifact: _Artifact | None = None
 
     line = next_line()
 
@@ -191,11 +187,11 @@ def _parse_build_artifacts(fd) -> Iterator[_Artifact]:
 
 def _search_target_ninja(
     ninja_file: Path, target: Label
-) -> Tuple[Optional[Path], List[Path]]:
+) -> tuple[Path | None, list[Path]]:
     """Parses the main output file and object files from <target>.ninja."""
 
-    artifact: Optional[Path] = None
-    objects: List[Path] = []
+    artifact: Path | None = None
+    objects: list[Path] = []
 
     _LOG.debug('Parsing target Ninja file %s for %s', ninja_file, target)
 
@@ -216,7 +212,7 @@ def _search_target_ninja(
 
 def _search_toolchain_ninja(
     ninja_file: Path, paths: GnPaths, target: Label
-) -> Optional[Path]:
+) -> Path | None:
     """Searches the toolchain.ninja file for outputs from the provided target.
 
     Files created by an action appear in toolchain.ninja instead of in their own
@@ -254,7 +250,7 @@ def _search_toolchain_ninja(
 
 def _search_ninja_files(
     paths: GnPaths, target: Label
-) -> Tuple[bool, Optional[Path], List[Path]]:
+) -> tuple[bool, Path | None, list[Path]]:
     ninja_file = target.out_dir / f'{target.name}.ninja'
     if ninja_file.exists():
         return (True, *_search_target_ninja(ninja_file, target))
@@ -272,8 +268,8 @@ class TargetInfo:
 
     label: Label
     generated: bool  # True if the Ninja files for this target were generated.
-    artifact: Optional[Path]
-    object_files: Tuple[Path]
+    artifact: Path | None
+    object_files: tuple[Path]
 
     def __init__(self, paths: GnPaths, target: str):
         object.__setattr__(self, 'label', Label(paths, target))
@@ -318,7 +314,7 @@ class _Expression:
         return self.string[self._match.start() : self.end]
 
 
-_Actions = Iterator[Tuple[_ArgAction, str]]
+_Actions = Iterator[tuple[_ArgAction, str]]
 
 
 def _target_file(paths: GnPaths, expr: _Expression) -> _Actions:
@@ -364,7 +360,7 @@ def _target_objects(paths: GnPaths, expr: _Expression) -> _Actions:
 
 
 # TODO: b/234886742 - Replace expressions with native GN features when possible.
-_FUNCTIONS: Dict['str', Callable[[GnPaths, _Expression], _Actions]] = {
+_FUNCTIONS: dict['str', Callable[[GnPaths, _Expression], _Actions]] = {
     'TARGET_FILE': _target_file,
     'TARGET_FILE_IF_EXISTS': _target_file_if_exists,
     'TARGET_OBJECTS': _target_objects,
@@ -402,7 +398,7 @@ def expand_expressions(paths: GnPaths, arg: str) -> Iterable[str]:
     if arg == '':
         return ['']
 
-    expanded_args: List[List[str]] = [[]]
+    expanded_args: list[list[str]] = [[]]
 
     for action, piece in _expand_arguments(paths, arg):
         if action is _ArgAction.OMIT:
@@ -459,7 +455,7 @@ def main(
     current_path: Path,
     default_toolchain: str,
     current_toolchain: str,
-    files: Iterable[Tuple[Path, Path]],
+    files: Iterable[tuple[Path, Path]],
 ) -> int:
     """Evaluates GN target expressions within a list of files.
 

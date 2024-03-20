@@ -16,7 +16,6 @@
 
 import logging
 from pathlib import Path
-from typing import List, Tuple
 import unittest
 from unittest import mock
 
@@ -48,7 +47,7 @@ ALL_DISABLED_TESTS = (
 class RpcIntegrationTest(unittest.TestCase):
     """Calls RPCs on an RPC server through a socket."""
 
-    test_server_command: Tuple[str, ...] = ()
+    test_server_command: tuple[str, ...] = ()
     port: int
 
     def setUp(self) -> None:
@@ -135,7 +134,7 @@ class RpcIntegrationTest(unittest.TestCase):
 
 
 def _main(
-    test_server_command: List[str], port: int, unittest_args: List[str]
+    test_server_command: list[str], port: int, unittest_args: list[str]
 ) -> None:
     RpcIntegrationTest.test_server_command = tuple(test_server_command)
     RpcIntegrationTest.port = port

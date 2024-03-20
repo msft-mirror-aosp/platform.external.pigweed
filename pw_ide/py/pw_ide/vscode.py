@@ -65,7 +65,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Any, Dict, List, Optional, OrderedDict
+from typing import Any, OrderedDict
 
 from pw_cli.env import pigweed_environment
 
@@ -84,7 +84,7 @@ from pw_ide.settings import PigweedIdeSettings
 env = pigweed_environment()
 
 
-def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> Dict[str, Any]:
+def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> dict[str, Any]:
     """VSC settings for running clangd with Pigweed paths."""
     clangd_settings = ClangdSettings(ide_settings)
     return {
@@ -93,7 +93,7 @@ def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> Dict[str, Any]:
     }
 
 
-def _local_python_settings() -> Dict[str, Any]:
+def _local_python_settings() -> dict[str, Any]:
     """VSC settings for finding the Python virtualenv."""
     paths = PythonPaths()
     return {
@@ -327,7 +327,7 @@ def _default_settings(
 
 def _default_tasks(
     pw_ide_settings: PigweedIdeSettings,
-    state: Optional[CppIdeFeaturesState] = None,
+    state: CppIdeFeaturesState | None = None,
 ) -> EditorSettingsDict:
     if state is None:
         state = CppIdeFeaturesState(pw_ide_settings)
@@ -373,7 +373,7 @@ class VscSettingsType(Enum):
     LAUNCH = 'launch'
 
     @classmethod
-    def all(cls) -> List['VscSettingsType']:
+    def all(cls) -> list['VscSettingsType']:
         return list(cls)
 
 

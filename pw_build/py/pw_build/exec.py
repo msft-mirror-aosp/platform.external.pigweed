@@ -21,7 +21,6 @@ import shlex
 import subprocess
 import sys
 import pathlib
-from typing import Dict, Optional
 
 # Need to be able to run without pw_cli installed in the virtualenv.
 try:
@@ -33,7 +32,7 @@ _LOG = logging.getLogger(__name__)
 
 
 def argument_parser(
-    parser: Optional[argparse.ArgumentParser] = None,
+    parser: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     """Registers the script's arguments on an argument parser."""
 
@@ -88,7 +87,7 @@ def argument_parser(
 _ENV_REGEX = re.compile(r'(\w+)(\+)?=(.+)')
 
 
-def apply_env_var(string: str, env: Dict[str, str]) -> None:
+def apply_env_var(string: str, env: dict[str, str]) -> None:
     """Update an environment map with provided a key-value pair.
 
     Pairs are accepted in two forms:

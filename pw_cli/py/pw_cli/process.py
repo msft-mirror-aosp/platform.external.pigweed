@@ -18,7 +18,7 @@ import logging
 import os
 import shlex
 import tempfile
-from typing import Dict, IO, Tuple, Union, Optional
+from typing import IO
 
 import pw_cli.color
 import pw_cli.log
@@ -45,7 +45,7 @@ class CompletedProcess:
     def __init__(
         self,
         process: 'asyncio.subprocess.Process',
-        output: Union[bytes, IO[bytes]],
+        output: bytes | IO[bytes],
     ):
         assert process.returncode is not None
         self.returncode: int = process.returncode
@@ -64,7 +64,7 @@ class CompletedProcess:
         return self._output
 
 
-async def _run_and_log(program: str, args: Tuple[str, ...], env: dict):
+async def _run_and_log(program: str, args: tuple[str, ...], env: dict):
     process = await asyncio.create_subprocess_exec(
         program,
         *args,
@@ -145,9 +145,9 @@ async def _kill_process_and_children(
 async def run_async(
     program: str,
     *args: str,
-    env: Optional[Dict[str, str]] = None,
+    env: dict[str, str] | None = None,
     log_output: bool = False,
-    timeout: Optional[float] = None,
+    timeout: float | None = None,
 ) -> CompletedProcess:
     """Runs a command, capturing and optionally logging its output.
 
@@ -177,7 +177,7 @@ async def run_async(
         for key, value in env.items():
             hydrated_env[key] = value
     hydrated_env[PW_SUBPROCESS_ENV] = '1'
-    output: Union[bytes, IO[bytes]]
+    output: bytes | IO[bytes]
 
     if log_output:
         process, output = await _run_and_log(program, args, hydrated_env)

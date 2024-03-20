@@ -28,7 +28,6 @@ import shlex
 import subprocess
 import sys
 import time
-from typing import List, Optional, Tuple
 
 try:
     from pw_build import gn_resolver
@@ -188,7 +187,7 @@ class MissingPythonDependency(Exception):
     """An error occurred while processing a Python dependency."""
 
 
-def _load_virtualenv_config(json_file_path: Path) -> Tuple[str, str]:
+def _load_virtualenv_config(json_file_path: Path) -> tuple[str, str]:
     with json_file_path.open() as json_fp:
         json_dict = json.load(json_fp)
     return json_dict.get('interpreter'), json_dict.get('path')
@@ -197,18 +196,18 @@ def _load_virtualenv_config(json_file_path: Path) -> Tuple[str, str]:
 def main(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals
     gn_root: Path,
     current_path: Path,
-    original_cmd: List[str],
+    original_cmd: list[str],
     default_toolchain: str,
     current_toolchain: str,
-    module: Optional[str],
-    env: Optional[List[str]],
-    python_dep_list_files: List[Path],
-    python_virtualenv_config: Optional[Path],
+    module: str | None,
+    env: list[str] | None,
+    python_dep_list_files: list[Path],
+    python_virtualenv_config: Path | None,
     capture_output: bool,
-    touch: Optional[Path],
-    working_directory: Optional[Path],
-    command_launcher: Optional[str],
-    lockfile: Optional[Path],
+    touch: Path | None,
+    working_directory: Path | None,
+    command_launcher: str | None,
+    lockfile: Path | None,
 ) -> int:
     """Script entry point."""
 

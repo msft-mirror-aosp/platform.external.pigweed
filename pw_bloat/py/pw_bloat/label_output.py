@@ -16,11 +16,7 @@
 import enum
 from typing import (
     Iterable,
-    Tuple,
-    Union,
     Type,
-    List,
-    Optional,
     NamedTuple,
     cast,
 )
@@ -96,11 +92,11 @@ class BloatTableOutput:
 
     def __init__(
         self,
-        ds_map: Union[DiffDataSourceMap, DataSourceMap],
+        ds_map: DiffDataSourceMap | DataSourceMap,
         col_max_width: int = _DEFAULT_MAX_WIDTH,
-        charset: Union[Type[AsciiCharset], Type[LineCharset]] = AsciiCharset,
+        charset: Type[AsciiCharset] | Type[LineCharset] = AsciiCharset,
         rst_output: bool = False,
-        diff_label: Optional[str] = None,
+        diff_label: str | None = None,
     ):
         self._data_source_map = ds_map
         self._cs = charset
@@ -113,7 +109,7 @@ class BloatTableOutput:
             self._diff_mode = True
         self._col_names = col_names
         self._additional_padding = 0
-        self._ascii_table_rows: List[str] = []
+        self._ascii_table_rows: list[str] = []
         self._rst_output = rst_output
         self._total_divider = self._cs.HH.value
         if self._rst_output:
@@ -122,7 +118,7 @@ class BloatTableOutput:
 
         self._col_widths = self._generate_col_width(col_max_width)
 
-    def _generate_col_width(self, col_max_width: int) -> List[int]:
+    def _generate_col_width(self, col_max_width: int) -> list[int]:
         """Find column width for all data sources and sizes."""
         max_len_size = 0
         diff_len_col_width = 0
@@ -165,9 +161,9 @@ class BloatTableOutput:
 
     def _diff_label_names(
         self,
-        old_labels: Optional[Tuple[_LabelContent, ...]],
-        new_labels: Tuple[_LabelContent, ...],
-    ) -> Tuple[_LabelContent, ...]:
+        old_labels: tuple[_LabelContent, ...] | None,
+        new_labels: tuple[_LabelContent, ...],
+    ) -> tuple[_LabelContent, ...]:
         """Return difference between arrays of labels."""
 
         if old_labels is None:
@@ -181,7 +177,7 @@ class BloatTableOutput:
 
         return tuple(diff_list)
 
-    def _label_title_row(self) -> List[str]:
+    def _label_title_row(self) -> list[str]:
         label_rows = []
         label_cells = ''
         divider_cells = ''
@@ -284,7 +280,7 @@ class BloatTableOutput:
         return label_row
 
     def _get_ds_label_size(
-        self, parent_labels: Tuple[str, ...]
+        self, parent_labels: tuple[str, ...]
     ) -> Iterable[_LabelContent]:
         """Produce label, size pairs from parent label names."""
         parent_label_sizes = []
@@ -342,7 +338,7 @@ class BloatTableOutput:
         return complete_total_rows
 
     def _create_diff_rows(
-        self, diff_list: Tuple[_LabelContent, ...]
+        self, diff_list: tuple[_LabelContent, ...]
     ) -> Iterable[str]:
         """Create rows for each label according to its index in diff_list."""
         curr_row = ''
@@ -403,7 +399,7 @@ class BloatTableOutput:
         content: str,
         last_cell: bool,
         col_index: int,
-        align: Optional[_Align] = _Align.RIGHT,
+        align: _Align | None = _Align.RIGHT,
     ) -> str:
         v_border = self._cs.V.value
         if self._rst_output and content:
@@ -526,9 +522,7 @@ class BloatTableOutput:
 class RstOutput:
     """Tabular output in ASCII format, which is also valid RST."""
 
-    def __init__(
-        self, ds_map: DataSourceMap, table_label: Optional[str] = None
-    ):
+    def __init__(self, ds_map: DataSourceMap, table_label: str | None = None):
         self._data_source_map = ds_map
         self._table_label = table_label
         self._diff_mode = False

@@ -25,7 +25,6 @@ import subprocess
 import sys
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 SCRIPT_HEADER: str = '''
 ██████╗ ██╗ ██████╗ ██╗    ██╗███████╗███████╗██████╗     ██████╗  ██████╗  ██████╗███████╗
@@ -88,7 +87,7 @@ def build_docs(
     src_dir: str,
     dst_dir: str,
     parallel: int,
-    google_analytics_id: Optional[str] = None,
+    google_analytics_id: str | None = None,
 ) -> int:
     """Runs Sphinx to render HTML documentation from a doc tree."""
 
@@ -136,7 +135,7 @@ def copy_doc_tree(args: argparse.Namespace) -> None:
     os.link(args.conf, f'{args.sphinx_build_dir}/conf.py')
 
     # Map of directory path to list of source and destination file paths.
-    dirs: Dict[str, List[Tuple[str, str]]] = collections.defaultdict(list)
+    dirs: dict[str, list[tuple[str, str]]] = collections.defaultdict(list)
 
     for source_file, copy_path in zip(source_files, copy_paths):
         dirname = os.path.dirname(copy_path)

@@ -11,13 +11,16 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""Heap visualizer of ASCII characters."""
+"""Heap visualizer of ASCII characters.
+
+TODO: b/328648868 - This tool is in need of an update, and should be considered
+**experimental** until then.
+"""
 
 import argparse
 import sys
 import math
 import logging
-from typing import Optional
 from dataclasses import dataclass, field
 import coloredlogs  # type: ignore
 
@@ -28,7 +31,7 @@ class HeapBlock:
 
     size: int
     mem_offset: int
-    next: Optional['HeapBlock'] = None
+    next: 'HeapBlock | None' = None
 
 
 @dataclass
@@ -322,6 +325,8 @@ def main():
             level_styles={'debug': {'color': 244}, 'error': {'color': 'red'}},
             fmt='%(asctime)s %(levelname)s | %(message)s',
         )
+    _LOG.warning("This tool is outdated and in need of an update!")
+    _LOG.warning("See b/328648868 for more details.")
     visualize(**vars(parser.parse_args()))
 
 

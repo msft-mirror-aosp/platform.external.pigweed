@@ -18,7 +18,6 @@ from __future__ import annotations
 import re
 
 from pathlib import PurePosixPath
-from typing import Optional, Union
 
 
 class MalformedGnError(Exception):
@@ -30,9 +29,9 @@ class GnPath:
 
     def __init__(
         self,
-        base: Union[str, PurePosixPath, GnPath],
-        bazel: Optional[str] = None,
-        gn: Optional[str] = None,  # pylint: disable=invalid-name
+        base: str | PurePosixPath | GnPath,
+        bazel: str | None = None,
+        gn: str | None = None,  # pylint: disable=invalid-name
     ) -> None:
         """Creates a GN source path.
 
@@ -111,10 +110,10 @@ class GnLabel:
 
     def __init__(
         self,
-        base: Union[str, PurePosixPath, GnLabel],
+        base: str | PurePosixPath | GnLabel,
         public: bool = False,
-        bazel: Optional[str] = None,
-        gn: Optional[str] = None,  # pylint: disable=invalid-name
+        bazel: str | None = None,
+        gn: str | None = None,  # pylint: disable=invalid-name
     ) -> None:
         """Creates a GN label.
 
@@ -128,9 +127,9 @@ class GnLabel:
         """
         self._name: str
         self._path: PurePosixPath
-        self._toolchain: Optional[str] = None
+        self._toolchain: str | None = None
         self._public: bool = public
-        self._repo: Optional[str] = None
+        self._repo: str | None = None
         base_path = _as_path(base)
         if bazel:
             self._from_bazel(base_path, bazel)
@@ -226,7 +225,7 @@ class GnLabel:
                 '$dir_pw_third_party', repo, *self._path.parts[1:]
             )
 
-    def relative_to(self, start: Union[str, PurePosixPath, GnLabel]) -> str:
+    def relative_to(self, start: str | PurePosixPath | GnLabel) -> str:
         """Returns a label string relative to the given starting label."""
         start_path = _as_path(start)
         if not start:
@@ -247,10 +246,10 @@ class GnVisibility:
 
     def __init__(
         self,
-        base: Union[str, PurePosixPath, GnLabel],
-        label: Union[str, PurePosixPath, GnLabel],
-        bazel: Optional[str] = None,
-        gn: Optional[str] = None,  # pylint: disable=invalid-name
+        base: str | PurePosixPath | GnLabel,
+        label: str | PurePosixPath | GnLabel,
+        bazel: str | None = None,
+        gn: str | None = None,  # pylint: disable=invalid-name
     ) -> None:
         """Creates a GN visibility scope.
 
@@ -295,7 +294,7 @@ class GnVisibility:
         """Populates this object using a GN visibility scope."""
         self._scope = GnLabel(label, gn=scope)
 
-    def relative_to(self, start: Union[str, PurePosixPath, GnLabel]) -> str:
+    def relative_to(self, start: str | PurePosixPath | GnLabel) -> str:
         """Returns a label string relative to the given starting label."""
         return self._scope.relative_to(start)
 
@@ -309,12 +308,12 @@ class GnVisibility:
                 return True
             if other_path.endswith('*'):
                 parent = PurePosixPath(other_path).parent
-                return _is_relative_to(_path, parent)
+                return PurePosixPath(_path).is_relative_to(parent)
             return _path == other_path
         return str(self) == str(other)
 
 
-def _as_path(item: Union[str, GnPath, GnLabel, PurePosixPath]) -> PurePosixPath:
+def _as_path(item: str | GnPath | GnLabel | PurePosixPath) -> PurePosixPath:
     """Converts an argument to be a PurePosixPath.
 
     Args:
@@ -329,21 +328,8 @@ def _as_path(item: Union[str, GnPath, GnLabel, PurePosixPath]) -> PurePosixPath:
     return item
 
 
-def _is_relative_to(
-    path: Union[str, PurePosixPath], start: Union[str, PurePosixPath]
-) -> bool:
-    """Returns whether `path` is a subdirectory of `start`."""
-    _path = PurePosixPath(path)
-    _start = PurePosixPath(start)
-    try:
-        _path.relative_to(_start)
-        return True
-    except ValueError:
-        return False
-
-
 def _relative_to(
-    path: Union[str, PurePosixPath], start: Union[str, PurePosixPath]
+    path: str | PurePosixPath, start: str | PurePosixPath
 ) -> PurePosixPath:
     """Like `PosixPath._relative_to`, but can ascend directories as well."""
     if not start:
@@ -353,7 +339,7 @@ def _relative_to(
     if _path.parts[0] != _start.parts[0]:
         return _path
     ascend = PurePosixPath()
-    while not _is_relative_to(_path, _start):
+    while not _path.is_relative_to(_start):
         if _start.parent == PurePosixPath():
             break
         _start = _start.parent

@@ -29,7 +29,7 @@ import re
 import shlex
 import subprocess
 import sys
-from typing import Iterable, List, Optional, Union
+from typing import Iterable
 
 import pw_cli.env
 
@@ -141,12 +141,12 @@ def run_clang_tidy(
     clang_tidy: str,
     verbose: bool,
     source_file: Path,
-    export_fixes: Optional[Path],
-    skip_include_path: List[str],
-    extra_args: List[str],
+    export_fixes: Path | None,
+    skip_include_path: list[str],
+    extra_args: list[str],
 ) -> int:
     """Executes clang_tidy via subprocess. Returns true if no failures."""
-    command: List[Union[str, Path]] = [clang_tidy, source_file]
+    command: list[str | Path] = [clang_tidy, source_file]
 
     if pw_cli.env.pigweed_environment().PW_USE_COLOR:
         command.append('--use-color')
@@ -191,10 +191,10 @@ def main(
     clang_tidy: str,
     source_file: Path,
     source_root: Path,
-    export_fixes: Optional[Path],
-    source_exclude: List[str],
-    skip_include_path: List[str],
-    extra_args: List[str],
+    export_fixes: Path | None,
+    source_exclude: list[str],
+    skip_include_path: list[str],
+    extra_args: list[str],
 ) -> int:
     # Rebase the source file path on source_root.
     # If source_file is not relative to source_root (which may be the case for

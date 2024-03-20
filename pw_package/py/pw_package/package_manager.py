@@ -19,7 +19,7 @@ import logging
 import os
 import pathlib
 import shutil
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Sequence
 
 from pw_env_setup import config_file
 
@@ -81,7 +81,7 @@ class Package:
         return []
 
 
-_PACKAGES: Dict[str, Package] = {}
+_PACKAGES: dict[str, Package] = {}
 
 
 def register(package_class: type, *args, **kwargs) -> None:
@@ -91,9 +91,9 @@ def register(package_class: type, *args, **kwargs) -> None:
 
 @dataclasses.dataclass
 class Packages:
-    all: Tuple[str, ...]
-    installed: Tuple[str, ...]
-    available: Tuple[str, ...]
+    all: tuple[str, ...]
+    installed: tuple[str, ...]
+    available: tuple[str, ...]
 
 
 class MiddlewareOnlyPackageError(Exception):
@@ -221,7 +221,7 @@ class PackageManagerCLI:
         return getattr(self, command)(**kwargs)
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser("Manage packages.")
     parser.add_argument(
         '--package-root',

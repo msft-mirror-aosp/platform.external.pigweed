@@ -20,7 +20,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable
 
 # Make sure dependencies are optional, since this script may be run when
 # installing Python package dependencies through GN.
@@ -100,16 +100,16 @@ def _argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def protoc_common_args(args: argparse.Namespace) -> Tuple[str, ...]:
-    flags: Tuple[str, ...] = ()
+def protoc_common_args(args: argparse.Namespace) -> tuple[str, ...]:
+    flags: tuple[str, ...] = ()
     if args.experimental_proto3_optional:
         flags += ('--experimental_allow_proto3_optional',)
     return flags
 
 
 def protoc_pwpb_args(
-    args: argparse.Namespace, include_paths: List[str]
-) -> Tuple[str, ...]:
+    args: argparse.Namespace, include_paths: list[str]
+) -> tuple[str, ...]:
     out_args = [
         '--plugin',
         f'protoc-gen-custom={args.plugin_path}',
@@ -133,8 +133,8 @@ def protoc_pwpb_args(
 
 
 def protoc_pwpb_rpc_args(
-    args: argparse.Namespace, _include_paths: List[str]
-) -> Tuple[str, ...]:
+    args: argparse.Namespace, _include_paths: list[str]
+) -> tuple[str, ...]:
     return (
         '--plugin',
         f'protoc-gen-custom={args.plugin_path}',
@@ -144,8 +144,8 @@ def protoc_pwpb_rpc_args(
 
 
 def protoc_go_args(
-    args: argparse.Namespace, _include_paths: List[str]
-) -> Tuple[str, ...]:
+    args: argparse.Namespace, _include_paths: list[str]
+) -> tuple[str, ...]:
     return (
         '--go_out',
         f'plugins=grpc:{args.out_dir}',
@@ -153,8 +153,8 @@ def protoc_go_args(
 
 
 def protoc_nanopb_args(
-    args: argparse.Namespace, _include_paths: List[str]
-) -> Tuple[str, ...]:
+    args: argparse.Namespace, _include_paths: list[str]
+) -> tuple[str, ...]:
     # nanopb needs to know of the include path to parse *.options files
     return (
         '--plugin',
@@ -169,8 +169,8 @@ def protoc_nanopb_args(
 
 
 def protoc_nanopb_rpc_args(
-    args: argparse.Namespace, _include_paths: List[str]
-) -> Tuple[str, ...]:
+    args: argparse.Namespace, _include_paths: list[str]
+) -> tuple[str, ...]:
     return (
         '--plugin',
         f'protoc-gen-custom={args.plugin_path}',
@@ -180,8 +180,8 @@ def protoc_nanopb_rpc_args(
 
 
 def protoc_raw_rpc_args(
-    args: argparse.Namespace, _include_paths: List[str]
-) -> Tuple[str, ...]:
+    args: argparse.Namespace, _include_paths: list[str]
+) -> tuple[str, ...]:
     return (
         '--plugin',
         f'protoc-gen-custom={args.plugin_path}',
@@ -191,9 +191,9 @@ def protoc_raw_rpc_args(
 
 
 def protoc_python_args(
-    args: argparse.Namespace, _include_paths: List[str]
-) -> Tuple[str, ...]:
-    flags: Tuple[str, ...] = (
+    args: argparse.Namespace, _include_paths: list[str]
+) -> tuple[str, ...]:
+    flags: tuple[str, ...] = (
         '--python_out',
         args.out_dir,
     )
@@ -208,12 +208,12 @@ def protoc_python_args(
 
 
 _DefaultArgsFunction = Callable[
-    [argparse.Namespace, List[str]], Tuple[str, ...]
+    [argparse.Namespace, list[str]], tuple[str, ...]
 ]
 
 # Default additional protoc arguments for each supported language.
 # TODO(frolv): Make these overridable with a command-line argument.
-DEFAULT_PROTOC_ARGS: Dict[str, _DefaultArgsFunction] = {
+DEFAULT_PROTOC_ARGS: dict[str, _DefaultArgsFunction] = {
     'go': protoc_go_args,
     'nanopb': protoc_nanopb_args,
     'nanopb_rpc': protoc_nanopb_rpc_args,
@@ -240,13 +240,13 @@ def main() -> int:
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    include_paths: List[str] = []
+    include_paths: list[str] = []
     if args.include_file:
         include_paths.extend(line.strip() for line in args.include_file)
     if args.proto_path:
         include_paths.extend(str(path) for path in args.proto_path)
 
-    wrapper_script: Optional[Path] = None
+    wrapper_script: Path | None = None
 
     # On Windows, use a .bat version of the plugin if it exists or create a .bat
     # wrapper to use if none exists.
@@ -263,7 +263,7 @@ def main() -> int:
             args.plugin_path = wrapper_script = Path(file.name)
             _LOG.debug('Using generated plugin wrapper %s', args.plugin_path)
 
-    cmd: Tuple[Union[str, Path], ...] = (
+    cmd: tuple[str | Path, ...] = (
         args.protoc,
         f'-I{args.compile_dir}',
         *[f'-I{include_path}' for include_path in include_paths],

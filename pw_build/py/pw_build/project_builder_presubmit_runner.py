@@ -17,7 +17,7 @@ import argparse
 import fnmatch
 import logging
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable
 
 
 import pw_cli.log
@@ -84,7 +84,7 @@ def should_gn_gen(out: Path) -> bool:
     return any(not gen_file.is_file() for gen_file in expected_files)
 
 
-def should_gn_gen_with_args(gn_arg_dict: Dict[str, str]) -> Callable:
+def should_gn_gen_with_args(gn_arg_dict: dict[str, str]) -> Callable:
     """Returns a callable which writes an args.gn file prior to checks.
 
     Returns:
@@ -128,9 +128,9 @@ def _pw_package_install_to_build_command(
 
 def _bazel_command_args_to_build_commands(
     trace: PresubmitCheckTrace,
-) -> List[BuildCommand]:
+) -> list[BuildCommand]:
     """Returns a list of BuildCommands based on a bazel PresubmitCheckTrace."""
-    build_steps: List[BuildCommand] = []
+    build_steps: list[BuildCommand] = []
 
     if not 'bazel' in trace.args:
         return build_steps
@@ -172,7 +172,7 @@ def _bazel_command_args_to_build_commands(
 def _presubmit_trace_to_build_commands(
     ctx: PresubmitContext,
     presubmit_step: Check,
-) -> List[BuildCommand]:
+) -> list[BuildCommand]:
     """Convert a presubmit step to a list of BuildCommands.
 
     Specifically, this handles the following types of PresubmitCheckTraces:
@@ -188,7 +188,7 @@ def _presubmit_trace_to_build_commands(
       List of BuildCommands representing each command found in the
       presubmit_step traces.
     """
-    build_steps: List[BuildCommand] = []
+    build_steps: list[BuildCommand] = []
 
     presubmit_step(ctx)
 
@@ -258,9 +258,9 @@ def presubmit_build_recipe(  # pylint: disable=too-many-locals
     presubmit_out_dir: Path,
     package_root: Path,
     presubmit_step: Check,
-    all_files: List[Path],
-    modified_files: List[Path],
-) -> Optional['BuildRecipe']:
+    all_files: list[Path],
+    modified_files: list[Path],
+) -> 'BuildRecipe | None':
     """Construct a BuildRecipe from a pw_presubmit step."""
     out_dir = presubmit_out_dir / presubmit_step.name
 
@@ -357,8 +357,8 @@ def presubmit_build_recipe(  # pylint: disable=too-many-locals
 
 
 def _get_parser(
-    presubmit_programs: Optional[Programs] = None,
-    build_recipes: Optional[List[BuildRecipe]] = None,
+    presubmit_programs: Programs | None = None,
+    build_recipes: list[BuildRecipe] | None = None,
 ) -> argparse.ArgumentParser:
     """Setup argparse for pw_build.project_builder and optionally pw_watch."""
     parser = argparse.ArgumentParser(
@@ -373,7 +373,7 @@ def _get_parser(
 
     if build_recipes is not None:
 
-        def build_recipe_argparse_type(arg: str) -> List[BuildRecipe]:
+        def build_recipe_argparse_type(arg: str) -> list[BuildRecipe]:
             """Return a list of matching presubmit steps."""
             assert build_recipes
             all_recipe_names = list(
@@ -410,7 +410,7 @@ def _get_parser(
         # Add presubmit step arguments.
         all_steps = presubmit_programs.all_steps()
 
-        def presubmit_step_argparse_type(arg: str) -> List[Check]:
+        def presubmit_step_argparse_type(arg: str) -> list[Check]:
             """Return a list of matching presubmit steps."""
             filtered_step_names = fnmatch.filter(all_steps.keys(), arg)
 
@@ -454,29 +454,15 @@ def _get_parser(
 
     parser.add_argument(
         '--progress-bars',
-        action='store_true',
+        action=argparse.BooleanOptionalAction,
         default=True,
         help='Show progress bars in the terminal.',
     )
 
     parser.add_argument(
-        '--no-progress-bars',
-        action='store_false',
-        dest='progress_bars',
-        help='Hide progress bars in terminal output.',
-    )
-
-    parser.add_argument(
         '--log-build-steps',
-        action='store_true',
+        action=argparse.BooleanOptionalAction,
         help='Show ninja build step log lines in output.',
-    )
-
-    parser.add_argument(
-        '--no-log-build-steps',
-        action='store_false',
-        dest='log_build_steps',
-        help='Hide ninja build steps log lines from log output.',
     )
 
     if PW_WATCH_AVAILABLE:
@@ -516,7 +502,7 @@ def _get_parser(
 
 def _get_prefs(
     args: argparse.Namespace,
-) -> Union[ProjectBuilderPrefs, WatchAppPrefs]:
+) -> ProjectBuilderPrefs | WatchAppPrefs:
     """Load either WatchAppPrefs or ProjectBuilderPrefs.
 
     Applies the command line args to the correct prefs class.
@@ -525,7 +511,7 @@ def _get_prefs(
       A WatchAppPrefs instance if pw_watch is importable, ProjectBuilderPrefs
       otherwise.
     """
-    prefs: Union[ProjectBuilderPrefs, WatchAppPrefs]
+    prefs: ProjectBuilderPrefs | WatchAppPrefs
     if PW_WATCH_AVAILABLE:
         prefs = WatchAppPrefs(load_argparse_arguments=add_watch_arguments)
         prefs.apply_command_line_args(args)
@@ -539,14 +525,14 @@ def _get_prefs(
 
 def load_presubmit_build_recipes(
     presubmit_programs: Programs,
-    presubmit_steps: List[Check],
+    presubmit_steps: list[Check],
     repo_root: Path,
     presubmit_out_dir: Path,
     package_root: Path,
-    all_files: List[Path],
-    modified_files: List[Path],
-    default_presubmit_step_names: Optional[List[str]] = None,
-) -> List[BuildRecipe]:
+    all_files: list[Path],
+    modified_files: list[Path],
+    default_presubmit_step_names: list[str] | None = None,
+) -> list[BuildRecipe]:
     """Convert selected presubmit steps into a list of BuildRecipes."""
     # Use the default presubmit if no other steps or command line out
     # directories are provided.
@@ -558,7 +544,7 @@ def load_presubmit_build_recipes(
         )
         presubmit_steps = default_steps
 
-    presubmit_recipes: List[BuildRecipe] = []
+    presubmit_recipes: list[BuildRecipe] = []
 
     for step in presubmit_steps:
         build_recipe = presubmit_build_recipe(
@@ -576,7 +562,7 @@ def load_presubmit_build_recipes(
 
 
 def _tab_complete_recipe(
-    build_recipes: List[BuildRecipe],
+    build_recipes: list[BuildRecipe],
     text: str = '',
 ) -> None:
     for name in sorted(recipe.display_name for recipe in build_recipes):
@@ -594,8 +580,8 @@ def _tab_complete_presubmit_step(
 
 
 def _list_steps_and_recipes(
-    presubmit_programs: Optional[Programs] = None,
-    build_recipes: Optional[List[BuildRecipe]] = None,
+    presubmit_programs: Programs | None = None,
+    build_recipes: list[BuildRecipe] | None = None,
 ) -> None:
     if presubmit_programs:
         _LOG.info('Presubmit steps:')
@@ -612,13 +598,13 @@ def _list_steps_and_recipes(
 
 
 def _print_usage_help(
-    presubmit_programs: Optional[Programs] = None,
-    build_recipes: Optional[List[BuildRecipe]] = None,
+    presubmit_programs: Programs | None = None,
+    build_recipes: list[BuildRecipe] | None = None,
 ) -> None:
     """Print usage examples with known presubmits and build recipes."""
 
     def print_pw_build(
-        option: str, arg: Optional[str] = None, end: str = '\n'
+        option: str, arg: str | None = None, end: str = '\n'
     ) -> None:
         print(
             ' '.join(
@@ -665,13 +651,13 @@ def _print_usage_help(
 
 
 def main(
-    presubmit_programs: Optional[Programs] = None,
-    default_presubmit_step_names: Optional[List[str]] = None,
-    build_recipes: Optional[List[BuildRecipe]] = None,
-    default_build_recipe_names: Optional[List[str]] = None,
-    repo_root: Optional[Path] = None,
-    presubmit_out_dir: Optional[Path] = None,
-    package_root: Optional[Path] = None,
+    presubmit_programs: Programs | None = None,
+    default_presubmit_step_names: list[str] | None = None,
+    build_recipes: list[BuildRecipe] | None = None,
+    default_build_recipe_names: list[str] | None = None,
+    repo_root: Path | None = None,
+    presubmit_out_dir: Path | None = None,
+    package_root: Path | None = None,
     default_root_logfile: Path = Path('out/build.txt'),
     force_pw_watch: bool = False,
 ) -> int:
@@ -718,7 +704,7 @@ def main(
         _list_steps_and_recipes(presubmit_programs, build_recipes)
         return 0
 
-    command_line_dash_c_recipes: List[BuildRecipe] = []
+    command_line_dash_c_recipes: list[BuildRecipe] = []
     # If -C out directories are provided add them to the recipes list.
     if args.build_directories:
         prefs = _get_prefs(args)
@@ -731,8 +717,8 @@ def main(
     if package_root is None:
         package_root = pw_env.PW_PACKAGE_ROOT
 
-    all_files: List[Path]
-    modified_files: List[Path]
+    all_files: list[Path]
+    modified_files: list[Path]
 
     all_files, modified_files = fetch_file_lists(
         root=repo_root,
@@ -753,7 +739,7 @@ def main(
             _LOG.info(line)
         _LOG.info('')
 
-    selected_build_recipes: List[BuildRecipe] = []
+    selected_build_recipes: list[BuildRecipe] = []
     if build_recipes:
         if hasattr(args, 'recipe'):
             selected_build_recipes = args.recipe
@@ -764,7 +750,7 @@ def main(
                 if recipe.display_name in default_build_recipe_names
             ]
 
-    selected_presubmit_recipes: List[BuildRecipe] = []
+    selected_presubmit_recipes: list[BuildRecipe] = []
     if presubmit_programs and hasattr(args, 'step'):
         selected_presubmit_recipes = load_presubmit_build_recipes(
             presubmit_programs,

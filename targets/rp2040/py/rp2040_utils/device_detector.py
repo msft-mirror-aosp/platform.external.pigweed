@@ -21,7 +21,7 @@ from pathlib import Path
 import platform
 import shutil
 import subprocess
-from typing import Dict, Iterable, List, Optional
+from typing import Iterable
 
 from ctypes.util import find_library as ctypes_find_library
 import serial.tools.list_ports
@@ -55,9 +55,9 @@ else:
     raise RuntimeError(f'Unsupported platform.system(): {platform.system()}')
 
 
-def custom_find_library(name: str) -> Optional[str]:
+def custom_find_library(name: str) -> str | None:
     """Search for shared libraries in non-standard locations."""
-    search_paths: List[Path] = []
+    search_paths: list[Path] = []
 
     # Add to search_paths starting with lowest priority locations.
 
@@ -173,9 +173,9 @@ class _BoardUsbInfo:
     port: int
 
 
-def _detect_pico_usb_info() -> Dict[str, _BoardUsbInfo]:
+def _detect_pico_usb_info() -> dict[str, _BoardUsbInfo]:
     """Finds Raspberry Pi Pico devices and retrieves USB info for each one."""
-    boards: Dict[str, _BoardUsbInfo] = {}
+    boards: dict[str, _BoardUsbInfo] = {}
     devices = libusb_raspberry_pi_devices()
 
     if not devices:
@@ -212,7 +212,7 @@ def _detect_pico_usb_info() -> Dict[str, _BoardUsbInfo]:
     return boards
 
 
-def _detect_pico_serial_ports() -> Dict[str, _BoardSerialInfo]:
+def _detect_pico_serial_ports() -> dict[str, _BoardSerialInfo]:
     """Finds the serial com port associated with each Raspberry Pi Pico."""
     boards = {}
     all_devs = serial.tools.list_ports.comports()
@@ -230,7 +230,7 @@ def _detect_pico_serial_ports() -> Dict[str, _BoardSerialInfo]:
     return boards
 
 
-def detect_boards() -> List[BoardInfo]:
+def detect_boards() -> list[BoardInfo]:
     """Detects attached Raspberry Pi Pico boards in USB serial mode.
 
     Returns:

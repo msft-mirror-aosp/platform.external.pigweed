@@ -43,12 +43,8 @@ from types import ModuleType
 from typing import (
     Any,
     Collection,
-    Dict,
     Iterable,
     Iterator,
-    List,
-    Optional,
-    Union,
 )
 
 import serial
@@ -207,36 +203,18 @@ def get_parser() -> argparse.ArgumentParser:
         help='Use IPython instead of pw_console.',
     )
 
-    # TODO: b/248257406 - Use argparse.BooleanOptionalAction when Python 3.8 is
-    # no longer supported.
     parser.add_argument(
         '--rpc-logging',
-        action='store_true',
+        action=argparse.BooleanOptionalAction,
         default=True,
         help='Use pw_rpc based logging.',
     )
 
     parser.add_argument(
-        '--no-rpc-logging',
-        action='store_false',
-        dest='rpc_logging',
-        help="Don't use pw_rpc based logging.",
-    )
-
-    # TODO: b/248257406 - Use argparse.BooleanOptionalAction when Python 3.8 is
-    # no longer supported.
-    parser.add_argument(
         '--hdlc-encoding',
-        action='store_true',
+        action=argparse.BooleanOptionalAction,
         default=True,
         help='Use HDLC encoding on transfer interfaces.',
-    )
-
-    parser.add_argument(
-        '--no-hdlc-encoding',
-        action='store_false',
-        dest='hdlc_encoding',
-        help="Don't use HDLC encoding on transfer interface.",
     )
 
     parser.add_argument(
@@ -249,7 +227,7 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _parse_args(args: Optional[argparse.Namespace] = None):
+def _parse_args(args: argparse.Namespace | None = None):
     """Parses and returns the command line arguments."""
     if args is not None:
         return args
@@ -274,7 +252,7 @@ def _start_python_terminal(  # pylint: disable=too-many-arguments
     device_logfile: str,
     json_logfile: str,
     serial_debug: bool = False,
-    config_file_path: Optional[Path] = None,
+    config_file_path: Path | None = None,
     use_ipython: bool = False,
 ) -> None:
     """Starts an interactive Python terminal with preset variables."""
@@ -327,7 +305,7 @@ def _start_python_terminal(  # pylint: disable=too-many-arguments
     client_info = device.info()
     completions = flattened_rpc_completions([client_info])
 
-    log_windows: Dict[str, Union[List[logging.Logger], log_store.LogStore]] = {
+    log_windows: dict[str, list[logging.Logger] | log_store.LogStore] = {
         'Device Logs': device_log_store,
         'Host Logs': root_log_store,
     }
@@ -364,7 +342,7 @@ def console(
     device: str,
     baudrate: int,
     proto_globs: Collection[str],
-    ticks_per_second: Optional[int],
+    ticks_per_second: int | None,
     token_databases: Collection[Path],
     socket_addr: str,
     logfile: str,
@@ -373,9 +351,9 @@ def console(
     json_logfile: str,
     output: Any,
     serial_debug: bool = False,
-    config_file: Optional[Path] = None,
+    config_file: Path | None = None,
     verbose: bool = False,
-    compiled_protos: Optional[List[ModuleType]] = None,
+    compiled_protos: list[ModuleType] | None = None,
     merge_device_and_host_logs: bool = False,
     rpc_logging: bool = True,
     use_ipython: bool = False,
@@ -462,7 +440,7 @@ def console(
         )
         detokenizer.show_errors = True
 
-    protos: List[Union[ModuleType, Path]] = list(_expand_globs(proto_globs))
+    protos: list[ModuleType | Path] = list(_expand_globs(proto_globs))
 
     if compiled_protos is None:
         compiled_protos = []
@@ -579,12 +557,12 @@ def console(
     return 0
 
 
-def main(args: Optional[argparse.Namespace] = None) -> int:
+def main(args: argparse.Namespace | None = None) -> int:
     return console(**vars(_parse_args(args)))
 
 
 def main_with_compiled_protos(
-    compiled_protos, args: Optional[argparse.Namespace] = None
+    compiled_protos, args: argparse.Namespace | None = None
 ):
     return console(**vars(_parse_args(args)), compiled_protos=compiled_protos)
 

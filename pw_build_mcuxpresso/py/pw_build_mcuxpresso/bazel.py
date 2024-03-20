@@ -13,7 +13,7 @@
 # the License.
 """Bazel output support."""
 
-from typing import Any, List, Optional
+from typing import Any
 
 import pathlib
 
@@ -34,7 +34,7 @@ def _bazel_str_out(name: str, val: Any, indent: int = 0) -> None:
     print('    ' * indent + f'{name} = "{_bazel_str(val)}",')
 
 
-def _bazel_str_list_out(name: str, vals: List[Any], indent: int = 0) -> None:
+def _bazel_str_list_out(name: str, vals: list[Any], indent: int = 0) -> None:
     """Outputs list of strings in Bazel format with correct escaping."""
     if not vals:
         return
@@ -47,8 +47,8 @@ def _bazel_str_list_out(name: str, vals: List[Any], indent: int = 0) -> None:
 
 def _bazel_path_list_out(
     name: str,
-    vals: List[pathlib.Path],
-    path_prefix: Optional[str] = None,
+    vals: list[pathlib.Path],
+    path_prefix: str | None = None,
     indent: int = 0,
 ) -> None:
     """Outputs list of paths in Bazel format with common prefix."""
@@ -60,9 +60,7 @@ def _bazel_path_list_out(
     _bazel_str_list_out(name, sorted(set(str_vals)), indent=indent)
 
 
-def bazel_output(
-    project: Project, name: str, path_prefix: Optional[str] = None
-):
+def bazel_output(project: Project, name: str, path_prefix: str | None = None):
     """Output Bazel target for a project with the specified components.
 
     Args:

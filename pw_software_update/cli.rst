@@ -5,7 +5,6 @@ pw_software_update: CLI reference
 ---------------------------------
 .. pigweed-module-subpage::
    :name: pw_software_update
-   :tagline: Secure software delivery
 
 Overview
 ---------
@@ -17,9 +16,9 @@ target.
 
 .. code-block:: bash
 
-  ~$ cd pigweed
-  ~/pigweed$ source ./activate.sh
-  ~/pigweed$ pw update [-h] <command>
+   ~$ cd pigweed
+   ~/pigweed$ source ./activate.sh
+   ~/pigweed$ pw update [-h] <command>
 
 .. csv-table::
   :header: "Command", "Description"
@@ -44,7 +43,7 @@ Generates an ECDSA SHA-256 public + private keypair.
 
 .. code-block:: bash
 
-  $ pw update generate-key [-h] pathname
+   $ pw update generate-key [-h] pathname
 
 .. csv-table::
    :header: "Argument", "Description"
@@ -60,11 +59,11 @@ Creates a root metadata.
 
 .. code-block:: bash
 
-  $ pw update create-root-metadata [-h]
-      [--version VERSION] \
-      --append-root-key ROOT_KEY \
-      --append-targets-key TARGETS_KEY \
-      -o/--out OUT
+   $ pw update create-root-metadata [-h]
+       [--version VERSION] \
+       --append-root-key ROOT_KEY \
+       --append-targets-key TARGETS_KEY \
+       -o/--out OUT
 
 .. csv-table::
   :header: "Option", "Description"
@@ -83,9 +82,9 @@ Signs a given root metadata.
 
 .. code-block:: bash
 
-  $ pw update sign-root-metadata [-h] \
-      --root-metadata ROOT_METADATA \
-      --root-key ROOT_KEY
+   $ pw update sign-root-metadata [-h] \
+       --root-metadata ROOT_METADATA \
+       --root-key ROOT_KEY
 
 .. csv-table::
   :header: "Option", "Description"
@@ -102,7 +101,7 @@ Prints the contents of a given root metadata.
 
 .. code-block:: bash
 
-  $ pw update inspect-root-metadata [-h] pathname
+   $ pw update inspect-root-metadata [-h] pathname
 
 .. csv-table::
   :header: "Argument", "Description"
@@ -118,9 +117,9 @@ Creates an empty update bundle.
 
 .. code-block:: bash
 
-  $ pw update create-empty-bundle [-h] \
-      [--target-metadata-version VERSION] \
-      pathname
+   $ pw update create-empty-bundle [-h] \
+       [--target-metadata-version VERSION] \
+       pathname
 
 .. csv-table::
   :header: "Argument", "Description"
@@ -143,9 +142,9 @@ Adds a root metadata to a bundle.
 
 .. code-block:: bash
 
-  $ pw update add-root-metadata-to-bundle [-h] \
-      --append-root-metadata ROOT_METADATA \
-      --bundle BUNDLE
+   $ pw update add-root-metadata-to-bundle [-h] \
+       --append-root-metadata ROOT_METADATA \
+       --bundle BUNDLE
 
 .. csv-table::
   :header: "Option", "Description"
@@ -163,10 +162,10 @@ Adds a target file to an existing bundle.
 
 .. code-block:: bash
 
-  $ pw update add-file-to-bundle [-h] \
-      [--new-name NEW_NAME] \
-      --bundle BUNDLE \
-      --file FILE_PATH
+   $ pw update add-file-to-bundle [-h] \
+       [--new-name NEW_NAME] \
+       --bundle BUNDLE \
+       --file FILE_PATH
 
 .. csv-table::
   :header: "Option", "Description"
@@ -184,7 +183,7 @@ Signs an existing bundle with a dev key.
 
 .. code-block:: bash
 
-  $ pw update sign-bundle [-h] --bundle BUNDLE --key KEY
+   $ pw update sign-bundle [-h] --bundle BUNDLE --key KEY
 
 .. csv-table::
   :header: "Option", "Description"
@@ -201,7 +200,7 @@ Prints the contents of a given bundle.
 
 .. code-block:: bash
 
-  $ pw update inspect-bundle [-h] pathname
+   $ pw update inspect-bundle [-h] pathname
 
 .. csv-table::
   :header: "Argument", "Description"
@@ -217,9 +216,9 @@ Performs verification of an existing bundle.
 
 .. code-block:: bash
 
-  $ pw update verify-bundle [-h] \
-      --bundle BUNDLE
-      --trusted-root-metadata ROOT_METADATA
+   $ pw update verify-bundle [-h] \
+       --bundle BUNDLE
+       --trusted-root-metadata ROOT_METADATA
 
 .. csv-table::
   :header: "Option", "Description"
