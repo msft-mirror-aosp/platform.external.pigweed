@@ -247,8 +247,8 @@ In addition to Pigweed's presubmit checks, some projects that use Pigweed run
 their presubmit checks in Pigweed's infrastructure. This supports a development
 flow where projects automatically update their Pigweed submodule if their tests
 pass. If a project cannot build against Pigweed's tip-of-tree, it will stay on
-a fixed Pigweed revision until the issues are fixed. See the `sample project
-<https://pigweed.googlesource.com/pigweed/sample_project/>`_ for an example of
+a fixed Pigweed revision until the issues are fixed. See the `examples
+<https://pigweed.googlesource.com/pigweed/examples/>`_ repo for an example of
 this.
 
 Pigweed does its best to keep builds passing for dependent projects. In some
@@ -300,14 +300,14 @@ Linux/macOS
 ^^^^^^^^^^^
 .. code-block:: bash
 
-  $ pw presubmit --install
+   $ pw presubmit --install
 
 This will be effectively the same as running the following command before every
 ``git push``:
 
 .. code-block:: bash
 
-  $ pw presubmit
+   $ pw presubmit
 
 
 .. image:: ../../pw_presubmit/docs/pw_presubmit_demo.gif
@@ -319,7 +319,7 @@ example) you may push using this command:
 
 .. code-block:: bash
 
-  $ git push origin HEAD:refs/for/main --no-verify
+   $ git push origin HEAD:refs/for/main --no-verify
 
 Presubmit and branch management
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -328,7 +328,7 @@ track, e.g.
 
 .. code-block:: bash
 
-  $ git checkout -b myfeature origin/main
+   $ git checkout -b myfeature origin/main
 
 When tracking an upstream branch, ``pw presubmit`` will only run checks on the
 modified files, rather than the entire repository.
@@ -405,5 +405,4 @@ See the warning about caching Python packages for multiple platforms in
    ../style_guide
    ../code_reviews
    ../code_of_conduct
-   module_docs
-   changelog
+   Docs and pigweed.dev <docs/index>

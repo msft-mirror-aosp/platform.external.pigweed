@@ -5,7 +5,6 @@ API reference
 =============
 .. pigweed-module-subpage::
    :name: pw_toolchain_bazel
-   :tagline: A modular toolkit for declaring C/C++ toolchains in Bazel
 
 .. py:class:: pw_cc_toolchain
 
@@ -605,17 +604,17 @@ API reference
 
       .. code-block:: py
 
-        pw_cc_feature(
-            name = "requires_thin_lto_and_opt",
-            feature_name = "requires_thin_lto_and_opt",
-            requires_any_of = [":thin_lto_requirements"]
-        )
+         pw_cc_feature(
+             name = "requires_thin_lto_and_opt",
+             feature_name = "requires_thin_lto_and_opt",
+             requires_any_of = [":thin_lto_requirements"]
+         )
 
-        pw_cc_feature(
-            name = "requires_thin_lto_or_opt",
-            feature_name = "requires_thin_lto_or_opt",
-            requires_any_of = [":thin_lto", ":opt"]
-        )
+         pw_cc_feature(
+             name = "requires_thin_lto_or_opt",
+             feature_name = "requires_thin_lto_or_opt",
+             requires_any_of = [":thin_lto", ":opt"]
+         )
 
       .. admonition:: Note
 

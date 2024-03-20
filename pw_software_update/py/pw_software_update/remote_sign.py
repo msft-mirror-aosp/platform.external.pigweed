@@ -89,7 +89,6 @@ import importlib
 import json
 from pathlib import Path
 import time
-from typing import Dict, Optional, Union
 
 from cryptography.hazmat import backends
 from cryptography.hazmat.primitives import hashes, serialization
@@ -99,8 +98,6 @@ from google.cloud import storage  # type: ignore
 from google.cloud.storage.bucket import Bucket  # type: ignore
 
 DEFAULT_TIMEOUT_S = 600
-
-PathOrBytes = Union[Path, bytes]
 
 
 def _parse_args():
@@ -183,7 +180,7 @@ class RemoteSignClient:
         project_name: str,
         input_bucket_name: str,
         output_bucket_name: str,
-        gcs_credentials: Optional[Credentials] = None,
+        gcs_credentials: Credentials | None = None,
     ):
         storage_client = storage.Client(
             project=project_name, credentials=gcs_credentials
@@ -199,10 +196,10 @@ class RemoteSignClient:
         signing_key_name: str,
         builder_key: Path,
         builder_public_key: Path,
-        bundle_blob_name: Optional[str] = None,
-        request_blob_name: Optional[str] = None,
-        signed_bundle_blob_name: Optional[str] = None,
-        request_overrides: Optional[Dict] = None,
+        bundle_blob_name: str | None = None,
+        request_blob_name: str | None = None,
+        signed_bundle_blob_name: str | None = None,
+        request_overrides: dict | None = None,
         timeout_s: int = DEFAULT_TIMEOUT_S,
     ) -> bytes:
         """Upload file to GCS and download signed counterpart when ready.
@@ -215,7 +212,7 @@ class RemoteSignClient:
           bundle_blob_name: GCS path at which to upload bundle to sign.
           request_blob_name: GCS path at which to upload request file.
           signed_bundle_blob_name: GCS path in output bucket to request.
-          request_overrides: Dict of signing request JSON keys and values to
+          request_overrides: dict of signing request JSON keys and values to
               add to the signing requests. If this dict contains any keys whose
               values are already in the signing request, the existing values
               will be overwritten by the ones passed in here.
@@ -289,7 +286,7 @@ class RemoteSignClient:
         self,
         blob_name,
         interval: int = 1,
-        max_tries: Optional[int] = None,
+        max_tries: int | None = None,
         timeout_s: int = DEFAULT_TIMEOUT_S,
     ) -> storage.Blob:
         """Wait for a specific blob to appear in the output bucket.
@@ -318,7 +315,7 @@ class RemoteSignClient:
         )
 
     @staticmethod
-    def _get_builder_signature(data: PathOrBytes, key: Path) -> bytes:
+    def _get_builder_signature(data: Path | bytes, key: Path) -> bytes:
         """Generate a base64-encided builder signature for file.
 
         In order for the remote signing system to have some level of trust in

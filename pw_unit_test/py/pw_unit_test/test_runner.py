@@ -27,7 +27,7 @@ import sys
 import time
 
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Iterable, Sequence, Set
 
 import requests
 
@@ -128,7 +128,7 @@ class TestGroup:
         """Updates the dependency list of this group."""
         self._deps = deps
 
-    def all_test_dependencies(self) -> List[Test]:
+    def all_test_dependencies(self) -> list[Test]:
         """Returns a list of all tests in this group and its dependencies."""
         return list(self._all_test_dependencies(set()))
 
@@ -161,16 +161,16 @@ class TestRunner:
         executable: str,
         args: Sequence[str],
         tests: Iterable[Test],
-        env: Optional[Dict[str, str]] = None,
-        timeout: Optional[float] = None,
+        env: dict[str, str] | None = None,
+        timeout: float | None = None,
         verbose: bool = False,
     ) -> None:
         self._executable: str = executable
         self._args: Sequence[str] = args
-        self._tests: List[Test] = list(tests)
-        self._env: Dict[str, str] = env or {}
+        self._tests: list[Test] = list(tests)
+        self._env: dict[str, str] = env or {}
         self._timeout = timeout
-        self._result_sink: Optional[Dict[str, str]] = None
+        self._result_sink: dict[str, str] | None = None
         self.verbose = verbose
 
         # Access go/result-sink, if available.
@@ -317,10 +317,10 @@ class TestRunner:
 METADATA_EXTENSION = '.testinfo.json'
 
 
-def find_test_metadata(root: str) -> List[str]:
+def find_test_metadata(root: str) -> list[str]:
     """Locates all test metadata files located within a directory tree."""
 
-    metadata: List[str] = []
+    metadata: list[str] = []
     for path, _, files in os.walk(root):
         for filename in files:
             if not filename.endswith(METADATA_EXTENSION):
@@ -361,7 +361,7 @@ def find_binary(target: str) -> str:
     )
 
 
-def parse_metadata(metadata: List[str], root: str) -> Dict[str, TestGroup]:
+def parse_metadata(metadata: list[str], root: str) -> dict[str, TestGroup]:
     """Builds a graph of test group objects from metadata.
 
     Args:
@@ -385,17 +385,17 @@ def parse_metadata(metadata: List[str], root: str) -> Dict[str, TestGroup]:
             return path
         return path[: index - 1] + path[index:]
 
-    group_deps: List[Tuple[str, List[str]]] = []
-    all_tests: Dict[str, Test] = {}
-    test_groups: Dict[str, TestGroup] = {}
+    group_deps: list[tuple[str, list[str]]] = []
+    all_tests: dict[str, Test] = {}
+    test_groups: dict[str, TestGroup] = {}
     num_tests = 0
 
     for path in metadata:
         with open(path, 'r') as metadata_file:
             metadata_list = json.load(metadata_file)
 
-        deps: List[str] = []
-        tests: List[Test] = []
+        deps: list[str] = []
+        tests: list[Test] = []
 
         for entry in metadata_list:
             if entry['type'] == 'self':
@@ -429,8 +429,8 @@ def parse_metadata(metadata: List[str], root: str) -> Dict[str, TestGroup]:
 
 
 def tests_from_groups(
-    group_names: Optional[Sequence[str]], root: str
-) -> List[Test]:
+    group_names: Sequence[str] | None, root: str
+) -> list[Test]:
     """Returns unit tests belonging to test groups and their dependencies.
 
     If args.names is nonempty, only searches groups specified there.
@@ -455,17 +455,17 @@ def tests_from_groups(
     return list(tests_to_run)
 
 
-def tests_from_paths(paths: Sequence[str]) -> List[Test]:
+def tests_from_paths(paths: Sequence[str]) -> list[Test]:
     """Returns a list of tests from test executable paths."""
 
-    tests: List[Test] = []
+    tests: list[Test] = []
     for path in paths:
         name = os.path.splitext(os.path.basename(path))[0]
         tests.append(Test(name, path))
     return tests
 
 
-def parse_env(env: Sequence[str]) -> Dict[str, str]:
+def parse_env(env: Sequence[str]) -> dict[str, str]:
     """Returns a dictionary of environment names and values.
 
     Args:
@@ -489,9 +489,9 @@ async def find_and_run_tests(
     runner: str,
     runner_args: Sequence[str] = (),
     env: Sequence[str] = (),
-    timeout: Optional[float] = None,
-    group: Optional[Sequence[str]] = None,
-    test: Optional[Sequence[str]] = None,
+    timeout: float | None = None,
+    group: Sequence[str] | None = None,
+    test: Sequence[str] | None = None,
     verbose: bool = False,
 ) -> int:
     """Runs some unit tests."""

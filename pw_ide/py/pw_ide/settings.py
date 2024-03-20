@@ -17,7 +17,7 @@ import enum
 from inspect import cleandoc
 import os
 from pathlib import Path
-from typing import Any, cast, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, cast, Literal
 import yaml
 
 from pw_cli.env import pigweed_environment
@@ -41,11 +41,11 @@ class SupportedEditor(enum.Enum):
     VSCODE = 'vscode'
 
 
-_DEFAULT_SUPPORTED_EDITORS: Dict[SupportedEditorName, bool] = {
+_DEFAULT_SUPPORTED_EDITORS: dict[SupportedEditorName, bool] = {
     'vscode': True,
 }
 
-_DEFAULT_CONFIG: Dict[str, Any] = {
+_DEFAULT_CONFIG: dict[str, Any] = {
     'cascade_targets': False,
     'clangd_alternate_path': None,
     'clangd_additional_query_drivers': [],
@@ -99,8 +99,8 @@ def _parse_dir_path(input_path_str: str) -> Path:
 
 
 def _parse_compdb_search_path(
-    input_data: Union[str, Tuple[str, str]], default_inference: str
-) -> Tuple[Path, str]:
+    input_data: str | tuple[str, str], default_inference: str
+) -> tuple[Path, str]:
     if isinstance(input_data, (tuple, list)):
         return _parse_dir_path(input_data[0]), input_data[1]
 
@@ -112,10 +112,10 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
 
     def __init__(
         self,
-        project_file: Union[Path, bool] = _DEFAULT_PROJECT_FILE,
-        project_user_file: Union[Path, bool] = _DEFAULT_PROJECT_USER_FILE,
-        user_file: Union[Path, bool] = _DEFAULT_USER_FILE,
-        default_config: Optional[Dict[str, Any]] = None,
+        project_file: Path | bool = _DEFAULT_PROJECT_FILE,
+        project_user_file: Path | bool = _DEFAULT_PROJECT_USER_FILE,
+        user_file: Path | bool = _DEFAULT_USER_FILE,
+        default_config: dict[str, Any] | None = None,
     ) -> None:
         self.config_init(
             config_section_title='pw_ide',
@@ -140,7 +140,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return Path(self._config.get('working_dir', PW_IDE_DEFAULT_DIR))
 
     @property
-    def compdb_gen_cmd(self) -> Optional[str]:
+    def compdb_gen_cmd(self) -> str | None:
         """The command that should be run to generate a compilation database.
 
         Defining this allows ``pw_ide`` to automatically generate a compilation
@@ -149,7 +149,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return self._config.get('compdb_gen_cmd')
 
     @property
-    def compdb_search_paths(self) -> List[Tuple[Path, str]]:
+    def compdb_search_paths(self) -> list[tuple[Path, str]]:
         """Paths to directories to search for compilation databases.
 
         If you're using a build system to generate compilation databases, this
@@ -170,7 +170,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         ]
 
     @property
-    def targets(self) -> List[str]:
+    def targets(self) -> list[str]:
         """The list of targets that should be enabled for code analysis.
 
         In this case, "target" is analogous to a GN target, i.e., a particular
@@ -237,7 +237,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return self._config.get('target_inference', _DEFAULT_TARGET_INFERENCE)
 
     @property
-    def default_target(self) -> Optional[str]:
+    def default_target(self) -> str | None:
         """The default target to use when calling ``--set-default``.
 
         This target will be selected when ``pw ide cpp --set-default`` is
@@ -249,7 +249,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return self._config.get('default_target', None)
 
     @property
-    def sync(self) -> List[str]:
+    def sync(self) -> list[str]:
         """A sequence of commands to automate IDE features setup.
 
         ``pw ide sync`` should do everything necessary to get the project from
@@ -263,7 +263,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return self._config.get('sync', list())
 
     @property
-    def clangd_alternate_path(self) -> Optional[Path]:
+    def clangd_alternate_path(self) -> Path | None:
         """An alternate path to ``clangd`` to use instead of Pigweed's.
 
         Pigweed provides the ``clang`` toolchain, including ``clangd``, via
@@ -279,7 +279,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return self._config.get('clangd_alternate_path', None)
 
     @property
-    def clangd_additional_query_drivers(self) -> List[str]:
+    def clangd_additional_query_drivers(self) -> list[str]:
         """Additional query driver paths that clangd should use.
 
         By default, ``pw_ide`` supplies driver paths for the toolchains included
@@ -289,7 +289,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         """
         return self._config.get('clangd_additional_query_drivers', list())
 
-    def clangd_query_drivers(self, host_clang_cc_path: Path) -> List[str]:
+    def clangd_query_drivers(self, host_clang_cc_path: Path) -> list[str]:
         drivers = [
             *[
                 _expand_any_vars_str(p)
@@ -308,7 +308,7 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return ','.join(self.clangd_query_drivers(host_clang_cc_path))
 
     @property
-    def editors(self) -> Dict[str, bool]:
+    def editors(self) -> dict[str, bool]:
         """Enable or disable automated support for editors.
 
         Automatic support for some editors is provided by ``pw_ide``, which is

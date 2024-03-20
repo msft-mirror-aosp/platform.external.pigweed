@@ -22,11 +22,9 @@ import unittest
 from typing import (
     Any,
     Callable,
-    Dict,
     Generic,
     Iterable,
     Iterator,
-    List,
     Sequence,
     TextIO,
     TypeVar,
@@ -132,7 +130,7 @@ class TestGenerator(Generic[T]):
     """Generates tests for multiple languages from a series of test cases."""
 
     def __init__(self, test_cases: Sequence[GroupOrTest[T]]):
-        self._cases: Dict[str, List[T]] = defaultdict(list)
+        self._cases: dict[str, list[T]] = defaultdict(list)
         message = ''
 
         if len(test_cases) < 2:
@@ -158,7 +156,7 @@ class TestGenerator(Generic[T]):
                 yield Context(group, i, len(test_list), test_case)
 
     def _generate_python_tests(self, define_py_test: PyTestGenerator):
-        tests: Dict[str, Callable[[Any], None]] = {}
+        tests: dict[str, Callable[[Any], None]] = {}
 
         for ctx in self._test_contexts():
             test = define_py_test(ctx)
@@ -235,7 +233,7 @@ def _to_chars(data: bytes) -> Iterator[str]:
             yield fr'\x{byte:02x}'
 
 
-def cc_string(data: Union[str, bytes]) -> str:
+def cc_string(data: str | bytes) -> str:
     """Returns a C++ string literal version of a byte string or UTF-8 string."""
     if isinstance(data, str):
         data = data.encode()

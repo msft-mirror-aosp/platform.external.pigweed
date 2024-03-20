@@ -33,14 +33,11 @@ import sys
 from typing import (
     Iterable,
     Iterator,
-    List,
     NamedTuple,
     NoReturn,
-    Optional,
     Pattern,
     Sequence,
     Set,
-    Tuple,
 )
 
 # Matches the #if or #elif statement that starts a compile fail test.
@@ -94,7 +91,7 @@ class Expectation:
 class TestCase:
     suite: str
     case: str
-    expectations: Tuple[Expectation, ...]
+    expectations: tuple[Expectation, ...]
     source: Path
     line: int
 
@@ -140,9 +137,9 @@ class _ExpectationParser:
         self.index = index
         self._compiler = compiler
         self._state = self._State.SPACE
-        self._contents: List[str] = []
+        self._contents: list[str] = []
 
-    def parse(self, chars: str) -> Optional[Expectation]:
+    def parse(self, chars: str) -> Expectation | None:
         """State machine that parses characters in PW_NC_EXPECT()."""
         for char in chars:
             if self._state is self._State.SPACE:
@@ -214,7 +211,7 @@ class _NegativeCompilationTestSource:
         raise ParseError(message, self._file, self._lines, error_lines)
 
     def _parse_expectations(self, start: int) -> Iterator[Expectation]:
-        expectation: Optional[_ExpectationParser] = None
+        expectation: _ExpectationParser | None = None
 
         for index in range(start, len(self._lines)):
             line = self._lines[index]
@@ -334,7 +331,7 @@ pw_python_action("{test.name()}.negative_compilation_test") {{
 def generate_gn_build(
     base: str,
     sources: Iterable[SourceFile],
-    tests: List[TestCase],
+    tests: list[TestCase],
     all_tests: str,
 ) -> Iterator[str]:
     """Generates the BUILD.gn file with compilation failure test targets."""

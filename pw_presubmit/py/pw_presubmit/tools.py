@@ -22,17 +22,14 @@ import shlex
 import subprocess
 from typing import (
     Any,
-    Dict,
     Iterable,
     Iterator,
-    List,
-    Optional,
     Sequence,
     Pattern,
-    Tuple,
 )
 
 import pw_cli.color
+from pw_presubmit.format.core import ToolRunner
 from pw_presubmit.presubmit_context import PRESUBMIT_CONTEXT
 
 _LOG: logging.Logger = logging.getLogger(__name__)
@@ -139,11 +136,11 @@ def file_summary(
     pad: str = ' ',
     pad_start: str = ' ',
     pad_end: str = ' ',
-) -> List[str]:
+) -> list[str]:
     """Summarizes a list of files by the file types in each directory."""
 
     # Count the file types in each directory.
-    all_counts: Dict[Any, Counter] = defaultdict(Counter)
+    all_counts: dict[Any, Counter] = defaultdict(Counter)
 
     for path in paths:
         parent = path.parents[max(len(path.parents) - levels, 0)]
@@ -201,7 +198,7 @@ def relative_paths(paths: Iterable[Path], start: Path) -> Iterable[Path]:
 def exclude_paths(
     exclusions: Iterable[Pattern[str]],
     paths: Iterable[Path],
-    relative_to: Optional[Path] = None,
+    relative_to: Path | None = None,
 ) -> Iterable[Path]:
     """Excludes paths based on a series of regular expressions."""
     if relative_to:
@@ -219,7 +216,7 @@ def _truncate(value, length: int = 60) -> str:
     return (value[: length - 5] + '[...]') if len(value) > length else value
 
 
-def format_command(args: Sequence, kwargs: dict) -> Tuple[str, str]:
+def format_command(args: Sequence, kwargs: dict) -> tuple[str, str]:
     attr = ', '.join(f'{k}={_truncate(v)}' for k, v in sorted(kwargs.items()))
     return attr, ' '.join(shlex.quote(str(arg)) for arg in args)
 
@@ -246,6 +243,16 @@ def log_run(
             return empty_proc
     _LOG.debug('[COMMAND] %s\n%s', *format_command(args, kwargs))
     return subprocess.run(args, **kwargs)
+
+
+class PresubmitToolRunner(ToolRunner):
+    """A simple ToolRunner that runs a process via `log_run()`."""
+
+    def __call__(
+        self, tool: str, args, **kwargs
+    ) -> subprocess.CompletedProcess:
+        """Run the requested tool as a subprocess."""
+        return log_run([tool] + args, **kwargs)
 
 
 def flatten(*items) -> Iterator:
