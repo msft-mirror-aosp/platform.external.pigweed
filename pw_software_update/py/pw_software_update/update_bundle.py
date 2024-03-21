@@ -18,7 +18,7 @@ import logging
 import os
 from pathlib import Path
 import shutil
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Iterable
 
 from pw_software_update import metadata
 from pw_software_update.tuf_pb2 import SignedRootMetadata, SignedTargetsMetadata
@@ -30,8 +30,8 @@ _LOG = logging.getLogger(__package__)
 def targets_from_directory(
     root_dir: Path,
     exclude: Iterable[Path] = tuple(),
-    remap_paths: Optional[Dict[Path, str]] = None,
-) -> Dict[str, Path]:
+    remap_paths: dict[Path, str] | None = None,
+) -> dict[str, Path]:
     """Given a directory on dist, generate a dict of target names to files.
 
     Args:
@@ -107,10 +107,10 @@ def gen_empty_update_bundle(
 
 
 def gen_unsigned_update_bundle(
-    targets: Dict[Path, str],
-    persist: Optional[Path] = None,
+    targets: dict[Path, str],
+    persist: Path | None = None,
     targets_metadata_version: int = metadata.DEFAULT_METADATA_VERSION,
-    root_metadata: Optional[SignedRootMetadata] = None,
+    root_metadata: SignedRootMetadata | None = None,
 ) -> UpdateBundle:
     """Given a set of targets, generates an unsigned UpdateBundle.
 
@@ -168,7 +168,7 @@ def gen_unsigned_update_bundle(
     )
 
 
-def parse_target_arg(target_arg: str) -> Tuple[Path, str]:
+def parse_target_arg(target_arg: str) -> tuple[Path, str]:
     """Parse an individual target string passed in to the --targets argument.
 
     Target strings take the following form:
@@ -240,10 +240,10 @@ def parse_args() -> argparse.Namespace:
 def main(
     targets: Iterable[str],
     out: Path,
-    persist: Optional[Path] = None,
+    persist: Path | None = None,
     targets_metadata_version: int = metadata.DEFAULT_METADATA_VERSION,
-    targets_metadata_version_file: Optional[Path] = None,
-    signed_root_metadata: Optional[Path] = None,
+    targets_metadata_version_file: Path | None = None,
+    signed_root_metadata: Path | None = None,
 ) -> None:
     """Generates an UpdateBundle and serializes it to disk."""
     target_dict = {}

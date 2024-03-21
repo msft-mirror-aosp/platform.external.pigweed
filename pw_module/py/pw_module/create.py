@@ -24,7 +24,7 @@ from pathlib import Path
 import re
 import sys
 
-from typing import Any, Dict, Iterable, List, Optional, Type, Union
+from typing import Any, Iterable, Type
 
 from pw_build import generate_modules_lists
 
@@ -54,7 +54,7 @@ class _OutputFile:
 
     def __init__(self, file: Path, indent_width: int = DEFAULT_INDENT_WIDTH):
         self._file = file
-        self._content: List[str] = []
+        self._content: list[str] = []
         self._indent_width: int = indent_width
         self._indentation = 0
 
@@ -66,7 +66,7 @@ class _OutputFile:
 
     def indent(
         self,
-        width: Optional[int] = None,
+        width: int | None = None,
     ) -> '_OutputFile._IndentationContext':
         """Increases the indentation level of the output."""
         return self._IndentationContext(
@@ -132,7 +132,7 @@ class _ModuleName:
         return self.full
 
     @classmethod
-    def parse(cls, name: str) -> Optional['_ModuleName']:
+    def parse(cls, name: str) -> '_ModuleName | None':
         match = re.fullmatch(_ModuleName._MODULE_NAME_REGEX, name)
         if not match:
             return None
@@ -144,9 +144,9 @@ class _ModuleName:
 class _ModuleContext:
     name: _ModuleName
     dir: Path
-    root_build_files: List['_BuildFile']
-    sub_build_files: List['_BuildFile']
-    build_systems: List[str]
+    root_build_files: list['_BuildFile']
+    sub_build_files: list['_BuildFile']
+    build_systems: list[str]
     is_upstream: bool
 
     def build_files(self) -> Iterable['_BuildFile']:
@@ -175,12 +175,12 @@ class _BuildFile:
 
         # TODO(frolv): Shouldn't be a string list as that's build system
         # specific. Figure out a way to resolve dependencies from targets.
-        deps: List[str] = dataclasses.field(default_factory=list)
+        deps: list[str] = dataclasses.field(default_factory=list)
 
     @dataclass
     class CcTarget(Target):
-        sources: List[Path] = dataclasses.field(default_factory=list)
-        headers: List[Path] = dataclasses.field(default_factory=list)
+        sources: list[Path] = dataclasses.field(default_factory=list)
+        headers: list[Path] = dataclasses.field(default_factory=list)
 
         def rebased_sources(self, rebase_path: Path) -> Iterable[str]:
             return (str(src.relative_to(rebase_path)) for src in self.sources)
@@ -192,9 +192,9 @@ class _BuildFile:
         self._path = path
         self._ctx = ctx
 
-        self._docs_sources: List[str] = []
-        self._cc_targets: List[_BuildFile.CcTarget] = []
-        self._cc_tests: List[_BuildFile.CcTarget] = []
+        self._docs_sources: list[str] = []
+        self._cc_targets: list[_BuildFile.CcTarget] = []
+        self._cc_tests: list[_BuildFile.CcTarget] = []
 
     @property
     def path(self) -> Path:
@@ -265,16 +265,16 @@ class _BuildFile:
     def _write_docs_target(
         self,
         file: _OutputFile,
-        docs_sources: List[str],
+        docs_sources: list[str],
     ) -> None:
         """Defines a documentation target within the build file."""
 
 
-# TODO(frolv): The Dict here should be Dict[str, '_GnVal'] (i.e. _GnScope),
+# TODO(frolv): The dict here should be dict[str, '_GnVal'] (i.e. _GnScope),
 # but mypy does not yet support recursive types:
 # https://github.com/python/mypy/issues/731
-_GnVal = Union[bool, int, str, List[str], Dict[str, Any]]
-_GnScope = Dict[str, _GnVal]
+_GnVal = bool | int | str | list[str] | dict[str, Any]
+_GnScope = dict[str, _GnVal]
 
 
 class _GnBuildFile(_BuildFile):
@@ -375,7 +375,7 @@ class _GnBuildFile(_BuildFile):
     def _write_docs_target(
         self,
         file: _OutputFile,
-        docs_sources: List[str],
+        docs_sources: list[str],
     ) -> None:
         """Defines a pw_doc_group for module documentation."""
         _GnBuildFile._target(
@@ -546,7 +546,7 @@ class _BazelBuildFile(_BuildFile):
     def _write_docs_target(
         self,
         file: _OutputFile,
-        docs_sources: List[str],
+        docs_sources: list[str],
     ) -> None:
         file.line('# Bazel does not yet support building docs.')
         _BazelBuildFile._target(
@@ -558,7 +558,7 @@ class _BazelBuildFile(_BuildFile):
         file: _OutputFile,
         target_type: str,
         name: str,
-        keys: Dict[str, List[str]],
+        keys: dict[str, list[str]],
     ) -> None:
         file.line(f'{target_type}(')
 
@@ -632,7 +632,7 @@ class _CmakeBuildFile(_BuildFile):
     def _write_docs_target(
         self,
         file: _OutputFile,
-        docs_sources: List[str],
+        docs_sources: list[str],
     ) -> None:
         file.line('# CMake does not yet support building docs.')
 
@@ -641,7 +641,7 @@ class _CmakeBuildFile(_BuildFile):
         file: _OutputFile,
         target_type: str,
         name: str,
-        keys: Dict[str, List[str]],
+        keys: dict[str, list[str]],
     ) -> None:
         file.line(f'{target_type}({name}')
 
@@ -750,13 +750,13 @@ class _CcLanguageGenerator(_LanguageGenerator):
         return file
 
 
-_BUILD_FILES: Dict[str, Type[_BuildFile]] = {
+_BUILD_FILES: dict[str, Type[_BuildFile]] = {
     'bazel': _BazelBuildFile,
     'cmake': _CmakeBuildFile,
     'gn': _GnBuildFile,
 }
 
-_LANGUAGE_GENERATORS: Dict[str, Type[_LanguageGenerator]] = {
+_LANGUAGE_GENERATORS: dict[str, Type[_LanguageGenerator]] = {
     'cc': _CcLanguageGenerator,
 }
 
@@ -764,7 +764,7 @@ _LANGUAGE_GENERATORS: Dict[str, Type[_LanguageGenerator]] = {
 def _check_module_name(
     module: str,
     is_upstream: bool,
-) -> Optional[_ModuleName]:
+) -> _ModuleName | None:
     """Checks whether a module name is valid."""
 
     name = _ModuleName.parse(module)

@@ -196,8 +196,8 @@ Options for code formatting can be specified in the ``pigweed.json`` file
 steps that check code formatting and ``pw format`` commands that either check
 or fix code formatting.
 
-* ``python_formatter``: Choice of Python formatter. Options are ``black`` (used
-  by Pigweed itself) and ``yapf`` (the default).
+* ``python_formatter``: Choice of Python formatter. Options are ``black``
+  (default, used by Pigweed itself) and ``yapf``.
 * ``black_path``: If ``python_formatter`` is ``black``, use this as the
   executable instead of ``black``.
 * ``black_config_file``: Set the config file for the black formatter.
@@ -315,7 +315,7 @@ function takes an optional argument of type ``pw_presubmit.gitmodules.Config``.
   submodule URLs are prohibited.
 * ``require_branch: bool = False`` — If true, all submodules must reference a
   branch.
-* ``validator: Callable[[PresubmitContext, Path, str, Dict[str, str]], None] = None``
+* ``validator: Callable[[PresubmitContext, Path, str, dict[str, str]], None] = None``
   — A function that can be used for arbitrary submodule validation. It's called
   with the ``PresubmitContext``, the path to the ``.gitmodules`` file, the name
   of the current submodule, and the properties of the current submodule.
@@ -468,7 +468,6 @@ See ``pigweed_presubmit.py`` for a more complex presubmit check script example.
    from pathlib import Path
    import re
    import sys
-   from typing import Optional
 
    try:
        import pw_cli.log
@@ -568,7 +567,7 @@ See ``pigweed_presubmit.py`` for a more complex presubmit check script example.
    PRE_PUSH_REMOTE_REF_ALLOWLIST = ("refs/for/main",)
 
 
-   def run(install: bool, remote_ref: Optional[str], **presubmit_args) -> int:
+   def run(install: bool, remote_ref: str | None, **presubmit_args) -> int:
        """Process the --install argument then invoke pw_presubmit."""
 
        # Install the presubmit Git pre-push hook, if requested.
@@ -676,3 +675,11 @@ a formatter or remove/disable a PigWeed supplied one.
    if __name__ == '__main__':
        pw_cli.log.install(logging.INFO)
        sys.exit(main())
+
+.. pw_presubmit-nav-end
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   format

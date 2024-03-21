@@ -50,16 +50,11 @@ from typing import (
     AnyStr,
     BinaryIO,
     Callable,
-    Dict,
-    List,
     Iterable,
     Iterator,
     Match,
     NamedTuple,
-    Optional,
     Pattern,
-    Tuple,
-    Union,
 )
 
 try:
@@ -96,9 +91,6 @@ _NESTED_TOKEN_FORMATS = (
     _BASE64_TOKEN_REGEX,
 )
 
-_RawIo = Union[io.RawIOBase, BinaryIO]
-_RawIoOrBytes = Union[_RawIo, bytes]
-
 
 def _token_regex(prefix: bytes) -> Pattern[bytes]:
     """Returns a regular expression for prefixed tokenized strings."""
@@ -122,20 +114,20 @@ class DetokenizedString:
 
     def __init__(
         self,
-        token: Optional[int],
+        token: int | None,
         format_string_entries: Iterable[tuple],
         encoded_message: bytes,
         show_errors: bool = False,
-        recursive_detokenize: Optional[Callable[[str], str]] = None,
+        recursive_detokenize: Callable[[str], str] | None = None,
     ):
         self.token = token
         self.encoded_message = encoded_message
         self._show_errors = show_errors
 
-        self.successes: List[decode.FormattedString] = []
-        self.failures: List[decode.FormattedString] = []
+        self.successes: list[decode.FormattedString] = []
+        self.failures: list[decode.FormattedString] = []
 
-        decode_attempts: List[Tuple[Tuple, decode.FormattedString]] = []
+        decode_attempts: list[tuple[tuple, decode.FormattedString]] = []
 
         for entry, fmt in format_string_entries:
             result = fmt.format(
@@ -163,11 +155,11 @@ class DetokenizedString:
         """True if exactly one string decoded the arguments successfully."""
         return len(self.successes) == 1
 
-    def matches(self) -> List[decode.FormattedString]:
+    def matches(self) -> list[decode.FormattedString]:
         """Returns the strings that matched the token, best matches first."""
         return self.successes + self.failures
 
-    def best_result(self) -> Optional[decode.FormattedString]:
+    def best_result(self) -> decode.FormattedString | None:
         """Returns the string and args for the most likely decoded string."""
         for string_and_args in self.matches():
             return string_and_args
@@ -237,7 +229,7 @@ class Detokenizer:
         self._database_lock = threading.Lock()
 
         # Cache FormatStrings for faster lookup & formatting.
-        self._cache: Dict[int, List[_TokenizedFormatString]] = {}
+        self._cache: dict[int, list[_TokenizedFormatString]] = {}
 
         self._initialize_database(token_database_or_elf)
 
@@ -246,7 +238,7 @@ class Detokenizer:
             self.database = database.load_token_database(*token_sources)
             self._cache.clear()
 
-    def lookup(self, token: int) -> List[_TokenizedFormatString]:
+    def lookup(self, token: int) -> list[_TokenizedFormatString]:
         """Returns (TokenizedStringEntry, FormatString) list for matches."""
         with self._database_lock:
             try:
@@ -264,7 +256,7 @@ class Detokenizer:
     def detokenize(
         self,
         encoded_message: bytes,
-        prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
+        prefix: str | bytes = NESTED_TOKEN_PREFIX,
         recursion: int = DEFAULT_RECURSION,
     ) -> DetokenizedString:
         """Decodes and detokenizes a message as a DetokenizedString."""
@@ -299,7 +291,7 @@ class Detokenizer:
     def detokenize_text(
         self,
         data: AnyStr,
-        prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
+        prefix: str | bytes = NESTED_TOKEN_PREFIX,
         recursion: int = DEFAULT_RECURSION,
     ) -> AnyStr:
         """Decodes and replaces prefixed Base64 messages in the provided data.
@@ -318,7 +310,7 @@ class Detokenizer:
     def detokenize_base64(
         self,
         data: AnyStr,
-        prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
+        prefix: str | bytes = NESTED_TOKEN_PREFIX,
         recursion: int = DEFAULT_RECURSION,
     ) -> AnyStr:
         """Alias of detokenize_text for backwards compatibility."""
@@ -328,7 +320,7 @@ class Detokenizer:
         self,
         data: AnyStr,
         output: BinaryIO,
-        prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
+        prefix: str | bytes = NESTED_TOKEN_PREFIX,
         recursion: int = DEFAULT_RECURSION,
     ) -> None:
         """Decodes prefixed Base64 messages in data; decodes to output file."""
@@ -339,7 +331,7 @@ class Detokenizer:
         self,
         data: AnyStr,
         output: BinaryIO,
-        prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
+        prefix: str | bytes = NESTED_TOKEN_PREFIX,
         recursion: int = DEFAULT_RECURSION,
     ) -> None:
         """Alias of detokenize_text_to_file for backwards compatibility."""
@@ -347,9 +339,9 @@ class Detokenizer:
 
     def detokenize_text_live(
         self,
-        input_file: _RawIo,
+        input_file: io.RawIOBase | BinaryIO,
         output: BinaryIO,
-        prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
+        prefix: str | bytes = NESTED_TOKEN_PREFIX,
         recursion: int = DEFAULT_RECURSION,
     ) -> None:
         """Reads chars one-at-a-time, decoding messages; SLOW for big files."""
@@ -369,9 +361,9 @@ class Detokenizer:
     # TODO(gschen): remove unnecessary function
     def detokenize_base64_live(
         self,
-        input_file: _RawIo,
+        input_file: io.RawIOBase | BinaryIO,
         output: BinaryIO,
-        prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
+        prefix: str | bytes = NESTED_TOKEN_PREFIX,
         recursion: int = DEFAULT_RECURSION,
     ) -> None:
         """Alias of detokenize_text_live for backwards compatibility."""
@@ -379,7 +371,7 @@ class Detokenizer:
 
     def _detokenize_nested_callback(
         self,
-        prefix: Union[str, bytes],
+        prefix: str | bytes,
         recursion: int,
     ) -> Callable[[AnyStr], AnyStr]:
         """Returns a function that replaces all tokens for a given string."""
@@ -392,8 +384,8 @@ class Detokenizer:
 
     def _detokenize_nested(
         self,
-        message: Union[str, bytes],
-        prefix: Union[str, bytes],
+        message: str | bytes,
+        prefix: str | bytes,
         recursion: int,
     ) -> bytes:
         """Returns the message with recognized tokens replaced.
@@ -476,11 +468,8 @@ class Detokenizer:
         return original
 
 
-_PathOrStr = Union[Path, str]
-
-
 # TODO: b/265334753 - Reuse this function in database.py:LoadTokenDatabases
-def _parse_domain(path: _PathOrStr) -> Tuple[Path, Optional[Pattern[str]]]:
+def _parse_domain(path: Path | str) -> tuple[Path, Pattern[str] | None]:
     """Extracts an optional domain regex pattern suffix from a path"""
 
     if isinstance(path, Path):
@@ -506,9 +495,9 @@ class AutoUpdatingDetokenizer(Detokenizer):
     class _DatabasePath:
         """Tracks the modified time of a path or file object."""
 
-        def __init__(self, path: _PathOrStr) -> None:
+        def __init__(self, path: Path | str) -> None:
             self.path, self.domain = _parse_domain(path)
-            self._modified_time: Optional[float] = self._last_modified_time()
+            self._modified_time: float | None = self._last_modified_time()
 
         def updated(self) -> bool:
             """True if the path has been updated since the last call."""
@@ -519,7 +508,7 @@ class AutoUpdatingDetokenizer(Detokenizer):
             self._modified_time = modified_time
             return True
 
-        def _last_modified_time(self) -> Optional[float]:
+        def _last_modified_time(self) -> float | None:
             if self.path.is_dir():
                 mtime = -1.0
                 for child in self.path.glob(tokens.DIR_DB_GLOB):
@@ -543,7 +532,7 @@ class AutoUpdatingDetokenizer(Detokenizer):
 
     def __init__(
         self,
-        *paths_or_files: _PathOrStr,
+        *paths_or_files: Path | str,
         min_poll_period_s: float = 1.0,
         pool: Executor = ThreadPoolExecutor(max_workers=1),
     ) -> None:
@@ -569,7 +558,7 @@ class AutoUpdatingDetokenizer(Detokenizer):
                 _LOG.info('Changes detected; reloading token database')
                 self._pool.submit(self._reload_paths)
 
-    def lookup(self, token: int) -> List[_TokenizedFormatString]:
+    def lookup(self, token: int) -> list[_TokenizedFormatString]:
         self._reload_if_changed()
         return super().lookup(token)
 
@@ -583,8 +572,8 @@ class NestedMessageParser:
 
     def __init__(
         self,
-        prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
-        chars: Union[str, bytes] = _BASE64_CHARS,
+        prefix: str | bytes = NESTED_TOKEN_PREFIX,
+        chars: str | bytes = _BASE64_CHARS,
     ) -> None:
         """Initializes a parser.
 
@@ -610,8 +599,8 @@ class NestedMessageParser:
         self._state: NestedMessageParser._State = self._State.NON_MESSAGE
 
     def read_messages_io(
-        self, binary_io: _RawIo
-    ) -> Iterator[Tuple[bool, bytes]]:
+        self, binary_io: io.RawIOBase | BinaryIO
+    ) -> Iterator[tuple[bool, bytes]]:
         """Reads prefixed messages from a byte stream (BinaryIO object).
 
         Reads until EOF. If the stream is nonblocking (``read(1)`` returns
@@ -639,7 +628,7 @@ class NestedMessageParser:
 
     def read_messages(
         self, chunk: bytes, *, flush: bool = False
-    ) -> Iterator[Tuple[bool, bytes]]:
+    ) -> Iterator[tuple[bool, bytes]]:
         """Reads prefixed messages from a byte string.
 
         This function may be called repeatedly with chunks of a stream. Partial
@@ -659,7 +648,7 @@ class NestedMessageParser:
         if flush or self._state is self._State.NON_MESSAGE:
             yield from self._flush()
 
-    def _handle_byte(self, byte: int) -> Iterator[Tuple[bool, bytes]]:
+    def _handle_byte(self, byte: int) -> Iterator[tuple[bool, bytes]]:
         if self._state is self._State.MESSAGE:
             if byte not in self._message_bytes:
                 yield from self._flush()
@@ -674,7 +663,7 @@ class NestedMessageParser:
 
         self._buffer.append(byte)
 
-    def _flush(self) -> Iterator[Tuple[bool, bytes]]:
+    def _flush(self) -> Iterator[tuple[bool, bytes]]:
         data = bytes(self._buffer)
         self._buffer.clear()
         if data:
@@ -682,7 +671,7 @@ class NestedMessageParser:
 
     def transform_io(
         self,
-        binary_io: _RawIo,
+        binary_io: io.RawIOBase | BinaryIO,
         transform: Callable[[bytes], bytes],
     ) -> Iterator[bytes]:
         """Yields the file with a transformation applied to the messages."""
@@ -710,7 +699,7 @@ class NestedMessageParser:
 def detokenize_base64(
     detokenizer: Detokenizer,
     data: bytes,
-    prefix: Union[str, bytes] = NESTED_TOKEN_PREFIX,
+    prefix: str | bytes = NESTED_TOKEN_PREFIX,
     recursion: int = DEFAULT_RECURSION,
 ) -> bytes:
     """Alias for detokenizer.detokenize_base64 for backwards compatibility.
@@ -724,7 +713,7 @@ def _follow_and_detokenize_file(
     detokenizer: Detokenizer,
     file: BinaryIO,
     output: BinaryIO,
-    prefix: Union[str, bytes],
+    prefix: str | bytes,
     poll_period_s: float = 0.01,
 ) -> None:
     """Polls a file to detokenize it and any appended data."""
