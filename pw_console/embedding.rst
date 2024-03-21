@@ -5,7 +5,6 @@ Embedding Guide
 ===============
 .. pigweed-module-subpage::
    :name: pw_console
-   :tagline: pw_console: Multi-purpose pluggable interactive console for dev & manufacturing
 
 -------------
 Using embed()
@@ -78,19 +77,19 @@ following code will create a log message with two custom columns titled
 
 .. code-block:: python
 
-  import logging
+   import logging
 
-  LOG = logging.getLogger('log_source_1')
+   LOG = logging.getLogger('log_source_1')
 
-  LOG.info(
-      'Hello there!',
-      extra={
-          'extra_metadata_fields': {
-              'module': 'cool',
-              'timestamp': 1.2345,
-          }
-      }
-  )
+   LOG.info(
+       'Hello there!',
+       extra={
+           'extra_metadata_fields': {
+               'module': 'cool',
+               'timestamp': 1.2345,
+           }
+       }
+   )
 
 ---------------------
 Debugging Serial Data

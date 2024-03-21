@@ -28,7 +28,7 @@ import random
 import socket
 import sys
 import time
-from typing import Awaitable, Callable, Iterable, List, NamedTuple, Optional
+from typing import Awaitable, Callable, Iterable, NamedTuple
 
 from google.protobuf import text_format
 
@@ -123,7 +123,7 @@ class DataDropper(Filter):
         send_data: Callable[[bytes], Awaitable[None]],
         name: str,
         rate: float,
-        seed: Optional[int] = None,
+        seed: int | None = None,
     ):
         super().__init__(send_data)
         self._rate = rate
@@ -172,6 +172,7 @@ class KeepDropQueue(Filter):
         send_data: Callable[[bytes], Awaitable[None]],
         name: str,
         keep_drop_queue: Iterable[int],
+        only_consider_transfer_chunks: bool = False,
     ):
         super().__init__(send_data)
         self._keep_drop_queue = list(keep_drop_queue)
@@ -179,8 +180,16 @@ class KeepDropQueue(Filter):
         self._current_count = self._keep_drop_queue[0]
         self._keep = True
         self._name = name
+        self._only_consider_transfer_chunks = only_consider_transfer_chunks
 
     async def process(self, data: bytes) -> None:
+        if self._only_consider_transfer_chunks:
+            try:
+                _extract_transfer_chunk(data)
+            except Exception:
+                await self.send_data(data)
+                return
+
         # Move forward through the queue if needed.
         while self._current_count == 0:
             self._loop_idx += 1
@@ -249,7 +258,7 @@ class DataTransposer(Filter):
 
     async def _transpose_handler(self):
         """Async task that handles the packet transposition and timeouts"""
-        held_data: Optional[bytes] = None
+        held_data: bytes | None = None
         while True:
             # Only use timeout if we have data held for transposition
             timeout = None if held_data is None else self._timeout
@@ -300,14 +309,16 @@ class ServerFailure(Filter):
         self,
         send_data: Callable[[bytes], Awaitable[None]],
         name: str,
-        packets_before_failure_list: List[int],
+        packets_before_failure_list: list[int],
         start_immediately: bool = False,
+        only_consider_transfer_chunks: bool = False,
     ):
         super().__init__(send_data)
         self._name = name
         self._relay_packets = True
         self._packets_before_failure_list = packets_before_failure_list
         self._packets_before_failure = None
+        self._only_consider_transfer_chunks = only_consider_transfer_chunks
         if start_immediately:
             self.advance_packets_before_failure()
 
@@ -320,6 +331,13 @@ class ServerFailure(Filter):
             self._packets_before_failure = None
 
     async def process(self, data: bytes) -> None:
+        if self._only_consider_transfer_chunks:
+            try:
+                _extract_transfer_chunk(data)
+            except Exception:
+                await self.send_data(data)
+                return
+
         if self._packets_before_failure is None:
             await self.send_data(data)
         elif self._packets_before_failure > 0:
@@ -352,7 +370,7 @@ class WindowPacketDropper(Filter):
         self._name = name
         self._relay_packets = True
         self._window_packet_to_drop = window_packet_to_drop
-        self._next_window_start_offset: Optional[int] = 0
+        self._next_window_start_offset: int | None = 0
         self._window_packet = 0
 
     async def process(self, data: bytes) -> None:
@@ -460,7 +478,7 @@ def _extract_transfer_chunk(data: bytes) -> Chunk:
 
 
 async def _handle_simplex_events(
-    event_queue: asyncio.Queue, handlers: List[Callable[[Event], None]]
+    event_queue: asyncio.Queue, handlers: list[Callable[[Event], None]]
 ):
     while True:
         event = await event_queue.get()
@@ -470,7 +488,7 @@ async def _handle_simplex_events(
 
 async def _handle_simplex_connection(
     name: str,
-    filter_stack_config: List[config_pb2.FilterConfig],
+    filter_stack_config: list[config_pb2.FilterConfig],
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     inbound_event_queue: asyncio.Queue,
@@ -485,7 +503,7 @@ async def _handle_simplex_connection(
 
     filter_stack = EventFilter(send, name, outbound_event_queue)
 
-    event_handlers: List[Callable[[Event], None]] = []
+    event_handlers: list[Callable[[Event], None]] = []
 
     # Build the filter stack from the bottom up
     for config in reversed(filter_stack_config):
@@ -515,12 +533,16 @@ async def _handle_simplex_connection(
                 name,
                 server_failure.packets_before_failure,
                 server_failure.start_immediately,
+                server_failure.only_consider_transfer_chunks,
             )
             event_handlers.append(filter_stack.handle_event)
         elif filter_name == "keep_drop_queue":
             keep_drop_queue = config.keep_drop_queue
             filter_stack = KeepDropQueue(
-                filter_stack, name, keep_drop_queue.keep_drop_queue
+                filter_stack,
+                name,
+                keep_drop_queue.keep_drop_queue,
+                keep_drop_queue.only_consider_transfer_chunks,
             )
         elif filter_name == "window_packet_dropper":
             window_packet_dropper = config.window_packet_dropper

@@ -24,9 +24,7 @@ from typing import (
     Generator,
     Iterable,
     NamedTuple,
-    Optional,
     Sequence,
-    Tuple,
 )
 
 COMMENT = f"""\
@@ -90,8 +88,8 @@ BYTES_PER_LINE = 4
 class Blob(NamedTuple):
     symbol_name: str
     file_path: Path
-    linker_section: Optional[str]
-    alignas: Optional[str] = None
+    linker_section: str | None
+    alignas: str | None = None
 
     @staticmethod
     def from_dict(blob_dict: dict) -> 'Blob':
@@ -141,7 +139,7 @@ def parse_args() -> dict:
 
 def split_into_chunks(
     data: Iterable[Any], chunk_size: int
-) -> Generator[Tuple[Any, ...], None, None]:
+) -> Generator[tuple[Any, ...], None, None]:
     """Splits an iterable into chunks of a given size."""
     data_iterator = iter(data)
     chunk = tuple(itertools.islice(data_iterator, chunk_size))
@@ -151,7 +149,7 @@ def split_into_chunks(
 
 
 def header_from_blobs(
-    blobs: Iterable[Blob], namespace: Optional[str] = None
+    blobs: Iterable[Blob], namespace: str | None = None
 ) -> str:
     """Generate the contents of a C++ header file from blobs."""
     lines = [HEADER_PREFIX]
@@ -196,7 +194,7 @@ def array_def_from_blob_data(blob: Blob, blob_data: bytes) -> str:
 
 
 def source_from_blobs(
-    blobs: Iterable[Blob], header_path: str, namespace: Optional[str] = None
+    blobs: Iterable[Blob], header_path: str, namespace: str | None = None
 ) -> str:
     """Generate the contents of a C++ source file from blobs."""
     lines = [SOURCE_PREFIX_TEMPLATE.substitute(header_path=header_path)]
@@ -221,7 +219,7 @@ def main(
     header_include: str,
     out_source: Path,
     out_header: Path,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
 ) -> None:
     blobs = load_blobs(blob_file)
 

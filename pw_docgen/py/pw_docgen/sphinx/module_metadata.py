@@ -23,8 +23,10 @@ Everything is implemented through the Sphinx Extension API.
 """
 
 from dataclasses import dataclass
+import json
+import os
 import sys
-from typing import cast, Dict, List, Optional, TypeVar, Union
+from typing import cast, TypeVar
 
 # We use BeautifulSoup for certain docs rendering features. It may not be
 # available in downstream projects. If so, no problem. We fall back to simpler
@@ -37,6 +39,13 @@ try:
     bs_enabled = True
 except ModuleNotFoundError:
     bs_enabled = False
+
+try:
+    import jsonschema  # type: ignore
+
+    jsonschema_enabled = True
+except ModuleNotFoundError:
+    jsonschema_enabled = False
 # pylint: enable=import-error
 
 import docutils
@@ -56,6 +65,22 @@ from sphinx.util.docutils import SphinxDirective
 from sphinx_design.cards import CardDirective
 
 EnvAttrT = TypeVar('EnvAttrT')
+
+
+# The module metadata is exposed as a global because it's used as read-only
+# data. Opening and reading the metadata file in one of the event handlers
+# would cause hundreds of filesystem reads on each build because those event
+# handlers fire once for each docs page.
+metadata_file = 'docs/module_metadata.json'
+schema_file = 'docs/module_metadata_schema.json'
+with open(f'{os.environ["PW_ROOT"]}/{schema_file}', 'r') as f:
+    schema = json.load(f)
+with open(f'{os.environ["PW_ROOT"]}/{metadata_file}', 'r') as f:
+    metadata = json.load(f)
+# Make sure the metadata matches its schema. Raise an uncaught exception
+# if not.
+if jsonschema_enabled:
+    jsonschema.validate(metadata, schema)
 
 
 @dataclass
@@ -92,13 +117,79 @@ class EnvMetadata:
         return value
 
     @property
-    def pw_parsed_bodies(self) -> Dict[str, ParsedBody]:
-        default: Dict[str, ParsedBody] = {}
+    def pw_parsed_bodies(self) -> dict[str, ParsedBody]:
+        default: dict[str, ParsedBody] = {}
         return self._get_env_attr('pw_module_nav', default)
 
 
-def status_choice(arg):
-    return directives.choice(arg, ('experimental', 'unstable', 'stable'))
+def get_languages(module_name: str) -> list[str] | None:
+    """Returns the list of languages that a module supports.
+
+    Args:
+        module_name: The module to look up.
+
+    Returns:
+        A list of programming languages that the module supports, or ``None``
+        if this has not been defined in ``//docs/module_metadata.json``.
+    """
+    if module_name not in metadata:
+        return None
+    if 'languages' not in metadata[module_name]:
+        return None
+    return metadata[module_name]['languages']
+
+
+def get_status(module_name: str) -> str:
+    """Returns the status of a module.
+
+    Preconditions:
+        The status must be defined in ``//docs/module_metadata.json``.
+
+    Args:
+        module_name: The module to look up.
+
+    Returns:
+        The status of the module as a string.
+    """
+    if module_name not in metadata:
+        sys.exit(f'{module_name} not found in {metadata_file}')
+    if 'status' not in metadata[module_name]:
+        sys.exit(f'{module_name}.status not found in {metadata_file}')
+    return metadata[module_name]['status']
+
+
+def get_tagline(module_name: str) -> str | None:
+    """Returns the tagline for a module.
+
+    Args:
+        module_name: The module to look up.
+
+    Returns:
+        The module's tagline or ``None`` if no tagline has been defined
+        in ``//docs/module_metadata.json``.
+    """
+    if module_name not in metadata:
+        return None
+    if 'tagline' not in metadata[module_name]:
+        return None
+    return metadata[module_name]['tagline']
+
+
+def get_code_size(module_name: str) -> str | None:
+    """Returns the code size impact summary for a module.
+
+    Args:
+        module_name: The module to look up.
+
+    Returns:
+        The code size impact summary as a string or ``None`` if no summary
+        has been defined in ``//docs/module_metadata.json``.
+    """
+    if module_name not in metadata:
+        return None
+    if 'size' not in metadata[module_name]:
+        return None
+    return metadata[module_name]['size']
 
 
 def status_badge(module_status: str) -> str:
@@ -117,7 +208,7 @@ def issues_url(module_name: str) -> str:
     return f'https://issues.pigweed.dev/issues?q={module_name}%20status:open'
 
 
-def concat_tags(*tag_lists: List[str]) -> List[str]:
+def concat_tags(*tag_lists: list[str]) -> list[str]:
     """Given a list of tag lists, return them concat'ed and ready for render."""
 
     all_tags = tag_lists[0]
@@ -131,8 +222,8 @@ def concat_tags(*tag_lists: List[str]) -> List[str]:
 
 
 def create_topnav(
-    subtitle: str,
-    extra_classes: Optional[List[str]] = None,
+    subtitle: str | None,
+    extra_classes: list[str] | None = None,
 ) -> nodes.Node:
     """Create the nodes for the top title and navigation bar."""
 
@@ -142,12 +233,13 @@ def create_topnav(
 
     topnav_container = nodes.container(classes=topnav_classes)
 
-    subtitle_node = nodes.paragraph(
-        classes=['pw-topnav-subtitle'],
-        text=subtitle,
-    )
+    if subtitle:
+        subtitle_node = nodes.paragraph(
+            classes=['pw-topnav-subtitle'],
+            text=subtitle,
+        )
+        topnav_container += subtitle_node
 
-    topnav_container += subtitle_node
     return topnav_container
 
 
@@ -157,16 +249,7 @@ class PigweedModuleDirective(SphinxDirective):
     required_arguments = 0
     final_argument_whitespace = True
     has_content = True
-    option_spec = {
-        'name': directives.unchanged_required,
-        'tagline': directives.unchanged_required,
-        'status': status_choice,
-        'is-deprecated': directives.flag,
-        'languages': directives.unchanged,
-        'code-size-impact': directives.unchanged,
-        'facade': directives.unchanged,
-        'nav': directives.unchanged_required,
-    }
+    option_spec = {'name': directives.unchanged_required}
 
     def _try_get_option(self, option: str):
         """Try to get an option by name and raise on failure."""
@@ -180,41 +263,30 @@ class PigweedModuleDirective(SphinxDirective):
         """Try to get an option by name and return None on failure."""
         return self.options.get(option, None)
 
-    def run(self) -> List[nodes.Node]:
+    def run(self) -> list[nodes.Node]:
         module_name = self._try_get_option('name')
-        tagline = self._try_get_option('tagline')
+        tagline = get_tagline(module_name)
+        status = get_status(module_name)
 
-        status_tags: List[str] = [
-            status_badge(self._try_get_option('status')),
+        status_tags: list[str] = [
+            status_badge(status),
         ]
 
-        if 'is-deprecated' in self.options:
-            status_tags.append(':bdg-danger:`Deprecated`')
-
+        languages = get_languages(module_name)
         language_tags = []
-
-        if 'languages' in self.options:
-            languages = self.options['languages'].split(',')
-
-            if len(languages) > 0:
-                for language in languages:
-                    language = language.strip()
-                    if language == 'Rust':
-                        language_tags.append(
-                            f':bdg-link-info:`{language}'
-                            + f'</rustdoc/{module_name}>`'
-                        )
-                    else:
-                        language_tags.append(f':bdg-info:`{language}`')
+        if languages:
+            for language in languages:
+                language_tags.append(f':bdg-info:`{language}`')
 
         code_size_impact = []
 
-        if code_size_text := self._maybe_get_option('code-size-impact'):
+        code_size_text = get_code_size(module_name)
+        if code_size_text:
             code_size_impact.append(f'**Code Size Impact:** {code_size_text}')
 
         # Move the directive content into a section that we can render wherever
         # we want.
-        raw_content = cast(List[str], self.content)  # type: ignore
+        raw_content = cast(list[str], self.content)  # type: ignore
         content = nodes.paragraph()
         self.state.nested_parse(raw_content, 0, content)
 
@@ -247,12 +319,15 @@ class PigweedModuleSubpageDirective(PigweedModuleDirective):
     has_content = True
     option_spec = {
         'name': directives.unchanged_required,
-        'tagline': directives.unchanged_required,
         'nav': directives.unchanged_required,
     }
 
-    def run(self) -> List[nodes.Node]:
-        tagline = self._try_get_option('tagline')
+    def run(self) -> list[nodes.Node]:
+        module_name = self._try_get_option('name')
+        tagline = get_tagline(module_name)
+        # Prepend the module name on sub-pages so that it's very clear what
+        # the tagline is referring to.
+        tagline = f'{module_name}: {tagline}'
 
         topbar = create_topnav(
             tagline,
@@ -295,7 +370,7 @@ def _parse_body(body: str) -> ParsedBody:
         tag['class'] = tag.get('class', []) + [classname]  # type: ignore
 
     def _add_classes_to_tag(
-        tag: HTMLTag, classnames: Union[str, List[str], None]
+        tag: HTMLTag, classnames: str | list[str] | None
     ) -> None:
         tag['class'] = tag.get('class', []) + classnames  # type: ignore
 
@@ -362,7 +437,7 @@ def setup_parse_body(_app, _pagename, _templatename, context, _doctree):
     context['parse_body'] = parse_body
 
 
-def fix_canonical_url(canonical_url: Optional[str]) -> Optional[str]:
+def fix_canonical_url(canonical_url: str | None) -> str | None:
     """Rewrites the canonical URL for `pigweed.dev/*/docs.html` pages.
 
     Our server is configured to remove `docs.html` from URLs. E.g.
@@ -391,7 +466,7 @@ def on_html_page_context(
     app: Sphinx,  # pylint: disable=unused-argument
     docname: str,  # pylint: disable=unused-argument
     templatename: str,  # pylint: disable=unused-argument
-    context: Optional[Dict[str, Optional[str]]],
+    context: dict[str, str | None] | None,
     doctree: Document,  # pylint: disable=unused-argument
 ) -> None:
     """Handles modifications to HTML page metadata, e.g. canonical URLs.
@@ -440,7 +515,7 @@ def add_links(module_name: str, toctree: Element) -> None:
     toctree['rawentries'] += [src[0], issues[0]]
 
 
-def find_first_toctree(doctree: Document) -> Optional[Element]:
+def find_first_toctree(doctree: Document) -> Element | None:
     """Finds the first `toctree` (table of contents tree) node in a `Document`.
 
     Args:
@@ -586,7 +661,7 @@ def add_toctree_to_module_homepage(docname: str, source: str) -> str:
 def on_source_read(
     app: Sphinx,  # pylint: disable=unused-argument
     docname: str,
-    source: List[str],
+    source: list[str],
 ) -> None:
     """Event handler that enables manipulating a doc's reStructuredText.
 
@@ -627,7 +702,7 @@ def on_source_read(
     source[0] = add_toctree_to_module_homepage(docname, source[0])
 
 
-def setup(app: Sphinx) -> Dict[str, bool]:
+def setup(app: Sphinx) -> dict[str, bool]:
     """Hooks the extension into our Sphinx docs build system.
 
     This runs only once per docs build.

@@ -25,7 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Callable, Iterable, List, Sequence, TextIO
+from typing import Callable, Iterable, Sequence, TextIO
 
 import pw_package.pigweed_packages
 
@@ -453,9 +453,6 @@ gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
             ctx.root / 'pw_function:enable_dynamic_allocation'
         ),
         pw_bluetooth_sapphire_ENABLED=True,
-        # Pigweed uses Python 3.8 and must use the old version of Emboss until
-        # updated to Python 3.9.
-        pw_third_party_emboss_USE_NEW_SOURCES=False,
         pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
     ),
     ninja_targets=(
@@ -824,7 +821,7 @@ def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
 #
 
 
-def _clang_system_include_paths(lang: str) -> List[str]:
+def _clang_system_include_paths(lang: str) -> list[str]:
     """Generate default system header paths.
 
     Returns the list of system include paths used by the host
@@ -847,7 +844,7 @@ def _clang_system_include_paths(lang: str) -> List[str]:
     # Parse the command output to retrieve system include paths.
     # The paths are listed one per line.
     output = process.stdout.decode(errors='backslashreplace')
-    include_paths: List[str] = []
+    include_paths: list[str] = []
     for line in output.splitlines():
         path = line.strip()
         if os.path.exists(path):
@@ -1031,9 +1028,11 @@ def source_is_in_cmake_build_warn_only(ctx: PresubmitContext):
     """Checks that source files are in the CMake build."""
 
     _run_cmake(ctx)
-    missing = build.check_compile_commands_for_files(
-        ctx.output_dir / 'compile_commands.json',
-        (f for f in ctx.paths if f.suffix in format_code.CPP_SOURCE_EXTS),
+    missing = SOURCE_FILES_FILTER_CMAKE_EXCLUDE.filter(
+        build.check_compile_commands_for_files(
+            ctx.output_dir / 'compile_commands.json',
+            (f for f in ctx.paths if f.suffix in format_code.CPP_SOURCE_EXTS),
+        )
     )
     if missing:
         _LOG.warning(
@@ -1250,6 +1249,22 @@ SOURCE_FILES_FILTER = FileFilter(
     ),
 )
 
+SOURCE_FILES_FILTER_GN_EXCLUDE = FileFilter(
+    exclude=(
+        # keep-sorted: start
+        r'\bpw_bluetooth_sapphire/fuchsia',
+        # keep-sorted: end
+    ),
+)
+
+SOURCE_FILES_FILTER_CMAKE_EXCLUDE = FileFilter(
+    exclude=(
+        # keep-sorted: start
+        r'\bpw_bluetooth_sapphire/fuchsia',
+        # keep-sorted: end
+    ),
+)
+
 #
 # Presubmit check programs
 #
@@ -1327,7 +1342,9 @@ _LINTFORMAT = (
     cpp_checks.pragma_once,
     build.bazel_lint,
     owners_lint_checks,
-    source_in_build.gn(SOURCE_FILES_FILTER),
+    source_in_build.gn(SOURCE_FILES_FILTER).with_file_filter(
+        SOURCE_FILES_FILTER_GN_EXCLUDE
+    ),
     source_is_in_cmake_build_warn_only,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
     javascript_checks.eslint if shutil.which('npm') else (),

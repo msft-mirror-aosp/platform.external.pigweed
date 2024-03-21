@@ -22,141 +22,118 @@ rule for handling linker scripts with Bazel. e.g.
 
 .. code-block:: python
 
-  pw_linker_script(
-    name = "some_linker_script",
-    linker_script = ":some_configurable_linker_script.ld",
-    defines = [
-        "PW_BOOT_FLASH_BEGIN=0x08000200",
-        "PW_BOOT_FLASH_SIZE=1024K",
-        "PW_BOOT_HEAP_SIZE=112K",
-        "PW_BOOT_MIN_STACK_SIZE=1K",
-        "PW_BOOT_RAM_BEGIN=0x20000000",
-        "PW_BOOT_RAM_SIZE=192K",
-        "PW_BOOT_VECTOR_TABLE_BEGIN=0x08000000",
-        "PW_BOOT_VECTOR_TABLE_SIZE=512",
-    ],
-  )
+   pw_linker_script(
+     name = "some_linker_script",
+     linker_script = ":some_configurable_linker_script.ld",
+     defines = [
+         "PW_BOOT_FLASH_BEGIN=0x08000200",
+         "PW_BOOT_FLASH_SIZE=1024K",
+         "PW_BOOT_HEAP_SIZE=112K",
+         "PW_BOOT_MIN_STACK_SIZE=1K",
+         "PW_BOOT_RAM_BEGIN=0x20000000",
+         "PW_BOOT_RAM_SIZE=192K",
+         "PW_BOOT_VECTOR_TABLE_BEGIN=0x08000000",
+         "PW_BOOT_VECTOR_TABLE_SIZE=512",
+     ],
+   )
 
-  # You can include the linker script in the deps.
-  cc_binary(
-    name = "some_binary",
-    srcs = ["some_source.cc"],
-    deps = [":some_linker_script"],
-  )
+   # You can include the linker script in the deps.
+   cc_binary(
+     name = "some_binary",
+     srcs = ["some_source.cc"],
+     deps = [":some_linker_script"],
+   )
 
-  # Alternatively, you can use additional_linker_inputs and linkopts. This
-  # allows you to explicitly specify the command line order of linker scripts,
-  # and may be useful if your project defines more than one.
-  cc_binary(
-    name = "some_binary",
-    srcs = ["some_source.cc"],
-    additional_linker_inputs = [":some_linker_script"],
-    linkopts = ["-T $(location :some_linker_script)"],
-  )
+   # Alternatively, you can use additional_linker_inputs and linkopts. This
+   # allows you to explicitly specify the command line order of linker scripts,
+   # and may be useful if your project defines more than one.
+   cc_binary(
+     name = "some_binary",
+     srcs = ["some_source.cc"],
+     additional_linker_inputs = [":some_linker_script"],
+     linkopts = ["-T $(location :some_linker_script)"],
+   )
 
-.. _module-pw_build-bazel-pw_cc_facade:
+.. _module-pw_build-bazel-pw_facade:
 
-pw_cc_facade
-------------
+pw_facade
+---------
 In Bazel, a :ref:`facade <docs-module-structure-facades>` module has a few
 components:
 
 #. The **facade target**, i.e. the interface to the module. This is what
    *backend implementations* depend on to know what interface they're supposed
-   to implement.  The facade is declared by creating a ``pw_cc_facade`` target,
-   which is just a thin wrapper for ``cc_library``. For example,
-
-   .. code-block:: python
-
-     pw_cc_facade(
-         name = "binary_semaphore_facade",
-         # The header that constitues the facade.
-         hdrs = [
-             "public/pw_sync/binary_semaphore.h",
-         ],
-         includes = ["public"],
-         # Dependencies of this header.
-         deps = [
-             "//pw_chrono:system_clock",
-             "//pw_preprocessor",
-         ],
-     )
-
-   .. note::
-     As pure interfaces, ``pw_cc_facade`` targets should not include any source
-     files. Backend-independent source files should be placed in the "library
-     target" instead.
+   to implement.
 
 #. The **library target**, i.e. both the facade (interface) and backend
    (implementation). This is what *users of the module* depend on. It's a
    regular ``cc_library`` that exposes the same headers as the facade, but
    has a dependency on the "backend label flag" (discussed next). It may also
-   include some source files (if these are backend-independent). For example,
+   include some source files (if these are backend-independent).
+
+   Both the facade and library targets are created using the
+   ``pw_facade`` macro. For example, consider the following
+   macro invocation:
 
    .. code-block:: python
 
-     cc_library(
-         name = "binary_semaphore",
-         # A backend-independent source file.
-         srcs = [
-             "binary_semaphore.cc",
-         ],
-         # The same header as exposed by the facade.
-         hdrs = [
-             "public/pw_sync/binary_semaphore.h",
-         ],
-         deps = [
-             # Dependencies of this header
-             "//pw_chrono:system_clock",
-             "//pw_preprocessor",
-             # The backend, hidden behind a label_flag.
-             "@pigweed//targets:pw_sync_binary_semaphore_backend",
-         ],
-     )
+      pw_facade(
+          name = "binary_semaphore",
+          # A backend-independent source file.
+          srcs = [
+              "binary_semaphore.cc",
+          ],
+          # The facade header.
+          hdrs = [
+              "public/pw_sync/binary_semaphore.h",
+          ],
+          # Dependencies of this header.
+          deps = [
+              "//pw_chrono:system_clock",
+              "//pw_preprocessor",
+          ],
+          # The backend, hidden behind a label_flag; see below.
+          backend = [
+              ":binary_semaphore_backend",
+          ],
+      )
 
-   .. note::
-     You may be tempted to reduce duplication in the BUILD.bazel files and
-     simply add the facade target to the ``deps`` of the library target,
-     instead of re-declaring the facade's ``hdrs`` and ``deps``. *Do not do
-     this!* It's a layering check violation: the facade headers provide the
-     module's interface, and should be directly exposed by the target the users
-     depend on.
+   This macro expands to both the library target, named ``binary_semaphore``,
+   and the facade target, named ``binary_semaphore.facade``.
 
 #. The **backend label flag**. This is a `label_flag
    <https://bazel.build/extending/config#label-typed-build-settings>`_: a
    dependency edge in the build graph that can be overridden by downstream projects.
-   For facades defined in upstream Pigweed, the ``label_flags`` are collected in
-   ``//targets/BUILD.bazel``.
 
 #. The **backend target** implements a particular backend for a facade. It's
    just a plain ``cc_library``, with a dependency on the facade target. For example,
 
    .. code-block:: python
 
-     cc_library(
-         name = "binary_semaphore",
-         srcs = [
-             "binary_semaphore.cc",
-         ],
-         hdrs = [
-             "public/pw_sync_stl/binary_semaphore_inline.h",
-             "public/pw_sync_stl/binary_semaphore_native.h",
-             "public_overrides/pw_sync_backend/binary_semaphore_inline.h",
-             "public_overrides/pw_sync_backend/binary_semaphore_native.h",
-         ],
-         includes = [
-             "public",
-             "public_overrides",
-         ],
-         deps = [
-             # Dependencies of the backend's headers and sources.
-             "//pw_assert",
-             "//pw_chrono:system_clock",
-             # A dependency on the facade target, which defines the interface
-             # this backend target implements.
-             "//pw_sync:binary_semaphore_facade",
-         ],
-     )
+      cc_library(
+          name = "binary_semaphore",
+          srcs = [
+              "binary_semaphore.cc",
+          ],
+          hdrs = [
+              "public/pw_sync_stl/binary_semaphore_inline.h",
+              "public/pw_sync_stl/binary_semaphore_native.h",
+              "public_overrides/pw_sync_backend/binary_semaphore_inline.h",
+              "public_overrides/pw_sync_backend/binary_semaphore_native.h",
+          ],
+          includes = [
+              "public",
+              "public_overrides",
+          ],
+          deps = [
+              # Dependencies of the backend's headers and sources.
+              "//pw_assert",
+              "//pw_chrono:system_clock",
+              # A dependency on the facade target, which defines the interface
+              # this backend target implements.
+              "//pw_sync:binary_semaphore.facade",
+          ],
+      )
 
    If a project uses only one backend for a given facade, the backend label
    flag should point at that backend target.
@@ -169,22 +146,22 @@ components:
 
    .. code-block:: python
 
-     # //pw_sync/BUILD.bazel
-     constraint_setting(
-       name = "binary_semaphore_backend_constraint_setting",
-     )
+      # //pw_sync/BUILD.bazel
+      constraint_setting(
+        name = "binary_semaphore_backend_constraint_setting",
+      )
 
-     # //pw_sync_stl/BUILD.bazel
-     constraint_value(
-       name = "binary_semaphore_backend",
-       constraint_setting = "//pw_sync:binary_semaphore_backend_constraint_setting",
-     )
+      # //pw_sync_stl/BUILD.bazel
+      constraint_value(
+        name = "binary_semaphore_backend",
+        constraint_setting = "//pw_sync:binary_semaphore_backend_constraint_setting",
+      )
 
-     # //pw_sync_freertos/BUILD.bazel
-     constraint_value(
-       name = "binary_semaphore_backend",
-       constraint_setting = "//pw_sync:binary_semaphore_backend_constraint_setting",
-     )
+      # //pw_sync_freertos/BUILD.bazel
+      constraint_value(
+        name = "binary_semaphore_backend",
+        constraint_setting = "//pw_sync:binary_semaphore_backend_constraint_setting",
+      )
 
    `Target platforms <https://bazel.build/extending/platforms>`_ for Pigweed
    projects should indicate which backend they select for each facade by
@@ -213,22 +190,22 @@ components:
 
    .. code-block:: python
 
-     alias(
-         name = "pw_sync_binary_semaphore_backend_multiplexer",
-         actual = select({
-             "//pw_sync_stl:binary_semaphore_backend": "@pigweed//pw_sync_stl:binary_semaphore",
-             "//pw_sync_freertos:binary_semaphore_backend": "@pigweed//pw_sync_freertos:binary_semaphore_backend",
-             # If we're building for a host OS, use the STL backend.
-             "@platforms//os:macos": "@pigweed//pw_sync_stl:binary_semaphore",
-             "@platforms//os:linux": "@pigweed//pw_sync_stl:binary_semaphore",
-             "@platforms//os:windows": "@pigweed//pw_sync_stl:binary_semaphore",
-             # Unless the target platform is the host platform, it must
-             # explicitly specify which backend to use. The unspecified_backend
-             # is not compatible with any platform; taking this branch will produce
-             # an informative error.
-             "//conditions:default": "@pigweed//pw_build:unspecified_backend",
-         }),
-     )
+      alias(
+          name = "pw_sync_binary_semaphore_backend_multiplexer",
+          actual = select({
+              "//pw_sync_stl:binary_semaphore_backend": "@pigweed//pw_sync_stl:binary_semaphore",
+              "//pw_sync_freertos:binary_semaphore_backend": "@pigweed//pw_sync_freertos:binary_semaphore_backend",
+              # If we're building for a host OS, use the STL backend.
+              "@platforms//os:macos": "@pigweed//pw_sync_stl:binary_semaphore",
+              "@platforms//os:linux": "@pigweed//pw_sync_stl:binary_semaphore",
+              "@platforms//os:windows": "@pigweed//pw_sync_stl:binary_semaphore",
+              # Unless the target platform is the host platform, it must
+              # explicitly specify which backend to use. The unspecified_backend
+              # is not compatible with any platform; taking this branch will produce
+              # an informative error.
+              "//conditions:default": "@pigweed//pw_build:unspecified_backend",
+          }),
+      )
 
 pw_cc_blob_library
 ------------------

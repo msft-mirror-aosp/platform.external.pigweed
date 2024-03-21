@@ -23,7 +23,7 @@ import enum
 import os
 
 from pathlib import Path
-from typing import Iterable, Optional, Callable, Union, Any
+from typing import Iterable, Callable, Any
 
 from pw_tokenizer.detokenize import AutoUpdatingDetokenizer
 from pw_tokenizer import detokenize, encode
@@ -44,8 +44,6 @@ class _State(enum.Enum):
 
 PREFIX = ord('$')
 EOT = ord('#')
-
-_PathOrStr = Union[Path, str]
 
 
 class Token:
@@ -134,9 +132,9 @@ class ZephyrTokenDecoder:
         self._decoded_data.clear()
         return token
 
-    def process_byte(self, byte: int) -> Optional[Token]:
+    def process_byte(self, byte: int) -> Token | None:
         """Processes a single byte and returns a token if one was completed."""
-        token: Optional[Token] = None
+        token: Token | None = None
 
         self._raw_data.append(byte)
 
@@ -166,7 +164,7 @@ class ZephyrDetokenizer:
     """Processes both base64 message and non-token data in a stream."""
 
     def __init__(
-        self, log_handler: Callable[[bytes], Any], *paths_or_files: _PathOrStr
+        self, log_handler: Callable[[bytes], Any], *paths_or_files: Path | str
     ) -> None:
         """Yields valid Zephyr tokens and passes non-token data to callback."""
         self._log_handler = log_handler
@@ -187,7 +185,7 @@ class ZephyrDetokenizer:
         """
         self._flush_non_frame()
 
-    def _flush_non_frame(self, to_index: Optional[int] = None):
+    def _flush_non_frame(self, to_index: int | None = None):
         if self._raw_data:
             self._log_handler(bytes(self._raw_data[:to_index]))
             del self._raw_data[:to_index]

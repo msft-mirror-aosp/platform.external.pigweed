@@ -20,11 +20,7 @@ import time
 from typing import (
     Any,
     Callable,
-    List,
-    Optional,
     TYPE_CHECKING,
-    Tuple,
-    Union,
 )
 
 from prompt_toolkit.application.current import get_app
@@ -98,8 +94,8 @@ class LogContentControl(UIControl):
         self.visual_select_mode_drag_start = False
         self.visual_select_mode_drag_stop = False
 
-        self.uicontent: Optional[UIContent] = None
-        self.lines: List[StyleAndTextTuples] = []
+        self.uicontent: UIContent | None = None
+        self.lines: list[StyleAndTextTuples] = []
 
         # Key bindings.
         key_bindings = KeyBindings()
@@ -242,7 +238,7 @@ class LogContentControl(UIControl):
     def is_focusable(self) -> bool:
         return True
 
-    def get_key_bindings(self) -> Optional[KeyBindingsBase]:
+    def get_key_bindings(self) -> KeyBindingsBase | None:
         return self.key_bindings
 
     def preferred_width(self, max_available_width: int) -> int:
@@ -256,12 +252,12 @@ class LogContentControl(UIControl):
         max_available_height: int,
         wrap_lines: bool,
         get_line_prefix,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Return the preferred height for the log lines."""
         content = self.create_content(width, None)
         return content.line_count
 
-    def create_content(self, width: int, height: Optional[int]) -> UIContent:
+    def create_content(self, width: int, height: int | None) -> UIContent:
         # Update lines to render
         self.lines = self.log_view.render_content()
 
@@ -518,7 +514,7 @@ class LogPane(WindowPane):
         self,
         application: Any,
         pane_title: str = 'Logs',
-        log_store: Optional[LogStore] = None,
+        log_store: LogStore | None = None,
     ):
         super().__init__(application, pane_title)
 
@@ -792,14 +788,14 @@ class LogPane(WindowPane):
             self.saveas_dialog_active = False
             self.websocket_dialog_active = True
 
-    def get_all_key_bindings(self) -> List:
+    def get_all_key_bindings(self) -> list:
         """Return all keybinds for this pane."""
         # Return log content control keybindings
         return [self.log_content_control.get_key_bindings()]
 
     def get_window_menu_options(
         self,
-    ) -> List[Tuple[str, Union[Callable, None]]]:
+    ) -> list[tuple[str, Callable | None]]:
         """Return all menu options for the log pane."""
 
         options = [
@@ -925,8 +921,8 @@ class LogPane(WindowPane):
 
     def add_log_handler(
         self,
-        logger: Union[str, logging.Logger],
-        level_name: Optional[str] = None,
+        logger: str | logging.Logger,
+        level_name: str | None = None,
     ) -> None:
         """Add a log handlers to this LogPane."""
 

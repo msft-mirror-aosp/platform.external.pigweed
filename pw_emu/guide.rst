@@ -5,7 +5,6 @@ Get started & guides
 ====================
 .. pigweed-module-subpage::
    :name: pw_emu
-   :tagline: pw_emu: Flexible emulators frontend
 
 .. _module-pw_emu-get-started:
 
@@ -318,7 +317,7 @@ example, the QEMU implementation sets the following values:
 
 .. code-block:: py
 
-   pigweed_emulators: Dict[str, Dict[str, str]] = {
+   pigweed_emulators: dict[str, dict[str, str]] = {
      ...
      'qemu': {
        'connector': 'pw_emu.qemu.QemuConnector',

@@ -20,11 +20,7 @@ import itertools
 
 from typing import (
     Callable,
-    Dict,
     Iterator,
-    List,
-    Optional,
-    Tuple,
     TypeVar,
     cast,
 )
@@ -75,17 +71,17 @@ class ProtoNode(abc.ABC):
 
     def __init__(self, name: str):
         self._name: str = name
-        self._children: Dict[str, 'ProtoNode'] = collections.OrderedDict()
-        self._parent: Optional['ProtoNode'] = None
+        self._children: dict[str, 'ProtoNode'] = collections.OrderedDict()
+        self._parent: 'ProtoNode | None' = None
 
     @abc.abstractmethod
     def type(self) -> 'ProtoNode.Type':
         """The type of the node."""
 
-    def children(self) -> List['ProtoNode']:
+    def children(self) -> list['ProtoNode']:
         return list(self._children.values())
 
-    def parent(self) -> Optional['ProtoNode']:
+    def parent(self) -> 'ProtoNode | None':
         return self._parent
 
     def name(self) -> str:
@@ -105,7 +101,7 @@ class ProtoNode(abc.ABC):
         regular proto tree. This is because there is no way to find the package
         name of a node referring to an external symbol.
         """
-        node: Optional['ProtoNode'] = self
+        node: 'ProtoNode | None' = self
         while (
             node
             and node.type() != ProtoNode.Type.PACKAGE
@@ -118,8 +114,8 @@ class ProtoNode(abc.ABC):
 
     def cpp_namespace(
         self,
-        root: Optional['ProtoNode'] = None,
-        codegen_subnamespace: Optional[str] = 'pwpb',
+        root: 'ProtoNode | None' = None,
+        codegen_subnamespace: str | None = 'pwpb',
     ) -> str:
         """C++ namespace of the node, up to the specified root.
 
@@ -236,7 +232,7 @@ class ProtoNode(abc.ABC):
         name = '_'.join(self._attr_hierarchy(lambda node: node.name(), None))
         return name.lstrip('_')
 
-    def common_ancestor(self, other: 'ProtoNode') -> Optional['ProtoNode']:
+    def common_ancestor(self, other: 'ProtoNode') -> 'ProtoNode | None':
         """Finds the earliest common ancestor of this node and other."""
 
         if other is None:
@@ -247,8 +243,8 @@ class ProtoNode(abc.ABC):
         diff = abs(own_depth - other_depth)
 
         if own_depth < other_depth:
-            first: Optional['ProtoNode'] = self
-            second: Optional['ProtoNode'] = other
+            first: 'ProtoNode | None' = self
+            second: 'ProtoNode | None' = other
         else:
             first = other
             second = self
@@ -299,7 +295,7 @@ class ProtoNode(abc.ABC):
         self._children[child.name()] = child
         # pylint: enable=protected-access
 
-    def find(self, path: str) -> Optional['ProtoNode']:
+    def find(self, path: str) -> 'ProtoNode | None':
         """Finds a node within this node's subtree.
 
         Args:
@@ -327,7 +323,7 @@ class ProtoNode(abc.ABC):
     def _attr_hierarchy(
         self,
         attr_accessor: Callable[['ProtoNode'], T],
-        root: Optional['ProtoNode'],
+        root: 'ProtoNode | None',
     ) -> Iterator[T]:
         """Fetches node attributes at each level of the tree from the root.
 
@@ -340,7 +336,7 @@ class ProtoNode(abc.ABC):
           current node.
         """
         hierarchy = []
-        node: Optional['ProtoNode'] = self
+        node: 'ProtoNode | None' = self
         while node is not None and node != root:
             hierarchy.append(attr_accessor(node))
             node = node.parent()
@@ -366,12 +362,12 @@ class ProtoEnum(ProtoNode):
 
     def __init__(self, name: str):
         super().__init__(name)
-        self._values: List[Tuple[str, int]] = []
+        self._values: list[tuple[str, int]] = []
 
     def type(self) -> ProtoNode.Type:
         return ProtoNode.Type.ENUM
 
-    def values(self) -> List[Tuple[str, int]]:
+    def values(self) -> list[tuple[str, int]]:
         return list(self._values)
 
     def add_value(self, name: str, value: int) -> None:
@@ -394,14 +390,14 @@ class ProtoMessage(ProtoNode):
 
     def __init__(self, name: str):
         super().__init__(name)
-        self._fields: List['ProtoMessageField'] = []
-        self._dependencies: Optional[List['ProtoMessage']] = None
-        self._dependency_cycles: List['ProtoMessage'] = []
+        self._fields: list['ProtoMessageField'] = []
+        self._dependencies: list['ProtoMessage'] | None = None
+        self._dependency_cycles: list['ProtoMessage'] = []
 
     def type(self) -> ProtoNode.Type:
         return ProtoNode.Type.MESSAGE
 
-    def fields(self) -> List['ProtoMessageField']:
+    def fields(self) -> list['ProtoMessageField']:
         return list(self._fields)
 
     def add_field(self, field: 'ProtoMessageField') -> None:
@@ -412,7 +408,7 @@ class ProtoMessage(ProtoNode):
             child.type() == self.Type.ENUM or child.type() == self.Type.MESSAGE
         )
 
-    def dependencies(self) -> List['ProtoMessage']:
+    def dependencies(self) -> list['ProtoMessage']:
         if self._dependencies is None:
             self._dependencies = []
             for field in self._fields:
@@ -429,7 +425,7 @@ class ProtoMessage(ProtoNode):
 
         return list(self._dependencies)
 
-    def dependency_cycles(self) -> List['ProtoMessage']:
+    def dependency_cycles(self) -> list['ProtoMessage']:
         return list(self._dependency_cycles)
 
     def remove_dependency_cycle(self, dependency: 'ProtoMessage'):
@@ -444,12 +440,12 @@ class ProtoService(ProtoNode):
 
     def __init__(self, name: str):
         super().__init__(name)
-        self._methods: List['ProtoServiceMethod'] = []
+        self._methods: list['ProtoServiceMethod'] = []
 
     def type(self) -> ProtoNode.Type:
         return ProtoNode.Type.SERVICE
 
-    def methods(self) -> List['ProtoServiceMethod']:
+    def methods(self) -> list['ProtoServiceMethod']:
         return list(self._methods)
 
     def add_method(self, method: 'ProtoServiceMethod') -> None:
@@ -486,18 +482,18 @@ class ProtoMessageField:
         field_name: str,
         field_number: int,
         field_type: int,
-        type_node: Optional[ProtoNode] = None,
+        type_node: ProtoNode | None = None,
         optional: bool = False,
         repeated: bool = False,
-        codegen_options: Optional[CodegenOptions] = None,
+        codegen_options: CodegenOptions | None = None,
     ):
         self._field_name = symbol_name_mapping.fix_cc_identifier(field_name)
         self._number: int = field_number
         self._type: int = field_type
-        self._type_node: Optional[ProtoNode] = type_node
+        self._type_node: ProtoNode | None = type_node
         self._optional: bool = optional
         self._repeated: bool = repeated
-        self._options: Optional[CodegenOptions] = codegen_options
+        self._options: CodegenOptions | None = codegen_options
 
     def name(self) -> str:
         return self.upper_camel_case(self._field_name)
@@ -519,7 +515,7 @@ class ProtoMessageField:
     def type(self) -> int:
         return self._type
 
-    def type_node(self) -> Optional[ProtoNode]:
+    def type_node(self) -> ProtoNode | None:
         return self._type_node
 
     def is_optional(self) -> bool:
@@ -528,7 +524,7 @@ class ProtoMessageField:
     def is_repeated(self) -> bool:
         return self._repeated
 
-    def options(self) -> Optional[CodegenOptions]:
+    def options(self) -> CodegenOptions | None:
         return self._options
 
     @staticmethod
@@ -655,7 +651,7 @@ def _add_message_fields(
     assert message.type() == ProtoNode.Type.MESSAGE
     message = cast(ProtoMessage, message)
 
-    type_node: Optional[ProtoNode]
+    type_node: ProtoNode | None
 
     for field in proto_message.field:
         if field.type_name:
@@ -750,7 +746,7 @@ def _populate_fields(
     proto_file: descriptor_pb2.FileDescriptorProto,
     global_root: ProtoNode,
     package_root: ProtoNode,
-    proto_options: Optional[options.ParsedOptions],
+    proto_options: options.ParsedOptions | None,
 ) -> None:
     """Traverses a proto file, adding all message and enum fields to a tree."""
 
@@ -782,7 +778,7 @@ def _populate_fields(
 
 def _build_hierarchy(
     proto_file: descriptor_pb2.FileDescriptorProto,
-) -> Tuple[ProtoPackage, ProtoPackage]:
+) -> tuple[ProtoPackage, ProtoPackage]:
     """Creates a ProtoNode hierarchy from a proto file descriptor."""
 
     root = ProtoPackage('')
@@ -816,8 +812,8 @@ def _build_hierarchy(
 
 def build_node_tree(
     file_descriptor_proto: descriptor_pb2.FileDescriptorProto,
-    proto_options: Optional[options.ParsedOptions] = None,
-) -> Tuple[ProtoNode, ProtoNode]:
+    proto_options: options.ParsedOptions | None = None,
+) -> tuple[ProtoNode, ProtoNode]:
     """Constructs a tree of proto nodes from a file descriptor.
 
     Returns the root node of the entire proto package tree and the node
