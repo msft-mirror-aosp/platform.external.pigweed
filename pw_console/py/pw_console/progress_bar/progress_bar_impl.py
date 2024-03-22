@@ -16,6 +16,8 @@
 Designed to be embedded in an existing prompt_toolkit full screen
 application."""
 
+from __future__ import annotations
+
 import functools
 from typing import (
     Iterable,
@@ -52,7 +54,7 @@ class TextIfNotHidden(Text):
     def format(
         self,
         progress_bar: ProgressBar,
-        progress: 'ProgressBarCounter[object]',
+        progress: ProgressBarCounter[object],
         width: int,
     ) -> AnyFormattedText:
         formatted_text = super().format(progress_bar, progress, width)
@@ -65,7 +67,7 @@ class IterationsPerSecondIfNotHidden(IterationsPerSecond):
     def format(
         self,
         progress_bar: ProgressBar,
-        progress: 'ProgressBarCounter[object]',
+        progress: ProgressBarCounter[object],
         width: int,
     ) -> AnyFormattedText:
         formatted_text = super().format(progress_bar, progress, width)
@@ -78,7 +80,7 @@ class TimeLeftIfNotHidden(TimeLeft):
     def format(
         self,
         progress_bar: ProgressBar,
-        progress: 'ProgressBarCounter[object]',
+        progress: ProgressBarCounter[object],
         width: int,
     ) -> AnyFormattedText:
         formatted_text = super().format(progress_bar, progress, width)
@@ -148,7 +150,7 @@ class ProgressBarImpl:
         label: AnyFormattedText = '',
         remove_when_done: bool = False,
         total: int | None = None,
-    ) -> 'ProgressBarCounter':
+    ) -> ProgressBarCounter:
         """
         Start a new counter.
 
