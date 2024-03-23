@@ -13,6 +13,8 @@
 # the License.
 """Example Plugin that displays some dynamic content: a game of 2048."""
 
+from __future__ import annotations
+
 from random import choice
 from typing import Iterable, TYPE_CHECKING
 import time
@@ -281,7 +283,7 @@ class Twenty48Control(FormattedTextControl):
     handling keybindings if in focus, and mouse input.
     """
 
-    def __init__(self, twenty48_pane: 'Twenty48Pane', *args, **kwargs) -> None:
+    def __init__(self, twenty48_pane: Twenty48Pane, *args, **kwargs) -> None:
         self.twenty48_pane = twenty48_pane
         self.game = self.twenty48_pane.game
 
@@ -533,7 +535,7 @@ class Twenty48Pane(FloatingWindowPane, PluginMixin):
             ),
         ]
 
-    def pw_console_init(self, app: 'ConsoleApp') -> None:
+    def pw_console_init(self, app: ConsoleApp) -> None:
         """Set the Pigweed Console application instance.
 
         This function is called after the Pigweed Console starts up and allows

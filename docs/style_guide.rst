@@ -15,7 +15,7 @@ Style Guide
 
 .. grid:: 2
 
-   .. grid-item-card:: :octicon:`rocket` Commit messages
+   .. grid-item-card:: :octicon:`pencil` Commit messages
       :link: docs-pw-style-commit-message
       :link-type: ref
       :class-item: sales-pitch-cta-secondary
@@ -45,11 +45,80 @@ Style Guide
 
       How to structure reference documentation for C++ code
 
+.. grid:: 2
+
+   .. grid-item-card:: :octicon:`terminal` CLI style
+      :link: docs-pw-style-cli
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      How to style your CLI program so that it behaves
+      consistently with other Pigweed CLI programs
+
 .. tip::
    Pigweed runs ``pw format`` as part of ``pw presubmit`` to perform some code
    formatting checks. To speed up the review process, consider adding ``pw
    presubmit`` as a git push hook using the following command:
    ``pw presubmit --install``
+
+.. todo-check: disable
+
+.. _docs-pw-todo-style:
+
+----------
+TODO style
+----------
+Pigweed expects TODO annotations to adhere to the following style:
+
+.. todo-check: disable
+
+.. code-block:: py
+
+   # TODO: https://pwbug.dev/123456789 - Some explanation of the problem at
+   # hand, which may span multiple lines if necessary.
+
+.. todo-check: enable
+
+.. admonition:: Note
+
+   Please include the ``https://`` to make it easier for code editors to
+   identify the bugs as URLs.
+
+In Markdown docs like
+`Rustdoc <https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html>`_
+the following format is preferred:
+
+.. todo-check: disable
+
+.. code-block:: rs
+
+   //! TODO: <pwbug.dev/123456789> - Explanation.
+
+.. todo-check: enable
+
+.. admonition:: Note
+
+   For Rustdoc, omit ``https://``. The additional Markdown syntax makes the
+   link explicit, and including ``https://`` makes the preamble disruptively
+   lengthy.
+
+Some older forms are still allowed but discouraged. We allow the following
+formats, ordered by preference with the preferred patterns at the top:
+
+.. todo-check: disable
+
+.. code-block:: py
+
+   # TODO: https://pwbug.dev/1234 - Explanation.
+   # TODO: b/1234 - Explanation.
+   # TODO: username@ - Explanation.
+   # TODO: username@example.com - Explanation.
+   # TODO(b/1234): Explanation.
+   # TODO(username): Explanation.
+
+.. todo-check: enable
+
+.. todo-check: enable
 
 -----------------
 Copyright headers
@@ -215,6 +284,7 @@ This plugin will, by default, act upon any file named "OWNERS".
 
    C++ <style/cpp>
    Commit message <style/commit_message>
+   CLI <style/cli>
    Doxygen documentation <style/doxygen>
    Protobuf <style/protobuf>
    Sphinx documentation <style/sphinx>

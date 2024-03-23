@@ -13,6 +13,8 @@
 # the License.
 """Defines a class used to write code to an output buffer."""
 
+from __future__ import annotations
+
 
 class OutputFile:
     """A buffer to which data is written.
@@ -55,7 +57,7 @@ class OutputFile:
     def indent(
         self,
         amount: int = INDENT_WIDTH,
-    ) -> 'OutputFile._IndentationContext':
+    ) -> OutputFile._IndentationContext:
         """Increases the indentation level of the output."""
         return self._IndentationContext(self, amount)
 
@@ -68,7 +70,7 @@ class OutputFile:
     class _IndentationContext:
         """Context that increases the output's indentation when it is active."""
 
-        def __init__(self, output: 'OutputFile', amount: int):
+        def __init__(self, output: OutputFile, amount: int):
             self._output = output
             self._amount: int = amount
 
