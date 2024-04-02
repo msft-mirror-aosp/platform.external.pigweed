@@ -272,6 +272,11 @@ There are also several optional methods you can provide:
 - If an implementation of ``DoQuery`` isn't provided, then ``Query`` will
   always return ``pw::Status::Unimplmented``.
 
+Custom allocators can indicate which optional methods they implement and what
+optional behaviors they want from the base class by specifying
+:ref:`module-pw_allocator-api-capabilities` when invoking the base class
+constructor.
+
 .. TODO: b/328076428 - Make Deallocate optional once traits supporting
    MonotonicAllocator are added.
 
@@ -300,6 +305,12 @@ Metric data can be retrieved according to the steps described in
 
 The ``AllMetrics`` type used in the example above enables the following metrics:
 
+- **requested_bytes**: The number of bytes currently requested from this
+  allocator.
+- **peak_requested_bytes**: The most bytes requested from this allocator at any
+  one time.
+- **cumulative_requested_bytes**: The total number of bytes that have been
+  requested from this allocator across its lifetime.
 - **allocated_bytes**: The number of bytes currently allocated by this
   allocator.
 - **peak_allocated_bytes**: The most bytes allocated by this allocator at any

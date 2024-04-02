@@ -19,11 +19,14 @@ including C, C++, Go, Rust, Shell, Batch and Python.
    pw_assert/docs
    pw_async/docs
    pw_async2/docs
+   pw_async2_basic/docs
+   pw_async2_epoll/docs
    pw_base64/docs
    pw_bloat/docs
    pw_blob_store/docs
    pw_bluetooth/docs
    pw_bluetooth_hci/docs
+   pw_bluetooth_proxy/docs
    pw_bluetooth_profiles/docs
    pw_bluetooth_sapphire/docs
    pw_boot/docs
@@ -107,6 +110,7 @@ including C, C++, Go, Rust, Shell, Batch and Python.
    pw_toolchain_bazel/docs
    pw_trace/docs
    pw_transfer/docs
+   pw_uart/docs
    pw_unit_test/docs
    pw_unit_test_zephyr/docs
    pw_varint/docs
