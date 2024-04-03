@@ -39,14 +39,22 @@ group("pw_allocator") {
 
 pw_source_set("allocator") {
   public_configs = [ ":default_config" ]
-  public = [ "public/pw_allocator/allocator.h" ]
+  public = [
+    "public/pw_allocator/allocator.h",
+    "public/pw_allocator/capability.h",
+    "public/pw_allocator/layout.h",
+    "public/pw_allocator/unique_ptr.h",
+  ]
   public_deps = [
     dir_pw_assert,
     dir_pw_preprocessor,
     dir_pw_result,
     dir_pw_status,
   ]
-  sources = [ "allocator.cc" ]
+  sources = [
+    "allocator.cc",
+    "unique_ptr.cc",
+  ]
 }
 
 pw_source_set("block") {
@@ -139,40 +147,10 @@ pw_source_set("libc_allocator") {
   sources = [ "libc_allocator.cc" ]
 }
 
-pw_source_set("multiplex_allocator") {
-  public_configs = [ ":default_config" ]
-  public = [ "public/pw_allocator/multiplex_allocator.h" ]
-  public_deps = [
-    ":allocator",
-    "$dir_pw_containers:flat_map",
-    dir_pw_result,
-    dir_pw_status,
-    dir_pw_tokenizer,
-  ]
-}
-
 pw_source_set("null_allocator") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/null_allocator.h" ]
   public_deps = [ ":allocator" ]
-}
-
-pw_source_set("simple_allocator") {
-  public_configs = [ ":default_config" ]
-  public = [ "public/pw_allocator/simple_allocator.h" ]
-  public_deps = [
-    ":allocator",
-    ":block",
-    dir_pw_bytes,
-    dir_pw_result,
-    dir_pw_status,
-  ]
-}
-
-pw_source_set("split_free_list_allocator") {
-  public_configs = [ ":default_config" ]
-  public = [ "public/pw_allocator/split_free_list_allocator.h" ]
-  public_deps = [ ":block_allocator" ]
 }
 
 pw_source_set("synchronized_allocator") {
@@ -214,7 +192,6 @@ pw_source_set("testing") {
     dir_pw_unit_test,
   ]
   deps = [ dir_pw_assert ]
-  sources = [ "testing.cc" ]
 }
 
 pw_source_set("test_harness") {

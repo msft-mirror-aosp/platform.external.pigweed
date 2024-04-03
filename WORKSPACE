@@ -173,10 +173,22 @@ install_deps()
 # Used in modules: //pw_bluetooth_sapphire.
 # NOTE: These blocks cannot feasibly be moved into a macro.
 # See https://github.com/bazelbuild/bazel/issues/1550
+git_repository(
+    name = "fuchsia_infra",
+    commit = "12cdd2d6c2d13b96c5190ad4a267a571acbd96b2",
+    remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
+)
+
+load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
+
+fuchsia_infra_workspace()
+
+FUCHSIA_SDK_VERSION = "version:19.20240326.0.1"
+
 cipd_repository(
     name = "fuchsia_sdk",
     path = "fuchsia/sdk/core/fuchsia-bazel-rules/${os}-amd64",
-    tag = "version:19.20240315.0.1",
+    tag = FUCHSIA_SDK_VERSION,
 )
 
 load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
@@ -184,6 +196,19 @@ load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
 rules_fuchsia_deps()
 
 register_toolchains("@fuchsia_sdk//:fuchsia_toolchain_sdk")
+
+cipd_repository(
+    name = "fuchsia_products_metadata",
+    path = "fuchsia/development/product_bundles/v2",
+    tag = FUCHSIA_SDK_VERSION,
+)
+
+load("@fuchsia_sdk//fuchsia:products.bzl", "fuchsia_products_repository")
+
+fuchsia_products_repository(
+    name = "fuchsia_products",
+    metadata_file = "@fuchsia_products_metadata//:product_bundles.json",
+)
 
 load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
 
@@ -216,14 +241,11 @@ http_archive(
 
 # Set up upstream googletest and googlemock.
 # Required by: Pigweed, Fuchsia SDK.
-# Used in modules: //pw_analog, //pw_fuzzer, //pw_i2c.
-http_archive(
+# Used in modules: //pw_analog, //pw_fuzzer, //pw_i2c, //pw_bluetooth_sapphire.
+git_repository(
     name = "com_google_googletest",
-    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
-    strip_prefix = "googletest-1.14.0",
-    urls = [
-        "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
-    ],
+    commit = "3b6d48e8d5c1d9b3f9f10ac030a94008bfaf032b",
+    remote = "https://pigweed.googlesource.com/third_party/github/google/googletest",
 )
 
 # Sets up Bazels documentation generator.

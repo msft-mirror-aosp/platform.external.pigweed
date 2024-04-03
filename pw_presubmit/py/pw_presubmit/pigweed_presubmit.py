@@ -602,8 +602,19 @@ def docs_build(ctx: PresubmitContext) -> None:
         'docs', 'gen', 'docs', 'html', 'rustdoc'
     )
 
+    # Copy the doxygen html output to the main docs location.
+    doxygen_html_gn_dir = ctx.output_dir.joinpath(
+        'docs',
+        'doxygen',
+        'html',
+    )
+    doxygen_html_output_dir = ctx.output_dir.joinpath(
+        'docs', 'gen', 'docs', 'html', 'doxygen'
+    )
+
     # Remove the docs tree to avoid including stale files from previous runs.
     shutil.rmtree(rust_docs_output_dir, ignore_errors=True)
+    shutil.rmtree(doxygen_html_output_dir, ignore_errors=True)
 
     # Bazel generates files and directories without write permissions.  In
     # order to allow this rule to be run multiple times we use shutil.copyfile
@@ -611,6 +622,12 @@ def docs_build(ctx: PresubmitContext) -> None:
     shutil.copytree(
         rust_docs_bazel_dir,
         rust_docs_output_dir,
+        copy_function=shutil.copyfile,
+        dirs_exist_ok=True,
+    )
+    shutil.copytree(
+        doxygen_html_gn_dir,
+        doxygen_html_output_dir,
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
@@ -1299,7 +1316,12 @@ OTHER_CHECKS = (
 )
 
 ARDUINO_PICO = (
-    gn_teensy_build,
+    # Skip gn_teensy_build if running on mac-arm64.
+    # There are no arm specific tools packages available upstream:
+    # https://www.pjrc.com/teensy/package_teensy_index.json
+    gn_teensy_build
+    if not (sys.platform == 'darwin' and platform.machine() == 'arm64')
+    else (),
     gn_pico_build,
     gn_pw_system_demo_build,
 )
@@ -1383,9 +1405,6 @@ FULL = (
     python_checks.gn_python_test_coverage,
     python_checks.check_upstream_python_constraints,
     build_env_setup,
-    # Skip gn_teensy_build if running on Windows. The Teensycore installer is
-    # an exe that requires an admin role.
-    gn_teensy_build if sys.platform in ['linux', 'darwin'] else (),
 )
 
 PROGRAMS = Programs(
