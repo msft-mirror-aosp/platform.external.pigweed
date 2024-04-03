@@ -19,6 +19,9 @@ include("$ENV{PW_ROOT}/pw_build/pigweed.cmake")
 pw_add_library(pw_allocator.allocator STATIC
   HEADERS
     public/pw_allocator/allocator.h
+    public/pw_allocator/capability.h
+    public/pw_allocator/layout.h
+    public/pw_allocator/unique_ptr.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -28,6 +31,7 @@ pw_add_library(pw_allocator.allocator STATIC
     pw_status
   SOURCES
     allocator.cc
+    unique_ptr.cc
 )
 
 pw_add_library(pw_allocator.block STATIC
@@ -168,7 +172,7 @@ pw_add_library(pw_allocator.tracking_allocator INTERFACE
 
 # Test support
 
-pw_add_library(pw_allocator.testing STATIC
+pw_add_library(pw_allocator.testing INTERFACE
   HEADERS
     public/pw_allocator/testing.h
   PUBLIC_INCLUDES
@@ -185,8 +189,6 @@ pw_add_library(pw_allocator.testing STATIC
     pw_unit_test
   PRIVATE_DEPS
     pw_assert
-  SOURCES
-    testing.cc
 )
 
 pw_add_library(pw_allocator.test_harness STATIC

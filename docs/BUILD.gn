@@ -75,7 +75,8 @@ pw_doc_group("core_docs") {
     "style/cpp.rst",
     "style/doxygen.rst",
     "style/protobuf.rst",
-    "style/sphinx.rst",
+    "style/rest.rst",
+    "style/writing.rst",
     "style_guide.rst",
   ]
 }
@@ -125,8 +126,10 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_allocator/public/pw_allocator/block.h",
   "$dir_pw_allocator/public/pw_allocator/block_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/buffer.h",
+  "$dir_pw_allocator/public/pw_allocator/capability.h",
   "$dir_pw_allocator/public/pw_allocator/fallback_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/fuzzing.h",
+  "$dir_pw_allocator/public/pw_allocator/layout.h",
   "$dir_pw_allocator/public/pw_allocator/libc_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/metrics.h",
   "$dir_pw_allocator/public/pw_allocator/null_allocator.h",
@@ -135,6 +138,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_allocator/public/pw_allocator/test_harness.h",
   "$dir_pw_allocator/public/pw_allocator/testing.h",
   "$dir_pw_allocator/public/pw_allocator/tracking_allocator.h",
+  "$dir_pw_allocator/public/pw_allocator/unique_ptr.h",
   "$dir_pw_analog/public/pw_analog/analog_input.h",
   "$dir_pw_analog/public/pw_analog/microvolt_input.h",
   "$dir_pw_async/public/pw_async/context.h",
@@ -146,6 +150,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_async/public/pw_async/task_function.h",
   "$dir_pw_async2/public/pw_async2/dispatcher.h",
   "$dir_pw_async2/public/pw_async2/dispatcher_base.h",
+  "$dir_pw_async2/public/pw_async2/pend_func_task.h",
   "$dir_pw_async2/public/pw_async2/poll.h",
   "$dir_pw_async2_basic/public_overrides/pw_async2/dispatcher_native.h",
   "$dir_pw_async_basic/public/pw_async_basic/dispatcher.h",
@@ -156,9 +161,15 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/central.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/connection.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/peripheral.h",
+  "$dir_pw_bluetooth_proxy/public/pw_bluetooth_proxy/common.h",
+  "$dir_pw_bluetooth_proxy/public/pw_bluetooth_proxy/hci_proxy.h",
+  "$dir_pw_bluetooth_proxy/public/pw_bluetooth_proxy/passthrough_policy.h",
+  "$dir_pw_bluetooth_proxy/public/pw_bluetooth_proxy/proxy_policy.h",
   "$dir_pw_bytes/public/pw_bytes/bit.h",
   "$dir_pw_bytes/public/pw_bytes/byte_builder.h",
   "$dir_pw_channel/public/pw_channel/channel.h",
+  "$dir_pw_channel/public/pw_channel/forwarding_channel.h",
+  "$dir_pw_channel/public/pw_channel/loopback_channel.h",
   "$dir_pw_chre/public/pw_chre/chre.h",
   "$dir_pw_chre/public/pw_chre/host_link.h",
   "$dir_pw_chrono/public/pw_chrono/system_clock.h",
@@ -175,7 +186,13 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_function/public/pw_function/scope_guard.h",
   "$dir_pw_hdlc/public/pw_hdlc/decoder.h",
   "$dir_pw_hdlc/public/pw_hdlc/encoder.h",
+  "$dir_pw_hdlc/public/pw_hdlc/router.h",
+  "$dir_pw_i2c/public/pw_i2c/address.h",
+  "$dir_pw_i2c/public/pw_i2c/device.h",
+  "$dir_pw_i2c/public/pw_i2c/i2c_service.h",
   "$dir_pw_i2c/public/pw_i2c/initiator.h",
+  "$dir_pw_i2c/public/pw_i2c/initiator_gmock.h",
+  "$dir_pw_i2c/public/pw_i2c/initiator_mock.h",
   "$dir_pw_i2c/public/pw_i2c/register_device.h",
   "$dir_pw_i2c_linux/public/pw_i2c_linux/initiator.h",
   "$dir_pw_interrupt/public/pw_interrupt/context.h",
@@ -234,6 +251,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_tokenizer/public/pw_tokenizer/tokenize.h",
   "$dir_pw_toolchain/public/pw_toolchain/no_destructor.h",
   "$dir_pw_transfer/public/pw_transfer/atomic_file_transfer_handler.h",
+  "$dir_pw_uart/public/pw_uart/uart.h",
   "$dir_pw_unit_test/light_public_overrides/pw_unit_test/framework_backend.h",
   "$dir_pw_unit_test/public/pw_unit_test/config.h",
   "$dir_pw_unit_test/public/pw_unit_test/event_handler.h",
@@ -270,7 +288,10 @@ pw_python_action("generate_doxygen") {
     "--include-paths",
   ]
   args += rebase_path(_doxygen_input_files, root_build_dir)
-  outputs = [ "$root_build_dir/$_output_dir/xml/index.xml" ]
+  outputs = [
+    "$root_build_dir/$_output_dir/html/index.html",
+    "$root_build_dir/$_output_dir/xml/index.xml",
+  ]
 }
 
 pw_doc_gen("docs") {

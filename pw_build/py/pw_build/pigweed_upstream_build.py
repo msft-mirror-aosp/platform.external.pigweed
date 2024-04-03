@@ -11,7 +11,16 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""Default pw build script for upstream Pigweed."""
+"""Default pw build script for upstream Pigweed.
+
+Usage:
+
+   pw build --list
+   pw build --recipe default_ninja
+   pw build --recipe default_* --watch
+   pw build --step gn_combined_build_check --step gn_python_*
+   pw build -C out/gn --watch
+"""
 
 import logging
 from pathlib import Path
@@ -48,15 +57,14 @@ def pigweed_upstream_main() -> int:
     Command line usage examples:
 
     .. code-block:: bash
+
        pw build --list
-       pw build --step gn_combined_build_check --step gn_python_*
        pw build --recipe default_ninja
        pw build --recipe default_* --watch
-       pw build -C out --watch
+       pw build --step gn_combined_build_check --step gn_python_*
+       pw build -C out/gn --watch
     """
     default_bazel_targets = ['//...:all']
-    bazel_root = Path('out/bazel')
-    bazel_root.mkdir(parents=True, exist_ok=True)
 
     default_gn_gen_command = [
         'gn',
@@ -68,6 +76,7 @@ def pigweed_upstream_main() -> int:
         default_gn_gen_command.append(gn_args(pw_command_launcher='ccache'))
 
     build_recipes = [
+        # Ninja build
         BuildRecipe(
             build_dir=Path('out/gn'),
             title='default_ninja',
@@ -82,8 +91,9 @@ def pigweed_upstream_main() -> int:
                 ),
             ],
         ),
+        # Bazel build
         BuildRecipe(
-            build_dir=bazel_root,
+            build_dir=Path('out/bazel'),
             title='default_bazel',
             steps=[
                 BuildCommand(

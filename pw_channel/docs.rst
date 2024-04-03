@@ -48,3 +48,13 @@ API reference
 .. doxygengroup:: pw_channel
    :content-only:
    :members:
+
+Channel implementations
+=======================
+.. doxygengroup:: pw_channel_forwarding
+   :content-only:
+   :members:
+
+.. doxygengroup:: pw_channel_loopback
+   :content-only:
+   :members:

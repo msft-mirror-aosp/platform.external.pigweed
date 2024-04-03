@@ -119,9 +119,7 @@ class TestFixture {
   ~TestFixture() {
     for (size_t i = 0; i < kNumPtrs; ++i) {
       if (ptrs_[i] != nullptr) {
-        // `BlockAllocatorType::Deallocate` doesn't actually use the layout,
-        // as the information it needs is encoded in the blocks.
-        allocator_->Deallocate(ptrs_[i], Layout::Of<void*>());
+        allocator_->Deallocate(ptrs_[i]);
       }
     }
     allocator_->Reset();
@@ -232,7 +230,7 @@ class TestFixture {
   }
 
  private:
-  WithBuffer<BlockAllocatorType, kCapacity> allocator_;
+  WithBuffer<BlockAllocatorType, kCapacity, BlockType::kAlignment> allocator_;
   std::array<void*, kNumPtrs> ptrs_;
 };
 
@@ -279,6 +277,14 @@ void CanExplicitlyInit(TestFixtureType& test_fixture) {
   EXPECT_NE(*(allocator.blocks().begin()), nullptr);
 }
 TEST_FOREACH_STRATEGY(CanExplicitlyInit)
+
+template <typename TestFixtureType>
+void GetCapacity(TestFixtureType& test_fixture) {
+  auto& allocator = test_fixture.GetAllocator();
+  StatusWithSize capacity = allocator.GetCapacity();
+  EXPECT_EQ(capacity.status(), OkStatus());
+  EXPECT_EQ(capacity.size(), kCapacity);
+}
 
 template <typename TestFixtureType>
 void AllocateLarge(TestFixtureType& test_fixture) {
@@ -456,8 +462,7 @@ TEST(DualFirstFit, AllocatesUsingThreshold) {
 template <typename TestFixtureType>
 void DeallocateNull(TestFixtureType& test_fixture) {
   auto& allocator = test_fixture.GetAllocator();
-  constexpr Layout layout = Layout::Of<uint8_t>();
-  allocator.Deallocate(nullptr, layout);
+  allocator.Deallocate(nullptr);
 }
 TEST_FOREACH_STRATEGY(DeallocateNull)
 
@@ -484,7 +489,7 @@ void DeallocateShuffled(TestFixtureType& test_fixture) {
 
   // Deallocate everything.
   for (size_t i = 0; i < kNumPtrs; ++i) {
-    allocator.Deallocate(test_fixture[i], layout);
+    allocator.Deallocate(test_fixture[i]);
     test_fixture[i] = nullptr;
   }
 }
@@ -507,7 +512,7 @@ TEST(BlockAllocatorTest, DisablePoisoning) {
     test_fixture[i] = nullptr;
 
     // Free every other to prevent merging.
-    allocator.Deallocate(ptr, layout);
+    allocator.Deallocate(ptr);
 
     // Modify the contents of the block and check if it is still valid.
     auto* block = BlockType::FromUsableSpace(ptr);
@@ -535,7 +540,7 @@ TEST(BlockAllocatorTest, PoisonEveryFreeBlock) {
     test_fixture[i] = nullptr;
 
     // Free every other to prevent merging.
-    allocator.Deallocate(ptr, layout);
+    allocator.Deallocate(ptr);
 
     // Modify the contents of the block and check if it is still valid.
     auto* block = BlockType::FromUsableSpace(ptr);
@@ -563,7 +568,7 @@ TEST(BlockAllocatorTest, PoisonPeriodically) {
     test_fixture[i] = nullptr;
 
     // Free every other to prevent merging.
-    allocator.Deallocate(ptr, layout);
+    allocator.Deallocate(ptr);
 
     // Modify the contents of the block and check if it is still valid.
     auto* block = BlockType::FromUsableSpace(ptr);
@@ -608,45 +613,10 @@ void IterateOverBlocks(TestFixtureType& test_fixture) {
 TEST_FOREACH_STRATEGY(IterateOverBlocks)
 
 template <typename TestFixtureType>
-void QueryLargeValid(TestFixtureType& test_fixture) {
-  auto& allocator = test_fixture.GetAllocator({
-      {kSmallOuterSize, 0},
-      {kLargeOuterSize, 1},
-      {kSmallOuterSize, 2},
-  });
-
-  Layout layout(kLargeInnerSize, 1);
-  EXPECT_EQ(allocator.Query(test_fixture[1], layout), OkStatus());
-}
-TEST_FOREACH_STRATEGY(QueryLargeValid)
-
-template <typename TestFixtureType>
-void QuerySmallValid(TestFixtureType& test_fixture) {
-  auto& allocator = test_fixture.GetAllocator({
-      {kLargeOuterSize, 0},
-      {kSmallOuterSize, 1},
-      {kLargeOuterSize, 2},
-  });
-  EXPECT_EQ(allocator.Query(test_fixture[1], Layout(kSmallInnerSize, 1)),
-            OkStatus());
-}
-TEST_FOREACH_STRATEGY(QuerySmallValid)
-
-template <typename TestFixtureType>
-void QueryInvalidPtr(TestFixtureType& test_fixture) {
-  auto& allocator = test_fixture.GetAllocator();
-  constexpr Layout layout =
-      Layout::Of<typename TestFixtureType::block_allocator_type>();
-  EXPECT_EQ(allocator.Query(&allocator, layout), Status::OutOfRange());
-}
-TEST_FOREACH_STRATEGY(QueryInvalidPtr)
-
-template <typename TestFixtureType>
 void ResizeNull(TestFixtureType& test_fixture) {
   auto& allocator = test_fixture.GetAllocator();
-  constexpr Layout old_layout = Layout::Of<uint8_t>();
   size_t new_size = 1;
-  EXPECT_FALSE(allocator.Resize(nullptr, old_layout, new_size));
+  EXPECT_FALSE(allocator.Resize(nullptr, new_size));
 }
 TEST_FOREACH_STRATEGY(ResizeNull)
 
@@ -656,9 +626,8 @@ void ResizeLargeSame(TestFixtureType& test_fixture) {
       {kLargeOuterSize, 0},
       {kLargeOuterSize, 1},
   });
-  Layout old_layout(kLargeInnerSize, 1);
   size_t new_size = kLargeInnerSize;
-  ASSERT_TRUE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  ASSERT_TRUE(allocator.Resize(test_fixture[0], new_size));
   UseMemory(test_fixture[0], kLargeInnerSize);
 }
 TEST_FOREACH_STRATEGY(ResizeLargeSame)
@@ -669,9 +638,8 @@ void ResizeLargeSmaller(TestFixtureType& test_fixture) {
       {kLargeOuterSize, 0},
       {kLargeOuterSize, 1},
   });
-  Layout old_layout(kLargeInnerSize, 1);
   size_t new_size = kSmallInnerSize;
-  ASSERT_TRUE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  ASSERT_TRUE(allocator.Resize(test_fixture[0], new_size));
   UseMemory(test_fixture[0], kSmallInnerSize);
 }
 TEST_FOREACH_STRATEGY(ResizeLargeSmaller)
@@ -683,9 +651,8 @@ void ResizeLargeLarger(TestFixtureType& test_fixture) {
       {kLargeOuterSize, Preallocation::kIndexFree},
       {kSmallOuterSize, 2},
   });
-  Layout old_layout(kLargeInnerSize, 1);
   size_t new_size = kLargeInnerSize * 2;
-  ASSERT_TRUE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  ASSERT_TRUE(allocator.Resize(test_fixture[0], new_size));
   UseMemory(test_fixture[0], kLargeInnerSize * 2);
 }
 TEST_FOREACH_STRATEGY(ResizeLargeLarger)
@@ -697,9 +664,8 @@ void ResizeLargeLargerFailure(TestFixtureType& test_fixture) {
       {kSmallOuterSize, 12},
   });
   // Memory after ptr is already allocated, so `Resize` should fail.
-  Layout old_layout(kLargeInnerSize, 1);
   size_t new_size = kLargeInnerSize * 2;
-  EXPECT_FALSE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  EXPECT_FALSE(allocator.Resize(test_fixture[0], new_size));
 }
 TEST_FOREACH_STRATEGY(ResizeLargeLargerFailure)
 
@@ -709,9 +675,8 @@ void ResizeSmallSame(TestFixtureType& test_fixture) {
       {kSmallOuterSize, 0},
       {kSmallOuterSize, 1},
   });
-  Layout old_layout(kSmallInnerSize, 1);
   size_t new_size = kSmallInnerSize;
-  ASSERT_TRUE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  ASSERT_TRUE(allocator.Resize(test_fixture[0], new_size));
   UseMemory(test_fixture[0], kSmallInnerSize);
 }
 TEST_FOREACH_STRATEGY(ResizeSmallSame)
@@ -722,9 +687,8 @@ void ResizeSmallSmaller(TestFixtureType& test_fixture) {
       {kSmallOuterSize, 0},
       {kSmallOuterSize, 1},
   });
-  Layout old_layout(kSmallInnerSize, 1);
   size_t new_size = kSmallInnerSize / 2;
-  ASSERT_TRUE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  ASSERT_TRUE(allocator.Resize(test_fixture[0], new_size));
   UseMemory(test_fixture[0], kSmallInnerSize / 2);
 }
 TEST_FOREACH_STRATEGY(ResizeSmallSmaller)
@@ -736,9 +700,8 @@ void ResizeSmallLarger(TestFixtureType& test_fixture) {
       {kSmallOuterSize, Preallocation::kIndexFree},
       {kSmallOuterSize, 2},
   });
-  Layout old_layout(kSmallInnerSize, 1);
   size_t new_size = kSmallInnerSize * 2;
-  ASSERT_TRUE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  ASSERT_TRUE(allocator.Resize(test_fixture[0], new_size));
   UseMemory(test_fixture[0], kSmallInnerSize * 2);
 }
 TEST_FOREACH_STRATEGY(ResizeSmallLarger)
@@ -751,9 +714,8 @@ void ResizeSmallLargerFailure(TestFixtureType& test_fixture) {
       {kSmallOuterSize, 1},
   });
   // Memory after ptr is already allocated, so `Resize` should fail.
-  Layout old_layout(kSmallInnerSize, 1);
   size_t new_size = kSmallInnerSize * 2 + BlockType::kBlockOverhead;
-  EXPECT_FALSE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  EXPECT_FALSE(allocator.Resize(test_fixture[0], new_size));
 }
 TEST_FOREACH_STRATEGY(ResizeSmallLargerFailure)
 
@@ -762,9 +724,8 @@ TEST(DualFirstFit, ResizeLargeSmallerAcrossThreshold) {
   auto& allocator = test_fixture.GetAllocator({{kDualFitThreshold * 2, 0}});
   // Shrinking succeeds, and the pointer is unchanged even though it is now
   // below the threshold.
-  Layout old_layout(kDualFitThreshold * 2, 1);
   size_t new_size = kDualFitThreshold / 2;
-  ASSERT_TRUE(allocator.Resize(test_fixture[0], old_layout, new_size));
+  ASSERT_TRUE(allocator.Resize(test_fixture[0], new_size));
   UseMemory(test_fixture[0], kDualFitThreshold / 2);
 }
 
@@ -777,9 +738,8 @@ TEST(DualFirstFit, ResizeSmallLargerAcrossThreshold) {
   });
   // Growing succeeds, and the pointer is unchanged even though it is now
   // above the threshold.
-  Layout old_layout(kDualFitThreshold / 2, 1);
   size_t new_size = kDualFitThreshold * 2;
-  ASSERT_TRUE(allocator.Resize(test_fixture[1], old_layout, new_size));
+  ASSERT_TRUE(allocator.Resize(test_fixture[1], new_size));
   UseMemory(test_fixture[1], kDualFitThreshold * 2);
 }
 
@@ -818,7 +778,7 @@ void CannotGetLayoutFromInvalidPointer(TestFixtureType& test_fixture) {
   });
 
   Result<Layout> result0 = allocator.GetLayout(nullptr);
-  EXPECT_EQ(result0.status(), Status::OutOfRange());
+  EXPECT_EQ(result0.status(), Status::NotFound());
 
   for (const auto& block : allocator.blocks()) {
     if (!block->Used()) {

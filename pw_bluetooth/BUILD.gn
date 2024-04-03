@@ -27,6 +27,8 @@ config("public_include_path") {
 }
 
 pw_doc_group("docs") {
+  # Also, sources with doxygen comment blocks must be added to //docs/BUILD.gn
+  inputs = [ "emboss_test.cc" ]
   sources = [ "docs.rst" ]
 
   report_deps = [
@@ -208,12 +210,10 @@ pw_test("emboss_test") {
   enable_if = dir_pw_third_party_emboss != ""
   sources = [ "emboss_test.cc" ]
   deps = [
-    ":emboss_hci_commands",
-    ":emboss_hci_data",
-    ":emboss_hci_events",
+    ":emboss_hci_group",
     ":emboss_hci_test",
-    ":emboss_hci_vendor",
     ":emboss_l2cap_frames",
+    "$dir_pw_third_party/fuchsia:stdcompat",
   ]
 }
 

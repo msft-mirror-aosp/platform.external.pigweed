@@ -26,7 +26,7 @@ from pathlib import Path
 import re
 import sys
 
-from typing import Any, Iterable, Type
+from typing import Any, Collection, Iterable, Type
 
 from pw_build import generate_modules_lists
 
@@ -808,6 +808,8 @@ def _basic_module_setup(
 ) -> _ModuleContext:
     """Creates the basic layout of a Pigweed module."""
     module_dir.mkdir()
+    public_dir = module_dir / 'public' / module_name.full
+    public_dir.mkdir(parents=True)
 
     ctx = _ModuleContext(
         name=module_name,
@@ -827,13 +829,98 @@ def _basic_module_setup(
     return ctx
 
 
-def _create_module(
-    module: str, languages: Iterable[str], build_systems: Iterable[str]
+def _add_to_pigweed_modules_file(
+    project_root: Path,
+    module_name: _ModuleName,
 ) -> None:
-    project_root = Path(os.environ.get('PW_PROJECT_ROOT', ''))
-    assert project_root.is_dir()
+    modules_file = project_root / 'PIGWEED_MODULES'
+    if not modules_file.exists():
+        _LOG.error(
+            'Could not locate PIGWEED_MODULES file; '
+            'your repository may be in a bad state.'
+        )
+        return
 
-    is_upstream = os.environ.get('PW_ROOT') == str(project_root)
+    modules_gni_file = (
+        project_root / 'pw_build' / 'generated_pigweed_modules_lists.gni'
+    )
+
+    # Cut off the extra newline at the end of the file.
+    modules_list = modules_file.read_text().split('\n')[:-1]
+    modules_list.append(module_name.full)
+    modules_list.sort()
+    modules_list.append('')
+    modules_file.write_text('\n'.join(modules_list))
+    print('  modify  ' + str(modules_file.relative_to(Path.cwd())))
+
+    generate_modules_lists.main(
+        root=project_root,
+        modules_list=modules_file,
+        modules_gni_file=modules_gni_file,
+        mode=generate_modules_lists.Mode.UPDATE,
+    )
+    print('  modify  ' + str(modules_gni_file.relative_to(Path.cwd())))
+
+
+def _add_to_root_cmakelists(
+    project_root: Path,
+    module_name: _ModuleName,
+) -> None:
+    new_line = f'add_subdirectory({module_name.full} EXCLUDE_FROM_ALL)\n'
+
+    path = project_root / 'CMakeLists.txt'
+    if not path.exists():
+        _LOG.error('Could not locate root CMakeLists.txt file.')
+        return
+
+    lines = []
+    with path.open() as f:
+        lines = f.readlines()
+
+    add_subdir_start = 0
+    while add_subdir_start < len(lines):
+        if lines[add_subdir_start].startswith('add_subdirectory'):
+            break
+        add_subdir_start += 1
+
+    insert_point = add_subdir_start
+    while (
+        lines[insert_point].startswith('add_subdirectory')
+        and lines[insert_point] < new_line
+    ):
+        insert_point += 1
+
+    lines.insert(insert_point, new_line)
+    path.write_text(''.join(lines))
+    print('  modify  ' + str(path.relative_to(Path.cwd())))
+
+
+def _project_root() -> Path:
+    """Returns the path to the root directory of the current project."""
+    project_root = Path(os.environ.get('PW_PROJECT_ROOT', ''))
+    if not project_root.is_dir():
+        _LOG.error(
+            'Expected env var PW_PROJECT_ROOT to point to a directory, but '
+            'found `%s` which is not a directory.',
+            project_root,
+        )
+        sys.exit(1)
+    return project_root
+
+
+def _is_upstream() -> bool:
+    """Returns whether this command is being run within Pigweed itself."""
+    return os.environ.get('PW_ROOT') == str(_project_root())
+
+
+def _create_module(
+    module: str,
+    languages: Iterable[str],
+    build_systems: Iterable[str],
+    owners: Collection[str] | None = None,
+) -> None:
+    project_root = _project_root()
+    is_upstream = _is_upstream()
 
     module_name = _check_module_name(module, is_upstream)
     if not module_name:
@@ -859,9 +946,39 @@ def _create_module(
         )
         sys.exit(1)
 
+    if owners is not None:
+        if len(owners) < 2:
+            _LOG.error(
+                'New modules must have at least two owners, but only `%s` was '
+                'provided.',
+                owners,
+            )
+            sys.exit(1)
+        for owner in owners:
+            if '@' not in owner:
+                _LOG.error(
+                    'Owners should be email addresses, but found `%s`', owner
+                )
+                sys.exit(1)
+        root_owners = (project_root / 'OWNERS').read_text().split('\n')
+        if not any(owner in root_owners for owner in owners):
+            root_owners_str = '\n'.join(root_owners)
+            _LOG.error(
+                'Module owners must include at least one root owner, but only '
+                '`%s` was provided. Root owners include:\n%s',
+                owners,
+                root_owners_str,
+            )
+            sys.exit(1)
+
     ctx = _basic_module_setup(
         module_name, module_dir, build_systems, is_upstream
     )
+
+    if owners is not None:
+        owners_file = module_dir / 'OWNERS'
+        owners_file.write_text('\n'.join(owners))
+        print('  create  ' + str(owners_file.relative_to(Path.cwd())))
 
     try:
         generators = list(_LANGUAGE_GENERATORS[lang](ctx) for lang in languages)
@@ -876,33 +993,9 @@ def _create_module(
         build_file.write()
 
     if is_upstream:
-        modules_file = project_root / 'PIGWEED_MODULES'
-        if not modules_file.exists():
-            _LOG.error(
-                'Could not locate PIGWEED_MODULES file; '
-                'your repository may be in a bad state.'
-            )
-            return
-
-        modules_gni_file = (
-            project_root / 'pw_build' / 'generated_pigweed_modules_lists.gni'
-        )
-
-        # Cut off the extra newline at the end of the file.
-        modules_list = modules_file.read_text().split('\n')[:-1]
-        modules_list.append(module_name.full)
-        modules_list.sort()
-        modules_list.append('')
-        modules_file.write_text('\n'.join(modules_list))
-        print('  modify  ' + str(modules_file.relative_to(Path.cwd())))
-
-        generate_modules_lists.main(
-            root=project_root,
-            modules_list=modules_file,
-            modules_gni_file=modules_gni_file,
-            mode=generate_modules_lists.Mode.UPDATE,
-        )
-        print('  modify  ' + str(modules_gni_file.relative_to(Path.cwd())))
+        _add_to_pigweed_modules_file(project_root, module_name)
+        if 'cmake' in build_systems:
+            _add_to_root_cmakelists(project_root, module_name)
 
     print()
     _LOG.info(
@@ -913,6 +1006,7 @@ def _create_module(
 
 
 def register_subcommand(parser: argparse.ArgumentParser) -> None:
+    """Registers the module `create` subcommand with `parser`."""
     csv = lambda s: s.split(',')
 
     parser.add_argument(
@@ -921,9 +1015,9 @@ def register_subcommand(parser: argparse.ArgumentParser) -> None:
             'Comma-separated list of build systems the module supports. '
             f'Options: {", ".join(_BUILD_FILES.keys())}'
         ),
-        type=csv,
+        choices=_BUILD_FILES.keys(),
         default=_BUILD_FILES.keys(),
-        metavar='BUILD[,BUILD,...]',
+        type=csv,
     )
     parser.add_argument(
         '--languages',
@@ -931,10 +1025,23 @@ def register_subcommand(parser: argparse.ArgumentParser) -> None:
             'Comma-separated list of languages the module will use. '
             f'Options: {", ".join(_LANGUAGE_GENERATORS.keys())}'
         ),
-        type=csv,
+        choices=_LANGUAGE_GENERATORS.keys(),
         default=[],
-        metavar='LANG[,LANG,...]',
+        type=csv,
     )
+    if _is_upstream():
+        parser.add_argument(
+            '--owners',
+            help=(
+                'Comma-separated list of emails of the people who will own and '
+                'maintain the new module. This list must contain at least two '
+                'entries, and at least one user must be a top-level OWNER '
+                '(listed in `{_project_root()}/OWNERS`).'
+            ),
+            required=True,
+            metavar='firstownername@google.com,secondownername@foo.net',
+            type=csv,
+        )
     parser.add_argument(
         'module', help='Name of the module to create.', metavar='MODULE_NAME'
     )

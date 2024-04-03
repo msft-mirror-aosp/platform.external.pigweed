@@ -18,6 +18,7 @@
 #include "pw_async2/dispatcher.h"
 #include "pw_multibuf/multibuf.h"
 #include "pw_result/result.h"
+#include "pw_sync/interrupt_spin_lock.h"
 
 namespace pw::multibuf {
 
@@ -194,7 +195,7 @@ class MultiBufAllocator {
   void RemoveWaiterLocked(internal::AllocationWaiter*)
       PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  sync::Mutex lock_;
+  sync::InterruptSpinLock lock_;
   internal::AllocationWaiter* first_waiter_ PW_GUARDED_BY(lock_) = nullptr;
 };
 
@@ -304,6 +305,9 @@ class MultiBufAllocationFuture {
                            bool needs_contiguous)
       : waiter_(allocator, min_size, desired_size, needs_contiguous) {}
   async2::Poll<std::optional<MultiBuf>> Pend(async2::Context& cx);
+  size_t min_size() const { return waiter_.min_size(); }
+  size_t desired_size() const { return waiter_.desired_size(); }
+  bool needs_contiguous() const { return waiter_.needs_contiguous(); }
 
  private:
   friend class MultiBufAllocator;

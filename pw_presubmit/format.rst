@@ -4,9 +4,6 @@
 pw_presubmit: Code formatting
 =============================
 
-.. pigweed-module-subpage::
-   :name: pw_presubmit
-
 .. admonition:: Note
    :class: warning
 
@@ -30,8 +27,24 @@ Core
    :special-members: DiffCallback
    :noindex:
 
+   .. autoclass:: pw_presubmit.format.core.ToolRunner
+      :special-members: +__call__
+      :private-members: +_run_tool
+
 Formatters
 ==========
+.. autoclass:: pw_presubmit.format.bazel.BuildifierFormatter
+   :members:
+   :noindex:
+
 .. autoclass:: pw_presubmit.format.cpp.ClangFormatFormatter
+   :members:
+   :noindex:
+
+.. autoclass:: pw_presubmit.format.gn.GnFormatter
+   :members:
+   :noindex:
+
+.. autoclass:: pw_presubmit.format.python.BlackFormatter
    :members:
    :noindex:

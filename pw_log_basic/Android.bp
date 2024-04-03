@@ -16,6 +16,37 @@ package {
     default_applicable_licenses: ["external_pigweed_license"],
 }
 
+// To use the pw_log_basic facade, add pw_log_basic_no_backends to the defaults
+// list of the library or binary that uses it and provide the pw_sys_io backend
+// and its backend as dependencies.
+cc_defaults {
+    name: "pw_log_basic_no_backends",
+    cpp_std: "c++20",
+    defaults: [
+        "pw_sys_io_no_backends",
+    ],
+    header_libs: [
+        "pw_log",
+        "pw_log_basic_include_dirs",
+        "pw_sys_io_include_dirs",
+    ],
+    export_header_lib_headers: [
+        "pw_log_basic_include_dirs",
+    ],
+    static_libs: [
+        "pw_preprocessor",
+        "pw_string",
+    ],
+    export_static_lib_headers: [
+        "pw_preprocessor",
+    ],
+    srcs: [
+        ":pw_log_basic_scr_files",
+    ],
+}
+
+// Do not include these since they are for pw_log_basic_no_backends. Depend on
+// pw_log_basic_no_backends instead.
 cc_library_headers {
     name: "pw_log_basic_include_dirs",
     cpp_std: "c++20",
@@ -27,14 +58,11 @@ cc_library_headers {
     host_supported: true,
 }
 
-cc_defaults {
-    name: "pw_log_basic_defaults",
-    cpp_std: "c++20",
-    header_libs: [
-        "pw_log_basic_include_dirs",
-    ],
-
-    export_header_lib_headers: [
-        "pw_log_basic_include_dirs",
+// Do not include these since they are for pw_log_basic_no_backends. Depend on
+// pw_log_basic_no_backends instead.
+filegroup {
+    name: "pw_log_basic_scr_files",
+    srcs: [
+        "log_basic.cc",
     ],
 }
