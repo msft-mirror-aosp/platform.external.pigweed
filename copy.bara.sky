@@ -1,5 +1,5 @@
 core.workflow(
-  name = "pigweed_upstream_to_android",
+  name = "default",
   origin = git.origin(
     url = "rpc://googleplex-android/platform/external/pigweed",
     ref = "upstream-main"
