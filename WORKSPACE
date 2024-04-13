@@ -175,7 +175,7 @@ install_deps()
 # See https://github.com/bazelbuild/bazel/issues/1550
 git_repository(
     name = "fuchsia_infra",
-    commit = "12cdd2d6c2d13b96c5190ad4a267a571acbd96b2",
+    commit = "aa203324ed50e1fecbd68410e55e8e97989f984d",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -183,7 +183,7 @@ load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
 
-FUCHSIA_SDK_VERSION = "version:19.20240326.0.1"
+FUCHSIA_SDK_VERSION = "version:20.20240408.3.1"
 
 cipd_repository(
     name = "fuchsia_sdk",
