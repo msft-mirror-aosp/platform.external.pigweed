@@ -7,8 +7,8 @@ core.workflow(
   destination = git.gerrit_destination(
     url = "rpc://googleplex-android/platform/external/pigweed",
     fetch = "main",
-    reviewers = ["bduddie@google.com", "cachinchilla@google.com",
-                 "hepler@google.com", "matthewsedam@google.com"]
+    reviewers = ["cachinchilla@google.com", "hepler@google.com",
+                 "matthewsedam@google.com"]
   ),
   origin_files = glob(
     include = ["**"],

@@ -66,7 +66,7 @@ export class LogView extends LitElement {
 
   /** The field keys (column values) for the incoming log entries. */
   @state()
-  private _columnData: TableColumn[] = [];
+  public columnData: TableColumn[] = [];
 
   /** A string representing the value contained in the search field. */
   @state()
@@ -75,6 +75,10 @@ export class LogView extends LitElement {
   /** A StateStore object that stores state of views */
   @state()
   _stateStore: StateStore = new LocalStorageState();
+
+  /** Preferred column order to reference */
+  @state()
+  columnOrder: string[] = [];
 
   @query('log-list') _logList!: LogList;
 
@@ -118,7 +122,8 @@ export class LogView extends LitElement {
     // Get column data from local storage, if it exists
     if (index !== -1) {
       const storedColumnData = viewConfigArr[index].columnData;
-      this._columnData = storedColumnData;
+      this.updateColumnOrder(storedColumnData);
+      this.columnData = this.updateColumnRender(storedColumnData);
     }
 
     // Update view title with log source names if a view title isn't already provided
@@ -206,26 +211,92 @@ export class LogView extends LitElement {
   }
 
   private updateFieldsFromNewLogs(newLogs: LogEntry[]): void {
-    if (!this._columnData) {
-      this._columnData = [];
+    if (!this.columnData) {
+      this.columnData = [];
     }
 
     newLogs.forEach((log) => {
       log.fields.forEach((field) => {
-        if (!this._columnData.some((col) => col.fieldName === field.key)) {
-          this._columnData.push({
+        if (!this.columnData.some((col) => col.fieldName === field.key)) {
+          const newColumnData = {
             fieldName: field.key,
             characterLength: 0,
             manualWidth: null,
             isVisible: true,
-          });
+          };
+          this.updateColumnOrder([newColumnData]);
+          this.columnData = this.updateColumnRender([
+            newColumnData,
+            ...this.columnData,
+          ]);
         }
       });
     });
   }
 
+  /**
+   * Orders fields by the following: severity, init defined fields, undefined fields, and message
+   * @param columnData ColumnData is used to check for undefined fields.
+   */
+  private updateColumnOrder(columnData: TableColumn[]) {
+    const columnOrder = [...new Set(this.columnOrder)];
+    if (this.columnOrder.length !== columnOrder.length) {
+      console.warn(
+        'Log View had duplicate columns defined, duplicates were removed.',
+      );
+      this.columnOrder = columnOrder;
+    }
+
+    if (this.columnOrder.indexOf('severity') != 0) {
+      const index = this.columnOrder.indexOf('severity');
+      if (index != -1) {
+        this.columnOrder.splice(index, 1);
+      }
+      this.columnOrder.unshift('severity');
+    }
+
+    if (this.columnOrder.indexOf('message') != this.columnOrder.length) {
+      const index = this.columnOrder.indexOf('message');
+      if (index != -1) {
+        this.columnOrder.splice(index, 1);
+      }
+      this.columnOrder.push('message');
+    }
+
+    columnData.forEach((tableColumn) => {
+      if (!this.columnOrder.includes(tableColumn.fieldName)) {
+        this.columnOrder.splice(
+          this.columnOrder.length - 1,
+          0,
+          tableColumn.fieldName,
+        );
+      }
+    });
+  }
+
+  /**
+   * Updates order of columnData based on columnOrder for log viewer to render
+   * @param columnData ColumnData to order
+   * @returns Ordered list of ColumnData
+   */
+  private updateColumnRender(columnData: TableColumn[]): TableColumn[] {
+    const orderedColumns: TableColumn[] = [];
+    const columnFields = columnData.map((column) => {
+      return column.fieldName;
+    });
+
+    this.columnOrder.forEach((field: string) => {
+      const index = columnFields.indexOf(field);
+      if (index > -1) {
+        orderedColumns.push(columnData[index]);
+      }
+    });
+
+    return orderedColumns;
+  }
+
   public getFields(): string[] {
-    return this._columnData
+    return this.columnData
       .filter((column) => column.isVisible)
       .map((column) => column.fieldName);
   }
@@ -246,7 +317,7 @@ export class LogView extends LitElement {
     }
 
     // Find the relevant column in _columnData
-    const column = this._columnData.find(
+    const column = this.columnData.find(
       (col) => col.fieldName === event.detail.field,
     );
 
@@ -258,7 +329,7 @@ export class LogView extends LitElement {
     column.isVisible = event.detail.isChecked;
 
     // Clear the manually-set width of the last visible column
-    const lastVisibleColumn = this._columnData
+    const lastVisibleColumn = this.columnData
       .slice()
       .reverse()
       .find((col) => col.isVisible);
@@ -267,7 +338,7 @@ export class LogView extends LitElement {
     }
 
     // Trigger the change in column data and request an update
-    this._columnData = [...this._columnData];
+    this.columnData = [...this.columnData];
     this._logList.requestUpdate();
   }
 
@@ -298,7 +369,7 @@ export class LogView extends LitElement {
   }
 
   private updateColumnData(event: CustomEvent) {
-    this._columnData = event.detail;
+    this.columnData = event.detail;
   }
 
   private updateTitle() {
@@ -351,7 +422,7 @@ export class LogView extends LitElement {
 
   render() {
     return html` <log-view-controls
-        .columnData=${this._columnData}
+        .columnData=${this.columnData}
         .viewId=${this.id}
         .viewTitle=${this.viewTitle}
         .hideCloseButton=${!this.isOneOfMany}
@@ -366,7 +437,7 @@ export class LogView extends LitElement {
       </log-view-controls>
 
       <log-list
-        .columnData=${[...this._columnData]}
+        .columnData=${[...this.columnData]}
         .lineWrap=${this._lineWrap}
         .viewId=${this.id}
         .logs=${this._filteredLogs}
