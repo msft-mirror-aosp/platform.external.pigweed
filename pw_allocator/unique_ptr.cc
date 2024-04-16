@@ -12,12 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_allocator/allocator.h"
+#include "pw_allocator/deallocator.h"
 
 namespace pw::allocator::internal {
 
-void BaseUniquePtr::Deallocate(Allocator* allocator, void* ptr) {
-  allocator->Deallocate(ptr);
+void BaseUniquePtr::Deallocate(Deallocator* deallocator, void* ptr) {
+  deallocator->Deallocate(ptr);
 }
 
 }  // namespace pw::allocator::internal
