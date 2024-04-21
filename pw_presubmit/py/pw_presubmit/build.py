@@ -38,14 +38,15 @@ from typing import (
     Mapping,
     Sequence,
     Set,
+    TextIO,
 )
 
 import pw_cli.color
 from pw_cli.plural import plural
+from pw_cli.file_filter import FileFilter
 from pw_presubmit.presubmit import (
     call,
     Check,
-    FileFilter,
     filter_paths,
     install_package,
     PresubmitResult,
@@ -68,7 +69,14 @@ from pw_presubmit.tools import (
 _LOG = logging.getLogger(__name__)
 
 
-def bazel(ctx: PresubmitContext, cmd: str, *args: str, **kwargs) -> None:
+def bazel(
+    ctx: PresubmitContext,
+    cmd: str,
+    *args: str,
+    use_remote_cache: bool = False,
+    stdout: TextIO | None = None,
+    **kwargs,
+) -> None:
     """Invokes Bazel with some common flags set.
 
     Intended for use with bazel build and test. May not work with others.
@@ -82,31 +90,45 @@ def bazel(ctx: PresubmitContext, cmd: str, *args: str, **kwargs) -> None:
     if ctx.continue_after_build_error:
         keep_going.append('--keep_going')
 
-    bazel_stdout = ctx.output_dir / 'bazel.stdout'
+    remote_cache: list[str] = []
+    if use_remote_cache and ctx.luci:
+        remote_cache.append('--config=remote_cache')
+        if ctx.luci.is_ci:
+            # Only CI builders should attempt to write to the cache. Try
+            # builders will be denied permission if they do so.
+            remote_cache.append('--remote_upload_local_results=true')
+
     ctx.output_dir.mkdir(exist_ok=True, parents=True)
     try:
-        with bazel_stdout.open('w') as outs:
+        with contextlib.ExitStack() as stack:
+            if not stdout:
+                stdout = stack.enter_context(
+                    (ctx.output_dir / f'bazel.{cmd}.stdout').open('w')
+                )
+
             call(
                 'bazel',
                 cmd,
                 '--verbose_failures',
                 '--verbose_explanations',
                 '--worker_verbose',
-                f'--symlink_prefix={ctx.output_dir / ".bazel-"}',
+                f'--symlink_prefix={ctx.output_dir / "bazel-"}',
                 *num_jobs,
                 *keep_going,
+                *remote_cache,
                 *args,
                 cwd=ctx.root,
-                tee=outs,
+                tee=stdout,
                 call_annotation={'build_system': 'bazel'},
                 **kwargs,
             )
 
     except PresubmitFailure as exc:
-        failure = bazel_parser.parse_bazel_stdout(bazel_stdout)
-        if failure:
-            with ctx.failure_summary_log.open('w') as outs:
-                outs.write(failure)
+        if stdout:
+            failure = bazel_parser.parse_bazel_stdout(Path(stdout.name))
+            if failure:
+                with ctx.failure_summary_log.open('w') as outs:
+                    outs.write(failure)
 
         raise exc
 
