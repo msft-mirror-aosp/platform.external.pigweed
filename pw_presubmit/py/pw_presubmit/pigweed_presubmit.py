@@ -27,8 +27,8 @@ import subprocess
 import sys
 from typing import Callable, Iterable, Sequence, TextIO
 
+from pw_cli.plural import plural
 import pw_package.pigweed_packages
-
 from pw_presubmit import (
     build,
     cli,
@@ -59,8 +59,7 @@ from pw_presubmit.presubmit_context import (
     PresubmitContext,
     PresubmitFailure,
 )
-from pw_presubmit.tools import log_run, plural
-
+from pw_presubmit.tools import log_run
 from pw_presubmit.install_hook import install_git_hook
 
 _LOG = logging.getLogger(__name__)
@@ -579,8 +578,12 @@ def zephyr_build(ctx: PresubmitContext) -> None:
 def docs_build(ctx: PresubmitContext) -> None:
     """Build Pigweed docs"""
 
-    # Build main docs through GN/Ninja.
     build.install_package(ctx, 'nanopb')
+    build.install_package(ctx, 'stm32cube_f4')
+    build.install_package(ctx, 'freertos')
+    build.install_package(ctx, 'pigweed_examples_repo')
+
+    # Build main docs through GN/Ninja.
     build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, 'docs')
     build.gn_check(ctx)
@@ -593,17 +596,70 @@ def docs_build(ctx: PresubmitContext) -> None:
         '//pw_rust:docs',
     )
 
-    # Copy rust docs from Bazel's out directory into where the GN build
-    # put the main docs.
-    rust_docs_bazel_dir = ctx.output_dir.joinpath(
-        '.bazel-bin', 'pw_rust', 'docs.rustdoc'
-    )
-    rust_docs_output_dir = ctx.output_dir.joinpath(
-        'docs', 'gen', 'docs', 'html', 'rustdoc'
+    # Build examples repo docs through GN.
+    examples_repo_root = ctx.package_root / 'pigweed_examples_repo'
+    examples_repo_out = examples_repo_root / 'out'
+
+    # Setup an examples repo presubmit context.
+    examples_ctx = PresubmitContext(
+        root=examples_repo_root,
+        repos=(examples_repo_root,),
+        output_dir=examples_repo_out,
+        failure_summary_log=ctx.failure_summary_log,
+        paths=tuple(),
+        all_paths=tuple(),
+        package_root=ctx.package_root,
+        luci=None,
+        override_gn_args={},
+        num_jobs=ctx.num_jobs,
+        continue_after_build_error=True,
+        _failed=False,
+        format_options=ctx.format_options,
     )
 
-    # Remove the docs tree to avoid including stale files from previous runs.
+    # Write a pigweed_environment.gni for the examples repo.
+    pwenvgni = (
+        ctx.root / 'build_overrides/pigweed_environment.gni'
+    ).read_text()
+    # Fix the path for cipd packages.
+    pwenvgni.replace('../environment/cipd/', '../../cipd/')
+    # Write the file
+    (examples_repo_root / 'build_overrides/pigweed_environment.gni').write_text(
+        pwenvgni
+    )
+
+    # Set required GN args.
+    stm32cube_dir = ctx.package_root / 'stm32cube_f4'
+    freertos_dir = ctx.package_root / 'freertos'
+    nanopb_dir = ctx.package_root / 'nanopb'
+    build.gn_gen(
+        examples_ctx,
+        dir_pigweed='"//../../.."',
+        dir_pw_third_party_stm32cube_f4=f'"{stm32cube_dir}"',
+        dir_pw_third_party_freertos=f'"{freertos_dir}"',
+        dir_pw_third_party_nanopb=f'"{nanopb_dir}"',
+        PICO_SRC_DIR='""',
+    )
+    build.ninja(examples_ctx, 'docs')
+
+    # Copy rust docs from Bazel's out directory into where the GN build
+    # put the main docs.
+    rust_docs_bazel_dir = ctx.output_dir / '.bazel-bin/pw_rust/docs.rustdoc'
+    rust_docs_output_dir = ctx.output_dir / 'docs/gen/docs/html/rustdoc'
+
+    # Copy the doxygen html output to the main docs location.
+    doxygen_html_gn_dir = ctx.output_dir / 'docs/doxygen/html'
+    doxygen_html_output_dir = ctx.output_dir / 'docs/gen/docs/html/doxygen'
+
+    # Copy the examples repo html output to the main docs location into
+    # '/examples/'.
+    examples_html_gn_dir = examples_repo_out / 'docs/gen/docs/html'
+    examples_html_output_dir = ctx.output_dir / 'docs/gen/docs/html/examples'
+
+    # Remove outputs to avoid including stale files from previous runs.
     shutil.rmtree(rust_docs_output_dir, ignore_errors=True)
+    shutil.rmtree(doxygen_html_output_dir, ignore_errors=True)
+    shutil.rmtree(examples_html_output_dir, ignore_errors=True)
 
     # Bazel generates files and directories without write permissions.  In
     # order to allow this rule to be run multiple times we use shutil.copyfile
@@ -611,6 +667,23 @@ def docs_build(ctx: PresubmitContext) -> None:
     shutil.copytree(
         rust_docs_bazel_dir,
         rust_docs_output_dir,
+        copy_function=shutil.copyfile,
+        dirs_exist_ok=True,
+    )
+
+    # Copy doxygen html outputs.
+    shutil.copytree(
+        doxygen_html_gn_dir,
+        doxygen_html_output_dir,
+        copy_function=shutil.copyfile,
+        dirs_exist_ok=True,
+    )
+
+    # mkdir -p the example repo output dir and copy the files over.
+    examples_html_output_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(
+        examples_html_gn_dir,
+        examples_html_output_dir,
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
@@ -1299,7 +1372,12 @@ OTHER_CHECKS = (
 )
 
 ARDUINO_PICO = (
-    gn_teensy_build,
+    # Skip gn_teensy_build if running on mac-arm64.
+    # There are no arm specific tools packages available upstream:
+    # https://www.pjrc.com/teensy/package_teensy_index.json
+    gn_teensy_build
+    if not (sys.platform == 'darwin' and platform.machine() == 'arm64')
+    else (),
     gn_pico_build,
     gn_pw_system_demo_build,
 )
@@ -1383,9 +1461,6 @@ FULL = (
     python_checks.gn_python_test_coverage,
     python_checks.check_upstream_python_constraints,
     build_env_setup,
-    # Skip gn_teensy_build if running on Windows. The Teensycore installer is
-    # an exe that requires an admin role.
-    gn_teensy_build if sys.platform in ['linux', 'darwin'] else (),
 )
 
 PROGRAMS = Programs(
@@ -1448,6 +1523,7 @@ def main() -> int:
 if __name__ == '__main__':
     try:
         # If pw_cli is available, use it to initialize logs.
+        # pylint: disable=ungrouped-imports
         from pw_cli import log
 
         log.install(logging.INFO)

@@ -125,6 +125,16 @@ class PW_NODISCARD_STR(
   /// Returns whether or not this value is ``Pending``.
   constexpr bool IsPending() const noexcept { return !value_.has_value(); }
 
+  /// Returns a ``Poll<>`` without the inner value whose readiness matches that
+  /// of ``this``.
+  constexpr Poll<> Readiness() const noexcept {
+    if (IsReady()) {
+      return ReadyType();
+    } else {
+      return PendingType();
+    }
+  }
+
   /// Returns the inner value.
   ///
   /// This must only be called if ``IsReady()`` returned ``true``.
@@ -148,6 +158,12 @@ class PW_NODISCARD_STR(
     return std::move(*value_);
   }
   constexpr T&& operator*() && noexcept { return std::move(*value_); }
+
+  /// Ignores the ``Poll`` value.
+  ///
+  /// This method does nothing except prevent ``no_discard`` or
+  /// unused variable warnings from firing.
+  constexpr void IgnorePoll() const {}
 
  private:
   template <typename U>

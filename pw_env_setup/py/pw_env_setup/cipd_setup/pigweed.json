@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:22581fb46c0c0c9530caa67149ee4dd8811063cf"
+        "git_revision:415b3b19e094cd4b6982147693485df65037f942"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -80,6 +80,47 @@
       "platforms": [
         "linux-amd64",
         "linux-arm64",
+        "mac-amd64",
+        "mac-arm64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/aarch64-unknown-linux-gnu",
+      "platforms": [
+        "linux-arm64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/x86_64-unknown-linux-gnu",
+      "platforms": [
+        "linux-amd64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/aarch64-apple-darwin",
+      "platforms": [
+        "mac-arm64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/x86_64-apple-darwin",
+      "platforms": [
         "mac-amd64"
       ],
       "subdir": "rust",

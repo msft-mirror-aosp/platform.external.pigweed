@@ -41,6 +41,7 @@ declare_args() {
   dir_pw_async = get_path_info("../pw_async", "abspath")
   dir_pw_async2 = get_path_info("../pw_async2", "abspath")
   dir_pw_async2_basic = get_path_info("../pw_async2_basic", "abspath")
+  dir_pw_async2_epoll = get_path_info("../pw_async2_epoll", "abspath")
   dir_pw_async_basic = get_path_info("../pw_async_basic", "abspath")
   dir_pw_base64 = get_path_info("../pw_base64", "abspath")
   dir_pw_bloat = get_path_info("../pw_bloat", "abspath")
@@ -49,6 +50,7 @@ declare_args() {
   dir_pw_bluetooth_hci = get_path_info("../pw_bluetooth_hci", "abspath")
   dir_pw_bluetooth_profiles =
       get_path_info("../pw_bluetooth_profiles", "abspath")
+  dir_pw_bluetooth_proxy = get_path_info("../pw_bluetooth_proxy", "abspath")
   dir_pw_bluetooth_sapphire =
       get_path_info("../pw_bluetooth_sapphire", "abspath")
   dir_pw_boot = get_path_info("../pw_boot", "abspath")
@@ -98,6 +100,7 @@ declare_args() {
   dir_pw_i2c = get_path_info("../pw_i2c", "abspath")
   dir_pw_i2c_linux = get_path_info("../pw_i2c_linux", "abspath")
   dir_pw_i2c_mcuxpresso = get_path_info("../pw_i2c_mcuxpresso", "abspath")
+  dir_pw_i2c_rp2040 = get_path_info("../pw_i2c_rp2040", "abspath")
   dir_pw_ide = get_path_info("../pw_ide", "abspath")
   dir_pw_interrupt = get_path_info("../pw_interrupt", "abspath")
   dir_pw_interrupt_cortex_m =
@@ -141,10 +144,12 @@ declare_args() {
   dir_pw_rpc = get_path_info("../pw_rpc", "abspath")
   dir_pw_rpc_transport = get_path_info("../pw_rpc_transport", "abspath")
   dir_pw_rust = get_path_info("../pw_rust", "abspath")
+  dir_pw_sensor = get_path_info("../pw_sensor", "abspath")
   dir_pw_snapshot = get_path_info("../pw_snapshot", "abspath")
   dir_pw_software_update = get_path_info("../pw_software_update", "abspath")
   dir_pw_span = get_path_info("../pw_span", "abspath")
   dir_pw_spi = get_path_info("../pw_spi", "abspath")
+  dir_pw_spi_linux = get_path_info("../pw_spi_linux", "abspath")
   dir_pw_spi_mcuxpresso = get_path_info("../pw_spi_mcuxpresso", "abspath")
   dir_pw_spi_rp2040 = get_path_info("../pw_spi_rp2040", "abspath")
   dir_pw_status = get_path_info("../pw_status", "abspath")
@@ -197,6 +202,7 @@ declare_args() {
   dir_pw_trace = get_path_info("../pw_trace", "abspath")
   dir_pw_trace_tokenized = get_path_info("../pw_trace_tokenized", "abspath")
   dir_pw_transfer = get_path_info("../pw_transfer", "abspath")
+  dir_pw_uart = get_path_info("../pw_uart", "abspath")
   dir_pw_unit_test = get_path_info("../pw_unit_test", "abspath")
   dir_pw_unit_test_zephyr = get_path_info("../pw_unit_test_zephyr", "abspath")
   dir_pw_varint = get_path_info("../pw_varint", "abspath")
@@ -224,6 +230,7 @@ declare_args() {
     dir_pw_async,
     dir_pw_async2,
     dir_pw_async2_basic,
+    dir_pw_async2_epoll,
     dir_pw_async_basic,
     dir_pw_base64,
     dir_pw_bloat,
@@ -231,6 +238,7 @@ declare_args() {
     dir_pw_bluetooth,
     dir_pw_bluetooth_hci,
     dir_pw_bluetooth_profiles,
+    dir_pw_bluetooth_proxy,
     dir_pw_bluetooth_sapphire,
     dir_pw_boot,
     dir_pw_boot_cortex_m,
@@ -276,6 +284,7 @@ declare_args() {
     dir_pw_i2c,
     dir_pw_i2c_linux,
     dir_pw_i2c_mcuxpresso,
+    dir_pw_i2c_rp2040,
     dir_pw_ide,
     dir_pw_interrupt,
     dir_pw_interrupt_cortex_m,
@@ -317,10 +326,12 @@ declare_args() {
     dir_pw_rpc,
     dir_pw_rpc_transport,
     dir_pw_rust,
+    dir_pw_sensor,
     dir_pw_snapshot,
     dir_pw_software_update,
     dir_pw_span,
     dir_pw_spi,
+    dir_pw_spi_linux,
     dir_pw_spi_mcuxpresso,
     dir_pw_spi_rp2040,
     dir_pw_status,
@@ -366,6 +377,7 @@ declare_args() {
     dir_pw_trace,
     dir_pw_trace_tokenized,
     dir_pw_transfer,
+    dir_pw_uart,
     dir_pw_unit_test,
     dir_pw_unit_test_zephyr,
     dir_pw_varint,
@@ -390,6 +402,7 @@ declare_args() {
     "$dir_pw_async:tests",
     "$dir_pw_async2:tests",
     "$dir_pw_async2_basic:tests",
+    "$dir_pw_async2_epoll:tests",
     "$dir_pw_async_basic:tests",
     "$dir_pw_base64:tests",
     "$dir_pw_bloat:tests",
@@ -397,6 +410,7 @@ declare_args() {
     "$dir_pw_bluetooth:tests",
     "$dir_pw_bluetooth_hci:tests",
     "$dir_pw_bluetooth_profiles:tests",
+    "$dir_pw_bluetooth_proxy:tests",
     "$dir_pw_bluetooth_sapphire:tests",
     "$dir_pw_boot:tests",
     "$dir_pw_boot_cortex_m:tests",
@@ -442,6 +456,7 @@ declare_args() {
     "$dir_pw_i2c:tests",
     "$dir_pw_i2c_linux:tests",
     "$dir_pw_i2c_mcuxpresso:tests",
+    "$dir_pw_i2c_rp2040:tests",
     "$dir_pw_ide:tests",
     "$dir_pw_interrupt:tests",
     "$dir_pw_interrupt_cortex_m:tests",
@@ -483,10 +498,12 @@ declare_args() {
     "$dir_pw_rpc:tests",
     "$dir_pw_rpc_transport:tests",
     "$dir_pw_rust:tests",
+    "$dir_pw_sensor:tests",
     "$dir_pw_snapshot:tests",
     "$dir_pw_software_update:tests",
     "$dir_pw_span:tests",
     "$dir_pw_spi:tests",
+    "$dir_pw_spi_linux:tests",
     "$dir_pw_spi_mcuxpresso:tests",
     "$dir_pw_spi_rp2040:tests",
     "$dir_pw_status:tests",
@@ -532,6 +549,7 @@ declare_args() {
     "$dir_pw_trace:tests",
     "$dir_pw_trace_tokenized:tests",
     "$dir_pw_transfer:tests",
+    "$dir_pw_uart:tests",
     "$dir_pw_unit_test:tests",
     "$dir_pw_unit_test_zephyr:tests",
     "$dir_pw_varint:tests",
@@ -556,6 +574,7 @@ declare_args() {
     "$dir_pw_async:docs",
     "$dir_pw_async2:docs",
     "$dir_pw_async2_basic:docs",
+    "$dir_pw_async2_epoll:docs",
     "$dir_pw_async_basic:docs",
     "$dir_pw_base64:docs",
     "$dir_pw_bloat:docs",
@@ -563,6 +582,7 @@ declare_args() {
     "$dir_pw_bluetooth:docs",
     "$dir_pw_bluetooth_hci:docs",
     "$dir_pw_bluetooth_profiles:docs",
+    "$dir_pw_bluetooth_proxy:docs",
     "$dir_pw_bluetooth_sapphire:docs",
     "$dir_pw_boot:docs",
     "$dir_pw_boot_cortex_m:docs",
@@ -608,6 +628,7 @@ declare_args() {
     "$dir_pw_i2c:docs",
     "$dir_pw_i2c_linux:docs",
     "$dir_pw_i2c_mcuxpresso:docs",
+    "$dir_pw_i2c_rp2040:docs",
     "$dir_pw_ide:docs",
     "$dir_pw_interrupt:docs",
     "$dir_pw_interrupt_cortex_m:docs",
@@ -649,10 +670,12 @@ declare_args() {
     "$dir_pw_rpc:docs",
     "$dir_pw_rpc_transport:docs",
     "$dir_pw_rust:docs",
+    "$dir_pw_sensor:docs",
     "$dir_pw_snapshot:docs",
     "$dir_pw_software_update:docs",
     "$dir_pw_span:docs",
     "$dir_pw_spi:docs",
+    "$dir_pw_spi_linux:docs",
     "$dir_pw_spi_mcuxpresso:docs",
     "$dir_pw_spi_rp2040:docs",
     "$dir_pw_status:docs",
@@ -698,6 +721,7 @@ declare_args() {
     "$dir_pw_trace:docs",
     "$dir_pw_trace_tokenized:docs",
     "$dir_pw_transfer:docs",
+    "$dir_pw_uart:docs",
     "$dir_pw_unit_test:docs",
     "$dir_pw_unit_test_zephyr:docs",
     "$dir_pw_varint:docs",

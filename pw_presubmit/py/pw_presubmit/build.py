@@ -41,6 +41,7 @@ from typing import (
 )
 
 import pw_cli.color
+from pw_cli.plural import plural
 from pw_presubmit.presubmit import (
     call,
     Check,
@@ -60,7 +61,6 @@ from pw_presubmit import (
     ninja_parser,
 )
 from pw_presubmit.tools import (
-    plural,
     log_run,
     format_command,
 )
@@ -663,8 +663,6 @@ def _value(ctx: PresubmitContext, val: InputValue) -> Value:
     the lambda with the result. Return the updated top-level structure.
     """
 
-    # TODO(mohrr) Use typing.TypeGuard instead of "type: ignore"
-
     if isinstance(val, (str, int)):
         return val
     if callable(val):
@@ -674,10 +672,10 @@ def _value(ctx: PresubmitContext, val: InputValue) -> Value:
     for item in val:
         if callable(item):
             call_result = item(ctx)
-            if isinstance(item, (int, str)):
+            if isinstance(call_result, (int, str)):
                 result.append(call_result)
             else:  # Sequence.
-                result.extend(call_result)  # type: ignore
+                result.extend(call_result)
         elif isinstance(item, (int, str)):
             result.append(item)
         else:  # Sequence.

@@ -14,83 +14,22 @@
 #pragma once
 
 #include <cstddef>
-#include <utility>
 
-#include "pw_assert/assert.h"
-#include "pw_preprocessor/compiler.h"
+#include "pw_allocator/capability.h"
+#include "pw_allocator/deallocator.h"
+#include "pw_allocator/layout.h"
+#include "pw_allocator/unique_ptr.h"
 #include "pw_result/result.h"
-#include "pw_status/status.h"
 
 namespace pw::allocator {
 
-/// Describes the layout of a block of memory.
-///
-/// Layouts are passed to allocators, and consist of a (possibly padded) size
-/// and a power-of-two alignment no larger than the size. Layouts can be
-/// constructed for a type `T` using `Layout::Of`.
-///
-/// Example:
-///
-/// @code{.cpp}
-///    struct MyStruct {
-///      uint8_t field1[3];
-///      uint32_t field2[3];
-///    };
-///    constexpr Layout layout_for_struct = Layout::Of<MyStruct>();
-/// @endcode
-class Layout {
- public:
-  constexpr Layout() = default;
-  constexpr Layout(size_t size, size_t alignment = alignof(std::max_align_t))
-      : size_(size), alignment_(alignment) {}
-
-  /// Creates a Layout for the given type.
-  template <typename T>
-  static constexpr Layout Of() {
-    return Layout(sizeof(T), alignof(T));
-  }
-
-  constexpr Layout Extend(size_t size) {
-    PW_ASSERT(!PW_ADD_OVERFLOW(size, size_, &size));
-    return Layout(size, alignment_);
-  }
-
-  size_t size() const { return size_; }
-  size_t alignment() const { return alignment_; }
-
- private:
-  size_t size_ = 0;
-  size_t alignment_ = 1;
-};
-
-inline bool operator==(const Layout& lhs, const Layout& rhs) {
-  return lhs.size() == rhs.size() && lhs.alignment() == rhs.alignment();
-}
-
-inline bool operator!=(const Layout& lhs, const Layout& rhs) {
-  return !(lhs == rhs);
-}
-
-template <typename T>
-class UniquePtr;
-
-/// Abstract interface for memory allocation.
-///
-/// This is the most generic and fundamental interface provided by the
-/// module, representing any object capable of dynamic memory allocation. Other
-/// interfaces may inherit from a base generic Allocator and provide different
-/// allocator properties.
+/// Abstract interface for variable-layout memory allocation.
 ///
 /// The interface makes no guarantees about its implementation. Consumers of the
 /// generic interface must not make any assumptions around allocator behavior,
 /// thread safety, or performance.
-///
-/// NOTE: This interface is in development and should not be considered stable.
-class Allocator {
+class Allocator : public Deallocator {
  public:
-  constexpr Allocator() = default;
-  virtual ~Allocator() = default;
-
   /// Allocates a block of memory with the specified size and alignment.
   ///
   /// Returns `nullptr` if the allocation cannot be made, or the `layout` has a
@@ -123,45 +62,7 @@ class Allocator {
   /// @param[in]  args...     Arguments passed to the object constructor.
   template <typename T, int&... ExplicitGuard, typename... Args>
   [[nodiscard]] UniquePtr<T> MakeUnique(Args&&... args) {
-    static constexpr Layout kStaticLayout = Layout::Of<T>();
-    return UniquePtr<T>(UniquePtr<T>::kPrivateConstructor,
-                        New<T>(std::forward<Args>(args)...),
-                        &kStaticLayout,
-                        this);
-  }
-
-  /// Releases a previously-allocated block of memory.
-  ///
-  /// The given pointer must have been previously obtained from a call to either
-  /// `Allocate` or `Reallocate`; otherwise the behavior is undefined.
-  ///
-  /// @param[in]  ptr           Pointer to previously-allocated memory.
-  /// @param[in]  layout        Describes the memory to be deallocated.
-  void Deallocate(void* ptr, Layout layout) {
-    if (ptr != nullptr) {
-      DoDeallocate(ptr, layout);
-    }
-  }
-
-  /// Destroys the object at ``ptr`` and deallocates the associated memory.
-  ///
-  /// The given pointer must have been previously obtained from a call to
-  /// ``New`` using the same allocator; otherwise the behavior is undefined.
-  ///
-  /// This functions is only callable with objects whose type is ``final``.
-  /// This limitation is unfortunately required due to the fact that it is not
-  /// possible to inspect the size of the underlying memory allocation for
-  /// virtual objects.
-  ///
-  /// @param[in] ptr      Pointer to previously-allocated object.
-  template <typename T>
-  void Delete(T* ptr) {
-    static_assert(
-        std::is_final_v<T>,
-        "``pw::allocator::Allocator::Delete`` can only be used with ``final`` "
-        "types, as the allocated size of virtual objects is unknowable.");
-    std::destroy_at(ptr);
-    Deallocate(ptr, Layout::Of<T>());
+    return Deallocator::WrapUnique<T>(New<T>(std::forward<Args>(args)...));
   }
 
   /// Modifies the size of an previously-allocated block of memory without
@@ -175,11 +76,16 @@ class Allocator {
   /// `old_layout.size()` is 0, or the `new_size` is 0.
   ///
   /// @param[in]  ptr           Pointer to previously-allocated memory.
-  /// @param[in]  old_layout    Describes the previously-allocated memory.
   /// @param[in]  new_size      Requested new size for the memory allocation.
+  bool Resize(void* ptr, size_t new_size) {
+    return ptr != nullptr && new_size != 0 && DoResize(ptr, new_size);
+  }
+
+  /// Deprecated version of `Resize` that takes a `Layout`.
+  /// Do not use this method. It will be removed.
+  /// TODO(b/326509341): Remove when downstream consumers migrate.
   bool Resize(void* ptr, Layout layout, size_t new_size) {
-    return ptr != nullptr && new_size != 0 &&
-           (layout.size() == new_size || DoResize(ptr, layout, new_size));
+    return ptr != nullptr && new_size != 0 && DoResize(ptr, layout, new_size);
   }
 
   /// Modifies the size of a previously-allocated block of memory.
@@ -195,74 +101,136 @@ class Allocator {
   /// if the `new_layout` has a size of 0, the given pointer will NOT be
   /// deallocated.
   ///
-  /// Unlike `Resize`, providing a null pointer or a `old_layout` with a size of
-  /// 0 will return a new allocation.
+  /// TODO(b/331290408): This error condition needs to be better communicated to
+  /// module users, who may assume the pointer is freed.
+  ///
+  /// Unlike `Resize`, providing a null pointer will return a new allocation.
+  ///
+  /// If the request can be satisfied using `Resize`, the `alignment` parameter
+  /// may be ignored.
   ///
   /// @param[in]  ptr         Pointer to previously-allocated memory.
-  /// @param[in]  layout      Describes the previously-allocated memory.
-  /// @param[in]  new_size    Requested new size for the memory allocation.
-  void* Reallocate(void* ptr, Layout layout, size_t new_size) {
-    return new_size != 0 ? DoReallocate(ptr, layout, new_size) : nullptr;
+  /// @param[in]  new_layout  Describes the memory to be allocated.
+  void* Reallocate(void* ptr, Layout new_layout) {
+    if (new_layout.size() == 0) {
+      return nullptr;
+    }
+    if (ptr == nullptr) {
+      return Allocate(new_layout);
+    }
+    return DoReallocate(ptr, new_layout);
+  }
+
+  /// Deprecated version of `Reallocate` that takes a `Layout`.
+  /// Do not use this method. It will be removed.
+  /// TODO(b/326509341): Remove when downstream consumers migrate.
+  void* Reallocate(void* ptr, Layout old_layout, size_t new_size) {
+    if (new_size == 0) {
+      return nullptr;
+    }
+    if (ptr == nullptr) {
+      return Allocate(Layout(new_size, old_layout.alignment()));
+    }
+    return DoReallocate(ptr, old_layout, new_size);
   }
 
   /// Returns the layout used to allocate a given pointer.
   ///
-  /// Some allocators may be designed to integrate with a `malloc`-style
-  /// interface, wherein `Layout` details can be recovered from an allocated
-  /// pointer. This can facilitate calling `Deallocate`, `Resize`, and
-  /// `Reallocate` insituations where only an allocated `void*` is available.
+  /// NOTE: This method will eventually be deprecated. Use `GetAllocatedLayout`
+  /// instead.
   ///
-  /// The returned layout for a given allocated pointer is not required to
-  /// be identical to the one provided to the call to `Allocate` that produced
-  /// that pointer. Instead, the layout is merely guaranteed to be valid for
-  /// passing to `Deallocate`, `Resize`, and `Reallocate` with the same pointer.
-  ///
-  /// For example, an allocator that uses `Block`s to track allocations may
-  /// return a layout describing the correct alignment, but a larger size
-  /// corresponding to the block used.
-  ///
-  /// @retval UNIMPLEMENTED   This allocator cannot recover layouts.
-  /// @retval NOT_FOUND       The allocator does not recognize the pointer
-  ///                         as one of its allocations.
-  /// @retval OK              This result contains the requested layout.
-  Result<Layout> GetLayout(const void* ptr) const { return DoGetLayout(ptr); }
-
-  /// Asks the allocator if it is capable of realloating or deallocating a given
-  /// pointer.
-  ///
-  /// NOTE: This method is in development and should not be considered stable.
-  /// Do NOT use it in its current form to determine if this allocator can
-  /// deallocate pointers. Callers MUST only `Deallocate` memory using the same
-  /// `Allocator` they used to `Allocate` it. This method is currently for
-  /// internal use only.
-  ///
-  /// TODO: b/301677395 - Add dynamic type information to support a
-  /// `std::pmr`-style `do_is_equal`. Without this information, it is not
-  /// possible to determine whether another allocator has applied additional
-  /// constraints to memory that otherwise may appear to be associated with this
-  /// allocator.
-  ///
-  /// @param[in]  ptr         The pointer to be queried.
-  /// @param[in]  layout      Describes the memory pointed at by `ptr`.
-  ///
-  /// @retval UNIMPLEMENTED   This object cannot recognize allocated pointers.
-  /// @retval OUT_OF_RANGE    Pointer cannot be re/deallocated by this object.
-  /// @retval OK              This object can re/deallocate the pointer.
-  Status Query(const void* ptr, Layout layout) const {
-    return DoQuery(ptr, layout);
+  /// @retval OK                Returns the actual layout of allocated memory.
+  /// @retval NOT_FOUND         The allocator does not recognize the pointer
+  ///                           as one of its allocations.
+  /// @retval UNIMPLEMENTED     Allocator cannot recover allocation details.
+  Result<Layout> GetLayout(const void* ptr) const {
+    return GetAllocatedLayout(*this, ptr);
   }
 
-  /// Returns whether the given allocator is the same as this one.
+ protected:
+  /// TODO(b/326509341): Remove when downstream consumers migrate.
+  constexpr Allocator() = default;
+
+  explicit constexpr Allocator(const Capabilities& capabilities)
+      : Deallocator(capabilities) {}
+
+  /// Returns the layout that was requested when allocating a given pointer.
   ///
-  /// This method is used instead of ``operator==`` in keeping with
-  /// ``std::pmr::memory_resource::is_equal``. There currently is no
-  /// corresponding virtual ``DoIsEqual``, as allocators that would require
-  /// ``dynamic_cast`` to properly determine equality are not supported.
-  /// This method will allow the interface to remain unchanged should a future
-  /// need for such allocators arise.
+  /// This optional method can recover details about what memory was requested
+  /// from a pointer previously allocated by a given object. The
+  /// requested layout may differ from either the layout of usable memory, the
+  /// layout of memory used to fulfill the request, or both.
   ///
-  /// @param[in]  other       Allocator to compare with this object.
-  bool IsEqual(const Allocator& other) const { return this == &other; }
+  /// For example, it may have a smaller size than the usable memory if the
+  /// latter was padded to an alignment boundary, or may have a less strict
+  /// alignment than the actual memory.
+  ///
+  /// This method is protected in order to restrict it to object
+  /// implementations. It is static and takes an ``allocator`` parameter in
+  /// order to allow forwarding allocators to call it on wrapped allocators.
+  ///
+  /// @param[in]  allocator   The object that provided ``ptr``.
+  /// @param[in]  ptr           A pointer to previously allocated memory.
+  ///
+  /// @retval OK                Returns the originally requested layout.
+  /// @retval NOT_FOUND         The allocator does not recognize the pointer
+  ///                           as one of its allocations.
+  /// @retval UNIMPLEMENTED     Implementation cannot recover allocation
+  ///                           details.
+  static Result<Layout> GetRequestedLayout(const Allocator& allocator,
+                                           const void* ptr);
+
+  /// Returns the layout of the usable memory associated with a given pointer.
+  ///
+  /// This optional method can recover details about what memory is usable for a
+  /// pointer previously allocated by this object. The usable layout
+  /// may from either the requested layout, the layout of memory used to fulfill
+  /// the request, or both.
+  ///
+  /// For example, it may have a larger size than the requested layout if it
+  /// was padded to an alignment boundary, but may be less than the acutal
+  /// memory if the object includes some overhead for metadata.
+  ///
+  /// This method is protected in order to restrict it to object
+  /// implementations. It is static and takes an ``allocator`` parameter in
+  /// order to allow forwarding allocators to call it on wrapped allocators.
+  ///
+  /// @param[in]  allocator      The object that provided ``ptr``.
+  /// @param[in]  ptr           A pointer to previously allocated memory.
+  ///
+  /// @retval OK                Returns the layout of usable memory.
+  /// @retval NOT_FOUND         The allocator does not recognize the pointer
+  ///                           as one of its allocations.
+  /// @retval UNIMPLEMENTED     Implementation cannot recover allocation
+  ///                           details.
+  static Result<Layout> GetUsableLayout(const Allocator& allocator,
+                                        const void* ptr);
+
+  /// Returns the layout of the memory used to allocate a given pointer.
+  ///
+  /// This optional method can recover details about what memory is usable for a
+  /// pointer previously allocated by this object. The layout of memory
+  /// used to fulfill a request may differ from either the requested layout, the
+  /// layout of the usable memory, or both.
+  ///
+  /// For example, it may have a larger size than the requested layout or the
+  /// layout of usable memory if the object includes some overhead for
+  /// metadata.
+  ///
+  /// This method is protected in order to restrict it to object
+  /// implementations. It is static and takes an ``allocator`` parameter in
+  /// order to allow forwarding allocators to call it on wrapped allocators.
+  ///
+  /// @param[in]  allocator   The object that provided ``ptr``.
+  /// @param[in]  ptr           A pointer to previously allocated memory.
+  ///
+  /// @retval OK                Returns the layout of usable memory.
+  /// @retval NOT_FOUND         The allocator does not recognize the pointer
+  ///                           as one of its allocations.
+  /// @retval UNIMPLEMENTED     Implementation cannot recover allocation
+  ///                           details.
+  static Result<Layout> GetAllocatedLayout(const Allocator& allocator,
+                                           const void* ptr);
 
  private:
   /// Virtual `Allocate` function implemented by derived classes.
@@ -271,24 +239,19 @@ class Allocator {
   ///                           to have a non-zero size.
   virtual void* DoAllocate(Layout layout) = 0;
 
-  /// Virtual `Deallocate` function implemented by derived classes.
-  ///
-  /// @param[in]  ptr           Pointer to memory, guaranteed to not be null.
-  /// @param[in]  layout        Describes the memory to be deallocated.
-  virtual void DoDeallocate(void* ptr, Layout layout) = 0;
-
   /// Virtual `Resize` function implemented by derived classes.
   ///
   /// The default implementation simply returns `false`, indicating that
   /// resizing is not supported.
   ///
   /// @param[in]  ptr           Pointer to memory, guaranteed to not be null.
-  /// @param[in]  old_layout    Describes the previously-allocated memory.
-  /// @param[in]  new_size      Requested size, guaranteed to be non-zero and
-  ///                           differ from ``old_layout.size()``.
-  virtual bool DoResize(void* /*ptr*/, Layout /*layout*/, size_t /*new_size*/) {
-    return false;
-  }
+  /// @param[in]  new_size      Requested size, guaranteed to be non-zero..
+  virtual bool DoResize(void* /*ptr*/, size_t /*new_size*/) { return false; }
+
+  /// Deprecated version of `DoResize` that takes a `Layout`.
+  /// Do not use this method. It will be removed.
+  /// TODO(b/326509341): Remove when downstream consumers migrate.
+  virtual bool DoResize(void*, Layout, size_t) { return false; }
 
   /// Virtual `Reallocate` function that can be overridden by derived classes.
   ///
@@ -296,207 +259,29 @@ class Allocator {
   /// unsuccessful, it will allocate an entirely new block, copy existing data,
   /// and deallocate the given block.
   ///
-  /// @param[in]  ptr           Pointer to memory..
-  /// @param[in]  old_layout    Describes the previously-allocated memory.
-  /// @param[in]  new_size      Requested size, guaranteed to be non-zero.
-  virtual void* DoReallocate(void* ptr, Layout layout, size_t new_size);
+  /// @param[in]  ptr           Pointer to memory, guaranteed to not be null.
+  /// @param[in]  new_layout    Describes the memory to be allocated. Guaranteed
+  ///                           to have a non-zero size.
+  virtual void* DoReallocate(void* ptr, Layout new_layout);
 
-  /// Virtual `Query` function that can be overridden by derived classes.
+  /// Deprecated version of `DoReallocate` that takes a `Layout`.
+  /// Do not use this method. It will be removed.
+  /// TODO(b/326509341): Remove when downstream consumers migrate.
+  virtual void* DoReallocate(void* ptr, Layout old_layout, size_t new_size);
+
+  /// Virtual `GetRequested` function that can be overridden by derived classes.
   ///
   /// The default implementation of this method simply returns `UNIMPLEMENTED`,
   /// indicating the allocator cannot recover layouts from allocated pointers.
-  virtual Result<Layout> DoGetLayout(const void*) const {
-    return Status::Unimplemented();
-  }
+  ///
+  /// @param[in]  ptr           Pointer to memory, guaranteed to not be null.
+  virtual Result<Layout> DoGetRequestedLayout(const void*) const;
 
   /// Virtual `Query` function that can be overridden by derived classes.
-  ///
-  /// The default implementation of this method simply returns `UNIMPLEMENTED`.
-  /// Allocators which dispatch to other allocators need to override this method
-  /// in order to be able to direct reallocations and deallocations to
-  /// appropriate allocator.
-  virtual Status DoQuery(const void*, Layout) const {
-    return Status::Unimplemented();
-  }
-};
+  virtual Result<Layout> DoGetUsableLayout(const void*) const;
 
-/// An RAII pointer to a value of type ``T`` stored within an ``Allocator``.
-///
-/// This is analogous to ``std::unique_ptr``, but includes a few differences
-/// in order to support ``Allocator`` and encourage safe usage. Most notably,
-/// ``UniquePtr<T>`` cannot be constructed from a ``T*``.
-template <typename T>
-class UniquePtr {
- public:
-  /// Creates an empty (``nullptr``) instance.
-  ///
-  /// NOTE: Instances of this type are most commonly constructed using
-  /// ``Allocator::MakeUnique``.
-  constexpr UniquePtr()
-      : value_(nullptr), layout_(nullptr), allocator_(nullptr) {}
-
-  /// Creates an empty (``nullptr``) instance.
-  ///
-  /// NOTE: Instances of this type are most commonly constructed using
-  /// ``Allocator::MakeUnique``.
-  constexpr UniquePtr(std::nullptr_t) : UniquePtr() {}
-
-  /// Move-constructs a ``UniquePtr<T>`` from a ``UniquePtr<U>``.
-  ///
-  /// This allows not only pure move construction where ``T == U``, but also
-  /// converting construction where ``T`` is a base class of ``U``, like
-  /// ``UniquePtr<Base> base(allocator.MakeUnique<Child>());``.
-  template <typename U>
-  UniquePtr(UniquePtr<U>&& other) noexcept
-      : value_(other.value_),
-        layout_(other.layout_),
-        allocator_(other.allocator_) {
-    static_assert(
-        std::is_assignable_v<T*&, U*>,
-        "Attempted to construct a UniquePtr<T> from a UniquePtr<U> where "
-        "U* is not assignable to T*.");
-    other.Release();
-  }
-
-  // Move-only. These are needed since the templated move-contructor and
-  // move-assignment operator do not exactly match the signature of the default
-  // move-contructor and move-assignment operator, and thus do not implicitly
-  // delete the copy-contructor and copy-assignment operator.
-  UniquePtr(const UniquePtr&) = delete;
-  UniquePtr& operator=(const UniquePtr&) = delete;
-
-  /// Move-assigns a ``UniquePtr<T>`` from a ``UniquePtr<U>``.
-  ///
-  /// This operation destructs and deallocates any value currently stored in
-  /// ``this``.
-  ///
-  /// This allows not only pure move assignment where ``T == U``, but also
-  /// converting assignment where ``T`` is a base class of ``U``, like
-  /// ``UniquePtr<Base> base = allocator.MakeUnique<Child>();``.
-  template <typename U>
-  UniquePtr& operator=(UniquePtr<U>&& other) noexcept {
-    static_assert(std::is_assignable_v<T*&, U*>,
-                  "Attempted to assign a UniquePtr<U> to a UniquePtr<T> where "
-                  "U* is not assignable to T*.");
-    Reset();
-    value_ = other.value_;
-    layout_ = other.layout_;
-    allocator_ = other.allocator_;
-    other.Release();
-    return *this;
-  }
-
-  /// Sets this ``UniquePtr`` to null, destructing and deallocating any
-  /// currently-held value.
-  ///
-  /// After this function returns, this ``UniquePtr`` will be in an "empty"
-  /// (``nullptr``) state until a new value is assigned.
-  UniquePtr& operator=(std::nullptr_t) { Reset(); }
-
-  /// Destructs and deallocates any currently-held value.
-  ~UniquePtr() { Reset(); }
-
-  const Layout* layout() const { return layout_; }
-  Allocator* allocator() const { return allocator_; }
-
-  /// Releases a value from the ``UniquePtr`` without destructing or
-  /// deallocating it.
-  ///
-  /// After this call, the object will have an "empty" (``nullptr``) value.
-  T* Release() {
-    T* value = value_;
-    value_ = nullptr;
-    layout_ = nullptr;
-    allocator_ = nullptr;
-    return value;
-  }
-
-  /// Destructs and deallocates any currently-held value.
-  ///
-  /// After this function returns, this ``UniquePtr`` will be in an "empty"
-  /// (``nullptr``) state until a new value is assigned.
-  void Reset() {
-    if (value_ != nullptr) {
-      value_->~T();
-      allocator_->Deallocate(value_, *layout_);
-      Release();
-    }
-  }
-
-  /// ``operator bool`` is not provided in order to ensure that there is no
-  /// confusion surrounding ``if (foo)`` vs. ``if (*foo)``.
-  ///
-  /// ``nullptr`` checking should instead use ``if (foo == nullptr)``.
-  explicit operator bool() const = delete;
-
-  /// Returns whether this ``UniquePtr`` is in an "empty" (``nullptr``) state.
-  bool operator==(std::nullptr_t) const { return value_ == nullptr; }
-
-  /// Returns whether this ``UniquePtr`` is not in an "empty" (``nullptr``)
-  /// state.
-  bool operator!=(std::nullptr_t) const { return value_ != nullptr; }
-
-  /// Returns the underlying (possibly null) pointer.
-  T* get() { return value_; }
-  /// Returns the underlying (possibly null) pointer.
-  const T* get() const { return value_; }
-
-  /// Permits accesses to members of ``T`` via ``my_unique_ptr->Member``.
-  ///
-  /// The behavior of this operation is undefined if this ``UniquePtr`` is in an
-  /// "empty" (``nullptr``) state.
-  T* operator->() { return value_; }
-  const T* operator->() const { return value_; }
-
-  /// Returns a reference to any underlying value.
-  ///
-  /// The behavior of this operation is undefined if this ``UniquePtr`` is in an
-  /// "empty" (``nullptr``) state.
-  T& operator*() { return *value_; }
-  const T& operator*() const { return *value_; }
-
- private:
-  /// A pointer to the contained value.
-  T* value_;
-
-  /// The ``layout_` with which ``value_``'s allocation was initially created.
-  ///
-  /// Unfortunately this is not simply ``Layout::Of<T>()`` since ``T`` may be
-  /// a base class of the original allocated type.
-  const Layout* layout_;
-
-  /// The ``allocator_`` in which ``value_`` is stored.
-  /// This must be tracked in order to deallocate the memory upon destruction.
-  Allocator* allocator_;
-
-  /// Allow converting move constructor and assignment to access fields of
-  /// this class.
-  ///
-  /// Without this, ``UniquePtr<U>`` would not be able to access fields of
-  /// ``UniquePtr<T>``.
-  template <typename U>
-  friend class UniquePtr;
-
-  class PrivateConstructorType {};
-  static constexpr PrivateConstructorType kPrivateConstructor{};
-
- public:
-  /// Private constructor that is public only for use with `emplace` and
-  /// other in-place construction functions.
-  ///
-  /// Constructs a ``UniquePtr`` from an already-allocated value.
-  ///
-  /// NOTE: Instances of this type are most commonly constructed using
-  /// ``Allocator::MakeUnique``.
-  UniquePtr(PrivateConstructorType,
-            T* value,
-            const Layout* layout,
-            Allocator* allocator)
-      : value_(value), layout_(layout), allocator_(allocator) {}
-
-  // Allow construction with ``kPrivateConstructor`` to the implementation
-  // of ``MakeUnique``.
-  friend class Allocator;
+  /// Virtual `Query` function that can be overridden by derived classes.
+  virtual Result<Layout> DoGetAllocatedLayout(const void*) const;
 };
 
 }  // namespace pw::allocator

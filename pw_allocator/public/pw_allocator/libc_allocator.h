@@ -16,6 +16,7 @@
 #include <cstddef>
 
 #include "pw_allocator/allocator.h"
+#include "pw_allocator/capability.h"
 
 namespace pw::allocator {
 
@@ -25,20 +26,22 @@ namespace pw::allocator {
 /// allocator has a maximum alignment of `std::align_max_t`.
 class LibCAllocator : public Allocator {
  public:
-  constexpr LibCAllocator() = default;
+  static constexpr Capabilities kCapabilities = 0;
+
+  constexpr LibCAllocator() : Allocator(kCapabilities) {}
 
  private:
   /// @copydoc Allocator::Allocate
   void* DoAllocate(Layout layout) override;
 
   /// @copydoc Allocator::Deallocate
-  void DoDeallocate(void* ptr, Layout layout) override;
+  void DoDeallocate(void* ptr) override;
 
-  /// @copydoc Allocator::Resize
-  bool DoResize(void* ptr, Layout layout, size_t new_size) override;
+  /// @copydoc Allocator::Deallocate
+  void DoDeallocate(void* ptr, Layout) override { DoDeallocate(ptr); }
 
   /// @copydoc Allocator::Reallocate
-  void* DoReallocate(void* ptr, Layout layout, size_t new_size) override;
+  void* DoReallocate(void* ptr, Layout new_layout) override;
 };
 
 }  // namespace pw::allocator

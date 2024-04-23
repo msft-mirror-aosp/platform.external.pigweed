@@ -22,12 +22,23 @@ pw_add_library(pw_allocator.allocator STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_assert
-    pw_preprocessor
+    pw_allocator.deallocator
     pw_result
-    pw_status
   SOURCES
     allocator.cc
+)
+
+pw_add_library(pw_allocator.allocator_as_pool STATIC
+  HEADERS
+    public/pw_allocator/allocator_as_pool.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_allocator.pool
+    pw_status
+  SOURCES
+    allocator_as_pool.cc
 )
 
 pw_add_library(pw_allocator.block STATIC
@@ -79,6 +90,40 @@ pw_add_library(pw_allocator.buffer STATIC
     pw_bytes.alignment
   SOURCES
     buffer.cc
+)
+
+pw_add_library(pw_allocator.chunk_pool STATIC
+  HEADERS
+    public/pw_allocator/chunk_pool.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.pool
+    pw_bytes
+    pw_result
+  PRIVATE_DEPS
+    pw_allocator.buffer
+    pw_assert.check
+  SOURCES
+    chunk_pool.cc
+)
+
+pw_add_library(pw_allocator.deallocator STATIC
+  SOURCES
+    deallocator.cc
+    unique_ptr.cc
+  HEADERS
+    public/pw_allocator/capability.h
+    public/pw_allocator/layout.h
+    public/pw_allocator/deallocator.h
+    public/pw_allocator/unique_ptr.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_preprocessor
+    pw_result
+    pw_status
 )
 
 pw_add_library(pw_allocator.fallback_allocator INTERFACE
@@ -144,6 +189,17 @@ pw_add_library(pw_allocator.null_allocator INTERFACE
     pw_allocator.allocator
 )
 
+pw_add_library(pw_allocator.pool INTERFACE
+  HEADERS
+    public/pw_allocator/pool.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.deallocator
+    pw_bytes
+    pw_result
+)
+
 pw_add_library(pw_allocator.synchronized_allocator INTERFACE
   HEADERS
     public/pw_allocator/synchronized_allocator.h
@@ -166,9 +222,21 @@ pw_add_library(pw_allocator.tracking_allocator INTERFACE
     pw_status
 )
 
+pw_add_library(pw_allocator.typed_pool INTERFACE
+  HEADERS
+    public/pw_allocator/typed_pool.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_allocator.chunk_pool
+    pw_bytes
+    pw_result
+)
+
 # Test support
 
-pw_add_library(pw_allocator.testing STATIC
+pw_add_library(pw_allocator.testing INTERFACE
   HEADERS
     public/pw_allocator/testing.h
   PUBLIC_INCLUDES
@@ -185,8 +253,6 @@ pw_add_library(pw_allocator.testing STATIC
     pw_unit_test
   PRIVATE_DEPS
     pw_assert
-  SOURCES
-    testing.cc
 )
 
 pw_add_library(pw_allocator.test_harness STATIC
@@ -218,6 +284,17 @@ pw_add_library(pw_allocator.fuzzing STATIC
 )
 
 # Tests
+
+pw_add_test(pw_allocator.allocator_as_pool_test
+  PRIVATE_DEPS
+    pw_allocator.allocator_as_pool
+    pw_allocator.testing
+  SOURCES
+    allocator_as_pool_test.cc
+  GROUPS
+    modules
+    pw_allocator
+)
 
 pw_add_test(pw_allocator.allocator_test
   SOURCES
@@ -261,6 +338,17 @@ pw_add_test(pw_allocator.buffer_test
     pw_allocator.buffer
     pw_bytes
     pw_result
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.chunk_pool_test
+  PRIVATE_DEPS
+    pw_allocator.chunk_pool
+    pw_allocator.testing
+  SOURCES
+    chunk_pool_test.cc
   GROUPS
     modules
     pw_allocator
@@ -348,6 +436,18 @@ pw_add_test(pw_allocator.tracking_allocator_test
   PRIVATE_DEPS
     pw_allocator.testing
     pw_allocator.tracking_allocator
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.typed_pool_test
+  SOURCES
+    typed_pool_test.cc
+  PRIVATE_DEPS
+    pw_allocator.typed_pool
+    pw_bytes.alignment
+    pw_unit_test
   GROUPS
     modules
     pw_allocator

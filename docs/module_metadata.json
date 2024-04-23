@@ -21,6 +21,13 @@
       "C++17"
     ]
   },
+  "pw_bluetooth_proxy": {
+    "tagline": "Lightweight proxy for augmenting Bluetooth functionality",
+    "status": "unstable",
+    "languages": [
+      "C++17"
+    ]
+  },
   "pw_bluetooth_sapphire": {
     "tagline": "Battle-tested Bluetooth with rock-solid reliability",
     "status": "unstable",
@@ -41,6 +48,13 @@
     "status": "unstable",
     "languages": [
       "C++20"
+    ]
+  },
+  "pw_cli": {
+    "tagline": "Enhance and accelerate custom command-line tooling",
+    "status": "stable",
+    "languages": [
+      "Python"
     ]
   },
   "pw_console": {
@@ -110,6 +124,34 @@
       "TypeScript"
     ]
   },
+  "pw_i2c": {
+    "tagline": "Cross-platform I2C API with interactive debugging",
+    "status": "stable",
+    "languages": [
+      "C++17"
+    ]
+  },
+  "pw_i2c_linux": {
+    "tagline": "Linux userspace implementation for pw_i2c",
+    "status": "stable",
+    "languages": [
+      "C++17"
+    ]
+  },
+  "pw_i2c_mcuxpresso": {
+    "tagline": "NXP MCUXpresso SDK implementation for pw_i2c",
+    "status": "stable",
+    "languages": [
+      "C++17"
+    ]
+  },
+  "pw_i2c_rp2040": {
+    "tagline": "Raspberry Pi Pico SDK implementation for pw_i2c",
+    "status": "stable",
+    "languages": [
+      "C++17"
+    ]
+  },
   "pw_json": {
     "tagline": "Simple, efficient C++ JSON serialization",
     "status": "stable",
@@ -169,6 +211,14 @@
       "C++20"
     ]
   },
+  "pw_spi_linux": {
+    "tagline": "SPI interface for Linux userspace",
+    "status": "unstable",
+    "languages": [
+      "C++17",
+      "C++20"
+    ]
+  },
   "pw_status": {
     "tagline": "Exception-free error propagation for embedded",
     "status": "stable",
@@ -207,6 +257,13 @@
     "status": "unstable",
     "languages": [
       "Starlark"
+    ]
+  },
+  "pw_uart": {
+    "tagline": "UART interface for communication",
+    "status": "unstable",
+    "languages": [
+      "C++"
     ]
   },
   "pw_unit_test": {

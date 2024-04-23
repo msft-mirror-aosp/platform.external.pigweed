@@ -149,6 +149,15 @@ C++ API reference
 .. doxygenclass:: pw::async2::Dispatcher
   :members:
 
+-------------
+C++ Utilities
+-------------
+.. doxygenclass:: pw::async2::PendFuncTask
+  :members:
+
+.. doxygenclass:: pw::async2::PendableAsTask
+  :members:
+
 .. toctree::
    :hidden:
    :maxdepth: 1

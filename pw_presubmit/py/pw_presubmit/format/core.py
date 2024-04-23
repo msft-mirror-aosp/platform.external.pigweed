@@ -18,8 +18,9 @@ from dataclasses import dataclass
 import difflib
 import logging
 from pathlib import Path
-import subprocess
-from typing import Callable, Iterable, Iterator, Protocol
+from typing import Callable, Iterable, Iterator
+
+from pw_cli.tool_runner import ToolRunner, BasicSubprocessRunner
 
 
 _LOG: logging.Logger = logging.getLogger(__name__)
@@ -113,36 +114,6 @@ class FormatFixStatus:
 
     ok: bool
     error_message: str | None
-
-
-class ToolRunner(Protocol):
-    """Run the requested tool as a subprocess.
-
-    This class is used to support subprocess-like semantics while allowing
-    injection of wrappers that enable testing, finer granularity identifying
-    where tools fail, and stricter control of which binaries are called.
-    """
-
-    def __call__(
-        self, tool: str, args, **kwargs
-    ) -> subprocess.CompletedProcess:
-        """Calls ``tool`` with the provided ``args``.
-
-        ``**kwargs`` are forwarded to the underlying ``subprocess.run()``
-        for the requested tool.
-
-        Returns:
-            The ``subprocess.CompletedProcess`` result of running the requested
-            tool.
-        """
-
-
-class BasicSubprocessRunner(ToolRunner):
-    """A simple ToolRunner that calls subprocess.run()."""
-
-    @staticmethod
-    def __call__(tool: str, args, **kwargs) -> subprocess.CompletedProcess:
-        return subprocess.run([tool] + args, **kwargs)
 
 
 class FileChecker(abc.ABC):
