@@ -19,6 +19,7 @@ from subprocess import CompletedProcess
 from typing import Dict
 import re
 import unittest
+from unittest import mock
 
 from pw_cli.tool_runner import ToolRunner
 from pw_cli.git_repo import GitRepo
@@ -46,8 +47,17 @@ def git_ok(cmd: str, stdout: str) -> CompletedProcess:
     return CompletedProcess(
         args=cmd,
         returncode=0,
-        stderr=None,
+        stderr='',
         stdout=stdout.encode(),
+    )
+
+
+def git_err(cmd: str, stderr: str, returncode: int = 1) -> CompletedProcess:
+    return CompletedProcess(
+        args=cmd,
+        returncode=returncode,
+        stderr=stderr.encode(),
+        stdout='',
     )
 
 
@@ -165,6 +175,37 @@ class TestGitRepo(unittest.TestCase):
         self.assertNotIn(self.GIT_ROOT, paths)
         for module in self.SUBMODULES:
             self.assertIn(module, paths)
+
+    def test_list_files_unknown_hash(self):
+        bad_cmd = "diff --name-only --diff-filter=d 'something' --"
+        good_cmd = 'ls-files --'
+        fake_path = 'path/to/foo.h'
+        cmds = {
+            bad_cmd: git_err(bad_cmd, "fatal: bad revision 'something'"),
+            good_cmd: git_ok(good_cmd, fake_path + '\n'),
+        }
+
+        expected_file_path = self.GIT_ROOT / Path(fake_path)
+        repo = self.make_fake_git_repo(cmds)
+
+        # This function needs to be mocked because it does a `is_file()` check
+        # on returned paths. Since we're not using real files, nothing will
+        # be yielded.
+        repo._ls_files = mock.MagicMock(  # pylint: disable=protected-access
+            return_value=[expected_file_path]
+        )
+        paths = repo.list_files(commit='something')
+        self.assertIn(expected_file_path, paths)
+
+    def test_fake_uncommitted_changes(self):
+        index_update = 'update-index -q --refresh'
+        diff_index = 'diff-index --quiet HEAD --'
+        cmds = {
+            index_update: git_ok(index_update, ''),
+            diff_index: git_err(diff_index, '', returncode=1),
+        }
+        repo = self.make_fake_git_repo(cmds)
+        self.assertTrue(repo.has_uncommitted_changes())
 
 
 if __name__ == '__main__':

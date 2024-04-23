@@ -28,6 +28,7 @@ import sys
 from typing import Callable, Iterable, Sequence, TextIO
 
 from pw_cli.plural import plural
+from pw_cli.file_filter import FileFilter
 import pw_package.pigweed_packages
 from pw_presubmit import (
     build,
@@ -49,7 +50,6 @@ from pw_presubmit import (
     todo_check,
 )
 from pw_presubmit.presubmit import (
-    FileFilter,
     Programs,
     call,
     filter_paths,
@@ -93,6 +93,10 @@ class PigweedGnGenNinja(build.GnGenNinja):
     def add_default_gn_args(self, args):
         """Add project-specific default GN args to 'args'."""
         args['pw_C_OPTIMIZATION_LEVELS'] = ('debug',)
+
+
+def build_bazel(*args, **kwargs) -> None:
+    build.bazel(*args, use_remote_cache=True, **kwargs)
 
 
 #
@@ -143,7 +147,7 @@ def gn_clang_build(ctx: PresubmitContext):
 _HOST_COMPILER = 'gcc' if sys.platform == 'win32' else 'clang'
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
+@filter_paths(file_filter=_BUILD_FILE_FILTER)
 def gn_quick_build_check(ctx: PresubmitContext):
     """Checks the state of the GN build by running gn gen and gn check."""
     build.gn_gen(ctx)
@@ -236,7 +240,7 @@ coverage = PigweedGnGenNinja(
 )
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
+@filter_paths(file_filter=_BUILD_FILE_FILTER)
 def gn_arm_build(ctx: PresubmitContext):
     build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
@@ -589,7 +593,7 @@ def docs_build(ctx: PresubmitContext) -> None:
     build.gn_check(ctx)
 
     # Build Rust docs through Bazel.
-    build.bazel(
+    build_bazel(
         ctx,
         'build',
         '--',
@@ -644,7 +648,7 @@ def docs_build(ctx: PresubmitContext) -> None:
 
     # Copy rust docs from Bazel's out directory into where the GN build
     # put the main docs.
-    rust_docs_bazel_dir = ctx.output_dir / '.bazel-bin/pw_rust/docs.rustdoc'
+    rust_docs_bazel_dir = ctx.output_dir / 'bazel-bin/pw_rust/docs.rustdoc'
     rust_docs_output_dir = ctx.output_dir / 'docs/gen/docs/html/rustdoc'
 
     # Copy the doxygen html output to the main docs location.
@@ -743,7 +747,7 @@ def cmake_gcc(ctx: PresubmitContext):
 )
 def bazel_test(ctx: PresubmitContext) -> None:
     """Runs bazel test on the entire repo."""
-    build.bazel(
+    build_bazel(
         ctx,
         'test',
         '--',
@@ -753,7 +757,7 @@ def bazel_test(ctx: PresubmitContext) -> None:
     # Run tests for non-default config options
 
     # pw_rpc
-    build.bazel(
+    build_bazel(
         ctx,
         'test',
         '--//pw_rpc:config_override='
@@ -763,13 +767,41 @@ def bazel_test(ctx: PresubmitContext) -> None:
     )
 
     # pw_grpc
-    build.bazel(
+    build_bazel(
         ctx,
         'test',
         '--//pw_rpc:config_override=//pw_grpc:pw_rpc_config',
         '--',
         '//pw_grpc/...',
     )
+
+
+def bthost_package(ctx: PresubmitContext) -> None:
+    target = '//pw_bluetooth_sapphire/fuchsia:infra'
+    build_bazel(ctx, 'build', target)
+    build_bazel(ctx, 'test', f'{target}.test_all')
+
+    stdout_path = ctx.output_dir / 'bazel.manifest.stdout'
+    with open(stdout_path, 'w') as outs:
+        build_bazel(
+            ctx,
+            'build',
+            '--output_groups=builder_manifest',
+            target,
+            stdout=outs,
+        )
+
+    manifest_path: Path | None = None
+    for line in stdout_path.read_text().splitlines():
+        line = line.strip()
+        if line.endswith('infrabuilder_manifest.json'):
+            manifest_path = Path(line)
+            break
+    else:
+        raise PresubmitFailure('no manifest found in output')
+
+    _LOG.debug('manifest: %s', manifest_path)
+    shutil.copyfile(manifest_path, ctx.output_dir / 'builder_manifest.json')
 
 
 @filter_paths(
@@ -785,7 +817,7 @@ def bazel_test(ctx: PresubmitContext) -> None:
 def bazel_build(ctx: PresubmitContext) -> None:
     """Runs Bazel build for each supported platform."""
     # Build everything with the default flags.
-    build.bazel(
+    build_bazel(
         ctx,
         'build',
         '--',
@@ -805,7 +837,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
 
     for cxxversion in ('c++17', 'c++20'):
         # Explicitly build for each supported C++ version.
-        build.bazel(
+        build_bazel(
             ctx,
             'build',
             f"--cxxopt=-std={cxxversion}",
@@ -814,7 +846,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
         )
 
         for platforms, targets in targets_for_platform.items():
-            build.bazel(
+            build_bazel(
                 ctx,
                 'build',
                 f'--platforms={platforms}',
@@ -829,7 +861,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
     #
     # TODO: b/271465588 - Eventually just build the entire repo for this
     # platform.
-    build.bazel(
+    build_bazel(
         ctx,
         'build',
         '--platforms=//pw_build/platforms:testonly_freertos',
@@ -840,7 +872,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
         '//pw_cpu_exception/...',
     )
 
-    build.bazel(
+    build_bazel(
         ctx,
         'build',
         '--//pw_thread_freertos:config_override=//pw_build:test_module_config',
@@ -849,7 +881,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
     )
 
     # Build the pw_system example for the Discovery board using STM32Cube.
-    build.bazel(
+    build_bazel(
         ctx,
         'build',
         '--config=stm32f429i',
@@ -860,7 +892,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
     #
     # TODO: b/324652164 - This doesn't work on MacOS yet.
     if sys.platform != 'darwin':
-        build.bazel(
+        build_bazel(
             ctx,
             'build',
             '--config=fuzztest',
@@ -874,7 +906,7 @@ def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
     This test is not part of the regular bazel build because it's slow and
     intended to run in CI only.
     """
-    build.bazel(
+    build_bazel(
         ctx,
         'test',
         '//pw_transfer/integration_test:cross_language_small_test',
@@ -1305,7 +1337,7 @@ def todo_check_with_exceptions(ctx: PresubmitContext):
     todo_check.create(todo_check.BUGS_OR_USERNAMES)(ctx)
 
 
-@format_code.OWNERS_CODE_FORMAT.filter.apply_to_check()
+@filter_paths(file_filter=format_code.OWNERS_CODE_FORMAT.filter)
 def owners_lint_checks(ctx: PresubmitContext):
     """Runs OWNERS linter."""
     owners_checks.presubmit_check(ctx.paths)
@@ -1345,6 +1377,7 @@ SOURCE_FILES_FILTER_CMAKE_EXCLUDE = FileFilter(
 OTHER_CHECKS = (
     # keep-sorted: start
     bazel_test,
+    bthost_package,
     build.gn_gen_check,
     cmake_clang,
     cmake_gcc,
@@ -1445,10 +1478,6 @@ LINTFORMAT = (
 QUICK = (
     _LINTFORMAT,
     gn_quick_build_check,
-    # TODO: b/34884583 - Re-enable CMake and Bazel for Mac after we have fixed
-    # the clang issues. The problem is that all clang++ invocations need the
-    # two extra flags: "-nostdc++" and "${clang_prefix}/../lib/libc++.a".
-    cmake_clang if sys.platform != 'darwin' else (),
 )
 
 FULL = (
@@ -1523,8 +1552,7 @@ def main() -> int:
 if __name__ == '__main__':
     try:
         # If pw_cli is available, use it to initialize logs.
-        # pylint: disable=ungrouped-imports
-        from pw_cli import log
+        from pw_cli import log  # pylint: disable=ungrouped-imports
 
         log.install(logging.INFO)
     except ImportError:

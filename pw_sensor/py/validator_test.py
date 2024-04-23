@@ -23,6 +23,8 @@ from pw_sensor.validator import Validator
 class ValidatorTest(unittest.TestCase):
     """Tests the Validator class."""
 
+    maxDiff = None
+
     def test_missing_compatible(self) -> None:
         """Check that missing 'compatible' key throws exception"""
         self._check_with_exception(
@@ -35,7 +37,9 @@ class ValidatorTest(unittest.TestCase):
         """Check that incorrect type of 'compatible' throws exception"""
         self._check_with_exception(
             metadata={"compatible": {}},
-            exception_string="ERROR: Malformed sensor metadata YAML: compatible: {}",
+            exception_string=(
+                "ERROR: Malformed sensor metadata YAML: compatible: {}"
+            ),
             cause_substrings=[
                 "'org' is a required property",
             ],
@@ -43,19 +47,25 @@ class ValidatorTest(unittest.TestCase):
 
         self._check_with_exception(
             metadata={"compatible": []},
-            exception_string="ERROR: Malformed sensor metadata YAML: compatible: []",
+            exception_string=(
+                "ERROR: Malformed sensor metadata YAML: compatible: []"
+            ),
             cause_substrings=["[] is not of type 'object'"],
         )
 
         self._check_with_exception(
             metadata={"compatible": 1},
-            exception_string="ERROR: Malformed sensor metadata YAML: compatible: 1",
+            exception_string=(
+                "ERROR: Malformed sensor metadata YAML: compatible: 1"
+            ),
             cause_substrings=["1 is not of type 'object'"],
         )
 
         self._check_with_exception(
             metadata={"compatible": ""},
-            exception_string="ERROR: Malformed sensor metadata YAML: compatible: ''",
+            exception_string=(
+                "ERROR: Malformed sensor metadata YAML: compatible: ''"
+            ),
             cause_substrings=[" is not of type 'object'"],
         )
 
@@ -65,20 +75,26 @@ class ValidatorTest(unittest.TestCase):
         'deps' list
         """
         expected = {
-            "compatible": {"org": "google", "part": "foo"},
-            "deps": [],
+            "sensors": {
+                "google,foo": {
+                    "compatible": {"org": "google", "part": "foo"},
+                    "channels": {},
+                    "attributes": {},
+                },
+            },
             "channels": {},
+            "attributes": {},
         }
         metadata = {
             "compatible": {"org": "google", "part": "foo"},
             "deps": [],
         }
-        Validator().validate(metadata=metadata)
-        self.assertEqual(metadata, expected)
+        result = Validator().validate(metadata=metadata)
+        self.assertEqual(result, expected)
 
         metadata = {"compatible": {"org": "google", "part": "foo"}}
-        Validator().validate(metadata=metadata)
-        self.assertEqual(metadata, expected)
+        result = Validator().validate(metadata=metadata)
+        self.assertEqual(result, expected)
 
     def test_invalid_dependency_file(self) -> None:
         """
@@ -105,12 +121,16 @@ class ValidatorTest(unittest.TestCase):
                 "compatible": {"org": "google", "part": "foo"},
                 "channels": {"bar": {}},
             },
-            exception_string="Failed to find a channel defenition for bar, did"
+            exception_string="Failed to find a definition for 'bar', did"
             " you forget a dependency?",
             cause_substrings=[],
         )
 
     def test_channel_info_from_deps(self) -> None:
+        """
+        End to end test resolving a dependency file and setting the right
+        default attribute values.
+        """
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", encoding="utf-8", delete=False
         ) as dep:
@@ -118,13 +138,20 @@ class ValidatorTest(unittest.TestCase):
             dep.write(
                 yaml.safe_dump(
                     {
+                        "attributes": {
+                            "sample_rate": {
+                                "units": {"symbol": "Hz"},
+                            },
+                        },
                         "channels": {
                             "bar": {
                                 "units": {"symbol": "sandwiches"},
                             },
                             "soap": {
                                 "name": "The soap",
-                                "description": "Measurement of how clean something is",
+                                "description": (
+                                    "Measurement of how clean something is"
+                                ),
                                 "units": {"symbol": "sqeaks"},
                             },
                             "laundry": {
@@ -148,6 +175,9 @@ class ValidatorTest(unittest.TestCase):
             metadata={
                 "compatible": {"org": "google", "part": "foo"},
                 "deps": [dep_filename.name],
+                "attributes": {
+                    "sample_rate": {},
+                },
                 "channels": {
                     "bar": {},
                     "soap": {
@@ -164,93 +194,158 @@ class ValidatorTest(unittest.TestCase):
                 },
             }
         )
-        self.assertEqual(
-            metadata["channels"]["bar"],
-            {
-                "name": "bar",
-                "description": "",
-                "units": {
-                    "name": "sandwiches",
-                    "symbol": "sandwiches",
-                },
-                "indicies": [
-                    {
-                        "name": "bar",
-                        "description": "",
-                    },
-                ],
+        expected_attribute_sample_rate = {
+            "name": "sample_rate",
+            "description": "",
+            "units": {"name": "Hz", "symbol": "Hz"},
+        }
+        expected_channel_bar = {
+            "name": "bar",
+            "description": "",
+            "units": {
+                "name": "sandwiches",
+                "symbol": "sandwiches",
             },
-        )
-        self.assertEqual(
-            metadata["channels"]["soap"],
-            {
-                "name": "soap name override",
-                "description": "Measurement of how clean something is",
-                "units": {
-                    "name": "sqeaks",
-                    "symbol": "sqeaks",
-                },
-                "indicies": [
-                    {
-                        "name": "soap name override",
-                        "description": "Measurement of how clean something is",
-                    },
-                ],
+        }
+        expected_channel_soap = {
+            "name": "The soap",
+            "description": "Measurement of how clean something is",
+            "units": {
+                "name": "sqeaks",
+                "symbol": "sqeaks",
             },
-        )
-        self.assertEqual(
-            metadata["channels"]["laundry_shirts"],
-            {
-                "name": "laundry_shirts",
-                "description": "Clean shirt count",
-                "units": {
-                    "name": "items",
-                    "symbol": "items",
-                },
-                "indicies": [
-                    {
-                        "name": "laundry_shirts",
-                        "description": "Clean shirt count",
-                    },
-                ],
+        }
+        expected_channel_laundry_shirts = {
+            "name": "laundry_shirts",
+            "description": "Clean shirt count",
+            "units": {
+                "name": "items",
+                "symbol": "items",
             },
-        )
-        self.assertEqual(
-            metadata["channels"]["laundry_pants"],
-            {
-                "name": "laundry_pants",
-                "description": "Clean pants count",
-                "units": {
-                    "name": "items",
-                    "symbol": "items",
-                },
-                "indicies": [
-                    {
-                        "name": "laundry_pants",
-                        "description": "Clean pants count",
-                    },
-                ],
+        }
+        expected_channel_laundry_pants = {
+            "name": "laundry_pants",
+            "description": "Clean pants count",
+            "units": {
+                "name": "items",
+                "symbol": "items",
             },
-        )
-        self.assertEqual(
-            metadata["channels"]["laundry"],
-            {
-                "name": "laundry",
-                "description": "Clean clothes count",
-                "units": {
-                    "name": "items",
-                    "symbol": "items",
+        }
+        expected_channel_laundry = {
+            "name": "laundry",
+            "description": "Clean clothes count",
+            "units": {
+                "name": "items",
+                "symbol": "items",
+            },
+        }
+        expected_sensor_channel_bar = {
+            "name": "bar",
+            "description": "",
+            "units": {
+                "name": "sandwiches",
+                "symbol": "sandwiches",
+            },
+            "indicies": [
+                {
+                    "name": "bar",
+                    "description": "",
                 },
-                "indicies": [
-                    {
-                        "name": "kids' laundry",
-                        "description": "Clean clothes count",
+            ],
+        }
+        expected_sensor_channel_soap = {
+            "name": "soap name override",
+            "description": "Measurement of how clean something is",
+            "units": {
+                "name": "sqeaks",
+                "symbol": "sqeaks",
+            },
+            "indicies": [
+                {
+                    "name": "soap name override",
+                    "description": "Measurement of how clean something is",
+                },
+            ],
+        }
+        expected_sensor_channel_laundry_shirts = {
+            "name": "laundry_shirts",
+            "description": "Clean shirt count",
+            "units": {
+                "name": "items",
+                "symbol": "items",
+            },
+            "indicies": [
+                {
+                    "name": "laundry_shirts",
+                    "description": "Clean shirt count",
+                },
+            ],
+        }
+        expected_sensor_channel_laundry_pants = {
+            "name": "laundry_pants",
+            "description": "Clean pants count",
+            "units": {
+                "name": "items",
+                "symbol": "items",
+            },
+            "indicies": [
+                {
+                    "name": "laundry_pants",
+                    "description": "Clean pants count",
+                },
+            ],
+        }
+        expected_sensor_channel_laundry = {
+            "name": "laundry",
+            "description": "Clean clothes count",
+            "units": {
+                "name": "items",
+                "symbol": "items",
+            },
+            "indicies": [
+                {
+                    "name": "kids' laundry",
+                    "description": "Clean clothes count",
+                },
+                {
+                    "name": "adults' laundry",
+                    "description": "Clean clothes count",
+                },
+            ],
+        }
+        self.assertEqual(
+            metadata,
+            {
+                "attributes": {"sample_rate": expected_attribute_sample_rate},
+                "channels": {
+                    "bar": expected_channel_bar,
+                    "soap": expected_channel_soap,
+                    "laundry_shirts": expected_channel_laundry_shirts,
+                    "laundry_pants": expected_channel_laundry_pants,
+                    "laundry": expected_channel_laundry,
+                },
+                "sensors": {
+                    "google,foo": {
+                        "compatible": {
+                            "org": "google",
+                            "part": "foo",
+                        },
+                        "attributes": {
+                            "sample_rate": expected_attribute_sample_rate,
+                        },
+                        "channels": {
+                            "bar": expected_sensor_channel_bar,
+                            "soap": expected_sensor_channel_soap,
+                            "laundry_shirts": (
+                                expected_sensor_channel_laundry_shirts
+                            ),
+                            "laundry_pants": (
+                                expected_sensor_channel_laundry_pants
+                            ),
+                            "laundry": expected_sensor_channel_laundry,
+                        },
                     },
-                    {
-                        "name": "adults' laundry",
-                        "description": "Clean clothes count",
-                    },
-                ],
+                },
             },
         )
 

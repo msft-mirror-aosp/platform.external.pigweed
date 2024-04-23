@@ -11,8 +11,6 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""Tooling for managing sensor metadata and code generation"""
-
-import setuptools  # type: ignore
-
-setuptools.setup()  # Package definition in setup.cfg
+[build-system]
+requires = ['setuptools', 'wheel']
+build-backend = 'setuptools.build_meta'

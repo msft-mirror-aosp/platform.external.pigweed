@@ -53,9 +53,13 @@ class _GitTool:
         )
 
         if proc.returncode != 0:
-            raise GitError(proc.stderr.decode().strip(), proc.returncode)
+            if not proc.stderr:
+                err = '(no output)'
+            else:
+                err = proc.stderr.decode().strip()
+            raise GitError(err, proc.returncode)
 
-        return proc.stdout.decode().strip()
+        return '' if not proc.stdout else proc.stdout.decode().strip()
 
 
 class GitRepo:
@@ -126,11 +130,14 @@ class GitRepo:
         commit: str | None = None,
         pathspecs: Collection[Path | str] = (),
     ) -> list[Path]:
-        """Lists files with ``git ls-files`` or ``git diff --name-only``.
+        """Lists files modified since the specified commit.
+
+        If ``commit`` is not found in the current repo, all files in the
+        repository are listed.
 
         Arugments:
-            commit: commit to use as a base for ``git diff``
-            pathspecs: Git pathspecs to use in ``git ls-files`` or ``git diff``
+            commit: The Git hash to start from when listing modified files
+            pathspecs: Git pathspecs use when filtering results
 
         Returns:
             A sorted list of absolute paths.
@@ -142,7 +149,7 @@ class GitRepo:
         if commit:
             try:
                 return sorted(self._diff_names(commit, pathspecs))
-            except subprocess.CalledProcessError:
+            except GitError:
                 _LOG.warning(
                     'Error comparing with base revision %s of %s, listing all '
                     'files instead of just changed files',
@@ -171,8 +178,10 @@ class GitRepo:
         for i in range(retries):
             try:
                 self._git(
-                    ['update-index', '-q', '--refresh'],
-                    ignore_dry_run=True,  # Relevant for pw_presubmit.
+                    'update-index',
+                    '-q',
+                    '--refresh',
+                    pw_presubmit_ignore_dry_run=True,
                 )
             except subprocess.CalledProcessError as err:
                 if err.stderr or i == retries - 1:
@@ -181,8 +190,11 @@ class GitRepo:
 
         try:
             self._git(
-                ['diff-index', '--quiet', 'HEAD', '--'],
-                ignore_dry_run=True,  # Relevant for pw_presubmit.
+                'diff-index',
+                '--quiet',
+                'HEAD',
+                '--',
+                pw_presubmit_ignore_dry_run=True,
             )
         except GitError as err:
             # diff-index exits with 1 if there are uncommitted changes.
