@@ -12,6 +12,12 @@ pw_cli.decorators
 .. automodule:: pw_cli.decorators
    :members:
 
+------------------
+pw_cli.file_filter
+------------------
+.. automodule:: pw_cli.file_filter
+   :members:
+
 ---------------
 pw_cli.git_repo
 ---------------
@@ -111,4 +117,4 @@ pw_cli.tool_runner
 
    .. autoclass:: pw_cli.tool_runner.ToolRunner
       :special-members: +__call__
-      :private-members: +_run_tool
+      :private-members: +_run_tool, _custom_args
