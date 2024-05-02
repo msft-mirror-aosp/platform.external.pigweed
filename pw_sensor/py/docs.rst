@@ -14,7 +14,7 @@ Using the package
 Typical users of ``pw_sensor`` begin by writing a YAML description of their
 sensor using the `metadata_schema.json`_ format, e.g.:
 
-.. code:: yaml
+.. code-block:: yaml
 
    deps:
       - "pw_sensor/channels.yaml"
@@ -40,9 +40,11 @@ Describing a sensor
 -------------------
 When describing a sensor from the user's perspective, there are 3 primary points
 of interaction:
+
 #. compatible descriptor
 #. channels
 #. attributes
+#. triggers
 
 .. note::
    Compatible string in Linux's devicetree are used to detail what a hardware
@@ -78,7 +80,7 @@ verbose logging is needed or when generating documentation we might want to also
 associate a name and a longer description for the channel. This leaves us with
 the following structure for a channel:
 
-.. code:: yaml
+.. code-block:: yaml
 
    <channel_id>:
       "name": "string"
@@ -94,7 +96,7 @@ always have the same units as ``illuminance_red``, ``illuminance_green``,
 ``illuminance_blue``, etc. These are described with a ``sub-channels`` key that
 allows only ``name`` and ``description`` overrides:
 
-.. code:: yaml
+.. code-block:: yaml
 
    <channel_id>:
       ...
@@ -110,7 +112,7 @@ This happens at times with temperature sensors. In these cases, we can use the
 the ``indicies`` is ommitted, it will be assumed that there's 1 instance of the
 channel. Otherwise, we might have something like:
 
-.. code:: yaml
+.. code-block:: yaml
 
    channels:
       ambient_temperature:
@@ -126,7 +128,7 @@ Attributes are used to change the behavior of a sensor. They're defined using
 the ``attributes`` key and are structured similarly to ``channels`` since they
 can usually be measured in some way. Here's an example:
 
-.. code:: yaml
+.. code-block:: yaml
 
    attributes:
       sample_rate:
@@ -139,12 +141,35 @@ can usually be measured in some way. Here's an example:
 When associated with a ``sensor``, ``attributes`` again behave like ``channels``
 but without the ``indicies``:
 
-.. code:: yaml
+.. code-block:: yaml
 
    compatible: ...
    channels: ...
    attributes:
       sample_rate: {}
+
+What are triggers?
+==================
+Triggers are events that have an interrupt associated with them. We can define
+common triggers which sensors can individually subscribe to. The definition
+looks like:
+
+.. code-block:: yaml
+
+   triggers:
+      fifo_watermark:
+         name: "FIFO watermark"
+         description: "Interrupt when the FIFO watermark has been reached (set as an attribute)"
+
+When associated with a ``sensor``, we simply need to match the right key:
+
+.. code-block:: yaml
+
+   compatible: ...
+   channels: ...
+   attributes: ...
+   triggers:
+      fifo_watermark: {}
 
 The ``Validator`` class
 -----------------------
@@ -164,7 +189,7 @@ The following YAML file is used to create a sensor which counts cakes. The
 sensor provides the ability to get the total cake count or a separate
 large/small cake count (for a total of 3 channels):
 
-.. code:: yaml
+.. code-block:: yaml
 
    # File: my/org/sensors/channels.yaml
    channels:
@@ -182,7 +207,7 @@ The above YAML file will enable a 3 new channels: ``cakes``, ``cakes_small``,
 and ``cakes_large``. All 3 channels will use a unit ``cake``. A sensor
 implementing this channel would provide a definition file:
 
-.. code:: yaml
+.. code-block:: yaml
 
    # File: my/org/sensors/cake/sensor.yaml
    deps:
@@ -211,19 +236,22 @@ Output
 ======
 The resulting output is verbose and is intended to allow callers of the
 validation function to avoid having to cross reference values. Currently, there
-will be 2 keys in the returned dictionary: ``sensors`` and ``channels``.
+will be 4 keys in the returned dictionary: ``sensors``, ``channels``,
+``attributes``, and ``triggers``.
 
 The ``sensors`` key is a dictionary mapping unique identifiers generated from
 the sensor's compatible string to the resolved values. There will always be
 exactly 1 of these since each sensor spec is required to only describe a single
 sensor (we'll see an example soon for how these are merged to create a project
-level sensor description). Each ``sensor`` will contain: ``name``,
-``description``, ``compatible`` struct, and a ``channels`` dictionary.
+level sensor description). Each ``sensor`` will contain: ``name`` string,
+``description`` description struct, ``compatible`` struct, ``channels``
+dictionary, ``attributes`` dictionary, and ``triggers`` dictionary.
 
 The difference between the ``/sensors/channels`` and ``/channels`` dictionaries
 is the inclusion of ``indicies`` in the former. The ``indicies`` can be thought
 of as instantiations of the ``/channels``. All other channel properties will be
-exactly the same.
+exactly the same. ``/attributes`` and ``/triggers`` are the same as in
+``/sensors/*``.
 
 Sensor descriptor script
 ------------------------
@@ -271,7 +299,7 @@ generators:
 
 Example run (prints to stdout):
 
-.. code:: bash
+.. code-block:: bash
 
    $ pw --no-banner sensor-desc -I pw_sensor/ \
      -g "python3 pw_sensor/py/pw_sensor/constants_generator.py --package pw.sensor" \

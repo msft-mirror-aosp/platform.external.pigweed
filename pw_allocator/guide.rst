@@ -186,6 +186,12 @@ overview. Consult the :ref:`module-pw_allocator-api` for additional details.
   functions.
 - :ref:`module-pw_allocator-api-null_allocator`: Always fails. This may be
   useful if allocations should be disallowed under specific circumstances.
+- :ref:`module-pw_allocator-api-bump_allocator`: Allocates objects out of a
+  region of memory and only frees them all at once when the allocator is
+  destroyed.
+- :ref:`module-pw_allocator-api-buddy_allocator`: Allocates objects out of a
+  chunks with sizes that are powers of two. Chunks are split evenly for smaller
+  allocations and merged on free.
 - :ref:`module-pw_allocator-api-block_allocator`: Tracks memory using
   :ref:`module-pw_allocator-api-block`. Derived types use specific strategies
   for how to choose a block to use to satisfy a request. See also
@@ -216,10 +222,6 @@ overview. Consult the :ref:`module-pw_allocator-api` for additional details.
 
 - :ref:`module-pw_allocator-api-typed_pool`: Efficiently creates and
   destroys objects of a single given type.
-
-.. TODO: b/328076428 - Add MonotonicAllocator.
-
-.. TODO: b/328076428 - Add BuddyAllocator.
 
 Forwarding allocator implementations
 ====================================
@@ -290,8 +292,14 @@ You can observe how much memory is being used for a particular use case using a
 .. literalinclude:: examples/metrics.cc
    :language: cpp
    :linenos:
-   :start-after: [pw_allocator-examples-metrics-all_metrics]
-   :end-before: [pw_allocator-examples-metrics-all_metrics]
+   :start-after: [pw_allocator-examples-metrics-custom_metrics1]
+   :end-before: [pw_allocator-examples-metrics-custom_metrics1]
+
+.. literalinclude:: examples/metrics.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-metrics-custom_metrics2]
+   :end-before: [pw_allocator-examples-metrics-custom_metrics2]
 
 Metric data can be retrieved according to the steps described in
 :ref:`module-pw_metric-exporting`, or by using the ``Dump`` method of
@@ -304,7 +312,9 @@ Metric data can be retrieved according to the steps described in
    :end-before: [pw_allocator-examples-metrics-dump]
 
 
-The ``AllMetrics`` type used in the example above enables the following metrics:
+The ``CustomMetrics`` type used in the example above is a struct provided by the
+developer. You can create your own metrics structs that enable zero or more of
+the following metrics:
 
 - **requested_bytes**: The number of bytes currently requested from this
   allocator.
