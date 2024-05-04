@@ -106,11 +106,15 @@ def bazel(
                     (ctx.output_dir / f'bazel.{cmd}.stdout').open('w')
                 )
 
+            with (ctx.output_dir / 'bazel.output.base').open('w') as outs, (
+                ctx.output_dir / 'bazel.output.base.err'
+            ).open('w') as errs:
+                call('bazel', 'info', 'output_base', tee=outs, stderr=errs)
+
             call(
                 'bazel',
                 cmd,
                 '--verbose_failures',
-                '--verbose_explanations',
                 '--worker_verbose',
                 f'--symlink_prefix={ctx.output_dir / "bazel-"}',
                 *num_jobs,

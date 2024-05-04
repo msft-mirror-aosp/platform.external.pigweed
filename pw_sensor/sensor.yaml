@@ -13,7 +13,9 @@
 # the License.
 
 deps:
-  - "channels.yaml"
+  - "pw_sensor/attributes.yaml"
+  - "pw_sensor/channels.yaml"
+  - "pw_sensor/triggers.yaml"
 compatible:
   org: "Google"
   part: "pigweed"

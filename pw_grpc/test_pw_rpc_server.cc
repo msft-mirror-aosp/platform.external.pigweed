@@ -14,12 +14,15 @@
 
 #include <cstring>
 #include <map>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
+#include "pw_allocator/libc_allocator.h"
 #include "pw_assert/check.h"
 #include "pw_bytes/byte_builder.h"
 #include "pw_bytes/span.h"
+#include "pw_checksum/crc32.h"
 #include "pw_grpc/connection.h"
 #include "pw_grpc/examples/echo/echo.rpc.pwpb.h"
 #include "pw_grpc/grpc_channel_output.h"
@@ -41,21 +44,49 @@
 using pw::grpc::StreamId;
 
 namespace {
+static constexpr size_t kBufferSize = 512;
 
 class EchoService
     : public ::grpc::examples::echo::pw_rpc::pwpb::Echo::Service<EchoService> {
  public:
-  void UnaryEcho(
-      const ::grpc::examples::echo::pwpb::EchoRequest::Message& request,
-      pw::rpc::PwpbUnaryResponder<
-          ::grpc::examples::echo::pwpb::EchoResponse::Message>& responder) {
-    PW_LOG_INFO("UnaryEcho %s", request.message.c_str());
-    quiet_ = request.message.compare("quiet") == 0;
+  void UnaryEcho(pw::ConstByteSpan request,
+                 pw::rpc::RawUnaryResponder& responder) {
+    auto message =
+        ::grpc::examples::echo::pwpb::EchoRequest::FindMessage(request);
+    if (!message.ok()) {
+      responder.Finish({}, message.status());
+    }
+
+    if (message->size() < 100) {
+      PW_LOG_INFO("UnaryEcho %s", message->data());
+    } else {
+      PW_LOG_INFO("UnaryEcho (len=%zu)", message->size());
+    }
+
+    quiet_ = message->compare("quiet") == 0;
     last_unary_responder_ = std::move(responder);
     if (quiet_) {
       return;
     }
-    last_unary_responder_.Finish({.message = request.message}, pw::OkStatus())
+
+    std::array<std::byte, kBufferSize> mem_writer_buffer_;
+    std::array<std::byte, kBufferSize> encoder_scratch_buffer_;
+    pw::stream::MemoryWriter writer(mem_writer_buffer_);
+    ::grpc::examples::echo::pwpb::EchoResponse::StreamEncoder encoder(
+        writer, encoder_scratch_buffer_);
+
+    auto checksum = message->rfind("crc32:", 0) == 0;
+    if (checksum) {
+      uint32_t crc32 = pw::checksum::Crc32::Calculate(
+          pw::span(reinterpret_cast<const std::byte*>(message->data()),
+                   message->size()));
+      encoder.Write({.message = std::string_view(std::to_string(crc32))})
+          .IgnoreError();
+    } else {
+      encoder.Write({.message = *message}).IgnoreError();
+    }
+
+    last_unary_responder_.Finish(writer.WrittenData(), pw::OkStatus())
         .IgnoreError();
   }
 
@@ -122,9 +153,7 @@ class EchoService
   }
 
  private:
-  pw::rpc::PwpbUnaryResponder<
-      ::grpc::examples::echo::pwpb::EchoResponse::Message>
-      last_unary_responder_{};
+  pw::rpc::RawUnaryResponder last_unary_responder_{};
   ServerWriter<::grpc::examples::echo::pwpb::EchoResponse::Message>
       last_writer_{};
   ServerReader<::grpc::examples::echo::pwpb::EchoRequest::Message,
@@ -163,7 +192,6 @@ int main(int argc, char* argv[]) {
   std::setbuf(stdout, nullptr);  // unbuffered stdout
 
   pw::stream::ServerSocket server;
-  std::array<std::byte, 8192> packet_encode_buffer;
   pw::grpc::GrpcChannelOutput rpc_egress;
   std::array<pw::rpc::Channel, 1> tx_channels(
       {pw::rpc::Channel::Create<kTestChannelId>(&rpc_egress)});
@@ -173,9 +201,7 @@ int main(int argc, char* argv[]) {
   service_registry.RegisterService(echo_service);
 
   pw::grpc::PwRpcHandler handler(kTestChannelId,
-                                 service_registry,
-                                 service_registry.client_server().server(),
-                                 packet_encode_buffer);
+                                 service_registry.client_server().server());
   rpc_egress.set_callbacks(handler);
 
   PW_LOG_INFO("Main.Listen on port=%d", port);
@@ -194,12 +220,15 @@ int main(int argc, char* argv[]) {
 
     PW_LOG_INFO("Main.Run");
 
+    pw::allocator::LibCAllocator message_assembly_allocator;
     pw::thread::test::TestThreadContext connection_thread_context;
     pw::thread::test::TestThreadContext send_thread_context;
     pw::grpc::ConnectionThread conn(
-        *socket, send_thread_context.options(), handler, [&socket]() {
-          socket->Close();
-        });
+        *socket,
+        send_thread_context.options(),
+        handler,
+        [&socket]() { socket->Close(); },
+        &message_assembly_allocator);
     rpc_egress.set_connection(conn);
 
     pw::thread::Thread conn_thread(connection_thread_context.options(), conn);

@@ -58,6 +58,12 @@ pw_source_set("allocator_as_pool") {
   sources = [ "allocator_as_pool.cc" ]
 }
 
+pw_source_set("best_fit_block_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/best_fit_block_allocator.h" ]
+  public_deps = [ ":block_allocator_base" ]
+}
+
 pw_source_set("block") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/block.h" ]
@@ -77,9 +83,23 @@ pw_source_set("block") {
   sources = [ "block.cc" ]
 }
 
+# TODO(b/326509341): Remove when all customers depend on the correct targets.
 pw_source_set("block_allocator") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/block_allocator.h" ]
+  public_deps = [
+    ":best_fit_block_allocator",
+    ":dual_first_fit_block_allocator",
+    ":first_fit_block_allocator",
+    ":last_fit_block_allocator",
+    ":worst_fit_block_allocator",
+  ]
+}
+
+# TODO(b/326509341): Rename when all customers depend on the correct targets.
+pw_source_set("block_allocator_base") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/block_allocator_base.h" ]
   public_deps = [
     ":allocator",
     ":block",
@@ -91,6 +111,34 @@ pw_source_set("block_allocator") {
   sources = [ "block_allocator.cc" ]
 }
 
+pw_source_set("bucket") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/bucket.h" ]
+  public_deps = [
+    dir_pw_function,
+    dir_pw_span,
+  ]
+  deps = [ dir_pw_assert ]
+  sources = [ "bucket.cc" ]
+}
+
+pw_source_set("buddy_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/buddy_allocator.h" ]
+  public_deps = [
+    ":allocator",
+    ":bucket",
+    "$dir_pw_containers:vector",
+    dir_pw_alignment,
+    dir_pw_bytes,
+  ]
+  deps = [
+    ":buffer",
+    dir_pw_assert,
+  ]
+  sources = [ "buddy_allocator.cc" ]
+}
+
 pw_source_set("buffer") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/buffer.h" ]
@@ -98,10 +146,23 @@ pw_source_set("buffer") {
     dir_pw_bytes,
     dir_pw_result,
   ]
-  deps = [ "$dir_pw_bytes:alignment" ]
+  deps = [
+    "$dir_pw_bytes:alignment",
+    dir_pw_assert,
+  ]
   sources = [ "buffer.cc" ]
 }
 
+pw_source_set("bump_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/bump_allocator.h" ]
+  public_deps = [
+    ":allocator",
+    dir_pw_bytes,
+  ]
+  deps = [ ":buffer" ]
+  sources = [ "bump_allocator.cc" ]
+}
 pw_source_set("chunk_pool") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/chunk_pool.h" ]
@@ -137,17 +198,29 @@ pw_source_set("deallocator") {
   ]
 }
 
+pw_source_set("dual_first_fit_block_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/dual_first_fit_block_allocator.h" ]
+  public_deps = [ ":block_allocator_base" ]
+}
+
 pw_source_set("fallback_allocator") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/fallback_allocator.h" ]
   public_deps = [
     ":allocator",
-    ":tracking_allocator",
-    dir_pw_metric,
+    ":deallocator",
     dir_pw_result,
     dir_pw_status,
-    dir_pw_tokenizer,
   ]
+  sources = [ "fallback_allocator.cc" ]
+  deps = [ "$dir_pw_assert:check" ]
+}
+
+pw_source_set("first_fit_block_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/first_fit_block_allocator.h" ]
+  public_deps = [ ":block_allocator_base" ]
 }
 
 pw_source_set("freelist") {
@@ -174,6 +247,12 @@ pw_source_set("freelist_heap") {
     dir_pw_span,
   ]
   sources = [ "freelist_heap.cc" ]
+}
+
+pw_source_set("last_fit_block_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/last_fit_block_allocator.h" ]
+  public_deps = [ ":block_allocator_base" ]
 }
 
 pw_source_set("libc_allocator") {
@@ -233,6 +312,12 @@ pw_source_set("typed_pool") {
   ]
 }
 
+pw_source_set("worst_fit_block_allocator") {
+  public_configs = [ ":default_config" ]
+  public = [ "public/pw_allocator/worst_fit_block_allocator.h" ]
+  public_deps = [ ":block_allocator_base" ]
+}
+
 # Test support
 
 pw_source_set("testing") {
@@ -240,8 +325,8 @@ pw_source_set("testing") {
   public_deps = [
     ":allocator",
     ":block",
-    ":block_allocator",
     ":buffer",
+    ":first_fit_block_allocator",
     ":tracking_allocator",
     dir_pw_bytes,
     dir_pw_result,
@@ -249,6 +334,21 @@ pw_source_set("testing") {
     dir_pw_unit_test,
   ]
   deps = [ dir_pw_assert ]
+}
+
+pw_source_set("block_allocator_testing") {
+  public = [ "public/pw_allocator/block_allocator_testing.h" ]
+  public_deps = [
+    ":block",
+    ":block_allocator",
+    dir_pw_unit_test,
+  ]
+  deps = [
+    "$dir_pw_bytes:alignment",
+    dir_pw_assert,
+    dir_pw_status,
+  ]
+  sources = [ "block_allocator_testing.cc" ]
 }
 
 pw_source_set("test_harness") {
@@ -292,12 +392,12 @@ pw_test("allocator_test") {
   sources = [ "allocator_test.cc" ]
 }
 
-pw_test("block_test") {
+pw_test("best_fit_block_allocator_test") {
   deps = [
-    ":block",
-    dir_pw_span,
+    ":best_fit_block_allocator",
+    ":block_allocator_testing",
   ]
-  sources = [ "block_test.cc" ]
+  sources = [ "best_fit_block_allocator_test.cc" ]
 
   # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
   # indefinitely.
@@ -306,14 +406,12 @@ pw_test("block_test") {
   }
 }
 
-pw_test("block_allocator_test") {
+pw_test("block_test") {
   deps = [
     ":block",
-    ":block_allocator",
-    ":buffer",
-    dir_pw_bytes,
+    dir_pw_span,
   ]
-  sources = [ "block_allocator_test.cc" ]
+  sources = [ "block_test.cc" ]
 
   # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
   # indefinitely.
@@ -331,12 +429,36 @@ pw_test("buffer_test") {
   sources = [ "buffer_test.cc" ]
 }
 
+pw_test("bump_allocator_test") {
+  deps = [ ":bump_allocator" ]
+  sources = [ "bump_allocator_test.cc" ]
+}
+
 pw_test("chunk_pool_test") {
   deps = [
     ":chunk_pool",
     ":testing",
   ]
   sources = [ "chunk_pool_test.cc" ]
+}
+
+pw_test("buddy_allocator_test") {
+  deps = [ ":buddy_allocator" ]
+  sources = [ "buddy_allocator_test.cc" ]
+}
+
+pw_test("dual_first_fit_block_allocator_test") {
+  deps = [
+    ":block_allocator_testing",
+    ":dual_first_fit_block_allocator",
+  ]
+  sources = [ "dual_first_fit_block_allocator_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("fallback_allocator_test") {
@@ -346,6 +468,21 @@ pw_test("fallback_allocator_test") {
     dir_pw_status,
   ]
   sources = [ "fallback_allocator_test.cc" ]
+}
+
+pw_test("first_fit_block_allocator_test") {
+  deps = [
+    ":block_allocator_testing",
+    ":buffer",
+    ":first_fit_block_allocator",
+  ]
+  sources = [ "first_fit_block_allocator_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("freelist_test") {
@@ -369,6 +506,20 @@ pw_test("freelist_heap_test") {
 
   # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; after test
   # finishes device locks up.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
+}
+
+pw_test("last_fit_block_allocator_test") {
+  deps = [
+    ":block_allocator_testing",
+    ":last_fit_block_allocator",
+  ]
+  sources = [ "last_fit_block_allocator_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
   if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
     enable_if = false
   }
@@ -432,23 +583,43 @@ pw_test("unique_ptr_test") {
   sources = [ "unique_ptr_test.cc" ]
 }
 
+pw_test("worst_fit_block_allocator_test") {
+  deps = [
+    ":block_allocator_testing",
+    ":worst_fit_block_allocator",
+  ]
+  sources = [ "worst_fit_block_allocator_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
+}
+
 pw_test_group("tests") {
   tests = [
     ":allocator_as_pool_test",
     ":allocator_test",
-    ":block_allocator_test",
+    ":best_fit_block_allocator_test",
     ":block_test",
+    ":buddy_allocator_test",
     ":buffer_test",
+    ":bump_allocator_test",
     ":chunk_pool_test",
+    ":dual_first_fit_block_allocator_test",
     ":fallback_allocator_test",
+    ":first_fit_block_allocator_test",
     ":freelist_test",
     ":freelist_heap_test",
+    ":last_fit_block_allocator_test",
     ":libc_allocator_test",
     ":null_allocator_test",
     ":typed_pool_test",
     ":synchronized_allocator_test",
     ":tracking_allocator_test",
     ":unique_ptr_test",
+    ":worst_fit_block_allocator_test",
   ]
   group_deps = [ "examples" ]
 }
@@ -483,6 +654,16 @@ pw_size_diff("concrete_allocators_size_report") {
       target = "size_report:best_fit_block_allocator"
       base = "size_report:null_allocator"
       label = "BestFitBlockAllocator"
+    },
+    {
+      target = "size_report:buddy_allocator"
+      base = "size_report:null_allocator"
+      label = "BuddyAllocator"
+    },
+    {
+      target = "size_report:bump_allocator"
+      base = "size_report:null_allocator"
+      label = "BumpAllocator"
     },
     {
       target = "size_report:dual_first_fit_block_allocator"

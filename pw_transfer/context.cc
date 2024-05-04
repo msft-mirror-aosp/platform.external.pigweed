@@ -882,7 +882,8 @@ void Context::HandleReceivedData(const Chunk& chunk) {
   if (chunk.offset() != offset_) {
     // Bad offset; reset window size to send another parameters chunk.
     PW_LOG_DEBUG(
-        "Transfer %u expected offset %u, received %u; entering recovery state",
+        "Transfer %u expected offset %u, received %u; entering recovery "
+        "state",
         static_cast<unsigned>(session_id_),
         static_cast<unsigned>(offset_),
         static_cast<unsigned>(chunk.offset()));
@@ -895,16 +896,25 @@ void Context::HandleReceivedData(const Chunk& chunk) {
   }
 
   if (chunk.offset() + chunk.payload().size() > window_end_offset_) {
-    // End the transfer, as this indicates a bug with the client implementation
-    // where it doesn't respect the window size. Trying to recover from here
-    // could potentially result in an infinite transfer loop.
-    PW_LOG_ERROR(
+    PW_LOG_WARN(
         "Transfer %u received more data than what was requested (%u received "
-        "for %u pending); terminating transfer.",
+        "for %u pending); attempting to recover.",
         id_for_log(),
         static_cast<unsigned>(chunk.payload().size()),
         static_cast<unsigned>(window_end_offset_ - offset_));
-    TerminateTransfer(Status::Internal());
+
+    // To prevent an improperly implemented client which doesn't respect
+    // window_end_offset from entering an infinite retry loop, limit recovery
+    // attempts to the lifetime retry count.
+    lifetime_retries_++;
+    if (lifetime_retries_ <= max_lifetime_retries_) {
+      set_transfer_state(TransferState::kRecovery);
+      SetTimeout(chunk_timeout_);
+
+      UpdateAndSendTransferParameters(TransmitAction::kRetransmit);
+    } else {
+      TerminateTransfer(Status::Internal());
+    }
     return;
   }
 
@@ -1274,9 +1284,12 @@ uint32_t Context::MaxWriteChunkSize(uint32_t max_chunk_size_bytes,
   //
   //   TOTAL: 3 + encoded session_id + encoded offset + encoded data length
   //
+  // Use a lower bound of a single chunk for the window end offset, as it will
+  // always be at least in that range.
+  size_t window_end_offset = std::max(window_end_offset_, max_chunk_size_bytes);
   max_size -= 3;
   max_size -= varint::EncodedSize(session_id_);
-  max_size -= varint::EncodedSize(window_end_offset_);
+  max_size -= varint::EncodedSize(window_end_offset);
   max_size -= varint::EncodedSize(max_size);
 
   // A resulting value of zero (or less) renders write transfers unusable, as
