@@ -16,6 +16,11 @@
 
 namespace pw::allocator::internal {
 
+bool BaseUniquePtr::HasCapability(Deallocator* deallocator,
+                                  Capability capability) {
+  return deallocator->HasCapability(capability);
+}
+
 void BaseUniquePtr::Deallocate(Deallocator* deallocator, void* ptr) {
   deallocator->Deallocate(ptr);
 }

@@ -108,8 +108,10 @@ def pw_cc_test(**kwargs):
     Args:
       **kwargs: Passed to cc_test.
     """
-    kwargs["deps"] = kwargs.get("deps", []) + \
-                     ["@pigweed//pw_unit_test:main"]
+    test_main = kwargs.get("test_main", "@pigweed//pw_unit_test:main")
+    kwargs.pop("test_main", "")
+
+    kwargs["deps"] = kwargs.get("deps", []) + [test_main]
 
     # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
@@ -248,13 +250,25 @@ def _pw_cc_blob_library_impl(ctx):
         arguments = [args],
     )
 
+    include_path = ctx.bin_dir.path
+
+    # If workspace_root is set, this target is in an external workspace, so the
+    # generated file will be located under workspace_root.
+    if ctx.label.workspace_root:
+        include_path += "/" + ctx.label.workspace_root
+
+    # If target is not in root BUILD file of repo, append package name as that's
+    # where the generated file will end up.
+    if ctx.label.package:
+        include_path += "/" + ctx.label.package
+
     return _compile_cc(
         ctx,
         [src],
         [hdr],
         deps = ctx.attr.deps,
         alwayslink = ctx.attr.alwayslink,
-        includes = [ctx.bin_dir.path + "/" + ctx.label.package],
+        includes = [include_path],
         defines = [],
     )
 
