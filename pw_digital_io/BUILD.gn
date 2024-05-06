@@ -30,9 +30,11 @@ pw_source_set("pw_digital_io") {
   public = [
     "public/pw_digital_io/digital_io.h",
     "public/pw_digital_io/internal/conversions.h",
+    "public/pw_digital_io/polarity.h",
   ]
   sources = [ "digital_io.cc" ]
   public_deps = [
+    "$dir_pw_toolchain:sibling_cast",
     dir_pw_assert,
     dir_pw_function,
     dir_pw_result,
@@ -56,7 +58,10 @@ pw_proto_library("protos") {
 }
 
 pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
+  sources = [
+    "backends.rst",
+    "docs.rst",
+  ]
 }
 
 pw_test_group("tests") {

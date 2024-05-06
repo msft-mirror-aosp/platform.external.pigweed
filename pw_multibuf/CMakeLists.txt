@@ -31,28 +31,65 @@ pw_add_library(pw_multibuf.chunk STATIC
     chunk.cc
 )
 
-pw_add_library(pw_multibuf.test_utils STATIC
-  HEADERS
-    public/pw_multibuf/internal/test_utils.h
+pw_add_library(pw_multibuf.chunk_region_tracker STATIC
+  SOURCES
+    public/pw_multibuf/chunk_region_tracker.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_allocator.allocator
+    pw_bytes
     pw_multibuf.chunk
-    pw_allocator.allocator_metric_proxy
-    pw_allocator.split_free_list_allocator
+)
 
-pw_add_test(pw_multibuf.chunk_test STATIC
+pw_add_library(pw_multibuf.single_chunk_region_tracker STATIC
+  SOURCES
+    public/pw_multibuf/single_chunk_region_tracker.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_bytes
+    pw_multibuf.chunk
+)
+
+pw_add_test(pw_multibuf.chunk_test
   SOURCES
     chunk_test.cc
   PRIVATE_DEPS
+    pw_allocator.allocator_testing
     pw_multibuf.chunk
-    pw_multibuf.test_utils
+    pw_multibuf.chunk_region_tracker
   GROUPS
     modules
     pw_multibuf
 )
 
-pw_add_library(pw_multibuf.pw_multibuf STATIC
+pw_add_test(pw_multibuf.chunk_region_tracker_test
+  SOURCES
+    chunk_region_tracker_test.cc
+  PRIVATE_DEPS
+    pw_allocator.simple_allocator
+    pw_multibuf.chunk
+    pw_multibuf.chunk_region_tracker
+    pw_status
+  GROUPS
+    modules
+    pw_multibuf
+)
+
+pw_add_test(pw_multibuf.single_chunk_region_tracker_test
+  SOURCES
+    single_chunk_region_tracker_test.cc
+  PRIVATE_DEPS
+    pw_multibuf.chunk
+    pw_multibuf.single_chunk_region_tracker
+  GROUPS
+    modules
+    pw_multibuf
+)
+
+pw_add_library(pw_multibuf STATIC
   HEADERS
     public/pw_multibuf/multibuf.h
   PUBLIC_INCLUDES
@@ -63,12 +100,14 @@ pw_add_library(pw_multibuf.pw_multibuf STATIC
     multibuf.cc
 )
 
-pw_add_test(pw_multibuf.multibuf_test STATIC
+pw_add_test(pw_multibuf.multibuf_test
   SOURCES
     multibuf_test.cc
   PRIVATE_DEPS
-    pw_multibuf.multibuf
-    pw_multibuf.test_utils
+    pw_assert
+    pw_multibuf
+    pw_multibuf.chunk_region_tracker
+    pw_allocator.allocator_testing
   GROUPS
     modules
     pw_multibuf

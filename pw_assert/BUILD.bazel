@@ -15,7 +15,6 @@
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -26,14 +25,12 @@ licenses(["notice"])
 pw_cc_facade(
     name = "facade",
     hdrs = [
-        "assert_compatibility_public_overrides/pw_assert_backend/assert_backend.h",
         "public/pw_assert/assert.h",
         "public/pw_assert/check.h",
         "public/pw_assert/internal/check_impl.h",
         "public/pw_assert/short.h",
     ],
     includes = [
-        "assert_compatibility_public_overrides",
         "public",
     ],
     deps = [
@@ -42,17 +39,15 @@ pw_cc_facade(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "pw_assert",
     hdrs = [
-        "assert_compatibility_public_overrides/pw_assert_backend/assert_backend.h",
         "public/pw_assert/assert.h",
         "public/pw_assert/check.h",
         "public/pw_assert/internal/check_impl.h",
         "public/pw_assert/short.h",
     ],
     includes = [
-        "assert_compatibility_public_overrides",
         "public",
     ],
     deps = [
@@ -62,13 +57,19 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "config",
     hdrs = ["public/pw_assert/config.h"],
     includes = ["public"],
+    deps = [":config_override"],
 )
 
-pw_cc_library(
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+cc_library(
     name = "libc_assert",
     hdrs = [
         "libc_assert_public_overrides/assert.h",
@@ -85,7 +86,16 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
+    name = "assert_compatibility_backend",
+    hdrs = [
+        "assert_compatibility_public_overrides/pw_assert_backend/assert_backend.h",
+    ],
+    includes = ["assert_compatibility_public_overrides"],
+    deps = ["//pw_preprocessor"],
+)
+
+cc_library(
     name = "print_and_abort",
     hdrs = ["public/pw_assert/internal/print_and_abort.h"],
     includes = ["public"],
@@ -93,7 +103,7 @@ pw_cc_library(
     deps = [":config"],
 )
 
-pw_cc_library(
+cc_library(
     name = "print_and_abort_assert_backend",
     hdrs = ["print_and_abort_assert_public_overrides/pw_assert_backend/assert_backend.h"],
     includes = ["print_and_abort_assert_public_overrides"],
@@ -103,7 +113,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "print_and_abort_check_backend",
     hdrs =
         ["print_and_abort_check_public_overrides/pw_assert_backend/check_backend.h"],
@@ -111,7 +121,7 @@ pw_cc_library(
     deps = [":print_and_abort"],
 )
 
-pw_cc_library(
+cc_library(
     name = "backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = [

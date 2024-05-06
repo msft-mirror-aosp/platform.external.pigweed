@@ -139,6 +139,7 @@ pw_test("device_test") {
   deps = [
     ":device",
     ":mock",
+    "$dir_pw_chrono:system_clock",
     "$dir_pw_containers",
   ]
 }
@@ -150,6 +151,12 @@ pw_test("register_device_test") {
     ":register_device",
     "$dir_pw_assert",
   ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("initiator_mock_test") {
@@ -157,6 +164,7 @@ pw_test("initiator_mock_test") {
   sources = [ "initiator_mock_test.cc" ]
   deps = [
     ":mock",
+    "$dir_pw_chrono:system_clock",
     "$dir_pw_containers",
   ]
 }
@@ -166,13 +174,23 @@ pw_test("i2c_service_test") {
   sources = [ "i2c_service_test.cc" ]
   deps = [
     ":i2c_service",
+    "$dir_pw_chrono:system_clock",
     "$dir_pw_containers:vector",
     "$dir_pw_i2c:mock",
     "$dir_pw_rpc/pwpb:test_method_context",
     "$dir_pw_status",
   ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
+  sources = [
+    "backends.rst",
+    "docs.rst",
+  ]
 }

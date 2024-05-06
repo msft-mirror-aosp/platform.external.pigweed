@@ -517,21 +517,10 @@ label flag should be set to the ``impl`` target required by the assert backend
 used by the platform.
 
 You must add a dependency on the ``@pigweed//targets:pw_assert_backend_impl``
-target to any binary using ``pw_assert``.  You can do this in a few ways:
+target to any binary using ``pw_assert``.
 
-1.  Use ``pw_cc_binary``, one of the :ref:`module-pw_build-bazel-wrapper-rules`
-    provided by Pigweed, instead of native ``cc_binary``. This wrapper adds the
-    required dependency.
-
-1.  Use `link_extra_lib
-    <https://bazel.build/reference/be/c-cpp#cc_binary.link_extra_lib>`_: set
-    the ``@bazel_tools//tools/cpp:link_extra_lib`` label flag to point to
-    ``@pigweed//targets:pw_assert_backend_impl``, probably using `bazelrc
-    <https://bazel.build/run/bazelrc>`_. Note that this is only supported in
-    Bazel 7.0.0 or newer.
-
-1.  Add ``@pigweed//targets:pw_assert_backend_impl`` directly to the ``deps``
-    of every embedded ``cc_binary`` in your project.
+See :ref:`docs-build_system-bazel_link-extra-lib` for a general discussion of
+cyclic dependencies in low-level libraries in Bazel.
 
 .. _module-pw_assert-backend_api:
 
@@ -818,29 +807,7 @@ Below is a brief summary of what modules are ready for use:
 
 Available Assert Backends
 =========================
-- ``pw_assert`` - **Stable** - The assert facade (this module). This module is
-  stable, and in production use. The documentation is comprehensive and covers
-  the functionality. There are (a) tests for the facade macro processing logic,
-  using a fake assert backend; and (b) compile tests to verify that the
-  selected backend compiles with all supported assert constructions and types.
-- ``pw_assert:print_and_abort_backend`` - **Stable** - Uses the ``printf`` and
-  ``abort`` standard library functions to implement the assert facade. Prints
-  the assert expression, evaluated arguments if any, file/line, function name,
-  and user message, then aborts. Only suitable for targets that support these
-  standard library functions.
-- ``pw_assert_basic`` - **Stable** - The assert basic module is a simple assert
-  handler that displays the failed assert line and the values of captured
-  arguments. Output is directed to ``pw_sys_io``. This module is a great
-  ready-to-roll module when bringing up a system, but is likely not the best
-  choice for production.
-- ``pw_assert_log`` - **Stable** - This assert backend redirects to logging,
-  but with a logging flag set that indicates an assert failure. This is our
-  advised approach to get **tokenized asserts**--by using tokenized logging,
-  then using the ``pw_assert_log`` backend.
-
-Note: If one desires a null assert module (where asserts are removed), use
-``pw_assert_log`` in combination with ``pw_log_null``. This will direct asserts
-to logs, then the logs are removed due to the null backend.
+See :ref:`module-pw_assert-backends`.
 
 Missing Functionality
 =====================
@@ -850,3 +817,8 @@ Missing Functionality
   capture system that can capture state like number of tasks, available memory,
   and so on. Snapshot facilities are the obvious ones to run inside an assert
   handler. It'll happen someday.
+
+.. toctree::
+   :maxdepth: 1
+
+   Backends <backends>

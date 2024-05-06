@@ -6,8 +6,15 @@ Sphinx documentation style
 .. note::
 
    Pigweed's documentation style guide came after much of the documentation was
-   written, so Pigweed's docs don't yet 100% conform to this style guide. When
+   written, so Pigweed doesn't entirely conform to our own style guide. When
    updating docs, please update them to match the style guide.
+
+.. note::
+
+   We are moving to the `Google Developer Documentation Style Guide (GDDSG)
+   <https://developers.google.com/style>`_ for the English language conventions
+   (rather than technical style for RST usage, etc). Currently, most of our
+   documentation does not adhere.
 
 Pigweed documentation is written using the `reStructuredText
 <https://docutils.sourceforge.io/rst.html>`_ markup language and processed by
@@ -630,3 +637,18 @@ Rendered output:
       :sync: key2
 
       More Windows instructions...
+
+Auto-generated source code and issues URLS
+==========================================
+In the site nav there's a ``Source code`` and ``Issues`` URL for each module.
+These links are auto-generated. The auto-generation logic lives in
+``//pw_docgen/py/pw_docgen/sphinx/module_metadata.py``.
+
+Breadcrumbs
+===========
+.. _breadcrumbs: https://en.wikipedia.org/wiki/Breadcrumb_navigation
+
+The `breadcrumbs`_ at the top of each page (except the homepage) is implemented
+in ``//docs/layout/page.html``. The CSS for this UI is in
+``//docs/_static/css/pigweed.css`` under the ``.breadcrumbs`` and
+``.breadcrumb`` classes.

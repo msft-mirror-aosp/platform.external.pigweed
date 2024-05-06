@@ -15,7 +15,6 @@
 import importlib.resources
 import json
 import pathlib
-import os
 import subprocess
 import sys
 import tempfile
@@ -26,6 +25,10 @@ import pw_env_setup.virtualenv_setup
 
 import pw_package.git_repo
 import pw_package.package_manager
+
+# Main branch, this commit is close to the v3.6 RC3 tag which contains some
+# bug fixes for Twister and support for GTEST_SKIP()
+_ZEPHYR_COMMIT_SHA = 'f9778472105d756fff7d1e5b54353421d356ed43'
 
 
 class Zephyr(pw_package.git_repo.GitRepo):
@@ -39,7 +42,7 @@ class Zephyr(pw_package.git_repo.GitRepo):
                 'https://pigweed.googlesource.com/third_party/'
                 'github/zephyrproject-rtos/zephyr'
             ),
-            commit='a6eef0ba3755f2530c5ce93524e5ac4f5be30194',  # v3.5 release
+            commit=_ZEPHYR_COMMIT_SHA,
             **kwargs,
         )
 
@@ -107,14 +110,11 @@ class Zephyr(pw_package.git_repo.GitRepo):
             ]
         )
         # Setup Zephyr SDK
-        setup_file = 'setup.cmd' if os.name == 'nt' else 'setup.sh'
         subprocess.check_call(
             [
-                str(core_cache_path / setup_file),
-                '-t',
-                'all',
-                '-c',
-                '-h',
+                'cmake',
+                '-P',
+                str(core_cache_path / 'cmake' / 'zephyr_sdk_export.cmake'),
             ]
         )
 

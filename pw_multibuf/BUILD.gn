@@ -37,22 +37,66 @@ pw_source_set("chunk") {
   deps = [ "$dir_pw_assert:check" ]
 }
 
-pw_source_set("test_utils") {
+pw_source_set("chunk_region_tracker") {
   public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_multibuf/internal/test_utils.h" ]
+  public = [ "public/pw_multibuf/chunk_region_tracker.h" ]
   public_deps = [
     ":chunk",
-    "$dir_pw_allocator:allocator_metric_proxy",
-    "$dir_pw_allocator:split_free_list_allocator",
+    dir_pw_allocator,
+    dir_pw_bytes,
   ]
+}
+
+pw_test("chunk_region_tracker_test") {
+  deps = [
+    ":chunk",
+    ":chunk_region_tracker",
+    "$dir_pw_allocator:simple_allocator",
+    dir_pw_status,
+  ]
+  sources = [ "chunk_region_tracker_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
+}
+
+pw_source_set("single_chunk_region_tracker") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_multibuf/single_chunk_region_tracker.h" ]
+  public_deps = [
+    ":chunk",
+    dir_pw_assert,
+    dir_pw_bytes,
+  ]
+}
+
+pw_test("single_chunk_region_tracker_test") {
+  deps = [
+    ":chunk",
+    ":single_chunk_region_tracker",
+  ]
+  sources = [ "single_chunk_region_tracker_test.cc" ]
+
+  # TODO: b/260624583 - Fix this for //targets/rp2040
+  enable_if = pw_build_EXECUTABLE_TARGET_TYPE != "pico_executable"
 }
 
 pw_test("chunk_test") {
   deps = [
     ":chunk",
-    ":test_utils",
+    ":chunk_region_tracker",
+    "$dir_pw_allocator:allocator_testing",
   ]
   sources = [ "chunk_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_source_set("pw_multibuf") {
@@ -64,16 +108,26 @@ pw_source_set("pw_multibuf") {
 
 pw_test("multibuf_test") {
   deps = [
+    ":chunk_region_tracker",
     ":pw_multibuf",
-    ":test_utils",
+    "$dir_pw_allocator:allocator_testing",
+    dir_pw_assert,
   ]
   sources = [ "multibuf_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test_group("tests") {
   tests = [
     ":chunk_test",
+    ":chunk_region_tracker_test",
     ":multibuf_test",
+    ":single_chunk_region_tracker_test",
   ]
 }
 

@@ -12,11 +12,6 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
@@ -26,7 +21,7 @@ licenses(["notice"])
 # the Pi Pico.
 #
 # TODO: b/260639642 - Support Pico in the Bazel build.
-pw_cc_library(
+cc_library(
     name = "pico_logging_test_main",
     srcs = [
         "pico_logging_test_main.cc",
@@ -35,5 +30,19 @@ pw_cc_library(
     deps = [
         "//pw_unit_test",
         "//pw_unit_test:logging_event_handler",
+    ],
+)
+
+# This is just a stub to silence warnings saying that boot.cc and *.h files are
+# missing from the bazel build. There's no plans yet to do a Bazel build for
+# the Pi Pico.
+filegroup(
+    name = "rp2040_files",
+    srcs = [
+        "boot.cc",
+        "config/FreeRTOSConfig.h",
+        "config/pigweed_module_config.h",
+        "config/rp2040_hal_config.h",
+        "unit_test_app.cc",
     ],
 )

@@ -18,6 +18,7 @@ pw_add_library(pw_digital_io STATIC
   HEADERS
     public/pw_digital_io/digital_io.h
     public/pw_digital_io/internal/conversions.h
+    public/pw_digital_io/polarity.h
   PUBLIC_INCLUDES
     public
   SOURCES
@@ -27,6 +28,7 @@ pw_add_library(pw_digital_io STATIC
     pw_function
     pw_result
     pw_status
+    pw_toolchain._sibling_cast
 )
 
 pw_add_test(pw_digital_io.stream_test

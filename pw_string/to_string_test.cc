@@ -20,10 +20,10 @@
 #include <cstring>
 #include <string>
 
-#include "gtest/gtest.h"
 #include "pw_status/status.h"
 #include "pw_string/internal/config.h"
 #include "pw_string/type_to_string.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw {
 
@@ -274,6 +274,23 @@ TEST(ToString, StdString) {
 
   EXPECT_EQ(0u, ToString(std::string(), buffer).size());
   EXPECT_STREQ("", buffer);
+}
+
+TEST(ToString, StdNullopt) {
+  EXPECT_EQ(12u, ToString(std::nullopt, buffer).size());
+  EXPECT_STREQ("std::nullopt", buffer);
+}
+
+TEST(ToString, StdOptionalWithoutValue) {
+  std::optional<uint16_t> v = std::nullopt;
+  EXPECT_EQ(12u, ToString(v, buffer).size());
+  EXPECT_STREQ("std::nullopt", buffer);
+}
+
+TEST(ToString, StdOptionalWithValue) {
+  std::optional<uint16_t> v = 5;
+  EXPECT_EQ(1u, ToString(v, buffer).size());
+  EXPECT_STREQ("5", buffer);
 }
 
 }  // namespace

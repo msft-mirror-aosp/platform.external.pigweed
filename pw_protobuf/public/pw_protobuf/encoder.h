@@ -32,6 +32,7 @@
 #include "pw_status/try.h"
 #include "pw_stream/memory_stream.h"
 #include "pw_stream/stream.h"
+#include "pw_toolchain/internal/sibling_cast.h"
 #include "pw_varint/varint.h"
 
 namespace pw::protobuf {
@@ -658,13 +659,21 @@ class StreamEncoder {
   constexpr StreamEncoder(StreamEncoder& parent,
                           ByteSpan scratch_buffer,
                           bool write_when_empty = true)
-      : status_(scratch_buffer.empty() ? Status::ResourceExhausted()
-                                       : OkStatus()),
+      : status_(OkStatus()),
         write_when_empty_(write_when_empty),
         parent_(&parent),
         nested_field_number_(0),
         memory_writer_(scratch_buffer),
-        writer_(memory_writer_) {}
+        writer_(memory_writer_) {
+    // If this encoder was spawned from a failed encoder, it should also start
+    // in a failed state.
+    if (&parent != this) {
+      status_.Update(parent.status_);
+    }
+    if (scratch_buffer.empty()) {
+      status_.Update(Status::ResourceExhausted());
+    }
+  }
 
   bool nested_encoder_open() const { return nested_field_number_ != 0; }
 
@@ -902,7 +911,7 @@ inline ToStreamEncoder& StreamEncoderCast(FromStreamEncoder& encoder) {
   static_assert(std::is_base_of<StreamEncoder, ToStreamEncoder>::value,
                 "Cannot cast to a type that is not a derived class of "
                 "pw::protobuf::StreamEncoder");
-  return static_cast<ToStreamEncoder&>(static_cast<StreamEncoder&>(encoder));
+  return pw::internal::SiblingCast<ToStreamEncoder&, StreamEncoder>(encoder);
 }
 
 }  // namespace pw::protobuf

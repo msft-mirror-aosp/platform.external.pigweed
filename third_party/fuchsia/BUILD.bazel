@@ -12,17 +12,21 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+# Allows downstream projects to provide an alternative implementation of fit.
+#
+# Intended for projects that depend on both Pigweed and Fuchsia, and want to
+# use the Fuchsia implementation directly to avoid ODR violations.
+label_flag(
     name = "fit",
+    build_setting_default = ":fit_impl",
+)
+
+cc_library(
+    name = "fit_impl",
     srcs = [
         "repo/sdk/lib/fit/include/lib/fit/internal/compiler.h",
         "repo/sdk/lib/fit/include/lib/fit/internal/function.h",
@@ -42,7 +46,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "stdcompat",
     srcs = [
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/bit.h",

@@ -18,10 +18,10 @@
 #include <array>
 #include <cstddef>
 
-#include "gtest/gtest.h"
 #include "pw_compilation_testing/negative_compilation.h"
 #include "pw_containers/algorithm.h"
 #include "pw_containers_private/test_helpers.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::containers {
 namespace {
@@ -727,20 +727,20 @@ TEST(InlineQueue, DereferenceOperator) {
 }
 
 // Test that InlineQueue<T> is trivially destructible when its type is.
-static_assert(std::is_trivially_destructible_v<InlineQueue<int>>);
 static_assert(std::is_trivially_destructible_v<InlineQueue<int, 4>>);
 
 static_assert(std::is_trivially_destructible_v<MoveOnly>);
-static_assert(std::is_trivially_destructible_v<InlineQueue<MoveOnly>>);
 static_assert(std::is_trivially_destructible_v<InlineQueue<MoveOnly, 1>>);
 
 static_assert(std::is_trivially_destructible_v<CopyOnly>);
-static_assert(std::is_trivially_destructible_v<InlineQueue<CopyOnly>>);
 static_assert(std::is_trivially_destructible_v<InlineQueue<CopyOnly, 99>>);
 
 static_assert(!std::is_trivially_destructible_v<Counter>);
-static_assert(!std::is_trivially_destructible_v<InlineQueue<Counter>>);
 static_assert(!std::is_trivially_destructible_v<InlineQueue<Counter, 99>>);
+
+// Generic-capacity queues cannot be constructed or destructed.
+static_assert(!std::is_constructible_v<InlineQueue<int>>);
+static_assert(!std::is_destructible_v<InlineQueue<int>>);
 
 // Tests that InlineQueue<T> does not have any extra padding.
 static_assert(sizeof(InlineQueue<uint8_t, 1>) ==

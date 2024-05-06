@@ -3,6 +3,31 @@
 ===========
 Get Started
 ===========
+.. _docs-first-time-setup:
+
+--------------------------------------------------
+Configure your workstation for Pigweed development
+--------------------------------------------------
+Pigweed does its best to bundle all its dependencies into an isolated
+environment using :ref:`module-pw_env_setup`. While this doesn't eliminate
+all prerequisites, it greatly accelerates new developer onboarding.
+
+The first-time setup guides below are required for any Pigweed-based project,
+but only need to be done once per machine.
+
+.. grid:: 1
+
+   .. grid-item-card:: First-time setup
+      :link: docs-first-time-setup-guide
+      :link-type: ref
+      :class-item: sales-pitch-cta-primary
+
+      Prerequisites, first-time setup, and support notes for Linux, macOS, and
+      Windows.
+
+------------------------------
+Create a Pigweed-based project
+------------------------------
 .. grid:: 1
 
    .. grid-item-card:: :octicon:`rocket` Bazel
@@ -53,5 +78,22 @@ Get Started
    :maxdepth: 1
    :hidden:
 
-   Bazel <bazel>
+   First-time setup <first_time_setup>
+   Bazel quickstart <bazel>
+   Bazel integration <bazel_integration>
    Upstream Pigweed <upstream>
+
+------------------------------------------
+Use Pigweed modules in an existing project
+------------------------------------------
+Pigweed is modular: you can use as much or as little of it as you need.
+
+.. grid:: 1
+
+   .. grid-item-card:: :octicon:`rocket` Bazel
+      :link: docs-bazel-integration
+      :link-type: ref
+      :class-item: sales-pitch-cta-primary
+
+      Instructions for how to use a Pigweed module in an existing Bazel
+      project.

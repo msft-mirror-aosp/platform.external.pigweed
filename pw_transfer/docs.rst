@@ -88,6 +88,7 @@ for additional information.
      return transfer_thread;
    }
 
+.. _pw_transfer-transfer-server:
 
 Transfer server
 ---------------
@@ -128,6 +129,28 @@ support ephemeral transfer resources.
    private:
     pw::stream::MemoryReader reader_;
   };
+
+Handlers may optionally implement a `GetStatus` method, which allows clients to
+query the status of a resource with a handler registered. The application layer
+above transfer can choose how to fill and interpret this information. The status
+information is `readable_offset`, `writeable_offset`, `read_checksum`, and
+`write_checksum`.
+
+**Example GetStatus implementation**
+
+.. code-block:: cpp
+
+  Status GetStatus(uint64_t& readable_offset,
+                   uint64_t& writeable_offset,
+                   uint64_t& read_checksum,
+                   uint64_t& write_checksum) {
+    readable_offset = resource.get_size();
+    writeable_offset = resource.get_writeable_offset();
+    read_checksum = resource.get_crc();
+    write_checksum = resource.calculate_crc(0, writeable_offset);
+
+    return pw::OkStatus();
+  }
 
 The transfer service is instantiated with a reference to the system's transfer
 thread and registered with the system's RPC server.
@@ -174,9 +197,9 @@ an RPC client.
    Currently, a transfer client is only capable of running transfers on a single
    RPC channel. This may be expanded in the future.
 
-The transfer client provides the following two APIs for starting data transfers:
+The transfer client provides the following APIs for managing data transfers:
 
-.. cpp:function:: pw::Status pw::transfer::Client::Read(uint32_t resource_id, pw::stream::Writer& output, CompletionFunc&& on_completion, pw::chrono::SystemClock::duration timeout = cfg::kDefaultChunkTimeout, pw::transfer::ProtocolVersion version = kDefaultProtocolVersion)
+.. cpp:function:: Result<pw::Transfer::Client::Handle> pw::transfer::Client::Read(uint32_t resource_id, pw::stream::Writer& output, CompletionFunc&& on_completion, pw::transfer::ProtocolVersion version = kDefaultProtocolVersion, pw::chrono::SystemClock::duration timeout = cfg::kDefaultClientTimeout, pw::chrono::SystemClock::duration initial_chunk_timeout = cfg::kDefaultInitialChunkTimeout, uint32_t initial_offset = 0u)
 
   Reads data from a transfer server to the specified ``pw::stream::Writer``.
   Invokes the provided callback function with the overall status of the
@@ -186,7 +209,9 @@ The transfer client provides the following two APIs for starting data transfers:
   return a non-OK status if it is called with bad arguments. Otherwise, it will
   return OK and errors will be reported through the completion callback.
 
-.. cpp:function:: pw::Status pw::transfer::Client::Write(uint32_t resource_id, pw::stream::Reader& input, CompletionFunc&& on_completion, pw::chrono::SystemClock::duration timeout = cfg::kDefaultChunkTimeout, pw::transfer::ProtocolVersion version = kDefaultProtocolVersion)
+  For using the offset parameter, please see :ref:`pw_transfer-nonzero-transfers`.
+
+.. cpp:function:: Result<pw::Transfer::Client::Handle> pw::transfer::Client::Write(uint32_t resource_id, pw::stream::Reader& input, CompletionFunc&& on_completion, pw::transfer::ProtocolVersion version = kDefaultProtocolVersion, pw::chrono::SystemClock::duration timeout = cfg::kDefaultClientTimeout, pw::chrono::SystemClock::duration initial_chunk_timeout = cfg::kDefaultInitialChunkTimeout, uint32_t initial_offset = 0u)
 
   Writes data from a source ``pw::stream::Reader`` to a transfer server.
   Invokes the provided callback function with the overall status of the
@@ -195,6 +220,21 @@ The transfer client provides the following two APIs for starting data transfers:
   Due to the asynchronous nature of transfer operations, this function will only
   return a non-OK status if it is called with bad arguments. Otherwise, it will
   return OK and errors will be reported through the completion callback.
+
+  For using the offset parameter, please see :ref:`pw_transfer-nonzero-transfers`.
+
+Transfer handles
+^^^^^^^^^^^^^^^^
+Each transfer session initiated by a client returns a ``Handle`` object which
+is used to manage the transfer. These handles support the following operations:
+
+.. cpp:function:: pw::Transfer::Client::Handle::Cancel()
+
+   Terminates the ongoing transfer.
+
+.. cpp:function:: pw::Transfer::Client::Handle::SetTransferSize(size_t size_bytes)
+
+   In a write transfer, indicates the total size of the transfer resource.
 
 **Example client setup**
 
@@ -220,18 +260,58 @@ The transfer client provides the following two APIs for starting data transfers:
        pw::Status status;
      } transfer_state;
 
-     transfer_client.Read(
+     Result<pw::transfer::Client::Handle> handle = transfer_client.Read(
          kMagicBufferResourceId,
          writer,
          [&transfer_state](pw::Status status) {
            transfer_state.status = status;
            transfer_state.notification.release();
          });
+     if (!handle.ok()) {
+       return handle.status();
+     }
 
      // Block until the transfer completes.
      transfer_state.notification.acquire();
      return transfer_state.status;
    }
+
+Specifying Resource Sizes
+-------------------------
+Transfer data is sent and received through the ``pw::Stream`` interface, which
+does not have a concept of overall stream size. Users of transfers that are
+fixed-size may optionally indicate this to the transfer client and server,
+which will be shared with the transfer peer to enable features such as progress
+reporting.
+
+The transfer size can only be set on the transmitting side of the transfer;
+that is, the client in a ``Write`` transfer or the server in a ``Read``
+transfer.
+
+**Setting a transfer size from a transmitting client**
+
+.. code-block:: c++
+
+   Result<pw::transfer::Client::Handle> handle = client.Write(...);
+   if (handle.ok()) {
+     handle->SetTransferSize(kMyResourceSize);
+   }
+
+**Setting a transfer size on a server resource**
+
+  The ``TransferHandler`` interface allows overriding its ``ResourceSize``
+  function to return the size of its transfer resource.
+
+.. code-block:: c++
+
+   class MyResourceHandler : public pw::transfer::ReadOnlyHandler {
+    public:
+     Status PrepareRead() final;
+
+     virtual size_t ResourceSize() const final {
+       return kMyResourceSize;
+     }
+  };
 
 Atomic File Transfer Handler
 ----------------------------
@@ -242,6 +322,8 @@ always in a correct state. A temporary file is written to prior to updating the
 target file. If any transfer failure occurs, the transfer is aborted and the
 target file is either not created or not updated.
 
+.. _module-pw_transfer-config:
+
 Module Configuration Options
 ----------------------------
 The following configurations can be adjusted via compile-time configuration of
@@ -249,10 +331,19 @@ this module, see the
 :ref:`module documentation <module-structure-compile-time-configuration>` for
 more details.
 
-.. c:macro:: PW_TRANSFER_DEFAULT_MAX_RETRIES
+.. c:macro:: PW_TRANSFER_DEFAULT_MAX_CLIENT_RETRIES
 
-  The default maximum number of times a transfer should retry sending a chunk
-  when no response is received. This can later be configured per-transfer.
+  The default maximum number of times a transfer client should retry sending a
+  chunk when no response is received. Can later be configured per-transfer when
+  starting one.
+
+.. c:macro:: PW_TRANSFER_DEFAULT_MAX_SERVER_RETRIES
+
+  The default maximum number of times a transfer server should retry sending a
+  chunk when no response is received.
+
+  In typical setups, retries are driven by the client, and timeouts on the
+  server are used only to clean up resources, so this defaults to 0.
 
 .. c:macro:: PW_TRANSFER_DEFAULT_MAX_LIFETIME_RETRIES
 
@@ -263,10 +354,16 @@ more details.
   expected. Its purpose is to prevent transfers from getting stuck in an
   infinite loop.
 
-.. c:macro:: PW_TRANSFER_DEFAULT_TIMEOUT_MS
+.. c:macro:: PW_TRANSFER_DEFAULT_CLIENT_TIMEOUT_MS
 
   The default amount of time, in milliseconds, to wait for a chunk to arrive
-  before retrying. This can later be configured per-transfer.
+  in a transfer client before retrying. This can later be configured
+  per-transfer.
+
+.. c:macro:: PW_TRANSFER_DEFAULT_SERVER_TIMEOUT_MS
+
+  The default amount of time, in milliseconds, to wait for a chunk to arrive
+  on the server before retrying. This can later be configured per-transfer.
 
 .. c:macro:: PW_TRANSFER_DEFAULT_INITIAL_TIMEOUT_MS
 
@@ -287,6 +384,44 @@ more details.
   For example, a divisor of 2 will extend the window when half of the
   requested data has been received, a divisor of three will extend at a third
   of the window, and so on.
+
+.. _pw_transfer-nonzero-transfers:
+
+Non-zero Starting Offset Transfers
+----------------------------------
+`pw_transfer` provides for transfers which read from or
+write to a server resource starting from a point after the beginning.
+Handling of read/write/erase boundaries of the resource storage backend must
+be handled by the user through the transfer handler interfaces of `GetStatus`
+and `PrepareRead/Write(uint32_t offset)`.
+
+A resource can be read or written from a non-zero starting offset simply by
+having the transfer client calling `read()` or `write()` with an offset
+parameter. The offset gets included in the starting handshake.
+
+.. note::
+  The data or stream passed to `read()` or `write()` will be used as-is. I.e.
+  no seeking will be applied; the user is expected to seek to the desired
+  location.
+
+On the server side, the offset is accepted, and passed to the transfer
+handler's `Prepare(uint32_t)` method. This method must be implemented
+specifically by the handler in order to support the offset transfer. The
+transfer handler confirms that the start offset is valid for the read/write
+operation, and the server responds with the offset to confirm the non-zero
+transfer operation. Older server sw will ignore the offset, so the clients
+check that the server has accepted the non-zero offset during the handshake, so
+users may elect to catch such errors. Clients return `Status.UNIMPLEMENTED` in
+such cases.
+
+Due to the need to seek streams by the handler to support the non-zero offset,
+it is recommended to return `Status.RESOURCE_EXHAUSTED` if a seek is requested
+past the end of the stream.
+
+See the :ref:`transfer handler <pw_transfer-transfer-server>` documentation for
+further information about configuring resources for non-zero transfers and the
+interface documentation in
+``pw/transfer/public/pw_transfer/handler.h``
 
 Python
 ======
@@ -621,6 +756,8 @@ implementations detect if their transfer peer is running the legacy protocol and
 automatically switch to it if required, even if they requested a newer protocol
 version. It is **strongly** unadvised to use the legacy protocol in new code.
 
+.. _module-pw_transfer-integration-tests:
+
 -----------------
 Integration tests
 -----------------
@@ -632,14 +769,14 @@ To run the tests on your machine, run
 
 .. code-block:: bash
 
-  $ bazel test --features=c++17 \
+  $ bazel test \
         pw_transfer/integration_test:cross_language_small_test \
         pw_transfer/integration_test:cross_language_medium_test
 
 .. note:: There is a large test that tests transfers that are megabytes in size.
   These are not run automatically, but can be run manually via the
-  pw_transfer/integration_test:cross_language_large_test test. These are VERY
-  slow, but exist for manual validation of real-world use cases.
+  ``pw_transfer/integration_test:cross_language_large_test`` test. These are
+  VERY slow, but exist for manual validation of real-world use cases.
 
 The integration tests permit injection of client/server/proxy binaries to use
 when running the tests. This allows manual testing of older versions of
@@ -665,8 +802,8 @@ The CIPD package contents can be created with this command:
 
 .. code-block::bash
 
-  $ bazel build --features=c++17 pw_transfer/integration_test:server \
-                                 pw_transfer/integration_test:cpp_client
+  $ bazel build pw_transfer/integration_test:server \
+                pw_transfer/integration_test:cpp_client
   $ mkdir pw_transfer_test_binaries
   $ cp bazel-bin/pw_transfer/integration_test/server \
        pw_transfer_test_binaries
@@ -678,7 +815,7 @@ updating a CIPD package <go/pigweed-cipd#installing-packages-into-cipd>`_.
 
 CI/CQ integration
 =================
-`Current status of the test in CI <https://ci.chromium.org/p/pigweed/builders/ci/pigweed-integration-transfer>`_.
+`Current status of the test in CI <https://ci.chromium.org/ui/p/pigweed/builders/luci.pigweed.pigweed.ci/pigweed-linux-bzl-integration>`_.
 
 By default, these tests are not run in CQ (on presubmit) because they are too
 slow. However, you can request that the tests be run in presubmit on your
@@ -686,7 +823,44 @@ change by adding to following line to the commit message footer:
 
 .. code-block::
 
-   Cq-Include-Trybots: luci.pigweed.try:pigweed-integration-transfer
+   Cq-Include-Trybots: luci.pigweed.try:pigweed-linux-bzl-integration
+
+.. _module-pw_transfer-parallel-tests:
+
+Running the tests many times
+============================
+Because the tests bind to network ports, you cannot run more than one instance
+of each test in parallel. However, you might want to do so, e.g. to debug
+flakes. This section describes a manual process that makes this possible.
+
+Linux
+-----
+On Linux, you can add the ``"block-network"`` tag to the tests (`example
+<https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/181297>`_). This
+enables network isolation for the tests, allowing you to run them in parallel
+via,
+
+.. code-block::
+
+   bazel test --runs_per_test=10 //pw_transfer/integration_tests/...
+
+MacOS
+-----
+Network isolation is not supported on MacOS because the OS doesn't support
+network virtualization (`gh#2669
+<https://github.com/bazelbuild/bazel/issues/2669>`_). The best you can do is to
+tag the tests ``"exclusive"``. This allows you to use ``--runs_per_test``, but
+will force each test to run by itself, with no parallelism.
+
+Why is this manual?
+-------------------
+Ideally, we would apply either the ``"block-network"`` or ``"exclusive"`` tag
+to the tests depending on the OS. But this is not supported, `gh#2971
+<https://github.com/bazelbuild/bazel/issues/2971>`_.
+
+We don't want to tag the tests ``"exclusive"`` by default because that will
+prevent *different* tests from running in parallel, significantly slowing them
+down.
 
 .. toctree::
    :hidden:

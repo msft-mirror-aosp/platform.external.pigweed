@@ -31,7 +31,7 @@ class Googletest(pw_package.git_repo.GitRepo):
                 'https://pigweed.googlesource.com/'
                 'third_party/github/google/googletest'
             ),
-            commit="dea0484e4d3b6a2c50055c24c5617cd662a50c5f",
+            commit="f8d7d77c06936315286eb55f8de22cd23c188571",
             **kwargs,
         )
 
@@ -41,7 +41,7 @@ class Googletest(pw_package.git_repo.GitRepo):
             "Enable by running 'gn args out' and adding these lines:",
             f'  dir_pw_third_party_googletest = "{path}"',
             '  pw_unit_test_MAIN = "//third_party/googletest:gmock_main"',
-            '  pw_unit_test_GOOGLETEST_BACKEND = "//third_party/googletest"',
+            '  pw_unit_test_BACKEND = "//pw_unit_test:googletest"',
         )
 
 

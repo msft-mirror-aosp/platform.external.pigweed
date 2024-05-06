@@ -12,26 +12,25 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_binary",
-    "pw_cc_library",
     "pw_cc_test",
 )
-load("//pw_build/bazel_internal:py_proto_library.bzl", "py_proto_library")
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "linux_config_overrides",
     hdrs = ["linux_config_overrides.h"],
     tags = ["manual"],
 )
 
-pw_cc_library(
+cc_library(
     name = "config",
     hdrs = [
         "public/pw_trace_tokenized/config.h",
@@ -41,7 +40,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "pw_trace_tokenized",
     srcs = [
         "trace.cc",
@@ -68,7 +67,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "base_trace_service",
     srcs = [
         "base_trace_service.cc",
@@ -87,7 +86,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "trace_service_pwpb",
     srcs = [
         "trace_service_pwpb.cc",
@@ -105,7 +104,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "trace_rpc_service",
     srcs = [
         "trace_rpc_service_nanopb.cc",
@@ -126,7 +125,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "buffer",
     srcs = [
         "trace_buffer.cc",
@@ -146,7 +145,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "buffer_log",
     srcs = [
         "trace_buffer_log.cc",
@@ -164,6 +163,8 @@ pw_cc_library(
     ],
 )
 
+# TODO: b/326636665 - Needs stripped import prefix, but prefix modification
+# doesn't work with nanopb.
 proto_library(
     name = "protos",
     srcs = [
@@ -186,12 +187,10 @@ pw_proto_library(
 
 py_proto_library(
     name = "proto_py",
-    # TODO(b/241456982): Get this target to build.
-    tags = ["manual"],
     deps = [":protos"],
 )
 
-pw_cc_library(
+cc_library(
     name = "pw_trace_tokenized_fake_time",
     srcs = [
         "fake_trace_time.cc",
@@ -265,14 +264,14 @@ pw_cc_test(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "pw_trace_host_trace_time",
     srcs = ["host_trace_time.cc"],
     includes = ["example/public"],
     deps = [":pw_trace_tokenized"],
 )
 
-pw_cc_library(
+cc_library(
     name = "pw_trace_example_to_file",
     hdrs = ["example/public/pw_trace_tokenized/example/trace_to_file.h"],
     includes = ["example/public"],
@@ -321,7 +320,7 @@ pw_cc_binary(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "trace_tokenized_example_rpc",
     srcs = ["example/rpc.cc"],
     # TODO: b/258071921 - Fix puzzling compiler errors
@@ -336,7 +335,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "trace_tokenized_example_linux_group_by_tid",
     srcs = ["example/linux_group_by_tid.cc"],
     # TODO: b/258071921 - Fix puzzling compiler errors

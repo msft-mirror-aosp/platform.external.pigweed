@@ -19,6 +19,7 @@ load("@rules_cc//cc:action_names.bzl", "C_COMPILE_ACTION_NAME")
 load(
     "//pw_build/bazel_internal:pigweed_internal.bzl",
     _compile_cc = "compile_cc",
+    _link_cc = "link_cc",
 )
 
 # Used by `pw_cc_test`.
@@ -36,25 +37,12 @@ def pw_cc_binary(**kwargs):
     Args:
       **kwargs: Passed to cc_binary.
     """
-    kwargs["deps"] = kwargs.get("deps", [])
 
     # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//targets:pw_assert_backend_impl"]
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_log:backend_impl"]
+    kwargs["deps"] = kwargs.get("deps", []) + ["@pigweed//pw_build:default_link_extra_lib"]
     native.cc_binary(**kwargs)
-
-def pw_cc_library(**kwargs):
-    """Wrapper for cc_library.
-
-    TODO: b/267498492 - This wrapper no longer does anything. Remove it once
-    all projects have been migrated off of it.
-
-    Args:
-      **kwargs: Passed to cc_library.
-    """
-    native.cc_library(**kwargs)
 
 def pw_cc_test(**kwargs):
     """Wrapper for cc_test providing some defaults.
@@ -80,7 +68,7 @@ def pw_cc_test(**kwargs):
     # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//targets:pw_assert_backend_impl"]
+    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_build:default_link_extra_lib"]
 
     # Some tests may include FuzzTest, which includes headers that trigger
     # warnings. This check must be done here and not in `add_defaults`, since
@@ -130,6 +118,7 @@ def pw_cc_perf_test(**kwargs):
     kwargs["deps"] = kwargs.get("deps", []) + \
                      ["@pigweed//pw_perf_test:logging_main"]
     kwargs["deps"] = kwargs["deps"] + ["@pigweed//targets:pw_assert_backend_impl"]
+    kwargs["testonly"] = True
     native.cc_binary(**kwargs)
 
 def pw_cc_facade(**kwargs):
@@ -291,6 +280,84 @@ pw_cc_blob_library = rule(
         "deps": attr.label_list(default = [Label("//pw_preprocessor")]),
     },
     provides = [CcInfo],
+    fragments = ["cpp"],
+    toolchains = use_cpp_toolchain(),
+)
+
+def _pw_cc_binary_with_map_impl(ctx):
+    [cc_info] = _compile_cc(
+        ctx,
+        ctx.files.srcs,
+        [],
+        deps = ctx.attr.deps + [ctx.attr.link_extra_lib, ctx.attr.malloc],
+        includes = ctx.attr.includes,
+        defines = ctx.attr.defines,
+        local_defines = ctx.attr.local_defines,
+    )
+
+    map_file = ctx.actions.declare_file(ctx.label.name + ".map")
+    map_flags = ["-Wl,-Map=" + map_file.path]
+
+    return _link_cc(
+        ctx,
+        [cc_info.linking_context],
+        ctx.attr.linkstatic,
+        ctx.attr.stamp,
+        user_link_flags = ctx.attr.linkopts + map_flags,
+        additional_outputs = [map_file],
+    )
+
+pw_cc_binary_with_map = rule(
+    implementation = _pw_cc_binary_with_map_impl,
+    doc = """Links a binary like cc_binary does but generates a linker map file
+    and provides it as an output after the executable in the DefaultInfo list
+    returned by this rule.
+
+    This rule makes an effort to somewhat mimic cc_binary args and behavior but
+    doesn't fully support all options currently. Make variable substitution and
+    tokenization handling isn't implemented by this rule on any of it's attrs.
+
+    Args:
+        ctx: Rule context.
+    """,
+    attrs = {
+        "srcs": attr.label_list(
+            allow_files = True,
+            doc = "The list of C and C++ files that are processed to create the target.",
+        ),
+        "deps": attr.label_list(
+            providers = [CcInfo],
+            doc = "The list of other libraries to be linked in to the binary target.",
+        ),
+        "malloc": attr.label(
+            default = "@bazel_tools//tools/cpp:malloc",
+            doc = "Override the default dependency on malloc.",
+        ),
+        "link_extra_lib": attr.label(
+            default = "@bazel_tools//tools/cpp:link_extra_lib",
+            doc = "Control linking of extra libraries.",
+        ),
+        "linkstatic": attr.bool(
+            doc = "True if binary should be link statically",
+        ),
+        "includes": attr.string_list(
+            doc = "List of include dirs to add to the compile line.",
+        ),
+        "defines": attr.string_list(
+            doc = "List of defines to add to the compile line.",
+        ),
+        "local_defines": attr.string_list(
+            doc = "List of defines to add to the compile line.",
+        ),
+        "linkopts": attr.string_list(
+            doc = "Add these flags to the C++ linker command.",
+        ),
+        "stamp": attr.int(
+            default = -1,
+            doc = "Whether to encode build information into the binary.",
+        ),
+    },
+    provides = [DefaultInfo],
     fragments = ["cpp"],
     toolchains = use_cpp_toolchain(),
 )

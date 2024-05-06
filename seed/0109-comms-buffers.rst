@@ -9,6 +9,8 @@
    :status: Accepted
    :proposal_date: 2023-08-28
    :cl: 168357
+   :authors: Taylor Cramer
+   :facilitator: Erik Gilling
 
 -------
 Summary

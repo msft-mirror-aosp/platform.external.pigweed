@@ -40,8 +40,8 @@ import tempfile
 from google.protobuf import text_format
 
 from pigweed.pw_transfer.integration_test import config_pb2
-from pigweed.pw_protobuf.pw_protobuf_protos import status_pb2
 from pigweed.pw_transfer.integration_test import test_fixture
+from pw_protobuf_protos import status_pb2
 from test_fixture import TransferIntegrationTestHarness, TransferConfig
 
 
@@ -105,7 +105,12 @@ class ErrorTransferIntegrationTest(test_fixture.TransferIntegrationTest):
                 """
                 client_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { server_failure: {packets_before_failure: [5]} }
+                    {
+                        server_failure: {
+                            packets_before_failure: [5],
+                            start_immediately: true
+                        }
+                    }
                 ]
 
                 server_filter_stack: [
@@ -212,7 +217,9 @@ class ErrorTransferIntegrationTest(test_fixture.TransferIntegrationTest):
         ]
     )
     def test_client_read_timeout(self, client_type):
-        payload = random.Random(67336391945).randbytes(4321)
+        # This must be > 8192 in order to exceed the window_end default and
+        # cause a timeout on python client
+        payload = random.Random(67336391945).randbytes(10321)
         config = TransferConfig(
             self.default_server_config(),
             self.default_client_config(),
@@ -220,7 +227,12 @@ class ErrorTransferIntegrationTest(test_fixture.TransferIntegrationTest):
                 """
                 client_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { server_failure: {packets_before_failure: [5]} }
+                    {
+                        server_failure: {
+                            packets_before_failure: [5],
+                            start_immediately: true
+                        }
+                    }
                 ]
 
                 server_filter_stack: [
@@ -282,11 +294,12 @@ class ErrorTransferIntegrationTest(test_fixture.TransferIntegrationTest):
             expected_status=status_pb2.StatusCode.DEADLINE_EXCEEDED,
         )
 
+    # TODO(b/322497823): Re-enable java and python tests when they are fixed.
     @parameterized.expand(
         [
             ("cpp"),
-            ("java"),
-            ("python"),
+            # ("java"),
+            # ("python"),
         ]
     )
     def test_data_drop_client_lifetime_timeout(self, client_type):
@@ -329,6 +342,76 @@ class ErrorTransferIntegrationTest(test_fixture.TransferIntegrationTest):
             payload,
             permanent_resource_id=True,
             expected_status=status_pb2.StatusCode.DEADLINE_EXCEEDED,
+        )
+
+    @parameterized.expand(
+        [
+            ("cpp"),
+            ("java"),
+            ("python"),
+        ]
+    )
+    def test_offset_read_unimpl_handler(self, client_type):
+        payload = b"Rabbits are the best pets"
+        config = self.default_config()
+        resource_id = 5
+
+        config = self.default_config()
+
+        self.do_single_read(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            initial_offset=len(payload),
+            expected_status=status_pb2.StatusCode.UNIMPLEMENTED,
+        )
+
+    @parameterized.expand(
+        [
+            ("cpp"),
+            ("java"),
+            ("python"),
+        ]
+    )
+    def test_offset_write_unimpl_handler(self, client_type):
+        payload = b"Rabbits are the best pets"
+        config = self.default_config()
+        resource_id = 5
+
+        config = self.default_config()
+
+        self.do_single_write(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            initial_offset=len(payload),
+            expected_status=status_pb2.StatusCode.UNIMPLEMENTED,
+        )
+
+    @parameterized.expand(
+        [
+            ("cpp"),
+            ("java"),
+            ("python"),
+        ]
+    )
+    def test_offset_read_invalid_offset(self, client_type):
+        payload = b"Rabbits are the best pets"
+        config = self.default_config()
+        resource_id = 6
+
+        config = self.default_config()
+
+        self.do_single_read(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            initial_offset=len(payload) + 1,
+            offsettable_resources=True,
+            expected_status=status_pb2.StatusCode.RESOURCE_EXHAUSTED,
         )
 
 

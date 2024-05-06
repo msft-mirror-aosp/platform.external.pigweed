@@ -218,7 +218,7 @@ group("pw_system_demo") {
 
 group("pi_pico") {
   if (PICO_SRC_DIR != "") {
-    deps = [ ":pigweed_default(targets/rp2040)" ]
+    deps = [ ":pigweed_default(targets/rp2040:rp2040.size_optimized)" ]
   }
 }
 
@@ -523,7 +523,7 @@ group("pigweed_default") {
 
     # Upstream GoogleTest assumes the presence of a POSIX filesystem. If an
     # external gtest backend has been provided, limit the tests to host-only.
-    if (pw_unit_test_GOOGLETEST_BACKEND == "$dir_pw_unit_test:light" ||
+    if (pw_unit_test_BACKEND == "$dir_pw_unit_test:light" ||
         _is_host_toolchain) {
       if (pw_unit_test_AUTOMATIC_RUNNER == "") {
         # Without a test runner defined, build the tests but don't run them.
@@ -601,8 +601,6 @@ if (current_toolchain != default_toolchain) {
     # Add host-only targets to the build.
     if (defined(pw_toolchain_SCOPE.is_host_toolchain) &&
         pw_toolchain_SCOPE.is_host_toolchain) {
-      deps += [ "$dir_pw_tool" ]
-
       # TODO: b/240982565 - Build integration tests on Windows and macOS when
       #     SocketStream supports those platforms.
       if (host_os == "linux") {

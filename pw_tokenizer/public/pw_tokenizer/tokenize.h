@@ -20,12 +20,12 @@
 
 #else
 
-#include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #endif  // __cplusplus
 
+#include "pw_polyfill/static_assert.h"
 #include "pw_preprocessor/arguments.h"
 #include "pw_preprocessor/compiler.h"
 #include "pw_preprocessor/concat.h"

@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -14,7 +14,6 @@
 
 #include "pw_transfer/transfer_thread.h"
 
-#include "gtest/gtest.h"
 #include "pw_assert/check.h"
 #include "pw_bytes/array.h"
 #include "pw_rpc/raw/client_testing.h"
@@ -26,6 +25,7 @@
 #include "pw_transfer/transfer.h"
 #include "pw_transfer/transfer.raw_rpc.pb.h"
 #include "pw_transfer_private/chunk_testing.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::transfer::test {
 namespace {
@@ -220,8 +220,9 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Server) {
       EncodeChunk(
           Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersRetransmit)
               .set_session_id(3)
+              // Ensure only one chunk is sent as end offset equals max size.
               .set_window_end_offset(16)
-              .set_max_chunk_size_bytes(8)
+              .set_max_chunk_size_bytes(16)
               .set_offset(0)),
       max_parameters_,
       kNeverTimeout,
@@ -244,8 +245,9 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Server) {
       EncodeChunk(
           Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersRetransmit)
               .set_session_id(4)
+              // Ensure only one chunk is sent as end offset equals max size.
               .set_window_end_offset(16)
-              .set_max_chunk_size_bytes(8)
+              .set_max_chunk_size_bytes(16)
               .set_offset(0)),
       max_parameters_,
       kNeverTimeout,
@@ -279,7 +281,8 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Client) {
   transfer_thread_.StartClientTransfer(
       internal::TransferType::kReceive,
       ProtocolVersion::kLegacy,
-      3,
+      /*resource_id=*/3,
+      /*handle_id=*/27,
       &buffer3,
       max_parameters_,
       [&status3](Status status) { status3 = status; },
@@ -297,7 +300,8 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Client) {
   transfer_thread_.StartClientTransfer(
       internal::TransferType::kReceive,
       ProtocolVersion::kLegacy,
-      4,
+      /*resource_id=*/4,
+      /*handle_id=*/27,
       &buffer4,
       max_parameters_,
       [&status4](Status status) { status4 = status; },

@@ -6,14 +6,60 @@ Doxygen documentation style
 Doxygen comments in C, C++, and Java are surfaced in Sphinx using `Breathe
 <https://breathe.readthedocs.io/en/latest/index.html>`_.
 
-.. note::
+.. caution::
 
    Sources with doxygen comment blocks must be added to the
    ``_doxygen_input_files`` list in ``//docs/BUILD.gn`` to be processed.
 
+.. note::
+
+   We are moving to the `Google Developer Documentation Style Guide (GDDSG)
+   <https://developers.google.com/style>`_ for the English language conventions
+   (rather than technical style for Doxygen and RST usage). Currently, most of
+   our documentation does not adhere to the GDDSG.
+
+   See the `GDDSG section on API reference code comments
+   <https://developers.google.com/style/api-reference-comments>`_ for English
+   style that applies to Pigweed's Doxygen content.
+
 Breathe provides various `directives
 <https://breathe.readthedocs.io/en/latest/directives.html>`_ for bringing
 Doxygen comments into Sphinx. These include the following:
+
+- `doxygengroup
+  <https://breathe.readthedocs.io/en/latest/directives.html#doxygengroup>`_ --
+  Documents features within a `Doxygen group
+  <https://www.doxygen.nl/manual/grouping.html>`_. Doxygen groups are created
+  with `@defgroup <https://www.doxygen.nl/manual/commands.html#cmddefgroup>`_ or
+  `@addtogroup <https://www.doxygen.nl/manual/commands.html#cmdaddtogroup>`_ and
+  ``@{`` / ``@}``. Inidividual items can be grouped with `@ingroup
+  <https://www.doxygen.nl/manual/commands.html#cmdingroup>`_.
+
+  .. code-block:: cpp
+
+     namespace the_namespace {
+
+     /// @defgroup your_group_name Optional group title
+     /// @{
+
+     // ... everything is added to the group
+
+     // @}
+
+     }  // namespace the_namespace
+
+  Do not include namespaces in groups since Breathe does not handle them
+  properly (see `GitHub issue 772
+  <https://github.com/breathe-doc/breathe/issues/772>`_). The namespace must be
+  specified in Sphinx instead.
+
+  .. code-block:: rst
+
+     .. cpp:namespace:: the_namespace
+
+     .. doxygengroup:: your_group_name
+        :content-only:
+        :members:
 
 - `doxygenfile
   <https://breathe.readthedocs.io/en/latest/directives.html#doxygenfile>`_ --
@@ -24,6 +70,15 @@ Doxygen comments into Sphinx. These include the following:
 
      .. doxygenfile:: pw_rpc/internal/config.h
         :sections: define, func
+
+  .. note::
+
+     Breathe currently treats C++ namespaces like typedefs, resulting in
+     duplicate definition errors (see `GitHub issue 772
+     <https://github.com/breathe-doc/breathe/issues/772>`_). Because of this,
+     ``:sections:`` must be specified for files that define commonly used
+     namespaces (such as ``pw``). Consider grouping symbols with a
+     ``doxygengroup`` instead.
 
 - `doxygenclass
   <https://breathe.readthedocs.io/en/latest/directives.html#doxygenclass>`_ --
@@ -59,12 +114,18 @@ Doxygen comments into Sphinx. These include the following:
 
      .. doxygendefine:: PW_TOKENIZE_STRING
 
-.. admonition:: See also
+.. tip::
 
-  `All Breathe directives for use in RST files <https://breathe.readthedocs.io/en/latest/directives.html>`_
+   Prefer `doxygengroup
+   <https://breathe.readthedocs.io/en/latest/directives.html#doxygengroup>`_ or
+   `doxygenfile
+   <https://breathe.readthedocs.io/en/latest/directives.html#doxygenfile>`_
+   over listing symbols individually, which is error prone and harder to
+   maintain.
 
-Example Doxygen Comment Block
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------------
+Example Doxygen comment block
+-----------------------------
 Start a Doxygen comment block using ``///`` (three forward slashes).
 
 .. code-block:: cpp
@@ -115,8 +176,9 @@ Start a Doxygen comment block using ``///`` (three forward slashes).
    ///
    #define PW_LOCK_RETURNED(x) __attribute__((lock_returned(x)))
 
-Doxygen Syntax
-^^^^^^^^^^^^^^
+--------------
+Doxygen syntax
+--------------
 Pigweed prefers to use RST wherever possible, but there are a few Doxygen
 syntatic elements that may be needed.
 
@@ -169,8 +231,9 @@ example, the following comment documents two macros:
 
 .. seealso:: `All Doxygen commands <https://www.doxygen.nl/manual/commands.html>`_
 
+----------------
 Cross-references
-^^^^^^^^^^^^^^^^
+----------------
 Pigweed provides Doxygen aliases for creating Sphinx cross references within
 Doxygen comments. These should be used when referring to other symbols, such as
 functions, classes, or macros.
@@ -233,8 +296,9 @@ with Doxygen using standard Sphinx cross references, such as ``:cpp:class:`` and
 
 .. inclusive-language: enable
 
+--------------------------------
 Status codes in Doxygen comments
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+--------------------------------
 Use the following syntax when referring to ``pw_status`` codes in Doxygen
 comments:
 
@@ -251,3 +315,27 @@ reference documentation in :ref:`module-pw_status`.
 
    The guidance in this section only applies to Doxygen comments in C++ header
    files.
+
+-----------------------------------------------
+Disabled auto-generated ``#include`` statements
+-----------------------------------------------
+Doxygen and Breathe have the ability to auto-generate ``#include`` statements
+for class references. These have been disabled because:
+
+* The auto-generated paths are inaccurate. E.g. the ``#include`` for
+  ``pw::string::RandomGenerator`` was generated as ``#include <random.h>``
+  when it should be ``#include "pw_random/random.h"``.
+* The auto-generation is not consistent. They seem to only get generated when
+  using the ``doxygennamespace`` directive but ``pigweed.dev`` frequently
+  uses ``doxygenclass``, ``doxygenfunction``, etc.
+
+In the future, if it's decided that these ``#include`` statements are needed,
+there is a way to manually override each one. The code block below shows how
+it's done. This approach wouldn't be great because it adds a lot of noise to
+the header files.
+
+.. code-block::
+
+   /// @class RandomGenerator random.h "pw_random/random.h"``
+
+See `b/295023422 <https://issues.pigweed.dev/issues/295023422>`_.

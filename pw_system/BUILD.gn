@@ -166,7 +166,8 @@ pw_source_set("hdlc_rpc_server") {
     ":io",
     ":rpc_server.facade",
     "$dir_pw_assert",
-    "$dir_pw_hdlc:pw_rpc",
+    "$dir_pw_hdlc:decoder",
+    "$dir_pw_hdlc:default_addresses",
     "$dir_pw_hdlc:rpc_channel_output",
     "$dir_pw_log",
     "$dir_pw_sync:mutex",
@@ -347,8 +348,8 @@ group("system_examples") {
   }
   if (PICO_SRC_DIR != "" && dir_pw_third_party_freertos != "") {
     deps += [
-      ":system_example($dir_pigweed/targets/rp2040_pw_system:rp2040_pw_system.debug)",
-      ":system_example($dir_pigweed/targets/rp2040_pw_system:rp2040_pw_system.size_optimized)",
+      ":system_example($dir_pigweed/targets/rp2040:rp2040.debug)",
+      ":system_example($dir_pigweed/targets/rp2040:rp2040.size_optimized)",
     ]
   }
   if (dir_pw_third_party_ambiq_SDK != "" && dir_pw_third_party_freertos != "") {

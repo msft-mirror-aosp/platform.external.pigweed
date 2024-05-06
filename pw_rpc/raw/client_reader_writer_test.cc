@@ -16,10 +16,10 @@
 
 #include <optional>
 
-#include "gtest/gtest.h"
 #include "pw_rpc/raw/client_testing.h"
 #include "pw_rpc/writer.h"
 #include "pw_rpc_test_protos/test.raw_rpc.pb.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
 namespace {
@@ -441,7 +441,7 @@ TEST(RawClientWriter, UsableAsWriter) {
   RawClientWriter call = TestService::TestClientStreamRpc(
       ctx.client(), ctx.channel().id(), FailIfOnCompletedCalled, FailIfCalled);
 
-  WriteAsWriter(call);
+  WriteAsWriter(call.as_writer());
 
   EXPECT_STREQ(reinterpret_cast<const char*>(
                    ctx.output()
@@ -460,7 +460,7 @@ TEST(RawClientReaderWriter, UsableAsWriter) {
                                               FailIfCalled,
                                               FailIfCalled);
 
-  WriteAsWriter(call);
+  WriteAsWriter(call.as_writer());
 
   EXPECT_STREQ(reinterpret_cast<const char*>(
                    ctx.output()

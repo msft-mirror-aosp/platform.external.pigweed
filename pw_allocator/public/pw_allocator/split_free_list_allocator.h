@@ -20,7 +20,6 @@
 
 #include "pw_allocator/allocator.h"
 #include "pw_allocator/block.h"
-#include "pw_bytes/alignment.h"
 #include "pw_bytes/span.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
@@ -63,7 +62,21 @@ class SplitFreeListAllocator : public BaseSplitFreeListAllocator {
  public:
   using Range = typename BlockType::Range;
 
+  /// Constexpr constructor. Callers must explicitly call `Init`.
   constexpr SplitFreeListAllocator() = default;
+
+  /// Non-constexpr constructor that automatically calls `Init`.
+  ///
+  /// Errors are fatal.
+  ///
+  /// @param[in]  region              The memory region for this allocator.
+  /// @param[in]  threshold           Allocations of this size of larger are
+  ///                                 "large" and come from lower addresses.
+  explicit SplitFreeListAllocator(ByteSpan region, size_t threshold)
+      : SplitFreeListAllocator() {
+    PW_ASSERT(Init(region, threshold).ok());
+  }
+
   ~SplitFreeListAllocator() override;
 
   // Not copyable.
@@ -81,16 +94,13 @@ class SplitFreeListAllocator : public BaseSplitFreeListAllocator {
   /// @retval     INVALID_ARGUMENT    The memory region is null.
   /// @retval     RESOURCE_EXHAUSTED  The region is too small for `BlockType`.
   /// @retval     OUT_OF_RANGE        The region too large for `BlockType`.
-  Status Init(ByteSpan region, size_t threshold);
+  Status Init(ByteSpan region, size_t threshold = 0);
 
   /// Returns an iterable range of blocks tracking the memory of this allocator.
   Range blocks() const;
 
  private:
   using ReverseRange = typename BlockType::ReverseRange;
-
-  /// @copydoc Allocator::Dispatch
-  Status DoQuery(const void* ptr, Layout layout) const override;
 
   /// @copydoc Allocator::Allocate
   void* DoAllocate(Layout layout) override;
@@ -119,6 +129,12 @@ class SplitFreeListAllocator : public BaseSplitFreeListAllocator {
   /// @copydoc Allocator::Resize
   bool DoResize(void* ptr, Layout layout, size_t new_size) override;
 
+  /// @copydoc Allocator::GetLayout
+  Result<Layout> DoGetLayout(const void* ptr) const override;
+
+  /// @copydoc Allocator::Query
+  Status DoQuery(const void* ptr, Layout layout) const override;
+
   // Represents the entire memory region for this allocator.
   void* begin_ = nullptr;
   void* end_ = nullptr;
@@ -137,8 +153,7 @@ class SplitFreeListAllocator : public BaseSplitFreeListAllocator {
 
 template <typename BlockType>
 SplitFreeListAllocator<BlockType>::~SplitFreeListAllocator() {
-  auto* begin = BlockType::FromUsableSpace(static_cast<std::byte*>(begin_));
-  for (auto* block : Range(begin)) {
+  for (auto* block : blocks()) {
     if (block->Used()) {
       CrashOnAllocated(block);
     }
@@ -147,25 +162,17 @@ SplitFreeListAllocator<BlockType>::~SplitFreeListAllocator() {
 
 template <typename BlockType>
 typename BlockType::Range SplitFreeListAllocator<BlockType>::blocks() const {
-  auto* begin = BlockType::FromUsableSpace(static_cast<std::byte*>(begin_));
+  auto* begin =
+      begin_ == nullptr
+          ? nullptr
+          : BlockType::FromUsableSpace(static_cast<std::byte*>(begin_));
   return Range(begin);
 }
 
 template <typename BlockType>
 Status SplitFreeListAllocator<BlockType>::Init(ByteSpan region,
                                                size_t threshold) {
-  if (region.data() == nullptr) {
-    return Status::InvalidArgument();
-  }
-  if (BlockType::kCapacity < region.size()) {
-    return Status::OutOfRange();
-  }
-
-  // Blocks need to be aligned. Find the first aligned address, and use as much
-  // of the memory region as possible.
-  auto addr = reinterpret_cast<uintptr_t>(region.data());
-  auto aligned = AlignUp(addr, BlockType::kAlignment);
-  Result<BlockType*> result = BlockType::Init(region.subspan(aligned - addr));
+  Result<BlockType*> result = BlockType::Init(region);
   if (!result.ok()) {
     return result.status();
   }
@@ -180,12 +187,6 @@ Status SplitFreeListAllocator<BlockType>::Init(ByteSpan region,
 
   threshold_ = threshold;
   return OkStatus();
-}
-
-template <typename BlockType>
-Status SplitFreeListAllocator<BlockType>::DoQuery(const void* ptr,
-                                                  Layout) const {
-  return (ptr < begin_ || end_ <= ptr) ? Status::OutOfRange() : OkStatus();
 }
 
 template <typename BlockType>
@@ -283,6 +284,26 @@ bool SplitFreeListAllocator<BlockType>::DoResize(void* ptr,
     last_free_ = block->Last() ? block : block->Next();
   }
   return true;
+}
+
+template <typename BlockType>
+Result<Layout> SplitFreeListAllocator<BlockType>::DoGetLayout(
+    const void* ptr) const {
+  if (ptr < begin_ || end_ <= ptr) {
+    return Status::NotFound();
+  }
+  const auto* block =
+      BlockType::FromUsableSpace(static_cast<const std::byte*>(ptr));
+  if (!block->IsValid()) {
+    return Status::NotFound();
+  }
+  return block->GetLayout();
+}
+
+template <typename BlockType>
+Status SplitFreeListAllocator<BlockType>::DoQuery(const void* ptr,
+                                                  Layout) const {
+  return (ptr < begin_ || end_ <= ptr) ? Status::OutOfRange() : OkStatus();
 }
 
 }  // namespace pw::allocator

@@ -13,8 +13,12 @@
 // the License.
 #pragma once
 
+#include <cstddef>
+
 #include "pw_allocator/allocator.h"
 #include "pw_allocator/block.h"
+#include "pw_result/result.h"
+#include "pw_status/status.h"
 
 namespace pw::allocator {
 
@@ -22,14 +26,15 @@ namespace pw::allocator {
 /// Simple allocator that uses a list of `Block`s.
 class SimpleAllocator : public Allocator {
  public:
-  using Block = pw::allocator::Block<>;
-  using Range = typename Block::Range;
+  using BlockType = pw::allocator::Block<>;
+  using Range = typename BlockType::Range;
 
+  /// Constexpr constructor. Callers must explicitly call `Init`.
   constexpr SimpleAllocator() = default;
 
   /// Initialize this allocator to allocate memory from `region`.
   Status Init(ByteSpan region) {
-    auto result = Block::Init(region);
+    auto result = BlockType::Init(region);
     if (result.ok()) {
       blocks_ = *result;
     }
@@ -39,21 +44,15 @@ class SimpleAllocator : public Allocator {
   /// Return the range of blocks for this allocator.
   Range blocks() { return Range(blocks_); }
 
- private:
-  /// @copydoc Allocator::Query
-  Status DoQuery(const void* ptr, Layout) const override {
-    for (auto* block : Range(blocks_)) {
-      if (block->UsableSpace() == ptr) {
-        return OkStatus();
-      }
-    }
-    return Status::OutOfRange();
-  }
+  /// Resets the object to an initial state.
+  void Reset() { blocks_ = nullptr; }
 
+ private:
   /// @copydoc Allocator::Allocate
   void* DoAllocate(Layout layout) override {
     for (auto* block : Range(blocks_)) {
-      if (Block::AllocFirst(block, layout.size(), layout.alignment()).ok()) {
+      if (BlockType::AllocFirst(block, layout.size(), layout.alignment())
+              .ok()) {
         return block->UsableSpace();
       }
     }
@@ -66,8 +65,8 @@ class SimpleAllocator : public Allocator {
       return;
     }
     auto* bytes = static_cast<std::byte*>(ptr);
-    Block* block = Block::FromUsableSpace(bytes);
-    Block::Free(block);
+    BlockType* block = BlockType::FromUsableSpace(bytes);
+    BlockType::Free(block);
   }
 
   /// @copydoc Allocator::Resize
@@ -76,11 +75,31 @@ class SimpleAllocator : public Allocator {
       return false;
     }
     auto* bytes = static_cast<std::byte*>(ptr);
-    Block* block = Block::FromUsableSpace(bytes);
-    return Block::Resize(block, new_size).ok();
+    BlockType* block = BlockType::FromUsableSpace(bytes);
+    return BlockType::Resize(block, new_size).ok();
   }
 
-  Block* blocks_ = nullptr;
+  /// @copydoc Allocator::GetLayout
+  Result<Layout> DoGetLayout(const void* ptr) const override {
+    for (auto* block : Range(blocks_)) {
+      if (block->UsableSpace() == ptr) {
+        return block->GetLayout();
+      }
+    }
+    return Status::NotFound();
+  }
+
+  /// @copydoc Allocator::Query
+  Status DoQuery(const void* ptr, Layout) const override {
+    for (auto* block : Range(blocks_)) {
+      if (block->UsableSpace() == ptr) {
+        return OkStatus();
+      }
+    }
+    return Status::OutOfRange();
+  }
+
+  BlockType* blocks_ = nullptr;
 };
 // DOCSTAG: [pw_allocator_examples_simple_allocator]
 

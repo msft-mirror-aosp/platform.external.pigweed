@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,7 +21,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "no_destructor",
     hdrs = ["public/pw_toolchain/no_destructor.h"],
     includes = ["public"],
@@ -37,7 +36,24 @@ pw_cc_test(
     ],
 )
 
-pw_cc_library(
+cc_library(
+    name = "sibling_cast",
+    hdrs = ["public/pw_toolchain/internal/sibling_cast.h"],
+    includes = ["public"],
+    visibility = ["//:__subpackages__"],  # Restrict to Pigweed
+    deps = ["//pw_compilation_testing:negative_compilation_testing"],
+)
+
+pw_cc_test(
+    name = "sibling_cast_test",
+    srcs = ["sibling_cast_test.cc"],
+    deps = [
+        ":sibling_cast",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
     name = "wrap_abort",
     srcs = ["wrap_abort.cc"],
     linkopts = ["-Wl,--wrap=abort"],

@@ -112,6 +112,11 @@ you feel strongly about it, but we've found this is an intuitive ordering.
 The file must be located at ``//pw_<name>/docs.rst``, where ``<name>`` is
 replaced with the actual name of your module.
 
+Examples:
+
+* :ref:`module-pw_alignment`
+* :ref:`module-pw_perf_test`
+
 .. _docs-contrib-moduledocs-multipage:
 
 Multi-page approach
@@ -152,17 +157,61 @@ your module. The filenames should be ``get_started.rst`` and ``guides.rst``.
 ``Design & Roadmap`` can also be split into 2 docs. The filenames should be
 ``design.rst`` and ``roadmap.rst``.
 
-Nav cards
----------
-When using the multi-page approach, every page in the set must link to every
-other page in the set. We recommend using the ``grid`` directive to create
-call-to-action buttons on the bottom of every page. See ``//pw_string/docs.rst``
-for an example.
+Link each doc to all other docs in the set
+------------------------------------------
+Each doc must link to all other docs in the set. Here's how we currently do it.
+We may adjust our approach in the future if we find a better solution.
 
-.. note::
+#. Create a grid of nav cards at the bottom of ``docs.rst``. Example:
 
-   We will eventually automate this. We know it's error-prone and tedious to
-   do this manually.
+   .. code-block::
+
+      .. pw_<name>-nav-start
+
+      .. grid:: 1
+
+         .. grid-item-card:: :octicon:`rocket` Get started & guides
+            :link: module-pw_emu-guide
+            :link-type: ref
+            :class-item: sales-pitch-cta-primary
+
+            How to set up and use ``pw_<name>``
+
+      .. grid:: 2
+
+         .. grid-item-card:: :octicon:`terminal` CLI reference
+            :link: module-pw_emu-cli
+            :link-type: ref
+            :class-item: sales-pitch-cta-secondary
+
+            Reference details about the ``pw_<name>`` command line interface
+
+         .. grid-item-card:: :octicon:`code-square` API reference
+            :link: module-pw_emu-api
+            :link-type: ref
+            :class-item: sales-pitch-cta-secondary
+
+            Reference details about the ``pw_<name>`` Python API
+
+      .. pw_<name>-nav-end
+
+   Note the ``.. pw_<name>-nav-start`` and ``.. pw_<name>-nav-end`` comments.
+   You'll use these in the next step.
+
+#. Add the following H2 section to the bottom of every other doc in the set.
+
+   .. code-block::
+
+      -------------------
+      More pw_<name> docs
+      -------------------
+      .. include:: docs.rst
+         :start-after: .. pw_<name>-nav-start
+         :end-before: .. pw_<name>-nav-end
+
+Examples:
+
+* :ref:`module-pw_emu`
 
 ------------------
 Content guidelines
@@ -241,9 +290,9 @@ The API reference should:
 
 * Be auto-generated from :ref:`docs-pw-style-doxygen` (for C++ / C APIs) or
   autodoc (for Python APIs).
-* Provide a code example demonstrating how to use class, at minimum. Consider
-  whether it's also helpful to provide more granular examples demonstrating
-  how to use each method, variable, etc.
+* Provide a code example demonstrating how to use the class, at minimum.
+  Consider whether it's also helpful to provide more granular examples
+  demonstrating how to use each method, variable, etc.
 
 The typical approach is to order everything alphabetically. Some module docs
 group classes logically according to the tasks they're related to. We don't

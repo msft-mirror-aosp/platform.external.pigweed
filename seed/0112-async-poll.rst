@@ -9,6 +9,8 @@
    :status: Accepted
    :proposal_date: 2023-9-19
    :cl: 168337
+   :authors: Taylor Cramer
+   :facilitator: Wyatt Hepler
 
 -------
 Summary

@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 load(
@@ -26,12 +25,13 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_digital_io",
     srcs = ["digital_io.cc"],
     hdrs = [
         "public/pw_digital_io/digital_io.h",
         "public/pw_digital_io/internal/conversions.h",
+        "public/pw_digital_io/polarity.h",
     ],
     includes = ["public"],
     deps = [
@@ -39,6 +39,7 @@ pw_cc_library(
         "//pw_function",
         "//pw_result",
         "//pw_status",
+        "//pw_toolchain:sibling_cast",
     ],
 )
 
@@ -51,13 +52,13 @@ pw_cc_test(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "digital_io_controller",
     hdrs = ["public/pw_digital_io/digital_io_controller.h"],
     includes = ["public"],
 )
 
-pw_cc_library(
+cc_library(
     name = "digital_io_service",
     srcs = ["digital_io_service.cc"],
     hdrs = ["public/pw_digital_io/digital_io_service.h"],

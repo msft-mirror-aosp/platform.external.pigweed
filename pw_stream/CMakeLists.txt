@@ -31,6 +31,7 @@ pw_add_library(pw_stream STATIC
     pw_result
     pw_span
     pw_status
+    pw_toolchain._sibling_cast
 )
 
 pw_add_library(pw_stream.socket_stream STATIC
@@ -40,6 +41,7 @@ pw_add_library(pw_stream.socket_stream STATIC
     public
   PUBLIC_DEPS
     pw_stream
+    pw_sync.mutex
   SOURCES
     socket_stream.cc
   PRIVATE_DEPS

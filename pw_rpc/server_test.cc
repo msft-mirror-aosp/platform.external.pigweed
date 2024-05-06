@@ -17,7 +17,6 @@
 #include <array>
 #include <cstdint>
 
-#include "gtest/gtest.h"
 #include "pw_assert/check.h"
 #include "pw_rpc/internal/call.h"
 #include "pw_rpc/internal/method.h"
@@ -26,8 +25,18 @@
 #include "pw_rpc/service.h"
 #include "pw_rpc_private/fake_server_reader_writer.h"
 #include "pw_rpc_private/test_method.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
+
+class ServerTestHelper {
+ public:
+  static std::tuple<Service*, const internal::Method*> FindMethod(
+      Server& server, uint32_t service_id, uint32_t method_id) {
+    return server.FindMethod(service_id, method_id);
+  }
+};
+
 namespace {
 
 using std::byte;
@@ -396,6 +405,31 @@ TEST_F(BasicServer, OpenChannel_AdditionalSlot) {
   EXPECT_EQ(kExpected, server_.OpenChannel(19823, output_));
 }
 
+TEST_F(BasicServer, FindMethod_FoundOkOptionallyCheckType) {
+  const auto [service, method] = ServerTestHelper::FindMethod(server_, 1, 100);
+  ASSERT_TRUE(service != nullptr);
+  ASSERT_TRUE(method != nullptr);
+#if PW_RPC_METHOD_STORES_TYPE
+  EXPECT_EQ(MethodType::kBidirectionalStreaming, method->type());
+#endif
+}
+
+TEST_F(BasicServer, FindMethod_NotFound) {
+  {
+    const auto [service, method] =
+        ServerTestHelper::FindMethod(server_, 2, 100);
+    ASSERT_TRUE(service == nullptr);
+    ASSERT_TRUE(method == nullptr);
+  }
+
+  {
+    const auto [service, method] =
+        ServerTestHelper::FindMethod(server_, 1, 101);
+    ASSERT_TRUE(service != nullptr);
+    ASSERT_TRUE(method == nullptr);
+  }
+}
+
 class BidiMethod : public BasicServer {
  protected:
   BidiMethod() {
@@ -577,6 +611,20 @@ TEST_F(BidiMethod, ClientStream_CallsCallbackOnCallWithOpenId) {
   EXPECT_STREQ(span_as_cstr(data), "hello");
 }
 
+TEST_F(BidiMethod, ClientStream_CallsCallbackOnCallWithLegacyOpenId) {
+  ConstByteSpan data = as_bytes(span("?"));
+  responder_.set_on_next([&data](ConstByteSpan payload) { data = payload; });
+
+  ASSERT_EQ(OkStatus(),
+            server_.ProcessPacket(PacketForRpc(PacketType::CLIENT_STREAM,
+                                               {},
+                                               "hello",
+                                               internal::kLegacyOpenCallId)));
+
+  EXPECT_EQ(output_.total_packets(), 0u);
+  EXPECT_STREQ(span_as_cstr(data), "hello");
+}
+
 TEST_F(BidiMethod, ClientStream_CallsOpenIdOnCallWithDifferentId) {
   const uint32_t kSecondCallId = 1625;
   internal::CallContext context(server_,
@@ -584,6 +632,33 @@ TEST_F(BidiMethod, ClientStream_CallsOpenIdOnCallWithDifferentId) {
                                 service_42_,
                                 service_42_.method(100),
                                 internal::kOpenCallId);
+  internal::rpc_lock().lock();
+  auto temp_responder =
+      internal::test::FakeServerReaderWriter(context.ClaimLocked());
+  internal::rpc_lock().unlock();
+  responder_ = std::move(temp_responder);
+
+  ConstByteSpan data = as_bytes(span("?"));
+  responder_.set_on_next([&data](ConstByteSpan payload) { data = payload; });
+
+  ASSERT_EQ(OkStatus(),
+            server_.ProcessPacket(PacketForRpc(
+                PacketType::CLIENT_STREAM, {}, "hello", kSecondCallId)));
+
+  EXPECT_EQ(output_.total_packets(), 0u);
+  EXPECT_STREQ(span_as_cstr(data), "hello");
+
+  internal::RpcLockGuard lock;
+  EXPECT_EQ(responder_.as_server_call().id(), kSecondCallId);
+}
+
+TEST_F(BidiMethod, ClientStream_CallsLegacyOpenIdOnCallWithDifferentId) {
+  const uint32_t kSecondCallId = 1625;
+  internal::CallContext context(server_,
+                                channels_[0].id(),
+                                service_42_,
+                                service_42_.method(100),
+                                internal::kLegacyOpenCallId);
   internal::rpc_lock().lock();
   auto temp_responder =
       internal::test::FakeServerReaderWriter(context.ClaimLocked());

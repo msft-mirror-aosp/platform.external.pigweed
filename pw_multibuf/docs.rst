@@ -85,3 +85,21 @@ These users will also need to understand and implement the following APIs:
 
 .. doxygenclass:: pw::multibuf::ChunkRegionTracker
    :members:
+
+A simple implementation of a ``ChunkRegionTracker`` is provided, called
+``HeaderChunkRegionTracker``. It stores its ``Chunk`` and region metadata in a
+``Allocator`` allocation alongside the data. The allocation process is
+synchronous, making this class suitable for testing. The allocated region or
+``Chunk`` must not outlive the provided allocator.
+
+.. doxygenclass:: pw::multibuf::HeaderChunkRegionTracker
+   :members:
+
+Another ``ChunkRegionTracker`` specialization is the lightweight
+``SingleChunkRegionTracker``, which does not rely on ``Allocator`` and uses the
+provided memory view to create a single chunk. This is useful when a single
+``Chunk`` is sufficient at no extra overhead. However, the user needs to own
+the provided memory and know when a new ``Chunk`` can be requested.
+
+.. doxygenclass:: pw::multibuf::SingleChunkRegionTracker
+   :members:

@@ -15,6 +15,17 @@
 import * as vscode from 'vscode';
 
 import { getExtensionsJson } from './config';
+import { launchBootstrapTerminal, launchTerminal } from './terminal';
+
+const bugUrl =
+  'https://issues.pigweed.dev/issues/new?component=1194524&template=1911548';
+
+/**
+ * Open the bug report template in the user's browser.
+ */
+function fileBug() {
+  vscode.env.openExternal(vscode.Uri.parse(bugUrl));
+}
 
 /**
  * Open the extensions sidebar and show the provided extensions.
@@ -80,10 +91,17 @@ async function installRecommendedExtensions(recs: string[]): Promise<void> {
 
   showExtensions(unavailableRecs);
 
+  vscode.window.showInformationMessage(
+    `This Pigweed project needs you to install ${totalNumUnavailableRecs} ` +
+      'required extensions. ' +
+      'Install the extensions shown in the extensions tab.',
+    { modal: true },
+    'Ok',
+  );
+
   vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      // TODO(chadnorvell): Make this look better
       title:
         'Install these extensions! This Pigweed project needs these recommended extensions to be installed.',
       cancellable: true,
@@ -114,6 +132,9 @@ async function installRecommendedExtensions(recs: string[]): Promise<void> {
       }
 
       console.log('All recommended extensions are enabled');
+      vscode.commands.executeCommand(
+        'workbench.action.toggleSidebarVisibility',
+      );
       progress.report({ increment: 100 });
     },
   );
@@ -171,10 +192,17 @@ async function disableUnwantedExtensions(unwanted: string[]) {
 
   showExtensions(enabledUnwanted);
 
+  vscode.window.showInformationMessage(
+    `This Pigweed project needs you to disable ${totalNumEnabledUnwanted} ` +
+      'incompatible extensions. ' +
+      'Disable the extensions shown the extensions tab.',
+    { modal: true },
+    'Ok',
+  );
+
   vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      // TODO(chadnorvell): Make this look better
       title:
         'Disable these extensions! This Pigweed project needs these extensions to be disabled.',
       cancellable: true,
@@ -205,6 +233,9 @@ async function disableUnwantedExtensions(unwanted: string[]) {
       }
 
       console.log('All unwanted extensions are disabled');
+      vscode.commands.executeCommand(
+        'workbench.action.toggleSidebarVisibility',
+      );
       progress.report({ increment: 100 });
     },
   );
@@ -213,28 +244,55 @@ async function disableUnwantedExtensions(unwanted: string[]) {
 async function checkExtensions() {
   const extensions = await getExtensionsJson();
 
-  const num_recommendations = extensions.recommendations?.length ?? 0;
-  const num_unwanted = extensions.unwantedRecommendations?.length ?? 0;
+  const num_recommendations = extensions?.recommendations?.length ?? 0;
+  const num_unwanted = extensions?.unwantedRecommendations?.length ?? 0;
 
-  if (num_recommendations > 0) {
+  if (extensions && num_recommendations > 0) {
     await installRecommendedExtensions(extensions.recommendations as string[]);
   }
 
-  if (num_unwanted > 0) {
+  if (extensions && num_unwanted > 0) {
     await disableUnwantedExtensions(
       extensions.unwantedRecommendations as string[],
     );
   }
 }
 
-export function activate(context: vscode.ExtensionContext) {
-  const pwCheckExtensions = vscode.commands.registerCommand(
-    'pigweed.check-extensions',
-    () => checkExtensions(),
+function registerCommands(context: vscode.ExtensionContext) {
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.file-bug', () => fileBug()),
   );
 
-  context.subscriptions.push(pwCheckExtensions);
-  checkExtensions();
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.check-extensions', () =>
+      checkExtensions(),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.launch-terminal', () =>
+      launchTerminal(),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.bootstrap-terminal', () =>
+      launchBootstrapTerminal(),
+    ),
+  );
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+  registerCommands(context);
+
+  const shouldEnforce = vscode.workspace
+    .getConfiguration('pigweed')
+    .get('enforceExtensionRecommendations') as string;
+
+  if (shouldEnforce === 'true') {
+    console.log('pigweed.enforceExtensionRecommendations: true');
+    await checkExtensions();
+  }
 }
 
 export function deactivate() {

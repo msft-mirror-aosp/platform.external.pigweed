@@ -14,15 +14,16 @@
 
 #include "pw_multibuf/multibuf.h"
 
-#include "gtest/gtest.h"
+#include "pw_allocator/allocator_testing.h"
+#include "pw_assert/check.h"
 #include "pw_bytes/suffix.h"
-#include "pw_multibuf/internal/test_utils.h"
+#include "pw_multibuf/chunk_region_tracker.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::multibuf {
 namespace {
 
-using ::pw::multibuf::internal::HeaderChunkRegionTracker;
-using ::pw::multibuf::internal::TrackingAllocatorWithMemory;
+using ::pw::allocator::test::AllocatorForTest;
 
 const size_t kArbitraryAllocatorSize = 1024;
 const size_t kArbitraryChunkSize = 32;
@@ -34,61 +35,61 @@ static_assert(std::forward_iterator<MultiBuf::ChunkIterator>);
 static_assert(std::forward_iterator<MultiBuf::ConstChunkIterator>);
 #endif  // __cplusplus >= 202002L
 
-OwnedChunk MakeChunk(pw::allocator::Allocator& alloc, size_t size) {
+OwnedChunk MakeChunk(pw::allocator::Allocator* allocator, size_t size) {
   std::optional<OwnedChunk> chunk =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&alloc, size);
-  assert(chunk.has_value());
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator, size);
+  PW_CHECK(chunk.has_value());
   return std::move(*chunk);
 }
 
 TEST(MultiBuf, IsDefaultConstructible) { [[maybe_unused]] MultiBuf buf; }
 
 TEST(MultiBuf, WithOneChunkReleases) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   MultiBuf buf;
-  buf.PushFrontChunk(MakeChunk(alloc, kArbitraryChunkSize));
-  EXPECT_EQ(alloc.count(), 2U);
+  buf.PushFrontChunk(MakeChunk(&allocator, kArbitraryChunkSize));
+  EXPECT_EQ(allocator.num_allocations(), 2U);
   buf.Release();
-  EXPECT_EQ(alloc.count(), 0U);
+  EXPECT_EQ(allocator.num_deallocations(), 2U);
 }
 
 TEST(MultiBuf, WithOneChunkReleasesOnDestruction) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   {
     MultiBuf buf;
-    buf.PushFrontChunk(MakeChunk(alloc, kArbitraryChunkSize));
-    EXPECT_EQ(alloc.count(), 2U);
+    buf.PushFrontChunk(MakeChunk(&allocator, kArbitraryChunkSize));
+    EXPECT_EQ(allocator.num_allocations(), 2U);
   }
-  EXPECT_EQ(alloc.count(), 0U);
+  EXPECT_EQ(allocator.num_deallocations(), 2U);
 }
 
 TEST(MultiBuf, WithMultipleChunksReleasesAllOnDestruction) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   {
     MultiBuf buf;
-    buf.PushFrontChunk(MakeChunk(alloc, kArbitraryChunkSize));
-    buf.PushFrontChunk(MakeChunk(alloc, kArbitraryChunkSize));
-    EXPECT_EQ(alloc.count(), 4U);
+    buf.PushFrontChunk(MakeChunk(&allocator, kArbitraryChunkSize));
+    buf.PushFrontChunk(MakeChunk(&allocator, kArbitraryChunkSize));
+    EXPECT_EQ(allocator.num_allocations(), 4U);
   }
-  EXPECT_EQ(alloc.count(), 0U);
+  EXPECT_EQ(allocator.num_deallocations(), 4U);
 }
 
 TEST(MultiBuf, SizeReturnsNumberOfBytes) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   MultiBuf buf;
   EXPECT_EQ(buf.size(), 0U);
-  buf.PushFrontChunk(MakeChunk(alloc, kArbitraryChunkSize));
+  buf.PushFrontChunk(MakeChunk(&allocator, kArbitraryChunkSize));
   EXPECT_EQ(buf.size(), kArbitraryChunkSize);
-  buf.PushFrontChunk(MakeChunk(alloc, kArbitraryChunkSize));
+  buf.PushFrontChunk(MakeChunk(&allocator, kArbitraryChunkSize));
   EXPECT_EQ(buf.size(), kArbitraryChunkSize * 2);
 }
 
 TEST(MultiBuf, PushFrontChunkAddsBytesToFront) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   MultiBuf buf;
 
   const std::array<std::byte, 3> kBytesOne = {0_b, 1_b, 2_b};
-  auto chunk_one = MakeChunk(alloc, kBytesOne.size());
+  auto chunk_one = MakeChunk(&allocator, kBytesOne.size());
   std::copy(kBytesOne.begin(), kBytesOne.end(), chunk_one->begin());
   buf.PushFrontChunk(std::move(chunk_one));
 
@@ -100,7 +101,7 @@ TEST(MultiBuf, PushFrontChunkAddsBytesToFront) {
   }
 
   const std::array<std::byte, 4> kBytesTwo = {9_b, 10_b, 11_b, 12_b};
-  auto chunk_two = MakeChunk(alloc, kBytesTwo.size());
+  auto chunk_two = MakeChunk(&allocator, kBytesTwo.size());
   std::copy(kBytesTwo.begin(), kBytesTwo.end(), chunk_two->begin());
   buf.PushFrontChunk(std::move(chunk_two));
 
@@ -122,11 +123,11 @@ TEST(MultiBuf, PushFrontChunkAddsBytesToFront) {
 }
 
 TEST(MultiBuf, InsertChunkOnEmptyBufAddsFirstChunk) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   MultiBuf buf;
 
   const std::array<std::byte, 3> kBytes = {0_b, 1_b, 2_b};
-  auto chunk = MakeChunk(alloc, kBytes.size());
+  auto chunk = MakeChunk(&allocator, kBytes.size());
   std::copy(kBytes.begin(), kBytes.end(), chunk->begin());
   auto inserted_iter = buf.InsertChunk(buf.Chunks().begin(), std::move(chunk));
   EXPECT_EQ(inserted_iter, buf.Chunks().begin());
@@ -142,14 +143,14 @@ TEST(MultiBuf, InsertChunkOnEmptyBufAddsFirstChunk) {
 }
 
 TEST(MultiBuf, InsertChunkAtEndOfBufAddsLastChunk) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   MultiBuf buf;
 
   // Add a chunk to the beginning
-  buf.PushFrontChunk(MakeChunk(alloc, kArbitraryChunkSize));
+  buf.PushFrontChunk(MakeChunk(&allocator, kArbitraryChunkSize));
 
   const std::array<std::byte, 3> kBytes = {0_b, 1_b, 2_b};
-  auto chunk = MakeChunk(alloc, kBytes.size());
+  auto chunk = MakeChunk(&allocator, kBytes.size());
   std::copy(kBytes.begin(), kBytes.end(), chunk->begin());
   auto inserted_iter = buf.InsertChunk(buf.Chunks().end(), std::move(chunk));
   EXPECT_EQ(inserted_iter, ++buf.Chunks().begin());
@@ -166,11 +167,11 @@ TEST(MultiBuf, InsertChunkAtEndOfBufAddsLastChunk) {
 }
 
 TEST(MultiBuf, TakeChunkAtBeginRemovesAndReturnsFirstChunk) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   MultiBuf buf;
   auto insert_iter = buf.Chunks().begin();
-  insert_iter = buf.InsertChunk(insert_iter, MakeChunk(alloc, 2));
-  insert_iter = buf.InsertChunk(++insert_iter, MakeChunk(alloc, 4));
+  insert_iter = buf.InsertChunk(insert_iter, MakeChunk(&allocator, 2));
+  insert_iter = buf.InsertChunk(++insert_iter, MakeChunk(&allocator, 4));
 
   auto [chunk_iter, chunk] = buf.TakeChunk(buf.Chunks().begin());
   EXPECT_EQ(chunk.size(), 2U);
@@ -180,12 +181,12 @@ TEST(MultiBuf, TakeChunkAtBeginRemovesAndReturnsFirstChunk) {
 }
 
 TEST(MultiBuf, TakeChunkOnLastInsertedIterReturnsLastInserted) {
-  TrackingAllocatorWithMemory<kArbitraryAllocatorSize> alloc;
+  AllocatorForTest<kArbitraryAllocatorSize> allocator;
   MultiBuf buf;
   auto iter = buf.Chunks().begin();
-  iter = buf.InsertChunk(iter, MakeChunk(alloc, 42));
-  iter = buf.InsertChunk(++iter, MakeChunk(alloc, 11));
-  iter = buf.InsertChunk(++iter, MakeChunk(alloc, 65));
+  iter = buf.InsertChunk(iter, MakeChunk(&allocator, 42));
+  iter = buf.InsertChunk(++iter, MakeChunk(&allocator, 11));
+  iter = buf.InsertChunk(++iter, MakeChunk(&allocator, 65));
   OwnedChunk chunk;
   std::tie(iter, chunk) = buf.TakeChunk(iter);
   EXPECT_EQ(iter, buf.Chunks().end());
