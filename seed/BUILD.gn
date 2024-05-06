@@ -218,9 +218,9 @@ pw_seed("0123") {
 }
 
 pw_seed("0124") {
-  changelist = 188670
+  sources = [ "0124-multisink-size-info.rst" ]
   title = "Interfaces for Retrieving Size Information from Multisink"
-  status = "Draft"
+  status = "Intent Approved"
   author = "Jiacheng Lu"
   facilitator = "Carlos Chinchilla"
 }
@@ -244,6 +244,20 @@ pw_seed("0127") {
   title = "pw_sensor Reading"
   status = "Draft"
   author = "Yuval Peress"
+}
+
+pw_seed("0128") {
+  title = "Abstracting Thread Creation"
+  author = "Wyatt Hepler"
+  status = "Draft"
+  changelist = 206670
+}
+
+pw_seed("0129") {
+  title = "pw_assert: Support PW_ASSERT with non-argument message"
+  author = "momoshen"
+  status = "Draft"
+  changelist = 207130
 }
 
 # This must be defined after all `pw_seed` targets, as it relies on information
@@ -280,5 +294,7 @@ pw_seed_index("seeds") {
     ":0125",
     ":0126",
     ":0127",
+    ":0128",
+    ":0129",
   ]
 }

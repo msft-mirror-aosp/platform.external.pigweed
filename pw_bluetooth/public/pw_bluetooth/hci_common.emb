@@ -253,6 +253,12 @@ enum OpCode:
   READ_LOCAL_VERSION_INFO                                      = 0x1001
     -- Read Local Version Information Command (v1.1)
 
+  READ_LOCAL_SUPPORTED_COMMANDS                                = 0x1002
+    -- Read Local Supported Commands Command (v1.2)
+
+  READ_LOCAL_SUPPORTED_FEATURES                                = 0x1003
+    -- Read Local Supported Features Command (v1.1)
+
   READ_LOCAL_EXTENDED_FEATURES                                 = 0x1004
     -- Read Local Extended Features Command (v1.2) (BR/EDR)
 
@@ -264,6 +270,21 @@ enum OpCode:
 
   READ_DATA_BLOCK_SIZE                                         = 0x100A
     -- Read Data Block Size Command (v3.0 + HS) (BR/EDR & AMP)
+
+  READ_LOCAL_SUPPORTED_CODECS_V1                               = 0x100B
+    -- Read Local Supported Codecs Command [v1] (CSA2)
+
+  READ_LOCAL_SIMPLE_PAIRING_OPTIONS                            = 0x100C
+    -- Read Local Simple Pairing Options Command (Erratum 10734)
+
+  READ_LOCAL_SUPPORTED_CODECS_V2                               = 0x100D
+    -- Read Local Supported Codecs Command [v2] (v5.2)
+
+  READ_LOCAL_SUPPORTED_CODEC_CAPABILITIES                      = 0x100E
+    -- Read Local Supported Codec Capabilities Command (v5.2)
+
+  READ_LOCAL_SUPPORTED_CONTROLLER_DELAY                        = 0x100F
+    -- Read Local Supported Controller Delay Command (v5.2)
 
   ### Status Parameters - Core Spec v5.0, Vol 2, Part E, Section 7.5 (OGF 0x05)
 
@@ -480,6 +501,64 @@ enum OpCode:
     -- LE Read ISO Link Quality Command (v5.2) (LE)
 
 
+enum EventCode:
+  -- HCI Event Codes. See Core Spec v5.0 Vol 2, Part E, Section 7.7.
+  [maximum_bits: 8]
+  INQUIRY_COMPLETE                            = 0x01
+  INQUIRY_RESULT                              = 0x02
+  CONNECTION_COMPLETE                         = 0x03
+  CONNECTION_REQUEST                          = 0x04
+  DISCONNECTION_COMPLETE                      = 0x05
+  AUTHENTICATION_COMPLETE                     = 0x06
+  REMOTE_NAME_REQUEST_COMPLETE                = 0x07
+  ENCRYPTION_CHANGE                           = 0x08
+  CHANGE_CONNECTION_LINK_KEY_COMPLETE         = 0x09
+  CENTRAL_LINK_KEY_COMPLETE                   = 0x0A
+  READ_REMOTE_SUPPORTED_FEATURES_COMPLETE     = 0x0B
+  READ_REMOTE_VERSION_INFORMATION_COMPLETE    = 0x0C
+  QOS_SETUP_COMPLETE                          = 0x0D
+  COMMAND_COMPLETE                            = 0x0E
+  COMMAND_STATUS                              = 0x0F
+  HARDWARE_ERROR                              = 0x10
+  FLUSH_OCCURRED                              = 0x11
+  ROLE_CHANGE                                 = 0x12
+  NUMBER_OF_COMPLETED_PACKETS                 = 0x13
+  MODE_CHANGE                                 = 0x14
+  RETURN_LINK_KEYS                            = 0x15
+  PIN_CODE_REQUEST                            = 0x16
+  LINK_KEY_REQUEST                            = 0x17
+  LINK_KEY_NOTIFICATION                       = 0x18
+  LOOPBACK_COMMAND                            = 0x19
+  DATA_BUFFER_OVERFLOW                        = 0x1A
+  MAX_SLOTS_CHANGE                            = 0x1B
+  READ_CLOCK_OFFSET_COMPLETE                  = 0x1C
+  CONNECTION_PACKET_TYPE_CHANGED              = 0x1D
+  QOS_VIOLATION                               = 0x1E
+  PAGE_SCAN_REPETITION_MODE_CHANGE            = 0x20
+  FLOW_SPECIFICATION_COMPLETE                 = 0x21
+  INQUIRY_RESULT_WITH_RSSI                    = 0x22
+  READ_REMOTE_EXTENDED_FEATURES_COMPLETE      = 0x23
+  SYNCHRONOUS_CONNECTION_COMPLETE             = 0x2C
+  SYNCHRONOUS_CONNECTION_CHANGED              = 0x2D
+  SNIFF_SUBRATING                             = 0x2E
+  EXTENDED_INQUIRY_RESULT                     = 0x2F
+  ENCRYPTION_KEY_REFRESH_COMPLETE             = 0x30
+  IO_CAPABILITY_REQUEST                       = 0x31
+  IO_CAPABILITY_RESPONSE                      = 0x32
+  USER_CONFIRMATION_REQUEST                   = 0x33
+  USER_PASSKEY_REQUEST                        = 0x34
+  REMOTE_OOB_DATA_REQUEST                     = 0x35
+  SIMPLE_PAIRING_COMPLETE                     = 0x36
+  LINK_SUPERVISION_TIMEOUT_CHANGED            = 0x38
+  ENHANCED_FLUSH_COMPLETE                     = 0x39
+  USER_PASSKEY_NOTIFICATION                   = 0x3B
+  KEYPRESS_NOTIFICATION                       = 0x3C
+  REMOTE_HOST_SUPPORTED_FEATURES_NOTIFICATION = 0x3D
+  LE_META_EVENT                               = 0x3E
+  NUMBER_OF_COMPLETED_DATA_BLOCKS             = 0x48
+  VENDOR_DEBUG                                = 0xFF
+
+
 enum MajorDeviceClass:
   [maximum_bits: 5]
   MISCELLANEOUS = 0x00
@@ -661,6 +740,62 @@ enum GenericPresenceParam:
 struct BdAddr:
   -- Bluetooth Device Address
   0 [+6]  UInt  bd_addr
+
+
+enum CommonDataType:
+  -- Defined in section 2.3 of BT Core Specification Assigned Numbers
+  -- https://www.bluetooth.com/specifications/assigned-numbers/
+  [maximum_bits: 8]
+  FLAGS                                            = 0x01
+  INCOMPLETE_LIST_16_BIT_SERVICE_CLASS_UUIDS       = 0x02
+  COMPLETE_LIST_16_BIT_SERVICE_CLASS_UUIDS         = 0x03
+  INCOMPLETE_LIST_32_BIT_SERVICE_CLASS_UUIDS       = 0x04
+  COMPLETE_LIST_32_BIT_SERVICE_CLASS_UUIDS         = 0x05
+  INCOMPLETE_LIST_128_BIT_SERVICE_CLASS_UUIDS      = 0x06
+  COMPLETE_LIST_128_BIT_SERVICE_CLASS_UUIDS        = 0x07
+  SHORTENED_LOCAL_NAME                             = 0x08
+  COMPLETE_LOCAL_NAME                              = 0x09
+  TX_POWER_LEVEL                                   = 0x0A
+  CLASS_OF_DEVICE                                  = 0x0D
+  SIMPLE_PAIRING_HASH_C_192                        = 0x0E
+  SIMPLE_PAIRING_RANDOMIZER_R_192                  = 0x0F
+  DEVICE_ID                                        = 0x10
+  SECURITY_MANAGER_OUT_OF_BAND_FLAGS               = 0x11
+  PERIPHERAL_CONNECTION_INTERVAL_RANGE             = 0x12
+  LIST_16_BIT_SERVICE_SOLICITATION_UUIDS           = 0x14
+  LIST_128_BIT_SERVICE_SOLICITATION_UUIDS          = 0x15
+  SERVICE_DATA_16_BIT_UUID                         = 0x16
+  PUBLIC_TARGET_ADDRESS                            = 0x17
+  RANDOM_TARGET_ADDRESS                            = 0x18
+  APPEARANCE                                       = 0x19
+  ADVERTISING_INTERVAL                             = 0x1A
+  LE_BLUETOOTH_DEVICE_ADDRESS                      = 0x1B
+  LE_ROLE                                          = 0x1C
+  SIMPLE_PAIRING_HASH_C_256                        = 0x1D
+  SIMPLE_PAIRING_RANDOMIZER_R_256                  = 0x1E
+  LIST_32_BIT_SERVICE_SOLICITATION_UUIDS           = 0x1F
+  SERVICE_DATA_32_BIT_UUID                         = 0x20
+  SERVICE_DATA_128_BIT_UUID                        = 0x21
+  LE_SECURE_CONNECTIONS_CONFIRMATION_VALUE         = 0x22
+  LE_SECURE_CONNECTIONS_RANDOM_VALUE               = 0x23
+  URI                                              = 0x24
+  INDOOR_POSITIONING                               = 0x25
+  TRANSPORT_DISCOVERY_DATA                         = 0x26
+  LE_SUPPORTED_FEATURES                            = 0x27
+  CHANNEL_MAP_UPDATE_INFORMATION                   = 0x28
+  PB_ADV                                           = 0x29
+  MESH_MESSAGE                                     = 0x2A
+  MESH_BEACON                                      = 0x2B
+  BIG_INFO                                         = 0x2C
+  BROADCAST_CODE                                   = 0x2D
+  RESOLVABLE_IDENTIFIER                            = 0x2E
+  ADVERTISING_INTERVAL_LONG                        = 0x2F
+  BROADCAST_NAME                                   = 0x30
+  ENCRYPTED_ADVERTISING_DATA                       = 0x31
+  PERIODIC_ADVERTISING_RESPONSE_TIMING_INFORMATION = 0x32
+  ELECTRONIC_SHELF_LABEL                           = 0x34
+  INFORMATION_DATA_3D                              = 0x3D
+  MANUFACTURER_SPECIFIC_DATA                       = 0xFF
 
 
 bits ClassOfDevice:
@@ -933,28 +1068,53 @@ bits OpCodeBits:
 
 struct CommandHeader:
   -- HCI Command packet header.
-  0     [+2]  OpCode      opcode_full
+
+  0     [+2]  OpCode      opcode_enum
     -- Full HCI command opcode.
 
-  0     [+2]  OpCodeBits  opcode
+  0     [+2]  OpCodeBits  opcode_bits
+    # Note that this field overlaps opcode_enum field.
     -- Access opcode ogf or ocf sub-fields.
+
+  let opcode = opcode_bits
+  # TODO: https://pwbug.dev/338068316 - Once Fuchsia has transitioned off using
+  # opcode for OpCodeBits, opcode_enum will be renamed to opcode and this alias
+  # will be dropped.
 
   $next [+1]  UInt        parameter_total_size
 
 
 struct EventHeader:
   -- HCI Event packet header.
-  0     [+1]  UInt  event_code
-  $next [+1]  UInt  parameter_total_size
+
+  0     [+1]  EventCode  event_code_enum
+
+  0     [+1]  UInt       event_code_uint
+  # Note that this field overlaps the event_code_enum field.
+
+  let event_code = event_code_uint
+  # TODO: https://pwbug.dev/338068316 - Once Fuchsia has transitioned off using
+  # event_code for UInt, event_code_enum will be renamed to event_code and
+  # this event_code_uint alias will be dropped.
+
+  $next [+1]  UInt       parameter_total_size
 
 
 struct CommandCompleteEvent:
   -- Core Spec v5.3 Vol 4, Part E, Section 7.7.14
   -- EventHeader.opcode == 0xe
   let hdr_size = EventHeader.$size_in_bytes
-  0     [+hdr_size]  EventHeader  header
-  $next [+1]         UInt         num_hci_command_packets
-  $next [+2]         OpCodeBits   command_opcode
+  0          [+hdr_size]  EventHeader  header
+  hdr_size   [+1]         UInt         num_hci_command_packets
+  hdr_size+1 [+2]         OpCode       command_opcode_enum
+  hdr_size+1 [+2]         OpCodeBits   command_opcode_bits
+    # Note that this field overlaps command_opcode_enum field.
+    -- Access opcode ogf or ocf sub-fields.
+
+  let command_opcode = command_opcode_bits
+  # TODO: https://pwbug.dev/338068316 - Once Fuchsia has transitioned off using
+  # command_opcode for OpCodeBits, command_opcode_enum will be renamed to
+  # command_opcode and this alias will be dropped.
   let event_fixed_size = $size_in_bytes-hdr_size
   let return_parameters_size = header.parameter_total_size-event_fixed_size
 
