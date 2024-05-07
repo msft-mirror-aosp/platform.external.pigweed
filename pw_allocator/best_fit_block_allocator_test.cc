@@ -17,33 +17,33 @@
 #include "pw_allocator/block_allocator_testing.h"
 #include "pw_unit_test/framework.h"
 
-namespace pw::allocator {
 namespace {
 
 // Test fixtures.
 
-using BlockAllocatorTest = test::BlockAllocatorTest;
-using Preallocation = test::Preallocation;
-using BestFitBlockAllocatorType =
-    BestFitBlockAllocator<BlockAllocatorTest::OffsetType>;
+using ::pw::allocator::Layout;
+using ::pw::allocator::test::Preallocation;
+using BestFitBlockAllocator = ::pw::allocator::BestFitBlockAllocator<uint16_t>;
+using BlockAllocatorTest =
+    ::pw::allocator::test::BlockAllocatorTest<BestFitBlockAllocator>;
 
 class BestFitBlockAllocatorTest : public BlockAllocatorTest {
  public:
   BestFitBlockAllocatorTest() : BlockAllocatorTest(allocator_) {}
 
  private:
-  BestFitBlockAllocatorType allocator_;
+  BestFitBlockAllocator allocator_;
 };
 
 // Unit tests.
 
 TEST_F(BestFitBlockAllocatorTest, CanAutomaticallyInit) {
-  BestFitBlockAllocatorType allocator(GetBytes());
+  BestFitBlockAllocator allocator(GetBytes());
   CanAutomaticallyInit(allocator);
 }
 
 TEST_F(BestFitBlockAllocatorTest, CanExplicitlyInit) {
-  BestFitBlockAllocatorType allocator;
+  BestFitBlockAllocator allocator;
   CanExplicitlyInit(allocator);
 }
 
@@ -117,4 +117,3 @@ TEST_F(BestFitBlockAllocatorTest, CannotGetLayoutFromInvalidPointer) {
 }
 
 }  // namespace
-}  // namespace pw::allocator

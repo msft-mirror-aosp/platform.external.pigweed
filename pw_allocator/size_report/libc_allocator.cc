@@ -20,8 +20,7 @@ int main() {
   pw::allocator::SizeReporter reporter;
   reporter.SetBaseline();
 
-  pw::allocator::LibCAllocator allocator;
-  reporter.Measure(allocator);
+  reporter.Measure(pw::allocator::GetLibCAllocator());
 
   return 0;
 }

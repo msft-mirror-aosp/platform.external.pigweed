@@ -42,7 +42,7 @@ Allocator
 ``Allocator`` is the most commonly used interface. It can be used to request
 memory of different layouts:
 
-.. doxygenclass:: pw::allocator::Allocator
+.. doxygenclass:: pw::Allocator
    :members:
 
 .. _module-pw_allocator-api-pool:
@@ -62,7 +62,7 @@ Deallocator
 Both ``Allocator`` and ``Pool`` derive from and extend ``Deallocator``. This
 type is intended for allocator implementers and not for module consumers.
 
-.. doxygenclass:: pw::allocator::Deallocator
+.. doxygenclass:: pw::Deallocator
    :members:
 
 .. _module-pw_allocator-api-capabilities:
@@ -83,7 +83,7 @@ UniquePtr
 The ``UniquePtr`` smart pointer type can be created by any type deriving from
 ``MemoryResource``.
 
-.. doxygenclass:: pw::allocator::UniquePtr
+.. doxygenclass:: pw::UniquePtr
    :members:
 
 -------------------------
@@ -132,6 +132,13 @@ WorstFitBlockAllocator
 DualFirstFitBlockAllocator
 --------------------------
 .. doxygenclass:: pw::allocator::DualFirstFitBlockAllocator
+   :members:
+
+.. _module-pw_allocator-api-bucket_block_allocator:
+
+BucketBlockAllocator
+====================
+.. doxygenclass:: pw::allocator::BucketBlockAllocator
    :members:
 
 .. _module-pw_allocator-api-buddy_allocator:
@@ -231,6 +238,13 @@ Block
    abstraction in this manner will limit your flexibility to change to a
    different allocator in the future.
 
+.. _module-pw_allocator-api-bucket:
+
+Bucket
+======
+.. doxygenclass:: pw::allocator::internal::Bucket
+   :members:
+
 .. _module-pw_allocator-api-metrics_adapter:
 
 Metrics
@@ -243,13 +257,7 @@ This class is templated on a ``MetricsType`` struct. See
 struct, this class, and :ref:`module-pw_allocator-api-tracking_allocator`
 interact.
 
-This modules also includes two concrete metrics types that can be used as the
-template parameter of this class:
-
-- ``AllMetrics``, which enables all metrics.
-- ``NoMetrics``, which disables all metrics.
-
-Additionally, module consumers can define their own metrics structs using the
+Module consumers can define their own metrics structs using the
 following macros:
 
 .. doxygendefine:: PW_ALLOCATOR_METRICS_DECLARE
@@ -290,17 +298,17 @@ AllocatorForTest
 .. doxygenclass:: pw::allocator::test::AllocatorForTest
    :members:
 
-.. _module-pw_allocator-api-allocator_test_harness:
+.. _module-pw_allocator-api-test_harness:
 
-AllocatorTestHarness
-====================
-.. doxygenclass:: pw::allocator::test::AllocatorTestHarness
+TestHarness
+===========
+.. doxygenclass:: pw::allocator::test::TestHarness
    :members:
 
 .. _module-pw_allocator-api-fuzzing_support:
 
 FuzzTest support
 ================
-.. doxygenfunction:: pw::allocator::test::ArbitraryAllocatorRequest
-.. doxygenfunction:: pw::allocator::test::ArbitraryAllocatorRequests
-.. doxygenfunction:: pw::allocator::test::MakeAllocatorRequest
+.. doxygenfunction:: pw::allocator::test::ArbitraryRequest
+.. doxygenfunction:: pw::allocator::test::ArbitraryRequests
+.. doxygenfunction:: pw::allocator::test::MakeRequest

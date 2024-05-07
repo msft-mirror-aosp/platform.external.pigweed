@@ -20,6 +20,8 @@ pw_proto_library(pw_protobuf_compiler.pwpb_test_protos
     pw_protobuf_compiler_pwpb_protos/pwpb_test.proto
   INPUTS
     pw_protobuf_compiler_pwpb_protos/pwpb_test.options
+  DEPS
+    pw_protobuf.field_options_proto
 )
 
 pw_add_test(pw_protobuf_compiler.pwpb_test
@@ -27,6 +29,24 @@ pw_add_test(pw_protobuf_compiler.pwpb_test
     pwpb_test.cc
   PRIVATE_DEPS
     pw_protobuf_compiler.pwpb_test_protos.pwpb
+  GROUPS
+    pw_protobuf_compiler
+)
+
+pw_proto_library(pw_protobuf_compiler.pwpb_test_no_prefix_protos
+  SOURCES
+    pw_protobuf_compiler_pwpb_protos_no_prefix/pwpb_test_no_prefix.proto
+  STRIP_PREFIX
+    "pw_protobuf_compiler_pwpb_protos_no_prefix/"
+  DEPS
+    pw_protobuf.field_options_proto
+)
+
+pw_add_test(pw_protobuf_compiler.pwpb_no_prefix_test
+  SOURCES
+    pwpb_test_no_prefix.cc
+  PRIVATE_DEPS
+    pw_protobuf_compiler.pwpb_test_no_prefix_protos.pwpb
   GROUPS
     pw_protobuf_compiler
 )
