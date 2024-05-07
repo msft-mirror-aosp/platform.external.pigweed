@@ -12,6 +12,17 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#pragma once
+#include "pw_allocator/bucket_block_allocator.h"
 
-#include "pw_bluetooth/hci_android.emb.h"
+#include "pw_allocator/size_reporter.h"
+
+int main() {
+  pw::allocator::SizeReporter reporter;
+  reporter.SetBaseline();
+
+  pw::allocator::BucketBlockAllocator<uint16_t, 4, 8> allocator(
+      reporter.buffer());
+  reporter.Measure(allocator);
+
+  return 0;
+}
