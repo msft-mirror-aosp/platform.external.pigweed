@@ -16,29 +16,32 @@
 import logging
 import re
 import unittest
-from typing import Callable, List, Tuple
+from typing import List
 
 from unittest.mock import MagicMock
 
 from prompt_toolkit.application import create_app_session
 from prompt_toolkit.output import ColorDepth
+
 # inclusive-language: ignore
 from prompt_toolkit.output import DummyOutput as FakeOutput
 
+from pw_console.command_runner import CommandRunnerItem
 from pw_console.console_app import ConsoleApp
 from pw_console.console_prefs import ConsolePrefs
 from pw_console.text_formatting import (
     flatten_formatted_text_tuples,
     join_adjacent_style_tuples,
 )
-from window_manager_test import target_list_and_pane, window_pane_titles
 
 
 def _create_console_app(log_pane_count=2):
-    console_app = ConsoleApp(color_depth=ColorDepth.DEPTH_8_BIT,
-                             prefs=ConsolePrefs(project_file=False,
-                                                project_user_file=False,
-                                                user_file=False))
+    prefs = ConsolePrefs(
+        project_file=False, project_user_file=False, user_file=False
+    )
+    prefs.set_code_theme('default')
+    console_app = ConsoleApp(color_depth=ColorDepth.DEPTH_8_BIT, prefs=prefs)
+
     console_app.prefs.reset_config()
 
     # Setup log panes
@@ -53,8 +56,33 @@ def _create_console_app(log_pane_count=2):
     return console_app
 
 
+def window_pane_titles(window_manager):
+    return [
+        [
+            pane.pane_title() + ' - ' + pane.pane_subtitle()
+            for pane in window_list.active_panes
+        ]
+        for window_list in window_manager.window_lists
+    ]
+
+
+def target_list_and_pane(window_manager, list_index, pane_index):
+    # pylint: disable=protected-access
+    # Bypass prompt_toolkit has_focus()
+    pane = window_manager.window_lists[list_index].active_panes[pane_index]
+    # If the pane is in focus it will be visible.
+    pane.show_pane = True
+    window_manager._get_active_window_list_and_pane = MagicMock(  # type: ignore
+        return_value=(
+            window_manager.window_lists[list_index],
+            window_manager.window_lists[list_index].active_panes[pane_index],
+        )
+    )
+
+
 class TestCommandRunner(unittest.TestCase):
     """Tests for CommandRunner."""
+
     def setUp(self):
         self.maxDiff = None  # pylint: disable=invalid-name
 
@@ -62,21 +90,24 @@ class TestCommandRunner(unittest.TestCase):
         with create_app_session(output=FakeOutput()):
             console_app = _create_console_app(log_pane_count=2)
             flattened_menu_items = [
-                text for text, handler in
-                console_app.command_runner.load_menu_items()
+                item.title
+                for item in console_app.command_runner.load_menu_items()
             ]
 
             # Check some common menu items exist.
             self.assertIn('[File] > Open Logger', flattened_menu_items)
-            self.assertIn('[File] > Themes > UI Themes > High Contrast',
-                          flattened_menu_items)
+            self.assertIn(
+                '[File] > Themes > UI Themes > High Contrast',
+                flattened_menu_items,
+            )
             self.assertIn('[Help] > User Guide', flattened_menu_items)
             self.assertIn('[Help] > Keyboard Shortcuts', flattened_menu_items)
             # Check for log windows
             self.assertRegex(
                 '\n'.join(flattened_menu_items),
-                re.compile(r'^\[Windows\] > .* LogPane-[0-9]+ > .*$',
-                           re.MULTILINE),
+                re.compile(
+                    r'^\[Windows\] > .* LogPane-[0-9]+ > .*$', re.MULTILINE
+                ),
             )
 
     def test_filter_and_highlight_matches(self) -> None:
@@ -86,24 +117,31 @@ class TestCommandRunner(unittest.TestCase):
             command_runner = console_app.command_runner
 
             command_runner.filter_completions = MagicMock(
-                wraps=command_runner.filter_completions)
+                wraps=command_runner.filter_completions
+            )
             command_runner.width = 20
 
             # Define custom completion items
             def empty_handler() -> None:
                 return None
 
-            def get_completions() -> List[Tuple[str, Callable]]:
+            def get_completions() -> List[CommandRunnerItem]:
                 return [
-                    ('[File] > Open Logger', empty_handler),
-                    ('[Windows] > 1: Host Logs > Show/Hide', empty_handler),
-                    ('[Windows] > 2: Device Logs > Show/Hide', empty_handler),
-                    ('[Help] > User Guide', empty_handler),
+                    CommandRunnerItem('[File] > Open Logger', empty_handler),
+                    CommandRunnerItem(
+                        '[Windows] > 1: Host Logs > Show/Hide', empty_handler
+                    ),
+                    CommandRunnerItem(
+                        '[Windows] > 2: Device Logs > Show/Hide', empty_handler
+                    ),
+                    CommandRunnerItem('[Help] > User Guide', empty_handler),
                 ]
 
             command_runner.filter_completions.assert_not_called()
-            command_runner.set_completions(window_title='Test Completions',
-                                           load_completions=get_completions)
+            command_runner.set_completions(
+                window_title='Test Completions',
+                load_completions=get_completions,
+            )
             command_runner.filter_completions.assert_called_once()
             command_runner.filter_completions.reset_mock()
 
@@ -112,7 +150,9 @@ class TestCommandRunner(unittest.TestCase):
             # Flatten resulting formatted text
             result_items = join_adjacent_style_tuples(
                 flatten_formatted_text_tuples(
-                    command_runner.completion_fragments))
+                    command_runner.completion_fragments
+                )
+            )
 
             # index 0: the selected line
             # index 1: the rest of the completions with line breaks
@@ -124,30 +164,40 @@ class TestCommandRunner(unittest.TestCase):
             self.assertEqual(len(first_item_text.splitlines()), 1)
             self.assertEqual(len(second_item_text.splitlines()), 3)
             # First line is highlighted as a selected item
-            self.assertEqual(first_item_style,
-                             'class:command-runner-selected-item')
+            self.assertEqual(
+                first_item_style, 'class:command-runner-selected-item'
+            )
             self.assertIn('[File] > Open Logger', first_item_text)
 
             # Type: file open
             command_runner.input_field.buffer.text = 'file open'
-            self.assertEqual(command_runner.input_field.buffer.text,
-                             'file open')
+            self.assertEqual(
+                command_runner.input_field.buffer.text, 'file open'
+            )
             # Run the filter
             command_runner.filter_completions()
             # Flatten resulting formatted text
             result_items = join_adjacent_style_tuples(
                 flatten_formatted_text_tuples(
-                    command_runner.completion_fragments))
+                    command_runner.completion_fragments
+                )
+            )
             # Check file and open are highlighted
             self.assertEqual(
                 result_items[:4],
                 [
                     ('class:command-runner-selected-item', '['),
-                    ('class:command-runner-selected-item '
-                     'class:command-runner-fuzzy-highlight-0 ', 'File'),
+                    (
+                        'class:command-runner-selected-item '
+                        'class:command-runner-fuzzy-highlight-0 ',
+                        'File',
+                    ),
                     ('class:command-runner-selected-item', '] > '),
-                    ('class:command-runner-selected-item '
-                     'class:command-runner-fuzzy-highlight-1 ', 'Open'),
+                    (
+                        'class:command-runner-selected-item '
+                        'class:command-runner-fuzzy-highlight-1 ',
+                        'Open',
+                    ),
                 ],
             )
 
@@ -157,18 +207,26 @@ class TestCommandRunner(unittest.TestCase):
             command_runner.filter_completions()
             result_items = join_adjacent_style_tuples(
                 flatten_formatted_text_tuples(
-                    command_runner.completion_fragments))
+                    command_runner.completion_fragments
+                )
+            )
             # Check file and open are highlighted, the fuzzy-highlight class
             # should be swapped.
             self.assertEqual(
                 result_items[:4],
                 [
                     ('class:command-runner-selected-item', '['),
-                    ('class:command-runner-selected-item '
-                     'class:command-runner-fuzzy-highlight-1 ', 'File'),
+                    (
+                        'class:command-runner-selected-item '
+                        'class:command-runner-fuzzy-highlight-1 ',
+                        'File',
+                    ),
                     ('class:command-runner-selected-item', '] > '),
-                    ('class:command-runner-selected-item '
-                     'class:command-runner-fuzzy-highlight-0 ', 'Open'),
+                    (
+                        'class:command-runner-selected-item '
+                        'class:command-runner-fuzzy-highlight-0 ',
+                        'Open',
+                    ),
                 ],
             )
 
@@ -177,7 +235,9 @@ class TestCommandRunner(unittest.TestCase):
             command_runner.filter_completions()
             result_items = join_adjacent_style_tuples(
                 flatten_formatted_text_tuples(
-                    command_runner.completion_fragments))
+                    command_runner.completion_fragments
+                )
+            )
             self.assertEqual(len(first_item_text.splitlines()), 1)
             self.assertEqual(len(second_item_text.splitlines()), 3)
 
@@ -187,18 +247,29 @@ class TestCommandRunner(unittest.TestCase):
             command_runner.filter_completions()
             result_items = join_adjacent_style_tuples(
                 flatten_formatted_text_tuples(
-                    command_runner.completion_fragments))
+                    command_runner.completion_fragments
+                )
+            )
             self.assertEqual(len(result_items), 3)
             # First line - not selected
             self.assertEqual(result_items[0], ('', '[File] > Open Logger\n'))
             # Second line - is selected
-            self.assertEqual(result_items[1],
-                             ('class:command-runner-selected-item',
-                              '[Windows] > 1: Host Logs > Show/Hide\n'))
+            self.assertEqual(
+                result_items[1],
+                (
+                    'class:command-runner-selected-item',
+                    '[Windows] > 1: Host Logs > Show/Hide\n',
+                ),
+            )
             # Third and fourth lines separated by \n - not selected
-            self.assertEqual(result_items[2],
-                             ('', '[Windows] > 2: Device Logs > Show/Hide\n'
-                              '[Help] > User Guide'))
+            self.assertEqual(
+                result_items[2],
+                (
+                    '',
+                    '[Windows] > 2: Device Logs > Show/Hide\n'
+                    '[Help] > User Guide',
+                ),
+            )
 
     def test_run_action(self) -> None:
         """Check running an action works correctly."""
@@ -224,15 +295,17 @@ class TestCommandRunner(unittest.TestCase):
 
             # pylint: disable=protected-access
             command_runner._make_regexes = MagicMock(
-                wraps=command_runner._make_regexes)
+                wraps=command_runner._make_regexes
+            )
             # pylint: enable=protected-access
             command_runner.filter_completions()
             # Filter should only be re-run if input text changed
             command_runner.filter_completions()
             command_runner._make_regexes.assert_called_once()  # pylint: disable=protected-access
 
-            self.assertIn('[View] > Move Window Right',
-                          command_runner.selected_item_text)
+            self.assertIn(
+                '[View] > Move Window Right', command_runner.selected_item_title
+            )
             # Run the Move Window Right action
             command_runner._run_selected_item()  # pylint: disable=protected-access
             # Dialog should be closed

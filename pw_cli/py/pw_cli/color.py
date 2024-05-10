@@ -35,6 +35,7 @@ class _Color:
     # pylint: disable=too-few-public-methods
     # pylint: disable=too-many-instance-attributes
     """Helpers to surround text with ASCII color escapes"""
+
     def __init__(self):
         self.none = str
         self.red = _make_color(31, 1)
@@ -49,10 +50,13 @@ class _Color:
         self.bold_magenta = _make_color(30, 45)
         self.bold_white = _make_color(37, 1)
         self.black_on_white = _make_color(30, 47)  # black fg white bg
+        self.black_on_green = _make_color(30, 42)  # black fg green bg
+        self.black_on_red = _make_color(30, 41)  # black fg red bg
 
 
 class _NoColor:
     """Fake version of the _Color class that doesn't colorize."""
+
     def __getattr__(self, _):
         return str
 
@@ -64,12 +68,21 @@ def colors(enabled: Optional[bool] = None) -> Union[_Color, _NoColor]:
     """
     if enabled is None:
         env = pw_cli.env.pigweed_environment()
-        enabled = env.PW_USE_COLOR or (sys.stdout.isatty()
-                                       and sys.stderr.isatty())
+        if 'PW_USE_COLOR' in os.environ:
+            enabled = env.PW_USE_COLOR
+        else:
+            enabled = sys.stdout.isatty() and sys.stderr.isatty()
 
     if enabled and os.name == 'nt':
         # Enable ANSI color codes in Windows cmd.exe.
         kernel32 = ctypes.windll.kernel32  # type: ignore
         kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+
+    # These are semi-standard ways to turn colors off or on for many projects.
+    # See https://bixense.com/clicolors/ and https://no-color.org/ for more.
+    if 'NO_COLOR' in os.environ:
+        enabled = False
+    elif 'CLICOLOR_FORCE' in os.environ:
+        enabled = True
 
     return _Color() if enabled else _NoColor()

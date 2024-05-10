@@ -47,6 +47,16 @@ upstream toolchains are defined in ``//targets/host/pigweed_internal`` and are
 prefixed with ``pw_strict_``. The upstream toolchains may not be used by
 downstream projects.
 
+Toolchains for other C++ standards
+==================================
+Pigweed code requires C++17 or newer and is fully compatible with C++20. Pigweed
+defines a toolchain for testing with C++20.
+
+* ``pw_strict_host_clang_size_optimized_cpp20`` -- Builds with ``-std=c++20``.
+
+This toolchains is only permitted for use in upstream pigweed, but downstream
+users may create similar toolchains as needed.
+
 --------
 Building
 --------
@@ -58,7 +68,7 @@ top-level ``host`` group as the target to build.
   $ ninja -C out host
 
 
-``host`` may be replaced with with ``host_clang``, ``host_gcc``,
+``host`` may be replaced with ``host_clang``, ``host_gcc``,
 ``host_clang_debug``, etc. to build with a more specific host toolchain. Not all
 toolchains are supported on all platforms. Unless working specifically on one
 toolchain, it is recommended to use the default.

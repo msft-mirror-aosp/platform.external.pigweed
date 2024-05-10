@@ -15,8 +15,10 @@
 #include <array>
 
 #include "gtest/gtest.h"
+#include "pw_blob_store/blob_store.h"
 #include "pw_kvs/fake_flash_memory.h"
 #include "pw_kvs/test_key_value_store.h"
+#include "pw_software_update/blob_store_openable_reader.h"
 #include "pw_software_update/bundled_update_backend.h"
 #include "pw_software_update/update_bundle_accessor.h"
 #include "pw_stream/memory_stream.h"
@@ -43,7 +45,9 @@ class TestBundledUpdateBackend final : public BundledUpdateBackend {
   Status ApplyReboot() override { return Status::Unimplemented(); }
   Status PostRebootFinalize() override { return OkStatus(); }
 
-  Status ApplyTargetFile(std::string_view, stream::Reader&, size_t) override {
+  Status ApplyTargetFile(std::string_view,
+                         stream::SeekableReader&,
+                         size_t) override {
     return OkStatus();
   }
 
@@ -67,9 +71,9 @@ class TestBundledUpdateBackend final : public BundledUpdateBackend {
 
   void SetManifestWriter(stream::Writer* writer) { manifest_writer_ = writer; }
 
-  virtual Result<stream::SeekableReader*> GetRootMetadataReader() override {
+  Result<stream::SeekableReader*> GetRootMetadataReader() override {
     return &trusted_root_reader_;
-  };
+  }
 
   Status BeforeManifestRead() override {
     before_manifest_read_called_ = true;
@@ -77,7 +81,7 @@ class TestBundledUpdateBackend final : public BundledUpdateBackend {
       return OkStatus();
     }
     return Status::NotFound();
-  };
+  }
 
   bool BeforeManifestReadCalled() { return before_manifest_read_called_; }
 
@@ -103,12 +107,12 @@ class TestBundledUpdateBackend final : public BundledUpdateBackend {
     return manifest_writer_;
   }
 
-  virtual Status SafelyPersistRootMetadata(
+  Status SafelyPersistRootMetadata(
       [[maybe_unused]] stream::IntervalReader root_metadata) override {
     new_root_persisted_ = true;
     trusted_root_reader_ = root_metadata;
     return OkStatus();
-  };
+  }
 
   bool IsNewRootPersisted() const { return new_root_persisted_; }
 
@@ -120,7 +124,6 @@ class TestBundledUpdateBackend final : public BundledUpdateBackend {
   bool before_manifest_write_called_ = false;
   bool after_manifest_write_called_ = false;
   bool new_root_persisted_ = false;
-  size_t backend_verified_files_ = 0;
 
   // A memory reader for buffer passed by SetTrustedRoot(). This will be used
   // to back `trusted_root_reader_`
@@ -136,11 +139,14 @@ class UpdateBundleTest : public testing::Test {
                      blob_partition_,
                      nullptr,
                      kvs::TestKvs(),
-                     kBufferSize) {}
+                     kBufferSize),
+        blob_reader_(bundle_blob_) {}
 
   blob_store::BlobStoreBuffer<kBufferSize>& bundle_blob() {
     return bundle_blob_;
   }
+
+  BlobStoreOpenableReader& blob_reader() { return blob_reader_; }
 
   TestBundledUpdateBackend& backend() { return backend_; }
 
@@ -188,6 +194,7 @@ class UpdateBundleTest : public testing::Test {
   kvs::FakeFlashMemoryBuffer<kSectorSize, kSectorCount> blob_flash_;
   kvs::FlashPartition blob_partition_;
   blob_store::BlobStoreBuffer<kBufferSize> bundle_blob_;
+  BlobStoreOpenableReader blob_reader_;
   std::array<std::byte, kMetadataBufferSize> metadata_buffer_;
   TestBundledUpdateBackend backend_;
 };
@@ -197,7 +204,7 @@ class UpdateBundleTest : public testing::Test {
 TEST_F(UpdateBundleTest, GetTargetPayload) {
   backend().SetTrustedRoot(kDevSignedRoot);
   StageTestBundle(kTestDevBundle);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_OK(update_bundle.OpenAndVerify());
 
@@ -230,7 +237,7 @@ TEST_F(UpdateBundleTest, GetTargetPayload) {
 TEST_F(UpdateBundleTest, PersistManifest) {
   backend().SetTrustedRoot(kDevSignedRoot);
   StageTestBundle(kTestDevBundle);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_OK(update_bundle.OpenAndVerify());
 
@@ -251,7 +258,7 @@ TEST_F(UpdateBundleTest, PersistManifest) {
 TEST_F(UpdateBundleTest, PersistManifestFailIfNotVerified) {
   backend().SetTrustedRoot(kDevSignedRoot);
   StageTestBundle(kTestBadProdSignature);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_FAIL(update_bundle.OpenAndVerify());
 
@@ -268,7 +275,7 @@ TEST_F(UpdateBundleTest, PersistManifestFailIfNotVerified) {
 TEST_F(UpdateBundleTest, SelfVerificationWithIncomingRoot) {
   StageTestBundle(kTestDevBundleWithRoot);
   UpdateBundleAccessor update_bundle(
-      bundle_blob(), backend(), /* disable_verification = */ true);
+      blob_reader(), backend(), /* self_verification = */ true);
 
   ASSERT_OK(update_bundle.OpenAndVerify());
   // Self verification must not persist anything.
@@ -288,7 +295,7 @@ TEST_F(UpdateBundleTest, SelfVerificationWithIncomingRoot) {
 TEST_F(UpdateBundleTest, SelfVerificationWithoutIncomingRoot) {
   StageTestBundle(kTestDevBundle);
   UpdateBundleAccessor update_bundle(
-      bundle_blob(), backend(), /* disable_verification = */ true);
+      blob_reader(), backend(), /* self_verification = */ true);
 
   ASSERT_OK(update_bundle.OpenAndVerify());
 }
@@ -296,7 +303,7 @@ TEST_F(UpdateBundleTest, SelfVerificationWithoutIncomingRoot) {
 TEST_F(UpdateBundleTest, SelfVerificationWithMessedUpRoot) {
   StageTestBundle(kTestDevBundleWithProdRoot);
   UpdateBundleAccessor update_bundle(
-      bundle_blob(), backend(), /* disable_verification = */ true);
+      blob_reader(), backend(), /* self_verification = */ true);
 
   ASSERT_FAIL(update_bundle.OpenAndVerify());
 }
@@ -304,7 +311,7 @@ TEST_F(UpdateBundleTest, SelfVerificationWithMessedUpRoot) {
 TEST_F(UpdateBundleTest, SelfVerificationChecksMissingHashes) {
   StageTestBundle(kTestBundleMissingTargetHashFile0);
   UpdateBundleAccessor update_bundle(
-      bundle_blob(), backend(), /* disable_verification = */ true);
+      blob_reader(), backend(), /* self_verification = */ true);
 
   ASSERT_FAIL(update_bundle.OpenAndVerify());
 }
@@ -312,7 +319,7 @@ TEST_F(UpdateBundleTest, SelfVerificationChecksMissingHashes) {
 TEST_F(UpdateBundleTest, SelfVerificationChecksBadHashes) {
   StageTestBundle(kTestBundleMismatchedTargetHashFile0);
   UpdateBundleAccessor update_bundle(
-      bundle_blob(), backend(), /* disable_verification = */ true);
+      blob_reader(), backend(), /* self_verification = */ true);
 
   ASSERT_FAIL(update_bundle.OpenAndVerify());
 }
@@ -320,7 +327,7 @@ TEST_F(UpdateBundleTest, SelfVerificationChecksBadHashes) {
 TEST_F(UpdateBundleTest, SelfVerificationIgnoresUnsignedBundle) {
   StageTestBundle(kTestUnsignedBundleWithRoot);
   UpdateBundleAccessor update_bundle(
-      bundle_blob(), backend(), /* disable_verification = */ true);
+      blob_reader(), backend(), /* self_verification = */ true);
 
   ASSERT_OK(update_bundle.OpenAndVerify());
 }
@@ -329,7 +336,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifySucceedsWithAllVerification) {
   backend().SetTrustedRoot(kDevSignedRoot);
   backend().SetCurrentManifest(kTestBundleManifest);
   StageTestBundle(kTestProdBundle);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_FALSE(backend().IsNewRootPersisted());
   ASSERT_FALSE(backend().BeforeManifestReadCalled());
@@ -349,7 +356,7 @@ TEST_F(UpdateBundleTest,
   // pw_software_update/py/pw_software_update/generate_test_bundle.py for
   // detail of generation.
   StageTestBundle(kTestDevBundle);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_FALSE(backend().IsNewRootPersisted());
   ASSERT_FALSE(backend().BeforeManifestReadCalled());
@@ -369,7 +376,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnMismatchedRootKeyAndSignature) {
   // See pw_software_update/py/pw_software_update/generate_test_bundle.py for
   // detail of generation.
   StageTestBundle(kTestMismatchedRootKeyAndSignature);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, false);
 }
 
@@ -377,7 +384,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnBadProdSignature) {
   backend().SetTrustedRoot(kDevSignedRoot);
   backend().SetCurrentManifest(kTestBundleManifest);
   StageTestBundle(kTestBadProdSignature);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, false);
 }
 
@@ -385,7 +392,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnBadTargetsSignature) {
   backend().SetTrustedRoot(kDevSignedRoot);
   backend().SetCurrentManifest(kTestBundleManifest);
   StageTestBundle(kTestBadTargetsSignature);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, true);
 }
 
@@ -393,14 +400,14 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnBadTargetsRollBack) {
   backend().SetTrustedRoot(kDevSignedRoot);
   backend().SetCurrentManifest(kTestBundleManifest);
   StageTestBundle(kTestTargetsRollback);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, true);
 }
 
 TEST_F(UpdateBundleTest, OpenAndVerifySucceedsWithoutExistingManifest) {
   backend().SetTrustedRoot(kDevSignedRoot);
   StageTestBundle(kTestProdBundle);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_FALSE(backend().IsNewRootPersisted());
   ASSERT_OK(update_bundle.OpenAndVerify());
@@ -411,7 +418,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnRootRollback) {
   backend().SetTrustedRoot(kDevSignedRoot);
   backend().SetCurrentManifest(kTestBundleManifest);
   StageTestBundle(kTestRootRollback);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, false);
 }
 
@@ -422,7 +429,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnMismatchedTargetHashFile0) {
   // pw_software_update/py/pw_software_update/generate_test_bundle.py.
   // The hash value for file 0 in the targets metadata is made incorrect.
   StageTestBundle(kTestBundleMismatchedTargetHashFile0);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, true);
 }
 
@@ -433,7 +440,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnMismatchedTargetHashFile1) {
   // pw_software_update/py/pw_software_update/generate_test_bundle.py
   // The hash value for file 1 in the targets metadata is made incorrect.
   StageTestBundle(kTestBundleMismatchedTargetHashFile1);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, true);
 }
 
@@ -444,7 +451,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnMissingTargetHashFile0) {
   // pw_software_update/py/pw_software_update/generate_test_bundle.py.
   // The hash value for file 0 is removed.
   StageTestBundle(kTestBundleMissingTargetHashFile0);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, true);
 }
 
@@ -455,7 +462,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnMissingTargetHashFile1) {
   // pw_software_update/py/pw_software_update/generate_test_bundle.py
   // The hash value for file 1 is removed.
   StageTestBundle(kTestBundleMissingTargetHashFile1);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, true);
 }
 
@@ -466,7 +473,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnMismatchedTargetLengthFile0) {
   // pw_software_update/py/pw_software_update/generate_test_bundle.py.
   // The length value for file 0 in the targets metadata is made incorrect (1).
   StageTestBundle(kTestBundleMismatchedTargetLengthFile0);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, true);
 }
 
@@ -477,7 +484,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifyFailsOnMismatchedTargetLengthFile1) {
   // pw_software_update/py/pw_software_update/generate_test_bundle.py.
   // The length value for file 0 in the targets metadata is made incorrect (1).
   StageTestBundle(kTestBundleMismatchedTargetLengthFile1);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
   CheckOpenAndVerifyFail(update_bundle, true);
 }
 
@@ -489,7 +496,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifySucceedsWithPersonalizedOutFile0) {
   // The payload for file 0 is removed from the bundle to emulate being
   // personalized out.
   StageTestBundle(kTestBundlePersonalizedOutFile0);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_OK(update_bundle.OpenAndVerify());
 }
@@ -502,7 +509,7 @@ TEST_F(UpdateBundleTest, OpenAndVerifySucceedsWithPersonalizedOutFile1) {
   // The payload for file 1 is removed from the bundle to emulate being
   // personalized out.
   StageTestBundle(kTestBundlePersonalizedOutFile1);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_OK(update_bundle.OpenAndVerify());
 }
@@ -515,7 +522,7 @@ TEST_F(UpdateBundleTest,
   // The payload for file 0 is removed from the bundle to emulate being
   // personalized out.
   StageTestBundle(kTestBundlePersonalizedOutFile0);
-  UpdateBundleAccessor update_bundle(bundle_blob(), backend());
+  UpdateBundleAccessor update_bundle(blob_reader(), backend());
 
   ASSERT_FAIL(update_bundle.OpenAndVerify());
 }

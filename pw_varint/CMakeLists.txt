@@ -13,24 +13,24 @@
 # the License.
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
+include($ENV{PW_ROOT}/pw_unit_test/test.cmake)
 
-pw_add_module_library(pw_varint
+pw_add_library(pw_varint STATIC
   HEADERS
     public/pw_varint/varint.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
-    pw_polyfill.cstddef
-    pw_polyfill.span
+    pw_polyfill
     pw_preprocessor
+    pw_span
+    pw_third_party.fuchsia.stdcompat
   SOURCES
     varint.cc
+    varint_c.c
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_VARINT)
-  zephyr_link_libraries(pw_varint)
-endif()
 
-pw_add_module_library(pw_varint.stream
+pw_add_library(pw_varint.stream STATIC
   HEADERS
     public/pw_varint/stream.h
   PUBLIC_INCLUDES
@@ -48,8 +48,9 @@ pw_add_test(pw_varint.varint_test
   SOURCES
     varint_test.cc
     varint_test_c.c
-  DEPS
+  PRIVATE_DEPS
     pw_varint
+    pw_fuzzer.fuzztest
   GROUPS
     modules
     pw_varint
@@ -58,7 +59,7 @@ pw_add_test(pw_varint.varint_test
 pw_add_test(pw_varint.stream_test
   SOURCES
     stream_test.cc
-  DEPS
+  PRIVATE_DEPS
     pw_stream
     pw_varint.stream
   GROUPS

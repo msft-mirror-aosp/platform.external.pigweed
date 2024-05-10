@@ -26,7 +26,12 @@ import argparse
 import os
 import sys
 
-from .colors import Color, enable_colors  # type: ignore
+try:
+    from pw_env_setup.colors import Color, enable_colors
+except ImportError:
+    # Load from this directory if pw_env_setup is not available.
+    from colors import Color, enable_colors  # type: ignore
+
 
 _PIGWEED_BANNER = u'''
  ▒█████▄   █▓  ▄███▒  ▒█    ▒█ ░▓████▒ ░▓████▒ ▒▓████▄
@@ -42,26 +47,49 @@ def print_banner(bootstrap, no_shell_file):
     enable_colors()
 
     print(Color.green('\n  WELCOME TO...'))
-    print(Color.magenta(_PIGWEED_BANNER))
+
+    banner_file = os.environ.get('PW_BRANDING_BANNER', None)
+    banner_str = None
+    if banner_file:
+        try:
+            banner_str = open(
+                banner_file, 'r', encoding='utf-8', errors='replace'
+            ).read()
+        except FileNotFoundError:
+            pass
+    if banner_str:
+        print()
+        print(banner_str, end='')
+    else:
+        print(Color.magenta(_PIGWEED_BANNER), end='')
 
     if bootstrap:
         print(
-            Color.green('\n  BOOTSTRAP! Bootstrap may take a few minutes; '
-                        'please be patient'))
+            Color.green(
+                '\n  BOOTSTRAP! Bootstrap may take a few minutes; '
+                'please be patient'
+            )
+        )
         print(
             Color.green(
-                '  On Windows, this stage is extremely slow (~10 minutes).\n'))
+                '  On Windows, this stage is extremely slow (~10 minutes).\n'
+            )
+        )
     else:
         print(
             Color.green(
                 '\n  ACTIVATOR! This sets your console environment variables.\n'
-            ))
+            )
+        )
 
         if no_shell_file:
             print(Color.bold_red('Error!\n'))
             print(
-                Color.red('  Your Pigweed environment does not seem to be'
-                          ' configured.'))
+                Color.red(
+                    '  Your Pigweed environment does not seem to be'
+                    ' configured.'
+                )
+            )
             print(Color.red('  Run bootstrap.bat to perform initial setup.'))
 
     return 0
@@ -69,7 +97,9 @@ def print_banner(bootstrap, no_shell_file):
 
 def parse():
     """Parse command-line arguments."""
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        prog="python -m pw_env_setup.windows_env_start"
+    )
     parser.add_argument('--bootstrap', action='store_true')
     parser.add_argument('--no-shell-file', action='store_true')
     return parser.parse_args()

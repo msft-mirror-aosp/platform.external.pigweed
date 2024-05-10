@@ -1,33 +1,35 @@
 .. _target-emcraft-sf2-som:
 
--------------------------------------
-_target-emcraft-sf2-som: SmartFusion2
--------------------------------------
+--------------------
+Emcraft SmartFusion2
+--------------------
 The Emcraft SmartFusion2 system-on-module target configuration
 uses FreeRTOS and the Microchip MSS HAL rather than a from-the-ground-up
 baremetal approach.
 
------
+
 Setup
------
+=====
 To use this target, pigweed must be set up to use FreeRTOS and the Microchip
 MSS HAL for the SmartFusion series. The supported repositories can be
 downloaded via ``pw package``, and then the build must be manually configured
 to point to the locations the repositories were downloaded to.
 
-.. code:: sh
+.. code-block:: sh
 
   pw package install freertos
   pw package install smartfusion_mss
   pw package install nanopb
 
   gn args out
-    # Add these lines, replacing ${PW_ROOT} with the path to the location that
-    # Pigweed is checked out at.
-    dir_pw_third_party_freertos = "${PW_ROOT}/.environment/packages/freertos"
-    dir_pw_third_party_smartfusion_mss =
-      "${PW_ROOT}/.environment/packages/smartfusion_mss"
-    dir_pw_third_party_nanopb = "${PW_ROOT}/.environment/packages/nanopb"
+
+Then add the following lines to that text file:
+
+.. code-block::
+
+   dir_pw_third_party_freertos = getenv("PW_PACKAGE_ROOT") + "/freertos"
+   dir_pw_third_party_smartfusion_mss = getenv("PW_PACKAGE_ROOT") + "/smartfusion_mss"
+   dir_pw_third_party_nanopb = getenv("PW_PACKAGE_ROOT") + "/nanopb"
 
 Building and running the demo
 =============================

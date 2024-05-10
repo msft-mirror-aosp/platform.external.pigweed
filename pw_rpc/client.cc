@@ -27,7 +27,7 @@ namespace pw::rpc {
 namespace {
 
 using internal::Packet;
-using internal::PacketType;
+using internal::pwpb::PacketType;
 
 }  // namespace
 
@@ -36,18 +36,18 @@ Status Client::ProcessPacket(ConstByteSpan data) {
 
   // Find an existing call for this RPC, if any.
   internal::rpc_lock().lock();
-  internal::ClientCall* call =
-      static_cast<internal::ClientCall*>(FindCall(packet));
+  IntrusiveList<internal::Call>::iterator call = FindCall(packet);
 
   internal::Channel* channel = GetInternalChannel(packet.channel_id());
 
   if (channel == nullptr) {
     internal::rpc_lock().unlock();
-    PW_LOG_WARN("RPC client received a packet for an unregistered channel");
+    PW_LOG_WARN("RPC client received a packet for an unregistered channel: %lu",
+                static_cast<unsigned long>(packet.channel_id()));
     return Status::Unavailable();
   }
 
-  if (call == nullptr || call->id() != packet.call_id()) {
+  if (call == calls_end()) {
     // The call for the packet does not exist. If the packet is a server stream
     // message, notify the server so that it can kill the stream. Otherwise,
     // silently drop the packet (as it would terminate the RPC anyway).
@@ -85,6 +85,11 @@ Status Client::ProcessPacket(ConstByteSpan data) {
         PW_LOG_DEBUG("Received SERVER_STREAM for RPC without a server stream");
       }
       break;
+
+    case PacketType::REQUEST:
+    case PacketType::CLIENT_STREAM:
+    case PacketType::CLIENT_ERROR:
+    case PacketType::CLIENT_REQUEST_COMPLETION:
     default:
       internal::rpc_lock().unlock();
       PW_LOG_WARN("pw_rpc client unable to handle packet of type %u",

@@ -14,9 +14,14 @@
 
 #include "pw_rpc/internal/packet.h"
 
+#include "pw_log/log.h"
 #include "pw_protobuf/decoder.h"
 
 namespace pw::rpc::internal {
+
+using pwpb::PacketType;
+
+namespace RpcPacket = pwpb::RpcPacket;
 
 Result<Packet> Packet::FromBuffer(ConstByteSpan data) {
   Packet packet;
@@ -28,7 +33,7 @@ Result<Packet> Packet::FromBuffer(ConstByteSpan data) {
         static_cast<RpcPacket::Fields>(decoder.FieldNumber());
 
     switch (field) {
-      case RpcPacket::Fields::TYPE: {
+      case RpcPacket::Fields::kType: {
         uint32_t value;
         // A decode error will propagate from Next() and terminate the loop.
         decoder.ReadUint32(&value).IgnoreError();
@@ -36,27 +41,27 @@ Result<Packet> Packet::FromBuffer(ConstByteSpan data) {
         break;
       }
 
-      case RpcPacket::Fields::CHANNEL_ID:
+      case RpcPacket::Fields::kChannelId:
         // A decode error will propagate from Next() and terminate the loop.
         decoder.ReadUint32(&packet.channel_id_).IgnoreError();
         break;
 
-      case RpcPacket::Fields::SERVICE_ID:
+      case RpcPacket::Fields::kServiceId:
         // A decode error will propagate from Next() and terminate the loop.
         decoder.ReadFixed32(&packet.service_id_).IgnoreError();
         break;
 
-      case RpcPacket::Fields::METHOD_ID:
+      case RpcPacket::Fields::kMethodId:
         // A decode error will propagate from Next() and terminate the loop.
         decoder.ReadFixed32(&packet.method_id_).IgnoreError();
         break;
 
-      case RpcPacket::Fields::PAYLOAD:
+      case RpcPacket::Fields::kPayload:
         // A decode error will propagate from Next() and terminate the loop.
         decoder.ReadBytes(&packet.payload_).IgnoreError();
         break;
 
-      case RpcPacket::Fields::STATUS: {
+      case RpcPacket::Fields::kStatus: {
         uint32_t value;
         // A decode error will propagate from Next() and terminate the loop.
         decoder.ReadUint32(&value).IgnoreError();
@@ -64,7 +69,7 @@ Result<Packet> Packet::FromBuffer(ConstByteSpan data) {
         break;
       }
 
-      case RpcPacket::Fields::CALL_ID:
+      case RpcPacket::Fields::kCallId:
         // A decode error will propagate from Next() and terminate the loop.
         decoder.ReadUint32(&packet.call_id_).IgnoreError();
         break;
@@ -73,12 +78,6 @@ Result<Packet> Packet::FromBuffer(ConstByteSpan data) {
 
   if (status.IsDataLoss()) {
     return status;
-  }
-
-  // TODO(pwbug/512): CANCEL is equivalent to CLIENT_ERROR with status
-  //     CANCELLED. Remove this workaround when CANCEL is removed.
-  if (packet.type() == PacketType::DEPRECATED_CANCEL) {
-    packet.set_status(Status::Cancelled());
   }
 
   return packet;
@@ -131,6 +130,27 @@ size_t Packet::MinEncodedSizeBytes() const {
   reserved_size += 2;
 
   return reserved_size;
+}
+
+void Packet::DebugLog() const {
+  PW_LOG_INFO(
+      "Packet {\n"
+      "  Type   : %s (%d)\n"
+      "  Channel: %u\n"
+      "  Service: %08x\n"
+      "  Method : %08x\n"
+      "  ID     : %08x\n"
+      "  Payload: %u B\n"
+      "  Status : %s\n"
+      "}",
+      PacketTypeToString(type_),
+      static_cast<int>(type_),
+      static_cast<unsigned>(channel_id_),
+      static_cast<unsigned>(service_id_),
+      static_cast<unsigned>(method_id_),
+      static_cast<unsigned>(call_id_),
+      static_cast<unsigned>(payload_.size()),
+      status_.str());
 }
 
 }  // namespace pw::rpc::internal

@@ -22,8 +22,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <span>
-
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_trace_tokenized/config.h"
 #include "pw_trace_tokenized/trace_tokenized.h"
@@ -65,12 +64,7 @@ typedef uint32_t pw_trace_TraceEventReturnFlags;
 
 typedef size_t pw_trace_EventCallbackHandle;
 typedef pw_trace_TraceEventReturnFlags (*pw_trace_EventCallback)(
-    void* user_data,
-    uint32_t trace_ref,
-    pw_trace_EventType event_type,
-    const char* module,
-    uint32_t trace_id,
-    uint8_t flags);
+    void* user_data, pw_trace_tokenized_TraceEvent* event);
 
 pw_Status pw_trace_RegisterEventCallback(
     pw_trace_EventCallback callback,
@@ -125,7 +119,9 @@ PW_EXTERN_C_END
 namespace pw {
 namespace trace {
 
-class CallbacksImpl {
+// C++ API to the tokenized trace callback system
+// Example: pw::trace::GetTraceCallbacks().UnregisterAllSinks();
+class Callbacks {
  public:
   enum CallOnEveryEvent {
     kCallOnlyWhenEnabled = PW_TRACE_CALL_ONLY_WHEN_ENABLED,
@@ -143,6 +139,7 @@ class CallbacksImpl {
   };
   using EventCallback = pw_trace_EventCallback;
   using EventCallbackHandle = pw_trace_EventCallbackHandle;
+  using TraceEvent = pw_trace_tokenized_TraceEvent;
   struct EventCallbacks {
     void* user_data;
     EventCallback callback;
@@ -157,8 +154,7 @@ class CallbacksImpl {
   pw::Status UnregisterSink(SinkHandle handle);
   pw::Status UnregisterAllSinks();
   SinkCallbacks* GetSink(SinkHandle handle);
-  void CallSinks(std::span<const std::byte> header,
-                 std::span<const std::byte> data);
+  void CallSinks(span<const std::byte> header, span<const std::byte> data);
 
   pw::Status RegisterEventCallback(
       EventCallback callback,
@@ -169,12 +165,7 @@ class CallbacksImpl {
   pw::Status UnregisterAllEventCallbacks();
   EventCallbacks* GetEventCallback(EventCallbackHandle handle);
   pw_trace_TraceEventReturnFlags CallEventCallbacks(
-      CallOnEveryEvent called_on_every_event,
-      uint32_t trace_ref,
-      EventType event_type,
-      const char* module,
-      uint32_t trace_id,
-      uint8_t flags);
+      CallOnEveryEvent called_on_every_event, TraceEvent* event);
   size_t GetCalledOnEveryEventCount() const {
     return called_on_every_event_count_;
   }
@@ -191,16 +182,8 @@ class CallbacksImpl {
   }
 };
 
-// A singleton object of the CallbacksImpl class which can be used to
-// interface with trace using the C++ API.
-// Example: pw::trace::Callbacks::Instance().UnregisterAllSinks();
-class Callbacks {
- public:
-  static CallbacksImpl& Instance() { return instance_; };
-
- private:
-  static CallbacksImpl instance_;
-};
+// Returns a reference of the tokenized trace callbacks
+Callbacks& GetCallbacks();
 
 // This is a convenience class to register the callback when the object is
 // created. For example if the callback should always be registered this can be
@@ -208,22 +191,28 @@ class Callbacks {
 class RegisterCallbackWhenCreated {
  public:
   RegisterCallbackWhenCreated(
-      CallbacksImpl::EventCallback event_callback,
-      CallbacksImpl::CallOnEveryEvent called_on_every_event =
-          CallbacksImpl::kCallOnlyWhenEnabled,
-      void* user_data = nullptr) {
-    Callbacks::Instance()
+      Callbacks& callbacks,
+      Callbacks::EventCallback event_callback,
+      Callbacks::CallOnEveryEvent called_on_every_event =
+          Callbacks::kCallOnlyWhenEnabled,
+      void* user_data = nullptr)
+      : callbacks_(callbacks) {
+    callbacks_
         .RegisterEventCallback(event_callback, called_on_every_event, user_data)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
   }
-  RegisterCallbackWhenCreated(CallbacksImpl::SinkStartBlock sink_start,
-                              CallbacksImpl::SinkAddBytes sink_add_bytes,
-                              CallbacksImpl::SinkEndBlock sink_end,
-                              void* user_data = nullptr) {
-    Callbacks::Instance()
-        .RegisterSink(sink_start, sink_add_bytes, sink_end, user_data)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  RegisterCallbackWhenCreated(Callbacks& callbacks,
+                              Callbacks::SinkStartBlock sink_start,
+                              Callbacks::SinkAddBytes sink_add_bytes,
+                              Callbacks::SinkEndBlock sink_end,
+                              void* user_data = nullptr)
+      : callbacks_(callbacks) {
+    callbacks_.RegisterSink(sink_start, sink_add_bytes, sink_end, user_data)
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
   }
+
+ private:
+  Callbacks& callbacks_;
 };
 
 }  // namespace trace

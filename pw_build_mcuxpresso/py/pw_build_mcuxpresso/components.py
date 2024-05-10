@@ -13,34 +13,11 @@
 # the License.
 """Finds components for a given manifest."""
 
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pathlib
 import sys
 import xml.etree.ElementTree
-
-
-def _gn_str_out(name: str, val: Any):
-    """Outputs scoped string in GN format."""
-    print(f'{name} = "{val}"')
-
-
-def _gn_list_str_out(name: str, val: List[Any]):
-    """Outputs list of strings in GN format with correct escaping."""
-    list_str = ','.join('"' + str(x).replace('"', r'\"').replace('$', r'\$') +
-                        '"' for x in val)
-    print(f'{name} = [{list_str}]')
-
-
-def _gn_list_path_out(name: str,
-                      val: List[pathlib.Path],
-                      path_prefix: Optional[str] = None):
-    """Outputs list of paths in GN format with common prefix."""
-    if path_prefix is not None:
-        str_val = list(f'{path_prefix}/{str(d)}' for d in val)
-    else:
-        str_val = list(str(d) for d in val)
-    _gn_list_str_out(name, str_val)
 
 
 def get_component(
@@ -71,8 +48,9 @@ def get_component(
         return (component, None)
 
 
-def parse_defines(root: xml.etree.ElementTree.Element,
-                  component_id: str) -> List[str]:
+def parse_defines(
+    root: xml.etree.ElementTree.Element, component_id: str
+) -> List[str]:
     """Parse pre-processor definitions for a component.
 
     Schema:
@@ -113,8 +91,9 @@ def _parse_define(define: xml.etree.ElementTree.Element) -> str:
     return f'{name}={value}'
 
 
-def parse_include_paths(root: xml.etree.ElementTree.Element,
-                        component_id: str) -> List[pathlib.Path]:
+def parse_include_paths(
+    root: xml.etree.ElementTree.Element, component_id: str
+) -> List[pathlib.Path]:
     """Parse include directories for a component.
 
     Schema:
@@ -141,12 +120,15 @@ def parse_include_paths(root: xml.etree.ElementTree.Element,
 
         include_paths.extend(
             _parse_include_path(include_path, base_path)
-            for include_path in component.findall(include_xpath))
+            for include_path in component.findall(include_xpath)
+        )
     return include_paths
 
 
-def _parse_include_path(include_path: xml.etree.ElementTree.Element,
-                        base_path: Optional[pathlib.Path]) -> pathlib.Path:
+def _parse_include_path(
+    include_path: xml.etree.ElementTree.Element,
+    base_path: Optional[pathlib.Path],
+) -> pathlib.Path:
     """Parse <include_path> manifest stanza.
 
     Schema:
@@ -165,8 +147,9 @@ def _parse_include_path(include_path: xml.etree.ElementTree.Element,
     return base_path / path
 
 
-def parse_headers(root: xml.etree.ElementTree.Element,
-                  component_id: str) -> List[pathlib.Path]:
+def parse_headers(
+    root: xml.etree.ElementTree.Element, component_id: str
+) -> List[pathlib.Path]:
     """Parse header files for a component.
 
     Schema:
@@ -186,8 +169,9 @@ def parse_headers(root: xml.etree.ElementTree.Element,
     return _parse_sources(root, component_id, 'c_include')
 
 
-def parse_sources(root: xml.etree.ElementTree.Element,
-                  component_id: str) -> List[pathlib.Path]:
+def parse_sources(
+    root: xml.etree.ElementTree.Element, component_id: str
+) -> List[pathlib.Path]:
     """Parse source files for a component.
 
     Schema:
@@ -210,8 +194,9 @@ def parse_sources(root: xml.etree.ElementTree.Element,
     return source_files
 
 
-def parse_libs(root: xml.etree.ElementTree.Element,
-               component_id: str) -> List[pathlib.Path]:
+def parse_libs(
+    root: xml.etree.ElementTree.Element, component_id: str
+) -> List[pathlib.Path]:
     """Parse pre-compiled libraries for a component.
 
     Schema:
@@ -231,8 +216,9 @@ def parse_libs(root: xml.etree.ElementTree.Element,
     return _parse_sources(root, component_id, 'lib')
 
 
-def _parse_sources(root: xml.etree.ElementTree.Element, component_id: str,
-                   source_type: str) -> List[pathlib.Path]:
+def _parse_sources(
+    root: xml.etree.ElementTree.Element, component_id: str, source_type: str
+) -> List[pathlib.Path]:
     """Parse <source> manifest stanza.
 
     Schema:
@@ -261,13 +247,16 @@ def _parse_sources(root: xml.etree.ElementTree.Element, component_id: str,
         if base_path is not None:
             relative_path = base_path / relative_path
 
-        sources.extend(relative_path / files.attrib['mask']
-                       for files in source.findall('./files'))
+        sources.extend(
+            relative_path / files.attrib['mask']
+            for files in source.findall('./files')
+        )
     return sources
 
 
-def parse_dependencies(root: xml.etree.ElementTree.Element,
-                       component_id: str) -> List[str]:
+def parse_dependencies(
+    root: xml.etree.ElementTree.Element, component_id: str
+) -> List[str]:
     """Parse the list of dependencies for a component.
 
     Optional dependencies are ignored for parsing since they have to be
@@ -333,10 +322,12 @@ def _parse_dependency(dependency: xml.etree.ElementTree.Element) -> List[str]:
     return []
 
 
-def check_dependencies(root: xml.etree.ElementTree.Element,
-                       component_id: str,
-                       include: List[str],
-                       exclude: Optional[List[str]] = None) -> bool:
+def check_dependencies(
+    root: xml.etree.ElementTree.Element,
+    component_id: str,
+    include: List[str],
+    exclude: Optional[List[str]] = None,
+) -> bool:
     """Check the list of optional dependencies for a component.
 
     Verifies that the optional dependencies for a component are satisfied by
@@ -358,9 +349,11 @@ def check_dependencies(root: xml.etree.ElementTree.Element,
     return True
 
 
-def _check_dependency(dependency: xml.etree.ElementTree.Element,
-                      include: List[str],
-                      exclude: Optional[List[str]] = None) -> bool:
+def _check_dependency(
+    dependency: xml.etree.ElementTree.Element,
+    include: List[str],
+    exclude: Optional[List[str]] = None,
+) -> bool:
     """Check a dependency for a component.
 
     Verifies that the given {dependency} is satisfied by components listed in
@@ -376,8 +369,9 @@ def _check_dependency(dependency: xml.etree.ElementTree.Element,
     """
     if dependency.tag == 'component_dependency':
         component_id = dependency.attrib['value']
-        return component_id in include or (exclude is not None
-                                           and component_id in exclude)
+        return component_id in include or (
+            exclude is not None and component_id in exclude
+        )
     if dependency.tag == 'all':
         for subdependency in dependency:
             if not _check_dependency(subdependency, include, exclude=exclude):
@@ -399,9 +393,15 @@ def _check_dependency(dependency: xml.etree.ElementTree.Element,
 def create_project(
     root: xml.etree.ElementTree.Element,
     include: List[str],
-    exclude: Optional[List[str]] = None
-) -> Tuple[List[str], List[str], List[pathlib.Path], List[pathlib.Path],
-           List[pathlib.Path], List[pathlib.Path]]:
+    exclude: Optional[List[str]] = None,
+) -> Tuple[
+    List[str],
+    List[str],
+    List[pathlib.Path],
+    List[pathlib.Path],
+    List[pathlib.Path],
+    List[pathlib.Path],
+]:
     """Create a project from a list of specified components.
 
     Args:
@@ -429,46 +429,103 @@ def create_project(
 
     return (
         project_list,
-        sum((parse_defines(root, component_id)
-             for component_id in project_list), []),
-        sum((parse_include_paths(root, component_id)
-             for component_id in project_list), []),
-        sum((parse_headers(root, component_id)
-             for component_id in project_list), []),
-        sum((parse_sources(root, component_id)
-             for component_id in project_list), []),
-        sum((parse_libs(root, component_id) for component_id in project_list),
-            []),
+        sum(
+            (
+                parse_defines(root, component_id)
+                for component_id in project_list
+            ),
+            [],
+        ),
+        sum(
+            (
+                parse_include_paths(root, component_id)
+                for component_id in project_list
+            ),
+            [],
+        ),
+        sum(
+            (
+                parse_headers(root, component_id)
+                for component_id in project_list
+            ),
+            [],
+        ),
+        sum(
+            (
+                parse_sources(root, component_id)
+                for component_id in project_list
+            ),
+            [],
+        ),
+        sum(
+            (parse_libs(root, component_id) for component_id in project_list),
+            [],
+        ),
     )
 
 
-def project(manifest_path: pathlib.Path,
-            include: Optional[List[str]] = None,
-            exclude: Optional[List[str]] = None,
-            path_prefix: Optional[str] = None):
-    """Output GN scope for a project with the specified components.
+class Project:
+    """Self-contained MCUXpresso project.
 
-    Args:
-        manifest_path: path to SDK manifest XML.
-        include: list of component ids included in the project.
-        exclude: list of component ids excluded from the project.
-        path_prefix: string prefix to prepend to all paths.
+    Properties:
+        component_ids: list of component ids compromising the project.
+        defines: list of compiler definitions to build the project.
+        include_dirs: list of include directory paths needed for the project.
+        headers: list of header paths exported by the project.
+        sources: list of source file paths built as part of the project.
+        libs: list of libraries linked to the project.
+        dependencies_satisfied: True if the project dependencies are satisfied.
     """
-    assert include is not None, "Project must include at least one component."
 
-    tree = xml.etree.ElementTree.parse(manifest_path)
-    root = tree.getroot()
+    @classmethod
+    def from_file(
+        cls,
+        manifest_path: pathlib.Path,
+        include: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+    ):
+        """Create a self-contained project with the specified components.
 
-    (component_ids, defines, include_dirs, headers, sources, libs) = \
-        create_project(root, include, exclude=exclude)
+        Args:
+            manifest_path: path to SDK manifest XML.
+            include: list of component ids included in the project.
+            exclude: list of component ids excluded from the project.
+        """
+        tree = xml.etree.ElementTree.parse(manifest_path)
+        root = tree.getroot()
+        return cls(root, include=include, exclude=exclude)
 
-    for component_id in component_ids:
-        if not check_dependencies(
-                root, component_id, component_ids, exclude=exclude):
-            return
+    def __init__(
+        self,
+        manifest: xml.etree.ElementTree.Element,
+        include: Optional[List[str]] = None,
+        exclude: Optional[List[str]] = None,
+    ):
+        """Create a self-contained project with the specified components.
 
-    _gn_list_str_out('defines', defines)
-    _gn_list_path_out('include_dirs', include_dirs, path_prefix=path_prefix)
-    _gn_list_path_out('public', headers, path_prefix=path_prefix)
-    _gn_list_path_out('sources', sources, path_prefix=path_prefix)
-    _gn_list_path_out('libs', libs, path_prefix=path_prefix)
+        Args:
+            manifest: parsed manifest XML.
+            include: list of component ids included in the project.
+            exclude: list of component ids excluded from the project.
+        """
+        assert (
+            include is not None
+        ), "Project must include at least one component."
+
+        (
+            self.component_ids,
+            self.defines,
+            self.include_dirs,
+            self.headers,
+            self.sources,
+            self.libs,
+        ) = create_project(manifest, include, exclude=exclude)
+
+        for component_id in self.component_ids:
+            if not check_dependencies(
+                manifest, component_id, self.component_ids, exclude=exclude
+            ):
+                self.dependencies_satisfied = False
+                return
+
+        self.dependencies_satisfied = True

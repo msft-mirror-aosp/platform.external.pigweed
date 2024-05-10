@@ -12,11 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-import {Message} from 'google-protobuf';
-import {Status} from '@pigweed/pw_status';
+import { Message } from 'google-protobuf';
+import { Status } from 'pigweedjs/pw_status';
 
-import {Call} from './call';
-import {Channel, Method, Service} from './descriptors';
+import { Call } from './call';
+import { Channel, Method, Service } from './descriptors';
 import * as packets from './packets';
 
 /** Data class for a pending RPC call. */
@@ -70,7 +70,7 @@ export class PendingCalls {
     rpc: Rpc,
     call: Call,
     ignoreError: boolean,
-    request?: Message
+    request?: Message,
   ): Call | undefined {
     const previous = this.open(rpc, call);
     const packet = packets.encodeRequest(rpc.idSet, request);
@@ -112,13 +112,10 @@ export class PendingCalls {
     rpc.channel.send(packets.encodeClientStreamEnd(rpc.idSet));
   }
 
-  /** Cancels the RPC. Returns the CANCEL packet to send. */
-  cancel(rpc: Rpc): Uint8Array | undefined {
+  /** Cancels the RPC. Returns the CLIENT_ERROR packet to send. */
+  cancel(rpc: Rpc): Uint8Array {
     console.debug(`Cancelling ${rpc}`);
     this.pending.delete(rpc.idString);
-    if (rpc.method.clientStreaming && rpc.method.serverStreaming) {
-      return undefined;
-    }
     return packets.encodeCancel(rpc.idSet);
   }
 

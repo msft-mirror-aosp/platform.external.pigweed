@@ -20,6 +20,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.google.common.collect.ImmutableList;
@@ -33,7 +34,6 @@ import java.util.List;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
@@ -43,11 +43,13 @@ public final class ClientTest {
   @Rule public final MockitoRule mockito = MockitoJUnit.rule();
 
   private static final Service SERVICE = new Service("pw.rpc.test1.TheTestService",
-      Service.unaryMethod("SomeUnary", SomeMessage.class, AnotherMessage.class),
-      Service.serverStreamingMethod("SomeServerStreaming", SomeMessage.class, AnotherMessage.class),
-      Service.clientStreamingMethod("SomeClientStreaming", SomeMessage.class, AnotherMessage.class),
+      Service.unaryMethod("SomeUnary", SomeMessage.parser(), AnotherMessage.parser()),
+      Service.serverStreamingMethod(
+          "SomeServerStreaming", SomeMessage.parser(), AnotherMessage.parser()),
+      Service.clientStreamingMethod(
+          "SomeClientStreaming", SomeMessage.parser(), AnotherMessage.parser()),
       Service.bidirectionalStreamingMethod(
-          "SomeBidiStreaming", SomeMessage.class, AnotherMessage.class));
+          "SomeBidiStreaming", SomeMessage.parser(), AnotherMessage.parser()));
 
   private static final Method UNARY_METHOD = SERVICE.method("SomeUnary");
   private static final Method SERVER_STREAMING_METHOD = SERVICE.method("SomeServerStreaming");
@@ -123,22 +125,40 @@ public final class ClientTest {
   }
 
   @Test
-  public void method_unknownMethod() {
+  public void method_invalidFormat() {
     assertThrows(IllegalArgumentException.class, () -> client.method(CHANNEL_ID, ""));
     assertThrows(IllegalArgumentException.class, () -> client.method(CHANNEL_ID, "one"));
     assertThrows(IllegalArgumentException.class, () -> client.method(CHANNEL_ID, "hello"));
+  }
+
+  @Test
+  public void method_unknownService() {
     assertThrows(
-        IllegalArgumentException.class, () -> client.method(CHANNEL_ID, "abc.Service/Method"));
-    assertThrows(IllegalArgumentException.class,
-        () -> client.method(CHANNEL_ID, "pw.rpc.test1.TheTestService/NotAnRpc").method());
+        InvalidRpcServiceException.class, () -> client.method(CHANNEL_ID, "abc.Service/Method"));
+
+    Service service = new Service("throwaway.NotRealService",
+        Service.unaryMethod("NotAnRpc", SomeMessage.parser(), AnotherMessage.parser()));
+    assertThrows(InvalidRpcServiceException.class,
+        () -> client.method(CHANNEL_ID, service.method("NotAnRpc")));
+  }
+
+  @Test
+  public void method_unknownMethodInKnownService() {
+    assertThrows(InvalidRpcServiceMethodException.class,
+        () -> client.method(CHANNEL_ID, "pw.rpc.test1.TheTestService/NotAnRpc"));
+    assertThrows(InvalidRpcServiceMethodException.class,
+        () -> client.method(CHANNEL_ID, "pw.rpc.test1.TheTestService", "NotAnRpc"));
   }
 
   @Test
   public void method_unknownChannel() {
-    assertThrows(IllegalArgumentException.class,
-        () -> client.method(0, "pw.rpc.test1.TheTestService/SomeUnary"));
-    assertThrows(IllegalArgumentException.class,
-        () -> client.method(999, "pw.rpc.test1.TheTestService/SomeUnary"));
+    MethodClient methodClient0 = client.method(0, "pw.rpc.test1.TheTestService/SomeUnary");
+    assertThrows(InvalidRpcChannelException.class,
+        () -> methodClient0.invokeUnary(SomeMessage.getDefaultInstance()));
+
+    MethodClient methodClient999 = client.method(999, "pw.rpc.test1.TheTestService/SomeUnary");
+    assertThrows(InvalidRpcChannelException.class,
+        () -> methodClient999.invokeUnary(SomeMessage.getDefaultInstance()));
   }
 
   @Test
@@ -178,13 +198,22 @@ public final class ClientTest {
   }
 
   @Test
+  public void method_accessFromMethodInstance() {
+    assertThat(client.method(CHANNEL_ID, UNARY_METHOD).method()).isSameInstanceAs(UNARY_METHOD);
+    assertThat(client.method(CHANNEL_ID, SERVER_STREAMING_METHOD).method())
+        .isSameInstanceAs(SERVER_STREAMING_METHOD);
+    assertThat(client.method(CHANNEL_ID, CLIENT_STREAMING_METHOD).method())
+        .isSameInstanceAs(CLIENT_STREAMING_METHOD);
+  }
+
+  @Test
   public void processPacket_emptyPacket_isNotProcessed() {
     assertThat(client.processPacket(new byte[] {})).isFalse();
   }
 
   @Test
   public void processPacket_invalidPacket_isNotProcessed() {
-    assertThat(client.processPacket("This is definitely not a packet!".getBytes(UTF_8))).isFalse();
+    assertThat(client.processPacket("\uffff\uffff\uffffNot a packet!".getBytes(UTF_8))).isFalse();
   }
 
   @Test
@@ -323,7 +352,7 @@ public final class ClientTest {
   }
 
   @Test
-  @SuppressWarnings("unchecked") // No idea why, but this test causes "unchecked" warnings
+  @SuppressWarnings("unchecked")
   public void streamObserverClient_create_invokeMethod() throws Exception {
     Channel.Output mockChannelOutput = Mockito.mock(Channel.Output.class);
     Client client = Client.create(ImmutableList.of(new Channel(1, mockChannelOutput)),
@@ -334,5 +363,60 @@ public final class ClientTest {
     client.method(CHANNEL_ID, "pw.rpc.test1.TheTestService", "SomeUnary").invokeUnary(payload);
     verify(mockChannelOutput)
         .send(requestPacket("pw.rpc.test1.TheTestService", "SomeUnary", payload).toByteArray());
+  }
+
+  @Test
+  public void closeChannel_abortsExisting() throws Exception {
+    MethodClient serverStreamMethod =
+        client.method(CHANNEL_ID, "pw.rpc.test1.TheTestService", "SomeServerStreaming");
+
+    Call call1 = serverStreamMethod.invokeServerStreaming(REQUEST_PAYLOAD, observer);
+    Call call2 = client.method(CHANNEL_ID, "pw.rpc.test1.TheTestService", "SomeClientStreaming")
+                     .invokeClientStreaming(observer);
+    assertThat(call1.active()).isTrue();
+    assertThat(call2.active()).isTrue();
+
+    assertThat(client.closeChannel(CHANNEL_ID)).isTrue();
+
+    assertThat(call1.active()).isFalse();
+    assertThat(call2.active()).isFalse();
+
+    verify(observer, times(2)).onError(Status.ABORTED);
+
+    assertThrows(InvalidRpcChannelException.class,
+        () -> serverStreamMethod.invokeServerStreaming(REQUEST_PAYLOAD, observer));
+  }
+
+  @Test
+  public void closeChannel_noCalls() {
+    assertThat(client.closeChannel(CHANNEL_ID)).isTrue();
+  }
+
+  @Test
+  public void closeChannel_knownChannel() {
+    assertThat(client.closeChannel(CHANNEL_ID + 100)).isFalse();
+  }
+
+  @Test
+  public void openChannel_uniqueChannel() throws Exception {
+    int newChannelId = CHANNEL_ID + 100;
+    Channel.Output channelOutput = Mockito.mock(Channel.Output.class);
+    client.openChannel(new Channel(newChannelId, channelOutput));
+
+    client.method(newChannelId, "pw.rpc.test1.TheTestService", "SomeUnary")
+        .invokeUnary(REQUEST_PAYLOAD, observer);
+
+    verify(channelOutput)
+        .send(requestPacket("pw.rpc.test1.TheTestService", "SomeUnary", REQUEST_PAYLOAD)
+                  .toBuilder()
+                  .setChannelId(newChannelId)
+                  .build()
+                  .toByteArray());
+  }
+
+  @Test
+  public void openChannel_alreadyExists_throwsException() {
+    assertThrows(InvalidRpcChannelException.class,
+        () -> client.openChannel(new Channel(CHANNEL_ID, packet -> {})));
   }
 }

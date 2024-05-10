@@ -22,14 +22,18 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <new>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 
+#include "pw_polyfill/standard.h"
 #include "pw_preprocessor/compiler.h"
 
 namespace {
@@ -73,6 +77,27 @@ SimpleTest* SimpleTest::all_tests = nullptr;
 #define EXPECT_EQ(lhs, rhs) \
   do {                      \
     if ((lhs) != (rhs)) {   \
+      RecordTestFailure();  \
+    }                       \
+  } while (0)
+
+#define EXPECT_NE(lhs, rhs) \
+  do {                      \
+    if ((lhs) == (rhs)) {   \
+      RecordTestFailure();  \
+    }                       \
+  } while (0)
+
+#define EXPECT_LT(lhs, rhs) \
+  do {                      \
+    if ((lhs) < (rhs)) {    \
+      RecordTestFailure();  \
+    }                       \
+  } while (0)
+
+#define EXPECT_GT(lhs, rhs) \
+  do {                      \
+    if ((lhs) > (rhs)) {    \
       RecordTestFailure();  \
     }                       \
   } while (0)
@@ -296,6 +321,38 @@ TEST(TypeTraits, Basic) {
 
   static_assert(std::is_same_v<float, float>);
   static_assert(!std::is_same_v<char, unsigned char>);
+  static_assert(std::is_same_v<const int, std::add_const_t<int>>);
+  static_assert(std::is_same_v<const int, std::add_const_t<const int>>);
+  static_assert(!std::is_same_v<int, std::add_const_t<int>>);
+}
+
+TEST(TypeTraits, LogicalTraits) {
+  static_assert(std::conjunction_v<>);
+  static_assert(!std::conjunction_v<std::false_type>);
+  static_assert(std::conjunction_v<std::true_type>);
+  static_assert(!std::conjunction_v<std::false_type, std::true_type>);
+  static_assert(std::conjunction_v<std::true_type, std::true_type>);
+  static_assert(!std::conjunction_v<std::false_type, std::false_type>);
+
+  static_assert(!std::disjunction_v<>);
+  static_assert(!std::disjunction_v<std::false_type>);
+  static_assert(std::disjunction_v<std::true_type>);
+  static_assert(std::disjunction_v<std::false_type, std::true_type>);
+  static_assert(std::disjunction_v<std::true_type, std::true_type>);
+  static_assert(!std::disjunction_v<std::false_type, std::false_type>);
+
+  static_assert(std::negation_v<std::false_type>);
+  static_assert(!std::negation_v<std::true_type>);
+}
+
+TEST(TypeTraits, AlignmentOf) {
+  struct Foo {
+    char x;
+    double y;
+  };
+
+  static_assert(std::alignment_of_v<int> == alignof(int));
+  static_assert(std::alignment_of_v<Foo> == alignof(Foo));
 }
 
 struct MoveTester {
@@ -323,6 +380,65 @@ TEST(Utility, Move) {
   // NOLINTNEXTLINE(bugprone-use-after-move)
   EXPECT_EQ(0xffff, copied.magic_value);
   EXPECT_TRUE(moved.moved);
+}
+
+TEST(Utility, MakeIntegerSequence) {
+  static_assert(std::is_same_v<std::make_integer_sequence<int, 0>,
+                               std::integer_sequence<int>>);
+  static_assert(std::is_same_v<std::make_integer_sequence<int, 1>,
+                               std::integer_sequence<int, 0>>);
+  static_assert(std::is_same_v<std::make_integer_sequence<int, 3>,
+                               std::integer_sequence<int, 0, 1, 2>>);
+
+  static_assert(std::is_same_v<std::make_index_sequence<0>,
+                               std::integer_sequence<size_t>>);
+  static_assert(std::is_same_v<std::make_index_sequence<1>,
+                               std::integer_sequence<size_t, 0>>);
+  static_assert(std::is_same_v<std::make_index_sequence<3>,
+                               std::integer_sequence<size_t, 0, 1, 2>>);
+}
+
+TEST(Iterator, Tags) {
+  static_assert(std::is_convertible_v<std::forward_iterator_tag,
+                                      std::input_iterator_tag>);
+
+  static_assert(std::is_convertible_v<std::bidirectional_iterator_tag,
+                                      std::input_iterator_tag>);
+  static_assert(std::is_convertible_v<std::bidirectional_iterator_tag,
+                                      std::forward_iterator_tag>);
+
+  static_assert(std::is_convertible_v<std::random_access_iterator_tag,
+                                      std::input_iterator_tag>);
+  static_assert(std::is_convertible_v<std::random_access_iterator_tag,
+                                      std::forward_iterator_tag>);
+  static_assert(std::is_convertible_v<std::random_access_iterator_tag,
+                                      std::bidirectional_iterator_tag>);
+
+#if PW_CXX_STANDARD_IS_SUPPORTED(20)
+  static_assert(std::is_convertible_v<std::contiguous_iterator_tag,
+                                      std::input_iterator_tag>);
+  static_assert(std::is_convertible_v<std::contiguous_iterator_tag,
+                                      std::forward_iterator_tag>);
+  static_assert(std::is_convertible_v<std::contiguous_iterator_tag,
+                                      std::bidirectional_iterator_tag>);
+  static_assert(std::is_convertible_v<std::contiguous_iterator_tag,
+                                      std::random_access_iterator_tag>);
+#endif  // PW_CXX_STANDARD_IS_SUPPORTED(20)
+}
+
+TEST(Memory, AddressOf) {
+  struct Foo {
+    Foo** operator&() { return nullptr; }  // NOLINT
+  } nullptr_address;
+
+  EXPECT_EQ(&nullptr_address, nullptr);
+  EXPECT_NE(std::addressof(nullptr_address), nullptr);
+}
+
+TEST(String, CharTraits) {
+  static_assert(std::char_traits<char>::compare("1234a", "1234z", 4) == 0);
+  static_assert(std::char_traits<char>::compare("1234a", "1234z", 5) < 0);
+  static_assert(std::char_traits<char>::compare("1234z", "1234a", 5) > 0);
 }
 
 }  // namespace

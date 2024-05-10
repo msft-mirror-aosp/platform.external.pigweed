@@ -14,6 +14,7 @@
 
 load(
     "//pw_build:pigweed.bzl",
+    "pw_cc_facade",
     "pw_cc_library",
     "pw_cc_test",
 )
@@ -28,34 +29,99 @@ pw_cc_library(
         "public/pw_log_tokenized/config.h",
         "public/pw_log_tokenized/log_tokenized.h",
         "public/pw_log_tokenized/metadata.h",
-        "public_overrides/pw_log_backend/log_backend.h",
     ],
     includes = [
         "public",
-        "public_overrides",
     ],
     deps = [
+        "//pw_log:facade",
         "//pw_tokenizer",
     ],
 )
 
 pw_cc_library(
     name = "pw_log_tokenized",
+    srcs = ["log_tokenized.cc"],
+    hdrs = [
+        "public_overrides/pw_log_backend/log_backend.h",
+        "public_overrides/pw_log_backend/log_backend_uses_pw_tokenizer.h",
+    ],
+    includes = [
+        "public_overrides",
+    ],
     deps = [
+        ":handler_facade",
         ":headers",
         "//pw_log:facade",
     ],
 )
 
 pw_cc_library(
-    name = "base64_over_hdlc",
-    srcs = ["base64_over_hdlc.cc"],
-    hdrs = ["public/pw_log_tokenized/base64_over_hdlc.h"],
+    name = "gcc_partially_tokenized",
+    srcs = ["log_tokenized.cc"],
+    hdrs = [
+        "gcc_partially_tokenized_public_overrides/pw_log_backend/log_backend.h",
+        "public/pw_log_tokenized/gcc_partially_tokenized.h",
+    ],
+    includes = [
+        "gcc_partially_tokenized_public_overrides",
+        "public",
+    ],
+    deps = [
+        ":handler",
+        ":headers",
+        "//pw_log:facade",
+        "//pw_log_string:handler",
+    ],
+)
+
+alias(
+    name = "impl",
+    actual = ":handler",
+)
+
+pw_cc_facade(
+    name = "handler_facade",
+    hdrs = ["public/pw_log_tokenized/handler.h"],
+    includes = ["public"],
+    deps = ["//pw_preprocessor"],
+)
+
+pw_cc_library(
+    name = "handler",
+    hdrs = ["public/pw_log_tokenized/handler.h"],
     includes = ["public"],
     deps = [
-        "//pw_hdlc:encoder",
+        "//pw_preprocessor",
+        "//targets:pw_log_tokenized_handler_backend",
+    ],
+)
+
+# There is no default backend for now.
+pw_cc_library(
+    name = "backend_multiplexer",
+    visibility = ["@pigweed//targets:__pkg__"],
+)
+
+pw_cc_library(
+    name = "base64",
+    hdrs = ["public/pw_log_tokenized/base64.h"],
+    includes = ["public"],
+    deps = [
+        ":headers",  # Only config.h is needed
         "//pw_tokenizer:base64",
-        "//pw_tokenizer:global_handler_with_payload.facade",
+    ],
+)
+
+pw_cc_library(
+    name = "base64_over_hdlc",
+    srcs = ["base64_over_hdlc.cc"],
+    deps = [
+        ":base64",
+        ":handler_facade",
+        "//pw_hdlc",
+        "//pw_stream:sys_io_stream",
+        "//pw_tokenizer:base64",
     ],
 )
 
@@ -67,6 +133,7 @@ pw_cc_test(
         "pw_log_tokenized_private/test_utils.h",
     ],
     deps = [
+        ":base64",
         ":headers",
         "//pw_unit_test",
     ],

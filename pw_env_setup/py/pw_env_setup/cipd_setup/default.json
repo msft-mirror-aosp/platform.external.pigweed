@@ -1,9 +1,9 @@
 {
   "included_files": [
-    "pigweed.json",
     "arm.json",
-    "python.json",
-    "bazel.json",
-    "luci.json"
+    "buildifier.json",
+    "pigweed.json",
+    "clang.json",
+    "python.json"
   ]
 }

@@ -26,9 +26,21 @@ using namespace std::literals::string_view_literals;
 // Use a shorter name for the error string macro.
 #define ERR PW_TOKENIZER_ARG_DECODING_ERROR
 
-// Use alignas to ensure that the data is properly aligned to be read from a
-// token database entry struct. This avoids unaligned memory reads.
-alignas(TokenDatabase::RawEntry) constexpr char kBasicData[] =
+using Case = std::pair<std::string_view, std::string_view>;
+
+template <typename... Args>
+auto TestCases(Args... args) {
+  return std::array<Case, sizeof...(Args)>{args...};
+}
+
+// Database with the following entries:
+// {
+//   0x00000001: "One",
+//   0x00000005: "TWO",
+//   0x000000ff: "333",
+//   0xDDEEEEFF: "One",
+// }
+constexpr char kBasicData[] =
     "TOKENS\0\0"
     "\x04\x00\x00\x00"
     "\0\0\0\0"
@@ -57,10 +69,13 @@ TEST_F(Detokenize, NoFormatting) {
 TEST_F(Detokenize, BestString_MissingToken_IsEmpty) {
   EXPECT_FALSE(detok_.Detokenize("").ok());
   EXPECT_TRUE(detok_.Detokenize("", 0u).BestString().empty());
-  EXPECT_TRUE(detok_.Detokenize("\1", 1u).BestString().empty());
-  EXPECT_TRUE(detok_.Detokenize("\1\0"sv).BestString().empty());
-  EXPECT_TRUE(detok_.Detokenize("\1\0\0"sv).BestString().empty());
-  EXPECT_TRUE(detok_.Detokenize("\0\0\0"sv).BestString().empty());
+}
+
+TEST_F(Detokenize, BestString_ShorterToken_ZeroExtended) {
+  EXPECT_EQ(detok_.Detokenize("\x42", 1u).token(), 0x42u);
+  EXPECT_EQ(detok_.Detokenize("\1\0"sv).token(), 0x1u);
+  EXPECT_EQ(detok_.Detokenize("\1\0\3"sv).token(), 0x030001u);
+  EXPECT_EQ(detok_.Detokenize("\0\0\0"sv).token(), 0x0u);
 }
 
 TEST_F(Detokenize, BestString_UnknownToken_IsEmpty) {
@@ -75,18 +90,20 @@ TEST_F(Detokenize, BestStringWithErrors_MissingToken_ErrorMessage) {
   EXPECT_FALSE(detok_.Detokenize("").ok());
   EXPECT_EQ(detok_.Detokenize("", 0u).BestStringWithErrors(),
             ERR("missing token"));
-  EXPECT_EQ(detok_.Detokenize("\1", 1u).BestStringWithErrors(),
-            ERR("missing token"));
-  EXPECT_EQ(detok_.Detokenize("\1\0"sv).BestStringWithErrors(),
-            ERR("missing token"));
-  EXPECT_EQ(detok_.Detokenize("\1\0\0"sv).BestStringWithErrors(),
-            ERR("missing token"));
-  EXPECT_EQ(detok_.Detokenize("\0\0\0"sv).BestStringWithErrors(),
-            ERR("missing token"));
+}
+
+TEST_F(Detokenize, BestStringWithErrors_ShorterTokenMatchesStrings) {
+  EXPECT_EQ(detok_.Detokenize("\1", 1u).BestStringWithErrors(), "One");
+  EXPECT_EQ(detok_.Detokenize("\1\0"sv).BestStringWithErrors(), "One");
+  EXPECT_EQ(detok_.Detokenize("\1\0\0"sv).BestStringWithErrors(), "One");
 }
 
 TEST_F(Detokenize, BestStringWithErrors_UnknownToken_ErrorMessage) {
-  EXPECT_FALSE(detok_.Detokenize("\0\0\0\0"sv).ok());
+  ASSERT_FALSE(detok_.Detokenize("\0\0\0\0"sv).ok());
+  EXPECT_EQ(detok_.Detokenize("\0"sv).BestStringWithErrors(),
+            ERR("unknown token 00000000"));
+  EXPECT_EQ(detok_.Detokenize("\0\0\0"sv).BestStringWithErrors(),
+            ERR("unknown token 00000000"));
   EXPECT_EQ(detok_.Detokenize("\0\0\0\0"sv).BestStringWithErrors(),
             ERR("unknown token 00000000"));
   EXPECT_EQ(detok_.Detokenize("\2\0\0\0"sv).BestStringWithErrors(),
@@ -97,7 +114,33 @@ TEST_F(Detokenize, BestStringWithErrors_UnknownToken_ErrorMessage) {
             ERR("unknown token fedcba98"));
 }
 
-alignas(TokenDatabase::RawEntry) constexpr char kDataWithArguments[] =
+// Base64 versions of the four tokens
+#define ONE "$AQAAAA=="
+#define TWO "$BQAAAA=="
+#define THREE "$/wAAAA=="
+#define FOUR "$/+7u3Q=="
+
+TEST_F(Detokenize, Base64_NoArguments) {
+  for (auto [data, expected] : TestCases(
+           Case{ONE, "One"},
+           Case{TWO, "TWO"},
+           Case{THREE, "333"},
+           Case{FOUR, "FOUR"},
+           Case{FOUR ONE ONE, "FOUROneOne"},
+           Case{ONE TWO THREE FOUR, "OneTWO333FOUR"},
+           Case{ONE "\r\n" TWO "\r\n" THREE "\r\n" FOUR "\r\n",
+                "One\r\nTWO\r\n333\r\nFOUR\r\n"},
+           Case{"123" FOUR, "123FOUR"},
+           Case{"123" FOUR ", 56", "123FOUR, 56"},
+           Case{"12" THREE FOUR ", 56", "12333FOUR, 56"},
+           Case{"$0" ONE, "$0One"},
+           Case{"$/+7u3Q=", "$/+7u3Q="},  // incomplete message (missing "=")
+           Case{"$123456==" FOUR, "$123456==FOUR"})) {
+    EXPECT_EQ(detok_.DetokenizeBase64(data), expected);
+  }
+}
+
+constexpr char kDataWithArguments[] =
     "TOKENS\0\0"
     "\x09\x00\x00\x00"
     "\0\0\0\0"
@@ -121,14 +164,6 @@ alignas(TokenDatabase::RawEntry) constexpr char kDataWithArguments[] =
     "%llu!";   // FF
 
 constexpr TokenDatabase kWithArgs = TokenDatabase::Create<kDataWithArguments>();
-
-using Case = std::pair<std::string_view, std::string_view>;
-
-template <typename... Args>
-auto TestCases(Args... args) {
-  return std::array<Case, sizeof...(Args)>{args...};
-}
-
 class DetokenizeWithArgs : public ::testing::Test {
  protected:
   DetokenizeWithArgs() : detok_(kWithArgs) {}
@@ -186,7 +221,7 @@ TEST_F(DetokenizeWithArgs, DecodingError) {
             "Now there are " ERR("%d ERROR") " of " ERR("%s SKIPPED") "!");
 }
 
-alignas(TokenDatabase::RawEntry) constexpr char kDataWithCollisions[] =
+constexpr char kDataWithCollisions[] =
     "TOKENS\0\0"
     "\x0F\x00\x00\x00"
     "\0\0\0\0"

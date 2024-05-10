@@ -14,14 +14,13 @@
 
 #include "pw_sys_io/sys_io.h"
 
-#include <console/console.h>
-#include <init.h>
-#include <usb/usb_device.h>
-#include <zephyr.h>
+#include <zephyr/console/console.h>
+#include <zephyr/init.h>
+#include <zephyr/kernel.h>
+#include <zephyr/usb/usb_device.h>
 
-static int sys_io_init(const struct device* dev) {
+static int sys_io_init(void) {
   int err;
-  ARG_UNUSED(dev);
 
   if (IS_ENABLED(CONFIG_PIGWEED_SYS_IO_USB)) {
     err = usb_enable(nullptr);
@@ -72,7 +71,7 @@ Status WriteByte(std::byte b) {
 
 StatusWithSize WriteLine(const std::string_view& s) {
   size_t chars_written = 0;
-  StatusWithSize size_result = WriteBytes(std::as_bytes(std::span(s)));
+  StatusWithSize size_result = WriteBytes(as_bytes(span(s)));
   if (!size_result.ok()) {
     return size_result;
   }

@@ -59,6 +59,12 @@ pw_facade("pw_log") {
   require_link_deps = [ ":impl" ]
 }
 
+pw_source_set("args") {
+  public_configs = [ ":public_include_path" ]
+  public_deps = [ dir_pw_tokenizer ]
+  public = [ "public/pw_log/tokenized_args.h" ]
+}
+
 pw_source_set("glog_adapter") {
   public_configs = [ ":public_include_path" ]
   public = [
@@ -85,6 +91,7 @@ pw_source_set("proto_utils") {
     "$dir_pw_log:protos.pwpb",
     "$dir_pw_log_tokenized:metadata",
     "$dir_pw_result",
+    dir_pw_span,
   ]
   deps = [ "$dir_pw_protobuf" ]
   sources = [ "proto_utils.cc" ]
@@ -145,6 +152,7 @@ pw_test("proto_utils_test") {
   deps = [
     ":proto_utils",
     ":pw_log.facade",
+    "$dir_pw_containers",
     "$dir_pw_log:protos.pwpb",
     "$dir_pw_preprocessor",
     "$dir_pw_protobuf",
@@ -160,12 +168,14 @@ pw_proto_library("protos") {
     "$dir_pw_protobuf:common_protos",
     "$dir_pw_tokenizer:proto",
   ]
+  python_package = "py"
 }
 
 pw_doc_group("docs") {
   sources = [
     "docs.rst",
     "protobuf.rst",
+    "tokenized_args.rst",
   ]
   inputs = [
     "example_layer_diagram.svg",

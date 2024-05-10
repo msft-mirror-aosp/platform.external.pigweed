@@ -16,6 +16,7 @@
 
 #include <cstring>
 
+#include "pw_assert/check.h"
 #include "pw_varint/varint.h"
 
 namespace pw::protobuf {
@@ -53,7 +54,8 @@ uint32_t Decoder::FieldNumber() const {
   if (!FieldKey::IsValidKey(key)) {
     return 0;
   }
-  return FieldKey(key).field_number();
+  PW_DCHECK(key <= std::numeric_limits<uint32_t>::max());
+  return FieldKey(static_cast<uint32_t>(key)).field_number();
 }
 
 Status Decoder::ReadUint32(uint32_t* out) {
@@ -65,7 +67,7 @@ Status Decoder::ReadUint32(uint32_t* out) {
   if (value > std::numeric_limits<uint32_t>::max()) {
     return Status::OutOfRange();
   }
-  *out = value;
+  *out = static_cast<uint32_t>(value);
   return OkStatus();
 }
 
@@ -78,7 +80,7 @@ Status Decoder::ReadSint32(int32_t* out) {
   if (value > std::numeric_limits<int32_t>::max()) {
     return Status::OutOfRange();
   }
-  *out = value;
+  *out = static_cast<uint32_t>(value);
   return OkStatus();
 }
 
@@ -103,7 +105,7 @@ Status Decoder::ReadBool(bool* out) {
 }
 
 Status Decoder::ReadString(std::string_view* out) {
-  std::span<const std::byte> bytes;
+  span<const std::byte> bytes;
   Status status = ReadDelimited(&bytes);
   if (!status.ok()) {
     return status;
@@ -120,11 +122,12 @@ size_t Decoder::FieldSize() const {
     return 0;
   }
 
-  std::span<const std::byte> remainder = proto_.subspan(key_size);
+  span<const std::byte> remainder = proto_.subspan(key_size);
   uint64_t value = 0;
   size_t expected_size = 0;
 
-  switch (FieldKey(key).wire_type()) {
+  PW_DCHECK(key <= std::numeric_limits<uint32_t>::max());
+  switch (FieldKey(static_cast<uint32_t>(key)).wire_type()) {
     case WireType::kVarint:
       expected_size = varint::Decode(remainder, &value);
       if (expected_size == 0) {
@@ -168,7 +171,8 @@ Status Decoder::ConsumeKey(WireType expected_type) {
     return Status::DataLoss();
   }
 
-  if (FieldKey(key).wire_type() != expected_type) {
+  PW_DCHECK(key <= std::numeric_limits<uint32_t>::max());
+  if (FieldKey(static_cast<uint32_t>(key)).wire_type() != expected_type) {
     return Status::FailedPrecondition();
   }
 
@@ -212,7 +216,7 @@ Status Decoder::ReadFixed(std::byte* out, size_t size) {
   return OkStatus();
 }
 
-Status Decoder::ReadDelimited(std::span<const std::byte>* out) {
+Status Decoder::ReadDelimited(span<const std::byte>* out) {
   Status status = ConsumeKey(WireType::kDelimited);
   if (!status.ok()) {
     return status;
@@ -236,7 +240,7 @@ Status Decoder::ReadDelimited(std::span<const std::byte>* out) {
   return OkStatus();
 }
 
-Status CallbackDecoder::Decode(std::span<const std::byte> proto) {
+Status CallbackDecoder::Decode(span<const std::byte> proto) {
   if (handler_ == nullptr || state_ != kReady) {
     return Status::FailedPrecondition();
   }

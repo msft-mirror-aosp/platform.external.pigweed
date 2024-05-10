@@ -1,4 +1,4 @@
-// Copyright 2021 The Pigweed Authors
+// Copyright 2022 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,24 +12,20 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-/* eslint-env browser, jasmine */
-import 'jasmine';
+/* eslint-env browser */
 
-import {Status} from '@pigweed/pw_status';
-import {MessageCreator} from '@pigweed/pw_protobuf_compiler';
-import {Message} from 'google-protobuf';
+import { Status } from 'pigweedjs/pw_status';
+import { MessageCreator } from 'pigweedjs/pw_protobuf_compiler';
+import { Message } from 'google-protobuf';
 import {
   PacketType,
   RpcPacket,
-} from 'packet_proto_tspb/packet_proto_tspb_pb/pw_rpc/internal/packet_pb';
-import {ProtoCollection} from 'rpc_proto_collection/generated/ts_proto_collection';
-import {
-  Request,
-  Response,
-} from 'test_protos_tspb/test_protos_tspb_pb/pw_rpc/ts/test_pb';
+} from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
+import { ProtoCollection } from 'pigweedjs/protos/collection';
+import { Request, Response } from 'pigweedjs/protos/pw_rpc/ts/test_pb';
 
-import {Client} from './client';
-import {Channel, Method} from './descriptors';
+import { Client } from './client';
+import { Channel, Method } from './descriptors';
 import {
   BidirectionalStreamingMethodStub,
   ClientStreamingMethodStub,
@@ -78,10 +74,10 @@ describe('Client', () => {
     const channel = client.channel()!;
     expect(channel.methodStub('')).toBeUndefined();
     expect(
-      channel.methodStub('pw.rpc.test1.Garbage.SomeUnary')
+      channel.methodStub('pw.rpc.test1.Garbage.SomeUnary'),
     ).toBeUndefined();
     expect(
-      channel.methodStub('pw.rpc.test1.TheTestService.Garbage')
+      channel.methodStub('pw.rpc.test1.TheTestService.Garbage'),
     ).toBeUndefined();
   });
 
@@ -135,7 +131,7 @@ describe('Client', () => {
 
     const packet = packets.encodeResponse(
       [1, service.id, method.id],
-      new Request()
+      new Request(),
     );
     const status = client.processPacket(packet);
     expect(client.processPacket(packet)).toEqual(Status.OK);
@@ -160,7 +156,12 @@ describe('RPC', () => {
 
   beforeEach(async () => {
     protoCollection = new ProtoCollection();
-    const channels = [new Channel(1, handlePacket), new Channel(2, () => {})];
+    const channels = [
+      new Channel(1, handlePacket),
+      new Channel(2, () => {
+        // Do nothing.
+      }),
+    ];
     client = Client.fromProtoSet(channels, protoCollection);
     lastPacketSent = undefined;
     requests = [];
@@ -186,7 +187,7 @@ describe('RPC', () => {
     channelId: number,
     method: Method,
     status: Status,
-    response?: Message
+    response?: Message,
   ) {
     const packet = new RpcPacket();
     packet.setType(PacketType.RESPONSE);
@@ -195,7 +196,7 @@ describe('RPC', () => {
     packet.setMethodId(method.id);
     packet.setStatus(status);
     if (response === undefined) {
-      packet.setPayload(new Uint8Array());
+      packet.setPayload(new Uint8Array(0));
     } else {
       packet.setPayload(response.serializeBinary());
     }
@@ -206,7 +207,7 @@ describe('RPC', () => {
     channelId: number,
     method: Method,
     response: Message,
-    status: Status = Status.OK
+    status: Status = Status.OK,
   ) {
     const packet = new RpcPacket();
     packet.setType(PacketType.SERVER_STREAM);
@@ -222,7 +223,7 @@ describe('RPC', () => {
     channelId: number,
     method: Method,
     status: Status,
-    processStatus: Status
+    processStatus: Status,
   ) {
     const packet = new RpcPacket();
     packet.setType(PacketType.SERVER_ERROR);
@@ -277,8 +278,8 @@ describe('RPC', () => {
       unaryStub = client
         .channel()
         ?.methodStub(
-          'pw.rpc.test1.TheTestService.SomeUnary'
-        )! as UnaryMethodStub;
+          'pw.rpc.test1.TheTestService.SomeUnary',
+        ) as UnaryMethodStub;
     });
 
     it('blocking call', async () => {
@@ -287,7 +288,7 @@ describe('RPC', () => {
           1,
           unaryStub.method,
           Status.ABORTED,
-          newResponse('0_o')
+          newResponse('0_o'),
         );
         const [status, response] = await unaryStub.call(newRequest(6));
 
@@ -302,20 +303,20 @@ describe('RPC', () => {
         const response = newResponse('hello world');
         enqueueResponse(1, unaryStub.method, Status.ABORTED, response);
 
-        const onNext = jasmine.createSpy();
-        const onCompleted = jasmine.createSpy();
-        const onError = jasmine.createSpy();
+        const onNext = jest.fn();
+        const onCompleted = jest.fn();
+        const onError = jest.fn();
         const call = unaryStub.invoke(
           newRequest(5),
           onNext,
           onCompleted,
-          onError
+          onError,
         );
 
         expect(sentPayload(Request).getMagicNumber()).toEqual(5);
-        expect(onNext).toHaveBeenCalledOnceWith(response);
+        expect(onNext).toHaveBeenCalledWith(response);
         expect(onError).not.toHaveBeenCalled();
-        expect(onCompleted).toHaveBeenCalledOnceWith(Status.ABORTED);
+        expect(onCompleted).toHaveBeenCalledWith(Status.ABORTED);
       }
     });
 
@@ -326,17 +327,17 @@ describe('RPC', () => {
         const response = newResponse('hello world');
         enqueueResponse(1, unaryStub.method, Status.ABORTED, response);
 
-        const onNext = jasmine.createSpy();
-        const onCompleted = jasmine.createSpy();
-        const onError = jasmine.createSpy();
+        const onNext = jest.fn();
+        const onCompleted = jest.fn();
+        const onError = jest.fn();
         unaryStub.open(newRequest(5), onNext, onCompleted, onError);
-        expect(requests).toHaveSize(0);
+        expect(requests).toHaveLength(0);
 
         processEnqueuedPackets();
 
-        expect(onNext).toHaveBeenCalledOnceWith(response);
+        expect(onNext).toHaveBeenCalledWith(response);
         expect(onError).not.toHaveBeenCalled();
-        expect(onCompleted).toHaveBeenCalledOnceWith(Status.ABORTED);
+        expect(onCompleted).toHaveBeenCalledWith(Status.ABORTED);
       }
     });
 
@@ -355,14 +356,17 @@ describe('RPC', () => {
 
     it('nonblocking call cancel', () => {
       for (let i = 0; i < 3; i++) {
-        const onNext = jasmine.createSpy();
+        const onNext = jest.fn();
         const call = unaryStub.invoke(newRequest(), onNext);
 
         expect(requests.length).toBeGreaterThan(0);
         requests = [];
 
-        expect(call.cancel()).toBeTrue();
-        expect(call.cancel()).toBeFalse();
+        expect(call.cancel()).toBe(true);
+        expect(lastRequest().getType()).toEqual(PacketType.CLIENT_ERROR);
+        expect(lastRequest().getStatus()).toEqual(Status.CANCELLED);
+
+        expect(call.cancel()).toBe(false);
         expect(onNext).not.toHaveBeenCalled();
       }
     });
@@ -378,11 +382,11 @@ describe('RPC', () => {
 
     it('nonblocking duplicate calls first is cancelled', () => {
       const firstCall = unaryStub.invoke(newRequest());
-      expect(firstCall.completed).toBeFalse();
+      expect(firstCall.completed).toBe(false);
 
       const secondCall = unaryStub.invoke(newRequest());
       expect(firstCall.error).toEqual(Status.CANCELLED);
-      expect(secondCall.completed).toBeFalse();
+      expect(secondCall.completed).toBe(false);
     });
 
     it('nonblocking exception in callback', () => {
@@ -404,8 +408,8 @@ describe('RPC', () => {
       serverStreaming = client
         .channel()
         ?.methodStub(
-          'pw.rpc.test1.TheTestService.SomeServerStreaming'
-        )! as ServerStreamingMethodStub;
+          'pw.rpc.test1.TheTestService.SomeServerStreaming',
+        ) as ServerStreamingMethodStub;
     });
 
     it('non-blocking call', () => {
@@ -417,18 +421,18 @@ describe('RPC', () => {
         enqueueServerStream(1, serverStreaming.method, response2);
         enqueueResponse(1, serverStreaming.method, Status.ABORTED);
 
-        const onNext = jasmine.createSpy();
-        const onCompleted = jasmine.createSpy();
-        const onError = jasmine.createSpy();
+        const onNext = jest.fn();
+        const onCompleted = jest.fn();
+        const onError = jest.fn();
         serverStreaming.invoke(newRequest(4), onNext, onCompleted, onError);
 
         expect(onNext).toHaveBeenCalledWith(response1);
         expect(onNext).toHaveBeenCalledWith(response2);
         expect(onError).not.toHaveBeenCalled();
-        expect(onCompleted).toHaveBeenCalledOnceWith(Status.ABORTED);
+        expect(onCompleted).toHaveBeenCalledWith(Status.ABORTED);
 
         expect(
-          sentPayload(serverStreaming.method.requestType).getMagicNumber()
+          sentPayload(serverStreaming.method.requestType).getMagicNumber(),
         ).toEqual(4);
       }
     });
@@ -443,23 +447,23 @@ describe('RPC', () => {
         enqueueServerStream(1, serverStreaming.method, response2);
         enqueueResponse(1, serverStreaming.method, Status.ABORTED);
 
-        const onNext = jasmine.createSpy();
-        const onCompleted = jasmine.createSpy();
-        const onError = jasmine.createSpy();
+        const onNext = jest.fn();
+        const onCompleted = jest.fn();
+        const onError = jest.fn();
         const call = serverStreaming.open(
           newRequest(3),
           onNext,
           onCompleted,
-          onError
+          onError,
         );
 
-        expect(requests).toHaveSize(0);
+        expect(requests).toHaveLength(0);
         processEnqueuedPackets();
 
         expect(onNext).toHaveBeenCalledWith(response1);
         expect(onNext).toHaveBeenCalledWith(response2);
         expect(onError).not.toHaveBeenCalled();
-        expect(onCompleted).toHaveBeenCalledOnceWith(Status.ABORTED);
+        expect(onCompleted).toHaveBeenCalledWith(Status.ABORTED);
       }
     });
 
@@ -476,13 +480,13 @@ describe('RPC', () => {
       const testResponse = newResponse('!!!');
       enqueueServerStream(1, serverStreaming.method, testResponse);
 
-      const onNext = jasmine.createSpy();
-      const onCompleted = jasmine.createSpy();
-      const onError = jasmine.createSpy();
+      const onNext = jest.fn();
+      const onCompleted = jest.fn();
+      const onError = jest.fn();
       let call = serverStreaming.invoke(newRequest(3), onNext);
-      expect(onNext).toHaveBeenCalledOnceWith(testResponse);
+      expect(onNext).toHaveBeenNthCalledWith(1, testResponse);
 
-      onNext.calls.reset();
+      // onNext.calls.reset();
 
       call.cancel();
       expect(lastRequest().getType()).toEqual(PacketType.CLIENT_ERROR);
@@ -492,9 +496,9 @@ describe('RPC', () => {
       enqueueServerStream(1, serverStreaming.method, testResponse);
       enqueueResponse(1, serverStreaming.method, Status.OK);
       call = serverStreaming.invoke(newRequest(), onNext, onCompleted, onError);
-      expect(onNext).toHaveBeenCalledWith(testResponse);
+      expect(onNext).toHaveBeenNthCalledWith(2, testResponse);
       expect(onError).not.toHaveBeenCalled();
-      expect(onCompleted).toHaveBeenCalledOnceWith(Status.OK);
+      expect(onCompleted).toHaveBeenCalledWith(Status.OK);
     });
   });
 
@@ -505,22 +509,22 @@ describe('RPC', () => {
       clientStreaming = client
         .channel()
         ?.methodStub(
-          'pw.rpc.test1.TheTestService.SomeClientStreaming'
-        )! as ClientStreamingMethodStub;
+          'pw.rpc.test1.TheTestService.SomeClientStreaming',
+        ) as ClientStreamingMethodStub;
     });
 
     it('non-blocking call', () => {
       const testResponse = newResponse('-.-');
 
       for (let i = 0; i < 3; i++) {
-        const onNext = jasmine.createSpy();
+        const onNext = jest.fn();
         const stream = clientStreaming.invoke(onNext);
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
 
         stream.send(newRequest(31));
         expect(lastRequest().getType()).toEqual(PacketType.CLIENT_STREAM);
         expect(sentPayload(Request).getMagicNumber()).toEqual(31);
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
 
         // Enqueue the server response to be sent after the next message.
         enqueueResponse(1, clientStreaming.method, Status.OK, testResponse);
@@ -529,8 +533,8 @@ describe('RPC', () => {
         expect(lastRequest().getType()).toEqual(PacketType.CLIENT_STREAM);
         expect(sentPayload(Request).getMagicNumber()).toEqual(32);
 
-        expect(onNext).toHaveBeenCalledOnceWith(testResponse);
-        expect(stream.completed).toBeTrue();
+        expect(onNext).toHaveBeenCalledWith(testResponse);
+        expect(stream.completed).toBe(true);
         expect(stream.status).toEqual(Status.OK);
         expect(stream.error).toBeUndefined();
       }
@@ -543,17 +547,17 @@ describe('RPC', () => {
       for (let i = 0; i < 3; i++) {
         enqueueResponse(1, clientStreaming.method, Status.OK, response);
 
-        const onNext = jasmine.createSpy();
-        const onCompleted = jasmine.createSpy();
-        const onError = jasmine.createSpy();
+        const onNext = jest.fn();
+        const onCompleted = jest.fn();
+        const onError = jest.fn();
         const call = clientStreaming.open(onNext, onCompleted, onError);
-        expect(requests).toHaveSize(0);
+        expect(requests).toHaveLength(0);
 
         processEnqueuedPackets();
 
         expect(onNext).toHaveBeenCalledWith(response);
         expect(onError).not.toHaveBeenCalled();
-        expect(onCompleted).toHaveBeenCalledOnceWith(Status.OK);
+        expect(onCompleted).toHaveBeenCalledWith(Status.OK);
       }
     });
 
@@ -569,23 +573,25 @@ describe('RPC', () => {
     it('non-blocking call ended by client', () => {
       const testResponse = newResponse('0.o');
       for (let i = 0; i < 3; i++) {
-        const onNext = jasmine.createSpy();
+        const onNext = jest.fn();
         const stream = clientStreaming.invoke(onNext);
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
 
         stream.send(newRequest(31));
         expect(lastRequest().getType()).toEqual(PacketType.CLIENT_STREAM);
         expect(sentPayload(Request).getMagicNumber()).toEqual(31);
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
 
         // Enqueue the server response to be sent after the next message.
         enqueueResponse(1, clientStreaming.method, Status.OK, testResponse);
 
         stream.finishAndWait();
-        expect(lastRequest().getType()).toEqual(PacketType.CLIENT_STREAM_END);
+        expect(lastRequest().getType()).toEqual(
+          PacketType.CLIENT_REQUEST_COMPLETION,
+        );
 
-        expect(onNext).toHaveBeenCalledOnceWith(testResponse);
-        expect(stream.completed).toBeTrue();
+        expect(onNext).toHaveBeenCalledWith(testResponse);
+        expect(stream.completed).toBe(true);
         expect(stream.status).toEqual(Status.OK);
         expect(stream.error).toBeUndefined();
       }
@@ -596,11 +602,11 @@ describe('RPC', () => {
         const stream = clientStreaming.invoke();
         stream.send(newRequest());
 
-        expect(stream.cancel()).toBeTrue();
+        expect(stream.cancel()).toBe(true);
         expect(lastRequest().getType()).toEqual(PacketType.CLIENT_ERROR);
         expect(lastRequest().getStatus()).toEqual(Status.CANCELLED);
-        expect(stream.cancel()).toBeFalse();
-        expect(stream.completed).toBeTrue();
+        expect(stream.cancel()).toBe(false);
+        expect(stream.completed).toBe(true);
         expect(stream.error).toEqual(Status.CANCELLED);
       }
     });
@@ -612,7 +618,7 @@ describe('RPC', () => {
           1,
           clientStreaming.method,
           Status.INVALID_ARGUMENT,
-          Status.OK
+          Status.OK,
         );
 
         stream.send(newRequest());
@@ -622,7 +628,7 @@ describe('RPC', () => {
           .then(() => {
             fail('Promise should not be resolved');
           })
-          .catch(reason => {
+          .catch((reason) => {
             expect(reason.status).toEqual(Status.INVALID_ARGUMENT);
           });
       }
@@ -631,12 +637,12 @@ describe('RPC', () => {
     it('non-blocking call server error after stream end', async () => {
       for (let i = 0; i < 3; i++) {
         const stream = clientStreaming.invoke();
-        // Error will be sent in response to the CLIENT_STREAM_END packet.
+        // Error will be sent in response to the CLIENT_REQUEST_COMPLETION packet.
         enqueueError(
           1,
           clientStreaming.method,
           Status.INVALID_ARGUMENT,
-          Status.OK
+          Status.OK,
         );
 
         await stream
@@ -644,19 +650,26 @@ describe('RPC', () => {
           .then(() => {
             fail('Promise should not be resolved');
           })
-          .catch(reason => {
+          .catch((reason) => {
             expect(reason.status).toEqual(Status.INVALID_ARGUMENT);
           });
       }
     });
 
     it('non-blocking call send after cancelled', () => {
+      expect.assertions(2);
       const stream = clientStreaming.invoke();
-      expect(stream.cancel()).toBeTrue();
+      expect(stream.cancel()).toBe(true);
 
-      expect(() => stream.send(newRequest())).toThrowMatching(
-        error => error.status === Status.CANCELLED
-      );
+      try {
+        stream.send(newRequest());
+      } catch (e) {
+        console.log(e);
+        expect(e.status).toEqual(Status.CANCELLED);
+      }
+      // expect(() => stream.send(newRequest())).toThrowError(
+      //   error => error.status === Status.CANCELLED
+      // );
     });
 
     it('non-blocking finish after completed', async () => {
@@ -665,7 +678,7 @@ describe('RPC', () => {
         1,
         clientStreaming.method,
         Status.UNAVAILABLE,
-        enqueuedResponse
+        enqueuedResponse,
       );
 
       const stream = clientStreaming.invoke();
@@ -686,7 +699,7 @@ describe('RPC', () => {
           .then(() => {
             fail('Promise should not be resolved');
           })
-          .catch(reason => {
+          .catch((reason) => {
             expect(reason.status).toEqual(Status.UNAVAILABLE);
             expect(stream.error).toEqual(Status.UNAVAILABLE);
             expect(stream.response).toBeUndefined();
@@ -696,11 +709,11 @@ describe('RPC', () => {
 
     it('non-blocking duplicate calls first is cancelled', () => {
       const firstCall = clientStreaming.invoke();
-      expect(firstCall.completed).toBeFalse();
+      expect(firstCall.completed).toBe(false);
 
       const secondCall = clientStreaming.invoke();
       expect(firstCall.error).toEqual(Status.CANCELLED);
-      expect(secondCall.completed).toBeFalse();
+      expect(secondCall.completed).toBe(false);
     });
   });
 
@@ -711,8 +724,8 @@ describe('RPC', () => {
       bidiStreaming = client
         .channel()
         ?.methodStub(
-          'pw.rpc.test1.TheTestService.SomeBidiStreaming'
-        )! as BidirectionalStreamingMethodStub;
+          'pw.rpc.test1.TheTestService.SomeBidiStreaming',
+        ) as BidirectionalStreamingMethodStub;
     });
 
     it('blocking call', async () => {
@@ -735,7 +748,7 @@ describe('RPC', () => {
         .then(() => {
           fail('Promise should not be resolved');
         })
-        .catch(reason => {
+        .catch((reason) => {
           expect(reason.status).toEqual(Status.NOT_FOUND);
         });
     });
@@ -746,15 +759,15 @@ describe('RPC', () => {
 
       for (let i = 0; i < 3; i++) {
         const testResponses: Array<Message> = [];
-        const stream = bidiStreaming.invoke(response => {
+        const stream = bidiStreaming.invoke((response) => {
           testResponses.push(response);
         });
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
 
         stream.send(newRequest(55));
         expect(lastRequest().getType()).toEqual(PacketType.CLIENT_STREAM);
         expect(sentPayload(Request).getMagicNumber()).toEqual(55);
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
         expect(testResponses).toEqual([]);
 
         enqueueServerStream(1, bidiStreaming.method, rep1);
@@ -763,13 +776,13 @@ describe('RPC', () => {
         stream.send(newRequest(66));
         expect(lastRequest().getType()).toEqual(PacketType.CLIENT_STREAM);
         expect(sentPayload(Request).getMagicNumber()).toEqual(66);
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
         expect(testResponses).toEqual([rep1, rep2]);
 
         enqueueResponse(1, bidiStreaming.method, Status.OK);
 
         stream.send(newRequest(77));
-        expect(stream.completed).toBeTrue();
+        expect(stream.completed).toBe(true);
         expect(testResponses).toEqual([rep1, rep2]);
         expect(stream.status).toEqual(Status.OK);
         expect(stream.error).toBeUndefined();
@@ -786,18 +799,18 @@ describe('RPC', () => {
         enqueueServerStream(1, bidiStreaming.method, response2);
         enqueueResponse(1, bidiStreaming.method, Status.OK);
 
-        const onNext = jasmine.createSpy();
-        const onCompleted = jasmine.createSpy();
-        const onError = jasmine.createSpy();
+        const onNext = jest.fn();
+        const onCompleted = jest.fn();
+        const onError = jest.fn();
         const call = bidiStreaming.open(onNext, onCompleted, onError);
-        expect(requests).toHaveSize(0);
+        expect(requests).toHaveLength(0);
 
         processEnqueuedPackets();
 
         expect(onNext).toHaveBeenCalledWith(response1);
         expect(onNext).toHaveBeenCalledWith(response2);
         expect(onError).not.toHaveBeenCalled();
-        expect(onCompleted).toHaveBeenCalledOnceWith(Status.OK);
+        expect(onCompleted).toHaveBeenCalledWith(Status.OK);
       }
     });
 
@@ -815,21 +828,21 @@ describe('RPC', () => {
 
       for (let i = 0; i < 3; i++) {
         const testResponses: Array<Message> = [];
-        const stream = bidiStreaming.invoke(response => {
+        const stream = bidiStreaming.invoke((response) => {
           testResponses.push(response);
         });
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
 
         enqueueServerStream(1, bidiStreaming.method, response);
 
         stream.send(newRequest(55));
-        expect(stream.completed).toBeFalse();
+        expect(stream.completed).toBe(false);
         expect(testResponses).toEqual([response]);
 
         enqueueError(1, bidiStreaming.method, Status.OUT_OF_RANGE, Status.OK);
 
         stream.send(newRequest(999));
-        expect(stream.completed).toBeTrue();
+        expect(stream.completed).toBe(true);
         expect(testResponses).toEqual([response]);
         expect(stream.status).toBeUndefined();
         expect(stream.error).toEqual(Status.OUT_OF_RANGE);
@@ -839,7 +852,7 @@ describe('RPC', () => {
           .then(() => {
             fail('Promise should not be resolved');
           })
-          .catch(reason => {
+          .catch((reason) => {
             expect(reason.status).toEqual(Status.OUT_OF_RANGE);
           });
       }
@@ -848,12 +861,12 @@ describe('RPC', () => {
       for (let i = 0; i < 3; i++) {
         const stream = bidiStreaming.invoke();
 
-        // Error is sent in response to CLIENT_STREAM_END packet.
+        // Error is sent in response to CLIENT_REQUEST_COMPLETION packet.
         enqueueError(
           1,
           bidiStreaming.method,
           Status.INVALID_ARGUMENT,
-          Status.OK
+          Status.OK,
         );
 
         await stream
@@ -861,7 +874,7 @@ describe('RPC', () => {
           .then(() => {
             fail('Promise should not be resolved');
           })
-          .catch(reason => {
+          .catch((reason) => {
             expect(reason.status).toEqual(Status.INVALID_ARGUMENT);
           });
       }
@@ -869,7 +882,7 @@ describe('RPC', () => {
 
     it('non-blocking send after cancelled', async () => {
       const stream = bidiStreaming.invoke();
-      expect(stream.cancel()).toBeTrue();
+      expect(stream.cancel()).toBe(true);
 
       try {
         stream.send(newRequest());
@@ -905,7 +918,7 @@ describe('RPC', () => {
           .then(() => {
             fail('Promise should not be resolved');
           })
-          .catch(reason => {
+          .catch((reason) => {
             expect(reason.status).toEqual(Status.UNAVAILABLE);
             expect(stream.error).toEqual(Status.UNAVAILABLE);
           });
@@ -913,10 +926,10 @@ describe('RPC', () => {
     });
     it('non-blocking duplicate calls first is cancelled', () => {
       const firstCall = bidiStreaming.invoke();
-      expect(firstCall.completed).toBeFalse();
+      expect(firstCall.completed).toBe(false);
       const secondCall = bidiStreaming.invoke();
       expect(firstCall.error).toEqual(Status.CANCELLED);
-      expect(secondCall.completed).toBeFalse();
+      expect(secondCall.completed).toBe(false);
     });
   });
 });

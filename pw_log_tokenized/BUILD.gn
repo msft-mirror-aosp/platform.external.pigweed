@@ -14,11 +14,12 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_build/facade.gni")
 import("$dir_pw_build/module_config.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_log/backend.gni")
-import("$dir_pw_tokenizer/backend.gni")
+import("$dir_pw_log_tokenized/backend.gni")
 import("$dir_pw_unit_test/test.gni")
 
 declare_args() {
@@ -38,21 +39,64 @@ config("backend_config") {
   visibility = [ ":*" ]
 }
 
+config("gcc_partially_tokenized_backend_config") {
+  include_dirs = [ "public_overrides" ]
+  visibility = [ ":*" ]
+}
+
 # This target provides the backend for pw_log.
 pw_source_set("pw_log_tokenized") {
-  public_configs = [
-    ":backend_config",
-    ":public_include_path",
+  public_configs = [ ":backend_config" ]
+  public_deps = [
+    ":handler.facade",  # Depend on the facade to avoid circular dependencies.
+    ":headers",
   ]
+  public = [
+    "public_overrides/pw_log_backend/log_backend.h",
+    "public_overrides/pw_log_backend/log_backend_uses_pw_tokenizer.h",
+  ]
+
+  sources = [ "log_tokenized.cc" ]
+}
+
+pw_source_set("headers") {
+  visibility = [ ":*" ]
+  public_configs = [ ":public_include_path" ]
   public_deps = [
     ":config",
     ":metadata",
-    "$dir_pw_tokenizer:global_handler_with_payload.facade",
+    dir_pw_preprocessor,
+    dir_pw_tokenizer,
+  ]
+  public = [ "public/pw_log_tokenized/log_tokenized.h" ]
+}
+
+# This target provides the backend for pw_log for GCC which tokenizes as much as
+# it can and uses pw_log_string:handler for the rest.
+pw_source_set("gcc_partially_tokenized") {
+  public_configs = [
+    ":gcc_partially_tokenized_backend_config",
+    ":public_include_path",
+  ]
+  public_deps = [
+    ":handler.facade",  # Depend on the facade to avoid circular dependencies.
+    ":headers",
+    "$dir_pw_log_string:handler",
   ]
   public = [
-    "public/pw_log_tokenized/log_tokenized.h",
-    "public_overrides/pw_log_backend/log_backend.h",
+    "gcc_partially_tokenized_public_overrides/pw_log_backend/log_backend.h",
+    "public/pw_log_tokenized/gcc_partially_tokenized.h",
   ]
+  sources = [ "log_tokenized.cc" ]
+}
+
+pw_facade("handler") {
+  public_configs = [ ":public_include_path" ]
+  public_deps = [ dir_pw_preprocessor ]
+
+  public = [ "public/pw_log_tokenized/handler.h" ]
+
+  backend = pw_log_tokenized_HANDLER_BACKEND
 }
 
 pw_source_set("metadata") {
@@ -65,6 +109,7 @@ pw_source_set("config") {
   public_configs = [ ":public_include_path" ]
   public_deps = [
     "$dir_pw_log:facade",
+    "$dir_pw_tokenizer:config",
     pw_log_tokenized_CONFIG,
   ]
   public = [ "public/pw_log_tokenized/config.h" ]
@@ -74,23 +119,33 @@ pw_source_set("config") {
 # pw_log is so ubiquitous. These deps are kept separate so they can be
 # depended on from elsewhere.
 pw_source_set("pw_log_tokenized.impl") {
-  deps = [
-    ":pw_log_tokenized",
-    "$dir_pw_tokenizer:global_handler_with_payload",
+  deps = [ ":pw_log_tokenized" ]
+
+  if (pw_log_tokenized_HANDLER_BACKEND != "") {
+    deps += [ ":handler" ]
+  }
+}
+
+pw_source_set("base64") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_log_tokenized/base64.h" ]
+  public_deps = [
+    ":config",
+    "$dir_pw_tokenizer:base64",
   ]
 }
 
 # This target provides a backend for pw_tokenizer that encodes tokenized logs as
 # Base64, encodes them into HDLC frames, and writes them over sys_io.
 pw_source_set("base64_over_hdlc") {
-  public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_log_tokenized/base64_over_hdlc.h" ]
   sources = [ "base64_over_hdlc.cc" ]
   deps = [
+    ":base64",
+    ":handler.facade",
     "$dir_pw_hdlc:encoder",
     "$dir_pw_stream:sys_io_stream",
     "$dir_pw_tokenizer:base64",
-    "$dir_pw_tokenizer:global_handler_with_payload.facade",
+    dir_pw_span,
   ]
 }
 
@@ -108,7 +163,8 @@ pw_test("log_tokenized_test") {
     "pw_log_tokenized_private/test_utils.h",
   ]
   deps = [
-    ":pw_log_tokenized",
+    ":base64",
+    ":headers",
     dir_pw_preprocessor,
   ]
 }

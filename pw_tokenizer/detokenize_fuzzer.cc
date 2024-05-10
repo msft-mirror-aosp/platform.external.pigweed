@@ -44,7 +44,7 @@ enum DetokenizeBufferArgumentType : uint8_t {
 // database, we construct a minimal database with 4 entries out of a string
 // literal array that matches the token database format (see token_database.h
 // for detailed info on the database entry format)
-alignas(TokenDatabase::RawEntry) constexpr char kBasicData[] =
+constexpr char kBasicData[] =
     "TOKENS\0\0"
     "\x04\x00\x00\x00"
     "\0\0\0\0"
@@ -76,7 +76,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         std::vector<uint8_t> buffer =
             provider.ConsumeBytes<uint8_t>(consumed_size);
         auto detokenized_string =
-            detokenizer.Detokenize(std::span(&buffer[0], buffer.size()));
+            detokenizer.Detokenize(span(&buffer[0], buffer.size()));
         static_cast<void>(detokenized_string);
         break;
       }

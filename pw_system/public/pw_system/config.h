@@ -24,16 +24,17 @@
 // PW_SYSTEM_MAX_LOG_ENTRY_SIZE limits the proto-encoded log entry size. This
 // value might depend on a target interface's MTU.
 //
-// Defaults to 512B.
+// Defaults to 256B.
 #ifndef PW_SYSTEM_MAX_LOG_ENTRY_SIZE
-#define PW_SYSTEM_MAX_LOG_ENTRY_SIZE 512
+#define PW_SYSTEM_MAX_LOG_ENTRY_SIZE 256
 #endif  // PW_SYSTEM_MAX_LOG_ENTRY_SIZE
 
 // PW_SYSTEM_MAX_TRANSMISSION_UNIT target's MTU.
 //
-// Defaults to 512B.
+// Defaults to 1055 bytes, which is enough to fit 512-byte payloads when using
+// HDLC framing.
 #ifndef PW_SYSTEM_MAX_TRANSMISSION_UNIT
-#define PW_SYSTEM_MAX_TRANSMISSION_UNIT 512
+#define PW_SYSTEM_MAX_TRANSMISSION_UNIT 1055
 #endif  // PW_SYSTEM_MAX_TRANSMISSION_UNIT
 
 // PW_SYSTEM_DEFAULT_CHANNEL_ID RPC channel ID to host.
@@ -43,12 +44,52 @@
 #define PW_SYSTEM_DEFAULT_CHANNEL_ID 1
 #endif  // PW_SYSTEM_DEFAULT_CHANNEL_ID
 
+// PW_SYSTEM_LOGGING_CHANNEL_ID logging RPC channel ID to host. If this is
+// different from PW_SYSTEM_DEFAULT_CHANNEL_ID, then
+// PW_SYSTEM_LOGGING_RPC_HDLC_ADDRESS must also be different from
+// PW_SYSTEM_DEFAULT_RPC_HDLC_ADDRESS.
+//
+// Defaults to PW_SYSTEM_DEFAULT_CHANNEL_ID.
+#ifndef PW_SYSTEM_LOGGING_CHANNEL_ID
+#define PW_SYSTEM_LOGGING_CHANNEL_ID PW_SYSTEM_DEFAULT_CHANNEL_ID
+#endif  // PW_SYSTEM_LOGGING_CHANNEL_ID
+
 // PW_SYSTEM_DEFAULT_RPC_HDLC_ADDRESS RPC HDLC default address.
 //
 // Defaults to 82.
 #ifndef PW_SYSTEM_DEFAULT_RPC_HDLC_ADDRESS
 #define PW_SYSTEM_DEFAULT_RPC_HDLC_ADDRESS 82
 #endif  // PW_SYSTEM_DEFAULT_RPC_HDLC_ADDRESS
+
+// PW_SYSTEM_LOGGING_RPC_HDLC_ADDRESS RPC HDLC logging address.
+//
+// Defaults to PW_SYSTEM_DEFAULT_RPC_HDLC_ADDRESS.
+#ifndef PW_SYSTEM_LOGGING_RPC_HDLC_ADDRESS
+#define PW_SYSTEM_LOGGING_RPC_HDLC_ADDRESS PW_SYSTEM_DEFAULT_RPC_HDLC_ADDRESS
+#endif  // PW_SYSTEM_LOGGING_RPC_HDLC_ADDRESS
+
+// PW_SYSTEM_ENABLE_TRACE_SERVICE specifies if the trace RPC service is enabled.
+//
+// Defaults to 1.
+#ifndef PW_SYSTEM_ENABLE_TRACE_SERVICE
+#define PW_SYSTEM_ENABLE_TRACE_SERVICE 1
+#endif  // PW_SYSTEM_ENABLE_TRACE_SERVICE
+
+// PW_SYSTEM_ENABLE_TRANSFER_SERVICE specifies if the transfer RPC service is
+// enabled.
+//
+// Defaults to 1.
+#ifndef PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+#define PW_SYSTEM_ENABLE_TRANSFER_SERVICE 1
+#endif  // PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+
+// PW_SYSTEM_ENABLE_THREAD_SNAPSHOT_SERVICE specifies if the thread snapshot
+// RPC service is enabled.
+//
+// Defaults to 1.
+#ifndef PW_SYSTEM_ENABLE_THREAD_SNAPSHOT_SERVICE
+#define PW_SYSTEM_ENABLE_THREAD_SNAPSHOT_SERVICE 1
+#endif  // PW_SYSTEM_ENABLE_THREAD_SNAPSHOT_SERVICE
 
 // PW_SYSTEM_WORK_QUEUE_MAX_ENTRIES specifies the maximum number of work queue
 // entries that may be staged at once.

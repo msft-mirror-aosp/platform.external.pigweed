@@ -15,22 +15,42 @@
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 include($ENV{PW_ROOT}/pw_protobuf_compiler/proto.cmake)
 
-pw_add_module_library(pw_trace_tokenized
-  IMPLEMENTS_FACADES
-    pw_trace
+pw_add_module_config(pw_trace_tokenized_CONFIG)
+
+pw_add_library(pw_trace_tokenized.config INTERFACE
+  HEADERS
+    public/pw_trace_tokenized/config.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    ${pw_trace_CONFIG}
+)
+
+pw_add_library(pw_trace_tokenized STATIC
+  HEADERS
+    public/pw_trace_tokenized/internal/trace_tokenized_internal.h
+    public/pw_trace_tokenized/trace_callback.h
+    public/pw_trace_tokenized/trace_tokenized.h
+    public_overrides/pw_trace_backend/trace_backend.h
+  PUBLIC_INCLUDES
+    public
+    public_overrides
+  PUBLIC_DEPS
+    pw_span
+    pw_status
+    pw_tokenizer
+    pw_trace_tokenized.config
   SOURCES
     trace.cc
   PRIVATE_DEPS
     pw_assert
     pw_log
     pw_ring_buffer
+    pw_trace.facade
     pw_varint
-  PUBLIC_DEPS
-    pw_status
-    pw_tokenizer
 )
 
-pw_add_module_library(pw_trace_tokenized.trace_buffer
+pw_add_library(pw_trace_tokenized.trace_buffer STATIC
   SOURCES
     trace_buffer.cc
   PRIVATE_DEPS
@@ -42,17 +62,22 @@ pw_add_module_library(pw_trace_tokenized.trace_buffer
     pw_status
     pw_tokenizer
     pw_trace_tokenized
+    pw_trace_tokenized.config
     pw_varint
 )
 
 pw_proto_library(pw_trace_tokenized.protos
   SOURCES
     pw_trace_protos/trace_rpc.proto
+    pw_trace_protos/trace_service.proto
   INPUTS
     pw_trace_protos/trace_rpc.options
+    pw_trace_protos/trace_service.options
+  DEPS
+    pw_chrono.protos
 )
 
-pw_add_module_library(pw_trace_tokenized.rpc_service
+pw_add_library(pw_trace_tokenized.rpc_service STATIC
   SOURCES
     trace_rpc_service_nanopb.cc
   PRIVATE_DEPS
@@ -65,4 +90,26 @@ pw_add_module_library(pw_trace_tokenized.rpc_service
   PUBLIC_DEPS
     pw_tokenizer
     pw_status
+)
+
+pw_add_library(pw_trace_tokenized.base_trace_service STATIC
+  SOURCES
+    base_trace_service.cc
+  PRIVATE_DEPS
+    pw_log
+    pw_stream
+    pw_ring_buffer
+  PUBLIC_DEPS
+    pw_trace_tokenized
+    pw_trace_tokenized.trace_buffer
+)
+
+pw_add_library(pw_trace_tokenized.trace_service_pwpb STATIC
+  SOURCES
+    trace_service_pwpb.cc
+  PRIVATE_DEPS
+    pw_chrono.system_clock
+  PUBLIC_DEPS
+    pw_trace_tokenized.base_trace_service
+    pw_trace_tokenized.protos.pwpb_rpc
 )

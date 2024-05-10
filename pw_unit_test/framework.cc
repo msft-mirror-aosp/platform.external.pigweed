@@ -12,10 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_unit_test/framework.h"
+#include "pw_unit_test/internal/framework.h"
 
 #include <algorithm>
 #include <cstring>
+
+#include "pw_assert/check.h"
 
 namespace pw {
 namespace unit_test {
@@ -48,6 +50,7 @@ void Framework::RegisterTest(TestInfo* new_test) const {
 }
 
 int Framework::RunAllTests() {
+  exit_status_ = 0;
   run_tests_summary_.passed_tests = 0;
   run_tests_summary_.failed_tests = 0;
   run_tests_summary_.skipped_tests = 0;
@@ -73,6 +76,36 @@ int Framework::RunAllTests() {
     event_handler_->RunAllTestsEnd(run_tests_summary_);
   }
   return exit_status_;
+}
+
+void Framework::SetUpTestSuiteIfNeeded(SetUpTestSuiteFunc set_up_ts) const {
+  if (set_up_ts == Test::SetUpTestSuite) {
+    return;
+  }
+
+  for (TestInfo* info = tests_; info != current_test_; info = info->next()) {
+    if (info->test_case().suite_name == current_test_->test_case().suite_name) {
+      return;
+    }
+  }
+
+  set_up_ts();
+}
+
+void Framework::TearDownTestSuiteIfNeeded(
+    TearDownTestSuiteFunc tear_down_ts) const {
+  if (tear_down_ts == Test::TearDownTestSuite) {
+    return;
+  }
+
+  for (TestInfo* info = current_test_->next(); info != nullptr;
+       info = info->next()) {
+    if (info->test_case().suite_name == current_test_->test_case().suite_name) {
+      return;
+    }
+  }
+
+  tear_down_ts();
 }
 
 void Framework::StartTest(const TestInfo& test) {
@@ -116,6 +149,12 @@ void Framework::CurrentTestExpectSimple(const char* expression,
                                         const char* evaluated_expression,
                                         int line,
                                         bool success) {
+  PW_CHECK_NOTNULL(
+      current_test_,
+      "EXPECT/ASSERT was called when no test was running! EXPECT/ASSERT cannot "
+      "be used from static constructors/destructors or before or after "
+      "RUN_ALL_TESTS().");
+
   if (!success) {
     current_result_ = TestResult::kFailure;
     exit_status_ = 1;

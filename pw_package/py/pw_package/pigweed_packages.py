@@ -16,19 +16,31 @@
 import sys
 
 from pw_package import package_manager
-from pw_package.packages import arduino_core  # pylint: disable=unused-import
-from pw_package.packages import boringssl  # pylint: disable=unused-import
-from pw_package.packages import chromium_verifier  # pylint: disable=unused-import
-from pw_package.packages import crlset  # pylint: disable=unused-import
-from pw_package.packages import freertos  # pylint: disable=unused-import
-from pw_package.packages import googletest  # pylint: disable=unused-import
-from pw_package.packages import mbedtls  # pylint: disable=unused-import
-from pw_package.packages import micro_ecc  # pylint: disable=unused-import
+
+# pylint: disable=unused-import
+from pw_package.packages import abseil_cpp
+from pw_package.packages import arduino_core
+from pw_package.packages import boringssl
+from pw_package.packages import chromium_verifier
+from pw_package.packages import crlset
+from pw_package.packages import emboss
+from pw_package.packages import freertos
+from pw_package.packages import fuzztest
+from pw_package.packages import googletest
+from pw_package.packages import mbedtls
+from pw_package.packages import mcuxpresso
+from pw_package.packages import micro_ecc
 from pw_package.packages import nanopb
-from pw_package.packages import pico_sdk  # pylint: disable=unused-import
-from pw_package.packages import protobuf  # pylint: disable=unused-import
-from pw_package.packages import smartfusion_mss  # pylint: disable=unused-import
-from pw_package.packages import stm32cube  # pylint: disable=unused-import
+from pw_package.packages import pico_sdk
+from pw_package.packages import picotool
+from pw_package.packages import protobuf
+from pw_package.packages import re2
+from pw_package.packages import smartfusion_mss
+from pw_package.packages import stm32cube
+from pw_package.packages import zephyr
+from pw_package.packages import chre
+
+# pylint: enable=unused-import
 
 
 def initialize():

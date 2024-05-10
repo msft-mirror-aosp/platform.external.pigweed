@@ -18,11 +18,16 @@ if(NOT CONFIG_PIGWEED_SYS_IO)
   return()
 endif()
 
-pw_auto_add_simple_module(pw_sys_io_zephyr
-  IMPLEMENTS_FACADE
-    pw_sys_io
+pw_add_library(pw_sys_io_zephyr STATIC
+  SOURCES
+    sys_io.cc
   PUBLIC_DEPS
+    pw_sys_io.facade
+    pw_sys_io.default_putget_bytes
     zephyr_interface
 )
-pw_set_backend(pw_sys_io pw_sys_io_zephyr)
-zephyr_link_libraries(pw_sys_io_zephyr)
+
+pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_SYS_IO
+  pw_sys_io.default_putget_bytes
+  pw_sys_io_zephyr
+)

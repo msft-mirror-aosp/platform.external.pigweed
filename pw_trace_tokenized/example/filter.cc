@@ -35,15 +35,11 @@
 #include "pw_trace_tokenized/trace_tokenized.h"
 
 pw_trace_TraceEventReturnFlags TraceEventCallback(
-    void* /* user_data */,
-    uint32_t /* trace_ref */,
-    pw_trace_EventType /* event_type */,
-    const char* module,
-    uint32_t trace_id,
-    uint8_t /* flags */) {
+    void* /* user_data */, pw_trace_tokenized_TraceEvent* event) {
   // Filter out all traces from processing task, which aren't traceId 3
   static constexpr uint32_t kFilterId = 3;
-  return (strcmp("Processing", module) == 0 && trace_id != kFilterId)
+  return (strcmp("Processing", event->module) == 0 &&
+          event->trace_id != kFilterId)
              ? PW_TRACE_EVENT_RETURN_FLAGS_SKIP_EVENT
              : 0;
 }
@@ -55,14 +51,14 @@ int main(int argc, char** argv) {  // Take filename as arg
   }
 
   // Register filter callback
-  pw::trace::Callbacks::Instance()
-      .RegisterEventCallback(TraceEventCallback)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  pw::trace::Callbacks& callbacks = pw::trace::GetCallbacks();
+  callbacks.RegisterEventCallback(TraceEventCallback)
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
 
   PW_TRACE_SET_ENABLED(true);  // Start with tracing enabled
 
   // Dump trace data to the file passed in.
-  pw::trace::TraceToFile trace_to_file(argv[1]);
+  pw::trace::TraceToFile trace_to_file(callbacks, argv[1]);
 
   PW_LOG_INFO("Running filter example...");
   RunTraceSampleApp();

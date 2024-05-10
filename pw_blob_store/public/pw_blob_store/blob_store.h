@@ -14,7 +14,6 @@
 #pragma once
 
 #include <cstddef>
-#include <span>
 
 #include "pw_assert/assert.h"
 #include "pw_blob_store/internal/metadata_format.h"
@@ -22,6 +21,7 @@
 #include "pw_kvs/checksum.h"
 #include "pw_kvs/flash_memory.h"
 #include "pw_kvs/key_value_store.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 #include "pw_status/try.h"
@@ -66,9 +66,9 @@ class BlobStore {
         : store_(store), metadata_buffer_(metadata_buffer), open_(false) {}
     BlobWriter(const BlobWriter&) = delete;
     BlobWriter& operator=(const BlobWriter&) = delete;
-    virtual ~BlobWriter() {
+    ~BlobWriter() override {
       if (open_) {
-        Close().IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        Close().IgnoreError();  // TODO: b/242598609 - Handle Status properly
       }
     }
 
@@ -200,7 +200,7 @@ class BlobStore {
         : BlobWriter(store, metadata_buffer) {}
     DeferredWriter(const DeferredWriter&) = delete;
     DeferredWriter& operator=(const DeferredWriter&) = delete;
-    virtual ~DeferredWriter() {}
+    ~DeferredWriter() override {}
 
     // Flush data in the write buffer. Only a multiple of flash_write_size_bytes
     // are written in the flush. Any remainder is held until later for either
@@ -255,7 +255,7 @@ class BlobStore {
     BlobReader(const BlobReader&) = delete;
     BlobReader& operator=(const BlobReader&) = delete;
 
-    ~BlobReader() {
+    ~BlobReader() override {
       if (open_) {
         Close().IgnoreError();
       }
@@ -297,7 +297,7 @@ class BlobStore {
     //   NOT_FOUND - No file name set for this blob.
     //   FAILED_PRECONDITION - not open
     //
-    StatusWithSize GetFileName(std::span<char> dest) {
+    StatusWithSize GetFileName(span<char> dest) {
       return open_ ? store_.GetFileName(dest)
                    : StatusWithSize::FailedPrecondition();
     }
@@ -322,7 +322,7 @@ class BlobStore {
     // other than OK. See stream.h for additional details.
     size_t ConservativeLimit(LimitType limit) const override;
 
-    size_t DoTell() const override;
+    size_t DoTell() override;
 
     Status DoSeek(ptrdiff_t offset, Whence origin) override;
 
@@ -349,7 +349,7 @@ class BlobStore {
   BlobStore(std::string_view name,
             kvs::FlashPartition& partition,
             kvs::ChecksumAlgorithm* checksum_algo,
-            sync::Borrowable<kvs::KeyValueStore>& kvs,
+            sync::Borrowable<kvs::KeyValueStore> kvs,
             ByteSpan write_buffer,
             size_t flash_write_size_bytes)
       : name_(name),
@@ -542,13 +542,13 @@ class BlobStore {
   //     first N bytes of the file name.
   //   NOT_FOUND - No file name set for this blob.
   //   FAILED_PRECONDITION - BlobStore has not been initialized.
-  StatusWithSize GetFileName(std::span<char> dest) const;
+  StatusWithSize GetFileName(span<char> dest) const;
 
   std::string_view name_;
   kvs::FlashPartition& partition_;
   // checksum_algo_ of nullptr indicates no checksum algorithm.
   kvs::ChecksumAlgorithm* const checksum_algo_;
-  sync::Borrowable<kvs::KeyValueStore>& kvs_;
+  sync::Borrowable<kvs::KeyValueStore> kvs_;
   ByteSpan write_buffer_;
 
   // Size in bytes of flash write operations. This should be chosen to balance
@@ -559,7 +559,7 @@ class BlobStore {
   //
   // Internal state for Blob store
   //
-  // TODO: Consolidate blob state to a single struct
+  // TODO(davidrogers): Consolidate blob state to a single struct
 
   // Initialization has been done.
   bool initialized_;
@@ -611,7 +611,7 @@ class BlobStoreBuffer : public BlobStore {
   explicit BlobStoreBuffer(std::string_view name,
                            kvs::FlashPartition& partition,
                            kvs::ChecksumAlgorithm* checksum_algo,
-                           sync::Borrowable<kvs::KeyValueStore>& kvs,
+                           sync::Borrowable<kvs::KeyValueStore> kvs,
                            size_t flash_write_size_bytes)
       : BlobStore(name,
                   partition,

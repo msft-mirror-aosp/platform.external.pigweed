@@ -1,4 +1,4 @@
-// Copyright 2021 The Pigweed Authors
+// Copyright 2022 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,12 +12,9 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-/* eslint-env browser, jasmine */
-import 'jasmine';
+/* eslint-env browser */
 
-import {Buffer} from 'buffer';
-
-import {Encoder} from './encoder';
+import { Encoder } from './encoder';
 import * as protocol from './protocol';
 import * as util from './util';
 
@@ -43,34 +40,34 @@ describe('Encoder', () => {
   it('creates frame for empty data', () => {
     const data = textEncoder.encode('');
     expect(encoder.uiFrame(0, data)).toEqual(
-      withFlags(withFCS(new Uint8Array([0x01, 0x03])))
+      withFlags(withFCS(new Uint8Array([0x01, 0x03]))),
     );
     expect(encoder.uiFrame(0x1a, data)).toEqual(
-      withFlags(withFCS(new Uint8Array([0x35, 0x03])))
+      withFlags(withFCS(new Uint8Array([0x35, 0x03]))),
     );
     expect(encoder.uiFrame(0x1a, data)).toEqual(
-      withFlags(withFCS(textEncoder.encode('\x35\x03')))
+      withFlags(withFCS(textEncoder.encode('\x35\x03'))),
     );
   });
 
   it('creates frame for one byte', () => {
     const data = textEncoder.encode('A');
     expect(encoder.uiFrame(0, data)).toEqual(
-      withFlags(withFCS(textEncoder.encode('\x01\x03A')))
+      withFlags(withFCS(textEncoder.encode('\x01\x03A'))),
     );
   });
 
   it('creates frame for multibyte data', () => {
     const data = textEncoder.encode('123456789');
     expect(encoder.uiFrame(0, data)).toEqual(
-      withFlags(withFCS(textEncoder.encode('\x01\x03123456789')))
+      withFlags(withFCS(textEncoder.encode('\x01\x03123456789'))),
     );
   });
 
   it('creates frame for multibyte data with address', () => {
     const data = textEncoder.encode('123456789');
     expect(encoder.uiFrame(128, data)).toEqual(
-      withFlags(withFCS(textEncoder.encode('\x00\x03\x03123456789')))
+      withFlags(withFCS(textEncoder.encode('\x00\x03\x03123456789'))),
     );
   });
 
@@ -78,15 +75,30 @@ describe('Encoder', () => {
     const data = textEncoder.encode('\x7d');
     const expectedContent = util.concatenate(
       textEncoder.encode('\x7d\x5d\x03\x7d\x5d'),
-      protocol.frameCheckSequence(textEncoder.encode('\x7d\x03\x7d'))
+      protocol.frameCheckSequence(textEncoder.encode('\x7d\x03\x7d')),
     );
     expect(encoder.uiFrame(0x3e, data)).toEqual(withFlags(expectedContent));
 
     const data2 = textEncoder.encode('A\x7e\x7dBC');
     const expectedContent2 = util.concatenate(
       textEncoder.encode('\x7d\x5d\x03A\x7d\x5e\x7d\x5dBC'),
-      protocol.frameCheckSequence(textEncoder.encode('\x7d\x03A\x7e\x7dBC'))
+      protocol.frameCheckSequence(textEncoder.encode('\x7d\x03A\x7e\x7dBC')),
     );
     expect(encoder.uiFrame(0x3e, data2)).toEqual(withFlags(expectedContent2));
+  });
+
+  it('Computes frameCheckSequence correctly', () => {
+    expect(
+      protocol.frameCheckSequence(textEncoder.encode('\x7d\x03A\x7e\x7dBC')),
+    ).toEqual(new Uint8Array([195, 124, 135, 9]));
+    expect(
+      protocol.frameCheckSequence(textEncoder.encode('\x7d\x5d\x03\x7d\x5d')),
+    ).toEqual(new Uint8Array([183, 144, 10, 115]));
+    expect(
+      protocol.frameCheckSequence(textEncoder.encode('\x7d\x03\x7d')),
+    ).toEqual(new Uint8Array([83, 124, 241, 166]));
+    expect(
+      protocol.frameCheckSequence(textEncoder.encode('hello pigweed')),
+    ).toEqual(new Uint8Array([34, 22, 236, 2]));
   });
 });

@@ -30,6 +30,8 @@ namespace pw::software_update {
 class BundledUpdateService
     : public pw_rpc::nanopb::BundledUpdate::Service<BundledUpdateService> {
  public:
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wmissing-field-initializers");
   BundledUpdateService(UpdateBundleAccessor& bundle,
                        BundledUpdateBackend& backend,
                        work_queue::WorkQueue& work_queue)
@@ -41,6 +43,7 @@ class BundledUpdateService
         bundle_open_(false),
         work_queue_(work_queue),
         work_enqueued_(false) {}
+  PW_MODIFY_DIAGNOSTICS_POP();
 
   Status GetStatus(const pw_protobuf_Empty& request,
                    pw_software_update_BundledUpdateStatus& response);
@@ -62,7 +65,7 @@ class BundledUpdateService
                pw_software_update_BundledUpdateStatus& response);
 
   // Currently sync, should be async.
-  // TODO: Make this async to support aborting verify/apply.
+  // TODO(keir): Make this async to support aborting verify/apply.
   Status Abort(const pw_protobuf_Empty& request,
                pw_software_update_BundledUpdateStatus& response);
 
@@ -81,24 +84,22 @@ class BundledUpdateService
   // TODO(davidrogers) Add a MaybeFinishApply() method that is called after
   // reboot to finish any need apply and verify work.
 
-  // TODO:
-  // VerifyProgress - to update % complete.
-  // ApplyProgress - to update % complete.
+  // TODO(keir): VerifyProgress - to update % complete.
+  // TODO(keir): ApplyProgress - to update % complete.
 
  private:
   // Top-level lock for OTA state coherency. May be held for extended periods.
   sync::Mutex mutex_;
-  BundledUpdateBackend& backend_ PW_GUARDED_BY(mutex_);
-  UpdateBundleAccessor& bundle_ PW_GUARDED_BY(mutex_);
-  bool bundle_open_ PW_GUARDED_BY(mutex_);
-  work_queue::WorkQueue& work_queue_ PW_GUARDED_BY(mutex_);
-  bool work_enqueued_ PW_GUARDED_BY(mutex_);
-
   // Nested lock for safe status updates and queries.
   sync::Mutex status_mutex_ PW_ACQUIRED_AFTER(mutex_);
   pw_software_update_BundledUpdateStatus unsafe_status_
       PW_GUARDED_BY(status_mutex_);
   sync::Borrowable<pw_software_update_BundledUpdateStatus, sync::Mutex> status_;
+  BundledUpdateBackend& backend_ PW_GUARDED_BY(mutex_);
+  UpdateBundleAccessor& bundle_ PW_GUARDED_BY(mutex_);
+  bool bundle_open_ PW_GUARDED_BY(mutex_);
+  work_queue::WorkQueue& work_queue_ PW_GUARDED_BY(mutex_);
+  bool work_enqueued_ PW_GUARDED_BY(mutex_);
 
   void DoVerify() PW_LOCKS_EXCLUDED(status_mutex_);
   void DoApply() PW_LOCKS_EXCLUDED(status_mutex_);

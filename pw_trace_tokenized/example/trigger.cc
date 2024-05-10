@@ -53,17 +53,14 @@ constexpr uint32_t kTriggerEndTraceRef = PW_TRACE_REF(PW_TRACE_TYPE_ASYNC_END,
 }  // namespace
 
 pw_trace_TraceEventReturnFlags TraceEventCallback(
-    void* /* user_data */,
-    uint32_t trace_ref,
-    pw_trace_EventType /* event_type */,
-    const char* /* module */,
-    uint32_t trace_id,
-    uint8_t /* flags */) {
-  if (trace_ref == kTriggerStartTraceRef && trace_id == kTriggerId) {
+    void* /* user_data */, pw_trace_tokenized_TraceEvent* event) {
+  if (event->trace_token == kTriggerStartTraceRef &&
+      event->trace_id == kTriggerId) {
     PW_LOG_INFO("Trace capture started!");
     PW_TRACE_SET_ENABLED(true);
   }
-  if (trace_ref == kTriggerEndTraceRef && trace_id == kTriggerId) {
+  if (event->trace_token == kTriggerEndTraceRef &&
+      event->trace_id == kTriggerId) {
     PW_LOG_INFO("Trace capture ended!");
     return PW_TRACE_EVENT_RETURN_FLAGS_DISABLE_AFTER_PROCESSING;
   }
@@ -77,16 +74,17 @@ int main(int argc, char** argv) {  // Take filename as arg
   }
 
   // Register trigger callback
-  pw::trace::Callbacks::Instance()
+  pw::trace::Callbacks& callbacks = pw::trace::GetCallbacks();
+  callbacks
       .RegisterEventCallback(TraceEventCallback,
-                             pw::trace::CallbacksImpl::kCallOnEveryEvent)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+                             pw::trace::Callbacks::kCallOnEveryEvent)
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
 
   // Ensure tracing is off at start, the trigger will turn it on.
   PW_TRACE_SET_ENABLED(false);
 
   // Dump trace data to the file passed in.
-  pw::trace::TraceToFile trace_to_file(argv[1]);
+  pw::trace::TraceToFile trace_to_file(callbacks, argv[1]);
 
   PW_LOG_INFO("Running trigger example...");
   RunTraceSampleApp();

@@ -20,8 +20,8 @@ pw_python_package("py") {
   setup = [
     "pyproject.toml",
     "setup.cfg",
-    "setup.py",
   ]
   sources = [ "pw_status/__init__.py" ]
   pylintrc = "$dir_pigweed/.pylintrc"
+  mypy_ini = "$dir_pigweed/.mypy.ini"
 }

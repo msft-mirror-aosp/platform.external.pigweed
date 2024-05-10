@@ -26,12 +26,12 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "pw_span/span.h"
 #include "pw_tokenizer/internal/decode.h"
 #include "pw_tokenizer/token_database.h"
 
@@ -44,8 +44,8 @@ using TokenizedStringEntry = std::pair<FormatString, uint32_t /*date removed*/>;
 class DetokenizedString {
  public:
   DetokenizedString(uint32_t token,
-                    const std::span<const TokenizedStringEntry>& entries,
-                    const std::span<const uint8_t>& arguments);
+                    const span<const TokenizedStringEntry>& entries,
+                    const span<const uint8_t>& arguments);
 
   DetokenizedString() : has_token_(false) {}
 
@@ -54,6 +54,8 @@ class DetokenizedString {
 
   // Returns the strings that matched the token, with the best matches first.
   const std::vector<DecodedFormatString>& matches() const { return matches_; }
+
+  const uint32_t& token() const { return token_; }
 
   // Returns the detokenized string or an empty string if there were no matches.
   // If there are multiple possible results, the DetokenizedString returns the
@@ -80,15 +82,23 @@ class Detokenizer {
 
   // Decodes and detokenizes the encoded message. Returns a DetokenizedString
   // that stores all possible detokenized string results.
-  DetokenizedString Detokenize(const std::span<const uint8_t>& encoded) const;
+  DetokenizedString Detokenize(const span<const uint8_t>& encoded) const;
 
-  DetokenizedString Detokenize(const std::string_view& encoded) const {
+  // Decodes and detokenizes a Base64 encoded message. Returns a
+  // DetokenizedString that stores all possible detokenized string results.
+  DetokenizedString DetokenizeBase64Message(std::string_view text) const;
+
+  // Decodes and detokenizes nested Base64 messages in a string. Returns the
+  // original string with Base64 tokenized messages decoded in context. Messages
+  // that fail to decode are left as is.
+  std::string DetokenizeBase64(std::string_view text) const;
+
+  DetokenizedString Detokenize(std::string_view encoded) const {
     return Detokenize(encoded.data(), encoded.size());
   }
 
   DetokenizedString Detokenize(const void* encoded, size_t size_bytes) const {
-    return Detokenize(
-        std::span(static_cast<const uint8_t*>(encoded), size_bytes));
+    return Detokenize(span(static_cast<const uint8_t*>(encoded), size_bytes));
   }
 
  private:

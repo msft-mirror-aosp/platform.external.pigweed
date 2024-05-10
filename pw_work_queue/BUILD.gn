@@ -27,17 +27,16 @@ config("public_include_path") {
 
 pw_source_set("pw_work_queue") {
   public_configs = [ ":public_include_path" ]
-  public = [
-    "public/pw_work_queue/internal/circular_buffer.h",
-    "public/pw_work_queue/work_queue.h",
-  ]
+  public = [ "public/pw_work_queue/work_queue.h" ]
   public_deps = [
+    "$dir_pw_containers:inline_queue",
     "$dir_pw_sync:interrupt_spin_lock",
     "$dir_pw_sync:lock_annotations",
     "$dir_pw_sync:thread_notification",
     "$dir_pw_thread:thread",
     dir_pw_function,
     dir_pw_metric,
+    dir_pw_span,
     dir_pw_status,
   ]
   sources = [ "work_queue.cc" ]
@@ -54,6 +53,7 @@ pw_source_set("test_thread") {
 # pw_source_set and a pw_source_set which provides the implementation of
 # test_thread. See ":stl_work_queue_test" as an example.
 pw_source_set("work_queue_test") {
+  testonly = pw_unit_test_TESTONLY
   sources = [ "work_queue_test.cc" ]
   deps = [
     ":pw_work_queue",

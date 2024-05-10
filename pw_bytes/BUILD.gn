@@ -19,32 +19,46 @@ import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_unit_test/test.gni")
 
-config("default_config") {
+config("public_include_path") {
   include_dirs = [ "public" ]
   visibility = [ ":*" ]
 }
 
 pw_source_set("pw_bytes") {
-  public_configs = [ ":default_config" ]
+  public_configs = [ ":public_include_path" ]
   public = [
+    "public/pw_bytes/alignment.h",
     "public/pw_bytes/array.h",
     "public/pw_bytes/byte_builder.h",
     "public/pw_bytes/endian.h",
     "public/pw_bytes/span.h",
+    "public/pw_bytes/suffix.h",
     "public/pw_bytes/units.h",
   ]
   sources = [ "byte_builder.cc" ]
   public_deps = [
+    "$dir_pw_bytes:bit",
+    "$dir_pw_containers:iterator",
     dir_pw_preprocessor,
+    dir_pw_span,
     dir_pw_status,
   ]
 }
 
+pw_source_set("bit") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_bytes/bit.h" ]
+  public_deps = [ "$dir_pw_third_party/fuchsia:stdcompat" ]
+}
+
 pw_test_group("tests") {
   tests = [
+    ":alignment_test",
     ":array_test",
+    ":bit_test",
     ":byte_builder_test",
     ":endian_test",
+    ":suffix_test",
     ":units_test",
   ]
   group_deps = [
@@ -53,9 +67,19 @@ pw_test_group("tests") {
   ]
 }
 
+pw_test("alignment_test") {
+  deps = [ ":pw_bytes" ]
+  sources = [ "alignment_test.cc" ]
+}
+
 pw_test("array_test") {
   deps = [ ":pw_bytes" ]
   sources = [ "array_test.cc" ]
+}
+
+pw_test("bit_test") {
+  deps = [ ":bit" ]
+  sources = [ "bit_test.cc" ]
 }
 
 pw_test("byte_builder_test") {
@@ -68,6 +92,11 @@ pw_test("endian_test") {
   sources = [ "endian_test.cc" ]
 }
 
+pw_test("suffix_test") {
+  deps = [ ":pw_bytes" ]
+  sources = [ "suffix_test.cc" ]
+}
+
 pw_test("units_test") {
   deps = [ ":pw_bytes" ]
   sources = [ "units_test.cc" ]
@@ -78,7 +107,7 @@ pw_doc_group("docs") {
   report_deps = [ ":byte_builder_size_report" ]
 }
 
-pw_size_report("byte_builder_size_report") {
+pw_size_diff("byte_builder_size_report") {
   title = "Using pw::ByteBuilder"
 
   binaries = [

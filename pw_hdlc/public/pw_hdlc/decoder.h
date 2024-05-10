@@ -22,6 +22,7 @@
 #include "pw_assert/assert.h"
 #include "pw_bytes/span.h"
 #include "pw_checksum/crc32.h"
+#include "pw_hdlc/internal/protocol.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
 
@@ -30,19 +31,11 @@ namespace pw::hdlc {
 // Represents the contents of an HDLC frame -- the unescaped data between two
 // flag bytes. Instances of Frame are only created when a full, valid frame has
 // been read.
-//
-// For now, the Frame class assumes a single-byte control field and a 32-bit
-// frame check sequence (FCS).
 class Frame {
- private:
-  static constexpr size_t kMinimumAddressSize = 1;
-  static constexpr size_t kControlSize = 1;
-  static constexpr size_t kFcsSize = sizeof(uint32_t);
-
  public:
   // The minimum size of a frame, excluding control bytes (flag or escape).
-  static constexpr size_t kMinSizeBytes =
-      kMinimumAddressSize + kControlSize + kFcsSize;
+  static constexpr size_t kMinContentSizeBytes =
+      kMinAddressSize + kControlSize + kFcsSize;
 
   static Result<Frame> Parse(ConstByteSpan frame);
 
@@ -81,22 +74,35 @@ class Decoder {
 
   Decoder(const Decoder&) = delete;
   Decoder& operator=(const Decoder&) = delete;
+  Decoder(Decoder&&) = default;
+  Decoder& operator=(Decoder&&) = default;
 
-  // Parses a single byte of an HDLC stream. Returns a Result with the complete
-  // frame if the byte completes a frame. The status is the following:
-  //
-  //     OK - A frame was successfully decoded. The Result contains the Frame,
-  //         which is invalidated by the next Process call.
-  //     UNAVAILABLE - No frame is available.
-  //     RESOURCE_EXHAUSTED - A frame completed, but it was too large to fit in
-  //         the decoder's buffer.
-  //     DATA_LOSS - A frame completed, but it was invalid. The frame was
-  //         incomplete or the frame check sequence verification failed.
-  //
+  /// @brief Parses a single byte of an HDLC stream.
+  ///
+  /// @returns A `pw::Result` with the complete frame if the byte completes a
+  /// frame. The status can be one of the following:
+  /// * `OK` - A frame was successfully decoded. The `Result` contains the
+  /// `Frame`, which is invalidated by the next `Process()` call.
+  /// * `UNAVAILABLE` - No frame is available.
+  /// * `RESOURCE_EXHAUSTED` - A frame completed, but it was too large to fit in
+  ///   the decoder's buffer.
+  /// * `DATA_LOSS` - A frame completed, but it was invalid. The frame was
+  ///   incomplete or the frame check sequence verification failed.
   Result<Frame> Process(std::byte new_byte);
 
-  // Processes a span of data and calls the provided callback with each frame or
-  // error.
+  // Returns the buffer space required for a `Decoder` to successfully decode a
+  // frame whose on-the-wire HDLC encoded size does not exceed `max_frame_size`.
+  static constexpr size_t RequiredBufferSizeForFrameSize(
+      size_t max_frame_size) {
+    // Flag bytes aren't stored in the internal buffer, so we can save a couple
+    // bytes.
+    return max_frame_size < Frame::kMinContentSizeBytes
+               ? Frame::kMinContentSizeBytes
+               : max_frame_size - 2;
+  }
+
+  /// @brief Processes a span of data and calls the provided callback with each
+  /// frame or error.
   template <typename F, typename... Args>
   void Process(ConstByteSpan data, F&& callback, Args&&... args) {
     for (std::byte b : data) {
@@ -115,7 +121,7 @@ class Decoder {
   void Clear() {
     state_ = State::kInterFrame;
     Reset();
-  };
+  }
 
  private:
   // State enum class is used to make the Decoder a finite state machine.
@@ -137,7 +143,7 @@ class Decoder {
 
   bool VerifyFrameCheckSequence() const;
 
-  const ByteSpan buffer_;
+  ByteSpan buffer_;
 
   // Ring buffer of the last four bytes read into the current frame, to allow
   // calculating the frame's CRC incrementally. As data is evicted from this
@@ -165,7 +171,7 @@ class DecoderBuffer : public Decoder {
   static constexpr size_t max_size() { return kSizeBytes; }
 
  private:
-  static_assert(kSizeBytes >= Frame::kMinSizeBytes);
+  static_assert(kSizeBytes >= Frame::kMinContentSizeBytes);
 
   std::array<std::byte, kSizeBytes> frame_buffer_;
 };

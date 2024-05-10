@@ -16,15 +16,19 @@
 
 #include <cstdint>
 
+#include "pw_rpc/server.h"
 #include "pw_system/config.h"
 #include "pw_thread/thread_core.h"
 
 namespace pw::system {
 
 // This is the default channel used by the pw_system RPC server. Some other
-// parts of pw_system (e.g. logging) use this channel ID as the default
-// destination for unrequested data streams.
+// parts of pw_system use this channel ID as the default destination for
+// unrequested data streams.
 inline constexpr uint32_t kDefaultRpcChannelId = PW_SYSTEM_DEFAULT_CHANNEL_ID;
+
+// This is the channel ID used for logging.
+inline constexpr uint32_t kLoggingRpcChannelId = PW_SYSTEM_LOGGING_CHANNEL_ID;
 
 rpc::Server& GetRpcServer();
 

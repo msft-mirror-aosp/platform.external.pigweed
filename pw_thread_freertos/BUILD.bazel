@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
@@ -24,41 +25,24 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 pw_cc_library(
-    name = "id_headers",
+    name = "id",
     hdrs = [
+        "id_public_overrides/pw_thread_backend/id_inline.h",
+        "id_public_overrides/pw_thread_backend/id_native.h",
         "public/pw_thread_freertos/id_inline.h",
         "public/pw_thread_freertos/id_native.h",
-        "public_overrides/pw_thread_backend/id_inline.h",
-        "public_overrides/pw_thread_backend/id_native.h",
     ],
     includes = [
+        "id_public_overrides",
         "public",
-        "public_overrides",
     ],
-)
-
-pw_cc_library(
-    name = "id",
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
     deps = [
-        ":id_headers",
+        "//pw_interrupt:context",
         "//pw_thread:id_facade",
-    ],
-    # TODO(pwbug/317): This should depend on FreeRTOS but our third parties
-    # currently do not have Bazel support.
-)
-
-pw_cc_library(
-    name = "sleep_headers",
-    hdrs = [
-        "public/pw_thread_freertos/sleep_inline.h",
-        "public_overrides/pw_thread_backend/sleep_inline.h",
-    ],
-    includes = [
-        "public",
-        "public_overrides",
-    ],
-    deps = [
-        "//pw_chrono:system_clock",
+        "@freertos",
     ],
 )
 
@@ -67,42 +51,24 @@ pw_cc_library(
     srcs = [
         "sleep.cc",
     ],
-    deps = [
-        ":sleep_headers",
-        "//pw_assert",
-        "//pw_chrono:system_clock",
-        "//pw_chrono_freertos:system_clock_headers",
-        "//pw_thread:sleep_facade",
-    ],
-    # TODO(pwbug/317): This should depend on FreeRTOS but our third parties
-    # currently do not have Bazel support.
-)
-
-# This target provides the FreeRTOS specific headers needs for thread creation.
-pw_cc_library(
-    name = "thread_headers",
     hdrs = [
-        "public/pw_thread_freertos/config.h",
-        "public/pw_thread_freertos/context.h",
-        "public/pw_thread_freertos/options.h",
-        "public/pw_thread_freertos/thread_inline.h",
-        "public/pw_thread_freertos/thread_native.h",
-        "public_overrides/pw_thread_backend/thread_inline.h",
-        "public_overrides/pw_thread_backend/thread_native.h",
+        "public/pw_thread_freertos/sleep_inline.h",
+        "sleep_public_overrides/pw_thread_backend/sleep_inline.h",
     ],
     includes = [
         "public",
-        "public_overrides",
+        "sleep_public_overrides",
+    ],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
     ],
     deps = [
-        ":id",
         "//pw_assert",
-        "//pw_string",
-        "//pw_sync:binary_semaphore",
-        "//pw_thread:thread_headers",
+        "//pw_chrono:system_clock",
+        "//pw_thread:id",
+        "//pw_thread:sleep_facade",
+        "@freertos",
     ],
-    # TODO(pwbug/317): This should depend on FreeRTOS but our third parties
-    # currently do not have Bazel support.
 )
 
 pw_cc_library(
@@ -110,13 +76,29 @@ pw_cc_library(
     srcs = [
         "thread.cc",
     ],
+    hdrs = [
+        "public/pw_thread_freertos/config.h",
+        "public/pw_thread_freertos/context.h",
+        "public/pw_thread_freertos/options.h",
+        "public/pw_thread_freertos/thread_inline.h",
+        "public/pw_thread_freertos/thread_native.h",
+        "thread_public_overrides/pw_thread_backend/thread_inline.h",
+        "thread_public_overrides/pw_thread_backend/thread_native.h",
+    ],
+    includes = [
+        "public",
+        "thread_public_overrides",
+    ],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
     deps = [
         ":id",
-        ":thread_headers",
         "//pw_assert",
+        "//pw_string",
+        "//pw_sync:binary_semaphore",
+        "//pw_thread:thread_facade",
     ],
-    # TODO(pwbug/317): This should depend on FreeRTOS but our third parties
-    # currently do not have Bazel support.
 )
 
 pw_cc_library(
@@ -124,16 +106,21 @@ pw_cc_library(
     srcs = [
         "dynamic_test_threads.cc",
     ],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
     deps = [
         "//pw_chrono:system_clock",
+        "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:sleep",
-        "//pw_thread:test_threads_header",
         "//pw_thread:thread_facade",
     ],
 )
 
 pw_cc_test(
     name = "dynamic_thread_backend_test",
+    # TODO: b/271465588 - Get this test to build.
+    tags = ["manual"],
     deps = [
         ":dynamic_test_threads",
         "//pw_thread:thread_facade_test",
@@ -145,16 +132,21 @@ pw_cc_library(
     srcs = [
         "static_test_threads.cc",
     ],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
     deps = [
         "//pw_chrono:system_clock",
+        "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:sleep",
-        "//pw_thread:test_threads_header",
         "//pw_thread:thread_facade",
     ],
 )
 
 pw_cc_test(
     name = "static_thread_backend_test",
+    # TODO: b/271465588 - Get this test to build.
+    tags = ["manual"],
     deps = [
         ":static_test_threads",
         "//pw_thread:thread_facade_test",
@@ -162,24 +154,62 @@ pw_cc_test(
 )
 
 pw_cc_library(
-    name = "yield_headers",
+    name = "yield",
     hdrs = [
         "public/pw_thread_freertos/yield_inline.h",
-        "public_overrides/pw_thread_backend/yield_inline.h",
+        "yield_public_overrides/pw_thread_backend/yield_inline.h",
     ],
     includes = [
         "public",
-        "public_overrides",
+        "yield_public_overrides",
     ],
-    # TODO(pwbug/317): This should depend on FreeRTOS but our third parties
-    # currently do not have Bazel support.
+    deps = [
+        "//pw_thread:yield_facade",
+        "@freertos",
+    ],
 )
 
 pw_cc_library(
-    name = "yield",
+    name = "thread_iteration",
+    srcs = [
+        "pw_thread_freertos_private/thread_iteration.h",
+        "thread_iteration.cc",
+    ],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
     deps = [
-        ":yield_headers",
-        "//pw_thread:yield_facade",
+        ":freertos_tasktcb",
+        "//pw_function",
+        "//pw_span",
+        "//pw_status",
+        "//pw_thread:thread_info",
+        "//pw_thread:thread_iteration_facade",
+        "//pw_thread_freertos:util",
+    ],
+)
+
+pw_cc_test(
+    name = "thread_iteration_test",
+    srcs = [
+        "pw_thread_freertos_private/thread_iteration.h",
+        "thread_iteration_test.cc",
+    ],
+    # TODO: b/271465588 - Get this test to build.
+    tags = ["manual"],
+    deps = [
+        ":freertos_tasktcb",
+        ":static_test_threads",
+        ":thread_iteration",
+        "//pw_bytes",
+        "//pw_span",
+        "//pw_string:builder",
+        "//pw_string:util",
+        "//pw_sync:thread_notification",
+        "//pw_thread:non_portable_test_thread_options",
+        "//pw_thread:thread",
+        "//pw_thread:thread_info",
+        "//pw_thread:thread_iteration",
     ],
 )
 
@@ -191,12 +221,17 @@ pw_cc_library(
     hdrs = [
         "public/pw_thread_freertos/util.h",
     ],
+    includes = ["public"],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
     deps = [
         "//pw_function",
+        "//pw_log",
+        "//pw_span",
         "//pw_status",
+        "@freertos",
     ],
-    # TODO(pwbug/317): This should depend on FreeRTOS but our third parties
-    # currently do not have Bazel support.
 )
 
 pw_cc_library(
@@ -207,6 +242,14 @@ pw_cc_library(
     hdrs = [
         "public/pw_thread_freertos/snapshot.h",
     ],
+    # TODO: b/269204725 - Put this in the toolchain configuration instead.  I
+    # would like to say `copts = ["-Wno-c++20-designator"]`, but arm-gcc tells
+    # me that's an "unrecognized command line option"; I think it may be a
+    # clang-only flag.
+    copts = ["-Wno-pedantic"],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
     deps = [
         ":freertos_tasktcb",
         ":util",
@@ -214,11 +257,9 @@ pw_cc_library(
         "//pw_log",
         "//pw_protobuf",
         "//pw_status",
-        "//pw_thread:protos",
         "//pw_thread:snapshot",
+        "//pw_thread:thread_cc.pwpb",
     ],
-    # TODO(pwbug/317): This should depend on FreeRTOS but our third parties
-    # currently do not have Bazel support.
 )
 
 pw_cc_facade(
@@ -227,13 +268,32 @@ pw_cc_facade(
         "public/pw_thread_freertos/freertos_tsktcb.h",
     ],
     includes = ["public"],
-    # TODO(pwbug/317): This should depend on FreeRTOS but our third parties
-    # currently do not have Bazel support.
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
 )
 
 pw_cc_library(
     name = "freertos_tasktcb",
-    deps = [
-        ":freertos_tasktcb_facade",
+    hdrs = [
+        "public/pw_thread_freertos/freertos_tsktcb.h",
+        ":generate_freertos_tsktcb",
     ],
+    includes = [
+        "public",
+        "thread_public_overrides",
+    ],
+)
+
+run_binary(
+    name = "generate_freertos_tsktcb",
+    srcs = [
+        "@freertos//:tasks.c",
+    ],
+    outs = [":thread_public_overrides/pw_thread_freertos_backend/freertos_tsktcb.h"],
+    args = [
+        "--freertos-tasks-c=$(location @freertos//:tasks.c)",
+        "--output=$(location :thread_public_overrides/pw_thread_freertos_backend/freertos_tsktcb.h)",
+    ],
+    tool = "//pw_thread_freertos/py:generate_freertos_tsktcb",
 )

@@ -16,13 +16,13 @@
 
 #include "pw_thread_freertos/snapshot.h"
 
-#include <span>
 #include <string_view>
 
 #include "FreeRTOS.h"
 #include "pw_function/function.h"
 #include "pw_log/log.h"
 #include "pw_protobuf/encoder.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_thread/snapshot.h"
 #include "pw_thread_freertos/config.h"
@@ -44,37 +44,39 @@ extern "C" uint16_t prvTaskCheckFreeStackSpace(const uint8_t* pucStackByte);
         // (INCLUDE_uxTaskGetStackHighWaterMark == 1))
 
 void CaptureThreadState(eTaskState thread_state,
-                        Thread::StreamEncoder& encoder) {
+                        proto::pwpb::Thread::StreamEncoder& encoder) {
   switch (thread_state) {
     case eRunning:
       PW_LOG_DEBUG("Thread state: RUNNING");
-      encoder.WriteState(ThreadState::Enum::RUNNING);
+      encoder.WriteState(proto::pwpb::ThreadState::Enum::RUNNING).IgnoreError();
       return;
 
     case eReady:
       PW_LOG_DEBUG("Thread state: READY");
-      encoder.WriteState(ThreadState::Enum::READY);
+      encoder.WriteState(proto::pwpb::ThreadState::Enum::READY).IgnoreError();
       return;
 
     case eBlocked:
       PW_LOG_DEBUG("Thread state: BLOCKED");
-      encoder.WriteState(ThreadState::Enum::BLOCKED);
+      encoder.WriteState(proto::pwpb::ThreadState::Enum::BLOCKED).IgnoreError();
       return;
 
     case eSuspended:
       PW_LOG_DEBUG("Thread state: SUSPENDED");
-      encoder.WriteState(ThreadState::Enum::SUSPENDED);
+      encoder.WriteState(proto::pwpb::ThreadState::Enum::SUSPENDED)
+          .IgnoreError();
       return;
 
     case eDeleted:
       PW_LOG_DEBUG("Thread state: INACTIVE");
-      encoder.WriteState(ThreadState::Enum::INACTIVE);
+      encoder.WriteState(proto::pwpb::ThreadState::Enum::INACTIVE)
+          .IgnoreError();
       return;
 
     case eInvalid:
     default:
       PW_LOG_DEBUG("Thread state: UNKNOWN");
-      encoder.WriteState(ThreadState::Enum::UNKNOWN);
+      encoder.WriteState(proto::pwpb::ThreadState::Enum::UNKNOWN).IgnoreError();
       return;
   }
 }
@@ -82,11 +84,11 @@ void CaptureThreadState(eTaskState thread_state,
 }  // namespace
 
 Status SnapshotThreads(void* running_thread_stack_pointer,
-                       SnapshotThreadInfo::StreamEncoder& encoder,
+                       proto::pwpb::SnapshotThreadInfo::StreamEncoder& encoder,
                        ProcessThreadStackCallback& stack_dumper) {
   struct {
     void* running_thread_stack_pointer;
-    SnapshotThreadInfo::StreamEncoder* encoder;
+    proto::pwpb::SnapshotThreadInfo::StreamEncoder* encoder;
     ProcessThreadStackCallback* stack_dumper;
     Status thread_capture_status;
   } ctx;
@@ -97,7 +99,8 @@ Status SnapshotThreads(void* running_thread_stack_pointer,
 
   ThreadCallback thread_capture_cb(
       [&ctx](TaskHandle_t thread, eTaskState thread_state) -> bool {
-        Thread::StreamEncoder thread_encoder = ctx.encoder->GetThreadsEncoder();
+        proto::pwpb::Thread::StreamEncoder thread_encoder =
+            ctx.encoder->GetThreadsEncoder();
         ctx.thread_capture_status.Update(
             SnapshotThread(thread,
                            thread_state,
@@ -114,19 +117,20 @@ Status SnapshotThreads(void* running_thread_stack_pointer,
   return ctx.thread_capture_status;
 }
 
-Status SnapshotThread(TaskHandle_t thread,
-                      eTaskState thread_state,
-                      void* running_thread_stack_pointer,
-                      Thread::StreamEncoder& encoder,
-                      ProcessThreadStackCallback& thread_stack_callback) {
+Status SnapshotThread(
+    TaskHandle_t thread,
+    eTaskState thread_state,
+    void* running_thread_stack_pointer,
+    proto::pwpb::Thread::StreamEncoder& encoder,
+    [[maybe_unused]] ProcessThreadStackCallback& thread_stack_callback) {
   const tskTCB& tcb = *reinterpret_cast<tskTCB*>(thread);
 
   PW_LOG_DEBUG("Capturing thread info for %s", tcb.pcTaskName);
-  encoder.WriteName(std::as_bytes(std::span(std::string_view(tcb.pcTaskName))));
+  PW_TRY(encoder.WriteName(as_bytes(span(std::string_view(tcb.pcTaskName)))));
 
   CaptureThreadState(thread_state, encoder);
 
-  // TODO(pwbug/422): Update this once we add support for ascending stacks.
+  // TODO: b/234890430 - Update this once we add support for ascending stacks.
   static_assert(portSTACK_GROWTH < 0, "Ascending stacks are not yet supported");
 
   // If the thread is active, the stack pointer in the TCB is stale.
@@ -139,27 +143,27 @@ Status SnapshotThread(TaskHandle_t thread,
   const uintptr_t stack_high_addr =
       reinterpret_cast<uintptr_t>(tcb.pxEndOfStack);
   const StackContext thread_ctx = {
-    .thread_name = tcb.pcTaskName,
-    .stack_low_addr = stack_low_addr,
-    .stack_high_addr = stack_high_addr,
-    .stack_pointer = stack_pointer,
+      .thread_name = tcb.pcTaskName,
+      .stack_low_addr = stack_low_addr,
+      .stack_high_addr = stack_high_addr,
+      .stack_pointer = stack_pointer,
 #if ((configUSE_TRACE_FACILITY == 1) || \
      (INCLUDE_uxTaskGetStackHighWaterMark == 1))
 #if (portSTACK_GROWTH > 0)
-    .stack_pointer_est_peak =
-        stack_high_addr -
-        (sizeof(StackType_t) *
-         prvTaskCheckFreeStackSpace(
-             reinterpret_cast<const uint8_t*>(stack_high_addr))),
+      .stack_pointer_est_peak =
+          stack_high_addr -
+          (sizeof(StackType_t) *
+           prvTaskCheckFreeStackSpace(
+               reinterpret_cast<const uint8_t*>(stack_high_addr))),
 #else
-    .stack_pointer_est_peak =
-        stack_low_addr +
-        (sizeof(StackType_t) *
-         prvTaskCheckFreeStackSpace(
-             reinterpret_cast<const uint8_t*>(stack_low_addr))),
+      .stack_pointer_est_peak =
+          stack_low_addr +
+          (sizeof(StackType_t) *
+           prvTaskCheckFreeStackSpace(
+               reinterpret_cast<const uint8_t*>(stack_low_addr))),
 #endif  // (portSTACK_GROWTH > 0)
 #else
-    .stack_pointer_est_peak = std::nullopt,
+      .stack_pointer_est_peak = std::nullopt,
 #endif  // ((configUSE_TRACE_FACILITY == 1) ||
         // (INCLUDE_uxTaskGetStackHighWaterMark == 1))
   };

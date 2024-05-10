@@ -27,88 +27,79 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 pw_cc_library(
-    name = "id_headers",
+    name = "id",
     hdrs = [
+        "id_public_overrides/pw_thread_backend/id_inline.h",
+        "id_public_overrides/pw_thread_backend/id_native.h",
         "public/pw_thread_stl/id_inline.h",
         "public/pw_thread_stl/id_native.h",
-        "public_overrides/pw_thread_backend/id_inline.h",
-        "public_overrides/pw_thread_backend/id_native.h",
     ],
     includes = [
+        "id_public_overrides",
         "public",
-        "public_overrides",
     ],
     target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
-)
-
-pw_cc_library(
-    name = "id",
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
-        ":id_headers",
         "//pw_thread:id_facade",
     ],
 )
 
 pw_cc_library(
-    name = "sleep_headers",
+    name = "sleep",
     hdrs = [
         "public/pw_thread_stl/sleep_inline.h",
-        "public_overrides/pw_thread_backend/sleep_inline.h",
+        "sleep_public_overrides/pw_thread_backend/sleep_inline.h",
     ],
     includes = [
         "public",
-        "public_overrides",
+        "sleep_public_overrides",
     ],
     target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
-        "//pw_chrono:system_clock",
-    ],
-)
-
-pw_cc_library(
-    name = "sleep",
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
-    deps = [
-        ":sleep_headers",
         "//pw_chrono:system_clock",
         "//pw_thread:sleep_facade",
     ],
 )
 
 pw_cc_library(
-    name = "thread_headers",
+    name = "thread",
     hdrs = [
         "public/pw_thread_stl/options.h",
         "public/pw_thread_stl/thread_inline.h",
         "public/pw_thread_stl/thread_native.h",
-        "public_overrides/pw_thread_backend/thread_inline.h",
-        "public_overrides/pw_thread_backend/thread_native.h",
+        "thread_public_overrides/pw_thread_backend/thread_inline.h",
+        "thread_public_overrides/pw_thread_backend/thread_native.h",
     ],
     includes = [
         "public",
-        "public_overrides",
+        "thread_public_overrides",
     ],
     target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
-)
-
-pw_cc_library(
-    name = "thread",
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
-        ":thread_headers",
         "//pw_thread:thread_facade",
     ],
 )
 
+# This target provides a stub backend for pw::this_thread::thread_iteration.
+# Iterating over child threads isn't supported by STL, so this only exists
+# for portability reasons.
 pw_cc_library(
-    name = "test_threads",
+    name = "thread_iteration",
+    srcs = ["thread_iteration.cc"],
+    deps = [
+        "//pw_status",
+        "//pw_thread:thread_iteration_facade",
+    ],
+)
+
+pw_cc_library(
+    name = "non_portable_test_thread_options",
     srcs = [
         "test_threads.cc",
     ],
     target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
-        "//pw_thread:test_threads_header",
+        "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:thread_facade",
     ],
 )
@@ -117,29 +108,40 @@ pw_cc_test(
     name = "thread_backend_test",
     target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
-        ":test_threads",
+        ":non_portable_test_thread_options",
         "//pw_thread:thread_facade_test",
     ],
 )
 
 pw_cc_library(
-    name = "yield_headers",
+    name = "yield",
     hdrs = [
         "public/pw_thread_stl/yield_inline.h",
-        "public_overrides/pw_thread_backend/yield_inline.h",
+        "yield_public_overrides/pw_thread_backend/yield_inline.h",
     ],
     includes = [
         "public",
-        "public_overrides",
+        "yield_public_overrides",
     ],
     target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    deps = [
+        "//pw_thread:yield_facade",
+    ],
 )
 
 pw_cc_library(
-    name = "yield",
+    name = "test_thread_context",
+    hdrs = [
+        "public/pw_thread_stl/test_thread_context_native.h",
+        "test_thread_context_public_overrides/pw_thread_backend/test_thread_context_native.h",
+    ],
+    includes = [
+        "public",
+        "test_thread_context_public_overrides",
+    ],
     target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
-        ":yield_headers",
-        "//pw_thread:yield_facade",
+        ":thread",
+        "//pw_thread:test_thread_context_facade",
     ],
 )

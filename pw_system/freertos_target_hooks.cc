@@ -13,7 +13,7 @@
 // the License.
 
 #include "FreeRTOS.h"
-#include "pw_system/init.h"
+#include "pw_system/config.h"
 #include "pw_thread/detached_thread.h"
 #include "pw_thread/thread.h"
 #include "pw_thread_freertos/context.h"
@@ -28,14 +28,17 @@ enum class ThreadPriority : UBaseType_t {
   // there's synchronization issues when they are.
   kLog = kWorkQueue,
   kRpc = kWorkQueue,
+#if PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+  kTransfer = kWorkQueue,
+#endif  // PW_SYSTEM_ENABLE_TRANSFER_SERVICE
   kNumPriorities,
 };
 
 static_assert(static_cast<UBaseType_t>(ThreadPriority::kNumPriorities) <=
               configMAX_PRIORITIES);
 
-static constexpr size_t kLogThreadStackWorkds = 1024;
-static thread::freertos::StaticContextWithStack<kLogThreadStackWorkds>
+static constexpr size_t kLogThreadStackWords = 1024;
+static thread::freertos::StaticContextWithStack<kLogThreadStackWords>
     log_thread_context;
 const thread::Options& LogThreadOptions() {
   static constexpr auto options =
@@ -46,8 +49,8 @@ const thread::Options& LogThreadOptions() {
   return options;
 }
 
-static constexpr size_t kRpcThreadStackWorkds = 512;
-static thread::freertos::StaticContextWithStack<kRpcThreadStackWorkds>
+static constexpr size_t kRpcThreadStackWords = 512;
+static thread::freertos::StaticContextWithStack<kRpcThreadStackWords>
     rpc_thread_context;
 const thread::Options& RpcThreadOptions() {
   static constexpr auto options =
@@ -58,8 +61,22 @@ const thread::Options& RpcThreadOptions() {
   return options;
 }
 
-static constexpr size_t kWorkQueueThreadStackWorkds = 512;
-static thread::freertos::StaticContextWithStack<kWorkQueueThreadStackWorkds>
+#if PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+static constexpr size_t kTransferThreadStackWords = 512;
+static thread::freertos::StaticContextWithStack<kTransferThreadStackWords>
+    transfer_thread_context;
+const thread::Options& TransferThreadOptions() {
+  static constexpr auto options =
+      pw::thread::freertos::Options()
+          .set_name("TransferThread")
+          .set_static_context(transfer_thread_context)
+          .set_priority(static_cast<UBaseType_t>(ThreadPriority::kTransfer));
+  return options;
+}
+#endif  // PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+
+static constexpr size_t kWorkQueueThreadStackWords = 512;
+static thread::freertos::StaticContextWithStack<kWorkQueueThreadStackWords>
     work_queue_thread_context;
 const thread::Options& WorkQueueThreadOptions() {
   static constexpr auto options =

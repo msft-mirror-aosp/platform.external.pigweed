@@ -16,11 +16,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
-#include <span>
+#include <limits>
 
 #include "pw_assert/assert.h"
 #include "pw_kvs/alignment.h"
 #include "pw_polyfill/standard.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 
@@ -42,7 +43,7 @@ class FlashMemory {
   // The flash address is in the range of: 0 to FlashSize.
   typedef uint32_t Address;
 
-  // TODO(pwbug/246): This can be constexpr when tokenized asserts are fixed.
+  // TODO: b/235149326 - This can be constexpr when tokenized asserts are fixed.
   FlashMemory(size_t sector_size,
               size_t sector_count,
               size_t alignment,
@@ -82,11 +83,10 @@ class FlashMemory {
   // OK - success
   // DEADLINE_EXCEEDED - timeout
   // OUT_OF_RANGE - write does not fit in the flash memory
-  virtual StatusWithSize Read(Address address, std::span<std::byte> output) = 0;
+  virtual StatusWithSize Read(Address address, span<std::byte> output) = 0;
 
   StatusWithSize Read(Address address, void* buffer, size_t len) {
-    return Read(address,
-                std::span<std::byte>(static_cast<std::byte*>(buffer), len));
+    return Read(address, span<std::byte>(static_cast<std::byte*>(buffer), len));
   }
 
   // Writes bytes to flash. Blocking call. Returns:
@@ -96,14 +96,14 @@ class FlashMemory {
   // INVALID_ARGUMENT - address or data size are not aligned
   // OUT_OF_RANGE - write does not fit in the memory
   virtual StatusWithSize Write(Address destination_flash_address,
-                               std::span<const std::byte> data) = 0;
+                               span<const std::byte> data) = 0;
 
   StatusWithSize Write(Address destination_flash_address,
                        const void* data,
                        size_t len) {
     return Write(
         destination_flash_address,
-        std::span<const std::byte>(static_cast<const std::byte*>(data), len));
+        span<const std::byte>(static_cast<const std::byte*>(data), len));
   }
 
   // Convert an Address to an MCU pointer, this can be used for memory
@@ -155,7 +155,7 @@ class FlashPartition {
    private:
     Status DoWrite(ConstByteSpan data) override;
 
-    size_t DoTell() const override { return position_; }
+    size_t DoTell() override { return position_; }
 
     size_t ConservativeLimit(LimitType type) const override {
       return type == LimitType::kWrite ? partition_.size_bytes() - position_
@@ -168,26 +168,42 @@ class FlashPartition {
 
   class Reader final : public stream::SeekableReader {
    public:
-    constexpr Reader(kvs::FlashPartition& partition)
-        : partition_(partition), position_(0) {}
+    /// @brief Stream seekable reader for FlashPartitions.
+    ///
+    /// @param partition The partiion to read.
+    /// @param read_limit_bytes Optional limit to read less than the full
+    /// FlashPartition. Reader will use the lesser of read_limit_bytes and
+    /// partition size. Situations needing a subset that starts somewhere other
+    /// than 0 can seek to the desired start point.
+    Reader(kvs::FlashPartition& partition,
+           size_t read_limit_bytes = std::numeric_limits<size_t>::max())
+        : partition_(partition),
+          read_limit_(std::min(read_limit_bytes, partition_.size_bytes())),
+          position_(0) {}
 
     Reader(const Reader&) = delete;
     Reader& operator=(const Reader&) = delete;
 
+    void SetReadLimit(size_t read_limit_bytes) {
+      read_limit_ = std::min(read_limit_bytes, partition_.size_bytes());
+      position_ = std::min(position_, read_limit_);
+    }
+
    private:
     StatusWithSize DoRead(ByteSpan data) override;
 
-    size_t DoTell() const override { return position_; }
+    size_t DoTell() override { return position_; }
 
     Status DoSeek(ptrdiff_t offset, Whence origin) override {
-      return CalculateSeek(offset, origin, partition_.size_bytes(), position_);
+      return CalculateSeek(offset, origin, read_limit_, position_);
     }
 
     size_t ConservativeLimit(LimitType type) const override {
-      return type == LimitType::kRead ? partition_.size_bytes() - position_ : 0;
+      return type == LimitType::kRead ? read_limit_ - position_ : 0;
     }
 
     FlashPartition& partition_;
+    size_t read_limit_;
     size_t position_;
   };
 #endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
@@ -199,7 +215,7 @@ class FlashPartition {
         : flash_(flash), address_(address) {}
 
    private:
-    StatusWithSize DoWrite(std::span<const std::byte> data) override;
+    StatusWithSize DoWrite(span<const std::byte> data) override;
 
     FlashPartition& flash_;
     FlashPartition::Address address_;
@@ -212,7 +228,7 @@ class FlashPartition {
         : flash_(flash), address_(address) {}
 
    private:
-    StatusWithSize DoRead(std::span<std::byte> data) override;
+    StatusWithSize DoRead(span<std::byte> data) override;
 
     FlashPartition& flash_;
     FlashPartition::Address address_;
@@ -220,8 +236,8 @@ class FlashPartition {
 
   FlashPartition(
       FlashMemory* flash,
-      uint32_t start_sector_index,
-      uint32_t sector_count,
+      uint32_t flash_start_sector_index,
+      uint32_t flash_sector_count,
       uint32_t alignment_bytes = 0,  // Defaults to flash alignment
       PartitionPermission permission = PartitionPermission::kReadAndWrite);
 
@@ -257,11 +273,11 @@ class FlashPartition {
   // TIMEOUT - on timeout.
   // INVALID_ARGUMENT - address or length is invalid.
   // UNKNOWN - HAL error
-  virtual StatusWithSize Read(Address address, std::span<std::byte> output);
+  virtual StatusWithSize Read(Address address, span<std::byte> output);
 
   StatusWithSize Read(Address address, size_t length, void* output) {
     return Read(address,
-                std::span<std::byte>(static_cast<std::byte*>(output), length));
+                span<std::byte>(static_cast<std::byte*>(output), length));
   }
 
   // Writes bytes to flash. Address and data.size_bytes() must both be a
@@ -272,8 +288,7 @@ class FlashPartition {
   // INVALID_ARGUMENT - address or length is invalid.
   // PERMISSION_DENIED - partition is read only.
   // UNKNOWN - HAL error
-  virtual StatusWithSize Write(Address address,
-                               std::span<const std::byte> data);
+  virtual StatusWithSize Write(Address address, span<const std::byte> data);
 
   // Check to see if chunk of flash partition is erased. Address and len need to
   // be aligned with FlashMemory. Returns:
@@ -282,7 +297,7 @@ class FlashPartition {
   // TIMEOUT - on timeout.
   // INVALID_ARGUMENT - address or length is invalid.
   // UNKNOWN - HAL error
-  // TODO: Result<bool>
+  // TODO(hepler): Result<bool>
   virtual Status IsRegionErased(Address source_flash_address,
                                 size_t length,
                                 bool* is_erased);
@@ -296,21 +311,35 @@ class FlashPartition {
   // Checks to see if the data appears to be erased. No reads or writes occur;
   // the FlashPartition simply compares the data to
   // flash_.erased_memory_content().
-  bool AppearsErased(std::span<const std::byte> data) const;
+  bool AppearsErased(span<const std::byte> data) const;
 
-  // Overridden by derived classes. The reported sector size is space available
-  // to users of FlashPartition. It accounts for space reserved in the sector
-  // for FlashPartition to store metadata.
+  // Optionally overridden by derived classes. The reported sector size is space
+  // available to users of FlashPartition. This reported size can be smaller or
+  // larger than the sector size of the backing FlashMemory.
+  //
+  // Possible reasons for size to be different from the backing FlashMemory
+  // could be due to space reserved in the sector for FlashPartition to store
+  // metadata or due to logical FlashPartition sectors that combine several
+  // FlashMemory sectors.
   virtual size_t sector_size_bytes() const {
     return flash_.sector_size_bytes();
   }
+
+  // Optionally overridden by derived classes. The reported sector count is
+  // sectors available to users of FlashPartition. This reported count can be
+  // same or smaller than the given flash_sector_count of the backing
+  // FlashMemory for the same region of flash.
+  //
+  // Possible reasons for count to be different from the backing FlashMemory
+  // could be due to space reserved in the FlashPartition to store metadata or
+  // due to logical FlashPartition sectors that combine several FlashMemory
+  // sectors.
+  virtual size_t sector_count() const { return flash_sector_count_; }
 
   size_t size_bytes() const { return sector_count() * sector_size_bytes(); }
 
   // Alignment required for write address and write size.
   size_t alignment_bytes() const { return alignment_bytes_; }
-
-  size_t sector_count() const { return sector_count_; }
 
   // Convert a FlashMemory::Address to an MCU pointer, this can be used for
   // memory mapped reads. Return NULL if the memory is not memory mapped.
@@ -323,7 +352,8 @@ class FlashPartition {
   // address space may not be contiguous, and this conversion accounts for that.
   virtual FlashMemory::Address PartitionToFlashAddress(Address address) const {
     return flash_.start_address() +
-           (start_sector_index_ - flash_.start_sector()) * sector_size_bytes() +
+           (flash_start_sector_index_ - flash_.start_sector()) *
+               flash_.sector_size_bytes() +
            address;
   }
 
@@ -335,17 +365,18 @@ class FlashPartition {
     return flash_.erased_memory_content();
   }
 
-  uint32_t start_sector_index() const { return start_sector_index_; }
+  uint32_t start_sector_index() const { return flash_start_sector_index_; }
 
  protected:
   Status CheckBounds(Address address, size_t len) const;
 
   FlashMemory& flash() const { return flash_; }
 
- private:
   FlashMemory& flash_;
-  const uint32_t start_sector_index_;
-  const uint32_t sector_count_;
+  const uint32_t flash_sector_count_;
+
+ private:
+  const uint32_t flash_start_sector_index_;
   const uint32_t alignment_bytes_;
   const PartitionPermission permission_;
 };

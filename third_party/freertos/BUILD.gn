@@ -45,6 +45,7 @@ if (dir_pw_third_party_freertos == "") {
     cflags = [
       "-Wno-unused-parameter",
       "-Wno-cast-qual",
+      "-Wno-int-in-bool-context",
     ]
     visibility = [ ":*" ]
   }
@@ -119,12 +120,37 @@ if (dir_pw_third_party_freertos == "") {
     ]
   }
 
+  # ARM CM33 port of FreeRTOS
+  config("arm_cm33_includes") {
+    include_dirs =
+        [ "$dir_pw_third_party_freertos/portable/GCC/ARM_CM33_NTZ/non_secure" ]
+    visibility = [ ":arm_cm33" ]
+  }
+
+  pw_source_set("arm_cm33") {
+    public_configs = [
+      ":arm_cm33_includes",
+      ":public_includes",
+    ]
+    public_deps = [ pw_third_party_freertos_CONFIG ]
+    public = [
+      "$dir_pw_third_party_freertos/portable/GCC/ARM_CM33_NTZ/non_secure/portasm.h",
+      "$dir_pw_third_party_freertos/portable/GCC/ARM_CM33_NTZ/non_secure/portmacro.h",
+    ]
+    sources = [
+      "$dir_pw_third_party_freertos/portable/GCC/ARM_CM33_NTZ/non_secure/port.c",
+      "$dir_pw_third_party_freertos/portable/GCC/ARM_CM33_NTZ/non_secure/portasm.c",
+    ]
+    configs = [ ":disable_warnings" ]
+  }
+
   # ARM CM7 port of FreeRTOS
   config("arm_cm7_includes") {
     include_dirs = [ "$dir_pw_third_party_freertos/portable/GCC/ARM_CM7/r0p1" ]
     visibility = [ ":arm_cm7" ]
   }
 
+  # NB: Use :arm_cm7_after_r0p1 instead if you can
   pw_source_set("arm_cm7") {
     public_configs = [
       ":arm_cm7_includes",
@@ -136,6 +162,14 @@ if (dir_pw_third_party_freertos == "") {
     sources =
         [ "$dir_pw_third_party_freertos/portable/GCC/ARM_CM7/r0p1/port.c" ]
     configs = [ ":disable_warnings" ]
+  }
+
+  # CM7 r0p0 and r0p1 cores have errata that requires workarounds. Freertos
+  # recommends using the CM4F port on newer CM7 core revisions for better
+  # performance.
+  # See Freertos' ARM_CM7/ReadMe.txt.
+  pw_source_set("arm_cm7_after_r0p1") {
+    public_deps = [ ":arm_cm4f" ]
   }
 
   # ARM CM4F port of FreeRTOS.
@@ -170,6 +204,23 @@ if (dir_pw_third_party_freertos == "") {
     public_deps = [ pw_third_party_freertos_CONFIG ]
     public = [ "$dir_pw_third_party_freertos/portable/GCC/ARM_CM3/portmacro.h" ]
     sources = [ "$dir_pw_third_party_freertos/portable/GCC/ARM_CM3/port.c" ]
+    configs = [ ":disable_warnings" ]
+  }
+
+  # ARM CM0 port of FreeRTOS.
+  config("arm_cm0_includes") {
+    include_dirs = [ "$dir_pw_third_party_freertos/portable/GCC/ARM_CM0" ]
+    visibility = [ ":arm_cm0" ]
+  }
+
+  pw_source_set("arm_cm0") {
+    public_configs = [
+      ":arm_cm0_includes",
+      ":public_includes",
+    ]
+    public_deps = [ pw_third_party_freertos_CONFIG ]
+    public = [ "$dir_pw_third_party_freertos/portable/GCC/ARM_CM0/portmacro.h" ]
+    sources = [ "$dir_pw_third_party_freertos/portable/GCC/ARM_CM0/port.c" ]
     configs = [ ":disable_warnings" ]
   }
 }

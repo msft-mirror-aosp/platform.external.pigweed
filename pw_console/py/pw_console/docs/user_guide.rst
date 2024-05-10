@@ -2,10 +2,14 @@
 
 User Guide
 ==========
+.. pigweed-module-subpage::
+   :name: pw_console
+   :tagline: pw_console: Multi-purpose pluggable interactive console for dev & manufacturing
 
-.. seealso::
+.. tip::
 
-   This guide can be viewed online at:
+   This guide can be viewed while running pw_console under the ``[Help]`` menu
+   or online at:
    https://pigweed.dev/pw_console/py/pw_console/docs/user_guide.html
 
 
@@ -16,10 +20,14 @@ in a single-window terminal based interface.
 Starting the Console
 --------------------
 
-::
+Launching the console may be different if you implement your own custom console
+startup script. To launch pw_console in upstream Pigweed you can run in test
+mode with ``pw-console --test-mode``.
 
-  pw rpc -s localhost:33000 --proto-globs pw_rpc/echo.proto
+.. seealso::
 
+   Running pw_console for the :ref:`target-stm32f429i-disc1-stm32cube` and
+   :ref:`target-host-device-simulator` targets.
 
 Exiting
 ~~~~~~~
@@ -578,6 +586,8 @@ loaded later in the startup sequence.
 
    .. code-block:: yaml
 
+      ---
+      config_title: pw_console
       ui_theme: nord
       code_theme: pigweed-code
       swap_light_and_dark: False
@@ -777,6 +787,142 @@ Example Config
      - z t
      log-pane.shift-line-to-center:
      - z z
+
+   # Project and User defined Python snippets
+   # Press Ctrl-t the Python Repl to select which snippet to insert.
+
+   # Python Repl Snippets (Project owned)
+   snippets:
+     Count Ten Times:
+       code: |
+         for i in range(10):
+             print(i)
+       description: |
+         Print out 1 through 10 each on a separate line
+
+     Local Variables:
+       code: |
+         locals()
+       description: |
+         Return all local Python variables.
+
+   # Python Repl Snippets (User owned)
+   user_snippets:
+     Pretty print format function:
+       code: |
+         import pprint
+         _pretty_format = pprint.PrettyPrinter(indent=1, width=120).pformat
+       description: |
+         Create a function named `_pretty_format` which returns a pretty
+         formatted string for a Python object.
+
+         Example:
+
+         ```python
+         from dataclasses import dataclass
+
+         @dataclass
+         class CodeSnippet:
+             title: str
+             code: str
+             description: str = ''
+
+         _pretty_format(CodeSnippet('one', '1'))
+         ```
+
+         The last line will return the string:
+
+         ```
+         "CodeSnippet(title='one', code='1', description='')"
+         ```
+
+     Global variables:
+       code: |
+         globals()
+       description: |
+         Return all global Python variables.
+
+
+Python Repl Snippets
+--------------------
+Python code snippets can be defined under the ``snippets:`` or
+``user_snippets:`` section. We suggest reserving ``user_snippets:`` for the user
+based config files (``$HOME/.pw_console.yaml`` or
+``$PW_PROJECT_ROOT/.pw_console.user.yaml``). ``snippets:`` is best suited for a
+project specific config file shared by all team members:
+``$PW_PROJECT_ROOT/.pw_console.yaml``
+
+Snippets consist of a title followed by ``code: |`` and optionally
+``description: |``. The YAML operator ``|`` will concatenate the following lines
+into a string and strip leading whitespace.
+
+
+.. code-block:: yaml
+
+   snippets:
+     Count Ten Times:
+       code: |
+         for i in range(10):
+             print(i)
+       description: |
+         Print out 1 through 10 each on a separate line
+
+Inserting this snippet will paste the for loop above into the Python Repl input
+window.
+
+Descriptions are markdown formatted and displayed below the selected snippet
+window. Fenced code blocks will have the correct syntax highlighting
+applied. For example the following will apply Python syntax highlighting to the
+code block below ``Example:``.
+
+.. code-block:: yaml
+
+   snippets:
+     Pretty print format function:
+       code: |
+         import pprint
+         _pretty_format = pprint.PrettyPrinter(indent=1, width=120).pformat
+       description: |
+         Create a function named `_pretty_format` which returns a pretty
+         formatted string for a Python object.
+
+         Example:
+
+         ```python
+         from dataclasses import dataclass
+
+         @dataclass
+         class CodeSnippet:
+             title: str
+             code: str
+             description: str = ''
+
+         _pretty_format(CodeSnippet('one', '1'))
+         ```
+
+If identical description text needs to be repeated for multiple snippets in a
+row you can set ``description: USE_PREVIOUS``. For example these two snippets
+will have the same description text:
+``Helper functions for pretty printing Python objects.``
+
+
+.. code-block:: yaml
+
+   snippets:
+     Pretty print format function:
+       code: |
+         import pprint
+         _pretty_format = pprint.PrettyPrinter(indent=1, width=120).pformat
+       description: |
+         Helper functions for pretty printing Python objects.
+
+     Pretty print function:
+       code: |
+         import pprint
+         _pretty_print = pprint.PrettyPrinter(indent=1, width=120).pprint
+       description: USE_PREVIOUS
+
+
 
 Changing Keyboard Shortcuts
 ---------------------------

@@ -12,13 +12,13 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 #include <array>
-#include <span>
 #include <stdexcept>
 #include <string_view>
 
 #include "gtest/gtest.h"
 #include "pw_bytes/span.h"
 #include "pw_containers/vector.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 #include "pw_stream/memory_stream.h"
@@ -39,7 +39,20 @@
 namespace pw::protobuf {
 namespace {
 
-using namespace pw::protobuf::test;
+using test::pwpb::Bool;
+using test::pwpb::Enum;
+
+namespace DeviceInfo = test::pwpb::DeviceInfo;
+namespace KeyValuePair = test::pwpb::KeyValuePair;
+namespace Pigweed = test::pwpb::Pigweed;
+namespace Proto = test::pwpb::Proto;
+namespace RepeatedTest = test::pwpb::RepeatedTest;
+namespace TestResult = test::pwpb::TestResult;
+
+namespace imported {
+using ::pw::protobuf::test::imported::pwpb::IsValidStatus;
+using ::pw::protobuf::test::imported::pwpb::Status;
+}  // namespace imported
 
 TEST(Codegen, StreamDecoder) {
   // clang-format off
@@ -118,17 +131,17 @@ TEST(Codegen, StreamDecoder) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   Pigweed::StreamDecoder pigweed(reader);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::MAGIC_NUMBER);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kMagicNumber);
   Result<uint32_t> magic_number = pigweed.ReadMagicNumber();
   EXPECT_EQ(magic_number.status(), OkStatus());
   EXPECT_EQ(magic_number.value(), 0x49u);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::ZIGGY);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kZiggy);
   Result<int32_t> ziggy = pigweed.ReadZiggy();
   EXPECT_EQ(ziggy.status(), OkStatus());
   EXPECT_EQ(ziggy.value(), -111);
@@ -136,7 +149,7 @@ TEST(Codegen, StreamDecoder) {
   constexpr std::string_view kExpectedErrorMessage{"not a typewriter"};
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::ERROR_MESSAGE);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kErrorMessage);
   std::array<char, 32> error_message{};
   StatusWithSize error_message_status = pigweed.ReadErrorMessage(error_message);
   EXPECT_EQ(error_message_status.status(), OkStatus());
@@ -147,20 +160,20 @@ TEST(Codegen, StreamDecoder) {
             0);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kBin);
   Result<Pigweed::Protobuf::Binary> bin = pigweed.ReadBin();
   EXPECT_EQ(bin.status(), OkStatus());
   EXPECT_EQ(bin.value(), Pigweed::Protobuf::Binary::ZERO);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::PIGWEED);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kPigweed);
   {
     Pigweed::Pigweed::StreamDecoder pigweed_pigweed =
         pigweed.GetPigweedDecoder();
 
     EXPECT_EQ(pigweed_pigweed.Next(), OkStatus());
     EXPECT_EQ(pigweed_pigweed.Field().value(),
-              Pigweed::Pigweed::Fields::STATUS);
+              Pigweed::Pigweed::Fields::kStatus);
     Result<Bool> pigweed_status = pigweed_pigweed.ReadStatus();
     EXPECT_EQ(pigweed_status.status(), OkStatus());
     EXPECT_EQ(pigweed_status.value(), Bool::FILE_NOT_FOUND);
@@ -169,32 +182,32 @@ TEST(Codegen, StreamDecoder) {
   }
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::PROTO);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kProto);
   {
     Proto::StreamDecoder proto = pigweed.GetProtoDecoder();
 
     EXPECT_EQ(proto.Next(), OkStatus());
-    EXPECT_EQ(proto.Field().value(), Proto::Fields::BIN);
+    EXPECT_EQ(proto.Field().value(), Proto::Fields::kBin);
     Result<Proto::Binary> proto_bin = proto.ReadBin();
     EXPECT_EQ(proto_bin.status(), OkStatus());
     EXPECT_EQ(proto_bin.value(), Proto::Binary::OFF);
 
     EXPECT_EQ(proto.Next(), OkStatus());
-    EXPECT_EQ(proto.Field().value(), Proto::Fields::PIGWEED_PIGWEED_BIN);
+    EXPECT_EQ(proto.Field().value(), Proto::Fields::kPigweedPigweedBin);
     Result<Pigweed::Pigweed::Binary> proto_pigweed_bin =
         proto.ReadPigweedPigweedBin();
     EXPECT_EQ(proto_pigweed_bin.status(), OkStatus());
     EXPECT_EQ(proto_pigweed_bin.value(), Pigweed::Pigweed::Binary::ZERO);
 
     EXPECT_EQ(proto.Next(), OkStatus());
-    EXPECT_EQ(proto.Field().value(), Proto::Fields::PIGWEED_PROTOBUF_BIN);
+    EXPECT_EQ(proto.Field().value(), Proto::Fields::kPigweedProtobufBin);
     Result<Pigweed::Protobuf::Binary> proto_protobuf_bin =
         proto.ReadPigweedProtobufBin();
     EXPECT_EQ(proto_protobuf_bin.status(), OkStatus());
     EXPECT_EQ(proto_protobuf_bin.value(), Pigweed::Protobuf::Binary::ZERO);
 
     EXPECT_EQ(proto.Next(), OkStatus());
-    EXPECT_EQ(proto.Field().value(), Proto::Fields::META);
+    EXPECT_EQ(proto.Field().value(), Proto::Fields::kMeta);
     {
       Pigweed::Protobuf::Compiler::StreamDecoder meta = proto.GetMetaDecoder();
 
@@ -202,7 +215,7 @@ TEST(Codegen, StreamDecoder) {
 
       EXPECT_EQ(meta.Next(), OkStatus());
       EXPECT_EQ(meta.Field().value(),
-                Pigweed::Protobuf::Compiler::Fields::FILE_NAME);
+                Pigweed::Protobuf::Compiler::Fields::kFileName);
       std::array<char, 32> meta_file_name{};
       StatusWithSize meta_file_name_status = meta.ReadFileName(meta_file_name);
       EXPECT_EQ(meta_file_name_status.status(), OkStatus());
@@ -214,7 +227,7 @@ TEST(Codegen, StreamDecoder) {
 
       EXPECT_EQ(meta.Next(), OkStatus());
       EXPECT_EQ(meta.Field().value(),
-                Pigweed::Protobuf::Compiler::Fields::STATUS);
+                Pigweed::Protobuf::Compiler::Fields::kStatus);
       Result<Pigweed::Protobuf::Compiler::Status> meta_status =
           meta.ReadStatus();
       EXPECT_EQ(meta_status.status(), OkStatus());
@@ -225,14 +238,14 @@ TEST(Codegen, StreamDecoder) {
     }
 
     EXPECT_EQ(proto.Next(), OkStatus());
-    EXPECT_EQ(proto.Field().value(), Proto::Fields::PIGWEED);
+    EXPECT_EQ(proto.Field().value(), Proto::Fields::kPigweed);
     {
       Pigweed::StreamDecoder proto_pigweed = proto.GetPigweedDecoder();
 
       constexpr std::string_view kExpectedProtoErrorMessage{"here we go again"};
 
       EXPECT_EQ(proto_pigweed.Next(), OkStatus());
-      EXPECT_EQ(proto_pigweed.Field().value(), Pigweed::Fields::ERROR_MESSAGE);
+      EXPECT_EQ(proto_pigweed.Field().value(), Pigweed::Fields::kErrorMessage);
       std::array<char, 32> proto_pigweed_error_message{};
       StatusWithSize proto_pigweed_error_message_status =
           proto_pigweed.ReadErrorMessage(proto_pigweed_error_message);
@@ -245,20 +258,20 @@ TEST(Codegen, StreamDecoder) {
                 0);
 
       EXPECT_EQ(proto_pigweed.Next(), OkStatus());
-      EXPECT_EQ(proto_pigweed.Field().value(), Pigweed::Fields::MAGIC_NUMBER);
+      EXPECT_EQ(proto_pigweed.Field().value(), Pigweed::Fields::kMagicNumber);
       Result<uint32_t> proto_pigweed_magic_number =
           proto_pigweed.ReadMagicNumber();
       EXPECT_EQ(proto_pigweed_magic_number.status(), OkStatus());
       EXPECT_EQ(proto_pigweed_magic_number.value(), 616u);
 
       EXPECT_EQ(proto_pigweed.Next(), OkStatus());
-      EXPECT_EQ(proto_pigweed.Field().value(), Pigweed::Fields::DEVICE_INFO);
+      EXPECT_EQ(proto_pigweed.Field().value(), Pigweed::Fields::kDeviceInfo);
       {
         DeviceInfo::StreamDecoder device_info =
             proto_pigweed.GetDeviceInfoDecoder();
 
         EXPECT_EQ(device_info.Next(), OkStatus());
-        EXPECT_EQ(device_info.Field().value(), DeviceInfo::Fields::ATTRIBUTES);
+        EXPECT_EQ(device_info.Field().value(), DeviceInfo::Fields::kAttributes);
         {
           KeyValuePair::StreamDecoder key_value_pair =
               device_info.GetAttributesDecoder();
@@ -267,7 +280,7 @@ TEST(Codegen, StreamDecoder) {
           constexpr std::string_view kExpectedValue{"5.3.1"};
 
           EXPECT_EQ(key_value_pair.Next(), OkStatus());
-          EXPECT_EQ(key_value_pair.Field().value(), KeyValuePair::Fields::KEY);
+          EXPECT_EQ(key_value_pair.Field().value(), KeyValuePair::Fields::kKey);
           std::array<char, 32> key{};
           StatusWithSize key_status = key_value_pair.ReadKey(key);
           EXPECT_EQ(key_status.status(), OkStatus());
@@ -278,7 +291,7 @@ TEST(Codegen, StreamDecoder) {
 
           EXPECT_EQ(key_value_pair.Next(), OkStatus());
           EXPECT_EQ(key_value_pair.Field().value(),
-                    KeyValuePair::Fields::VALUE);
+                    KeyValuePair::Fields::kValue);
           std::array<char, 32> value{};
           StatusWithSize value_status = key_value_pair.ReadValue(value);
           EXPECT_EQ(value_status.status(), OkStatus());
@@ -292,7 +305,7 @@ TEST(Codegen, StreamDecoder) {
         }
 
         EXPECT_EQ(device_info.Next(), OkStatus());
-        EXPECT_EQ(device_info.Field().value(), DeviceInfo::Fields::ATTRIBUTES);
+        EXPECT_EQ(device_info.Field().value(), DeviceInfo::Fields::kAttributes);
         {
           KeyValuePair::StreamDecoder key_value_pair =
               device_info.GetAttributesDecoder();
@@ -301,7 +314,7 @@ TEST(Codegen, StreamDecoder) {
           constexpr std::string_view kExpectedValue{"left-soc"};
 
           EXPECT_EQ(key_value_pair.Next(), OkStatus());
-          EXPECT_EQ(key_value_pair.Field().value(), KeyValuePair::Fields::KEY);
+          EXPECT_EQ(key_value_pair.Field().value(), KeyValuePair::Fields::kKey);
           std::array<char, 32> key{};
           StatusWithSize key_status = key_value_pair.ReadKey(key);
           EXPECT_EQ(key_status.status(), OkStatus());
@@ -312,7 +325,7 @@ TEST(Codegen, StreamDecoder) {
 
           EXPECT_EQ(key_value_pair.Next(), OkStatus());
           EXPECT_EQ(key_value_pair.Field().value(),
-                    KeyValuePair::Fields::VALUE);
+                    KeyValuePair::Fields::kValue);
           std::array<char, 32> value{};
           StatusWithSize value_status = key_value_pair.ReadValue(value);
           EXPECT_EQ(value_status.status(), OkStatus());
@@ -326,7 +339,7 @@ TEST(Codegen, StreamDecoder) {
         }
 
         EXPECT_EQ(device_info.Next(), OkStatus());
-        EXPECT_EQ(device_info.Field().value(), DeviceInfo::Fields::STATUS);
+        EXPECT_EQ(device_info.Field().value(), DeviceInfo::Fields::kStatus);
         Result<DeviceInfo::DeviceStatus> device_info_status =
             device_info.ReadStatus();
         EXPECT_EQ(device_info_status.status(), OkStatus());
@@ -341,14 +354,14 @@ TEST(Codegen, StreamDecoder) {
     EXPECT_EQ(proto.Next(), Status::OutOfRange());
   }
 
-  for (int i = 0; i < 5; ++i) {
+  for (unsigned i = 0; i < 5; ++i) {
     EXPECT_EQ(pigweed.Next(), OkStatus());
-    EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::ID);
+    EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kId);
 
     Proto::ID::StreamDecoder id = pigweed.GetIdDecoder();
 
     EXPECT_EQ(id.Next(), OkStatus());
-    EXPECT_EQ(id.Field().value(), Proto::ID::Fields::ID);
+    EXPECT_EQ(id.Field().value(), Proto::ID::Fields::kId);
     Result<uint32_t> id_id = id.ReadId();
     EXPECT_EQ(id_id.status(), OkStatus());
     EXPECT_EQ(id_id.value(), 5u * i * i + 3 * i + 49);
@@ -368,11 +381,11 @@ TEST(Codegen, ResourceExhausted) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   Pigweed::StreamDecoder pigweed(reader);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::ERROR_MESSAGE);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kErrorMessage);
   std::array<char, 8> error_message{};
   StatusWithSize error_message_status = pigweed.ReadErrorMessage(error_message);
   EXPECT_EQ(error_message_status.status(), Status::ResourceExhausted());
@@ -390,13 +403,13 @@ TEST(Codegen, BytesReader) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   Pigweed::StreamDecoder pigweed(reader);
 
   constexpr std::string_view kExpectedErrorMessage{"not a typewriter"};
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::ERROR_MESSAGE);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kErrorMessage);
   {
     StreamDecoder::BytesReader bytes_reader = pigweed.GetErrorMessageReader();
     EXPECT_EQ(bytes_reader.field_size(), kExpectedErrorMessage.size());
@@ -420,24 +433,34 @@ TEST(Codegen, BytesReader) {
 TEST(Codegen, Enum) {
   // clang-format off
   constexpr uint8_t proto_data[] = {
-    // pigweed.bin (value value)
+    // pigweed.bin (valid value)
     0x40, 0x01,
+    // pigweed.bin (unknown value)
+    0x40, 0x7f,
     // pigweed.bin (invalid value)
     0x40, 0xff,
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   Pigweed::StreamDecoder pigweed(reader);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kBin);
   Result<Pigweed::Protobuf::Binary> bin = pigweed.ReadBin();
   EXPECT_EQ(bin.status(), OkStatus());
+  EXPECT_TRUE(Pigweed::Protobuf::IsValidBinary(bin.value()));
   EXPECT_EQ(bin.value(), Pigweed::Protobuf::Binary::ZERO);
 
   EXPECT_EQ(pigweed.Next(), OkStatus());
-  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::BIN);
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kBin);
+  bin = pigweed.ReadBin();
+  EXPECT_EQ(bin.status(), OkStatus());
+  EXPECT_FALSE(Pigweed::Protobuf::IsValidBinary(bin.value()));
+  EXPECT_EQ(static_cast<uint32_t>(bin.value()), 0x7fu);
+
+  EXPECT_EQ(pigweed.Next(), OkStatus());
+  EXPECT_EQ(pigweed.Field().value(), Pigweed::Fields::kBin);
   bin = pigweed.ReadBin();
   EXPECT_EQ(bin.status(), Status::DataLoss());
 }
@@ -445,24 +468,34 @@ TEST(Codegen, Enum) {
 TEST(Codegen, ImportedEnum) {
   // clang-format off
   constexpr uint8_t proto_data[] = {
-    // result.status (value value)
+    // result.status (valid value)
     0x08, 0x01,
+    // result.status (unknown value)
+    0x08, 0x7f,
     // result.status (invalid value)
     0x08, 0xff,
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   TestResult::StreamDecoder test_result(reader);
 
   EXPECT_EQ(test_result.Next(), OkStatus());
-  EXPECT_EQ(test_result.Field().value(), TestResult::Fields::STATUS);
+  EXPECT_EQ(test_result.Field().value(), TestResult::Fields::kStatus);
   Result<imported::Status> status = test_result.ReadStatus();
   EXPECT_EQ(status.status(), OkStatus());
+  EXPECT_TRUE(imported::IsValidStatus(status.value()));
   EXPECT_EQ(status.value(), imported::Status::NOT_OK);
 
   EXPECT_EQ(test_result.Next(), OkStatus());
-  EXPECT_EQ(test_result.Field().value(), TestResult::Fields::STATUS);
+  EXPECT_EQ(test_result.Field().value(), TestResult::Fields::kStatus);
+  status = test_result.ReadStatus();
+  EXPECT_EQ(status.status(), OkStatus());
+  EXPECT_FALSE(imported::IsValidStatus(status.value()));
+  EXPECT_EQ(static_cast<uint32_t>(status.value()), 0x7fu);
+
+  EXPECT_EQ(test_result.Next(), OkStatus());
+  EXPECT_EQ(test_result.Field().value(), TestResult::Fields::kStatus);
   status = test_result.ReadStatus();
   EXPECT_EQ(status.status(), Status::DataLoss());
 }
@@ -483,21 +516,21 @@ TEST(CodegenRepeated, NonPackedScalar) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
-  for (int i = 0; i < 4; ++i) {
+  for (uint32_t i = 0; i < 4; ++i) {
     EXPECT_EQ(repeated_test.Next(), OkStatus());
-    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
 
     Result<uint32_t> result = repeated_test.ReadUint32s();
     EXPECT_EQ(result.status(), OkStatus());
     EXPECT_EQ(result.value(), i * 16u);
   }
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(repeated_test.Next(), OkStatus());
-    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
 
     Result<uint32_t> result = repeated_test.ReadFixed32s();
     EXPECT_EQ(result.status(), OkStatus());
@@ -523,36 +556,36 @@ TEST(CodegenRepeated, NonPackedScalarVector) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   pw::Vector<uint32_t, 8> uint32s{};
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(repeated_test.Next(), OkStatus());
-    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
 
     Status status = repeated_test.ReadUint32s(uint32s);
     EXPECT_EQ(status, OkStatus());
     EXPECT_EQ(uint32s.size(), i + 1u);
   }
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned short i = 0; i < 4; ++i) {
     EXPECT_EQ(uint32s[i], i * 16u);
   }
 
   pw::Vector<uint32_t, 8> fixed32s{};
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(repeated_test.Next(), OkStatus());
-    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
 
     Status status = repeated_test.ReadFixed32s(fixed32s);
     EXPECT_EQ(status, OkStatus());
     EXPECT_EQ(fixed32s.size(), i + 1u);
   }
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned short i = 0; i < 4; ++i) {
     EXPECT_EQ(fixed32s[i], i * 16u);
   }
 
@@ -570,30 +603,30 @@ TEST(CodegenRepeated, NonPackedVarintScalarVectorFull) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   pw::Vector<uint32_t, 2> uint32s{};
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   Status status = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(uint32s.size(), 1u);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   status = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(uint32s.size(), 2u);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   status = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(status, Status::ResourceExhausted());
   EXPECT_EQ(uint32s.size(), 2u);
 
-  for (int i = 0; i < 2; ++i) {
+  for (unsigned short i = 0; i < 2; ++i) {
     EXPECT_EQ(uint32s[i], i * 16u);
   }
 }
@@ -609,30 +642,30 @@ TEST(CodegenRepeated, NonPackedFixedScalarVectorFull) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   pw::Vector<uint32_t, 2> fixed32s{};
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   Status status = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(fixed32s.size(), 1u);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   status = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(fixed32s.size(), 2u);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   status = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(status, Status::ResourceExhausted());
   EXPECT_EQ(fixed32s.size(), 2u);
 
-  for (int i = 0; i < 2; ++i) {
+  for (unsigned short i = 0; i < 2; ++i) {
     EXPECT_EQ(fixed32s[i], i * 16u);
   }
 }
@@ -655,28 +688,28 @@ TEST(CodegenRepeated, PackedScalar) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   std::array<uint32_t, 8> uint32s{};
   StatusWithSize sws = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(sws.status(), OkStatus());
   EXPECT_EQ(sws.size(), 4u);
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned short i = 0; i < 4; ++i) {
     EXPECT_EQ(uint32s[i], i * 16u);
   }
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   std::array<uint32_t, 8> fixed32s{};
   sws = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(sws.status(), OkStatus());
   EXPECT_EQ(sws.size(), 4u);
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned short i = 0; i < 4; ++i) {
     EXPECT_EQ(fixed32s[i], i * 16u);
   }
 
@@ -695,17 +728,17 @@ TEST(CodegenRepeated, PackedVarintScalarExhausted) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   std::array<uint32_t, 2> uint32s{};
   StatusWithSize sws = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(sws.status(), Status::ResourceExhausted());
   EXPECT_EQ(sws.size(), 2u);
 
-  for (int i = 0; i < 2; ++i) {
+  for (unsigned short i = 0; i < 2; ++i) {
     EXPECT_EQ(uint32s[i], i * 16u);
   }
 }
@@ -722,11 +755,11 @@ TEST(CodegenRepeated, PackedFixedScalarExhausted) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   std::array<uint32_t, 2> fixed32s{};
   StatusWithSize sws = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(sws.status(), Status::ResourceExhausted());
@@ -751,28 +784,28 @@ TEST(CodegenRepeated, PackedScalarVector) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   pw::Vector<uint32_t, 8> uint32s{};
   Status status = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(uint32s.size(), 4u);
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned short i = 0; i < 4; ++i) {
     EXPECT_EQ(uint32s[i], i * 16u);
   }
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   pw::Vector<uint32_t, 8> fixed32s{};
   status = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(fixed32s.size(), 4u);
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned short i = 0; i < 4; ++i) {
     EXPECT_EQ(fixed32s[i], i * 16u);
   }
 
@@ -791,17 +824,17 @@ TEST(CodegenRepeated, PackedVarintScalarVectorFull) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   pw::Vector<uint32_t, 2> uint32s{};
   Status status = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(status, Status::ResourceExhausted());
   EXPECT_EQ(uint32s.size(), 2u);
 
-  for (int i = 0; i < 2; ++i) {
+  for (unsigned short i = 0; i < 2; ++i) {
     EXPECT_EQ(uint32s[i], i * 16u);
   }
 }
@@ -818,11 +851,11 @@ TEST(CodegenRepeated, PackedFixedScalarVectorFull) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   pw::Vector<uint32_t, 2> fixed32s{};
   Status status = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(status, Status::ResourceExhausted());
@@ -859,40 +892,40 @@ TEST(CodegenRepeated, PackedScalarVectorRepeated) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   pw::Vector<uint32_t, 8> uint32s{};
   Status status = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(uint32s.size(), 4u);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::UINT32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kUint32s);
   status = repeated_test.ReadUint32s(uint32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(uint32s.size(), 8u);
 
-  for (int i = 0; i < 8; ++i) {
+  for (unsigned short i = 0; i < 8; ++i) {
     EXPECT_EQ(uint32s[i], i * 16u);
   }
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   pw::Vector<uint32_t, 8> fixed32s{};
   status = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(fixed32s.size(), 4u);
 
   EXPECT_EQ(repeated_test.Next(), OkStatus());
-  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::FIXED32S);
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kFixed32s);
   status = repeated_test.ReadFixed32s(fixed32s);
   EXPECT_EQ(status, OkStatus());
   EXPECT_EQ(fixed32s.size(), 8u);
 
-  for (int i = 0; i < 8; ++i) {
+  for (unsigned short i = 0; i < 8; ++i) {
     EXPECT_EQ(fixed32s[i], i * 16u);
   }
 
@@ -910,15 +943,15 @@ TEST(CodegenRepeated, NonScalar) {
   };
   // clang-format on
 
-  stream::MemoryReader reader(std::as_bytes(std::span(proto_data)));
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
   RepeatedTest::StreamDecoder repeated_test(reader);
 
   constexpr std::array<std::string_view, 4> kExpectedString{
       {{"the"}, {"quick"}, {"brown"}, {"fox"}}};
 
-  for (int i = 0; i < 4; ++i) {
+  for (unsigned short i = 0; i < 4; ++i) {
     EXPECT_EQ(repeated_test.Next(), OkStatus());
-    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::STRINGS);
+    EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kStrings);
     std::array<char, 32> string{};
     StatusWithSize sws = repeated_test.ReadStrings(string);
     EXPECT_EQ(sws.status(), OkStatus());
@@ -930,6 +963,312 @@ TEST(CodegenRepeated, NonScalar) {
   }
 
   EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
+}
+
+TEST(CodegenRepeated, PackedEnum) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // enums[], v={RED, GREEN, AMBER, RED}
+    0x4a, 0x04, 0x00, 0x02, 0x01, 0x00,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
+  RepeatedTest::StreamDecoder repeated_test(reader);
+
+  EXPECT_EQ(repeated_test.Next(), OkStatus());
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kEnums);
+  std::array<Enum, 4> enums{};
+  StatusWithSize sws = repeated_test.ReadEnums(enums);
+  EXPECT_EQ(sws.status(), OkStatus());
+  ASSERT_EQ(sws.size(), 4u);
+
+  for (unsigned short i = 0; i < 4; ++i) {
+    EXPECT_TRUE(IsValidEnum(enums[i]));
+  }
+
+  EXPECT_EQ(enums[0], Enum::RED);
+  EXPECT_EQ(enums[1], Enum::GREEN);
+  EXPECT_EQ(enums[2], Enum::AMBER);
+  EXPECT_EQ(enums[3], Enum::RED);
+
+  EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
+}
+
+TEST(CodegenRepeated, PackedEnumVector) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // enums[], v={RED, GREEN, AMBER, RED}
+    0x4a, 0x04, 0x00, 0x02, 0x01, 0x00,
+  };
+  // clang-format on
+
+  stream::MemoryReader reader(as_bytes(span(proto_data)));
+  RepeatedTest::StreamDecoder repeated_test(reader);
+
+  EXPECT_EQ(repeated_test.Next(), OkStatus());
+  EXPECT_EQ(repeated_test.Field().value(), RepeatedTest::Fields::kEnums);
+  pw::Vector<Enum, 4> enums{};
+  Status status = repeated_test.ReadEnums(enums);
+  EXPECT_EQ(status, OkStatus());
+  ASSERT_EQ(enums.size(), 4u);
+
+  for (unsigned short i = 0; i < 4; ++i) {
+    EXPECT_TRUE(IsValidEnum(enums[i]));
+  }
+
+  EXPECT_EQ(enums[0], Enum::RED);
+  EXPECT_EQ(enums[1], Enum::GREEN);
+  EXPECT_EQ(enums[2], Enum::AMBER);
+  EXPECT_EQ(enums[3], Enum::RED);
+
+  EXPECT_EQ(repeated_test.Next(), Status::OutOfRange());
+}
+
+TEST(Codegen, FindBuffer) {
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // pigweed.magic_number
+    0x08, 0x49,
+    // pigweed.ziggy
+    0x10, 0xdd, 0x01,
+    // pigweed.cycles
+    0x19, 0xde, 0xad, 0xca, 0xfe, 0x10, 0x20, 0x30, 0x40,
+    // pigweed.ratio
+    0x25, 0x8f, 0xc2, 0xb5, 0xbf,
+    // pigweed.error_message
+    0x2a, 0x10, 'n', 'o', 't', ' ', 'a', ' ',
+    't', 'y', 'p', 'e', 'w', 'r', 'i', 't', 'e', 'r',
+    // pigweed.bin
+    0x40, 0x01,
+    // pigweed.pigweed
+    0x3a, 0x02,
+    // pigweed.pigweed.status
+    0x08, 0x02,
+    // pigweed.proto
+    0x4a, 0x56,
+    // pigweed.proto.bin
+    0x10, 0x00,
+    // pigweed.proto.pigweed_pigweed_bin
+    0x18, 0x00,
+    // pigweed.proto.pigweed_protobuf_bin
+    0x20, 0x01,
+    // pigweed.proto.meta
+    0x2a, 0x0f,
+    // pigweed.proto.meta.file_name
+    0x0a, 0x0b, '/', 'e', 't', 'c', '/', 'p', 'a', 's', 's', 'w', 'd',
+    // pigweed.proto.meta.status
+    0x10, 0x02,
+    // pigweed.proto.nested_pigweed
+    0x0a, 0x3d,
+    // pigweed.proto.nested_pigweed.error_message
+    0x2a, 0x10, 'h', 'e', 'r', 'e', ' ', 'w', 'e', ' ',
+    'g', 'o', ' ', 'a', 'g', 'a', 'i', 'n',
+    // pigweed.proto.nested_pigweed.magic_number
+    0x08, 0xe8, 0x04,
+    // pigweed.proto.nested_pigweed.device_info
+    0x32, 0x26,
+    // pigweed.proto.nested_pigweed.device_info.attributes[0]
+    0x22, 0x10,
+    // pigweed.proto.nested_pigweed.device_info.attributes[0].key
+    0x0a, 0x07, 'v', 'e', 'r', 's', 'i', 'o', 'n',
+    // pigweed.proto.nested_pigweed.device_info.attributes[0].value
+    0x12, 0x05, '5', '.', '3', '.', '1',
+    // pigweed.proto.nested_pigweed.device_info.attributes[1]
+    0x22, 0x10,
+    // pigweed.proto.nested_pigweed.device_info.attributes[1].key
+    0x0a, 0x04, 'c', 'h', 'i', 'p',
+    // pigweed.proto.nested_pigweed.device_info.attributes[1].value
+    0x12, 0x08, 'l', 'e', 'f', 't', '-', 's', 'o', 'c',
+    // pigweed.proto.nested_pigweed.device_info.status
+    0x18, 0x03,
+    // pigweed.id[0]
+    0x52, 0x02,
+    // pigweed.id[0].id
+    0x08, 0x31,
+    // pigweed.id[1]
+    0x52, 0x02,
+    // pigweed.id[1].id
+    0x08, 0x39,
+    // pigweed.id[2]
+    0x52, 0x02,
+    // pigweed.id[2].id
+    0x08, 0x4b,
+    // pigweed.id[3]
+    0x52, 0x02,
+    // pigweed.id[3].id
+    0x08, 0x67,
+    // pigweed.id[4]
+    0x52, 0x03,
+    // pigweed.id[4].id
+    0x08, 0x8d, 0x01
+
+  };
+  // clang-format on
+
+  EXPECT_EQ(Pigweed::FindMagicNumber(as_bytes(span(proto_data))).value(),
+            0x49u);
+  EXPECT_EQ(Pigweed::FindZiggy(as_bytes(span(proto_data))).value(), -111);
+  EXPECT_EQ(Pigweed::FindCycles(as_bytes(span(proto_data))).value(),
+            0x40302010fecaaddeu);
+  EXPECT_EQ(Pigweed::FindRatio(as_bytes(span(proto_data))).value(), -1.42f);
+
+  auto result = Pigweed::FindErrorMessage(as_bytes(span(proto_data)));
+  EXPECT_EQ(result.status(), OkStatus());
+  InlineString<32> str(*result);
+  EXPECT_STREQ(str.c_str(), "not a typewriter");
+
+  EXPECT_EQ(Pigweed::FindBin(as_bytes(span(proto_data))).value(),
+            Pigweed::Protobuf::Binary::ZERO);
+
+  Result<ConstByteSpan> pigweed =
+      Pigweed::FindPigweed(as_bytes(span(proto_data)));
+  EXPECT_EQ(result.status(), OkStatus());
+  EXPECT_EQ(pigweed->size(), 2u);
+
+  EXPECT_EQ(Pigweed::Pigweed::FindStatus(*pigweed).value(),
+            Bool::FILE_NOT_FOUND);
+
+  // Nonexisting fields.
+  EXPECT_EQ(Pigweed::FindData(as_bytes(span(proto_data))).status(),
+            Status::NotFound());
+  EXPECT_EQ(Pigweed::FindDescription(as_bytes(span(proto_data))).status(),
+            Status::NotFound());
+  EXPECT_EQ(Pigweed::FindSpecialProperty(as_bytes(span(proto_data))).status(),
+            Status::NotFound());
+  EXPECT_EQ(Pigweed::FindBungle(as_bytes(span(proto_data))).status(),
+            Status::NotFound());
+}
+
+TEST(Codegen, FindStream) {
+  stream::MemoryReader reader({});
+  // clang-format off
+  constexpr uint8_t proto_data[] = {
+    // pigweed.magic_number
+    0x08, 0x49,
+    // pigweed.ziggy
+    0x10, 0xdd, 0x01,
+    // pigweed.cycles
+    0x19, 0xde, 0xad, 0xca, 0xfe, 0x10, 0x20, 0x30, 0x40,
+    // pigweed.ratio
+    0x25, 0x8f, 0xc2, 0xb5, 0xbf,
+    // pigweed.error_message
+    0x2a, 0x10, 'n', 'o', 't', ' ', 'a', ' ',
+    't', 'y', 'p', 'e', 'w', 'r', 'i', 't', 'e', 'r',
+    // pigweed.bin
+    0x40, 0x01,
+    // pigweed.pigweed
+    0x3a, 0x02,
+    // pigweed.pigweed.status
+    0x08, 0x02,
+    // pigweed.proto
+    0x4a, 0x56,
+    // pigweed.proto.bin
+    0x10, 0x00,
+    // pigweed.proto.pigweed_pigweed_bin
+    0x18, 0x00,
+    // pigweed.proto.pigweed_protobuf_bin
+    0x20, 0x01,
+    // pigweed.proto.meta
+    0x2a, 0x0f,
+    // pigweed.proto.meta.file_name
+    0x0a, 0x0b, '/', 'e', 't', 'c', '/', 'p', 'a', 's', 's', 'w', 'd',
+    // pigweed.proto.meta.status
+    0x10, 0x02,
+    // pigweed.proto.nested_pigweed
+    0x0a, 0x3d,
+    // pigweed.proto.nested_pigweed.error_message
+    0x2a, 0x10, 'h', 'e', 'r', 'e', ' ', 'w', 'e', ' ',
+    'g', 'o', ' ', 'a', 'g', 'a', 'i', 'n',
+    // pigweed.proto.nested_pigweed.magic_number
+    0x08, 0xe8, 0x04,
+    // pigweed.proto.nested_pigweed.device_info
+    0x32, 0x26,
+    // pigweed.proto.nested_pigweed.device_info.attributes[0]
+    0x22, 0x10,
+    // pigweed.proto.nested_pigweed.device_info.attributes[0].key
+    0x0a, 0x07, 'v', 'e', 'r', 's', 'i', 'o', 'n',
+    // pigweed.proto.nested_pigweed.device_info.attributes[0].value
+    0x12, 0x05, '5', '.', '3', '.', '1',
+    // pigweed.proto.nested_pigweed.device_info.attributes[1]
+    0x22, 0x10,
+    // pigweed.proto.nested_pigweed.device_info.attributes[1].key
+    0x0a, 0x04, 'c', 'h', 'i', 'p',
+    // pigweed.proto.nested_pigweed.device_info.attributes[1].value
+    0x12, 0x08, 'l', 'e', 'f', 't', '-', 's', 'o', 'c',
+    // pigweed.proto.nested_pigweed.device_info.status
+    0x18, 0x03,
+    // pigweed.id[0]
+    0x52, 0x02,
+    // pigweed.id[0].id
+    0x08, 0x31,
+    // pigweed.id[1]
+    0x52, 0x02,
+    // pigweed.id[1].id
+    0x08, 0x39,
+    // pigweed.id[2]
+    0x52, 0x02,
+    // pigweed.id[2].id
+    0x08, 0x4b,
+    // pigweed.id[3]
+    0x52, 0x02,
+    // pigweed.id[3].id
+    0x08, 0x67,
+    // pigweed.id[4]
+    0x52, 0x03,
+    // pigweed.id[4].id
+    0x08, 0x8d, 0x01
+
+  };
+  // clang-format on
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindMagicNumber(reader).value(), 0x49u);
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindZiggy(reader).value(), -111);
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindCycles(reader).value(), 0x40302010fecaaddeu);
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindRatio(reader).value(), -1.42f);
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  char str[32] = {'\0'};
+  auto result = Pigweed::FindErrorMessage(reader, str);
+  EXPECT_EQ(result.status(), OkStatus());
+  EXPECT_EQ(result.size(), 16u);
+  EXPECT_STREQ(str, "not a typewriter");
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  InlineString<32> error_message;
+  result = Pigweed::FindErrorMessage(reader, error_message);
+  EXPECT_EQ(result.status(), OkStatus());
+  EXPECT_EQ(result.size(), 16u);
+  EXPECT_STREQ(error_message.c_str(), "not a typewriter");
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindBin(reader).value(), Pigweed::Protobuf::Binary::ZERO);
+
+  // Nonexisting fields.
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  std::byte buf[32];
+  EXPECT_EQ(Pigweed::FindData(reader, buf).status(), Status::NotFound());
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindDescription(reader, str).status(), Status::NotFound());
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindSpecialProperty(reader).status(), Status::NotFound());
+
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindBungle(reader).status(), Status::NotFound());
+
+  // Advance the stream past `magic_number`, then attempt to find it.
+  reader = stream::MemoryReader(as_bytes(span(proto_data)));
+  EXPECT_EQ(Pigweed::FindZiggy(reader).status(), OkStatus());
+  EXPECT_EQ(Pigweed::FindMagicNumber(reader).status(), Status::NotFound());
 }
 
 }  // namespace

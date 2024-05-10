@@ -21,6 +21,7 @@ import os
 
 class ApplyVisitor(object):  # pylint: disable=useless-object-inheritance
     """Applies an Environment to the current process."""
+
     def __init__(self, *args, **kwargs):
         pathsep = kwargs.pop('pathsep', os.pathsep)
         super(ApplyVisitor, self).__init__(*args, **kwargs)
@@ -29,6 +30,13 @@ class ApplyVisitor(object):  # pylint: disable=useless-object-inheritance
         self._unapply_steps = None
 
     def apply(self, env, environ):
+        """Apply the given environment to the current process.
+
+        Args:
+            env (environment.Environment): Environment variables to use.
+            environ (dict): Where to set variables. In most cases this should be
+                os.environ.
+        """
         self._unapply_steps = []
         try:
             self._environ = environ
@@ -51,11 +59,13 @@ class ApplyVisitor(object):  # pylint: disable=useless-object-inheritance
 
     def visit_prepend(self, prepend):
         self._environ[prepend.name] = self._pathsep.join(
-            (prepend.value, self._environ.get(prepend.name, '')))
+            (prepend.value, self._environ.get(prepend.name, ''))
+        )
 
     def visit_append(self, append):
         self._environ[append.name] = self._pathsep.join(
-            (self._environ.get(append.name, ''), append.value))
+            (self._environ.get(append.name, ''), append.value)
+        )
 
     def visit_echo(self, echo):
         pass  # Not relevant for apply.

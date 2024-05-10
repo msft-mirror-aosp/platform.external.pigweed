@@ -124,6 +124,18 @@ using IsForwardingAssignmentValid = std::disjunction<
                      std::remove_cv_t<std::remove_reference_t<U>>>,
         IsForwardingAssignmentAmbiguous<T, U>>>>;
 
+// This trait is for determining if a given type is a Result.
+template <typename T>
+constexpr bool IsResult = false;
+template <typename T>
+constexpr bool IsResult<Result<T>> = true;
+
+// This trait determines the return type of a given function without const,
+// volatile or reference qualifiers.
+template <typename Fn, typename T>
+using InvokeResultType =
+    std::remove_cv_t<std::remove_reference_t<std::invoke_result_t<Fn, T>>>;
+
 PW_MODIFY_DIAGNOSTICS_PUSH();
 PW_MODIFY_DIAGNOSTIC_GCC(ignored, "-Wmaybe-uninitialized");
 
@@ -271,7 +283,8 @@ class StatusOrData;
   template <typename... Arg>                                                   \
   void MakeValue(Arg&&... arg) {                                               \
     internal_result::PlacementNew<T>(&unused_, std::forward<Arg>(arg)...);     \
-  }
+  }                                                                            \
+  static_assert(true, "Macros must be terminated with a semicolon")
 
 template <typename T>
 class StatusOrData<T, true> {
@@ -336,8 +349,8 @@ struct MoveCtorBase<T, false> {
 };
 
 template <typename T,
-          bool = std::is_copy_constructible<T>::value&&
-              std::is_copy_assignable<T>::value>
+          bool = std::is_copy_constructible<T>::value &&
+                 std::is_copy_assignable<T>::value>
 struct CopyAssignBase {
   CopyAssignBase() = default;
   CopyAssignBase(const CopyAssignBase&) = default;
@@ -356,8 +369,8 @@ struct CopyAssignBase<T, false> {
 };
 
 template <typename T,
-          bool = std::is_move_constructible<T>::value&&
-              std::is_move_assignable<T>::value>
+          bool = std::is_move_constructible<T>::value &&
+                 std::is_move_assignable<T>::value>
 struct MoveAssignBase {
   MoveAssignBase() = default;
   MoveAssignBase(const MoveAssignBase&) = default;

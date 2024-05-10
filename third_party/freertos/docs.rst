@@ -10,8 +10,8 @@ FreeRTOS, including Pigweed backend modules which depend on FreeRTOS.
 -------------
 Build Support
 -------------
-This module provides support to compile FreeRTOS with GN and CMake. This is
-required when compiling backends modules for FreeRTOS.
+This module provides support to compile FreeRTOS with GN, CMake, and Bazel.
+This is required when compiling backends modules for FreeRTOS.
 
 GN
 ==
@@ -33,12 +33,38 @@ CMake
 In order to use this you are expected to set the following variables from
 ``third_party/freertos/CMakeLists.txt``:
 
-#. Set the GN ``dir_pw_third_party_freertos`` to the path of the FreeRTOS
-   installation.
+#. Set ``dir_pw_third_party_freertos`` to the path of the FreeRTOS installation.
 #. Set ``pw_third_party_freertos_CONFIG`` to a library target which provides
    the FreeRTOS config header.
 #. Set ``pw_third_party_freertos_PORT`` to a library target which provides
    the FreeRTOS port specific includes and sources.
+
+Bazel
+=====
+.. There's a bug in the Bazel docs site which is causing the link to the evergreen
+.. section on constraint settings to 404. So for now, we'll just link to the
+.. v5.4.0 doc on constraint settings. When the Bazel bug is fixed we can return the
+.. URL to https://bazel.build/reference/be/platform#constraint_setting
+
+In Bazel, the FreeRTOS build is configured through `constraint_settings
+<https://docs.bazel.build/versions/5.4.0/be/platform.html#constraint_setting>`_. The `platform
+<https://bazel.build/extending/platforms>`_ you are building for must specify
+values for the following settings:
+
+*   ``//third_party/freertos:port``, to set which FreeRTOS port to use. You can
+    select a value from those defined in ``third_party/freertos/BUILD.bazel``.
+*   ``//third_party/freertos:malloc``, to set which FreeRTOS malloc
+    implementation to use. You can select a value from those defined in
+    ``third_party/freertos/BUILD.bazel``.
+*   ``//third_party/freertos:disable_task_statics_setting``, to determine
+    whether statics should be disabled during compilation of the tasks.c source
+    file (see next section). This setting has only two possible values, also
+    defined in ``third_party/freertos/BUILD.bazel``.
+
+In addition, you need to set the ``@pigweed//targets:freertos_config`` label
+flag to point to the library target providing the FreeRTOS config header.  See
+:ref:`docs-build_system-bazel_configuration` for a discussion of how to work
+with our label flags.
 
 
 .. _third_party-freertos_disable_task_statics:
@@ -49,10 +75,12 @@ In order to link against internal kernel data structures through the use of
 extern "C", statics can be optionally disabled for the tasks.c source file
 to enable use of things like pw_thread_freertos/util.h's ``ForEachThread``.
 
-To facilitate this, Pigweed offers an opt-in option which can be enabled by
-configuring GN through
-``pw_third_party_freertos_DISABLE_TASKS_STATICS = true`` or CMake through
-``set(pw_third_party_freertos_DISABLE_TASKS_STATICS ON CACHE BOOL "" FORCE)``.
+To facilitate this, Pigweed offers an opt-in option which can be enabled,
+
+*  in GN through ``pw_third_party_freertos_DISABLE_TASKS_STATICS = true``,
+*  in CMake through ``set(pw_third_party_freertos_DISABLE_TASKS_STATICS ON CACHE BOOL "" FORCE)``,
+*  in Bazel through ``//third_party/freertos:disable_task_statics``.
+
 This redefines ``static`` to nothing for the ``Source/tasks.c`` FreeRTOS source
 file when building through ``$dir_pw_third_party/freertos`` in GN and through
 ``pw_third_party.freertos`` in CMake.
@@ -72,8 +100,8 @@ this configuration, which correctly sets ``configASSERT`` to use ``PW_CHECK` and
 -----------------------------
 OS Abstraction Layers Support
 -----------------------------
-Support for Pigweed's :ref:`docs-os_abstraction_layers` are provided for
-FreeRTOS via the following modules:
+Support for Pigweed's :ref:`docs-os` are provided for FreeRTOS via the following
+modules:
 
 * :ref:`module-pw_chrono_freertos`
 * :ref:`module-pw_sync_freertos`

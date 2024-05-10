@@ -1,4 +1,4 @@
-// Copyright 2021 The Pigweed Authors
+// Copyright 2022 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -14,18 +14,18 @@
 
 /** Provides a pw_rpc client for TypeScript. */
 
-import {ProtoCollection} from '@pigweed/pw_protobuf_compiler';
-import {Status} from '@pigweed/pw_status';
-import {Message} from 'google-protobuf';
+import { ProtoCollection } from 'pigweedjs/pw_protobuf_compiler';
+import { Status } from 'pigweedjs/pw_status';
+import { Message } from 'google-protobuf';
 import {
   PacketType,
   RpcPacket,
-} from 'packet_proto_tspb/packet_proto_tspb_pb/pw_rpc/internal/packet_pb';
+} from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
 
-import {Channel, Service} from './descriptors';
-import {MethodStub, methodStubFactory} from './method';
+import { Channel, Service } from './descriptors';
+import { MethodStub, methodStubFactory } from './method';
 import * as packets from './packets';
-import {PendingCalls, Rpc} from './rpc_classes';
+import { PendingCalls, Rpc } from './rpc_classes';
 
 /**
  * Object for managing RPC service and contained methods.
@@ -33,12 +33,12 @@ import {PendingCalls, Rpc} from './rpc_classes';
 export class ServiceClient {
   private service: Service;
   private methods: MethodStub[] = [];
-  private methodsByName = new Map<string, MethodStub>();
+  methodsByName = new Map<string, MethodStub>();
 
   constructor(client: Client, channel: Channel, service: Service) {
     this.service = service;
     const methods = service.methods;
-    methods.forEach(method => {
+    methods.forEach((method) => {
       const stub = methodStubFactory(client.rpcs, channel, method);
       this.methods.push(stub);
       this.methodsByName.set(method.name, stub);
@@ -52,6 +52,10 @@ export class ServiceClient {
   get id(): number {
     return this.service.id;
   }
+
+  get name(): string {
+    return this.service.name;
+  }
 }
 
 /**
@@ -59,11 +63,11 @@ export class ServiceClient {
  */
 export class ChannelClient {
   readonly channel: Channel;
-  private services = new Map<string, ServiceClient>();
+  services = new Map<string, ServiceClient>();
 
   constructor(client: Client, channel: Channel, services: Service[]) {
     this.channel = channel;
-    services.forEach(service => {
+    services.forEach((service) => {
       const serviceClient = new ServiceClient(client, this.channel, service);
       this.services.set(service.name, serviceClient);
     });
@@ -118,14 +122,14 @@ export class Client {
 
   constructor(channels: Channel[], services: Service[]) {
     this.rpcs = new PendingCalls();
-    services.forEach(service => {
+    services.forEach((service) => {
       this.services.set(service.id, service);
     });
 
-    channels.forEach(channel => {
+    channels.forEach((channel) => {
       this.channelsById.set(
         channel.id,
-        new ChannelClient(this, channel, services)
+        new ChannelClient(this, channel, services),
       );
     });
   }
@@ -141,11 +145,11 @@ export class Client {
   static fromProtoSet(channels: Channel[], protoSet: ProtoCollection): Client {
     let services: Service[] = [];
     const descriptors = protoSet.fileDescriptorSet.getFileList();
-    descriptors.forEach(fileDescriptor => {
+    descriptors.forEach((fileDescriptor) => {
       const packageName = fileDescriptor.getPackage()!;
-      fileDescriptor.getServiceList().forEach(serviceDescriptor => {
+      fileDescriptor.getServiceList().forEach((serviceDescriptor) => {
         services = services.concat(
-          new Service(serviceDescriptor, protoSet, packageName)
+          new Service(serviceDescriptor, protoSet, packageName),
         );
       });
     });
@@ -172,7 +176,7 @@ export class Client {
    */
   private rpc(
     packet: RpcPacket,
-    channelClient: ChannelClient
+    channelClient: ChannelClient,
   ): Rpc | undefined {
     const service = this.services.get(packet.getServiceId());
     if (service == undefined) {
@@ -211,7 +215,7 @@ export class Client {
   private sendClientError(
     client: ChannelClient,
     packet: RpcPacket,
-    error: Status
+    error: Status,
   ) {
     client.channel.send(packets.encodeClientError(packet, error));
   }
@@ -286,10 +290,10 @@ export class Client {
 
     if (packet.getType() === PacketType.SERVER_ERROR) {
       if (status === Status.OK) {
-        throw 'Unexpected OK status on SERVER_ERROR';
+        throw new Error('Unexpected OK status on SERVER_ERROR');
       }
       if (status === undefined) {
-        throw 'Missing status on SERVER_ERROR';
+        throw new Error('Missing status on SERVER_ERROR');
       }
       console.warn(`${rpc}: invocation failed with status: ${Status[status]}`);
       call.handleError(status);

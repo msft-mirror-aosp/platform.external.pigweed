@@ -17,9 +17,13 @@
 #include <limits>
 
 #include "gtest/gtest.h"
+#include "pw_polyfill/language_feature_macros.h"
 
 namespace pw::containers {
 namespace {
+
+using Single = FlatMap<int, char, 1>;
+
 constexpr FlatMap<int, char, 5> kOddMap({{
     {-3, 'a'},
     {0, 'b'},
@@ -27,44 +31,79 @@ constexpr FlatMap<int, char, 5> kOddMap({{
     {50, 'd'},
     {100, 'e'},
 }});
+
 }  // namespace
+
+TEST(FlatMap, PairEquality) {
+  Pair<char, int> p1{'a', 1};
+  Pair<char, int> p2{'a', 1};
+  Pair<char, int> p3{'b', 1};
+  Pair<char, int> p4{'a', 2};
+
+  EXPECT_EQ(p1, p2);
+  EXPECT_NE(p1, p3);
+  EXPECT_NE(p1, p4);
+}
 
 TEST(FlatMap, Size) { EXPECT_EQ(kOddMap.size(), static_cast<uint32_t>(5)); }
 
 TEST(FlatMap, EmptyFlatMapSize) {
-  constexpr FlatMap<int, char, 0> kEmpty({{}});
+  PW_CONSTEXPR_CPP20 FlatMap<int, char, 0> kEmpty({{}});
   EXPECT_EQ(kEmpty.size(), static_cast<uint32_t>(0));
 }
 
 TEST(FlatMap, Empty) {
-  constexpr FlatMap<int, char, 0> kEmpty({{}});
+  PW_CONSTEXPR_CPP20 FlatMap<int, char, 0> kEmpty({{}});
   EXPECT_TRUE(kEmpty.empty());
 }
 
 TEST(FlatMap, NotEmpty) {
-  constexpr FlatMap<int, char, 1> kNotEmpty({{}});
+  PW_CONSTEXPR_CPP20 FlatMap<int, char, 1> kNotEmpty({{}});
   EXPECT_FALSE(kNotEmpty.empty());
 }
 
 TEST(FlatMap, EmptyFlatMapFind) {
-  constexpr FlatMap<int, char, 0> kEmpty({{}});
+  PW_CONSTEXPR_CPP20 FlatMap<int, char, 0> kEmpty({{}});
   EXPECT_EQ(kEmpty.find(0), kEmpty.end());
 }
 
 TEST(FlatMap, EmptyFlatMapLowerBound) {
-  constexpr FlatMap<int, char, 0> kEmpty({{}});
+  PW_CONSTEXPR_CPP20 FlatMap<int, char, 0> kEmpty({{}});
   EXPECT_EQ(kEmpty.lower_bound(0), kEmpty.end());
 }
 
 TEST(FlatMap, EmptyFlatMapUpperBound) {
-  constexpr FlatMap<int, char, 0> kEmpty({{}});
+  PW_CONSTEXPR_CPP20 FlatMap<int, char, 0> kEmpty({{}});
   EXPECT_EQ(kEmpty.upper_bound(0), kEmpty.end());
 }
 
 TEST(FlatMap, EmptyEqualRange) {
-  constexpr FlatMap<int, char, 0> kEmpty({{}});
+  PW_CONSTEXPR_CPP20 FlatMap<int, char, 0> kEmpty({{}});
   EXPECT_EQ(kEmpty.equal_range(0).first, kEmpty.end());
   EXPECT_EQ(kEmpty.equal_range(0).second, kEmpty.end());
+}
+
+TEST(FlatMap, ConstAtReturnsCorrectValues) {
+  for (const auto& [key, value] : kOddMap) {
+    EXPECT_EQ(value, kOddMap.at(key));
+  }
+}
+
+TEST(FlatMap, MutableAtReturnsCorrectMutableValues) {
+  FlatMap<int, char, 5> mutable_map({{
+      {-4, 'a'},
+      {-1, 'b'},
+      {0, 'c'},
+      {49, 'd'},
+      {99, 'e'},
+  }});
+
+  for (const auto& [key, value] : mutable_map) {
+    const char original_value{value};
+    EXPECT_EQ(original_value, mutable_map.at(key));
+    ++mutable_map.at(key);
+    EXPECT_EQ(original_value + 1, mutable_map.at(key));
+  }
 }
 
 TEST(FlatMap, Contains) {
@@ -79,6 +118,40 @@ TEST(FlatMap, Iterate) {
     EXPECT_EQ(&item, kOddMap.find(item.first));
     value += 1;
   }
+}
+
+TEST(FlatMap, ForwardsMappedValuesIterationWithDeferenceWorks) {
+  FlatMap<int, char, 5> map({{
+      {-4, 'a'},
+      {-1, 'b'},
+      {0, 'c'},
+      {49, 'd'},
+      {99, 'e'},
+  }});
+
+  char value = 'a';
+  for (auto it = map.mapped_begin(); it != map.mapped_end(); ++it) {
+    EXPECT_EQ(value, *it);
+    ++value;
+  }
+}
+
+TEST(FlatMap, BackwardsMappedValuesIterationWithDereferenceWorks) {
+  FlatMap<int, char, 5> map({{
+      {-4, 'a'},
+      {-1, 'b'},
+      {0, 'c'},
+      {49, 'd'},
+      {99, 'e'},
+  }});
+
+  char value = 'e';
+  auto it = map.mapped_end();
+  do {
+    --it;
+    EXPECT_EQ(value, *it);
+    --value;
+  } while (it != map.mapped_begin());
 }
 
 TEST(FlatMap, EqualRange) {
@@ -176,6 +249,102 @@ TEST(FlatMap, MapsWithUnsortedKeys) {
       {1, "goodbye"},
   }});
   EXPECT_EQ(too_short.begin()->first, 0);
+}
+
+TEST(FlatMap, DontDereferenceEnd) {
+  constexpr FlatMap<int, const char*, 2> unsorted_array({{
+      {2, "hello"},
+      {1, "goodbye"},
+  }});
+
+  EXPECT_EQ(unsorted_array.contains(3), false);
+}
+
+TEST(FlatMap, NullMappedIteratorNotEqualToValidOne) {
+  Single map({{{-4, 'a'}}});
+
+  EXPECT_NE(Single::mapped_iterator(), map.mapped_begin());
+}
+
+TEST(FlatMap, CopyConstructedMapIteratorEqualToSource) {
+  Single map({{{-4, 'a'}}});
+
+  EXPECT_EQ(Single::mapped_iterator(map.mapped_begin()), map.mapped_begin());
+}
+
+TEST(FlatMap, CopyAssignedMapIteratorEqualToSource) {
+  Single map({{{-4, 'a'}}});
+
+  Single::mapped_iterator it;
+  EXPECT_NE(it, map.mapped_begin());
+  it = map.mapped_begin();
+  EXPECT_EQ(it, map.mapped_begin());
+}
+
+TEST(FlatMap, MappedIteratorCorrectDereferenceMutation) {
+  constexpr int kKey = -4;
+  constexpr char kValue = 'a';
+  Single mutable_map({{{kKey, kValue}}});
+
+  ++*mutable_map.mapped_begin();
+  EXPECT_EQ(kValue + 1, mutable_map.at(kKey));
+}
+
+TEST(FlatMap, MappedIteratorValueCorrectMemberAccess) {
+  constexpr int kAValue{5};
+  struct A {
+    int a;
+  };
+  FlatMap<int, A, 1> map({{{-4, A{kAValue}}}});
+
+  EXPECT_EQ(kAValue, map.mapped_begin()->a);
+}
+
+TEST(FlatMap, MappedIteratorValueCorrectMemberMutation) {
+  constexpr int kAValue{5};
+  struct A {
+    int a;
+  };
+  FlatMap<int, A, 1> map({{{-4, A{kAValue}}}});
+
+  ++map.mapped_begin()->a;
+  EXPECT_EQ(kAValue + 1, map.mapped_begin()->a);
+}
+
+TEST(FlatMap, MappedIteratorPrefixIncrementCorrectReturnAndSideEffect) {
+  Single map({{{-4, 'a'}}});
+
+  auto it = map.mapped_begin();
+  auto it_incremented = ++it;
+  EXPECT_EQ(it, it_incremented);
+  EXPECT_NE(map.mapped_begin(), it_incremented);
+}
+
+TEST(FlatMap, MappedIteratorPostfixIncrementCorrectReturnAndSideEffect) {
+  Single map({{{-4, 'a'}}});
+
+  auto it = map.mapped_begin();
+  auto it_original = it++;
+  EXPECT_EQ(map.mapped_begin(), it_original);
+  EXPECT_NE(it, it_original);
+}
+
+TEST(FlatMap, MappedIteratorPrefixDecrementCorrectReturnAndSideEffect) {
+  Single map({{{-4, 'a'}}});
+
+  auto it = map.mapped_end();
+  auto it_decremented = --it;
+  EXPECT_EQ(it, it_decremented);
+  EXPECT_NE(map.mapped_end(), it_decremented);
+}
+
+TEST(FlatMap, MappedIteratorPostfixDecrementCorrectReturnAndSideEffect) {
+  Single map({{{-4, 'a'}}});
+
+  auto it = map.mapped_end();
+  auto it_original = it--;
+  EXPECT_EQ(map.mapped_end(), it_original);
+  EXPECT_NE(it, it_original);
 }
 
 }  // namespace pw::containers

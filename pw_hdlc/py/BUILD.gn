@@ -20,7 +20,6 @@ pw_python_package("py") {
   setup = [
     "pyproject.toml",
     "setup.cfg",
-    "setup.py",
   ]
   sources = [
     "pw_hdlc/__init__.py",
@@ -33,12 +32,17 @@ pw_python_package("py") {
   tests = [
     "decode_test.py",
     "encode_test.py",
+    "rpc_test.py",
   ]
   python_deps = [
-    "$dir_pw_console/py",
     "$dir_pw_protobuf_compiler/py",
     "$dir_pw_rpc/py",
   ]
-  python_test_deps = [ "$dir_pw_build/py" ]
+  python_test_deps = [
+    "$dir_pw_build/py",
+    "$dir_pw_log:protos.python",
+    "$dir_pw_tokenizer/py:test_proto.python",
+  ]
   pylintrc = "$dir_pigweed/.pylintrc"
+  mypy_ini = "$dir_pigweed/.mypy.ini"
 }

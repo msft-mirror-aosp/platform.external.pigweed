@@ -16,6 +16,8 @@
 
 #include <cstdint>
 
+#include "pw_assert/check.h"
+
 namespace pw::base64 {
 namespace {
 
@@ -72,13 +74,14 @@ constexpr uint8_t CharToBits(char ch) {
 }
 
 constexpr uint8_t Byte0(uint8_t bits0, uint8_t bits1) {
-  return (bits0 << 2) | ((bits1 & 0b110000) >> 4);
+  return static_cast<uint8_t>(bits0 << 2) | ((bits1 & 0b110000) >> 4);
 }
 constexpr uint8_t Byte1(uint8_t bits1, uint8_t bits2) {
-  return ((bits1 & 0b001111) << 4) | ((bits2 & 0b111100) >> 2);
+  return static_cast<uint8_t>((bits1 & 0b001111) << 4) |
+         ((bits2 & 0b111100) >> 2);
 }
 constexpr uint8_t Byte2(uint8_t bits2, uint8_t bits3) {
-  return ((bits2 & 0b000011) << 6) | bits3;
+  return static_cast<uint8_t>((bits2 & 0b000011) << 6) | bits3;
 }
 
 }  // namespace
@@ -139,7 +142,12 @@ extern "C" size_t pw_Base64Decode(const char* base64,
     pad = 1;
   }
 
-  return binary - static_cast<uint8_t*>(output) - pad;
+  return static_cast<size_t>(binary - static_cast<uint8_t*>(output)) - pad;
+}
+
+extern "C" bool pw_Base64IsValidChar(char base64_char) {
+  return !(base64_char < kMinValidChar || base64_char > kMaxValidChar ||
+           CharToBits(base64_char) == kX /* invalid char */);
 }
 
 extern "C" bool pw_Base64IsValid(const char* base64_data, size_t base64_size) {
@@ -148,16 +156,14 @@ extern "C" bool pw_Base64IsValid(const char* base64_data, size_t base64_size) {
   }
 
   for (size_t i = 0; i < base64_size; ++i) {
-    if (base64_data[i] < kMinValidChar || base64_data[i] > kMaxValidChar ||
-        CharToBits(base64_data[i]) == kX /* invalid char */) {
+    if (!pw_Base64IsValidChar(base64_data[i])) {
       return false;
     }
   }
   return true;
 }
 
-size_t Encode(std::span<const std::byte> binary,
-              std::span<char> output_buffer) {
+size_t Encode(span<const std::byte> binary, span<char> output_buffer) {
   const size_t required_size = EncodedSize(binary.size_bytes());
   if (output_buffer.size_bytes() < required_size) {
     return 0;
@@ -166,12 +172,24 @@ size_t Encode(std::span<const std::byte> binary,
   return required_size;
 }
 
-size_t Decode(std::string_view base64, std::span<std::byte> output_buffer) {
+size_t Decode(std::string_view base64, span<std::byte> output_buffer) {
   if (output_buffer.size_bytes() < MaxDecodedSize(base64.size()) ||
       !IsValid(base64)) {
     return 0;
   }
   return Decode(base64, output_buffer.data());
+}
+
+void Encode(span<const std::byte> binary, InlineString<>& output) {
+  const size_t initial_size = output.size();
+  const size_t final_size = initial_size + EncodedSize(binary.size());
+
+  PW_CHECK(final_size <= output.capacity());
+
+  output.resize_and_overwrite([&](char* data, size_t) {
+    Encode(binary, data + initial_size);
+    return final_size;
+  });
 }
 
 }  // namespace pw::base64

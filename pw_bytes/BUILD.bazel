@@ -28,22 +28,38 @@ pw_cc_library(
         "byte_builder.cc",
     ],
     hdrs = [
+        "public/pw_bytes/alignment.h",
         "public/pw_bytes/array.h",
         "public/pw_bytes/byte_builder.h",
         "public/pw_bytes/endian.h",
         "public/pw_bytes/span.h",
+        "public/pw_bytes/suffix.h",
         "public/pw_bytes/units.h",
     ],
     includes = ["public"],
     deps = [
+        ":bit",
+        "//pw_containers:iterator",
         "//pw_polyfill",
-        "//pw_polyfill:bit",
-        "//pw_polyfill:cstddef",
-        "//pw_polyfill:iterator",
-        "//pw_polyfill:type_traits",
         "//pw_preprocessor",
         "//pw_span",
         "//pw_status",
+    ],
+)
+
+pw_cc_library(
+    name = "bit",
+    hdrs = ["public/pw_bytes/bit.h"],
+    includes = ["public"],
+    deps = ["//third_party/fuchsia:stdcompat"],
+)
+
+pw_cc_test(
+    name = "alignment_test",
+    srcs = ["alignment_test.cc"],
+    deps = [
+        ":pw_bytes",
+        "//pw_unit_test",
     ],
 )
 
@@ -52,6 +68,15 @@ pw_cc_test(
     srcs = ["array_test.cc"],
     deps = [
         ":pw_bytes",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "bit_test",
+    srcs = ["bit_test.cc"],
+    deps = [
+        ":bit",
         "//pw_unit_test",
     ],
 )
@@ -71,6 +96,14 @@ pw_cc_test(
     deps = [
         ":pw_bytes",
         "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "suffix_test",
+    srcs = ["suffix_test.cc"],
+    deps = [
+        ":pw_bytes",
     ],
 )
 

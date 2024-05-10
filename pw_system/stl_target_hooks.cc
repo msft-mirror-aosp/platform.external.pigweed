@@ -12,11 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#define PW_LOG_MODULE_NAME "SYS"
-
-#include "pw_log/log.h"
-#include "pw_system/init.h"
-#include "pw_thread/sleep.h"
+#include "pw_system/config.h"
 #include "pw_thread/thread.h"
 #include "pw_thread_stl/options.h"
 
@@ -32,22 +28,16 @@ const thread::Options& RpcThreadOptions() {
   return rpc_thread_options;
 }
 
+#if PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+const thread::Options& TransferThreadOptions() {
+  static thread::stl::Options transfer_thread_options;
+  return transfer_thread_options;
+}
+#endif  // PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+
 const thread::Options& WorkQueueThreadOptions() {
   static thread::stl::Options work_queue_thread_options;
   return work_queue_thread_options;
 }
 
 }  // namespace pw::system
-
-extern "C" int main() {
-  pw::system::Init();
-  // Sleep loop rather than return on this thread so the process isn't closed.
-  while (true) {
-    pw::this_thread::sleep_for(std::chrono::seconds(10));
-    // It's hard to tell that simulator is alive and working since nothing is
-    // logging after initial "boot," so for now log a line occasionally so
-    // users can see that the simulator is alive and well.
-    PW_LOG_INFO("Simulated device is still alive");
-    // TODO(amontanez): This thread should probably have a way to exit.
-  }
-}

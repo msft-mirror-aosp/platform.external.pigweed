@@ -21,15 +21,17 @@
 
 namespace pw::allocator {
 
-FreeListHeap::FreeListHeap(std::span<std::byte> region, FreeList& freelist)
+FreeListHeap::FreeListHeap(span<std::byte> region, FreeList& freelist)
     : freelist_(freelist), heap_stats_() {
-  Block* block;
+  auto result = BlockType::Init(region);
   PW_CHECK_OK(
-      Block::Init(region, &block),
+      result.status(),
       "Failed to initialize FreeListHeap region; misaligned or too small");
+  BlockType* block = *result;
+  block->CrashIfInvalid();
 
   freelist_.AddChunk(BlockToSpan(block))
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
 
   region_ = region;
   heap_stats_.total_bytes = region.size();
@@ -44,18 +46,17 @@ void* FreeListHeap::Allocate(size_t size) {
     return nullptr;
   }
   freelist_.RemoveChunk(chunk)
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
 
-  Block* chunk_block = Block::FromUsableSpace(chunk.data());
+  BlockType* chunk_block = BlockType::FromUsableSpace(chunk.data());
 
   chunk_block->CrashIfInvalid();
 
   // Split that chunk. If there's a leftover chunk, add it to the freelist
-  Block* leftover;
-  auto status = chunk_block->Split(size, &leftover);
-  if (status == PW_STATUS_OK) {
-    freelist_.AddChunk(BlockToSpan(leftover))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  Result<BlockType*> result = BlockType::Split(chunk_block, size);
+  if (result.ok()) {
+    freelist_.AddChunk(BlockToSpan(*result))
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
   }
 
   chunk_block->MarkUsed();
@@ -75,7 +76,7 @@ void FreeListHeap::Free(void* ptr) {
     return;
   }
 
-  Block* chunk_block = Block::FromUsableSpace(bytes);
+  BlockType* chunk_block = BlockType::FromUsableSpace(bytes);
   chunk_block->CrashIfInvalid();
 
   size_t size_freed = chunk_block->InnerSize();
@@ -86,8 +87,8 @@ void FreeListHeap::Free(void* ptr) {
   }
   chunk_block->MarkFree();
   // Can we combine with the left or right blocks?
-  Block* prev = chunk_block->Prev();
-  Block* next = nullptr;
+  BlockType* prev = chunk_block->Prev();
+  BlockType* next = nullptr;
 
   if (!chunk_block->Last()) {
     next = chunk_block->Next();
@@ -96,23 +97,21 @@ void FreeListHeap::Free(void* ptr) {
   if (prev != nullptr && !prev->Used()) {
     // Remove from freelist and merge
     freelist_.RemoveChunk(BlockToSpan(prev))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-    chunk_block->MergePrev()
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-
-    // chunk_block is now invalid; prev now encompasses it.
-    chunk_block = prev;
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
+    chunk_block = chunk_block->Prev();
+    BlockType::MergeNext(chunk_block)
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
   }
 
   if (next != nullptr && !next->Used()) {
     freelist_.RemoveChunk(BlockToSpan(next))
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
-    chunk_block->MergeNext()
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
+    BlockType::MergeNext(chunk_block)
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
   }
   // Add back to the freelist
   freelist_.AddChunk(BlockToSpan(chunk_block))
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
 
   heap_stats_.bytes_allocated -= size_freed;
   heap_stats_.cumulative_freed += size_freed;
@@ -139,7 +138,7 @@ void* FreeListHeap::Realloc(void* ptr, size_t size) {
     return nullptr;
   }
 
-  Block* chunk_block = Block::FromUsableSpace(bytes);
+  BlockType* chunk_block = BlockType::FromUsableSpace(bytes);
   if (!chunk_block->Used()) {
     return nullptr;
   }
@@ -147,7 +146,7 @@ void* FreeListHeap::Realloc(void* ptr, size_t size) {
 
   // Do nothing and return ptr if the required memory size is smaller than
   // the current size.
-  // TODO: Currently do not support shrink of memory chunk.
+  // TODO(keir): Currently do not support shrink of memory chunk.
   if (old_size >= size) {
     return ptr;
   }
@@ -192,8 +191,8 @@ void FreeListHeap::LogHeapStats() {
   PW_LOG_INFO(" ");
 }
 
-// TODO: Add stack tracing to locate which call to the heap operation caused
-// the corruption.
+// TODO(keir): Add stack tracing to locate which call to the heap operation
+// caused the corruption.
 void FreeListHeap::InvalidFreeCrash() {
   PW_DCHECK(false, "You tried to free an invalid pointer!");
 }

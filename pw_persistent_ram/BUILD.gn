@@ -36,14 +36,28 @@ pw_source_set("pw_persistent_ram") {
     dir_pw_bytes,
     dir_pw_checksum,
     dir_pw_preprocessor,
+    dir_pw_span,
     dir_pw_stream,
   ]
+}
+
+pw_source_set("flat_file_system_entry") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_persistent_ram/flat_file_system_entry.h" ]
+  sources = []
+  public_deps = [
+    ":pw_persistent_ram",
+    "$dir_pw_file:flat_file_system",
+    dir_pw_status,
+  ]
+  deps = []
 }
 
 pw_test_group("tests") {
   tests = [
     ":persistent_test",
     ":persistent_buffer_test",
+    ":flat_file_system_entry_test",
   ]
 }
 
@@ -63,17 +77,18 @@ pw_test("persistent_buffer_test") {
   sources = [ "persistent_buffer_test.cc" ]
 }
 
+pw_test("flat_file_system_entry_test") {
+  deps = [ ":flat_file_system_entry" ]
+  sources = [ "flat_file_system_entry_test.cc" ]
+}
+
 pw_doc_group("docs") {
   sources = [ "docs.rst" ]
   report_deps = [ ":persistent_size" ]
 }
 
-pw_size_report("persistent_size") {
+pw_size_diff("persistent_size") {
   title = "pw::persistent_ram::Persistent"
-
-  # To see all the symbols, uncomment the following:
-  # Note: The size report RST table won't be generated when full_report = true.
-  # full_report = true
 
   binaries = [
     {

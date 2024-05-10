@@ -1,4 +1,4 @@
-// Copyright 2019 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -18,7 +18,7 @@
 
 namespace pw::string {
 
-StatusWithSize Format(std::span<char> buffer, const char* format, ...) {
+StatusWithSize Format(span<char> buffer, const char* format, ...) {
   va_list args;
   va_start(args, format);
   const StatusWithSize result = FormatVaList(buffer, format, args);
@@ -27,7 +27,7 @@ StatusWithSize Format(std::span<char> buffer, const char* format, ...) {
   return result;
 }
 
-StatusWithSize FormatVaList(std::span<char> buffer,
+StatusWithSize FormatVaList(span<char> buffer,
                             const char* format,
                             va_list args) {
   if (buffer.empty()) {
@@ -49,6 +49,38 @@ StatusWithSize FormatVaList(std::span<char> buffer,
   }
 
   return StatusWithSize(result);
+}
+
+Status Format(InlineString<>& string, const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  const Status status = FormatVaList(string, format, args);
+  va_end(args);
+
+  return status;
+}
+
+Status FormatVaList(InlineString<>& string, const char* format, va_list args) {
+  Status status;
+  string.resize_and_overwrite([&](char* buffer, size_t capacity) {
+    // The vsnprintf buffer size includes a byte for the null terminator.
+    StatusWithSize result =
+        FormatVaList(span(buffer + string.size(), capacity + 1 - string.size()),
+                     format,
+                     args);
+    status = result.status();
+    return string.size() + result.size();
+  });
+  return status;
+}
+
+Status FormatOverwrite(InlineString<>& string, const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  const Status status = FormatOverwriteVaList(string, format, args);
+  va_end(args);
+
+  return status;
 }
 
 }  // namespace pw::string

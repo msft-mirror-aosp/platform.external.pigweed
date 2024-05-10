@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 #include "pw_bytes/span.h"
 #include "pw_rpc/client.h"
@@ -24,7 +25,7 @@
 
 namespace pw::rpc {
 
-// TODO(pwbug/477): Document the client testing APIs.
+// TODO: b/234878467 - Document the client testing APIs.
 
 // Sends packets to an RPC client as if it were a pw_rpc server. Accepts
 // payloads as Nanopb structs.
@@ -39,37 +40,42 @@ class NanopbFakeServer : public FakeServer {
   // Sends a response packet for a server or bidirectional streaming RPC to the
   // client.
   template <auto kMethod>
-  void SendResponse(Status status) const {
-    FakeServer::SendResponse<kMethod>(status);
+  void SendResponse(Status status,
+                    std::optional<uint32_t> call_id = std::nullopt) const {
+    FakeServer::SendResponse<kMethod>(status, call_id);
   }
 
   // Sends a response packet for a unary or client streaming streaming RPC to
   // the client.
   template <auto kMethod,
             size_t kEncodeBufferSizeBytes = 2 * sizeof(Response<kMethod>)>
-  void SendResponse(const Response<kMethod>& payload, Status status) const {
+  void SendResponse(const Response<kMethod>& payload,
+                    Status status,
+                    std::optional<uint32_t> call_id = std::nullopt) const {
     std::byte buffer[kEncodeBufferSizeBytes] = {};
-    FakeServer::SendResponse<kMethod>(EncodeResponse<kMethod>(&payload, buffer),
-                                      status);
+    FakeServer::SendResponse<kMethod>(
+        EncodeResponse<kMethod>(&payload, buffer), status, call_id);
   }
 
   // Sends a stream packet for a server or bidirectional streaming RPC to the
   // client.
   template <auto kMethod,
             size_t kEncodeBufferSizeBytes = 2 * sizeof(Response<kMethod>)>
-  void SendServerStream(const Response<kMethod>& payload) const {
+  void SendServerStream(const Response<kMethod>& payload,
+                        std::optional<uint32_t> call_id = std::nullopt) const {
     std::byte buffer[kEncodeBufferSizeBytes] = {};
     FakeServer::SendServerStream<kMethod>(
-        EncodeResponse<kMethod>(&payload, buffer));
+        EncodeResponse<kMethod>(&payload, buffer), call_id);
   }
 
  private:
   template <auto kMethod>
   static ConstByteSpan EncodeResponse(const void* payload, ByteSpan buffer) {
     const StatusWithSize result =
-        internal::MethodInfo<kMethod>::serde().EncodeResponse(payload, buffer);
+        internal::MethodInfo<kMethod>::serde().response().Encode(payload,
+                                                                 buffer);
     PW_ASSERT(result.ok());
-    return std::span(buffer).first(result.size());
+    return span(buffer).first(result.size());
   }
 };
 
@@ -83,7 +89,7 @@ class NanopbClientTestContext {
  public:
   constexpr NanopbClientTestContext()
       : channel_(Channel::Create<kDefaultChannelId>(&channel_output_)),
-        client_(std::span(&channel_, 1)),
+        client_(span(&channel_, 1)),
         packet_buffer_{},
         fake_server_(
             channel_output_, client_, kDefaultChannelId, packet_buffer_) {}
@@ -98,6 +104,7 @@ class NanopbClientTestContext {
   Client& client() { return client_; }
 
   const auto& output() const { return channel_output_; }
+  auto& output() { return channel_output_; }
 
  private:
   static constexpr uint32_t kDefaultChannelId = 1;

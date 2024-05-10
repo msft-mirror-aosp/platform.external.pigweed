@@ -14,21 +14,23 @@
 
 import("//build_overrides/pigweed.gni")
 import("$dir_pw_build/target_types.gni")
+import("$dir_pw_docgen/docs.gni")
 import("$dir_pw_third_party/boringssl/boringssl.gni")
 import("$dir_pw_unit_test/test.gni")
 
-if (dir_pw_third_party_boringssl != "") {
+if (pw_third_party_boringssl_ALIAS != "") {
+  assert(dir_pw_third_party_boringssl == "")
+
+  pw_source_set("boringssl") {
+    public_deps = [ pw_third_party_boringssl_ALIAS ]
+  }
+} else if (dir_pw_third_party_boringssl != "") {
   import("$dir_pw_third_party_boringssl/BUILD.generated.gni")
 
-  config("boringssl_public_config") {
+  config("public_config") {
     include_dirs = [
       "$dir_pw_third_party_boringssl/src/include",
       "public",
-    ]
-    cflags = [
-      "-Wno-cast-qual",
-      "-Wno-ignored-qualifiers",
-      "-w",
     ]
 
     # This can be removed once boringssl threading primitives are implemented,
@@ -37,7 +39,7 @@ if (dir_pw_third_party_boringssl != "") {
         [ "OPENSSL_NO_THREADS_CORRUPT_MEMORY_AND_LEAK_SECRETS_IF_THREADED" ]
   }
 
-  config("boringssl_internal_config") {
+  config("internal_config") {
     defines = [
       # Enable virtual desctructor and compile-time check of pure virtual base class
       "BORINGSSL_ALLOW_CXX_RUNTIME",
@@ -48,6 +50,9 @@ if (dir_pw_third_party_boringssl != "") {
       # The ARM assembly code is only for cortex-A.
       "OPENSSL_NO_ASM",
 
+      # socklen_t is not defined
+      "OPENSSL_NO_SOCK",
+
       # Disable assert, which may additionally link in unwanted binaries via
       # argument evaluation.
       "NDEBUG",
@@ -57,6 +62,7 @@ if (dir_pw_third_party_boringssl != "") {
       "-Wno-conversion",
       "-Wno-unused-parameter",
       "-Wno-char-subscripts",
+      "-w",
     ]
     cflags_cc = [
       "-fpermissive",
@@ -74,20 +80,33 @@ if (dir_pw_third_party_boringssl != "") {
   ]
 
   pw_source_set("boringssl") {
-    sources = [ "crypto_sysrand.cc" ]
+    sources = []
     foreach(source, crypto_sources - excluded_sources + ssl_sources) {
       sources += [ "$dir_pw_third_party_boringssl/$source" ]
     }
-    public_configs = [ ":boringssl_public_config" ]
-    configs = [ ":boringssl_internal_config" ]
+    public_configs = [ ":public_config" ]
+    configs = [ ":internal_config" ]
 
     # Contains a faked "sysdeps/sys/socket.h"
     # Can be removed once posix socket layer in Pigweed is supported.
     include_dirs = [ "sysdeps" ]
 
-    public_deps = [ "$dir_pw_tls_client:time" ]
+    public_deps = [
+      "$dir_pw_assert",
+      "$dir_pw_tls_client:time",
+    ]
+
+    # Consume //third_party/boringssl via a Pigweed module only.
+    visibility = [
+      "$dir_pw_tls_client:*",
+      "$dir_pw_tls_client_boringssl:*",
+    ]
   }
 } else {
   group("boringssl") {
   }
+}
+
+pw_doc_group("docs") {
+  sources = [ "docs.rst" ]
 }

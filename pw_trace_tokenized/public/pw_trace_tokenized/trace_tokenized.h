@@ -116,8 +116,12 @@ class TraceQueue {
 
 }  // namespace internal
 
-class TokenizedTraceImpl {
+// C++ API interfact to the tokenized tracer
+// Example: pw::trace::GetTokenizedTracer().Enable(true);
+class Callbacks;
+class TokenizedTracer {
  public:
+  TokenizedTracer(Callbacks& callbacks) : callbacks_(callbacks) {}
   void Enable(bool enable) {
     if (enable != enabled_ && enable) {
       event_queue_.Clear();
@@ -139,21 +143,14 @@ class TokenizedTraceImpl {
   PW_TRACE_TIME_TYPE last_trace_time_ = 0;
   bool enabled_ = false;
   TraceQueue event_queue_;
+  Callbacks& callbacks_;
 
   void HandleNextItemInQueue(
       const volatile TraceQueue::QueueEventBlock* event_block);
 };
 
-// A singleton object of the TokenizedTraceImpl class which can be used to
-// interface with trace using the C++ API.
-// Example: pw::trace::TokenizedTrace::Instance().Enable(true);
-class TokenizedTrace {
- public:
-  static TokenizedTraceImpl& Instance() { return instance_; };
-
- private:
-  static TokenizedTraceImpl instance_;
-};
+// Returns a reference of the global tokenized tracer
+TokenizedTracer& GetTokenizedTracer();
 
 }  // namespace trace
 }  // namespace pw

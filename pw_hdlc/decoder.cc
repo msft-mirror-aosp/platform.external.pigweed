@@ -27,7 +27,8 @@ namespace pw::hdlc {
 Result<Frame> Frame::Parse(ConstByteSpan frame) {
   uint64_t address;
   size_t address_size = varint::Decode(frame, &address, kAddressFormat);
-  int data_size = frame.size() - address_size - kControlSize - kFcsSize;
+  int data_size =
+      static_cast<int>(frame.size() - address_size - kControlSize - kFcsSize);
 
   if (address_size == 0 || data_size < 0) {
     return Status::DataLoss();
@@ -123,7 +124,7 @@ Status Decoder::CheckFrame() const {
     return Status::Unavailable();
   }
 
-  if (current_frame_size_ < Frame::kMinSizeBytes) {
+  if (current_frame_size_ < Frame::kMinContentSizeBytes) {
     PW_LOG_ERROR("Received %lu-byte frame; frame must be at least 6 bytes",
                  static_cast<unsigned long>(current_frame_size_));
     return Status::DataLoss();
@@ -155,7 +156,7 @@ bool Decoder::VerifyFrameCheckSequence() const {
   }
 
   uint32_t actual_fcs =
-      bytes::ReadInOrder<uint32_t>(std::endian::little, fcs_buffer);
+      bytes::ReadInOrder<uint32_t>(endian::little, fcs_buffer);
   return actual_fcs == fcs_.value();
 }
 

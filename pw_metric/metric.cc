@@ -15,26 +15,26 @@
 #include "pw_metric/metric.h"
 
 #include <array>
-#include <span>
 
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
+#include "pw_span/span.h"
 #include "pw_tokenizer/base64.h"
 
 namespace pw::metric {
 namespace {
 
 template <typename T>
-std::span<const std::byte> AsSpan(const T& t) {
-  return std::span<const std::byte>(reinterpret_cast<const std::byte*>(&t),
-                                    sizeof(t));
+span<const std::byte> AsSpan(const T& t) {
+  return span<const std::byte>(reinterpret_cast<const std::byte*>(&t),
+                               sizeof(t));
 }
 
 // A convenience class to encode a token as base64 while managing the storage.
 // TODO(keir): Consider putting this into upstream pw_tokenizer.
 struct Base64EncodedToken {
   Base64EncodedToken(Token token) {
-    int encoded_size = tokenizer::PrefixedBase64Encode(AsSpan(token), data);
+    size_t encoded_size = tokenizer::PrefixedBase64Encode(AsSpan(token), data);
     data[encoded_size] = 0;
   }
 
@@ -108,8 +108,6 @@ void Metric::Dump(IntrusiveList<Metric>& metrics, int level) {
     m.Dump(level);
   }
 }
-
-Group::Group(Token name) : name_(name) {}
 
 Group::Group(Token name, IntrusiveList<Group>& groups) : name_(name) {
   groups.push_front(*this);

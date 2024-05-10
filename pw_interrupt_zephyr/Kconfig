@@ -12,5 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-config PIGWEED_INTERRUPT
-    bool "Enable the Pigweed interrupt library (pw_interrupt)"
+menu "pw_interrupt"
+
+config PIGWEED_INTERRUPT_CONTEXT
+    bool "Link pw_interrupt.context library"
+    help
+      See :ref:`module-pw_interrupt` for module details.
+
+endmenu

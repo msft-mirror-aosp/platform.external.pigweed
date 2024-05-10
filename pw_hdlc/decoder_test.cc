@@ -19,12 +19,14 @@
 
 #include "gtest/gtest.h"
 #include "pw_bytes/array.h"
+#include "pw_fuzzer/fuzztest.h"
 #include "pw_hdlc/internal/protocol.h"
 
 namespace pw::hdlc {
 namespace {
 
 using std::byte;
+using namespace fuzzer;
 
 TEST(Frame, Fields) {
   static constexpr auto kFrameData =
@@ -125,7 +127,7 @@ TEST(Decoder, TooLargeForBuffer_ReportsResourceExhausted) {
 TEST(Decoder, TooLargeForBuffer_StaysWithinBufferBoundaries) {
   std::array<byte, 16> buffer = bytes::Initialized<16>('?');
 
-  Decoder decoder(std::span(buffer.data(), 8));
+  Decoder decoder(span(buffer.data(), 8));
 
   for (byte b : bytes::String("~12345678901234567890\xf2\x19\x63\x90")) {
     EXPECT_EQ(Status::Unavailable(), decoder.Process(b).status());
@@ -151,6 +153,18 @@ TEST(Decoder, TooLargeForBuffer_DecodesNextFrame) {
   }
   EXPECT_EQ(OkStatus(), decoder.Process(kFlag).status());
 }
+
+void ProcessNeverCrashes(ConstByteSpan data) {
+  DecoderBuffer<1024> decoder;
+  for (byte b : data) {
+    if (decoder.Process(b).status() != Status::Unavailable()) {
+      decoder.Clear();
+    }
+  }
+}
+
+FUZZ_TEST(Decoder, ProcessNeverCrashes)
+    .WithDomains(VectorOf<1024>(Arbitrary<byte>()));
 
 }  // namespace
 }  // namespace pw::hdlc

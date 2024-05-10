@@ -21,6 +21,7 @@ The stdout of this script is meant to be executed by the invoking shell.
 
 from __future__ import print_function
 
+import collections
 import hashlib
 import json
 import os
@@ -30,8 +31,12 @@ import subprocess
 import sys
 
 
-def check_auth(cipd, package_files, spin):
+def check_auth(cipd, package_files, cipd_service_account, spin):
     """Check have access to CIPD pigweed directory."""
+    cmd = [cipd]
+    extra_args = []
+    if cipd_service_account:
+        extra_args.extend(['-service-account-json', cipd_service_account])
 
     paths = []
     for package_file in package_files:
@@ -48,8 +53,9 @@ def check_auth(cipd, package_files, spin):
 
     username = None
     try:
-        output = subprocess.check_output([cipd, 'auth-info'],
-                                         stderr=subprocess.STDOUT).decode()
+        output = subprocess.check_output(
+            cmd + ['auth-info'] + extra_args, stderr=subprocess.STDOUT
+        ).decode()
         logged_in = True
 
         match = re.search(r'Logged in as (\S*)\.', output)
@@ -66,7 +72,8 @@ def check_auth(cipd, package_files, spin):
             # Not catching CalledProcessError because 'cipd ls' seems to never
             # return an error code unless it can't reach the CIPD server.
             output = subprocess.check_output(
-                [cipd, 'ls', path], stderr=subprocess.STDOUT).decode()
+                cmd + ['ls', path] + extra_args, stderr=subprocess.STDOUT
+            ).decode()
             if 'No matching packages' not in output:
                 continue
 
@@ -75,8 +82,10 @@ def check_auth(cipd, package_files, spin):
             # 'cipd instances' does use an error code if there's no such package
             # or that package is inaccessible.
             try:
-                subprocess.check_output([cipd, 'instances', path],
-                                        stderr=subprocess.STDOUT)
+                subprocess.check_output(
+                    cmd + ['instances', path] + extra_args,
+                    stderr=subprocess.STDOUT,
+                )
             except subprocess.CalledProcessError:
                 inaccessible_paths.append(path)
 
@@ -88,14 +97,17 @@ def check_auth(cipd, package_files, spin):
         with spin.pause():
             stderr = lambda *args: print(*args, file=sys.stderr)
             stderr()
-            stderr('Not logged in to CIPD and no anonymous access to the '
-                   'following CIPD paths:')
+            stderr(
+                'Not logged in to CIPD and no anonymous access to the '
+                'following CIPD paths:'
+            )
             for path in inaccessible_paths:
                 stderr('  {}'.format(path))
             stderr()
             stderr('Attempting CIPD login')
             try:
-                subprocess.check_call([cipd, 'auth-login'])
+                # Note that with -service-account-json, auth-login is a no-op.
+                subprocess.check_call(cmd + ['auth-login'] + extra_args)
             except subprocess.CalledProcessError:
                 stderr('CIPD login failed')
                 return False
@@ -108,8 +120,11 @@ def check_auth(cipd, package_files, spin):
         username_part = ''
         if username:
             username_part = '({}) '.format(username)
-        stderr('Your account {}does not have access to the following '
-               'paths'.format(username_part))
+        stderr(
+            'Your account {}does not have access to the following '
+            'paths'.format(username_part)
+        )
+        stderr('(or they do not exist)')
         for path in inaccessible_paths:
             stderr('  {}'.format(path))
         stderr('=' * 60)
@@ -118,7 +133,8 @@ def check_auth(cipd, package_files, spin):
     return True
 
 
-def platform():
+def platform(rosetta=False):
+    """Return the CIPD platform string of the current system."""
     osname = {
         'darwin': 'mac',
         'linux': 'linux',
@@ -137,7 +153,7 @@ def platform():
     platform_arch = '{}-{}'.format(osname, arch).lower()
 
     # Support `mac-arm64` through Rosetta until `mac-arm64` binaries are ready
-    if platform_arch == 'mac-arm64':
+    if platform_arch == 'mac-arm64' and rosetta:
         return 'mac-amd64'
 
     return platform_arch
@@ -146,7 +162,6 @@ def platform():
 def all_package_files(env_vars, package_files):
     """Recursively retrieve all package files."""
 
-    result = []
     to_process = []
     for pkg_file in package_files:
         args = []
@@ -162,45 +177,85 @@ def all_package_files(env_vars, package_files):
 
         to_process.append(path)
 
-    while to_process:
-        package_file = to_process.pop(0)
-        result.append(package_file)
+    processed_files = []
 
-        with open(package_file, 'r') as ins:
-            entries = json.load(ins).get('included_files', ())
+    def flatten_package_files(package_files):
+        """Flatten nested package files."""
+        for package_file in package_files:
+            yield package_file
+            processed_files.append(package_file)
 
-        for entry in entries:
-            entry = os.path.join(os.path.dirname(package_file), entry)
+            with open(package_file, 'r') as ins:
+                entries = json.load(ins).get('included_files', ())
+                entries = [
+                    os.path.join(os.path.dirname(package_file), entry)
+                    for entry in entries
+                ]
+                entries = [
+                    entry for entry in entries if entry not in processed_files
+                ]
 
-            if entry not in result and entry not in to_process:
-                to_process.append(entry)
+            if entries:
+                for entry in flatten_package_files(entries):
+                    yield entry
 
-    return result
+    return list(flatten_package_files(to_process))
 
 
-def write_ensure_file(package_files, ensure_file):
+def all_packages(package_files):
     packages = []
-
     for package_file in package_files:
         name = package_file_name(package_file)
         with open(package_file, 'r') as ins:
             file_packages = json.load(ins).get('packages', ())
             for package in file_packages:
                 if 'subdir' in package:
-                    package['subdir'] = os.path.join(name, package['subdir'])
+                    package['original_subdir'] = package['subdir']
+                    package['subdir'] = '/'.join([name, package['subdir']])
                 else:
                     package['subdir'] = name
             packages.extend(file_packages)
+    return packages
+
+
+def deduplicate_packages(packages):
+    deduped = collections.OrderedDict()
+    for package in packages:
+        # Use the package + the subdir as the key
+        pkg_key = package['path']
+        pkg_key += package.get('original_subdir', '')
+
+        if pkg_key in deduped:
+            # Delete the old package
+            del deduped[pkg_key]
+
+        # Insert the new package at the end
+        deduped[pkg_key] = package
+    return list(deduped.values())
+
+
+def write_ensure_file(
+    package_files, ensure_file, platform
+):  # pylint: disable=redefined-outer-name
+    logdir = os.path.dirname(ensure_file)
+    packages = all_packages(package_files)
+    with open(os.path.join(logdir, 'all-packages.json'), 'w') as outs:
+        json.dump(packages, outs, indent=4)
+    deduped_packages = deduplicate_packages(packages)
+    with open(os.path.join(logdir, 'deduped-packages.json'), 'w') as outs:
+        json.dump(deduped_packages, outs, indent=4)
 
     with open(ensure_file, 'w') as outs:
-        outs.write('$VerifiedPlatform linux-amd64\n'
-                   '$VerifiedPlatform mac-amd64\n'
-                   '$ParanoidMode CheckPresence\n')
+        outs.write(
+            '$VerifiedPlatform linux-amd64\n'
+            '$VerifiedPlatform mac-amd64\n'
+            '$ParanoidMode CheckPresence\n'
+        )
 
-        for pkg in packages:
+        for pkg in deduped_packages:
             # If this is a new-style package manifest platform handling must
             # be done here instead of by the cipd executable.
-            if 'platforms' in pkg and platform() not in pkg['platforms']:
+            if 'platforms' in pkg and platform not in pkg['platforms']:
                 continue
 
             outs.write('@Subdir {}\n'.format(pkg.get('subdir', '')))
@@ -218,15 +273,17 @@ def package_installation_path(root_install_dir, package_file):
       root_install_dir: The CIPD installation directory.
       package_file: The path to the .json package definition file.
     """
-    return os.path.join(root_install_dir, 'packages',
-                        package_file_name(package_file))
+    return os.path.join(
+        root_install_dir, 'packages', package_file_name(package_file)
+    )
 
 
-def update(
+def update(  # pylint: disable=too-many-locals
     cipd,
     package_files,
     root_install_dir,
     cache_dir,
+    rosetta=False,
     env_vars=None,
     spin=None,
     trust_hash=False,
@@ -241,15 +298,17 @@ def update(
 
     # This file is read by 'pw doctor' which needs to know which package files
     # were used in the environment.
-    package_files_file = os.path.join(root_install_dir,
-                                      '_all_package_files.json')
+    package_files_file = os.path.join(
+        root_install_dir, '_all_package_files.json'
+    )
     with open(package_files_file, 'w') as outs:
         json.dump(package_files, outs, indent=2)
 
     if env_vars:
         env_vars.prepend('PATH', root_install_dir)
         env_vars.set('PW_CIPD_INSTALL_DIR', root_install_dir)
-        env_vars.set('CIPD_CACHE_DIR', cache_dir)
+        if cache_dir:
+            env_vars.set('CIPD_CACHE_DIR', cache_dir)
 
     pw_root = None
 
@@ -258,21 +317,38 @@ def update(
     if not pw_root:
         pw_root = os.environ['PW_ROOT']
 
+    plat = platform(rosetta)
+
     ensure_file = os.path.join(root_install_dir, 'packages.ensure')
-    write_ensure_file(package_files, ensure_file)
+    write_ensure_file(package_files, ensure_file, plat)
 
     install_dir = os.path.join(root_install_dir, 'packages')
 
     cmd = [
         cipd,
         'ensure',
-        '-ensure-file', ensure_file,
-        '-root', install_dir,
-        '-log-level', 'debug',
-        '-json-output', os.path.join(root_install_dir, 'packages.json'),
-        '-cache-dir', cache_dir,
-        '-max-threads', '0',  # 0 means use CPU count.
-    ]  # yapf: disable
+        '-ensure-file',
+        ensure_file,
+        '-root',
+        install_dir,
+        '-log-level',
+        'debug',
+        '-json-output',
+        os.path.join(root_install_dir, 'packages.json'),
+        '-max-threads',
+        '0',  # 0 means use CPU count.
+    ]
+
+    if cache_dir:
+        cmd.extend(('-cache-dir', cache_dir))
+
+    cipd_service_account = None
+    if env_vars:
+        cipd_service_account = env_vars.get('PW_CIPD_SERVICE_ACCOUNT_JSON')
+    if not cipd_service_account:
+        cipd_service_account = os.environ.get('PW_CIPD_SERVICE_ACCOUNT_JSON')
+    if cipd_service_account:
+        cmd.extend(['-service-account-json', cipd_service_account])
 
     hasher = hashlib.sha256()
     encoded = '\0'.join(cmd)
@@ -298,10 +374,9 @@ def update(
                 if digest == digest_file:
                     return True
 
-    if not check_auth(cipd, package_files, spin):
+    if not check_auth(cipd, package_files, cipd_service_account, spin):
         return False
 
-    # TODO(pwbug/135) Use function from common utility module.
     log = os.path.join(root_install_dir, 'packages.log')
     try:
         with open(log, 'w') as outs:
@@ -318,25 +393,43 @@ def update(
     # Set environment variables so tools can later find things under, for
     # example, 'share'.
     if env_vars:
-        for package_file in package_files:
+        for package_file in reversed(package_files):
             name = package_file_name(package_file)
             file_install_dir = os.path.join(install_dir, name)
+
+            # If this package file has no packages and just includes one other
+            # file, there won't be any contents of the folder for this package.
+            # In that case, point the variable that would point to this folder
+            # to the folder of the included file.
+            with open(package_file) as ins:
+                contents = json.load(ins)
+                entries = contents.get('included_files', ())
+                file_packages = contents.get('packages', ())
+                if not file_packages and len(entries) == 1:
+                    file_install_dir = os.path.join(
+                        install_dir,
+                        package_file_name(os.path.basename(entries[0])),
+                    )
+
             # Some executables get installed at top-level and some get
             # installed under 'bin'. A small number of old packages prefix the
             # entire tree with the platform (e.g., chromium/third_party/tcl).
             for bin_dir in (
-                    file_install_dir,
-                    os.path.join(file_install_dir, 'bin'),
-                    os.path.join(file_install_dir, platform(), 'bin'),
+                file_install_dir,
+                os.path.join(file_install_dir, 'bin'),
+                os.path.join(file_install_dir, plat, 'bin'),
             ):
                 if os.path.isdir(bin_dir):
                     env_vars.prepend('PATH', bin_dir)
-            env_vars.set('PW_{}_CIPD_INSTALL_DIR'.format(name.upper()),
-                         file_install_dir)
+            env_vars.set(
+                'PW_{}_CIPD_INSTALL_DIR'.format(name.upper().replace('-', '_')),
+                file_install_dir,
+            )
 
             # Windows has its own special toolchain.
             if os.name == 'nt':
                 env_vars.prepend(
-                    'PATH', os.path.join(file_install_dir, 'mingw64', 'bin'))
+                    'PATH', os.path.join(file_install_dir, 'mingw64', 'bin')
+                )
 
     return True

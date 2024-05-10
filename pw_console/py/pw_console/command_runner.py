@@ -14,6 +14,7 @@
 """CommandRunner dialog classes."""
 
 from __future__ import annotations
+import dataclasses
 import functools
 import logging
 import re
@@ -24,10 +25,10 @@ from typing import (
     List,
     Optional,
     TYPE_CHECKING,
-    Tuple,
 )
 
 from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.formatted_text.utils import fragment_list_to_text
@@ -48,12 +49,16 @@ from prompt_toolkit.layout import (
     Window,
     WindowAlign,
 )
-from prompt_toolkit.widgets import MenuItem
-from prompt_toolkit.widgets import TextArea
+from prompt_toolkit.lexers import PygmentsLexer
+from prompt_toolkit.widgets import MenuItem, TextArea
 
-import pw_console.widgets.border
-import pw_console.widgets.checkbox
-import pw_console.widgets.mouse_handlers
+from pygments.lexers.markup import MarkdownLexer  # type: ignore
+
+from pw_console.widgets import (
+    create_border,
+    mouse_handlers,
+    to_keybind_indicator,
+)
 
 if TYPE_CHECKING:
     from pw_console.console_app import ConsoleApp
@@ -61,8 +66,16 @@ if TYPE_CHECKING:
 _LOG = logging.getLogger(__package__)
 
 
-def flatten_menu_items(items: List[MenuItem],
-                       prefix: str = '') -> Iterator[Tuple[str, Callable]]:
+@dataclasses.dataclass
+class CommandRunnerItem:
+    title: str
+    handler: Callable
+    description: Optional[str] = None
+
+
+def flatten_menu_items(
+    items: List[MenuItem], prefix: str = ''
+) -> Iterator[CommandRunnerItem]:
     """Flatten nested prompt_toolkit MenuItems into text and callable tuples."""
     for item in items:
         new_text = []
@@ -77,27 +90,26 @@ def flatten_menu_items(items: List[MenuItem],
             # Skip this item if it's a separator or disabled.
             if item.text == '-' or item.disabled:
                 continue
-            yield (new_prefix, item.handler)
+            yield CommandRunnerItem(title=new_prefix, handler=item.handler)
 
 
 def highlight_matches(
-        regexes: Iterable[re.Pattern],
-        line_fragments: StyleAndTextTuples) -> StyleAndTextTuples:
+    regexes: Iterable[re.Pattern], line_fragments: StyleAndTextTuples
+) -> StyleAndTextTuples:
     """Highlight regex matches in prompt_toolkit FormattedTextTuples."""
     line_text = fragment_list_to_text(line_fragments)
     exploded_fragments = explode_text_fragments(line_fragments)
 
-    def apply_highlighting(fragments: StyleAndTextTuples,
-                           index: int,
-                           matching_regex_index: int = 0) -> None:
+    def apply_highlighting(
+        fragments: StyleAndTextTuples, index: int, matching_regex_index: int = 0
+    ) -> None:
         # Expand all fragments and apply the highlighting style.
         old_style, _text, *_ = fragments[index]
         # There are 6 fuzzy-highlight styles defined in style.py. Get an index
         # from 0-5 to use one style after the other in turn.
         style_index = matching_regex_index % 6
         fragments[index] = (
-            old_style +
-            f' class:command-runner-fuzzy-highlight-{style_index} ',
+            old_style + f' class:command-runner-fuzzy-highlight-{style_index} ',
             fragments[index][1],
         )
 
@@ -116,14 +128,15 @@ class CommandRunner:
     # pylint: disable=too-many-instance-attributes
 
     def __init__(
-            self,
-            application: ConsoleApp,
-            window_title: str = None,
-            load_completions: Optional[Callable[[],
-                                                List[Tuple[str,
-                                                           Callable]]]] = None,
-            width: int = 80,
-            height: int = 10):
+        self,
+        application: ConsoleApp,
+        window_title: Optional[str] = None,
+        load_completions: Optional[
+            Callable[[], List[CommandRunnerItem]]
+        ] = None,
+        width: int = 80,
+        height: int = 10,
+    ):
         # Parent pw_console application
         self.application = application
         # Visibility toggle
@@ -133,14 +146,15 @@ class CommandRunner:
         self.last_focused_pane = None
 
         # List of all possible completion items
-        self.completions: List[Tuple[str, Callable]] = []
+        self.completions: List[CommandRunnerItem] = []
         # Formatted text fragments of matched items
         self.completion_fragments: List[StyleAndTextTuples] = []
 
         # Current selected item tracking variables
         self.selected_item: int = 0
-        self.selected_item_text: str = ''
+        self.selected_item_title: str = ''
         self.selected_item_handler: Optional[Callable] = None
+        self.selected_item_description: Optional[str] = None
         # Previous input text
         self.last_input_field_text: str = 'EMPTY'
         # Previous selected item
@@ -152,14 +166,19 @@ class CommandRunner:
         self.window_title: str
 
         # Callable to fetch completion items
-        self.load_completions: Callable[[], List[Tuple[str, Callable]]]
+        self.load_completions: Callable[[], List[CommandRunnerItem]]
 
         # Command runner text input field
         self.input_field = TextArea(
             prompt=[
-                ('class:command-runner-setting', '> ',
-                 functools.partial(pw_console.widgets.mouse_handlers.on_click,
-                                   self.focus_self))
+                (
+                    'class:command-runner-setting',
+                    '> ',
+                    functools.partial(
+                        mouse_handlers.on_click,
+                        self.focus_self,
+                    ),
+                )
             ],
             focusable=True,
             focus_on_click=True,
@@ -201,16 +220,44 @@ class CommandRunner:
             height=self.height,
         )
 
+        self.selected_item_description_text_area = TextArea(
+            focusable=False,
+            focus_on_click=False,
+            scrollbar=False,
+            style='class:help_window_content',
+            wrap_lines=False,
+            lexer=PygmentsLexer(MarkdownLexer),
+            text='empty',
+        )
+
         # Main content HSplit
         self.command_runner_content = HSplit(
             [
                 # Input field and buttons on the same line
-                VSplit([
-                    self.input_field,
-                    input_field_buttons_container,
-                ]),
+                VSplit(
+                    [
+                        self.input_field,
+                        input_field_buttons_container,
+                    ]
+                ),
                 # Completion items below
                 command_items_window,
+                # Selected item description / help text.
+                ConditionalContainer(
+                    create_border(
+                        self.selected_item_description_text_area,
+                        title=self._snippet_description_pane_title,
+                        border_style='class:command-runner-border',
+                        left_margin_columns=0,
+                        right_margin_columns=0,
+                        bottom=False,
+                        left=False,
+                        right=False,
+                    ),
+                    filter=Condition(
+                        lambda: bool(self.selected_item_description)
+                    ),
+                ),
             ],
             style='class:command-runner class:theme-fg-default',
         )
@@ -226,10 +273,20 @@ class CommandRunner:
             filter=Condition(lambda: self.show_dialog),
         )
 
+    def _snippet_description_pane_title(self) -> StyleAndTextTuples:
+        return [
+            # Left padding
+            ('', '━━ '),
+            # Snippet title in yellow
+            ('class:theme-fg-yellow', self.selected_item_title),
+            # right padding
+            ('', ' '),
+        ]
+
     def _create_bordered_content(self) -> None:
         """Wrap self.command_runner_content in a border."""
         # This should be called whenever the window_title changes.
-        self.bordered_content = pw_console.widgets.border.create_border(
+        self.bordered_content = create_border(
             self.command_runner_content,
             title=self.window_title,
             border_style='class:command-runner-border',
@@ -270,7 +327,8 @@ class CommandRunner:
     def content_width(self) -> int:
         """Return the smaller value of self.width and the available width."""
         window_manager_width = (
-            self.application.window_manager.current_window_manager_width)
+            self.application.window_manager.current_window_manager_width
+        )
         if not window_manager_width:
             window_manager_width = self.width
         return min(self.width, window_manager_width)
@@ -298,17 +356,19 @@ class CommandRunner:
 
     def set_completions(
         self,
-        window_title: str = None,
-        load_completions: Optional[Callable[[], List[Tuple[str,
-                                                           Callable]]]] = None,
+        window_title: Optional[str] = None,
+        load_completions: Optional[
+            Callable[[], List[CommandRunnerItem]]
+        ] = None,
     ) -> None:
         """Set window title and callable to fetch possible completions.
 
         Call this function whenever new completion items need to be loaded.
         """
         self.window_title = window_title if window_title else 'Menu Items'
-        self.load_completions = (load_completions
-                                 if load_completions else self.load_menu_items)
+        self.load_completions = (
+            load_completions if load_completions else self.load_menu_items
+        )
         self._reset_selected_item()
 
         self.completions = []
@@ -323,7 +383,7 @@ class CommandRunner:
     def reload_completions(self) -> None:
         self.completions = self.load_completions()
 
-    def load_menu_items(self) -> List[Tuple[str, Callable]]:
+    def load_menu_items(self) -> List[CommandRunnerItem]:
         # pylint: disable=no-self-use
         return list(flatten_menu_items(self.application.menu_items))
 
@@ -364,17 +424,28 @@ class CommandRunner:
         check_match = self._matches_orderless
 
         i = 0
-        for text, handler in self.completions:
-            if not (input_text == '' or check_match(regexes, text)):
+        for item in self.completions:
+            title = item.title
+            if not (input_text == '' or check_match(regexes, item.title)):
                 continue
             style = ''
             if i == self.selected_item:
                 style = 'class:command-runner-selected-item'
-                self.selected_item_text = text
-                self.selected_item_handler = handler
-                text = text.ljust(self.content_width())
+                self.selected_item_title = title
+                self.selected_item_handler = item.handler
+                self.selected_item_description = item.description
+                if self.selected_item_description:
+                    self.selected_item_description_text_area.buffer.document = (
+                        Document(
+                            text=self.selected_item_description,
+                            cursor_position=0,
+                        )
+                    )
+
+                title = item.title.ljust(self.content_width())
             fragments: StyleAndTextTuples = highlight_matches(
-                regexes, [(style, text + '\n')])
+                regexes, [(style, title + '\n')]
+            )
             self.completion_fragments.append(fragments)
             i += 1
 
@@ -397,7 +468,8 @@ class CommandRunner:
             # Don't move past the height of the window or the length of possible
             # items.
             min(self.height, len(self.completion_fragments)) - 1,
-            self.selected_item + 1)
+            self.selected_item + 1,
+        )
         self.application.redraw_ui()
 
     def _previous_item(self) -> None:
@@ -407,13 +479,11 @@ class CommandRunner:
 
     def _get_input_field_button_fragments(self) -> StyleAndTextTuples:
         # Mouse handlers
-        focus = functools.partial(pw_console.widgets.mouse_handlers.on_click,
-                                  self.focus_self)
-        cancel = functools.partial(pw_console.widgets.mouse_handlers.on_click,
-                                   self.close_dialog)
+        focus = functools.partial(mouse_handlers.on_click, self.focus_self)
+        cancel = functools.partial(mouse_handlers.on_click, self.close_dialog)
         select_item = functools.partial(
-            pw_console.widgets.mouse_handlers.on_click,
-            self._run_selected_item)
+            mouse_handlers.on_click, self._run_selected_item
+        )
 
         separator_text = ('', ' ', focus)
 
@@ -424,18 +494,21 @@ class CommandRunner:
 
         # Cancel button
         fragments.extend(
-            pw_console.widgets.checkbox.to_keybind_indicator(
+            to_keybind_indicator(
                 key='Ctrl-c',
                 description='Cancel',
                 mouse_handler=cancel,
                 base_style=button_style,
-            ))
+            )
+        )
         fragments.append(separator_text)
 
         # Run button
         fragments.extend(
-            pw_console.widgets.checkbox.to_keybind_indicator(
-                'Enter', 'Run', select_item, base_style=button_style))
+            to_keybind_indicator(
+                'Enter', 'Run', select_item, base_style=button_style
+            )
+        )
         return fragments
 
     def render_completion_items(self) -> StyleAndTextTuples:
@@ -454,8 +527,9 @@ class CommandRunner:
     def _reset_selected_item(self) -> None:
         self.selected_item = 0
         self.last_selected_item = 0
-        self.selected_item_text = ''
+        self.selected_item_title = ''
         self.selected_item_handler = None
+        self.selected_item_description = None
         self.last_input_field_text = 'EMPTY'
         self.input_field.buffer.reset()
 
@@ -473,23 +547,27 @@ class CommandRunner:
 
         # Actions that launch new command runners, close_dialog should not run.
         for command_text in [
-                '[File] > Open Logger',
+            '[File] > Insert Repl Snippet',
+            '[File] > Insert Repl History',
+            '[File] > Open Logger',
         ]:
-            if command_text in self.selected_item_text:
+            if command_text in self.selected_item_title:
                 close_dialog = False
                 break
 
         # Actions that change what is in focus should be run after closing the
         # command runner dialog.
         for command_text in [
-                '[View] > Focus Next Window/Tab',
-                '[View] > Focus Prev Window/Tab',
-                # All help menu entries open popup windows.
-                '[Help] > ',
-                # This focuses on a save dialog bor.
-                'Save/Export a copy',
+            '[File] > Games > ',
+            '[View] > Focus Next Window/Tab',
+            '[View] > Focus Prev Window/Tab',
+            # All help menu entries open popup windows.
+            '[Help] > ',
+            # This focuses on a save dialog bor.
+            'Save/Export a copy',
+            '[Windows] > Floating ',
         ]:
-            if command_text in self.selected_item_text:
+            if command_text in self.selected_item_title:
                 close_dialog_first = True
                 break
 

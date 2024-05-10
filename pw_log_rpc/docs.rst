@@ -1,5 +1,7 @@
 .. _module-pw_log_rpc:
 
+:tocdepth: 4
+
 ==========
 pw_log_rpc
 ==========
@@ -28,9 +30,8 @@ Set up the :ref:`module-pw_log_tokenized` log backend.
 3. Connect the tokenized logging handler to the MultiSink
 ---------------------------------------------------------
 Create a :ref:`MultiSink <module-pw_multisink>` instance to buffer log entries.
-Then, make the log backend handler,
-``pw_tokenizer_HandleEncodedMessageWithPayload``, encode log entries in the
-``log::LogEntry`` format, and add them to the ``MultiSink``.
+Then, make the log backend handler, :c:func:`pw_log_tokenized_HandleLog`, encode
+log entries in the ``log::LogEntry`` format, and add them to the ``MultiSink``.
 
 4. Create log drains and filters
 --------------------------------
@@ -89,6 +90,32 @@ also be internal log readers, i.e. ``MultiSink::Drain``\s, attached to the
     pw_rpc-->computer[Computer];
     pw_rpc-->other_listener[Other log<br>listener];
 
+Relation to pw_log and pw_log_tokenized
+=======================================
+``pw_log_rpc`` is often used in combination with ``pw_log`` and
+``pw_log_tokenized``. The diagram below shows the order of execution after
+invoking a ``pw_log`` macro.
+
+.. mermaid::
+
+   flowchart TD
+     project["`**your project code**`"]
+     --> pw_log["`**pw_log**
+                  *facade*`"]
+     --> token_backend["`**pw_log_tokenized**
+                         *backend for pw_log*`"]
+     --> token_facade["`**pw_log_tokenized:handler**
+                        *facade*`"]
+     --> custom_backend["`**your custom code**
+                          *backend for pw_log_tokenized:handler*`"]
+     --> pw_log_rpc["`**pw_log_rpc**`"];
+
+* See :ref:`docs-module-structure-facades` for an explanation of facades and
+  backends.
+* See ``pw_log_tokenized_HandleLog()`` and ``pw_log_tokenized_HandleMessageVaList()``
+  in ``//pw_system/log_backend.cc`` for an example of how :ref:`module-pw_system`
+  implements ``your custom code (pw_log_tokenized backend)``.
+
 Components Overview
 ===================
 LogEntry and LogEntries
@@ -104,11 +131,17 @@ out if logs were dropped during transmission.
 RPC log service
 ---------------
 The ``LogService`` class is an RPC service that provides a way to request a log
-stream sent via RPC and configure log filters. Thus, it helps avoid using a
-different protocol for logs and RPCs over the same interface(s).
+stream sent via RPC and configure log filters. Thus, it helps avoid
+using a different protocol for logs and RPCs over the same interface(s).
 It requires a ``RpcLogDrainMap`` to assign stream writers and delegate the
 log stream flushing to the user's preferred method, as well as a ``FilterMap``
-to retrieve and modify filters.
+to retrieve and modify filters. The client may also stop streaming the logs by
+calling ``Cancel()`` or ``RequestCompletion()`` using the ``RawClientReader``
+interface. Note that ``Cancel()`` may lead to dropped logs. To prevent dropped
+logs use ``RequestCompletion()`` and enable :c:macro:`PW_RPC_REQUEST_COMPLETION_CALLBACK`
+e.g. ``-DPW_RPC_REQUEST_COMPLETION_CALLBACK=1``.
+If ``PW_RPC_REQUEST_COMPLETION_CALLBACK`` is not enabled, RequestCompletion()
+call will not stop the logging stream.
 
 RpcLogDrain
 -----------
@@ -296,6 +329,9 @@ conditions must be met for the rule to be met.
 - ``module_equals``: the condition is met if this byte array is empty, or the
   log module equals the contents of this byte array.
 
+- ``thread_equals``: the condition is met if this byte array is empty or the
+  log thread equals the contents of this byte array.
+
 Filter
 ------
 Encapsulates a collection of zero or more ``Filter::Rule``\s and has
@@ -363,7 +399,6 @@ log drains and filters are set up.
   #include "pw_sync/interrupt_spin_lock.h"
   #include "pw_sync/lock_annotations.h"
   #include "pw_sync/mutex.h"
-  #include "pw_tokenizer/tokenize_to_global_handler_with_payload.h"
 
   namespace foo::log {
   namespace {
@@ -410,13 +445,13 @@ log drains and filters are set up.
       },
   }};
   std::array<Filter, 2> filters{
-      Filter(std::as_bytes(std::span("HOST", 4)), logs_to_host_filter_rules),
-      Filter(std::as_bytes(std::span("WEB", 3)), logs_to_server_filter_rules),
+      Filter(pw::as_bytes(pw::span("HOST", 4)), logs_to_host_filter_rules),
+      Filter(pw::as_bytes(pw::span("WEB", 3)), logs_to_server_filter_rules),
   };
   pw::log_rpc::FilterMap filter_map(filters);
 
-  extern "C" void pw_tokenizer_HandleEncodedMessageWithPayload(
-      pw_tokenizer_Payload metadata, const uint8_t message[], size_t size_bytes) {
+  extern "C" void pw_log_tokenized_HandleLog(
+      uint32_t metadata, const uint8_t message[], size_t size_bytes) {
     int64_t timestamp =
         pw::chrono::SystemClock::now().time_since_epoch().count();
     std::lock_guard lock(log_encode_lock);
@@ -448,3 +483,23 @@ Logging in other source files
 To defer logging, other source files must simply include ``pw_log/log.h`` and
 use the :ref:`module-pw_log` APIs, as long as the source set that includes
 ``foo/log.cc`` is setup as the log backend.
+
+--------------------
+pw_log_rpc in Python
+--------------------
+``pw_log_rpc`` provides client utilities for dealing with RPC logging.
+
+The ``LogStreamHandler`` offers APIs to start a log stream:``listen_to_logs``,
+to handle RPC stream errors: ``handle_log_stream_error``, and RPC stream
+completed events: ``handle_log_stream_completed``. It uses a provided
+``LogStreamDecoder`` to delegate log parsing to.
+
+Python API
+==========
+
+pw_log_rpc.rpc_log_stream
+-------------------------
+.. automodule:: pw_log_rpc.rpc_log_stream
+    :members: LogStreamHandler
+    :undoc-members:
+    :show-inheritance:

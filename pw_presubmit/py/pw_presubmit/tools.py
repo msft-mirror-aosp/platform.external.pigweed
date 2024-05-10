@@ -20,18 +20,66 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
-from typing import Any, Dict, Iterable, Iterator, List, Sequence, Pattern, Tuple
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Pattern,
+    Tuple,
+)
+
+import pw_cli.color
+from pw_presubmit.presubmit_context import PRESUBMIT_CONTEXT
 
 _LOG: logging.Logger = logging.getLogger(__name__)
+_COLOR = pw_cli.color.colors()
 
 
-def plural(items_or_count,
-           singular: str,
-           count_format='',
-           these: bool = False,
-           number: bool = True,
-           are: bool = False) -> str:
-    """Returns the singular or plural form of a word based on a count."""
+def colorize_diff_line(line: str) -> str:
+    if line.startswith('--- ') or line.startswith('+++ '):
+        return _COLOR.bold_white(line)
+    if line.startswith('-'):
+        return _COLOR.red(line)
+    if line.startswith('+'):
+        return _COLOR.green(line)
+    if line.startswith('@@ '):
+        return _COLOR.cyan(line)
+    return line
+
+
+def colorize_diff(lines: Iterable[str]) -> str:
+    """Takes a diff str or list of str lines and returns a colorized version."""
+    if isinstance(lines, str):
+        lines = lines.splitlines(True)
+
+    return ''.join(colorize_diff_line(line) for line in lines)
+
+
+def plural(
+    items_or_count,
+    singular: str,
+    count_format='',
+    these: bool = False,
+    number: bool = True,
+    are: bool = False,
+    exist: bool = False,
+) -> str:
+    """Returns the singular or plural form of a word based on a count.
+
+    Args:
+        items_or_count: Number of items or a collection of items
+        singular: Singular form of the name of the item
+        count_format: .format()-style specification for items_or_count
+        these: Prefix the string with "this" or "these", depending on number
+        number: Include the number in the return string (e.g., "3 things" vs.
+            "things")
+        are: Suffix the string with "is" or "are", depending on number
+        exist: Suffix the string with "exists" or "exist", depending on number
+    """
 
     try:
         count = len(items_or_count)
@@ -40,7 +88,14 @@ def plural(items_or_count,
 
     prefix = ('this ' if count == 1 else 'these ') if these else ''
     num = f'{count:{count_format}} ' if number else ''
-    suffix = (' is' if count == 1 else ' are') if are else ''
+
+    suffix = ''
+    if are and exist:
+        raise ValueError(f'cannot combine are ({are}) and exist ({exist})')
+    if are:
+        suffix = ' is' if count == 1 else ' are'
+    if exist:
+        suffix = ' exists' if count == 1 else ' exist'
 
     if singular.endswith('y'):
         result = f'{singular[:-1]}{"y" if count == 1 else "ies"}'
@@ -52,31 +107,39 @@ def plural(items_or_count,
     return f'{prefix}{num}{result}{suffix}'
 
 
-def make_color(*codes: int):
-    start = ''.join(f'\033[{code}m' for code in codes)
-    return f'{start}{{}}\033[0m'.format if os.name == 'posix' else str
-
-
 def make_box(section_alignments: Sequence[str]) -> str:
     indices = [i + 1 for i in range(len(section_alignments))]
     top_sections = '{2}'.join('{1:{1}^{width%d}}' % i for i in indices)
-    mid_sections = '{5}'.join('{section%d:%s{width%d}}' %
-                              (i, section_alignments[i - 1], i)
-                              for i in indices)
+    mid_sections = '{5}'.join(
+        '{section%d:%s{width%d}}' % (i, section_alignments[i - 1], i)
+        for i in indices
+    )
     bot_sections = '{9}'.join('{8:{8}^{width%d}}' % i for i in indices)
 
-    return ''.join(['{0}', *top_sections, '{3}\n',
-                    '{4}', *mid_sections, '{6}\n',
-                    '{7}', *bot_sections, '{10}'])  # yapf: disable
+    return ''.join(
+        [
+            '{0}',
+            *top_sections,
+            '{3}\n',
+            '{4}',
+            *mid_sections,
+            '{6}\n',
+            '{7}',
+            *bot_sections,
+            '{10}',
+        ]
+    )
 
 
-def file_summary(paths: Iterable[Path],
-                 levels: int = 2,
-                 max_lines: int = 12,
-                 max_types: int = 3,
-                 pad: str = ' ',
-                 pad_start: str = ' ',
-                 pad_end: str = ' ') -> List[str]:
+def file_summary(
+    paths: Iterable[Path],
+    levels: int = 2,
+    max_lines: int = 12,
+    max_types: int = 3,
+    pad: str = ' ',
+    pad_start: str = ' ',
+    pad_end: str = ' ',
+) -> List[str]:
     """Summarizes a list of files by the file types in each directory."""
 
     # Count the file types in each directory.
@@ -88,11 +151,19 @@ def file_summary(paths: Iterable[Path],
 
     # If there are too many lines, condense directories with the fewest files.
     if len(all_counts) > max_lines:
-        counts = sorted(all_counts.items(),
-                        key=lambda item: -sum(item[1].values()))
-        counts, others = sorted(counts[:max_lines - 1]), counts[max_lines - 1:]
-        counts.append((f'({plural(others, "other")})',
-                       sum((c for _, c in others), Counter())))
+        counts = sorted(
+            all_counts.items(), key=lambda item: -sum(item[1].values())
+        )
+        counts, others = (
+            sorted(counts[: max_lines - 1]),
+            counts[max_lines - 1 :],
+        )
+        counts.append(
+            (
+                f'({plural(others, "other")})',
+                sum((c for _, c in others), Counter()),
+            )
+        )
     else:
         counts = sorted(all_counts.items())
 
@@ -127,9 +198,11 @@ def relative_paths(paths: Iterable[Path], start: Path) -> Iterable[Path]:
         yield Path(os.path.relpath(path, start))
 
 
-def exclude_paths(exclusions: Iterable[Pattern[str]],
-                  paths: Iterable[Path],
-                  relative_to: Path = None) -> Iterable[Path]:
+def exclude_paths(
+    exclusions: Iterable[Pattern[str]],
+    paths: Iterable[Path],
+    relative_to: Optional[Path] = None,
+) -> Iterable[Path]:
     """Excludes paths based on a series of regular expressions."""
     if relative_to:
         relpath = lambda path: Path(os.path.relpath(path, relative_to))
@@ -143,7 +216,7 @@ def exclude_paths(exclusions: Iterable[Pattern[str]],
 
 def _truncate(value, length: int = 60) -> str:
     value = str(value)
-    return (value[:length - 5] + '[...]') if len(value) > length else value
+    return (value[: length - 5] + '[...]') if len(value) > length else value
 
 
 def format_command(args: Sequence, kwargs: dict) -> Tuple[str, str]:
@@ -151,11 +224,26 @@ def format_command(args: Sequence, kwargs: dict) -> Tuple[str, str]:
     return attr, ' '.join(shlex.quote(str(arg)) for arg in args)
 
 
-def log_run(args, **kwargs) -> subprocess.CompletedProcess:
+def log_run(
+    args, ignore_dry_run: bool = False, **kwargs
+) -> subprocess.CompletedProcess:
     """Logs a command then runs it with subprocess.run.
 
-    Takes the same arguments as subprocess.run.
+    Takes the same arguments as subprocess.run. The command is only executed if
+    dry-run is not enabled.
     """
+    ctx = PRESUBMIT_CONTEXT.get()
+    if ctx:
+        if not ignore_dry_run:
+            ctx.append_check_command(*args, **kwargs)
+        if ctx.dry_run and not ignore_dry_run:
+            # Return an empty CompletedProcess
+            empty_proc: subprocess.CompletedProcess = (
+                subprocess.CompletedProcess('', 0)
+            )
+            empty_proc.stdout = b''
+            empty_proc.stderr = b''
+            return empty_proc
     _LOG.debug('[COMMAND] %s\n%s', *format_command(args, kwargs))
     return subprocess.run(args, **kwargs)
 
@@ -169,7 +257,8 @@ def flatten(*items) -> Iterator:
 
     for item in items:
         if isinstance(item, collections.abc.Iterable) and not isinstance(
-                item, (str, bytes, bytearray)):
+            item, (str, bytes, bytearray)
+        ):
             yield from flatten(*item)
         else:
             yield item

@@ -24,20 +24,33 @@ from pw_symbolizer import symbolizer
 
 class LlvmSymbolizer(symbolizer.Symbolizer):
     """A symbolizer that wraps llvm-symbolizer."""
-    def __init__(self, binary: Optional[Path] = None, force_legacy=False):
+
+    def __init__(
+        self,
+        binary: Optional[Path] = None,
+        force_legacy=False,
+        llvm_symbolizer_binary: Optional[Path] = None,
+    ):
         # Lets destructor return cleanly if the binary is not found.
         self._symbolizer = None
-        if shutil.which('llvm-symbolizer') is None:
-            raise FileNotFoundError(
-                'llvm-symbolizer not installed. Run bootstrap, or download '
-                'LLVM (https://github.com/llvm/llvm-project/releases/) and add '
-                'the tools to your system PATH')
+        if llvm_symbolizer_binary:
+            self._symbolizer_binary = str(llvm_symbolizer_binary)
+        else:
+            self._symbolizer_binary = 'llvm-symbolizer'
+            if shutil.which(self._symbolizer_binary) is None:
+                raise FileNotFoundError(
+                    'llvm-symbolizer not installed. Run bootstrap, or download '
+                    'LLVM (https://github.com/llvm/llvm-project/releases/) and '
+                    'add the tools to your system PATH'
+                )
 
         # Prefer JSON output as it's easier to decode.
         if force_legacy:
             self._json_mode = False
         else:
-            self._json_mode = LlvmSymbolizer._is_json_compatibile()
+            self._json_mode = LlvmSymbolizer._is_json_compatibile(
+                self._symbolizer_binary
+            )
 
         if binary is not None:
             if not binary.exists():
@@ -45,7 +58,7 @@ class LlvmSymbolizer(symbolizer.Symbolizer):
 
             output_style = 'JSON' if self._json_mode else 'LLVM'
             cmd = [
-                'llvm-symbolizer',
+                self._symbolizer_binary,
                 '--no-inlines',
                 '--demangle',
                 '--functions',
@@ -53,22 +66,32 @@ class LlvmSymbolizer(symbolizer.Symbolizer):
                 '--exe',
                 str(binary),
             ]
-            self._symbolizer = subprocess.Popen(cmd,
-                                                stdout=subprocess.PIPE,
-                                                stdin=subprocess.PIPE)
+            self._symbolizer = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE
+            )
 
             self._lock: threading.Lock = threading.Lock()
 
     def __del__(self):
-        if self._symbolizer:
+        self.close()
+
+    def close(self):
+        """Closes the active llvm-symbolizer process."""
+        if self._symbolizer is not None:
             self._symbolizer.terminate()
+            self._symbolizer.wait()
+            self._symbolizer.stdin.close()
+            self._symbolizer.stdout.close()
+            self._symbolizer = None
 
     @staticmethod
-    def _is_json_compatibile() -> bool:
+    def _is_json_compatibile(symbolizer_binary: str) -> bool:
         """Checks llvm-symbolizer to ensure compatibility"""
-        result = subprocess.run(('llvm-symbolizer', '--help'),
-                                stdout=subprocess.PIPE,
-                                stdin=subprocess.PIPE)
+        result = subprocess.run(
+            (symbolizer_binary, '--help'),
+            stdout=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+        )
         for line in result.stdout.decode().splitlines():
             if '--output-style' in line and 'JSON' in line:
                 return True
@@ -86,10 +109,12 @@ class LlvmSymbolizer(symbolizer.Symbolizer):
         # Get the first symbol.
         symbol = results["Symbol"][0]
 
-        return symbolizer.Symbol(address=address,
-                                 name=symbol['FunctionName'],
-                                 file=symbol['FileName'],
-                                 line=symbol['Line'])
+        return symbolizer.Symbol(
+            address=address,
+            name=symbol['FunctionName'],
+            file=symbol['FileName'],
+            line=symbol['Line'],
+        )
 
     @staticmethod
     def _llvm_output_line_splitter(file_and_line: str) -> Tuple[str, int]:
@@ -126,7 +151,8 @@ class LlvmSymbolizer(symbolizer.Symbolizer):
             return symbolizer.Symbol(address)
 
         file, line_number = LlvmSymbolizer._llvm_output_line_splitter(
-            file_and_line)
+            file_and_line
+        )
 
         return symbolizer.Symbol(address, symbol, file, line_number)
 

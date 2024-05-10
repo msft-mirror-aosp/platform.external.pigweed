@@ -30,6 +30,7 @@ _LOG: logging.Logger = logging.getLogger(__name__)
 
 class ArduinoCore(pw_package.package_manager.Package):
     """Install and check status of arduino cores."""
+
     def __init__(self, core_name, *args, **kwargs):
         super().__init__(*args, name=core_name, **kwargs)
 
@@ -40,45 +41,62 @@ class ArduinoCore(pw_package.package_manager.Package):
         """Check for arduino core availability in pigweed_internal cipd."""
         package_path = path.parent.resolve()
         core_name = self.name
-        core_cache_path = package_path / ".cache" / core_name
+        core_cache_path = package_path / '.cache' / core_name
         core_cache_path.mkdir(parents=True, exist_ok=True)
 
-        cipd_package_subpath = "pigweed_internal/third_party/"
+        cipd_package_subpath = 'pigweed_internal/third_party/'
         cipd_package_subpath += core_name
-        cipd_package_subpath += "/${platform}"
+        cipd_package_subpath += '/${platform}'
 
         # Check if teensy cipd package is readable
-
-        with tempfile.NamedTemporaryFile(prefix='cipd',
-                                         delete=True) as temp_json:
+        with tempfile.NamedTemporaryFile(
+            prefix='cipd', delete=True, dir=core_cache_path
+        ) as temp_json:
+            temp_json_path = Path(temp_json.name)
             cipd_acl_check_command = [
-                "cipd",
-                "acl-check",
+                'cipd',
+                'acl-check',
                 cipd_package_subpath,
-                "-reader",
-                "-json-output",
-                temp_json.name,
+                '-reader',
+                '-json-output',
+                str(temp_json_path),
             ]
             subprocess.run(cipd_acl_check_command, capture_output=True)
-            # Return if no packages are readable.
-            if not json.load(temp_json)['result']:
+
+            # Return if cipd_package_subpath does not exist or is not readable
+            # by the current user.
+            if not temp_json_path.is_file():
+                # Return and proceed with normal installation.
+                return
+            result_text = temp_json_path.read_text()
+            result_dict = json.loads(result_text)
+            if 'result' not in result_dict:
+                # Return and proceed with normal installation.
                 return
 
         def _run_command(command):
-            _LOG.debug("Running: `%s`", " ".join(command))
+            _LOG.debug('Running: `%s`', ' '.join(command))
             result = subprocess.run(command, capture_output=True)
-            _LOG.debug("Output:\n%s",
-                       result.stdout.decode() + result.stderr.decode())
+            _LOG.debug(
+                'Output:\n%s', result.stdout.decode() + result.stderr.decode()
+            )
 
-        _run_command(["cipd", "init", "-force", core_cache_path.as_posix()])
-        _run_command([
-            "cipd", "install", cipd_package_subpath, "-root",
-            core_cache_path.as_posix(), "-force"
-        ])
+        _run_command(['cipd', 'init', '-force', core_cache_path.as_posix()])
+        _run_command(
+            [
+                'cipd',
+                'install',
+                cipd_package_subpath,
+                '-root',
+                core_cache_path.as_posix(),
+                '-force',
+            ]
+        )
 
         _LOG.debug(
-            "Available Cache Files:\n%s",
-            "\n".join([p.as_posix() for p in core_cache_path.glob("*")]))
+            'Available Cache Files:\n%s',
+            '\n'.join([p.as_posix() for p in core_cache_path.glob('*')]),
+        )
 
     def install(self, path: Path) -> None:
         self.populate_download_cache_from_cipd(path)
@@ -86,8 +104,7 @@ class ArduinoCore(pw_package.package_manager.Package):
         if self.status(path):
             return
         # Otherwise delete current version and reinstall
-        core_installer.install_core(path.parent.resolve().as_posix(),
-                                    self.name)
+        core_installer.install_core(path.parent.resolve().as_posix(), self.name)
 
     def info(self, path: Path) -> Sequence[str]:
         packages_root = path.parent.resolve()
@@ -102,18 +119,17 @@ class ArduinoCore(pw_package.package_manager.Package):
         message_gn_args = [
             'Enable by running "gn args out" and adding these lines:',
             f'  pw_arduino_build_CORE_PATH = "{packages_root}"',
-            f'  pw_arduino_build_CORE_NAME = "{self.name}"'
+            f'  pw_arduino_build_CORE_NAME = "{self.name}"',
         ]
 
         # Search for first valid 'package/version' directory
         for hardware_dir in [
-                path for path in (path / 'hardware').iterdir()
-                if path.is_dir()
+            path for path in (path / 'hardware').iterdir() if path.is_dir()
         ]:
-            if path.name in ["arduino", "tools"]:
+            if path.name in ['arduino', 'tools']:
                 continue
             for subdir in [
-                    path for path in hardware_dir.iterdir() if path.is_dir()
+                path for path in hardware_dir.iterdir() if path.is_dir()
             ]:
                 if subdir.name == 'avr' or re.match(r'[0-9.]+', subdir.name):
                     arduino_package_name = f'{hardware_dir.name}/{subdir.name}'
@@ -122,20 +138,21 @@ class ArduinoCore(pw_package.package_manager.Package):
         if arduino_package_name:
             message_gn_args += [
                 f'  pw_arduino_build_PACKAGE_NAME = "{arduino_package_name}"',
-                '  pw_arduino_build_BOARD = "BOARD_NAME"'
+                '  pw_arduino_build_BOARD = "BOARD_NAME"',
             ]
-            message += ["\n".join(message_gn_args)]
+            message += ['\n'.join(message_gn_args)]
             message += [
                 'Where BOARD_NAME is any supported board.',
                 # Have arduino_builder command appear on it's own line.
                 'List available boards by running:\n'
                 '  arduino_builder '
                 f'--arduino-package-path {arduino_package_path} '
-                f'--arduino-package-name {arduino_package_name} list-boards'
+                f'--arduino-package-name {arduino_package_name} list-boards',
             ]
         return message
 
 
 for arduino_core_name in core_installer.supported_cores():
-    pw_package.package_manager.register(ArduinoCore,
-                                        core_name=arduino_core_name)
+    pw_package.package_manager.register(
+        ArduinoCore, core_name=arduino_core_name
+    )

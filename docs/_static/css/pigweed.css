@@ -24,8 +24,21 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
+
 .sidebar-brand-text {
-    font-size: 2.5rem;
+  font-size: 2.5rem;
+  text-align: center;
+}
+
+/********** Scrolling behavior ***********/
+
+/*
+ * All nodes across the site should scroll instantly. This rule is intentionally
+ * broad and agressive. Context:
+ * https://pigweed.dev/docs/style_guide.html#site-nav-scrolling
+ */
+* {
+  scroll-behavior: auto !important;
 }
 
 /********** General document coloring ***********/
@@ -77,9 +90,10 @@ dl.describe>dt {
     text-indent: 0em;
 }
 
-/* Diagram backgrounds should always be light */
-div>svg {
-  background: #ffffff;
+/* Remove blank space before/after function signature open/close parens. */
+.sig > dl {
+    margin-block-start: 0;
+    margin-block-end: 0;
 }
 
 /* Make inline code standout more */
@@ -91,6 +105,21 @@ code.literal {
 ::selection {
   color: var(--color-text-selection-foreground);
   background: var(--color-text-selection-background);
+}
+
+
+/* Make dark mode 'code-block:: :emphasize-lines:' background color readable. */
+body[data-theme="dark"] .highlight .hll {
+  background-color: var(--color-code-hll-background);
+}
+
+body[data-theme="light"] .highlight .hll {
+  background-color: var(--color-code-hll-background);
+}
+
+/* Override pygments.css code block background color */
+body[data-theme="dark"] .highlight {
+  background-color: var(--color-code-background) !important;
 }
 
 /* Use normal mixed-case for h4, h5, and h6 */
@@ -114,4 +143,102 @@ h4, h5, h6 {
   background-color: var(--color-admonition-title--tip);
   -webkit-mask-image: var(--icon--check-circle-fill);
           mask-image: var(--icon--check-circle-fill);
+}
+
+/* Sub sections in breathe doxygen output.
+   E.g 'Public Functions' or 'Public Static Functions' in a class. */
+.breathe-sectiondef > p.breathe-sectiondef-title {
+  font-weight: bold;
+  font-size: var(--font-size--normal);
+}
+
+/* Indicate in-progress SEEDs */
+a[href="seed/0000-index.html"] ~ ul > li > a.reference.external[href*="pigweed-review.googlesource.com"]::before {
+  content: "🚧 ";
+}
+
+div.pw-main {
+  display: flex;
+  flex-direction: column;
+}
+
+div.pw-topnav {
+  background-color: var(--color-background-primary);
+  padding: 0 3em;
+  width: 100%;
+}
+
+div.pw-topnav-inline {
+  display: flex;
+  flex-direction: row;
+  padding: 1em 0 0 0;
+}
+
+div.pw-topnav-inline h1 {
+  padding: 0;
+  margin: 0;
+}
+
+.pw-topnav-title {
+  font-size: 2.5em;
+  font-weight: 700;
+  line-height: 1.25;
+  padding: 0;
+  margin: 0;
+}
+
+.pw-topnav-subtitle {
+  display: block;
+  font-size: larger;
+  font-weight: bold;
+  margin: 0.75em 0 0.5em 0;
+  padding: 0;
+}
+
+.pw-text-center-align {
+    text-align: center
+}
+
+ul.pw-module-section-nav-group {
+  display: flex;
+  margin: 0 1em;
+  padding: 0;
+}
+
+li.pw-module-section-nav-link {
+  display: inline;
+  list-style-type: none;
+  margin: auto;
+  padding: 0 1em;
+}
+
+li.pw-module-section-nav-link p {
+  display: inline;
+  font-size: large;
+}
+
+li.pw-module-section-nav-link p a {
+  color: var(--color-section-button) !important;
+}
+
+li.pw-module-section-nav-link p a:hover {
+  color: var(--color-section-button-hover) !important;
+}
+
+div.font-monospace {
+  font-family: var(--font-stack--monospace);
+}
+
+/* Sales pitch pages like //pw_tokenizer/docs.rst use the feature grid as a
+ * call-to-action to check out other docs in the set. The following CSS makes
+ * the feature grid items stand out a bit more. */
+
+.sales-pitch-cta-primary .sd-card-title {
+  border-bottom: 3px solid var(--color-sidebar-brand-text);
+  padding-bottom: 0.5rem;
+}
+
+.sales-pitch-cta-secondary .sd-card-title {
+  border-bottom: 3px solid var(--color-sidebar-link-text);
+  padding-bottom: 0.5rem;
 }

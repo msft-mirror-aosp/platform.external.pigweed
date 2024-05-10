@@ -23,24 +23,42 @@ namespace pw::transfer {
 
 void TransferService::HandleChunk(ConstByteSpan message,
                                   internal::TransferType type) {
-  internal::Chunk chunk;
-  if (Status status = internal::DecodeChunk(message, chunk); !status.ok()) {
-    PW_LOG_ERROR("Failed to decode transfer chunk: %d", status.code());
+  Result<internal::Chunk> chunk = internal::Chunk::Parse(message);
+  if (!chunk.ok()) {
+    PW_LOG_ERROR("Failed to decode transfer chunk: %d", chunk.status().code());
     return;
   }
 
-  if (chunk.IsInitialChunk()) {
-    // TODO(frolv): Right now, transfer ID and handler ID are the same thing.
-    // The transfer ID should be made into a unique session ID instead.
+  if (chunk->IsInitialChunk()) {
+    uint32_t resource_id =
+        chunk->is_legacy() ? chunk->session_id() : chunk->resource_id().value();
+
+    uint32_t session_id;
+    if (chunk->is_legacy()) {
+      session_id = chunk->session_id();
+    } else if (chunk->desired_session_id().has_value()) {
+      session_id = chunk->desired_session_id().value();
+    } else {
+      // Non-legacy start chunks are required to use desired_session_id.
+      thread_.SendServerStatus(type,
+                               chunk->session_id(),
+                               chunk->protocol_version(),
+                               Status::DataLoss());
+      return;
+    }
+
     thread_.StartServerTransfer(type,
-                                chunk.transfer_id,
-                                chunk.transfer_id,
+                                chunk->protocol_version(),
+                                session_id,
+                                resource_id,
+                                message,
                                 max_parameters_,
                                 chunk_timeout_,
-                                max_retries_);
+                                max_retries_,
+                                max_lifetime_retries_);
+  } else {
+    thread_.ProcessServerChunk(message);
   }
-
-  thread_.ProcessServerChunk(message);
 }
 
 }  // namespace pw::transfer

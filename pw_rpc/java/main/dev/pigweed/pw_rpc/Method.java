@@ -20,7 +20,6 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
-import java.lang.reflect.InvocationTargetException;
 
 /**
  * Information about an RPC service method.
@@ -37,11 +36,19 @@ public abstract class Method {
 
   public abstract Type type();
 
-  public abstract Class<? extends MessageLite> request();
+  abstract Parser<? extends MessageLite> requestParser();
 
-  public abstract Class<? extends MessageLite> response();
+  abstract Parser<? extends MessageLite> responseParser();
 
-  public final int id() {
+  public final Class<? extends MessageLite> request() {
+    return getProtobufClass(requestParser());
+  }
+
+  public final Class<? extends MessageLite> response() {
+    return getProtobufClass(responseParser());
+  }
+
+  final int id() {
     return Ids.calculate(name());
   }
 
@@ -57,11 +64,11 @@ public abstract class Method {
     return createFullName(service().name(), name());
   }
 
-  public static String createFullName(String serviceName, String methodName) {
+  static String createFullName(String serviceName, String methodName) {
     return serviceName + '/' + methodName;
   }
 
-  /* package */ static Builder builder() {
+  static Builder builder() {
     return new AutoValue_Method.Builder();
   }
 
@@ -79,29 +86,26 @@ public abstract class Method {
 
     abstract Builder setName(String value);
 
-    abstract Builder setRequest(Class<? extends MessageLite> value);
+    abstract Builder setRequestParser(Parser<? extends MessageLite> parser);
 
-    abstract Builder setResponse(Class<? extends MessageLite> value);
+    abstract Builder setResponseParser(Parser<? extends MessageLite> parser);
 
     abstract Method build();
   }
 
   /** Decodes a response payload according to the method's response type. */
   final MessageLite decodeResponsePayload(ByteString data) throws InvalidProtocolBufferException {
-    return decodeProtobuf(response(), data);
+    return responseParser().parseFrom(data);
   }
 
-  /** Deserializes a protobuf using the provided class. */
-  @SuppressWarnings("unchecked")
-  static MessageLite decodeProtobuf(Class<? extends MessageLite> messageType, ByteString data)
-      throws InvalidProtocolBufferException {
+  private static Class<? extends MessageLite> getProtobufClass(
+      Parser<? extends MessageLite> parser) {
     try {
-      Parser<? extends MessageLite> parser =
-          (Parser<? extends MessageLite>) messageType.getMethod("parser").invoke(null);
-      return parser.parseFrom(data);
-    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-      throw new LinkageError(
-          "Method was created with a protobuf class with an invalid or missing parser() method", e);
+      return parser.parseFrom(ByteString.EMPTY).getClass();
+    } catch (InvalidProtocolBufferException e) {
+      throw new AssertionError("Failed to parse zero bytes as a protobuf! "
+              + "It was assumed that zero bytes is always a valid protobuf.",
+          e);
     }
   }
 

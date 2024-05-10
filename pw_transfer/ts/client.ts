@@ -1,4 +1,4 @@
-// Copyright 2021 The Pigweed Authors
+// Copyright 2022 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -18,9 +18,9 @@ import {
   BidirectionalStreamingCall,
   BidirectionalStreamingMethodStub,
   ServiceClient,
-} from '@pigweed/pw_rpc';
-import {Status} from '@pigweed/pw_status';
-import {Chunk} from 'transfer_proto_tspb/transfer_proto_tspb_pb/pw_transfer/transfer_pb';
+} from 'pigweedjs/pw_rpc';
+import { Status } from 'pigweedjs/pw_status';
+import { Chunk } from 'pigweedjs/protos/pw_transfer/transfer_pb';
 
 import {
   ReadTransfer,
@@ -49,8 +49,8 @@ const DEFAULT_INITIAL_RESPONSE_TIMEOUT = 4;
  */
 export class Manager {
   // Ongoing transfers in the service by ID
-  private readTransfers: TransferDict = {};
-  private writeTransfers: TransferDict = {};
+  readTransfers: TransferDict = {};
+  writeTransfers: TransferDict = {};
 
   // RPC streams for read and write transfers. These are shareable by
   // multiple transfers of the same type.
@@ -73,7 +73,7 @@ export class Manager {
     private service: ServiceClient,
     private defaultResponseTimeoutS = DEFAULT_RESPONSE_TIMEOUT_S,
     private initialResponseTimeoutS = DEFAULT_INITIAL_RESPONSE_TIMEOUT,
-    private maxRetries = DEFAULT_MAX_RETRIES
+    private maxRetries = DEFAULT_MAX_RETRIES,
   ) {}
 
   /**
@@ -82,18 +82,20 @@ export class Manager {
    * @throws Throws an error when the transfer fails to complete.
    */
   async read(
-    transferId: number,
-    progressCallback?: ProgressCallback
+    resourceId: number,
+    progressCallback?: ProgressCallback,
   ): Promise<Uint8Array> {
-    if (transferId in this.readTransfers) {
-      throw new Error(`Read transfer ${transferId} already exists`);
+    if (resourceId in this.readTransfers) {
+      throw new Error(
+        `Read transfer for resource ${resourceId} already exists`,
+      );
     }
     const transfer = new ReadTransfer(
-      transferId,
+      resourceId,
       this.sendReadChunkCallback,
       this.defaultResponseTimeoutS,
       this.maxRetries,
-      progressCallback
+      progressCallback,
     );
 
     this.startReadTransfer(transfer);
@@ -121,22 +123,22 @@ export class Manager {
   /**
   Transmits (uploads) data to the server.
    *
-   * @param{number} transferId: ID of the write transfer
+   * @param{number} resourceId: ID of the resource to which to write.
    * @param{Uint8Array} data: Data to send to the server.
    */
   async write(
-    transferId: number,
+    resourceId: number,
     data: Uint8Array,
-    progressCallback?: ProgressCallback
+    progressCallback?: ProgressCallback,
   ): Promise<void> {
     const transfer = new WriteTransfer(
-      transferId,
+      resourceId,
       data,
       this.sendWriteChunkCallback,
       this.defaultResponseTimeoutS,
       this.initialResponseTimeoutS,
       this.maxRetries,
-      progressCallback
+      progressCallback,
     );
     this.startWriteTransfer(transfer);
 
@@ -170,27 +172,31 @@ export class Manager {
 
   private openReadStream(): void {
     const readRpc = this.service.method(
-      'Read'
+      'Read',
     )! as BidirectionalStreamingMethodStub;
     this.readStream = readRpc.invoke(
       (chunk: Chunk) => {
         this.handleChunk(this.readTransfers, chunk);
       },
-      () => {},
-      this.onReadError
+      () => {
+        // Do nothing.
+      },
+      this.onReadError,
     );
   }
 
   private openWriteStream(): void {
     const writeRpc = this.service.method(
-      'Write'
+      'Write',
     )! as BidirectionalStreamingMethodStub;
     this.writeStream = writeRpc.invoke(
       (chunk: Chunk) => {
         this.handleChunk(this.writeTransfers, chunk);
       },
-      () => {},
-      this.onWriteError
+      () => {
+        // Do nothing.
+      },
+      this.onWriteError,
     );
   }
 
@@ -253,7 +259,7 @@ export class Manager {
     const transfer = transfers[chunk.getTransferId()];
     if (transfer === undefined) {
       console.error(
-        `TransferManager received chunk for unknown transfer ${chunk.getTransferId()}`
+        `TransferManager received chunk for unknown transfer ${chunk.getTransferId()}`,
       );
       return;
     }

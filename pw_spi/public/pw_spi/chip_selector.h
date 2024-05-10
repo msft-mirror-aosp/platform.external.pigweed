@@ -30,14 +30,14 @@ enum class ChipSelectBehavior : uint8_t {
 };
 
 // The ChipSelector class provides an abstract interface for controlling the
-// chip-select signal associated with a specific SPI peripheral.
+// chip-select signal associated with a specific SPI responder.
 class ChipSelector {
  public:
   virtual ~ChipSelector() = default;
 
   // SetActive sets the state of the chip-select signal to the value represented
   // by the `active` parameter.  Passing a value of `true` will activate the
-  // chip-select signal, and `false` will deactive the chip-select signal.
+  // chip-select signal, and `false` will deactivate the chip-select signal.
   // Returns OkStatus() on success, and implementation-specific values on
   // failure.
   virtual Status SetActive(bool active) = 0;

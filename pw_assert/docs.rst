@@ -458,6 +458,13 @@ PW_ASSERT API Reference
   Same as ``PW_ASSERT()``, except that if ``PW_ASSERT_ENABLE_DEBUG == 0``, the
   assert is disabled and condition is not evaluated.
 
+.. cpp:function:: PW_ASSERT_OK(expression)
+
+  A header- and constexpr-safe version of ``PW_CHECK_OK()``.
+
+  If the given expression is not `OK`, crash the system. Otherwise, do nothing.
+  The condition is guarenteed to be evaluated.
+
 .. attention::
 
   Unlike the ``PW_CHECK_*()`` suite of macros, ``PW_ASSERT()`` and
@@ -483,6 +490,8 @@ common for the ``pw_assert`` backend to cause circular dependencies. Because of
 this, assert backends may avoid declaring explicit dependencies, instead relying
 on include paths to access header files.
 
+GN
+--
 In GN, the ``pw_assert`` backend's full implementation with true dependencies is
 made available through the ``$dir_pw_assert:impl`` group. When
 ``pw_assert_BACKEND`` is set, ``$dir_pw_assert:impl`` must be listed in the
@@ -498,6 +507,31 @@ In order to break dependency cycles, the ``pw_assert_BACKEND`` target may need
 to directly provide dependencies through include paths only, rather than GN
 ``public_deps``. In this case, GN header checking can be disabled with
 ``check_includes = false``.
+
+Bazel
+-----
+In Bazel, assert backends may break dependency cycles by placing the full
+implementation in an ``impl`` target, like ``//pw_assert_basic:impl`` or
+``//pw_assert_tokenized:impl``. The ``//targets:pw_assert_backend_impl``
+label flag should be set to the ``impl`` target required by the assert backend
+used by the platform.
+
+You must add a dependency on the ``@pigweed//targets:pw_assert_backend_impl``
+target to any binary using ``pw_assert``.  You can do this in a few ways:
+
+1.  Use ``pw_cc_binary``, one of the :ref:`module-pw_build-bazel-wrapper-rules`
+    provided by Pigweed, instead of native ``cc_binary``. This wrapper adds the
+    required dependency.
+
+1.  Use `link_extra_lib
+    <https://bazel.build/reference/be/c-cpp#cc_binary.link_extra_lib>`_: set
+    the ``@bazel_tools//tools/cpp:link_extra_lib`` label flag to point to
+    ``@pigweed//targets:pw_assert_backend_impl``, probably using `bazelrc
+    <https://bazel.build/run/bazelrc>`_. Note that this is only supported in
+    Bazel 7.0.0 or newer.
+
+1.  Add ``@pigweed//targets:pw_assert_backend_impl`` directly to the ``deps``
+    of every embedded ``cc_binary`` in your project.
 
 .. _module-pw_assert-backend_api:
 
@@ -522,7 +556,7 @@ This facade module (``pw_assert``) does not provide a backend. See
 
 The backend must provide the header
 
-``pw_assert_backend/backend.h``
+``pw_assert_backend/check_backend.h``
 
 and that header must define the following macros:
 
@@ -609,7 +643,7 @@ is providing a macro-based backend API for the ``PW_ASSERT()`` and
   are extremely confusingly similar and are NOT interchangeable.
 
 A macro-based backend for the ``PW_ASSERT()`` macros must provide the following
-macro in a header at ``pw_assert_backend/assert_lite_backend.h``.
+macro in a header at ``pw_assert_backend/assert_backend.h``.
 
 .. cpp:function:: PW_ASSERT_HANDLE_FAILURE(expression)
 
@@ -762,6 +796,15 @@ Compatibility
 -------------
 The facade is compatible with both C and C++.
 
+---------------------------------------
+C Standard Library `assert` Replacement
+---------------------------------------
+An optional replacement of the C standard Library's `assert` macro is provided
+through the `libc_assert` target which fully implements replacement `assert.h`
+and `cassert` headers using `PW_ASSERT`. While this is effective for porting
+external code to microcontrollers, we do not advise embedded projects use the
+`assert` macro unless absolutely necessary.
+
 ----------------
 Roadmap & Status
 ----------------
@@ -780,6 +823,11 @@ Available Assert Backends
   the functionality. There are (a) tests for the facade macro processing logic,
   using a fake assert backend; and (b) compile tests to verify that the
   selected backend compiles with all supported assert constructions and types.
+- ``pw_assert:print_and_abort_backend`` - **Stable** - Uses the ``printf`` and
+  ``abort`` standard library functions to implement the assert facade. Prints
+  the assert expression, evaluated arguments if any, file/line, function name,
+  and user message, then aborts. Only suitable for targets that support these
+  standard library functions.
 - ``pw_assert_basic`` - **Stable** - The assert basic module is a simple assert
   handler that displays the failed assert line and the values of captured
   arguments. Output is directed to ``pw_sys_io``. This module is a great

@@ -20,7 +20,6 @@ pw_python_package("py") {
   setup = [
     "pyproject.toml",
     "setup.cfg",
-    "setup.py",
   ]
   sources = [
     "stm32f429i_disc1_utils/__init__.py",
@@ -30,5 +29,6 @@ pw_python_package("py") {
     "stm32f429i_disc1_utils/unit_test_server.py",
   ]
   pylintrc = "$dir_pigweed/.pylintrc"
+  mypy_ini = "$dir_pigweed/.mypy.ini"
   python_deps = [ "$dir_pw_cli/py" ]
 }

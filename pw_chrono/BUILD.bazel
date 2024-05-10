@@ -12,12 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
     "pw_cc_library",
     "pw_cc_test",
 )
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -49,15 +51,21 @@ pw_cc_library(
     srcs = [
         "system_clock.cc",
     ],
+    hdrs = [
+        "public/pw_chrono/internal/system_clock_macros.h",
+        "public/pw_chrono/system_clock.h",
+    ],
+    includes = ["public"],
     deps = [
-        ":system_clock_facade",
-        "@pigweed_config//:pw_chrono_system_clock_backend",
+        ":epoch",
+        "//pw_preprocessor",
+        "@pigweed//targets:pw_chrono_system_clock_backend",
     ],
 )
 
 pw_cc_library(
     name = "system_clock_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:freertos": ["//pw_chrono_freertos:system_clock"],
         "//pw_build/constraints/rtos:embos": ["//pw_chrono_embos:system_clock"],
@@ -82,18 +90,41 @@ pw_cc_library(
     name = "system_timer",
     deps = [
         ":system_timer_facade",
-        "@pigweed_config//:pw_chrono_system_timer_backend",
+        "@pigweed//targets:pw_chrono_system_timer_backend",
     ],
 )
 
 pw_cc_library(
     name = "system_timer_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:freertos": ["//pw_chrono_freertos:system_timer"],
         "//pw_build/constraints/rtos:embos": ["//pw_chrono_embos:system_timer"],
         "//conditions:default": ["//pw_chrono_stl:system_timer"],
     }),
+)
+
+proto_library(
+    name = "chrono_proto",
+    srcs = [
+        "chrono.proto",
+    ],
+    import_prefix = "pw_chrono_protos",
+    strip_import_prefix = "/pw_chrono",
+)
+
+# TODO: b/241456982 - Not expected to build yet.
+py_proto_library(
+    name = "chrono_proto_pb2",
+    # Once b/241456982 is fixed srcs here should be replaced with:
+    # deps = [ ":chrono_proto" ]
+    srcs = ["chrono.proto"],
+    tags = ["manual"],
+)
+
+pw_proto_library(
+    name = "chrono_proto_cc",
+    deps = [":chrono_proto"],
 )
 
 pw_cc_library(

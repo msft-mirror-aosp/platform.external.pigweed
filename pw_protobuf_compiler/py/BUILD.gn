@@ -21,7 +21,6 @@ pw_python_package("py") {
   setup = [
     "pyproject.toml",
     "setup.cfg",
-    "setup.py",
   ]
   sources = [
     "pw_protobuf_compiler/__init__.py",
@@ -36,6 +35,7 @@ pw_python_package("py") {
   python_deps = [ "$dir_pw_cli/py" ]
   python_test_deps = [ "..:test_protos.python" ]
   pylintrc = "$dir_pigweed/.pylintrc"
+  mypy_ini = "$dir_pigweed/.mypy.ini"
 
   # If Nanopb is available, test protos that import nanopb.proto.
   if (dir_pw_third_party_nanopb != "") {

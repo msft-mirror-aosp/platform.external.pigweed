@@ -18,13 +18,14 @@
 #include "pw_kvs/internal/sectors.h"
 
 #include "pw_kvs_private/config.h"
-#include "pw_log/shorter.h"
+#include "pw_log/log.h"
 
 namespace pw::kvs::internal {
 namespace {
 
 // Returns true if the container conatins the value.
-// TODO: At some point move this to pw_containers, along with adding tests.
+// TODO(hepler): At some point move this to pw_containers, along with adding
+// tests.
 template <typename Container, typename T>
 bool Contains(const Container& container, const T& value) {
   return std::find(std::begin(container), std::end(container), value) !=
@@ -36,8 +37,8 @@ bool Contains(const Container& container, const T& value) {
 Status Sectors::Find(FindMode find_mode,
                      SectorDescriptor** found_sector,
                      size_t size,
-                     std::span<const Address> addresses_to_skip,
-                     std::span<const Address> reserved_addresses) {
+                     span<const Address> addresses_to_skip,
+                     span<const Address> reserved_addresses) {
   SectorDescriptor* first_empty_sector = nullptr;
   bool at_least_two_empty_sectors = (find_mode == kGarbageCollect);
 
@@ -63,12 +64,13 @@ Status Sectors::Find(FindMode find_mode,
     temp_sectors_to_skip_[sectors_to_skip++] = &FromAddress(address);
   }
 
-  DBG("Find sector with %u bytes available, starting with sector %u, %s",
+  PW_LOG_DEBUG(
+      "Find sector with %u bytes available, starting with sector %u, %s",
       unsigned(size),
       Index(last_new_),
       (find_mode == kAppendEntry) ? "Append" : "GC");
   for (size_t i = 0; i < sectors_to_skip; ++i) {
-    DBG("  Skip sector %u", Index(temp_sectors_to_skip_[i]));
+    PW_LOG_DEBUG("  Skip sector %u", Index(temp_sectors_to_skip_[i]));
   }
 
   // last_new_ is the sector that was last selected as the "new empty sector" to
@@ -102,7 +104,7 @@ Status Sectors::Find(FindMode find_mode,
     }
 
     // Skip sectors in the skip list.
-    if (Contains(std::span(temp_sectors_to_skip_, sectors_to_skip), sector)) {
+    if (Contains(span(temp_sectors_to_skip_, sectors_to_skip), sector)) {
       continue;
     }
 
@@ -135,7 +137,8 @@ Status Sectors::Find(FindMode find_mode,
   // to keep 1 empty sector after the sector found here, but that rule does not
   // apply during GC.
   if (first_empty_sector != nullptr && at_least_two_empty_sectors) {
-    DBG("  Found a usable empty sector; returning the first found (%u)",
+    PW_LOG_DEBUG(
+        "  Found a usable empty sector; returning the first found (%u)",
         Index(first_empty_sector));
     last_new_ = first_empty_sector;
     *found_sector = first_empty_sector;
@@ -146,14 +149,15 @@ Status Sectors::Find(FindMode find_mode,
   // bytes
   if (non_empty_least_reclaimable_sector != nullptr) {
     *found_sector = non_empty_least_reclaimable_sector;
-    DBG("  Found a usable sector %u, with %u B recoverable, in GC",
+    PW_LOG_DEBUG(
+        "  Found a usable sector %u, with %u B recoverable, in GC",
         Index(*found_sector),
         unsigned((*found_sector)->RecoverableBytes(sector_size_bytes)));
     return OkStatus();
   }
 
   // No sector was found.
-  DBG("  Unable to find a usable sector");
+  PW_LOG_DEBUG("  Unable to find a usable sector");
   *found_sector = nullptr;
   return Status::ResourceExhausted();
 }
@@ -162,9 +166,9 @@ SectorDescriptor& Sectors::WearLeveledSectorFromIndex(size_t idx) const {
   return descriptors_[(Index(last_new_) + 1 + idx) % descriptors_.size()];
 }
 
-// TODO: Consider breaking this function into smaller sub-chunks.
+// TODO(hepler): Consider breaking this function into smaller sub-chunks.
 SectorDescriptor* Sectors::FindSectorToGarbageCollect(
-    std::span<const Address> reserved_addresses) const {
+    span<const Address> reserved_addresses) const {
   const size_t sector_size_bytes = partition_.sector_size_bytes();
   SectorDescriptor* sector_candidate = nullptr;
   size_t candidate_bytes = 0;
@@ -172,10 +176,9 @@ SectorDescriptor* Sectors::FindSectorToGarbageCollect(
   // Build a vector of sectors to avoid.
   for (size_t i = 0; i < reserved_addresses.size(); ++i) {
     temp_sectors_to_skip_[i] = &FromAddress(reserved_addresses[i]);
-    DBG("    Skip sector %u", Index(reserved_addresses[i]));
+    PW_LOG_DEBUG("    Skip sector %u", Index(reserved_addresses[i]));
   }
-  const std::span sectors_to_skip(temp_sectors_to_skip_,
-                                  reserved_addresses.size());
+  const span sectors_to_skip(temp_sectors_to_skip_, reserved_addresses.size());
 
   // Step 1: Try to find a sectors with stale keys and no valid keys (no
   // relocation needed). Use the first such sector found, as that will help the
@@ -216,17 +219,18 @@ SectorDescriptor* Sectors::FindSectorToGarbageCollect(
           !Contains(sectors_to_skip, &sector)) {
         sector_candidate = &sector;
         candidate_bytes = sector.valid_bytes();
-        DBG("    Doing GC on sector with no reclaimable bytes!");
+        PW_LOG_DEBUG("    Doing GC on sector with no reclaimable bytes!");
       }
     }
   }
 
   if (sector_candidate != nullptr) {
-    DBG("Found sector %u to Garbage Collect, %u recoverable bytes",
+    PW_LOG_DEBUG(
+        "Found sector %u to Garbage Collect, %u recoverable bytes",
         Index(sector_candidate),
         unsigned(sector_candidate->RecoverableBytes(sector_size_bytes)));
   } else {
-    DBG("Unable to find sector to garbage collect!");
+    PW_LOG_DEBUG("Unable to find sector to garbage collect!");
   }
   return sector_candidate;
 }

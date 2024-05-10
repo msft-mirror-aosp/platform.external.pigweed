@@ -20,21 +20,23 @@
 #include <array>
 #include <cstdio>
 #include <cstring>
-#include <span>
+
+#include "pw_span/span.h"
 
 #if DUMP_KVS_STATE_TO_FILE
 #include <vector>
 #endif  // DUMP_KVS_STATE_TO_FILE
 
 #include "gtest/gtest.h"
+#include "pw_assert/check.h"
 #include "pw_bytes/array.h"
 #include "pw_checksum/crc16_ccitt.h"
 #include "pw_kvs/crc16_checksum.h"
 #include "pw_kvs/fake_flash_memory.h"
 #include "pw_kvs/flash_memory.h"
 #include "pw_kvs/internal/entry.h"
+#include "pw_kvs_private/config.h"
 #include "pw_log/log.h"
-#include "pw_log/shorter.h"
 #include "pw_status/status.h"
 #include "pw_string/string_builder.h"
 
@@ -67,7 +69,7 @@ struct FlashWithPartitionFake {
     }
     std::vector<std::byte> out_vec(memory.size_bytes());
     Status status =
-        memory.Read(0, std::span<std::byte>(out_vec.data(), out_vec.size()));
+        memory.Read(0, span<std::byte>(out_vec.data(), out_vec.size()));
     if (status != OkStatus()) {
       fclose(out_file);
       return status;
@@ -165,11 +167,11 @@ TEST(InMemoryKvs, WriteOneKeyMultipleTimes) {
 
   int num_reloads = 2;
   for (int reload = 0; reload < num_reloads; ++reload) {
-    DBG("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
-    DBG("xxx                                      xxxx");
-    DBG("xxx               Reload %2d              xxxx", reload);
-    DBG("xxx                                      xxxx");
-    DBG("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+    PW_LOG_DEBUG("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+    PW_LOG_DEBUG("xxx                                      xxxx");
+    PW_LOG_DEBUG("xxx               Reload %2d              xxxx", reload);
+    PW_LOG_DEBUG("xxx                                      xxxx");
+    PW_LOG_DEBUG("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
 
     // Create and initialize the KVS. For KVS magic value always use a random 32
     // bit integer rather than a human readable 4 bytes. See pw_kvs/format.h for
@@ -185,7 +187,8 @@ TEST(InMemoryKvs, WriteOneKeyMultipleTimes) {
     uint32_t written_value;
     EXPECT_EQ(kvs.size(), (reload == 0) ? 0 : 1u);
     for (uint32_t i = 0; i < num_writes; ++i) {
-      DBG("PUT #%zu for key %s with value %zu", size_t(i), key, size_t(i));
+      PW_LOG_DEBUG(
+          "PUT #%zu for key %s with value %zu", size_t(i), key, size_t(i));
 
       written_value = i + 0xfc;  // Prevent accidental pass with zero.
       EXPECT_OK(kvs.Put(key, written_value));
@@ -193,7 +196,7 @@ TEST(InMemoryKvs, WriteOneKeyMultipleTimes) {
     }
 
     // Verify that we can read the value back.
-    DBG("GET final value for key: %s", key);
+    PW_LOG_DEBUG("GET final value for key: %s", key);
     uint32_t actual_value;
     EXPECT_OK(kvs.Get(key, &actual_value));
     EXPECT_EQ(actual_value, written_value);
@@ -203,8 +206,7 @@ TEST(InMemoryKvs, WriteOneKeyMultipleTimes) {
              sizeof(fname_buf),
              "WriteOneKeyMultipleTimes_%d.bin",
              reload);
-    flash.Dump(fname_buf)
-        .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+    ASSERT_EQ(OkStatus(), flash.Dump(fname_buf));
   }
 }
 
@@ -227,14 +229,13 @@ TEST(InMemoryKvs, WritingMultipleKeysIncreasesSize) {
   for (size_t i = 0; i < num_writes; ++i) {
     StringBuffer<150> key;
     key << "key_" << i;
-    DBG("PUT #%zu for key %s with value %zu", i, key.c_str(), i);
+    PW_LOG_DEBUG("PUT #%zu for key %s with value %zu", i, key.c_str(), i);
 
     size_t value = i + 77;  // Prevent accidental pass with zero.
     EXPECT_OK(kvs.Put(key.view(), value));
     EXPECT_EQ(kvs.size(), i + 1);
   }
-  flash.Dump("WritingMultipleKeysIncreasesSize.bin")
-      .IgnoreError();  // TODO(pwbug/387): Handle Status properly
+  ASSERT_EQ(OkStatus(), flash.Dump("WritingMultipleKeysIncreasesSize.bin"));
 }
 
 TEST(InMemoryKvs, WriteAndReadOneKey) {
@@ -252,12 +253,12 @@ TEST(InMemoryKvs, WriteAndReadOneKey) {
 
   // Add one entry.
   const char* key = "Key1";
-  DBG("PUT value for key: %s", key);
+  PW_LOG_DEBUG("PUT value for key: %s", key);
   uint8_t written_value = 0xDA;
   ASSERT_OK(kvs.Put(key, written_value));
   EXPECT_EQ(kvs.size(), 1u);
 
-  DBG("GET value for key: %s", key);
+  PW_LOG_DEBUG("GET value for key: %s", key);
   uint8_t actual_value;
   ASSERT_OK(kvs.Get(key, &actual_value));
   EXPECT_EQ(actual_value, written_value);
@@ -279,12 +280,12 @@ TEST(InMemoryKvs, WriteOneKeyValueMultipleTimes) {
   const char* key = "Key1";
   uint8_t written_value = 0xDA;
   for (int i = 0; i < 50; i++) {
-    DBG("PUT [%d] value for key: %s", i, key);
+    PW_LOG_DEBUG("PUT [%d] value for key: %s", i, key);
     ASSERT_OK(kvs.Put(key, written_value));
     EXPECT_EQ(kvs.size(), 1u);
   }
 
-  DBG("GET value for key: %s", key);
+  PW_LOG_DEBUG("GET value for key: %s", key);
   uint8_t actual_value;
   ASSERT_OK(kvs.Get(key, &actual_value));
   EXPECT_EQ(actual_value, written_value);
@@ -314,7 +315,7 @@ TEST(InMemoryKvs, Basic) {
 
   // Add two entries with different keys and values.
   uint8_t value1 = 0xDA;
-  ASSERT_OK(kvs.Put(key1, std::as_bytes(std::span(&value1, sizeof(value1)))));
+  ASSERT_OK(kvs.Put(key1, as_bytes(span(&value1, sizeof(value1)))));
   EXPECT_EQ(kvs.size(), 1u);
 
   uint32_t value2 = 0xBAD0301f;
@@ -359,8 +360,8 @@ TEST(InMemoryKvs, CallingEraseTwice_NothingWrittenToFlash) {
 class LargeEmptyInitializedKvs : public ::testing::Test {
  protected:
   LargeEmptyInitializedKvs() : kvs_(&large_test_partition, default_format) {
-    ASSERT_EQ(OkStatus(), large_test_partition.Erase());
-    ASSERT_EQ(OkStatus(), kvs_.Init());
+    PW_CHECK_OK(large_test_partition.Erase());
+    PW_CHECK_OK(kvs_.Init());
   }
 
   KeyValueStoreBuffer<kMaxEntries, kMaxUsableSectors> kvs_;
@@ -412,6 +413,68 @@ TEST_F(LargeEmptyInitializedKvs, FullMaintenance) {
   EXPECT_EQ(stats.reclaimable_bytes, 0u);
 }
 
+TEST_F(LargeEmptyInitializedKvs, KeyDeletionMaintenance) {
+  const uint8_t kValue1 = 0xDA;
+  const uint8_t kValue2 = 0x12;
+  uint8_t val = 0;
+
+  // Write and delete a key. The key should be gone, but the size should be 1.
+  ASSERT_EQ(OkStatus(), kvs_.Put(keys[0], kValue1));
+  ASSERT_EQ(kvs_.size(), 1u);
+  ASSERT_EQ(OkStatus(), kvs_.Delete(keys[0]));
+
+  // Ensure the key is indeed gone and the size is 1 before continuing.
+  ASSERT_EQ(kvs_.Get(keys[0], &val), Status::NotFound());
+  ASSERT_EQ(kvs_.size(), 0u);
+  ASSERT_EQ(kvs_.total_entries_with_deleted(), 1u);
+
+  KeyValueStore::StorageStats stats = kvs_.GetStorageStats();
+  EXPECT_EQ(stats.sector_erase_count, 0u);
+  EXPECT_GT(stats.reclaimable_bytes, 0u);
+
+  // Do aggressive FullMaintenance, which should GC the sector with valid data,
+  // resulting in no reclaimable bytes and an erased sector.
+  EXPECT_EQ(OkStatus(), kvs_.HeavyMaintenance());
+  stats = kvs_.GetStorageStats();
+  EXPECT_EQ(stats.reclaimable_bytes, 0u);
+  ASSERT_EQ(kvs_.size(), 0u);
+
+  if (PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE) {
+    EXPECT_GT(stats.sector_erase_count, 1u);
+    ASSERT_EQ(kvs_.total_entries_with_deleted(), 0u);
+  } else {  // The deleted entries are only removed if that feature is enabled.
+    EXPECT_EQ(stats.sector_erase_count, 1u);
+    ASSERT_EQ(kvs_.total_entries_with_deleted(), 1u);
+  }
+
+  // Do it again but with 2 keys and keep one.
+  ASSERT_EQ(OkStatus(), kvs_.Put(keys[0], kValue1));
+  ASSERT_EQ(OkStatus(), kvs_.Put(keys[1], kValue2));
+  ASSERT_EQ(kvs_.size(), 2u);
+  ASSERT_EQ(OkStatus(), kvs_.Delete(keys[0]));
+
+  // Ensure the key is indeed gone and the size is 1 before continuing.
+  ASSERT_EQ(kvs_.Get(keys[0], &val), Status::NotFound());
+  ASSERT_EQ(kvs_.size(), 1u);
+  ASSERT_EQ(kvs_.total_entries_with_deleted(), 2u);
+
+  // Do aggressive FullMaintenance, which should GC the sector with valid data,
+  // resulting in no reclaimable bytes and an erased sector.
+  EXPECT_EQ(OkStatus(), kvs_.HeavyMaintenance());
+  stats = kvs_.GetStorageStats();
+  ASSERT_EQ(kvs_.size(), 1u);
+
+  if (PW_KVS_REMOVE_DELETED_KEYS_IN_HEAVY_MAINTENANCE) {
+    ASSERT_EQ(kvs_.total_entries_with_deleted(), 1u);
+  } else {  // The deleted entries are only removed if that feature is enabled.
+    ASSERT_EQ(kvs_.total_entries_with_deleted(), 2u);
+  }
+
+  // Read back the second key to make sure it is still valid.
+  ASSERT_EQ(kvs_.Get(keys[1], &val), OkStatus());
+  ASSERT_EQ(val, kValue2);
+}
+
 TEST(InMemoryKvs, Put_MaxValueSize) {
   // Create and erase the fake flash.
   Flash flash;
@@ -433,7 +496,7 @@ TEST(InMemoryKvs, Put_MaxValueSize) {
 
   // Use the large_test_flash as a big chunk of data for the Put statement.
   ASSERT_GT(sizeof(large_test_flash), max_value_size + 2 * sizeof(EntryHeader));
-  auto big_data = std::as_bytes(std::span(&large_test_flash, 1));
+  auto big_data = as_bytes(span(&large_test_flash, 1));
 
   EXPECT_EQ(OkStatus(), kvs.Put("K", big_data.subspan(0, max_value_size)));
 

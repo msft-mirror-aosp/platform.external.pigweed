@@ -19,6 +19,7 @@
 #include "pw_spi/chip_selector.h"
 #include "pw_spi/device.h"
 #include "pw_spi/initiator.h"
+#include "pw_spi/responder.h"
 #include "pw_status/status.h"
 #include "pw_sync/borrow.h"
 #include "pw_sync/mutex.h"
@@ -44,11 +45,11 @@ class SpiTestDevice : public ::testing::Test {
   // Stub SPI Initiator/ChipSelect objects, used to exercise public API surface.
   class TestInitiator : public Initiator {
    public:
-    Status Configure(const Config& /*config */) override { return OkStatus(); };
+    Status Configure(const Config& /*config */) override { return OkStatus(); }
     Status WriteRead(ConstByteSpan /* write_buffer */,
                      ByteSpan /* read_buffer */) override {
       return OkStatus();
-    };
+    }
   };
 
   class TestChipSelector : public ChipSelector {
@@ -63,6 +64,17 @@ class SpiTestDevice : public ::testing::Test {
   Device device_;
 };
 
+class SpiResponderTestDevice : public ::testing::Test {
+ public:
+  SpiResponderTestDevice() : responder_() {}
+
+ private:
+  // Stub SPI Responder, used to exercise public API surface.
+  class TestResponder : public Responder {};
+
+  TestResponder responder_;
+};
+
 // Simple test ensuring the SPI HAL compiles
 TEST_F(SpiTestDevice, CompilationSucceeds) {
   // arrange
@@ -70,6 +82,9 @@ TEST_F(SpiTestDevice, CompilationSucceeds) {
   // assert
   EXPECT_TRUE(true);
 }
+
+// Simple test ensuring the SPI Responder HAL compiles
+TEST_F(SpiResponderTestDevice, CompilationSucceeds) { EXPECT_TRUE(true); }
 
 }  // namespace
 }  // namespace pw::spi
