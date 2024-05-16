@@ -102,7 +102,8 @@ TEST(Example, ExampleUsage) {
 
   // Container creates ProxyHost .
   ProxyHost proxy = ProxyHost(std::move(containerSendToHostFn),
-                              std::move(containerSendToControllerFn));
+                              std::move(containerSendToControllerFn),
+                              2);
 
   // Container passes H4 packets from host through proxy. Proxy will in turn
   // call the container-provided `containerSendToControllerFn` to pass them on
@@ -146,8 +147,8 @@ TEST(PassthroughTest, ToControllerPassesEqualBuffer) {
 
   H4HciPacketSendFn send_to_host_fn([]([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromHost(send_packet);
 
@@ -183,8 +184,8 @@ TEST(PassthroughTest, ToHostPassesEqualBuffer) {
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromController(send_packet);
 
@@ -230,8 +231,8 @@ TEST(PassthroughTest, ToHostPassesEqualCommandComplete) {
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromController(send_packet);
 
@@ -254,8 +255,8 @@ TEST(BadPacketTest, EmptyBufferToControllerIsPassedOn) {
 
   H4HciPacketSendFn send_to_host_fn([]([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromHost(send_packet);
 
@@ -275,8 +276,8 @@ TEST(BadPacketTest, EmptyBufferToHostIsPassedOn) {
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromController(send_packet);
 
@@ -317,8 +318,8 @@ TEST(BadPacketTest, TooShortEventToHostIsPassOn) {
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromController(send_packet);
 
@@ -367,8 +368,8 @@ TEST(BadPacketTest, TooShortCommandCompleteEventToHost) {
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromController(send_packet);
 
@@ -378,35 +379,36 @@ TEST(BadPacketTest, TooShortCommandCompleteEventToHost) {
 
 // ########## ReserveLeAclCredits Tests
 
-// Proxy Host should reserve 2 ACL LE credits from controller's ACL LE credits.
-TEST(ReserveLeAclCredits, ProxyCreditsReservedFromControllerCredits) {
-  std::array<uint8_t,
-             emboss::ReadBufferSizeCommandCompleteEventWriter::SizeInBytes() +
-                 1>
+// Proxy Host should reserve requested ACL LE credits from controller's ACL LE
+// credits when using LEReadBufferSizeV1 command.
+TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV1) {
+  std::array<
+      uint8_t,
+      emboss::LEReadBufferSizeV1CommandCompleteEventWriter::SizeInBytes() + 1>
       send_packet;
-  emboss::ReadBufferSizeCommandCompleteEventWriter view =
+  emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
-          emboss::ReadBufferSizeCommandCompleteEventWriter>(
+          emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
           send_packet, emboss::EventCode::COMMAND_COMPLETE);
   view.command_complete().command_opcode_enum().Write(
-      emboss::OpCode::READ_BUFFER_SIZE);
-  view.total_num_acl_data_packets().Write(10);
+      emboss::OpCode::LE_READ_BUFFER_SIZE_V1);
+  view.total_num_le_acl_data_packets().Write(10);
 
   bool send_called = false;
   H4HciPacketSendFn send_to_host_fn([&send_called](H4HciPacket h4_packet) {
     send_called = true;
-    emboss::ReadBufferSizeCommandCompleteEventWriter view =
-        MakeEmboss<emboss::ReadBufferSizeCommandCompleteEventWriter>(
+    emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+        MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
             H4HciSubspan(h4_packet));
     // Should reserve 2 credits from original total of 10 (so 8 left for host).
-    EXPECT_EQ(view.total_num_acl_data_packets().Read(), 8);
+    EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 8);
   });
 
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromController(send_packet);
 
@@ -416,40 +418,117 @@ TEST(ReserveLeAclCredits, ProxyCreditsReservedFromControllerCredits) {
   EXPECT_EQ(send_called, true);
 }
 
-// If controller provides less than wanted 2 credits, we should reserve that
-// smaller amount.
-TEST(ReserveLeAclCredits, ProxyCreditsCappedByControllerCredits) {
-  std::array<uint8_t,
-             emboss::ReadBufferSizeCommandCompleteEventWriter::SizeInBytes() +
-                 1>
+// Proxy Host should reserve requested ACL LE credits from controller's ACL LE
+// credits when using LEReadBufferSizeV2 command.
+TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV2) {
+  std::array<
+      uint8_t,
+      emboss::LEReadBufferSizeV2CommandCompleteEventWriter::SizeInBytes() + 1>
       send_packet;
-  emboss::ReadBufferSizeCommandCompleteEventWriter view =
+  emboss::LEReadBufferSizeV2CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
-          emboss::ReadBufferSizeCommandCompleteEventWriter>(
+          emboss::LEReadBufferSizeV2CommandCompleteEventWriter>(
           send_packet, emboss::EventCode::COMMAND_COMPLETE);
   view.command_complete().command_opcode_enum().Write(
-      emboss::OpCode::READ_BUFFER_SIZE);
-  view.total_num_acl_data_packets().Write(1);
+      emboss::OpCode::LE_READ_BUFFER_SIZE_V2);
+  view.total_num_le_acl_data_packets().Write(10);
 
   bool send_called = false;
   H4HciPacketSendFn send_to_host_fn([&send_called](H4HciPacket h4_packet) {
     send_called = true;
-    // Should reserve 1 credit from original total of 1 (so 0 left for host).
-    emboss::ReadBufferSizeCommandCompleteEventWriter view =
-        MakeEmboss<emboss::ReadBufferSizeCommandCompleteEventWriter>(
+    emboss::LEReadBufferSizeV2CommandCompleteEventWriter view =
+        MakeEmboss<emboss::LEReadBufferSizeV2CommandCompleteEventWriter>(
             H4HciSubspan(h4_packet));
-    EXPECT_EQ(view.total_num_acl_data_packets().Read(), 0);
+    // Should reserve 2 credits from original total of 10 (so 8 left for host).
+    EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 8);
   });
 
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromController(send_packet);
 
-  EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 1);
+  EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 2);
+
+  // Verify to controller callback was called.
+  EXPECT_EQ(send_called, true);
+}
+
+// If controller provides less than wanted credits, we should reserve that
+// smaller amount.
+TEST(ReserveLeAclCredits, ProxyCreditsCappedByControllerCredits) {
+  std::array<
+      uint8_t,
+      emboss::LEReadBufferSizeV1CommandCompleteEventWriter::SizeInBytes() + 1>
+      send_packet;
+  emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+      CreateAndPopulateToHostEventView<
+          emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
+          send_packet, emboss::EventCode::COMMAND_COMPLETE);
+  view.command_complete().command_opcode_enum().Write(
+      emboss::OpCode::LE_READ_BUFFER_SIZE_V1);
+  view.total_num_le_acl_data_packets().Write(5);
+
+  bool send_called = false;
+  H4HciPacketSendFn send_to_host_fn([&send_called](H4HciPacket h4_packet) {
+    send_called = true;
+    // We want 7, but can reserve only 5 from original 5 (so 0 left for host).
+    emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+        MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
+            H4HciSubspan(h4_packet));
+    EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 0);
+  });
+
+  H4HciPacketSendFn send_to_controller_fn(
+      []([[maybe_unused]] H4HciPacket packet) {});
+
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 7);
+
+  proxy.HandleH4HciFromController(send_packet);
+
+  EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 5);
+
+  // Verify to controller callback was called.
+  EXPECT_EQ(send_called, true);
+}
+
+// Proxy Host can reserve zero credits from controller's ACL LE credits.
+TEST(ReserveLeAclCredits, ProxyCreditsReserveZeroCredits) {
+  std::array<
+      uint8_t,
+      emboss::LEReadBufferSizeV1CommandCompleteEventWriter::SizeInBytes() + 1>
+      send_packet;
+  emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+      CreateAndPopulateToHostEventView<
+          emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
+          send_packet, emboss::EventCode::COMMAND_COMPLETE);
+  view.command_complete().command_opcode_enum().Write(
+      emboss::OpCode::LE_READ_BUFFER_SIZE_V1);
+  view.total_num_le_acl_data_packets().Write(10);
+
+  bool send_called = false;
+  H4HciPacketSendFn send_to_host_fn([&send_called](H4HciPacket h4_packet) {
+    send_called = true;
+    emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+        MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
+            H4HciSubspan(h4_packet));
+    // Should reserve 0 credits from original total of 10 (so 10 left for host).
+    EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 10);
+  });
+
+  H4HciPacketSendFn send_to_controller_fn(
+      []([[maybe_unused]] H4HciPacket packet) {});
+
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 0);
+
+  proxy.HandleH4HciFromController(send_packet);
+
+  EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 0);
 
   // Verify to controller callback was called.
   EXPECT_EQ(send_called, true);
@@ -457,33 +536,33 @@ TEST(ReserveLeAclCredits, ProxyCreditsCappedByControllerCredits) {
 
 // If controller has no credits, proxy should reserve none.
 TEST(ReserveLeAclPackets, ProxyCreditsZeroWhenHostCreditsZero) {
-  std::array<uint8_t,
-             emboss::ReadBufferSizeCommandCompleteEventWriter::SizeInBytes() +
-                 1>
+  std::array<
+      uint8_t,
+      emboss::LEReadBufferSizeV1CommandCompleteEventWriter::SizeInBytes() + 1>
       send_packet;
-  emboss::ReadBufferSizeCommandCompleteEventWriter view =
+  emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
-          emboss::ReadBufferSizeCommandCompleteEventWriter>(
+          emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
           send_packet, emboss::EventCode::COMMAND_COMPLETE);
   view.command_complete().command_opcode_enum().Write(
-      emboss::OpCode::READ_BUFFER_SIZE);
-  view.total_num_acl_data_packets().Write(0);
+      emboss::OpCode::LE_READ_BUFFER_SIZE_V1);
+  view.total_num_le_acl_data_packets().Write(0);
 
   bool send_called = false;
   H4HciPacketSendFn send_to_host_fn([&send_called](H4HciPacket h4_packet) {
     send_called = true;
-    emboss::ReadBufferSizeCommandCompleteEventWriter view =
-        MakeEmboss<emboss::ReadBufferSizeCommandCompleteEventWriter>(
+    emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+        MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
             H4HciSubspan(h4_packet));
     // Should reserve 0 credit from original total of 0 (so 0 left for host).
-    EXPECT_EQ(view.total_num_acl_data_packets().Read(), 0);
+    EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 0);
   });
 
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   proxy.HandleH4HciFromController(send_packet);
 
@@ -499,8 +578,8 @@ TEST(ReserveLeAclPackets, ProxyCreditsZeroWhenNotInitialized) {
   H4HciPacketSendFn send_to_controller_fn(
       []([[maybe_unused]] H4HciPacket packet) {});
 
-  ProxyHost proxy =
-      ProxyHost(std::move(send_to_host_fn), std::move(send_to_controller_fn));
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
 
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 0);
 }
