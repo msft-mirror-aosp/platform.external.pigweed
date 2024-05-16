@@ -162,6 +162,10 @@ def nanopb_rpc_proto_library(name, deps, nanopb_proto_library_deps, tags = [], v
     _pw_nanopb_rpc_proto_library(
         name = name,
         protos = deps,
+        # TODO: b/339280821 - This is required to avoid breaking internal
+        # Google builds but shouldn't matter for any external user. Remove this
+        # when possible.
+        features = ["-layering_check"],
         deps = [
             Label("//pw_rpc"),
             Label("//pw_rpc/nanopb:client_api"),

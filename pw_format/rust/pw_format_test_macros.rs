@@ -16,8 +16,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use pw_format::macros::{
     generate, generate_core_fmt, generate_printf, Arg, CoreFmtFormatMacroGenerator,
-    CoreFmtFormatStringParser, FormatAndArgsFlavor, FormatMacroGenerator, FormatStringParser,
-    IntegerDisplayType, PrintfFormatMacroGenerator, PrintfFormatStringFragment,
+    CoreFmtFormatStringParser, FormatAndArgsFlavor, FormatMacroGenerator, FormatParams,
+    FormatStringParser, PrintfFormatMacroGenerator, PrintfFormatStringFragment,
     PrintfFormatStringParser, Result,
 };
 use quote::{quote, ToTokens};
@@ -63,14 +63,16 @@ impl FormatMacroGenerator for TestGenerator {
     // This example ignores display type and width.
     fn integer_conversion(
         &mut self,
-        display_type: IntegerDisplayType,
+        params: &FormatParams,
+        signed: bool,
         type_width: u8, // in bits
         expression: Arg,
     ) -> Result<()> {
         let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
             ops.push(TestGeneratorOps::IntegerConversion{
-                display_type: #display_type,
+                params: #params,
+                signed: #signed,
                 type_width: #type_width,
                 arg: #expression.to_string(),
             });
@@ -94,7 +96,7 @@ impl FormatMacroGenerator for TestGenerator {
         Ok(())
     }
 
-    fn untyped_conversion(&mut self, expression: Arg) -> Result<()> {
+    fn untyped_conversion(&mut self, expression: Arg, _params: &FormatParams) -> Result<()> {
         let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
             ops.push(TestGeneratorOps::UntypedConversion(#expression.to_string()));
@@ -387,7 +389,7 @@ pub fn printf_format_core_fmt_generator_test_macro(tokens: TokenStream) -> Token
 }
 
 #[proc_macro]
-pub fn printf_core_fmt_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
+pub fn core_fmt_format_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
     core_fmt_generator_test_macro_impl::<CoreFmtFormatStringParser>(tokens)
 }
 

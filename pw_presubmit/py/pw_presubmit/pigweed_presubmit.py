@@ -583,6 +583,7 @@ def docs_build(ctx: PresubmitContext) -> None:
     """Build Pigweed docs"""
 
     build.install_package(ctx, 'nanopb')
+    build.install_package(ctx, 'pico_sdk')
     build.install_package(ctx, 'stm32cube_f4')
     build.install_package(ctx, 'freertos')
     build.install_package(ctx, 'pigweed_examples_repo')
@@ -633,6 +634,7 @@ def docs_build(ctx: PresubmitContext) -> None:
     )
 
     # Set required GN args.
+    pico_sdk_dir = ctx.package_root / 'pico_sdk'
     stm32cube_dir = ctx.package_root / 'stm32cube_f4'
     freertos_dir = ctx.package_root / 'freertos'
     nanopb_dir = ctx.package_root / 'nanopb'
@@ -642,7 +644,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         dir_pw_third_party_stm32cube_f4=f'"{stm32cube_dir}"',
         dir_pw_third_party_freertos=f'"{freertos_dir}"',
         dir_pw_third_party_nanopb=f'"{nanopb_dir}"',
-        PICO_SRC_DIR='""',
+        PICO_SRC_DIR=f'"{pico_sdk_dir}"',
     )
     build.ninja(examples_ctx, 'docs')
 
@@ -719,16 +721,7 @@ def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
     )
 
 
-CMAKE_CLANG_TARGETS = [
-    'pw_apps',
-    'pw_run_tests.modules',
-    'pw_run_tests.pw_bluetooth',
-    # TODO(erahm): Add pw_run_tests.pw_bluetooth_sapphire when CMake support
-    # lands.
-]
-
-
-CMAKE_GCC_TARGETS = [
+CMAKE_TARGETS = [
     'pw_apps',
     'pw_run_tests.modules',
 ]
@@ -739,10 +732,7 @@ CMAKE_GCC_TARGETS = [
 )
 def cmake_clang(ctx: PresubmitContext):
     _run_cmake(ctx, toolchain='host_clang')
-    build.ninja(
-        ctx,
-        *CMAKE_CLANG_TARGETS,
-    )
+    build.ninja(ctx, *CMAKE_TARGETS)
     build.gn_check(ctx)
 
 
@@ -751,7 +741,7 @@ def cmake_clang(ctx: PresubmitContext):
 )
 def cmake_gcc(ctx: PresubmitContext):
     _run_cmake(ctx, toolchain='host_gcc')
-    build.ninja(ctx, *CMAKE_GCC_TARGETS)
+    build.ninja(ctx, *CMAKE_TARGETS)
     build.gn_check(ctx)
 
 
@@ -763,6 +753,8 @@ def bazel_test(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'test',
+        '--build_tag_filters=-requires_cxx_20',
+        '--test_tag_filters=-requires_cxx_20',
         '--',
         '//...',
     )
@@ -833,6 +825,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'build',
+        '--build_tag_filters=-requires_cxx_20',
         '--',
         '//...',
     )
@@ -850,13 +843,11 @@ def bazel_build(ctx: PresubmitContext) -> None:
 
     for cxxversion in ('c++17', 'c++20'):
         # Explicitly build for each supported C++ version.
-        build_bazel(
-            ctx,
-            'build',
-            f"--cxxopt=-std={cxxversion}",
-            '--',
-            '//...',
-        )
+        args = [ctx, 'build', f"--cxxopt=-std={cxxversion}"]
+        if cxxversion == 'c++17':
+            args += ['--build_tag_filters=-requires_cxx_20']
+        args += ['--', '//...']
+        build_bazel(*args)
 
         for config, targets in targets_for_config.items():
             build_bazel(
@@ -1008,9 +999,9 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # keep-sorted: end
     # Metadata
     # keep-sorted: start
+    r'\b.*OWNERS.*$',
     r'\bAUTHORS$',
     r'\bLICENSE$',
-    r'\bOWNERS$',
     r'\bPIGWEED_MODULES$',
     r'\bgo.(mod|sum)$',
     r'\bpackage-lock.json$',
@@ -1048,6 +1039,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Generated third-party files
     # keep-sorted: start
     r'\bthird_party/.*\.bazelrc$',
+    r'\bthird_party/perfetto/repo/protos/perfetto/trace/perfetto_trace.proto',
     # keep-sorted: end
     # Diff/Patch files
     # keep-sorted: start

@@ -97,4 +97,40 @@ mod tests {
             "[INF] test Pigweed\n",
         );
     }
+
+    #[test]
+    fn untyped_hex_integer_argument_prints_to_stdout() {
+        assert_eq!(
+            run_with_capture(|| pw_log_backend!(LogLevel::Info, "{:x}", 0xdecafbad as u32)),
+            "[INF] decafbad\n",
+        );
+        assert_eq!(
+            run_with_capture(|| pw_log_backend!(LogLevel::Info, "{:X}!", 0xdecafbad as u32)),
+            "[INF] DECAFBAD!\n",
+        );
+    }
+
+    #[test]
+    fn typed_min_fields_width_and_zero_padding_formats_correctly() {
+        assert_eq!(
+            run_with_capture(|| pw_logf_backend!(LogLevel::Info, "%8x", 0xcafe as u32)),
+            "[INF]     cafe\n",
+        );
+        assert_eq!(
+            run_with_capture(|| pw_logf_backend!(LogLevel::Info, "%08X!", 0xcafe as u32)),
+            "[INF] 0000CAFE!\n",
+        );
+    }
+
+    #[test]
+    fn untyped_min_fields_width_and_zero_padding_formats_correctly() {
+        assert_eq!(
+            run_with_capture(|| pw_log_backend!(LogLevel::Info, "{:8x}", 0xcafe as u32)),
+            "[INF]     cafe\n",
+        );
+        assert_eq!(
+            run_with_capture(|| pw_log_backend!(LogLevel::Info, "{:08X}!", 0xcafe as u32)),
+            "[INF] 0000CAFE!\n",
+        );
+    }
 }

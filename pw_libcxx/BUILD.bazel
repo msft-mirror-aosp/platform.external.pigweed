@@ -18,5 +18,6 @@ cc_library(
         "__cxa_deleted_virtual.cc",
         "__cxa_pure_virtual.cc",
         "operator_delete.cc",
+        "verbose_abort.cc",
     ],
 )
