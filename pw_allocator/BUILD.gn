@@ -39,12 +39,19 @@ group("pw_allocator") {
 
 pw_source_set("allocator") {
   public_configs = [ ":default_config" ]
-  public = [ "public/pw_allocator/allocator.h" ]
+  public = [
+    "public/pw_allocator/allocator.h",
+    "public/pw_allocator/as_pmr_allocator.h",
+  ]
   public_deps = [
     ":deallocator",
+    "$dir_pw_assert:check",
     dir_pw_result,
   ]
-  sources = [ "allocator.cc" ]
+  sources = [
+    "allocator.cc",
+    "as_pmr_allocator.cc",
+  ]
 }
 
 pw_source_set("allocator_as_pool") {
@@ -144,6 +151,7 @@ pw_source_set("buddy_allocator") {
   ]
   deps = [
     ":buffer",
+    "$dir_pw_bytes:alignment",
     dir_pw_assert,
   ]
   sources = [ "buddy_allocator.cc" ]
@@ -160,7 +168,6 @@ pw_source_set("buffer") {
     "$dir_pw_bytes:alignment",
     dir_pw_assert,
   ]
-  sources = [ "buffer.cc" ]
 }
 
 pw_source_set("bump_allocator") {
@@ -168,11 +175,13 @@ pw_source_set("bump_allocator") {
   public = [ "public/pw_allocator/bump_allocator.h" ]
   public_deps = [
     ":allocator",
+    "$dir_pw_bytes:alignment",
     dir_pw_bytes,
   ]
   deps = [ ":buffer" ]
   sources = [ "bump_allocator.cc" ]
 }
+
 pw_source_set("chunk_pool") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/chunk_pool.h" ]
@@ -184,6 +193,7 @@ pw_source_set("chunk_pool") {
   deps = [
     ":buffer",
     "$dir_pw_assert:check",
+    "$dir_pw_bytes:alignment",
   ]
   sources = [ "chunk_pool.cc" ]
 }
@@ -401,6 +411,14 @@ pw_test("allocator_test") {
     ":testing",
   ]
   sources = [ "allocator_test.cc" ]
+}
+
+pw_test("as_pmr_allocator_test") {
+  deps = [
+    ":allocator",
+    ":testing",
+  ]
+  sources = [ "as_pmr_allocator_test.cc" ]
 }
 
 pw_test("best_fit_block_allocator_test") {
@@ -626,6 +644,7 @@ pw_test_group("tests") {
   tests = [
     ":allocator_as_pool_test",
     ":allocator_test",
+    ":as_pmr_allocator_test",
     ":best_fit_block_allocator_test",
     ":block_test",
     ":bucket_block_allocator_test",
@@ -723,6 +742,11 @@ pw_size_diff("forwarding_allocators_size_report") {
   title = "Sizes of various forwarding allocator implementations"
   binaries = [
     {
+      target = "size_report:as_pmr_allocator"
+      base = "size_report:as_pmr_allocator_base"
+      label = "AsPmrAllocator"
+    },
+    {
       target = "size_report:fallback_allocator"
       base = "size_report:fallback_allocator_base"
       label = "FallbackAllocator"
@@ -773,6 +797,7 @@ pw_doc_group("docs") {
     "examples/custom_allocator.h",
     "examples/linker_sections.cc",
     "examples/metrics.cc",
+    "examples/pmr.cc",
     "examples/size_report.cc",
     "examples/spin_lock.cc",
   ]
