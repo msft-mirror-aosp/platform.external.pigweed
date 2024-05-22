@@ -162,6 +162,10 @@ def nanopb_rpc_proto_library(name, deps, nanopb_proto_library_deps, tags = [], v
     _pw_nanopb_rpc_proto_library(
         name = name,
         protos = deps,
+        # TODO: b/339280821 - This is required to avoid breaking internal
+        # Google builds but shouldn't matter for any external user. Remove this
+        # when possible.
+        features = ["-layering_check"],
         deps = [
             Label("//pw_rpc"),
             Label("//pw_rpc/nanopb:client_api"),
@@ -333,10 +337,15 @@ def _proto_compiler_aspect_impl(target, ctx):
         for ext in ctx.attr._extensions:
             # Declare all output files, in target package dir.
             generated_filename = src.basename[:-len("proto")] + ext
-            out_file = ctx.actions.declare_file("{}/{}".format(
-                proto_dir,
-                generated_filename,
-            ))
+            if proto_dir:
+                out_file_name = "{}/{}".format(
+                    proto_dir,
+                    generated_filename,
+                )
+            else:
+                out_file_name = generated_filename
+
+            out_file = ctx.actions.declare_file(out_file_name)
 
             if ext.endswith(".h"):
                 hdrs.append(out_file)

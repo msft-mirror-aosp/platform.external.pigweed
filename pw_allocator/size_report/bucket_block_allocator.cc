@@ -1,4 +1,4 @@
-// Copyright 2020 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -11,14 +11,18 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-syntax = "proto3";
 
-import "nanopb.proto";
+#include "pw_allocator/bucket_block_allocator.h"
 
-package pw.protobuf_compiler;
+#include "pw_allocator/size_reporter.h"
 
-message Point {
-  uint32 x = 1;
-  uint32 y = 2;
-  string name = 3 [(nanopb).max_size = 16];
-};
+int main() {
+  pw::allocator::SizeReporter reporter;
+  reporter.SetBaseline();
+
+  pw::allocator::BucketBlockAllocator<uint16_t, 4, 8> allocator(
+      reporter.buffer());
+  reporter.Measure(allocator);
+
+  return 0;
+}

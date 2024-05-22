@@ -12,7 +12,11 @@ core.workflow(
   ),
   origin_files = glob(
     include = ["**"],
-    exclude = ["OWNERS", "**/OWNERS"],
+    exclude = [
+      "OWNERS",
+      "**/OWNERS",
+      "WORKSPACE_OWNERS"
+    ],
   ),
   authoring = authoring.pass_thru(
     "Pigweed Developers <no-reply@google.com>"

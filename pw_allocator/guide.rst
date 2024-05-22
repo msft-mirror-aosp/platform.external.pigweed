@@ -183,9 +183,12 @@ overview. Consult the :ref:`module-pw_allocator-api` for additional details.
 
 - :ref:`module-pw_allocator-api-libc_allocator`: Uses ``malloc``, ``realloc``,
   and ``free``. This should only be used if the ``libc`` in use provides those
-  functions.
+  functions. This allocator is a stateless singleton that may be referenced
+  using ``GetLibCAllocator()``.
 - :ref:`module-pw_allocator-api-null_allocator`: Always fails. This may be
   useful if allocations should be disallowed under specific circumstances.
+  This allocator is a stateless singleton that may be referenced using
+  ``GetNullAllocator()``.
 - :ref:`module-pw_allocator-api-bump_allocator`: Allocates objects out of a
   region of memory and only frees them all at once when the allocator is
   destroyed.
@@ -219,6 +222,9 @@ overview. Consult the :ref:`module-pw_allocator-api` for additional details.
     threshold value. This strategy preserves the speed of the two other
     strategies, while fragmenting memory less by co-locating allocations of
     similar sizes.
+  - :ref:`module-pw_allocator-api-bucket_block_allocator`: Sorts and stores
+    each free blocks in a :ref:`module-pw_allocator-api-bucket` with a given
+    maximum chunk size.
 
 - :ref:`module-pw_allocator-api-typed_pool`: Efficiently creates and
   destroys objects of a single given type.
@@ -405,9 +411,9 @@ For example, the following tests the custom allocator from
    :start-after: [pw_allocator-examples-custom_allocator-unit_test]
    :end-before: [pw_allocator-examples-custom_allocator-unit_test]
 
-You can also extend the :ref:`module-pw_allocator-api-allocator_test_harness` to
-perform pseudorandom sequences of allocations and deallocations, e.g. as part of
-a performance test:
+You can also extend the :ref:`module-pw_allocator-api-test_harness` to perform
+pseudorandom sequences of allocations and deallocations, e.g. as part of a
+performance test:
 
 .. literalinclude:: examples/custom_allocator_test_harness.h
    :language: cpp
@@ -420,8 +426,9 @@ a performance test:
    :start-after: [pw_allocator-examples-custom_allocator-perf_test]
 
 Even better, you can easily add fuzz tests for your allocator. This module
-uses the ``AllocatorTestHarness`` to integrate with :ref:`module-pw_fuzzer` and
-provide :ref:`module-pw_allocator-api-fuzzing_support`.
+uses the :ref:`module-pw_allocator-api-test_harness` to integrate with
+:ref:`module-pw_fuzzer` and provide
+:ref:`module-pw_allocator-api-fuzzing_support`.
 
 .. literalinclude:: examples/custom_allocator_test.cc
    :language: cpp

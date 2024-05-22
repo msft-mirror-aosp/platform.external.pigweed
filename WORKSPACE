@@ -175,7 +175,10 @@ install_deps()
 # See https://github.com/bazelbuild/bazel/issues/1550
 git_repository(
     name = "fuchsia_infra",
-    commit = "aa203324ed50e1fecbd68410e55e8e97989f984d",
+    # ROLL: Warning: this entry is automatically updated.
+    # ROLL: Last updated 2024-05-14.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8747923693009132785.
+    commit = "315942c08df42b39f552b946b53d89f30081579c",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -445,7 +448,7 @@ git_repository(
     name = "com_google_emboss",
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
     # Also update emboss tag in pw_package/py/pw_package/packages/emboss.py
-    tag = "v2024.0419.155605",
+    tag = "v2024.0501.215421",
 )
 
 http_archive(

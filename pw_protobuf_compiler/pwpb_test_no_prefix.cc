@@ -12,10 +12,22 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-pw.protobuf_compiler.Point.name max_size:16
+#include "pw_string/string.h"
+#include "pw_unit_test/framework.h"
+#include "pwpb_test_no_prefix.pwpb.h"
 
-pw.protobuf_compiler.OptionsFileExample.thirty_two_chars max_size:32
-pw.protobuf_compiler.OptionsFileExample.forty_two_chars max_size:42
-// The `max_size` of the string `unspecified_length` is of course unspecified.
+namespace pw::protobuf_compiler {
+namespace {
 
-pw.protobuf_compiler.InlineOptionsExample.ten_chars_inline fixed_size:True
+TEST(Pwpb, InlineOptionsAppliedAndOverridden) {
+  pw::protobuf_compiler::pwpb_no_prefix_test_protos::pwpb::
+      InlineOptionsExample::Message inline_options_example;
+
+  static_assert(
+      std::is_same_v<decltype(inline_options_example.ten_chars_inline),
+                     pw::InlineString<10>>,
+      "Field `ten_chars_inline` should be a `pw::InlineString<10>`.");
+}
+
+}  // namespace
+}  // namespace pw::protobuf_compiler
