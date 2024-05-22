@@ -27,14 +27,18 @@ cc_library(
     name = "allocator",
     srcs = [
         "allocator.cc",
+        "as_pmr_allocator.cc",
     ],
     hdrs = [
         "public/pw_allocator/allocator.h",
+        "public/pw_allocator/as_pmr_allocator.h",
     ],
     includes = ["public"],
     deps = [
         ":deallocator",
+        "//pw_assert",
         "//pw_result",
+        "//pw_status",
     ],
 )
 
@@ -153,15 +157,13 @@ cc_library(
         "//pw_alignment",
         "//pw_assert",
         "//pw_bytes",
+        "//pw_bytes:alignment",
         "//pw_containers:vector",
     ],
 )
 
 cc_library(
     name = "buffer",
-    srcs = [
-        "buffer.cc",
-    ],
     hdrs = [
         "public/pw_allocator/buffer.h",
     ],
@@ -187,6 +189,7 @@ cc_library(
         ":allocator",
         ":buffer",
         "//pw_bytes",
+        "//pw_bytes:alignment",
     ],
 )
 
@@ -204,6 +207,7 @@ cc_library(
         ":pool",
         "//pw_assert",
         "//pw_bytes",
+        "//pw_bytes:alignment",
         "//pw_result",
     ],
 )
@@ -483,6 +487,18 @@ pw_cc_test(
     name = "allocator_test",
     srcs = [
         "allocator_test.cc",
+    ],
+    deps = [
+        ":allocator",
+        ":testing",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "as_pmr_allocator_test",
+    srcs = [
+        "as_pmr_allocator_test.cc",
     ],
     deps = [
         ":allocator",

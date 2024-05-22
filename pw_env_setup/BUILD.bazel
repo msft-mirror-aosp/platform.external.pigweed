@@ -11,8 +11,3 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-
-exports_files([
-    "py/pw_env_setup/cipd_setup/.cipd_version",
-    "py/pw_env_setup/cipd_setup/.cipd_version.digests",
-] + glob(["py/**/*.json"]))
