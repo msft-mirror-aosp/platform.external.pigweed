@@ -198,6 +198,13 @@ AllocatorAsPool
 .. doxygenclass:: pw::allocator::AllocatorAsPool
    :members:
 
+.. _module-pw_allocator-api-as_pmr_allocator:
+
+AsPmrAllocator
+==============
+.. doxygenclass:: pw::allocator::AsPmrAllocator
+   :members:
+
 .. _module-pw_allocator-api-fallback_allocator:
 
 FallbackAllocator
@@ -277,12 +284,6 @@ Buffer management
 =================
 .. doxygenclass:: pw::allocator::WithBuffer
    :members:
-
-The following utility functions are available to allocator implementers. They
-are not intended to be used by module consumers.
-
-.. doxygenfunction:: pw::allocator::GetAlignedSubspan
-.. doxygenfunction:: pw::allocator::IsWithin
 
 ------------
 Test support
