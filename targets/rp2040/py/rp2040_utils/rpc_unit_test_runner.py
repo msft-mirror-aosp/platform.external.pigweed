@@ -16,9 +16,7 @@
 
 import argparse
 import logging
-import subprocess
 import sys
-import time
 from pathlib import Path
 
 import serial  # type: ignore
@@ -30,11 +28,13 @@ from pw_rpc.callback_client.errors import RpcTimeout
 from pw_system import device
 from pw_tokenizer import detokenize
 from pw_unit_test_proto import unit_test_pb2
+
 from rp2040_utils import device_detector
 from rp2040_utils.device_detector import BoardInfo
+from rp2040_utils.unit_test_runner import PiPicoTestingDevice
 
 
-_LOG = logging.getLogger("unit_test_runner")
+_LOG = logging.getLogger()
 
 
 def parse_args():
@@ -84,12 +84,8 @@ def parse_args():
     return parser.parse_args()
 
 
-class PiPicoRpcTestingDevice:
+class PiPicoRpcTestingDevice(PiPicoTestingDevice):
     """An RPC test runner implementation for the Pi Pico."""
-
-    def __init__(self, board_info: BoardInfo, baud_rate=115200):
-        self._board_info = board_info
-        self._baud_rate = baud_rate
 
     @staticmethod
     def _find_elf(binary: Path) -> Path | None:
@@ -140,52 +136,13 @@ class PiPicoRpcTestingDevice:
         ) as dev:
             try:
                 test_results = dev.run_tests(timeout)
+                _LOG.info('Test run complete')
             except RpcTimeout:
                 _LOG.error('Test timed out after %s seconds.', timeout)
                 return False
             if not test_results.all_tests_passed():
                 return False
         return True
-
-    def load_binary(self, binary: Path) -> bool:
-        """Flash a binary to this device, returning success or failure."""
-        cmd = (
-            'picotool',
-            'load',
-            '-x',
-            str(binary),
-            '--bus',
-            str(self._board_info.bus),
-            '--address',
-            str(self._board_info.address()),
-            '-F',
-        )
-        process = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-        )
-        if process.returncode:
-            err = (
-                'Flashing command failed: ' + ' '.join(cmd),
-                str(self._board_info),
-                process.stdout.decode('utf-8', errors='replace'),
-            )
-            _LOG.error('\n\n'.join(err))
-            return False
-        # Wait for serial port to enumerate. This will retry forever.
-        while True:
-            try:
-                serial.Serial(
-                    baudrate=self.baud_rate(), port=self.serial_port()
-                )
-                return True
-            except serial.serialutil.SerialException:
-                time.sleep(0.001)
-
-    def serial_port(self) -> str:
-        return self._board_info.serial_port
-
-    def baud_rate(self) -> int:
-        return self._baud_rate
 
 
 def run_device_test(
@@ -200,7 +157,11 @@ def run_device_test(
 
     Returns true on test pass.
     """
-    board = BoardInfo(serial_port, usb_bus, usb_port)
+    board = BoardInfo(
+        bus=usb_bus,
+        port=usb_port,
+        serial_port=serial_port,
+    )
     return PiPicoRpcTestingDevice(board, baud_rate).run_device_test(
         binary, test_timeout
     )
@@ -228,6 +189,17 @@ def main():
     args = parse_args()
     log_level = logging.DEBUG if args.verbose else logging.INFO
     pw_cli.log.install(level=log_level)
+
+    test_logfile = args.binary.with_suffix(args.binary.suffix + '.test_log.txt')
+    # Truncate existing logfile
+    test_logfile.write_text('', encoding='utf-8')
+    # Setup the test_log.txt file handler.
+    pw_cli.log.install(
+        level=logging.DEBUG,
+        use_color=False,
+        log_file=test_logfile,
+        logger=_LOG,
+    )
 
     test_passed = False
     if not args.serial_port:
