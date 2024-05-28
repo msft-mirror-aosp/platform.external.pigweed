@@ -44,13 +44,13 @@ struct clock_divider_test_data {
 };
 
 template <typename ElementType>
-class ClockDividerTest : public ClockDivider<ElementType> {
+class ClockDividerTest : public ClockDividerElement<ElementType> {
  public:
   constexpr ClockDividerTest(ElementType& source,
                              uint32_t divider_name,
                              uint32_t divider,
                              struct clock_divider_test_data& test_data)
-      : ClockDivider<ElementType>(source, divider),
+      : ClockDividerElement<ElementType>(source, divider),
         divider_name_(divider_name),
         test_data_(test_data) {}
 
@@ -84,14 +84,14 @@ using ClockDividerTestNonBlocking =
     ClockDividerTest<ElementNonBlockingMightFail>;
 
 template <typename ElementType>
-class ClockDividerNoDoDisableTest : public ClockDivider<ElementType> {
+class ClockDividerNoDoDisableTest : public ClockDividerElement<ElementType> {
  public:
   constexpr ClockDividerNoDoDisableTest(
       ElementType& source,
       uint32_t divider_name,
       uint32_t divider,
       struct clock_divider_test_data& test_data)
-      : ClockDivider<ElementType>(source, divider),
+      : ClockDividerElement<ElementType>(source, divider),
         divider_name_(divider_name),
         test_data_(test_data) {}
 
@@ -378,6 +378,8 @@ static void TestClockDivider() {
       clock_a, kClockDividerB, 2, test_data);
   ClockDividerTest<ElementType> clock_divider_c(
       clock_a, kClockDividerC, 4, test_data);
+  ClockDivider& clock_divider_b_abstract = clock_divider_b;
+  Element& clock_divider_b_element = clock_divider_b_abstract.element();
   pw::Status status;
 
   EXPECT_EQ(clock_a.ref_count(), 0u);
@@ -390,7 +392,7 @@ static void TestClockDivider() {
   EXPECT_EQ(clock_divider_b.ref_count(), 1u);
   EXPECT_EQ(clock_divider_c.ref_count(), 0u);
 
-  status = clock_tree.Acquire(clock_divider_b);
+  status = clock_tree.Acquire(clock_divider_b_element);
   EXPECT_EQ(status.code(), PW_STATUS_OK);
   EXPECT_EQ(clock_a.ref_count(), 1u);
   EXPECT_EQ(clock_divider_b.ref_count(), 2u);
@@ -410,7 +412,7 @@ static void TestClockDivider() {
 
   // Releasing `clock_divider_b` won't be tracked, since
   // only the base class `DoDisable` method will be called.
-  status = clock_tree.Release(clock_divider_b);
+  status = clock_tree.Release(clock_divider_b_element);
   EXPECT_EQ(status.code(), PW_STATUS_OK);
   EXPECT_EQ(clock_a.ref_count(), 1u);
   EXPECT_EQ(clock_divider_b.ref_count(), 0u);
@@ -451,6 +453,7 @@ static void TestClockDividerSet() {
   ClockSourceTest<ElementType> clock_a;
   ClockDividerTest<ElementType> clock_divider_b(
       clock_a, kClockDivider, 2, test_data);
+  ClockDivider& clock_divider_b_abstract = clock_divider_b;
 
   EXPECT_EQ(clock_a.ref_count(), 0u);
   EXPECT_EQ(clock_divider_b.ref_count(), 0u);
@@ -460,7 +463,7 @@ static void TestClockDividerSet() {
   EXPECT_EQ(clock_a.ref_count(), 1u);
   EXPECT_EQ(clock_divider_b.ref_count(), 1u);
 
-  status = clock_tree.SetDividerValue(clock_divider_b, 4);
+  status = clock_tree.SetDividerValue(clock_divider_b_abstract, 4);
   EXPECT_EQ(status.code(), PW_STATUS_OK);
   EXPECT_EQ(clock_a.ref_count(), 1u);
   EXPECT_EQ(clock_divider_b.ref_count(), 1u);
@@ -563,6 +566,7 @@ static void TestClockSelector() {
   ClockSourceTest<ElementType> clock_a;
   ClockSelectorTest<ElementType> clock_selector_b(
       clock_a, kSelector, 2, 7, test_data);
+  Element& clock_selector_b_element = clock_selector_b;
 
   EXPECT_EQ(clock_a.ref_count(), 0u);
   EXPECT_EQ(clock_selector_b.ref_count(), 0u);
@@ -572,7 +576,7 @@ static void TestClockSelector() {
   EXPECT_EQ(clock_a.ref_count(), 1u);
   EXPECT_EQ(clock_selector_b.ref_count(), 1u);
 
-  status = clock_tree.Acquire(clock_selector_b);
+  status = clock_tree.Acquire(clock_selector_b_element);
   EXPECT_EQ(status.code(), PW_STATUS_OK);
   EXPECT_EQ(clock_a.ref_count(), 1u);
   EXPECT_EQ(clock_selector_b.ref_count(), 2u);
@@ -582,7 +586,7 @@ static void TestClockSelector() {
   EXPECT_EQ(clock_a.ref_count(), 1u);
   EXPECT_EQ(clock_selector_b.ref_count(), 1u);
 
-  status = clock_tree.Release(clock_selector_b);
+  status = clock_tree.Release(clock_selector_b_element);
   EXPECT_EQ(status.code(), PW_STATUS_OK);
   EXPECT_EQ(clock_a.ref_count(), 0u);
   EXPECT_EQ(clock_selector_b.ref_count(), 0u);
@@ -1242,6 +1246,7 @@ static void TestClockSource() {
   ClockSourceStateTest<ElementType> clock_b(2, &shared_clock_value, test_data);
   ClockSourceStateTest<ElementType> clock_c(
       4, &exclusive_clock_value, test_data);
+  Element& clock_c_element = clock_c;
 
   EXPECT_EQ(clock_a.ref_count(), 0u);
   EXPECT_EQ(clock_b.ref_count(), 0u);
@@ -1257,7 +1262,7 @@ static void TestClockSource() {
   EXPECT_EQ(shared_clock_value, 1u);
   EXPECT_EQ(exclusive_clock_value, 0u);
 
-  status = clock_tree.Acquire(clock_c);
+  status = clock_tree.Acquire(clock_c_element);
   EXPECT_EQ(status.code(), PW_STATUS_OK);
   EXPECT_EQ(clock_a.ref_count(), 1u);
   EXPECT_EQ(clock_b.ref_count(), 0u);
@@ -1289,7 +1294,7 @@ static void TestClockSource() {
   EXPECT_EQ(shared_clock_value, 0u);
   EXPECT_EQ(exclusive_clock_value, 4u);
 
-  status = clock_tree.Release(clock_c);
+  status = clock_tree.Release(clock_c_element);
   EXPECT_EQ(status.code(), PW_STATUS_OK);
   EXPECT_EQ(clock_a.ref_count(), 0u);
   EXPECT_EQ(clock_b.ref_count(), 0u);
@@ -1304,7 +1309,6 @@ TEST(ClockTree, ClockSourceBlocking) { TestClockSource<ElementBlocking>(); }
 
 TEST(ClockTree, ClockSourceNonBlocking) {
   TestClockSource<ElementNonBlockingMightFail>();
-  ClockSourceTest<ElementNonBlockingMightFail> clock_a;
 }
 
 // Validate that no references have been acquired when ClockSource
@@ -1563,5 +1567,39 @@ TEST(ClockTree, ClockFailureRelease2Blocking) {
 TEST(ClockTree, ClockFailureRelease2NonBlocking) {
   TestFailureRelease2<ElementNonBlockingMightFail>();
 }
+
+TEST(ClockTree, ElementMayBlock) {
+  ClockSourceTest<ElementNonBlockingCannotFail> clock_non_blocking_cannot_fail;
+  EXPECT_FALSE(clock_non_blocking_cannot_fail.may_block());
+
+  ClockSourceTest<ElementNonBlockingMightFail> clock_non_blocking_might_fail;
+  EXPECT_FALSE(clock_non_blocking_might_fail.may_block());
+
+  ClockSourceTest<ElementBlocking> clock_blocking;
+  EXPECT_TRUE(clock_blocking.may_block());
+}
+
+TEST(ClockTree, ClockDividerMayBlock) {
+  struct clock_divider_test_data test_data;
+
+  ClockSourceTest<ElementNonBlockingCannotFail> clock_non_blocking_cannot_fail;
+  ClockSourceTest<ElementNonBlockingMightFail> clock_non_blocking_might_fail;
+  ClockSourceTest<ElementBlocking> clock_blocking;
+
+  ClockDividerTest<ElementNonBlockingCannotFail>
+      clock_divider_non_blocking_cannot_fail(
+          clock_non_blocking_cannot_fail, 1, 1, test_data);
+  EXPECT_FALSE(clock_divider_non_blocking_cannot_fail.may_block());
+
+  ClockDividerTest<ElementNonBlockingMightFail>
+      clock_divider_non_blocking_might_fail(
+          clock_non_blocking_might_fail, 1, 1, test_data);
+  EXPECT_FALSE(clock_divider_non_blocking_might_fail.may_block());
+
+  ClockDividerTest<ElementBlocking> clock_divider_blocking(
+      clock_blocking, 1, 1, test_data);
+  EXPECT_TRUE(clock_divider_blocking.may_block());
+}
+
 }  // namespace
 }  // namespace pw::clock_tree

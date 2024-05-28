@@ -35,7 +35,15 @@ class DualFirstFitBlockAllocator
   using Base = BlockAllocator<OffsetType, kPoisonInterval, kAlign>;
   using BlockType = typename Base::BlockType;
 
+  /// Constexpr constructor. Callers must explicitly call `Init`.
   constexpr DualFirstFitBlockAllocator() : Base() {}
+
+  /// Non-constexpr constructor that automatically calls `Init`.
+  ///
+  /// @param[in]  region  Region of memory to use when satisfying allocation
+  ///                     requests. The region MUST be large enough to fit an
+  ///                     aligned block with overhead. It MUST NOT be larger
+  ///                     than what is addressable by `OffsetType`.
   DualFirstFitBlockAllocator(ByteSpan region, size_t threshold)
       : Base(region), threshold_(threshold) {}
 
@@ -48,16 +56,14 @@ class DualFirstFitBlockAllocator
     if (layout.size() < threshold_) {
       // Search backwards for the last block that can hold this allocation.
       for (auto* block : Base::rblocks()) {
-        if (BlockType::AllocLast(block, layout.size(), layout.alignment())
-                .ok()) {
+        if (BlockType::AllocLast(block, layout).ok()) {
           return block;
         }
       }
     } else {
       // Search forwards for the first block that can hold this allocation.
       for (auto* block : Base::blocks()) {
-        if (BlockType::AllocFirst(block, layout.size(), layout.alignment())
-                .ok()) {
+        if (BlockType::AllocFirst(block, layout).ok()) {
           return block;
         }
       }

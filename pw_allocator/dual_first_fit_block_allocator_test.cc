@@ -69,7 +69,7 @@ TEST_F(DualFirstFitBlockAllocatorTest, AllocateAlignmentFailure) {
 
 TEST_F(DualFirstFitBlockAllocatorTest, AllocatesUsingThreshold) {
   auto& allocator = GetAllocator({
-      {kLargerOuterSize, Preallocation::kIndexFree},
+      {kLargeOuterSize, Preallocation::kIndexFree},
       {kSmallerOuterSize, 1},
       {kSmallOuterSize, Preallocation::kIndexFree},
       {Preallocation::kSizeRemaining, 3},
@@ -132,14 +132,6 @@ TEST_F(DualFirstFitBlockAllocatorTest, ResizeSmallLarger) {
 
 TEST_F(DualFirstFitBlockAllocatorTest, ResizeSmallLargerFailure) {
   ResizeSmallLargerFailure();
-}
-
-TEST_F(DualFirstFitBlockAllocatorTest, CanGetLayoutFromValidPointer) {
-  CanGetLayoutFromValidPointer();
-}
-
-TEST_F(DualFirstFitBlockAllocatorTest, CannotGetLayoutFromInvalidPointer) {
-  CannotGetLayoutFromInvalidPointer();
 }
 
 TEST_F(DualFirstFitBlockAllocatorTest, ResizeLargeSmallerAcrossThreshold) {
