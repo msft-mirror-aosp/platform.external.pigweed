@@ -22,10 +22,45 @@ HAL. The supported repositories can be downloaded via ``pw package``, and then
 the build must be manually configured to point to the locations the repositories
 were downloaded to.
 
+.. warning::
+
+   The GN build does not distribute the libusb headers which are required by
+   picotool.  If the picotool installation fails due to missing libusb headers,
+   it can be fixed by installing them manually.
+
+   .. tab-set::
+
+      .. tab-item:: Linux
+         :sync: linux
+
+         .. code-block:: sh
+
+            sudo apt-get install libusb-1.0-0-dev
+
+         .. admonition:: Note
+            :class: tip
+
+            These instructions assume a Debian/Ubuntu Linux distribution.
+
+      .. tab-item:: macOS
+         :sync: macos
+
+         .. code-block:: sh
+
+            brew install libusb
+            brew install pkg-config
+
+         .. admonition:: Note
+            :class: tip
+
+            These instructions assume a brew is installed and used for package
+            management.
+
 .. code-block:: console
 
    $ pw package install freertos
    $ pw package install pico_sdk
+   $ pw package install picotool
 
    $ gn gen out --export-compile-commands --args="
        dir_pw_third_party_freertos=\"//environment/packages/freertos\"
@@ -60,7 +95,7 @@ On linux, you may need to update your udev rules at
    # RaspberryPi Debug probe: https://github.com/raspberrypi/debugprobe
    SUBSYSTEMS=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000c", MODE:="0666"
    KERNEL=="ttyACM*", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000c", MODE:="0666"
-   # RaspberryPi Legacy picoprobe (early debugprobe version)
+   # RaspberryPi Legacy Picoprobe (early Debug probe version)
    SUBSYSTEMS=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0004", MODE:="0666"
    KERNEL=="ttyACM*", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0004", MODE:="0666"
    # RP2040 Bootloader mode

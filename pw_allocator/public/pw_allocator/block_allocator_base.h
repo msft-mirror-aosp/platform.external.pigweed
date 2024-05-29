@@ -34,9 +34,10 @@ namespace internal {
 /// one of its specializations.
 class GenericBlockAllocator : public Allocator {
  public:
-  static constexpr Capabilities kCapabilities = kImplementsGetUsableLayout |
-                                                kImplementsGetAllocatedLayout |
-                                                kImplementsQuery;
+  static constexpr Capabilities kCapabilities =
+      kImplementsGetRequestedLayout | kImplementsGetUsableLayout |
+      kImplementsGetAllocatedLayout | kImplementsGetCapacity |
+      kImplementsRecognizes;
 
   // Not copyable or movable.
   GenericBlockAllocator(const GenericBlockAllocator&) = delete;
@@ -77,12 +78,11 @@ class BlockAllocator : public internal::GenericBlockAllocator {
 
   /// Non-constexpr constructor that automatically calls `Init`.
   ///
-  /// Errors are fatal.
-  ///
-  /// @param[in]  region              The memory region for this allocator.
-  explicit BlockAllocator(ByteSpan region) : BlockAllocator() {
-    PW_ASSERT(Init(region).ok());
-  }
+  /// @param[in]  region  Region of memory to use when satisfying allocation
+  ///                     requests. The region MUST be large enough to fit an
+  ///                     aligned block with overhead. It MUST NOT be larger
+  ///                     than what is addressable by `OffsetType`.
+  explicit BlockAllocator(ByteSpan region) : BlockAllocator() { Init(region); }
 
   ~BlockAllocator() override { Reset(); }
 
@@ -93,70 +93,29 @@ class BlockAllocator : public internal::GenericBlockAllocator {
   ///
   /// This method will instantiate an initial block using the memory region.
   ///
-  /// TODO(b/338389412): Make infallible.
-  ///
-  /// @param[in]  region              The memory region for this allocator.
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The allocator is initialized.
-  ///
-  ///    INVALID_ARGUMENT: The memory region is null.
-  ///
-  ///    RESOURCE_EXHAUSTED: The region is too small for ``BlockType``.
-  ///
-  ///    OUT_OF_RANGE: The region too large for ``BlockType``.
-  ///
-  /// @endrst
-  Status Init(ByteSpan region);
+  /// @param[in]  region  Region of memory to use when satisfying allocation
+  ///                     requests. The region MUST be large enough to fit an
+  ///                     aligned block with overhead. It MUST NOT be larger
+  ///                     than what is addressable by `OffsetType`.
+  void Init(ByteSpan region);
 
   /// Sets the blocks to be used by this allocator.
   ///
   /// This method will use the sequence blocks as-is, which must be valid. The
   /// sequence extends to a block marked "last".
   ///
-  /// TODO(b/338389412): Make infallible.
-  ///
   /// @param[in]  begin               The first block for this allocator.
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The allocator is initialized.
-  ///
-  ///    INVALID_ARGUMENT: The first block is null.
-  ///
-  /// @endrst
-  Status Init(BlockType* begin) { return Init(begin, nullptr); }
+  void Init(BlockType* begin) { return Init(begin, nullptr); }
 
   /// Sets the blocks to be used by this allocator.
   ///
   /// This method will use the sequence blocks as-is, which must be valid.
   ///
-  /// TODO(b/338389412): Make infallible.
-  ///
-  /// @param[in]  begin               The first block for this allocator.
-  /// @param[in]  end                 The last block for this allocator. May be
-  ///                                 null, in which case the sequence ends with
-  ///                                 the first block marked "last".
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The allocator is initialized.
-  ///
-  ///    INVALID_ARGUMENT: The block sequence is empty.
-  ///
-  /// @endrst
-  virtual Status Init(BlockType* begin, BlockType* end);
-
-  /// Initializes the allocator with preconfigured blocks.
-  ///
-  /// This method does not
+  /// @param[in]  begin   The first block for this allocator.
+  /// @param[in]  end     The last block for this allocator. May be null, in
+  ///                     which case the sequence ends with the first block
+  ///                     marked "last".
+  virtual void Init(BlockType* begin, BlockType* end);
 
   /// Resets the allocator to an uninitialized state.
   ///
@@ -184,19 +143,8 @@ class BlockAllocator : public internal::GenericBlockAllocator {
   /// @copydoc Allocator::Resize
   bool DoResize(void* ptr, size_t new_size) override;
 
-  /// @copydoc Allocator::GetUsableLayout
-  StatusWithSize DoGetCapacity() const override {
-    return StatusWithSize(capacity_);
-  }
-
-  /// @copydoc Allocator::GetUsableLayout
-  Result<Layout> DoGetUsableLayout(const void* ptr) const override;
-
-  /// @copydoc Allocator::GetAllocatedLayout
-  Result<Layout> DoGetAllocatedLayout(const void* ptr) const override;
-
-  /// @copydoc Allocator::Query
-  Status DoQuery(const void* ptr) const override;
+  /// @copydoc Deallocator::GetInfo
+  Result<Layout> DoGetInfo(InfoType info_type, const void* ptr) const override;
 
   /// Selects a free block to allocate from.
   ///
@@ -267,37 +215,30 @@ BlockAllocator<OffsetType, kPoisonInterval, kAlign>::rblocks() {
 }
 
 template <typename OffsetType, uint16_t kPoisonInterval, uint16_t kAlign>
-Status BlockAllocator<OffsetType, kPoisonInterval, kAlign>::Init(
+void BlockAllocator<OffsetType, kPoisonInterval, kAlign>::Init(
     ByteSpan region) {
   Result<BlockType*> result = BlockType::Init(region);
-  if (!result.ok()) {
-    return result.status();
-  }
-  return Init(*result);
+  Init(*result, nullptr);
 }
 
 template <typename OffsetType, uint16_t kPoisonInterval, uint16_t kAlign>
-Status BlockAllocator<OffsetType, kPoisonInterval, kAlign>::Init(
-    BlockType* begin, BlockType* end) {
-  if (begin == nullptr) {
-    return Status::InvalidArgument();
-  }
+void BlockAllocator<OffsetType, kPoisonInterval, kAlign>::Init(BlockType* begin,
+                                                               BlockType* end) {
+  PW_ASSERT(begin != nullptr);
   if (end == nullptr) {
     end = begin;
     while (!end->Last()) {
       end = end->Next();
     }
-  } else if (begin < end) {
-    end->MarkLast();
   } else {
-    return Status::InvalidArgument();
+    PW_ASSERT(begin < end);
+    end->MarkLast();
   }
   first_ = begin;
   last_ = end;
   for (const auto& block : blocks()) {
     capacity_ += block->OuterSize();
   }
-  return OkStatus();
 }
 
 template <typename OffsetType, uint16_t kPoisonInterval, uint16_t kAlign>
@@ -360,9 +301,11 @@ bool BlockAllocator<OffsetType, kPoisonInterval, kAlign>::DoResize(
 }
 
 template <typename OffsetType, uint16_t kPoisonInterval, uint16_t kAlign>
-Result<Layout>
-BlockAllocator<OffsetType, kPoisonInterval, kAlign>::DoGetUsableLayout(
-    const void* ptr) const {
+Result<Layout> BlockAllocator<OffsetType, kPoisonInterval, kAlign>::DoGetInfo(
+    InfoType info_type, const void* ptr) const {
+  if (info_type == InfoType::kCapacity) {
+    return Layout(capacity_, kAlign);
+  }
   auto result = FromUsableSpace(ptr);
   if (!result.ok()) {
     return Status::NotFound();
@@ -371,28 +314,19 @@ BlockAllocator<OffsetType, kPoisonInterval, kAlign>::DoGetUsableLayout(
   if (!block->Used()) {
     return Status::FailedPrecondition();
   }
-  return Layout(block->InnerSize(), block->Alignment());
-}
-
-template <typename OffsetType, uint16_t kPoisonInterval, uint16_t kAlign>
-Result<Layout>
-BlockAllocator<OffsetType, kPoisonInterval, kAlign>::DoGetAllocatedLayout(
-    const void* ptr) const {
-  auto result = FromUsableSpace(ptr);
-  if (!result.ok()) {
-    return Status::NotFound();
+  switch (info_type) {
+    case InfoType::kRequestedLayoutOf:
+      return Layout(block->RequestedSize(), block->Alignment());
+    case InfoType::kUsableLayoutOf:
+      return Layout(block->InnerSize(), block->Alignment());
+    case InfoType::kAllocatedLayoutOf:
+      return Layout(block->OuterSize(), block->Alignment());
+    case InfoType::kRecognizes:
+      return Layout();
+    case InfoType::kCapacity:
+    default:
+      return Status::Unimplemented();
   }
-  const BlockType* block = result.value();
-  if (!block->Used()) {
-    return Status::FailedPrecondition();
-  }
-  return Layout(block->OuterSize(), block->Alignment());
-}
-
-template <typename OffsetType, uint16_t kPoisonInterval, uint16_t kAlign>
-Status BlockAllocator<OffsetType, kPoisonInterval, kAlign>::DoQuery(
-    const void* ptr) const {
-  return FromUsableSpace(ptr).status();
 }
 
 template <typename OffsetType, uint16_t kPoisonInterval, uint16_t kAlign>

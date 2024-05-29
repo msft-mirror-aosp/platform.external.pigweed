@@ -138,6 +138,7 @@ cc_library(
     deps = [
         ":block_allocator_base",
         ":bucket",
+        "//pw_status",
     ],
 )
 
@@ -215,7 +216,6 @@ cc_library(
 cc_library(
     name = "deallocator",
     srcs = [
-        "deallocator.cc",
         "unique_ptr.cc",
     ],
     hdrs = [

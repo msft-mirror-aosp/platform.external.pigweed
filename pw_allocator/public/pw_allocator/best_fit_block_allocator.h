@@ -35,7 +35,15 @@ class BestFitBlockAllocator
   using Base = BlockAllocator<OffsetType, kPoisonInterval, kAlign>;
   using BlockType = typename Base::BlockType;
 
+  /// Constexpr constructor. Callers must explicitly call `Init`.
   constexpr BestFitBlockAllocator() : Base() {}
+
+  /// Non-constexpr constructor that automatically calls `Init`.
+  ///
+  /// @param[in]  region  Region of memory to use when satisfying allocation
+  ///                     requests. The region MUST be large enough to fit an
+  ///                     aligned block with overhead. It MUST NOT be larger
+  ///                     than what is addressable by `OffsetType`.
   explicit BestFitBlockAllocator(ByteSpan region) : Base(region) {}
 
  private:
@@ -44,15 +52,14 @@ class BestFitBlockAllocator
     // Search backwards for the smallest block that can hold this allocation.
     BlockType* best = nullptr;
     for (auto* block : Base::rblocks()) {
-      if (!block->CanAllocLast(layout.size(), layout.alignment()).ok()) {
+      if (!block->CanAllocLast(layout).ok()) {
         continue;
       }
       if (best == nullptr || block->OuterSize() < best->OuterSize()) {
         best = block;
       }
     }
-    if (best != nullptr &&
-        BlockType::AllocLast(best, layout.size(), layout.alignment()).ok()) {
+    if (best != nullptr && BlockType::AllocLast(best, layout).ok()) {
       return best;
     }
     return nullptr;

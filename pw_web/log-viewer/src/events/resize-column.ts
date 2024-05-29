@@ -12,16 +12,19 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_allocator/deallocator.h"
+import { TableColumn } from '../shared/interfaces';
 
-namespace pw {
-
-StatusWithSize Deallocator::DoGetCapacity() const {
-  return StatusWithSize::Unimplemented();
+interface ResizeColumnEvent extends CustomEvent {
+  detail: {
+    viewId: string;
+    columnData: TableColumn[];
+  };
 }
 
-Status Deallocator::DoQuery(const void*) const {
-  return Status::Unimplemented();
+declare global {
+  interface GlobalEventHandlersEventMap {
+    'resize-column': ResizeColumnEvent;
+  }
 }
 
-}  // namespace pw
+export default ResizeColumnEvent;

@@ -72,7 +72,6 @@ TEST_F(BestFitBlockAllocatorTest, AllocatesBestCompatible) {
       {kLargerOuterSize, Preallocation::kIndexFree},
       {Preallocation::kSizeRemaining, 7},
   });
-
   Store(2, allocator.Allocate(Layout(kSmallInnerSize, 1)));
   EXPECT_EQ(NextAfter(1), Fetch(2));
   EXPECT_EQ(NextAfter(2), Fetch(3));
@@ -106,14 +105,6 @@ TEST_F(BestFitBlockAllocatorTest, ResizeSmallLarger) { ResizeSmallLarger(); }
 
 TEST_F(BestFitBlockAllocatorTest, ResizeSmallLargerFailure) {
   ResizeSmallLargerFailure();
-}
-
-TEST_F(BestFitBlockAllocatorTest, CanGetLayoutFromValidPointer) {
-  CanGetLayoutFromValidPointer();
-}
-
-TEST_F(BestFitBlockAllocatorTest, CannotGetLayoutFromInvalidPointer) {
-  CannotGetLayoutFromInvalidPointer();
 }
 
 }  // namespace

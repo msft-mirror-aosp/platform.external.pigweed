@@ -127,6 +127,7 @@ pw_add_library(pw_allocator.bucket_block_allocator INTERFACE
   PUBLIC_DEPS
     pw_allocator.block_allocator_base
     pw_allocator.bucket
+    pw_status
 )
 
 pw_add_library(pw_allocator.buddy_allocator STATIC
@@ -193,7 +194,6 @@ pw_add_library(pw_allocator.chunk_pool STATIC
 
 pw_add_library(pw_allocator.deallocator STATIC
   SOURCES
-    deallocator.cc
     unique_ptr.cc
   HEADERS
     public/pw_allocator/capability.h

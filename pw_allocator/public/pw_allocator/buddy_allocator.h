@@ -21,6 +21,7 @@
 #include "pw_allocator/bucket.h"
 #include "pw_bytes/span.h"
 #include "pw_containers/vector.h"
+#include "pw_status/try.h"
 
 namespace pw::allocator {
 namespace internal {
@@ -34,14 +35,18 @@ namespace internal {
 /// respect to the number of buckets.
 class GenericBuddyAllocator final {
  public:
-  /// Construct a buddy allocator.
+  static constexpr Capabilities kCapabilities =
+      kImplementsGetUsableLayout | kImplementsGetAllocatedLayout |
+      kImplementsGetCapacity | kImplementsRecognizes;
+
+  /// Constructs a buddy allocator.
   ///
   /// @param[in] buckets        Storage for buckets of free chunks.
   /// @param[in] min_chunk_size Size of the chunks in the first bucket.
-  /// @param[in] region         Memory used to allocate chunks.
-  GenericBuddyAllocator(span<Bucket> buckets,
-                        size_t min_chunk_size,
-                        ByteSpan region);
+  GenericBuddyAllocator(span<Bucket> buckets, size_t min_chunk_size);
+
+  /// Sets the memory used to allocate chunks.
+  void Init(ByteSpan region);
 
   /// @copydoc Allocator::Allocate
   void* Allocate(Layout layout);
@@ -49,8 +54,11 @@ class GenericBuddyAllocator final {
   /// @copydoc Deallocator::Deallocate
   void Deallocate(void* ptr);
 
-  /// @copydoc Deallocator::Query
-  Status Query(const void* ptr) const;
+  /// Returns the total capacity of this allocator.
+  size_t GetCapacity() const { return region_.size(); }
+
+  /// Returns the allocated layout for a given pointer.
+  Result<Layout> GetLayout(const void* ptr) const;
 
   /// Ensures all allocations have been freed. Crashes with a diagnostic message
   /// If any allocations remain outstanding.
@@ -90,13 +98,24 @@ class BuddyAllocator : public Allocator {
   static_assert((kMinChunkSize & (kMinChunkSize - 1)) == 0,
                 "kMinChunkSize must be a power of 2");
 
-  /// Construct an allocator.
+  /// Constructs an allocator. Callers must call `Init`.
+  BuddyAllocator() : impl_(buckets_, kMinChunkSize) {}
+
+  /// Constructs an allocator, and initializes it with the given memory region.
   ///
   /// @param[in]  region  Region of memory to use when satisfying allocation
-  ///                     requests. The region must be large enough to fit a
+  ///                     requests. The region MUST be large enough to fit a
   ///                     least one minimally-size chunk aligned to the size of
   ///                     the chunk.
-  BuddyAllocator(ByteSpan region) : impl_(buckets_, kMinChunkSize, region) {}
+  BuddyAllocator(ByteSpan region) : BuddyAllocator() { Init(region); }
+
+  /// Sets the memory region used by the allocator.
+  ///
+  /// @param[in]  region  Region of memory to use when satisfying allocation
+  ///                     requests. The region MUST be large enough to fit a
+  ///                     least one minimally-size chunk aligned to the size of
+  ///                     the chunk.
+  void Init(ByteSpan region) { impl_.Init(region); }
 
   ~BuddyAllocator() override { impl_.CrashIfAllocated(); }
 
@@ -110,8 +129,28 @@ class BuddyAllocator : public Allocator {
   /// @copydoc Deallocator::DoDeallocate
   void DoDeallocate(void* ptr) override { impl_.Deallocate(ptr); }
 
-  /// @copydoc Deallocator::Query
-  Status DoQuery(const void* ptr) const override { return impl_.Query(ptr); }
+  /// @copydoc Deallocator::GetInfo
+  Result<Layout> DoGetInfo(InfoType info_type, const void* ptr) const override {
+    switch (info_type) {
+      case InfoType::kUsableLayoutOf: {
+        Layout layout;
+        PW_TRY_ASSIGN(layout, impl_.GetLayout(ptr));
+        return Layout(layout.size() - 1, layout.alignment());
+      }
+      case InfoType::kAllocatedLayoutOf:
+        return impl_.GetLayout(ptr);
+      case InfoType::kCapacity:
+        return Layout(impl_.GetCapacity(), kMinChunkSize);
+      case InfoType::kRecognizes: {
+        Layout layout;
+        PW_TRY_ASSIGN(layout, impl_.GetLayout(ptr));
+        return Layout();
+      }
+      case InfoType::kRequestedLayoutOf:
+      default:
+        return Status::Unimplemented();
+    }
+  }
 
   std::array<internal::Bucket, kNumBuckets> buckets_;
   internal::GenericBuddyAllocator impl_;
