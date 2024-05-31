@@ -43,7 +43,7 @@ class AllocatorForTest : public Allocator {
   AllocatorForTest()
       : Allocator(AllocatorType::kCapabilities), tracker_(kToken, *allocator_) {
     ResetParameters();
-    EXPECT_EQ(allocator_->Init(allocator_.as_bytes()), OkStatus());
+    allocator_->Init(allocator_.as_bytes());
   }
 
   ~AllocatorForTest() override {
@@ -112,29 +112,9 @@ class AllocatorForTest : public Allocator {
     return tracker_.Resize(ptr, new_size);
   }
 
-  /// @copydoc Allocator::GetCapacity
-  StatusWithSize DoGetCapacity() const override {
-    return tracker_.GetCapacity();
-  }
-
-  /// @copydoc Allocator::GetRequestedLayout
-  Result<Layout> DoGetRequestedLayout(const void* ptr) const override {
-    return GetRequestedLayout(tracker_, ptr);
-  }
-
-  /// @copydoc Allocator::GetUsableLayout
-  Result<Layout> DoGetUsableLayout(const void* ptr) const override {
-    return GetUsableLayout(tracker_, ptr);
-  }
-
-  /// @copydoc Allocator::GetAllocatedLayout
-  Result<Layout> DoGetAllocatedLayout(const void* ptr) const override {
-    return GetAllocatedLayout(tracker_, ptr);
-  }
-
-  /// @copydoc Allocator::Query
-  Status DoQuery(const void* ptr) const override {
-    return Query(tracker_, ptr);
+  /// @copydoc Deallocator::GetInfo
+  Result<Layout> DoGetInfo(InfoType info_type, const void* ptr) const override {
+    return GetInfo(tracker_, info_type, ptr);
   }
 
   WithBuffer<AllocatorType, kBufferSize> allocator_;

@@ -104,14 +104,6 @@ TEST_F(FirstFitBlockAllocatorTest, ResizeSmallLargerFailure) {
   ResizeSmallLargerFailure();
 }
 
-TEST_F(FirstFitBlockAllocatorTest, CanGetLayoutFromValidPointer) {
-  CanGetLayoutFromValidPointer();
-}
-
-TEST_F(FirstFitBlockAllocatorTest, CannotGetLayoutFromInvalidPointer) {
-  CannotGetLayoutFromInvalidPointer();
-}
-
 TEST_F(FirstFitBlockAllocatorTest, DisablePoisoning) {
   auto& allocator = GetAllocator();
   constexpr Layout layout = Layout::Of<std::byte[kSmallInnerSize]>();
@@ -144,7 +136,7 @@ TEST(PoisonedFirstFitBlockAllocatorTest, PoisonEveryFreeBlock) {
   pw::allocator::WithBuffer<PoisonedFirstFitBlockAllocator,
                             FirstFitBlockAllocatorTest::kCapacity>
       allocator;
-  EXPECT_EQ(allocator->Init(allocator.as_bytes()), pw::OkStatus());
+  allocator->Init(allocator.as_bytes());
   constexpr Layout layout =
       Layout::Of<std::byte[FirstFitBlockAllocatorTest::kSmallInnerSize]>();
 
@@ -175,7 +167,7 @@ TEST(PoisonedFirstFitBlockAllocatorTest, PoisonPeriodically) {
   pw::allocator::WithBuffer<PoisonedFirstFitBlockAllocator,
                             FirstFitBlockAllocatorTest::kCapacity>
       allocator;
-  EXPECT_EQ(allocator->Init(allocator.as_bytes()), pw::OkStatus());
+  allocator->Init(allocator.as_bytes());
   constexpr Layout layout =
       Layout::Of<std::byte[FirstFitBlockAllocatorTest::kSmallInnerSize]>();
 
