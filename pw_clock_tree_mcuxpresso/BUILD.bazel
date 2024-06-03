@@ -1,4 +1,4 @@
-# Copyright 2023 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -11,8 +11,21 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""pw_emu"""
 
-import setuptools  # type: ignore
+package(default_visibility = ["//visibility:public"])
 
-setuptools.setup()  # Package definition in setup.cfg
+licenses(["notice"])
+
+cc_library(
+    name = "pw_clock_tree_mcuxpresso",
+    hdrs = ["public/pw_clock_tree_mcuxpresso/clock_tree.h"],
+    includes = ["public"],
+    target_compatible_with = [
+        "//pw_build/constraints/board:mimxrt595_evk",
+    ],
+    deps = [
+        "//pw_clock_tree",
+        "//pw_preprocessor",
+        "@pigweed//targets:mcuxpresso_sdk",
+    ],
+)
