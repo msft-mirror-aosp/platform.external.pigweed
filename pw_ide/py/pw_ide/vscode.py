@@ -58,6 +58,8 @@ this takes effect until they are merged into VSC's active settings files
 command.
 """
 
+from __future__ import annotations
+
 # TODO(chadnorvell): Import collections.OrderedDict when we don't need to
 # support Python 3.8 anymore.
 from enum import Enum
@@ -108,6 +110,7 @@ def _local_python_settings() -> dict[str, Any]:
 # alternative of instantiating with a list of tuples.
 _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
     {
+        "cmake.format.allowOptionalArgumentIndentation": True,
         "editor.detectIndentation": False,
         "editor.rulers": [80],
         "editor.tabSize": 2,
@@ -373,7 +376,7 @@ class VscSettingsType(Enum):
     LAUNCH = 'launch'
 
     @classmethod
-    def all(cls) -> list['VscSettingsType']:
+    def all(cls) -> list[VscSettingsType]:
         return list(cls)
 
 

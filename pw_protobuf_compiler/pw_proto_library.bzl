@@ -162,6 +162,10 @@ def nanopb_rpc_proto_library(name, deps, nanopb_proto_library_deps, tags = [], v
     _pw_nanopb_rpc_proto_library(
         name = name,
         protos = deps,
+        # TODO: b/339280821 - This is required to avoid breaking internal
+        # Google builds but shouldn't matter for any external user. Remove this
+        # when possible.
+        features = ["-layering_check"],
         deps = [
             Label("//pw_rpc"),
             Label("//pw_rpc/nanopb:client_api"),
@@ -285,8 +289,8 @@ PwProtoInfo = provider(
     "Returned by PW proto compilation aspect",
     fields = {
         "hdrs": "generated C++ header files",
-        "srcs": "generated C++ src files",
         "includes": "include paths for generated C++ header files",
+        "srcs": "generated C++ src files",
     },
 )
 
@@ -333,10 +337,15 @@ def _proto_compiler_aspect_impl(target, ctx):
         for ext in ctx.attr._extensions:
             # Declare all output files, in target package dir.
             generated_filename = src.basename[:-len("proto")] + ext
-            out_file = ctx.actions.declare_file("{}/{}".format(
-                proto_dir,
-                generated_filename,
-            ))
+            if proto_dir:
+                out_file_name = "{}/{}".format(
+                    proto_dir,
+                    generated_filename,
+                )
+            else:
+                out_file_name = generated_filename
+
+            out_file = ctx.actions.declare_file(out_file_name)
 
             if ext.endswith(".h"):
                 hdrs.append(out_file)
@@ -384,6 +393,22 @@ def _proto_compiler_aspect_impl(target, ctx):
         args.add("--custom_opt=-I{}".format(options_file_include_path))
 
     for plugin_option in ctx.attr._plugin_options:
+        # if import_prefix is set, the .proto is placed under a virtual include path
+        # prefixed by `import_prefix`. That path is what is given to the proto
+        # plugin via plugin_pb2.CodeGeneratorRequest.proto_file.name, so the include
+        # paths we give to the plugin need to be able find the .options files based
+        # on the following logic in pw_protobuf/options.py:
+        #
+        #   options_file_name = include_path / proto_file_name.with_suffix(".options")
+        #
+        # This means that in order for the plugin to find the .options file, we need
+        # to let the plugin know the import prefix so it can modify the `proto_file_name`
+        # back to the original to be able to find the .options file.
+        if plugin_option == "--import-prefix={}":
+            if ctx.rule.attr.import_prefix:
+                plugin_option = plugin_option.format(ctx.rule.attr.import_prefix)
+            else:
+                continue
         args.add("--custom_opt={}".format(plugin_option))
 
     args.add("--custom_out={}".format(out_path))
@@ -409,12 +434,12 @@ def _proto_compiler_aspect_impl(target, ctx):
         executable = ctx.executable._protoc,
         arguments = [args],
         env = {
-            "PATH": ":".join(run_path),
 
             # The nanopb protobuf plugin likes to compile some temporary protos
             # next to source files. This forces them to be written to Bazel's
             # genfiles directory.
             "NANOPB_PB2_TEMP_DIR": str(ctx.genfiles_dir),
+            "PATH": ":".join(run_path),
         },
     )
 
@@ -449,6 +474,9 @@ def _proto_compiler_aspect(extensions, protoc_plugin, plugin_options = []):
         attr_aspects = ["deps"],
         attrs = {
             "_extensions": attr.string_list(default = extensions),
+            "_plugin_options": attr.string_list(
+                default = plugin_options,
+            ),
             "_protoc": attr.label(
                 default = Label("@com_google_protobuf//:protoc"),
                 executable = True,
@@ -464,9 +492,6 @@ def _proto_compiler_aspect(extensions, protoc_plugin, plugin_options = []):
                 allow_single_file = True,
                 executable = True,
                 cfg = "exec",
-            ),
-            "_plugin_options": attr.string_list(
-                default = plugin_options,
             ),
         },
         implementation = _proto_compiler_aspect_impl,
@@ -514,18 +539,18 @@ def _impl_pw_proto_library(ctx):
 _pwpb_proto_compiler_aspect = _proto_compiler_aspect(
     ["pwpb.h"],
     "//pw_protobuf/py:plugin",
-    ["--no-legacy-namespace"],
+    ["--no-legacy-namespace", "--import-prefix={}"],
 )
 
 _pwpb_proto_library = rule(
     implementation = _impl_pw_proto_library,
     attrs = {
+        "deps": attr.label_list(
+            providers = [CcInfo],
+        ),
         "protos": attr.label_list(
             providers = [ProtoInfo],
             aspects = [_pwpb_proto_compiler_aspect],
-        ),
-        "deps": attr.label_list(
-            providers = [CcInfo],
         ),
     },
     fragments = ["cpp"],
@@ -541,12 +566,12 @@ _nanopb_proto_compiler_aspect = _proto_compiler_aspect(
 _nanopb_proto_library = rule(
     implementation = _impl_pw_proto_library,
     attrs = {
+        "deps": attr.label_list(
+            providers = [CcInfo],
+        ),
         "protos": attr.label_list(
             providers = [ProtoInfo],
             aspects = [_nanopb_proto_compiler_aspect],
-        ),
-        "deps": attr.label_list(
-            providers = [CcInfo],
         ),
     },
     fragments = ["cpp"],
@@ -562,12 +587,12 @@ _pw_pwpb_rpc_proto_compiler_aspect = _proto_compiler_aspect(
 _pw_pwpb_rpc_proto_library = rule(
     implementation = _impl_pw_proto_library,
     attrs = {
+        "deps": attr.label_list(
+            providers = [CcInfo],
+        ),
         "protos": attr.label_list(
             providers = [ProtoInfo],
             aspects = [_pw_pwpb_rpc_proto_compiler_aspect],
-        ),
-        "deps": attr.label_list(
-            providers = [CcInfo],
         ),
     },
     fragments = ["cpp"],
@@ -583,12 +608,12 @@ _pw_raw_rpc_proto_compiler_aspect = _proto_compiler_aspect(
 _pw_raw_rpc_proto_library = rule(
     implementation = _impl_pw_proto_library,
     attrs = {
+        "deps": attr.label_list(
+            providers = [CcInfo],
+        ),
         "protos": attr.label_list(
             providers = [ProtoInfo],
             aspects = [_pw_raw_rpc_proto_compiler_aspect],
-        ),
-        "deps": attr.label_list(
-            providers = [CcInfo],
         ),
     },
     fragments = ["cpp"],
@@ -604,12 +629,12 @@ _pw_nanopb_rpc_proto_compiler_aspect = _proto_compiler_aspect(
 _pw_nanopb_rpc_proto_library = rule(
     implementation = _impl_pw_proto_library,
     attrs = {
+        "deps": attr.label_list(
+            providers = [CcInfo],
+        ),
         "protos": attr.label_list(
             providers = [ProtoInfo],
             aspects = [_pw_nanopb_rpc_proto_compiler_aspect],
-        ),
-        "deps": attr.label_list(
-            providers = [CcInfo],
         ),
     },
     fragments = ["cpp"],
@@ -674,10 +699,10 @@ pw_proto_filegroup = rule(
     ),
     implementation = _pw_proto_filegroup_impl,
     attrs = {
-        "srcs": attr.label_list(
+        "options_files": attr.label_list(
             allow_files = True,
         ),
-        "options_files": attr.label_list(
+        "srcs": attr.label_list(
             allow_files = True,
         ),
     },

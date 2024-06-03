@@ -160,15 +160,47 @@ details abstracted behind the :ref:`module-pw_allocator-api-allocator`
 interface. One exception to this guidance is when integrating allocators into
 existing code that assumes ``malloc`` and ``free`` semantics. Notably, ``free``
 does not take any parameters beyond a pointer describing the memory to be freed.
-To implement such a method using ``Deallocate``, you may need to violate the
-abstraction and only use allocators that implement the optional ``GetLayout``
-method:
 
 .. literalinclude:: examples/block_allocator.cc
    :language: cpp
    :linenos:
    :start-after: [pw_allocator-examples-block_allocator-malloc_free]
    :end-before: [pw_allocator-examples-block_allocator-malloc_free]
+
+.. _module-pw_allocator-use-standard-library-containers:
+
+Use standard library containers
+===============================
+All of C++'s standard library containers are `AllocatorAwareContainers`_, with
+the exception of ``std::array``. These types include a template parameter used
+to specify an allocator type, and a constructor which takes a reference to an
+object of this type.
+
+While there are
+:ref:`module-pw_allocator-design-differences-with-polymorphic-allocators`, an
+:ref:`module-pw_allocator-api-allocator` can be used with these containers by
+wrapping them with a PMR adapter type,
+:ref:`module-pw_allocator-api-as_pmr_allocator`:
+
+.. literalinclude:: examples/pmr.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-pmr]
+   :end-before: [pw_allocator-examples-pmr]
+
+.. Warning::
+   Some of the standard library containers may add a significant amount of
+   additional code size and/or memory overhead. In particular, implementations
+   of ``std::deque`` are known to preallocate significant memory in order to
+   meet its complexity requirements, e.g. O(1) insertion at the front of the
+   deque.
+
+.. Warning::
+   The standard library containers expect their allocators to throw an exception
+   on allocation failure, and do not check for failure themselves. If
+   exceptions are disabled, :ref:`module-pw_allocator-api-as_pmr_allocator`
+   instead **asserts** that allocation succeeded. Care must be taken in this
+   case to ensure that memory is not exhausted.
 
 --------------------------
 Choose the right allocator
@@ -183,9 +215,18 @@ overview. Consult the :ref:`module-pw_allocator-api` for additional details.
 
 - :ref:`module-pw_allocator-api-libc_allocator`: Uses ``malloc``, ``realloc``,
   and ``free``. This should only be used if the ``libc`` in use provides those
-  functions.
+  functions. This allocator is a stateless singleton that may be referenced
+  using ``GetLibCAllocator()``.
 - :ref:`module-pw_allocator-api-null_allocator`: Always fails. This may be
   useful if allocations should be disallowed under specific circumstances.
+  This allocator is a stateless singleton that may be referenced using
+  ``GetNullAllocator()``.
+- :ref:`module-pw_allocator-api-bump_allocator`: Allocates objects out of a
+  region of memory and only frees them all at once when the allocator is
+  destroyed.
+- :ref:`module-pw_allocator-api-buddy_allocator`: Allocates objects out of a
+  chunks with sizes that are powers of two. Chunks are split evenly for smaller
+  allocations and merged on free.
 - :ref:`module-pw_allocator-api-block_allocator`: Tracks memory using
   :ref:`module-pw_allocator-api-block`. Derived types use specific strategies
   for how to choose a block to use to satisfy a request. See also
@@ -213,12 +254,12 @@ overview. Consult the :ref:`module-pw_allocator-api` for additional details.
     threshold value. This strategy preserves the speed of the two other
     strategies, while fragmenting memory less by co-locating allocations of
     similar sizes.
+  - :ref:`module-pw_allocator-api-bucket_block_allocator`: Sorts and stores
+    each free blocks in a :ref:`module-pw_allocator-api-bucket` with a given
+    maximum chunk size.
 
-.. TODO: b/328076428 - Add MonotonicAllocator.
-
-.. TODO: b/328076428 - Add BuddyAllocator.
-
-.. TODO: b/328076428 - Add SlabAllocator.
+- :ref:`module-pw_allocator-api-typed_pool`: Efficiently creates and
+  destroys objects of a single given type.
 
 Forwarding allocator implementations
 ====================================
@@ -228,12 +269,13 @@ Consult the :ref:`module-pw_allocator-api` for additional details.
 
 - :ref:`module-pw_allocator-api-fallback_allocator`: Dispatches first to a
   primary allocator, and, if that fails, to a secondary allocator.
+- :ref:`module-pw_allocator-api-as_pmr_allocator`: Adapts an allocator to be a
+  ``std::pmr::polymorphic_allocator``, which can be used with standard library
+  containers that `use allocators`_, such as ``std::pmr::vector<T>``.
 - :ref:`module-pw_allocator-api-synchronized_allocator`: Synchronizes access to
   another allocator, allowing it to be used by multiple threads.
 - :ref:`module-pw_allocator-api-tracking_allocator`: Wraps another allocator and
   records its usage.
-
-.. TODO: b/328076428 - Add MemoryResource.
 
 .. _module-pw_allocator-guide-custom_allocator:
 
@@ -267,10 +309,13 @@ There are also several optional methods you can provide:
 - If an implementation of ``DoReallocate`` isn't provided, then ``Reallocate``
   will try to ``Resize``, and, if unsuccessful, try to ``Allocate``, copy, and
   ``Deallocate``.
-- If an implementation of ``DoGetLayout`` isn't provided, then ``GetLayout``
+- If an implementation of ``DoGetInfo`` isn't provided, then ``GetInfo``
   will always return ``pw::Status::Unimplmented``.
-- If an implementation of ``DoQuery`` isn't provided, then ``Query`` will
-  always return ``pw::Status::Unimplmented``.
+
+Custom allocators can indicate which optional methods they implement and what
+optional behaviors they want from the base class by specifying
+:ref:`module-pw_allocator-api-capabilities` when invoking the base class
+constructor.
 
 .. TODO: b/328076428 - Make Deallocate optional once traits supporting
    MonotonicAllocator are added.
@@ -284,8 +329,14 @@ You can observe how much memory is being used for a particular use case using a
 .. literalinclude:: examples/metrics.cc
    :language: cpp
    :linenos:
-   :start-after: [pw_allocator-examples-metrics-all_metrics]
-   :end-before: [pw_allocator-examples-metrics-all_metrics]
+   :start-after: [pw_allocator-examples-metrics-custom_metrics1]
+   :end-before: [pw_allocator-examples-metrics-custom_metrics1]
+
+.. literalinclude:: examples/metrics.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-metrics-custom_metrics2]
+   :end-before: [pw_allocator-examples-metrics-custom_metrics2]
 
 Metric data can be retrieved according to the steps described in
 :ref:`module-pw_metric-exporting`, or by using the ``Dump`` method of
@@ -298,8 +349,16 @@ Metric data can be retrieved according to the steps described in
    :end-before: [pw_allocator-examples-metrics-dump]
 
 
-The ``AllMetrics`` type used in the example above enables the following metrics:
+The ``CustomMetrics`` type used in the example above is a struct provided by the
+developer. You can create your own metrics structs that enable zero or more of
+the following metrics:
 
+- **requested_bytes**: The number of bytes currently requested from this
+  allocator.
+- **peak_requested_bytes**: The most bytes requested from this allocator at any
+  one time.
+- **cumulative_requested_bytes**: The total number of bytes that have been
+  requested from this allocator across its lifetime.
 - **allocated_bytes**: The number of bytes currently allocated by this
   allocator.
 - **peak_allocated_bytes**: The most bytes allocated by this allocator at any
@@ -383,9 +442,9 @@ For example, the following tests the custom allocator from
    :start-after: [pw_allocator-examples-custom_allocator-unit_test]
    :end-before: [pw_allocator-examples-custom_allocator-unit_test]
 
-You can also extend the :ref:`module-pw_allocator-api-allocator_test_harness` to
-perform pseudorandom sequences of allocations and deallocations, e.g. as part of
-a performance test:
+You can also extend the :ref:`module-pw_allocator-api-test_harness` to perform
+pseudorandom sequences of allocations and deallocations, e.g. as part of a
+performance test:
 
 .. literalinclude:: examples/custom_allocator_test_harness.h
    :language: cpp
@@ -398,8 +457,9 @@ a performance test:
    :start-after: [pw_allocator-examples-custom_allocator-perf_test]
 
 Even better, you can easily add fuzz tests for your allocator. This module
-uses the ``AllocatorTestHarness`` to integrate with :ref:`module-pw_fuzzer` and
-provide :ref:`module-pw_allocator-api-fuzzing_support`.
+uses the :ref:`module-pw_allocator-api-test_harness` to integrate with
+:ref:`module-pw_fuzzer` and provide
+:ref:`module-pw_allocator-api-fuzzing_support`.
 
 .. literalinclude:: examples/custom_allocator_test.cc
    :language: cpp
@@ -446,6 +506,8 @@ The size report produced by this rule would render as:
 
 .. include:: examples/custom_allocator_size_report
 
+.. _AllocatorAwareContainers: https://en.cppreference.com/w/cpp/named_req/AllocatorAwareContainer
 .. _NVI: https://en.wikipedia.org/wiki/Non-virtual_interface_pattern
 .. _RAII: https://en.cppreference.com/w/cpp/language/raii
 .. _repository: https://bazel.build/concepts/build-ref#repositories
+.. _use allocators: https://en.cppreference.com/w/cpp/memory/uses_allocator

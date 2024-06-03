@@ -77,6 +77,21 @@ pw_cc_flag_set(
     ],
 )
 
+# This flag prevents Arm GCC from printing the resolved paths of symlinks,
+# which prevents compilation actions from being hermetic. See
+# https://github.com/bazelbuild/bazel/issues/21981 and
+# https://pwbug.dev/319665090.
+pw_cc_flag_set(
+    name = "no_canonical_system_headers",
+    actions = [
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+    ],
+    flags = [
+        "-fno-canonical-system-headers",
+    ],
+)
+
 pw_cc_flag_set(
     name = "cortex_common",
     actions = [
@@ -237,26 +252,27 @@ pw_cc_toolchain(
     ] + select({
         "@pw_toolchain//constraints/arm_mcpu:cortex-m0": [":cortex-m0"],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m3": [":cortex-m3"],
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m33": [":cortex-m33"],
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m33+nofp": [":cortex-m33+nofp"],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m4": [":cortex-m4"],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m4+nofp": [":cortex-m4+nofp"],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m7": [":cortex-m7"],
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m33": [":cortex-m33"],
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m33+nofp": [":cortex-m33+nofp"],
         "@pw_toolchain//constraints/arm_mcpu:none": [],
     }) + [
         ":thumb_abi",
         ":cortex_common",
         ":cortex_common_link",
+        ":no_canonical_system_headers",
         ":warnings",
     ],
     target_compatible_with = select({
         "@pw_toolchain//constraints/arm_mcpu:cortex-m0": [],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m3": [],
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m33": [],
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m33+nofp": [],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m4": [],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m4+nofp": [],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m7": [],
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m33": [],
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m33+nofp": [],
         "@pw_toolchain//constraints/arm_mcpu:none": ["@platforms//:incompatible"],
     }),
     toolchain_identifier = "arm-gcc-toolchain",

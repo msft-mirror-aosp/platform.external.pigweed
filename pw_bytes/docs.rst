@@ -25,6 +25,18 @@ pw_bytes/alignment.h
 ====================
 Functions for aligning sizes and addresses to memory alignment boundaries.
 
+ .. doxygenfunction:: pw::AlignDown(size_t value, size_t alignment)
+
+ .. doxygenfunction:: pw::AlignDown(T* value, size_t alignment)
+
+ .. doxygenfunction:: pw::AlignUp(size_t value, size_t alignment)
+
+ .. doxygenfunction:: pw::AlignUp(T* value, size_t alignment)
+
+ .. doxygenfunction:: pw::Padding
+
+ .. doxygenfunction:: pw::GetAlignedSubspan
+
 pw_bytes/array.h
 ================
 Functions for working with byte arrays, primarily for building fixed-size byte
@@ -53,6 +65,7 @@ features:
 * Additional functions for bit-level operations.
 
   .. doxygenfunction:: pw::bytes::SignExtend
+  .. doxygenfunction:: pw::bytes::ExtractBits
 
 pw_bytes/endian.h
 =================
@@ -64,6 +77,21 @@ This module exports a single ``_b`` literal, making it easier to create
 ``std::byte`` values for tests.
 
 .. cpp:function:: constexpr std::byte operator"" _b(unsigned long long value)
+
+.. note::
+   This should not be used in header files, as it requires a ``using``
+   declaration that will be publicly exported at whatever level it is
+   used.
+
+Example:
+
+.. code-block:: cpp
+
+   #include "pw_bytes/units.h"
+
+   using ::pw::operator""_b;
+
+   constexpr std::byte kValue = 5_b;
 
 pw_bytes/units.h
 ================

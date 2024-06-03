@@ -20,67 +20,70 @@
 namespace examples {
 
 // DOCSTAG: [pw_allocator-examples-basic-allocate]
-using pw::allocator::Allocator;
 using pw::allocator::Layout;
 
-void* AllocateNamedU32(Allocator& allocator) {
+void* AllocateNamedU32(pw::Allocator& allocator) {
   return allocator.Allocate(Layout::Of<NamedU32>());
 }
 // DOCSTAG: [pw_allocator-examples-basic-allocate]
 
 // DOCSTAG: [pw_allocator-examples-basic-deallocate]
-void DeallocateNamedU32(Allocator& allocator, void* ptr) {
-  allocator.Deallocate(ptr, Layout::Of<NamedU32>());
+void DeallocateNamedU32(pw::Allocator& allocator, void* ptr) {
+  allocator.Deallocate(ptr);
 }
 // DOCSTAG: [pw_allocator-examples-basic-deallocate]
 
 // DOCSTAG: [pw_allocator-examples-basic-new_delete]
-NamedU32* NewNamedU32(Allocator& allocator,
+NamedU32* NewNamedU32(pw::Allocator& allocator,
                       std::string_view name,
                       uint32_t value) {
   return allocator.New<NamedU32>(name, value);
 }
 
-void DeleteNamedU32(Allocator& allocator, NamedU32* named_u32) {
+void DeleteNamedU32(pw::Allocator& allocator, NamedU32* named_u32) {
   allocator.Delete<NamedU32>(named_u32);
 }
 // DOCSTAG: [pw_allocator-examples-basic-new_delete]
 
 // DOCSTAG: [pw_allocator-examples-basic-make_unique]
-pw::allocator::UniquePtr<NamedU32> MakeNamedU32(Allocator& allocator,
-                                                std::string_view name,
-                                                uint32_t value) {
+pw::UniquePtr<NamedU32> MakeNamedU32(pw::Allocator& allocator,
+                                     std::string_view name,
+                                     uint32_t value) {
   return allocator.MakeUnique<NamedU32>(name, value);
 }
 // DOCSTAG: [pw_allocator-examples-basic-make_unique]
 
 }  // namespace examples
 
-namespace pw::allocator {
+namespace {
 
-TEST(BasicExample, AllocateNamedU32) {
-  test::AllocatorForTest<256> allocator;
-  void* ptr = examples::AllocateNamedU32(allocator);
+using AllocatorForTest = ::pw::allocator::test::AllocatorForTest<256>;
+
+class BasicExampleTest : public ::testing::Test {
+ protected:
+  AllocatorForTest allocator_;
+};
+
+TEST_F(BasicExampleTest, AllocateNamedU32) {
+  void* ptr = examples::AllocateNamedU32(allocator_);
   ASSERT_NE(ptr, nullptr);
-  examples::DeallocateNamedU32(allocator, ptr);
+  examples::DeallocateNamedU32(allocator_, ptr);
 }
 
-TEST(BasicExample, NewNamedU32) {
-  test::AllocatorForTest<256> allocator;
-  auto* named_u32 = examples::NewNamedU32(allocator, "test1", 111);
+TEST_F(BasicExampleTest, NewNamedU32) {
+  auto* named_u32 = examples::NewNamedU32(allocator_, "test1", 111);
   ASSERT_NE(named_u32, nullptr);
   EXPECT_STREQ(named_u32->name().data(), "test1");
   EXPECT_EQ(named_u32->value(), 111U);
-  examples::DeleteNamedU32(allocator, named_u32);
+  examples::DeleteNamedU32(allocator_, named_u32);
 }
 
-TEST(BasicExample, MakeNamedU32) {
-  test::AllocatorForTest<256> allocator;
-  UniquePtr<examples::NamedU32> named_u32 =
-      examples::MakeNamedU32(allocator, "test2", 222);
+TEST_F(BasicExampleTest, MakeNamedU32) {
+  pw::UniquePtr<examples::NamedU32> named_u32 =
+      examples::MakeNamedU32(allocator_, "test2", 222);
   ASSERT_NE(named_u32, nullptr);
   EXPECT_STREQ(named_u32->name().data(), "test2");
   EXPECT_EQ(named_u32->value(), 222U);
 }
 
-}  // namespace pw::allocator
+}  // namespace

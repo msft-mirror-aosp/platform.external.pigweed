@@ -18,24 +18,28 @@ more build directories.
 
 Examples:
 
-  # Build the default target in out/ using ninja.
-  python -m pw_build.project_builder -C out
+.. code-block: sh
 
-  # Build pw_run_tests.modules in the out/cmake directory
-  python -m pw_build.project_builder -C out/cmake pw_run_tests.modules
+   # Build the default target in out/ using ninja.
+   python -m pw_build.project_builder -C out
 
-  # Build the default target in out/ and pw_apps in out/cmake
-  python -m pw_build.project_builder -C out -C out/cmake pw_apps
+   # Build pw_run_tests.modules in the out/cmake directory
+   python -m pw_build.project_builder -C out/cmake pw_run_tests.modules
 
-  # Build python.tests in out/ and pw_apps in out/cmake/
-  python -m pw_build.project_builder python.tests -C out/cmake pw_apps
+   # Build the default target in out/ and pw_apps in out/cmake
+   python -m pw_build.project_builder -C out -C out/cmake pw_apps
 
-  # Run 'bazel build' and 'bazel test' on the target '//...' in outbazel/
-  python -m pw_build.project_builder --run-command 'mkdir -p outbazel'
-  -C outbazel '//...'
-  --build-system-command outbazel 'bazel build'
-  --build-system-command outbazel 'bazel test'
+   # Build python.tests in out/ and pw_apps in out/cmake/
+   python -m pw_build.project_builder python.tests -C out/cmake pw_apps
+
+   # Run 'bazel build' and 'bazel test' on the target '//...' in outbazel/
+   python -m pw_build.project_builder --run-command 'mkdir -p outbazel'
+   -C outbazel '//...'
+   --build-system-command outbazel 'bazel build'
+   --build-system-command outbazel 'bazel test'
 """
+
+from __future__ import annotations
 
 import argparse
 import concurrent.futures
@@ -347,7 +351,7 @@ def execute_command_with_logging(
 
 def log_build_recipe_start(
     index_message: str,
-    project_builder: 'ProjectBuilder',
+    project_builder: ProjectBuilder,
     cfg: BuildRecipe,
     logger: logging.Logger = _LOG,
 ) -> None:
@@ -386,7 +390,7 @@ def log_build_recipe_start(
 
 def log_build_recipe_finish(
     index_message: str,
-    project_builder: 'ProjectBuilder',
+    project_builder: ProjectBuilder,
     cfg: BuildRecipe,
     logger: logging.Logger = _LOG,
 ) -> None:
@@ -759,9 +763,13 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             # Force Ninja to output ANSI colors
             env['CLICOLOR_FORCE'] = '1'
 
-        build_succeded = False
+        build_succeeded = False
         cfg.reset_status()
         cfg.status.mark_started()
+
+        if cfg.auto_create_build_dir:
+            cfg.build_dir.mkdir(parents=True, exist_ok=True)
+
         for command_step in cfg.steps:
             command_args = command_step.get_args(
                 additional_ninja_args=self.extra_ninja_args,
@@ -769,20 +777,10 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
                 additional_bazel_build_args=self.extra_bazel_build_args,
             )
 
-            # Verify that the build output directories exist.
-            if (
-                command_step.build_system_command is not None
-                and cfg.build_dir
-                and (not cfg.build_dir.is_dir())
-            ):
-                self.abort_callback(
-                    'Build directory does not exist: %s', cfg.build_dir
-                )
-
             quoted_command_args = ' '.join(
                 shlex.quote(arg) for arg in command_args
             )
-            build_succeded = True
+            build_succeeded = True
             if command_step.should_run():
                 cfg.log.info(
                     '%s %s %s',
@@ -790,7 +788,18 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
                     self.color.blue('Run ==>'),
                     quoted_command_args,
                 )
-                build_succeded = self.execute_command(
+
+                # Verify that the build output directories exist.
+                if (
+                    command_step.build_system_command is not None
+                    and cfg.build_dir
+                    and (not cfg.build_dir.is_dir())
+                ):
+                    self.abort_callback(
+                        'Build directory does not exist: %s', cfg.build_dir
+                    )
+
+                build_succeeded = self.execute_command(
                     command_args, env, cfg, cfg.log, None
                 )
             else:
@@ -803,17 +812,17 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
 
             BUILDER_CONTEXT.mark_progress_step_complete(cfg)
             # Don't run further steps if a command fails.
-            if not build_succeded:
+            if not build_succeeded:
                 break
 
         # If all steps were skipped the return code will not be set. Force
         # status to passed in this case.
-        if build_succeded and not cfg.status.passed():
+        if build_succeeded and not cfg.status.passed():
             cfg.status.set_passed()
 
         cfg.status.mark_done()
 
-        return build_succeded
+        return build_succeeded
 
     def print_pass_fail_banner(
         self,
@@ -907,9 +916,16 @@ def run_recipe(
 
 
 def run_builds(project_builder: ProjectBuilder, workers: int = 1) -> int:
-    """Execute build steps in the ProjectBuilder and print a summary.
+    """Execute all build recipe steps.
 
-    Returns: 1 for a failed build, 0 for success."""
+    Args:
+      project_builder: A ProjectBuilder instance
+      workers: The number of build recipes that should be run in
+        parallel. Defaults to 1 or no parallel execution.
+
+    Returns:
+      1 for a failed build, 0 for success.
+    """
     num_builds = len(project_builder)
     _LOG.info('Starting build with %d directories', num_builds)
     if project_builder.default_logfile:

@@ -20,30 +20,74 @@ This module provides the following:
 - Test utilities for testing allocator implementations. These are typically used
   by allocator implementers.
 
-.. _module-pw_allocator-api-allocator:
-
-------------------------
-pw::allocator::Allocator
-------------------------
-.. doxygenclass:: pw::allocator::Allocator
-   :members:
+---------------
+Core interfaces
+---------------
+This module defines several types as part of a generic interface for memory
+users.
 
 .. _module-pw_allocator-api-layout:
 
 Layout
 ======
+A request for memory includes a requested size and alignment as a ``Layout``:
+
 .. doxygenclass:: pw::allocator::Layout
+   :members:
+
+.. _module-pw_allocator-api-allocator:
+
+Allocator
+=========
+``Allocator`` is the most commonly used interface. It can be used to request
+memory of different layouts:
+
+.. doxygenclass:: pw::Allocator
+   :members:
+
+.. _module-pw_allocator-api-pool:
+
+Pool
+====
+``Pool`` differs from ``Allocator`` in that it can be used to request memory of
+a single, fixed layout:
+
+.. doxygenclass:: pw::allocator::Pool
+   :members:
+
+.. _module-pw_allocator-api-deallocator:
+
+Deallocator
+===========
+Both ``Allocator`` and ``Pool`` derive from and extend ``Deallocator``. This
+type is intended for allocator implementers and not for module consumers.
+
+.. doxygenclass:: pw::Deallocator
+   :members:
+
+.. _module-pw_allocator-api-capabilities:
+
+Capabilities
+============
+Types deriving from ``MemoryResource`` can communicate about their optional
+methods and behaviors using ``Capabilities``. This type is intended for
+allocator implementers and not for module consumers.
+
+.. doxygenclass:: pw::allocator::Capabilities
    :members:
 
 .. _module-pw_allocator-api-unique_ptr:
 
 UniquePtr
 =========
-.. doxygenclass:: pw::allocator::UniquePtr
+The ``UniquePtr`` smart pointer type can be created by any type deriving from
+``MemoryResource``.
+
+.. doxygenclass:: pw::UniquePtr
    :members:
 
 -------------------------
-Allocator Implementations
+Allocator implementations
 -------------------------
 This module provides several concrete allocator implementations of the
 :ref:`module-pw_allocator-api-allocator` interface:
@@ -52,7 +96,7 @@ This module provides several concrete allocator implementations of the
 
 BlockAllocator
 ==============
-.. doxygenclass:: pw::allocator::internal::BlockAllocator
+.. doxygenclass:: pw::allocator::BlockAllocator
    :members:
 
 .. _module-pw_allocator-api-first_fit_block_allocator:
@@ -90,6 +134,34 @@ DualFirstFitBlockAllocator
 .. doxygenclass:: pw::allocator::DualFirstFitBlockAllocator
    :members:
 
+.. _module-pw_allocator-api-bucket_block_allocator:
+
+BucketBlockAllocator
+====================
+.. doxygenclass:: pw::allocator::BucketBlockAllocator
+   :members:
+
+.. _module-pw_allocator-api-buddy_allocator:
+
+BuddyAllocator
+==============
+.. doxygenclass:: pw::allocator::BuddyAllocator
+   :members:
+
+.. _module-pw_allocator-api-bump_allocator:
+
+BumpAllocator
+=============
+.. doxygenclass:: pw::allocator::BumpAllocator
+   :members:
+
+.. _module-pw_allocator-api-chunk_pool:
+
+ChunkPool
+=========
+.. doxygenclass:: pw::allocator::ChunkPool
+   :members:
+
 .. _module-pw_allocator-api-libc_allocator:
 
 LibCAllocator
@@ -104,6 +176,13 @@ NullAllocator
 .. doxygenclass:: pw::allocator::NullAllocator
    :members:
 
+.. _module-pw_allocator-api-typed_pool:
+
+TypedPool
+=========
+.. doxygenclass:: pw::allocator::TypedPool
+   :members:
+
 .. TODO: b/328076428 - Update FreeListHeap or remove
 
 ---------------------
@@ -111,6 +190,20 @@ Forwarding Allocators
 ---------------------
 This module provides several "forwarding" allocators, as described in
 :ref:`module-pw_allocator-design-forwarding`.
+
+.. _module-pw_allocator-api-allocator_as_pool:
+
+AllocatorAsPool
+===============
+.. doxygenclass:: pw::allocator::AllocatorAsPool
+   :members:
+
+.. _module-pw_allocator-api-as_pmr_allocator:
+
+AsPmrAllocator
+==============
+.. doxygenclass:: pw::allocator::AsPmrAllocator
+   :members:
 
 .. _module-pw_allocator-api-fallback_allocator:
 
@@ -130,7 +223,7 @@ SynchronizedAllocator
 
 TrackingAllocator
 =================
-.. doxygenclass:: pw::allocator::TrackingAllocatorImpl
+.. doxygenclass:: pw::allocator::TrackingAllocator
    :members:
 
 ---------------
@@ -152,6 +245,13 @@ Block
    abstraction in this manner will limit your flexibility to change to a
    different allocator in the future.
 
+.. _module-pw_allocator-api-bucket:
+
+Bucket
+======
+.. doxygenclass:: pw::allocator::internal::Bucket
+   :members:
+
 .. _module-pw_allocator-api-metrics_adapter:
 
 Metrics
@@ -164,13 +264,7 @@ This class is templated on a ``MetricsType`` struct. See
 struct, this class, and :ref:`module-pw_allocator-api-tracking_allocator`
 interact.
 
-This modules also includes two concrete metrics types that can be used as the
-template parameter of this class:
-
-- ``AllMetrics``, which enables all metrics.
-- ``NoMetrics``, which disables all metrics.
-
-Additionally, module consumers can define their own metrics structs using the
+Module consumers can define their own metrics structs using the
 following macros:
 
 .. doxygendefine:: PW_ALLOCATOR_METRICS_DECLARE
@@ -191,12 +285,6 @@ Buffer management
 .. doxygenclass:: pw::allocator::WithBuffer
    :members:
 
-The following utility functions are available to allocator implementers. They
-are not intended to be used by module consumers.
-
-.. doxygenfunction:: pw::allocator::GetAlignedSubspan
-.. doxygenfunction:: pw::allocator::IsWithin
-
 ------------
 Test support
 ------------
@@ -211,17 +299,17 @@ AllocatorForTest
 .. doxygenclass:: pw::allocator::test::AllocatorForTest
    :members:
 
-.. _module-pw_allocator-api-allocator_test_harness:
+.. _module-pw_allocator-api-test_harness:
 
-AllocatorTestHarness
-====================
-.. doxygenclass:: pw::allocator::test::AllocatorTestHarness
+TestHarness
+===========
+.. doxygenclass:: pw::allocator::test::TestHarness
    :members:
 
 .. _module-pw_allocator-api-fuzzing_support:
 
 FuzzTest support
 ================
-.. doxygenfunction:: pw::allocator::test::ArbitraryAllocatorRequest
-.. doxygenfunction:: pw::allocator::test::ArbitraryAllocatorRequests
-.. doxygenfunction:: pw::allocator::test::MakeAllocatorRequest
+.. doxygenfunction:: pw::allocator::test::ArbitraryRequest
+.. doxygenfunction:: pw::allocator::test::ArbitraryRequests
+.. doxygenfunction:: pw::allocator::test::MakeRequest

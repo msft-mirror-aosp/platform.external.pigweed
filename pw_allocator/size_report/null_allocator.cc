@@ -16,17 +16,11 @@
 
 #include "pw_allocator/size_reporter.h"
 
-namespace pw::allocator {
-
-void Run() {
-  SizeReporter size_reporter;
-  NullAllocator allocator;
-  size_reporter.MeasureAllocator(&allocator);
-}
-
-}  // namespace pw::allocator
-
 int main() {
-  pw::allocator::Run();
+  pw::allocator::SizeReporter reporter;
+  reporter.SetBaseline();
+
+  reporter.Measure(pw::allocator::GetNullAllocator());
+
   return 0;
 }

@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:22581fb46c0c0c9530caa67149ee4dd8811063cf"
+        "git_revision:df98b86690c83b81aedc909ded18857296406159"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -71,7 +71,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:b81bb0e1d0acc3db64557ed699ccba751b8b511a"
+        "git_revision:145176dc0c93566ce4aef721044d49ab8ba50f87"
       ],
       "version_file": ".versions/clang.cipd_version"
     },
@@ -80,6 +80,47 @@
       "platforms": [
         "linux-amd64",
         "linux-arm64",
+        "mac-amd64",
+        "mac-arm64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/aarch64-unknown-linux-gnu",
+      "platforms": [
+        "linux-arm64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/x86_64-unknown-linux-gnu",
+      "platforms": [
+        "linux-amd64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/aarch64-apple-darwin",
+      "platforms": [
+        "mac-arm64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/x86_64-apple-darwin",
+      "platforms": [
         "mac-amd64"
       ],
       "subdir": "rust",
@@ -122,14 +163,14 @@
       "version_file": ".versions/qemu.cipd_version"
     },
     {
-      "path": "fuchsia/third_party/sysroot/linux",
+      "path": "fuchsia/third_party/sysroot/bionic",
       "platforms": [
         "linux-amd64",
         "linux-arm64"
       ],
       "subdir": "clang_sysroot",
       "tags": [
-        "git_revision:d342388843734b6c5c50fb7e18cd3a76476b93aa"
+        "git_revision:702eb9654703a7cec1cadf93a7e3aa269d053943"
       ]
     },
     {

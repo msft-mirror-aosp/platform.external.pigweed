@@ -13,22 +13,37 @@
 # the License.
 """Creates a new Pigweed module."""
 
+from __future__ import annotations
+
 import abc
 import argparse
 import dataclasses
 from dataclasses import dataclass
 import datetime
+import difflib
+from enum import Enum
+import functools
+import json
 import logging
-import os
 from pathlib import Path
 import re
 import sys
+from typing import Any, Collection, Iterable, Type
 
-from typing import Any, Iterable, Type
+from prompt_toolkit import prompt
 
 from pw_build import generate_modules_lists
+import pw_cli.color
+import pw_cli.env
+from pw_cli.status_reporter import StatusReporter
+from pw_presubmit.tools import colorize_diff
 
+from pw_module.templates import get_template
+
+_COLOR = pw_cli.color.colors()
 _LOG = logging.getLogger(__name__)
+_PW_ENV = pw_cli.env.pigweed_environment()
+_PW_ROOT = _PW_ENV.PW_ROOT
 
 _PIGWEED_LICENSE = f"""
 # Copyright {datetime.datetime.now().year} The Pigweed Authors
@@ -46,6 +61,125 @@ _PIGWEED_LICENSE = f"""
 # the License.""".lstrip()
 
 _PIGWEED_LICENSE_CC = _PIGWEED_LICENSE.replace('#', '//')
+
+_CREATE = _COLOR.green('create    ')
+_REPLACE = _COLOR.green('replace   ')
+_UPDATE = _COLOR.yellow('update    ')
+_UNCHANGED = _COLOR.blue('unchanged ')
+_IDENTICAL = _COLOR.blue('identical ')
+_REPORT = StatusReporter()
+
+
+def _report_write_file(file_path: Path) -> None:
+    """Print a notification when a file is newly created or replaced."""
+    relative_file_path = str(file_path.relative_to(_PW_ROOT))
+    if file_path.is_file():
+        _REPORT.info(_REPLACE + relative_file_path)
+        return
+    _REPORT.new(_CREATE + relative_file_path)
+
+
+def _report_unchanged_file(file_path: Path) -> None:
+    """Print a notification a file was not updated/changed."""
+    relative_file_path = str(file_path.relative_to(_PW_ROOT))
+    _REPORT.ok(_UNCHANGED + relative_file_path)
+
+
+def _report_identical_file(file_path: Path) -> None:
+    """Print a notification a file is identical."""
+    relative_file_path = str(file_path.relative_to(_PW_ROOT))
+    _REPORT.ok(_IDENTICAL + relative_file_path)
+
+
+def _report_edited_file(file_path: Path) -> None:
+    """Print a notification a file was modified/edited."""
+    relative_file_path = str(file_path.relative_to(_PW_ROOT))
+    _REPORT.new(_UPDATE + relative_file_path)
+
+
+class PromptChoice(Enum):
+    """Possible prompt responses."""
+
+    YES = 'yes'
+    NO = 'no'
+    DIFF = 'diff'
+
+
+def _prompt_user(message: str, allow_diff: bool = False) -> PromptChoice:
+    """Prompt the user for to choose between yes, no and optionally diff.
+
+    If the user presses enter with no text the response is assumed to be NO.
+    If the user presses ctrl-c call sys.exit(1).
+
+    Args:
+      message: The message to display at the start of the prompt.
+      allow_diff: If true add a 'd' to the help text in the prompt line.
+
+    Returns:
+      A PromptChoice enum value.
+    """
+    help_text = '[y/N]'
+    if allow_diff:
+        help_text = '[y/N/d]'
+
+    try:
+        decision = prompt(f'{message} {help_text} ')
+    except KeyboardInterrupt:
+        sys.exit(1)  # Ctrl-C pressed
+
+    if not decision or decision.lower().startswith('n'):
+        return PromptChoice.NO
+    if decision.lower().startswith('y'):
+        return PromptChoice.YES
+    if decision.lower().startswith('d'):
+        return PromptChoice.DIFF
+
+    return PromptChoice.NO
+
+
+def _print_diff(file_name: Path | str, in_text: str, out_text: str) -> None:
+    result_diff = list(
+        difflib.unified_diff(
+            in_text.splitlines(True),
+            out_text.splitlines(True),
+            f'{file_name}  (original)',
+            f'{file_name}  (updated)',
+        )
+    )
+    if not result_diff:
+        return
+    print()
+    print(''.join(colorize_diff(result_diff)))
+
+
+def _prompt_overwrite(file_path: Path, new_contents: str) -> bool:
+    """Returns true if a file should be written, prompts the user if needed."""
+    # File does not exist
+    if not file_path.is_file():
+        return True
+
+    # File exists but is identical.
+    old_contents = file_path.read_text(encoding='utf-8')
+    if new_contents and old_contents == new_contents:
+        _report_identical_file(file_path)
+        return False
+
+    file_name = file_path.relative_to(_PW_ROOT)
+    # File exists and is different.
+    _REPORT.wrn(f'{file_name} already exists.')
+
+    while True:
+        choice = _prompt_user('Overwrite?', allow_diff=True)
+        if choice == PromptChoice.DIFF:
+            _print_diff(file_name, old_contents, new_contents)
+        else:
+            if choice == PromptChoice.YES:
+                return True
+            break
+
+    # By default do not overwrite.
+    _report_unchanged_file(file_path)
+    return False
 
 
 # TODO(frolv): Adapted from pw_protobuf. Consolidate them.
@@ -67,7 +201,7 @@ class _OutputFile:
     def indent(
         self,
         width: int | None = None,
-    ) -> '_OutputFile._IndentationContext':
+    ) -> _OutputFile._IndentationContext:
         """Increases the indentation level of the output."""
         return self._IndentationContext(
             self, width if width is not None else self._indent_width
@@ -81,14 +215,33 @@ class _OutputFile:
     def content(self) -> str:
         return ''.join(self._content)
 
-    def write(self) -> None:
-        print('  create  ' + str(self._file.relative_to(Path.cwd())))
-        self._file.write_text(self.content)
+    def write(self, content: str | None = None) -> None:
+        """Write file contents. Prompts the user if necessary.
+
+        Args:
+          content: If provided will write this text to the file instead of
+              calling self.content.
+        """
+        output_text = self.content
+        if content:
+            output_text = content
+
+        if not output_text.endswith('\n'):
+            output_text += '\n'
+
+        if _prompt_overwrite(self._file, new_contents=output_text):
+            _report_write_file(self._file)
+            self._file.write_text(output_text)
+
+    def write_template(self, template_name: str, **template_args) -> None:
+        template = get_template(template_name)
+        rendered_template = template.render(**template_args)
+        self.write(content=rendered_template)
 
     class _IndentationContext:
         """Context that increases the output's indentation when it is active."""
 
-        def __init__(self, output: '_OutputFile', width: int):
+        def __init__(self, output: _OutputFile, width: int):
             self._output = output
             self._width: int = width
 
@@ -100,11 +253,32 @@ class _OutputFile:
 
 
 class _ModuleName:
-    _MODULE_NAME_REGEX = '(^[a-zA-Z]{2,})((_[a-zA-Z0-9]+)+)$'
+    _MODULE_NAME_REGEX = re.compile(
+        # Match the two letter character module prefix e.g. 'pw':
+        r'^(?P<prefix>[a-zA-Z]{2,})'
+        # The rest of the module name consisting of multiple groups of a single
+        # underscore followed by alphanumeric characters. This prevents multiple
+        # underscores from appearing in a row and the name from ending in a an
+        # underscore.
+        r'(?P<main>'
+        r'(_[a-zA-Z0-9]+)+'
+        r')$'
+    )
 
-    def __init__(self, prefix: str, main: str) -> None:
+    def __init__(self, prefix: str, main: str, path: Path) -> None:
         self._prefix = prefix
-        self._main = main
+        self._main = main.lstrip('_')  # Remove the leading underscore
+        self._path = path
+
+    @property
+    def path(self) -> str:
+        # Check if there are no parent directories for the full path.
+        # Note: This relies on Path('pw_module').parents returning Path('.') for
+        # paths that have no parent directories:
+        # https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.parents
+        if self._path == Path('.'):
+            return self.full
+        return (self._path / self.full).as_posix()
 
     @property
     def full(self) -> str:
@@ -125,6 +299,10 @@ class _ModuleName:
     def upper_camel_case(self) -> str:
         return ''.join(s.capitalize() for s in self._main.split('_'))
 
+    @property
+    def header_line(self) -> str:
+        return '=' * len(self.full)
+
     def __str__(self) -> str:
         return self.full
 
@@ -132,24 +310,27 @@ class _ModuleName:
         return self.full
 
     @classmethod
-    def parse(cls, name: str) -> '_ModuleName | None':
-        match = re.fullmatch(_ModuleName._MODULE_NAME_REGEX, name)
+    def parse(cls, name: str) -> _ModuleName | None:
+        module_path = Path(name)
+        module_name = module_path.name
+        match = _ModuleName._MODULE_NAME_REGEX.fullmatch(module_name)
         if not match:
             return None
 
-        return cls(match.group(1), match.group(2)[1:])
+        parts = match.groupdict()
+        return cls(parts['prefix'], parts['main'], module_path.parents[0])
 
 
 @dataclass
 class _ModuleContext:
     name: _ModuleName
     dir: Path
-    root_build_files: list['_BuildFile']
-    sub_build_files: list['_BuildFile']
+    root_build_files: list[_BuildFile]
+    sub_build_files: list[_BuildFile]
     build_systems: list[str]
     is_upstream: bool
 
-    def build_files(self) -> Iterable['_BuildFile']:
+    def build_files(self) -> Iterable[_BuildFile]:
         yield from self.root_build_files
         yield from self.sub_build_files
 
@@ -157,11 +338,11 @@ class _ModuleContext:
         for build_file in self.root_build_files:
             build_file.add_docs_source(str(file.relative_to(self.dir)))
 
-    def add_cc_target(self, target: '_BuildFile.CcTarget') -> None:
+    def add_cc_target(self, target: _BuildFile.CcTarget) -> None:
         for build_file in self.root_build_files:
             build_file.add_cc_target(target)
 
-    def add_cc_test(self, target: '_BuildFile.CcTarget') -> None:
+    def add_cc_test(self, target: _BuildFile.CcTarget) -> None:
         for build_file in self.root_build_files:
             build_file.add_cc_test(target)
 
@@ -213,6 +394,29 @@ class _BuildFile:
     def add_cc_test(self, target: CcTarget) -> None:
         self._cc_tests.append(target)
 
+    @property
+    def get_license(self) -> str:
+        if self._ctx.is_upstream:
+            return _PIGWEED_LICENSE
+        return ''
+
+    @property
+    def docs_sources(self) -> list[str]:
+        return self._docs_sources
+
+    @property
+    def cc_targets(self) -> list[_BuildFile.CcTarget]:
+        return self._cc_targets
+
+    @property
+    def cc_tests(self) -> list[_BuildFile.CcTarget]:
+        return self._cc_tests
+
+    def relative_file(self, file_path: Path | str) -> str:
+        if isinstance(file_path, str):
+            return file_path
+        return str(file_path.relative_to(self._path.parent))
+
     def write(self) -> None:
         """Writes the contents of the build file to disk."""
         file = _OutputFile(self._path, self._indent_width())
@@ -249,7 +453,7 @@ class _BuildFile:
     def _write_cc_target(
         self,
         file: _OutputFile,
-        target: '_BuildFile.CcTarget',
+        target: _BuildFile.CcTarget,
     ) -> None:
         """Defines a C++ library target within the build file."""
 
@@ -257,7 +461,7 @@ class _BuildFile:
     def _write_cc_test(
         self,
         file: _OutputFile,
-        target: '_BuildFile.CcTarget',
+        target: _BuildFile.CcTarget,
     ) -> None:
         """Defines a C++ unit test target within the build file."""
 
@@ -360,7 +564,7 @@ class _GnBuildFile(_BuildFile):
     def _write_cc_test(
         self,
         file: _OutputFile,
-        target: '_BuildFile.CcTarget',
+        target: _BuildFile.CcTarget,
     ) -> None:
         _GnBuildFile._target(
             file,
@@ -493,90 +697,39 @@ class _BazelBuildFile(_BuildFile):
     ):
         super().__init__(directory / filename, ctx)
 
+    def write(self) -> None:
+        """Writes the contents of the build file to disk."""
+        file = _OutputFile(self._path)
+        file.write_template('BUILD.bazel.jinja', build=self, module=self._ctx)
+
     def _indent_width(self) -> int:
         return 4
 
+    # TODO(tonymd): Remove these functions once all file types are created with
+    # templates.
     def _write_preamble(self, file: _OutputFile) -> None:
-        imports = ['//pw_build:pigweed.bzl']
-        if self._cc_tests:
-            imports.append('pw_cc_test')
-
-        # Add a load statement, but only if there are any symbols to load.
-        if len(imports) > 1:
-            file.line('load(')
-            with file.indent():
-                for imp in sorted(imports):
-                    file.line(f'"{imp}",')
-            file.line(')\n')
-
-        file.line('package(default_visibility = ["//visibility:public"])\n')
-        file.line('licenses(["notice"])')
+        pass
 
     def _write_cc_target(
         self,
         file: _OutputFile,
         target: _BuildFile.CcTarget,
     ) -> None:
-        _BazelBuildFile._target(
-            file,
-            'cc_library',
-            target.name,
-            {
-                'srcs': list(target.rebased_sources(self.dir)),
-                'hdrs': list(target.rebased_headers(self.dir)),
-                'includes': ['public'],
-            },
-        )
+        pass
 
     def _write_cc_test(
         self,
         file: _OutputFile,
-        target: '_BuildFile.CcTarget',
+        target: _BuildFile.CcTarget,
     ) -> None:
-        _BazelBuildFile._target(
-            file,
-            'pw_cc_test',
-            target.name,
-            {
-                'srcs': list(target.rebased_sources(self.dir)),
-                'deps': target.deps,
-            },
-        )
+        pass
 
     def _write_docs_target(
         self,
         file: _OutputFile,
         docs_sources: list[str],
     ) -> None:
-        file.line('# Bazel does not yet support building docs.')
-        _BazelBuildFile._target(
-            file, 'filegroup', 'docs', {'srcs': docs_sources}
-        )
-
-    @staticmethod
-    def _target(
-        file: _OutputFile,
-        target_type: str,
-        name: str,
-        keys: dict[str, list[str]],
-    ) -> None:
-        file.line(f'{target_type}(')
-
-        with file.indent():
-            file.line(f'name = "{name}",')
-
-            for k, vals in keys.items():
-                if len(vals) == 1:
-                    file.line(f'{k} = ["{vals[0]}"],')
-                    continue
-
-                file.line(f'{k} = [')
-                with file.indent():
-                    for val in sorted(vals):
-                        file.line(f'"{val}",')
-                file.line('],')
-
-        file.line(')')
+        pass
 
 
 class _CmakeBuildFile(_BuildFile):
@@ -590,69 +743,41 @@ class _CmakeBuildFile(_BuildFile):
     ):
         super().__init__(directory / filename, ctx)
 
+    def write(self) -> None:
+        """Writes the contents of the build file to disk."""
+        file = _OutputFile(self._path)
+        file.write_template(
+            'CMakeLists.txt.jinja', build=self, module=self._ctx
+        )
+
     def _indent_width(self) -> int:
         return 2
 
+    # TODO(tonymd): Remove these functions once all file types are created with
+    # templates.
     def _write_preamble(self, file: _OutputFile) -> None:
-        file.line('include($ENV{PW_ROOT}/pw_build/pigweed.cmake)')
+        pass
 
     def _write_cc_target(
         self,
         file: _OutputFile,
         target: _BuildFile.CcTarget,
     ) -> None:
-        if target.name == self._ctx.name.full:
-            target_name = target.name
-        else:
-            target_name = f'{self._ctx.name.full}.{target.name}'
-
-        _CmakeBuildFile._target(
-            file,
-            'pw_add_module_library',
-            target_name,
-            {
-                'sources': list(target.rebased_sources(self.dir)),
-                'headers': list(target.rebased_headers(self.dir)),
-                'public_includes': ['public'],
-            },
-        )
+        pass
 
     def _write_cc_test(
         self,
         file: _OutputFile,
-        target: '_BuildFile.CcTarget',
+        target: _BuildFile.CcTarget,
     ) -> None:
-        _CmakeBuildFile._target(
-            file,
-            'pw_auto_add_module_tests',
-            self._ctx.name.full,
-            {'private_deps': []},
-        )
+        pass
 
     def _write_docs_target(
         self,
         file: _OutputFile,
         docs_sources: list[str],
     ) -> None:
-        file.line('# CMake does not yet support building docs.')
-
-    @staticmethod
-    def _target(
-        file: _OutputFile,
-        target_type: str,
-        name: str,
-        keys: dict[str, list[str]],
-    ) -> None:
-        file.line(f'{target_type}({name}')
-
-        with file.indent():
-            for k, vals in keys.items():
-                file.line(k.upper())
-                with file.indent():
-                    for val in sorted(vals):
-                        file.line(val)
-
-        file.line(')')
+        pass
 
 
 class _LanguageGenerator:
@@ -676,7 +801,7 @@ class _CcLanguageGenerator(_LanguageGenerator):
         self._headers_dir = self._public_dir / ctx.name.full
 
     def create_source_files(self) -> None:
-        self._headers_dir.mkdir(parents=True)
+        self._headers_dir.mkdir(parents=True, exist_ok=True)
 
         main_header = self._new_header(self._ctx.name.main)
         main_source = self._new_source(self._ctx.name.main)
@@ -784,18 +909,12 @@ def _check_module_name(
 def _create_main_docs_file(ctx: _ModuleContext) -> None:
     """Populates the top-level docs.rst file within a new module."""
 
+    template = get_template('docs.rst.jinja')
+    rendered_template = template.render(module=ctx)
+
     docs_file = _OutputFile(ctx.dir / 'docs.rst')
-    docs_file.line(f'.. _module-{ctx.name}:\n')
-
-    title = '=' * len(ctx.name.full)
-    docs_file.line(title)
-    docs_file.line(ctx.name.full)
-    docs_file.line(title)
-    docs_file.line(f'This is the main documentation file for {ctx.name}.')
-
     ctx.add_docs_file(docs_file.path)
-
-    docs_file.write()
+    docs_file.write(content=rendered_template)
 
 
 def _basic_module_setup(
@@ -805,7 +924,9 @@ def _basic_module_setup(
     is_upstream: bool,
 ) -> _ModuleContext:
     """Creates the basic layout of a Pigweed module."""
-    module_dir.mkdir()
+    module_dir.mkdir(parents=True, exist_ok=True)
+    public_dir = module_dir / 'public' / module_name.full
+    public_dir.mkdir(parents=True, exist_ok=True)
 
     ctx = _ModuleContext(
         name=module_name,
@@ -825,13 +946,137 @@ def _basic_module_setup(
     return ctx
 
 
-def _create_module(
-    module: str, languages: Iterable[str], build_systems: Iterable[str]
+def _add_to_module_metadata(
+    project_root: Path,
+    module_name: _ModuleName,
+    languages: Iterable[str] | None = None,
 ) -> None:
-    project_root = Path(os.environ.get('PW_PROJECT_ROOT', ''))
-    assert project_root.is_dir()
+    """Update sphinx module metadata."""
+    module_metadata_file = project_root / 'docs/module_metadata.json'
+    metadata_dict = json.loads(module_metadata_file.read_text())
 
-    is_upstream = os.environ.get('PW_ROOT') == str(project_root)
+    language_tags = []
+    if languages:
+        for lang in languages:
+            if lang == 'cc':
+                language_tags.append('C++')
+
+    # Add the new entry if it doesn't exist
+    if module_name.full not in metadata_dict:
+        metadata_dict[module_name.full] = dict(
+            status='experimental',
+            languages=language_tags,
+        )
+
+    # Sort by module name.
+    sorted_metadata = dict(
+        sorted(metadata_dict.items(), key=lambda item: item[0])
+    )
+    output_text = json.dumps(sorted_metadata, sort_keys=False, indent=2)
+    output_text += '\n'
+
+    # Write the file.
+    if _prompt_overwrite(module_metadata_file, new_contents=output_text):
+        _report_write_file(module_metadata_file)
+        module_metadata_file.write_text(output_text)
+
+
+def _add_to_pigweed_modules_file(
+    project_root: Path,
+    module_name: _ModuleName,
+) -> None:
+    modules_file = project_root / 'PIGWEED_MODULES'
+    if not modules_file.exists():
+        _LOG.error(
+            'Could not locate PIGWEED_MODULES file; '
+            'your repository may be in a bad state.'
+        )
+        return
+
+    modules_gni_file = (
+        project_root / 'pw_build' / 'generated_pigweed_modules_lists.gni'
+    )
+
+    # Cut off the extra newline at the end of the file.
+    modules_list = modules_file.read_text().splitlines()
+    if module_name.path in modules_list:
+        _report_unchanged_file(modules_file)
+        return
+    modules_list.append(module_name.path)
+    modules_list.sort()
+    modules_list.append('')
+    modules_file.write_text('\n'.join(modules_list))
+    _report_edited_file(modules_file)
+
+    generate_modules_lists.main(
+        root=project_root,
+        modules_list=modules_file,
+        modules_gni_file=modules_gni_file,
+        mode=generate_modules_lists.Mode.UPDATE,
+    )
+    _report_edited_file(modules_gni_file)
+
+
+def _add_to_root_cmakelists(
+    project_root: Path,
+    module_name: _ModuleName,
+) -> None:
+    new_line = f'add_subdirectory({module_name.path} EXCLUDE_FROM_ALL)\n'
+
+    path = project_root / 'CMakeLists.txt'
+    if not path.exists():
+        _LOG.error('Could not locate root CMakeLists.txt file.')
+        return
+
+    lines = path.read_text().splitlines(keepends=True)
+    if new_line in lines:
+        _report_unchanged_file(path)
+        return
+
+    add_subdir_start = 0
+    while add_subdir_start < len(lines):
+        if lines[add_subdir_start].startswith('add_subdirectory'):
+            break
+        add_subdir_start += 1
+
+    insert_point = add_subdir_start
+    while (
+        lines[insert_point].startswith('add_subdirectory')
+        and lines[insert_point] < new_line
+    ):
+        insert_point += 1
+
+    lines.insert(insert_point, new_line)
+    path.write_text(''.join(lines))
+    _report_edited_file(path)
+
+
+def _project_root() -> Path:
+    """Returns the path to the root directory of the current project."""
+    project_root = _PW_ENV.PW_PROJECT_ROOT
+    if not project_root.is_dir():
+        _LOG.error(
+            'Expected env var $PW_PROJECT_ROOT to point to a directory, but '
+            'found `%s` which is not a directory.',
+            project_root,
+        )
+        sys.exit(1)
+    return project_root
+
+
+def _is_upstream() -> bool:
+    """Returns whether this command is being run within Pigweed itself."""
+    return _PW_ROOT == _project_root()
+
+
+def _create_module(
+    module: str,
+    languages: Iterable[str],
+    build_systems: Iterable[str],
+    owners: Collection[str] | None = None,
+) -> None:
+    project_root = _project_root()
+    is_upstream = _is_upstream()
 
     module_name = _check_module_name(module, is_upstream)
     if not module_name:
@@ -847,8 +1092,9 @@ def _create_module(
     module_dir = project_root / module
 
     if module_dir.is_dir():
-        _LOG.error('Module %s already exists', module)
-        sys.exit(1)
+        _REPORT.wrn(f'Directory {module} already exists.')
+        if _prompt_user('Continue?') == PromptChoice.NO:
+            sys.exit(1)
 
     if module_dir.is_file():
         _LOG.error(
@@ -857,9 +1103,42 @@ def _create_module(
         )
         sys.exit(1)
 
+    if owners is not None:
+        if len(owners) < 2:
+            _LOG.error(
+                'New modules must have at least two owners, but only `%s` was '
+                'provided.',
+                owners,
+            )
+            sys.exit(1)
+        for owner in owners:
+            if '@' not in owner:
+                _LOG.error(
+                    'Owners should be email addresses, but found `%s`', owner
+                )
+                sys.exit(1)
+        root_owners = (project_root / 'OWNERS').read_text().split('\n')
+        if not any(owner in root_owners for owner in owners):
+            root_owners_str = '\n'.join(root_owners)
+            _LOG.error(
+                'Module owners must include at least one root owner, but only '
+                '`%s` was provided. Root owners include:\n%s',
+                owners,
+                root_owners_str,
+            )
+            sys.exit(1)
+
     ctx = _basic_module_setup(
         module_name, module_dir, build_systems, is_upstream
     )
+
+    if owners is not None:
+        owners_file = module_dir / 'OWNERS'
+        owners_text = '\n'.join(sorted(owners))
+        owners_text += '\n'
+        if _prompt_overwrite(owners_file, new_contents=owners_text):
+            _report_write_file(owners_file)
+            owners_file.write_text(owners_text)
 
     try:
         generators = list(_LANGUAGE_GENERATORS[lang](ctx) for lang in languages)
@@ -874,44 +1153,30 @@ def _create_module(
         build_file.write()
 
     if is_upstream:
-        modules_file = project_root / 'PIGWEED_MODULES'
-        if not modules_file.exists():
-            _LOG.error(
-                'Could not locate PIGWEED_MODULES file; '
-                'your repository may be in a bad state.'
-            )
-            return
-
-        modules_gni_file = (
-            project_root / 'pw_build' / 'generated_pigweed_modules_lists.gni'
-        )
-
-        # Cut off the extra newline at the end of the file.
-        modules_list = modules_file.read_text().split('\n')[:-1]
-        modules_list.append(module_name.full)
-        modules_list.sort()
-        modules_list.append('')
-        modules_file.write_text('\n'.join(modules_list))
-        print('  modify  ' + str(modules_file.relative_to(Path.cwd())))
-
-        generate_modules_lists.main(
-            root=project_root,
-            modules_list=modules_file,
-            modules_gni_file=modules_gni_file,
-            mode=generate_modules_lists.Mode.UPDATE,
-        )
-        print('  modify  ' + str(modules_gni_file.relative_to(Path.cwd())))
+        _add_to_pigweed_modules_file(project_root, module_name)
+        _add_to_module_metadata(project_root, module_name, languages)
+        if 'cmake' in build_systems:
+            _add_to_root_cmakelists(project_root, module_name)
 
     print()
-    _LOG.info(
-        'Module %s created at %s',
-        module_name,
-        module_dir.relative_to(Path.cwd()),
-    )
+    _REPORT.new(f'{module_name} created at: {module_dir.relative_to(_PW_ROOT)}')
 
 
 def register_subcommand(parser: argparse.ArgumentParser) -> None:
+    """Registers the module `create` subcommand with `parser`."""
     csv = lambda s: s.split(',')
+
+    def csv_with_choices(choices: list[str], string) -> list[str]:
+        chosen_items = list(string.split(','))
+        invalid_items = set(chosen_items) - set(choices)
+        if invalid_items:
+            raise argparse.ArgumentTypeError(
+                '\n'
+                f'  invalid items: [ {", ".join(invalid_items)} ].\n'
+                f'  choose from: [ {", ".join(choices)} ]'
+            )
+
+        return chosen_items
 
     parser.add_argument(
         '--build-systems',
@@ -919,9 +1184,8 @@ def register_subcommand(parser: argparse.ArgumentParser) -> None:
             'Comma-separated list of build systems the module supports. '
             f'Options: {", ".join(_BUILD_FILES.keys())}'
         ),
-        type=csv,
         default=_BUILD_FILES.keys(),
-        metavar='BUILD[,BUILD,...]',
+        type=functools.partial(csv_with_choices, _BUILD_FILES.keys()),
     )
     parser.add_argument(
         '--languages',
@@ -929,10 +1193,22 @@ def register_subcommand(parser: argparse.ArgumentParser) -> None:
             'Comma-separated list of languages the module will use. '
             f'Options: {", ".join(_LANGUAGE_GENERATORS.keys())}'
         ),
-        type=csv,
         default=[],
-        metavar='LANG[,LANG,...]',
+        type=functools.partial(csv_with_choices, _LANGUAGE_GENERATORS.keys()),
     )
+    if _is_upstream():
+        parser.add_argument(
+            '--owners',
+            help=(
+                'Comma-separated list of emails of the people who will own and '
+                'maintain the new module. This list must contain at least two '
+                'entries, and at least one user must be a top-level OWNER '
+                f'(listed in `{_project_root()}/OWNERS`).'
+            ),
+            required=True,
+            metavar='firstownername@google.com,secondownername@foo.net',
+            type=csv,
+        )
     parser.add_argument(
         'module', help='Name of the module to create.', metavar='MODULE_NAME'
     )

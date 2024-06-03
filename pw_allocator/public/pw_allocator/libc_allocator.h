@@ -16,6 +16,7 @@
 #include <cstddef>
 
 #include "pw_allocator/allocator.h"
+#include "pw_allocator/capability.h"
 
 namespace pw::allocator {
 
@@ -23,22 +24,33 @@ namespace pw::allocator {
 ///
 /// TODO: b/301930507 - `aligned_alloc` is not portable. As a result, this
 /// allocator has a maximum alignment of `std::align_max_t`.
-class LibCAllocator : public Allocator {
+class LibCAllocator final : public Allocator {
  public:
-  constexpr LibCAllocator() = default;
+  static constexpr Capabilities kCapabilities = 0;
+
+  // TODO(b/326509341): Make the constructor private once downstream consumers
+  // are migrated.
+  friend LibCAllocator& GetLibCAllocator();
+  constexpr LibCAllocator() : Allocator(kCapabilities) {}
 
  private:
   /// @copydoc Allocator::Allocate
   void* DoAllocate(Layout layout) override;
 
   /// @copydoc Allocator::Deallocate
-  void DoDeallocate(void* ptr, Layout layout) override;
+  void DoDeallocate(void* ptr) override;
 
-  /// @copydoc Allocator::Resize
-  bool DoResize(void* ptr, Layout layout, size_t new_size) override;
+  /// @copydoc Allocator::Deallocate
+  void DoDeallocate(void* ptr, Layout) override { DoDeallocate(ptr); }
 
   /// @copydoc Allocator::Reallocate
-  void* DoReallocate(void* ptr, Layout layout, size_t new_size) override;
+  void* DoReallocate(void* ptr, Layout new_layout) override;
+
+ private:
+  static LibCAllocator kSingleton;
 };
+
+/// Returns a reference to the LibCAllocator singleton.
+LibCAllocator& GetLibCAllocator();
 
 }  // namespace pw::allocator

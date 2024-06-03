@@ -24,6 +24,7 @@
 #include "pw_bytes/span.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
+#include "pw_status/try.h"
 
 namespace pw::allocator {
 namespace internal {
@@ -118,11 +119,20 @@ class Block {
 
   /// @brief Creates the first block for a given memory region.
   ///
-  /// @retval OK                    Returns a block representing the region.
-  /// @retval INVALID_ARGUMENT      The region is null.
-  /// @retval RESOURCE_EXHAUSTED    The region is too small for a block.
-  /// @retval OUT_OF_RANGE          The region is too big to be addressed using
-  ///                               `OffsetType`.
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: Returns a block representing the region.
+  ///
+  ///    INVALID_ARGUMENT: The region is null.
+  ///
+  ///    RESOURCE_EXHAUSTED: The region is too small for a block.
+  ///
+  ///    OUT_OF_RANGE: The region is too big to be addressed using
+  ///    ``OffsetType``.
+  ///
+  /// @endrst
   static Result<Block*> Init(ByteSpan region);
 
   /// @returns  A pointer to a `Block`, given a pointer to the start of the
@@ -153,6 +163,10 @@ class Block {
   /// @returns The number of usable bytes inside the block.
   size_t InnerSize() const { return OuterSize() - kBlockOverhead; }
 
+  /// @returns The number of bytes requested using AllocFirst, AllocLast, or
+  /// Resize.
+  size_t RequestedSize() const { return InnerSize() - padding_; }
+
   /// @returns A pointer to the usable space inside this block.
   std::byte* UsableSpace() {
     return std::launder(reinterpret_cast<std::byte*>(this) + kBlockOverhead);
@@ -161,19 +175,6 @@ class Block {
     return std::launder(reinterpret_cast<const std::byte*>(this) +
                         kBlockOverhead);
   }
-
-  /// Checks if an aligned block could be split from the start of the block.
-  ///
-  /// This method will return the same status as `AllocFirst` without performing
-  /// any modifications.
-  ///
-  /// @pre The block must not be in use.
-  ///
-  /// @retval   OK                  The split would complete successfully.
-  /// @retval   FAILED_PRECONDITION This block is in use and cannot be split.
-  /// @retval   OUT_OF_RANGE        The requested size plus padding needed for
-  ///                               alignment is greater than the current size.
-  Status CanAllocFirst(size_t inner_size, size_t alignment) const;
 
   /// Splits an aligned block from the start of the block, and marks it as used.
   ///
@@ -188,26 +189,43 @@ class Block {
   ///
   /// @pre The block must not be in use.
   ///
-  /// @retval   OK                  The split completed successfully.
-  /// @retval   FAILED_PRECONDITION This block is in use and cannot be split.
-  /// @retval   OUT_OF_RANGE        The requested size plus padding needed for
-  ///                               alignment is greater than the current size.
-  static Status AllocFirst(Block*& block, size_t inner_size, size_t alignment);
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The split completed successfully.
+  ///
+  ///    FAILED_PRECONDITION: This block is in use and cannot be split.
+  ///
+  ///    OUT_OF_RANGE: The requested size plus padding needed for alignment
+  ///    is greater than the current size.
+  ///
+  /// @endrst
+  static Status AllocFirst(Block*& block, Layout layout);
 
   /// Checks if an aligned block could be split from the end of the block.
   ///
-  /// This method will return the same status as `AllocLast` without performing
-  /// any modifications.
+  /// On error, this method will return the same status as `AllocLast` without
+  /// performing any modifications.
   ///
   /// @pre The block must not be in use.
   ///
-  /// @retval   OK                  The split completed successfully.
-  /// @retval   FAILED_PRECONDITION This block is in use and cannot be split.
-  /// @retval   OUT_OF_RANGE        The requested size is greater than the
-  ///                               current size.
-  /// @retval   RESOURCE_EXHAUSTED  The remaining space is too small to hold a
-  ///                               new block.
-  Status CanAllocLast(size_t inner_size, size_t alignment) const;
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: Returns the number of bytes to shift this block in order to align
+  ///    its usable space.
+  ///
+  ///    FAILED_PRECONDITION: This block is in use and cannot be split.
+  ///
+  ///    OUT_OF_RANGE: The requested size is greater than the current size.
+  ///
+  ///    RESOURCE_EXHAUSTED: The remaining space is too small to hold a
+  ///    new block.
+  ///
+  /// @endrst
+  StatusWithSize CanAllocLast(Layout layout) const;
 
   /// Splits an aligned block from the end of the block, and marks it as used.
   ///
@@ -221,13 +239,21 @@ class Block {
   ///
   /// @pre The block must not be in use.
   ///
-  /// @retval   OK                  The split completed successfully.
-  /// @retval   FAILED_PRECONDITION This block is in use and cannot be split.
-  /// @retval   OUT_OF_RANGE        The requested size is greater than the
-  ///                               current size.
-  /// @retval   RESOURCE_EXHAUSTED  The remaining space is too small to hold a
-  ///                               new block.
-  static Status AllocLast(Block*& block, size_t inner_size, size_t alignment);
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The split completed successfully.
+  ///
+  ///    FAILED_PRECONDITION: This block is in use and cannot be split.
+  ///
+  ///    OUT_OF_RANGE: The requested size is greater than the current size.
+  ///
+  ///    RESOURCE_EXHAUSTED: The remaining space is too small to hold a new
+  ///    block.
+  ///
+  /// @endrst
+  static Status AllocLast(Block*& block, Layout layout);
 
   /// Marks the block as free and merges it with any free neighbors.
   ///
@@ -248,10 +274,17 @@ class Block {
   ///
   /// @pre The block must be in use.
   ///
-  /// @retval   OK                  The resize completed successfully.
-  /// @retval   FAILED_PRECONDITION This block is not in use.
-  /// @retval   OUT_OF_RANGE        The requested size is greater than the
-  ///                               available space.
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The resize completed successfully.
+  ///
+  ///    FAILED_PRECONDITION: This block is not in use.
+  ///
+  ///    OUT_OF_RANGE: The requested size is greater than the available space.
+  ///
+  /// @endrst
   static Status Resize(Block*& block, size_t new_inner_size);
 
   /// Attempts to split this block.
@@ -267,14 +300,26 @@ class Block {
   /// This method is static in order to consume and replace the given block
   /// pointer with a pointer to the new, smaller block.
   ///
+  /// TODO(b/326509341): Remove from the public API when FreeList is no longer
+  /// in use.
+  ///
   /// @pre The block must not be in use.
   ///
-  /// @retval   OK                  The split completed successfully.
-  /// @retval   FAILED_PRECONDITION This block is in use and cannot be split.
-  /// @retval   OUT_OF_RANGE        The requested size for this block is greater
-  ///                               than the current `inner_size`.
-  /// @retval   RESOURCE_EXHAUSTED  The remaining space is too small to hold a
-  ///                               new block.
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The split completed successfully.
+  ///
+  ///    FAILED_PRECONDITION: This block is in use and cannot be split.
+  ///
+  ///    OUT_OF_RANGE: The requested size for this block is greater
+  ///    than the current ``inner_size``.
+  ///
+  ///    RESOURCE_EXHAUSTED: The remaining space is too small to hold a
+  ///    new block.
+  ///
+  /// @endrst
   static Result<Block*> Split(Block*& block, size_t new_inner_size);
 
   /// Merges this block with the one that comes after it.
@@ -282,11 +327,22 @@ class Block {
   /// This method is static in order to consume and replace the given block
   /// pointer with a pointer to the new, larger block.
   ///
+  /// TODO(b/326509341): Remove from the public API when FreeList is no longer
+  /// in use.
+  ///
   /// @pre The blocks must not be in use.
   ///
-  /// @retval   OK                  The merge was successful.
-  /// @retval   OUT_OF_RANGE        The given block is the last block.
-  /// @retval   FAILED_PRECONDITION One or more of the blocks is in use.
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The merge was successful.
+  ///
+  ///    OUT_OF_RANGE: The given block is the last block.
+  ///
+  ///    FAILED_PRECONDITION: One or more of the blocks is in use.
+  ///
+  /// @endrst
   static Status MergeNext(Block*& block);
 
   /// Fetches the block immediately after this one.
@@ -322,13 +378,8 @@ class Block {
     return block == nullptr ? nullptr : block->Prev();
   }
 
-  /// Returns the layout of a used block.
-  Result<Layout> GetLayout() const {
-    if (!Used()) {
-      return Status::FailedPrecondition();
-    }
-    return Layout(InnerSize(), info_.alignment);
-  }
+  /// Returns the current alignment of a block.
+  size_t Alignment() const { return Used() ? info_.alignment : 1; }
 
   /// Indicates whether the block is in use.
   ///
@@ -398,23 +449,21 @@ class Block {
   /// one of the reasons.
   internal::BlockStatus CheckStatus() const;
 
-  /// Attempts to adjust the parameters for `AllocFirst` to split valid blocks.
+  /// Consumes the given number of leading bytes of a block in order to align
+  /// its usable space.
   ///
-  /// This method will increase `inner_size` and `alignment` to match valid
-  /// values for splitting a block, if possible. It will also set the outer size
-  /// of a padding block, if needed.
-  Status AdjustForAllocFirst(size_t& inner_size,
-                             size_t& pad_outer_size,
-                             size_t& alignment) const;
-
-  /// Attempts to adjust the parameters for `AllocLast` to split valid blocks.
+  /// If the number of bytes needed to align the usable space is 0, i.e. it is
+  /// already aligned, this method does nothing. If the number of bytes is less
+  /// than the overhead for a block, the bytes are added to the end of the
+  /// preceding block, if there is one. Otherwise, if it is the first block or
+  /// the number of bytes is greater than the overhead for a block, a new block
+  /// is split from this one.
   ///
-  /// This method will increase `inner_size` and `alignment` to match valid
-  /// values for splitting a block, if possible. It will also set the outer size
-  /// of a padding block, if needed.
-  Status AdjustForAllocLast(size_t& inner_size,
-                            size_t& pad_outer_size,
-                            size_t& alignment) const;
+  /// This method is static in order to consume and replace the given block
+  /// pointer with a pointer to the new, smaller block.
+  ///
+  /// @pre The block must not be in use.
+  static void ShiftBlock(Block*& block, size_t pad_size);
 
   /// Like `Split`, but assumes the caller has already checked to parameters to
   /// ensure the split will succeed.
@@ -424,14 +473,35 @@ class Block {
   /// untouched; false otherwise.
   bool CheckPoison() const;
 
+  /// Offset (in increments of the minimum alignment) from this block to the
+  /// previous block. 0 if this is the first block.
   offset_type prev_ = 0;
+
+  /// Offset (in increments of the minimum alignment) from this block to the
+  /// next block. Valid even if this is the last block, since it equals the
+  /// size of the block.
   offset_type next_ = 0;
+
+  /// Information about the current state of the block:
+  /// * If the `used` flag is set, the block's usable memory has been allocated
+  ///   and is being used.
+  /// * If the `poisoned` flag is set and the `used` flag is clear, the block's
+  ///   usable memory contains a poison pattern that will be checked when the
+  ///   block is allocated.
+  /// * If the `last` flag is set, the block does not have a next block.
+  /// * If the `used` flag is set, the alignment represents the requested value
+  ///   when the memory was allocated, which may be less strict than the actual
+  ///   alignment.
   struct {
     uint16_t used : 1;
     uint16_t poisoned : 1;
     uint16_t last : 1;
     uint16_t alignment : 13;
   } info_;
+
+  /// Number of bytes allocated beyond what was requested. This will be at most
+  /// the minimum alignment, i.e. `alignof(offset_type).`
+  uint16_t padding_ = 0;
 
  public:
   // Associated types.
@@ -520,7 +590,7 @@ class Block {
     ReverseIterator begin_;
     ReverseIterator end_;
   };
-};
+} __attribute__((packed, aligned(kAlign)));
 
 // Public template method implementations.
 
@@ -544,127 +614,115 @@ Block<OffsetType, kAlign, kCanPoison>::Init(ByteSpan region) {
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
-Status Block<OffsetType, kAlign, kCanPoison>::AdjustForAllocFirst(
-    size_t& inner_size, size_t& pad_outer_size, size_t& alignment) const {
-  if (Used()) {
-    return Status::FailedPrecondition();
-  }
-  CrashIfInvalid();
-  // Check if padding will be needed at the front to align the usable space.
-  alignment = std::max(alignment, kAlignment);
-  auto addr = reinterpret_cast<uintptr_t>(this) + kBlockOverhead;
-  if (addr % alignment != 0) {
-    pad_outer_size = AlignUp(addr + kBlockOverhead, alignment) - addr;
-    inner_size += pad_outer_size;
-  } else {
-    pad_outer_size = 0;
-  }
-  inner_size = AlignUp(inner_size, kAlignment);
-  if (InnerSize() < inner_size) {
-    return Status::OutOfRange();
-  }
-  return OkStatus();
-}
-
-template <typename OffsetType, size_t kAlign, bool kCanPoison>
-Status Block<OffsetType, kAlign, kCanPoison>::CanAllocFirst(
-    size_t inner_size, size_t alignment) const {
-  size_t pad_outer_size = 0;
-  return AdjustForAllocFirst(inner_size, pad_outer_size, alignment);
-}
-
-template <typename OffsetType, size_t kAlign, bool kCanPoison>
 Status Block<OffsetType, kAlign, kCanPoison>::AllocFirst(Block*& block,
-                                                         size_t inner_size,
-                                                         size_t alignment) {
+                                                         Layout layout) {
   if (block == nullptr) {
     return Status::InvalidArgument();
   }
-  size_t pad_outer_size = 0;
-  if (auto status =
-          block->AdjustForAllocFirst(inner_size, pad_outer_size, alignment);
-      !status.ok()) {
-    return status;
+  block->CrashIfInvalid();
+  if (block->Used()) {
+    return Status::FailedPrecondition();
   }
+  Block* prev = block->Prev();
+
+  // Check if padding will be needed at the front to align the usable space.
+  size_t alignment = std::max(layout.alignment(), kAlignment);
+  auto addr = reinterpret_cast<uintptr_t>(block->UsableSpace());
+  size_t pad_size = AlignUp(addr, alignment) - addr;
+  bool should_poison = block->info_.poisoned;
+  if (pad_size == 0) {
+    // No padding needed.
+  } else if (pad_size > kBlockOverhead) {
+    // Enough padding is needed that it can be split off as a new free block.
+  } else if (prev == nullptr) {
+    // First block; increase padding to at least the minimum block size.
+    pad_size += AlignUp(kBlockOverhead, alignment);
+  }
+
+  // Make sure everything fits.
+  size_t inner_size = AlignUp(layout.size(), kAlignment);
+  if (block->InnerSize() < pad_size + inner_size) {
+    return Status::OutOfRange();
+  }
+  ShiftBlock(block, pad_size);
 
   // If the block is large enough to have a trailing block, split it to get the
   // requested usable space.
-  bool should_poison = block->info_.poisoned;
   if (inner_size + kBlockOverhead <= block->InnerSize()) {
     Block* trailing = SplitImpl(block, inner_size);
     trailing->Poison(should_poison);
   }
 
-  // If present, split the padding off the front.
-  if (pad_outer_size != 0) {
-    Block* leading = block;
-    block = SplitImpl(leading, pad_outer_size - kBlockOverhead);
-    leading->Poison(should_poison);
-  }
-
   block->MarkUsed();
   block->info_.alignment = alignment;
+  block->padding_ = block->InnerSize() - layout.size();
   return OkStatus();
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
-Status Block<OffsetType, kAlign, kCanPoison>::AdjustForAllocLast(
-    size_t& inner_size, size_t& pad_outer_size, size_t& alignment) const {
+StatusWithSize Block<OffsetType, kAlign, kCanPoison>::CanAllocLast(
+    Layout layout) const {
   if (Used()) {
-    return Status::FailedPrecondition();
+    return StatusWithSize::FailedPrecondition();
   }
   CrashIfInvalid();
   // Find the last address that is aligned and is followed by enough space for
   // block overhead and the requested size.
-  if (InnerSize() < inner_size) {
-    return Status::OutOfRange();
+  if (InnerSize() < layout.size()) {
+    return StatusWithSize::OutOfRange();
   }
-  alignment = std::max(alignment, kAlignment);
-  auto addr = reinterpret_cast<uintptr_t>(this) + kBlockOverhead;
-  uintptr_t next = AlignDown(addr + (InnerSize() - inner_size), alignment);
-  if (next == addr) {
-    pad_outer_size = 0;
-    return OkStatus();
+  auto addr = reinterpret_cast<uintptr_t>(UsableSpace());
+  size_t alignment = std::max(layout.alignment(), kAlignment);
+  uintptr_t next = AlignDown(addr + (InnerSize() - layout.size()), alignment);
+  if (next < addr) {
+    // Requested size does not fit.
+    return StatusWithSize::ResourceExhausted();
   }
-  if (next < addr + kBlockOverhead) {
-    // A split is needed, but no block will fit.
-    return Status::ResourceExhausted();
-  }
-  pad_outer_size = next - addr;
-  return OkStatus();
-}
-
-template <typename OffsetType, size_t kAlign, bool kCanPoison>
-Status Block<OffsetType, kAlign, kCanPoison>::CanAllocLast(
-    size_t inner_size, size_t alignment) const {
-  size_t pad_outer_size = 0;
-  return AdjustForAllocLast(inner_size, pad_outer_size, alignment);
+  return StatusWithSize(next - addr);
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
 Status Block<OffsetType, kAlign, kCanPoison>::AllocLast(Block*& block,
-                                                        size_t inner_size,
-                                                        size_t alignment) {
+                                                        Layout layout) {
   if (block == nullptr) {
     return Status::InvalidArgument();
   }
-  size_t pad_outer_size = 0;
-  if (auto status =
-          block->AdjustForAllocLast(inner_size, pad_outer_size, alignment);
-      !status.ok()) {
-    return status;
+  size_t pad_size = 0;
+  PW_TRY_ASSIGN(pad_size, block->CanAllocLast(layout));
+  ShiftBlock(block, pad_size);
+
+  block->MarkUsed();
+  block->info_.alignment = layout.alignment();
+  block->padding_ = block->InnerSize() - layout.size();
+  return OkStatus();
+}
+
+template <typename OffsetType, size_t kAlign, bool kCanPoison>
+void Block<OffsetType, kAlign, kCanPoison>::ShiftBlock(Block*& block,
+                                                       size_t pad_size) {
+  if (pad_size == 0) {
+    return;
   }
 
-  // If present, split the padding off the front.
+  // Check if this is the first block.
+  Block* prev = block->Prev();
+  if (prev == nullptr && pad_size <= kBlockOverhead) {
+    pad_size += kBlockOverhead;
+  }
+
   bool should_poison = block->info_.poisoned;
-  if (pad_outer_size != 0) {
+  if (pad_size <= kBlockOverhead) {
+    // The small amount of padding can be appended to the previous block.
+    Block::Resize(prev, prev->InnerSize() + pad_size).IgnoreError();
+    prev->padding_ += pad_size;
+    block = prev->Next();
+
+  } else if (kBlockOverhead < pad_size) {
+    // Split the large padding off the front.
     Block* leading = block;
-    block = SplitImpl(leading, pad_outer_size - kBlockOverhead);
+    block = SplitImpl(leading, pad_size - kBlockOverhead);
     leading->Poison(should_poison);
   }
-  block->MarkUsed();
-  block->info_.alignment = alignment;
-  return OkStatus();
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
@@ -689,21 +747,27 @@ Status Block<OffsetType, kAlign, kCanPoison>::Resize(Block*& block,
   if (!block->Used()) {
     return Status::FailedPrecondition();
   }
+  size_t requested_inner_size = new_inner_size;
   size_t old_inner_size = block->InnerSize();
+  size_t alignment = block->Alignment();
+  uint16_t padding = block->padding_;
   new_inner_size = AlignUp(new_inner_size, kAlignment);
+
   if (old_inner_size == new_inner_size) {
     return OkStatus();
   }
 
   // Treat the block as free and try to combine it with the next block. At most
-  // one free block is expecte to follow this block.
+  // one free block is expected to follow this block.
   block->MarkFree();
   MergeNext(block).IgnoreError();
 
   Status status = OkStatus();
+
   if (block->InnerSize() < new_inner_size) {
     // The merged block is too small for the resized block.
     status = Status::OutOfRange();
+
   } else if (new_inner_size + kBlockOverhead <= block->InnerSize()) {
     // There is enough room after the resized block for another trailing block.
     bool should_poison = block->info_.poisoned;
@@ -711,11 +775,15 @@ Status Block<OffsetType, kAlign, kCanPoison>::Resize(Block*& block,
     trailing->Poison(should_poison);
   }
 
-  // Restore the original block on failure.
-  if (!status.ok() && block->InnerSize() != old_inner_size) {
+  if (status.ok()) {
+    padding = block->InnerSize() - requested_inner_size;
+  } else if (block->InnerSize() != old_inner_size) {
+    // Restore the original block on failure.
     SplitImpl(block, old_inner_size);
   }
   block->MarkUsed();
+  block->info_.alignment = alignment;
+  block->padding_ = padding;
   return status;
 }
 

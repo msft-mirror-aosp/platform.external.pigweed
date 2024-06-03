@@ -14,7 +14,8 @@
 
 use proc_macro::TokenStream;
 use pw_format::macros::{
-    generate, Arg, FormatAndArgs, FormatMacroGenerator, IntegerDisplayType, Result,
+    generate, Arg, FormatAndArgsFlavor, FormatMacroGenerator, FormatParams,
+    PrintfFormatStringParser, Result,
 };
 use quote::quote;
 use syn::{
@@ -28,7 +29,8 @@ type TokenStream2 = proc_macro2::TokenStream;
 #[derive(Debug)]
 struct MacroArgs {
     prefix: Expr,
-    format_and_args: FormatAndArgs,
+    // Select printf style format strings.
+    format_and_args: FormatAndArgsFlavor<PrintfFormatStringParser>,
 }
 
 // Implement `Parse` for our argument struct.
@@ -39,7 +41,7 @@ impl Parse for MacroArgs {
         input.parse::<Token![,]>()?;
 
         // Prase the remaining arguments as a format string and arguments.
-        let format_and_args: FormatAndArgs = input.parse()?;
+        let format_and_args: FormatAndArgsFlavor<_> = input.parse()?;
 
         Ok(MacroArgs {
             prefix,
@@ -100,7 +102,8 @@ impl FormatMacroGenerator for Generator {
     // This example ignores display type and width.
     fn integer_conversion(
         &mut self,
-        _display: IntegerDisplayType,
+        _params: &FormatParams,
+        _signed: bool,
         _type_width: u8, // in bits
         expression: Arg,
     ) -> Result<()> {
@@ -124,7 +127,7 @@ impl FormatMacroGenerator for Generator {
         Ok(())
     }
 
-    fn untyped_conversion(&mut self, expression: Arg) -> Result<()> {
+    fn untyped_conversion(&mut self, expression: Arg, _params: &FormatParams) -> Result<()> {
         self.code_fragments.push(quote! {
             result.push_str(&format!("{}", #expression));
         });
@@ -142,7 +145,7 @@ pub fn example_macro(tokens: TokenStream) -> TokenStream {
     let generator = Generator::new(input.prefix);
 
     // Call into `generate()` to handle the code generation.
-    match generate(generator, input.format_and_args) {
+    match generate(generator, input.format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }

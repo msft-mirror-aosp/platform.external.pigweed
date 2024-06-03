@@ -79,15 +79,24 @@ class Decoder {
 
   /// @brief Parses a single byte of an HDLC stream.
   ///
-  /// @returns A `pw::Result` with the complete frame if the byte completes a
+  /// @returns @rst
+  /// A ``pw::Result`` with the complete frame if the byte completes a
   /// frame. The status can be one of the following:
-  /// * @pw_status{OK} - A frame was successfully decoded. The `Result` contains
-  ///   the `Frame`, which is invalidated by the next `Process()` call.
-  /// * @pw_status{UNAVAILABLE} - No frame is available.
-  /// * @pw_status{RESOURCE_EXHAUSTED} - A frame completed, but it was too large
-  ///   to fit in the decoder's buffer.
-  /// * @pw_status{DATA_LOSS} - A frame completed, but it was invalid. The frame
-  ///   was incomplete or the frame check sequence verification failed.
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: A frame was successfully decoded. The ``Result`` contains
+  ///    the ``Frame``, which is invalidated by the next ``Process()`` call.
+  ///
+  ///    UNAVAILABLE: No frame is available.
+  ///
+  ///    RESOURCE_EXHAUSTED: A frame completed, but it was too large
+  ///    to fit in the decoder's buffer.
+  ///
+  ///    DATA_LOSS: A frame completed, but it was invalid. The frame
+  ///    was incomplete or the frame check sequence verification failed.
+  ///
+  /// @endrst
   Result<Frame> Process(std::byte new_byte);
 
   // Returns the buffer space required for a `Decoder` to successfully decode a
@@ -108,8 +117,7 @@ class Decoder {
     for (std::byte b : data) {
       auto result = Process(b);
       if (result.status() != Status::Unavailable()) {
-        std::invoke(
-            std::forward<F>(callback), std::forward<Args>(args)..., result);
+        callback(std::forward<Args>(args)..., result);
       }
     }
   }
@@ -165,6 +173,14 @@ template <size_t kSizeBytes>
 class DecoderBuffer : public Decoder {
  public:
   DecoderBuffer() : Decoder(frame_buffer_) {}
+
+  /// DecoderBuffer is not movable, as the decoder stores pointers into the
+  /// frame buffer.
+  DecoderBuffer(DecoderBuffer&&) = delete;
+
+  /// DecoderBuffer is not movable, as the decoder stores pointers into the
+  /// frame buffer.
+  DecoderBuffer& operator=(DecoderBuffer&&) = delete;
 
   // Returns the maximum length of the bytes that can be inserted in the bytes
   // buffer.

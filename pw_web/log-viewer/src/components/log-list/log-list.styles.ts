@@ -40,7 +40,7 @@ export const styles = css`
 
   table {
     border-collapse: collapse;
-    contain: content;
+    contain: strict;
     display: table;
     height: 100%;
     table-layout: fixed;
@@ -61,6 +61,7 @@ export const styles = css`
   }
 
   tr {
+    color: var(--md-sys-color-on-surface);
     border-bottom: 1px solid var(--sys-log-viewer-color-table-cell-outline);
     contain: content;
     display: grid;
@@ -228,6 +229,7 @@ export const styles = css`
   }
 
   .overflow-indicator {
+    mix-blend-mode: multiply;
     pointer-events: none;
     position: absolute;
     width: 8rem;

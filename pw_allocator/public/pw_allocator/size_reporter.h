@@ -16,14 +16,17 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <type_traits>
 
-#include "pw_allocator/allocator.h"
 #include "pw_assert/assert.h"
 #include "pw_bloat/bloat_this_binary.h"
 #include "pw_bytes/span.h"
+
+#ifndef PW_ALLOCATOR_SIZE_REPORTER_BASE
+#include "pw_allocator/allocator.h"
+#include "pw_allocator/null_allocator.h"
+#endif  // PW_ALLOCATOR_SIZE_REPORTER_BASE
 
 namespace pw::allocator {
 
@@ -40,21 +43,18 @@ namespace pw::allocator {
 class SizeReporter final {
  public:
   /// Nested type used for exercising an allocator.
-  class Foo final {
-   public:
-    explicit Foo(const char* name) {
-      std::snprintf(name_.data(), name_.size(), "%s", name);
-    }
-    const char* name() const { return name_.data(); }
-
-   private:
-    std::array<char, 16> name_;
+  struct Foo final {
+    std::array<std::byte, 16> buffer;
   };
 
   /// Nested type used for exercising an allocator.
   struct Bar {
     Foo foo;
     size_t number;
+
+    Bar(size_t number_) : number(number_) {
+      std::memset(foo.buffer.data(), 0, foo.buffer.size());
+    }
   };
 
   /// Nested type used for exercising an allocator.
@@ -63,86 +63,56 @@ class SizeReporter final {
     uint16_t id;
   };
 
-  SizeReporter() { pw::bloat::BloatThisBinary(); }
-  ~SizeReporter() = default;
+  void SetBaseline() {
+    pw::bloat::BloatThisBinary();
+    ByteSpan bytes = buffer();
+    Bar* bar = new (bytes.data()) Bar(0);
+    PW_ASSERT(bar != nullptr);
+    std::destroy_at(bar);
+#ifndef PW_ALLOCATOR_SIZE_REPORTER_BASE
+    // Include the NullAllocator to bake in the costs of the base `Allocator`.
+    Allocator& allocator = GetNullAllocator();
+    PW_ASSERT(allocator.Allocate(Layout::Of<Foo>()) == nullptr);
+#endif  // PW_ALLOCATOR_SIZE_REPORTER_BASE
+  }
 
   ByteSpan buffer() { return buffer_; }
 
+#ifndef PW_ALLOCATOR_SIZE_REPORTER_BASE
   /// Exercises an allocator as part of a size report.
   ///
   /// @param[in]  allocator   The allocator to exercise. Will be ignored if not
   ///                         derived from `Allocator`.
-  template <typename Derived>
-  void MeasureAllocator(Derived* allocator) {
-    void* ptr = nullptr;
+  void Measure(Allocator& allocator) {
+    // Measure `Layout::Of`.
     Layout layout = Layout::Of<Foo>();
 
     // Measure `Allocate`.
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      ptr = allocator->Allocate(layout);
-    } else {
-      ptr = buffer_.data();
-    }
-    if (ptr != nullptr) {
-    }
+    void* ptr = allocator.Allocate(layout);
 
     // Measure `Reallocate`.
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      allocator->Resize(ptr, layout, sizeof(Bar));
-    }
+    allocator.Resize(ptr, sizeof(Bar));
 
     // Measure `Reallocate`.
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      ptr = allocator->Reallocate(ptr, layout, sizeof(Baz));
-    }
-
-    // Measure `GetLayout`.
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      Result<Layout> result = allocator->GetLayout(ptr);
-      if (result.ok()) {
-        layout = result.value();
-      } else {
-        layout = Layout::Of<Bar>();
-      }
-    }
-
-    // Measure `Query`.
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      Status status = allocator->Query(ptr, layout);
-      PW_ASSERT(ptr == nullptr || status.ok() || status.IsUnimplemented());
-    }
+    ptr = allocator.Reallocate(ptr, Layout::Of<Baz>());
 
     // Measure `Deallocate`.
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      allocator->Deallocate(ptr, layout);
-    }
+    allocator.Deallocate(ptr);
 
     // Measure `New`.
-    Foo* foo = nullptr;
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      foo = allocator->template New<Foo>("foo");
-    } else {
-      foo = new (buffer_.data()) Foo("foo");
-    }
+    Foo* foo = allocator.template New<Foo>();
 
     // Measure `Delete`.
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      allocator->template Delete(foo);
-    } else {
-      std::destroy_at(foo);
-    }
+    allocator.template Delete(foo);
 
     // Measure `MakeUnique`.
-    if constexpr (std::is_base_of_v<Allocator, Derived>) {
-      UniquePtr<Foo> unique_foo = allocator->template MakeUnique<Foo>("foo");
-      PW_ASSERT(unique_foo != nullptr);
-    } else {
-      PW_ASSERT(buffer_.data() != nullptr);
-    }
+    UniquePtr<Foo> unique_foo = allocator.template MakeUnique<Foo>();
+    PW_ASSERT(ptr == nullptr || unique_foo != nullptr);
   }
+#endif  // PW_ALLOCATOR_SIZE_REPORTER_BASE
 
  private:
-  std::array<std::byte, 256> buffer_;
+  std::array<std::byte, 0x400> buffer_;
 };
 
 }  // namespace pw::allocator

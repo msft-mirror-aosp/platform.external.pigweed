@@ -18,6 +18,7 @@
 #include "pw_async2/dispatcher.h"
 #include "pw_multibuf/multibuf.h"
 #include "pw_result/result.h"
+#include "pw_sync/interrupt_spin_lock.h"
 
 namespace pw::multibuf {
 
@@ -175,14 +176,20 @@ class MultiBufAllocator {
   /// Attempts to allocate a ``MultiBuf`` of at least ``min_size`` bytes and at
   /// most ``desired_size`` bytes.
   ///
-  /// @retval Ok(buffer) if the allocation was successful.
-  /// @retval @pw_status{RESOURCE_EXHAUSTED} if insufficient memory is available
-  /// currently.
-  /// @retval @pw_status{OUT_OF_RANGE} if this amount of memory will not become
-  /// possible to
-  ///     allocate in the future, or if this allocator is unable to signal via
-  ///     ``MoreMemoryAvailable`` (this will result in asynchronous allocations
-  ///     failing immediately on OOM).
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: Returns the buffer if the allocation was successful.
+  ///
+  ///    RESOURCE_EXHAUSTED: Insufficient memory is available currently.
+  ///
+  ///    OUT_OF_RANGE: This amount of memory will not become possible to
+  ///    allocate in the future, or this allocator is unable to signal via
+  ///    ``MoreMemoryAvailable`` (this will result in asynchronous allocations
+  ///    failing immediately on OOM).
+  ///
+  /// @endrst
   virtual pw::Result<MultiBuf> DoAllocate(size_t min_size,
                                           size_t desired_size,
                                           bool needs_contiguous) = 0;
@@ -194,7 +201,7 @@ class MultiBufAllocator {
   void RemoveWaiterLocked(internal::AllocationWaiter*)
       PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  sync::Mutex lock_;
+  sync::InterruptSpinLock lock_;
   internal::AllocationWaiter* first_waiter_ PW_GUARDED_BY(lock_) = nullptr;
 };
 
@@ -304,6 +311,9 @@ class MultiBufAllocationFuture {
                            bool needs_contiguous)
       : waiter_(allocator, min_size, desired_size, needs_contiguous) {}
   async2::Poll<std::optional<MultiBuf>> Pend(async2::Context& cx);
+  size_t min_size() const { return waiter_.min_size(); }
+  size_t desired_size() const { return waiter_.desired_size(); }
+  bool needs_contiguous() const { return waiter_.needs_contiguous(); }
 
  private:
   friend class MultiBufAllocator;

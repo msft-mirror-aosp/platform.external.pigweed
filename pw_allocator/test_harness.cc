@@ -71,17 +71,18 @@ size_t AlignmentFromLShift(size_t lshift, size_t size) {
   return 1U << (lshift % num_bits);
 }
 
-void AllocatorTestHarnessGeneric::GenerateRequests(
-    random::RandomGenerator& prng, size_t max_size, size_t num_requests) {
+void TestHarnessGeneric::GenerateRequests(random::RandomGenerator& prng,
+                                          size_t max_size,
+                                          size_t num_requests) {
   for (size_t i = 0; i < num_requests; ++i) {
     GenerateRequest(prng, max_size);
   }
   Reset();
 }
 
-void AllocatorTestHarnessGeneric::GenerateRequest(random::RandomGenerator& prng,
-                                                  size_t max_size) {
-  AllocatorRequest request;
+void TestHarnessGeneric::GenerateRequest(random::RandomGenerator& prng,
+                                         size_t max_size) {
+  Request request;
   size_t request_type;
   prng.GetInt(request_type);
   switch (request_type % 3) {
@@ -98,16 +99,14 @@ void AllocatorTestHarnessGeneric::GenerateRequest(random::RandomGenerator& prng,
   HandleRequest(request);
 }
 
-void AllocatorTestHarnessGeneric::HandleRequests(
-    const Vector<AllocatorRequest>& requests) {
+void TestHarnessGeneric::HandleRequests(const Vector<Request>& requests) {
   for (const auto& request : requests) {
     HandleRequest(request);
   }
   Reset();
 }
 
-void AllocatorTestHarnessGeneric::HandleRequest(
-    const AllocatorRequest& request) {
+void TestHarnessGeneric::HandleRequest(const Request& request) {
   if (allocator_ == nullptr) {
     allocator_ = Init();
     PW_DCHECK_NOTNULL(allocator_);
@@ -128,19 +127,18 @@ void AllocatorTestHarnessGeneric::HandleRequest(
         } else if constexpr (std::is_same_v<T, DeallocationRequest>) {
           if (!allocations_.empty()) {
             Allocation old = RemoveAllocation(r.index);
-            allocator_->Deallocate(old.ptr, old.layout);
+            allocator_->Deallocate(old.ptr);
           }
 
         } else if constexpr (std::is_same_v<T, ReallocationRequest>) {
           if (!allocations_.empty()) {
             Allocation old = RemoveAllocation(r.index);
-            void* new_ptr =
-                allocator_->Reallocate(old.ptr, old.layout, r.new_size);
+            Layout new_layout = Layout(r.new_size, old.layout.alignment());
+            void* new_ptr = allocator_->Reallocate(old.ptr, new_layout);
             if (new_ptr == nullptr) {
               AddAllocation(old.ptr, old.layout);
             } else {
-              AddAllocation(new_ptr,
-                            Layout(r.new_size, old.layout.alignment()));
+              AddAllocation(new_ptr, new_layout);
             }
           }
         } else {
@@ -150,17 +148,17 @@ void AllocatorTestHarnessGeneric::HandleRequest(
       request);
 }
 
-void AllocatorTestHarnessGeneric::Reset() {
+void TestHarnessGeneric::Reset() {
   if (allocator_ == nullptr) {
     return;
   }
   for (const Allocation& old : allocations_) {
-    allocator_->Deallocate(old.ptr, old.layout);
+    allocator_->Deallocate(old.ptr);
   }
   allocations_.clear();
 }
 
-void AllocatorTestHarnessGeneric::AddAllocation(void* ptr, Layout layout) {
+void TestHarnessGeneric::AddAllocation(void* ptr, Layout layout) {
   auto* bytes = static_cast<std::byte*>(ptr);
   size_t left = layout.size();
 
@@ -186,8 +184,8 @@ void AllocatorTestHarnessGeneric::AddAllocation(void* ptr, Layout layout) {
   allocations_.emplace_back(Allocation{ptr, layout});
 }
 
-AllocatorTestHarnessGeneric::Allocation
-AllocatorTestHarnessGeneric::RemoveAllocation(size_t index) {
+TestHarnessGeneric::Allocation TestHarnessGeneric::RemoveAllocation(
+    size_t index) {
   // Move the target allocation to the back of the list.
   index %= allocations_.size();
   std::swap(allocations_.at(index), allocations_.back());

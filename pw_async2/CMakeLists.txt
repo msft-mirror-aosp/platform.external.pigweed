@@ -26,6 +26,13 @@ pw_add_library(pw_async2.poll INTERFACE
     public
 )
 
+pw_add_test(pw_async2.poll_test
+  SOURCES
+    poll_test.cc
+  PRIVATE_DEPS
+    pw_async2.poll
+)
+
 pw_add_library(pw_async2.dispatcher_base STATIC
   HEADERS
     public/pw_async2/dispatcher_base.h
@@ -54,13 +61,6 @@ pw_add_facade(pw_async2.dispatcher INTERFACE
     pw_async2.dispatcher_base
 )
 
-pw_add_test(pw_async2.poll_test
-  SOURCES
-    poll_test.cc
-  PRIVATE_DEPS
-    pw_async2.poll
-)
-
 pw_add_test(pw_async2.dispatcher_test
   SOURCES
     dispatcher_test.cc
@@ -68,3 +68,86 @@ pw_add_test(pw_async2.dispatcher_test
     pw_async2.dispatcher
     pw_containers.vector
 )
+
+pw_add_test(pw_async2.dispatcher_thread_test
+  SOURCES
+    dispatcher_thread_test.cc
+  PRIVATE_DEPS
+    pw_async2.dispatcher
+    pw_function
+    pw_thread.sleep
+    pw_thread.thread
+)
+
+pw_add_library(pw_async2.pend_func_task INTERFACE
+  HEADERS
+    public/pw_async2/pend_func_task.h
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_async2.pend_func_task_test
+  SOURCES
+    pend_func_task_test.cc
+  PRIVATE_DEPS
+    pw_async2.pend_func_task
+)
+
+pw_add_library(pw_async2.pendable_as_task INTERFACE
+  HEADERS
+    public/pw_async2/pendable_as_task.h
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_async2.pendable_as_task_test
+  SOURCES
+    pendable_as_task_test.cc
+  PRIVATE_DEPS
+    pw_async2.pendable_as_task
+)
+
+pw_add_library(pw_async2.allocate_task INTERFACE
+  HEADERS
+    public/pw_async2/allocate_task.h
+  PUBLIC_DEPS
+    pw_async2.dispatcher
+    pw_allocator.allocator
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_async2.allocate_task_test
+  SOURCES
+    allocate_task_test.cc
+  PRIVATE_DEPS
+    pw_async2.allocate_task
+    pw_allocator.testing
+)
+
+if(NOT "cxx_std_20" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+  pw_add_library(pw_async2.coro INTERFACE
+    HEADERS
+      public/pw_async2/coro.h
+    PUBLIC_DEPS
+      pw_allocator.allocator
+      pw_async2.dispatcher
+    PUBLIC_INCLUDES
+      public
+  )
+
+  pw_add_test(pw_async2.coro_test
+    SOURCES
+      coro_test.cc
+    PRIVATE_DEPS
+      pw_allocator.null_allocator
+      pw_allocator.testing
+      pw_async2.coro
+  )
+endif()
+
+add_subdirectory(examples)

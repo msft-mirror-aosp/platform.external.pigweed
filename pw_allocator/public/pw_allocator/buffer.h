@@ -46,9 +46,9 @@ namespace pw::allocator {
 ///
 /// @tparam   T             The wrapped object.
 /// @tparam   kBufferSize   The size of the backing memory, in bytes.
-/// @tparam   AlignType     Buffer memory will be aligned to this type's
-///                         alignment boundary.
-template <typename T, size_t kBufferSize, typename AlignType = uint8_t>
+/// @tparam   kAlignment    Buffer memory will be aligned to this alignment
+///                         boundary.
+template <typename T, size_t kBufferSize, size_t kAlignment = 1>
 class WithBuffer {
  public:
   static constexpr size_t kCapacity = kBufferSize;
@@ -64,22 +64,8 @@ class WithBuffer {
   const T* operator->() const { return &obj_; }
 
  private:
-  alignas(AlignType) std::array<std::byte, kBufferSize> buffer_;
+  alignas(kAlignment) std::array<std::byte, kBufferSize> buffer_;
   T obj_;
 };
-
-/// Returns the largest aligned subspan of a given byte span.
-///
-/// @retval OK                  Returns the aligned subspan.
-/// @retval RESOURCE_EXHAUSTED  The given span does not contain an alignment
-///                             boundary.
-Result<ByteSpan> GetAlignedSubspan(ByteSpan bytes, size_t alignment);
-
-/// Returns whether one region is completely contained within another.
-///
-/// @param[in]  ptr     Points to the start of the subregion.
-/// @param[in]  layout  Describes the subregion.
-/// @param[in]  outer   The memory that may contain the subregion.
-bool IsWithin(const void* ptr, size_t size, ConstByteSpan outer);
 
 }  // namespace pw::allocator

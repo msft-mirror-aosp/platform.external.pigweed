@@ -183,6 +183,15 @@ def run_clang_tidy(
     if process.stderr and process.returncode != 0:
         _LOG.error(process.stderr.decode().strip())
 
+        if export_fixes:
+            suggested_fix_command = (
+                '   pw clang-tidy-fix' f' {export_fixes.parent}'
+            )
+            _LOG.warning(
+                "To apply clang-tidy suggested fixes, run:\n\n%s\n",
+                suggested_fix_command,
+            )
+
     return process.returncode
 
 

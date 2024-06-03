@@ -22,19 +22,25 @@ package {
 cc_defaults {
     name: "pw_android_common_backends",
     cpp_std: "c++20",
-    defaults: [
-        // TODO: b/328503970 - Make these backends follow the Android soong
-        // style guide.
-        "pw_assert_log_defaults",
-        "pw_chrono_stl_defaults",
-        "pw_sync_stl_defaults",
+
+    // Note for maintainers:
+    // Update the common backends list in the documentation when updating this
+    // list.
+    static_libs: [
+        "pw_assert_log",
+        "pw_chrono_stl",
+        "pw_log_android",
+        "pw_sync_stl",
+        "pw_thread_stl",
+    ],
+    export_static_lib_headers: [
+        "pw_assert_log",
+        "pw_chrono_stl",
+        "pw_log_android",
+        "pw_sync_stl",
+        "pw_thread_stl",
     ],
     shared_libs: [
         "liblog",
-    ],
-    static_libs: [
-        // TODO: b/328503970 - Make these backends follow the Android soong
-        // style guide.
-        "libpw_log_android",
     ],
 }

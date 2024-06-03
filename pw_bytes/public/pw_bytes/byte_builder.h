@@ -218,13 +218,20 @@ class ByteBuilder {
   /// Returns the ByteBuilder's status, which reflects the most recent error
   /// that occurred while updating the bytes. After an update fails, the status
   /// remains non-OK until it is cleared with clear() or clear_status().
-  /// Returns:
   ///
-  ///     OK if no errors have occurred
-  ///     RESOURCE_EXHAUSTED if output to the ByteBuilder was truncated
-  ///     INVALID_ARGUMENT if printf-style formatting failed
-  ///     OUT_OF_RANGE if an operation outside the buffer was attempted
+  /// @returns @rst
   ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: No errors have occurred.
+  ///
+  ///    RESOURCE_EXHAUSTED: Output to the ``ByteBuilder`` was truncated.
+  ///
+  ///    INVALID_ARGUMENT: ``printf``-style formatting failed.
+  ///
+  ///    OUT_OF_RANGE: An operation outside the buffer was attempted.
+  ///
+  /// @endrst
   Status status() const { return status_; }
 
   /// Returns status() and size() as a StatusWithSize.
@@ -353,19 +360,12 @@ class ByteBuffer : public ByteBuilder {
  public:
   ByteBuffer() : ByteBuilder(buffer_) {}
 
-  /// ByteBuffers of the same size may be copied and assigned into one another.
-  ByteBuffer(const ByteBuffer& other) : ByteBuilder(buffer_, other) {
-    CopyContents(other);
-  }
-
-  /// A smaller ByteBuffer may be copied or assigned into a larger one.
-  template <size_t kOtherSizeBytes>
-  ByteBuffer(const ByteBuffer<kOtherSizeBytes>& other)
-      : ByteBuilder(buffer_, other) {
-    static_assert(ByteBuffer<kOtherSizeBytes>::max_size() <= max_size(),
-                  "A ByteBuffer cannot be copied into a smaller buffer");
-    CopyContents(other);
-  }
+  // Implicit copy constructors are not provided in order to prevent
+  // accidental copies of data when passing around ByteByffers.
+  //
+  // Copy assignment, however, is provided, as it requires the user to
+  // explicitly declare a separate local.
+  ByteBuffer(ByteBuffer& other) = delete;
 
   template <size_t kOtherSizeBytes>
   ByteBuffer& operator=(const ByteBuffer<kOtherSizeBytes>& other) {
@@ -386,6 +386,12 @@ class ByteBuffer : public ByteBuilder {
     CopyContents(other);
     return *this;
   }
+
+  /// ByteBuffers are not movable: the underlying data must be copied.
+  ByteBuffer(ByteBuffer&& other) = delete;
+
+  /// ByteBuffers are not movable: the underlying data must be copied.
+  ByteBuffer& operator=(ByteBuffer&& other) = delete;
 
   /// Returns the maximum length of the bytes that can be inserted in the bytes
   /// buffer.

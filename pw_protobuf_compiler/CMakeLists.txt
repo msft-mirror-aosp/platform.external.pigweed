@@ -17,9 +17,13 @@ include($ENV{PW_ROOT}/pw_protobuf_compiler/proto.cmake)
 
 pw_proto_library(pw_protobuf_compiler.pwpb_test_protos
   SOURCES
-    pw_protobuf_compiler_pwpb_protos/pwpb_test.proto
+    pwpb_test_protos/pwpb_test.proto
   INPUTS
-    pw_protobuf_compiler_pwpb_protos/pwpb_test.options
+    pwpb_test_protos/pwpb_test.options
+  PREFIX
+    "pw_protobuf_compiler/"
+  DEPS
+    pw_protobuf.field_options_proto
 )
 
 pw_add_test(pw_protobuf_compiler.pwpb_test
@@ -31,10 +35,30 @@ pw_add_test(pw_protobuf_compiler.pwpb_test
     pw_protobuf_compiler
 )
 
+pw_proto_library(pw_protobuf_compiler.pwpb_test_no_prefix_protos
+  SOURCES
+    pwpb_no_prefix_test_protos/pwpb_test_no_prefix.proto
+  STRIP_PREFIX
+    "pwpb_no_prefix_test_protos/"
+  DEPS
+    pw_protobuf.field_options_proto
+)
+
+pw_add_test(pw_protobuf_compiler.pwpb_no_prefix_test
+  SOURCES
+    pwpb_test_no_prefix.cc
+  PRIVATE_DEPS
+    pw_protobuf_compiler.pwpb_test_no_prefix_protos.pwpb
+  GROUPS
+    pw_protobuf_compiler
+)
+
 if(NOT "${dir_pw_third_party_nanopb}" STREQUAL "")
   pw_proto_library(pw_protobuf_compiler.nanopb_test_protos
     SOURCES
-      pw_protobuf_compiler_nanopb_protos/nanopb_test.proto
+      nanopb_test_protos/nanopb_test.proto
+    PREFIX
+      "pw_protobuf_compiler/"
     DEPS
       pw_third_party.nanopb.proto
   )

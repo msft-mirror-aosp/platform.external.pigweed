@@ -210,6 +210,15 @@ config("pedantic_warnings") {
     # Allow C++17 attributes in C++14, since Pigweed targets C++17 or newer.
     cflags += [ "-Wno-c++17-attribute-extensions" ]
   }
+
+  # TODO: b/333712899 - Enable C23 extension warnings.
+  cflags += [ "-Wno-c23-extensions" ]
+
+  # TODO: b/335021928 - Enable C++ 20 extension warnings.
+  cflags += [ "-Wno-c++20-extensions" ]
+
+  # TODO: b/335328444 - Enable C++ 20 extension warnings.
+  cflags += [ "-Wno-deprecated-pragma" ]
 }
 
 # Numeric conversion warnings.
@@ -367,6 +376,7 @@ pw_doc_group("docs") {
     "cmake.rst",
     "docs.rst",
     "gn.rst",
+    "project_builder.rst",
     "python.rst",
   ]
 }

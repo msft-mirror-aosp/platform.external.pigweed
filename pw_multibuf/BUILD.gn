@@ -29,7 +29,7 @@ pw_source_set("chunk") {
   public = [ "public/pw_multibuf/chunk.h" ]
   sources = [ "chunk.cc" ]
   public_deps = [
-    "$dir_pw_sync:mutex",
+    "$dir_pw_sync:interrupt_spin_lock",
     dir_pw_assert,
     dir_pw_bytes,
     dir_pw_preprocessor,
@@ -56,12 +56,6 @@ pw_test("header_chunk_region_tracker_test") {
     dir_pw_status,
   ]
   sources = [ "header_chunk_region_tracker_test.cc" ]
-
-  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
-  # indefinitely.
-  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
-    enable_if = false
-  }
 }
 
 pw_source_set("single_chunk_region_tracker") {
@@ -92,12 +86,6 @@ pw_test("chunk_test") {
     "$dir_pw_allocator:testing",
   ]
   sources = [ "chunk_test.cc" ]
-
-  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
-  # indefinitely.
-  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
-    enable_if = false
-  }
 }
 
 pw_source_set("pw_multibuf") {
@@ -116,12 +104,6 @@ pw_test("multibuf_test") {
     ":test_utils",
   ]
   sources = [ "multibuf_test.cc" ]
-
-  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
-  # indefinitely.
-  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
-    enable_if = false
-  }
 }
 
 pw_source_set("allocator") {
@@ -152,8 +134,8 @@ pw_source_set("simple_allocator") {
   public_deps = [
     ":allocator",
     ":pw_multibuf",
-    "//pw_allocator:allocator",
-    "//pw_containers:intrusive_list",
+    "$dir_pw_allocator:allocator",
+    "$dir_pw_containers:intrusive_list",
   ]
 }
 

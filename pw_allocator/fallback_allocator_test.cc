@@ -18,54 +18,31 @@
 #include "pw_status/status.h"
 #include "pw_unit_test/framework.h"
 
-namespace pw::allocator {
 namespace {
+
+using ::pw::allocator::FallbackAllocator;
+using ::pw::allocator::Layout;
+using ::pw::allocator::test::AllocatorForTest;
 
 // Test fixtures.
 
 class FallbackAllocatorTest : public ::testing::Test {
  protected:
-  void SetUp() override { allocator_.Init(primary_, secondary_); }
+  constexpr static size_t kCapacity = 256;
 
-  test::AllocatorForTest<128> primary_;
-  test::AllocatorForTest<128> secondary_;
+  FallbackAllocatorTest() : allocator_(primary_, secondary_) {}
+
+  AllocatorForTest<kCapacity> primary_;
+  AllocatorForTest<kCapacity> secondary_;
   FallbackAllocator allocator_;
 };
 
 // Unit tests.
 
-TEST_F(FallbackAllocatorTest, ExplicitlyInitialized) {
-  FallbackAllocator fallback;
-  fallback.Init(primary_, secondary_);
-}
-
-TEST_F(FallbackAllocatorTest, AutomaticallyInitialized) {
-  FallbackAllocator fallback(primary_, secondary_);
-}
-
-TEST_F(FallbackAllocatorTest, QueryValidPrimary) {
-  Layout layout = Layout::Of<uint32_t>();
-  void* ptr = primary_.Allocate(layout);
-  EXPECT_TRUE(primary_.Query(ptr, layout).ok());
-  EXPECT_EQ(secondary_.Query(ptr, layout), Status::OutOfRange());
-  EXPECT_TRUE(allocator_.Query(ptr, layout).ok());
-}
-
-TEST_F(FallbackAllocatorTest, QueryValidSecondary) {
-  Layout layout = Layout::Of<uint32_t>();
-  void* ptr = secondary_.Allocate(layout);
-  EXPECT_FALSE(primary_.Query(ptr, layout).ok());
-  EXPECT_TRUE(secondary_.Query(ptr, layout).ok());
-  EXPECT_TRUE(allocator_.Query(ptr, layout).ok());
-}
-
-TEST_F(FallbackAllocatorTest, QueryInvalidPtr) {
-  test::AllocatorForTest<128> other;
-  Layout layout = Layout::Of<uint32_t>();
-  void* ptr = other.Allocate(layout);
-  EXPECT_FALSE(primary_.Query(ptr, layout).ok());
-  EXPECT_FALSE(secondary_.Query(ptr, layout).ok());
-  EXPECT_FALSE(allocator_.Query(ptr, layout).ok());
+TEST_F(FallbackAllocatorTest, GetCapacity) {
+  pw::StatusWithSize capacity = allocator_.GetCapacity();
+  EXPECT_EQ(capacity.status(), pw::OkStatus());
+  EXPECT_EQ(capacity.size(), kCapacity);
 }
 
 TEST_F(FallbackAllocatorTest, AllocateFromPrimary) {
@@ -97,7 +74,7 @@ TEST_F(FallbackAllocatorTest, DeallocateUsingPrimary) {
   Layout layout = Layout::Of<uint32_t>();
   void* ptr = allocator_.Allocate(layout);
   ASSERT_NE(ptr, nullptr);
-  allocator_.Deallocate(ptr, layout);
+  allocator_.Deallocate(ptr);
   EXPECT_EQ(primary_.deallocate_ptr(), ptr);
   EXPECT_EQ(primary_.deallocate_size(), layout.size());
   EXPECT_EQ(secondary_.deallocate_ptr(), nullptr);
@@ -109,7 +86,7 @@ TEST_F(FallbackAllocatorTest, DeallocateUsingSecondary) {
   Layout layout = Layout::Of<uint32_t>();
   void* ptr = allocator_.Allocate(layout);
   ASSERT_NE(ptr, nullptr);
-  allocator_.Deallocate(ptr, layout);
+  allocator_.Deallocate(ptr);
   EXPECT_EQ(primary_.deallocate_ptr(), nullptr);
   EXPECT_EQ(primary_.deallocate_size(), 0U);
   EXPECT_EQ(secondary_.deallocate_ptr(), ptr);
@@ -122,7 +99,7 @@ TEST_F(FallbackAllocatorTest, ResizePrimary) {
   ASSERT_NE(ptr, nullptr);
 
   size_t new_size = sizeof(uint32_t[3]);
-  EXPECT_TRUE(allocator_.Resize(ptr, old_layout, new_size));
+  EXPECT_TRUE(allocator_.Resize(ptr, new_size));
   EXPECT_EQ(primary_.resize_ptr(), ptr);
   EXPECT_EQ(primary_.resize_old_size(), old_layout.size());
   EXPECT_EQ(primary_.resize_new_size(), new_size);
@@ -140,7 +117,7 @@ TEST_F(FallbackAllocatorTest, ResizePrimaryFailure) {
   primary_.Exhaust();
 
   size_t new_size = sizeof(uint32_t[3]);
-  EXPECT_FALSE(allocator_.Resize(ptr, old_layout, new_size));
+  EXPECT_FALSE(allocator_.Resize(ptr, new_size));
   EXPECT_EQ(primary_.resize_ptr(), ptr);
   EXPECT_EQ(primary_.resize_old_size(), old_layout.size());
   EXPECT_EQ(primary_.resize_new_size(), new_size);
@@ -158,7 +135,7 @@ TEST_F(FallbackAllocatorTest, ResizeSecondary) {
   ASSERT_NE(ptr, nullptr);
 
   size_t new_size = sizeof(uint32_t[3]);
-  EXPECT_TRUE(allocator_.Resize(ptr, old_layout, new_size));
+  EXPECT_TRUE(allocator_.Resize(ptr, new_size));
   EXPECT_EQ(secondary_.resize_ptr(), ptr);
   EXPECT_EQ(secondary_.resize_old_size(), old_layout.size());
   EXPECT_EQ(secondary_.resize_new_size(), new_size);
@@ -177,7 +154,7 @@ TEST_F(FallbackAllocatorTest, ResizeSecondaryFailure) {
   secondary_.Exhaust();
 
   size_t new_size = sizeof(uint32_t[3]);
-  EXPECT_FALSE(allocator_.Resize(ptr, old_layout, new_size));
+  EXPECT_FALSE(allocator_.Resize(ptr, new_size));
   EXPECT_EQ(secondary_.resize_ptr(), ptr);
   EXPECT_EQ(secondary_.resize_old_size(), old_layout.size());
   EXPECT_EQ(secondary_.resize_new_size(), new_size);
@@ -197,12 +174,12 @@ TEST_F(FallbackAllocatorTest, ReallocateSameAllocator) {
   void* ptr2 = allocator_.Allocate(old_layout);
   ASSERT_NE(ptr2, nullptr);
 
-  size_t new_size = sizeof(uint32_t[3]);
-  void* new_ptr = allocator_.Reallocate(ptr1, old_layout, new_size);
+  Layout new_layout = Layout::Of<uint32_t[3]>();
+  void* new_ptr = allocator_.Reallocate(ptr1, new_layout);
   EXPECT_NE(new_ptr, nullptr);
   EXPECT_EQ(primary_.deallocate_ptr(), ptr1);
   EXPECT_EQ(primary_.deallocate_size(), old_layout.size());
-  EXPECT_EQ(primary_.allocate_size(), new_size);
+  EXPECT_EQ(primary_.allocate_size(), new_layout.size());
 }
 
 TEST_F(FallbackAllocatorTest, ReallocateDifferentAllocator) {
@@ -210,13 +187,12 @@ TEST_F(FallbackAllocatorTest, ReallocateDifferentAllocator) {
   void* ptr = allocator_.Allocate(old_layout);
   primary_.Exhaust();
 
-  size_t new_size = sizeof(uint32_t[3]);
-  void* new_ptr = allocator_.Reallocate(ptr, old_layout, new_size);
+  Layout new_layout = Layout::Of<uint32_t[3]>();
+  void* new_ptr = allocator_.Reallocate(ptr, new_layout);
   EXPECT_NE(new_ptr, nullptr);
   EXPECT_EQ(primary_.deallocate_ptr(), ptr);
   EXPECT_EQ(primary_.deallocate_size(), old_layout.size());
-  EXPECT_EQ(secondary_.allocate_size(), new_size);
+  EXPECT_EQ(secondary_.allocate_size(), new_layout.size());
 }
 
 }  // namespace
-}  // namespace pw::allocator

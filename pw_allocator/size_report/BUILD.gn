@@ -17,13 +17,34 @@ import("//build_overrides/pigweed.gni")
 import("$dir_pw_build/target_types.gni")
 
 pw_executable("base") {
-  check_includes = false
   sources = [ "base.cc" ]
-  deps = [ "..:size_reporter" ]
+  defines = [ "PW_ALLOCATOR_SIZE_REPORTER_BASE" ]
+  deps = [
+    "$dir_pw_bloat:bloat_this_binary",
+    "..:size_reporter",
+    dir_pw_bytes,
+  ]
+}
+
+pw_executable("as_pmr_allocator_base") {
+  sources = [ "as_pmr_allocator_base.cc" ]
+  deps = [
+    "..:block_allocator",
+    "..:size_reporter",
+  ]
+}
+
+pw_executable("as_pmr_allocator") {
+  sources = [ "as_pmr_allocator.cc" ]
+  deps = [
+    "..:allocator",
+    "..:block_allocator",
+    "..:size_reporter",
+  ]
 }
 
 pw_executable("best_fit_block_allocator") {
-  check_includes = false
+  include_dirs = [ "../public" ]
   sources = [ "best_fit_block_allocator.cc" ]
   deps = [
     "..:block_allocator",
@@ -31,8 +52,34 @@ pw_executable("best_fit_block_allocator") {
   ]
 }
 
+pw_executable("bucket_block_allocator") {
+  include_dirs = [ "../public" ]
+  sources = [ "bucket_block_allocator.cc" ]
+  deps = [
+    "..:bucket_block_allocator",
+    "..:size_reporter",
+  ]
+}
+
+pw_executable("buddy_allocator") {
+  include_dirs = [ "../public" ]
+  sources = [ "buddy_allocator.cc" ]
+  deps = [
+    "..:buddy_allocator",
+    "..:size_reporter",
+  ]
+}
+
+pw_executable("bump_allocator") {
+  include_dirs = [ "../public" ]
+  sources = [ "bump_allocator.cc" ]
+  deps = [
+    "..:bump_allocator",
+    "..:size_reporter",
+  ]
+}
+
 pw_executable("dual_first_fit_block_allocator") {
-  check_includes = false
   sources = [ "dual_first_fit_block_allocator.cc" ]
   deps = [
     "..:block_allocator",
@@ -41,7 +88,6 @@ pw_executable("dual_first_fit_block_allocator") {
 }
 
 pw_executable("fallback_allocator_base") {
-  check_includes = false
   sources = [ "fallback_allocator_base.cc" ]
   deps = [
     "..:block_allocator",
@@ -51,7 +97,6 @@ pw_executable("fallback_allocator_base") {
 }
 
 pw_executable("fallback_allocator") {
-  check_includes = false
   sources = [ "fallback_allocator.cc" ]
   deps = [
     "..:block_allocator",
@@ -61,7 +106,6 @@ pw_executable("fallback_allocator") {
 }
 
 pw_executable("first_fit_block_allocator") {
-  check_includes = false
   sources = [ "first_fit_block_allocator.cc" ]
   deps = [
     "..:block_allocator",
@@ -70,7 +114,6 @@ pw_executable("first_fit_block_allocator") {
 }
 
 pw_executable("last_fit_block_allocator") {
-  check_includes = false
   sources = [ "last_fit_block_allocator.cc" ]
   deps = [
     "..:block_allocator",
@@ -79,7 +122,6 @@ pw_executable("last_fit_block_allocator") {
 }
 
 pw_executable("libc_allocator") {
-  check_includes = false
   sources = [ "libc_allocator.cc" ]
   deps = [
     "..:libc_allocator",
@@ -88,7 +130,6 @@ pw_executable("libc_allocator") {
 }
 
 pw_executable("null_allocator") {
-  check_includes = false
   sources = [ "null_allocator.cc" ]
   deps = [
     "..:null_allocator",
@@ -97,7 +138,6 @@ pw_executable("null_allocator") {
 }
 
 pw_executable("synchronized_allocator_isl") {
-  check_includes = false
   sources = [ "synchronized_allocator_isl.cc" ]
   deps = [
     "$dir_pw_sync:interrupt_spin_lock",
@@ -108,7 +148,6 @@ pw_executable("synchronized_allocator_isl") {
 }
 
 pw_executable("synchronized_allocator_mutex") {
-  check_includes = false
   sources = [ "synchronized_allocator_mutex.cc" ]
   deps = [
     "$dir_pw_sync:mutex",
@@ -119,7 +158,6 @@ pw_executable("synchronized_allocator_mutex") {
 }
 
 pw_executable("tracking_allocator_all_metrics") {
-  check_includes = false
   sources = [ "tracking_allocator_all_metrics.cc" ]
   deps = [
     "..:block_allocator",
@@ -129,7 +167,6 @@ pw_executable("tracking_allocator_all_metrics") {
 }
 
 pw_executable("tracking_allocator_no_metrics") {
-  check_includes = false
   sources = [ "tracking_allocator_no_metrics.cc" ]
   deps = [
     "..:block_allocator",
@@ -139,7 +176,6 @@ pw_executable("tracking_allocator_no_metrics") {
 }
 
 pw_executable("worst_fit_block_allocator") {
-  check_includes = false
   sources = [ "worst_fit_block_allocator.cc" ]
   deps = [
     "..:block_allocator",

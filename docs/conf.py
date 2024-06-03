@@ -40,20 +40,22 @@ pygments_style = 'pw_console.pigweed_code_style.PigweedCodeLightStyle'
 pygments_dark_style = 'pw_console.pigweed_code_style.PigweedCodeStyle'
 
 extensions = [
-    'pw_docgen.sphinx.google_analytics',  # Enables optional Google Analytics
-    'pw_docgen.sphinx.kconfig',
-    'pw_docgen.sphinx.module_metadata',
-    'pw_docgen.sphinx.pigweed_live',
-    'pw_docgen.sphinx.seed_metadata',
-    'sphinx.ext.autodoc',  # Automatic documentation for Python code
-    'sphinx.ext.napoleon',  # Parses Google-style docstrings
-    'sphinxarg.ext',  # Automatic documentation of Python argparse
-    'sphinxcontrib.mermaid',
-    'sphinx_design',
-    'breathe',
-    'sphinx_copybutton',  # Copy-to-clipboard button on code blocks
-    'sphinx_reredirects',
-    'sphinx_sitemap',
+    "pw_docgen.sphinx.google_analytics",  # Enables optional Google Analytics
+    "pw_docgen.sphinx.kconfig",
+    "pw_docgen.sphinx.module_metadata",
+    "pw_docgen.sphinx.pigweed_live",
+    "pw_docgen.sphinx.pw_status_codes",
+    "pw_docgen.sphinx.inlinesearch",
+    "pw_docgen.sphinx.seed_metadata",
+    "sphinx.ext.autodoc",  # Automatic documentation for Python code
+    "sphinx.ext.napoleon",  # Parses Google-style docstrings
+    "sphinxarg.ext",  # Automatic documentation of Python argparse
+    "sphinxcontrib.mermaid",
+    "sphinx_design",
+    "breathe",
+    "sphinx_copybutton",  # Copy-to-clipboard button on code blocks
+    "sphinx_reredirects",
+    "sphinx_sitemap",
 ]
 
 # When a user clicks the copy-to-clipboard button the `$ ` prompt should not be
@@ -107,14 +109,18 @@ html_static_path = ['docs/_static']
 # These paths are either relative to html_static_path
 # or fully qualified paths (eg. https://...)
 html_css_files = [
-    'css/pigweed.css',
+    "css/pigweed.css",
     # Needed for Inconsolata font.
-    'https://fonts.googleapis.com/css2?family=Inconsolata&display=swap',
+    "https://fonts.googleapis.com/css2?family=Inconsolata&display=swap",
     # FontAwesome for mermaid and sphinx-design
     "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css",
 ]
 
-html_js_files = ['js/pigweed.js']
+html_js_files = [
+    "js/pigweed.js",
+    # Needed for sidebar search
+    "https://cdnjs.cloudflare.com/ajax/libs/fuzzysort/2.0.4/fuzzysort.js",
+]
 
 # Furo color theme variables based on:
 # https://github.com/pradyunsg/furo/blob/main/src/furo/assets/styles/variables/_colors.scss
@@ -239,20 +245,24 @@ mermaid.initialize({
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'Pigweeddoc'
 
-# Client-side redirects. See //docs/contributing/docs/index.rst.
+# Client-side redirects. See //docs/contributing/docs/website.rst.
+# Use relative URLs and provide the full path to ensure that the
+# redirects work when developing locally. An example of using the
+# full path is `./example/docs.html`. Using just `./example/`
+# assumes that the redirect will work, which may not be true during
+# local development.
 redirects = {
-    'docs/contributing': 'docs/contributing/',
-    'docs/contributing/module_docs': 'docs/contributing/docs/modules.html',
-    'docs/contributing/changelog': 'docs/contributing/docs/changelog.html',
-    'docs/getting_started': 'docs/get_started/',
-    'docs/os_abstraction_layers': 'docs/os/',
-    'docs/release_notes': 'changelog.html',
-    'docs/release_notes/2022_jan': 'changelog.html',
-    'module_guides': 'modules.html',
-    'pw_sys_io_pico': 'pw_sys_io_rp2040/',
-    'pw_sys_io_pico/docs': 'pw_sys_io_rp2040/',
-    'pw_tokenizer/cli': 'pw_tokenizer/',
-    'pw_tokenizer/guides': 'pw_tokenizer/',
+    'docs/contributing': './contributing/index.html',
+    'docs/contributing/changelog': './docs/changelog.html',
+    'docs/contributing/module_docs': './docs/modules.html',
+    'docs/getting_started': './get_started/index.html',
+    'docs/os_abstraction_layers': './os/index.html',
+    'docs/release_notes/index': '../../changelog.html',
+    'docs/release_notes/2022_jan': '../../changelog.html',
+    'module_guides': './modules.html',
+    'pw_sys_io_pico/docs': '../pw_sys_io_rp2040/docs.html',
+    'pw_tokenizer/cli': './docs.html',
+    'pw_tokenizer/guides': './docs.html',
 }
 
 # One entry per manual page. List of tuples

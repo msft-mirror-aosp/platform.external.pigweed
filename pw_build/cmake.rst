@@ -1,31 +1,35 @@
+.. _module-pw_build-cmake:
+
 CMake
 =====
 Pigweed's `CMake`_ support is provided primarily for projects that have an
 existing CMake build and wish to integrate Pigweed without switching to a new
 build system.
 
-The following command generates Ninja build files for a host build in the
-``out/cmake_host`` directory:
+.. tip::
+   To run upstream Pigweed's CMake build use the ``pw build`` command:
 
-.. code-block:: sh
+   .. code-block:: console
 
-   cmake -B out/cmake_host -S "$PW_ROOT" -G Ninja -DCMAKE_TOOLCHAIN_FILE=$PW_ROOT/pw_toolchain/host_clang/toolchain.cmake
+      pw build -r default_cmake
 
-The ``PW_ROOT`` environment variable must point to the root of the Pigweed
-directory. This variable is set by Pigweed's environment setup.
+   This will install any required packages, generate cmake build files and invkoke ninja.
 
-Tests can be executed with the ``pw_run_tests.GROUP`` targets. To run Pigweed
-module tests, execute ``pw_run_tests.modules``:
+   .. code-block:: text
 
-.. code-block:: sh
+      19:36:58 INF [1/1] Starting ==> Recipe: default_cmake Targets: pw_run_tests.modules pw_apps pw_run_tests.pw_bluetooth Logfile: /out/build_default_cmake.txt
+      19:36:58 INF [1/1] Run ==> pw --no-banner package install emboss
+      19:36:59 INF [1/1] Run ==> pw --no-banner package install nanopb
+      19:37:00 INF [1/1] Run ==> pw --no-banner package install boringssl
+      19:37:10 INF [1/1] Run ==> cmake --fresh --debug-output -DCMAKE_MESSAGE_LOG_LEVEL=WARNING -S . -B ./out/cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=./pw_toolchain/host_clang/toolchain.cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -Ddir_pw_third_party_nanopb=./environment/packages/nanopb -Dpw_third_party_nanopb_ADD_SUBDIRECTORY=ON -Ddir_pw_third_party_emboss=./environment/packages/emboss -Ddir_pw_third_party_boringssl=./environment/packages/boringssl -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      19:37:10 INF [1/1] Run ==> ninja -C out/cmake pw_apps pw_run_tests.modules pw_run_tests.pw_bluetooth
 
-   ninja -C out/cmake_host pw_run_tests.modules
+   :ref:`module-pw_watch` works with ``pw build`` as well. You can run the
+   following to automatically rebuild when files change.
 
-:ref:`module-pw_watch` supports CMake, so you can also run
+   .. code-block:: console
 
-.. code-block:: sh
-
-   pw watch -C out/cmake_host pw_run_tests.modules
+      pw build -r default_cmake --watch
 
 CMake functions
 ---------------
@@ -166,6 +170,8 @@ is recommended to set these in one of the following ways:
 
 * Set the variable interactively with ``ccmake`` or ``cmake-gui``.
 
+.. _module-pw_build-existing-cmake-project:
+
 Use Pigweed from an existing CMake project
 ------------------------------------------
 To use Pigweed libraries form a CMake-based project, simply include the Pigweed
@@ -185,3 +191,8 @@ If desired, modules can be included individually.
    add_subdirectory(path/to/pigweed/pw_some_module pw_some_module)
    add_subdirectory(path/to/pigweed/pw_another_module pw_another_module)
 
+.. seealso::
+   Additional Pigweed CMake function references:
+   - :bdg-ref-primary-line:`module-pw_fuzzer-guides-using_fuzztest-toolchain`
+   - :bdg-ref-primary-line:`module-pw_protobuf_compiler-cmake`
+   - :bdg-ref-primary-line:`module-pw_unit_test-cmake`

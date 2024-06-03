@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -16,17 +16,11 @@ import { LitElement, PropertyValues, html } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 import { styles } from './log-view.styles';
 import { LogList } from '../log-list/log-list';
-import {
-  TableColumn,
-  LogEntry,
-  State,
-  SourceData,
-} from '../../shared/interfaces';
-import { LocalStorageState, StateStore } from '../../shared/state';
+import { TableColumn, LogEntry, SourceData } from '../../shared/interfaces';
 import { LogFilter } from '../../utils/log-filter/log-filter';
 import '../log-list/log-list';
 import '../log-view-controls/log-view-controls';
-import { titleCaseToKebabCase } from '../../utils/strings';
+import { downloadTextLogs } from '../../utils/download';
 
 type FilterFunction = (logEntry: LogEntry) => boolean;
 
@@ -46,7 +40,7 @@ export class LogView extends LitElement {
    * view is created in a log viewer instance.
    */
   @property({ type: String })
-  id = `${this.localName}-${crypto.randomUUID()}`;
+  id = '';
 
   /** An array of log entries to be displayed. */
   @property({ type: Array })
@@ -60,21 +54,21 @@ export class LogView extends LitElement {
   @property({ type: String })
   viewTitle = '';
 
+  /** The field keys (column values) for the incoming log entries. */
+  @property({ type: Array })
+  columnData: TableColumn[] = [];
+
   /** Whether line wrapping in table cells should be used. */
   @state()
   _lineWrap = false;
 
-  /** The field keys (column values) for the incoming log entries. */
-  @state()
-  private _columnData: TableColumn[] = [];
-
   /** A string representing the value contained in the search field. */
   @state()
-  public searchText = '';
+  searchText = '';
 
-  /** A StateStore object that stores state of views */
+  /** Preferred column order to reference */
   @state()
-  _stateStore: StateStore = new LocalStorageState();
+  columnOrder: string[] = [];
 
   @query('log-list') _logList!: LogList;
 
@@ -96,8 +90,6 @@ export class LogView extends LitElement {
    */
   private _timeFilter: FilterFunction = () => true;
 
-  private _state: State;
-
   private _debounceTimeout: NodeJS.Timeout | null = null;
 
   /** The number of elements in the `logs` array since last updated. */
@@ -106,21 +98,7 @@ export class LogView extends LitElement {
   /** The amount of time, in ms, before the filter expression is executed. */
   private readonly FILTER_DELAY = 100;
 
-  constructor() {
-    super();
-    this._state = this._stateStore.getState();
-  }
-
   protected firstUpdated(): void {
-    const viewConfigArr = this._state.logViewConfig;
-    const index = viewConfigArr.findIndex((i) => this.id === i.viewID);
-
-    // Get column data from local storage, if it exists
-    if (index !== -1) {
-      const storedColumnData = viewConfigArr[index].columnData;
-      this._columnData = storedColumnData;
-    }
-
     // Update view title with log source names if a view title isn't already provided
     if (!this.viewTitle) {
       this.updateTitle();
@@ -142,11 +120,8 @@ export class LogView extends LitElement {
       this.filterLogs();
     }
 
-    if (changedProperties.has('_columnData')) {
-      this._state = { logViewConfig: this._state.logViewConfig };
-      this._stateStore.setState({
-        logViewConfig: this._state.logViewConfig,
-      });
+    if (changedProperties.has('columnData')) {
+      this._logList.columnData = this.columnData;
     }
   }
 
@@ -157,20 +132,12 @@ export class LogView extends LitElement {
    *   update the filter.
    */
   private updateFilter(event: CustomEvent) {
-    this.searchText = event.detail.inputValue;
-    const logViewConfig = this._state.logViewConfig;
-    const index = logViewConfig.findIndex((i) => this.id === i.viewID);
-
     switch (event.type) {
       case 'input-change':
+        this.searchText = event.detail.inputValue;
+
         if (this._debounceTimeout) {
           clearTimeout(this._debounceTimeout);
-        }
-
-        if (index !== -1) {
-          logViewConfig[index].search = this.searchText;
-          this._state = { logViewConfig: logViewConfig };
-          this._stateStore.setState({ logViewConfig: logViewConfig });
         }
 
         if (!this.searchText) {
@@ -206,26 +173,88 @@ export class LogView extends LitElement {
   }
 
   private updateFieldsFromNewLogs(newLogs: LogEntry[]): void {
-    if (!this._columnData) {
-      this._columnData = [];
-    }
-
     newLogs.forEach((log) => {
       log.fields.forEach((field) => {
-        if (!this._columnData.some((col) => col.fieldName === field.key)) {
-          this._columnData.push({
+        if (!this.columnData.some((col) => col.fieldName === field.key)) {
+          const newColumnData = {
             fieldName: field.key,
             characterLength: 0,
             manualWidth: null,
             isVisible: true,
-          });
+          };
+          this.updateColumnOrder([newColumnData]);
+          this.columnData = this.updateColumnRender([
+            newColumnData,
+            ...this.columnData,
+          ]);
         }
       });
     });
   }
 
+  /**
+   * Orders fields by the following: severity, init defined fields, undefined fields, and message
+   * @param columnData ColumnData is used to check for undefined fields.
+   */
+  private updateColumnOrder(columnData: TableColumn[]) {
+    const columnOrder = [...new Set(this.columnOrder)];
+    if (this.columnOrder.length !== columnOrder.length) {
+      console.warn(
+        'Log View had duplicate columns defined, duplicates were removed.',
+      );
+      this.columnOrder = columnOrder;
+    }
+
+    if (this.columnOrder.indexOf('severity') != 0) {
+      const index = this.columnOrder.indexOf('severity');
+      if (index != -1) {
+        this.columnOrder.splice(index, 1);
+      }
+      this.columnOrder.unshift('severity');
+    }
+
+    if (this.columnOrder.indexOf('message') != this.columnOrder.length) {
+      const index = this.columnOrder.indexOf('message');
+      if (index != -1) {
+        this.columnOrder.splice(index, 1);
+      }
+      this.columnOrder.push('message');
+    }
+
+    columnData.forEach((tableColumn) => {
+      if (!this.columnOrder.includes(tableColumn.fieldName)) {
+        this.columnOrder.splice(
+          this.columnOrder.length - 1,
+          0,
+          tableColumn.fieldName,
+        );
+      }
+    });
+  }
+
+  /**
+   * Updates order of columnData based on columnOrder for log viewer to render
+   * @param columnData ColumnData to order
+   * @return Ordered list of ColumnData
+   */
+  private updateColumnRender(columnData: TableColumn[]): TableColumn[] {
+    const orderedColumns: TableColumn[] = [];
+    const columnFields = columnData.map((column) => {
+      return column.fieldName;
+    });
+
+    this.columnOrder.forEach((field: string) => {
+      const index = columnFields.indexOf(field);
+      if (index > -1) {
+        orderedColumns.push(columnData[index]);
+      }
+    });
+
+    return orderedColumns;
+  }
+
   public getFields(): string[] {
-    return this._columnData
+    return this.columnData
       .filter((column) => column.isVisible)
       .map((column) => column.fieldName);
   }
@@ -238,15 +267,8 @@ export class LogView extends LitElement {
    *   toggled.
    */
   private toggleColumns(event: CustomEvent) {
-    const logViewConfig = this._state.logViewConfig;
-    const index = logViewConfig.findIndex((i) => this.id === i.viewID);
-
-    if (index === -1) {
-      return;
-    }
-
     // Find the relevant column in _columnData
-    const column = this._columnData.find(
+    const column = this.columnData.find(
       (col) => col.fieldName === event.detail.field,
     );
 
@@ -258,7 +280,7 @@ export class LogView extends LitElement {
     column.isVisible = event.detail.isChecked;
 
     // Clear the manually-set width of the last visible column
-    const lastVisibleColumn = this._columnData
+    const lastVisibleColumn = this.columnData
       .slice()
       .reverse()
       .find((col) => col.isVisible);
@@ -266,9 +288,8 @@ export class LogView extends LitElement {
       lastVisibleColumn.manualWidth = null;
     }
 
-    // Trigger the change in column data and request an update
-    this._columnData = [...this._columnData];
-    this._logList.requestUpdate();
+    // Trigger a `columnData` update
+    this.columnData = [...this.columnData];
   }
 
   /**
@@ -297,10 +318,6 @@ export class LogView extends LitElement {
     }
   }
 
-  private updateColumnData(event: CustomEvent) {
-    this._columnData = event.detail;
-  }
-
   private updateTitle() {
     const sourceNames = Array.from(this.sources.values())?.map(
       (tag: SourceData) => tag.name,
@@ -314,48 +331,18 @@ export class LogView extends LitElement {
    * @param {CustomEvent} event - The click event.
    */
   private downloadLogs(event: CustomEvent) {
-    const headers = this.logs[0]?.fields.map((field) => field.key) || [];
-    const maxWidths = headers.map((header) => header.length);
+    const headers = this.columnData.map((column) => column.fieldName);
     const viewTitle = event.detail.viewTitle;
-    const fileName = viewTitle ? titleCaseToKebabCase(viewTitle) : 'logs';
-
-    this.logs.forEach((log) => {
-      log.fields.forEach((field, columnIndex) => {
-        maxWidths[columnIndex] = Math.max(
-          maxWidths[columnIndex],
-          field.value.toString().length,
-        );
-      });
-    });
-
-    const headerRow = headers
-      .map((header, columnIndex) => header.padEnd(maxWidths[columnIndex]))
-      .join('\t');
-    const separator = '';
-    const logRows = this.logs.map((log) => {
-      const values = log.fields.map((field, columnIndex) =>
-        field.value.toString().padEnd(maxWidths[columnIndex]),
-      );
-      return values.join('\t');
-    });
-
-    const formattedLogs = [headerRow, separator, ...logRows].join('\n');
-    const blob = new Blob([formattedLogs], { type: 'text/plain' });
-    const downloadLink = document.createElement('a');
-    downloadLink.href = URL.createObjectURL(blob);
-    downloadLink.download = `${fileName}.txt`;
-    downloadLink.click();
-
-    URL.revokeObjectURL(downloadLink.href);
+    downloadTextLogs(this.logs, headers, viewTitle);
   }
 
   render() {
     return html` <log-view-controls
-        .columnData=${this._columnData}
+        .columnData=${this.columnData}
         .viewId=${this.id}
         .viewTitle=${this.viewTitle}
         .hideCloseButton=${!this.isOneOfMany}
-        .stateStore=${this._stateStore}
+        .searchText=${this.searchText}
         @input-change="${this.updateFilter}"
         @clear-logs="${this.updateFilter}"
         @column-toggle="${this.toggleColumns}"
@@ -366,12 +353,10 @@ export class LogView extends LitElement {
       </log-view-controls>
 
       <log-list
-        .columnData=${[...this._columnData]}
         .lineWrap=${this._lineWrap}
         .viewId=${this.id}
         .logs=${this._filteredLogs}
         .searchText=${this.searchText}
-        @update-column-data="${this.updateColumnData}"
       >
       </log-list>`;
   }

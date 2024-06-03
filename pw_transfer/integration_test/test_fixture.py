@@ -14,6 +14,8 @@
 # the License.
 """Test fixture for pw_transfer integration tests."""
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 from dataclasses import dataclass
@@ -349,7 +351,7 @@ class TransferIntegrationTestHarness:
 
 class BasicTransfer(NamedTuple):
     id: int
-    type: 'config_pb2.TransferAction.TransferType.ValueType'
+    type: config_pb2.TransferAction.TransferType.ValueType
     data: bytes
 
 
@@ -372,7 +374,7 @@ class TransferIntegrationTest(unittest.TestCase):
     def default_server_config() -> config_pb2.ServerConfig:
         return config_pb2.ServerConfig(
             chunk_size_bytes=216,
-            pending_bytes=32 * 1024,
+            pending_bytes=64 * 1024,
             chunk_timeout_seconds=5,
             transfer_service_retries=4,
             extend_window_divisor=32,

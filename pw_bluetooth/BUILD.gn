@@ -27,6 +27,8 @@ config("public_include_path") {
 }
 
 pw_doc_group("docs") {
+  # Also, sources with doxygen comment blocks must be added to //docs/BUILD.gn
+  inputs = [ "emboss_test.cc" ]
   sources = [ "docs.rst" ]
 
   report_deps = [
@@ -87,6 +89,14 @@ if (dir_pw_third_party_emboss != "") {
     visibility = [ ":*" ]
   }
 
+  emboss_cc_library("emboss_hci_android") {
+    public_configs = [ ":emboss_include_path" ]
+    source = "public/pw_bluetooth/hci_android.emb"
+    imports = [ "public/pw_bluetooth/hci_common.emb" ]
+    import_dirs = [ "public" ]
+    deps = [ ":emboss_hci_common" ]
+  }
+
   emboss_cc_library("emboss_hci_common") {
     public_configs = [ ":emboss_include_path" ]
     source = "public/pw_bluetooth/hci_common.emb"
@@ -120,14 +130,6 @@ if (dir_pw_third_party_emboss != "") {
     import_dirs = [ "public" ]
   }
 
-  emboss_cc_library("emboss_hci_vendor") {
-    public_configs = [ ":emboss_include_path" ]
-    source = "public/pw_bluetooth/hci_vendor.emb"
-    imports = [ "public/pw_bluetooth/hci_common.emb" ]
-    import_dirs = [ "public" ]
-    deps = [ ":emboss_hci_common" ]
-  }
-
   emboss_cc_library("emboss_hci_test") {
     public_configs = [ ":emboss_include_path" ]
     source = "public/pw_bluetooth/hci_test.emb"
@@ -144,15 +146,17 @@ if (dir_pw_third_party_emboss != "") {
   group("emboss_hci_group") {
     public_configs = [ ":emboss_include_path" ]
     public_deps = [
+      ":emboss_hci_android",
       ":emboss_hci_commands",
       ":emboss_hci_common",
       ":emboss_hci_data",
       ":emboss_hci_events",
       ":emboss_hci_h4",
-      ":emboss_hci_vendor",
     ]
   }
 } else {
+  group("emboss_hci_android") {
+  }
   group("emboss_hci_common") {
   }
   group("emboss_hci_commands") {
@@ -162,8 +166,6 @@ if (dir_pw_third_party_emboss != "") {
   group("emboss_hci_events") {
   }
   group("emboss_hci_h4") {
-  }
-  group("emboss_hci_vendor") {
   }
   group("emboss_hci_test") {
   }
@@ -208,12 +210,12 @@ pw_test("emboss_test") {
   enable_if = dir_pw_third_party_emboss != ""
   sources = [ "emboss_test.cc" ]
   deps = [
-    ":emboss_hci_commands",
-    ":emboss_hci_data",
-    ":emboss_hci_events",
+    # All emboss targets are listed (even if they don't have explicit tests) to
+    # ensure they are compiled.
+    ":emboss_hci_group",
     ":emboss_hci_test",
-    ":emboss_hci_vendor",
     ":emboss_l2cap_frames",
+    "$dir_pw_third_party/fuchsia:stdcompat",
   ]
 }
 

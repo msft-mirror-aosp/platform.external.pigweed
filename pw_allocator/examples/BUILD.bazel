@@ -35,15 +35,6 @@ cc_library(
     ],
 )
 
-pw_cc_test(
-    name = "block_allocator",
-    srcs = ["block_allocator.cc"],
-    deps = [
-        ":named_u32",
-        "//pw_allocator:block_allocator",
-    ],
-)
-
 cc_library(
     name = "custom_allocator",
     testonly = True,
@@ -53,6 +44,7 @@ cc_library(
     deps = [
         "//pw_allocator:allocator",
         "//pw_log",
+        "//pw_result",
     ],
 )
 
@@ -77,6 +69,15 @@ pw_cc_test(
         ":named_u32",
         "//pw_allocator:allocator",
         "//pw_allocator:testing",
+    ],
+)
+
+pw_cc_test(
+    name = "block_allocator",
+    srcs = ["block_allocator.cc"],
+    deps = [
+        ":named_u32",
+        "//pw_allocator:block_allocator",
     ],
 )
 
@@ -122,6 +123,16 @@ pw_cc_test(
         "//pw_allocator:testing",
         "//pw_allocator:tracking_allocator",
         "//pw_tokenizer",
+    ],
+)
+
+pw_cc_test(
+    name = "pmr",
+    testonly = True,
+    srcs = ["pmr.cc"],
+    deps = [
+        "//pw_allocator:allocator",
+        "//pw_allocator:testing",
     ],
 )
 

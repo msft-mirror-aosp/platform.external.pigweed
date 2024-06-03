@@ -14,14 +14,19 @@
 # the License.
 """Watch build config dataclasses."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
+import functools
 import logging
 from pathlib import Path
 import shlex
-from typing import Callable, TYPE_CHECKING
+from typing import Callable, Mapping, TYPE_CHECKING
 
 from prompt_toolkit.formatted_text import ANSI, StyleAndTextTuples
 from prompt_toolkit.formatted_text.base import OneStyleAndTextTuple
+
+from pw_presubmit.build import write_gn_args_file
 
 if TYPE_CHECKING:
     from pw_build.project_builder import ProjectBuilder
@@ -214,7 +219,7 @@ class BuildCommand:
 class BuildRecipeStatus:
     """Stores the status of a build recipe."""
 
-    recipe: 'BuildRecipe'
+    recipe: BuildRecipe
     current_step: str = ''
     percent: float = 0.0
     error_count: int = 0
@@ -433,12 +438,15 @@ class BuildRecipe:
             is set for all included steps.
         steps: List of BuildCommands to run.
         title: Custom title. The build_dir is used if this is ommited.
+        auto_create_build_dir: Auto create the build directory and all necessary
+            parent directories before running any build commands.
     """
 
     build_dir: Path
     steps: list[BuildCommand] = field(default_factory=list)
     title: str | None = None
     enabled: bool = True
+    auto_create_build_dir: bool = True
 
     def __hash__(self):
         return hash((self.build_dir, self.title, len(self.steps)))
@@ -454,7 +462,7 @@ class BuildRecipe:
         self.error_logger: logging.Logger | None = None
         self._logfile: Path | None = None
         self._status: BuildRecipeStatus = BuildRecipeStatus(self)
-        self.project_builder: 'ProjectBuilder | None' = None
+        self.project_builder: ProjectBuilder | None = None
 
     def toggle_enabled(self) -> None:
         self.enabled = not self.enabled
@@ -513,7 +521,7 @@ class BuildRecipe:
         return message
 
 
-def create_build_recipes(prefs: 'ProjectBuilderPrefs') -> list[BuildRecipe]:
+def create_build_recipes(prefs: ProjectBuilderPrefs) -> list[BuildRecipe]:
     """Create a list of BuildRecipes from ProjectBuilderPrefs."""
     build_recipes: list[BuildRecipe] = []
 
@@ -553,3 +561,85 @@ def create_build_recipes(prefs: 'ProjectBuilderPrefs') -> list[BuildRecipe]:
         )
 
     return build_recipes
+
+
+def should_gn_gen(out: Path) -> bool:
+    """Returns True if the gn gen command should be run.
+
+    Returns True if ``build.ninja`` or ``args.gn`` files are missing from the
+    build directory.
+    """
+    # gn gen only needs to run if build.ninja or args.gn files are missing.
+    expected_files = [
+        out / 'build.ninja',
+        out / 'args.gn',
+    ]
+    return any(not gen_file.is_file() for gen_file in expected_files)
+
+
+def should_gn_gen_with_args(
+    gn_arg_dict: Mapping[str, bool | str | list | tuple]
+) -> Callable:
+    """Returns a callable which writes an args.gn file prior to checks.
+
+    Args:
+      gn_arg_dict: Dictionary of key value pairs to use as gn args.
+
+    Returns:
+      Callable which takes a single Path argument and returns a bool
+      for True if the gn gen command should be run.
+
+    The returned function will:
+
+    1. Always re-write the ``args.gn`` file.
+    2. Return True if ``build.ninja`` or ``args.gn`` files are missing.
+    """
+
+    def _write_args_and_check(out: Path) -> bool:
+        # Always re-write the args.gn file.
+        write_gn_args_file(out / 'args.gn', **gn_arg_dict)
+
+        return should_gn_gen(out)
+
+    return _write_args_and_check
+
+
+def _should_regenerate_cmake(
+    cmake_generate_command: list[str], out: Path
+) -> bool:
+    """Save the full cmake command to a file.
+
+    Returns True if cmake files should be regenerated.
+    """
+    _should_regenerate = True
+    cmake_command = ' '.join(cmake_generate_command)
+    cmake_command_filepath = out / 'cmake_cfg_command.txt'
+    if (out / 'build.ninja').is_file() and cmake_command_filepath.is_file():
+        if cmake_command == cmake_command_filepath.read_text():
+            _should_regenerate = False
+
+    if _should_regenerate:
+        out.mkdir(parents=True, exist_ok=True)
+        cmake_command_filepath.write_text(cmake_command)
+
+    return _should_regenerate
+
+
+def should_regenerate_cmake(
+    cmake_generate_command: list[str],
+) -> Callable[[Path], bool]:
+    """Return a callable to determine if cmake should be regenerated.
+
+    Args:
+      cmake_generate_command: Full list of args to run cmake.
+
+    The returned function will return True signaling CMake should be re-run if:
+
+    1. The provided CMake command does not match an existing args in the
+       ``cmake_cfg_command.txt`` file in the build dir.
+    2. ``build.ninja`` is missing or ``cmake_cfg_command.txt`` is missing.
+
+    When the function is run it will create the build directory if needed and
+    write the cmake_generate_command args to the ``cmake_cfg_command.txt`` file.
+    """
+    return functools.partial(_should_regenerate_cmake, cmake_generate_command)

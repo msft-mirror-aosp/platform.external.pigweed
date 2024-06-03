@@ -17,7 +17,7 @@
 
 #include "pw_assert/assert.h"
 #include "pw_bytes/span.h"
-#include "pw_sync/mutex.h"
+#include "pw_sync/interrupt_spin_lock.h"
 
 namespace pw::multibuf {
 
@@ -127,12 +127,6 @@ class Chunk {
   ///
   /// This method will acquire a mutex and is not IRQ safe.
   void DiscardPrefix(size_t bytes_to_discard);
-
-  // TODO(b/327033010): remove once all callers have migrated.
-  /// Deprecated alias for DiscardPrefix.
-  [[deprecated]] void DiscardFront(size_t bytes_to_discard) {
-    DiscardPrefix(bytes_to_discard);
-  }
 
   /// Shrinks this handle to refer to data in the range ``begin..<end``.
   ///
@@ -309,7 +303,7 @@ class ChunkRegionTracker {
   /// This allows chunks to:
   /// - know whether they can expand to fill neighboring regions of memory.
   /// - know when the last chunk has been destructed, triggering `Destroy`.
-  pw::sync::Mutex lock_;
+  pw::sync::InterruptSpinLock lock_;
   friend Chunk;
 };
 

@@ -18,18 +18,6 @@ common --noenable_bzlmod
 # Improve debugability by printing all arguments for failing commands.
 common --verbose_failures
 
-# TODO: https://pwbug.dev/319664275: Disable hermetic sandbox tmp due to issues
-# with arm toolchain.
-build --noincompatible_sandbox_hermetic_tmp
-
-# TODO: https://pwbug.dev/319664275: Go binaries fail at runtime with "fatal
-# error: invalid function symbol table" unless we disable cgo via the below
-# flag. This error is resolved when enabling --incompatible_sandbox_hermetic_tmp
-# but that can't be turned on until this bug is resolved.
-# Reference:
-# https://github.com/bazelbuild/rules_go/blob/release-0.45/go/modes.rst#build-settings
-build --@io_bazel_rules_go//go/config:pure
-
 # Silence all C/C++ warnings in external code.
 #
 # Note that this will not silence warnings from external headers #include'd in
@@ -48,6 +36,11 @@ common --incompatible_default_to_explicit_init_py
 
 # Required for new toolchain resolution API.
 build --incompatible_enable_cc_toolchain_resolution
+
+# Skip building or testing C++20 targets by default
+# TODO: b/340568834 Remove when a proper solution is available.
+build --build_tag_filters=-requires_cxx_20
+test --test_tag_filters=-requires_cxx_20
 
 # Do not attempt to configure an autodetected (local) toolchain. We vendor all
 # our toolchains, and CI VMs may not have any local toolchain to detect.
@@ -107,6 +100,8 @@ common --//third_party/stm32cube:hal_driver=@stm32f4xx_hal_driver//:hal_driver
 common --@stm32f4xx_hal_driver//:cmsis_device=@cmsis_device_f4//:cmsis_device
 common --@stm32f4xx_hal_driver//:cmsis_init=@cmsis_device_f4//:default_cmsis_init
 
+common --//pw_env_setup/py:pigweed_json=//:pigweed.json
+
 # Config for the stm32f429i_disc1_stm32cube platform.
 #
 # TODO: b/301334234 - Make the platform set the flags below.
@@ -117,7 +112,20 @@ build:stm32f429i --@stm32f4xx_hal_driver//:hal_config=//targets/stm32f429i_disc1
 build:stm32f429i --//pw_log:backend=@pigweed//pw_log_tokenized
 build:stm32f429i --//pw_log:backend_impl=@pigweed//pw_log_tokenized:impl
 build:stm32f429i --//pw_log_tokenized:handler_backend=@pigweed//pw_system:log_backend
+build:stm32f429i --//pw_system:extra_platform_libs=@pigweed//targets/stm32f429i_disc1_stm32cube:extra_platform_libs
 
+
+# Config for the lm3s6965evb platform, used to build pw_rust/examples.
+#
+# TODO: b/301334234 - Make the platform set the flags below.
+build:lm3s6965evb --platforms=//pw_build/platforms:lm3s6965evb
+build:lm3s6965evb --//pw_log/rust:pw_log_backend=//pw_rust/examples/tokenized_logging:pw_log_backend
+
+# Config for the microbit platform, used to build pw_rust/examples.
+#
+# TODO: b/301334234 - Make the platform set the flags below.
+build:microbit --platforms=//pw_build/platforms:lm3s6965evb
+build:microbit --//pw_log/rust:pw_log_backend=//pw_rust/examples/tokenized_logging:pw_log_backend
 
 # For some platforms i.e. google/oss-fuzz we need to use the system provided
 # rather than the hermetic toolchains. This allows oss-fuzz to override the
@@ -126,6 +134,12 @@ build:stm32f429i --//pw_log_tokenized:handler_backend=@pigweed//pw_system:log_ba
 # Detect toolchains
 common:non_hermetic --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0
 common:non_hermetic --extra_toolchains=@local_config_cc_toolchains//...
+
+# Use the remote cache. This will only work for users who have permission to access it.
+common:remote_cache --remote_cache=grpcs://remotebuildexecution.googleapis.com
+common:remote_cache --google_default_credentials=true
+common:remote_cache --remote_instance_name=projects/pigweed-rbe-open/instances/default-instance
+common:remote_cache --remote_upload_local_results=false
 
 # Specifies desired output mode for running tests.
 # Valid values are

@@ -24,15 +24,15 @@ pw_add_library(pw_multibuf.chunk STATIC
   pw_bytes
   pw_preprocessor
   pw_span
-  pw_sync.mutex
+  pw_sync.interrupt_spin_lock
   PRIVATE_DEPS
   pw_assert.check
   SOURCES
   chunk.cc
 )
 
-pw_add_library(pw_multibuf.header_chunk_region_tracker STATIC
-  SOURCES
+pw_add_library(pw_multibuf.header_chunk_region_tracker INTERFACE
+  HEADERS
   public/pw_multibuf/header_chunk_region_tracker.h
   PUBLIC_INCLUDES
   public
@@ -42,8 +42,8 @@ pw_add_library(pw_multibuf.header_chunk_region_tracker STATIC
   pw_multibuf.chunk
 )
 
-pw_add_library(pw_multibuf.single_chunk_region_tracker STATIC
-  SOURCES
+pw_add_library(pw_multibuf.single_chunk_region_tracker INTERFACE
+  HEADERS
   public/pw_multibuf/single_chunk_region_tracker.h
   PUBLIC_INCLUDES
   public
@@ -189,8 +189,8 @@ pw_add_test(pw_multibuf.stream_test
   pw_multibuf
 )
 
-pw_add_library(pw_multibuf.test_utils STATIC
-  SOURCES
+pw_add_library(pw_multibuf.test_utils INTERFACE
+  HEADERS
   pw_multibuf_private/test_utils.h
   PUBLIC_DEPS
   pw_assert

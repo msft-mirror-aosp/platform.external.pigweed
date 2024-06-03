@@ -21,29 +21,18 @@ cc_library_static {
     cpp_std: "c++20",
     vendor_available: true,
     export_include_dirs: ["public"],
+    defaults: [
+        "pw_android_common_backends",
+    ],
     header_libs: [
         "fuchsia_sdk_lib_fit",
         "fuchsia_sdk_lib_stdcompat",
-        "pw_assert_headers",
-        "pw_assert_log_headers",
-        "pw_function_headers",
-        "pw_log_headers",
-        "pw_log_null_headers",
-        "pw_polyfill_headers",
-        "pw_preprocessor_headers",
-        "pw_result_headers",
-        "pw_span_headers",
-        "pw_toolchain",
+        "pw_assert",
+        "pw_log",
     ],
     export_header_lib_headers: [
-        "pw_assert_headers",
-        "pw_assert_log_headers",
-        "pw_function_headers",
-        "pw_log_headers",
-        "pw_log_null_headers",
-        "pw_preprocessor_headers",
-        "pw_result_headers",
-        "pw_span_headers",
+        "pw_assert",
+        "pw_log",
     ],
     host_supported: true,
     srcs: [
@@ -57,22 +46,33 @@ cc_library_static {
     static_libs: [
         "pw_bytes",
         "pw_containers",
+        "pw_function",
+        "pw_polyfill",
+        "pw_preprocessor",
+        "pw_result",
+        "pw_span",
         "pw_status",
         "pw_stream",
         "pw_string",
+        "pw_toolchain",
         "pw_varint",
     ],
     export_static_lib_headers: [
         "pw_bytes",
         "pw_containers",
+        "pw_function",
+        "pw_preprocessor",
+        "pw_result",
+        "pw_span",
         "pw_status",
         "pw_stream",
+        "pw_toolchain",
         "pw_varint",
     ],
 }
 
 cc_library_headers {
-    name: "pw_protobuf_pwpb_headers",
+    name: "pw_protobuf_pwpb",
     cpp_std: "c++20",
     vendor_available: true,
     host_supported: true,
@@ -83,6 +83,28 @@ cc_library_headers {
     export_generated_headers: [
         "google_protobuf_descriptor_pwpb_h",
         "pw_protobuf_protos_common_pwpb_h",
+    ],
+}
+
+genrule {
+    name: "pw_protobuf_protos_common_nanopb_h",
+    srcs: [":pw_protobuf_common_proto_with_prefix"],
+    cmd: "python3 $(location pw_protobuf_compiler_py) " +
+        "--proto-path=external/pigweed/pw_protobuf/ " +
+        "--out-dir=$$(dirname $(location pw_protobuf_protos/common.pb.h)) " +
+        "--plugin-path=$(location protoc-gen-nanopb) " +
+        "--compile-dir=$$(dirname $(in)) " +
+        "--sources $(in) " +
+        "--language nanopb " +
+        "--no-experimental-proto3-optional " +
+        "--protoc=$(location aprotoc) ",
+    out: [
+        "pw_protobuf_protos/common.pb.h",
+    ],
+    tools: [
+        "aprotoc",
+        "protoc-gen-nanopb",
+        "pw_protobuf_compiler_py",
     ],
 }
 

@@ -18,32 +18,32 @@ load("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "cipd_repository")
 
 HOSTS = [
     {
-        "cpu": "aarch64",
         "cipd_arch": "arm64",
+        "cpu": "aarch64",
+        "dylib_ext": ".so",
         "os": "linux",
         "triple": "aarch64-unknown-linux-gnu",
-        "dylib_ext": ".so",
     },
     {
-        "cpu": "x86_64",
         "cipd_arch": "amd64",
+        "cpu": "x86_64",
+        "dylib_ext": ".so",
         "os": "linux",
         "triple": "x86_64-unknown-linux-gnu",
-        "dylib_ext": ".so",
     },
     {
-        "cpu": "aarch64",
         "cipd_arch": "arm64",
+        "cpu": "aarch64",
+        "dylib_ext": ".dylib",
         "os": "macos",
         "triple": "aarch64-apple-darwin",
-        "dylib_ext": ".dylib",
     },
     {
-        "cpu": "x86_64",
         "cipd_arch": "amd64",
+        "cpu": "x86_64",
+        "dylib_ext": ".dylib",
         "os": "macos",
         "triple": "x86_64-apple-darwin",
-        "dylib_ext": ".dylib",
     },
 ]
 
@@ -64,27 +64,29 @@ EXTRA_TARGETS = [
 
 CHANNELS = [
     {
+        "extra_rustc_flags": ["-Dwarnings", "-Zmacro-backtrace"],
         "name": "nightly",
-        "extra_rustc_flags": ["-Dwarnings"],
         "target_settings": ["@rules_rust//rust/toolchain/channel:nightly"],
     },
     {
-        "name": "stable",
         # In order to approximate a stable toolchain with our nightly one, we
         # disable experimental features with the exception of `proc_macro_span`
         # because the `proc-marcro2` automatically detects the toolchain
         # as nightly and dynamically uses this feature.
         "extra_rustc_flags": ["-Dwarnings", "-Zallow-features=proc_macro_span"],
+        "name": "stable",
         "target_settings": ["@rules_rust//rust/toolchain/channel:stable"],
     },
 ]
 
 # buildifier: disable=unnamed-macro
-def pw_rust_register_toolchain_and_target_repos(cipd_tag):
+def pw_rust_register_toolchain_and_target_repos(cipd_tag, pigweed_repo_name = "@pigweed"):
     """Declare and register CIPD repos for Rust toolchain and target rupport.
 
     Args:
       cipd_tag: Tag with which to select specific package versions.
+      pigweed_repo_name: The name of the pigweed used to reference build files
+        for the registered repositories.  Defaults to "@pigweed".
     """
     for host in HOSTS:
         cipd_os = host["os"]
@@ -93,14 +95,14 @@ def pw_rust_register_toolchain_and_target_repos(cipd_tag):
 
         cipd_repository(
             name = "rust_toolchain_host_{}_{}".format(host["os"], host["cpu"]),
-            build_file = "//pw_toolchain/rust:rust_toolchain.BUILD",
+            build_file = "{}//pw_toolchain/rust:rust_toolchain.BUILD".format(pigweed_repo_name),
             path = "fuchsia/third_party/rust/host/{}-{}".format(cipd_os, host["cipd_arch"]),
             tag = cipd_tag,
         )
 
         cipd_repository(
             name = "rust_toolchain_target_{}".format(host["triple"]),
-            build_file = "//pw_toolchain/rust:rust_stdlib.BUILD",
+            build_file = "{}//pw_toolchain/rust:rust_stdlib.BUILD".format(pigweed_repo_name),
             path = "fuchsia/third_party/rust/target/{}".format(host["triple"]),
             tag = cipd_tag,
         )
@@ -108,7 +110,7 @@ def pw_rust_register_toolchain_and_target_repos(cipd_tag):
     for target in EXTRA_TARGETS:
         cipd_repository(
             name = "rust_toolchain_target_{}".format(target["triple"]),
-            build_file = "//pw_toolchain/rust:rust_stdlib.BUILD",
+            build_file = "{}//pw_toolchain/rust:rust_stdlib.BUILD".format(pigweed_repo_name),
             path = "fuchsia/third_party/rust/target/{}".format(target["triple"]),
             tag = cipd_tag,
         )

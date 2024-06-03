@@ -16,10 +16,10 @@ pw_async2
      like other tasks, and can easily plug into an existing ``pw_async2``
      systems.
 
-:cpp:type:`pw::async2::Task` is Pigweed's async primitive. ``Task`` objects
-are cooperatively-scheduled "threads" which yield to the ``Dispatcher``
-when waiting. When the ``Task`` is able to make progress, the ``Dispatcher``
-will run it again. For example:
+:cpp:class:`pw::async2::Task` is Pigweed's async primitive. ``Task`` objects
+are cooperatively-scheduled "threads" which yield to the
+:cpp:class:`pw::async2::Dispatcher` when waiting. When the ``Task`` is able to make
+progress, the ``Dispatcher`` will run it again. For example:
 
 .. code-block:: cpp
 
@@ -82,8 +82,8 @@ will run it again. For example:
      std::optional<SendFuture> send_future_ = std::nullopt;
    };
 
-Tasks can then be run on a ``Dispatcher`` using the ``Dispatcher::Post``
-method:
+Tasks can then be run on a :cpp:class:`pw::async2::Dispatcher` using the
+:cpp:func:`pw::async2::Dispatcher::Post` method:
 
 .. code-block:: cpp
 
@@ -97,31 +97,30 @@ method:
      return 0;
    }
 
--------
-Roadmap
--------
-Coming soon: C++20 users can also define tasks using coroutines!
+.. _module-pw_async2-coroutines:
 
-.. code-block:: cpp
+----------
+Coroutines
+----------
+C++20 users can also define tasks using coroutines!
 
-   #include "pw_async2/dispatcher.h"
-   #include "pw_async2/poll.h"
+.. literalinclude:: examples/coro.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_async2-examples-coro-injection]
+   :end-before: [pw_async2-examples-coro-injection]
 
-   #include "pw_result/result.h"
+Any value with a ``Poll<T> Pend(Context&)`` method can be passed to
+``co_await``, which will return with a ``T`` when the result is ready.
 
-   using ::pw::async2::CoroutineTask;
+To return from a coroutine, ``co_return <expression>`` must be used instead of
+the usual ``return <expression>`` syntax. Because of this, the
+:c:macro:`PW_TRY` and :c:macro:`PW_TRY_ASSIGN` macros are not usable within
+coroutines. :c:macro:`PW_CO_TRY` and :c:macro:`PW_CO_TRY_ASSIGN` should be
+used instead.
 
-   CoroutineTask ReceiveAndSend(Receiver receiver, Sender sender) {
-     pw::Result<Data> data = co_await receiver.Receive(cx);
-     if (!data.ok()) {
-       PW_LOG_ERROR("Receiving failed: %s", data.status().str());
-       return;
-     }
-     pw::Status sent = co_await sender.Send(std::move(data));
-     if (!sent.ok()) {
-       PW_LOG_ERROR("Sending failed: %s", sent.str());
-     }
-   }
+For a more detailed explanation of Pigweed's coroutine support, see the
+documentation on the :cpp:class:`pw::async2::Coro<T>` type.
 
 -----------------
 C++ API reference
@@ -147,6 +146,25 @@ C++ API reference
   :members:
 
 .. doxygenclass:: pw::async2::Dispatcher
+  :members:
+
+.. doxygenclass:: pw::async2::Coro
+  :members:
+
+.. doxygenclass:: pw::async2::CoroContext
+  :members:
+
+-------------
+C++ Utilities
+-------------
+.. doxygenfunction:: pw::async2::AllocateTask(pw::allocator::Allocator& allocator, Pendable&& pendable)
+
+.. doxygenfunction:: pw::async2::AllocateTask(pw::allocator::Allocator& allocator, Args&&... args)
+
+.. doxygenclass:: pw::async2::PendFuncTask
+  :members:
+
+.. doxygenclass:: pw::async2::PendableAsTask
   :members:
 
 .. toctree::

@@ -24,24 +24,6 @@
 
 namespace examples {
 
-using pw::allocator::Allocator;
-
-void CollectAllMetrics(Allocator& allocator) {
-  // DOCSTAG: [pw_allocator-examples-metrics-all_metrics]
-  constexpr pw::metric::Token kToken = PW_TOKENIZE_STRING("AllMetrics");
-  pw::allocator::TrackingAllocatorImpl<pw::allocator::AllMetrics> tracker(
-      kToken, allocator);
-  // DOCSTAG: [pw_allocator-examples-metrics-all_metrics]
-
-  // Keep one UniquePtr in scope, and let the other deallocate immediately.
-  auto ptr = tracker.MakeUnique<NamedU32>("test", 111);
-  ptr = tracker.MakeUnique<NamedU32>("test", 222);
-
-  // DOCSTAG: [pw_allocator-examples-metrics-dump]
-  tracker.metric_group().Dump();
-  // DOCSTAG: [pw_allocator-examples-metrics-dump]
-}
-
 // DOCSTAG: [pw_allocator-examples-metrics-custom_metrics1]
 struct CustomMetrics {
   PW_ALLOCATOR_METRICS_ENABLE(allocated_bytes);
@@ -50,7 +32,7 @@ struct CustomMetrics {
 };
 // DOCSTAG: [pw_allocator-examples-metrics-custom_metrics1]
 
-void CollectCustomMetrics(Allocator& allocator) {
+void CollectCustomMetrics(pw::Allocator& allocator) {
   // DOCSTAG: [pw_allocator-examples-metrics-custom_metrics2]
   constexpr pw::metric::Token kToken = PW_TOKENIZE_STRING("CustomMetrics");
   pw::allocator::TrackingAllocatorImpl<CustomMetrics> tracker(kToken,
@@ -61,13 +43,15 @@ void CollectCustomMetrics(Allocator& allocator) {
   auto ptr = tracker.MakeUnique<NamedU32>("test", 111);
   ptr = tracker.MakeUnique<NamedU32>("test", 222);
 
+  // DOCSTAG: [pw_allocator-examples-metrics-dump]
   tracker.metric_group().Dump();
+  // DOCSTAG: [pw_allocator-examples-metrics-dump]
 }
 
-void CollectMultipleTrackers(Allocator& allocator) {
+void CollectMultipleTrackers(pw::Allocator& allocator) {
   // DOCSTAG: [pw_allocator-examples-metrics-multiple_trackers]
   using MyTrackingAllocator =
-      pw::allocator::TrackingAllocatorImpl<pw::allocator::AllMetrics>;
+      pw::allocator::TrackingAllocatorImpl<pw::allocator::internal::AllMetrics>;
 
   constexpr pw::metric::Token kToken0 = PW_TOKENIZE_STRING("Combined");
   MyTrackingAllocator combined(kToken0, allocator);
@@ -94,11 +78,17 @@ void CollectMultipleTrackers(Allocator& allocator) {
 
 namespace pw::allocator {
 
+using AllocatorForTest = ::pw::allocator::test::AllocatorForTest<256>;
+
+class MetricsExampleTest : public ::testing::Test {
+ protected:
+  AllocatorForTest allocator_;
+};
+
 // TODO: b/328076428 - Use pwrev/193642.
-TEST(MetricsExample, CollectAllMetrics) {
-  test::AllocatorForTest<256> allocator;
+TEST_F(MetricsExampleTest, CollectCustomMetrics) {
   // log_basic::test::LogCache<32> logs;
-  examples::CollectAllMetrics(allocator);
+  examples::CollectCustomMetrics(allocator_);
 
   // std::array<std::atring_view, 1> kExpectedLines{
   //   "todo",
@@ -112,27 +102,9 @@ TEST(MetricsExample, CollectAllMetrics) {
 }
 
 // TODO: b/328076428 - Use pwrev/193642.
-TEST(MetricsExample, CollectCustomMetrics) {
-  test::AllocatorForTest<256> allocator;
+TEST_F(MetricsExampleTest, CollectMultipleTrackers) {
   // log_basic::test::LogCache<32> logs;
-  examples::CollectCustomMetrics(allocator);
-
-  // std::array<std::atring_view, 1> kExpectedLines{
-  //   "todo",
-  // };
-  // for (const &auto line : kExpectedLines) {
-  //   ASSERT_TRUE(logs.HasNext());
-  //   log_basic::test::LogMessage log = logs.Next();
-  //   EXPECT_EQ(log.level, PW_LOG_LEVEL_INFO);
-  //   EXPECT_STREQ(log.message.c_str(), line.data());
-  // }
-}
-
-// TODO: b/328076428 - Use pwrev/193642.
-TEST(MetricsExample, CollectMultipleTrackers) {
-  test::AllocatorForTest<256> allocator;
-  // log_basic::test::LogCache<32> logs;
-  examples::CollectMultipleTrackers(allocator);
+  examples::CollectMultipleTrackers(allocator_);
 
   // std::array<std::atring_view, 1> kExpectedLines{
   //   "todo",

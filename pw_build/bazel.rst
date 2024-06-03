@@ -35,6 +35,14 @@ rule for handling linker scripts with Bazel. e.g.
          "PW_BOOT_VECTOR_TABLE_BEGIN=0x08000000",
          "PW_BOOT_VECTOR_TABLE_SIZE=512",
      ],
+     deps = [":some_header_library"],
+   )
+
+   # You can include headers provided by targets specified in deps.
+   cc_library(
+     name = "some_header_library",
+     hdrs = ["test_header.h"],
+     includes = ["."],
    )
 
    # You can include the linker script in the deps.
@@ -236,6 +244,7 @@ Arguments
 * ``out_header``: The header file to generate. Users will include this file
   exactly as it is written here to reference the byte arrays.
 * ``namespace``: C++ namespace to place the generated blobs within.
+* ``alwayslink``: Whether this library should always be linked. Defaults to false.
 
 Example
 ^^^^^^^
@@ -354,4 +363,3 @@ Toolchains and platforms
 Pigweed provides clang-based host toolchains for Linux and Mac Arm gcc
 toolchain. The clang-based Linux and Arm gcc toolchains are entirely hermetic.
 We don't currently provide a host toolchain for Windows.
-

@@ -44,8 +44,20 @@ Pair(T1, T2) -> Pair<T1, T2>;
 
 // A simple, fixed-size associative array with lookup by key or value.
 //
-// FlatMaps are initialized with a std::array of Pair<K, V> objects:
-//   FlatMap<char, int, 3> map({{{'A', 1}, {'B', 2}, {'C', 3}}});
+// FlatMaps can be initialized by:
+// 1. A std::array of Pair<K, V> objects.
+//    FlatMap<char, int, 3> map({{{'A', 1}, {'B', 2}, {'C', 3}}});
+//    FlatMap map(std::array{
+//        Pair<char, int>{'A', 1},
+//        Pair<char, int>{'B', 2},
+//        Pair<char, int>{'C', 3},
+//    });
+// 2. Pair<K, V> objects.
+//    FlatMap map = {
+//        Pair<char, int>{'A', 1},
+//        Pair<char, int>{'B', 2},
+//        Pair<char, int>{'C', 3},
+//    };
 //
 // The keys do not need to be sorted as the constructor will sort the items
 // if need be.
@@ -74,7 +86,7 @@ class FlatMap {
     using reference = value_type&;
     using iterator_category = std::bidirectional_iterator_tag;
 
-    constexpr mapped_iterator() = default;
+    constexpr mapped_iterator() : current_{} {}
 
     constexpr mapped_iterator(const mapped_iterator& other) = default;
     constexpr mapped_iterator& operator=(const mapped_iterator& other) =
@@ -122,13 +134,20 @@ class FlatMap {
 
     constexpr mapped_iterator(FlatMap::iterator current) : current_(current) {}
 
-    FlatMap::iterator current_{nullptr};
+    FlatMap::iterator current_;
   };
 
   constexpr FlatMap(const std::array<value_type, kArraySize>& items)
       : items_(items) {
     ConstexprSort(items_.begin(), kArraySize);
   }
+
+  // Omits explicit here to support assignment-like syntax, which is common to
+  // initialize a container.
+  template <typename... Items,
+            typename = std::enable_if_t<
+                std::conjunction_v<std::is_same<Items, value_type>...>>>
+  constexpr FlatMap(const Items&... items) : FlatMap(std::array{items...}) {}
 
   FlatMap(FlatMap&) = delete;
   FlatMap& operator=(FlatMap&) = delete;
@@ -244,7 +263,10 @@ class FlatMap {
       return;
     }
 
-    for (iterator it = data + 1, end = data + size; it < end; ++it) {
+    for (iterator it = data + 1,
+                  end = data + static_cast<difference_type>(size);
+         it < end;
+         ++it) {
       if (it->first < it[-1].first) {
         // Rotate the value into place.
         value_type temp = std::move(*it);
@@ -269,5 +291,9 @@ class FlatMap {
 
   std::array<value_type, kArraySize> items_;
 };
+
+template <typename K, typename V, typename... Items>
+FlatMap(const Pair<K, V>& item1,
+        const Items&... items) -> FlatMap<K, V, 1 + sizeof...(items)>;
 
 }  // namespace pw::containers

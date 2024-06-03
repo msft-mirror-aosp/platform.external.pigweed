@@ -173,10 +173,25 @@ install_deps()
 # Used in modules: //pw_bluetooth_sapphire.
 # NOTE: These blocks cannot feasibly be moved into a macro.
 # See https://github.com/bazelbuild/bazel/issues/1550
+git_repository(
+    name = "fuchsia_infra",
+    # ROLL: Warning: this entry is automatically updated.
+    # ROLL: Last updated 2024-05-25.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8746930955629881585.
+    commit = "edb37415fa6a9bc31e2f58b3e78c661c526b6cc3",
+    remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
+)
+
+load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
+
+fuchsia_infra_workspace()
+
+FUCHSIA_SDK_VERSION = "version:20.20240408.3.1"
+
 cipd_repository(
     name = "fuchsia_sdk",
-    path = "fuchsia/sdk/core/fuchsia-bazel-rules/${os}-${arch}",
-    tag = "version:19.20240315.0.1",
+    path = "fuchsia/sdk/core/fuchsia-bazel-rules/${os}-amd64",
+    tag = FUCHSIA_SDK_VERSION,
 )
 
 load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
@@ -184,6 +199,19 @@ load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
 rules_fuchsia_deps()
 
 register_toolchains("@fuchsia_sdk//:fuchsia_toolchain_sdk")
+
+cipd_repository(
+    name = "fuchsia_products_metadata",
+    path = "fuchsia/development/product_bundles/v2",
+    tag = FUCHSIA_SDK_VERSION,
+)
+
+load("@fuchsia_sdk//fuchsia:products.bzl", "fuchsia_products_repository")
+
+fuchsia_products_repository(
+    name = "fuchsia_products",
+    metadata_file = "@fuchsia_products_metadata//:product_bundles.json",
+)
 
 load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
 
@@ -195,6 +223,13 @@ fuchsia_clang_repository(
 load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
 
 register_clang_toolchains()
+
+# Since Fuchsia doesn't release arm64 SDKs, use this to gate Fuchsia targets.
+load("//pw_env_setup:bazel/host_metadata_repository.bzl", "host_metadata_repository")
+
+host_metadata_repository(
+    name = "host_metadata",
+)
 
 # Set up rules for Abseil C++.
 # Must be included before com_google_googletest and rules_fuzzing.
@@ -209,14 +244,11 @@ http_archive(
 
 # Set up upstream googletest and googlemock.
 # Required by: Pigweed, Fuchsia SDK.
-# Used in modules: //pw_analog, //pw_fuzzer, //pw_i2c.
-http_archive(
+# Used in modules: //pw_analog, //pw_fuzzer, //pw_i2c, //pw_bluetooth_sapphire.
+git_repository(
     name = "com_google_googletest",
-    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
-    strip_prefix = "googletest-1.14.0",
-    urls = [
-        "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
-    ],
+    commit = "3b6d48e8d5c1d9b3f9f10ac030a94008bfaf032b",
+    remote = "https://pigweed.googlesource.com/third_party/github/google/googletest",
 )
 
 # Sets up Bazels documentation generator.
@@ -414,8 +446,9 @@ git_repository(
 
 git_repository(
     name = "com_google_emboss",
-    commit = "35e21b10019ded9ae14041af9b8e49659d9b327a",
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
+    # Also update emboss tag in pw_package/py/pw_package/packages/emboss.py
+    tag = "v2024.0501.215421",
 )
 
 http_archive(
