@@ -20,6 +20,7 @@
 #include "fsl_usart_dma.h"
 #include "pw_bytes/byte_builder.h"
 #include "pw_bytes/span.h"
+#include "pw_clock_tree/clock_tree.h"
 #include "pw_status/status.h"
 #include "pw_stream/stream.h"
 #include "pw_sync/interrupt_spin_lock.h"
@@ -41,10 +42,16 @@ class UartDmaStreamMcuxpresso final : public NonSeekableReaderWriter {
     inputmux_signal_t rx_input_mux_dmac_ch_request_en;  // Rx input mux signal
     inputmux_signal_t tx_input_mux_dmac_ch_request_en;  // Tx input mux signal
     ByteSpan buffer;                                    // Receive ring buffer
+    pw::clock_tree::ClockTree* clock_tree{};            // Optional clock Tree
+    pw::clock_tree::Element*
+        clock_tree_element{};  // Optional clock tree element
   };
 
   UartDmaStreamMcuxpresso(const Config& config)
-      : config_(config), rx_data_{.ring_buffer = config.buffer} {}
+      : rx_data_{.ring_buffer = config.buffer},
+        config_(config),
+        clock_tree_element_controller_(config.clock_tree,
+                                       config.clock_tree_element) {}
 
   ~UartDmaStreamMcuxpresso();
 
@@ -68,20 +75,20 @@ class UartDmaStreamMcuxpresso final : public NonSeekableReaderWriter {
 
   // Usart DMA RX data structure
   struct UsartDmaRxData {
-    ByteSpan ring_buffer;          // Receive ring buffer
-    size_t ring_buffer_read_idx;   // ring buffer reader index
-    size_t ring_buffer_write_idx;  // ring buffer writer index
-    size_t
-        data_received;  // data received and acknowledged by completion callback
-    size_t data_copied;  // data copied out to receiver
+    ByteSpan ring_buffer;            // Receive ring buffer
+    size_t ring_buffer_read_idx{};   // ring buffer reader index
+    size_t ring_buffer_write_idx{};  // ring buffer writer index
+    size_t data_received{};  // data received and acknowledged by completion
+                             // callback
+    size_t data_copied{};    // data copied out to receiver
     // completion callback will be executed when completion size decreases to 0
     // bytes
-    size_t completion_size;
-    usart_transfer_t transfer;  // USART RX transfer structure
-    dma_handle_t dma_handle;    // DMA handle
+    size_t completion_size{};
+    usart_transfer_t transfer{};  // USART RX transfer structure
+    dma_handle_t dma_handle{};    // DMA handle
     std::atomic_uint8_t
-        busy;  // Flag to prevent concurrent access to RX ring buffer
-    pw::sync::ThreadNotification notification;  // RX completion notification
+        busy{};  // Flag to prevent concurrent access to RX ring buffer
+    pw::sync::ThreadNotification notification{};  // RX completion notification
   };
 
   // Since we are calling USART_TransferGetReceiveCountDMA we may only
@@ -122,6 +129,9 @@ class UartDmaStreamMcuxpresso final : public NonSeekableReaderWriter {
   struct UsartDmaRxData rx_data_;       // RX data
 
   Config const config_;  // USART DMA configuration
+  pw::clock_tree::ElementController
+      clock_tree_element_controller_;  // Element controller encapsulating
+                                       // optional clock tree information
   bool
       initialized_;  // Whether the USART and DMA channels have been initialized
 };

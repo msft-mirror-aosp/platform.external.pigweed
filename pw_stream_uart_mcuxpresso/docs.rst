@@ -35,56 +35,24 @@ Usage
 
 ``UartStreamMcuxpresso`` example:
 
-.. code-block:: cpp
-
-   constexpr uint32_t kFlexcomm = 0;
-   constexpr uint32_t kBaudRate = 115200;
-   std::array<std::byte, 20> kBuffer = {};
-
-   auto stream = UartStreamMcuxpresso{USART0,
-                                      kBaudRate,
-                                      kUSART_ParityDisabled,
-                                      kUSART_OneStopBit,
-                                      kBuffer};
-
-   PW_TRY(stream.Init(CLOCK_GetFlexcommClkFreq(kFlexcomm)));
-
-   std::array<std::byte, 10> to_write = {};
-   PW_TRY(stream.Write(to_write));
-
+.. literalinclude:: stream_example.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_stream_uart_mcuxpresso-UartStreamExample]
+   :end-before: [pw_stream_uart_mcuxpresso-UartStreamExample]
 
 ``UartDmaStreamMcuxpresso`` example:
 
-.. code-block:: cpp
-
-   constexpr uint32_t kFlexcomm = 0;
-   const auto kUartBase = USART0;
-   constexpr uint32_t kBaudRate = 115200;
-   std::array<std::byte, 65536> ring_buffer = {};
-   constexpr uint32_t kUartRxDmaCh = 0;
-   constexpr uint32_t kUartTxDmaCh = 1;
-
-   const UartDmaStreamMcuxpresso::Config kConfig = {
-       .usart_base = kUartBase,
-       .baud_rate = kBaudRate,
-       .parity = kUSART_ParityDisabled,
-       .stop_bits = kUSART_OneStopBit,
-       .dma_base = DMA0,
-       .rx_dma_ch = kUartRxDmaCh,
-       .tx_dma_ch = kUartTxDmaCh,
-       .rx_input_mux_dmac_ch_request_en = kINPUTMUX_Flexcomm0RxToDmac0Ch0RequestEna,
-       .tx_input_mux_dmac_ch_request_en = kINPUTMUX_Flexcomm0TxToDmac0Ch1RequestEna,
-       .buffer = ByteSpan(ring_buffer)};
-
-   auto stream = UartDmaStreamMcuxpresso{kConfig};
-
-   PW_TRY(stream.Init(CLOCK_GetFlexcommClkFreq(kFlexcomm)));
+.. literalinclude:: dma_stream_example.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_stream_uart_mcuxpresso-UartDmaStreamExample]
+   :end-before: [pw_stream_uart_mcuxpresso-UartDmaStreamExample]
 
 ``InterruptSafeUartWriterMcuxpresso`` example:
 
-.. code-block:: cpp
-
-   constinit InterruptSafeUartWriterMcuxpresso crash_safe_uart(
-       USART0_BASE, kCLOCK_Flexcomm0Clk, 115200);
-
-   PW_TRY(crash_safe_uart.Enable());
+.. literalinclude:: interrupt_safe_writer_example.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_stream_uart_mcuxpresso-UartInterruptSafeWriterExample]
+   :end-before: [pw_stream_uart_mcuxpresso-UartInterruptSafeWriterExample]

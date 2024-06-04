@@ -24,7 +24,7 @@ like this:
    :language: cpp
    :linenos:
    :start-after: [pw_clock_tree-examples-IntegrationIntoDeviceDriversClassDef]
-   :end-before: // Device constructor that accepts
+   :end-before: // Device constructor that optionally accepts
 
 It could be initialized and used like this:
 
@@ -106,6 +106,12 @@ class from :cpp:class:`ElementBlocking` or :cpp:class:`ElementNonBlockingCannotF
 
 .. cpp:namespace-pop::
 
+.. cpp:namespace-push:: pw::clock_tree::ElementController
+
+For ease of use :cpp:class:`ElementController` encapsulates :cpp:class:`ClockTree` and :cpp:class:`Element` into a single object and provides :cpp:func:`Acquire` and :cpp:func:`Release` methods that check whether both optional objects have been specified, and only if yes, call the respective :cpp:class:`ClockTree` methods, otherwise they return ``pw::OkStatus()``.
+
+.. cpp:namespace-pop::
+
 ---------------
 Synchronization
 ---------------
@@ -127,3 +133,4 @@ elements are not serialized with each other, while :cpp:class:`ElementNonBlockin
 
    examples
    api
+   implementations

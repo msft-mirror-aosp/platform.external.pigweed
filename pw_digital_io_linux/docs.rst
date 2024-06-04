@@ -37,6 +37,14 @@ Represents a single input line and implements :cpp:class:`DigitalIn`.
 This is acquired by calling ``chip.GetInputLine()`` with an appropriate
 ``LinuxInputConfig``.
 
+``LinuxDigitalInInterrupt``
+===========================
+Represents a single input line configured for interrupts and implements
+:cpp:class:`DigitalInInterrupt`.
+
+This is acquired by calling ``chip.GetInterruptLine()`` with an appropriate
+``LinuxInputConfig``.
+
 ``LinuxDigitalOut``
 ===================
 Represents a single input line and implements :cpp:class:`DigitalOut`.
@@ -60,66 +68,28 @@ Example code to use GPIO pins:
 Configure an input pin and get its state
 ========================================
 
-.. code-block:: cpp
+.. literalinclude:: examples/input.cc
+   :language: cpp
+   :linenos:
+   :lines: 15-
 
-   #include "pw_digital_io_linux/digital_io.h"
-   #include "pw_status/try.h"
-
-   using pw::digital_io::LinuxDigitalIoChip;
-
-   pw::Status InputExample() {
-     // Open handle to chip.
-     PW_TRY_ASSIGN(auto chip, LinuxDigitalIoChip::Open("/dev/gpiochip0"));
-
-     // Configure input line.
-     LinuxInputConfig config(
-         /* index= */ 5,
-         /* polarity= */ Polarity::kActiveHigh);
-     PW_TRY_ASSIGN(auto input, chip.GetInputLine(config));
-     PW_TRY(input.Enable());
-
-     // Get the input pin state.
-     PW_TRY_ASSIGN(auto pin_state, input.GetState());
-
-     return pw::OkStatus();
-   }
 
 Configure an output pin and set its state
 =========================================
 
-.. code-block:: cpp
+.. literalinclude:: examples/output.cc
+   :language: cpp
+   :linenos:
+   :lines: 15-
 
-   #include "pw_digital_io/polarity.h"
-   #include "pw_digital_io_linux/digital_io.h"
-   #include "pw_status/try.h"
 
-   using pw::digital_io::LinuxDigitalIoChip;
-   using pw::digital_io::LinuxOutputConfig;
-   using pw::digital_io::Polarity;
-   using pw::digital_io::State;
+Configure an interrupt pin and handle events
+============================================
 
-   pw::Status OutputExample() {
-     // Open handle to chip.
-     PW_TRY_ASSIGN(auto chip, LinuxDigitalIoChip::Open("/dev/gpiochip0"));
-
-     // Configure output line.
-     // Set the polarity to active-low and default state to active.
-     LinuxOutputConfig config(
-         /* index= */ 4,
-         /* polarity= */ Polarity::kActiveLow,
-         /* default_state= */ State::kActive);
-     PW_TRY_ASSIGN(auto output, chip->GetOutputLine(config));
-
-     // Enable the output pin. This pulls the pin to ground since the
-     // polarity is kActiveLow and the default_state is kActive.
-     PW_TRY(output.Enable());
-
-     // Set the output pin to inactive.
-     // This pulls pin to Vdd since the polarity is kActiveLow.
-     PW_TRY(out.SetState(State::kInactive));
-
-     return pw::OkStatus();
-   }
+.. literalinclude:: examples/interrupt.cc
+   :language: cpp
+   :linenos:
+   :lines: 15-
 
 
 ----------------------
@@ -172,5 +142,32 @@ Arguments:
 * ``CHIP``: gpiochip path (e.g. ``/dev/gpiochip0``)
 * ``LINE``: GPIO line number (e.g. ``1``)
 * ``VALUE``: the value to set (``0`` = inactive or ``1`` = active)
+
+``watch``
+=========
+Configure a GPIO line as an input and watch for interrupt evnts.
+
+By default, both rising and falling edges will trigger an event.
+This can be changed via the ``-t`` option.
+
+Usage:
+
+.. code-block:: none
+
+   watch [-i] [{-ta,-tb,-td}] CHIP LINE
+
+Options:
+
+* ``-i``: Invert; configure as active-low.
+* ``-t``: Trigger for an interrupt:
+
+   * ``-ta`` - activating edge
+   * ``-tb`` - both edges (default)
+   * ``-td`` - deactivating edge
+
+Arguments:
+
+* ``CHIP``: gpiochip path (e.g. ``/dev/gpiochip0``)
+* ``LINE``: GPIO line number (e.g. ``1``)
 
 .. cpp:namespace-pop::

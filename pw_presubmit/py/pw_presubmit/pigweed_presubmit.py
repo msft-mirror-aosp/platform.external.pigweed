@@ -347,7 +347,7 @@ gn_mimxrt595_build = PigweedGnGenNinja(
             str(ctx.package_root / 'mcuxpresso')
         ),
         'pw_target_mimxrt595_evk_MANIFEST': '$dir_pw_third_party_mcuxpresso'
-        + '/EVK-MIMXRT595_manifest_v3_8.xml',
+        + '/EVK-MIMXRT595_manifest_v3_13.xml',
         'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk:sample_sdk',
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
@@ -366,7 +366,7 @@ gn_mimxrt595_freertos_build = PigweedGnGenNinja(
             str(ctx.package_root / 'mcuxpresso')
         ),
         'pw_target_mimxrt595_evk_freertos_MANIFEST': '{}/{}'.format(
-            "$dir_pw_third_party_mcuxpresso", "EVK-MIMXRT595_manifest_v3_8.xml"
+            "$dir_pw_third_party_mcuxpresso", "EVK-MIMXRT595_manifest_v3_13.xml"
         ),
         'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk_freertos:sdk',
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
@@ -882,6 +882,20 @@ def bazel_build(ctx: PresubmitContext) -> None:
         '--//pw_thread_freertos:config_override=//pw_build:test_module_config',
         '--platforms=//pw_build/platforms:testonly_freertos',
         '//pw_build:module_config_test',
+    )
+
+    # Provide some coverage of the RP2040 build.
+    #
+    # This is just a minimal presubmit intended to ensure we don't break what
+    # support we have.
+    #
+    # TODO: b/271465588 - Eventually just build the entire repo for this
+    # platform.
+    build_bazel(
+        ctx,
+        'build',
+        '--config=rp2040',
+        '//pw_system:system_example',
     )
 
     # Build the pw_system example for the Discovery board using STM32Cube.
