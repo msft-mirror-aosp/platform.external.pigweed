@@ -22,28 +22,41 @@ include("$ENV{PW_ROOT}/pw_unit_test/test.cmake")
 #
 #   NAME: name for the desired executable
 #   TEST_DEP: the target which provides the tests for this executable
+#   TEST_MAIN: The test main to use, can be "" to use defaults.
 #
-function(pw_add_test_executable NAME TEST_DEP)
-  set(num_positional_args 2)
-  set(option_args)
-  set(one_value_args)
-  set(multi_value_args)
-  pw_parse_arguments_strict(
-      pw_add_test_executable "${num_positional_args}" "${option_args}"
-      "${one_value_args}" "${multi_value_args}")
+function(pw_add_test_executable_with_main NAME TEST_DEP TEST_MAIN)
+  pw_parse_arguments(
+    NUM_POSITIONAL_ARGS
+      3
+  )
 
   # CMake requires a source file to determine the LINKER_LANGUAGE.
   add_executable("${NAME}" EXCLUDE_FROM_ALL
                  $<TARGET_PROPERTY:pw_build.empty,SOURCES>)
 
-  set(test_backend "${pw_unit_test_GOOGLETEST_BACKEND}")
-  if("${test_backend}" STREQUAL "pw_unit_test.light")
-    set(main pw_unit_test.logging_main)
-  elseif("${test_backend}" STREQUAL "pw_third_party.googletest")
-    set(main pw_third_party.googletest.gmock_main)
+  # Temporarily redirect deprecated googletest pointer to new pointer.
+  if("${pw_unit_test_GOOGLETEST_BACKEND}" STREQUAL "pw_third_party.googletest")
+    message(DEPRECATION
+      "pw_unit_test_GOOGLETEST_BACKEND is deprecated. Set pw_unit_test_BACKEND "
+      "to pw_unit_test.googletest instead."
+    )
+    set(pw_unit_test_BACKEND pw_unit_test.googletest)
+  endif()
+
+  set(test_backend "${pw_unit_test_BACKEND}")
+  if ("${TEST_MAIN}" STREQUAL "")
+    if("${test_backend}" STREQUAL "pw_unit_test.light")
+      set(main pw_unit_test.logging_main)
+    elseif("${test_backend}" STREQUAL "pw_unit_test.googletest")
+      set(main pw_third_party.googletest.gmock_main)
+    elseif("${test_backend}" STREQUAL "pw_third_party.fuzztest")
+      set(main pw_third_party.fuzztest_gtest_main)
+    else()
+      message(FATAL_ERROR
+              "Unsupported test backend selected for host test executables")
+    endif()
   else()
-    message(FATAL_ERROR
-            "Unsupported test backend selected for host test executables")
+    set(main ${TEST_MAIN})
   endif()
 
   pw_target_link_targets("${NAME}"
@@ -51,4 +64,15 @@ function(pw_add_test_executable NAME TEST_DEP)
       "${main}"
       "${TEST_DEP}"
   )
+endfunction(pw_add_test_executable_with_main)
+
+# Used by pw_add_test to instantiate unit test executables for the host.
+#
+# Required Args:
+#
+#   NAME: name for the desired executable
+#   TEST_DEP: the target which provides the tests for this executable
+#
+function(pw_add_test_executable NAME TEST_DEP)
+  pw_add_test_executable_with_main(${NAME} ${TEST_DEP} "")
 endfunction(pw_add_test_executable)

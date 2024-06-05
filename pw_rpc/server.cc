@@ -36,7 +36,10 @@ using internal::pwpb::PacketType;
 Status Server::ProcessPacket(ConstByteSpan packet_data) {
   PW_TRY_ASSIGN(Packet packet,
                 Endpoint::ProcessPacket(packet_data, Packet::kServer));
+  return ProcessPacket(packet);
+}
 
+Status Server::ProcessPacket(internal::Packet packet) {
   internal::rpc_lock().lock();
 
   // Verbose log for debugging.
@@ -54,7 +57,7 @@ Status Server::ProcessPacket(ConstByteSpan packet_data) {
     return Status::Unavailable();
   }
 
-  const auto [service, method] = FindMethod(packet);
+  const auto [service, method] = FindMethodLocked(packet);
 
   if (method == nullptr) {
     // Don't send responses to errors to avoid infinite error cycles.
@@ -92,8 +95,8 @@ Status Server::ProcessPacket(ConstByteSpan packet_data) {
         internal::rpc_lock().unlock();
       }
       break;
-    case PacketType::CLIENT_STREAM_END:
-      HandleClientStreamPacket(packet, *channel, call);
+    case PacketType::CLIENT_REQUEST_COMPLETION:
+      HandleCompletionRequest(packet, *channel, call);
       break;
     case PacketType::REQUEST:  // Handled above
     case PacketType::RESPONSE:
@@ -109,17 +112,51 @@ Status Server::ProcessPacket(ConstByteSpan packet_data) {
 }
 
 std::tuple<Service*, const internal::Method*> Server::FindMethod(
-    const internal::Packet& packet) {
-  // Packets always include service and method IDs.
+    uint32_t service_id, uint32_t method_id) {
+  internal::RpcLockGuard lock;
+  return FindMethodLocked(service_id, method_id);
+}
+
+std::tuple<Service*, const internal::Method*> Server::FindMethodLocked(
+    uint32_t service_id, uint32_t method_id) {
   auto service = std::find_if(services_.begin(), services_.end(), [&](auto& s) {
-    return internal::UnwrapServiceId(s.service_id()) == packet.service_id();
+    return internal::UnwrapServiceId(s.service_id()) == service_id;
   });
 
   if (service == services_.end()) {
     return {};
   }
 
-  return {&(*service), service->FindMethod(packet.method_id())};
+  return {&(*service), service->FindMethod(method_id)};
+}
+
+void Server::HandleCompletionRequest(
+    const internal::Packet& packet,
+    internal::Channel& channel,
+    IntrusiveList<internal::Call>::iterator call) const {
+  if (call == calls_end()) {
+    channel.Send(Packet::ServerError(packet, Status::FailedPrecondition()))
+        .IgnoreError();  // Errors are logged in Channel::Send.
+    internal::rpc_lock().unlock();
+    PW_LOG_DEBUG(
+        "Received a request completion packet for %u:%08x/%08x, which is not a"
+        "pending call",
+        static_cast<unsigned>(packet.channel_id()),
+        static_cast<unsigned>(packet.service_id()),
+        static_cast<unsigned>(packet.method_id()));
+    return;
+  }
+
+  if (call->client_requested_completion()) {
+    internal::rpc_lock().unlock();
+    PW_LOG_DEBUG("Received multiple completion requests for %u:%08x/%08x",
+                 static_cast<unsigned>(packet.channel_id()),
+                 static_cast<unsigned>(packet.service_id()),
+                 static_cast<unsigned>(packet.method_id()));
+    return;
+  }
+
+  static_cast<internal::ServerCall&>(*call).HandleClientRequestedCompletion();
 }
 
 void Server::HandleClientStreamPacket(
@@ -151,7 +188,7 @@ void Server::HandleClientStreamPacket(
     return;
   }
 
-  if (!call->client_stream_open()) {
+  if (call->client_requested_completion()) {
     channel.Send(Packet::ServerError(packet, Status::FailedPrecondition()))
         .IgnoreError();  // Errors are logged in Channel::Send.
     internal::rpc_lock().unlock();
@@ -164,11 +201,7 @@ void Server::HandleClientStreamPacket(
     return;
   }
 
-  if (packet.type() == PacketType::CLIENT_STREAM) {
-    call->HandlePayload(packet.payload());
-  } else {  // Handle PacketType::CLIENT_STREAM_END.
-    static_cast<internal::ServerCall&>(*call).HandleClientStreamEnd();
-  }
+  call->HandlePayload(packet.payload());
 }
 
 }  // namespace pw::rpc

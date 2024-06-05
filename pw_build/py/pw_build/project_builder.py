@@ -18,24 +18,28 @@ more build directories.
 
 Examples:
 
-  # Build the default target in out/ using ninja.
-  python -m pw_build.project_builder -C out
+.. code-block: sh
 
-  # Build pw_run_tests.modules in the out/cmake directory
-  python -m pw_build.project_builder -C out/cmake pw_run_tests.modules
+   # Build the default target in out/ using ninja.
+   python -m pw_build.project_builder -C out
 
-  # Build the default target in out/ and pw_apps in out/cmake
-  python -m pw_build.project_builder -C out -C out/cmake pw_apps
+   # Build pw_run_tests.modules in the out/cmake directory
+   python -m pw_build.project_builder -C out/cmake pw_run_tests.modules
 
-  # Build python.tests in out/ and pw_apps in out/cmake/
-  python -m pw_build.project_builder python.tests -C out/cmake pw_apps
+   # Build the default target in out/ and pw_apps in out/cmake
+   python -m pw_build.project_builder -C out -C out/cmake pw_apps
 
-  # Run 'bazel build' and 'bazel test' on the target '//...' in outbazel/
-  python -m pw_build.project_builder --run-command 'mkdir -p outbazel'
-  -C outbazel '//...'
-  --build-system-command outbazel 'bazel build'
-  --build-system-command outbazel 'bazel test'
+   # Build python.tests in out/ and pw_apps in out/cmake/
+   python -m pw_build.project_builder python.tests -C out/cmake pw_apps
+
+   # Run 'bazel build' and 'bazel test' on the target '//...' in outbazel/
+   python -m pw_build.project_builder --run-command 'mkdir -p outbazel'
+   -C outbazel '//...'
+   --build-system-command outbazel 'bazel build'
+   --build-system-command outbazel 'bazel test'
 """
+
+from __future__ import annotations
 
 import argparse
 import concurrent.futures
@@ -49,11 +53,8 @@ import subprocess
 import time
 from typing import (
     Callable,
-    Dict,
     Generator,
-    List,
     NoReturn,
-    Optional,
     Sequence,
     NamedTuple,
 )
@@ -126,19 +127,76 @@ def _exit_due_to_interrupt() -> None:
 
 
 _NINJA_BUILD_STEP = re.compile(
-    r'^\[(?P<step>[0-9]+)/(?P<total_steps>[0-9]+)\] (?P<action>.*)$'
+    # Start of line
+    r'^'
+    # Step count: [1234/5678]
+    r'\[(?P<step>[0-9]+)/(?P<total_steps>[0-9]+)\]'
+    # whitespace
+    r' *'
+    # Build step text
+    r'(?P<action>.*)$'
 )
 
-_NINJA_FAILURE_TEXT = '\033[31mFAILED: '
+_BAZEL_BUILD_STEP = re.compile(
+    # Start of line
+    r'^'
+    # Optional starting green color
+    r'(?:\x1b\[32m)?'
+    # Step count: [1,234 / 5,678]
+    r'\[(?P<step>[0-9,]+) */ *(?P<total_steps>[0-9,]+)\]'
+    # Optional ending clear color and space
+    r'(?:\x1b\[0m)? *'
+    # Build step text
+    r'(?P<action>.*)$'
+)
+
+_NINJA_FAILURE = re.compile(
+    # Start of line
+    r'^'
+    # Optional red color
+    r'(?:\x1b\[31m)?'
+    r'FAILED:'
+    r' '
+    # Optional color reset
+    r'(?:\x1b\[0m)?'
+)
+
+_BAZEL_FAILURE = re.compile(
+    # Start of line
+    r'^'
+    # Optional red color
+    r'(?:\x1b\[31m)?'
+    # Optional bold color
+    r'(?:\x1b\[1m)?'
+    r'FAIL:'
+    # Optional color reset
+    r'(?:\x1b\[0m)?'
+    # whitespace
+    r' *'
+    r'.*bazel-out.*'
+)
+
+_BAZEL_ELAPSED_TIME = re.compile(
+    # Start of line
+    r'^'
+    # Optional green color
+    r'(?:\x1b\[32m)?'
+    r'INFO:'
+    # single space
+    r' '
+    # Optional color reset
+    r'(?:\x1b\[0m)?'
+    r'Elapsed time:'
+)
 
 
 def execute_command_no_logging(
-    command: List,
-    env: Dict,
+    command: list,
+    env: dict,
     recipe: BuildRecipe,
     # pylint: disable=unused-argument
     logger: logging.Logger = _LOG,
-    line_processed_callback: Optional[Callable[[BuildRecipe], None]] = None,
+    line_processed_callback: Callable[[BuildRecipe], None] | None = None,
     # pylint: enable=unused-argument
 ) -> bool:
     print()
@@ -147,7 +205,11 @@ def execute_command_no_logging(
     returncode = None
     while returncode is None:
         if BUILDER_CONTEXT.build_stopping():
-            proc.terminate()
+            try:
+                proc.terminate()
+            except ProcessLookupError:
+                # Process already stopped.
+                pass
         returncode = proc.poll()
         time.sleep(0.05)
     print()
@@ -157,15 +219,28 @@ def execute_command_no_logging(
 
 
 def execute_command_with_logging(
-    command: List,
-    env: Dict,
+    command: list,
+    env: dict,
     recipe: BuildRecipe,
     logger: logging.Logger = _LOG,
-    line_processed_callback: Optional[Callable[[BuildRecipe], None]] = None,
+    line_processed_callback: Callable[[BuildRecipe], None] | None = None,
 ) -> bool:
     """Run a command in a subprocess and log all output."""
     current_stdout = ''
     returncode = None
+
+    starting_failure_regex = _NINJA_FAILURE
+    ending_failure_regex = _NINJA_BUILD_STEP
+    build_step_regex = _NINJA_BUILD_STEP
+
+    if command[0].endswith('ninja'):
+        build_step_regex = _NINJA_BUILD_STEP
+        starting_failure_regex = _NINJA_FAILURE
+        ending_failure_regex = _NINJA_BUILD_STEP
+    elif command[0].endswith('bazel'):
+        build_step_regex = _BAZEL_BUILD_STEP
+        starting_failure_regex = _BAZEL_FAILURE
+        ending_failure_regex = _BAZEL_ELAPSED_TIME
 
     with subprocess.Popen(
         command,
@@ -175,6 +250,7 @@ def execute_command_with_logging(
         errors='replace',
     ) as proc:
         BUILDER_CONTEXT.register_process(recipe, proc)
+        should_log_build_steps = BUILDER_CONTEXT.log_build_steps
         # Empty line at the start.
         logger.info('')
 
@@ -194,24 +270,33 @@ def execute_command_with_logging(
                 returncode = proc.poll()
                 continue
 
-            line_match_result = _NINJA_BUILD_STEP.match(output)
+            line_match_result = build_step_regex.match(output)
             if line_match_result:
                 if failure_line and not BUILDER_CONTEXT.build_stopping():
                     recipe.status.log_last_failure()
                 failure_line = False
                 matches = line_match_result.groupdict()
                 recipe.status.current_step = line_match_result.group(0)
-                step = int(matches.get('step', 0))
-                total_steps = int(matches.get('total_steps', 1))
-                recipe.status.percent = float(step / total_steps)
+                recipe.status.percent = 0.0
+                # Remove commas from step and total_steps strings
+                step = int(matches.get('step', '0').replace(',', ''))
+                total_steps = int(
+                    matches.get('total_steps', '1').replace(',', '')
+                )
+                if total_steps > 0:
+                    recipe.status.percent = float(step / total_steps)
 
             logger_method = logger.info
-            if output.startswith(_NINJA_FAILURE_TEXT):
+            if starting_failure_regex.match(output):
                 logger_method = logger.error
                 if failure_line and not BUILDER_CONTEXT.build_stopping():
                     recipe.status.log_last_failure()
                 recipe.status.increment_error_count()
                 failure_line = True
+            elif ending_failure_regex.match(output):
+                if failure_line and not BUILDER_CONTEXT.build_stopping():
+                    recipe.status.log_last_failure()
+                failure_line = False
 
             # Mypy output mixes character encoding in color coded output
             # and uses the 'sgr0' (or exit_attribute_mode) capability from the
@@ -226,7 +311,14 @@ def execute_command_with_logging(
             # sequences.
             stripped_output = output.replace('\x1b(B', '').strip()
 
-            if not line_match_result:
+            # If this isn't a build step.
+            if not line_match_result or (
+                # Or if this is a build step and logging build steps is
+                # requested:
+                line_match_result
+                and should_log_build_steps
+            ):
+                # Log this line.
                 logger_method(stripped_output)
             recipe.status.current_step = stripped_output
 
@@ -239,7 +331,11 @@ def execute_command_with_logging(
                 line_processed_callback(recipe)
 
             if BUILDER_CONTEXT.build_stopping():
-                proc.terminate()
+                try:
+                    proc.terminate()
+                except ProcessLookupError:
+                    # Process already stopped.
+                    pass
 
         recipe.status.return_code = returncode
 
@@ -255,7 +351,7 @@ def execute_command_with_logging(
 
 def log_build_recipe_start(
     index_message: str,
-    project_builder: 'ProjectBuilder',
+    project_builder: ProjectBuilder,
     cfg: BuildRecipe,
     logger: logging.Logger = _LOG,
 ) -> None:
@@ -294,7 +390,7 @@ def log_build_recipe_start(
 
 def log_build_recipe_finish(
     index_message: str,
-    project_builder: 'ProjectBuilder',
+    project_builder: ProjectBuilder,
     cfg: BuildRecipe,
     logger: logging.Logger = _LOG,
 ) -> None:
@@ -331,7 +427,7 @@ def log_build_recipe_finish(
     if (
         not BUILDER_CONTEXT.build_stopping()
         and cfg.status.failed()
-        and cfg.status.error_count == 0
+        and (cfg.status.error_count == 0 or cfg.status.has_empty_ninja_errors())
     ):
         cfg.status.log_entire_recipe_logfile()
 
@@ -401,6 +497,8 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             the ``-k`` option.
         banners: Print the project banner at the start of each build.
         allow_progress_bars: If False progress bar output will be disabled.
+        log_build_steps: If True all build step lines will be logged to the
+            screen and logfiles. Default: False.
         colors: Print ANSI colors to stdout and logfiles
         log_level: Optional log_level, defaults to logging.INFO.
         root_logfile: Optional root logfile.
@@ -421,22 +519,23 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
         # pylint: disable=too-many-arguments,too-many-locals
         self,
         build_recipes: Sequence[BuildRecipe],
-        jobs: Optional[int] = None,
+        jobs: int | None = None,
         banners: bool = True,
         keep_going: bool = False,
         abort_callback: Callable = _exit,
         execute_command: Callable[
-            [List, Dict, BuildRecipe, logging.Logger, Optional[Callable]], bool
+            [list, dict, BuildRecipe, logging.Logger, Callable | None], bool
         ] = execute_command_no_logging,
         charset: ProjectBuilderCharset = ASCII_CHARSET,
         colors: bool = True,
         separate_build_file_logging: bool = False,
         send_recipe_logs_to_root: bool = False,
         root_logger: logging.Logger = _LOG,
-        root_logfile: Optional[Path] = None,
+        root_logfile: Path | None = None,
         log_level: int = logging.INFO,
         allow_progress_bars: bool = True,
         use_verbatim_error_log_formatting: bool = False,
+        log_build_steps: bool = False,
     ):
         self.charset: ProjectBuilderCharset = charset
         self.abort_callback = abort_callback
@@ -452,9 +551,9 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             recipe.set_project_builder(self)
 
         # Save build system args
-        self.extra_ninja_args: List[str] = []
-        self.extra_bazel_args: List[str] = []
-        self.extra_bazel_build_args: List[str] = []
+        self.extra_ninja_args: list[str] = []
+        self.extra_bazel_args: list[str] = []
+        self.extra_bazel_build_args: list[str] = []
 
         # Handle jobs and keep going flags.
         if jobs:
@@ -478,7 +577,8 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
 
         # Progress bar enable/disable flag
         self.allow_progress_bars = allow_progress_bars
-        self.stdout_proxy: Optional[StdoutProxy] = None
+        self.log_build_steps = log_build_steps
+        self.stdout_proxy: StdoutProxy | None = None
 
         # Logger configuration
         self.root_logger = root_logger
@@ -650,8 +750,8 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
     def run_build(
         self,
         cfg: BuildRecipe,
-        env: Dict,
-        index_message: Optional[str] = '',
+        env: dict,
+        index_message: str | None = '',
     ) -> bool:
         """Run a single build config."""
         if BUILDER_CONTEXT.build_stopping():
@@ -663,9 +763,13 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             # Force Ninja to output ANSI colors
             env['CLICOLOR_FORCE'] = '1'
 
-        build_succeded = False
+        build_succeeded = False
         cfg.reset_status()
         cfg.status.mark_started()
+
+        if cfg.auto_create_build_dir:
+            cfg.build_dir.mkdir(parents=True, exist_ok=True)
+
         for command_step in cfg.steps:
             command_args = command_step.get_args(
                 additional_ninja_args=self.extra_ninja_args,
@@ -673,20 +777,10 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
                 additional_bazel_build_args=self.extra_bazel_build_args,
             )
 
-            # Verify that the build output directories exist.
-            if (
-                command_step.build_system_command is not None
-                and cfg.build_dir
-                and (not cfg.build_dir.is_dir())
-            ):
-                self.abort_callback(
-                    'Build directory does not exist: %s', cfg.build_dir
-                )
-
             quoted_command_args = ' '.join(
                 shlex.quote(arg) for arg in command_args
             )
-            build_succeded = True
+            build_succeeded = True
             if command_step.should_run():
                 cfg.log.info(
                     '%s %s %s',
@@ -694,7 +788,18 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
                     self.color.blue('Run ==>'),
                     quoted_command_args,
                 )
-                build_succeded = self.execute_command(
+
+                # Verify that the build output directories exist.
+                if (
+                    command_step.build_system_command is not None
+                    and cfg.build_dir
+                    and (not cfg.build_dir.is_dir())
+                ):
+                    self.abort_callback(
+                        'Build directory does not exist: %s', cfg.build_dir
+                    )
+
+                build_succeeded = self.execute_command(
                     command_args, env, cfg, cfg.log, None
                 )
             else:
@@ -707,17 +812,17 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
 
             BUILDER_CONTEXT.mark_progress_step_complete(cfg)
             # Don't run further steps if a command fails.
-            if not build_succeded:
+            if not build_succeeded:
                 break
 
         # If all steps were skipped the return code will not be set. Force
         # status to passed in this case.
-        if build_succeded and not cfg.status.passed():
+        if build_succeeded and not cfg.status.passed():
             cfg.status.set_passed()
 
         cfg.status.mark_done()
 
-        return build_succeded
+        return build_succeeded
 
     def print_pass_fail_banner(
         self,
@@ -811,9 +916,16 @@ def run_recipe(
 
 
 def run_builds(project_builder: ProjectBuilder, workers: int = 1) -> int:
-    """Execute build steps in the ProjectBuilder and print a summary.
+    """Execute all build recipe steps.
 
-    Returns: 1 for a failed build, 0 for success."""
+    Args:
+      project_builder: A ProjectBuilder instance
+      workers: The number of build recipes that should be run in
+        parallel. Defaults to 1 or no parallel execution.
+
+    Returns:
+      1 for a failed build, 0 for success.
+    """
     num_builds = len(project_builder)
     _LOG.info('Starting build with %d directories', num_builds)
     if project_builder.default_logfile:

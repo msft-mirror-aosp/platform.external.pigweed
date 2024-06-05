@@ -20,10 +20,12 @@
 #include <cstring>
 #include <string>
 
-#include "gtest/gtest.h"
+#include "pw_result/result.h"
+#include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_string/internal/config.h"
 #include "pw_string/type_to_string.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw {
 
@@ -123,7 +125,7 @@ TEST(ToString, Float) {
   if (string::internal::config::kEnableDecimalFloatExpansion) {
     EXPECT_EQ(5u, ToString(0.0f, buffer).size());
     EXPECT_STREQ("0.000", buffer);
-    EXPECT_EQ(6u, ToString(33.444, buffer).size());
+    EXPECT_EQ(6u, ToString(33.444f, buffer).size());
     EXPECT_STREQ("33.444", buffer);
     EXPECT_EQ(3u, ToString(INFINITY, buffer).size());
     EXPECT_STREQ("inf", buffer);
@@ -141,10 +143,11 @@ TEST(ToString, Float) {
 
 TEST(ToString, Pointer_NonNull_WritesValue) {
   CustomType custom;
-  const size_t length = std::snprintf(expected,
-                                      sizeof(expected),
-                                      "%" PRIxPTR,
-                                      reinterpret_cast<intptr_t>(&custom));
+  const size_t length =
+      static_cast<size_t>(std::snprintf(expected,
+                                        sizeof(expected),
+                                        "%" PRIxPTR,
+                                        reinterpret_cast<intptr_t>(&custom)));
 
   EXPECT_EQ(length, ToString(&custom, buffer).size());
   EXPECT_STREQ(expected, buffer);
@@ -275,5 +278,58 @@ TEST(ToString, StdString) {
   EXPECT_STREQ("", buffer);
 }
 
+TEST(ToString, StdNullopt) {
+  EXPECT_EQ(12u, ToString(std::nullopt, buffer).size());
+  EXPECT_STREQ("std::nullopt", buffer);
+}
+
+TEST(ToString, StdOptionalWithoutValue) {
+  std::optional<uint16_t> v = std::nullopt;
+  EXPECT_EQ(12u, ToString(v, buffer).size());
+  EXPECT_STREQ("std::nullopt", buffer);
+}
+
+TEST(ToString, StdOptionalWithValue) {
+  std::optional<uint16_t> v = 5;
+  EXPECT_EQ(1u, ToString(v, buffer).size());
+  EXPECT_STREQ("5", buffer);
+}
+
+TEST(ToString, ResultWithNonOkStatus) {
+  Result<int> v = Status::ResourceExhausted();
+  EXPECT_EQ(18u, ToString(v, buffer).size());
+  EXPECT_STREQ("RESOURCE_EXHAUSTED", buffer);
+}
+
+TEST(ToString, ResultWithValue) {
+  Result<int> v = 27;
+  EXPECT_EQ(6u, ToString(v, buffer).size());
+  EXPECT_STREQ("Ok(27)", buffer);
+}
+
+TEST(ToString, EmptyArrayUsesIterableFormat) {
+  std::array<int, 0> v = {};
+  EXPECT_EQ(2u, ToString(v, buffer).size());
+  EXPECT_STREQ("[]", buffer);
+}
+
+TEST(ToString, ArrayUsesIterableFormat) {
+  std::array<int, 3> v = {1, 2, 3};
+  EXPECT_EQ(9u, ToString(v, buffer).size());
+  EXPECT_STREQ("[1, 2, 3]", buffer);
+}
+
+TEST(ToString, SpanUsesIterableFormat) {
+  std::array<int, 3> arr = {1, 2, 3};
+  span v(arr);
+  EXPECT_EQ(9u, ToString(v, buffer).size());
+  EXPECT_STREQ("[1, 2, 3]", buffer);
+}
+
+TEST(ToString, ArrayOfStringsUsesIterableFormat) {
+  std::array<const char*, 3> v({"foo", "bar", "baz"});
+  EXPECT_EQ(15u, ToString(v, buffer).size());
+  EXPECT_STREQ("[foo, bar, baz]", buffer);
+}
 }  // namespace
 }  // namespace pw

@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2023 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,12 +12,18 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#define PW_LOG_MODULE_NAME "TRN"
+#define PW_LOG_LEVEL PW_TRANSFER_CONFIG_LOG_LEVEL
+
 #include "pw_transfer/internal/chunk.h"
 
 #include "pw_assert/check.h"
+#include "pw_log/log.h"
+#include "pw_log/rate_limited.h"
 #include "pw_protobuf/decoder.h"
 #include "pw_protobuf/serialized_size.h"
 #include "pw_status/try.h"
+#include "pw_transfer/internal/config.h"
 
 namespace pw::transfer::internal {
 
@@ -27,9 +33,12 @@ Result<Chunk::Identifier> Chunk::ExtractIdentifier(ConstByteSpan message) {
   protobuf::Decoder decoder(message);
 
   uint32_t session_id = 0;
-  uint32_t resource_id = 0;
+  uint32_t desired_session_id = 0;
+  bool legacy = true;
 
-  while (decoder.Next().ok()) {
+  Status status;
+
+  while ((status = decoder.Next()).ok()) {
     ProtoChunk::Fields field =
         static_cast<ProtoChunk::Fields>(decoder.FieldNumber());
 
@@ -42,19 +51,27 @@ Result<Chunk::Identifier> Chunk::ExtractIdentifier(ConstByteSpan message) {
     } else if (field == ProtoChunk::Fields::kSessionId) {
       // A session_id field always takes precedence over transfer_id.
       PW_TRY(decoder.ReadUint32(&session_id));
-    } else if (field == ProtoChunk::Fields::kResourceId) {
-      PW_TRY(decoder.ReadUint32(&resource_id));
+      legacy = false;
+    } else if (field == ProtoChunk::Fields::kDesiredSessionId) {
+      PW_TRY(decoder.ReadUint32(&desired_session_id));
     }
   }
 
-  // Always prioritize a resource_id if one is set. Resource IDs should only be
-  // set in cases where the transfer session ID has not yet been negotiated.
-  if (resource_id != 0) {
-    return Identifier::Resource(resource_id);
+  if (!status.IsOutOfRange()) {
+    return Status::DataLoss();
+  }
+
+  if (desired_session_id != 0) {
+    // Can't have both a desired and regular session_id.
+    if (!legacy && session_id != 0) {
+      return Status::DataLoss();
+    }
+    return Identifier::Desired(desired_session_id);
   }
 
   if (session_id != 0) {
-    return Identifier::Session(session_id);
+    return legacy ? Identifier::Legacy(session_id)
+                  : Identifier::Session(session_id);
   }
 
   return Status::DataLoss();
@@ -78,6 +95,8 @@ Result<Chunk> Chunk::Parse(ConstByteSpan message) {
   // window_end_offset from it once parsing is complete.
   uint32_t pending_bytes = 0;
 
+  bool has_session_id = false;
+
   while ((status = decoder.Next()).ok()) {
     ProtoChunk::Fields field =
         static_cast<ProtoChunk::Fields>(decoder.FieldNumber());
@@ -99,7 +118,7 @@ Result<Chunk> Chunk::Parse(ConstByteSpan message) {
         if (chunk.protocol_version_ == ProtocolVersion::kUnknown) {
           chunk.protocol_version_ = ProtocolVersion::kVersionTwo;
         }
-
+        has_session_id = true;
         PW_TRY(decoder.ReadUint32(&chunk.session_id_));
         break;
 
@@ -164,8 +183,23 @@ Result<Chunk> Chunk::Parse(ConstByteSpan message) {
         chunk.protocol_version_ = static_cast<ProtocolVersion>(value);
         break;
 
+      case ProtoChunk::Fields::kDesiredSessionId:
+        PW_TRY(decoder.ReadUint32(&value));
+        chunk.desired_session_id_ = value;
+        break;
+
+      case ProtoChunk::Fields::kInitialOffset:
+        PW_TRY(decoder.ReadUint32(&value));
+        chunk.set_initial_offset(value);
+        break;
+
         // Silently ignore any unrecognized fields.
     }
+  }
+
+  if (chunk.desired_session_id_.has_value() && has_session_id) {
+    // Setting both session_id and desired_session_id is not permitted.
+    return Status::DataLoss();
   }
 
   if (chunk.protocol_version_ == ProtocolVersion::kUnknown) {
@@ -201,7 +235,13 @@ Result<ConstByteSpan> Chunk::Encode(ByteSpan buffer) const {
 
   if (protocol_version_ >= ProtocolVersion::kVersionTwo) {
     if (session_id_ != 0) {
+      PW_CHECK(!desired_session_id_.has_value(),
+               "A chunk cannot set both a desired and regular session ID");
       encoder.WriteSessionId(session_id_).IgnoreError();
+    }
+
+    if (desired_session_id_.has_value()) {
+      encoder.WriteDesiredSessionId(desired_session_id_.value()).IgnoreError();
     }
 
     if (resource_id_.has_value()) {
@@ -254,6 +294,10 @@ Result<ConstByteSpan> Chunk::Encode(ByteSpan buffer) const {
     encoder.WriteOffset(offset_).IgnoreError();
   }
 
+  if (initial_offset_ != 0) {
+    encoder.WriteInitialOffset(initial_offset_).IgnoreError();
+  }
+
   if (remaining_bytes_.has_value()) {
     encoder.WriteRemainingBytes(remaining_bytes_.value()).IgnoreError();
   }
@@ -296,6 +340,10 @@ size_t Chunk::EncodedSize() const {
     if (resource_id_.has_value()) {
       size += protobuf::SizeOfVarintField(ProtoChunk::Fields::kResourceId,
                                           resource_id_.value());
+    }
+    if (desired_session_id_.has_value()) {
+      size += protobuf::SizeOfVarintField(ProtoChunk::Fields::kDesiredSessionId,
+                                          desired_session_id_.value());
     }
   }
 
@@ -345,6 +393,59 @@ size_t Chunk::EncodedSize() const {
   }
 
   return size;
+}
+
+void Chunk::LogChunk(bool received,
+                     pw::chrono::SystemClock::duration rate_limit) const {
+  // Log in two different spots so the rate limiting applies separately to sent
+  // and received
+  if (received) {
+    PW_LOG_EVERY_N_DURATION(
+        PW_LOG_LEVEL_DEBUG,
+        rate_limit,
+        "Chunk received, type: %u, session id: %u, protocol version: %u,\n"
+        "resource id: %d, desired session id: %d, offset: %u, size: %u,\n"
+        "window end offset: %u, remaining bytes: %d, status: %d",
+        type_.has_value() ? static_cast<unsigned>(type_.value()) : 0,
+        static_cast<unsigned>(session_id_),
+        static_cast<unsigned>(protocol_version_),
+        resource_id_.has_value() ? static_cast<unsigned>(resource_id_.value())
+                                 : -1,
+        desired_session_id_.has_value()
+            ? static_cast<int>(desired_session_id_.value())
+            : -1,
+        static_cast<unsigned>(offset_),
+        has_payload() ? static_cast<unsigned>(payload_.size()) : 0,
+        static_cast<unsigned>(window_end_offset_),
+        remaining_bytes_.has_value()
+            ? static_cast<unsigned>(remaining_bytes_.value())
+            : -1,
+        status_.has_value() ? static_cast<unsigned>(status_.value().code())
+                            : -1);
+  } else {
+    PW_LOG_EVERY_N_DURATION(
+        PW_LOG_LEVEL_DEBUG,
+        rate_limit,
+        "Chunk sent, type: %u, session id: %u, protocol version: %u,\n"
+        "resource id: %d, desired session id: %d, offset: %u, size: %u,\n"
+        "window end offset: %u, remaining bytes: %d, status: %d",
+        type_.has_value() ? static_cast<unsigned>(type_.value()) : 0,
+        static_cast<unsigned>(session_id_),
+        static_cast<unsigned>(protocol_version_),
+        resource_id_.has_value() ? static_cast<unsigned>(resource_id_.value())
+                                 : -1,
+        desired_session_id_.has_value()
+            ? static_cast<int>(desired_session_id_.value())
+            : -1,
+        static_cast<unsigned>(offset_),
+        has_payload() ? static_cast<unsigned>(payload_.size()) : 0,
+        static_cast<unsigned>(window_end_offset_),
+        remaining_bytes_.has_value()
+            ? static_cast<unsigned>(remaining_bytes_.value())
+            : -1,
+        status_.has_value() ? static_cast<unsigned>(status_.value().code())
+                            : -1);
+  }
 }
 
 }  // namespace pw::transfer::internal

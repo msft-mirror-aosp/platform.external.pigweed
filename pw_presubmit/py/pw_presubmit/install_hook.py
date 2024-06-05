@@ -21,12 +21,12 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
-from typing import Optional, Sequence, Union
+from typing import Sequence
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
 
-def git_repo_root(path: Union[Path, str]) -> Path:
+def git_repo_root(path: Path | str) -> Path:
     return Path(
         subprocess.run(
             ['git', '-C', path, 'rev-parse', '--show-toplevel'],
@@ -65,8 +65,8 @@ def _replace_arg_in_hook(arg: str, unquoted_args: Sequence[str]) -> str:
 
 def install_git_hook(
     hook: str,
-    command: Sequence[Union[Path, str]],
-    repository: Union[Path, str] = '.',
+    command: Sequence[Path | str],
+    repository: Path | str = '.',
 ) -> None:
     """Installs a simple Git hook that executes the provided command.
 
@@ -92,7 +92,11 @@ def install_git_hook(
 
         hook_path = root.joinpath(match.group(1), 'hooks', hook).resolve()
 
-    hook_path.parent.mkdir(exist_ok=True)
+    try:
+        hook_path.parent.mkdir(exist_ok=True)
+    except FileExistsError as exc:
+        _LOG.warning('Failed to install %s hook: %s', hook, exc)
+        return
 
     hook_stdin_args = _stdin_args_for_hook(hook)
     read_stdin_command = 'read ' + ' '.join(hook_stdin_args)
@@ -120,13 +124,11 @@ def install_git_hook(
         line(command_str)
 
     hook_path.chmod(0o755)
-    logging.info(
-        'Installed %s hook for `%s` at %s', hook, command_str, hook_path
-    )
+    _LOG.info('Installed %s hook for `%s` at %s', hook, command_str, hook_path)
 
 
 def argument_parser(
-    parser: Optional[argparse.ArgumentParser] = None,
+    parser: argparse.ArgumentParser | None = None,
 ) -> argparse.ArgumentParser:
     if parser is None:
         parser = argparse.ArgumentParser(description=__doc__)

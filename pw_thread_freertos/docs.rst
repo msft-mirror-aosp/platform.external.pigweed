@@ -26,27 +26,27 @@ follows:
 
 .. code-block:: cpp
 
-  #include "FreeRTOS.h"
-  #include "pw_thread/detached_thread.h"
-  #include "pw_thread_freertos/config.h"
-  #include "pw_thread_freertos/context.h"
-  #include "pw_thread_freertos/options.h"
+   #include "FreeRTOS.h"
+   #include "pw_thread/detached_thread.h"
+   #include "pw_thread_freertos/config.h"
+   #include "pw_thread_freertos/context.h"
+   #include "pw_thread_freertos/options.h"
 
-  constexpr UBaseType_t kFooPriority =
-      pw::thread::freertos::config::kDefaultPriority;
-  constexpr size_t kFooStackSizeWords =
-      pw::thread::freertos::config::kDefaultStackSizeWords;
+   constexpr UBaseType_t kFooPriority =
+       pw::thread::freertos::config::kDefaultPriority;
+   constexpr size_t kFooStackSizeWords =
+       pw::thread::freertos::config::kDefaultStackSizeWords;
 
-  pw::thread::freertos::StaticContextWithStack<kFooStackSizeWords>
-      example_thread_context;
-  void StartExampleThread() {
-    pw::thread::DetachedThread(
-        pw::thread::freertos::Options()
-            .set_name("static_example_thread")
-            .set_priority(kFooPriority)
-            .set_static_context(example_thread_context),
-        example_thread_function);
-  }
+   pw::thread::freertos::StaticContextWithStack<kFooStackSizeWords>
+       example_thread_context;
+   void StartExampleThread() {
+     pw::thread::DetachedThread(
+         pw::thread::freertos::Options()
+             .set_name("static_example_thread")
+             .set_priority(kFooPriority)
+             .set_static_context(example_thread_context),
+         example_thread_function);
+   }
 
 Alternatively when ``PW_THREAD_FREERTOS_CONFIG_DYNAMIC_ALLOCATION_ENABLED`` is
 enabled, dynamic thread allocation can be used. The above example could instead
@@ -54,25 +54,25 @@ be done as follows:
 
 .. code-block:: cpp
 
-  #include "FreeRTOS.h"
-  #include "pw_thread/detached_thread.h"
-  #include "pw_thread_freertos/config.h"
-  #include "pw_thread_freertos/context.h"
-  #include "pw_thread_freertos/options.h"
+   #include "FreeRTOS.h"
+   #include "pw_thread/detached_thread.h"
+   #include "pw_thread_freertos/config.h"
+   #include "pw_thread_freertos/context.h"
+   #include "pw_thread_freertos/options.h"
 
-  constexpr UBaseType_t kFooPriority =
-      pw::thread::freertos::config::kDefaultPriority;
-  constexpr size_t kFooStackSizeWords =
-      pw::thread::freertos::config::kDefaultStackSizeWords;
+   constexpr UBaseType_t kFooPriority =
+       pw::thread::freertos::config::kDefaultPriority;
+   constexpr size_t kFooStackSizeWords =
+       pw::thread::freertos::config::kDefaultStackSizeWords;
 
-  void StartExampleThread() {
-    pw::thread::DetachedThread(
-        pw::thread::freertos::Options()
-            .set_name("dyanmic_example_thread")
-            .set_priority(kFooPriority)
-            .set_stack_size(kFooStackSizeWords),
-        example_thread_function)
-  }
+   void StartExampleThread() {
+     pw::thread::DetachedThread(
+         pw::thread::freertos::Options()
+             .set_name("dyanmic_example_thread")
+             .set_priority(kFooPriority)
+             .set_stack_size(kFooStackSizeWords),
+         example_thread_function)
+   }
 
 
 Module Configuration Options
@@ -252,18 +252,23 @@ the most up-to-date information is captured, the stack pointer for the currently
 running thread must be provided for cases where the running thread is being
 captured. For ARM Cortex-M CPUs, you can do something like this:
 
-.. Code:: cpp
+.. code-block:: cpp
 
-  // Capture PSP.
-  void* stack_ptr = 0;
-  asm volatile("mrs %0, psp\n" : "=r"(stack_ptr));
-  pw::thread::ProcessThreadStackCallback cb =
-      [](pw::thread::proto::Thread::StreamEncoder& encoder,
-         pw::ConstByteSpan stack) -> pw::Status {
-    return encoder.WriteRawStack(stack);
-  };
-  pw::thread::threadx::SnapshotThread(my_thread, thread_state, stack_ptr,
-                                      snapshot_encoder, cb);
+   // Capture PSP.
+   void* stack_ptr = 0;
+   asm volatile("mrs %0, psp\n" : "=r"(stack_ptr));
+   pw::thread::ProcessThreadStackCallback cb =
+       [](pw::thread::proto::Thread::StreamEncoder& encoder,
+          pw::ConstByteSpan stack) -> pw::Status {
+     return encoder.WriteRawStack(stack);
+   };
+   pw::thread::threadx::SnapshotThread(my_thread, thread_state, stack_ptr,
+                                       snapshot_encoder, cb);
+
+Some FreeRTOS ports (e.g. RISC-V) automatically store the stack pointer back
+into the running thread's TCB upon exception entry, so there's no need to inject
+an updated stack pointer. If you're unsure of your platform's behavior, inject
+an updated stack pointer captured upon exception entry to be safe.
 
 ``SnapshotThreads()`` wraps the singular thread capture to instead captures
 all created threads to a ``pw::thread::proto::SnapshotThreadInfo`` message

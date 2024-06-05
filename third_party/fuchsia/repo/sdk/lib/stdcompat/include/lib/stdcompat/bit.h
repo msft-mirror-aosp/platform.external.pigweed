@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef LIB_STDCOMPAT_INCLUDE_LIB_STDCOMPAT_BIT_H_
-#define LIB_STDCOMPAT_INCLUDE_LIB_STDCOMPAT_BIT_H_
+#ifndef LIB_STDCOMPAT_BIT_H_
+#define LIB_STDCOMPAT_BIT_H_
 
 #include <cstring>
 #include <limits>
@@ -143,7 +143,7 @@ constexpr std::enable_if_t<std::is_unsigned<T>::value, bool> has_single_bit(T va
 }
 
 template <typename T>
-constexpr std::enable_if_t<std::is_unsigned<T>::value, T> bit_width(T value) {
+constexpr std::enable_if_t<std::is_unsigned<T>::value, int> bit_width(T value) {
   return internal::bit_width(value);
 }
 
@@ -182,4 +182,4 @@ enum class endian {
 
 }  // namespace cpp20
 
-#endif  // LIB_STDCOMPAT_INCLUDE_LIB_STDCOMPAT_BIT_H_
+#endif  // LIB_STDCOMPAT_BIT_H_

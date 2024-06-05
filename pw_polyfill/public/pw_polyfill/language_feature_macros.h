@@ -15,12 +15,6 @@
 // Macros for using C++ features in older standards.
 #pragma once
 
-#ifdef __cpp_inline_variables
-#define PW_INLINE_VARIABLE inline
-#else
-#define PW_INLINE_VARIABLE
-#endif  // __cpp_inline_variables
-
 // Mark functions as constexpr if C++20 or newer
 #if __cplusplus >= 202002L
 #define PW_CONSTEXPR_CPP20 constexpr
@@ -36,12 +30,19 @@
 #endif  // __cpp_consteval >= 201811L
 
 // Mark functions as constinit if supported by the compiler.
-#if defined(__cpp_constinit)
+#if defined(__cpp_constinit) && __cpp_constinit >= 201907L
 #define PW_CONSTINIT constinit
 #elif defined(__clang__)
 #define PW_CONSTINIT [[clang::require_constant_initialization]]
-#elif defined(__GNUC__) && __GNUC__ >= 10
+#elif defined(__GNUC__) && __GNUC__ >= 13
 #define PW_CONSTINIT __constinit
 #else
 #define PW_CONSTINIT
 #endif  // __cpp_constinit
+
+// nodiscard with a string literal is only available in later versions (~C++20).
+#if __cplusplus >= 202002L
+#define PW_NODISCARD_STR(str) [[nodiscard(str)]]
+#else
+#define PW_NODISCARD_STR(str) [[nodiscard]]
+#endif

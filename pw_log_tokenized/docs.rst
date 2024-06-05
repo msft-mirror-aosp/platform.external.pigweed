@@ -4,7 +4,8 @@
 pw_log_tokenized
 ----------------
 The ``pw_log_tokenized`` module contains utilities for tokenized logging. It
-connects ``pw_log`` to ``pw_tokenizer``.
+connects ``pw_log`` to ``pw_tokenizer`` and supports
+:ref:`module-pw_log-tokenized-args`.
 
 C++ backend
 ===========
@@ -55,7 +56,7 @@ letter.
 
 .. code-block::
 
-  "■key1♦contents1■key2♦contents2■key3♦contents3"
+   "■key1♦contents1■key2♦contents2■key3♦contents3"
 
 This format makes the message easily machine parseable and human readable. It is
 extremely unlikely to conflict with log message contents due to the characters
@@ -67,7 +68,7 @@ Implementations may add other fields, but they will be ignored by the
 
 .. code-block::
 
-  "■msg♦Hyperdrive %d set to %f■module♦engine■file♦propulsion/hyper.cc"
+   "■msg♦Hyperdrive %d set to %f■module♦engine■file♦propulsion/hyper.cc"
 
 Using key-value pairs allows placing the fields in any order.
 ``pw_log_tokenized`` places the message first. This is prefered when tokenizing
@@ -141,39 +142,44 @@ The following example shows that a ``Metadata`` object can be created from a
 
 .. code-block:: cpp
 
-  extern "C" void pw_log_tokenized_HandleLog(
-      uint32_t payload,
-      const uint8_t message[],
-      size_t size_bytes) {
-    pw::log_tokenized::Metadata metadata = payload;
-    // Check the log level to see if this log is a crash.
-    if (metadata.level() == PW_LOG_LEVEL_FATAL) {
-      HandleCrash(metadata, pw::ConstByteSpan(
-          reinterpret_cast<const std::byte*>(message), size_bytes));
-      PW_UNREACHABLE;
-    }
-    // ...
-  }
+   extern "C" void pw_log_tokenized_HandleLog(
+       uint32_t payload,
+       const uint8_t message[],
+       size_t size_bytes) {
+     pw::log_tokenized::Metadata metadata = payload;
+     // Check the log level to see if this log is a crash.
+     if (metadata.level() == PW_LOG_LEVEL_FATAL) {
+       HandleCrash(metadata, pw::ConstByteSpan(
+           reinterpret_cast<const std::byte*>(message), size_bytes));
+       PW_UNREACHABLE;
+     }
+     // ...
+   }
 
 It's also possible to get a ``uint32_t`` representation of a ``Metadata``
 object:
 
 .. code-block:: cpp
 
-  // Logs an explicitly created string token.
-  void LogToken(uint32_t token, int level, int line_number, int module) {
-    const uint32_t payload =
-        log_tokenized::Metadata(
-            level, module, PW_LOG_FLAGS, line_number)
-            .value();
-    std::array<std::byte, sizeof(token)> token_buffer =
-        pw::bytes::CopyInOrder(endian::little, token);
+   // Logs an explicitly created string token.
+   void LogToken(uint32_t token, int level, int line_number, int module) {
+     const uint32_t payload =
+         log_tokenized::Metadata(
+             level, module, PW_LOG_FLAGS, line_number)
+             .value();
+     std::array<std::byte, sizeof(token)> token_buffer =
+         pw::bytes::CopyInOrder(endian::little, token);
 
-    pw_log_tokenized_HandleLog(
-        payload,
-        reinterpret_cast<const uint8_t*>(token_buffer.data()),
-        token_buffer.size());
-  }
+     pw_log_tokenized_HandleLog(
+         payload,
+         reinterpret_cast<const uint8_t*>(token_buffer.data()),
+         token_buffer.size());
+   }
+
+The binary tokenized message may be encoded in the :ref:`prefixed Base64 format
+<module-pw_tokenizer-base64-format>` with the following function:
+
+.. doxygenfunction:: PrefixedBase64Encode(span<const std::byte>)
 
 Build targets
 -------------
@@ -183,6 +189,14 @@ The GN build for ``pw_log_tokenized`` has two targets: ``pw_log_tokenized`` and
 implements the backend for the ``pw_log`` facade. ``pw_log_tokenized`` invokes
 the ``pw_log_tokenized:handler`` facade, which must be implemented by the user
 of ``pw_log_tokenized``.
+
+GCC has a bug resulting in section attributes of templated functions being
+ignored. This in turn means that log tokenization cannot work for templated
+functions, because the token database entries are lost at build time.
+For more information see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=70435.
+If you are using GCC, the ``gcc_partially_tokenized`` target can be used as a
+backend for the ``pw_log`` facade instead which tokenizes as much as possible
+and uses the ``pw_log_string:handler`` for the rest using string logging.
 
 Python package
 ==============

@@ -14,10 +14,10 @@ Building
 To build for this target, invoke ninja with the top-level "docs" group as the
 target to build.
 
-.. code:: sh
+.. code-block:: sh
 
-  $ gn gen out
-  $ ninja -C out docs
+   $ gn gen out
+   $ ninja -C out docs
 
 Output
 ======

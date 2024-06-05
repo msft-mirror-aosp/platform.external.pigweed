@@ -18,34 +18,20 @@
 #include <string_view>
 
 #include "FreeRTOS.h"
-#include "gtest/gtest.h"
 #include "pw_bytes/span.h"
 #include "pw_span/span.h"
 #include "pw_string/string_builder.h"
 #include "pw_string/util.h"
 #include "pw_sync/thread_notification.h"
-#include "pw_thread/test_threads.h"
+#include "pw_thread/non_portable_test_thread_options.h"
 #include "pw_thread/thread.h"
 #include "pw_thread/thread_info.h"
 #include "pw_thread_freertos/freertos_tsktcb.h"
 #include "pw_thread_freertos_private/thread_iteration.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::thread::freertos {
 namespace {
-
-sync::ThreadNotification lock_start;
-sync::ThreadNotification lock_end;
-
-void ForkedThreadEntry(void*) {
-  // Release start lock to allow test thread to continue execution.
-  lock_start.release();
-  while (true) {
-    // Return only when end lock released by test thread.
-    if (lock_end.try_acquire()) {
-      return;
-    }
-  }
-}
 
 // Tests thread iteration API by:
 //  - Forking a test thread.
@@ -53,12 +39,27 @@ void ForkedThreadEntry(void*) {
 //  - Compares name of forked thread and current thread.
 //  - Confirms thread exists and is iterated over.
 TEST(ThreadIteration, ForkOneThread) {
+  struct {
+    sync::ThreadNotification start;
+    sync::ThreadNotification end;
+  } notify;
+
   const auto& options = *static_cast<const pw::thread::freertos::Options*>(
       &thread::test::TestOptionsThread0());
-  thread::Thread t(options, ForkedThreadEntry);
+
+  thread::Thread t(options, [&notify]() {
+    // Release start lock to allow test thread to continue execution.
+    notify.start.release();
+    while (true) {
+      // Return only when end lock released by test thread.
+      if (notify.end.try_acquire()) {
+        return;
+      }
+    }
+  });
 
   // Blocked until thread t releases start lock.
-  lock_start.acquire();
+  notify.start.acquire();
 
   struct {
     bool thread_exists;
@@ -92,7 +93,7 @@ TEST(ThreadIteration, ForkOneThread) {
   thread::ForEachThread(cb);
 
   // Signal to forked thread that execution is complete.
-  lock_end.release();
+  notify.end.release();
 
   // Clean up the test thread context.
 #if PW_THREAD_JOINING_ENABLED

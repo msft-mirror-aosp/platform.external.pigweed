@@ -14,90 +14,128 @@
 
 /** Functions for working with pw_rpc packets. */
 
-import {Message} from 'google-protobuf';
-import {MethodDescriptorProto} from 'google-protobuf/google/protobuf/descriptor_pb';
-import * as packetPb from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
-import {Status} from 'pigweedjs/pw_status';
+import { Message } from 'google-protobuf';
+import {
+  RpcPacket,
+  PacketType,
+} from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
+import { Status } from 'pigweedjs/pw_status';
+import { MessageSerializer } from './descriptors';
 
-// Channel, Service, Method
-type idSet = [number, number, number];
+// Channel, Service, Method, CallId
+type idSet = [number, number, number, number];
 
-export function decode(data: Uint8Array): packetPb.RpcPacket {
-  return packetPb.RpcPacket.deserializeBinary(data);
+export function decode(data: Uint8Array): RpcPacket {
+  return RpcPacket.deserializeBinary(data);
 }
 
-export function decodePayload(payload: Uint8Array, payloadType: any): Message {
-  const message = payloadType.deserializeBinary(payload);
-  return message;
+function serializeMessage(
+  message?: Message,
+  serializers?: MessageSerializer,
+): Uint8Array {
+  let payload: Uint8Array;
+  if (typeof message !== 'undefined') {
+    if (serializers) {
+      payload = serializers.serialize(message);
+    } else {
+      payload = (message as any)['serializeBinary']();
+    }
+  } else {
+    payload = new Uint8Array(0);
+  }
+  return payload;
 }
 
-export function forServer(packet: packetPb.RpcPacket): boolean {
+export function decodePayload(
+  payload: Uint8Array,
+  payloadType: any,
+  serializer?: MessageSerializer,
+): any {
+  if (serializer) {
+    return serializer.deserialize(payload);
+  }
+  return payloadType['deserializeBinary'](payload);
+}
+
+export function forServer(packet: RpcPacket): boolean {
   return packet.getType() % 2 == 0;
 }
 
 export function encodeClientError(
-  packet: packetPb.RpcPacket,
-  status: Status
+  packet: RpcPacket,
+  status: Status,
 ): Uint8Array {
-  const errorPacket = new packetPb.RpcPacket();
-  errorPacket.setType(packetPb.PacketType.CLIENT_ERROR);
+  const errorPacket = new RpcPacket();
+  errorPacket.setType(PacketType.CLIENT_ERROR);
   errorPacket.setChannelId(packet.getChannelId());
   errorPacket.setMethodId(packet.getMethodId());
   errorPacket.setServiceId(packet.getServiceId());
+  errorPacket.setCallId(packet.getCallId());
   errorPacket.setStatus(status);
   return errorPacket.serializeBinary();
 }
 
-export function encodeClientStream(ids: idSet, message: Message): Uint8Array {
-  const streamPacket = new packetPb.RpcPacket();
-  streamPacket.setType(packetPb.PacketType.CLIENT_STREAM);
+export function encodeClientStream(
+  ids: idSet,
+  message: Message,
+  customSerializer?: MessageSerializer,
+): Uint8Array {
+  const streamPacket = new RpcPacket();
+  streamPacket.setType(PacketType.CLIENT_STREAM);
   streamPacket.setChannelId(ids[0]);
   streamPacket.setServiceId(ids[1]);
   streamPacket.setMethodId(ids[2]);
-  streamPacket.setPayload(message.serializeBinary());
+  streamPacket.setCallId(ids[3]);
+  const msgSerialized = serializeMessage(message, customSerializer);
+  streamPacket.setPayload(msgSerialized);
   return streamPacket.serializeBinary();
 }
 
 export function encodeClientStreamEnd(ids: idSet): Uint8Array {
-  const streamEnd = new packetPb.RpcPacket();
-  streamEnd.setType(packetPb.PacketType.CLIENT_STREAM_END);
+  const streamEnd = new RpcPacket();
+  streamEnd.setType(PacketType.CLIENT_REQUEST_COMPLETION);
   streamEnd.setChannelId(ids[0]);
   streamEnd.setServiceId(ids[1]);
   streamEnd.setMethodId(ids[2]);
+  streamEnd.setCallId(ids[3]);
   return streamEnd.serializeBinary();
 }
 
-export function encodeRequest(ids: idSet, request?: Message): Uint8Array {
-  const payload: Uint8Array =
-    typeof request !== 'undefined'
-      ? request.serializeBinary()
-      : new Uint8Array();
-
-  const packet = new packetPb.RpcPacket();
-  packet.setType(packetPb.PacketType.REQUEST);
+export function encodeRequest(
+  ids: idSet,
+  request?: Message,
+  customSerializer?: MessageSerializer,
+): Uint8Array {
+  const payload = serializeMessage(request, customSerializer);
+  const packet = new RpcPacket();
+  packet.setType(PacketType.REQUEST);
   packet.setChannelId(ids[0]);
   packet.setServiceId(ids[1]);
   packet.setMethodId(ids[2]);
+  packet.setCallId(ids[3]);
   packet.setPayload(payload);
   return packet.serializeBinary();
 }
 
 export function encodeResponse(ids: idSet, response: Message): Uint8Array {
-  const packet = new packetPb.RpcPacket();
-  packet.setType(packetPb.PacketType.RESPONSE);
+  const packet = new RpcPacket();
+  packet.setType(PacketType.RESPONSE);
   packet.setChannelId(ids[0]);
   packet.setServiceId(ids[1]);
   packet.setMethodId(ids[2]);
-  packet.setPayload(response.serializeBinary());
+  packet.setCallId(ids[3]);
+  const msgSerialized = (response as any)['serializeBinary']();
+  packet.setPayload(msgSerialized);
   return packet.serializeBinary();
 }
 
 export function encodeCancel(ids: idSet): Uint8Array {
-  const packet = new packetPb.RpcPacket();
-  packet.setType(packetPb.PacketType.CLIENT_ERROR);
+  const packet = new RpcPacket();
+  packet.setType(PacketType.CLIENT_ERROR);
   packet.setStatus(Status.CANCELLED);
   packet.setChannelId(ids[0]);
   packet.setServiceId(ids[1]);
   packet.setMethodId(ids[2]);
+  packet.setCallId(ids[3]);
   return packet.serializeBinary();
 }

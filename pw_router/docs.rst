@@ -9,12 +9,16 @@ over network links.
 Common router interfaces
 ========================
 
+.. _module-pw_router-packet_parser:
+
 PacketParser
 ------------
 To work with arbitrary packet formats, routers require a common interface for
 extracting relevant packet data, such as the destination. This interface is
 ``pw::router::PacketParser``, defined in ``pw_router/packet_parser.h``, which
 must be implemented for the packet framing format used by the network.
+
+.. _module-pw_router-egress:
 
 Egress
 ------
@@ -30,22 +34,24 @@ under heavy load.
 
 .. code-block:: c++
 
-  Status MyEgress::SendPacket(
-      ConstByteSpan packet, const PacketParser& parser) override {
-    // Downcast the base PacketParser to the custom implementation that was
-    // passed into RoutePacket().
-    const CustomPacketParser& custom_parser =
-        static_cast<const CustomPacketParser&>(parser);
+   Status MyEgress::SendPacket(
+       ConstByteSpan packet, const PacketParser& parser) override {
+     // Downcast the base PacketParser to the custom implementation that was
+     // passed into RoutePacket().
+     const CustomPacketParser& custom_parser =
+         static_cast<const CustomPacketParser&>(parser);
 
-    // Custom packet fields can now be accessed if necessary.
-    if (custom_parser.priority() == MyPacketPriority::kHigh) {
-      return SendHighPriorityPacket(packet);
-    }
+     // Custom packet fields can now be accessed if necessary.
+     if (custom_parser.priority() == MyPacketPriority::kHigh) {
+       return SendHighPriorityPacket(packet);
+     }
 
-    return SendStandardPriorityPacket(packet);
-  }
+     return SendStandardPriorityPacket(packet);
+   }
 
 Some common egress implementations are provided upstream in Pigweed.
+
+.. _module-pw_router-static_router:
 
 StaticRouter
 ============
@@ -61,23 +67,23 @@ Usage example
 
 .. code-block:: c++
 
-  namespace {
+   namespace {
 
-  // Define the router egresses.
-  UartEgress uart_egress;
-  BluetoothEgress ble_egress;
+   // Define the router egresses.
+   UartEgress uart_egress;
+   BluetoothEgress ble_egress;
 
-  // Define the routing table.
-  constexpr pw::router::StaticRouter::Route routes[] = {{1, uart_egress},
-                                                        {7, ble_egress}};
-  pw::router::StaticRouter router(routes);
+   // Define the routing table.
+   constexpr pw::router::StaticRouter::Route routes[] = {{1, uart_egress},
+                                                         {7, ble_egress}};
+   pw::router::StaticRouter router(routes);
 
-  }  // namespace
+   }  // namespace
 
-  void ProcessPacket(pw::ConstByteSpan packet) {
-    HdlcFrameParser hdlc_parser;
-    router.RoutePacket(packet, hdlc_parser);
-  }
+   void ProcessPacket(pw::ConstByteSpan packet) {
+     HdlcFrameParser hdlc_parser;
+     router.RoutePacket(packet, hdlc_parser);
+   }
 
 Size report
 -----------

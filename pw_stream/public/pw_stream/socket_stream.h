@@ -13,77 +13,117 @@
 // the License.
 #pragma once
 
-#include <netinet/in.h>
-
 #include <cstdint>
 
 #include "pw_result/result.h"
 #include "pw_span/span.h"
 #include "pw_stream/stream.h"
+#include "pw_sync/lock_annotations.h"
+#include "pw_sync/mutex.h"
 
 namespace pw::stream {
 
 class SocketStream : public NonSeekableReaderWriter {
  public:
-  constexpr SocketStream() = default;
+  SocketStream() = default;
+  // Construct a SocketStream directly from a file descriptor.
+  explicit SocketStream(int connection_fd) : connection_fd_(connection_fd) {
+    // Mark as ready and take ownership of the connection by this object.
+    ready_ = true;
+    TakeConnection();
+  }
 
   // SocketStream objects are moveable but not copyable.
   SocketStream& operator=(SocketStream&& other) {
-    listen_port_ = other.listen_port_;
-    socket_fd_ = other.socket_fd_;
-    other.socket_fd_ = kInvalidFd;
-    connection_fd_ = other.connection_fd_;
-    other.connection_fd_ = kInvalidFd;
-    sockaddr_client_ = other.sockaddr_client_;
+    MoveFrom(std::move(other));
     return *this;
   }
-  SocketStream(SocketStream&& other) noexcept
-      : listen_port_(other.listen_port_),
-        socket_fd_(other.socket_fd_),
-        connection_fd_(other.connection_fd_),
-        sockaddr_client_(other.sockaddr_client_) {
-    other.socket_fd_ = kInvalidFd;
-    other.connection_fd_ = kInvalidFd;
-  }
+  SocketStream(SocketStream&& other) noexcept { MoveFrom(std::move(other)); }
   SocketStream(const SocketStream&) = delete;
   SocketStream& operator=(const SocketStream&) = delete;
 
   ~SocketStream() override { Close(); }
-
-  // Listen to the port and return after a client is connected
-  //
-  // DEPRECATED: Use the ServerSocket class instead.
-  // TODO(b/271323032): Remove when this method is no longer used.
-  Status Serve(uint16_t port);
 
   // Connect to a local or remote endpoint. Host may be either an IPv4 or IPv6
   // address. If host is nullptr then the IPv4 localhost address is used
   // instead.
   Status Connect(const char* host, uint16_t port);
 
+  // Configures socket options.
+  int SetSockOpt(int level,
+                 int optname,
+                 const void* optval,
+                 unsigned int optlen);
+
   // Close the socket stream and release all resources
   void Close();
 
-  // Exposes the file descriptor for the active connection. This is exposed to
-  // allow configuration and introspection of this socket's current
-  // configuration using setsockopt() and getsockopt().
-  //
-  // Returns -1 if there is no active connection.
-  int connection_fd() { return connection_fd_; }
-
  private:
-  friend class ServerSocket;
-
   static constexpr int kInvalidFd = -1;
+
+  class ConnectionOwnership {
+   public:
+    explicit ConnectionOwnership(SocketStream* socket_stream)
+        : socket_stream_(socket_stream) {
+      fd_ = socket_stream_->TakeConnection();
+      std::lock_guard lock(socket_stream_->connection_mutex_);
+      pipe_r_fd_ = socket_stream->connection_pipe_r_fd_;
+    }
+
+    ~ConnectionOwnership() { socket_stream_->ReleaseConnection(); }
+
+    int fd() { return fd_; }
+
+    int pipe_r_fd() { return pipe_r_fd_; }
+
+   private:
+    SocketStream* socket_stream_;
+    int fd_;
+    int pipe_r_fd_;
+  };
 
   Status DoWrite(span<const std::byte> data) override;
 
   StatusWithSize DoRead(ByteSpan dest) override;
 
-  uint16_t listen_port_ = 0;
-  int socket_fd_ = kInvalidFd;
-  int connection_fd_ = kInvalidFd;
-  struct sockaddr_in sockaddr_client_ = {};
+  // Take ownership of the connection. There may be multiple owners. Each time
+  // TakeConnection is called, ReleaseConnection must be called to release
+  // ownership, even if the connection is not valid.
+  //
+  // Returns the connection fd or kInvalidFd if the connection is not valid.
+  int TakeConnection();
+  int TakeConnectionWithLockHeld()
+      PW_EXCLUSIVE_LOCKS_REQUIRED(connection_mutex_);
+
+  // Release ownership of the connection. If no owners remain, close and clear
+  // the connection fds.
+  void ReleaseConnection();
+  void ReleaseConnectionWithLockHeld()
+      PW_EXCLUSIVE_LOCKS_REQUIRED(connection_mutex_);
+
+  // Moves other to this.
+  void MoveFrom(SocketStream&& other) {
+    std::lock_guard lock(connection_mutex_);
+    std::lock_guard other_lock(other.connection_mutex_);
+
+    connection_own_count_ = other.connection_own_count_;
+    other.connection_own_count_ = 0;
+    ready_ = other.ready_;
+    other.ready_ = false;
+    connection_fd_ = other.connection_fd_;
+    other.connection_fd_ = kInvalidFd;
+    connection_pipe_r_fd_ = other.connection_pipe_r_fd_;
+    other.connection_pipe_r_fd_ = kInvalidFd;
+    connection_pipe_w_fd_ = other.connection_pipe_w_fd_;
+    other.connection_pipe_w_fd_ = kInvalidFd;
+  }
+
+  sync::Mutex connection_mutex_;
+  int connection_own_count_ PW_GUARDED_BY(connection_mutex_) = 0;
+  bool ready_ PW_GUARDED_BY(connection_mutex_) = false;
+  int connection_fd_ PW_GUARDED_BY(connection_mutex_) = kInvalidFd;
+  int connection_pipe_r_fd_ PW_GUARDED_BY(connection_mutex_) = kInvalidFd;
+  int connection_pipe_w_fd_ PW_GUARDED_BY(connection_mutex_) = kInvalidFd;
 };
 
 /// `ServerSocket` wraps a POSIX-style server socket, producing a `SocketStream`
@@ -117,8 +157,47 @@ class ServerSocket {
  private:
   static constexpr int kInvalidFd = -1;
 
+  class SocketOwnership {
+   public:
+    explicit SocketOwnership(ServerSocket* server_socket)
+        : server_socket_(server_socket) {
+      fd_ = server_socket_->TakeSocket();
+      std::lock_guard lock(server_socket->socket_mutex_);
+      pipe_r_fd_ = server_socket->socket_pipe_r_fd_;
+    }
+
+    ~SocketOwnership() { server_socket_->ReleaseSocket(); }
+
+    int fd() { return fd_; }
+
+    int pipe_r_fd() { return pipe_r_fd_; }
+
+   private:
+    ServerSocket* server_socket_;
+    int fd_;
+    int pipe_r_fd_;
+  };
+
+  // Take ownership of the socket. There may be multiple owners. Each time
+  // TakeSocket is called, ReleaseSocket must be called to release ownership,
+  // even if the socket is not invalid.
+  //
+  // Returns the socket fd or kInvalidFd if the socket is not valid.
+  int TakeSocket();
+  int TakeSocketWithLockHeld() PW_EXCLUSIVE_LOCKS_REQUIRED(socket_mutex_);
+
+  // Release ownership of the socket. If no owners remain, close and clear the
+  // socket fds.
+  void ReleaseSocket();
+  void ReleaseSocketWithLockHeld() PW_EXCLUSIVE_LOCKS_REQUIRED(socket_mutex_);
+
   uint16_t port_ = -1;
-  int socket_fd_ = kInvalidFd;
+  sync::Mutex socket_mutex_;
+  int socket_own_count_ PW_GUARDED_BY(socket_mutex_) = 0;
+  bool ready_ PW_GUARDED_BY(socket_mutex_) = false;
+  int socket_fd_ PW_GUARDED_BY(socket_mutex_) = kInvalidFd;
+  int socket_pipe_r_fd_ PW_GUARDED_BY(socket_mutex_) = kInvalidFd;
+  int socket_pipe_w_fd_ PW_GUARDED_BY(socket_mutex_) = kInvalidFd;
 };
 
 }  // namespace pw::stream

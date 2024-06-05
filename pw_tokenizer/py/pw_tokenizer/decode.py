@@ -20,18 +20,17 @@ Missing, truncated, or otherwise corrupted arguments are handled and displayed
 in the resulting string with an error message.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 import math
 import re
 import struct
 from typing import (
     Iterable,
-    List,
     NamedTuple,
     Match,
-    Optional,
     Sequence,
-    Tuple,
 )
 
 
@@ -357,7 +356,7 @@ class FormatSpec:
             ]
         )
 
-    def decode(self, encoded_arg: bytes) -> 'DecodedArg':
+    def decode(self, encoded_arg: bytes) -> DecodedArg:
         """Decodes the provided data according to this format specifier."""
         if self.error is not None:
             return DecodedArg(
@@ -420,11 +419,11 @@ class FormatSpec:
 
     def _merge_decoded_args(
         self,
-        width: Optional['DecodedArg'],
-        precision: Optional['DecodedArg'],
-        main: 'DecodedArg',
-    ) -> 'DecodedArg':
-        def merge_optional_str(*args: Optional[str]) -> Optional[str]:
+        width: DecodedArg | None,
+        precision: DecodedArg | None,
+        main: DecodedArg,
+    ) -> DecodedArg:
+        def merge_optional_str(*args: str | None) -> str | None:
             return ' '.join(a for a in args if a) or None
 
         if width is not None and precision is not None:
@@ -463,7 +462,7 @@ class FormatSpec:
     def _decode_signed_integer(
         self,
         encoded: bytes,
-    ) -> 'DecodedArg':
+    ) -> DecodedArg:
         """Decodes a signed variable-length integer."""
         if not encoded:
             return DecodedArg.missing(self)
@@ -496,7 +495,7 @@ class FormatSpec:
             'Unterminated variable-length integer',
         )
 
-    def _decode_unsigned_integer(self, encoded: bytes) -> 'DecodedArg':
+    def _decode_unsigned_integer(self, encoded: bytes) -> DecodedArg:
         """Decodes an unsigned variable-length integer."""
         arg = self._decode_signed_integer(encoded)
         # Since ZigZag encoding is used, unsigned integers must be masked off to
@@ -506,7 +505,7 @@ class FormatSpec:
 
         return arg
 
-    def _decode_float(self, encoded: bytes) -> 'DecodedArg':
+    def _decode_float(self, encoded: bytes) -> DecodedArg:
         if len(encoded) < 4:
             return DecodedArg.missing(self)
 
@@ -514,7 +513,7 @@ class FormatSpec:
             self, self._PACKED_FLOAT.unpack_from(encoded)[0], encoded[:4]
         )
 
-    def _decode_string(self, encoded: bytes) -> 'DecodedArg':
+    def _decode_string(self, encoded: bytes) -> DecodedArg:
         """Reads a unicode string from the encoded data."""
         if not encoded:
             return DecodedArg.missing(self)
@@ -545,7 +544,7 @@ class FormatSpec:
 
         return DecodedArg(self, decoded, raw_data, status)
 
-    def _decode_char(self, encoded: bytes) -> 'DecodedArg':
+    def _decode_char(self, encoded: bytes) -> DecodedArg:
         """Reads an integer from the data, then converts it to a string."""
         arg = self._decode_signed_integer(encoded)
 
@@ -741,7 +740,7 @@ class FormattedString(NamedTuple):
         """Arg data decoded successfully and all expected args were found."""
         return all(arg.ok() for arg in self.args) and not self.remaining
 
-    def score(self, date_removed: Optional[datetime] = None) -> tuple:
+    def score(self, date_removed: datetime | None = None) -> tuple:
         """Returns a key for sorting by how successful a decode was.
 
         Decoded strings are sorted by whether they
@@ -777,7 +776,7 @@ class FormatString:
         # List of non-specifier string pieces with room for formatted arguments.
         self._segments = self._parse_string_segments()
 
-    def _parse_string_segments(self) -> List:
+    def _parse_string_segments(self) -> list:
         """Splits the format string by format specifiers."""
         if not self.specifiers:
             return [self.format_string]
@@ -794,12 +793,12 @@ class FormatString:
         string_pieces.append(self.format_string[spec_spans[-1][1] :])
 
         # Make a list with spots for the replacements between the string pieces.
-        segments: List = [None] * (len(string_pieces) + len(self.specifiers))
+        segments: list = [None] * (len(string_pieces) + len(self.specifiers))
         segments[::2] = string_pieces
 
         return segments
 
-    def decode(self, encoded: bytes) -> Tuple[Sequence[DecodedArg], bytes]:
+    def decode(self, encoded: bytes) -> tuple[Sequence[DecodedArg], bytes]:
         """Decodes arguments according to the format string.
 
         Args:

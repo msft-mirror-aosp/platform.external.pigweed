@@ -52,9 +52,11 @@
 // StringBuilder may be easier to work with. StringBuilder's operator<< may be
 // overloaded for custom types.
 
+#include <optional>
 #include <string_view>
 #include <type_traits>
 
+#include "pw_result/result.h"
 #include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
@@ -63,6 +65,49 @@
 #include "pw_string/type_to_string.h"
 
 namespace pw {
+
+template <typename T>
+StatusWithSize ToString(const T& value, span<char> buffer);
+
+namespace internal {
+
+template <typename T>
+struct is_std_optional : std::false_type {};
+
+template <typename T>
+struct is_std_optional<std::optional<T>> : std::true_type{};
+
+template <typename, typename = void>
+constexpr bool is_iterable = false;
+
+template <typename T>
+constexpr bool is_iterable<T,
+                           std::void_t<decltype(std::declval<T>().begin()),
+                                       decltype(std::declval<T>().end())>> =
+    true;
+
+template <typename BeginType, typename EndType>
+inline StatusWithSize IterableToString(BeginType begin,
+                                       EndType end,
+                                       span<char> buffer) {
+  StatusWithSize s;
+  s.UpdateAndAdd(ToString("[", buffer));
+  auto iter = begin;
+  if (iter != end && s.ok()) {
+    s.UpdateAndAdd(ToString(*iter, buffer.subspan(s.size())));
+    ++iter;
+  }
+  while (iter != end && s.ok()) {
+    s.UpdateAndAdd(ToString(", ", buffer.subspan(s.size())));
+    s.UpdateAndAdd(ToString(*iter, buffer.subspan(s.size())));
+    ++iter;
+  }
+  s.UpdateAndAdd(ToString("]", buffer.subspan(s.size())));
+  s.ZeroIfNotOk();
+  return s;
+}
+
+}  // namespace internal
 
 // This function provides string printing numeric types, enums, and anything
 // that convertible to a std::string_view, such as std::string.
@@ -82,13 +127,30 @@ StatusWithSize ToString(const T& value, span<char> buffer) {
       // it is available.
       return string::Format(buffer, "%.3f", value);
     } else {
-      return string::FloatAsIntToString(value, buffer);
+      return string::FloatAsIntToString(static_cast<float>(value), buffer);
     }
   } else if constexpr (std::is_convertible_v<T, std::string_view>) {
     return string::CopyStringOrNull(value, buffer);
   } else if constexpr (std::is_pointer_v<std::remove_cv_t<T>> ||
                        std::is_null_pointer_v<T>) {
     return string::PointerToString(value, buffer);
+  } else if constexpr (internal::is_std_optional<std::remove_cv_t<T>>::value) {
+    if (value.has_value()) {
+      // NOTE: `*value`'s `ToString` is not wrapped for simplicity in the
+      // output.
+      //
+      // This is simpler, but may cause confusion in the rare case that folks
+      // are comparing nested optionals. For example,
+      // std::optional(std::nullopt) != std::nullopt will display as
+      // `std::nullopt != std::nullopt`.
+      return ToString(*value, buffer);
+    } else {
+      return ToString(std::nullopt, buffer);
+    }
+  } else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::nullopt_t>) {
+    return string::CopyStringOrNull("std::nullopt", buffer);
+  } else if constexpr (internal::is_iterable<T>) {
+    return internal::IterableToString(value.begin(), value.end(), buffer);
   } else {
     // By default, no definition of UnknownTypeToString is provided.
     return string::UnknownTypeToString(value, buffer);
@@ -103,6 +165,19 @@ inline StatusWithSize ToString(Status status, span<char> buffer) {
 
 inline StatusWithSize ToString(pw_Status status, span<char> buffer) {
   return ToString(Status(status), buffer);
+}
+
+template <typename T>
+inline StatusWithSize ToString(const Result<T>& result, span<char> buffer) {
+  if (result.ok()) {
+    StatusWithSize s;
+    s.UpdateAndAdd(ToString("Ok(", buffer));
+    s.UpdateAndAdd(ToString(*result, buffer.subspan(s.size())));
+    s.UpdateAndAdd(ToString(")", buffer.subspan(s.size())));
+    s.ZeroIfNotOk();
+    return s;
+  }
+  return ToString(result.status(), buffer);
 }
 
 inline StatusWithSize ToString(std::byte byte, span<char> buffer) {

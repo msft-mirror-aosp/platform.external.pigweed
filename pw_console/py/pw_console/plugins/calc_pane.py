@@ -13,6 +13,8 @@
 # the License.
 """Example text input-output Plugin."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from prompt_toolkit.document import Document
@@ -129,7 +131,7 @@ class CalcPane(WindowPane):
             self.bottom_toolbar,
         )
 
-    def pw_console_init(self, app: 'ConsoleApp') -> None:
+    def pw_console_init(self, app: ConsoleApp) -> None:
         """Set the Pigweed Console application instance.
 
         This function is called after the Pigweed Console starts up and allows
@@ -196,10 +198,8 @@ class CalcPane(WindowPane):
     def copy_selected_output(self):
         """Copy highlighted text in the output_field to the system clipboard."""
         clipboard_data = self.output_field.buffer.copy_selection()
-        self.application.application.clipboard.set_data(clipboard_data)
+        self.application.set_system_clipboard_data(clipboard_data)
 
     def copy_all_output(self):
         """Copy all text in the output_field to the system clipboard."""
-        self.application.application.clipboard.set_text(
-            self.output_field.buffer.text
-        )
+        self.application.set_system_clipboard(self.output_field.buffer.text)

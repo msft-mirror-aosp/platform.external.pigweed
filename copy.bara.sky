@@ -1,0 +1,35 @@
+core.workflow(
+  name = "default",
+  origin = git.origin(
+    url = "rpc://googleplex-android/platform/external/pigweed",
+    ref = "upstream-main"
+  ),
+  destination = git.gerrit_destination(
+    url = "rpc://googleplex-android/platform/external/pigweed",
+    fetch = "main",
+    reviewers = ["cachinchilla@google.com", "hepler@google.com",
+                 "matthewsedam@google.com"]
+  ),
+  origin_files = glob(
+    include = ["**"],
+    exclude = [
+      "OWNERS",
+      "**/OWNERS",
+      "WORKSPACE_OWNERS"
+    ],
+  ),
+  authoring = authoring.pass_thru(
+    "Pigweed Developers <no-reply@google.com>"
+  ),
+  destination_files = glob(
+    include = ["**"],
+    exclude = [
+      "copy.bara.sky",
+      "METADATA",
+      "MODULE_LICENSE_APACHE2",
+      "OWNERS"
+    ],
+  ),
+  mode = "SQUASH",
+  transformations = [],
+)

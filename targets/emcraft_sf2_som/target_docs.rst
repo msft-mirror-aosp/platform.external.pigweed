@@ -15,18 +15,21 @@ MSS HAL for the SmartFusion series. The supported repositories can be
 downloaded via ``pw package``, and then the build must be manually configured
 to point to the locations the repositories were downloaded to.
 
-.. code:: sh
+.. code-block:: sh
 
-  pw package install freertos
-  pw package install smartfusion_mss
-  pw package install nanopb
+   pw package install freertos
+   pw package install smartfusion_mss
+   pw package install nanopb
 
-  gn args out
-    # Add these lines.
-    dir_pw_third_party_freertos = pw_env_setup_PACKAGE_ROOT + "/freertos"
-    dir_pw_third_party_smartfusion_mss =
-      pw_env_setup_PACKAGE_ROOT + "/smartfusion_mss"
-    dir_pw_third_party_nanopb = pw_env_setup_PACKAGE_ROOT + "/nanopb"
+   gn args out
+
+Then add the following lines to that text file:
+
+.. code-block::
+
+   dir_pw_third_party_freertos = getenv("PW_PACKAGE_ROOT") + "/freertos"
+   dir_pw_third_party_smartfusion_mss = getenv("PW_PACKAGE_ROOT") + "/smartfusion_mss"
+   dir_pw_third_party_nanopb = getenv("PW_PACKAGE_ROOT") + "/nanopb"
 
 Building and running the demo
 =============================

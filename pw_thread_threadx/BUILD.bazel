@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,8 +21,8 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
-    name = "id_headers",
+cc_library(
+    name = "id",
     hdrs = [
         "id_public_overrides/pw_thread_backend/id_inline.h",
         "id_public_overrides/pw_thread_backend/id_native.h",
@@ -34,21 +33,17 @@ pw_cc_library(
         "id_public_overrides",
         "public",
     ],
-)
-
-pw_cc_library(
-    name = "id",
+    # TODO: b/257321712 - Add ThreadX dependency.
     deps = [
-        ":id_headers",
         "//pw_thread:id_facade",
     ],
-    # TODO(b/234876414): This should depend on ThreadX but our third parties
-    # currently do not have Bazel support.
 )
 
-# This target provides the ThreadX specific headers needs for thread creation.
-pw_cc_library(
-    name = "thread_headers",
+cc_library(
+    name = "thread",
+    srcs = [
+        "thread.cc",
+    ],
     hdrs = [
         "public/pw_thread_threadx/config.h",
         "public/pw_thread_threadx/context.h",
@@ -62,59 +57,53 @@ pw_cc_library(
         "public",
         "thread_public_overrides",
     ],
-    # TODO(b/257321712): This target doesn't build.
+    # TODO: b/257321712 - Add ThreadX dependency.
     tags = ["manual"],
     deps = [
+        ":config_override",
         ":id",
         "//pw_assert",
         "//pw_string",
+        "//pw_thread:deprecated_or_new_thread_function",
         "//pw_thread:thread_facade",
     ],
-    # TODO(b/234876414): This should depend on ThreadX but our third parties
-    # currently do not have Bazel support.
 )
 
-pw_cc_library(
-    name = "thread",
-    srcs = [
-        "thread.cc",
-    ],
-    # TODO(b/257321712): This target doesn't build.
-    tags = ["manual"],
-    deps = [
-        ":id",
-        ":thread_headers",
-        "//pw_assert",
-    ],
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
 )
 
-pw_cc_library(
-    name = "test_threads",
+cc_library(
+    name = "non_portable_test_thread_options",
     srcs = [
         "test_threads.cc",
     ],
-    # TODO(b/257321712): This target doesn't build.
+    # TODO: b/257321712 - This target doesn't build.
     tags = ["manual"],
     deps = [
         "//pw_chrono:system_clock",
+        "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:sleep",
-        "//pw_thread:test_threads_header",
         "//pw_thread:thread_facade",
     ],
 )
 
 pw_cc_test(
     name = "thread_backend_test",
-    # TODO(b/257321712): This target doesn't build.
+    # TODO: b/257321712 - This target doesn't build.
     tags = ["manual"],
     deps = [
-        ":test_threads",
+        ":non_portable_test_thread_options",
         "//pw_thread:thread_facade_test",
     ],
 )
 
-pw_cc_library(
-    name = "sleep_headers",
+cc_library(
+    name = "sleep",
+    srcs = [
+        "sleep.cc",
+    ],
     hdrs = [
         "public/pw_thread_threadx/sleep_inline.h",
         "sleep_public_overrides/pw_thread_backend/sleep_inline.h",
@@ -123,29 +112,18 @@ pw_cc_library(
         "public",
         "sleep_public_overrides",
     ],
-    deps = [
-        "//pw_chrono:system_clock",
-    ],
-)
-
-pw_cc_library(
-    name = "sleep",
-    srcs = [
-        "sleep.cc",
-    ],
-    # TODO(b/257321712): This target doesn't build.
+    # TODO: b/257321712 - This target doesn't build.
     tags = ["manual"],
     deps = [
         ":sleep_headers",
         "//pw_assert",
         "//pw_chrono:system_clock",
-        "//pw_chrono_threadx:system_clock_headers",
         "//pw_thread:sleep_facade",
     ],
 )
 
-pw_cc_library(
-    name = "yield_headers",
+cc_library(
+    name = "yield",
     hdrs = [
         "public/pw_thread_threadx/yield_inline.h",
         "yield_public_overrides/pw_thread_backend/yield_inline.h",
@@ -154,19 +132,14 @@ pw_cc_library(
         "public",
         "yield_public_overrides",
     ],
-    # TODO(b/257321712): This target doesn't build.
+    # TODO: b/257321712 - This target doesn't build.
     tags = ["manual"],
-)
-
-pw_cc_library(
-    name = "yield",
     deps = [
-        ":yield_headers",
         "//pw_thread:yield_facade",
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "util",
     srcs = [
         "util.cc",
@@ -175,7 +148,7 @@ pw_cc_library(
         "public/pw_thread_threadx/util.h",
     ],
     includes = ["public"],
-    # TODO(b/257321712): This target doesn't build.
+    # TODO: b/257321712 - This target doesn't build.
     tags = ["manual"],
     deps = [
         "//pw_function",
@@ -183,7 +156,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "snapshot",
     srcs = [
         "snapshot.cc",
@@ -191,7 +164,7 @@ pw_cc_library(
     hdrs = [
         "public/pw_thread_threadx/snapshot.h",
     ],
-    # TODO(b/257321712): This target doesn't build.
+    # TODO: b/257321712 - This target doesn't build.
     tags = ["manual"],
     deps = [
         ":util",

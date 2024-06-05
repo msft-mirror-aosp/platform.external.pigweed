@@ -27,7 +27,6 @@ pw_add_library_generic(pw_build INTERFACE
     $<$<CXX_COMPILER_ID:GNU>:-fdiagnostics-color=always>
   PUBLIC_DEPS
     pw_build.reduced_size
-    pw_build.cpp17
 )
 if(ZEPHYR_PIGWEED_MODULE_DIR)
   target_link_libraries(pw_build INTERFACE zephyr_interface)
@@ -118,6 +117,15 @@ pw_add_library_generic(pw_build.pedantic_warnings INTERFACE
     # Allow empty ... arguments in macros, which are permitted in C++20 but
     # widely supported prior.
     "-Wno-gnu-zero-variadic-macro-arguments"
+
+    # TODO: b/333712899 - Enable C23 extension warnings.
+    "-Wno-c23-extensions"
+
+    # TODO: b/335021928 - Enable C++ 20 extension warnings.
+    "-Wno-c++20-extensions"
+
+    # TODO: b/335328444 - Enable C++ 20 extension warnings.
+    "-Wno-deprecated-pragma"
 )
 
 pw_add_library_generic(pw_build.cpp17 INTERFACE

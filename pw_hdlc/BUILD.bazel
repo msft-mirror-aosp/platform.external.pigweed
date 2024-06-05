@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,12 +21,11 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_hdlc",
     srcs = [
         "decoder.cc",
         "encoder.cc",
-        "public/pw_hdlc/internal/encoder.h",
         "public/pw_hdlc/internal/protocol.h",
     ],
     hdrs = [
@@ -48,7 +46,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "rpc_channel_output",
     hdrs = ["public/pw_hdlc/rpc_channel.h"],
     includes = ["public"],
@@ -59,18 +57,13 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
-    name = "pw_rpc",
-    srcs = ["rpc_packets.cc"],
-    hdrs = ["public/pw_hdlc/rpc_packets.h"],
+cc_library(
+    name = "default_addresses",
+    hdrs = ["public/pw_hdlc/default_addresses.h"],
     includes = ["public"],
-    deps = [
-        ":pw_hdlc",
-        "//pw_rpc",
-    ],
 )
 
-pw_cc_library(
+cc_library(
     name = "packet_parser",
     srcs = ["wire_packet_parser.cc"],
     hdrs = ["public/pw_hdlc/wire_packet_parser.h"],
@@ -90,13 +83,14 @@ pw_cc_library(
 # Warning: This system server is polling and blocking, so it's not
 # production-ready. This exists for simplifying initial bringup/testing, and
 # should not be used in any performance-sensitive application.
-pw_cc_library(
+cc_library(
     name = "hdlc_sys_io_system_server",
     srcs = [
         "hdlc_sys_io_system_server.cc",
     ],
     deps = [
-        ":pw_rpc",
+        ":default_addresses",
+        ":pw_hdlc",
         ":rpc_channel_output",
         "//pw_log",
         "//pw_rpc/system_server:facade",
@@ -119,9 +113,9 @@ pw_cc_test(
     srcs = ["decoder_test.cc"],
     deps = [
         ":pw_hdlc",
+        "//pw_fuzzer:fuzztest",
         "//pw_result",
         "//pw_stream",
-        "//pw_unit_test",
     ],
 )
 
@@ -154,6 +148,43 @@ pw_cc_test(
         ":pw_hdlc",
         ":rpc_channel_output",
         "//pw_stream",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "router",
+    srcs = ["router.cc"],
+    hdrs = ["public/pw_hdlc/router.h"],
+    includes = ["public"],
+    deps = [
+        ":pw_hdlc",
+        "//pw_async2:dispatcher",
+        "//pw_async2:poll",
+        "//pw_bytes",
+        "//pw_channel",
+        "//pw_containers:inline_queue",
+        "//pw_containers:vector",
+        "//pw_log",
+        "//pw_multibuf",
+        "//pw_multibuf:allocator",
+        "//pw_multibuf:stream",
+        "//pw_result",
+        "//pw_status",
+        "//pw_stream",
+    ],
+)
+
+pw_cc_test(
+    name = "router_test",
+    srcs = ["router_test.cc"],
+    deps = [
+        ":router",
+        "//pw_allocator:testing",
+        "//pw_async2:pend_func_task",
+        "//pw_channel:forwarding_channel",
+        "//pw_channel:loopback_channel",
+        "//pw_multibuf:simple_allocator",
         "//pw_unit_test",
     ],
 )

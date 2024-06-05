@@ -12,16 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "facade",
     hdrs = ["public/pw_rpc_system_server/rpc_server.h"],
     includes = ["public"],
@@ -32,28 +27,33 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "system_server",
     hdrs = [
         "public/pw_rpc_system_server/rpc_server.h",
         "public/pw_rpc_system_server/socket.h",
     ],
     deps = [
+        ":backend",
         ":facade",
         "//pw_rpc",
         "//pw_span",
         "//pw_status",
         "//pw_stream",
-        "@pigweed_config//:pw_rpc_system_server_backend",
     ],
 )
 
-pw_cc_library(
+label_flag(
+    name = "backend",
+    build_setting_default = ":system_server_backend_multiplexer",
+)
+
+cc_library(
     name = "system_server_backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
-        "//pw_build/constraints/board:stm32f429i-disc1": ["//pw_hdlc:hdlc_sys_io_system_server"],
         "//pw_build/constraints/board:mimxrt595_evk": ["//pw_hdlc:hdlc_sys_io_system_server"],
+        "//pw_build/constraints/board:stm32f429i-disc1": ["//pw_hdlc:hdlc_sys_io_system_server"],
         "//conditions:default": ["//targets/host:system_rpc_server"],
     }),
 )

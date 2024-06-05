@@ -12,9 +12,10 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("//pw_build:pigweed.bzl", "pw_cc_binary")
-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_python//python:proto.bzl", "py_proto_library")
+load("//pw_build:pigweed.bzl", "pw_cc_binary")
 
 pw_cc_binary(
     name = "server",
@@ -28,7 +29,6 @@ pw_cc_binary(
         "//pw_stream",
         "//pw_stream:std_file_stream",
         "//pw_thread:thread",
-        "//pw_thread_stl:thread_headers",
         "//pw_transfer",
         "@com_google_protobuf//:protobuf",
     ],
@@ -52,9 +52,11 @@ py_test(
         "proxy.py",
         "proxy_test.py",
     ],
+    imports = ["."],
     main = "proxy_test.py",
     deps = [
         ":config_pb2",
+        "//pw_hdlc/py:pw_hdlc",
         "//pw_rpc:internal_packet_proto_pb2",
         "//pw_transfer:transfer_proto_pb2",
         "//pw_transfer/py:pw_transfer",
@@ -64,6 +66,7 @@ py_test(
 proto_library(
     name = "config_proto",
     srcs = ["config.proto"],
+    deps = ["//pw_protobuf:status_proto"],
 )
 
 cc_proto_library(
@@ -73,7 +76,7 @@ cc_proto_library(
 
 py_proto_library(
     name = "config_pb2",
-    srcs = ["config.proto"],
+    deps = [":config_proto"],
 )
 
 java_proto_library(
@@ -83,6 +86,7 @@ java_proto_library(
 
 pw_cc_binary(
     name = "cpp_client",
+    testonly = True,
     srcs = ["client.cc"],
     deps = [
         ":config_cc_proto",
@@ -100,6 +104,7 @@ pw_cc_binary(
 
 py_library(
     name = "integration_test_fixture",
+    testonly = True,
     srcs = [
         "test_fixture.py",
     ],
@@ -110,6 +115,7 @@ py_library(
         ":python_client",
         ":server",
     ],
+    imports = ["."],
     deps = [
         ":config_pb2",
         "//pw_protobuf:status_proto_pb2",
@@ -127,10 +133,14 @@ py_test(
     srcs = [
         "cross_language_large_write_test.py",
     ],
-    # This test is not run in CQ because it's too slow.
-    tags = ["manual"],
+    tags = [
+        # This test is not run in CQ because it's too slow.
+        "manual",
+        "integration",
+    ],
     deps = [
         ":integration_test_fixture",
+        "@python_packages_parameterized//:pkg",
     ],
 )
 
@@ -143,24 +153,32 @@ py_test(
     srcs = [
         "cross_language_large_read_test.py",
     ],
-    # This test is not run in CQ because it's too slow.
-    tags = ["manual"],
+    tags = [
+        # This test is not run in CQ because it's too slow.
+        "manual",
+        "integration",
+    ],
     deps = [
         ":integration_test_fixture",
+        "@python_packages_parameterized//:pkg",
     ],
 )
 
 # Uses ports 3304 and 3305.
 py_test(
     name = "cross_language_medium_read_test",
-    timeout = "long",
+    timeout = "moderate",
     srcs = [
         "cross_language_medium_read_test.py",
+    ],
+    tags = [
+        "integration",
     ],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
         "@com_google_protobuf//:protobuf_python",
+        "@python_packages_parameterized//:pkg",
     ],
 )
 
@@ -171,10 +189,14 @@ py_test(
     srcs = [
         "cross_language_medium_write_test.py",
     ],
+    tags = [
+        "integration",
+    ],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
         "@com_google_protobuf//:protobuf_python",
+        "@python_packages_parameterized//:pkg",
     ],
 )
 
@@ -185,9 +207,13 @@ py_test(
     srcs = [
         "cross_language_small_test.py",
     ],
+    tags = [
+        "integration",
+    ],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
+        "@python_packages_parameterized//:pkg",
     ],
 )
 
@@ -198,22 +224,30 @@ py_test(
     srcs = [
         "multi_transfer_test.py",
     ],
+    tags = [
+        "integration",
+    ],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
+        "@python_packages_parameterized//:pkg",
     ],
 )
 
 # Uses ports 3312 and 3313.
 py_test(
     name = "expected_errors_test",
-    timeout = "moderate",
+    timeout = "long",
     srcs = ["expected_errors_test.py"],
+    tags = [
+        "integration",
+    ],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
         "//pw_protobuf:status_proto_pb2",
         "@com_google_protobuf//:protobuf_python",
+        "@python_packages_parameterized//:pkg",
     ],
 )
 
@@ -225,10 +259,16 @@ py_test(
     data = [
         "@pw_transfer_test_binaries//:all",
     ],
+    tags = [
+        "integration",
+    ],
+    # Legacy binaries were only built for linux-x86_64.
+    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
         "//pw_protobuf:status_proto_pb2",
+        "@python_packages_parameterized//:pkg",
         "@rules_python//python/runfiles",
     ],
 )
@@ -259,5 +299,6 @@ py_binary(
         "//pw_transfer:transfer_proto_pb2",
         "//pw_transfer/py:pw_transfer",
         "@com_google_protobuf//:protobuf_python",
+        "@python_packages_pyserial//:pkg",
     ],
 )

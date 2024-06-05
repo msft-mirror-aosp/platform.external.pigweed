@@ -16,9 +16,11 @@
 
 #include <array>
 
-#include "gtest/gtest.h"
+#include "pw_containers/algorithm.h"
+#include "pw_containers/flat_map.h"
 #include "pw_containers/intrusive_list.h"
 #include "pw_span/span.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::containers {
 namespace {
@@ -30,6 +32,32 @@ struct Item : IntrusiveList<Item>::Item {
 };
 
 constexpr std::array<int, 6> kArray{0, 1, 2, 3, 4, 5};
+
+TEST(FilteredView, MoveConstructor) {
+  FilteredView original(kArray, [](int x) { return x == 3 || x == 5; });
+  FilteredView moved(std::move(original));
+
+  auto it = moved.begin();
+  ASSERT_EQ(*it, 3);
+  ++it;
+  ASSERT_EQ(*it, 5);
+  ++it;
+  EXPECT_EQ(it, moved.end());
+}
+
+TEST(FilteredView, MoveOperator) {
+  // Force lambda to function pointer with `+` so the FilteredView types match.
+  FilteredView original(kArray, +[](int x) { return x == 3 || x == 5; });
+  FilteredView moved(kArray, +[](int x) { return x == 4; });
+  moved = std::move(original);
+
+  auto it = moved.begin();
+  ASSERT_EQ(*it, 3);
+  ++it;
+  ASSERT_EQ(*it, 5);
+  ++it;
+  EXPECT_EQ(it, moved.end());
+}
 
 TEST(FilteredView, Array_MatchSubset) {
   FilteredView view(kArray, [](int x) { return x == 3 || x == 5; });
@@ -47,7 +75,7 @@ TEST(FilteredView, Array_MatchAll) {
 
   std::array<bool, 6> found = {};
   for (int value : view) {
-    found[value] = true;
+    found[static_cast<size_t>(value)] = true;
   }
   EXPECT_TRUE(
       std::all_of(found.begin(), found.end(), [](bool b) { return b; }));
@@ -102,10 +130,27 @@ TEST(FilteredView, IntrusiveList_MatchAll) {
 
   for (const Item& item :
        FilteredView(intrusive_list, [](const Item&) { return true; })) {
-    found[item.value] = true;
+    found[static_cast<size_t>(item.value)] = true;
   }
   EXPECT_TRUE(
       std::all_of(found.begin(), found.end(), [](bool b) { return b; }));
+}
+
+TEST(FilteredView, IntrusiveList_CopyPredicate) {
+  Item item_1{1};
+  Item item_2{2};
+  Item item_3{3};
+  IntrusiveList<Item> intrusive_list({&item_1, &item_2, &item_3});
+
+  auto filter_to_copy = [](const Item& i) { return i.value % 2 != 0; };
+  FilteredView view(intrusive_list, filter_to_copy);
+
+  auto it = view.begin();
+  ASSERT_EQ(it->value, 1);
+  ++it;
+  ASSERT_EQ((*it).value, 3);
+  ++it;
+  EXPECT_EQ(it, view.end());
 }
 
 TEST(FilteredView, IntrusiveList_MatchNone) {
@@ -170,6 +215,20 @@ TEST(FilteredView, Size_AllElements) {
   EXPECT_EQ(FilteredView(kArray, [](int) { return true; }).size(), 6u);
 
   EXPECT_FALSE(FilteredView(kArray, [](int x) { return x < 5; }).empty());
+}
+
+TEST(FilteredView, FlatMap) {
+  pw::containers::FlatMap<char, int, 3> map({{{'A', 1}, {'B', 2}, {'C', 3}}});
+
+  auto odd_pred = [](pw::containers::Pair<char, int> p) {
+    return p.second % 2 != 0;
+  };
+
+  auto odd_map = pw::containers::FilteredView(map, std::move(odd_pred));
+
+  pw::containers::FlatMap<char, int, 2> odd_expect({{{'A', 1}, {'C', 3}}});
+
+  ASSERT_TRUE(pw::containers::Equal(odd_map, odd_expect));
 }
 
 }  // namespace

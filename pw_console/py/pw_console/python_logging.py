@@ -18,7 +18,7 @@ from datetime import datetime
 import json
 import logging
 import tempfile
-from typing import Any, Dict, Iterable, Iterator, Optional
+from typing import Any, Iterable, Iterator
 
 
 def all_loggers() -> Iterator[logging.Logger]:
@@ -30,7 +30,7 @@ def all_loggers() -> Iterator[logging.Logger]:
 
 
 def create_temp_log_file(
-    prefix: Optional[str] = None, add_time: bool = True
+    prefix: str | None = None, add_time: bool = True
 ) -> str:
     """Create a unique tempfile for saving logs.
 
@@ -57,7 +57,7 @@ def create_temp_log_file(
 
 
 def set_logging_last_resort_file_handler(
-    file_name: Optional[str] = None,
+    file_name: str | None = None,
 ) -> None:
     log_file = file_name if file_name else create_temp_log_file()
     logging.lastResort = logging.FileHandler(log_file)
@@ -75,8 +75,8 @@ def disable_stdout_handlers(logger: logging.Logger) -> None:
 
 
 def setup_python_logging(
-    last_resort_filename: Optional[str] = None,
-    loggers_with_no_propagation: Optional[Iterable[logging.Logger]] = None,
+    last_resort_filename: str | None = None,
+    loggers_with_no_propagation: Iterable[logging.Logger] | None = None,
 ) -> None:
     """Disable log handlers for full screen prompt_toolkit applications."""
     if not loggers_with_no_propagation:
@@ -96,6 +96,7 @@ def setup_python_logging(
 
     # Prevent these loggers from propagating to the root logger.
     hidden_host_loggers = [
+        "blib2to3.pgen2.driver",  # spammy and unhelpful
         "pw_console",
         "pw_console.plugins",
         # prompt_toolkit triggered debug log messages
@@ -104,6 +105,7 @@ def setup_python_logging(
         "parso.python.diff",
         "parso.cache",
         "pw_console.serial_debug_logger",
+        "websockets.server",
     ]
     for logger_name in hidden_host_loggers:
         logging.getLogger(logger_name).propagate = False
@@ -116,11 +118,20 @@ def setup_python_logging(
 
 
 def log_record_to_json(record: logging.LogRecord) -> str:
-    log_dict: Dict[str, Any] = {}
+    log_dict: dict[str, Any] = {}
     log_dict["message"] = record.getMessage()
     log_dict["levelno"] = record.levelno
     log_dict["levelname"] = record.levelname
     log_dict["args"] = record.args
+    log_dict["time"] = str(record.created)
+    log_dict["time_string"] = datetime.fromtimestamp(record.created).isoformat(
+        timespec="seconds"
+    )
+
+    lineno = record.lineno
+    file_name = str(record.filename)
+    log_dict['py_file'] = f'{file_name}:{lineno}'
+    log_dict['py_logger'] = str(record.name)
 
     if hasattr(record, "extra_metadata_fields") and (
         record.extra_metadata_fields  # type: ignore
@@ -157,11 +168,15 @@ class JsonLogFormatter(logging.Formatter):
            "pw_system ",
            "System init"
          ],
+         "time": "1692302986.4729185",
+         "time_string": "2023-08-17T13:09:46",
          "fields": {
            "module": "pw_system",
            "file": "pw_system/init.cc",
            "timestamp": "0:00"
-         }
+         },
+         "py_file": "script.py:1234",
+         "py_logger": "root"
        }
 
     Example usage:

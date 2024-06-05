@@ -135,6 +135,7 @@ pw_source_set("echo_service") {
 }
 
 pw_source_set("client_integration_test") {
+  testonly = pw_unit_test_TESTONLY
   public_configs = [ ":public" ]
   public_deps = [
     "$dir_pw_sync:binary_semaphore",
@@ -152,6 +153,7 @@ pw_doc_group("docs") {
 
 pw_test_group("tests") {
   tests = [
+    ":callback_test",
     ":client_call_test",
     ":client_reader_writer_test",
     ":client_server_context_test",
@@ -171,6 +173,23 @@ pw_test_group("tests") {
   ]
 }
 
+pw_test("callback_test") {
+  enable_if = dir_pw_third_party_nanopb != "" &&
+              pw_thread_THREAD_BACKEND == "$dir_pw_thread_stl:thread"
+  deps = [
+    ":client_testing",
+    "$dir_pw_sync:binary_semaphore",
+    "$dir_pw_thread:non_portable_test_thread_options",
+    "$dir_pw_thread:sleep",
+    "$dir_pw_thread:yield",
+    "$dir_pw_thread_stl:non_portable_test_thread_options",
+    "..:client",
+    "..:server",
+    "..:test_protos.nanopb_rpc",
+  ]
+  sources = [ "callback_test.cc" ]
+}
+
 pw_test("client_call_test") {
   deps = [
     ":client_api",
@@ -180,6 +199,12 @@ pw_test("client_call_test") {
   ]
   sources = [ "client_call_test.cc" ]
   enable_if = dir_pw_third_party_nanopb != ""
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("client_reader_writer_test") {
@@ -196,10 +221,11 @@ pw_test("client_server_context_test") {
   deps = [
     ":client_api",
     ":client_server_testing",
+    "$dir_pw_sync:mutex",
     "..:test_protos.nanopb_rpc",
   ]
   sources = [ "client_server_context_test.cc" ]
-  enable_if = dir_pw_third_party_nanopb != ""
+  enable_if = dir_pw_third_party_nanopb != "" && pw_sync_MUTEX_BACKEND != ""
 }
 
 _stl_threading_and_nanopb_enabled =
@@ -212,8 +238,9 @@ pw_test("client_server_context_threaded_test") {
     ":client_api",
     ":client_server_testing_threaded",
     "$dir_pw_sync:binary_semaphore",
-    "$dir_pw_thread:test_threads",
-    "$dir_pw_thread_stl:test_threads",
+    "$dir_pw_sync:mutex",
+    "$dir_pw_thread:non_portable_test_thread_options",
+    "$dir_pw_thread_stl:non_portable_test_thread_options",
     "..:test_protos.nanopb_rpc",
   ]
   sources = [ "client_server_context_threaded_test.cc" ]
@@ -345,4 +372,10 @@ pw_test("synchronous_call_test") {
   sources = [ "synchronous_call_test.cc" ]
   enable_if = dir_pw_third_party_nanopb != "" &&
               pw_sync_TIMED_THREAD_NOTIFICATION_BACKEND != ""
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }

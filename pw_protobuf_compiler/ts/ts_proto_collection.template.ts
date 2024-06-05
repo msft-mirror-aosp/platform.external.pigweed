@@ -14,19 +14,16 @@
 
 /** Tools for compiling and importing Javascript protos on the fly. */
 
-import {
-  ProtoCollection as Base,
-  ModuleMap,
-} from 'pigweedjs/pw_protobuf_compiler';
-import {FileDescriptorSet} from 'google-protobuf/google/protobuf/descriptor_pb';
+import { ProtoCollection as Base } from 'pigweedjs/pw_protobuf_compiler';
+import { FileDescriptorSet } from 'google-protobuf/google/protobuf/descriptor_pb';
 import * as base64 from 'base64-js';
 
 // Generated proto imports added during build
 // TEMPLATE_proto_imports
 
-const MODULE_MAP = new ModuleMap([
+const MODULE_MAP = {
   // TEMPLATE_module_map
-]);
+};
 
 const DESCRIPTOR_BASE64_BINARY = '{TEMPLATE_descriptor_binary}';
 
@@ -36,7 +33,7 @@ const DESCRIPTOR_BASE64_BINARY = '{TEMPLATE_descriptor_binary}';
 export class ProtoCollection extends Base {
   constructor() {
     const fileDescriptorSet = FileDescriptorSet.deserializeBinary(
-      base64.toByteArray(DESCRIPTOR_BASE64_BINARY)
+      base64.toByteArray(DESCRIPTOR_BASE64_BINARY),
     );
     super(fileDescriptorSet, MODULE_MAP);
   }

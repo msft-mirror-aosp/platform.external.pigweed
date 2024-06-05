@@ -12,10 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#include "pw_unit_test/framework.h"
+
 #include <cstring>
 
-#include "gtest/gtest.h"
 #include "pw_assert/check.h"
+#include "pw_status/status.h"
 
 namespace pw {
 namespace {
@@ -57,6 +59,46 @@ TEST(PigweedTest, ExpectBasicComparisons) {
   ASSERT_LE(-2, -2);
 }
 
+TEST(PigweedTest, ExpectNearComparisons) {
+  EXPECT_NEAR(1, 2, 1);
+  ASSERT_NEAR(1, 2, 1);
+
+  EXPECT_NEAR(-5, 5, 10);
+  ASSERT_NEAR(-5, 5, 10);
+
+  int x = 17;
+  int epsilon = 5;
+
+  EXPECT_NEAR(x, 15, epsilon);
+  ASSERT_NEAR(x, 15, epsilon);
+}
+
+TEST(PigweedTest, ExpectFloatComparisons) {
+  EXPECT_FLOAT_EQ(5.0f, 10.0f / 2);
+  ASSERT_FLOAT_EQ(5.0f, 10.0f / 2);
+
+  EXPECT_FLOAT_EQ(-0.5f, -5.0f / 10);
+  ASSERT_FLOAT_EQ(-0.5f, -5.0f / 10);
+
+  float x = 17.0f / 20.0f;
+
+  EXPECT_FLOAT_EQ(x, 17.0f / 20.0f);
+  ASSERT_FLOAT_EQ(x, 17.0f / 20.0f);
+}
+
+TEST(PigweedTest, ExpectDoubleComparisons) {
+  EXPECT_DOUBLE_EQ(5.0, 10.0 / 2);
+  ASSERT_DOUBLE_EQ(5.0, 10.0 / 2);
+
+  EXPECT_DOUBLE_EQ(-0.5, -5.0 / 10);
+  ASSERT_DOUBLE_EQ(-0.5, -5.0 / 10);
+
+  double x = 17.0 / 20.0;
+
+  EXPECT_DOUBLE_EQ(x, 17.0 / 20.0);
+  ASSERT_DOUBLE_EQ(x, 17.0 / 20.0);
+}
+
 TEST(PigweedTest, ExpectStringEquality) {
   EXPECT_STREQ("", "");
   EXPECT_STREQ("Yes", "Yes");
@@ -66,6 +108,10 @@ TEST(PigweedTest, ExpectStringEquality) {
 
   EXPECT_STRNE("NO", "no");
   ASSERT_STRNE("yes", no);
+
+  const char* invalid_string = nullptr;
+  EXPECT_STREQ(invalid_string, nullptr);
+  EXPECT_STRNE("abc", nullptr);
 }
 
 TEST(PigweedTest, SucceedAndFailMacros) {
@@ -83,6 +129,37 @@ TEST(PigweedTest, SkipMacro) {
   GTEST_SKIP();
   // This code should not run.
   EXPECT_TRUE(false);
+}
+
+TEST(PigweedTest, Logs) {
+  EXPECT_TRUE(true) << "This message is ignored";
+  EXPECT_FALSE(false) << "This message is ignored";
+  EXPECT_EQ(0, 0) << "This message is ignored";
+  EXPECT_NE(0, 1) << "This message is ignored";
+  EXPECT_GT(1, 0) << "This message is ignored";
+  EXPECT_GE(0, 0) << "This message is ignored";
+  EXPECT_LT(0, 1) << "This message is ignored";
+  EXPECT_LE(0, 0) << "This message is ignored";
+  EXPECT_STREQ("", "") << "This message is ignored";
+  EXPECT_STRNE("", "?") << "This message is ignored";
+
+  ASSERT_TRUE(true) << "This message is ignored";
+  ASSERT_FALSE(false) << "This message is ignored";
+  ASSERT_EQ(0, 0) << "This message is ignored";
+  ASSERT_NE(0, 1) << "This message is ignored";
+  ASSERT_GT(1, 0) << "This message is ignored";
+  ASSERT_GE(0, 0) << "This message is ignored";
+  ASSERT_LT(0, 1) << "This message is ignored";
+  ASSERT_LE(0, 0) << "This message is ignored";
+  ASSERT_STREQ("", "") << "This message is ignored";
+  ASSERT_STRNE("", "?") << "This message is ignored";
+
+  if (false) {
+    ADD_FAILURE() << "This failed!" << 123;
+    GTEST_FAIL() << "This failed!" << 123 << '?';
+    GTEST_SKIP() << 1.0f << " skips!";
+  }
+  GTEST_SUCCEED() << "This message is ignored";
 }
 
 class SkipOnSetUpTest : public ::testing::Test {
@@ -144,6 +221,13 @@ TEST(PigweedTest, MacroArgumentsOnlyAreEvaluatedOnce) {
   EXPECT_EQ(i, 4);
 }
 
+class ClassWithPrivateMethod {
+  FRIEND_TEST(FixtureTest, FriendClass);
+
+ private:
+  int Return314() { return 314; }
+};
+
 class FixtureTest : public ::testing::Test {
  public:
   FixtureTest() : string_("hello world") {}
@@ -158,6 +242,10 @@ class FixtureTest : public ::testing::Test {
 TEST_F(FixtureTest, CustomFixture) {
   EXPECT_TRUE(ReturnTrue());
   EXPECT_EQ(StringLength(), 11);
+}
+
+TEST_F(FixtureTest, FriendClass) {
+  EXPECT_EQ(ClassWithPrivateMethod().Return314(), 314);
 }
 
 class PigweedTestFixture : public ::testing::Test {
@@ -191,22 +279,72 @@ class Expectations : public ::testing::Test {
 TEST_F(Expectations, SetCoolNumber) { cool_number_ = 14159; }
 
 class SetUpAndTearDown : public ::testing::Test {
+ public:
+  static int value;
+
+  static void SetUpTestSuite() {
+    value = 1;
+    EXPECT_EQ(value, 1);
+    value++;
+  }
+
+  static void TearDownTestSuite() {
+    EXPECT_EQ(value, 7);
+    value++;
+  }
+
  protected:
-  SetUpAndTearDown() : value_(0) { EXPECT_EQ(value_, 0); }
+  SetUpAndTearDown() {
+    EXPECT_EQ(value, 2);
+    value++;
+  }
 
-  ~SetUpAndTearDown() override { EXPECT_EQ(value_, 1); }
+  ~SetUpAndTearDown() override {
+    EXPECT_EQ(value, 6);
+    value++;
+  }
 
-  void SetUp() override { value_ = 1337; }
+  void SetUp() override {
+    EXPECT_EQ(value, 3);
+    value++;
+  }
 
-  void TearDown() override { value_ = 1; }
-
-  int value_;
+  void TearDown() override {
+    EXPECT_EQ(value, 5);
+    value++;
+  }
 };
 
+int SetUpAndTearDown::value = 1;
+
 TEST_F(SetUpAndTearDown, MakeSureItIsSet) {
-  EXPECT_EQ(value_, 1337);
-  value_ = 3210;
+  EXPECT_EQ(value, 4);
+  value++;
 }
+
+TEST(TestSuiteTearDown, MakeSureItRan) {
+  EXPECT_EQ(SetUpAndTearDown::value, 8);
+}
+
+class Interleaved : public ::testing::Test {
+ public:
+  static void SetUpTestSuite() { suites_running++; }
+  static void TearDownTestSuite() { suites_running--; }
+
+ protected:
+  static int suites_running;
+};
+
+int Interleaved::suites_running = 0;
+
+class InterleavedA : public Interleaved {};
+class InterleavedB : public Interleaved {};
+
+TEST_F(InterleavedA, Test1) { ASSERT_EQ(suites_running, 1); }
+TEST_F(InterleavedB, Test1) { ASSERT_EQ(suites_running, 1); }
+TEST_F(Interleaved, Test12) { ASSERT_EQ(suites_running, 1); }
+TEST_F(InterleavedB, Test2) { ASSERT_EQ(suites_running, 1); }
+TEST_F(InterleavedA, Test2) { ASSERT_EQ(suites_running, 1); }
 
 }  // namespace
 }  // namespace pw

@@ -16,7 +16,8 @@
 
 #include <string_view>
 
-#include "gtest/gtest.h"
+#include "pw_tokenizer/example_binary_with_tokenized_strings.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::tokenizer {
 namespace {
@@ -26,24 +27,41 @@ using namespace std::literals::string_view_literals;
 // Use a shorter name for the error string macro.
 #define ERR PW_TOKENIZER_ARG_DECODING_ERROR
 
-// Use alignas to ensure that the data is properly aligned to be read from a
-// token database entry struct. This avoids unaligned memory reads.
-alignas(TokenDatabase::RawEntry) constexpr char kBasicData[] =
+using Case = std::pair<std::string_view, std::string_view>;
+
+template <typename... Args>
+auto TestCases(Args... args) {
+  return std::array<Case, sizeof...(Args)>{args...};
+}
+
+// Database with the following entries and arbitrary token values:
+// {
+//   0x00000001: "One",
+//   0x00000005: "TWO",
+//   0x000000ff: "333",
+//   0xDDEEEEFF: "One",
+//   0xEEEEEEEE: "$AQAAAA==",  # Nested Base64 token for "One"
+// }
+constexpr char kTestDatabase[] =
     "TOKENS\0\0"
-    "\x04\x00\x00\x00"
+    "\x06\x00\x00\x00"  // Number of tokens in this database.
     "\0\0\0\0"
     "\x01\x00\x00\x00----"
     "\x05\x00\x00\x00----"
     "\xFF\x00\x00\x00----"
     "\xFF\xEE\xEE\xDD----"
+    "\xEE\xEE\xEE\xEE----"
+    "\x9D\xA7\x97\xF8----"
     "One\0"
     "TWO\0"
     "333\0"
-    "FOUR";
+    "FOUR\0"
+    "$AQAAAA==\0"
+    "■msg♦This is $AQAAAA== message■module♦■file♦file.txt";
 
 class Detokenize : public ::testing::Test {
  protected:
-  Detokenize() : detok_(TokenDatabase::Create<kBasicData>()) {}
+  Detokenize() : detok_(TokenDatabase::Create<kTestDatabase>()) {}
   Detokenizer detok_;
 };
 
@@ -52,6 +70,24 @@ TEST_F(Detokenize, NoFormatting) {
   EXPECT_EQ(detok_.Detokenize("\5\0\0\0"sv).BestString(), "TWO");
   EXPECT_EQ(detok_.Detokenize("\xff\x00\x00\x00"sv).BestString(), "333");
   EXPECT_EQ(detok_.Detokenize("\xff\xee\xee\xdd"sv).BestString(), "FOUR");
+}
+
+TEST_F(Detokenize, FromElfSection) {
+  // Create a detokenizer from an ELF file with only the pw_tokenizer sections.
+  // See py/detokenize_test.py.
+  // Offset and size of the .pw_tokenizer.entries section in bytes.
+  constexpr uint32_t database_offset_ = 0x00000174;
+  constexpr size_t database_size_ = 0x000004C2;
+
+  pw::span<const uint8_t> tokenEntries(
+      reinterpret_cast<const uint8_t*>(test::ns::kElfSection.data() +
+                                       database_offset_),
+      database_size_);
+  pw::Result<Detokenizer> detok_from_elf_ =
+      Detokenizer::FromElfSection(tokenEntries);
+  ASSERT_TRUE(detok_from_elf_.ok());
+  EXPECT_EQ(detok_from_elf_->Detokenize("\xd6\x8c\x66\x2e").BestString(),
+            "Jello, world!");
 }
 
 TEST_F(Detokenize, BestString_MissingToken_IsEmpty) {
@@ -102,7 +138,64 @@ TEST_F(Detokenize, BestStringWithErrors_UnknownToken_ErrorMessage) {
             ERR("unknown token fedcba98"));
 }
 
-alignas(TokenDatabase::RawEntry) constexpr char kDataWithArguments[] =
+// Base64 versions of the tokens
+#define ONE "$AQAAAA=="
+#define TWO "$BQAAAA=="
+#define THREE "$/wAAAA=="
+#define FOUR "$/+7u3Q=="
+#define NEST_ONE "$7u7u7g=="
+
+TEST_F(Detokenize, Base64_NoArguments) {
+  for (auto [data, expected] : TestCases(
+           Case{ONE, "One"},
+           Case{TWO, "TWO"},
+           Case{THREE, "333"},
+           Case{FOUR, "FOUR"},
+           Case{FOUR ONE ONE, "FOUROneOne"},
+           Case{ONE TWO THREE FOUR, "OneTWO333FOUR"},
+           Case{ONE "\r\n" TWO "\r\n" THREE "\r\n" FOUR "\r\n",
+                "One\r\nTWO\r\n333\r\nFOUR\r\n"},
+           Case{"123" FOUR, "123FOUR"},
+           Case{"123" FOUR ", 56", "123FOUR, 56"},
+           Case{"12" THREE FOUR ", 56", "12333FOUR, 56"},
+           Case{"$0" ONE, "$0One"},
+           Case{"$/+7u3Q=", "$/+7u3Q="},  // incomplete message (missing "=")
+           Case{"$123456==" FOUR, "$123456==FOUR"},
+           Case{NEST_ONE, "One"},
+           Case{NEST_ONE NEST_ONE NEST_ONE, "OneOneOne"},
+           Case{FOUR "$" ONE NEST_ONE "?", "FOUR$OneOne?"})) {
+    EXPECT_EQ(detok_.DetokenizeText(data), expected);
+  }
+}
+
+TEST_F(Detokenize, OptionallyTokenizedData) {
+  for (auto [data, expected] : TestCases(
+           Case{ONE, "One"},
+           Case{"\1\0\0\0", "One"},
+           Case{TWO, "TWO"},
+           Case{THREE, "333"},
+           Case{FOUR, "FOUR"},
+           Case{FOUR ONE ONE, "FOUROneOne"},
+           Case{ONE TWO THREE FOUR, "OneTWO333FOUR"},
+           Case{ONE "\r\n" TWO "\r\n" THREE "\r\n" FOUR "\r\n",
+                "One\r\nTWO\r\n333\r\nFOUR\r\n"},
+           Case{"123" FOUR, "123FOUR"},
+           Case{"123" FOUR ", 56", "123FOUR, 56"},
+           Case{"12" THREE FOUR ", 56", "12333FOUR, 56"},
+           Case{"$0" ONE, "$0One"},
+           Case{"$/+7u3Q=", "$/+7u3Q="},  // incomplete message (missing "=")
+           Case{"$123456==" FOUR, "$123456==FOUR"},
+           Case{NEST_ONE, "One"},
+           Case{NEST_ONE NEST_ONE NEST_ONE, "OneOneOne"},
+           Case{FOUR "$" ONE NEST_ONE "?", "FOUR$OneOne?"},
+           Case{"$naeX+A==",
+                "■msg♦This is One message■module♦■file♦file.txt"})) {
+    EXPECT_EQ(detok_.DecodeOptionallyTokenizedData(as_bytes(span(data))),
+              std::string(expected));
+  }
+}
+
+constexpr char kDataWithArguments[] =
     "TOKENS\0\0"
     "\x09\x00\x00\x00"
     "\0\0\0\0"
@@ -126,14 +219,6 @@ alignas(TokenDatabase::RawEntry) constexpr char kDataWithArguments[] =
     "%llu!";   // FF
 
 constexpr TokenDatabase kWithArgs = TokenDatabase::Create<kDataWithArguments>();
-
-using Case = std::pair<std::string_view, std::string_view>;
-
-template <typename... Args>
-auto TestCases(Args... args) {
-  return std::array<Case, sizeof...(Args)>{args...};
-}
-
 class DetokenizeWithArgs : public ::testing::Test {
  protected:
   DetokenizeWithArgs() : detok_(kWithArgs) {}
@@ -191,7 +276,7 @@ TEST_F(DetokenizeWithArgs, DecodingError) {
             "Now there are " ERR("%d ERROR") " of " ERR("%s SKIPPED") "!");
 }
 
-alignas(TokenDatabase::RawEntry) constexpr char kDataWithCollisions[] =
+constexpr char kDataWithCollisions[] =
     "TOKENS\0\0"
     "\x0F\x00\x00\x00"
     "\0\0\0\0"

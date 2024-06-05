@@ -33,3 +33,13 @@ constraint_value(
     name = "nrf52833",
     constraint_setting = ":chipset",
 )
+
+constraint_value(
+    name = "rp2040",
+    constraint_setting = ":chipset",
+)
+
+constraint_value(
+    name = "imxrt500",
+    constraint_setting = ":chipset",
+)

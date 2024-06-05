@@ -1,87 +1,84 @@
 .. _module-pw_i2c:
 
-------
+======
 pw_i2c
-------
+======
+.. pigweed-module::
+   :name: pw_i2c
 
-.. warning::
-  This module is under construction, not ready for use, and the documentation
-  is incomplete.
+.. tab-set::
 
-pw_i2c contains interfaces and utility functions for using I2C.
+   .. tab-item:: app.cpp
 
-Features
-========
+      .. include:: ../pw_i2c_rp2040/docs.rst
+         :start-after: .. pw_i2c_rp2040-example-start
+         :end-before: .. pw_i2c_rp2040-example-end
 
-pw::i2c::Initiator
-------------------
-.. inclusive-language: disable
+   .. tab-item:: BUILD.bazel
 
-The common interface for initiating transactions with devices on an I2C bus.
-Other documentation sources may call this style of interface an I2C "master",
-"central" or "controller".
+      .. code-block:: py
 
-.. inclusive-language: enable
+         cc_library(
+           # ...
+           deps = [
+             # ...
+             "@pigweed//pw_i2c:address",
+             "@pigweed//pw_i2c:device",
+             # ...
+           ] + select({
+             "@platforms//os:freertos": [
+               "@pigweed//pw_i2c_rp2040:initiator",
+             ],
+             "//conditions:default": [
+               # Fake example of a custom implementation.
+               "//lib/pw_i2c_my_device:initiator",
+             ],
+           }),
+         )
 
-pw::i2c::Device
----------------
-The common interface for interfacing with generic I2C devices. This object
-contains ``pw::i2c::Address`` and wraps the ``pw::i2c::Initiator`` API.
-Common use case includes streaming arbitrary data (Read/Write). Only works
-with devices with a single device address.
+``pw_i2c`` provides C++ libraries and helpers for interacting with I2C
+devices.
 
-pw::i2c::RegisterDevice
------------------------
-The common interface for interfacing with register devices. Contains methods
-to help read and write registers from and to the device. Users should have a
-understanding of the capabilities of their device such as register address
-sizes, register data sizes, byte addressability, bulk transactions, etc in
-order to effectively use this interface.
+.. grid:: 2
 
-pw::i2c::MockInitiator
-----------------------
-A generic mocked backend for for pw::i2c::Initiator. This is specifically
-intended for use when developing drivers for i2c devices. This is structured
-around a set of 'transactions' where each transaction contains a write, read and
-a timeout. A transaction list can then be passed to the MockInitiator, where
-each consecutive call to read/write will iterate to the next transaction in the
-list. An example of this is shown below:
+   .. grid-item-card:: :octicon:`rocket` Quickstart
+      :link: module-pw_i2c-quickstart
+      :link-type: ref
+      :class-item: sales-pitch-cta-primary
 
-.. code-block:: cpp
+      How to set up ``pw_i2c`` in your build system
+      and interact with an I2C device via the C++ API.
 
-  using pw::i2c::Address;
-  using pw::i2c::MakeExpectedTransactionlist;
-  using pw::i2c::MockInitiator;
-  using pw::i2c::WriteTransaction;
-  using std::literals::chrono_literals::ms;
+   .. grid-item-card:: :octicon:`list-unordered` Guides
+      :link: module-pw_i2c-guides
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
 
-  constexpr Address kAddress1 = Address::SevenBit<0x01>();
-  constexpr auto kExpectWrite1 = pw::bytes::Array<1, 2, 3, 4, 5>();
-  constexpr auto kExpectWrite2 = pw::bytes::Array<3, 4, 5>();
-  auto expected_transactions = MakeExpectedTransactionArray(
-      {ProbeTransaction(pw::OkStatus, kAddress1, 2ms),
-       WriteTransaction(pw::OkStatus(), kAddress1, kExpectWrite1, 1ms),
-       WriteTransaction(pw::OkStatus(), kAddress2, kExpectWrite2, 1ms)});
-  MockInitiator i2c_mock(expected_transactions);
+      How to mock up I2C transactions, configure and read from a device's
+      register, communicate with an I2C device over RPC, and more.
 
-  // Begin driver code
-  Status status = i2c_mock.ProbeDeviceFor(kAddress1, 2ms);
+.. grid:: 2
 
-  ConstByteSpan write1 = kExpectWrite1;
-  // write1 is ok as i2c_mock expects {1, 2, 3, 4, 5} == {1, 2, 3, 4, 5}
-  Status status = i2c_mock.WriteFor(kAddress1, write1, 2ms);
+   .. grid-item-card:: :octicon:`code-square` Reference
+      :link: module-pw_i2c-reference
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
 
-  // Takes the first two bytes from the expected array to build a mismatching
-  // span to write.
-  ConstByteSpan write2 = pw::span(kExpectWrite2).first(2);
-  // write2 fails as i2c_mock expects {3, 4, 5} != {3, 4}
-  status = i2c_mock.WriteFor(kAddress2, write2, 2ms);
-  // End driver code
+      API references for ``pw::i2c::Initiator``, ``pw::i2c::Address``,
+      ``pw::i2c::Device``, and more.
 
-  // Optionally check if the mocked transaction list has been exhausted.
-  // Alternatively this is also called from MockInitiator::~MockInitiator().
-  EXPECT_EQ(mocked_i2c.Finalize(), OkStatus());
+   .. grid-item-card:: :octicon:`stack` Implementations
+      :link: module-pw_i2c-impl
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
 
-pw::i2c::GmockInitiator
------------------------
-gMock of Initiator used for testing and mocking out the Initiator.
+      A summary of the existing ``pw_i2c`` implementations and a guide
+      on how to create your own.
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   guides
+   reference
+   backends

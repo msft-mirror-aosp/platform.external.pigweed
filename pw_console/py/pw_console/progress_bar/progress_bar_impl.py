@@ -16,11 +16,11 @@
 Designed to be embedded in an existing prompt_toolkit full screen
 application."""
 
+from __future__ import annotations
+
 import functools
 from typing import (
     Iterable,
-    List,
-    Optional,
     Sequence,
 )
 
@@ -54,7 +54,7 @@ class TextIfNotHidden(Text):
     def format(
         self,
         progress_bar: ProgressBar,
-        progress: 'ProgressBarCounter[object]',
+        progress: ProgressBarCounter[object],
         width: int,
     ) -> AnyFormattedText:
         formatted_text = super().format(progress_bar, progress, width)
@@ -67,7 +67,7 @@ class IterationsPerSecondIfNotHidden(IterationsPerSecond):
     def format(
         self,
         progress_bar: ProgressBar,
-        progress: 'ProgressBarCounter[object]',
+        progress: ProgressBarCounter[object],
         width: int,
     ) -> AnyFormattedText:
         formatted_text = super().format(progress_bar, progress, width)
@@ -80,7 +80,7 @@ class TimeLeftIfNotHidden(TimeLeft):
     def format(
         self,
         progress_bar: ProgressBar,
-        progress: 'ProgressBarCounter[object]',
+        progress: ProgressBarCounter[object],
         width: int,
     ) -> AnyFormattedText:
         formatted_text = super().format(progress_bar, progress, width)
@@ -95,12 +95,12 @@ class ProgressBarImpl:
     def __init__(
         self,
         title: AnyFormattedText = None,
-        formatters: Optional[Sequence[Formatter]] = None,
-        style: Optional[BaseStyle] = None,
+        formatters: Sequence[Formatter] | None = None,
+        style: BaseStyle | None = None,
     ) -> None:
         self.title = title
         self.formatters = formatters or create_default_formatters()
-        self.counters: List[ProgressBarCounter[object]] = []
+        self.counters: list[ProgressBarCounter[object]] = []
         self.style = style
 
         # Create UI Application.
@@ -146,11 +146,11 @@ class ProgressBarImpl:
 
     def __call__(
         self,
-        data: Optional[Iterable] = None,
+        data: Iterable | None = None,
         label: AnyFormattedText = '',
         remove_when_done: bool = False,
-        total: Optional[int] = None,
-    ) -> 'ProgressBarCounter':
+        total: int | None = None,
+    ) -> ProgressBarCounter:
         """
         Start a new counter.
 

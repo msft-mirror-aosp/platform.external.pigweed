@@ -21,16 +21,16 @@ import {
   MethodStub,
   ServiceClient,
 } from 'pigweedjs/pw_rpc';
-import {Status} from 'pigweedjs/pw_status';
+import { Status } from 'pigweedjs/pw_status';
 import {
   PacketType,
   RpcPacket,
 } from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
-import {ProtoCollection} from 'pigweedjs/protos/collection';
-import {Chunk} from 'pigweedjs/protos/pw_transfer/transfer_pb';
+import { ProtoCollection } from 'pigweedjs/protos/collection';
+import { Chunk } from 'pigweedjs/protos/pw_transfer/transfer_pb';
 
-import {Manager} from './client';
-import {ProgressStats} from './transfer';
+import { Manager } from './client';
+import { ProgressStats } from './transfer';
 
 const DEFAULT_TIMEOUT_S = 0.3;
 
@@ -89,6 +89,7 @@ describe('Transfer client', () => {
     packet.setChannelId(1);
     packet.setServiceId(service.id);
     packet.setMethodId(method.id);
+    packet.setCallId(method.rpcs.nextCallId);
     packet.setStatus(error);
     packetsToSend.push([packet.serializeBinary()]);
   }
@@ -102,6 +103,7 @@ describe('Transfer client', () => {
         packet.setChannelId(1);
         packet.setServiceId(service.id);
         packet.setMethodId(method.id);
+        packet.setCallId(method.rpcs.nextCallId);
         packet.setStatus(Status.OK);
         packet.setPayload(response.serializeBinary());
         serializedGroup.push(packet.serializeBinary());
@@ -114,7 +116,7 @@ describe('Transfer client', () => {
     sessionId: number,
     offset: number,
     data: string,
-    remainingBytes: number
+    remainingBytes: number,
   ): Chunk {
     const chunk = new Chunk();
     chunk.setTransferId(sessionId);
@@ -217,7 +219,7 @@ describe('Transfer client', () => {
       .then(() => {
         fail('Unexpected completed promise');
       })
-      .catch(error => {
+      .catch((error) => {
         expect(error.id).toEqual(27);
         expect(Status[error.status]).toEqual(Status[Status.DEADLINE_EXCEEDED]);
         expect(sentChunks).toHaveLength(4);
@@ -237,7 +239,7 @@ describe('Transfer client', () => {
       .then(() => {
         fail('Unexpected completed promise');
       })
-      .catch(error => {
+      .catch((error) => {
         expect(error.id).toEqual(31);
         expect(Status[error.status]).toEqual(Status[Status.NOT_FOUND]);
       });
@@ -249,10 +251,10 @@ describe('Transfer client', () => {
     enqueueServerError(service.method('Read')!, Status.NOT_FOUND);
     await manager
       .read(31)
-      .then(data => {
+      .then((data) => {
         fail('Unexpected completed promise');
       })
-      .catch(error => {
+      .catch((error) => {
         expect(error.id).toEqual(31);
         expect(Status[error.status]).toEqual(Status[Status.INTERNAL]);
       });
@@ -400,7 +402,7 @@ describe('Transfer client', () => {
 
     await manager.write(4, textEncoder.encode('hello this is a message'));
     expect(receivedData()).toEqual(
-      textEncoder.encode('hello this is a message')
+      textEncoder.encode('hello this is a message'),
     );
     expect(sentChunks[1].getData()).toEqual(textEncoder.encode('hell'));
     expect(sentChunks[2].getData()).toEqual(textEncoder.encode('o th'));
@@ -441,7 +443,7 @@ describe('Transfer client', () => {
       textEncoder.encode('data to write'),
       (stats: ProgressStats) => {
         progress.push(stats);
-      }
+      },
     );
     expect(sentChunks).toHaveLength(3);
     expect(receivedData()).toEqual(textEncoder.encode('data to write'));
@@ -533,7 +535,7 @@ describe('Transfer client', () => {
       .then(() => {
         fail('Unexpected succesful promise');
       })
-      .catch(error => {
+      .catch((error) => {
         expect(error.id).toEqual(4);
         expect(Status[error.status]).toEqual(Status[Status.OUT_OF_RANGE]);
       });
@@ -553,7 +555,7 @@ describe('Transfer client', () => {
       .then(() => {
         fail('Unexpected succesful promise');
       })
-      .catch(error => {
+      .catch((error) => {
         expect(error.id).toEqual(21);
         expect(Status[error.status]).toEqual(Status[Status.UNAVAILABLE]);
       });
@@ -573,7 +575,7 @@ describe('Transfer client', () => {
       .then(() => {
         fail('Unexpected succesful promise');
       })
-      .catch(error => {
+      .catch((error) => {
         expect(error.id).toEqual(21);
         expect(Status[error.status]).toEqual(Status[Status.INTERNAL]);
       });
@@ -587,7 +589,7 @@ describe('Transfer client', () => {
       .then(() => {
         fail('unexpected succesful write');
       })
-      .catch(error => {
+      .catch((error) => {
         expect(sentChunks).toHaveLength(3); // Initial chunk + two retries.
         expect(error.id).toEqual(22);
         expect(Status[error.status]).toEqual(Status[Status.DEADLINE_EXCEEDED]);
@@ -609,7 +611,7 @@ describe('Transfer client', () => {
       .then(() => {
         fail('unexpected succesful write');
       })
-      .catch(error => {
+      .catch((error) => {
         const expectedChunk1 = new Chunk();
         expectedChunk1.setTransferId(22);
         expectedChunk1.setResourceId(22);
@@ -654,7 +656,7 @@ describe('Transfer client', () => {
       .then(() => {
         fail('Unexpected succesful promise');
       })
-      .catch(error => {
+      .catch((error) => {
         expect(error.id).toEqual(23);
         expect(Status[error.status]).toEqual(Status[Status.INTERNAL]);
       });

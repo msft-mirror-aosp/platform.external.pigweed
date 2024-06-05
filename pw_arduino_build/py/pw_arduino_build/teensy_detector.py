@@ -20,7 +20,6 @@ import subprocess
 import typing
 
 from pathlib import Path
-from typing import List
 
 import pw_arduino_build.log
 
@@ -48,7 +47,7 @@ class BoardInfo(typing.NamedTuple):
     label: str
     arduino_upload_tool_name: str
 
-    def test_runner_args(self) -> List[str]:
+    def test_runner_args(self) -> list[str]:
         return [
             "--set-variable",
             f"serial.port.protocol={self.protocol}",
@@ -82,7 +81,7 @@ def detect_boards(arduino_package_path=False) -> list:
 
     boards = []
     detect_command = [
-        (teensy_core / "hardware" / "tools" / "teensy_ports")
+        (teensy_core / "tools" / "teensy-tools" / "1.58.0" / "teensy_ports")
         .absolute()
         .as_posix(),
         "-L",

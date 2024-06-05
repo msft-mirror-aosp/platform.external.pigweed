@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -27,4 +27,11 @@ py_library(
         "pw_build/generated_tests.py",
     ],
     imports = ["."],
+)
+
+py_binary(
+    name = "generate_cc_blob_library",
+    srcs = [
+        "pw_build/generate_cc_blob_library.py",
+    ],
 )

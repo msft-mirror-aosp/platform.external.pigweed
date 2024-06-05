@@ -14,6 +14,7 @@
 """CommandRunner dialog classes."""
 
 from __future__ import annotations
+import dataclasses
 import functools
 import logging
 import re
@@ -21,13 +22,11 @@ from typing import (
     Callable,
     Iterable,
     Iterator,
-    List,
-    Optional,
     TYPE_CHECKING,
-    Tuple,
 )
 
 from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.formatted_text.utils import fragment_list_to_text
@@ -48,8 +47,10 @@ from prompt_toolkit.layout import (
     Window,
     WindowAlign,
 )
-from prompt_toolkit.widgets import MenuItem
-from prompt_toolkit.widgets import TextArea
+from prompt_toolkit.lexers import PygmentsLexer
+from prompt_toolkit.widgets import MenuItem, TextArea
+
+from pygments.lexers.markup import MarkdownLexer  # type: ignore
 
 from pw_console.widgets import (
     create_border,
@@ -63,9 +64,16 @@ if TYPE_CHECKING:
 _LOG = logging.getLogger(__package__)
 
 
+@dataclasses.dataclass
+class CommandRunnerItem:
+    title: str
+    handler: Callable
+    description: str | None = None
+
+
 def flatten_menu_items(
-    items: List[MenuItem], prefix: str = ''
-) -> Iterator[Tuple[str, Callable]]:
+    items: list[MenuItem], prefix: str = ''
+) -> Iterator[CommandRunnerItem]:
     """Flatten nested prompt_toolkit MenuItems into text and callable tuples."""
     for item in items:
         new_text = []
@@ -80,7 +88,7 @@ def flatten_menu_items(
             # Skip this item if it's a separator or disabled.
             if item.text == '-' or item.disabled:
                 continue
-            yield (new_prefix, item.handler)
+            yield CommandRunnerItem(title=new_prefix, handler=item.handler)
 
 
 def highlight_matches(
@@ -120,10 +128,8 @@ class CommandRunner:
     def __init__(
         self,
         application: ConsoleApp,
-        window_title: Optional[str] = None,
-        load_completions: Optional[
-            Callable[[], List[Tuple[str, Callable]]]
-        ] = None,
+        window_title: str | None = None,
+        load_completions: Callable[[], list[CommandRunnerItem]] | None = None,
         width: int = 80,
         height: int = 10,
     ):
@@ -136,14 +142,15 @@ class CommandRunner:
         self.last_focused_pane = None
 
         # List of all possible completion items
-        self.completions: List[Tuple[str, Callable]] = []
+        self.completions: list[CommandRunnerItem] = []
         # Formatted text fragments of matched items
-        self.completion_fragments: List[StyleAndTextTuples] = []
+        self.completion_fragments: list[StyleAndTextTuples] = []
 
         # Current selected item tracking variables
         self.selected_item: int = 0
-        self.selected_item_text: str = ''
-        self.selected_item_handler: Optional[Callable] = None
+        self.selected_item_title: str = ''
+        self.selected_item_handler: Callable | None = None
+        self.selected_item_description: str | None = None
         # Previous input text
         self.last_input_field_text: str = 'EMPTY'
         # Previous selected item
@@ -155,7 +162,7 @@ class CommandRunner:
         self.window_title: str
 
         # Callable to fetch completion items
-        self.load_completions: Callable[[], List[Tuple[str, Callable]]]
+        self.load_completions: Callable[[], list[CommandRunnerItem]]
 
         # Command runner text input field
         self.input_field = TextArea(
@@ -209,6 +216,16 @@ class CommandRunner:
             height=self.height,
         )
 
+        self.selected_item_description_text_area = TextArea(
+            focusable=False,
+            focus_on_click=False,
+            scrollbar=False,
+            style='class:help_window_content',
+            wrap_lines=False,
+            lexer=PygmentsLexer(MarkdownLexer),
+            text='empty',
+        )
+
         # Main content HSplit
         self.command_runner_content = HSplit(
             [
@@ -221,6 +238,22 @@ class CommandRunner:
                 ),
                 # Completion items below
                 command_items_window,
+                # Selected item description / help text.
+                ConditionalContainer(
+                    create_border(
+                        self.selected_item_description_text_area,
+                        title=self._snippet_description_pane_title,
+                        border_style='class:command-runner-border',
+                        left_margin_columns=0,
+                        right_margin_columns=0,
+                        bottom=False,
+                        left=False,
+                        right=False,
+                    ),
+                    filter=Condition(
+                        lambda: bool(self.selected_item_description)
+                    ),
+                ),
             ],
             style='class:command-runner class:theme-fg-default',
         )
@@ -235,6 +268,16 @@ class CommandRunner:
             DynamicContainer(lambda: self.bordered_content),
             filter=Condition(lambda: self.show_dialog),
         )
+
+    def _snippet_description_pane_title(self) -> StyleAndTextTuples:
+        return [
+            # Left padding
+            ('', '━━ '),
+            # Snippet title in yellow
+            ('class:theme-fg-yellow', self.selected_item_title),
+            # right padding
+            ('', ' '),
+        ]
 
     def _create_bordered_content(self) -> None:
         """Wrap self.command_runner_content in a border."""
@@ -309,10 +352,8 @@ class CommandRunner:
 
     def set_completions(
         self,
-        window_title: Optional[str] = None,
-        load_completions: Optional[
-            Callable[[], List[Tuple[str, Callable]]]
-        ] = None,
+        window_title: str | None = None,
+        load_completions: Callable[[], list[CommandRunnerItem]] | None = None,
     ) -> None:
         """Set window title and callable to fetch possible completions.
 
@@ -336,16 +377,16 @@ class CommandRunner:
     def reload_completions(self) -> None:
         self.completions = self.load_completions()
 
-    def load_menu_items(self) -> List[Tuple[str, Callable]]:
+    def load_menu_items(self) -> list[CommandRunnerItem]:
         # pylint: disable=no-self-use
         return list(flatten_menu_items(self.application.menu_items))
 
     def _get_input_field_text(self) -> str:
         return self.input_field.buffer.text
 
-    def _make_regexes(self, input_text) -> List[re.Pattern]:
+    def _make_regexes(self, input_text) -> list[re.Pattern]:
         # pylint: disable=no-self-use
-        regexes: List[re.Pattern] = []
+        regexes: list[re.Pattern] = []
         if not input_text:
             return regexes
 
@@ -358,7 +399,7 @@ class CommandRunner:
 
         return regexes
 
-    def _matches_orderless(self, regexes: List[re.Pattern], text) -> bool:
+    def _matches_orderless(self, regexes: list[re.Pattern], text) -> bool:
         """Check if all supplied regexs match the input text."""
         # pylint: disable=no-self-use
         return all(regex.search(text) for regex in regexes)
@@ -377,17 +418,27 @@ class CommandRunner:
         check_match = self._matches_orderless
 
         i = 0
-        for text, handler in self.completions:
-            if not (input_text == '' or check_match(regexes, text)):
+        for item in self.completions:
+            title = item.title
+            if not (input_text == '' or check_match(regexes, item.title)):
                 continue
             style = ''
             if i == self.selected_item:
                 style = 'class:command-runner-selected-item'
-                self.selected_item_text = text
-                self.selected_item_handler = handler
-                text = text.ljust(self.content_width())
+                self.selected_item_title = title
+                self.selected_item_handler = item.handler
+                self.selected_item_description = item.description
+                if self.selected_item_description:
+                    self.selected_item_description_text_area.buffer.document = (
+                        Document(
+                            text=self.selected_item_description,
+                            cursor_position=0,
+                        )
+                    )
+
+                title = item.title.ljust(self.content_width())
             fragments: StyleAndTextTuples = highlight_matches(
-                regexes, [(style, text + '\n')]
+                regexes, [(style, title + '\n')]
             )
             self.completion_fragments.append(fragments)
             i += 1
@@ -470,8 +521,9 @@ class CommandRunner:
     def _reset_selected_item(self) -> None:
         self.selected_item = 0
         self.last_selected_item = 0
-        self.selected_item_text = ''
+        self.selected_item_title = ''
         self.selected_item_handler = None
+        self.selected_item_description = None
         self.last_input_field_text = 'EMPTY'
         self.input_field.buffer.reset()
 
@@ -493,7 +545,7 @@ class CommandRunner:
             '[File] > Insert Repl History',
             '[File] > Open Logger',
         ]:
-            if command_text in self.selected_item_text:
+            if command_text in self.selected_item_title:
                 close_dialog = False
                 break
 
@@ -509,7 +561,7 @@ class CommandRunner:
             'Save/Export a copy',
             '[Windows] > Floating ',
         ]:
-            if command_text in self.selected_item_text:
+            if command_text in self.selected_item_title:
                 close_dialog_first = True
                 break
 

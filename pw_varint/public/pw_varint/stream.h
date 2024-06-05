@@ -22,13 +22,34 @@
 namespace pw {
 namespace varint {
 
-// Reads a varint-encoded value from a pw::stream. If reading into a signed
-// integer, the value is ZigZag decoded.
-//
-// Returns the number of bytes read from the stream if successful, OutOfRange
-// if the varint does not fit in a int64_t / uint64_t or if the input is
-// exhausted before the number terminates. Reads a maximum of 10 bytes or
-// max_size, whichever is smaller.
+/// @brief Decodes a variable-length integer (varint) from the current position
+/// of a `pw::stream`. Reads a maximum of 10 bytes or `max_size`, whichever is
+/// smaller.
+///
+/// This method always returns the number of bytes read, even on error.
+///
+/// @param reader The `pw::stream` to read from.
+///
+/// @param output The integer to read into. If reading into a signed integer,
+/// the value is
+/// [ZigZag](https://protobuf.dev/programming-guides/encoding/#signed-ints)-decoded.
+///
+/// @param max_size The maximum number of bytes to read. The upper limit is 10
+/// bytes.
+///
+/// @returns @rst
+///
+/// .. pw-status-codes::
+///
+///    OK: The decoded value is placed in ``output``.
+///
+///    OUT_OF_RANGE: No input is available, e.g. the stream is closed.
+///
+///    DATA_LOSS: The decoded value is too large for ``output`` or is
+///    incomplete, e.g. the input was exhausted after a partial varint was
+///    read.
+///
+/// @endrst
 StatusWithSize Read(stream::Reader& reader,
                     int64_t* output,
                     size_t max_size = std::numeric_limits<size_t>::max());

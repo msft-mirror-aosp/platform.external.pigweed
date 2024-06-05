@@ -67,36 +67,46 @@ template("emboss_cc_library") {
   }
   output_path = root_gen_dir + path_sep + string_join(path_sep, fakedirs)
 
-  # Look for imports in the same directory as invoker.source by default.
-  default_import_dir = get_path_info(invoker.source, "abspath")
-  default_import_dir = get_path_info(default_import_dir, "dir")
-  default_import_dir = rebase_path(default_import_dir, root_build_dir)
-
-  action(target_name + "_header") {
+  action("${target_name}_header") {
     script = "$dir_pw_third_party/emboss/embossc_runner.py"
 
     args = [
       rebase_path("$dir_pw_third_party_emboss/embossc", root_build_dir),
       "--generate",
       "cc",
-      "--import-dir",
-      default_import_dir,
+      "--no-cc-enum-traits",
       "--output-path",
       rebase_path(output_path, root_build_dir),
       rebase_path(invoker.source, root_build_dir),
     ]
+
+    # Look for imports in the root directory and Pigweed root by default.
+    # This is intended to match the official Bazel rule.
+    default_import_dirs = [
+      rebase_path("//", root_build_dir),
+      "$dir_pigweed",
+    ]
+    foreach(dir, default_import_dirs) {
+      args += [
+        "--import-dir",
+        rebase_path(dir, root_build_dir),
+      ]
+    }
+
     if (defined(invoker.import_dirs)) {
       foreach(dir, invoker.import_dirs) {
         args += [
           "--import-dir",
-          dir,
+          rebase_path(dir, root_build_dir),
         ]
       }
     }
 
     sources = [
+      "$dir_pw_third_party_emboss/compiler/__init__.py",
       "$dir_pw_third_party_emboss/compiler/back_end/__init__.py",
       "$dir_pw_third_party_emboss/compiler/back_end/cpp/__init__.py",
+      "$dir_pw_third_party_emboss/compiler/back_end/cpp/attributes.py",
       "$dir_pw_third_party_emboss/compiler/back_end/cpp/emboss_codegen_cpp.py",
       "$dir_pw_third_party_emboss/compiler/back_end/cpp/generated_code_templates",
       "$dir_pw_third_party_emboss/compiler/back_end/cpp/header_generator.py",
@@ -121,12 +131,15 @@ template("emboss_cc_library") {
       "$dir_pw_third_party_emboss/compiler/front_end/tokenizer.py",
       "$dir_pw_third_party_emboss/compiler/front_end/type_check.py",
       "$dir_pw_third_party_emboss/compiler/front_end/write_inference.py",
+      "$dir_pw_third_party_emboss/compiler/util/__init__.py",
+      "$dir_pw_third_party_emboss/compiler/util/attribute_util.py",
       "$dir_pw_third_party_emboss/compiler/util/error.py",
       "$dir_pw_third_party_emboss/compiler/util/expression_parser.py",
       "$dir_pw_third_party_emboss/compiler/util/ir_pb2.py",
       "$dir_pw_third_party_emboss/compiler/util/ir_util.py",
       "$dir_pw_third_party_emboss/compiler/util/name_conversion.py",
       "$dir_pw_third_party_emboss/compiler/util/parser_types.py",
+      "$dir_pw_third_party_emboss/compiler/util/resources.py",
       "$dir_pw_third_party_emboss/compiler/util/simple_memoizer.py",
       "$dir_pw_third_party_emboss/compiler/util/traverse_ir.py",
       "$dir_pw_third_party_emboss/embossc",
@@ -141,27 +154,28 @@ template("emboss_cc_library") {
     outputs = [ compiled_header_path ]
   }
 
-  config(target_name + "_emboss_config") {
+  config("${target_name}_emboss_config") {
     include_dirs = [
       "$dir_pw_third_party_emboss",
       root_gen_dir,
     ]
   }
 
+  # Since the emboss_cc_library template is used in non-Pigweed environments, this target is not pw_source_set,
+  # which restricts visibility by default.
   source_set(target_name) {
     forward_variables_from(invoker, "*")
 
     sources = [ compiled_header_path ]
 
-    if (!defined(invoker.deps)) {
-      deps = []
-    }
-    deps += [ "$dir_pw_third_party/emboss:cpp_utils" ]
-    public_deps = [ ":" + target_name + "_header" ]
+    public_deps = [
+      ":${target_name}_header",
+      "$dir_pw_third_party/emboss:cpp_utils",
+    ]
 
     if (!defined(invoker.public_configs)) {
       public_configs = []
     }
-    public_configs += [ ":" + target_name + "_emboss_config" ]
+    public_configs += [ ":${target_name}_emboss_config" ]
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -24,6 +24,7 @@
 #include "pw_status/status.h"
 #include "pw_stream/stream.h"
 #include "pw_transfer/internal/chunk.h"
+#include "pw_transfer/internal/config.h"
 #include "pw_transfer/internal/event.h"
 #include "pw_transfer/internal/protocol.h"
 #include "pw_transfer/rate_estimate.h"
@@ -34,35 +35,41 @@ class TransferThread;
 
 class TransferParameters {
  public:
-  constexpr TransferParameters(uint32_t pending_bytes,
+  constexpr TransferParameters(uint32_t max_window_size_bytes,
                                uint32_t max_chunk_size_bytes,
                                uint32_t extend_window_divisor)
-      : pending_bytes_(pending_bytes),
+      : max_window_size_bytes_(max_window_size_bytes),
         max_chunk_size_bytes_(max_chunk_size_bytes),
         extend_window_divisor_(extend_window_divisor) {
-    PW_ASSERT(pending_bytes > 0);
+    PW_ASSERT(max_window_size_bytes > 0);
     PW_ASSERT(max_chunk_size_bytes > 0);
     PW_ASSERT(extend_window_divisor > 1);
   }
 
-  uint32_t pending_bytes() const { return pending_bytes_; }
-  void set_pending_bytes(uint32_t pending_bytes) {
-    pending_bytes_ = pending_bytes;
+  constexpr uint32_t max_window_size_bytes() const {
+    return max_window_size_bytes_;
+  }
+  constexpr void set_max_window_size_bytes(uint32_t max_window_size_bytes) {
+    max_window_size_bytes_ = max_window_size_bytes;
   }
 
-  uint32_t max_chunk_size_bytes() const { return max_chunk_size_bytes_; }
-  void set_max_chunk_size_bytes(uint32_t max_chunk_size_bytes) {
+  constexpr uint32_t max_chunk_size_bytes() const {
+    return max_chunk_size_bytes_;
+  }
+  constexpr void set_max_chunk_size_bytes(uint32_t max_chunk_size_bytes) {
     max_chunk_size_bytes_ = max_chunk_size_bytes;
   }
 
-  uint32_t extend_window_divisor() const { return extend_window_divisor_; }
-  void set_extend_window_divisor(uint32_t extend_window_divisor) {
+  constexpr uint32_t extend_window_divisor() const {
+    return extend_window_divisor_;
+  }
+  constexpr void set_extend_window_divisor(uint32_t extend_window_divisor) {
     PW_DASSERT(extend_window_divisor > 1);
     extend_window_divisor_ = extend_window_divisor;
   }
 
  private:
-  uint32_t pending_bytes_;
+  uint32_t max_window_size_bytes_;
   uint32_t max_chunk_size_bytes_;
   uint32_t extend_window_divisor_;
 };
@@ -88,6 +95,10 @@ class Context {
   // True if the transfer is active.
   bool active() const { return transfer_state_ >= TransferState::kInitiating; }
 
+  constexpr TransferType type() const {
+    return static_cast<TransferType>(flags_ & kFlagsType);
+  }
+
   std::optional<chrono::SystemClock::time_point> timeout() const {
     return active() && next_timeout_ != kNoTimeout
                ? std::optional(next_timeout_)
@@ -108,7 +119,8 @@ class Context {
   ~Context() = default;
 
   constexpr Context()
-      : session_id_(kUnassignedSessionId),
+      : initial_offset_(0),
+        session_id_(kUnassignedSessionId),
         resource_id_(0),
         desired_protocol_version_(ProtocolVersion::kUnknown),
         configured_protocol_version_(ProtocolVersion::kUnknown),
@@ -124,18 +136,29 @@ class Context {
         window_size_(0),
         window_end_offset_(0),
         max_chunk_size_bytes_(std::numeric_limits<uint32_t>::max()),
+        window_size_multiplier_(1),
+        transmit_phase_(TransmitPhase::kSlowStart),
         max_parameters_(nullptr),
         thread_(nullptr),
         last_chunk_sent_(Chunk::Type::kData),
         last_chunk_offset_(0),
         chunk_timeout_(chrono::SystemClock::duration::zero()),
+        initial_chunk_timeout_(chrono::SystemClock::duration::zero()),
         interchunk_delay_(chrono::SystemClock::for_at_least(
             std::chrono::microseconds(kDefaultChunkDelayMicroseconds))),
-        next_timeout_(kNoTimeout) {}
+        next_timeout_(kNoTimeout),
+        log_rate_limit_cfg_(cfg::kLogDefaultRateLimit),
+        log_rate_limit_(kNoRateLimit),
+        log_chunks_before_rate_limit_cfg_(
+            cfg::kLogDefaultChunksBeforeRateLimit),
+        log_chunks_before_rate_limit_(0) {}
 
-  constexpr TransferType type() const {
-    return static_cast<TransferType>(flags_ & kFlagsType);
+  stream::Reader& reader() {
+    PW_DASSERT(active() && type() == TransferType::kTransmit);
+    return static_cast<stream::Reader&>(*stream_);
   }
+
+  uint32_t initial_offset_;
 
  private:
   enum class TransferState : uint8_t {
@@ -179,11 +202,17 @@ class Context {
   enum class TransmitAction {
     // Start of a new transfer.
     kBegin,
+    // First parameters chunk of a transfer.
+    kFirstParameters,
     // Extend the current window length.
     kExtend,
     // Retransmit from a specified offset.
     kRetransmit,
   };
+
+  // Slow start and congestion avoidance are analogues to the equally named
+  // phases in TCP congestion control.
+  enum class TransmitPhase : bool { kSlowStart, kCongestionAvoidance };
 
   void set_transfer_state(TransferState state) { transfer_state_ = state; }
 
@@ -191,11 +220,6 @@ class Context {
   unsigned id_for_log() const {
     static_assert(sizeof(unsigned) >= sizeof(session_id_));
     return static_cast<unsigned>(session_id_);
-  }
-
-  stream::Reader& reader() {
-    PW_DASSERT(active() && type() == TransferType::kTransmit);
-    return static_cast<stream::Reader&>(*stream_);
   }
 
   stream::Writer& writer() {
@@ -253,6 +277,15 @@ class Context {
   // failed.
   virtual Status FinalCleanup(Status status) = 0;
 
+  // Returns the total size of the transfer resource, or
+  // `std::numeric_limits<size_t>::max()` if unbounded.
+  virtual size_t TransferSizeBytes() const = 0;
+
+  // Seeks the reader source. Client may need to seek with reference to the
+  // initial offset, where the server shouldn't, so each context needs its own
+  // seek method.
+  virtual Status SeekReader(uint32_t offset) = 0;
+
   // Processes a chunk in either a transfer or receive transfer.
   void HandleChunkEvent(const ChunkEvent& event);
 
@@ -276,12 +309,12 @@ class Context {
   // Processes a data chunk in a received while in the kWaiting state.
   void HandleReceivedData(const Chunk& chunk);
 
-  // Sends the first chunk in a transmit transfer.
-  void SendInitialTransmitChunk();
+  // Sends the first chunk in a legacy transmit transfer.
+  void SendInitialLegacyTransmitChunk();
 
   // Updates the current receive transfer parameters based on the context's
   // configuration.
-  void UpdateTransferParameters();
+  void UpdateTransferParameters(TransmitAction action);
 
   // Populates the transfer parameters fields on a chunk object.
   void SetTransferParameters(Chunk& parameters);
@@ -347,10 +380,13 @@ class Context {
   // status chunk will be re-sent for every non-ACK chunk received,
   // continually notifying the other end that the transfer is over.
   static constexpr chrono::SystemClock::duration kFinalChunkAckTimeout =
-      std::chrono::milliseconds(5000);
+      chrono::SystemClock::for_at_least(std::chrono::milliseconds(5000));
 
   static constexpr chrono::SystemClock::time_point kNoTimeout =
       chrono::SystemClock::time_point(chrono::SystemClock::duration(0));
+
+  static constexpr chrono::SystemClock::duration kNoRateLimit =
+      chrono::SystemClock::duration::zero();
 
   uint32_t session_id_;
   uint32_t resource_id_;
@@ -378,6 +414,9 @@ class Context {
   uint32_t window_end_offset_;
   uint32_t max_chunk_size_bytes_;
 
+  uint32_t window_size_multiplier_;
+  TransmitPhase transmit_phase_;
+
   const TransferParameters* max_parameters_;
   TransferThread* thread_;
 
@@ -391,12 +430,23 @@ class Context {
   // How long to wait for a chunk from the other end.
   chrono::SystemClock::duration chunk_timeout_;
 
+  // How long for a client to wait for an initial server response.
+  chrono::SystemClock::duration initial_chunk_timeout_;
+
   // How long to delay between transmitting subsequent data chunks within a
   // window.
   chrono::SystemClock::duration interchunk_delay_;
 
   // Timestamp at which the transfer will next time out, or kNoTimeout.
   chrono::SystemClock::time_point next_timeout_;
+
+  // Rate limit for repetitive logs
+  chrono::SystemClock::duration log_rate_limit_cfg_;
+  chrono::SystemClock::duration log_rate_limit_;
+
+  // chunk delay to start rate limiting
+  uint16_t log_chunks_before_rate_limit_cfg_;
+  uint16_t log_chunks_before_rate_limit_;
 
   RateEstimate transfer_rate_;
 };

@@ -21,6 +21,8 @@ This file is executed during gn gen, so it cannot rely on any setup that occurs
 during the build.
 """
 
+from __future__ import annotations
+
 import argparse
 import base64
 from collections import defaultdict
@@ -33,14 +35,11 @@ import sys
 from typing import (
     Iterable,
     Iterator,
-    List,
     NamedTuple,
     NoReturn,
-    Optional,
     Pattern,
     Sequence,
     Set,
-    Tuple,
 )
 
 # Matches the #if or #elif statement that starts a compile fail test.
@@ -67,7 +66,7 @@ class Compiler(Enum):
     CLANG = 2
 
     @staticmethod
-    def from_command(command: str) -> 'Compiler':
+    def from_command(command: str) -> Compiler:
         if command.endswith(('clang', 'clang++')):
             return Compiler.CLANG
 
@@ -79,7 +78,7 @@ class Compiler(Enum):
             f'in {Path(__file__).name} to account for this'
         )
 
-    def matches(self, other: 'Compiler') -> bool:
+    def matches(self, other: Compiler) -> bool:
         return self is other or self is Compiler.ANY or other is Compiler.ANY
 
 
@@ -94,7 +93,7 @@ class Expectation:
 class TestCase:
     suite: str
     case: str
-    expectations: Tuple[Expectation, ...]
+    expectations: tuple[Expectation, ...]
     source: Path
     line: int
 
@@ -105,7 +104,7 @@ class TestCase:
         return base64.b64encode(pickle.dumps(self)).decode()
 
     @classmethod
-    def deserialize(cls, serialized: str) -> 'Expectation':
+    def deserialize(cls, serialized: str) -> Expectation:
         return pickle.loads(base64.b64decode(serialized))
 
 
@@ -140,9 +139,9 @@ class _ExpectationParser:
         self.index = index
         self._compiler = compiler
         self._state = self._State.SPACE
-        self._contents: List[str] = []
+        self._contents: list[str] = []
 
-    def parse(self, chars: str) -> Optional[Expectation]:
+    def parse(self, chars: str) -> Expectation | None:
         """State machine that parses characters in PW_NC_EXPECT()."""
         for char in chars:
             if self._state is self._State.SPACE:
@@ -214,7 +213,7 @@ class _NegativeCompilationTestSource:
         raise ParseError(message, self._file, self._lines, error_lines)
 
     def _parse_expectations(self, start: int) -> Iterator[Expectation]:
-        expectation: Optional[_ExpectationParser] = None
+        expectation: _ExpectationParser | None = None
 
         for index in range(start, len(self._lines)):
             line = self._lines[index]
@@ -268,7 +267,9 @@ class _NegativeCompilationTestSource:
         stray = all_expectations - self._parsed_expectations
         if stray:
             self._error(
-                f'Found {len(stray)} stray PW_NC_EXPECT() commands!',
+                f'Found {len(stray)} stray PW_NC_EXPECT() statements! '
+                'PW_NC_EXPECT() statements must follow immediately after a '
+                'PW_NC_TEST() declaration.',
                 *sorted(stray),
             )
 
@@ -332,7 +333,7 @@ pw_python_action("{test.name()}.negative_compilation_test") {{
 def generate_gn_build(
     base: str,
     sources: Iterable[SourceFile],
-    tests: List[TestCase],
+    tests: list[TestCase],
     all_tests: str,
 ) -> Iterator[str]:
     """Generates the BUILD.gn file with compilation failure test targets."""

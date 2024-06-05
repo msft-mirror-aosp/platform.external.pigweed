@@ -22,7 +22,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from typing import Iterable, Optional
+from typing import Iterable
 
 import setuptools  # type: ignore
 
@@ -96,6 +96,21 @@ def _parse_args():
     )
 
     parser.add_argument(
+        '--setupcfg-extra-files-in-package-data',
+        action='store_true',
+        help='List --extra-files in [options.package_data]',
+    )
+
+    parser.add_argument(
+        '--auto-create-package-data-init-py-files',
+        action='store_true',
+        help=(
+            'Create __init__.py files as needed in subdirs of extra_files '
+            'when including in [options.package_data].'
+        ),
+    )
+
+    parser.add_argument(
         '--input-list-files',
         nargs='+',
         type=Path,
@@ -110,7 +125,7 @@ class UnknownGitSha(Exception):
     """Exception thrown when the current git SHA cannot be found."""
 
 
-def get_current_git_sha(repo_root: Optional[Path] = None) -> str:
+def get_current_git_sha(repo_root: Path | None = None) -> str:
     if not repo_root:
         repo_root = Path.cwd()
     git_command = [
@@ -147,12 +162,12 @@ class UnexpectedConfigSection(Exception):
 
 
 def load_common_config(
-    common_config: Optional[Path] = None,
-    package_name_override: Optional[str] = None,
-    package_version_override: Optional[str] = None,
+    common_config: Path | None = None,
+    package_name_override: str | None = None,
+    package_version_override: str | None = None,
     append_git_sha: bool = False,
     append_date: bool = False,
-    repo_root: Optional[Path] = None,
+    repo_root: Path | None = None,
 ) -> configparser.ConfigParser:
     """Load an existing ConfigParser file and update metadata.version."""
     config = configparser.ConfigParser()
@@ -190,6 +205,16 @@ def load_common_config(
             'version'
         ] = f'{version_prefix}+{build_metadata_text}'
     return config
+
+
+def _update_package_data_value(
+    config: configparser.ConfigParser, key: str, value: str
+) -> None:
+    existing_values = config['options.package_data'].get(key, '').splitlines()
+    new_value = '\n'.join(sorted(set(existing_values + value.splitlines())))
+    # Remove any empty lines
+    new_value = new_value.replace('\n\n', '\n')
+    config['options.package_data'][key] = new_value
 
 
 def update_config_with_packages(
@@ -230,15 +255,7 @@ def update_config_with_packages(
         # Collect package_data
         if pkg.config.has_section('options.package_data'):
             for key, value in pkg.config['options.package_data'].items():
-                existing_values = (
-                    config['options.package_data'].get(key, '').splitlines()
-                )
-                new_value = '\n'.join(
-                    sorted(set(existing_values + value.splitlines()))
-                )
-                # Remove any empty lines
-                new_value = new_value.replace('\n\n', '\n')
-                config['options.package_data'][key] = new_value
+                _update_package_data_value(config, key, value)
 
         # Collect entry_points
         if pkg.config.has_section('options.entry_points'):
@@ -252,10 +269,40 @@ def update_config_with_packages(
                 config['options.entry_points'][key] = new_entry_points
 
 
+def update_config_with_package_data(
+    config: configparser.ConfigParser,
+    extra_files_list: list[Path],
+    auto_create_init_py_files: bool,
+    tree_destination_dir: Path,
+) -> None:
+    """Create options.package_data entries from a list of paths."""
+    for path in extra_files_list:
+        relative_file = path.relative_to(tree_destination_dir)
+
+        # Update options.package_data config section
+        root_package_dir = list(relative_file.parents)[-2]
+        _update_package_data_value(
+            config,
+            str(root_package_dir),
+            str(relative_file.relative_to(root_package_dir)),
+        )
+
+        # Add an __init__.py file to subdirectories
+        if (
+            auto_create_init_py_files
+            and relative_file.parent != tree_destination_dir
+        ):
+            init_py = (
+                tree_destination_dir / relative_file.parent / '__init__.py'
+            )
+            if not init_py.exists():
+                init_py.touch()
+
+
 def write_config(
     final_config: configparser.ConfigParser,
     tree_destination_dir: Path,
-    common_config: Optional[Path] = None,
+    common_config: Path | None = None,
 ) -> None:
     """Write a the final setup.cfg file with license comment block."""
     comment_block_text = ''
@@ -345,10 +392,12 @@ def build_python_tree(
             shutil.rmtree(lib_dir_path, ignore_errors=True)
 
 
-def copy_extra_files(extra_file_strings: Iterable[str]) -> None:
+def copy_extra_files(extra_file_strings: Iterable[str]) -> list[Path]:
     """Copy extra files to their destinations."""
+    output_files: list[Path] = []
+
     if not extra_file_strings:
-        return
+        return output_files
 
     for extra_file_string in extra_file_strings:
         # Convert 'source > destination' strings to Paths.
@@ -371,6 +420,9 @@ def copy_extra_files(extra_file_strings: Iterable[str]) -> None:
             )
 
         shutil.copy(source_file, dest_file)
+        output_files.append(dest_file)
+
+    return output_files
 
 
 def _main():
@@ -387,7 +439,7 @@ def _main():
         tree_destination_dir=args.tree_destination_dir,
         include_tests=args.include_tests,
     )
-    copy_extra_files(args.extra_files)
+    extra_files_list = copy_extra_files(args.extra_files)
 
     if args.create_default_pyproject_toml:
         pyproject_path = args.tree_destination_dir / 'pyproject.toml'
@@ -406,6 +458,14 @@ def _main():
         )
 
         update_config_with_packages(config=config, python_packages=py_packages)
+
+        if args.setupcfg_extra_files_in_package_data:
+            update_config_with_package_data(
+                config,
+                extra_files_list,
+                args.auto_create_package_data_init_py_files,
+                args.tree_destination_dir,
+            )
 
         write_config(
             common_config=args.setupcfg_common_file,

@@ -13,6 +13,8 @@
 # the License.
 """Runs Pigweed unit tests built using GN."""
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import base64
@@ -27,7 +29,7 @@ import sys
 import time
 
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Iterable, Sequence, Set
 
 import requests
 
@@ -65,12 +67,13 @@ def register_arguments(parser: argparse.ArgumentParser) -> None:
         '-m', '--timeout', type=float, help='Timeout for test runner in seconds'
     )
     parser.add_argument(
-        '--coverage-profraw',
-        type=str,
-        help='The name of the coverage profraw file to produce with the'
-        ' coverage information from this test. Only provide this if the test'
-        ' should be run for coverage and is properly instrumented.',
+        '-e',
+        '--env',
+        nargs='*',
+        help='Environment variables to set for the test. These should be of the'
+        ' form `var_name=value`.',
     )
+
     parser.add_argument(
         'runner_args', nargs="*", help='Arguments to forward to the test runner'
     )
@@ -127,7 +130,7 @@ class TestGroup:
         """Updates the dependency list of this group."""
         self._deps = deps
 
-    def all_test_dependencies(self) -> List[Test]:
+    def all_test_dependencies(self) -> list[Test]:
         """Returns a list of all tests in this group and its dependencies."""
         return list(self._all_test_dependencies(set()))
 
@@ -160,15 +163,17 @@ class TestRunner:
         executable: str,
         args: Sequence[str],
         tests: Iterable[Test],
-        coverage_profraw: Optional[str] = None,
-        timeout: Optional[float] = None,
+        env: dict[str, str] | None = None,
+        timeout: float | None = None,
+        verbose: bool = False,
     ) -> None:
         self._executable: str = executable
         self._args: Sequence[str] = args
-        self._tests: List[Test] = list(tests)
-        self._coverage_profraw = coverage_profraw
+        self._tests: list[Test] = list(tests)
+        self._env: dict[str, str] = env or {}
         self._timeout = timeout
-        self._result_sink: Optional[Dict[str, str]] = None
+        self._result_sink: dict[str, str] | None = None
+        self.verbose = verbose
 
         # Access go/result-sink, if available.
         ctx_path = Path(os.environ.get("LUCI_CONTEXT", ''))
@@ -201,11 +206,11 @@ class TestRunner:
             test.start_time = datetime.datetime.now(datetime.timezone.utc)
             start_time = time.monotonic()
             try:
-                env = {}
-                if self._coverage_profraw is not None:
-                    env['LLVM_PROFILE_FILE'] = str(Path(self._coverage_profraw))
                 process = await pw_cli.process.run_async(
-                    *command, env=env, timeout=self._timeout
+                    *command,
+                    env=self._env,
+                    timeout=self._timeout,
+                    log_output=self.verbose,
                 )
             except subprocess.CalledProcessError as err:
                 _LOG.error(err)
@@ -287,7 +292,7 @@ class TestRunner:
                     # Need to decode the bytes back to ASCII or they will not be
                     # encodable by json.dumps.
                     #
-                    # TODO(b/248349219): Instead of stripping the ANSI color
+                    # TODO: b/248349219 - Instead of stripping the ANSI color
                     # codes, convert them to HTML.
                     "contents": base64.b64encode(
                         _strip_ansi(process.output)
@@ -314,10 +319,10 @@ class TestRunner:
 METADATA_EXTENSION = '.testinfo.json'
 
 
-def find_test_metadata(root: str) -> List[str]:
+def find_test_metadata(root: str) -> list[str]:
     """Locates all test metadata files located within a directory tree."""
 
-    metadata: List[str] = []
+    metadata: list[str] = []
     for path, _, files in os.walk(root):
         for filename in files:
             if not filename.endswith(METADATA_EXTENSION):
@@ -358,7 +363,7 @@ def find_binary(target: str) -> str:
     )
 
 
-def parse_metadata(metadata: List[str], root: str) -> Dict[str, TestGroup]:
+def parse_metadata(metadata: list[str], root: str) -> dict[str, TestGroup]:
     """Builds a graph of test group objects from metadata.
 
     Args:
@@ -374,25 +379,25 @@ def parse_metadata(metadata: List[str], root: str) -> Dict[str, TestGroup]:
     def canonicalize(path: str) -> str:
         """Removes a trailing slash from a GN target's directory.
 
-        '//module:target'  -> '//module:target'
-        '//module/:target' -> '//module:target'
+        '//module:target'  -> //module:target
+        '//module/:target' -> //module:target
         """
         index = path.find(':')
         if index == -1 or path[index - 1] != '/':
             return path
         return path[: index - 1] + path[index:]
 
-    group_deps: List[Tuple[str, List[str]]] = []
-    all_tests: Dict[str, Test] = {}
-    test_groups: Dict[str, TestGroup] = {}
+    group_deps: list[tuple[str, list[str]]] = []
+    all_tests: dict[str, Test] = {}
+    test_groups: dict[str, TestGroup] = {}
     num_tests = 0
 
     for path in metadata:
         with open(path, 'r') as metadata_file:
             metadata_list = json.load(metadata_file)
 
-        deps: List[str] = []
-        tests: List[Test] = []
+        deps: list[str] = []
+        tests: list[Test] = []
 
         for entry in metadata_list:
             if entry['type'] == 'self':
@@ -426,8 +431,8 @@ def parse_metadata(metadata: List[str], root: str) -> Dict[str, TestGroup]:
 
 
 def tests_from_groups(
-    group_names: Optional[Sequence[str]], root: str
-) -> List[Test]:
+    group_names: Sequence[str] | None, root: str
+) -> list[Test]:
     """Returns unit tests belonging to test groups and their dependencies.
 
     If args.names is nonempty, only searches groups specified there.
@@ -452,24 +457,44 @@ def tests_from_groups(
     return list(tests_to_run)
 
 
-def tests_from_paths(paths: Sequence[str]) -> List[Test]:
+def tests_from_paths(paths: Sequence[str]) -> list[Test]:
     """Returns a list of tests from test executable paths."""
 
-    tests: List[Test] = []
+    tests: list[Test] = []
     for path in paths:
         name = os.path.splitext(os.path.basename(path))[0]
         tests.append(Test(name, path))
     return tests
 
 
+def parse_env(env: Sequence[str]) -> dict[str, str]:
+    """Returns a dictionary of environment names and values.
+
+    Args:
+        env: List of strings of the form "key=val".
+
+    Raises:
+        ValueError if `env` is malformed.
+    """
+    envvars = {}
+    if env:
+        for envvar in env:
+            parts = envvar.split('=')
+            if len(parts) != 2:
+                raise ValueError(f'malformed environment variable: {envvar}')
+            envvars[parts[0]] = parts[1]
+    return envvars
+
+
 async def find_and_run_tests(
     root: str,
     runner: str,
     runner_args: Sequence[str] = (),
-    coverage_profraw: Optional[str] = None,
-    timeout: Optional[float] = None,
-    group: Optional[Sequence[str]] = None,
-    test: Optional[Sequence[str]] = None,
+    env: Sequence[str] = (),
+    timeout: float | None = None,
+    group: Sequence[str] | None = None,
+    test: Sequence[str] | None = None,
+    verbose: bool = False,
 ) -> int:
     """Runs some unit tests."""
 
@@ -478,8 +503,10 @@ async def find_and_run_tests(
     else:
         tests = tests_from_groups(group, root)
 
+    envvars = parse_env(env)
+
     test_runner = TestRunner(
-        runner, runner_args, tests, coverage_profraw, timeout
+        runner, runner_args, tests, envvars, timeout, verbose
     )
     await test_runner.run_tests()
 
@@ -499,7 +526,6 @@ def main() -> int:
     )
 
     args_as_dict = dict(vars(parser.parse_args()))
-    del args_as_dict['verbose']
     return asyncio.run(find_and_run_tests(**args_as_dict))
 
 

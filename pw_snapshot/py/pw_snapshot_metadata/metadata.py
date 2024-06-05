@@ -13,7 +13,7 @@
 # the License.
 """Library to assist processing Snapshot Metadata protos into text"""
 
-from typing import Optional, List, Mapping
+from typing import Mapping
 import pw_log_tokenized
 import pw_tokenizer
 from pw_tokenizer import proto as proto_detokenizer
@@ -30,12 +30,12 @@ _FATAL = (
 )
 
 
-def _process_tags(tags: Mapping[str, str]) -> Optional[str]:
+def _process_tags(tags: Mapping[str, str]) -> str | None:
     """Outputs snapshot tags as a multi-line string."""
     if not tags:
         return None
 
-    output: List[str] = ['Tags:']
+    output: list[str] = ['Tags:']
     for key, value in tags.items():
         output.append(f'  {key}: {value}')
 
@@ -43,13 +43,13 @@ def _process_tags(tags: Mapping[str, str]) -> Optional[str]:
 
 
 def process_snapshot(
-    serialized_snapshot: bytes, tokenizer_db: Optional[pw_tokenizer.Detokenizer]
+    serialized_snapshot: bytes, tokenizer_db: pw_tokenizer.Detokenizer | None
 ) -> str:
     """Processes snapshot metadata and tags, producing a multi-line string."""
     snapshot = snapshot_metadata_pb2.SnapshotBasicInfo()
     snapshot.ParseFromString(serialized_snapshot)
 
-    output: List[str] = []
+    output: list[str] = []
 
     if snapshot.HasField('metadata'):
         output.extend(
@@ -75,7 +75,7 @@ class MetadataProcessor:
     def __init__(
         self,
         metadata: snapshot_metadata_pb2.Metadata,
-        tokenizer_db: Optional[pw_tokenizer.Detokenizer],
+        tokenizer_db: pw_tokenizer.Detokenizer | None = None,
     ):
         self._metadata = metadata
         self._tokenizer_db = (
@@ -102,7 +102,7 @@ class MetadataProcessor:
 
         return f'{log.file}: {log.message}' if log.file else log.message
 
-    def reason_token(self) -> Optional[int]:
+    def reason_token(self) -> int | None:
         """If the snapshot `reason` is tokenized, the value of the token."""
         return self._reason_token
 
@@ -118,6 +118,14 @@ class MetadataProcessor:
     def snapshot_uuid(self) -> str:
         return self._metadata.snapshot_uuid.hex()
 
+    def cpu_arch(self) -> str:
+        descriptor = (
+            snapshot_metadata_pb2.CpuArchitecture.DESCRIPTOR.enum_types_by_name[
+                'Enum'
+            ]
+        )
+        return descriptor.values_by_number[self._metadata.cpu_arch].name
+
     def fw_build_uuid(self) -> str:
         return self._metadata.software_build_uuid.hex()
 
@@ -127,7 +135,7 @@ class MetadataProcessor:
 
     def __str__(self) -> str:
         """outputs a pw.snapshot.Metadata proto as a multi-line string."""
-        output: List[str] = []
+        output: list[str] = []
         if self._metadata.fatal:
             output.extend(
                 (
@@ -153,6 +161,9 @@ class MetadataProcessor:
 
         if self._metadata.device_name:
             output.append(f'Device:            {self.device_name()}')
+
+        if self._metadata.cpu_arch:
+            output.append(f'CPU Arch:          {self.cpu_arch()}')
 
         if self._metadata.software_version:
             output.append(f'Device FW version: {self.device_fw_version()}')

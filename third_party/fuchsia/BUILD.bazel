@@ -12,23 +12,21 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
-    name = "config",
-    hdrs = ["public/pw_function/config.h"],
-    includes = ["public"],
+# Allows downstream projects to provide an alternative implementation of fit.
+#
+# Intended for projects that depend on both Pigweed and Fuchsia, and want to
+# use the Fuchsia implementation directly to avoid ODR violations.
+label_flag(
+    name = "fit",
+    build_setting_default = ":fit_impl",
 )
 
-pw_cc_library(
-    name = "fit",
+cc_library(
+    name = "fit_impl",
     srcs = [
         "repo/sdk/lib/fit/include/lib/fit/internal/compiler.h",
         "repo/sdk/lib/fit/include/lib/fit/internal/function.h",
@@ -36,6 +34,7 @@ pw_cc_library(
         "repo/sdk/lib/fit/include/lib/fit/internal/utility.h",
     ],
     hdrs = [
+        "repo/sdk/lib/fit/include/lib/fit/defer.h",
         "repo/sdk/lib/fit/include/lib/fit/function.h",
         "repo/sdk/lib/fit/include/lib/fit/nullable.h",
         "repo/sdk/lib/fit/include/lib/fit/result.h",
@@ -48,12 +47,13 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "stdcompat",
     srcs = [
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/bit.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/constructors.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/exception.h",
+        "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/functional.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/storage.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/type_traits.h",
         "repo/sdk/lib/stdcompat/include/lib/stdcompat/internal/utility.h",

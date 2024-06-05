@@ -38,10 +38,23 @@ pw_add_facade(pw_log INTERFACE
     public/pw_log/options.h
     public/pw_log/short.h
     public/pw_log/shorter.h
+    public/pw_log/tokenized_args.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
     pw_log.config
+)
+
+pw_add_library(pw_log.rate_limited STATIC
+  HEADERS
+    public/pw_log/rate_limited.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_log
+    pw_chrono.system_clock
+  SOURCES
+    rate_limited.cc
 )
 
 pw_add_library(pw_log.glog_adapter INTERFACE

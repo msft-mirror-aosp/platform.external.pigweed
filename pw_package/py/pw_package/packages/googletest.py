@@ -27,16 +27,21 @@ class Googletest(pw_package.git_repo.GitRepo):
         super().__init__(
             *args,
             name='googletest',
-            url='https://github.com/google/googletest',
-            commit='073293463e1733c5e931313da1c3f1de044e1db3',
+            url=(
+                'https://pigweed.googlesource.com/'
+                'third_party/github/google/googletest'
+            ),
+            commit="f8d7d77c06936315286eb55f8de22cd23c188571",
             **kwargs,
         )
 
     def info(self, path: pathlib.Path) -> Sequence[str]:
         return (
             f'{self.name} installed in: {path}',
-            "Enable by running 'gn args out' and adding this line:",
+            "Enable by running 'gn args out' and adding these lines:",
             f'  dir_pw_third_party_googletest = "{path}"',
+            '  pw_unit_test_MAIN = "//third_party/googletest:gmock_main"',
+            '  pw_unit_test_BACKEND = "//pw_unit_test:googletest"',
         )
 
 

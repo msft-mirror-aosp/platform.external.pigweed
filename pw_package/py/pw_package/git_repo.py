@@ -13,24 +13,31 @@
 # the License.
 """Install and check status of Git repository-based packages."""
 
+import logging
 import os
-import pathlib
+from pathlib import Path
 import shutil
 import subprocess
-from typing import Union
 import urllib.parse
 
 import pw_package.package_manager
 
-PathOrStr = Union[pathlib.Path, str]
+_LOG: logging.Logger = logging.getLogger(__name__)
+
+_GIT_CONFIG = [
+    # Suppress "You are in 'detached HEAD' state" message
+    '-c',
+    'advice.detachedHead=false',
+]
 
 
 def git_stdout(
-    *args: PathOrStr, show_stderr=False, repo: PathOrStr = '.'
+    *args: Path | str, show_stderr=False, repo: Path | str = '.'
 ) -> str:
+    _LOG.debug('executing %r in %r', args, repo)
     return (
         subprocess.run(
-            ['git', '-C', repo, *args],
+            ['git'] + _GIT_CONFIG + ['-C', repo, *args],
             stdout=subprocess.PIPE,
             stderr=None if show_stderr else subprocess.DEVNULL,
             check=True,
@@ -40,8 +47,13 @@ def git_stdout(
     )
 
 
-def git(*args: PathOrStr, repo: PathOrStr = '.') -> subprocess.CompletedProcess:
-    return subprocess.run(['git', '-C', repo, *args], check=True)
+def git(
+    *args: Path | str, repo: Path | str = '.'
+) -> subprocess.CompletedProcess:
+    _LOG.debug('executing %r in %r', args, repo)
+    return subprocess.run(
+        ['git'] + _GIT_CONFIG + ['-C', repo, *args], check=True
+    )
 
 
 class GitRepo(pw_package.package_manager.Package):
@@ -60,9 +72,11 @@ class GitRepo(pw_package.package_manager.Package):
         self._sparse_list = sparse_list
         self._allow_use_in_downstream = False
 
-    def status(self, path: pathlib.Path) -> bool:
+    def status(self, path: Path) -> bool:
+        _LOG.debug('%s: status', self.name)
         # TODO(tonymd): Check the correct SHA is checked out here.
         if not os.path.isdir(path / '.git'):
+            _LOG.debug('%s: no .git folder', self.name)
             return False
 
         remote = git_stdout('remote', 'get-url', 'origin', repo=path)
@@ -75,31 +89,56 @@ class GitRepo(pw_package.package_manager.Package):
             if not host.endswith('.googlesource.com'):
                 host += '.googlesource.com'
             remote = 'https://{}{}'.format(host, url.path)
+        if remote != self._url:
+            _LOG.debug(
+                "%s: remote doesn't match expected %s actual %s",
+                self.name,
+                self._url,
+                remote,
+            )
+            return False
 
         commit = git_stdout('rev-parse', 'HEAD', repo=path)
-        if self._commit and self._commit != commit:
+        if self._commit and self._commit != 'HEAD' and self._commit != commit:
+            _LOG.debug(
+                "%s: commits don't match expected %s actual %s",
+                self.name,
+                self._commit,
+                commit,
+            )
             return False
 
         if self._tag:
             tag = git_stdout('describe', '--tags', repo=path)
             if self._tag != tag:
+                _LOG.debug(
+                    "%s: tags don't match expected %s actual %s",
+                    self.name,
+                    self._tag,
+                    tag,
+                )
                 return False
 
         # If it is a sparse checkout, sparse list shall match.
         if self._sparse_list:
             if not self.check_sparse_list(path):
+                _LOG.debug("%s: sparse lists don't match", self.name)
                 return False
 
         status = git_stdout('status', '--porcelain=v1', repo=path)
-        return remote == self._url and not status
+        _LOG.debug('%s: status %r', self.name, status)
+        return not status
 
-    def install(self, path: pathlib.Path) -> None:
+    def install(self, path: Path) -> None:
+        _LOG.debug('%s: install', self.name)
         # If already installed and at correct version exit now.
         if self.status(path):
+            _LOG.debug('%s: already installed, exiting', self.name)
             return
 
         # Otherwise delete current version and clone again.
         if os.path.isdir(path):
+            _LOG.debug('%s: removing', self.name)
             shutil.rmtree(path)
 
         if self._sparse_list:
@@ -107,18 +146,25 @@ class GitRepo(pw_package.package_manager.Package):
         else:
             self.checkout_full(path)
 
-    def checkout_full(self, path: pathlib.Path) -> None:
+    def checkout_full(self, path: Path) -> None:
         # --filter=blob:none means we don't get history, just the current
         # revision. If we later run commands that need history it will be
         # retrieved on-demand. For small repositories the effect is negligible
         # but for large repositories this should be a significant improvement.
+        # --filter=... causes progress messages to be printed to stderr even if
+        # using --quiet so we wrap our clone command in `get_stdout` to prevent
+        # the output from being emitted.
+        _LOG.debug('%s: checkout_full', self.name)
         if self._commit:
-            git('clone', '--filter=blob:none', self._url, path)
+            git_stdout('clone', '--filter=blob:none', self._url, path)
             git('reset', '--hard', self._commit, repo=path)
         elif self._tag:
-            git('clone', '-b', self._tag, '--filter=blob:none', self._url, path)
+            git_stdout(
+                'clone', '-b', self._tag, '--filter=blob:none', self._url, path
+            )
 
-    def checkout_sparse(self, path: pathlib.Path) -> None:
+    def checkout_sparse(self, path: Path) -> None:
+        _LOG.debug('%s: checkout_sparse', self.name)
         # sparse checkout
         git('init', path)
         git('remote', 'add', 'origin', self._url, repo=path)
@@ -133,7 +179,7 @@ class GitRepo(pw_package.package_manager.Package):
         target = self._commit if self._commit else self._tag
         git('pull', '--depth=1', 'origin', target, repo=path)
 
-    def check_sparse_list(self, path: pathlib.Path) -> bool:
+    def check_sparse_list(self, path: Path) -> bool:
         sparse_list = (
             git_stdout('sparse-checkout', 'list', repo=path)
             .strip('\n')

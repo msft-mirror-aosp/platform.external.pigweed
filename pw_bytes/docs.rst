@@ -21,6 +21,22 @@ Dependencies
 Features
 --------
 
+pw_bytes/alignment.h
+====================
+Functions for aligning sizes and addresses to memory alignment boundaries.
+
+ .. doxygenfunction:: pw::AlignDown(size_t value, size_t alignment)
+
+ .. doxygenfunction:: pw::AlignDown(T* value, size_t alignment)
+
+ .. doxygenfunction:: pw::AlignUp(size_t value, size_t alignment)
+
+ .. doxygenfunction:: pw::AlignUp(T* value, size_t alignment)
+
+ .. doxygenfunction:: pw::Padding
+
+ .. doxygenfunction:: pw::GetAlignedSubspan
+
 pw_bytes/array.h
 ================
 Functions for working with byte arrays, primarily for building fixed-size byte
@@ -28,15 +44,11 @@ arrays at compile time.
 
 pw_bytes/byte_builder.h
 =======================
-.. cpp:class:: ByteBuilder
+.. doxygenclass:: pw::ByteBuilder
+   :members:
 
-  ``ByteBuilder`` is a class that facilitates building or reading arrays of
-  bytes in a fixed-size buffer. ByteBuilder handles reading and writing integers
-  with varying endianness.
-
-.. cpp:class:: template <size_t kMaxSize> ByteBuffer
-
-  ``ByteBuilder`` with an internally allocated buffer.
+.. doxygenclass:: pw::ByteBuffer
+   :members:
 
 Size report: using ByteBuffer
 -----------------------------
@@ -50,9 +62,36 @@ features:
 * ``pw::endian`` -- Implementation of the ``std::endian`` enum. If
   ``std::endian`` is available, ``pw::endian`` is an alias of it.
 
+* Additional functions for bit-level operations.
+
+  .. doxygenfunction:: pw::bytes::SignExtend
+  .. doxygenfunction:: pw::bytes::ExtractBits
+
 pw_bytes/endian.h
 =================
 Functions for converting the endianness of integral values.
+
+pw_bytes/suffix.h
+=================
+This module exports a single ``_b`` literal, making it easier to create
+``std::byte`` values for tests.
+
+.. cpp:function:: constexpr std::byte operator"" _b(unsigned long long value)
+
+.. note::
+   This should not be used in header files, as it requires a ``using``
+   declaration that will be publicly exported at whatever level it is
+   used.
+
+Example:
+
+.. code-block:: cpp
+
+   #include "pw_bytes/units.h"
+
+   using ::pw::operator""_b;
+
+   constexpr std::byte kValue = 5_b;
 
 pw_bytes/units.h
 ================
@@ -73,11 +112,11 @@ In order to use these you must use a using namespace directive, for example:
 
 .. code-block:: cpp
 
-  #include "pw_bytes/units.h"
+   #include "pw_bytes/units.h"
 
-  using namespace pw::bytes::unit_literals;
+   using namespace pw::bytes::unit_literals;
 
-  constexpr size_t kRandomBufferSizeBytes = 1_MiB + 42_KiB;
+   constexpr size_t kRandomBufferSizeBytes = 1_MiB + 42_KiB;
 
 In some cases, the use of user-defined literals is not permitted because of the
 required using namespace directive. One example of this is in header files,
@@ -86,12 +125,18 @@ also similar functions:
 
 .. code-block:: cpp
 
-  #include "pw_bytes/units.h"
+   #include "pw_bytes/units.h"
 
-  constexpr size_t kBufferSizeBytes = pw::bytes::MiB(1) + pw::bytes::KiB(42);
+   constexpr size_t kBufferSizeBytes = pw::bytes::MiB(1) + pw::bytes::KiB(42);
 
 ------
 Zephyr
 ------
 To enable ``pw_bytes`` for Zephyr add ``CONFIG_PIGWEED_BYTES=y`` to the
 project's configuration.
+
+--------
+Rust API
+--------
+``pw_bytes``'s Rust API is documented in our
+`rustdoc API docs </rustdoc/pw_bytes>`_.

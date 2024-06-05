@@ -23,6 +23,8 @@ module also has basic support for archive (.a) files. All ELF files in an
 archive are read as one unit.
 """
 
+from __future__ import annotations
+
 import argparse
 import collections
 from pathlib import Path
@@ -34,10 +36,7 @@ from typing import (
     Iterable,
     Mapping,
     NamedTuple,
-    Optional,
     Pattern,
-    Tuple,
-    Union,
 )
 
 ARCHIVE_MAGIC = b'!<arch>\n'
@@ -164,7 +163,7 @@ def _bytes_match(fd: BinaryIO, expected: bytes) -> bool:
         return False
 
 
-def compatible_file(file: Union[BinaryIO, str, Path]) -> bool:
+def compatible_file(file: BinaryIO | str | Path) -> bool:
     """True if the file type is supported (ELF or archive)."""
     try:
         fd = open(file, 'rb') if isinstance(file, (str, Path)) else file
@@ -257,9 +256,9 @@ class Elf:
 
     def __init__(self, elf: BinaryIO):
         self._elf = elf
-        self.sections: Tuple[Elf.Section, ...] = tuple(self._list_sections())
+        self.sections: tuple[Elf.Section, ...] = tuple(self._list_sections())
 
-    def _list_sections(self) -> Iterable['Elf.Section']:
+    def _list_sections(self) -> Iterable[Elf.Section]:
         """Reads the section headers to enumerate all ELF sections."""
         for _ in _elf_files_in_archive(self._elf):
             reader = FieldReader(self._elf)
@@ -294,7 +293,7 @@ class Elf:
 
                 base += section_header_size
 
-    def section_by_address(self, address: int) -> Optional['Elf.Section']:
+    def section_by_address(self, address: int) -> Elf.Section | None:
         """Returns the section that contains the provided address, if any."""
         # Iterate in reverse to give priority to sections with nonzero addresses
         for section in sorted(self.sections, reverse=True):
@@ -303,14 +302,14 @@ class Elf:
 
         return None
 
-    def sections_with_name(self, name: str) -> Iterable['Elf.Section']:
+    def sections_with_name(self, name: str) -> Iterable[Elf.Section]:
         for section in self.sections:
             if section.name == name:
                 yield section
 
     def read_value(
-        self, address: int, size: Optional[int] = None
-    ) -> Union[None, bytes, int]:
+        self, address: int, size: int | None = None
+    ) -> None | bytes | int:
         """Reads specified bytes or null-terminated string at address."""
         section = self.section_by_address(address)
         if not section:
@@ -326,9 +325,7 @@ class Elf:
 
         return self._elf.read(size)
 
-    def dump_sections(
-        self, name: Union[str, Pattern[str]]
-    ) -> Mapping[str, bytes]:
+    def dump_sections(self, name: str | Pattern[str]) -> Mapping[str, bytes]:
         """Returns a mapping of section names to section contents.
 
         If processing an archive with multiple object files, the contents of
@@ -345,9 +342,7 @@ class Elf:
 
         return sections
 
-    def dump_section_contents(
-        self, name: Union[str, Pattern[str]]
-    ) -> Optional[bytes]:
+    def dump_section_contents(self, name: str | Pattern[str]) -> bytes | None:
         """Dumps a binary string containing the sections matching the regex.
 
         If processing an archive with multiple object files, the contents of

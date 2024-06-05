@@ -16,10 +16,10 @@
 import logging
 from typing import Callable, Sequence
 
-from pw_presubmit import build, format_code, git_repo
-from pw_presubmit.presubmit import (
-    Check,
-    FileFilter,
+from pw_cli.file_filter import FileFilter
+from pw_presubmit import build, format_code, git_repo, presubmit_context
+from pw_presubmit.presubmit import Check, filter_paths
+from pw_presubmit.presubmit_context import (
     PresubmitContext,
     PresubmitFailure,
 )
@@ -49,11 +49,12 @@ def bazel(
             this should only match source files)
     """
 
-    @source_filter.apply_to_check()
+    @filter_paths(file_filter=source_filter)
     def source_is_in_bazel_build(ctx: PresubmitContext):
         """Checks that source files are in the Bazel build."""
 
         paths = source_filter.filter(ctx.all_paths)
+        paths = presubmit_context.apply_exclusions(ctx, paths)
 
         missing = build.check_bazel_build_for_files(
             files_and_extensions_to_check,
@@ -95,11 +96,12 @@ def gn(  # pylint: disable=invalid-name
             this should only match source files)
     """
 
-    @source_filter.apply_to_check()
+    @filter_paths(file_filter=source_filter)
     def source_is_in_gn_build(ctx: PresubmitContext):
         """Checks that source files are in the GN build."""
 
         paths = source_filter.filter(ctx.all_paths)
+        paths = presubmit_context.apply_exclusions(ctx, paths)
 
         missing = build.check_gn_build_for_files(
             files_and_extensions_to_check,
@@ -141,11 +143,12 @@ def cmake(
 
     to_check = tuple(files_and_extensions_to_check)
 
-    @source_filter.apply_to_check()
+    @filter_paths(file_filter=source_filter)
     def source_is_in_cmake_build(ctx: PresubmitContext):
         """Checks that source files are in the CMake build."""
 
         paths = source_filter.filter(ctx.all_paths)
+        paths = presubmit_context.apply_exclusions(ctx, paths)
 
         run_cmake(ctx)
         missing = build.check_compile_commands_for_files(

@@ -3,22 +3,28 @@
 =====================================
 0102: Consistent Module Documentation
 =====================================
+.. seed::
+   :number: 102
+   :name: Consistent Module Documentation
+   :status: Accepted
+   :proposal_date: 2023-02-10
+   :cl: 128811, 130410
+   :authors: Chad Norvell
+   :facilitator: Kayce Basques
 
-.. card::
-   :fas:`seedling` SEED-0102: :ref:`Consistent Module Documentation<seed-0102>`
+---------------------
+Status (October 2023)
+---------------------
+If you're looking for guidelines on how to author module docs, use these:
+:ref:`docs-contrib-docs-modules`
 
-   :octicon:`comment-discussion` Status:
-   :bdg-secondary-line:`Open for Comments`
-   :octicon:`chevron-right`
-   :bdg-secondary-line:`Last Call`
-   :octicon:`chevron-right`
-   :bdg-primary:`Accepted`
-   :octicon:`kebab-horizontal`
-   :bdg-secondary-line:`Rejected`
+.. caution::
 
-   :octicon:`calendar` Proposal Date: 2023-02-10
-
-   :octicon:`code-review` CL: `pwrev/128811 <https://pigweed-review.git.corp.google.com/c/pigweed/pigweed/+/128811>`_, `pwrev/130410 <https://pigweed-review.git.corp.google.com/c/pigweed/pigweed/+/130410>`_
+   SEED-0102 is still considered accepted because we are still using some parts
+   of it in our current module docs guidelines. However, over the course of
+   2023 we discovered that other parts of the SEED-0102 plan didn't achieve our
+   goals. Therefore, at this point you should only read SEED-0102 for historical
+   context on how our docs guidelines have evolved.
 
 -------
 Summary

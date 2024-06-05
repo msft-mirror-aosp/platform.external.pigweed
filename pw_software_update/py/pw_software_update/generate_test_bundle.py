@@ -16,7 +16,6 @@
 import argparse
 import subprocess
 import sys
-from typing import Dict, Optional
 
 from pw_software_update import dev_sign, keys, metadata, root_metadata
 from pw_software_update.update_bundle_pb2 import Manifest, UpdateBundle
@@ -132,7 +131,7 @@ class Bundle:
         self._targets_prod_key = serialization.load_pem_private_key(
             TEST_TARGETS_PROD_KEY.encode(), None
         )
-        self._payloads: Dict[str, bytes] = {}
+        self._payloads: dict[str, bytes] = {}
         # Adds some update files.
         for key, value in TARGET_FILES.items():
             self.add_payload(key, value)
@@ -185,7 +184,7 @@ class Bundle:
         )
 
     def generate_prod_signed_root_metadata(
-        self, root_metadata_proto: Optional[RootMetadata] = None
+        self, root_metadata_proto: RootMetadata | None = None
     ) -> SignedRootMetadata:
         """Generates a root metadata signed by the prod key"""
         if not root_metadata_proto:
@@ -208,8 +207,8 @@ class Bundle:
 
     def generate_unsigned_bundle(
         self,
-        targets_metadata: Optional[TargetsMetadata] = None,
-        signed_root_metadata: Optional[SignedRootMetadata] = None,
+        targets_metadata: TargetsMetadata | None = None,
+        signed_root_metadata: SignedRootMetadata | None = None,
     ) -> UpdateBundle:
         """Generate an unsigned (targets metadata) update bundle"""
         bundle = UpdateBundle()
@@ -233,8 +232,8 @@ class Bundle:
 
     def generate_dev_signed_bundle(
         self,
-        targets_metadata_override: Optional[TargetsMetadata] = None,
-        signed_root_metadata: Optional[SignedRootMetadata] = None,
+        targets_metadata_override: TargetsMetadata | None = None,
+        signed_root_metadata: SignedRootMetadata | None = None,
     ) -> UpdateBundle:
         """Generate a dev signed update bundle"""
         return dev_sign.sign_update_bundle(
@@ -246,8 +245,8 @@ class Bundle:
 
     def generate_prod_signed_bundle(
         self,
-        targets_metadata_override: Optional[TargetsMetadata] = None,
-        signed_root_metadata: Optional[SignedRootMetadata] = None,
+        targets_metadata_override: TargetsMetadata | None = None,
+        signed_root_metadata: SignedRootMetadata | None = None,
     ) -> UpdateBundle:
         """Generate a prod signed update bundle"""
         # The targets metadata in a prod signed bundle can only be verified
@@ -280,7 +279,7 @@ def parse_args():
     return parser.parse_args()
 
 
-# TODO(b/237580538): Refactor the code so that each test bundle generation
+# TODO: b/237580538 - Refactor the code so that each test bundle generation
 # is done in a separate function or script.
 # pylint: disable=too-many-locals
 def main() -> int:
@@ -518,7 +517,7 @@ def main() -> int:
     return 0
 
 
-# TODO(b/237580538): Refactor the code so that each test bundle generation
+# TODO: b/237580538 - Refactor the code so that each test bundle generation
 # is done in a separate function or script.
 # pylint: enable=too-many-locals
 

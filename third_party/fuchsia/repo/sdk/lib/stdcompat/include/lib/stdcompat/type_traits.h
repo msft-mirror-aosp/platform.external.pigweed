@@ -2,15 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef LIB_STDCOMPAT_INCLUDE_LIB_STDCOMPAT_TYPE_TRAITS_H_
-#define LIB_STDCOMPAT_INCLUDE_LIB_STDCOMPAT_TYPE_TRAITS_H_
+#ifndef LIB_STDCOMPAT_TYPE_TRAITS_H_
+#define LIB_STDCOMPAT_TYPE_TRAITS_H_
 
 #include <cstddef>
-#include <tuple>
 #include <type_traits>
 
-#include "internal/type_traits.h"
-#include "version.h"
+#include "internal/type_traits.h"  // IWYU pragma: keep
+#include "version.h"               // IWYU pragma: keep
 
 namespace cpp17 {
 
@@ -506,4 +505,4 @@ static constexpr bool is_scoped_enum_v = is_scoped_enum<T>::value;
 
 }  // namespace cpp23
 
-#endif  // LIB_STDCOMPAT_INCLUDE_LIB_STDCOMPAT_TYPE_TRAITS_H_
+#endif  // LIB_STDCOMPAT_TYPE_TRAITS_H_

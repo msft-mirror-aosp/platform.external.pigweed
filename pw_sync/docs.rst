@@ -352,22 +352,22 @@ Example in C
 ^^^^^^^^^^^^
 .. code-block:: cpp
 
-  #include "pw_chrono/system_clock.h"
-  #include "pw_sync/timed_mutex.h"
+   #include "pw_chrono/system_clock.h"
+   #include "pw_sync/timed_mutex.h"
 
-  pw::sync::TimedMutex mutex;
+   pw::sync::TimedMutex mutex;
 
-  extern pw_sync_TimedMutex mutex;  // This can only be created in C++.
+   extern pw_sync_TimedMutex mutex;  // This can only be created in C++.
 
-  bool ThreadSafeCriticalSectionWithTimeout(
-      const pw_chrono_SystemClock_Duration timeout) {
-    if (!pw_sync_TimedMutex_TryLockFor(&mutex, timeout)) {
-      return false;
-    }
-    NotThreadSafeCriticalSection();
-    pw_sync_TimedMutex_Unlock(&mutex);
-    return true;
-  }
+   bool ThreadSafeCriticalSectionWithTimeout(
+       const pw_chrono_SystemClock_Duration timeout) {
+     if (!pw_sync_TimedMutex_TryLockFor(&mutex, timeout)) {
+       return false;
+     }
+     NotThreadSafeCriticalSection();
+     pw_sync_TimedMutex_Unlock(&mutex);
+     return true;
+   }
 
 RecursiveMutex
 ==============
@@ -731,9 +731,9 @@ internal mutex, however at crash time we may want to switch to a no-op lock. A
 virtual lock interface could be used here to minimize the code-size cost that
 would occur otherwise if the flash driver were templated.
 
-VirtualBasicLock
-----------------
-The ``VirtualBasicLock`` interface meets the
+VirtualBasicLockable
+--------------------
+The ``VirtualBasicLockable`` interface meets the
 `BasicLockable <https://en.cppreference.com/w/cpp/named_req/BasicLockable>`_ C++
 named requirement. Our critical section lock primitives offer optional virtual
 versions, including:
@@ -742,9 +742,24 @@ versions, including:
 * :cpp:func:`pw::sync::VirtualTimedMutex`
 * :cpp:func:`pw::sync::VirtualInterruptSpinLock`
 
+.. _module-pw_sync-genericbasiclockable:
+
+GenericBasicLockable
+--------------------
+``GenericBasicLockable`` is a helper construct that can be used to declare
+virtual versions of a critical section lock primitive that meets the
+`BasicLockable <https://en.cppreference.com/w/cpp/named_req/BasicLockable>`_
+C++ named requirement. For example, given a ``Mutex`` type with ``lock()`` and
+``unlock()`` methods, a ``VirtualMutex`` type that derives from
+``VirtualBasicLockable`` can be declared as follows:
+
+.. code-block:: cpp
+
+   class VirtualMutex : public GenericBasicLockable<Mutex> {};
+
 Borrowable
 ==========
-The Borrowable is a helper construct that enables callers to borrow an object
+``Borrowable`` is a helper construct that enables callers to borrow an object
 which is guarded by a lock, enabling a containerized style of external locking.
 
 Users who need access to the guarded object can ask to acquire a
@@ -870,6 +885,12 @@ if the duration it takes to gain exclusive access to the I2c bus does not eat
 into the ACK timeout you'd like to use for the transaction. Borrowable can help
 you do exactly this if you provide access to the I2c bus through a
 ``Borrowable``.
+
+.. note::
+
+   ``Borrowable`` has semantics similar to a pointer and should be passed by
+   value. Furthermore, a ``Borrowable<U>`` can be assigned to a
+   ``Borrowable<T>`` if ``U`` is a subclass of ``T``.
 
 C++
 ---
@@ -1008,7 +1029,7 @@ Example in C++
    pw::sync::InlineBorrowable<ExampleI2c> i2c(std::in_place, kBusId, opts);
 
    pw::Result<ConstByteSpan> ReadI2cData(
-     pw::sync::Borrowable<pw::i2c::Initiator>& initiator,
+     pw::sync::Borrowable<pw::i2c::Initiator> initiator,
      ByteSpan buffer);
 
    pw::Result<ConstByteSpan> ReadData(ByteSpan buffer) {
@@ -1305,7 +1326,7 @@ tokens.
 The entire API is thread safe, but only a subset is interrupt safe.
 
 .. Note::
-   If there is only a single consuming thread, we recommend using a
+   If there is only a single consuming thread, use a
    :cpp:class:`ThreadNotification` instead which can be much more efficient on
    some RTOSes such as FreeRTOS.
 
@@ -1444,9 +1465,9 @@ tokens.
 The entire API is thread safe, but only a subset is interrupt safe.
 
 .. Note::
-   If there is only a single consuming thread, we recommend using a
-   ThreadNotification instead which can be much more efficient on some RTOSes
-   such as FreeRTOS.
+   If there is only a single consuming thread, use a
+   :cpp:class:`ThreadNotification` instead which can be much more efficient on
+   some RTOSes such as FreeRTOS.
 
 .. list-table::
    :header-rows: 1
@@ -1553,3 +1574,10 @@ implementation that provides semantics and an API very similar to
 `std::condition_variable
 <https://en.cppreference.com/w/cpp/thread/condition_variable>`_ in the C++
 Standard Library.
+
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Backends <backends>

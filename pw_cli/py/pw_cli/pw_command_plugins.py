@@ -14,14 +14,14 @@
 """This module manages the global plugin registry for pw_cli."""
 
 import argparse
-import os
 from pathlib import Path
 import sys
 from typing import Iterable
 
-from pw_cli import arguments, plugins
+from pw_cli import arguments, env, plugins
+import pw_env_setup.config_file
 
-_plugin_registry = plugins.Registry(validator=plugins.callable_with_no_args)
+plugin_registry = plugins.Registry(validator=plugins.callable_with_no_args)
 REGISTRY_FILE = 'PW_PLUGINS'
 
 
@@ -31,6 +31,10 @@ def _register_builtin_plugins(registry: plugins.Registry) -> None:
     # Register these by name to avoid circular dependencies.
     registry.register_by_name('bloat', 'pw_bloat.__main__', 'main')
     registry.register_by_name('doctor', 'pw_doctor.doctor', 'main')
+    registry.register_by_name('emu', 'pw_emu.__main__', 'main')
+    registry.register_by_name(
+        'clang-tidy-fix', 'pw_toolchain.clang_apply_replacements', 'main'
+    )
     registry.register_by_name('format', 'pw_presubmit.format_code', 'main')
     registry.register_by_name('keep-sorted', 'pw_presubmit.keep_sorted', 'main')
     registry.register_by_name('logdemo', 'pw_cli.log', 'main')
@@ -54,26 +58,33 @@ def _help_command():
         help='command for which to display detailed info',
     )
 
-    print(arguments.format_help(_plugin_registry), file=sys.stderr)
+    print(arguments.format_help(plugin_registry), file=sys.stderr)
 
-    for line in _plugin_registry.detailed_help(**vars(parser.parse_args())):
+    for line in plugin_registry.detailed_help(**vars(parser.parse_args())):
         print(line, file=sys.stderr)
 
 
-def register(directory: Path) -> None:
-    _register_builtin_plugins(_plugin_registry)
-    _plugin_registry.register_directory(
-        directory, REGISTRY_FILE, Path(os.environ.get('PW_PROJECT_ROOT', ''))
-    )
+def register() -> None:
+    _register_builtin_plugins(plugin_registry)
+    parsed_env = env.pigweed_environment()
+    pw_plugins_file: Path = parsed_env.PW_PROJECT_ROOT / REGISTRY_FILE
+
+    if pw_plugins_file.is_file():
+        plugin_registry.register_file(pw_plugins_file)
+    else:
+        plugin_registry.register_config(
+            config=pw_env_setup.config_file.load(),
+            path=pw_env_setup.config_file.path(),
+        )
 
 
 def errors() -> dict:
-    return _plugin_registry.errors()
+    return plugin_registry.errors()
 
 
 def format_help() -> str:
-    return arguments.format_help(_plugin_registry)
+    return arguments.format_help(plugin_registry)
 
 
 def run(name: str, args: Iterable[str]) -> int:
-    return _plugin_registry.run_with_argv(name, args)
+    return plugin_registry.run_with_argv(name, args)

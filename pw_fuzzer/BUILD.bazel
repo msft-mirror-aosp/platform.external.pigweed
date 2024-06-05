@@ -12,17 +12,71 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
-    name = "pw_fuzzer",
+################################################################################
+# FuzzTest support
+#
+# Create FuzzTest-style fuzzers by adding a dep on //pw_fuzzer:fuzztest
+
+# Identifies when upstream FuzzTest is being used.
+config_setting(
+    name = "use_fuzztest",
+    testonly = True,
+    flag_values = {
+        "@pigweed//pw_fuzzer:fuzztest_backend": "@com_google_fuzztest//fuzztest:fuzztest_core",
+    },
+)
+
+cc_library(
+    name = "fuzztest",
+    testonly = True,
+    hdrs = ["public/pw_fuzzer/fuzztest.h"] + select({
+        ":use_fuzztest": ["private/pw_fuzzer/internal/fuzztest.h"],
+        "//conditions:default": [],
+    }),
+    includes = ["public"] + select({
+        ":use_fuzztest": ["private"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":fuzztest_backend",
+        "//pw_containers",
+        "//pw_result",
+        "//pw_status",
+        "//pw_string",
+    ],
+)
+
+label_flag(
+    name = "fuzztest_backend",
+    build_setting_default = ":fuzztest_stub",
+)
+
+cc_library(
+    name = "fuzztest_stub",
+    testonly = True,
+    hdrs = [
+        "private_overrides/pw_fuzzer/internal/fuzztest.h",
+        "public_overrides/fuzztest/fuzztest.h",
+    ],
+    includes = [
+        "private_overrides",
+        "public_overrides",
+    ],
+    deps = ["//pw_unit_test"],
+)
+
+################################################################################
+# libFuzzer support
+#
+# Create libFuzzer-style fuzzers by using the `pw_fuzzer` template from
+# fuzzer.gni.
+
+cc_library(
+    name = "libfuzzer",
     hdrs = [
         "public/pw_fuzzer/asan_interface.h",
         "public/pw_fuzzer/fuzzed_data_provider.h",

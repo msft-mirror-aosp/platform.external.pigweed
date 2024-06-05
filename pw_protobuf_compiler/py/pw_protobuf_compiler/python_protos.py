@@ -13,6 +13,8 @@
 # the License.
 """Tools for compiling and importing Python protos on the fly."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 import importlib.util
 import logging
@@ -23,24 +25,19 @@ import shlex
 import tempfile
 from types import ModuleType
 from typing import (
-    Dict,
     Generic,
     Iterable,
     Iterator,
-    List,
     NamedTuple,
-    Optional,
     Set,
-    Tuple,
     TypeVar,
-    Union,
 )
 
 try:
     # pylint: disable=wrong-import-position
     import black
 
-    black_mode: Optional[black.Mode] = black.Mode(string_normalization=False)
+    black_mode: black.Mode | None = black.Mode(string_normalization=False)
 
     # pylint: enable=wrong-import-position
 except ImportError:
@@ -49,28 +46,35 @@ except ImportError:
 
 _LOG = logging.getLogger(__name__)
 
-PathOrStr = Union[Path, str]
+
+def _find_protoc() -> str:
+    """Locates a protoc binary to use for compiling protos."""
+    if 'PROTOC' in os.environ:
+        return os.environ['PROTOC']
+
+    # Fallback is assuming `protoc` is on the system PATH.
+    return 'protoc'
 
 
 def compile_protos(
-    output_dir: PathOrStr,
-    proto_files: Iterable[PathOrStr],
-    includes: Iterable[PathOrStr] = (),
+    output_dir: Path | str,
+    proto_files: Iterable[Path | str],
+    includes: Iterable[Path | str] = (),
 ) -> None:
     """Compiles proto files for Python by invoking the protobuf compiler.
 
     Proto files not covered by one of the provided include paths will have their
     directory added as an include path.
     """
-    proto_paths: List[Path] = [Path(f).resolve() for f in proto_files]
+    proto_paths: list[Path] = [Path(f).resolve() for f in proto_files]
     include_paths: Set[Path] = set(Path(d).resolve() for d in includes)
 
     for path in proto_paths:
         if not any(include in path.parents for include in include_paths):
             include_paths.add(path.parent)
 
-    cmd: Tuple[PathOrStr, ...] = (
-        'protoc',
+    cmd: tuple[Path | str, ...] = (
+        _find_protoc(),
         '--experimental_allow_proto3_optional',
         '--python_out',
         os.path.abspath(output_dir),
@@ -98,7 +102,7 @@ def _import_module(name: str, path: str) -> ModuleType:
     return module
 
 
-def import_modules(directory: PathOrStr) -> Iterator:
+def import_modules(directory: Path | str) -> Iterator:
     """Imports modules in a directory and yields them."""
     parent = os.path.dirname(directory)
 
@@ -116,9 +120,9 @@ def import_modules(directory: PathOrStr) -> Iterator:
 
 
 def compile_and_import(
-    proto_files: Iterable[PathOrStr],
-    includes: Iterable[PathOrStr] = (),
-    output_dir: Optional[PathOrStr] = None,
+    proto_files: Iterable[Path | str],
+    includes: Iterable[Path | str] = (),
+    output_dir: Path | str | None = None,
 ) -> Iterator:
     """Compiles protos and imports their modules; yields the proto modules.
 
@@ -142,9 +146,9 @@ def compile_and_import(
 
 
 def compile_and_import_file(
-    proto_file: PathOrStr,
-    includes: Iterable[PathOrStr] = (),
-    output_dir: Optional[PathOrStr] = None,
+    proto_file: Path | str,
+    includes: Iterable[Path | str] = (),
+    output_dir: Path | str | None = None,
 ):
     """Compiles and imports the module for a single .proto file."""
     return next(iter(compile_and_import([proto_file], includes, output_dir)))
@@ -152,8 +156,8 @@ def compile_and_import_file(
 
 def compile_and_import_strings(
     contents: Iterable[str],
-    includes: Iterable[PathOrStr] = (),
-    output_dir: Optional[PathOrStr] = None,
+    includes: Iterable[Path | str] = (),
+    output_dir: Path | str | None = None,
 ) -> Iterator:
     """Compiles protos in one or more strings."""
 
@@ -180,11 +184,11 @@ class _NestedPackage(Generic[T]):
     """Facilitates navigating protobuf packages as attributes."""
 
     def __init__(self, package: str):
-        self._packages: Dict[str, _NestedPackage[T]] = {}
-        self._items: List[T] = []
+        self._packages: dict[str, _NestedPackage[T]] = {}
+        self._items: list[T] = []
         self._package = package
 
-    def _add_package(self, subpackage: str, package: '_NestedPackage') -> None:
+    def _add_package(self, subpackage: str, package: _NestedPackage) -> None:
         self._packages[subpackage] = package
 
     def _add_item(self, item) -> None:
@@ -204,7 +208,7 @@ class _NestedPackage(Generic[T]):
             f'Proto package "{self._package}" does not contain "{attr}"'
         )
 
-    def __getitem__(self, subpackage: str) -> '_NestedPackage[T]':
+    def __getitem__(self, subpackage: str) -> _NestedPackage[T]:
         """Support accessing nested packages by name."""
         result = self
 
@@ -213,7 +217,7 @@ class _NestedPackage(Generic[T]):
 
         return result
 
-    def __dir__(self) -> List[str]:
+    def __dir__(self) -> list[str]:
         """List subpackages and members of modules as attributes."""
         attributes = list(self._packages)
 
@@ -254,12 +258,12 @@ class _NestedPackage(Generic[T]):
 class Packages(NamedTuple):
     """Items in a protobuf package structure; returned from as_package."""
 
-    items_by_package: Dict[str, List]
+    items_by_package: dict[str, list]
     packages: _NestedPackage
 
 
 def as_packages(
-    items: Iterable[Tuple[str, T]], packages: Optional[Packages] = None
+    items: Iterable[tuple[str, T]], packages: Packages | None = None
 ) -> Packages:
     """Places items in a proto-style package structure navigable by attributes.
 
@@ -291,7 +295,7 @@ def as_packages(
     return packages
 
 
-PathOrModule = Union[str, Path, ModuleType]
+PathOrModule = str | Path | ModuleType
 
 
 class Library:
@@ -314,10 +318,10 @@ class Library:
     """
 
     @classmethod
-    def from_paths(cls, protos: Iterable[PathOrModule]) -> 'Library':
+    def from_paths(cls, protos: Iterable[str | Path | ModuleType]) -> Library:
         """Creates a Library from paths to proto files or proto modules."""
-        paths: List[PathOrStr] = []
-        modules: List[ModuleType] = []
+        paths: list[Path | str] = []
+        modules: list[ModuleType] = []
 
         for proto in protos:
             if isinstance(proto, (Path, str)):
@@ -333,9 +337,9 @@ class Library:
     def from_strings(
         cls,
         contents: Iterable[str],
-        includes: Iterable[PathOrStr] = (),
-        output_dir: Optional[PathOrStr] = None,
-    ) -> 'Library':
+        includes: Iterable[Path | str] = (),
+        output_dir: Path | str | None = None,
+    ) -> Library:
         """Creates a proto library from protos in the provided strings."""
         return cls(compile_and_import_strings(contents, includes, output_dir))
 

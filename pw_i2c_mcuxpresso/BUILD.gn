@@ -38,6 +38,38 @@ if (pw_third_party_mcuxpresso_SDK != "") {
     ]
     sources = [ "initiator.cc" ]
   }
+
+  pw_source_set("i3c_initiator") {
+    public_configs = [ ":default_config" ]
+    public = [
+      "public/pw_i2c_mcuxpresso/i3c_ccc.h",
+      "public/pw_i2c_mcuxpresso/i3c_initiator.h",
+    ]
+    public_deps = [
+      "$dir_pw_chrono:system_clock",
+      "$dir_pw_i2c:initiator",
+      "$dir_pw_status",
+      "$dir_pw_sync:interrupt_spin_lock",
+      "$dir_pw_sync:lock_annotations",
+      "$dir_pw_sync:mutex",
+      "$dir_pw_sync:timed_thread_notification",
+      "$pw_third_party_mcuxpresso_SDK",
+    ]
+    sources = [ "i3c_initiator.cc" ]
+  }
+}
+
+pw_test("initiator_test") {
+  enable_if =
+      pw_third_party_mcuxpresso_SDK == "//targets/mimxrt595_evk_freertos:sdk" &&
+      (pw_toolchain_SCOPE.name == "mimxrt595_evk_freertos_debug" ||
+       pw_toolchain_SCOPE.name == "mimxrt595_evk_freertos_size_optimized" ||
+       pw_toolchain_SCOPE.name == "mimxrt595_evk_freertos_speed_optimized")
+  sources = [ "initiator_test.cc" ]
+  deps = [
+    ":pw_i2c_mcuxpresso",
+    "//targets/mimxrt595_evk_freertos:sdk",
+  ]
 }
 
 pw_doc_group("docs") {
@@ -45,4 +77,5 @@ pw_doc_group("docs") {
 }
 
 pw_test_group("tests") {
+  tests = [ ":initiator_test" ]
 }

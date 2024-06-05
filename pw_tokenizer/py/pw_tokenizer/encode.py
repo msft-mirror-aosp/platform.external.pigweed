@@ -17,13 +17,14 @@ import argparse
 import base64
 import struct
 import sys
-from typing import Sequence, Union
+from typing import Sequence
 
 from pw_tokenizer import tokens
 
 _INT32_MAX = 2**31 - 1
 _UINT32_MAX = 2**32 - 1
-BASE64_PREFIX = '$'
+NESTED_TOKEN_PREFIX = '$'
+NESTED_TOKEN_BASE_PREFIX = '#'
 
 
 def _zig_zag_encode(value: int) -> int:
@@ -59,7 +60,7 @@ def _encode_string(arg: bytes) -> bytes:
     return struct.pack('B', size_byte) + arg[:127]
 
 
-def encode_args(*args: Union[int, float, bytes, str]) -> bytes:
+def encode_args(*args: int | float | bytes | str) -> bytes:
     """Encodes a list of arguments to their on-wire representation."""
 
     data = bytearray(b'')
@@ -84,7 +85,7 @@ def encode_args(*args: Union[int, float, bytes, str]) -> bytes:
 
 
 def encode_token_and_args(
-    token: int, *args: Union[int, float, bytes, str]
+    token: int, *args: int | float | bytes | str
 ) -> bytes:
     """Encodes a tokenized message given its token and arguments.
 

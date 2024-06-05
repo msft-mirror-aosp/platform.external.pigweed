@@ -13,11 +13,13 @@
 # the License.
 """Help window container class."""
 
+from __future__ import annotations
+
 import functools
 import importlib.resources
 import inspect
 import logging
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
@@ -99,16 +101,16 @@ class HelpWindow(ConditionalContainer):
 
     def __init__(
         self,
-        application: 'ConsoleApp',
+        application: ConsoleApp,
         preamble: str = '',
         additional_help_text: str = '',
         title: str = '',
         disable_ctrl_c: bool = False,
     ) -> None:
         # Dict containing key = section title and value = list of key bindings.
-        self.application: 'ConsoleApp' = application
+        self.application: ConsoleApp = application
         self.show_window: bool = False
-        self.help_text_sections: Dict[str, Dict] = {}
+        self.help_text_sections: dict[str, dict] = {}
         self._pane_title: str = title
         self.disable_ctrl_c = disable_ctrl_c
 
@@ -227,9 +229,7 @@ class HelpWindow(ConditionalContainer):
 
     def copy_all_text(self):
         """Copy all text in the Python input to the system clipboard."""
-        self.application.application.clipboard.set_text(
-            self.help_text_area.buffer.text
-        )
+        self.application.set_system_clipboard(self.help_text_area.buffer.text)
 
     def toggle_display(self):
         """Toggle visibility of this help window."""
@@ -304,7 +304,7 @@ class HelpWindow(ConditionalContainer):
         )
 
     def set_help_text(
-        self, text: str, lexer: Optional[PygmentsLexer] = None
+        self, text: str, lexer: PygmentsLexer | None = None
     ) -> None:
         self.help_text_area = self._create_help_text_area(
             lexer=lexer,
@@ -340,7 +340,7 @@ class HelpWindow(ConditionalContainer):
             text=self.help_text, cursor_position=0
         )
 
-    def add_custom_keybinds_help_text(self, section_name, key_bindings: Dict):
+    def add_custom_keybinds_help_text(self, section_name, key_bindings: dict):
         """Add hand written key_bindings."""
         self.help_text_sections[section_name] = key_bindings
 

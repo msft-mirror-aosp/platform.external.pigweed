@@ -1,105 +1,171 @@
 .. _module-pw_allocator:
 
-------------
+============
 pw_allocator
-------------
+============
+.. pigweed-module::
+   :name: pw_allocator
 
-This module provides various building blocks
-for a dynamic allocator. This is composed of the following parts:
+- **Flexible**: Simple interface makes it easy to inject specific behaviors.
+- **Safe**: Can detect memory corruption, e.g overflows and use-after-free.
+- **Measurable**: Pick what allocations you want to track and measure.
 
-- ``block``: An implementation of a linked list of memory blocks, supporting
-  splitting and merging of blocks.
-- ``freelist``: A freelist, suitable for fast lookups of available memory chunks
-  (i.e. ``block`` s).
+.. literalinclude:: examples/basic.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-basic-allocate]
+   :end-before: [pw_allocator-examples-basic-allocate]
 
-Heap Integrity Check
-====================
-The ``Block`` class provides two check functions:
+.. code-block:: cpp
 
-- ``bool Block::IsValid()``: Returns ``true`` is the given block is valid and
-  ``false`` otherwise.
-- ``void Block::CrashIfInvalid()``: Crash the program and output the reason why
-  the check fails using ``PW_DCHECK``.
+   // Any of these allocators can be passed to the routine above.
+   WithBuffer<LastFitBlockAllocator<uint32_t>, 0x1000> block_allocator;
+   LibCAllocator libc_allocator;
+   TrackingAllocator tracker(libc_allocator);
+   SynchronizedAllocator synced(*block_allocator);
 
-Heap Poisoning
-==============
 
-By default, this module disables heap poisoning since it requires extra space.
-User can enable heap poisoning by enabling the ``pw_allocator_POISON_HEAP``
-build arg.
+Dynamically allocate without giving up control! Pigweed's allocators let you
+easily combine allocator features for your needs, without extra code size or
+performance penalties for those you don't. Complex projects in particular can
+benefit from dynamic allocation through simplified code, improved memory usage,
+increased shared memory, and reduced large reservations.
 
-.. code:: sh
+**Want to allocate objects from specific memory like SRAM or PSRAM?**
 
-  $ gn args out
-  # Modify and save the args file to use heap poison.
-  pw_allocator_POISON_HEAP = true
+Use `dependency injection`_! Write your code to take
+:ref:`module-pw_allocator-api-allocator` parameters, and you can quickly and
+easily change where memory comes from or what additional features are provided
+simply by changing what allocator is passed:
 
-When heap poisoning is enabled, ``pw_allocator`` will add ``sizeof(void*)``
-bytes before and after the usable space of each ``Block``, and paint the space
-with a hard-coded randomized pattern. During each check, ``pw_allocator``
-will check if the painted space still remains the pattern, and return ``false``
-if the pattern is damaged.
+.. literalinclude:: examples/linker_sections.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-linker_sections-injection]
+   :end-before: [pw_allocator-examples-linker_sections-injection]
 
-Heap Visualizer
-===============
+Now you can easily allocate objects in the example above using SRAM, PSRAM, or
+both:
 
-Functionality
--------------
+.. literalinclude:: examples/linker_sections.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-linker_sections-placement]
+   :end-before: [pw_allocator-examples-linker_sections-placement]
 
-``pw_allocator`` supplies a pw command ``pw heap-viewer`` to help visualize
-the state of the heap at the end of a dump file. The heap is represented by
-ASCII characters, where each character represents 4 bytes in the heap.
+**Worried about forgetting to deallocate?**
 
-.. image:: doc_resources/pw_allocator_heap_visualizer_demo.png
+Use a smart pointer!
 
-Usage
------
+.. literalinclude:: examples/basic.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-basic-make_unique]
+   :end-before: [pw_allocator-examples-basic-make_unique]
 
-The heap visualizer can be launched from a shell using the Pigweed environment.
+**Want to know how much memory has been allocated?**
 
-.. code:: sh
+Pick the metrics you're interested in and track them with a
+:ref:`module-pw_allocator-api-tracking_allocator`:
 
-  $ pw heap-viewer --dump-file <directory of dump file> --heap-low-address
-  <hex address of heap lower address> --heap-high-address <hex address of heap
-  lower address> [options]
+.. literalinclude:: examples/metrics.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-metrics-custom_metrics1]
+   :end-before: [pw_allocator-examples-metrics-custom_metrics1]
 
-The required arguments are:
+.. literalinclude:: examples/metrics.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-metrics-custom_metrics2]
+   :end-before: [pw_allocator-examples-metrics-custom_metrics2]
 
-- ``--dump-file`` is the path of a file that contains ``malloc/free``
-  information. Each line in the dump file represents a ``malloc/free`` call.
-  ``malloc`` is represented as ``m <size> <memory address>`` and ``free`` is
-  represented as ``f <memory address>``. For example, a dump file should look
-  like:
+**Need to share the allocator with another thread or an interrupt handler?**
 
-  .. code:: sh
+Use a :ref:`module-pw_allocator-api-synchronized_allocator` with the lock of
+your choice:
 
-    m 20 0x20004450  # malloc 20 bytes, the pointer is 0x20004450
-    m 8 0x2000447c   # malloc 8 bytes, the pointer is 0x2000447c
-    f 0x2000447c     # free the pointer at 0x2000447c
-    ...
+.. literalinclude:: examples/spin_lock.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-spin_lock]
+   :end-before: [pw_allocator-examples-spin_lock]
 
-  Any line not formatted as the above will be ignored.
+.. tip:: Check out the :ref:`module-pw_allocator-guides` for even more code
+   samples!
 
-- ``--heap-low-address`` is the start of the heap. For example:
+--------------------
+Is it right for you?
+--------------------
+.. rst-class:: key-text
 
-  .. code:: sh
+Does your project need to use memory...
 
-    --heap-low-address 0x20004440
+- Without knowing exactly how much ahead of time?
+- From different backing storage, e.g. SRAM vs. PSRAM?
+- Across different tasks using a shared pool?
+- In multiple places, and you need to know how much each place is using?
 
-- ``--heap-high-address`` is the end of the heap. For example:
+If you answered "yes" to any of these questions, ``pw_allocator`` may be able to
+help! This module is designed to faciliate dynamic allocation for embedded
+projects that are sufficiently complex to make static allocation infeasible.
 
-  .. code:: sh
+Smaller projects may be able to enumerate their objects and preallocate any
+storage they may need on device when running, and may be subject to extremely
+tight memory constraints. In these cases, ``pw_allocator`` may add more costs in
+terms of code size, overhead, and performance than it provides benefits in terms
+of code simplicity and memory sharing.
 
-    --heap-high-address 0x20006040
+At the other extreme, larger projects may be built on platforms with rich
+operating system capabilities. On these platforms, the system and language
+runtime may already provide dynamic allocation and memory may be less
+constrained. In these cases, ``pw_allocator`` may not provide the same
+capabilities as the platform.
 
-Options include the following:
+Between these two is a range of complex projects on RTOSes and other platforms.
+These projects may benefit from using the
+:ref:`module-pw_allocator-api-allocator` interface and its implementations to
+manage memory.
 
-- ``--poison-enable``: If heap poisoning is enabled during the
-  allocation or not. The value is ``False`` if the option is not specified and
-  ``True`` otherwise.
+.. toctree::
+   :hidden:
+   :maxdepth: 1
 
-- ``--pointer-size <integer of pointer size>``: The size of a pointer on the
-  machine where ``malloc/free`` is called. The default value is ``4``.
+   guide
+   api
+   design
+   code_size
 
-Note, this module, and its documentation, is currently incomplete and
-experimental.
+.. grid:: 2
+
+   .. grid-item-card:: :octicon:`rocket` Guides
+      :link: module-pw_allocator-guides
+      :link-type: ref
+      :class-item: sales-pitch-cta-primary
+
+      Integrate pw_allocator into your project and learn common use cases
+
+   .. grid-item-card:: :octicon:`code-square` API reference
+      :link: module-pw_allocator-api
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Detailed description of the pw_allocator's API
+
+.. grid:: 2
+
+   .. grid-item-card:: :octicon:`code-square` Design & roadmap
+      :link: module-pw_allocator-design
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Learn why pw_allocator is designed the way it is, and upcoming plans
+
+   .. grid-item-card:: :octicon:`code-square` Code size analysis
+      :link: module-pw_allocator-size-reports
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Understand pw_allocator's code footprint and savings potential
+
+.. _dependency injection: https://en.wikipedia.org/wiki/Dependency_injection

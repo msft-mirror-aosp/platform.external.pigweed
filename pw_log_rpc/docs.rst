@@ -1,3 +1,5 @@
+:tocdepth: 4
+
 .. _module-pw_log_rpc:
 
 ==========
@@ -88,6 +90,32 @@ also be internal log readers, i.e. ``MultiSink::Drain``\s, attached to the
     pw_rpc-->computer[Computer];
     pw_rpc-->other_listener[Other log<br>listener];
 
+Relation to pw_log and pw_log_tokenized
+=======================================
+``pw_log_rpc`` is often used in combination with ``pw_log`` and
+``pw_log_tokenized``. The diagram below shows the order of execution after
+invoking a ``pw_log`` macro.
+
+.. mermaid::
+
+   flowchart TD
+     project["`**your project code**`"]
+     --> pw_log["`**pw_log**
+                  *facade*`"]
+     --> token_backend["`**pw_log_tokenized**
+                         *backend for pw_log*`"]
+     --> token_facade["`**pw_log_tokenized:handler**
+                        *facade*`"]
+     --> custom_backend["`**your custom code**
+                          *backend for pw_log_tokenized:handler*`"]
+     --> pw_log_rpc["`**pw_log_rpc**`"];
+
+* See :ref:`docs-module-structure-facades` for an explanation of facades and
+  backends.
+* See ``pw_log_tokenized_HandleLog()`` and ``pw_log_tokenized_HandleMessageVaList()``
+  in ``//pw_system/log_backend.cc`` for an example of how :ref:`module-pw_system`
+  implements ``your custom code (pw_log_tokenized backend)``.
+
 Components Overview
 ===================
 LogEntry and LogEntries
@@ -103,11 +131,17 @@ out if logs were dropped during transmission.
 RPC log service
 ---------------
 The ``LogService`` class is an RPC service that provides a way to request a log
-stream sent via RPC and configure log filters. Thus, it helps avoid using a
-different protocol for logs and RPCs over the same interface(s).
+stream sent via RPC and configure log filters. Thus, it helps avoid
+using a different protocol for logs and RPCs over the same interface(s).
 It requires a ``RpcLogDrainMap`` to assign stream writers and delegate the
 log stream flushing to the user's preferred method, as well as a ``FilterMap``
-to retrieve and modify filters.
+to retrieve and modify filters. The client may also stop streaming the logs by
+calling ``Cancel()`` or ``RequestCompletion()`` using the ``RawClientReader``
+interface. Note that ``Cancel()`` may lead to dropped logs. To prevent dropped
+logs use ``RequestCompletion()`` and enable :c:macro:`PW_RPC_COMPLETION_REQUEST_CALLBACK`
+e.g. ``-DPW_RPC_COMPLETION_REQUEST_CALLBACK=1``.
+If ``PW_RPC_COMPLETION_REQUEST_CALLBACK`` is not enabled, RequestCompletion()
+call will not stop the logging stream.
 
 RpcLogDrain
 -----------
@@ -318,27 +352,27 @@ main.cc
 =======
 .. code-block:: cpp
 
-  #include "foo/log.h"
-  #include "pw_log/log.h"
-  #include "pw_thread/detached_thread.h"
-  #include "pw_thread_stl/options.h"
+   #include "foo/log.h"
+   #include "pw_log/log.h"
+   #include "pw_thread/detached_thread.h"
+   #include "pw_thread_stl/options.h"
 
-  namespace {
+   namespace {
 
-  void RegisterServices() {
-    pw::rpc::system_server::Server().RegisterService(foo::log::log_service);
-    pw::rpc::system_server::Server().RegisterService(foo::log::filter_service);
-  }
-  }  // namespace
+   void RegisterServices() {
+     pw::rpc::system_server::Server().RegisterService(foo::log::log_service);
+     pw::rpc::system_server::Server().RegisterService(foo::log::filter_service);
+   }
+   }  // namespace
 
-  int main() {
-    PW_LOG_INFO("Deferred logging over RPC example");
-    pw::rpc::system_server::Init();
-    RegisterServices();
-    pw::thread::DetachedThread(pw::thread::stl::Options(), foo::log::log_thread);
-    pw::rpc::system_server::Start();
-    return 0;
-  }
+   int main() {
+     PW_LOG_INFO("Deferred logging over RPC example");
+     pw::rpc::system_server::Init();
+     RegisterServices();
+     pw::thread::DetachedThread(pw::thread::stl::Options(), foo::log::log_thread);
+     pw::rpc::system_server::Start();
+     return 0;
+   }
 
 foo/log.cc
 ==========
@@ -347,105 +381,125 @@ log drains and filters are set up.
 
 .. code-block:: cpp
 
-  #include "foo/log.h"
+   #include "foo/log.h"
 
-  #include <array>
-  #include <cstdint>
+   #include <array>
+   #include <cstdint>
 
-  #include "pw_chrono/system_clock.h"
-  #include "pw_log/proto_utils.h"
-  #include "pw_log_rpc/log_filter.h"
-  #include "pw_log_rpc/log_filter_map.h"
-  #include "pw_log_rpc/log_filter_service.h"
-  #include "pw_log_rpc/log_service.h"
-  #include "pw_log_rpc/rpc_log_drain.h"
-  #include "pw_log_rpc/rpc_log_drain_map.h"
-  #include "pw_log_rpc/rpc_log_drain_thread.h"
-  #include "pw_rpc_system_server/rpc_server.h"
-  #include "pw_sync/interrupt_spin_lock.h"
-  #include "pw_sync/lock_annotations.h"
-  #include "pw_sync/mutex.h"
+   #include "pw_chrono/system_clock.h"
+   #include "pw_log/proto_utils.h"
+   #include "pw_log_rpc/log_filter.h"
+   #include "pw_log_rpc/log_filter_map.h"
+   #include "pw_log_rpc/log_filter_service.h"
+   #include "pw_log_rpc/log_service.h"
+   #include "pw_log_rpc/rpc_log_drain.h"
+   #include "pw_log_rpc/rpc_log_drain_map.h"
+   #include "pw_log_rpc/rpc_log_drain_thread.h"
+   #include "pw_rpc_system_server/rpc_server.h"
+   #include "pw_sync/interrupt_spin_lock.h"
+   #include "pw_sync/lock_annotations.h"
+   #include "pw_sync/mutex.h"
 
-  namespace foo::log {
-  namespace {
-  constexpr size_t kLogBufferSize = 5000;
-  // Tokenized logs are typically 12-24 bytes.
-  constexpr size_t kMaxMessageSize = 32;
-  // kMaxLogEntrySize should be less than the MTU of the RPC channel output used
-  // by the provided server writer.
-  constexpr size_t kMaxLogEntrySize =
-      pw::log_rpc::RpcLogDrain::kMinEntrySizeWithoutPayload + kMaxMessageSize;
-  std::array<std::byte, kLogBufferSize> multisink_buffer;
+   namespace foo::log {
+   namespace {
+   constexpr size_t kLogBufferSize = 5000;
+   // Tokenized logs are typically 12-24 bytes.
+   constexpr size_t kMaxMessageSize = 32;
+   // kMaxLogEntrySize should be less than the MTU of the RPC channel output used
+   // by the provided server writer.
+   constexpr size_t kMaxLogEntrySize =
+       pw::log_rpc::RpcLogDrain::kMinEntrySizeWithoutPayload + kMaxMessageSize;
+   std::array<std::byte, kLogBufferSize> multisink_buffer;
 
-  // To save RAM, share the mutex, since drains will be managed sequentially.
-  pw::sync::Mutex shared_mutex;
-  std::array<std::byte, kMaxEntrySize> client1_buffer
-      PW_GUARDED_BY(shared_mutex);
-  std::array<std::byte, kMaxEntrySize> client2_buffer
-      PW_GUARDED_BY(shared_mutex);
-  std::array<pw::log_rpc::RpcLogDrain, 2> drains = {
-      pw::log_rpc::RpcLogDrain(
-          1,
-          client1_buffer,
-          shared_mutex,
-          RpcLogDrain::LogDrainErrorHandling::kIgnoreWriterErrors),
-      pw::log_rpc::RpcLogDrain(
-          2,
-          client2_buffer,
-          shared_mutex,
-          RpcLogDrain::LogDrainErrorHandling::kIgnoreWriterErrors),
-  };
+   // To save RAM, share the mutex, since drains will be managed sequentially.
+   pw::sync::Mutex shared_mutex;
+   std::array<std::byte, kMaxEntrySize> client1_buffer
+       PW_GUARDED_BY(shared_mutex);
+   std::array<std::byte, kMaxEntrySize> client2_buffer
+       PW_GUARDED_BY(shared_mutex);
+   std::array<pw::log_rpc::RpcLogDrain, 2> drains = {
+       pw::log_rpc::RpcLogDrain(
+           1,
+           client1_buffer,
+           shared_mutex,
+           RpcLogDrain::LogDrainErrorHandling::kIgnoreWriterErrors),
+       pw::log_rpc::RpcLogDrain(
+           2,
+           client2_buffer,
+           shared_mutex,
+           RpcLogDrain::LogDrainErrorHandling::kIgnoreWriterErrors),
+   };
 
-  pw::sync::InterruptSpinLock log_encode_lock;
-  std::array<std::byte, kMaxLogEntrySize> log_encode_buffer
-      PW_GUARDED_BY(log_encode_lock);
+   pw::sync::InterruptSpinLock log_encode_lock;
+   std::array<std::byte, kMaxLogEntrySize> log_encode_buffer
+       PW_GUARDED_BY(log_encode_lock);
 
-  std::array<Filter::Rule, 2> logs_to_host_filter_rules;
-  std::array<Filter::Rule, 2> logs_to_server_filter_rules{{
-      {
-          .action = Filter::Rule::Action::kKeep,
-          .level_greater_than_or_equal = pw::log::FilterRule::Level::INFO_LEVEL,
-      },
-      {
-          .action = Filter::Rule::Action::kDrop,
-      },
-  }};
-  std::array<Filter, 2> filters{
-      Filter(pw::as_bytes(pw::span("HOST", 4)), logs_to_host_filter_rules),
-      Filter(pw::as_bytes(pw::span("WEB", 3)), logs_to_server_filter_rules),
-  };
-  pw::log_rpc::FilterMap filter_map(filters);
+   std::array<Filter::Rule, 2> logs_to_host_filter_rules;
+   std::array<Filter::Rule, 2> logs_to_server_filter_rules{{
+       {
+           .action = Filter::Rule::Action::kKeep,
+           .level_greater_than_or_equal = pw::log::FilterRule::Level::INFO_LEVEL,
+       },
+       {
+           .action = Filter::Rule::Action::kDrop,
+       },
+   }};
+   std::array<Filter, 2> filters{
+       Filter(pw::as_bytes(pw::span("HOST", 4)), logs_to_host_filter_rules),
+       Filter(pw::as_bytes(pw::span("WEB", 3)), logs_to_server_filter_rules),
+   };
+   pw::log_rpc::FilterMap filter_map(filters);
 
-  extern "C" void pw_log_tokenized_HandleLog(
-      uint32_t metadata, const uint8_t message[], size_t size_bytes) {
-    int64_t timestamp =
-        pw::chrono::SystemClock::now().time_since_epoch().count();
-    std::lock_guard lock(log_encode_lock);
-    pw::Result<pw::ConstByteSpan> encoded_log_result =
-      pw::log::EncodeTokenizedLog(
-          metadata, message, size_bytes, timestamp, log_encode_buffer);
+   extern "C" void pw_log_tokenized_HandleLog(
+       uint32_t metadata, const uint8_t message[], size_t size_bytes) {
+     int64_t timestamp =
+         pw::chrono::SystemClock::now().time_since_epoch().count();
+     std::lock_guard lock(log_encode_lock);
+     pw::Result<pw::ConstByteSpan> encoded_log_result =
+       pw::log::EncodeTokenizedLog(
+           metadata, message, size_bytes, timestamp, log_encode_buffer);
 
-    if (!encoded_log_result.ok()) {
-      GetMultiSink().HandleDropped();
-      return;
-    }
-    GetMultiSink().HandleEntry(encoded_log_result.value());
-  }
-  }  // namespace
+     if (!encoded_log_result.ok()) {
+       GetMultiSink().HandleDropped();
+       return;
+     }
+     GetMultiSink().HandleEntry(encoded_log_result.value());
+   }
+   }  // namespace
 
-  pw::log_rpc::RpcLogDrainMap drain_map(drains);
-  pw::log_rpc::RpcLogDrainThread log_thread(GetMultiSink(), drain_map);
-  pw::log_rpc::LogService log_service(drain_map);
-  pw::log_rpc::FilterService filter_service(filter_map);
+   pw::log_rpc::RpcLogDrainMap drain_map(drains);
+   pw::log_rpc::RpcLogDrainThread log_thread(GetMultiSink(), drain_map);
+   pw::log_rpc::LogService log_service(drain_map);
+   pw::log_rpc::FilterService filter_service(filter_map);
 
-  pw::multisink::MultiSink& GetMultiSink() {
-    static pw::multisink::MultiSink multisink(multisink_buffer);
-    return multisink;
-  }
-  }  // namespace foo::log
+   pw::multisink::MultiSink& GetMultiSink() {
+     static pw::multisink::MultiSink multisink(multisink_buffer);
+     return multisink;
+   }
+   }  // namespace foo::log
 
 Logging in other source files
 -----------------------------
 To defer logging, other source files must simply include ``pw_log/log.h`` and
 use the :ref:`module-pw_log` APIs, as long as the source set that includes
 ``foo/log.cc`` is setup as the log backend.
+
+--------------------
+pw_log_rpc in Python
+--------------------
+``pw_log_rpc`` provides client utilities for dealing with RPC logging.
+
+The ``LogStreamHandler`` offers APIs to start a log stream:``listen_to_logs``,
+to handle RPC stream errors: ``handle_log_stream_error``, and RPC stream
+completed events: ``handle_log_stream_completed``. It uses a provided
+``LogStreamDecoder`` to delegate log parsing to.
+
+Python API
+==========
+
+pw_log_rpc.rpc_log_stream
+-------------------------
+.. automodule:: pw_log_rpc.rpc_log_stream
+    :members: LogStreamHandler
+    :undoc-members:
+    :show-inheritance:

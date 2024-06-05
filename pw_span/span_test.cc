@@ -33,8 +33,8 @@
 #include <type_traits>
 #include <vector>
 
-#include "gtest/gtest.h"
 #include "pw_polyfill/standard.h"
+#include "pw_unit_test/framework.h"
 
 // Pigweed: gMock matchers are not yet supported.
 #if 0
@@ -208,7 +208,7 @@ TEST(SpanTest, DeductionGuides_FromReference) {
 
 TEST(SpanTest, DeductionGuides_FromConstReference) {
   std::string_view string = "yo!";
-  const std::string_view& string_ref = string;
+  const std::string_view string_ref = string;
 
   auto the_span = span(string_ref);
   static_assert(the_span.extent == dynamic_extent);

@@ -24,21 +24,16 @@ import sys
 from typing import (
     Callable,
     Collection,
-    Dict,
-    List,
-    Optional,
     Pattern,
     Sequence,
-    Tuple,
-    Union,
 )
 
 import pw_cli
-from . import cli, format_code, git_repo, presubmit, tools
+from pw_cli.plural import plural
+from . import cli, git_repo, presubmit, presubmit_context, tools
 
 DEFAULT_PATH = Path('out', 'presubmit', 'keep_sorted')
 
-_COLOR = pw_cli.color.colors()
 _LOG: logging.Logger = logging.getLogger(__name__)
 
 # Ignore a whole section. Please do not change the order of these lines.
@@ -62,7 +57,7 @@ keep-sorted: end
 
 @dataclasses.dataclass
 class KeepSortedContext:
-    paths: List[Path]
+    paths: list[Path]
     fix: bool
     output_dir: Path
     failure_summary_log: Path
@@ -71,8 +66,8 @@ class KeepSortedContext:
     def fail(
         self,
         description: str = '',
-        path: Optional[Path] = None,
-        line: Optional[int] = None,
+        path: Path | None = None,
+        line: int | None = None,
     ) -> None:
         if not self.fix:
             self.failed = True
@@ -118,36 +113,36 @@ class _Block:
     ignore_case: bool = False
     allow_dupes: bool = False
     ignored_prefixes: Sequence[str] = dataclasses.field(default_factory=list)
-    sticky_comments: Tuple[str, ...] = ()
+    sticky_comments: tuple[str, ...] = ()
     start_line_number: int = -1
     start_line: str = ''
     end_line: str = ''
-    lines: List[str] = dataclasses.field(default_factory=list)
+    lines: list[str] = dataclasses.field(default_factory=list)
 
 
 class _FileSorter:
     def __init__(
         self,
-        ctx: Union[presubmit.PresubmitContext, KeepSortedContext],
+        ctx: presubmit.PresubmitContext | KeepSortedContext,
         path: Path,
-        errors: Optional[Dict[Path, Sequence[str]]] = None,
+        errors: dict[Path, Sequence[str]] | None = None,
     ):
         self.ctx = ctx
         self.path: Path = path
-        self.all_lines: List[str] = []
+        self.all_lines: list[str] = []
         self.changed: bool = False
-        self._errors: Dict[Path, Sequence[str]] = {}
+        self._errors: dict[Path, Sequence[str]] = {}
         if errors is not None:
             self._errors = errors
 
     def _process_block(self, block: _Block) -> Sequence[str]:
-        raw_lines: List[str] = block.lines
-        lines: List[_Line] = []
+        raw_lines: list[str] = block.lines
+        lines: list[_Line] = []
 
         prefix = lambda x: len(x) - len(x.lstrip())
 
-        prev_prefix: Optional[int] = None
-        comments: List[str] = []
+        prev_prefix: int | None = None
+        comments: list[str] = []
         for raw_line in raw_lines:
             curr_prefix: int = prefix(raw_line)
             _LOG.debug('prev_prefix %r', prev_prefix)
@@ -182,8 +177,8 @@ class _FileSorter:
         if not block.allow_dupes:
             lines = list({x.full: x for x in lines}.values())
 
-        StrLinePair = Tuple[str, _Line]
-        sort_key_funcs: List[Callable[[StrLinePair], StrLinePair]] = []
+        StrLinePair = tuple[str, _Line]  # pylint: disable=invalid-name
+        sort_key_funcs: list[Callable[[StrLinePair], StrLinePair]] = []
 
         if block.ignored_prefixes:
 
@@ -211,7 +206,7 @@ class _FileSorter:
             _LOG.debug('For sorting: %r => %r', val, sort_key(val))
 
         sorted_lines = sorted(lines, key=sort_key)
-        raw_sorted_lines: List[str] = []
+        raw_sorted_lines: list[str] = []
         for line in sorted_lines:
             raw_sorted_lines.extend(line.sticky_comments)
             raw_sorted_lines.append(line.value)
@@ -232,7 +227,7 @@ class _FileSorter:
         return raw_sorted_lines
 
     def _parse_file(self, ins):
-        block: Optional[_Block] = None
+        block: _Block | None = None
 
         for i, line in enumerate(ins, start=1):
             if block:
@@ -330,7 +325,7 @@ class _FileSorter:
             # File is not text, like a gif.
             _LOG.debug('File %s is not a text file', self.path)
 
-    def write(self, path: Optional[Path] = None) -> None:
+    def write(self, path: Path | None = None) -> None:
         if not self.changed:
             return
         if not path:
@@ -354,10 +349,10 @@ def _print_howto_fix(paths: Sequence[Path]) -> None:
 
 
 def _process_files(
-    ctx: Union[presubmit.PresubmitContext, KeepSortedContext]
-) -> Dict[Path, Sequence[str]]:
+    ctx: presubmit.PresubmitContext | KeepSortedContext,
+) -> dict[Path, Sequence[str]]:
     fix = getattr(ctx, 'fix', False)
-    errors: Dict[Path, Sequence[str]] = {}
+    errors: dict[Path, Sequence[str]] = {}
 
     for path in ctx.paths:
         if path.is_symlink() or path.is_dir():
@@ -377,7 +372,7 @@ def _process_files(
     if not errors:
         return errors
 
-    ctx.fail(f'Found {len(errors)} files with keep-sorted errors:')
+    ctx.fail(f'Found {plural(errors, "file")} with keep-sorted errors:')
 
     with ctx.failure_summary_log.open('w') as outs:
         for path, diffs in errors.items():
@@ -390,7 +385,7 @@ def _process_files(
             )
 
             outs.write(diff)
-            print(format_code.colorize_diff(diff))
+            print(tools.colorize_diff(diff))
 
     return errors
 
@@ -399,6 +394,7 @@ def _process_files(
 def presubmit_check(ctx: presubmit.PresubmitContext) -> None:
     """Presubmit check that ensures specified lists remain sorted."""
 
+    ctx.paths = presubmit_context.apply_exclusions(ctx)
     errors = _process_files(ctx)
 
     if errors:
@@ -424,11 +420,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def keep_sorted_in_repo(
-    paths: Collection[Union[Path, str]],
+    paths: Collection[Path | str],
     fix: bool,
     exclude: Collection[Pattern[str]],
     base: str,
-    output_directory: Optional[Path],
+    output_directory: Path | None,
 ) -> int:
     """Checks or fixes keep-sorted blocks for files in a Git repo."""
 

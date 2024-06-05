@@ -28,7 +28,6 @@ import shlex
 import subprocess
 import sys
 import time
-from typing import List, Optional, Tuple
 
 try:
     from pw_build import gn_resolver
@@ -41,7 +40,7 @@ except (ImportError, ModuleNotFoundError):
 if sys.platform != 'win32':
     import fcntl  # pylint: disable=import-error
 
-    # TODO(b/227670947): Support Windows.
+    # TODO: b/227670947 - Support Windows.
 
 _LOG = logging.getLogger(__name__)
 _LOCK_ACQUISITION_TIMEOUT = 30 * 60  # 30 minutes in seconds
@@ -145,13 +144,15 @@ def acquire_lock(lockfile: Path, exclusive: bool):
     """
     if sys.platform == 'win32':
         # No-op on Windows, which doesn't have POSIX file locking.
-        # TODO(b/227670947): Get this working on Windows, too.
+        # TODO: b/227670947 - Get this working on Windows, too.
         return
 
     start_time = time.monotonic()
     if exclusive:
+        # pylint: disable-next=used-before-assignment
         lock_type = fcntl.LOCK_EX  # type: ignore[name-defined]
     else:
+        # pylint: disable-next=used-before-assignment
         lock_type = fcntl.LOCK_SH  # type: ignore[name-defined]
     fd = os.open(lockfile, os.O_RDWR | os.O_CREAT)
 
@@ -165,9 +166,11 @@ def acquire_lock(lockfile: Path, exclusive: bool):
     backoff = 1
     while time.monotonic() - start_time < _LOCK_ACQUISITION_TIMEOUT:
         try:
+            # pylint: disable=used-before-assignment
             fcntl.flock(  # type: ignore[name-defined]
                 fd, lock_type | fcntl.LOCK_NB  # type: ignore[name-defined]
             )
+            # pylint: enable=used-before-assignment
             return  # Lock acquired!
         except BlockingIOError:
             pass  # Keep waiting.
@@ -184,7 +187,7 @@ class MissingPythonDependency(Exception):
     """An error occurred while processing a Python dependency."""
 
 
-def _load_virtualenv_config(json_file_path: Path) -> Tuple[str, str]:
+def _load_virtualenv_config(json_file_path: Path) -> tuple[str, str]:
     with json_file_path.open() as json_fp:
         json_dict = json.load(json_fp)
     return json_dict.get('interpreter'), json_dict.get('path')
@@ -193,18 +196,18 @@ def _load_virtualenv_config(json_file_path: Path) -> Tuple[str, str]:
 def main(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals
     gn_root: Path,
     current_path: Path,
-    original_cmd: List[str],
+    original_cmd: list[str],
     default_toolchain: str,
     current_toolchain: str,
-    module: Optional[str],
-    env: Optional[List[str]],
-    python_dep_list_files: List[Path],
-    python_virtualenv_config: Optional[Path],
+    module: str | None,
+    env: list[str] | None,
+    python_dep_list_files: list[Path],
+    python_virtualenv_config: Path | None,
     capture_output: bool,
-    touch: Optional[Path],
-    working_directory: Optional[Path],
-    command_launcher: Optional[str],
-    lockfile: Optional[Path],
+    touch: Path | None,
+    working_directory: Path | None,
+    command_launcher: str | None,
+    lockfile: Path | None,
 ) -> int:
     """Script entry point."""
 
@@ -337,7 +340,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-branches,too-many-local
     if working_directory:
         run_args['cwd'] = working_directory
 
-    # TODO(b/235239674): Deprecate the --lockfile option as part of the Python
+    # TODO: b/235239674 - Deprecate the --lockfile option as part of the Python
     # GN template refactor.
     if lockfile:
         try:

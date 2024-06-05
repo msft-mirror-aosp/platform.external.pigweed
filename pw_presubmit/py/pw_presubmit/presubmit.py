@@ -51,36 +51,38 @@ import logging
 import os
 from pathlib import Path
 import re
-import shutil
 import signal
 import subprocess
 import sys
-import tempfile as tf
+import tempfile
 import time
 import types
 from typing import (
     Any,
     Callable,
     Collection,
-    Dict,
     Iterable,
     Iterator,
-    List,
-    Optional,
     Pattern,
     Sequence,
     Set,
-    Tuple,
-    Union,
 )
-import urllib
 
 import pw_cli.color
 import pw_cli.env
-import pw_env_setup.config_file
+from pw_cli.plural import plural
+from pw_cli.file_filter import FileFilter
 from pw_package import package_manager
 from pw_presubmit import git_repo, tools
-from pw_presubmit.tools import plural
+from pw_presubmit.presubmit_context import (
+    FormatContext,
+    FormatOptions,
+    LuciContext,
+    PRESUBMIT_CONTEXT,
+    PresubmitContext,
+    PresubmitFailure,
+    log_check_traces,
+)
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
@@ -119,23 +121,6 @@ def _box(style, left, middle, right, box=tools.make_box('><>')) -> str:
         section3=right + ' ',
         width3=_RIGHT,
     )
-
-
-class PresubmitFailure(Exception):
-    """Optional exception to use for presubmit failures."""
-
-    def __init__(
-        self,
-        description: str = '',
-        path: Optional[Path] = None,
-        line: Optional[int] = None,
-    ):
-        line_part: str = ''
-        if line is not None:
-            line_part = f'{line}:'
-        super().__init__(
-            f'{path}:{line_part} {description}' if path else description
-        )
 
 
 class PresubmitResult(enum.Enum):
@@ -197,11 +182,11 @@ class Programs(collections.abc.Mapping):
         A program is a sequence of presubmit check functions. The sequence may
         contain nested sequences, which are flattened.
         """
-        self._programs: Dict[str, Program] = {
+        self._programs: dict[str, Program] = {
             name: Program(name, checks) for name, checks in programs.items()
         }
 
-    def all_steps(self) -> Dict[str, Check]:
+    def all_steps(self) -> dict[str, Check]:
         return {c.name: c for c in itertools.chain(*self.values())}
 
     def __getitem__(self, item: str) -> Program:
@@ -212,66 +197,6 @@ class Programs(collections.abc.Mapping):
 
     def __len__(self) -> int:
         return len(self._programs)
-
-
-@dataclasses.dataclass(frozen=True)
-class FormatOptions:
-    python_formatter: Optional[str] = 'yapf'
-    black_path: Optional[str] = 'black'
-
-    # TODO(b/264578594) Add exclude to pigweed.json file.
-    # exclude: Sequence[re.Pattern] = dataclasses.field(default_factory=list)
-
-    @staticmethod
-    def load() -> 'FormatOptions':
-        config = pw_env_setup.config_file.load()
-        fmt = config.get('pw', {}).get('pw_presubmit', {}).get('format', {})
-        return FormatOptions(
-            python_formatter=fmt.get('python_formatter', 'yapf'),
-            black_path=fmt.get('black_path', 'black'),
-            # exclude=tuple(re.compile(x) for x in fmt.get('exclude', ())),
-        )
-
-
-@dataclasses.dataclass
-class LuciPipeline:
-    round: int
-    builds_from_previous_iteration: Sequence[str]
-
-    @staticmethod
-    def create(
-        bbid: int,
-        fake_pipeline_props: Optional[Dict[str, Any]] = None,
-    ) -> Optional['LuciPipeline']:
-        pipeline_props: Dict[str, Any]
-        if fake_pipeline_props is not None:
-            pipeline_props = fake_pipeline_props
-        else:
-            pipeline_props = (
-                get_buildbucket_info(bbid)
-                .get('input', {})
-                .get('properties', {})
-                .get('$pigweed/pipeline', {})
-            )
-        if not pipeline_props.get('inside_a_pipeline', False):
-            return None
-
-        return LuciPipeline(
-            round=int(pipeline_props['round']),
-            builds_from_previous_iteration=list(
-                pipeline_props['builds_from_previous_iteration']
-            ),
-        )
-
-
-def get_buildbucket_info(bbid) -> Dict[str, Any]:
-    if not bbid or not shutil.which('bb'):
-        return {}
-
-    output = subprocess.check_output(
-        ['bb', 'get', '-json', '-p', f'{bbid}'], text=True
-    )
-    return json.loads(output)
 
 
 def download_cas_artifact(
@@ -305,7 +230,7 @@ def download_cas_artifact(
 
 
 def archive_cas_artifact(
-    ctx: PresubmitContext, root: str, upload_paths: List[str]
+    ctx: PresubmitContext, root: str, upload_paths: list[str]
 ) -> str:
     """Uploads the given artifacts into cas
 
@@ -327,8 +252,8 @@ def archive_cas_artifact(
     for path in upload_paths:
         assert os.path.abspath(path)
 
-    with tf.NamedTemporaryFile(mode='w+t') as tmp_digest_file:
-        with tf.NamedTemporaryFile(mode='w+t') as tmp_paths_file:
+    with tempfile.NamedTemporaryFile(mode='w+t') as tmp_digest_file:
+        with tempfile.NamedTemporaryFile(mode='w+t') as tmp_paths_file:
             json_paths = json.dumps(
                 [
                     [str(root), str(os.path.relpath(path, root))]
@@ -357,334 +282,6 @@ def archive_cas_artifact(
             return uploaded_digest
 
 
-@dataclasses.dataclass
-class LuciTrigger:
-    """Details the pending change or submitted commit triggering the build."""
-
-    number: int
-    remote: str
-    branch: str
-    ref: str
-    gerrit_name: str
-    submitted: bool
-
-    @property
-    def gerrit_url(self):
-        if not self.number:
-            return self.gitiles_url
-        return 'https://{}-review.googlesource.com/c/{}'.format(
-            self.gerrit_name, self.number
-        )
-
-    @property
-    def gitiles_url(self):
-        return '{}/+/{}'.format(self.remote, self.ref)
-
-    @staticmethod
-    def create_from_environment(
-        env: Optional[Dict[str, str]] = None,
-    ) -> Sequence['LuciTrigger']:
-        if not env:
-            env = os.environ.copy()
-        raw_path = env.get('TRIGGERING_CHANGES_JSON')
-        if not raw_path:
-            return ()
-        path = Path(raw_path)
-        if not path.is_file():
-            return ()
-
-        result = []
-        with open(path, 'r') as ins:
-            for trigger in json.load(ins):
-                keys = {
-                    'number',
-                    'remote',
-                    'branch',
-                    'ref',
-                    'gerrit_name',
-                    'submitted',
-                }
-                if keys <= trigger.keys():
-                    result.append(LuciTrigger(**{x: trigger[x] for x in keys}))
-
-        return tuple(result)
-
-    @staticmethod
-    def create_for_testing():
-        change = {
-            'number': 123456,
-            'remote': 'https://pigweed.googlesource.com/pigweed/pigweed',
-            'branch': 'main',
-            'ref': 'refs/changes/56/123456/1',
-            'gerrit_name': 'pigweed',
-            'submitted': True,
-        }
-        with tf.TemporaryDirectory() as tempdir:
-            changes_json = Path(tempdir) / 'changes.json'
-            with changes_json.open('w') as outs:
-                json.dump([change], outs)
-            env = {'TRIGGERING_CHANGES_JSON': changes_json}
-            return LuciTrigger.create_from_environment(env)
-
-
-@dataclasses.dataclass
-class LuciContext:
-    """LUCI-specific information about the environment."""
-
-    buildbucket_id: int
-    build_number: int
-    project: str
-    bucket: str
-    builder: str
-    swarming_server: str
-    swarming_task_id: str
-    cas_instance: str
-    pipeline: Optional[LuciPipeline]
-    triggers: Sequence[LuciTrigger] = dataclasses.field(default_factory=tuple)
-
-    @staticmethod
-    def create_from_environment(
-        env: Optional[Dict[str, str]] = None,
-        fake_pipeline_props: Optional[Dict[str, Any]] = None,
-    ) -> Optional['LuciContext']:
-        """Create a LuciContext from the environment."""
-
-        if not env:
-            env = os.environ.copy()
-
-        luci_vars = [
-            'BUILDBUCKET_ID',
-            'BUILDBUCKET_NAME',
-            'BUILD_NUMBER',
-            'SWARMING_TASK_ID',
-            'SWARMING_SERVER',
-        ]
-        if any(x for x in luci_vars if x not in env):
-            return None
-
-        project, bucket, builder = env['BUILDBUCKET_NAME'].split(':')
-
-        bbid: int = 0
-        pipeline: Optional[LuciPipeline] = None
-        try:
-            bbid = int(env['BUILDBUCKET_ID'])
-            pipeline = LuciPipeline.create(bbid, fake_pipeline_props)
-
-        except ValueError:
-            pass
-
-        # Logic to identify cas instance from swarming server is derived from
-        # https://chromium.googlesource.com/infra/luci/recipes-py/+/main/recipe_modules/cas/api.py
-        swarm_server = env['SWARMING_SERVER']
-        cas_project = urllib.parse.urlparse(swarm_server).netloc.split('.')[0]
-        cas_instance = f'projects/{cas_project}/instances/default_instance'
-
-        result = LuciContext(
-            buildbucket_id=bbid,
-            build_number=int(env['BUILD_NUMBER']),
-            project=project,
-            bucket=bucket,
-            builder=builder,
-            swarming_server=env['SWARMING_SERVER'],
-            swarming_task_id=env['SWARMING_TASK_ID'],
-            cas_instance=cas_instance,
-            pipeline=pipeline,
-            triggers=LuciTrigger.create_from_environment(env),
-        )
-        _LOG.debug('%r', result)
-        return result
-
-    @staticmethod
-    def create_for_testing():
-        env = {
-            'BUILDBUCKET_ID': '881234567890',
-            'BUILDBUCKET_NAME': 'pigweed:bucket.try:builder-name',
-            'BUILD_NUMBER': '123',
-            'SWARMING_SERVER': 'https://chromium-swarm.appspot.com',
-            'SWARMING_TASK_ID': 'cd2dac62d2',
-        }
-        return LuciContext.create_from_environment(env, {})
-
-
-@dataclasses.dataclass
-class FormatContext:
-    """Context passed into formatting helpers.
-
-    This class is a subset of PresubmitContext containing only what's needed by
-    formatters.
-
-    For full documentation on the members see the PresubmitContext section of
-    pw_presubmit/docs.rst.
-
-    Args:
-        root: Source checkout root directory
-        output_dir: Output directory for this specific language
-        paths: Modified files for the presubmit step to check (often used in
-            formatting steps but ignored in compile steps)
-        package_root: Root directory for pw package installations
-        format_options: Formatting options, derived from pigweed.json
-    """
-
-    root: Optional[Path]
-    output_dir: Path
-    paths: Tuple[Path, ...]
-    package_root: Path
-    format_options: FormatOptions
-
-
-@dataclasses.dataclass
-class PresubmitContext:  # pylint: disable=too-many-instance-attributes
-    """Context passed into presubmit checks.
-
-    For full documentation on the members see pw_presubmit/docs.rst.
-
-    Args:
-        root: Source checkout root directory
-        repos: Repositories (top-level and submodules) processed by
-            pw presubmit
-        output_dir: Output directory for this specific presubmit step
-        failure_summary_log: Path where steps should write a brief summary of
-            any failures encountered for use by other tooling.
-        paths: Modified files for the presubmit step to check (often used in
-            formatting steps but ignored in compile steps)
-        all_paths: All files in the tree.
-        package_root: Root directory for pw package installations
-        override_gn_args: Additional GN args processed by build.gn_gen()
-        luci: Information about the LUCI build or None if not running in LUCI
-        format_options: Formatting options, derived from pigweed.json
-        num_jobs: Number of jobs to run in parallel
-        continue_after_build_error: For steps that compile, don't exit on the
-            first compilation error
-    """
-
-    root: Path
-    repos: Tuple[Path, ...]
-    output_dir: Path
-    failure_summary_log: Path
-    paths: Tuple[Path, ...]
-    all_paths: Tuple[Path, ...]
-    package_root: Path
-    luci: Optional[LuciContext]
-    override_gn_args: Dict[str, str]
-    format_options: FormatOptions
-    num_jobs: Optional[int] = None
-    continue_after_build_error: bool = False
-    _failed: bool = False
-
-    @property
-    def failed(self) -> bool:
-        return self._failed
-
-    def fail(
-        self,
-        description: str,
-        path: Optional[Path] = None,
-        line: Optional[int] = None,
-    ):
-        """Add a failure to this presubmit step.
-
-        If this is called at least once the step fails, but not immediately—the
-        check is free to continue and possibly call this method again.
-        """
-        _LOG.warning('%s', PresubmitFailure(description, path, line))
-        self._failed = True
-
-    @staticmethod
-    def create_for_testing():
-        parsed_env = pw_cli.env.pigweed_environment()
-        root = parsed_env.PW_PROJECT_ROOT
-        presubmit_root = root / 'out' / 'presubmit'
-        return PresubmitContext(
-            root=root,
-            repos=(root,),
-            output_dir=presubmit_root / 'test',
-            failure_summary_log=presubmit_root / 'failure-summary.log',
-            paths=(root / 'foo.cc', root / 'foo.py'),
-            all_paths=(root / 'BUILD.gn', root / 'foo.cc', root / 'foo.py'),
-            package_root=root / 'environment' / 'packages',
-            luci=None,
-            override_gn_args={},
-            format_options=FormatOptions(),
-        )
-
-
-class FileFilter:
-    """Allows checking if a path matches a series of filters.
-
-    Positive filters (e.g. the file name matches a regex) and negative filters
-    (path does not match a regular expression) may be applied.
-    """
-
-    _StrOrPattern = Union[Pattern, str]
-
-    def __init__(
-        self,
-        *,
-        exclude: Iterable[_StrOrPattern] = (),
-        endswith: Iterable[str] = (),
-        name: Iterable[_StrOrPattern] = (),
-        suffix: Iterable[str] = (),
-    ) -> None:
-        """Creates a FileFilter with the provided filters.
-
-        Args:
-            endswith: True if the end of the path is equal to any of the passed
-                      strings
-            exclude: If any of the passed regular expresion match return False.
-                     This overrides and other matches.
-            name: Regexs to match with file names(pathlib.Path.name). True if
-                  the resulting regex matches the entire file name.
-            suffix: True if final suffix (as determined by pathlib.Path) is
-                    matched by any of the passed str.
-        """
-        self.exclude = tuple(re.compile(i) for i in exclude)
-
-        self.endswith = tuple(endswith)
-        self.name = tuple(re.compile(i) for i in name)
-        self.suffix = tuple(suffix)
-
-    def matches(self, path: Union[str, Path]) -> bool:
-        """Returns true if the path matches any filter but not an exclude.
-
-        If no positive filters are specified, any paths that do not match a
-        negative filter are considered to match.
-
-        If 'path' is a Path object it is rendered as a posix path (i.e.
-        using "/" as the path seperator) before testing with 'exclude' and
-        'endswith'.
-        """
-
-        posix_path = path.as_posix() if isinstance(path, Path) else path
-        if any(bool(exp.search(posix_path)) for exp in self.exclude):
-            return False
-
-        # If there are no positive filters set, accept all paths.
-        no_filters = not self.endswith and not self.name and not self.suffix
-
-        path_obj = Path(path)
-        return (
-            no_filters
-            or path_obj.suffix in self.suffix
-            or any(regex.fullmatch(path_obj.name) for regex in self.name)
-            or any(posix_path.endswith(end) for end in self.endswith)
-        )
-
-    def filter(self, paths: Sequence[Union[str, Path]]) -> Sequence[Path]:
-        return [Path(x) for x in paths if self.matches(x)]
-
-    def apply_to_check(self, always_run: bool = False) -> Callable:
-        def wrapper(func: Callable) -> Check:
-            if isinstance(func, Check):
-                clone = copy.copy(func)
-                clone.filter = self
-                clone.always_run = clone.always_run or always_run
-                return clone
-
-            return Check(check=func, path_filter=self, always_run=always_run)
-
-        return wrapper
-
-
 def _print_ui(*args) -> None:
     """Prints to stdout and flushes to stay in sync with logs on stderr."""
     print(*args, flush=True)
@@ -694,7 +291,7 @@ def _print_ui(*args) -> None:
 class FilteredCheck:
     check: Check
     paths: Sequence[Path]
-    substep: Optional[str] = None
+    substep: str | None = None
 
     @property
     def name(self) -> str:
@@ -707,7 +304,7 @@ class FilteredCheck:
 class Presubmit:
     """Runs a series of presubmit checks on a list of files."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         root: Path,
         repos: Sequence[Path],
@@ -715,8 +312,10 @@ class Presubmit:
         paths: Sequence[Path],
         all_paths: Sequence[Path],
         package_root: Path,
-        override_gn_args: Dict[str, str],
+        override_gn_args: dict[str, str],
         continue_after_build_error: bool,
+        rng_seed: int,
+        full: bool,
     ):
         self._root = root.resolve()
         self._repos = tuple(repos)
@@ -729,15 +328,17 @@ class Presubmit:
         self._package_root = package_root.resolve()
         self._override_gn_args = override_gn_args
         self._continue_after_build_error = continue_after_build_error
+        self._rng_seed = rng_seed
+        self._full = full
 
     def run(
         self,
         program: Program,
         keep_going: bool = False,
-        substep: Optional[str] = None,
+        substep: str | None = None,
+        dry_run: bool = False,
     ) -> bool:
         """Executes a series of presubmit checks on the paths."""
-
         checks = self.apply_filters(program)
         if substep:
             assert (
@@ -767,16 +368,18 @@ class Presubmit:
         _LOG.debug('Checks:\n%s', '\n'.join(c.name for c in checks))
 
         start_time: float = time.time()
-        passed, failed, skipped = self._execute_checks(checks, keep_going)
+        passed, failed, skipped = self._execute_checks(
+            checks, keep_going, dry_run
+        )
         self._log_summary(time.time() - start_time, passed, failed, skipped)
 
         return not failed and not skipped
 
-    def apply_filters(self, program: Sequence[Callable]) -> List[FilteredCheck]:
+    def apply_filters(self, program: Sequence[Callable]) -> list[FilteredCheck]:
         """Returns list of FilteredCheck for checks that should run."""
         checks = [c if isinstance(c, Check) else Check(c) for c in program]
-        filter_to_checks: Dict[
-            FileFilter, List[Check]
+        filter_to_checks: dict[
+            FileFilter, list[Check]
         ] = collections.defaultdict(list)
 
         for chk in checks:
@@ -790,9 +393,9 @@ class Presubmit:
         ]
 
     def _map_checks_to_paths(
-        self, filter_to_checks: Dict[FileFilter, List[Check]]
-    ) -> Dict[Check, Sequence[Path]]:
-        checks_to_paths: Dict[Check, Sequence[Path]] = {}
+        self, filter_to_checks: dict[FileFilter, list[Check]]
+    ) -> dict[Check, Sequence[Path]]:
+        checks_to_paths: dict[Check, Sequence[Path]] = {}
 
         posix_paths = tuple(p.as_posix() for p in self._relative_paths)
 
@@ -853,7 +456,7 @@ class Presubmit:
         return PresubmitContext(**kwargs)
 
     @contextlib.contextmanager
-    def _context(self, filtered_check: FilteredCheck):
+    def _context(self, filtered_check: FilteredCheck, dry_run: bool = False):
         # There are many characters banned from filenames on Windows. To
         # simplify things, just strip everything that's not a letter, digit,
         # or underscore.
@@ -882,21 +485,27 @@ class Presubmit:
                 package_root=self._package_root,
                 override_gn_args=self._override_gn_args,
                 continue_after_build_error=self._continue_after_build_error,
+                rng_seed=self._rng_seed,
+                full=self._full,
                 luci=LuciContext.create_from_environment(),
                 format_options=FormatOptions.load(),
+                dry_run=dry_run,
             )
 
         finally:
             _LOG.removeHandler(handler)
 
     def _execute_checks(
-        self, program: List[FilteredCheck], keep_going: bool
-    ) -> Tuple[int, int, int]:
+        self,
+        program: list[FilteredCheck],
+        keep_going: bool,
+        dry_run: bool = False,
+    ) -> tuple[int, int, int]:
         """Runs presubmit checks; returns (passed, failed, skipped) lists."""
         passed = failed = 0
 
         for i, filtered_check in enumerate(program, 1):
-            with self._context(filtered_check) as ctx:
+            with self._context(filtered_check, dry_run) as ctx:
                 result = filtered_check.run(ctx, i, len(program))
 
             if result is PresubmitResult.PASS:
@@ -913,8 +522,8 @@ class Presubmit:
 
 def _process_pathspecs(
     repos: Iterable[Path], pathspecs: Iterable[str]
-) -> Dict[Path, List[str]]:
-    pathspecs_by_repo: Dict[Path, List[str]] = {repo: [] for repo in repos}
+) -> dict[Path, list[str]]:
+    pathspecs_by_repo: dict[Path, list[str]] = {repo: [] for repo in repos}
     repos_with_paths: Set[Path] = set()
 
     for pathspec in pathspecs:
@@ -944,22 +553,66 @@ def _process_pathspecs(
     return pathspecs_by_repo
 
 
+def fetch_file_lists(
+    root: Path,
+    repo: Path,
+    pathspecs: list[str],
+    exclude: Sequence[Pattern] = (),
+    base: str | None = None,
+) -> tuple[list[Path], list[Path]]:
+    """Returns lists of all files and modified files for the given repo.
+
+    Args:
+        root: root path of the project
+        repo: path to the roots of Git repository to check
+        base: optional base Git commit to list files against
+        pathspecs: optional list of Git pathspecs to run the checks against
+        exclude: regular expressions for Posix-style paths to exclude
+    """
+
+    all_files: list[Path] = []
+    modified_files: list[Path] = []
+
+    all_files_repo = tuple(
+        tools.exclude_paths(
+            exclude, git_repo.list_files(None, pathspecs, repo), root
+        )
+    )
+    all_files += all_files_repo
+
+    if base is None:
+        modified_files += all_files_repo
+    else:
+        modified_files += tools.exclude_paths(
+            exclude, git_repo.list_files(base, pathspecs, repo), root
+        )
+
+    _LOG.info(
+        'Checking %s',
+        git_repo.describe_files(repo, repo, base, pathspecs, exclude, root),
+    )
+
+    return all_files, modified_files
+
+
 def run(  # pylint: disable=too-many-arguments,too-many-locals
     program: Sequence[Check],
     root: Path,
     repos: Collection[Path] = (),
-    base: Optional[str] = None,
+    base: str | None = None,
     paths: Sequence[str] = (),
     exclude: Sequence[Pattern] = (),
-    output_directory: Optional[Path] = None,
-    package_root: Optional[Path] = None,
+    output_directory: Path | None = None,
+    package_root: Path | None = None,
     only_list_steps: bool = False,
-    override_gn_args: Sequence[Tuple[str, str]] = (),
+    override_gn_args: Sequence[tuple[str, str]] = (),
     keep_going: bool = False,
     continue_after_build_error: bool = False,
+    rng_seed: int = 1,
     presubmit_class: type = Presubmit,
-    list_steps_file: Optional[Path] = None,
-    substep: Optional[str] = None,
+    list_steps_file: Path | None = None,
+    substep: str | None = None,
+    dry_run: bool = False,
 ) -> bool:
     """Lists files in the current Git repo and runs a Presubmit with them.
 
@@ -987,6 +640,8 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
         override_gn_args: additional GN args to set on steps
         keep_going: continue running presubmit steps after a step fails
         continue_after_build_error: continue building if a build step fails
+        rng_seed: seed for a random number generator, for the few steps that
+            need one
         presubmit_class: class to use to run Presubmits, should inherit from
             Presubmit class above
         list_steps_file: File created by --only-list-steps, used to keep from
@@ -1011,9 +666,9 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
 
     pathspecs_by_repo = _process_pathspecs(repos, paths)
 
-    all_files: List[Path] = []
-    modified_files: List[Path] = []
-    list_steps_data: Dict[str, Any] = {}
+    all_files: list[Path] = []
+    modified_files: list[Path] = []
+    list_steps_data: dict[str, Any] = {}
 
     if list_steps_file:
         with list_steps_file.open() as ins:
@@ -1030,26 +685,11 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
 
     else:
         for repo, pathspecs in pathspecs_by_repo.items():
-            all_files_repo = tuple(
-                tools.exclude_paths(
-                    exclude, git_repo.list_files(None, pathspecs, repo), root
-                )
+            new_all_files_items, new_modified_file_items = fetch_file_lists(
+                root, repo, pathspecs, exclude, base
             )
-            all_files += all_files_repo
-
-            if base is None:
-                modified_files += all_files_repo
-            else:
-                modified_files += tools.exclude_paths(
-                    exclude, git_repo.list_files(base, pathspecs, repo), root
-                )
-
-            _LOG.info(
-                'Checking %s',
-                git_repo.describe_files(
-                    repo, repo, base, pathspecs, exclude, root
-                ),
-            )
+            all_files.extend(new_all_files_items)
+            modified_files.extend(new_modified_file_items)
 
     if output_directory is None:
         output_directory = root / '.presubmit'
@@ -1066,10 +706,12 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
         package_root=package_root,
         override_gn_args=dict(override_gn_args or {}),
         continue_after_build_error=continue_after_build_error,
+        rng_seed=rng_seed,
+        full=bool(base is None),
     )
 
     if only_list_steps:
-        steps: List[Dict] = []
+        steps: list[dict] = []
         for filtered_check in presubmit.apply_filters(program):
             step = {
                 'name': filtered_check.name,
@@ -1091,10 +733,10 @@ def run(  # pylint: disable=too-many-arguments,too-many-locals
     if not isinstance(program, Program):
         program = Program('', program)
 
-    return presubmit.run(program, keep_going, substep=substep)
+    return presubmit.run(program, keep_going, substep=substep, dry_run=dry_run)
 
 
-def _make_str_tuple(value: Union[Iterable[str], str]) -> Tuple[str, ...]:
+def _make_str_tuple(value: Iterable[str] | str) -> tuple[str, ...]:
     return tuple([value] if isinstance(value, str) else value)
 
 
@@ -1137,10 +779,10 @@ def check(*args, **kwargs):
 
 @dataclasses.dataclass
 class SubStep:
-    name: Optional[str]
+    name: str | None
     _func: Callable[..., PresubmitResult]
     args: Sequence[Any] = ()
-    kwargs: Dict[str, Any] = dataclasses.field(default_factory=lambda: {})
+    kwargs: dict[str, Any] = dataclasses.field(default_factory=lambda: {})
 
     def __call__(self, ctx: PresubmitContext) -> PresubmitResult:
         if self.name:
@@ -1157,13 +799,13 @@ class Check:
 
     def __init__(
         self,
-        check: Union[  # pylint: disable=redefined-outer-name
-            Callable, Iterable[SubStep]
-        ],
+        check: (  # pylint: disable=redefined-outer-name
+            Callable | Iterable[SubStep]
+        ),
         path_filter: FileFilter = FileFilter(),
         always_run: bool = True,
-        name: Optional[str] = None,
-        doc: Optional[str] = None,
+        name: str | None = None,
+        doc: str | None = None,
     ) -> None:
         # Since Check wraps a presubmit function, adopt that function's name.
         self.name: str = ''
@@ -1195,6 +837,8 @@ class Check:
         self.filter = path_filter
         self.always_run: bool = always_run
 
+        self._is_presubmit_check_object = True
+
     def substeps(self) -> Sequence[SubStep]:
         """Return the SubSteps of the current step.
 
@@ -1221,7 +865,7 @@ class Check:
         self,
         *,
         endswith: Iterable[str] = (),
-        exclude: Iterable[Union[Pattern[str], str]] = (),
+        exclude: Iterable[Pattern[str] | str] = (),
     ) -> Check:
         """Create a new check identical to this one, but with extra filters.
 
@@ -1262,7 +906,7 @@ class Check:
         ctx: PresubmitContext,
         count: int,
         total: int,
-        substep: Optional[str] = None,
+        substep: str | None = None,
     ) -> PresubmitResult:
         """Runs the presubmit check on the provided paths."""
 
@@ -1293,6 +937,9 @@ class Check:
             result = self(ctx)
         time_str = _format_time(time.time() - start_time_s)
         _LOG.debug('%s %s', self.name, result.value)
+
+        if ctx.dry_run:
+            log_check_traces(ctx)
 
         _print_ui(
             _box(_CHECK_LOWER, result.colorized(_LEFT), self.name, time_str)
@@ -1330,7 +977,7 @@ class Check:
             return PresubmitResult.CANCEL
 
     def run_substep(
-        self, ctx: PresubmitContext, name: Optional[str]
+        self, ctx: PresubmitContext, name: str | None
     ) -> PresubmitResult:
         for substep in self.substeps():
             if substep.name == name:
@@ -1388,8 +1035,8 @@ def _ensure_is_valid_presubmit_check_function(chk: Callable) -> None:
 def filter_paths(
     *,
     endswith: Iterable[str] = (),
-    exclude: Iterable[Union[Pattern[str], str]] = (),
-    file_filter: Optional[FileFilter] = None,
+    exclude: Iterable[Pattern[str] | str] = (),
+    file_filter: FileFilter | None = None,
     always_run: bool = False,
 ) -> Callable[[Callable], Check]:
     """Decorator for filtering the paths list for a presubmit check function.
@@ -1416,7 +1063,7 @@ def filter_paths(
                 'endswith/exclude args, not both'
             )
     else:
-        # TODO(b/238426363): Remove these arguments and use FileFilter only.
+        # TODO: b/238426363 - Remove these arguments and use FileFilter only.
         real_file_filter = FileFilter(
             endswith=_make_str_tuple(endswith), exclude=exclude
         )
@@ -1427,8 +1074,19 @@ def filter_paths(
     return filter_paths_for_function
 
 
-def call(*args, **kwargs) -> None:
+def call(
+    *args, call_annotation: dict[Any, Any] | None = None, **kwargs
+) -> None:
     """Optional subprocess wrapper that causes a PresubmitFailure on errors."""
+    ctx = PRESUBMIT_CONTEXT.get()
+    if ctx:
+        call_annotation = call_annotation if call_annotation else {}
+        ctx.append_check_command(
+            *args, call_annotation=call_annotation, **kwargs
+        )
+        if ctx.dry_run:
+            return
+
     attributes, command = tools.format_command(args, kwargs)
     _LOG.debug('[RUN] %s\n%s', attributes, command)
 
@@ -1436,8 +1094,8 @@ def call(*args, **kwargs) -> None:
     propagate_sigterm = kwargs.pop('propagate_sigterm', False)
 
     env = pw_cli.env.pigweed_environment()
-    kwargs['stdout'] = subprocess.PIPE
-    kwargs['stderr'] = subprocess.STDOUT
+    kwargs.setdefault('stdout', subprocess.PIPE)
+    kwargs.setdefault('stderr', subprocess.STDOUT)
 
     process = subprocess.Popen(args, **kwargs)
     assert process.stdout
@@ -1487,13 +1145,23 @@ def call(*args, **kwargs) -> None:
 
 
 def install_package(
-    ctx: Union[FormatContext, PresubmitContext],
+    ctx: FormatContext | PresubmitContext,
     name: str,
     force: bool = False,
 ) -> None:
     """Install package with given name in given path."""
     root = ctx.package_root
     mgr = package_manager.PackageManager(root)
+
+    ctx.append_check_command(
+        'pw',
+        'package',
+        'install',
+        name,
+        call_annotation={'pw_package_install': name},
+    )
+    if ctx.dry_run:
+        return
 
     if not mgr.list():
         raise PresubmitFailure(

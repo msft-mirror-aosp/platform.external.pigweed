@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from io import TextIOWrapper
 from pathlib import Path
 import tempfile
-from typing import Generator, List, Optional, Tuple, Union
+from typing import Generator
 import unittest
 
 from pw_ide.settings import PigweedIdeSettings
@@ -36,8 +36,8 @@ class TempDirTestCase(unittest.TestCase):
 
     @contextmanager
     def make_temp_file(
-        self, filename: Union[Path, str], content: str = ''
-    ) -> Generator[Tuple[TextIOWrapper, Path], None, None]:
+        self, filename: Path | str, content: str = ''
+    ) -> Generator[tuple[TextIOWrapper, Path], None, None]:
         """Create a temp file in the test case's temp dir.
 
         Returns a tuple containing the file reference and the file's path.
@@ -51,9 +51,7 @@ class TempDirTestCase(unittest.TestCase):
             file.seek(0)
             yield (file, path)
 
-    def touch_temp_file(
-        self, filename: Union[Path, str], content: str = ''
-    ) -> None:
+    def touch_temp_file(self, filename: Path | str, content: str = '') -> None:
         """Create a temp file in the test case's temp dir, without context."""
         with self.make_temp_file(filename, content):
             pass
@@ -61,8 +59,8 @@ class TempDirTestCase(unittest.TestCase):
     @contextmanager
     def open_temp_file(
         self,
-        filename: Union[Path, str],
-    ) -> Generator[Tuple[TextIOWrapper, Path], None, None]:
+        filename: Path | str,
+    ) -> Generator[tuple[TextIOWrapper, Path], None, None]:
         """Open an existing temp file in the test case's temp dir.
 
         Returns a tuple containing the file reference and the file's path.
@@ -74,8 +72,8 @@ class TempDirTestCase(unittest.TestCase):
 
     @contextmanager
     def make_temp_files(
-        self, files_data: List[Tuple[Union[Path, str], str]]
-    ) -> Generator[List[TextIOWrapper], None, None]:
+        self, files_data: list[tuple[Path | str, str]]
+    ) -> Generator[list[TextIOWrapper], None, None]:
         """Create several temp files in the test case's temp dir.
 
         Provide a list of file name and content tuples. Saves you the trouble
@@ -83,7 +81,7 @@ class TempDirTestCase(unittest.TestCase):
         nesting, and allows programmatic definition of multiple temp file
         contexts. Files can be read immediately.
         """
-        files: List[TextIOWrapper] = []
+        files: list[TextIOWrapper] = []
 
         for filename, content in files_data:
             file = open(self.path_in_temp_dir(filename), 'a+', encoding='utf-8')
@@ -98,7 +96,7 @@ class TempDirTestCase(unittest.TestCase):
             file.close()
 
     def touch_temp_files(
-        self, files_data: List[Tuple[Union[Path, str], str]]
+        self, files_data: list[tuple[Path | str, str]]
     ) -> None:
         """Create several temp files in the temp dir, without context."""
         with self.make_temp_files(files_data):
@@ -106,15 +104,15 @@ class TempDirTestCase(unittest.TestCase):
 
     @contextmanager
     def open_temp_files(
-        self, files_data: List[Union[Path, str]]
-    ) -> Generator[List[TextIOWrapper], None, None]:
+        self, files_data: list[Path | str]
+    ) -> Generator[list[TextIOWrapper], None, None]:
         """Open several existing temp files in the test case's temp dir.
 
         Provide a list of file names. Saves you the trouble of excessive
         `with self.open_temp_file, self.open_temp_file...` nesting, and allows
         programmatic definition of multiple temp file contexts.
         """
-        files: List[TextIOWrapper] = []
+        files: list[TextIOWrapper] = []
 
         for filename in files_data:
             file = open(self.path_in_temp_dir(filename), 'r', encoding='utf-8')
@@ -125,7 +123,7 @@ class TempDirTestCase(unittest.TestCase):
         for file in files:
             file.close()
 
-    def path_in_temp_dir(self, path: Union[Path, str]) -> Path:
+    def path_in_temp_dir(self, path: Path | str) -> Path:
         """Place a path into the test case's temp dir.
 
         This only works with a relative path; with an absolute path, this is a
@@ -133,7 +131,7 @@ class TempDirTestCase(unittest.TestCase):
         """
         return self.temp_dir_path / path
 
-    def paths_in_temp_dir(self, *paths: Union[Path, str]) -> List[Path]:
+    def paths_in_temp_dir(self, *paths: Path | str) -> list[Path]:
         """Place several paths into the test case's temp dir.
 
         This only works with relative paths; with absolute paths, this is a
@@ -151,8 +149,10 @@ class PwIdeTestCase(TempDirTestCase):
 
     def make_ide_settings(
         self,
-        working_dir: Optional[Union[str, Path]] = None,
-        targets: Optional[List[str]] = None,
+        working_dir: str | Path | None = None,
+        targets_include: list[str] | None = None,
+        targets_exclude: list[str] | None = None,
+        cascade_targets: bool = False,
     ) -> PigweedIdeSettings:
         """Make settings that wrap provided paths in the temp path."""
 
@@ -161,8 +161,11 @@ class PwIdeTestCase(TempDirTestCase):
         else:
             working_dir_path = self.temp_dir_path
 
-        if targets is None:
-            targets = []
+        if targets_include is None:
+            targets_include = []
+
+        if targets_exclude is None:
+            targets_exclude = []
 
         return PigweedIdeSettings(
             False,
@@ -170,6 +173,8 @@ class PwIdeTestCase(TempDirTestCase):
             False,
             default_config={
                 'working_dir': str(working_dir_path),
-                'targets': targets,
+                'targets_include': targets_include,
+                'targets_exclude': targets_exclude,
+                'cascade_targets': cascade_targets,
             },
         )

@@ -14,10 +14,12 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_async2/backend.gni")
 import("$dir_pw_bloat/bloat.gni")
 import("$dir_pw_build/python.gni")
 import("$dir_pw_build/target_types.gni")
 import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_fuzzer/fuzz_test.gni")
 import("$dir_pw_unit_test/test.gni")
 
 config("default_config") {
@@ -69,10 +71,7 @@ pw_source_set("decoder") {
 pw_source_set("encoder") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_hdlc/encoder.h" ]
-  sources = [
-    "encoder.cc",
-    "public/pw_hdlc/internal/encoder.h",
-  ]
+  sources = [ "encoder.cc" ]
   public_deps = [
     ":common",
     dir_pw_bytes,
@@ -95,15 +94,9 @@ pw_source_set("rpc_channel_output") {
   ]
 }
 
-pw_source_set("pw_rpc") {
+pw_source_set("default_addresses") {
   public_configs = [ ":default_config" ]
-  public = [ "public/pw_hdlc/rpc_packets.h" ]
-  sources = [ "rpc_packets.cc" ]
-  public_deps = [
-    ":pw_hdlc",
-    "$dir_pw_rpc:server",
-    dir_pw_sys_io,
-  ]
+  public = [ "public/pw_hdlc/default_addresses.h" ]
 }
 
 pw_source_set("packet_parser") {
@@ -128,7 +121,8 @@ pw_source_set("packet_parser") {
 # should not be used in any performance-sensitive application.
 pw_source_set("hdlc_sys_io_system_server") {
   deps = [
-    "$dir_pw_hdlc:pw_rpc",
+    "$dir_pw_hdlc:decoder",
+    "$dir_pw_hdlc:default_addresses",
     "$dir_pw_hdlc:rpc_channel_output",
     "$dir_pw_rpc/system_server:facade",
     "$dir_pw_stream:sys_io_stream",
@@ -137,12 +131,49 @@ pw_source_set("hdlc_sys_io_system_server") {
   sources = [ "hdlc_sys_io_system_server.cc" ]
 }
 
+pw_source_set("router") {
+  public_configs = [ ":default_config" ]
+  public_deps = [
+    ":decoder",
+    "$dir_pw_async2:dispatcher",
+    "$dir_pw_async2:poll",
+    "$dir_pw_containers:vector",
+    "$dir_pw_multibuf:allocator",
+    dir_pw_channel,
+    dir_pw_multibuf,
+    dir_pw_status,
+  ]
+  deps = [
+    ":encoder",
+    "$dir_pw_multibuf:stream",
+    dir_pw_log,
+    dir_pw_result,
+    dir_pw_stream,
+  ]
+  public = [ "public/pw_hdlc/router.h" ]
+  sources = [ "router.cc" ]
+}
+
+pw_test("router_test") {
+  enable_if = pw_async2_DISPATCHER_BACKEND != ""
+  deps = [
+    ":router",
+    "$dir_pw_allocator:testing",
+    "$dir_pw_async2:pend_func_task",
+    "$dir_pw_channel:forwarding_channel",
+    "$dir_pw_channel:loopback_channel",
+    "$dir_pw_multibuf:simple_allocator",
+  ]
+  sources = [ "router_test.cc" ]
+}
+
 pw_test_group("tests") {
   tests = [
+    ":encoded_size_test",
     ":encoder_test",
     ":decoder_test",
+    ":router_test",
     ":rpc_channel_test",
-    ":encoded_size_test",
     ":wire_packet_parser_test",
   ]
   group_deps = [
@@ -161,11 +192,17 @@ pw_test("encoded_size_test") {
     "$dir_pw_varint",
   ]
   sources = [ "encoded_size_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("encoder_test") {
   deps = [ ":pw_hdlc" ]
   sources = [ "encoder_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_python_action("generate_decoder_test") {
@@ -178,12 +215,13 @@ pw_python_action("generate_decoder_test") {
   ]
 }
 
-pw_test("decoder_test") {
-  deps = [
-    ":generate_decoder_test",
-    ":pw_hdlc",
-  ]
-  sources = [ "decoder_test.cc" ] + get_target_outputs(":generate_decoder_test")
+pw_fuzz_test("decoder_test") {
+  deps = [ ":pw_hdlc" ]
+  source_gen_deps = [ ":generate_decoder_test" ]
+  sources = [ "decoder_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("rpc_channel_test") {
@@ -192,6 +230,9 @@ pw_test("rpc_channel_test") {
     ":rpc_channel_output",
   ]
   sources = [ "rpc_channel_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_test("wire_packet_parser_test") {
@@ -200,6 +241,9 @@ pw_test("wire_packet_parser_test") {
     dir_pw_bytes,
   ]
   sources = [ "wire_packet_parser_test.cc" ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 pw_size_diff("size_report") {
@@ -221,8 +265,13 @@ pw_size_diff("size_report") {
 
 pw_doc_group("docs") {
   sources = [
+    "api.rst",
+    "design.rst",
     "docs.rst",
+    "guide.rst",
+    "router.rst",
     "rpc_example/docs.rst",
+    "size.rst",
   ]
   inputs = [
     "py/pw_hdlc/decode.py",

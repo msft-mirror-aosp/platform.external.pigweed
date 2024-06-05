@@ -20,7 +20,7 @@ import logging
 import os
 import re
 import time
-from typing import Callable, Dict, Iterable, List, NoReturn, Optional
+from typing import Callable, Iterable, NoReturn
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
@@ -57,7 +57,9 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers.markup import MarkdownLexer  # type: ignore
 
-from pw_console.console_app import get_default_colordepth
+from pw_config_loader import yaml_config_loader_mixin
+
+from pw_console.console_app import get_default_colordepth, MIN_REDRAW_INTERVAL
 from pw_console.get_pw_console_app import PW_CONSOLE_APP_CONTEXTVAR
 from pw_console.help_window import HelpWindow
 from pw_console.key_bindings import DEFAULT_KEY_BINDINGS
@@ -199,11 +201,14 @@ class WatchAppPrefs(ProjectBuilderPrefs):
             'show_python_logger': True,
         }
         self.default_config.update(new_config_settings)
-        self._update_config(new_config_settings)
+        self._update_config(
+            new_config_settings,
+            yaml_config_loader_mixin.Stage.DEFAULT,
+        )
 
     # Required pw_console preferences for key bindings and themes
     @property
-    def user_key_bindings(self) -> Dict[str, List[str]]:
+    def user_key_bindings(self) -> dict[str, list[str]]:
         return self._config.get('key_bindings', {})
 
     @property
@@ -222,7 +227,7 @@ class WatchAppPrefs(ProjectBuilderPrefs):
     def swap_light_and_dark(self) -> bool:
         return self._config.get('swap_light_and_dark', False)
 
-    def get_function_keys(self, name: str) -> List:
+    def get_function_keys(self, name: str) -> list:
         """Return the keys for the named function."""
         try:
             return self.registered_commands[name]
@@ -230,7 +235,7 @@ class WatchAppPrefs(ProjectBuilderPrefs):
             raise KeyError('Unbound key function: {}'.format(name)) from error
 
     def register_named_key_function(
-        self, name: str, default_bindings: List[str]
+        self, name: str, default_bindings: list[str]
     ) -> None:
         self.registered_commands[name] = default_bindings
 
@@ -328,8 +333,8 @@ class WatchApp(PluginMixin):
         self.log_ui_update_frequency = 0.1  # 10 FPS
         self._last_ui_update_time = time.time()
 
-        self.recipe_name_to_log_pane: Dict[str, LogPane] = {}
-        self.recipe_index_to_log_pane: Dict[int, LogPane] = {}
+        self.recipe_name_to_log_pane: dict[str, LogPane] = {}
+        self.recipe_index_to_log_pane: dict[int, LogPane] = {}
 
         debug_logging = (
             event_handler.project_builder.default_log_level == logging.DEBUG
@@ -364,6 +369,9 @@ class WatchApp(PluginMixin):
             ],
             level_name=level_name,
         )
+        # Repeat the Attaching filesystem watcher message for the full screen
+        # interface. The original log in watch.py will be hidden from view.
+        _LOG.info('Attaching filesystem watcher...')
 
         self.window_manager.window_lists[0].display_mode = DisplayMode.TABBED
 
@@ -395,7 +403,7 @@ class WatchApp(PluginMixin):
             right_margin_columns=1,
         )
 
-        self.floating_window_plugins: List[FloatingWindowPane] = []
+        self.floating_window_plugins: list[FloatingWindowPane] = []
 
         self.user_guide_window = HelpWindow(
             self,  # type: ignore
@@ -535,6 +543,7 @@ class WatchApp(PluginMixin):
             ),
             style_transformation=self.style_transformation,
             full_screen=True,
+            min_redraw_interval=MIN_REDRAW_INTERVAL,
         )
 
         self.plugin_init(
@@ -544,7 +553,7 @@ class WatchApp(PluginMixin):
         )
 
     def add_build_log_pane(
-        self, title: str, loggers: List[logging.Logger], level_name: str
+        self, title: str, loggers: list[logging.Logger], level_name: str
     ) -> LogPane:
         """Setup a new build log pane."""
         new_log_pane = LogPane(application=self, pane_title=title)
@@ -576,11 +585,11 @@ class WatchApp(PluginMixin):
         def _next_error(_event):
             self.jump_to_error()
 
-        existing_log_bindings: Optional[
-            KeyBindingsBase
-        ] = new_log_pane.log_content_control.key_bindings
+        existing_log_bindings: (
+            KeyBindingsBase | None
+        ) = new_log_pane.log_content_control.key_bindings
 
-        key_binding_list: List[KeyBindingsBase] = []
+        key_binding_list: list[KeyBindingsBase] = []
         if existing_log_bindings:
             key_binding_list.append(existing_log_bindings)
         key_binding_list.append(next_error_bindings)
@@ -801,7 +810,7 @@ class WatchApp(PluginMixin):
     def exit(
         self,
         exit_code: int = 1,
-        log_after_shutdown: Optional[Callable[[], None]] = None,
+        log_after_shutdown: Callable[[], None] | None = None,
     ) -> None:
         _LOG.info('Exiting...')
         BUILDER_CONTEXT.ctrl_c_pressed = True

@@ -19,7 +19,7 @@ import argparse
 import itertools
 import sys
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Iterator
 
 import pkg_resources
 
@@ -33,7 +33,7 @@ def _installed_packages() -> Iterator[str]:
         if isinstance(pkg, pkg_resources.DistInfoDistribution)  # type: ignore
         # This will skip packages with local versions.
         #   For example text after a plus sign: 1.2.3+dev456
-        and not pkg.parsed_version.local
+        and not pkg.parsed_version.local  # type: ignore
         # These are always installed by default in:
         #   pw_env_setup/py/pw_env_setup/virtualenv_setup/install.py
         and pkg.key not in ['pip', 'setuptools', 'wheel']
@@ -44,7 +44,7 @@ def _installed_packages() -> Iterator[str]:
         yield str(req)
 
 
-def ls(output_file: Optional[Path]) -> int:  # pylint: disable=invalid-name
+def ls(output_file: Path | None) -> int:  # pylint: disable=invalid-name
     """Run pip python_packages and write to output_file."""
     actual_requirements = frozenset(
         pkg_resources.Requirement.parse(line) for line in _installed_packages()
@@ -60,7 +60,7 @@ def ls(output_file: Optional[Path]) -> int:  # pylint: disable=invalid-name
         )
         missing_requirements = expected_requirements - actual_requirements
 
-    new_requirements: List[pkg_resources.Requirement] = list(
+    new_requirements: list[pkg_resources.Requirement] = list(
         actual_requirements
     )
 
@@ -108,14 +108,14 @@ def _stderr(*args, **kwargs):
 def _load_requirements_lines(*req_files: Path) -> Iterator[str]:
     for req_file in req_files:
         for line in req_file.read_text().splitlines():
-            # Ignore comments and blank lines
-            if line.startswith('#') or line == '':
+            # Ignore constraints, comments and blank lines
+            if line.startswith('-c') or line.startswith('#') or line == '':
                 continue
             yield line
 
 
 def diff(
-    expected: Path, ignore_requirements_file: Optional[List[Path]] = None
+    expected: Path, ignore_requirements_file: list[Path] | None = None
 ) -> int:
     """Report on differences between installed and expected versions."""
     actual_lines = set(_installed_packages())
@@ -141,10 +141,10 @@ def diff(
     removed_requirements = expected_requirements - actual_requirements
     added_requirements = actual_requirements - expected_requirements
 
-    removed_packages: Dict[pkg_resources.Requirement, str] = {}
-    updated_packages: Dict[pkg_resources.Requirement, str] = {}
-    new_packages: Dict[pkg_resources.Requirement, str] = {}
-    reformatted_packages: Dict[pkg_resources.Requirement, str] = {}
+    removed_packages: dict[pkg_resources.Requirement, str] = {}
+    updated_packages: dict[pkg_resources.Requirement, str] = {}
+    new_packages: dict[pkg_resources.Requirement, str] = {}
+    reformatted_packages: dict[pkg_resources.Requirement, str] = {}
 
     for line in expected_lines:
         requirement = pkg_resources.Requirement.parse(line)
@@ -225,8 +225,8 @@ def diff(
             yield req_dist_info
 
     def expand_requirements(
-        reqs: List[pkg_resources.Distribution],
-    ) -> Iterator[List[pkg_resources.Distribution]]:
+        reqs: list[pkg_resources.Distribution],
+    ) -> Iterator[list[pkg_resources.Distribution]]:
         """Recursively expand requirements."""
         for dist_info in reqs:
             deps = list(get_requirements(dist_info))
@@ -294,7 +294,7 @@ Please do the following:
     return 0
 
 
-def parse(argv: Union[List[str], None] = None) -> argparse.Namespace:
+def parse(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
         prog="python -m pw_env_setup.python_packages"

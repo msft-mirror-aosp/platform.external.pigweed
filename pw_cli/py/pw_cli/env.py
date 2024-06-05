@@ -14,7 +14,6 @@
 """The env module defines the environment variables used by Pigweed."""
 
 from pathlib import Path
-from typing import Optional
 
 from pw_cli import envparse
 
@@ -45,7 +44,7 @@ def pigweed_environment_parser() -> envparse.EnvironmentParser:
     )
     parser.add_var('PW_SKIP_BOOTSTRAP')
     parser.add_var('PW_SUBPROCESS', type=envparse.strict_bool, default=False)
-    parser.add_var('PW_USE_COLOR', type=envparse.strict_bool, default=False)
+    parser.add_var('PW_USE_COLOR', type=envparse.strict_bool, default=True)
     parser.add_var('PW_USE_GCS_ENVSETUP', type=envparse.strict_bool)
 
     parser.add_allowed_suffix('_CIPD_INSTALL_DIR')
@@ -69,6 +68,7 @@ def pigweed_environment_parser() -> envparse.EnvironmentParser:
     parser.add_var('PW_CONSOLE_CONFIG_FILE')
     parser.add_var('PW_ENVIRONMENT_NO_ERROR_ON_UNRECOGNIZED')
 
+    parser.add_var('PW_NO_CIPD_CACHE_DIR')
     parser.add_var('PW_CIPD_SERVICE_ACCOUNT_JSON')
 
     # RBE environment variables
@@ -82,7 +82,7 @@ def pigweed_environment_parser() -> envparse.EnvironmentParser:
 
 # Internal: memoize environment parsing to avoid unnecessary computation in
 # multiple calls to pigweed_environment().
-_memoized_environment: Optional[envparse.EnvNamespace] = None
+_memoized_environment: envparse.EnvNamespace | None = None
 
 
 def pigweed_environment() -> envparse.EnvNamespace:

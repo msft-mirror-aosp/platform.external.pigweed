@@ -14,8 +14,10 @@
 # the License.
 """Contains the Python decoder tests and generates C++ decoder tests."""
 
+from __future__ import annotations
+
 import queue
-from typing import Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Iterator, NamedTuple
 import unittest
 
 from pw_build.generated_tests import Context, PyTest, TestGenerator, GroupOrTest
@@ -74,11 +76,11 @@ class ExpectedRaw(NamedTuple):
 
 class TestCase(NamedTuple):
     data: bytes
-    frames: List[Union[Expected, ExpectedRaw]]
+    frames: list[Expected | ExpectedRaw]
     raw_data: bytes
 
 
-def case(data: bytes, frames: list, raw: Optional[bytes] = None) -> TestCase:
+def case(data: bytes, frames: list, raw: bytes | None = None) -> TestCase:
     """Creates a TestCase, filling in the default value for the raw bytes."""
     if raw is not None:
         return TestCase(data, frames, raw)
@@ -112,7 +114,7 @@ _ESCAPED_FLAG_TEST_CASE = case(
 # second time for the FrameAndNonFrameDecoder. The FrameAndNonFrameDecoder tests
 # flush the non-frame data to simulate a timeout or MTU overflow, so the
 # expected raw data includes all bytes not in an HDLC frame.
-TEST_CASES: Tuple[GroupOrTest[TestCase], ...] = (
+TEST_CASES: tuple[GroupOrTest[TestCase], ...] = (
     'Empty payload',
     case(_encode(0, 0, b''), [Expected(0, b'\0', b'')]),
     case(_encode(55, 0x99, b''), [Expected(55, b'\x99', b'')]),
@@ -347,7 +349,7 @@ TEST_CASES: Tuple[GroupOrTest[TestCase], ...] = (
 _TESTS = TestGenerator(TEST_CASES)
 
 
-def _expected(frames: List[Frame]) -> Iterator[str]:
+def _expected(frames: list[Frame]) -> Iterator[str]:
     for i, frame in enumerate(frames, 1):
         if frame.ok():
             yield f'      Frame::Parse(kDecodedFrame{i:02}).value(),'
@@ -364,7 +366,7 @@ _CPP_HEADER = """\
 #include <cstddef>
 #include <variant>
 
-#include "gtest/gtest.h"
+#include "pw_unit_test/framework.h"
 #include "pw_bytes/array.h"
 
 namespace pw::hdlc {
@@ -509,7 +511,7 @@ def _define_py_decoder_test(ctx: Context) -> PyTest:
         )
         # Decode byte-by-byte
         decoder = FrameDecoder()
-        decoded_frames: List[Frame] = []
+        decoded_frames: list[Frame] = []
         for i in range(len(data)):
             decoded_frames += decoder.process(data[i : i + 1])
 
@@ -552,7 +554,7 @@ def _define_raw_decoder_py_test(ctx: Context) -> PyTest:
         decoder = FrameAndNonFrameDecoder(
             non_frame_data_handler=non_frame_data.extend
         )
-        decoded_frames: List[Frame] = []
+        decoded_frames: list[Frame] = []
         for i in range(len(raw_data)):
             decoded_frames += decoder.process(raw_data[i : i + 1])
 
@@ -686,7 +688,7 @@ class AdditionalNonFrameDecoderTests(unittest.TestCase):
     def test_emits_data_if_timeout_expires(self) -> None:
         frame_start = b'~this looks like a real frame'
 
-        non_frame_data: 'queue.Queue[bytes]' = queue.Queue()
+        non_frame_data: queue.Queue[bytes] = queue.Queue()
         decoder = FrameAndNonFrameDecoder(non_frame_data.put, timeout_s=0.001)
 
         self.assertEqual([], list(decoder.process(frame_start)))

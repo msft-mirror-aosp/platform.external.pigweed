@@ -43,6 +43,7 @@ pw_test("alarm_timer_test") {
   sources = [ "alarm_timer_test.cc" ]
   deps = [
     ":alarm_timer",
+    "$dir_pw_chrono:system_clock",
     "$dir_pw_sync:binary_semaphore",
   ]
 }
@@ -65,7 +66,10 @@ pw_source_set("argparse") {
 
 pw_test("argparse_test") {
   sources = [ "argparse_test.cc" ]
-  deps = [ ":argparse" ]
+  deps = [
+    ":argparse",
+    "$dir_pw_string:builder",
+  ]
 }
 
 pw_source_set("engine") {
@@ -95,15 +99,17 @@ pw_test("engine_test") {
   sources = [ "engine_test.cc" ]
   deps = [
     ":engine",
+    "$dir_pw_rpc:client_server_testing",
     "$dir_pw_rpc:client_server_testing_threaded",
-    "$dir_pw_thread:test_threads",
-    "$dir_pw_thread_stl:test_threads",
+    "$dir_pw_thread:non_portable_test_thread_options",
+    "$dir_pw_thread_stl:non_portable_test_thread_options",
     dir_pw_log,
     pw_chrono_SYSTEM_TIMER_BACKEND,
   ]
 }
 
 pw_executable("client_fuzzer") {
+  testonly = pw_unit_test_TESTONLY
   sources = [ "client_fuzzer.cc" ]
   deps = [
     ":argparse",
@@ -114,6 +120,7 @@ pw_executable("client_fuzzer") {
 }
 
 pw_python_action("cpp_client_server_fuzz_test") {
+  testonly = pw_unit_test_TESTONLY
   script = "../py/pw_rpc/testing.py"
   args = [
     "--server",

@@ -16,12 +16,12 @@
 
 import unittest
 from unittest import mock
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from pw_protobuf_compiler import python_protos
 from pw_status import Status
 
-from pw_rpc import callback_client, client, packets
+from pw_rpc import callback_client, client, descriptors, packets
 from pw_rpc.internal import packet_pb2
 
 TEST_PROTO_1 = """\
@@ -52,6 +52,8 @@ service PublicService {
 }
 """
 
+CLIENT_CHANNEL_ID: int = 489
+
 
 def _message_bytes(msg) -> bytes:
     return msg if isinstance(msg, bytes) else msg.SerializeToString()
@@ -66,16 +68,18 @@ class _CallbackClientImplTestBase(unittest.TestCase):
 
         self._client = client.Client.from_modules(
             callback_client.Impl(),
-            [client.Channel(1, self._handle_packet)],
+            [client.Channel(CLIENT_CHANNEL_ID, self._handle_packet)],
             self._protos.modules(),
         )
-        self._service = self._client.channel(1).rpcs.pw.test1.PublicService
+        self._service = self._client.channel(
+            CLIENT_CHANNEL_ID
+        ).rpcs.pw.test1.PublicService
 
-        self.requests: List[packet_pb2.RpcPacket] = []
-        self._next_packets: List[Tuple[bytes, Status]] = []
+        self.requests: list[packet_pb2.RpcPacket] = []
+        self._next_packets: list[tuple[bytes, Status]] = []
         self.send_responses_after_packets: float = 1
 
-        self.output_exception: Optional[Exception] = None
+        self.output_exception: Exception | None = None
 
     def last_request(self) -> packet_pb2.RpcPacket:
         assert self.requests
@@ -83,13 +87,14 @@ class _CallbackClientImplTestBase(unittest.TestCase):
 
     def _enqueue_response(
         self,
-        channel_id: int,
-        method=None,
+        channel_id: int = CLIENT_CHANNEL_ID,
+        method: descriptors.Method | None = None,
         status: Status = Status.OK,
-        payload=b'',
+        payload: bytes = b'',
         *,
-        ids: Optional[Tuple[int, int]] = None,
-        process_status=Status.OK,
+        ids: tuple[int, int] | None = None,
+        process_status: Status = Status.OK,
+        call_id: int = client.OPEN_CALL_ID,
     ) -> None:
         if method:
             assert ids is None
@@ -105,6 +110,7 @@ class _CallbackClientImplTestBase(unittest.TestCase):
                     channel_id=channel_id,
                     service_id=service_id,
                     method_id=method_id,
+                    call_id=call_id,
                     status=status.value,
                     payload=_message_bytes(payload),
                 ).SerializeToString(),
@@ -113,7 +119,12 @@ class _CallbackClientImplTestBase(unittest.TestCase):
         )
 
     def _enqueue_server_stream(
-        self, channel_id: int, method, response, process_status=Status.OK
+        self,
+        channel_id: int,
+        method,
+        response,
+        process_status=Status.OK,
+        call_id: int = client.OPEN_CALL_ID,
     ) -> None:
         self._next_packets.append(
             (
@@ -122,6 +133,7 @@ class _CallbackClientImplTestBase(unittest.TestCase):
                     channel_id=channel_id,
                     service_id=method.service.id,
                     method_id=method.id,
+                    call_id=call_id,
                     payload=_message_bytes(response),
                 ).SerializeToString(),
                 process_status,
@@ -135,6 +147,7 @@ class _CallbackClientImplTestBase(unittest.TestCase):
         method,
         status: Status,
         process_status=Status.OK,
+        call_id: int = client.OPEN_CALL_ID,
     ) -> None:
         self._next_packets.append(
             (
@@ -145,6 +158,7 @@ class _CallbackClientImplTestBase(unittest.TestCase):
                     if isinstance(service, int)
                     else service.id,
                     method_id=method if isinstance(method, int) else method.id,
+                    call_id=call_id,
                     status=status.value,
                 ).SerializeToString(),
                 process_status,
@@ -181,13 +195,17 @@ class _CallbackClientImplTestBase(unittest.TestCase):
         return message
 
 
+# Disable docstring requirements for test functions.
+# pylint: disable=missing-function-docstring
+
+
 class CallbackClientImplTest(_CallbackClientImplTestBase):
     """Tests the callback_client.Impl client implementation."""
 
     def test_callback_exceptions_suppressed(self) -> None:
         stub = self._service.SomeUnary
 
-        self._enqueue_response(1, stub.method)
+        self._enqueue_response(CLIENT_CHANNEL_ID, stub.method)
         exception_msg = 'YOU BROKE IT O-]-<'
 
         with self.assertLogs(callback_client.__package__, 'ERROR') as logs:
@@ -198,7 +216,7 @@ class CallbackClientImplTest(_CallbackClientImplTestBase):
         self.assertIn(exception_msg, ''.join(logs.output))
 
         # Make sure we can still invoke the RPC.
-        self._enqueue_response(1, stub.method, Status.UNKNOWN)
+        self._enqueue_response(CLIENT_CHANNEL_ID, stub.method, Status.UNKNOWN)
         status, _ = stub()
         self.assertIs(status, Status.UNKNOWN)
 
@@ -210,20 +228,22 @@ class CallbackClientImplTest(_CallbackClientImplTestBase):
         self._enqueue_response(999, method, process_status=Status.NOT_FOUND)
         # Bad service
         self._enqueue_response(
-            1, ids=(999, method.id), process_status=Status.OK
+            CLIENT_CHANNEL_ID, ids=(999, method.id), process_status=Status.OK
         )
         # Bad method
         self._enqueue_response(
-            1, ids=(service_id, 999), process_status=Status.OK
+            CLIENT_CHANNEL_ID, ids=(service_id, 999), process_status=Status.OK
         )
         # For RPC not pending (is Status.OK because the packet is processed)
         self._enqueue_response(
-            1,
+            CLIENT_CHANNEL_ID,
             ids=(service_id, self._service.SomeBidiStreaming.method.id),
             process_status=Status.OK,
         )
 
-        self._enqueue_response(1, method, process_status=Status.OK)
+        self._enqueue_response(
+            CLIENT_CHANNEL_ID, method, process_status=Status.OK
+        )
 
         status, response = self._service.SomeUnary(magic_number=6)
         self.assertIs(Status.OK, status)
@@ -242,12 +262,16 @@ class CallbackClientImplTest(_CallbackClientImplTestBase):
             process_status=Status.NOT_FOUND,
         )
         # Bad service
-        self._enqueue_error(1, 999, method.id, Status.INVALID_ARGUMENT)
+        self._enqueue_error(
+            CLIENT_CHANNEL_ID, 999, method.id, Status.INVALID_ARGUMENT
+        )
         # Bad method
-        self._enqueue_error(1, service_id, 999, Status.INVALID_ARGUMENT)
+        self._enqueue_error(
+            CLIENT_CHANNEL_ID, service_id, 999, Status.INVALID_ARGUMENT
+        )
         # For RPC not pending
         self._enqueue_error(
-            1,
+            CLIENT_CHANNEL_ID,
             service_id,
             self._service.SomeBidiStreaming.method.id,
             Status.NOT_FOUND,
@@ -261,7 +285,11 @@ class CallbackClientImplTest(_CallbackClientImplTestBase):
         method = self._service.SomeUnary.method
 
         self._enqueue_response(
-            1, method, Status.OK, b'INVALID DATA!!!', process_status=Status.OK
+            CLIENT_CHANNEL_ID,
+            method,
+            Status.OK,
+            b'INVALID DATA!!!',
+            process_status=Status.OK,
         )
 
         with self.assertRaises(callback_client.RpcError) as context:
@@ -282,10 +310,10 @@ class CallbackClientImplTest(_CallbackClientImplTestBase):
     def test_default_timeouts_set_for_all_rpcs(self) -> None:
         rpc_client = client.Client.from_modules(
             callback_client.Impl(99, 100),
-            [client.Channel(1, lambda *a, **b: None)],
+            [client.Channel(CLIENT_CHANNEL_ID, lambda *a, **b: None)],
             self._protos.modules(),
         )
-        rpcs = rpc_client.channel(1).rpcs
+        rpcs = rpc_client.channel(CLIENT_CHANNEL_ID).rpcs
 
         self.assertEqual(
             rpcs.pw.test1.PublicService.SomeUnary.default_timeout_s, 99
@@ -326,7 +354,7 @@ class UnaryTest(_CallbackClientImplTestBase):
     def test_blocking_call(self) -> None:
         for _ in range(3):
             self._enqueue_response(
-                1,
+                CLIENT_CHANNEL_ID,
                 self.method,
                 Status.ABORTED,
                 self.method.response_type(payload='0_o'),
@@ -345,17 +373,19 @@ class UnaryTest(_CallbackClientImplTestBase):
 
     def test_nonblocking_call(self) -> None:
         for _ in range(3):
-            self._enqueue_response(
-                1,
-                self.method,
-                Status.ABORTED,
-                self.method.response_type(payload='0_o'),
-            )
-
             callback = mock.Mock()
             call = self.rpc.invoke(
                 self._request(magic_number=5), callback, callback
             )
+
+            self._enqueue_response(
+                CLIENT_CHANNEL_ID,
+                self.method,
+                Status.ABORTED,
+                self.method.response_type(payload='0_o'),
+                call_id=call.call_id,
+            )
+            self._process_enqueued_packets()
 
             callback.assert_has_calls(
                 [
@@ -368,12 +398,50 @@ class UnaryTest(_CallbackClientImplTestBase):
                 5, self._sent_payload(self.method.request_type).magic_number
             )
 
+    def test_concurrent_nonblocking_calls(self) -> None:
+        # Start several calls to the same method
+        callbacks_and_calls: list[
+            tuple[mock.Mock, callback_client.call.Call]
+        ] = []
+        for _ in range(3):
+            callback = mock.Mock()
+            call = self.rpc.invoke(self._request(magic_number=5), callback)
+            callbacks_and_calls.append((callback, call))
+
+        # Respond only to the last call
+        last_callback, last_call = callbacks_and_calls.pop()
+        last_payload = self.method.response_type(payload='last payload')
+        self._enqueue_response(
+            CLIENT_CHANNEL_ID,
+            self.method,
+            payload=last_payload,
+            call_id=last_call.call_id,
+        )
+        self._process_enqueued_packets()
+
+        # Assert that only the last caller received a response
+        last_callback.assert_called_once_with(last_call, last_payload)
+        for remaining_callback, _ in callbacks_and_calls:
+            remaining_callback.assert_not_called()
+
+        # Respond to the other callers and check for receipt
+        other_payload = self.method.response_type(payload='other payload')
+        for callback, call in callbacks_and_calls:
+            self._enqueue_response(
+                CLIENT_CHANNEL_ID,
+                self.method,
+                payload=other_payload,
+                call_id=call.call_id,
+            )
+            self._process_enqueued_packets()
+            callback.assert_called_once_with(call, other_payload)
+
     def test_open(self) -> None:
         self.output_exception = IOError('something went wrong sending!')
 
         for _ in range(3):
             self._enqueue_response(
-                1,
+                CLIENT_CHANNEL_ID,
                 self.method,
                 Status.ABORTED,
                 self.method.response_type(payload='0_o'),
@@ -397,7 +465,10 @@ class UnaryTest(_CallbackClientImplTestBase):
     def test_blocking_server_error(self) -> None:
         for _ in range(3):
             self._enqueue_error(
-                1, self.method.service, self.method, Status.NOT_FOUND
+                CLIENT_CHANNEL_ID,
+                self.method.service,
+                self.method,
+                Status.NOT_FOUND,
             )
 
             with self.assertRaises(callback_client.RpcError) as context:
@@ -444,19 +515,19 @@ class UnaryTest(_CallbackClientImplTestBase):
         with self.assertRaises(callback_client.RpcTimeout):
             self._service.SomeUnary()
 
-    def test_nonblocking_duplicate_calls_first_is_cancelled(self) -> None:
+    def test_nonblocking_duplicate_calls_not_cancelled(self) -> None:
         first_call = self.rpc.invoke()
         self.assertFalse(first_call.completed())
 
         second_call = self.rpc.invoke()
 
-        self.assertIs(first_call.error, Status.CANCELLED)
-        self.assertFalse(second_call.completed())
+        self.assertIs(first_call.error, None)
+        self.assertIs(second_call.error, None)
 
     def test_nonblocking_exception_in_callback(self) -> None:
-        exception = ValueError('something went wrong!')
+        exception = ValueError('something went wrong! (intentionally)')
 
-        self._enqueue_response(1, self.method, Status.OK)
+        self._enqueue_response(CLIENT_CHANNEL_ID, self.method, Status.OK)
 
         call = self.rpc.invoke(on_completed=mock.Mock(side_effect=exception))
 
@@ -476,6 +547,28 @@ class UnaryTest(_CallbackClientImplTestBase):
             '(Status.OK, None)',
         )
 
+    def test_on_call_hook(self) -> None:
+        hook_function = mock.Mock()
+
+        self._client = client.Client.from_modules(
+            callback_client.Impl(on_call_hook=hook_function),
+            [client.Channel(CLIENT_CHANNEL_ID, self._handle_packet)],
+            self._protos.modules(),
+        )
+
+        self._service = self._client.channel(
+            CLIENT_CHANNEL_ID
+        ).rpcs.pw.test1.PublicService
+
+        self._enqueue_response(CLIENT_CHANNEL_ID, self.method, Status.OK)
+        self._service.SomeUnary(self.method.request_type(magic_number=6))
+
+        hook_function.assert_called_once()
+        self.assertEqual(
+            hook_function.call_args[0][0].method.full_name,
+            self.method.full_name,
+        )
+
 
 class ServerStreamingTest(_CallbackClientImplTestBase):
     """Tests for server streaming RPCs."""
@@ -490,9 +583,11 @@ class ServerStreamingTest(_CallbackClientImplTestBase):
         rep2 = self.method.response_type(payload='?')
 
         for _ in range(3):
-            self._enqueue_server_stream(1, self.method, rep1)
-            self._enqueue_server_stream(1, self.method, rep2)
-            self._enqueue_response(1, self.method, Status.ABORTED)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep1)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep2)
+            self._enqueue_response(
+                CLIENT_CHANNEL_ID, self.method, Status.ABORTED
+            )
 
             self.assertEqual(
                 [rep1, rep2],
@@ -508,9 +603,11 @@ class ServerStreamingTest(_CallbackClientImplTestBase):
         rep2 = self.method.response_type(payload='?')
 
         for _ in range(3):
-            self._enqueue_server_stream(1, self.method, rep1)
-            self._enqueue_server_stream(1, self.method, rep2)
-            self._enqueue_response(1, self.method, Status.ABORTED)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep1)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep2)
+            self._enqueue_response(
+                CLIENT_CHANNEL_ID, self.method, Status.ABORTED
+            )
 
             callback = mock.Mock()
             call = self.rpc.invoke(
@@ -535,9 +632,11 @@ class ServerStreamingTest(_CallbackClientImplTestBase):
         rep2 = self.method.response_type(payload='?')
 
         for _ in range(3):
-            self._enqueue_server_stream(1, self.method, rep1)
-            self._enqueue_server_stream(1, self.method, rep2)
-            self._enqueue_response(1, self.method, Status.ABORTED)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep1)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep2)
+            self._enqueue_response(
+                CLIENT_CHANNEL_ID, self.method, Status.ABORTED
+            )
 
             callback = mock.Mock()
             call = self.rpc.open(
@@ -557,7 +656,7 @@ class ServerStreamingTest(_CallbackClientImplTestBase):
 
     def test_nonblocking_cancel(self) -> None:
         resp = self.rpc.method.response_type(payload='!!!')
-        self._enqueue_server_stream(1, self.rpc.method, resp)
+        self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.rpc.method, resp)
 
         callback = mock.Mock()
         call = self.rpc.invoke(self._request(magic_number=3), callback)
@@ -575,8 +674,42 @@ class ServerStreamingTest(_CallbackClientImplTestBase):
         self.assertEqual(self.last_request().status, Status.CANCELLED.value)
 
         # Ensure the RPC can be called after being cancelled.
-        self._enqueue_server_stream(1, self.method, resp)
-        self._enqueue_response(1, self.method, Status.OK)
+        self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, resp)
+        self._enqueue_response(CLIENT_CHANNEL_ID, self.method, Status.OK)
+
+        call = self.rpc.invoke(
+            self._request(magic_number=3), callback, callback
+        )
+
+        callback.assert_has_calls(
+            [
+                mock.call(call, self.method.response_type(payload='!!!')),
+                mock.call(call, Status.OK),
+            ]
+        )
+
+    def test_request_completion(self) -> None:
+        resp = self.rpc.method.response_type(payload='!!!')
+        self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.rpc.method, resp)
+
+        callback = mock.Mock()
+        call = self.rpc.invoke(self._request(magic_number=3), callback)
+        callback.assert_called_once_with(
+            call, self.rpc.method.response_type(payload='!!!')
+        )
+
+        callback.reset_mock()
+
+        call.request_completion()
+
+        self.assertEqual(
+            self.last_request().type,
+            packet_pb2.PacketType.CLIENT_REQUEST_COMPLETION,
+        )
+
+        # Ensure the RPC can be called after being completed.
+        self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, resp)
+        self._enqueue_response(CLIENT_CHANNEL_ID, self.method, Status.OK)
 
         call = self.rpc.invoke(
             self._request(magic_number=3), callback, callback
@@ -605,20 +738,20 @@ class ServerStreamingTest(_CallbackClientImplTestBase):
             for _ in call:
                 pass
 
-    def test_nonblocking_duplicate_calls_first_is_cancelled(self) -> None:
+    def test_nonblocking_duplicate_calls_not_cancelled(self) -> None:
         first_call = self.rpc.invoke()
         self.assertFalse(first_call.completed())
 
         second_call = self.rpc.invoke()
 
-        self.assertIs(first_call.error, Status.CANCELLED)
-        self.assertFalse(second_call.completed())
+        self.assertIs(first_call.error, None)
+        self.assertIs(second_call.error, None)
 
     def test_nonblocking_iterate_over_count(self) -> None:
         reply = self.method.response_type(payload='!?')
 
         for _ in range(4):
-            self._enqueue_server_stream(1, self.method, reply)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, reply)
 
         call = self.rpc.invoke()
 
@@ -628,8 +761,8 @@ class ServerStreamingTest(_CallbackClientImplTestBase):
 
     def test_nonblocking_iterate_after_completed_doesnt_block(self) -> None:
         reply = self.method.response_type(payload='!?')
-        self._enqueue_server_stream(1, self.method, reply)
-        self._enqueue_response(1, self.method, Status.OK)
+        self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, reply)
+        self._enqueue_response(CLIENT_CHANNEL_ID, self.method, Status.OK)
 
         call = self.rpc.invoke()
 
@@ -655,7 +788,9 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
         # Send after len(requests) and the client stream end packet.
         self.send_responses_after_packets = 3
         response = self.method.response_type(payload='yo')
-        self._enqueue_response(1, self.method, Status.OK, response)
+        self._enqueue_response(
+            CLIENT_CHANNEL_ID, self.method, Status.OK, response
+        )
 
         results = self.rpc(requests)
         self.assertIs(results.status, Status.OK)
@@ -666,7 +801,10 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
 
         # Send after len(requests) and the client stream end packet.
         self._enqueue_error(
-            1, self.method.service, self.method, Status.NOT_FOUND
+            CLIENT_CHANNEL_ID,
+            self.method.service,
+            self.method,
+            Status.NOT_FOUND,
         )
 
         with self.assertRaises(callback_client.RpcError) as context:
@@ -692,7 +830,9 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
             self.assertFalse(stream.completed())
 
             # Enqueue the server response to be sent after the next message.
-            self._enqueue_response(1, self.method, Status.OK, payload_1)
+            self._enqueue_response(
+                CLIENT_CHANNEL_ID, self.method, Status.OK, payload_1
+            )
 
             stream.send(magic_number=32)
             self.assertIs(
@@ -712,7 +852,9 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
         payload = self.method.response_type(payload='-_-')
 
         for _ in range(3):
-            self._enqueue_response(1, self.method, Status.OK, payload)
+            self._enqueue_response(
+                CLIENT_CHANNEL_ID, self.method, Status.OK, payload
+            )
 
             callback = mock.Mock()
             call = self.rpc.open(callback, callback, callback)
@@ -745,11 +887,13 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
             self.assertFalse(stream.completed())
 
             # Enqueue the server response to be sent after the next message.
-            self._enqueue_response(1, self.method, Status.OK, payload_1)
+            self._enqueue_response(
+                CLIENT_CHANNEL_ID, self.method, Status.OK, payload_1
+            )
 
             stream.finish_and_wait()
             self.assertIs(
-                packet_pb2.PacketType.CLIENT_STREAM_END,
+                packet_pb2.PacketType.CLIENT_REQUEST_COMPLETION,
                 self.last_request().type,
             )
 
@@ -778,7 +922,10 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
             stream = self._service.SomeClientStreaming.invoke()
 
             self._enqueue_error(
-                1, self.method.service, self.method, Status.INVALID_ARGUMENT
+                CLIENT_CHANNEL_ID,
+                self.method.service,
+                self.method,
+                Status.INVALID_ARGUMENT,
             )
             stream.send(magic_number=2**32 - 1)
 
@@ -791,9 +938,13 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
         for _ in range(3):
             stream = self._service.SomeClientStreaming.invoke()
 
-            # Error will be sent in response to the CLIENT_STREAM_END packet.
+            # Error will be sent in response to the CLIENT_REQUEST_COMPLETION
+            # packet.
             self._enqueue_error(
-                1, self.method.service, self.method, Status.INVALID_ARGUMENT
+                CLIENT_CHANNEL_ID,
+                self.method.service,
+                self.method,
+                Status.INVALID_ARGUMENT,
             )
 
             with self.assertRaises(callback_client.RpcError) as context:
@@ -812,7 +963,9 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
 
     def test_nonblocking_finish_after_completed(self) -> None:
         reply = self.method.response_type(payload='!?')
-        self._enqueue_response(1, self.method, Status.UNAVAILABLE, reply)
+        self._enqueue_response(
+            CLIENT_CHANNEL_ID, self.method, Status.UNAVAILABLE, reply
+        )
 
         call = self.rpc.invoke()
         result = call.finish_and_wait()
@@ -823,7 +976,10 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
 
     def test_nonblocking_finish_after_error(self) -> None:
         self._enqueue_error(
-            1, self.method.service, self.method, Status.UNAVAILABLE
+            CLIENT_CHANNEL_ID,
+            self.method.service,
+            self.method,
+            Status.UNAVAILABLE,
         )
 
         call = self.rpc.invoke()
@@ -836,14 +992,14 @@ class ClientStreamingTest(_CallbackClientImplTestBase):
             self.assertIs(call.error, Status.UNAVAILABLE)
             self.assertIsNone(call.response)
 
-    def test_nonblocking_duplicate_calls_first_is_cancelled(self) -> None:
+    def test_nonblocking_duplicate_calls_not_cancelled(self) -> None:
         first_call = self.rpc.invoke()
         self.assertFalse(first_call.completed())
 
         second_call = self.rpc.invoke()
 
-        self.assertIs(first_call.error, Status.CANCELLED)
-        self.assertFalse(second_call.completed())
+        self.assertIs(first_call.error, None)
+        self.assertIs(second_call.error, None)
 
 
 class BidirectionalStreamingTest(_CallbackClientImplTestBase):
@@ -862,7 +1018,7 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
 
         # Send after len(requests) and the client stream end packet.
         self.send_responses_after_packets = 3
-        self._enqueue_response(1, self.method, Status.NOT_FOUND)
+        self._enqueue_response(CLIENT_CHANNEL_ID, self.method, Status.NOT_FOUND)
 
         results = self.rpc(requests)
         self.assertIs(results.status, Status.NOT_FOUND)
@@ -873,7 +1029,10 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
 
         # Send after len(requests) and the client stream end packet.
         self._enqueue_error(
-            1, self.method.service, self.method, Status.NOT_FOUND
+            CLIENT_CHANNEL_ID,
+            self.method.service,
+            self.method,
+            Status.NOT_FOUND,
         )
 
         with self.assertRaises(callback_client.RpcError) as context:
@@ -903,8 +1062,8 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
             self.assertFalse(stream.completed())
             self.assertEqual([], responses)
 
-            self._enqueue_server_stream(1, self.method, rep1)
-            self._enqueue_server_stream(1, self.method, rep2)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep1)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep2)
 
             stream.send(magic_number=66)
             self.assertIs(
@@ -916,7 +1075,7 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
             self.assertFalse(stream.completed())
             self.assertEqual([rep1, rep2], responses)
 
-            self._enqueue_response(1, self.method, Status.OK)
+            self._enqueue_response(CLIENT_CHANNEL_ID, self.method, Status.OK)
 
             stream.send(magic_number=77)
             self.assertTrue(stream.completed())
@@ -931,9 +1090,9 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
         rep2 = self.method.response_type(payload='?')
 
         for _ in range(3):
-            self._enqueue_server_stream(1, self.method, rep1)
-            self._enqueue_server_stream(1, self.method, rep2)
-            self._enqueue_response(1, self.method, Status.OK)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep1)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep2)
+            self._enqueue_response(CLIENT_CHANNEL_ID, self.method, Status.OK)
 
             callback = mock.Mock()
             call = self.rpc.open(callback, callback, callback)
@@ -953,7 +1112,7 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
     def test_nonblocking(self, callback) -> None:
         """Tests a bidirectional streaming RPC ended by the server."""
         reply = self.method.response_type(payload='This is the payload!')
-        self._enqueue_server_stream(1, self.method, reply)
+        self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, reply)
 
         self._service.SomeBidiStreaming.invoke()
 
@@ -969,14 +1128,17 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
             )
             self.assertFalse(stream.completed())
 
-            self._enqueue_server_stream(1, self.method, rep1)
+            self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, rep1)
 
             stream.send(magic_number=55)
             self.assertFalse(stream.completed())
             self.assertEqual([rep1], responses)
 
             self._enqueue_error(
-                1, self.method.service, self.method, Status.OUT_OF_RANGE
+                CLIENT_CHANNEL_ID,
+                self.method.service,
+                self.method,
+                Status.OUT_OF_RANGE,
             )
 
             stream.send(magic_number=99999)
@@ -994,9 +1156,13 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
         for _ in range(3):
             stream = self._service.SomeBidiStreaming.invoke()
 
-            # Error will be sent in response to the CLIENT_STREAM_END packet.
+            # Error will be sent in response to the CLIENT_REQUEST_COMPLETION
+            # packet.
             self._enqueue_error(
-                1, self.method.service, self.method, Status.INVALID_ARGUMENT
+                CLIENT_CHANNEL_ID,
+                self.method.service,
+                self.method,
+                Status.INVALID_ARGUMENT,
             )
 
             with self.assertRaises(callback_client.RpcError) as context:
@@ -1015,8 +1181,10 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
 
     def test_nonblocking_finish_after_completed(self) -> None:
         reply = self.method.response_type(payload='!?')
-        self._enqueue_server_stream(1, self.method, reply)
-        self._enqueue_response(1, self.method, Status.UNAVAILABLE)
+        self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, reply)
+        self._enqueue_response(
+            CLIENT_CHANNEL_ID, self.method, Status.UNAVAILABLE
+        )
 
         call = self.rpc.invoke()
         result = call.finish_and_wait()
@@ -1027,9 +1195,12 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
 
     def test_nonblocking_finish_after_error(self) -> None:
         reply = self.method.response_type(payload='!?')
-        self._enqueue_server_stream(1, self.method, reply)
+        self._enqueue_server_stream(CLIENT_CHANNEL_ID, self.method, reply)
         self._enqueue_error(
-            1, self.method.service, self.method, Status.UNAVAILABLE
+            CLIENT_CHANNEL_ID,
+            self.method.service,
+            self.method,
+            Status.UNAVAILABLE,
         )
 
         call = self.rpc.invoke()
@@ -1042,14 +1213,14 @@ class BidirectionalStreamingTest(_CallbackClientImplTestBase):
             self.assertIs(call.error, Status.UNAVAILABLE)
             self.assertEqual(call.responses, [reply])
 
-    def test_nonblocking_duplicate_calls_first_is_cancelled(self) -> None:
+    def test_nonblocking_duplicate_calls_not_cancelled(self) -> None:
         first_call = self.rpc.invoke()
         self.assertFalse(first_call.completed())
 
         second_call = self.rpc.invoke()
 
-        self.assertIs(first_call.error, Status.CANCELLED)
-        self.assertFalse(second_call.completed())
+        self.assertIs(first_call.error, None)
+        self.assertIs(second_call.error, None)
 
     def test_stream_response(self) -> None:
         proto = self._protos.packages.pw.test1.SomeMessage(magic_number=123)

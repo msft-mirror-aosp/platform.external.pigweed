@@ -17,10 +17,10 @@ import argparse
 import logging
 from pathlib import Path
 import re
+import shlex
 import string
 import sys
 import subprocess
-from typing import Dict, List, Optional
 
 import pw_cli.log
 
@@ -33,7 +33,7 @@ _NINJA_VARIABLE = re.compile('^([a-zA-Z0-9_]+) = ?')
 
 
 # TODO(hepler): Could do this step just once and output the results.
-def find_cc_rule(toolchain_ninja_file: Path) -> Optional[str]:
+def find_cc_rule(toolchain_ninja_file: Path) -> str | None:
     """Searches the toolchain.ninja file for the cc rule."""
     cmd_prefix = '  command = '
 
@@ -56,8 +56,8 @@ def find_cc_rule(toolchain_ninja_file: Path) -> Optional[str]:
     return None
 
 
-def _parse_ninja_variables(target_ninja_file: Path) -> Dict[str, str]:
-    variables: Dict[str, str] = {}
+def _parse_ninja_variables(target_ninja_file: Path) -> dict[str, str]:
+    variables: dict[str, str] = {}
 
     with target_ninja_file.open() as fd:
         for line in fd:
@@ -79,7 +79,7 @@ _EXPECTED_GN_VARS = (
     'include_dirs',
 )
 
-_ENABLE_TEST_MACRO = '-DPW_NC_TEST_EXECUTE_CASE_'
+_TEST_MACRO = 'PW_NC_TEST_EXECUTE_CASE_'
 # Regular expression to find and remove ANSI escape sequences, based on
 # https://stackoverflow.com/a/14693789.
 _ANSI_ESCAPE_SEQUENCES = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -124,13 +124,14 @@ def _check_results(
         _start_failure(test, command)
         _LOG.error('Compilation succeeded, but it should have failed!')
         _LOG.error('Update the test code so that is fails to compile.')
+        _LOG.error('Compilation command:\n%s', command)
         raise _TestFailure
 
     compiler_str = command.split(' ', 1)[0]
     compiler = Compiler.from_command(compiler_str)
 
     _LOG.debug('%s is %s', compiler_str, compiler)
-    expectations: List[Expectation] = [
+    expectations: list[Expectation] = [
         e for e in test.expectations if compiler.matches(e.compiler)
     ]
 
@@ -199,29 +200,53 @@ def _check_results(
         raise _TestFailure
 
 
+def _should_skip_test(base_command: str) -> bool:
+    # Attempt to run the preprocessor while setting the PW_NC_TEST macro to an
+    # illegal statement (defined() with no identifier). If the preprocessor
+    # passes, the test was skipped.
+    preprocessor_cmd = f'{base_command}{shlex.quote("defined()")} -E'
+    process = subprocess.run(
+        preprocessor_cmd,
+        shell=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    _LOG.debug(
+        'Preprocessor command to check if test is enabled returned %d:\n%s',
+        process.returncode,
+        preprocessor_cmd,
+    )
+    return process.returncode == 0
+
+
 def _execute_test(
     test: TestCase,
     command: str,
-    variables: Dict[str, str],
-    all_tests: List[str],
+    variables: dict[str, str],
+    all_tests: list[str],
 ) -> None:
     variables['in'] = str(test.source)
 
-    command = string.Template(command).substitute(variables)
-    command = ' '.join(
+    base_command = ' '.join(
         [
-            command,
+            string.Template(command).substitute(variables),
             '-DPW_NEGATIVE_COMPILATION_TESTS_ENABLED',
             # Define macros to disable all tests except this one.
-            *(
-                f'{_ENABLE_TEST_MACRO}{t}={1 if test.case == t else 0}'
-                for t in all_tests
-            ),
+            *(f'-D{_TEST_MACRO}{t}=0' for t in all_tests if t != test.case),
+            f'-D{_TEST_MACRO}{test.case}=',
         ]
     )
-    process = subprocess.run(command, shell=True, capture_output=True)
 
-    _check_results(test, command, process)
+    if _should_skip_test(base_command):
+        _LOG.info(
+            "Skipping test %s since it is excluded by the preprocessor",
+            test.name(),
+        )
+        return
+
+    compile_command = base_command + '1'  # set macro to 1 to enable the test
+    process = subprocess.run(compile_command, shell=True, capture_output=True)
+    _check_results(test, compile_command, process)
 
 
 def _main(

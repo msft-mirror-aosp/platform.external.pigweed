@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -16,6 +16,7 @@ package dev.pigweed.pw_transfer;
 
 import static dev.pigweed.pw_transfer.TransferProgress.UNKNOWN_TRANSFER_SIZE;
 import static java.lang.Math.max;
+import static java.lang.Math.min;
 
 import dev.pigweed.pw_log.Logger;
 import dev.pigweed.pw_rpc.Status;
@@ -38,7 +39,8 @@ class ReadTransfer extends Transfer<byte[]> {
   // of the window, and so on.
   private static final int EXTEND_WINDOW_DIVISOR = 2;
 
-  // To minimize copies, store the ByteBuffers directly from the chunk protos in a list.
+  // To minimize copies, store the ByteBuffers directly from the chunk protos in a
+  // list.
   private final List<ByteBuffer> dataChunks = new ArrayList<>();
   private int totalDataSize = 0;
 
@@ -46,26 +48,62 @@ class ReadTransfer extends Transfer<byte[]> {
 
   private long remainingTransferSize = UNKNOWN_TRANSFER_SIZE;
 
-  private int offset = 0;
   private int windowEndOffset = 0;
+
+  private int windowSize = 0;
+  private int windowSizeMultiplier = 1;
+  private TransmitPhase transmitPhase = TransmitPhase.SLOW_START;
 
   private int lastReceivedOffset = 0;
 
+  // Slow start and congestion avoidance are analogues to the equally named phases
+  // in TCP congestion
+  // control.
+  private enum TransmitPhase {
+    SLOW_START,
+    CONGESTION_AVOIDANCE,
+  }
+
+  // The type of data transmission the transfer is requesting.
+  private enum TransmitAction {
+    // Immediate parameters sent at the start of a new transfer for legacy
+    // compatibility.
+    BEGIN,
+
+    // Initial parameters chunk following the opening handshake.
+    FIRST_PARAMETERS,
+
+    // Extend the current transmission window.
+    EXTEND,
+
+    // Rewind the transfer to a certain offset following data loss.
+    RETRANSMIT,
+  }
+
   ReadTransfer(int resourceId,
+      int sessionId,
       ProtocolVersion desiredProtocolVersion,
       TransferInterface transferManager,
       TransferTimeoutSettings timeoutSettings,
       TransferParameters transferParameters,
       Consumer<TransferProgress> progressCallback,
-      BooleanSupplier shouldAbortCallback) {
+      BooleanSupplier shouldAbortCallback,
+      int initialOffset) {
     super(resourceId,
+        sessionId,
         desiredProtocolVersion,
         transferManager,
         timeoutSettings,
         progressCallback,
-        shouldAbortCallback);
+        shouldAbortCallback,
+        initialOffset);
     this.parameters = transferParameters;
-    this.windowEndOffset = parameters.maxPendingBytes();
+    this.windowEndOffset = parameters.maxChunkSizeBytes();
+    this.windowSize = parameters.maxChunkSizeBytes();
+  }
+
+  final TransferParameters getParametersForTest() {
+    return parameters;
   }
 
   @Override
@@ -75,16 +113,18 @@ class ReadTransfer extends Transfer<byte[]> {
 
   @Override
   void prepareInitialChunk(VersionedChunk.Builder chunk) {
+    chunk.setInitialOffset(getOffset());
     setTransferParameters(chunk);
   }
 
   @Override
   VersionedChunk getChunkForRetry() {
     VersionedChunk chunk = getLastChunkSent();
-    // If the last chunk sent was transfer parameters, send an updated RETRANSMIT chunk.
+    // If the last chunk sent was transfer parameters, send an updated RETRANSMIT
+    // chunk.
     if (chunk.type() == Chunk.Type.PARAMETERS_CONTINUE
         || chunk.type() == Chunk.Type.PARAMETERS_RETRANSMIT) {
-      return prepareTransferParameters(/*extend=*/false);
+      return prepareTransferParameters(TransmitAction.RETRANSMIT);
     }
     return chunk;
   }
@@ -92,18 +132,20 @@ class ReadTransfer extends Transfer<byte[]> {
   private class ReceivingData extends ActiveState {
     @Override
     public void handleDataChunk(VersionedChunk chunk) throws TransferAbortedException {
-      // Track the last seen offset so the DropRecovery state can detect retried packets.
+      // Track the last seen offset so the DropRecovery state can detect retried
+      // packets.
       lastReceivedOffset = chunk.offset();
 
-      if (chunk.offset() != offset) {
+      if (chunk.offset() != getOffset()) {
         logger.atFine().log("%s expected offset %d, received %d; resending transfer parameters",
             ReadTransfer.this,
-            offset,
+            getOffset(),
             chunk.offset());
 
-        // For now, only in-order transfers are supported. If data is received out of order,
+        // For now, only in-order transfers are supported. If data is received out of
+        // order,
         // discard this data and retransmit from the last received offset.
-        sendChunk(prepareTransferParameters(/*extend=*/false));
+        sendChunk(prepareTransferParameters(TransmitAction.RETRANSMIT));
         changeState(new DropRecovery());
         setNextChunkTimeout();
         return;
@@ -113,7 +155,7 @@ class ReadTransfer extends Transfer<byte[]> {
       dataChunks.addAll(chunk.data().asReadOnlyByteBufferList());
       totalDataSize += chunk.data().size();
 
-      offset += chunk.data().size();
+      setOffset(getOffset() + chunk.data().size());
 
       if (chunk.remainingBytes().isPresent()) {
         if (chunk.remainingBytes().getAsLong() == 0) {
@@ -123,26 +165,26 @@ class ReadTransfer extends Transfer<byte[]> {
 
         remainingTransferSize = chunk.remainingBytes().getAsLong();
       } else if (remainingTransferSize != UNKNOWN_TRANSFER_SIZE) {
-        // If remaining size was not specified, update based on the most recent estimate, if any.
+        // If remaining size was not specified, update based on the most recent
+        // estimate, if any.
         remainingTransferSize = max(remainingTransferSize - chunk.data().size(), 0);
       }
 
       if (remainingTransferSize == UNKNOWN_TRANSFER_SIZE || remainingTransferSize == 0) {
-        updateProgress(offset, offset, UNKNOWN_TRANSFER_SIZE);
+        updateProgress(getOffset(), getOffset(), UNKNOWN_TRANSFER_SIZE);
       } else {
-        updateProgress(offset, offset, offset + remainingTransferSize);
+        updateProgress(getOffset(), getOffset(), getOffset() + remainingTransferSize);
       }
 
-      int remainingWindowSize = windowEndOffset - offset;
-      boolean extendWindow =
-          remainingWindowSize <= parameters.maxPendingBytes() / EXTEND_WINDOW_DIVISOR;
+      int remainingWindowSize = windowEndOffset - getOffset();
+      boolean extendWindow = remainingWindowSize <= windowSize / EXTEND_WINDOW_DIVISOR;
 
       if (remainingWindowSize == 0) {
         logger.atFinest().log(
             "%s received all pending bytes; sending transfer parameters update", ReadTransfer.this);
-        sendChunk(prepareTransferParameters(/*extend=*/false));
+        sendChunk(prepareTransferParameters(TransmitAction.EXTEND));
       } else if (extendWindow) {
-        sendChunk(prepareTransferParameters(/*extend=*/true));
+        sendChunk(prepareTransferParameters(TransmitAction.EXTEND));
       }
       setNextChunkTimeout();
     }
@@ -152,25 +194,26 @@ class ReadTransfer extends Transfer<byte[]> {
   private class DropRecovery extends ActiveState {
     @Override
     public void handleDataChunk(VersionedChunk chunk) throws TransferAbortedException {
-      if (chunk.offset() == offset) {
+      if (chunk.offset() == getOffset()) {
         logger.atFine().log(
-            "%s received expected offset %d, resuming transfer", ReadTransfer.this, offset);
+            "%s received expected offset %d, resuming transfer", ReadTransfer.this, getOffset());
         changeState(new ReceivingData()).handleDataChunk(chunk);
         return;
       }
 
-      // To avoid a flood of identical parameters packets, only send one if a retry is detected.
+      // To avoid a flood of identical parameters packets, only send one if a retry is
+      // detected.
       if (chunk.offset() == lastReceivedOffset) {
         logger.atFiner().log(
             "%s received repeated offset %d: retry detected, resending transfer parameters",
             ReadTransfer.this,
             lastReceivedOffset);
-        sendChunk(prepareTransferParameters(/*extend=*/false));
+        sendChunk(prepareTransferParameters(TransmitAction.RETRANSMIT));
       } else {
         lastReceivedOffset = chunk.offset();
         logger.atFiner().log("%s expecting offset %d, ignoring received offset %d",
             ReadTransfer.this,
-            offset,
+            getOffset(),
             chunk.offset());
       }
       setNextChunkTimeout();
@@ -183,20 +226,67 @@ class ReadTransfer extends Transfer<byte[]> {
 
     ByteBuffer result = ByteBuffer.allocate(totalDataSize);
     dataChunks.forEach(result::put);
-    getFuture().set(result.array());
+    set(result.array());
   }
 
-  private VersionedChunk prepareTransferParameters(boolean extend) {
-    windowEndOffset = offset + parameters.maxPendingBytes();
+  private VersionedChunk prepareTransferParameters(TransmitAction action) {
+    Chunk.Type type;
 
-    Chunk.Type type = extend ? Chunk.Type.PARAMETERS_CONTINUE : Chunk.Type.PARAMETERS_RETRANSMIT;
+    switch (action) {
+      case BEGIN:
+        // Initial window is always one chunk. No special handling required.
+        type = Chunk.Type.START;
+        break;
+
+      case FIRST_PARAMETERS:
+        // Initial window is always one chunk. No special handling required.
+        type = Chunk.Type.PARAMETERS_RETRANSMIT;
+        break;
+
+      case EXTEND:
+        // Window was received successfully without packet loss and should grow. Double
+        // the window
+        // size during slow start, or increase it by a single chunk in congestion
+        // avoidance.
+        type = Chunk.Type.PARAMETERS_CONTINUE;
+
+        if (transmitPhase == TransmitPhase.SLOW_START) {
+          windowSizeMultiplier *= 2;
+        } else {
+          windowSizeMultiplier += 1;
+        }
+
+        // The window size can never exceed the user-specified maximum bytes. If it
+        // does, reduce
+        // the multiplier to the largest size that fits.
+        windowSizeMultiplier = min(windowSizeMultiplier, parameters.maxChunksInWindow());
+        break;
+
+      case RETRANSMIT:
+        // A packet was lost: shrink the window size. Additionally, after the first
+        // packet loss,
+        // transition from the slow start to the congestion avoidance phase of the
+        // transfer.
+        type = Chunk.Type.PARAMETERS_RETRANSMIT;
+        windowSizeMultiplier = max(windowSizeMultiplier / 2, 1);
+        if (transmitPhase == TransmitPhase.SLOW_START) {
+          transmitPhase = TransmitPhase.CONGESTION_AVOIDANCE;
+        }
+        break;
+
+      default:
+        throw new AssertionError("Invalid transmit action");
+    }
+
+    windowSize = windowSizeMultiplier * parameters.maxChunkSizeBytes();
+    windowEndOffset = getOffset() + windowSize;
+
     return setTransferParameters(newChunk(type)).build();
   }
 
   private VersionedChunk.Builder setTransferParameters(VersionedChunk.Builder chunk) {
-    chunk.setWindowEndOffset(offset + parameters.maxPendingBytes())
-        .setMaxChunkSizeBytes(parameters.maxChunkSizeBytes())
-        .setOffset(offset)
+    chunk.setMaxChunkSizeBytes(parameters.maxChunkSizeBytes())
+        .setOffset(getOffset())
         .setWindowEndOffset(windowEndOffset);
     if (parameters.chunkDelayMicroseconds() > 0) {
       chunk.setMinDelayMicroseconds(parameters.chunkDelayMicroseconds());

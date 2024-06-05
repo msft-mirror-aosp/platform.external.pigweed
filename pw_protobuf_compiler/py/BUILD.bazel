@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -36,12 +36,24 @@ py_test(
         "compiled_protos_test.py",
     ],
     imports = [
-        # To import pw_protobuf_compiler_protos
-        "..",
+        ".",
     ],
     deps = [
-        ":pw_protobuf_compiler",
-        "//pw_protobuf_compiler:pw_protobuf_compiler_protos",
+        "//pw_protobuf_compiler:pw_protobuf_compiler_protos_py_pb2",
+    ],
+)
+
+py_test(
+    name = "compiled_nanopb_protos_test",
+    size = "small",
+    srcs = [
+        "compiled_nanopb_protos_test.py",
+    ],
+    imports = [
+        ".",
+    ],
+    deps = [
+        "//pw_protobuf_compiler:pw_protobuf_compiler_nanopb_protos_py_pb2",
     ],
 )
 

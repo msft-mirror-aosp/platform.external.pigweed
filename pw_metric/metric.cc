@@ -18,6 +18,7 @@
 
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
+#include "pw_preprocessor/compiler.h"
 #include "pw_span/span.h"
 #include "pw_tokenizer/base64.h"
 
@@ -34,7 +35,7 @@ span<const std::byte> AsSpan(const T& t) {
 // TODO(keir): Consider putting this into upstream pw_tokenizer.
 struct Base64EncodedToken {
   Base64EncodedToken(Token token) {
-    int encoded_size = tokenizer::PrefixedBase64Encode(AsSpan(token), data);
+    size_t encoded_size = tokenizer::PrefixedBase64Encode(AsSpan(token), data);
     data[encoded_size] = 0;
   }
 
@@ -72,7 +73,16 @@ uint32_t Metric::as_int() const {
 
 void Metric::Increment(uint32_t amount) {
   PW_DCHECK(is_int());
-  uint_ += amount;
+  if (PW_ADD_OVERFLOW(uint_, amount, &uint_)) {
+    uint_ = std::numeric_limits<uint32_t>::max();
+  }
+}
+
+void Metric::Decrement(uint32_t amount) {
+  PW_DCHECK(is_int());
+  if (PW_SUB_OVERFLOW(uint_, amount, &uint_)) {
+    uint_ = 0;
+  }
 }
 
 void Metric::SetInt(uint32_t value) {
@@ -108,8 +118,6 @@ void Metric::Dump(IntrusiveList<Metric>& metrics, int level) {
     m.Dump(level);
   }
 }
-
-Group::Group(Token name) : name_(name) {}
 
 Group::Group(Token name, IntrusiveList<Group>& groups) : name_(name) {
   groups.push_front(*this);

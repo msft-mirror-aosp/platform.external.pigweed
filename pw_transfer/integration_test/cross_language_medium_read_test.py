@@ -37,7 +37,7 @@ import random
 from google.protobuf import text_format
 
 from pigweed.pw_transfer.integration_test import config_pb2
-import test_fixture
+from pigweed.pw_transfer.integration_test import test_fixture
 from test_fixture import TransferIntegrationTestHarness, TransferConfig
 
 _ALL_LANGUAGES = ("cpp", "java", "python")
@@ -47,6 +47,12 @@ _ALL_VERSIONS = (
 )
 _ALL_LANGUAGES_AND_VERSIONS = tuple(
     itertools.product(_ALL_LANGUAGES, _ALL_VERSIONS)
+)
+
+_ALL_LANGUAGES_V2 = tuple(
+    itertools.product(
+        _ALL_LANGUAGES, [config_pb2.TransferAction.ProtocolVersion.V2]
+    )
 )
 
 
@@ -91,12 +97,22 @@ class MediumTransferReadIntegrationTest(test_fixture.TransferIntegrationTest):
                 """
                 client_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [5, 1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [5, 1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
                 ]
 
                 server_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [5, 1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [5, 1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
             ]""",
                 config_pb2.ProxyConfig(),
             ),
@@ -126,12 +142,22 @@ class MediumTransferReadIntegrationTest(test_fixture.TransferIntegrationTest):
                 """
                 client_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [2, 1, -1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [2, 1, -1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
                 ]
 
                 server_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [1, 2, -1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [1, 2, -1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
             ]""",
                 config_pb2.ProxyConfig(),
             ),
@@ -149,6 +175,66 @@ class MediumTransferReadIntegrationTest(test_fixture.TransferIntegrationTest):
             payload,
             protocol_version,
             permanent_resource_id=True,
+        )
+
+    @parameterized.expand(_ALL_LANGUAGES_V2)
+    def test_medium_client_read_offset(self, client_type, protocol_version):
+        payload = random.Random(67336391945).randbytes(512)
+        config = self.default_config()
+
+        resource_id = 6
+        self.do_single_read(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            protocol_version,
+            initial_offset=100,
+            offsettable_resources=True,
+        )
+
+    @parameterized.expand(_ALL_LANGUAGES_V2)
+    def test_medium_client_read_offset_with_drops(
+        self, client_type, protocol_version
+    ):
+        payload = random.Random(67336391945).randbytes(1024)
+        config = TransferConfig(
+            self.default_server_config(),
+            self.default_client_config(),
+            text_format.Parse(
+                """
+                client_filter_stack: [
+                    { hdlc_packetizer: {} },
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [5, 1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
+                ]
+
+                server_filter_stack: [
+                    { hdlc_packetizer: {} },
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [5, 1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
+                ]""",
+                config_pb2.ProxyConfig(),
+            ),
+        )
+
+        resource_id = 7
+        self.do_single_read(
+            client_type,
+            config,
+            resource_id,
+            payload,
+            protocol_version,
+            initial_offset=100,
+            offsettable_resources=True,
         )
 
 

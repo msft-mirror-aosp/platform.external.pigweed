@@ -13,7 +13,7 @@
 # the License.
 """Wrapper fuctions to add borders around prompt_toolkit containers."""
 
-from typing import Callable, List, Optional, Union
+from typing import Callable
 
 from prompt_toolkit.layout import (
     AnyContainer,
@@ -23,14 +23,16 @@ from prompt_toolkit.layout import (
     Window,
 )
 
+from prompt_toolkit.formatted_text import StyleAndTextTuples
+
 
 def create_border(
     # pylint: disable=too-many-arguments
     content: AnyContainer,
-    content_height: Optional[int] = None,
-    title: Union[Callable[[], str], str] = '',
-    border_style: Union[Callable[[], str], str] = '',
-    base_style: Union[Callable[[], str], str] = '',
+    content_height: int | None = None,
+    title: Callable[[], str | StyleAndTextTuples] | str = '',
+    border_style: Callable[[], str] | str = '',
+    base_style: Callable[[], str] | str = '',
     top: bool = True,
     bottom: bool = True,
     left: bool = True,
@@ -46,7 +48,7 @@ def create_border(
 ) -> HSplit:
     """Wrap any prompt_toolkit container in a border."""
 
-    top_border_items: List[AnyContainer] = []
+    top_border_items: list[AnyContainer] = []
     if left:
         top_border_items.append(
             Window(width=1, height=1, char=top_left_char, style=border_style)
@@ -75,7 +77,7 @@ def create_border(
             Window(width=1, height=1, char=top_right_char, style=border_style)
         )
 
-    content_items: List[AnyContainer] = []
+    content_items: list[AnyContainer] = []
     if left:
         content_items.append(
             Window(
@@ -111,7 +113,7 @@ def create_border(
             Window(width=1, height=2, char=vertical_char, style=border_style)
         )
 
-    bottom_border_items: List[AnyContainer] = []
+    bottom_border_items: list[AnyContainer] = []
     if left:
         bottom_border_items.append(
             Window(width=1, height=1, char=bottom_left_char)
@@ -128,7 +130,7 @@ def create_border(
             Window(width=1, height=1, char=bottom_right_char)
         )
 
-    rows: List[AnyContainer] = []
+    rows: list[AnyContainer] = []
     if top:
         rows.append(VSplit(top_border_items, height=1, padding=0))
     rows.append(VSplit(content_items, height=content_height))

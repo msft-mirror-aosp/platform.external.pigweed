@@ -1,4 +1,4 @@
-# Copyright 2022 The Pigweed Authors
+# Copyright 2023 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -13,28 +13,32 @@
 # the License.
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_perf_test",
     "pw_cc_test",
 )
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
-load("@rules_proto_grpc//:defs.bzl", "proto_plugin")
-load("//pw_protobuf_compiler:proto.bzl", "pw_proto_library")
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_filegroup", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "config",
     hdrs = ["public/pw_protobuf/config.h"],
     includes = ["public"],
+    deps = [":config_override"],
 )
 
-pw_cc_library(
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+cc_library(
     name = "pw_protobuf",
     srcs = [
         "decoder.cc",
@@ -71,12 +75,13 @@ pw_cc_library(
         "//pw_stream",
         "//pw_stream:interval_reader",
         "//pw_string:string",
+        "//pw_toolchain:sibling_cast",
         "//pw_varint",
         "//pw_varint:stream",
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "bytes_utils",
     hdrs = ["public/pw_protobuf/bytes_utils.h"],
     includes = ["public"],
@@ -114,7 +119,6 @@ pw_cc_fuzz_test(
         "fuzz.h",
     ],
     deps = [
-        "//pw_fuzzer",
         "//pw_protobuf",
         "//pw_span",
     ],
@@ -127,7 +131,6 @@ pw_cc_fuzz_test(
         "fuzz.h",
     ],
     deps = [
-        "//pw_fuzzer",
         "//pw_protobuf",
         "//pw_span",
     ],
@@ -138,6 +141,7 @@ pw_cc_test(
     srcs = ["find_test.cc"],
     deps = [
         ":pw_protobuf",
+        "//pw_string",
         "//pw_unit_test",
     ],
 )
@@ -197,9 +201,7 @@ proto_library(
 
 py_proto_library(
     name = "codegen_protos_pb2",
-    srcs = [
-        "pw_protobuf_codegen_protos/codegen_options.proto",
-    ],
+    deps = [":codegen_protos"],
 )
 
 proto_library(
@@ -208,6 +210,21 @@ proto_library(
         "pw_protobuf_protos/common.proto",
     ],
     strip_import_prefix = "/pw_protobuf",
+)
+
+py_proto_library(
+    name = "common_py_pb2",
+    deps = [":common_proto"],
+)
+
+java_proto_library(
+    name = "common_java_proto",
+    deps = [":common_proto"],
+)
+
+java_lite_proto_library(
+    name = "common_java_proto_lite",
+    deps = [":common_proto"],
 )
 
 proto_library(
@@ -223,11 +240,8 @@ proto_library(
 
 py_proto_library(
     name = "field_options_proto_pb2",
-    srcs = [
-        "pw_protobuf_protos/field_options.proto",
-    ],
     deps = [
-        "@com_google_protobuf//:protobuf_python",
+        ":field_options_proto",
     ],
 )
 
@@ -241,21 +255,42 @@ proto_library(
 
 py_proto_library(
     name = "status_proto_pb2",
+    deps = [":status_proto"],
+)
+
+pw_proto_filegroup(
+    name = "codegen_test_deps_protos_and_options",
     srcs = [
-        "pw_protobuf_protos/status.proto",
+        "pw_protobuf_test_deps_protos/imported.proto",
     ],
+    options_files = ["pw_protobuf_test_deps_protos/imported.options"],
+)
+
+pw_proto_filegroup(
+    name = "codegen_import_test_deps_protos_and_options",
+    srcs = [
+        "pw_protobuf_test_deps_protos/test_prefix_imported.proto",
+    ],
+    options_files = ["pw_protobuf_test_deps_protos/test_prefix_imported.options"],
 )
 
 proto_library(
     name = "codegen_test_deps_protos",
-    srcs = [
-        "pw_protobuf_test_deps_protos/imported.proto",
-    ],
+    srcs = [":codegen_test_deps_protos_and_options"],
     strip_import_prefix = "/pw_protobuf",
 )
 
+# Test that options files are applied even on protos that are given an import path
+# that doesn't correspond to their real file path.
 proto_library(
-    name = "codegen_test_proto",
+    name = "codegen_test_deps_protos_test_prefix",
+    srcs = [":codegen_import_test_deps_protos_and_options"],
+    import_prefix = "test_prefix",
+    strip_import_prefix = "/pw_protobuf/pw_protobuf_test_deps_protos",
+)
+
+pw_proto_filegroup(
+    name = "codegen_test_proto_and_options",
     srcs = [
         "pw_protobuf_test_protos/full_test.proto",
         "pw_protobuf_test_protos/imported.proto",
@@ -266,9 +301,21 @@ proto_library(
         "pw_protobuf_test_protos/repeated.proto",
         "pw_protobuf_test_protos/size_report.proto",
     ],
+    options_files = [
+        "pw_protobuf_test_protos/full_test.options",
+        "pw_protobuf_test_protos/optional.options",
+        "pw_protobuf_test_protos/imported.options",
+        "pw_protobuf_test_protos/repeated.options",
+    ],
+)
+
+proto_library(
+    name = "codegen_test_proto",
+    srcs = [":codegen_test_proto_and_options"],
     strip_import_prefix = "/pw_protobuf",
     deps = [
         ":codegen_test_deps_protos",
+        ":codegen_test_deps_protos_test_prefix",
         ":common_proto",
     ],
 )
@@ -307,11 +354,16 @@ pw_cc_test(
     ],
 )
 
-# TODO(tpudlik): Figure out how to add options file support to Bazel.
-filegroup(
+pw_cc_test(
     name = "codegen_message_test",
     srcs = [
         "codegen_message_test.cc",
+    ],
+    deps = [
+        ":codegen_test_proto_cc.pwpb",
+        ":pw_protobuf",
+        "//pw_span",
+        "//pw_unit_test",
     ],
 )
 
@@ -329,15 +381,4 @@ filegroup(
     srcs = glob([
         "size_report/*.cc",
     ]),
-)
-
-proto_plugin(
-    name = "pw_cc_plugin",
-    outputs = [
-        "{protopath}.pwpb.h",
-    ],
-    protoc_plugin_name = "pwpb",
-    tool = "@pigweed//pw_protobuf/py:plugin",
-    use_built_in_shell_environment = True,
-    visibility = ["//visibility:public"],
 )

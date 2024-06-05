@@ -17,6 +17,9 @@ import("//build_overrides/pigweed.gni")
 import("$dir_pw_build/target_types.gni")
 
 declare_args() {
+  # Location of MCUXpresso SDK directory
+  dir_pw_third_party_mcuxpresso = ""
+
   # If compiling a project against an MCUXpresso SDK, this variable can be set
   # to the name of the pw_source_set you create using `pw_mcuxpresso_sdk` to
   # enable additional Pigweed support.
@@ -41,14 +44,17 @@ declare_args() {
 #
 #  exclude: Optional list of SDK components to exclude from the project.
 #
+#  device_core: Optional name of device core to filter components for.
+#
 #  allow_circular_includes_from, configs, deps, public_configs, public_deps:
 #    Optional extra properties for the source set.
 #
 # Example:
 #
 #   pw_mcuxpresso_sdk("sample_project_sdk") {
-#     manifest = "$dir_pw_third_party/mcuxpresso/EVK-MIMXRT595_manifest_v3_8.xml"
+#     manifest = "$dir_pw_third_party/mcuxpresso/EVK-MIMXRT595_manifest_v3_13.xml"
 #     include = [ "project_template.evkmimxrt595.MIMXRT595S" ]
+#     device_core = "cm33_MIMXRT595S"
 #   }
 #
 #   pw_executable("hello_world") {
@@ -66,7 +72,7 @@ template("pw_mcuxpresso_sdk") {
   }
 
   _script_args = [
-    "project",
+    "gn",
     rebase_path(invoker.manifest),
     "--prefix=$_sdk_dir",
   ]
@@ -87,6 +93,13 @@ template("pw_mcuxpresso_sdk") {
         dependency,
       ]
     }
+  }
+
+  if (defined(invoker.device_core)) {
+    _script_args += [
+      "--device_core",
+      invoker.device_core,
+    ]
   }
 
   # This script finds the components distributed with the SDK.

@@ -57,10 +57,18 @@ multi-toolchain builds. This toolchain can be set with the
 ``pw_build_PYTHON_TOOLCHAIN`` GN arg, which defaults to
 ``$dir_pw_build/python_toolchain:python``.
 
+.. note::
+
+   By default, ``<name>.lint`` and ``<name>.tests`` will transitively test and
+   lint any dependencies. This is done for backwards compatibility, but if you
+   don't rely on this behavior you should turn this off by adding
+   ``pw_build_TEST_TRANSITIVE_PYTHON_DEPS = false`` to your project's ``.gn``
+   file.
+
 Arguments
 ---------
-- ``setup`` - List of setup file paths (setup.py or pyproject.toml & setup.cfg),
-  which must all be in the same directory.
+- ``setup`` - List of setup file paths (setup.cfg and pyproject.toml), which
+  must all be in the same directory.
 - ``generate_setup``: As an alternative to ``setup``, generate setup files with
   the keywords in this scope. ``name`` is required. This follows the same
   structure as a ``setup.cfg`` file's `declarative config
@@ -81,6 +89,29 @@ Arguments
 
 - ``sources`` - Python sources files in the package.
 - ``tests`` - Test files for this Python package.
+
+  .. tip::
+     It is best to keep these files within the same folder as the ``BUILD.gn``
+     and not nested within another folder that contains an ``__init__.py``
+     file. That could cause your tests to be included within the package
+     distributions (See :ref:`module-pw_build-pw_python_distribution`). For
+     example pip installed into the bootstrapped Python virtual environment or
+     as part of a Python wheel.
+
+     If you need to nest your test source files under a sub-folder exclude it in
+     the ``setup.cfg`` file with:
+
+     .. code-block:: cfg
+
+        [options]
+        packages = find:
+
+        # Exclude the tests and test_scripts folders.
+        [options.packages.find]
+        exclude =
+            tests
+            test_scripts
+
 - ``python_deps`` - Dependencies on other pw_python_packages in the GN build.
 - ``python_test_deps`` - Test-only pw_python_package dependencies.
 - ``other_deps`` - Dependencies on GN targets that are not pw_python_packages.
@@ -113,7 +144,6 @@ This is an example Python package declaration for a ``pw_my_module`` module.
      setup = [
        "pyproject.toml",
        "setup.cfg",
-       "setup.py",
      ]
      sources = [
        "pw_my_module/__init__.py",
@@ -239,6 +269,7 @@ Example
        "//tools:another_pw_python_package",
        "//:my_product_packages",
      ]
+     pip_generate_hashes = true
    }
 
 Arguments
@@ -261,11 +292,15 @@ Arguments
      ``pw_build_PIP_REQUIREMENTS`` GN args see:
      :ref:`docs-python-build-python-gn-requirements-files`
 
+- ``pip_generate_hashes``: (Default: false) Use ``--generate-hashes`` When
+  running `pip-compile <A list of requirements files to install into this
+  virtualenv>`_ to compute the final ``requirements.txt``
+
 - ``source_packages``: A list of in-tree
   :ref:`module-pw_build-pw_python_package` or targets that will be checked for
   external third_party pip dependencies to install into this
   virtualenv. Note this list of targets isn't actually installed into the
-  virtualenv. Only packages defined inside the [options] install_requires
+  virtualenv. Only packages defined inside the ``[options] install_requires``
   section of each pw_python_package's setup.cfg will be pip installed.
 
   .. seealso::
@@ -274,6 +309,7 @@ Arguments
      setup.cfg files
      <https://setuptools.pypa.io/en/latest/userguide/declarative_config.html>`_
 
+- ``output_logs``: (Default: true) If this is true then the virtual environment will output to logs.
 
 .. _module-pw_build-pw_python_pip_install:
 
@@ -328,7 +364,7 @@ Collects Python wheels for one or more ``pw_python_package`` targets, plus any
 additional ``pw_python_package`` targets they depend on, directly or indirectly.
 Note that this does not include Python dependencies that come from outside the
 GN build, like packages from PyPI, for example. Those should still be declared
-in the package's ``setup.py`` file as usual.
+in the package's ``setup.cfg`` file as usual.
 
 Arguments
 ---------
@@ -355,8 +391,7 @@ developer environment. The generated ``.zip`` contains Python wheels
 (``.whl`` files) for one or more ``pw_python_package`` targets, plus wheels for
 any additional ``pw_python_package`` targets in the GN build they depend on,
 directly or indirectly. Dependencies from outside the GN build, such as packages
-from PyPI, must be listed in packages' ``setup.py`` or ``setup.cfg`` files as
-usual.
+from PyPI, must be listed in packages' ``setup.cfg`` file as usual.
 
 The ``.zip`` also includes simple setup scripts for Linux,
 MacOS, and Windows. The setup scripts automatically create a Python virtual
@@ -430,10 +465,25 @@ Arguments
   and ``version`` strings. The ``common_config_file`` should contain the
   required fields in the ``metadata`` and ``options`` sections as shown in
   `Configuring setup() using setup.cfg files <https://setuptools.pypa.io/en/latest/userguide/declarative_config.html>`_.
-  ``append_git_sha_to_version = true`` and ``append_date_to_version = true``
-  will optionally append the current git SHA or date to the package version
-  string after a ``+`` sign. You can also opt to include a generated
-  ``pyproject.toml`` file by setting ``include_default_pyproject_file = true``.
+
+  This scope can optionally include:
+
+  - ``append_git_sha_to_version = true``: Append the current git SHA to the
+    package version string after a ``+`` sign.
+
+  - ``append_date_to_version = true``: Append the current date to the package
+    version string after a ``+`` sign.
+
+  - ``include_default_pyproject_file = true``: Include a standard
+    ``pyproject.toml`` file in the output.
+
+  - ``include_extra_files_in_package_data = true``: Add any ``extra_files``
+    entries to the generated ``setup.cfg`` file under the
+    ``[options.package_data]`` section.
+
+  - ``auto_create_package_data_init_py_files = true``: (Default: true) Create
+    ``__init__.py`` files as needed in all subdirs of ``extra_files`` when
+    including in ``[options.package_data]``.
 
   .. code-block::
      :caption: :octicon:`file;1em` Example using a common setup.cfg and

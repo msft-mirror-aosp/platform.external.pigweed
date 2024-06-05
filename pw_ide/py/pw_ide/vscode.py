@@ -58,17 +58,20 @@ this takes effect until they are merged into VSC's active settings files
 command.
 """
 
+from __future__ import annotations
+
 # TODO(chadnorvell): Import collections.OrderedDict when we don't need to
 # support Python 3.8 anymore.
 from enum import Enum
-import json
 import os
 from pathlib import Path
-import platform
-from typing import Any, Dict, List, OrderedDict
+import shutil
+import subprocess
+from typing import Any, OrderedDict
 
-from pw_ide.activate import BashShellModifier
-from pw_ide.cpp import ClangdSettings
+from pw_cli.env import pigweed_environment
+
+from pw_ide.cpp import ClangdSettings, CppIdeFeaturesState
 
 from pw_ide.editors import (
     EditorSettingsDict,
@@ -80,42 +83,10 @@ from pw_ide.editors import (
 from pw_ide.python import PythonPaths
 from pw_ide.settings import PigweedIdeSettings
 
-
-def _vsc_os(system: str = platform.system()):
-    """Return the OS tag that VSC expects."""
-    if system == 'Darwin':
-        return 'osx'
-
-    return system.lower()
+env = pigweed_environment()
 
 
-def _activated_env() -> OrderedDict[str, Any]:
-    """Return the environment diff needed to provide Pigweed activation.
-
-    The integrated terminal will already include the user's default environment
-    (e.g. from their shell init scripts). This provides the modifications to
-    the environment needed for Pigweed activation.
-    """
-    # Not all environments have an actions.json, which this ultimately relies
-    # on (e.g. tests in CI). No problem, just return an empty dict instead.
-    try:
-        env = (
-            BashShellModifier(env_only=True, path_var='${env:PATH}')
-            .modify_env()
-            .env_mod
-        )
-    except (FileNotFoundError, json.JSONDecodeError):
-        env = dict()
-
-    return OrderedDict(env)
-
-
-def _local_terminal_integrated_env() -> Dict[str, Any]:
-    """VSC setting to activate the integrated terminal."""
-    return {f'terminal.integrated.env.{_vsc_os()}': _activated_env()}
-
-
-def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> Dict[str, Any]:
+def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> dict[str, Any]:
     """VSC settings for running clangd with Pigweed paths."""
     clangd_settings = ClangdSettings(ide_settings)
     return {
@@ -124,12 +95,11 @@ def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> Dict[str, Any]:
     }
 
 
-def _local_python_settings() -> Dict[str, Any]:
+def _local_python_settings() -> dict[str, Any]:
     """VSC settings for finding the Python virtualenv."""
     paths = PythonPaths()
     return {
         'python.defaultInterpreterPath': str(paths.interpreter),
-        'python.formatting.yapfPath': str(paths.bin_dir / 'yapf'),
     }
 
 
@@ -140,6 +110,7 @@ def _local_python_settings() -> Dict[str, Any]:
 # alternative of instantiating with a list of tuples.
 _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
     {
+        "cmake.format.allowOptionalArgumentIndentation": True,
         "editor.detectIndentation": False,
         "editor.rulers": [80],
         "editor.tabSize": 2,
@@ -159,7 +130,6 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
                 "bazel-out": True,
                 "bazel-pigweed": True,
                 "bazel-testlogs": True,
-                "build": True,
                 "environment": True,
                 "node_modules": True,
                 "out": True,
@@ -172,112 +142,176 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
         "gulp.autoDetect": "off",
         "jake.autoDetect": "off",
         "npm.autoDetect": "off",
-        "clangd.onConfigChanged": "restart",
-        "C_Cpp.intelliSenseEngine": "Disabled",
+        "C_Cpp.intelliSenseEngine": "disabled",
         "[cpp]": OrderedDict(
             {"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"}
         ),
-        "python.formatting.provider": "yapf",
+        "python.analysis.diagnosticSeverityOverrides": OrderedDict(
+            # Due to our project structure, the linter spuriously thinks we're
+            # shadowing system modules any time we import them. This disables
+            # that check.
+            {"reportShadowedImports": "none"}
+        ),
+        # The "strict" mode is much more strict than what we currently enforce.
+        "python.analysis.typeCheckingMode": "basic",
+        "python.terminal.activateEnvironment": False,
+        "python.testing.unittestEnabled": True,
         "[python]": OrderedDict({"editor.tabSize": 4}),
         "typescript.tsc.autoDetect": "off",
         "[gn]": OrderedDict({"editor.defaultFormatter": "msedge-dev.gnls"}),
         "[proto3]": OrderedDict(
             {"editor.defaultFormatter": "zxh404.vscode-proto3"}
         ),
+        "[restructuredtext]": OrderedDict({"editor.tabSize": 3}),
     }
 )
 
-# pylint: disable=line-too-long
 _DEFAULT_TASKS: EditorSettingsDict = OrderedDict(
     {
         "version": "2.0.0",
         "tasks": [
             {
-                "type": "shell",
-                "label": "Pigweed IDE: Format",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw format --fix'",
+                "type": "process",
+                "label": "Pigweed: Format",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw format --fix'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
-                "label": "Pigweed IDE: Presubmit",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw presubmit'",
+                "type": "process",
+                "label": "Pigweed: Presubmit",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw presubmit'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "label": "Pigweed IDE: Set Python Virtual Environment",
+                "label": "Pigweed: Set Python Virtual Environment",
                 "command": "${command:python.setInterpreter}",
                 "problemMatcher": [],
             },
             {
-                "label": "Pigweed IDE: Restart Python Language Server",
+                "label": "Pigweed: Restart Python Language Server",
                 "command": "${command:python.analysis.restartLanguageServer}",
                 "problemMatcher": [],
             },
             {
-                "label": "Pigweed IDE: Restart C++ Language Server",
+                "label": "Pigweed: Restart C++ Language Server",
                 "command": "${command:clangd.restart}",
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
-                "label": "Pigweed IDE: Process C++ Compilation Database from GN",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide cpp --gn --process out/compile_commands.json'",
+                "type": "process",
+                "label": "Pigweed: Sync IDE",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw ide sync'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
-                "label": "Pigweed IDE: Setup",
-                "command": "python3 ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide setup'",
+                "type": "process",
+                "label": "Pigweed: Current C++ Target Toolchain",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw ide cpp'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
-                "label": "Pigweed IDE: Current C++ Code Analysis Target",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide cpp'",
+                "type": "process",
+                "label": "Pigweed: List C++ Target Toolchains",
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw ide cpp --list'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
-                "label": "Pigweed IDE: List C++ Code Analysis Targets",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide cpp --list'",
+                "type": "process",
+                "label": (
+                    "Pigweed: Change C++ Target Toolchain "
+                    "without LSP restart"
+                ),
+                "command": "${config:python.defaultInterpreterPath}",
+                "args": [
+                    "-m",
+                    "pw_ide.activate",
+                    "-x 'pw ide cpp --set ${input:availableTargetToolchains}'",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
             {
-                "type": "shell",
-                "label": "Pigweed IDE: Set C++ Code Analysis Target",
-                "command": "${workspaceFolder}/.pw_ide/python ${workspaceFolder}/pw_ide/py/pw_ide/activate.py -x 'pw ide cpp --set ${input:target}'",
+                "label": "Pigweed: Set C++ Target Toolchain",
+                "dependsOrder": "sequence",
+                "dependsOn": [
+                    "Pigweed: Change C++ Target Toolchain without LSP restart",
+                    "Pigweed: Restart C++ Language Server",
+                ],
+                "presentation": {
+                    "focus": True,
+                },
                 "problemMatcher": [],
             },
-        ],
-        "inputs": [
-            {
-                "id": "target",
-                "type": "promptString",
-                "description": "C++ code analysis target",
-            }
         ],
     }
 )
-# pylint: enable=line-too-long
 
 _DEFAULT_EXTENSIONS: EditorSettingsDict = OrderedDict(
     {
         "recommendations": [
             "llvm-vs-code-extensions.vscode-clangd",
+            "ms-python.mypy-type-checker",
             "ms-python.python",
+            "ms-python.pylint",
             "npclaudiu.vscode-gn",
             "msedge-dev.gnls",
             "zxh404.vscode-proto3",
             "josetr.cmake-language-support-vscode",
-            "swyddfa.esbonio",
         ],
         "unwantedRecommendations": [
             "ms-vscode.cpptools",
             "persidskiy.vscode-gnformat",
             "lextudio.restructuredtext",
-            "trond-snekvik.simple-rst",
         ],
+    }
+)
+
+_DEFAULT_LAUNCH: EditorSettingsDict = OrderedDict(
+    {
+        "version": "0.2.0",
+        "configurations": [],
     }
 )
 
@@ -288,21 +322,41 @@ def _default_settings(
     return OrderedDict(
         {
             **_DEFAULT_SETTINGS,
-            **_local_terminal_integrated_env(),
             **_local_clangd_settings(pw_ide_settings),
             **_local_python_settings(),
         }
     )
 
 
-def _default_tasks(_pw_ide_settings: PigweedIdeSettings) -> EditorSettingsDict:
-    return _DEFAULT_TASKS
+def _default_tasks(
+    pw_ide_settings: PigweedIdeSettings,
+    state: CppIdeFeaturesState | None = None,
+) -> EditorSettingsDict:
+    if state is None:
+        state = CppIdeFeaturesState(pw_ide_settings)
+
+    inputs = [
+        {
+            "type": "pickString",
+            "id": "availableTargetToolchains",
+            "description": "Available target toolchains",
+            "options": sorted(list(state.targets)),
+        }
+    ]
+
+    return OrderedDict(**_DEFAULT_TASKS, inputs=inputs)
 
 
 def _default_extensions(
     _pw_ide_settings: PigweedIdeSettings,
 ) -> EditorSettingsDict:
     return _DEFAULT_EXTENSIONS
+
+
+def _default_launch(
+    _pw_ide_settings: PigweedIdeSettings,
+) -> EditorSettingsDict:
+    return _DEFAULT_LAUNCH
 
 
 DEFAULT_SETTINGS_PATH = Path(os.path.expandvars('$PW_PROJECT_ROOT')) / '.vscode'
@@ -312,15 +366,17 @@ class VscSettingsType(Enum):
     """Visual Studio Code settings files.
 
     VSC supports editor settings (``settings.json``), recommended
-    extensions (``extensions.json``), and tasks (``tasks.json``).
+    extensions (``extensions.json``), tasks (``tasks.json``), and
+    launch/debug configurations (``launch.json``).
     """
 
     SETTINGS = 'settings'
     TASKS = 'tasks'
     EXTENSIONS = 'extensions'
+    LAUNCH = 'launch'
 
     @classmethod
-    def all(cls) -> List['VscSettingsType']:
+    def all(cls) -> list[VscSettingsType]:
         return list(cls)
 
 
@@ -334,4 +390,33 @@ class VscSettingsManager(EditorSettingsManager[VscSettingsType]):
         VscSettingsType.SETTINGS: _default_settings,
         VscSettingsType.TASKS: _default_tasks,
         VscSettingsType.EXTENSIONS: _default_extensions,
+        VscSettingsType.LAUNCH: _default_launch,
     }
+
+
+def build_extension(pw_root: Path):
+    """Build the VS Code extension."""
+
+    license_path = pw_root / 'LICENSE'
+    icon_path = pw_root.parent / 'icon.png'
+
+    vsc_ext_path = pw_root / 'pw_ide' / 'ts' / 'pigweed-vscode'
+    out_path = vsc_ext_path / 'out'
+    dist_path = vsc_ext_path / 'dist'
+    temp_license_path = vsc_ext_path / 'LICENSE'
+    temp_icon_path = vsc_ext_path / 'icon.png'
+
+    shutil.rmtree(out_path, ignore_errors=True)
+    shutil.rmtree(dist_path, ignore_errors=True)
+    shutil.copy(license_path, temp_license_path)
+    shutil.copy(icon_path, temp_icon_path)
+
+    try:
+        subprocess.run(['npm', 'install'], check=True, cwd=vsc_ext_path)
+        subprocess.run(['npm', 'run', 'compile'], check=True, cwd=vsc_ext_path)
+        subprocess.run(['vsce', 'package'], check=True, cwd=vsc_ext_path)
+    except subprocess.CalledProcessError as e:
+        raise e
+    finally:
+        temp_license_path.unlink()
+        temp_icon_path.unlink()

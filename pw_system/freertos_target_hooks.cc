@@ -13,6 +13,7 @@
 // the License.
 
 #include "FreeRTOS.h"
+#include "pw_system/config.h"
 #include "pw_thread/detached_thread.h"
 #include "pw_thread/thread.h"
 #include "pw_thread_freertos/context.h"
@@ -27,6 +28,9 @@ enum class ThreadPriority : UBaseType_t {
   // there's synchronization issues when they are.
   kLog = kWorkQueue,
   kRpc = kWorkQueue,
+#if PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+  kTransfer = kWorkQueue,
+#endif  // PW_SYSTEM_ENABLE_TRANSFER_SERVICE
   kNumPriorities,
 };
 
@@ -45,7 +49,9 @@ const thread::Options& LogThreadOptions() {
   return options;
 }
 
-static constexpr size_t kRpcThreadStackWords = 512;
+// Stack size set to 16K in order to accommodate tests with large stacks.
+// TODO: https://pwbug.dev/325509758 - Lower once tests stack sizes are reduced.
+static constexpr size_t kRpcThreadStackWords = 8192;
 static thread::freertos::StaticContextWithStack<kRpcThreadStackWords>
     rpc_thread_context;
 const thread::Options& RpcThreadOptions() {
@@ -56,6 +62,20 @@ const thread::Options& RpcThreadOptions() {
           .set_priority(static_cast<UBaseType_t>(ThreadPriority::kRpc));
   return options;
 }
+
+#if PW_SYSTEM_ENABLE_TRANSFER_SERVICE
+static constexpr size_t kTransferThreadStackWords = 512;
+static thread::freertos::StaticContextWithStack<kTransferThreadStackWords>
+    transfer_thread_context;
+const thread::Options& TransferThreadOptions() {
+  static constexpr auto options =
+      pw::thread::freertos::Options()
+          .set_name("TransferThread")
+          .set_static_context(transfer_thread_context)
+          .set_priority(static_cast<UBaseType_t>(ThreadPriority::kTransfer));
+  return options;
+}
+#endif  // PW_SYSTEM_ENABLE_TRANSFER_SERVICE
 
 static constexpr size_t kWorkQueueThreadStackWords = 512;
 static thread::freertos::StaticContextWithStack<kWorkQueueThreadStackWords>

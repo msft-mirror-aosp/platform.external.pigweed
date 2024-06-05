@@ -17,7 +17,7 @@ import argparse
 import copy
 from pathlib import Path
 import tempfile
-from typing import Any, Dict
+from typing import Any
 import unittest
 from unittest.mock import MagicMock
 
@@ -27,6 +27,8 @@ from pw_build.project_builder_prefs import (
     _DEFAULT_CONFIG,
     load_defaults_from_argparse,
 )
+
+from pw_config_loader import yaml_config_loader_mixin
 
 
 def _create_tempfile(content: str) -> Path:
@@ -40,8 +42,7 @@ def _create_tempfile(content: str) -> Path:
 class TestProjectBuilderPrefs(unittest.TestCase):
     """Tests for ProjectBuilderPrefs."""
 
-    def setUp(self):
-        self.maxDiff = None  # pylint: disable=invalid-name
+    maxDiff = None
 
     def test_load_no_existing_files(self) -> None:
         # Create a prefs instance with no loaded config.
@@ -52,7 +53,7 @@ class TestProjectBuilderPrefs(unittest.TestCase):
             user_file=False,
         )
         # Construct an expected result config.
-        expected_config: Dict[Any, Any] = {}
+        expected_config: dict[Any, Any] = {}
         expected_config.update(_DEFAULT_CONFIG)
         expected_config.update(
             load_defaults_from_argparse(add_project_builder_arguments)
@@ -78,7 +79,7 @@ class TestProjectBuilderPrefs(unittest.TestCase):
         )
 
         # Construct an expected result config.
-        expected_config: Dict[Any, Any] = copy.copy(_DEFAULT_CONFIG)
+        expected_config: dict[Any, Any] = copy.copy(_DEFAULT_CONFIG)
         expected_config.update(defaults_from_argparse)
 
         # pylint: disable=protected-access
@@ -114,7 +115,10 @@ class TestProjectBuilderPrefs(unittest.TestCase):
 
         # Check that only args changed from their defaults are applied.
         # pylint: disable=protected-access
-        prefs._update_config.assert_called_once_with(changed_args)
+        prefs._update_config.assert_called_once_with(
+            changed_args,
+            yaml_config_loader_mixin.Stage.DEFAULT,
+        )
         # pylint: enable=protected-access
 
         # Check the result includes the project_config settings and the

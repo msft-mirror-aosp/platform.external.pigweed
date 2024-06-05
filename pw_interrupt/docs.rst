@@ -3,11 +3,15 @@
 ------------
 pw_interrupt
 ------------
-Pigweed's interrupt module provides a consistent interface for to determine
-whether one is currently executing in an interrupt context (IRQ or NMI) or not.
+Pigweed's interrupt module provides a consistent interface for determining
+whether your code is currently executing in an interrupt context (IRQ or NMI)
+or not.
 
-.. c:function:: bool InInterruptContext()
+.. doxygenfunction:: pw::interrupt::InInterruptContext()
 
-  Returns true if currently executing within an interrupt service routine
-  handling an IRQ or NMI.:w!
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Backends <backends>

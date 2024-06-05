@@ -21,6 +21,12 @@
 #error "PW_BOOT_VECTOR_TABLE_BEGIN is not defined, and is required to use pw_boot_cortex_m"
 #endif  // PW_BOOT_VECTOR_TABLE_BEGIN
 
+#include "header_test.h"
+#include "pw_build/must_place.ld.h"
+
+#ifndef SOME_USEFUL_LINKER_SCRIPT_MACRO
+#error "Header include test failed"
+#endif
 
  /* Note: This technically doesn't set the firmware's entry point. Setting the
  *       firmware entry point is done by setting vector_table[1]
@@ -31,7 +37,7 @@ ENTRY(pw_boot_Entry)
 
 MEMORY
 {
-  /* TODO(b/234892223): Make it possible for projects to freely customize
+  /* TODO: b/234892223 - Make it possible for projects to freely customize
    * memory regions.
    */
 
@@ -49,3 +55,16 @@ MEMORY
     LENGTH = PW_BOOT_RAM_SIZE
 }
 
+/* Define a symbol used in the test source to verify that this linker script is
+ * actually used
+ */
+_linker_defined_symbol = 0xDEADBEEF;
+
+SECTIONS
+{
+  .code :
+  {
+    /* Exercise PW_MUST_PLACE macro on our test object file */
+    PW_MUST_PLACE(*/test.o);
+  }
+}

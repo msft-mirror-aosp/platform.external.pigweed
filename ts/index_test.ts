@@ -22,14 +22,18 @@ import {
   pw_rpc,
   pw_tokenizer,
   pw_transfer,
-  WebSerial
-} from "../dist/index.umd";
+  WebSerial,
+} from '../dist/index.umd';
 
-import {ProtoCollection} from "../dist/protos/collection.umd";
-import * as fs from "fs";
+import { ProtoCollection } from '../dist/protos/collection.umd';
+import {
+  createLogViewer,
+  MockLogSource,
+  PigweedRPCLogSource,
+} from '../dist/logging.umd';
+import * as fs from 'fs';
 
 describe('Pigweed Bundle', () => {
-
   it('proto collection has file list', () => {
     const protoCollection = new ProtoCollection();
     const fd = protoCollection.fileDescriptorSet.getFileList();
@@ -67,10 +71,26 @@ describe('Pigweed Bundle', () => {
     expect(WebSerial.WebSerialTransport).toBeDefined();
   });
 
-  it('is not referring to any outside Pigweed modules', () => {
-    const requireString = "require('pigweedjs";
-    const file = fs.readFileSync(require.resolve("../dist/index.umd"));
-    expect(file.indexOf(requireString)).toBe(-1)
+  it('has ProgressStats defined', () => {
+    expect(pw_transfer.ProgressStats).toBeDefined();
   });
 
+  it('has log viewer exports defined', () => {
+    expect(createLogViewer).toBeDefined();
+    expect(typeof createLogViewer).toBe('function');
+
+    expect(MockLogSource).toBeDefined();
+    expect(typeof MockLogSource).toBe('function');
+    expect(MockLogSource.name).toBe('MockLogSource');
+
+    expect(PigweedRPCLogSource).toBeDefined();
+    expect(typeof PigweedRPCLogSource).toBe('function');
+    expect(PigweedRPCLogSource.name).toBe('PigweedRPCLogSource');
+  });
+
+  it('is not referring to any outside Pigweed modules', () => {
+    const requireString = "require('pigweedjs";
+    const file = fs.readFileSync(require.resolve('../dist/index.umd'));
+    expect(file.indexOf(requireString)).toBe(-1);
+  });
 });

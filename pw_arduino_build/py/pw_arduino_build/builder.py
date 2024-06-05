@@ -24,9 +24,13 @@ import sys
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import List
 
-from pw_arduino_build import file_operations
+try:
+    from pw_arduino_build import file_operations
+
+except ImportError:
+    # Load from this directory if pw_arduino_build is not available.
+    import file_operations  # type: ignore
 
 _LOG = logging.getLogger(__name__)
 
@@ -187,7 +191,7 @@ class ArduinoBuilder:
         self._apply_recipe_overrides()
         self._substitute_variables()
 
-    def set_variables(self, variable_list: List[str]):
+    def set_variables(self, variable_list: list[str]):
         # Convert the string list containing 'name=value' items into a dict
         variable_source = {}
         for var in variable_list:
@@ -249,6 +253,19 @@ class ArduinoBuilder:
             if not self.library_names:
                 self.library_names = []
             self.library_names.append("SrcWrapper")
+
+            # Surround args in quotes if they contain any quote characters.
+            # Example:
+            #   before: -DVARIANT_H="variant_generic.h"
+            #   after:  "-DVARIANT_H=\"variant_generic.h\""
+            build_info_args = []
+            for arg in self.platform["build.info.flags"].split():
+                if '"' not in arg:
+                    build_info_args.append(arg)
+                    continue
+                new_arg = arg.replace('"', '\\"')
+                build_info_args.append(f'"{new_arg}"')
+            self.platform["build.info.flags"] = ' '.join(build_info_args)
 
     def _copy_default_menu_options_to_build_variables(self):
         # Clear existing options
@@ -329,7 +346,7 @@ class ArduinoBuilder:
 
             # Set the {build.core.path} variable that pointing to a sub-core
             # folder. For Teensys this is:
-            # 'teensy/hardware/teensy/avr/cores/teensy{3,4}'. For other cores
+            # 'teensy/hardware/avr/1.58.1/cores/teensy{3,4}'. For other cores
             # it's typically just the 'arduino' folder. For example:
             # 'arduino-samd/hardware/samd/1.8.8/cores/arduino'
             core_path = Path(self.package_path) / "cores"
@@ -571,8 +588,10 @@ class ArduinoBuilder:
             self.build_variant_path = bvp
             self.board[self.selected_board]["build.variant.path"] = bvp
             # Add the variant folder as an include directory
-            # (used in stm32l4 core)
-            self.variant_includes = "-I{}".format(bvp)
+            # This is used in the stm32l4 and stm32duino cores. Include
+            # directories should be surrounded in quotes in case they contain
+            # spaces or parens.
+            self.variant_includes = "\"-I{}\"".format(bvp)
 
         _LOG.debug("PLATFORM INITIAL: %s", _pretty_format(self.platform))
 
@@ -913,7 +932,7 @@ class ArduinoBuilder:
         ]
         return names
 
-    def get_objcopy_steps(self) -> List[str]:
+    def get_objcopy_steps(self) -> list[str]:
         lines = [
             line
             for name, line in self.platform.items()
@@ -978,7 +997,7 @@ class ArduinoBuilder:
         line = self.replace_command_args_with_compiler_override_path(line)
         return line
 
-    def get_prebuild_steps(self) -> List[str]:
+    def get_prebuild_steps(self) -> list[str]:
         # Teensy core uses recipe.hooks.sketch.prebuild.1.pattern
         # stm32 core uses recipe.hooks.prebuild.1.pattern
         # TODO(tonymd): STM32 core uses recipe.hooks.prebuild.1.pattern.windows
@@ -998,7 +1017,7 @@ class ArduinoBuilder:
         ]
         return lines
 
-    def get_postbuild_steps(self) -> List[str]:
+    def get_postbuild_steps(self) -> list[str]:
         lines = [
             line
             for name, line in self.platform.items()

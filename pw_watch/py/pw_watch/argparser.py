@@ -22,6 +22,8 @@ from pw_build.project_builder_argparse import add_project_builder_arguments
 WATCH_PATTERN_DELIMITER = ','
 
 WATCH_PATTERNS = (
+    '*.bazel',
+    '*.bzl',
     '*.bloaty',
     '*.c',
     '*.cc',
@@ -31,11 +33,14 @@ WATCH_PATTERNS = (
     'CMakeLists.txt',
     '*.dts',
     '*.dtsi',
+    '*.emb',
     '*.gn',
     '*.gni',
     '*.go',
     '*.h',
     '*.hpp',
+    '*.html',
+    '*.js',
     '*.ld',
     '*.md',
     '*.options',
@@ -46,6 +51,7 @@ WATCH_PATTERNS = (
     '*.s',
     '*.S',
     '*.toml',
+    '*.ts',
 )
 
 
@@ -81,10 +87,10 @@ def add_parser_arguments(
     )
 
     watch_group.add_argument(
-        '--no-restart',
-        dest='restart',
-        action='store_false',
-        help='do not restart ongoing builds if files change',
+        '--restart',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Whether to restart ongoing builds if files change.',
     )
 
     watch_group.add_argument(
@@ -110,8 +116,10 @@ def add_parser_arguments(
         dest='serve_docs_path',
         type=Path,
         default='docs/gen/docs',
-        help='Set the path for the docs to serve. Default: docs/gen/docs'
-        ' in the build directory.',
+        help=(
+            'Set the path for the docs to serve. Default: docs/gen/docs '
+            'in the build directory.'
+        ),
     )
 
     watch_group.add_argument(

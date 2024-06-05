@@ -1,19 +1,102 @@
 .. _module-pw_string-guide:
 
-================
-pw_string: Guide
-================
+====================
+Get Started & Guides
+====================
+.. pigweed-module-subpage::
+   :name: pw_string
 
-InlineString and StringBuilder?
-===============================
-Use :cpp:type:`pw::InlineString` if you need:
+.. _module-pw_string-get-started:
+
+Get Started
+===========
+.. tab-set::
+
+   .. tab-item:: Bazel
+
+      Add ``@pigweed//pw_string`` to the ``deps`` list in your Bazel target:
+
+      .. code-block::
+
+         cc_library("...") {
+           # ...
+           deps = [
+             # ...
+             "@pigweed//pw_string",
+             # ...
+           ]
+         }
+
+      If only one part of the module is needed, depend only on it; for example
+      ``@pigweed//pw_string:format``.
+
+      This assumes ``@pigweed`` is the name you pulled Pigweed into your Bazel
+      ``WORKSPACE`` as.
+
+   .. tab-item:: GN
+
+      Add ``$dir_pw_string`` to the ``deps`` list in your ``pw_executable()``
+      build target:
+
+      .. code-block::
+
+         pw_executable("...") {
+           # ...
+           deps = [
+             # ...
+             "$dir_pw_string",
+             # ...
+           ]
+         }
+
+      See `//source/BUILD.gn <https://pigweed.googlesource.com/pigweed/sample_project/+/refs/heads/main/source/BUILD.gn>`_
+      in the Pigweed Sample Project for an example.
+
+   .. tab-item:: CMake
+
+      Add ``pw_string`` to your ``pw_add_library`` or similar CMake target:
+
+      .. code-block::
+
+         pw_add_library(my_library STATIC
+           HEADERS
+             ...
+           PRIVATE_DEPS
+             # ...
+             pw_string
+             # ...
+         )
+
+      For a narrower dependency, depend on subtargets like
+      ``pw_string.builder``, etc.
+
+   .. tab-item:: Zephyr
+
+      There are two ways to use ``pw_string`` from a Zephyr project:
+
+      #. Depend on ``pw_string`` in your CMake target (see CMake tab). This is
+         Pigweed Team's suggested approach since it enables precise CMake
+         dependency analysis.
+
+      #. Add ``CONFIG_PIGWEED_STRING=y`` to the Zephyr project's configuration,
+         which causes ``pw_string`` to become a global dependency and have the
+         includes exposed to all targets. Pigweed team does not recommend this
+         approach, though it is the typical Zephyr solution.
+
+Choose between pw::InlineString and pw::StringBuilder
+=====================================================
+`pw::InlineString` is intended to replace typical null terminated character
+arrays in embedded data structures. Use :cpp:type:`pw::InlineString` if you
+need:
 
 * Compatibility with ``std::string``
 * Storage internal to the object
 * A string object to persist in other data structures
 * Lower code size overhead
 
-Use :cpp:class:`pw::StringBuilder` if you need:
+`pw::StringBuilder` is intended to ease constructing strings in external data;
+typically created on the stack and disposed of in the same function. Use
+:cpp:class:`pw::StringBuilder` if you need:
 
 * Compatibility with ``std::ostringstream``, including custom object support
 * Storage external to the object
@@ -45,53 +128,54 @@ constructing a string for external use.
 
 .. code-block:: cpp
 
-  #include "pw_string/string_builder.h"
+   #include "pw_string/string_builder.h"
 
-  pw::Status FlushSensorValueToUart(int32_t sensor_value) {
-    pw::StringBuffer<42> sb;
-    sb << "Sensor value: ";
-    sb << sensor_value;  // Formats as int.
-    FlushCStringToUart(sb.c_str());
+   pw::Status FlushSensorValueToUart(int32_t sensor_value) {
+     pw::StringBuffer<42> sb;
+     sb << "Sensor value: ";
+     sb << sensor_value;  // Formats as int.
+     FlushCStringToUart(sb.c_str());
 
-    if (!sb.status().ok) {
-      format_error_metric.Increment();  // Track overflows.
-    }
-    return sb.status();
-  }
+     if (!sb.status().ok) {
+       format_error_metric.Increment();  // Track overflows.
+     }
+     return sb.status();
+   }
 
+.. _module-pw_string-guide-stringbuilder:
 
-Building strings with pw::StringBuilder
-=======================================
+Build a string with pw::StringBuilder
+=====================================
 The following shows basic use of a :cpp:class:`pw::StringBuilder`.
 
 .. code-block:: cpp
 
-  #include "pw_log/log.h"
-  #include "pw_string/string_builder.h"
+   #include "pw_log/log.h"
+   #include "pw_string/string_builder.h"
 
-  pw::Status LogProducedData(std::string_view func_name,
-                             span<const std::byte> data) {
-    // pw::StringBuffer allocates a pw::StringBuilder with a built-in buffer.
-    pw::StringBuffer<42> sb;
+   pw::Status LogProducedData(std::string_view func_name,
+                              span<const std::byte> data) {
+     // pw::StringBuffer allocates a pw::StringBuilder with a built-in buffer.
+     pw::StringBuffer<42> sb;
 
-    // Append a std::string_view to the buffer.
-    sb << func_name;
+     // Append a std::string_view to the buffer.
+     sb << func_name;
 
-    // Append a format string to the buffer.
-    sb.Format(" produced %d bytes of data: ", static_cast<int>(data.data()));
+     // Append a format string to the buffer.
+     sb.Format(" produced %d bytes of data: ", static_cast<int>(data.data()));
 
-    // Append bytes as hex to the buffer.
-    sb << data;
+     // Append bytes as hex to the buffer.
+     sb << data;
 
-    // Log the final string.
-    PW_LOG_DEBUG("%s", sb.c_str());
+     // Log the final string.
+     PW_LOG_DEBUG("%s", sb.c_str());
 
-    // Errors encountered while mutating the string builder are tracked.
-    return sb.status();
-  }
+     // Errors encountered while mutating the string builder are tracked.
+     return sb.status();
+   }
 
-Building strings with pw::InlineString
-======================================
+Build a string with pw::InlineString
+====================================
 :cpp:type:`pw::InlineString` objects must be constructed by specifying a fixed
 capacity for the string.
 
@@ -127,8 +211,8 @@ capacity for the string.
 
    FunctionThatTakesAnInlineString(std::string_view("1234", 4));
 
-Building strings inside InlineString with a StringBuilder
-=========================================================
+Build a string inside an pw::InlineString with a pw::StringBuilder
+==================================================================
 :cpp:class:`pw::StringBuilder` can build a string in a
 :cpp:type:`pw::InlineString`:
 
@@ -143,8 +227,8 @@ Building strings inside InlineString with a StringBuilder
      // inline_str contains "456"
    }
 
-Passing InlineStrings as parameters
-===================================
+Pass an pw::InlineString object as a parameter
+==============================================
 :cpp:type:`pw::InlineString` objects can be passed to non-templated functions
 via type erasure. This saves code size in most cases, since it avoids template
 expansions triggered by string size differences.
@@ -193,8 +277,8 @@ Known size strings
      return string;
    }();
 
-Compact initialization of InlineStrings
-=======================================
+Initialization of pw::InlineString objects
+===========================================
 :cpp:type:`pw::InlineBasicString` supports class template argument deduction
 (CTAD) in C++17 and newer. Since :cpp:type:`pw::InlineString` is an alias, CTAD
 is not supported until C++20.
@@ -208,26 +292,26 @@ is not supported until C++20.
    // In C++20, CTAD may be used with the pw::InlineString alias.
    pw::InlineString my_other_string("123456789");
 
-Supporting custom types with StringBuilder
-==========================================
-As with ``std::ostream``, StringBuilder supports printing custom types by
+Custom types with pw::StringBuilder
+===================================
+As with ``std::ostream``, pw::StringBuilder supports printing custom types by
 overriding the ``<<`` operator. This is is done by defining ``operator<<`` in
 the same namespace as the custom type. For example:
 
 .. code-block:: cpp
 
-  namespace my_project {
+   namespace my_project {
 
-  struct MyType {
-    int foo;
-    const char* bar;
-  };
+   struct MyType {
+     int foo;
+     const char* bar;
+   };
 
-  pw::StringBuilder& operator<<(pw::StringBuilder& sb, const MyType& value) {
-    return sb << "MyType(" << value.foo << ", " << value.bar << ')';
-  }
+   pw::StringBuilder& operator<<(pw::StringBuilder& sb, const MyType& value) {
+     return sb << "MyType(" << value.foo << ", " << value.bar << ')';
+   }
 
-  }  // namespace my_project
+   }  // namespace my_project
 
 Internally, ``StringBuilder`` uses the ``ToString`` function to print. The
 ``ToString`` template function can be specialized to support custom types with
@@ -236,13 +320,13 @@ This example shows how to specialize ``pw::ToString``:
 
 .. code-block:: cpp
 
-  #include "pw_string/to_string.h"
+   #include "pw_string/to_string.h"
 
-  namespace pw {
+   namespace pw {
 
-  template <>
-  StatusWithSize ToString<MyStatus>(MyStatus value, span<char> buffer) {
-    return Copy(MyStatusString(value), buffer);
-  }
+   template <>
+   StatusWithSize ToString<MyStatus>(MyStatus value, span<char> buffer) {
+     return Copy(MyStatusString(value), buffer);
+   }
 
-  }  // namespace pw
+   }  // namespace pw

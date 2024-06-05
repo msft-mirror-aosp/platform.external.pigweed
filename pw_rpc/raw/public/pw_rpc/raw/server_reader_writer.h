@@ -75,7 +75,8 @@ class RawServerReaderWriter : private internal::ServerCall {
   // Functions for setting the callbacks.
   using internal::Call::set_on_error;
   using internal::Call::set_on_next;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
   // Sends a response packet with the given raw payload.
   using internal::Call::Write;
@@ -84,9 +85,12 @@ class RawServerReaderWriter : private internal::ServerCall {
     return CloseAndSendResponse(status);
   }
 
+  Status TryFinish(Status status = OkStatus()) {
+    return TryCloseAndSendResponse(status);
+  }
+
   // Allow use as a generic RPC Writer.
-  using internal::Call::operator Writer&;
-  using internal::Call::operator const Writer&;
+  using internal::Call::as_writer;
 
  protected:
   RawServerReaderWriter(const internal::LockedCallContext& context,
@@ -98,6 +102,7 @@ class RawServerReaderWriter : private internal::ServerCall {
                 type, internal::kServerCall, internal::kRawProto)) {}
 
   using internal::Call::CloseAndSendResponse;
+  using internal::Call::TryCloseAndSendResponse;
 
  private:
   friend class internal::RawMethod;  // Needed to construct
@@ -140,12 +145,17 @@ class RawServerReader : private RawServerReaderWriter {
   using RawServerReaderWriter::active;
   using RawServerReaderWriter::channel_id;
 
-  using RawServerReaderWriter::set_on_client_stream_end;
+  using RawServerReaderWriter::set_on_completion_requested;
+  using RawServerReaderWriter::set_on_completion_requested_if_enabled;
   using RawServerReaderWriter::set_on_error;
   using RawServerReaderWriter::set_on_next;
 
   Status Finish(ConstByteSpan response, Status status = OkStatus()) {
     return CloseAndSendResponse(response, status);
+  }
+
+  Status TryFinish(ConstByteSpan response, Status status = OkStatus()) {
+    return TryCloseAndSendResponse(response, status);
   }
 
  private:
@@ -188,14 +198,17 @@ class RawServerWriter : private RawServerReaderWriter {
   using RawServerReaderWriter::active;
   using RawServerReaderWriter::channel_id;
 
+  using RawServerReaderWriter::set_on_completion_requested;
+  using RawServerReaderWriter::set_on_completion_requested_if_enabled;
   using RawServerReaderWriter::set_on_error;
 
   using RawServerReaderWriter::Finish;
+  using RawServerReaderWriter::TryFinish;
+
   using RawServerReaderWriter::Write;
 
   // Allow use as a generic RPC Writer.
-  using internal::Call::operator Writer&;
-  using internal::Call::operator const Writer&;
+  using internal::Call::as_writer;
 
  private:
   friend class internal::RawMethod;
@@ -240,6 +253,10 @@ class RawUnaryResponder : private RawServerReaderWriter {
 
   Status Finish(ConstByteSpan response, Status status = OkStatus()) {
     return CloseAndSendResponse(response, status);
+  }
+
+  Status TryFinish(ConstByteSpan response, Status status = OkStatus()) {
+    return TryCloseAndSendResponse(response, status);
   }
 
  private:

@@ -13,6 +13,8 @@
 # the License.
 """Provides a pw_rpc client for Python."""
 
+from __future__ import annotations
+
 import abc
 from dataclasses import dataclass
 import logging
@@ -20,11 +22,8 @@ from typing import (
     Any,
     Callable,
     Collection,
-    Dict,
     Iterable,
     Iterator,
-    NamedTuple,
-    Optional,
 )
 
 from google.protobuf.message import DecodeError, Message
@@ -36,20 +35,42 @@ from pw_rpc.internal.packet_pb2 import PacketType, RpcPacket
 
 _LOG = logging.getLogger(__package__)
 
+# Calls with ID of `kOpenCallId` were unrequested, and are updated to have the
+# call ID of the first matching request.
+LEGACY_OPEN_CALL_ID: int = 0
+OPEN_CALL_ID: int = (2**32) - 1
+
+_MAX_CALL_ID: int = 1 << 14
+
 
 class Error(Exception):
     """Error from incorrectly using the RPC client classes."""
 
 
-class PendingRpc(NamedTuple):
-    """Uniquely identifies an RPC call."""
+class PendingRpc(packets.RpcIds):
+    """Uniquely identifies an RPC call.
 
-    channel: Channel
-    service: Service
-    method: Method
+    Attributes:
+      channel: Channel
+      service: Service
+      method: Method
+      channel_id: int
+      service_id: int
+      method_id: int
+      call_id: int
+    """
 
-    def __str__(self) -> str:
-        return f'PendingRpc(channel={self.channel.id}, method={self.method})'
+    def __init__(
+        self,
+        channel: Channel,
+        service: Service,
+        method: Method,
+        call_id: int,
+    ) -> None:
+        super().__init__(channel.id, service.id, method.id, call_id)
+        self.channel = channel
+        self.service = service
+        self.method = method
 
 
 class _PendingRpcMetadata:
@@ -60,13 +81,23 @@ class _PendingRpcMetadata:
 class PendingRpcs:
     """Tracks pending RPCs and encodes outgoing RPC packets."""
 
-    def __init__(self):
-        self._pending: Dict[PendingRpc, _PendingRpcMetadata] = {}
+    def __init__(self) -> None:
+        self._pending: dict[PendingRpc, _PendingRpcMetadata] = {}
+        # We skip call_id = 0 in order to avoid LEGACY_OPEN_CALL_ID.
+        self._next_call_id: int = 1
+
+    def allocate_call_id(self) -> int:
+        call_id = self._next_call_id
+        self._next_call_id = (self._next_call_id + 1) % _MAX_CALL_ID
+        # We skip call_id = 0 in order to avoid LEGACY_OPEN_CALL_ID.
+        if self._next_call_id == 0:
+            self._next_call_id = 1
+        return call_id
 
     def request(
         self,
         rpc: PendingRpc,
-        request: Optional[Message],
+        request: Message | None,
         context: object,
         override_pending: bool = True,
     ) -> bytes:
@@ -78,7 +109,7 @@ class PendingRpcs:
     def send_request(
         self,
         rpc: PendingRpc,
-        request: Optional[Message],
+        request: Message | None,
         context: object,
         *,
         ignore_errors: bool = False,
@@ -177,8 +208,19 @@ class PendingRpcs:
 
         return True
 
-    def get_pending(self, rpc: PendingRpc, status: Optional[Status]):
+    def get_pending(self, rpc: PendingRpc, status: Status | None):
         """Gets the pending RPC's context. If status is set, clears the RPC."""
+        if rpc.call_id == OPEN_CALL_ID or rpc.call_id == LEGACY_OPEN_CALL_ID:
+            # Calls with ID `OPEN_CALL_ID` were unrequested, and are updated to
+            # have the call ID of the first matching request.
+            for pending in self._pending:
+                if (
+                    pending.channel == rpc.channel
+                    and pending.service == rpc.service
+                    and pending.method == rpc.method
+                ):
+                    rpc = pending
+
         if status is None:
             return self._pending[rpc].context
 
@@ -193,9 +235,9 @@ class ClientImpl(abc.ABC):
     client.
     """
 
-    def __init__(self):
-        self.client: Optional['Client'] = None
-        self.rpcs: Optional[PendingRpcs] = None
+    def __init__(self) -> None:
+        self.client: Client | None = None
+        self.rpcs: PendingRpcs | None = None
 
     @abc.abstractmethod
     def method_client(self, channel: Channel, method: Method) -> Any:
@@ -209,7 +251,7 @@ class ClientImpl(abc.ABC):
         payload: Any,
         *,
         args: tuple = (),
-        kwargs: Optional[dict] = None,
+        kwargs: dict | None = None,
     ) -> Any:
         """Handles a response from the RPC server.
 
@@ -228,7 +270,7 @@ class ClientImpl(abc.ABC):
         status: Status,
         *,
         args: tuple = (),
-        kwargs: Optional[dict] = None,
+        kwargs: dict | None = None,
     ) -> Any:
         """Handles the successful completion of an RPC.
 
@@ -247,7 +289,7 @@ class ClientImpl(abc.ABC):
         status: Status,
         *,
         args: tuple = (),
-        kwargs: Optional[dict] = None,
+        kwargs: dict | None = None,
     ):
         """Handles the abnormal termination of an RPC.
 
@@ -308,7 +350,7 @@ class Services(descriptors.ServiceAccessor[ServiceClient]):
         )
 
 
-def _decode_status(rpc: PendingRpc, packet) -> Optional[Status]:
+def _decode_status(rpc: PendingRpc, packet) -> Status | None:
     if packet.type == PacketType.SERVER_STREAM:
         return None
 
@@ -319,7 +361,7 @@ def _decode_status(rpc: PendingRpc, packet) -> Optional[Status]:
         return Status.UNKNOWN
 
 
-def _decode_payload(rpc: PendingRpc, packet) -> Optional[Message]:
+def _decode_payload(rpc: PendingRpc, packet) -> Message | None:
     if packet.type == PacketType.SERVER_ERROR:
         return None
 
@@ -358,7 +400,7 @@ class ChannelClient:
     invoked directly (e.g. rpc(field1=123, field2=b'456')).
     """
 
-    client: 'Client'
+    client: Client
     channel: Channel
     rpcs: Services
 
@@ -452,11 +494,11 @@ class Client:
         }
 
         # Optional function called before processing every non-error RPC packet.
-        self.response_callback: Optional[
-            Callable[[PendingRpc, Any, Optional[Status]], Any]
-        ] = None
+        self.response_callback: (
+            Callable[[PendingRpc, Any, Status | None], Any] | None
+        ) = None
 
-    def channel(self, channel_id: Optional[int] = None) -> ChannelClient:
+    def channel(self, channel_id: int | None = None) -> ChannelClient:
         """Returns a ChannelClient, which is used to call RPCs on a channel.
 
         If no channel is provided, the first channel is used.
@@ -611,7 +653,9 @@ class Client:
                 f'No method ID {method_id} in service {service.name}'
             )
 
-        return PendingRpc(channel_client.channel, service, method)
+        return PendingRpc(
+            channel_client.channel, service, method, packet.call_id
+        )
 
     def __repr__(self) -> str:
         return (

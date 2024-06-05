@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,7 +21,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_bytes",
     srcs = [
         "byte_builder.cc",
@@ -32,6 +31,7 @@ pw_cc_library(
         "public/pw_bytes/byte_builder.h",
         "public/pw_bytes/endian.h",
         "public/pw_bytes/span.h",
+        "public/pw_bytes/suffix.h",
         "public/pw_bytes/units.h",
     ],
     includes = ["public"],
@@ -45,10 +45,34 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
+    name = "alignment",
+    srcs = [
+        "alignment.cc",
+    ],
+    hdrs = ["public/pw_bytes/alignment.h"],
+    includes = ["public"],
+    deps = [
+        "//pw_assert",
+        "//pw_bytes",
+        "//pw_preprocessor",
+    ],
+)
+
+cc_library(
     name = "bit",
     hdrs = ["public/pw_bytes/bit.h"],
     includes = ["public"],
+    deps = ["//third_party/fuchsia:stdcompat"],
+)
+
+pw_cc_test(
+    name = "alignment_test",
+    srcs = ["alignment_test.cc"],
+    deps = [
+        ":alignment",
+        "//pw_unit_test",
+    ],
 )
 
 pw_cc_test(
@@ -84,6 +108,15 @@ pw_cc_test(
     deps = [
         ":pw_bytes",
         "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "suffix_test",
+    srcs = ["suffix_test.cc"],
+    deps = [
+        ":pw_bytes",
+        "//pw_compilation_testing:negative_compilation_testing",
     ],
 )
 

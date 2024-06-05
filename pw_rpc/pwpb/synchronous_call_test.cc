@@ -16,15 +16,16 @@
 
 #include <chrono>
 
-#include "gtest/gtest.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_rpc/channel.h"
 #include "pw_rpc/internal/packet.h"
 #include "pw_rpc/pwpb/fake_channel_output.h"
 #include "pw_rpc_test_protos/test.rpc.pwpb.h"
+#include "pw_rpc_transport/test_loopback_service_registry.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
 #include "pw_thread/thread.h"
+#include "pw_unit_test/framework.h"
 #include "pw_work_queue/test_thread.h"
 #include "pw_work_queue/work_queue.h"
 
@@ -36,6 +37,32 @@ using MethodInfo = internal::MethodInfo<TestService::TestUnaryRpc>;
 
 namespace TestRequest = ::pw::rpc::test::pwpb::TestRequest;
 namespace TestResponse = ::pw::rpc::test::pwpb::TestResponse;
+namespace TestStreamResponse = ::pw::rpc::test::pwpb::TestStreamResponse;
+
+class TestServiceImpl final
+    : public pw::rpc::test::pw_rpc::pwpb::TestService::Service<
+          TestServiceImpl> {
+ public:
+  Status TestUnaryRpc(const TestRequest::Message& /*request*/,
+                      TestResponse::Message& response) {
+    response.value = 42;
+    response.repeated_field.SetEncoder(
+        [](TestResponse::StreamEncoder& encoder) {
+          constexpr std::array<uint32_t, 3> kValues = {7, 8, 9};
+          return encoder.WriteRepeatedField(kValues);
+        });
+    return OkStatus();
+  }
+  Status TestAnotherUnaryRpc(const TestRequest::Message& /*request*/,
+                             TestResponse::Message& /*response*/) {
+    return OkStatus();
+  }
+  void TestServerStreamRpc(const TestRequest::Message&,
+                           ServerWriter<TestStreamResponse::Message>&) {}
+  void TestClientStreamRpc(RawServerReader&) {}
+  void TestBidirectionalStreamRpc(
+      ServerReaderWriter<TestRequest::Message, TestStreamResponse::Message>&) {}
+};
 
 class SynchronousCallTest : public ::testing::Test {
  public:
@@ -49,7 +76,11 @@ class SynchronousCallTest : public ::testing::Test {
 
   void TearDown() override {
     work_queue_.RequestStop();
+#if PW_THREAD_JOINING_ENABLED
     work_thread_.join();
+#else
+    work_thread_.detach();
+#endif  // PW_THREAD_JOINING_ENABLED
   }
 
  protected:
@@ -172,6 +203,33 @@ TEST_F(SynchronousCallTest, SynchronousCallUntilTimeoutError) {
   EXPECT_EQ(result.status(), Status::DeadlineExceeded());
 }
 
+TEST_F(SynchronousCallTest, SynchronousCallCustomResponse) {
+  TestServiceImpl test_service;
+  TestLoopbackServiceRegistry service_registry;
+  service_registry.RegisterService(test_service);
+
+  class CustomResponse : public TestResponse::Message {
+   public:
+    CustomResponse() {
+      repeated_field.SetDecoder([this](TestResponse::StreamDecoder& decoder) {
+        return decoder.ReadRepeatedField(values);
+      });
+    }
+    pw::Vector<uint32_t, 4> values{};
+  };
+
+  auto result = SynchronousCall<TestService::TestUnaryRpc, CustomResponse>(
+      service_registry.client_server().client(),
+      service_registry.channel_id(),
+      {.integer = 5, .status_code = 0});
+  EXPECT_EQ(result.status(), OkStatus());
+
+  EXPECT_EQ(3u, result.response().values.size());
+  EXPECT_EQ(7u, result.response().values[0]);
+  EXPECT_EQ(8u, result.response().values[1]);
+  EXPECT_EQ(9u, result.response().values[2]);
+}
+
 TEST_F(SynchronousCallTest, GeneratedClientSynchronousCallSuccess) {
   TestRequest::Message request{.integer = 5, .status_code = 0};
   TestResponse::Message response{.value = 42, .repeated_field{}};
@@ -183,6 +241,23 @@ TEST_F(SynchronousCallTest, GeneratedClientSynchronousCallSuccess) {
   EXPECT_TRUE(result.ok());
   EXPECT_EQ(result.response().value, 42);
 }
+
+#if PW_RPC_DYNAMIC_ALLOCATION
+
+TEST_F(SynchronousCallTest, GeneratedDynamicClientSynchronousCallSuccess) {
+  TestRequest::Message request{.integer = 5, .status_code = 0};
+  TestResponse::Message response{.value = 42, .repeated_field{}};
+
+  set_response(response, OkStatus());
+
+  TestService::DynamicClient dynamic_client(client(), channel().id());
+  auto result =
+      SynchronousCall<TestService::TestUnaryRpc>(dynamic_client, request);
+  EXPECT_TRUE(result.ok());
+  EXPECT_EQ(result.response().value, 42);
+}
+
+#endif  // PW_RPC_DYNAMIC_ALLOCATION
 
 TEST_F(SynchronousCallTest, GeneratedClientSynchronousCallServerError) {
   TestRequest::Message request{.integer = 5, .status_code = 0};

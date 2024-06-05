@@ -14,8 +14,11 @@
 
 package dev.pigweed.pw_rpc;
 
+import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.MessageLite;
+import com.google.protobuf.Parser;
+import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
@@ -34,20 +37,26 @@ public class Service {
                                            .collect(Collectors.toMap(Method::id, m -> m)));
   }
 
-  public String name() {
+  /** Returns the fully qualified name of this service (package.Service). */
+  public final String name() {
     return name;
   }
 
-  int id() {
+  /** Returns the methods in this service. */
+  public final ImmutableCollection<Method> getMethods() {
+    return methods.values();
+  }
+
+  final int id() {
     return id;
   }
 
-  public ImmutableMap<Integer, Method> methods() {
-    return methods;
+  final Method method(String name) {
+    return methods.get(Ids.calculate(name));
   }
 
-  public final Method method(String name) {
-    return methods().get(Ids.calculate(name));
+  final Method method(int id) {
+    return methods.get(id);
   }
 
   @Override
@@ -55,39 +64,95 @@ public class Service {
     return name();
   }
 
+  // TODO: b/293361955 - Remove deprecated methods.
+
+  /**
+   * Declares a unary service method.
+   *
+   * @param name The method name within the service, e.g. "MyMethod" for my_pkg.MyService.MyMethod.
+   * @param request Parser for the request protobuf, e.g. MyRequestProto.parser()
+   * @param response Parser for the response protobuf, e.g. MyResponseProto.parser()
+   * @return Method.Builder, for internal use by the Service class only
+   */
   public static Method.Builder unaryMethod(
-      String name, Class<? extends MessageLite> request, Class<? extends MessageLite> response) {
+      String name, Parser<? extends MessageLite> request, Parser<? extends MessageLite> response) {
     return Method.builder()
         .setType(Method.Type.UNARY)
         .setName(name)
-        .setRequest(request)
-        .setResponse(response);
+        .setRequestParser(request)
+        .setResponseParser(response);
   }
 
+  /**
+   * Declares a server streaming service method.
+   *
+   * @param name The method name within the service, e.g. "MyMethod" for my_pkg.MyService.MyMethod.
+   * @param request Parser for the request protobuf, e.g. MyRequestProto.parser()
+   * @param response Parser for the response protobuf, e.g. MyResponseProto.parser()
+   * @return Method.Builder, for internal use by the Service class only
+   */
   public static Method.Builder serverStreamingMethod(
-      String name, Class<? extends MessageLite> request, Class<? extends MessageLite> response) {
+      String name, Parser<? extends MessageLite> request, Parser<? extends MessageLite> response) {
     return Method.builder()
         .setType(Method.Type.SERVER_STREAMING)
         .setName(name)
-        .setRequest(request)
-        .setResponse(response);
+        .setRequestParser(request)
+        .setResponseParser(response);
   }
 
+  /**
+   * Declares a client streaming service method.
+   *
+   * @param name The method name within the service, e.g. "MyMethod" for my_pkg.MyService.MyMethod.
+   * @param request Parser for the request protobuf, e.g. MyRequestProto.parser()
+   * @param response Parser for the response protobuf, e.g. MyResponseProto.parser()
+   * @return Method.Builder, for internal use by the Service class only
+   */
   public static Method.Builder clientStreamingMethod(
-      String name, Class<? extends MessageLite> request, Class<? extends MessageLite> response) {
+      String name, Parser<? extends MessageLite> request, Parser<? extends MessageLite> response) {
     return Method.builder()
         .setType(Method.Type.CLIENT_STREAMING)
         .setName(name)
-        .setRequest(request)
-        .setResponse(response);
+        .setRequestParser(request)
+        .setResponseParser(response);
   }
 
+  /**
+   * Declares a bidirectional streaming service method.
+   *
+   * @param name The method name within the service, e.g. "MyMethod" for my_pkg.MyService.MyMethod.
+   * @param request Parser for the request protobuf, e.g. MyRequestProto.parser()
+   * @param response Parser for the response protobuf, e.g. MyResponseProto.parser()
+   * @return Method.Builder, for internal use by the Service class only
+   */
   public static Method.Builder bidirectionalStreamingMethod(
-      String name, Class<? extends MessageLite> request, Class<? extends MessageLite> response) {
+      String name, Parser<? extends MessageLite> request, Parser<? extends MessageLite> response) {
     return Method.builder()
         .setType(Method.Type.BIDIRECTIONAL_STREAMING)
         .setName(name)
-        .setRequest(request)
-        .setResponse(response);
+        .setRequestParser(request)
+        .setResponseParser(response);
+  }
+
+  /**
+   * Gets the Parser from a protobuf class using reflection.
+   *
+   * This function is provided for backwards compatibility with the deprecated service API that
+   * takes a class object instead of a protobuf parser object.
+   */
+  @SuppressWarnings("unchecked")
+  private static Parser<? extends MessageLite> getParser(Class<? extends MessageLite> messageType) {
+    try {
+      return (Parser<? extends MessageLite>) messageType.getMethod("parser").invoke(null);
+    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+      throw new LinkageError(
+          String.format(
+              "Service method created with %s is missing parser() method, likely optimized out. "
+                  + "Pass MyMessage.parser() instead of MyMessage.class in service declarations. "
+                  + "The class-based API is deprecated and will be removed. "
+                  + "See b/293361955.",
+              messageType),
+          e);
+    }
   }
 }

@@ -15,10 +15,20 @@ include_guard(GLOBAL)
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-set(pw_unit_test_GOOGLETEST_BACKEND pw_unit_test.light CACHE STRING
+set(pw_unit_test_ENABLE_PW_ADD_TEST ON CACHE BOOL
+    "Enable or disable pw_add_test calls. This is useful if you would like to \
+     disable test generation when adding Pigweed to an existing project. Set to \
+     OFF before the add_subdirectory(third_party/pigweed) call to prevent tests \
+     from being generated.")
+
+set(pw_unit_test_BACKEND pw_unit_test.light CACHE STRING
     "CMake target which implements GoogleTest, by default pw_unit_test.light \
-     is used. You could, for example, point this at pw_third_party.googletest \
+     is used. You could, for example, point this at pw_unit_test.googletest \
      if using upstream GoogleTest directly on your host for GoogleMock.")
+
+set(pw_unit_test_GOOGLETEST_BACKEND "" CACHE STRING
+    "Warning: Deprecated build argument. When using googletest backend set
+    pw_unit_test_BACKEND to pw_unit_test.googletest instead.")
 
 # TODO(ewout): Remove the default.
 set(pw_unit_test_ADD_EXECUTABLE_FUNCTION "pw_add_test_executable" CACHE STRING
@@ -77,6 +87,7 @@ set(pw_unit_test_AUTOMATIC_RUNNER_ARGS "" CACHE STRING
 #   GROUPS - groups to which to add this test.
 #
 function(pw_add_test NAME)
+if("${pw_unit_test_ENABLE_PW_ADD_TEST}")
   pw_parse_arguments(
     NUM_POSITIONAL_ARGS
       1
@@ -97,7 +108,7 @@ function(pw_add_test NAME)
     HEADERS
       ${arg_HEADERS}
     PRIVATE_DEPS
-      # TODO(b/232141950): Apply compilation options that affect ABI
+      # TODO: b/232141950 - Apply compilation options that affect ABI
       # globally in the CMake build instead of injecting them into libraries.
       pw_build
       ${arg_PRIVATE_DEPS}
@@ -114,6 +125,7 @@ function(pw_add_test NAME)
     GROUPS
       ${arg_GROUPS}
   )
+endif()
 endfunction()
 
 # pw_add_test_generic: Declares a single unit test suite.
@@ -144,6 +156,7 @@ endfunction()
 #     exposed by the non-generic API.
 #   PRIVATE_COMPILE_OPTIONS - private target_compile_options arguments
 #   PRIVATE_LINK_OPTIONS - private target_link_options arguments
+#   TEST_MAIN - overrides the default test main dependency
 #
 #  TODO(ewout, hepler): Deprecate the following legacy arguments
 #   GROUPS - groups to which to add this test.
@@ -152,6 +165,8 @@ function(pw_add_test_generic NAME)
   pw_parse_arguments(
     NUM_POSITIONAL_ARGS
       1
+    ONE_VALUE_ARGS
+      TEST_MAIN
     MULTI_VALUE_ARGS
       SOURCES HEADERS PRIVATE_DEPS PRIVATE_INCLUDES
       PRIVATE_DEFINES
@@ -198,8 +213,13 @@ function(pw_add_test_generic NAME)
     )
   else()
     include("${pw_unit_test_ADD_EXECUTABLE_FUNCTION_FILE}")
-    cmake_language(CALL "${pw_unit_test_ADD_EXECUTABLE_FUNCTION}"
-                   "${NAME}.bin" "${NAME}.lib")
+    if ("${arg_TEST_MAIN}" STREQUAL "")
+      cmake_language(CALL "${pw_unit_test_ADD_EXECUTABLE_FUNCTION}"
+                    "${NAME}.bin" "${NAME}.lib")
+    else()
+      cmake_language(CALL "${pw_unit_test_ADD_EXECUTABLE_FUNCTION}_with_main"
+                    "${NAME}.bin" "${NAME}.lib" "${arg_TEST_MAIN}")
+    endif()
   endif()
 
   # Add the ${NAME} target and optionally the run target under ${NAME}.run.

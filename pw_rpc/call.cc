@@ -83,9 +83,8 @@ Call::Call(LockedEndpoint& endpoint_ref,
       id_(call_id),
       service_id_(service_id),
       method_id_(method_id),
-      state_(kActive | (HasClientStream(properties.method_type())
-                            ? static_cast<uint8_t>(kClientStreamActive)
-                            : 0u)),
+      // Note: Bit kActive set to 1 and kClientRequestedCompletion is set to 0.
+      state_(kActive),
       awaiting_cleanup_(OkStatus().code()),
       callbacks_executing_(0),
       properties_(properties) {
@@ -96,20 +95,22 @@ Call::Call(LockedEndpoint& endpoint_ref,
   endpoint().RegisterCall(*this);
 }
 
-Call::~Call() {
-  // Note: this explicit deregistration is necessary to ensure that
-  // modifications to the endpoint call list occur while holding rpc_lock.
-  // Removing this explicit registration would result in unsynchronized
-  // modification of the endpoint call list via the destructor of the
-  // superclass `IntrusiveList<Call>::Item`.
+void Call::DestroyServerCall() {
   RpcLockGuard lock;
+  // Any errors are logged in Channel::Send.
+  CloseAndSendResponseLocked(OkStatus()).IgnoreError();
+  WaitForCallbacksToComplete();
+  state_ |= kHasBeenDestroyed;
+}
 
-  // This `active_locked()` guard is necessary to ensure that `endpoint()` is
-  // still valid.
-  if (active_locked()) {
-    endpoint().UnregisterCall(*this);
-  }
+void Call::DestroyClientCall() {
+  RpcLockGuard lock;
+  CloseClientCall();
+  WaitForCallbacksToComplete();
+  state_ |= kHasBeenDestroyed;
+}
 
+void Call::WaitForCallbacksToComplete() {
   do {
     int iterations = 0;
     while (CallbacksAreRunning()) {
@@ -118,9 +119,6 @@ Call::~Call() {
     }
 
   } while (CleanUpIfRequired());
-
-  // Help prevent dangling references in callbacks by waiting for callbacks to
-  // complete before deleting this call.
 }
 
 void Call::MoveFrom(Call& other) {
@@ -222,6 +220,17 @@ Status Call::CloseAndSendFinalPacketLocked(PacketType type,
   return send_status;
 }
 
+Status Call::TryCloseAndSendFinalPacketLocked(PacketType type,
+                                              ConstByteSpan response,
+                                              Status status) {
+  const Status send_status = SendPacket(type, response, status);
+  // Only close the call if the final packet gets sent out successfully.
+  if (send_status.ok()) {
+    UnregisterAndMarkClosed();
+  }
+  return send_status;
+}
+
 Status Call::WriteLocked(ConstByteSpan payload) {
   return SendPacket(properties_.call_type() == kServerCall
                         ? PacketType::SERVER_STREAM
@@ -284,11 +293,56 @@ void Call::HandlePayload(ConstByteSpan payload) {
   endpoint_->CleanUpCalls();
 }
 
+void Call::CloseClientCall() {
+  // When a client call is closed, for bidirectional and client streaming RPCs,
+  // the server may be waiting for client stream messages, so we need to notify
+  // the server that the client has requested for completion and no further
+  // requests should be expected from the client. For unary and server streaming
+  // RPCs, since the client is not sending messages, server does not need to be
+  // notified.
+  if (has_client_stream() && !client_requested_completion()) {
+    RequestCompletionLocked().IgnoreError();
+  }
+  UnregisterAndMarkClosed();
+}
+
 void Call::UnregisterAndMarkClosed() {
   if (active_locked()) {
     endpoint().UnregisterCall(*this);
     MarkClosed();
   }
+}
+
+void Call::DebugLog() const PW_NO_LOCK_SAFETY_ANALYSIS {
+  PW_LOG_INFO(
+      "Call %p\n"
+      "\tEndpoint: %p\n"
+      "\tCall ID:  %8u\n"
+      "\tChannel:  %8u\n"
+      "\tService:  %08x\n"
+      "\tMethod:   %08x\n"
+      "\tState:    %8x\n"
+      "\tCleanup:  %8s\n"
+      "\tBusy CBs: %8x\n"
+      "\tType:     %8d\n"
+      "\tClient:   %8d\n"
+      "\tWrapped:  %8d\n"
+      "\ton_error: %8d\n"
+      "\ton_next:  %8d\n",
+      static_cast<const void*>(this),
+      static_cast<const void*>(endpoint_),
+      static_cast<unsigned>(id_),
+      static_cast<unsigned>(channel_id_),
+      static_cast<unsigned>(service_id_),
+      static_cast<unsigned>(method_id_),
+      static_cast<int>(state_),
+      Status(static_cast<Status::Code>(awaiting_cleanup_)).str(),
+      static_cast<int>(callbacks_executing_),
+      static_cast<int>(properties_.method_type()),
+      static_cast<int>(properties_.call_type()),
+      static_cast<int>(hold_lock_while_invoking_callback_with_payload()),
+      static_cast<int>(on_error_ == nullptr),
+      static_cast<int>(on_next_ == nullptr));
 }
 
 }  // namespace pw::rpc::internal

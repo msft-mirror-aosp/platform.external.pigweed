@@ -2,6 +2,8 @@
 
 Internal Design
 ===============
+.. pigweed-module-subpage::
+   :name: pw_console
 
 Threads and Event Loops
 -----------------------

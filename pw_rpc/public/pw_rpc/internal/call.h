@@ -27,14 +27,12 @@
 #include "pw_rpc/internal/packet.h"
 #include "pw_rpc/method_type.h"
 #include "pw_rpc/service.h"
+#include "pw_rpc/writer.h"
 #include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_sync/lock_annotations.h"
 
 namespace pw::rpc {
-
-class Writer;
-
 namespace internal {
 
 class Endpoint;
@@ -64,9 +62,10 @@ class CallProperties {
   constexpr CallProperties(MethodType method_type,
                            CallType call_type,
                            CallbackProtoType callback_proto_type)
-      : bits_((static_cast<uint8_t>(method_type) << 0) |
-              (static_cast<uint8_t>(call_type) << 2) |
-              (static_cast<uint8_t>(callback_proto_type) << 3)) {}
+      : bits_(static_cast<uint8_t>(
+            (static_cast<uint8_t>(method_type) << 0) |
+            (static_cast<uint8_t>(call_type) << 2) |
+            (static_cast<uint8_t>(callback_proto_type) << 3))) {}
 
   constexpr CallProperties(const CallProperties&) = default;
 
@@ -93,6 +92,10 @@ class CallProperties {
 // it will match a calls with this ID if one exists.
 inline constexpr uint32_t kOpenCallId = std::numeric_limits<uint32_t>::max();
 
+// Legacy clients and servers didn't make use of call IDs at all, and will send
+// unrequested responses with an "empty" (zero) call ID.
+inline constexpr uint32_t kLegacyOpenCallId = 0;
+
 // Internal RPC Call class. The Call is used to respond to any type of RPC.
 // Public classes like ServerWriters inherit from it with private inheritance
 // and provide a public API for their use case. The Call's public API is used by
@@ -100,9 +103,21 @@ inline constexpr uint32_t kOpenCallId = std::numeric_limits<uint32_t>::max();
 //
 // Private inheritance is used in place of composition or more complex
 // inheritance hierarchy so that these objects all inherit from a common
-// IntrusiveList::Item object. Private inheritance also gives the derived classs
+// IntrusiveList::Item object. Private inheritance also gives the derived class
 // full control over their interfaces.
-class Call : public IntrusiveList<Call>::Item {
+//
+// IMPLEMENTATION NOTE:
+//
+// Subclasses of `Call` must include a destructor which calls
+// `DestroyServerCall` or `DestroyClientCall` (as appropriate) if the subclass
+// contains any fields which might be referenced by the call's callbacks. This
+// ensures that the callbacks do not reference fields which may have already
+// been destroyed.
+//
+// At the top level, `ServerCall` and `ClientCall` invoke `DestroyServerCall`
+// `DestroyClientCall` respectively to perform cleanup in the case where no
+// subclass carries additional state.
+class Call : public IntrusiveList<Call>::Item, private rpc::Writer {
  public:
   Call(const Call&) = delete;
 
@@ -112,7 +127,12 @@ class Call : public IntrusiveList<Call>::Item {
   Call& operator=(const Call&) = delete;
   Call& operator=(Call&&) = delete;
 
-  ~Call() PW_LOCKS_EXCLUDED(rpc_lock());
+  ~Call() {
+    // Ensure that calls have already been closed and unregistered.
+    // See class IMPLEMENTATION NOTE for further details.
+    PW_DASSERT((state_ & kHasBeenDestroyed) != 0);
+    PW_DASSERT(!active_locked() && !CallbacksAreRunning());
+  }
 
   // True if the Call is active and ready to send responses.
   [[nodiscard]] bool active() const PW_LOCKS_EXCLUDED(rpc_lock()) {
@@ -183,16 +203,49 @@ class Call : public IntrusiveList<Call>::Item {
         pwpb::PacketType::SERVER_ERROR, {}, error);
   }
 
-  // Public function that ends the client stream for a client call.
-  Status CloseClientStream() PW_LOCKS_EXCLUDED(rpc_lock()) {
+  // Closes the Call and sends a RESPONSE packet, if the RESPONSE packet failed
+  // to send , keep the call alive and return error. This API allows user to
+  // resend RESPONSE packet when transmission failed.
+  Status TryCloseAndSendResponse(ConstByteSpan response, Status status)
+      PW_LOCKS_EXCLUDED(rpc_lock()) {
     RpcLockGuard lock;
-    return CloseClientStreamLocked();
+    return TryCloseAndSendResponseLocked(response, status);
   }
 
-  // Internal function that closes the client stream.
-  Status CloseClientStreamLocked() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
-    MarkClientStreamCompleted();
-    return SendPacket(pwpb::PacketType::CLIENT_STREAM_END, {}, {});
+  Status TryCloseAndSendResponseLocked(ConstByteSpan response, Status status)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    return TryCloseAndSendFinalPacketLocked(
+        pwpb::PacketType::RESPONSE, response, status);
+  }
+
+  Status TryCloseAndSendResponse(Status status) PW_LOCKS_EXCLUDED(rpc_lock()) {
+    return TryCloseAndSendResponse({}, status);
+  }
+
+  Status TryCloseAndSendServerErrorLocked(Status error)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    return TryCloseAndSendFinalPacketLocked(
+        pwpb::PacketType::SERVER_ERROR, {}, error);
+  }
+
+  // Public function that indicates that the client requests completion of the
+  // RPC, but is still active and listening to responses. For client streaming
+  // and bi-directional streaming RPCs, this also closes the client stream. If
+  // PW_RPC_COMPLETION_REQUEST_CALLBACK is enabled and
+  // on_client_requested_completion callback is set using the
+  // set_on_completion_requested_if_enabled, then the callback will be invoked
+  // on the server side. The server may then take an appropriate action to
+  // cleanup and stop server streaming.
+  Status RequestCompletion() PW_LOCKS_EXCLUDED(rpc_lock()) {
+    RpcLockGuard lock;
+    return RequestCompletionLocked();
+  }
+
+  // Internal function that closes the client stream (if applicable) and sends
+  // CLIENT_REQUEST_COMPLETION packet to request call completion.
+  Status RequestCompletionLocked() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    MarkStreamCompleted();
+    return SendPacket(pwpb::PacketType::CLIENT_REQUEST_COMPLETION, {}, {});
   }
 
   // Sends a payload in either a server or client stream packet.
@@ -254,8 +307,10 @@ class Call : public IntrusiveList<Call>::Item {
     return HasServerStream(properties_.method_type());
   }
 
-  bool client_stream_open() const PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
-    return (state_ & kClientStreamActive) != 0;
+  // Returns true if the client has already requested completion.
+  bool client_requested_completion() const
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    return (state_ & kClientRequestedCompletion) != 0;
   }
 
   // Closes a call without doing anything else. Called from the Endpoint
@@ -265,6 +320,9 @@ class Call : public IntrusiveList<Call>::Item {
     awaiting_cleanup_ = OkStatus().code();
     endpoint_ = nullptr;
   }
+
+  // Logs detailed info about this call at INFO level. NOT for production use!
+  void DebugLog() const;
 
  protected:
   // Creates an inactive Call.
@@ -289,6 +347,11 @@ class Call : public IntrusiveList<Call>::Item {
        uint32_t service_id,
        uint32_t method_id,
        CallProperties properties) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
+
+  // Closes the call and waits for their callbacks to complete so destructors
+  // can run safely.
+  void DestroyServerCall() PW_LOCKS_EXCLUDED(rpc_lock());
+  void DestroyClientCall() PW_LOCKS_EXCLUDED(rpc_lock());
 
   void CallbackStarted() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     callbacks_executing_ += 1;
@@ -331,10 +394,15 @@ class Call : public IntrusiveList<Call>::Item {
     on_error_ = std::move(on_error);
   }
 
-  void MarkClientStreamCompleted() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
-    state_ &= ~kClientStreamActive;
+  void MarkStreamCompleted() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    state_ |= kClientRequestedCompletion;
   }
 
+  // Closes a client call. Sends a CLIENT_REQUEST_COMPLETION for client /
+  // bidirectional streaming RPCs if not sent yet.
+  void CloseClientCall() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
+
+  // Closes a server call.
   Status CloseAndSendResponseLocked(Status status)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     return CloseAndSendFinalPacketLocked(
@@ -352,10 +420,9 @@ class Call : public IntrusiveList<Call>::Item {
   // active or inactive when this is called.
   void UnregisterAndMarkClosed() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
-  // Define conversions to the generic server/client RPC writer class. These
-  // functions are defined in pw_rpc/writer.h after the Writer class is defined.
-  constexpr operator Writer&();
-  constexpr operator const Writer&() const;
+  // Define conversions to the generic server/client RPC writer class.
+  constexpr Writer& as_writer() { return *this; }
+  constexpr const Writer& as_writer() const { return *this; }
 
   // Indicates if the on_next and unary on_completed callbacks are internal
   // wrappers that decode the raw proto before invoking the user's callback. If
@@ -437,9 +504,12 @@ class Call : public IntrusiveList<Call>::Item {
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
  private:
+  friend class rpc::Writer;
+
   enum State : uint8_t {
-    kActive = 0b01,
-    kClientStreamActive = 0b10,
+    kActive = 0b001,
+    kClientRequestedCompletion = 0b010,
+    kHasBeenDestroyed = 0b100,
   };
 
   // Common constructor for server & client calls.
@@ -468,7 +538,7 @@ class Call : public IntrusiveList<Call>::Item {
   void MarkClosed() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     channel_id_ = Channel::kUnassignedChannelId;
     id_ = 0;
-    state_ = 0;
+    state_ = kClientRequestedCompletion;
   }
 
   // Calls the on_error callback without closing the RPC. This is used when the
@@ -494,9 +564,17 @@ class Call : public IntrusiveList<Call>::Item {
                                        Status status)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
+  Status TryCloseAndSendFinalPacketLocked(pwpb::PacketType type,
+                                          ConstByteSpan response,
+                                          Status status)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
+
   bool CallbacksAreRunning() const PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     return callbacks_executing_ != 0u;
   }
+
+  // Waits for callbacks to complete so that a call object can be destroyed.
+  void WaitForCallbacksToComplete() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
   Endpoint* endpoint_ PW_GUARDED_BY(rpc_lock());
   uint32_t channel_id_ PW_GUARDED_BY(rpc_lock());
@@ -508,7 +586,7 @@ class Call : public IntrusiveList<Call>::Item {
   //
   //   bit 0: call is active
   //   bit 1: client stream is active
-  //
+  //   bit 2: call has been destroyed
   uint8_t state_ PW_GUARDED_BY(rpc_lock());
 
   // If non-OK, indicates that the call was closed and needs to have its
@@ -530,4 +608,17 @@ class Call : public IntrusiveList<Call>::Item {
 };
 
 }  // namespace internal
+
+inline bool Writer::active() const {
+  return static_cast<const internal::Call*>(this)->active();
+}
+
+inline uint32_t Writer::channel_id() const {
+  return static_cast<const internal::Call*>(this)->channel_id();
+}
+
+inline Status Writer::Write(ConstByteSpan payload) {
+  return static_cast<internal::Call*>(this)->Write(payload);
+}
+
 }  // namespace pw::rpc

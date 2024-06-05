@@ -26,7 +26,9 @@ py_library(
     ],
     imports = ["."],
     deps = [
+        "//pw_metric:metric_proto_py_pb2",
         "//pw_rpc/py:pw_rpc",
+        "//pw_tokenizer/py:pw_tokenizer",
     ],
 )
 

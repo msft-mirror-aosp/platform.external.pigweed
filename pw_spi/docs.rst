@@ -4,26 +4,28 @@
 pw_spi
 ======
 Pigweed's SPI module provides a set of interfaces for communicating with SPI
-peripherals attached to a target.
+responders attached to a target. It also provides an interface for implementing
+SPI responders.
 
 --------
 Overview
 --------
 The ``pw_spi`` module provides a series of interfaces that facilitate the
-development of SPI peripheral drivers that are abstracted from the target's
-SPI hardware implementation.  The interface consists of three main classes:
+development of SPI responder drivers that are abstracted from the target's
+SPI hardware implementation.  The interface consists of these main classes:
 
 - ``pw::spi::Initiator`` - Interface for configuring a SPI bus, and using it
   to transmit and receive data.
 - ``pw::spi::ChipSelector`` - Interface for enabling/disabling a SPI
-  peripheral attached to the bus.
+  responder attached to the bus.
 - ``pw::spi::Device`` - primary HAL interface used to interact with a SPI
-  peripheral.
+  responder.
+- ``pw::spi::Responder`` - Interface for implementing a SPI responder.
 
 ``pw_spi`` relies on a target-specific implementations of
 ``pw::spi::Initiator`` and ``pw::spi::ChipSelector`` to be defined, and
 injected into ``pw::spi::Device`` objects which are used to communicate with a
-given peripheral attached to a target's SPI bus.
+given responder attached to a target's SPI bus.
 
 Example - Constructing a SPI Device:
 
@@ -37,10 +39,11 @@ Example - Constructing a SPI Device:
    };
 
    auto initiator = pw::spi::MyInitator();
+   auto mutex = pw::sync::VirtualMutex();
    auto selector = pw::spi::MyChipSelector();
-   auto borrowable_initiator = pw::sync::Borrowable<Initiator&>(initiator);
 
-   auto device = pw::spi::Device(borrowable_initiator, kConfig, selector);
+   auto device = pw::spi::Device(
+      pw::sync::Borrowable<Initiator>(initiator, mutex), kConfig, selector);
 
 This example demonstrates the construction of a ``pw::spi::Device`` from its
 object dependencies and configuration data; where ``MyDevice`` and
@@ -53,7 +56,7 @@ that transactions cannot be interrupted or corrupted by other concurrent
 workloads making use of the same SPI bus.
 
 Once constructed, the ``device`` object can then be passed to functions used to
-perform SPI transfers with a target peripheral.
+perform SPI transfers with a target responder.
 
 Example - Performing a Transfer:
 
@@ -117,6 +120,7 @@ The SPI API consists of the following components:
   structs.
 - The ``pw::spi::ChipSelector`` interface.
 - The ``pw::spi::Device`` class.
+- The ``pw::spi::Responder`` interface.
 
 pw::spi::Initiator
 ------------------
@@ -141,14 +145,10 @@ method.
 
 .. Note:
 
-   Throughout ``pw_spi``, the terms "controller" and "peripheral" are used to
+   Throughout ``pw_spi``, the terms "initiator" and "responder" are used to
    describe the two roles SPI devices can implement.  These terms correspond
    to the  "master" and "slave" roles described in legacy documentation
    related to the SPI protocol.
-
-   ``pw_spi`` only supports SPI transfers where the target implements the
-   "controller" role, and does not support the target acting in the
-   "peripheral" role.
 
 .. inclusive-language: enable
 
@@ -178,48 +178,13 @@ method.
 
 pw::spi::ChipSelector
 ---------------------
-The ChipSelector class provides an abstract interface for controlling the
-chip-select signal associated with a specific SPI peripheral.
+.. doxygenclass:: pw::spi::ChipSelector
+   :members:
 
-This interface provides a ``SetActive()`` method, which activates/deactivates
-the device based on the value of the `active` parameter.  The associated
-``Activate()`` and ``Deactivate()`` methods are utility wrappers for
-``SetActive(true)`` and ``SetActive(false)``, respectively.
-
-A concrete implementation of this interface class must be provided in order to
-use the SPI HAL to communicate with a peripheral.
-
-.. Note::
-
-   `Active` does not imply a specific logic-level; it is left to the
-   implementor to correctly map logic-levels to the device's active/inactive
-   states.
-
-.. cpp:class:: pw::spi::ChipSelector
-
-   .. cpp:function:: Status SetActive(bool active)
-
-      SetActive sets the state of the chip-select signal to the value
-      represented by the `active` parameter.  Passing a value of `true` will
-      activate the chip-select signal, and `false` will deactivate the
-      chip-select signal.
-
-      Returns OkStatus() on success, and implementation-specific values on
-      failure.
-
-   .. cpp:function:: Status Activate()
-
-      Helper method to activate the chip-select signal
-
-      Returns OkStatus() on success, and implementation-specific values on
-      failure.
-
-   .. cpp:function:: Status Deactivate()
-
-      Helper method to deactivate the chip-select signal
-
-      Returns OkStatus() on success, and implementation-specific values on
-      failure.
+pw::spi::DigitalOutChipSelector
+-------------------------------
+.. doxygenclass:: pw::spi::DigitalOutChipSelector
+   :members:
 
 pw::spi::Device
 ---------------
@@ -250,7 +215,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status Read(Bytespan read_buffer)
 
-      Synchronously read data from the SPI peripheral until the provided
+      Synchronously read data from the SPI responder until the provided
       `read_buffer` is full.
       This call will configure the bus and activate/deactivate chip select
       for the transfer
@@ -263,7 +228,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status Write(ConstByteSpan write_buffer)
 
-      Synchronously write the contents of `write_buffer` to the SPI peripheral.
+      Synchronously write the contents of `write_buffer` to the SPI responder.
       This call will configure the bus and activate/deactivate chip select
       for the transfer
 
@@ -275,7 +240,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status WriteRead(ConstByteSpan write_buffer, ByteSpan read_buffer)
 
-      Perform a synchronous read/write transfer with the SPI peripheral. Data
+      Perform a synchronous read/write transfer with the SPI responder. Data
       from the `write_buffer` object is written to the bus, while the
       `read_buffer` is populated with incoming data on the bus.  In the event
       the read buffer is smaller than the write buffer (or zero-size), any
@@ -306,7 +271,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status Read(Bytespan read_buffer)
 
-      Synchronously read data from the SPI peripheral until the provided
+      Synchronously read data from the SPI responder until the provided
       `read_buffer` is full.
 
       Returns OkStatus() on success, and implementation-specific values on
@@ -314,7 +279,7 @@ the ``pw::sync::Borrowable`` object, where the ``pw::spi::Initiator`` object is
 
    .. cpp:function:: Status Write(ConstByteSpan write_buffer)
 
-      Synchronously write the contents of `write_buffer` to the SPI peripheral
+      Synchronously write the contents of `write_buffer` to the SPI responder
 
       Returns OkStatus() on success, and implementation-specific values on
       failure.
@@ -344,30 +309,56 @@ list. An example of this is shown below:
 
 .. code-block:: cpp
 
-  using pw::spi::MakeExpectedTransactionlist;
-  using pw::spi::MockInitiator;
-  using pw::spi::MockWriteTransaction;
+   using pw::spi::MakeExpectedTransactionlist;
+   using pw::spi::MockInitiator;
+   using pw::spi::MockWriteTransaction;
 
-  constexpr auto kExpectWrite1 = pw::bytes::Array<1, 2, 3, 4, 5>();
-  constexpr auto kExpectWrite2 = pw::bytes::Array<3, 4, 5>();
-  auto expected_transactions = MakeExpectedTransactionArray(
-      {MockWriteTransaction(pw::OkStatus(), kExpectWrite1),
-       MockWriteTransaction(pw::OkStatus(), kExpectWrite2)});
-  MockInitiator spi_mock(expected_transactions);
+   constexpr auto kExpectWrite1 = pw::bytes::Array<1, 2, 3, 4, 5>();
+   constexpr auto kExpectWrite2 = pw::bytes::Array<3, 4, 5>();
+   auto expected_transactions = MakeExpectedTransactionArray(
+       {MockWriteTransaction(pw::OkStatus(), kExpectWrite1),
+        MockWriteTransaction(pw::OkStatus(), kExpectWrite2)});
+   MockInitiator spi_mock(expected_transactions);
 
-  // Begin driver code
-  ConstByteSpan write1 = kExpectWrite1;
-  // write1 is ok as spi_mock expects {1, 2, 3, 4, 5} == {1, 2, 3, 4, 5}
-  Status status = spi_mock.WriteRead(write1, ConstByteSpan());
+   // Begin driver code
+   ConstByteSpan write1 = kExpectWrite1;
+   // write1 is ok as spi_mock expects {1, 2, 3, 4, 5} == {1, 2, 3, 4, 5}
+   Status status = spi_mock.WriteRead(write1, ConstByteSpan());
 
-  // Takes the first two bytes from the expected array to build a mismatching
-  // span to write.
-  ConstByteSpan write2 = pw::span(kExpectWrite2).first(2);
-  // write2 fails as spi_mock expects {3, 4, 5} != {3, 4}
-  status = spi_mock.WriteRead(write2, ConstByteSpan());
-  // End driver code
+   // Takes the first two bytes from the expected array to build a mismatching
+   // span to write.
+   ConstByteSpan write2 = pw::span(kExpectWrite2).first(2);
+   // write2 fails as spi_mock expects {3, 4, 5} != {3, 4}
+   status = spi_mock.WriteRead(write2, ConstByteSpan());
+   // End driver code
 
-  // Optionally check if the mocked transaction list has been exhausted.
-  // Alternatively this is also called from MockInitiator::~MockInitiator().
-  EXPECT_EQ(spi_mock.Finalize(), OkStatus());
+   // Optionally check if the mocked transaction list has been exhausted.
+   // Alternatively this is also called from MockInitiator::~MockInitiator().
+   EXPECT_EQ(spi_mock.Finalize(), OkStatus());
 
+pw::spi::Responder
+------------------
+The common interface for implementing a SPI responder. It provides a way to
+respond to SPI transactions coming from a SPI initiator in a non-target specific
+way. A concrete implementation of the ``Responder`` class should be provided for
+the target hardware. Applications can then use it to implement their specific
+protocols.
+
+.. code-block:: cpp
+
+   MyResponder responder;
+   responder.SetCompletionHandler([](ByteSpan rx_data, Status status) {
+     // Handle incoming data from initiator.
+     // ...
+     // Prepare data to send back to initiator during next SPI transaction.
+     responder.WriteReadAsync(tx_data, rx_data);
+   });
+
+   // Prepare data to send back to initiator during next SPI transaction.
+   responder.WriteReadAsync(tx_data, rx_data)
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Backends <backends>

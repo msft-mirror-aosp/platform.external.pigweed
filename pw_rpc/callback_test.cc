@@ -12,14 +12,14 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "gtest/gtest.h"
 #include "pw_rpc/raw/client_testing.h"
 #include "pw_rpc_test_protos/test.raw_rpc.pb.h"
 #include "pw_sync/binary_semaphore.h"
+#include "pw_thread/non_portable_test_thread_options.h"
 #include "pw_thread/sleep.h"
-#include "pw_thread/test_threads.h"
 #include "pw_thread/thread.h"
 #include "pw_thread/yield.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
 namespace {
@@ -28,6 +28,12 @@ using namespace std::chrono_literals;
 
 using test::pw_rpc::raw::TestService;
 
+// These tests cover interactions between a thread moving or destroying an RPC
+// call object and a thread running callbacks for that call. In order to test
+// that the first thread waits for callbacks to complete when trying to move or
+// destroy the call, it is necessary to have the callback thread yield to the
+// other thread. There isn't a good way to synchronize these threads without
+// changing the code under test.
 void YieldToOtherThread() {
   // Sleep for a while and then yield just to be sure the other thread runs.
   this_thread::sleep_for(100ms);
@@ -37,12 +43,10 @@ void YieldToOtherThread() {
 class CallbacksTest : public ::testing::Test {
  protected:
   CallbacksTest()
-      : callback_thread_(
-            thread::test::TestOptionsThread0(),
-            [](void* arg) {
-              static_cast<CallbacksTest*>(arg)->SendResponseAfterSemaphore();
-            },
-            this) {}
+      // TODO: b/290860904 - Replace TestOptionsThread0 with
+      // TestThreadContext.
+      : callback_thread_(thread::test::TestOptionsThread0(),
+                         [this] { SendResponseAfterSemaphore(); }) {}
 
   ~CallbacksTest() override {
     EXPECT_FALSE(callback_thread_.joinable());  // Tests must join the thread!
@@ -58,7 +62,7 @@ class CallbacksTest : public ::testing::Test {
 
   thread::Thread callback_thread_;
 
-  // Must be set to true by the RPC callback in each test.
+  // Must be incremented exactly once by the RPC callback in each test.
   volatile int callback_executed_ = 0;
 
   // Variables optionally used by tests. These are in this object so lambads
@@ -81,11 +85,11 @@ class CallbacksTest : public ::testing::Test {
 };
 
 TEST_F(CallbacksTest, DestructorWaitsUntilCallbacksComplete) {
-  // Skip this test if locks are disabled because the thread can't yield.
   if (PW_RPC_USE_GLOBAL_MUTEX == 0) {
     callback_thread_sem_.release();
     callback_thread_.join();
-    GTEST_SKIP();
+    GTEST_SKIP()
+        << "Skipping because locks are disabled, so this thread cannot yield.";
   }
 
   {
@@ -126,11 +130,11 @@ TEST_F(CallbacksTest, DestructorWaitsUntilCallbacksComplete) {
 }
 
 TEST_F(CallbacksTest, MoveActiveCall_WaitsForCallbackToComplete) {
-  // Skip this test if locks are disabled because the thread can't yield.
   if (PW_RPC_USE_GLOBAL_MUTEX == 0) {
     callback_thread_sem_.release();
     callback_thread_.join();
-    GTEST_SKIP();
+    GTEST_SKIP()
+        << "Skipping because locks are disabled, so this thread cannot yield.";
   }
 
   call_1_ = TestService::TestBidirectionalStreamRpc(
@@ -231,7 +235,8 @@ TEST_F(CallbacksTest, PacketDroppedIfOnNextIsBusy) {
 
   main_thread_sem_.acquire();  // Confirm that the callback is running
 
-  // Handle a few packets for this call, which should be dropped.
+  // Handle a few packets for this call, which should be dropped since on_next
+  // is busy. callback_executed_ should remain at 1.
   for (int i = 0; i < 5; ++i) {
     context_.server().SendServerStream<TestService::TestBidirectionalStreamRpc>(
         {}, call_1_.id());

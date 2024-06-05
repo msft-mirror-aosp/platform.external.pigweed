@@ -5,9 +5,6 @@
 =============
 pw_digital_io
 =============
-.. warning::
-   This module is under construction and may not be ready for use.
-
 ``pw_digital_io`` provides a set of interfaces for using General Purpose Input
 and Output (GPIO) lines for simple Digital I/O. This module can either be used
 directly by the application code or wrapped in a device driver for more complex
@@ -58,7 +55,8 @@ There are 3 basic capabilities of a Digital IO line:
 Additionally, all lines can be *enabled* and *disabled*:
 
 * Enable - tell the hardware to apply power to an output line, connect any
-  pull-up/down resistors, etc.
+  pull-up/down resistors, etc. For output lines, the line is set to an initial
+  output state that is backend-specific.
 * Disable - tell the hardware to stop applying power and return the line to its
   default state. This may save power or allow some other component to drive a
   shared line.
@@ -175,6 +173,9 @@ properties of the line. This allows applications to interact with Digital IO
 lines across targets that may have different physical configurations. It is up
 to the backend to provide a consistent definition of state.
 
+There is a helper ``pw::digital_io::Polarity`` enum provided to enable mapping
+from logical to physical states for backends.
+
 Interrupt handling
 ==================
 Interrupt handling is part of this API. The alternative was to have a separate
@@ -266,7 +267,47 @@ Backend Implemention Notes
     state. i.e. the same state it would be in after calling ``Enable()``
     followed by ``Disable()``.
   * Calling ``Disable()`` on an uninitialized line must put it into the disabled
-    state.
+    state. In general, ``Disable()`` can be called in any state.
+
+* Calling ``Enable()`` on a line that is already enabled should be a no-op. In
+  particular, the state of an already-enabled output line should not change.
+
+-----------
+RPC Service
+-----------
+The ``DigitalIoService`` pw_rpc service is provided to support bringup/debug
+efforts. It allows manual control of individual DigitalIo lines for both input
+and output.
+
+.. code-block:: cpp
+
+   std::array<std::reference_wrapper<DigitalIoOptional>> lines = {
+     ...DigitalIn(),
+     ...DigitalOut(),
+   };
+   DigitalIoService service(lines);
+   rpc_server.RegisterService(service);
+
+Set the state of the output line via RPC. This snippet demonstrates how you
+might do that using a Pigweed console device object.
+
+.. code-block:: python
+
+   from pw_digital_io import digital_io_pb2
+
+   device.rpcs.pw.digital_io.DigitalIo.SetState(
+                line_index=0, state=digital_io_pb2.DigitalIoState.ACTIVE)
+
+
+-------------
+API reference
+-------------
+.. note::
+   This API reference is incomplete.
+
+.. doxygenclass:: pw::digital_io::DigitalIoOptional
+   :members:
+   :private-members:
 
 ------------
 Dependencies
@@ -282,3 +323,10 @@ Zephyr
 ======
 To enable ``pw_digital_io`` for Zephyr add ``CONFIG_PIGWEED_DIGITAL_IO=y`` to
 the project's configuration.
+
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Backends <backends>

@@ -26,8 +26,6 @@ namespace pw::rpc::internal {
 // A Call object, as used by an RPC client.
 class ClientCall : public Call {
  public:
-  ~ClientCall() PW_LOCKS_EXCLUDED(rpc_lock()) { Abandon(); }
-
   uint32_t id() const PW_LOCKS_EXCLUDED(rpc_lock()) {
     RpcLockGuard lock;
     return Call::id();
@@ -53,6 +51,8 @@ class ClientCall : public Call {
              CallProperties properties) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
       : Call(client, channel_id, service_id, method_id, properties) {}
 
+  ~ClientCall() { DestroyClientCall(); }
+
   // Public function that closes a call client-side without cancelling it on the
   // server.
   void Abandon() PW_LOCKS_EXCLUDED(rpc_lock()) {
@@ -60,8 +60,7 @@ class ClientCall : public Call {
     CloseClientCall();
   }
 
-  // Sends CLIENT_STREAM_END if applicable and marks the call as closed.
-  void CloseClientCall() PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
+  void CloseAndWaitForCallbacks() { DestroyClientCall(); }
 
   void MoveClientCallFrom(ClientCall& other)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
@@ -71,6 +70,8 @@ class ClientCall : public Call {
 // on_completed callback. The on_next callback is not used.
 class UnaryResponseClientCall : public ClientCall {
  public:
+  ~UnaryResponseClientCall() { DestroyClientCall(); }
+
   // Start call for raw unary response RPCs.
   template <typename CallType>
   static CallType Start(Endpoint& client,
@@ -143,6 +144,8 @@ class UnaryResponseClientCall : public ClientCall {
 // callback. Payloads are sent through the on_next callback.
 class StreamResponseClientCall : public ClientCall {
  public:
+  ~StreamResponseClientCall() { DestroyClientCall(); }
+
   // Start call for raw stream response RPCs.
   template <typename CallType>
   static CallType Start(Endpoint& client,
@@ -152,7 +155,7 @@ class StreamResponseClientCall : public ClientCall {
                         Function<void(ConstByteSpan)>&& on_next,
                         Function<void(Status)>&& on_completed,
                         Function<void(Status)>&& on_error,
-                        ConstByteSpan request) {
+                        ConstByteSpan request) PW_LOCKS_EXCLUDED(rpc_lock()) {
     rpc_lock().lock();
     CallType call(client.ClaimLocked(), channel_id, service_id, method_id);
 

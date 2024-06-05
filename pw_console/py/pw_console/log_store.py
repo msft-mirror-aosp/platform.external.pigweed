@@ -14,10 +14,11 @@
 """LogStore saves logs and acts as a Python logging handler."""
 
 from __future__ import annotations
+
 import collections
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from pw_cli.color import colors as pw_cli_colors
 
@@ -77,7 +78,7 @@ class LogStore(logging.Handler):
         console.embed()
     """
 
-    def __init__(self, prefs: Optional[ConsolePrefs] = None):
+    def __init__(self, prefs: ConsolePrefs | None = None):
         """Initializes the LogStore instance."""
 
         # ConsolePrefs may not be passed on init. For example, if the user is
@@ -95,10 +96,10 @@ class LogStore(logging.Handler):
         self.max_history_size: int = 1000000
 
         # Counts of logs per python logger name
-        self.channel_counts: Dict[str, int] = {}
+        self.channel_counts: dict[str, int] = {}
         # Widths of each logger prefix string. For example: the character length
         # of the timestamp string.
-        self.channel_formatted_prefix_widths: Dict[str, int] = {}
+        self.channel_formatted_prefix_widths: dict[str, int] = {}
         # Longest of the above prefix widths.
         self.longest_channel_prefix_width = 0
 
@@ -108,7 +109,7 @@ class LogStore(logging.Handler):
         self.clear_logs()
 
         # List of viewers that should be notified on new log line arrival.
-        self.registered_viewers: List['LogView'] = []
+        self.registered_viewers: list[LogView] = []
 
         super().__init__()
 
@@ -120,7 +121,7 @@ class LogStore(logging.Handler):
         self.prefs = prefs
         self.table.set_prefs(prefs)
 
-    def register_viewer(self, viewer: 'LogView') -> None:
+    def register_viewer(self, viewer: LogView) -> None:
         """Register this LogStore with a LogView."""
         self.registered_viewers.append(viewer)
 
@@ -146,6 +147,9 @@ class LogStore(logging.Handler):
         self.channel_counts = {}
         self.channel_formatted_prefix_widths = {}
         self.line_index = 0
+
+    def get_channel_names(self) -> list[str]:
+        return list(sorted(self.channel_counts.keys()))
 
     def get_channel_counts(self):
         """Return the seen channel log counts for this conatiner."""
@@ -223,7 +227,7 @@ class LogStore(logging.Handler):
             self.channel_counts.get(record.name, 0) + 1
         )
 
-        # TODO(b/235271486): Revisit calculating prefix widths automatically
+        # TODO: b/235271486 - Revisit calculating prefix widths automatically
         # when line wrapping indentation is supported.
         # Set the prefix width to 0
         self.channel_formatted_prefix_widths[record.name] = 0

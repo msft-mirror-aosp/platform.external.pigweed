@@ -16,9 +16,9 @@
 
 #include <cstddef>
 
-#include "gtest/gtest.h"
 #include "pw_rpc/internal/packet.h"
 #include "pw_rpc/internal/test_utils.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::rpc::internal {
 namespace {
@@ -135,6 +135,59 @@ TEST(ExtractChannelId, InvalidPacket) {
   Result<uint32_t> channel_id = ExtractChannelId(buffer);
 
   EXPECT_EQ(channel_id.status(), Status::DataLoss());
+}
+
+TEST(ExtractChannelId, ChangeChannelIdToValidValue) {
+  std::byte buffer[64] = {};
+  Result<ConstByteSpan> result = kTestPacket.Encode(buffer);
+  ByteSpan packet(buffer, result.value().size());
+
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 0), OkStatus());
+  EXPECT_EQ(ExtractChannelId(packet).value(), 0u);
+
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 1), OkStatus());
+  EXPECT_EQ(ExtractChannelId(packet).value(), 1u);
+
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 23), OkStatus());
+  EXPECT_EQ(ExtractChannelId(packet).value(), 23u);
+
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 127), OkStatus());
+  EXPECT_EQ(ExtractChannelId(packet).value(), 127u);
+
+  EXPECT_EQ(ChangeEncodedChannelId<0>(packet), OkStatus());
+  EXPECT_EQ(ExtractChannelId(packet).value(), 0u);
+
+  EXPECT_EQ(ChangeEncodedChannelId<1>(packet), OkStatus());
+  EXPECT_EQ(ExtractChannelId(packet).value(), 1u);
+
+  EXPECT_EQ(ChangeEncodedChannelId<23>(packet), OkStatus());
+  EXPECT_EQ(ExtractChannelId(packet).value(), 23u);
+
+  EXPECT_EQ(ChangeEncodedChannelId<127>(packet), OkStatus());
+  EXPECT_EQ(ExtractChannelId(packet).value(), 127u);
+}
+
+TEST(ExtractChannelId, ChangeChannelIdTooLarge) {
+  constexpr Packet kChannelIdTooLargePacket(
+      pwpb::PacketType::RESPONSE, 128, 42, 100, 0, {}, Status::NotFound());
+
+  std::byte buffer[64] = {};
+  Result<ConstByteSpan> result = kChannelIdTooLargePacket.Encode(buffer);
+  ByteSpan packet(buffer, result.value().size());
+
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 0), Status::OutOfRange());
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 1), Status::OutOfRange());
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 23), Status::OutOfRange());
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 127), Status::OutOfRange());
+}
+
+TEST(ExtractChannelId, ChangeChannelIdNoChannelFound) {
+  std::byte packet[64] = {};
+
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 0), Status::DataLoss());
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 1), Status::DataLoss());
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 23), Status::DataLoss());
+  EXPECT_EQ(ChangeEncodedChannelId(packet, 127), Status::DataLoss());
 }
 
 }  // namespace

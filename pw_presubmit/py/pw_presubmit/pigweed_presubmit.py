@@ -20,22 +20,16 @@ import json
 import logging
 import os
 from pathlib import Path
+import platform
 import re
 import shutil
 import subprocess
 import sys
-from typing import Callable, Iterable, List, Sequence, TextIO
+from typing import Callable, Iterable, Sequence, TextIO
 
-try:
-    import pw_presubmit
-except ImportError:
-    # Append the pw_presubmit package path to the module search path to allow
-    # running this module without installing the pw_presubmit package.
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    import pw_presubmit
-
+from pw_cli.plural import plural
+from pw_cli.file_filter import FileFilter
 import pw_package.pigweed_packages
-
 from pw_presubmit import (
     build,
     cli,
@@ -43,23 +37,29 @@ from pw_presubmit import (
     format_code,
     git_repo,
     gitmodules,
-    call,
-    filter_paths,
     inclusive_language,
+    javascript_checks,
+    json_check,
     keep_sorted,
     module_owners,
     npm_presubmit,
     owners_checks,
-    plural,
-    presubmit,
-    PresubmitContext,
-    PresubmitFailure,
-    Programs,
     python_checks,
     shell_checks,
     source_in_build,
     todo_check,
 )
+from pw_presubmit.presubmit import (
+    Programs,
+    call,
+    filter_paths,
+)
+from pw_presubmit.presubmit_context import (
+    FormatOptions,
+    PresubmitContext,
+    PresubmitFailure,
+)
+from pw_presubmit.tools import log_run
 from pw_presubmit.install_hook import install_git_hook
 
 _LOG = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ _LOG = logging.getLogger(__name__)
 pw_package.pigweed_packages.initialize()
 
 # Trigger builds if files with these extensions change.
-_BUILD_FILE_FILTER = presubmit.FileFilter(
+_BUILD_FILE_FILTER = FileFilter(
     suffix=(
         *format_code.C_FORMAT.extensions,
         '.cfg',
@@ -87,20 +87,39 @@ def _at_all_optimization_levels(target):
         yield f'{target}_{level}'
 
 
+class PigweedGnGenNinja(build.GnGenNinja):
+    """Add Pigweed-specific defaults to GnGenNinja."""
+
+    def add_default_gn_args(self, args):
+        """Add project-specific default GN args to 'args'."""
+        args['pw_C_OPTIMIZATION_LEVELS'] = ('debug',)
+
+
+def build_bazel(*args, **kwargs) -> None:
+    build.bazel(*args, use_remote_cache=True, **kwargs)
+
+
 #
 # Build presubmit checks
 #
+gn_all = PigweedGnGenNinja(
+    name='gn_all',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS),
+    ninja_targets=('all',),
+)
+
+
 def gn_clang_build(ctx: PresubmitContext):
     """Checks all compile targets that rely on LLVM tooling."""
     build_targets = [
         *_at_all_optimization_levels('host_clang'),
-        'cpp14_compatibility',
         'cpp20_compatibility',
         'asan',
         'tsan',
         'ubsan',
         'runtime_sanitizers',
-        # TODO(b/234876100): msan will not work until the C++ standard library
+        # TODO: b/234876100 - msan will not work until the C++ standard library
         # included in the sysroot has a variant built with msan.
     ]
 
@@ -110,37 +129,28 @@ def gn_clang_build(ctx: PresubmitContext):
 
     # QEMU doesn't run on Windows.
     if sys.platform != 'win32':
-        # TODO(b/244604080): For the pw::InlineString tests, qemu_clang_debug
+        # TODO: b/244604080 - For the pw::InlineString tests, qemu_clang_debug
         #     and qemu_clang_speed_optimized produce a binary too large for the
         #     QEMU target's 256KB flash. Restore debug and speed optimized
         #     builds when this is fixed.
         build_targets.append('qemu_clang_size_optimized')
 
-    # TODO(b/240982565): SocketStream currently requires Linux.
+    # TODO: b/240982565 - SocketStream currently requires Linux.
     if sys.platform.startswith('linux'):
         build_targets.append('integration_tests')
 
     build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *build_targets)
+    build.gn_check(ctx)
 
 
 _HOST_COMPILER = 'gcc' if sys.platform == 'win32' else 'clang'
 
 
-@_BUILD_FILE_FILTER.apply_to_check()
+@filter_paths(file_filter=_BUILD_FILE_FILTER)
 def gn_quick_build_check(ctx: PresubmitContext):
     """Checks the state of the GN build by running gn gen and gn check."""
     build.gn_gen(ctx)
-
-
-@_BUILD_FILE_FILTER.apply_to_check()
-def gn_full_qemu_check(ctx: PresubmitContext):
-    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
-    build.ninja(
-        ctx,
-        *_at_all_optimization_levels('qemu_gcc'),
-        *_at_all_optimization_levels('qemu_clang'),
-    )
 
 
 def _gn_combined_build_check_targets() -> Sequence[str]:
@@ -150,14 +160,20 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
         *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
         'python.tests',
         'python.lint',
-        'docs',
-        'fuzzers',
         'pigweed_pypi_distribution',
     ]
 
-    # TODO(b/234645359): Re-enable on Windows when compatibility tests build.
+    # TODO: b/315998985 - Add docs back to Mac ARM build.
+    if sys.platform != 'darwin' or platform.machine() != 'arm64':
+        build_targets.append('docs')
+
+    # C headers seem to be missing when building with pw_minimal_cpp_stdlib, so
+    # skip it on Windows.
     if sys.platform != 'win32':
-        build_targets.append('cpp14_compatibility')
+        build_targets.append('build_with_pw_minimal_cpp_stdlib')
+
+    # TODO: b/234645359 - Re-enable on Windows when compatibility tests build.
+    if sys.platform != 'win32':
         build_targets.append('cpp20_compatibility')
 
     # clang-tidy doesn't run on Windows.
@@ -166,37 +182,72 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
 
     # QEMU doesn't run on Windows.
     if sys.platform != 'win32':
-        build_targets.extend(_at_all_optimization_levels('qemu_gcc'))
-
-        # TODO(b/244604080): For the pw::InlineString tests, qemu_clang_debug
-        #     and qemu_clang_speed_optimized produce a binary too large for the
+        # TODO: b/244604080 - For the pw::InlineString tests, qemu_*_debug
+        #     and qemu_*_speed_optimized produce a binary too large for the
         #     QEMU target's 256KB flash. Restore debug and speed optimized
         #     builds when this is fixed.
+        build_targets.append('qemu_gcc_size_optimized')
         build_targets.append('qemu_clang_size_optimized')
 
-    # TODO(b/240982565): SocketStream currently requires Linux.
+    # TODO: b/240982565 - SocketStream currently requires Linux.
     if sys.platform.startswith('linux'):
         build_targets.append('integration_tests')
+
+    # TODO: b/269354373 - clang is not supported on windows yet
+    if sys.platform != 'win32':
+        build_targets.append('host_clang_debug_dynamic_allocation')
 
     return build_targets
 
 
-gn_combined_build_check = build.GnGenNinja(
+gn_combined_build_check = PigweedGnGenNinja(
     name='gn_combined_build_check',
     doc='Run most host and device (QEMU) tests.',
     path_filter=_BUILD_FILE_FILTER,
-    gn_args=dict(pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS),
+    gn_args=dict(
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+        pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
+    ),
     ninja_targets=_gn_combined_build_check_targets(),
 )
 
+coverage = PigweedGnGenNinja(
+    name='coverage',
+    doc='Run coverage for the host build.',
+    path_filter=_BUILD_FILE_FILTER,
+    ninja_targets=('coverage',),
+    coverage_options=build.CoverageOptions(
+        common=build.CommonCoverageOptions(
+            target_bucket_project='pigweed',
+            target_bucket_root='gs://ng3-metrics/ng3-pigweed-coverage',
+            trace_type='LLVM',
+            owner='pigweed-infra@google.com',
+            bug_component='503634',
+        ),
+        codesearch=(
+            build.CodeSearchCoverageOptions(
+                host='pigweed-internal',
+                project='codesearch',
+                add_prefix='pigweed',
+                ref='refs/heads/main',
+                source='infra:main',
+            ),
+        ),
+        gerrit=build.GerritCoverageOptions(
+            project='pigweed/pigweed',
+        ),
+    ),
+)
 
-@_BUILD_FILE_FILTER.apply_to_check()
+
+@filter_paths(file_filter=_BUILD_FILE_FILTER)
 def gn_arm_build(ctx: PresubmitContext):
     build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
     build.ninja(ctx, *_at_all_optimization_levels('stm32f429i'))
+    build.gn_check(ctx)
 
 
-stm32f429i = build.GnGenNinja(
+stm32f429i = PigweedGnGenNinja(
     name='stm32f429i',
     path_filter=_BUILD_FILE_FILTER,
     gn_args={
@@ -212,36 +263,7 @@ stm32f429i = build.GnGenNinja(
     ninja_targets=_at_all_optimization_levels('stm32f429i'),
 )
 
-
-gn_emboss_build = build.GnGenNinja(
-    name='gn_emboss_build',
-    packages=('emboss',),
-    gn_args=dict(
-        dir_pw_third_party_emboss=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'emboss'
-        ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    ),
-    ninja_targets=(*_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),),
-)
-
-gn_nanopb_build = build.GnGenNinja(
-    name='gn_nanopb_build',
-    path_filter=_BUILD_FILE_FILTER,
-    packages=('nanopb',),
-    gn_args=dict(
-        dir_pw_third_party_nanopb=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'nanopb'
-        ),
-        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
-    ),
-    ninja_targets=(
-        *_at_all_optimization_levels('stm32f429i'),
-        *_at_all_optimization_levels('host_clang'),
-    ),
-)
-
-gn_crypto_mbedtls_build = build.GnGenNinja(
+gn_crypto_mbedtls_build = PigweedGnGenNinja(
     name='gn_crypto_mbedtls_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('mbedtls',),
@@ -250,44 +272,21 @@ gn_crypto_mbedtls_build = build.GnGenNinja(
             ctx.package_root / 'mbedtls'
         ),
         'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:sha256_mbedtls'
+            ctx.root / 'pw_crypto:sha256_mbedtls_v3'
         ),
         'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:ecdsa_mbedtls'
+            ctx.root / 'pw_crypto:ecdsa_mbedtls_v3'
         ),
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
     ninja_targets=(
         *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-        # TODO(b/240982565): SocketStream currently requires Linux.
+        # TODO: b/240982565 - SocketStream currently requires Linux.
         *(('integration_tests',) if sys.platform.startswith('linux') else ()),
     ),
 )
 
-gn_crypto_boringssl_build = build.GnGenNinja(
-    name='gn_crypto_boringssl_build',
-    path_filter=_BUILD_FILE_FILTER,
-    packages=('boringssl',),
-    gn_args={
-        'dir_pw_third_party_boringssl': lambda ctx: '"{}"'.format(
-            ctx.package_root / 'boringssl'
-        ),
-        'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:sha256_boringssl'
-        ),
-        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:ecdsa_boringssl'
-        ),
-        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
-    },
-    ninja_targets=(
-        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-        # TODO(b/240982565): SocketStream currently requires Linux.
-        *(('integration_tests',) if sys.platform.startswith('linux') else ()),
-    ),
-)
-
-gn_crypto_micro_ecc_build = build.GnGenNinja(
+gn_crypto_micro_ecc_build = PigweedGnGenNinja(
     name='gn_crypto_micro_ecc_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('micro-ecc',),
@@ -302,12 +301,12 @@ gn_crypto_micro_ecc_build = build.GnGenNinja(
     },
     ninja_targets=(
         *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-        # TODO(b/240982565): SocketStream currently requires Linux.
+        # TODO: b/240982565 - SocketStream currently requires Linux.
         *(('integration_tests',) if sys.platform.startswith('linux') else ()),
     ),
 )
 
-gn_teensy_build = build.GnGenNinja(
+gn_teensy_build = PigweedGnGenNinja(
     name='gn_teensy_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('teensy',),
@@ -316,18 +315,21 @@ gn_teensy_build = build.GnGenNinja(
             str(ctx.package_root)
         ),
         'pw_arduino_build_CORE_NAME': 'teensy',
-        'pw_arduino_build_PACKAGE_NAME': 'teensy/avr',
+        'pw_arduino_build_PACKAGE_NAME': 'avr/1.58.1',
         'pw_arduino_build_BOARD': 'teensy40',
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
     ninja_targets=_at_all_optimization_levels('arduino'),
 )
 
-gn_pico_build = build.GnGenNinja(
+gn_pico_build = PigweedGnGenNinja(
     name='gn_pico_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('pico_sdk',),
+    packages=('pico_sdk', 'freertos'),
     gn_args={
+        'dir_pw_third_party_freertos': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'freertos')
+        ),
         'PICO_SRC_DIR': lambda ctx: '"{}"'.format(
             str(ctx.package_root / 'pico_sdk')
         ),
@@ -336,8 +338,43 @@ gn_pico_build = build.GnGenNinja(
     ninja_targets=('pi_pico',),
 )
 
+gn_mimxrt595_build = PigweedGnGenNinja(
+    name='gn_mimxrt595_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('mcuxpresso',),
+    gn_args={
+        'dir_pw_third_party_mcuxpresso': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'mcuxpresso')
+        ),
+        'pw_target_mimxrt595_evk_MANIFEST': '$dir_pw_third_party_mcuxpresso'
+        + '/EVK-MIMXRT595_manifest_v3_13.xml',
+        'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk:sample_sdk',
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=('mimxrt595'),
+)
 
-gn_software_update_build = build.GnGenNinja(
+gn_mimxrt595_freertos_build = PigweedGnGenNinja(
+    name='gn_mimxrt595_freertos_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('freertos', 'mcuxpresso'),
+    gn_args={
+        'dir_pw_third_party_freertos': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'freertos')
+        ),
+        'dir_pw_third_party_mcuxpresso': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'mcuxpresso')
+        ),
+        'pw_target_mimxrt595_evk_freertos_MANIFEST': '{}/{}'.format(
+            "$dir_pw_third_party_mcuxpresso", "EVK-MIMXRT595_manifest_v3_13.xml"
+        ),
+        'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk_freertos:sdk',
+        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
+    },
+    ninja_targets=('mimxrt595_freertos'),
+)
+
+gn_software_update_build = PigweedGnGenNinja(
     name='gn_software_update_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('nanopb', 'protobuf', 'mbedtls', 'micro-ecc'),
@@ -358,14 +395,14 @@ gn_software_update_build = build.GnGenNinja(
             ctx.package_root / 'mbedtls'
         ),
         'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:sha256_mbedtls'
+            ctx.root / 'pw_crypto:sha256_mbedtls_v3'
         ),
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
     ninja_targets=_at_all_optimization_levels('host_clang'),
 )
 
-gn_pw_system_demo_build = build.GnGenNinja(
+gn_pw_system_demo_build = PigweedGnGenNinja(
     name='gn_pw_system_demo_build',
     path_filter=_BUILD_FILE_FILTER,
     packages=('freertos', 'nanopb', 'stm32cube_f4', 'pico_sdk'),
@@ -386,9 +423,279 @@ gn_pw_system_demo_build = build.GnGenNinja(
     ninja_targets=('pw_system_demo',),
 )
 
-gn_docs_build = build.GnGenNinja(name='gn_docs_build', ninja_targets=('docs',))
+gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
+    name='gn_chre_googletest_nanopb_sapphire_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('boringssl', 'chre', 'emboss', 'googletest', 'icu', 'nanopb'),
+    gn_args=dict(
+        dir_pw_third_party_chre=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'chre'
+        ),
+        dir_pw_third_party_nanopb=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'nanopb'
+        ),
+        dir_pw_third_party_googletest=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'googletest'
+        ),
+        dir_pw_third_party_emboss=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'emboss'
+        ),
+        dir_pw_third_party_boringssl=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'boringssl'
+        ),
+        dir_pw_third_party_icu=lambda ctx: '"{}"'.format(
+            ctx.package_root / 'icu'
+        ),
+        pw_unit_test_MAIN=lambda ctx: '"{}"'.format(
+            ctx.root / 'third_party/googletest:gmock_main'
+        ),
+        pw_unit_test_BACKEND=lambda ctx: '"{}"'.format(
+            ctx.root / 'pw_unit_test:googletest'
+        ),
+        pw_function_CONFIG=lambda ctx: '"{}"'.format(
+            ctx.root / 'pw_function:enable_dynamic_allocation'
+        ),
+        pw_bluetooth_sapphire_ENABLED=True,
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+    ),
+    ninja_targets=(
+        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
+        *_at_all_optimization_levels('stm32f429i'),
+    ),
+)
 
-gn_host_tools = build.GnGenNinja(
+gn_fuzz_build = PigweedGnGenNinja(
+    name='gn_fuzz_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('abseil-cpp', 'fuzztest', 'googletest', 're2'),
+    gn_args={
+        'dir_pw_third_party_abseil_cpp': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'abseil-cpp'
+        ),
+        'dir_pw_third_party_fuzztest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'fuzztest'
+        ),
+        'dir_pw_third_party_googletest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'googletest'
+        ),
+        'dir_pw_third_party_re2': lambda ctx: '"{}"'.format(
+            ctx.package_root / 're2'
+        ),
+        'pw_unit_test_MAIN': lambda ctx: '"{}"'.format(
+            ctx.root / 'third_party/googletest:gmock_main'
+        ),
+        'pw_unit_test_BACKEND': lambda ctx: '"{}"'.format(
+            ctx.root / 'pw_unit_test:googletest'
+        ),
+    },
+    ninja_targets=('fuzzers',),
+    ninja_contexts=(
+        lambda ctx: build.modified_env(
+            FUZZTEST_PRNG_SEED=build.fuzztest_prng_seed(ctx),
+        ),
+    ),
+)
+
+oss_fuzz_build = PigweedGnGenNinja(
+    name='oss_fuzz_build',
+    path_filter=_BUILD_FILE_FILTER,
+    packages=('abseil-cpp', 'fuzztest', 'googletest', 're2'),
+    gn_args={
+        'dir_pw_third_party_abseil_cpp': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'abseil-cpp'
+        ),
+        'dir_pw_third_party_fuzztest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'fuzztest'
+        ),
+        'dir_pw_third_party_googletest': lambda ctx: '"{}"'.format(
+            ctx.package_root / 'googletest'
+        ),
+        'dir_pw_third_party_re2': lambda ctx: '"{}"'.format(
+            ctx.package_root / 're2'
+        ),
+        'pw_toolchain_OSS_FUZZ_ENABLED': True,
+    },
+    ninja_targets=('oss_fuzz',),
+)
+
+
+def _env_with_zephyr_vars(ctx: PresubmitContext) -> dict:
+    """Returns the environment variables with ... set for Zephyr."""
+    env = os.environ.copy()
+    # Set some variables here.
+    env['ZEPHYR_BASE'] = str(ctx.package_root / 'zephyr')
+    env['ZEPHYR_MODULES'] = str(ctx.root)
+    env['ZEPHYR_TOOLCHAIN_VARIANT'] = 'llvm'
+    return env
+
+
+def zephyr_build(ctx: PresubmitContext) -> None:
+    """Run Zephyr compatible tests"""
+    # Install the Zephyr package
+    build.install_package(ctx, 'zephyr')
+    # Configure the environment
+    env = _env_with_zephyr_vars(ctx)
+    # Get the python twister runner
+    twister = ctx.package_root / 'zephyr' / 'scripts' / 'twister'
+    # Get a list of the test roots
+    testsuite_roots = [
+        ctx.pw_root / dir
+        for dir in os.listdir(ctx.pw_root)
+        if dir.startswith('pw_')
+    ]
+    testsuite_roots_list = [
+        args for dir in testsuite_roots for args in ('--testsuite-root', dir)
+    ]
+    sysroot_dir = (
+        ctx.pw_root
+        / 'environment'
+        / 'cipd'
+        / 'packages'
+        / 'pigweed'
+        / 'clang_sysroot'
+    )
+    platform_filters = (
+        ['-P', 'native_posix', '-P', 'native_sim']
+        if platform.system() in ['Windows', 'Darwin']
+        else []
+    )
+    # Run twister
+    call(
+        sys.executable,
+        twister,
+        '--ninja',
+        '--integration',
+        '--clobber-output',
+        '--inline-logs',
+        '--verbose',
+        *platform_filters,
+        '-x=CONFIG_LLVM_USE_LLD=y',
+        '-x=CONFIG_COMPILER_RT_RTLIB=y',
+        f'-x=TOOLCHAIN_C_FLAGS=--sysroot={sysroot_dir}',
+        f'-x=TOOLCHAIN_LD_FLAGS=--sysroot={sysroot_dir}',
+        *testsuite_roots_list,
+        env=env,
+    )
+    # Produces reports at (ctx.root / 'twister_out' / 'twister*.xml')
+
+
+def docs_build(ctx: PresubmitContext) -> None:
+    """Build Pigweed docs"""
+
+    build.install_package(ctx, 'nanopb')
+    build.install_package(ctx, 'pico_sdk')
+    build.install_package(ctx, 'stm32cube_f4')
+    build.install_package(ctx, 'freertos')
+    build.install_package(ctx, 'pigweed_examples_repo')
+
+    # Build main docs through GN/Ninja.
+    build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
+    build.ninja(ctx, 'docs')
+    build.gn_check(ctx)
+
+    # Build Rust docs through Bazel.
+    build_bazel(
+        ctx,
+        'build',
+        '--',
+        '//pw_rust:docs',
+    )
+
+    # Build examples repo docs through GN.
+    examples_repo_root = ctx.package_root / 'pigweed_examples_repo'
+    examples_repo_out = examples_repo_root / 'out'
+
+    # Setup an examples repo presubmit context.
+    examples_ctx = PresubmitContext(
+        root=examples_repo_root,
+        repos=(examples_repo_root,),
+        output_dir=examples_repo_out,
+        failure_summary_log=ctx.failure_summary_log,
+        paths=tuple(),
+        all_paths=tuple(),
+        package_root=ctx.package_root,
+        luci=None,
+        override_gn_args={},
+        num_jobs=ctx.num_jobs,
+        continue_after_build_error=True,
+        _failed=False,
+        format_options=ctx.format_options,
+    )
+
+    # Write a pigweed_environment.gni for the examples repo.
+    pwenvgni = (
+        ctx.root / 'build_overrides/pigweed_environment.gni'
+    ).read_text()
+    # Fix the path for cipd packages.
+    pwenvgni.replace('../environment/cipd/', '../../cipd/')
+    # Write the file
+    (examples_repo_root / 'build_overrides/pigweed_environment.gni').write_text(
+        pwenvgni
+    )
+
+    # Set required GN args.
+    pico_sdk_dir = ctx.package_root / 'pico_sdk'
+    stm32cube_dir = ctx.package_root / 'stm32cube_f4'
+    freertos_dir = ctx.package_root / 'freertos'
+    nanopb_dir = ctx.package_root / 'nanopb'
+    build.gn_gen(
+        examples_ctx,
+        dir_pigweed='"//../../.."',
+        dir_pw_third_party_stm32cube_f4=f'"{stm32cube_dir}"',
+        dir_pw_third_party_freertos=f'"{freertos_dir}"',
+        dir_pw_third_party_nanopb=f'"{nanopb_dir}"',
+        PICO_SRC_DIR=f'"{pico_sdk_dir}"',
+    )
+    build.ninja(examples_ctx, 'docs')
+
+    # Copy rust docs from Bazel's out directory into where the GN build
+    # put the main docs.
+    rust_docs_bazel_dir = ctx.output_dir / 'bazel-bin/pw_rust/docs.rustdoc'
+    rust_docs_output_dir = ctx.output_dir / 'docs/gen/docs/html/rustdoc'
+
+    # Copy the doxygen html output to the main docs location.
+    doxygen_html_gn_dir = ctx.output_dir / 'docs/doxygen/html'
+    doxygen_html_output_dir = ctx.output_dir / 'docs/gen/docs/html/doxygen'
+
+    # Copy the examples repo html output to the main docs location into
+    # '/examples/'.
+    examples_html_gn_dir = examples_repo_out / 'docs/gen/docs/html'
+    examples_html_output_dir = ctx.output_dir / 'docs/gen/docs/html/examples'
+
+    # Remove outputs to avoid including stale files from previous runs.
+    shutil.rmtree(rust_docs_output_dir, ignore_errors=True)
+    shutil.rmtree(doxygen_html_output_dir, ignore_errors=True)
+    shutil.rmtree(examples_html_output_dir, ignore_errors=True)
+
+    # Bazel generates files and directories without write permissions.  In
+    # order to allow this rule to be run multiple times we use shutil.copyfile
+    # for the actual copies to not copy permissions of files.
+    shutil.copytree(
+        rust_docs_bazel_dir,
+        rust_docs_output_dir,
+        copy_function=shutil.copyfile,
+        dirs_exist_ok=True,
+    )
+
+    # Copy doxygen html outputs.
+    shutil.copytree(
+        doxygen_html_gn_dir,
+        doxygen_html_output_dir,
+        copy_function=shutil.copyfile,
+        dirs_exist_ok=True,
+    )
+
+    # mkdir -p the example repo output dir and copy the files over.
+    examples_html_output_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(
+        examples_html_gn_dir,
+        examples_html_output_dir,
+        copy_function=shutil.copyfile,
+        dirs_exist_ok=True,
+    )
+
+
+gn_host_tools = PigweedGnGenNinja(
     name='gn_host_tools',
     ninja_targets=('host_tools',),
 )
@@ -396,6 +703,7 @@ gn_host_tools = build.GnGenNinja(
 
 def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
     build.install_package(ctx, 'nanopb')
+    build.install_package(ctx, 'emboss')
 
     env = None
     if 'clang' in toolchain:
@@ -408,8 +716,15 @@ def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
         '-DCMAKE_EXPORT_COMPILE_COMMANDS=1',
         f'-Ddir_pw_third_party_nanopb={ctx.package_root / "nanopb"}',
         '-Dpw_third_party_nanopb_ADD_SUBDIRECTORY=ON',
+        f'-Ddir_pw_third_party_emboss={ctx.package_root / "emboss"}',
         env=env,
     )
+
+
+CMAKE_TARGETS = [
+    'pw_apps',
+    'pw_run_tests.modules',
+]
 
 
 @filter_paths(
@@ -417,7 +732,8 @@ def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
 )
 def cmake_clang(ctx: PresubmitContext):
     _run_cmake(ctx, toolchain='host_clang')
-    build.ninja(ctx, 'pw_apps', 'pw_run_tests.modules')
+    build.ninja(ctx, *CMAKE_TARGETS)
+    build.gn_check(ctx)
 
 
 @filter_paths(
@@ -425,7 +741,8 @@ def cmake_clang(ctx: PresubmitContext):
 )
 def cmake_gcc(ctx: PresubmitContext):
     _run_cmake(ctx, toolchain='host_gcc')
-    build.ninja(ctx, 'pw_apps', 'pw_run_tests.modules')
+    build.ninja(ctx, *CMAKE_TARGETS)
+    build.gn_check(ctx)
 
 
 @filter_paths(
@@ -433,13 +750,63 @@ def cmake_gcc(ctx: PresubmitContext):
 )
 def bazel_test(ctx: PresubmitContext) -> None:
     """Runs bazel test on the entire repo."""
-    build.bazel(
+    build_bazel(
         ctx,
         'test',
-        '--test_output=errors',
+        '--build_tag_filters=-requires_cxx_20',
+        '--test_tag_filters=-requires_cxx_20',
         '--',
         '//...',
     )
+
+    # Run tests for non-default config options
+
+    # pw_rpc
+    build_bazel(
+        ctx,
+        'test',
+        '--//pw_rpc:config_override='
+        '//pw_rpc:completion_request_callback_config_enabled',
+        '--',
+        '//pw_rpc/...',
+    )
+
+    # pw_grpc
+    build_bazel(
+        ctx,
+        'test',
+        '--//pw_rpc:config_override=//pw_grpc:pw_rpc_config',
+        '--',
+        '//pw_grpc/...',
+    )
+
+
+def bthost_package(ctx: PresubmitContext) -> None:
+    target = '//pw_bluetooth_sapphire/fuchsia:infra'
+    build_bazel(ctx, 'build', target)
+    build_bazel(ctx, 'test', f'{target}.test_all')
+
+    stdout_path = ctx.output_dir / 'bazel.manifest.stdout'
+    with open(stdout_path, 'w') as outs:
+        build_bazel(
+            ctx,
+            'build',
+            '--output_groups=builder_manifest',
+            target,
+            stdout=outs,
+        )
+
+    manifest_path: Path | None = None
+    for line in stdout_path.read_text().splitlines():
+        line = line.strip()
+        if line.endswith('infrabuilder_manifest.json'):
+            manifest_path = Path(line)
+            break
+    else:
+        raise PresubmitFailure('no manifest found in output')
+
+    _LOG.debug('manifest: %s', manifest_path)
+    shutil.copyfile(manifest_path, ctx.output_dir / 'builder_manifest.json')
 
 
 @filter_paths(
@@ -455,39 +822,38 @@ def bazel_test(ctx: PresubmitContext) -> None:
 def bazel_build(ctx: PresubmitContext) -> None:
     """Runs Bazel build for each supported platform."""
     # Build everything with the default flags.
-    build.bazel(
+    build_bazel(
         ctx,
         'build',
+        '--build_tag_filters=-requires_cxx_20',
         '--',
         '//...',
     )
 
     # Mapping from Bazel platforms to targets which should be built for those
     # platforms.
-    targets_for_platform = {
-        "//pw_build/platforms:lm3s6965evb": [
-            "//pw_rust/examples/embedded_hello:hello",
+    targets_for_config = {
+        "lm3s6965evb": [
+            "//pw_rust/...",
         ],
-        "//pw_build/platforms:microbit": [
-            "//pw_rust/examples/embedded_hello:hello",
+        "microbit": [
+            "//pw_rust/...",
         ],
     }
 
     for cxxversion in ('c++17', 'c++20'):
         # Explicitly build for each supported C++ version.
-        build.bazel(
-            ctx,
-            'build',
-            f"--cxxopt=-std={cxxversion}",
-            '--',
-            '//...',
-        )
+        args = [ctx, 'build', f"--cxxopt=-std={cxxversion}"]
+        if cxxversion == 'c++17':
+            args += ['--build_tag_filters=-requires_cxx_20']
+        args += ['--', '//...']
+        build_bazel(*args)
 
-        for platform, targets in targets_for_platform.items():
-            build.bazel(
+        for config, targets in targets_for_config.items():
+            build_bazel(
                 ctx,
                 'build',
-                f'--platforms={platform}',
+                f'--config={config}',
                 f"--cxxopt='-std={cxxversion}'",
                 *targets,
             )
@@ -497,21 +863,59 @@ def bazel_build(ctx: PresubmitContext) -> None:
     # This is just a minimal presubmit intended to ensure we don't break what
     # support we have.
     #
-    # TODO(b/271465588): Eventually just build the entire repo for this
+    # TODO: b/271465588 - Eventually just build the entire repo for this
     # platform.
-    build.bazel(
+    build_bazel(
         ctx,
         'build',
-        # Designated initializers produce a warning-treated-as-error when
-        # compiled with -std=c++17.
-        #
-        # TODO(b/271299438): Remove this.
-        '--copt=-Wno-pedantic',
         '--platforms=//pw_build/platforms:testonly_freertos',
         '//pw_sync/...',
         '//pw_thread/...',
         '//pw_thread_freertos/...',
+        '//pw_interrupt/...',
+        '//pw_cpu_exception/...',
     )
+
+    build_bazel(
+        ctx,
+        'build',
+        '--//pw_thread_freertos:config_override=//pw_build:test_module_config',
+        '--platforms=//pw_build/platforms:testonly_freertos',
+        '//pw_build:module_config_test',
+    )
+
+    # Provide some coverage of the RP2040 build.
+    #
+    # This is just a minimal presubmit intended to ensure we don't break what
+    # support we have.
+    #
+    # TODO: b/271465588 - Eventually just build the entire repo for this
+    # platform.
+    build_bazel(
+        ctx,
+        'build',
+        '--config=rp2040',
+        '//pw_system:system_example',
+    )
+
+    # Build the pw_system example for the Discovery board using STM32Cube.
+    build_bazel(
+        ctx,
+        'build',
+        '--config=stm32f429i',
+        '//pw_system:system_example',
+    )
+
+    # Build the fuzztest example.
+    #
+    # TODO: b/324652164 - This doesn't work on MacOS yet.
+    if sys.platform != 'darwin':
+        build_bazel(
+            ctx,
+            'build',
+            '--config=fuzztest',
+            '//pw_fuzzer/examples/fuzztest:metrics_fuzztest',
+        )
 
 
 def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
@@ -520,7 +924,7 @@ def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
     This test is not part of the regular bazel build because it's slow and
     intended to run in CI only.
     """
-    build.bazel(
+    build_bazel(
         ctx,
         'test',
         '//pw_transfer/integration_test:cross_language_small_test',
@@ -540,7 +944,7 @@ def pw_transfer_integration_test(ctx: PresubmitContext) -> None:
 #
 
 
-def _clang_system_include_paths(lang: str) -> List[str]:
+def _clang_system_include_paths(lang: str) -> list[str]:
     """Generate default system header paths.
 
     Returns the list of system include paths used by the host
@@ -556,14 +960,14 @@ def _clang_system_include_paths(lang: str) -> List[str]:
         f'{os.devnull}',
         '-fsyntax-only',
     ]
-    process = subprocess.run(
+    process = log_run(
         command, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
     )
 
     # Parse the command output to retrieve system include paths.
     # The paths are listed one per line.
     output = process.stdout.decode(errors='backslashreplace')
-    include_paths: List[str] = []
+    include_paths: list[str] = []
     for line in output.splitlines():
         path = line.strip()
         if os.path.exists(path):
@@ -594,16 +998,24 @@ def edit_compile_commands(
 _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Configuration
     # keep-sorted: start
+    r'MODULE.bazel.lock',
     r'\bDoxyfile$',
     r'\bPW_PLUGINS$',
     r'\bconstraint.list$',
+    r'\bconstraint_hashes_darwin.list$',
+    r'\bconstraint_hashes_linux.list$',
+    r'\bconstraint_hashes_windows.list$',
+    r'\bpython_base_requirements.txt$',
+    r'\bupstream_requirements_darwin_lock.txt$',
+    r'\bupstream_requirements_linux_lock.txt$',
+    r'\bupstream_requirements_windows_lock.txt$',
     r'^(?:.+/)?\..+$',
     # keep-sorted: end
     # Metadata
     # keep-sorted: start
+    r'\b.*OWNERS.*$',
     r'\bAUTHORS$',
     r'\bLICENSE$',
-    r'\bOWNERS$',
     r'\bPIGWEED_MODULES$',
     r'\bgo.(mod|sum)$',
     r'\bpackage-lock.json$',
@@ -611,6 +1023,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\brequirements.txt$',
     r'\byarn.lock$',
     r'^docker/tag$',
+    r'^patches.json$',
     # keep-sorted: end
     # Data files
     # keep-sorted: start
@@ -623,6 +1036,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\.json$',
     r'\.png$',
     r'\.svg$',
+    r'\.vsix$',
     r'\.xml$',
     # keep-sorted: end
     # Documentation
@@ -635,6 +1049,11 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\.pb\.c$',
     r'\.pb\.h$',
     r'\_pb2.pyi?$',
+    # keep-sorted: end
+    # Generated third-party files
+    # keep-sorted: start
+    r'\bthird_party/.*\.bazelrc$',
+    r'\bthird_party/perfetto/repo/protos/perfetto/trace/perfetto_trace.proto',
     # keep-sorted: end
     # Diff/Patch files
     # keep-sorted: start
@@ -674,6 +1093,8 @@ _COPYRIGHT = re.compile(
 
 _SKIP_LINE_PREFIXES = (
     '#!',
+    '#autoload',
+    '#compdef',
     '@echo off',
     ':<<',
     '/*',
@@ -710,9 +1131,12 @@ def copyright_notice(ctx: PresubmitContext):
         if path.stat().st_size == 0:
             continue  # Skip empty files
 
-        with path.open() as file:
-            if not _COPYRIGHT.match(''.join(_read_notice_lines(file))):
-                errors.append(path)
+        try:
+            with path.open() as file:
+                if not _COPYRIGHT.match(''.join(_read_notice_lines(file))):
+                    errors.append(path)
+        except UnicodeDecodeError as exc:
+            raise PresubmitFailure(f'failed to read {path}') from exc
 
     if errors:
         _LOG.warning(
@@ -728,9 +1152,11 @@ def source_is_in_cmake_build_warn_only(ctx: PresubmitContext):
     """Checks that source files are in the CMake build."""
 
     _run_cmake(ctx)
-    missing = build.check_compile_commands_for_files(
-        ctx.output_dir / 'compile_commands.json',
-        (f for f in ctx.paths if f.suffix in format_code.CPP_SOURCE_EXTS),
+    missing = SOURCE_FILES_FILTER_CMAKE_EXCLUDE.filter(
+        build.check_compile_commands_for_files(
+            ctx.output_dir / 'compile_commands.json',
+            (f for f in ctx.paths if f.suffix in format_code.CPP_SOURCE_EXTS),
+        )
     )
     if missing:
         _LOG.warning(
@@ -793,7 +1219,7 @@ def commit_message_format(_: PresubmitContext):
     if (
         'Reland' in lines[0]
         and 'This is a reland of ' in git_repo.commit_message()
-        and "Original change's description: " in git_repo.commit_message()
+        and "Original change's description:" in git_repo.commit_message()
     ):
         _LOG.warning('Ignoring apparent Gerrit-generated reland')
         return
@@ -819,7 +1245,7 @@ def commit_message_format(_: PresubmitContext):
 
     # Check that the first line matches the expected pattern.
     match = re.match(
-        r'^(?:[\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
+        r'^(?:[.\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
     )
     if not match:
         _LOG.warning('The first line does not match the expected format')
@@ -886,6 +1312,7 @@ def static_analysis(ctx: PresubmitContext):
     """Runs all available static analysis tools."""
     build.gn_gen(ctx)
     build.ninja(ctx, 'python.lint', 'static_analysis')
+    build.gn_check(ctx)
 
 
 _EXCLUDE_FROM_TODO_CHECK = (
@@ -895,6 +1322,7 @@ _EXCLUDE_FROM_TODO_CHECK = (
     r'.gitignore$',
     r'.pylintrc$',
     r'\bdocs/build_system.rst',
+    r'\bdocs/code_reviews.rst',
     r'\bpw_assert_basic/basic_handler.cc',
     r'\bpw_assert_basic/public/pw_assert_basic/handler.h',
     r'\bpw_blob_store/public/pw_blob_store/flat_file_system_entry.h',
@@ -928,13 +1356,13 @@ def todo_check_with_exceptions(ctx: PresubmitContext):
     todo_check.create(todo_check.BUGS_OR_USERNAMES)(ctx)
 
 
-@format_code.OWNERS_CODE_FORMAT.filter.apply_to_check()
+@filter_paths(file_filter=format_code.OWNERS_CODE_FORMAT.filter)
 def owners_lint_checks(ctx: PresubmitContext):
     """Runs OWNERS linter."""
     owners_checks.presubmit_check(ctx.paths)
 
 
-SOURCE_FILES_FILTER = presubmit.FileFilter(
+SOURCE_FILES_FILTER = FileFilter(
     endswith=_BUILD_FILE_FILTER.endswith,
     suffix=('.bazel', '.bzl', '.gn', '.gni', *_BUILD_FILE_FILTER.suffix),
     exclude=(
@@ -945,6 +1373,21 @@ SOURCE_FILES_FILTER = presubmit.FileFilter(
     ),
 )
 
+SOURCE_FILES_FILTER_GN_EXCLUDE = FileFilter(
+    exclude=(
+        # keep-sorted: start
+        r'\bpw_bluetooth_sapphire/fuchsia',
+        # keep-sorted: end
+    ),
+)
+
+SOURCE_FILES_FILTER_CMAKE_EXCLUDE = FileFilter(
+    exclude=(
+        # keep-sorted: start
+        r'\bpw_bluetooth_sapphire/fuchsia',
+        # keep-sorted: end
+    ),
+)
 
 #
 # Presubmit check programs
@@ -952,35 +1395,52 @@ SOURCE_FILES_FILTER = presubmit.FileFilter(
 
 OTHER_CHECKS = (
     # keep-sorted: start
-    # TODO(b/235277910): Enable all Bazel tests when they're fixed.
     bazel_test,
+    bthost_package,
     build.gn_gen_check,
     cmake_clang,
     cmake_gcc,
-    gitmodules.create(),
+    coverage,
+    # TODO: b/234876100 - Remove once msan is added to all_sanitizers().
+    cpp_checks.msan,
+    docs_build,
+    gitmodules.create(gitmodules.Config(allow_submodules=False)),
+    gn_all,
     gn_clang_build,
     gn_combined_build_check,
     module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
+    python_checks.update_upstream_python_constraints,
+    python_checks.vendor_python_wheels,
     # TODO(hepler): Many files are missing from the CMake build. Add this check
     # to lintformat when the missing files are fixed.
     source_in_build.cmake(SOURCE_FILES_FILTER, _run_cmake),
     static_analysis,
     stm32f429i,
     todo_check.create(todo_check.BUGS_OR_USERNAMES),
+    zephyr_build,
     # keep-sorted: end
 )
+
+ARDUINO_PICO = (
+    # Skip gn_teensy_build if running on mac-arm64.
+    # There are no arm specific tools packages available upstream:
+    # https://www.pjrc.com/teensy/package_teensy_index.json
+    gn_teensy_build
+    if not (sys.platform == 'darwin' and platform.machine() == 'arm64')
+    else (),
+    gn_pico_build,
+    gn_pw_system_demo_build,
+)
+
+INTERNAL = (gn_mimxrt595_build, gn_mimxrt595_freertos_build)
 
 # The misc program differs from other_checks in that checks in the misc
 # program block CQ on Linux.
 MISC = (
     # keep-sorted: start
-    gn_emboss_build,
-    gn_nanopb_build,
-    gn_pico_build,
-    gn_pw_system_demo_build,
-    gn_teensy_build,
+    gn_chre_googletest_nanopb_sapphire_build,
     # keep-sorted: end
 )
 
@@ -988,15 +1448,16 @@ SANITIZERS = (cpp_checks.all_sanitizers(),)
 
 SECURITY = (
     # keep-sorted: start
-    gn_crypto_boringssl_build,
     gn_crypto_mbedtls_build,
     gn_crypto_micro_ecc_build,
     gn_software_update_build,
     # keep-sorted: end
 )
 
+FUZZ = (gn_fuzz_build, oss_fuzz_build)
+
 # Avoid running all checks on specific paths.
-PATH_EXCLUSIONS = (re.compile(r'\bthird_party/fuchsia/repo/'),)
+PATH_EXCLUSIONS = FormatOptions.load().exclude
 
 _LINTFORMAT = (
     commit_message_format,
@@ -1011,9 +1472,13 @@ _LINTFORMAT = (
     cpp_checks.pragma_once,
     build.bazel_lint,
     owners_lint_checks,
-    source_in_build.gn(SOURCE_FILES_FILTER),
+    source_in_build.gn(SOURCE_FILES_FILTER).with_file_filter(
+        SOURCE_FILES_FILTER_GN_EXCLUDE
+    ),
     source_is_in_cmake_build_warn_only,
     shell_checks.shellcheck if shutil.which('shellcheck') else (),
+    javascript_checks.eslint if shutil.which('npm') else (),
+    json_check.presubmit_check,
     keep_sorted.presubmit_check,
     todo_check_with_exceptions,
 )
@@ -1025,36 +1490,33 @@ LINTFORMAT = (
     # (https://stackoverflow.com/q/71024130/1224002). These are cached, but
     # after a roll it can be quite slow.
     source_in_build.bazel(SOURCE_FILES_FILTER),
-    pw_presubmit.python_checks.check_python_versions,
-    pw_presubmit.python_checks.gn_python_lint,
+    python_checks.check_python_versions,
+    python_checks.gn_python_lint,
 )
 
 QUICK = (
     _LINTFORMAT,
     gn_quick_build_check,
-    # TODO(b/34884583): Re-enable CMake and Bazel for Mac after we have fixed
-    # the clang issues. The problem is that all clang++ invocations need the
-    # two extra flags: "-nostdc++" and "${clang_prefix}/../lib/libc++.a".
-    cmake_clang if sys.platform != 'darwin' else (),
 )
 
 FULL = (
     _LINTFORMAT,
     gn_combined_build_check,
     gn_host_tools,
-    bazel_test if sys.platform == 'linux' else (),
-    bazel_build if sys.platform == 'linux' else (),
+    bazel_test,
+    bazel_build,
     python_checks.gn_python_check,
     python_checks.gn_python_test_coverage,
+    python_checks.check_upstream_python_constraints,
     build_env_setup,
-    # Skip gn_teensy_build if running on Windows. The Teensycore installer is
-    # an exe that requires an admin role.
-    gn_teensy_build if sys.platform in ['linux', 'darwin'] else (),
 )
 
 PROGRAMS = Programs(
     # keep-sorted: start
+    arduino_pico=ARDUINO_PICO,
     full=FULL,
+    fuzz=FUZZ,
+    internal=INTERNAL,
     lintformat=LINTFORMAT,
     misc=MISC,
     other_checks=OTHER_CHECKS,
@@ -1109,7 +1571,7 @@ def main() -> int:
 if __name__ == '__main__':
     try:
         # If pw_cli is available, use it to initialize logs.
-        from pw_cli import log
+        from pw_cli import log  # pylint: disable=ungrouped-imports
 
         log.install(logging.INFO)
     except ImportError:

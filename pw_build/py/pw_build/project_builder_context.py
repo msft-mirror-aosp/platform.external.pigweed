@@ -13,6 +13,8 @@
 # the License.
 """Fetch active Project Builder Context."""
 
+from __future__ import annotations
+
 import asyncio
 import concurrent.futures
 from contextvars import ContextVar
@@ -22,7 +24,8 @@ from enum import Enum
 import logging
 import os
 import subprocess
-from typing import Callable, Dict, List, Optional, NoReturn, TYPE_CHECKING
+import time
+from typing import Callable, NoReturn, TYPE_CHECKING
 
 from prompt_toolkit.formatted_text import (
     AnyFormattedText,
@@ -138,11 +141,11 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
 
     current_state: ProjectBuilderState = ProjectBuilderState.IDLE
     desired_state: ProjectBuilderState = ProjectBuilderState.BUILDING
-    procs: Dict[BuildRecipe, subprocess.Popen] = field(default_factory=dict)
-    recipes: List[BuildRecipe] = field(default_factory=list)
+    procs: dict[BuildRecipe, subprocess.Popen] = field(default_factory=dict)
+    recipes: list[BuildRecipe] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        self.project_builder: Optional['ProjectBuilder'] = None
+        self.project_builder: ProjectBuilder | None = None
 
         self.progress_bar_formatters = [
             formatters.Text(' '),
@@ -154,7 +157,10 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
             formatters.Text(' '),
         ]
 
-        self._enter_callback: Optional[Callable] = None
+        self._progress_bar_refresh_interval: float = 0.1  # 10 FPS
+        self._last_progress_bar_redraw_time: float = 0.0
+
+        self._enter_callback: Callable | None = None
 
         key_bindings = KeyBindings()
 
@@ -166,7 +172,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
 
         self.key_bindings = key_bindings
 
-        self.progress_bar: Optional[ProgressBar] = None
+        self.progress_bar: ProgressBar | None = None
 
         self._progress_bar_started: bool = False
 
@@ -182,6 +188,12 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
 
     def using_progress_bars(self) -> bool:
         return bool(self.progress_bar) or self.using_fullscreen
+
+    @property
+    def log_build_steps(self) -> bool:
+        if self.project_builder:
+            return self.project_builder.log_build_steps
+        return False
 
     def interrupted(self) -> bool:
         return self.ctrl_c_pressed or self.restart_flag
@@ -221,15 +233,28 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
     def clear_progress_scrollback(self) -> None:
         if not self.progress_bar:
             return
-        self.progress_bar._app_loop.call_soon_threadsafe(  # pylint: disable=protected-access
-            self.progress_bar.app.renderer.clear
-        )
+        if (
+            self.progress_bar.app.is_running
+            and self.progress_bar.app.loop is not None
+        ):
+            self.progress_bar.app.loop.call_soon_threadsafe(
+                self.progress_bar.app.renderer.clear
+            )
 
     def redraw_progress(self) -> None:
         if not self.progress_bar:
             return
         if hasattr(self.progress_bar, 'app'):
-            self.progress_bar.invalidate()
+            redraw_time = time.time()
+            # Has enough time passed since last redraw?
+            if redraw_time > (
+                self._last_progress_bar_redraw_time
+                + self._progress_bar_refresh_interval
+            ):
+                # Update last redraw time
+                self._last_progress_bar_redraw_time = redraw_time
+                # Trigger Prompt Toolkit UI redraw.
+                self.progress_bar.invalidate()
 
     def get_title_style(self) -> str:
         if self.restart_flag:
@@ -339,7 +364,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
 
     def terminate_and_wait(
         self,
-        exit_message: Optional[str] = None,
+        exit_message: str | None = None,
     ) -> None:
         """End a subproces either cleanly or with a kill signal."""
         if self.is_idle() or self.should_abort():
@@ -418,7 +443,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
 
     def restore_logging_and_shutdown(
         self,
-        log_after_shutdown: Optional[Callable[[], None]] = None,
+        log_after_shutdown: Callable[[], None] | None = None,
     ) -> None:
         self.restore_stdout_logging()
         _LOG.warning('Abort signal recieved, stopping processes...')
@@ -431,7 +456,7 @@ class ProjectBuilderContext:  # pylint: disable=too-many-instance-attributes,too
     def exit(
         self,
         exit_code: int = 1,
-        log_after_shutdown: Optional[Callable[[], None]] = None,
+        log_after_shutdown: Callable[[], None] | None = None,
     ) -> None:
         """Exit function called when the user presses ctrl-c."""
 

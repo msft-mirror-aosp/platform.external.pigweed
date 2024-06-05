@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -14,23 +14,29 @@
 
 #include "pw_transfer/transfer_thread.h"
 
-#include "gtest/gtest.h"
 #include "pw_assert/check.h"
 #include "pw_bytes/array.h"
+#include "pw_bytes/span.h"
 #include "pw_rpc/raw/client_testing.h"
 #include "pw_rpc/raw/test_method_context.h"
 #include "pw_rpc/test_helpers.h"
+#include "pw_status/status.h"
 #include "pw_thread/thread.h"
 #include "pw_thread_stl/options.h"
 #include "pw_transfer/handler.h"
 #include "pw_transfer/transfer.h"
 #include "pw_transfer/transfer.raw_rpc.pb.h"
 #include "pw_transfer_private/chunk_testing.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::transfer::test {
 namespace {
 
 using internal::Chunk;
+
+// Effectively unlimited timeout as these tests should never hit it.
+constexpr chrono::SystemClock::duration kNeverTimeout =
+    std::chrono::seconds(60);
 
 // TODO(frolv): Have a generic way to obtain a thread for testing on any system.
 thread::Options& TransferThreadOptions() {
@@ -41,12 +47,12 @@ thread::Options& TransferThreadOptions() {
 class TransferThreadTest : public ::testing::Test {
  public:
   TransferThreadTest()
-      : ctx_(transfer_thread_, 512),
-        max_parameters_(chunk_buffer_.size(),
+      : max_parameters_(chunk_buffer_.size(),
                         chunk_buffer_.size(),
                         cfg::kDefaultExtendWindowDivisor),
         transfer_thread_(chunk_buffer_, encode_buffer_),
-        system_thread_(TransferThreadOptions(), transfer_thread_) {}
+        system_thread_(TransferThreadOptions(), transfer_thread_),
+        ctx_(transfer_thread_, 512) {}
 
   ~TransferThreadTest() override {
     transfer_thread_.Terminate();
@@ -54,8 +60,6 @@ class TransferThreadTest : public ::testing::Test {
   }
 
  protected:
-  PW_RAW_TEST_METHOD_CONTEXT(TransferService, Read) ctx_;
-
   std::array<std::byte, 64> chunk_buffer_;
   std::array<std::byte, 64> encode_buffer_;
 
@@ -63,8 +67,8 @@ class TransferThreadTest : public ::testing::Test {
   internal::TransferParameters max_parameters_;
 
   transfer::Thread<1, 1> transfer_thread_;
-
   thread::Thread system_thread_;
+  PW_RAW_TEST_METHOD_CONTEXT(TransferService, Read) ctx_;
 };
 
 class SimpleReadTransfer final : public ReadOnlyHandler {
@@ -100,7 +104,7 @@ constexpr auto kData = bytes::Initialized<32>([](size_t i) { return i; });
 
 TEST_F(TransferThreadTest, AddTransferHandler) {
   auto reader_writer = ctx_.reader_writer();
-  transfer_thread_.SetServerReadStream(reader_writer);
+  transfer_thread_.SetServerReadStream(reader_writer, [](ConstByteSpan) {});
 
   SimpleReadTransfer handler(3, kData);
   transfer_thread_.AddTransferHandler(handler);
@@ -111,7 +115,7 @@ TEST_F(TransferThreadTest, AddTransferHandler) {
                                        3,
                                        {},
                                        max_parameters_,
-                                       std::chrono::seconds(2),
+                                       kNeverTimeout,
                                        3,
                                        10);
 
@@ -124,7 +128,7 @@ TEST_F(TransferThreadTest, AddTransferHandler) {
 
 TEST_F(TransferThreadTest, RemoveTransferHandler) {
   auto reader_writer = ctx_.reader_writer();
-  transfer_thread_.SetServerReadStream(reader_writer);
+  transfer_thread_.SetServerReadStream(reader_writer, [](ConstByteSpan) {});
 
   SimpleReadTransfer handler(3, kData);
   transfer_thread_.AddTransferHandler(handler);
@@ -136,7 +140,7 @@ TEST_F(TransferThreadTest, RemoveTransferHandler) {
                                        3,
                                        {},
                                        max_parameters_,
-                                       std::chrono::seconds(2),
+                                       kNeverTimeout,
                                        3,
                                        10);
 
@@ -155,7 +159,7 @@ TEST_F(TransferThreadTest, RemoveTransferHandler) {
 
 TEST_F(TransferThreadTest, ProcessChunk_SendsWindow) {
   auto reader_writer = ctx_.reader_writer();
-  transfer_thread_.SetServerReadStream(reader_writer);
+  transfer_thread_.SetServerReadStream(reader_writer, [](ConstByteSpan) {});
 
   SimpleReadTransfer handler(3, kData);
   transfer_thread_.AddTransferHandler(handler);
@@ -173,7 +177,7 @@ TEST_F(TransferThreadTest, ProcessChunk_SendsWindow) {
                 .set_max_chunk_size_bytes(8)
                 .set_offset(0)),
         max_parameters_,
-        std::chrono::seconds(2),
+        kNeverTimeout,
         3,
         10);
   });
@@ -201,7 +205,7 @@ TEST_F(TransferThreadTest, ProcessChunk_SendsWindow) {
 
 TEST_F(TransferThreadTest, StartTransferExhausted_Server) {
   auto reader_writer = ctx_.reader_writer();
-  transfer_thread_.SetServerReadStream(reader_writer);
+  transfer_thread_.SetServerReadStream(reader_writer, [](ConstByteSpan) {});
 
   SimpleReadTransfer handler3(3, kData);
   SimpleReadTransfer handler4(4, kData);
@@ -216,11 +220,12 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Server) {
       EncodeChunk(
           Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersRetransmit)
               .set_session_id(3)
+              // Ensure only one chunk is sent as end offset equals max size.
               .set_window_end_offset(16)
-              .set_max_chunk_size_bytes(8)
+              .set_max_chunk_size_bytes(16)
               .set_offset(0)),
       max_parameters_,
-      std::chrono::seconds(2),
+      kNeverTimeout,
       3,
       10);
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -240,11 +245,12 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Server) {
       EncodeChunk(
           Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersRetransmit)
               .set_session_id(4)
+              // Ensure only one chunk is sent as end offset equals max size.
               .set_window_end_offset(16)
-              .set_max_chunk_size_bytes(8)
+              .set_max_chunk_size_bytes(16)
               .set_offset(0)),
       max_parameters_,
-      std::chrono::seconds(2),
+      kNeverTimeout,
       3,
       10);
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -264,7 +270,7 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Server) {
 TEST_F(TransferThreadTest, StartTransferExhausted_Client) {
   rpc::RawClientReaderWriter read_stream = pw_rpc::raw::Transfer::Read(
       rpc_client_context_.client(), rpc_client_context_.channel().id());
-  transfer_thread_.SetClientReadStream(read_stream);
+  transfer_thread_.SetClientReadStream(read_stream, [](ConstByteSpan) {});
 
   Status status3 = Status::Unknown();
   Status status4 = Status::Unknown();
@@ -275,11 +281,13 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Client) {
   transfer_thread_.StartClientTransfer(
       internal::TransferType::kReceive,
       ProtocolVersion::kLegacy,
-      3,
+      /*resource_id=*/3,
+      /*handle_id=*/27,
       &buffer3,
       max_parameters_,
       [&status3](Status status) { status3 = status; },
-      std::chrono::seconds(2),
+      kNeverTimeout,
+      kNeverTimeout,
       3,
       10);
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -292,11 +300,13 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Client) {
   transfer_thread_.StartClientTransfer(
       internal::TransferType::kReceive,
       ProtocolVersion::kLegacy,
-      4,
+      /*resource_id=*/4,
+      /*handle_id=*/27,
       &buffer4,
       max_parameters_,
       [&status4](Status status) { status4 = status; },
-      std::chrono::seconds(2),
+      kNeverTimeout,
+      kNeverTimeout,
       3,
       10);
   transfer_thread_.WaitUntilEventIsProcessed();
@@ -310,7 +320,7 @@ TEST_F(TransferThreadTest, StartTransferExhausted_Client) {
 
 TEST_F(TransferThreadTest, VersionTwo_NoHandler) {
   auto reader_writer = ctx_.reader_writer();
-  transfer_thread_.SetServerReadStream(reader_writer);
+  transfer_thread_.SetServerReadStream(reader_writer, [](ConstByteSpan) {});
 
   SimpleReadTransfer handler(3, kData);
   transfer_thread_.AddTransferHandler(handler);
@@ -322,7 +332,7 @@ TEST_F(TransferThreadTest, VersionTwo_NoHandler) {
                                        /*resource_id=*/7,
                                        {},
                                        max_parameters_,
-                                       std::chrono::seconds(2),
+                                       kNeverTimeout,
                                        3,
                                        10);
 
@@ -333,12 +343,57 @@ TEST_F(TransferThreadTest, VersionTwo_NoHandler) {
   ASSERT_EQ(ctx_.total_responses(), 1u);
   Result<Chunk::Identifier> id = Chunk::ExtractIdentifier(ctx_.response());
   ASSERT_TRUE(id.ok());
-  EXPECT_EQ(id->value(), 7u);
+  EXPECT_EQ(id->value(), 421u);
   auto chunk = DecodeChunk(ctx_.response());
-  EXPECT_EQ(chunk.session_id(), 7u);
-  EXPECT_EQ(chunk.resource_id(), 7u);
+  EXPECT_EQ(chunk.session_id(), 421u);
+  EXPECT_FALSE(chunk.resource_id().has_value());
   ASSERT_TRUE(chunk.status().has_value());
   EXPECT_EQ(chunk.status().value(), Status::NotFound());
+
+  transfer_thread_.RemoveTransferHandler(handler);
+}
+
+TEST_F(TransferThreadTest, SetStream_TerminatesActiveTransfers) {
+  auto reader_writer = ctx_.reader_writer();
+  transfer_thread_.SetServerReadStream(reader_writer, [](ConstByteSpan) {});
+
+  SimpleReadTransfer handler(3, kData);
+  transfer_thread_.AddTransferHandler(handler);
+
+  transfer_thread_.StartServerTransfer(
+      internal::TransferType::kTransmit,
+      ProtocolVersion::kLegacy,
+      3,
+      3,
+      EncodeChunk(
+          Chunk(ProtocolVersion::kLegacy, Chunk::Type::kParametersRetransmit)
+              .set_session_id(3)
+              .set_window_end_offset(8)
+              .set_max_chunk_size_bytes(8)
+              .set_offset(0)),
+      max_parameters_,
+      kNeverTimeout,
+      3,
+      10);
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  EXPECT_FALSE(handler.finalize_read_called);
+
+  ASSERT_EQ(ctx_.total_responses(), 1u);
+  auto chunk = DecodeChunk(ctx_.responses().back());
+  EXPECT_EQ(chunk.session_id(), 3u);
+  EXPECT_EQ(chunk.offset(), 0u);
+  EXPECT_EQ(chunk.payload().size(), 8u);
+  EXPECT_EQ(
+      std::memcmp(chunk.payload().data(), kData.data(), chunk.payload().size()),
+      0);
+
+  auto new_reader_writer = ctx_.reader_writer();
+  transfer_thread_.SetServerReadStream(new_reader_writer, [](ConstByteSpan) {});
+  transfer_thread_.WaitUntilEventIsProcessed();
+
+  EXPECT_TRUE(handler.finalize_read_called);
+  EXPECT_EQ(handler.finalize_read_status, Status::Aborted());
 
   transfer_thread_.RemoveTransferHandler(handler);
 }

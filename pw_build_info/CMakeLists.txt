@@ -26,6 +26,7 @@ else()
   pw_add_library(pw_build_info.build_id STATIC
     HEADERS
       public/pw_build_info/build_id.h
+      public/pw_build_info/util.h
     PUBLIC_INCLUDES
       public
     PUBLIC_DEPS
@@ -34,8 +35,11 @@ else()
       -Wl,--build-id=sha1
     SOURCES
       build_id.cc
+      util.cc
     PRIVATE_DEPS
+      pw_log
       pw_preprocessor
+      pw_string
   )
 endif()
 

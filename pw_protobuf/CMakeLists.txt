@@ -53,10 +53,9 @@ pw_add_library(pw_protobuf STATIC
     pw_status
     pw_stream
     pw_stream.interval_reader
+    pw_string.string
     pw_varint
     pw_varint.stream
-  PRIVATE_DEPS
-    pw_string.string
   SOURCES
     decoder.cc
     encoder.cc
@@ -209,6 +208,17 @@ pw_proto_library(pw_protobuf.codegen_test_deps_protos
     pw_protobuf_test_deps_protos/imported.options
 )
 
+pw_proto_library(pw_protobuf.codegen_test_deps_protos_prefix
+  SOURCES
+    pw_protobuf_test_deps_protos/test_prefix_imported.proto
+  INPUTS
+    pw_protobuf_test_deps_protos/test_prefix_imported.options
+  STRIP_PREFIX
+    pw_protobuf_test_deps_protos
+  PREFIX
+    test_prefix
+)
+
 pw_proto_library(pw_protobuf.codegen_test_protos
   SOURCES
     pw_protobuf_test_protos/full_test.proto
@@ -227,4 +237,5 @@ pw_proto_library(pw_protobuf.codegen_test_protos
     pw_protobuf.common_proto
     pw_protobuf.status_proto
     pw_protobuf.codegen_test_deps_protos
+    pw_protobuf.codegen_test_deps_protos_prefix
 )

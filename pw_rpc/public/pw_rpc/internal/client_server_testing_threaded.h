@@ -15,6 +15,7 @@
 
 #include <cinttypes>
 
+#include "pw_function/function.h"
 #include "pw_rpc/channel.h"
 #include "pw_rpc/client_server.h"
 #include "pw_rpc/internal/client_server_testing.h"
@@ -73,7 +74,11 @@ class WatchableChannelOutput
   }
 
  protected:
-  constexpr WatchableChannelOutput() = default;
+  explicit WatchableChannelOutput(
+      TestPacketProcessor&& server_packet_processor = nullptr,
+      TestPacketProcessor&& client_packet_processor = nullptr)
+      : Base(std::move(server_packet_processor),
+             std::move(client_packet_processor)) {}
 
   size_t PacketCount() const PW_EXCLUSIVE_LOCKS_REQUIRED(mutex_) override {
     return Base::PacketCount();
@@ -119,13 +124,18 @@ class ClientServerTestContextThreaded
   }
 
  protected:
-  explicit ClientServerTestContextThreaded(const thread::Options& options)
-      : thread_(options, Instance::Run, this) {}
+  explicit ClientServerTestContextThreaded(
+      const thread::Options& options,
+      TestPacketProcessor&& server_packet_processor = nullptr,
+      TestPacketProcessor&& client_packet_processor = nullptr)
+      : Base(std::move(server_packet_processor),
+             std::move(client_packet_processor)),
+        thread_(options, [this] { Run(); }) {}
 
  private:
   using Base::ForwardNewPackets;
-  static void Run(void* arg) {
-    auto& ctx = *static_cast<Instance*>(arg);
+  void Run() {
+    auto& ctx = *static_cast<Instance*>(this);
     while (ctx.channel_output_.WaitForOutput()) {
       ctx.ForwardNewPackets();
     }

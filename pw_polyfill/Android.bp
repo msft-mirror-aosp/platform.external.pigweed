@@ -16,8 +16,9 @@ package {
     default_applicable_licenses: ["external_pigweed_license"],
 }
 
-cc_library_headers {
-    name: "pw_polyfill_headers",
+cc_library_static {
+    name: "pw_polyfill",
+    cpp_std: "c++20",
     vendor_available: true,
     export_include_dirs: ["public"],
     host_supported: true,

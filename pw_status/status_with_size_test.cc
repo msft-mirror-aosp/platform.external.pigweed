@@ -14,7 +14,7 @@
 
 #include "pw_status/status_with_size.h"
 
-#include "gtest/gtest.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw {
 namespace {
@@ -78,6 +78,15 @@ TEST(StatusWithSize, AllStatusValues_SameSize) {
     EXPECT_EQ(result.ok(), i == 0);
     EXPECT_EQ(i, static_cast<int>(result.status().code()));
     EXPECT_EQ(static_cast<size_t>(i), result.size());
+  }
+}
+
+TEST(StatusWithSize, AllStatusValues_SizeOr) {
+  for (int i = 0; i < 32; ++i) {
+    StatusWithSize result(static_cast<Status::Code>(i), i);
+    EXPECT_EQ(result.ok(), i == 0);
+    EXPECT_EQ(i, static_cast<int>(result.status().code()));
+    EXPECT_EQ(0u, result.size_or(0));
   }
 }
 

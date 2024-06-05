@@ -12,7 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(":pigweed_internal.bzl", "pw_linker_script")
+load("//pw_build:binary_tools.bzl", "pw_elf_to_bin", "pw_elf_to_dump")
+load("//pw_build:pigweed.bzl", "pw_linker_script")
+
+cc_library(
+    name = "header_test",
+    hdrs = ["header_test.h"],
+    includes = ["."],
+)
 
 pw_linker_script(
     name = "linker_script_test",
@@ -24,9 +31,13 @@ pw_linker_script(
         "PW_BOOT_RAM_BEGIN=0x20000000",
         "PW_BOOT_RAM_SIZE=192K",
         "PW_BOOT_VECTOR_TABLE_BEGIN=0x08000000",
-        "PW_BOOT_VECTOR_TABLE_SIZE=512",
+        "PW_BOOT_VECTOR_TABLE_SIZE=1M",
     ],
     linker_script = "linker_script.ld",
+    deps = [
+        ":header_test",
+        "//pw_build:must_place",
+    ],
 )
 
 # Use cc_binary to build the test to avoid duplicating the linker script in the
@@ -34,6 +45,68 @@ pw_linker_script(
 cc_binary(
     name = "test_linker_script",
     srcs = ["test.cc"],
+    copts = ["-Wno-unused-variable"],
+    target_compatible_with = select({
+        # This test and its siblings will not link with asan:
+        # ld.lld: error: section '.text' will not fit in region 'VECTOR_TABLE': overflowed by 319296 bytes
+        # ld.lld: error: section '.init' will not fit in region 'VECTOR_TABLE': overflowed by 319319 bytes
+        # ld.lld: error: section '.fini' will not fit in region 'VECTOR_TABLE': overflowed by 319329 bytes
+        # ld.lld: error: section '.plt' will not fit in region 'VECTOR_TABLE': overflowed by 320096 bytes
+        # ld.lld: error: section '.bss' will not fit in region 'RAM': overflowed by 10135216 bytes
+        "//pw_toolchain/host_clang:asan_enabled": ["@platforms//:incompatible"],
+        # Only compatible with platforms that support linker scripts.
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [":linker_script_test"],
+)
+
+# Use cc_library to depend on the linker script, and then use cc_binary to build
+# the test, verifying that linker scripts can be included via transitive deps.
+cc_library(
+    name = "lib_linker_script",
+    deps = [":linker_script_test"],
+)
+
+cc_binary(
+    name = "test_transitive_linker_script",
+    srcs = ["test.cc"],
+    copts = ["-Wno-unused-variable"],
+    # Only compatible with platforms that support linker scripts.
+    target_compatible_with = select({
+        "//pw_toolchain/host_clang:asan_enabled": ["@platforms//:incompatible"],
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    deps = [":lib_linker_script"],
+)
+
+# Verify that the linker script can also be specified directly.
+cc_binary(
+    name = "test_direct_linker_script",
+    srcs = ["test.cc"],
     additional_linker_inputs = [":linker_script_test"],
+    copts = ["-Wno-unused-variable"],
     linkopts = ["-T $(location :linker_script_test)"],
+    # Only compatible with platforms that support linker scripts.
+    target_compatible_with = select({
+        "//pw_toolchain/host_clang:asan_enabled": ["@platforms//:incompatible"],
+        "@platforms//os:macos": ["@platforms//:incompatible"],
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+)
+
+pw_elf_to_bin(
+    name = "test_bin",
+    bin_out = "test.bin",
+    elf_input = ":test_linker_script",
+)
+
+pw_elf_to_dump(
+    name = "test_dump",
+    dump_out = "test.dump",
+    elf_input = ":test_linker_script",
 )

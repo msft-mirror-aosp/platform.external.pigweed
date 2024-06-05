@@ -37,6 +37,9 @@ pw_source_set("pw_metric") {
     dir_pw_tokenizer,
   ]
   deps = [ dir_pw_span ]
+
+  # TODO: b/259746255 - Remove this when everything compiles with -Wconversion.
+  configs = [ "$dir_pw_build:conversion_warnings" ]
 }
 
 # This gives access to the "PW_METRIC_GLOBAL()" macros, for globally-registered
@@ -158,6 +161,12 @@ pw_test("metric_test") {
 pw_test("global_test") {
   sources = [ "global_test.cc" ]
   deps = [ ":global" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; has test
+  # failures.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_size_diff("metric_size_report") {

@@ -16,21 +16,26 @@
 import dataclasses
 import logging
 from pathlib import Path
-from typing import Callable, Dict, Optional, Sequence
+from typing import Callable, Sequence
 import urllib.parse
 
-from pw_presubmit import (
-    git_repo,
+from pw_cli.plural import plural
+from pw_presubmit.presubmit import filter_paths
+from pw_presubmit.presubmit_context import (
     PresubmitContext,
     PresubmitFailure,
-    filter_paths,
 )
+from pw_presubmit import git_repo, presubmit_context
+
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
 class Config:
+    # Allow submodules to exist in any form.
+    allow_submodules: bool = True
+
     # Allow direct references to non-Google hosts.
     allow_non_googlesource_hosts: bool = False
 
@@ -53,16 +58,16 @@ class Config:
     # Arbitrary validator. Gets invoked with the submodule name and a dict of
     # the submodule properties. Should throw exceptions or call ctx.fail to
     # register errors.
-    validator: Optional[
-        Callable[[PresubmitContext, Path, str, Dict[str, str]], None]
-    ] = None
+    validator: (
+        Callable[[PresubmitContext, Path, str, dict[str, str]], None] | None
+    ) = None
 
 
-def _parse_gitmodules(path: Path) -> Dict[str, Dict[str, str]]:
+def _parse_gitmodules(path: Path) -> dict[str, dict[str, str]]:
     raw_submodules: str = git_repo.git_stdout(
         'config', '--file', path, '--list'
     )
-    submodules: Dict[str, Dict[str, str]] = {}
+    submodules: dict[str, dict[str, str]] = {}
     for line in raw_submodules.splitlines():
         key: str
         value: str
@@ -87,7 +92,13 @@ _GERRIT_HOST_SUFFIXES = ('.googlesource.com', '.git.corp.google.com')
 def process_gitmodules(ctx: PresubmitContext, config: Config, path: Path):
     """Check if a specific .gitmodules file passes the options in the config."""
     _LOG.debug('Evaluating path %s', path)
-    submodules: Dict[str, Dict[str, str]] = _parse_gitmodules(path)
+    submodules: dict[str, dict[str, str]] = _parse_gitmodules(path)
+
+    if submodules and not config.allow_submodules:
+        ctx.fail(
+            f'submodules are not permitted but '
+            f'{plural(submodules, "submodule", exist=True)} {tuple(submodules)}'
+        )
 
     assert isinstance(config.allowed_googlesource_hosts, (list, tuple))
     for allowed in config.allowed_googlesource_hosts:
@@ -186,6 +197,8 @@ def create(config: Config = Config()):
     @filter_paths(endswith='.gitmodules')
     def gitmodules(ctx: PresubmitContext):
         """Check various rules for .gitmodules files."""
+        ctx.paths = presubmit_context.apply_exclusions(ctx)
+
         for path in ctx.paths:
             process_gitmodules(ctx, config, path)
 

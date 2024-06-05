@@ -51,6 +51,11 @@ constexpr uint32_t kCfsrMunstkerrMask = (kCfsrMemFaultStart << 3);
 constexpr uint32_t kCfsrMstkerrMask = (kCfsrMemFaultStart << 4);
 constexpr uint32_t kCfsrMlsperrMask = (kCfsrMemFaultStart << 5);
 constexpr uint32_t kCfsrMmarvalidMask = (kCfsrMemFaultStart << 7);
+// Mask for all supported memory error flags i.e. bits that indicate a specific
+// error.
+constexpr uint32_t kCfsrMemAllErrorsMask =
+    kCfsrIaccviolMask | kCfsrDaccviolMask | kCfsrMunstkerrMask |
+    kCfsrMstkerrMask | kCfsrMlsperrMask;
 // Bus faults (BusFault Status Register)
 constexpr uint32_t kCfsrBusFaultStart = (0x1 << 8);
 constexpr uint32_t kCfsrIbuserrMask = (kCfsrBusFaultStart << 0);
@@ -60,17 +65,30 @@ constexpr uint32_t kCfsrUnstkerrMask = (kCfsrBusFaultStart << 3);
 constexpr uint32_t kCfsrStkerrMask = (kCfsrBusFaultStart << 4);
 constexpr uint32_t kCfsrLsperrMask = (kCfsrBusFaultStart << 5);
 constexpr uint32_t kCfsrBfarvalidMask = (kCfsrBusFaultStart << 7);
+// Mask for all supported bus error flags i.e. bits that indicate a specific
+// error.
+constexpr uint32_t kCfsrBusAllErrorsMask =
+    kCfsrIbuserrMask | kCfsrPreciserrMask | kCfsrImpreciserrMask |
+    kCfsrUnstkerrMask | kCfsrStkerrMask | kCfsrLsperrMask;
 // Usage faults (UsageFault Status Register)
 constexpr uint32_t kCfsrUsageFaultStart = (0x1 << 16);
 constexpr uint32_t kCfsrUndefinstrMask = (kCfsrUsageFaultStart << 0);
 constexpr uint32_t kCfsrInvstateMask = (kCfsrUsageFaultStart << 1);
 constexpr uint32_t kCfsrInvpcMask = (kCfsrUsageFaultStart << 2);
 constexpr uint32_t kCfsrNocpMask = (kCfsrUsageFaultStart << 3);
-#if _PW_ARCH_ARM_V8M_MAINLINE
+#if _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
 constexpr uint32_t kCfsrStkofMask = (kCfsrUsageFaultStart << 4);
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
 constexpr uint32_t kCfsrUnalignedMask = (kCfsrUsageFaultStart << 8);
 constexpr uint32_t kCfsrDivbyzeroMask = (kCfsrUsageFaultStart << 9);
+// Mask for all supported usage error flags i.e. bits that indicate a specific
+// error.
+constexpr uint32_t kCfsrUsageAllErrorsMask =
+    kCfsrUndefinstrMask | kCfsrInvstateMask | kCfsrInvpcMask | kCfsrNocpMask |
+#if _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
+    kCfsrStkofMask |
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
+    kCfsrUnalignedMask | kCfsrDivbyzeroMask;
 
 // Bit masks for an exception return value. (ARMv7-M Section B1.5.8)
 constexpr uint32_t kExcReturnStackMask = 0x1u << 2;  // 0=MSP, 1=PSP
@@ -85,7 +103,7 @@ constexpr uint32_t kXpsrIpsrMask = 0b1'1111'1111;
 constexpr uint32_t kControlThreadModeStackMask = 0x1u << 1;  // 0=MSP, 1=PSP
 
 // Memory mapped registers. (ARMv7-M Section B3.2.2, Table B3-4)
-// TODO(b/234891073): Only some of these are supported on ARMv6-M.
+// TODO: b/234891073 - Only some of these are supported on ARMv6-M.
 inline volatile uint32_t& cortex_m_cfsr =
     *reinterpret_cast<volatile uint32_t*>(0xE000ED28u);
 inline volatile uint32_t& cortex_m_mmfar =

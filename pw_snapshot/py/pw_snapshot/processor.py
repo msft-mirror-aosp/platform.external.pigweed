@@ -18,11 +18,13 @@ import functools
 import logging
 import sys
 from pathlib import Path
-from typing import Optional, BinaryIO, TextIO, Callable
+from typing import BinaryIO, TextIO, Callable
 import pw_tokenizer
 import pw_cpu_exception_cortex_m
+import pw_cpu_exception_risc_v
 import pw_build_info.build_id
 from pw_snapshot_metadata import metadata
+from pw_snapshot_metadata_proto import snapshot_metadata_pb2
 from pw_snapshot_protos import snapshot_pb2
 from pw_symbolizer import LlvmSymbolizer, Symbolizer
 from pw_thread import thread_analyzer
@@ -41,7 +43,7 @@ _BRANDING = """
 """
 
 # Deprecated, use SymbolizerMatcher. Will be removed shortly.
-ElfMatcher = Callable[[snapshot_pb2.Snapshot], Optional[Path]]
+ElfMatcher = Callable[[snapshot_pb2.Snapshot], Path | None]
 
 # Symbolizers are useful for turning addresses into source code locations and
 # function names. As a single snapshot may contain embedded snapshots from
@@ -56,19 +58,14 @@ SymbolizerMatcher = Callable[[snapshot_pb2.Snapshot], Symbolizer]
 
 def process_snapshot(
     serialized_snapshot: bytes,
-    detokenizer: Optional[pw_tokenizer.Detokenizer] = None,
-    elf_matcher: Optional[ElfMatcher] = None,
-    symbolizer_matcher: Optional[SymbolizerMatcher] = None,
+    detokenizer: pw_tokenizer.Detokenizer | None = None,
+    elf_matcher: ElfMatcher | None = None,
+    symbolizer_matcher: SymbolizerMatcher | None = None,
+    llvm_symbolizer_binary: Path | None = None,
 ) -> str:
     """Processes a single snapshot."""
 
     output = [_BRANDING]
-
-    captured_metadata = metadata.process_snapshot(
-        serialized_snapshot, detokenizer
-    )
-    if captured_metadata:
-        output.append(captured_metadata)
 
     # Open a symbolizer.
     snapshot = snapshot_pb2.Snapshot()
@@ -77,15 +74,40 @@ def process_snapshot(
     if symbolizer_matcher is not None:
         symbolizer = symbolizer_matcher(snapshot)
     elif elf_matcher is not None:
-        symbolizer = LlvmSymbolizer(elf_matcher(snapshot))
+        symbolizer = LlvmSymbolizer(
+            elf_matcher(snapshot), llvm_symbolizer_binary=llvm_symbolizer_binary
+        )
     else:
-        symbolizer = LlvmSymbolizer()
+        symbolizer = LlvmSymbolizer(
+            llvm_symbolizer_binary=llvm_symbolizer_binary
+        )
 
-    cortex_m_cpu_state = pw_cpu_exception_cortex_m.process_snapshot(
-        serialized_snapshot, symbolizer
+    captured_metadata = metadata.process_snapshot(
+        serialized_snapshot, detokenizer
     )
-    if cortex_m_cpu_state:
-        output.append(cortex_m_cpu_state)
+    if captured_metadata:
+        output.append(captured_metadata)
+
+    # Create MetadataProcessor
+    snapshot_metadata = snapshot_metadata_pb2.SnapshotBasicInfo()
+    snapshot_metadata.ParseFromString(serialized_snapshot)
+    metadata_processor = metadata.MetadataProcessor(
+        snapshot_metadata.metadata, detokenizer
+    )
+
+    # Check which CPU architecture to process the snapshot with.
+    if metadata_processor.cpu_arch().startswith("RV"):
+        risc_v_cpu_state = pw_cpu_exception_risc_v.process_snapshot(
+            serialized_snapshot, symbolizer
+        )
+        if risc_v_cpu_state:
+            output.append(risc_v_cpu_state)
+    else:
+        cortex_m_cpu_state = pw_cpu_exception_cortex_m.process_snapshot(
+            serialized_snapshot, symbolizer
+        )
+        if cortex_m_cpu_state:
+            output.append(cortex_m_cpu_state)
 
     thread_info = thread_analyzer.process_snapshot(
         serialized_snapshot, detokenizer, symbolizer
@@ -113,10 +135,10 @@ def process_snapshot(
 
 def process_snapshots(
     serialized_snapshot: bytes,
-    detokenizer: Optional[pw_tokenizer.Detokenizer] = None,
-    elf_matcher: Optional[ElfMatcher] = None,
-    user_processing_callback: Optional[Callable[[bytes], str]] = None,
-    symbolizer_matcher: Optional[SymbolizerMatcher] = None,
+    detokenizer: pw_tokenizer.Detokenizer | None = None,
+    elf_matcher: ElfMatcher | None = None,
+    user_processing_callback: Callable[[bytes], str] | None = None,
+    symbolizer_matcher: SymbolizerMatcher | None = None,
 ) -> str:
     """Processes a snapshot that may have multiple embedded snapshots."""
     output = []
@@ -155,7 +177,7 @@ def process_snapshots(
 def _snapshot_symbolizer_matcher(
     artifacts_dir: Path, snapshot: snapshot_pb2.Snapshot
 ) -> LlvmSymbolizer:
-    matching_elf: Optional[Path] = pw_build_info.build_id.find_matching_elf(
+    matching_elf: Path | None = pw_build_info.build_id.find_matching_elf(
         snapshot.metadata.software_build_uuid, artifacts_dir
     )
     if not matching_elf:
@@ -169,13 +191,13 @@ def _snapshot_symbolizer_matcher(
 def _load_and_dump_snapshots(
     in_file: BinaryIO,
     out_file: TextIO,
-    token_db: Optional[TextIO],
-    artifacts_dir: Optional[Path],
+    token_db: TextIO | None,
+    artifacts_dir: Path | None,
 ):
     detokenizer = None
     if token_db:
         detokenizer = pw_tokenizer.Detokenizer(token_db)
-    symbolizer_matcher: Optional[SymbolizerMatcher] = None
+    symbolizer_matcher: SymbolizerMatcher | None = None
     if artifacts_dir:
         symbolizer_matcher = functools.partial(
             _snapshot_symbolizer_matcher, artifacts_dir

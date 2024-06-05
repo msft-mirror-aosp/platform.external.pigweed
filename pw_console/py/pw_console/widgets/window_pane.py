@@ -13,8 +13,10 @@
 # the License.
 """Window pane base class."""
 
+from __future__ import annotations
+
 from abc import ABC
-from typing import Any, Callable, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Callable, TYPE_CHECKING
 import functools
 
 from prompt_toolkit.layout.dimension import AnyDimension
@@ -33,6 +35,7 @@ from pw_console.get_pw_console_app import get_pw_console_app
 from pw_console.style import get_pane_style
 
 if TYPE_CHECKING:
+    from typing import Any
     from pw_console.console_app import ConsoleApp
 
 
@@ -55,7 +58,7 @@ class WindowPaneHSplit(HSplit):
         write_position,
         parent_style: str,
         erase_bg: bool,
-        z_index: Optional[int],
+        z_index: int | None,
     ) -> None:
         # Save the width and height for the current render pass. This will be
         # used by the log pane to render the correct amount of log lines.
@@ -79,10 +82,10 @@ class WindowPane(ABC):
     # pylint: disable=too-many-instance-attributes
     def __init__(
         self,
-        application: Union['ConsoleApp', Any] = None,
+        application: ConsoleApp | Any = None,
         pane_title: str = 'Window',
-        height: Optional[AnyDimension] = None,
-        width: Optional[AnyDimension] = None,
+        height: AnyDimension | None = None,
+        width: AnyDimension | None = None,
     ):
         if application:
             self.application = application
@@ -92,7 +95,7 @@ class WindowPane(ABC):
         self._pane_title = pane_title
         self._pane_subtitle: str = ''
 
-        self.extra_tab_style: Optional[str] = None
+        self.extra_tab_style: str | None = None
 
         # Default width and height to 10 lines each. They will be resized by the
         # WindowManager later.
@@ -153,7 +156,7 @@ class WindowPane(ABC):
         object."""
         return self.container  # pylint: disable=no-member
 
-    def get_all_key_bindings(self) -> List:
+    def get_all_key_bindings(self) -> list:
         """Return keybinds for display in the help window.
 
         For example:
@@ -177,7 +180,7 @@ class WindowPane(ABC):
 
     def get_window_menu_options(
         self,
-    ) -> List[Tuple[str, Union[Callable, None]]]:
+    ) -> list[tuple[str, Callable | None]]:
         """Return menu options for the window pane.
 
         Should return a list of tuples containing with the display text and
@@ -186,7 +189,7 @@ class WindowPane(ABC):
         # pylint: disable=no-self-use
         return []
 
-    def get_top_level_menus(self) -> List[MenuItem]:
+    def get_top_level_menus(self) -> list[MenuItem]:
         """Return MenuItems to be displayed on the main pw_console menu bar."""
         # pylint: disable=no-self-use
         return []

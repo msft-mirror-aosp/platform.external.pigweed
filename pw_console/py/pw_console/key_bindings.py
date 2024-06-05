@@ -14,7 +14,6 @@
 # pylint: skip-file
 """Console key bindings."""
 import logging
-from typing import Dict, List
 
 from prompt_toolkit.filters import (
     Condition,
@@ -29,7 +28,7 @@ __all__ = ('create_key_bindings',)
 
 _LOG = logging.getLogger(__package__)
 
-DEFAULT_KEY_BINDINGS: Dict[str, List[str]] = {
+DEFAULT_KEY_BINDINGS: dict[str, list[str]] = {
     'global.open-user-guide': ['f1'],
     'global.open-menu-search': ['c-p'],
     'global.focus-previous-widget': ['c-left'],
@@ -50,7 +49,7 @@ DEFAULT_KEY_BINDINGS: Dict[str, List[str]] = {
     'log-pane.move-cursor-down': ['down', 'j'],
     'log-pane.visual-select-up': ['s-up'],
     'log-pane.visual-select-down': ['s-down'],
-    'log-pane.visual-select-all': ['N', 'c-r'],
+    'log-pane.visual-select-all': ['c-r'],
     'log-pane.deselect-cancel-search': ['c-c'],
     'log-pane.scroll-page-up': ['pageup'],
     'log-pane.scroll-page-down': ['pagedown'],

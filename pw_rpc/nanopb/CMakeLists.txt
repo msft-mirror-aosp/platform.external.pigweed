@@ -35,18 +35,12 @@ pw_add_library(pw_rpc.nanopb.server_api STATIC
     pw_log
     pw_rpc.log_config
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_NANOPB_METHOD)
-  zephyr_link_libraries(pw_rpc.nanopb.method)
-endif()
 
 # TODO(hepler): Deprecate this once no one depends on it.
 pw_add_library(pw_rpc.nanopb.method_union INTERFACE
   PUBLIC_DEPS
     pw_rpc.nanopb.server_api
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_NANOPB_METHOD_UNION)
-  zephyr_link_libraries(pw_rpc.nanopb.method_union)
-endif()
 
 pw_add_library(pw_rpc.nanopb.client_api INTERFACE
   HEADERS
@@ -58,9 +52,6 @@ pw_add_library(pw_rpc.nanopb.client_api INTERFACE
     pw_rpc.client
     pw_rpc.nanopb.common
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_NANOPB_CLIENT)
-  zephyr_link_libraries(pw_rpc.nanopb.client_api)
-endif()
 
 pw_add_library(pw_rpc.nanopb.common STATIC
   HEADERS
@@ -78,9 +69,6 @@ pw_add_library(pw_rpc.nanopb.common STATIC
     pw_rpc.client
     pw_rpc.log_config
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_NANOPB_COMMON)
-  zephyr_link_libraries(pw_rpc.nanopb.common)
-endif()
 
 pw_add_library(pw_rpc.nanopb.test_method_context INTERFACE
   HEADERS
@@ -142,9 +130,6 @@ pw_add_library(pw_rpc.nanopb.echo_service INTERFACE
   PUBLIC_DEPS
     pw_rpc.protos.nanopb_rpc
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_RPC_NANOPB_ECHO_SERVICE)
-  zephyr_link_libraries(pw_rpc.nanopb.echo_service)
-endif()
 
 pw_add_library(pw_rpc.nanopb.client_integration_test STATIC
   SOURCES
@@ -182,17 +167,20 @@ pw_add_test(pw_rpc.nanopb.client_reader_writer_test
     pw_rpc.nanopb
 )
 
-pw_add_test(pw_rpc.nanopb.client_server_context_test
-  SOURCES
-    client_server_context_test.cc
-  PRIVATE_DEPS
-    pw_rpc.nanopb.client_api
-    pw_rpc.nanopb.client_server_testing
-    pw_rpc.test_protos.nanopb_rpc
-  GROUPS
-    modules
-    pw_rpc.nanopb
-)
+if(NOT "${pw_sync.mutex_BACKEND}" STREQUAL "")
+  pw_add_test(pw_rpc.nanopb.client_server_context_test
+    SOURCES
+      client_server_context_test.cc
+    PRIVATE_DEPS
+      pw_rpc.nanopb.client_api
+      pw_rpc.nanopb.client_server_testing
+      pw_rpc.test_protos.nanopb_rpc
+      pw_sync.mutex
+      GROUPS
+      modules
+      pw_rpc.nanopb
+  )
+endif()
 
 if(("${pw_thread.thread_BACKEND}" STREQUAL "pw_thread_stl.thread") AND
    (NOT "${pw_sync.binary_semaphore_BACKEND}" STREQUAL "") AND
@@ -205,7 +193,8 @@ if(("${pw_thread.thread_BACKEND}" STREQUAL "pw_thread_stl.thread") AND
       pw_rpc.nanopb.client_server_testing_threaded
       pw_rpc.test_protos.nanopb_rpc
       pw_sync.binary_semaphore
-      pw_thread.test_threads
+      pw_sync.mutex
+      pw_thread.non_portable_test_thread_options
       pw_thread.thread
       pw_thread_stl.test_threads
     GROUPS
@@ -351,7 +340,7 @@ pw_add_test(pw_rpc.nanopb.stub_generation_test
     pw_rpc.nanopb
 )
 
-# TODO(b/231950909) Test disabled as pw_work_queue lacks CMakeLists.txt
+# TODO: b/231950909 - Test disabled as pw_work_queue lacks CMakeLists.txt
 if((TARGET pw_work_queue.pw_work_queue) AND
    ("${pw_thread.thread_BACKEND}" STREQUAL "pw_thread_stl.thread") AND
    (NOT "${pw_sync.timed_thread_notification_BACKEND}" STREQUAL ""))

@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -13,12 +13,16 @@
 // the License.
 
 #define PW_LOG_MODULE_NAME "TRN"
+#define PW_LOG_LEVEL PW_TRANSFER_CONFIG_LOG_LEVEL
 
 #include "pw_transfer/transfer_thread.h"
 
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
 #include "pw_transfer/internal/chunk.h"
+#include "pw_transfer/internal/client_context.h"
+#include "pw_transfer/internal/config.h"
+#include "pw_transfer/internal/event.h"
 
 PW_MODIFY_DIAGNOSTICS_PUSH();
 PW_MODIFY_DIAGNOSTIC(ignored, "-Wmissing-field-initializers");
@@ -98,21 +102,33 @@ chrono::SystemClock::time_point TransferThread::GetNextTransferTimeout() const {
   return timeout;
 }
 
-void TransferThread::StartTransfer(TransferType type,
-                                   ProtocolVersion version,
-                                   uint32_t session_id,
-                                   uint32_t resource_id,
-                                   ConstByteSpan raw_chunk,
-                                   stream::Stream* stream,
-                                   const TransferParameters& max_parameters,
-                                   Function<void(Status)>&& on_completion,
-                                   chrono::SystemClock::duration timeout,
-                                   uint8_t max_retries,
-                                   uint32_t max_lifetime_retries) {
+void TransferThread::StartTransfer(
+    TransferType type,
+    ProtocolVersion version,
+    uint32_t session_id,
+    uint32_t resource_id,
+    uint32_t handle_id,
+    ConstByteSpan raw_chunk,
+    stream::Stream* stream,
+    const TransferParameters& max_parameters,
+    Function<void(Status)>&& on_completion,
+    chrono::SystemClock::duration timeout,
+    chrono::SystemClock::duration initial_timeout,
+    uint8_t max_retries,
+    uint32_t max_lifetime_retries,
+    uint32_t initial_offset) {
   // Block until the last event has been processed.
   next_event_ownership_.acquire();
 
   bool is_client_transfer = stream != nullptr;
+
+  if (is_client_transfer) {
+    if (version == ProtocolVersion::kLegacy) {
+      session_id = resource_id;
+    } else if (session_id == Context::kUnassignedSessionId) {
+      session_id = AssignSessionId();
+    }
+  }
 
   next_event_.type = is_client_transfer ? EventType::kNewClientTransfer
                                         : EventType::kNewServerTransfer;
@@ -126,13 +142,16 @@ void TransferThread::StartTransfer(TransferType type,
       .protocol_version = version,
       .session_id = session_id,
       .resource_id = resource_id,
+      .handle_id = handle_id,
       .max_parameters = &max_parameters,
       .timeout = timeout,
+      .initial_timeout = initial_timeout,
       .max_retries = max_retries,
       .max_lifetime_retries = max_lifetime_retries,
       .transfer_thread = this,
       .raw_chunk_data = chunk_buffer_.data(),
       .raw_chunk_size = raw_chunk.size(),
+      .initial_offset = initial_offset,
   };
 
   staged_on_completion_ = std::move(on_completion);
@@ -142,27 +161,25 @@ void TransferThread::StartTransfer(TransferType type,
   // with the specified ID.
   if (is_client_transfer) {
     next_event_.new_transfer.stream = stream;
-    next_event_.new_transfer.rpc_writer = &static_cast<rpc::Writer&>(
-        type == TransferType::kTransmit ? client_write_stream_
-                                        : client_read_stream_);
+    next_event_.new_transfer.rpc_writer =
+        &(type == TransferType::kTransmit ? client_write_stream_
+                                          : client_read_stream_)
+             .as_writer();
   } else {
     auto handler = std::find_if(handlers_.begin(),
                                 handlers_.end(),
                                 [&](auto& h) { return h.id() == resource_id; });
     if (handler != handlers_.end()) {
       next_event_.new_transfer.handler = &*handler;
-      next_event_.new_transfer.rpc_writer = &static_cast<rpc::Writer&>(
-          type == TransferType::kTransmit ? server_read_stream_
-                                          : server_write_stream_);
+      next_event_.new_transfer.rpc_writer =
+          &(type == TransferType::kTransmit ? server_read_stream_
+                                            : server_write_stream_)
+               .as_writer();
     } else {
       // No handler exists for the transfer: return a NOT_FOUND.
       next_event_.type = EventType::kSendStatusChunk;
       next_event_.send_status_chunk = {
-          // Identify the status chunk using the requested resource ID rather
-          // than the session ID. In legacy, the two are the same, whereas in
-          // v2+ the client has not yet been assigned a session.
-          .session_id = resource_id,
-          .set_resource_id = version == ProtocolVersion::kVersionTwo,
+          .session_id = session_id,
           .protocol_version = version,
           .status = Status::NotFound().code(),
           .stream = type == TransferType::kTransmit
@@ -196,7 +213,7 @@ void TransferThread::ProcessChunk(EventType type, ConstByteSpan chunk) {
   next_event_.type = type;
   next_event_.chunk = {
       .context_identifier = identifier->value(),
-      .match_resource_id = identifier->is_resource(),
+      .match_resource_id = identifier->is_legacy(),
       .data = chunk_buffer_.data(),
       .size = chunk.size(),
   };
@@ -204,8 +221,27 @@ void TransferThread::ProcessChunk(EventType type, ConstByteSpan chunk) {
   event_notification_.release();
 }
 
+void TransferThread::SendStatus(TransferStream stream,
+                                uint32_t session_id,
+                                ProtocolVersion version,
+                                Status status) {
+  // Block until the last event has been processed.
+  next_event_ownership_.acquire();
+
+  next_event_.type = EventType::kSendStatusChunk;
+  next_event_.send_status_chunk = {
+      .session_id = session_id,
+      .protocol_version = version,
+      .status = status.code(),
+      .stream = stream,
+  };
+
+  event_notification_.release();
+}
+
 void TransferThread::EndTransfer(EventType type,
-                                 uint32_t session_id,
+                                 IdentifierType id_type,
+                                 uint32_t id,
                                  Status status,
                                  bool send_status_chunk) {
   // Block until the last event has been processed.
@@ -213,10 +249,35 @@ void TransferThread::EndTransfer(EventType type,
 
   next_event_.type = type;
   next_event_.end_transfer = {
-      .session_id = session_id,
+      .id_type = id_type,
+      .id = id,
       .status = status.code(),
       .send_status_chunk = send_status_chunk,
   };
+
+  event_notification_.release();
+}
+
+void TransferThread::SetStream(TransferStream stream) {
+  // Block until the last event has been processed.
+  next_event_ownership_.acquire();
+
+  next_event_.type = EventType::kSetStream;
+  next_event_.set_stream = {
+      .stream = stream,
+  };
+
+  event_notification_.release();
+}
+
+void TransferThread::UpdateClientTransfer(uint32_t handle_id,
+                                          size_t transfer_size_bytes) {
+  // Block until the last event has been processed.
+  next_event_ownership_.acquire();
+
+  next_event_.type = EventType::kUpdateClientTransfer;
+  next_event_.update_transfer.handle_id = handle_id;
+  next_event_.update_transfer.transfer_size_bytes = transfer_size_bytes;
 
   event_notification_.release();
 }
@@ -244,7 +305,8 @@ void TransferThread::HandleEvent(const internal::Event& event) {
             .type = EventType::kServerEndTransfer,
             .end_transfer =
                 EndTransferEvent{
-                    .session_id = server_context.session_id(),
+                    .id_type = IdentifierType::Session,
+                    .id = server_context.session_id(),
                     .status = Status::Aborted().code(),
                     .send_status_chunk = false,
                 },
@@ -257,7 +319,8 @@ void TransferThread::HandleEvent(const internal::Event& event) {
             .type = EventType::kClientEndTransfer,
             .end_transfer =
                 EndTransferEvent{
-                    .session_id = client_context.session_id(),
+                    .id_type = IdentifierType::Session,
+                    .id = client_context.session_id(),
                     .status = Status::Aborted().code(),
                     .send_status_chunk = false,
                 },
@@ -286,7 +349,8 @@ void TransferThread::HandleEvent(const internal::Event& event) {
               .type = EventType::kServerEndTransfer,
               .end_transfer =
                   EndTransferEvent{
-                      .session_id = server_context.session_id(),
+                      .id_type = IdentifierType::Session,
+                      .id = server_context.session_id(),
                       .status = Status::Aborted().code(),
                       .send_status_chunk = false,
                   },
@@ -294,6 +358,14 @@ void TransferThread::HandleEvent(const internal::Event& event) {
         }
       }
       handlers_.remove(*event.remove_transfer_handler);
+      return;
+
+    case EventType::kSetStream:
+      HandleSetStreamEvent(event.set_stream.stream);
+      return;
+
+    case EventType::kGetResourceStatus:
+      GetResourceState(event.resource_status.resource_id);
       return;
 
     case EventType::kNewClientTransfer:
@@ -304,6 +376,7 @@ void TransferThread::HandleEvent(const internal::Event& event) {
     case EventType::kServerTimeout:
     case EventType::kClientEndTransfer:
     case EventType::kServerEndTransfer:
+    case EventType::kUpdateClientTransfer:
     default:
       // Other events are handled by individual transfer contexts.
       break;
@@ -319,9 +392,7 @@ void TransferThread::HandleEvent(const internal::Event& event) {
     } else if (event.type == EventType::kNewServerTransfer) {
       // On the server, send a status chunk back to the client.
       SendStatusChunk(
-          {.session_id = event.new_transfer.resource_id,
-           .set_resource_id = event.new_transfer.protocol_version ==
-                              ProtocolVersion::kVersionTwo,
+          {.session_id = event.new_transfer.session_id,
            .protocol_version = event.new_transfer.protocol_version,
            .status = Status::ResourceExhausted().code(),
            .stream = event.new_transfer.type == TransferType::kTransmit
@@ -333,8 +404,15 @@ void TransferThread::HandleEvent(const internal::Event& event) {
 
   if (event.type == EventType::kNewClientTransfer) {
     // TODO(frolv): This is terrible.
-    static_cast<ClientContext*>(ctx)->set_on_completion(
-        std::move(staged_on_completion_));
+    ClientContext* cctx = static_cast<ClientContext*>(ctx);
+    cctx->set_on_completion(std::move(staged_on_completion_));
+    cctx->set_handle_id(event.new_transfer.handle_id);
+  }
+
+  if (event.type == EventType::kUpdateClientTransfer) {
+    static_cast<ClientContext&>(*ctx).set_transfer_size_bytes(
+        event.update_transfer.transfer_size_bytes);
+    return;
   }
 
   ctx->HandleEvent(event);
@@ -372,16 +450,25 @@ Context* TransferThread::FindContextForEvent(
                                           event.chunk.context_identifier);
 
     case EventType::kClientEndTransfer:
+      if (event.end_transfer.id_type == IdentifierType::Handle) {
+        return FindClientTransferByHandleId(event.end_transfer.id);
+      }
       return FindActiveTransferByLegacyId(client_transfers_,
-                                          event.end_transfer.session_id);
+                                          event.end_transfer.id);
     case EventType::kServerEndTransfer:
+      PW_DCHECK(event.end_transfer.id_type != IdentifierType::Handle);
       return FindActiveTransferByLegacyId(server_transfers_,
-                                          event.end_transfer.session_id);
+                                          event.end_transfer.id);
+
+    case EventType::kUpdateClientTransfer:
+      return FindClientTransferByHandleId(event.update_transfer.handle_id);
 
     case EventType::kSendStatusChunk:
     case EventType::kAddTransferHandler:
     case EventType::kRemoveTransferHandler:
+    case EventType::kSetStream:
     case EventType::kTerminate:
+    case EventType::kGetResourceStatus:
     default:
       return nullptr;
   }
@@ -394,10 +481,6 @@ void TransferThread::SendStatusChunk(
   Chunk chunk =
       Chunk::Final(event.protocol_version, event.session_id, event.status);
 
-  if (event.set_resource_id) {
-    chunk.set_resource_id(event.session_id);
-  }
-
   Result<ConstByteSpan> result = chunk.Encode(chunk_buffer_);
   if (!result.ok()) {
     PW_LOG_ERROR("Failed to encode final chunk for transfer %u",
@@ -409,6 +492,112 @@ void TransferThread::SendStatusChunk(
     PW_LOG_ERROR("Failed to send final chunk for transfer %u",
                  static_cast<unsigned>(event.session_id));
     return;
+  }
+}
+
+// Should only be called with the `next_event_ownership_` lock held.
+uint32_t TransferThread::AssignSessionId() {
+  uint32_t session_id = next_session_id_++;
+  if (session_id == 0) {
+    session_id = next_session_id_++;
+  }
+  return session_id;
+}
+
+template <typename T>
+void TerminateTransfers(span<T> contexts,
+                        TransferType type,
+                        EventType event_type,
+                        Status status) {
+  for (Context& context : contexts) {
+    if (context.active() && context.type() == type) {
+      context.HandleEvent(Event{
+          .type = event_type,
+          .end_transfer =
+              EndTransferEvent{
+                  .id_type = IdentifierType::Session,
+                  .id = context.session_id(),
+                  .status = status.code(),
+                  .send_status_chunk = false,
+              },
+      });
+    }
+  }
+}
+
+void TransferThread::HandleSetStreamEvent(TransferStream stream) {
+  switch (stream) {
+    case TransferStream::kClientRead:
+      TerminateTransfers(client_transfers_,
+                         TransferType::kReceive,
+                         EventType::kClientEndTransfer,
+                         Status::Aborted());
+      client_read_stream_ = std::move(staged_client_stream_);
+      client_read_stream_.set_on_next(std::move(staged_client_on_next_));
+      break;
+    case TransferStream::kClientWrite:
+      TerminateTransfers(client_transfers_,
+                         TransferType::kTransmit,
+                         EventType::kClientEndTransfer,
+                         Status::Aborted());
+      client_write_stream_ = std::move(staged_client_stream_);
+      client_write_stream_.set_on_next(std::move(staged_client_on_next_));
+      break;
+    case TransferStream::kServerRead:
+      TerminateTransfers(server_transfers_,
+                         TransferType::kTransmit,
+                         EventType::kServerEndTransfer,
+                         Status::Aborted());
+      server_read_stream_ = std::move(staged_server_stream_);
+      server_read_stream_.set_on_next(std::move(staged_server_on_next_));
+      break;
+    case TransferStream::kServerWrite:
+      TerminateTransfers(server_transfers_,
+                         TransferType::kReceive,
+                         EventType::kServerEndTransfer,
+                         Status::Aborted());
+      server_write_stream_ = std::move(staged_server_stream_);
+      server_write_stream_.set_on_next(std::move(staged_server_on_next_));
+      break;
+  }
+}
+
+// Adds GetResourceStatusEvent to the queue. Will fail if there is already a
+// GetResourceStatusEvent in process.
+void TransferThread::EnqueueResourceEvent(uint32_t resource_id,
+                                          ResourceStatusCallback&& callback) {
+  // Block until the last event has been processed.
+  next_event_ownership_.acquire();
+
+  next_event_.type = EventType::kGetResourceStatus;
+
+  resource_status_callback_ = std::move(callback);
+
+  next_event_.resource_status.resource_id = resource_id;
+
+  event_notification_.release();
+}
+
+// Should only be called when we got a valid callback and RPC responder from
+// GetResourceStatus transfer RPC.
+void TransferThread::GetResourceState(uint32_t resource_id) {
+  PW_ASSERT(resource_status_callback_ != nullptr);
+
+  auto handler = std::find_if(handlers_.begin(), handlers_.end(), [&](auto& h) {
+    return h.id() == resource_id;
+  });
+  internal::ResourceStatus stats;
+  stats.resource_id = resource_id;
+
+  if (handler != handlers_.end()) {
+    Status status = handler->GetStatus(stats.readable_offset,
+                                       stats.writeable_offset,
+                                       stats.read_checksum,
+                                       stats.write_checksum);
+
+    resource_status_callback_(status, stats);
+  } else {
+    resource_status_callback_(Status::NotFound(), stats);
   }
 }
 

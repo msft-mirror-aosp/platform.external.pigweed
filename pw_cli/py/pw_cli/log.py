@@ -16,7 +16,7 @@
 import logging
 from pathlib import Path
 import sys
-from typing import NamedTuple, Optional, Union, Iterator
+from typing import NamedTuple, Iterator
 
 from pw_cli.color import colors as pw_cli_colors
 from pw_cli.env import pigweed_environment
@@ -58,7 +58,7 @@ def c_to_py_log_level(c_level: int) -> int:
     return c_level * 10
 
 
-def main() -> None:
+def main() -> int:
     """Shows how logs look at various levels."""
 
     # Force the log level to make sure all logs are shown.
@@ -73,11 +73,13 @@ def main() -> None:
     _LOG.log(LOGLEVEL_STDOUT, 'Standard output of subprocess')
     _LOG.debug('Adding 1 to i')
 
+    return 0
+
 
 def _setup_handler(
     handler: logging.Handler,
     formatter: logging.Formatter,
-    level: Union[str, int],
+    level: str | int,
     logger: logging.Logger,
 ) -> None:
     handler.setLevel(level)
@@ -86,12 +88,12 @@ def _setup_handler(
 
 
 def install(
-    level: Union[str, int] = logging.INFO,
-    use_color: Optional[bool] = None,
+    level: str | int = logging.INFO,
+    use_color: bool | None = None,
     hide_timestamp: bool = False,
-    log_file: Optional[Union[str, Path]] = None,
-    logger: Optional[logging.Logger] = None,
-    debug_log: Optional[Union[str, Path]] = None,
+    log_file: str | Path | None = None,
+    logger: logging.Logger | None = None,
+    debug_log: str | Path | None = None,
     time_format: str = '%Y%m%d %H:%M:%S',
     msec_format: str = '%s,%03d',
     include_msec: bool = False,
@@ -165,6 +167,12 @@ def install(
             9,
         ):
             formatter.default_msec_format = ''
+        # For 3.8 set datefmt to time_format
+        elif sys.version_info >= (
+            3,
+            8,
+        ):
+            formatter.datefmt = time_format
 
     # Set the log level on the root logger to NOTSET, so that all logs
     # propagated from child loggers are handled.

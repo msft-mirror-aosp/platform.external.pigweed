@@ -14,6 +14,8 @@
 # the License.
 """Test fixture for pw_transfer integration tests."""
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 from dataclasses import dataclass
@@ -22,12 +24,12 @@ import pathlib
 from pathlib import Path
 import sys
 import tempfile
-from typing import BinaryIO, Iterable, List, NamedTuple, Optional
+from typing import BinaryIO, Iterable, NamedTuple
 import unittest
 
 from google.protobuf import text_format
 
-from pigweed.pw_protobuf.pw_protobuf_protos import status_pb2
+from pw_protobuf_protos import status_pb2
 from pigweed.pw_transfer.integration_test import config_pb2
 from rules_python.python.runfiles import runfiles
 
@@ -103,7 +105,7 @@ class MonitoredSubprocess:
     """A subprocess with monitored asynchronous communication."""
 
     @staticmethod
-    async def create(cmd: List[str], prefix: str, stdinput: bytes):
+    async def create(cmd: list[str], prefix: str, stdinput: bytes):
         """Starts the subprocess and writes stdinput to stdin.
 
         This method returns once stdinput has been written to stdin. The
@@ -156,7 +158,7 @@ class MonitoredSubprocess:
         """Terminate the process."""
         self._process.terminate()
 
-    async def wait_for_termination(self, timeout: float):
+    async def wait_for_termination(self, timeout: float | None):
         """Wait for the process to terminate."""
         await asyncio.wait_for(
             asyncio.gather(
@@ -196,11 +198,11 @@ class TransferIntegrationTestHarness:
     class Config:
         server_port: int = 3300
         client_port: int = 3301
-        java_client_binary: Optional[Path] = None
-        cpp_client_binary: Optional[Path] = None
-        python_client_binary: Optional[Path] = None
-        proxy_binary: Optional[Path] = None
-        server_binary: Optional[Path] = None
+        java_client_binary: Path | None = None
+        cpp_client_binary: Path | None = None
+        python_client_binary: Path | None = None
+        proxy_binary: Path | None = None
+        server_binary: Path | None = None
 
     class TransferExitCodes(NamedTuple):
         client: int
@@ -231,6 +233,10 @@ class TransferIntegrationTestHarness:
         self._CLIENT_PORT = harness_config.client_port
         self._SERVER_PORT = harness_config.server_port
 
+        self._server: MonitoredSubprocess | None = None
+        self._client: MonitoredSubprocess | None = None
+        self._proxy: MonitoredSubprocess | None = None
+
         # If the harness configuration specifies overrides, use those.
         if harness_config.java_client_binary is not None:
             self._JAVA_CLIENT_BINARY = harness_config.java_client_binary
@@ -248,7 +254,6 @@ class TransferIntegrationTestHarness:
             "java": self._JAVA_CLIENT_BINARY,
             "python": self._PYTHON_CLIENT_BINARY,
         }
-        pass
 
     async def _start_client(
         self, client_type: str, config: config_pb2.ClientConfig
@@ -309,16 +314,19 @@ class TransferIntegrationTestHarness:
 
         try:
             await self._start_proxy(proxy_config)
+            assert self._proxy is not None
             await self._proxy.wait_for_line(
                 "stderr", "Listening for client connection", TIMEOUT
             )
 
             await self._start_server(server_config)
+            assert self._server is not None
             await self._server.wait_for_line(
                 "stderr", "Starting pw_rpc server on port", TIMEOUT
             )
 
             await self._start_client(client_type, client_config)
+            assert self._client is not None
             # No timeout: the client will only exit once the transfer
             # completes, and this can take a long time for large payloads.
             await self._client.wait_for_termination(None)
@@ -329,11 +337,11 @@ class TransferIntegrationTestHarness:
         finally:
             # Stop the server, if still running. (Only expected if the
             # wait_for above timed out.)
-            if self._server:
+            if self._server is not None:
                 await self._server.terminate_and_wait(TIMEOUT)
             # Stop the proxy. Unlike the server, we expect it to still be
             # running at this stage.
-            if self._proxy:
+            if self._proxy is not None:
                 await self._proxy.terminate_and_wait(TIMEOUT)
 
             return self.TransferExitCodes(
@@ -366,7 +374,7 @@ class TransferIntegrationTest(unittest.TestCase):
     def default_server_config() -> config_pb2.ServerConfig:
         return config_pb2.ServerConfig(
             chunk_size_bytes=216,
-            pending_bytes=32 * 1024,
+            pending_bytes=64 * 1024,
             chunk_timeout_seconds=5,
             transfer_service_retries=4,
             extend_window_divisor=32,
@@ -415,6 +423,8 @@ class TransferIntegrationTest(unittest.TestCase):
         protocol_version=config_pb2.TransferAction.ProtocolVersion.LATEST,
         permanent_resource_id=False,
         expected_status=status_pb2.StatusCode.OK,
+        initial_offset=0,
+        offsettable_resources=False,
     ) -> None:
         """Performs a single client-to-server write of the provided data."""
         with tempfile.NamedTemporaryFile() as f_payload, tempfile.NamedTemporaryFile() as f_server_output:
@@ -426,13 +436,17 @@ class TransferIntegrationTest(unittest.TestCase):
                 config.server.resources[resource_id].destination_paths.append(
                     f_server_output.name
                 )
+            config.server.resources[
+                resource_id
+            ].offsettable = offsettable_resources
             config.client.transfer_actions.append(
                 config_pb2.TransferAction(
                     resource_id=resource_id,
                     file_path=f_payload.name,
                     transfer_type=config_pb2.TransferAction.TransferType.WRITE_TO_SERVER,
                     protocol_version=protocol_version,
-                    expected_status=int(expected_status),
+                    expected_status=expected_status,
+                    initial_offset=initial_offset,
                 )
             )
 
@@ -447,7 +461,15 @@ class TransferIntegrationTest(unittest.TestCase):
             self.assertEqual(exit_codes.client, 0)
             self.assertEqual(exit_codes.server, 0)
             if expected_status == status_pb2.StatusCode.OK:
-                self.assertEqual(f_server_output.read(), data)
+                bytes_output = f_server_output.read()
+                self.assertEqual(
+                    bytes_output[initial_offset:],
+                    data,
+                )
+                # Ensure we didn't write data to places before offset
+                self.assertEqual(
+                    bytes_output[:initial_offset], b'\x00' * initial_offset
+                )
 
     def do_single_read(
         self,
@@ -458,6 +480,8 @@ class TransferIntegrationTest(unittest.TestCase):
         protocol_version=config_pb2.TransferAction.ProtocolVersion.LATEST,
         permanent_resource_id=False,
         expected_status=status_pb2.StatusCode.OK,
+        initial_offset=0,
+        offsettable_resources=False,
     ) -> None:
         """Performs a single server-to-client read of the provided data."""
         with tempfile.NamedTemporaryFile() as f_payload, tempfile.NamedTemporaryFile() as f_client_output:
@@ -469,13 +493,17 @@ class TransferIntegrationTest(unittest.TestCase):
                 config.server.resources[resource_id].source_paths.append(
                     f_payload.name
                 )
+            config.server.resources[
+                resource_id
+            ].offsettable = offsettable_resources
             config.client.transfer_actions.append(
                 config_pb2.TransferAction(
                     resource_id=resource_id,
                     file_path=f_client_output.name,
                     transfer_type=config_pb2.TransferAction.TransferType.READ_FROM_SERVER,
                     protocol_version=protocol_version,
-                    expected_status=int(expected_status),
+                    expected_status=expected_status,
+                    initial_offset=initial_offset,
                 )
             )
 
@@ -489,7 +517,11 @@ class TransferIntegrationTest(unittest.TestCase):
             self.assertEqual(exit_codes.client, 0)
             self.assertEqual(exit_codes.server, 0)
             if expected_status == status_pb2.StatusCode.OK:
-                self.assertEqual(f_client_output.read(), data)
+                bytes_output = f_client_output.read()
+                self.assertEqual(
+                    bytes_output,
+                    data[initial_offset:],
+                )
 
     def do_basic_transfer_sequence(
         self,
@@ -504,7 +536,7 @@ class TransferIntegrationTest(unittest.TestCase):
             client_file: BinaryIO
             expected_data: bytes
 
-        transfer_results: List[ReadbackSet] = []
+        transfer_results: list[ReadbackSet] = []
         for transfer in transfers:
             server_file = tempfile.NamedTemporaryFile()
             client_file = tempfile.NamedTemporaryFile()

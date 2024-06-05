@@ -55,8 +55,10 @@ class NanopbUnaryResponseClientCall : public UnaryResponseClientCall {
     return call;
   }
 
+  ~NanopbUnaryResponseClientCall() { DestroyClientCall(); }
+
  protected:
-  constexpr NanopbUnaryResponseClientCall() = default;
+  constexpr NanopbUnaryResponseClientCall() : serde_(nullptr) {}
 
   NanopbUnaryResponseClientCall(LockedEndpoint& client,
                                 uint32_t channel_id,
@@ -146,8 +148,10 @@ class NanopbStreamResponseClientCall : public StreamResponseClientCall {
     return call;
   }
 
+  ~NanopbStreamResponseClientCall() { DestroyClientCall(); }
+
  protected:
-  constexpr NanopbStreamResponseClientCall() = default;
+  constexpr NanopbStreamResponseClientCall() : serde_(nullptr) {}
 
   NanopbStreamResponseClientCall(NanopbStreamResponseClientCall&& other)
       PW_LOCKS_EXCLUDED(rpc_lock()) {
@@ -220,6 +224,8 @@ class NanopbClientReaderWriter
   using internal::Call::active;
   using internal::Call::channel_id;
 
+  using internal::ClientCall::id;
+
   // Writes a response struct. Returns the following Status codes:
   //
   //   OK - the response was successfully sent
@@ -233,17 +239,25 @@ class NanopbClientReaderWriter
         &request);
   }
 
-  // Notifies the server that no further client stream messages will be sent.
-  using internal::ClientCall::CloseClientStream;
+  // Notifies the server that the client has requested to stop communication by
+  // sending CLIENT_REQUEST_COMPLETION.
+  using internal::ClientCall::RequestCompletion;
 
   // Cancels this RPC. Closes the call locally and sends a CANCELLED error to
   // the server.
   using internal::Call::Cancel;
 
-  // Closes this RPC locally. Sends a CLIENT_STREAM_END, but no cancellation
-  // packet. Future packets for this RPC are dropped, and the client sends a
-  // FAILED_PRECONDITION error in response because the call is not active.
+  // Closes this RPC locally. Sends a CLIENT_REQUEST_COMPLETION, but no
+  // cancellation packet. Future packets for this RPC are dropped, and the
+  // client sends a FAILED_PRECONDITION error in response because the call is
+  // not active.
   using internal::ClientCall::Abandon;
+
+  // Closes this RPC locally and waits for any running callbacks to complete.
+  // Sends a CLIENT_REQUEST_COMPLETION, but no cancellation packet. Future
+  // packets for this RPC are dropped, and the client sends a
+  // FAILED_PRECONDITION error in response because the call is not active.
+  using internal::ClientCall::CloseAndWaitForCallbacks;
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
@@ -284,13 +298,17 @@ class NanopbClientReader
   using internal::Call::active;
   using internal::Call::channel_id;
 
+  using internal::ClientCall::id;
+
   // Functions for setting RPC event callbacks.
   using internal::NanopbStreamResponseClientCall<Response>::set_on_next;
   using internal::Call::set_on_error;
   using internal::StreamResponseClientCall::set_on_completed;
 
   using internal::Call::Cancel;
+  using internal::Call::RequestCompletion;
   using internal::ClientCall::Abandon;
+  using internal::ClientCall::CloseAndWaitForCallbacks;
 
  private:
   friend class internal::NanopbStreamResponseClientCall<Response>;
@@ -325,6 +343,8 @@ class NanopbClientWriter
   using internal::Call::active;
   using internal::Call::channel_id;
 
+  using internal::ClientCall::id;
+
   // Functions for setting RPC event callbacks.
   using internal::NanopbUnaryResponseClientCall<Response>::set_on_completed;
   using internal::Call::set_on_error;
@@ -335,8 +355,9 @@ class NanopbClientWriter
   }
 
   using internal::Call::Cancel;
-  using internal::Call::CloseClientStream;
+  using internal::Call::RequestCompletion;
   using internal::ClientCall::Abandon;
+  using internal::ClientCall::CloseAndWaitForCallbacks;
 
  private:
   friend class internal::NanopbUnaryResponseClientCall<Response>;
@@ -371,12 +392,15 @@ class NanopbUnaryReceiver
   using internal::Call::active;
   using internal::Call::channel_id;
 
+  using internal::ClientCall::id;
+
   // Functions for setting RPC event callbacks.
   using internal::NanopbUnaryResponseClientCall<Response>::set_on_completed;
   using internal::Call::set_on_error;
 
   using internal::Call::Cancel;
   using internal::ClientCall::Abandon;
+  using internal::ClientCall::CloseAndWaitForCallbacks;
 
  private:
   friend class internal::NanopbUnaryResponseClientCall<Response>;

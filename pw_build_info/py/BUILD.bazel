@@ -17,14 +17,17 @@ package(default_visibility = ["//visibility:public"])
 py_library(
     name = "pw_build_info",
     srcs = [
-        "pw_build_info/__init__.py",
         "pw_build_info/build_id.py",
+    ],
+    imports = ["."],
+    deps = [
+        "@python_packages_pyelftools//:pkg",
     ],
 )
 
 # This test attempts to run subprocesses directly in the source tree, which is
 # incompatible with sandboxing.
-# TODO(b/241307309): Update this test to work with bazel.
+# TODO: b/241307309 - Update this test to work with bazel.
 filegroup(
     name = "build_id_test",
     # size = "small",

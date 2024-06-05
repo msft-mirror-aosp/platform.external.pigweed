@@ -38,51 +38,51 @@ from inspect import cleandoc
 import logging
 from pathlib import Path
 import sys
+import time
 from types import ModuleType
 from typing import (
     Any,
     Collection,
-    Dict,
     Iterable,
     Iterator,
-    List,
-    Optional,
-    Union,
 )
-import socket
 
 import serial
 import IPython  # type: ignore
 
 from pw_cli import log as pw_cli_log
-from pw_console.embed import PwConsoleEmbed
-from pw_console.log_store import LogStore
-from pw_console.plugins.bandwidth_toolbar import BandwidthToolbar
-from pw_console.pyserial_wrapper import SerialWithLogging
-from pw_console.python_logging import create_temp_log_file, JsonLogFormatter
+from pw_console import embed
+from pw_console import log_store
+from pw_console.plugins import bandwidth_toolbar
+from pw_console import pyserial_wrapper
+from pw_console import python_logging
+from pw_console import socket_client
+from pw_hdlc import rpc
 from pw_rpc.console_tools.console import flattened_rpc_completions
-from pw_system.device import Device
-from pw_tokenizer.detokenize import AutoUpdatingDetokenizer
+from pw_system import device as pw_device
+from pw_system import device_tracing
+from pw_tokenizer import detokenize
 
 # Default proto imports:
 from pw_log.proto import log_pb2
 from pw_metric_proto import metric_service_pb2
 from pw_thread_protos import thread_snapshot_service_pb2
 from pw_unit_test_proto import unit_test_pb2
+from pw_file import file_pb2
+from pw_trace_protos import trace_service_pb2
+from pw_transfer import transfer_pb2
 
 _LOG = logging.getLogger('tools')
 _DEVICE_LOG = logging.getLogger('rpc_device')
 _SERIAL_DEBUG = logging.getLogger('pw_console.serial_debug_logger')
 _ROOT_LOG = logging.getLogger()
 
-PW_RPC_MAX_PACKET_SIZE = 256
-SOCKET_SERVER = 'localhost'
-SOCKET_PORT = 33000
 MKFIFO_MODE = 0o666
 
 
-def _parse_args():
-    """Parses and returns the command line arguments."""
+def get_parser() -> argparse.ArgumentParser:
+    """Gets argument parser with console arguments."""
+
     parser = argparse.ArgumentParser(
         prog="python -m pw_system.console", description=__doc__
     )
@@ -157,8 +157,13 @@ def _parse_args():
         '-s',
         '--socket-addr',
         type=str,
-        help='use socket to connect to server, type default for\
-            localhost:33000, or manually input the server address:port',
+        help=(
+            'Socket address used to connect to server. Type "default" to use '
+            'localhost:33000, pass the server address and port as '
+            'address:port, or prefix the path to a forwarded socket with '
+            f'"{socket_client.SocketClient.FILE_SOCKET_SERVER}:" as '
+            f'{socket_client.SocketClient.FILE_SOCKET_SERVER}:path_to_file.'
+        ),
     )
     parser.add_argument(
         "--token-databases",
@@ -179,6 +184,13 @@ def _parse_args():
         help='glob pattern for .proto files.',
     )
     parser.add_argument(
+        '-f',
+        '--ticks_per_second',
+        type=int,
+        dest='ticks_per_second',
+        help=('The clock rate of the trace events.'),
+    )
+    parser.add_argument(
         '-v',
         '--verbose',
         action='store_true',
@@ -191,22 +203,36 @@ def _parse_args():
         help='Use IPython instead of pw_console.',
     )
 
-    # TODO(b/248257406) Use argparse.BooleanOptionalAction when Python 3.8 is
-    # no longer supported.
     parser.add_argument(
         '--rpc-logging',
-        action='store_true',
+        action=argparse.BooleanOptionalAction,
         default=True,
         help='Use pw_rpc based logging.',
     )
 
     parser.add_argument(
-        '--no-rpc-logging',
-        action='store_false',
-        dest='rpc_logging',
-        help="Don't use pw_rpc based logging.",
+        '--hdlc-encoding',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Use HDLC encoding on transfer interfaces.',
     )
 
+    parser.add_argument(
+        '--channel-id',
+        type=int,
+        default=rpc.DEFAULT_CHANNEL_ID,
+        help="Channel ID used in RPC communications.",
+    )
+
+    return parser
+
+
+def _parse_args(args: argparse.Namespace | None = None):
+    """Parses and returns the command line arguments."""
+    if args is not None:
+        return args
+
+    parser = get_parser()
     return parser.parse_args()
 
 
@@ -217,16 +243,16 @@ def _expand_globs(globs: Iterable[str]) -> Iterator[Path]:
 
 
 def _start_python_terminal(  # pylint: disable=too-many-arguments
-    device: Device,
-    device_log_store: LogStore,
-    root_log_store: LogStore,
-    serial_debug_log_store: LogStore,
+    device: pw_device.Device,
+    device_log_store: log_store.LogStore,
+    root_log_store: log_store.LogStore,
+    serial_debug_log_store: log_store.LogStore,
     log_file: str,
     host_logfile: str,
     device_logfile: str,
     json_logfile: str,
     serial_debug: bool = False,
-    config_file_path: Optional[Path] = None,
+    config_file_path: Path | None = None,
     use_ipython: bool = False,
 ) -> None:
     """Starts an interactive Python terminal with preset variables."""
@@ -269,22 +295,24 @@ def _start_python_terminal(  # pylint: disable=too-many-arguments
 
     if use_ipython:
         print(welcome_message)
-        IPython.terminal.embed.InteractiveShellEmbed().mainloop(
-            local_ns=local_variables, module=argparse.Namespace()
+        IPython.start_ipython(
+            argv=[],
+            display_banner=False,
+            user_ns=local_variables,
         )
         return
 
     client_info = device.info()
     completions = flattened_rpc_completions([client_info])
 
-    log_windows: Dict[str, Union[List[logging.Logger], LogStore]] = {
+    log_windows: dict[str, list[logging.Logger] | log_store.LogStore] = {
         'Device Logs': device_log_store,
         'Host Logs': root_log_store,
     }
     if serial_debug:
         log_windows['Serial Debug'] = serial_debug_log_store
 
-    interactive_console = PwConsoleEmbed(
+    interactive_console = embed.PwConsoleEmbed(
         global_vars=local_variables,
         local_vars=None,
         loggers=log_windows,
@@ -294,7 +322,9 @@ def _start_python_terminal(  # pylint: disable=too-many-arguments
     )
     interactive_console.add_sentence_completer(completions)
     if serial_debug:
-        interactive_console.add_bottom_toolbar(BandwidthToolbar())
+        interactive_console.add_bottom_toolbar(
+            bandwidth_toolbar.BandwidthToolbar()
+        )
 
     # Setup Python logger propagation
     interactive_console.setup_python_logging(
@@ -307,32 +337,12 @@ def _start_python_terminal(  # pylint: disable=too-many-arguments
     interactive_console.embed()
 
 
-class SocketClientImpl:
-    def __init__(self, config: str):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        socket_server = ''
-        socket_port = 0
-
-        if config == 'default':
-            socket_server = SOCKET_SERVER
-            socket_port = SOCKET_PORT
-        else:
-            socket_server, socket_port_str = config.split(':')
-            socket_port = int(socket_port_str)
-        self.socket.connect((socket_server, socket_port))
-
-    def write(self, data: bytes):
-        self.socket.sendall(data)
-
-    def read(self, num_bytes: int = PW_RPC_MAX_PACKET_SIZE):
-        return self.socket.recv(num_bytes)
-
-
 # pylint: disable=too-many-arguments,too-many-locals
 def console(
     device: str,
     baudrate: int,
     proto_globs: Collection[str],
+    ticks_per_second: int | None,
     token_databases: Collection[Path],
     socket_addr: str,
     logfile: str,
@@ -341,12 +351,14 @@ def console(
     json_logfile: str,
     output: Any,
     serial_debug: bool = False,
-    config_file: Optional[Path] = None,
+    config_file: Path | None = None,
     verbose: bool = False,
-    compiled_protos: Optional[List[ModuleType]] = None,
+    compiled_protos: list[ModuleType] | None = None,
     merge_device_and_host_logs: bool = False,
     rpc_logging: bool = True,
     use_ipython: bool = False,
+    channel_id: int = rpc.DEFAULT_CHANNEL_ID,
+    hdlc_encoding: bool = True,
 ) -> int:
     """Starts an interactive RPC console for HDLC."""
     # argparse.FileType doesn't correctly handle '-' for binary files.
@@ -355,13 +367,13 @@ def console(
 
     # Don't send device logs to the root logger.
     _DEVICE_LOG.propagate = False
-    # Create pw_console LogStore handlers. These are the data source for log
-    # messages to be displayed in the UI.
-    device_log_store = LogStore()
-    root_log_store = LogStore()
-    serial_debug_log_store = LogStore()
-    # Attach the LogStores as handlers for each log window we want to show.
-    # This should be done before device initialization to capture early
+    # Create pw_console log_store.LogStore handlers. These are the data source
+    # for log messages to be displayed in the UI.
+    device_log_store = log_store.LogStore()
+    root_log_store = log_store.LogStore()
+    serial_debug_log_store = log_store.LogStore()
+    # Attach the log_store.LogStores as handlers for each log window we want to
+    # show. This should be done before device initialization to capture early
     # messages.
     _DEVICE_LOG.addHandler(device_log_store)
     _ROOT_LOG.addHandler(root_log_store)
@@ -370,7 +382,7 @@ def console(
     if not logfile:
         # Create a temp logfile to prevent logs from appearing over stdout. This
         # would corrupt the prompt toolkit UI.
-        logfile = create_temp_log_file()
+        logfile = python_logging.create_temp_log_file()
 
     log_level = logging.DEBUG if verbose else logging.INFO
 
@@ -413,15 +425,22 @@ def console(
     if json_logfile:
         json_filehandler = logging.FileHandler(json_logfile, encoding='utf-8')
         json_filehandler.setLevel(log_level)
-        json_filehandler.setFormatter(JsonLogFormatter())
+        json_filehandler.setFormatter(python_logging.JsonLogFormatter())
         _DEVICE_LOG.addHandler(json_filehandler)
 
     detokenizer = None
     if token_databases:
-        detokenizer = AutoUpdatingDetokenizer(*token_databases)
+        token_databases_with_domains = [] * len(token_databases)
+        for token_database in token_databases:
+            # Load all domains from token database.
+            token_databases_with_domains.append(str(token_database) + "#.*")
+
+        detokenizer = detokenize.AutoUpdatingDetokenizer(
+            *token_databases_with_domains
+        )
         detokenizer.show_errors = True
 
-    protos: List[Union[ModuleType, Path]] = list(_expand_globs(proto_globs))
+    protos: list[ModuleType | Path] = list(_expand_globs(proto_globs))
 
     if compiled_protos is None:
         compiled_protos = []
@@ -435,6 +454,9 @@ def console(
     protos.extend(compiled_protos)
     protos.append(metric_service_pb2)
     protos.append(thread_snapshot_service_pb2)
+    protos.append(file_pb2)
+    protos.append(trace_service_pb2)
+    protos.append(transfer_pb2)
 
     if not protos:
         _LOG.critical(
@@ -449,12 +471,13 @@ def console(
         ', '.join(proto_globs),
     )
 
-    serial_impl = serial.Serial
-    if serial_debug:
-        serial_impl = SerialWithLogging
-
     timestamp_decoder = None
     if socket_addr is None:
+        serial_impl = (
+            pyserial_wrapper.SerialWithLogging
+            if serial_debug
+            else serial.Serial
+        )
         serial_device = serial_impl(
             device,
             baudrate,
@@ -464,7 +487,7 @@ def console(
             # https://pythonhosted.org/pyserial/pyserial_api.html#serial.Serial
             timeout=0.1,
         )
-        read = lambda: serial_device.read(8192)
+        reader = rpc.SerialReader(serial_device, 8192)
         write = serial_device.write
 
         # Overwrite decoder for serial device.
@@ -474,47 +497,74 @@ def console(
 
         timestamp_decoder = milliseconds_to_string
     else:
+        socket_impl = (
+            socket_client.SocketClientWithLogging
+            if serial_debug
+            else socket_client.SocketClient
+        )
+
+        def disconnect_handler(
+            socket_device: socket_client.SocketClient,
+        ) -> None:
+            """Attempts to reconnect on disconnected socket."""
+            _LOG.error('Socket disconnected. Will retry to connect.')
+            while True:
+                try:
+                    socket_device.connect()
+                    break
+                except:  # pylint: disable=bare-except
+                    # Ignore errors and retry to reconnect.
+                    time.sleep(1)
+            _LOG.info('Successfully reconnected')
+
         try:
-            socket_device = SocketClientImpl(socket_addr)
-            read = socket_device.read
+            socket_device = socket_impl(
+                socket_addr, on_disconnect=disconnect_handler
+            )
+            reader = rpc.SelectableReader(socket_device)
             write = socket_device.write
         except ValueError:
             _LOG.exception('Failed to initialize socket at %s', socket_addr)
             return 1
 
-    device_client = Device(
-        1,
-        read,
-        write,
-        protos,
-        detokenizer,
-        timestamp_decoder=timestamp_decoder,
-        rpc_timeout_s=5,
-        use_rpc_logging=rpc_logging,
-    )
-
-    _start_python_terminal(
-        device=device_client,
-        device_log_store=device_log_store,
-        root_log_store=root_log_store,
-        serial_debug_log_store=serial_debug_log_store,
-        log_file=logfile,
-        host_logfile=host_logfile,
-        device_logfile=device_logfile,
-        json_logfile=json_logfile,
-        serial_debug=serial_debug,
-        config_file_path=config_file,
-        use_ipython=use_ipython,
-    )
+    with reader:
+        device_client = device_tracing.DeviceWithTracing(
+            channel_id,
+            reader,
+            write,
+            proto_library=protos,
+            detokenizer=detokenizer,
+            timestamp_decoder=timestamp_decoder,
+            rpc_timeout_s=5,
+            use_rpc_logging=rpc_logging,
+            use_hdlc_encoding=hdlc_encoding,
+            ticks_per_second=ticks_per_second,
+        )
+        with device_client:
+            _start_python_terminal(
+                device=device_client,
+                device_log_store=device_log_store,
+                root_log_store=root_log_store,
+                serial_debug_log_store=serial_debug_log_store,
+                log_file=logfile,
+                host_logfile=host_logfile,
+                device_logfile=device_logfile,
+                json_logfile=json_logfile,
+                serial_debug=serial_debug,
+                config_file_path=config_file,
+                use_ipython=use_ipython,
+            )
     return 0
 
 
-def main() -> int:
-    return console(**vars(_parse_args()))
+def main(args: argparse.Namespace | None = None) -> int:
+    return console(**vars(_parse_args(args)))
 
 
-def main_with_compiled_protos(compiled_protos):
-    return console(**vars(_parse_args()), compiled_protos=compiled_protos)
+def main_with_compiled_protos(
+    compiled_protos, args: argparse.Namespace | None = None
+):
+    return console(**vars(_parse_args(args)), compiled_protos=compiled_protos)
 
 
 if __name__ == '__main__':

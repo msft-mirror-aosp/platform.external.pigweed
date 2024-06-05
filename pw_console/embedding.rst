@@ -3,6 +3,8 @@
 ===============
 Embedding Guide
 ===============
+.. pigweed-module-subpage::
+   :name: pw_console
 
 -------------
 Using embed()
@@ -75,30 +77,31 @@ following code will create a log message with two custom columns titled
 
 .. code-block:: python
 
-  import logging
+   import logging
 
-  LOG = logging.getLogger('log_source_1')
+   LOG = logging.getLogger('log_source_1')
 
-  LOG.info(
-      'Hello there!',
-      extra={
-          'extra_metadata_fields': {
-              'module': 'cool',
-              'timestamp': 1.2345,
-          }
-      }
-  )
-
+   LOG.info(
+       'Hello there!',
+       extra={
+           'extra_metadata_fields': {
+               'module': 'cool',
+               'timestamp': 1.2345,
+           }
+       }
+   )
 
 ---------------------
 Debugging Serial Data
 ---------------------
 ``pw_console`` is often used to communicate with devices using `pySerial
-<https://pythonhosted.org/pyserial/>`_ and it may be necessary to monitor the
-raw data flowing over the wire to help with debugging. ``pw_console`` provides a
-simple wrapper for a pySerial instances that log data for each read and write
-call.
+<https://pythonhosted.org/pyserial/>`_ or
+``pw_console.socket_client.SocketClient``. To monitor the raw data flowing over
+the wire, ``pw_console`` provides simple wrappers for pySerial and socket client
+instances that log data for each read and write call.
 
+Logging data with PySerial
+==========================
 .. code-block:: python
 
    # Instead of 'import serial' use this import:
@@ -106,7 +109,28 @@ call.
 
    serial_device = SerialWithLogging('/dev/ttyUSB0', 115200, timeout=1)
 
-With the above example each ``serial_device.read`` and ``write`` call will
+Logging data with sockets
+=========================
+.. code-block:: python
+
+   from pw_console.socket_client import SocketClientWithLogging
+
+   # Name resolution with explicit port
+   serial_device = SocketClientWithLogging('localhost:1234')
+   # Name resolution with default port.
+   serial_device = SocketClientWithLogging('pigweed.dev')
+   # Link-local IPv6 address with explicit port.
+   serial_device = SocketClientWithLogging('[fe80::100%enp1s0]:1234')
+   # Link-local IPv6 address with default port.
+   serial_device = SocketClientWithLogging('[fe80::100%enp1s0]')
+   # IPv4 address with port.
+   serial_device = SocketClientWithLogging('1.2.3.4:5678')
+
+.. tip::
+   The ``SocketClient`` takes an optional callback called when a disconnect is
+   detected. The ``pw_system`` console provides an example reconnect routine.
+
+With the above examples each ``serial_device.read`` and ``write`` call will
 create a log message to the ``pw_console.serial_debug_logger`` Python
 logger. This logger can then be included as a log window pane in the
 ``PwConsoleEmbed()`` call.

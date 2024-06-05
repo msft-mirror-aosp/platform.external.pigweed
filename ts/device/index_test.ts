@@ -13,18 +13,25 @@
 // the License.
 
 /* eslint-env browser */
-import {SerialMock} from '../transport/serial_mock';
-import {Device} from "./"
-import {ProtoCollection} from 'pigweedjs/protos/collection';
-import {WebSerialTransport} from '../transport/web_serial_transport';
-import {Serial} from 'pigweedjs/types/serial';
-import {Message} from 'google-protobuf';
-import {RpcPacket, PacketType} from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
-import {Method, ServerStreamingMethodStub} from 'pigweedjs/pw_rpc';
-import {Status} from 'pigweedjs/pw_status';
+import { SerialMock } from '../transport/serial_mock';
+import { Device } from './';
+import { ProtoCollection } from 'pigweedjs/protos/collection';
+import { WebSerialTransport } from '../transport/web_serial_transport';
+import { Serial } from 'pigweedjs/types/serial';
+import { Message } from 'google-protobuf';
 import {
-  Response,
-} from 'pigweedjs/protos/pw_rpc/ts/test_pb';
+  RpcPacket,
+  PacketType,
+} from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
+import {
+  Method,
+  ServerStreamingMethodStub,
+  UnaryMethodStub,
+} from 'pigweedjs/pw_rpc';
+import { Status } from 'pigweedjs/pw_status';
+import { Response } from 'pigweedjs/protos/pw_rpc/ts/test_pb';
+
+import { EchoMessage } from 'pigweedjs/protos/pw_rpc/echo_pb';
 
 describe('WebSerialTransport', () => {
   let device: Device;
@@ -40,16 +47,18 @@ describe('WebSerialTransport', () => {
     channelId: number,
     method: Method,
     status: Status,
-    response?: Message
+    callId: number,
+    response?: Message,
   ) {
     const packet = new RpcPacket();
     packet.setType(PacketType.RESPONSE);
     packet.setChannelId(channelId);
     packet.setServiceId(method.service.id);
     packet.setMethodId(method.id);
+    packet.setCallId(callId);
     packet.setStatus(status);
     if (response === undefined) {
-      packet.setPayload(new Uint8Array());
+      packet.setPayload(new Uint8Array(0));
     } else {
       packet.setPayload(response.serializeBinary());
     }
@@ -60,13 +69,15 @@ describe('WebSerialTransport', () => {
     channelId: number,
     method: Method,
     response: Message,
-    status: Status = Status.OK
+    callId: number,
+    status: Status = Status.OK,
   ) {
     const packet = new RpcPacket();
     packet.setType(PacketType.SERVER_STREAM);
     packet.setChannelId(channelId);
     packet.setServiceId(method.service.id);
     packet.setMethodId(method.id);
+    packet.setCallId(callId);
     packet.setPayload(response.serializeBinary());
     packet.setStatus(status);
     return packet.serializeBinary();
@@ -74,7 +85,10 @@ describe('WebSerialTransport', () => {
 
   beforeEach(() => {
     serialMock = new SerialMock();
-    device = new Device(new ProtoCollection(), new WebSerialTransport(serialMock as Serial));
+    device = new Device(
+      new ProtoCollection(),
+      new WebSerialTransport(serialMock as Serial),
+    );
   });
 
   it('has rpcs defined', () => {
@@ -83,21 +97,36 @@ describe('WebSerialTransport', () => {
   });
 
   it('has method arguments data', () => {
-    expect(device.getMethodArguments("pw.rpc.EchoService.Echo")).toStrictEqual(["msg"]);
-    expect(device.getMethodArguments("pw.test2.Alpha.Unary")).toStrictEqual(['magic_number']);
+    expect(device.getMethodArguments('pw.rpc.EchoService.Echo')).toStrictEqual([
+      'msg',
+    ]);
+    expect(device.getMethodArguments('pw.test2.Alpha.Unary')).toStrictEqual([
+      'magic_number',
+    ]);
   });
 
   it('unary rpc sends request to serial', async () => {
-    const helloResponse = new Uint8Array([
-      126, 165, 3, 42, 7, 10, 5, 104,
-      101, 108, 108, 111, 8, 1, 16, 1,
-      29, 82, 208, 251, 20, 37, 233, 14,
-      71, 139, 109, 127, 108, 165, 126]);
-
+    const methodStub = device.client
+      .channel()!
+      .methodStub('pw.rpc.EchoService.Echo')! as UnaryMethodStub;
+    const responseMsg = new EchoMessage();
+    responseMsg.setMsg('hello');
     await device.connect();
-    serialMock.dataFromDevice(helloResponse);
-    const [status, response] = await device.rpcs.pw.rpc.EchoService.Echo("hello");
-    expect(response.getMsg()).toBe("hello");
+    const nextCallId = methodStub.rpcs.nextCallId;
+    setTimeout(() => {
+      device.client.processPacket(
+        generateResponsePacket(
+          1,
+          methodStub.method,
+          Status.OK,
+          nextCallId,
+          responseMsg,
+        ),
+      );
+    }, 10);
+    const [status, response] =
+      await device.rpcs.pw.rpc.EchoService.Echo('hello');
+    expect(response.getMsg()).toBe('hello');
     expect(status).toBe(0);
   });
 
@@ -108,16 +137,33 @@ describe('WebSerialTransport', () => {
     const serverStreaming = device.client
       .channel()
       ?.methodStub(
-        'pw.rpc.test1.TheTestService.SomeServerStreaming'
-      )! as ServerStreamingMethodStub;
+        'pw.rpc.test1.TheTestService.SomeServerStreaming',
+      ) as ServerStreamingMethodStub;
+    const nextCallId = serverStreaming.rpcs.nextCallId;
     const onNext = jest.fn();
     const onCompleted = jest.fn();
     const onError = jest.fn();
 
-    device.rpcs.pw.rpc.test1.TheTestService.SomeServerStreaming(4, onNext, onCompleted, onError);
-    device.client.processPacket(generateStreamingPacket(1, serverStreaming.method, response1));
-    device.client.processPacket(generateStreamingPacket(1, serverStreaming.method, response2));
-    device.client.processPacket(generateResponsePacket(1, serverStreaming.method, Status.ABORTED));
+    device.rpcs.pw.rpc.test1.TheTestService.SomeServerStreaming(
+      4,
+      onNext,
+      onCompleted,
+      onError,
+    );
+    device.client.processPacket(
+      generateStreamingPacket(1, serverStreaming.method, response1, nextCallId),
+    );
+    device.client.processPacket(
+      generateStreamingPacket(1, serverStreaming.method, response2, nextCallId),
+    );
+    device.client.processPacket(
+      generateResponsePacket(
+        1,
+        serverStreaming.method,
+        Status.ABORTED,
+        nextCallId,
+      ),
+    );
 
     expect(onNext).toBeCalledWith(response1);
     expect(onNext).toBeCalledWith(response2);

@@ -20,13 +20,13 @@
 #include <string>
 #include <string_view>
 
-#include "gtest/gtest.h"
 #include "pw_random/xor_shift.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
 #include "pw_string/string_builder.h"
 #include "pw_transfer/transfer.h"
 #include "pw_transfer_private/filename_generator.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::transfer {
 
@@ -85,7 +85,7 @@ class AtomicFileTransferHandlerTest : public ::testing::Test {
   static constexpr auto temp_file_content = "Temp File Success.";
   static constexpr auto test_data_content = "Test File Success.";
 
-  bool WriteContentFile(std::string_view path, std::string_view value) {
+  bool WriteContentFile(std::string path, std::string value) {
     std::ofstream file(path);
     if (!file.is_open()) {
       return false;
@@ -94,7 +94,7 @@ class AtomicFileTransferHandlerTest : public ::testing::Test {
     return true;
   }
 
-  Result<std::string> ReadFile(std::string_view path) {
+  Result<std::string> ReadFile(std::string path) {
     std::ifstream file(path);
     if (!file.is_open()) {
       return Status::NotFound();
@@ -104,7 +104,7 @@ class AtomicFileTransferHandlerTest : public ::testing::Test {
     return return_value;
   }
 
-  void ClearContent(std::string_view path) {
+  void ClearContent(std::string path) {
     std::ofstream ofs(path, std::ofstream::out | std::ofstream::trunc);
   }
 

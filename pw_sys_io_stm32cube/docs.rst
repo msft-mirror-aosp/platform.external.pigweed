@@ -13,11 +13,11 @@ Setup
 =====
 This module requires relatively minimal setup:
 
-  1. Write code against the ``pw_sys_io`` facade.
-  2. Specify the ``dir_pw_sys_io_backend`` GN global variable to point to this
-     backend.
-  3. Call ``pw_sys_io_Init()`` during init so the UART is properly initialized
-     and configured.
+1. Write code against the ``pw_sys_io`` facade.
+2. Specify the ``dir_pw_sys_io_backend`` GN global variable to point to this
+   backend.
+3. Call ``pw_sys_io_Init()`` during init so the UART is properly initialized
+   and configured.
 
 For devices other than the STM32F429I-DISC1, this module will need to be
 configured to use the appropriate GPIO pins and USART peripheral.
@@ -63,6 +63,11 @@ more details.
   The alternate function index to use for USART reception within the port set by
   ``PW_SYS_IO_STM32CUBE_GPIO_PORT``.
 
+.. c:macro:: PW_SYS_IO_STM32CUBE_GPIO_REMAP
+
+  Remap alternate function for USART reception (either ENABLE or DISABLE). It
+  only applies to the stm32f1xx family.
+
 .. c:macro:: PW_SYS_IO_STM32CUBE_USART_PREFIX
 
   The peripheral name prefix (either UART or USART) for the peripheral selected
@@ -83,10 +88,10 @@ Sample connection diagram
 
 .. code-block:: text
 
-  --USB Serial--+    +-----STM32F429 MCU-----
-                |    |
-             TX o--->o PA10/USART1_RX
-                |    |
-             RX o<---o PA9/USART1_TX
-                |    |
-  --------------+    +-----------------------
+   --USB Serial--+    +-----STM32F429 MCU-----
+                 |    |
+              TX o--->o PA10/USART1_RX
+                 |    |
+              RX o<---o PA9/USART1_TX
+                 |    |
+   --------------+    +-----------------------

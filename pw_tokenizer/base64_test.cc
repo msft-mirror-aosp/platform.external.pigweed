@@ -17,8 +17,8 @@
 #include <cstring>
 #include <string_view>
 
-#include "gtest/gtest.h"
 #include "pw_span/span.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::tokenizer {
 namespace {
@@ -97,7 +97,7 @@ TEST_F(PrefixedBase64, Encode_NoRoomForNullAfterMessage_OnlyNullTerminates) {
 
 TEST_F(PrefixedBase64, Encode_InlineString) {
   for (auto& [binary, base64] : kTestData) {
-    EXPECT_EQ(base64, PrefixedBase64Encode(binary));
+    EXPECT_EQ(base64, PrefixedBase64Encode<64>(binary));
   }
 }
 

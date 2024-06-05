@@ -58,6 +58,7 @@ pw_add_library(pw_string.format STATIC
     pw_preprocessor
     pw_span
     pw_status
+    pw_string.string
   SOURCES
     format.cc
 )
@@ -70,7 +71,6 @@ pw_add_library(pw_string.string INTERFACE
     public
   PUBLIC_DEPS
     pw_assert
-    pw_polyfill
 )
 
 pw_add_library(pw_string.to_string STATIC
@@ -80,17 +80,20 @@ pw_add_library(pw_string.to_string STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_result
     pw_string.config
     pw_string.format
     pw_string.util
     pw_status
+    pw_third_party.fuchsia.stdcompat
   SOURCES
     type_to_string.cc
 )
 
-pw_add_library(pw_string.util STATIC
+pw_add_library(pw_string.util INTERFACE
   HEADERS
     public/pw_string/util.h
+    public/pw_string/internal/length.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -99,8 +102,6 @@ pw_add_library(pw_string.util STATIC
     pw_span
     pw_status
     pw_string.string
-  SOURCES
-    public/pw_string/internal/length.h
 )
 
 pw_add_test(pw_string.format_test
@@ -164,7 +165,3 @@ pw_add_test(pw_string.util_test
     modules
     pw_string
 )
-
-if(Zephyr_FOUND AND CONFIG_PIGWEED_STRING)
-  zephyr_link_libraries(pw_string)
-endif()

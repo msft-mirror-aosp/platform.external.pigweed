@@ -13,6 +13,8 @@
 # the License.
 """LogPane class."""
 
+from __future__ import annotations
+
 import functools
 import logging
 import re
@@ -20,11 +22,7 @@ import time
 from typing import (
     Any,
     Callable,
-    List,
-    Optional,
     TYPE_CHECKING,
-    Tuple,
-    Union,
 )
 
 from prompt_toolkit.application.current import get_app
@@ -89,7 +87,7 @@ _LOG = logging.getLogger(__package__)
 class LogContentControl(UIControl):
     """LogPane prompt_toolkit UIControl for displaying LogContainer lines."""
 
-    def __init__(self, log_pane: 'LogPane') -> None:
+    def __init__(self, log_pane: LogPane) -> None:
         # pylint: disable=too-many-locals
         self.log_pane = log_pane
         self.log_view = log_pane.log_view
@@ -98,8 +96,8 @@ class LogContentControl(UIControl):
         self.visual_select_mode_drag_start = False
         self.visual_select_mode_drag_stop = False
 
-        self.uicontent: Optional[UIContent] = None
-        self.lines: List[StyleAndTextTuples] = []
+        self.uicontent: UIContent | None = None
+        self.lines: list[StyleAndTextTuples] = []
 
         # Key bindings.
         key_bindings = KeyBindings()
@@ -183,6 +181,11 @@ class LogContentControl(UIControl):
             """Select next log line."""
             self.log_view.visual_select_down()
 
+        @register('log-pane.visual-select-all', key_bindings)
+        def _select_all_logs(_event: KeyPressEvent) -> None:
+            """Select all log lines."""
+            self.log_pane.log_view.visual_select_all()
+
         @register('log-pane.scroll-page-up', key_bindings)
         def _pageup(_event: KeyPressEvent) -> None:
             """Scroll the logs up by one page."""
@@ -213,11 +216,6 @@ class LogContentControl(UIControl):
             """Previous search match."""
             self.log_view.search_backwards()
 
-        @register('log-pane.visual-select-all', key_bindings)
-        def _select_all_logs(_event: KeyPressEvent) -> None:
-            """Clear search."""
-            self.log_pane.log_view.visual_select_all()
-
         @register('log-pane.deselect-cancel-search', key_bindings)
         def _clear_search_and_selection(_event: KeyPressEvent) -> None:
             """Clear selection or search."""
@@ -242,7 +240,7 @@ class LogContentControl(UIControl):
     def is_focusable(self) -> bool:
         return True
 
-    def get_key_bindings(self) -> Optional[KeyBindingsBase]:
+    def get_key_bindings(self) -> KeyBindingsBase | None:
         return self.key_bindings
 
     def preferred_width(self, max_available_width: int) -> int:
@@ -256,12 +254,12 @@ class LogContentControl(UIControl):
         max_available_height: int,
         wrap_lines: bool,
         get_line_prefix,
-    ) -> Optional[int]:
+    ) -> int | None:
         """Return the preferred height for the log lines."""
         content = self.create_content(width, None)
         return content.line_count
 
-    def create_content(self, width: int, height: Optional[int]) -> UIContent:
+    def create_content(self, width: int, height: int | None) -> UIContent:
         # Update lines to render
         self.lines = self.log_view.render_content()
 
@@ -359,7 +357,7 @@ class LogPaneWebsocketDialog(ConditionalContainer):
     # Height of the dialog box contens in lines of text.
     DIALOG_HEIGHT = 2
 
-    def __init__(self, log_pane: 'LogPane'):
+    def __init__(self, log_pane: LogPane):
         self.log_pane = log_pane
 
         self._last_action_message: str = ''
@@ -424,10 +422,11 @@ class LogPaneWebsocketDialog(ConditionalContainer):
         self._last_action_message = text
 
     def copy_url_to_clipboard(self) -> None:
-        self.log_pane.application.application.clipboard.set_text(
+        result_message = self.log_pane.application.set_system_clipboard(
             self.log_pane.log_view.get_web_socket_url()
         )
-        self._set_action_message('Copied!')
+        if result_message:
+            self._set_action_message(result_message)
 
     def get_message_fragments(self):
         """Return FormattedText with the last action message."""
@@ -517,7 +516,7 @@ class LogPane(WindowPane):
         self,
         application: Any,
         pane_title: str = 'Logs',
-        log_store: Optional[LogStore] = None,
+        log_store: LogStore | None = None,
     ):
         super().__init__(application, pane_title)
 
@@ -791,14 +790,14 @@ class LogPane(WindowPane):
             self.saveas_dialog_active = False
             self.websocket_dialog_active = True
 
-    def get_all_key_bindings(self) -> List:
+    def get_all_key_bindings(self) -> list:
         """Return all keybinds for this pane."""
         # Return log content control keybindings
         return [self.log_content_control.get_key_bindings()]
 
     def get_window_menu_options(
         self,
-    ) -> List[Tuple[str, Union[Callable, None]]]:
+    ) -> list[tuple[str, Callable | None]]:
         """Return all menu options for the log pane."""
 
         options = [
@@ -898,7 +897,7 @@ class LogPane(WindowPane):
         # Trigger any existing log messages to be added to the view.
         self.log_view.new_logs_arrived()
 
-    def create_duplicate(self) -> 'LogPane':
+    def create_duplicate(self) -> LogPane:
         """Create a duplicate of this LogView."""
         new_pane = LogPane(self.application, pane_title=self.pane_title())
         # Set the log_store
@@ -924,8 +923,8 @@ class LogPane(WindowPane):
 
     def add_log_handler(
         self,
-        logger: Union[str, logging.Logger],
-        level_name: Optional[str] = None,
+        logger: str | logging.Logger,
+        level_name: str | None = None,
     ) -> None:
         """Add a log handlers to this LogPane."""
 

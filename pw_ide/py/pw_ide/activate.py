@@ -54,6 +54,8 @@ Aside from importing it, this script can be used in three ways:
 """
 # pylint: enable=line-too-long
 
+from __future__ import annotations
+
 from abc import abstractmethod, ABC
 import argparse
 from collections import defaultdict
@@ -64,18 +66,14 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
-from typing import cast, Dict, Optional
+from typing import cast
 
-# This expects this file to be in the Python module. If it ever moves
-# (e.g. to the root of the repository), this will need to change.
 _PW_PROJECT_PATH = Path(
-    os.environ.get(
-        'PW_PROJECT_ROOT', os.environ.get('PW_ROOT', Path(__file__).parents[3])
-    )
+    os.environ.get('PW_PROJECT_ROOT', os.environ.get('PW_ROOT', os.getcwd()))
 )
 
 
-def assumed_environment_root() -> Optional[Path]:
+def assumed_environment_root() -> Path | None:
     """Infer the path to the Pigweed environment directory.
 
     First we look at the environment variable that should contain the path if
@@ -146,20 +144,12 @@ def _sanitize_path(
     user_home = Path.home().resolve()
     resolved_path = Path(path).resolve()
 
-    # TODO(b/248257406) Remove once we drop support for Python 3.8.
-    def is_relative_to(path: Path, other: Path) -> bool:
-        try:
-            path.relative_to(other)
-            return True
-        except ValueError:
-            return False
-
-    if is_relative_to(resolved_path, project_root):
+    if resolved_path.is_relative_to(project_root):
         return f'{project_root_prefix}/' + str(
             resolved_path.relative_to(project_root)
         )
 
-    if is_relative_to(resolved_path, user_home):
+    if resolved_path.is_relative_to(user_home):
         return f'{user_home_prefix}/' + str(
             resolved_path.relative_to(user_home)
         )
@@ -182,7 +172,7 @@ class ShellModifier(ABC):
 
     def __init__(
         self,
-        env: Optional[Dict[str, str]] = None,
+        env: dict[str, str] | None = None,
         env_only: bool = False,
         path_var: str = '$PATH',
         project_root: str = '.',
@@ -200,7 +190,7 @@ class ShellModifier(ABC):
         # So it contains the complete new environment after modifications.
         # If no existing environment is provided, this is identical to env_mod.
         env = env if env is not None else default_env_mod.copy()
-        self.env: Dict[str, str] = defaultdict(str, env)
+        self.env: dict[str, str] = defaultdict(str, env)
 
         # Will contain the side effects, i.e. commands executed in the shell to
         # modify its environment.
@@ -224,9 +214,9 @@ class ShellModifier(ABC):
 
     def modify_env(
         self,
-        config_file_path: Optional[Path] = _DEFAULT_CONFIG_FILE_PATH,
+        config_file_path: Path | None = _DEFAULT_CONFIG_FILE_PATH,
         sanitize: bool = False,
-    ) -> 'ShellModifier':
+    ) -> ShellModifier:
         """Modify the current shell state per the actions.json file provided."""
         json_file_options = {}
 
@@ -458,9 +448,15 @@ def main() -> int:
         return 0
 
     if args.exec is not None:
+        # Ensure that the command is always dequoted.
+        # When executed directly from the shell, this is already done by
+        # default. But in other contexts, the command may be passed more
+        # literally with whitespace and quotes, which won't work.
+        exec_cmd = args.exec.strip(" '")
+
         # We're executing a command in a subprocess with the modified env.
         return subprocess.run(
-            args.exec, env=modified_env.env, shell=True
+            exec_cmd, env=modified_env.env, shell=True
         ).returncode
 
     # If we got here, we're trying to modify the current shell's env.

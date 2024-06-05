@@ -21,6 +21,7 @@
 #include "pw_rpc/internal/call.h"
 #include "pw_rpc/internal/channel.h"
 #include "pw_rpc/internal/endpoint.h"
+#include "pw_rpc/internal/grpc.h"
 #include "pw_rpc/internal/lock.h"
 #include "pw_rpc/internal/method.h"
 #include "pw_rpc/internal/method_info.h"
@@ -99,6 +100,11 @@ class Server : public internal::Endpoint {
 
  private:
   friend class internal::Call;
+  friend class ServerTestHelper;
+
+  // Give gRPC integration access to FindMethod and internal::Packet version of
+  // ProcessPacket
+  friend class pw::grpc::PwRpcHandler;
 
   // Give call classes access to OpenCall.
   friend class RawServerReaderWriter;
@@ -167,9 +173,25 @@ class Server : public internal::Endpoint {
     return call;
   }
 
-  std::tuple<Service*, const internal::Method*> FindMethod(
-      const internal::Packet& packet)
+  std::tuple<Service*, const internal::Method*> FindMethod(uint32_t service_id,
+                                                           uint32_t method_id)
+      PW_LOCKS_EXCLUDED(internal::rpc_lock());
+
+  std::tuple<Service*, const internal::Method*> FindMethodLocked(
+      uint32_t service_id, uint32_t method_id)
       PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock());
+
+  std::tuple<Service*, const internal::Method*> FindMethodLocked(
+      const internal::Packet& packet)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(internal::rpc_lock()) {
+    // Packets always include service and method IDs.
+    return FindMethodLocked(packet.service_id(), packet.method_id());
+  }
+
+  void HandleCompletionRequest(const internal::Packet& packet,
+                               internal::Channel& channel,
+                               IntrusiveList<internal::Call>::iterator call)
+      const PW_UNLOCK_FUNCTION(internal::rpc_lock());
 
   void HandleClientStreamPacket(const internal::Packet& packet,
                                 internal::Channel& channel,
@@ -185,6 +207,9 @@ class Server : public internal::Endpoint {
   }
 
   void UnregisterServiceLocked() {}  // Base case; nothing left to do.
+
+  Status ProcessPacket(internal::Packet packet)
+      PW_LOCKS_EXCLUDED(internal::rpc_lock());
 
   // Remove these internal::Endpoint functions from the public interface.
   using Endpoint::active_call_count;

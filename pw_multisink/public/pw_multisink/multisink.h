@@ -170,7 +170,7 @@ class MultiSink {
     // be a crash.
     //
     // Return values:
-    // OK - the entry or entries were removed from the multisink succesfully.
+    // OK - the entry or entries were removed from the multisink successfully.
     // FAILED_PRECONDITION - The drain must be attached to a sink.
     Status PopEntry(const PeekedEntry& entry)
         PW_LOCKS_EXCLUDED(multisink_->lock_);
@@ -313,7 +313,7 @@ class MultiSink {
   MultiSink(ByteSpan buffer)
       : ring_buffer_(true), sequence_id_(0), total_ingress_drops_(0) {
     ring_buffer_.SetBuffer(buffer)
-        .IgnoreError();  // TODO(b/242598609): Handle Status properly
+        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
     AttachDrain(oldest_entry_drain_);
   }
 

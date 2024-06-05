@@ -4,22 +4,19 @@
 pw_polyfill
 ===========
 The ``pw_polyfill`` module supports compiling code against different C++
-standards. It also supports backporting a few C++17 features to C++14.
+standards.
 
-----------------------------------------------------
-Adapt code to compile with different versions of C++
-----------------------------------------------------
+--------------------------------------------------
+Adapt code to compile with different C++ standards
+--------------------------------------------------
 
 C++ standard macro
 ==================
-``pw_polyfill/standard.h`` provides a macro for checking if a C++ standard is
-supported.
+``pw_polyfill/standard.h`` provides macros for checking if a C++ or C standard
+is supported.
 
-.. c:macro:: PW_CXX_STANDARD_IS_SUPPORTED(standard)
-
-   Evaluates true if the provided C++ standard (98, 11, 14, 17, 20) is supported
-   by the compiler. This is a simpler, cleaner alternative to checking the value
-   of the ``__cplusplus`` macro.
+.. doxygendefine:: PW_CXX_STANDARD_IS_SUPPORTED
+.. doxygendefine:: PW_C_STANDARD_IS_SUPPORTED
 
 Language feature macros
 =======================
@@ -33,10 +30,6 @@ work with or without C++ language features.
     - Feature
     - Description
     - Feature test macro
-  * - ``PW_INLINE_VARIABLE``
-    - inline variables
-    - inline if supported by the compiler
-    - ``__cpp_inline_variables``
   * - ``PW_CONSTEXPR_CPP20``
     - ``constexpr``
     - ``constexpr`` if compiling for C++20
@@ -57,65 +50,67 @@ systems, add ``pw_polyfill/public`` as an include path.
 ------------------------------------------------
 Backport new C++ features to older C++ standards
 ------------------------------------------------
-Pigweed backports a few C++ features to older C++ standards. These features
-are provided in the ``pw`` namespace. If the features are provided by the
-toolchain, the ``pw`` versions are aliases of the ``std`` versions.
+Pigweed backports a few C++ features to older C++ standards. These features are
+provided in the ``pw`` namespace. If the features are provided by the toolchain,
+the ``pw`` versions are aliases of the ``std`` versions.
 
-``pw_polyfill`` also backports a few C++17 library features to C++14 by wrapping
-the standard C++ and C headers. The wrapper headers include the original header
-using `#include_next
-<https://gcc.gnu.org/onlinedocs/cpp/Wrapper-Headers.html>`_, then add missing
-features. The backported features are only defined if they aren't provided by
-the standard header and can only be used when compiling with C++14 in GN.
+List of backported features
+===========================
 
-Backported features
-===================
+These features are documented here, but are not implemented in ``pw_polyfill``.
+See the listed Pigweed module for more information on each feature.
+
 .. list-table::
   :header-rows: 1
 
   * - Header
     - Feature
-    - Feature test macro
-    - Module
-    - Polyfill header
+    - Pigweed module and header
     - Polyfill name
   * - ``<array>``
     - ``std::to_array``
-    - ``__cpp_lib_to_array``
-    - :ref:`module-pw_containers`
-    - ``pw_containers/to_array.h``
+    - :ref:`module-pw_containers`/to_array.h
     - ``pw::containers::to_array``
   * - ``<bit>``
     - ``std::endian``
-    - ``__cpp_lib_endian``
-    - :ref:`module-pw_bytes`
-    - ``pw_bytes/bit.h``
+    - :ref:`module-pw_bytes`/bit.h
     - ``pw::endian``
-  * - ``<cstdlib>``
-    - ``std::byte``
-    - ``__cpp_lib_byte``
-    - pw_polyfill
-    - ``<cstdlib>``
-    - ``std::byte``
-  * - ``<iterator>``
-    - ``std::data``, ``std::size``
-    - ``__cpp_lib_nonmember_container_access``
-    - pw_polyfill
-    - ``<iterator>``
-    - ``std::data``, ``std::size``
+  * - ``<expected>``
+    - ``std::expected``
+    - :ref:`module-pw_result`/expected.h
+    - ``pw::expected``
   * - ``<span>``
     - ``std::span``
-    - ``__cpp_lib_span``
-    - :ref:`module-pw_span`
-    - ``pw_span/span.h``
+    - :ref:`module-pw_span`/span.h
     - ``pw::span``
 
--------------
-Compatibility
--------------
-C++14
+------------------------------------------------
+Adapt code to compile with different C standards
+------------------------------------------------
 
+.. _module-pw_polyfill-static_assert:
+
+static_assert
+=============
+
+``pw_polyfill/static_assert.h`` provides C23-style ``static_assert`` for older
+C standards. As in C23, the message argument is optional.
+
+.. literalinclude:: c_test.c
+   :start-after: [static_assert-example]
+   :end-before: [static_assert-example]
+   :language: c
+
+.. tip::
+
+   Use ``pw_polyfill/static_assert.h`` rather than ``<assert.h>`` to provide
+   ``static_assert`` in C. ``<assert.h>`` provides a ``#define static_assert
+   _Static_assert`` macro prior to C23, but its ``static_assert`` does not
+   support C23 semantics (optional message argument), and it defines the
+   unwanted ``assert`` macro.
+
+------
 Zephyr
-======
+------
 To enable ``pw_polyfill`` for Zephyr add ``CONFIG_PIGWEED_POLYFILL=y`` to the
 project's configuration.

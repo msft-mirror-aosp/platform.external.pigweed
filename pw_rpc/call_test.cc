@@ -20,11 +20,11 @@
 #include <cstring>
 #include <optional>
 
-#include "gtest/gtest.h"
-#include "pw_rpc/internal/test_method.h"
 #include "pw_rpc/internal/test_utils.h"
 #include "pw_rpc/service.h"
 #include "pw_rpc_private/fake_server_reader_writer.h"
+#include "pw_rpc_private/test_method.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
 
@@ -38,7 +38,12 @@ class TestService : public Service {
 namespace internal {
 namespace {
 
-constexpr Packet kPacket(pwpb::PacketType::REQUEST, 99, 16, 8);
+constexpr uint32_t kChannelId = 99;
+constexpr uint32_t kServiceId = 16;
+constexpr uint32_t kMethodId = 8;
+constexpr uint32_t kCallId = 327;
+constexpr Packet kPacket(
+    pwpb::PacketType::REQUEST, kChannelId, kServiceId, kMethodId, kCallId);
 
 using ::pw::rpc::internal::test::FakeServerReader;
 using ::pw::rpc::internal::test::FakeServerReaderWriter;
@@ -90,7 +95,7 @@ class ServerWriterTest : public Test {
     writer_ = std::move(writer_temp);
   }
 
-  ServerContextForTest<TestService> context_;
+  ServerContextForTest<TestService, kChannelId, kServiceId, kCallId> context_;
   FakeServerWriter writer_;
 };
 
@@ -188,13 +193,14 @@ TEST_F(ServerWriterTest, DefaultConstructor_NoClientStream) {
   FakeServerWriter writer;
   RpcLockGuard lock;
   EXPECT_FALSE(writer.as_server_call().has_client_stream());
-  EXPECT_FALSE(writer.as_server_call().client_stream_open());
+  EXPECT_FALSE(writer.as_server_call().client_requested_completion());
 }
 
 TEST_F(ServerWriterTest, Open_NoClientStream) {
   RpcLockGuard lock;
   EXPECT_FALSE(writer_.as_server_call().has_client_stream());
-  EXPECT_FALSE(writer_.as_server_call().client_stream_open());
+  EXPECT_TRUE(writer_.as_server_call().has_server_stream());
+  EXPECT_FALSE(writer_.as_server_call().client_requested_completion());
 }
 
 class ServerReaderTest : public Test {
@@ -210,41 +216,41 @@ class ServerReaderTest : public Test {
   FakeServerReader reader_;
 };
 
-TEST_F(ServerReaderTest, DefaultConstructor_ClientStreamClosed) {
+TEST_F(ServerReaderTest, DefaultConstructor_StreamClosed) {
   FakeServerReader reader;
   EXPECT_FALSE(reader.as_server_call().active());
   RpcLockGuard lock;
-  EXPECT_FALSE(reader.as_server_call().client_stream_open());
+  EXPECT_FALSE(reader.as_server_call().client_requested_completion());
 }
 
 TEST_F(ServerReaderTest, Open_ClientStreamStartsOpen) {
   RpcLockGuard lock;
   EXPECT_TRUE(reader_.as_server_call().has_client_stream());
-  EXPECT_TRUE(reader_.as_server_call().client_stream_open());
+  EXPECT_FALSE(reader_.as_server_call().client_requested_completion());
 }
 
-TEST_F(ServerReaderTest, Close_ClosesClientStream) {
+TEST_F(ServerReaderTest, Close_ClosesStream) {
   EXPECT_TRUE(reader_.as_server_call().active());
   rpc_lock().lock();
-  EXPECT_TRUE(reader_.as_server_call().client_stream_open());
+  EXPECT_FALSE(reader_.as_server_call().client_requested_completion());
   rpc_lock().unlock();
   EXPECT_EQ(OkStatus(),
             reader_.as_server_call().CloseAndSendResponse(OkStatus()));
 
   EXPECT_FALSE(reader_.as_server_call().active());
   RpcLockGuard lock;
-  EXPECT_FALSE(reader_.as_server_call().client_stream_open());
+  EXPECT_TRUE(reader_.as_server_call().client_requested_completion());
 }
 
-TEST_F(ServerReaderTest, EndClientStream_OnlyClosesClientStream) {
+TEST_F(ServerReaderTest, RequestCompletion_OnlyMakesClientNotReady) {
   EXPECT_TRUE(reader_.active());
   rpc_lock().lock();
-  EXPECT_TRUE(reader_.as_server_call().client_stream_open());
-  reader_.as_server_call().HandleClientStreamEnd();
+  EXPECT_FALSE(reader_.as_server_call().client_requested_completion());
+  reader_.as_server_call().HandleClientRequestedCompletion();
 
   EXPECT_TRUE(reader_.active());
   RpcLockGuard lock;
-  EXPECT_FALSE(reader_.as_server_call().client_stream_open());
+  EXPECT_TRUE(reader_.as_server_call().client_requested_completion());
 }
 
 class ServerReaderWriterTest : public Test {
@@ -264,33 +270,31 @@ TEST_F(ServerReaderWriterTest, Move_MaintainsClientStream) {
   FakeServerReaderWriter destination;
 
   rpc_lock().lock();
-  EXPECT_FALSE(destination.as_server_call().client_stream_open());
+  EXPECT_FALSE(destination.as_server_call().client_requested_completion());
   rpc_lock().unlock();
 
   destination = std::move(reader_writer_);
   RpcLockGuard lock;
   EXPECT_TRUE(destination.as_server_call().has_client_stream());
-  EXPECT_TRUE(destination.as_server_call().client_stream_open());
+  EXPECT_FALSE(destination.as_server_call().client_requested_completion());
 }
 
 TEST_F(ServerReaderWriterTest, Move_MovesCallbacks) {
   int calls = 0;
   reader_writer_.set_on_error([&calls](Status) { calls += 1; });
   reader_writer_.set_on_next([&calls](ConstByteSpan) { calls += 1; });
-
-#if PW_RPC_CLIENT_STREAM_END_CALLBACK
-  reader_writer_.set_on_client_stream_end([&calls]() { calls += 1; });
-#endif  // PW_RPC_CLIENT_STREAM_END_CALLBACK
+  reader_writer_.set_on_completion_requested_if_enabled(
+      [&calls]() { calls += 1; });
 
   FakeServerReaderWriter destination(std::move(reader_writer_));
   rpc_lock().lock();
   destination.as_server_call().HandlePayload({});
   rpc_lock().lock();
-  destination.as_server_call().HandleClientStreamEnd();
+  destination.as_server_call().HandleClientRequestedCompletion();
   rpc_lock().lock();
   destination.as_server_call().HandleError(Status::Unknown());
 
-  EXPECT_EQ(calls, 2 + PW_RPC_CLIENT_STREAM_END_CALLBACK);
+  EXPECT_EQ(calls, 2 + PW_RPC_COMPLETION_REQUEST_CALLBACK);
 }
 
 TEST_F(ServerReaderWriterTest, Move_ClearsCallAndChannelId) {

@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -18,6 +18,7 @@
 #include <limits>
 
 #include "pw_bytes/span.h"
+#include "pw_sync/mutex.h"
 #include "pw_transfer/handler.h"
 #include "pw_transfer/internal/config.h"
 #include "pw_transfer/internal/server_context.h"
@@ -35,38 +36,30 @@ class TransferService : public pw_rpc::raw::Transfer::Service<TransferService> {
  public:
   // Initializes a TransferService that can be registered with an RPC server.
   //
-  // The transfer service requires a work queue to perform deferred tasks, such
-  // as handling transfer timeouts and retries. This work queue does not need to
-  // be unique to the transfer service; it may be shared with other parts of the
-  // system.
+  // The transfer service runs all of its transfer tasks on the provided
+  // transfer thread. This thread may be shared between a transfer service and
+  // a transfer client.
   //
-  // The provided buffer is used to stage data from transfer chunks before it is
-  // written out to the writer. The size of this buffer is the largest amount of
-  // data that can be sent in a single transfer chunk, excluding any transport
-  // layer overhead.
-  //
-  // max_pending_bytes is the maximum amount of data to ask for at a
+  // `max_window_size_bytes` is the maximum amount of data to ask for at a
   // time during a write transfer, unless told a more restrictive amount by a
-  // transfer handler. This size can span multiple chunks. A larger value
-  // generally increases the efficiency of write transfers when sent over a
-  // reliable transport. However, if the underlying transport is unreliable,
-  // larger values could slow down a transfer in the event of repeated packet
-  // loss.
+  // transfer handler. This size should span multiple chunks, and can be set
+  // quite large. The transfer protocol automatically adjusts its window size
+  // as a transfer progresses to attempt to find an optimal configuration for
+  // the connection over which it is running.
   TransferService(
       TransferThread& transfer_thread,
-      uint32_t max_pending_bytes,
-      chrono::SystemClock::duration chunk_timeout = cfg::kDefaultChunkTimeout,
-      uint8_t max_retries = cfg::kDefaultMaxRetries,
+      uint32_t max_window_size_bytes,
+      chrono::SystemClock::duration chunk_timeout = cfg::kDefaultServerTimeout,
+      uint8_t max_retries = cfg::kDefaultMaxServerRetries,
       uint32_t extend_window_divisor = cfg::kDefaultExtendWindowDivisor,
       uint32_t max_lifetime_retries = cfg::kDefaultMaxLifetimeRetries)
-      : max_parameters_(max_pending_bytes,
+      : max_parameters_(max_window_size_bytes,
                         transfer_thread.max_chunk_size(),
                         extend_window_divisor),
         thread_(transfer_thread),
         chunk_timeout_(chunk_timeout),
         max_retries_(max_retries),
-        max_lifetime_retries_(max_lifetime_retries),
-        next_session_id_(1) {}
+        max_lifetime_retries_(max_lifetime_retries) {}
 
   TransferService(const TransferService&) = delete;
   TransferService(TransferService&&) = delete;
@@ -75,18 +68,19 @@ class TransferService : public pw_rpc::raw::Transfer::Service<TransferService> {
   TransferService& operator=(TransferService&&) = delete;
 
   void Read(RawServerReaderWriter& reader_writer) {
-    reader_writer.set_on_next([this](ConstByteSpan message) {
+    thread_.SetServerReadStream(reader_writer, [this](ConstByteSpan message) {
       HandleChunk(message, internal::TransferType::kTransmit);
     });
-    thread_.SetServerReadStream(reader_writer);
   }
 
   void Write(RawServerReaderWriter& reader_writer) {
-    reader_writer.set_on_next([this](ConstByteSpan message) {
+    thread_.SetServerWriteStream(reader_writer, [this](ConstByteSpan message) {
       HandleChunk(message, internal::TransferType::kReceive);
     });
-    thread_.SetServerWriteStream(reader_writer);
   }
+
+  void GetResourceStatus(ConstByteSpan request,
+                         rpc::RawUnaryResponder& responder);
 
   void RegisterHandler(Handler& handler) {
     thread_.AddTransferHandler(handler);
@@ -96,23 +90,31 @@ class TransferService : public pw_rpc::raw::Transfer::Service<TransferService> {
     thread_.RemoveTransferHandler(handler);
   }
 
-  void set_max_pending_bytes(uint32_t max_pending_bytes) {
-    max_parameters_.set_pending_bytes(max_pending_bytes);
+  [[deprecated("Use set_max_window_size_bytes instead")]]
+  constexpr void set_max_pending_bytes(uint32_t pending_bytes) {
+    set_max_window_size_bytes(pending_bytes);
+  }
+
+  constexpr void set_max_window_size_bytes(uint32_t max_window_size_bytes) {
+    max_parameters_.set_max_window_size_bytes(max_window_size_bytes);
   }
 
   // Sets the maximum size for the data in a pw_transfer chunk. Note that the
   // max chunk size must always fit within the transfer thread's chunk buffer.
-  void set_max_chunk_size_bytes(uint32_t max_chunk_size_bytes) {
+  constexpr void set_max_chunk_size_bytes(uint32_t max_chunk_size_bytes) {
     max_parameters_.set_max_chunk_size_bytes(max_chunk_size_bytes);
   }
 
-  void set_chunk_timeout(chrono::SystemClock::duration chunk_timeout) {
+  constexpr void set_chunk_timeout(
+      chrono::SystemClock::duration chunk_timeout) {
     chunk_timeout_ = chunk_timeout;
   }
 
-  void set_max_retries(uint8_t max_retries) { max_retries_ = max_retries; }
+  constexpr void set_max_retries(uint8_t max_retries) {
+    max_retries_ = max_retries;
+  }
 
-  Status set_extend_window_divisor(uint32_t extend_window_divisor) {
+  constexpr Status set_extend_window_divisor(uint32_t extend_window_divisor) {
     if (extend_window_divisor <= 1) {
       return Status::InvalidArgument();
     }
@@ -123,9 +125,8 @@ class TransferService : public pw_rpc::raw::Transfer::Service<TransferService> {
 
  private:
   void HandleChunk(ConstByteSpan message, internal::TransferType type);
-
-  // TODO(frolv): This could be more sophisticated and less predictable.
-  uint32_t GenerateNewSessionId() { return next_session_id_++; }
+  void ResourceStatusCallback(Status status,
+                              const internal::ResourceStatus& stats);
 
   internal::TransferParameters max_parameters_;
   TransferThread& thread_;
@@ -134,7 +135,9 @@ class TransferService : public pw_rpc::raw::Transfer::Service<TransferService> {
   uint8_t max_retries_;
   uint32_t max_lifetime_retries_;
 
-  uint32_t next_session_id_;
+  sync::Mutex resource_responder_mutex_;
+  rpc::RawUnaryResponder resource_responder_
+      PW_GUARDED_BY(resource_responder_mutex_);
 };
 
 }  // namespace pw::transfer

@@ -110,7 +110,6 @@ call "%python%" "%PW_ROOT%\pw_env_setup\py\pw_env_setup\env_setup.py" ^
     --pw-root "%PW_ROOT%" ^
     --shell-file "%shell_file%" ^
     --install-dir "%_PW_ACTUAL_ENVIRONMENT_ROOT%" ^
-    --config-file "%PW_ROOT%/pw_env_setup/config.json" ^
     --project-root "%PW_PROJECT_ROOT%"
 goto activate_shell
 
@@ -123,7 +122,13 @@ if exist "%shell_file%" (
 )
 
 :activate_shell
-call "%shell_file%"
+if exist "%shell_file%" (
+  call "%shell_file%"
+) else (
+  echo.
+  echo  [31mBootstrap failed! See output above for the culprit.[0m
+  echo.
+)
 
 :finish
 ::WINDOWS_ONLY

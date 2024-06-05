@@ -14,303 +14,53 @@
 
 #include "pw_sync/borrow.h"
 
-#include <chrono>
-#include <ratio>
+#include "pw_sync/lock_testing.h"
+#include "pw_sync_private/borrow_lockable_tests.h"
+#include "pw_unit_test/framework.h"
 
-#include "gtest/gtest.h"
-#include "pw_assert/check.h"
-#include "pw_sync/virtual_basic_lockable.h"
-
-namespace pw::sync {
+namespace pw::sync::test {
 namespace {
 
-template <typename Lock>
-class BorrowableTest : public ::testing::Test {
- protected:
-  static constexpr int kInitialValue = 42;
+// Test fixtures.
 
-  BorrowableTest()
-      : foo_{.value = kInitialValue}, borrowable_foo_(foo_, lock_) {}
-
-  void SetUp() override {
-    EXPECT_FALSE(lock_.locked());  // Ensure it's not locked on construction.
-  }
-
-  struct Foo {
-    int value;
-  };
-  Lock lock_;
-  Foo foo_;
-  Borrowable<Foo, Lock> borrowable_foo_;
-};
-
-class BasicLockable : public VirtualBasicLockable {
+class Base {
  public:
-  virtual ~BasicLockable() = default;
-
-  bool locked() const { return locked_; }
+  virtual ~Base() = default;
+  int value() const { return value_; }
 
  protected:
-  bool locked_ = false;
+  Base(int value) : value_(value) {}
 
  private:
-  void DoLockOperation(Operation operation) override {
-    switch (operation) {
-      case Operation::kLock:
-        PW_CHECK(!locked_, "Recursive lock detected");
-        locked_ = true;
-        return;
-
-      case Operation::kUnlock:
-      default:
-        PW_CHECK(locked_, "Unlock while unlocked detected");
-        locked_ = false;
-        return;
-    }
-  }
+  int value_ = 0;
 };
 
-using BorrowableBasicLockableTest = BorrowableTest<BasicLockable>;
-
-TEST_F(BorrowableBasicLockableTest, Acquire) {
-  {
-    BorrowedPointer<Foo, BasicLockable> borrowed_foo =
-        borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, kInitialValue);
-    borrowed_foo->value = 13;
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-  EXPECT_EQ(foo_.value, 13);
-}
-
-TEST_F(BorrowableBasicLockableTest, RepeatedAcquire) {
-  {
-    BorrowedPointer<Foo, BasicLockable> borrowed_foo =
-        borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, kInitialValue);
-    borrowed_foo->value = 13;
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-  {
-    BorrowedPointer<Foo, BasicLockable> borrowed_foo =
-        borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, 13);
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-}
-
-TEST_F(BorrowableBasicLockableTest, Moveable) {
-  Borrowable<Foo, BasicLockable> borrowable_foo = std::move(borrowable_foo_);
-  {
-    BorrowedPointer<Foo, BasicLockable> borrowed_foo = borrowable_foo.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, kInitialValue);
-    borrowed_foo->value = 13;
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-}
-
-TEST_F(BorrowableBasicLockableTest, Copyable) {
-  const Borrowable<Foo, BasicLockable>& other = borrowable_foo_;
-  Borrowable<Foo, BasicLockable> borrowable_foo(other);
-  {
-    BorrowedPointer<Foo, BasicLockable> borrowed_foo = borrowable_foo.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, kInitialValue);
-    borrowed_foo->value = 13;
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-}
-
-class Lockable : public BasicLockable {
+class Derived : public Base {
  public:
-  bool try_lock() {
-    if (locked()) {
-      return false;
-    }
-    locked_ = true;
-    return true;
-  }
+  Derived(int value) : Base(value) {}
 };
 
-using BorrowableLockableTest = BorrowableTest<Lockable>;
+// Unit tests.
 
-TEST_F(BorrowableLockableTest, Acquire) {
-  {
-    BorrowedPointer<Foo, Lockable> borrowed_foo = borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, kInitialValue);
-    borrowed_foo->value = 13;
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-  EXPECT_EQ(foo_.value, 13);
+TEST(BorrowedPointerTest, MoveConstruct) {
+  Derived derived(1);
+  FakeBasicLockable lock;
+  Borrowable<Derived, FakeBasicLockable> borrowable(derived, lock);
+  BorrowedPointer<Base, VirtualBasicLockable> borrowed(borrowable.acquire());
+  EXPECT_EQ(borrowed->value(), 1);
 }
 
-TEST_F(BorrowableLockableTest, RepeatedAcquire) {
-  {
-    BorrowedPointer<Foo, Lockable> borrowed_foo = borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, kInitialValue);
-    borrowed_foo->value = 13;
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-  {
-    BorrowedPointer<Foo, Lockable> borrowed_foo = borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, 13);
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
+TEST(BorrowedPointerTest, MoveAssign) {
+  Derived derived(2);
+  FakeBasicLockable lock;
+  Borrowable<Derived, FakeBasicLockable> borrowable(derived, lock);
+  BorrowedPointer<Base, VirtualBasicLockable> borrowed = borrowable.acquire();
+  EXPECT_EQ(borrowed->value(), 2);
 }
 
-TEST_F(BorrowableLockableTest, TryAcquireSuccess) {
-  {
-    std::optional<BorrowedPointer<Foo, Lockable>> maybe_borrowed_foo =
-        borrowable_foo_.try_acquire();
-    ASSERT_TRUE(maybe_borrowed_foo.has_value());
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(maybe_borrowed_foo.value()->value, kInitialValue);
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-}
-
-TEST_F(BorrowableLockableTest, TryAcquireFailure) {
-  lock_.lock();
-  EXPECT_TRUE(lock_.locked());
-  {
-    std::optional<BorrowedPointer<Foo, Lockable>> maybe_borrowed_foo =
-        borrowable_foo_.try_acquire();
-    EXPECT_FALSE(maybe_borrowed_foo.has_value());
-  }
-  EXPECT_TRUE(lock_.locked());
-  lock_.unlock();
-}
-
-struct Clock {
-  using rep = int64_t;
-  using period = std::micro;
-  using duration = std::chrono::duration<rep, period>;
-  using time_point = std::chrono::time_point<Clock>;
-};
-
-class TimedLockable : public Lockable {
- public:
-  bool try_lock() {
-    if (locked()) {
-      return false;
-    }
-    locked_ = true;
-    return true;
-  }
-
-  bool try_lock_for(const Clock::duration&) { return try_lock(); }
-  bool try_lock_until(const Clock::time_point&) { return try_lock(); }
-};
-
-using BorrowableTimedLockableTest = BorrowableTest<TimedLockable>;
-
-TEST_F(BorrowableTimedLockableTest, Acquire) {
-  {
-    BorrowedPointer<Foo, TimedLockable> borrowed_foo =
-        borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, kInitialValue);
-    borrowed_foo->value = 13;
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-  EXPECT_EQ(foo_.value, 13);
-}
-
-TEST_F(BorrowableTimedLockableTest, RepeatedAcquire) {
-  {
-    BorrowedPointer<Foo, TimedLockable> borrowed_foo =
-        borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, kInitialValue);
-    borrowed_foo->value = 13;
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-  {
-    BorrowedPointer<Foo, TimedLockable> borrowed_foo =
-        borrowable_foo_.acquire();
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(borrowed_foo->value, 13);
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-}
-
-TEST_F(BorrowableTimedLockableTest, TryAcquireSuccess) {
-  {
-    std::optional<BorrowedPointer<Foo, TimedLockable>> maybe_borrowed_foo =
-        borrowable_foo_.try_acquire();
-    ASSERT_TRUE(maybe_borrowed_foo.has_value());
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(maybe_borrowed_foo.value()->value, kInitialValue);
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-}
-
-TEST_F(BorrowableTimedLockableTest, TryAcquireFailure) {
-  lock_.lock();
-  EXPECT_TRUE(lock_.locked());
-  {
-    std::optional<BorrowedPointer<Foo, TimedLockable>> maybe_borrowed_foo =
-        borrowable_foo_.try_acquire();
-    EXPECT_FALSE(maybe_borrowed_foo.has_value());
-  }
-  EXPECT_TRUE(lock_.locked());
-  lock_.unlock();
-}
-
-TEST_F(BorrowableTimedLockableTest, TryAcquireForSuccess) {
-  {
-    std::optional<BorrowedPointer<Foo, TimedLockable>> maybe_borrowed_foo =
-        borrowable_foo_.try_acquire_for(std::chrono::seconds(0));
-    ASSERT_TRUE(maybe_borrowed_foo.has_value());
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(maybe_borrowed_foo.value()->value, kInitialValue);
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-}
-
-TEST_F(BorrowableTimedLockableTest, TryAcquireForFailure) {
-  lock_.lock();
-  EXPECT_TRUE(lock_.locked());
-  {
-    std::optional<BorrowedPointer<Foo, TimedLockable>> maybe_borrowed_foo =
-        borrowable_foo_.try_acquire_for(std::chrono::seconds(0));
-    EXPECT_FALSE(maybe_borrowed_foo.has_value());
-  }
-  EXPECT_TRUE(lock_.locked());
-  lock_.unlock();
-}
-
-TEST_F(BorrowableTimedLockableTest, TryAcquireUntilSuccess) {
-  {
-    std::optional<BorrowedPointer<Foo, TimedLockable>> maybe_borrowed_foo =
-        borrowable_foo_.try_acquire_until(
-            Clock::time_point(std::chrono::seconds(0)));
-    ASSERT_TRUE(maybe_borrowed_foo.has_value());
-    EXPECT_TRUE(lock_.locked());  // Ensure the lock is held.
-    EXPECT_EQ(maybe_borrowed_foo.value()->value, kInitialValue);
-  }
-  EXPECT_FALSE(lock_.locked());  // Ensure the lock is released.
-}
-
-TEST_F(BorrowableTimedLockableTest, TryAcquireUntilFailure) {
-  lock_.lock();
-  EXPECT_TRUE(lock_.locked());
-  {
-    std::optional<BorrowedPointer<Foo, TimedLockable>> maybe_borrowed_foo =
-        borrowable_foo_.try_acquire_until(
-            Clock::time_point(std::chrono::seconds(0)));
-    EXPECT_FALSE(maybe_borrowed_foo.has_value());
-  }
-  EXPECT_TRUE(lock_.locked());
-  lock_.unlock();
-}
+PW_SYNC_ADD_BORROWABLE_LOCK_TESTS(FakeBasicLockable);
+PW_SYNC_ADD_BORROWABLE_LOCK_TESTS(FakeLockable);
+PW_SYNC_ADD_BORROWABLE_TIMED_LOCK_TESTS(FakeTimedLockable, FakeClock);
 
 }  // namespace
-}  // namespace pw::sync
+}  // namespace pw::sync::test

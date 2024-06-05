@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -107,9 +107,15 @@ py_test(
     srcs = [
         "tests/callback_client_test.py",
     ],
+    data = [
+        "@com_google_protobuf//:protoc",
+    ],
+    env = {
+        "PROTOC": "$(location @com_google_protobuf//:protoc)",
+    },
     deps = [
         ":pw_rpc",
-        "//pw_protobuf_compiler:pw_protobuf_compiler_protos",
+        "//pw_protobuf_compiler:pw_protobuf_compiler_protos_py_pb2",
         "//pw_rpc:internal_packet_proto_pb2",
         "//pw_status/py:pw_status",
     ],
@@ -121,6 +127,12 @@ py_test(
     srcs = [
         "tests/client_test.py",
     ],
+    data = [
+        "@com_google_protobuf//:protoc",
+    ],
+    env = {
+        "PROTOC": "$(location @com_google_protobuf//:protoc)",
+    },
     deps = [
         ":pw_rpc",
         "//pw_rpc:internal_packet_proto_pb2",
@@ -134,9 +146,15 @@ py_test(
     srcs = [
         "tests/descriptors_test.py",
     ],
+    data = [
+        "@com_google_protobuf//:protoc",
+    ],
+    env = {
+        "PROTOC": "$(location @com_google_protobuf//:protoc)",
+    },
     deps = [
         ":pw_rpc",
-        "//pw_protobuf_compiler:pw_protobuf_compiler_protos",
+        "//pw_protobuf_compiler:pw_protobuf_compiler_protos_py_pb2",
         "@com_google_protobuf//:protobuf_python",
     ],
 )
@@ -150,7 +168,7 @@ py_test(
     deps = [
         ":pw_rpc",
         "//pw_build/py:pw_build",
-        "//pw_protobuf_compiler:pw_protobuf_compiler_protos",
+        "//pw_protobuf_compiler:pw_protobuf_compiler_protos_py_pb2",
     ],
 )
 

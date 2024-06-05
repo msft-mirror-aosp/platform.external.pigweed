@@ -1,4 +1,4 @@
-# Copyright 2022 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -14,6 +14,8 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pw_async/backend.gni")
+import("$dir_pw_async2/backend.gni")
 import("$dir_pw_chrono/backend.gni")
 import("$dir_pw_perf_test/perf_test.gni")
 import("$dir_pw_protobuf_compiler/proto.gni")
@@ -34,11 +36,18 @@ _host_common = {
   pw_unit_test_MAIN = "$dir_pw_unit_test:logging_main"
 
   # Used to configure logging-based perftest on host
-  pw_perf_test_MAIN_FUNCTION = "$dir_pw_perf_test:log_perf_handler_main"
+  pw_perf_test_MAIN_FUNCTION = "$dir_pw_perf_test:logging_main"
 
   # Configure backend for assert facade.
-  pw_assert_BACKEND = "$dir_pw_assert_basic"
+  pw_assert_BACKEND = "$dir_pw_assert:print_and_abort_check_backend"
   pw_assert_LITE_BACKEND = "$dir_pw_assert:print_and_abort_assert_backend"
+
+  # Configure backend for legacy facade.
+  pw_async_TASK_BACKEND = "$dir_pw_async_basic:task"
+  pw_async_FAKE_DISPATCHER_BACKEND = "$dir_pw_async_basic:fake_dispatcher"
+
+  # Configure backend for async facade.
+  pw_async2_DISPATCHER_BACKEND = "$dir_pw_async2_basic:dispatcher_backend"
 
   # Configure backend for logging facade.
   pw_log_BACKEND = "$dir_pw_log_basic"
@@ -85,6 +94,9 @@ _host_common = {
   pw_thread_YIELD_BACKEND = "$dir_pw_thread_stl:yield"
   pw_thread_SLEEP_BACKEND = "$dir_pw_thread_stl:sleep"
   pw_thread_THREAD_BACKEND = "$dir_pw_thread_stl:thread"
+  pw_thread_THREAD_ITERATION_BACKEND = "$dir_pw_thread_stl:thread_iteration"
+  pw_thread_TEST_THREAD_CONTEXT_BACKEND =
+      "$dir_pw_thread_stl:test_thread_context"
 
   pw_build_LINK_DEPS = []  # Explicit list overwrite required by GN
   pw_build_LINK_DEPS = [
@@ -101,6 +113,7 @@ _host_common = {
 _linux_config = {
   pw_bloat_BLOATY_CONFIG = get_path_info("linux.bloaty", "abspath")
   pw_unit_test_AUTOMATIC_RUNNER = get_path_info("run_test", "abspath")
+  pw_async2_DISPATCHER_BACKEND = "$dir_pw_async2_epoll:dispatcher_backend"
 }
 
 # macOS-specific target configuration.
@@ -189,9 +202,13 @@ pw_target_toolchain_host = {
     forward_variables_from(_toolchain_base, "*", _excluded_members)
     defaults = {
       forward_variables_from(_toolchain_base.defaults, "*")
-      forward_variables_from(_host_common, "*")
+      forward_variables_from(_host_common, "*", [ "pw_unit_test_MAIN" ])
       forward_variables_from(_os_specific_config, "*")
       default_configs += _clang_default_configs
+
+      # Always use the FuzzTest wrappers around gtest and gtest_main.
+      pw_unit_test_MAIN = "$dir_pw_fuzzer:fuzztest_main"
+      pw_unit_test_BACKEND = "$dir_pw_fuzzer:gtest"
     }
   }
 
@@ -327,7 +344,7 @@ pw_target_toolchain_host_list = [
 _pigweed_internal = {
   pw_status_CONFIG = "$dir_pw_status:check_if_used"
 
-  # TODO(b/241565082): Enable NC testing in GN Windows when it is fixed.
+  # TODO: b/241565082 - Enable NC testing in GN Windows when it is fixed.
   pw_compilation_testing_NEGATIVE_COMPILATION_ENABLED = host_os != "win"
 }
 
@@ -372,6 +389,22 @@ pw_internal_host_toolchains = [
     }
   },
   {
+    name = "pw_strict_host_clang_fuzz"
+    _toolchain_base = pw_toolchain_host_clang.fuzz
+    forward_variables_from(_toolchain_base, "*", _excluded_members)
+    defaults = {
+      forward_variables_from(_toolchain_base.defaults, "*")
+      forward_variables_from(_host_common, "*", [ "pw_unit_test_MAIN" ])
+      forward_variables_from(_pigweed_internal, "*")
+      forward_variables_from(_os_specific_config, "*")
+      default_configs += _internal_clang_default_configs
+
+      # Always use the FuzzTest wrapper around gtest_main.
+      pw_unit_test_MAIN = "$dir_pw_fuzzer:fuzztest_main"
+      pw_unit_test_BACKEND = "$dir_pw_fuzzer:gtest"
+    }
+  },
+  {
     name = "pw_strict_host_gcc_debug"
     _toolchain_base = pw_toolchain_host_gcc.debug
     forward_variables_from(_toolchain_base, "*", _excluded_members)
@@ -408,30 +441,6 @@ pw_internal_host_toolchains = [
     }
   },
   {
-    name = "pw_strict_host_clang_debug_cpp14"
-    _toolchain_base = pw_toolchain_host_clang.debug
-    forward_variables_from(_toolchain_base, "*", _excluded_members)
-    defaults = {
-      forward_variables_from(_toolchain_base.defaults, "*")
-      forward_variables_from(_host_common, "*")
-      forward_variables_from(_pigweed_internal, "*")
-      forward_variables_from(_os_specific_config, "*")
-      default_configs += _internal_clang_default_configs
-
-      # Set the C++ standard to C++14 instead of the default (C++17).
-      pw_toolchain_CXX_STANDARD = pw_toolchain_STANDARD.CXX14
-
-      # Do not do negative compilation testing with C++14 since the code may
-      # fail to compile for different reasons than in C++17 or newer.
-      pw_compilation_testing_NEGATIVE_COMPILATION_ENABLED = false
-
-      # Select C++14-compatible backends.
-      pw_assert_BACKEND = "$dir_pw_assert:print_and_abort_check_backend"
-      pw_log_BACKEND = "$dir_pw_log_null"
-      pw_unit_test_MAIN = "$dir_pw_unit_test:printf_main"
-    }
-  },
-  {
     name = "pw_strict_host_clang_size_optimized_cpp20"
     _toolchain_base = pw_toolchain_host_clang.size_optimized
     forward_variables_from(_toolchain_base, "*", _excluded_members)
@@ -461,7 +470,22 @@ pw_internal_host_toolchains = [
       forward_variables_from(_pigweed_internal, "*")
       forward_variables_from(_os_specific_config, "*")
       default_configs += _internal_clang_default_configs
-      default_configs += [ "$dir_pw_minimal_cpp_stdlib:use_minimal_cpp_stdlib" ]
+      default_public_deps = [ "$dir_pw_minimal_cpp_stdlib" ]
+    }
+  },
+  {
+    name = "pw_strict_host_clang_debug_dynamic_allocation"
+    _toolchain_base = pw_toolchain_host_clang.debug
+    forward_variables_from(_toolchain_base, "*", _excluded_members)
+    defaults = {
+      forward_variables_from(_toolchain_base.defaults, "*")
+      forward_variables_from(_host_common, "*")
+      forward_variables_from(_pigweed_internal, "*")
+      forward_variables_from(_os_specific_config, "*")
+      default_configs += _internal_clang_default_configs
+
+      pw_function_CONFIG = "$dir_pw_function:enable_dynamic_allocation"
+      pw_rpc_CONFIG = "$dir_pw_rpc:use_dynamic_allocation"
     }
   },
 ]

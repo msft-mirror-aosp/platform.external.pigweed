@@ -11,7 +11,7 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""Generates a setup.cfg file for a Python package."""
+"""Generates a setup.cfg file for a pw_python_package target."""
 
 import argparse
 from collections import defaultdict
@@ -23,11 +23,8 @@ import sys
 import textwrap
 from typing import (
     Any,
-    Dict,
     Iterable,
     Iterator,
-    List,
-    Optional,
     Sequence,
     Set,
     TextIO,
@@ -80,7 +77,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _check_nested_protos(label: str, proto_info: Dict[str, Any]) -> None:
+def _check_nested_protos(label: str, proto_info: dict[str, Any]) -> None:
     """Checks that the proto library refers to this package."""
     python_package = proto_info['nested_in_python_package']
 
@@ -100,8 +97,8 @@ class _ProtoInfo:
 
 
 def _collect_all_files(
-    root: Path, files: List[Path], paths_to_collect: Iterable[_ProtoInfo]
-) -> Dict[str, Set[str]]:
+    root: Path, files: list[Path], paths_to_collect: Iterable[_ProtoInfo]
+) -> dict[str, Set[str]]:
     """Collects files in output dir, adds to files; returns package_data."""
     root.mkdir(exist_ok=True)
 
@@ -134,7 +131,7 @@ def _collect_all_files(
             )
         files.append(initpy)
 
-    pkg_data: Dict[str, Set[str]] = defaultdict(set)
+    pkg_data: dict[str, Set[str]] = defaultdict(set)
 
     # Add all non-source files to package data.
     for file in (f for f in files if f.suffix != '.py'):
@@ -154,7 +151,7 @@ build-backend = 'setuptools.build_meta'
 '''
 
 
-def _get_setup_keywords(pkg_data: dict, keywords: dict) -> Dict:
+def _get_setup_keywords(pkg_data: dict, keywords: dict) -> dict:
     """Gather all setuptools.setup() keyword args."""
     options_keywords = dict(
         packages=list(pkg_data),
@@ -166,7 +163,7 @@ def _get_setup_keywords(pkg_data: dict, keywords: dict) -> Dict:
 
 
 def _write_to_config(
-    config: configparser.ConfigParser, data: Dict, section: Optional[str] = None
+    config: configparser.ConfigParser, data: dict, section: str | None = None
 ):
     """Populate a ConfigParser instance with the contents of a dict."""
     # Add a specified section if missing.
@@ -210,7 +207,7 @@ def _generate_setup_cfg(
         config.write(config_file)
 
 
-def _import_module_in_package_init(all_files: List[Path]) -> None:
+def _import_module_in_package_init(all_files: list[Path]) -> None:
     """Generates an __init__.py that imports the module.
 
     This makes an individual module usable as a package. This is used for proto
@@ -250,7 +247,7 @@ def _load_metadata(
 
 def main(
     generated_root: Path,
-    files: List[Path],
+    files: list[Path],
     module_as_package: bool,
     setup_json: TextIO,
     label: str,

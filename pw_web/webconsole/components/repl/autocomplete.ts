@@ -12,81 +12,84 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-import {CompletionContext} from '@codemirror/autocomplete'
-import {syntaxTree} from '@codemirror/language'
-import {Device} from "pigweedjs";
+import { CompletionContext } from '@codemirror/autocomplete';
+import { syntaxTree } from '@codemirror/language';
+import { Device } from 'pigweedjs';
 
-const completePropertyAfter = ['PropertyName', '.', '?.']
+const completePropertyAfter = ['PropertyName', '.', '?.'];
 const dontCompleteIn = [
   'TemplateString',
   'LineComment',
   'BlockComment',
   'VariableDefinition',
-  'PropertyDefinition'
-]
-var objectPath = require("object-path");
+  'PropertyDefinition',
+];
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const objectPath = require('object-path');
 
 export function completeFromGlobalScope(context: CompletionContext) {
-  let nodeBefore = syntaxTree(context.state).resolveInner(context.pos, -1)
+  const nodeBefore = syntaxTree(context.state).resolveInner(context.pos, -1);
 
   if (
     completePropertyAfter.includes(nodeBefore.name) &&
     nodeBefore.parent?.name == 'MemberExpression'
   ) {
-    let object = nodeBefore.parent.getChild('Expression')
+    const object = nodeBefore.parent.getChild('Expression');
     if (object?.name == 'VariableName') {
-      let from = /\./.test(nodeBefore.name) ? nodeBefore.to : nodeBefore.from
-      let variableName = context.state.sliceDoc(object.from, object.to)
+      const from = /\./.test(nodeBefore.name) ? nodeBefore.to : nodeBefore.from;
+      const variableName = context.state.sliceDoc(object.from, object.to);
       // @ts-ignore
       if (typeof window[variableName] == 'object') {
         // @ts-ignore
-        return completeProperties(from, window[variableName])
+        return completeProperties(from, window[variableName]);
       }
-    }
-    else if (object?.name == 'MemberExpression') {
-      let from = /\./.test(nodeBefore.name) ? nodeBefore.to : nodeBefore.from
-      let variableName = context.state.sliceDoc(object.from, object.to)
-      let variable = resolveWindowVariable(variableName);
+    } else if (object?.name == 'MemberExpression') {
+      const from = /\./.test(nodeBefore.name) ? nodeBefore.to : nodeBefore.from;
+      const variableName = context.state.sliceDoc(object.from, object.to);
+      const variable = resolveWindowVariable(variableName);
       // @ts-ignore
       if (typeof variable == 'object') {
         // @ts-ignore
-        return completeProperties(from, variable, variableName)
+        return completeProperties(from, variable, variableName);
       }
     }
   } else if (nodeBefore.name == 'VariableName') {
-    return completeProperties(nodeBefore.from, window)
+    return completeProperties(nodeBefore.from, window);
   } else if (context.explicit && !dontCompleteIn.includes(nodeBefore.name)) {
-    return completeProperties(context.pos, window)
+    return completeProperties(context.pos, window);
   }
-  return null
+  return null;
 }
 
-function completeProperties(from: number, object: Object, variableName?: string) {
-  let options = []
-  for (let name in object) {
+function completeProperties(
+  from: number,
+  object: object,
+  variableName?: string,
+) {
+  const options = [];
+  for (const name in object) {
     // @ts-ignore
     if (object[name] instanceof Function && variableName) {
+      // eslint-disable-next-line no-debugger
       debugger;
       options.push({
         label: name,
         // @ts-ignore
         detail: getFunctionDetailText(`${variableName}.${name}`),
-        type: 'function'
-      })
-    }
-    else {
+        type: 'function',
+      });
+    } else {
       options.push({
         label: name,
-        type: 'variable'
-      })
+        type: 'variable',
+      });
     }
-
   }
   return {
     from,
     options,
-    validFor: /^[\w$]*$/
-  }
+    validFor: /^[\w$]*$/,
+  };
 }
 
 function resolveWindowVariable(variableName: string) {
@@ -96,12 +99,14 @@ function resolveWindowVariable(variableName: string) {
 }
 
 function getFunctionDetailText(fullExpression: string): string {
-  if (fullExpression.startsWith("device.rpcs.")) {
-    fullExpression = fullExpression.replace("device.rpcs.", "");
+  if (fullExpression.startsWith('device.rpcs.')) {
+    fullExpression = fullExpression.replace('device.rpcs.', '');
   }
-  const args = ((window as any).device as Device).getMethodArguments(fullExpression);
+  const args = ((window as any).device as Device).getMethodArguments(
+    fullExpression,
+  );
   if (args) {
-    return `(${args.join(", ")})`;
+    return `(${args.join(', ')})`;
   }
-  return "";
+  return '';
 }

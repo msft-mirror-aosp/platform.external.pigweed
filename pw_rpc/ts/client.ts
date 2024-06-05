@@ -14,18 +14,18 @@
 
 /** Provides a pw_rpc client for TypeScript. */
 
-import {ProtoCollection} from 'pigweedjs/pw_protobuf_compiler';
-import {Status} from 'pigweedjs/pw_status';
-import {Message} from 'google-protobuf';
+import { ProtoCollection } from 'pigweedjs/pw_protobuf_compiler';
+import { Status } from 'pigweedjs/pw_status';
+import { Message } from 'google-protobuf';
 import {
   PacketType,
   RpcPacket,
 } from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
 
-import {Channel, Service} from './descriptors';
-import {MethodStub, methodStubFactory} from './method';
+import { Channel, Service } from './descriptors';
+import { MethodStub, methodStubFactory } from './method';
 import * as packets from './packets';
-import {PendingCalls, Rpc} from './rpc_classes';
+import { PendingCalls, Rpc } from './rpc_classes';
 
 /**
  * Object for managing RPC service and contained methods.
@@ -38,7 +38,7 @@ export class ServiceClient {
   constructor(client: Client, channel: Channel, service: Service) {
     this.service = service;
     const methods = service.methods;
-    methods.forEach(method => {
+    methods.forEach((method) => {
       const stub = methodStubFactory(client.rpcs, channel, method);
       this.methods.push(stub);
       this.methodsByName.set(method.name, stub);
@@ -67,7 +67,7 @@ export class ChannelClient {
 
   constructor(client: Client, channel: Channel, services: Service[]) {
     this.channel = channel;
-    services.forEach(service => {
+    services.forEach((service) => {
       const serviceClient = new ServiceClient(client, this.channel, service);
       this.services.set(service.name, serviceClient);
     });
@@ -122,14 +122,14 @@ export class Client {
 
   constructor(channels: Channel[], services: Service[]) {
     this.rpcs = new PendingCalls();
-    services.forEach(service => {
+    services.forEach((service) => {
       this.services.set(service.id, service);
     });
 
-    channels.forEach(channel => {
+    channels.forEach((channel) => {
       this.channelsById.set(
         channel.id,
-        new ChannelClient(this, channel, services)
+        new ChannelClient(this, channel, services),
       );
     });
   }
@@ -145,11 +145,11 @@ export class Client {
   static fromProtoSet(channels: Channel[], protoSet: ProtoCollection): Client {
     let services: Service[] = [];
     const descriptors = protoSet.fileDescriptorSet.getFileList();
-    descriptors.forEach(fileDescriptor => {
+    descriptors.forEach((fileDescriptor) => {
       const packageName = fileDescriptor.getPackage()!;
-      fileDescriptor.getServiceList().forEach(serviceDescriptor => {
+      fileDescriptor.getServiceList().forEach((serviceDescriptor) => {
         services = services.concat(
-          new Service(serviceDescriptor, protoSet, packageName)
+          Service.fromProtoDescriptor(serviceDescriptor, protoSet, packageName),
         );
       });
     });
@@ -176,7 +176,7 @@ export class Client {
    */
   private rpc(
     packet: RpcPacket,
-    channelClient: ChannelClient
+    channelClient: ChannelClient,
   ): Rpc | undefined {
     const service = this.services.get(packet.getServiceId());
     if (service == undefined) {
@@ -209,13 +209,17 @@ export class Client {
     }
 
     const payload = packet.getPayload_asU8();
-    return packets.decodePayload(payload, rpc.method.responseType);
+    return packets.decodePayload(
+      payload,
+      rpc.method.responseType,
+      rpc.method.customResponseSerializer,
+    );
   }
 
   private sendClientError(
     client: ChannelClient,
     packet: RpcPacket,
-    error: Status
+    error: Status,
   ) {
     client.channel.send(packets.encodeClientError(packet, error));
   }
@@ -281,7 +285,7 @@ export class Client {
       status = Status.DATA_LOSS;
     }
 
-    const call = this.rpcs.getPending(rpc, status);
+    const call = this.rpcs.getPending(rpc, packet.getCallId(), status);
     if (call === undefined) {
       this.sendClientError(channelClient, packet, Status.FAILED_PRECONDITION);
       console.debug(`Discarding response for ${rpc}, which is not pending`);
@@ -290,10 +294,10 @@ export class Client {
 
     if (packet.getType() === PacketType.SERVER_ERROR) {
       if (status === Status.OK) {
-        throw 'Unexpected OK status on SERVER_ERROR';
+        throw new Error('Unexpected OK status on SERVER_ERROR');
       }
       if (status === undefined) {
-        throw 'Missing status on SERVER_ERROR';
+        throw new Error('Missing status on SERVER_ERROR');
       }
       console.warn(`${rpc}: invocation failed with status: ${Status[status]}`);
       call.handleError(status);

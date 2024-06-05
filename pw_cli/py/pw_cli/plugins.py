@@ -28,6 +28,8 @@ interactive consoles, or anything else. Pigweed's pw command uses this module
 for its plugins.
 """
 
+from __future__ import annotations
+
 import collections
 import collections.abc
 import importlib
@@ -38,7 +40,7 @@ import pkgutil
 import sys
 from textwrap import TextWrapper
 import types
-from typing import Any, Callable, Dict, List, Iterable, Iterator, Optional, Set
+from typing import Any, Callable, Iterable, Iterator, Set
 
 _LOG = logging.getLogger(__name__)
 _BUILT_IN = '<built-in>'
@@ -79,8 +81,8 @@ class Plugin:
         name: str,
         module_name: str,
         member_name: str,
-        source: Optional[Path],
-    ) -> 'Plugin':
+        source: Path | None,
+    ) -> Plugin:
         """Creates a plugin by module and attribute name.
 
         Args:
@@ -113,7 +115,7 @@ class Plugin:
         return cls(name, member, source)
 
     def __init__(
-        self, name: str, target: Any, source: Optional[Path] = None
+        self, name: str, target: Any, source: Path | None = None
     ) -> None:
         """Creates a plugin for the provided target."""
         self.name = name
@@ -199,9 +201,9 @@ class Registry(collections.abc.Mapping):
               be registered. Must raise plugins.Error is the plugin is invalid.
         """
 
-        self._registry: Dict[str, Plugin] = {}
+        self._registry: dict[str, Plugin] = {}
         self._sources: Set[Path] = set()  # Paths to plugins files
-        self._errors: Dict[str, List[Exception]] = collections.defaultdict(list)
+        self._errors: dict[str, list[Exception]] = collections.defaultdict(list)
         self._validate_plugin = validator
 
     def __getitem__(self, name: str) -> Plugin:
@@ -223,7 +225,7 @@ class Registry(collections.abc.Mapping):
     def __len__(self) -> int:
         return len(self._registry)
 
-    def errors(self) -> Dict[str, List[Exception]]:
+    def errors(self) -> dict[str, list[Exception]]:
         return self._errors
 
     def run_with_argv(self, name: str, argv: Iterable[str]) -> int:
@@ -287,7 +289,7 @@ class Registry(collections.abc.Mapping):
 
         return False
 
-    def register(self, name: str, target: Any) -> Optional[Plugin]:
+    def register(self, name: str, target: Any) -> Plugin | None:
         """Registers an object as a plugin."""
         return self._register(Plugin(name, target, None))
 
@@ -296,14 +298,14 @@ class Registry(collections.abc.Mapping):
         name: str,
         module_name: str,
         member_name: str,
-        source: Optional[Path] = None,
-    ) -> Optional[Plugin]:
+        source: Path | None = None,
+    ) -> Plugin | None:
         """Registers an object from its module and name as a plugin."""
         return self._register(
             Plugin.from_name(name, module_name, member_name, source)
         )
 
-    def _register(self, plugin: Plugin) -> Optional[Plugin]:
+    def _register(self, plugin: Plugin) -> Plugin | None:
         # Prohibit functions not from a plugins file from overriding others.
         if not self._should_register(plugin):
             return None
@@ -317,6 +319,33 @@ class Registry(collections.abc.Mapping):
         )
 
         return plugin
+
+    def register_config(
+        self,
+        config: dict,
+        path: Path | None = None,
+    ) -> None:
+        """Registers plugins from a Pigweed config.
+
+        Any exceptions raised from parsing the file are caught and logged.
+        """
+        plugins = config.get('pw', {}).get('pw_cli', {}).get('plugins', {})
+        for name, location in plugins.items():
+            module = location.pop('module')
+            function = location.pop('function')
+            if location:
+                raise ValueError(f'unrecognized plugin options: {location}')
+
+            try:
+                self.register_by_name(name, module, function, path)
+            except Error as err:
+                self._errors[name].append(err)
+                _LOG.error(
+                    '%s Failed to register plugin "%s": %s',
+                    path,
+                    name,
+                    err,
+                )
 
     def register_file(self, path: Path) -> None:
         """Registers plugins from a plugins file.
@@ -361,7 +390,7 @@ class Registry(collections.abc.Mapping):
         self,
         directory: Path,
         file_name: str,
-        restrict_to: Optional[Path] = None,
+        restrict_to: Path | None = None,
     ) -> None:
         """Finds and registers plugins from plugins files in a directory.
 
@@ -431,7 +460,7 @@ class Registry(collections.abc.Mapping):
             yield '  (none found)'
 
     def plugin(
-        self, function: Optional[Callable] = None, *, name: Optional[str] = None
+        self, function: Callable | None = None, *, name: str | None = None
     ) -> Callable[[Callable], Callable]:
         """Decorator that registers a function with this plugin registry."""
 
@@ -446,7 +475,7 @@ class Registry(collections.abc.Mapping):
         return function
 
 
-def find_in_parents(name: str, path: Path) -> Optional[Path]:
+def find_in_parents(name: str, path: Path) -> Path | None:
     """Searches parent directories of the path for a file or directory."""
     path = path.resolve()
 

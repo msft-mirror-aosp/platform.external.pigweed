@@ -14,17 +14,34 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_facade",
-    "pw_cc_library",
+    "host_backend_alias",
+    "pw_facade",
 )
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_facade(
+constraint_setting(
+    name = "backend_constraint_setting",
+    default_constraint_value = "unspecified",
+)
+
+constraint_value(
+    name = "unspecified",
+    constraint_setting = ":backend_constraint_setting",
+)
+
+# TODO: pwbug.dev/328679085 - Remove this alias once no-one uses it.
+alias(
     name = "facade",
+    actual = ":pw_sys_io.facade",
+)
+
+pw_facade(
+    name = "pw_sys_io",
     hdrs = ["public/pw_sys_io/sys_io.h"],
+    backend = ":backend",
     includes = ["public"],
     deps = [
         "//pw_bytes",
@@ -32,7 +49,12 @@ pw_cc_facade(
     ],
 )
 
-pw_cc_library(
+label_flag(
+    name = "backend",
+    build_setting_default = ":backend_multiplexer",
+)
+
+cc_library(
     name = "default_putget_bytes",
     srcs = ["sys_io.cc"],
     deps = [
@@ -42,20 +64,24 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
-    name = "pw_sys_io",
-    deps = [
-        ":facade",
-        "@pigweed_config//:pw_sys_io_backend",
-    ],
+alias(
+    name = "backend_multiplexer",
+    actual = select({
+        "//pw_sys_io_arduino:backend": "@pigweed//pw_sys_io_arduino",
+        "//pw_sys_io_baremetal_lm3s6965evb:backend": "@pigweed//pw_sys_io_baremetal_lm3s6965evb",
+        "//pw_sys_io_baremetal_stm32f429:backend": "@pigweed//pw_sys_io_baremetal_stm32f429",
+        "//pw_sys_io_emcraft_sf2:backend": "@pigweed//pw_sys_io_emcraft_sf2",
+        "//pw_sys_io_mcuxpresso:backend": "@pigweed//pw_sys_io_mcuxpresso",
+        "//pw_sys_io_rp2040:backend": "@pigweed//pw_sys_io_rp2040",
+        "//pw_sys_io_stdio:backend": "@pigweed//pw_sys_io_stdio",
+        "//pw_sys_io_stm32cube:backend": "@pigweed//pw_sys_io_stm32cube",
+        ":unspecified": ":unspecified_backend",
+        "//conditions:default": ":unspecified_backend",
+    }),
+    visibility = ["@pigweed//targets:__pkg__"],
 )
 
-pw_cc_library(
-    name = "backend_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
-    deps = select({
-        "//pw_build/constraints/chipset:stm32f429": ["@pigweed//pw_sys_io_baremetal_stm32f429"],
-        "//pw_build/constraints/chipset:lm3s6965evb": ["@pigweed//pw_sys_io_baremetal_lm3s6965evb"],
-        "//conditions:default": ["@pigweed//pw_sys_io_stdio"],
-    }),
+host_backend_alias(
+    name = "unspecified_backend",
+    backend = "@pigweed//pw_sys_io_stdio",
 )

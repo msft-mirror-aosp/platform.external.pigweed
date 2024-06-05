@@ -14,39 +14,42 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_facade",
-    "pw_cc_library",
+    "pw_facade",
 )
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_facade(
+# TODO: pwbug.dev/328679085 - Remove this alias.
+alias(
     name = "facade",
+    actual = ":pw_boot.facade",
+)
+
+pw_facade(
+    name = "pw_boot",
     hdrs = [
         "public/pw_boot/boot.h",
     ],
+    backend = ":backend",
     includes = ["public"],
     deps = [
         "//pw_preprocessor",
     ],
 )
 
-pw_cc_library(
-    name = "pw_boot",
-    deps = [
-        ":facade",
-        "@pigweed_config//:pw_boot_backend",
-    ],
+label_flag(
+    name = "backend",
+    build_setting_default = ":backend_multiplexer",
 )
 
-pw_cc_library(
+cc_library(
     name = "backend_multiplexer",
     deps = select({
-        "@platforms//cpu:armv7-m": ["//pw_boot_cortex_m:pw_boot_cortex_m"],
-        "@platforms//cpu:armv7e-m": ["//pw_boot_cortex_m:pw_boot_cortex_m"],
-        "@platforms//cpu:armv8-m": ["//pw_boot_cortex_m:pw_boot_cortex_m"],
+        "@platforms//cpu:armv7-m": ["//pw_boot_cortex_m"],
+        "@platforms//cpu:armv7e-m": ["//pw_boot_cortex_m"],
+        "@platforms//cpu:armv8-m": ["//pw_boot_cortex_m"],
         # When building for the host, we don't need a pw_boot implementation.
         "//conditions:default": [],
     }),

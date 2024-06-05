@@ -16,7 +16,6 @@
 
 from pathlib import Path
 import tempfile
-from typing import Optional
 import unittest
 from unittest.mock import MagicMock
 
@@ -25,9 +24,9 @@ from pw_presubmit import gitmodules, PresubmitFailure
 
 def dotgitmodules(
     name: str = 'foo',
-    url: Optional[str] = None,
-    host: Optional[str] = None,
-    branch: Optional[str] = 'main',
+    url: str | None = None,
+    host: str | None = None,
+    branch: str | None = 'main',
 ):
     cfg = f'[submodule "{name}"]\n'
     cfg += f'path = {name}\n'
@@ -59,6 +58,17 @@ class TestGitmodules(unittest.TestCase):
                 outs.write(contents)
 
             gitmodules.process_gitmodules(self.ctx, config, path)
+
+    def test_ok_no_submodules(self) -> None:
+        self._run(gitmodules.Config(), '')
+        self.ctx.fail.assert_not_called()
+
+    def test_no_submodules_allowed(self) -> None:
+        self._run(
+            gitmodules.Config(allow_submodules=False),
+            dotgitmodules(url='../foo'),
+        )
+        self.ctx.fail.assert_called()
 
     def test_ok_default(self) -> None:
         self._run(gitmodules.Config(), dotgitmodules(url='../foo'))

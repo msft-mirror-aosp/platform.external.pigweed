@@ -13,11 +13,11 @@
 # the License.
 """Tests for pw_build.create_python_tree"""
 
+import importlib.resources
 import io
 import os
 from pathlib import Path
 import tempfile
-from typing import List
 import unittest
 
 from parameterized import parameterized  # type: ignore
@@ -30,6 +30,8 @@ from pw_build.create_python_tree import (
     update_config_with_packages,
 )
 from pw_build.generate_python_package import PYPROJECT_FILE
+
+import test_dist1_data  # type: ignore
 
 
 def _setup_cfg(package_name: str, install_requires: str = '') -> str:
@@ -55,7 +57,7 @@ zip_safe = False
 def _create_fake_python_package(
     location: Path,
     package_name: str,
-    files: List[str],
+    files: list[str],
     install_requires: str = '',
 ) -> None:
     for file in files:
@@ -73,8 +75,9 @@ def _create_fake_python_package(
 class TestCreatePythonTree(unittest.TestCase):
     """Integration tests for create_python_tree."""
 
+    maxDiff = None
+
     def setUp(self):
-        self.maxDiff = None  # pylint: disable=invalid-name
         # Save the starting working directory for returning to later.
         self.start_dir = Path.cwd()
         # Create a temp out directory
@@ -493,6 +496,18 @@ saturn =
         copy_extra_files(extra_files)
         # Check expected files are in place.
         self._check_result_paths_equal(install_dir, expected_file_list)
+
+    def test_importing_package_data(self) -> None:
+        self.assertIn(
+            'EMPTY.CSV',
+            importlib.resources.read_text(test_dist1_data, 'empty.csv'),
+        )
+        self.assertIn(
+            'EMPTY.CSV',
+            importlib.resources.read_text(
+                'test_dist1_data.subdir', 'empty.csv'
+            ),
+        )
 
 
 if __name__ == '__main__':

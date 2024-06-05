@@ -12,33 +12,68 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-// Features from the <bit> header introduced in C++20.
+// Low-level bit operations including std::endian from C++20.
 #pragma once
 
-#if __has_include(<bit>)
-#include <bit>
-#endif  // __has_include(<bit>)
+#include <climits>
+
+#include "lib/stdcompat/bit.h"
 
 namespace pw {
 
-#ifdef __cpp_lib_endian
+using ::cpp20::endian;
 
-using std::endian;
+namespace bytes {
 
-#elif defined(__GNUC__)
+/// Queries size of the object or type in bits.
+#define SIZE_OF_IN_BIT(...) (sizeof(__VA_ARGS__) * CHAR_BIT)
 
-enum class endian {
-  little = __ORDER_LITTLE_ENDIAN__,
-  big = __ORDER_BIG_ENDIAN__,
-  native = __BYTE_ORDER__,
-};
+/// Extends the nth bit to the left. Useful for expanding singed values into
+/// larger integer types.
+template <std::size_t kBitWidth, typename T>
+constexpr T SignExtend(T nbit_value) {
+  static_assert(std::is_integral_v<T>);
+  static_assert(kBitWidth < SIZE_OF_IN_BIT(T));
 
-#else
+  using SignedT = std::make_signed_t<T>;
 
-static_assert(false,
-              "The pw::endian enum is not defined for this compiler. Add a "
-              "definition to pw_bytes/bit.h.");
+  constexpr std::size_t extension_bits = SIZE_OF_IN_BIT(SignedT) - kBitWidth;
 
-#endif  // __cpp_lib_endian
+  SignedT nbit_temp = static_cast<SignedT>(nbit_value);
+  return ((nbit_temp << extension_bits) >> extension_bits);
+}
 
+/// Extracts bits between msb and lsb from a value.
+///
+/// @tparam     OutType   The type of output number to be extracted from input
+/// number.
+/// @tparam     kMsb      The left bit (included) that extraction starts at.
+/// @tparam     kLsb      The right bit (included) that extraction ends at.
+/// @tparam     InType    The type of input number.
+/// @param[in]  value     The input number.
+///
+/// Example (extrat bits between 10 and 5 from a uint32_t and return as a
+/// uint8_t):
+///
+/// @code
+///   constexpr uint32_t number = 0xA0A0A0A0;
+///   constexpr uint8_t extracted_number = ExtractBits<uint8_t, 10, 5>(number);
+/// @endcode
+template <typename OutType, std::size_t kMsb, std::size_t kLsb, typename InType>
+constexpr OutType ExtractBits(InType value) {
+  static_assert(kMsb >= kLsb);
+  static_assert(kMsb < SIZE_OF_IN_BIT(InType));
+
+  constexpr std::size_t kBitWidth = kMsb - kLsb + 1;
+  static_assert(kBitWidth <= SIZE_OF_IN_BIT(OutType));
+
+  if constexpr (kBitWidth == SIZE_OF_IN_BIT(InType)) {
+    return OutType(value);
+  } else {
+    constexpr OutType mask = OutType((OutType(1) << kBitWidth) - 1);
+    return OutType((value >> kLsb) & mask);
+  }
+}
+
+}  // namespace bytes
 }  // namespace pw

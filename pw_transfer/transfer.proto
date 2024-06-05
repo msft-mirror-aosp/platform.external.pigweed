@@ -28,6 +28,10 @@ service Transfer {
   // Transfer data from the client to the server; an "upload" from the client's
   // perspective.
   rpc Write(stream Chunk) returns (stream Chunk);
+
+  // Query the status of a resource. Can be used for partially completed
+  // transfers
+  rpc GetResourceStatus(ResourceStatusRequest) returns (ResourceStatus);
 }
 
 // Represents a chunk of data sent by the transfer service. Includes fields for
@@ -164,14 +168,13 @@ message Chunk {
     // TODO(konkers): Implement this behavior.
     COMPLETION_ACK = 5;
 
-    // Acknowledges a transfer start request, assigning a session ID for the
+    // Acknowledges a transfer start request, accepting the session ID for the
     // transfer and optionally negotiating the protocol version. Sent from
     // server to client.
     START_ACK = 6;
 
-    // Confirmation of a START_ACK's assigned session ID and negotiated
-    // parameters, sent by the client to the server. Initiates the data transfer
-    // proper.
+    // Confirmation of a START_ACK's negotiated parameters, sent by the client
+    // to the server. Initiates the data transfer proper.
     START_ACK_CONFIRMATION = 7;
   };
 
@@ -195,8 +198,8 @@ message Chunk {
   // Write ← ID of transferable resource
   optional uint32 resource_id = 11;
 
-  // Unique identifier for a specific transfer session. Assigned by a transfer
-  // service during the initial handshake phase, and persists for the remainder
+  // Unique identifier for a specific transfer session. Chosen by the transfer
+  // client during the initial handshake phase, and persists for the remainder
   // of that transfer operation.
   //
   //  Read → ID of transfer session
@@ -214,4 +217,48 @@ message Chunk {
   // Write → Desired (START) or configured (START_ACK_CONFIRMATION) version.
   // Write ← Configured protocol version (START_ACK).
   optional uint32 protocol_version = 13;
+
+  // Unique identifier for a specific transfer session. Chosen by the transfer
+  // client during the initial handshake phase. This field is used to request a
+  // session during the handshake, after which the regular session_id field is
+  // used.
+  //
+  //  Read → Requested ID of transfer session
+  //  Read ← N/A
+  // Write → Requested ID of transfer session
+  // Write ← N/A
+  optional uint32 desired_session_id = 14;
+
+  // The initial offset to start the transfer from. Can be used for read or
+  // write transfers. Set by the client during start handshake.
+  // Needs to be accepted by the resource transfer handler in order for the
+  // non-zero offset transfer to start from the initial_offset.
+  //
+  //  Read → Requested initial offset for the session
+  //  Read ← Confirmed (matches) or denied (zero) initial offset
+  // Write → Requested initial offset for the session
+  // Write ← Confirmed (matches) or denied (zero) initial offset
+  uint64 initial_offset = 15;
+}
+
+// Request for GetResourceStatus, indicating the resource to get status from.
+message ResourceStatusRequest {
+  uint32 resource_id = 1;
+}
+
+// Response for GetResourceStatus
+message ResourceStatus {
+  // Resource id, matching request
+  uint32 resource_id = 1;
+
+  // Status of the resource, returns Unimplemented by default.
+  uint32 status = 2;
+  // The offset that can be written to (other than 0).
+  uint64 writeable_offset = 3;
+  // The offset that can be read from (other than 0).
+  uint64 readable_offset = 4;
+  // The checksum at the given write offset.
+  optional uint64 write_checksum = 5;
+  // The checksum at the given read offset.
+  optional uint64 read_checksum = 6;
 }

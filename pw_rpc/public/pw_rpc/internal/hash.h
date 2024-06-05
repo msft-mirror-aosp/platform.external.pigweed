@@ -13,6 +13,7 @@
 // the License.
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 
 #include "pw_preprocessor/compiler.h"
@@ -30,14 +31,14 @@ constexpr uint32_t Hash(std::string_view string)
   constexpr uint32_t kHashConstant = 65599;
 
   // The length is hashed as if it were the first character.
-  uint32_t hash = string.size();
+  uint32_t hash = static_cast<uint32_t>(string.size());
   uint32_t coefficient = kHashConstant;
 
   // Hash all of the characters in the string as unsigned ints.
   // The coefficient calculation is done modulo 0x100000000, so the unsigned
   // integer overflows are intentional.
-  for (uint8_t ch : string) {
-    hash += coefficient * ch;
+  for (char ch : string) {
+    hash += coefficient * static_cast<uint8_t>(ch);
     coefficient *= kHashConstant;
   }
 

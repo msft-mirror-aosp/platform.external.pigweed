@@ -1,10 +1,13 @@
 # Build
 compile_commands.json
+rust-project.json
+user.bazelrc
 out/
-bazel-*
+/bazel-*
 outbazel/
 .presubmit/
 docs/_build
+twister-out*/
 
 # Editors
 .pw_ide/
@@ -25,6 +28,8 @@ docs/_build
 *flycheck_*
 *_flymake.*
 .#*
+*~
+\#*#
 
 # Python
 *.pyc
@@ -65,3 +70,16 @@ build_overrides/pigweed_environment.gni
 # Web Tools
 node_modules
 yarn-error.log
+
+# pw_emu
+.pw_emu
+
+# pw_ide
+.pw_ide.user.yaml
+
+# Emboss
+*.emb.h
+
+# Console Logs
+pw_console-logs.txt
+pw_console-device-logs.txt

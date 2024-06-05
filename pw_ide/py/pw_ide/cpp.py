@@ -43,26 +43,30 @@ point at the symlink and is set up with the right paths, you'll get code
 intelligence.
 """
 
-from collections import defaultdict
-from dataclasses import dataclass
+from __future__ import annotations
+
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass, field
+import functools
 import glob
+from hashlib import sha1
 from io import TextIOBase
 import json
-import os
+import logging
 from pathlib import Path
 import platform
+import random
+import re
+import sys
 from typing import (
     Any,
     cast,
-    Callable,
-    Dict,
     Generator,
-    List,
-    Optional,
-    Tuple,
+    Iterator,
     TypedDict,
-    Union,
 )
+
+from pw_cli.env import pigweed_environment
 
 from pw_ide.exceptions import (
     BadCompDbException,
@@ -71,114 +75,258 @@ from pw_ide.exceptions import (
     UnresolvablePathException,
 )
 
-from pw_ide.settings import PigweedIdeSettings, PW_PIGWEED_CIPD_INSTALL_DIR
+from pw_ide.settings import PigweedIdeSettings
 from pw_ide.symlinks import set_symlink
 
-_COMPDB_FILE_PREFIX = 'compile_commands'
-_COMPDB_FILE_SEPARATOR = '_'
-_COMPDB_FILE_EXTENSION = '.json'
+_LOG = logging.getLogger(__package__)
+env = pigweed_environment()
 
-_COMPDB_CACHE_DIR_PREFIX = '.cache'
-_COMPDB_CACHE_DIR_SEPARATOR = '_'
-
-COMPDB_FILE_GLOB = f'{_COMPDB_FILE_PREFIX}*{_COMPDB_FILE_EXTENSION}'
-COMPDB_CACHE_DIR_GLOB = f'{_COMPDB_CACHE_DIR_PREFIX}*'
-
-MAX_COMMANDS_TARGET_FILENAME = 'max_commands_target'
-
-_SUPPORTED_TOOLCHAIN_EXECUTABLES = ('clang', 'gcc', 'g++')
+COMPDB_FILE_NAME = 'compile_commands.json'
+STABLE_CLANGD_DIR_NAME = '.stable'
+_CPP_IDE_FEATURES_DATA_FILE = 'pw_ide_state.json'
+_UNSUPPORTED_TOOLCHAIN_EXECUTABLES = ('_pw_invalid', 'python')
+_SUPPORTED_WRAPPER_EXECUTABLES = ('ccache',)
 
 
-def compdb_generate_file_path(target: str = '') -> Path:
-    """Generate a compilation database file path."""
+@dataclass(frozen=True)
+class CppIdeFeaturesTarget:
+    """Data pertaining to a C++ code analysis target."""
 
-    path = Path(f'{_COMPDB_FILE_PREFIX}{_COMPDB_FILE_EXTENSION}')
+    name: str
+    compdb_file_path: Path
+    num_commands: int
+    is_enabled: bool = True
 
-    if target:
-        path = path.with_name(
-            f'{_COMPDB_FILE_PREFIX}'
-            f'{_COMPDB_FILE_SEPARATOR}{target}'
-            f'{_COMPDB_FILE_EXTENSION}'
+    def __str__(self) -> str:
+        return self.name
+
+    def serialized(self) -> dict[str, Any]:
+        return {
+            **asdict(self),
+            **{
+                'compdb_file_path': str(self.compdb_file_path),
+            },
+        }
+
+    @classmethod
+    def deserialize(cls, **data) -> CppIdeFeaturesTarget:
+        return cls(
+            **{
+                **data,
+                **{
+                    'compdb_file_path': Path(data['compdb_file_path']),
+                },
+            }
         )
 
-    return path
+
+CppCompilationDatabaseFileHashes = dict[Path, str]
+CppCompilationDatabaseFileTargets = dict[Path, list[CppIdeFeaturesTarget]]
 
 
-def compdb_generate_cache_path(target: str = '') -> Path:
-    """Generate a compilation database cache directory path."""
+@dataclass
+class CppIdeFeaturesData:
+    """State data about C++ code analysis features."""
 
-    path = Path(f'{_COMPDB_CACHE_DIR_PREFIX}')
-
-    if target:
-        path = path.with_name(
-            f'{_COMPDB_CACHE_DIR_PREFIX}'
-            f'{_COMPDB_CACHE_DIR_SEPARATOR}{target}'
-        )
-
-    return path
-
-
-def compdb_target_from_path(filename: Path) -> Optional[str]:
-    """Get a target name from a compilation database path."""
-
-    # The length of the common compilation database file name prefix
-    prefix_length = len(_COMPDB_FILE_PREFIX) + len(_COMPDB_FILE_SEPARATOR)
-
-    if len(filename.stem) <= prefix_length:
-        # This will return None for the symlink filename, and any filename that
-        # is too short to be a compilation database.
-        return None
-
-    if filename.stem[:prefix_length] != (
-        _COMPDB_FILE_PREFIX + _COMPDB_FILE_SEPARATOR
-    ):
-        # This will return None for any files that don't have the common prefix.
-        return None
-
-    return filename.stem[prefix_length:]
-
-
-def _none_to_empty_str(value: Optional[str]) -> str:
-    return value if value is not None else ''
-
-
-def _none_if_not_exists(path: Path) -> Optional[Path]:
-    return path if path.exists() else None
-
-
-def compdb_cache_path_if_exists(
-    working_dir: Path, target: Optional[str]
-) -> Optional[Path]:
-    return _none_if_not_exists(
-        working_dir / compdb_generate_cache_path(_none_to_empty_str(target))
+    targets: dict[str, CppIdeFeaturesTarget] = field(default_factory=dict)
+    current_target: CppIdeFeaturesTarget | None = None
+    compdb_hashes: CppCompilationDatabaseFileHashes = field(
+        default_factory=dict
+    )
+    compdb_targets: CppCompilationDatabaseFileTargets = field(
+        default_factory=dict
     )
 
+    def serialized(self) -> dict[str, Any]:
+        return {
+            'current_target': self.current_target.serialized()
+            if self.current_target is not None
+            else None,
+            'targets': {
+                name: target_data.serialized()
+                for name, target_data in self.targets.items()
+            },
+            'compdb_hashes': {
+                str(path): hash_str
+                for path, hash_str in self.compdb_hashes.items()
+            },
+            'compdb_targets': {
+                str(path): [
+                    target_data.serialized() for target_data in target_data_list
+                ]
+                for path, target_data_list in self.compdb_targets.items()
+            },
+        }
 
-def target_is_enabled(
-    target: Optional[str], settings: PigweedIdeSettings
-) -> bool:
-    """Determine if a target is enabled.
+    @classmethod
+    def deserialize(cls, **data) -> CppIdeFeaturesData:
+        return cls(
+            current_target=CppIdeFeaturesTarget.deserialize(
+                **data['current_target']
+            )
+            if data['current_target'] is not None
+            else None,
+            targets={
+                name: CppIdeFeaturesTarget.deserialize(**target_data)
+                for name, target_data in data['targets'].items()
+            },
+            compdb_hashes={
+                Path(path_str): hash_str
+                for path_str, hash_str in data['compdb_hashes'].items()
+            },
+            compdb_targets={
+                Path(path_str): [
+                    CppIdeFeaturesTarget.deserialize(**target_data)
+                    for target_data in target_data_list
+                ]
+                for path_str, target_data_list in data['compdb_targets'].items()
+            },
+        )
 
-    By default, all targets are enabled. If specific targets are defined in a
-    settings file, only those targets will be enabled.
-    """
 
-    if target is None:
-        return False
+class CppIdeFeaturesState:
+    """Container for IDE features state data."""
 
-    if len(settings.targets) == 0:
-        return True
+    def __init__(self, pw_ide_settings: PigweedIdeSettings) -> None:
+        self.settings = pw_ide_settings
 
-    return target in settings.targets
+    def __len__(self) -> int:
+        return len(self.targets)
+
+    def __getitem__(self, index: str) -> CppIdeFeaturesTarget:
+        return self.targets[index]
+
+    def __iter__(self) -> Generator[CppIdeFeaturesTarget, None, None]:
+        return (target for target in self.targets.values())
+
+    @property
+    def stable_target_link(self) -> Path:
+        return self.settings.working_dir / STABLE_CLANGD_DIR_NAME
+
+    @contextmanager
+    def _file(self) -> Generator[CppIdeFeaturesData, None, None]:
+        """A simple key-value store for state data."""
+        file_path = self.settings.working_dir / _CPP_IDE_FEATURES_DATA_FILE
+
+        try:
+            with open(file_path) as file:
+                data = CppIdeFeaturesData.deserialize(**json.load(file))
+        except (FileNotFoundError, json.decoder.JSONDecodeError):
+            data = CppIdeFeaturesData()
+
+        yield data
+
+        with open(file_path, 'w') as file:
+            json.dump(data.serialized(), file, indent=2)
+
+    @property
+    def targets(self) -> dict[str, CppIdeFeaturesTarget]:
+        with self._file() as state:
+            exclude_predicate = (
+                lambda x: x not in self.settings.targets_exclude
+                if len(self.settings.targets_exclude) > 0
+                else lambda x: True
+            )
+            include_predicate = (
+                lambda x: x in self.settings.targets_include
+                if len(self.settings.targets_include) > 0
+                else lambda x: True
+            )
+
+            return {
+                name: target
+                for (name, target) in state.targets.items()
+                if exclude_predicate(name) and include_predicate(name)
+            }
+
+    @targets.setter
+    def targets(self, new_targets: dict[str, CppIdeFeaturesTarget]) -> None:
+        with self._file() as state:
+            state.targets = new_targets
+
+    @property
+    def current_target(self) -> CppIdeFeaturesTarget | None:
+        with self._file() as state:
+            return state.current_target
+
+    @current_target.setter
+    def current_target(
+        self, new_current_target: str | CppIdeFeaturesTarget | None
+    ) -> None:
+        with self._file() as state:
+            if new_current_target is None:
+                state.current_target = None
+            else:
+                if isinstance(new_current_target, CppIdeFeaturesTarget):
+                    name = new_current_target.name
+                    new_current_target_inst = new_current_target
+                else:
+                    name = new_current_target
+
+                    try:
+                        new_current_target_inst = state.targets[name]
+                    except KeyError:
+                        raise InvalidTargetException
+
+                if not new_current_target_inst.compdb_file_path.exists():
+                    raise MissingCompDbException
+
+                set_symlink(
+                    new_current_target_inst.compdb_file_path.parent,
+                    self.stable_target_link,
+                )
+
+                state.current_target = state.targets[name]
+
+    @property
+    def max_commands_target(self) -> CppIdeFeaturesTarget | None:
+        with self._file() as state:
+            if len(state.targets) == 0:
+                return None
+
+            max_commands_target_name = sorted(
+                [
+                    (name, target.num_commands)
+                    for name, target in state.targets.items()
+                ],
+                key=lambda x: x[1],
+                reverse=True,
+            )[0][0]
+
+            return state.targets[max_commands_target_name]
+
+    @property
+    def compdb_hashes(self) -> CppCompilationDatabaseFileHashes:
+        with self._file() as state:
+            return state.compdb_hashes
+
+    @compdb_hashes.setter
+    def compdb_hashes(
+        self, new_compdb_hashes: CppCompilationDatabaseFileHashes
+    ) -> None:
+        with self._file() as state:
+            state.compdb_hashes = new_compdb_hashes
+
+    @property
+    def compdb_targets(self) -> CppCompilationDatabaseFileTargets:
+        with self._file() as state:
+            return state.compdb_targets
+
+    @compdb_targets.setter
+    def compdb_targets(
+        self, new_compdb_targets: CppCompilationDatabaseFileTargets
+    ) -> None:
+        with self._file() as state:
+            state.compdb_targets = new_compdb_targets
 
 
 def path_to_executable(
     exe: str,
     *,
-    default_path: Optional[Path] = None,
-    path_globs: Optional[List[str]] = None,
+    default_path: Path | None = None,
+    path_globs: list[str] | None = None,
     strict: bool = False,
-) -> Optional[Path]:
+) -> Path | None:
     """Return the path to a compiler executable.
 
     In a ``clang`` compile command, the executable may or may not include a
@@ -236,16 +384,20 @@ def path_to_executable(
 
     # We were give an empty string, not a path. Not a valid command.
     if len(maybe_path.parts) == 0:
+        _LOG.debug("Invalid executable path. The path was an empty string.")
         return None
 
-    # Determine if the executable name matches supported drivers.
-    is_supported_driver = False
+    # Determine if the executable name matches unsupported drivers.
+    is_supported_driver = True
 
-    for supported_executable in _SUPPORTED_TOOLCHAIN_EXECUTABLES:
-        if supported_executable in maybe_path.name:
-            is_supported_driver = True
+    for unsupported_executable in _UNSUPPORTED_TOOLCHAIN_EXECUTABLES:
+        if unsupported_executable in maybe_path.name:
+            is_supported_driver = False
 
     if not is_supported_driver:
+        _LOG.debug(
+            "Invalid executable path. This is not a supported driver: %s", exe
+        )
         return None
 
     # Now, ensure the executable has a path.
@@ -282,20 +434,44 @@ def path_to_executable(
     return maybe_path
 
 
-def command_parts(command: str) -> Tuple[str, List[str]]:
-    """Return the executable string and the rest of the command tokens."""
+def command_parts(command: str) -> tuple[str | None, str, list[str]]:
+    """Return the executable string and the rest of the command tokens.
+
+    If the command contains a prefixed wrapper like `ccache`, it will be
+    extracted separately. So the return value contains:
+        (wrapper, compiler executable, all other tokens)
+    """
     parts = command.split()
-    head = parts[0] if len(parts) > 0 else ''
-    tail = parts[1:] if len(parts) > 1 else []
-    return head, tail
+    curr = ''
+    wrapper = None
+
+    try:
+        curr = parts.pop(0)
+    except IndexError:
+        return (None, curr, [])
+
+    if curr in _SUPPORTED_WRAPPER_EXECUTABLES:
+        wrapper = curr
+
+        while curr := parts.pop(0):
+            # This is very `ccache`-centric. It will work for other wrappers
+            # that use KEY=VALUE-style options or no options at all, but will
+            # not work for other cases.
+            if re.fullmatch(r'(.*)=(.*)', curr):
+                wrapper = f'{wrapper} {curr}'
+            else:
+                break
+
+    return (wrapper, curr, parts)
 
 
 # This is a clumsy way to express optional keys, which is not directly
 # supported in TypedDicts right now.
+# TODO(chadnorvell): Use `NotRequired` when we support Python 3.11.
 class BaseCppCompileCommandDict(TypedDict):
     file: str
     directory: str
-    output: Optional[str]
+    output: str | None
 
 
 class CppCompileCommandDictWithCommand(BaseCppCompileCommandDict):
@@ -303,12 +479,12 @@ class CppCompileCommandDictWithCommand(BaseCppCompileCommandDict):
 
 
 class CppCompileCommandDictWithArguments(BaseCppCompileCommandDict):
-    arguments: List[str]
+    arguments: list[str]
 
 
-CppCompileCommandDict = Union[
-    CppCompileCommandDictWithCommand, CppCompileCommandDictWithArguments
-]
+CppCompileCommandDict = (
+    CppCompileCommandDictWithCommand | CppCompileCommandDictWithArguments
+)
 
 
 class CppCompileCommand:
@@ -321,9 +497,9 @@ class CppCompileCommand:
         self,
         file: str,
         directory: str,
-        command: Optional[str] = None,
-        arguments: Optional[List[str]] = None,
-        output: Optional[str] = None,
+        command: str | None = None,
+        arguments: list[str] | None = None,
+        output: str | None = None,
     ) -> None:
         # Per the spec, either one of these two must be present. clangd seems
         # to prefer "arguments" when both are present.
@@ -343,9 +519,9 @@ class CppCompileCommand:
         self._file = file
         self._directory = directory
 
-        executable, tokens = command_parts(command)
+        _, executable, tokens = command_parts(command)
         self._executable_path = Path(executable)
-        self._inferred_output: Optional[str] = None
+        self._inferred_output: str | None = None
 
         try:
             # Find the output argument and grab its value.
@@ -361,7 +537,7 @@ class CppCompileCommand:
             )
 
         self._provided_output = output
-        self.target: Optional[str] = None
+        self.target: str | None = None
 
     @property
     def file(self) -> str:
@@ -372,20 +548,20 @@ class CppCompileCommand:
         return self._directory
 
     @property
-    def command(self) -> Optional[str]:
+    def command(self) -> str | None:
         return self._command
 
     @property
-    def arguments(self) -> Optional[List[str]]:
+    def arguments(self) -> list[str] | None:
         return self._arguments
 
     @property
-    def output(self) -> Optional[str]:
+    def output(self) -> str | None:
         # We're ignoring provided output values for now.
         return self._inferred_output
 
     @property
-    def output_path(self) -> Optional[Path]:
+    def output_path(self) -> Path | None:
         if self.output is None:
             return None
 
@@ -401,8 +577,8 @@ class CppCompileCommand:
 
     @classmethod
     def from_dict(
-        cls, compile_command_dict: Dict[str, Any]
-    ) -> 'CppCompileCommand':
+        cls, compile_command_dict: dict[str, Any]
+    ) -> CppCompileCommand:
         return cls(
             # We want to let possible Nones through to raise at runtime.
             file=cast(str, compile_command_dict.get('file')),
@@ -414,8 +590,8 @@ class CppCompileCommand:
 
     @classmethod
     def try_from_dict(
-        cls, compile_command_dict: Dict[str, Any]
-    ) -> Optional['CppCompileCommand']:
+        cls, compile_command_dict: dict[str, Any]
+    ) -> CppCompileCommand | None:
         try:
             return cls.from_dict(compile_command_dict)
         except TypeError:
@@ -424,10 +600,10 @@ class CppCompileCommand:
     def process(
         self,
         *,
-        default_path: Optional[Path] = None,
-        path_globs: Optional[List[str]] = None,
+        default_path: Path | None = None,
+        path_globs: list[str] | None = None,
         strict: bool = False,
-    ) -> Optional['CppCompileCommand']:
+    ) -> CppCompileCommand | None:
         """Process a compile command.
 
         At minimum, a compile command from a clang compilation database needs to
@@ -454,7 +630,7 @@ class CppCompileCommand:
                 'Compile commands without \'command\' ' 'are not supported yet.'
             )
 
-        executable_str, tokens = command_parts(self.command)
+        wrapper, executable_str, tokens = command_parts(self.command)
         executable_path = path_to_executable(
             executable_str,
             default_path=default_path,
@@ -462,12 +638,26 @@ class CppCompileCommand:
             strict=strict,
         )
 
-        if executable_path is None or self.output is None:
+        if executable_path is None:
+            _LOG.debug(
+                "Compile command rejected due to bad executable path: %s",
+                self.command,
+            )
+            return None
+
+        if self.output is None:
+            _LOG.debug(
+                "Compile command rejected due to no output property: %s",
+                self.command,
+            )
             return None
 
         # TODO(chadnorvell): Some commands include the executable multiple
         # times. It's not clear if that affects clangd.
         new_command = f'{str(executable_path)} {" ".join(tokens)}'
+
+        if wrapper is not None:
+            new_command = f'{wrapper} {new_command}'
 
         return self.__class__(
             file=self.file,
@@ -504,7 +694,28 @@ class CppCompileCommand:
         return compile_command_dict
 
 
-def _infer_target_pos(target_glob: str) -> List[int]:
+def _path_nearest_parent(path1: Path, path2: Path) -> Path:
+    """Get the closest common parent of two paths."""
+    # This is the Python < 3.9 version of: if path2.is_relative_to(path1)
+    try:
+        path2.relative_to(path1)
+        return path1
+    except ValueError:
+        pass
+
+    if path1 == path2:
+        return path1
+
+    if len(path1.parts) > len(path2.parts):
+        return _path_nearest_parent(path1.parent, path2)
+
+    if len(path1.parts) < len(path2.parts):
+        return _path_nearest_parent(path1, path2.parent)
+
+    return _path_nearest_parent(path1.parent, path2.parent)
+
+
+def _infer_target_pos(target_glob: str) -> list[int]:
     """Infer the position of the target in a compilation unit artifact path."""
     tokens = Path(target_glob).parts
     positions = []
@@ -520,9 +731,7 @@ def _infer_target_pos(target_glob: str) -> List[int]:
     return positions
 
 
-def infer_target(
-    target_glob: str, root: Path, output_path: Path
-) -> Optional[str]:
+def infer_target(target_glob: str, root: Path, output_path: Path) -> str | None:
     """Infer a target from a compilation unit artifact path.
 
     See the documentation for ``PigweedIdeSettings.target_inference``."""
@@ -535,13 +744,23 @@ def infer_target(
     # may be in the "directory" or the "output" of the compile command. So we
     # need to construct the full path that combines both and use that to search
     # for the target.
-    subpath = output_path.relative_to(root)
+    try:
+        # The path used for target inference is the path relative to the root
+        # dir. If this artifact is a direct child of the root, this just
+        # truncates the root off of its path.
+        subpath = output_path.relative_to(root)
+    except ValueError:
+        # If the output path isn't a child path of the root dir, find the
+        # closest shared parent dir and use that as the root for truncation.
+        common_parent = _path_nearest_parent(root, output_path)
+        subpath = output_path.relative_to(common_parent)
+
     return '_'.join([subpath.parts[pos] for pos in target_pos])
 
 
-LoadableToCppCompilationDatabase = Union[
-    List[Dict[str, Any]], str, TextIOBase, Path
-]
+LoadableToCppCompilationDatabase = (
+    list[dict[str, Any]] | str | TextIOBase | Path
+)
 
 
 class CppCompilationDatabase:
@@ -550,14 +769,28 @@ class CppCompilationDatabase:
     See: https://clang.llvm.org/docs/JSONCompilationDatabase.html
     """
 
-    def __init__(self, build_dir: Optional[Path] = None) -> None:
-        self._db: List[CppCompileCommand] = []
+    def __init__(
+        self,
+        root_dir: Path | None = None,
+        file_path: Path | None = None,
+        source_file_path: Path | None = None,
+        target_inference: str | None = None,
+    ) -> None:
+        self._db: list[CppCompileCommand] = []
+        self.file_path: Path | None = file_path
+        self.source_file_path: Path | None = source_file_path
+        self.source_file_hash: str | None = None
+
+        if target_inference is None:
+            self.target_inference = PigweedIdeSettings().target_inference
+        else:
+            self.target_inference = target_inference
 
         # Only compilation databases that are loaded will have this, and it
         # contains the root directory of the build that the compilation
         # database is based on. Processed compilation databases will not have
         # a value here.
-        self._build_dir = build_dir
+        self._root_dir = root_dir
 
     def __len__(self) -> int:
         return len(self._db)
@@ -568,11 +801,22 @@ class CppCompilationDatabase:
     def __iter__(self) -> Generator[CppCompileCommand, None, None]:
         return (compile_command for compile_command in self._db)
 
+    @property
+    def file_hash(self) -> str:
+        # If this compilation database did not originate from a file, return a
+        # hash that is almost certainly not going to match any other hash; these
+        # sources are not persistent, so they cannot be compared.
+        if self.file_path is None:
+            return '%032x' % random.getrandbits(160)
+
+        data = self.file_path.read_text().encode('utf-8')
+        return sha1(data).hexdigest()
+
     def add(self, *commands: CppCompileCommand):
         """Add compile commands to the compilation database."""
         self._db.extend(commands)
 
-    def merge(self, other: 'CppCompilationDatabase') -> None:
+    def merge(self, other: CppCompilationDatabase) -> None:
         """Merge values from another database into this one.
 
         This will not overwrite a compile command that already exists for a
@@ -586,7 +830,7 @@ class CppCompilationDatabase:
 
         self._db = list(self_dict.values())
 
-    def as_dicts(self) -> List[CppCompileCommandDict]:
+    def as_dicts(self) -> list[CppCompileCommandDict]:
         return [compile_command.as_dict() for compile_command in self._db]
 
     def to_json(self) -> str:
@@ -596,20 +840,25 @@ class CppCompilationDatabase:
 
     def to_file(self, path: Path):
         """Write the compilation database to a JSON file."""
+        path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(path, 'w') as file:
             json.dump(self.as_dicts(), file, indent=2, sort_keys=True)
 
     @classmethod
     def load(
-        cls, compdb_to_load: LoadableToCppCompilationDatabase, build_dir: Path
-    ) -> 'CppCompilationDatabase':
+        cls,
+        compdb_to_load: LoadableToCppCompilationDatabase,
+        root_dir: Path,
+        target_inference: str | None = None,
+    ) -> CppCompilationDatabase:
         """Load a compilation database.
 
         You can provide a JSON file handle or path, a JSON string, or a native
         Python data structure that matches the format (list of dicts).
         """
-        db_as_dicts: List[Dict[str, Any]]
+        db_as_dicts: list[dict[str, Any]]
+        file_path = None
 
         if isinstance(compdb_to_load, list):
             # The provided data is already in the format we want it to be in,
@@ -620,11 +869,13 @@ class CppCompilationDatabase:
             if isinstance(compdb_to_load, Path):
                 # The provided data is a path to a file, presumably JSON.
                 try:
+                    file_path = compdb_to_load
                     compdb_data = compdb_to_load.read_text()
                 except FileNotFoundError:
                     raise MissingCompDbException()
             elif isinstance(compdb_to_load, TextIOBase):
                 # The provided data is a file handle, presumably JSON.
+                file_path = Path(compdb_to_load.name)  # type: ignore
                 compdb_data = compdb_to_load.read()
             elif isinstance(compdb_to_load, str):
                 # The provided data is a a string, presumably JSON.
@@ -632,7 +883,11 @@ class CppCompilationDatabase:
 
             db_as_dicts = json.loads(compdb_data)
 
-        compdb = cls(build_dir=build_dir)
+        compdb = cls(
+            root_dir=root_dir,
+            file_path=file_path,
+            target_inference=target_inference,
+        )
 
         try:
             compdb.add(
@@ -657,17 +912,27 @@ class CppCompilationDatabase:
         self,
         settings: PigweedIdeSettings,
         *,
-        default_path: Optional[Path] = None,
-        path_globs: Optional[List[str]] = None,
+        default_path: Path | None = None,
+        path_globs: list[str] | None = None,
         strict: bool = False,
-    ) -> 'CppCompilationDatabasesMap':
+        always_output_new: bool = False,
+    ) -> CppCompilationDatabasesMap | None:
         """Process a ``clangd`` compilation database file.
 
         Given a clang compilation database that may have commands for multiple
         valid or invalid targets/toolchains, keep only the valid compile
         commands and store them in target-specific compilation databases.
+
+        If this finds that the processed file is functionally identical to the
+        input file (meaning that the input file did not require processing to
+        be used successfully with ``clangd``), then it will return ``None``,
+        indicating that the original file should be used. This behavior can be
+        overridden by setting ``always_output_new``, which will ensure that a
+        new compilation database is always written to the working directory and
+        original compilation databases outside the working directory are never
+        made available for code intelligence.
         """
-        if self._build_dir is None:
+        if self._root_dir is None:
             raise ValueError(
                 'Can only process a compilation database that '
                 'contains a root build directory, usually '
@@ -678,6 +943,8 @@ class CppCompilationDatabase:
 
         clean_compdbs = CppCompilationDatabasesMap(settings)
 
+        # Do processing, segregate processed commands into separate databases
+        # for each target.
         for compile_command in self:
             processed_command = compile_command.process(
                 default_path=default_path, path_globs=path_globs, strict=strict
@@ -688,16 +955,39 @@ class CppCompilationDatabase:
                 and processed_command.output_path is not None
             ):
                 target = infer_target(
-                    settings.target_inference,
-                    self._build_dir,
+                    self.target_inference,
+                    self._root_dir,
                     processed_command.output_path,
                 )
 
-                if target_is_enabled(target, settings):
-                    # This invariant is satisfied by target_is_enabled
-                    target = cast(str, target)
-                    processed_command.target = target
-                    clean_compdbs[target].add(processed_command)
+                target = cast(str, target)
+                processed_command.target = target
+                clean_compdbs[target].add(processed_command)
+
+                if clean_compdbs[target].source_file_path is None:
+                    clean_compdbs[target].source_file_path = self.file_path
+                    clean_compdbs[target].source_file_hash = self.file_hash
+
+        # TODO(chadnorvell): Handle len(clean_compdbs) == 0
+
+        # Determine if the processed database is functionally identical to the
+        # original, unless configured to always output the new databases.
+        # The criteria for "functionally identical" are:
+        #
+        # - The original file only contained commands for a single target
+        # - The number of compile commands in the processed database is equal to
+        #   that of the original database.
+        #
+        # This is a little bit crude. For example, it doesn't account for the
+        # (rare) edge case of multiple databases having commands for the same
+        # target. However, if you know that you have that kind of situation, you
+        # should use `always_output_new` and not rely on this.
+        if (
+            not always_output_new
+            and len(clean_compdbs) == 1
+            and len(clean_compdbs[0]) == len(self)
+        ):
+            return None
 
         return clean_compdbs
 
@@ -707,63 +997,109 @@ class CppCompilationDatabasesMap:
 
     def __init__(self, settings: PigweedIdeSettings):
         self.settings = settings
-        self._dbs: Dict[str, CppCompilationDatabase] = defaultdict(
-            CppCompilationDatabase
-        )
+        self._dbs: dict[str, CppCompilationDatabase] = dict()
 
     def __len__(self) -> int:
         return len(self._dbs)
 
-    def __getitem__(self, key: str) -> CppCompilationDatabase:
+    def _default(self, key: str | int):
+        # This is like `defaultdict` except that we can use the provided key
+        # (i.e. the target name) in the constructor.
+        if isinstance(key, str) and key not in self._dbs:
+            file_path = self.settings.working_dir / key / COMPDB_FILE_NAME
+            self._dbs[key] = CppCompilationDatabase(file_path=file_path)
+
+    def __getitem__(self, key: str | int) -> CppCompilationDatabase:
+        self._default(key)
+
+        # Support list-based indexing...
+        if isinstance(key, int):
+            return list(self._dbs.values())[key]
+
+        # ... and key-based indexing.
         return self._dbs[key]
 
     def __setitem__(self, key: str, item: CppCompilationDatabase) -> None:
+        self._default(key)
         self._dbs[key] = item
 
+    def __iter__(self) -> Iterator[str]:
+        for target, _ in self.items():
+            yield target
+
     @property
-    def targets(self) -> List[str]:
+    def targets(self) -> list[str]:
         return list(self._dbs.keys())
 
     def items(
         self,
-    ) -> Generator[Tuple[str, CppCompilationDatabase], None, None]:
+    ) -> Generator[tuple[str, CppCompilationDatabase], None, None]:
         return ((key, value) for (key, value) in self._dbs.items())
+
+    def _sort_by_commands(self) -> list[str]:
+        """Sort targets by the number of compile commands they have."""
+        enumerated_targets = sorted(
+            [(len(db), target) for target, db in self._dbs.items()],
+            key=lambda x: x[0],
+            reverse=True,
+        )
+
+        return [target for (_, target) in enumerated_targets]
+
+    def _sort_with_target_priority(self, target: str) -> list[str]:
+        """Sorted targets, but with the provided target first."""
+        sorted_targets = self._sort_by_commands()
+        # This will raise a ValueError if the target is not in the list, but
+        # we have ensured that that will never happen by the time we get here.
+        sorted_targets.remove(target)
+        return [target, *sorted_targets]
+
+    def _targets_to_write(self, target: str) -> list[str]:
+        """Return the list of targets whose comp. commands should be written.
+
+        Under most conditions, this will return a list with just the provided
+        target; essentially it's a no-op. But if ``cascade_targets`` is
+        enabled, this returns a list of all targets with the provided target
+        at the head of the list.
+        """
+        if not self.settings.cascade_targets:
+            return [target]
+
+        return self._sort_with_target_priority(target)
+
+    def _compdb_to_write(self, target: str) -> CppCompilationDatabase:
+        """The compilation database to write to file for this target.
+
+        Under most conditions, this will return the compilation database
+        associated with the provided target. But if ``cascade_targets`` is
+        enabled, this returns a compilation database with commands from all
+        targets, ordered per ``_sort_with_target_priority``.
+        """
+        targets = self._targets_to_write(target)
+        compdb = CppCompilationDatabase()
+
+        for iter_target in targets:
+            compdb.add(*self[iter_target])
+
+        return compdb
+
+    def test_write(self) -> None:
+        """Test writing to file.
+
+        This will raise an exception if the file is not JSON-serializable."""
+        for _, compdb in self.items():
+            compdb.to_json()
 
     def write(self) -> None:
         """Write compilation databases to target-specific JSON files."""
-        # This also writes out a file with the name of the target that has the
-        # largest number of commands, i.e., the target with the broadest
-        # compilation unit coverage. We can use this as a default target of
-        # last resort.
-        max_commands = 0
-        max_commands_target = None
-
-        for target, compdb in self.items():
-            if max_commands_target is None or len(compdb) > max_commands:
-                max_commands_target = target
-                max_commands = len(compdb)
-
-            compdb.to_file(
-                self.settings.working_dir / compdb_generate_file_path(target)
-            )
-
-        max_commands_target_path = (
-            self.settings.working_dir / MAX_COMMANDS_TARGET_FILENAME
-        )
-
-        if max_commands_target is not None:
-            if max_commands_target_path.exists():
-                max_commands_target_path.unlink()
-
-            with open(
-                max_commands_target_path, 'x'
-            ) as max_commands_target_file:
-                max_commands_target_file.write(max_commands_target)
+        for target in self:
+            path = self.settings.working_dir / target / COMPDB_FILE_NAME
+            self._compdb_to_write(target).to_file(path)
 
     @classmethod
     def merge(
-        cls, *db_sets: 'CppCompilationDatabasesMap'
-    ) -> 'CppCompilationDatabasesMap':
+        cls, *db_sets: CppCompilationDatabasesMap
+    ) -> CppCompilationDatabasesMap:
         """Merge several sets of processed compilation databases.
 
         If you process N compilation databases produced by a build system,
@@ -789,7 +1125,7 @@ class CppCompilationDatabasesMap:
         """
         if len(db_sets) == 0:
             raise ValueError(
-                'At least one set of compilation databases is ' 'required.'
+                'At least one set of compilation databases is required.'
             )
 
         # Shortcut for the most common case.
@@ -805,249 +1141,70 @@ class CppCompilationDatabasesMap:
         return merged
 
 
-@dataclass(frozen=True)
-class CppIdeFeaturesTarget:
-    """Data pertaining to a C++ code analysis target."""
+@functools.lru_cache
+def find_cipd_installed_exe_path(exe: str) -> Path:
+    """Return the path of an executable installed by CIPD.
 
-    name: str
-    compdb_file_path: Path
-    compdb_cache_path: Optional[Path]
-    is_enabled: bool
-
-
-class CppIdeFeaturesState:
-    """The state of the C++ analysis targets in the working directory.
-
-    Targets can be:
-
-    - **Available**: A compilation database is present for this target.
-    - **Enabled**: Any targets are enabled by default, but a subset can be
-      enabled instead in the pw_ide settings. Enabled targets need
-      not be available if they haven't had a compilation database
-      created through processing yet.
-    - **Valid**: Is both available and enabled.
-    - **Current**: The one currently activated target that is exposed to clangd.
+    Search for the executable in the paths pointed by all the defined
+    `PW_<PROJ_NAME>_CIPD_INSTALL_DIR` environment variables.
     """
 
-    def __init__(self, settings: PigweedIdeSettings) -> None:
-        self.settings = settings
+    if sys.platform.lower() in ("win32", "cygwin"):
+        exe += ".exe"
 
-        # We filter out Nones below, so we can assume its a str
-        target: Callable[[Path], str] = lambda path: cast(
-            str, compdb_target_from_path(path)
+    env_vars = vars(env)
+
+    search_paths: list[str] = []
+    for env_var_name, env_var in env_vars.items():
+        if re.fullmatch(r"PW_[A-Z_]+_CIPD_INSTALL_DIR", env_var_name):
+            search_paths.append(str(Path(env_var) / "bin" / exe))
+
+    if (env_var := env_vars.get('PW_PIGWEED_CIPD_INSTALL_DIR')) is not None:
+        search_paths.append(str(Path(env_var) / "bin" / exe))
+
+    path = None
+    exception = None
+    try:
+        path = path_to_executable(
+            exe, default_path=None, path_globs=search_paths, strict=True
+        )
+    except UnresolvablePathException as e:
+        exception = e
+
+    if path is None or exception:
+        search_paths_str = ":".join(search_paths)
+        raise FileNotFoundError(
+            f"Not able to find '{exe}' "
+            f"among '{search_paths_str}'. Is bootstrap successful?"
         )
 
-        # Contains every compilation database that's present in the working dir.
-        # This dict comprehension looks monstrous, but it just finds targets and
-        # associates the target names with their CppIdeFeaturesTarget objects.
-        self.targets: Dict[str, CppIdeFeaturesTarget] = {
-            target(file_path): CppIdeFeaturesTarget(
-                name=target(file_path),
-                compdb_file_path=file_path,
-                compdb_cache_path=compdb_cache_path_if_exists(
-                    settings.working_dir, compdb_target_from_path(file_path)
-                ),
-                is_enabled=target_is_enabled(target(file_path), settings),
-            )
-            for file_path in settings.working_dir.iterdir()
-            if file_path.match(
-                f'{_COMPDB_FILE_PREFIX}*{_COMPDB_FILE_EXTENSION}'
-            )
-            # This filters out the symlink
-            and compdb_target_from_path(file_path) is not None
-        }
-
-        # Contains the currently selected target.
-        self._current_target: Optional[CppIdeFeaturesTarget] = None
-
-        # This is diagnostic data; it tells us what the current target should
-        # be, even if the state of the working directory is corrupted and the
-        # compilation database for the target isn't actually present. Anything
-        # that requires a compilation database to be definitely present should
-        # use `current_target` instead of these values.
-        self.current_target_name: Optional[str] = None
-        self.current_target_file_path: Optional[Path] = None
-        self.current_target_exists: Optional[bool] = None
-
-        # Contains the name of the target that has the most compile commands,
-        # i.e., the target with the most file coverage in the project.
-        self._max_commands_target: Optional[str] = None
-
-        try:
-            src_file = Path(
-                os.readlink(
-                    (settings.working_dir / compdb_generate_file_path())
-                )
-            )
-
-            self.current_target_file_path = src_file
-            self.current_target_name = compdb_target_from_path(src_file)
-
-            if not self.current_target_file_path.exists():
-                self.current_target_exists = False
-
-            else:
-                self.current_target_exists = True
-                self._current_target = CppIdeFeaturesTarget(
-                    name=target(src_file),
-                    compdb_file_path=src_file,
-                    compdb_cache_path=compdb_cache_path_if_exists(
-                        settings.working_dir, target(src_file)
-                    ),
-                    is_enabled=target_is_enabled(target(src_file), settings),
-                )
-        except (FileNotFoundError, OSError):
-            # If the symlink doesn't exist, there is no current target.
-            pass
-
-        try:
-            with open(
-                settings.working_dir / MAX_COMMANDS_TARGET_FILENAME
-            ) as max_commands_target_file:
-                self._max_commands_target = max_commands_target_file.readline()
-        except FileNotFoundError:
-            # If the file doesn't exist, a compilation database probably
-            # hasn't been processed yet.
-            pass
-
-    def __len__(self) -> int:
-        return len(self.targets)
-
-    def __getitem__(self, index: str) -> CppIdeFeaturesTarget:
-        return self.targets[index]
-
-    def __iter__(self) -> Generator[CppIdeFeaturesTarget, None, None]:
-        return (target for target in self.targets.values())
-
-    @property
-    def current_target(self) -> Optional[str]:
-        """The name of current target used for code analysis.
-
-        The presence of a symlink with the expected filename pointing to a
-        compilation database matching the expected filename format is the source
-        of truth on what the current target is.
-        """
-        return (
-            self._current_target.name
-            if self._current_target is not None
-            else None
-        )
-
-    @current_target.setter
-    def current_target(self, target: Optional[str]) -> None:
-        settings = self.settings
-
-        if not self.is_valid_target(target):
-            raise InvalidTargetException()
-
-        # The check above rules out None.
-        target = cast(str, target)
-
-        compdb_symlink_path = settings.working_dir / compdb_generate_file_path()
-
-        compdb_target_path = settings.working_dir / compdb_generate_file_path(
-            target
-        )
-
-        if not compdb_target_path.exists():
-            raise MissingCompDbException()
-
-        set_symlink(compdb_target_path, compdb_symlink_path)
-
-        cache_symlink_path = settings.working_dir / compdb_generate_cache_path()
-
-        cache_target_path = settings.working_dir / compdb_generate_cache_path(
-            target
-        )
-
-        if not cache_target_path.exists():
-            os.mkdir(cache_target_path)
-
-        set_symlink(cache_target_path, cache_symlink_path)
-
-    @property
-    def max_commands_target(self) -> Optional[str]:
-        """The target with the most compile commands.
-
-        The return value is the name of the target with the largest number of
-        compile commands (i.e., the largest coverage across the files in the
-        project). This can be a useful "default target of last resort".
-        """
-        return self._max_commands_target
-
-    @property
-    def available_targets(self) -> List[str]:
-        return list(self.targets.keys())
-
-    @property
-    def enabled_available_targets(self) -> Generator[str, None, None]:
-        return (
-            name for name, target in self.targets.items() if target.is_enabled
-        )
-
-    def is_valid_target(self, target: Optional[str]) -> bool:
-        if target is None or (data := self.targets.get(target, None)) is None:
-            return False
-
-        return data.is_enabled
+    return path
 
 
-def aggregate_compilation_database_targets(
-    compdb_file: LoadableToCppCompilationDatabase,
-    settings: PigweedIdeSettings,
-    build_dir: Path,
-    *,
-    default_path: Optional[Path] = None,
-    path_globs: Optional[List[str]] = None,
-) -> List[str]:
-    """Return all valid unique targets from a ``clang`` compilation database."""
-    compdbs_map = CppCompilationDatabase.load(compdb_file, build_dir).process(
-        settings, default_path=default_path, path_globs=path_globs
-    )
+def get_clangd_path(settings: PigweedIdeSettings) -> Path:
+    if settings.clangd_alternate_path is not None:
+        return settings.clangd_alternate_path
 
-    return compdbs_map.targets
-
-
-def delete_compilation_databases(settings: PigweedIdeSettings) -> None:
-    """Delete all compilation databases in the working directory.
-
-    This leaves cache directories in place.
-    """
-    if settings.working_dir.exists():
-        for path in settings.working_dir.iterdir():
-            if path.name.startswith(_COMPDB_FILE_PREFIX):
-                try:
-                    path.unlink()
-                except FileNotFoundError:
-                    pass
-
-
-def delete_compilation_database_caches(settings: PigweedIdeSettings) -> None:
-    """Delete all compilation database caches in the working directory.
-
-    This leaves all compilation databases in place.
-    """
-    if settings.working_dir.exists():
-        for path in settings.working_dir.iterdir():
-            if path.name.startswith(_COMPDB_CACHE_DIR_PREFIX):
-                try:
-                    path.unlink()
-                except FileNotFoundError:
-                    pass
+    return find_cipd_installed_exe_path('clangd')
 
 
 class ClangdSettings:
     """Makes system-specific settings for running ``clangd`` with Pigweed."""
 
     def __init__(self, settings: PigweedIdeSettings):
-        self.compile_commands_dir: Path = PigweedIdeSettings().working_dir
-        self.clangd_path: Path = (
-            Path(PW_PIGWEED_CIPD_INSTALL_DIR) / 'bin' / 'clangd'
-        )
+        state = CppIdeFeaturesState(settings)
 
-        self.arguments: List[str] = [
-            f'--compile-commands-dir={self.compile_commands_dir}',
-            f'--query-driver={settings.clangd_query_driver_str()}',
+        self.clangd_path = get_clangd_path(settings)
+
+        compile_commands_dir = env.PW_PROJECT_ROOT
+
+        if state.current_target is not None:
+            compile_commands_dir = str(state.stable_target_link)
+
+        host_cc_path = find_cipd_installed_exe_path("clang++")
+        self.arguments: list[str] = [
+            f'--compile-commands-dir={compile_commands_dir}',
+            f'--query-driver={settings.clangd_query_driver_str(host_cc_path)}',
             '--background-index',
             '--clang-tidy',
         ]

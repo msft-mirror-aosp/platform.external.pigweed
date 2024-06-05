@@ -12,9 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "gtest/gtest.h"
+#include "pw_perf_test/state.h"
+
 #include "pw_perf_test/event_handler.h"
-#include "pw_perf_test/perf_test.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::perf_test {
 namespace {
@@ -22,10 +23,11 @@ namespace {
 class EmptyEventHandler : public EventHandler {
  public:
   void RunAllTestsStart(const TestRunInfo&) override {}
-  void TestCaseStart(const TestCase&) override {}
-  void TestCaseEnd(const TestCase&, const Results&) override {}
-  void TestCaseIteration(const IterationResult&) override {}
   void RunAllTestsEnd() override {}
+  void TestCaseStart(const TestCase&) override {}
+  void TestCaseIteration(const TestIteration&) override {}
+  void TestCaseMeasure(const TestMeasurement&) override {}
+  void TestCaseEnd(const TestCase&) override {}
 };
 
 EmptyEventHandler handler;

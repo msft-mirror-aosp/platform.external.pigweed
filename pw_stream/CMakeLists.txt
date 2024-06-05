@@ -31,10 +31,8 @@ pw_add_library(pw_stream STATIC
     pw_result
     pw_span
     pw_status
+    pw_toolchain._sibling_cast
 )
-if(Zephyr_FOUND AND CONFIG_PIGWEED_STREAM)
-  zephyr_link_libraries(pw_stream)
-endif()
 
 pw_add_library(pw_stream.socket_stream STATIC
   HEADERS
@@ -43,6 +41,7 @@ pw_add_library(pw_stream.socket_stream STATIC
     public
   PUBLIC_DEPS
     pw_stream
+    pw_sync.mutex
   SOURCES
     socket_stream.cc
   PRIVATE_DEPS
@@ -82,6 +81,26 @@ pw_add_library(pw_stream.interval_reader STATIC
     pw_stream
   SOURCES
     interval_reader.cc
+)
+
+pw_add_library(pw_stream.mpsc_stream STATIC
+  HEADERS
+    public/pw_stream/mpsc_stream.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_bytes
+    pw_chrono.system_clock
+    pw_containers.intrusive_list
+    pw_function
+    pw_status
+    pw_stream
+    pw_sync.lock_annotations
+    pw_sync.mutex
+    pw_sync.timed_thread_notification
+  SOURCES
+    mpsc_stream.cc
 )
 
 pw_add_test(pw_stream.memory_stream_test
@@ -129,6 +148,21 @@ pw_add_test(pw_stream.interval_reader_test
     interval_reader_test.cc
   PRIVATE_DEPS
     pw_stream.interval_reader
+  GROUPS
+    modules
+    pw_stream
+)
+
+pw_add_test(pw_stream.mpsc_stream_test
+  SOURCES
+    mpsc_stream_test.cc
+  PRIVATE_DEPS
+    pw_stream.mpsc_stream
+    pw_containers.vector
+    pw_fuzzer.fuzztest
+    pw_random
+    pw_thread.thread
+    pw_thread.test_thread_context
   GROUPS
     modules
     pw_stream

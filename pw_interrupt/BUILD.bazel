@@ -14,50 +14,37 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_facade",
-    "pw_cc_library",
+    "pw_facade",
 )
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_facade(
-    name = "context_facade",
+constraint_setting(
+    name = "backend_constraint_setting",
+)
+
+pw_facade(
+    name = "context",
     hdrs = [
         "public/pw_interrupt/context.h",
     ],
+    backend = ":backend",
     includes = ["public"],
 )
 
-pw_cc_library(
-    name = "context",
-    deps = [
-        ":context_facade",
-        "@pigweed_config//:pw_interrupt_backend",
-    ],
+label_flag(
+    name = "backend",
+    build_setting_default = ":backend_multiplexer",
 )
 
-pw_cc_library(
+alias(
     name = "backend_multiplexer",
-    # Normally this would be done in the backend packages but because there is
-    # no host implementation we have to define this here.
-    target_compatible_with = select({
-        "@platforms//cpu:armv7-m": [],
-        "@platforms//cpu:armv7e-m": [],
-        "@platforms//cpu:armv8-m": [],
-        "//conditions:default": ["@platforms//:incompatible"],
+    actual = select({
+        "//pw_interrupt_cortex_m:backend": "//pw_interrupt_cortex_m:context",
+        "//pw_interrupt_xtensa:backend": "//pw_interrupt_xtensa:context",
+        "//conditions:default": "//pw_build:unspecified_backend",
     }),
-    visibility = ["@pigweed_config//:__pkg__"],
-    deps = select({
-        "@platforms//cpu:armv7-m": ["//pw_interrupt_cortex_m:context_armv7m"],
-        "@platforms//cpu:armv7e-m": ["//pw_interrupt_cortex_m:context_armv7m"],
-        "@platforms//cpu:armv8-m": ["//pw_interrupt_cortex_m:context_armv8m"],
-        # This is required for this to be a valid select when building for the
-        # host i.e. 'bazel build //pw_interrupt/...'. The
-        # target_compatible_with attribute is used to skip this target when
-        # built with a wildcard. If explicitly depended on for a host build
-        # the build will fail.
-        "//conditions:default": [],
-    }),
+    visibility = ["@pigweed//targets:__pkg__"],
 )

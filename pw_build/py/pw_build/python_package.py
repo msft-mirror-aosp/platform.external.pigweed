@@ -13,6 +13,8 @@
 # the License.
 """Dataclass for a Python package."""
 
+from __future__ import annotations
+
 import configparser
 from contextlib import contextmanager
 import copy
@@ -24,7 +26,7 @@ from pathlib import Path
 import pprint
 import re
 import shutil
-from typing import Any, Dict, List, Optional, Iterable
+from typing import Any, Iterable
 
 _pretty_format = pprint.PrettyPrinter(indent=1, width=120).pformat
 
@@ -60,6 +62,10 @@ class UnknownPythonPackageName(Exception):
     """Exception thrown when a Python package_name cannot be determined."""
 
 
+class UnknownPythonPackageVersion(Exception):
+    """Exception thrown when a Python package version cannot be determined."""
+
+
 class MissingSetupSources(Exception):
     """Exception thrown when a Python package is missing setup source files.
 
@@ -84,16 +90,16 @@ def _sanitize_install_requires(metadata_dict: dict) -> dict:
 class PythonPackage:
     """Class to hold a single Python package's metadata."""
 
-    sources: List[Path]
-    setup_sources: List[Path]
-    tests: List[Path]
-    inputs: List[Path]
+    sources: list[Path]
+    setup_sources: list[Path]
+    tests: list[Path]
+    inputs: list[Path]
     gn_target_name: str = ''
-    generate_setup: Optional[Dict] = None
-    config: Optional[configparser.ConfigParser] = None
+    generate_setup: dict | None = None
+    config: configparser.ConfigParser | None = None
 
     @staticmethod
-    def from_dict(**kwargs) -> 'PythonPackage':
+    def from_dict(**kwargs) -> PythonPackage:
         """Build a PythonPackage instance from a dictionary."""
         transformed_kwargs = copy.copy(kwargs)
 
@@ -109,7 +115,7 @@ class PythonPackage:
             self.config = self._load_config()
 
     @property
-    def setup_dir(self) -> Optional[Path]:
+    def setup_dir(self) -> Path | None:
         if not self.setup_sources:
             return None
         # Assuming all setup_source files live in the same parent directory.
@@ -127,7 +133,7 @@ class PythonPackage:
         return setup_py[0]
 
     @property
-    def setup_cfg(self) -> Optional[Path]:
+    def setup_cfg(self) -> Path | None:
         setup_cfg = [
             setup_file
             for setup_file in self.setup_sources
@@ -137,7 +143,7 @@ class PythonPackage:
             return None
         return setup_cfg[0]
 
-    def as_dict(self) -> Dict[Any, Any]:
+    def as_dict(self) -> dict[Any, Any]:
         """Return a dict representation of this class."""
         self_dict = asdict(self)
         if self.config:
@@ -175,16 +181,33 @@ class PythonPackage:
         return actual_gn_target_name[-1]
 
     @property
+    def package_version(self) -> str:
+        version = ''
+        if self.config:
+            try:
+                version = self.config['metadata']['version']
+            except KeyError:
+                raise UnknownPythonPackageVersion(
+                    'Unknown Python package version for: '
+                    + _pretty_format(self.as_dict())
+                )
+        return version
+
+    @property
     def package_dir(self) -> Path:
         if self.setup_cfg and self.setup_cfg.is_file():
             return self.setup_cfg.parent / self.package_name
         root_source_dir = self.top_level_source_dir
         if root_source_dir:
             return root_source_dir
-        return self.sources[0].parent
+        if self.sources:
+            return self.sources[0].parent
+        # If no sources available, assume the setup file root is the
+        # package_dir. This may be the case in a package with data files only.
+        return self.setup_sources[0].parent
 
     @property
-    def top_level_source_dir(self) -> Optional[Path]:
+    def top_level_source_dir(self) -> Path | None:
         source_dir_paths = sorted(
             set((len(sfile.parts), sfile.parent) for sfile in self.sources),
             key=lambda s: s[1],
@@ -198,7 +221,7 @@ class PythonPackage:
 
         return top_level_source_dir
 
-    def _load_config(self) -> Optional[configparser.ConfigParser]:
+    def _load_config(self) -> configparser.ConfigParser | None:
         config = configparser.ConfigParser()
 
         # Check for a setup.cfg and load that config.
@@ -232,9 +255,9 @@ class PythonPackage:
         new_destination.mkdir(parents=True, exist_ok=True)
         shutil.copytree(self.package_dir, new_destination, dirs_exist_ok=True)
 
-    def install_requires_entries(self) -> List[str]:
+    def install_requires_entries(self) -> list[str]:
         """Convert the install_requires entry into a list of strings."""
-        this_requires: List[str] = []
+        this_requires: list[str] = []
         # If there's no setup.cfg, do nothing.
         if not self.config:
             return this_requires
@@ -266,7 +289,7 @@ class PythonPackage:
 
 def load_packages(
     input_list_files: Iterable[Path], ignore_missing=False
-) -> List[PythonPackage]:
+) -> list[PythonPackage]:
     """Load Python package metadata and configs."""
 
     packages = []

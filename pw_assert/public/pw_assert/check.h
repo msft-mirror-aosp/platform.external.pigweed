@@ -76,6 +76,14 @@
 //   PW_CHECK_FLOAT_EXACT_EQ(a, b, msg, ...)  Asserts a == b
 //   PW_CHECK_FLOAT_EXACT_NE(a, b, msg, ...)  Asserts a != b
 //
+//   Integer-overflow asserts for integer types:
+//   PW_CHECK_ADD(a, b, out, msg, ...)
+//     Asserts a + b does not overflow and stores the result in out.
+//   PW_CHECK_SUB(a, b, out, msg, ...)
+//     Asserts a - b does not overflow and stores the result in out.
+//   PW_CHECK_MUL(a, b, out, msg, ...)
+//     Asserts a * b does not overflow and stores the result in out.
+//
 //   The above CHECK_*_*() are also available in DCHECK variants, which will
 //   only evaluate their arguments and trigger if the NDEBUG macro is defined.
 //
@@ -83,8 +91,8 @@
 //   precision and ergo error accumulation into account are not provided on
 //   purpose as this comes with some complexity and requires application
 //   specific tolerances in terms of Units of Least Precision (ULP). Instead,
-//   we recommend developers carefully consider how floating point precision and
-//   error impact the data they are bounding and whether CHECKs are appropriate.
+//   carefully consider how floating point precision and error impact the data
+//   they are bounding and whether CHECKs are appropriate.
 //
 //   Note: PW_CRASH is the equivalent of LOG_FATAL in other systems, where a
 //   device crash is triggered with a message. In Pigweed, logging and

@@ -715,6 +715,10 @@ class Result : private internal_result::StatusOrData<T>,
   constexpr void Assign(Result<U>&& other);
 };
 
+// Deduction guide to allow ``Result(v)`` rather than ``Result<T>(v)``.
+template <typename T>
+Result(T value) -> Result<T>;
+
 // operator==()
 //
 // This operator checks the equality of two `Result<T>` objects.
@@ -872,8 +876,8 @@ constexpr Status ConvertToStatus(const Result<T>& result) {
 }
 
 template <typename T>
-constexpr T ConvertToValue(Result<T>& result) {
-  return std::move(result.value());
+constexpr T&& ConvertToValue(Result<T>& result) {
+  return std::move(result).value();
 }
 
 }  // namespace internal

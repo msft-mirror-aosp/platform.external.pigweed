@@ -15,14 +15,16 @@
 package dev.pigweed.pw_transfer;
 
 import static dev.pigweed.pw_rpc.Service.bidirectionalStreamingMethod;
+import static dev.pigweed.pw_rpc.Service.unaryMethod;
 
 import dev.pigweed.pw_rpc.Service;
 
 /** Provides a service definition for the pw_transfer service. */
 public class TransferService {
   private static final Service SERVICE = new Service("pw.transfer.Transfer",
-      bidirectionalStreamingMethod("Read", Chunk.class, Chunk.class),
-      bidirectionalStreamingMethod("Write", Chunk.class, Chunk.class));
+      bidirectionalStreamingMethod("Read", Chunk.parser(), Chunk.parser()),
+      bidirectionalStreamingMethod("Write", Chunk.parser(), Chunk.parser()),
+      unaryMethod("GetResourceStatus", ResourceStatusRequest.parser(), ResourceStatus.parser()));
 
   public static Service get() {
     return SERVICE;

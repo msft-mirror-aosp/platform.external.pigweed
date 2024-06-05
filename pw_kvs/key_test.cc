@@ -16,7 +16,7 @@
 
 #include <string_view>
 
-#include "gtest/gtest.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::kvs {
 
@@ -35,8 +35,7 @@ TEST(Key, ConstructorEmpty) {
   EXPECT_EQ(key.size(), 0u);
   EXPECT_TRUE(key.empty());
   EXPECT_EQ(key.data(), nullptr);
-  EXPECT_EQ(key.begin(), nullptr);
-  EXPECT_EQ(key.end(), nullptr);
+  EXPECT_EQ(key.begin(), key.end());
 }
 
 TEST(Key, ConstructorString) {

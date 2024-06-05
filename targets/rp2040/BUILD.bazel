@@ -12,21 +12,57 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
+
+platform(
+    name = "rp2040",
+    constraint_values = [
+        "@freertos//:port_ARM_CM0",
+        "@freertos//:disable_task_statics",
+        "@pico-sdk//bazel/constraint:rp2040",
+        "@pico-sdk//bazel/constraint:stdio_usb",
+        "freertos_config_cv",
+        "//pw_build/constraints/rtos:freertos",
+        "//pw_interrupt_cortex_m:backend",
+        "//pw_sys_io_rp2040:backend",
+        # For toolchain selection.
+        "@platforms//cpu:armv6-m",
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m0",
+    ],
+)
+
+cc_library(
+    name = "extra_platform_libs",
+    deps = [
+        ":pre_init",
+        "//pw_tokenizer:linker_script",
+        "@pico-sdk//src/common/pico_stdlib:pico_stdlib",
+    ],
+)
+
+cc_library(
+    name = "freertos_config",
+    hdrs = [
+        "config/FreeRTOSConfig.h",
+    ],
+    includes = ["config/"],
+    target_compatible_with = [":freertos_config_cv"],
+    deps = ["//third_party/freertos:config_assert"],
+)
+
+constraint_value(
+    name = "freertos_config_cv",
+    constraint_setting = "@freertos//:freertos_config_setting",
+)
 
 # This is just a stub to silence warnings saying that pico_logging_test_main.cc
 # is missing from the bazel build. There's no plans yet to do a Bazel build for
 # the Pi Pico.
 #
-# TODO(b/260639642): Support Pico in the Bazel build.
-pw_cc_library(
+# TODO: b/260639642 - Support Pico in the Bazel build.
+cc_library(
     name = "pico_logging_test_main",
     srcs = [
         "pico_logging_test_main.cc",
@@ -36,4 +72,36 @@ pw_cc_library(
         "//pw_unit_test",
         "//pw_unit_test:logging_event_handler",
     ],
+)
+
+# This is just a stub to silence warnings saying that boot.cc and *.h files are
+# missing from the bazel build. There's no plans yet to do a Bazel build for
+# the Pi Pico.
+filegroup(
+    name = "rp2040_files",
+    srcs = [
+        "config/pigweed_module_config.h",
+        "config/rp2040_hal_config.h",
+        "unit_test_app.cc",
+    ],
+)
+
+cc_library(
+    name = "pre_init",
+    srcs = [
+        "boot.cc",
+    ],
+    # TODO: b/261603269 - Get this to build.
+    tags = ["manual"],
+    target_compatible_with = [":freertos_config_cv"],
+    deps = [
+        ":freertos_config",
+        "//pw_assert",
+        "//pw_assert:backend_impl",
+        "//pw_string",
+        "//pw_system:init",
+        "@freertos",
+        "@pico-sdk//src/rp2_common/pico_stdlib:pico_stdlib",
+    ],
+    alwayslink = 1,
 )

@@ -174,9 +174,7 @@ EOF
 )
 
 _pw_banner() {
-  if [ -z "$PW_ENVSETUP_QUIET" ] && [ -z "$PW_ENVSETUP_NO_BANNER" ]; then
-    pw_magenta "$_PW_BANNER\n"
-  fi
+  pw_magenta "$_PW_BANNER\n"
 }
 
 _PW_BANNER_FUNC="_pw_banner"
@@ -186,7 +184,7 @@ _pw_hello() {
   if [ -n "$PW_BANNER_FUNC" ]; then
     _PW_BANNER_FUNC="$PW_BANNER_FUNC"
   fi
-  if [ -z "$PW_ENVSETUP_QUIET" ]; then
+  if [ -z "$PW_ENVSETUP_QUIET" ] && [ -z "$PW_ENVSETUP_NO_BANNER" ]; then
     pw_green "\n  WELCOME TO...\n"
     "$_PW_BANNER_FUNC"
     pw_green "$_PW_TEXT"
@@ -288,10 +286,10 @@ pw_bootstrap() {
   # Write the directory path at bootstrap time into the directory. This helps
   # us double-check things are still in the same space when calling activate.
   _PW_ENV_ROOT_TXT="$_PW_ACTUAL_ENVIRONMENT_ROOT/env_root.txt"
-  echo "$_PW_ACTUAL_ENVIRONMENT_ROOT" > "$_PW_ENV_ROOT_TXT"
+  echo "$_PW_ACTUAL_ENVIRONMENT_ROOT" > "$_PW_ENV_ROOT_TXT" 2> /dev/null
 
   # Create the environment README file. Use quotes to prevent alias expansion.
-  "cp" "$PW_ROOT/pw_env_setup/destination.md" "$_PW_ACTUAL_ENVIRONMENT_ROOT/README.md"
+  "cp" "$PW_ROOT/pw_env_setup/destination.md" "$_PW_ACTUAL_ENVIRONMENT_ROOT/README.md" &> /dev/null
 }
 
 pw_activate() {

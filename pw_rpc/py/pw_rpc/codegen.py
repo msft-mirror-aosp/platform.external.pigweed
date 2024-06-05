@@ -16,7 +16,7 @@
 import abc
 from datetime import datetime
 import os
-from typing import cast, Any, Iterable, Union
+from typing import cast, Any, Iterable
 
 from pw_protobuf.output_file import OutputFile
 from pw_protobuf.proto_tree import ProtoNode, ProtoService, ProtoServiceMethod
@@ -49,7 +49,7 @@ STUB_READER_WRITER_TODO = (
 # todo-check: enable
 
 
-def get_id(item: Union[ProtoService, ProtoServiceMethod]) -> str:
+def get_id(item: ProtoService | ProtoServiceMethod) -> str:
     name = item.proto_path() if isinstance(item, ProtoService) else item.name()
     return f'0x{ids.calculate(name):08x}'
 
@@ -113,7 +113,9 @@ class CodeGenerator(abc.ABC):
         """Generates code for a service method."""
 
     @abc.abstractmethod
-    def client_member_function(self, method: ProtoServiceMethod) -> None:
+    def client_member_function(
+        self, method: ProtoServiceMethod, *, dynamic: bool
+    ) -> None:
         """Generates the client code for the Client member functions."""
 
     @abc.abstractmethod
@@ -149,6 +151,7 @@ def generate_package(
     gen.line('#include <type_traits>\n')
 
     include_lines = [
+        '#include "pw_rpc/internal/config.h"',
         '#include "pw_rpc/internal/method_info.h"',
         '#include "pw_rpc/internal/method_lookup.h"',
         '#include "pw_rpc/internal/service_client.h"',
@@ -225,6 +228,14 @@ def _generate_service_and_client(
 
         _generate_client(gen, service)
 
+        # DynamicClient is only generated for pwpb for now.
+        if gen.name() == 'pwpb':
+            gen.line('#if PW_RPC_DYNAMIC_ALLOCATION')
+            _generate_client(gen, service, dynamic=True)
+            gen.line('#endif  // PW_RPC_DYNAMIC_ALLOCATION')
+
+        _generate_client_free_functions(gen, service)
+
     gen.line(' private:')
 
     with gen.indent():
@@ -253,17 +264,21 @@ def _check_method_name(method: ProtoServiceMethod) -> None:
         )
 
 
-def _generate_client(gen: CodeGenerator, service: ProtoService) -> None:
+def _generate_client(
+    gen: CodeGenerator, service: ProtoService, *, dynamic: bool = False
+) -> None:
+    class_name = 'DynamicClient' if dynamic else 'Client'
+
     gen.line('// The Client is used to invoke RPCs for this service.')
     gen.line(
-        f'class Client final : public {RPC_NAMESPACE}::internal::'
+        f'class {class_name} final : public {RPC_NAMESPACE}::internal::'
         'ServiceClient {'
     )
     gen.line(' public:')
 
     with gen.indent():
         gen.line(
-            f'constexpr Client({RPC_NAMESPACE}::Client& client,'
+            f'constexpr {class_name}({RPC_NAMESPACE}::Client& client,'
             ' uint32_t channel_id)'
         )
         gen.line('    : ServiceClient(client, channel_id) {}')
@@ -272,11 +287,15 @@ def _generate_client(gen: CodeGenerator, service: ProtoService) -> None:
 
         for method in service.methods():
             gen.line()
-            gen.client_member_function(method)
+            gen.client_member_function(method, dynamic=dynamic)
 
     gen.line('};')
     gen.line()
 
+
+def _generate_client_free_functions(
+    gen: CodeGenerator, service: ProtoService
+) -> None:
     gen.line(
         '// Static functions for invoking RPCs on a pw_rpc server. '
         'These functions are '
@@ -324,10 +343,26 @@ def _generate_info(
 
             gen.line('}')
 
+            if gen.name() in ['pwpb', 'nanopb']:
+                gen.line('template <typename ServiceImpl, typename Response>')
+                gen.line('static constexpr auto FunctionTemplate() {')
+
+                with gen.indent():
+                    template_name = method.name() + 'Template<Response>'
+                    gen.line(f'return &ServiceImpl::template {template_name};')
+
+                gen.line('}')
+
             gen.line(
                 'using GeneratedClient = '
                 f'{"::" + namespace if namespace else ""}'
                 f'::pw_rpc::{gen.name()}::{service.name()}::Client;'
+            )
+
+            gen.line(
+                'using ServiceClass = '
+                f'{"::" + namespace if namespace else ""}'
+                f'::pw_rpc::{gen.name()}::{service.name()};'
             )
 
             gen.method_info_specialization(method)

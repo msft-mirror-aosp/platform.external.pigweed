@@ -25,7 +25,7 @@ import operator
 from pathlib import Path
 import re
 from threading import Thread
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING
 
 from prompt_toolkit.data_structures import Point
 from prompt_toolkit.formatted_text import StyleAndTextTuples
@@ -65,9 +65,9 @@ class LogView:
 
     def __init__(
         self,
-        log_pane: 'LogPane',
-        application: 'ConsoleApp',
-        log_store: Optional[LogStore] = None,
+        log_pane: LogPane,
+        application: ConsoleApp,
+        log_store: LogStore | None = None,
     ):
         # Parent LogPane reference. Updated by calling `set_log_pane()`.
         self.log_pane = log_pane
@@ -77,30 +77,30 @@ class LogView:
         self.log_store.set_prefs(application.prefs)
         self.log_store.register_viewer(self)
 
-        self.marked_logs_start: Optional[int] = None
-        self.marked_logs_end: Optional[int] = None
+        self.marked_logs_start: int | None = None
+        self.marked_logs_end: int | None = None
 
         # Search variables
-        self.search_text: Optional[str] = None
-        self.search_filter: Optional[LogFilter] = None
+        self.search_text: str | None = None
+        self.search_filter: LogFilter | None = None
         self.search_highlight: bool = False
         self.search_matcher = DEFAULT_SEARCH_MATCHER
         self.search_validator = RegexValidator()
 
         # Container for each log_index matched by active searches.
-        self.search_matched_lines: Dict[int, int] = {}
+        self.search_matched_lines: dict[int, int] = {}
         # Background task to find historical matched lines.
-        self.search_match_count_task: Optional[asyncio.Task] = None
+        self.search_match_count_task: asyncio.Task | None = None
 
         # Flag for automatically jumping to each new search match as they
         # appear.
         self.follow_search_match: bool = False
-        self.last_search_matched_log: Optional[int] = None
+        self.last_search_matched_log: int | None = None
 
         # Follow event flag. This is set to by the new_logs_arrived() function
         # as a signal that the log screen should be scrolled to the bottom.
         # This is read by render_content() whenever the screen is drawn.
-        self.follow_event: Optional[FollowEvent] = None
+        self.follow_event: FollowEvent | None = None
 
         self.log_screen = LogScreen(
             get_log_source=self._get_log_lines,
@@ -112,11 +112,11 @@ class LogView:
 
         # Filter
         self.filtering_on: bool = False
-        self.filters: 'collections.OrderedDict[str, LogFilter]' = (
-            collections.OrderedDict()
-        )
+        self.filters: collections.OrderedDict[
+            str, LogFilter
+        ] = collections.OrderedDict()
         self.filtered_logs: collections.deque = collections.deque()
-        self.filter_existing_logs_task: Optional[asyncio.Task] = None
+        self.filter_existing_logs_task: asyncio.Task | None = None
 
         # Current log line index state variables:
         self._last_log_index = -1
@@ -145,7 +145,7 @@ class LogView:
         self.visual_select_mode: bool = False
 
         # Cache of formatted text tuples used in the last UI render.
-        self._line_fragment_cache: List[StyleAndTextTuples] = []
+        self._line_fragment_cache: list[StyleAndTextTuples] = []
 
         # websocket server variables
         self.websocket_running: bool = False
@@ -166,9 +166,6 @@ class LogView:
         self.websocket_port = self.websocket_server.ws_server.sockets[
             0
         ].getsockname()[1]
-        self.log_pane.application.application.clipboard.set_text(
-            self.get_web_socket_url()
-        )
         self.websocket_running = True
         self.websocket_loop.run_forever()
 
@@ -309,7 +306,7 @@ class LogView:
                 return
 
     def set_search_regex(
-        self, text, invert, field, matcher: Optional[SearchMatcher] = None
+        self, text, invert, field, matcher: SearchMatcher | None = None
     ) -> bool:
         search_matcher = matcher if matcher else self.search_matcher
         _LOG.debug(search_matcher)
@@ -339,13 +336,13 @@ class LogView:
         self,
         text,
         invert=False,
-        field: Optional[str] = None,
-        search_matcher: Optional[str] = None,
+        field: str | None = None,
+        search_matcher: str | None = None,
         interactive: bool = True,
     ) -> bool:
         """Start a new search for the given text."""
         valid_matchers = list(s.name for s in SearchMatcher)
-        selected_matcher: Optional[SearchMatcher] = None
+        selected_matcher: SearchMatcher | None = None
         if (
             search_matcher is not None
             and search_matcher.upper() in valid_matchers
@@ -435,7 +432,7 @@ class LogView:
         self.search_highlight = False
         self._reset_log_screen_on_next_render = True
 
-    def _get_log_lines(self) -> Tuple[int, collections.deque[LogLine]]:
+    def _get_log_lines(self) -> tuple[int, collections.deque[LogLine]]:
         logs = self.log_store.logs
         if self.filtering_on:
             logs = self.filtered_logs
@@ -449,7 +446,7 @@ class LogView:
             )
         return logs
 
-    def _get_table_formatter(self) -> Optional[Callable]:
+    def _get_table_formatter(self) -> Callable | None:
         table_formatter = None
         if self.log_pane.table_view:
             table_formatter = self.log_store.table.formatted_row
@@ -474,9 +471,9 @@ class LogView:
             return
         self.clear_search()
         self.filtering_on = False
-        self.filters: 'collections.OrderedDict[str, re.Pattern]' = (
-            collections.OrderedDict()
-        )
+        self.filters: collections.OrderedDict[
+            str, re.Pattern
+        ] = collections.OrderedDict()
         self.filtered_logs.clear()
         # Reset scrollback start
         self._scrollback_start_index = 0
@@ -517,7 +514,7 @@ class LogView:
             if i % 100 == 0:
                 await asyncio.sleep(0.1)
 
-    def set_log_pane(self, log_pane: 'LogPane'):
+    def set_log_pane(self, log_pane: LogPane):
         """Set the parent LogPane instance."""
         self.log_pane = log_pane
 
@@ -575,7 +572,7 @@ class LogView:
             self.follow_search_match = False
             self.scroll_to_bottom()
 
-    def filter_scan(self, log: 'LogLine'):
+    def filter_scan(self, log: LogLine):
         filter_match_count = 0
         for _filter_text, log_filter in self.filters.items():
             if log_filter.matches(log):
@@ -605,7 +602,7 @@ class LogView:
                     self.filtered_logs.append(self.log_store.logs[i])
 
         if self.search_filter:
-            last_matched_log: Optional[int] = None
+            last_matched_log: int | None = None
             # Scan newly arived log lines
             for i in range(self._last_log_store_index, latest_total):
                 if self.search_filter.matches(self.log_store.logs[i]):
@@ -822,7 +819,7 @@ class LogView:
     def get_web_socket_url(self):
         return f'http://127.0.0.1:3000/#ws={self.websocket_port}'
 
-    def render_content(self) -> List:
+    def render_content(self) -> list:
         """Return logs to display on screen as a list of FormattedText tuples.
 
         This function determines when the log screen requires re-rendeing based
@@ -946,7 +943,7 @@ class LogView:
         self,
         use_table_formatting: bool = True,
         selected_lines_only: bool = False,
-        file_name: Optional[str] = None,
+        file_name: str | None = None,
         to_clipboard: bool = False,
         add_markdown_fence: bool = False,
     ) -> bool:
@@ -964,9 +961,7 @@ class LogView:
         elif to_clipboard:
             if add_markdown_fence:
                 text_output = '```\n' + text_output + '```\n'
-            self.log_pane.application.application.clipboard.set_text(
-                text_output
-            )
+            self.log_pane.application.set_system_clipboard(text_output)
             _LOG.debug('Copied logs to clipboard.')
 
         return True

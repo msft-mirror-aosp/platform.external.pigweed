@@ -18,7 +18,6 @@ import inspect
 import logging
 from pathlib import Path
 import sys
-from typing import Optional, Dict
 
 from pw_cli import log as pw_cli_log
 from pw_cli import argument_types
@@ -69,11 +68,13 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
+def main(args: argparse.Namespace | None = None) -> int:
     """Pigweed Console."""
 
     parser = _build_argument_parser()
-    args = parser.parse_args()
+
+    if args is None:
+        args = parser.parse_args()
 
     if not args.logfile:
         # Create a temp logfile to prevent logs from appearing over stdout. This
@@ -139,7 +140,7 @@ def main() -> int:
         config_file_path=args.config_file,
     )
 
-    overriden_window_config: Optional[Dict] = None
+    overriden_window_config: dict | None = None
     # Add example plugins and log panes used to validate behavior in the Pigweed
     # Console manual test procedure: https://pigweed.dev/pw_console/testing.html
     if args.test_mode:

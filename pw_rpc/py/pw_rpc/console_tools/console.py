@@ -13,6 +13,8 @@
 # the License.
 """Utilities for creating an interactive console."""
 
+from __future__ import annotations
+
 from collections import defaultdict
 import functools
 from itertools import chain
@@ -22,11 +24,9 @@ import types
 from typing import (
     Any,
     Collection,
-    Dict,
     Iterable,
     Mapping,
     NamedTuple,
-    Optional,
 )
 
 import pw_status
@@ -49,7 +49,7 @@ class CommandHelper:
         variables: Mapping[str, object],
         header: str,
         footer: str = '',
-    ) -> 'CommandHelper':
+    ) -> CommandHelper:
         return cls({m.full_name: m for m in methods}, variables, header, footer)
 
     def __init__(
@@ -129,7 +129,7 @@ class ClientInfo(NamedTuple):
 
 def flattened_rpc_completions(
     client_info_list: Collection[ClientInfo],
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Create a flattened list of rpc commands for repl auto-completion.
 
     This gathers all rpc commands from a set of ClientInfo variables and
@@ -176,10 +176,9 @@ class Context:
 
     .. code-block:: python
 
-      context = console_tools.Context(
-          clients, default_client, protos, help_header=WELCOME_MESSAGE)
-      IPython.terminal.embed.InteractiveShellEmbed().mainloop(
-          module=types.SimpleNamespace(**context.variables()))
+       context = console_tools.Context(
+           clients, default_client, protos, help_header=WELCOME_MESSAGE)
+       IPython.start_ipython(argv=[], user_ns=dict(**context.variables()))
     """
 
     def __init__(
@@ -209,11 +208,11 @@ class Context:
         self.protos = protos
 
         # Store objects with references to RPC services, sorted by package.
-        self._services: Dict[str, types.SimpleNamespace] = defaultdict(
+        self._services: dict[str, types.SimpleNamespace] = defaultdict(
             types.SimpleNamespace
         )
 
-        self._variables: Dict[str, object] = dict(
+        self._variables: dict[str, object] = dict(
             Status=pw_status.Status,
             set_target=functions.help_as_repr(self.set_target),
             # The original built-in help function is available as 'python_help'.
@@ -253,12 +252,12 @@ class Context:
         """Create a flattened list of rpc commands for repl auto-completion."""
         return flattened_rpc_completions(self.client_info)
 
-    def variables(self) -> Dict[str, Any]:
+    def variables(self) -> dict[str, Any]:
         """Returns a mapping of names to variables for use in an RPC console."""
         return self._variables
 
     def set_target(
-        self, selected_client: object, channel_id: Optional[int] = None
+        self, selected_client: object, channel_id: int | None = None
     ) -> None:
         """Sets the default target for commands."""
         # Make sure the variable is one of the client variables.
