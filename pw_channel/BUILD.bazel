@@ -93,9 +93,32 @@ pw_cc_test(
     srcs = ["loopback_channel_test.cc"],
     deps = [
         ":loopback_channel",
-        "//pw_allocator:testing",
-        "//pw_multibuf:header_chunk_region_tracker",
-        "//pw_multibuf:simple_allocator",
+        "//pw_multibuf:testing",
         "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "epoll_channel",
+    srcs = ["epoll_channel.cc"],
+    hdrs = ["public/pw_channel/epoll_channel.h"],
+    includes = ["public"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":pw_channel",
+        "@pigweed//pw_multibuf:allocator",
+    ],
+)
+
+pw_cc_test(
+    name = "epoll_channel_test",
+    srcs = ["epoll_channel_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":epoll_channel",
+        "@pigweed//pw_multibuf:testing",
+        "@pigweed//pw_thread:sleep",
+        "@pigweed//pw_thread:thread",
+        "@pigweed//pw_unit_test",
     ],
 )

@@ -1,4 +1,5 @@
-# Copyright 2023 The Pigweed Authors
+#!/bin/bash
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -11,8 +12,8 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""pw_emu"""
 
-import setuptools  # type: ignore
+# Helper script for when 'bootstrap.sh' needs to be executed instead of
+# sourced.
 
-setuptools.setup()  # Package definition in setup.cfg
+. "$1"
