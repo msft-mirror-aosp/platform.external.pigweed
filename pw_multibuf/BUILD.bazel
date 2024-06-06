@@ -82,6 +82,11 @@ pw_cc_test(
 pw_cc_test(
     name = "single_chunk_region_tracker_test",
     srcs = ["single_chunk_region_tracker_test.cc"],
+    # TODO: b/260624583 - Fix this for rp2040
+    target_compatible_with = select({
+        "//pw_build/constraints/chipset:rp2040": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":chunk",
         ":single_chunk_region_tracker",
@@ -102,8 +107,8 @@ pw_cc_test(
     name = "multibuf_test",
     srcs = ["multibuf_test.cc"],
     deps = [
+        ":internal_test_utils",
         ":pw_multibuf",
-        ":test_utils",
         "//pw_unit_test",
     ],
 )
@@ -171,18 +176,31 @@ pw_cc_test(
     name = "stream_test",
     srcs = ["stream_test.cc"],
     deps = [
+        ":internal_test_utils",
         ":pw_multibuf",
         ":stream",
-        ":test_utils",
         "//pw_unit_test",
     ],
 )
 
 cc_library(
-    name = "test_utils",
+    name = "testing",
+    testonly = True,
+    hdrs = ["public/pw_multibuf/simple_allocator_for_test.h"],
+    includes = ["public"],
+    deps = [
+        ":simple_allocator",
+        "//pw_allocator:testing",
+        "//pw_assert",
+    ],
+)
+
+cc_library(
+    name = "internal_test_utils",
     testonly = True,
     hdrs = ["pw_multibuf_private/test_utils.h"],
     includes = ["pw_multibuf_private"],
+    visibility = ["//visibility:private"],
     deps = [
         ":header_chunk_region_tracker",
         ":pw_multibuf",
