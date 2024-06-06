@@ -30,6 +30,7 @@ cc_library(
         "//pw_build/constraints/board:mimxrt595_evk",
     ],
     deps = [
+        "//pw_clock_tree",
         "//pw_preprocessor",
         "//pw_stream",
         "@pigweed//targets:mcuxpresso_sdk",
@@ -45,6 +46,7 @@ cc_library(
         "//pw_build/constraints/board:mimxrt595_evk",
     ],
     deps = [
+        "//pw_clock_tree",
         "//pw_preprocessor",
         "//pw_stream",
         "//pw_sync:interrupt_spin_lock",
@@ -62,6 +64,7 @@ cc_library(
         "//pw_build/constraints/board:mimxrt595_evk",
     ],
     deps = [
+        "//pw_clock_tree",
         "//pw_status",
         "//pw_stream",
         "@pigweed//targets:mcuxpresso_sdk",
@@ -75,4 +78,31 @@ pw_cc_test(
         "//pw_build/constraints/board:mimxrt595_evk",
     ],
     deps = [":pw_stream_uart_mcuxpresso"],
+)
+
+pw_cc_test(
+    name = "stream_example",
+    srcs = ["stream_example.cc"],
+    target_compatible_with = [
+        "//pw_build/constraints/board:mimxrt595_evk",
+    ],
+    deps = [":pw_stream_uart_mcuxpresso"],
+)
+
+pw_cc_test(
+    name = "dma_stream_example",
+    srcs = ["dma_stream_example.cc"],
+    target_compatible_with = [
+        "//pw_build/constraints/board:mimxrt595_evk",
+    ],
+    deps = [":pw_stream_uart_dma_mcuxpresso"],
+)
+
+pw_cc_test(
+    name = "interrupt_safe_writer_example",
+    srcs = ["interrupt_safe_writer_example.cc"],
+    target_compatible_with = [
+        "//pw_build/constraints/board:mimxrt595_evk",
+    ],
+    deps = [":pw_stream_uart_interrupt_safe_writer_mcuxpresso"],
 )
