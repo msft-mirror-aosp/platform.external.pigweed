@@ -14,11 +14,27 @@
     ],
     "size": "400 to 1800 bytes"
   },
+  "pw_arduino_build": {
+    "tagline": "Main function wrapper and build utilities for Arduino",
+    "status": "stable",
+    "languages": [
+      "C++",
+      "GN"
+    ]
+  },
   "pw_async2": {
     "tagline": "Cooperative async tasks for embedded",
     "status": "experimental",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_bloat": {
+    "tagline": "Utilities for generating binary size reports",
+    "status": "stable",
+    "languages": [
+      "C++",
+      "GN"
     ]
   },
   "pw_bluetooth_proxy": {
@@ -91,6 +107,13 @@
     "status": "unstable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_docgen": {
+    "tagline": "Documentation generator for Pigweed-based projects",
+    "status": "stable",
+    "languages": [
+      "GN"
     ]
   },
   "pw_emu": {
@@ -188,6 +211,15 @@
       "C++17"
     ]
   },
+  "pw_log": {
+    "tagline": "Robust and portable logging for embedded projects",
+    "status": "stable",
+    "languages": [
+      "C++",
+      "Java",
+      "Python"
+    ]
+  },
   "pw_log_android": {
     "tagline": "Android logging backend",
     "status": "unstable",
@@ -207,6 +239,13 @@
     "status": "unstable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_protobuf": {
+    "tagline": "Expressive interface for encoding and decoding protocol buffers",
+    "status": "stable",
+    "languages": [
+      "C++"
     ]
   },
   "pw_result": {
@@ -238,6 +277,13 @@
     "languages": [
       "C++17",
       "C++20"
+    ]
+  },
+  "pw_spi_rp2040": {
+    "tagline": "Raspberry Pi RP2040 backend for pw_spi",
+    "status": "unstable",
+    "languages": [
+      "C++"
     ]
   },
   "pw_status": {

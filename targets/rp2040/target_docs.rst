@@ -17,8 +17,12 @@ approach.
 ----------------
 First-time setup
 ----------------
+GN
+==
+
 To use this target, Pigweed must be set up to use FreeRTOS and the Pico SDK
-HAL. The supported repositories can be downloaded via ``pw package``, and then
+HAL. When using bazel, dependencies will be automatically installed.  For the GN
+build, the supported repositories can be downloaded via ``pw package``, and then
 the build must be manually configured to point to the locations the repositories
 were downloaded to.
 
@@ -108,18 +112,37 @@ On linux, you may need to update your udev rules at
 --------
 Building
 --------
-Once the Pico SDK is configured, the Pi Pico will build as part of the default
-GN build:
 
-.. code-block:: console
+.. tab-set::
 
-   $ ninja -C out
+   .. tab-item:: GN
+      :sync: GN
 
-The pw_system example is available as a separate build target:
+      Once the Pico SDK is configured, the Pi Pico will build as part of the default
+      GN build:
 
-.. code-block:: console
+      .. code-block:: console
 
-   $ ninja -C out pw_system_demo
+         $ ninja -C out
+
+      The pw_system example is available as a separate build target:
+
+      .. code-block:: console
+
+         $ ninja -C out pw_system_demo
+
+   .. tab-item:: bazel
+      :sync: bazel
+
+      .. code-block:: console
+
+         $ bazel build --config=rp2040 //...
+
+      The pw_system example is available as a separate build target:
+
+      .. code-block:: console
+
+         $ bazel build --config=rp2040 //pw_system:system_example
 
 --------
 Flashing
@@ -237,9 +260,9 @@ Step 1: Start test server
 To allow Ninja to properly serialize tests to run on device, Ninja will send
 test requests to a server running in the background. The first step is to launch
 this server. By default, the script will attempt to automatically detect an
-attached Pi Pico running an application with USB serial enabled, then using
-it for testing. To override this behavior, provide a custom server configuration
-file with ``--server-config``.
+attached Pi Pico running an application with USB serial enabled or a Pi Debug
+Probe, then use it for testing. To override this behavior, provide a custom
+server configuration file with ``--server-config``.
 
 .. code-block:: console
 
