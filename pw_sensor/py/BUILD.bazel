@@ -1,4 +1,4 @@
-# Copyright 2020 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -12,39 +12,32 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 package(default_visibility = ["//visibility:public"])
 
-licenses(["notice"])
-
-cc_library(
-    name = "pw_ring_buffer",
+py_library(
+    name = "pw_sensor",
     srcs = [
-        "prefixed_entry_ring_buffer.cc",
+        "pw_sensor/__init__.py",
+        "pw_sensor/constants_generator.py",
+        "pw_sensor/sensor_desc.py",
+        "pw_sensor/validator.py",
     ],
-    hdrs = [
-        "public/pw_ring_buffer/prefixed_entry_ring_buffer.h",
+    data = [
+        "pw_sensor/dependency_schema.json",
+        "pw_sensor/metadata_schema.json",
+        "pw_sensor/resolved_schema.json",
     ],
-    includes = ["public"],
-    deps = [
-        "//pw_containers",
-        "//pw_result",
-        "//pw_span",
-        "//pw_status",
-        "//pw_varint",
-    ],
+    imports = ["."],
 )
 
-pw_cc_test(
-    name = "prefixed_entry_ring_buffer_test",
-    srcs = ["prefixed_entry_ring_buffer_test.cc"],
+py_test(
+    name = "validator_test",
+    srcs = ["validator_test.py"],
     deps = [
-        ":pw_ring_buffer",
-        "//pw_unit_test",
-        "//pw_varint",
+        ":pw_sensor",
+        "@python_packages_jsonschema//:pkg",
+        "@python_packages_pyyaml//:pkg",
     ],
 )
