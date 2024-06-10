@@ -14,12 +14,33 @@
     ],
     "size": "400 to 1800 bytes"
   },
+  "pw_analog": {
+    "tagline": "Analog-to-digital converter libraries and utilities",
+    "status": "stable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_android_toolchain": {
+    "tagline": "GN toolchains for the Android NDK",
+    "status": "unstable",
+    "languages": [
+      "GN"
+    ]
+  },
   "pw_arduino_build": {
     "tagline": "Main function wrapper and build utilities for Arduino",
     "status": "stable",
     "languages": [
       "C++",
       "GN"
+    ]
+  },
+  "pw_async": {
+    "tagline": "Portable APIs for asynchronous code",
+    "status": "deprecated",
+    "languages": [
+      "C++"
     ]
   },
   "pw_async2": {
@@ -29,12 +50,48 @@
       "C++17"
     ]
   },
+  "pw_base64": {
+    "tagline": "Base64 encoding, decoding, and validating",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_bloat": {
     "tagline": "Utilities for generating binary size reports",
     "status": "stable",
     "languages": [
       "C++",
       "GN"
+    ]
+  },
+  "pw_blob_store": {
+    "tagline": "Flash-backed persistent storage for data blobs",
+    "status": "stable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_bluetooth": {
+    "tagline": "Host-layer Bluetooth Low Energy APIs and utilities",
+    "status": "unstable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_bluetooth_hci": {
+    "tagline": "Bluetooth Host Controller Interface utilities",
+    "status": "stable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_bluetooth_profiles": {
+    "tagline": "Bluetooth profiles built on top of pw_bluetooth",
+    "status": "unstable",
+    "languages": [
+      "C++"
     ]
   },
   "pw_bluetooth_proxy": {
@@ -59,11 +116,66 @@
       "C++17"
     ]
   },
+  "pw_build": {
+    "tagline": "Integrations for Bazel, GN, and CMake",
+    "status": "stable",
+    "languages": [
+      "Bazel",
+      "CMake",
+      "GN"
+    ]
+  },
   "pw_build_android": {
     "tagline": "Utilities for using Pigweed in Android platform",
     "status": "unstable",
     "languages": [
       "C++20"
+    ]
+  },
+  "pw_build_info": {
+    "tagline": "Generate, embed, and parse build-related information",
+    "status": "stable",
+    "languages": [
+      "Bazel",
+      "CMake",
+      "GN"
+    ]
+  },
+  "pw_build_mcuxpresso": {
+    "tagline": "Utilities for building NXP MCUXpresso SDK targets",
+    "status": "stable",
+    "languages": [
+      "Bazel",
+      "GN"
+    ]
+  },
+  "pw_bytes": {
+    "tagline": "Utilities for manipulating binary data",
+    "status": "stable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_channel": {
+    "tagline": "Async, zero-copy API for sending and receiving bytes or datagrams",
+    "status": "experimental",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_checksum": {
+    "tagline": "Checksum calculation API",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
+  "pw_chre": {
+    "tagline": "Android Context Hub Runtime Environment backend",
+    "status": "experimental",
+    "languages": [
+      "C++"
     ]
   },
   "pw_cli": {
@@ -241,9 +353,23 @@
       "C++17"
     ]
   },
+  "pw_presubmit": {
+    "tagline": "Python tools for running presubmit checks and linters",
+    "status": "stable",
+    "languages": [
+      "Python"
+    ]
+  },
   "pw_protobuf": {
     "tagline": "Expressive interface for encoding and decoding protocol buffers",
     "status": "stable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_router": {
+    "tagline": "Transport-agnostic packet routing",
+    "status": "experimental",
     "languages": [
       "C++"
     ]
@@ -253,6 +379,17 @@
     "status": "stable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_rpc": {
+    "tagline": "Efficient, low-code-size, higher-level RPC system for embedded devices",
+    "status": "stable",
+    "languages": [
+      "C++",
+      "Java",
+      "JavaScript",
+      "Python",
+      "TypeScript"
     ]
   },
   "pw_software_update": {
@@ -306,6 +443,13 @@
       "C++17"
     ]
   },
+  "pw_target_runner": {
+    "tagline": "gRPC server for running executables in parallel",
+    "status": "stable",
+    "languages": [
+      "Go"
+    ]
+  },
   "pw_tokenizer": {
     "tagline": "Compress strings to shrink logs by +75%",
     "status": "stable",
@@ -327,7 +471,7 @@
     ]
   },
   "pw_uart": {
-    "tagline": "UART interface for communication",
+    "tagline": "Core interfaces for UART communication",
     "status": "unstable",
     "languages": [
       "C++"
@@ -336,6 +480,15 @@
   "pw_unit_test": {
     "tagline": "GoogleTest for embedded",
     "status": "stable"
+  },
+  "pw_varint": {
+    "tagline": "Functions for encoding and decoding variable length integers",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++",
+      "Rust"
+    ]
   },
   "pw_watch": {
     "tagline": "Embedded development file system watcher",
