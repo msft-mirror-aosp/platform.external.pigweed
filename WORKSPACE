@@ -84,13 +84,12 @@ load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 bazel_skylib_workspace()
 
 # Used in modules: //pw_grpc
-http_archive(
+#
+# TODO: b/345806988 - remove this fork and update to upstream HEAD.
+git_repository(
     name = "io_bazel_rules_go",
-    sha256 = "7c76d6236b28ff695aa28cf35f95de317a9472fd1fb14ac797c9bf684f09b37c",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
-    ],
+    commit = "21005c4056de3283553c015c172001229ecbaca9",
+    remote = "https://github.com/cramertj/rules_go.git",
 )
 
 # Used in modules: //pw_grpc
@@ -554,7 +553,7 @@ http_archive(
 
 git_repository(
     name = "rules_libusb",
-    commit = "d4de2aecbd4cdc5cb29cab152ee0c85b725c144b",
+    commit = "8680b8d1dea7b4053cdd82bd118026b545b50c0b",
     remote = "https://pigweed.googlesource.com/pigweed/rules_libusb",
 )
 
