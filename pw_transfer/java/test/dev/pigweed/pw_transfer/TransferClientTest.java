@@ -25,6 +25,8 @@ import com.google.protobuf.ByteString;
 import dev.pigweed.pw_rpc.ChannelOutputException;
 import dev.pigweed.pw_rpc.Status;
 import dev.pigweed.pw_rpc.TestClient;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -88,26 +90,7 @@ public final class TransferClientTest {
   }
 
   @Test
-  public void legacy_read_failedPreconditionError_retriesInitialPacket() throws Exception {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.LEGACY);
-    ListenableFuture<byte[]> future = transferClient.read(1, TRANSFER_PARAMETERS);
-
-    assertThat(lastChunks()).containsExactly(initialLegacyReadChunk(1));
-
-    receiveReadServerError(Status.FAILED_PRECONDITION);
-
-    assertThat(lastChunks()).containsExactly(initialLegacyReadChunk(1));
-
-    receiveReadChunks(newLegacyChunk(Chunk.Type.DATA, 1)
-                          .setOffset(0)
-                          .setData(TEST_DATA_SHORT)
-                          .setRemainingBytes(0));
-
-    assertThat(future.get()).isEqualTo(TEST_DATA_SHORT.toByteArray());
-  }
-
-  @Test
-  public void legacy_read_failedPreconditionError_abortsAfterInitialPacket() {
+  public void legacy_read_failedPreconditionError_aborts() {
     createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.LEGACY);
     TransferParameters params = TransferParameters.create(50, 50, 0);
     ListenableFuture<byte[]> future = transferClient.read(1, params);
@@ -125,28 +108,6 @@ public final class TransferClientTest {
                              .build());
 
     receiveReadServerError(Status.FAILED_PRECONDITION);
-
-    ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
-    assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
-    assertThat(((TransferError) thrown.getCause()).status()).isEqualTo(Status.INTERNAL);
-  }
-
-  @Test
-  public void legacy_read_failedPreconditionErrorMaxRetriesTimes_aborts() {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.LEGACY);
-    ListenableFuture<byte[]> future = transferClient.read(1, TRANSFER_PARAMETERS);
-
-    for (int i = 0; i < MAX_RETRIES; ++i) {
-      receiveReadServerError(Status.FAILED_PRECONDITION);
-    }
-
-    Chunk initialChunk = initialLegacyReadChunk(1);
-    assertThat(lastChunks())
-        .containsExactlyElementsIn(Collections.nCopies(1 + MAX_RETRIES, initialChunk));
-
-    receiveReadServerError(Status.FAILED_PRECONDITION);
-
-    assertThat(lastChunks()).isEmpty();
 
     ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
     assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
@@ -614,27 +575,7 @@ public final class TransferClientTest {
   }
 
   @Test
-  public void legacy_write_failedPreconditionError_retriesInitialPacket() throws Exception {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.LEGACY);
-    ListenableFuture<Void> future = transferClient.write(2, TEST_DATA_SHORT.toByteArray());
-
-    assertThat(lastChunks()).containsExactly(initialLegacyWriteChunk(2, TEST_DATA_SHORT.size()));
-
-    receiveWriteServerError(Status.FAILED_PRECONDITION);
-
-    assertThat(lastChunks()).containsExactly(initialLegacyWriteChunk(2, TEST_DATA_SHORT.size()));
-
-    receiveWriteChunks(newLegacyChunk(Chunk.Type.PARAMETERS_RETRANSMIT, 2)
-                           .setOffset(0)
-                           .setPendingBytes(1024)
-                           .setMaxChunkSizeBytes(128),
-        legacyFinalChunk(2, Status.OK));
-
-    assertThat(future.get()).isNull(); // Ensure that no exceptions are thrown.
-  }
-
-  @Test
-  public void legacy_write_failedPreconditionError_abortsAfterInitialPacket() {
+  public void legacy_write_failedPreconditionError_aborts() {
     createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.LEGACY);
     ListenableFuture<Void> future = transferClient.write(2, TEST_DATA_100B.toByteArray());
 
@@ -648,28 +589,6 @@ public final class TransferClientTest {
             legacyDataChunk(2, TEST_DATA_100B, 0, 50));
 
     receiveWriteServerError(Status.FAILED_PRECONDITION);
-
-    ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
-    assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
-    assertThat(((TransferError) thrown.getCause()).status()).isEqualTo(Status.INTERNAL);
-  }
-
-  @Test
-  public void legacy_write_failedPreconditionErrorMaxRetriesTimes_aborts() {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.LEGACY);
-    ListenableFuture<Void> future = transferClient.write(2, TEST_DATA_SHORT.toByteArray());
-
-    for (int i = 0; i < MAX_RETRIES; ++i) {
-      receiveWriteServerError(Status.FAILED_PRECONDITION);
-    }
-
-    Chunk initialChunk = initialLegacyWriteChunk(2, TEST_DATA_SHORT.size());
-    assertThat(lastChunks())
-        .containsExactlyElementsIn(Collections.nCopies(1 + MAX_RETRIES, initialChunk));
-
-    receiveWriteServerError(Status.FAILED_PRECONDITION);
-
-    assertThat(lastChunks()).isEmpty();
 
     ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
     assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
@@ -1138,28 +1057,7 @@ public final class TransferClientTest {
   }
 
   @Test
-  public void read_failedPreconditionError_retriesInitialPacket() {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.VERSION_TWO);
-    ListenableFuture<byte[]> future = transferClient.read(1, TRANSFER_PARAMETERS);
-    ReadTransfer transfer = transferClient.getReadTransferForTest(future);
-
-    assertThat(lastChunks()).containsExactly(initialReadChunk(transfer));
-    for (int i = 0; i < MAX_RETRIES; ++i) {
-      receiveReadServerError(Status.FAILED_PRECONDITION);
-
-      assertThat(lastChunks()).containsExactly(initialReadChunk(transfer));
-    }
-
-    receiveReadChunks(newChunk(Chunk.Type.START_ACK, transfer.getSessionId())
-                          .setResourceId(1)
-                          .setProtocolVersion(ProtocolVersion.VERSION_TWO.ordinal()));
-
-    assertThat(lastChunks())
-        .containsExactly(readStartAckConfirmation(transfer.getSessionId(), TRANSFER_PARAMETERS));
-  }
-
-  @Test
-  public void read_failedPreconditionError_abortsAfterInitial() {
+  public void read_failedPreconditionError_aborts() {
     createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.VERSION_TWO);
     TransferParameters params = TransferParameters.create(50, 50, 0);
     ListenableFuture<byte[]> future = transferClient.read(1, params);
@@ -1172,61 +1070,6 @@ public final class TransferClientTest {
                           .setProtocolVersion(ProtocolVersion.VERSION_TWO.ordinal()));
 
     receiveReadServerError(Status.FAILED_PRECONDITION);
-
-    ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
-    assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
-    assertThat(((TransferError) thrown.getCause()).status()).isEqualTo(Status.INTERNAL);
-  }
-
-  @Test
-  public void read_failedPreconditionError_abortsAfterHandshake() {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.VERSION_TWO);
-    TransferParameters params = TransferParameters.create(50, 50, 0);
-    ListenableFuture<byte[]> future = transferClient.read(1, params);
-    ReadTransfer transfer = transferClient.getReadTransferForTest(future);
-
-    assertThat(lastChunks()).containsExactly(initialReadChunk(transfer));
-
-    receiveReadChunks(newChunk(Chunk.Type.START_ACK, transfer.getSessionId())
-                          .setResourceId(1)
-                          .setProtocolVersion(ProtocolVersion.VERSION_TWO.ordinal()));
-
-    assertThat(lastChunks())
-        .containsExactly(readStartAckConfirmation(transfer.getSessionId(), params));
-
-    receiveReadChunks(dataChunk(transfer.getSessionId(), TEST_DATA_100B, 0, 50));
-
-    assertThat(lastChunks())
-        .containsExactly(newChunk(Chunk.Type.PARAMETERS_CONTINUE, transfer.getSessionId())
-                             .setOffset(50)
-                             .setWindowEndOffset(100)
-                             .setMaxChunkSizeBytes(50)
-                             .build());
-
-    receiveReadServerError(Status.FAILED_PRECONDITION);
-
-    ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
-    assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
-    assertThat(((TransferError) thrown.getCause()).status()).isEqualTo(Status.INTERNAL);
-  }
-
-  @Test
-  public void read_failedPreconditionErrorMaxRetriesTimes_aborts() {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.VERSION_TWO);
-    ListenableFuture<byte[]> future = transferClient.read(1, TRANSFER_PARAMETERS);
-    ReadTransfer transfer = transferClient.getReadTransferForTest(future);
-
-    for (int i = 0; i < MAX_RETRIES; ++i) {
-      receiveReadServerError(Status.FAILED_PRECONDITION);
-    }
-
-    Chunk initialChunk = initialReadChunk(transfer);
-    assertThat(lastChunks())
-        .containsExactlyElementsIn(Collections.nCopies(1 + MAX_RETRIES, initialChunk));
-
-    receiveReadServerError(Status.FAILED_PRECONDITION);
-
-    assertThat(lastChunks()).isEmpty();
 
     ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
     assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
@@ -1961,31 +1804,7 @@ public final class TransferClientTest {
   }
 
   @Test
-  public void write_failedPreconditionError_retriesInitialPacket() {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.VERSION_TWO);
-    ListenableFuture<Void> future = transferClient.write(2, TEST_DATA_SHORT.toByteArray());
-    WriteTransfer transfer = transferClient.getWriteTransferForTest(future);
-
-    assertThat(lastChunks()).containsExactly(initialWriteChunk(transfer, TEST_DATA_SHORT.size()));
-    for (int i = 0; i < MAX_RETRIES; ++i) {
-      receiveWriteServerError(Status.FAILED_PRECONDITION);
-
-      assertThat(lastChunks()).containsExactly(initialWriteChunk(transfer, TEST_DATA_SHORT.size()));
-    }
-
-    receiveWriteChunks(newChunk(Chunk.Type.START_ACK, transfer.getSessionId())
-                           .setResourceId(2)
-                           .setProtocolVersion(ProtocolVersion.VERSION_TWO.ordinal()));
-
-    assertThat(lastChunks())
-        .containsExactly(newChunk(Chunk.Type.START_ACK_CONFIRMATION, transfer.getSessionId())
-                             .setProtocolVersion(ProtocolVersion.VERSION_TWO.ordinal())
-                             .setRemainingBytes(TEST_DATA_SHORT.size())
-                             .build());
-  }
-
-  @Test
-  public void write_failedPreconditionError_abortsAfterInitialPacket() {
+  public void write_failedPreconditionError_aborts() {
     createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.VERSION_TWO);
     ListenableFuture<Void> future = transferClient.write(2, TEST_DATA_100B.toByteArray());
     WriteTransfer transfer = transferClient.getWriteTransferForTest(future);
@@ -1997,29 +1816,6 @@ public final class TransferClientTest {
                            .setProtocolVersion(ProtocolVersion.VERSION_TWO.ordinal()));
 
     receiveWriteServerError(Status.FAILED_PRECONDITION);
-
-    ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
-    assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
-    assertThat(((TransferError) thrown.getCause()).status()).isEqualTo(Status.INTERNAL);
-  }
-
-  @Test
-  public void write_failedPreconditionErrorMaxRetriesTimes_aborts() {
-    createTransferClientForTransferThatWillNotTimeOut(ProtocolVersion.VERSION_TWO);
-    ListenableFuture<Void> future = transferClient.write(2, TEST_DATA_SHORT.toByteArray());
-    WriteTransfer transfer = transferClient.getWriteTransferForTest(future);
-
-    for (int i = 0; i < MAX_RETRIES; ++i) {
-      receiveWriteServerError(Status.FAILED_PRECONDITION);
-    }
-
-    Chunk initialChunk = initialWriteChunk(transfer, TEST_DATA_SHORT.size());
-    assertThat(lastChunks())
-        .containsExactlyElementsIn(Collections.nCopies(1 + MAX_RETRIES, initialChunk));
-
-    receiveWriteServerError(Status.FAILED_PRECONDITION);
-
-    assertThat(lastChunks()).isEmpty();
 
     ExecutionException thrown = assertThrows(ExecutionException.class, future::get);
     assertThat(thrown).hasCauseThat().isInstanceOf(TransferError.class);
@@ -2477,6 +2273,34 @@ public final class TransferClientTest {
         .containsExactly(initialWriteChunk(transfer, TEST_DATA_SHORT.size()), // initial
             initialWriteChunk(transfer, TEST_DATA_SHORT.size()), // retry 1
             initialWriteChunk(transfer, TEST_DATA_SHORT.size())); // retry 2
+  }
+
+  @Test
+  public void write_multipleTransfersTimeoutAfterInitialChunk() {
+    createTransferClientThatMayTimeOut(ProtocolVersion.VERSION_TWO);
+
+    List<ListenableFuture<Void>> writeTransfers =
+        Arrays.asList(transferClient.write(1, TEST_DATA_SHORT.toByteArray()),
+            transferClient.write(20, TEST_DATA_SHORT.toByteArray()),
+            transferClient.write(333, TEST_DATA_SHORT.toByteArray()),
+            transferClient.write(4321, TEST_DATA_SHORT.toByteArray()));
+
+    for (ListenableFuture<Void> future : writeTransfers) {
+      WriteTransfer transfer = transferClient.getWriteTransferForTest(future);
+
+      // Call future.get() without sending any server-side packets.
+      ExecutionException exception = assertThrows(ExecutionException.class, future::get);
+      assertThat(((TransferError) exception.getCause()).status())
+          .isEqualTo(Status.DEADLINE_EXCEEDED);
+    }
+    // Client should have resent the last chunk (the initial chunk in this case) for each timeout.
+    List<Chunk> expectedChunks = new ArrayList<>();
+    writeTransfers.stream().map(transferClient::getWriteTransferForTest).forEach(t -> {
+      expectedChunks.add(initialWriteChunk(t, TEST_DATA_SHORT.size())); // initial
+      expectedChunks.add(initialWriteChunk(t, TEST_DATA_SHORT.size())); // retry 1
+      expectedChunks.add(initialWriteChunk(t, TEST_DATA_SHORT.size())); // retry 2
+    });
+    assertThat(lastChunks()).containsExactlyElementsIn(expectedChunks);
   }
 
   @Test
