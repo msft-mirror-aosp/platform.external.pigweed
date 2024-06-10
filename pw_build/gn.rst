@@ -1,5 +1,10 @@
+.. _module-pw_build-gn:
+
 GN / Ninja
 ==========
+.. pigweed-module-subpage::
+   :name: pw_build
+
 The GN / Ninja build system is the primary build system used for upstream
 Pigweed development, and is the most tested and feature-rich build system
 Pigweed offers.
@@ -1341,3 +1346,39 @@ an unusually long time to complete.
 ``--write-trace`` option writes a build trace to the specified path, which can
 be viewed in the `Perfetto UI <https://ui.perfetto.dev/>`_, or via Chrome's
 built-in ``chrome://tracing`` tool.
+
+.. _module-pw_build-gn-pw_linker_script:
+
+pw_linker_script
+----------------
+Preprocess a linker script and turn it into a target.
+
+In lieu of direct GN support for linker scripts, this template makes it
+possible to run the C Preprocessor on a linker script file so defines can
+be properly evaluated before the linker script is passed to linker.
+
+Arguments
+^^^^^^^^^
+- ``linker_script``: The linker script to send through the C preprocessor.
+
+- ``defines``: Preprocessor defines to apply when running the C preprocessor.
+
+- ``cflags``: Flags to pass to the C compiler.
+
+- ``includes``: Include these files when running the C preprocessor.
+
+- ``inputs``: Files that, when changed, should trigger a re-build of the linker
+  script. linker_script and includes are implicitly added to this by the
+  template.
+
+Example
+^^^^^^^
+.. code-block::
+
+   pw_linker_script("generic_linker_script") {
+     defines = [
+       "PW_HEAP_SIZE=1K",
+       "PW_NOINIT_SIZE=512"
+     ]
+     linker_script = "basic_script.ld"
+   }
