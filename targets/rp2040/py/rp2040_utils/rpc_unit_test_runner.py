@@ -38,32 +38,6 @@ _LOG = logging.getLogger()
 class PiPicoRpcTestingDevice(PiPicoTestingDevice):
     """An RPC test runner implementation for the Pi Pico."""
 
-    @staticmethod
-    def _find_elf(binary: Path) -> Path | None:
-        """Attempt to find and return the path to an ELF file for a binary.
-
-        Args:
-          binary: A relative path to a binary.
-
-        Returns the path to the associated ELF file, or None if none was found.
-        """
-        if binary.suffix == '.elf' or not binary.suffix:
-            return binary
-        choices = (
-            binary.parent / f'{binary.stem}.elf',
-            binary.parent / 'bin' / f'{binary.stem}.elf',
-            binary.parent / 'test' / f'{binary.stem}.elf',
-        )
-        for choice in choices:
-            if choice.exists():
-                return choice
-
-        _LOG.error(
-            'Cannot find ELF file to use as a token database for binary: %s',
-            binary,
-        )
-        return None
-
     def run_device_test(self, binary: Path, timeout: float) -> bool:
         """Run an RPC unit test on this device.
 
@@ -154,7 +128,9 @@ def main():
         sys.exit(1)
 
     # For now, require manual configurations to be fully specified.
-    if (args.usb_port or args.usb_bus) and not (args.usb_port and args.usb_bus):
+    if (args.usb_port is not None or args.usb_bus is not None) and not (
+        args.usb_port is not None and args.usb_bus is not None
+    ):
         _LOG.critical(
             'Must specify BOTH --usb-bus and --usb-port when manually '
             'specifying a device'

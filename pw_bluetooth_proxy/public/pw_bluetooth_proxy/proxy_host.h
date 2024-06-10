@@ -17,6 +17,7 @@
 #include "pw_assert/check.h"  // IWYU pragma: keep
 #include "pw_bluetooth_proxy/acl_data_channel.h"
 #include "pw_bluetooth_proxy/common.h"
+#include "pw_status/status.h"
 
 namespace pw::bluetooth::proxy {
 
@@ -56,8 +57,39 @@ class ProxyHost {
 
   // ##### Client APIs
 
+  /// Send a GATT Notify to the indicated connection.
+  ///
+  /// @param[in] connection_handle The connection handle of the peer the notify
+  ///                              is being sent to.
+  ///
+  /// @param[in] attribute_handle  The attribute handle the notify should be
+  ///                              sent on.
+  /// @param[in] attribute_value   The data to be sent. Data will be copied
+  ///                              before function completes.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///  OK: If notify was successfully queued for send.
+  ///  UNAVAILABLE: If CHRE doesn't have resources to queue the send
+  ///               at this time (transient error).
+  ///  UNIMPLEMENTED: If send is not supported by the current implementation.
+  ///  INVALID_ARGUMENT: If arguments are invalid.
+  /// @endrst
+  pw::Status sendGattNotify(
+      [[maybe_unused]] uint16_t connection_handle,
+      [[maybe_unused]] uint16_t attribute_handle,
+      [[maybe_unused]] pw::span<const uint8_t> attribute_value) {
+    return pw::Status::Unimplemented();
+  }
+
+  /// Indicates whether the proxy has the capability of sending ACL packets.
+  /// Note that this indicates intention, so it can be true even if the proxy
+  /// has not yet or has been unable to reserve credits from the host.
+  bool HasSendAclCapability() const;
+
   /// Returns the number of available LE ACL send credits for the proxy.
-  // Can be zero if the controller has not yet been initialized by the host.
+  /// Can be zero if the controller has not yet been initialized by the host.
   uint16_t GetNumFreeLeAclPackets() const;
 
  private:

@@ -78,6 +78,7 @@ void MultiBuf::Truncate(size_t len) {
   PW_DCHECK(len <= size());
   if (len == 0) {
     Release();
+    return;
   }
   Chunk* new_last_chunk = first_;
   size_t len_from_chunk_start = len;
@@ -244,12 +245,6 @@ MultiBuf::const_iterator& MultiBuf::const_iterator::operator+=(size_t advance) {
   }
   byte_index_ += advance;
   return *this;
-}
-
-void MultiBuf::const_iterator::AdvanceToData() {
-  while (chunk_ != nullptr && chunk_->empty()) {
-    chunk_ = chunk_->next_in_buf_;
-  }
 }
 
 Chunk& MultiBuf::ChunkIterable::back() {

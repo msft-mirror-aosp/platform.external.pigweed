@@ -16,10 +16,11 @@ that can be directly instantiated:
 * 32 kHz RTC Oscillator
 * Low-power Oscillator
 * Master Clock
-* External Clock Input
+* External Clock Input as clock source for SYSOSCBYPASS clock selector to generate OSC_CLK
 * Fractional Rate Generator (FRG) for Flexcomm Interfaces
 * Clock Source Selector
 * Clock Divider
+* Audio PLL
 
 .. inclusive-language: enable
 
@@ -27,96 +28,194 @@ Other clock tree components such as PLLs can be instantiated by deriving custom 
 from the abstract class `DependentElement` and overwriting `DoEnable` and `DoDisable` methods.
 
 Examples
-==============
+========
 
-.. inclusive-language: disable
+----------------------------------------
+End-to-end Mcuxpresso clock tree example
+----------------------------------------
 
-.. code-block:: cpp
+Definition of clock tree elements:
 
-   // Define FRO_DIV_4 clock source
-   constinit ClockMcuxpressoFro fro_div_4(kCLOCK_FroDiv4OutEn);
+.. mermaid::
 
-   // Define FRO_DIV_8 clock source
-   constinit ClockMcuxpressoFro fro_div_8(kCLOCK_FroDiv8OutEn);
+    flowchart LR
+          A(fro_div_4) -->B(frg_0)
+          B-->C(flexcomm_selector_0)
+          style A fill:#0f0,stroke:#333,stroke-width:2px
+          style B fill:#0f0,stroke:#333,stroke-width:2px
+          style C fill:#0f0,stroke:#333,stroke-width:2px
 
-   // Define Low-Power Oscillator
-   constinit ClockMcuxpressoLpOsc lp_osc_clk;
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-Flexcomm0]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-Flexcomm0]
 
-   // Define Master clock
-   constinit ClockMcuxpressoMclk mclk(19200000);
+.. mermaid::
 
-   // Define extern clock input
-   constinit ClockMcuxpressoClkIn clk_in(25000000);
+    flowchart LR
+          D(fro_div_8)--> E(i3c_selector)
+          E --> F(i3c_divider)
+          style D fill:#f0f,stroke:#333,stroke-width:2px
+          style E fill:#f0f,stroke:#333,stroke-width:2px
+          style F fill:#f0f,stroke:#333,stroke-width:2px
 
-   // Define FRG0 configuration
-   const clock_frg_clk_config_t g_frg0Config_BOARD_BOOTCLOCKRUN =
-   {
-        .num = 0,
-        .sfg_clock_src = _clock_frg_clk_config::kCLOCK_FrgFroDiv4,
-        .divider = 255U,
-        .mult = 144
-   };
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-i3c0]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-i3c0]
 
-   constinit ClockMcuxpressoFrgNonBlocking frg0(fro_div_4, g_frg0Config_BOARD_BOOTCLOCKRUN);
+.. mermaid::
 
-   // Define clock source selector I3C01FCLKSEL
-   constinit ClockMcuxpressoSelectorNonBlocking i3c0_selector(fro_div_8,
-                                                              kFRO_DIV8_to_I3C_CLK,
-                                                              kNONE_to_I3C_CLK);
+    flowchart LR
+          G(mclk) --> H(ctimer_0)
+          style G fill:#0ff,stroke:#333,stroke-width:2px
+          style H fill:#0ff,stroke:#333,stroke-width:2px
 
-   // Define clock divider I3C01FCLKDIV
-   constinit ClockMcuxpressoDividerNonBlocking i3c0_divider(i3c0_selector,
-                                                            kCLOCK_DivI3cClk,
-                                                            12);
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-ClockSourceNoOp]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-ClockSourceNoOp]
 
-   // Create the clock tree
-   ClockTree clock_tree;
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-Ctimer0]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-Ctimer0]
 
-   // Enable the low-power oscillator
-   clock_tree.Acquire(lp_osc_clk);
+.. mermaid::
 
-   // Enable the i3c0_divider
-   clock_tree.Acquire(i3c0_divider);
+    flowchart LR
+          I(lposc)
+          style I fill:#ff0,stroke:#333,stroke-width:2px
 
-   // Change the i3c0_divider value
-   PW_TRY(clock_tree.SetDividerValue(i3c0_divider, 24));
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-LpOsc]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-LpOsc]
 
-   // Disable the low-power oscillator
-   clock_tree.Release(lp_osc_clk);
+Definition of clock tree:
 
-.. inclusive-language: enable
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeDef]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeDef]
 
+Example usage of ``clock_tree`` APIs:
+
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-UseExample]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-UseExample]
+
+------------------
+Audio PLL examples
+------------------
+
+.. cpp:namespace-push:: pw::clock_tree
+
+The :cpp:class:`ClockMcuxpressoAudioPll` can be configured in two different ways,
+either it can be configured where the audio PLL gets enabled, or it can be
+configured in bypass mode.
+
+The first example shows where :cpp:class:`ClockMcuxpressoAudioPll` enables the audio PLL
+and uses the ClkIn pin clock source as OSC clock source that feeds into the audio PLL logic.
+
+.. mermaid::
+
+    flowchart LR
+          subgraph PLL [Audio PLL logic]
+          B(audio_pll_selctor) -.-> C(PLL)
+          C -.-> D(Phase Fraction divider)
+          end
+          A(clk_in) -->|as osc_clk| PLL
+          PLL --> E(audio_pfd_bypass_selector)
+
+          style A fill:#f0f,stroke:#333,stroke-width:2px
+          style E fill:#f0f,stroke:#333,stroke-width:2px
+
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-ClockSourceNoOp]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-ClockSourceNoOp]
+
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-AudioPll]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-AudioPll]
+
+The second example shows where :cpp:class:`ClockMcuxpressoAudioPll` bypasses the audio PLL
+and uses ``FRO_DIV_8 pin`` clock source.
+
+.. cpp:namespace-pop::
+
+.. mermaid::
+
+    flowchart LR
+          A(fro_div_8) --> B(audio_pfd_bypass_selector)
+          style A fill:#0ff,stroke:#333,stroke-width:2px
+          style B fill:#0ff,stroke:#333,stroke-width:2px
+
+.. literalinclude:: examples.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-AudioPllBypass]
+   :end-before: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-AudioPllBypass]
+
+APIs
+====
+
+------------------
 ClockMcuxpressoFro
-==================
+------------------
 .. doxygenclass:: pw::clock_tree::ClockMcuxpressoFro
    :members:
 
+--------------------
 ClockMcuxpressoLpOsc
-====================
+--------------------
 .. doxygenclass:: pw::clock_tree::ClockMcuxpressoLpOsc
    :members:
 
+-------------------
 ClockMcuxpressoMclk
-===================
+-------------------
 .. doxygenclass:: pw::clock_tree::ClockMcuxpressoMclk
    :members:
 
+--------------------
 ClockMcuxpressoClkIn
-====================
+--------------------
 .. doxygenclass:: pw::clock_tree::ClockMcuxpressoClkIn
    :members:
 
+------------------
 ClockMcuxpressoFrg
-==================
+------------------
 .. doxygenclass:: pw::clock_tree::ClockMcuxpressoFrg
    :members:
 
+-----------------------
 ClockMcuxpressoSelector
-=======================
+-----------------------
 .. doxygenclass:: pw::clock_tree::ClockMcuxpressoSelector
    :members:
 
+----------------------
 ClockMcuxpressoDivider
-======================
+----------------------
 .. doxygenclass:: pw::clock_tree::ClockMcuxpressoDivider
+   :members:
+
+-----------------------
+ClockMcuxpressoAudioPll
+-----------------------
+.. doxygenclass:: pw::clock_tree::ClockMcuxpressoAudioPll
    :members:
