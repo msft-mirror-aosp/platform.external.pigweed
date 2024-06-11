@@ -35,15 +35,15 @@ void ProxyHost::HandleH4HciFromHost(H4HciPacket h4_packet) {
 }
 
 void ProxyHost::ProcessH4HciFromController(H4HciPacket h4_packet) {
-  if (h4_packet.empty()) {
+  if (h4_packet.hci_span.empty()) {
     PW_LOG_ERROR("Received empty H4 buffer. So will not process.");
     return;
   }
 
-  if (h4_packet[0] != cpp23::to_underlying(emboss::H4PacketType::EVENT)) {
+  if (h4_packet.h4_type != emboss::H4PacketType::EVENT) {
     return;
   }
-  pw::span hci_buffer = H4HciSubspan(h4_packet);
+  pw::span hci_buffer = h4_packet.hci_span;
   auto event = MakeEmboss<emboss::EventHeaderView>(hci_buffer);
   if (!event.IsComplete()) {
     PW_LOG_ERROR("Buffer is too small for EventHeader. So will not process.");
@@ -61,8 +61,8 @@ void ProxyHost::ProcessH4HciFromController(H4HciPacket h4_packet) {
     return;
   }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wswitch-enum"
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (command_complete_event.command_opcode_enum().Read()) {
     case emboss::OpCode::LE_READ_BUFFER_SIZE_V1: {
       auto read_event =
@@ -94,7 +94,7 @@ void ProxyHost::ProcessH4HciFromController(H4HciPacket h4_packet) {
       // Nothing to process
       break;
   }
-#pragma clang diagnostic pop
+  PW_MODIFY_DIAGNOSTICS_POP();
 }
 
 void ProxyHost::HandleH4HciFromController(H4HciPacket h4_packet) {
@@ -110,6 +110,10 @@ void ProxyHost::SendToHost(H4HciPacket h4_packet) {
 void ProxyHost::SendToController(H4HciPacket h4_packet) {
   PW_DCHECK(outward_send_to_controller_fn_ != nullptr);
   outward_send_to_controller_fn_(h4_packet);
+}
+
+bool ProxyHost::HasSendAclCapability() const {
+  return acl_data_channel_.GetLeAclCreditsToReserve() > 0;
 }
 
 uint16_t ProxyHost::GetNumFreeLeAclPackets() const {
