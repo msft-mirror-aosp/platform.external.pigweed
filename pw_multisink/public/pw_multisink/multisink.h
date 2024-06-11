@@ -16,6 +16,7 @@
 #include <limits>
 #include <mutex>
 
+#include "pw_assert/assert.h"
 #include "pw_bytes/span.h"
 #include "pw_function/function.h"
 #include "pw_multisink/config.h"
@@ -161,7 +162,7 @@ class MultiSink {
     //    return peek_result.status();
     //  }
     //  Status send_status = UserSendFunction(peek_result.value().entry())
-    //  if (!send_status.ok())
+    //  if (!send_status.ok()) {
     //    return send_status;
     //  }
     //  PW_CHECK_OK(PopEntry(peek_result.value());
@@ -202,6 +203,21 @@ class MultiSink {
     Drain& operator=(const Drain&) = delete;
     Drain(Drain&&) = delete;
     Drain& operator=(Drain&&) = delete;
+
+    // Returns size of unread entries in the sink for this drain. This is a
+    // thread-safe version and must not be used inside a
+    // Listener::OnNewEntryAvailable() to avoid deadlocks. Use
+    // UnsafeGetUnreadEntriesSize() instead in such case.
+    size_t GetUnreadEntriesSize() const PW_LOCKS_EXCLUDED(multisink_->lock_) {
+      std::lock_guard lock(multisink_->lock_);
+      return UnsafeGetUnreadEntriesSize();
+    }
+
+    // Returns size of unread entries in the sink for this drain.
+    // Marked unsafe because it requires external synchronization.
+    size_t UnsafeGetUnreadEntriesSize() const PW_NO_LOCK_SAFETY_ANALYSIS {
+      return reader_.EntriesSize();
+    }
 
    protected:
     friend MultiSink;
@@ -310,10 +326,18 @@ class MultiSink {
   }
 
   // Constructs a multisink using a ring buffer backed by the provided buffer.
+  // If we're using a virtual lock, then the lock needs to be passed in.
+#if PW_MULTISINK_CONFIG_LOCK_TYPE == PW_MULTISINK_VIRTUAL_LOCK
+  MultiSink(ByteSpan buffer, LockType lock)
+      : lock_(lock),
+#else
   MultiSink(ByteSpan buffer)
-      : ring_buffer_(true), sequence_id_(0), total_ingress_drops_(0) {
-    ring_buffer_.SetBuffer(buffer)
-        .IgnoreError();  // TODO: b/242598609 - Handle Status properly
+      :
+#endif
+        ring_buffer_(true),
+        sequence_id_(0),
+        total_ingress_drops_(0) {
+    PW_ASSERT(ring_buffer_.SetBuffer(buffer).ok());
     AttachDrain(oldest_entry_drain_);
   }
 
@@ -415,12 +439,12 @@ class MultiSink {
   // Notifies attached listeners of new entries or an updated drop count.
   void NotifyListeners() PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+  LockType lock_;
   IntrusiveList<Listener> listeners_ PW_GUARDED_BY(lock_);
   ring_buffer::PrefixedEntryRingBufferMulti ring_buffer_ PW_GUARDED_BY(lock_);
   Drain oldest_entry_drain_ PW_GUARDED_BY(lock_);
   uint32_t sequence_id_ PW_GUARDED_BY(lock_);
   uint32_t total_ingress_drops_ PW_GUARDED_BY(lock_);
-  LockType lock_;
 };
 
 }  // namespace multisink
