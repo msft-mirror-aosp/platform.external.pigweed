@@ -347,7 +347,7 @@ gn_mimxrt595_build = PigweedGnGenNinja(
             str(ctx.package_root / 'mcuxpresso')
         ),
         'pw_target_mimxrt595_evk_MANIFEST': '$dir_pw_third_party_mcuxpresso'
-        + '/EVK-MIMXRT595_manifest_v3_8.xml',
+        + '/EVK-MIMXRT595_manifest_v3_13.xml',
         'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk:sample_sdk',
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
@@ -366,7 +366,7 @@ gn_mimxrt595_freertos_build = PigweedGnGenNinja(
             str(ctx.package_root / 'mcuxpresso')
         ),
         'pw_target_mimxrt595_evk_freertos_MANIFEST': '{}/{}'.format(
-            "$dir_pw_third_party_mcuxpresso", "EVK-MIMXRT595_manifest_v3_8.xml"
+            "$dir_pw_third_party_mcuxpresso", "EVK-MIMXRT595_manifest_v3_13.xml"
         ),
         'pw_third_party_mcuxpresso_SDK': '//targets/mimxrt595_evk_freertos:sdk',
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
@@ -884,6 +884,20 @@ def bazel_build(ctx: PresubmitContext) -> None:
         '//pw_build:module_config_test',
     )
 
+    # Provide some coverage of the RP2040 build.
+    #
+    # This is just a minimal presubmit intended to ensure we don't break what
+    # support we have.
+    #
+    # TODO: b/271465588 - Eventually just build the entire repo for this
+    # platform.
+    build_bazel(
+        ctx,
+        'build',
+        '--config=rp2040',
+        '//pw_system:system_example',
+    )
+
     # Build the pw_system example for the Discovery board using STM32Cube.
     build_bazel(
         ctx,
@@ -1399,6 +1413,7 @@ OTHER_CHECKS = (
     pw_transfer_integration_test,
     python_checks.update_upstream_python_constraints,
     python_checks.vendor_python_wheels,
+    shell_checks.shellcheck,
     # TODO(hepler): Many files are missing from the CMake build. Add this check
     # to lintformat when the missing files are fixed.
     source_in_build.cmake(SOURCE_FILES_FILTER, _run_cmake),
@@ -1462,7 +1477,6 @@ _LINTFORMAT = (
         SOURCE_FILES_FILTER_GN_EXCLUDE
     ),
     source_is_in_cmake_build_warn_only,
-    shell_checks.shellcheck if shutil.which('shellcheck') else (),
     javascript_checks.eslint if shutil.which('npm') else (),
     json_check.presubmit_check,
     keep_sorted.presubmit_check,

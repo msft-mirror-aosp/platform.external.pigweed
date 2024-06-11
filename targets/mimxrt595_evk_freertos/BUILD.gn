@@ -94,6 +94,8 @@ if (pw_third_party_mcuxpresso_SDK != "") {
       "$dir_pw_malloc",
       "$dir_pw_preprocessor",
       "$dir_pw_sys_io_mcuxpresso",
+      "$dir_pw_third_party/freertos",
+      "$dir_pw_third_party/freertos:support",
       pw_third_party_mcuxpresso_SDK,
     ]
     if (pw_malloc_BACKEND != "") {
@@ -114,12 +116,15 @@ if (pw_third_party_mcuxpresso_SDK == "//targets/mimxrt595_evk_freertos:sdk") {
       "component.serial_manager_uart.MIMXRT595S",
       "platform.drivers.flexcomm_i2c.MIMXRT595S",
       "platform.drivers.flexcomm_spi.MIMXRT595S",
+      "platform.drivers.flexcomm_usart_dma.MIMXRT595S",
       "platform.drivers.flexcomm_usart_freertos.MIMXRT595S",
       "platform.drivers.flexio_spi.MIMXRT595S",
-      "platform.drivers.pint.MIMXRT595S",
-      "platform.drivers.power.MIMXRT595S",
+      "platform.drivers.inputmux.MIMXRT595S",
+      "platform.drivers.lpc_dma.MIMXRT595S",
       "platform.drivers.lpc_gpio.MIMXRT595S",
       "platform.drivers.mu.MIMXRT595S",
+      "platform.drivers.pint.MIMXRT595S",
+      "platform.drivers.power.MIMXRT595S",
       "utility.debug_console.MIMXRT595S",
     ]
     exclude = [
@@ -208,7 +213,6 @@ if (pw_third_party_mcuxpresso_SDK == "//targets/mimxrt595_evk_freertos:sdk") {
       "$_freertos_port_dir/port.c",
       "$_freertos_port_dir/portasm.c",
       "$dir_pw_third_party_freertos/portable/MemMang/heap_4.c",
-      "tasks.c",
     ]
     deps = [ ":freertos_config" ]
   }
