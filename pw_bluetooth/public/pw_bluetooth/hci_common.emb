@@ -324,6 +324,45 @@ enum ConnectionRole:
   PERIPHERAL = 0x01
 
 
+enum LEAdvertisingType:
+  [maximum_bits: 8]
+  CONNECTABLE_AND_SCANNABLE_UNDIRECTED = 0x00
+    -- ADV_IND
+
+  CONNECTABLE_HIGH_DUTY_CYCLE_DIRECTED = 0x01
+    -- ADV_DIRECT_IND
+
+  SCANNABLE_UNDIRECTED                 = 0x02
+    -- ADV_SCAN_IND
+
+  NOT_CONNECTABLE_UNDIRECTED           = 0x03
+    -- ADV_NONCONN_IND
+
+  CONNECTABLE_LOW_DUTY_CYCLE_DIRECTED  = 0x04
+    -- ADV_DIRECT_IND
+
+
+enum LEOwnAddressType:
+  -- Possible values that can be used for the |own_address_type| parameter in various LE packets.
+
+  [maximum_bits: 8]
+
+  PUBLIC                    = 0x00
+    -- Public Device Address
+
+  RANDOM                    = 0x01
+    -- Random Device Address
+
+  PRIVATE_DEFAULT_TO_PUBLIC = 0x02
+    -- Controller generates the Resolvable Private Address based on the local IRK from the resolving
+    -- list. If the resolving list contains no matching entry, then use the public address.
+
+  PRIVATE_DEFAULT_TO_RANDOM = 0x03
+    -- Controller generates the Resolvable Private Address based on the local IRK from the resolving
+    -- list. If the resolving list contains no matching entry, then use the random address from
+    -- LE_Set_Random_Address.
+
+
 enum LEPeerAddressType:
   -- Possible values that can be used for the address_type parameters in various
   -- HCI commands
@@ -337,8 +376,8 @@ enum LEPeerAddressTypeNoAnon:
   -- Possible values that can be used for the address_type parameters in various
   -- HCI commands
   [maximum_bits: 8]
-  PUBLIC    = 0x00
-  RANDOM    = 0x01
+  PUBLIC = 0x00
+  RANDOM = 0x01
 
 
 bits ClockOffset:
@@ -404,6 +443,32 @@ enum LEExtendedAddressType:
     -- This is a special value that is only used in LE Advertising Report events.
 
 
+bits LEAdvertisingChannels:
+  0     [+1]  Flag  channel_37
+  $next [+1]  Flag  channel_38
+  $next [+1]  Flag  channel_39
+
+
+enum LEAdvertisingFilterPolicy:
+  [maximum_bits: 8]
+
+  ALLOW_ALL                                                  = 0x00
+    -- Process scan and connection requests from all devices (i.e., the Filter
+    -- Accept List is not in use) (default).
+
+  ALLOW_ALL_CONNECTIONS_AND_USE_FILTER_ACCEPT_LIST_FOR_SCANS = 0x01
+    -- Process connection requests from all devices and scan requests only from
+    -- devices that are in the Filter Accept List.
+
+  ALLOW_ALL_SCANS_AND_USE_FILTER_ACCEPT_LIST_FOR_CONNECTIONS = 0x02
+    -- Process scan requests from all devices and connection requests only from
+    -- devices that are in the Filter Accept List.
+
+  ALLOW_FILTER_ACCEPT_LIST_ONLY                              = 0x03
+    -- Process scan and connection requests only from devices in the Filter
+    -- Accept List.
+
+
 enum PageScanRepetitionMode:
   -- The page scan repetition mode, representing a maximum time between Page Scans.
   -- (See Core Spec v5.0, Volume 2, Part B, Section 8.3.1)
@@ -435,6 +500,19 @@ enum IoCapability:
   DISPLAY_YES_NO     = 0x01
   KEYBOARD_ONLY      = 0x02
   NO_INPUT_NO_OUTPUT = 0x03
+
+
+enum LESleepClockAccuracyRange:
+  -- Accuracy of the sleep clock, provided as a range
+  [maximum_bits: 8]
+  PPM_251_TO_500 = 0x00
+  PPM_151_TO_250 = 0x01
+  PPM_101_TO_150 = 0x02
+  PPM_76_TO_100  = 0x03
+  PPM_51_TO_75   = 0x04
+  PPM_31_TO_50   = 0x05
+  PPM_21_TO_30   = 0x06
+  PPM_0_TO_20    = 0x07
 
 # inclusive-language: disable
 

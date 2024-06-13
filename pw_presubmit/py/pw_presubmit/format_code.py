@@ -151,15 +151,26 @@ def clang_format_check(ctx: _Context) -> Dict[Path, str]:
 
 def clang_format_fix(ctx: _Context) -> Dict[Path, str]:
     """Fixes formatting for the provided files in place."""
-    _clang_format('-i', *ctx.paths)
+    print_format_fix(_clang_format('-i', *ctx.paths))
     return {}
 
 
 def _typescript_format(*args: Union[Path, str], **kwargs) -> bytes:
+    # TODO: b/323378974 - Better integrate NPM actions with pw_env_setup so
+    # we don't have to manually set `npm_config_cache` every time we run npm.
+    # Force npm cache to live inside the environment directory.
+    npm_env = os.environ.copy()
+    npm_env['npm_config_cache'] = str(
+        Path(npm_env['_PW_ACTUAL_ENVIRONMENT_ROOT']) / 'npm-cache'
+    )
+
+    npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')
     return log_run(
-        ['npx', 'prettier@3.0.1', *args],
+        [npm, 'exec', 'prettier', *args],
         stdout=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
         check=True,
+        env=npm_env,
         **kwargs,
     ).stdout
 
@@ -175,7 +186,7 @@ def typescript_format_check(ctx: _Context) -> Dict[Path, str]:
 
 def typescript_format_fix(ctx: _Context) -> Dict[Path, str]:
     """Fixes formatting for the provided files in place."""
-    _typescript_format('--write', *ctx.paths)
+    print_format_fix(_typescript_format(*ctx.paths, '--', '--write'))
     return {}
 
 
@@ -227,7 +238,24 @@ def fix_bazel_format(ctx: _Context) -> Dict[Path, str]:
     """Fixes formatting for the provided files in place."""
     errors = {}
     for path in ctx.paths:
-        proc = log_run(['buildifier', path], capture_output=True)
+        proc = log_run(
+            [
+                'buildifier',
+                '--lint=fix',
+                # These warnings are safe to enable because they can always be
+                # auto-fixed.
+                (
+                    '--warnings='
+                    'load,'
+                    'load-on-top,'
+                    'native-build,'
+                    'same-origin-load,'
+                    'out-of-order-load'
+                ),
+                path,
+            ],
+            capture_output=True,
+        )
         if proc.returncode:
             errors[path] = proc.stderr.decode()
     return errors
@@ -297,7 +325,7 @@ def check_py_format_yapf(ctx: _Context) -> Dict[Path, str]:
 
 def fix_py_format_yapf(ctx: _Context) -> Dict[Path, str]:
     """Fixes formatting for the provided files in place."""
-    _yapf('--in-place', *ctx.paths, check=True)
+    print_format_fix(_yapf('--in-place', *ctx.paths, check=True).stdout)
     return {}
 
 
@@ -405,6 +433,7 @@ def fix_py_format_black(ctx: _Context) -> Dict[Path, str]:
             [ctx.format_options.black_path, *_black_config_args(), path],
             capture_output=True,
         )
+        print_format_fix(proc.stdout)
         if proc.returncode:
             errors[path] = proc.stderr.decode()
     return errors
@@ -557,6 +586,12 @@ def print_format_check(
         _LOG.warning('To fix formatting, run:\n\n%s\n', '\n'.join(message))
 
 
+def print_format_fix(stdout: bytes):
+    """Prints the output of a format --fix call."""
+    for line in stdout.splitlines():
+        _LOG.info('Fix cmd stdout: %r', line.decode('utf-8'))
+
+
 class CodeFormat(NamedTuple):
     language: str
     filter: FileFilter
@@ -695,7 +730,7 @@ CODE_FORMATS: Tuple[CodeFormat, ...] = tuple(
             C_FORMAT,
             GN_FORMAT,
             GO_FORMAT,
-            JAVASCRIPT_FORMAT if shutil.which('npx') else None,
+            JAVASCRIPT_FORMAT if shutil.which('npm') else None,
             JAVA_FORMAT,
             JSON_FORMAT,
             MARKDOWN_FORMAT,
@@ -703,7 +738,7 @@ CODE_FORMATS: Tuple[CodeFormat, ...] = tuple(
             PROTO_FORMAT,
             PYTHON_FORMAT,
             RST_FORMAT,
-            TYPESCRIPT_FORMAT if shutil.which('npx') else None,
+            TYPESCRIPT_FORMAT if shutil.which('npm') else None,
             # keep-sorted: end
         ),
     )

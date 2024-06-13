@@ -14,8 +14,8 @@
 
 #include "pw_rpc/service.h"
 
-#include "gtest/gtest.h"
 #include "pw_rpc/internal/method.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
 
@@ -33,7 +33,7 @@ void InvokeIt(const internal::CallContext&, const internal::Packet&) {}
 class ServiceTestMethod : public internal::Method {
  public:
   constexpr ServiceTestMethod(uint32_t id, char the_value)
-      : internal::Method(id, InvokeIt), value(the_value) {}
+      : internal::Method(id, InvokeIt, MethodType::kUnary), value(the_value) {}
 
   char value;  // Add a member so the class is larger than the base Method.
 };

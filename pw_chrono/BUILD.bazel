@@ -12,11 +12,10 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
-    "pw_cc_library",
     "pw_cc_test",
 )
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
@@ -25,7 +24,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "epoch",
     hdrs = [
         "public/pw_chrono/epoch.h",
@@ -46,7 +45,7 @@ pw_cc_facade(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "system_clock",
     srcs = [
         "system_clock.cc",
@@ -63,7 +62,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "system_clock_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
@@ -74,7 +73,7 @@ pw_cc_library(
     }),
 )
 
-pw_cc_library(
+cc_library(
     name = "system_timer_facade",
     hdrs = [
         "public/pw_chrono/system_timer.h",
@@ -86,7 +85,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "system_timer",
     deps = [
         ":system_timer_facade",
@@ -94,7 +93,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "system_timer_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
@@ -113,13 +112,9 @@ proto_library(
     strip_import_prefix = "/pw_chrono",
 )
 
-# TODO: b/241456982 - Not expected to build yet.
 py_proto_library(
     name = "chrono_proto_pb2",
-    # Once b/241456982 is fixed srcs here should be replaced with:
-    # deps = [ ":chrono_proto" ]
-    srcs = ["chrono.proto"],
-    tags = ["manual"],
+    deps = [":chrono_proto"],
 )
 
 pw_proto_library(
@@ -127,7 +122,7 @@ pw_proto_library(
     deps = [":chrono_proto"],
 )
 
-pw_cc_library(
+cc_library(
     name = "simulated_system_clock",
     hdrs = [
         "public/pw_chrono/simulated_system_clock.h",

@@ -10,8 +10,8 @@ microcontrollers.
 Wrapper rules
 -------------
 The common configuration for Bazel for all modules is in the ``pigweed.bzl``
-file. The built-in Bazel rules ``cc_binary``, ``cc_library``, and ``cc_test``
-are wrapped with ``pw_cc_binary``, ``pw_cc_library``, and ``pw_cc_test``.
+file. The built-in Bazel rules ``cc_binary``, ``cc_test`` are wrapped with
+``pw_cc_binary`` and ``pw_cc_test``.
 
 .. _module-pw_build-bazel-pw_linker_script:
 
@@ -89,13 +89,13 @@ components:
 
 #. The **library target**, i.e. both the facade (interface) and backend
    (implementation). This is what *users of the module* depend on. It's a
-   regular ``pw_cc_library`` that exposes the same headers as the facade, but
+   regular ``cc_library`` that exposes the same headers as the facade, but
    has a dependency on the "backend label flag" (discussed next). It may also
    include some source files (if these are backend-independent). For example,
 
    .. code-block:: python
 
-     pw_cc_library(
+     cc_library(
          name = "binary_semaphore",
          # A backend-independent source file.
          srcs = [
@@ -129,11 +129,11 @@ components:
    ``//targets/BUILD.bazel``.
 
 #. The **backend target** implements a particular backend for a facade. It's
-   just a plain ``pw_cc_library``, with a dependency on the facade target. For example,
+   just a plain ``cc_library``, with a dependency on the facade target. For example,
 
    .. code-block:: python
 
-     pw_cc_library(
+     cc_library(
          name = "binary_semaphore",
          srcs = [
              "binary_semaphore.cc",
@@ -329,6 +329,25 @@ Example
 
    }  // namespace my::stuff
 
+.. _module-pw_build-bazel-pw_cc_binary_with_map:
+
+pw_cc_binary_with_map
+---------------------
+The ``pw_cc_binary_with_map`` rule can be used to build a binary like
+``cc_binary`` does but also generate a .map file from the linking step.
+
+.. code-block::
+
+   pw_cc_binary_with_map(
+     name = "test",
+     srcs = ["empty_main.cc"],
+   )
+
+This should result in a ``test.map`` file generated next to the ``test`` binary.
+
+Note that it's only partially compatible with the ``cc_binary`` interface and
+certain things are not implemented like make variable substitution.
+
 Miscellaneous utilities
 -----------------------
 
@@ -339,6 +358,12 @@ empty_cc_library
 This empty library is used as a placeholder for label flags that need to point
 to a library of some kind, but don't actually need the dependency to amount to
 anything.
+
+default_link_extra_lib
+^^^^^^^^^^^^^^^^^^^^^^
+This library groups together all libraries commonly required at link time by
+Pigweed modules. See :ref:`docs-build_system-bazel_link-extra-lib` for more
+details.
 
 unspecified_backend
 ^^^^^^^^^^^^^^^^^^^

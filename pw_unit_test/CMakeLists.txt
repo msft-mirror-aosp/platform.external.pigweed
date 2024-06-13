@@ -27,22 +27,71 @@ pw_add_library(pw_unit_test.config INTERFACE
 )
 
 add_library(pw_unit_test INTERFACE)
-target_link_libraries(pw_unit_test
+target_include_directories(pw_unit_test
   INTERFACE
-    "${pw_unit_test_GOOGLETEST_BACKEND}"
+    public
 )
+
+# Temporarily redirect deprecated googletest pointer to new pointer.
+if("${pw_unit_test_GOOGLETEST_BACKEND}" STREQUAL "pw_third_party.googletest")
+  message(DEPRECATION
+    "pw_unit_test_GOOGLETEST_BACKEND is deprecated. Set pw_unit_test_BACKEND "
+    "to pw_unit_test.googletest instead."
+  )
+  target_link_libraries(pw_unit_test
+    INTERFACE
+      pw_unit_test.googletest
+  )
+else()
+  target_link_libraries(pw_unit_test
+    INTERFACE
+      "${pw_unit_test_BACKEND}"
+  )
+endif()
 
 pw_add_library(pw_unit_test.light STATIC
   SOURCES
-    framework.cc
+    framework_light.cc
   PUBLIC_DEPS
     pw_polyfill
     pw_preprocessor
     pw_string
     pw_unit_test.config
   PUBLIC_INCLUDES
-    public_overrides  # pw_unit_test overrides the gtest/gtest.h header.
+    light_public_overrides
+    public
+    public_overrides
 )
+
+pw_add_library(pw_unit_test.googletest STATIC
+  SOURCES
+    googletest_public_overrides/pw_unit_test/framework_backend.h
+  PUBLIC_INCLUDES
+    googletest_public_overrides
+  PUBLIC_DEPS
+    pw_third_party.googletest
+)
+
+pw_add_test(pw_unit_test.framework_test
+    SOURCES
+      framework_test.cc
+    PRIVATE_DEPS
+      pw_assert
+      pw_status
+    GROUPS
+      pw_unit_test
+  )
+
+if(${pw_unit_test_BACKEND} STREQUAL "pw_unit_test.light")
+  pw_add_test(pw_unit_test.framework_light_test
+    SOURCES
+      framework_light_test.cc
+    PRIVATE_DEPS
+      pw_string
+    GROUPS
+      pw_unit_test
+  )
+endif()
 
 pw_add_library(pw_unit_test.static_library_support STATIC
   HEADERS
@@ -74,7 +123,7 @@ pw_add_library(pw_unit_test.googletest_style_event_handler STATIC
     googletest_style_event_handler.cc
 )
 
-if(NOT ${pw_unit_test_GOOGLETEST_BACKEND} STREQUAL "")
+if(${pw_unit_test_BACKEND} STREQUAL "pw_unit_test.googletest")
   pw_add_library(pw_unit_test.googletest_test_matchers INTERFACE
     HEADERS
       public/pw_unit_test/googletest_test_matchers.h
@@ -83,7 +132,7 @@ if(NOT ${pw_unit_test_GOOGLETEST_BACKEND} STREQUAL "")
     PUBLIC_DEPS
       pw_result
       pw_status
-      ${pw_unit_test_GOOGLETEST_BACKEND}
+      pw_third_party.googletest
   )
   pw_add_test(pw_unit_test.googletest_test_matchers_test
     SOURCES
@@ -124,5 +173,23 @@ pw_add_library(pw_unit_test.logging_main STATIC
     logging_main.cc
   PRIVATE_DEPS
     pw_unit_test.logging_event_handler
+    pw_unit_test
+)
+
+pw_add_library(pw_unit_test.multi_event_handler INTERFACE
+  HEADERS
+    public/pw_unit_test/multi_event_handler.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_unit_test.event_handler
+)
+
+pw_add_test(pw_unit_test.multi_event_handler_test
+  SOURCES
+    multi_event_handler_test.cc
+  PRIVATE_DEPS
+    pw_unit_test.multi_event_handler
+  GROUPS
     pw_unit_test
 )

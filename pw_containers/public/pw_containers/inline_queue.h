@@ -126,12 +126,9 @@ class BasicInlineQueue
 // Except for constructors, all other methods should be implemented on this
 // generic-sized specialization.
 template <typename ValueType, typename SizeType>
-class BasicInlineQueue<ValueType, SizeType, containers::internal::kGenericSized>
-    : public containers::internal::DestructorHelper<
-          BasicInlineQueue<ValueType,
-                           SizeType,
-                           containers::internal::kGenericSized>,
-          std::is_trivially_destructible<ValueType>::value> {
+class BasicInlineQueue<ValueType,
+                       SizeType,
+                       containers::internal::kGenericSized> {
  private:
   using Deque = BasicInlineDeque<ValueType, SizeType>;
 
@@ -221,6 +218,10 @@ class BasicInlineQueue<ValueType, SizeType, containers::internal::kGenericSized>
 
  protected:
   constexpr BasicInlineQueue() noexcept = default;
+
+  // Polymorphic-sized `pw::InlineQueue<T>` may not be used with `unique_ptr`
+  // or `delete`. `delete` could be supported using C++20's destroying delete.
+  ~BasicInlineQueue() = default;
 
  private:
   // The underlying BasicInlineDeque is not part of the generic-sized class. It

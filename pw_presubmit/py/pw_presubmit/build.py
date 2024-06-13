@@ -45,6 +45,7 @@ from typing import (
     Union,
 )
 
+import pw_cli.color
 from pw_presubmit.presubmit import (
     call,
     Check,
@@ -206,7 +207,8 @@ def gn_gen(
     Runs with --check=system if gn_check=True. Note that this does not cover
     generated files. Run gn_check() after building to check generated files.
     """
-    all_gn_args = dict(gn_arguments)
+    all_gn_args = {'pw_build_COLORIZE_OUTPUT': pw_cli.color.is_enabled()}
+    all_gn_args.update(gn_arguments)
     all_gn_args.update(ctx.override_gn_args)
     _LOG.debug('%r', all_gn_args)
     args_option = gn_args(**all_gn_args)
@@ -225,9 +227,9 @@ def gn_gen(
 
     call(
         'gn',
+        '--color' if pw_cli.color.is_enabled() else '--nocolor',
         'gen',
         ctx.output_dir,
-        '--color=always',
         *(['--check=system'] if gn_check else []),
         *(['--fail-on-unused-args'] if gn_fail_on_unused else []),
         *([export_commands_arg] if export_commands_arg else []),
@@ -691,28 +693,71 @@ def _value(ctx: PresubmitContext, val: InputValue) -> Value:
 _CtxMgrLambda = Callable[[PresubmitContext], ContextManager]
 _CtxMgrOrLambda = Union[ContextManager, _CtxMgrLambda]
 
-_INCREMENTAL_COVERAGE_TOOL = 'cloud_client'
-_ABSOLUTE_COVERAGE_TOOL = 'raw_coverage_cloud_uploader'
+
+@dataclass(frozen=True)
+class CommonCoverageOptions:
+    """Coverage options shared by both CodeSearch and Gerrit.
+
+    For Google use only.
+    """
+
+    # The "root" of the Kalypsi GCS bucket path to which the coverage data
+    # should be uploaded. Typically gs://ng3-metrics/ng3-<teamname>-coverage.
+    target_bucket_root: str
+
+    # The project name in the Kalypsi GCS bucket path.
+    target_bucket_project: str
+
+    # See go/kalypsi-abs#trace-type-required.
+    trace_type: str
+
+    # go/kalypsi-abs#owner-required.
+    owner: str
+
+    # go/kalypsi-abs#bug-component-required.
+    bug_component: str
+
+
+@dataclass(frozen=True)
+class CodeSearchCoverageOptions:
+    """CodeSearch-specific coverage options. For Google use only."""
+
+    # The name of the Gerrit host containing the CodeSearch repo. Just the name
+    # ("pigweed"), not the full URL ("pigweed.googlesource.com"). This may be
+    # different from the host from which the code was originally checked out.
+    host: str
+
+    # The name of the project, as expected by CodeSearch. Typically
+    # 'codesearch'.
+    project: str
+
+    # See go/kalypsi-abs#ref-required.
+    ref: str
+
+    # See go/kalypsi-abs#source-required.
+    source: str
+
+    # See go/kalypsi-abs#add-prefix-optional.
+    add_prefix: str = ''
+
+
+@dataclass(frozen=True)
+class GerritCoverageOptions:
+    """Gerrit-specific coverage options. For Google use only."""
+
+    # The name of the project, as expected by Gerrit. This is typically the
+    # repository name, e.g. 'pigweed/pigweed' for upstream Pigweed.
+    # See go/kalypsi-inc#project-required.
+    project: str
 
 
 @dataclass(frozen=True)
 class CoverageOptions:
-    """Coverage collection configuration.
+    """Coverage collection configuration. For Google use only."""
 
-    For Google use only. See go/kalypsi-abs and go/kalypsi-inc for documentation
-    of the metadata fields.
-    """
-
-    target_bucket_root: str
-    target_bucket_project: str
-    project: str
-    trace_type: str
-    ref: str
-    source: str
-    owner: str
-    bug_component: str
-    trim_prefix: str = ''
-    add_prefix: str = ''
+    common: CommonCoverageOptions
+    codesearch: Tuple[CodeSearchCoverageOptions, ...]
+    gerrit: GerritCoverageOptions
 
 
 class _NinjaBase(Check):
@@ -826,29 +871,30 @@ class _NinjaBase(Check):
         coverage_json = coverage_jsons[0]
 
         if ctx.luci:
-            if ctx.luci.is_dev:
-                _LOG.warning('Not uploading coverage since running in dev')
+            if not ctx.luci.is_prod:
+                _LOG.warning('Not uploading coverage since not running in prod')
                 return PresubmitResult.PASS
 
             with self._context(ctx):
-                # GCS bucket paths are POSIX-like.
-                coverage_gcs_path = posixpath.join(
-                    options.target_bucket_root,
-                    'incremental' if ctx.luci.is_try else 'absolute',
-                    options.target_bucket_project,
-                    str(ctx.luci.buildbucket_id),
-                )
-                _copy_to_gcs(
-                    ctx,
-                    coverage_json,
-                    posixpath.join(coverage_gcs_path, 'report.json'),
-                )
-                metadata_json = _write_coverage_metadata(ctx, options)
-                _copy_to_gcs(
-                    ctx,
-                    metadata_json,
-                    posixpath.join(coverage_gcs_path, 'metadata.json'),
-                )
+                metadata_json_paths = _write_coverage_metadata(ctx, options)
+                for i, metadata_json in enumerate(metadata_json_paths):
+                    # GCS bucket paths are POSIX-like.
+                    coverage_gcs_path = posixpath.join(
+                        options.common.target_bucket_root,
+                        'incremental' if ctx.luci.is_try else 'absolute',
+                        options.common.target_bucket_project,
+                        f'{ctx.luci.buildbucket_id}-{i}',
+                    )
+                    _copy_to_gcs(
+                        ctx,
+                        coverage_json,
+                        posixpath.join(coverage_gcs_path, 'report.json'),
+                    )
+                    _copy_to_gcs(
+                        ctx,
+                        metadata_json,
+                        posixpath.join(coverage_gcs_path, 'metadata.json'),
+                    )
 
                 return PresubmitResult.PASS
 
@@ -894,52 +940,58 @@ def _copy_to_gcs(ctx: PresubmitContext, filepath: Path, gcs_dst: str):
 
 def _write_coverage_metadata(
     ctx: PresubmitContext, options: CoverageOptions
-) -> Path:
-    """Write out Kalypsi coverage metadata and return the path to it."""
+) -> Sequence[Path]:
+    """Write out Kalypsi coverage metadata file(s) and return their paths."""
     assert ctx.luci is not None
     assert len(ctx.luci.triggers) == 1
     change = ctx.luci.triggers[0]
 
     metadata = {
-        'host': change.gerrit_host,
-        'project': options.project,
-        'trace_type': options.trace_type,
-        'trim_prefix': options.trim_prefix,
+        'trace_type': options.common.trace_type,
+        'trim_prefix': str(ctx.root),
         'patchset_num': change.patchset,
         'change_id': change.number,
-        'owner': options.owner,
-        'bug_component': options.bug_component,
+        'owner': options.common.owner,
+        'bug_component': options.common.bug_component,
     }
 
     if ctx.luci.is_try:
         # Running in CQ: uploading incremental coverage
         metadata.update(
             {
-                # Note: no `add_prefix`. According to the documentation, that's
-                # only supported for absolute coverage.
-                #
-                # TODO(tpudlik): Follow up with Kalypsi team, since this is
-                # surprising (given that trim_prefix is supported for both types
-                # of coverage). This might be an error in the docs.
-                'patchset_num': change.patchset,
                 'change_id': change.number,
-            }
-        )
-    else:
-        # Running in CI: uploading absolute coverage
-        metadata.update(
-            {
-                'add_prefix': options.add_prefix,
-                'commit_id': change.ref,
-                'ref': options.ref,
-                'source': options.source,
+                'host': change.gerrit_name,
+                'patchset_num': change.patchset,
+                'project': options.gerrit.project,
             }
         )
 
-    metadata_json = ctx.output_dir / "metadata.json"
-    with metadata_json.open('w') as metadata_file:
-        json.dump(metadata, metadata_file)
-    return metadata_json
+        metadata_json = ctx.output_dir / "metadata.json"
+        with metadata_json.open('w') as metadata_file:
+            json.dump(metadata, metadata_file)
+        return (metadata_json,)
+
+    # Running in CI: uploading absolute coverage, possibly to multiple locations
+    # since a repo could be in codesearch in multiple places.
+    metadata_jsons = []
+    for i, cs in enumerate(options.codesearch):
+        metadata.update(
+            {
+                'add_prefix': cs.add_prefix,
+                'commit_id': change.ref,
+                'host': cs.host,
+                'project': cs.project,
+                'ref': cs.ref,
+                'source': cs.source,
+            }
+        )
+
+        metadata_json = ctx.output_dir / f'metadata-{i}.json'
+        with metadata_json.open('w') as metadata_file:
+            json.dump(metadata, metadata_file)
+        metadata_jsons.append(metadata_json)
+
+    return tuple(metadata_jsons)
 
 
 class GnGenNinja(_NinjaBase):
@@ -966,6 +1018,9 @@ class GnGenNinja(_NinjaBase):
         super().__init__(self._substeps(), *args, **kwargs)
         self._gn_args: Dict[str, Any] = gn_args or {}
 
+    def add_default_gn_args(self, args):
+        """Add any project-specific default GN args to 'args'."""
+
     @property
     def gn_args(self) -> Dict[str, Any]:
         return self._gn_args
@@ -975,12 +1030,13 @@ class GnGenNinja(_NinjaBase):
         if self._coverage_options is not None:
             args['pw_toolchain_COVERAGE_ENABLED'] = True
             args['pw_build_PYTHON_TEST_COVERAGE'] = True
-            args['pw_C_OPTIMIZATION_LEVELS'] = ('debug',)
 
             if ctx.incremental:
                 args['pw_toolchain_PROFILE_SOURCE_FILES'] = [
                     f'//{x.relative_to(ctx.root)}' for x in ctx.paths
                 ]
+
+        self.add_default_gn_args(args)
 
         args.update({k: _value(ctx, v) for k, v in self._gn_args.items()})
         gn_gen(ctx, gn_check=False, **args)  # type: ignore
