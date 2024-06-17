@@ -40,7 +40,11 @@ build --incompatible_enable_cc_toolchain_resolution
 # Skip building or testing C++20 targets by default
 # TODO: b/340568834 Remove when a proper solution is available.
 build --build_tag_filters=-requires_cxx_20
-test --test_tag_filters=-requires_cxx_20
+# Also exclude integration tests from the default build. The test_tag_filters
+# flag doesn't accumulate (https://github.com/bazelbuild/bazel/issues/7322): we
+# have to specify it only once, setting all the exclusions in a comma-separated
+# list.
+test --test_tag_filters=-requires_cxx_20,-integration
 
 # Do not attempt to configure an autodetected (local) toolchain. We vendor all
 # our toolchains, and CI VMs may not have any local toolchain to detect.
@@ -79,6 +83,12 @@ build --features=external_include_paths
 build --@freertos//:freertos_config=//third_party/freertos:freertos_config
 build --@mbedtls//:mbedtls_config=//third_party/mbedtls:default_config
 
+common:asan --//pw_toolchain/host_clang:asan
+# TODO: https://github.com/bazelbuild/bazel/issues/7322 - We need to repeat the
+# -requires_cxx_20 and -integration because the test_tag_filters flag does not
+# accumulate.
+test:asan --test_tag_filters=-requires_cxx_20,-integration,-noasan
+
 # Define the --config=asan-libfuzzer configuration.
 build:asan-libfuzzer \
     --@rules_fuzzing//fuzzing:cc_engine=@rules_fuzzing//fuzzing/engines:libfuzzer
@@ -102,6 +112,17 @@ common --@stm32f4xx_hal_driver//:cmsis_init=@cmsis_device_f4//:default_cmsis_ini
 
 common --//pw_env_setup/py:pigweed_json=//:pigweed.json
 
+
+# Config for the rp2040 platform.
+#
+# TODO: b/301334234 - Make the platform set the flags below.
+build:rp2040 --platforms=@pigweed//targets/rp2040
+build:rp2040 --//pw_log:backend=@pigweed//pw_log_tokenized
+build:rp2040 --//pw_log:backend_impl=@pigweed//pw_log_tokenized:impl
+build:rp2040 --//pw_log_tokenized:handler_backend=@pigweed//pw_system:log_backend
+build:rp2040 --//pw_system:extra_platform_libs=@pigweed//targets/rp2040:extra_platform_libs
+
+
 # Config for the stm32f429i_disc1_stm32cube platform.
 #
 # TODO: b/301334234 - Make the platform set the flags below.
@@ -112,6 +133,7 @@ build:stm32f429i --@stm32f4xx_hal_driver//:hal_config=//targets/stm32f429i_disc1
 build:stm32f429i --//pw_log:backend=@pigweed//pw_log_tokenized
 build:stm32f429i --//pw_log:backend_impl=@pigweed//pw_log_tokenized:impl
 build:stm32f429i --//pw_log_tokenized:handler_backend=@pigweed//pw_system:log_backend
+build:stm32f429i --//pw_malloc:backend=@pigweed//pw_malloc:bucket_block_allocator
 build:stm32f429i --//pw_system:extra_platform_libs=@pigweed//targets/stm32f429i_disc1_stm32cube:extra_platform_libs
 
 
