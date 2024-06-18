@@ -50,9 +50,12 @@ else()
 endif()
 
 pw_add_library(pw_unit_test.light STATIC
+  HEADERS
+    light_public_overrides/pw_unit_test/framework_backend.h
   SOURCES
     framework_light.cc
   PUBLIC_DEPS
+    pw_bytes.alignment
     pw_polyfill
     pw_preprocessor
     pw_string
@@ -63,13 +66,23 @@ pw_add_library(pw_unit_test.light STATIC
     public_overrides
 )
 
-pw_add_library(pw_unit_test.googletest STATIC
-  SOURCES
+pw_add_library(pw_unit_test.googletest INTERFACE
+  HEADERS
     googletest_public_overrides/pw_unit_test/framework_backend.h
   PUBLIC_INCLUDES
     googletest_public_overrides
   PUBLIC_DEPS
     pw_third_party.googletest
+)
+
+pw_add_library(pw_unit_test.googletest_handler_adapter STATIC
+  SOURCES
+    googletest_handler_adapter.cc
+  PUBLIC_DEPS
+    pw_unit_test.event_handler
+    pw_third_party.googletest
+  PUBLIC_INCLUDES
+    public
 )
 
 pw_add_test(pw_unit_test.framework_test
@@ -190,6 +203,27 @@ pw_add_test(pw_unit_test.multi_event_handler_test
     multi_event_handler_test.cc
   PRIVATE_DEPS
     pw_unit_test.multi_event_handler
+  GROUPS
+    pw_unit_test
+)
+
+pw_add_library(pw_unit_test.test_record_event_handler INTERFACE
+  HEADERS
+    public/pw_unit_test/internal/test_record_trie.h
+    public/pw_unit_test/test_record_event_handler.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_json.builder
+    pw_unit_test.event_handler
+)
+
+pw_add_test(pw_unit_test.test_record_event_handler_test
+  SOURCES
+    test_record_event_handler_test.cc
+  PRIVATE_DEPS
+    pw_unit_test.test_record_event_handler
   GROUPS
     pw_unit_test
 )

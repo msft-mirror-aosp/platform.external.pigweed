@@ -20,8 +20,8 @@
 #include <ranges>
 #endif  // __cplusplus >= 202002L
 
-#include "pw_allocator/allocator_testing.h"
-#include "pw_multibuf/chunk_region_tracker.h"
+#include "pw_allocator/testing.h"
+#include "pw_multibuf/header_chunk_region_tracker.h"
 #include "pw_unit_test/framework.h"
 
 namespace pw::multibuf {
@@ -47,7 +47,7 @@ void TakesSpan([[maybe_unused]] ByteSpan span) {}
 TEST(Chunk, IsImplicitlyConvertibleToSpan) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk.has_value());
   // ``Chunk`` should convert to ``ByteSpan``.
@@ -56,65 +56,67 @@ TEST(Chunk, IsImplicitlyConvertibleToSpan) {
 
 TEST(OwnedChunk, ReleaseDestroysChunkRegion) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
+  const auto& metrics = allocator.metrics();
   auto tracker =
-      HeaderChunkRegionTracker::AllocateRegion(&allocator, kArbitraryChunkSize);
+      HeaderChunkRegionTracker::AllocateRegion(allocator, kArbitraryChunkSize);
   ASSERT_NE(tracker, nullptr);
-  EXPECT_EQ(allocator.num_allocations(), 1_size);
+  EXPECT_EQ(metrics.num_allocations.value(), 1_size);
 
-  std::optional<OwnedChunk> chunk_opt = Chunk::CreateFirstForRegion(*tracker);
+  std::optional<OwnedChunk> chunk_opt = tracker->CreateFirstChunk();
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
-  EXPECT_EQ(allocator.num_allocations(), 2_size);
+  EXPECT_EQ(metrics.num_allocations.value(), 2_size);
   EXPECT_EQ(chunk.size(), kArbitraryChunkSize);
 
   chunk.Release();
   EXPECT_EQ(chunk.size(), 0_size);
-  EXPECT_EQ(allocator.num_deallocations(), 2_size);
-  EXPECT_EQ(allocator.allocated_bytes(), 0_size);
+  EXPECT_EQ(metrics.num_deallocations.value(), 2_size);
+  EXPECT_EQ(metrics.allocated_bytes.value(), 0_size);
 }
 
 TEST(OwnedChunk, DestructorDestroysChunkRegion) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
+  const auto& metrics = allocator.metrics();
   auto tracker =
-      HeaderChunkRegionTracker::AllocateRegion(&allocator, kArbitraryChunkSize);
+      HeaderChunkRegionTracker::AllocateRegion(allocator, kArbitraryChunkSize);
   ASSERT_NE(tracker, nullptr);
-  EXPECT_EQ(allocator.num_allocations(), 1_size);
+  EXPECT_EQ(metrics.num_allocations.value(), 1_size);
 
   {
-    std::optional<OwnedChunk> chunk = Chunk::CreateFirstForRegion(*tracker);
+    std::optional<OwnedChunk> chunk = tracker->CreateFirstChunk();
     ASSERT_TRUE(chunk.has_value());
-    EXPECT_EQ(allocator.num_allocations(), 2_size);
+    EXPECT_EQ(metrics.num_allocations.value(), 2_size);
     EXPECT_EQ(chunk->size(), kArbitraryChunkSize);
   }
 
-  EXPECT_EQ(allocator.num_deallocations(), 2_size);
-  EXPECT_EQ(allocator.allocated_bytes(), 0_size);
+  EXPECT_EQ(metrics.num_deallocations.value(), 2_size);
+  EXPECT_EQ(metrics.allocated_bytes.value(), 0_size);
 }
 
-TEST(Chunk, DiscardFrontDiscardsFrontOfSpan) {
+TEST(Chunk, DiscardPrefixDiscardsPrefixOfSpan) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
-  ConstByteSpan old_span = chunk.span();
+  ConstByteSpan old_span = chunk;
   const size_t kDiscarded = 4;
-  chunk->DiscardFront(kDiscarded);
+  chunk->DiscardPrefix(kDiscarded);
   EXPECT_EQ(chunk.size(), old_span.size() - kDiscarded);
   EXPECT_EQ(chunk.data(), old_span.data() + kDiscarded);
 }
 
-TEST(Chunk, TakeFrontTakesFrontOfSpan) {
+TEST(Chunk, TakePrefixTakesPrefixOfSpan) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
-  ConstByteSpan old_span = chunk.span();
+  ConstByteSpan old_span = chunk;
   const size_t kTaken = 4;
-  std::optional<OwnedChunk> front_opt = chunk->TakeFront(kTaken);
+  std::optional<OwnedChunk> front_opt = chunk->TakePrefix(kTaken);
   ASSERT_TRUE(front_opt.has_value());
   auto& front = *front_opt;
   EXPECT_EQ(front->size(), kTaken);
@@ -126,27 +128,27 @@ TEST(Chunk, TakeFrontTakesFrontOfSpan) {
 TEST(Chunk, TruncateDiscardsEndOfSpan) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
-  ConstByteSpan old_span = chunk.span();
+  ConstByteSpan old_span = chunk;
   const size_t kShorter = 5;
   chunk->Truncate(old_span.size() - kShorter);
   EXPECT_EQ(chunk.size(), old_span.size() - kShorter);
   EXPECT_EQ(chunk.data(), old_span.data());
 }
 
-TEST(Chunk, TakeTailTakesEndOfSpan) {
+TEST(Chunk, TakeSuffixTakesEndOfSpan) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
-  ConstByteSpan old_span = chunk.span();
+  ConstByteSpan old_span = chunk;
   const size_t kTaken = 5;
-  std::optional<OwnedChunk> tail_opt = chunk->TakeTail(kTaken);
+  std::optional<OwnedChunk> tail_opt = chunk->TakeSuffix(kTaken);
   ASSERT_TRUE(tail_opt.has_value());
   auto& tail = *tail_opt;
   EXPECT_EQ(tail.size(), kTaken);
@@ -158,11 +160,11 @@ TEST(Chunk, TakeTailTakesEndOfSpan) {
 TEST(Chunk, SliceRemovesSidesOfSpan) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
-  ConstByteSpan old_span = chunk.span();
+  ConstByteSpan old_span = chunk;
   const size_t kBegin = 4;
   const size_t kEnd = 9;
   chunk->Slice(kBegin, kEnd);
@@ -172,35 +174,36 @@ TEST(Chunk, SliceRemovesSidesOfSpan) {
 
 TEST(Chunk, RegionPersistsUntilAllChunksReleased) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
+  const auto& metrics = allocator.metrics();
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
   // One allocation for the region tracker, one for the chunk.
-  EXPECT_EQ(allocator.num_allocations(), 2_size);
+  EXPECT_EQ(metrics.num_allocations.value(), 2_size);
   const size_t kSplitPoint = 13;
-  auto split_opt = chunk->TakeFront(kSplitPoint);
+  auto split_opt = chunk->TakePrefix(kSplitPoint);
   ASSERT_TRUE(split_opt.has_value());
   auto& split = *split_opt;
   // One allocation for the region tracker, one for each of two chunks.
-  EXPECT_EQ(allocator.num_allocations(), 3_size);
+  EXPECT_EQ(metrics.num_allocations.value(), 3_size);
   chunk.Release();
-  EXPECT_EQ(allocator.num_deallocations(), 1_size);
+  EXPECT_EQ(metrics.num_deallocations.value(), 1_size);
   split.Release();
-  EXPECT_EQ(allocator.num_deallocations(), 3_size);
+  EXPECT_EQ(metrics.num_deallocations.value(), 3_size);
 }
 
-TEST(Chunk, ClaimPrefixReclaimsDiscardedFront) {
+TEST(Chunk, ClaimPrefixReclaimsDiscardedPrefix) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
-  ConstByteSpan old_span = chunk.span();
+  ConstByteSpan old_span = chunk;
   const size_t kDiscarded = 4;
-  chunk->DiscardFront(kDiscarded);
+  chunk->DiscardPrefix(kDiscarded);
   EXPECT_TRUE(chunk->ClaimPrefix(kDiscarded));
   EXPECT_EQ(chunk.size(), old_span.size());
   EXPECT_EQ(chunk.data(), old_span.data());
@@ -209,7 +212,7 @@ TEST(Chunk, ClaimPrefixReclaimsDiscardedFront) {
 TEST(Chunk, ClaimPrefixFailsOnFullRegionChunk) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
@@ -219,12 +222,12 @@ TEST(Chunk, ClaimPrefixFailsOnFullRegionChunk) {
 TEST(Chunk, ClaimPrefixFailsOnNeighboringChunk) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
   const size_t kSplitPoint = 22;
-  auto front = chunk->TakeFront(kSplitPoint);
+  auto front = chunk->TakePrefix(kSplitPoint);
   ASSERT_TRUE(front.has_value());
   EXPECT_FALSE(chunk->ClaimPrefix(1));
 }
@@ -233,12 +236,12 @@ TEST(Chunk,
      ClaimPrefixFailsAtStartOfRegionEvenAfterReleasingChunkAtEndOfRegion) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
   const size_t kTaken = 13;
-  auto split = chunk->TakeTail(kTaken);
+  auto split = chunk->TakeSuffix(kTaken);
   ASSERT_TRUE(split.has_value());
   split->Release();
   EXPECT_FALSE(chunk->ClaimPrefix(1));
@@ -247,12 +250,12 @@ TEST(Chunk,
 TEST(Chunk, ClaimPrefixReclaimsPrecedingChunksDiscardedSuffix) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
   const size_t kSplitPoint = 13;
-  auto split_opt = chunk->TakeFront(kSplitPoint);
+  auto split_opt = chunk->TakePrefix(kSplitPoint);
   ASSERT_TRUE(split_opt.has_value());
   auto& split = *split_opt;
   const size_t kDiscard = 3;
@@ -264,11 +267,11 @@ TEST(Chunk, ClaimPrefixReclaimsPrecedingChunksDiscardedSuffix) {
 TEST(Chunk, ClaimSuffixReclaimsTruncatedEnd) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
-  ConstByteSpan old_span = chunk->span();
+  ConstByteSpan old_span = *chunk;
   const size_t kDiscarded = 4;
   chunk->Truncate(old_span.size() - kDiscarded);
   EXPECT_TRUE(chunk->ClaimSuffix(kDiscarded));
@@ -279,7 +282,7 @@ TEST(Chunk, ClaimSuffixReclaimsTruncatedEnd) {
 TEST(Chunk, ClaimSuffixFailsOnFullRegionChunk) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
@@ -289,12 +292,12 @@ TEST(Chunk, ClaimSuffixFailsOnFullRegionChunk) {
 TEST(Chunk, ClaimSuffixFailsWithNeighboringChunk) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
   const size_t kSplitPoint = 22;
-  auto split_opt = chunk->TakeFront(kSplitPoint);
+  auto split_opt = chunk->TakePrefix(kSplitPoint);
   ASSERT_TRUE(split_opt.has_value());
   auto& split = *split_opt;
   EXPECT_FALSE(split->ClaimSuffix(1));
@@ -303,12 +306,12 @@ TEST(Chunk, ClaimSuffixFailsWithNeighboringChunk) {
 TEST(Chunk, ClaimSuffixFailsAtEndOfRegionEvenAfterReleasingFirstChunkInRegion) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
   const size_t kTaken = 22;
-  auto split_opt = chunk->TakeTail(kTaken);
+  auto split_opt = chunk->TakeSuffix(kTaken);
   ASSERT_TRUE(split_opt.has_value());
   auto& split = *split_opt;
   EXPECT_FALSE(split->ClaimSuffix(1));
@@ -317,16 +320,16 @@ TEST(Chunk, ClaimSuffixFailsAtEndOfRegionEvenAfterReleasingFirstChunkInRegion) {
 TEST(Chunk, ClaimSuffixReclaimsFollowingChunksDiscardedPrefix) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_opt.has_value());
   auto& chunk = *chunk_opt;
   const size_t kSplitPoint = 22;
-  auto split_opt = chunk->TakeFront(kSplitPoint);
+  auto split_opt = chunk->TakePrefix(kSplitPoint);
   ASSERT_TRUE(split_opt.has_value());
   auto& split = *split_opt;
   const size_t kDiscarded = 3;
-  chunk->DiscardFront(kDiscarded);
+  chunk->DiscardPrefix(kDiscarded);
   EXPECT_TRUE(split->ClaimSuffix(kDiscarded));
   EXPECT_FALSE(split->ClaimSuffix(1));
 }
@@ -334,12 +337,12 @@ TEST(Chunk, ClaimSuffixReclaimsFollowingChunksDiscardedPrefix) {
 TEST(Chunk, MergeReturnsFalseForChunksFromDifferentRegions) {
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_1_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_1_opt.has_value());
   OwnedChunk& chunk_1 = *chunk_1_opt;
   std::optional<OwnedChunk> chunk_2_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_2_opt.has_value());
   OwnedChunk& chunk_2 = *chunk_2_opt;
@@ -356,16 +359,16 @@ TEST(Chunk, MergeReturnsFalseForNonAdjacentChunksFromSameRegion) {
 
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_1_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_1_opt.has_value());
   OwnedChunk& chunk_1 = *chunk_1_opt;
 
-  std::optional<OwnedChunk> chunk_2_opt = chunk_1->TakeTail(kTakenFromOne);
+  std::optional<OwnedChunk> chunk_2_opt = chunk_1->TakeSuffix(kTakenFromOne);
   ASSERT_TRUE(chunk_2_opt.has_value());
   OwnedChunk& chunk_2 = *chunk_2_opt;
 
-  std::optional<OwnedChunk> chunk_3_opt = chunk_2->TakeTail(kTakenFromTwo);
+  std::optional<OwnedChunk> chunk_3_opt = chunk_2->TakeSuffix(kTakenFromTwo);
   ASSERT_TRUE(chunk_3_opt.has_value());
   OwnedChunk& chunk_3 = *chunk_3_opt;
 
@@ -382,16 +385,16 @@ TEST(Chunk, MergeJoinsMultipleAdjacentChunksFromSameRegion) {
 
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_1_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_1_opt.has_value());
   OwnedChunk& chunk_1 = *chunk_1_opt;
 
-  std::optional<OwnedChunk> chunk_2_opt = chunk_1->TakeTail(kTakenFromOne);
+  std::optional<OwnedChunk> chunk_2_opt = chunk_1->TakeSuffix(kTakenFromOne);
   ASSERT_TRUE(chunk_2_opt.has_value());
   OwnedChunk& chunk_2 = *chunk_2_opt;
 
-  std::optional<OwnedChunk> chunk_3_opt = chunk_2->TakeTail(kTakenFromTwo);
+  std::optional<OwnedChunk> chunk_3_opt = chunk_2->TakeSuffix(kTakenFromTwo);
   ASSERT_TRUE(chunk_3_opt.has_value());
   OwnedChunk& chunk_3 = *chunk_3_opt;
 
@@ -410,11 +413,11 @@ TEST(Chunk, MergeJoinsAdjacentChunksFromSameRegion) {
 
   AllocatorForTest<kArbitraryAllocatorSize> allocator;
   std::optional<OwnedChunk> chunk_1_opt =
-      HeaderChunkRegionTracker::AllocateRegionAsChunk(&allocator,
+      HeaderChunkRegionTracker::AllocateRegionAsChunk(allocator,
                                                       kArbitraryChunkSize);
   ASSERT_TRUE(chunk_1_opt.has_value());
   OwnedChunk& chunk_1 = *chunk_1_opt;
-  std::optional<OwnedChunk> chunk_2_opt = chunk_1->TakeTail(kTaken);
+  std::optional<OwnedChunk> chunk_2_opt = chunk_1->TakeSuffix(kTaken);
   ASSERT_TRUE(chunk_2_opt.has_value());
   OwnedChunk& chunk_2 = *chunk_2_opt;
   EXPECT_EQ(chunk_1.size(), kArbitraryChunkSize - kTaken);

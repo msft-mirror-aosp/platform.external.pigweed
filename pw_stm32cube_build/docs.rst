@@ -53,7 +53,7 @@ generate the ``files.txt``.
 
 .. code-block:: bash
 
-  pw package install stm32cube_{family}
+   pw package install stm32cube_{family}
 
 Headers
 =======
@@ -106,7 +106,7 @@ For multi target projects, the standard practice to set this for each target:
 
 .. code-block:: text
 
-  dir_pw_third_party_stm32cube = dir_pw_third_party_stm32cube_f4
+   dir_pw_third_party_stm32cube = dir_pw_third_party_stm32cube_f4
 
 
 ``pw_third_party_stm32cube_PRODUCT``
@@ -161,7 +161,7 @@ directories.
 
 .. code-block:: bash
 
-  stm32cube_builder gen_file_list /path/to/stm32cube_dir
+   stm32cube_builder gen_file_list /path/to/stm32cube_dir
 
 find_files
 ==========
@@ -186,7 +186,7 @@ The following variables are output: ``family``, ``product_define``,
 
 .. code-block:: bash
 
-  stm32cube_builder find_files /path/to/stm32cube_dir stm32{family}{product} [--init]
+   stm32cube_builder find_files /path/to/stm32cube_dir stm32{family}{product} [--init]
 
 inject_init
 =============
@@ -207,7 +207,7 @@ the pre main init call. The output is printed to stdout, or to the specified
 
 .. code-block:: bash
 
-  stm32cube_builder inject_init /path/to/startup.s [--out-startup-path /path/to/new_startup.s]
+   stm32cube_builder inject_init /path/to/startup.s [--out-startup-path /path/to/new_startup.s]
 
 icf_to_ld
 =========
@@ -223,7 +223,7 @@ stdout or the specified ``--ld-path``.
 
 .. code-block:: bash
 
-  stm32cube_builder inject_init /path/to/iar_linker.icf [--ld-path /path/to/gcc_linker.ld]
+   stm32cube_builder inject_init /path/to/iar_linker.icf [--ld-path /path/to/gcc_linker.ld]
 
 .. _`MCU Components`: https://github.com/STMicroelectronics/STM32Cube_MCU_Overall_Offer#stm32cube-mcu-components
 .. _`ST's GitHub page`: https://github.com/STMicroelectronics
@@ -277,7 +277,7 @@ family. To do so,
     .. code-block::
 
        build:stm32f429i --platforms=//targets/stm32f429i_disc1_stm32cube:platform
-       build:stm32f429i --@pigweed//third_party/stm32cube:stm32_hal_driver=@stm32f4xx_hal_driver//:hal_driver
+       build:stm32f429i --@pigweed//third_party/stm32cube:hal_driver=@stm32f4xx_hal_driver//:hal_driver
        build:stm32f429i --@stm32f4xx_hal_driver//:cmsis_device=@cmsis_device_f4//:cmsis_device
        build:stm32f429i --@stm32f4xx_hal_driver//:cmsis_init=@cmsis_device_f4//:default_cmsis_init
 
@@ -320,8 +320,8 @@ Optional
 --------
 These label flags can be used to further customize the behavior of STM32Cube.
 
-``//third_party/stm32cube:stm32_hal_driver``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``//third_party/stm32cube:hal_driver``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This label_flag introduces a layer of indirection useful when building a
 project that requires more than one STM32Cube package (see
 :ref:`module-pw_stm32cube_build-bazel-multifamily`). It should point to the
@@ -354,4 +354,3 @@ repository.
 This label flag should point to a ``cc_library`` providing a timebase
 implementation. By default it points to the template included with STM's HAL
 repository.
-

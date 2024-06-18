@@ -19,7 +19,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path, PurePath, PurePosixPath
 from types import TracebackType
-from typing import Dict, IO, Iterable, Iterator, List, Optional, Type, Union
+from typing import IO, Iterable, Iterator, Type
 
 from pw_build.gn_config import GnConfig, GN_CONFIG_FLAGS
 from pw_build.gn_target import GnTarget
@@ -59,13 +59,13 @@ class GnWriter:
 
     def __init__(self, file: IO) -> None:
         self._file: IO = file
-        self._scopes: List[str] = []
+        self._scopes: list[str] = []
         self._margin: str = ''
         self._needs_blank: bool = False
-        self.repos: Dict[str, str] = {}
-        self.aliases: Dict[str, str] = {}
+        self.repos: dict[str, str] = {}
+        self.aliases: dict[str, str] = {}
 
-    def write_comment(self, comment: Optional[str] = None) -> None:
+    def write_comment(self, comment: str | None = None) -> None:
         """Adds a GN comment.
 
         Args:
@@ -82,7 +82,7 @@ class GnWriter:
             comment = comment[index + 1 :]
         self.write(f'# {comment}')
 
-    def write_import(self, gni: Union[str, PurePosixPath, GnPath]) -> None:
+    def write_import(self, gni: str | PurePosixPath | GnPath) -> None:
         """Adds a GN import.
 
         Args:
@@ -180,7 +180,7 @@ class GnWriter:
             yield target.make_relative(label)
 
     def write_target_start(
-        self, target_type: str, target_name: Optional[str] = None
+        self, target_type: str, target_name: str | None = None
     ) -> None:
         """Begins a GN target of the given type.
 
@@ -341,14 +341,12 @@ class GnFile:
     where "write_..." refers to any of the "write" methods of `GnWriter`.
     """
 
-    def __init__(
-        self, pathname: PurePath, package: Optional[str] = None
-    ) -> None:
+    def __init__(self, pathname: PurePath, package: str | None = None) -> None:
         if pathname.name != 'BUILD.gn' and pathname.suffix != '.gni':
             raise MalformedGnError(f'invalid GN filename: {pathname}')
         os.makedirs(pathname.parent, exist_ok=True)
         self._pathname: PurePath = pathname
-        self._package: Optional[str] = package
+        self._package: str | None = package
         self._file: IO
         self._writer: GnWriter
 
@@ -370,9 +368,9 @@ class GnFile:
 
     def __exit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: Type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> None:
         """Closes the GN file and formats it."""
         self._file.close()

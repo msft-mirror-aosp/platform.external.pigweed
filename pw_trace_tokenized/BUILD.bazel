@@ -18,7 +18,8 @@ load(
     "pw_cc_binary",
     "pw_cc_test",
 )
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_build:selects.bzl", "TARGET_COMPATIBLE_WITH_HOST_SELECT")
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_filegroup", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -115,8 +116,6 @@ cc_library(
     includes = [
         "public",
     ],
-    # TODO: b/260641850 - Get pw_trace_tokenized building in Bazel.
-    tags = ["manual"],
     deps = [
         ":buffer",
         ":protos_cc.nanopb_rpc",
@@ -136,10 +135,9 @@ cc_library(
     includes = [
         "public",
     ],
-    # TODO: b/260641850 - Get pw_trace_tokenized building in Bazel.
-    tags = ["manual"],
     deps = [
         ":pw_trace_tokenized",
+        "//pw_bytes",
         "//pw_ring_buffer",
         "//pw_status",
     ],
@@ -153,8 +151,6 @@ cc_library(
     hdrs = [
         "public/pw_trace_tokenized/trace_buffer_log.h",
     ],
-    # TODO: b/260641850 - Get pw_trace_tokenized building in Bazel.
-    tags = ["manual"],
     deps = [
         ":buffer",
         "//pw_base64",
@@ -163,21 +159,37 @@ cc_library(
     ],
 )
 
-# TODO: b/326636665 - Needs stripped import prefix, but prefix modification
-# doesn't work with nanopb.
 proto_library(
     name = "protos",
     srcs = [
         "pw_trace_protos/trace.proto",
-        "pw_trace_protos/trace_rpc.proto",
-        "pw_trace_protos/trace_service.proto",
+        ":trace_rpc_proto_filegroup",
+        ":trace_service_proto_filegroup",
     ],
+    strip_import_prefix = "/pw_trace_tokenized",
     deps = [
         "//pw_chrono:chrono_proto",
     ],
-    # TODO(tpudlik): We should provide trace_rpc.options to nanopb here, but the
-    # current proto codegen implementation provides no mechanism for doing so.
-    # inputs = [ "pw_trace_protos/trace_rpc.options",  "pw_trace_protos/trace_service.options"]
+)
+
+pw_proto_filegroup(
+    name = "trace_rpc_proto_filegroup",
+    srcs = [
+        "pw_trace_protos/trace_rpc.proto",
+    ],
+    options_files = [
+        "pw_trace_protos/trace_rpc.options",
+    ],
+)
+
+pw_proto_filegroup(
+    name = "trace_service_proto_filegroup",
+    srcs = [
+        "pw_trace_protos/trace_service.proto",
+    ],
+    options_files = [
+        "pw_trace_protos/trace_service.options",
+    ],
 )
 
 pw_proto_library(
@@ -253,8 +265,8 @@ pw_cc_test(
     srcs = [
         "trace_service_pwpb_test.cc",
     ],
-    # TODO(b/260641850): Get pw_trace_tokenized building in Bazel.
-    tags = ["manual"],
+    # TODO: b/343778108 - update to run on all compatible devices
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
         ":pw_trace_host_trace_time",
         ":trace_service_pwpb",

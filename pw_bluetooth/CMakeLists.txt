@@ -56,7 +56,7 @@ pw_add_test(pw_bluetooth.address_test
   PRIVATE_DEPS
     pw_bluetooth
   GROUPS
-    pw_bluetooth
+    modules
 )
 
 pw_add_test(pw_bluetooth.api_test
@@ -65,7 +65,7 @@ pw_add_test(pw_bluetooth.api_test
   PRIVATE_DEPS
     pw_bluetooth
   GROUPS
-    pw_bluetooth
+    modules
 )
 
 pw_add_test(pw_bluetooth.result_test
@@ -74,7 +74,7 @@ pw_add_test(pw_bluetooth.result_test
   PRIVATE_DEPS
     pw_bluetooth
   GROUPS
-    pw_bluetooth
+    modules
 )
 
 pw_add_test(pw_bluetooth.uuid_test
@@ -83,5 +83,111 @@ pw_add_test(pw_bluetooth.uuid_test
   PRIVATE_DEPS
     pw_bluetooth
   GROUPS
-    pw_bluetooth
+    modules
+)
+
+###############################################################################
+##          Everything below here is intended to be emboss only              ##
+##          and will be skipped if emboss isn't enabled.                     ##
+###############################################################################
+if("${dir_pw_third_party_emboss}" STREQUAL "")
+  # Skip emboss defs if it's not configured
+  return()
+endif()
+
+include($ENV{PW_ROOT}/third_party/emboss/emboss.cmake)
+
+emboss_cc_library(pw_bluetooth.emboss_hci_common
+  SOURCES
+    public/pw_bluetooth/hci_common.emb
+)
+
+emboss_cc_library(pw_bluetooth.emboss_hci_android
+  SOURCES
+    public/pw_bluetooth/hci_android.emb
+  IMPORT_DIRS
+    public
+  DEPS
+    pw_bluetooth.emboss_hci_common
+)
+
+emboss_cc_library(pw_bluetooth.emboss_hci_commands
+  SOURCES
+    public/pw_bluetooth/hci_commands.emb
+  IMPORT_DIRS
+    public
+  DEPS
+    pw_bluetooth.emboss_hci_common
+)
+
+emboss_cc_library(pw_bluetooth.emboss_hci_events
+  SOURCES
+    public/pw_bluetooth/hci_events.emb
+  IMPORT_DIRS
+    public
+  DEPS
+    pw_bluetooth.emboss_hci_common
+)
+
+emboss_cc_library(pw_bluetooth.emboss_hci_h4
+  SOURCES
+    public/pw_bluetooth/hci_h4.emb
+  IMPORT_DIRS
+    public
+)
+
+emboss_cc_library(pw_bluetooth.emboss_hci_data
+  SOURCES
+    public/pw_bluetooth/hci_data.emb
+)
+
+emboss_cc_library(pw_bluetooth.emboss_l2cap_frames
+  SOURCES
+    public/pw_bluetooth/l2cap_frames.emb
+)
+
+emboss_cc_library(pw_bluetooth.emboss_hci_test
+  SOURCES
+    public/pw_bluetooth/hci_test.emb
+  IMPORT_DIRS
+    public
+  DEPS
+    pw_bluetooth.emboss_hci_common
+    pw_bluetooth.emboss_l2cap_frames
+)
+
+pw_add_library("pw_bluetooth.emboss_hci_group" INTERFACE
+  PUBLIC_DEPS
+    pw_bluetooth.emboss_hci_android
+    pw_bluetooth.emboss_hci_commands
+    pw_bluetooth.emboss_hci_common
+    pw_bluetooth.emboss_hci_data
+    pw_bluetooth.emboss_hci_events
+    pw_bluetooth.emboss_hci_h4
+)
+
+pw_target_link_targets("pw_bluetooth._public_config"
+  INTERFACE
+    pw_bluetooth.emboss_hci_android
+    pw_bluetooth.emboss_hci_commands
+    pw_bluetooth.emboss_hci_common
+    pw_bluetooth.emboss_hci_data
+    pw_bluetooth.emboss_hci_events
+    pw_bluetooth.emboss_hci_h4
+    pw_bluetooth.emboss_l2cap_frames
+)
+
+pw_add_test(pw_bluetooth.emboss_test
+  SOURCES
+    emboss_test.cc
+  PRIVATE_DEPS
+
+    # All emboss targets are listed (even if they don't have explicit tests) to
+    # ensure they are compiled.
+    pw_bluetooth.emboss_hci_group
+    pw_bluetooth.emboss_hci_test
+    pw_bluetooth.emboss_l2cap_frames
+    pw_third_party.fuchsia.stdcompat
+  GROUPS
+    modules
 )

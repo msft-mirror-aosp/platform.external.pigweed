@@ -22,26 +22,23 @@ cc_library_static {
     vendor_available: true,
     export_include_dirs: ["public"],
     header_libs: [
-        "pw_assert_headers",
-        "pw_log_headers",
-        "pw_log_null_headers",
-        "pw_preprocessor_headers",
-        "pw_span_headers",
+        "pw_assert",
+        "pw_log",
     ],
     defaults: [
-        "pw_assert_log_defaults",
-    ],
-    export_header_lib_headers: [
-        "pw_span_headers",
+        "pw_android_common_backends",
     ],
     host_supported: true,
     srcs: [
         "base64.cc",
     ],
     static_libs: [
+        "pw_preprocessor",
+        "pw_span",
         "pw_string",
     ],
     export_static_lib_headers: [
+        "pw_span",
         "pw_string",
     ],
 }

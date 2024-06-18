@@ -18,7 +18,6 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from typing import List
 import unittest
 
 from parameterized import parameterized  # type: ignore
@@ -58,7 +57,7 @@ zip_safe = False
 def _create_fake_python_package(
     location: Path,
     package_name: str,
-    files: List[str],
+    files: list[str],
     install_requires: str = '',
 ) -> None:
     for file in files:
@@ -76,8 +75,9 @@ def _create_fake_python_package(
 class TestCreatePythonTree(unittest.TestCase):
     """Integration tests for create_python_tree."""
 
+    maxDiff = None
+
     def setUp(self):
-        self.maxDiff = None  # pylint: disable=invalid-name
         # Save the starting working directory for returning to later.
         self.start_dir = Path.cwd()
         # Create a temp out directory

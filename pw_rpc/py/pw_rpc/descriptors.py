@@ -13,6 +13,8 @@
 # the License.
 """Types representing the basic pw_rpc concepts: channel, service, method."""
 
+from __future__ import annotations
+
 import abc
 from dataclasses import dataclass
 import enum
@@ -21,14 +23,10 @@ from typing import (
     Any,
     Callable,
     Collection,
-    Dict,
     Generic,
     Iterable,
     Iterator,
-    Optional,
-    Tuple,
     TypeVar,
-    Union,
 )
 
 from google.protobuf import descriptor_pb2, message_factory
@@ -46,7 +44,7 @@ from pw_rpc import ids
 @dataclass(frozen=True)
 class Channel:
     id: int
-    output: Optional[Callable[[bytes], Any]]
+    output: Callable[[bytes], Any] | None
 
     def __repr__(self) -> str:
         return f'Channel({self.id})'
@@ -114,7 +112,7 @@ class Service:
 
     _descriptor: ServiceDescriptor
     id: int
-    methods: 'Methods'
+    methods: Methods
 
     @property
     def name(self):
@@ -129,7 +127,7 @@ class Service:
         return self._descriptor.file.package
 
     @classmethod
-    def from_descriptor(cls, descriptor: ServiceDescriptor) -> 'Service':
+    def from_descriptor(cls, descriptor: ServiceDescriptor) -> Service:
         service = cls(
             descriptor,
             ids.calculate(descriptor.full_name),
@@ -153,7 +151,7 @@ class Service:
         return self.full_name
 
 
-def _streaming_attributes(method) -> Tuple[bool, bool]:
+def _streaming_attributes(method) -> tuple[bool, bool]:
     # TODO(hepler): Investigate adding server_streaming and client_streaming
     #     attributes to the generated protobuf code. As a workaround,
     #     deserialize the FileDescriptorProto to get that information.
@@ -236,7 +234,7 @@ class Method:
     @classmethod
     def from_descriptor(
         cls, descriptor: MethodDescriptor, service: Service
-    ) -> 'Method':
+    ) -> Method:
         return Method(
             descriptor,
             service,
@@ -270,7 +268,7 @@ class Method:
         return self._descriptor.containing_service.file.package
 
     @property
-    def type(self) -> 'Method.Type':
+    def type(self) -> Method.Type:
         if self.server_streaming and self.client_streaming:
             return self.Type.BIDIRECTIONAL_STREAMING
 
@@ -283,7 +281,7 @@ class Method:
         return self.Type.UNARY
 
     def get_request(
-        self, proto: Optional[Message], proto_kwargs: Optional[Dict[str, Any]]
+        self, proto: Message | None, proto_kwargs: dict[str, Any] | None
     ) -> Message:
         """Returns a request_type protobuf message.
 
@@ -353,7 +351,7 @@ class Method:
 T = TypeVar('T')
 
 
-def _name(item: Union[Service, Method]) -> str:
+def _name(item: Service | Method) -> str:
     return item.full_name if isinstance(item, Service) else item.name
 
 
@@ -374,13 +372,13 @@ class ServiceAccessor(Collection[T]):
         if not isinstance(members, dict):
             members = {m: m for m in members}
 
-        by_name: Dict[str, Any] = {_name(k): v for k, v in members.items()}
+        by_name: dict[str, Any] = {_name(k): v for k, v in members.items()}
         self._by_id = {k.id: v for k, v in members.items()}
         # Note: a dictionary is used rather than `setattr` in order to
         # (1) Hint to the type checker that there will be extra fields
         # (2) Ensure that built-in attributes such as `_by_id`` are not
         #     overwritten.
-        self._attrs: Dict[str, Any] = {}
+        self._attrs: dict[str, Any] = {}
 
         if as_attrs == 'members':
             for name, member in by_name.items():
@@ -396,7 +394,7 @@ class ServiceAccessor(Collection[T]):
     def __getattr__(self, name: str) -> Any:
         return self._attrs[name]
 
-    def __getitem__(self, name_or_id: Union[str, int]) -> Any:
+    def __getitem__(self, name_or_id: str | int) -> Any:
         """Accesses a service/method by the string name or ID."""
         try:
             return self._by_id[_id(name_or_id)]
@@ -420,7 +418,7 @@ class ServiceAccessor(Collection[T]):
         return f'{self.__class__.__name__}({members})'
 
 
-def _id(handle: Union[str, int]) -> int:
+def _id(handle: str | int) -> int:
     return ids.calculate(handle) if isinstance(handle, str) else handle
 
 

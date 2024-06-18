@@ -17,7 +17,6 @@ import shutil
 import subprocess
 import threading
 import json
-from typing import Optional, Tuple
 from pathlib import Path
 from pw_symbolizer import symbolizer
 
@@ -27,9 +26,9 @@ class LlvmSymbolizer(symbolizer.Symbolizer):
 
     def __init__(
         self,
-        binary: Optional[Path] = None,
+        binary: Path | None = None,
         force_legacy=False,
-        llvm_symbolizer_binary: Optional[Path] = None,
+        llvm_symbolizer_binary: Path | None = None,
     ):
         # Lets destructor return cleanly if the binary is not found.
         self._symbolizer = None
@@ -117,7 +116,7 @@ class LlvmSymbolizer(symbolizer.Symbolizer):
         )
 
     @staticmethod
-    def _llvm_output_line_splitter(file_and_line: str) -> Tuple[str, int]:
+    def _llvm_output_line_splitter(file_and_line: str) -> tuple[str, int]:
         split = file_and_line.split(':')
         # LLVM file name output is as follows:
         #   path/to/src.c:123:1

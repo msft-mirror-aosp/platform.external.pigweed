@@ -15,7 +15,10 @@
 #include "pw_tokenizer/detokenize.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
+#include <string_view>
+#include <vector>
 
 #include "pw_bytes/bit.h"
 #include "pw_bytes/endian.h"
@@ -36,6 +39,12 @@ class NestedMessageDetokenizer {
     for (char next_char : chunk) {
       Detokenize(next_char);
     }
+  }
+
+  bool OutputChangedSinceLastCheck() {
+    const bool changed = output_changed_;
+    output_changed_ = false;
+    return changed;
   }
 
   void Detokenize(char next_char) {
@@ -69,7 +78,9 @@ class NestedMessageDetokenizer {
       HandleEndOfMessage();
       state_ = kNonMessage;
     }
-    return std::move(output_);
+    std::string output(std::move(output_));
+    output_.clear();
+    return output;
   }
 
  private:
@@ -77,6 +88,7 @@ class NestedMessageDetokenizer {
     if (auto result = detokenizer_.DetokenizeBase64Message(message_buffer_);
         result.ok()) {
       output_ += result.BestString();
+      output_changed_ = true;
     } else {
       output_ += message_buffer_;  // Keep the original if it doesn't decode.
     }
@@ -87,7 +99,8 @@ class NestedMessageDetokenizer {
   std::string output_;
   std::string message_buffer_;
 
-  enum { kNonMessage, kMessage } state_ = kNonMessage;
+  enum : uint8_t { kNonMessage, kMessage } state_ = kNonMessage;
+  bool output_changed_ = false;
 };
 
 std::string UnknownTokenMessage(uint32_t value) {
@@ -134,17 +147,36 @@ bool IsBetterResult(const DecodingResult& lhs, const DecodingResult& rhs) {
   return lhs.second > rhs.second;
 }
 
+// Returns true if all characters in data are printable, space, or if the string
+// is empty.
+constexpr bool IsPrintableAscii(std::string_view data) {
+  // This follows the logic in pw_tokenizer.decode_optionally_tokenized below:
+  //
+  //   if ''.join(text.split()).isprintable():
+  //     return text
+  //
+  for (int letter : data) {
+    if (std::isprint(letter) == 0 && std::isspace(letter) == 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 DetokenizedString::DetokenizedString(
     uint32_t token,
     const span<const TokenizedStringEntry>& entries,
-    const span<const uint8_t>& arguments)
+    const span<const std::byte>& arguments)
     : token_(token), has_token_(true) {
   std::vector<DecodingResult> results;
 
   for (const auto& [format, date_removed] : entries) {
-    results.push_back(DecodingResult{format.Format(arguments), date_removed});
+    results.push_back(DecodingResult{
+        format.Format(span(reinterpret_cast<const uint8_t*>(arguments.data()),
+                           arguments.size())),
+        date_removed});
   }
 
   std::sort(results.begin(), results.end(), IsBetterResult);
@@ -173,7 +205,7 @@ Detokenizer::Detokenizer(const TokenDatabase& database) {
 }
 
 Result<Detokenizer> Detokenizer::FromElfSection(
-    span<const uint8_t> elf_section) {
+    span<const std::byte> elf_section) {
   size_t index = 0;
   std::unordered_map<uint32_t, std::vector<TokenizedStringEntry>> database;
 
@@ -203,7 +235,7 @@ Result<Detokenizer> Detokenizer::FromElfSection(
 }
 
 DetokenizedString Detokenizer::Detokenize(
-    const span<const uint8_t>& encoded) const {
+    const span<const std::byte>& encoded) const {
   // The token is missing from the encoded data; there is nothing to do.
   if (encoded.empty()) {
     return DetokenizedString();
@@ -218,7 +250,7 @@ DetokenizedString Detokenizer::Detokenize(
       token,
       result == database_.end() ? span<TokenizedStringEntry>()
                                 : span(result->second),
-      encoded.size() < sizeof(token) ? span<const uint8_t>()
+      encoded.size() < sizeof(token) ? span<const std::byte>()
                                      : encoded.subspan(sizeof(token)));
 }
 
@@ -229,10 +261,71 @@ DetokenizedString Detokenizer::DetokenizeBase64Message(
   return Detokenize(buffer);
 }
 
-std::string Detokenizer::DetokenizeBase64(std::string_view text) const {
-  NestedMessageDetokenizer nested_detokenizer(*this);
-  nested_detokenizer.Detokenize(text);
-  return nested_detokenizer.Flush();
+std::string Detokenizer::DetokenizeText(std::string_view text,
+                                        const unsigned max_passes) const {
+  NestedMessageDetokenizer detokenizer(*this);
+  detokenizer.Detokenize(text);
+
+  std::string result;
+  unsigned pass = 1;
+
+  while (true) {
+    result = detokenizer.Flush();
+    if (pass >= max_passes || !detokenizer.OutputChangedSinceLastCheck()) {
+      break;
+    }
+    detokenizer.Detokenize(result);
+    pass += 1;
+  }
+  return result;
+}
+
+std::string Detokenizer::DecodeOptionallyTokenizedData(
+    const ConstByteSpan& optionally_tokenized_data) {
+  // Try detokenizing as binary using the best result if available, else use
+  // the input data as a string.
+  const auto result = Detokenize(optionally_tokenized_data);
+  const bool found_matches = !result.matches().empty();
+  // Note: unlike pw_tokenizer.proto.decode_optionally_tokenized, this decoding
+  // process does not encode and decode UTF8 format, it is sufficient to check
+  // if the data is printable ASCII.
+  const std::string data =
+      found_matches
+          ? result.BestString()
+          : std::string(
+                reinterpret_cast<const char*>(optionally_tokenized_data.data()),
+                optionally_tokenized_data.size());
+
+  const bool is_data_printable = IsPrintableAscii(data);
+  if (!found_matches && !is_data_printable) {
+    // Assume the token is unknown or the data is corrupt.
+    std::vector<char> base64_encoding_buffer(
+        Base64EncodedBufferSize(optionally_tokenized_data.size()));
+    const size_t encoded_length = PrefixedBase64Encode(
+        optionally_tokenized_data, span(base64_encoding_buffer));
+    return std::string{base64_encoding_buffer.data(), encoded_length};
+  }
+
+  // Successfully detokenized, check if the field has more prefixed
+  // base64-encoded tokens.
+  const std::string field = DetokenizeText(data);
+  // If anything detokenized successfully, use that.
+  if (field != data) {
+    return field;
+  }
+
+  // Attempt to determine whether this is an unknown token or plain text.
+  // Any string with only printable or whitespace characters is plain text.
+  if (found_matches || is_data_printable) {
+    return data;
+  }
+
+  // Assume this field is tokenized data that could not be decoded.
+  std::vector<char> base64_encoding_buffer(
+      Base64EncodedBufferSize(optionally_tokenized_data.size()));
+  const size_t encoded_length = PrefixedBase64Encode(
+      optionally_tokenized_data, span(base64_encoding_buffer));
+  return std::string{base64_encoding_buffer.data(), encoded_length};
 }
 
 }  // namespace pw::tokenizer

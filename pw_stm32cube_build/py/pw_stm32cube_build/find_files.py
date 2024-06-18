@@ -13,13 +13,13 @@
 # the License.
 """Finds files for a given product."""
 
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, Set
 
 import pathlib
 import re
 
 
-def parse_product_str(product_str: str) -> Tuple[str, Set[str], str]:
+def parse_product_str(product_str: str) -> tuple[str, Set[str], str]:
     """Parses provided product string.
 
     Args:
@@ -130,8 +130,8 @@ def match_filename(product_name: str, filename: str):
 
 
 def find_linker_files(
-    product_name: str, files: List[str], stm32cube_path: pathlib.Path
-) -> Tuple[Optional[pathlib.Path], Optional[pathlib.Path]]:
+    product_name: str, files: list[str], stm32cube_path: pathlib.Path
+) -> tuple[pathlib.Path | None, pathlib.Path | None]:
     """Finds linker file for the given product.
 
     This searches `files` for linker scripts by name.
@@ -185,7 +185,7 @@ def find_linker_files(
 
 
 def find_startup_file(
-    product_name: str, files: List[str], stm32cube_path: pathlib.Path
+    product_name: str, files: list[str], stm32cube_path: pathlib.Path
 ) -> pathlib.Path:
     """Finds startup file for the given product.
 
@@ -232,14 +232,14 @@ _INCLUDE_DIRS = [
 ]
 
 
-def get_include_dirs(stm32cube_path: pathlib.Path) -> List[pathlib.Path]:
+def get_include_dirs(stm32cube_path: pathlib.Path) -> list[pathlib.Path]:
     """Get HAL include directories."""
     return list(map(lambda f: stm32cube_path / f, _INCLUDE_DIRS))
 
 
 def get_sources_and_headers(
-    files: List[str], stm32cube_path: pathlib.Path
-) -> Tuple[List[pathlib.Path], List[pathlib.Path]]:
+    files: list[str], stm32cube_path: pathlib.Path
+) -> tuple[list[pathlib.Path], list[pathlib.Path]]:
     """Gets list of all sources and headers needed to build the stm32cube hal.
 
     Args:
@@ -271,7 +271,7 @@ def get_sources_and_headers(
     )
 
 
-def parse_files_txt(stm32cube_path: pathlib.Path) -> List[str]:
+def parse_files_txt(stm32cube_path: pathlib.Path) -> list[str]:
     """Reads files.txt into list."""
     with open(stm32cube_path / 'files.txt', 'r') as files:
         return list(
@@ -287,7 +287,7 @@ def _gn_str_out(name: str, val: Any):
     print(f'{name} = "{val}"')
 
 
-def _gn_list_str_out(name: str, val: List[Any]):
+def _gn_list_str_out(name: str, val: list[Any]):
     """Outputs list of strings in GN format with correct escaping."""
     list_str = ','.join(
         '"' + str(x).replace('"', r'\"').replace('$', r'\$') + '"' for x in val

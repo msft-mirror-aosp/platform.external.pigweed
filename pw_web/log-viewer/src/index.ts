@@ -13,22 +13,20 @@
 // the License.
 
 import { JsonLogSource } from './custom/json-log-source';
+import { BrowserLogSource } from './custom/browser-log-source';
 import { createLogViewer } from './createLogViewer';
-import { MockLogSource } from './custom/mock-log-source';
-import { LocalStorageState } from './shared/state';
 import { LogSource } from './log-source';
 import { LogStore } from './log-store';
 
 const logStore = new LogStore();
-const logSources = [new MockLogSource(), new JsonLogSource()] as LogSource[];
-const state = new LocalStorageState();
+const logSources = [new JsonLogSource(), new BrowserLogSource()] as LogSource[];
 
 const containerEl = document.querySelector(
   '#log-viewer-container',
 ) as HTMLElement;
 
 if (containerEl) {
-  createLogViewer(containerEl, state, logStore, ...logSources);
+  createLogViewer(logSources, containerEl, undefined, logStore);
 }
 
 // Start reading log data

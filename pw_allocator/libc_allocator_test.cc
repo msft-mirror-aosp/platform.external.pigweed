@@ -18,27 +18,37 @@
 
 #include "pw_unit_test/framework.h"
 
-namespace pw::allocator {
+namespace {
 
-// Test fixtures.
+using ::pw::allocator::GetLibCAllocator;
+using ::pw::allocator::Layout;
 
-class LibCAllocatorTest : public ::testing::Test {
- protected:
-  LibCAllocator allocator;
-};
-
-// Unit tests.
-
-TEST_F(LibCAllocatorTest, AllocateDeallocate) {
+TEST(LibCAllocatorTest, AllocateDeallocate) {
+  pw::Allocator& allocator = GetLibCAllocator();
   constexpr Layout layout = Layout::Of<std::byte[64]>();
   void* ptr = allocator.Allocate(layout);
   ASSERT_NE(ptr, nullptr);
   // Check that the pointer can be dereferenced.
   memset(ptr, 0xAB, layout.size());
-  allocator.Deallocate(ptr, layout);
+  allocator.Deallocate(ptr);
 }
 
-TEST_F(LibCAllocatorTest, AllocateLargeAlignment) {
+TEST(LibCAllocatorTest, AllocatorHasGlobalLifetime) {
+  void* ptr = nullptr;
+  constexpr Layout layout = Layout::Of<std::byte[64]>();
+  {
+    ptr = GetLibCAllocator().Allocate(layout);
+    ASSERT_NE(ptr, nullptr);
+  }
+  // Check that the pointer can be dereferenced.
+  {
+    memset(ptr, 0xAB, layout.size());
+    GetLibCAllocator().Deallocate(ptr);
+  }
+}
+
+TEST(LibCAllocatorTest, AllocateLargeAlignment) {
+  pw::Allocator& allocator = GetLibCAllocator();
   /// TODO: b/301930507 - `aligned_alloc` is not portable. As a result, this
   /// allocator has a maximum alignment of `std::align_max_t`.
   size_t size = 16;
@@ -47,31 +57,15 @@ TEST_F(LibCAllocatorTest, AllocateLargeAlignment) {
   EXPECT_EQ(ptr, nullptr);
 }
 
-TEST_F(LibCAllocatorTest, Resize) {
+TEST(LibCAllocatorTest, Reallocate) {
+  pw::Allocator& allocator = GetLibCAllocator();
   constexpr Layout old_layout = Layout::Of<uint32_t[4]>();
   void* ptr = allocator.Allocate(old_layout);
   ASSERT_NE(ptr, nullptr);
-  constexpr Layout new_layout = Layout::Of<uint32_t[3]>();
-  EXPECT_FALSE(allocator.Resize(ptr, old_layout, new_layout.size()));
-  allocator.Deallocate(ptr, old_layout);
-}
-
-TEST_F(LibCAllocatorTest, ResizeSame) {
-  constexpr Layout layout = Layout::Of<uint32_t[4]>();
-  void* ptr = allocator.Allocate(layout);
-  ASSERT_NE(ptr, nullptr);
-  EXPECT_TRUE(allocator.Resize(ptr, layout, layout.size()));
-  allocator.Deallocate(ptr, layout);
-}
-
-TEST_F(LibCAllocatorTest, Reallocate) {
-  constexpr Layout old_layout = Layout::Of<uint32_t[4]>();
-  void* ptr = allocator.Allocate(old_layout);
-  ASSERT_NE(ptr, nullptr);
-  constexpr Layout new_layout = Layout::Of<uint32_t[3]>();
-  void* new_ptr = allocator.Reallocate(ptr, old_layout, new_layout.size());
+  constexpr size_t new_size = sizeof(uint32_t[3]);
+  void* new_ptr = allocator.Reallocate(ptr, new_size);
   ASSERT_NE(new_ptr, nullptr);
-  allocator.Deallocate(new_ptr, new_layout);
+  allocator.Deallocate(new_ptr);
 }
 
-}  // namespace pw::allocator
+}  // namespace

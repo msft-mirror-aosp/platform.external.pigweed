@@ -16,22 +16,18 @@ package {
     default_applicable_licenses: ["external_pigweed_license"],
 }
 
-cc_library_headers {
-    name: "pw_rpc_transport_rpc_transport_headers",
+cc_library_static {
+    name: "pw_rpc_transport.rpc_transport",
     cpp_std: "c++20",
     export_include_dirs: ["public"],
-    header_libs: [
-        "pw_function_headers",
-    ],
-    export_header_lib_headers: [
-        "pw_function_headers",
-    ],
     static_libs: [
         "pw_bytes",
+        "pw_function",
         "pw_status",
     ],
     export_static_lib_headers: [
         "pw_bytes",
+        "pw_function",
         "pw_status",
     ],
     host_supported: true,
@@ -39,28 +35,30 @@ cc_library_headers {
 }
 
 cc_library_static {
-    name: "pw_rpc_transport_local_rpc_egress",
+    name: "pw_rpc_transport.local_rpc_egress",
     cpp_std: "c++20",
     vendor_available: true,
     host_supported: true,
+    defaults: [
+        "pw_android_common_backends",
+    ],
     header_libs: [
-        "pw_log_headers",
-        "pw_log_null_headers",
-        "pw_polyfill_headers",
-        "pw_preprocessor_headers",
-        "pw_result_headers",
-        "pw_rpc_transport_rpc_transport_headers",
+        "pw_log",
     ],
     export_header_lib_headers: [
-        "pw_log_headers",
-        "pw_result_headers",
-        "pw_rpc_transport_rpc_transport_headers",
+        "pw_log",
     ],
     static_libs: [
         "pw_containers",
+        "pw_polyfill",
+        "pw_preprocessor",
+        "pw_result",
+        "pw_rpc_transport.rpc_transport",
     ],
     export_static_lib_headers: [
         "pw_containers",
+        "pw_result",
+        "pw_rpc_transport.rpc_transport",
     ],
     srcs: [
         "local_rpc_egress.cc",
@@ -68,27 +66,32 @@ cc_library_static {
 }
 
 cc_library_static {
-    name: "pw_rpc_transport_simple_framing",
+    name: "pw_rpc_transport.simple_framing",
     cpp_std: "c++20",
     vendor_available: true,
     host_supported: true,
+    defaults: [
+        "pw_android_common_backends",
+    ],
     header_libs: [
-        "pw_assert_headers",
-        "pw_assert_log_headers",
-        "pw_log_headers",
-        "pw_log_null_headers",
-        "pw_polyfill_headers",
-        "pw_preprocessor_headers",
-        "pw_result_headers",
-        "pw_rpc_transport_rpc_transport_headers",
-        "pw_span_headers",
+        "pw_assert",
+        "pw_log",
     ],
     export_header_lib_headers: [
-        "pw_assert_headers",
-        "pw_log_headers",
-        "pw_result_headers",
-        "pw_rpc_transport_rpc_transport_headers",
-        "pw_span_headers",
+        "pw_assert",
+        "pw_log",
+    ],
+    static_libs: [
+        "pw_polyfill",
+        "pw_preprocessor",
+        "pw_result",
+        "pw_rpc_transport.rpc_transport",
+        "pw_span",
+    ],
+    export_static_lib_headers: [
+        "pw_result",
+        "pw_rpc_transport.rpc_transport",
+        "pw_span",
     ],
     srcs: [
         "simple_framing.cc",
@@ -96,7 +99,7 @@ cc_library_static {
 }
 
 filegroup {
-    name: "pw_rpc_transport_egress_ingress_src_files",
+    name: "pw_rpc_transport.egress_ingress_src_files",
     srcs: [
         "egress_ingress.cc",
     ],
@@ -112,44 +115,39 @@ filegroup {
 //           "-DPW_RPC_DYNAMIC_ALLOCATION",
 //       ],
 //       defaults: [
-//           "pw_rpc_transport_egress_ingress_defaults",
+//           "pw_rpc_transport.egress_ingress_defaults",
 //       ],
 //   }
 cc_defaults {
-    name: "pw_rpc_transport_egress_ingress_defaults",
+    name: "pw_rpc_transport.egress_ingress_defaults",
     cpp_std: "c++20",
     defaults: [
-        "pw_chrono_defaults",
-        "pw_chrono_stl_defaults",
+        "pw_android_common_backends",
         "pw_rpc_defaults",
-        "pw_sync_stl_defaults",
-        "pw_thread_defaults",
-        "pw_thread_stl_defaults",
     ],
     header_libs: [
-        "pw_assert_headers",
-        "pw_assert_log_headers",
-        "pw_log_headers",
-        "pw_log_null_headers",
-        "pw_rpc_transport_rpc_transport_headers",
-        "pw_sync_headers",
-        "pw_sync_binary_semaphore_thread_notification_backend_headers",
+        "pw_assert",
+        "pw_chrono",
+        "pw_log",
+        "pw_sync",
     ],
     export_header_lib_headers: [
-        "pw_assert_headers",
-        "pw_log_headers",
-        "pw_rpc_transport_rpc_transport_headers",
-        "pw_sync_headers",
+        "pw_assert",
+        "pw_log",
+        "pw_sync",
     ],
     static_libs: [
         "pw_hdlc",
         "pw_metric",
+        "pw_rpc_transport.rpc_transport",
+        "pw_sync.binary_semaphore_thread_notification",
     ],
     export_static_lib_headers: [
         "pw_hdlc",
         "pw_metric",
+        "pw_rpc_transport.rpc_transport",
     ],
     srcs: [
-        ":pw_rpc_transport_egress_ingress_src_files",
+        ":pw_rpc_transport.egress_ingress_src_files",
     ],
 }

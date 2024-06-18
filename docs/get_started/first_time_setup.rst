@@ -50,8 +50,10 @@ Pigweed:
 
       .. code-block:: bat
 
-         curl https://pigweed.googlesource.com/pigweed/sample_project/+/main/tools/setup_windows_prerequisites.bat?format=TEXT > setup_pigweed_prerequisites.b64 && certutil -decode -f setup_pigweed_prerequisites.b64 setup_pigweed_prerequisites.bat && del setup_pigweed_prerequisites.b64
+         curl https://pigweed.googlesource.com/pigweed/examples/+/main/tools/setup_windows_prerequisites.bat?format=TEXT > setup_pigweed_prerequisites.b64 && certutil -decode -f setup_pigweed_prerequisites.b64 setup_pigweed_prerequisites.bat && del setup_pigweed_prerequisites.b64
          setup_pigweed_prerequisites.bat
+
+         This script requires admin privileges.
 
       .. admonition:: Note
          :class: warning
@@ -112,7 +114,7 @@ Install prerequisites
 
       .. code-block:: sh
 
-        xcode-select --install
+         xcode-select --install
 
       **SSL certificates**
 

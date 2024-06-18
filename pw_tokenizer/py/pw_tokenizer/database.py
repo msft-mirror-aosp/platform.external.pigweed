@@ -32,16 +32,11 @@ import sys
 from typing import (
     Any,
     Callable,
-    Dict,
     Iterable,
     Iterator,
-    List,
-    Optional,
     Pattern,
     Set,
     TextIO,
-    Tuple,
-    Union,
 )
 
 try:
@@ -134,11 +129,11 @@ def tokenization_domains(elf) -> Iterator[str]:
         )
 
 
-def read_tokenizer_metadata(elf) -> Dict[str, int]:
+def read_tokenizer_metadata(elf) -> dict[str, int]:
     """Reads the metadata entries from an ELF."""
     sections = _elf_reader(elf).dump_section_contents(r'\.pw_tokenizer\.info')
 
-    metadata: Dict[str, int] = {}
+    metadata: dict[str, int] = {}
     if sections is not None:
         for key, value in struct.iter_unpack('12sI', sections):
             try:
@@ -153,7 +148,7 @@ def read_tokenizer_metadata(elf) -> Dict[str, int]:
     return metadata
 
 
-def _database_from_strings(strings: List[str]) -> tokens.Database:
+def _database_from_strings(strings: list[str]) -> tokens.Database:
     """Generates a C and C++ compatible database from untokenized strings."""
     # Generate a C-compatible database from the fixed length hash.
     c_db = tokens.Database.from_strings(strings, tokenize=tokens.c_hash)
@@ -226,7 +221,7 @@ def _load_token_database(  # pylint: disable=too-many-return-statements
 
 
 def load_token_database(
-    *databases, domain: Union[str, Pattern[str]] = tokens.DEFAULT_DOMAIN
+    *databases, domain: str | Pattern[str] = tokens.DEFAULT_DOMAIN
 ) -> tokens.Database:
     """Loads a Database from supported database types.
 
@@ -238,7 +233,7 @@ def load_token_database(
     )
 
 
-def database_summary(db: tokens.Database) -> Dict[str, Any]:
+def database_summary(db: tokens.Database) -> dict[str, Any]:
     """Returns a simple report of properties of the database."""
     present = [entry for entry in db.entries() if not entry.date_removed]
     collisions = {
@@ -256,7 +251,7 @@ def database_summary(db: tokens.Database) -> Dict[str, Any]:
     )
 
 
-_DatabaseReport = Dict[str, Dict[str, Dict[str, Any]]]
+_DatabaseReport = dict[str, dict[str, dict[str, Any]]]
 
 
 def generate_reports(paths: Iterable[Path]) -> _DatabaseReport:
@@ -337,8 +332,8 @@ def _handle_create(
 
 def _handle_add(
     token_database: tokens.DatabaseFile,
-    databases: List[tokens.Database],
-    commit: Optional[str],
+    databases: list[tokens.Database],
+    commit: str | None,
 ) -> None:
     initial = len(token_database)
     if commit:
@@ -362,8 +357,8 @@ def _handle_add(
 
 def _handle_mark_removed(
     token_database: tokens.DatabaseFile,
-    databases: List[tokens.Database],
-    date: Optional[datetime],
+    databases: list[tokens.Database],
+    date: datetime | None,
 ):
     marked_removed = token_database.mark_removed(
         (
@@ -384,16 +379,14 @@ def _handle_mark_removed(
     )
 
 
-def _handle_purge(
-    token_database: tokens.DatabaseFile, before: Optional[datetime]
-):
+def _handle_purge(token_database: tokens.DatabaseFile, before: datetime | None):
     purged = token_database.purge(before)
     token_database.write_to_file(rewrite=True)
 
     _LOG.info('Removed %d entries from %s', len(purged), token_database.path)
 
 
-def _handle_report(token_database_or_elf: List[Path], output: TextIO) -> None:
+def _handle_report(token_database_or_elf: list[Path], output: TextIO) -> None:
     json.dump(generate_reports(token_database_or_elf), output, indent=2)
     output.write('\n')
 
@@ -448,7 +441,7 @@ class LoadTokenDatabases(argparse.Action):
     """
 
     def __call__(self, parser, namespace, values, option_string=None):
-        databases: List[tokens.Database] = []
+        databases: list[tokens.Database] = []
         paths: Set[Path] = set()
 
         try:
@@ -594,7 +587,7 @@ def _parse_args():
 
     unescaped_slash = re.compile(r'(?<!\\)/')
 
-    def replacement(value: str) -> Tuple[Pattern, 'str']:
+    def replacement(value: str) -> tuple[Pattern, 'str']:
         try:
             find, sub = unescaped_slash.split(value, 1)
         except ValueError as _err:

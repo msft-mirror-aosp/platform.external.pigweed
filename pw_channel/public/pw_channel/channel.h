@@ -33,6 +33,7 @@
 #include "pw_async2/dispatcher.h"
 #include "pw_async2/poll.h"
 #include "pw_bytes/span.h"
+#include "pw_multibuf/allocator.h"
 #include "pw_multibuf/multibuf.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
@@ -47,16 +48,24 @@ namespace pw::channel {
 /// `kReadable` and `kWritable` channel may be passed to an API that only
 /// requires `kReadable`.
 enum Property : uint8_t {
+  /// All data is guaranteed to be delivered in order. The channel is closed if
+  /// data is lost.
   kReliable = 1 << 0,
+
+  /// The channel supports reading.
   kReadable = 1 << 1,
+
+  /// The channel supports writing.
   kWritable = 1 << 2,
+
+  /// The channel supports seeking (changing the read/write position).
   kSeekable = 1 << 3,
 };
 
 /// The type of data exchanged in `Channel` read and write calls. Unlike
 /// `Property`, `Channels` with different `DataType`s cannot be used
 /// interchangeably.
-enum class DataType : uint8_t { kByte = 0, kDatagram = 1 << 4 };
+enum class DataType : uint8_t { kByte = 0, kDatagram = 1 };
 
 /// Positions from which to seek.
 enum Whence : uint8_t {
@@ -105,7 +114,7 @@ class [[nodiscard]] WriteToken {
   }
 
  private:
-  friend class Channel;
+  friend class AnyChannel;
 
   constexpr WriteToken(uint32_t value) : token_(value) {}
 
@@ -116,11 +125,11 @@ class [[nodiscard]] WriteToken {
 /// datagrams.
 ///
 /// Note that this channel should be used from only one ``pw::async::Task``
-/// at a time, as the ``Poll`` methods are only required to remember the
+/// at a time, as the ``Pend`` methods are only required to remember the
 /// latest ``pw::async2::Context`` that was provided.
-class Channel {
+class AnyChannel {
  public:
-  virtual ~Channel() = default;
+  virtual ~AnyChannel() = default;
 
   // Returned by Position() if getting the position is not supported.
   // TODO: b/323622630 - `Seek` and `Position` are not yet implemented.
@@ -129,26 +138,35 @@ class Channel {
 
   // Channel properties
 
-  [[nodiscard]] constexpr DataType data_type() const {
-    return (type_reliable_seekable_ &
-            static_cast<uint8_t>(DataType::kDatagram)) == 0
-               ? DataType::kDatagram
-               : DataType::kByte;
-  }
+  [[nodiscard]] constexpr DataType data_type() const { return data_type_; }
 
   [[nodiscard]] constexpr bool reliable() const {
-    return (type_reliable_seekable_ & Property::kReliable) != 0;
+    return (properties_ & Property::kReliable) != 0;
   }
 
   [[nodiscard]] constexpr bool seekable() const {
-    return (type_reliable_seekable_ & Property::kSeekable) != 0;
+    return (properties_ & Property::kSeekable) != 0;
   }
 
-  [[nodiscard]] constexpr bool readable() const { return readable_; }
+  [[nodiscard]] constexpr bool readable() const {
+    return (properties_ & Property::kReadable) != 0;
+  }
 
-  [[nodiscard]] constexpr bool writable() const { return writable_; }
+  [[nodiscard]] constexpr bool writable() const {
+    return (properties_ & Property::kWritable) != 0;
+  }
 
-  [[nodiscard]] constexpr bool is_open() const { return open_; }
+  /// True if the channel is open for reading. Always false for write-only
+  /// channels.
+  [[nodiscard]] constexpr bool is_read_open() const { return read_open_; }
+
+  /// True if the channel is open for writing. Always false for read-only
+  /// channels.
+  [[nodiscard]] constexpr bool is_write_open() const { return write_open_; }
+
+  [[nodiscard]] constexpr bool is_read_or_write_open() const {
+    return read_open_ || write_open_;
+  }
 
   /// Read API
 
@@ -156,27 +174,36 @@ class Channel {
   /// is not available, invokes `cx.waker()` when it becomes available.
   ///
   /// For datagram channels, each successful read yields one complete
-  /// datagram. For byte stream channels, each successful read yields some
-  /// number of bytes.
+  /// datagram, which may contain zero or more bytes. For byte stream channels,
+  /// each successful read yields one or more bytes.
   ///
   /// Channels only support one read operation / waker at a time.
   ///
-  /// * OK - Data was read into a MultiBuf.
-  /// * UNIMPLEMENTED - The channel does not support reading.
-  /// * FAILED_PRECONDITION - The channel is closed.
-  /// * OUT_OF_RANGE - The end of the stream was reached. This may be though
-  ///   of as reaching the end of a file. Future reads may succeed after
-  ///   ``Seek`` ing backwards, but no more new data will be produced. The
-  ///   channel is still open; writes and seeks may succeed.
-  async2::Poll<Result<multibuf::MultiBuf>> PollRead(async2::Context& cx) {
-    return PollRead(cx, std::numeric_limits<size_t>::max());
-  }
-
-  /// On byte stream channels, reads up to max_bytes from the channel.
-  /// This function is hidden on datagram-oriented channels.
-  async2::Poll<Result<multibuf::MultiBuf>> PollRead(async2::Context& cx,
-                                                    size_t max_bytes) {
-    return DoPollRead(cx, max_bytes);
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: Data was read into a MultiBuf.
+  ///
+  ///    UNIMPLEMENTED: The channel does not support reading.
+  ///
+  ///    FAILED_PRECONDITION: The channel is closed.
+  ///
+  ///    OUT_OF_RANGE: The end of the stream was reached. This may be though
+  ///    of as reaching the end of a file. Future reads may succeed after
+  ///    ``Seek`` ing backwards, but no more new data will be produced. The
+  ///    channel is still open; writes and seeks may succeed.
+  ///
+  /// @endrst
+  async2::Poll<Result<multibuf::MultiBuf>> PendRead(async2::Context& cx) {
+    if (!is_read_open()) {
+      return Status::FailedPrecondition();
+    }
+    async2::Poll<Result<multibuf::MultiBuf>> result = DoPendRead(cx);
+    if (result.IsReady() && result->status().IsFailedPrecondition()) {
+      set_read_closed();
+    }
+    return result;
   }
 
   /// Write API
@@ -186,15 +213,26 @@ class Channel {
   /// This should be called before attempting to ``Write``, and may be called
   /// before allocating a write buffer if trying to reduce memory pressure.
   ///
-  /// If ``Ready`` is returned, a *single* caller may proceed to ``Write``.
+  /// This method will return:
   ///
-  /// If ``Pending`` is returned, ``cx`` will be awoken when the channel
-  /// becomes writeable again.
+  /// * Ready(OK) - The channel is currently writeable, and a single caller
+  ///   may proceed to ``Write``.
+  /// * Ready(UNIMPLEMENTED) - The channel does not support writing.
+  /// * Ready(FAILED_PRECONDITION) - The channel is closed for writing.
+  /// * Pending - ``cx`` will be awoken when the channel becomes writeable
+  ///   again.
   ///
   /// Note: this method will always return ``Ready`` for non-writeable
   /// channels.
-  async2::Poll<> PollReadyToWrite(pw::async2::Context& cx) {
-    return DoPollReadyToWrite(cx);
+  async2::Poll<Status> PendReadyToWrite(pw::async2::Context& cx) {
+    if (!is_write_open()) {
+      return Status::FailedPrecondition();
+    }
+    async2::Poll<Status> result = DoPendReadyToWrite(cx);
+    if (result.IsReady() && result->IsFailedPrecondition()) {
+      set_write_closed();
+    }
+    return result;
   }
 
   /// Gives access to an allocator for write buffers. The MultiBufAllocator
@@ -205,13 +243,14 @@ class Channel {
   /// ``Write``, and the returned ``MultiBuf`` must not be combined with
   /// any other ``MultiBuf`` s or ``Chunk`` s.
   ///
-  /// Write allocation attempts will always return ``std::nullopt`` for
-  /// channels that do not support writing.
-  multibuf::MultiBufAllocator& GetWriteAllocator();
+  /// This method must not be called on channels which do not support writing.
+  multibuf::MultiBufAllocator& GetWriteAllocator() {
+    return DoGetWriteAllocator();
+  }
 
   /// Writes using a previously allocated MultiBuf. Returns a token that
   /// refers to this write. These tokens are monotonically increasing, and
-  /// FlushPoll() returns the value of the latest token it has flushed.
+  /// PendFlush() returns the value of the latest token it has flushed.
   ///
   /// The ``MultiBuf`` argument to ``Write`` may consist of either:
   ///   (1) A single ``MultiBuf`` allocated by ``GetWriteAllocator()``
@@ -225,15 +264,30 @@ class Channel {
   /// specialize ``GetWriteAllocator`` to return the next section of the
   /// buffer available for writing.
   ///
+  /// @returns @rst
   /// May fail with the following error codes:
   ///
-  /// * OK - Data was accepted by the channel
-  /// * UNIMPLEMENTED - The channel does not support writing.
-  /// * UNAVAILABLE - The write failed due to a transient error (only applies
-  ///   to unreliable channels).
-  /// * FAILED_PRECONDITION - The channel is closed.
+  /// .. pw-status-codes::
+  ///
+  ///    OK: Data was accepted by the channel.
+  ///
+  ///    UNIMPLEMENTED: The channel does not support writing.
+  ///
+  ///    UNAVAILABLE: The write failed due to a transient error (only applies
+  ///    to unreliable channels).
+  ///
+  ///    FAILED_PRECONDITION: The channel is closed.
+  ///
+  /// @endrst
   Result<WriteToken> Write(multibuf::MultiBuf&& data) {
-    return DoWrite(std::move(data));
+    if (!is_write_open()) {
+      return Status::FailedPrecondition();
+    }
+    Result<WriteToken> result = DoWrite(std::move(data));
+    if (result.status().IsFailedPrecondition()) {
+      set_write_closed();
+    }
+    return result;
   }
 
   /// Flushes pending writes.
@@ -245,28 +299,43 @@ class Channel {
   /// * Ready(UNIMPLEMENTED) - The channel does not support writing.
   /// * Ready(FAILED_PRECONDITION) - The channel is closed.
   /// * Pending - Data remains to be flushed.
-  async2::Poll<Result<WriteToken>> PollFlush(async2::Context& cx) {
-    return DoPollFlush(cx);
+  async2::Poll<Result<WriteToken>> PendFlush(async2::Context& cx) {
+    if (!is_write_open()) {
+      return Status::FailedPrecondition();
+    }
+    async2::Poll<Result<WriteToken>> result = DoPendFlush(cx);
+    if (result.IsReady() && result->status().IsFailedPrecondition()) {
+      set_write_closed();
+    }
+    return result;
   }
 
   /// Seek changes the position in the stream.
   ///
   /// TODO: b/323622630 - `Seek` and `Position` are not yet implemented.
   ///
-  /// Any ``PollRead`` or ``Write`` calls following a call to ``Seek`` will be
+  /// Any ``PendRead`` or ``Write`` calls following a call to ``Seek`` will be
   /// relative to the new position. Already-written data still being flushed
   /// will be output relative to the old position.
   ///
-  /// * OK - The current position was successfully changed.
-  /// * UNIMPLEMENTED - The channel does not support seeking.
-  /// * FAILED_PRECONDITION - The channel is closed.
-  /// * NOT_FOUND - The seek was to a valid position, but the channel is no
-  ///   longer capable of seeking to this position (partially seekable
-  ///   channels only).
-  /// * OUT_OF_RANGE - The seek went beyond the end of the stream.
-  async2::Poll<Status> Seek(async2::Context& cx,
-                            ptrdiff_t position,
-                            Whence whence);
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The current position was successfully changed.
+  ///
+  ///    UNIMPLEMENTED: The channel does not support seeking.
+  ///
+  ///    FAILED_PRECONDITION: The channel is closed.
+  ///
+  ///    NOT_FOUND: The seek was to a valid position, but the channel is no
+  ///    longer capable of seeking to this position (partially seekable
+  ///    channels only).
+  ///
+  ///    OUT_OF_RANGE: The seek went beyond the end of the stream.
+  ///
+  /// @endrst
+  Status Seek(async2::Context& cx, ptrdiff_t position, Whence whence);
 
   /// Returns the current position in the stream, or `kUnknownPosition` if
   /// unsupported.
@@ -276,14 +345,28 @@ class Channel {
 
   /// Closes the channel, flushing any data.
   ///
-  /// * OK - The channel was closed and all data was sent successfully.
-  /// * DATA_LOSS - The channel was closed, but not all previously written
-  ///   data was delivered.
-  /// * FAILED_PRECONDITION - Channel was already closed, which can happen
-  ///   out-of-band due to errors.
-  async2::Poll<pw::Status> PollClose(async2::Context& cx) {
-    auto result = DoPollClose(cx);
-    open_ = false;
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The channel was closed and all data was sent successfully.
+  ///
+  ///    DATA_LOSS: The channel was closed, but not all previously written
+  ///    data was delivered.
+  ///
+  ///    FAILED_PRECONDITION: Channel was already closed, which can happen
+  ///    out-of-band due to errors.
+  ///
+  /// @endrst
+  async2::Poll<pw::Status> PendClose(async2::Context& cx) {
+    if (!is_read_or_write_open()) {
+      return Status::FailedPrecondition();
+    }
+    auto result = DoPendClose(cx);
+    if (result.IsReady()) {
+      set_read_closed();
+      set_write_closed();
+    }
     return result;
   }
 
@@ -292,12 +375,21 @@ class Channel {
     return WriteToken(value);
   }
 
- private:
-  template <Property...>
-  friend class ByteChannel;
+  // Marks the channel as closed for reading, but does nothing else.
+  //
+  // PendClose() always marks the channel closed when DoPendClose() returns
+  // Ready(), regardless of the status.
+  void set_read_closed() { read_open_ = false; }
 
-  template <Property...>
-  friend class DatagramChannel;
+  // Marks the channel as closed for writing, but does nothing else.
+  //
+  // PendClose() always marks the channel closed when DoPendClose() returns
+  // Ready(), regardless of the status.
+  void set_write_closed() { write_open_ = false; }
+
+ private:
+  template <DataType, Property...>
+  friend class Channel;
 
   template <Property kLhs, Property kRhs, Property... kProperties>
   static constexpr bool PropertiesAreInOrderWithoutDuplicates() {
@@ -333,32 +425,31 @@ class Channel {
     return true;
   }
 
-  constexpr Channel(DataType data_type, uint8_t properties)
-      : open_(true),
-        readable_((properties & kReadable) != 0),
-        writable_((properties & Property::kWritable) != 0),
-        type_reliable_seekable_(static_cast<uint8_t>(data_type) |
-                                (properties & kReliable) |
-                                (properties & kSeekable)) {}
+  // `AnyChannel` may only be constructed by deriving from `Channel`.
+  explicit constexpr AnyChannel(DataType type, uint8_t properties)
+      : data_type_(type),
+        properties_(properties),
+        read_open_(readable()),
+        write_open_(writable()) {}
 
   // Virtual interface
 
   // Read functions
 
   // The max_bytes argument is ignored for datagram-oriented channels.
-  virtual async2::Poll<Result<multibuf::MultiBuf>> DoPollRead(
-      async2::Context& cx, size_t max_bytes) = 0;
+  virtual async2::Poll<Result<multibuf::MultiBuf>> DoPendRead(
+      async2::Context& cx) = 0;
 
   // Write functions
 
-  // TODO: b/323624921 - Implement when MultiBufAllocator exists.
-  // virtual multibuf::MultiBufAllocator& DoGetWriteBufferAllocator() = 0;
+  virtual multibuf::MultiBufAllocator& DoGetWriteAllocator() = 0;
 
-  virtual async2::Poll<> DoPollReadyToWrite(async2::Context& cx) = 0;
+  virtual pw::async2::Poll<Status> DoPendReadyToWrite(async2::Context& cx) = 0;
 
   virtual Result<WriteToken> DoWrite(multibuf::MultiBuf&& buffer) = 0;
 
-  virtual async2::Poll<Result<WriteToken>> DoPollFlush(async2::Context& cx) = 0;
+  virtual pw::async2::Poll<Result<WriteToken>> DoPendFlush(
+      async2::Context& cx) = 0;
 
   // Seek functions
   /// TODO: b/323622630 - `Seek` and `Position` are not yet implemented.
@@ -368,60 +459,60 @@ class Channel {
   // virtual size_t DoPosition() const = 0;
 
   // Common functions
-  virtual async2::Poll<Status> DoPollClose(async2::Context& cx) = 0;
+  virtual async2::Poll<Status> DoPendClose(async2::Context& cx) = 0;
 
-  bool open_;
+  DataType data_type_;
+  uint8_t properties_;
+  bool read_open_;
+  bool write_open_;
+};
 
-  bool readable_;
-  bool writable_;
-
-  // Bits 0-4 are used for properties (reliable & seekable)
-  // Bit 5 is the data type (byte or datagram)
-  uint8_t type_reliable_seekable_;
+/// The basic `Channel` type. Unlike `AnyChannel`, the `Channel`'s properties
+/// are expressed in template parameters and thus reflected in the type.
+///
+/// Properties must be specified in order (`kDatagram`, `kReliable`,
+/// `kReadable`, `kWritable`, `kSeekable`) and without duplicates.
+template <DataType kDataType, Property... kProperties>
+class Channel : public AnyChannel {
+  static_assert(PropertiesAreValid<kProperties...>());
 };
 
 /// A `ByteChannel` exchanges data as a stream of bytes.
 template <Property... kProperties>
-class ByteChannel : public Channel {
- protected:
-  static_assert(PropertiesAreValid<kProperties...>());
-
-  constexpr ByteChannel()
-      : Channel(DataType::kByte, GetProperties<kProperties...>()) {}
-};
+using ByteChannel = Channel<DataType::kByte, kProperties...>;
 
 /// A `DatagramChannel` exchanges data as a series of datagrams.
 template <Property... kProperties>
-class DatagramChannel : public Channel {
- protected:
-  static_assert(PropertiesAreValid<kProperties...>());
+using DatagramChannel = Channel<DataType::kDatagram, kProperties...>;
 
-  constexpr DatagramChannel()
-      : Channel(DataType::kDatagram, GetProperties<kProperties...>()) {}
-};
+/// Unreliable byte-oriented `Channel` that supports reading.
+using ByteReader = ByteChannel<kReadable>;
+/// Unreliable byte-oriented `Channel` that supports writing.
+using ByteWriter = ByteChannel<kWritable>;
+/// Unreliable byte-oriented `Channel` that supports reading and writing.
+using ByteReaderWriter = ByteChannel<kReadable, kWritable>;
 
-// Aliases for common ByteChannel and DatagramChannel types.
+/// Reliable byte-oriented `Channel` that supports reading.
+using ReliableByteReader = ByteChannel<kReliable, kReadable>;
+/// Reliable byte-oriented `Channel` that supports writing.
+using ReliableByteWriter = ByteChannel<kReliable, kWritable>;
+/// Reliable byte-oriented `Channel` that supports reading and writing.
+using ReliableByteReaderWriter = ByteChannel<kReliable, kReadable, kWritable>;
 
-/// Alias for a reliable `ByteChannel` that supports reading.
-using ByteReader = ByteChannel<kReliable, kReadable>;
-/// Alias for a reliable `ByteChannel` that supports writing.
-using ByteWriter = ByteChannel<kReliable, kWritable>;
-/// Alias for a reliable `ByteChannel` that supports reading and writing.
-using ByteReaderWriter = ByteChannel<kReliable, kReadable, kWritable>;
+/// Unreliable datagram-oriented `Channel` that supports reading.
+using DatagramReader = DatagramChannel<kReadable>;
+/// Unreliable datagram-oriented `Channel` that supports writing.
+using DatagramWriter = DatagramChannel<kWritable>;
+/// Unreliable datagram-oriented `Channel` that supports reading and writing.
+using DatagramReaderWriter = DatagramChannel<kReadable, kWritable>;
 
-/// Alias for a reliable `DatagramChannel` that supports reading.
+/// Reliable datagram-oriented `Channel` that supports reading.
 using ReliableDatagramReader = DatagramChannel<kReliable, kReadable>;
-/// Alias for a reliable `DatagramChannel` that supports writing.
+/// Reliable datagram-oriented `Channel` that supports writing.
 using ReliableDatagramWriter = DatagramChannel<kReliable, kWritable>;
-/// Alias for a reliable `DatagramChannel` that supports reading and writing.
+/// Reliable datagram-oriented `Channel` that supports reading and writing.
 using ReliableDatagramReaderWriter =
     DatagramChannel<kReliable, kReadable, kWritable>;
-/// Alias for an unreliable `DatagramChannel` that supports reading.
-using DatagramReader = DatagramChannel<kReadable>;
-/// Alias for an unreliable `DatagramChannel` that supports writing.
-using DatagramWriter = DatagramChannel<kWritable>;
-/// Alias for an unreliable `DatagramChannel` that supports reading and writing.
-using DatagramReaderWriter = DatagramChannel<kReadable, kWritable>;
 
 /// @}
 

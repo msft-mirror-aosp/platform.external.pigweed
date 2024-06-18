@@ -24,10 +24,12 @@ including C, C++, Go, Rust, Shell, Batch and Python.
    pw_blob_store/docs
    pw_bluetooth/docs
    pw_bluetooth_hci/docs
+   pw_bluetooth_proxy/docs
    pw_bluetooth_profiles/docs
    pw_bluetooth_sapphire/docs
    pw_boot/docs
    pw_build/docs
+   pw_build_android/docs
    pw_build_info/docs
    pw_build_mcuxpresso/docs
    pw_bytes/docs
@@ -36,6 +38,7 @@ including C, C++, Go, Rust, Shell, Batch and Python.
    pw_chre/docs
    pw_chrono/docs
    pw_cli/docs
+   pw_clock_tree/docs
    pw_compilation_testing/docs
    pw_config_loader/docs
    pw_console/docs
@@ -43,6 +46,7 @@ including C, C++, Go, Rust, Shell, Batch and Python.
    pw_cpu_exception/docs
    pw_crypto/docs
    pw_digital_io/docs
+   pw_dma_mcuxpresso/docs
    pw_docgen/docs
    pw_doctor/docs
    pw_emu/docs
@@ -85,11 +89,11 @@ including C, C++, Go, Rust, Shell, Batch and Python.
    pw_rpc/docs
    pw_rpc_transport/docs
    pw_rust/docs
+   pw_sensor/docs
    pw_snapshot/docs
    pw_software_update/docs
    pw_span/docs
    pw_spi/docs
-   pw_spi_rp2040/docs
    pw_status/docs
    pw_stm32cube_build/docs
    pw_stream/docs
@@ -106,6 +110,7 @@ including C, C++, Go, Rust, Shell, Batch and Python.
    pw_toolchain_bazel/docs
    pw_trace/docs
    pw_transfer/docs
+   pw_uart/docs
    pw_unit_test/docs
    pw_unit_test_zephyr/docs
    pw_varint/docs

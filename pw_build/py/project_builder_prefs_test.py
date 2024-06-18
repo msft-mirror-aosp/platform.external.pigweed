@@ -17,7 +17,7 @@ import argparse
 import copy
 from pathlib import Path
 import tempfile
-from typing import Any, Dict
+from typing import Any
 import unittest
 from unittest.mock import MagicMock
 
@@ -42,8 +42,7 @@ def _create_tempfile(content: str) -> Path:
 class TestProjectBuilderPrefs(unittest.TestCase):
     """Tests for ProjectBuilderPrefs."""
 
-    def setUp(self):
-        self.maxDiff = None  # pylint: disable=invalid-name
+    maxDiff = None
 
     def test_load_no_existing_files(self) -> None:
         # Create a prefs instance with no loaded config.
@@ -54,7 +53,7 @@ class TestProjectBuilderPrefs(unittest.TestCase):
             user_file=False,
         )
         # Construct an expected result config.
-        expected_config: Dict[Any, Any] = {}
+        expected_config: dict[Any, Any] = {}
         expected_config.update(_DEFAULT_CONFIG)
         expected_config.update(
             load_defaults_from_argparse(add_project_builder_arguments)
@@ -80,7 +79,7 @@ class TestProjectBuilderPrefs(unittest.TestCase):
         )
 
         # Construct an expected result config.
-        expected_config: Dict[Any, Any] = copy.copy(_DEFAULT_CONFIG)
+        expected_config: dict[Any, Any] = copy.copy(_DEFAULT_CONFIG)
         expected_config.update(defaults_from_argparse)
 
         # pylint: disable=protected-access

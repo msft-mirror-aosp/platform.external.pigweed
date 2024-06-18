@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -53,7 +53,7 @@ export class LogList extends LitElement {
   @property({ type: Boolean })
   lineWrap = false;
 
-  @property({ type: Array })
+  @state()
   columnData: TableColumn[] = [];
 
   /** Indicates whether the table content is overflowing to the right. */
@@ -108,8 +108,6 @@ export class LogList extends LitElement {
   } | null = null;
 
   firstUpdated() {
-    setInterval(() => this.updateHorizontalOverflowState(), 1000);
-
     this._tableContainer.addEventListener('scroll', this.handleTableScroll);
     this._tableBody.addEventListener('rangeChanged', this.onRangeChanged);
 
@@ -137,6 +135,8 @@ export class LogList extends LitElement {
 
     if (changedProperties.has('columnData')) {
       this.updateColumnWidths(this.generateGridTemplateColumns());
+      this.updateHorizontalOverflowState();
+      this.requestUpdate();
     }
   }
 
@@ -185,26 +185,30 @@ export class LogList extends LitElement {
    */
   private autosizeColumns = (rows = this._tableRows) => {
     // Iterate through each row to find the maximum width in each column
+    const visibleColumnData = this.columnData.filter(
+      (column) => column.isVisible,
+    );
+
     rows.forEach((row) => {
       const cells = Array.from(row.children).filter(
         (cell) => !cell.hasAttribute('hidden'),
       ) as HTMLTableCellElement[];
 
       cells.forEach((cell, columnIndex) => {
-        if (columnIndex === 0) return;
+        if (visibleColumnData[columnIndex].fieldName == 'severity') return;
 
         const textLength = cell.textContent?.trim().length || 0;
 
         if (!this._autosizeLocked) {
           // Update the preferred width if it's smaller than the new one
-          if (this.columnData[columnIndex]) {
-            this.columnData[columnIndex].characterLength = Math.max(
-              this.columnData[columnIndex].characterLength,
+          if (visibleColumnData[columnIndex]) {
+            visibleColumnData[columnIndex].characterLength = Math.max(
+              visibleColumnData[columnIndex].characterLength,
               textLength,
             );
           } else {
             // Initialize if the column data for this index does not exist
-            this.columnData[columnIndex] = {
+            visibleColumnData[columnIndex] = {
               fieldName: '',
               characterLength: textLength,
               manualWidth: null,
@@ -214,6 +218,18 @@ export class LogList extends LitElement {
         }
       });
     });
+
+    this.updateColumnWidths(this.generateGridTemplateColumns());
+    const resizeColumn = new CustomEvent('resize-column', {
+      bubbles: true,
+      composed: true,
+      detail: {
+        viewId: this.viewId,
+        columnData: this.columnData,
+      },
+    });
+
+    this.dispatchEvent(resizeColumn);
   };
 
   private generateGridTemplateColumns(
@@ -222,24 +238,28 @@ export class LogList extends LitElement {
   ): string {
     let gridTemplateColumns = '';
 
-    this.columnData.forEach((col, i) => {
-      let columnValue = '';
+    const calculateColumnWidth = (col: TableColumn, i: number) => {
+      const chWidth = col.characterLength;
+      const padding = 34;
 
-      if (col.isVisible) {
-        if (i === resizingIndex) {
-          columnValue = `${newWidth}px`;
-        } else if (col.manualWidth !== null) {
-          columnValue = `${col.manualWidth}px`;
-        } else {
-          if (i === 0) {
-            columnValue = '3rem';
-          } else {
-            const chWidth = col.characterLength;
-            const padding = 34;
-            columnValue = `clamp(${this.MIN_COL_WIDTH}px, ${chWidth}ch + ${padding}px, 80ch)`;
-          }
-        }
+      if (i === resizingIndex) {
+        return `${newWidth}px`;
+      }
+      if (col.manualWidth !== null) {
+        return `${col.manualWidth}px`;
+      }
+      if (i === 0) {
+        return `3rem`;
+      }
+      if (i === this.columnData.length - 1) {
+        return `minmax(${this.MIN_COL_WIDTH}px, auto)`;
+      }
+      return `clamp(${this.MIN_COL_WIDTH}px, ${chWidth}ch + ${padding}px, 80ch)`;
+    };
 
+    this.columnData.forEach((column, i) => {
+      if (column.isVisible) {
+        const columnValue = calculateColumnWidth(column, i);
         gridTemplateColumns += columnValue + ' ';
       }
     });
@@ -377,7 +397,7 @@ export class LogList extends LitElement {
 
     const handleColumnResize = throttle((event: MouseEvent) => {
       this.handleColumnResize(event);
-    }, 32);
+    }, 16);
 
     const handleColumnResizeEnd = () => {
       this.columnResizeData = null;
@@ -385,11 +405,16 @@ export class LogList extends LitElement {
       document.removeEventListener('mouseup', handleColumnResizeEnd);
 
       // Communicate column data changes back to parent Log View
-      const updateColumnData = new CustomEvent('update-column-data', {
-        detail: this.columnData,
+      const resizeColumn = new CustomEvent('resize-column', {
+        bubbles: true,
+        composed: true,
+        detail: {
+          viewId: this.viewId,
+          columnData: this.columnData,
+        },
       });
 
-      this.dispatchEvent(updateColumnData);
+      this.dispatchEvent(resizeColumn);
     };
 
     document.addEventListener('mousemove', handleColumnResize);
@@ -526,13 +551,17 @@ export class LogList extends LitElement {
 
     if (field.key == 'severity') {
       const severityIcons = new Map<Severity, string>([
-        [Severity.WARNING, 'warning'],
-        [Severity.ERROR, 'cancel'],
-        [Severity.CRITICAL, 'brightness_alert'],
-        [Severity.DEBUG, 'bug_report'],
+        [Severity.WARNING, '\uf083'],
+        [Severity.ERROR, '\ue888'],
+        [Severity.CRITICAL, '\uf5cf'],
+        [Severity.DEBUG, '\ue868'],
       ]);
 
-      const severityValue = field.value as Severity;
+      const severityValue: Severity = field.value
+        ? (field.value as Severity)
+        : log.severity
+          ? log.severity
+          : Severity.INFO;
       const iconId = severityIcons.get(severityValue) || '';
       const toTitleCase = (input: string): string => {
         return input.replace(/\b\w+/g, (match) => {
@@ -558,7 +587,9 @@ export class LogList extends LitElement {
       <td ?hidden=${!isVisible}>
         <div class="cell-content">
           <span class="cell-text"
-            >${this.highlightMatchedText(field.value.toString())}</span
+            >${field.value
+              ? this.highlightMatchedText(field.value.toString())
+              : ''}</span
           >
         </div>
         ${columnIndex > 0 ? this.resizeHandle(columnIndex - 1) : html``}
@@ -574,13 +605,13 @@ export class LogList extends LitElement {
 
     <div
       class="overflow-indicator left-indicator"
-      style="opacity: ${this._scrollPercentageLeft}"
+      style="opacity: ${this._scrollPercentageLeft - 0.5}"
       ?hidden="${!this._isOverflowingToRight}"
     ></div>
 
     <div
       class="overflow-indicator right-indicator"
-      style="opacity: ${1 - this._scrollPercentageLeft}"
+      style="opacity: ${1 - this._scrollPercentageLeft - 0.5}"
       ?hidden="${!this._isOverflowingToRight}"
     ></div>
   `;
@@ -593,7 +624,7 @@ export class LogList extends LitElement {
       leading-icon
       data-visible="${this._autoscrollIsEnabled ? 'false' : 'true'}"
     >
-      <md-icon slot="icon" aria-hidden="true">arrow_downward</md-icon>
+      <md-icon slot="icon" aria-hidden="true">&#xe5db;</md-icon>
       Jump to Bottom
     </md-filled-button>
   `;

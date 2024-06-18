@@ -3,6 +3,9 @@
 ======
 pw_rpc
 ======
+.. pigweed-module::
+   :name: pw_rpc
+
 The ``pw_rpc`` module provides a system for defining and invoking remote
 procedure calls (RPCs) on a device.
 
@@ -138,16 +141,16 @@ appropriate reader/writer class must be used.
 
 .. code-block:: c++
 
-  // Open a ServerWriter for a server streaming RPC.
-  auto writer = RawServerWriter::Open<pw_rpc::raw::ServiceName::MethodName>(
-      server, channel_id, service_instance);
+   // Open a ServerWriter for a server streaming RPC.
+   auto writer = RawServerWriter::Open<pw_rpc::raw::ServiceName::MethodName>(
+       server, channel_id, service_instance);
 
-  // Send some responses, even though the client has not yet called this RPC.
-  CHECK_OK(writer.Write(encoded_response_1));
-  CHECK_OK(writer.Write(encoded_response_2));
+   // Send some responses, even though the client has not yet called this RPC.
+   CHECK_OK(writer.Write(encoded_response_1));
+   CHECK_OK(writer.Write(encoded_response_2));
 
-  // Finish the RPC.
-  CHECK_OK(writer.Finish(OkStatus()));
+   // Finish the RPC.
+   CHECK_OK(writer.Finish(OkStatus()));
 
 Errata
 ------
@@ -156,18 +159,17 @@ present to distinguish different calls to the same method. When a "call ID"
 feature was first introduced to solve this issue, existing clients and servers
 (1) set this value to zero and (2) ignored this value.
 
-When initial support for concurrent methods was added, a separate
-"open call ID" was introduced to distinguish unrequested responses. However,
-legacy servers built prior to this change continue to send unrequested
-responses with call ID zero. Prior to
-`this fix <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192311>`,
-clients which used "open call ID" would not accept unrequested responses from
-legacy servers. Clients built after that change will accept unrequested
-responses which use both "open call ID" and call ID zero.
+When initial support for concurrent methods was added, a separate "open call ID"
+was introduced to distinguish unrequested responses. However, legacy servers
+built prior to this change continue to send unrequested responses with call ID
+zero. Prior to `this fix
+<https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/192311>`_, clients
+which used "open call ID" would not accept unrequested responses from legacy
+servers. Clients built after that change will accept unrequested responses which
+use both "open call ID" and call ID zero.
 
-See
-`Issue 237418397 <https://issues.pigweed.dev/issues/237418397>`_
-for more details and discussion.
+See `Issue 237418397 <https://issues.pigweed.dev/issues/237418397>`_ for more
+details and discussion.
 
 ---------------
 Creating an RPC
@@ -458,6 +460,52 @@ with the ``ABORTED`` status.
    // When a channel is closed, any pending calls will receive
    // on_error callbacks with ABORTED status.
    client->CloseChannel(1);
+
+.. _module-pw_rpc-remap:
+
+Remapping channels
+==================
+Some pw_rpc deployments may find it helpful to remap channel IDs in RPC packets.
+This can remove the need for globally known channel IDs. Clients can use a
+generic channel ID. The server remaps the generic channel ID to an ID associated
+with the transport the client is using.
+
+.. cpp:namespace-push:: pw::rpc
+
+.. doxygengroup:: pw_rpc_channel_functions
+   :content-only:
+
+.. cpp:namespace-pop::
+
+A future revision of the pw_rpc protocol will remove the need for global channel
+IDs without requiring remapping.
+
+Example deployment
+------------------
+This section describes a hypothetical pw_rpc deployment that supports arbitrary
+pw_rpc clients with one pw_rpc server. Note that this assumes that the
+underlying transport provides some sort of addressing that the server-side can
+associate with a channel ID.
+
+- A pw_rpc server is running on one core. A variable number of pw_rpc clients
+  need to call RPCs on the server from a different core.
+- The client core opens a socket (or similar feature) to connect to the server
+  core.
+- The server core detects the inbound connection and allocates a new channel ID.
+  It creates a new channel by calling :cpp:func:`pw::rpc::Server::OpenChannel`
+  with the channel ID and a :cpp:class:`pw::rpc::ChannelOutput` associated with
+  the new connection.
+- The server maintains a mapping between channel IDs and pw_rpc client
+  connections.
+- On the client core, pw_rpc clients all use the same channel ID (e.g.  ``1``).
+- As packets arrive from pw_rpc client connections, the server-side code calls
+  :cpp:func:`pw::rpc::ChangeEncodedChannelId` on the encoded packet to replace
+  the generic channel ID (``1``) with the server-side channel ID allocated when
+  the client connected. The encoded packet is then passed to
+  :cpp:func:`pw::rpc::Server::ProcessPacket`.
+- When the server sends pw_rpc packets, the :cpp:class:`pw::rpc::ChannelOutput`
+  calls :cpp:func:`pw::rpc::ChangeEncodedChannelId` to set the channel ID back
+  to the generic ``1``.
 
 --------
 Services
@@ -1255,6 +1303,10 @@ Client call objects provide a few common methods.
       packet. Future packets for this RPC are dropped, and the client sends a
       ``FAILED_PRECONDITION`` error in response because the call is not active.
 
+   .. cpp:function:: void CloseAndWaitForCallbacks()
+
+      Abandons this RPC and additionally blocks on completion of any running callbacks.
+
    .. cpp:function:: void set_on_completed(pw::Function<void(ResponseTypeIfUnaryOnly, pw::Status)>)
 
       Sets the callback that is called when the RPC completes normally. The
@@ -1699,9 +1751,9 @@ Default packet processing is equivalent to the next processor:
 
 .. code-block:: cpp
 
-    [](ClientServer& client_server, pw::ConstByteSpan packet) -> pw::Status {
-      return client_server.ProcessPacket(packet);
-    };
+   [](ClientServer& client_server, pw::ConstByteSpan packet) -> pw::Status {
+     return client_server.ProcessPacket(packet);
+   };
 
 The Server processor will be applied to all packets sent to the server (i.e.
 requests) and client processor will be applied to all packets sent to the client
@@ -1860,10 +1912,10 @@ interface.
 
 Evolution
 =========
-Concurrent requests were not initially supported in pw_rpc (added in
-`C++ <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/109077>`,
-`Python <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/139610>`,
-and
-`TypeScript <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/160792>`).
-As a result, some user-written service implementations may not expect or
-correctly support concurrent requests.
+Concurrent requests were not initially supported in pw_rpc (added in `C++
+<https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/109077>`_, `Python
+<https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/139610>`_, and
+`TypeScript
+<https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/160792>`_). As a
+result, some user-written service implementations may not expect or correctly
+support concurrent requests.

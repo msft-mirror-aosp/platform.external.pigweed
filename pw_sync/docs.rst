@@ -352,22 +352,22 @@ Example in C
 ^^^^^^^^^^^^
 .. code-block:: cpp
 
-  #include "pw_chrono/system_clock.h"
-  #include "pw_sync/timed_mutex.h"
+   #include "pw_chrono/system_clock.h"
+   #include "pw_sync/timed_mutex.h"
 
-  pw::sync::TimedMutex mutex;
+   pw::sync::TimedMutex mutex;
 
-  extern pw_sync_TimedMutex mutex;  // This can only be created in C++.
+   extern pw_sync_TimedMutex mutex;  // This can only be created in C++.
 
-  bool ThreadSafeCriticalSectionWithTimeout(
-      const pw_chrono_SystemClock_Duration timeout) {
-    if (!pw_sync_TimedMutex_TryLockFor(&mutex, timeout)) {
-      return false;
-    }
-    NotThreadSafeCriticalSection();
-    pw_sync_TimedMutex_Unlock(&mutex);
-    return true;
-  }
+   bool ThreadSafeCriticalSectionWithTimeout(
+       const pw_chrono_SystemClock_Duration timeout) {
+     if (!pw_sync_TimedMutex_TryLockFor(&mutex, timeout)) {
+       return false;
+     }
+     NotThreadSafeCriticalSection();
+     pw_sync_TimedMutex_Unlock(&mutex);
+     return true;
+   }
 
 RecursiveMutex
 ==============
@@ -1326,7 +1326,7 @@ tokens.
 The entire API is thread safe, but only a subset is interrupt safe.
 
 .. Note::
-   If there is only a single consuming thread, we recommend using a
+   If there is only a single consuming thread, use a
    :cpp:class:`ThreadNotification` instead which can be much more efficient on
    some RTOSes such as FreeRTOS.
 
@@ -1465,9 +1465,9 @@ tokens.
 The entire API is thread safe, but only a subset is interrupt safe.
 
 .. Note::
-   If there is only a single consuming thread, we recommend using a
-   ThreadNotification instead which can be much more efficient on some RTOSes
-   such as FreeRTOS.
+   If there is only a single consuming thread, use a
+   :cpp:class:`ThreadNotification` instead which can be much more efficient on
+   some RTOSes such as FreeRTOS.
 
 .. list-table::
    :header-rows: 1

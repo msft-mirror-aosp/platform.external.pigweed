@@ -3,6 +3,9 @@
 ================
 pw_bluetooth_hci
 ================
+.. pigweed-module::
+   :name: pw_bluetooth_hci
+
 The ``pw_bluetooth_hci`` module contains utilities for using the Host Controller
 Interface as defined by the Bluetooth Core Specification version 5.3.
 
@@ -52,4 +55,3 @@ Layer buffer which may contain multiple packets.
       The caller is responsible for detecting the lack of progress due to an
       undersized data buffer and/or an invalid length field in case a full
       buffer is passed and no bytes are processed.
-
