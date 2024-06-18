@@ -25,4 +25,10 @@ cc_library_headers {
         "public_overrides",
     ],
     host_supported: true,
+    header_libs: [
+        "pw_preprocessor_headers",
+    ],
+    export_header_lib_headers: [
+        "pw_preprocessor_headers",
+    ],
 }

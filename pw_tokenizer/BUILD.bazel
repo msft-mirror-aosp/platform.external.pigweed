@@ -12,21 +12,22 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_binary",
-    "pw_cc_library",
+    "pw_cc_blob_info",
+    "pw_cc_blob_library",
     "pw_cc_test",
     "pw_linker_script",
 )
-load("//pw_build/bazel_internal:py_proto_library.bzl", "py_proto_library")
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_tokenizer",
     srcs = [
         "encode_args.cc",
@@ -50,6 +51,7 @@ pw_cc_library(
     ],
     includes = ["public"],
     deps = [
+        ":config_override",
         "//pw_bytes:bit",
         "//pw_containers:to_array",
         "//pw_polyfill",
@@ -59,17 +61,22 @@ pw_cc_library(
     ],
 )
 
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
 pw_linker_script(
     name = "linker_script",
     linker_script = "pw_tokenizer_linker_sections.ld",
 )
 
-pw_cc_library(
+cc_library(
     name = "test_backend",
     visibility = ["@pigweed//targets:__pkg__"],
 )
 
-pw_cc_library(
+cc_library(
     name = "base64",
     srcs = [
         "base64.cc",
@@ -87,7 +94,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "decoder",
     srcs = [
         "decode.cc",
@@ -103,6 +110,7 @@ pw_cc_library(
     deps = [
         ":base64",
         "//pw_bytes",
+        "//pw_result",
         "//pw_span",
         "//pw_varint",
     ],
@@ -111,19 +119,16 @@ pw_cc_library(
 proto_library(
     name = "tokenizer_proto",
     srcs = [
-        "options.proto",
+        "pw_tokenizer_proto/options.proto",
     ],
-    import_prefix = "pw_tokenizer/proto",
     strip_import_prefix = "/pw_tokenizer",
     deps = [
         "@com_google_protobuf//:descriptor_proto",
     ],
 )
 
-# TODO: b/241456982 - Not expected to build yet.
 py_proto_library(
     name = "tokenizer_proto_py_pb2",
-    tags = ["manual"],
     deps = [":tokenizer_proto"],
 )
 
@@ -191,6 +196,21 @@ pw_cc_test(
     ],
 )
 
+pw_cc_blob_info(
+    name = "detokenizer_example_elf_blob",
+    file_path = "//pw_tokenizer/py:example_binary_with_tokenized_strings.elf",
+    symbol_name = "kElfSection",
+)
+
+pw_cc_blob_library(
+    name = "detokenizer_elf_test_blob",
+    blobs = [
+        ":detokenizer_example_elf_blob",
+    ],
+    namespace = "test::ns",
+    out_header = "pw_tokenizer/example_binary_with_tokenized_strings.h",
+)
+
 pw_cc_test(
     name = "detokenize_test",
     srcs = [
@@ -198,6 +218,7 @@ pw_cc_test(
     ],
     deps = [
         ":decoder",
+        ":detokenizer_elf_test_blob",
         "//pw_unit_test",
     ],
 )
@@ -279,10 +300,15 @@ pw_cc_test(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "tokenize_c99_test_c",
     srcs = ["tokenize_c99_test.c"],
-    copts = ["-std=c99"],
+    copts = [
+        "-std=c99",
+        # pw_tokenizer uses static_assert, so this test uses a static_assert to
+        # verify that it works. Silence warnings about preadopting C11 features.
+        "-Wno-c11-extensions",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":pw_tokenizer",

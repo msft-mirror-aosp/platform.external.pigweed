@@ -39,11 +39,15 @@ pw_python_package("py") {
   tests = [
     "commands_test.py",
     "cpp_test.py",
+    "cpp_test_fake_env.py",
     "editors_test.py",
     "test_cases.py",
     "vscode_test.py",
   ]
-  python_deps = [ "$dir_pw_console/py" ]
+  python_deps = [
+    "$dir_pw_config_loader/py",
+    "$dir_pw_console/py",
+  ]
   pylintrc = "$dir_pigweed/.pylintrc"
   mypy_ini = "$dir_pigweed/.mypy.ini"
 }

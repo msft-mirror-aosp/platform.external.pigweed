@@ -24,6 +24,7 @@
 #include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
+#include "pw_toolchain/internal/sibling_cast.h"
 
 namespace pw::stream {
 
@@ -471,26 +472,22 @@ class NonSeekableWriter : public Writer {
 class ReaderWriter : public Stream {
  public:
   // ReaderWriters may be used as Readers.
-  constexpr Reader& as_reader() {
-    return static_cast<Reader&>(static_cast<Stream&>(*this));
-  }
-  constexpr const Reader& as_reader() const {
-    return static_cast<const Reader&>(static_cast<const Stream&>(*this));
+  Reader& as_reader() { return internal::SiblingCast<Reader&, Stream>(*this); }
+  const Reader& as_reader() const {
+    return internal::SiblingCast<const Reader&, Stream>(*this);
   }
 
-  constexpr operator Reader&() { return as_reader(); }
-  constexpr operator const Reader&() const { return as_reader(); }
+  operator Reader&() { return as_reader(); }
+  operator const Reader&() const { return as_reader(); }
 
   // ReaderWriters may be used as Writers.
-  constexpr Writer& as_writer() {
-    return static_cast<Writer&>(static_cast<Stream&>(*this));
-  }
-  constexpr const Writer& as_writer() const {
-    return static_cast<const Writer&>(static_cast<const Stream&>(*this));
+  Writer& as_writer() { return internal::SiblingCast<Writer&, Stream>(*this); }
+  const Writer& as_writer() const {
+    return internal::SiblingCast<const Writer&, Stream>(*this);
   }
 
-  constexpr operator Writer&() { return as_writer(); }
-  constexpr operator const Writer&() const { return as_writer(); }
+  operator Writer&() { return as_writer(); }
+  operator const Writer&() const { return as_writer(); }
 
  private:
   friend class RelativeSeekableReaderWriter;
@@ -519,19 +516,17 @@ class RelativeSeekableReaderWriter : public ReaderWriter {
  public:
   // RelativeSeekableReaderWriters may be used as RelativeSeekableReaders or
   // RelativeSeekableWriters.
-  constexpr operator RelativeSeekableReader&() {
-    return static_cast<RelativeSeekableReader&>(static_cast<Stream&>(*this));
+  operator RelativeSeekableReader&() {
+    return internal::SiblingCast<RelativeSeekableReader&, Stream>(*this);
   }
-  constexpr operator const RelativeSeekableReader&() const {
-    return static_cast<const RelativeSeekableReader&>(
-        static_cast<const Stream&>(*this));
+  operator const RelativeSeekableReader&() const {
+    return internal::SiblingCast<const RelativeSeekableReader&, Stream>(*this);
   }
-  constexpr operator RelativeSeekableWriter&() {
-    return static_cast<RelativeSeekableWriter&>(static_cast<Stream&>(*this));
+  operator RelativeSeekableWriter&() {
+    return internal::SiblingCast<RelativeSeekableWriter&, Stream>(*this);
   }
-  constexpr operator const RelativeSeekableWriter&() const {
-    return static_cast<const RelativeSeekableWriter&>(
-        static_cast<const Stream&>(*this));
+  operator const RelativeSeekableWriter&() const {
+    return internal::SiblingCast<const RelativeSeekableWriter&, Stream>(*this);
   }
 
  protected:
@@ -557,32 +552,26 @@ class RelativeSeekableReaderWriter : public ReaderWriter {
 class SeekableReaderWriter : public RelativeSeekableReaderWriter {
  public:
   // SeekableReaderWriters may be used as SeekableReaders.
-  constexpr SeekableReader& as_seekable_reader() {
-    return static_cast<SeekableReader&>(static_cast<Stream&>(*this));
+  SeekableReader& as_seekable_reader() {
+    return internal::SiblingCast<SeekableReader&, Stream>(*this);
   }
-  constexpr const SeekableReader& as_seekable_reader() const {
-    return static_cast<const SeekableReader&>(
-        static_cast<const Stream&>(*this));
+  const SeekableReader& as_seekable_reader() const {
+    return internal::SiblingCast<const SeekableReader&, Stream>(*this);
   }
 
-  constexpr operator SeekableReader&() { return as_seekable_reader(); }
-  constexpr operator const SeekableReader&() const {
-    return as_seekable_reader();
-  }
+  operator SeekableReader&() { return as_seekable_reader(); }
+  operator const SeekableReader&() const { return as_seekable_reader(); }
 
   // SeekableReaderWriters may be used as SeekableWriters.
-  constexpr SeekableWriter& as_seekable_writer() {
-    return static_cast<SeekableWriter&>(static_cast<Stream&>(*this));
+  SeekableWriter& as_seekable_writer() {
+    return internal::SiblingCast<SeekableWriter&, Stream>(*this);
   }
-  constexpr const SeekableWriter& as_seekable_writer() const {
-    return static_cast<const SeekableWriter&>(
-        static_cast<const Stream&>(*this));
+  const SeekableWriter& as_seekable_writer() const {
+    return internal::SiblingCast<const SeekableWriter&, Stream>(*this);
   }
 
-  constexpr operator SeekableWriter&() { return as_seekable_writer(); }
-  constexpr operator const SeekableWriter&() const {
-    return as_seekable_writer();
-  }
+  operator SeekableWriter&() { return as_seekable_writer(); }
+  operator const SeekableWriter&() const { return as_seekable_writer(); }
 
  protected:
   constexpr SeekableReaderWriter()
@@ -603,19 +592,17 @@ class NonSeekableReaderWriter : public ReaderWriter {
   // NonSeekableReaderWriters may be used as either NonSeekableReaders or
   // NonSeekableWriters. Note that NonSeekableReaderWriter& generally should not
   // be used in APIs, which should accept ReaderWriter& instead.
-  constexpr operator NonSeekableReader&() {
-    return static_cast<NonSeekableReader&>(static_cast<Stream&>(*this));
+  operator NonSeekableReader&() {
+    return internal::SiblingCast<NonSeekableReader&, Stream>(*this);
   }
-  constexpr operator const NonSeekableReader&() const {
-    return static_cast<const NonSeekableReader&>(
-        static_cast<const Stream&>(*this));
+  operator const NonSeekableReader&() const {
+    return internal::SiblingCast<const NonSeekableReader&, Stream>(*this);
   }
-  constexpr operator NonSeekableWriter&() {
-    return static_cast<NonSeekableWriter&>(static_cast<Stream&>(*this));
+  operator NonSeekableWriter&() {
+    return internal::SiblingCast<NonSeekableWriter&, Stream>(*this);
   }
-  constexpr operator const NonSeekableWriter&() const {
-    return static_cast<const NonSeekableWriter&>(
-        static_cast<const Stream&>(*this));
+  operator const NonSeekableWriter&() const {
+    return internal::SiblingCast<const NonSeekableWriter&, Stream>(*this);
   }
 
  protected:

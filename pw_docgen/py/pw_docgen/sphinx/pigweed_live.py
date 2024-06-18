@@ -42,7 +42,7 @@ class PigweedLiveDirective(Directive):
         '2023-11-06 13:00:00',
         # 2023-11-20 skipped since it's a holiday(ish)
         '2023-12-04 13:00:00',
-        '2023-12-18 13:00:00',
+        # 2023-12-18 skipped due to its holiday proximity
         # 2024-01-01 and 2024-01-15 are skipped because they're holidays.
         '2024-01-29 13:00:00',
         '2024-02-12 13:00:00',
@@ -76,21 +76,18 @@ class PigweedLiveDirective(Directive):
         meeting_text = nodes.strong()
         meeting_text += nodes.Text(next_meeting)
         paragraph += meeting_text
-        paragraph += nodes.Text(
-            (
-                ". Please join us to discuss what's new in Pigweed and "
-                "anything else Pigweed-related. Or stop in just to say hi and "
-                "meet the team! You'll find a link for the meeting in the "
-                "#pigweed-live channel of our "
-            )
+        paragraph += nodes.Text(". Please ")
+        refuri = (
+            'https://discord.com/channels/691686718377558037/'
+            '951228399119126548'
         )
-        link = nodes.reference(refuri='https://discord.gg/M9NSeTA')
-        link += nodes.Text('Discord')
+        link = nodes.reference(refuri=refuri)
+        link += nodes.Text('join us')
         paragraph += link
         paragraph += nodes.Text(
             (
-                '. We meet bi-weekly. The meeting is public. Everyone is '
-                'welcome to join.'
+                " to discuss what's new in Pigweed and anything else "
+                "Pigweed-related."
             )
         )
         return paragraph

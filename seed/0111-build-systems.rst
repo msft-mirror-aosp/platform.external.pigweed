@@ -9,6 +9,8 @@
    :status: Accepted
    :proposal_date: 2023-09-26
    :cl: 171695
+   :authors: Ted Pudlik
+   :facilitator: Armando Montanez
 
 -------
 Summary

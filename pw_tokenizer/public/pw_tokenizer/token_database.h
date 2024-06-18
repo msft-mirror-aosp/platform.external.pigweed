@@ -84,14 +84,26 @@ class TokenDatabase {
 
   static_assert(sizeof(RawEntry) == 8u);
 
+  template <typename T>
+  static constexpr uint32_t ReadUint32(const T* bytes) {
+    return static_cast<uint8_t>(bytes[0]) |
+           static_cast<uint8_t>(bytes[1]) << 8 |
+           static_cast<uint8_t>(bytes[2]) << 16 |
+           static_cast<uint8_t>(bytes[3]) << 24;
+  }
+
  public:
+  /// Default date_removed for an entry in the token datase if it was never
+  /// removed.
+  static constexpr uint32_t kDateRemovedNever = 0xFFFFFFFF;
+
   /// An entry in the token database.
   struct Entry {
     /// The token that represents this string.
     uint32_t token;
 
     /// The date the token and string was removed from the database, or
-    /// `0xFFFFFFFF` if it was never removed. Dates are encoded such that
+    /// kDateRemovedNever if it was never removed. Dates are encoded such that
     /// natural integer sorting sorts from oldest to newest dates. The day is
     /// stored an an 8-bit day, 8-bit month, and 16-bit year, packed into a
     /// little-endian `uint32_t`.
@@ -320,14 +332,6 @@ class TokenDatabase {
   static constexpr uint32_t ReadEntryCount(const T* header_bytes) {
     const T* bytes = header_bytes + offsetof(Header, entry_count);
     return ReadUint32(bytes);
-  }
-
-  template <typename T>
-  static constexpr uint32_t ReadUint32(const T* bytes) {
-    return static_cast<uint8_t>(bytes[0]) |
-           static_cast<uint8_t>(bytes[1]) << 8 |
-           static_cast<uint8_t>(bytes[2]) << 16 |
-           static_cast<uint8_t>(bytes[3]) << 24;
   }
 
   // Calculates the offset of the string table.

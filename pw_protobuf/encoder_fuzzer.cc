@@ -43,6 +43,10 @@ template <typename T>
 span<const T> ConsumeSpan(FuzzedDataProvider& provider, std::vector<T>* data) {
   size_t num = ConsumeSize<T>(provider);
   size_t off = data->size();
+  if (num == 0) {
+    return span<const T>();
+  }
+
   data->reserve(off + num);
   for (size_t i = 0; i < num; ++i) {
     if constexpr (std::is_floating_point<T>::value) {
@@ -77,22 +81,20 @@ span<const std::byte> ConsumeBytes(FuzzedDataProvider& provider,
   size_t off = data->size();
   num = added.size();
   data->insert(data->end(), added.begin(), added.end());
+  // It's possible nothing was added, and the vector was empty to begin with.
+  if (data->empty()) {
+    return span<const std::byte>();
+  }
   return span(&((*data)[off]), num);
 }
 
-void TestOneInput(FuzzedDataProvider& provider) {
-  static std::byte buffer[65536];
-
-  // Pick a subset of the buffer that the fuzzer is allowed to use, and poison
-  // the rest.
-  size_t unpoisoned_length =
-      provider.ConsumeIntegralInRange<size_t>(0, sizeof(buffer));
-  ByteSpan unpoisoned(buffer, unpoisoned_length);
-  void* poisoned = &buffer[unpoisoned_length];
-  size_t poisoned_length = sizeof(buffer) - unpoisoned_length;
-  ASAN_POISON_MEMORY_REGION(poisoned, poisoned_length);
-
-  pw::protobuf::MemoryEncoder encoder(unpoisoned);
+void RecursiveFuzzedEncode(FuzzedDataProvider& provider,
+                           StreamEncoder& encoder,
+                           uint32_t depth = 0) {
+  constexpr size_t kMaxDepth = 256;
+  if (depth > kMaxDepth) {
+    return;
+  }
 
   // Storage for generated spans
   std::vector<uint32_t> u32s;
@@ -273,12 +275,36 @@ void TestOneInput(FuzzedDataProvider& provider) {
                          ConsumeString(provider, &strings))
             .IgnoreError();
         break;
-      case kPush:
+      case kPush: {
         // Special "field". The marks the start of a nested message.
-        encoder.GetNestedEncoder(provider.ConsumeIntegral<uint32_t>());
+        StreamEncoder nested_encoder =
+            encoder.GetNestedEncoder(provider.ConsumeIntegral<uint32_t>());
+        RecursiveFuzzedEncode(provider, nested_encoder, depth + 1);
         break;
+      }
+      case kPop:
+        if (depth > 0) {
+          // Special "field". The marks the end of a nested message.
+          return;
+        }
     }
   }
+}
+
+void TestOneInput(FuzzedDataProvider& provider) {
+  static std::byte buffer[65536];
+
+  // Pick a subset of the buffer that the fuzzer is allowed to use, and poison
+  // the rest.
+  size_t unpoisoned_length =
+      provider.ConsumeIntegralInRange<size_t>(0, sizeof(buffer));
+  ByteSpan unpoisoned(buffer, unpoisoned_length);
+  void* poisoned = &buffer[unpoisoned_length];
+  size_t poisoned_length = sizeof(buffer) - unpoisoned_length;
+  ASAN_POISON_MEMORY_REGION(poisoned, poisoned_length);
+
+  pw::protobuf::MemoryEncoder encoder(unpoisoned);
+  RecursiveFuzzedEncode(provider, encoder);
 
   // Don't forget to unpoison for the next iteration!
   ASAN_UNPOISON_MEMORY_REGION(poisoned, poisoned_length);

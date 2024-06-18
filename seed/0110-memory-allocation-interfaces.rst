@@ -9,6 +9,8 @@
    :status: Accepted
    :proposal_date: 2023-09-06
    :cl: 168772
+   :authors: Alexei Frolov
+   :facilitator: Taylor Cramer
 
 -------
 Summary

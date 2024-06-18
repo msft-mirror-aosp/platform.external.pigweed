@@ -16,7 +16,7 @@
 # and types found in the Bluetooth Core Specification. The Emboss compiler is
 # used to generate a C++ header from this file.
 
-import "hci_common.emb" as hci
+import "pw_bluetooth/public/pw_bluetooth/hci_common.emb" as hci
 
 [$default byte_order: "LittleEndian"]
 [(cpp) namespace: "pw::bluetooth::emboss"]
@@ -213,27 +213,6 @@ bits LEPeriodicAdvertisingSyncCTEType:
     -- Do not sync to packets without a Constant Tone Extension
 
 
-enum LEOwnAddressType:
-  -- Possible values that can be used for the |own_address_type| parameter in various LE packets.
-
-  [maximum_bits: 8]
-
-  PUBLIC                    = 0x00
-    -- Public Device Address
-
-  RANDOM                    = 0x01
-    -- Random Device Address
-
-  PRIVATE_DEFAULT_TO_PUBLIC = 0x02
-    -- Controller generates the Resolvable Private Address based on the local IRK from the resolving
-    -- list. If the resolving list contains no matching entry, then use the public address.
-
-  PRIVATE_DEFAULT_TO_RANDOM = 0x03
-    -- Controller generates the Resolvable Private Address based on the local IRK from the resolving
-    -- list. If the resolving list contains no matching entry, then use the random address from
-    -- LE_Set_Random_Address.
-
-
 enum LEScanType:
   -- Possible values that can be used for the |scan_type| parameter in various LE HCI commands.
   [maximum_bits: 8]
@@ -335,50 +314,6 @@ bits LEEventMask:
   $next [+1]  Flag  le_transmit_power_reporting_event
   $next [+1]  Flag  le_biginfo_advertising_report_event
   $next [+1]  Flag  le_subrate_change_event
-
-
-enum LEAdvertisingType:
-  [maximum_bits: 8]
-  CONNECTABLE_AND_SCANNABLE_UNDIRECTED = 0x00
-    -- ADV_IND
-
-  CONNECTABLE_HIGH_DUTY_CYCLE_DIRECTED = 0x01
-    -- ADV_DIRECT_IND
-
-  SCANNABLE_UNDIRECTED                 = 0x02
-    -- ADV_SCAN_IND
-
-  NOT_CONNECTABLE_UNDIRECTED           = 0x03
-    -- ADV_NONCONN_IND
-
-  CONNECTABLE_LOW_DUTY_CYCLE_DIRECTED  = 0x04
-    -- ADV_DIRECT_IND
-
-
-bits LEAdvertisingChannels:
-  0     [+1]  Flag  channel_37
-  $next [+1]  Flag  channel_38
-  $next [+1]  Flag  channel_39
-
-
-enum LEAdvertisingFilterPolicy:
-  [maximum_bits: 8]
-
-  ALLOW_ALL                                                  = 0x00
-    -- Process scan and connection requests from all devices (i.e., the Filter
-    -- Accept List is not in use) (default).
-
-  ALLOW_ALL_CONNECTIONS_AND_USE_FILTER_ACCEPT_LIST_FOR_SCANS = 0x01
-    -- Process connection requests from all devices and scan requests only from
-    -- devices that are in the Filter Accept List.
-
-  ALLOW_ALL_SCANS_AND_USE_FILTER_ACCEPT_LIST_FOR_CONNECTIONS = 0x02
-    -- Process scan requests from all devices and connection requests only from
-    -- devices that are in the Filter Accept List.
-
-  ALLOW_FILTER_ACCEPT_LIST_ONLY                              = 0x03
-    -- Process scan and connection requests only from devices in the Filter
-    -- Accept List.
 
 
 enum ScanRequestNotifications:
@@ -490,19 +425,6 @@ struct LESetCIGParametersCISOptions:
   $next [+1]                                UInt             rtn_p_to_c
     -- Number of times every CIS Data PDU should be retransmitted from the Peripheral to the
     -- Central
-
-
-enum LESleepClockAccuracyRange:
-  -- Accuracy of the sleep clock, provided as a range
-  [maximum_bits: 8]
-  PPM_251_TO_500 = 0x00
-  PPM_151_TO_250 = 0x01
-  PPM_101_TO_150 = 0x02
-  PPM_76_TO_100  = 0x03
-  PPM_51_TO_75   = 0x04
-  PPM_31_TO_50   = 0x05
-  PPM_21_TO_30   = 0x06
-  PPM_0_TO_20    = 0x07
 
 
 enum LECISPacking:
@@ -1761,10 +1683,34 @@ struct ReadBdAddrCommand:
 # TODO: b/265052417 - Definition needs to be added
 
 
-# 7.4.11 Read Local Supported Controller Delay command
-# HCI_Read_Local_Supported_Controller_Delay
-# TODO: b/265052417 - Definition needs to be added
+enum LogicalTransportType:
+  [maximum_bits: 8]
+  BR_EDR_ACL         = 0x00
+    -- BR/EDR ACL
 
+  BR_EDR_SCO_OR_ESCO = 0x01
+    -- BR/EDR SCO or eSCO
+
+  LE_CIS             = 0x02
+    -- LE CIS
+
+  LE_BIS             = 0x03
+    -- LE BIS
+
+
+struct ReadLocalSupportedControllerDelayCommand:
+  -- 7.4.11 Read Local Supported Controller Delay command (v5.2)
+  -- HCI_Read_Local_Supported_Controller_Delay
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+  0     [+hdr_size]                    hci.CommandHeader                   header
+  $next [+CodecId.$size_in_bytes]      CodecId                             codec_id
+  $next [+1]                           LogicalTransportType                logical_transport_type
+  $next [+1]                           DataPathDirection                   direction
+  $next [+1]                           UInt                                codec_configuration_length
+    -- Length of codec configuration
+
+  $next [+codec_configuration_length]  UInt:8[codec_configuration_length]  codec_configuration
+    -- Codec-specific configuration data
 
 # ========== 7.5 Status Parameters ==========
 
@@ -1830,41 +1776,41 @@ struct LESetAdvertisingParametersCommand:
 
   let hdr_size = hci.CommandHeader.$size_in_bytes
 
-  0     [+hdr_size]                   hci.CommandHeader          header
+  0     [+hdr_size]                   hci.CommandHeader              header
 
-  $next [+2]                          UInt                       advertising_interval_min
+  $next [+2]                          UInt                           advertising_interval_min
     -- Default: 0x0800 (1.28 s)
     -- Time: N * 0.625 ms
     -- Time Range: 20 ms to 10.24 s
     [requires: 0x0020 <= this <= 0x4000]
 
-  $next [+2]                          UInt                       advertising_interval_max
+  $next [+2]                          UInt                           advertising_interval_max
     -- Default: 0x0800 (1.28 s)
     -- Time: N * 0.625 ms
     -- Time Range: 20 ms to 10.24 s
     [requires: 0x0020 <= this <= 0x4000]
 
-  $next [+1]                          LEAdvertisingType          adv_type
+  $next [+1]                          hci.LEAdvertisingType          adv_type
     -- Used to determine the packet type that is used for advertising when
     -- advertising is enabled.
 
-  $next [+1]                          LEOwnAddressType           own_address_type
+  $next [+1]                          hci.LEOwnAddressType           own_address_type
 
-  $next [+1]                          hci.LEPeerAddressType      peer_address_type
+  $next [+1]                          hci.LEPeerAddressType          peer_address_type
     -- ANONYMOUS address type not allowed.
 
-  $next [+hci.BdAddr.$size_in_bytes]  hci.BdAddr                 peer_address
+  $next [+hci.BdAddr.$size_in_bytes]  hci.BdAddr                     peer_address
     -- Public Device Address, Random Device Address, Public Identity Address, or
     -- Random (static) Identity Address of the device to be connected.
 
   $next [+1]  bits:
 
-    0     [+3]                        LEAdvertisingChannels      advertising_channel_map
+    0     [+3]                        hci.LEAdvertisingChannels      advertising_channel_map
       -- Indicates the advertising channels that shall be used when transmitting
       -- advertising packets. At least 1 channel must be enabled.
       -- Default: all channels enabled
 
-  $next [+1]                          LEAdvertisingFilterPolicy  advertising_filter_policy
+  $next [+1]                          hci.LEAdvertisingFilterPolicy  advertising_filter_policy
     -- This parameter shall be ignored when directed advertising is enabled.
 
 
@@ -1921,27 +1867,27 @@ struct LESetScanParametersCommand:
 
   let hdr_size = hci.CommandHeader.$size_in_bytes
 
-  0     [+hdr_size]  hci.CommandHeader   header
+  0     [+hdr_size]  hci.CommandHeader     header
 
-  $next [+1]         LEScanType          le_scan_type
+  $next [+1]         LEScanType            le_scan_type
     -- Controls the type of scan to perform.
 
-  $next [+2]         UInt                le_scan_interval
+  $next [+2]         UInt                  le_scan_interval
     -- Default: 0x0010 (10ms)
     -- Time: N * 0.625 ms
     -- Time Range: 2.5 ms to 10.24 s
     [requires: 0x0004 <= this <= 0x4000]
 
-  $next [+2]         UInt                le_scan_window
+  $next [+2]         UInt                  le_scan_window
     -- Default: 0x0010 (10ms)
     -- Time: N * 0.625 ms
     -- Time Range: 2.5ms to 10.24 s
     [requires: 0x0004 <= this <= 0x4000]
 
-  $next [+1]         LEOwnAddressType    own_address_type
+  $next [+1]         hci.LEOwnAddressType  own_address_type
     -- The type of address being used in the scan request packets.
 
-  $next [+1]         LEScanFilterPolicy  scanning_filter_policy
+  $next [+1]         LEScanFilterPolicy    scanning_filter_policy
 
 
 struct LESetScanEnableCommand:
@@ -1987,7 +1933,7 @@ struct LECreateConnectionCommand:
 
   $next [+hci.BdAddr.$size_in_bytes]  hci.BdAddr              peer_address
 
-  $next [+1]                          LEOwnAddressType        own_address_type
+  $next [+1]                          hci.LEOwnAddressType    own_address_type
 
   $next [+2]                          UInt                    connection_interval_min
     -- Time: N * 1.25 ms
@@ -2320,9 +2266,9 @@ struct LESetExtendedAdvertisingParametersV1Command:
 
   $next [+1]  bits:
 
-    0     [+3]                        LEAdvertisingChannels          primary_advertising_channel_map
+    0     [+3]                        hci.LEAdvertisingChannels      primary_advertising_channel_map
 
-  $next [+1]                          LEOwnAddressType               own_address_type
+  $next [+1]                          hci.LEOwnAddressType           own_address_type
 
   $next [+1]                          hci.LEPeerAddressTypeNoAnon    peer_address_type
 
@@ -2330,7 +2276,7 @@ struct LESetExtendedAdvertisingParametersV1Command:
     -- Public Device Address, Random Device Address, Public Identity Address, or Random (static)
     -- Identity Address of the device to be connected.
 
-  $next [+1]                          LEAdvertisingFilterPolicy      advertising_filter_policy
+  $next [+1]                          hci.LEAdvertisingFilterPolicy  advertising_filter_policy
 
   $next [+1]                          Int                            advertising_tx_power
     -- Range: -127 <= N <= +126
@@ -2470,7 +2416,7 @@ struct LEClearAdvertisingSetsCommand:
 
 
 struct LESetExtendedScanParametersData:
-  -- Data fields for variable-length portion of an LE Set Extneded Scan Parameters command
+  -- Data fields for variable-length portion of an LE Set Extended Scan Parameters command
 
   0     [+1]  LEScanType  scan_type
 
@@ -2494,7 +2440,7 @@ struct LESetExtendedScanParametersCommand:
   -- num_entries corresponds to the number of bits set in the |scanning_phys| field
   let hdr_size = hci.CommandHeader.$size_in_bytes
   0     [+hdr_size]                       hci.CommandHeader                             header
-  $next [+1]                              LEOwnAddressType                              own_address_type
+  $next [+1]                              hci.LEOwnAddressType                          own_address_type
   $next [+1]                              LEScanFilterPolicy                            scanning_filter_policy
   $next [+1]  bits:
     0     [+LEScanPHYBits.$size_in_bits]  LEScanPHYBits                                 scanning_phys
@@ -2534,51 +2480,65 @@ struct LESetExtendedScanEnableCommand:
     --     Time Range: 1.28 s to 83,884.8 s
 
 
-struct LEExtendedCreateConnectionV1:
-  -- 7.8.66 LE Extended Create Connection command version 1
-  -- HCI_LE_Extended_Create_Connection v1
-  let hdr_size = hci.CommandHeader.$size_in_bytes
-  0     [+hdr_size]                             hci.CommandHeader       header
-  $next [+1]                                    hci.GenericEnableParam  initiator_filter_policy
-  $next [+1]                                    LEOwnAddressType        own_address_type
-  $next [+1]                                    hci.LEPeerAddressType   peer_address_type
-  $next [+hci.BdAddr.$size_in_bytes]            hci.BdAddr              peer_address
-  $next [+1]  bits:
-    0     [+LEInitiatingPHYBits.$size_in_bits]  LEInitiatingPHYBits     initiating_phys
+struct LEExtendedCreateConnectionData:
+  -- Data fields for variable-length portion of an LE Extneded Create Connection command
 
-  let num_entries = (initiating_phys.le_1m ? 1 : 0)+(initiating_phys.le_2m ? 1 : 0)+(initiating_phys.le_coded ? 1 : 0)
-  $next [+2*num_entries]                        UInt:16[num_entries]    scan_interval
+  0     [+2]  UInt  scan_interval
     -- Time interval from when the Controller started its last scan until it begins the subsequent
     -- scan on the primary advertising physical channel.
     -- Time = N × 0.625 ms
     -- Time Range: 2.5 ms to 40.959375 s
+    [requires: 0x0004 <= this]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    scan_window
+  $next [+2]  UInt  scan_window
     -- Duration of the scan on the primary advertising physical channel.
     -- Time = N × 0.625 ms
     -- Time Range: 2.5 ms to 40.959375 s
+    [requires: 0x0004 <= this]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    connection_interval_min
+  $next [+2]  UInt  connection_interval_min
     -- Time: N * 1.25 ms
     -- Time Range: 7.5 ms to 4 s.
+    [requires: 0x0006 <= this <= 0x0C80]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    connection_interval_max
+  $next [+2]  UInt  connection_interval_max
     -- Time: N * 1.25 ms
     -- Time Range: 7.5 ms to 4 s.
+    [requires: 0x0006 <= this <= 0x0C80]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    max_latency
+  $next [+2]  UInt  max_latency
     -- Maximum Peripheral latency for the connection in number of connection events.
+    [requires: this <= 0x01F3]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    supervision_timeout
+  $next [+2]  UInt  supervision_timeout
     -- See Core Spec v5.3, Vol 6, Part B, Section 4.5.2.
     -- Time: N * 10 ms
     -- Time Range: 100 ms to 32 s
+    [requires: 0x000A <= this <= 0x0C80]
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    min_connection_event_length
+  $next [+2]  UInt  min_connection_event_length
     -- Time: N * 0.625 ms
 
-  $next [+2*num_entries]                        UInt:16[num_entries]    max_connection_event_length
+  $next [+2]  UInt  max_connection_event_length
     -- Time: N * 0.625 ms
+
+
+struct LEExtendedCreateConnectionCommandV1:
+  -- 7.8.66 LE Extended Create Connection command version 1
+  -- HCI_LE_Extended_Create_Connection v1
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+  0     [+hdr_size]                             hci.CommandHeader                            header
+  $next [+1]                                    hci.GenericEnableParam                       initiator_filter_policy
+  $next [+1]                                    hci.LEOwnAddressType                         own_address_type
+  $next [+1]                                    hci.LEPeerAddressType                        peer_address_type
+  $next [+hci.BdAddr.$size_in_bytes]            hci.BdAddr                                   peer_address
+  $next [+1]  bits:
+    0     [+LEInitiatingPHYBits.$size_in_bits]  LEInitiatingPHYBits                          initiating_phys
+
+  let num_entries = (initiating_phys.le_1m ? 1 : 0)+(initiating_phys.le_2m ? 1 : 0)+(initiating_phys.le_coded ? 1 : 0)
+  let single_entry_size = LEExtendedCreateConnectionData.$size_in_bytes
+  let total_entries_size = num_entries*single_entry_size
+  $next [+total_entries_size]                   LEExtendedCreateConnectionData[num_entries]  data
 
 # 7.8.66 LE Extended Create Connection command version 2
 # HCI_LE_Extended_Create_Connection v2
@@ -2776,7 +2736,7 @@ struct LESetCIGParametersCommand:
     -- The interval, in microseconds, of periodic SDUs (Peripheral => Central)
     [requires: 0x0000FF <= this <= 0x0FFFFF]
 
-  $next [+1]                       LESleepClockAccuracyRange                worst_case_sca
+  $next [+1]                       hci.LESleepClockAccuracyRange            worst_case_sca
     -- Worst-case sleep clock accuracy of all Peripherals that will participate in the CIG
 
   $next [+1]                       LECISPacking                             packing
@@ -2932,3 +2892,16 @@ struct LERemoveISODataPathCommand:
 # 7.8.112 LE ISO Receive Test command
 # 7.8.113 LE ISO Read Test Counters command
 # 7.8.114 LE ISO Test End command
+
+
+struct LESetHostFeatureCommand:
+  -- 7.8.115 LE Set Host Feature command
+  -- HCI_LE_Set_Host_Feature
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+  0     [+hdr_size]  hci.CommandHeader       header
+  $next [+1]         UInt                    bit_number
+    -- Bit position in the Feature Set
+    [requires: 0x00 <= this <= 0x3F]
+
+  $next [+1]         hci.GenericEnableParam  bit_value
+    -- Indicates if Host feature is enabled or disabled
