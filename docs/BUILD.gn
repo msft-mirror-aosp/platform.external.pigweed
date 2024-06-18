@@ -40,11 +40,13 @@ pw_doc_group("core_docs") {
     "run_doxygen.py",
   ]
   sources = [
+    "3p/index.rst",
     "blog/01-kudzu.rst",
     "blog/02-bazel-feature-flags.rst",
     "blog/index.rst",
     "code_of_conduct.rst",
     "code_reviews.rst",
+    "community/index.rst",
     "concepts/index.rst",
     "contributing/docs/changelog.rst",
     "contributing/docs/index.rst",
@@ -58,12 +60,12 @@ pw_doc_group("core_docs") {
     "get_started/bazel.rst",
     "get_started/bazel_integration.rst",
     "get_started/first_time_setup.rst",
+    "get_started/github_actions.rst",
     "get_started/index.rst",
     "get_started/upstream.rst",
     "get_started/zephyr.rst",
     "glossary.rst",
     "infra/ci_cq_intro.rst",
-    "infra/github.rst",
     "infra/index.rst",
     "infra/rollers.rst",
     "mission.rst",
@@ -72,6 +74,7 @@ pw_doc_group("core_docs") {
     "os/zephyr/index.rst",
     "os/zephyr/kconfig.rst",
     "overview.rst",
+    "showcases/index.rst",
     "size_optimizations.rst",
     "style/cli.rst",
     "style/commit_message.rst",
@@ -335,6 +338,7 @@ pw_doc_gen("docs") {
     # Note: These must use the "docs" prefix for links and image references. In
     # contrast, the pw_doc_group above should not use the docs prefix.
     "automated_analysis.rst",
+    "bazel_compatibility.rst",
     "build_system.rst",
     "changelog.rst",
     "index.rst",
@@ -353,10 +357,10 @@ pw_doc_gen("docs") {
     ":third_party_docs",
     "$dir_pigweed/kudzu:docs",
     "$dir_pigweed/seed:seeds",
-    "$dir_pw_env_setup:python.install",
   ]
 
-  # Required to set the PYTHONPATH so automodule, autoclass or autofunction RST
-  # directives work.
-  python_metadata_deps = [ "$dir_pw_env_setup:core_pigweed_python_packages" ]
+  # Extra Python deps are required to set the PYTHONPATH so
+  # automodule, autoclass or autofunction RST directives work in
+  # sphinx.
+  python_deps = [ "$dir_pw_env_setup:core_pigweed_python_packages" ]
 }

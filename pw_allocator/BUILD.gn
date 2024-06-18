@@ -27,12 +27,7 @@ config("default_config") {
 }
 
 group("pw_allocator") {
-  public_deps = [
-    ":allocator",
-    ":block",
-    ":freelist",
-    ":freelist_heap",
-  ]
+  public_deps = [ ":allocator" ]
 }
 
 # Libraries
@@ -248,30 +243,16 @@ pw_source_set("fragmentation") {
   sources = [ "fragmentation.cc" ]
 }
 
-pw_source_set("freelist") {
-  public_configs = [ ":default_config" ]
-  public = [ "public/pw_allocator/freelist.h" ]
-  public_deps = [
-    "$dir_pw_containers:vector",
-    dir_pw_span,
-    dir_pw_status,
-  ]
-  sources = [ "freelist.cc" ]
-}
-
 pw_source_set("freelist_heap") {
   public_configs = [ ":default_config" ]
   public = [ "public/pw_allocator/freelist_heap.h" ]
   public_deps = [
     ":block",
-    ":freelist",
-  ]
-  deps = [
+    ":bucket_block_allocator",
     dir_pw_assert,
-    dir_pw_log,
-    dir_pw_span,
+    dir_pw_bytes,
+    dir_pw_preprocessor,
   ]
-  sources = [ "freelist_heap.cc" ]
 }
 
 pw_source_set("last_fit_block_allocator") {
@@ -362,11 +343,22 @@ pw_source_set("testing") {
   deps = [ dir_pw_assert ]
 }
 
-pw_source_set("block_allocator_testing") {
-  public = [ "public/pw_allocator/block_allocator_testing.h" ]
+pw_source_set("block_testing") {
+  public = [ "public/pw_allocator/block_testing.h" ]
   public_deps = [
     ":block",
     ":block_allocator",
+    "$dir_pw_bytes:alignment",
+    dir_pw_assert,
+    dir_pw_status,
+  ]
+}
+
+pw_source_set("block_allocator_testing") {
+  public = [ "public/pw_allocator/block_allocator_testing.h" ]
+  public_deps = [
+    ":block_allocator",
+    ":block_testing",
     dir_pw_unit_test,
   ]
   deps = [
@@ -436,7 +428,7 @@ pw_test("best_fit_block_allocator_test") {
 
 pw_test("block_test") {
   deps = [
-    ":block",
+    ":block_testing",
     dir_pw_span,
   ]
   sources = [ "block_test.cc" ]
@@ -508,17 +500,11 @@ pw_test("fragmentation_test") {
   sources = [ "fragmentation_test.cc" ]
 }
 
-pw_test("freelist_test") {
-  deps = [
-    ":freelist",
-    dir_pw_span,
-    dir_pw_status,
-  ]
-  sources = [ "freelist_test.cc" ]
-}
-
 pw_test("freelist_heap_test") {
-  deps = [ ":freelist_heap" ]
+  deps = [
+    ":freelist_heap",
+    "$dir_pw_bytes:alignment",
+  ]
   sources = [ "freelist_heap_test.cc" ]
 }
 
@@ -528,6 +514,11 @@ pw_test("last_fit_block_allocator_test") {
     ":last_fit_block_allocator",
   ]
   sources = [ "last_fit_block_allocator_test.cc" ]
+}
+
+pw_test("layout_test") {
+  deps = [ ":deallocator" ]
+  sources = [ "layout_test.cc" ]
 }
 
 pw_test("libc_allocator_test") {
@@ -608,9 +599,9 @@ pw_test_group("tests") {
     ":fallback_allocator_test",
     ":first_fit_block_allocator_test",
     ":fragmentation_test",
-    ":freelist_test",
     ":freelist_heap_test",
     ":last_fit_block_allocator_test",
+    ":layout_test",
     ":libc_allocator_test",
     ":null_allocator_test",
     ":typed_pool_test",
