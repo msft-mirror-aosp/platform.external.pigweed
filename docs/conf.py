@@ -43,6 +43,7 @@ extensions = [
     "pw_docgen.sphinx.google_analytics",  # Enables optional Google Analytics
     "pw_docgen.sphinx.kconfig",
     "pw_docgen.sphinx.module_metadata",
+    "pw_docgen.sphinx.modules_index",
     "pw_docgen.sphinx.pigweed_live",
     "pw_docgen.sphinx.pw_status_codes",
     "pw_docgen.sphinx.inlinesearch",
@@ -256,6 +257,7 @@ redirects = {
     'docs/contributing/changelog': './docs/changelog.html',
     'docs/contributing/module_docs': './docs/modules.html',
     'docs/getting_started': './get_started/index.html',
+    'docs/infra/github': '../get_started/github.html',
     'docs/os_abstraction_layers': './os/index.html',
     'docs/release_notes/index': '../../changelog.html',
     'docs/release_notes/2022_jan': '../../changelog.html',

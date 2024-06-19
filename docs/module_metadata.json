@@ -36,6 +36,14 @@
       "GN"
     ]
   },
+  "pw_assert": {
+    "tagline": "Flexible crash triggering and handling",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_async": {
     "tagline": "Portable APIs for asynchronous code",
     "status": "deprecated",
@@ -113,7 +121,15 @@
     "tagline": "Simplified booting for C++ targets",
     "status": "stable",
     "languages": [
-      "C++17"
+      "C++"
+    ]
+  },
+  "pw_boot_cortex_m": {
+    "tagline": "ARM Cortex-M backend for pw_boot",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
     ]
   },
   "pw_build": {
@@ -308,6 +324,16 @@
       "C++17"
     ]
   },
+  "pw_ide": {
+    "tagline": "Code editor and IDE support for Pigweed projects",
+    "status": "stable",
+    "languages": [
+      "C++",
+      "CLI",
+      "Python",
+      "VS Code"
+    ]
+  },
   "pw_json": {
     "tagline": "Simple, efficient C++ JSON serialization",
     "status": "stable",
@@ -461,6 +487,13 @@
       "Rust",
       "TypeScript",
       "Java"
+    ]
+  },
+  "pw_toolchain": {
+    "tagline": "Embedded toolchains for GN-based Pigweed projects",
+    "status": "stable",
+    "languages": [
+      "GN"
     ]
   },
   "pw_toolchain_bazel": {
