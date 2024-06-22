@@ -274,34 +274,17 @@ cc_library(
 )
 
 cc_library(
-    name = "freelist",
-    srcs = [
-        "freelist.cc",
-    ],
-    hdrs = [
-        "public/pw_allocator/freelist.h",
-    ],
-    includes = ["public"],
-    deps = [
-        "//pw_containers",
-        "//pw_span",
-        "//pw_status",
-    ],
-)
-
-cc_library(
     name = "freelist_heap",
-    srcs = [
-        "freelist_heap.cc",
-    ],
     hdrs = [
         "public/pw_allocator/freelist_heap.h",
     ],
     includes = ["public"],
     deps = [
         ":block",
-        ":freelist",
-        "//pw_log",
+        ":bucket_block_allocator",
+        "//pw_assert",
+        "//pw_bytes",
+        "//pw_preprocessor",
     ],
 )
 
@@ -423,6 +406,21 @@ cc_library(
 )
 
 cc_library(
+    name = "block_testing",
+    testonly = True,
+    hdrs = [
+        "public/pw_allocator/block_testing.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":block",
+        "//pw_assert",
+        "//pw_bytes:alignment",
+        "//pw_status",
+    ],
+)
+
+cc_library(
     name = "block_allocator_testing",
     testonly = True,
     srcs = [
@@ -433,8 +431,8 @@ cc_library(
     ],
     includes = ["public"],
     deps = [
-        ":block",
         ":block_allocator",
+        ":block_testing",
         "//pw_assert",
         "//pw_bytes:alignment",
         "//pw_status",
@@ -531,7 +529,7 @@ pw_cc_test(
         "block_test.cc",
     ],
     deps = [
-        ":block",
+        ":block_testing",
         "//pw_span",
         "//pw_unit_test",
     ],
@@ -636,25 +634,13 @@ pw_cc_test(
 )
 
 pw_cc_test(
-    name = "freelist_test",
-    srcs = [
-        "freelist_test.cc",
-    ],
-    deps = [
-        ":freelist",
-        "//pw_span",
-        "//pw_status",
-        "//pw_unit_test",
-    ],
-)
-
-pw_cc_test(
     name = "freelist_heap_test",
     srcs = [
         "freelist_heap_test.cc",
     ],
     deps = [
         ":freelist_heap",
+        "//pw_bytes:alignment",
     ],
 )
 
@@ -664,6 +650,15 @@ pw_cc_test(
     deps = [
         ":block_allocator_testing",
         ":last_fit_block_allocator",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "layout_test",
+    srcs = ["layout_test.cc"],
+    deps = [
+        ":deallocator",
         "//pw_unit_test",
     ],
 )
