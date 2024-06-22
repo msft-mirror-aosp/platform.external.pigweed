@@ -13,6 +13,7 @@
 # the License.
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
@@ -162,6 +163,12 @@ pw_cc_test(
     srcs = [
         "register_device_test.cc",
     ],
+    # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+    # indefinitely.
+    target_compatible_with = select({
+        "//pw_build/constraints/chipset:rp2040": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":register_device",
         "//pw_unit_test",
@@ -181,6 +188,11 @@ proto_library(
 
 pw_proto_library(
     name = "i2c_cc",
+    deps = [":i2c_proto"],
+)
+
+py_proto_library(
+    name = "i2c_py_pb2",
     deps = [":i2c_proto"],
 )
 
