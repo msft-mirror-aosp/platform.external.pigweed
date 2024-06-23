@@ -14,6 +14,7 @@
 # the License.
 """Tests for ninja_parser."""
 
+import difflib
 from pathlib import Path
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
@@ -26,7 +27,7 @@ _REAL_BUILD_INPUT = """
 [1168/1797] cp ../../pw_software_update/py/dev_sign_test.py python/gen/pw_software_update/py/py.generated_python_package/dev_sign_test.py
 [1169/1797] ACTION //pw_presubmit/py:py.lint.mypy(//pw_build/python_toolchain:python)
 \x1b[31mFAILED: python/gen/pw_presubmit/py/py.lint.mypy.pw_pystamp
-python ../../pw_build/py/pw_build/python_runner.py --gn-root ../../ --current-path ../../pw_presubmit/py --default-toolchain=//pw_toolchain/default:default --current-toolchain=//pw_build/python_toolchain:python --env=MYPY_FORCE_COLOR=1 --touch python/gen/pw_presubmit/py/py.lint.mypy.pw_pystamp --capture-output --module mypy --python-virtualenv-config python/gen/pw_env_setup/pigweed_build_venv/venv_metadata.json --python-dep-list-files python/gen/pw_presubmit/py/py.lint.mypy_metadata_path_list.txt -- --pretty --show-error-codes ../../pw_presubmit/py/pw_presubmit/__init__.py ../../pw_presubmit/py/pw_presubmit/build.py ../../pw_presubmit/py/pw_presubmit/cli.py ../../pw_presubmit/py/pw_presubmit/cpp_checks.py ../../pw_presubmit/py/pw_presubmit/format_code.py ../../pw_presubmit/py/pw_presubmit/git_repo.py ../../pw_presubmit/py/pw_presubmit/inclusive_language.py ../../pw_presubmit/py/pw_presubmit/install_hook.py ../../pw_presubmit/py/pw_presubmit/keep_sorted.py ../../pw_presubmit/py/pw_presubmit/ninja_parser.py ../../pw_presubmit/py/pw_presubmit/npm_presubmit.py ../../pw_presubmit/py/pw_presubmit/pigweed_presubmit.py ../../pw_presubmit/py/pw_presubmit/presubmit.py ../../pw_presubmit/py/pw_presubmit/python_checks.py ../../pw_presubmit/py/pw_presubmit/shell_checks.py ../../pw_presubmit/py/pw_presubmit/todo_check.py ../../pw_presubmit/py/pw_presubmit/tools.py ../../pw_presubmit/py/git_repo_test.py ../../pw_presubmit/py/keep_sorted_test.py ../../pw_presubmit/py/ninja_parser_test.py ../../pw_presubmit/py/presubmit_test.py ../../pw_presubmit/py/tools_test.py ../../pw_presubmit/py/setup.py
+python [...]/py/pw_build/python_runner.py --gn-root ../../ --current-path ../../pw_presubmit/py --default-toolchain=//pw_toolchain/default:default --current-toolchain=//pw_build/python_toolchain:python --env=MYPY_FORCE_COLOR=1 --touch python/gen/pw_presubmit/py/py.lint.mypy.pw_pystamp --capture-output --module mypy --python-virtualenv-config python/gen/pw_env_setup/pigweed_build_venv/venv_metadata.json --python-dep-list-files python/gen/pw_presubmit/py/py.lint.mypy_metadata_path_list.txt -- --pretty --show-error-codes ../../pw_presubmit/py/pw_presubmit/__init__.py ../../pw_presubmit/py/pw_presubmit/build.py ../../pw_presubmit/py/pw_presubmit/cli.py ../../pw_presubmit/py/pw_presubmit/cpp_checks.py ../../pw_presubmit/py/pw_presubmit/format_code.py ../../pw_presubmit/py/pw_presubmit/git_repo.py ../../pw_presubmit/py/pw_presubmit/inclusive_language.py ../../pw_presubmit/py/pw_presubmit/install_hook.py ../../pw_presubmit/py/pw_presubmit/keep_sorted.py ../../pw_presubmit/py/pw_presubmit/ninja_parser.py ../../pw_presubmit/py/pw_presubmit/npm_presubmit.py ../../pw_presubmit/py/pw_presubmit/pigweed_presubmit.py ../../pw_presubmit/py/pw_presubmit/presubmit.py ../../pw_presubmit/py/pw_presubmit/python_checks.py ../../pw_presubmit/py/pw_presubmit/shell_checks.py ../../pw_presubmit/py/pw_presubmit/todo_check.py ../../pw_presubmit/py/pw_presubmit/tools.py ../../pw_presubmit/py/git_repo_test.py ../../pw_presubmit/py/keep_sorted_test.py ../../pw_presubmit/py/ninja_parser_test.py ../../pw_presubmit/py/presubmit_test.py ../../pw_presubmit/py/tools_test.py ../../pw_presubmit/py/setup.py
   Requirement already satisfied: pyserial in c:\\b\\s\\w\\ir\\x\\w\\co\\environment\\pigweed-venv\\lib\\site-packages (from pigweed==0.0.13+20230126212203) (3.5)
 ../../pw_presubmit/py/presubmit_test.py:63: error: Module has no attribute
 "Filter"  [attr-defined]
@@ -57,7 +58,7 @@ ninja: build stopped: subcommand failed.
 _REAL_BUILD_SUMMARY = """
 [1169/1797] ACTION //pw_presubmit/py:py.lint.mypy(//pw_build/python_toolchain:python)
 \x1b[31mFAILED: python/gen/pw_presubmit/py/py.lint.mypy.pw_pystamp
-python ../../pw_build/py/pw_build/python_runner.py --gn-root ../../ --current-path ../../pw_presubmit/py --default-toolchain=//pw_toolchain/default:default --current-toolchain=//pw_build/python_toolchain:python --env=MYPY_FORCE_COLOR=1 --touch python/gen/pw_presubmit/py/py.lint.mypy.pw_pystamp --capture-output --module mypy --python-virtualenv-config python/gen/pw_env_setup/pigweed_build_venv/venv_metadata.json --python-dep-list-files python/gen/pw_presubmit/py/py.lint.mypy_metadata_path_list.txt -- --pretty --show-error-codes ../../pw_presubmit/py/pw_presubmit/__init__.py ../../pw_presubmit/py/pw_presubmit/build.py ../../pw_presubmit/py/pw_presubmit/cli.py ../../pw_presubmit/py/pw_presubmit/cpp_checks.py ../../pw_presubmit/py/pw_presubmit/format_code.py ../../pw_presubmit/py/pw_presubmit/git_repo.py ../../pw_presubmit/py/pw_presubmit/inclusive_language.py ../../pw_presubmit/py/pw_presubmit/install_hook.py ../../pw_presubmit/py/pw_presubmit/keep_sorted.py ../../pw_presubmit/py/pw_presubmit/ninja_parser.py ../../pw_presubmit/py/pw_presubmit/npm_presubmit.py ../../pw_presubmit/py/pw_presubmit/pigweed_presubmit.py ../../pw_presubmit/py/pw_presubmit/presubmit.py ../../pw_presubmit/py/pw_presubmit/python_checks.py ../../pw_presubmit/py/pw_presubmit/shell_checks.py ../../pw_presubmit/py/pw_presubmit/todo_check.py ../../pw_presubmit/py/pw_presubmit/tools.py ../../pw_presubmit/py/git_repo_test.py ../../pw_presubmit/py/keep_sorted_test.py ../../pw_presubmit/py/ninja_parser_test.py ../../pw_presubmit/py/presubmit_test.py ../../pw_presubmit/py/tools_test.py ../../pw_presubmit/py/setup.py
+python [...]/py/pw_build/python_runner.py --gn-root ../../ --current-path ../../pw_presubmit/py --default-toolchain=//pw_toolchain/default:default --current-toolchain=//pw_build/python_toolchain:python --env=MYPY_FORCE_COLOR=1 --touch python/gen/pw_presubmit/py/py.lint.mypy.pw_pystamp --capture-output --module mypy --python-virtualenv-config python/gen/pw_env_setup/pigweed_build_venv/venv_metadata.json --python-dep-list-files python/gen/pw_presubmit/py/py.lint.mypy_metadata_path_list.txt -- --pretty --show-error-codes [...]/py/pw_presubmit/__init__.py [...]/py/pw_presubmit/build.py [...]/py/pw_presubmit/cli.py [...]/py/pw_presubmit/cpp_checks.py [...]/py/pw_presubmit/format_code.py [...]/py/pw_presubmit/git_repo.py [...]/py/pw_presubmit/inclusive_language.py [...]/py/pw_presubmit/install_hook.py [...]/py/pw_presubmit/keep_sorted.py [...]/py/pw_presubmit/ninja_parser.py [...]/py/pw_presubmit/npm_presubmit.py [...]/py/pw_presubmit/pigweed_presubmit.py [...]/py/pw_presubmit/presubmit.py [...]/py/pw_presubmit/python_checks.py [...]/py/pw_presubmit/shell_checks.py [...]/py/pw_presubmit/todo_check.py [...]/py/pw_presubmit/tools.py ../../pw_presubmit/py/git_repo_test.py ../../pw_presubmit/py/keep_sorted_test.py ../../pw_presubmit/py/ninja_parser_test.py ../../pw_presubmit/py/presubmit_test.py ../../pw_presubmit/py/tools_test.py ../../pw_presubmit/py/setup.py
 ../../pw_presubmit/py/presubmit_test.py:63: error: Module has no attribute
 "Filter"  [attr-defined]
             TestData(presubmit.Filter(suffix=('.a', '.b')), 'foo.c', False...
@@ -73,7 +74,7 @@ _REAL_TEST_INPUT = r"""
 [20280/31188] Finished [ACTION //pw_rpc:cpp_client_server_integration_test(//targets/host/pigweed_internal:pw_strict_host_clang_debug)] (10.2s)
 [ACTION //pw_rpc:cpp_client_server_integration_test(//targets/host/pigweed_internal:pw_strict_host_clang_debug)]
 [31mFAILED: [0mpw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test.pw_pystamp
-python ../../pw_build/py/pw_build/python_runner.py --gn-root ../../ --current-path ../../pw_rpc --default-toolchain=//pw_toolchain/default:default --current-toolchain=//targets/host/pigweed_internal:pw_strict_host_clang_debug --touch pw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test.pw_pystamp --capture-output --python-virtualenv-config python/gen/pw_env_setup/pigweed_build_venv/venv_metadata.json --python-dep-list-files pw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test_metadata_path_list.txt -- ../../pw_rpc/py/pw_rpc/testing.py --server \<TARGET_FILE\(:test_rpc_server\)\> --client \<TARGET_FILE\(:client_integration_test\)\> -- 30577
+python [...]/py/pw_build/python_runner.py --gn-root ../../ --current-path ../../pw_rpc --default-toolchain=//pw_toolchain/default:default --current-toolchain=//targets/host/pigweed_internal:pw_strict_host_clang_debug --touch pw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test.pw_pystamp --capture-output --python-virtualenv-config python/gen/pw_env_setup/pigweed_build_venv/venv_metadata.json --python-dep-list-files pw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test_metadata_path_list.txt -- [...]/py/pw_rpc/testing.py --server \<TARGET_FILE\(:test_rpc_server\)\> --client \<TARGET_FILE\(:client_integration_test\)\> -- 30577
 [35m[1mINF[0m  Starting pw_rpc server on port 30577
 [35m[1mINF[0m  Connecting to pw_rpc client at localhost:30577
 [35m[1mINF[0m  [==========] Running all tests.
@@ -120,7 +121,7 @@ python ../../pw_build/py/pw_build/python_runner.py --gn-root ../../ --current-pa
 _REAL_TEST_SUMMARY = r"""
 [ACTION //pw_rpc:cpp_client_server_integration_test(//targets/host/pigweed_internal:pw_strict_host_clang_debug)]
 [31mFAILED: [0mpw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test.pw_pystamp
-python ../../pw_build/py/pw_build/python_runner.py --gn-root ../../ --current-path ../../pw_rpc --default-toolchain=//pw_toolchain/default:default --current-toolchain=//targets/host/pigweed_internal:pw_strict_host_clang_debug --touch pw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test.pw_pystamp --capture-output --python-virtualenv-config python/gen/pw_env_setup/pigweed_build_venv/venv_metadata.json --python-dep-list-files pw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test_metadata_path_list.txt -- ../../pw_rpc/py/pw_rpc/testing.py --server \<TARGET_FILE\(:test_rpc_server\)\> --client \<TARGET_FILE\(:client_integration_test\)\> -- 30577
+python [...]/py/pw_build/python_runner.py --gn-root ../../ --current-path ../../pw_rpc --default-toolchain=//pw_toolchain/default:default --current-toolchain=//targets/host/pigweed_internal:pw_strict_host_clang_debug --touch pw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test.pw_pystamp --capture-output --python-virtualenv-config python/gen/pw_env_setup/pigweed_build_venv/venv_metadata.json --python-dep-list-files pw_strict_host_clang_debug/gen/pw_rpc/cpp_client_server_integration_test_metadata_path_list.txt -- [...]/py/pw_rpc/testing.py --server \<TARGET_FILE\(:test_rpc_server\)\> --client \<TARGET_FILE\(:client_integration_test\)\> -- 30577
 [35m[1mINF[0m  Starting pw_rpc server on port 30577
 [35m[1mINF[0m  Connecting to pw_rpc client at localhost:30577
 [35m[1mINF[0m  [==========] Running all tests.
@@ -160,28 +161,42 @@ class TestNinjaParser(unittest.TestCase):
         with patch.object(path, 'open', mocked_open_read):
             return ninja_parser.parse_ninja_stdout(path)
 
+    def _assert_equal(self, left, right):
+        if (
+            not isinstance(left, str)
+            or not isinstance(right, str)
+            or '\n' not in left
+            or '\n' not in right
+        ):
+            return self.assertEqual(left, right)
+
+        diff = ''.join(
+            difflib.unified_diff(left.splitlines(True), right.splitlines(True))
+        )
+        return self.assertSequenceEqual(left, right, f'\n{diff}\n')
+
     def test_simple(self) -> None:
         error = '[2/10] baz\nFAILED: something\nerror 1\nerror 2\n'
         result = self._run('[0/10] foo\n[1/10] bar\n' + error + _STOP)
-        self.assertEqual(error.strip(), result.strip())
+        self._assert_equal(error.strip(), result.strip())
 
     def test_short(self) -> None:
         error = '[2/10] baz\nFAILED: something\n'
         result = self._run('[0/10] foo\n[1/10] bar\n' + error + _STOP)
-        self.assertEqual(error.strip(), result.strip())
+        self._assert_equal(error.strip(), result.strip())
 
     def test_unexpected(self) -> None:
         error = '[2/10] baz\nERROR: something\nerror 1\n'
         result = self._run('[0/10] foo\n[1/10] bar\n' + error)
-        self.assertEqual('', result.strip())
+        self._assert_equal('', result.strip())
 
     def test_real_build(self) -> None:
         result = self._run(_REAL_BUILD_INPUT)
-        self.assertEqual(_REAL_BUILD_SUMMARY.strip(), result.strip())
+        self._assert_equal(_REAL_BUILD_SUMMARY.strip(), result.strip())
 
     def test_real_test(self) -> None:
         result = self._run(_REAL_TEST_INPUT)
-        self.assertEqual(_REAL_TEST_SUMMARY.strip(), result.strip())
+        self._assert_equal(_REAL_TEST_SUMMARY.strip(), result.strip())
 
 
 if __name__ == '__main__':

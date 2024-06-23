@@ -169,6 +169,15 @@ identical to the project's directory structure. The only special case is the
 top-level ``index.rst`` file's imports; they must start from the project's build
 root.
 
+Viewing Documentation
+---------------------
+``pw_docgen`` includes a web server that serves locally-generated documentation
+at ``pw_docgen.docserver``. It supports hot-reloading, so the rendered docs in
+your browser will refresh as you make changes to the source files.
+
+In most cases, you will not need to run the docs server directly. Instead, it
+will be run via :ref:`module-pw_watch`.
+
 Sphinx Extensions
 =================
 This module houses Pigweed-specific extensions for the Sphinx documentation
@@ -210,6 +219,29 @@ _________________
 - ``languages``: A comma-separated list of languages the module supports.  If
   the language has API docs (Rust), they will be linked from the metadata block.
 - ``code-size-impact``: A summarize of the average code size impact
+
+Canonical URL configuration
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``module_metadata`` fixes the canonical URLs for ``*/docs.html`` pages. By
+default Sphinx assumes that a page's canonical URL is its full URL. E.g. the
+default canonical URL for ``//pw_string/docs.rst`` is
+``https://pigweed.dev/pw_string/docs.html``.  The ``pigweed.dev``
+server treats ``https://pigweed.dev/pw_string/`` as the canonical URL however.
+This problem is not limited to module homepages; it occurs on any page that
+ends in ``/docs.html`` such as
+``https://pigweed.dev/third_party/emboss/docs.html``. ``module_metadata`` fixes
+this problem by ensuring that the ``<link rel="canonical" href="..."/>`` tag
+generated in the HTML is aligned with the server's configuration.
+
+After building the docs, the canonical URLs for all HTML pages can be verified
+by running the following command in a terminal from the root directory of the
+upstream Pigweed repo:
+
+.. code-block:: console
+
+   grep '<link rel="canonical' out/docs/gen/docs/html/* -R
+
+Context: `b/323077749 <https://issues.pigweed.dev/323077749>`_
 
 google_analytics
 ----------------

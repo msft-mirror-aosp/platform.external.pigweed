@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -14,6 +14,8 @@
 #pragma once
 
 #include "pw_chrono/system_clock.h"
+#include "pw_function/function.h"
+#include "pw_rpc/raw/server_reader_writer.h"
 #include "pw_rpc/writer.h"
 #include "pw_stream/stream.h"
 #include "pw_transfer/internal/protocol.h"
@@ -31,6 +33,12 @@ enum class TransferStream {
   kClientWrite,
   kServerRead,
   kServerWrite,
+};
+
+enum class IdentifierType {
+  Session,
+  Resource,
+  Handle,
 };
 
 enum class EventType {
@@ -55,12 +63,18 @@ enum class EventType {
   // transfer context's completion handler; it is for out-of-band termination.
   kSendStatusChunk,
 
+  // Changes parameters of an ongoing client transfer.
+  kUpdateClientTransfer,
+
   // Manages the list of transfer handlers for a transfer service.
   kAddTransferHandler,
   kRemoveTransferHandler,
 
   // For testing only: aborts the transfer thread.
   kTerminate,
+
+  // Gets the status of a resource, if there is a handler registered for it.
+  kGetResourceStatus,
 };
 
 // Forward declarations required for events.
@@ -72,6 +86,7 @@ struct NewTransferEvent {
   ProtocolVersion protocol_version;
   uint32_t session_id;
   uint32_t resource_id;
+  uint32_t handle_id;
   rpc::Writer* rpc_writer;
   const TransferParameters* max_parameters;
   chrono::SystemClock::duration timeout;
@@ -87,6 +102,8 @@ struct NewTransferEvent {
 
   const std::byte* raw_chunk_data;
   size_t raw_chunk_size;
+
+  uint64_t initial_offset;
 };
 
 // A chunk received by a transfer client / server.
@@ -103,7 +120,8 @@ struct ChunkEvent {
 };
 
 struct EndTransferEvent {
-  uint32_t session_id;
+  IdentifierType id_type;
+  uint32_t id;
   Status::Code status;
   bool send_status_chunk;
 };
@@ -115,6 +133,25 @@ struct SendStatusChunkEvent {
   TransferStream stream;
 };
 
+struct UpdateTransferEvent {
+  uint32_t handle_id;
+  uint32_t transfer_size_bytes;
+};
+
+struct ResourceStatus {
+  uint32_t resource_id;
+  uint64_t readable_offset;
+  uint64_t writeable_offset;
+  uint64_t read_checksum;
+  uint64_t write_checksum;
+};
+
+using ResourceStatusCallback = Callback<void(Status, const ResourceStatus&)>;
+
+struct GetResourceStatusEvent {
+  uint32_t resource_id;
+};
+
 struct Event {
   EventType type;
 
@@ -123,8 +160,10 @@ struct Event {
     ChunkEvent chunk;
     EndTransferEvent end_transfer;
     SendStatusChunkEvent send_status_chunk;
+    UpdateTransferEvent update_transfer;
     Handler* add_transfer_handler;
     Handler* remove_transfer_handler;
+    GetResourceStatusEvent resource_status;
   };
 };
 

@@ -16,29 +16,14 @@
 
 #include <cstddef>
 
-#include "gtest/gtest.h"
 #include "pw_allocator/allocator_testing.h"
-#include "pw_bytes/alignment.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::allocator {
 namespace {
 
-// Test fixtures.
-
-class AllocatorTest : public ::testing::Test {
- protected:
-  void SetUp() override { EXPECT_EQ(allocator.Init(buffer), OkStatus()); }
-  void TearDown() override { allocator.DeallocateAll(); }
-
-  test::AllocatorForTest allocator;
-
- private:
-  std::array<std::byte, 256> buffer = {};
-};
-
-// Unit tests
-
-TEST_F(AllocatorTest, ReallocateNull) {
+TEST(AllocatorTest, ReallocateNull) {
+  test::AllocatorForTest<256> allocator;
   constexpr Layout old_layout = Layout::Of<uint32_t>();
   size_t new_size = old_layout.size();
   void* new_ptr = allocator.Reallocate(nullptr, old_layout, new_size);
@@ -54,7 +39,8 @@ TEST_F(AllocatorTest, ReallocateNull) {
   EXPECT_NE(new_ptr, nullptr);
 }
 
-TEST_F(AllocatorTest, ReallocateZeroNewSize) {
+TEST(AllocatorTest, ReallocateZeroNewSize) {
+  test::AllocatorForTest<256> allocator;
   constexpr Layout old_layout = Layout::Of<uint32_t[3]>();
   void* ptr = allocator.Allocate(old_layout);
   ASSERT_EQ(allocator.allocate_size(), old_layout.size());
@@ -76,7 +62,8 @@ TEST_F(AllocatorTest, ReallocateZeroNewSize) {
   EXPECT_EQ(new_ptr, nullptr);
 }
 
-TEST_F(AllocatorTest, ReallocateSame) {
+TEST(AllocatorTest, ReallocateSame) {
+  test::AllocatorForTest<256> allocator;
   constexpr Layout layout = Layout::Of<uint32_t[3]>();
   void* ptr = allocator.Allocate(layout);
   ASSERT_EQ(allocator.allocate_size(), layout.size());
@@ -101,7 +88,8 @@ TEST_F(AllocatorTest, ReallocateSame) {
   EXPECT_EQ(new_ptr, ptr);
 }
 
-TEST_F(AllocatorTest, ReallocateSmaller) {
+TEST(AllocatorTest, ReallocateSmaller) {
+  test::AllocatorForTest<256> allocator;
   constexpr Layout old_layout = Layout::Of<uint32_t[3]>();
   void* ptr = allocator.Allocate(old_layout);
   ASSERT_EQ(allocator.allocate_size(), old_layout.size());
@@ -127,7 +115,8 @@ TEST_F(AllocatorTest, ReallocateSmaller) {
   EXPECT_EQ(new_ptr, ptr);
 }
 
-TEST_F(AllocatorTest, ReallocateLarger) {
+TEST(AllocatorTest, ReallocateLarger) {
+  test::AllocatorForTest<256> allocator;
   constexpr Layout old_layout = Layout::Of<uint32_t>();
   void* ptr = allocator.Allocate(old_layout);
   ASSERT_EQ(allocator.allocate_size(), old_layout.size());

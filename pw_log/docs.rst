@@ -16,12 +16,6 @@ two components:
 service for efficiently storing and transmitting log messages. See
 :ref:`module-pw_log-protobuf` for details.
 
-.. toctree::
-   :hidden:
-
-   protobuf
-   tokenized_args
-
 --------------
 Usage examples
 --------------
@@ -341,6 +335,9 @@ required by the log backend used by the platform.
 You must add a dependency on the ``@pigweed//pw_log:backend_impl`` target to
 any binary using ``pw_log``.
 
+See :ref:`docs-build_system-bazel_link-extra-lib` for a general discussion of
+cyclic dependencies in low-level libraries in Bazel.
+
 ----------------------
 Google Logging Adapter
 ----------------------
@@ -486,3 +483,11 @@ pw_log.log_decoder
     :members: Log, LogStreamDecoder
     :undoc-members:
     :show-inheritance:
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   protobuf
+   tokenized_args
+   Backends <backends>

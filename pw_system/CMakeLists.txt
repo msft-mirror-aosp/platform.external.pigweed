@@ -78,7 +78,7 @@ pw_add_facade(pw_system.rpc_server INTERFACE
 pw_add_library(pw_system.hdlc_rpc_server STATIC
   PRIVATE_DEPS
     pw_assert
-    pw_hdlc.pw_rpc
+    pw_hdlc.default_addresses
     pw_hdlc.rpc_channel_output
     pw_sync.mutex
     pw_system.config
@@ -86,6 +86,7 @@ pw_add_library(pw_system.hdlc_rpc_server STATIC
     pw_system.rpc_server.facade
     pw_system.target_io
     pw_thread.thread_core
+    pw_trace
   SOURCES
     hdlc_rpc_server.cc
 )

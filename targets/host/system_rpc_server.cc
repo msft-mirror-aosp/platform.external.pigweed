@@ -17,9 +17,10 @@
 #include <cstdio>
 
 #include "pw_assert/check.h"
+#include "pw_hdlc/decoder.h"
+#include "pw_hdlc/default_addresses.h"
 #include "pw_hdlc/encoded_size.h"
 #include "pw_hdlc/rpc_channel.h"
-#include "pw_hdlc/rpc_packets.h"
 #include "pw_log/log.h"
 #include "pw_rpc_system_server/rpc_server.h"
 #include "pw_stream/socket_stream.h"
@@ -49,7 +50,12 @@ void set_socket_port(uint16_t new_socket_port) {
   socket_port = new_socket_port;
 }
 
-int GetServerSocketFd() { return socket_stream.connection_fd(); }
+int SetServerSockOpt(int level,
+                     int optname,
+                     const void* optval,
+                     unsigned int optlen) {
+  return socket_stream.SetSockOpt(level, optname, optval, optlen);
+}
 
 void Init() {
   log_basic::SetOutput([](std::string_view log) {

@@ -22,7 +22,6 @@ load(
     "//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
     "cipd_client_repository",
     "cipd_repository",
-    "pigweed_deps",
 )
 
 # Set up Bazel platforms.
@@ -37,26 +36,26 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "rules_cc",
+    sha256 = "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
+    strip_prefix = "rules_cc-0.0.9",
+    urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.9/rules_cc-0.0.9.tar.gz"],
+)
+
 local_repository(
     name = "pw_toolchain",
     path = "pw_toolchain_bazel",
 )
 
-# Setup xcode on mac.
-load("@pw_toolchain//features/macos:generate_xcode_repository.bzl", "pw_xcode_command_line_tools_repository")
-
-pw_xcode_command_line_tools_repository()
-
 # Setup CIPD client and packages.
 # Required by: pigweed.
 # Used by modules: all.
-pigweed_deps()
-
-load("@cipd_deps//:cipd_init.bzl", "cipd_init")
-
-cipd_init()
-
 cipd_client_repository()
+
+load("//pw_toolchain:register_toolchains.bzl", "register_pigweed_cxx_toolchains")
+
+register_pigweed_cxx_toolchains()
 
 # Set up legacy pw_transfer test binaries.
 # Required by: pigweed.
@@ -65,49 +64,6 @@ cipd_repository(
     name = "pw_transfer_test_binaries",
     path = "pigweed/pw_transfer_test_binaries/${os=linux}-${arch=amd64}",
     tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
-)
-
-# Fetch llvm toolchain.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "llvm_toolchain",
-    path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:8475d0a2b853f6184948b428ec679edf84ed2688",
-)
-
-# Fetch linux sysroot for host builds.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "linux_sysroot",
-    path = "fuchsia/third_party/sysroot/linux",
-    tag = "git_revision:d342388843734b6c5c50fb7e18cd3a76476b93aa",
-)
-
-# Note that the order of registration matters: Bazel will use the first
-# toolchain compatible with the target platform. So, they should be listed from
-# most-restrive to least-restrictive.
-register_toolchains(
-    "//pw_toolchain/host_clang:host_cc_toolchain_linux_kythe",
-    "//pw_toolchain/host_clang:host_cc_toolchain_linux",
-    "//pw_toolchain/host_clang:host_cc_toolchain_macos",
-)
-
-# Fetch gcc-arm-none-eabi toolchain.
-# Required by: pigweed.
-# Used in modules: //pw_toolchain.
-cipd_repository(
-    name = "gcc_arm_none_eabi_toolchain",
-    path = "fuchsia/third_party/armgcc/${os}-${arch}",
-    tag = "version:2@12.2.mpacbti-rel1.1",
-)
-
-register_toolchains(
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m0",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m3",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4+nofp",
 )
 
 # Set up Starlark library.
@@ -127,27 +83,73 @@ load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 
 bazel_skylib_workspace()
 
+# Used in modules: //pw_grpc
+http_archive(
+    name = "io_bazel_rules_go",
+    sha256 = "7c76d6236b28ff695aa28cf35f95de317a9472fd1fb14ac797c9bf684f09b37c",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
+        "https://github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
+    ],
+)
+
+# Used in modules: //pw_grpc
+http_archive(
+    name = "bazel_gazelle",
+    sha256 = "32938bda16e6700063035479063d9d24c60eda8d79fd4739563f50d331cb3209",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-gazelle/releases/download/v0.35.0/bazel-gazelle-v0.35.0.tar.gz",
+        "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.35.0/bazel-gazelle-v0.35.0.tar.gz",
+    ],
+)
+
+load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
+load("@io_bazel_rules_go//go:deps.bzl", "go_register_toolchains", "go_rules_dependencies")
+
+go_rules_dependencies()
+
+go_register_toolchains(version = "1.21.5")
+
+gazelle_dependencies()
+
+load("//pw_grpc:deps.bzl", "pw_grpc_deps")
+
+# gazelle:repository_macro pw_grpc/deps.bzl%pw_grpc_deps
+pw_grpc_deps()
+
+http_archive(
+    name = "rules_proto",
+    sha256 = "dc3fb206a2cb3441b485eb1e423165b231235a1ea9b031b4433cf7bc1fa460dd",
+    strip_prefix = "rules_proto-5.3.0-21.7",
+    urls = [
+        "https://github.com/bazelbuild/rules_proto/archive/refs/tags/5.3.0-21.7.tar.gz",
+    ],
+)
+
 # Set up Python support.
 # Required by: rules_fuzzing, com_github_nanopb_nanopb.
 # Used in modules: None.
-http_archive(
+# TODO: b/310293060 - Switch to an official release when it includes the fix for
+# macOS hosts running Python <=3.8.
+git_repository(
     name = "rules_python",
-    sha256 = "0a8003b044294d7840ac7d9d73eef05d6ceb682d7516781a4ec62eeb34702578",
-    strip_prefix = "rules_python-0.24.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.24.0/rules_python-0.24.0.tar.gz",
+    commit = "e06b4bae446706db3414e75d301f56821001b554",
+    remote = "https://github.com/bazelbuild/rules_python.git",
 )
 
-load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
 
-# Use Python 3.10 for bazel Python rules.
+py_repositories()
+
+# Use Python 3.11 for bazel Python rules.
 python_register_toolchains(
-    name = "python3_10",
+    name = "python3",
     # Allows building as root in a docker container. Required by oss-fuzz.
     ignore_root_user_error = True,
-    python_version = "3.10",
+    python_version = "3.11",
 )
 
-load("@python3_10//:defs.bzl", "interpreter")
+load("@python3//:defs.bzl", "interpreter")
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 # Specify third party Python package versions with pip_parse.
@@ -166,15 +168,26 @@ load("@python_packages//:requirements.bzl", "install_deps")
 # Run pip install for all @python_packages_*//:pkg deps.
 install_deps()
 
+# Set up rules for Abseil C++.
+# Must be included before com_google_googletest and rules_fuzzing.
+# Required by: rules_fuzzing, fuzztest
+# Generated by //pw_build/py/pw_build/bazel_to_gn.py
+http_archive(
+    name = "com_google_absl",
+    sha256 = "338420448b140f0dfd1a1ea3c3ce71b3bc172071f24f4d9a57d59b45037da440",
+    strip_prefix = "abseil-cpp-20240116.0",
+    url = "https://github.com/abseil/abseil-cpp/releases/download/20240116.0/abseil-cpp-20240116.0.tar.gz",
+)
+
 # Set up upstream googletest and googlemock.
 # Required by: Pigweed.
 # Used in modules: //pw_analog, //pw_fuzzer, //pw_i2c.
 http_archive(
     name = "com_google_googletest",
-    sha256 = "ad7fdba11ea011c1d925b3289cf4af2c66a352e18d4c7264392fead75e919363",
-    strip_prefix = "googletest-1.13.0",
+    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
+    strip_prefix = "googletest-1.14.0",
     urls = [
-        "https://github.com/google/googletest/archive/refs/tags/v1.13.0.tar.gz",
+        "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
     ],
 )
 
@@ -184,17 +197,17 @@ git_repository(
     name = "io_bazel_stardoc",
     commit = "2b801dc9b93f73812948ee4e505805511b0f55dc",
     remote = "https://github.com/bazelbuild/stardoc.git",
-    shallow_since = "1651081130 -0400",
 )
 
 # Set up Protobuf rules.
 # Required by: pigweed.
 # Used in modules: //pw_protobuf.
+# TODO: pwbug.dev/319717451 - Keep this in sync with the pip requirements.
 http_archive(
     name = "com_google_protobuf",
-    sha256 = "c6003e1d2e7fefa78a3039f19f383b4f3a61e81be8c19356f85b6461998ad3db",
-    strip_prefix = "protobuf-3.17.3",
-    url = "https://github.com/protocolbuffers/protobuf/archive/v3.17.3.tar.gz",
+    sha256 = "616bb3536ac1fff3fb1a141450fa28b875e985712170ea7f1bfe5e5fc41e2cd8",
+    strip_prefix = "protobuf-24.4",
+    url = "https://github.com/protocolbuffers/protobuf/releases/download/v24.4/protobuf-24.4.tar.gz",
 )
 
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
@@ -272,32 +285,20 @@ git_repository(
     name = "rust_crates",
     commit = "6d975531f7672cc6aa54bdd7517e1beeffa578da",
     remote = "https://pigweed.googlesource.com/third_party/rust_crates",
-    shallow_since = "1675359057 +0000",
 )
 
 # Registers platforms for use with toolchain resolution
 register_execution_platforms("@local_config_platform//:host", "//pw_build/platforms:all")
 
-# Required by: rules_fuzzing, fuzztest
-#
-# Provided here explicitly to override an old version of absl that
-# rules_fuzzing_dependencies attempts to pull in. That version has
-# many compiler warnings on newer clang versions.
-http_archive(
-    name = "com_google_absl",
-    sha256 = "3ea49a7d97421b88a8c48a0de16c16048e17725c7ec0f1d3ea2683a2a75adc21",
-    strip_prefix = "abseil-cpp-20230125.0",
-    urls = ["https://github.com/abseil/abseil-cpp/archive/refs/tags/20230125.0.tar.gz"],
-)
-
 # Set up rules for fuzz testing.
 # Required by: pigweed.
 # Used in modules: //pw_protobuf, //pw_tokenizer, //pw_fuzzer.
-http_archive(
+#
+# TODO(b/311746469): Switch back to a released version when possible.
+git_repository(
     name = "rules_fuzzing",
-    sha256 = "d9002dd3cd6437017f08593124fdd1b13b3473c7b929ceb0e60d317cb9346118",
-    strip_prefix = "rules_fuzzing-0.3.2",
-    urls = ["https://github.com/bazelbuild/rules_fuzzing/archive/v0.3.2.zip"],
+    commit = "67ba0264c46c173a75825f2ae0a0b4b9b17c5e59",
+    remote = "https://github.com/bazelbuild/rules_fuzzing",
 )
 
 load("@rules_fuzzing//fuzzing:repositories.bzl", "rules_fuzzing_dependencies")
@@ -320,14 +321,14 @@ http_archive(
     url = "https://github.com/google/re2/archive/refs/tags/2022-06-01.tar.gz",
 )
 
-# Required by: pigweed.
+# Set up rules for FuzzTest.
+# Required by: fuzztest
 # Used in modules: //pw_fuzzer.
-FUZZTEST_COMMIT = "f2e9e2a19a7b16101d1e6f01a87e639687517a1c"
-
+# Generated by //pw_build/py/pw_build/bazel_to_gn.py
 http_archive(
     name = "com_google_fuzztest",
-    strip_prefix = "fuzztest-" + FUZZTEST_COMMIT,
-    url = "https://github.com/google/fuzztest/archive/" + FUZZTEST_COMMIT + ".zip",
+    strip_prefix = "fuzztest-6eb010c7223a6aa609b94d49bfc06ac88f922961",
+    url = "https://github.com/google/fuzztest/archive/6eb010c7223a6aa609b94d49bfc06ac88f922961.zip",
 )
 
 RULES_JVM_EXTERNAL_TAG = "2.8"
@@ -367,14 +368,12 @@ new_git_repository(
     build_file = "//:third_party/micro_ecc/BUILD.micro_ecc",
     commit = "b335ee812bfcca4cd3fb0e2a436aab39553a555a",
     remote = "https://github.com/kmackay/micro-ecc.git",
-    shallow_since = "1648504566 -0700",
 )
 
 git_repository(
     name = "boringssl",
     commit = "0fd67c76fc4bfb05a665c087ebfead77a3267f6d",
     remote = "https://boringssl.googlesource.com/boringssl",
-    shallow_since = "1637714942 +0000",
 )
 
 git_repository(
@@ -383,7 +382,12 @@ git_repository(
     # mbedtls-3.2.1 released 2022-07-12
     commit = "869298bffeea13b205343361b7a7daf2b210e33d",
     remote = "https://pigweed.googlesource.com/third_party/github/ARMmbed/mbedtls",
-    shallow_since = "1648504566 -0700",
+)
+
+git_repository(
+    name = "com_google_emboss",
+    commit = "69bb1372053fc3cb8a16180497970465ae2ed66d",
+    remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
 )
 
 http_archive(

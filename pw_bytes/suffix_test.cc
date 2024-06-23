@@ -14,7 +14,9 @@
 
 #include "pw_bytes/suffix.h"
 
-#include "gtest/gtest.h"
+#include "pw_compilation_testing/negative_compilation.h"
+#include "pw_polyfill/standard.h"
+#include "pw_unit_test/framework.h"
 
 namespace {
 
@@ -24,5 +26,14 @@ TEST(Suffix, ReturnsByte) {
   std::byte x = 5_b;
   EXPECT_EQ(x, std::byte(5));
 }
+
+#if PW_CXX_STANDARD_IS_SUPPORTED(20)
+#if PW_NC_TEST(Suffix_ErrorsAtCompileTimeOnTooLargeOfValueInCpp20AndAbove)
+PW_NC_EXPECT("ByteLiteralIsTooLarge");
+TEST(Suffix, ErrorsAtCompileTimeOnTooLargeOfValueInCpp20AndAbove) {
+  [[maybe_unused]] std::byte x = 256_b;
+}
+#endif  // PW_NC_TEST
+#endif  // PW_CXX_STANDARD_IS_SUPPORTED(20)
 
 }  // namespace

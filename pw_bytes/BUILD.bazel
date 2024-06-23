@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,13 +21,12 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_bytes",
     srcs = [
         "byte_builder.cc",
     ],
     hdrs = [
-        "public/pw_bytes/alignment.h",
         "public/pw_bytes/array.h",
         "public/pw_bytes/byte_builder.h",
         "public/pw_bytes/endian.h",
@@ -47,7 +45,17 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
+    name = "alignment",
+    hdrs = ["public/pw_bytes/alignment.h"],
+    includes = ["public"],
+    deps = [
+        "//pw_assert",
+        "//pw_preprocessor",
+    ],
+)
+
+cc_library(
     name = "bit",
     hdrs = ["public/pw_bytes/bit.h"],
     includes = ["public"],
@@ -58,7 +66,7 @@ pw_cc_test(
     name = "alignment_test",
     srcs = ["alignment_test.cc"],
     deps = [
-        ":pw_bytes",
+        ":alignment",
         "//pw_unit_test",
     ],
 )
@@ -104,6 +112,7 @@ pw_cc_test(
     srcs = ["suffix_test.cc"],
     deps = [
         ":pw_bytes",
+        "//pw_compilation_testing:negative_compilation_testing",
     ],
 )
 

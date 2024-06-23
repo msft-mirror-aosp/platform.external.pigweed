@@ -16,8 +16,9 @@
 
 #include <cstddef>
 
-#include "gtest/gtest.h"
+#include "pw_compilation_testing/negative_compilation.h"
 #include "pw_containers_private/test_helpers.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw {
 namespace {
@@ -655,28 +656,48 @@ TEST(Vector, ConstexprMaxSize) {
 
   EXPECT_EQ(vector.max_size(), vector2.max_size());
 
-  // The following code would fail with the following compiler error:
-  // "non-type template argument is not a constant expression"
-  // Reason: the generic_vector doesn't return a constexpr max_size value.
-  // Vector<int>& generic_vector(vector);
-  // Vector<int, generic_vector.max_size()> vector3;
+#if PW_NC_TEST(DynamicCapacity_MaxSizeNotConstexpr)
+  PW_NC_EXPECT_CLANG("non-type template argument is not a constant expression");
+  PW_NC_EXPECT_GCC("call to non-'constexpr' function");
+  Vector<int>& generic_vector(vector);
+  Vector<int, generic_vector.max_size()> vector3;
+#endif  // PW_NC_TEST
+}
+
+TEST(Vector, DeleteAndDestructionDisallowedOnDynamicCapacity) {
+  std::byte raw_storage[64]{};
+  Vector<int, 4>* vector = new (raw_storage) Vector<int, 4>;
+  [[maybe_unused]] Vector<int>* generic_vector = vector;
+
+#if PW_NC_TEST(GenericCapacity_DeleteDisallowed)
+  PW_NC_EXPECT(" protected ");
+  delete generic_vector;
+#elif PW_NC_TEST(GenericCapacity_ManualDestructionDisallowed)
+  PW_NC_EXPECT(" protected ");
+  generic_vector->~Vector();
+#elif PW_NC_TEST(KnownCapacity_ManualDestructionDisallowed)
+  PW_NC_EXPECT(" protected ");
+  vector->~Vector<int>();
+#else
+  vector->~Vector<int, 4>();
+#endif  // PW_NC_TEST
 }
 
 // Test that Vector<T> is trivially destructible when its type is.
-static_assert(std::is_trivially_destructible_v<Vector<int>>);
 static_assert(std::is_trivially_destructible_v<Vector<int, 4>>);
 
 static_assert(std::is_trivially_destructible_v<MoveOnly>);
-static_assert(std::is_trivially_destructible_v<Vector<MoveOnly>>);
 static_assert(std::is_trivially_destructible_v<Vector<MoveOnly, 1>>);
 
 static_assert(std::is_trivially_destructible_v<CopyOnly>);
-static_assert(std::is_trivially_destructible_v<Vector<CopyOnly>>);
 static_assert(std::is_trivially_destructible_v<Vector<CopyOnly, 99>>);
 
 static_assert(!std::is_trivially_destructible_v<Counter>);
-static_assert(!std::is_trivially_destructible_v<Vector<Counter>>);
 static_assert(!std::is_trivially_destructible_v<Vector<Counter, 99>>);
+
+// Generic-capacity Vectors cannot be constructed or destructed.
+static_assert(!std::is_constructible_v<Vector<int>>);
+static_assert(!std::is_destructible_v<Vector<int>>);
 
 }  // namespace
 }  // namespace pw

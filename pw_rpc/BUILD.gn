@@ -215,6 +215,7 @@ pw_source_set("common") {
     "public/pw_rpc/internal/channel_list.h",
     "public/pw_rpc/internal/encoding_buffer.h",
     "public/pw_rpc/internal/endpoint.h",
+    "public/pw_rpc/internal/grpc.h",
     "public/pw_rpc/internal/lock.h",
     "public/pw_rpc/internal/method_info.h",
     "public/pw_rpc/internal/packet.h",
@@ -329,7 +330,8 @@ pw_source_set("integration_testing") {
   sources = [ "integration_testing.cc" ]
   public_deps = [
     ":client",
-    "$dir_pw_hdlc:pw_rpc",
+    "$dir_pw_hdlc:decoder",
+    "$dir_pw_hdlc:default_addresses",
     "$dir_pw_hdlc:rpc_channel_output",
     "$dir_pw_stream:socket_stream",
     "$dir_pw_unit_test:logging",

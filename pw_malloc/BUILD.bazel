@@ -15,12 +15,15 @@
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
-    "pw_cc_library",
 )
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
+
+constraint_setting(
+    name = "backend_constraint_setting",
+)
 
 pw_cc_facade(
     name = "facade",
@@ -30,7 +33,7 @@ pw_cc_facade(
     includes = ["public"],
 )
 
-pw_cc_library(
+cc_library(
     name = "pw_malloc",
     hdrs = [
         "public/pw_malloc/malloc.h",
@@ -41,8 +44,12 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+alias(
     name = "backend_multiplexer",
+    actual = select({
+        "//pw_malloc_freelist:backend": "//pw_malloc_freelist",
+        "//pw_malloc_freertos:backend": "//pw_malloc_freertos",
+        "//conditions:default": "//pw_build:unspecified_backend",
+    }),
     visibility = ["@pigweed//targets:__pkg__"],
-    deps = ["//pw_malloc_freelist"],
 )

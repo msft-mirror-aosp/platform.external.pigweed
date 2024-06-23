@@ -18,9 +18,10 @@
 #include <optional>
 #include <thread>
 
+#include "pw_hdlc/decoder.h"
+#include "pw_hdlc/default_addresses.h"
 #include "pw_hdlc/encoded_size.h"
 #include "pw_hdlc/rpc_channel.h"
-#include "pw_hdlc/rpc_packets.h"
 #include "pw_rpc/integration_testing.h"
 #include "pw_span/span.h"
 #include "pw_status/try.h"
@@ -53,17 +54,21 @@ class SocketClientContext {
   }
 
   // Terminates the client, joining the RPC dispatch thread.
-  //
-  // WARNING: This may block forever if the socket is configured to block
-  // indefinitely on reads. Configuring the client socket's `SO_RCVTIMEO` to a
-  // nonzero timeout will allow the dispatch thread to always return.
   void Terminate() {
     PW_ASSERT(rpc_dispatch_thread_handle_.has_value());
     should_terminate_.test_and_set();
+    // Close the stream to avoid blocking forever on a socket read.
+    stream_.Close();
     rpc_dispatch_thread_handle_->join();
   }
 
-  int GetSocketFd() { return stream_.connection_fd(); }
+  // Configure options for the socket associated with the client.
+  int SetSockOpt(int level,
+                 int optname,
+                 const void* optval,
+                 unsigned int optlen) {
+    return stream_.SetSockOpt(level, optname, optval, optlen);
+  }
 
   void SetEgressChannelManipulator(
       ChannelManipulator* new_channel_manipulator) {

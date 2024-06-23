@@ -19,7 +19,7 @@
 
 #include <tuple>
 
-#include "gtest/gtest.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw {
 namespace {
@@ -175,6 +175,10 @@ TEST(CountArgs, Commas) {
   static_assert(PW_MACRO_ARG_COUNT(, ) == 2);
   static_assert(PW_MACRO_ARG_COUNT(, , ) == 3);
   static_assert(PW_MACRO_ARG_COUNT(, , , ) == 4);
+
+  static_assert(PW_MACRO_ARG_COUNT(a, ) == 2);
+  static_assert(PW_MACRO_ARG_COUNT(a, , ) == 3);
+  static_assert(PW_MACRO_ARG_COUNT(a, b, c, ) == 4);
 }
 
 TEST(CountArgs, Parentheses) {

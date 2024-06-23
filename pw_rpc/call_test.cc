@@ -20,11 +20,11 @@
 #include <cstring>
 #include <optional>
 
-#include "gtest/gtest.h"
 #include "pw_rpc/internal/test_utils.h"
 #include "pw_rpc/service.h"
 #include "pw_rpc_private/fake_server_reader_writer.h"
 #include "pw_rpc_private/test_method.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
 
@@ -38,7 +38,12 @@ class TestService : public Service {
 namespace internal {
 namespace {
 
-constexpr Packet kPacket(pwpb::PacketType::REQUEST, 99, 16, 8);
+constexpr uint32_t kChannelId = 99;
+constexpr uint32_t kServiceId = 16;
+constexpr uint32_t kMethodId = 8;
+constexpr uint32_t kCallId = 327;
+constexpr Packet kPacket(
+    pwpb::PacketType::REQUEST, kChannelId, kServiceId, kMethodId, kCallId);
 
 using ::pw::rpc::internal::test::FakeServerReader;
 using ::pw::rpc::internal::test::FakeServerReaderWriter;
@@ -90,7 +95,7 @@ class ServerWriterTest : public Test {
     writer_ = std::move(writer_temp);
   }
 
-  ServerContextForTest<TestService> context_;
+  ServerContextForTest<TestService, kChannelId, kServiceId, kCallId> context_;
   FakeServerWriter writer_;
 };
 

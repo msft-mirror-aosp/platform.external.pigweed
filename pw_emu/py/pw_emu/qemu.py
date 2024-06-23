@@ -31,6 +31,7 @@ from pw_emu.core import (
     Launcher,
     Error,
     InvalidChannelType,
+    RunError,
     WrongEmulator,
 )
 
@@ -50,12 +51,17 @@ class QmpClient:
     def __init__(self, stream: io.RawIOBase):
         self._stream = stream
 
-        json.loads(self._stream.readline())
-        cmd = json.dumps({'execute': 'qmp_capabilities'})
-        self._stream.write(cmd.encode('utf-8'))
-        resp = json.loads(self._stream.readline().decode('ascii'))
-        if not 'return' in resp:
-            raise QmpError(f'qmp init failed: {resp.get("error")}')
+        # Perform the QMP "capabilities negotiation" handshake.
+        # https://wiki.qemu.org/Documentation/QMP#Capabilities_Negotiation
+        #
+        # When the QMP connection is established, QEMU first sends a greeting
+        # message with its version and capabilities. Then the client sends
+        # 'qmp_capabilities' to exit capabilities negotiation mode. The result
+        # is an empty 'return'.
+        #
+        # self.request() will consume both the initial greeting and the
+        # subsequent 'return' response.
+        self.request('qmp_capabilities')
 
     def request(self, cmd: str, args: Optional[Dict[str, Any]] = None) -> Any:
         """Issue a command using the qmp interface.
@@ -285,9 +291,15 @@ class QemuLauncher(Launcher):
 
     def _post_start(self) -> None:
         assert self._qmp_init_sock is not None
-        conn, _ = self._qmp_init_sock.accept()
+        try:
+            conn, _ = self._qmp_init_sock.accept()
+        except (KeyboardInterrupt, socket.timeout):
+            raise RunError('qemu', 'qmp connection failed')
         self._qmp_init_sock.close()
-        qmp = QmpClient(conn.makefile('rwb', buffering=0))
+        try:
+            qmp = QmpClient(conn.makefile('rwb', buffering=0))
+        except json.decoder.JSONDecodeError:
+            raise RunError('qemu', 'qmp handshake failed')
         conn.close()
 
         resp = qmp.request('query-chardev')

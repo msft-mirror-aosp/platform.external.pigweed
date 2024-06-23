@@ -12,13 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
-    "pw_cc_library",
     "pw_cc_test",
 )
-load("//pw_build/bazel_internal:py_proto_library.bzl", "py_proto_library")
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -33,7 +32,7 @@ pw_cc_facade(
     includes = ["public"],
 )
 
-pw_cc_library(
+cc_library(
     name = "id",
     hdrs = [
         "public/pw_thread/id.h",
@@ -44,7 +43,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "id_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
@@ -55,13 +54,19 @@ pw_cc_library(
     }),
 )
 
-pw_cc_library(
+cc_library(
     name = "config",
     hdrs = ["public/pw_thread/config.h"],
     includes = ["public"],
+    deps = [":config_override"],
 )
 
-pw_cc_library(
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+cc_library(
     name = "thread_info",
     hdrs = ["public/pw_thread/thread_info.h"],
     includes = ["public"],
@@ -81,7 +86,7 @@ pw_cc_facade(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "thread_iteration",
     hdrs = [
         "public/pw_thread/thread_iteration.h",
@@ -95,7 +100,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "iteration_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
@@ -118,7 +123,7 @@ pw_cc_facade(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "sleep",
     srcs = [
         "sleep.cc",
@@ -135,7 +140,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "sleep_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
@@ -159,7 +164,7 @@ pw_cc_facade(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "thread",
     srcs = [
         "thread.cc",
@@ -177,7 +182,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "thread_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
@@ -188,7 +193,7 @@ pw_cc_library(
     }),
 )
 
-pw_cc_library(
+cc_library(
     name = "thread_core",
     hdrs = [
         "public/pw_thread/thread_core.h",
@@ -200,7 +205,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "thread_snapshot_service",
     srcs = [
         "pw_thread_private/thread_snapshot_service.h",
@@ -224,7 +229,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "test_thread_context_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
@@ -240,7 +245,7 @@ pw_cc_facade(
     includes = ["public"],
 )
 
-pw_cc_library(
+cc_library(
     name = "test_thread_context",
     hdrs = [
         "public/pw_thread/test_thread_context.h",
@@ -262,7 +267,7 @@ pw_cc_facade(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "yield",
     srcs = [
         "yield.cc",
@@ -278,7 +283,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "yield_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
@@ -289,7 +294,7 @@ pw_cc_library(
     }),
 )
 
-pw_cc_library(
+cc_library(
     name = "snapshot",
     srcs = [
         "snapshot.cc",
@@ -308,7 +313,7 @@ pw_cc_library(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "non_portable_test_thread_options",
     hdrs = [
         "public/pw_thread/non_portable_test_thread_options.h",
@@ -321,8 +326,9 @@ pw_cc_library(
 # To instantiate this as a pw_cc_test, depend on this pw_cc_library and the
 # pw_cc_library which implements the backend for non_portable_test_thread_options. See
 # //pw_thread_stl:thread_backend_test as an example.
-pw_cc_library(
+cc_library(
     name = "thread_facade_test",
+    testonly = True,
     srcs = [
         "thread_facade_test.cc",
     ],
@@ -341,6 +347,13 @@ pw_cc_test(
     srcs = [
         "test_thread_context_facade_test.cc",
     ],
+    # TODO: b/317922402 - On Windows, this test can easily hang indefinitely.
+    # Disable on Windows until we can test with the native Windows SDK libraries
+    # for threading.
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":test_thread_context",
         ":thread",
@@ -425,10 +438,8 @@ proto_library(
     ],
 )
 
-# TODO: b/241456982 - Not expected to build yet.
 py_proto_library(
     name = "thread_proto_py_pb2",
-    tags = ["manual"],
     deps = [":thread_proto"],
 )
 
@@ -446,10 +457,8 @@ pw_proto_library(
     deps = [":thread_snapshot_service_proto"],
 )
 
-# TODO: b/241456982 - Not expected to build yet.
 py_proto_library(
     name = "thread_snapshot_service_py_pb2",
-    tags = ["manual"],
     deps = [":thread_snapshot_service_proto"],
 )
 

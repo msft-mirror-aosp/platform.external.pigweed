@@ -16,11 +16,11 @@
 
 #include <array>
 
-#include "gtest/gtest.h"
 #include "pw_containers/algorithm.h"
 #include "pw_containers/flat_map.h"
 #include "pw_containers/intrusive_list.h"
 #include "pw_span/span.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::containers {
 namespace {
@@ -32,6 +32,32 @@ struct Item : IntrusiveList<Item>::Item {
 };
 
 constexpr std::array<int, 6> kArray{0, 1, 2, 3, 4, 5};
+
+TEST(FilteredView, MoveConstructor) {
+  FilteredView original(kArray, [](int x) { return x == 3 || x == 5; });
+  FilteredView moved(std::move(original));
+
+  auto it = moved.begin();
+  ASSERT_EQ(*it, 3);
+  ++it;
+  ASSERT_EQ(*it, 5);
+  ++it;
+  EXPECT_EQ(it, moved.end());
+}
+
+TEST(FilteredView, MoveOperator) {
+  // Force lambda to function pointer with `+` so the FilteredView types match.
+  FilteredView original(kArray, +[](int x) { return x == 3 || x == 5; });
+  FilteredView moved(kArray, +[](int x) { return x == 4; });
+  moved = std::move(original);
+
+  auto it = moved.begin();
+  ASSERT_EQ(*it, 3);
+  ++it;
+  ASSERT_EQ(*it, 5);
+  ++it;
+  EXPECT_EQ(it, moved.end());
+}
 
 TEST(FilteredView, Array_MatchSubset) {
   FilteredView view(kArray, [](int x) { return x == 3 || x == 5; });
