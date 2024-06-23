@@ -1,8 +1,8 @@
 .. _docs-build-system:
 
-============
-Build system
-============
+=============
+Build systems
+=============
 Building software for embedded devices is a complex process. Projects often have
 custom toolchains, target different hardware platforms, and require additional
 configuration and post-processing of artifacts.
@@ -17,6 +17,7 @@ Pigweed.
 .. toctree::
   :hidden:
 
+  bazel_compatibility
   python_build
 
 What's in a build system?

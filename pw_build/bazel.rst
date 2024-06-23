@@ -13,8 +13,8 @@ microcontrollers.
 Wrapper rules
 -------------
 The common configuration for Bazel for all modules is in the ``pigweed.bzl``
-file. The built-in Bazel rules ``cc_binary``, ``cc_test`` are wrapped with
-``pw_cc_binary`` and ``pw_cc_test``.
+file. The built-in Bazel rules ``cc_binary``, ``cc_test`` and ``py_test`` are
+wrapped with ``pw_cc_binary``, ``pw_cc_test`` and ``pw_py_test``.
 
 .. _module-pw_build-bazel-pw_linker_script:
 
@@ -191,6 +191,12 @@ components:
        targets in wildcard builds
        <https://bazel.build/extending/platforms#skipping-incompatible-targets>`_.
 
+   .. warning::
+
+      Facade constraint settings were `never fully rolled out
+      <https://pwbug.dev/272090220>`_ and are :ref:`no longer recommended
+      <docs-bazel-compatibility-per-facade-constraint-settings>`.
+
 #. The **backend multiplexer**. If a project uses more than one backend for a
    given facade (e.g., it uses different backends for host and embedded target
    builds), the backend label flag will point to a target that resolves to the
@@ -337,6 +343,8 @@ This should result in a ``test.map`` file generated next to the ``test`` binary.
 Note that it's only partially compatible with the ``cc_binary`` interface and
 certain things are not implemented like make variable substitution.
 
+.. _module-pw_build-bazel-pw_elf_to_bin:
+
 pw_elf_to_bin
 -------------
 The ``pw_elf_to_bin`` rule takes in a binary executable target and produces a
@@ -354,6 +362,8 @@ this type of file is booting directly on hardware with no bootloader.
      bin_out = "main.bin",
    )
 
+.. _module-pw_build-bazel-pw_elf_to_dump:
+
 pw_elf_to_dump
 --------------
 The ``pw_elf_to_dump`` rule takes in a binary executable target and produces a
@@ -370,6 +380,16 @@ useful when debugging embedded firmware.
      elf_input = ":main",
      dump_out = "main.dump",
    )
+
+Platform compatibility rules
+----------------------------
+Macros and rules related to platform compatibility are provided in
+``//pw_build:compatibility.bzl``.
+
+host_backend_alias
+^^^^^^^^^^^^^^^^^^
+An alias that resolves to the backend for host platforms. This is useful when
+declaring a facade that provides a default backend for host platform use.
 
 Miscellaneous utilities
 -----------------------
