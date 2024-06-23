@@ -37,6 +37,14 @@ http_archive(
 )
 
 http_archive(
+    name = "rules_platform",
+    sha256 = "0aadd1bd350091aa1f9b6f2fbcac8cd98201476289454e475b28801ecf85d3fd",
+    urls = [
+        "https://github.com/bazelbuild/rules_platform/releases/download/0.1.0/rules_platform-0.1.0.tar.gz",
+    ],
+)
+
+http_archive(
     name = "rules_cc",
     sha256 = "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
     strip_prefix = "rules_cc-0.0.9",
@@ -64,6 +72,15 @@ cipd_repository(
     name = "pw_transfer_test_binaries",
     path = "pigweed/pw_transfer_test_binaries/${os=linux}-${arch=amd64}",
     tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
+)
+
+# Set up bloaty size profiler.
+# Required by: pigweed.
+# Used in modules: //pw_bloat.
+cipd_repository(
+    name = "bloaty",
+    path = "fuchsia/third_party/bloaty/${os}-amd64",
+    tag = "git_revision:c057ba4f43db0506d4ba8c096925b054b02a8bd3",
 )
 
 # Set up Starlark library.
@@ -175,9 +192,9 @@ install_deps()
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-06-01.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8746297072233905681.
-    commit = "dc0007365302ab30293144aa5dac6194fdea10ad",
+    # ROLL: Last updated 2024-06-08.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8745662233558600481.
+    commit = "5084a6ded7858e2824e9a683d5ca33745140723b",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -216,7 +233,11 @@ load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
 
 fuchsia_clang_repository(
     name = "fuchsia_clang",
-    from_workspace = "@llvm_toolchain//:BUILD.bazel",
+    # TODO: https://pwbug.dev/346354914 - Reuse @llvm_toolchain. This currently
+    # leads to flaky loading phase errors!
+    # from_workspace = "@llvm_toolchain//:BUILD",
+    cipd_tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
+    sdk_root_label = "@fuchsia_sdk",
 )
 
 load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
@@ -492,10 +513,18 @@ new_local_repository(
     path = ".",
 )
 
+# This repository is pinned to the upstream `develop` branch of the Pico SDK.
 git_repository(
     name = "pico-sdk",
-    commit = "4de7ec6bd73cd154533f35d9058279267ba77176",
+    commit = "6ff3e4fab27441de19fd53c0eb5aacbe83a18221",
     remote = "https://pigweed.googlesource.com/third_party/github/raspberrypi/pico-sdk",
+)
+
+# TODO: https://pwbug.dev/345244650 - Upstream bazel build.
+git_repository(
+    name = "picotool",
+    commit = "49072f6ebbc814dcc74d6f8b753b89c24af12971",
+    remote = "https://github.com/armandomontanez/picotool",
 )
 
 http_archive(

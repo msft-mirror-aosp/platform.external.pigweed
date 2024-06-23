@@ -12,23 +12,14 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#pragma once
+#include "pw_build_info/git_build_info.h"
 
-#include "pw_bluetooth/hci_h4.emb.h"
-#include "pw_function/function.h"
-#include "pw_span/span.h"
+#include "pw_unit_test/framework.h"
 
-namespace pw::bluetooth::proxy {
+namespace pw::build_info {
+namespace {
 
-// An H4 HCI packet. `h4_type` should be the HCI packet type indicator as
-// defined in BT Core Spec Version 5.4 | Vol 4, Part A, Section 2. The
-// `hci_span` should be an HCI packet as defined in BT Core Spec Version 5.4 |
-// Vol 4, Part E, Section 5.4.
-struct H4HciPacket {
-  emboss::H4PacketType h4_type;
-  pw::span<uint8_t> hci_span;
-};
+TEST(GitBuildInfo, NonEmpty) { EXPECT_GT(kGitCommit.size(), 0u); }
 
-using H4HciPacketSendFn = pw::Function<void(H4HciPacket packet)>;
-
-}  // namespace pw::bluetooth::proxy
+}  // namespace
+}  // namespace pw::build_info
