@@ -236,7 +236,9 @@ For any library that does make such assumptions, and these assumptions are not
 captured by one of the :ref:`well-known constraints
 <docs-bazel-compatibility-well-known>`, the recommended pattern is to define a
 "boolean" ``constraint_setting`` to express compatibility. We introduce some
-syntactic sugar (``boolean_constraint_value``) for making this concise.
+syntactic sugar (:ref:`module-pw_build-bazel-boolean_constraint_value`) for
+making this concise.
+
 Example:
 
 .. code-block:: python
@@ -593,8 +595,7 @@ their instances from Pigweed, replacing them with the recommended patterns.
 
 Per-facade constraint settings (not recommended)
 ================================================
-This approach is :ref:`described in our documentation
-<module-pw_build-bazel-pw_facade>`, although it was `never fully rolled out
+This approach was once recommended, although it was `never fully rolled out
 <https://pwbug.dev/272090220>`_:
 
 #. For **every facade**, introduce a ``constraint_setting`` (e.g.,
@@ -826,7 +827,7 @@ Why wildcard builds?
 Pigweed is generic microcontroller middleware: you can use Pigweed to
 accelerate development on any microcontroller platform. In addition, Pigweed
 provides explicit support for a number of specific hardware platforms, such as
-the :ref:`target-raspberry-pi-pico` or :ref:`STM32f429i Discovery Board
+the :ref:`target-rp2040` or :ref:`STM32f429i Discovery Board
 <target-stm32f429i-disc1-stm32cube>`. For these specific platforms, every
 Pigweed module falls into one of three buckets:
 
