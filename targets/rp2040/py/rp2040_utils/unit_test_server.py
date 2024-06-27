@@ -33,8 +33,21 @@ _LOG = logging.getLogger('unit_test_server')
 
 DEFAULT_PORT = 34172
 
-_TEST_RUNNER_COMMAND = 'rp2040_unit_test_runner'
-_TEST_SERVER_COMMAND = 'pw_target_runner_server'
+# If the script is being run through Bazel, our runner and server are provided
+# at well known locations in the runfiles.
+try:
+    from rules_python.python.runfiles import runfiles  # type: ignore
+
+    r = runfiles.Create()
+    _TEST_RUNNER_COMMAND = r.Rlocation(
+        'pigweed/targets/rp2040/py/rpc_unit_test_runner'
+    )
+    _TEST_SERVER_COMMAND = r.Rlocation(
+        'pigweed/pw_target_runner/go/cmd/server_/server'
+    )
+except ImportError:
+    _TEST_RUNNER_COMMAND = 'rp2040_unit_test_runner'
+    _TEST_SERVER_COMMAND = 'pw_target_runner_server'
 
 
 def parse_args():
@@ -114,9 +127,16 @@ def generate_server_config(
     _LOG.debug('Generating test server config at %s', config_file.name)
     _LOG.debug('Found %d attached devices', len(boards))
 
-    # TODO: b/290245354 - Multi-device flashing doesn't work due to limitations
-    # of picotool. Limit to one device even if multiple are connected.
-    if boards:
+    picotool_boards = [board for board in boards if not board.is_debug_probe()]
+    if len(picotool_boards) > 1:
+        # TODO: https://pwbug.dev/290245354 - Multi-device flashing doesn't work
+        # due to limitations of picotool. Limit to one device even if multiple
+        # are connected.
+        _LOG.warning(
+            'TODO: https://pwbug.dev/290245354 - Multiple non-debugprobe '
+            ' boards attached. '
+            'Disabling parallel testing.'
+        )
         boards = boards[:1]
 
     for board in boards:
