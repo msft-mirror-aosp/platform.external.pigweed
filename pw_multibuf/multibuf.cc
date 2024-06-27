@@ -15,6 +15,7 @@
 #include "pw_multibuf/multibuf.h"
 
 #include <algorithm>
+#include <cstring>
 
 #include "pw_assert/check.h"
 
@@ -40,6 +41,24 @@ bool MultiBuf::empty() const {
   return std::all_of(Chunks().begin(), Chunks().end(), [](const Chunk& c) {
     return c.empty();
   });
+}
+
+std::optional<ConstByteSpan> MultiBuf::ContiguousSpan() const {
+  ConstByteSpan contiguous;
+  for (const Chunk& chunk : Chunks()) {
+    if (chunk.empty()) {
+      continue;
+    }
+    if (contiguous.empty()) {
+      contiguous = chunk;
+    } else if (contiguous.data() + contiguous.size() == chunk.data()) {
+      contiguous = {contiguous.data(), contiguous.size() + chunk.size()};
+    } else {  // Non-empty chunks are not contiguous
+      return std::nullopt;
+    }
+  }
+  // Return either the one non-empty chunk or an empty span.
+  return contiguous;
 }
 
 bool MultiBuf::ClaimPrefix(size_t bytes_to_claim) {
@@ -75,19 +94,18 @@ void MultiBuf::Slice(size_t begin, size_t end) {
 }
 
 void MultiBuf::Truncate(size_t len) {
-  PW_DCHECK(len <= size());
   if (len == 0) {
     Release();
+    return;
   }
-  Chunk* new_last_chunk = first_;
-  size_t len_from_chunk_start = len;
-  while (len_from_chunk_start > new_last_chunk->size()) {
-    len_from_chunk_start -= new_last_chunk->size();
-    new_last_chunk = new_last_chunk->next_in_buf_;
-  }
-  new_last_chunk->Truncate(len_from_chunk_start);
-  Chunk* remainder = new_last_chunk->next_in_buf_;
-  new_last_chunk->next_in_buf_ = nullptr;
+  TruncateAfter(begin() + (len - 1));
+}
+
+void MultiBuf::TruncateAfter(iterator pos) {
+  PW_DCHECK(pos != end());
+  pos.chunk()->Truncate(pos.byte_index() + 1);
+  Chunk* remainder = pos.chunk()->next_in_buf_;
+  pos.chunk()->next_in_buf_ = nullptr;
   MultiBuf discard;
   discard.first_ = remainder;
 }
@@ -105,6 +123,70 @@ void MultiBuf::PushSuffix(MultiBuf&& tail) {
   }
   Chunks().back().next_in_buf_ = tail.first_;
   tail.first_ = nullptr;
+}
+
+StatusWithSize MultiBuf::CopyTo(ByteSpan dest, const size_t position) const {
+  const_iterator byte_in_chunk = begin() + position;
+
+  ConstChunkIterator chunk(byte_in_chunk.chunk());
+  size_t chunk_offset = byte_in_chunk.byte_index();
+
+  size_t bytes_copied = 0;
+  for (; chunk != Chunks().end(); ++chunk) {
+    const size_t chunk_bytes = chunk->size() - chunk_offset;
+    const size_t to_copy = std::min(chunk_bytes, dest.size() - bytes_copied);
+    if (to_copy != 0u) {
+      std::memcpy(
+          dest.data() + bytes_copied, chunk->data() + chunk_offset, to_copy);
+      bytes_copied += to_copy;
+    }
+
+    if (chunk_bytes > to_copy) {
+      return StatusWithSize::ResourceExhausted(bytes_copied);
+    }
+    chunk_offset = 0;
+  }
+
+  return StatusWithSize(bytes_copied);  // all chunks were copied
+}
+
+StatusWithSize MultiBuf::CopyFromAndOptionallyTruncate(ConstByteSpan source,
+                                                       size_t position,
+                                                       bool truncate) {
+  if (source.empty()) {
+    if (truncate) {
+      Truncate(position);
+    }
+    return StatusWithSize(0u);
+  }
+
+  iterator byte_in_chunk = begin() + position;
+  size_t chunk_offset = byte_in_chunk.byte_index();
+
+  size_t bytes_copied = 0;
+  for (ChunkIterator chunk(byte_in_chunk.chunk()); chunk != Chunks().end();
+       ++chunk) {
+    if (chunk->empty()) {
+      continue;
+    }
+    const size_t to_copy =
+        std::min(chunk->size() - chunk_offset, source.size() - bytes_copied);
+    std::memcpy(
+        chunk->data() + chunk_offset, source.data() + bytes_copied, to_copy);
+    bytes_copied += to_copy;
+
+    if (bytes_copied == source.size()) {
+      if (truncate) {
+        // to_copy is always at least one byte, since source.empty() is checked
+        // above and empty chunks are skipped.
+        TruncateAfter(iterator(&*chunk, chunk_offset + to_copy - 1));
+      }
+      return StatusWithSize(bytes_copied);
+    }
+    chunk_offset = 0;
+  }
+
+  return StatusWithSize::ResourceExhausted(bytes_copied);  // ran out of space
 }
 
 std::optional<MultiBuf> MultiBuf::TakePrefix(size_t bytes_to_take) {
@@ -237,19 +319,17 @@ MultiBuf::const_iterator& MultiBuf::const_iterator::operator+=(size_t advance) {
   if (advance == 0) {
     return *this;
   }
+
   while (chunk_ != nullptr && advance >= (chunk_->size() - byte_index_)) {
     advance -= (chunk_->size() - byte_index_);
     chunk_ = chunk_->next_in_buf_;
     byte_index_ = 0;
   }
+
+  PW_DCHECK(chunk_ != nullptr || advance == 0u,
+            "Iterated past the end of the MultiBuf");
   byte_index_ += advance;
   return *this;
-}
-
-void MultiBuf::const_iterator::AdvanceToData() {
-  while (chunk_ != nullptr && chunk_->empty()) {
-    chunk_ = chunk_->next_in_buf_;
-  }
 }
 
 Chunk& MultiBuf::ChunkIterable::back() {

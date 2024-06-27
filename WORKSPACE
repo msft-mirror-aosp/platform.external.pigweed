@@ -37,6 +37,14 @@ http_archive(
 )
 
 http_archive(
+    name = "rules_platform",
+    sha256 = "0aadd1bd350091aa1f9b6f2fbcac8cd98201476289454e475b28801ecf85d3fd",
+    urls = [
+        "https://github.com/bazelbuild/rules_platform/releases/download/0.1.0/rules_platform-0.1.0.tar.gz",
+    ],
+)
+
+http_archive(
     name = "rules_cc",
     sha256 = "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
     strip_prefix = "rules_cc-0.0.9",
@@ -66,6 +74,15 @@ cipd_repository(
     tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
 )
 
+# Set up bloaty size profiler.
+# Required by: pigweed.
+# Used in modules: //pw_bloat.
+cipd_repository(
+    name = "bloaty",
+    path = "fuchsia/third_party/bloaty/${os}-amd64",
+    tag = "git_revision:c057ba4f43db0506d4ba8c096925b054b02a8bd3",
+)
+
 # Set up Starlark library.
 # Required by: io_bazel_rules_go, com_google_protobuf, rules_python
 # Used in modules: None.
@@ -84,13 +101,12 @@ load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 bazel_skylib_workspace()
 
 # Used in modules: //pw_grpc
-http_archive(
+#
+# TODO: b/345806988 - remove this fork and update to upstream HEAD.
+git_repository(
     name = "io_bazel_rules_go",
-    sha256 = "7c76d6236b28ff695aa28cf35f95de317a9472fd1fb14ac797c9bf684f09b37c",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
-    ],
+    commit = "21005c4056de3283553c015c172001229ecbaca9",
+    remote = "https://github.com/cramertj/rules_go.git",
 )
 
 # Used in modules: //pw_grpc
@@ -176,9 +192,9 @@ install_deps()
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-06-01.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8746297072233905681.
-    commit = "dc0007365302ab30293144aa5dac6194fdea10ad",
+    # ROLL: Last updated 2024-06-08.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8745662233558600481.
+    commit = "5084a6ded7858e2824e9a683d5ca33745140723b",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -217,7 +233,11 @@ load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
 
 fuchsia_clang_repository(
     name = "fuchsia_clang",
-    from_workspace = "@llvm_toolchain//:BUILD.bazel",
+    # TODO: https://pwbug.dev/346354914 - Reuse @llvm_toolchain. This currently
+    # leads to flaky loading phase errors!
+    # from_workspace = "@llvm_toolchain//:BUILD",
+    cipd_tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
+    sdk_root_label = "@fuchsia_sdk",
 )
 
 load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
@@ -493,10 +513,18 @@ new_local_repository(
     path = ".",
 )
 
+# This repository is pinned to the upstream `develop` branch of the Pico SDK.
 git_repository(
     name = "pico-sdk",
-    commit = "4de7ec6bd73cd154533f35d9058279267ba77176",
+    commit = "6ff3e4fab27441de19fd53c0eb5aacbe83a18221",
     remote = "https://pigweed.googlesource.com/third_party/github/raspberrypi/pico-sdk",
+)
+
+# TODO: https://pwbug.dev/345244650 - Upstream bazel build.
+git_repository(
+    name = "picotool",
+    commit = "49072f6ebbc814dcc74d6f8b753b89c24af12971",
+    remote = "https://github.com/armandomontanez/picotool",
 )
 
 http_archive(
@@ -505,4 +533,63 @@ http_archive(
     sha256 = "ac57109bba00d26ffa33312d5f334990ec9a9a4d82bf890ed8b825b4610d1da2",
     strip_prefix = "tinyusb-86c416d4c0fb38432460b3e11b08b9de76941bf5",
     url = "https://github.com/hathach/tinyusb/archive/86c416d4c0fb38432460b3e11b08b9de76941bf5.zip",
+)
+
+# ---- probe-rs Paths ----
+#
+# NOTE: These paths and sha-s have been manually copied from
+# https://github.com/probe-rs/probe-rs/releases/tag/v0.24.0
+
+http_archive(
+    name = "probe-rs-tools-x86_64-unknown-linux-gnu",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "21e8d7df39fa0cdc9a0421e0ac2ac5ba81ec295ea11306f26846089f6fe975c0",
+    strip_prefix = "probe-rs-tools-x86_64-unknown-linux-gnu",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-unknown-linux-gnu.tar.xz",
+)
+
+http_archive(
+    name = "probe-rs-tools-aarch64-unknown-linux-gnu",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "95d91ebe08868d5119a698e3268ff60a4d71d72afa26ab207d43c807c729c90a",
+    strip_prefix = "probe-rs-tools-aarch64-unknown-linux-gnu",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-aarch64-unknown-linux-gnu.tar.xz",
+)
+
+http_archive(
+    name = "probe-rs-tools-x86_64-apple-darwin",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "0e35cc92ff34af1b1c72dd444e6ddd57c039ed31c2987e37578864211e843cf1",
+    strip_prefix = "probe-rs-tools-x86_64-apple-darwin",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-apple-darwin.tar.xz",
+)
+
+http_archive(
+    name = "probe-rs-tools-aarch64-apple-darwin",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "7140d9c2c61f8712ba15887f74df0cb40a7b16728ec86d5f45cc93fe96a0a29a",
+    strip_prefix = "probe-rs-tools-aarch64-apple-darwin",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-aarch64-apple-darwin.tar.xz",
+)
+
+http_archive(
+    name = "probe-rs-tools-x86_64-pc-windows-msvc",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "d195dfa3466a87906251e27d6d70a0105274faa28ebf90ffadad0bdd89b1ec77",
+    strip_prefix = "probe-rs-tools-x86_64-pc-windows-msvc",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-pc-windows-msvc.zip",
+)
+
+git_repository(
+    name = "rules_libusb",
+    commit = "eb8c39291104b08d5a2ea69d31d79c61a85a8485",
+    remote = "https://pigweed.googlesource.com/pigweed/rules_libusb",
+)
+
+http_archive(
+    name = "libusb",
+    build_file = "@rules_libusb//:libusb.BUILD",
+    sha256 = "ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575",
+    strip_prefix = "libusb-1.0.27",
+    url = "https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2",
 )
