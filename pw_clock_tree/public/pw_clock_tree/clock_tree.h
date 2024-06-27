@@ -181,6 +181,16 @@ class ClockSource : public ElementType {
   }
 };
 
+/// Class that represents a no-op clock source clock tree element that can
+/// be used to satisfy the dependent source clock tree element dependency
+/// for clock source classes that expect a source clock tree element.
+class ClockSourceNoOp : public ClockSource<ElementNonBlockingCannotFail> {
+ private:
+  pw::Status DoEnable() final { return pw::OkStatus(); }
+
+  pw::Status DoDisable() final { return pw::OkStatus(); }
+};
+
 /// Abstract class template of a clock tree element that depends on another
 /// clock tree element.
 ///
@@ -451,6 +461,19 @@ class ClockTree {
     }
     std::lock_guard lock(interrupt_spin_lock_);
     return element.Acquire();
+  }
+
+  /// Acquire a reference to clock tree element `element` while `element_with`
+  /// clock tree is enabled.
+  /// Acquiring the clock tree element might fail.
+  ///
+  /// Note: May not be called from inside an interrupt context or with
+  /// interrupts disabled.
+  Status AcquireWith(Element& element, Element& element_with) {
+    PW_TRY(Acquire(element_with));
+    Status status = Acquire(element);
+    Release(element_with).IgnoreError();
+    return status;
   }
 
   /// Release a reference to a non-blocking clock tree element.
