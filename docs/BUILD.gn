@@ -40,11 +40,13 @@ pw_doc_group("core_docs") {
     "run_doxygen.py",
   ]
   sources = [
+    "3p/index.rst",
     "blog/01-kudzu.rst",
     "blog/02-bazel-feature-flags.rst",
     "blog/index.rst",
     "code_of_conduct.rst",
     "code_reviews.rst",
+    "community/index.rst",
     "concepts/index.rst",
     "contributing/docs/changelog.rst",
     "contributing/docs/index.rst",
@@ -58,12 +60,13 @@ pw_doc_group("core_docs") {
     "get_started/bazel.rst",
     "get_started/bazel_integration.rst",
     "get_started/first_time_setup.rst",
+    "get_started/github_actions.rst",
     "get_started/index.rst",
+    "get_started/install_bazel.rst",
     "get_started/upstream.rst",
     "get_started/zephyr.rst",
     "glossary.rst",
     "infra/ci_cq_intro.rst",
-    "infra/github.rst",
     "infra/index.rst",
     "infra/rollers.rst",
     "mission.rst",
@@ -72,6 +75,7 @@ pw_doc_group("core_docs") {
     "os/zephyr/index.rst",
     "os/zephyr/kconfig.rst",
     "overview.rst",
+    "showcases/index.rst",
     "size_optimizations.rst",
     "style/cli.rst",
     "style/commit_message.rst",
@@ -131,7 +135,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_allocator/public/pw_allocator/as_pmr_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/best_fit_block_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/block.h",
-  "$dir_pw_allocator/public/pw_allocator/block_allocator_base.h",
+  "$dir_pw_allocator/public/pw_allocator/block_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/bucket.h",
   "$dir_pw_allocator/public/pw_allocator/bucket_block_allocator.h",
   "$dir_pw_allocator/public/pw_allocator/buddy_allocator.h",
@@ -184,7 +188,7 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/central.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/connection.h",
   "$dir_pw_bluetooth/public/pw_bluetooth/low_energy/peripheral.h",
-  "$dir_pw_bluetooth_proxy/public/pw_bluetooth_proxy/common.h",
+  "$dir_pw_bluetooth_proxy/public/pw_bluetooth_proxy/h4_packet.h",
   "$dir_pw_bluetooth_proxy/public/pw_bluetooth_proxy/proxy_host.h",
   "$dir_pw_build/public/pw_build/must_place.ld.h",
   "$dir_pw_bytes/public/pw_bytes/alignment.h",
@@ -274,6 +278,8 @@ _doxygen_input_files = [  # keep-sorted: start
   "$dir_pw_sync/public/pw_sync/timed_thread_notification.h",
   "$dir_pw_sync/public/pw_sync/virtual_basic_lockable.h",
   "$dir_pw_sys_io/public/pw_sys_io/sys_io.h",
+  "$dir_pw_third_party/freertos/pw_assert_stack_overflow_hook.cc",
+  "$dir_pw_third_party/freertos/static_task_allocation.cc",
   "$dir_pw_thread/public/pw_thread/test_thread_context.h",
   "$dir_pw_thread/public/pw_thread/thread.h",
   "$dir_pw_tokenizer/public/pw_tokenizer/config.h",
@@ -333,6 +339,7 @@ pw_doc_gen("docs") {
     # Note: These must use the "docs" prefix for links and image references. In
     # contrast, the pw_doc_group above should not use the docs prefix.
     "automated_analysis.rst",
+    "bazel_compatibility.rst",
     "build_system.rst",
     "changelog.rst",
     "index.rst",
@@ -351,10 +358,10 @@ pw_doc_gen("docs") {
     ":third_party_docs",
     "$dir_pigweed/kudzu:docs",
     "$dir_pigweed/seed:seeds",
-    "$dir_pw_env_setup:python.install",
   ]
 
-  # Required to set the PYTHONPATH so automodule, autoclass or autofunction RST
-  # directives work.
-  python_metadata_deps = [ "$dir_pw_env_setup:core_pigweed_python_packages" ]
+  # Extra Python deps are required to set the PYTHONPATH so
+  # automodule, autoclass or autofunction RST directives work in
+  # sphinx.
+  python_deps = [ "$dir_pw_env_setup:core_pigweed_python_packages" ]
 }

@@ -116,13 +116,15 @@ def cmd_sync(
     When new IDE features are introduced in the future (either by Pigweed or
     your downstream project), you can re-run this command to set up the new
     features. It will not overwrite or break any of your existing configuration.
+
+    All commands will be run from the `PW_PROJECT_ROOT` directory
     """
     reporter.info('Syncing pw_ide...')
     _make_working_dir(reporter, pw_ide_settings)
 
     for command in pw_ide_settings.sync:
         _LOG.debug("Running: %s", command)
-        subprocess.run(shlex.split(command))
+        subprocess.run(shlex.split(command), cwd=Path(env.PW_PROJECT_ROOT))
 
     if pw_ide_settings.editor_enabled('vscode'):
         cmd_vscode()
@@ -260,6 +262,7 @@ def cmd_vscode(
             vsc_manager.default(settings_type).sync_to(active_settings)
             vsc_manager.project(settings_type).sync_to(active_settings)
             vsc_manager.user(settings_type).sync_to(active_settings)
+            vsc_manager.active(settings_type).sync_to(active_settings)
 
         new_settings_hash = vsc_manager.active(settings_type).hash()
         settings_changed = new_settings_hash != prev_settings_hash

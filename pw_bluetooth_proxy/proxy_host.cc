@@ -14,36 +14,37 @@
 
 #include "pw_bluetooth_proxy/proxy_host.h"
 
-#include "emboss_util.h"
 #include "pw_assert/check.h"  // IWYU pragma: keep
 #include "pw_bluetooth/hci_common.emb.h"
 #include "pw_bluetooth/hci_h4.emb.h"
-#include "pw_bluetooth_proxy/common.h"
+#include "pw_bluetooth_proxy/emboss_util.h"
+#include "pw_bluetooth_proxy/h4_packet.h"
 #include "pw_log/log.h"
 
 namespace pw::bluetooth::proxy {
 
-ProxyHost::ProxyHost(H4HciPacketSendFn&& send_to_host_fn,
-                     H4HciPacketSendFn&& send_to_controller_fn,
-                     uint16_t le_acl_credits_to_reserve)
+ProxyHost::ProxyHost(
+    pw::Function<void(H4PacketWithHci&& packet)>&& send_to_host_fn,
+    pw::Function<void(H4PacketWithH4&& packet)>&& send_to_controller_fn,
+    uint16_t le_acl_credits_to_reserve)
     : outward_send_to_host_fn_(std::move(send_to_host_fn)),
       outward_send_to_controller_fn_(std::move(send_to_controller_fn)),
       acl_data_channel_{le_acl_credits_to_reserve} {}
 
-void ProxyHost::HandleH4HciFromHost(H4HciPacket h4_packet) {
-  SendToController(h4_packet);
+void ProxyHost::HandleH4HciFromHost(H4PacketWithH4&& h4_packet) {
+  SendToController(std::move(h4_packet));
 }
 
-void ProxyHost::ProcessH4HciFromController(H4HciPacket h4_packet) {
-  if (h4_packet.empty()) {
+void ProxyHost::ProcessH4HciFromController(H4PacketWithHci&& h4_packet) {
+  if (h4_packet.GetHciSpan().empty()) {
     PW_LOG_ERROR("Received empty H4 buffer. So will not process.");
     return;
   }
 
-  if (h4_packet[0] != cpp23::to_underlying(emboss::H4PacketType::EVENT)) {
+  if (h4_packet.GetH4Type() != emboss::H4PacketType::EVENT) {
     return;
   }
-  pw::span hci_buffer = H4HciSubspan(h4_packet);
+  pw::span hci_buffer = h4_packet.GetHciSpan();
   auto event = MakeEmboss<emboss::EventHeaderView>(hci_buffer);
   if (!event.IsComplete()) {
     PW_LOG_ERROR("Buffer is too small for EventHeader. So will not process.");
@@ -61,8 +62,8 @@ void ProxyHost::ProcessH4HciFromController(H4HciPacket h4_packet) {
     return;
   }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wswitch-enum"
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (command_complete_event.command_opcode_enum().Read()) {
     case emboss::OpCode::LE_READ_BUFFER_SIZE_V1: {
       auto read_event =
@@ -94,22 +95,26 @@ void ProxyHost::ProcessH4HciFromController(H4HciPacket h4_packet) {
       // Nothing to process
       break;
   }
-#pragma clang diagnostic pop
+  PW_MODIFY_DIAGNOSTICS_POP();
 }
 
-void ProxyHost::HandleH4HciFromController(H4HciPacket h4_packet) {
-  ProcessH4HciFromController(h4_packet);
-  SendToHost(h4_packet);
+void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
+  ProcessH4HciFromController(std::move(h4_packet));
+  SendToHost(std::move(h4_packet));
 }
 
-void ProxyHost::SendToHost(H4HciPacket h4_packet) {
+void ProxyHost::SendToHost(H4PacketWithHci&& h4_packet) {
   PW_DCHECK(outward_send_to_host_fn_ != nullptr);
-  outward_send_to_host_fn_(h4_packet);
+  outward_send_to_host_fn_(std::move(h4_packet));
 }
 
-void ProxyHost::SendToController(H4HciPacket h4_packet) {
+void ProxyHost::SendToController(H4PacketWithH4&& h4_packet) {
   PW_DCHECK(outward_send_to_controller_fn_ != nullptr);
-  outward_send_to_controller_fn_(h4_packet);
+  outward_send_to_controller_fn_(std::move(h4_packet));
+}
+
+bool ProxyHost::HasSendAclCapability() const {
+  return acl_data_channel_.GetLeAclCreditsToReserve() > 0;
 }
 
 uint16_t ProxyHost::GetNumFreeLeAclPackets() const {
