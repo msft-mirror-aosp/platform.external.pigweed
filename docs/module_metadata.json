@@ -194,6 +194,14 @@
       "C++"
     ]
   },
+  "pw_chrono": {
+    "tagline": "Portable std::chrono for constrained embedded devices",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_cli": {
     "tagline": "Enhance and accelerate custom command-line tooling",
     "status": "stable",
@@ -286,6 +294,13 @@
       "C++20"
     ]
   },
+  "pw_hex_dump": {
+    "tagline": "Handy hexdump utilities",
+    "status": "stable",
+    "languages": [
+      "C++17"
+    ]
+  },
   "pw_hdlc": {
     "tagline": "Simple, robust, and efficient serial communication",
     "status": "stable",
@@ -365,6 +380,14 @@
       "C++"
     ]
   },
+  "pw_malloc": {
+    "tagline": "Replacement interface for standard libc dynamic memory operations",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_multibuf": {
     "tagline": "A buffer API optimized for zero-copy messaging",
     "status": "unstable",
@@ -377,6 +400,14 @@
     "status": "unstable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_preprocessor": {
+    "tagline": "Helpful preprocessor macros",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
     ]
   },
   "pw_presubmit": {
