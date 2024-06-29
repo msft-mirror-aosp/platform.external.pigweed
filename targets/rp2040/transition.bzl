@@ -14,6 +14,7 @@
 
 """Bazel transitions for the rp2040."""
 
+# LINT.IfChange
 def _rp2040_transition_impl(settings, attr):
     # buildifier: disable=unused-variable
     _ignore = settings, attr
@@ -22,28 +23,44 @@ def _rp2040_transition_impl(settings, attr):
         "@freertos//:freertos_config": "@pigweed//targets/rp2040:freertos_config",
         "@pico-sdk//bazel/config:PICO_STDIO_UART": True,
         "@pico-sdk//bazel/config:PICO_STDIO_USB": True,
+        "@pigweed//pw_assert:backend": "@pigweed//pw_assert_basic",
+        "@pigweed//pw_assert:backend_impl": "@pigweed//pw_assert_basic:impl",
         "@pigweed//pw_interrupt:backend": "@pigweed//pw_interrupt_cortex_m:context",
         "@pigweed//pw_log:backend": "@pigweed//pw_log_tokenized",
         "@pigweed//pw_log:backend_impl": "@pigweed//pw_log_tokenized:impl",
         "@pigweed//pw_log_tokenized:handler_backend": "@pigweed//pw_system:log_backend",
+        "@pigweed//pw_sync:binary_semaphore_backend": "@pigweed//pw_sync_freertos:binary_semaphore",
+        "@pigweed//pw_sync:interrupt_spin_lock_backend": "@pigweed//pw_sync_freertos:interrupt_spin_lock",
+        "@pigweed//pw_sync:mutex_backend": "@pigweed//pw_sync_freertos:mutex",
+        "@pigweed//pw_sync:thread_notification_backend": "@pigweed//pw_sync_freertos:thread_notification",
+        "@pigweed//pw_sync:timed_thread_notification_backend": "@pigweed//pw_sync_freertos:timed_thread_notification",
         "@pigweed//pw_system:extra_platform_libs": "@pigweed//targets/rp2040:extra_platform_libs",
         "@pigweed//pw_unit_test:main": "@pigweed//targets/rp2040:unit_test_app",
     }
+
+# LINT.ThenChange(//.bazelrc)
 
 _rp2040_transition = transition(
     implementation = _rp2040_transition_impl,
     inputs = [],
     outputs = [
         "//command_line_option:platforms",
+        "@freertos//:freertos_config",
+        "@pico-sdk//bazel/config:PICO_STDIO_USB",
+        "@pico-sdk//bazel/config:PICO_STDIO_UART",
+        "@pigweed//pw_assert:backend",
+        "@pigweed//pw_assert:backend_impl",
         "@pigweed//pw_interrupt:backend",
         "@pigweed//pw_log:backend",
         "@pigweed//pw_log:backend_impl",
         "@pigweed//pw_log_tokenized:handler_backend",
+        "@pigweed//pw_sync:binary_semaphore_backend",
+        "@pigweed//pw_sync:interrupt_spin_lock_backend",
+        "@pigweed//pw_sync:mutex_backend",
+        "@pigweed//pw_sync:thread_notification_backend",
+        "@pigweed//pw_sync:timed_thread_notification_backend",
         "@pigweed//pw_system:extra_platform_libs",
         "@pigweed//pw_unit_test:main",
-        "@freertos//:freertos_config",
-        "@pico-sdk//bazel/config:PICO_STDIO_USB",
-        "@pico-sdk//bazel/config:PICO_STDIO_UART",
     ],
 )
 
@@ -66,5 +83,6 @@ rp2040_binary = rule(
         ),
     },
     doc = "Builds the specified binary for the rp2040 platform",
-    executable = True,
+    # This target is for rp2040 and can't be run on host.
+    executable = False,
 )
