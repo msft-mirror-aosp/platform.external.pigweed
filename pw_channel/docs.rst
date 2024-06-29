@@ -44,6 +44,8 @@ This is only valid if, for the datagram channel:
 -------------
 API reference
 -------------
+.. cpp:namespace:: pw::channel
+
 .. doxygengroup:: pw_channel
    :content-only:
    :members:
@@ -59,5 +61,9 @@ Channel implementations
    :members:
 
 .. doxygengroup:: pw_channel_epoll
+   :content-only:
+   :members:
+
+.. doxygengroup:: pw_channel_rp2_stdio
    :content-only:
    :members:

@@ -298,13 +298,18 @@ Only fields that exist in the Log Source will render as columns in the Log Viewe
 
 .. code-block:: typescript
 
-   createLogViewer(logSource, root, state, logStore, columnOrder)
+   createLogViewer(logSource, root, { columnOrder })
 
 ``columnOrder`` accepts an ``string[]`` and defaults to ``[log_source, time, timestamp]``
 
 .. code-block:: typescript
 
-   createLogViewer(logSource, root, state, logStore, ['log_source', 'time', 'timestamp'])
+   createLogViewer(
+    logSource,
+    root,
+    { columnOrder: ['log_source', 'time', 'timestamp'] }
+
+  )
 
 Note, columns will always start with ``severity`` and end with ``message``, these fields do not need to be defined.
 Columns are ordered in the following format:
@@ -402,6 +407,27 @@ To create your own subset, find the codepoints you want to add and:
    with the new subset
 
 .. inclusive-language: enable
+
+Shoelace
+--------
+We currently use Split Panel from the `Shoelace <https://github.com/shoelace-style/shoelace>`_
+library to enable resizable split views within the log viewer.
+
+To provide flexibility in different environments, we've introduced a property ``useShoelaceFeatures``
+in the ``LogViewer`` component. This flag allows developers to enable or disable the import and
+usage of Shoelace components based on their needs.
+
+By default, the ``useShoelaceFeatures`` flag is set to ``true``, meaning Shoelace components will
+be used and resizable split views are made available. To disable Shoelace components, set this
+property to ``false`` as shown below:
+
+.. code-block:: javascript
+
+   const logViewer = document.querySelector('log-viewer');
+   logViewer.useShoelaceFeatures = false;
+
+When ``useShoelaceFeatures`` is set to ``false``, the  <sl-split-panel> component from Shoelace will
+not be imported or used within the log viewer.
 
 Guides
 ======
