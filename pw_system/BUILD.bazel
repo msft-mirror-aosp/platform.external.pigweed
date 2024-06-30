@@ -15,10 +15,12 @@
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_binary",
+    "pw_cc_test",
     "pw_facade",
 )
 load("//pw_system/py:console.bzl", "device_console", "device_simulator_console")
 load("//targets/host_device_simulator:transition.bzl", "host_device_simulator_binary")
+load("//targets/rp2040:flash.bzl", "flash_rp2040")
 load("//targets/rp2040:transition.bzl", "rp2040_binary")
 
 package(default_visibility = ["//visibility:public"])
@@ -39,6 +41,7 @@ cc_library(
     hdrs = [
         "public/pw_system/config.h",
     ],
+    visibility = ["//visibility:private"],
     deps = [":config_override"],
 )
 
@@ -69,7 +72,7 @@ cc_library(
         # add them manually to their cc_binary target.
         #
         # When implementing a backend for pw_assert or pw_log, *do not* depend
-        # on @pigweed//pw_system:pw_system. Instead, depend on the appropriate
+        # on //pw_system:pw_system. Instead, depend on the appropriate
         # component library. See :log_backend, below, for an examples.
         "//pw_assert:backend_impl",
         "//pw_log:backend_impl",
@@ -374,7 +377,7 @@ label_flag(
 # projects. For now, assume the pre-baked OS-specific hooks are good enough.
 cc_library(
     name = "target_hooks_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
+    visibility = ["//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:freertos": [":freertos_target_hooks"],
         "//conditions:default": [":stl_target_hooks"],
@@ -426,6 +429,105 @@ pw_cc_binary(
     ],
 )
 
+cc_library(
+    name = "async",
+    srcs = [
+        "pw_system_private/threads.h",
+        "system.cc",
+        "threads.cc",
+    ],
+    hdrs = ["public/pw_system/system.h"],
+    implementation_deps = [
+        ":async_packet_io",
+        ":file_manager",
+        ":file_service",
+        ":log",
+        ":thread_snapshot_service",
+        ":transfer_service",
+        "//pw_allocator:best_fit_block_allocator",
+        "//pw_async2:allocate_task",
+        "//pw_async2:pend_func_task",
+        "//pw_hdlc:router",
+        "//pw_multibuf:simple_allocator",
+        "//pw_rpc/pwpb:echo_service",
+    ],
+    includes = ["public"],
+    deps = [
+        "//pw_allocator:allocator",
+        "//pw_async2:dispatcher",
+        "//pw_channel",
+        "//pw_rpc",
+    ],
+)
+
+cc_library(
+    name = "async_packet_io",
+    srcs = ["async_packet_io.cc"],
+    hdrs = ["public/pw_system/internal/async_packet_io.h"],
+    implementation_deps = [
+        "//pw_assert",
+        "//pw_log",
+    ],
+    includes = ["public"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":config",
+        "//pw_allocator:allocator",
+        "//pw_async2:dispatcher",
+        "//pw_channel",
+        "//pw_channel:forwarding_channel",
+        "//pw_containers:inline_var_len_entry_queue",
+        "//pw_hdlc:router",
+        "//pw_multibuf",
+        "//pw_multibuf:simple_allocator",
+        "//pw_rpc",
+        "//pw_sync:lock_annotations",
+        "//pw_sync:mutex",
+        "//pw_sync:thread_notification",
+        "//pw_thread:thread",
+        "//pw_thread:thread_core",
+    ],
+)
+
+pw_cc_test(
+    name = "async_packet_io_test",
+    srcs = ["async_packet_io_test.cc"],
+    deps = [
+        ":async_packet_io",
+        "//pw_allocator:testing",
+        "//pw_channel:loopback_channel",
+        "//pw_multibuf:testing",
+    ],
+)
+
+pw_cc_test(
+    name = "system_async_test",
+    srcs = ["system_async_test.cc"],
+    deps = [
+        ":async",
+        "//pw_allocator:testing",
+        "//pw_channel:loopback_channel",
+        "//pw_multibuf:testing",
+    ],
+)
+
+pw_cc_binary(
+    name = "system_async_host_example",
+    testonly = True,
+    srcs = ["system_async_host_example.cc"],
+    deps = [
+        ":async",
+        "//pw_channel:epoll_channel",
+        "//pw_multibuf:testing",
+    ],
+)
+
+host_device_simulator_binary(
+    name = "system_async_host_simulator_example",
+    testonly = True,
+    binary = ":system_async_host_example",
+)
+
 host_device_simulator_binary(
     name = "simulator_system_example",
     testonly = True,
@@ -436,6 +538,12 @@ rp2040_binary(
     name = "rp2040_system_example",
     testonly = True,
     binary = ":system_example",
+)
+
+flash_rp2040(
+    name = "flash_rp2040_system_example",
+    testonly = True,
+    rp2040_binary = ":rp2040_system_example",
 )
 
 # Start :simulator_system_example and connect to it with pw console.
