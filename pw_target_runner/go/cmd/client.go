@@ -19,7 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"path/filepath"
+	"os"
 	"time"
 
 	"google.golang.org/grpc"
@@ -52,13 +52,13 @@ func NewClient(host string, port int) (*Client, error) {
 
 // RunBinary sends a RunBinary RPC to the target runner service.
 func (c *Client) RunBinary(path string) error {
-	abspath, err := filepath.Abs(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
 	client := pb.NewTargetRunnerClient(c.conn)
-	req := &pb.RunBinaryRequest{FilePath: abspath}
+	req := &pb.RunBinaryRequest{Binary: &pb.RunBinaryRequest_TestBinary{TestBinary: data}}
 
 	res, err := client.RunBinary(context.Background(), req)
 	if err != nil {
@@ -84,6 +84,7 @@ func main() {
 	hostPtr := flag.String("host", "localhost", "Server host")
 	portPtr := flag.Int("port", 8080, "Server port")
 	pathPtr := flag.String("binary", "", "Path to executable file")
+	serverSuggestionPtr := flag.String("server_suggestion", "", "Suggested command to display if no server is available.")
 
 	flag.Parse()
 
@@ -104,6 +105,9 @@ func main() {
 		if s.Code() == codes.Unavailable {
 			log.Println("  No pw_target_runner_server is running.")
 			log.Println("  Check that a server has been started for your target.")
+			if *serverSuggestionPtr != "" {
+				log.Println("  Consider starting a test server with: ", *serverSuggestionPtr)
+			}
 		} else {
 			log.Printf("  %v\n", err)
 		}
