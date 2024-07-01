@@ -82,6 +82,11 @@ pw_cc_test(
 pw_cc_test(
     name = "single_chunk_region_tracker_test",
     srcs = ["single_chunk_region_tracker_test.cc"],
+    # TODO: b/260624583 - Fix this for rp2040
+    target_compatible_with = select({
+        "//pw_build/constraints/chipset:rp2040": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":chunk",
         ":single_chunk_region_tracker",
@@ -95,6 +100,7 @@ cc_library(
     deps = [
         ":chunk",
         "//pw_preprocessor",
+        "//pw_status",
     ],
 )
 
@@ -104,6 +110,7 @@ pw_cc_test(
     deps = [
         ":internal_test_utils",
         ":pw_multibuf",
+        "//pw_bytes",
         "//pw_unit_test",
     ],
 )

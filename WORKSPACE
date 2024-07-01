@@ -37,6 +37,14 @@ http_archive(
 )
 
 http_archive(
+    name = "rules_platform",
+    sha256 = "0aadd1bd350091aa1f9b6f2fbcac8cd98201476289454e475b28801ecf85d3fd",
+    urls = [
+        "https://github.com/bazelbuild/rules_platform/releases/download/0.1.0/rules_platform-0.1.0.tar.gz",
+    ],
+)
+
+http_archive(
     name = "rules_cc",
     sha256 = "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
     strip_prefix = "rules_cc-0.0.9",
@@ -66,6 +74,15 @@ cipd_repository(
     tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
 )
 
+# Set up bloaty size profiler.
+# Required by: pigweed.
+# Used in modules: //pw_bloat.
+cipd_repository(
+    name = "bloaty",
+    path = "fuchsia/third_party/bloaty/${os}-amd64",
+    tag = "git_revision:c057ba4f43db0506d4ba8c096925b054b02a8bd3",
+)
+
 # Set up Starlark library.
 # Required by: io_bazel_rules_go, com_google_protobuf, rules_python
 # Used in modules: None.
@@ -84,13 +101,12 @@ load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 bazel_skylib_workspace()
 
 # Used in modules: //pw_grpc
-http_archive(
+#
+# TODO: b/345806988 - remove this fork and update to upstream HEAD.
+git_repository(
     name = "io_bazel_rules_go",
-    sha256 = "7c76d6236b28ff695aa28cf35f95de317a9472fd1fb14ac797c9bf684f09b37c",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
-    ],
+    commit = "21005c4056de3283553c015c172001229ecbaca9",
+    remote = "https://github.com/cramertj/rules_go.git",
 )
 
 # Used in modules: //pw_grpc
@@ -176,9 +192,9 @@ install_deps()
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-06-01.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8746297072233905681.
-    commit = "dc0007365302ab30293144aa5dac6194fdea10ad",
+    # ROLL: Last updated 2024-06-08.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8745662233558600481.
+    commit = "5084a6ded7858e2824e9a683d5ca33745140723b",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -217,7 +233,11 @@ load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
 
 fuchsia_clang_repository(
     name = "fuchsia_clang",
-    from_workspace = "@llvm_toolchain//:BUILD.bazel",
+    # TODO: https://pwbug.dev/346354914 - Reuse @llvm_toolchain. This currently
+    # leads to flaky loading phase errors!
+    # from_workspace = "@llvm_toolchain//:BUILD",
+    cipd_tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
+    sdk_root_label = "@fuchsia_sdk",
 )
 
 load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
@@ -450,6 +470,13 @@ git_repository(
     tag = "v2024.0501.215421",
 )
 
+git_repository(
+    name = "icu",
+    build_file = "//third_party/icu:icu.BUILD.bazel",
+    commit = "ef02cc27c0faceffc9345e11a35769ae92b836fb",
+    remote = "https://fuchsia.googlesource.com/third_party/icu",
+)
+
 http_archive(
     name = "freertos",
     build_file = "//third_party/freertos:freertos.BUILD.bazel",
@@ -493,16 +520,14 @@ new_local_repository(
     path = ".",
 )
 
-git_repository(
-    name = "pico-sdk",
-    commit = "4de7ec6bd73cd154533f35d9058279267ba77176",
-    remote = "https://pigweed.googlesource.com/third_party/github/raspberrypi/pico-sdk",
-)
+load("//targets/rp2040:deps.bzl", "pigweed_rp2_deps")
 
-http_archive(
-    name = "tinyusb",
-    build_file = "@pico-sdk//src/rp2_common/tinyusb:tinyusb.BUILD",
-    sha256 = "ac57109bba00d26ffa33312d5f334990ec9a9a4d82bf890ed8b825b4610d1da2",
-    strip_prefix = "tinyusb-86c416d4c0fb38432460b3e11b08b9de76941bf5",
-    url = "https://github.com/hathach/tinyusb/archive/86c416d4c0fb38432460b3e11b08b9de76941bf5.zip",
-)
+pigweed_rp2_deps()
+
+load("//pw_ide:deps.bzl", "pw_ide_deps")
+
+pw_ide_deps()
+
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+
+hedron_compile_commands_setup()

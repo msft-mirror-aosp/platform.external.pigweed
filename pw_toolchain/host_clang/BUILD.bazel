@@ -59,25 +59,6 @@ pw_cc_flag_set(
     flags = ["-no_warning_for_no_symbols"],
 )
 
-# Although we use similar warnings for clang and arm_gcc, we don't have one
-# centralized list, since we might want to use different warnings based on the
-# compiler in the future.
-pw_cc_flag_set(
-    name = "warnings",
-    actions = [
-        "@pw_toolchain//actions:all_c_compiler_actions",
-        "@pw_toolchain//actions:all_cpp_compiler_actions",
-    ],
-    flags = [
-        "-Wall",
-        "-Wextra",
-        # Make all warnings errors, except for the exemptions below.
-        "-Werror",
-        "-Wno-error=cpp",  # preprocessor #warning statement
-        "-Wno-error=deprecated-declarations",  # [[deprecated]] attribute
-    ],
-)
-
 # Thread safety warnings are only supported by Clang.
 pw_cc_flag_set(
     name = "thread_safety_warnings",
@@ -177,6 +158,13 @@ pw_cc_feature(
     feature_name = "rules_rust_unsupported_feature",
 )
 
+pw_cc_feature(
+    name = "supports_pic",
+    enabled = True,
+    feature_name = "supports_pic",
+    overrides = "@pw_toolchain//features/well_known:supports_pic",
+)
+
 pw_cc_toolchain(
     name = "host_toolchain",
     action_configs = [
@@ -192,6 +180,7 @@ pw_cc_toolchain(
     builtin_sysroot = select({
         "@platforms//os:linux": "external/linux_sysroot",
         "@platforms//os:macos": XCODE_SDK_PATH,
+        "//conditions:default": "",
     }),
     compiler = "clang",
     cxx_builtin_include_directories = select({
@@ -206,9 +195,12 @@ pw_cc_toolchain(
         "@platforms//os:macos": [
             "%sysroot%/usr/include",
             "%sysroot%/System/Library/Frameworks/CoreFoundation.framework/Headers",
+            "%sysroot%/System/Library/Frameworks/IOKit.framework/Headers",
+            "%sysroot%/System/Library/Frameworks/Security.framework/Headers",
             "%package(@llvm_toolchain//)%/include/c++/v1",
             "%package(@llvm_toolchain//)%/lib/clang/18/include",
         ],
+        "//conditions:default": [],
     }),
     extra_action_files = [":sysroot_files"],
     flag_sets = select({
@@ -219,8 +211,8 @@ pw_cc_toolchain(
             ":macos_link_libs",
             ":libtool_darwin_flags",
         ],
+        "//conditions:default": [],
     }) + [
-        ":warnings",
         ":thread_safety_warnings",
         "@pw_toolchain//flag_sets:c++17",
         "@pw_toolchain//flag_sets:debugging",
@@ -229,6 +221,8 @@ pw_cc_toolchain(
         "@pw_toolchain//flag_sets:no_rtti",
         "@pw_toolchain//flag_sets:wno_register",
         "@pw_toolchain//flag_sets:wnon_virtual_dtor",
+        "//pw_toolchain/cc:common_warnings",
+        "//pw_toolchain/cc:color_diagnostics",
     ] + select({
         "//pw_build:kythe": [":no_unknown_warning_option"],
         "//conditions:default": [],
@@ -247,6 +241,7 @@ pw_cc_toolchain(
         ":asan_feature",
         ":verbose_compiler_output",
         ":rules_rust_unsupported_feature",
+        ":supports_pic",
     ],
     toolchain_identifier = "host-toolchain",
 )

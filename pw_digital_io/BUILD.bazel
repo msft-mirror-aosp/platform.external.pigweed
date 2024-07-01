@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
@@ -53,12 +54,6 @@ pw_cc_test(
 )
 
 cc_library(
-    name = "digital_io_controller",
-    hdrs = ["public/pw_digital_io/digital_io_controller.h"],
-    includes = ["public"],
-)
-
-cc_library(
     name = "digital_io_service",
     srcs = ["digital_io_service.cc"],
     hdrs = ["public/pw_digital_io/digital_io_service.h"],
@@ -80,5 +75,10 @@ proto_library(
 
 pw_proto_library(
     name = "digital_io_proto_cc",
+    deps = [":digital_io_proto"],
+)
+
+py_proto_library(
+    name = "digital_io_proto_py_pb2",
     deps = [":digital_io_proto"],
 )
