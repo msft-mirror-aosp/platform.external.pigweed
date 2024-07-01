@@ -12,7 +12,8 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_allocator/block_allocator_base.h"
+#include "pw_allocator/block_allocator.h"
+
 #include "pw_assert/check.h"
 
 namespace pw::allocator::internal {
@@ -23,6 +24,17 @@ void GenericBlockAllocator::CrashOnAllocated(void* allocated) {
             "destroyed. All memory allocated by an allocator must be released "
             "before the allocator goes out of scope.",
             allocated);
+}
+
+void GenericBlockAllocator::CrashOnInvalidFree(void* freed) {
+  PW_DCHECK(
+      false,
+      "Attemped to free %p, which is outside the allocator's memory region.",
+      freed);
+}
+
+void GenericBlockAllocator::CrashOnDoubleFree(void* freed) {
+  PW_DCHECK(false, "The block at %p was freed twice.", freed);
 }
 
 }  // namespace pw::allocator::internal

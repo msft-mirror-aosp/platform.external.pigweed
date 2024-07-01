@@ -20,6 +20,7 @@ import("$dir_pigweed/third_party/nanopb/nanopb.gni")
 import("$dir_pigweed/third_party/pico_sdk/pi_pico.gni")
 import("$dir_pigweed/third_party/smartfusion_mss/mss.gni")
 import("$dir_pigweed/third_party/stm32cube/stm32cube.gni")
+import("$dir_pw_async2/backend.gni")
 import("$dir_pw_build/error.gni")
 import("$dir_pw_build/facade.gni")
 import("$dir_pw_build/module_config.gni")
@@ -71,7 +72,6 @@ pw_source_set("config") {
   public_configs = [ ":public_include_path" ]
   public_deps = [ pw_system_CONFIG ]
   visibility = [ "./*" ]
-  friend = [ "./*" ]
 }
 
 pw_source_set("log") {
@@ -87,7 +87,6 @@ pw_source_set("log") {
   ]
   deps = [
     ":config",
-    ":rpc_server",
     "$dir_pw_log_rpc:rpc_log_drain",
     "$dir_pw_sync:lock_annotations",
     "$dir_pw_sync:mutex",
@@ -184,7 +183,7 @@ pw_source_set("work_queue") {
 }
 
 pw_source_set("sys_io_target_io") {
-  sources = [ "target_io.cc" ]
+  sources = [ "sys_io_target_io.cc" ]
   deps = [
     ":io.facade",
     "$dir_pw_stream",
@@ -310,6 +309,37 @@ group("pw_system") {
   deps = [ ":target_hooks" ]
 }
 
+pw_source_set("async") {
+  public = [ "public/pw_system/system.h" ]
+  public_configs = [ ":public_include_path" ]
+  sources = [
+    "pw_system_private/threads.h",
+    "system.cc",
+    "threads.cc",
+  ]
+  public_deps = [
+    "$dir_pw_allocator:allocator",
+    "$dir_pw_async2:dispatcher",
+    "$dir_pw_channel",
+    "$dir_pw_rpc:server",
+  ]
+  deps = [
+    ":async_packet_io",
+    ":file_manager",
+    ":file_service",
+    ":log",
+    ":thread_snapshot_service",
+    ":transfer_service",
+    "$dir_pw_allocator:best_fit_block_allocator",
+    "$dir_pw_async2:allocate_task",
+    "$dir_pw_async2:pend_func_task",
+    "$dir_pw_hdlc:router",
+    "$dir_pw_multibuf:simple_allocator",
+    "$dir_pw_rpc/pwpb:echo_service",
+    "$dir_pw_thread:thread",
+  ]
+}
+
 pw_executable("system_example") {
   # TODO: b/303282642 - Remove this testonly
   testonly = pw_unit_test_TESTONLY
@@ -326,6 +356,69 @@ pw_executable("system_example") {
     "$dir_pw_status:status_test.lib",
     "$dir_pw_string:string_builder_test.lib",
   ]
+}
+
+pw_executable("system_async_host_example") {
+  sources = [ "system_async_host_example.cc" ]
+  deps = [
+    ":async",
+    "$dir_pw_channel:epoll_channel",
+    "$dir_pw_multibuf:testing",
+  ]
+}
+
+pw_source_set("async_packet_io") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_system/internal/async_packet_io.h" ]
+  sources = [ "async_packet_io.cc" ]
+  public_deps = [
+    "$dir_pw_async2:dispatcher",
+    "$dir_pw_channel:forwarding_channel",
+    "$dir_pw_containers:inline_var_len_entry_queue",
+    "$dir_pw_hdlc:router",
+    "$dir_pw_multibuf:simple_allocator",
+    "$dir_pw_rpc:server",
+    "$dir_pw_sync:lock_annotations",
+    "$dir_pw_sync:mutex",
+    "$dir_pw_sync:thread_notification",
+    "$dir_pw_thread:thread",
+    "$dir_pw_thread:thread_core",
+    dir_pw_allocator,
+    dir_pw_channel,
+    dir_pw_multibuf,
+  ]
+  deps = [
+    ":config",
+    dir_pw_assert,
+    dir_pw_log,
+  ]
+  visibility = [ "./*" ]
+}
+
+pw_test("async_packet_io_test") {
+  sources = [ "async_packet_io_test.cc" ]
+  deps = [
+    ":async_packet_io",
+    "$dir_pw_allocator:testing",
+    "$dir_pw_channel:loopback_channel",
+    "$dir_pw_multibuf:testing",
+  ]
+
+  # TODO: b/317922402 - Run on Windows when thread detaching is supported.
+  enable_if = host_os != "win" && pw_async2_DISPATCHER_BACKEND != ""
+}
+
+pw_test("system_async_test") {
+  sources = [ "system_async_test.cc" ]
+  deps = [
+    ":async",
+    "$dir_pw_allocator:testing",
+    "$dir_pw_channel:loopback_channel",
+    "$dir_pw_multibuf:testing",
+  ]
+
+  # TODO: b/317922402 - Run on Windows when thread detaching is supported.
+  enable_if = host_os != "win" && pw_async2_DISPATCHER_BACKEND != ""
 }
 
 group("system_examples") {
@@ -365,7 +458,12 @@ pw_doc_group("docs") {
     "cli.rst",
     "docs.rst",
   ]
+  inputs = [ "system_async_test.cc" ]
 }
 
 pw_test_group("tests") {
+  tests = [
+    ":async_packet_io_test",
+    ":system_async_test",
+  ]
 }
