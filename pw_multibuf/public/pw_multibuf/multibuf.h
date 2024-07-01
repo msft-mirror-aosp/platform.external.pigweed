@@ -17,6 +17,7 @@
 
 #include "pw_multibuf/chunk.h"
 #include "pw_preprocessor/compiler.h"
+#include "pw_status/status_with_size.h"
 
 namespace pw::multibuf {
 
@@ -80,12 +81,39 @@ class MultiBuf {
   /// efficient than `size() == 0` in most cases.
   [[nodiscard]] bool empty() const;
 
+  /// Returns if the `MultiBuf` is contiguous. A `MultiBuf` is contiguous if it
+  /// is comprised of either:
+  ///
+  /// - one non-empty chunk,
+  /// - only empty chunks, or
+  /// - no chunks at all.
+  [[nodiscard]] bool IsContiguous() const {
+    return ContiguousSpan().has_value();
+  }
+
+  /// If the `MultiBuf` is contiguous, returns it as a span. The span will be
+  /// empty if the `MultiBuf` is empty.
+  ///
+  /// A `MultiBuf` is contiguous if it is comprised of either:
+  ///
+  /// - one non-empty chunk,
+  /// - only empty chunks, or
+  /// - no chunks at all.
+  std::optional<ByteSpan> ContiguousSpan() {
+    auto result = std::as_const(*this).ContiguousSpan();
+    if (result.has_value()) {
+      return span(const_cast<std::byte*>(result->data()), result->size());
+    }
+    return std::nullopt;
+  }
+  std::optional<ConstByteSpan> ContiguousSpan() const;
+
   /// Returns an iterator pointing to the first byte of this ``MultiBuf`.
-  iterator begin() { return iterator(first_, 0); }
+  iterator begin() { return iterator(first_); }
   /// Returns a const iterator pointing to the first byte of this ``MultiBuf`.
-  const_iterator begin() const { return const_iterator(first_, 0); }
+  const_iterator begin() const { return const_iterator(first_); }
   /// Returns a const iterator pointing to the first byte of this ``MultiBuf`.
-  const_iterator cbegin() const { return const_iterator(first_, 0); }
+  const_iterator cbegin() const { return const_iterator(first_); }
 
   /// Returns an iterator pointing to the end of this ``MultiBuf``.
   iterator end() { return iterator::end(); }
@@ -138,6 +166,14 @@ class MultiBuf {
   /// This method will acquire a mutex and is not IRQ safe.
   void Truncate(size_t len);
 
+  /// Truncates the `MultiBuf` after the current iterator. All bytes following
+  /// the iterator are removed.
+  ///
+  /// Does not modify the underlying data.
+  ///
+  /// This method will acquire a mutex and is not IRQ safe.
+  void TruncateAfter(iterator pos);
+
   /// Attempts to shrink this handle to refer to the data beginning at
   /// offset ``bytes_to_take``, returning the first ``bytes_to_take`` bytes as
   /// a new ``MultiBuf``.
@@ -167,6 +203,78 @@ class MultiBuf {
   ///
   /// This operation does not move any data and is ``O(Chunks().size())``.
   void PushSuffix(MultiBuf&& tail);
+
+  /// Copies bytes from the multibuf into the provided buffer.
+  ///
+  /// @param[out] dest Destination into which to copy data from the `MultiBuf`.
+  /// @param[in] position Offset in the `MultiBuf` from which to start.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: All bytes were copied into the desstination. The
+  ///    :cpp:class:`pw::StatusWithSize` includes the number of bytes copied,
+  ///    which is the size of the ``MultiBuf``.
+  ///
+  ///    RESOURCE_EXHAUSTED: Some bytes were copied, but the ``MultiBuf`` was
+  ///    larger than the destination buffer. The :cpp:class:`pw::StatusWithSize`
+  ///    includes the number of bytes copied.
+  ///
+  /// @endrst
+  StatusWithSize CopyTo(ByteSpan dest, size_t position = 0) const;
+
+  /// Copies bytes from the provided buffer into the multibuf.
+  ///
+  /// @param[in] source Data to copy into the `MultiBuf`.
+  /// @param[in] position Offset in the `MultiBuf` from which to start.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: All bytes were copied. The :cpp:class:`pw::StatusWithSize` includes
+  ///    the number of bytes copied, which is the size of the ``MultiBuf``.
+  ///
+  ///    RESOURCE_EXHAUSTED: Some bytes were copied, but the source was larger
+  ///    than the destination. The :cpp:class:`pw::StatusWithSize` includes the
+  ///    number of bytes copied.
+  ///
+  /// @endrst
+  StatusWithSize CopyFrom(ConstByteSpan source, size_t position = 0) {
+    return CopyFromAndOptionallyTruncate(source, position, /*truncate=*/false);
+  }
+
+  /// Copies bytes from the provided buffer into this `MultiBuf` and truncates
+  /// it to the end of the copied data. This is a more efficient version of:
+  /// @code{.cpp}
+  ///
+  ///   if (multibuf.CopyFrom(destination).ok()) {
+  ///     multibuf.Truncate(destination.size());
+  ///   }
+  ///
+  /// @endcode
+  ///
+  /// @param[in] source Data to copy into the `MultiBuf`.
+  /// @param[in] position Offset in the `MultiBuf` from which to start.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: All bytes were copied and the `MultiBuf` was truncated. The
+  ///    :cpp:class:`pw::StatusWithSize` includes the new `MultiBuf` size.
+  ///
+  ///    RESOURCE_EXHAUSTED: Some bytes were copied, but the source buffer was
+  ///    larger than the ``MultiBuf``. The returned
+  ///    :cpp:class:`pw::StatusWithSize` includes the number of bytes copied,
+  ///    which is the size of the ``MultiBuf``.
+  ///
+  /// @endrst
+  StatusWithSize CopyFromAndTruncate(ConstByteSpan source,
+                                     size_t position = 0) {
+    return CopyFromAndOptionallyTruncate(source, position, /*truncate=*/true);
+  }
 
   ///////////////////////////////////////////////////////////////////
   //--------------------- Chunk manipulation ----------------------//
@@ -257,10 +365,7 @@ class MultiBuf {
     using pointer = const std::byte*;
     using iterator_category = std::forward_iterator_tag;
 
-    constexpr const_iterator() = default;
-    const_iterator(const Chunk* chunk, size_t byte_index)
-        : chunk_(chunk), byte_index_(byte_index) {}
-    static const_iterator end() { return const_iterator(nullptr, 0); }
+    constexpr const_iterator() : chunk_(nullptr), byte_index_(0) {}
 
     reference operator*() const { return (*chunk_)[byte_index_]; }
     pointer operator->() const { return &(*chunk_)[byte_index_]; }
@@ -294,10 +399,23 @@ class MultiBuf {
     constexpr size_t byte_index() const { return byte_index_; }
 
    private:
-    void AdvanceToData();
+    friend class MultiBuf;
 
-    const Chunk* chunk_ = nullptr;
-    size_t byte_index_ = 0;
+    explicit constexpr const_iterator(const Chunk* chunk, size_t byte_index = 0)
+        : chunk_(chunk), byte_index_(byte_index) {
+      AdvanceToData();
+    }
+
+    static const_iterator end() { return const_iterator(nullptr); }
+
+    constexpr void AdvanceToData() {
+      while (chunk_ != nullptr && chunk_->empty()) {
+        chunk_ = chunk_->next_in_buf_;
+      }
+    }
+
+    const Chunk* chunk_;
+    size_t byte_index_;
   };
 
   /// An ``std::forward_iterator`` over the bytes of a ``MultiBuf``.
@@ -310,9 +428,6 @@ class MultiBuf {
     using iterator_category = std::forward_iterator_tag;
 
     constexpr iterator() = default;
-    iterator(Chunk* chunk, size_t byte_index)
-        : const_iter_(chunk, byte_index) {}
-    static iterator end() { return iterator(nullptr, 0); }
 
     reference operator*() const { return const_cast<std::byte&>(*const_iter_); }
     pointer operator->() const { return const_cast<std::byte*>(&*const_iter_); }
@@ -352,6 +467,13 @@ class MultiBuf {
     constexpr size_t byte_index() const { return const_iter_.byte_index(); }
 
    private:
+    friend class MultiBuf;
+
+    explicit constexpr iterator(Chunk* chunk, size_t byte_index = 0)
+        : const_iter_(chunk, byte_index) {}
+
+    static iterator end() { return iterator(nullptr); }
+
     const_iterator const_iter_;
   };
 
@@ -436,6 +558,10 @@ class MultiBuf {
 
     constexpr Chunk* chunk() const { return chunk_; }
 
+    constexpr operator ConstChunkIterator() const {
+      return ConstChunkIterator(chunk_);
+    }
+
    private:
     constexpr ChunkIterator(Chunk* chunk) : chunk_(chunk) {}
     static constexpr ChunkIterator end() { return ChunkIterator(nullptr); }
@@ -487,6 +613,7 @@ class MultiBuf {
     const Chunk* chunk_ = nullptr;
     friend class MultiBuf;
     friend class ChunkIterable;
+    friend class ChunkIterator;
   };
 
  private:
@@ -498,6 +625,10 @@ class MultiBuf {
   ///
   /// This operation is ``O(Chunks().size())``.
   Chunk* Previous(Chunk* chunk) const;
+
+  StatusWithSize CopyFromAndOptionallyTruncate(ConstByteSpan source,
+                                               size_t position,
+                                               bool truncate);
 
   Chunk* first_;
 };

@@ -26,26 +26,32 @@ endif()
 pw_add_library(pw_bluetooth_proxy STATIC
   HEADERS
     public/pw_bluetooth_proxy/acl_data_channel.h
-    public/pw_bluetooth_proxy/common.h
+    public/pw_bluetooth_proxy/emboss_util.h
+    public/pw_bluetooth_proxy/hci_transport.h
+    public/pw_bluetooth_proxy/h4_packet.h
     public/pw_bluetooth_proxy/proxy_host.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_bluetooth.emboss_att
     pw_bluetooth.emboss_hci_common
+    pw_bluetooth.emboss_hci_data
     pw_bluetooth.emboss_hci_events
     pw_bluetooth.emboss_hci_h4
+    pw_containers
     pw_function
     pw_log
     pw_span
+    pw_status
+    pw_sync.lock_annotations
+    pw_sync.mutex
   SOURCES
     acl_data_channel.cc
-    emboss_util.h
     proxy_host.cc
 )
 
 pw_add_test(pw_bluetooth_proxy.emboss_util_test
   SOURCES
-    emboss_util.h
     emboss_util_test.cc
   PRIVATE_DEPS
     pw_bluetooth_proxy
@@ -57,8 +63,8 @@ pw_add_test(pw_bluetooth_proxy.emboss_util_test
 
 pw_add_test(pw_bluetooth_proxy.pw_bluetooth_proxy_test
   SOURCES
-    emboss_util.h
     proxy_host_test.cc
+    h4_packet_test.cc
   PRIVATE_DEPS
     pw_bluetooth_proxy
     pw_third_party.fuchsia.stdcompat
