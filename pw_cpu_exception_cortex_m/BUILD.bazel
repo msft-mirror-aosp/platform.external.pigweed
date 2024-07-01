@@ -55,15 +55,7 @@ label_flag(
 # Override-able flag for each facade backend.
 label_flag(
     name = "crash_backend",
-    build_setting_default = ":crash_backend_multiplexer",
-)
-
-# Default facade backends.
-alias(
-    name = "crash_backend_multiplexer",
-    actual = select({
-        "//conditions:default": "//pw_build:unspecified_backend",
-    }),
+    build_setting_default = "//pw_build:unspecified_backend",
 )
 
 pw_facade(
@@ -126,7 +118,7 @@ cc_library(
         ":cortex_m_constants",
         ":cpu_state",
         ":util",
-        "//pw_cpu_exception:support_facade",
+        "//pw_cpu_exception:support.facade",
         "//pw_log",
         "//pw_preprocessor",
         "//pw_preprocessor:cortex_m",
@@ -177,7 +169,7 @@ cc_library(
     ],
     deps = [
         ":cpu_state",
-        "//pw_cpu_exception:entry_facade",
+        "//pw_cpu_exception:entry.facade",
         "//pw_preprocessor",
         "//pw_preprocessor:cortex_m",
     ],
@@ -274,6 +266,13 @@ pw_cc_test(
     srcs = [
         "crash_test.cc",
     ],
+    target_compatible_with = select({
+        "@platforms//cpu:armv7-m": [],
+        "@platforms//cpu:armv7e-m": [],
+        "@platforms//cpu:armv7e-mf": [],
+        "@platforms//cpu:armv8-m": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         ":config",
         ":cortex_m_constants",

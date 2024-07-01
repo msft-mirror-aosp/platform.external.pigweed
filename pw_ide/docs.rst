@@ -3,6 +3,9 @@
 ------
 pw_ide
 ------
+.. pigweed-module::
+   :name: pw_ide
+
 This module provides tools for supporting code editor and IDE features for
 Pigweed projects.
 
@@ -212,6 +215,12 @@ can be augmented or overridden at the project level or the user level using
 ``pw_project_settings.json`` and ``pw_user_settings.json`` respectively. The
 generated ``settings.json`` file is essentially a build artifact and shouldn't
 be committed to source control.
+
+.. note::
+
+   You should treat ``settings.json`` as a build artifact and avoid editing it
+   directly. However, if you do make changes to it, don't worry! The changes
+   will be preserved after running ``pw ide sync``
 
 The same pattern applies to ``tasks.json``, which provides Visual Studio Code
 tasks for ``pw_ide`` commands. Access these by opening the command palette

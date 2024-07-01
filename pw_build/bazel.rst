@@ -2,6 +2,9 @@
 
 Bazel
 =====
+.. pigweed-module-subpage::
+   :name: pw_build
+
 Bazel is currently very experimental, and only builds for host and ARM Cortex-M
 microcontrollers.
 
@@ -10,8 +13,8 @@ microcontrollers.
 Wrapper rules
 -------------
 The common configuration for Bazel for all modules is in the ``pigweed.bzl``
-file. The built-in Bazel rules ``cc_binary``, ``cc_test`` are wrapped with
-``pw_cc_binary`` and ``pw_cc_test``.
+file. The built-in Bazel rules ``cc_binary``, ``cc_test`` and ``py_test`` are
+wrapped with ``pw_cc_binary``, ``pw_cc_test`` and ``pw_py_test``.
 
 .. _module-pw_build-bazel-pw_linker_script:
 
@@ -143,77 +146,9 @@ components:
           ],
       )
 
-   If a project uses only one backend for a given facade, the backend label
-   flag should point at that backend target.
-
-#. The **facade constraint setting** and **backend constraint values**. Every
-   facade has an associated `constraint setting
-   <https://bazel.build/concepts/platforms#api-review>`_ (enum used in platform
-   definition), and each backend for this facade has an associated
-   ``constraint_value`` (enum value). Example:
-
-   .. code-block:: python
-
-      # //pw_sync/BUILD.bazel
-      constraint_setting(
-        name = "binary_semaphore_backend_constraint_setting",
-      )
-
-      # //pw_sync_stl/BUILD.bazel
-      constraint_value(
-        name = "binary_semaphore_backend",
-        constraint_setting = "//pw_sync:binary_semaphore_backend_constraint_setting",
-      )
-
-      # //pw_sync_freertos/BUILD.bazel
-      constraint_value(
-        name = "binary_semaphore_backend",
-        constraint_setting = "//pw_sync:binary_semaphore_backend_constraint_setting",
-      )
-
-   `Target platforms <https://bazel.build/extending/platforms>`_ for Pigweed
-   projects should indicate which backend they select for each facade by
-   listing the corresponding ``constraint_value`` in their definition. This can
-   be used in a couple of ways:
-
-   #.  It allows projects to switch between multiple backends based only on the
-       `target platform <https://bazel.build/extending/platforms>`_ using a
-       *backend multiplexer* (see below) instead of setting label flags in
-       their ``.bazelrc``.
-
-   #.  It allows tests or libraries that only support a particular backend to
-       express this through the `target_compatible_with
-       <https://bazel.build/reference/be/common-definitions#common.target_compatible_with>`_
-       attribute. Bazel will use this to `automatically skip incompatible
-       targets in wildcard builds
-       <https://bazel.build/extending/platforms#skipping-incompatible-targets>`_.
-
-#. The **backend multiplexer**. If a project uses more than one backend for a
-   given facade (e.g., it uses different backends for host and embedded target
-   builds), the backend label flag will point to a target that resolves to the
-   correct backend based on the target platform. This will typically be an
-   `alias <https://bazel.build/reference/be/general#alias>`_ with a ``select``
-   statement mapping constraint values to the appropriate backend targets. For
-   example,
-
-   .. code-block:: python
-
-      alias(
-          name = "pw_sync_binary_semaphore_backend_multiplexer",
-          actual = select({
-              "//pw_sync_stl:binary_semaphore_backend": "@pigweed//pw_sync_stl:binary_semaphore",
-              "//pw_sync_freertos:binary_semaphore_backend": "@pigweed//pw_sync_freertos:binary_semaphore_backend",
-              # If we're building for a host OS, use the STL backend.
-              "@platforms//os:macos": "@pigweed//pw_sync_stl:binary_semaphore",
-              "@platforms//os:linux": "@pigweed//pw_sync_stl:binary_semaphore",
-              "@platforms//os:windows": "@pigweed//pw_sync_stl:binary_semaphore",
-              # Unless the target platform is the host platform, it must
-              # explicitly specify which backend to use. The unspecified_backend
-              # is not compatible with any platform; taking this branch will produce
-              # an informative error.
-              "//conditions:default": "@pigweed//pw_build:unspecified_backend",
-          }),
-      )
+The backend label flag should point at the backend target. Typically, the
+backend you want to use depends on the platform you are building for. See the
+:ref:`docs-build_system-bazel_configuration` for advice on how to set this up.
 
 pw_cc_blob_library
 ------------------
@@ -334,11 +269,14 @@ This should result in a ``test.map`` file generated next to the ``test`` binary.
 Note that it's only partially compatible with the ``cc_binary`` interface and
 certain things are not implemented like make variable substitution.
 
+.. _module-pw_build-bazel-pw_elf_to_bin:
+
 pw_elf_to_bin
 -------------
 The ``pw_elf_to_bin`` rule takes in a binary executable target and produces a
-file with all ELF headers removed. It uses the toolchain's ``objcopy``
-tool. This output is commonly used to boot images on baremetal.
+file using the ``-Obinary`` option to ``objcopy``. This is only suitable for use
+with binaries where all the segments are non-overlapping. A common use case for
+this type of file is booting directly on hardware with no bootloader.
 
 .. code-block:: python
 
@@ -349,6 +287,8 @@ tool. This output is commonly used to boot images on baremetal.
      elf_input = ":main",
      bin_out = "main.bin",
    )
+
+.. _module-pw_build-bazel-pw_elf_to_dump:
 
 pw_elf_to_dump
 --------------
@@ -366,6 +306,30 @@ useful when debugging embedded firmware.
      elf_input = ":main",
      dump_out = "main.dump",
    )
+
+Platform compatibility rules
+----------------------------
+Macros and rules related to platform compatibility are provided in
+``//pw_build:compatibility.bzl``.
+
+.. _module-pw_build-bazel-boolean_constraint_value:
+
+boolean_constraint_value
+^^^^^^^^^^^^^^^^^^^^^^^^
+This macro is syntactic sugar for declaring a `constraint setting
+<https://bazel.build/reference/be/platforms-and-toolchains#constraint_setting>`__
+with just two possible `constraint values
+<https://bazel.build/reference/be/platforms-and-toolchains#constraint_value>`__.
+The only exposed target is the ``constraint_value`` corresponding to ``True``;
+the default value of the setting is ``False``.
+
+This macro is meant to simplify declaring
+:ref:`docs-bazel-compatibility-module-specific`.
+
+host_backend_alias
+^^^^^^^^^^^^^^^^^^
+An alias that resolves to the backend for host platforms. This is useful when
+declaring a facade that provides a default backend for host platform use.
 
 Miscellaneous utilities
 -----------------------
