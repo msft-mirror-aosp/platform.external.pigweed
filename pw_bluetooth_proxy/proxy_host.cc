@@ -136,7 +136,14 @@ void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
   hci_transport_.SendToHost(std::move(h4_packet));
 }
 
-pw::Status ProxyHost::sendGattNotify(uint16_t connection_handle,
+void ProxyHost::Reset() {
+  acl_send_mutex_.lock();
+  acl_data_channel_.Reset();
+  acl_send_pending_ = false;
+  acl_send_mutex_.unlock();
+}
+
+pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
                                      uint16_t attribute_handle,
                                      pw::span<const uint8_t> attribute_value) {
   if (connection_handle > 0x0EFF) {
