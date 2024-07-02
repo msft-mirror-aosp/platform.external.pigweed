@@ -14,7 +14,7 @@
 
 import { LitElement, PropertyValues, TemplateResult, html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import { LogEntry, SourceData } from '../shared/interfaces';
+import { LogEntry, LogSourceEvent, SourceData } from '../shared/interfaces';
 import {
   LocalStateStorage,
   LogViewerState,
@@ -25,6 +25,8 @@ import { styles } from './log-viewer.styles';
 import { themeDark } from '../themes/dark';
 import { themeLight } from '../themes/light';
 import { LogView } from './log-view/log-view';
+import { LogSource } from '../log-source';
+import { LogStore } from '../log-store';
 import CloseViewEvent from '../events/close-view';
 import SplitViewEvent from '../events/split-view';
 import InputChangeEvent from '../events/input-change';
@@ -43,38 +45,101 @@ type ColorScheme = 'dark' | 'light';
 export class LogViewer extends LitElement {
   static styles = [styles, themeDark, themeLight];
 
+  logStore: LogStore;
+
   /** An array of log entries to be displayed. */
   @property({ type: Array })
   logs: LogEntry[] = [];
 
+  @property({ type: Array })
+  logSources: LogSource[] | LogSource = [];
+
   @property({ type: String, reflect: true })
   colorScheme?: ColorScheme;
+
+  /**
+   * Flag to determine whether Shoelace components should be used by
+   * `LogViewer` and its subcomponents.
+   */
+  @property({ type: Boolean })
+  useShoelaceFeatures: boolean = true;
 
   @state()
   _rootNode: ViewNode;
 
   /** An array that stores the preferred column order of columns  */
   @state()
-  _columnOrder: string[];
+  private _columnOrder: string[] = ['log_source', 'time', 'timestamp'];
 
   /** A map containing data from present log sources */
   private _sources: Map<string, SourceData> = new Map();
+
+  private _sourcesArray: LogSource[] = [];
+
+  private _lastUpdateTimeoutId: NodeJS.Timeout | undefined;
 
   private _stateService: StateService = new StateService(
     new LocalStateStorage(),
   );
 
-  constructor(state: LogViewerState | undefined, columnOrder: string[]) {
+  /**
+   * Create a log-viewer
+   * @param logSources - Collection of sources from where logs originate
+   * @param options - Optional parameters to change default settings
+   * @param options.columnOrder - defines column order between severity and
+   *   message undefined fields are added between defined order and message.
+   * @param options.state - handles state between sessions, defaults to localStorage
+   */
+  constructor(
+    logSources: LogSource[] | LogSource,
+    options?: {
+      columnOrder?: string[] | undefined;
+      logStore?: LogStore | undefined;
+      state?: LogViewerState | undefined;
+    },
+  ) {
     super();
-    this._columnOrder = columnOrder;
-    const savedState = state ?? this._stateService.loadState();
+
+    this.logSources = logSources;
+    this.logStore = options?.logStore ?? new LogStore();
+    this.logStore.setColumnOrder(this._columnOrder);
+
+    const savedState = options?.state ?? this._stateService.loadState();
     this._rootNode =
       savedState?.rootNode || new ViewNode({ type: NodeType.View });
+    if (options?.columnOrder) {
+      this._columnOrder = [...new Set(options?.columnOrder)];
+    }
+    this.loadShoelaceComponents();
   }
+
+  logEntryListener = (event: LogSourceEvent) => {
+    if (event.type === 'log-entry') {
+      const logEntry = event.data;
+      this.logStore.addLogEntry(logEntry);
+      this.logs = this.logStore.getLogs();
+
+      if (this._lastUpdateTimeoutId) {
+        clearTimeout(this._lastUpdateTimeoutId);
+      }
+
+      // Call requestUpdate at most once every 100 milliseconds.
+      this._lastUpdateTimeoutId = setTimeout(() => {
+        this.logs = [...this.logStore.getLogs()];
+      }, 100);
+    }
+  };
 
   connectedCallback() {
     super.connectedCallback();
     this.addEventListener('close-view', this.handleCloseView);
+
+    this._sourcesArray = Array.isArray(this.logSources)
+      ? this.logSources
+      : [this.logSources];
+    this._sourcesArray.forEach((logSource: LogSource) => {
+      logSource.addEventListener('log-entry', this.logEntryListener);
+    });
 
     // If color scheme isn't set manually, retrieve it from localStorage
     if (!this.colorScheme) {
@@ -112,8 +177,23 @@ export class LogViewer extends LitElement {
     super.disconnectedCallback();
     this.removeEventListener('close-view', this.handleCloseView);
 
+    this._sourcesArray.forEach((logSource: LogSource) => {
+      logSource.removeEventListener('log-entry', this.logEntryListener);
+    });
+
     // Save state before disconnecting
     this._stateService.saveState({ rootNode: this._rootNode });
+  }
+
+  /**
+   * Conditionally loads Shoelace components
+   */
+  async loadShoelaceComponents() {
+    if (this.useShoelaceFeatures) {
+      await import(
+        '@shoelace-style/shoelace/dist/components/split-panel/split-panel.js'
+      );
+    }
   }
 
   private splitLogView(event: SplitViewEvent) {
@@ -231,7 +311,7 @@ export class LogViewer extends LitElement {
   }
 
   private renderNodes(node: ViewNode): TemplateResult {
-    if (node.type === NodeType.View) {
+    if (node.type === NodeType.View || !this.useShoelaceFeatures) {
       return html`<log-view
         id=${node.logViewId ?? ''}
         .logs=${this.logs}
@@ -240,6 +320,7 @@ export class LogViewer extends LitElement {
         .columnOrder=${this._columnOrder}
         .searchText=${node.logViewState?.searchText ?? ''}
         .columnData=${node.logViewState?.columnData ?? []}
+        .useShoelaceFeatures=${this.useShoelaceFeatures}
         @split-view="${this.splitLogView}"
         @input-change="${this.handleViewEvent}"
         @column-toggle="${this.handleViewEvent}"

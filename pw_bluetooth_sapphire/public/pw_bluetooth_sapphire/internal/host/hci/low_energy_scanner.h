@@ -132,10 +132,10 @@ class LowEnergyScanner : public LocalAddressClient {
   // otherwise, a timeout expires.
   class PendingScanResult {
    public:
-    // |adv|: Initial advertising data payload.
     PendingScanResult(LowEnergyScanResult result,
-                      pw::chrono::SystemClock::duration timeout,
+                      const ByteBuffer& data,
                       pw::async::Dispatcher& dispatcher,
+                      pw::chrono::SystemClock::duration timeout,
                       fit::closure timeout_handler);
     ~PendingScanResult() { timeout_task_.Cancel(); }
 
@@ -149,6 +149,8 @@ class LowEnergyScanner : public LocalAddressClient {
 
     // Appends |data| to the end of the current contents.
     void AppendData(const ByteBuffer& data);
+
+    bool CancelTimeout() { return timeout_task_.Cancel(); }
 
    private:
     LowEnergyScanResult result_;
@@ -273,35 +275,13 @@ class LowEnergyScanner : public LocalAddressClient {
       const ScanOptions& options,
       pw::bluetooth::emboss::GenericEnableParam enable) = 0;
 
-  // Called when a Scan Response is received during an active scan or when we
-  // time out waiting
-  void HandleScanResponse(const DeviceAddress& address,
-                          bool resolved,
-                          int8_t rssi);
-
   void AddPendingResult(const DeviceAddress& address,
                         const LowEnergyScanResult& scan_result,
-                        fit::closure timeout_handler) {
-    std::unique_ptr<PendingScanResult> pending =
-        std::make_unique<PendingScanResult>(scan_result,
-                                            scan_response_timeout_,
-                                            pw_dispatcher_,
-                                            std::move(timeout_handler));
-    pending_results_[address] = std::move(pending);
-  }
+                        const ByteBuffer& data,
+                        fit::closure timeout_handler);
 
-  bool HasPendingResult(const DeviceAddress& address) const {
-    return pending_results_.count(address);
-  }
-
-  std::unique_ptr<PendingScanResult>& GetPendingResult(
-      const DeviceAddress& address) {
-    return pending_results_[address];
-  }
-
-  void RemovePendingResult(const DeviceAddress& address) {
-    pending_results_.erase(address);
-  }
+  std::unique_ptr<PendingScanResult> RemovePendingResult(
+      const DeviceAddress& address);
 
   Transport::WeakPtr hci() const { return hci_; }
   Delegate* delegate() const { return delegate_; }
