@@ -12,6 +12,10 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_build:pigweed.bzl", "pw_cc_binary")
+load("//targets/rp2040:flash.bzl", "flash_rp2040")
+load("//targets/rp2040:transition.bzl", "rp2040_binary")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
@@ -22,15 +26,14 @@ platform(
         "@freertos//:port_ARM_CM0",
         "@freertos//:disable_task_statics",
         "@pico-sdk//bazel/constraint:rp2040",
-        "@pico-sdk//bazel/constraint:stdio_usb",
         "freertos_config_cv",
         "//pw_build/constraints/chipset:rp2040",
         "//pw_build/constraints/rtos:freertos",
         "//pw_interrupt_cortex_m:backend",
-        "//pw_sys_io_rp2040:backend",
         # For toolchain selection.
         "@platforms//cpu:armv6-m",
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m0",
+        "@platforms//os:none",
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m0plus",
         "@rust_crates//:no_std",
     ],
 )
@@ -59,21 +62,18 @@ constraint_value(
     constraint_setting = "@freertos//:freertos_config_setting",
 )
 
-# This is just a stub to silence warnings saying that pico_logging_test_main.cc
-# is missing from the bazel build. There's no plans yet to do a Bazel build for
-# the Pi Pico.
-#
-# TODO: b/260639642 - Support Pico in the Bazel build.
 cc_library(
-    name = "pico_logging_test_main",
+    name = "unit_test_app",
+    testonly = True,
     srcs = [
-        "pico_logging_test_main.cc",
+        "unit_test_app.cc",
     ],
-    tags = ["manual"],
     deps = [
-        "//pw_unit_test",
-        "//pw_unit_test:logging_event_handler",
+        "//pw_status",
+        "//pw_system",
+        "//pw_unit_test:rpc_service",
     ],
+    alwayslink = True,
 )
 
 # This is just a stub to silence warnings saying that boot.cc and *.h files are
@@ -84,7 +84,6 @@ filegroup(
     srcs = [
         "config/pigweed_module_config.h",
         "config/rp2040_hal_config.h",
-        "unit_test_app.cc",
     ],
 )
 
@@ -107,4 +106,30 @@ cc_library(
         "@pico-sdk//src/rp2_common/pico_stdlib:pico_stdlib",
     ],
     alwayslink = 1,
+)
+
+pw_cc_binary(
+    name = "system_async_example",
+    testonly = True,
+    srcs = ["system_async_example.cc"],
+    deps = [
+        "//pw_channel:rp2_stdio_channel",
+        "//pw_multibuf:testing",
+        "//pw_system:async",
+        "//third_party/freertos:support",
+        "@freertos",
+        "@pico-sdk//src/rp2_common/pico_stdlib:pico_stdlib",
+    ],
+)
+
+rp2040_binary(
+    name = "rp2040_system_async_example",
+    testonly = True,
+    binary = ":system_async_example",
+)
+
+flash_rp2040(
+    name = "flash_rp2040_system_async_example",
+    testonly = True,
+    rp2040_binary = ":rp2040_system_async_example",
 )

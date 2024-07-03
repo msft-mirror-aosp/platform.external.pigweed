@@ -3,12 +3,12 @@
 =========
 pw_chrono
 =========
+.. pigweed-module::
+   :name: pw_chrono
+
 Pigweed's chrono module provides facilities for applications to deal with time,
 leveraging many pieces of STL's the ``std::chrono`` library but with a focus
 on portability for constrained embedded devices and maintaining correctness.
-
-.. note::
-   This module is still under construction, the API is not yet stable.
 
 -------------------------------
 ``duration`` and ``time_point``
@@ -552,14 +552,10 @@ Example in C++
      foo_timer.InvokeAfter(42ms);  // DoFoo will be invoked after 42ms.
    }
 
-.. toctree::
-   :hidden:
-   :maxdepth: 1
-
-   Backends <backends>
+.. _module-pw_chrono-libc-time-wrappers:
 
 ------------------
-Libc Time Wrappers
+libc time wrappers
 ------------------
 The `gettimeofday <https://pubs.opengroup.org/onlinepubs/9699919799/functions/gettimeofday.html>`
 and `time <https://pubs.opengroup.org/onlinepubs/9699919799/functions/time.html>`
@@ -589,3 +585,9 @@ Wrap ``gettimeofday`` and ``time`` with an implementation that uses
 determined by the SystemClock backend epoch, which on most embedded systems will
 be time since boot. Use this option if you don't care about the time returned
 being close to actual time, but do care that it increments like a real clock.
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Backends <backends>
