@@ -25,21 +25,49 @@ namespace bt::hci {
 class SequentialCommandRunner;
 
 // Represents a discovered Bluetooth Low Energy peer.
-struct LowEnergyScanResult {
+class LowEnergyScanResult {
+ public:
+  LowEnergyScanResult() = default;
+  LowEnergyScanResult(const DeviceAddress& address,
+                      bool resolved,
+                      bool connectable)
+      : address_(address), resolved_(resolved), connectable_(connectable) {}
+
+  LowEnergyScanResult& operator=(const LowEnergyScanResult& other);
+
+  const DeviceAddress& address() const { return address_; }
+  bool connectable() const { return connectable_; }
+
+  bool resolved() const { return resolved_; }
+  void set_resolved(bool value) { resolved_ = value; }
+
+  int8_t rssi() const { return rssi_; }
+  void set_rssi(int8_t value) { rssi_ = value; }
+
+  BufferView data() const { return buffer_.view(0, data_size_); }
+  void AppendData(const ByteBuffer& data);
+
+ private:
   // The device address of the remote peer.
-  DeviceAddress address;
+  DeviceAddress address_;
 
   // True if |address| is a static or random identity address resolved by the
   // controller.
-  bool resolved = false;
+  bool resolved_ = false;
 
   // True if this peer accepts connections. This is the case if this peer sent a
   // connectable advertising PDU.
-  bool connectable = false;
+  bool connectable_ = false;
 
   // The received signal strength of the advertisement packet corresponding to
   // this peer.
-  int8_t rssi = hci_spec::kRSSIInvalid;
+  int8_t rssi_ = hci_spec::kRSSIInvalid;
+
+  // The size of the data so far accumulated in |buffer_|.
+  size_t data_size_ = 0u;
+
+  // Stores both advertising and scan response payloads.
+  DynamicByteBuffer buffer_;
 };
 
 // LowEnergyScanner manages Low Energy scan procedures that are used during
@@ -132,35 +160,23 @@ class LowEnergyScanner : public LocalAddressClient {
   // otherwise, a timeout expires.
   class PendingScanResult {
    public:
-    // |adv|: Initial advertising data payload.
-    PendingScanResult(LowEnergyScanResult result,
-                      pw::chrono::SystemClock::duration timeout,
+    PendingScanResult(LowEnergyScanResult&& result,
                       pw::async::Dispatcher& dispatcher,
+                      pw::chrono::SystemClock::duration timeout,
                       fit::closure timeout_handler);
-    ~PendingScanResult() { timeout_task_.Cancel(); }
+    ~PendingScanResult() { CancelTimeout(); }
 
-    // Return the contents of the data.
-    BufferView data() const { return buffer_.view(0, data_size_); }
+    LowEnergyScanResult& result() { return result_; }
 
-    const LowEnergyScanResult& result() const { return result_; }
+    void StartTimer() {
+      CancelTimeout();
+      timeout_task_.PostAfter(timeout_);
+    }
 
-    void set_rssi(int8_t rssi) { result_.rssi = rssi; }
-    void set_resolved(bool resolved) { result_.resolved = resolved; }
-
-    // Appends |data| to the end of the current contents.
-    void AppendData(const ByteBuffer& data);
+    bool CancelTimeout() { return timeout_task_.Cancel(); }
 
    private:
     LowEnergyScanResult result_;
-
-    // The size of the data so far accumulated in |buffer_|.
-    size_t data_size_ = 0u;
-
-    // Buffer large enough to store both advertising and scan response payloads.
-    // LowEnergyScanner is subclassed by both LegacyLowEnergyScanner and
-    // ExtendedLowEnergyScanner. We use the maximum extended advertising data
-    // length here to support either version.
-    StaticByteBuffer<hci_spec::kMaxLEExtendedAdvertisingDataLength * 2> buffer_;
 
     // The duration which we will wait for a pending scan result to receive more
     // data before reporting the pending result to the delegate.
@@ -180,8 +196,7 @@ class LowEnergyScanner : public LocalAddressClient {
     // Called when a peer is found. During a passive scan |data| contains the
     // advertising data. During an active scan |data| contains the combined
     // advertising and scan response data (if the peer is scannable).
-    virtual void OnPeerFound(const LowEnergyScanResult& result,
-                             const ByteBuffer& data) {}
+    virtual void OnPeerFound(const LowEnergyScanResult& result) {}
 
     // Called when a directed advertising report is received from the peer with
     // the given address.
@@ -273,35 +288,10 @@ class LowEnergyScanner : public LocalAddressClient {
       const ScanOptions& options,
       pw::bluetooth::emboss::GenericEnableParam enable) = 0;
 
-  // Called when a Scan Response is received during an active scan or when we
-  // time out waiting
-  void HandleScanResponse(const DeviceAddress& address,
-                          bool resolved,
-                          int8_t rssi);
+  void AddPendingResult(LowEnergyScanResult&& scan_result);
 
-  void AddPendingResult(const DeviceAddress& address,
-                        const LowEnergyScanResult& scan_result,
-                        fit::closure timeout_handler) {
-    std::unique_ptr<PendingScanResult> pending =
-        std::make_unique<PendingScanResult>(scan_result,
-                                            scan_response_timeout_,
-                                            pw_dispatcher_,
-                                            std::move(timeout_handler));
-    pending_results_[address] = std::move(pending);
-  }
-
-  bool HasPendingResult(const DeviceAddress& address) const {
-    return pending_results_.count(address);
-  }
-
-  std::unique_ptr<PendingScanResult>& GetPendingResult(
-      const DeviceAddress& address) {
-    return pending_results_[address];
-  }
-
-  void RemovePendingResult(const DeviceAddress& address) {
-    pending_results_.erase(address);
-  }
+  std::unique_ptr<PendingScanResult> RemovePendingResult(
+      const DeviceAddress& address);
 
   Transport::WeakPtr hci() const { return hci_; }
   Delegate* delegate() const { return delegate_; }

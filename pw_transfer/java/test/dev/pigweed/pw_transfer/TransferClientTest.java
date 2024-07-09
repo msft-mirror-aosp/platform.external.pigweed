@@ -27,7 +27,6 @@ import dev.pigweed.pw_rpc.Status;
 import dev.pigweed.pw_rpc.TestClient;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -2286,8 +2285,6 @@ public final class TransferClientTest {
             transferClient.write(4321, TEST_DATA_SHORT.toByteArray()));
 
     for (ListenableFuture<Void> future : writeTransfers) {
-      WriteTransfer transfer = transferClient.getWriteTransferForTest(future);
-
       // Call future.get() without sending any server-side packets.
       ExecutionException exception = assertThrows(ExecutionException.class, future::get);
       assertThat(((TransferError) exception.getCause()).status())
@@ -2617,8 +2614,8 @@ public final class TransferClientTest {
                               .setResourceId(transfer.getResourceId())
                               .setRemainingBytes(size);
     if (transfer.getDesiredProtocolVersion() != ProtocolVersion.LEGACY) {
-      chunk.setProtocolVersion(ProtocolVersion.VERSION_TWO.ordinal());
-      chunk.setDesiredSessionId(transfer.getSessionId());
+      chunk.setProtocolVersion(ProtocolVersion.VERSION_TWO.ordinal())
+          .setDesiredSessionId(transfer.getSessionId());
     }
     return chunk.build();
   }

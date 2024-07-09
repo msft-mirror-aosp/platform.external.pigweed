@@ -466,6 +466,61 @@ DynamicByteBuffer LEReadRemoteFeaturesCompletePacket(
                        features[7]));
 }
 
+DynamicByteBuffer LECISRequestEventPacket(
+    hci_spec::ConnectionHandle acl_connection_handle,
+    hci_spec::ConnectionHandle cis_connection_handle,
+    hci_spec::CigIdentifier cig_id,
+    hci_spec::CisIdentifier cis_id) {
+  return DynamicByteBuffer(
+      StaticByteBuffer(hci_spec::kLEMetaEventCode,
+                       0x07,  // parameter total size (7 bytes)
+                       hci_spec::kLECISRequestSubeventCode,
+                       LowerBits(acl_connection_handle),
+                       UpperBits(acl_connection_handle),
+                       LowerBits(cis_connection_handle),
+                       UpperBits(cis_connection_handle),
+                       cig_id,
+                       cis_id));
+}
+
+DynamicByteBuffer LERejectCISRequestCommandPacket(
+    hci_spec::ConnectionHandle cis_handle,
+    pw::bluetooth::emboss::StatusCode reason) {
+  return DynamicByteBuffer(
+      StaticByteBuffer(LowerBits(hci_spec::kLERejectCISRequest),
+                       UpperBits(hci_spec::kLERejectCISRequest),
+                       0x03,  // parameter total size (3 bytes)
+                       LowerBits(cis_handle),
+                       UpperBits(cis_handle),
+                       reason));
+}
+
+DynamicByteBuffer LERequestPeerScaPacket(hci_spec::ConnectionHandle conn) {
+  auto packet = hci::EmbossCommandPacket::New<
+      pw::bluetooth::emboss::LERequestPeerSCACommandWriter>(
+      hci_spec::kLERequestPeerSCA);
+  auto view = packet.view_t();
+  view.connection_handle().Write(conn);
+  return DynamicByteBuffer(packet.data());
+}
+
+DynamicByteBuffer LERequestPeerScaCompletePacket(
+    hci_spec::ConnectionHandle conn,
+    pw::bluetooth::emboss::LESleepClockAccuracyRange sca) {
+  auto packet = hci::EmbossEventPacket::New<
+      pw::bluetooth::emboss::LERequestPeerSCACompleteSubeventWriter>(
+      hci_spec::kLEMetaEventCode);
+
+  auto view = packet.view_t();
+  view.le_meta_event().subevent_code().Write(
+      hci_spec::kLERequestPeerSCACompleteSubeventCode);
+  view.status().Write(pw::bluetooth::emboss::StatusCode::SUCCESS);
+  view.connection_handle().Write(conn);
+  view.peer_clock_accuracy().Write(sca);
+
+  return DynamicByteBuffer(packet.data());
+}
+
 DynamicByteBuffer LEStartEncryptionPacket(hci_spec::ConnectionHandle conn,
                                           uint64_t random_number,
                                           uint16_t encrypted_diversifier,
