@@ -105,7 +105,7 @@ bazel_skylib_workspace()
 # TODO: b/345806988 - remove this fork and update to upstream HEAD.
 git_repository(
     name = "io_bazel_rules_go",
-    commit = "21005c4056de3283553c015c172001229ecbaca9",
+    commit = "d5ba42f3ca0b8510526ed5df2cf5807bdba43856",
     remote = "https://github.com/cramertj/rules_go.git",
 )
 
@@ -457,7 +457,7 @@ git_repository(
 
 git_repository(
     name = "mbedtls",
-    build_file = "//:third_party/mbedtls/BUILD.mbedtls",
+    build_file = "//:third_party/mbedtls/mbedtls.BUILD.bazel",
     # mbedtls-3.2.1 released 2022-07-12
     commit = "869298bffeea13b205343361b7a7daf2b210e33d",
     remote = "https://pigweed.googlesource.com/third_party/github/ARMmbed/mbedtls",
@@ -467,7 +467,7 @@ git_repository(
     name = "com_google_emboss",
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
     # Also update emboss tag in pw_package/py/pw_package/packages/emboss.py
-    tag = "v2024.0501.215421",
+    tag = "v2024.0702.215418",
 )
 
 git_repository(
