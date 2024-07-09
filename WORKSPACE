@@ -457,7 +457,7 @@ git_repository(
 
 git_repository(
     name = "mbedtls",
-    build_file = "//:third_party/mbedtls/BUILD.mbedtls",
+    build_file = "//:third_party/mbedtls/mbedtls.BUILD.bazel",
     # mbedtls-3.2.1 released 2022-07-12
     commit = "869298bffeea13b205343361b7a7daf2b210e33d",
     remote = "https://pigweed.googlesource.com/third_party/github/ARMmbed/mbedtls",
@@ -467,7 +467,7 @@ git_repository(
     name = "com_google_emboss",
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
     # Also update emboss tag in pw_package/py/pw_package/packages/emboss.py
-    tag = "v2024.0501.215421",
+    tag = "v2024.0702.215418",
 )
 
 git_repository(
