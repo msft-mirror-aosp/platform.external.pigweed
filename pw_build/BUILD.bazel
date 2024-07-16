@@ -64,11 +64,7 @@ pw_cc_binary_with_map(
     name = "cc_binary_with_map",
     srcs = ["empty_main.cc"],
     # Only enable on platforms that support -Map linker flag
-    target_compatible_with = select({
-        "@platforms//os:macos": ["@platforms//:incompatible"],
-        "@platforms//os:windows": ["@platforms//:incompatible"],
-        "//conditions:default": [],
-    }),
+    target_compatible_with = ["@platforms//os:linux"],
 )
 
 # Bazel produces root-relative file paths without the -ffile-prefix-map option.
@@ -104,8 +100,8 @@ pw_cc_test(
     # run manually via,
     #
     #   bazel build \
+    #     --config=stm32f429i_freertos \
     #     --//pw_thread_freertos:config_override=//pw_build:test_module_config \
-    #     --platforms=//pw_build/platforms:testonly_freertos \
     #     //pw_build:module_config_test
     tags = ["manual"],
     deps = ["//pw_thread:thread"],
@@ -140,7 +136,8 @@ cc_library(
 cc_library(
     name = "default_link_extra_lib",
     deps = [
-        "//pw_assert:backend_impl",
+        "//pw_assert:assert_backend_impl",
+        "//pw_assert:check_backend_impl",
         "//pw_log:backend_impl",
     ],
 )
