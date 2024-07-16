@@ -26,22 +26,16 @@ class ExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   explicit ExtendedLowEnergyAdvertiser(hci::Transport::WeakPtr hci);
   ~ExtendedLowEnergyAdvertiser() override;
 
-  bool AllowsRandomAddressChange() const override { return !IsAdvertising(); }
+  // Convert a LEAdvertisingType's properties (e.g. connectable, scannable,
+  // directed, etc) to the appropriate advertising event bits for use in
+  // HCI_LE_Set_Extended_Advertising_Parameters (Core Spec, Volume 4, Part E,
+  // Section 7.8.53)
+  using AdvertisingEventPropertiesBits = uint16_t;
+  static AdvertisingEventPropertiesBits AdvertisingTypeToLegacyPduEventBits(
+      pw::bluetooth::emboss::LEAdvertisingType type);
 
-  // TODO(fxbug.dev/42161929): The maximum length of data that can be
-  // advertised. For backwards compatibility and because supporting it is a much
-  // larger project, we currently only support legacy PDUs. When using legacy
-  // PDUs, the maximum advertising data size is
-  // hci_spec::kMaxLEAdvertisingDataLength.
-  //
-  // TODO(fxbug.dev/42157495): Extended advertising supports sending larger
-  // amounts of data, but they have to be fragmented across multiple commands to
-  // the controller. This is not yet supported in this implementation. We should
-  // support larger than kMaxLEExtendedAdvertisingDataLength advertising data
-  // with fragmentation.
-  size_t GetSizeLimit() const override {
-    return hci_spec::kMaxLEAdvertisingDataLength;
-  }
+  bool AllowsRandomAddressChange() const override { return !IsAdvertising(); }
+  size_t GetSizeLimit(bool extended_pdu) const override;
 
   // Attempt to start advertising. See LowEnergyAdvertiser::StartAdvertising for
   // full documentation.
@@ -56,12 +50,13 @@ class ExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   void StartAdvertising(const DeviceAddress& address,
                         const AdvertisingData& data,
                         const AdvertisingData& scan_rsp,
-                        AdvertisingOptions adv_options,
+                        const AdvertisingOptions& options,
                         ConnectionCallback connect_callback,
                         ResultFunction<> result_callback) override;
 
   void StopAdvertising() override;
-  void StopAdvertising(const DeviceAddress& address) override;
+  void StopAdvertising(const DeviceAddress& address,
+                       bool extended_pdu) override;
 
   void OnIncomingConnection(
       hci_spec::ConnectionHandle handle,
@@ -89,43 +84,54 @@ class ExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   struct StagedAdvertisingParameters {
     bool include_tx_power_level = false;
     int8_t selected_tx_power_level = 0;
+    bool extended_pdu = false;
+
+    void clear() {
+      include_tx_power_level = false;
+      selected_tx_power_level = 0;
+      extended_pdu = false;
+    }
   };
 
   EmbossCommandPacket BuildEnablePacket(
       const DeviceAddress& address,
-      pw::bluetooth::emboss::GenericEnableParam enable) override;
+      pw::bluetooth::emboss::GenericEnableParam enable,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetAdvertisingParams(
+  std::optional<EmbossCommandPacket> BuildSetAdvertisingParams(
       const DeviceAddress& address,
       pw::bluetooth::emboss::LEAdvertisingType type,
       pw::bluetooth::emboss::LEOwnAddressType own_address_type,
-      AdvertisingIntervalRange interval) override;
+      const AdvertisingIntervalRange& interval,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetAdvertisingData(
+  std::vector<EmbossCommandPacket> BuildSetAdvertisingData(
       const DeviceAddress& address,
       const AdvertisingData& data,
-      AdvFlags flags) override;
+      AdvFlags flags,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildUnsetAdvertisingData(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildUnsetAdvertisingData(const DeviceAddress& address,
+                                                bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetScanResponse(
-      const DeviceAddress& address, const AdvertisingData& data) override;
+  std::vector<EmbossCommandPacket> BuildSetScanResponse(
+      const DeviceAddress& address,
+      const AdvertisingData& data,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildUnsetScanResponse(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildUnsetScanResponse(const DeviceAddress& address,
+                                             bool extended_pdu) override;
 
-  EmbossCommandPacket BuildRemoveAdvertisingSet(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildRemoveAdvertisingSet(const DeviceAddress& address,
+                                                bool extended_pdu) override;
 
   void OnSetAdvertisingParamsComplete(const EventPacket& event) override;
 
   void OnCurrentOperationComplete() override;
 
   // Event handler for the HCI LE Advertising Set Terminated event
-  CommandChannel::EventCallbackResult OnAdvertisingSetTerminatedEvent(
-      const EventPacket& event);
-  CommandChannel::EventHandlerId set_terminated_event_handler_id_;
+  void OnAdvertisingSetTerminatedEvent(const EventPacket& event);
+  CommandChannel::EventHandlerId event_handler_id_;
 
   AdvertisingHandleMap advertising_handle_map_;
   std::queue<fit::closure> op_queue_;
@@ -139,11 +145,7 @@ class ExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   // obtain the advertised device address. Until we receive the
   // HCI_LE_Advertising_Set_Terminated event, we stage these parameters.
   std::unordered_map<hci_spec::ConnectionHandle, StagedConnectionParameters>
-      staged_connections_map_;
-
-  // Keep this as the last member to make sure that all weak pointers are
-  // invalidated before other members get destroyed
-  WeakSelf<ExtendedLowEnergyAdvertiser> weak_self_;
+      staged_connections_;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(ExtendedLowEnergyAdvertiser);
 };

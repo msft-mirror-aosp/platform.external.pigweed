@@ -75,6 +75,8 @@ constexpr uint64_t BuildLEEventMask() {
   ENABLE_EVT(kLEAdvertisingReport);
   ENABLE_EVT(kLEConnectionComplete);
   ENABLE_EVT(kLEConnectionUpdateComplete);
+  ENABLE_EVT(kLEEnhancedConnectionComplete);
+  ENABLE_EVT(kLEExtendedAdvertisingReport);
   ENABLE_EVT(kLEExtendedAdvertisingSetTerminated);
   ENABLE_EVT(kLELongTermKeyRequest);
   ENABLE_EVT(kLEReadRemoteFeaturesComplete);
