@@ -106,6 +106,17 @@ struct ACLDataHeader {
   uint16_t data_total_length;
 } __attribute__((packed));
 
+struct IsoDataHeader {
+  // The first 16-bits contain the following fields, in order:
+  //   - 12-bits: Connection Handle
+  //   - 2-bits: Packet Boundary Flags
+  //   - 1-bit: Timestamp Flag
+  uint16_t handle_and_flags;
+
+  // Length of data following the header.
+  uint16_t data_total_length;
+} __attribute__((packed));
+
 struct SynchronousDataHeader {
   // The first 16-bits contain the following fields, in order:
   // - 12-bits: Connection Handle
@@ -2265,7 +2276,7 @@ struct LESetPeriodicAdvertisingDataCommandParams {
   LESetExtendedAdvDataOp operation;
 
   // Length of the advertising data included in this command packet, up to
-  // kMaxLEExtendedAdvertisingDataLength bytes.
+  // kMaxPduLEExtendedAdvertisingDataLength bytes.
   uint8_t adv_data_length;
 
   // Variable length advertising data.
