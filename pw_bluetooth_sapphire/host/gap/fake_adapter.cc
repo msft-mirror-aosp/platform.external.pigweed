@@ -97,12 +97,16 @@ void FakeAdapter::FakeLowEnergy::Connect(
     return connection_options.bondable_mode;
   };
   auto security_cb = []() { return sm::SecurityProperties(); };
+  auto role_cb = []() {
+    return pw::bluetooth::emboss::ConnectionRole::CENTRAL;
+  };
   auto handle = std::make_unique<LowEnergyConnectionHandle>(
       peer_id,
       /*handle=*/1,
       /*release_cb=*/[](auto) {},
       std::move(bondable_cb),
-      std::move(security_cb));
+      std::move(security_cb),
+      std::move(role_cb));
   callback(fit::ok(std::move(handle)));
 }
 
@@ -114,6 +118,7 @@ void FakeAdapter::FakeLowEnergy::StartAdvertising(
     AdvertisingData data,
     AdvertisingData scan_rsp,
     AdvertisingInterval interval,
+    bool extended_pdu,
     bool anonymous,
     bool include_tx_power_level,
     std::optional<ConnectableAdvertisingParameters> connectable,
@@ -125,6 +130,7 @@ void FakeAdapter::FakeLowEnergy::StartAdvertising(
                               .scan_rsp = std::move(scan_rsp),
                               .connectable = std::move(connectable),
                               .interval = interval,
+                              .extended_pdu = extended_pdu,
                               .anonymous = anonymous,
                               .include_tx_power_level = include_tx_power_level};
   AdvertisementId adv_id = next_advertisement_id_;

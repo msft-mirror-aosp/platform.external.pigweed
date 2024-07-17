@@ -662,6 +662,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
+                                    /*extended_pdu=*/false,
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
@@ -688,6 +689,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
+                                    /*extended_pdu=*/false,
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
@@ -711,6 +713,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
+                                    /*extended_pdu=*/false,
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
@@ -730,6 +733,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
+                                    /*extended_pdu=*/false,
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
@@ -1027,6 +1031,7 @@ TEST_F(AdapterTest, IsDiscoverableLowEnergy) {
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
+                                    /*extended_pdu=*/false,
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
@@ -1075,6 +1080,7 @@ TEST_F(AdapterTest, IsDiscoverableLowEnergyPrivacyEnabled) {
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
+                                    /*extended_pdu=*/false,
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
@@ -1249,6 +1255,7 @@ TEST_F(AdapterTest,
       AdvertisingData(),
       AdvertisingData(),
       AdvertisingInterval::FAST1,
+      /*extended_pdu=*/false,
       /*anonymous=*/false,
       /*include_tx_power_level=*/false,
       bt::gap::Adapter::LowEnergy::ConnectableAdvertisingParameters{
@@ -1391,7 +1398,10 @@ TEST_F(AdapterTest, BufferSizesRecordedInState) {
   settings.AddLESupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 0x1B;  // minimum supported size
+
+  // Minimum supported size as per Core Spec v5.4, Vol 4, Part E, 7.8.2
+  settings.le_acl_data_packet_length = 0x1B;
+
   settings.le_total_num_acl_data_packets = 2;
   settings.acl_data_packet_length = 3;
   settings.total_num_acl_data_packets = 4;

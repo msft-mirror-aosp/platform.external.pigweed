@@ -13,7 +13,6 @@
 # the License.
 """Pigweed build environment for bazel."""
 
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 load("@rules_cc//cc:action_names.bzl", "C_COMPILE_ACTION_NAME")
 load(
@@ -164,25 +163,10 @@ def pw_cc_perf_test(**kwargs):
     """
     kwargs["deps"] = kwargs.get("deps", []) + \
                      ["@pigweed//pw_perf_test:logging_main"]
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert:backend_impl"]
+    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert:assert_backend_impl"]
+    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert:check_backend_impl"]
     kwargs["testonly"] = True
     native.cc_binary(**kwargs)
-
-def host_backend_alias(name, backend):
-    """An alias that resolves to the backend for host platforms."""
-    native.alias(
-        name = name,
-        actual = selects.with_or({
-            (
-                "@platforms//os:android",
-                "@platforms//os:chromiumos",
-                "@platforms//os:linux",
-                "@platforms//os:macos",
-                "@platforms//os:windows",
-            ): backend,
-            "//conditions:default": "@pigweed//pw_build:unspecified_backend",
-        }),
-    )
 
 CcBlobInfo = provider(
     "Input to pw_cc_blob_library",

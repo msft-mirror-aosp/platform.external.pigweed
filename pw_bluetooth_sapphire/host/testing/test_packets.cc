@@ -23,6 +23,7 @@
 namespace bt::testing {
 
 namespace hci_android = bt::hci_spec::vendor::android;
+namespace android_hci = pw::bluetooth::vendor::android_hci;
 
 // clang-format off
 #define COMMAND_STATUS_RSP(opcode, statuscode)                       \
@@ -466,6 +467,61 @@ DynamicByteBuffer LEReadRemoteFeaturesCompletePacket(
                        features[7]));
 }
 
+DynamicByteBuffer LECISRequestEventPacket(
+    hci_spec::ConnectionHandle acl_connection_handle,
+    hci_spec::ConnectionHandle cis_connection_handle,
+    hci_spec::CigIdentifier cig_id,
+    hci_spec::CisIdentifier cis_id) {
+  return DynamicByteBuffer(
+      StaticByteBuffer(hci_spec::kLEMetaEventCode,
+                       0x07,  // parameter total size (7 bytes)
+                       hci_spec::kLECISRequestSubeventCode,
+                       LowerBits(acl_connection_handle),
+                       UpperBits(acl_connection_handle),
+                       LowerBits(cis_connection_handle),
+                       UpperBits(cis_connection_handle),
+                       cig_id,
+                       cis_id));
+}
+
+DynamicByteBuffer LERejectCISRequestCommandPacket(
+    hci_spec::ConnectionHandle cis_handle,
+    pw::bluetooth::emboss::StatusCode reason) {
+  return DynamicByteBuffer(
+      StaticByteBuffer(LowerBits(hci_spec::kLERejectCISRequest),
+                       UpperBits(hci_spec::kLERejectCISRequest),
+                       0x03,  // parameter total size (3 bytes)
+                       LowerBits(cis_handle),
+                       UpperBits(cis_handle),
+                       reason));
+}
+
+DynamicByteBuffer LERequestPeerScaPacket(hci_spec::ConnectionHandle conn) {
+  auto packet = hci::EmbossCommandPacket::New<
+      pw::bluetooth::emboss::LERequestPeerSCACommandWriter>(
+      hci_spec::kLERequestPeerSCA);
+  auto view = packet.view_t();
+  view.connection_handle().Write(conn);
+  return DynamicByteBuffer(packet.data());
+}
+
+DynamicByteBuffer LERequestPeerScaCompletePacket(
+    hci_spec::ConnectionHandle conn,
+    pw::bluetooth::emboss::LESleepClockAccuracyRange sca) {
+  auto packet = hci::EmbossEventPacket::New<
+      pw::bluetooth::emboss::LERequestPeerSCACompleteSubeventWriter>(
+      hci_spec::kLEMetaEventCode);
+
+  auto view = packet.view_t();
+  view.le_meta_event().subevent_code().Write(
+      hci_spec::kLERequestPeerSCACompleteSubeventCode);
+  view.status().Write(pw::bluetooth::emboss::StatusCode::SUCCESS);
+  view.connection_handle().Write(conn);
+  view.peer_clock_accuracy().Write(sca);
+
+  return DynamicByteBuffer(packet.data());
+}
+
 DynamicByteBuffer LEStartEncryptionPacket(hci_spec::ConnectionHandle conn,
                                           uint64_t random_number,
                                           uint16_t encrypted_diversifier,
@@ -621,78 +677,49 @@ DynamicByteBuffer StartA2dpOffloadRequest(
     hci_spec::ConnectionHandle connection_handle,
     l2cap::ChannelId l2cap_channel_id,
     uint16_t l2cap_mtu_size) {
-  uint8_t
-      codec_information_bytes[sizeof(hci_android::A2dpOffloadCodecInformation)];
-  memset(codec_information_bytes, 0, sizeof(codec_information_bytes));
+  constexpr size_t kPacketSize =
+      android_hci::StartA2dpOffloadCommand::MaxSizeInBytes();
+  auto packet =
+      hci::EmbossCommandPacket::New<android_hci::StartA2dpOffloadCommandWriter>(
+          hci_android::kA2dpOffloadCommand, kPacketSize);
+  auto view = packet.view_t();
+
+  view.vendor_command().sub_opcode().Write(
+      hci_android::kStartA2dpOffloadCommandSubopcode);
+  view.codec_type().Write(config.codec);
+  view.max_latency().Write(config.max_latency);
+  view.scms_t_enable().CopyFrom(
+      const_cast<l2cap::A2dpOffloadManager::Configuration&>(config)
+          .scms_t_enable.view());
+  view.sampling_frequency().Write(config.sampling_frequency);
+  view.bits_per_sample().Write(config.bits_per_sample);
+  view.channel_mode().Write(config.channel_mode);
+  view.encoded_audio_bitrate().Write(config.encoded_audio_bit_rate);
+  view.connection_handle().Write(connection_handle);
+  view.l2cap_channel_id().Write(l2cap_channel_id);
+  view.l2cap_mtu_size().Write(l2cap_mtu_size);
 
   switch (config.codec) {
-    case hci_android::A2dpCodecType::kSbc:
-      codec_information_bytes[0] =
-          config.codec_information.sbc.blocklen_subbands_alloc_method;
-      codec_information_bytes[1] =
-          config.codec_information.sbc.min_bitpool_value;
-      codec_information_bytes[2] =
-          config.codec_information.sbc.max_bitpool_value;
-      codec_information_bytes[3] =
-          config.codec_information.sbc.sampling_freq_channel_mode;
+    case android_hci::A2dpCodecType::SBC:
+      view.sbc_codec_information().CopyFrom(
+          const_cast<l2cap::A2dpOffloadManager::Configuration&>(config)
+              .sbc_configuration.view());
       break;
-    case hci_android::A2dpCodecType::kAac:
-      codec_information_bytes[0] = config.codec_information.aac.object_type;
-      codec_information_bytes[1] =
-          static_cast<uint8_t>(config.codec_information.aac.variable_bit_rate);
+    case android_hci::A2dpCodecType::AAC:
+      view.aac_codec_information().CopyFrom(
+          const_cast<l2cap::A2dpOffloadManager::Configuration&>(config)
+              .aac_configuration.view());
       break;
-    case hci_android::A2dpCodecType::kLdac:
-      codec_information_bytes[0] =
-          static_cast<uint32_t>(config.codec_information.ldac.vendor_id),
-      codec_information_bytes[1] =
-          static_cast<uint32_t>(config.codec_information.ldac.vendor_id) >>
-          CHAR_BIT,
-      codec_information_bytes[2] =
-          static_cast<uint32_t>(config.codec_information.ldac.vendor_id) >>
-          2 * CHAR_BIT,
-      codec_information_bytes[3] =
-          static_cast<uint32_t>(config.codec_information.ldac.vendor_id) >>
-          3 * CHAR_BIT,
-      codec_information_bytes[4] =
-          LowerBits(config.codec_information.ldac.codec_id);
-      codec_information_bytes[5] =
-          UpperBits(config.codec_information.ldac.codec_id);
-      codec_information_bytes[6] =
-          static_cast<uint8_t>(config.codec_information.ldac.bitrate_index);
-      codec_information_bytes[7] =
-          static_cast<uint8_t>(config.codec_information.ldac.ldac_channel_mode);
+    case android_hci::A2dpCodecType::LDAC:
+      view.ldac_codec_information().CopyFrom(
+          const_cast<l2cap::A2dpOffloadManager::Configuration&>(config)
+              .ldac_configuration.view());
       break;
     default:
       break;
   }
 
-  return DynamicByteBuffer(StaticByteBuffer(
-      // clang-format off
-      LowerBits(hci_android::kA2dpOffloadCommand), UpperBits(hci_android::kA2dpOffloadCommand),
-      0x39,  // parameter_total_size (57 bytes)
-      hci_android::kStartA2dpOffloadCommandSubopcode,
-      UINT32_TO_LE(config.codec),
-      LowerBits(config.max_latency), UpperBits(config.max_latency),
-      config.scms_t_enable.enabled, config.scms_t_enable.header,
-      UINT32_TO_LE(config.sampling_frequency),
-      config.bits_per_sample,
-      config.channel_mode,
-      UINT32_TO_LE(config.encoded_audio_bit_rate),
-      LowerBits(connection_handle), UpperBits(connection_handle),
-      LowerBits(l2cap_channel_id), UpperBits(l2cap_channel_id),
-      LowerBits(l2cap_mtu_size), UpperBits(l2cap_mtu_size),
-      codec_information_bytes[0], codec_information_bytes[1], codec_information_bytes[2],
-      codec_information_bytes[3], codec_information_bytes[4], codec_information_bytes[5],
-      codec_information_bytes[6], codec_information_bytes[7], codec_information_bytes[8],
-      codec_information_bytes[9], codec_information_bytes[10], codec_information_bytes[11],
-      codec_information_bytes[12], codec_information_bytes[13], codec_information_bytes[14],
-      codec_information_bytes[15], codec_information_bytes[16], codec_information_bytes[17],
-      codec_information_bytes[18], codec_information_bytes[19], codec_information_bytes[20],
-      codec_information_bytes[21], codec_information_bytes[22], codec_information_bytes[23],
-      codec_information_bytes[24], codec_information_bytes[25], codec_information_bytes[26],
-      codec_information_bytes[27], codec_information_bytes[28], codec_information_bytes[29],
-      codec_information_bytes[30], codec_information_bytes[31]));
-  // clang-format on
+  return packet.release();
 }
 
 DynamicByteBuffer StopA2dpOffloadRequest() {

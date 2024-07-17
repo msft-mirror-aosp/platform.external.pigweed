@@ -55,7 +55,6 @@ from pw_presubmit.presubmit import (
     filter_paths,
 )
 from pw_presubmit.presubmit_context import (
-    FormatOptions,
     PresubmitContext,
     PresubmitFailure,
 )
@@ -582,11 +581,12 @@ def zephyr_build(ctx: PresubmitContext) -> None:
 def docs_build(ctx: PresubmitContext) -> None:
     """Build Pigweed docs"""
 
+    build.install_package(ctx, 'emboss')
+    build.install_package(ctx, 'freertos')
     build.install_package(ctx, 'nanopb')
     build.install_package(ctx, 'pico_sdk')
-    build.install_package(ctx, 'stm32cube_f4')
-    build.install_package(ctx, 'freertos')
     build.install_package(ctx, 'pigweed_examples_repo')
+    build.install_package(ctx, 'stm32cube_f4')
 
     # Build main docs through GN/Ninja.
     build.gn_gen(ctx, pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS)
@@ -712,6 +712,7 @@ def _run_cmake(ctx: PresubmitContext, toolchain='host_clang') -> None:
     toolchain_path = ctx.root / 'pw_toolchain' / toolchain / 'toolchain.cmake'
     build.cmake(
         ctx,
+        '--fresh',
         f'-DCMAKE_TOOLCHAIN_FILE={toolchain_path}',
         '-DCMAKE_EXPORT_COMPILE_COMMANDS=1',
         f'-Ddir_pw_third_party_nanopb={ctx.package_root / "nanopb"}',
@@ -784,7 +785,11 @@ def bazel_test(ctx: PresubmitContext) -> None:
 def bthost_package(ctx: PresubmitContext) -> None:
     target = '//pw_bluetooth_sapphire/fuchsia:infra'
     build_bazel(ctx, 'build', target)
-    build_bazel(ctx, 'test', f'{target}.test_all')
+    # Override the default test_tag_filters to ensure test targets tagged
+    # "integration" are still run.
+    build_bazel(
+        ctx, 'test', '--test_tag_filters=-requires_cxx_20', f'{target}.test_all'
+    )
 
     stdout_path = ctx.output_dir / 'bazel.manifest.stdout'
     with open(stdout_path, 'w') as outs:
@@ -858,52 +863,59 @@ def bazel_build(ctx: PresubmitContext) -> None:
                 *targets,
             )
 
-    # Provide some coverage of the FreeRTOS build.
-    #
-    # This is just a minimal presubmit intended to ensure we don't break what
-    # support we have.
-    #
-    # TODO: b/271465588 - Eventually just build the entire repo for this
-    # platform.
     build_bazel(
         ctx,
         'build',
-        '--platforms=//pw_build/platforms:testonly_freertos',
-        '//pw_sync/...',
-        '//pw_thread/...',
-        '//pw_thread_freertos/...',
-        '//pw_interrupt/...',
-        '//pw_cpu_exception/...',
-    )
-
-    build_bazel(
-        ctx,
-        'build',
+        '--config=stm32f429i_freertos',
         '--//pw_thread_freertos:config_override=//pw_build:test_module_config',
-        '--platforms=//pw_build/platforms:testonly_freertos',
         '//pw_build:module_config_test',
     )
 
-    # Provide some coverage of the RP2040 build.
-    #
-    # This is just a minimal presubmit intended to ensure we don't break what
-    # support we have.
-    #
-    # TODO: b/271465588 - Eventually just build the entire repo for this
-    # platform.
+    # Build upstream Pigweed for the rp2040.
+    # First using the config.
     build_bazel(
         ctx,
         'build',
         '--config=rp2040',
+        '//...',
+        # Bazel will silently skip any incompatible targets in wildcard builds;
+        # but we know that some end-to-end targets definitely should remain
+        # compatible with this platform. So we list them explicitly. (If an
+        # explicitly listed target is incompatible with the platform, Bazel
+        # will return an error instead of skipping it.)
         '//pw_system:system_example',
     )
-
-    # Build the pw_system example for the Discovery board using STM32Cube.
+    # Then using the transition.
+    #
+    # This ensures that the rp2040_binary rule transition includes all required
+    # backends.
     build_bazel(
         ctx,
         'build',
-        '--config=stm32f429i',
+        '//pw_system:rp2040_system_example',
+    )
+
+    # Build upstream Pigweed for the Discovery board using STM32Cube.
+    build_bazel(
+        ctx,
+        'build',
+        '--config=stm32f429i_freertos',
+        '//...',
+        # Bazel will silently skip any incompatible targets in wildcard builds;
+        # but we know that some end-to-end targets definitely should remain
+        # compatible with this platform. So we list them explicitly. (If an
+        # explicitly listed target is incompatible with the platform, Bazel
+        # will return an error instead of skipping it.)
         '//pw_system:system_example',
+    )
+
+    # Build upstream Pigweed for the Discovery board using the baremetal
+    # backends.
+    build_bazel(
+        ctx,
+        'build',
+        '--config=stm32f429i_baremetal',
+        '//...',
     )
 
     # Build the fuzztest example.
@@ -1009,7 +1021,8 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\bupstream_requirements_darwin_lock.txt$',
     r'\bupstream_requirements_linux_lock.txt$',
     r'\bupstream_requirements_windows_lock.txt$',
-    r'^(?:.+/)?\..+$',
+    r'^(?:.+/)?\.bazelversion$',
+    r'^pw_env_setup/py/pw_env_setup/cipd_setup/.cipd_version',
     # keep-sorted: end
     # Metadata
     # keep-sorted: start
@@ -1037,6 +1050,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\.png$',
     r'\.svg$',
     r'\.vsix$',
+    r'\.woff2',
     r'\.xml$',
     # keep-sorted: end
     # Documentation
@@ -1053,6 +1067,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Generated third-party files
     # keep-sorted: start
     r'\bthird_party/.*\.bazelrc$',
+    r'\bthird_party/fuchsia/repo',
     r'\bthird_party/perfetto/repo/protos/perfetto/trace/perfetto_trace.proto',
     # keep-sorted: end
     # Diff/Patch files
@@ -1457,9 +1472,6 @@ SECURITY = (
 
 FUZZ = (gn_fuzz_build, oss_fuzz_build)
 
-# Avoid running all checks on specific paths.
-PATH_EXCLUSIONS = FormatOptions.load().exclude
-
 _LINTFORMAT = (
     commit_message_format,
     copyright_notice,
@@ -1541,7 +1553,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(install: bool, exclude: list, **presubmit_args) -> int:
+def run(install: bool, **presubmit_args) -> int:
     """Entry point for presubmit."""
 
     if install:
@@ -1559,8 +1571,7 @@ def run(install: bool, exclude: list, **presubmit_args) -> int:
         )
         return 0
 
-    exclude.extend(PATH_EXCLUSIONS)
-    return cli.run(exclude=exclude, **presubmit_args)
+    return cli.run(**presubmit_args)
 
 
 def main() -> int:

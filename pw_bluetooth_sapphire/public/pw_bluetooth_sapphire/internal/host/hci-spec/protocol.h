@@ -60,6 +60,14 @@ using AdvertisingHandle = uint8_t;
 // Advertising feature.
 using PeriodicAdvertiserHandle = uint16_t;
 
+// Uniquely identifies a CIG (Connected Isochronous Group) in the context of an
+// LE connection.
+using CigIdentifier = uint8_t;
+
+// Uniquely identifies a CIS (Connected Isochronous Stream) in the context of a
+// CIG and an LE connection.
+using CisIdentifier = uint8_t;
+
 // Returns the OGF (OpCode Group Field) which occupies the upper 6-bits of the
 // opcode.
 inline uint8_t GetOGF(const OpCode opcode) { return opcode >> 10; }
@@ -92,6 +100,17 @@ struct ACLDataHeader {
   //   - 12-bits: Connection Handle
   //   - 2-bits: Packet Boundary Flags
   //   - 2-bits: Broadcast Flags
+  uint16_t handle_and_flags;
+
+  // Length of data following the header.
+  uint16_t data_total_length;
+} __attribute__((packed));
+
+struct IsoDataHeader {
+  // The first 16-bits contain the following fields, in order:
+  //   - 12-bits: Connection Handle
+  //   - 2-bits: Packet Boundary Flags
+  //   - 1-bit: Timestamp Flag
   uint16_t handle_and_flags;
 
   // Length of data following the header.
@@ -1310,6 +1329,15 @@ struct LEScanRequestReceivedSubeventParams {
 // LE Channel Selection Algorithm Event (v5.0) (LE)
 constexpr EventCode kLEChannelSelectionAlgorithmSubeventCode = 0x014;
 
+// LE Request Peer SCA Complete Event (v5.2) (LE)
+constexpr EventCode kLERequestPeerSCACompleteSubeventCode = 0x1F;
+
+// LE CIS Established Event (v5.2) (LE)
+constexpr EventCode kLECISEstablishedSubeventCode = 0x019;
+
+// LE CIS Request Event (v5.2) (LE)
+constexpr EventCode kLECISRequestSubeventCode = 0x01A;
+
 // ================================================================
 // Number Of Completed Data Blocks Event (v3.0 + HS) (BR/EDR & AMP)
 constexpr EventCode kNumberOfCompletedDataBlocksEventCode = 0x48;
@@ -2248,7 +2276,7 @@ struct LESetPeriodicAdvertisingDataCommandParams {
   LESetExtendedAdvDataOp operation;
 
   // Length of the advertising data included in this command packet, up to
-  // kMaxLEExtendedAdvertisingDataLength bytes.
+  // kMaxPduLEExtendedAdvertisingDataLength bytes.
   uint8_t adv_data_length;
 
   // Variable length advertising data.
@@ -2369,13 +2397,25 @@ constexpr OpCode kLEWriteRFPathCompensation = LEControllerCommandOpCode(0x004D);
 // LE Set Privacy Mode Command (v5.0) (LE)
 constexpr OpCode kLESetPrivacyMode = LEControllerCommandOpCode(0x004E);
 
-// =======================================
+// ============================================
 // LE Read Buffer Size [v2] Command (v5.2) (LE)
 constexpr OpCode kLEReadBufferSizeV2 = LEControllerCommandOpCode(0x0060);
 
 // =======================================
+// LE Request Peer SCA Command (v5.2) (LE)
+constexpr OpCode kLERequestPeerSCA = LEControllerCommandOpCode(0x006D);
+
+// =======================================
 // LE Set Host Feature Command (v5.2) (LE)
 constexpr OpCode kLESetHostFeature = LEControllerCommandOpCode(0x0074);
+
+// =========================================
+// LE Accept CIS Request Command (v5.2) (LE)
+constexpr OpCode kLEAcceptCISRequest = LEControllerCommandOpCode(0x0066);
+
+// =========================================
+// LE Reject CIS Request Command (v5.2) (LE)
+constexpr OpCode kLERejectCISRequest = LEControllerCommandOpCode(0x0067);
 
 // ======= Vendor Command =======
 // Core Spec v5.0, Vol 2, Part E, Section 5.4.1

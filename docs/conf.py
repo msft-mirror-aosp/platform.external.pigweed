@@ -40,9 +40,11 @@ pygments_style = 'pw_console.pigweed_code_style.PigweedCodeLightStyle'
 pygments_dark_style = 'pw_console.pigweed_code_style.PigweedCodeStyle'
 
 extensions = [
+    "pw_docgen.sphinx.bug",
     "pw_docgen.sphinx.google_analytics",  # Enables optional Google Analytics
     "pw_docgen.sphinx.kconfig",
     "pw_docgen.sphinx.module_metadata",
+    "pw_docgen.sphinx.modules_index",
     "pw_docgen.sphinx.pigweed_live",
     "pw_docgen.sphinx.pw_status_codes",
     "pw_docgen.sphinx.inlinesearch",
@@ -256,9 +258,12 @@ redirects = {
     'docs/contributing/changelog': './docs/changelog.html',
     'docs/contributing/module_docs': './docs/modules.html',
     'docs/getting_started': './get_started/index.html',
+    'docs/infra/github': '../get_started/github.html',
     'docs/os_abstraction_layers': './os/index.html',
     'docs/release_notes/index': '../../changelog.html',
     'docs/release_notes/2022_jan': '../../changelog.html',
+    # Can be deleted after pw_enviro stuff gets published.
+    'drafts/pw_enviro/index': 'https://storage.googleapis.com/pigweed-docs-try/220311/docs/showcases/pw_enviro/tutorial.html',
     'module_guides': './modules.html',
     'pw_sys_io_pico/docs': '../pw_sys_io_rp2040/docs.html',
     'pw_tokenizer/cli': './docs.html',
