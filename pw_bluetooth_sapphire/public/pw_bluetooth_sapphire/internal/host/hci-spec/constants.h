@@ -751,26 +751,47 @@ enum class EventMaskPage2 : uint64_t {
 
 // Bitmask values for the 8-octet HCI_LE_Set_Event_Mask command parameter.
 enum class LEEventMask : uint64_t {
-  kLEConnectionComplete                 = (1 << 0),
-  kLEAdvertisingReport                  = (1 << 1),
-  kLEConnectionUpdateComplete           = (1 << 2),
-  kLEReadRemoteFeaturesComplete         = (1 << 3),
-  kLELongTermKeyRequest                 = (1 << 4),
-  kLERemoteConnectionParameterRequest   = (1 << 5),
-  kLEDataLengthChange                   = (1 << 6),
-  kLEReadLocalP256PublicKeyComplete     = (1 << 7),
-  kLEGenerateDHKeyComplete              = (1 << 8),
-  kLEEnhancedConnectionComplete         = (1 << 9),
-  kLEDirectedAdvertisingReport          = (1 << 10),
-  kLEPHYUpdateComplete                  = (1 << 11),
-  kLEExtendedAdvertisingReport          = (1 << 12),
-  kLEPeriodicAdvertisingSyncEstablished = (1 << 13),
-  kLEPeriodicAdvertisingReport          = (1 << 14),
-  kLEPeriodicAdvertisingSyncLost        = (1 << 15),
-  kLEExtendedScanTimeout                = (1 << 16),
-  kLEExtendedAdvertisingSetTerminated   = (1 << 17),
-  kLEScanRequestReceived                = (1 << 18),
-  kLEChannelSelectionAlgorithm          = (1 << 19),
+  kLEConnectionComplete                        = (1ull << 0),
+  kLEAdvertisingReport                         = (1ull << 1),
+  kLEConnectionUpdateComplete                  = (1ull << 2),
+  kLEReadRemoteFeaturesComplete                = (1ull << 3),
+  kLELongTermKeyRequest                        = (1ull << 4),
+  kLERemoteConnectionParameterRequest          = (1ull << 5),
+  kLEDataLengthChange                          = (1ull << 6),
+  kLEReadLocalP256PublicKeyComplete            = (1ull << 7),
+  kLEGenerateDHKeyComplete                     = (1ull << 8),
+  kLEEnhancedConnectionComplete                = (1ull << 9),
+  kLEDirectedAdvertisingReport                 = (1ull << 10),
+  kLEPHYUpdateComplete                         = (1ull << 11),
+  kLEExtendedAdvertisingReport                 = (1ull << 12),
+  kLEPeriodicAdvertisingSyncEstablished        = (1ull << 13),
+  kLEPeriodicAdvertisingReport                 = (1ull << 14),
+  kLEPeriodicAdvertisingSyncLost               = (1ull << 15),
+  kLEExtendedScanTimeout                       = (1ull << 16),
+  kLEExtendedAdvertisingSetTerminated          = (1ull << 17),
+  kLEScanRequestReceived                       = (1ull << 18),
+  kLEChannelSelectionAlgorithm                 = (1ull << 19),
+  kLEConnectionlessIQReport                    = (1ull << 20),
+  kLEConnectionIQReport                        = (1ull << 21),
+  kLECTERequestFailed                          = (1ull << 22),
+  kLEPeriodicAdvertisingSyncTransferReceived   = (1ull << 23),
+  kLECISEstablished                            = (1ull << 24),
+  kLECISRequest                                = (1ull << 25),
+  kLECreateBIGComplete                         = (1ull << 26),
+  kLETerminateBIGComplete                      = (1ull << 27),
+  kLEBIGSyncEstablished                        = (1ull << 28),
+  kLEBIGSyncLost                               = (1ull << 29),
+  kLERequestPeerSCAComplete                    = (1ull << 30),
+  kLEPathLossThreshold                         = (1ull << 31),
+  kLETransmitPowerReporting                    = (1ull << 32),
+  kLEBIGInfoAdvertisingReport                  = (1ull << 33),
+  kLESubrateChange                             = (1ull << 34),
+  kLEPeriodicAdvertisingSyncEstablishedV2      = (1ull << 35),
+  kLEPeriodicAdvertisingReportV2               = (1ull << 36),
+  kLEPeriodicAdvertisingSyncTransferReceivedV2 = (1ull << 37),
+  kLEPeriodicAdvertisingSubeventDataRequest    = (1ull << 38),
+  kLEPeriodicAdvertisingResponseReport         = (1ull << 39),
+  kLEEnhancedConnectionCompleteV2              = (1ull << 40),
 };
 
 // Values that can be passed to the Type parameter in a
@@ -884,7 +905,7 @@ constexpr size_t kMaxLEAdvertisingDataLength = 0x1F;  // (31)
 // parameter) but they must be fragmented across multiple extended advertising
 // PDUs. We don't currently support data framgentation when advertising, nor do
 // we support the use of extended advertising PDUs when advertising.
-constexpr size_t kMaxPduLEExtendedAdvertisingDataLength = 252;
+constexpr size_t kMaxPduLEExtendedAdvertisingDataLength = 248;
 
 // Core Spec Version 5.4, Volume 6, Part B, Section 2.3.4.9: the total
 // amount of Host Advertising Data before fragmentation shall not exceed 1650
@@ -901,6 +922,10 @@ constexpr int8_t kLEExtendedAdvertisingTxPowerNoPreference = 0x7F; // Vol 4, Par
 constexpr uint8_t kMaxAdvertisingHandle = 0xEF;
 constexpr uint8_t kNoMaxExtendedAdvertisingEvents = 0;
 constexpr uint8_t kNoAdvertisingDuration = 0;
+
+// Values used in enabling extended scanning. See Core Spec v5.4 Vol 4, Part E, 7.8.64.
+constexpr uint16_t kNoScanningDuration = 0;
+constexpr uint16_t kNoScanningPeriod = 0;
 
 // LE Advertising event types that can be reported in a LE Advertising Report
 // event.
@@ -971,28 +996,6 @@ constexpr uint8_t kLEAdvertisingChannel37 = 0x01;
 constexpr uint8_t kLEAdvertisingChannel38 = 0x02;
 constexpr uint8_t kLEAdvertisingChannel39 = 0x04;
 constexpr uint8_t kLEAdvertisingChannelAll = 0x07;
-
-// Possible values that can be used for the |adv_filter_policy| parameter in a
-// HCI_LE_Set_Advertising_Parameters command.
-// (see Core Spec v5.0, Vol 2, Part E, Section 7.8.5)
-enum class LEAdvFilterPolicy : uint8_t {
-  // Process scan and connection requests from all devices (i.e., the Filter Accept List is not in
-  // use) (default).
-  kAllowAll = 0x00,
-
-  // Process connection requests from all devices and only scan requests from
-  // devices that are in the filter accept policy list.
-  kConnAllScanFilterAcceptList = 0x01,
-
-  // Process scan requests from all devices and only connection requests from devices that are in
-  // the Filter Accept List.
-  kScanAllConnFilterAcceptList = 0x02,
-
-  // Process scan and connection requests only from devices in the Filter Accept List.
-  kFilterAcceptListOnly = 0x03,
-
-  // The rest is reserved for future use.
-};
 
 // Possible values that can be used for the Filter_Policy parameter in a
 // HCI_LE_Periodic_Advertising_Create_Sync command.
@@ -1126,6 +1129,9 @@ constexpr uint8_t kLEAdvertsingSIDMax = 0xEF;
 // Invalid RSSI value.
 constexpr int8_t kRSSIInvalid = 127;
 
+// Invalid advertising sid value
+constexpr uint8_t kAdvertisingSidInvalid = 0xFF;
+
 // The maximum length of a friendly name that can be assigned to a BR/EDR
 // controller, in octets.
 constexpr size_t kMaxNameLength = bt::kMaxNameLength;
@@ -1145,6 +1151,12 @@ constexpr size_t kMaxACLPayloadSize = 1024;
 // The maximum number of bytes in a HCI Synchronous Data packet payload.
 // This is based on the maximum value of the 1-byte Data_Total_Length field of a Synchronous Data packet.
 constexpr size_t kMaxSynchronousDataPacketPayloadSize = 255;
+
+// The maximum number of bytes in an Isochronous data packet payload, based on
+// the maximum size (12 bits) of the data_total_length field of an Isochronous
+// data packet.
+// See Core Spec v5.4, Vol 4, Part E, Section 5.4.5
+constexpr size_t kMaxIsochronousDataPacketPayloadSize = 16384;
 
 // Values that can be used in HCI Read|WriteFlowControlMode commands.
 enum class FlowControlMode : uint8_t {
@@ -1254,6 +1266,9 @@ constexpr size_t kExtendedInquiryResponseMaxNameBytes = kExtendedInquiryResponse
 // Vol 2, Part H, 1).
 constexpr uint8_t kMinEncryptionKeySize = 7;
 
+// inclusive-language: ignore
+// Ignore inclusive language check to match the language used in the spec
+//
 // Key types for BR/EDR link encryption as reported to the host using the Link
 // Key Notification event upon pairing or key changes (v5.0 Vol 2, Part E,
 // Section 7.7.24).

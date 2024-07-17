@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,13 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_bluetooth_sapphire/internal/host/hci-spec/link_key.h"
-
-namespace bt::hci_spec {
-
-LinkKey::LinkKey() : rand_(0), ediv_(0) { value_.fill(0); }
-
-LinkKey::LinkKey(const UInt128& ltk, uint64_t rand, uint16_t ediv)
-    : value_(ltk), rand_(rand), ediv_(ediv) {}
-
-}  // namespace bt::hci_spec
+declare module 'node_modules-path' {
+  function getPath(moduleName?: string, folder?: string): string | null;
+  export = getPath;
+}
