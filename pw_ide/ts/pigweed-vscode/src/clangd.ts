@@ -20,7 +20,7 @@ import { basename, dirname, join } from 'path';
 import { refreshCompileCommands } from './bazelWatcher';
 import { refreshManager } from './refreshManager';
 import { settingFor, settings, stringSettingFor, workingDir } from './settings';
-import { troubleshootingLink } from './links';
+import { launchTroubleshootingLink } from './links';
 
 const CDB_FILE_NAME = 'compile_commands.json' as const;
 const CDB_FILE_DIR = '.compile_commands' as const;
@@ -40,8 +40,11 @@ export const targetCompileCommandsPath = (target: string) =>
 export async function availableTargets(): Promise<string[]> {
   // Get the name of every sub dir in the compile commands dir that contains
   // a compile commands file.
-  return (await glob(`**/${CDB_FILE_NAME}`, { cwd: CDB_DIR() })).map((path) =>
-    basename(dirname(path)),
+  return (
+    (await glob(`**/${CDB_FILE_NAME}`, { cwd: CDB_DIR() }))
+      .map((path) => basename(dirname(path)))
+      // Filter out a catch-all database in the root compile commands dir
+      .filter((name) => name.trim() !== '.')
   );
 }
 
@@ -101,10 +104,16 @@ export async function setCompileCommandsTarget() {
   const targets = await availableTargets();
 
   if (targets.length === 0) {
-    vscode.window.showErrorMessage(
-      "Couldn't find any targets! Get help at " +
-        troubleshootingLink('bazel-no-targets'),
-    );
+    vscode.window
+      .showErrorMessage("Couldn't find any targets!", 'Get Help')
+      .then((selection) => {
+        switch (selection) {
+          case 'Get Help': {
+            launchTroubleshootingLink('bazel-no-targets');
+            break;
+          }
+        }
+      });
 
     return;
   }
