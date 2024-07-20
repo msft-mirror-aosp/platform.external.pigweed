@@ -734,6 +734,11 @@ struct ReadDataBlockSizeReturnParams {
   uint16_t total_num_data_blocks;
 } __attribute__((packed));
 
+// ====================================================
+// Read Local Supported Controller Delay Command (v5.2)
+constexpr OpCode kReadLocalSupportedControllerDelay =
+    InformationalParamsOpCode(0x000F);
+
 // ======= Events =======
 // Core Spec v5.0 Vol 2, Part E, Section 7.7
 
@@ -982,52 +987,6 @@ constexpr EventCode kLEConnectionCompleteSubeventCode = 0x01;
 
 // LE Advertising Report Event (v4.0) (LE)
 constexpr EventCode kLEAdvertisingReportSubeventCode = 0x02;
-
-struct LEAdvertisingReportData {
-  LEAdvertisingReportData() = delete;
-  BT_DISALLOW_COPY_ASSIGN_AND_MOVE(LEAdvertisingReportData);
-
-  // The event type.
-  LEAdvertisingEventType event_type;
-
-  // Type of |address| for the advertising device.
-  LEAddressType address_type;
-
-  // Public Device Address, Random Device Address, Public Identity Address or
-  // Random (static) Identity Address of the advertising device.
-  DeviceAddressBytes address;
-
-  // Length of the advertising data payload.
-  uint8_t length_data;
-
-  // The beginning of |length_data| octets of advertising or scan response data
-  // formatted as defined in Core Spec v5.0, Vol 3, Part C, Section 11.
-  uint8_t data[];
-
-  // Immediately following |data| there is a single octet field containing the
-  // received signal strength for this advertising report. Since |data| has a
-  // variable length we do not declare it as a field within this struct.
-  //
-  //   Range: -127 <= N <= +20
-  //   Units: dBm
-  //   If N == 127: RSSI is not available.
-  //
-  // int8_t rssi;
-} __attribute__((packed));
-
-struct LEAdvertisingReportSubeventParams {
-  LEAdvertisingReportSubeventParams() = delete;
-  BT_DISALLOW_COPY_ASSIGN_AND_MOVE(LEAdvertisingReportSubeventParams);
-
-  // Number of LEAdvertisingReportData instances contained in the array
-  // |reports|.
-  uint8_t num_reports;
-
-  // Beginning of LEAdvertisingReportData array. Since each report data has a
-  // variable length, the contents of |reports| this is declared as an array of
-  // uint8_t.
-  uint8_t reports[];
-} __attribute__((packed));
 
 // LE Connection Update Complete Event (v4.0) (LE)
 constexpr EventCode kLEConnectionUpdateCompleteSubeventCode = 0x03;
@@ -2203,15 +2162,8 @@ constexpr OpCode kLESetExtendedAdvertisingEnable =
 
 // ===========================================================
 // LE Read Maximum Advertising Data Length Command (v5.0) (LE)
-constexpr OpCode kLEReadMaxAdvertisingDataLength =
+constexpr OpCode kLEReadMaximumAdvertisingDataLength =
     LEControllerCommandOpCode(0x003A);
-
-struct LEReadMaxAdvertisingDataLengthReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  uint16_t max_adv_data_length;
-} __attribute__((packed));
 
 // ================================================================
 // LE Read Number of Supported Advertising Sets Command (v5.0) (LE)
