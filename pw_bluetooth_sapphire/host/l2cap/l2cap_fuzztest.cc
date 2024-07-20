@@ -13,6 +13,7 @@
 // the License.
 
 #include <fuzzer/FuzzedDataProvider.h>
+#include <pw_bytes/endian.h>
 #include <pw_random/fuzzer.h>
 
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
@@ -50,6 +51,7 @@ class FuzzerController : public ControllerTestDoubleBase,
   void SendCommand(pw::span<const std::byte> command) override {}
   void SendAclData(pw::span<const std::byte> data) override {}
   void SendScoData(pw::span<const std::byte> data) override {}
+  void SendIsoData(pw::span<const std::byte> data) override {}
 };
 
 // Reuse ControllerTest test fixture code even though we're not using gtest.
@@ -118,7 +120,10 @@ class DataFuzzTest : public TestingBase {
 
     // Use correct length so packets aren't rejected for invalid length.
     packet_view.AsMutable<hci_spec::ACLDataHeader>()->data_total_length =
-        htole16(packet_view.size() - sizeof(hci_spec::ACLDataHeader));
+        pw::bytes::ConvertOrderTo(
+            cpp20::endian::little,
+            static_cast<uint16_t>(
+                (packet_view.size() - sizeof(hci_spec::ACLDataHeader))));
 
     // Use correct connection handle so packets aren't rejected/queued for
     // invalid handle.

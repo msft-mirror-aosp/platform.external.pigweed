@@ -276,9 +276,12 @@ class ByteBuffer {
   // copying its contents.
   std::string_view AsString() const;
 
+  // Returns a string in hexadecimal format.
+  std::string AsHexadecimal() const;
+
   // Returns the contents of this buffer as a C++ string after copying its
   // contents.
-  std::string ToString() const;
+  std::string ToString(bool as_hex = false) const;
 
   // Returns a copy of the contents of this buffer in a std::vector.
   std::vector<uint8_t> ToVector() const;
@@ -432,10 +435,8 @@ class StaticByteBuffer : public MutableByteBuffer {
   // ByteBuffer overrides
   const uint8_t* data() const override { return buffer_.data(); }
   size_t size() const override { return buffer_.size(); }
-  const_iterator cbegin() const override { return buffer_.data(); }
-  const_iterator cend() const override {
-    return buffer_.data() + buffer_.size();
-  }
+  const_iterator cbegin() const override { return &*buffer_.cbegin(); }
+  const_iterator cend() const override { return &*buffer_.cend(); }
 
   // MutableByteBuffer overrides:
   uint8_t* mutable_data() override { return buffer_.data(); }

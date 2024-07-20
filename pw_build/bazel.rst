@@ -13,8 +13,9 @@ microcontrollers.
 Wrapper rules
 -------------
 The common configuration for Bazel for all modules is in the ``pigweed.bzl``
-file. The built-in Bazel rules ``cc_binary``, ``cc_test`` and ``py_test`` are
-wrapped with ``pw_cc_binary``, ``pw_cc_test`` and ``pw_py_test``.
+file. The built-in Bazel rules ``cc_binary``, ``cc_test``, ``py_binary`` and
+``py_test`` are wrapped with ``pw_cc_binary``, ``pw_cc_test`` ``pw_py_binary``
+and ``pw_py_test``, respectively.
 
 .. _module-pw_build-bazel-pw_linker_script:
 
@@ -330,6 +331,12 @@ host_backend_alias
 ^^^^^^^^^^^^^^^^^^
 An alias that resolves to the backend for host platforms. This is useful when
 declaring a facade that provides a default backend for host platform use.
+
+Flag merging rules
+------------------
+Macros that help with using platform-based flags are in
+``//pw_build:merge_flags.bzl``. These are useful, for example, when you wish to
+:ref:`docs-bazel-compatibility-facade-backend-dict`.
 
 Miscellaneous utilities
 -----------------------

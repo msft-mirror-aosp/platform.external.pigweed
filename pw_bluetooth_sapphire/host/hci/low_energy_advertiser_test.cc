@@ -21,6 +21,7 @@
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_peer.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
 
 // LowEnergyAdvertiser has many potential subclasses (e.g.
 // LegacyLowEnergyAdvertiser, ExtendedLowEnergyAdvertiser,
@@ -35,6 +36,8 @@
 
 namespace bt::hci {
 namespace {
+
+namespace pwemb = pw::bluetooth::emboss;
 
 using bt::testing::FakeController;
 using bt::testing::FakePeer;
@@ -107,7 +110,9 @@ class LowEnergyAdvertiserTest : public TestingBase {
   template <bool same = std::is_same_v<T, ExtendedLowEnergyAdvertiser>>
   std::enable_if_t<same, ExtendedLowEnergyAdvertiser>*
   CreateAdvertiserInternal() {
-    return new ExtendedLowEnergyAdvertiser(transport()->GetWeakPtr());
+    return new ExtendedLowEnergyAdvertiser(
+        transport()->GetWeakPtr(),
+        hci_spec::kMaxLEExtendedAdvertisingDataLength);
   }
 
   template <bool same = std::is_same_v<T, LegacyLowEnergyAdvertiser>>
@@ -173,12 +178,8 @@ class LowEnergyAdvertiserTest : public TestingBase {
       size -= kTLVFlagsSize;
     }
 
-    std::ostringstream oss;
-    for (unsigned int i = 0; i <= size; i++) {
-      oss << 'a';
-    }
-
-    EXPECT_TRUE(result.SetLocalName(oss.str()));
+    std::string data(size + 1, 'a');
+    EXPECT_TRUE(result.SetLocalName(data));
 
     // The maximum advertisement packet is:
     // |hci_spec::kMaxLEAdvertisingDataLength| = 31, and |result| = 32 bytes.
@@ -229,7 +230,7 @@ class LowEnergyAdvertiserTest : public TestingBase {
     return state;
   }
 
-  void MaybeSendMultipleAdvertisingPostConnectionEvents(
+  void SendMultipleAdvertisingPostConnectionEvents(
       hci_spec::ConnectionHandle conn_handle,
       hci_spec::AdvertisingHandle adv_handle) {
     if (std::is_same_v<T, AndroidExtendedLowEnergyAdvertiser>) {
@@ -245,6 +246,27 @@ class LowEnergyAdvertiserTest : public TestingBase {
     }
   }
 
+  void SetRandomAddress(DeviceAddress random_address) {
+    if (std::is_same_v<T, LegacyLowEnergyAdvertiser>) {
+      auto emboss_packet = EmbossCommandPacket::New<
+          pw::bluetooth::emboss::LESetRandomAddressCommandWriter>(
+          hci_spec::kLESetRandomAddress);
+      emboss_packet.view_t().random_address().CopyFrom(
+          random_address.value().view());
+
+      test_device()->SendCommand(emboss_packet.data().subspan());
+      RunUntilIdle();
+    }
+
+    // TODO(fxbug.dev/42161900): Support setting a random address
+    // for extended advertisers when proper checks are introduced in
+    // `FakeController::OnLESetExtendedAdvertisingEnable()`.
+  }
+
+  bool SupportsExtendedPdus() const {
+    return std::is_same_v<T, ExtendedLowEnergyAdvertiser>;
+  }
+
  private:
   std::unique_ptr<LowEnergyAdvertiser> advertiser_;
   std::optional<Result<>> last_status_;
@@ -257,6 +279,262 @@ using Implementations = ::testing::Types<LegacyLowEnergyAdvertiser,
                                          AndroidExtendedLowEnergyAdvertiser>;
 TYPED_TEST_SUITE(LowEnergyAdvertiserTest, Implementations);
 
+TYPED_TEST(LowEnergyAdvertiserTest, GetLegacyAdvertisingEventPropertiesAdvInd) {
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
+                             /*include_tx_power_level=*/false);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(this->GetExampleData(),
+                                                         this->GetExampleData(),
+                                                         options,
+                                                         [](auto value) {});
+  EXPECT_TRUE(properties.connectable);
+  EXPECT_TRUE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_TRUE(properties.use_legacy_pdus);
+  EXPECT_FALSE(properties.anonymous_advertising);
+  EXPECT_FALSE(properties.include_tx_power);
+}
+
+TYPED_TEST(LowEnergyAdvertiserTest,
+           GetLegacyAdvertisingEventPropertiesAdvScanInd) {
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
+                             /*include_tx_power_level=*/false);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          this->GetExampleData(),
+          this->GetExampleData(),
+          options,
+          /*connect_callback=*/nullptr);
+  EXPECT_FALSE(properties.connectable);
+  EXPECT_TRUE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_TRUE(properties.use_legacy_pdus);
+  EXPECT_FALSE(properties.anonymous_advertising);
+  EXPECT_FALSE(properties.include_tx_power);
+}
+
+TYPED_TEST(LowEnergyAdvertiserTest,
+           GetLegacyAdvertisingEventPropertiesAdvNonConnInd) {
+  AdvertisingData empty;
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
+                             /*include_tx_power_level=*/false);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          this->GetExampleData(),
+          empty,
+          options,
+          /*connect_callback=*/nullptr);
+  EXPECT_FALSE(properties.connectable);
+  EXPECT_FALSE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_TRUE(properties.use_legacy_pdus);
+  EXPECT_FALSE(properties.anonymous_advertising);
+  EXPECT_FALSE(properties.include_tx_power);
+}
+
+// Ensure we can't set include anonymous for legacy pdus
+TYPED_TEST(LowEnergyAdvertiserTest,
+           GetLegacyAdvertisingEventPropertiesNoAnonymous) {
+  AdvertisingData empty;
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/true,
+                             /*include_tx_power_level=*/false);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          empty,
+          empty,
+          options,
+          /*connect_callback=*/nullptr);
+  EXPECT_FALSE(properties.connectable);
+  EXPECT_FALSE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_TRUE(properties.use_legacy_pdus);
+  EXPECT_FALSE(properties.anonymous_advertising);
+  EXPECT_FALSE(properties.include_tx_power);
+}
+
+// Ensure we can't set include tx power level for legacy pdus
+TYPED_TEST(LowEnergyAdvertiserTest,
+           GetLegacyAdvertisingEventPropertiesNoIncludeTxPower) {
+  AdvertisingData empty;
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
+                             /*include_tx_power_level=*/true);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          empty,
+          empty,
+          options,
+          /*connect_callback=*/nullptr);
+  EXPECT_FALSE(properties.connectable);
+  EXPECT_FALSE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_TRUE(properties.use_legacy_pdus);
+  EXPECT_FALSE(properties.anonymous_advertising);
+  EXPECT_FALSE(properties.include_tx_power);
+}
+
+TYPED_TEST(LowEnergyAdvertiserTest,
+           GetExtendedAdvertisingEventPropertiesConnectable) {
+  AdvertisingData empty;
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/true,
+                             /*anonymous=*/false,
+                             /*include_tx_power_level=*/false);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          empty, empty, options, [](auto value) {});
+  EXPECT_TRUE(properties.connectable);
+  EXPECT_FALSE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_FALSE(properties.use_legacy_pdus);
+  EXPECT_FALSE(properties.anonymous_advertising);
+  EXPECT_FALSE(properties.include_tx_power);
+}
+
+TYPED_TEST(LowEnergyAdvertiserTest,
+           GetExtendedAdvertisingEventPropertiesScannable) {
+  AdvertisingData empty;
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/true,
+                             /*anonymous=*/false,
+                             /*include_tx_power_level=*/false);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          empty,
+          this->GetExampleData(),
+          options,
+          /*connect_callback=*/nullptr);
+  EXPECT_FALSE(properties.connectable);
+  EXPECT_TRUE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_FALSE(properties.use_legacy_pdus);
+  EXPECT_FALSE(properties.anonymous_advertising);
+  EXPECT_FALSE(properties.include_tx_power);
+}
+
+TYPED_TEST(LowEnergyAdvertiserTest,
+           GetExtendedAdvertisingEventPropertiesAnonymous) {
+  AdvertisingData empty;
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/true,
+                             /*anonymous=*/true,
+                             /*include_tx_power_level=*/false);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          empty,
+          empty,
+          options,
+          /*connect_callback=*/nullptr);
+  EXPECT_FALSE(properties.connectable);
+  EXPECT_FALSE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_FALSE(properties.use_legacy_pdus);
+  EXPECT_TRUE(properties.anonymous_advertising);
+  EXPECT_FALSE(properties.include_tx_power);
+}
+
+TYPED_TEST(LowEnergyAdvertiserTest,
+           GetExtendedAdvertisingEventPropertiesIncludeTxPower) {
+  AdvertisingData empty;
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/true,
+                             /*anonymous=*/false,
+                             /*include_tx_power_level=*/true);
+  LowEnergyAdvertiser::AdvertisingEventProperties properties =
+      LowEnergyAdvertiser::GetAdvertisingEventProperties(
+          empty,
+          empty,
+          options,
+          /*connect_callback=*/nullptr);
+  EXPECT_FALSE(properties.connectable);
+  EXPECT_FALSE(properties.scannable);
+  EXPECT_FALSE(properties.directed);
+  EXPECT_FALSE(properties.high_duty_cycle_directed_connectable);
+  EXPECT_FALSE(properties.use_legacy_pdus);
+  EXPECT_FALSE(properties.anonymous_advertising);
+  EXPECT_TRUE(properties.include_tx_power);
+}
+
+TYPED_TEST(LowEnergyAdvertiserTest,
+           AdvertisingEventPropertiesToLEAdvertisingType) {
+  {
+    LowEnergyAdvertiser::AdvertisingEventProperties properties;
+    properties.scannable = true;
+    properties.connectable = true;
+    pwemb::LEAdvertisingType adv_type =
+        LowEnergyAdvertiser::AdvertisingEventPropertiesToLEAdvertisingType(
+            properties);
+    EXPECT_EQ(adv_type,
+              pwemb::LEAdvertisingType::CONNECTABLE_AND_SCANNABLE_UNDIRECTED);
+  }
+
+  {
+    LowEnergyAdvertiser::AdvertisingEventProperties properties;
+    properties.directed = true;
+    properties.connectable = true;
+    pwemb::LEAdvertisingType adv_type =
+        LowEnergyAdvertiser::AdvertisingEventPropertiesToLEAdvertisingType(
+            properties);
+    EXPECT_EQ(adv_type,
+              pwemb::LEAdvertisingType::CONNECTABLE_LOW_DUTY_CYCLE_DIRECTED);
+  }
+
+  {
+    LowEnergyAdvertiser::AdvertisingEventProperties properties;
+    properties.high_duty_cycle_directed_connectable = true;
+    properties.directed = true;
+    properties.connectable = true;
+    pwemb::LEAdvertisingType adv_type =
+        LowEnergyAdvertiser::AdvertisingEventPropertiesToLEAdvertisingType(
+            properties);
+    EXPECT_EQ(adv_type,
+              pwemb::LEAdvertisingType::CONNECTABLE_HIGH_DUTY_CYCLE_DIRECTED);
+  }
+
+  {
+    LowEnergyAdvertiser::AdvertisingEventProperties properties;
+    properties.scannable = true;
+    pwemb::LEAdvertisingType adv_type =
+        LowEnergyAdvertiser::AdvertisingEventPropertiesToLEAdvertisingType(
+            properties);
+    EXPECT_EQ(adv_type, pwemb::LEAdvertisingType::SCANNABLE_UNDIRECTED);
+  }
+
+  {
+    LowEnergyAdvertiser::AdvertisingEventProperties properties;
+    pwemb::LEAdvertisingType adv_type =
+        LowEnergyAdvertiser::AdvertisingEventPropertiesToLEAdvertisingType(
+            properties);
+    EXPECT_EQ(adv_type, pwemb::LEAdvertisingType::NOT_CONNECTABLE_UNDIRECTED);
+  }
+}
+
 // - Stops the advertisement when an incoming connection comes in
 // - Possible to restart advertising
 // - Advertising state cleaned up between calls
@@ -264,8 +542,9 @@ TYPED_TEST(LowEnergyAdvertiserTest, ConnectionTest) {
   AdvertisingData adv_data = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
 
   std::unique_ptr<LowEnergyConnection> link;
@@ -281,20 +560,20 @@ TYPED_TEST(LowEnergyAdvertiserTest, ConnectionTest) {
   this->RunUntilIdle();
   EXPECT_TRUE(this->GetLastStatus());
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                /*extended_pdu=*/false));
 
   // Accept a connection and ensure that connection state is set up correctly
   link.reset();
-  this->advertiser()->OnIncomingConnection(
-      kConnectionHandle,
-      pw::bluetooth::emboss::ConnectionRole::PERIPHERAL,
-      kRandomAddress,
-      hci_spec::LEConnectionParameters());
+  this->advertiser()->OnIncomingConnection(kConnectionHandle,
+                                           pwemb::ConnectionRole::PERIPHERAL,
+                                           kRandomAddress,
+                                           hci_spec::LEConnectionParameters());
   std::optional<hci_spec::AdvertisingHandle> handle =
       this->CurrentAdvertisingHandle();
   ASSERT_TRUE(handle);
-  this->MaybeSendMultipleAdvertisingPostConnectionEvents(kConnectionHandle,
-                                                         handle.value());
+  this->SendMultipleAdvertisingPostConnectionEvents(kConnectionHandle,
+                                                    handle.value());
   this->RunUntilIdle();
 
   ASSERT_TRUE(link);
@@ -302,16 +581,17 @@ TYPED_TEST(LowEnergyAdvertiserTest, ConnectionTest) {
   EXPECT_EQ(kPublicAddress, link->local_address());
   EXPECT_EQ(kRandomAddress, link->peer_address());
   EXPECT_FALSE(this->advertiser()->IsAdvertising());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(kPublicAddress));
+  EXPECT_FALSE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                 /*extended_pdu=*/false));
 
   // Advertising state should get cleared on a disconnection
-  link->Disconnect(
-      pw::bluetooth::emboss::StatusCode::REMOTE_USER_TERMINATED_CONNECTION);
+  link->Disconnect(pwemb::StatusCode::REMOTE_USER_TERMINATED_CONNECTION);
   this->test_device()->SendDisconnectionCompleteEvent(link->handle());
   this->RunUntilIdle();
   EXPECT_FALSE(this->GetControllerAdvertisingState().enabled);
 
   // Restart advertising using a different local address
+  this->SetRandomAddress(kRandomAddress);
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        adv_data,
                                        scan_data,
@@ -325,15 +605,14 @@ TYPED_TEST(LowEnergyAdvertiserTest, ConnectionTest) {
   // Accept a connection from kPublicAddress. The internal advertising state
   // should get assigned correctly with no remnants of the previous advertise.
   link.reset();
-  this->advertiser()->OnIncomingConnection(
-      kConnectionHandle,
-      pw::bluetooth::emboss::ConnectionRole::PERIPHERAL,
-      kPublicAddress,
-      hci_spec::LEConnectionParameters());
+  this->advertiser()->OnIncomingConnection(kConnectionHandle,
+                                           pwemb::ConnectionRole::PERIPHERAL,
+                                           kPublicAddress,
+                                           hci_spec::LEConnectionParameters());
   handle = this->CurrentAdvertisingHandle();
   ASSERT_TRUE(handle);
-  this->MaybeSendMultipleAdvertisingPostConnectionEvents(kConnectionHandle,
-                                                         handle.value());
+  this->SendMultipleAdvertisingPostConnectionEvents(kConnectionHandle,
+                                                    handle.value());
   this->RunUntilIdle();
 
   ASSERT_TRUE(link);
@@ -341,13 +620,15 @@ TYPED_TEST(LowEnergyAdvertiserTest, ConnectionTest) {
   EXPECT_EQ(kPublicAddress, link->peer_address());
 }
 
-// Tests that advertising can be restarted right away in a connection callback.
+// Tests that advertising can be restarted right away in a connection
+// callback.
 TYPED_TEST(LowEnergyAdvertiserTest, RestartInConnectionCallback) {
   AdvertisingData ad = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
 
   std::unique_ptr<LowEnergyConnection> link;
@@ -384,16 +665,15 @@ TYPED_TEST(LowEnergyAdvertiserTest, RestartInConnectionCallback) {
         }
       });
 
-  this->advertiser()->OnIncomingConnection(
-      kConnectionHandle,
-      pw::bluetooth::emboss::ConnectionRole::PERIPHERAL,
-      kRandomAddress,
-      hci_spec::LEConnectionParameters());
+  this->advertiser()->OnIncomingConnection(kConnectionHandle,
+                                           pwemb::ConnectionRole::PERIPHERAL,
+                                           kRandomAddress,
+                                           hci_spec::LEConnectionParameters());
   std::optional<hci_spec::AdvertisingHandle> handle =
       this->CurrentAdvertisingHandle();
   ASSERT_TRUE(handle);
-  this->MaybeSendMultipleAdvertisingPostConnectionEvents(kConnectionHandle,
-                                                         handle.value());
+  this->SendMultipleAdvertisingPostConnectionEvents(kConnectionHandle,
+                                                    handle.value());
 
   // Advertising should get disabled and re-enabled.
   this->RunUntilIdle();
@@ -417,8 +697,8 @@ TYPED_TEST(LowEnergyAdvertiserTest, IncomingConnectionWhenNotAdvertising) {
   auto fake_peer = std::make_unique<FakePeer>(
       kRandomAddress, TestFixture::dispatcher(), true, true);
   this->test_device()->AddPeer(std::move(fake_peer));
-  this->test_device()->ConnectLowEnergy(
-      kRandomAddress, pw::bluetooth::emboss::ConnectionRole::PERIPHERAL);
+  this->test_device()->ConnectLowEnergy(kRandomAddress,
+                                        pwemb::ConnectionRole::PERIPHERAL);
   this->RunUntilIdle();
 
   ASSERT_EQ(1u, connection_states.size());
@@ -427,12 +707,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, IncomingConnectionWhenNotAdvertising) {
 
   // Notify the advertiser of the incoming connection. It should reject it and
   // the controller should become disconnected.
-  this->advertiser()->OnIncomingConnection(
-      handle,
-      pw::bluetooth::emboss::ConnectionRole::PERIPHERAL,
-      kRandomAddress,
-      hci_spec::LEConnectionParameters());
-  this->MaybeSendMultipleAdvertisingPostConnectionEvents(kConnectionHandle, 0);
+  this->advertiser()->OnIncomingConnection(handle,
+                                           pwemb::ConnectionRole::PERIPHERAL,
+                                           kRandomAddress,
+                                           hci_spec::LEConnectionParameters());
+  this->SendMultipleAdvertisingPostConnectionEvents(kConnectionHandle, 0);
   this->RunUntilIdle();
   ASSERT_EQ(2u, connection_states.size());
   auto [connection_state_after_disconnect, disconnected_handle] =
@@ -448,8 +727,9 @@ TYPED_TEST(LowEnergyAdvertiserTest,
   AdvertisingData ad = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
   this->advertiser()->StartAdvertising(kPublicAddress,
                                        ad,
@@ -471,8 +751,8 @@ TYPED_TEST(LowEnergyAdvertiserTest,
   auto fake_peer = std::make_unique<FakePeer>(
       kRandomAddress, TestFixture::dispatcher(), true, true);
   this->test_device()->AddPeer(std::move(fake_peer));
-  this->test_device()->ConnectLowEnergy(
-      kRandomAddress, pw::bluetooth::emboss::ConnectionRole::PERIPHERAL);
+  this->test_device()->ConnectLowEnergy(kRandomAddress,
+                                        pwemb::ConnectionRole::PERIPHERAL);
   this->RunUntilIdle();
 
   ASSERT_EQ(1u, connection_states.size());
@@ -481,12 +761,11 @@ TYPED_TEST(LowEnergyAdvertiserTest,
 
   // Notify the advertiser of the incoming connection. It should reject it and
   // the controller should become disconnected.
-  this->advertiser()->OnIncomingConnection(
-      handle,
-      pw::bluetooth::emboss::ConnectionRole::PERIPHERAL,
-      kRandomAddress,
-      hci_spec::LEConnectionParameters());
-  this->MaybeSendMultipleAdvertisingPostConnectionEvents(kConnectionHandle, 0);
+  this->advertiser()->OnIncomingConnection(handle,
+                                           pwemb::ConnectionRole::PERIPHERAL,
+                                           kRandomAddress,
+                                           hci_spec::LEConnectionParameters());
+  this->SendMultipleAdvertisingPostConnectionEvents(kConnectionHandle, 0);
   this->RunUntilIdle();
   ASSERT_EQ(2u, connection_states.size());
   auto [connection_state_after_disconnect, disconnected_handle] =
@@ -500,9 +779,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, StartAndStop) {
   AdvertisingData ad = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
 
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
@@ -514,7 +795,7 @@ TYPED_TEST(LowEnergyAdvertiserTest, StartAndStop) {
   EXPECT_TRUE(this->GetLastStatus());
   EXPECT_TRUE(this->GetControllerAdvertisingState().enabled);
 
-  this->advertiser()->StopAdvertising(kRandomAddress);
+  this->advertiser()->StopAdvertising(kRandomAddress, /*extended_pdu=*/false);
   this->RunUntilIdle();
   EXPECT_FALSE(this->GetControllerAdvertisingState().enabled);
 }
@@ -525,9 +806,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertisingParameters) {
   AdvertisingData scan_data = this->GetExampleData();
   auto flags = AdvFlag::kLEGeneralDiscoverableMode;
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              flags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
 
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
@@ -554,15 +837,15 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertisingParameters) {
   EXPECT_EQ(kTestInterval.max(), state->interval_max);
   EXPECT_EQ(expected_ad, state->advertised_view());
   EXPECT_EQ(expected_scan_data, state->scan_rsp_view());
-  EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::RANDOM,
-            state->own_address_type);
+  EXPECT_EQ(pwemb::LEOwnAddressType::RANDOM, state->own_address_type);
 
   // Restart advertising with a public address and verify that the configured
   // local address type is correct.
-  this->advertiser()->StopAdvertising(kRandomAddress);
+  this->advertiser()->StopAdvertising(kRandomAddress, /*extended_pdu=*/false);
   AdvertisingOptions new_options(kTestInterval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/false);
   this->advertiser()->StartAdvertising(kPublicAddress,
                                        ad,
@@ -576,8 +859,7 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertisingParameters) {
   state = this->GetControllerAdvertisingState();
   EXPECT_TRUE(state);
   EXPECT_TRUE(state->enabled);
-  EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
-            state->own_address_type);
+  EXPECT_EQ(pwemb::LEOwnAddressType::PUBLIC, state->own_address_type);
 }
 
 // Tests that a previous advertisement's advertising data isn't accidentally
@@ -586,19 +868,21 @@ TYPED_TEST(LowEnergyAdvertiserTest, PreviousAdvertisingParameters) {
   AdvertisingData scan_data = this->GetExampleData();
   auto flags = AdvFlag::kLEGeneralDiscoverableMode;
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              flags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
 
-  // old advertising data: ideally we would fill this completely so that in the
-  // next start advertising call, we can confirm that none of the remnants are
-  // left. However, doing so results in the advertising data being too long.
-  // Instead, we rely on other unit tests within advertising data unittests to
-  // ensure all previous remnants are removed.
+  // old advertising data: ideally we would fill this completely so that in
+  // the next start advertising call, we can confirm that none of the remnants
+  // are left. However, doing so results in the advertising data being too
+  // long. Instead, we rely on other unit tests within advertising data
+  // unittests to ensure all previous remnants are removed.
   AdvertisingData ad;
   ad.SetTxPower(4);
   ad.SetAppearance(0x4567);
   EXPECT_TRUE(ad.SetLocalName("fuchsia"));
+  this->SetRandomAddress(kRandomAddress);
 
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
@@ -610,7 +894,7 @@ TYPED_TEST(LowEnergyAdvertiserTest, PreviousAdvertisingParameters) {
   EXPECT_TRUE(this->GetLastStatus());
 
   // new advertising data (with fewer fields filled in)
-  this->advertiser()->StopAdvertising(kRandomAddress);
+  this->advertiser()->StopAdvertising(kRandomAddress, /*extended_pdu=*/false);
   AdvertisingData new_ad = this->GetExampleData();
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        new_ad,
@@ -635,15 +919,18 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertisingIntervalWithinAllowedRange) {
   AdvertisingData ad = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
 
-  // Pass min and max values that are outside the allowed range. These should be
-  // capped.
+  // Pass min and max values that are outside the allowed range. These should
+  // be capped.
   constexpr AdvertisingIntervalRange interval(
       hci_spec::kLEAdvertisingIntervalMin - 1,
       hci_spec::kLEAdvertisingIntervalMax + 1);
   AdvertisingOptions options(interval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
+
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
                                        scan_data,
@@ -659,14 +946,15 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertisingIntervalWithinAllowedRange) {
   EXPECT_EQ(hci_spec::kLEAdvertisingIntervalMin, state->interval_min);
   EXPECT_EQ(hci_spec::kLEAdvertisingIntervalMax, state->interval_max);
 
-  // Reconfigure with values that are within the range. These should get passed
-  // down as is.
+  // Reconfigure with values that are within the range. These should get
+  // passed down as is.
   const AdvertisingIntervalRange new_interval(
       hci_spec::kLEAdvertisingIntervalMin + 1,
       hci_spec::kLEAdvertisingIntervalMax - 1);
   AdvertisingOptions new_options(new_interval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/false);
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
@@ -690,15 +978,18 @@ TYPED_TEST(LowEnergyAdvertiserTest, StartWhileStarting) {
 
   const AdvertisingIntervalRange old_interval = kTestInterval;
   AdvertisingOptions old_options(old_interval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/false);
   const AdvertisingIntervalRange new_interval(kTestInterval.min() + 1,
                                               kTestInterval.max() - 1);
   AdvertisingOptions new_options(new_interval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/false);
+  this->SetRandomAddress(addr);
 
   this->advertiser()->StartAdvertising(
       addr, ad, scan_data, old_options, nullptr, [](auto) {});
@@ -724,9 +1015,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, StartWhileStopping) {
   AdvertisingData scan_data = this->GetExampleData();
   DeviceAddress addr = kRandomAddress;
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(addr);
 
   // Get to a started state.
   this->advertiser()->StartAdvertising(
@@ -754,7 +1047,7 @@ TYPED_TEST(LowEnergyAdvertiserTest, StartWhileStopping) {
   };
   this->test_device()->set_advertising_state_callback(adv_state_cb);
 
-  this->advertiser()->StopAdvertising(addr);
+  this->advertiser()->StopAdvertising(addr, /*extended_pdu=*/false);
 
   // Advertising should have been momentarily disabled.
   this->RunUntilIdle();
@@ -769,8 +1062,9 @@ TYPED_TEST(LowEnergyAdvertiserTest, StopWhileStarting) {
   AdvertisingData ad = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
 
   this->advertiser()->StartAdvertising(kPublicAddress,
@@ -793,9 +1087,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, StopAdvertisingConditions) {
   AdvertisingData ad = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
 
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
@@ -815,12 +1111,12 @@ TYPED_TEST(LowEnergyAdvertiserTest, StopAdvertisingConditions) {
       this->GetControllerAdvertisingState().advertised_view(), expected_ad));
 
   this->RunUntilIdle();
-  this->advertiser()->StopAdvertising(kPublicAddress);
+  this->advertiser()->StopAdvertising(kPublicAddress, /*extended_pdu=*/false);
   EXPECT_TRUE(this->GetControllerAdvertisingState().enabled);
   EXPECT_TRUE(ContainersEqual(
       this->GetControllerAdvertisingState().advertised_view(), expected_ad));
 
-  this->advertiser()->StopAdvertising(kRandomAddress);
+  this->advertiser()->StopAdvertising(kRandomAddress, /*extended_pdu=*/false);
 
   this->RunUntilIdle();
   EXPECT_FALSE(this->GetControllerAdvertisingState().enabled);
@@ -833,9 +1129,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertiseUpdate) {
   AdvertisingData ad = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
 
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
@@ -865,8 +1163,9 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertiseUpdate) {
   const AdvertisingIntervalRange new_interval(kTestInterval.min() + 1,
                                               kTestInterval.max() - 1);
   AdvertisingOptions new_options(new_interval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/false);
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
@@ -900,8 +1199,9 @@ TYPED_TEST(LowEnergyAdvertiserTest, StopAdvertisingSingleAdvertisement) {
 
   // start public address advertising
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
   this->advertiser()->StartAdvertising(kPublicAddress,
                                        ad,
@@ -914,9 +1214,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, StopAdvertisingSingleAdvertisement) {
 
   constexpr uint8_t blank[hci_spec::kMaxLEAdvertisingDataLength] = {0};
 
-  // check that advertiser and controller both report the same advertising state
+  // check that advertiser and controller both report the same advertising
+  // state
   EXPECT_TRUE(this->advertiser()->IsAdvertising());
-  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress));
+  EXPECT_TRUE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                /*extended_pdu=*/false));
 
   {
     const FakeController::LEAdvertisingState& state =
@@ -933,12 +1235,14 @@ TYPED_TEST(LowEnergyAdvertiserTest, StopAdvertisingSingleAdvertisement) {
   }
 
   // stop advertising the random address
-  this->advertiser()->StopAdvertising(kPublicAddress);
+  this->advertiser()->StopAdvertising(kPublicAddress, /*extended_pdu=*/false);
   this->RunUntilIdle();
 
-  // check that advertiser and controller both report the same advertising state
+  // check that advertiser and controller both report the same advertising
+  // state
   EXPECT_FALSE(this->advertiser()->IsAdvertising());
-  EXPECT_FALSE(this->advertiser()->IsAdvertising(kPublicAddress));
+  EXPECT_FALSE(this->advertiser()->IsAdvertising(kPublicAddress,
+                                                 /*extended_pdu=*/false));
 
   {
     const FakeController::LEAdvertisingState& state =
@@ -960,9 +1264,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, NoAnonymous) {
   AdvertisingData ad = this->GetExampleData();
   AdvertisingData scan_data = this->GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/true,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/true,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
 
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        ad,
@@ -980,9 +1286,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertisingDataTooLong) {
   AdvertisingData valid_scan_rsp =
       this->GetExampleData(/*include_flags=*/false);
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
 
   // Advertising data too large.
   this->advertiser()->StartAdvertising(kRandomAddress,
@@ -1004,9 +1312,11 @@ TYPED_TEST(LowEnergyAdvertiserTest, AdvertisingDataTooLongWithTxPower) {
   AdvertisingData valid_scan_rsp =
       this->GetExampleData(/*include_flags=*/false);
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/true);
+  this->SetRandomAddress(kRandomAddress);
 
   // Advertising data too large.
   this->advertiser()->StartAdvertising(kRandomAddress,
@@ -1026,9 +1336,12 @@ TYPED_TEST(LowEnergyAdvertiserTest, ScanResponseTooLong) {
   AdvertisingData invalid_scan_rsp =
       this->GetTooLargeExampleData(/*include_flags=*/false);
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
+
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        valid_ad,
                                        invalid_scan_rsp,
@@ -1047,9 +1360,12 @@ TYPED_TEST(LowEnergyAdvertiserTest, ScanResponseTooLongWithTxPower) {
       /*include_flags=*/false,
       hci_spec::kMaxLEAdvertisingDataLength - kTLVTxPowerLevelSize + 1);
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/true);
+  this->SetRandomAddress(kRandomAddress);
+
   this->advertiser()->StartAdvertising(kRandomAddress,
                                        valid_ad,
                                        invalid_scan_rsp,
@@ -1066,6 +1382,33 @@ TYPED_TEST(LowEnergyAdvertiserTest,
            DestroyingTransportBeforeAdvertiserDoesNotCrash) {
   this->DeleteTransport();
   this->DestroyAdvertiser();
+}
+
+// Ensure we disallow requesting extended PDUs where we can't use them
+TYPED_TEST(LowEnergyAdvertiserTest, ExtendedPdusReturnsErrorWhenNotSupported) {
+  if (this->SupportsExtendedPdus()) {
+    return;
+  }
+
+  AdvertisingData ad = this->GetExampleData();
+  AdvertisingData scan_data = this->GetExampleData();
+  AdvertisingOptions options(kTestInterval,
+                             kDefaultNoAdvFlags,
+                             /*extended_pdu=*/true,
+                             /*anonymous=*/false,
+                             /*include_tx_power_level=*/false);
+  this->SetRandomAddress(kRandomAddress);
+
+  this->advertiser()->StartAdvertising(kRandomAddress,
+                                       ad,
+                                       scan_data,
+                                       options,
+                                       nullptr,
+                                       this->MakeExpectErrorCallback());
+  this->RunUntilIdle();
+  auto status = this->GetLastStatus();
+  ASSERT_TRUE(status);
+  EXPECT_EQ(ToResult(HostError::kNotSupported), *status);
 }
 
 }  // namespace

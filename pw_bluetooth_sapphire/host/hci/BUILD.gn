@@ -20,13 +20,13 @@ dir_public_hci = "../../public/pw_bluetooth_sapphire/internal/host/hci"
 pw_source_set("hci") {
   public = [
     "$dir_public_hci/acl_connection.h",
-    "$dir_public_hci/advertising_report_parser.h",
     "$dir_public_hci/android_extended_low_energy_advertiser.h",
     "$dir_public_hci/bredr_connection.h",
     "$dir_public_hci/bredr_connection_request.h",
     "$dir_public_hci/command_handler.h",
     "$dir_public_hci/connection.h",
     "$dir_public_hci/extended_low_energy_advertiser.h",
+    "$dir_public_hci/extended_low_energy_scanner.h",
     "$dir_public_hci/legacy_low_energy_advertiser.h",
     "$dir_public_hci/legacy_low_energy_scanner.h",
     "$dir_public_hci/local_address_delegate.h",
@@ -36,18 +36,17 @@ pw_source_set("hci") {
     "$dir_public_hci/low_energy_scanner.h",
     "$dir_public_hci/sco_connection.h",
     "$dir_public_hci/sequential_command_runner.h",
-    "$dir_public_hci/util.h",
   ]
 
   sources = [
     "acl_connection.cc",
     "advertising_handle_map.cc",
-    "advertising_report_parser.cc",
     "android_extended_low_energy_advertiser.cc",
     "bredr_connection.cc",
     "bredr_connection_request.cc",
     "connection.cc",
     "extended_low_energy_advertiser.cc",
+    "extended_low_energy_scanner.cc",
     "legacy_low_energy_advertiser.cc",
     "legacy_low_energy_scanner.cc",
     "low_energy_advertiser.cc",
@@ -56,7 +55,6 @@ pw_source_set("hci") {
     "low_energy_scanner.cc",
     "sco_connection.cc",
     "sequential_command_runner.cc",
-    "util.cc",
   ]
 
   public_deps = [
@@ -92,10 +90,10 @@ pw_source_set("testing") {
 pw_test("tests") {
   sources = [
     "advertising_handle_map_test.cc",
-    "advertising_report_parser_test.cc",
     "command_handler_test.cc",
     "connection_test.cc",
     "extended_low_energy_advertiser_test.cc",
+    "extended_low_energy_scanner_test.cc",
     "legacy_low_energy_advertiser_test.cc",
     "legacy_low_energy_scanner_test.cc",
     "low_energy_advertiser_test.cc",
@@ -103,7 +101,6 @@ pw_test("tests") {
     "low_energy_multiple_advertising_test.cc",
     "low_energy_scanner_test.cc",
     "sequential_command_runner_test.cc",
-    "util_test.cc",
   ]
 
   deps = [
