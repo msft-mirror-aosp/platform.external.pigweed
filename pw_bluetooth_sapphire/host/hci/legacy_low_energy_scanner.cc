@@ -15,11 +15,11 @@
 #include "pw_bluetooth_sapphire/internal/host/hci/legacy_low_energy_scanner.h"
 
 #include "pw_bluetooth_sapphire/internal/host/hci/advertising_report_parser.h"
-#include "pw_bluetooth_sapphire/internal/host/hci/util.h"
 
 #pragma clang diagnostic ignored "-Wswitch-enum"
 
 namespace bt::hci {
+namespace pwemb = pw::bluetooth::emboss;
 
 LegacyLowEnergyScanner::LegacyLowEnergyScanner(
     LocalAddressDelegate* local_addr_delegate,
@@ -31,7 +31,7 @@ LegacyLowEnergyScanner::LegacyLowEnergyScanner(
   auto self = weak_self_.GetWeakPtr();
   event_handler_id_ = hci()->command_channel()->AddLEMetaEventHandler(
       hci_spec::kLEAdvertisingReportSubeventCode,
-      [self](const EventPacket& event) {
+      [self](const EmbossEventPacket& event) {
         if (!self.is_alive()) {
           return hci::CommandChannel::EventCallbackResult::kRemove;
         }
@@ -129,57 +129,134 @@ void LegacyLowEnergyScanner::HandleScanResponse(const DeviceAddress& address,
   // bugs.
 }
 
+// Extract all advertising reports from a given HCI LE Advertising Report event
+std::vector<pw::bluetooth::emboss::LEAdvertisingReportDataView>
+LegacyLowEnergyScanner::ParseAdvertisingReports(
+    const EmbossEventPacket& event) {
+  BT_DEBUG_ASSERT(event.event_code() == hci_spec::kLEMetaEventCode);
+  BT_DEBUG_ASSERT(event.view<pw::bluetooth::emboss::LEMetaEventView>()
+                      .subevent_code()
+                      .Read() == hci_spec::kLEAdvertisingReportSubeventCode);
+
+  auto params =
+      event.view<pw::bluetooth::emboss::LEAdvertisingReportSubeventView>();
+  uint8_t num_reports = params.num_reports().Read();
+  std::vector<pw::bluetooth::emboss::LEAdvertisingReportDataView> reports;
+  reports.reserve(num_reports);
+
+  size_t bytes_read = 0;
+  while (bytes_read < params.reports().BackingStorage().SizeInBytes()) {
+    size_t min_size =
+        pw::bluetooth::emboss::LEAdvertisingReportData::MinSizeInBytes();
+    auto report_prefix = pw::bluetooth::emboss::MakeLEAdvertisingReportDataView(
+        params.reports().BackingStorage().begin() + bytes_read, min_size);
+
+    uint8_t data_length = report_prefix.data_length().Read();
+    size_t actual_size = min_size + data_length;
+
+    size_t bytes_left =
+        params.reports().BackingStorage().SizeInBytes() - bytes_read;
+    if (actual_size > bytes_left) {
+      bt_log(WARN,
+             "hci-le",
+             "parsing advertising reports, next report size %zu bytes, but "
+             "only %zu bytes left",
+             actual_size,
+             bytes_left);
+      break;
+    }
+
+    auto report = pw::bluetooth::emboss::MakeLEAdvertisingReportDataView(
+        params.reports().BackingStorage().begin() + bytes_read, actual_size);
+    reports.push_back(report);
+
+    bytes_read += actual_size;
+  }
+
+  return reports;
+}
+
+// Returns a DeviceAddress and whether or not that DeviceAddress has been
+// resolved
+static std::tuple<DeviceAddress, bool> BuildDeviceAddress(
+    pw::bluetooth::emboss::LEAddressType report_type,
+    pw::bluetooth::emboss::BdAddrView address_view) {
+  std::optional<DeviceAddress::Type> address_type =
+      DeviceAddress::LeAddrToDeviceAddr(report_type);
+  BT_DEBUG_ASSERT(address_type);
+
+  bool resolved = false;
+  switch (report_type) {
+    case pw::bluetooth::emboss::LEAddressType::PUBLIC_IDENTITY:
+    case pw::bluetooth::emboss::LEAddressType::RANDOM_IDENTITY:
+      resolved = true;
+      break;
+    case pw::bluetooth::emboss::LEAddressType::PUBLIC:
+    case pw::bluetooth::emboss::LEAddressType::RANDOM:
+      resolved = false;
+      break;
+  }
+
+  DeviceAddress address =
+      DeviceAddress(*address_type, DeviceAddressBytes(address_view));
+  return std::make_tuple(address, resolved);
+}
+
 void LegacyLowEnergyScanner::OnAdvertisingReportEvent(
-    const EventPacket& event) {
+    const EmbossEventPacket& event) {
   if (!IsScanning()) {
     return;
   }
 
-  AdvertisingReportParser parser(event);
-  const hci_spec::LEAdvertisingReportData* report;
-  int8_t rssi;
+  std::vector<pw::bluetooth::emboss::LEAdvertisingReportDataView> reports =
+      ParseAdvertisingReports(event);
 
-  while (parser.GetNextReport(&report, &rssi)) {
-    if (report->length_data > hci_spec::kMaxLEAdvertisingDataLength) {
+  for (pw::bluetooth::emboss::LEAdvertisingReportDataView report : reports) {
+    if (report.data_length().Read() > hci_spec::kMaxLEAdvertisingDataLength) {
       bt_log(WARN, "hci-le", "advertising data too long! Ignoring");
       continue;
     }
 
-    DeviceAddress address;
-    bool resolved;
-    if (!hci::DeviceAddressFromAdvReport(*report, &address, &resolved)) {
-      continue;
-    }
+    const auto& [address, resolved] =
+        BuildDeviceAddress(report.address_type().Read(), report.address());
 
     bool needs_scan_rsp = false;
     bool connectable = false;
     bool directed = false;
 
-    switch (report->event_type) {
-      case hci_spec::LEAdvertisingEventType::kAdvDirectInd:
+    switch (report.event_type().Read()) {
+      case pwemb::LEAdvertisingEventType::CONNECTABLE_DIRECTED: {
         directed = true;
         break;
-      case hci_spec::LEAdvertisingEventType::kAdvInd:
+      }
+      case pwemb::LEAdvertisingEventType::
+          CONNECTABLE_AND_SCANNABLE_UNDIRECTED: {
         connectable = true;
         [[fallthrough]];
-      case hci_spec::LEAdvertisingEventType::kAdvScanInd:
+      }
+      case pwemb::LEAdvertisingEventType::SCANNABLE_UNDIRECTED: {
         if (IsActiveScanning()) {
           needs_scan_rsp = true;
         }
         break;
-      case hci_spec::LEAdvertisingEventType::kScanRsp:
+      }
+      case pwemb::LEAdvertisingEventType::SCAN_RESPONSE: {
         if (IsActiveScanning()) {
-          BufferView data = BufferView(report->data, report->length_data);
-          HandleScanResponse(address, resolved, rssi, data);
+          BufferView data = BufferView(report.data().BackingStorage().data(),
+                                       report.data_length().Read());
+          HandleScanResponse(address, resolved, report.rssi().Read(), data);
         }
         continue;
-      default:
+      }
+      default: {
         break;
+      }
     }
 
     LowEnergyScanResult result(address, resolved, connectable);
-    result.AppendData(BufferView(report->data, report->length_data));
-    result.set_rssi(rssi);
+    result.AppendData(BufferView(report.data().BackingStorage().data(),
+                                 report.data_length().Read()));
+    result.set_rssi(report.rssi().Read());
 
     if (directed) {
       delegate()->OnDirectedAdvertisement(result);
