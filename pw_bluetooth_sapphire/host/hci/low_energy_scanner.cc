@@ -14,8 +14,6 @@
 
 #include "pw_bluetooth_sapphire/internal/host/hci/low_energy_scanner.h"
 
-#include "pw_bluetooth_sapphire/internal/host/hci/util.h"
-
 namespace bt::hci {
 
 static std::string ScanStateToString(LowEnergyScanner::State state) {
@@ -69,7 +67,7 @@ LowEnergyScanner::PendingScanResult::PendingScanResult(
     pw::async::Dispatcher& dispatcher,
     pw::chrono::SystemClock::duration timeout,
     fit::closure timeout_handler)
-    : result_(std::move(result)), timeout_(timeout), timeout_task_(dispatcher) {
+    : result_(result), timeout_(timeout), timeout_task_(dispatcher) {
   timeout_task_.set_function(
       [timeout_handler = std::move(timeout_handler)](pw::async::Context /*ctx*/,
                                                      pw::Status status) {

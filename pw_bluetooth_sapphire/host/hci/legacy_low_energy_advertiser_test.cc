@@ -20,6 +20,7 @@
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
 
 namespace bt {
 
@@ -31,6 +32,7 @@ using AdvertisingOptions = LowEnergyAdvertiser::AdvertisingOptions;
 
 namespace {
 
+namespace pwemb = pw::bluetooth::emboss;
 using TestingBase = bt::testing::FakeDispatcherControllerTest<FakeController>;
 
 const DeviceAddress kPublicAddress(DeviceAddress::Type::kLEPublic, {1});
@@ -144,6 +146,17 @@ class LegacyLowEnergyAdvertiserTest : public TestingBase {
     return result;
   }
 
+  void SetRandomAddress(DeviceAddress random_address) {
+    auto emboss_packet =
+        EmbossCommandPacket::New<pwemb::LESetRandomAddressCommandWriter>(
+            hci_spec::kLESetRandomAddress);
+    emboss_packet.view_t().random_address().CopyFrom(
+        random_address.value().view());
+
+    test_device()->SendCommand(emboss_packet.data().subspan());
+    RunUntilIdle();
+  }
+
  private:
   std::unique_ptr<LegacyLowEnergyAdvertiser> advertiser_;
 
@@ -152,14 +165,16 @@ class LegacyLowEnergyAdvertiserTest : public TestingBase {
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(LegacyLowEnergyAdvertiserTest);
 };
 
-// - Rejects StartAdvertising for a different address when Advertising already
+// Rejects StartAdvertising for a different address when Advertising already
 TEST_F(LegacyLowEnergyAdvertiserTest, NoAdvertiseTwice) {
   AdvertisingData ad = GetExampleData();
   AdvertisingData scan_data = GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  SetRandomAddress(kRandomAddress);
 
   advertiser()->StartAdvertising(kRandomAddress,
                                  ad,
@@ -207,9 +222,11 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartAndStopWithTxPower) {
   AdvertisingData ad = GetExampleData();
   AdvertisingData scan_data = GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/true);
+  SetRandomAddress(kRandomAddress);
 
   advertiser()->StartAdvertising(kRandomAddress,
                                  ad,
@@ -238,7 +255,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartAndStopWithTxPower) {
       ContainersEqual(test_device()->legacy_advertising_state().scan_rsp_view(),
                       expected_scan_rsp));
 
-  advertiser()->StopAdvertising(kRandomAddress);
+  advertiser()->StopAdvertising(kRandomAddress, /*extended_pdu=*/false);
   RunUntilIdle();
   EXPECT_FALSE(test_device()->legacy_advertising_state().enabled);
 }
@@ -252,15 +269,18 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartWhileStartingWithTxPower) {
 
   const AdvertisingIntervalRange old_interval = kTestInterval;
   AdvertisingOptions options(old_interval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/true);
   const AdvertisingIntervalRange new_interval(kTestInterval.min() + 1,
                                               kTestInterval.max() - 1);
   AdvertisingOptions new_options(new_interval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/true);
+  SetRandomAddress(addr);
 
   advertiser()->StartAdvertising(
       addr, ad, scan_data, options, nullptr, [](auto) {});
@@ -302,15 +322,18 @@ TEST_F(LegacyLowEnergyAdvertiserTest,
 
   const AdvertisingIntervalRange old_interval = kTestInterval;
   AdvertisingOptions options(old_interval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/true);
   const AdvertisingIntervalRange new_interval(kTestInterval.min() + 1,
                                               kTestInterval.max() - 1);
   AdvertisingOptions new_options(new_interval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/false);
+  SetRandomAddress(addr);
 
   advertiser()->StartAdvertising(
       addr, ad, scan_data, options, nullptr, [](auto) {});
@@ -345,15 +368,18 @@ TEST_F(LegacyLowEnergyAdvertiserTest,
 
   const AdvertisingIntervalRange old_interval = kTestInterval;
   AdvertisingOptions options(old_interval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
   const AdvertisingIntervalRange new_interval(kTestInterval.min() + 1,
                                               kTestInterval.max() - 1);
   AdvertisingOptions new_options(new_interval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/true);
+  SetRandomAddress(addr);
 
   advertiser()->StartAdvertising(
       addr, ad, scan_data, options, nullptr, [](auto) {});
@@ -390,18 +416,21 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartWhileTxPowerReadSuccess) {
 
   const AdvertisingIntervalRange old_interval = kTestInterval;
   AdvertisingOptions options(old_interval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/true);
   const AdvertisingIntervalRange new_interval(kTestInterval.min() + 1,
                                               kTestInterval.max() - 1);
   AdvertisingOptions new_options(new_interval,
-                                 /*anonymous=*/false,
                                  kDefaultNoAdvFlags,
+                                 /*extended_pdu=*/false,
+                                 /*anonymous=*/false,
                                  /*include_tx_power_level=*/true);
 
   // Hold off on responding to the first TX Power Level Read command.
   test_device()->set_tx_power_level_read_response_flag(/*respond=*/false);
+  SetRandomAddress(addr);
 
   advertiser()->StartAdvertising(
       addr, ad, scan_data, options, nullptr, MakeExpectErrorCallback());
@@ -431,8 +460,9 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartAdvertisingReadTxPowerFails) {
   AdvertisingData ad = GetExampleData();
   AdvertisingData scan_data;
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/true);
 
   // Simulate failure for Read TX Power operation.
@@ -465,12 +495,14 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartAdvertisingReadTxPowerFails) {
 TEST_F(LegacyLowEnergyAdvertiserTest, AllowsRandomAddressChange) {
   AdvertisingData scan_rsp;
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
 
   // The random address can be changed while not advertising.
   EXPECT_TRUE(advertiser()->AllowsRandomAddressChange());
+  SetRandomAddress(kRandomAddress);
 
   // The random address cannot be changed while starting to advertise.
   advertiser()->StartAdvertising(kRandomAddress,
@@ -490,7 +522,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, AllowsRandomAddressChange) {
 
   // The advertiser allows changing the address while advertising is getting
   // stopped.
-  advertiser()->StopAdvertising(kRandomAddress);
+  advertiser()->StopAdvertising(kRandomAddress, /*extended_pdu=*/false);
   EXPECT_TRUE(test_device()->legacy_advertising_state().enabled);
   EXPECT_TRUE(advertiser()->AllowsRandomAddressChange());
 
@@ -503,8 +535,9 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StopWhileStarting) {
   AdvertisingData ad = GetExampleData();
   AdvertisingData scan_data = GetExampleData();
   AdvertisingOptions options(kTestInterval,
-                             /*anonymous=*/false,
                              kDefaultNoAdvFlags,
+                             /*extended_pdu=*/false,
+                             /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
 
   this->advertiser()->StartAdvertising(kPublicAddress,
@@ -513,7 +546,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StopWhileStarting) {
                                        options,
                                        nullptr,
                                        MakeExpectErrorCallback());
-  this->advertiser()->StopAdvertising(kPublicAddress);
+  this->advertiser()->StopAdvertising(kPublicAddress, /*extended_pdu=*/false);
 
   this->RunUntilIdle();
   EXPECT_TRUE(MoveLastStatus());
