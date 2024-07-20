@@ -291,21 +291,6 @@ class BrEdrConnectionManager final {
   // attempt for the next peer in the pending list, if any.
   void TryCreateNextConnection();
 
-  // Collective parameters needed to begin a CreateConnection procedure
-  struct CreateConnectionParams {
-    PeerId peer_id;
-    DeviceAddress addr;
-    std::optional<uint16_t> clock_offset;
-    std::optional<pw::bluetooth::emboss::PageScanRepetitionMode>
-        page_scan_repetition_mode;
-  };
-
-  // Find the next valid Request that is available to begin connecting
-  std::optional<CreateConnectionParams> NextCreateConnectionParams();
-
-  // Begin a CreateConnection procedure for a given Request
-  void InitiatePendingConnection(CreateConnectionParams request);
-
   // Called when a request times out waiting for a connection complete packet,
   // *after* the command status was received. This is responsible for canceling
   // the request and initiating the next one in the queue
@@ -409,17 +394,21 @@ class BrEdrConnectionManager final {
   pw::bluetooth::emboss::PageScanType page_scan_type_;
   bool use_interlaced_scan_;
 
-  // True when local host and local controller support BR/EDR Secure Connections
+  // True when local Host and Controller support BR/EDR Secure Connections
   bool local_secure_connections_supported_;
 
-  // Outstanding connection requests based on remote peer ID.
+  // Outstanding incoming and outgoing connection requests from remote peer with
+  // |PeerId|.
   std::unordered_map<PeerId, BrEdrConnectionRequest> connection_requests_;
 
-  std::optional<hci::BrEdrConnectionRequest> pending_request_;
-
-  // Time after which a connection attempt is considered to have timed out.
-  pw::chrono::SystemClock::duration request_timeout_{
-      kBrEdrCreateConnectionTimeout};
+  // Represents an outgoing HCI_Connection_Request that has not been fulfilled.
+  // There may only be one outstanding request at any given time.
+  //
+  // This request is fulfilled on either an HCI_Connection_Complete event from
+  // the peer this request was sent to or a failure during the connection
+  // process. This request might not complete if the connection closes or if the
+  // request times out.
+  std::unique_ptr<hci::BrEdrConnectionRequest> pending_request_;
 
   struct InspectProperties {
     BoundedInspectListNode last_disconnected_list =

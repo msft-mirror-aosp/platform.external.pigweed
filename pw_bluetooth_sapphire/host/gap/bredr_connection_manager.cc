@@ -14,11 +14,14 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/bredr_connection_manager.h"
 
+#include <pw_bytes/endian.h>
+
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/expiring_set.h"
 #include "pw_bluetooth_sapphire/internal/host/common/inspectable.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/bredr_connection.h"
+#include "pw_bluetooth_sapphire/internal/host/gap/bredr_connection_request.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/bredr_interrogator.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_cache.h"
@@ -247,8 +250,10 @@ BrEdrConnectionManager::~BrEdrConnectionManager() {
     return;
   }
 
-  if (pending_request_ && pending_request_->Cancel())
+  // Cancel the outstanding HCI_Connection_Request if not already cancelled
+  if (pending_request_ && pending_request_->Cancel()) {
     SendCreateConnectionCancelCommand(pending_request_->peer_address());
+  }
 
   // Become unconnectable
   SetPageScanEnabled(/*enabled=*/false, hci_, [](const auto) {});
@@ -300,7 +305,7 @@ void BrEdrConnectionManager::SetPairingDelegate(
     PairingDelegate::WeakPtr delegate) {
   pairing_delegate_ = std::move(delegate);
   for (auto& [handle, connection] : connections_) {
-    connection.pairing_state().SetPairingDelegate(pairing_delegate_);
+    connection.pairing_state_manager().SetPairingDelegate(pairing_delegate_);
   }
 }
 
@@ -334,8 +339,8 @@ void BrEdrConnectionManager::Pair(PeerId peer_id,
                               auto, hci::Result<> status) {
     pair_callback(status);
   };
-  connection->pairing_state().InitiatePairing(security,
-                                              std::move(pairing_callback));
+  connection->pairing_state_manager().InitiatePairing(
+      security, std::move(pairing_callback));
 }
 
 void BrEdrConnectionManager::OpenL2capChannel(
@@ -525,8 +530,8 @@ void BrEdrConnectionManager::SetSecurityMode(BrEdrSecurityMode mode) {
   security_mode_.Set(mode);
 
   if (mode == BrEdrSecurityMode::SecureConnectionsOnly) {
-    // `Disconnect`ing the peer must not be done while iterating through
-    // `connections_` as it removes the connection from `connections_`, hence
+    // Disconnecting the peer must not be done while iterating through
+    // |connections_| as it removes the connection from |connections_|, hence
     // the helper vector.
     std::vector<PeerId> insufficiently_secure_peers;
     for (auto& [_, connection] : connections_) {
@@ -782,7 +787,7 @@ void BrEdrConnectionManager::InitializeConnection(
   BT_ASSERT(success);
 
   BrEdrConnection& connection = conn_iter->second;
-  connection.pairing_state().SetPairingDelegate(pairing_delegate_);
+  connection.pairing_state_manager().SetPairingDelegate(pairing_delegate_);
   connection.set_security_mode(security_mode());
   connection.AttachInspect(inspect_properties_.connections_node_,
                            inspect_properties_.connections_node_.UniqueName(
@@ -812,8 +817,7 @@ void BrEdrConnectionManager::InitializeConnection(
   });
 
   // If this was our in-flight request, close it
-  if (pending_request_.has_value() &&
-      addr == pending_request_->peer_address()) {
+  if (pending_request_ && addr == pending_request_->peer_address()) {
     pending_request_.reset();
   }
 
@@ -851,8 +855,9 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
 
   auto error_handler =
       [self, peer_id, connection = connection->GetWeakPtr(), handle] {
-        if (!self.is_alive() || !connection.is_alive())
+        if (!self.is_alive() || !connection.is_alive()) {
           return;
+        }
         bt_log(
             WARN,
             "gap-bredr",
@@ -932,7 +937,7 @@ BrEdrConnectionManager::OnAuthenticationComplete(
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
 
-  iter->second.pairing_state().OnAuthenticationComplete(status);
+  iter->second.pairing_state_manager().OnAuthenticationComplete(status);
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
 
@@ -1037,8 +1042,9 @@ BrEdrConnectionManager::OnConnectionRequest(
   SendAcceptConnectionRequest(
       addr.value(),
       [addr, self = weak_self_.GetWeakPtr(), peer_id](auto status) {
-        if (self.is_alive() && status.is_error())
+        if (self.is_alive() && status.is_error()) {
           self->CompleteRequest(peer_id, addr, status, /*handle=*/0);
+        }
       });
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
@@ -1096,8 +1102,8 @@ void BrEdrConnectionManager::CompleteRequest(
   }
   auto& request = req_iter->second;
 
-  bool completes_outgoing_request = pending_request_.has_value() &&
-                                    pending_request_->peer_address() == address;
+  bool completes_outgoing_request =
+      pending_request_ && pending_request_->peer_address() == address;
   bool failed = status.is_error();
 
   const char* direction = completes_outgoing_request ? "outgoing" : "incoming";
@@ -1133,7 +1139,7 @@ void BrEdrConnectionManager::CompleteRequest(
     // interesting.
     // TODO(fxbug.dev/42173957): Added to investigate timing and can be removed
     // if it adds no value
-    if (pending_request_.has_value()) {
+    if (pending_request_) {
       bt_log(
           INFO,
           "gap-bredr",
@@ -1249,7 +1255,7 @@ BrEdrConnectionManager::OnIoCapabilityRequest(
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
   auto [handle, conn_ptr] = *conn_pair;
-  auto reply = conn_ptr->pairing_state().OnIoCapabilityRequest();
+  auto reply = conn_ptr->pairing_state_manager().OnIoCapabilityRequest();
 
   if (!reply) {
     SendIoCapabilityRequestNegativeReply(
@@ -1291,7 +1297,7 @@ BrEdrConnectionManager::OnIoCapabilityResponse(
            bt_str(addr));
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
-  conn_pair->second->pairing_state().OnIoCapabilityResponse(
+  conn_pair->second->pairing_state_manager().OnIoCapabilityResponse(
       params.io_capability().Read());
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
@@ -1322,7 +1328,7 @@ BrEdrConnectionManager::OnLinkKeyRequest(const hci::EmbossEventPacket& event) {
   }
   auto& [handle, conn] = *conn_pair;
 
-  auto link_key = conn->pairing_state().OnLinkKeyRequest();
+  auto link_key = conn->pairing_state_manager().OnLinkKeyRequest();
   if (!link_key.has_value()) {
     SendLinkKeyRequestNegativeReply(addr.value());
     return hci::CommandChannel::EventCallbackResult::kContinue;
@@ -1408,7 +1414,7 @@ BrEdrConnectionManager::OnLinkKeyNotification(
   } else {
     handle->second->link().set_link_key(
         hci_key, static_cast<hci_spec::LinkKeyType>(key_type));
-    handle->second->pairing_state().OnLinkKeyNotification(
+    handle->second->pairing_state_manager().OnLinkKeyNotification(
         key_value,
         static_cast<hci_spec::LinkKeyType>(key_type),
         local_secure_connections_supported_);
@@ -1442,7 +1448,8 @@ BrEdrConnectionManager::OnSimplePairingComplete(const hci::EventPacket& event) {
            bt_str(params.bd_addr));
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
-  conn_pair->second->pairing_state().OnSimplePairingComplete(params.status);
+  conn_pair->second->pairing_state_manager().OnSimplePairingComplete(
+      params.status);
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
 
@@ -1477,8 +1484,9 @@ BrEdrConnectionManager::OnUserConfirmationRequest(
       self->SendUserConfirmationRequestNegativeReply(bd_addr);
     }
   };
-  conn_pair->second->pairing_state().OnUserConfirmationRequest(
-      le32toh(params.numeric_value), std::move(confirm_cb));
+  conn_pair->second->pairing_state_manager().OnUserConfirmationRequest(
+      pw::bytes::ConvertOrderFrom(cpp20::endian::little, params.numeric_value),
+      std::move(confirm_cb));
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
 
@@ -1510,7 +1518,7 @@ BrEdrConnectionManager::OnUserPasskeyRequest(const hci::EventPacket& event) {
       self->SendUserPasskeyRequestNegativeReply(bd_addr);
     }
   };
-  conn_pair->second->pairing_state().OnUserPasskeyRequest(
+  conn_pair->second->pairing_state_manager().OnUserPasskeyRequest(
       std::move(passkey_cb));
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
@@ -1532,8 +1540,8 @@ BrEdrConnectionManager::OnUserPasskeyNotification(
            bt_str(params.bd_addr));
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
-  conn_pair->second->pairing_state().OnUserPasskeyNotification(
-      le32toh(params.numeric_value));
+  conn_pair->second->pairing_state_manager().OnUserPasskeyNotification(
+      pw::bytes::ConvertOrderFrom(cpp20::endian::little, params.numeric_value));
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
 
@@ -1696,61 +1704,54 @@ bool BrEdrConnectionManager::Connect(
   return true;
 }
 
-std::optional<BrEdrConnectionManager::CreateConnectionParams>
-BrEdrConnectionManager::NextCreateConnectionParams() {
-  for (auto& [peer_id, request] : connection_requests_) {
-    // The peer should still be in PeerCache because it was marked
-    // "initializing" when the connection was requested.
-    const Peer* peer = cache_->FindById(peer_id);
-    BT_ASSERT(peer);
-    if (peer->bredr() && !request.HasIncoming()) {
-      return std::optional(
-          CreateConnectionParams{peer->identifier(),
-                                 request.address(),
-                                 peer->bredr()->clock_offset(),
-                                 peer->bredr()->page_scan_repetition_mode()});
-    }
-  }
-
-  bt_log(
-      TRACE, "gap-bredr", "no pending outbound connection requests remaining");
-  return std::nullopt;
-}
-
 void BrEdrConnectionManager::TryCreateNextConnection() {
   // There can only be one outstanding BrEdr CreateConnection request at a time
   if (pending_request_) {
     return;
   }
 
-  auto next = NextCreateConnectionParams();
-  if (next) {
-    InitiatePendingConnection(*next);
-  }
-}
+  // Find next outgoing BR/EDR request if available
+  auto is_bredr_and_outgoing = [this](const auto& key_val) {
+    PeerId peer_id = key_val.first;
+    const BrEdrConnectionRequest* request = &key_val.second;
+    const Peer* peer = cache_->FindById(peer_id);
+    return peer->bredr() && !request->HasIncoming();
+  };
 
-void BrEdrConnectionManager::InitiatePendingConnection(
-    CreateConnectionParams params) {
+  auto it = std::find_if(connection_requests_.begin(),
+                         connection_requests_.end(),
+                         is_bredr_and_outgoing);
+  if (it == connection_requests_.end()) {
+    return;
+  }
+
+  PeerId peer_id = it->first;
+  BrEdrConnectionRequest& request = it->second;
+  const Peer* peer = cache_->FindById(peer_id);
+
   auto self = weak_self_.GetWeakPtr();
-  auto on_failure = [self, addr = params.addr](hci::Result<> status,
-                                               auto peer_id) {
-    if (self.is_alive() && status.is_error())
+  auto on_failure = [self, addr = request.address()](hci::Result<> status,
+                                                     PeerId peer_id) {
+    if (self.is_alive() && status.is_error()) {
       self->CompleteRequest(peer_id, addr, status, /*handle=*/0);
+    }
   };
   auto on_timeout = [self] {
-    if (self.is_alive())
+    if (self.is_alive()) {
       self->OnRequestTimeout();
+    }
   };
-  BrEdrConnectionRequest& pending_gap_req =
-      connection_requests_.find(params.peer_id)->second;
-  pending_request_.emplace(
-      params.peer_id, params.addr, on_timeout, dispatcher_);
-  pending_request_->CreateConnection(hci_->command_channel(),
-                                     params.clock_offset,
-                                     params.page_scan_repetition_mode,
-                                     request_timeout_,
-                                     on_failure);
-  pending_gap_req.RecordHciCreateConnectionAttempt();
+
+  const std::optional<uint16_t> clock_offset = peer->bredr()->clock_offset();
+  const std::optional<pw::bluetooth::emboss::PageScanRepetitionMode>
+      page_scan_repetition_mode = peer->bredr()->page_scan_repetition_mode();
+  pending_request_ =
+      request.CreateHciConnectionRequest(hci_->command_channel(),
+                                         clock_offset,
+                                         page_scan_repetition_mode,
+                                         std::move(on_timeout),
+                                         std::move(on_failure),
+                                         dispatcher_);
 
   inspect_properties_.outgoing_.connection_attempts_.Add(1);
 }

@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/sco/sco_connection_manager.h"
 
+#include <cinttypes>
+
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/sco_connection.h"
 
@@ -484,19 +486,6 @@ void ScoConnectionManager::CompleteRequest(ConnectionResult result) {
 }
 
 void ScoConnectionManager::SendCommandWithStatusCallback(
-    std::unique_ptr<hci::CommandPacket> command_packet,
-    hci::ResultFunction<> cb) {
-  hci::CommandChannel::CommandCallback command_cb;
-  if (cb) {
-    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
-      cb(event.ToResult());
-    };
-  }
-  transport_->command_channel()->SendCommand(std::move(command_packet),
-                                             std::move(command_cb));
-}
-
-void ScoConnectionManager::SendCommandWithStatusCallback(
     hci::EmbossCommandPacket command_packet, hci::ResultFunction<> cb) {
   hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
@@ -530,13 +519,16 @@ void ScoConnectionManager::SendRejectConnectionCommand(
   reject_params.reason().Write(reason);
 
   transport_->command_channel()->SendCommand(
-      std::move(reject), nullptr, hci_spec::kCommandStatusEventCode);
+      std::move(reject),
+      hci::CommandChannel::CommandCallback(nullptr),
+      hci_spec::kCommandStatusEventCode);
 }
 
 void ScoConnectionManager::CancelRequestWithId(ScoRequestId id) {
   // Cancel queued request if id matches.
   if (queued_request_ && queued_request_->id == id) {
-    bt_log(INFO, "gap-sco", "Cancelling queued SCO request (id: %zu)", id);
+    bt_log(
+        INFO, "gap-sco", "Cancelling queued SCO request (id: %" PRIu64 ")", id);
     // Clear queued_request_ before calling callback to prevent calls to
     // CancelRequestWithId() during execution of the callback (e.g. due to
     // destroying the RequestHandle).
@@ -551,7 +543,10 @@ void ScoConnectionManager::CancelRequestWithId(ScoRequestId id) {
   if (in_progress_request_ && in_progress_request_->id == id &&
       !in_progress_request_->initiator &&
       !in_progress_request_->received_request) {
-    bt_log(INFO, "gap-sco", "Cancelling in progress SCO request (id: %zu)", id);
+    bt_log(INFO,
+           "gap-sco",
+           "Cancelling in progress SCO request (id: %" PRIu64 ")",
+           id);
     CompleteRequest(fit::error(HostError::kCanceled));
   }
 }

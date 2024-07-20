@@ -14,8 +14,6 @@
 
 #include "pw_bluetooth_sapphire/internal/host/l2cap/bredr_dynamic_channel.h"
 
-#include <endian.h>
-
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel_configuration.h"
@@ -552,6 +550,20 @@ void BrEdrDynamicChannel::OnRxConfigReq(
     return;
   }
 
+  // Reject configuration requests after channel is open because we don't
+  // support re-negotiation.
+  if (IsOpen()) {
+    bt_log(WARN,
+           "l2cap-bredr",
+           "Channel %#.4x: Rejecting Configuration Request after channel open",
+           local_cid());
+    responder->Send(remote_cid(),
+                    /*flags=*/0x0000,
+                    ConfigurationResult::kRejected,
+                    ChannelConfiguration::ConfigurationOptions());
+    return;
+  }
+
   // Always add options to accumulator, even if C = 0, for later code
   // simplicity.
   if (remote_config_accum_.has_value()) {
@@ -566,7 +578,7 @@ void BrEdrDynamicChannel::OnRxConfigReq(
     // keep responding with success until all options have been received (C flag
     // is 0)
     responder->Send(remote_cid(),
-                    kConfigurationContinuation,
+                    /*flags=*/kConfigurationContinuation,
                     ConfigurationResult::kSuccess,
                     ChannelConfiguration::ConfigurationOptions());
     bt_log(TRACE,
@@ -599,7 +611,7 @@ void BrEdrDynamicChannel::OnRxConfigReq(
     const auto local_mode =
         local_config_.retransmission_flow_control_option()->mode();
     if (req_mode != local_mode) {
-      bt_log(TRACE,
+      bt_log(WARN,
              "l2cap-bredr",
              "Channel %#.4x: second configuration request doesn't have desired "
              "mode, sending unacceptable parameters response and disconnecting "
@@ -648,7 +660,7 @@ void BrEdrDynamicChannel::OnRxConfigReq(
            unknown_string.c_str());
 
     responder->Send(remote_cid(),
-                    0x0000,
+                    /*flags=*/0x0000,
                     ConfigurationResult::kUnknownOptions,
                     std::move(unknown_options));
     return;
@@ -658,7 +670,7 @@ void BrEdrDynamicChannel::OnRxConfigReq(
   auto unacceptable_options = unacceptable_config.Options();
   if (!unacceptable_options.empty()) {
     responder->Send(remote_cid(),
-                    0x0000,
+                    /*flags=*/0x0000,
                     ConfigurationResult::kUnacceptableParameters,
                     std::move(unacceptable_options));
     bt_log(TRACE,
@@ -696,7 +708,7 @@ void BrEdrDynamicChannel::OnRxConfigReq(
   }
 
   responder->Send(remote_cid(),
-                  0x0000,
+                  /*flags=*/0x0000,
                   ConfigurationResult::kSuccess,
                   response_config.Options());
 

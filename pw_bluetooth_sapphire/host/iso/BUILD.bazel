@@ -22,7 +22,10 @@ package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "iso",
-    srcs = ["iso_stream_manager.cc"],
+    srcs = [
+        "iso_stream.cc",
+        "iso_stream_manager.cc",
+    ],
     copts = [
         "-Wno-unused-parameter",
     ],
@@ -40,11 +43,14 @@ fuchsia_cc_test(
     name = "iso_test",
     testonly = True,
     srcs = [
+        "iso_common_test.cc",
         "iso_stream_manager_test.cc",
+        "iso_stream_test.cc",
     ],
     death_unittest = True,
     visibility = ["//visibility:public"],
     deps = [
+        ":iso",
         "//pw_bluetooth_sapphire/host/testing",
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],

@@ -16,6 +16,9 @@
 
 #include <cpp-string/string_printf.h>
 #include <cpp-string/utf_codecs.h>
+#include <pw_bytes/endian.h>
+
+#include <cinttypes>
 
 #include "pw_bluetooth_sapphire/internal/host/common/advertising_data.h"
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
@@ -79,7 +82,7 @@ Peer::LowEnergyData::LowEnergyData(Peer* owner)
       auto_conn_behavior_(AutoConnectBehavior::kAlways),
       features_(std::nullopt,
                 [](const std::optional<hci_spec::LESupportedFeatures> f) {
-                  return f ? bt_lib_cpp_string::StringPrintf("%#.16lx",
+                  return f ? bt_lib_cpp_string::StringPrintf("%#.16" PRIx64,
                                                              f->le_features)
                            : "";
                 }),
@@ -428,7 +431,9 @@ void Peer::BrEdrData::SetInquiryData(
   peer_->SetRssiInternal(rssi);
 
   page_scan_rep_mode_ = page_scan_rep_mode;
-  clock_offset_ = le16toh(clock_offset) & hci_spec::kClockOffsetMask;
+  clock_offset_ =
+      pw::bytes::ConvertOrderFrom(cpp20::endian::little, clock_offset) &
+      hci_spec::kClockOffsetMask;
 
   if (!device_class_ || *device_class_ != device_class) {
     device_class_ = device_class;

@@ -14,9 +14,10 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gatt/local_service_manager.h"
 
-#include <endian.h>
+#include <pw_bytes/endian.h>
 
 #include <algorithm>
+#include <cinttypes>
 
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
@@ -103,7 +104,7 @@ bool ValidateService(const Service& service, size_t* out_attr_count) {
   std::unordered_set<IdType> ids;
   for (const auto& chrc_ptr : service.characteristics()) {
     if (ids.count(chrc_ptr->id()) != 0u) {
-      bt_log(TRACE, "gatt", "server: repeated ID: %lu", chrc_ptr->id());
+      bt_log(TRACE, "gatt", "server: repeated ID: %" PRIu64, chrc_ptr->id());
       return false;
     }
 
@@ -122,7 +123,7 @@ bool ValidateService(const Service& service, size_t* out_attr_count) {
 
     for (const auto& desc_ptr : chrc_ptr->descriptors()) {
       if (ids.count(desc_ptr->id()) != 0u) {
-        bt_log(TRACE, "gatt", "server: repeated ID: %lu", desc_ptr->id());
+        bt_log(TRACE, "gatt", "server: repeated ID: %" PRIu64, desc_ptr->id());
         return false;
       }
 
@@ -263,7 +264,7 @@ class LocalServiceManager::ServiceData final {
       value = iter->second.Get(peer_id);
     }
 
-    value = htole16(value);
+    value = pw::bytes::ConvertOrderTo(cpp20::endian::little, value);
     result_cb(
         fit::ok(),
         BufferView(reinterpret_cast<const uint8_t*>(&value), sizeof(value)));
@@ -288,7 +289,8 @@ class LocalServiceManager::ServiceData final {
       return;
     }
 
-    uint16_t ccc_value = le16toh(value.To<uint16_t>());
+    uint16_t ccc_value = pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                                     value.To<uint16_t>());
     if (ccc_value > (kCCCNotificationBit | kCCCIndicationBit)) {
       result_cb(fit::error(att::ErrorCode::kInvalidPDU));
       return;

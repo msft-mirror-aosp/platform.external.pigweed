@@ -77,31 +77,67 @@ AclDataChannel::ProcessSpecificLEReadBufferSizeCommandCompleteEvent<
     emboss::LEReadBufferSizeV2CommandCompleteEventWriter>(
     emboss::LEReadBufferSizeV2CommandCompleteEventWriter read_buffer_event);
 
-void AclDataChannel::ProcessNumberOfCompletedPacketsEvent(
-    emboss::NumberOfCompletedPacketsEventWriter nocp_event) {
+void AclDataChannel::HandleNumberOfCompletedPacketsEvent(
+    H4PacketWithHci&& h4_packet) {
+  emboss::NumberOfCompletedPacketsEventWriter nocp_event =
+      MakeEmboss<emboss::NumberOfCompletedPacketsEventWriter>(
+          h4_packet.GetHciSpan());
+  if (!nocp_event.IsComplete()) {
+    PW_LOG_ERROR(
+        "Buffer is too small for NUMBER_OF_COMPLETED_PACKETS event. So "
+        "will not process.");
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
   credit_allocation_mutex_.lock();
+  bool should_send_to_host = false;
   for (uint8_t i = 0; i < nocp_event.num_handles().Read(); ++i) {
     uint16_t handle = nocp_event.nocp_data()[i].connection_handle().Read();
+    uint16_t num_completed_packets =
+        nocp_event.nocp_data()[i].num_completed_packets().Read();
+
+    if (num_completed_packets == 0) {
+      continue;
+    }
+
     AclConnection* connection_ptr = FindConnection(handle);
     if (!connection_ptr) {
+      // Credits for connection we are not tracking, so should pass event on to
+      // host.
+      should_send_to_host = true;
       continue;
     }
 
     // Reclaim proxy's credits before event is forwarded to host
-    uint16_t num_completed_packets =
-        nocp_event.nocp_data()[i].num_completed_packets().Read();
     uint16_t num_reclaimed =
         std::min(num_completed_packets, connection_ptr->num_pending_packets);
     proxy_pending_le_acl_packets_ -= num_reclaimed;
     connection_ptr->num_pending_packets -= num_reclaimed;
-    nocp_event.nocp_data()[i].num_completed_packets().Write(
-        num_completed_packets - num_reclaimed);
+    uint16_t credits_remaining = num_completed_packets - num_reclaimed;
+    nocp_event.nocp_data()[i].num_completed_packets().Write(credits_remaining);
+    if (credits_remaining > 0) {
+      // Connection has credits remaining, so should past event on to host.
+      should_send_to_host = true;
+    }
   }
   credit_allocation_mutex_.unlock();
+  if (should_send_to_host) {
+    hci_transport_.SendToHost(std::move(h4_packet));
+  }
 }
 
-void AclDataChannel::ProcessDisconnectionCompleteEvent(
-    emboss::DisconnectionCompleteEventWriter dc_event) {
+void AclDataChannel::HandleDisconnectionCompleteEvent(
+    H4PacketWithHci&& h4_packet) {
+  emboss::DisconnectionCompleteEventWriter dc_event =
+      MakeEmboss<emboss::DisconnectionCompleteEventWriter>(
+          h4_packet.GetHciSpan());
+  if (!dc_event.IsComplete()) {
+    PW_LOG_ERROR(
+        "Buffer is too small for DISCONNECTION_COMPLETE event. So will not "
+        "process.");
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
   credit_allocation_mutex_.lock();
   if (dc_event.status().Read() != emboss::StatusCode::SUCCESS) {
     PW_LOG_WARN(
@@ -109,6 +145,7 @@ void AclDataChannel::ProcessDisconnectionCompleteEvent(
         "associated credits.",
         static_cast<unsigned char>(dc_event.status().Read()));
     credit_allocation_mutex_.unlock();
+    hci_transport_.SendToHost(std::move(h4_packet));
     return;
   }
   PW_LOG_INFO(
@@ -122,6 +159,7 @@ void AclDataChannel::ProcessDisconnectionCompleteEvent(
     active_connections_.erase(connection_ptr);
   }
   credit_allocation_mutex_.unlock();
+  hci_transport_.SendToHost(std::move(h4_packet));
 }
 
 uint16_t AclDataChannel::GetLeAclCreditsToReserve() const {
