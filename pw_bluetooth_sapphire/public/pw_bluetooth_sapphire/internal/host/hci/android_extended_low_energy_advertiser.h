@@ -42,9 +42,6 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
 
   // LowEnergyAdvertiser overrides:
   bool AllowsRandomAddressChange() const override { return !IsAdvertising(); }
-  size_t GetSizeLimit() const override {
-    return hci_spec::kMaxLEAdvertisingDataLength;
-  }
 
   // Attempt to start advertising. See LowEnergyAdvertiser::StartAdvertising for
   // full documentation.
@@ -55,12 +52,13 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   void StartAdvertising(const DeviceAddress& address,
                         const AdvertisingData& data,
                         const AdvertisingData& scan_rsp,
-                        AdvertisingOptions adv_options,
+                        const AdvertisingOptions& options,
                         ConnectionCallback connect_callback,
                         ResultFunction<> result_callback) override;
 
   void StopAdvertising() override;
-  void StopAdvertising(const DeviceAddress& address) override;
+  void StopAdvertising(const DeviceAddress& address,
+                       bool extended_pdu) override;
 
   void OnIncomingConnection(
       hci_spec::ConnectionHandle handle,
@@ -87,30 +85,35 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
 
   EmbossCommandPacket BuildEnablePacket(
       const DeviceAddress& address,
-      pw::bluetooth::emboss::GenericEnableParam enable) override;
+      pw::bluetooth::emboss::GenericEnableParam enable,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetAdvertisingParams(
+  std::optional<EmbossCommandPacket> BuildSetAdvertisingParams(
       const DeviceAddress& address,
-      pw::bluetooth::emboss::LEAdvertisingType type,
+      const AdvertisingEventProperties& properties,
       pw::bluetooth::emboss::LEOwnAddressType own_address_type,
-      AdvertisingIntervalRange interval) override;
+      const AdvertisingIntervalRange& interval,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetAdvertisingData(
+  std::vector<EmbossCommandPacket> BuildSetAdvertisingData(
       const DeviceAddress& address,
       const AdvertisingData& data,
-      AdvFlags flags) override;
+      AdvFlags flags,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildUnsetAdvertisingData(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildUnsetAdvertisingData(const DeviceAddress& address,
+                                                bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetScanResponse(
-      const DeviceAddress& address, const AdvertisingData& scan_rsp) override;
+  std::vector<EmbossCommandPacket> BuildSetScanResponse(
+      const DeviceAddress& address,
+      const AdvertisingData& data,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildUnsetScanResponse(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildUnsetScanResponse(const DeviceAddress& address,
+                                             bool extended_pdu) override;
 
-  EmbossCommandPacket BuildRemoveAdvertisingSet(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildRemoveAdvertisingSet(const DeviceAddress& address,
+                                                bool extended_pdu) override;
 
   void OnCurrentOperationComplete() override;
 
@@ -119,7 +122,6 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
       const EmbossEventPacket& event);
   CommandChannel::EventHandlerId state_changed_event_handler_id_;
 
-  uint8_t max_advertisements_ = 0;
   AdvertisingHandleMap advertising_handle_map_;
   std::queue<fit::closure> op_queue_;
 
@@ -132,10 +134,6 @@ class AndroidExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   // we stage these parameters.
   std::unordered_map<hci_spec::ConnectionHandle, StagedConnectionParameters>
       staged_connections_map_;
-
-  // Keep this as the last member to make sure that all weak pointers are
-  // invalidated before other members get destroyed
-  WeakSelf<AndroidExtendedLowEnergyAdvertiser> weak_self_;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(AndroidExtendedLowEnergyAdvertiser);
 };

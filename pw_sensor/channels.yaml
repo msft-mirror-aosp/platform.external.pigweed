@@ -14,29 +14,22 @@
 
 channels:
   acceleration:
-    units:
-      symbol: "m/s^2"
+    name: "acceleration"
+    description: ""
+    units: "acceleration"
   rotational_velocity:
     name: "rotational velocity"
     description: "rotational velocity"
-    units:
-      name: "rotational velocity"
-      symbol: "rad/s"
+    units: "rotational_velocity"
   magnetic_field:
     name: "magnetic field"
     description: "magnetic field"
-    units:
-      name: "magnetic field"
-      symbol: "Gs"
+    units: "magnetic_field"
   die_temperature:
     name: "die temperature"
     description: "internal temperature of the IC"
-    units:
-      name: "temperature"
-      symbol: "C"
+    units: "temperature"
   ambient_temperature:
     name: "ambient temperature"
     description: "measured temperature of the environment"
-    units:
-      name: "temperature"
-      symbol: "C"
+    units: "temperature"
