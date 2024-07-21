@@ -16,10 +16,12 @@
 
 #include <pw_bluetooth/hci_android.emb.h>
 
-#include "pw_bluetooth_sapphire/internal/host/common/packet_view.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
 
 namespace bt::hci {
+
+namespace android_hci = hci_spec::vendor::android;
+namespace android_emb = pw::bluetooth::vendor::android_hci;
 
 EmbossCommandPacket::EmbossCommandPacket(hci_spec::OpCode opcode,
                                          size_t packet_size)
@@ -29,22 +31,22 @@ EmbossCommandPacket::EmbossCommandPacket(hci_spec::OpCode opcode,
           pw::bluetooth::emboss::CommandHeader::IntrinsicSizeInBytes(),
       "command packet size must be at least 3 bytes to accomodate header");
   auto header = view<pw::bluetooth::emboss::CommandHeaderWriter>();
-  header.opcode().BackingStorage().WriteUInt(opcode);
+  header.opcode_bits().BackingStorage().WriteUInt(opcode);
   header.parameter_total_size().Write(
       packet_size -
       pw::bluetooth::emboss::CommandHeader::IntrinsicSizeInBytes());
 }
 
 hci_spec::OpCode EmbossCommandPacket::opcode() const {
-  return header_view().opcode().BackingStorage().ReadUInt();
+  return header_view().opcode_bits().BackingStorage().ReadUInt();
 }
 
 uint8_t EmbossCommandPacket::ogf() const {
-  return header_view().opcode().ogf().Read();
+  return header_view().opcode_bits().ogf().Read();
 }
 
 uint16_t EmbossCommandPacket::ocf() const {
-  return header_view().opcode().ocf().Read();
+  return header_view().opcode_bits().ocf().Read();
 }
 
 pw::bluetooth::emboss::CommandHeaderView EmbossCommandPacket::header_view()
@@ -60,7 +62,9 @@ EmbossEventPacket::EmbossEventPacket(size_t packet_size)
 }
 
 hci_spec::EventCode EmbossEventPacket::event_code() const {
-  return view<pw::bluetooth::emboss::EventHeaderView>().event_code().Read();
+  return view<pw::bluetooth::emboss::EventHeaderView>()
+      .event_code_uint()
+      .Read();
 }
 
 std::optional<pw::bluetooth::emboss::StatusCode> EmbossEventPacket::StatusCode()
@@ -116,9 +120,9 @@ std::optional<pw::bluetooth::emboss::StatusCode> EmbossEventPacket::StatusCode()
               .Read();
 
       switch (subevent_code) {
-        case hci_spec::vendor::android::kLEMultiAdvtStateChangeSubeventCode: {
-          return StatusCodeFromView<pw::bluetooth::vendor::android_hci::
-                                        LEMultiAdvtStateChangeSubeventView>();
+        case android_hci::kLEMultiAdvtStateChangeSubeventCode: {
+          return StatusCodeFromView<
+              android_emb::LEMultiAdvtStateChangeSubeventView>();
         }
 
         default: {
@@ -140,23 +144,24 @@ std::optional<pw::bluetooth::emboss::StatusCode> EmbossEventPacket::StatusCode()
           return StatusCodeFromView<
               pw::bluetooth::emboss::LEConnectionCompleteSubeventView>();
         }
-
         case hci_spec::kLEConnectionUpdateCompleteSubeventCode: {
           return StatusCodeFromView<
               pw::bluetooth::emboss::LEConnectionUpdateCompleteSubeventView>();
         }
-
         case hci_spec::kLEReadRemoteFeaturesCompleteSubeventCode: {
           return StatusCodeFromView<
               pw::bluetooth::emboss::
                   LEReadRemoteFeaturesCompleteSubeventView>();
         }
-
         case hci_spec::kLERequestPeerSCACompleteSubeventCode: {
           return StatusCodeFromView<
               pw::bluetooth::emboss::LERequestPeerSCACompleteSubeventView>();
         }
-
+        case hci_spec::kLEEnhancedConnectionCompleteSubeventCode: {
+          return StatusCodeFromView<
+              pw::bluetooth::emboss::
+                  LEEnhancedConnectionCompleteSubeventV1View>();
+        }
         default: {
           BT_PANIC("Emboss LE meta subevent (%#.2x) not implemented",
                    subevent_code);

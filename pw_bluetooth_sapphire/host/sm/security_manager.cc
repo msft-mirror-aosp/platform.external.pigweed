@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 
+#include <cinttypes>
 #include <memory>
 #include <optional>
 #include <type_traits>
@@ -808,7 +809,7 @@ void SecurityManagerImpl::ConfirmPairing(ConfirmCallback confirm) {
     if (!self.is_alive() || self->next_pairing_id_ != id) {
       bt_log(TRACE,
              "sm",
-             "ignoring user confirmation for expired pairing: id = %lu",
+             "ignoring user confirmation for expired pairing: id = %" PRIu64,
              id);
       return;
     }
@@ -830,7 +831,7 @@ void SecurityManagerImpl::DisplayPasskey(uint32_t passkey,
         if (!self.is_alive() || self->next_pairing_id_ != id) {
           bt_log(TRACE,
                  "sm",
-                 "ignoring %s response for expired pairing: id = %lu",
+                 "ignoring %s response for expired pairing: id = %" PRIu64,
                  util::DisplayMethodToString(method).c_str(),
                  id);
           return;
@@ -982,13 +983,19 @@ void SecurityManagerImpl::OnNewLongTermKey(const LTK& ltk) {
 
 Result<> SecurityManagerImpl::ValidateExistingLocalLtk() {
   Result<> status = fit::ok();
-  if (!ltk_.has_value() || !le_link_->ltk().has_value()) {
-    // The LTKs should always be present when this method is called.
+  if (!ltk_.has_value()) {
+    // Should always be present when this method is called.
+    bt_log(ERROR, "sm", "SM LTK not found");
     status = fit::error(Error(HostError::kNotFound));
-  } else if (!(*le_link_->ltk() == ltk_->key())) {
+  } else if (!le_link_->ltk().has_value()) {
+    // Should always be present when this method is called.
+    bt_log(ERROR, "sm", "Link LTK not found");
+    status = fit::error(Error(HostError::kNotFound));
+  } else if (le_link_->ltk().value() != ltk_->key()) {
     // As only SM should ever change the LE Link encryption key, these two
     // values should always be in sync, i.e. something in the system is acting
     // unreliably if they get out of sync.
+    bt_log(ERROR, "sm", "SM LTK differs from LE link LTK");
     status = fit::error(Error(HostError::kNotReliable));
   }
   if (status.is_error()) {

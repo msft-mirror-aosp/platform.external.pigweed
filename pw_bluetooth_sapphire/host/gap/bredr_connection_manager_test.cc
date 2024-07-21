@@ -23,13 +23,11 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_cache.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
-#include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_channel.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_l2cap.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
 #include "pw_bluetooth_sapphire/internal/host/sdp/sdp.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
-#include "pw_bluetooth_sapphire/internal/host/testing/fake_peer.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/inspect.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/mock_controller.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
@@ -42,7 +40,6 @@ namespace {
 
 using namespace inspect::testing;
 
-using bt::testing::CommandTransaction;
 using pw::bluetooth::emboss::AuthenticationRequirements;
 using pw::bluetooth::emboss::IoCapability;
 
@@ -88,39 +85,17 @@ const uint16_t PDU_MAX = 0xFFF;
 
 #define TEST_DEV_ADDR_BYTES_LE 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
 
-const StaticByteBuffer kReadScanEnable(LowerBits(hci_spec::kReadScanEnable),
-                                       UpperBits(hci_spec::kReadScanEnable),
-                                       0x00  // No parameters
-);
+const auto kReadScanEnable = testing::ReadScanEnable();
+const auto kReadScanEnableRspNone = testing::ReadScanEnableResponse(0x00);
+const auto kReadScanEnableRspInquiry = testing::ReadScanEnableResponse(0x01);
+const auto kReadScanEnableRspPage = testing::ReadScanEnableResponse(0x02);
+const auto kReadScanEnableRspBoth = testing::ReadScanEnableResponse(0x03);
 
-#define READ_SCAN_ENABLE_RSP(scan_enable)                      \
-  StaticByteBuffer(hci_spec::kCommandCompleteEventCode,        \
-                   0x05,                                       \
-                   0xF0,                                       \
-                   LowerBits(hci_spec::kReadScanEnable),       \
-                   UpperBits(hci_spec::kReadScanEnable),       \
-                   pw::bluetooth::emboss::StatusCode::SUCCESS, \
-                   (scan_enable))
-
-const auto kReadScanEnableRspNone = READ_SCAN_ENABLE_RSP(0x00);
-const auto kReadScanEnableRspInquiry = READ_SCAN_ENABLE_RSP(0x01);
-const auto kReadScanEnableRspPage = READ_SCAN_ENABLE_RSP(0x02);
-const auto kReadScanEnableRspBoth = READ_SCAN_ENABLE_RSP(0x03);
-
-#undef READ_SCAN_ENABLE_RSP
-
-#define WRITE_SCAN_ENABLE_CMD(scan_enable)                \
-  StaticByteBuffer(LowerBits(hci_spec::kWriteScanEnable), \
-                   UpperBits(hci_spec::kWriteScanEnable), \
-                   0x01,                                  \
-                   (scan_enable))
-
-const auto kWriteScanEnableNone = WRITE_SCAN_ENABLE_CMD(0x00);
-const auto kWriteScanEnableInq = WRITE_SCAN_ENABLE_CMD(0x01);
-const auto kWriteScanEnablePage = WRITE_SCAN_ENABLE_CMD(0x02);
-const auto kWriteScanEnableBoth = WRITE_SCAN_ENABLE_CMD(0x03);
-
-#undef WRITE_SCAN_ENABLE_CMD
+const auto kWriteScanEnableNone = testing::WriteScanEnable(0x00);
+const auto kWriteScanEnableInq = testing::WriteScanEnable(0x01);
+const auto kWriteScanEnablePage = testing::WriteScanEnable(0x02);
+const auto kWriteScanEnableBoth = testing::WriteScanEnable(0x03);
+const auto kWriteScanEnableRsp = testing::WriteScanEnableResponse();
 
 #define COMMAND_COMPLETE_RSP(opcode)                    \
   StaticByteBuffer(hci_spec::kCommandCompleteEventCode, \
@@ -130,21 +105,11 @@ const auto kWriteScanEnableBoth = WRITE_SCAN_ENABLE_CMD(0x03);
                    UpperBits((opcode)),                 \
                    pw::bluetooth::emboss::StatusCode::SUCCESS)
 
-const auto kWriteScanEnableRsp =
-    COMMAND_COMPLETE_RSP(hci_spec::kWriteScanEnable);
-
-const StaticByteBuffer kWritePageScanActivity(
-    LowerBits(hci_spec::kWritePageScanActivity),
-    UpperBits(hci_spec::kWritePageScanActivity),
-    0x04,  // parameter_total_size (4 bytes)
-    0x00,
-    0x08,  // 1.28s interval (R1)
-    0x11,
-    0x00  // 10.625ms window (R1)
-);
-
-const auto kWritePageScanActivityRsp =
-    COMMAND_COMPLETE_RSP(hci_spec::kWritePageScanActivity);
+const uint16_t kScanInterval = 0x0800;  // 1280 ms
+const uint16_t kScanWindow = 0x0011;    // 10.625 ms
+const auto kWritePageScanActivity =
+    testing::WritePageScanActivityPacket(kScanInterval, kScanWindow);
+const auto kWritePageScanActivityRsp = testing::WritePageScanActivityResponse();
 
 const StaticByteBuffer kWritePageScanType(
     LowerBits(hci_spec::kWritePageScanType),
