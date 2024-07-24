@@ -12,13 +12,13 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "gtest/gtest.h"
 #include "pw_preprocessor/compiler.h"
 #include "pw_rpc/internal/hash.h"
 #include "pw_rpc/internal/test_utils.h"
 #include "pw_rpc/pwpb/test_method_context.h"
 #include "pw_rpc_pwpb_private/internal_test_utils.h"
 #include "pw_rpc_test_protos/test.rpc.pwpb.h"
+#include "pw_unit_test/framework.h"
 
 PW_MODIFY_DIAGNOSTICS_PUSH();
 PW_MODIFY_DIAGNOSTIC(ignored, "-Wmissing-field-initializers");
@@ -257,6 +257,52 @@ TEST(PwpbCodegen, Client_InvokesUnaryRpcWithCallback) {
 
   EXPECT_FALSE(call.active());
 }
+
+#if PW_RPC_DYNAMIC_ALLOCATION
+
+TEST(PwpbCodegen, DynamicClient_InvokesUnaryRpcWithCallback) {
+  constexpr uint32_t kServiceId = internal::Hash("pw.rpc.test.TestService");
+  constexpr uint32_t kMethodId = internal::Hash("TestUnaryRpc");
+
+  ClientContextForTest<128, 99, kServiceId, kMethodId> context;
+
+  test::pw_rpc::pwpb::TestService::DynamicClient test_client(
+      context.client(), context.channel().id());
+
+  struct {
+    Status last_status = Status::Unknown();
+    int response_value = -1;
+  } result;
+
+  auto call = test_client.TestUnaryRpc(
+      {.integer = 123, .status_code = 0},
+      [&result](const test::pwpb::TestResponse::Message& response,
+                Status status) {
+        result.last_status = status;
+        result.response_value = response.value;
+      });
+
+  EXPECT_TRUE(call->active());
+
+  EXPECT_EQ(context.output().total_packets(), 1u);
+  auto packet =
+      static_cast<const internal::test::FakeChannelOutput&>(context.output())
+          .last_packet();
+  EXPECT_EQ(packet.channel_id(), context.channel().id());
+  EXPECT_EQ(packet.service_id(), kServiceId);
+  EXPECT_EQ(packet.method_id(), kMethodId);
+  PW_DECODE_PB(test::pwpb::TestRequest, sent_proto, packet.payload());
+  EXPECT_EQ(sent_proto.integer, 123);
+
+  PW_ENCODE_PB(test::pwpb::TestResponse, response, .value = 42);
+  EXPECT_EQ(OkStatus(), context.SendResponse(OkStatus(), response));
+  EXPECT_EQ(result.last_status, OkStatus());
+  EXPECT_EQ(result.response_value, 42);
+
+  EXPECT_FALSE(call->active());
+}
+
+#endif  // PW_RPC_DYNAMIC_ALLOCATION
 
 TEST(PwpbCodegen, Client_InvokesServerStreamingRpcWithCallback) {
   constexpr uint32_t kServiceId = internal::Hash("pw.rpc.test.TestService");

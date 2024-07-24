@@ -15,14 +15,13 @@
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_binary",
-    "pw_cc_library",
 )
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pre_init",
     srcs = [
         "boot.cc",
@@ -32,7 +31,7 @@ pw_cc_library(
         "config/FreeRTOSConfig.h",
         "config/sf2_mss_hal_conf.h",
     ],
-    # TODO(b/260642311): This target doesn't build
+    # TODO: b/260642311 - This target doesn't build
     tags = ["manual"],
     target_compatible_with = [
         "//pw_build/constraints/rtos:freertos",

@@ -17,14 +17,16 @@
 #include <array>
 #include <cstddef>
 
-#include "gtest/gtest.h"
 #include "pw_bytes/array.h"
+#include "pw_fuzzer/fuzztest.h"
 #include "pw_hdlc/internal/protocol.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::hdlc {
 namespace {
 
 using std::byte;
+using namespace fuzzer;
 
 TEST(Frame, Fields) {
   static constexpr auto kFrameData =
@@ -151,6 +153,18 @@ TEST(Decoder, TooLargeForBuffer_DecodesNextFrame) {
   }
   EXPECT_EQ(OkStatus(), decoder.Process(kFlag).status());
 }
+
+void ProcessNeverCrashes(ConstByteSpan data) {
+  DecoderBuffer<1024> decoder;
+  for (byte b : data) {
+    if (decoder.Process(b).status() != Status::Unavailable()) {
+      decoder.Clear();
+    }
+  }
+}
+
+FUZZ_TEST(Decoder, ProcessNeverCrashes)
+    .WithDomains(VectorOf<1024>(Arbitrary<byte>()));
 
 }  // namespace
 }  // namespace pw::hdlc

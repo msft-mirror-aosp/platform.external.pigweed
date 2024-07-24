@@ -471,7 +471,7 @@ function(pw_add_library NAME TYPE)
     HEADERS
       ${arg_HEADERS}
     PUBLIC_DEPS
-      # TODO(b/232141950): Apply compilation options that affect ABI
+      # TODO: b/232141950 - Apply compilation options that affect ABI
       # globally in the CMake build instead of injecting them into libraries.
       pw_build
       ${arg_PUBLIC_DEPS}
@@ -533,7 +533,7 @@ function(pw_add_facade NAME TYPE)
     HEADERS
       ${arg_HEADERS}
     PUBLIC_DEPS
-      # TODO(b/232141950): Apply compilation options that affect ABI
+      # TODO: b/232141950 - Apply compilation options that affect ABI
       # globally in the CMake build instead of injecting them into libraries.
       pw_build
       ${arg_PUBLIC_DEPS}
@@ -734,6 +734,25 @@ function(pw_set_zephyr_backend_ifdef COND FACADE BACKEND BACKEND_DECL)
     endif()
     include("${CMAKE_CURRENT_LIST_DIR}/${BACKEND_DECL}")
     pw_set_backend("${FACADE}" "${BACKEND}")
+  endif()
+endfunction()
+
+# Zephyr specific wrapper to convert a pw library to a Zephyr library
+function(pw_zephyrize_libraries_ifdef COND)
+  if(DEFINED Zephyr_FOUND)
+    if(${${COND}})
+      zephyr_link_libraries(${ARGN})
+      foreach(lib ${ARGN})
+        target_link_libraries(${lib} INTERFACE zephyr_interface)
+      endforeach()
+    endif()
+  endif()
+endfunction()
+
+# Zephyr function allowing conversion of Kconfig values to Pigweed configs
+function(pw_set_config_from_zephyr ZEPHYR_CONFIG PW_CONFIG)
+  if(${ZEPHYR_CONFIG})
+    add_compile_definitions(${PW_CONFIG}=${${ZEPHYR_CONFIG}})
   endif()
 endfunction()
 

@@ -14,6 +14,7 @@
 
 import("//build_overrides/pigweed.gni")
 
+import("$dir_pigweed/third_party/ambiq/ambiq.gni")
 import("$dir_pigweed/third_party/freertos/freertos.gni")
 import("$dir_pigweed/third_party/nanopb/nanopb.gni")
 import("$dir_pigweed/third_party/pico_sdk/pi_pico.gni")
@@ -36,6 +37,33 @@ declare_args() {
 
 config("public_include_path") {
   include_dirs = [ "public" ]
+}
+
+# This config moves RPC logging to a separate RPC channel and HDLC
+# address. This does two things:
+#   * The separate RPC channel allows logging traffic to be treated as
+#     if it is being sent to a different client via a separate RPC
+#     channel. This illustrates the ability for an RPC server to
+#     communicate to multiple clients over multiple physical links.
+#   * The separate HDLC address completely isolates typical RPC traffic
+#     from logging traffic by communicating to a different HDLC endpoint
+#     address. This effectively creates two virtual data pipes over the
+#     same physical link.
+#
+# This is mostly to illustrate pw_rpc's capability to route and multiplex
+# traffic.
+config("multi_endpoint_rpc_overrides") {
+  defines = [
+    "PW_SYSTEM_LOGGING_CHANNEL_ID=10000",
+    "PW_SYSTEM_LOGGING_RPC_HDLC_ADDRESS=10000",
+  ]
+}
+
+# The Pigweed config pattern requires a pw_source_set to provide the
+# configuration defines. This provides the flags in
+# multi_endpoint_rpc_overrides.
+pw_source_set("multi_endpoint_rpc_config") {
+  public_configs = [ ":multi_endpoint_rpc_overrides" ]
 }
 
 pw_source_set("config") {
@@ -114,15 +142,20 @@ pw_source_set("init") {
   public = [ "public/pw_system/init.h" ]
   sources = [ "init.cc" ]
   deps = [
+    ":file_manager",
+    ":file_service",
     ":log",
     ":rpc_server",
     ":target_hooks.facade",
     ":thread_snapshot_service",
+    ":trace_service",
+    ":transfer_service",
     ":work_queue",
     "$dir_pw_metric:global",
     "$dir_pw_metric:metric_service_pwpb",
     "$dir_pw_rpc/pwpb:echo_service",
     "$dir_pw_thread:thread",
+    "$dir_pw_trace",
   ]
 }
 
@@ -133,10 +166,12 @@ pw_source_set("hdlc_rpc_server") {
     ":io",
     ":rpc_server.facade",
     "$dir_pw_assert",
-    "$dir_pw_hdlc:pw_rpc",
+    "$dir_pw_hdlc:decoder",
+    "$dir_pw_hdlc:default_addresses",
     "$dir_pw_hdlc:rpc_channel_output",
     "$dir_pw_log",
     "$dir_pw_sync:mutex",
+    "$dir_pw_trace",
   ]
 }
 
@@ -168,6 +203,58 @@ pw_source_set("socket_target_io") {
   ]
 }
 
+pw_source_set("transfer_handlers") {
+  public = [ "public/pw_system/transfer_handlers.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = [
+    "$dir_pw_persistent_ram",
+    "$dir_pw_trace_tokenized:config",
+    "$dir_pw_transfer",
+  ]
+  sources = [ "transfer_handlers.cc" ]
+  deps = []
+}
+
+pw_source_set("file_manager") {
+  public = [ "public/pw_system/file_manager.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = [
+    ":config",
+    ":transfer_handlers",
+    "$dir_pw_file:flat_file_system",
+    "$dir_pw_persistent_ram:flat_file_system_entry",
+  ]
+  sources = [ "file_manager.cc" ]
+  deps = [ ":trace_service" ]
+}
+
+pw_source_set("transfer_service") {
+  public = [ "public/pw_system/transfer_service.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = [ "$dir_pw_transfer" ]
+  sources = [ "transfer_service.cc" ]
+  deps = [ ":file_manager" ]
+}
+
+pw_source_set("file_service") {
+  public = [ "public/pw_system/file_service.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = []
+  sources = [ "file_service.cc" ]
+  deps = [ ":file_manager" ]
+}
+
+pw_source_set("trace_service") {
+  public = [ "public/pw_system/trace_service.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = [ ":transfer_handlers" ]
+  sources = [ "trace_service.cc" ]
+  deps = [
+    "$dir_pw_persistent_ram",
+    "$dir_pw_trace_tokenized:trace_service_pwpb",
+  ]
+}
+
 pw_source_set("thread_snapshot_service") {
   public = [ "public/pw_system/thread_snapshot_service.h" ]
   public_configs = [ ":public_include_path" ]
@@ -191,6 +278,7 @@ if (pw_system_TARGET_HOOKS_BACKEND == "") {
            get_label_info(":stl_target_hooks", "label_no_toolchain")) {
   pw_source_set("stl_target_hooks") {
     deps = [
+      ":config",
       "$dir_pw_thread:thread",
       "$dir_pw_thread_stl:thread",
     ]
@@ -201,6 +289,7 @@ if (pw_system_TARGET_HOOKS_BACKEND == "") {
            get_label_info(":freertos_target_hooks", "label_no_toolchain")) {
   pw_source_set("freertos_target_hooks") {
     deps = [
+      ":config",
       ":init",
       "$dir_pw_third_party/freertos",
       "$dir_pw_thread:thread",
@@ -222,11 +311,15 @@ group("pw_system") {
 }
 
 pw_executable("system_example") {
+  # TODO: b/303282642 - Remove this testonly
+  testonly = pw_unit_test_TESTONLY
+
   sources = [ "example_user_app_init.cc" ]
   deps = [
     ":pw_system",
     "$dir_pw_log",
     "$dir_pw_thread:sleep",
+    "$dir_pw_trace",
     "$dir_pw_unit_test:rpc_service",
 
     # Adds a test that the test server can run.
@@ -236,10 +329,14 @@ pw_executable("system_example") {
 }
 
 group("system_examples") {
+  # TODO: b/303282642 - Remove this testonly
+  testonly = pw_unit_test_TESTONLY
+
   deps = [ ":system_example($dir_pigweed/targets/host_device_simulator:host_device_simulator.speed_optimized)" ]
   if (dir_pw_third_party_stm32cube_f4 != "" &&
       dir_pw_third_party_freertos != "") {
     deps += [ ":system_example($dir_pigweed/targets/stm32f429i_disc1_stm32cube:stm32f429i_disc1_stm32cube.size_optimized)" ]
+    deps += [ ":system_example($dir_pigweed/targets/stm32f429i_disc1_stm32cube:stm32f429i_disc1_stm32cube_clang.size_optimized)" ]
   }
   if (dir_pw_third_party_smartfusion_mss != "" &&
       dir_pw_third_party_freertos != "") {
@@ -251,14 +348,23 @@ group("system_examples") {
   }
   if (PICO_SRC_DIR != "" && dir_pw_third_party_freertos != "") {
     deps += [
-      ":system_example($dir_pigweed/targets/rp2040_pw_system:rp2040_pw_system.debug)",
-      ":system_example($dir_pigweed/targets/rp2040_pw_system:rp2040_pw_system.size_optimized)",
+      ":system_example($dir_pigweed/targets/rp2040:rp2040.debug)",
+      ":system_example($dir_pigweed/targets/rp2040:rp2040.size_optimized)",
+    ]
+  }
+  if (dir_pw_third_party_ambiq_SDK != "" && dir_pw_third_party_freertos != "") {
+    deps += [
+      ":system_example($dir_pigweed/targets/apollo4_pw_system:apollo4_pw_system.debug)",
+      ":system_example($dir_pigweed/targets/apollo4_pw_system:apollo4_pw_system.size_optimized)",
     ]
   }
 }
 
 pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
+  sources = [
+    "cli.rst",
+    "docs.rst",
+  ]
 }
 
 pw_test_group("tests") {

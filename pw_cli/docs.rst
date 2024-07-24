@@ -49,43 +49,56 @@ Here are some example invocations of ``pw``:
 Registering ``pw`` plugins
 ==========================
 Projects can register their own Python scripts as ``pw`` commands. ``pw``
-plugins are registered by providing the command name, module, and function in a
-``PW_PLUGINS`` file. ``PW_PLUGINS`` files can add new commands or override
-built-in commands. Since they are accessed by module name, plugins must be
-defined in Python packages that are installed in the Pigweed virtual
+plugins are registered by providing the command name, module, and function in
+the ``pigweed.json`` file. ``pigweed.json`` files can add new commands or
+override built-in commands. Since they are accessed by module name, plugins must
+be defined in Python packages that are installed in the Pigweed virtual
 environment.
 
-Plugin registrations in a ``PW_PLUGINS`` file apply to the their directory and
-all subdirectories, similarly to configuration files like ``.clang-format``.
-Registered plugins appear as commands in the ``pw`` tool when ``pw`` is run from
-those directories.
+pigweed.json file format
+---------------------------
+``pigweed.json`` contains plugin entries in the following format:
 
-Projects that wish to register commands might place a ``PW_PLUGINS`` file in the
-root of their repo. Multiple ``PW_PLUGINS`` files may be applied, but the ``pw``
-tool gives precedence to a ``PW_PLUGINS`` file in the current working directory
-or the nearest parent directory.
+.. code-block::
 
-PW_PLUGINS file format
-----------------------
-``PW_PLUGINS`` contains one plugin entry per line in the following format:
-
-.. code-block:: python
-
-  # Lines that start with a # are ignored.
-  <command name> <Python module> <function>
+   {
+     "pw": {
+       "pw_cli": {
+         "plugins": {
+           "<plugin name>": {
+             "module": "<module containing plugin>",
+             "function": "<entry point for plugin>"
+           },
+           ...
+         }
+       }
+     }
+   }
 
 The following example registers three commands:
 
-.. code-block:: python
+.. code-block::
 
-  # Register the presubmit script as pw presubmit
-  presubmit my_cool_project.tools run_presubmit
-
-  # Override the pw test command with a custom version
-  test my_cool_project.testing run_test
-
-  # Add a custom command
-  flash my_cool_project.flash main
+   {
+     "pw": {
+       "pw_cli": {
+         "plugins": {
+           "presubmit": {
+             "module": "my_cool_project.tools",
+             "function": "run_presubmit"
+           },
+           "test": {
+             "module": "my_cool_project.testing",
+             "function": "run_test"
+           },
+           "flash": {
+             "module": "my_cool_project.flash",
+             "function": "main"
+           }
+         }
+       }
+     }
+   }
 
 Defining a plugin function
 --------------------------
@@ -183,6 +196,7 @@ the banners by setting environment variables:
   ``red``, ``bold_red``, ``yellow``, ``bold_yellow``, ``green``,
   ``bold_green``, ``blue``, ``cyan``, ``magenta``, ``bold_white``,
   ``black_on_white``. See ``pw_cli.colors`` for details.
+* ``PW_ENVSETUP_NO_BANNER`` - Suppress banner from being printed.
 
 The below example shows how to manually change the branding at the command
 line. However, these environment variables should be set in the project root's
@@ -280,50 +294,50 @@ registered (see :py:meth:`pw_cli.plugins.Registry.__init__`).
 
 Plugins may be registered in a few different ways.
 
- * **Direct function call.** Register plugins by calling
-   :py:meth:`pw_cli.plugins.Registry.register` or
-   :py:meth:`pw_cli.plugins.Registry.register_by_name`.
+* **Direct function call.** Register plugins by calling
+  :py:meth:`pw_cli.plugins.Registry.register` or
+  :py:meth:`pw_cli.plugins.Registry.register_by_name`.
 
-   .. code-block:: python
+  .. code-block:: python
 
-     registry = pw_cli.plugins.Registry()
+    registry = pw_cli.plugins.Registry()
 
-     registry.register('plugin_name', my_plugin)
-     registry.register_by_name('plugin_name', 'module_name', 'function_name')
+    registry.register('plugin_name', my_plugin)
+    registry.register_by_name('plugin_name', 'module_name', 'function_name')
 
- * **Decorator.** Register using the :py:meth:`pw_cli.plugins.Registry.plugin`
-   decorator.
+* **Decorator.** Register using the :py:meth:`pw_cli.plugins.Registry.plugin`
+  decorator.
 
-   .. code-block:: python
+  .. code-block:: python
 
-     _REGISTRY = pw_cli.plugins.Registry()
+    _REGISTRY = pw_cli.plugins.Registry()
 
-     # This function is registered as the "my_plugin" plugin.
-     @_REGISTRY.plugin
-     def my_plugin():
-         pass
+    # This function is registered as the "my_plugin" plugin.
+    @_REGISTRY.plugin
+    def my_plugin():
+        pass
 
-     # This function is registered as the "input" plugin.
-     @_REGISTRY.plugin(name='input')
-     def read_something():
-         pass
+    # This function is registered as the "input" plugin.
+    @_REGISTRY.plugin(name='input')
+    def read_something():
+        pass
 
-   The decorator may be aliased to give a cleaner syntax (e.g. ``register =
-   my_registry.plugin``).
+  The decorator may be aliased to give a cleaner syntax (e.g. ``register =
+  my_registry.plugin``).
 
- * **Plugins files.** Plugins files use a simple format:
+* **Plugins files.** Plugins files use a simple format:
 
-   .. code-block::
+  .. code-block::
 
      # Comments start with "#". Blank lines are ignored.
      name_of_the_plugin module.name module_member
 
      another_plugin some_module some_function
 
-   These files are placed in the file system and apply similarly to Git's
-   ``.gitignore`` files. From Python, these files are registered using
-   :py:meth:`pw_cli.plugins.Registry.register_file` and
-   :py:meth:`pw_cli.plugins.Registry.register_directory`.
+  These files are placed in the file system and apply similarly to Git's
+  ``.gitignore`` files. From Python, these files are registered using
+  :py:meth:`pw_cli.plugins.Registry.register_file` and
+  :py:meth:`pw_cli.plugins.Registry.register_directory`.
 
 pw_cli.plugins module reference
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -41,19 +41,18 @@ pw_source_set("fuzzer_generator") {
   public = [ "public/pw_random/fuzzer.h" ]
   public_deps = [
     ":pw_random",
-    dir_pw_fuzzer,
+    "$dir_pw_fuzzer:libfuzzer",
+    dir_pw_bytes,
   ]
 }
 
 pw_test_group("tests") {
-  tests = [
-    ":xor_shift_star_test",
-    ":get_int_bounded_fuzzer_test",
-  ]
+  tests = [ ":xor_shift_star_test" ]
+  group_deps = [ ":fuzzers" ]
 }
 
-group("fuzzers") {
-  deps = [ ":get_int_bounded_fuzzer" ]
+pw_fuzzer_group("fuzzers") {
+  fuzzers = [ ":get_int_bounded_fuzzer" ]
 }
 
 pw_test("xor_shift_star_test") {
@@ -69,6 +68,7 @@ pw_fuzzer("get_int_bounded_fuzzer") {
   deps = [
     ":fuzzer_generator",
     ":pw_random",
+    dir_pw_assert,
   ]
 }
 

@@ -17,6 +17,7 @@
 include(${CMAKE_CURRENT_LIST_DIR}/../../pw_build/pigweed.cmake)
 
 include($ENV{PW_ROOT}/pw_assert/backend.cmake)
+include($ENV{PW_ROOT}/pw_async2/backend.cmake)
 include($ENV{PW_ROOT}/pw_chrono/backend.cmake)
 include($ENV{PW_ROOT}/pw_log/backend.cmake)
 include($ENV{PW_ROOT}/pw_perf_test/backend.cmake)
@@ -29,9 +30,14 @@ include($ENV{PW_ROOT}/pw_trace/backend.cmake)
 set(CMAKE_C_COMPILER clang)
 set(CMAKE_CXX_COMPILER clang++)
 
+pw_add_global_compile_options(-std=c++20 LANGUAGES CXX)
+
 # Configure backend for assert facade.
 pw_set_backend(pw_assert.check pw_assert.print_and_abort_check_backend)
 pw_set_backend(pw_assert.assert pw_assert.print_and_abort_assert_backend)
+
+# Configure backend for async dispatcher facade
+pw_set_backend(pw_async2.dispatcher pw_async2_basic.dispatcher_backend)
 
 # Configure backend for logging facade.
 pw_set_backend(pw_log pw_log_basic)
@@ -67,6 +73,7 @@ pw_set_backend(pw_thread.id pw_thread_stl.id)
 pw_set_backend(pw_thread.yield pw_thread_stl.yield)
 pw_set_backend(pw_thread.sleep pw_thread_stl.sleep)
 pw_set_backend(pw_thread.thread pw_thread_stl.thread)
+pw_set_backend(pw_thread.test_thread_context pw_thread_stl.test_thread_context)
 
 # TODO(ewout): Migrate this to match GN's tokenized trace setup.
 pw_set_backend(pw_trace pw_trace.null)

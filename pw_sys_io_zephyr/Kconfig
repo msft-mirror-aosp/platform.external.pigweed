@@ -12,13 +12,15 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+menu "pw_sys_io"
+
 config PIGWEED_SYS_IO
     bool "Enable the Zephyr system IO module"
     select PIGWEED_SPAN
     select PIGWEED_STATUS
     help
       The system I/O module uses the Zephyr console under the hood to perform
-      I/O operations.
+      I/O operations. See :ref:`module-pw_sys_io` for module details.
 
 if PIGWEED_SYS_IO
 
@@ -31,5 +33,9 @@ config PIGWEED_SYS_IO_INIT_PRIORITY
 
 config PIGWEED_SYS_IO_USB
     bool "Use the USB for I/O"
+    help
+      On init of the system I/O, also enable the Zephyr USB subsystem.
 
 endif # PIGWEED_SYS_IO
+
+endmenu

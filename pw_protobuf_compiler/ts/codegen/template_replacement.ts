@@ -13,20 +13,25 @@
 // the License.
 
 import * as fs from 'fs';
-import {FileDescriptorSet} from 'google-protobuf/google/protobuf/descriptor_pb';
+import { FileDescriptorSet } from 'google-protobuf/google/protobuf/descriptor_pb';
 
 function buildModulePath(rootDir: string, fileName: string): string {
   const name = `${rootDir}/${fileName}`;
   return name.replace(/\.proto$/, '_pb');
 }
 
-export default function generateTemplate(outputPath: string, descriptorDataPath: string, templatePath: string, protoRootDir: string) {
+export default function generateTemplate(
+  outputPath: string,
+  descriptorDataPath: string,
+  templatePath: string,
+  protoRootDir: string,
+) {
   let template = fs.readFileSync(templatePath).toString();
 
   const descriptorSetBinary = fs.readFileSync(descriptorDataPath);
   const base64DescriptorSet = descriptorSetBinary.toString('base64');
   const fileDescriptorSet = FileDescriptorSet.deserializeBinary(
-    Buffer.from(descriptorSetBinary)
+    Buffer.from(descriptorSetBinary),
   );
 
   const imports = [];
@@ -34,21 +39,21 @@ export default function generateTemplate(outputPath: string, descriptorDataPath:
   const fileList = fileDescriptorSet.getFileList();
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
-    const modulePath = buildModulePath(".", file.getName()!);
+    const modulePath = buildModulePath('.', file.getName()!);
     const moduleName = 'proto_' + i;
     imports.push(`import * as ${moduleName} from '${modulePath}';`);
     const key = file.getName()!;
-    moduleDictionary.push(`['${key}', ${moduleName}],`);
+    moduleDictionary.push(`'${key}': ${moduleName},`);
   }
 
   template = template.replace(
     '{TEMPLATE_descriptor_binary}',
-    base64DescriptorSet
+    base64DescriptorSet,
   );
   template = template.replace('// TEMPLATE_proto_imports', imports.join('\n'));
   template = template.replace(
     '// TEMPLATE_module_map',
-    moduleDictionary.join('\n')
+    moduleDictionary.join('\n'),
   );
 
   fs.writeFileSync(outputPath, template);

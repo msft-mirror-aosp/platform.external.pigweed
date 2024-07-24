@@ -74,16 +74,17 @@ int main(int argc, char** argv) {  // Take filename as arg
   }
 
   // Register trigger callback
-  pw::trace::Callbacks::Instance()
+  pw::trace::Callbacks& callbacks = pw::trace::GetCallbacks();
+  callbacks
       .RegisterEventCallback(TraceEventCallback,
-                             pw::trace::CallbacksImpl::kCallOnEveryEvent)
-      .IgnoreError();  // TODO(b/242598609): Handle Status properly
+                             pw::trace::Callbacks::kCallOnEveryEvent)
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
 
   // Ensure tracing is off at start, the trigger will turn it on.
   PW_TRACE_SET_ENABLED(false);
 
   // Dump trace data to the file passed in.
-  pw::trace::TraceToFile trace_to_file(argv[1]);
+  pw::trace::TraceToFile trace_to_file(callbacks, argv[1]);
 
   PW_LOG_INFO("Running trigger example...");
   RunTraceSampleApp();

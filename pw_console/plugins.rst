@@ -3,6 +3,10 @@
 ============
 Plugin Guide
 ============
+.. pigweed-module-subpage::
+   :name: pw_console
+   :tagline: pw_console: Multi-purpose pluggable interactive console for dev & manufacturing
+
 Pigweed Console supports extending the user interface with custom widgets. For
 example: Toolbars that display device information and provide buttons for
 interacting with the device.
@@ -77,6 +81,13 @@ Sample Plugins
 Pigweed Console will provide a few sample plugins to serve as templates for
 creating your own plugins. These are a work in progress at the moment and not
 available at this time.
+
+Bandwidth Toolbar
+=================
+Tracks and logs the data sent and received over a serial transport like a socket
+or PySerial device. To use in a custom transport interface instantiate the
+``SerialBandwidthTracker`` and call ``track_read_data`` on incoming data bytes
+and ``track_write_data`` on outoing data bytes.
 
 Calculator
 ==========

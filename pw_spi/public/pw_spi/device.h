@@ -25,21 +25,21 @@
 
 namespace pw::spi {
 
-// The Device class enables data transfer with a specific SPI peripheral.
+// The Device class enables data transfer with a specific SPI responder.
 // This class combines an Initiator (representing the physical SPI bus), its
 // configuration data, and the ChipSelector object to uniquely address a device.
 // Transfers to a selected initiator are guarded against concurrent access
 // through the use of the `Borrowable` object.
 class Device {
  public:
-  Device(sync::Borrowable<Initiator>& initiator,
+  Device(sync::Borrowable<Initiator> initiator,
          const Config config,
          ChipSelector& selector)
       : initiator_(initiator), config_(config), selector_(selector) {}
 
   ~Device() = default;
 
-  // Synchronously read data from the SPI peripheral until the provided
+  // Synchronously read data from the SPI responder until the provided
   // `read_buffer` is full.
   // This call will configure the bus and activate/deactivate chip select
   // for the transfer
@@ -50,7 +50,7 @@ class Device {
   // failure.
   Status Read(ByteSpan read_buffer) { return WriteRead({}, read_buffer); }
 
-  // Synchronously write the contents of `write_buffer` to the SPI peripheral.
+  // Synchronously write the contents of `write_buffer` to the SPI responder.
   // This call will configure the bus and activate/deactivate chip select
   // for the transfer
   //
@@ -62,7 +62,7 @@ class Device {
     return WriteRead(write_buffer, {});
   }
 
-  // Perform a synchronous read/write transfer with the SPI peripheral. Data
+  // Perform a synchronous read/write transfer with the SPI responder. Data
   // from the `write_buffer` object is written to the bus, while the
   // `read_buffer` is populated with incoming data on the bus.  In the event
   // the read buffer is smaller than the write buffer (or zero-size), any
@@ -93,7 +93,7 @@ class Device {
           (behavior_ == ChipSelectBehavior::kPerTransaction) &&
           (!first_write_read_)) {
         selector_->Deactivate()
-            .IgnoreError();  // TODO(b/242598609): Handle Status properly
+            .IgnoreError();  // TODO: b/242598609 - Handle Status properly
       }
     }
 
@@ -120,14 +120,14 @@ class Device {
     Transaction(const Transaction&) = delete;
     Transaction& operator=(const Transaction&) = delete;
 
-    // Synchronously read data from the SPI peripheral until the provided
+    // Synchronously read data from the SPI responder until the provided
     // `read_buffer` is full.
     //
     // Returns OkStatus() on success, and implementation-specific values on
     // failure.
     Status Read(ByteSpan read_buffer) { return WriteRead({}, read_buffer); }
 
-    // Synchronously write the contents of `write_buffer` to the SPI peripheral
+    // Synchronously write the contents of `write_buffer` to the SPI responder
     //
     // Returns OkStatus() on success, and implementation-specific values on
     // failure.
@@ -200,7 +200,7 @@ class Device {
   }
 
  private:
-  sync::Borrowable<Initiator>& initiator_;
+  sync::Borrowable<Initiator> initiator_;
   const Config config_;
   ChipSelector& selector_;
 };

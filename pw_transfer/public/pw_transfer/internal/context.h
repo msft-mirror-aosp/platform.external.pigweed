@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -108,7 +108,8 @@ class Context {
   ~Context() = default;
 
   constexpr Context()
-      : session_id_(kUnassignedSessionId),
+      : initial_offset_(0),
+        session_id_(kUnassignedSessionId),
         resource_id_(0),
         desired_protocol_version_(ProtocolVersion::kUnknown),
         configured_protocol_version_(ProtocolVersion::kUnknown),
@@ -129,6 +130,7 @@ class Context {
         last_chunk_sent_(Chunk::Type::kData),
         last_chunk_offset_(0),
         chunk_timeout_(chrono::SystemClock::duration::zero()),
+        initial_chunk_timeout_(chrono::SystemClock::duration::zero()),
         interchunk_delay_(chrono::SystemClock::for_at_least(
             std::chrono::microseconds(kDefaultChunkDelayMicroseconds))),
         next_timeout_(kNoTimeout) {}
@@ -136,6 +138,13 @@ class Context {
   constexpr TransferType type() const {
     return static_cast<TransferType>(flags_ & kFlagsType);
   }
+
+  stream::Reader& reader() {
+    PW_DASSERT(active() && type() == TransferType::kTransmit);
+    return static_cast<stream::Reader&>(*stream_);
+  }
+
+  uint32_t initial_offset_;
 
  private:
   enum class TransferState : uint8_t {
@@ -193,11 +202,6 @@ class Context {
     return static_cast<unsigned>(session_id_);
   }
 
-  stream::Reader& reader() {
-    PW_DASSERT(active() && type() == TransferType::kTransmit);
-    return static_cast<stream::Reader&>(*stream_);
-  }
-
   stream::Writer& writer() {
     PW_DASSERT(active() && type() == TransferType::kReceive);
     return static_cast<stream::Writer&>(*stream_);
@@ -253,6 +257,15 @@ class Context {
   // failed.
   virtual Status FinalCleanup(Status status) = 0;
 
+  // Returns the total size of the transfer resource, or
+  // `std::numeric_limits<size_t>::max()` if unbounded.
+  virtual size_t TransferSizeBytes() const = 0;
+
+  // Seeks the reader source. Client may need to seek with reference to the
+  // initial offset, where the server shouldn't, so each context needs its own
+  // seek method.
+  virtual Status SeekReader(uint32_t offset) = 0;
+
   // Processes a chunk in either a transfer or receive transfer.
   void HandleChunkEvent(const ChunkEvent& event);
 
@@ -276,8 +289,8 @@ class Context {
   // Processes a data chunk in a received while in the kWaiting state.
   void HandleReceivedData(const Chunk& chunk);
 
-  // Sends the first chunk in a transmit transfer.
-  void SendInitialTransmitChunk();
+  // Sends the first chunk in a legacy transmit transfer.
+  void SendInitialLegacyTransmitChunk();
 
   // Updates the current receive transfer parameters based on the context's
   // configuration.
@@ -347,7 +360,7 @@ class Context {
   // status chunk will be re-sent for every non-ACK chunk received,
   // continually notifying the other end that the transfer is over.
   static constexpr chrono::SystemClock::duration kFinalChunkAckTimeout =
-      std::chrono::milliseconds(5000);
+      chrono::SystemClock::for_at_least(std::chrono::milliseconds(5000));
 
   static constexpr chrono::SystemClock::time_point kNoTimeout =
       chrono::SystemClock::time_point(chrono::SystemClock::duration(0));
@@ -390,6 +403,9 @@ class Context {
 
   // How long to wait for a chunk from the other end.
   chrono::SystemClock::duration chunk_timeout_;
+
+  // How long for a client to wait for an initial server response.
+  chrono::SystemClock::duration initial_chunk_timeout_;
 
   // How long to delay between transmitting subsequent data chunks within a
   // window.

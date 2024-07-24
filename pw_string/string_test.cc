@@ -18,13 +18,10 @@
 #include <iterator>
 #include <type_traits>
 
-#include "gtest/gtest.h"
 #include "pw_compilation_testing/negative_compilation.h"
-#include "pw_polyfill/standard.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw {
-
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)  // std::string_view is a C++17 feature
 
 using namespace std::string_view_literals;
 
@@ -52,8 +49,6 @@ class StringViewLikeButConvertsToPointer : public StringViewLike<T> {
  private:
   std::basic_string_view<T> value_;
 };
-
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 template <typename T>
 class EvenNumberIterator {
@@ -103,11 +98,11 @@ TEST(InlineString, DeduceBasicString_Char) {
 }
 
 TEST(InlineString, DeduceBasicString_Int) {
-  constexpr long kLongArray[4] = {0, 1, 2, 0};
-  InlineBasicString string_3 = kLongArray;
-  static_assert(std::is_same_v<decltype(string_3), InlineBasicString<long, 3>>);
+  constexpr char kCharArray[4] = {0, 1, 2, 0};
+  InlineBasicString string_3 = kCharArray;
+  static_assert(std::is_same_v<decltype(string_3), InlineBasicString<char, 3>>);
 
-  EXPECT_EQ(string_3, InlineBasicString(kLongArray));
+  EXPECT_EQ(string_3, InlineBasicString(kCharArray));
 }
 
 // Test CTAD on the InlineString alias, if supported.
@@ -228,15 +223,11 @@ constexpr EvenNumberIterator<char> kEvenNumbers0(0);
 constexpr EvenNumberIterator<char> kEvenNumbers2(2);
 constexpr EvenNumberIterator<char> kEvenNumbers8(8);
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)  // std::string_view is a C++17 feature
-
 constexpr std::string_view kView0;
 constexpr std::string_view kView5 = "12345"sv;
 constexpr std::string_view kView10 = "1234567890"sv;
 
 constexpr StringViewLike<char> kStringViewLike10("0123456789", 10);
-
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 //
 // Construction and assignment
@@ -418,7 +409,6 @@ TEST(InlineString, Construct_Array) {
 }
 
 TEST(InlineString, Construct_Iterator) {
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)  // std::string_view is a C++17 feature
   TEST_STRING(InlineString<0>(kView0.begin(), kView0.end()), , "");
   TEST_STRING(InlineString<0>(kView5.end(), kView5.end()), , "");
   TEST_STRING(InlineString<5>(kView0.begin(), kView0.end()), , "");
@@ -427,7 +417,6 @@ TEST(InlineString, Construct_Iterator) {
   TEST_STRING(InlineString<5>(kView5.begin(), kView5.end()), , "12345");
   TEST_STRING(InlineString<10>(kView5.begin(), kView5.end()), , "12345");
   TEST_STRING(InlineString<10>(kView10.begin(), kView10.end()), , "1234567890");
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
   TEST_STRING(InlineString<0>(kEvenNumbers0, kEvenNumbers0), , "");
   TEST_STRING(InlineString<10>(kEvenNumbers2, kEvenNumbers2), , "");
@@ -445,7 +434,7 @@ TEST(InlineString, Construct_Iterator) {
 TEST(InlineString, Construct_CopySameCapacity) {
   static_assert(std::is_trivially_copyable<InlineString<0>>(), "Copy");
   static_assert(std::is_trivially_copyable<InlineString<10>>(), "Copy");
-  static_assert(std::is_trivially_copyable<InlineBasicString<int, 10>>(),
+  static_assert(std::is_trivially_copyable<InlineBasicString<char, 10>>(),
                 "Copy");
 
   TEST_STRING(InlineString<0>(kEmptyCapacity0), , "");
@@ -500,8 +489,6 @@ TEST(InlineString, Construct_InitializerList) {
   [[maybe_unused]] constexpr InlineString<3> bad_string({'1', '2', '3', '\0'});
 #endif  // PW_NC_TEST
 }
-
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 constexpr InlineString<16> TakesInlineString(const InlineString<16>& str) {
   return str;
@@ -592,7 +579,6 @@ TEST(InlineString, Construct_StringViewSubstr) {
   [[maybe_unused]] constexpr InlineString<10> bad_string("12345"sv, 6, 0);
 #endif  // PW_NC_TEST
 }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 TEST(InlineString, Construct_Nullptr) {
 #if PW_NC_TEST(Construct_Nullptr)
@@ -698,7 +684,6 @@ TEST(InlineString, AssignOperator_InitializerList) {
 #endif  // PW_NC_TEST
 }
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
 TEST(InlineString, AssignOperator_StringView) {
   TEST_STRING(InlineString<1>(), fixed_str = "\0"sv, "\0");
   TEST_STRING(InlineString<1>({'a'}), fixed_str = "\0"sv, "\0");
@@ -712,7 +697,6 @@ TEST(InlineString, AssignOperator_StringView) {
   }();
 #endif  // PW_NC_TEST
 }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 // assign
 
@@ -959,7 +943,6 @@ TEST(InlineString, Assign_Array) {
 }
 
 TEST(InlineString, Assign_Iterator) {
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
   TEST_STRING(InlineString<0>(), str.assign(kView0.begin(), kView0.end()), "");
   TEST_STRING(InlineString<0>(), str.assign(kView5.end(), kView5.end()), "");
   TEST_STRING(
@@ -975,7 +958,6 @@ TEST(InlineString, Assign_Iterator) {
   TEST_STRING(InlineString<10>("abc"),
               str.assign(kView10.begin(), kView10.end()),
               "1234567890");
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
   TEST_STRING(InlineString<0>(), str.assign(kEvenNumbers0, kEvenNumbers0), "");
   TEST_STRING(InlineString<10>(), str.assign(kEvenNumbers2, kEvenNumbers2), "");
@@ -1020,7 +1002,6 @@ TEST(InlineString, Assign_InitializerList) {
 #endif  // PW_NC_TEST
 }
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
 TEST(InlineString, Assign_StringView) {
   TEST_STRING(InlineString<0>(), str.assign(""sv), "");
   TEST_STRING(InlineString<10>("abc"), str.assign(""sv), "");
@@ -1093,7 +1074,6 @@ TEST(InlineString, Assign_StringViewSubstr) {
   }();
 #endif  // PW_NC_TEST
 }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 //
 // Element access
@@ -1156,7 +1136,6 @@ TEST(InlineString, DataCStr) {
   EXPECT_STREQ(kSize10Capacity10.c_str(), "1234567890");
 }
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
 TEST(InlineString, ConvertsToStringView) {
   static_assert(std::string_view(kSize5Capacity10) == "12345"sv);
   EXPECT_EQ(std::string_view(Generic(kSize5Capacity10)), "12345"sv);
@@ -1197,7 +1176,6 @@ TEST(InlineString, Iterators) {
     return true;
   }());
 }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 //
 // Capacity
@@ -1209,7 +1187,7 @@ TEST(InlineString, Size) {
 
   static_assert(kEmptyCapacity10.size() == 0u, "0");  // NOLINT
   static_assert(kSize5Capacity10.size() == 5u, "5");
-  static_assert(kEmptyCapacity10.length() == 0u, "0");
+  static_assert(kEmptyCapacity10.length() == 0u, "0");  // NOLINT
   static_assert(kSize5Capacity10.length() == 5u, "5");
 }
 
@@ -1238,9 +1216,283 @@ TEST(InlineString, Clear) {
   TEST_STRING(InlineString<8>("!!"), str.clear(); str.assign("?"), "?");
 }
 
-// TODO(b/239996007): Test insert.
+// insert
 
-// TODO(b/239996007): Test erase.
+TEST(InlineString, Insert_CharactersAtIndex) {
+  TEST_STRING(InlineString<1>(), str.insert(0, 0, 'b'), "");
+  TEST_STRING(InlineString<1>("a"), str.insert(0, 0, 'b'), "a");
+  TEST_STRING(InlineString<10>("a"), str.insert(0, 2, 'b'), "bba");
+  TEST_STRING(InlineString<10>("a"), str.insert(1, 2, 'b'), "abb");
+  TEST_STRING(InlineString<10>(), str.insert(0, 10, 'b'), "bbbbbbbbbb");
+}
+#if PW_NC_TEST(Insert_CharactersAtIndex_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1});
+  return str.insert(1, 2, '?');
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_PointerSizeAtIndex) {
+  TEST_STRING(InlineString<1>(), str.insert(0, "", 0), "");
+  TEST_STRING(InlineString<1>("a"), str.insert(0, "b", 0), "a");
+  TEST_STRING(InlineString<10>("a"), str.insert(0, "bb", 2), "bba");
+  TEST_STRING(InlineString<10>("a"), str.insert(1, "bb", 2), "abb");
+  TEST_STRING(
+      InlineString<10>(), str.insert(0, "bbbbbbbbbb", 10), "bbbbbbbbbb");
+}
+#if PW_NC_TEST(Insert_PointerSizeAtIndex_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1});
+  return str.insert(1, "23", 2);
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_ArrayAtIndex) {
+  TEST_STRING(InlineString<1>(), fixed_str.insert(0, ""), "");
+  TEST_STRING(InlineString<2>(), fixed_str.insert(0, "a"), "a");
+  TEST_STRING(InlineString<6>(), fixed_str.insert(0, "12345"), "12345");
+
+  TEST_STRING(InlineString<1>({'a'}), fixed_str.insert(1, ""), "a");
+  TEST_STRING(InlineString<2>("a"), fixed_str.insert(1, "a"), "aa");
+  TEST_STRING(InlineString<6>("a"), fixed_str.insert(1, "12345"), "a12345");
+}
+#if PW_NC_TEST(Insert_ArrayAtIndex_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<4> str({0, 1});
+  return str.insert(1, "123");
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_PointerAtIndex) {
+  TEST_STRING(InlineString<0>(), str.insert(0, kPointer0), "");
+  TEST_STRING(InlineString<10>(), str.insert(0, kPointer10), "9876543210");
+  TEST_STRING(
+      InlineString<10>("abc"), str.insert(1, kPointer10 + 5), "a43210bc");
+  TEST_STRING(
+      InlineString<13>("abc"), str.insert(3, kPointer10), "abc9876543210");
+}
+#if PW_NC_TEST(Insert_PointerAtIndex_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1});
+  return str.insert(1, kPointer10 + 8);
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_BasicStringAtIndex) {
+  TEST_STRING(InlineString<0>(), str.insert(0, kEmptyCapacity0), "");
+  TEST_STRING(InlineString<10>(), str.insert(0, kEmptyCapacity10), "");
+  TEST_STRING(InlineString<10>(), str.insert(0, kSize5Capacity10), "12345");
+  TEST_STRING(
+      InlineString<10>(), str.insert(0, kSize10Capacity10), "1234567890");
+
+  TEST_STRING(InlineString<1>({'a'}), str.insert(0, kEmptyCapacity0), "a");
+  TEST_STRING(InlineString<11>("a"), str.insert(1, kEmptyCapacity10), "a");
+  TEST_STRING(
+      InlineString<12>("aa"), str.insert(1, kSize5Capacity10), "a12345a");
+  TEST_STRING(
+      InlineString<12>("aa"), str.insert(2, kSize10Capacity10), "aa1234567890");
+}
+
+#if PW_NC_TEST(Insert_BasicStringAtIndex_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(new_index <= max_size\(\)\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1});
+  return str.insert(1, kSize5Capacity10);
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_BasicStringSubstrAtIndex) {
+  TEST_STRING(
+      InlineString<1>({'a'}), str.insert(0, kEmptyCapacity0, 0, 0), "a");
+  TEST_STRING(
+      InlineString<11>("a"), str.insert(1, kSize10Capacity10, 10, 0), "a");
+  TEST_STRING(InlineString<12>("aa"),
+              str.insert(1, kSize10Capacity10, 3, 5),
+              "a45678a");
+  TEST_STRING(InlineString<12>("aa"),
+              str.insert(2, kSize10Capacity10, 0, 10),
+              "aa1234567890");
+}
+#if PW_NC_TEST(Insert_BasicStringSubstrAtIndex_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1});
+  return str.insert(1, kSize5Capacity10, 1, 2);
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_CharactersAtPosition) {
+  TEST_STRING(InlineString<1>(), str.insert(str.begin(), 0, 'b'), "");
+  TEST_STRING(InlineString<1>("a"), str.insert(str.begin(), 0, 'b'), "a");
+  TEST_STRING(InlineString<10>("a"), str.insert(str.begin(), 2, 'b'), "bba");
+  TEST_STRING(
+      InlineString<10>("a"), str.insert(str.begin() + 1, 2, 'b'), "abb");
+  TEST_STRING(InlineString<10>(), str.insert(str.end(), 10, 'b'), "bbbbbbbbbb");
+}
+
+#if PW_NC_TEST(Insert_CharactersAtPosition_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1});
+  return str.insert(str.begin() + 1, 2, '?');
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_CharacterAtPosition) {
+  TEST_STRING(InlineString<1>(), str.insert(str.begin(), 'b'), "b");
+  TEST_STRING(InlineString<10>("aa"), str.insert(str.begin(), 'b'), "baa");
+  TEST_STRING(InlineString<10>("aa"), str.insert(str.begin() + 1, 'b'), "aba");
+  TEST_STRING(InlineString<10>("aa"), str.insert(str.begin() + 2, 'b'), "aab");
+  TEST_STRING(InlineString<10>("aa"), str.insert(str.end(), 'b'), "aab");
+}
+#if PW_NC_TEST(Insert_CharacterAtPosition_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<2> str({0, 1});
+  return str.insert(str.begin() + 1, '?');
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_IteratorsAtPosition) {
+  TEST_STRING(InlineString<0>(),
+              str.insert(str.begin(), kEvenNumbers0, kEvenNumbers0),
+              "");
+  TEST_STRING(InlineString<10>(),
+              str.insert(str.end(), kEvenNumbers0, kEvenNumbers0),
+              "");
+  TEST_STRING(InlineString<10>(),
+              str.insert(str.end(), kEvenNumbers0, kEvenNumbers0),
+              "");
+  TEST_STRING(InlineString<10>(),
+              str.insert(str.begin(), kEvenNumbers0, kEvenNumbers8),
+              "\0\2\4\6");
+  TEST_STRING(InlineString<10>(),
+              str.insert(str.end(), kEvenNumbers0, kEvenNumbers8),
+              "\0\2\4\6");
+  TEST_STRING(InlineString<10>("aa"),
+              str.insert(str.begin(), kEvenNumbers0, kEvenNumbers8),
+              "\0\2\4\6aa");
+  TEST_STRING(InlineString<10>("aa"),
+              str.insert(str.begin() + 1, kEvenNumbers0, kEvenNumbers8),
+              "a\0\2\4\6a");
+  TEST_STRING(InlineString<10>("aa"),
+              str.insert(str.begin() + 2, kEvenNumbers0, kEvenNumbers8),
+              "aa\0\2\4\6");
+  TEST_STRING(InlineString<10>("aa"),
+              str.insert(str.end(), kEvenNumbers0, kEvenNumbers8),
+              "aa\0\2\4\6");
+}
+#if PW_NC_TEST(Insert_IteratorsAtPosition_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(count < max_size\(\)\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1});
+  return str.insert(str.begin() + 1, kEvenNumbers0, kEvenNumbers8);
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_InitializerListAtPosition) {
+  TEST_STRING(InlineString<0>(), str.insert(str.begin(), {}), "");
+  TEST_STRING(InlineString<10>(), str.insert(str.end(), {1, 2, 3}), "\1\2\3");
+  TEST_STRING(
+      InlineString<10>("abc"), str.insert(str.begin(), {1, 2, 3}), "\1\2\3abc");
+  TEST_STRING(InlineString<10>("abc"),
+              str.insert(str.begin() + 1, {1, 2, 3}),
+              "a\1\2\3bc");
+  TEST_STRING(InlineString<10>("abc"),
+              str.insert(str.begin() + 3, {1, 2, 3}),
+              "abc\1\2\3");
+  TEST_STRING(
+      InlineString<5>("abc"), str.insert(str.end(), {'4', '5'}), "abc45");
+}
+#if PW_NC_TEST(Insert_InitializerListAtPosition_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1, 2});
+  return str.insert(str.begin() + 1, {3});
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_StringViewAtIndex) {
+  TEST_STRING(InlineString<0>(), str.insert(0, ""sv), "");
+  TEST_STRING(InlineString<10>("a"), str.insert(0, ""sv), "a");
+  TEST_STRING(InlineString<10>("abc"), str.insert(0, "123"sv), "123abc");
+  TEST_STRING(InlineString<10>("abc"), str.insert(1, "123"sv), "a123bc");
+  TEST_STRING(InlineString<5>("abc"), str.insert(3, "45"sv), "abc45");
+}
+#if PW_NC_TEST(Insert_StringViewAtIndex_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1, 2});
+  return str.insert(1, "3"sv);
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Insert_StringViewSubstrAtIndex) {
+  TEST_STRING(InlineString<0>(), str.insert(0, ""sv, 0), "");
+  TEST_STRING(InlineString<0>(), str.insert(0, ""sv, 0, 0), "");
+  TEST_RUNTIME_STRING(
+      InlineString<5>("aa"), str.insert(0, "123"sv, 0), "123aa");
+  TEST_RUNTIME_STRING(
+      InlineString<10>("aa"), str.insert(1, "123"sv, 1, 0), "aa");
+  TEST_RUNTIME_STRING(
+      InlineString<10>("aa"), str.insert(1, "123"sv, 1, 1), "a2a");
+  TEST_RUNTIME_STRING(
+      InlineString<10>("aa"), str.insert(1, "123"sv, 1, 99), "a23a");
+  TEST_RUNTIME_STRING(
+      InlineString<10>("aa"), str.insert(2, "123"sv, 1, 99), "aa23");
+  TEST_RUNTIME_STRING(
+      InlineString<10>("aa"), str.insert(2, "123"sv, 3, 99), "aa");
+}
+#if PW_NC_TEST(Insert_StringViewSubstrAtIndex_DoesNotFit)
+PW_NC_EXPECT("PW_ASSERT\(size\(\) - index <= max_size\(\) - new_index\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str({0, 1, 2});
+  return str.insert(1, "34"sv, 1);
+}();
+#endif  // PW_NC_TEST
+
+// erase.
+
+TEST(InlineString, Erase_CharactersAtIndex) {
+  TEST_STRING(InlineString<0>(), str.erase(), "");
+  TEST_STRING(InlineString<10>("abc"), str.erase(), "");
+  TEST_STRING(InlineString<10>("abc"), str.erase(0), "");
+  TEST_STRING(InlineString<10>("abc"), str.erase(1), "a");
+  TEST_STRING(InlineString<10>("abc"), str.erase(1, 1), "ac");
+  TEST_STRING(InlineString<10>("abc"), str.erase(1, 10), "a");
+  TEST_STRING(InlineString<10>("abc"), str.erase(3, 10), "abc");
+}
+#if PW_NC_TEST(Erase_IndexOutOfRange)
+PW_NC_EXPECT("PW_ASSERT\(index <= size\(\)\)");
+[[maybe_unused]] constexpr auto fail = [] {
+  InlineString<3> str("abc");
+  return str.erase(4, 2);
+}();
+#endif  // PW_NC_TEST
+
+TEST(InlineString, Erase_CharacterAtPosition) {
+  TEST_STRING(InlineString<3>(), str.erase(str.begin()), "");
+  TEST_STRING(InlineString<3>(), str.erase(str.end()), "");
+  TEST_STRING(InlineString<3>("abc"), str.erase(str.begin()), "bc");
+  TEST_STRING(InlineString<3>("abc"), str.erase(str.begin() + 1), "ac");
+  TEST_STRING(InlineString<3>("abc"), str.erase(str.begin() + 2), "ab");
+  TEST_STRING(InlineString<3>("abc"), str.erase(str.end()), "abc");
+}
+
+TEST(InlineString, Erase_CharactersInRange) {
+  TEST_STRING(
+      InlineString<3>("abc"), str.erase(str.begin(), str.begin()), "abc");
+  TEST_STRING(InlineString<3>("abc"), str.erase(str.end(), str.end()), "abc");
+  TEST_STRING(InlineString<3>("abc"), str.erase(str.begin(), str.end()), "");
+  TEST_STRING(
+      InlineString<3>("abc"), str.erase(str.begin(), str.begin() + 1), "bc");
+  TEST_STRING(
+      InlineString<3>("abc"), str.erase(str.begin() + 1, str.end()), "a");
+}
 
 TEST(InlineString, PushBack) {
   TEST_STRING(InlineString<1>(), str.push_back('#'), "#");
@@ -1289,7 +1541,7 @@ TEST(InlineString, Append_BasicString) {
       InlineString<11>("a"), str.append(kSize10Capacity10), "a1234567890");
 
 #if PW_NC_TEST(Append_BasicString_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1});
     return str.append(kSize5Capacity10);
@@ -1309,7 +1561,7 @@ TEST(InlineString, Append_Characters) {
   TEST_STRING(InlineString<6>("Hi"), str.append(4, '!'), "Hi!!!!");
 
 #if PW_NC_TEST(Append_Characters_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index\)");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1});
     return str.append(2, '?');
@@ -1326,7 +1578,7 @@ TEST(InlineString, Append_PointerSize) {
   TEST_STRING(InlineString<10>("abc"), str.append("1234567", 3), "abc123");
 
 #if PW_NC_TEST(Append_PointerSize_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1});
     return str.append("23", 2);
@@ -1360,7 +1612,7 @@ TEST(InlineString, Append_Pointer) {
   TEST_STRING(InlineString<13>("abc"), str.append(kPointer10), "abc9876543210");
 
 #if PW_NC_TEST(Append_Pointer_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1});
     return str.append(kPointer10 + 8);
@@ -1394,7 +1646,7 @@ TEST(InlineString, Append_InitializerList) {
   TEST_STRING(InlineString<5>("abc"), str.append({'4', '5'}), "abc45");
 
 #if PW_NC_TEST(Append_InitializerList_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1, 2});
     return str.append({3});
@@ -1402,7 +1654,6 @@ TEST(InlineString, Append_InitializerList) {
 #endif  // PW_NC_TEST
 }
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
 TEST(InlineString, Append_StringView) {
   TEST_STRING(InlineString<0>(), str.append(""sv), "");
   TEST_STRING(InlineString<10>("a"), str.append(""sv), "a");
@@ -1410,7 +1661,7 @@ TEST(InlineString, Append_StringView) {
   TEST_STRING(InlineString<5>("abc"), str.append("45"sv), "abc45");
 
 #if PW_NC_TEST(Append_StringView_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1, 2});
     return str.append("3"sv);
@@ -1428,14 +1679,13 @@ TEST(InlineString, Append_StringViewSubstr) {
   TEST_RUNTIME_STRING(InlineString<4>("a"), str.append("123"sv, 3, 99), "a");
 
 #if PW_NC_TEST(Append_StringViewSubstr_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1, 2});
     return str.append("34"sv, 1);
   }();
 #endif  // PW_NC_TEST
 }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 // operator+=
 
@@ -1451,7 +1701,7 @@ TEST(InlineString, AppendOperator_BasicString) {
   TEST_STRING(InlineString<6>("Hi"), str.append(4, '!'), "Hi!!!!");
 
 #if PW_NC_TEST(AppendOperator_BasicString_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1});
     return str.append(kSize5Capacity10);
@@ -1502,7 +1752,7 @@ TEST(InlineString, AppendOperator_Pointer) {
       InlineString<13>("abc"), fixed_str += kPointer10, "abc9876543210");
 
 #if PW_NC_TEST(AppendOperator_Pointer_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1});
     return str.append(kPointer10 + 8);
@@ -1517,7 +1767,7 @@ TEST(InlineString, AppendOperator_InitializerList) {
   TEST_STRING(InlineString<5>("abc"), (fixed_str += {'4', '5'}), "abc45");
 
 #if PW_NC_TEST(AppendOperator_InitializerList_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1, 2});
     return str.append({3});
@@ -1525,7 +1775,6 @@ TEST(InlineString, AppendOperator_InitializerList) {
 #endif  // PW_NC_TEST
 }
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
 TEST(InlineString, AppendOperator_StringView) {
   TEST_STRING(InlineString<0>(), fixed_str += ""sv, "");
   TEST_STRING(InlineString<10>("a"), fixed_str += ""sv, "a");
@@ -1533,21 +1782,19 @@ TEST(InlineString, AppendOperator_StringView) {
   TEST_STRING(InlineString<5>("abc"), fixed_str += "45"sv, "abc45");
 
 #if PW_NC_TEST(AppendOperator_StringView_DoesNotFit)
-  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(count <= max_size\(\) - index");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<3> str({0, 1, 2});
     return str.append("3"sv);
   }();
 #endif  // PW_NC_TEST
 }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 TEST(InlineString, Compare) {
   EXPECT_EQ(InlineString<10>("abb").compare(InlineString<5>("abb")), 0);
   EXPECT_LT(InlineString<10>("abb").compare(InlineString<5>("bbb")), 0);
   EXPECT_LT(InlineString<10>("bb").compare(InlineString<5>("bbb")), 0);
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
   static_assert(InlineString<10>("bbb").compare(InlineString<5>("bbb")) == 0,
                 "equal");
   static_assert(InlineString<10>("abb").compare(InlineString<5>("bbb")) < 0,
@@ -1570,19 +1817,9 @@ TEST(InlineString, Compare) {
                 "less");
   static_assert(InlineString<5>("abc").compare(InlineString<5>("")) > 0,
                 "greater");
-
-  constexpr InlineBasicString<unsigned long long, 3> kUllString1(
-      {0, std::numeric_limits<unsigned long long>::max(), 0});
-  constexpr InlineBasicString<unsigned long long, 3> kUllString2(
-      {std::numeric_limits<unsigned long long>::max(), 0});
-
-  static_assert(kUllString1.compare(kUllString1) == 0, "equal");
-  static_assert(kUllString1.compare(kUllString2) < 0, "less");
-  static_assert(kUllString2.compare(kUllString1) > 0, "greater");
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 }
 
-// TODO(b/239996007): Test other pw::InlineString functions:
+// TODO: b/239996007 - Test other pw::InlineString functions:
 //
 //   - starts_with
 //   - ends_with
@@ -1637,14 +1874,14 @@ TEST(InlineString, ResizeAndOverwrite) {
               "A?CDE5678");
 
 #if PW_NC_TEST(ResizeAndOverwrite_LargerThanCapacity)
-  PW_NC_EXPECT("PW_ASSERT\(static_cast<size_t>\(new_size\) <= max_size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(new_size <= max_size\(\)\)");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<4> str("123");
     str.resize_and_overwrite([](char*, size_t) { return 5; });
     return str;
   }();
 #elif PW_NC_TEST(ResizeAndOverwrite_NegativeSize)
-  PW_NC_EXPECT("PW_ASSERT\(static_cast<size_t>\(new_size\) <= max_size\(\)\)");
+  PW_NC_EXPECT("PW_ASSERT\(new_size <= max_size\(\)\)");
   [[maybe_unused]] constexpr auto fail = [] {
     InlineString<4> str("123");
     str.resize_and_overwrite([](char*, size_t) { return -1; });
@@ -1653,16 +1890,16 @@ TEST(InlineString, ResizeAndOverwrite) {
 #endif  // PW_NC_TEST
 }
 
-// TODO(b/239996007): Test other pw::InlineString functions:
+// TODO: b/239996007 - Test other pw::InlineString functions:
 //   - swap
 
 //
 // Search
 //
 
-// TODO(b/239996007): Test search functions.
+// TODO: b/239996007 - Test search functions.
 
-// TODO(b/239996007): Test operator+.
+// TODO: b/239996007 - Test operator+.
 
 TEST(InlineString, ComparisonOperators_InlineString) {
   EXPECT_EQ(InlineString<10>("a"), InlineString<10>("a"));
@@ -1672,7 +1909,6 @@ TEST(InlineString, ComparisonOperators_InlineString) {
   EXPECT_GT(InlineString<10>("b"), InlineString<10>("a"));
   EXPECT_GE(InlineString<10>("b"), InlineString<10>("a"));
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
   static_assert(InlineString<10>() == InlineString<10>(), "equal");  // NOLINT
   static_assert(InlineString<10>("abc") == InlineString<5>("abc"), "equal");
   static_assert(InlineString<1>({'a'}) == InlineString<10>("a"), "equal");
@@ -1723,7 +1959,6 @@ TEST(InlineString, ComparisonOperators_InlineString) {
                 "greater equal");
   static_assert(!(InlineString<3>("\0\0") >= InlineString<10>("\1\0")),
                 "greater equal");
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 }
 
 TEST(InlineString, ComparisonOperators_NullTerminatedString) {
@@ -1749,7 +1984,6 @@ TEST(InlineString, ComparisonOperators_NullTerminatedString) {
   EXPECT_GE(InlineString<10>("a"), "a");
   EXPECT_GE("a", InlineString<10>("a"));
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
   static_assert(InlineString<10>() == "", "equal");  // NOLINT
   static_assert("" == InlineString<10>(), "equal");  // NOLINT
   static_assert(InlineString<10>("abc") == "abc", "equal");
@@ -1786,7 +2020,6 @@ TEST(InlineString, ComparisonOperators_NullTerminatedString) {
   static_assert("abc" >= InlineString<5>("ab"), "greater equal");
   static_assert(InlineString<10>("abc") >= "abc", "greater equal");
   static_assert("abc" >= InlineString<5>("abc"), "greater equal");
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 }
 
 // Test instantiating an InlineBasicString with different character types.
@@ -1800,15 +2033,20 @@ TEST(InlineString, ComparisonOperators_NullTerminatedString) {
 #define PW_STRING_WRAP_TEST_EXPANSION(expr)
 #endif  // __cpp_constexpr >= 201603L
 
-#define TEST_FOR_TYPES(test_macro, ...)                                  \
-  PW_STRING_WRAP_TEST_EXPANSION(test_macro(char, __VA_ARGS__));          \
-  PW_STRING_WRAP_TEST_EXPANSION(test_macro(unsigned char, __VA_ARGS__)); \
-  PW_STRING_WRAP_TEST_EXPANSION(test_macro(signed char, __VA_ARGS__));   \
-  PW_STRING_WRAP_TEST_EXPANSION(test_macro(short, __VA_ARGS__));         \
-  PW_STRING_WRAP_TEST_EXPANSION(test_macro(int, __VA_ARGS__));           \
-  PW_STRING_WRAP_TEST_EXPANSION(test_macro(unsigned, __VA_ARGS__));      \
-  PW_STRING_WRAP_TEST_EXPANSION(test_macro(long, __VA_ARGS__));          \
-  PW_STRING_WRAP_TEST_EXPANSION(test_macro(long long, __VA_ARGS__))
+#define TEST_FOR_TYPES_BASE(test_macro, ...)                        \
+  PW_STRING_WRAP_TEST_EXPANSION(test_macro(char, __VA_ARGS__));     \
+  PW_STRING_WRAP_TEST_EXPANSION(test_macro(wchar_t, __VA_ARGS__));  \
+  PW_STRING_WRAP_TEST_EXPANSION(test_macro(char16_t, __VA_ARGS__)); \
+  PW_STRING_WRAP_TEST_EXPANSION(test_macro(char32_t, __VA_ARGS__));
+
+#ifdef __cpp_char8_t
+#define TEST_FOR_TYPES(test_macro, ...)        \
+  TEST_FOR_TYPES_BASE(test_macro, __VA_ARGS__) \
+  PW_STRING_WRAP_TEST_EXPANSION(test_macro(char8_t, __VA_ARGS__));
+#else
+#define TEST_FOR_TYPES(test_macro, ...) \
+  TEST_FOR_TYPES_BASE(test_macro, __VA_ARGS__)
+#endif  // __cpp_char8_t
 
 TEST(BasicStrings, Empty) {
 #define BASIC_STRINGS_EMPTY(type, capacity)                         \
@@ -1869,6 +2107,19 @@ TEST(BasicStrings, VariousOperations) {
   TEST_FOR_TYPES(BASIC_STRINGS_VARIOUS_OPERATIONS, 50);
 
 #undef BASIC_STRINGS_VARIOUS_OPERATIONS
+}
+
+TEST(BasicStrings, ByteString) {
+  InlineByteString<5> bytes;
+  bytes.push_back(std::byte{1});
+  bytes.push_back(std::byte{2});
+
+  EXPECT_EQ(bytes.size(), 2u);
+  EXPECT_EQ(bytes[0], std::byte{1});
+  EXPECT_EQ(bytes[1], std::byte{2});
+
+  InlineByteString<5> higher_bytes({std::byte{99}, std::byte{100}});
+  EXPECT_LT(bytes, higher_bytes);
 }
 
 }  // namespace pw

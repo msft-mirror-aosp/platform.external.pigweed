@@ -48,6 +48,8 @@ class PwpbServerCall : public ServerCall {
   PwpbServerCall(const LockedCallContext& context, MethodType type)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
+  ~PwpbServerCall() { DestroyServerCall(); }
+
   // Sends a unary response.
   // Returns the following Status codes:
   //
@@ -133,6 +135,8 @@ class BasePwpbServerReader : public PwpbServerCall {
   BasePwpbServerReader(const LockedCallContext& context, MethodType type)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock())
       : PwpbServerCall(context, type) {}
+
+  ~BasePwpbServerReader() { DestroyServerCall(); }
 
  protected:
   // Allow default construction so that users can declare a variable into
@@ -228,7 +232,8 @@ class PwpbServerReaderWriter : private internal::BasePwpbServerReader<Request> {
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
   using internal::BasePwpbServerReader<Request>::set_on_next;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
   // Writes a response. Returns the following Status codes:
   //
@@ -303,7 +308,8 @@ class PwpbServerReader : private internal::BasePwpbServerReader<Request> {
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
   using internal::BasePwpbServerReader<Request>::set_on_next;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
   // Sends the response. Returns the following Status codes:
   //
@@ -370,7 +376,8 @@ class PwpbServerWriter : private internal::PwpbServerCall {
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
+  using internal::ServerCall::set_on_completion_requested;
+  using internal::ServerCall::set_on_completion_requested_if_enabled;
 
   // Writes a response. Returns the following Status codes:
   //
@@ -440,7 +447,6 @@ class PwpbUnaryResponder : private internal::PwpbServerCall {
 
   // Functions for setting RPC event callbacks.
   using internal::Call::set_on_error;
-  using internal::ServerCall::set_on_client_stream_end;
 
   // Sends the response. Returns the following Status codes:
   //

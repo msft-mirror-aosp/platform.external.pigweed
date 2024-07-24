@@ -290,7 +290,9 @@ ALIASES                = "rst=^^\verbatim embed:rst:leading-asterisk^^" \
                          "c_macro{1}=@crossref{c,macro,\1}" \
                          "cpp_class{1}=@crossref{cpp,class,\1}" \
                          "cpp_func{1}=@crossref{cpp,func,\1}" \
-                         "cpp_type{1}=@crossref{cpp,type,\1}"
+                         "cpp_type{1}=@crossref{cpp,type,\1}" \
+                         "cpp_enum{1}=@crossref{cpp,type,\1}" \
+                         "pw_status{1}=@crossref{c,enumerator,\1}"
 
 # Set the OPTIMIZE_OUTPUT_FOR_C tag to YES if your project consists of C sources
 # only. Doxygen will then generate output that is more tailored for C. For
@@ -2382,6 +2384,7 @@ PREDEFINED             = __cplusplus \
                          PW_LOCKABLE= \
                          PW_PRINTF_FORMAT(...)= \
                          PW_CONSTEXPR_CPP20= \
+                         PW_INLINE_VARIABLE=inline \
                          PW_EXCLUSIVE_LOCK_FUNCTION(...)= \
                          PW_EXCLUSIVE_TRYLOCK_FUNCTION(...)= \
                          PW_UNLOCK_FUNCTION(...)= \
@@ -2391,6 +2394,8 @@ PREDEFINED             = __cplusplus \
                          PW_LOCKS_EXCLUDED(...)= \
                          PW_EXCLUSIVE_LOCKS_REQUIRED(...)= \
                          PW_GUARDED_BY(...)= \
+                         PW_NO_SANITIZE(...)= \
+                         PW_EXCLUDE_FROM_DOXYGEN=1
 
 # If the MACRO_EXPANSION and EXPAND_ONLY_PREDEF tags are set to YES then this
 # tag can be used to specify a list of macro names that should be expanded. The

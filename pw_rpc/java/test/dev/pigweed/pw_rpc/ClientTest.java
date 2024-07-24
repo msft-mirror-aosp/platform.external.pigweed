@@ -43,11 +43,13 @@ public final class ClientTest {
   @Rule public final MockitoRule mockito = MockitoJUnit.rule();
 
   private static final Service SERVICE = new Service("pw.rpc.test1.TheTestService",
-      Service.unaryMethod("SomeUnary", SomeMessage.class, AnotherMessage.class),
-      Service.serverStreamingMethod("SomeServerStreaming", SomeMessage.class, AnotherMessage.class),
-      Service.clientStreamingMethod("SomeClientStreaming", SomeMessage.class, AnotherMessage.class),
+      Service.unaryMethod("SomeUnary", SomeMessage.parser(), AnotherMessage.parser()),
+      Service.serverStreamingMethod(
+          "SomeServerStreaming", SomeMessage.parser(), AnotherMessage.parser()),
+      Service.clientStreamingMethod(
+          "SomeClientStreaming", SomeMessage.parser(), AnotherMessage.parser()),
       Service.bidirectionalStreamingMethod(
-          "SomeBidiStreaming", SomeMessage.class, AnotherMessage.class));
+          "SomeBidiStreaming", SomeMessage.parser(), AnotherMessage.parser()));
 
   private static final Method UNARY_METHOD = SERVICE.method("SomeUnary");
   private static final Method SERVER_STREAMING_METHOD = SERVICE.method("SomeServerStreaming");
@@ -135,7 +137,7 @@ public final class ClientTest {
         InvalidRpcServiceException.class, () -> client.method(CHANNEL_ID, "abc.Service/Method"));
 
     Service service = new Service("throwaway.NotRealService",
-        Service.unaryMethod("NotAnRpc", SomeMessage.class, AnotherMessage.class));
+        Service.unaryMethod("NotAnRpc", SomeMessage.parser(), AnotherMessage.parser()));
     assertThrows(InvalidRpcServiceException.class,
         () -> client.method(CHANNEL_ID, service.method("NotAnRpc")));
   }

@@ -14,16 +14,14 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
-load(":rust_toolchain.bzl", "pw_rust_toolchain")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "no_destructor",
     hdrs = ["public/pw_toolchain/no_destructor.h"],
     includes = ["public"],
@@ -38,28 +36,27 @@ pw_cc_test(
     ],
 )
 
-pw_cc_library(
+cc_library(
+    name = "sibling_cast",
+    hdrs = ["public/pw_toolchain/internal/sibling_cast.h"],
+    includes = ["public"],
+    visibility = ["//:__subpackages__"],  # Restrict to Pigweed
+    deps = ["//pw_compilation_testing:negative_compilation_testing"],
+)
+
+pw_cc_test(
+    name = "sibling_cast_test",
+    srcs = ["sibling_cast_test.cc"],
+    deps = [
+        ":sibling_cast",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
     name = "wrap_abort",
     srcs = ["wrap_abort.cc"],
     linkopts = ["-Wl,--wrap=abort"],
     deps = ["//pw_assert"],
-)
-
-# Define rust toolchains that are compatable with @bazel_embedded.
-pw_rust_toolchain(
-    name = "thumbv7m_rust_linux_x86_64",
-    exec_cpu = "x86_64",
-    exec_os = "linux",
-    exec_triple = "x86_64-unknown-linux-gnu",
-    rust_target_triple = "thumbv7m-none-eabi",
-    target_cpu = "armv7-m",
-)
-
-pw_rust_toolchain(
-    name = "thumbv6m_rust_linux_x86_64",
-    exec_cpu = "x86_64",
-    exec_os = "linux",
-    exec_triple = "x86_64-unknown-linux-gnu",
-    rust_target_triple = "thumbv6m-none-eabi",
-    target_cpu = "armv6-m",
+    alwayslink = 1,
 )

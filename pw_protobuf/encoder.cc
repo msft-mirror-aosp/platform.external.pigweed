@@ -40,9 +40,12 @@ using internal::VarintType;
 StreamEncoder StreamEncoder::GetNestedEncoder(uint32_t field_number,
                                               bool write_when_empty) {
   PW_CHECK(!nested_encoder_open());
-  PW_CHECK(ValidFieldNumber(field_number));
 
   nested_field_number_ = field_number;
+  if (!ValidFieldNumber(field_number)) {
+    status_.Update(Status::InvalidArgument());
+    return StreamEncoder(*this, ByteSpan(), false);
+  }
 
   // Pass the unused space of the scratch buffer to the nested encoder to use
   // as their scratch buffer.
@@ -125,7 +128,7 @@ Status StreamEncoder::WriteVarintField(uint32_t field_number, uint64_t value) {
       field_number, WireType::kVarint, varint::EncodedSize(value)));
 
   WriteVarint(FieldKey(field_number, WireType::kVarint))
-      .IgnoreError();  // TODO(b/242598609): Handle Status properly
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
   return WriteVarint(value);
 }
 
@@ -180,7 +183,7 @@ Status StreamEncoder::WriteFixed(uint32_t field_number, ConstByteSpan data) {
   PW_TRY(UpdateStatusForWrite(field_number, type, data.size()));
 
   WriteVarint(FieldKey(field_number, type))
-      .IgnoreError();  // TODO(b/242598609): Handle Status properly
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
   if (Status status = writer_.Write(data); !status.ok()) {
     status_ = status;
   }
@@ -200,9 +203,9 @@ Status StreamEncoder::WritePackedFixed(uint32_t field_number,
   PW_TRY(UpdateStatusForWrite(
       field_number, WireType::kDelimited, values.size_bytes()));
   WriteVarint(FieldKey(field_number, WireType::kDelimited))
-      .IgnoreError();  // TODO(b/242598609): Handle Status properly
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
   WriteVarint(values.size_bytes())
-      .IgnoreError();  // TODO(b/242598609): Handle Status properly
+      .IgnoreError();  // TODO: b/242598609 - Handle Status properly
 
   for (auto val_start = values.begin(); val_start != values.end();
        val_start += elem_size) {

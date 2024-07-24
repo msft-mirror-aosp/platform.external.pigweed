@@ -24,6 +24,8 @@ pw_add_library(pw_preprocessor INTERFACE
     public/pw_preprocessor/internal/arg_count_impl.h
   PUBLIC_INCLUDES
     public
+  PUBLIC_DEPS
+    pw_polyfill
 )
 
 pw_add_library(pw_preprocessor.arch INTERFACE
@@ -32,7 +34,3 @@ pw_add_library(pw_preprocessor.arch INTERFACE
   PUBLIC_INCLUDES
     public
 )
-
-if(Zephyr_FOUND AND CONFIG_PIGWEED_PREPROCESSOR)
-  zephyr_link_libraries(pw_preprocessor)
-endif()

@@ -14,15 +14,20 @@
 """Utilities for fuzzing."""
 
 load("@rules_fuzzing//fuzzing:cc_defs.bzl", "cc_fuzz_test")
-load(
-    "//pw_build/bazel_internal:pigweed_internal.bzl",
-    _add_defaults = "add_defaults",
-)
 
 def pw_cc_fuzz_test(**kwargs):
-    # TODO(b/234877642): Remove this implicit dependency once we have a better
+    """Wrapper for cc_fuzz_test that adds required Pigweed dependencies.
+
+    Args:
+        **kwargs: Arguments to be augmented.
+    """
+    kwargs["deps"].append("//pw_fuzzer:libfuzzer")
+
+    # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
-    kwargs["deps"].append("@pigweed_config//:pw_assert_backend")
-    _add_defaults(kwargs)
+    kwargs["deps"].append("@pigweed//pw_build:default_link_extra_lib")
+
+    # TODO: b/292628774 - Only linux is supported for now.
+    kwargs["target_compatible_with"] = ["@platforms//os:linux"]
     cc_fuzz_test(**kwargs)

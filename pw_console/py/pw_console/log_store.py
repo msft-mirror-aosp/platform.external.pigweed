@@ -147,6 +147,9 @@ class LogStore(logging.Handler):
         self.channel_formatted_prefix_widths = {}
         self.line_index = 0
 
+    def get_channel_names(self) -> List[str]:
+        return list(sorted(self.channel_counts.keys()))
+
     def get_channel_counts(self):
         """Return the seen channel log counts for this conatiner."""
         return ', '.join(
@@ -223,7 +226,7 @@ class LogStore(logging.Handler):
             self.channel_counts.get(record.name, 0) + 1
         )
 
-        # TODO(b/235271486): Revisit calculating prefix widths automatically
+        # TODO: b/235271486 - Revisit calculating prefix widths automatically
         # when line wrapping indentation is supported.
         # Set the prefix width to 0
         self.channel_formatted_prefix_widths[record.name] = 0

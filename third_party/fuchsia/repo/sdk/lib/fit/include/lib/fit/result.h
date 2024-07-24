@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef LIB_FIT_INCLUDE_LIB_FIT_RESULT_H_
-#define LIB_FIT_INCLUDE_LIB_FIT_RESULT_H_
+#ifndef LIB_FIT_RESULT_H_
+#define LIB_FIT_RESULT_H_
 
 #include <lib/fit/internal/compiler.h>
 #include <lib/fit/internal/result.h>
@@ -192,7 +192,7 @@ class success<> {
 #if __cplusplus >= 201703L
 
 // Deduction guides to simplify zero and single argument success expressions in C++17.
-success()->success<>;
+success() -> success<>;
 
 template <typename T>
 success(T) -> success<T>;
@@ -226,9 +226,15 @@ constexpr success<> ok() { return success<>{}; }
 template <typename E, typename... Ts>
 class result;
 
+// This suppresses the '-Wctad-maybe-unsupported' compiler warning when CTAD is used.
+//
+// See https://github.com/llvm/llvm-project/blob/42874f6/libcxx/include/__config#L1259-L1261.
+template <class... Tag>
+result(typename Tag::__allow_ctad...) -> result<Tag...>;
+
 // Specialization of result for one value type.
 template <typename E, typename T>
-class LIB_FIT_NODISCARD result<E, T> {
+class [[nodiscard]] result<E, T> {
   static_assert(!::fit::internal::is_success_v<E>,
                 "fit::success may not be used as the error type of fit::result!");
   static_assert(!cpp17::is_same_v<failed, std::decay_t<T>>,
@@ -473,7 +479,7 @@ class LIB_FIT_NODISCARD result<E, T> {
 
 // Specialization of the result type for zero values.
 template <typename E>
-class LIB_FIT_NODISCARD result<E> {
+class [[nodiscard]] result<E> {
   static_assert(!::fit::internal::is_success_v<E>,
                 "fit::success may not be used as the error type of fit::result!");
 
@@ -797,4 +803,4 @@ constexpr bool operator>=(const T& lhs, const result<F, U>& rhs) {
 
 }  // namespace fit
 
-#endif  // LIB_FIT_INCLUDE_LIB_FIT_RESULT_H_
+#endif  // LIB_FIT_RESULT_H_

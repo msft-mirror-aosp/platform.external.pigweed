@@ -8,7 +8,17 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:284a05aeae3cf2e4579e6518ab3a5316058da6d4"
+        "git_revision:01ae77c8d7f83c9ad80fed0f5a55d9d2c8104ac4"
+      ],
+      "version_file": ".versions/host_tools.cipd_version"
+    },
+    {
+      "path": "pigweed/host_tools/mac-amd64",
+      "platforms": [
+        "mac-arm64"
+      ],
+      "tags": [
+        "git_revision:01ae77c8d7f83c9ad80fed0f5a55d9d2c8104ac4"
       ],
       "version_file": ".versions/host_tools.cipd_version"
     }

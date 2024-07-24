@@ -21,6 +21,8 @@ const thread::Options& LogThreadOptions();
 
 const thread::Options& RpcThreadOptions();
 
+const thread::Options& TransferThreadOptions();
+
 const thread::Options& WorkQueueThreadOptions();
 
 // This will run once after pw::system::Init() completes. This callback must

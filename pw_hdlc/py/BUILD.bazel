@@ -32,6 +32,7 @@ py_library(
         "//pw_protobuf_compiler/py:pw_protobuf_compiler",
         "//pw_rpc/py:pw_rpc",
         "//pw_status/py:pw_status",
+        "@python_packages_pyserial//:pkg",
     ],
 )
 
@@ -55,5 +56,16 @@ py_test(
     deps = [
         ":pw_hdlc",
         "//pw_build/py:pw_build",
+    ],
+)
+
+py_test(
+    name = "rpc_test",
+    size = "small",
+    srcs = [
+        "rpc_test.py",
+    ],
+    deps = [
+        ":pw_hdlc",
     ],
 )

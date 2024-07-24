@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,7 +21,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_random",
     hdrs = [
         "public/pw_random/random.h",
@@ -31,6 +30,20 @@ pw_cc_library(
     includes = ["public"],
     deps = [
         "//pw_assert",
+        "//pw_bytes",
+        "//pw_span",
+        "//pw_status",
+    ],
+)
+
+cc_library(
+    name = "fuzzer_generator",
+    hdrs = ["public/pw_random/fuzzer.h"],
+    includes = ["public"],
+    deps = [
+        ":pw_random",
+        "//pw_bytes",
+        "//pw_fuzzer:libfuzzer",
     ],
 )
 

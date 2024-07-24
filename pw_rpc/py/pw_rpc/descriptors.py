@@ -46,7 +46,7 @@ from pw_rpc import ids
 @dataclass(frozen=True)
 class Channel:
     id: int
-    output: Callable[[bytes], Any]
+    output: Optional[Callable[[bytes], Any]]
 
     def __repr__(self) -> str:
         return f'Channel({self.id})'
@@ -85,10 +85,14 @@ class ChannelManipulator(abc.ABC):
       channels = tuple(Channel(_DEFAULT_CHANNEL, packet_logger))
 
       # Create a RPC client.
-      client = HdlcRpcClient(socket.read, protos, channels, stdout)
+      reader = SocketReader(socket)
+      with reader:
+          client = HdlcRpcClient(reader, protos, channels, stdout)
+          with client:
+            # Do something with client
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.send_packet: Callable[[bytes], Any] = lambda _: None
 
     @abc.abstractmethod
@@ -190,9 +194,7 @@ _PROTO_FIELD_TYPES = {
 def _field_type_annotation(field: FieldDescriptor):
     """Creates a field type annotation to use in the help message only."""
     if field.type == FieldDescriptor.TYPE_MESSAGE:
-        annotation = message_factory.MessageFactory(
-            field.message_type.file.pool
-        ).GetPrototype(field.message_type)
+        annotation = message_factory.GetMessageClass(field.message_type)
     else:
         annotation = _PROTO_FIELD_TYPES.get(field.type, Parameter.empty)
 
@@ -219,18 +221,6 @@ def field_help(proto_message, *, annotations: bool = False) -> Iterator[str]:
             yield f'{field.name}={value}'
 
 
-def _message_is_type(proto, expected_type) -> bool:
-    """Returns true if the protobuf instance is the expected type."""
-    # Getting protobuf classes from google.protobuf.message_factory may create a
-    # new, unique generated proto class. Any generated classes for a particular
-    # proto message share the same MessageDescriptor instance and are
-    # interchangeable, so check the descriptors in addition to the types.
-    return isinstance(proto, expected_type) or (
-        isinstance(proto, Message)
-        and proto.DESCRIPTOR is expected_type.DESCRIPTOR
-    )
-
-
 @dataclass(frozen=True, eq=False)
 class Method:
     """Describes a method in a service."""
@@ -244,20 +234,16 @@ class Method:
     response_type: Any
 
     @classmethod
-    def from_descriptor(cls, descriptor: MethodDescriptor, service: Service):
-        input_factory = message_factory.MessageFactory(
-            descriptor.input_type.file.pool
-        )
-        output_factory = message_factory.MessageFactory(
-            descriptor.output_type.file.pool
-        )
+    def from_descriptor(
+        cls, descriptor: MethodDescriptor, service: Service
+    ) -> 'Method':
         return Method(
             descriptor,
             service,
             ids.calculate(descriptor.name),
             *_streaming_attributes(descriptor),
-            input_factory.GetPrototype(descriptor.input_type),
-            output_factory.GetPrototype(descriptor.output_type),
+            message_factory.GetMessageClass(descriptor.input_type),
+            message_factory.GetMessageClass(descriptor.output_type),
         )
 
     class Type(enum.Enum):
@@ -319,7 +305,7 @@ class Method:
         if proto is None:
             return self.request_type(**proto_kwargs)
 
-        if not _message_is_type(proto, self.request_type):
+        if not isinstance(proto, self.request_type):
             try:
                 bad_type = proto.DESCRIPTOR.full_name
             except AttributeError:
@@ -388,21 +374,29 @@ class ServiceAccessor(Collection[T]):
         if not isinstance(members, dict):
             members = {m: m for m in members}
 
-        by_name = {_name(k): v for k, v in members.items()}
+        by_name: Dict[str, Any] = {_name(k): v for k, v in members.items()}
         self._by_id = {k.id: v for k, v in members.items()}
+        # Note: a dictionary is used rather than `setattr` in order to
+        # (1) Hint to the type checker that there will be extra fields
+        # (2) Ensure that built-in attributes such as `_by_id`` are not
+        #     overwritten.
+        self._attrs: Dict[str, Any] = {}
 
         if as_attrs == 'members':
             for name, member in by_name.items():
-                setattr(self, name, member)
+                self._attrs[name] = member
         elif as_attrs == 'packages':
             for package in python_protos.as_packages(
                 (m.package, _AccessByName(m.name, members[m])) for m in members
             ).packages:
-                setattr(self, str(package), package)
+                self._attrs[str(package)] = package
         elif as_attrs:
             raise ValueError(f'Unexpected value {as_attrs!r} for as_attrs')
 
-    def __getitem__(self, name_or_id: Union[str, int]):
+    def __getattr__(self, name: str) -> Any:
+        return self._attrs[name]
+
+    def __getitem__(self, name_or_id: Union[str, int]) -> Any:
         """Accesses a service/method by the string name or ID."""
         try:
             return self._by_id[_id(name_or_id)]

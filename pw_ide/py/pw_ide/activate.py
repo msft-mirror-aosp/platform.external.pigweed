@@ -66,12 +66,8 @@ import subprocess
 import sys
 from typing import cast, Dict, Optional
 
-# This expects this file to be in the Python module. If it ever moves
-# (e.g. to the root of the repository), this will need to change.
 _PW_PROJECT_PATH = Path(
-    os.environ.get(
-        'PW_PROJECT_ROOT', os.environ.get('PW_ROOT', Path(__file__).parents[3])
-    )
+    os.environ.get('PW_PROJECT_ROOT', os.environ.get('PW_ROOT', os.getcwd()))
 )
 
 
@@ -146,7 +142,7 @@ def _sanitize_path(
     user_home = Path.home().resolve()
     resolved_path = Path(path).resolve()
 
-    # TODO(b/248257406) Remove once we drop support for Python 3.8.
+    # TODO: b/248257406 - Remove once we drop support for Python 3.8.
     def is_relative_to(path: Path, other: Path) -> bool:
         try:
             path.relative_to(other)
@@ -458,9 +454,15 @@ def main() -> int:
         return 0
 
     if args.exec is not None:
+        # Ensure that the command is always dequoted.
+        # When executed directly from the shell, this is already done by
+        # default. But in other contexts, the command may be passed more
+        # literally with whitespace and quotes, which won't work.
+        exec_cmd = args.exec.strip(" '")
+
         # We're executing a command in a subprocess with the modified env.
         return subprocess.run(
-            args.exec, env=modified_env.env, shell=True
+            exec_cmd, env=modified_env.env, shell=True
         ).returncode
 
     # If we got here, we're trying to modify the current shell's env.

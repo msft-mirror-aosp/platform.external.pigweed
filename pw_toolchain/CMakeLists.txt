@@ -23,6 +23,35 @@ pw_add_library(pw_toolchain.no_destructor INTERFACE
     public
 )
 
+pw_add_test(pw_toolchain.no_destructor_test
+  SOURCES
+    no_destructor_test.cc
+  PRIVATE_DEPS
+    pw_assert.check
+    pw_toolchain.no_destructor
+  GROUPS
+    modules
+    pw_toolchain
+)
+
+pw_add_library(pw_toolchain._sibling_cast INTERFACE
+  HEADERS
+    public/pw_toolchain/internal/sibling_cast.h
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_toolchain.sibling_cast_test
+  SOURCES
+    sibling_cast_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_toolchain._sibling_cast
+  GROUPS
+    modules
+    pw_toolchain
+)
+
 pw_add_library(pw_toolchain.wrap_abort STATIC
   SOURCES
     wrap_abort.cc
@@ -30,14 +59,4 @@ pw_add_library(pw_toolchain.wrap_abort STATIC
     pw_assert
   PUBLIC_LINK_OPTIONS
     "-Wl,--wrap=abort"
-)
-
-pw_add_test(pw_toolchain.no_destructor_test
-  SOURCES
-    no_destructor_test.cc
-  PRIVATE_DEPS
-    pw_toolchain.no_destructor
-  GROUPS
-    modules
-    pw_toolchain
 )

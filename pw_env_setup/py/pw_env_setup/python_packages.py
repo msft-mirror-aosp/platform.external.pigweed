@@ -33,7 +33,7 @@ def _installed_packages() -> Iterator[str]:
         if isinstance(pkg, pkg_resources.DistInfoDistribution)  # type: ignore
         # This will skip packages with local versions.
         #   For example text after a plus sign: 1.2.3+dev456
-        and not pkg.parsed_version.local
+        and not pkg.parsed_version.local  # type: ignore
         # These are always installed by default in:
         #   pw_env_setup/py/pw_env_setup/virtualenv_setup/install.py
         and pkg.key not in ['pip', 'setuptools', 'wheel']
@@ -108,8 +108,8 @@ def _stderr(*args, **kwargs):
 def _load_requirements_lines(*req_files: Path) -> Iterator[str]:
     for req_file in req_files:
         for line in req_file.read_text().splitlines():
-            # Ignore comments and blank lines
-            if line.startswith('#') or line == '':
+            # Ignore constraints, comments and blank lines
+            if line.startswith('-c') or line.startswith('#') or line == '':
                 continue
             yield line
 

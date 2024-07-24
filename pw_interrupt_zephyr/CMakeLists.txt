@@ -14,10 +14,6 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-if(NOT CONFIG_PIGWEED_INTERRUPT_CONTEXT)
-  return()
-endif()
-
 pw_add_library(pw_interrupt_zephyr.context INTERFACE
   HEADERS
     public/pw_interrupt_zephyr/context_inline.h
@@ -28,5 +24,4 @@ pw_add_library(pw_interrupt_zephyr.context INTERFACE
   PUBLIC_DEPS
     pw_interrupt.context.facade
 )
-zephyr_link_interface(pw_interrupt_zephyr.context)
-zephyr_link_libraries(pw_interrupt_zephyr.context)
+pw_zephyrize_libraries_ifdef(CONFIG_PIGWEED_INTERRUPT_CONTEXT pw_interrupt_zephyr.context)

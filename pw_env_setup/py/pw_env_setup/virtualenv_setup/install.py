@@ -32,6 +32,10 @@ import tempfile
 _DATETIME_STRING = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
 
 
+def _is_windows() -> bool:
+    return platform.system().lower() == 'windows'
+
+
 class GnTarget(object):  # pylint: disable=useless-object-inheritance
     def __init__(self, val):
         self.directory, self.target = val.split('#', 1)
@@ -58,7 +62,7 @@ class GitRepoNotFound(Exception):
 
 
 def _installed_packages(venv_python):
-    cmd = (venv_python, '-m', 'pip', 'list', '--disable-pip-version-check')
+    cmd = (venv_python, '-m', 'pip', '--disable-pip-version-check', 'list')
     output = subprocess.check_output(cmd).splitlines()
     return set(x.split()[0].lower() for x in output[2:])
 
@@ -110,7 +114,7 @@ def _find_files_by_name(roots, name, allow_nesting=False):
 
 
 def _check_venv(python, version, venv_path, pyvenv_cfg):
-    if platform.system().lower() == 'windows':
+    if _is_windows():
         return
 
     # Check if the python location and version used for the existing virtualenv
@@ -126,14 +130,14 @@ def _check_venv(python, version, venv_path, pyvenv_cfg):
         home = pyvenv_values.get('home')
         if pydir != home and not pydir.startswith(venv_path):
             shutil.rmtree(venv_path)
-        elif pyvenv_values.get('version') not in version:
+        elif pyvenv_values.get('version') not in '.'.join(map(str, version)):
             shutil.rmtree(venv_path)
 
 
 def _check_python_install_permissions(python):
     # These pickle files are not included on windows.
     # The path on windows is environment/cipd/packages/python/bin/Lib/lib2to3/
-    if platform.system().lower() == 'windows':
+    if _is_windows():
         return
 
     # Make any existing lib2to3 pickle files read+write. This is needed for
@@ -169,12 +173,32 @@ def _flatten(*items):
             yield item
 
 
-def install(  # pylint: disable=too-many-arguments,too-many-locals
+def _python_version(python_path: str):
+    """Returns the version (major, minor, rev) of the `python_path` binary."""
+    # Prints values like "3.10.0"
+    command = (
+        python_path,
+        '-c',
+        'import sys; print(".".join(map(str, sys.version_info[:3])))',
+    )
+    version_str = (
+        subprocess.check_output(command, stderr=subprocess.STDOUT)
+        .strip()
+        .decode()
+    )
+    return tuple(map(int, version_str.split('.')))
+
+
+def install(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     project_root,
     venv_path,
     full_envsetup=True,
     requirements=None,
     constraints=None,
+    pip_install_disable_cache=None,
+    pip_install_find_links=None,
+    pip_install_offline=None,
+    pip_install_require_hashes=None,
     gn_args=(),
     gn_targets=(),
     gn_out_dir=None,
@@ -185,12 +209,8 @@ def install(  # pylint: disable=too-many-arguments,too-many-locals
 ):
     """Creates a venv and installs all packages in this Git repo."""
 
-    version = (
-        subprocess.check_output((python, '--version'), stderr=subprocess.STDOUT)
-        .strip()
-        .decode()
-    )
-    if ' 3.' not in version:
+    version = _python_version(python)
+    if version[0] != 3:
         print('=' * 60, file=sys.stderr)
         print('Unexpected Python version:', version, file=sys.stderr)
         print('=' * 60, file=sys.stderr)
@@ -207,12 +227,15 @@ def install(  # pylint: disable=too-many-arguments,too-many-locals
     else:
         env = contextlib.nullcontext()
 
-    # Delete activation scripts. Typically they're created read-only and venv
-    # will complain when trying to write over them fails.
-    if os.path.isdir(venv_bin):
-        for entry in os.listdir(venv_bin):
-            if entry.lower().startswith('activate'):
-                os.unlink(os.path.join(venv_bin, entry))
+    # Virtual environments may contain read-only files (notably activate
+    # scripts).  `venv` calls below will fail if they are not writeable.
+    if os.path.isdir(venv_path):
+        for root, _dirs, files in os.walk(venv_path):
+            for file in files:
+                path = os.path.join(root, file)
+                mode = os.lstat(path).st_mode
+                if not (stat.S_ISLNK(mode) or (mode & stat.S_IWRITE)):
+                    os.chmod(path, mode | stat.S_IWRITE)
 
     pyvenv_cfg = os.path.join(venv_path, 'pyvenv.cfg')
 
@@ -231,7 +254,27 @@ def install(  # pylint: disable=too-many-arguments,too-many-locals
         # TODO(spang): Pass --upgrade-deps and remove pip & setuptools
         # upgrade below. This can only be done once the minimum python
         # version is at least 3.9.
-        cmd = [python, '-m', 'venv', '--upgrade']
+        cmd = [python, '-m', 'venv']
+
+        # Windows requires strange wizardry, and must follow symlinks
+        # starting with 3.11.
+        #
+        # Without this, windows fails bootstrap trying to copy
+        # "environment\cipd\packages\python\bin\venvlauncher.exe"
+        #
+        # This file doesn't exist in Python 3.11 on Windows and may be a bug
+        # in venv. Pigweed already uses symlinks on Windows for the GN build,
+        # so adding this option is not an issue.
+        #
+        # Further excitement is had when trying to update a virtual environment
+        # that is created using symlinks under Windows.  `venv` will fail with
+        # and error that the source and destination are the same file.  To work
+        # around this, we run `venv` in `--clear` mode under Windows.
+        if _is_windows() and version >= (3, 11):
+            cmd += ['--clear', '--symlinks']
+        else:
+            cmd += ['--upgrade']
+
         cmd += ['--system-site-packages'] if system_packages else []
         cmd += [venv_path]
         _check_call(cmd, env=envcopy)
@@ -255,10 +298,33 @@ def install(  # pylint: disable=too-many-arguments,too-many-locals
     ):
         os.unlink(egg_link)
 
+    pip_install_args = []
+    if pip_install_find_links:
+        for package_dir in pip_install_find_links:
+            pip_install_args.append('--find-links')
+            with env():
+                pip_install_args.append(os.path.expandvars(package_dir))
+    if pip_install_require_hashes:
+        pip_install_args.append('--require-hashes')
+    if pip_install_offline:
+        pip_install_args.append('--no-index')
+    if pip_install_disable_cache:
+        pip_install_args.append('--no-cache-dir')
+
     def pip_install(*args):
         args = list(_flatten(args))
         with env():
-            cmd = [venv_python, '-m', 'pip', 'install'] + args
+            cmd = (
+                [
+                    venv_python,
+                    '-m',
+                    'pip',
+                    '--disable-pip-version-check',
+                    'install',
+                ]
+                + pip_install_args
+                + args
+            )
             return _check_call(cmd)
 
     constraint_args = []
@@ -277,6 +343,7 @@ def install(  # pylint: disable=too-many-arguments,too-many-locals
         # Include wheel so pip installs can be done without build
         # isolation.
         'wheel',
+        'pip-tools',
         constraint_args,
     )
 
@@ -301,7 +368,7 @@ def install(  # pylint: disable=too-many-arguments,too-many-locals
 
     def install_packages(gn_target):
         if gn_out_dir is None:
-            build_dir = os.path.join(venv_path, 'gn-install-dir')
+            build_dir = os.path.join(venv_path, 'gn')
         else:
             build_dir = gn_out_dir
 
@@ -360,7 +427,13 @@ def install(  # pylint: disable=too-many-arguments,too-many-locals
 
         with open(os.path.join(venv_path, 'pip-list.log'), 'w') as outs:
             subprocess.check_call(
-                [venv_python, '-m', 'pip', 'list'],
+                [
+                    venv_python,
+                    '-m',
+                    'pip',
+                    '--disable-pip-version-check',
+                    'list',
+                ],
                 stdout=outs,
             )
 

@@ -65,7 +65,7 @@ ENTRY(pw_boot_Entry)
 
 MEMORY
 {
-  /* TODO(b/234892223): Make it possible for projects to freely customize
+  /* TODO: b/234892223 - Make it possible for projects to freely customize
    * memory regions.
    */
 
@@ -166,6 +166,14 @@ SECTIONS
     KEEP(*(SORT(.fini_array.*)))
     KEEP(*(.fini_array*))
     PROVIDE_HIDDEN(__fini_array_end = .);
+  } >FLASH
+
+  /* GNU build ID section. Used by pw_build_info. */
+  .note.gnu.build-id :
+  {
+    . = ALIGN(4);
+    gnu_build_id_begin = .;
+    *(.note.gnu.build-id);
   } >FLASH
 
   /* Used by unwind-arm/ */

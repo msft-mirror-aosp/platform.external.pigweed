@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -18,7 +18,6 @@
 #include "pw_assert/assert.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_function/function.h"
-#include "pw_preprocessor/compiler.h"
 #include "pw_rpc/raw/client_reader_writer.h"
 #include "pw_rpc/raw/server_reader_writer.h"
 #include "pw_span/span.h"
@@ -32,6 +31,9 @@
 #include "pw_transfer/internal/server_context.h"
 
 namespace pw::transfer {
+
+class Client;
+
 namespace internal {
 
 class TransferThread : public thread::ThreadCore {
@@ -42,32 +44,36 @@ class TransferThread : public thread::ThreadCore {
                  ByteSpan encode_buffer)
       : client_transfers_(client_transfers),
         server_transfers_(server_transfers),
+        next_session_id_(1),
         chunk_buffer_(chunk_buffer),
         encode_buffer_(encode_buffer) {}
 
   void StartClientTransfer(TransferType type,
                            ProtocolVersion version,
                            uint32_t resource_id,
+                           uint32_t handle_id,
                            stream::Stream* stream,
                            const TransferParameters& max_parameters,
                            Function<void(Status)>&& on_completion,
                            chrono::SystemClock::duration timeout,
+                           chrono::SystemClock::duration initial_timeout,
                            uint8_t max_retries,
-                           uint32_t max_lifetime_retries) {
-    uint32_t session_id = version == ProtocolVersion::kLegacy
-                              ? resource_id
-                              : Context::kUnassignedSessionId;
+                           uint32_t max_lifetime_retries,
+                           uint32_t initial_offset = 0) {
     StartTransfer(type,
                   version,
-                  session_id,
+                  Context::kUnassignedSessionId,  // Assigned later.
                   resource_id,
+                  handle_id,
                   /*raw_chunk=*/{},
                   stream,
                   max_parameters,
                   std::move(on_completion),
                   timeout,
+                  initial_timeout,
                   max_retries,
-                  max_lifetime_retries);
+                  max_lifetime_retries,
+                  initial_offset);
   }
 
   void StartServerTransfer(TransferType type,
@@ -78,18 +84,22 @@ class TransferThread : public thread::ThreadCore {
                            const TransferParameters& max_parameters,
                            chrono::SystemClock::duration timeout,
                            uint8_t max_retries,
-                           uint32_t max_lifetime_retries) {
+                           uint32_t max_lifetime_retries,
+                           uint32_t initial_offset = 0) {
     StartTransfer(type,
                   version,
                   session_id,
                   resource_id,
+                  /*handle_id=*/0,
                   raw_chunk,
                   /*stream=*/nullptr,
                   max_parameters,
                   /*on_completion=*/nullptr,
                   timeout,
+                  timeout,
                   max_retries,
-                  max_lifetime_retries);
+                  max_lifetime_retries,
+                  initial_offset);
   }
 
   void ProcessClientChunk(ConstByteSpan chunk) {
@@ -100,18 +110,43 @@ class TransferThread : public thread::ThreadCore {
     ProcessChunk(EventType::kServerChunk, chunk);
   }
 
+  void SendServerStatus(TransferType type,
+                        uint32_t session_id,
+                        ProtocolVersion version,
+                        Status status) {
+    SendStatus(type == TransferType::kTransmit ? TransferStream::kServerRead
+                                               : TransferStream::kServerWrite,
+               session_id,
+               version,
+               status);
+  }
+
+  void CancelClientTransfer(uint32_t handle_id) {
+    EndTransfer(EventType::kClientEndTransfer,
+                IdentifierType::Handle,
+                handle_id,
+                Status::Cancelled(),
+                /*send_status_chunk=*/true);
+  }
+
   void EndClientTransfer(uint32_t session_id,
                          Status status,
                          bool send_status_chunk = false) {
-    EndTransfer(
-        EventType::kClientEndTransfer, session_id, status, send_status_chunk);
+    EndTransfer(EventType::kClientEndTransfer,
+                IdentifierType::Session,
+                session_id,
+                status,
+                send_status_chunk);
   }
 
   void EndServerTransfer(uint32_t session_id,
                          Status status,
                          bool send_status_chunk = false) {
-    EndTransfer(
-        EventType::kServerEndTransfer, session_id, status, send_status_chunk);
+    EndTransfer(EventType::kServerEndTransfer,
+                IdentifierType::Session,
+                session_id,
+                status,
+                send_status_chunk);
   }
 
   // Move the read/write streams on this thread instead of the transfer thread.
@@ -166,12 +201,18 @@ class TransferThread : public thread::ThreadCore {
     SimulateTimeout(EventType::kServerTimeout, session_id);
   }
 
+  void EnqueueResourceEvent(uint32_t resource_id,
+                            ResourceStatusCallback&& callback);
+
  private:
+  friend class transfer::Client;
   friend class Context;
 
   // Maximum amount of time between transfer thread runs.
   static constexpr chrono::SystemClock::duration kMaxTimeout =
       std::chrono::seconds(2);
+
+  void UpdateClientTransfer(uint32_t handle_id, size_t transfer_size_bytes);
 
   // Finds an active server or client transfer, matching against its legacy ID.
   template <typename T>
@@ -179,7 +220,7 @@ class TransferThread : public thread::ThreadCore {
                                                uint32_t session_id) {
     auto transfer =
         std::find_if(transfers.begin(), transfers.end(), [session_id](auto& c) {
-          return c.initialized() && c.id() == session_id;
+          return c.initialized() && c.session_id() == session_id;
         });
     return transfer != transfers.end() ? &*transfer : nullptr;
   }
@@ -193,6 +234,16 @@ class TransferThread : public thread::ThreadCore {
           return c.initialized() && c.resource_id() == resource_id;
         });
     return transfer != transfers.end() ? &*transfer : nullptr;
+  }
+
+  Context* FindClientTransferByHandleId(uint32_t handle_id) const {
+    auto transfer =
+        std::find_if(client_transfers_.begin(),
+                     client_transfers_.end(),
+                     [handle_id](auto& c) {
+                       return c.initialized() && c.handle_id() == handle_id;
+                     });
+    return transfer != client_transfers_.end() ? &*transfer : nullptr;
   }
 
   void SimulateTimeout(EventType type, uint32_t session_id);
@@ -228,13 +279,13 @@ class TransferThread : public thread::ThreadCore {
   rpc::Writer& stream_for(TransferStream stream) {
     switch (stream) {
       case TransferStream::kClientRead:
-        return client_read_stream_;
+        return client_read_stream_.as_writer();
       case TransferStream::kClientWrite:
-        return client_write_stream_;
+        return client_write_stream_.as_writer();
       case TransferStream::kServerRead:
-        return server_read_stream_;
+        return server_read_stream_.as_writer();
       case TransferStream::kServerWrite:
-        return server_write_stream_;
+        return server_write_stream_.as_writer();
     }
     // An unknown TransferStream value was passed, which means this function
     // was passed an invalid enum value.
@@ -244,21 +295,32 @@ class TransferThread : public thread::ThreadCore {
   // Returns the earliest timeout among all active transfers, up to kMaxTimeout.
   chrono::SystemClock::time_point GetNextTransferTimeout() const;
 
+  uint32_t AssignSessionId();
+
   void StartTransfer(TransferType type,
                      ProtocolVersion version,
                      uint32_t session_id,
                      uint32_t resource_id,
+                     uint32_t handle_id,
                      ConstByteSpan raw_chunk,
                      stream::Stream* stream,
                      const TransferParameters& max_parameters,
                      Function<void(Status)>&& on_completion,
                      chrono::SystemClock::duration timeout,
+                     chrono::SystemClock::duration initial_timeout,
                      uint8_t max_retries,
-                     uint32_t max_lifetime_retries);
+                     uint32_t max_lifetime_retries,
+                     uint32_t initial_offset);
 
   void ProcessChunk(EventType type, ConstByteSpan chunk);
 
+  void SendStatus(TransferStream stream,
+                  uint32_t session_id,
+                  ProtocolVersion version,
+                  Status status);
+
   void EndTransfer(EventType type,
+                   IdentifierType id_type,
                    uint32_t session_id,
                    Status status,
                    bool send_status_chunk);
@@ -269,6 +331,8 @@ class TransferThread : public thread::ThreadCore {
   Context* FindContextForEvent(const Event& event) const;
 
   void SendStatusChunk(const SendStatusChunkEvent& event);
+
+  void GetResourceState(uint32_t resource_id);
 
   sync::TimedThreadNotification event_notification_;
   sync::BinarySemaphore next_event_ownership_;
@@ -284,6 +348,13 @@ class TransferThread : public thread::ThreadCore {
   span<ClientContext> client_transfers_;
   span<ServerContext> server_transfers_;
 
+  // Identifier to use for the next started transfer, unique over the RPC
+  // channel between the transfer client and server.
+  //
+  // TODO(frolv): If we ever support changing the RPC channel, this should be
+  // reset to 1.
+  uint32_t next_session_id_;
+
   // All registered transfer handlers.
   IntrusiveList<Handler> handlers_;
 
@@ -293,6 +364,8 @@ class TransferThread : public thread::ThreadCore {
   // Buffer into which responses are encoded. Only ever used from within the
   // transfer thread, so no locking is required.
   ByteSpan encode_buffer_;
+
+  ResourceStatusCallback resource_status_callback_ = nullptr;
 };
 
 }  // namespace internal

@@ -1,4 +1,4 @@
-# Copyright 2022 The Pigweed Authors
+# Copyright 2023 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -14,9 +14,10 @@
 """Client for the pw_transfer service, which transmits data over pw_rpc."""
 
 import asyncio
+import ctypes
 import logging
 import threading
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 from pw_rpc.callback_client import BidirectionalStreamingCall
 from pw_status import Status
@@ -41,6 +42,68 @@ _LOG = logging.getLogger(__package__)
 _TransferDict = Dict[int, Transfer]
 
 
+class _TransferStream:
+    def __init__(
+        self,
+        method,
+        chunk_handler: Callable[[Chunk], Any],
+        error_handler: Callable[[Status], Any],
+        max_reopen_attempts=3,
+    ):
+        self._method = method
+        self._chunk_handler = chunk_handler
+        self._error_handler = error_handler
+        self._call: Optional[BidirectionalStreamingCall] = None
+        self._reopen_attempts = 0
+        self._max_reopen_attempts = max_reopen_attempts
+
+    def is_open(self) -> bool:
+        return self._call is not None
+
+    def open(self, force: bool = False) -> None:
+        if force or self._call is None:
+            self._call = self._method.invoke(
+                lambda _, chunk: self._on_chunk_received(chunk),
+                on_error=lambda _, status: self._on_stream_error(status),
+            )
+
+    def close(self) -> None:
+        if self._call is not None:
+            self._call.cancel()
+            self._call = None
+
+    def send(self, chunk: Chunk) -> None:
+        assert self._call is not None
+        self._call.send(chunk.to_message())
+
+    def _on_chunk_received(self, chunk: Chunk) -> None:
+        self._reopen_attempts = 0
+        self._chunk_handler(chunk)
+
+    def _on_stream_error(self, rpc_status: Status) -> None:
+        if rpc_status is Status.FAILED_PRECONDITION:
+            # FAILED_PRECONDITION indicates that the stream packet was not
+            # recognized as the stream is not open. Attempt to re-open the
+            # stream to allow pending transfers to continue.
+            self._reopen_attempts += 1
+            if self._reopen_attempts > self._max_reopen_attempts:
+                _LOG.error(
+                    'Failed to reopen transfer stream after %d tries',
+                    self._max_reopen_attempts,
+                )
+                self._error_handler(Status.UNAVAILABLE)
+            else:
+                _LOG.info(
+                    'Transfer stream failed to write; attempting to re-open'
+                )
+                self.open(force=True)
+        else:
+            # Other errors are unrecoverable; clear the stream.
+            _LOG.error('Transfer stream shut down with status %s', rpc_status)
+            self._call = None
+            self._error_handler(rpc_status)
+
+
 class Manager:  # pylint: disable=too-many-instance-attributes
     """A manager for transmitting data through an RPC TransferService.
 
@@ -60,7 +123,7 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         initial_response_timeout_s: float = 4.0,
         max_retries: int = 3,
         max_lifetime_retries: int = 1500,
-        default_protocol_version=ProtocolVersion.LATEST,
+        default_protocol_version=ProtocolVersion.VERSION_TWO,
     ):
         """Initializes a Manager on top of a TransferService.
 
@@ -72,6 +135,8 @@ class Manager:  # pylint: disable=too-many-instance-attributes
           max_retires: number of times to retry a single package after a timeout
           max_lifetime_retires: Cumulative maximum number of times to retry over
               the course of the transfer before giving up.
+          default_protocol_version: Defaults to V2, can be set to legacy for
+              projects which use legacy devices.
         """
         self._service: Any = rpc_transfer_service
         self._default_response_timeout_s = default_response_timeout_s
@@ -83,11 +148,7 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         # Ongoing transfers in the service by resource ID.
         self._read_transfers: _TransferDict = {}
         self._write_transfers: _TransferDict = {}
-
-        # RPC streams for read and write transfers. These are shareable by
-        # multiple transfers of the same type.
-        self._read_stream: Optional[BidirectionalStreamingCall] = None
-        self._write_stream: Optional[BidirectionalStreamingCall] = None
+        self._next_session_id = ctypes.c_uint32(1)
 
         self._loop = asyncio.new_event_loop()
         # Set the event loop for the current thread.
@@ -104,6 +165,23 @@ class Manager:  # pylint: disable=too-many-instance-attributes
             target=self._start_event_loop_thread, daemon=True
         )
 
+        # RPC streams for read and write transfers. These are shareable by
+        # multiple transfers of the same type.
+        self._read_stream = _TransferStream(
+            self._service.Read,
+            lambda chunk: self._loop.call_soon_threadsafe(
+                self._read_chunk_queue.put_nowait, chunk
+            ),
+            self._on_read_error,
+        )
+        self._write_stream = _TransferStream(
+            self._service.Write,
+            lambda chunk: self._loop.call_soon_threadsafe(
+                self._write_chunk_queue.put_nowait, chunk
+            ),
+            self._on_write_error,
+        )
+
         self._thread.start()
 
     def __del__(self):
@@ -118,6 +196,9 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         resource_id: int,
         progress_callback: Optional[ProgressCallback] = None,
         protocol_version: Optional[ProtocolVersion] = None,
+        chunk_timeout_s: Optional[float] = None,
+        initial_timeout_s: Optional[float] = None,
+        initial_offset: int = 0,
     ) -> bytes:
         """Receives ("downloads") data from the server.
 
@@ -126,6 +207,17 @@ class Manager:  # pylint: disable=too-many-instance-attributes
           progress_callback: Optional callback periodically invoked throughout
               the transfer with the transfer state. Can be used to provide user-
               facing status updates such as progress bars.
+          protocol_version: The desired protocol version to use for this
+              transfer. Defaults to the version the manager was initialized
+              (typically VERSION_TWO).
+          chunk_timeout_s: Timeout for any individual chunk.
+          initial_timeout_s: Timeout for the first chunk, overrides
+              chunk_timeout_s.
+          initial_offset: Initial offset to start reading from. Must be
+              supported by the transfer handler. All transfers support starting
+              from 0, the default. Returned bytes will not have any padding
+              related to this initial offset. No seeking is done in the transfer
+              operation on the client side.
 
         Raises:
           Error: the transfer failed to complete
@@ -139,16 +231,36 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         if protocol_version is None:
             protocol_version = self._default_protocol_version
 
+        if protocol_version == ProtocolVersion.LEGACY and initial_offset != 0:
+            raise ValueError(
+                f'Unsupported transfer with offset {initial_offset} started '
+                + 'with legacy protocol'
+            )
+
+        session_id = (
+            resource_id
+            if protocol_version is ProtocolVersion.LEGACY
+            else self.assign_session_id()
+        )
+
+        if chunk_timeout_s is None:
+            chunk_timeout_s = self._default_response_timeout_s
+
+        if initial_timeout_s is None:
+            initial_timeout_s = self._initial_response_timeout_s
+
         transfer = ReadTransfer(
+            session_id,
             resource_id,
-            self._send_read_chunk,
+            self._read_stream.send,
             self._end_read_transfer,
-            self._default_response_timeout_s,
-            self._initial_response_timeout_s,
+            chunk_timeout_s,
+            initial_timeout_s,
             self.max_retries,
             self.max_lifetime_retries,
             protocol_version,
             progress_callback=progress_callback,
+            initial_offset=initial_offset,
         )
         self._start_read_transfer(transfer)
 
@@ -165,6 +277,9 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         data: Union[bytes, str],
         progress_callback: Optional[ProgressCallback] = None,
         protocol_version: Optional[ProtocolVersion] = None,
+        chunk_timeout_s: Optional[Any] = None,
+        initial_timeout_s: Optional[Any] = None,
+        initial_offset: int = 0,
     ) -> None:
         """Transmits ("uploads") data to the server.
 
@@ -174,6 +289,17 @@ class Manager:  # pylint: disable=too-many-instance-attributes
           progress_callback: Optional callback periodically invoked throughout
               the transfer with the transfer state. Can be used to provide user-
               facing status updates such as progress bars.
+          protocol_version: The desired protocol version to use for this
+              transfer. Defaults to the version the manager was initialized
+              (defaults to LATEST).
+          chunk_timeout_s: Timeout for any individual chunk.
+          initial_timeout_s: Timeout for the first chunk, overrides
+              chunk_timeout_s.
+          initial_offset: Initial offset to start writing to. Must be supported
+              by the transfer handler. All transfers support starting from 0,
+              the default. data arg should start with the data you want to see
+              starting at this initial offset on the server. No seeking is done
+              in the transfer operation on the client side.
 
         Raises:
           Error: the transfer failed to complete
@@ -190,17 +316,40 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         if protocol_version is None:
             protocol_version = self._default_protocol_version
 
+        if (
+            protocol_version != ProtocolVersion.VERSION_TWO
+            and initial_offset != 0
+        ):
+            raise ValueError(
+                f'Unsupported transfer with offset {initial_offset} started '
+                + 'with legacy protocol'
+            )
+
+        session_id = (
+            resource_id
+            if protocol_version is ProtocolVersion.LEGACY
+            else self.assign_session_id()
+        )
+
+        if chunk_timeout_s is None:
+            chunk_timeout_s = self._default_response_timeout_s
+
+        if initial_timeout_s is None:
+            initial_timeout_s = self._initial_response_timeout_s
+
         transfer = WriteTransfer(
+            session_id,
             resource_id,
             data,
-            self._send_write_chunk,
+            self._write_stream.send,
             self._end_write_transfer,
-            self._default_response_timeout_s,
-            self._initial_response_timeout_s,
+            chunk_timeout_s,
+            initial_timeout_s,
             self.max_retries,
             self.max_lifetime_retries,
             protocol_version,
             progress_callback=progress_callback,
+            initial_offset=initial_offset,
         )
         self._start_write_transfer(transfer)
 
@@ -209,13 +358,14 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         if not transfer.status.ok():
             raise Error(transfer.resource_id, transfer.status)
 
-    def _send_read_chunk(self, chunk: Chunk) -> None:
-        assert self._read_stream is not None
-        self._read_stream.send(chunk.to_message())
+    def assign_session_id(self) -> int:
+        new_id = self._next_session_id.value
 
-    def _send_write_chunk(self, chunk: Chunk) -> None:
-        assert self._write_stream is not None
-        self._write_stream.send(chunk.to_message())
+        self._next_session_id = ctypes.c_uint32(self._next_session_id.value + 1)
+        if self._next_session_id.value == 0:
+            self._next_session_id = ctypes.c_uint32(1)
+
+        return new_id
 
     def _start_event_loop_thread(self):
         """Entry point for event loop thread that starts an asyncio context."""
@@ -291,15 +441,17 @@ class Manager:  # pylint: disable=too-many-instance-attributes
 
         # Find a transfer for the chunk in the list of active transfers.
         try:
-            if chunk.resource_id is not None:
-                # Prioritize a resource_id if one is set.
-                transfer = transfers[chunk.resource_id]
+            if chunk.protocol_version is ProtocolVersion.LEGACY:
+                transfer = next(
+                    t
+                    for t in transfers.values()
+                    if t.resource_id == chunk.session_id
+                )
             else:
-                # Otherwise, match against either resource or session ID.
                 transfer = next(
                     t for t in transfers.values() if t.id == chunk.id()
                 )
-        except (KeyError, StopIteration):
+        except StopIteration:
             _LOG.error(
                 'TransferManager received chunk for unknown transfer %d',
                 chunk.id(),
@@ -309,71 +461,29 @@ class Manager:  # pylint: disable=too-many-instance-attributes
 
         await transfer.handle_chunk(chunk)
 
-    def _open_read_stream(self) -> None:
-        self._read_stream = self._service.Read.invoke(
-            lambda _, chunk: self._loop.call_soon_threadsafe(
-                self._read_chunk_queue.put_nowait, chunk
-            ),
-            on_error=lambda _, status: self._on_read_error(status),
-        )
-
     def _on_read_error(self, status: Status) -> None:
         """Callback for an RPC error in the read stream."""
 
-        if status is Status.FAILED_PRECONDITION:
-            # FAILED_PRECONDITION indicates that the stream packet was not
-            # recognized as the stream is not open. This could occur if the
-            # server resets during an active transfer. Re-open the stream to
-            # allow pending transfers to continue.
-            self._open_read_stream()
-        else:
-            # Other errors are unrecoverable. Clear the stream and cancel any
-            # pending transfers with an INTERNAL status as this is a system
-            # error.
-            self._read_stream = None
+        for transfer in self._read_transfers.values():
+            transfer.finish(Status.INTERNAL, skip_callback=True)
+        self._read_transfers.clear()
 
-            for transfer in self._read_transfers.values():
-                transfer.finish(Status.INTERNAL, skip_callback=True)
-            self._read_transfers.clear()
-
-            _LOG.error('Read stream shut down: %s', status)
-
-    def _open_write_stream(self) -> None:
-        self._write_stream = self._service.Write.invoke(
-            lambda _, chunk: self._loop.call_soon_threadsafe(
-                self._write_chunk_queue.put_nowait, chunk
-            ),
-            on_error=lambda _, status: self._on_write_error(status),
-        )
+        _LOG.error('Read stream shut down: %s', status)
 
     def _on_write_error(self, status: Status) -> None:
         """Callback for an RPC error in the write stream."""
 
-        if status is Status.FAILED_PRECONDITION:
-            # FAILED_PRECONDITION indicates that the stream packet was not
-            # recognized as the stream is not open. This could occur if the
-            # server resets during an active transfer. Re-open the stream to
-            # allow pending transfers to continue.
-            self._open_write_stream()
-        else:
-            # Other errors are unrecoverable. Clear the stream and cancel any
-            # pending transfers with an INTERNAL status as this is a system
-            # error.
-            self._write_stream = None
+        for transfer in self._write_transfers.values():
+            transfer.finish(Status.INTERNAL, skip_callback=True)
+        self._write_transfers.clear()
 
-            for transfer in self._write_transfers.values():
-                transfer.finish(Status.INTERNAL, skip_callback=True)
-            self._write_transfers.clear()
-
-            _LOG.error('Write stream shut down: %s', status)
+        _LOG.error('Write stream shut down: %s', status)
 
     def _start_read_transfer(self, transfer: Transfer) -> None:
         """Begins a new read transfer, opening the stream if it isn't."""
 
         self._read_transfers[transfer.resource_id] = transfer
-
-        if not self._read_stream:
-            self._open_read_stream()
+        self._read_stream.open()
 
         _LOG.debug('Starting new read transfer %d', transfer.id)
         self._loop.call_soon_threadsafe(
@@ -391,19 +501,15 @@ class Manager:  # pylint: disable=too-many-instance-attributes
                 transfer.status,
             )
 
-        # TODO(frolv): This doesn't seem to work. Investigate why.
         # If no more transfers are using the read stream, close it.
-        # if not self._read_transfers and self._read_stream:
-        #     self._read_stream.cancel()
-        #     self._read_stream = None
+        if not self._read_transfers:
+            self._read_stream.close()
 
     def _start_write_transfer(self, transfer: Transfer) -> None:
         """Begins a new write transfer, opening the stream if it isn't."""
 
         self._write_transfers[transfer.resource_id] = transfer
-
-        if not self._write_stream:
-            self._open_write_stream()
+        self._write_stream.open()
 
         _LOG.debug('Starting new write transfer %d', transfer.id)
         self._loop.call_soon_threadsafe(
@@ -421,11 +527,9 @@ class Manager:  # pylint: disable=too-many-instance-attributes
                 transfer.status,
             )
 
-        # TODO(frolv): This doesn't seem to work. Investigate why.
         # If no more transfers are using the write stream, close it.
-        # if not self._write_transfers and self._write_stream:
-        #     self._write_stream.cancel()
-        #     self._write_stream = None
+        if not self._write_transfers:
+            self._write_stream.close()
 
 
 class Error(Exception):

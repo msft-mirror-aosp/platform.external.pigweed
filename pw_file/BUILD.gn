@@ -26,6 +26,7 @@ pw_proto_library("proto") {
   sources = [ "file.proto" ]
   prefix = "pw_file"
   deps = [ "$dir_pw_protobuf:common_protos" ]
+  python_package = "py"
 }
 
 pw_source_set("flat_file_system") {
@@ -63,4 +64,10 @@ pw_test("flat_file_system_test") {
     dir_pw_status,
   ]
   sources = [ "flat_file_system_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }

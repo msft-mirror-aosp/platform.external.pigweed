@@ -17,7 +17,7 @@ import {
   PacketType,
   RpcPacket,
 } from 'pigweedjs/protos/pw_rpc/internal/packet_pb';
-import {Status} from 'pigweedjs/pw_status';
+import { Status } from 'pigweedjs/pw_status';
 
 import * as packets from './packets';
 
@@ -27,11 +27,14 @@ function addTestData(packet: RpcPacket) {
   packet.setChannelId(1);
   packet.setServiceId(2);
   packet.setMethodId(3);
+  packet.setCallId(4);
   packet.setPayload(payload.serializeBinary());
 }
 
 describe('Packets', () => {
-  beforeEach(() => { });
+  beforeEach(() => {
+    // Do nothing.
+  });
 
   it('encodeRequest sets packet fields', () => {
     const goldenRequest = new RpcPacket();
@@ -40,7 +43,7 @@ describe('Packets', () => {
 
     const dataPacket = new RpcPacket();
     dataPacket.setStatus(321);
-    const data = packets.encodeRequest([1, 2, 3], dataPacket);
+    const data = packets.encodeRequest([1, 2, 3, 4], dataPacket);
     const packet = RpcPacket.deserializeBinary(data);
 
     expect(packet.toObject()).toEqual(goldenRequest.toObject());
@@ -53,7 +56,7 @@ describe('Packets', () => {
 
     const dataPacket = new RpcPacket();
     dataPacket.setStatus(321);
-    const data = packets.encodeResponse([1, 2, 3], dataPacket);
+    const data = packets.encodeResponse([1, 2, 3, 4], dataPacket);
     const packet = RpcPacket.deserializeBinary(data);
 
     expect(packet.toObject()).toEqual(goldenResponse.toObject());
@@ -71,6 +74,7 @@ describe('Packets', () => {
     golden.setChannelId(1);
     golden.setServiceId(2);
     golden.setMethodId(3);
+    golden.setCallId(4);
     golden.setStatus(Status.NOT_FOUND);
 
     expect(errorPacket.toObject()).toEqual(golden.toObject());
@@ -83,8 +87,9 @@ describe('Packets', () => {
     goldenCancel.setChannelId(1);
     goldenCancel.setServiceId(2);
     goldenCancel.setMethodId(3);
+    goldenCancel.setCallId(4);
 
-    const data = packets.encodeCancel([1, 2, 3]);
+    const data = packets.encodeCancel([1, 2, 3, 4]);
     const packet = RpcPacket.deserializeBinary(data);
     expect(packet.toObject()).toEqual(goldenCancel.toObject());
   });
@@ -95,7 +100,7 @@ describe('Packets', () => {
     addTestData(request);
 
     expect(request.toObject()).toEqual(
-      packets.decode(request.serializeBinary()).toObject()
+      packets.decode(request.serializeBinary()).toObject(),
     );
   });
 

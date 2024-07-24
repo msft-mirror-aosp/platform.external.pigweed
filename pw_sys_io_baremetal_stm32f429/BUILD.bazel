@@ -12,22 +12,21 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+constraint_value(
+    name = "backend",
+    constraint_setting = "//pw_sys_io:backend_constraint_setting",
+)
+
+cc_library(
     name = "pw_sys_io_baremetal_stm32f429",
     srcs = ["sys_io_baremetal.cc"],
     hdrs = ["public/pw_sys_io_baremetal_stm32f429/init.h"],
     includes = ["public"],
     target_compatible_with = [
-        "//pw_build/constraints/chipset:stm32f429",
         "@platforms//os:none",
     ],
     deps = [

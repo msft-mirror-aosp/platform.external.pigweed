@@ -14,7 +14,6 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_library",
     "pw_cc_test",
 )
 
@@ -22,7 +21,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
     name = "pw_tls_client_boringssl",
     srcs = ["tls_client_boringssl.cc"],
     hdrs = [
@@ -43,7 +42,7 @@ pw_cc_test(
     srcs = [
         "tls_client_boringssl_test.cc",
     ],
-    #TODO(b/257529537): Get this to build.
+    #TODO: b/257529537 - Get this to build.
     tags = ["manual"],
     deps = [
         ":pw_tls_client_boringssl",

@@ -32,6 +32,7 @@ class Device {
       : initiator_(initiator), device_address_(device_address) {}
 
   Device(const Device&) = delete;
+  Device(Device&&) = default;
   ~Device() = default;
 
   // Write bytes and then read bytes as either one atomic or two independent I2C
@@ -48,7 +49,7 @@ class Device {
   //   START + I2C Address + WRITE(0) + TX_BUFFER_BYTES + STOP
   //   START + I2C Address + READ(1) + RX_BUFFER_BYTES + STOP
   //
-  // The timeout defines the minimum duration one may block waiting for both
+  // The timeout defines the maximum duration one may block waiting for both
   // exclusive bus access and the completion of the I2C transaction.
   //
   // Preconditions:
@@ -86,7 +87,7 @@ class Device {
   // Write bytes. The signal on the bus should appear as follows:
   //   START + I2C Address + WRITE(0) + TX_BUFFER_BYTES + STOP
   //
-  // The timeout defines the minimum duration one may block waiting for both
+  // The timeout defines the maximum duration one may block waiting for both
   // exclusive bus access and the completion of the I2C transaction.
   //
   // Preconditions:
@@ -116,7 +117,7 @@ class Device {
   // Read bytes. The signal on the bus should appear as follows:
   //   START + I2C Address + READ(1) + RX_BUFFER_BYTES + STOP
   //
-  // The timeout defines the minimum duration one may block waiting for both
+  // The timeout defines the maximum duration one may block waiting for both
   // exclusive bus access and the completion of the I2C transaction.
   //
   // Preconditions:
@@ -145,7 +146,7 @@ class Device {
   // Probes the device for an I2C ACK after only writing the address.
   // This is done by attempting to read a single byte from the specified device.
   //
-  // The timeout defines the minimum duration one may block waiting for both
+  // The timeout defines the maximum duration one may block waiting for both
   // exclusive bus access and the completion of the I2C transaction.
   //
   // Preconditions:

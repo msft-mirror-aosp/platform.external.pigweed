@@ -1,4 +1,4 @@
-# Copyright 2022 The Pigweed Authors
+# Copyright 2023 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -52,7 +52,27 @@ class Chunk:
 
     Wraps the generated protobuf Chunk class with protocol-aware field encoding
     and decoding.
+
+    Attributes:
+        protocol_version: Version of the transfer protocol with which the chunk
+            is encoded.
+        chunk_type: Type of the chunk within the protocol.
+        session_id: ID for the transfer session to which the chunk belongs.
+        desired_session_id: For a v2 START chunk, the client-assigned session ID
+            to request from the server.
+        resource_id: For a v2 START chunk, ID of the resource to transfer.
+        offset: Offset of the data to be transferred.
+        window_end_offset: In a parameters chunk, end offset of the available
+            window.
+        data: Raw transfer data.
+        remaining_bytes: Optional number of bytes remaining in the transfer.
+            Set to 0 when the data is fully transferred.
+        max_chunk_size_bytes: Maximum number of bytes to send in a single data
+            chunk.
+        min_delay_microseconds: Delay between data chunks to be sent.
     """
+
+    # pylint: disable=too-many-instance-attributes
 
     Type = transfer_pb2.Chunk.Type
 
@@ -63,6 +83,7 @@ class Chunk:
         protocol_version: ProtocolVersion,
         chunk_type: Any,
         session_id: int = 0,
+        desired_session_id: Optional[int] = None,
         resource_id: Optional[int] = None,
         offset: int = 0,
         window_end_offset: int = 0,
@@ -71,10 +92,35 @@ class Chunk:
         max_chunk_size_bytes: Optional[int] = None,
         min_delay_microseconds: Optional[int] = None,
         status: Optional[Status] = None,
+        initial_offset: int = 0,
     ):
+        """Creates a new transfer chunk.
+
+        Args:
+            protocol_version: Version of the transfer protocol with which to
+                encode the chunk.
+            chunk_type: Type of the chunk within the protocol.
+            session_id: ID for the transfer session to which the chunk belongs.
+            desired_session_id: For a v2 START chunk, the client-assigned
+                session ID to request from the server.
+            resource_id: For a v2 START chunk, ID of the resource to transfer.
+            offset: Offset of the data to be transferred.
+            window_end_offset: In a parameters chunk, end offset of the
+                available window.
+            data: Raw transfer data.
+            remaining_bytes: Optional number of bytes remaining in the transfer.
+                Set to 0 when the data is fully transferred.
+            max_chunk_size_bytes: Maximum number of bytes to send in a single
+                data chunk.
+            min_delay_microseconds: Delay between data chunks to be sent.
+            status: In a COMPLETION chunk, final status of the transfer.
+            initial_offset: Initial offset for non-zero starting offset
+            transfers
+        """
         self.protocol_version = protocol_version
         self.type = chunk_type
         self.session_id = session_id
+        self.desired_session_id = desired_session_id
         self.resource_id = resource_id
         self.offset = offset
         self.window_end_offset = window_end_offset
@@ -83,6 +129,7 @@ class Chunk:
         self.max_chunk_size_bytes = max_chunk_size_bytes
         self.min_delay_microseconds = min_delay_microseconds
         self.status = status
+        self.initial_offset = initial_offset
 
     @classmethod
     def from_message(cls, message: transfer_pb2.Chunk) -> 'Chunk':
@@ -113,6 +160,7 @@ class Chunk:
             offset=message.offset,
             window_end_offset=message.window_end_offset,
             data=message.data,
+            initial_offset=message.initial_offset,
         )
 
         if message.HasField('session_id'):
@@ -121,6 +169,10 @@ class Chunk:
         else:
             chunk.protocol_version = ProtocolVersion.LEGACY
             chunk.session_id = message.transfer_id
+
+        if message.HasField('desired_session_id'):
+            chunk.protocol_version = ProtocolVersion.VERSION_TWO
+            chunk.desired_session_id = message.desired_session_id
 
         if message.HasField('resource_id'):
             chunk.resource_id = message.resource_id
@@ -165,7 +217,11 @@ class Chunk:
 
         if self.protocol_version is ProtocolVersion.VERSION_TWO:
             if self.session_id != 0:
+                assert self.desired_session_id is None
                 message.session_id = self.session_id
+
+            if self.desired_session_id is not None:
+                message.desired_session_id = self.desired_session_id
 
         if self._should_encode_legacy_fields():
             if self.resource_id is not None:
@@ -200,6 +256,8 @@ class Chunk:
             # explictly encoded.
             message.protocol_version = self.protocol_version.value
 
+        message.initial_offset = self.initial_offset
+
         return message
 
     def id(self) -> int:
@@ -208,10 +266,6 @@ class Chunk:
         Depending on the protocol version and type of chunk, this may correspond
         to one of several proto fields.
         """
-        if self.resource_id is not None:
-            # Always prioritize a resource_id over a session_id.
-            return self.resource_id
-
         return self.session_id
 
     def requests_transmission_from_offset(self) -> bool:

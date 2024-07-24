@@ -575,7 +575,7 @@ class _BinaryDatabase(DatabaseFile):
     def add_and_discard_temporary(
         self, entries: Iterable[TokenizedStringEntry], commit: str
     ) -> None:
-        # TODO(b/241471465): Implement adding new tokens and removing
+        # TODO: b/241471465 - Implement adding new tokens and removing
         # temporary entries for binary databases.
         raise NotImplementedError(
             '--discard-temporary is currently only '
@@ -597,7 +597,7 @@ class _CSVDatabase(DatabaseFile):
     def add_and_discard_temporary(
         self, entries: Iterable[TokenizedStringEntry], commit: str
     ) -> None:
-        # TODO(b/241471465): Implement adding new tokens and removing
+        # TODO: b/241471465 - Implement adding new tokens and removing
         # temporary entries for CSV databases.
         raise NotImplementedError(
             '--discard-temporary is currently only '
@@ -607,12 +607,12 @@ class _CSVDatabase(DatabaseFile):
 
 # The suffix used for CSV files in a directory database.
 DIR_DB_SUFFIX = '.pw_tokenizer.csv'
-_DIR_DB_GLOB = '*' + DIR_DB_SUFFIX
+DIR_DB_GLOB = '*' + DIR_DB_SUFFIX
 
 
 def _parse_directory(directory: Path) -> Iterable[TokenizedStringEntry]:
     """Parses TokenizedStringEntries tokenizer CSV files in the directory."""
-    for path in directory.glob(_DIR_DB_GLOB):
+    for path in directory.glob(DIR_DB_GLOB):
         yield from _CSVDatabase(path).entries()
 
 
@@ -633,7 +633,7 @@ class _DirectoryDatabase(DatabaseFile):
                 write_csv(self, fd)
 
             # Delete all CSV files except for the new CSV with everything.
-            for csv_file in self.path.glob(_DIR_DB_GLOB):
+            for csv_file in self.path.glob(DIR_DB_GLOB):
                 if csv_file != new_file:
                     csv_file.unlink()
         else:
@@ -645,10 +645,10 @@ class _DirectoryDatabase(DatabaseFile):
                     write_csv(new_entries, fd)
 
     def _git_paths(self, commands: List) -> List[Path]:
-        """Returns a list of files from a Git command, filtered to matc."""
+        """Returns a list of database CSVs from a Git command."""
         try:
             output = subprocess.run(
-                ['git', *commands, _DIR_DB_GLOB],
+                ['git', *commands, DIR_DB_GLOB],
                 capture_output=True,
                 check=True,
                 cwd=self.path,

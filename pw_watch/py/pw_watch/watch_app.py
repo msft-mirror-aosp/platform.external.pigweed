@@ -57,7 +57,9 @@ from prompt_toolkit.formatted_text import StyleAndTextTuples
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers.markup import MarkdownLexer  # type: ignore
 
-from pw_console.console_app import get_default_colordepth
+from pw_config_loader import yaml_config_loader_mixin
+
+from pw_console.console_app import get_default_colordepth, MIN_REDRAW_INTERVAL
 from pw_console.get_pw_console_app import PW_CONSOLE_APP_CONTEXTVAR
 from pw_console.help_window import HelpWindow
 from pw_console.key_bindings import DEFAULT_KEY_BINDINGS
@@ -199,7 +201,10 @@ class WatchAppPrefs(ProjectBuilderPrefs):
             'show_python_logger': True,
         }
         self.default_config.update(new_config_settings)
-        self._update_config(new_config_settings)
+        self._update_config(
+            new_config_settings,
+            yaml_config_loader_mixin.Stage.DEFAULT,
+        )
 
     # Required pw_console preferences for key bindings and themes
     @property
@@ -364,6 +369,9 @@ class WatchApp(PluginMixin):
             ],
             level_name=level_name,
         )
+        # Repeat the Attaching filesystem watcher message for the full screen
+        # interface. The original log in watch.py will be hidden from view.
+        _LOG.info('Attaching filesystem watcher...')
 
         self.window_manager.window_lists[0].display_mode = DisplayMode.TABBED
 
@@ -535,6 +543,7 @@ class WatchApp(PluginMixin):
             ),
             style_transformation=self.style_transformation,
             full_screen=True,
+            min_redraw_interval=MIN_REDRAW_INTERVAL,
         )
 
         self.plugin_init(

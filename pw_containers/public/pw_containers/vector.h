@@ -26,6 +26,7 @@
 
 #include "pw_assert/assert.h"
 #include "pw_polyfill/language_feature_macros.h"
+#include "pw_preprocessor/compiler.h"
 
 namespace pw {
 namespace vector_impl {
@@ -37,24 +38,12 @@ using IsIterator = std::negation<
 // Used as max_size in the generic-size Vector<T> interface.
 PW_INLINE_VARIABLE constexpr size_t kGeneric = size_t(-1);
 
-// The DestructorHelper is used to make Vector<T> trivially destructible if T
-// is. This could be replaced with a C++20 constraint.
-template <typename VectorClass, bool kIsTriviallyDestructible>
-class DestructorHelper;
-
-template <typename VectorClass>
-class DestructorHelper<VectorClass, true> {
- public:
-  ~DestructorHelper() = default;
-};
-
-template <typename VectorClass>
-class DestructorHelper<VectorClass, false> {
- public:
-  ~DestructorHelper() { static_cast<VectorClass*>(this)->clear(); }
-};
-
 }  // namespace vector_impl
+
+// Storage for a vector's data that ensures entries are `clear`'d before the
+// storage is removed.
+template <typename T, size_t kMaxSize, bool kIsTriviallyDestructible>
+struct VectorStorage;
 
 // The Vector class is similar to std::vector, except it is backed by a
 // fixed-size buffer. Vectors must be declared with an explicit maximum size
@@ -66,8 +55,13 @@ class DestructorHelper<VectorClass, false> {
 // the maximum size in a variable. This allows Vectors to be used without having
 // to know their maximum size at compile time. It also keeps code size small
 // since function implementations are shared for all maximum sizes.
+//
+// Note that size-generic `Vector<T>` cannot be used with `std::unique_ptr`
+// or `delete`. When working with dynamic allocation, prefer use of
+// `std::vector` instead.
 template <typename T, size_t kMaxSize = vector_impl::kGeneric>
-class Vector : public Vector<T, vector_impl::kGeneric> {
+class Vector
+    : public VectorStorage<T, kMaxSize, std::is_trivially_destructible_v<T>> {
  public:
   using typename Vector<T, vector_impl::kGeneric>::value_type;
   using typename Vector<T, vector_impl::kGeneric>::size_type;
@@ -82,37 +76,37 @@ class Vector : public Vector<T, vector_impl::kGeneric> {
   using typename Vector<T, vector_impl::kGeneric>::const_reverse_iterator;
 
   // Construct
-  Vector() noexcept : Vector<T, vector_impl::kGeneric>(kMaxSize) {}
+  Vector() noexcept = default;
 
-  Vector(size_type count, const T& value)
-      : Vector<T, vector_impl::kGeneric>(kMaxSize, count, value) {}
+  Vector(size_type count, const T& value) { this->Append(count, value); }
 
-  explicit Vector(size_type count)
-      : Vector<T, vector_impl::kGeneric>(kMaxSize, count, T()) {}
+  explicit Vector(size_type count) { this->Append(count, T()); }
 
   template <
       typename Iterator,
       typename...,
       typename = std::enable_if_t<vector_impl::IsIterator<Iterator>::value>>
-  Vector(Iterator first, Iterator last)
-      : Vector<T, vector_impl::kGeneric>(kMaxSize, first, last) {}
+  Vector(Iterator first, Iterator last) {
+    this->CopyFrom(first, last);
+  }
 
-  Vector(const Vector& other)
-      : Vector<T, vector_impl::kGeneric>(kMaxSize, other) {}
-
-  template <size_t kOtherMaxSize>
-  Vector(const Vector<T, kOtherMaxSize>& other)
-      : Vector<T, vector_impl::kGeneric>(kMaxSize, other) {}
-
-  Vector(Vector&& other) noexcept
-      : Vector<T, vector_impl::kGeneric>(kMaxSize, std::move(other)) {}
+  Vector(const Vector& other) { this->CopyFrom(other.begin(), other.end()); }
 
   template <size_t kOtherMaxSize>
-  Vector(Vector<T, kOtherMaxSize>&& other) noexcept
-      : Vector<T, vector_impl::kGeneric>(kMaxSize, std::move(other)) {}
+  Vector(const Vector<T, kOtherMaxSize>& other) {
+    this->CopyFrom(other.begin(), other.end());
+  }
 
-  Vector(std::initializer_list<T> list)
-      : Vector<T, vector_impl::kGeneric>(kMaxSize, list) {}
+  Vector(Vector&& other) noexcept { this->MoveFrom(other); }
+
+  template <size_t kOtherMaxSize>
+  Vector(Vector<T, kOtherMaxSize>&& other) noexcept {
+    this->MoveFrom(other);
+  }
+
+  Vector(std::initializer_list<T> list) {
+    this->CopyFrom(list.begin(), list.end());
+  }
 
   static constexpr size_t max_size() { return kMaxSize; }
 
@@ -154,11 +148,71 @@ class Vector : public Vector<T, vector_impl::kGeneric> {
   }
 
   // All other vector methods are implemented on the Vector<T> base class.
+};
 
+// Specialization of ``VectorStorage`` for trivially-destructible ``T``.
+// This specialization ensures that no destructor is generated.
+template <typename T, size_t kMaxSize>
+struct VectorStorage<T, kMaxSize, true>
+    : public Vector<T, vector_impl::kGeneric> {
+ protected:
+  VectorStorage() : Vector<T, vector_impl::kGeneric>(kMaxSize) {}
+  // NOTE: no destructor is added, as ``T`` is trivially destructible.
  private:
+  friend class Vector<T, kMaxSize>;
   friend class Vector<T, vector_impl::kGeneric>;
 
+  using typename Vector<T, vector_impl::kGeneric>::size_type;
   static_assert(kMaxSize <= std::numeric_limits<size_type>::max());
+
+  using typename Vector<T, vector_impl::kGeneric>::pointer;
+  using typename Vector<T, vector_impl::kGeneric>::const_pointer;
+
+  // Provides access to the underlying array as an array of T.
+#ifdef __cpp_lib_launder
+  pointer array() { return std::launder(reinterpret_cast<T*>(&array_)); }
+  const_pointer array() const {
+    return std::launder(reinterpret_cast<const T*>(&array_));
+  }
+#else
+  pointer array() { return reinterpret_cast<T*>(&array_); }
+  const_pointer array() const { return reinterpret_cast<const T*>(&array_); }
+#endif  // __cpp_lib_launder
+
+  // Vector entries are stored as uninitialized memory blocks aligned correctly
+  // for the type. Elements are initialized on demand with placement new.
+  //
+  // This uses std::array instead of a C array to support zero-length Vectors.
+  // Zero-length C arrays are non-standard, but std::array<T, 0> is valid.
+  // The alignas specifier is required ensure that a zero-length array is
+  // aligned the same as an array with elements.
+  alignas(T) std::array<std::aligned_storage_t<sizeof(T), alignof(T)>,
+                        kMaxSize> array_;
+};
+
+// Specialization of ``VectorStorage`` for non-trivially-destructible ``T``.
+// This specialization ensures that the elements are cleared during destruction
+// prior to the invalidation of `array_`.
+template <typename T, size_t kMaxSize>
+struct VectorStorage<T, kMaxSize, false>
+    : public Vector<T, vector_impl::kGeneric> {
+ public:
+  ~VectorStorage() {
+    static_cast<Vector<T, vector_impl::kGeneric>*>(this)->clear();
+  }
+
+ protected:
+  VectorStorage() : Vector<T, vector_impl::kGeneric>(kMaxSize) {}
+
+ private:
+  friend class Vector<T, kMaxSize>;
+  friend class Vector<T, vector_impl::kGeneric>;
+
+  using typename Vector<T, vector_impl::kGeneric>::size_type;
+  static_assert(kMaxSize <= std::numeric_limits<size_type>::max());
+
+  using typename Vector<T, vector_impl::kGeneric>::pointer;
+  using typename Vector<T, vector_impl::kGeneric>::const_pointer;
 
   // Provides access to the underlying array as an array of T.
 #ifdef __cpp_lib_launder
@@ -183,13 +237,16 @@ class Vector : public Vector<T, vector_impl::kGeneric> {
 };
 
 // Defines the generic-sized Vector<T> specialization, which serves as the base
-// class for Vector<T> of any maximum size. Except for constructors, all Vector
-// methods are implemented on this class.
+// class for Vector<T> of any maximum size. Except for constructors and
+// destructors, all Vector methods are implemented on this class.
+//
+// Destructors must only be written for the `VectorStorage` type in order to
+// ensure that `array_` is still valid at th etime of destruction.
+//
+// NOTE: this size-polymorphic base class must not be used inside of
+// ``std::unique_ptr`` or ``delete``.
 template <typename T>
-class Vector<T, vector_impl::kGeneric>
-    : public vector_impl::DestructorHelper<
-          Vector<T, vector_impl::kGeneric>,
-          std::is_trivially_destructible<T>::value> {
+class Vector<T, vector_impl::kGeneric> {
  public:
   using value_type = T;
 
@@ -211,6 +268,7 @@ class Vector<T, vector_impl::kGeneric>
   // A vector without an explicit maximum size (Vector<T>) cannot be constructed
   // directly. Instead, construct a Vector<T, kMaxSize>. Vectors of any max size
   // can be used through a Vector<T> pointer or reference.
+  Vector() = delete;
 
   // Assign
 
@@ -316,7 +374,7 @@ class Vector<T, vector_impl::kGeneric>
 
   // Returns the number of elements in the Vector. Uses size_t instead of
   // size_type for consistency with other containers.
-  size_t size() const noexcept { return size_; }
+  size_t size() const noexcept PW_NO_SANITIZE("memory") { return size_; }
 
   // Returns the maximum number of elements in this Vector.
   size_t max_size() const noexcept { return max_size_; }
@@ -335,8 +393,13 @@ class Vector<T, vector_impl::kGeneric>
 
   iterator insert(const_iterator index, T&& value);
 
-  template <typename Iterator>
-  iterator insert(const_iterator index, Iterator first, Iterator last);
+  template <
+      typename Iterator,
+      int&... ExplicitArgumentBarrier,
+      typename = std::enable_if_t<vector_impl::IsIterator<Iterator>::value>>
+  iterator insert(const_iterator index, Iterator first, Iterator last) {
+    return InsertFrom(index, first, last);
+  }
 
   iterator insert(const_iterator index, std::initializer_list<T> list) {
     return insert(index, list.begin(), list.end());
@@ -358,9 +421,9 @@ class Vector<T, vector_impl::kGeneric>
 
   void pop_back();
 
-  void resize(size_type new_size) { resize(new_size, T()); }
+  void resize(size_t new_size) { resize(new_size, T()); }
 
-  void resize(size_type new_size, const T& value);
+  void resize(size_t new_size, const T& value);
 
  protected:
   // Vectors without an explicit size cannot be constructed directly. Instead,
@@ -368,34 +431,10 @@ class Vector<T, vector_impl::kGeneric>
   explicit constexpr Vector(size_type max_size) noexcept
       : max_size_(max_size) {}
 
-  Vector(size_type max_size, size_type count, const T& value)
-      : Vector(max_size) {
-    Append(count, value);
-  }
+  // Polymorphic-sized vectors cannot be destroyed directly due to the lack of a
+  // virtual destructor.
+  ~Vector() = default;
 
-  Vector(size_type max_size, size_type count) : Vector(max_size, count, T()) {}
-
-  template <
-      typename Iterator,
-      typename...,
-      typename = std::enable_if_t<vector_impl::IsIterator<Iterator>::value>>
-  Vector(size_type max_size, Iterator first, Iterator last) : Vector(max_size) {
-    CopyFrom(first, last);
-  }
-
-  Vector(size_type max_size, const Vector& other) : Vector(max_size) {
-    CopyFrom(other.begin(), other.end());
-  }
-
-  Vector(size_type max_size, Vector&& other) noexcept : Vector(max_size) {
-    MoveFrom(other);
-  }
-
-  Vector(size_type max_size, std::initializer_list<T> list) : Vector(max_size) {
-    CopyFrom(list.begin(), list.end());
-  }
-
- private:
   template <typename Iterator>
   void CopyFrom(Iterator first, Iterator last);
 
@@ -403,6 +442,10 @@ class Vector<T, vector_impl::kGeneric>
 
   void Append(size_type count, const T& value);
 
+  template <typename Iterator>
+  iterator InsertFrom(const_iterator index, Iterator first, Iterator last);
+
+ private:
   const size_type max_size_;
   size_type size_ = 0;
 };
@@ -476,10 +519,12 @@ void Vector<T, vector_impl::kGeneric>::pop_back() {
 }
 
 template <typename T>
-void Vector<T, vector_impl::kGeneric>::resize(size_type new_size,
-                                              const T& value) {
+void Vector<T, vector_impl::kGeneric>::resize(size_t new_size, const T& value) {
+  PW_DASSERT(new_size <= std::numeric_limits<size_type>::max());
   if (size() < new_size) {
-    Append(std::min(max_size(), size_t(new_size)) - size(), value);
+    size_type count =
+        static_cast<size_type>(std::min(max_size(), new_size) - size());
+    Append(count, value);
   } else {
     while (size() > new_size) {
       pop_back();
@@ -506,40 +551,6 @@ typename Vector<T>::iterator Vector<T>::insert(Vector<T>::const_iterator index,
 
   // Return an iterator pointing to the inserted value.
   return insertion_point;
-}
-
-template <typename T>
-template <typename Iterator>
-typename Vector<T>::iterator Vector<T>::insert(Vector<T>::const_iterator index,
-                                               Iterator first,
-                                               Iterator last) {
-  PW_DASSERT(index >= cbegin());
-  PW_DASSERT(index <= cend());
-  PW_DASSERT(!full());
-
-  iterator insertion_point = begin() + std::distance(cbegin(), index);
-
-  const size_t insertion_count = std::distance(first, last);
-  if (insertion_count == 0) {
-    return insertion_point;
-  }
-  PW_DASSERT(size() + insertion_count <= max_size());
-
-  iterator return_value = insertion_point;
-
-  if (insertion_point != end()) {
-    std::move_backward(insertion_point, end(), end() + insertion_count);
-  }
-
-  while (first != last) {
-    *insertion_point = *first;
-    ++first;
-    ++insertion_point;
-  }
-  size_ += insertion_count;
-
-  // Return an iterator pointing to the first element inserted.
-  return return_value;
 }
 
 template <typename T>
@@ -585,7 +596,7 @@ typename Vector<T>::iterator Vector<T>::erase(Vector<T>::const_iterator first,
   iterator destination = begin() + std::distance(cbegin(), first);
   iterator new_end = std::move(source, end(), destination);
 
-  size_ = std::distance(begin(), new_end);
+  size_ = static_cast<size_type>(std::distance(begin(), new_end));
 
   // Return an iterator following the last removed element.
   return new_end;
@@ -612,6 +623,27 @@ void Vector<T, vector_impl::kGeneric>::Append(size_type count, const T& value) {
   for (size_t i = 0; i < count; ++i) {
     push_back(value);
   }
+}
+
+template <typename T>
+template <typename Iterator>
+typename Vector<T>::iterator Vector<T, vector_impl::kGeneric>::InsertFrom(
+    Vector<T>::const_iterator index, Iterator first, Iterator last) {
+  PW_DASSERT(index >= cbegin());
+  PW_DASSERT(index <= cend());
+
+  // Return an iterator pointing to the first element inserted.
+  iterator retval = begin() + std::distance(cbegin(), index);
+  size_t count = static_cast<size_t>(std::distance(first, last));
+  PW_DASSERT(count <= max_size() - size());
+
+  if (retval != end()) {
+    std::move_backward(retval, end(), end() + count);
+  }
+  std::move(first, last, retval);
+
+  size_ += static_cast<size_type>(count);
+  return retval;
 }
 
 }  // namespace pw

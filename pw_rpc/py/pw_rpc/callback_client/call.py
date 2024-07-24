@@ -141,6 +141,10 @@ class Call:
         _LOG.warning('%s terminated due to an error: %s', self._rpc, error)
 
     @property
+    def call_id(self) -> int:
+        return self._rpc.call_id
+
+    @property
     def method(self) -> Method:
         return self._rpc.method
 
@@ -317,6 +321,11 @@ class ServerStreamingCall(Call):
         timeout_s: OptionalTimeout = UseDefault.VALUE,
     ) -> Iterator:
         return self._get_responses(count=count, timeout_s=timeout_s)
+
+    def request_completion(self) -> None:
+        """Sends client completion packet to server."""
+        if not self.completed():
+            self._rpcs.send_client_stream_end(self._rpc)
 
     def __iter__(self) -> Iterator:
         return self.get_responses()

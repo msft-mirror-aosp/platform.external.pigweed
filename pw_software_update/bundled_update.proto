@@ -15,9 +15,12 @@ syntax = "proto3";
 
 package pw.software_update;
 
-import "pw_protobuf_protos/common.proto";
-import "pw_tokenizer/proto/options.proto";
 import "google/protobuf/any.proto";
+import "pw_protobuf_protos/common.proto";
+import "pw_tokenizer_proto/options.proto";
+
+option java_multiple_files = true;
+option java_package = "dev.pigweed.pw_software_update";
 
 message BundledUpdateState {
   enum Enum {
@@ -134,7 +137,7 @@ message StartRequest {
   optional string bundle_filename = 1;
 }
 
-// TODO(b/235273688): Add documentation and details of the API contract.
+// TODO: b/235273688 - Add documentation and details of the API contract.
 service BundledUpdate {
   // TODO(keir): Offer GetCurrentManifest & GetStagedManifest() methods that
   // leverage pw_transfer to upload the manifest off the device, to enable host

@@ -23,10 +23,9 @@ pw_cc_binary(
         "hdlc_rpc_server.cc",
         "main.cc",
     ],
-    tags = ["manual"],  # TODO(b/241575924): Fix the Bazel build for rpc_example
     deps = [
         "//pw_hdlc",
-        "//pw_hdlc:pw_rpc",
+        "//pw_hdlc:default_addresses",
         "//pw_log",
         "//pw_rpc",
         "//pw_rpc/nanopb:echo_service",

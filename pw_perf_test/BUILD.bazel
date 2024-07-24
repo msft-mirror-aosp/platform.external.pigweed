@@ -15,7 +15,6 @@
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_facade",
-    "pw_cc_library",
     "pw_cc_perf_test",
     "pw_cc_test",
 )
@@ -28,7 +27,87 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+cc_library(
+    name = "pw_perf_test",
+    srcs = [
+        "framework.cc",
+        "perf_test.cc",
+        "test_info.cc",
+    ],
+    hdrs = [
+        "public/pw_perf_test/internal/framework.h",
+        "public/pw_perf_test/internal/test_info.h",
+        "public/pw_perf_test/perf_test.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":event_handler",
+        ":state",
+        ":timer",
+        "//pw_preprocessor",
+    ],
+)
+
+cc_library(
+    name = "state",
+    srcs = [
+        "state.cc",
+    ],
+    hdrs = [
+        "public/pw_perf_test/state.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":event_handler",
+        ":timer",
+        "//pw_assert",
+        "//pw_log",
+    ],
+)
+
+pw_cc_test(
+    name = "state_test",
+    srcs = ["state_test.cc"],
+    deps = [":pw_perf_test"],
+)
+
+# Event handlers
+
+cc_library(
+    name = "event_handler",
+    hdrs = ["public/pw_perf_test/event_handler.h"],
+    includes = ["public"],
+    deps = [":timer"],
+)
+
+cc_library(
+    name = "logging_event_handler",
+    srcs = ["logging_event_handler.cc"],
+    hdrs = [
+        "public/pw_perf_test/googletest_style_event_handler.h",
+        "public/pw_perf_test/logging_event_handler.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":event_handler",
+        "//pw_log",
+    ],
+)
+
+cc_library(
+    name = "logging_main",
+    srcs = ["logging_main.cc"],
+    deps = [
+        ":logging_event_handler",
+        ":pw_perf_test",
+    ],
+)
+
+# Timer facade
+
+cc_library(
     name = "duration_unit",
     hdrs = [
         "public/pw_perf_test/internal/duration_unit.h",
@@ -49,83 +128,24 @@ pw_cc_facade(
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "timer",
+    hdrs = [
+        "public/pw_perf_test/internal/timer.h",
+    ],
+    includes = ["public"],
     deps = [
-        ":timer_interface_facade",
-        "@pigweed_config//:pw_perf_test_timer_backend",
+        ":duration_unit",
+        "@pigweed//targets:pw_perf_test_timer_backend",
     ],
 )
 
-pw_cc_library(
+cc_library(
     name = "timer_multiplexer",
-    visibility = ["@pigweed_config//:__pkg__"],
+    visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
         "//conditions:default": [":chrono_timer"],
     }),
-)
-
-# EventHandler Configuraitions
-
-pw_cc_library(
-    name = "event_handler",
-    hdrs = ["public/pw_perf_test/event_handler.h"],
-    includes = ["public"],
-    deps = [":timer"],
-)
-
-pw_cc_library(
-    name = "pw_perf_test",
-    srcs = ["perf_test.cc"],
-    hdrs = ["public/pw_perf_test/perf_test.h"],
-    includes = ["public"],
-    deps = [
-        ":event_handler",
-        ":timer",
-        "//pw_assert",
-        "//pw_log",
-    ],
-)
-
-pw_cc_library(
-    name = "google_test_style_event_strings",
-    hdrs = ["public/pw_perf_test/googletest_style_event_handler.h"],
-)
-
-pw_cc_library(
-    name = "log_main_handler",
-    srcs = ["log_perf_handler.cc"],
-    hdrs = ["public/pw_perf_test/log_perf_handler.h"],
-    includes = [
-        "public",
-    ],
-    deps = [
-        ":event_handler",
-        ":google_test_style_event_strings",
-        "//pw_log",
-    ],
-)
-
-pw_cc_library(
-    name = "logging_main",
-    srcs = ["log_perf_handler_main.cc"],
-    deps = [
-        ":log_main_handler",
-        ":pw_perf_test",
-    ],
-)
-
-pw_cc_perf_test(
-    name = "generic_test",
-    srcs = ["performance_test_generic.cc"],
-)
-
-# Test Declarations
-
-pw_cc_test(
-    name = "perf_test_test",
-    srcs = ["perf_test_test.cc"],
-    deps = [":pw_perf_test"],
 )
 
 pw_cc_test(
@@ -135,6 +155,26 @@ pw_cc_test(
         ":timer",
         "//pw_chrono:system_clock",
         "//pw_thread:sleep",
+    ],
+)
+
+# Chrono timer facade implementation
+
+cc_library(
+    name = "chrono_timer",
+    hdrs = [
+        "chrono_public_overrides/pw_perf_test_timer_backend/timer.h",
+        "public/pw_perf_test/internal/chrono_timer_interface.h",
+    ],
+    includes = [
+        "chrono_public_overrides",
+        "public",
+    ],
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    deps = [
+        ":duration_unit",
+        ":timer_interface_facade",
+        "//pw_chrono:system_clock",
     ],
 )
 
@@ -148,49 +188,10 @@ pw_cc_test(
     ],
 )
 
-pw_cc_test(
-    name = "state_test",
-    srcs = ["state_test.cc"],
-    deps = [":pw_perf_test"],
-)
+# ARM Cortex timer facade implementation
 
-# Bazel does not yet support building docs.
-filegroup(
-    name = "docs",
-    srcs = ["docs.rst"],
-)
-
-# Chrono Implementation
-
-pw_cc_library(
-    name = "chrono_timer_headers",
-    hdrs = [
-        "chrono_public_overrides/pw_perf_test_timer_backend/timer.h",
-        "public/pw_perf_test/internal/chrono_timer_interface.h",
-    ],
-    includes = [
-        "chrono_public_overrides",
-        "public",
-    ],
-    deps = [
-        ":duration_unit",
-        "//pw_chrono:system_clock",
-    ],
-)
-
-pw_cc_library(
-    name = "chrono_timer",
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
-    deps = [
-        ":chrono_timer_headers",
-        ":timer_interface_facade",
-    ],
-)
-
-# ARM Cortex Implementation
-
-pw_cc_library(
-    name = "arm_cortex_timer_headers",
+cc_library(
+    name = "arm_cortex_timer",
     hdrs = [
         "arm_cortex_cyccnt_public_overrides/pw_perf_test_timer_backend/timer.h",
         "public/pw_perf_test/internal/cyccnt_timer_interface.h",
@@ -199,14 +200,22 @@ pw_cc_library(
         "arm_cortex_cyccnt_public_overrides",
         "public",
     ],
-    deps = [":duration_unit"],
-)
-
-pw_cc_library(
-    name = "arm_cortex_timer",
     target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
-        ":arm_cortex_timer_headers",
+        ":duration_unit",
         ":timer_interface_facade",
     ],
+)
+
+# Module-level targets
+
+pw_cc_perf_test(
+    name = "example_perf_test",
+    srcs = ["examples/example_perf_test.cc"],
+)
+
+# Bazel does not yet support building docs.
+filegroup(
+    name = "docs",
+    srcs = ["docs.rst"],
 )

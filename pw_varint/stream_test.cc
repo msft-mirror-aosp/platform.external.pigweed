@@ -20,8 +20,8 @@
 #include <cstring>
 #include <limits>
 
-#include "gtest/gtest.h"
 #include "pw_stream/memory_stream.h"
+#include "pw_unit_test/framework.h"
 #include "pw_varint/varint.h"
 
 namespace pw::varint {
@@ -185,7 +185,7 @@ TEST(VarintRead, Unsigned64_SingleByte) {
 }
 
 TEST(VarintRead, Unsigned64_MultiByte) {
-  uint64_t value = -1234;
+  uint64_t value;
 
   {
     const auto buffer = MakeBuffer("\x80\x01");
@@ -243,7 +243,7 @@ TEST(VarintRead, Unsigned64_MultiByte) {
 }
 
 TEST(VarintRead, Errors) {
-  uint64_t value = -1234;
+  uint64_t value;
 
   {
     std::array<std::byte, 0> buffer{};
@@ -251,6 +251,7 @@ TEST(VarintRead, Errors) {
     const auto sws = Read(reader, &value);
     EXPECT_FALSE(sws.ok());
     EXPECT_EQ(sws.status(), Status::OutOfRange());
+    EXPECT_EQ(sws.size(), buffer.size());
   }
 
   {
@@ -259,6 +260,7 @@ TEST(VarintRead, Errors) {
     const auto sws = Read(reader, &value);
     EXPECT_FALSE(sws.ok());
     EXPECT_EQ(sws.status(), Status::DataLoss());
+    EXPECT_EQ(sws.size(), buffer.size());
   }
 
   {
@@ -271,11 +273,12 @@ TEST(VarintRead, Errors) {
     const auto sws = Read(reader, &value);
     EXPECT_FALSE(sws.ok());
     EXPECT_EQ(sws.status(), Status::DataLoss());
+    EXPECT_EQ(sws.size(), varint::kMaxVarint64SizeBytes);
   }
 }
 
 TEST(VarintRead, SizeLimit) {
-  uint64_t value = -1234;
+  uint64_t value;
 
   {
     // buffer contains a valid varint, but we limit the read length to ensure
@@ -285,6 +288,7 @@ TEST(VarintRead, SizeLimit) {
     const auto sws = Read(reader, &value, 4);
     EXPECT_FALSE(sws.ok());
     EXPECT_EQ(sws.status(), Status::DataLoss());
+    EXPECT_EQ(sws.size(), 4u);
     EXPECT_EQ(reader.Tell(), 4u);
   }
 
@@ -296,6 +300,7 @@ TEST(VarintRead, SizeLimit) {
     const auto sws = Read(reader, &value, 0);
     EXPECT_FALSE(sws.ok());
     EXPECT_EQ(sws.status(), Status::OutOfRange());
+    EXPECT_EQ(sws.size(), 0u);
     EXPECT_EQ(reader.Tell(), 0u);
   }
 }

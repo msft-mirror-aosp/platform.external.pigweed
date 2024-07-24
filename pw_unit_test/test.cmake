@@ -15,10 +15,14 @@ include_guard(GLOBAL)
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-set(pw_unit_test_GOOGLETEST_BACKEND pw_unit_test.light CACHE STRING
+set(pw_unit_test_BACKEND pw_unit_test.light CACHE STRING
     "CMake target which implements GoogleTest, by default pw_unit_test.light \
-     is used. You could, for example, point this at pw_third_party.googletest \
+     is used. You could, for example, point this at pw_unit_test.googletest \
      if using upstream GoogleTest directly on your host for GoogleMock.")
+
+set(pw_unit_test_GOOGLETEST_BACKEND "" CACHE STRING
+    "Warning: Deprecated build argument. When using googletest backend set
+    pw_unit_test_BACKEND to pw_unit_test.googletest instead.")
 
 # TODO(ewout): Remove the default.
 set(pw_unit_test_ADD_EXECUTABLE_FUNCTION "pw_add_test_executable" CACHE STRING
@@ -97,7 +101,7 @@ function(pw_add_test NAME)
     HEADERS
       ${arg_HEADERS}
     PRIVATE_DEPS
-      # TODO(b/232141950): Apply compilation options that affect ABI
+      # TODO: b/232141950 - Apply compilation options that affect ABI
       # globally in the CMake build instead of injecting them into libraries.
       pw_build
       ${arg_PRIVATE_DEPS}

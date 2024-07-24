@@ -84,9 +84,17 @@ pw_test("analog_input_test") {
 pw_test("microvolt_input_test") {
   enable_if = pw_chrono_SYSTEM_CLOCK_BACKEND != ""
   sources = [ "microvolt_input_test.cc" ]
-  deps = [ ":pw_analog" ]
+  deps = [
+    ":pw_analog",
+    "$dir_pw_chrono:system_clock",
+  ]
 }
 
 pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
+  sources = [
+    "docs.rst",
+    "public/pw_analog/analog_input_gmock.h",
+    "public/pw_analog/microvolt_input.h",
+    "public/pw_analog/microvolt_input_gmock.h",
+  ]
 }

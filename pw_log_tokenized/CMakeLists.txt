@@ -24,21 +24,47 @@ pw_add_library(pw_log_tokenized.config INTERFACE
     public
   PUBLIC_DEPS
     pw_log.facade
+    pw_polyfill
+    pw_tokenizer.config
     ${pw_log_tokenized_CONFIG}
 )
 
 pw_add_library(pw_log_tokenized STATIC
   HEADERS
-    public/pw_log_tokenized/log_tokenized.h
     public_overrides/pw_log_backend/log_backend.h
+    public_overrides/pw_log_backend/log_backend_uses_pw_tokenizer.h
   PUBLIC_INCLUDES
-    public
     public_overrides
   PUBLIC_DEPS
-    pw_log_tokenized.config
     pw_log_tokenized.handler
+    pw_log_tokenized._headers
+  SOURCES
+    log_tokenized.cc
+)
+
+pw_add_library(pw_log_tokenized._headers INTERFACE
+  HEADERS
+    public/pw_log_tokenized/log_tokenized.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_log_tokenized.config
     pw_log_tokenized.metadata
+    pw_preprocessor
     pw_tokenizer
+)
+
+pw_add_library(pw_log_tokenized.gcc_partially_tokenized STATIC
+  HEADERS
+    public/pw_log_tokenized/gcc_partially_tokenized.h
+    gcc_partially_tokenized_public_overrides/pw_log_backend/log_backend.h
+  PUBLIC_INCLUDES
+    public
+    gcc_partially_tokenized_public_overrides
+  PUBLIC_DEPS
+    pw_log_string.handler
+    pw_log_tokenized.handler
+    pw_log_tokenized._headers
   SOURCES
     log_tokenized.cc
 )
@@ -63,37 +89,42 @@ pw_add_facade(pw_log_tokenized.handler INTERFACE
     pw_preprocessor
 )
 
+pw_add_library(pw_log_tokenized.base64 INTERFACE
+  HEADERS
+    public/pw_log_tokenized/base64.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_log_tokenized.config
+    pw_tokenizer.base64
+)
+
 # This target provides a backend for pw_tokenizer that encodes tokenized logs as
 # Base64, encodes them into HDLC frames, and writes them over sys_io.
 pw_add_library(pw_log_tokenized.base64_over_hdlc STATIC
-  HEADERS
-    public/pw_log_tokenized/base64_over_hdlc.h
-  PUBLIC_INCLUDES
-    public
   SOURCES
     base64_over_hdlc.cc
   PRIVATE_DEPS
     pw_hdlc.encoder
+    pw_log_tokenized.base64
     pw_log_tokenized.handler
     pw_span
     pw_stream.sys_io_stream
-    pw_tokenizer.base64
 )
 
-if(NOT "${pw_tokenizer.global_handler_with_payload_BACKEND}" STREQUAL "")
-  pw_add_test(pw_log_tokenized.log_tokenized_test
-    SOURCES
-      log_tokenized_test.cc
-      log_tokenized_test_c.c
-      pw_log_tokenized_private/test_utils.h
-    PRIVATE_DEPS
-      pw_log_tokenized
-      pw_preprocessor
-    GROUPS
-      modules
-      pw_log_tokenized
-  )
-endif()
+pw_add_test(pw_log_tokenized.log_tokenized_test
+  SOURCES
+    log_tokenized_test.cc
+    log_tokenized_test_c.c
+    pw_log_tokenized_private/test_utils.h
+  PRIVATE_DEPS
+    pw_log_tokenized.base64
+    pw_log_tokenized._headers
+    pw_preprocessor
+  GROUPS
+    modules
+    pw_log_tokenized
+)
 
 pw_add_test(pw_log_tokenized.metadata_test
   SOURCES

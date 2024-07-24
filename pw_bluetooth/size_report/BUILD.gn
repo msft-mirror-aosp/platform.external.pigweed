@@ -22,7 +22,8 @@ if (dir_pw_third_party_emboss != "") {
     sources = [ "make_view_and_write.cc" ]
     deps = [
       "$dir_pw_bloat:bloat_this_binary",
-      "$dir_pw_bluetooth:emboss_hci",
+      "$dir_pw_bluetooth:emboss_hci_group",
+      "$dir_pw_bluetooth:emboss_hci_test",
     ]
   }
 
@@ -30,7 +31,8 @@ if (dir_pw_third_party_emboss != "") {
     sources = [ "make_2_views_and_write.cc" ]
     deps = [
       "$dir_pw_bloat:bloat_this_binary",
-      "$dir_pw_bluetooth:emboss_hci",
+      "$dir_pw_bluetooth:emboss_hci_group",
+      "$dir_pw_bluetooth:emboss_hci_test",
     ]
   }
 }

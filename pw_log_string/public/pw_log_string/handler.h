@@ -15,8 +15,20 @@
 
 #include <stdarg.h>
 
+#include "pw_log_string/config.h"
 #include "pw_preprocessor/compiler.h"
 #include "pw_preprocessor/util.h"
+
+// This macro implements PW_LOG using pw_log_string_HandleMessage.
+//
+// This is the log macro frontend that funnels everything into the C-based
+// message hangler facade, i.e. pw_log_string_HandleMessage. It's not efficient
+// at the callsite, since it passes many arguments.
+//
+// Users can configure exactly what is passed to pw_log_string_HandleMessage by
+// providing their own PW_LOG_STRING_CONFIG_HANDLE_MESSAGE implementation.
+//
+#define PW_LOG_STRING_HANDLE_MESSAGE PW_LOG_STRING_CONFIG_HANDLE_MESSAGE
 
 PW_EXTERN_C_START
 
@@ -29,8 +41,8 @@ void pw_log_string_HandleMessage(int level,
                                  const char* message,
                                  ...) PW_PRINTF_FORMAT(6, 7);
 
-// Log a message with the listed attributes, this must be implemented by the
-// backend.
+/// Logs a message with the listed attributes. This must be implemented by the
+/// backend.
 void pw_log_string_HandleMessageVaList(int level,
                                        unsigned int flags,
                                        const char* module_name,

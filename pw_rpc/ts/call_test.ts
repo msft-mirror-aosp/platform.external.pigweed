@@ -14,26 +14,33 @@
 
 /* eslint-env browser */
 
-import {SomeMessage} from 'pigweedjs/protos/pw_rpc/ts/test2_pb';
+import { SomeMessage } from 'pigweedjs/protos/pw_rpc/ts/test2_pb';
 
-import {Call} from './call';
-import {Channel, Method, Service} from './descriptors';
-import {PendingCalls, Rpc} from './rpc_classes';
+import { Call } from './call';
+import { Channel, Method, Service } from './descriptors';
+import { PendingCalls, Rpc } from './rpc_classes';
 
 class FakeRpc {
   readonly channel: any = undefined;
   readonly service: any = undefined;
   readonly method: any = undefined;
 
-  idSet: [number, number, number] = [1, 2, 3];
-  idString = '1.2.3';
+  getIdSet(callId: number): [number, number, number, number] {
+    return [1, 2, 3, callId];
+  }
+
+  getIdString(callId: number): string {
+    return '1.2.3.' + callId;
+  }
 }
 
 describe('Call', () => {
   let call: Call;
 
   beforeEach(() => {
-    const noop = () => { };
+    const noop = () => {
+      // Do nothing.
+    };
     const pendingCalls = new PendingCalls();
     const rpc = new FakeRpc();
     call = new Call(pendingCalls, rpc, noop, noop, noop);

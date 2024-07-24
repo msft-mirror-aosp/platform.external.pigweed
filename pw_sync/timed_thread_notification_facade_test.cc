@@ -14,9 +14,9 @@
 
 #include <chrono>
 
-#include "gtest/gtest.h"
 #include "pw_chrono/system_clock.h"
 #include "pw_sync/timed_thread_notification.h"
+#include "pw_unit_test/framework.h"
 
 using pw::chrono::SystemClock;
 using namespace std::chrono_literals;
@@ -35,7 +35,7 @@ TEST(TimedThreadNotification, EmptyInitialState) {
   EXPECT_FALSE(notification.try_acquire());
 }
 
-// TODO(b/235284163): Add real concurrency tests.
+// TODO: b/235284163 - Add real concurrency tests.
 
 TEST(TimedThreadNotification, Release) {
   TimedThreadNotification notification;

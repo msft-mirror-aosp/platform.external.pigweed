@@ -33,8 +33,11 @@ template("pico_executable") {
       forward_variables_from(invoker, "*")
     }
 
-    pw_exec(_uf2_name) {
+    pw_exec(target_name) {
       _elf2uf2_target = "$dir_pw_third_party/pico_sdk/src:elf2uf2($dir_pigweed/targets/host:host_clang_debug)"
+      if (host_os == "win") {
+        _elf2uf2_target = "$dir_pw_third_party/pico_sdk/src:elf2uf2($dir_pigweed/targets/host:host_gcc_debug)"
+      }
       _uf2_out_path = "${target_out_dir}/${_uf2_name}"
       deps = [
         ":${_elf_name}",
@@ -46,9 +49,6 @@ template("pico_executable") {
         rebase_path(_uf2_out_path, root_build_dir),
       ]
       outputs = [ _uf2_out_path ]
-    }
-    group(target_name) {
-      deps = [ ":${_uf2_name}" ]
     }
   }
 }

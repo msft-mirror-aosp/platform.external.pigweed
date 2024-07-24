@@ -23,9 +23,21 @@ Using Pigweed tokenized logging
 -------------------------------
 Using the pigweed logging can be done by enabling
 ``CONFIG_PIGWEED_LOG_TOKENIZED=y``. At that point ``pw_log_tokenized`` is set
-as the backedn for ``pw_log`` and all Zephyr logs are routed to Pigweed's
+as the backend for ``pw_log`` and all Zephyr logs are routed to Pigweed's
 logging facade. This means that any logging statements made in Zephyr itself
 are also tokenized.
+
+When enabled, a few extra configurations are available to control the tokenized
+metadata bits such as log level bits, line number bits, custom flag bits, and
+module string bits.
+The log format string may also be modified by defining your own ``PW_LOG_TOKENIZED_FORMAT_STRING``.
+This can be done in your cmake by including your own header that defines it.
+
+.. code-block::
+
+   add_library(log_tokenized_config INTERFACE)
+   target_compile_options(log_tokenized_config INTERFACE -include header_file_that_sets_that_macro.h)
+   pw_set_module_config(pw_log_tokenized_CONFIG log_tokenized_config)
 
 Setting the log level
 ---------------------

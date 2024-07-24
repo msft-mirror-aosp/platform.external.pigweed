@@ -26,6 +26,7 @@ PatternOrStr = Union[Pattern, str]
 
 TRACKING_BRANCH_ALIAS = '@{upstream}'
 _TRACKING_BRANCH_ALIASES = TRACKING_BRANCH_ALIAS, '@{u}'
+_NON_TRACKING_FALLBACK = 'HEAD~10'
 
 
 def git_stdout(
@@ -37,6 +38,7 @@ def git_stdout(
             stdout=subprocess.PIPE,
             stderr=None if show_stderr else subprocess.DEVNULL,
             check=True,
+            ignore_dry_run=True,
         )
         .stdout.decode()
         .strip()
@@ -73,7 +75,10 @@ def _diff_names(
             yield full_path
 
 
-def tracking_branch(repo_path: Optional[Path] = None) -> Optional[str]:
+def tracking_branch(
+    repo_path: Optional[Path] = None,
+    fallback: Optional[str] = None,
+) -> Optional[str]:
     """Returns the tracking branch of the current branch.
 
     Since most callers of this function can safely handle a return value of
@@ -105,7 +110,7 @@ def tracking_branch(repo_path: Optional[Path] = None) -> Optional[str]:
         )
 
     except subprocess.CalledProcessError:
-        return None
+        return fallback
 
 
 def list_files(
@@ -127,7 +132,7 @@ def list_files(
         repo_path = Path.cwd()
 
     if commit in _TRACKING_BRANCH_ALIASES:
-        commit = tracking_branch(repo_path)
+        commit = tracking_branch(repo_path, fallback=_NON_TRACKING_FALLBACK)
 
     if commit:
         try:
@@ -164,6 +169,7 @@ def has_uncommitted_changes(repo: Optional[Path] = None) -> bool:
                 ['git', '-C', repo, 'update-index', '-q', '--refresh'],
                 capture_output=True,
                 check=True,
+                ignore_dry_run=True,
             )
         except subprocess.CalledProcessError as err:
             if err.stderr or i == retries - 1:
@@ -172,7 +178,8 @@ def has_uncommitted_changes(repo: Optional[Path] = None) -> bool:
     # diff-index exits with 1 if there are uncommitted changes.
     return (
         log_run(
-            ['git', '-C', repo, 'diff-index', '--quiet', 'HEAD', '--']
+            ['git', '-C', repo, 'diff-index', '--quiet', 'HEAD', '--'],
+            ignore_dry_run=True,
         ).returncode
         == 1
     )

@@ -14,6 +14,7 @@
 """Argument parsing code for presubmit checks."""
 
 import argparse
+import fnmatch
 import logging
 import os
 from pathlib import Path
@@ -56,7 +57,8 @@ def add_path_arguments(parser) -> None:
         default=git_repo.TRACKING_BRANCH_ALIAS,
         help=(
             'Git revision against which to diff for changed files. '
-            'Default is the tracking branch of the current branch.'
+            'Default is the tracking branch of the current branch: '
+            f'{git_repo.TRACKING_BRANCH_ALIAS}'
         ),
     )
 
@@ -142,21 +144,28 @@ def _add_programs_arguments(
         help='List all the available steps.',
     )
 
-    def presubmit_step(arg: str) -> presubmit.Check:
-        if arg not in all_steps:
+    def presubmit_step(arg: str) -> List[presubmit.Check]:
+        """Return a list of matching presubmit steps."""
+        filtered_step_names = fnmatch.filter(all_steps.keys(), arg)
+
+        if not filtered_step_names:
             all_step_names = ', '.join(sorted(all_steps.keys()))
             raise argparse.ArgumentTypeError(
-                f'{arg} is not the name of a presubmit step\n\n'
+                f'"{arg}" does not match the name of a presubmit step.\n\n'
                 f'Valid Steps:\n{all_step_names}'
             )
-        return all_steps[arg]
+
+        return list(all_steps[name] for name in filtered_step_names)
 
     parser.add_argument(
         '--step',
-        action='append',
-        choices=all_steps.values(),
+        action='extend',
         default=[],
-        help='Run specific steps instead of running a full program.',
+        help=(
+            'Run specific steps instead of running a full program. Include an '
+            'asterix to match more than one step name. For example: --step '
+            "'*_format'"
+        ),
         type=presubmit_step,
     )
 
@@ -194,12 +203,22 @@ def add_arguments(
     """Adds common presubmit check options to an argument parser."""
 
     add_path_arguments(parser)
+
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help=(
+            'Execute the presubits with in dry-run mode. System commands that'
+            'pw_presubmit would run are instead printed to the terminal.'
+        ),
+    )
     parser.add_argument(
         '-k',
         '--keep-going',
         action='store_true',
         help='Continue running presubmit steps after a failure.',
     )
+
     parser.add_argument(
         '--continue-after-build-error',
         action='store_true',
@@ -208,11 +227,20 @@ def add_arguments(
             'failure.'
         ),
     )
+
+    parser.add_argument(
+        '--rng-seed',
+        type=int,
+        default=1,
+        help='Seed for random number generators.',
+    )
+
     parser.add_argument(
         '--output-directory',
         type=Path,
         help=f'Output directory (default: {"<repo root>" / DEFAULT_PATH})',
     )
+
     parser.add_argument(
         '--package-root',
         type=Path,
@@ -242,6 +270,13 @@ def add_arguments(
         )
 
 
+def _get_default_parser() -> argparse.ArgumentParser:
+    """Return all common pw presubmit args for sphinx documentation."""
+    parser = argparse.ArgumentParser(description="Runs local presubmit checks.")
+    add_arguments(parser)
+    return parser
+
+
 def run(  # pylint: disable=too-many-arguments
     default_program: Optional[presubmit.Program],
     program: Sequence[presubmit.Program],
@@ -254,6 +289,7 @@ def run(  # pylint: disable=too-many-arguments
     repositories: Collection[Path] = (),
     only_list_steps=False,
     list_steps: Optional[Callable[[], None]] = None,
+    dry_run: bool = False,
     **other_args,
 ) -> int:
     """Processes arguments from add_arguments and runs the presubmit.
@@ -335,8 +371,19 @@ def run(  # pylint: disable=too-many-arguments
         output_directory=output_directory,
         package_root=package_root,
         substep=substep,
+        dry_run=dry_run,
         **other_args,
     ):
         return 0
+
+    # Check if this failed presumbit was run as a Git hook by looking for GIT_*
+    # environment variables. Mention using --no-verify to skip if so.
+    for env_var in os.environ:
+        if env_var.startswith('GIT'):
+            _LOG.info(
+                'To skip these checks and continue with this push, '
+                'add --no-verify to the git command'
+            )
+            break
 
     return 1

@@ -19,10 +19,76 @@
 
 #include "pw_bytes/bit.h"
 #include "pw_bytes/endian.h"
+#include "pw_result/result.h"
+#include "pw_tokenizer/base64.h"
 #include "pw_tokenizer/internal/decode.h"
+#include "pw_tokenizer/nested_tokenization.h"
 
 namespace pw::tokenizer {
 namespace {
+
+class NestedMessageDetokenizer {
+ public:
+  NestedMessageDetokenizer(const Detokenizer& detokenizer)
+      : detokenizer_(detokenizer) {}
+
+  void Detokenize(std::string_view chunk) {
+    for (char next_char : chunk) {
+      Detokenize(next_char);
+    }
+  }
+
+  void Detokenize(char next_char) {
+    switch (state_) {
+      case kNonMessage:
+        if (next_char == PW_TOKENIZER_NESTED_PREFIX) {
+          message_buffer_.push_back(next_char);
+          state_ = kMessage;
+        } else {
+          output_.push_back(next_char);
+        }
+        break;
+      case kMessage:
+        if (base64::IsValidChar(next_char)) {
+          message_buffer_.push_back(next_char);
+        } else {
+          HandleEndOfMessage();
+          if (next_char == PW_TOKENIZER_NESTED_PREFIX) {
+            message_buffer_.push_back(next_char);
+          } else {
+            output_.push_back(next_char);
+            state_ = kNonMessage;
+          }
+        }
+        break;
+    }
+  }
+
+  std::string Flush() {
+    if (state_ == kMessage) {
+      HandleEndOfMessage();
+      state_ = kNonMessage;
+    }
+    return std::move(output_);
+  }
+
+ private:
+  void HandleEndOfMessage() {
+    if (auto result = detokenizer_.DetokenizeBase64Message(message_buffer_);
+        result.ok()) {
+      output_ += result.BestString();
+    } else {
+      output_ += message_buffer_;  // Keep the original if it doesn't decode.
+    }
+    message_buffer_.clear();
+  }
+
+  const Detokenizer& detokenizer_;
+  std::string output_;
+  std::string message_buffer_;
+
+  enum { kNonMessage, kMessage } state_ = kNonMessage;
+};
 
 std::string UnknownTokenMessage(uint32_t value) {
   std::string output(PW_TOKENIZER_ARG_DECODING_ERROR_PREFIX "unknown token ");
@@ -106,6 +172,36 @@ Detokenizer::Detokenizer(const TokenDatabase& database) {
   }
 }
 
+Result<Detokenizer> Detokenizer::FromElfSection(
+    span<const uint8_t> elf_section) {
+  size_t index = 0;
+  std::unordered_map<uint32_t, std::vector<TokenizedStringEntry>> database;
+
+  while (index + sizeof(_pw_tokenizer_EntryHeader) < elf_section.size()) {
+    _pw_tokenizer_EntryHeader header;
+    std::memcpy(
+        &header, elf_section.data() + index, sizeof(_pw_tokenizer_EntryHeader));
+    index += sizeof(_pw_tokenizer_EntryHeader);
+
+    if (header.magic != _PW_TOKENIZER_ENTRY_MAGIC) {
+      return Status::DataLoss();
+    }
+
+    index += header.domain_length;
+    if (index + header.string_length <= elf_section.size()) {
+      // TODO(b/326365218): Construct FormatString with string_view to avoid
+      // creating a copy here.
+      std::string entry(
+          reinterpret_cast<const char*>(elf_section.data() + index),
+          header.string_length);
+      index += header.string_length;
+      database[header.token].emplace_back(entry.c_str(),
+                                          TokenDatabase::kDateRemovedNever);
+    }
+  }
+  return Detokenizer(std::move(database));
+}
+
 DetokenizedString Detokenizer::Detokenize(
     const span<const uint8_t>& encoded) const {
   // The token is missing from the encoded data; there is nothing to do.
@@ -124,6 +220,19 @@ DetokenizedString Detokenizer::Detokenize(
                                 : span(result->second),
       encoded.size() < sizeof(token) ? span<const uint8_t>()
                                      : encoded.subspan(sizeof(token)));
+}
+
+DetokenizedString Detokenizer::DetokenizeBase64Message(
+    std::string_view text) const {
+  std::string buffer(text);
+  buffer.resize(PrefixedBase64DecodeInPlace(buffer));
+  return Detokenize(buffer);
+}
+
+std::string Detokenizer::DetokenizeBase64(std::string_view text) const {
+  NestedMessageDetokenizer nested_detokenizer(*this);
+  nested_detokenizer.Detokenize(text);
+  return nested_detokenizer.Flush();
 }
 
 }  // namespace pw::tokenizer

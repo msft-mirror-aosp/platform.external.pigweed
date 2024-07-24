@@ -105,6 +105,7 @@ pw_source_set("client_server_testing") {
   public = [ "public/pw_rpc/pwpb/client_server_testing.h" ]
   public_deps = [
     ":test_method_context",
+    "$dir_pw_assert",
     "..:client_server_testing",
   ]
 }
@@ -132,6 +133,7 @@ pw_source_set("echo_service") {
 }
 
 pw_source_set("client_integration_test") {
+  testonly = pw_unit_test_TESTONLY
   public_configs = [ ":public" ]
   public_deps = [
     "$dir_pw_sync:binary_semaphore",
@@ -176,15 +178,29 @@ pw_test("client_call_test") {
     "..:test_utils",
   ]
   sources = [ "client_call_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("client_reader_writer_test") {
   deps = [
     ":client_api",
     ":client_testing",
+    "$dir_pw_sync:mutex",
     "..:test_protos.pwpb_rpc",
   ]
+  enable_if = pw_sync_MUTEX_BACKEND != ""
   sources = [ "client_reader_writer_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("client_server_context_test") {
@@ -194,6 +210,12 @@ pw_test("client_server_context_test") {
     "..:test_protos.pwpb_rpc",
   ]
   sources = [ "client_server_context_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 _stl_threading_enabled =
@@ -205,8 +227,9 @@ pw_test("client_server_context_threaded_test") {
     ":client_api",
     ":client_server_testing_threaded",
     "$dir_pw_sync:binary_semaphore",
-    "$dir_pw_thread:test_threads",
-    "$dir_pw_thread_stl:test_threads",
+    "$dir_pw_sync:mutex",
+    "$dir_pw_thread:non_portable_test_thread_options",
+    "$dir_pw_thread_stl:non_portable_test_thread_options",
     "..:test_protos.pwpb_rpc",
   ]
   sources = [ "client_server_context_threaded_test.cc" ]
@@ -223,6 +246,12 @@ pw_test("codegen_test") {
     "..:test_utils",
   ]
   sources = [ "codegen_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("echo_service_test") {
@@ -232,6 +261,12 @@ pw_test("echo_service_test") {
     ":test_method_context",
   ]
   sources = [ "echo_service_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("fake_channel_output_test") {
@@ -252,6 +287,12 @@ pw_test("method_test") {
     "..:test_utils",
   ]
   sources = [ "method_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("method_info_test") {
@@ -272,6 +313,12 @@ pw_test("method_lookup_test") {
     "../raw:test_method_context",
   ]
   sources = [ "method_lookup_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("method_union_test") {
@@ -282,6 +329,12 @@ pw_test("method_union_test") {
     "..:test_utils",
   ]
   sources = [ "method_union_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("serde_test") {
@@ -308,6 +361,12 @@ pw_test("server_reader_writer_test") {
     "..:test_protos.pwpb_rpc",
   ]
   sources = [ "server_reader_writer_test.cc" ]
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }
 
 pw_test("stub_generation_test") {
@@ -318,6 +377,8 @@ pw_test("stub_generation_test") {
 pw_test("synchronous_call_test") {
   deps = [
     ":test_method_context",
+    "$dir_pw_rpc_transport:test_loopback_service_registry",
+    "$dir_pw_thread:thread",
     "$dir_pw_work_queue:pw_work_queue",
     "$dir_pw_work_queue:stl_test_thread",
     "$dir_pw_work_queue:test_thread",
@@ -326,4 +387,10 @@ pw_test("synchronous_call_test") {
   ]
   sources = [ "synchronous_call_test.cc" ]
   enable_if = pw_sync_TIMED_THREAD_NOTIFICATION_BACKEND != ""
+
+  # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; hangs
+  # indefinitely.
+  if (pw_build_EXECUTABLE_TARGET_TYPE == "pico_executable") {
+    enable_if = false
+  }
 }

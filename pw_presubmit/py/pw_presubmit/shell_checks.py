@@ -14,13 +14,17 @@
 """Shell related checks."""
 
 import logging
-from pw_presubmit import (
+
+from pw_presubmit import presubmit_context
+from pw_presubmit.presubmit import (
     Check,
-    PresubmitContext,
     filter_paths,
-    tools,
+)
+from pw_presubmit.presubmit_context import (
+    PresubmitContext,
     PresubmitFailure,
 )
+from pw_presubmit.tools import log_run
 
 _LOG = logging.getLogger(__name__)
 
@@ -32,11 +36,14 @@ _SHELL_EXTENSIONS = ('.sh', '.bash')
 def shellcheck(ctx: PresubmitContext) -> None:
     """Run shell script static analiyzer on presubmit."""
 
-    _LOG.warning(
-        "The Pigweed project discourages use of shellscripts. "
-        "https://pigweed.dev/docs/faq.html"
-    )
+    ctx.paths = presubmit_context.apply_exclusions(ctx)
 
-    result = tools.log_run(['shellcheck', *ctx.paths])
+    if ctx.paths:
+        _LOG.warning(
+            "The Pigweed project discourages use of shellscripts. "
+            "https://pigweed.dev/docs/faq.html"
+        )
+
+    result = log_run(['shellcheck', *ctx.paths])
     if result.returncode != 0:
         raise PresubmitFailure('Shellcheck identifed issues.')

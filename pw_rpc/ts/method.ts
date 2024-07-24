@@ -12,8 +12,8 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-import {Status} from 'pigweedjs/pw_status';
-import {Message} from 'google-protobuf';
+import { Status } from 'pigweedjs/pw_status';
+import { Message } from 'google-protobuf';
 
 import {
   BidirectionalStreamingCall,
@@ -23,13 +23,13 @@ import {
   ServerStreamingCall,
   UnaryCall,
 } from './call';
-import {Channel, Method, MethodType, Service} from './descriptors';
-import {PendingCalls, Rpc} from './rpc_classes';
+import { Channel, Method, MethodType, Service } from './descriptors';
+import { PendingCalls, Rpc } from './rpc_classes';
 
 export function methodStubFactory(
   rpcs: PendingCalls,
   channel: Channel,
-  method: Method
+  method: Method,
 ): MethodStub {
   switch (method.type) {
     case MethodType.BIDIRECTIONAL_STREAMING:
@@ -64,16 +64,22 @@ export abstract class MethodStub {
 export class UnaryMethodStub extends MethodStub {
   invoke(
     request: Message,
-    onNext: Callback = () => {},
-    onCompleted: Callback = () => {},
-    onError: Callback = () => {}
+    onNext: Callback = () => {
+      // Do nothing.
+    },
+    onCompleted: Callback = () => {
+      // Do nothing.
+    },
+    onError: Callback = () => {
+      // Do nothing.
+    },
   ): UnaryCall {
     const call = new UnaryCall(
       this.rpcs,
       this.rpc,
       onNext,
       onCompleted,
-      onError
+      onError,
     );
     call.invoke(request);
     return call;
@@ -81,16 +87,22 @@ export class UnaryMethodStub extends MethodStub {
 
   open(
     request: Message,
-    onNext: Callback = () => {},
-    onCompleted: Callback = () => {},
-    onError: Callback = () => {}
+    onNext: Callback = () => {
+      // Do nothing.
+    },
+    onCompleted: Callback = () => {
+      // Do nothing.
+    },
+    onError: Callback = () => {
+      // Do nothing.
+    },
   ): UnaryCall {
     const call = new UnaryCall(
       this.rpcs,
       this.rpc,
       onNext,
       onCompleted,
-      onError
+      onError,
     );
     call.invoke(request, true);
     return call;
@@ -104,16 +116,22 @@ export class UnaryMethodStub extends MethodStub {
 export class ServerStreamingMethodStub extends MethodStub {
   invoke(
     request?: Message,
-    onNext: Callback = () => {},
-    onCompleted: Callback = () => {},
-    onError: Callback = () => {}
+    onNext: Callback = () => {
+      // Do nothing.
+    },
+    onCompleted: Callback = () => {
+      // Do nothing.
+    },
+    onError: Callback = () => {
+      // Do nothing.
+    },
   ): ServerStreamingCall {
     const call = new ServerStreamingCall(
       this.rpcs,
       this.rpc,
       onNext,
       onCompleted,
-      onError
+      onError,
     );
     call.invoke(request);
     return call;
@@ -121,16 +139,22 @@ export class ServerStreamingMethodStub extends MethodStub {
 
   open(
     request: Message,
-    onNext: Callback = () => {},
-    onCompleted: Callback = () => {},
-    onError: Callback = () => {}
+    onNext: Callback = () => {
+      // Do nothing.
+    },
+    onCompleted: Callback = () => {
+      // Do nothing.
+    },
+    onError: Callback = () => {
+      // Do nothing.
+    },
   ): UnaryCall {
     const call = new UnaryCall(
       this.rpcs,
       this.rpc,
       onNext,
       onCompleted,
-      onError
+      onError,
     );
     call.invoke(request, true);
     return call;
@@ -143,32 +167,44 @@ export class ServerStreamingMethodStub extends MethodStub {
 
 export class ClientStreamingMethodStub extends MethodStub {
   invoke(
-    onNext: Callback = () => {},
-    onCompleted: Callback = () => {},
-    onError: Callback = () => {}
+    onNext: Callback = () => {
+      // Do nothing.
+    },
+    onCompleted: Callback = () => {
+      // Do nothing.
+    },
+    onError: Callback = () => {
+      // Do nothing.
+    },
   ): ClientStreamingCall {
     const call = new ClientStreamingCall(
       this.rpcs,
       this.rpc,
       onNext,
       onCompleted,
-      onError
+      onError,
     );
     call.invoke();
     return call;
   }
 
   open(
-    onNext: Callback = () => {},
-    onCompleted: Callback = () => {},
-    onError: Callback = () => {}
+    onNext: Callback = () => {
+      // Do nothing.
+    },
+    onCompleted: Callback = () => {
+      // Do nothing.
+    },
+    onError: Callback = () => {
+      // Do nothing.
+    },
   ): ClientStreamingCall {
     const call = new ClientStreamingCall(
       this.rpcs,
       this.rpc,
       onNext,
       onCompleted,
-      onError
+      onError,
     );
     call.invoke(undefined, true);
     return call;
@@ -181,32 +217,44 @@ export class ClientStreamingMethodStub extends MethodStub {
 
 export class BidirectionalStreamingMethodStub extends MethodStub {
   invoke(
-    onNext: Callback = () => {},
-    onCompleted: Callback = () => {},
-    onError: Callback = () => {}
+    onNext: Callback = () => {
+      // Do nothing.
+    },
+    onCompleted: Callback = () => {
+      // Do nothing.
+    },
+    onError: Callback = () => {
+      // Do nothing.
+    },
   ): BidirectionalStreamingCall {
     const call = new BidirectionalStreamingCall(
       this.rpcs,
       this.rpc,
       onNext,
       onCompleted,
-      onError
+      onError,
     );
     call.invoke();
     return call;
   }
 
   open(
-    onNext: Callback = () => {},
-    onCompleted: Callback = () => {},
-    onError: Callback = () => {}
+    onNext: Callback = () => {
+      // Do nothing.
+    },
+    onCompleted: Callback = () => {
+      // Do nothing.
+    },
+    onError: Callback = () => {
+      // Do nothing.
+    },
   ): BidirectionalStreamingCall {
     const call = new BidirectionalStreamingCall(
       this.rpcs,
       this.rpc,
       onNext,
       onCompleted,
-      onError
+      onError,
     );
     call.invoke(undefined, true);
     return call;

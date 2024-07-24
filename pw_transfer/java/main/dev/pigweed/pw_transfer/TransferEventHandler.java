@@ -51,13 +51,17 @@ class TransferEventHandler {
 
   private final BlockingQueue<Event> events = new LinkedBlockingQueue<>();
 
-  // Map resource ID to transfer, and session ID to resource ID.
-  private final Map<Integer, Transfer<?>> resourceIdToTransfer = new HashMap<>();
-  private final Map<Integer, Integer> sessionToResourceId = new HashMap<>();
+  // Map session ID to transfer.
+  private final Map<Integer, Transfer<?>> sessionIdToTransfer = new HashMap<>();
+  // Legacy transfers only use the resource ID. The client assigns an arbitrary session ID that
+  // legacy servers ignore. The client then maps from the legacy ID to its local session ID.
+  private final Map<Integer, Integer> legacyIdToSessionId = new HashMap<>();
 
   @Nullable private Call.ClientStreaming<Chunk> readStream = null;
   @Nullable private Call.ClientStreaming<Chunk> writeStream = null;
   private boolean processEvents = true;
+
+  private int nextSessionId = 1;
 
   TransferEventHandler(MethodClient readMethod, MethodClient writeMethod) {
     this.readMethod = readMethod;
@@ -69,9 +73,10 @@ class TransferEventHandler {
       TransferTimeoutSettings settings,
       byte[] data,
       Consumer<TransferProgress> progressCallback,
-      BooleanSupplier shouldAbortCallback) {
-    WriteTransfer transfer =
-        new WriteTransfer(resourceId, desiredProtocolVersion, new TransferInterface() {
+      BooleanSupplier shouldAbortCallback,
+      int initialOffset) {
+    WriteTransfer transfer = new WriteTransfer(
+        resourceId, assignSessionId(), desiredProtocolVersion, new TransferInterface() {
           @Override
           Call.ClientStreaming<Chunk> getStream() throws ChannelOutputException {
             if (writeStream == null) {
@@ -84,9 +89,9 @@ class TransferEventHandler {
             }
             return writeStream;
           }
-        }, settings, data, progressCallback, shouldAbortCallback);
+        }, settings, data, progressCallback, shouldAbortCallback, initialOffset);
     startTransferAsClient(transfer);
-    return transfer.getFuture();
+    return transfer;
   }
 
   ListenableFuture<byte[]> startReadTransferAsClient(int resourceId,
@@ -94,9 +99,10 @@ class TransferEventHandler {
       TransferTimeoutSettings settings,
       TransferParameters parameters,
       Consumer<TransferProgress> progressCallback,
-      BooleanSupplier shouldAbortCallback) {
-    ReadTransfer transfer =
-        new ReadTransfer(resourceId, desiredProtocolVersion, new TransferInterface() {
+      BooleanSupplier shouldAbortCallback,
+      int initialOffset) {
+    ReadTransfer transfer = new ReadTransfer(
+        resourceId, assignSessionId(), desiredProtocolVersion, new TransferInterface() {
           @Override
           Call.ClientStreaming<Chunk> getStream() throws ChannelOutputException {
             if (readStream == null) {
@@ -109,21 +115,34 @@ class TransferEventHandler {
             }
             return readStream;
           }
-        }, settings, parameters, progressCallback, shouldAbortCallback);
+        }, settings, parameters, progressCallback, shouldAbortCallback, initialOffset);
     startTransferAsClient(transfer);
-    return transfer.getFuture();
+    return transfer;
   }
 
   private void startTransferAsClient(Transfer<?> transfer) {
     enqueueEvent(() -> {
-      if (resourceIdToTransfer.containsKey(transfer.getResourceId())) {
-        transfer.terminate(new TransferError("A transfer for resource ID "
-                + transfer.getResourceId()
-                + " is already in progress! Only one read/write transfer per resource is supported at a time",
-            Status.ALREADY_EXISTS));
+      if (sessionIdToTransfer.containsKey(transfer.getSessionId())) {
+        throw new AssertionError("Duplicate session ID " + transfer.getSessionId());
+      }
+
+      if (transfer.getDesiredProtocolVersion() == ProtocolVersion.LEGACY
+          && transfer.getOffset() != 0) {
+        throw new AssertionError("Cannot start non-zero offset transfer with legacy version");
+      }
+
+      // The v2 protocol supports multiple transfers for a single resource. For simplicity while
+      // supporting both protocols, only support a single transfer per resource.
+      if (legacyIdToSessionId.containsKey(transfer.getResourceId())) {
+        transfer.terminate(
+            new TransferError("A transfer for resource ID " + transfer.getResourceId()
+                    + " is already in progress! Only one read/write transfer per resource is "
+                    + "supported at a time",
+                Status.ALREADY_EXISTS));
         return;
       }
-      resourceIdToTransfer.put(transfer.getResourceId(), transfer);
+      sessionIdToTransfer.put(transfer.getSessionId(), transfer);
+      legacyIdToSessionId.put(transfer.getResourceId(), transfer.getSessionId());
       transfer.start();
     });
   }
@@ -159,7 +178,7 @@ class TransferEventHandler {
   void stop() {
     enqueueEvent(() -> {
       logger.atFine().log("Terminating TransferEventHandler");
-      resourceIdToTransfer.values().forEach(Transfer::handleTermination);
+      sessionIdToTransfer.values().forEach(Transfer::handleTermination);
       processEvents = false;
     });
   }
@@ -173,6 +192,16 @@ class TransferEventHandler {
     } catch (InterruptedException e) {
       throw new AssertionError("Unexpectedly interrupted", e);
     }
+  }
+
+  /** Generates the session ID to use for the next transfer. */
+  private int assignSessionId() {
+    return nextSessionId++;
+  }
+
+  /** Returns the session ID that will be used for the next transfer. */
+  final int getNextSessionIdForTest() {
+    return nextSessionId;
   }
 
   private void enqueueEvent(Event event) {
@@ -199,14 +228,14 @@ class TransferEventHandler {
   }
 
   private void handleTimeouts() {
-    for (Transfer<?> transfer : resourceIdToTransfer.values()) {
+    for (Transfer<?> transfer : sessionIdToTransfer.values()) {
       transfer.handleTimeoutIfDeadlineExceeded();
     }
   }
 
   private Instant getNextTimeout() {
     Optional<Transfer<?>> transfer =
-        resourceIdToTransfer.values().stream().min(Comparator.comparing(Transfer::getDeadline));
+        sessionIdToTransfer.values().stream().min(Comparator.comparing(Transfer::getDeadline));
     return transfer.isPresent() ? transfer.get().getDeadline() : Transfer.NO_TIMEOUT;
   }
 
@@ -228,22 +257,16 @@ class TransferEventHandler {
     }
 
     /**
-     *  Associates the transfer's session ID with its resource ID.
-     *
-     *  Must be called on the transfer thread.
-     */
-    void assignSessionId(Transfer<?> transfer) {
-      sessionToResourceId.put(transfer.getSessionId(), transfer.getResourceId());
-    }
-
-    /**
      *  Removes this transfer from the list of active transfers.
      *
      *  Must be called on the transfer thread.
      */
+    // TODO(frolv): Investigate why this is occurring -- there shouldn't be any
+    // futures here.
+    @SuppressWarnings("FutureReturnValueIgnored")
     void unregisterTransfer(Transfer<?> transfer) {
-      resourceIdToTransfer.remove(transfer.getResourceId());
-      sessionToResourceId.remove(transfer.getSessionId());
+      sessionIdToTransfer.remove(transfer.getSessionId());
+      legacyIdToSessionId.remove(transfer.getResourceId());
     }
 
     /**
@@ -263,25 +286,18 @@ class TransferEventHandler {
   private abstract class ChunkHandler implements StreamObserver<Chunk> {
     @Override
     public final void onNext(Chunk chunkProto) {
-      VersionedChunk chunk = VersionedChunk.fromMessage(chunkProto);
+      VersionedChunk chunk = VersionedChunk.fromMessage(chunkProto, legacyIdToSessionId);
 
       enqueueEvent(() -> {
-        Transfer<?> transfer = null;
-        if (chunk.resourceId().isPresent()) {
-          transfer = resourceIdToTransfer.get(chunk.resourceId().getAsInt());
-        } else {
-          Integer resourceId = sessionToResourceId.get(chunk.sessionId());
-          if (resourceId != null) {
-            transfer = resourceIdToTransfer.get(resourceId);
-          }
+        Transfer<?> transfer;
+        if (chunk.sessionId() == VersionedChunk.UNKNOWN_SESSION_ID
+            || (transfer = sessionIdToTransfer.get(chunk.sessionId())) == null) {
+          logger.atInfo().log("Ignoring unrecognized transfer chunk: %s", chunk);
+          return;
         }
 
-        if (transfer != null) {
-          logger.atFinest().log("%s received chunk: %s", transfer, chunk);
-          transfer.handleChunk(chunk);
-        } else {
-          logger.atInfo().log("Ignoring unrecognized transfer chunk: %s", chunk);
-        }
+        logger.atFinest().log("%s received chunk: %s", transfer, chunk);
+        transfer.handleChunk(chunk);
       });
     }
 
@@ -296,7 +312,7 @@ class TransferEventHandler {
         resetStream();
 
         // The transfers remove themselves from the Map during cleanup, iterate over a copied list.
-        List<Transfer<?>> activeTransfers = new ArrayList<>(resourceIdToTransfer.values());
+        List<Transfer<?>> activeTransfers = new ArrayList<>(sessionIdToTransfer.values());
 
         // FAILED_PRECONDITION indicates that the stream packet was not recognized as the stream is
         // not open. This could occur if the server resets. Notify pending transfers that this has

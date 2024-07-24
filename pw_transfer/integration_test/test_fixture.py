@@ -27,7 +27,7 @@ import unittest
 
 from google.protobuf import text_format
 
-from pigweed.pw_protobuf.pw_protobuf_protos import status_pb2
+from pw_protobuf_protos import status_pb2
 from pigweed.pw_transfer.integration_test import config_pb2
 from rules_python.python.runfiles import runfiles
 
@@ -343,7 +343,7 @@ class TransferIntegrationTestHarness:
 
 class BasicTransfer(NamedTuple):
     id: int
-    type: config_pb2.TransferAction.TransferType.ValueType
+    type: 'config_pb2.TransferAction.TransferType.ValueType'
     data: bytes
 
 
@@ -415,6 +415,8 @@ class TransferIntegrationTest(unittest.TestCase):
         protocol_version=config_pb2.TransferAction.ProtocolVersion.LATEST,
         permanent_resource_id=False,
         expected_status=status_pb2.StatusCode.OK,
+        initial_offset=0,
+        offsettable_resources=False,
     ) -> None:
         """Performs a single client-to-server write of the provided data."""
         with tempfile.NamedTemporaryFile() as f_payload, tempfile.NamedTemporaryFile() as f_server_output:
@@ -426,13 +428,17 @@ class TransferIntegrationTest(unittest.TestCase):
                 config.server.resources[resource_id].destination_paths.append(
                     f_server_output.name
                 )
+            config.server.resources[
+                resource_id
+            ].offsettable = offsettable_resources
             config.client.transfer_actions.append(
                 config_pb2.TransferAction(
                     resource_id=resource_id,
                     file_path=f_payload.name,
                     transfer_type=config_pb2.TransferAction.TransferType.WRITE_TO_SERVER,
                     protocol_version=protocol_version,
-                    expected_status=int(expected_status),
+                    expected_status=expected_status,
+                    initial_offset=initial_offset,
                 )
             )
 
@@ -447,7 +453,15 @@ class TransferIntegrationTest(unittest.TestCase):
             self.assertEqual(exit_codes.client, 0)
             self.assertEqual(exit_codes.server, 0)
             if expected_status == status_pb2.StatusCode.OK:
-                self.assertEqual(f_server_output.read(), data)
+                bytes_output = f_server_output.read()
+                self.assertEqual(
+                    bytes_output[initial_offset:],
+                    data,
+                )
+                # Ensure we didn't write data to places before offset
+                self.assertEqual(
+                    bytes_output[:initial_offset], b'\x00' * initial_offset
+                )
 
     def do_single_read(
         self,
@@ -458,6 +472,8 @@ class TransferIntegrationTest(unittest.TestCase):
         protocol_version=config_pb2.TransferAction.ProtocolVersion.LATEST,
         permanent_resource_id=False,
         expected_status=status_pb2.StatusCode.OK,
+        initial_offset=0,
+        offsettable_resources=False,
     ) -> None:
         """Performs a single server-to-client read of the provided data."""
         with tempfile.NamedTemporaryFile() as f_payload, tempfile.NamedTemporaryFile() as f_client_output:
@@ -469,13 +485,17 @@ class TransferIntegrationTest(unittest.TestCase):
                 config.server.resources[resource_id].source_paths.append(
                     f_payload.name
                 )
+            config.server.resources[
+                resource_id
+            ].offsettable = offsettable_resources
             config.client.transfer_actions.append(
                 config_pb2.TransferAction(
                     resource_id=resource_id,
                     file_path=f_client_output.name,
                     transfer_type=config_pb2.TransferAction.TransferType.READ_FROM_SERVER,
                     protocol_version=protocol_version,
-                    expected_status=int(expected_status),
+                    expected_status=expected_status,
+                    initial_offset=initial_offset,
                 )
             )
 
@@ -489,7 +509,11 @@ class TransferIntegrationTest(unittest.TestCase):
             self.assertEqual(exit_codes.client, 0)
             self.assertEqual(exit_codes.server, 0)
             if expected_status == status_pb2.StatusCode.OK:
-                self.assertEqual(f_client_output.read(), data)
+                bytes_output = f_client_output.read()
+                self.assertEqual(
+                    bytes_output,
+                    data[initial_offset:],
+                )
 
     def do_basic_transfer_sequence(
         self,

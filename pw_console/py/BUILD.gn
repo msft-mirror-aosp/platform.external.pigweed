@@ -20,7 +20,6 @@ pw_python_package("py") {
   setup = [
     "pyproject.toml",
     "setup.cfg",
-    "setup.py",
   ]
   sources = [
     "pw_console/__init__.py",
@@ -63,6 +62,7 @@ pw_python_package("py") {
     "pw_console/quit_dialog.py",
     "pw_console/repl_pane.py",
     "pw_console/search_toolbar.py",
+    "pw_console/socket_client.py",
     "pw_console/style.py",
     "pw_console/templates/__init__.py",
     "pw_console/test_mode.py",
@@ -87,12 +87,14 @@ pw_python_package("py") {
     "log_store_test.py",
     "log_view_test.py",
     "repl_pane_test.py",
+    "socket_client_test.py",
     "table_test.py",
     "text_formatting_test.py",
     "window_manager_test.py",
   ]
   python_deps = [
     "$dir_pw_cli/py",
+    "$dir_pw_config_loader/py",
     "$dir_pw_log_tokenized/py",
   ]
   inputs = [

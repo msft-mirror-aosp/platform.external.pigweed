@@ -18,17 +18,18 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "gtest/gtest.h"
 #include "pw_compilation_testing/negative_compilation.h"
+#include "pw_containers/vector.h"
 #include "pw_preprocessor/util.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw {
 namespace {
 
 class TestItem : public IntrusiveList<TestItem>::Item {
  public:
-  TestItem() : number_(0) {}
-  TestItem(int number) : number_(number) {}
+  constexpr TestItem() : number_(0) {}
+  constexpr TestItem(int number) : number_(number) {}
 
   int GetNumber() const { return number_; }
   void SetNumber(int num) { number_ = num; }
@@ -376,7 +377,7 @@ TEST(IntrusiveList, IteratorIncrement) {
   TestItem item_array[20];
   IntrusiveList<TestItem> list;
   for (size_t i = 0; i < PW_ARRAY_SIZE(item_array); ++i) {
-    item_array[i].SetNumber(i);
+    item_array[i].SetNumber(static_cast<int>(i));
     list.push_back(item_array[i]);
   }
 
@@ -449,7 +450,7 @@ TEST(IntrusiveList, ConstIteratorModify) {
 }
 #endif  // PW_NC_TEST
 
-// TODO(b/235289499): These tests should trigger a CHECK failure. This requires
+// TODO: b/235289499 - These tests should trigger a CHECK failure. This requires
 // using a testing version of pw_assert.
 #define TESTING_CHECK_FAILURES_IS_SUPPORTED 0
 #if TESTING_CHECK_FAILURES_IS_SUPPORTED
@@ -703,6 +704,87 @@ struct NotAnItem {};
 [[maybe_unused]] IntrusiveList<NotAnItem> list;
 
 #endif  // PW_NC_TEST
+
+TEST(IntrusiveList, MoveUnlistedItems) {
+  TestItem item1(3);
+  EXPECT_EQ(item1.GetNumber(), 3);
+
+  TestItem item2(std::move(item1));
+  EXPECT_EQ(item2.GetNumber(), 3);
+
+  TestItem item3;
+  item3 = std::move(item2);
+  EXPECT_EQ(item3.GetNumber(), 3);
+}
+
+TEST(IntrusiveList, MoveListedItemsToUnlistedItems) {
+  std::array<TestItem, 2> items{{{1}, {2}}};
+  IntrusiveList<TestItem> list(items.begin(), items.end());
+
+  TestItem item1(std::move(items[0]));
+  TestItem item2 = std::move(items[1]);
+
+  ASSERT_EQ(list.size(), 2U);
+  auto iter = list.begin();
+  EXPECT_EQ(iter->GetNumber(), item1.GetNumber());
+  ++iter;
+  EXPECT_EQ(iter->GetNumber(), item2.GetNumber());
+}
+
+TEST(IntrusiveList, MoveUnlistedItemsToListedItems) {
+  TestItem item1(1);
+  TestItem item2(2);
+  TestItem item3(3);
+  std::array<TestItem, 3> items{{{4}, {5}, {6}}};
+  IntrusiveList<TestItem> list(items.begin(), items.end());
+  items[0] = std::move(item1);
+  items[1] = std::move(item2);
+  items[2] = std::move(item3);
+  int i = 0;
+  for (const auto& item : list) {
+    EXPECT_EQ(item.GetNumber(), ++i);
+  }
+}
+
+TEST(IntrusiveList, MoveListedItems) {
+  std::array<TestItem, 3> src{{{1}, {2}, {3}}};
+  IntrusiveList<TestItem> list1(src.begin(), src.end());
+
+  std::array<TestItem, 3> dst{{{4}, {5}, {6}}};
+  IntrusiveList<TestItem> list2(dst.begin(), dst.end());
+
+  for (size_t i = 0; i < 3; ++i) {
+    dst[i] = std::move(src[i]);
+  }
+  int i = 0;
+  for (const auto& item : list1) {
+    EXPECT_EQ(item.GetNumber(), ++i);
+  }
+  EXPECT_TRUE(list2.empty());
+}
+
+TEST(IntrusiveList, MoveItemsToVector) {
+  Vector<TestItem, 3> vec;
+  vec.emplace_back(TestItem(1));
+  vec.emplace_back(TestItem(2));
+  vec.emplace_back(TestItem(3));
+  IntrusiveList<TestItem> list;
+  list.assign(vec.begin(), vec.end());
+
+  auto iter = list.begin();
+  for (const auto& item : vec) {
+    EXPECT_NE(iter, list.end());
+    if (iter == list.end()) {
+      break;
+    }
+    EXPECT_EQ(item.GetNumber(), iter->GetNumber());
+    ++iter;
+  }
+
+  // TODO(b/313899658): Vector has an MSAN bug in its destructor when clearing
+  // items that reference themselves. Workaround it by manually clearing.
+  vec.clear();
+}
 
 }  // namespace
 }  // namespace pw

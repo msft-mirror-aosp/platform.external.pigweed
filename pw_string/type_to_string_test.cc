@@ -19,7 +19,7 @@
 #include <limits>
 #include <string_view>
 
-#include "gtest/gtest.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::string {
 namespace {
@@ -90,19 +90,31 @@ TEST(Digits, HexDigits_16) {
   }
 }
 
+constexpr char kStartingString[] = "!@#$%^&*()!@#$%^&*()";
+constexpr char kUint64Max[] = "18446744073709551615";
+constexpr char kInt64Min[] = "-9223372036854775808";
+constexpr char kInt64Max[] = "9223372036854775807";
+
 class TestWithBuffer : public ::testing::Test {
  protected:
-  static constexpr char kStartingString[] = "!@#$%^&*()!@#$%^&*()";
-  static constexpr char kUint64Max[] = "18446744073709551615";
-  static constexpr char kInt64Min[] = "-9223372036854775808";
-  static constexpr char kInt64Max[] = "9223372036854775807";
-
   static_assert(sizeof(kStartingString) == sizeof(kUint64Max));
 
   TestWithBuffer() { std::memcpy(buffer_, kStartingString, sizeof(buffer_)); }
 
   char buffer_[sizeof(kUint64Max)];
 };
+
+static_assert([] {
+  char buffer[sizeof(kUint64Max)] = {};
+  auto result = IntToString(std::numeric_limits<uint64_t>::max(), buffer);
+  return result.ok() && std::string_view(buffer, result.size()) == kUint64Max;
+}());
+
+static_assert([] {
+  char buffer[sizeof(kInt64Min)] = {};
+  auto result = IntToString(std::numeric_limits<int64_t>::min(), buffer);
+  return result.ok() && std::string_view(buffer, result.size()) == kInt64Min;
+}());
 
 class IntToStringTest : public TestWithBuffer {};
 
@@ -346,12 +358,12 @@ TEST_F(FloatAsIntToStringTest, NegativeNan) {
 }
 
 TEST_F(FloatAsIntToStringTest, RoundDown_PrintsNearestInt) {
-  EXPECT_EQ(1u, FloatAsIntToString(1.23, buffer_).size());
+  EXPECT_EQ(1u, FloatAsIntToString(1.23f, buffer_).size());
   EXPECT_STREQ("1", buffer_);
 }
 
 TEST_F(FloatAsIntToStringTest, RoundUp_PrintsNearestInt) {
-  EXPECT_EQ(4u, FloatAsIntToString(1234.5, buffer_).size());
+  EXPECT_EQ(4u, FloatAsIntToString(1234.5f, buffer_).size());
   EXPECT_STREQ("1235", buffer_);
 }
 
@@ -366,13 +378,13 @@ TEST_F(FloatAsIntToStringTest, RoundsToPositiveZero_PrintsZero) {
 }
 
 TEST_F(FloatAsIntToStringTest, RoundDownNegative_PrintsNearestInt) {
-  volatile float x = -5.9;
+  volatile float x = -5.9f;
   EXPECT_EQ(2u, FloatAsIntToString(x, buffer_).size());
   EXPECT_STREQ("-6", buffer_);
 }
 
 TEST_F(FloatAsIntToStringTest, RoundUpNegative_PrintsNearestInt) {
-  EXPECT_EQ(9u, FloatAsIntToString(-50000000.1, buffer_).size());
+  EXPECT_EQ(9u, FloatAsIntToString(-50000000.1f, buffer_).size());
   EXPECT_STREQ("-50000000", buffer_);
 }
 

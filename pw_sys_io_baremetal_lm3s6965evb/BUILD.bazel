@@ -12,16 +12,16 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_library",
-)
-
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_library(
+constraint_value(
+    name = "backend",
+    constraint_setting = "//pw_sys_io:backend_constraint_setting",
+)
+
+cc_library(
     name = "pw_sys_io_baremetal_lm3s6965evb",
     srcs = ["sys_io_baremetal.cc"],
     hdrs = ["public/pw_sys_io_baremetal_lm3s6965evb/init.h"],
@@ -32,6 +32,7 @@ pw_cc_library(
     deps = [
         "//pw_boot_cortex_m:armv7m",
         "//pw_preprocessor",
+        "//pw_sys_io:default_putget_bytes",
         "//pw_sys_io:facade",
     ],
 )

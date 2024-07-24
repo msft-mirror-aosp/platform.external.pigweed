@@ -53,14 +53,7 @@ class BasicDispatcher final : public Dispatcher, public thread::ThreadCore {
   void Run() override PW_LOCKS_EXCLUDED(lock_);
 
   // Dispatcher overrides:
-  void Post(Task& task) override;
-  void PostAfter(Task& task, chrono::SystemClock::duration delay) override;
   void PostAt(Task& task, chrono::SystemClock::time_point time) override;
-  void PostPeriodic(Task& task,
-                    chrono::SystemClock::duration interval) override;
-  void PostPeriodicAt(Task& task,
-                      chrono::SystemClock::duration interval,
-                      chrono::SystemClock::time_point start_time) override;
   bool Cancel(Task& task) override PW_LOCKS_EXCLUDED(lock_);
 
   // VirtualSystemClock overrides:
@@ -73,7 +66,7 @@ class BasicDispatcher final : public Dispatcher, public thread::ThreadCore {
   // |time_due|.
   void PostTaskInternal(backend::NativeTask& task,
                         chrono::SystemClock::time_point time_due)
-      PW_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      PW_LOCKS_EXCLUDED(lock_);
 
   // If no tasks are due, sleep until a notification is received, the next task
   // comes due, or a timeout elapses; whichever occurs first.

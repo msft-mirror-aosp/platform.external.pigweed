@@ -28,6 +28,7 @@ from typing import Callable, Iterable, List, Optional, Set
 
 import pw_cli.pw_command_plugins
 import pw_env_setup.cipd_setup.update as cipd_update
+from pw_env_setup import config_file
 
 
 def call_stdout(*args, **kwargs):
@@ -210,11 +211,19 @@ def pw_root(ctx: DoctorContext):
     )
     git_root = git_root.resolve()
     if root != git_root:
-        ctx.error(
-            'PW_ROOT (%s) != `git rev-parse --show-toplevel` (%s)',
-            root,
-            git_root,
-        )
+        if str(root).lower() != str(git_root).lower():
+            ctx.error(
+                'PW_ROOT (%s) != `git rev-parse --show-toplevel` (%s)',
+                root,
+                git_root,
+            )
+        else:
+            ctx.warning(
+                'PW_ROOT (%s) differs in case from '
+                '`git rev-parse --show-toplevel` (%s)',
+                root,
+                git_root,
+            )
 
 
 @register_into(CHECKS)
@@ -316,8 +325,8 @@ def cipd(ctx: DoctorContext):
     # TODO(mohrr) get these tools in CIPD for Windows.
     if os.name == 'posix':
         commands_expected_from_cipd += [
-            'bloaty',
             'clang++',
+            'openocd',
         ]
 
     for command in commands_expected_from_cipd:
@@ -444,6 +453,8 @@ def cipd_versions(ctx: DoctorContext):
             cipd_update.package_installation_path(cipd_dir, json_path)
         )
         for package in json.loads(json_path.read_text()).get('packages', ()):
+            # Ensure package matches deduped_packages format
+            cipd_update.update_subdir(package, json_path)
             if package not in deduped_packages:
                 ctx.debug(
                     f'Skipping overridden package {package["path"]} '
@@ -483,6 +494,9 @@ def symlinks(ctx: DoctorContext):
 def run_doctor(strict=False, checks=None):
     """Run all the Check subclasses defined in this file."""
 
+    config = config_file.load().get('pw', {}).get('pw_doctor', {})
+    new_bug_url = config.get('new_bug_url', 'https://issues.pigweed.dev/new')
+
     if checks is None:
         checks = tuple(CHECKS)
 
@@ -496,8 +510,9 @@ def run_doctor(strict=False, checks=None):
         doctor.log.info(
             "Your environment setup has completed, but something isn't right "
             'and some things may not work correctly. You may continue with '
-            'development, but please seek support at '
-            'https://issues.pigweed.dev/new or by reaching out to your team.'
+            'development, but please seek support at %s or by '
+            'reaching out to your team.',
+            new_bug_url,
         )
     else:
         doctor.log.info('Environment passes all checks!')

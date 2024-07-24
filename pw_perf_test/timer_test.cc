@@ -14,18 +14,22 @@
 
 #include "pw_perf_test/internal/timer.h"
 
-#include "gtest/gtest.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::perf_test::internal {
 namespace {
 
 TEST(TimerTest, DurationIsPositive) {
+  ASSERT_TRUE(TimerPrepare());
+
   Timestamp start = GetCurrentTimestamp();
   for (volatile int i = 0; i < 1000; i = i + 1) {
   }
   Timestamp end = GetCurrentTimestamp();
   int64_t duration = GetDuration(start, end);
   EXPECT_GT(duration, 0);
+
+  TimerCleanup();
 }
 
 }  // namespace

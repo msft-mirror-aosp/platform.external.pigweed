@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -35,9 +35,6 @@ class ServerContext final : public Context {
   // Returns the pointer to the current handler.
   const Handler* handler() { return handler_; }
 
-  // In server-side transfer contexts, a session ID always exists.
-  constexpr uint32_t id() const { return session_id(); }
-
  private:
   // Ends the transfer with the given status, calling the handler's Finalize
   // method. No chunks are sent.
@@ -46,6 +43,12 @@ class ServerContext final : public Context {
   //
   // Precondition: Transfer context is active.
   Status FinalCleanup(Status status) override;
+
+  size_t TransferSizeBytes() const override { return handler_->ResourceSize(); }
+
+  // Seeks the reader to the given offset. Does not incorporate any initial
+  // offset
+  Status SeekReader(uint32_t offset) override;
 
   Handler* handler_;
 };

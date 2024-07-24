@@ -43,15 +43,6 @@ runs bootstrap.
    and ``activate.bat``. For simplicity they will be referred to with the
    ``.sh`` endings unless the distinction is relevant.
 
-.. warning::
-
-   At this time ``pw_env_setup`` works for us, but isn’t well tested. We don’t
-   suggest relying on it just yet. However, we are interested in experience
-   reports; if you give it a try, please `send us a note`_ about your
-   experience.
-
-.. _send us a note: pigweed@googlegroups.com
-
 On POSIX systems, the environment can be deactivated by running ``deactivate``.
 
 ==================================
@@ -102,7 +93,7 @@ Bazel Usage
 It is possible to pull in a CIPD dependency into Bazel using WORKSPACE rules
 rather than using `bootstrap.sh`. e.g.
 
-.. code:: python
+.. code-block:: python
 
    # WORKSPACE
 
@@ -122,7 +113,7 @@ This will make the entire set of Pigweeds remote repositories available to your
 project. Though these repositories will only be donwloaded if you use them. To
 get a full list of the remote repositories that this configures, run:
 
-.. code:: sh
+.. code-block:: sh
 
    bazel query //external:all | grep cipd_
 
@@ -133,7 +124,7 @@ either directely (`@cipd_<dep>//:<file>`) or from 'all' filegroup
 From here it is possible to get access to the Bloaty binaries using the
 following command. For example;
 
-.. code:: sh
+.. code-block:: sh
 
    bazel run @cipd_pigweed_third_party_bloaty_embedded_linux_amd64//:bloaty \
     -- --help
@@ -204,20 +195,25 @@ process. To check for this add the following.
 Downstream Projects Using Different Packages
 ********************************************
 Projects depending on Pigweed but using additional or different packages should
-copy the Pigweed `sample project`'s ``bootstrap.sh`` and ``config.json`` and
+copy the Pigweed `sample project`'s ``bootstrap.sh`` and ``pigweed.json`` and
 update the call to ``pw_bootstrap``. Search for "downstream" for other places
 that may require changes, like setting the ``PW_ROOT`` and ``PW_PROJECT_ROOT``
-environment variables. Explanations of parts of ``config.json`` are described
+environment variables. Explanations of parts of ``pigweed.json`` are described
 here.
 
 .. _sample project: https://pigweed.googlesource.com/pigweed/sample_project/+/HEAD
 
-``root_variable``
+``pw.pw_env_setup.root_variable``
   Variable used to point to the root of the source tree. Optional, can always
   use ``PW_PROJECT_ROOT`` instead. (That variable will be set regardless of
   whether this is provided.)
 
-``cipd_package_files``
+``pw.pw_env_setup.relative_pigweed_root``
+  Location of the Pigweed submodule within the source tree. Optional—environment
+  setup will work correctly without this. If present, will confirm that it's
+  correct. May be used by other tooling.
+
+``pw.pw_env_setup.cipd_package_files``
   CIPD package file. JSON file consisting of a list of additional CIPD package
   files to import and a list of dictionaries with "path", "platforms", "subdir",
   "tags", and "version_file" keys. Both top-level lists are optional. An
@@ -250,60 +246,138 @@ here.
      ]
    }
 
-``virtualenv.gn_args``
+``pw.pw_env_setup.project_actions``
+  A list of plugins to load and run after CIPD setup, but prior to virtualenv
+  setup, for e.g. downloading project-specific tools or artifacts needed by
+  later steps. Particularly useful for downstream projects with limited CIPD
+  access.
+
+  A plugin is specified as a dictionary with two keys: "import_path" and
+  "module_name"
+
+  The specified module must provide a "run_actions" method which takes a single
+  argument, "env_vars", which is a pw_env_setup.Environment instance.
+
+  NB: This feature is not supported when using a python2.7 system python.
+
+  Sample plugin and pigweed.json blob:
+
+.. code-block:: python
+
+   """Sample pw_env_setup project action plugin.
+
+   A sample/starter project action plugin template for pw_env_setup.
+   """
+   def run_action(**kwargs):
+       """Sample project action."""
+       if "env" not in kwargs:
+           raise ValueError(f"Missing required kwarg 'env', got %{kwargs}")
+
+       kwargs["env"].prepend("PATH", "PATH_TO_NEW_TOOLS")
+       raise NotImplementedError("Sample project action running!")
+
+.. code-block:: json
+
+   "project_actions" : [
+      {
+       "import_path": "pw_env_setup",
+       "module_name": "sample_project_action"
+      }
+   ],
+
+``pw.pw_env_setup.virtualenv.gn_args``
   Any necessary GN args to be used when installing Python packages.
 
-``virtualenv.gn_targets``
+``pw.pw_env_setup.virtualenv.gn_targets``
   Target for installing Python packages. Downstream projects will need to
   create targets to install their packages or only use Pigweed Python packages.
 
-``virtualenv.gn_root``
+``pw.pw_env_setup.virtualenv.gn_root``
   The root directory of your GN build tree, relative to ``PW_PROJECT_ROOT``.
   This is the directory your project's ``.gn`` file is located in. If you're
   only installing Pigweed Python packages, use the location of the Pigweed
   submodule.
 
-``virtualenv.requirements``
+``pw.pw_env_setup.virtualenv.requirements``
   A list of Python Pip requirements files for installing into the Pigweed
   virtualenv. Each file will be passed as additional ``--requirement`` argument
   to a single ```pip install`` at the beginning of bootstrap's ``Python
   environment`` setup stage. See the `Requirements Files documentation`_ for
   details on what can be specified using requirements files.
 
-``virtualenv.constraints``
+``pw.pw_env_setup.virtualenv.constraints``
   A list of Python Pip constraints files. These constraints will be passed to
   every ``pip`` invocation as an additional ``--constraint`` argument during
   bootstrap.  virtualenv. See the `Constraints Files documentation`_ for details
   on formatting.
 
-``virtualenv.system_packages``
+``pw.pw_env_setup.virtualenv.system_packages``
   A boolean value that can be used the give the Python virtual environment
   access to the system site packages. Defaults to ``false``.
 
-``optional_submodules``
+``pw.pw_env_setup.virtualenv.pip_install_offline``
+  A boolean value that adds ``--no-index`` to all ``pip install`` commands that
+  are part of bootstrap. This forces pip to not reach out to the internet
+  (usually `pypi.org <https://pypi.org/>`_) to download packages. Using this
+  option requires setting
+  ``pw.pw_env_setup.virtualenv.pip_install_find_links``. Defaults to
+  ``false``.
+
+  .. seealso::
+     The Python GN guide for offline pip installation:
+     :ref:`docs-python-build-installing-offline`
+
+``pw.pw_env_setup.virtualenv.pip_install_find_links``
+  List of paths to folders containing Python wheels (``*.whl``) or source tar
+  files (``*.tar.gz``). Pip will check each of these directories when looking
+  for potential install candidates. Each path will be passed to all ``pip
+  install`` commands as ``--find-links PATH``.
+
+  .. tip::
+     Environment variables may be used in these paths. For example:
+
+     .. code-block:: json
+
+        "virtualenv": {
+           "pip_install_find_links": [
+             "${PW_PROJECT_ROOT}/pip_cache"
+           ]
+         }
+
+``pw.pw_env_setup.virtualenv.pip_install_require_hashes``
+  Adds ``--require-hashes`` This option enforces hash checking on Python
+  package files. Defaults to ``false``.
+
+``pw.pw_env_setup.virtualenv.pip_install_disable_cache``
+  A boolean value that adds ``--no-cache-dir`` to all ``pip install`` commands
+  that are part of bootstrap. This forces pip to ignore any previously cached
+  Python packages. On most systems this is located in
+  ``~/.cache/pip/``. Defaults to ``false``.
+
+``pw.pw_env_setup.optional_submodules``
   By default environment setup will check that all submodules are present in
   the checkout. Any submodules in this list are excluded from that check.
 
-``required_submodules``
+``pw.pw_env_setup.required_submodules``
   If this is specified instead of ``optional_submodules`` bootstrap will only
   complain if one of the required submodules is not present. Combining this
   with ``optional_submodules`` is not supported.
 
-``pw_packages``
+``pw.pw_env_setup.pw_packages``
   A list of packages to install using :ref:`pw_package <module-pw_package>`
   after the rest of bootstrap completes.
 
-``gni_file``
+``pw.pw_env_setup.gni_file``
   Location to write a ``.gni`` file containing paths to many things within the
   environment directory. Defaults to
   ``build_overrides/pigweed_environment.gni``.
 
-``json_file``
+``pw.pw_env_setup.json_file``
   Location to write a ``.json`` file containing step-by-step modifications to
   the environment, for reading by tools that don't inherit an environment from
   a sourced ``bootstrap.sh``.
 
-``rosetta``
+``pw.pw_env_setup.rosetta``
   Whether to use Rosetta to use amd64 packages on arm64 Macs. Accepted values
   are  ``never``, ``allow``, and ``force``. For now, ``allow`` means ``force``.
   At some point in the future ``allow`` will be changed to mean ``never``.
@@ -313,33 +387,37 @@ An example of a config file is below.
 .. code-block:: json
 
    {
-     "root_variable": "EXAMPLE_ROOT",
-     "cipd_package_files": [
-       "pigweed/pw_env_setup/py/pw_env_setup/cipd_setup/pigweed.json",
-       "pigweed/pw_env_setup/py/pw_env_setup/cipd_setup/luci.json"
-       "tools/myprojectname.json"
-     ],
-     "virtualenv": {
-       "gn_root": ".",
-       "gn_targets": [
-         ":python.install",
-       ],
-       "system_packages": false
-     },
-     "pw_packages": [],
-     "optional_submodules": [
-       "optional/submodule/one",
-       "optional/submodule/two"
-     ],
-     "gni_file": "tools/environment.gni",
-     "json_file": "tools/environment.json",
-     "rosetta": "allow"
+     "pw": {
+       "pw_env_setup": {
+         "root_variable": "EXAMPLE_ROOT",
+         "cipd_package_files": [
+           "pigweed/pw_env_setup/py/pw_env_setup/cipd_setup/pigweed.json",
+           "pigweed/pw_env_setup/py/pw_env_setup/cipd_setup/luci.json"
+           "tools/myprojectname.json"
+         ],
+         "virtualenv": {
+           "gn_root": ".",
+           "gn_targets": [
+             ":python.install",
+           ],
+           "system_packages": false
+         },
+         "pw_packages": [],
+         "optional_submodules": [
+           "optional/submodule/one",
+           "optional/submodule/two"
+         ],
+         "gni_file": "tools/environment.gni",
+         "json_file": "tools/environment.json",
+         "rosetta": "allow"
+       }
+     }
    }
 
 Only the packages necessary for almost all projects based on Pigweed are
-included in the ``pigweed.json`` file. A number of other files are present in
-that directory for projects that need more than the minimum. Internal-Google
-projects using LUCI should at least include ``luci.json``.
+included in the ``cipd_setup/pigweed.json`` file. A number of other files are
+present in that directory for projects that need more than the minimum.
+Internal-Google projects using LUCI should at least include ``luci.json``.
 
 In case the CIPD packages need to be referenced from other scripts, variables
 like ``PW_${BASENAME}_CIPD_INSTALL_DIR`` point to the CIPD install directories,
@@ -367,20 +445,66 @@ last topologically takes priority. For example, with the file contents below,
 ``d.json``'s entries will appear in ``PATH`` before ``c.json``'s, which will
 appear before ``b.json``'s, which will appear before ``a.json``'s.
 
-``config.json``
-  ``{"cipd_package_files": ["a.json", "b.json", "d.json"], ...}``
+.. code-block:: json
+   :caption: :octicon:`file;1em` pigweed.json
 
-``a.json``
-  ``{"package_files": [...]}``
+   {
+     "pw": {
+       "pw_env_setup": {
+         "cipd_package_files": [
+           "a.json",
+           "b.json",
+           "d.json"
+         ]
+       }
+     }
+   }
 
-``b.json``
-  ``{"included_files": ["c.json"], "package_files": [...]}``
+.. code-block:: json
+   :caption: :octicon:`file;1em` a.json
 
-``c.json``
-  ``{"package_files": [...]}``
+   {
+     "package_files": [
+       // ...
+     ]
+   }
 
-``d.json``
-  ``{"package_files": [...]}``
+.. code-block:: json
+   :caption: :octicon:`file;1em` b.json
+
+   {
+     "included_files": ["c.json"],
+     "package_files": [
+       // ...
+     ]
+   }
+
+.. code-block:: json
+   :caption: :octicon:`file;1em` c.json
+
+   {
+     "package_files": [
+       // ...
+     ]
+   }
+
+.. code-block:: json
+   :caption: :octicon:`file;1em` d.json
+
+   {
+     "package_files": [
+       // ...
+     ]
+   }
+
+.. code-block::
+   :caption: Effective File Loading Order
+
+   pigweed.json
+   a.json
+   b.json
+   c.json
+   d.json
 
 Pinning Python Packages
 ***********************
@@ -414,6 +538,9 @@ never need to set these.
 ``CIPD_CACHE_DIR``
   Location of CIPD cache dir. Read by CIPD, but if unset will be defaulted to
   ``$HOME/.cipd-cache-dir``.
+
+``PW_NO_CIPD_CACHE_DIR``
+  Disables the CIPD cache.
 
 ``PW_ACTIVATE_SKIP_CHECKS``
   If set, skip running ``pw doctor`` at end of bootstrap/activate. Intended to
@@ -535,10 +662,10 @@ the GNI file specified in the environment config file.
 .. code-block::
 
    declare_args() {
-     pw_env_setup_CIPD_PIGWEED = "<environment-root>/cipd/packages/pigweed"
      pw_env_setup_CIPD_LUCI = "<environment-root>/cipd/packages/luci"
-     pw_env_setup_VIRTUAL_ENV = "<environment-root>/pigweed-venv"
+     pw_env_setup_CIPD_PIGWEED = "<environment-root>/cipd/packages/pigweed"
      pw_env_setup_PACKAGE_ROOT = "<environment-root>/packages"
+     pw_env_setup_VIRTUAL_ENV = "<environment-root>/pigweed-venv"
    }
 
 It's straightforward to use these variables.
@@ -560,9 +687,115 @@ the future when running ``activate.sh`` instead of ``bootstrap.sh``. In the
 future these could be extended to C shell and PowerShell. A logical mapping of
 high-level commands to system-specific initialization files is shown below.
 
-.. image:: doc_resources/pw_env_setup_output.png
-   :alt: Mapping of high-level commands to system-specific commands.
-   :align: left
+.. grid:: 1
+   :padding: 0
+
+   .. grid-item-card::
+      :columns: 12
+      :class-header: font-monospace
+
+      SET $PW_ROOT /home/$USER/pigweed
+      ^^^
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item:: **Windows**
+
+         .. grid-item:: **Linux & Mac (sh-compatible shells)**
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item::
+
+            .. code-block:: dosbatch
+
+               set PW_ROOT /home/%USER%/pigweed
+
+         .. grid-item::
+
+            .. code-block:: shell
+
+               PW_ROOT="/home/$USER/pigweed"
+               export PW_ROOT
+
+.. grid:: 1
+   :padding: 0
+
+   .. grid-item-card::
+      :columns: 12
+      :class-header: font-monospace
+
+      PREPEND $PATH $PW_ROOT/.env/bin
+      ^^^
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item:: **Windows**
+
+         .. grid-item:: **Linux & Mac (sh-compatible shells)**
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item::
+
+            .. code-block:: dosbatch
+
+               set PATH=%PW_ROOT%/.env/bin;%PATH%
+
+         .. grid-item::
+
+            .. code-block:: shell
+
+               PATH="$(\
+                 echo "$PATH" | \
+                 sed "s|:$PW_ROOT/.env/bin:|:|g;" | \
+                 sed "s|^$PW_ROOT/.env/bin:||g;" | \
+                 sed "s|:$PW_ROOT/.env/bin$||g;")"
+               PATH="$PW_ROOT/.env/bin;$PATH"
+               export PATH
+
+.. grid:: 1
+   :padding: 0
+
+   .. grid-item-card::
+      :columns: 12
+      :class-header: font-monospace
+
+      ECHO "Setup Complete!"
+      ^^^
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item:: **Windows**
+
+         .. grid-item:: **Linux & Mac (sh-compatible shells)**
+
+
+      .. grid:: 2
+         :margin: 0
+         :padding: 0
+
+         .. grid-item::
+
+            .. code-block:: dosbatch
+
+               echo Setup Complete!
+
+         .. grid-item::
+
+            .. code-block:: shell
+
+               echo "Setup Complete!"
+
 
 .. _Requirements Files documentation: https://pip.pypa.io/en/stable/user_guide/#requirements-files
 .. _Constraints Files documentation: https://pip.pypa.io/en/stable/user_guide/#constraints-files

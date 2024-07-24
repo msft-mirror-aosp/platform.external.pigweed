@@ -57,7 +57,8 @@ class FakeServerReaderWriter : private ServerCall {
   using Call::active;
   using Call::set_on_error;
   using Call::set_on_next;
-  using ServerCall::set_on_client_stream_end;
+  using ServerCall::set_on_completion_requested;
+  using ServerCall::set_on_completion_requested_if_enabled;
 
   Status Finish(Status status = OkStatus()) {
     return CloseAndSendResponse(status);
@@ -68,6 +69,7 @@ class FakeServerReaderWriter : private ServerCall {
   // Expose a few additional methods for test use.
   ServerCall& as_server_call() { return *this; }
   using Call::channel_id_locked;
+  using Call::DebugLog;
   using Call::id;
   using Call::set_id;
 };
@@ -85,6 +87,8 @@ class FakeServerWriter : private FakeServerReaderWriter {
   // Common reader/writer functions.
   using FakeServerReaderWriter::active;
   using FakeServerReaderWriter::Finish;
+  using FakeServerReaderWriter::set_on_completion_requested;
+  using FakeServerReaderWriter::set_on_completion_requested_if_enabled;
   using FakeServerReaderWriter::set_on_error;
   using FakeServerReaderWriter::Write;
 

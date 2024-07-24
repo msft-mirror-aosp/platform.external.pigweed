@@ -22,7 +22,10 @@ declare_args() {
   pw_docgen_BUILD_DOCS = false
 
   # Set to enable Google Analytics tracking of generated docs.
-  pw_docs_google_analytics_id = ""
+  pw_docgen_GOOGLE_ANALYTICS_ID = ""
+
+  # Set to define the number of parallel threads to use during the Sphinx build.
+  pw_docgen_THREADS = ""
 }
 
 # Defines a group of documentation files and assets.
@@ -34,40 +37,38 @@ declare_args() {
 #   report_deps: Report card targets on which documentation depends.
 #   other_deps: Dependencies on any other types of targets.
 template("pw_doc_group") {
-  if (defined(invoker.sources)) {
-    _sources = invoker.sources
-  } else {
-    _sources = []
-  }
-
-  if (defined(invoker.inputs)) {
-    _inputs = invoker.inputs
-  } else {
-    _inputs = []
-  }
-
   assert(defined(invoker.sources) || defined(invoker.inputs),
          "pw_doc_group requires at least one of sources or inputs")
-
-  _all_deps = []
-  if (defined(invoker.group_deps)) {
-    _all_deps += invoker.group_deps
-  }
-  if (defined(invoker.report_deps)) {
-    _all_deps += invoker.report_deps
-  }
-  if (defined(invoker.other_deps)) {
-    _all_deps += invoker.other_deps
-  }
 
   # Create a group containing the source and input files so that docs are
   # rebuilt on file modifications.
   pw_input_group(target_name) {
+    _sources = []
+    if (defined(invoker.sources)) {
+      _sources = invoker.sources
+    }
+
+    _inputs = []
+    if (defined(invoker.inputs)) {
+      _inputs = invoker.inputs
+    }
+
     metadata = {
       pw_doc_sources = rebase_path(_sources, root_build_dir)
       pw_doc_inputs = rebase_path(_inputs, root_build_dir)
     }
-    deps = _all_deps
+
+    deps = []
+    if (defined(invoker.group_deps)) {
+      deps += invoker.group_deps
+    }
+    if (defined(invoker.report_deps)) {
+      deps += invoker.report_deps
+    }
+    if (defined(invoker.other_deps)) {
+      deps += invoker.other_deps
+    }
+
     inputs = _sources + _inputs
   }
 }
@@ -76,6 +77,10 @@ template("pw_doc_group") {
 #
 # Args:
 #   deps: List of pw_doc_group targets.
+#   python_metadata_deps: Python-related dependencies that are only used as deps
+#                         for generating Python package metadata list, not the
+#                         overall documentation generation. This should rarely
+#                         be used by non-Pigweed code.
 #   sources: Top-level documentation .rst source files.
 #   conf: Configuration script (conf.py) for Sphinx.
 #   output_directory: Path to directory to which HTML output is rendered.
@@ -89,61 +94,68 @@ template("pw_doc_gen") {
   assert(defined(invoker.output_directory),
          "pw_doc_gen requires an 'output_directory' argument")
 
-  # Collects all dependency metadata into a single JSON file.
-  _metadata_file_target = "${target_name}_metadata"
-  generated_file(_metadata_file_target) {
-    outputs = [ "$target_gen_dir/$target_name.json" ]
-    data_keys = [
-      "pw_doc_sources",
-      "pw_doc_inputs",
-    ]
-    output_conversion = "json"
-    deps = invoker.deps
-  }
-
-  _script_args = [
-    "--gn-root",
-    rebase_path("//", root_build_dir),
-    "--gn-gen-root",
-    rebase_path(root_gen_dir, root_build_dir) + "/",
-    "--sphinx-build-dir",
-    rebase_path("$target_gen_dir/pw_docgen_tree", root_build_dir),
-    "--conf",
-    rebase_path(invoker.conf, root_build_dir),
-    "--out-dir",
-    rebase_path(invoker.output_directory, root_build_dir),
-  ]
-
-  # Enable Google Analytics if a measurement ID is provided
-  if (pw_docs_google_analytics_id != "") {
-    _script_args += [
-      "--google-analytics-id",
-      pw_docs_google_analytics_id,
-    ]
-  }
-
-  # Metadata JSON file path.
-  _script_args += [ "--metadata" ]
-  _script_args +=
-      rebase_path(get_target_outputs(":$_metadata_file_target"), root_build_dir)
-
-  _script_args += rebase_path(invoker.sources, root_build_dir)
-
-  # Required to set the PYTHONPATH for any automodule/class/function RST
-  # directives.
-  _python_metadata_deps = [ "$dir_pw_docgen/py" ]
-  if (defined(invoker.python_metadata_deps)) {
-    _python_metadata_deps += invoker.python_metadata_deps
-  }
-
   if (pw_docgen_BUILD_DOCS) {
+    # Collects all dependency metadata into a single JSON file.
+    _metadata_file_target = "${target_name}_metadata"
+    generated_file(_metadata_file_target) {
+      outputs = [ "$target_gen_dir/$target_name.json" ]
+      data_keys = [
+        "pw_doc_sources",
+        "pw_doc_inputs",
+      ]
+      output_conversion = "json"
+      deps = invoker.deps
+    }
+
     pw_python_action(target_name) {
-      script = "$dir_pw_docgen/py/pw_docgen/docgen.py"
-      args = _script_args
+      module = "pw_docgen.docgen"
+      args = [
+        "--gn-root",
+        rebase_path("//", root_build_dir),
+        "--gn-gen-root",
+        rebase_path(root_gen_dir, root_build_dir) + "/",
+        "--sphinx-build-dir",
+        rebase_path("$target_gen_dir/pw_docgen_tree", root_build_dir),
+        "--conf",
+        rebase_path(invoker.conf, root_build_dir),
+        "--out-dir",
+        rebase_path(invoker.output_directory, root_build_dir),
+      ]
+
+      # Enable Google Analytics if a measurement ID is provided
+      if (pw_docgen_GOOGLE_ANALYTICS_ID != "") {
+        args += [
+          "--google-analytics-id",
+          pw_docgen_GOOGLE_ANALYTICS_ID,
+        ]
+      }
+
+      # Override the default number of threads for the Sphinx build.
+      if (pw_docgen_THREADS != "") {
+        args += [
+          "-j",
+          pw_docgen_THREADS,
+        ]
+      }
+
+      # Metadata JSON file path.
+      args += [ "--metadata" ] +
+              rebase_path(get_target_outputs(":$_metadata_file_target"),
+                          root_build_dir)
+
+      args += rebase_path(invoker.sources, root_build_dir)
+
+      python_deps = [ "$dir_pw_docgen/py" ]
       deps = [ ":$_metadata_file_target" ]
-      python_metadata_deps = _python_metadata_deps
-      inputs = [ invoker.conf ]
-      inputs += invoker.sources
+
+      # Required to set the PYTHONPATH for any automodule/class/function RST
+      # directives.
+      python_metadata_deps = [ "$dir_pw_docgen/py" ]
+      if (defined(invoker.python_metadata_deps)) {
+        python_metadata_deps += invoker.python_metadata_deps
+      }
+
+      inputs = [ invoker.conf ] + invoker.sources
       stamp = true
     }
   } else {

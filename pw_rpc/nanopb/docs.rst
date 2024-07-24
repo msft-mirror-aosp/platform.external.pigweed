@@ -16,25 +16,25 @@ Define a ``pw_proto_library`` containing the .proto file defining your service
 (and optionally other related protos), then depend on the ``nanopb_rpc``
 version of that library in the code implementing the service.
 
-.. code::
+.. code-block::
 
-  # chat/BUILD.gn
+   # chat/BUILD.gn
 
-  import("$dir_pw_build/target_types.gni")
-  import("$dir_pw_protobuf_compiler/proto.gni")
+   import("$dir_pw_build/target_types.gni")
+   import("$dir_pw_protobuf_compiler/proto.gni")
 
-  pw_proto_library("chat_protos") {
-    sources = [ "chat_protos/chat_service.proto" ]
-  }
+   pw_proto_library("chat_protos") {
+     sources = [ "chat_protos/chat_service.proto" ]
+   }
 
-  # Library that implements the Chat service.
-  pw_source_set("chat_service") {
-    sources = [
-      "chat_service.cc",
-      "chat_service.h",
-    ]
-    public_deps = [ ":chat_protos.nanopb_rpc" ]
-  }
+   # Library that implements the Chat service.
+   pw_source_set("chat_service") {
+     sources = [
+       "chat_service.cc",
+       "chat_service.h",
+     ]
+     public_deps = [ ":chat_protos.nanopb_rpc" ]
+   }
 
 A C++ header file is generated for each input .proto file, with the ``.proto``
 extension replaced by ``.rpc.pb.h``. For example, given the input file
@@ -45,7 +45,7 @@ Generated code API
 ==================
 All examples in this document use the following RPC service definition.
 
-.. code:: protobuf
+.. code-block:: protobuf
 
   // chat/chat_protos/chat_service.proto
 
@@ -74,7 +74,7 @@ located within a special ``pw_rpc::nanopb`` sub-namespace of the file's package.
 The generated class is a base class which must be derived to implement the
 service's methods. The base class is templated on the derived class.
 
-.. code:: c++
+.. code-block:: c++
 
   #include "chat_protos/chat_service.rpc.pb.h"
 
@@ -89,7 +89,7 @@ A unary RPC is implemented as a function which takes in the RPC's request struct
 and populates a response struct to send back, with a status indicating whether
 the request succeeded.
 
-.. code:: c++
+.. code-block:: c++
 
   pw::Status GetRoomInformation(pw::rpc::
                                 const RoomInfoRequest& request,
@@ -100,7 +100,7 @@ Server streaming RPC
 A server streaming RPC receives the client's request message alongside a
 ``ServerWriter``, used to stream back responses.
 
-.. code:: c++
+.. code-block:: c++
 
   void ListUsersInRoom(pw::rpc::
                        const ListUsersRequest& request,

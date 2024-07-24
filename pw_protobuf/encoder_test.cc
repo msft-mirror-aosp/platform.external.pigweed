@@ -14,10 +14,10 @@
 
 #include "pw_protobuf/encoder.h"
 
-#include "gtest/gtest.h"
 #include "pw_bytes/span.h"
 #include "pw_span/span.h"
 #include "pw_stream/memory_stream.h"
+#include "pw_unit_test/framework.h"
 
 namespace pw::protobuf {
 namespace {
@@ -103,7 +103,7 @@ TEST(StreamEncoder, EncodePrimitives) {
   EXPECT_EQ(encoder.WriteSint32(kTestProtoZiggyField, -13), OkStatus());
   EXPECT_EQ(encoder.WriteFixed64(kTestProtoCyclesField, 0xdeadbeef8badf00d),
             OkStatus());
-  EXPECT_EQ(encoder.WriteFloat(kTestProtoRatioField, 1.618034), OkStatus());
+  EXPECT_EQ(encoder.WriteFloat(kTestProtoRatioField, 1.618034f), OkStatus());
   EXPECT_EQ(encoder.WriteString(kTestProtoErrorMessageField, "broken 💩"),
             OkStatus());
 
@@ -136,7 +136,7 @@ TEST(StreamEncoder, EncodeInsufficientSpace) {
   EXPECT_EQ(encoder.WriteFixed64(kTestProtoCyclesField, 0xdeadbeef8badf00d),
             Status::ResourceExhausted());
   // Any further write operations should fail.
-  EXPECT_EQ(encoder.WriteFloat(kTestProtoRatioField, 1.618034),
+  EXPECT_EQ(encoder.WriteFloat(kTestProtoRatioField, 1.618034f),
             Status::ResourceExhausted());
 
   ASSERT_EQ(encoder.status(), Status::ResourceExhausted());
@@ -215,7 +215,7 @@ TEST(StreamEncoder, Nested) {
                 OkStatus());
       // Rely on destructor for finalization.
     }  // end DoubleNestedProto
-  }    // end NestedProto
+  }  // end NestedProto
 
   // test_proto.ziggy = -13;
   EXPECT_EQ(encoder.WriteSint32(kTestProtoZiggyField, -13), OkStatus());
@@ -503,6 +503,16 @@ TEST(StreamEncoder, EmptyChildWrites) {
           FieldKey(kTestProtoNestedField, WireType::kDelimited)) +
       varint::EncodedSize(0);
   ASSERT_EQ(parent.size(), kExpectedSize);
+}
+
+TEST(StreamEncoder, InvalidChildFieldNumber) {
+  std::byte encode_buffer[32];
+  MemoryEncoder parent(encode_buffer);
+  {
+    StreamEncoder child = parent.GetNestedEncoder(0);
+    EXPECT_EQ(child.status(), Status::InvalidArgument());
+  }
+  EXPECT_EQ(parent.status(), Status::InvalidArgument());
 }
 
 TEST(StreamEncoder, NestedStatusPropagates) {

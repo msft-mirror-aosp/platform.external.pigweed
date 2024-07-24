@@ -70,7 +70,7 @@ class PwpbMethod : public Method {
   }
 
   // Creates a PwpbMethod for a synchronous unary RPC.
-  // TODO(b/234874001): Find a way to reduce the number of monomorphized copies
+  // TODO: b/234874001 - Find a way to reduce the number of monomorphized copies
   // of this method.
   template <auto kMethod>
   static constexpr PwpbMethod SynchronousUnary(uint32_t id,
@@ -92,12 +92,13 @@ class PwpbMethod : public Method {
     return PwpbMethod(
         id,
         SynchronousUnaryInvoker<Request<kMethod>, Response<kMethod>>,
+        MethodType::kUnary,
         Function{.synchronous_unary = wrapper},
         serde);
   }
 
   // Creates a PwpbMethod for an asynchronous unary RPC.
-  // TODO(b/234874001): Find a way to reduce the number of monomorphized copies
+  // TODO: b/234874001 - Find a way to reduce the number of monomorphized copies
   // of this method.
   template <auto kMethod>
   static constexpr PwpbMethod AsynchronousUnary(uint32_t id,
@@ -120,6 +121,7 @@ class PwpbMethod : public Method {
         };
     return PwpbMethod(id,
                       AsynchronousUnaryInvoker<Request<kMethod>>,
+                      MethodType::kUnary,
                       Function{.unary_request = wrapper},
                       serde);
   }
@@ -146,6 +148,7 @@ class PwpbMethod : public Method {
         };
     return PwpbMethod(id,
                       ServerStreamingInvoker<Request<kMethod>>,
+                      MethodType::kServerStreaming,
                       Function{.unary_request = wrapper},
                       serde);
   }
@@ -171,6 +174,7 @@ class PwpbMethod : public Method {
     };
     return PwpbMethod(id,
                       ClientStreamingInvoker<Request<kMethod>>,
+                      MethodType::kClientStreaming,
                       Function{.stream_request = wrapper},
                       serde);
   }
@@ -196,13 +200,18 @@ class PwpbMethod : public Method {
         };
     return PwpbMethod(id,
                       BidirectionalStreamingInvoker<Request<kMethod>>,
+                      MethodType::kBidirectionalStreaming,
                       Function{.stream_request = wrapper},
                       serde);
   }
 
   // Represents an invalid method. Used to reduce error message verbosity.
   static constexpr PwpbMethod Invalid() {
-    return {0, InvalidInvoker, {}, PwpbMethodSerde(nullptr, nullptr)};
+    return {0,
+            InvalidInvoker,
+            MethodType::kUnary,
+            {},
+            PwpbMethodSerde(nullptr, nullptr)};
   }
 
   // Give access to the serializer/deserializer object for converting requests
@@ -236,9 +245,10 @@ class PwpbMethod : public Method {
 
   constexpr PwpbMethod(uint32_t id,
                        Invoker invoker,
+                       MethodType type,
                        Function function,
                        const PwpbMethodSerde& serde)
-      : Method(id, invoker), function_(function), serde_(serde) {}
+      : Method(id, invoker, type), function_(function), serde_(serde) {}
 
   template <typename Request, typename Response>
   void CallSynchronousUnary(const CallContext& context,
@@ -365,7 +375,7 @@ class PwpbMethod : public Method {
 };
 
 // MethodTraits specialization for a static synchronous unary method.
-// TODO(b/234874320): Further qualify this (and nanopb) definition so that they
+// TODO: b/234874320 - Further qualify this (and nanopb) definition so that they
 // can co-exist in the same project.
 template <typename Req, typename Res>
 struct MethodTraits<PwpbSynchronousUnary<Req, Res>*> {
