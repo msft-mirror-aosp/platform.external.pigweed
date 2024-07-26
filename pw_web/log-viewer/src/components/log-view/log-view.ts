@@ -58,6 +58,13 @@ export class LogView extends LitElement {
   @property({ type: Array })
   columnData: TableColumn[] = [];
 
+  /**
+   * Flag to determine whether Shoelace components should be used by
+   * `LogView` and its subcomponents.
+   */
+  @property({ type: Boolean })
+  useShoelaceFeatures = true;
+
   /** Whether line wrapping in table cells should be used. */
   @state()
   _lineWrap = false;
@@ -102,6 +109,11 @@ export class LogView extends LitElement {
     // Update view title with log source names if a view title isn't already provided
     if (!this.viewTitle) {
       this.updateTitle();
+    }
+
+    this.updateColumnOrder(this.columnData);
+    if (this.columnData) {
+      this.columnData = this.updateColumnRender(this.columnData);
     }
   }
 
@@ -157,7 +169,6 @@ export class LogView extends LitElement {
               : () => true;
 
           this.filterLogs();
-          this.requestUpdate();
         }, this.FILTER_DELAY);
         break;
       case 'clear-logs':
@@ -167,9 +178,7 @@ export class LogView extends LitElement {
       default:
         break;
     }
-
     this.filterLogs();
-    this.requestUpdate();
   }
 
   private updateFieldsFromNewLogs(newLogs: LogEntry[]): void {
@@ -197,7 +206,7 @@ export class LogView extends LitElement {
    * @param columnData ColumnData is used to check for undefined fields.
    */
   private updateColumnOrder(columnData: TableColumn[]) {
-    const columnOrder = [...new Set(this.columnOrder)];
+    const columnOrder = this.columnOrder;
     if (this.columnOrder.length !== columnOrder.length) {
       console.warn(
         'Log View had duplicate columns defined, duplicates were removed.',
@@ -316,6 +325,7 @@ export class LogView extends LitElement {
     ) {
       this._filteredLogs = newFilteredLogs;
     }
+    this.requestUpdate();
   }
 
   private updateTitle() {
@@ -343,6 +353,7 @@ export class LogView extends LitElement {
         .viewTitle=${this.viewTitle}
         .hideCloseButton=${!this.isOneOfMany}
         .searchText=${this.searchText}
+        .useShoelaceFeatures=${this.useShoelaceFeatures}
         @input-change="${this.updateFilter}"
         @clear-logs="${this.updateFilter}"
         @column-toggle="${this.toggleColumns}"

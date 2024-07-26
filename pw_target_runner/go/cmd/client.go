@@ -40,7 +40,10 @@ func NewClient(host string, port int) (*Client, error) {
 	// The server currently only supports running locally over an insecure
 	// connection.
 	// TODO(frolv): Investigate adding TLS support to the server and client.
-	opts := []grpc.DialOption{grpc.WithInsecure()}
+	opts := []grpc.DialOption{
+		grpc.WithInsecure(),
+		grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(20 * 1024 * 1024)),
+	}
 
 	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), opts...)
 	if err != nil {
@@ -84,6 +87,7 @@ func main() {
 	hostPtr := flag.String("host", "localhost", "Server host")
 	portPtr := flag.Int("port", 8080, "Server port")
 	pathPtr := flag.String("binary", "", "Path to executable file")
+	serverSuggestionPtr := flag.String("server_suggestion", "", "Suggested command to display if no server is available.")
 
 	flag.Parse()
 
@@ -104,6 +108,9 @@ func main() {
 		if s.Code() == codes.Unavailable {
 			log.Println("  No pw_target_runner_server is running.")
 			log.Println("  Check that a server has been started for your target.")
+			if *serverSuggestionPtr != "" {
+				log.Println("  Consider starting a test server with: ", *serverSuggestionPtr)
+			}
 		} else {
 			log.Printf("  %v\n", err)
 		}

@@ -13,8 +13,6 @@
 // the License.
 
 #pragma once
-#include <memory>
-#include <unordered_map>
 
 #include "pw_bluetooth_sapphire/internal/host/hci/low_energy_scanner.h"
 
@@ -39,6 +37,14 @@ class LegacyLowEnergyScanner final : public LowEnergyScanner {
   bool StartScan(const ScanOptions& options,
                  ScanStatusCallback callback) override;
 
+  // Parse address field from |report| into |out_addr| and return whether or not
+  // it is a resolved address in |out_resolved|. Returns false if the address
+  // field was invalid.
+  static bool DeviceAddressFromAdvReport(
+      const pw::bluetooth::emboss::LEAdvertisingReportDataView& report,
+      DeviceAddress* out_addr,
+      bool* out_resolved);
+
  private:
   // Build the HCI command packet to set the scan parameters for the flavor of
   // low energy scanning being implemented.
@@ -51,12 +57,25 @@ class LegacyLowEnergyScanner final : public LowEnergyScanner {
       const ScanOptions& options,
       pw::bluetooth::emboss::GenericEnableParam enable) override;
 
+  // Called when a Scan Response is received during an active scan or when we
+  // time out waiting
+  void HandleScanResponse(const DeviceAddress& address,
+                          bool resolved,
+                          int8_t rssi,
+                          const ByteBuffer& data);
+
+  std::vector<pw::bluetooth::emboss::LEAdvertisingReportDataView>
+  ParseAdvertisingReports(const EmbossEventPacket& event);
+
   // Event handler for HCI LE Advertising Report event.
-  CommandChannel::EventCallbackResult OnAdvertisingReportEvent(
-      const EventPacket& event);
+  void OnAdvertisingReportEvent(const EmbossEventPacket& event);
 
   // Our event handler ID for the LE Advertising Report event.
   CommandChannel::EventHandlerId event_handler_id_;
+
+  // Keep this as the last member to make sure that all weak pointers are
+  // invalidated before other members get destroyed
+  WeakSelf<LegacyLowEnergyScanner> weak_self_;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(LegacyLowEnergyScanner);
 };

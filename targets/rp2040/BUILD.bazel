@@ -12,6 +12,10 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_build:pigweed.bzl", "pw_cc_binary")
+load("//targets/rp2040:flash.bzl", "flash_rp2040")
+load("//targets/rp2040:transition.bzl", "rp2040_binary")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
@@ -26,9 +30,9 @@ platform(
         "//pw_build/constraints/chipset:rp2040",
         "//pw_build/constraints/rtos:freertos",
         "//pw_interrupt_cortex_m:backend",
-        "//pw_sys_io_rp2040:backend",
         # For toolchain selection.
         "@platforms//cpu:armv6-m",
+        "@platforms//os:none",
         "@pw_toolchain//constraints/arm_mcpu:cortex-m0plus",
         "@rust_crates//:no_std",
     ],
@@ -78,8 +82,20 @@ cc_library(
 filegroup(
     name = "rp2040_files",
     srcs = [
-        "config/pigweed_module_config.h",
         "config/rp2040_hal_config.h",
+    ],
+)
+
+# This is a duplication of the contents of pigweed_module_config.h since we
+# can't do a -include because copts do not propagate to dependencies.
+cc_library(
+    name = "pigweed_module_config",
+    hdrs = ["config/pigweed_module_config.h"],
+    defines = [
+        # LINT.IfChange
+        "PW_THREAD_FREERTOS_CONFIG_JOINING_ENABLED=1",
+        "PW_ASSERT_BASIC_ACTION=PW_ASSERT_BASIC_ACTION_EXIT",
+        # LINT.ThenChange(//targets/rp2040/config/pigweed_module_config.h)
     ],
 )
 
@@ -102,4 +118,31 @@ cc_library(
         "@pico-sdk//src/rp2_common/pico_stdlib:pico_stdlib",
     ],
     alwayslink = 1,
+)
+
+pw_cc_binary(
+    name = "system_async_example",
+    testonly = True,
+    srcs = ["system_async_example.cc"],
+    deps = [
+        "//pw_channel:rp2_stdio_channel",
+        "//pw_libcxx",
+        "//pw_multibuf:testing",
+        "//pw_system:async",
+        "//third_party/freertos:support",
+        "@freertos",
+        "@pico-sdk//src/rp2_common/pico_stdlib:pico_stdlib",
+    ],
+)
+
+rp2040_binary(
+    name = "rp2040_system_async_example",
+    testonly = True,
+    binary = ":system_async_example",
+)
+
+flash_rp2040(
+    name = "flash_rp2040_system_async_example",
+    testonly = True,
+    rp2040_binary = ":rp2040_system_async_example",
 )

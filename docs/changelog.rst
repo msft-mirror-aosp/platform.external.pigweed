@@ -14,17 +14,1181 @@ Talk to the team at Pigweed Live
 .. _docs-changelog-latest:
 
 ------------
-Jun 13, 2024
+Jul 11, 2024
 ------------
 .. changelog_highlights_start
 
+Highlights (Jun 28, 2024 to Jul 11, 2024):
+
+* **Bazel 8 pre-release**: Upstream Pigweed is now using a pre-release version
+  of Bazel 8, the first version to include platform-based flags.
+* **ARMv6-M support**: :ref:`module-pw_cpu_exception_cortex_m` now supports
+  ARMv6-M cores.
+* **Browser-based pw_system console**: The new ``--browser`` option lets
+  you start a ``pw_system`` console in a web browser rather than the default
+  Python-based terminal console.
+* **Updated pw_rpc docs**: The :ref:`module-pw_rpc` docs
+  have been revamped to make getting started easier and to
+  provide more Bazel guidance.
+
+.. changelog_highlights_end
+
+Build systems
+=============
+
+Bazel
+-----
+Pigweed is now using version 8.0.0-pre.20240618.2 of Bazel, the first version
+to include platform-based flags. Some backend collection targets are now being
+provided as dictionaries to enable downstream projects to use the pattern
+described in :ref:`docs-bazel-compatibility-facade-backend-dict`.  The
+``incompatible_with_mcu`` Bazel helper has been introduced to help express
+whether a target is only compatible with platforms that have a full-featured
+OS.
+
+* `Run all tests with googletest backend in CI
+  <https://pwrev.dev/222532>`__
+  (issue `#352584464 <https://pwbug.dev/352584464>`__)
+* `Add missing dependencies
+  <https://pwrev.dev/222572>`__
+  (issue `#352584464 <https://pwbug.dev/352584464>`__)
+* `Don't propagate flags to exec config
+  <https://pwrev.dev/220812>`__
+  (issues `#234877642 <https://pwbug.dev/234877642>`__,
+  `#315871648 <https://pwbug.dev/315871648>`__)
+* `Provide backend collections as dicts
+  <https://pwrev.dev/219911>`__
+  (issue `#344654805 <https://pwbug.dev/344654805>`__)
+* `Roll out incompatible_with_mcu
+  <https://pwrev.dev/216852>`__
+  (issue `#348008794 <https://pwbug.dev/348008794>`__)
+* `Introduce incompatible_with_mcu
+  <https://pwrev.dev/216851>`__
+  (issue `#348008794 <https://pwbug.dev/348008794>`__,
+  `#343481391 <https://pwbug.dev/343481391>`__)
+* `Add back to CI some building targets
+  <https://pwrev.dev/218698>`__
+  (issue `#261603269 <https://pwbug.dev/261603269>`__)
+
+Docs
+====
+* `Fix shortlink URL
+  <https://pwrev.dev/221751>`__
+* `Add shortlink to pw_enviro draft
+  <https://pwrev.dev/221533>`__
+* `Update changelog
+  <https://pwrev.dev/219131>`__
+
+Modules
+=======
+
+pw_allocator
+------------
+A bug was fixed that caused builds to break when
+``-Wmissing-template-arg-list-after-template-kw`` is turned on.
+
+* `Remove unnecessary template
+  <https://pwrev.dev/220111>`__
+
+pw_assert
+---------
+Downstream projects using Bazel now need to set the new backend label flags
+``@pigweed//pw_assert:check_backend`` and
+``@pigweed//pw_assert:check_backend_impl`` and include them in their link
+deps.
+
+* `Split up Bazel assert backend, part 2
+  <https://pwrev.dev/219791>`__
+  (issue `#350585010 <https://pwbug.dev/350585010>`__)
+* `Split up Bazel assert backend, part 1
+  <https://pwrev.dev/219611>`__
+  (issue `#350585010 <https://pwbug.dev/350585010>`__)
+
+pw_async2
+---------
+* `Add missing thread_stl dependency
+  <https://pwrev.dev/219291>`__
+
+pw_async2_epoll
+---------------
+* `Use unordered_map; silence persistent warnings
+  <https://pwrev.dev/218860>`__
+
+pw_async_basic
+--------------
+* `Fix size report build error
+  <https://pwrev.dev/219691>`__
+  (issue `#350780546 <https://pwbug.dev/350780546>`__)
+
+pw_bluetooth
+------------
+* `Format emboss files
+  <https://pwrev.dev/219351>`__
+
+pw_bluetooth_proxy
+------------------
+``pw::bluetooth::proxy::sendGattNotify()`` (lowercase first letter) has been
+removed; use ``pw::bluetooth::proxy::SendGattNotify()`` (uppercase first
+letter) instead. The new
+``pw::bluetooth::proxy::GetNumSimultaneousAclSendsSupported()`` function
+returns the max number of LE ACL sends that can be in-flight at one time.
+The new ``pw::bluetooth::proxy::AclDataChannel::Reset()`` and
+``pw::bluetooth::proxy::ProxyHost::Reset()`` methods let you reset the internal
+state of those classes.
+
+* `Delete "sendGattNotify"
+  <https://pwrev.dev/220951>`__
+  (issue `#350106534 <https://pwbug.dev/350106534>`__)
+* `Include <optional> in proxy_host.h
+  <https://pwrev.dev/220657>`__
+* `ProxyHost supports multiple sends
+  <https://pwrev.dev/220573>`__
+  (issues `#348680331 <https://pwbug.dev/348680331>`__,
+  `#326499764 <https://pwbug.dev/326499764>`__)
+* `Remove unneeded PW_EXCLUSIVE_LOCKS_REQUIRED
+  <https://pwrev.dev/219417>`__
+  (issue `#350106534 <https://pwbug.dev/350106534>`__)
+* `Soft transition to SendGattNotify
+  <https://pwrev.dev/219120>`__
+  (issue `#350106534 <https://pwbug.dev/350106534>`__)
+* `Add ProxyHost/AclDataChannel::Reset()
+  <https://pwrev.dev/219119>`__
+  (issue `#350497803 <https://pwbug.dev/350497803>`__)
+* `Dedup NOCP construction in tests
+  <https://pwrev.dev/219118>`__
+* `Document which events are expected
+  <https://pwrev.dev/219353>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Adjust const for pw::span
+  <https://pwrev.dev/218877>`__
+  (issue `#326497489 <https://pwbug.dev/326497489>`__)
+* `Remove use of <mutex>
+  <https://pwrev.dev/218893>`__
+  (issue `#350009505 <https://pwbug.dev/350009505>`__)
+* `Prevent crash in GattNotifyTest
+  <https://pwrev.dev/218834>`__
+
+pw_bluetooth_sapphire
+---------------------
+* `Remove modulo operator from asserts
+  <https://pwrev.dev/222233>`__
+* `Add Bazel build files to lib/ packages
+  <https://pwrev.dev/222232>`__
+* `Use pwemb namespace alias in FakeController
+  <https://pwrev.dev/221034>`__
+* `Unmask LE Connection Complete
+  <https://pwrev.dev/221033>`__
+* `Implement ExtendedLowEnergyConnector
+  <https://pwrev.dev/221032>`__
+  (issue `#305976440 <https://pwbug.dev/305976440>`__)
+* `Enable bt-host component
+  <https://pwrev.dev/221011>`__
+  (issues `#303116559 <https://pwbug.dev/303116559>`__,
+  `# b/324109634 <https://pwbug.dev/ b/324109634>`__,
+  `#326079781 <https://pwbug.dev/326079781>`__,
+  `# b/325142183 <https://pwbug.dev/ b/325142183>`__)
+* `Support ISO Channel FIDL Protocol in Drivers
+  <https://pwrev.dev/221267>`__
+  (issue `#328457492 <https://pwbug.dev/328457492>`__,
+  issue `# b/328459391 <https://pwbug.dev/ b/328459391>`__)
+* `Add ISO support to controllers
+  <https://pwrev.dev/218992>`__
+  (issue `#311639690 <https://pwbug.dev/311639690>`__)
+* `Tag integration test
+  <https://pwrev.dev/220991>`__
+  (issue `#344654806 <https://pwbug.dev/344654806>`__)
+* `Implement ExtendedLowEnergyScanner
+  <https://pwrev.dev/218979>`__
+  (issue `#305975969 <https://pwbug.dev/305975969>`__)
+* `Add packet filtering consts to vendor protocol
+  <https://pwrev.dev/218978>`__
+* `Update LEAdvertisers to use EmbossCommandPacket
+  <https://pwrev.dev/218991>`__
+  (issue `#312896684 <https://pwbug.dev/312896684>`__)
+* `Use Emboss for android vendor exts multi advert
+  <https://pwrev.dev/218977>`__
+  (issue `#312896673 <https://pwbug.dev/312896673>`__)
+* `Use Emboss versions of a2dp offload structs
+  <https://pwrev.dev/218976>`__
+* `Refactor LowEnergyScanResult to its own class
+  <https://pwrev.dev/218975>`__
+* `Refactor TxEngine to allow queueing SDUs
+  <https://pwrev.dev/218915>`__
+* `Add incoming CIS request handler
+  <https://pwrev.dev/218972>`__
+* `Add IsoStreamManager class
+  <https://pwrev.dev/218971>`__
+* `Add CIS events and commands
+  <https://pwrev.dev/218914>`__
+  (issue `#311639432 <https://pwbug.dev/311639432>`__)
+* `Retrieve sleep clock accuracy for peers
+  <https://pwrev.dev/218913>`__
+  (issue `#311639272 <https://pwbug.dev/311639272>`__)
+* `Fix LowEnergyScanner crash
+  <https://pwrev.dev/218974>`__
+  (issue `#323098126 <https://pwbug.dev/323098126>`__)
+* `Remove unused include
+  <https://pwrev.dev/214677>`__
+* `Add infrastructure for SCA operations
+  <https://pwrev.dev/214676>`__
+  (issue `#311639272 <https://pwbug.dev/311639272>`__)
+* `Use Write instead of UncheckedWrite
+  <https://pwrev.dev/214675>`__
+* `Remove now unnecessary use of std::optional
+  <https://pwrev.dev/214654>`__
+* `Expose connection role to le handle
+  <https://pwrev.dev/214653>`__
+  (issue `#311639432 <https://pwbug.dev/311639432>`__)
+* `Disambiguate comment
+  <https://pwrev.dev/214673>`__
+* `Fix typo in comment
+  <https://pwrev.dev/214652>`__
+
+pw_build
+--------
+The new macros in ``//pw_build:merge_flags.bzl`` help with using
+platform-based flags.
+
+* `Add flags_from_dict
+  <https://pwrev.dev/221691>`__
+  (issue `#301334234 <https://pwbug.dev/301334234>`__)
+
+pw_cli
+------
+``pw_cli`` has increased support for letting users select from interactive
+prompts. The RP2040 flasher utility uses the new interactive prompting
+features to let users select which detected device to flash.
+
+* `Interactive user index prompt
+  <https://pwrev.dev/220931>`__
+
+pw_console
+----------
+* `Headless mode with web/ws server running
+  <https://pwrev.dev/215860>`__
+
+pw_cpu_exception
+----------------
+* `Remove multiplexers
+  <https://pwrev.dev/219371>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_cpu_exception_cortex_m
+-------------------------
+``pw_cpu_exception_cortex_m`` now supports ARMv6-M cores.
+
+* `Add armv6-m support
+  <https://pwrev.dev/219132>`__
+  (issues `#350747553 <https://pwbug.dev/https://pwbug.dev/350747553>`__,
+  `#350747562 <https://pwbug.dev/https://pwbug.dev/350747562>`__)
+
+pw_digital_io_rp2040
+--------------------
+The new ``enable_pull_up`` and ``enable_pull_down`` fields in the
+``pw::digital_io::Rp2040Config`` struct let you configure whether resistors
+should be pulled up or down.
+
+* `Add pull up/down resistors to Rp2040Config
+  <https://pwrev.dev/219731>`__
+* `Remove manual tags
+  <https://pwrev.dev/219052>`__
+  (issue `#261603269 <https://pwbug.dev/261603269>`__)
+
+pw_env_setup
+------------
+* `Use full paths for proj action imports
+  <https://pwrev.dev/222571>`__
+
+pw_function
+-----------
+* `Dynamic allocation for upstream host
+  <https://pwrev.dev/221871>`__
+
+pw_log_string
+-------------
+* `Require backend_impl to be set explicitly
+  <https://pwrev.dev/221293>`__
+
+pw_malloc_freertos
+------------------
+* `Fix typo
+  <https://pwrev.dev/220751>`__
+  (issue `#351945325 <https://pwbug.dev/351945325>`__)
+
+pw_presubmit
+------------
+* `Narrow copyright notice exclusions
+  <https://pwrev.dev/221532>`__
+  (issue `#347062591 <https://pwbug.dev/347062591>`__)
+* `Add copyright notice to some test data
+  <https://pwrev.dev/221395>`__
+  (issue `#347062591 <https://pwbug.dev/347062591>`__)
+* `Exclude test_data from bazel_lint
+  <https://pwrev.dev/221152>`__
+* `Exclude files from copyright
+  <https://pwrev.dev/221151>`__
+* `Don't automatically use exclusions
+  <https://pwrev.dev/216355>`__
+  (issue `#347274642 <https://pwbug.dev/347274642>`__)
+
+pw_rpc
+------
+The :ref:`module-pw_rpc` docs have been revamped to make getting started
+easier and to provide more Bazel guidance.
+
+* `Expand comment for internal::ClientServerTestComment
+  <https://pwrev.dev/220574>`__
+* `Update docs
+  <https://pwrev.dev/219392>`__
+  (issue `#349832019 <https://pwbug.dev/349832019>`__)
+
+pw_stream_uart_mcuxpresso
+-------------------------
+* `Clean up dma stream comments
+  <https://pwrev.dev/222111>`__
+
+pw_sys_io
+---------
+* `Remove multiplexer, constraints
+  <https://pwrev.dev/218736>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_sys_io_baremetal_stm32f429
+-----------------------------
+Bazel projects should now set the ``--@pigweed//pw_sys_io:backend``
+label flag to ``@pigweed//pw_sys_io_baremetal_stm32f429`` and add the
+``@pigweed//pw_sys_io_baremetal_stm32f429:compatible`` constraint to their
+platform to indicate that the platform is compatible with
+``pw_sys_io_baremetal_stm32f429``.
+
+* `Add constraint
+  <https://pwrev.dev/218831>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_sys_io_stm32cube
+-------------------
+* `Remove target_compatible_with
+  <https://pwrev.dev/218704>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_system
+---------
+The new ``--browser`` option lets you start a browser-based ``pw_system``
+console instead of a terminal-based one.Thread stack sizes for the new
+async version of ``pw_system`` can now be configured with
+``PW_SYSTEM_ASYNC_LOG_THREAD_STACK_SIZE_BYTES``,
+``PW_SYSTEM_ASYNC_RPC_THREAD_STACK_SIZE_BYTES``,
+``PW_SYSTEM_ASYNC_TRANSFER_THREAD_STACK_SIZE_BYTES``, and
+``PW_SYSTEM_ASYNC_DISPATCHER_THREAD_STACK_SIZE_BYTES``. The new
+``pw::system::AsyncCore::RunOnce()`` method provides a way to run a function
+once on a separate thread. The ``--ipython`` option has been removed from the
+``pw_system`` console. See :ref:`module-pw_console-embedding-ipython` for
+guidance on how to embed IPython.
+
+* `Add web console option
+  <https://pwrev.dev/221071>`__
+* `Add missing work queue thread
+  <https://pwrev.dev/222372>`__
+* `Clean up pw_system/threads.cc
+  <https://pwrev.dev/222371>`__
+* `Configurable thread stack sizes
+  <https://pwrev.dev/221394>`__
+* `RunOnce function for work queue functionality
+  <https://pwrev.dev/218954>`__
+* `Remove IPython from pw_system console
+  <https://pwrev.dev/218882>`__
+* `Organize pw_system:async build targets
+  <https://pwrev.dev/218737>`__
+
+pw_thread
+---------
+* `Remove backend multiplexers
+  <https://pwrev.dev/218238>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_thread_stl
+-------------
+The ``pw::thread::Thread::native_handle()`` method now returns a pointer to
+the underlying thread object instead of a reference and the docs have been
+updated to make it clear that using this is inherently non-portable.
+
+* `Change NativeThreadHandle to ptr
+  <https://pwrev.dev/219251>`__
+  (issue `#350349092 <https://pwbug.dev/350349092>`__)
+
+pw_toolchain
+------------
+Go binaries have been updated to no longer link with position-independent
+executables (PIE) on Linux.
+
+* `Disable PIE for Golang
+  <https://pwrev.dev/220191>`__
+  (issue `#347708308 <https://pwbug.dev/347708308>`__)
+
+pw_toolchain_bazel
+------------------
+* `Add native binary for clang-tidy
+  <https://pwrev.dev/221471>`__
+  (issue `#352343585 <https://pwbug.dev/352343585>`__)
+
+pw_trace
+--------
+* `Remove backend multiplexer
+  <https://pwrev.dev/219792>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_transfer
+-----------
+* `Don't assert on resource status responder
+  <https://pwrev.dev/219037>`__
+
+pw_unit_test
+------------
+* `Fix CMake test runner argument forwarding
+  <https://pwrev.dev/218973>`__
+
+pw_web
+------
+Upstream Pigweed protos are now provided alongside downstream project protos.
+
+* `Include core .proto files in the npm bundle
+  <https://pwrev.dev/222533>`__
+* `Add newlines, separators, and clear for output
+  <https://pwrev.dev/222531>`__
+  (issue `#348650028 <https://pwbug.dev/348650028>`__)
+* `Set min width for message
+  <https://pwrev.dev/221592>`__
+  (issue `#351901512 <https://pwbug.dev/351901512>`__)
+* `Implement console-level split panels
+  <https://pwrev.dev/220691>`__
+  (issue `#348649945 <https://pwbug.dev/348649945>`__)
+* `Update REPL styles
+  <https://pwrev.dev/220971>`__
+  (issue `#348650028 <https://pwbug.dev/348650028>`__)
+* `Repl kernel interface and litjs component for repl
+  <https://pwrev.dev/217311>`__
+* `Fix columns on first load
+  <https://pwrev.dev/218551>`__
+  (issue `#346869281 <https://pwbug.dev/346869281>`__)
+* `Debounce grid template calc on resize
+  <https://pwrev.dev/218377>`__
+  (issues `#346596380 <https://pwbug.dev/346596380>`__,
+  `#342450728 <https://pwbug.dev/342450728>`__)
+
+Rolls
+=====
+Pigweed is now using version 8.0.0-pre.20240618.2 of Bazel, the first version
+to include platform-based flags. Go was updated to version ``3@1.22.5``. CMake
+was updated to version ``3@3.30.0.chromium.8``.
+
+* `Update Bazel to 8.0 rolling release
+  <https://pwrev.dev/220118>`__
+  (issue `#344013743 <https://pwbug.dev/344013743>`__)
+* `Update Bazel to 7.2
+  <https://pwrev.dev/220571>`__
+  (issue `#347708308 <https://pwbug.dev/347708308>`__)
+* `go
+  <https://pwrev.dev/220471>`__
+* `cmake
+  <https://pwrev.dev/220351>`__
+* `310, 311
+  <https://pwrev.dev/219173>`__
+
+Targets
+=======
+
+RP2040
+------
+The RP2040 flasher now provides more feedback when a board has been
+successfully flashed.
+
+* `Fix FreeRTOS tick rate
+  <https://pwrev.dev/220791>`__
+  (issue `#351906735 <https://pwbug.dev/351906735>`__)
+* `Log on successful flash
+  <https://pwrev.dev/220575>`__
+  (issue `#352052013 <https://pwbug.dev/352052013>`__)
+* `Fix build command in docs
+  <https://pwrev.dev/219359>`__
+
+Third-party software
+====================
+
+Emboss
+------
+Emboss was updated to version ``2024.0702.215418``.
+
+* `Add missing ir_data_utils.py to GN build
+  <https://pwrev.dev/220114>`__
+  (issue `#350970460 <https://pwbug.dev/350970460>`__)
+* `Update emboss to v2024.0702.215418
+  <https://pwrev.dev/219793>`__
+  (issue `#350970460 <https://pwbug.dev/350970460>`__)
+
+FreeRTOS
+--------
+* `Add missing CM33_NTZ header
+  <https://pwrev.dev/222574>`__
+
+GoogleTest
+----------
+* `Fix the docs
+  <https://pwrev.dev/222573>`__
+  (issue `#352584464 <https://pwbug.dev/352584464>`__)
+
+ICU
+---
+* `Update Bazel rules for dependent headers
+  <https://pwrev.dev/222231>`__
+* `Add Bazel build rules
+  <https://pwrev.dev/218702>`__
+  (issue `#321300565 <https://pwbug.dev/321300565>`__)
+
+Mbed TLS
+--------
+* `Remove old build file
+  <https://pwrev.dev/220137>`__
+* `Rename build file
+  <https://pwrev.dev/218709>`__
+
+Miscellaneous
+=============
+
+GitHub
+------
+* `Add copyright notice
+  <https://pwrev.dev/221491>`__
+  (issue `#347062591 <https://pwbug.dev/347062591>`__)
+
+dotfiles
+--------
+* `Add copyright notice
+  <https://pwrev.dev/221531>`__
+  (issue `#347062591 <https://pwbug.dev/347062591>`__)
+
+------------
+Jun 27, 2024
+------------
+Highlights (Jun 14, 2024 to Jun 27, 2024):
+
+* **RP2040 implementation for pw_channel**:
+  :cpp:func:`pw::channel::Rp2StdioChannelInit` is a new
+  :ref:`module-pw_channel` implementation that reads from and writes
+  to RP2040's ``stdio``.
+* **Bazel compatibility patterns guide**: The new
+  :ref:`docs-bazel-compatibility` guide describes the Bazel patterns that
+  Pigweed uses to express that a build target is compatible with a platform.
+* **Hex dump helper**: The new :cpp:func:`pw::dump::LogBytes` helper makes
+  it easier to log binary data as human-readable hex dumps. The number of
+  input bytes to display per line can be configured via the ``kBytesPerLine``
+  template parameter.
+
+Build systems
+=============
+
+Bazel
+-----
+The obsolete ``testonly_freertos`` platform has been removed.
+
+.. todo-check: disable
+
+* `Encapsulate rp2040 WORKSPACE deps into deps.bazl
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217219>`__
+* `Update pin for rules_libusb
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217212>`__
+* `Update TODO in bazelrc
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216274>`__
+  (issue `#347317581 <https://pwbug.dev/347317581>`__)
+* `Stop using deprecated pw_facade aliases, v3
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216436>`__
+  (issue `#328679085 <https://pwbug.dev/328679085>`__)
+* `Stop using deprecated pw_facade aliases, v2
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216271>`__
+  (issue `#328679085 <https://pwbug.dev/328679085>`__)
+* `Remove testonly_freertos platform
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216181>`__
+* `Remove unnecessary @pigweed references
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218411>`__
+* `Add clippy to CI
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218271>`__
+  (issue `#268087116 <https://pwbug.dev/268087116>`__)
+
+.. todo-check: enable
+
+Docs
+====
+The new :ref:`Bazel installation guide <docs-install-bazel>` provides
+Pigweed's recommendations on how to install Bazel. The
+:ref:`docs-github-actions` guide was updated. The new :ref:`docs-bazel-compatibility`
+guide describes the Bazel patterns that Pigweed uses to express that a build target
+is compatible with a platform.
+
+* `Add emboss to packages installed for build_docs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216893>`__
+* `Remove mention of multiplexers
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216672>`__
+  (issue `#344654805 <https://pwbug.dev/344654805>`__)
+* `Add OWNERS
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216834>`__
+* `Add Bazel installation guide
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216531>`__
+* `Update GitHub actions tutorial
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216276>`__
+* `Update Pigweed Live schedule
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216354>`__
+  (issue `#347677570 <https://pwbug.dev/347677570>`__)
+* `Bazel compatibility patterns
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/214971>`__
+  (issue `#344654805 <https://pwbug.dev/344654805>`__)
+* `Update changelog
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216153>`__
+
+Modules
+=======
+
+pw_allocator
+------------
+The ``//pw_allocator:block_allocator`` target has been removed. Consumers
+are now expected to depend on and include individual block allocator targets.
+
+* `Use specific block allocator headers and targets
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/211917>`__
+* `Fix Android build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216511>`__
+* `Clean up Block interface
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/211916>`__
+  (issue `#326509341 <https://pwbug.dev/326509341>`__)
+
+pw_assert
+---------
+* `Remove backend multiplexer
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215914>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_bluetooth
+------------
+New Emboss structs added: ``NumberOfCompletedPacketsEvent``,
+``WritePinTypeCommandCompleteEvent``, ``PinCodeRequestNegativeReplyCommandCompleteEvent``,
+``ReadPinTypeCommandCompleteEvent``, ``PinCodeRequestEvent``,
+``PinCodeRequestReplyCommandCompleteEvent``, ``WritePinTypeCommand``,
+``ReadPinTypeCommand``, ``PinCodeRequestNegativeReplyCommand``,
+``PinCodeRequestReplyCommand``.
+
+* `Add NumberOfCompletedPacketsEvent
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216250>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Add AttNotifyOverAcl to att.emb
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218311>`__
+* `Add PinCodeRequestEvent
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217791>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add IoCapability enum field
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217074>`__
+* `Add ACL & L2CAP B-frame Emboss definitions
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216248>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Add att.emb
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216247>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Add WritePinTypeCommandCompleteEvent Emboss struct
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216923>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add ReadPinTypeCommandCompleteEvent Emboss struct
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216922>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add PinCodeRequestNegativeReplyCommandCompleteEvent Emboss
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216921>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add PinCodeRequestReplyCommandCompleteEvent Emboss struct
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216920>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add WritePinTypeCommand Emboss struct
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216919>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add ReadPinTypeCommand Emboss struct
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216918>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add PinCodeRequestNegativeReplyCommand Emboss struct
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216917>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add PinCodeRequestReplyCommand Emboss struct
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216916>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+* `Add PinType enum
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216915>`__
+  (issue `#342151162 <https://pwbug.dev/342151162>`__)
+
+pw_bluetooth_proxy
+------------------
+The new ``pw::bluetooth::proxy::AclDataChannel::ProcessDisconnectionCompleteEvent()``
+method frees up resources when a connection is removed. The new
+``pw::bluetooth::proxy::AclDataChannel::ProcessNumberOfCompletedPacketsEvent()`` method
+removes completed packets as necessary to reclaim LE ACL credits. The new
+``pw::bluetooth::proxy::ProxyHost::sendGattNotify()`` method is a simple
+implementation of sending a GATT notification to a connected peer.
+
+* `Process Disconnection_Complete event
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218652>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Implement basic ACL credit tracking
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216411>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Implement sendGattNotify
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216249>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Have release_fn take buffer*
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217414>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Add GetH4Span
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217413>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Add release_fn to H4PacketWithH4
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216971>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Fix case style for some test variables
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216914>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Move to-controller flow to using h4-based packets
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216897>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Add H4PacketWithH4 ctor that takes type
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216896>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Move H4Packet to using move semantics
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216913>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Fix naming of SetH4Type
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216895>`__
+  (issue `#326499764 <https://pwbug.dev/326499764>`__)
+* `Move to using H4Packet wrapper classes
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215222>`__
+  (issues `#326499764 <https://pwbug.dev/326499764>`__,
+  `#326497489 <https://pwbug.dev/326497489>`__)
+
+pw_bluetooth_sapphire
+---------------------
+* `Move LegacyLowEnergyScanner impl to base class
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/214674>`__
+* `Add spec reference to comment
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217111>`__
+  (issue `#311639040 <https://pwbug.dev/311639040>`__)
+
+pw_boot
+-------
+* `Remove backend multiplexer
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217213>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_build
+--------
+The ``BuildCommand`` Python class now has an optional ``working_dir`` argument
+that allows you to specify the working directory in which a build command
+should be executed. The new ``boolean_constraint_value`` syntactic sugar macro
+makes it easier to declare a constraint setting with just two possible
+constraint values.
+
+* `Add optional working directory arg to BuildCommand
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217831>`__
+  (issue `#328083083 <https://pwbug.dev/328083083>`__)
+* `Introduce boolean_constraint_value
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216832>`__
+  (issue `#344654805 <https://pwbug.dev/344654805>`__)
+* `Move host_backend_alias (part 2)
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215741>`__
+  (issue `#344654805 <https://pwbug.dev/344654805>`__)
+
+pw_build_android
+----------------
+Dynamic allocation for ``pw::Function`` is now always enabled in Android
+builds to allow ``pw::Function`` to exceed the inline size limit.
+
+* `Enable function dynamic alloc
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218219>`__
+  (issue `#349352849 <https://pwbug.dev/349352849>`__)
+
+pw_build_info
+-------------
+The new ``//pw_build_info:git_build_info`` Bazel rule lets you embed which
+Git commit your binary was built from.
+
+* `Add git_build_info.h header for embedding git info
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/213854>`__
+
+pw_build_mcuxpresso
+-------------------
+The type for the ``include`` parameter in the
+``pw_build_mcuxpresso.components.Project`` Python class constructor changed
+from ``list[str]`` to ``Collection[str]`` and the type for the ``exclude``
+parameter changed from  ``list[str]`` to ``Container[str]``.
+``pw_build_mcuxpresso.bazel.bazel_output()`` now accepts an optional
+``extra_args`` argument, which is a dictionary of additional arguments to be
+added to the generated Bazel target.
+
+* `Fix bug in create_project()
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218272>`__
+* `Add extra_args to bazel.bazel_output()
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217754>`__
+
+pw_channel
+----------
+:cpp:func:`pw::channel::Rp2StdioChannelInit` is a new
+:ref:`module-pw_channel` implementation that reads from and writes
+to RP2040's ``stdio``.
+
+* `Add Rp2StdioChannel
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217954>`__
+* `Cleanup redundant checks in epoll_channel
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218376>`__
+
+pw_chrono
+---------
+The new ``pw_targets_FREERTOS_BACKEND_GROUP`` GN rule sets FreeRTOS
+backends for ``pw_chrono``, ``pw_sync``, and ``pw_thread`` in one go. Each
+backend can be individually overridden if needed.
+
+* `Add docs metadata
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217752>`__
+* `Group common backends in the GN build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215336>`__
+
+pw_cli
+------
+* `Add missing modules to Bazel build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217571>`__
+* `Improve messaging for GitErrors
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217054>`__
+
+pw_clock_tree
+-------------
+The new :cpp:func:`pw::clock_tree::ClockTree::AcquireWith` method lets
+you acquire a clock tree element while enabling another one.
+
+* `Introduce ClockTree AcquireWith method
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217131>`__
+  (issue `#331672574 <https://pwbug.dev/331672574>`__)
+
+pw_clock_tree_mcuxpresso
+------------------------
+:cpp:func:`AcquireWith` should now be used when enabling clock tree
+elements that are sourced from the audio PLL or SYS PLL.
+
+* `Use AcquireWith for audio PLL
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216911>`__
+  (issue `#331672574 <https://pwbug.dev/331672574>`__)
+
+pw_cpu_exception_cortex_m
+-------------------------
+* `rm backend multiplexer
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217214>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_docgen
+---------
+* `Add bug Docutils role
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215911>`__
+
+pw_emu
+------
+``pw_emu`` now supports Bazel.
+
+* `Add bazel python build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217053>`__
+
+pw_env_setup
+------------
+The version of ``cffi`` that ``pw_env_setup`` uses was updated to
+``1.16.0`` to fix Windows failures. The "fatal error" that
+``pw_env_setup`` used to log when running from a directory that's
+outside of a Git repo has been suppressed.
+
+* `Update cffi
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217218>`__
+  (issue `#348697900 <https://pwbug.dev/348697900>`__)
+* `Suppress error message when running outside git repo
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217216>`__
+
+pw_format
+---------
+* `Fix and enable disabled Rust tests
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217135>`__
+
+pw_grpc
+-------
+The C++ module now handles corrupt frames more gracefully.
+
+* `Avoid buffer overflow when processing corrupt frames
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216651>`__
+
+pw_hex_dump
+-----------
+The ``pw_log_bytes`` target has been renamed to ``log_bytes``. The new
+:cpp:func:`pw::dump::LogBytes` helper makes it easier to log binary data
+as human-readable hex dumps. The number of input bytes to display per line
+can be configured via the ``kBytesPerLine`` template parameter.
+
+* `Remove pw prefix from log_bytes
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218531>`__
+* `Add LogBytes helper
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216711>`__
+
+pw_i2c
+------
+* `Handle unaligned buffer reads in register_device_test
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217811>`__
+  (issue `#325509758 <https://pwbug.dev/325509758>`__)
+
+pw_ide
+------
+A ``--process-files`` (``-P``) flag was added to ``pw ide cpp`` to process
+compilation databases at the provided paths. Bazel support for ``pw_ide`` has
+started. ``pw_ide`` now explicitly runs all commands from the ``PW_PROJECT_ROOT``
+directory.
+
+* `Point to compile commands extractor fork
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218631>`__
+* `Add option to process comp DBs by path
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218334>`__
+* `Add Bazel dependencies wrapper
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218320>`__
+* `Bazelify
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217572>`__
+* `Run commands from PW_PROJECT_ROOT dir
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216471>`__
+
+pw_log
+------
+* `Remove backend multiplexer
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215892>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+
+pw_malloc
+---------
+* `Add docs metadata
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217951>`__
+
+pw_multibuf
+-----------
+* `Fix Android build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216611>`__
+
+pw_preprocessor
+---------------
+* `Add docs metadata
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217952>`__
+
+pw_presubmit
+------------
+* `Add check for rp2040_binary transition
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218273>`__
+* `Build STM32F429i baremetal in CI
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217231>`__
+
+pw_rpc
+------
+* `Restructure Channel / internal::Channel
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216037>`__
+
+pw_rust
+-------
+* `Static Library Linking
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216313>`__
+
+pw_spi_mcuxpresso
+-----------------
+* `Separate Bazel build targets
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217313>`__
+* `Fix unused parameter warning
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217312>`__
+  (issue `#348512572 <https://pwbug.dev/348512572>`__)
+
+pw_sync
+-------
+The new ``pw_targets_FREERTOS_BACKEND_GROUP`` GN rule sets FreeRTOS
+backends for ``pw_chrono``, ``pw_sync``, and ``pw_thread`` in one go. Each
+backend can be individually overridden if needed.
+
+* `Remove multiplexers
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216819>`__
+  (issue `#347998044 <https://pwbug.dev/347998044>`__)
+* `Group common backends in the GN build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215336>`__
+
+pw_system
+---------
+``pw_system:async`` is a new version of ``pw_system`` based on
+:ref:`module-pw_async2`. The ``pw_system`` console now has a
+``--device-tracing`` flag to turn device tracing on or off.
+
+* `pw_system:async
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216239>`__
+* `Async packet processing component
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/214798>`__
+* `Rename target_io.cc
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217051>`__
+* `Allow disabling of DeviceTracing RPC calls
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216332>`__
+
+pw_target_runner
+----------------
+The ``pw_target_runner`` client in Go now supports a ``server_suggestion``
+flag, which allows specifying a command to suggest to the user if the server
+is unavailable. The Go client's ``RunBinary`` method can now accept a binary
+as a byte array instead of a file path.
+
+* `Add suggested server command
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218011>`__
+* `Send test binaries over gRPC
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216050>`__
+
+pw_thread
+---------
+The new ``pw_targets_FREERTOS_BACKEND_GROUP`` GN rule sets FreeRTOS
+backends for ``pw_chrono``, ``pw_sync``, and ``pw_thread`` in one go. Each
+backend can be individually overridden if needed.
+
+* `Group common backends in the GN build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215336>`__
+
+pw_toolchain
+------------
+Compiler diagnostics colors are now enabled in Bazel.
+
+* `Color diagnostics in Bazel
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217715>`__
+* `Closer align the bazel arm-gcc flags with GN
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215734>`__
+* `Add clippy-driver to rust toolchains
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217211>`__
+  (issue `#268087116 <https://pwbug.dev/268087116>`__)
+
+pw_transfer
+-----------
+* `Java style fixes; remove unused variable and dependencies
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215858>`__
+
+pw_watch
+--------
+``pw_watch`` now ignores ``bazel-*`` directories.
+
+* `Do not watch bazel-* symlinks
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217931>`__
+
+pw_web
+------
+The function signature for ``createLogViewer`` changed to
+``createLogViewer(logSource, root, { columnOrder })``. The ``columnOrder``
+field in the optional third parameter lets you control the ordering of
+columns in the log viewer.The new ``useShoelaceFeatures`` boolean lets you
+control whether the log viewer uses Shoelace components. The log viewer's
+toolbar is now responsive.
+
+* `Add optional parameters to createLogViewer
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217052>`__
+  (issue `#333537914 <https://pwbug.dev/333537914>`__)
+* `Add Shoelace component flag
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217093>`__
+  (issue `#347966938 <https://pwbug.dev/347966938>`__)
+* `Implement responsive toolbar behavior
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/215591>`__
+  (issue `#309650360 <https://pwbug.dev/309650360>`__)
+
+Languages
+=========
+
+Python
+------
+* `Add python targets for pw_i2c, pw_digital_io protos
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216736>`__
+
+Rust
+----
+
+* `Fix clippy lints
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217136>`__
+
+Miscellaneous
+=============
+
+OWNERS
+------
+* `Add gwsq
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/207731>`__
+
+Targets
+=======
+References to ``configGENERATE_RUN_TIME_STATS`` have been removed because
+the implementations are incomplete.
+
+* `Remove configGENERATE_RUN_TIME_STATS functions
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218711>`__
+
+RP2040
+------
+The new ``flash_rp2040`` rule makes it easier to flash Raspberry Pi RP2040s
+in Bazel.The new ``flash`` Bazel rule makes it easier to flash RP2040s from
+a Python script.
+
+* `Add pw_system_async example
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218691>`__
+* `Mark rp2040_binary as a non-executable target for host
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218394>`__
+* `Update docs
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217039>`__
+* `Add debugprobe version detection and warning
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217055>`__
+* `Switch to use upstream develop branch of Pico SDK
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216234>`__
+* `Add IFTT to keep the rp2040 transition and config in sync
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218431>`__
+* `Add missing backends
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218373>`__
+* `Unify board selection cmdline args
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/217716>`__
+  (issue `#348067379 <https://pwbug.dev/348067379>`__)
+* `Add a bazel rule for flashing
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216314>`__
+* `Add interrupt and freertos backends
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216493>`__
+* `Add flash main target
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216492>`__
+* `Add rp2040_binary transition
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216491>`__
+* `Refactor test runner and extract flashing
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216152>`__
+
+Third-party
+===========
+
+FreeRTOS
+--------
+``configUSE_MALLOC_FAILED_HOOK`` can now be enabled to detect out-of-memory
+errors when using FreeRTOS's heap implementation.
+
+* `Add failed malloc hook to support lib
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218380>`__
+* `Fix Bazel build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/218351>`__
+
+Nanopb
+------
+* `Import proto module
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216991>`__
+
+Pico SDK
+--------
+* `Fix exception names in GN build
+  <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/216435>`__
+  (issue `#347355069 <https://pwbug.dev/347355069>`__)
+
+------------
+Jun 13, 2024
+------------
 .. _bootstrap.fish: https://cs.opensource.google/pigweed/pigweed/+/main:bootstrap.fish
 
 Highlights (May 30, 2024 to Jun 13, 2024):
 
-``pw_malloc`` now supports :ref:`pw_allocator <module-pw_allocator>`-based
-backends.
-
+* **pw_allocator support in pw_mallc**: ``pw_malloc`` now supports
+  :ref:`pw_allocator <module-pw_allocator>`-based backends.
 * **New pw_build Bazel rules**: ``pw_py_test`` rule wraps ``py_test``,
   :ref:`pw_elf_to_dump <module-pw_build-bazel-pw_elf_to_dump>` takes a
   binary executable and produces a text file containing the full binary layout,
@@ -38,8 +1202,6 @@ backends.
 * **More informative modules index**: The :ref:`modules index <docs-module-guides>`
   now shoes useful metadata for each module, such as a summary of the
   module's purpose and the programming languages that the module supports.
-
-.. changelog_highlights_end
 
 Active SEEDs
 ============
@@ -7473,7 +8635,7 @@ pw_build
   (issue `#238339027 <https://issues.pigweed.dev/issues/238339027>`__)
 * `Clean up build_target.gni <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/120215>`__
   (issue `#260111641 <https://issues.pigweed.dev/issues/260111641>`__)
-* `Allow add_global_link_deps to be overriden <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/150050>`__
+* `Allow add_global_link_deps to be overridden <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/150050>`__
 * `Expose pigweed_default_configs <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/173372>`__
   (issue `#260111641 <https://issues.pigweed.dev/issues/260111641>`__)
 * `Apply -Wextra-semi to C code as well as C++ <https://pigweed-review.googlesource.com/c/pigweed/pigweed/+/172372>`__
@@ -8693,7 +9855,7 @@ Aug 11, 2023
 Highlights (Jul 27, 2023 to Aug 11, 2023):
 
 * We're prototyping a Pigweed extension for VS Code. Learn more at
-  :ref:`docs-editors`.
+  :ref:`module-pw_ide-guide-vscode`.
 * We added ``pw_toolchain_bazel``, a new LLVM toolchain for building with
   Bazel on macOS.
 * We are working on many docs improvements in parallel: auto-generating ``rustdocs``
@@ -8982,7 +10144,7 @@ finding the Java runtime.
 
 Docs
 ====
-We created a new doc (:ref:`docs-editors`) that explains how to improve Pigweed
+We created a new doc that explains how to improve Pigweed
 support in various IDEs. We standardized how we present call-to-action buttons
 on module homepages. See :ref:`module-pw_tokenizer` for an example. We fixed a
 longstanding UI issue around the site nav not scrolling to the page that you're

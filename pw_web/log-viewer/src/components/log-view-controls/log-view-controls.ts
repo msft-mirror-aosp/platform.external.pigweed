@@ -55,6 +55,13 @@ export class LogViewControls extends LitElement {
   @property({ type: Boolean, reflect: true })
   searchExpanded = false;
 
+  /**
+   * Flag to determine whether Shoelace components should be used by
+   * `LogViewControls`.
+   */
+  @property({ type: Boolean })
+  useShoelaceFeatures = true;
+
   @state()
   _colToggleMenuOpen = false;
 
@@ -111,7 +118,8 @@ export class LogViewControls extends LitElement {
    * @param {Event} event - The input event object.
    */
   private handleInput(event: Event) {
-    const inputElement = event.target as HTMLInputElement;
+    const inputElement =
+      (event.target as HTMLInputElement) ?? this._searchField;
     const inputValue = inputElement.value;
 
     // Update searchText immediately for responsiveness
@@ -302,19 +310,48 @@ export class LogViewControls extends LitElement {
     this.searchExpanded = !this.searchExpanded;
   }
 
+  private handleClearSearchClick() {
+    this._searchField.value = '';
+
+    const event = new Event('input', {
+      bubbles: true,
+      cancelable: true,
+    });
+    this.handleInput(event);
+
+    this.searchExpanded = false;
+  }
+
   render() {
     return html`
       <p class="host-name">${this.viewTitle}</p>
 
       <div class="toolbar" role="toolbar">
-        <input
+        <md-filled-text-field
           class="search-field"
+          placeholder="Filter logs"
           ?hidden=${this._toolbarCollapsed && !this.searchExpanded}
-          type="text"
           .value="${this.searchText}"
           @input="${this.handleInput}"
           @keydown="${this.handleKeydown}"
-        />
+        >
+          <md-icon-button
+            @click=${this.handleClearSearchClick}
+            ?hidden=${this._searchField?.value === '' && !this.searchExpanded}
+            title="Clear filter query"
+            slot="trailing-icon"
+          >
+            <md-icon>&#xe888;</md-icon>
+          </md-icon-button>
+          <md-icon-button
+            href="https://pigweed.dev/pw_web/log_viewer.html#filter-logs"
+            target="_blank"
+            slot="trailing-icon"
+            title="Go to the log filter documentation page"
+          >
+            <md-icon>&#xe8fd;</md-icon>
+          </md-icon-button>
+        </md-filled-text-field>
 
         <div class="actions-container">
           <span
@@ -326,6 +363,7 @@ export class LogViewControls extends LitElement {
               @click=${this.toggleSearchField}
               ?toggle=${this.searchExpanded}
               ?selected=${this.searchExpanded}
+              ?hidden=${this.searchExpanded}
             >
               <md-icon>&#xe8b6;</md-icon>
               <md-icon slot="selected">&#xea76;</md-icon>
@@ -421,6 +459,7 @@ export class LogViewControls extends LitElement {
                 @click=${this.handleSplitRight}
                 role="button"
                 title="Open a new view to the right of the current view"
+                ?hidden=${!this.useShoelaceFeatures}
               >
                 <md-icon slot="start" data-variant="icon">&#xf674;</md-icon>
                 <div slot="headline">Split right</div>
@@ -430,6 +469,7 @@ export class LogViewControls extends LitElement {
                 @click=${this.handleSplitDown}
                 role="button"
                 title="Open a new view below the current view"
+                ?hidden=${!this.useShoelaceFeatures}
               >
                 <md-icon slot="start" data-variant="icon">&#xf676;</md-icon>
                 <div slot="headline">Split down</div>

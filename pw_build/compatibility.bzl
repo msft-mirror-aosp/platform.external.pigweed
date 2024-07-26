@@ -31,11 +31,12 @@ def host_backend_alias(name, backend):
         }),
     )
 
-def boolean_constraint_value(name):
+def boolean_constraint_value(name, **kwargs):
     """Syntactic sugar for a constraint with just two possible values.
 
     Args:
       name: The name of the "True" value of the generated constraint.
+      **kwargs: Passed on to native.constraint_value.
     """
     constraint_setting_name = name + ".constraint_setting"
     false_value_name = name + ".not"
@@ -61,4 +62,27 @@ def boolean_constraint_value(name):
     native.constraint_value(
         name = name,
         constraint_setting = ":" + constraint_setting_name,
+        **kwargs
     )
+
+def incompatible_with_mcu(unless_platform_has = None):
+    """Helper for expressing incompatibility with MCU platforms.
+
+    This helper should be used in `target_compatible_with` attributes to
+    express:
+
+    *  That a target is only compatible with platforms that have a
+       full-featured OS, see
+       https://pigweed.dev/bazel_compatibility.html#cross-platform-modules-requiring-an-os
+    *  That a target is compatible with platforms with a full-featured OS, and
+       also any platform that explicitly declares compatibility with it:
+       https://pigweed.dev/bazel_compatibility.html#special-case-host-compatible-platform-specific-modules
+
+    Args:
+       unless_platform_has: A constraint_value that the target is compatible with
+          by definition. Optional.
+    """
+    return select({
+        "@platforms//os:none": [unless_platform_has] if (unless_platform_has != None) else ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    })

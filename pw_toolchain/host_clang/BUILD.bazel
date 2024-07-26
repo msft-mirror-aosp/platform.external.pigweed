@@ -17,11 +17,13 @@ load(
     "@pw_toolchain//cc_toolchain:defs.bzl",
     "pw_cc_action_files",
     "pw_cc_feature",
+    "pw_cc_feature_constraint",
     "pw_cc_feature_set",
     "pw_cc_flag_set",
     "pw_cc_toolchain",
 )
 load("@pw_xcode_command_line_tools//:defs.bzl", "XCODE_SDK_PATH")
+load("//pw_toolchain/host_clang:linux_sysroot.bzl", "LINUX_SYSROOT")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -57,25 +59,6 @@ pw_cc_flag_set(
     name = "libtool_darwin_flags",
     actions = ["@pw_toolchain//actions:cpp_link_static_library"],
     flags = ["-no_warning_for_no_symbols"],
-)
-
-# Although we use similar warnings for clang and arm_gcc, we don't have one
-# centralized list, since we might want to use different warnings based on the
-# compiler in the future.
-pw_cc_flag_set(
-    name = "warnings",
-    actions = [
-        "@pw_toolchain//actions:all_c_compiler_actions",
-        "@pw_toolchain//actions:all_cpp_compiler_actions",
-    ],
-    flags = [
-        "-Wall",
-        "-Wextra",
-        # Make all warnings errors, except for the exemptions below.
-        "-Werror",
-        "-Wno-error=cpp",  # preprocessor #warning statement
-        "-Wno-error=deprecated-declarations",  # [[deprecated]] attribute
-    ],
 )
 
 # Thread safety warnings are only supported by Clang.
@@ -169,12 +152,100 @@ pw_cc_feature_set(
     all_of = [":rules_rust_unsupported_feature"],
 )
 
+bool_flag(
+    name = "ubsan",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "ubsan_enabled",
+    flag_values = {
+        ":ubsan": "true",
+    },
+)
+
+pw_cc_feature(
+    name = "ubsan_feature",
+    enabled = select({
+        ":ubsan_enabled": True,
+        "//conditions:default": False,
+    }),
+    feature_name = "ubsan",
+    flag_sets = ["@pw_toolchain//flag_sets:ubsan"],
+    requires_any_of = [":ubsan_constraint"],
+)
+
+pw_cc_feature_set(
+    name = "ubsan_constraint",
+    # Rust uses the C++ linker, but not the C++ compiler, so we need to ensure
+    # -fsanitize=undefined is not be specified during Rust linking.
+    all_of = [":rules_rust_unsupported_feature"],
+)
+
+bool_flag(
+    name = "tsan",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "tsan_enabled",
+    flag_values = {
+        ":tsan": "true",
+    },
+)
+
+pw_cc_feature(
+    name = "tsan_feature",
+    enabled = select({
+        ":tsan_enabled": True,
+        "//conditions:default": False,
+    }),
+    feature_name = "tsan",
+    flag_sets = ["@pw_toolchain//flag_sets:tsan"],
+    requires_any_of = [":tsan_constraint"],
+)
+
+pw_cc_feature_set(
+    name = "tsan_constraint",
+    # Rust uses the C++ linker, but not the C++ compiler, so we need to ensure
+    # -fsanitize=undefined is not be specified during Rust linking.
+    all_of = [":rules_rust_unsupported_feature"],
+)
+
 # This is a sentinel feature defined by rules_rust. It is by definition
 # unsupported: rules_rust will disable this feature when linking Rust code.
 pw_cc_feature(
     name = "rules_rust_unsupported_feature",
     enabled = True,
     feature_name = "rules_rust_unsupported_feature",
+)
+
+# This is a sentinel feature defined by rules_go. It is by definition
+# unsupported: rules_go will disable this feature when linking Go code.
+pw_cc_feature(
+    name = "rules_go_unsupported_feature",
+    enabled = True,
+    feature_name = "rules_go_unsupported_feature",
+)
+
+pw_cc_feature_constraint(
+    name = "rules_go_constraint",
+
+    # This constraint is saying "not not Golang" (yes Golang / only Golang).
+    none_of = [":rules_go_unsupported_feature"],
+)
+
+# Golang doesn't link with PIE enabled. See pwbug.dev/347708308.
+#
+# We want to disable PIE only when we're *not* compiling Golang code.
+pw_cc_flag_set(
+    name = "no_pie_for_go_flags",
+    actions = ["@pw_toolchain//actions:all_link_actions"],
+    flags = [
+        "-no-pie",
+    ],
+    requires_any_of = [":rules_go_constraint"],
+    target_compatible_with = ["@platforms//os:linux"],
 )
 
 pw_cc_feature(
@@ -197,7 +268,7 @@ pw_cc_toolchain(
         "@llvm_toolchain//:llvm-strip",
     ],
     builtin_sysroot = select({
-        "@platforms//os:linux": "external/linux_sysroot",
+        "@platforms//os:linux": LINUX_SYSROOT,
         "@platforms//os:macos": XCODE_SDK_PATH,
         "//conditions:default": "",
     }),
@@ -225,6 +296,7 @@ pw_cc_toolchain(
     flag_sets = select({
         "@platforms//os:linux": [
             ":linux_link_libs",
+            ":no_pie_for_go_flags",
         ],
         "@platforms//os:macos": [
             ":macos_link_libs",
@@ -232,7 +304,6 @@ pw_cc_toolchain(
         ],
         "//conditions:default": [],
     }) + [
-        ":warnings",
         ":thread_safety_warnings",
         "@pw_toolchain//flag_sets:c++17",
         "@pw_toolchain//flag_sets:debugging",
@@ -241,6 +312,8 @@ pw_cc_toolchain(
         "@pw_toolchain//flag_sets:no_rtti",
         "@pw_toolchain//flag_sets:wno_register",
         "@pw_toolchain//flag_sets:wnon_virtual_dtor",
+        "//pw_toolchain/cc:common_warnings",
+        "//pw_toolchain/cc:color_diagnostics",
     ] + select({
         "//pw_build:kythe": [":no_unknown_warning_option"],
         "//conditions:default": [],
@@ -257,6 +330,8 @@ pw_cc_toolchain(
     }),
     toolchain_features = [
         ":asan_feature",
+        ":ubsan_feature",
+        ":tsan_feature",
         ":verbose_compiler_output",
         ":rules_rust_unsupported_feature",
         ":supports_pic",
