@@ -27,15 +27,6 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-constraint_setting(
-    name = "system_example_tracing_setting",
-)
-
-constraint_value(
-    name = "system_example_tracing",
-    constraint_setting = ":system_example_tracing_setting",
-)
-
 cc_library(
     name = "config",
     hdrs = [
@@ -52,11 +43,6 @@ label_flag(
 
 cc_library(
     name = "default_config",
-    defines = [
-        # TODO(b/260641850): Remove this Bazel-only default configuration once
-        # pw_trace builds with Bazel.
-        "PW_SYSTEM_ENABLE_TRACE_SERVICE=0",
-    ],
 )
 
 cc_library(
@@ -74,7 +60,8 @@ cc_library(
         # When implementing a backend for pw_assert or pw_log, *do not* depend
         # on //pw_system:pw_system. Instead, depend on the appropriate
         # component library. See :log_backend, below, for an examples.
-        "//pw_assert:backend_impl",
+        "//pw_assert:check_backend_impl",
+        "//pw_assert:assert_backend_impl",
         "//pw_log:backend_impl",
     ],
 )
@@ -207,25 +194,20 @@ cc_library(
     includes = ["public"],
     deps = [
         ":file_manager",
+        ":file_service",
         ":log",
         ":rpc_server",
         ":target_hooks",
         ":thread_snapshot_service",
+        ":trace_service",
         ":transfer_service",
         ":work_queue",
         "//pw_metric:global",
         "//pw_metric:metric_service_pwpb",
         "//pw_rpc/pwpb:echo_service",
         "//pw_thread:thread",
-    ] + select({
-        ":system_example_tracing": [
-            ":file_service",
-            ":trace_service",
-            "//pw_trace",
-        ],
-        "//conditions:default": [
-        ],
-    }),
+        "//pw_trace",
+    ],
 )
 
 cc_library(
@@ -298,16 +280,11 @@ cc_library(
     includes = ["public"],
     deps = [
         ":config",
+        ":trace_service",
         ":transfer_handlers",
         "//pw_file:flat_file_system",
         "//pw_persistent_ram:flat_file_system_entry",
-    ] + select({
-        ":system_example_tracing": [
-            ":trace_service",
-        ],
-        "//conditions:default": [
-        ],
-    }),
+    ],
 )
 
 cc_library(
@@ -446,11 +423,13 @@ cc_library(
         ":transfer_service",
         ":work_queue",
         "//pw_allocator:best_fit_block_allocator",
+        "//pw_allocator:synchronized_allocator",
         "//pw_async2:allocate_task",
         "//pw_async2:pend_func_task",
         "//pw_hdlc:router",
         "//pw_multibuf:simple_allocator",
         "//pw_rpc/pwpb:echo_service",
+        "//pw_sync:interrupt_spin_lock",
         "//pw_thread:thread",
     ],
     includes = ["public"],
@@ -556,11 +535,11 @@ device_simulator_console(
     script = "//pw_system/py:device_sim",
 )
 
-# Conect to a device running :system_example over serial with the
+# Conect to a Pico running :system_example over serial with the
 # pw-system-console.
 device_console(
-    name = "system_example_console",
+    name = "rp2040_system_example_console",
     testonly = True,
-    binary = ":system_example",
+    binary = ":rp2040_system_example",
     script = "//pw_system/py:pw_system_console",
 )

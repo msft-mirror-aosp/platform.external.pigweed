@@ -204,12 +204,12 @@ TEST(PassthroughTest, ToControllerPassesEqualBuffer) {
     // passed buffer.
     std::array<uint8_t, emboss::InquiryCommandView::SizeInBytes() + 1> h4_arr;
     H4PacketWithH4* h4_packet;
-    bool send_called;
-  } send_capture = {h4_arr, &h4_packet, false};
+    uint8_t sends_called;
+  } send_capture = {h4_arr, &h4_packet, 0};
 
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
       [&send_capture](H4PacketWithH4&& packet) {
-        send_capture.send_called = true;
+        send_capture.sends_called++;
         EXPECT_EQ(packet.GetH4Type(),
                   emboss::H4PacketType(send_capture.h4_arr[0]));
         EXPECT_TRUE(std::equal(send_capture.h4_packet->GetHciSpan().begin(),
@@ -230,7 +230,7 @@ TEST(PassthroughTest, ToControllerPassesEqualBuffer) {
   proxy.HandleH4HciFromHost(std::move(h4_packet));
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_capture.send_called, true);
+  EXPECT_EQ(send_capture.sends_called, 1);
 }
 
 // Verify buffer is properly passed (contents unaltered and zero-copy).
@@ -246,12 +246,12 @@ TEST(PassthroughTest, ToHostPassesEqualBuffer) {
     std::array<uint8_t, emboss::InquiryCompleteEventView::SizeInBytes()>
         hci_arr;
     H4PacketWithHci* h4_packet;
-    bool send_called;
-  } send_capture = {hci_arr, &h4_packet, false};
+    uint8_t sends_called;
+  } send_capture = {hci_arr, &h4_packet, 0};
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
       [&send_capture](H4PacketWithHci&& packet) {
-        send_capture.send_called = true;
+        send_capture.sends_called++;
         EXPECT_EQ(packet.GetH4Type(), send_capture.h4_packet->GetH4Type());
         EXPECT_TRUE(std::equal(send_capture.h4_packet->GetHciSpan().begin(),
                                send_capture.h4_packet->GetHciSpan().end(),
@@ -271,7 +271,7 @@ TEST(PassthroughTest, ToHostPassesEqualBuffer) {
   proxy.HandleH4HciFromController(std::move(h4_packet));
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_capture.send_called, true);
+  EXPECT_EQ(send_capture.sends_called, 1);
 }
 
 // Verify a command complete event (of a type that proxy doesn't act on) is
@@ -296,12 +296,12 @@ TEST(PassthroughTest, ToHostPassesEqualCommandComplete) {
         emboss::ReadLocalVersionInfoCommandCompleteEventWriter::SizeInBytes()>
         hci_arr;
     H4PacketWithHci* h4_packet;
-    bool send_called;
-  } send_capture = {hci_arr, &h4_packet, false};
+    uint8_t sends_called;
+  } send_capture = {hci_arr, &h4_packet, 0};
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
       [&send_capture](H4PacketWithHci&& packet) {
-        send_capture.send_called = true;
+        send_capture.sends_called++;
         EXPECT_EQ(packet.GetH4Type(), send_capture.h4_packet->GetH4Type());
         EXPECT_TRUE(std::equal(send_capture.h4_packet->GetHciSpan().begin(),
                                send_capture.h4_packet->GetHciSpan().end(),
@@ -321,7 +321,7 @@ TEST(PassthroughTest, ToHostPassesEqualCommandComplete) {
   proxy.HandleH4HciFromController(std::move(h4_packet));
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_capture.send_called, true);
+  EXPECT_EQ(send_capture.sends_called, 1);
 }
 
 // ########## BadPacketTest
@@ -342,12 +342,12 @@ TEST(BadPacketTest, BadH4TypeToControllerIsPassedOn) {
     // passed buffer.
     std::array<uint8_t, emboss::InquiryCommandView::SizeInBytes() + 1> h4_arr;
     H4PacketWithH4* h4_packet;
-    bool send_called;
-  } send_capture = {h4_arr, &h4_packet, false};
+    uint8_t sends_called;
+  } send_capture = {h4_arr, &h4_packet, 0};
 
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
       [&send_capture](H4PacketWithH4&& packet) {
-        send_capture.send_called = true;
+        send_capture.sends_called++;
         EXPECT_EQ(packet.GetH4Type(),
                   emboss::H4PacketType(send_capture.h4_arr[0]));
         EXPECT_TRUE(std::equal(send_capture.h4_packet->GetHciSpan().begin(),
@@ -368,7 +368,7 @@ TEST(BadPacketTest, BadH4TypeToControllerIsPassedOn) {
   proxy.HandleH4HciFromHost(std::move(h4_packet));
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_capture.send_called, true);
+  EXPECT_EQ(send_capture.sends_called, 1);
 }
 
 TEST(PBadPacketTest, BadH4TypeToHostIsPassedOn) {
@@ -386,12 +386,12 @@ TEST(PBadPacketTest, BadH4TypeToHostIsPassedOn) {
     std::array<uint8_t, emboss::InquiryCompleteEventView::SizeInBytes()>
         hci_arr;
     H4PacketWithHci* h4_packet;
-    bool send_called;
-  } send_capture = {hci_arr, &h4_packet, false};
+    uint8_t sends_called = 0;
+  } send_capture = {hci_arr, &h4_packet, 0};
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
       [&send_capture](H4PacketWithHci&& packet) {
-        send_capture.send_called = true;
+        send_capture.sends_called++;
         EXPECT_EQ(packet.GetH4Type(), emboss::H4PacketType::UNKNOWN);
         EXPECT_TRUE(std::equal(send_capture.h4_packet->GetHciSpan().begin(),
                                send_capture.h4_packet->GetHciSpan().end(),
@@ -411,7 +411,7 @@ TEST(PBadPacketTest, BadH4TypeToHostIsPassedOn) {
   proxy.HandleH4HciFromController(std::move(h4_packet));
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_capture.send_called, true);
+  EXPECT_EQ(send_capture.sends_called, 1);
 }
 
 TEST(BadPacketTest, EmptyBufferToControllerIsPassedOn) {
@@ -421,10 +421,10 @@ TEST(BadPacketTest, EmptyBufferToControllerIsPassedOn) {
   // is zero, it can't store it and will always return UNKNOWN.
   EXPECT_EQ(h4_packet.GetH4Type(), emboss::H4PacketType::UNKNOWN);
 
-  bool send_called = false;
+  uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
-      [&send_called](H4PacketWithH4&& packet) {
-        send_called = true;
+      [&sends_called](H4PacketWithH4&& packet) {
+        sends_called++;
         EXPECT_EQ(packet.GetH4Type(), emboss::H4PacketType::UNKNOWN);
         EXPECT_TRUE(packet.GetHciSpan().empty());
       });
@@ -438,17 +438,17 @@ TEST(BadPacketTest, EmptyBufferToControllerIsPassedOn) {
   proxy.HandleH4HciFromHost(std::move(h4_packet));
 
   // Verify callback was called.
-  EXPECT_EQ(send_called, true);
+  EXPECT_EQ(sends_called, 1);
 }
 
 TEST(BadPacketTest, EmptyBufferToHostIsPassedOn) {
   std::array<uint8_t, 0> hci_arr;
   H4PacketWithHci h4_packet{emboss::H4PacketType::EVENT, hci_arr};
 
-  bool send_called = false;
+  uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&send_called](H4PacketWithHci&& packet) {
-        send_called = true;
+      [&sends_called](H4PacketWithHci&& packet) {
+        sends_called++;
         EXPECT_EQ(packet.GetH4Type(), emboss::H4PacketType::EVENT);
         EXPECT_TRUE(packet.GetHciSpan().empty());
       });
@@ -462,7 +462,7 @@ TEST(BadPacketTest, EmptyBufferToHostIsPassedOn) {
   proxy.HandleH4HciFromController(std::move(h4_packet));
 
   // Verify callback was called.
-  EXPECT_EQ(send_called, true);
+  EXPECT_EQ(sends_called, 1);
 }
 
 TEST(BadPacketTest, TooShortEventToHostIsPassOn) {
@@ -480,18 +480,18 @@ TEST(BadPacketTest, TooShortEventToHostIsPassOn) {
   // Struct for capturing because `pw::Function` can't fit multiple captures.
   struct {
     std::array<uint8_t, emboss::EventHeaderView::SizeInBytes() - 1> hci_arr;
-    bool send_called;
+    uint8_t sends_called = 0;
   } send_capture;
   // Copy valid event into a short_array whose size is one less than a valid
   // EventHeader.
   std::copy(h4_packet.GetHciSpan().begin(),
             h4_packet.GetHciSpan().end(),
             send_capture.hci_arr.begin());
-  send_capture.send_called = false;
+  send_capture.sends_called = 0;
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
       [&send_capture](H4PacketWithHci&& packet) {
-        send_capture.send_called = true;
+        send_capture.sends_called++;
         EXPECT_TRUE(std::equal(packet.GetHciSpan().begin(),
                                packet.GetHciSpan().end(),
                                send_capture.hci_arr.begin(),
@@ -507,7 +507,7 @@ TEST(BadPacketTest, TooShortEventToHostIsPassOn) {
   proxy.HandleH4HciFromController(std::move(h4_packet));
 
   // Verify callback was called.
-  EXPECT_EQ(send_capture.send_called, true);
+  EXPECT_EQ(send_capture.sends_called, 1);
 }
 
 TEST(BadPacketTest, TooShortCommandCompleteEventToHost) {
@@ -541,16 +541,16 @@ TEST(BadPacketTest, TooShortCommandCompleteEventToHost) {
         emboss::ReadLocalVersionInfoCommandCompleteEventWriter::SizeInBytes() -
             1>
         hci_arr;
-    bool send_called;
+    uint8_t sends_called = 0;
   } send_capture;
   std::copy(h4_packet.GetHciSpan().begin(),
             h4_packet.GetHciSpan().end(),
             send_capture.hci_arr.begin());
-  send_capture.send_called = false;
+  send_capture.sends_called = 0;
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
       [&send_capture](H4PacketWithHci&& packet) {
-        send_capture.send_called = true;
+        send_capture.sends_called++;
         EXPECT_TRUE(std::equal(packet.GetHciSpan().begin(),
                                packet.GetHciSpan().end(),
                                send_capture.hci_arr.begin(),
@@ -566,7 +566,7 @@ TEST(BadPacketTest, TooShortCommandCompleteEventToHost) {
   proxy.HandleH4HciFromController(std::move(h4_packet));
 
   // Verify callback was called.
-  EXPECT_EQ(send_capture.send_called, true);
+  EXPECT_EQ(send_capture.sends_called, 1);
 }
 
 // ########## ReserveLeAclCredits Tests
@@ -587,10 +587,10 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV1) {
       emboss::OpCode::LE_READ_BUFFER_SIZE_V1);
   view.total_num_le_acl_data_packets().Write(10);
 
-  bool send_called = false;
+  uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&send_called](H4PacketWithHci&& h4_packet) {
-        send_called = true;
+      [&sends_called](H4PacketWithHci&& h4_packet) {
+        sends_called++;
         emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
             MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
                 h4_packet.GetHciSpan());
@@ -612,7 +612,7 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV1) {
   EXPECT_TRUE(proxy.HasSendAclCapability());
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_called, true);
+  EXPECT_EQ(sends_called, 1);
 }
 
 // Proxy Host should reserve requested ACL LE credits from controller's ACL LE
@@ -631,10 +631,10 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV2) {
       emboss::OpCode::LE_READ_BUFFER_SIZE_V2);
   view.total_num_le_acl_data_packets().Write(10);
 
-  bool send_called = false;
+  uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&send_called](H4PacketWithHci&& h4_packet) {
-        send_called = true;
+      [&sends_called](H4PacketWithHci&& h4_packet) {
+        sends_called++;
         emboss::LEReadBufferSizeV2CommandCompleteEventWriter view =
             MakeEmboss<emboss::LEReadBufferSizeV2CommandCompleteEventWriter>(
                 h4_packet.GetHciSpan());
@@ -656,7 +656,7 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV2) {
   EXPECT_TRUE(proxy.HasSendAclCapability());
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_called, true);
+  EXPECT_EQ(sends_called, 1);
 }
 
 // If controller provides less than wanted credits, we should reserve that
@@ -675,10 +675,10 @@ TEST(ReserveLeAclCredits, ProxyCreditsCappedByControllerCredits) {
       emboss::OpCode::LE_READ_BUFFER_SIZE_V1);
   view.total_num_le_acl_data_packets().Write(5);
 
-  bool send_called = false;
+  uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&send_called](H4PacketWithHci&& h4_packet) {
-        send_called = true;
+      [&sends_called](H4PacketWithHci&& h4_packet) {
+        sends_called++;
         // We want 7, but can reserve only 5 from original 5 (so 0 left for
         // host).
         emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
@@ -698,7 +698,7 @@ TEST(ReserveLeAclCredits, ProxyCreditsCappedByControllerCredits) {
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 5);
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_called, true);
+  EXPECT_EQ(sends_called, 1);
 }
 
 // Proxy Host can reserve zero credits from controller's ACL LE credits.
@@ -716,10 +716,10 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveZeroCredits) {
       emboss::OpCode::LE_READ_BUFFER_SIZE_V1);
   view.total_num_le_acl_data_packets().Write(10);
 
-  bool send_called = false;
+  uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&send_called](H4PacketWithHci&& h4_packet) {
-        send_called = true;
+      [&sends_called](H4PacketWithHci&& h4_packet) {
+        sends_called++;
         emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
             MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
                 h4_packet.GetHciSpan());
@@ -741,7 +741,7 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveZeroCredits) {
   EXPECT_FALSE(proxy.HasSendAclCapability());
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_called, true);
+  EXPECT_EQ(sends_called, 1);
 }
 
 // If controller has no credits, proxy should reserve none.
@@ -759,10 +759,10 @@ TEST(ReserveLeAclPackets, ProxyCreditsZeroWhenHostCreditsZero) {
       emboss::OpCode::LE_READ_BUFFER_SIZE_V1);
   view.total_num_le_acl_data_packets().Write(0);
 
-  bool send_called = false;
+  uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&send_called](H4PacketWithHci&& h4_packet) {
-        send_called = true;
+      [&sends_called](H4PacketWithHci&& h4_packet) {
+        sends_called++;
         emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
             MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
                 h4_packet.GetHciSpan());
@@ -784,7 +784,7 @@ TEST(ReserveLeAclPackets, ProxyCreditsZeroWhenHostCreditsZero) {
   EXPECT_TRUE(proxy.HasSendAclCapability());
 
   // Verify to controller callback was called.
-  EXPECT_EQ(send_called, true);
+  EXPECT_EQ(sends_called, 1);
 }
 
 TEST(ReserveLeAclPackets, ProxyCreditsZeroWhenNotInitialized) {
@@ -830,7 +830,7 @@ TEST(GattNotifyTest, SendGattNotify1ByteAttribute) {
 
   pw::Function<void(H4PacketWithH4 && packet)>&& send_to_controller_fn(
       [&capture](H4PacketWithH4&& packet) {
-        ++capture.sends_called;
+        capture.sends_called++;
         EXPECT_EQ(packet.GetH4Type(), emboss::H4PacketType::ACL_DATA);
         EXPECT_EQ(packet.GetHciSpan().size(),
                   capture.expected_gatt_notify_packet.size());
@@ -879,32 +879,32 @@ TEST(GattNotifyTest, SendGattNotify2ByteAttribute) {
   struct {
     int sends_called = 0;
     // Max connection_handle value; first four bits 0x0 encode PB & BC flags
-    uint16_t handle = 0x0EFF;
+    const uint16_t handle = 0x0EFF;
     // Length of L2CAP PDU
-    uint16_t data_total_length = 0x0009;
+    const uint16_t data_total_length = 0x0009;
     // Length of ATT PDU
-    uint16_t pdu_length = 0x0005;
+    const uint16_t pdu_length = 0x0005;
     // Attribute protocol channel ID (0x0004)
-    uint16_t channel_id = 0x0004;
+    const uint16_t channel_id = 0x0004;
     // ATT_HANDLE_VALUE_NTF opcode 0x1B
-    uint8_t attribute_opcode = 0x1B;
-    uint16_t attribute_handle = 0x1234;
-    std::array<uint8_t, 2> attribute_value = {0xAB, 0xCD};
+    const uint8_t attribute_opcode = 0x1B;
+    const uint16_t attribute_handle = 0x1234;
+    const std::array<uint8_t, 2> attribute_value = {0xAB, 0xCD};
 
     // Built from the preceding values in little endian order.
-    std::array<uint8_t, 13> expected_gatt_notify_packet = {0xFF,
-                                                           0x0E,
-                                                           0x09,
-                                                           0x00,
-                                                           0x05,
-                                                           0x00,
-                                                           0x04,
-                                                           0x00,
-                                                           0x1B,
-                                                           0x34,
-                                                           0x12,
-                                                           0xAB,
-                                                           0XCD};
+    const std::array<uint8_t, 13> expected_gatt_notify_packet = {0xFF,
+                                                                 0x0E,
+                                                                 0x09,
+                                                                 0x00,
+                                                                 0x05,
+                                                                 0x00,
+                                                                 0x04,
+                                                                 0x00,
+                                                                 0x1B,
+                                                                 0x34,
+                                                                 0x12,
+                                                                 0xAB,
+                                                                 0XCD};
   } capture;
 
   pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
@@ -960,42 +960,6 @@ TEST(GattNotifyTest, SendGattNotify2ByteAttribute) {
   EXPECT_EQ(capture.sends_called, 1);
 }
 
-TEST(GattNotifyTest, SendGattNotifyUnavailableWhenPending) {
-  struct {
-    int sends_called = 0;
-    H4PacketWithH4 released_packet{{}};
-  } capture;
-
-  pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
-      []([[maybe_unused]] H4PacketWithHci&& packet) {});
-  pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
-      [&capture](H4PacketWithH4&& packet) {
-        ++capture.sends_called;
-        capture.released_packet = std::move(packet);
-      });
-
-  ProxyHost proxy = ProxyHost(
-      std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
-  // Allow proxy to reserve 2 credit.
-  SendReadBufferResponseFromController(proxy, 2);
-
-  std::array<uint8_t, 2> attribute_value = {0xAB, 0xCD};
-  EXPECT_TRUE(proxy.SendGattNotify(123, 345, pw::span(attribute_value)).ok());
-  // Only one send is allowed at a time, so PW_STATUS_UNAVAILABLE will be
-  // returned until the pending packet is destructed.
-  EXPECT_EQ(proxy.SendGattNotify(123, 345, pw::span(attribute_value)),
-            PW_STATUS_UNAVAILABLE);
-  capture.released_packet.~H4PacketWithH4();
-  EXPECT_TRUE(proxy.SendGattNotify(123, 345, pw::span(attribute_value)).ok());
-  EXPECT_EQ(proxy.SendGattNotify(123, 345, pw::span(attribute_value)),
-            PW_STATUS_UNAVAILABLE);
-  EXPECT_EQ(capture.sends_called, 2);
-
-  // If captured packet is not reset here, it may destruct after the proxy and
-  // lead to a crash when it tries to lock the proxy's destructed mutex.
-  capture.released_packet.ResetAndReturnReleaseFn();
-}
-
 TEST(GattNotifyTest, SendGattNotifyReturnsErrorForInvalidArgs) {
   pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
       []([[maybe_unused]] H4PacketWithHci&& packet) {});
@@ -1024,7 +988,7 @@ TEST(NumberOfCompletedPacketsTest, TwoOfThreeSentPacketsComplete) {
   constexpr size_t kNumConnections = 3;
   struct {
     int sends_called = 0;
-    std::array<uint16_t, kNumConnections> connection_handles = {
+    const std::array<uint16_t, kNumConnections> connection_handles = {
         0x123, 0x456, 0x789};
   } capture;
 
@@ -1033,11 +997,11 @@ TEST(NumberOfCompletedPacketsTest, TwoOfThreeSentPacketsComplete) {
         auto event_header =
             MakeEmboss<emboss::EventHeaderView>(packet.GetHciSpan().subspan(
                 0, emboss::EventHeader::IntrinsicSizeInBytes()));
+        capture.sends_called++;
         if (event_header.event_code_enum().Read() !=
             emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS) {
           return;
         }
-        ++capture.sends_called;
 
         auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventView>(
             packet.GetHciSpan());
@@ -1068,6 +1032,7 @@ TEST(NumberOfCompletedPacketsTest, TwoOfThreeSentPacketsComplete) {
                               std::move(send_to_controller_fn),
                               kNumConnections);
   SendReadBufferResponseFromController(proxy, kNumConnections);
+  EXPECT_EQ(capture.sends_called, 1);
 
   std::array<uint8_t, 1> attribute_value = {0};
 
@@ -1080,6 +1045,8 @@ TEST(NumberOfCompletedPacketsTest, TwoOfThreeSentPacketsComplete) {
                                   pw::span(attribute_value))
                   .ok());
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 2);
+  // Proxy host took all credits so will not pass NOCP on to host.
+  EXPECT_EQ(capture.sends_called, 1);
 
   // Send packet over Connection 1, which will not have a packet completed in
   // the Number_of_Completed_Packets event.
@@ -1105,7 +1072,7 @@ TEST(NumberOfCompletedPacketsTest, TwoOfThreeSentPacketsComplete) {
             PW_STATUS_UNAVAILABLE);
 
   // Send Number_of_Completed_Packets event that reports 1 packet on Connection
-  // 0, no packets on Connection 1, and 1 packet on Connection 2. Checks in
+  // 0, 0 packets on Connection 1, and 1 packet on Connection 2. Checks in
   // send_to_host_fn will ensure we have reclaimed 2 of 3 credits.
   SendNumberOfCompletedPackets(
       proxy,
@@ -1113,6 +1080,7 @@ TEST(NumberOfCompletedPacketsTest, TwoOfThreeSentPacketsComplete) {
                                        {capture.connection_handles[1], 0},
                                        {capture.connection_handles[2], 1}}}));
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 2);
+  // Proxy host took all credits so will not pass NOCP event on to host.
   EXPECT_EQ(capture.sends_called, 1);
 }
 
@@ -1120,7 +1088,8 @@ TEST(NumberOfCompletedPacketsTest, ManyMorePacketsCompletedThanPacketsPending) {
   constexpr size_t kNumConnections = 2;
   struct {
     int sends_called = 0;
-    std::array<uint16_t, kNumConnections> connection_handles = {0x123, 0x456};
+    const std::array<uint16_t, kNumConnections> connection_handles = {0x123,
+                                                                      0x456};
   } capture;
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
@@ -1128,11 +1097,11 @@ TEST(NumberOfCompletedPacketsTest, ManyMorePacketsCompletedThanPacketsPending) {
         auto event_header =
             MakeEmboss<emboss::EventHeaderView>(packet.GetHciSpan().subspan(
                 0, emboss::EventHeader::IntrinsicSizeInBytes()));
+        capture.sends_called++;
         if (event_header.event_code_enum().Read() !=
             emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS) {
           return;
         }
-        ++capture.sends_called;
 
         auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventView>(
             packet.GetHciSpan());
@@ -1157,6 +1126,7 @@ TEST(NumberOfCompletedPacketsTest, ManyMorePacketsCompletedThanPacketsPending) {
   ProxyHost proxy = ProxyHost(
       std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
   SendReadBufferResponseFromController(proxy, 2);
+  EXPECT_EQ(capture.sends_called, 1);
 
   std::array<uint8_t, 1> attribute_value = {0};
 
@@ -1184,21 +1154,22 @@ TEST(NumberOfCompletedPacketsTest, ManyMorePacketsCompletedThanPacketsPending) {
             PW_STATUS_UNAVAILABLE);
 
   // Send Number_of_Completed_Packets event that reports 10 packets on
-  // Connection 0 and 15 packets on Connection 1. Checks in send_to_host_fn will
-  // ensure we have reclaimed exactly 2 credits, 1 from each Connection.
+  // Connection 0 and 15 packets on Connection 1. Checks in send_to_host_fn
+  // will ensure we have reclaimed exactly 2 credits, 1 from each Connection.
   SendNumberOfCompletedPackets(
       proxy,
       FlatMap<uint16_t, uint16_t, 2>({{{capture.connection_handles[0], 10},
                                        {capture.connection_handles[1], 15}}}));
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 2);
-  EXPECT_EQ(capture.sends_called, 1);
+  EXPECT_EQ(capture.sends_called, 2);
 }
 
 TEST(NumberOfCompletedPacketsTest, ProxyReclaimsOnlyItsUsedCredits) {
   constexpr size_t kNumConnections = 2;
   struct {
     int sends_called = 0;
-    std::array<uint16_t, kNumConnections> connection_handles = {0x123, 0x456};
+    const std::array<uint16_t, kNumConnections> connection_handles = {0x123,
+                                                                      0x456};
   } capture;
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
@@ -1206,11 +1177,11 @@ TEST(NumberOfCompletedPacketsTest, ProxyReclaimsOnlyItsUsedCredits) {
         auto event_header =
             MakeEmboss<emboss::EventHeaderView>(packet.GetHciSpan().subspan(
                 0, emboss::EventHeader::IntrinsicSizeInBytes()));
+        capture.sends_called++;
         if (event_header.event_code_enum().Read() !=
             emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS) {
           return;
         }
-        ++capture.sends_called;
 
         auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventView>(
             packet.GetHciSpan());
@@ -1234,6 +1205,7 @@ TEST(NumberOfCompletedPacketsTest, ProxyReclaimsOnlyItsUsedCredits) {
   ProxyHost proxy = ProxyHost(
       std::move(send_to_host_fn), std::move(send_to_controller_fn), 4);
   SendReadBufferResponseFromController(proxy, 4);
+  EXPECT_EQ(capture.sends_called, 1);
 
   std::array<uint8_t, 1> attribute_value = {0};
 
@@ -1254,21 +1226,23 @@ TEST(NumberOfCompletedPacketsTest, ProxyReclaimsOnlyItsUsedCredits) {
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 0);
 
   // Send Number_of_Completed_Packets event that reports 10 packets on
-  // Connection 0 and 15 packets on Connection 1. Checks in send_to_host_fn will
-  // ensure we have reclaimed only 2 credits.
+  // Connection 0 and 15 packets on Connection 1. Checks in send_to_host_fn
+  // will ensure we have reclaimed only 2 credits.
   SendNumberOfCompletedPackets(
       proxy,
       FlatMap<uint16_t, uint16_t, 2>({{{capture.connection_handles[0], 10},
                                        {capture.connection_handles[1], 15}}}));
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 2);
-  EXPECT_EQ(capture.sends_called, 1);
+  // NOCP has credits remaining so will be passed on to host.
+  EXPECT_EQ(capture.sends_called, 2);
 }
 
 TEST(NumberOfCompletedPacketsTest, EventUnmodifiedIfNoCreditsInUse) {
   constexpr size_t kNumConnections = 2;
   struct {
     int sends_called = 0;
-    std::array<uint16_t, kNumConnections> connection_handles = {0x123, 0x456};
+    const std::array<uint16_t, kNumConnections> connection_handles = {0x123,
+                                                                      0x456};
   } capture;
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
@@ -1276,11 +1250,11 @@ TEST(NumberOfCompletedPacketsTest, EventUnmodifiedIfNoCreditsInUse) {
         auto event_header =
             MakeEmboss<emboss::EventHeaderView>(packet.GetHciSpan().subspan(
                 0, emboss::EventHeader::IntrinsicSizeInBytes()));
+        capture.sends_called++;
         if (event_header.event_code_enum().Read() !=
             emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS) {
           return;
         }
-        ++capture.sends_called;
 
         auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventView>(
             packet.GetHciSpan());
@@ -1303,23 +1277,25 @@ TEST(NumberOfCompletedPacketsTest, EventUnmodifiedIfNoCreditsInUse) {
   ProxyHost proxy = ProxyHost(
       std::move(send_to_host_fn), std::move(send_to_controller_fn), 10);
   SendReadBufferResponseFromController(proxy, 10);
+  EXPECT_EQ(capture.sends_called, 1);
 
   // Send Number_of_Completed_Packets event that reports 10 packets on
-  // Connection 0 and 15 packets on Connection 1. Checks in send_to_host_fn will
-  // ensure we have not modified the NOCP event.
+  // Connection 0 and 15 packets on Connection 1. Checks in send_to_host_fn
+  // will ensure we have not modified the NOCP event.
   SendNumberOfCompletedPackets(
       proxy,
       FlatMap<uint16_t, uint16_t, 2>({{{capture.connection_handles[0], 10},
                                        {capture.connection_handles[1], 15}}}));
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 10);
-  EXPECT_EQ(capture.sends_called, 1);
+  // NOCP has credits remaining so will be passed on to host.
+  EXPECT_EQ(capture.sends_called, 2);
 }
 
 TEST(NumberOfCompletedPacketsTest, HandlesUnusualEvents) {
   constexpr size_t kNumConnections = 5;
   struct {
     int sends_called = 0;
-    std::array<uint16_t, kNumConnections> connection_handles = {
+    const std::array<uint16_t, kNumConnections> connection_handles = {
         0x123, 0x234, 0x345, 0x456, 0x567};
   } capture;
 
@@ -1328,11 +1304,11 @@ TEST(NumberOfCompletedPacketsTest, HandlesUnusualEvents) {
         auto event_header =
             MakeEmboss<emboss::EventHeaderView>(packet.GetHciSpan().subspan(
                 0, emboss::EventHeader::IntrinsicSizeInBytes()));
+        capture.sends_called++;
         if (event_header.event_code_enum().Read() !=
             emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS) {
           return;
         }
-        ++capture.sends_called;
 
         auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventView>(
             packet.GetHciSpan());
@@ -1358,9 +1334,13 @@ TEST(NumberOfCompletedPacketsTest, HandlesUnusualEvents) {
   ProxyHost proxy = ProxyHost(
       std::move(send_to_host_fn), std::move(send_to_controller_fn), 10);
   SendReadBufferResponseFromController(proxy, 10);
+  EXPECT_EQ(capture.sends_called, 1);
 
   // Send Number_of_Completed_Packets event with no entries.
   SendNumberOfCompletedPackets(proxy, FlatMap<uint16_t, uint16_t, 0>({{}}));
+  // NOCP has no entries, so will not be passed on to host.
+  EXPECT_EQ(capture.sends_called, 1);
+
   // Send Number_of_Completed_Packets event that reports 0 packets for various
   // connections.
   SendNumberOfCompletedPackets(
@@ -1371,7 +1351,8 @@ TEST(NumberOfCompletedPacketsTest, HandlesUnusualEvents) {
                                        {capture.connection_handles[3], 0},
                                        {capture.connection_handles[4], 0}}}));
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 10);
-  EXPECT_EQ(capture.sends_called, 2);
+  // Proxy host will not pass on a NOCP with no credits.
+  EXPECT_EQ(capture.sends_called, 1);
 }
 
 // ########## DisconnectionCompleteTest
@@ -1387,11 +1368,11 @@ TEST(DisconnectionCompleteTest, DisconnectionReclaimsCredits) {
         auto event_header =
             MakeEmboss<emboss::EventHeaderView>(packet.GetHciSpan().subspan(
                 0, emboss::EventHeader::IntrinsicSizeInBytes()));
+        capture.sends_called++;
         if (event_header.event_code_enum().Read() !=
             emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS) {
           return;
         }
-        ++capture.sends_called;
 
         auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventView>(
             packet.GetHciSpan());
@@ -1411,6 +1392,7 @@ TEST(DisconnectionCompleteTest, DisconnectionReclaimsCredits) {
   ProxyHost proxy = ProxyHost(
       std::move(send_to_host_fn), std::move(send_to_controller_fn), 10);
   SendReadBufferResponseFromController(proxy, 10);
+  EXPECT_EQ(capture.sends_called, 1);
 
   std::array<uint8_t, 1> attribute_value = {0};
 
@@ -1439,7 +1421,8 @@ TEST(DisconnectionCompleteTest, DisconnectionReclaimsCredits) {
       proxy,
       FlatMap<uint16_t, uint16_t, 1>({{{capture.connection_handle, 10}}}));
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 8);
-  EXPECT_EQ(capture.sends_called, 1);
+  // NOCP has credits remaining so will be passed on to host.
+  EXPECT_EQ(capture.sends_called, 3);
 }
 
 TEST(DisconnectionCompleteTest, FailedDisconnectionHasNoEffect) {
@@ -1505,11 +1488,11 @@ TEST(DisconnectionCompleteTest, CanReuseConnectionHandleAfterDisconnection) {
         auto event_header =
             MakeEmboss<emboss::EventHeaderView>(packet.GetHciSpan().subspan(
                 0, emboss::EventHeader::IntrinsicSizeInBytes()));
+        capture.sends_called++;
         if (event_header.event_code_enum().Read() !=
             emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS) {
           return;
         }
-        ++capture.sends_called;
 
         auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventView>(
             packet.GetHciSpan());
@@ -1529,6 +1512,7 @@ TEST(DisconnectionCompleteTest, CanReuseConnectionHandleAfterDisconnection) {
   ProxyHost proxy = ProxyHost(
       std::move(send_to_host_fn), std::move(send_to_controller_fn), 1);
   SendReadBufferResponseFromController(proxy, 1);
+  EXPECT_EQ(capture.sends_called, 1);
 
   std::array<uint8_t, 1> attribute_value = {0};
 
@@ -1542,6 +1526,7 @@ TEST(DisconnectionCompleteTest, CanReuseConnectionHandleAfterDisconnection) {
   // Disconnect `connection_handle`.
   SendDisconnectionCompleteEvent(proxy, capture.connection_handle);
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 1);
+  EXPECT_EQ(capture.sends_called, 2);
 
   // Re-establish connection over `connection_handle`.
   EXPECT_TRUE(proxy
@@ -1556,28 +1541,32 @@ TEST(DisconnectionCompleteTest, CanReuseConnectionHandleAfterDisconnection) {
       proxy,
       FlatMap<uint16_t, uint16_t, 1>({{{capture.connection_handle, 1}}}));
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 1);
-  EXPECT_EQ(capture.sends_called, 1);
+  // Since proxy reclaimed the one credit, it does not pass event on to host.
+  EXPECT_EQ(capture.sends_called, 2);
 }
 
 // ########## ResetTest
 
-TEST(ResetTest, ResetClearsPendingSendAndActiveConnections) {
+TEST(ResetTest, ResetClearsActiveConnections) {
   struct {
     int sends_called = 0;
-    uint16_t connection_handle = 0x123;
-    H4PacketWithH4 released_packet{{}};
-  } capture;
+    const uint16_t connection_handle = 0x123;
+  } host_capture;
+  struct {
+    int sends_called = 0;
+    const uint16_t connection_handle = 0x123;
+  } controller_capture;
 
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&capture](H4PacketWithHci&& packet) {
+      [&host_capture](H4PacketWithHci&& packet) {
         auto event_header =
             MakeEmboss<emboss::EventHeaderView>(packet.GetHciSpan().subspan(
                 0, emboss::EventHeader::IntrinsicSizeInBytes()));
+        host_capture.sends_called++;
         if (event_header.event_code_enum().Read() !=
             emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS) {
           return;
         }
-        ++capture.sends_called;
 
         auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventView>(
             packet.GetHciSpan());
@@ -1588,29 +1577,26 @@ TEST(ResetTest, ResetClearsPendingSendAndActiveConnections) {
 
         // Should be unchanged.
         EXPECT_EQ(view.nocp_data()[0].connection_handle().Read(),
-                  capture.connection_handle);
+                  host_capture.connection_handle);
         EXPECT_EQ(view.nocp_data()[0].num_completed_packets().Read(), 1);
       });
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
-      [&capture](H4PacketWithH4&& packet) {
-        ++capture.sends_called;
-        // Capture the packet so proxy's buffer remains marked as occupied when
-        // reset is called.
-        capture.released_packet = std::move(packet);
+      [&controller_capture](H4PacketWithH4&& packet) {
+        ++controller_capture.sends_called;
       });
 
   ProxyHost proxy = ProxyHost(
       std::move(send_to_host_fn), std::move(send_to_controller_fn), 2);
   SendReadBufferResponseFromController(proxy, 2);
+  EXPECT_EQ(host_capture.sends_called, 1);
 
   std::array<uint8_t, 1> attribute_value = {0};
   EXPECT_TRUE(proxy
-                  .SendGattNotify(
-                      capture.connection_handle, 1, pw::span(attribute_value))
+                  .SendGattNotify(controller_capture.connection_handle,
+                                  1,
+                                  pw::span(attribute_value))
                   .ok());
-  // Proxy still has a free credit, but send should fail, as buffer is occupied.
-  EXPECT_EQ(proxy.SendGattNotify(1, 1, pw::span(attribute_value)),
-            PW_STATUS_UNAVAILABLE);
+  EXPECT_EQ(controller_capture.sends_called, 1);
 
   proxy.Reset();
 
@@ -1618,27 +1604,26 @@ TEST(ResetTest, ResetClearsPendingSendAndActiveConnections) {
   // Reset should not have cleared `le_acl_credits_to_reserve`, so proxy should
   // still indicate the capability.
   EXPECT_TRUE(proxy.HasSendAclCapability());
-  // Reset marks buffer as unoccupied, but also resets credits, so send should
-  // still fail.
+  // Reset clears credit reservation, so send should fail.
   EXPECT_EQ(proxy.SendGattNotify(1, 1, pw::span(attribute_value)),
             PW_STATUS_UNAVAILABLE);
+  EXPECT_EQ(controller_capture.sends_called, 1);
 
   // Re-initialize AclDataChannel with 2 credits.
   SendReadBufferResponseFromController(proxy, 2);
+  EXPECT_EQ(host_capture.sends_called, 2);
 
-  // Send ACL on random handle to expend one credit. The success of this send
-  // indicates that the reset has properly cleared `acl_send_pending_`.
+  // Send ACL on random handle to expend one credit.
   EXPECT_TRUE(proxy.SendGattNotify(1, 1, pw::span(attribute_value)).ok());
+  EXPECT_EQ(controller_capture.sends_called, 2);
   // This should have no effect, as the reset has cleared our active connection
   // on this handle.
   SendNumberOfCompletedPackets(
       proxy,
-      FlatMap<uint16_t, uint16_t, 1>({{{capture.connection_handle, 1}}}));
+      FlatMap<uint16_t, uint16_t, 1>({{{host_capture.connection_handle, 1}}}));
   EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), 1);
-
-  // If captured packet is not reset here, it may destruct after the proxy and
-  // lead to a crash when it tries to lock the proxy's destructed mutex.
-  capture.released_packet.ResetAndReturnReleaseFn();
+  // NOCP has credits remaining so will be passed on to host.
+  EXPECT_EQ(host_capture.sends_called, 3);
 }
 
 TEST(ResetTest, ProxyHandlesMultipleResets) {
@@ -1676,6 +1661,145 @@ TEST(ResetTest, ProxyHandlesMultipleResets) {
   SendReadBufferResponseFromController(proxy, 1);
   EXPECT_TRUE(proxy.SendGattNotify(1, 1, pw::span(attribute_value)).ok());
   EXPECT_EQ(sends_called, 2);
+}
+
+// ########## MultiSendTest
+
+TEST(MultiSendTest, CanOccupyAllThenReuseEachBuffer) {
+  constexpr size_t kMaxSends = ProxyHost::GetNumSimultaneousAclSendsSupported();
+  struct {
+    size_t sends_called = 0;
+    std::array<H4PacketWithH4, 2 * kMaxSends> released_packets;
+  } capture;
+
+  pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
+      []([[maybe_unused]] H4PacketWithHci&& packet) {});
+  pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
+      [&capture](H4PacketWithH4&& packet) {
+        // Capture all packets to prevent their destruction.
+        capture.released_packets[capture.sends_called++] = std::move(packet);
+      });
+
+  ProxyHost proxy = ProxyHost(std::move(send_to_host_fn),
+                              std::move(send_to_controller_fn),
+                              2 * kMaxSends);
+  // Allow proxy to reserve enough credits to send twice the number of
+  // simultaneous sends supported by proxy.
+  SendReadBufferResponseFromController(proxy, 2 * kMaxSends);
+
+  std::array<uint8_t, 1> attribute_value = {0xF};
+  // Occupy all send buffers.
+  for (size_t i = 0; i < kMaxSends; ++i) {
+    EXPECT_TRUE(proxy.SendGattNotify(123, 345, pw::span(attribute_value)).ok());
+  }
+  EXPECT_EQ(proxy.GetNumFreeLeAclPackets(), kMaxSends);
+  EXPECT_EQ(proxy.SendGattNotify(123, 345, pw::span(attribute_value)),
+            PW_STATUS_UNAVAILABLE);
+
+  // Confirm we can release and reoccupy each buffer slot.
+  for (size_t i = 0; i < kMaxSends; ++i) {
+    capture.released_packets[i].~H4PacketWithH4();
+    EXPECT_TRUE(proxy.SendGattNotify(123, 345, pw::span(attribute_value)).ok());
+    EXPECT_EQ(proxy.SendGattNotify(123, 345, pw::span(attribute_value)),
+              PW_STATUS_UNAVAILABLE);
+  }
+  EXPECT_EQ(capture.sends_called, 2 * kMaxSends);
+
+  // If captured packets are not reset here, they may destruct after the proxy
+  // and lead to a crash when trying to lock the proxy's destructed mutex.
+  for (auto& packet : capture.released_packets) {
+    packet.ResetAndReturnReleaseFn();
+  }
+}
+
+TEST(MultiSendTest, CanRepeatedlyReuseOneBuffer) {
+  constexpr size_t kMaxSends = ProxyHost::GetNumSimultaneousAclSendsSupported();
+  struct {
+    size_t sends_called = 0;
+    std::array<H4PacketWithH4, kMaxSends> released_packets;
+  } capture;
+
+  pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
+      []([[maybe_unused]] H4PacketWithHci&& packet) {});
+  pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
+      [&capture](H4PacketWithH4&& packet) {
+        // Capture first kMaxSends packets linearly.
+        if (capture.sends_called < capture.released_packets.size()) {
+          capture.released_packets[capture.sends_called] = std::move(packet);
+        } else {
+          // Reuse only first packet slot after kMaxSends.
+          capture.released_packets[0] = std::move(packet);
+        }
+        ++capture.sends_called;
+      });
+
+  ProxyHost proxy = ProxyHost(std::move(send_to_host_fn),
+                              std::move(send_to_controller_fn),
+                              2 * kMaxSends);
+  SendReadBufferResponseFromController(proxy, 2 * kMaxSends);
+
+  std::array<uint8_t, 1> attribute_value = {0xF};
+  // Occupy all send buffers.
+  for (size_t i = 0; i < kMaxSends; ++i) {
+    EXPECT_TRUE(proxy.SendGattNotify(123, 345, pw::span(attribute_value)).ok());
+  }
+
+  // Repeatedly free and reoccupy first buffer.
+  for (size_t i = 0; i < kMaxSends; ++i) {
+    capture.released_packets[0].~H4PacketWithH4();
+    EXPECT_TRUE(proxy.SendGattNotify(123, 345, pw::span(attribute_value)).ok());
+    EXPECT_EQ(proxy.SendGattNotify(123, 345, pw::span(attribute_value)),
+              PW_STATUS_UNAVAILABLE);
+  }
+  EXPECT_EQ(capture.sends_called, 2 * kMaxSends);
+
+  // If captured packets are not reset here, they may destruct after the proxy
+  // and lead to a crash when trying to lock the proxy's destructed mutex.
+  for (auto& packet : capture.released_packets) {
+    packet.ResetAndReturnReleaseFn();
+  }
+}
+
+TEST(MultiSendTest, ResetClearsBuffOccupiedFlags) {
+  constexpr size_t kMaxSends = ProxyHost::GetNumSimultaneousAclSendsSupported();
+  struct {
+    size_t sends_called = 0;
+    std::array<H4PacketWithH4, 2 * kMaxSends> released_packets;
+  } capture;
+
+  pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
+      []([[maybe_unused]] H4PacketWithHci&& packet) {});
+  pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
+      [&capture](H4PacketWithH4&& packet) {
+        // Capture all packets to prevent their destruction.
+        capture.released_packets[capture.sends_called++] = std::move(packet);
+      });
+
+  ProxyHost proxy = ProxyHost(
+      std::move(send_to_host_fn), std::move(send_to_controller_fn), kMaxSends);
+  SendReadBufferResponseFromController(proxy, kMaxSends);
+
+  std::array<uint8_t, 1> attribute_value = {0xF};
+  // Occupy all send buffers.
+  for (size_t i = 0; i < kMaxSends; ++i) {
+    EXPECT_TRUE(proxy.SendGattNotify(123, 345, pw::span(attribute_value)).ok());
+  }
+
+  proxy.Reset();
+  SendReadBufferResponseFromController(proxy, kMaxSends);
+
+  // Although sent packets have not been released, proxy.Reset() should have
+  // marked all buffers as unoccupied.
+  for (size_t i = 0; i < kMaxSends; ++i) {
+    EXPECT_TRUE(proxy.SendGattNotify(123, 345, pw::span(attribute_value)).ok());
+  }
+  EXPECT_EQ(capture.sends_called, 2 * kMaxSends);
+
+  // If captured packets are not reset here, they may destruct after the proxy
+  // and lead to a crash when trying to lock the proxy's destructed mutex.
+  for (auto& packet : capture.released_packets) {
+    packet.ResetAndReturnReleaseFn();
+  }
 }
 
 }  // namespace

@@ -105,7 +105,7 @@ bazel_skylib_workspace()
 # TODO: b/345806988 - remove this fork and update to upstream HEAD.
 git_repository(
     name = "io_bazel_rules_go",
-    commit = "21005c4056de3283553c015c172001229ecbaca9",
+    commit = "d5ba42f3ca0b8510526ed5df2cf5807bdba43856",
     remote = "https://github.com/cramertj/rules_go.git",
 )
 
@@ -143,14 +143,11 @@ http_archive(
 )
 
 # Set up Python support.
-# Required by: rules_fuzzing, com_github_nanopb_nanopb.
-# Used in modules: None.
-# TODO: b/310293060 - Switch to an official release when it includes the fix for
-# macOS hosts running Python <=3.8.
-git_repository(
+http_archive(
     name = "rules_python",
-    commit = "e06b4bae446706db3414e75d301f56821001b554",
-    remote = "https://github.com/bazelbuild/rules_python.git",
+    sha256 = "e3f1cc7a04d9b09635afb3130731ed82b5f58eadc8233d4efb59944d92ffc06f",
+    strip_prefix = "rules_python-0.33.2",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.33.2/rules_python-0.33.2.tar.gz",
 )
 
 load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
@@ -202,12 +199,19 @@ load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
 
-FUCHSIA_SDK_VERSION = "version:20.20240408.3.1"
+FUCHSIA_LINUX_SDK_VERSION = "version:22.20240717.3.1"
+
+# The Fuchsia SDK is no longer released for MacOS, so we need to pin an older
+# version, from the halcyon days when this OS was still supported.
+FUCHSIA_MAC_SDK_VERSION = "version:20.20240408.3.1"
 
 cipd_repository(
     name = "fuchsia_sdk",
     path = "fuchsia/sdk/core/fuchsia-bazel-rules/${os}-amd64",
-    tag = FUCHSIA_SDK_VERSION,
+    tag_by_os = {
+        "linux": FUCHSIA_LINUX_SDK_VERSION,
+        "mac": FUCHSIA_MAC_SDK_VERSION,
+    },
 )
 
 load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
@@ -219,7 +223,10 @@ register_toolchains("@fuchsia_sdk//:fuchsia_toolchain_sdk")
 cipd_repository(
     name = "fuchsia_products_metadata",
     path = "fuchsia/development/product_bundles/v2",
-    tag = FUCHSIA_SDK_VERSION,
+    tag_by_os = {
+        "linux": FUCHSIA_LINUX_SDK_VERSION,
+        "mac": FUCHSIA_MAC_SDK_VERSION,
+    },
 )
 
 load("@fuchsia_sdk//fuchsia:products.bzl", "fuchsia_products_repository")
@@ -457,7 +464,7 @@ git_repository(
 
 git_repository(
     name = "mbedtls",
-    build_file = "//:third_party/mbedtls/BUILD.mbedtls",
+    build_file = "//:third_party/mbedtls/mbedtls.BUILD.bazel",
     # mbedtls-3.2.1 released 2022-07-12
     commit = "869298bffeea13b205343361b7a7daf2b210e33d",
     remote = "https://pigweed.googlesource.com/third_party/github/ARMmbed/mbedtls",
@@ -467,7 +474,7 @@ git_repository(
     name = "com_google_emboss",
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
     # Also update emboss tag in pw_package/py/pw_package/packages/emboss.py
-    tag = "v2024.0501.215421",
+    tag = "v2024.0716.040724",
 )
 
 git_repository(

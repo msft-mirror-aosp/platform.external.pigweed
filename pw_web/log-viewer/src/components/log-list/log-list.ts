@@ -25,6 +25,7 @@ import { styles } from './log-list.styles';
 import { LogEntry, Severity, TableColumn } from '../../shared/interfaces';
 import { virtualize } from '@lit-labs/virtualizer/virtualize.js';
 import '@lit-labs/virtualizer';
+import { debounce } from '../../utils/debounce';
 import { throttle } from '../../utils/throttle';
 
 /**
@@ -96,6 +97,12 @@ export class LogList extends LitElement {
 
   /** The minimum width (in px) for table columns. */
   private readonly MIN_COL_WIDTH: number = 52;
+
+  /** The minimum width (in px) for table columns. */
+  private readonly LAST_COL_MIN_WIDTH: number = 700;
+
+  /** The delay (in ms) for debouncing column resizing */
+  private readonly RESIZE_DEBOUNCE_DELAY = 10;
 
   /**
    * Data used for column resizing including the column index, the starting
@@ -252,7 +259,7 @@ export class LogList extends LitElement {
         return `3rem`;
       }
       if (i === this.columnData.length - 1) {
-        return `minmax(${this.MIN_COL_WIDTH}px, auto)`;
+        return `minmax(${this.LAST_COL_MIN_WIDTH}px, 1fr)`;
       }
       return `clamp(${this.MIN_COL_WIDTH}px, ${chWidth}ch + ${padding}px, 80ch)`;
     };
@@ -431,19 +438,25 @@ export class LogList extends LitElement {
 
     const { columnIndex, startX, startWidth } = this.columnResizeData;
     const offsetX = event.clientX - startX;
-    const newWidth = Math.max(startWidth + offsetX, this.MIN_COL_WIDTH);
+    const newWidth =
+      this.columnData.length - 1 === columnIndex
+        ? Math.max(startWidth + offsetX, this.LAST_COL_MIN_WIDTH)
+        : Math.max(startWidth + offsetX, this.MIN_COL_WIDTH);
 
     // Ensure the column index exists in columnData
     if (this.columnData[columnIndex]) {
       this.columnData[columnIndex].manualWidth = newWidth;
     }
 
-    const gridTemplateColumns = this.generateGridTemplateColumns(
-      newWidth,
-      columnIndex,
-    );
+    const generateGridTemplateColumns = debounce(() => {
+      const gridTemplateColumns = this.generateGridTemplateColumns(
+        newWidth,
+        columnIndex,
+      );
+      this.updateColumnWidths(gridTemplateColumns);
+    }, this.RESIZE_DEBOUNCE_DELAY);
 
-    this.updateColumnWidths(gridTemplateColumns);
+    generateGridTemplateColumns();
   }
 
   render() {
