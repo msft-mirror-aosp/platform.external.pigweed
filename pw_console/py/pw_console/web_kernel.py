@@ -22,11 +22,16 @@ import types
 from typing import Any
 
 from aiohttp.web_ws import WebSocketResponse
-from prompt_toolkit.completion import CompleteEvent
+from prompt_toolkit.completion import (
+    CompleteEvent,
+    merge_completers,
+    Completion,
+)
 from prompt_toolkit.document import Document
-from ptpython.completer import PythonCompleter
+from ptpython.completer import PythonCompleter, Completer
 from ptpython.repl import _has_coroutine_flag
 
+from pw_console.embed import create_word_completer
 from pw_console.python_logging import log_record_to_dict
 
 _LOG = logging.getLogger(__package__)
@@ -44,13 +49,54 @@ class MissingCallId(Exception):
     """Exception for request with missing call id."""
 
 
-def format_completions(all_completions) -> list[dict[str, str]]:
-    # Hide private suggestions
-    all_completions = [
-        completion
-        for completion in all_completions
-        if not completion.text.startswith('_')
-    ]
+def process_partial_expressions(
+    suggestions: list[Completion],
+) -> list[Completion]:
+    """
+    Some completions returned are full expressions, we need to trim them.
+
+    Example:
+    if input is 'device.rp', WordCompleter suggests:
+      'device.rpcs.blinky.Blinky.Blink'
+    We actually need `rpcs.blinky.Blinky`
+    """
+    processed_completions = []
+    for suggestion in suggestions:
+        completion_text = suggestion.text
+        start_position = suggestion.start_position
+
+        # Handle negative start positions
+        if start_position < 0:
+            last_dot = completion_text.rfind('.', 0, -1 * start_position)
+            if last_dot != -1:
+                # We are completing a nested property
+                trimmed_text = completion_text[last_dot + 1 :]
+            else:
+                # No dot found, return full expression
+                trimmed_text = completion_text
+            processed_completions.append(
+                Completion(trimmed_text, 0, suggestion.display)
+            )
+        else:
+            # Return full expression
+            processed_completions.append(
+                Completion(completion_text, 0, suggestion.display)
+            )
+
+    return processed_completions
+
+
+def format_completions(
+    all_completions: list[Completion],
+) -> list[dict[str, str]]:
+    all_completions = process_partial_expressions(
+        # Hide private suggestions
+        [
+            completion
+            for completion in all_completions
+            if not completion.text.startswith('_')
+        ]
+    )
 
     return list(
         map(
@@ -146,11 +192,21 @@ class WebKernel:
 
         self.logger_handlers: dict[str, WebSocketStreamingResponder] = {}
         self.connected = False
-        self.python_completer = PythonCompleter(
+        python_completer = PythonCompleter(
             self.get_globals,
             self.get_locals,
             lambda: True,
         )
+        all_completers: list[Completer] = [python_completer]
+
+        if kernel_params.get('sentence_completions'):
+            word_completer = create_word_completer(
+                kernel_params.get('sentence_completions', {})
+            )
+            all_completers.append(word_completer)
+
+        # Merge default Python completer with the new custom one.
+        self.completer = merge_completers(all_completers)
 
     async def handle_request(self, request) -> str:
         """Handle the request from web browser."""
@@ -314,7 +370,7 @@ class WebKernel:
     ) -> list[dict[str, str]]:
         doc = Document(code, cursor_pos)
         all_completions = list(
-            self.python_completer.get_completions(
+            self.completer.get_completions(
                 doc,
                 CompleteEvent(completion_requested=False, text_inserted=True),
             )

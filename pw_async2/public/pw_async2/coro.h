@@ -235,6 +235,11 @@ class CoroPromiseType final {
   CoroPromiseType(CoroContext& cx, const Args&...)
       : dealloc_(cx.alloc()), current_awaitable_(nullptr), in_out_(nullptr) {}
 
+  // Method-receiver version.
+  template <typename MethodReceiver, typename... Args>
+  CoroPromiseType(const MethodReceiver&, CoroContext& cx, const Args&...)
+      : dealloc_(cx.alloc()), current_awaitable_(nullptr), in_out_(nullptr) {}
+
   // Get the `Coro<T>` after successfully allocating the coroutine space
   // and constructing `this`.
   Coro<T> get_return_object();
@@ -272,6 +277,15 @@ class CoroPromiseType final {
   // state.
   template <typename... Args>
   static void* operator new(std::size_t n,
+                            CoroContext& coro_cx,
+                            const Args&...) noexcept {
+    return coro_cx.alloc().Allocate(pw::allocator::Layout(n));
+  }
+
+  // Method-receiver form.
+  template <typename MethodReceiver, typename... Args>
+  static void* operator new(std::size_t n,
+                            const MethodReceiver&,
                             CoroContext& coro_cx,
                             const Args&...) noexcept {
     return coro_cx.alloc().Allocate(pw::allocator::Layout(n));
@@ -397,7 +411,7 @@ class Awaitable final : AwaitableBase {
 ///   argument. This allocator will be used to allocate storage for coroutine
 ///   stack variables held across a `co_await` point.
 ///
-/// # Using `co_await`
+/// # Using co_await
 /// Inside a coroutine function, `co_await <expr>` can be used on any type
 /// with a `Poll<T> Pend(Context&)` method. The result will be a value of
 /// type `T`.
@@ -413,6 +427,11 @@ class Awaitable final : AwaitableBase {
 template <std::constructible_from<pw::Status> T>
 class Coro final {
  public:
+  /// Creates an empty, invalid coroutine object.
+  static Coro Empty() {
+    return Coro(internal::OwningCoroutineHandle<promise_type>(nullptr));
+  }
+
   /// Whether or not this `Coro<T>` is a valid coroutine.
   ///
   /// This will return `false` if coroutine state allocation failed or if

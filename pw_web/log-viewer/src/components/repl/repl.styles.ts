@@ -41,7 +41,24 @@ export const styles = css`
     width: 100%;
   }
 
+  kbd {
+    background-color: #eee;
+    border-radius: 3px;
+    border: 1px solid #b4b4b4;
+    box-shadow:
+      0 1px 1px rgba(0, 0, 0, 0.2),
+      0 2px 0 0 rgba(255, 255, 255, 0.7) inset;
+    color: #333;
+    display: inline-block;
+    font-size: 0.85em;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 4px;
+    white-space: nowrap;
+  }
+
   .actions-container {
+    --md-icon-button-icon-size: 1.375rem;
     justify-content: flex-end;
     display: flex;
     flex: 1 0 auto;
@@ -54,9 +71,9 @@ export const styles = css`
     color: var(--sys-log-viewer-color-controls-text);
     display: flex;
     padding: 0 1rem;
-    font-size: 1.125rem;
+    font-size: 1rem;
     font-weight: 300;
-    min-height: 3rem;
+    min-height: 2.75rem;
   }
 
   #repl {
@@ -85,6 +102,7 @@ export const styles = css`
   li > span {
     border-left: 3px solid transparent;
     padding-left: 1rem;
+    font-size: 0.875rem;
   }
 
   #repl #output li {
@@ -101,7 +119,8 @@ export const styles = css`
     border-top: 1px solid transparent;
   }
 
-  #repl #output li:last-child :not(:first-child) {
+  #repl #output li:last-child .stdout,
+  #repl #output li:last-child .stderr {
     border-left: 3px solid var(--md-sys-color-primary);
   }
 

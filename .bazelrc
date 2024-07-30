@@ -11,9 +11,7 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-
-# TODO: https://pwbug.dev/258836641#comment4: Enabling bzlmod breaks the build.
-common --noenable_bzlmod
+#
 
 # Improve debugability by printing all arguments for failing commands.
 common --verbose_failures
@@ -28,14 +26,15 @@ import %workspace%/pw_build/pigweed.bazelrc
 common --per_file_copt=external/.*@-w
 common --host_per_file_copt=external/.*@-w
 
-# Skip building or testing C++20 targets by default
-# TODO: b/340568834 Remove when a proper solution is available.
-build --build_tag_filters=-requires_cxx_20
+# Default to C++17 to ensure compatibility.
+common --//pw_toolchain/cc:cxx_standard=17
+common:cxx20 --//pw_toolchain/cc:cxx_standard=20
+
 # Also exclude integration tests from the default build. The test_tag_filters
 # flag doesn't accumulate (https://github.com/bazelbuild/bazel/issues/7322): we
 # have to specify it only once, setting all the exclusions in a comma-separated
 # list.
-test --test_tag_filters=-requires_cxx_20,-integration
+test --test_tag_filters=-integration
 
 # Required for combined code coverage reports.
 coverage --experimental_generate_llvm_lcov
@@ -72,9 +71,9 @@ build --@mbedtls//:mbedtls_config=//third_party/mbedtls:default_config
 
 common:asan --//pw_toolchain/host_clang:asan
 # TODO: https://github.com/bazelbuild/bazel/issues/7322 - We need to repeat the
-# -requires_cxx_20 and -integration because the test_tag_filters flag does not
+# -integration because the test_tag_filters flag does not
 # accumulate.
-test:asan --test_tag_filters=-requires_cxx_20,-integration,-noasan
+test:asan --test_tag_filters=-integration,-noasan
 
 # Define the --config=asan-libfuzzer configuration.
 build:asan-libfuzzer \
@@ -92,15 +91,13 @@ build:fuzztest \
 
 common:ubsan --//pw_toolchain/host_clang:ubsan
 # TODO: https://github.com/bazelbuild/bazel/issues/7322 - We need to repeat the
-# -requires_cxx_20 and -integration because the test_tag_filters flag does not
-# accumulate.
-test:ubsan --test_tag_filters=-requires_cxx_20,-integration,-noubsan
+# -integration because the test_tag_filters flag does not accumulate.
+test:ubsan --test_tag_filters=-integration,-noubsan
 
 common:tsan --//pw_toolchain/host_clang:tsan
 # TODO: https://github.com/bazelbuild/bazel/issues/7322 - We need to repeat the
-# -requires_cxx_20 and -integration because the test_tag_filters flag does not
-# accumulate.
-test:tsan --test_tag_filters=-requires_cxx_20,-integration,-notsan
+# -integration because the test_tag_filters flag does not accumulate.
+test:tsan --test_tag_filters=-integration,-notsan
 
 # Configure workspace status command to test pw_build_info git_build_info
 # https://bazel.build/docs/user-manual#workspace-status-command
@@ -123,8 +120,10 @@ build --//pw_function:config_override=//pw_function:upstream_default_config
 # TODO: b/301334234 - Make the platform set the flags below.
 # LINT.IfChange
 build:rp2040 --platforms=@pigweed//targets/rp2040
-build:rp2040 --//pw_assert:check_backend=@pigweed//pw_assert_basic
-build:rp2040 --//pw_assert:check_backend_impl=@pigweed//pw_assert_basic:impl
+build:rp2040 --//pw_assert:assert_backend=@pigweed//pw_assert_trap
+build:rp2040 --//pw_assert:assert_backend_impl=@pigweed//pw_assert_trap:impl
+build:rp2040 --//pw_assert:check_backend=@pigweed//pw_assert_trap
+build:rp2040 --//pw_assert:check_backend_impl=@pigweed//pw_assert_trap:impl
 build:rp2040 --//pw_cpu_exception:entry_backend=@pigweed//pw_cpu_exception_cortex_m:cpu_exception
 build:rp2040 --//pw_cpu_exception:entry_backend_impl=@pigweed//pw_cpu_exception_cortex_m:cpu_exception_impl
 build:rp2040 --//pw_cpu_exception:handler_backend=@pigweed//pw_cpu_exception:basic_handler
@@ -140,6 +139,7 @@ build:rp2040 --//pw_sync:thread_notification_backend=//pw_sync_freertos:thread_n
 build:rp2040 --//pw_sync:timed_thread_notification_backend=//pw_sync_freertos:timed_thread_notification
 build:rp2040 --//pw_sys_io:backend=//pw_sys_io_rp2040
 build:rp2040 --//pw_system:extra_platform_libs=@pigweed//targets/rp2040:extra_platform_libs
+build:rp2040 --//pw_system:device_handler_backend=@pigweed//targets/rp2040:device_handler
 build:rp2040 --//pw_thread:id_backend=@pigweed//pw_thread_freertos:id
 build:rp2040 --//pw_thread:iteration_backend=@pigweed//pw_thread_freertos:thread_iteration
 build:rp2040 --//pw_thread:sleep_backend=@pigweed//pw_thread_freertos:sleep
