@@ -172,6 +172,7 @@ pw_source_set("common") {
     dir_pw_assert,
     dir_pw_bytes,
     dir_pw_function,
+    dir_pw_polyfill,
     dir_pw_span,
     dir_pw_status,
   ]
@@ -211,7 +212,6 @@ pw_source_set("common") {
     "packet_meta.cc",
     "public/pw_rpc/internal/call.h",
     "public/pw_rpc/internal/call_context.h",
-    "public/pw_rpc/internal/channel.h",
     "public/pw_rpc/internal/channel_list.h",
     "public/pw_rpc/internal/encoding_buffer.h",
     "public/pw_rpc/internal/endpoint.h",
@@ -406,8 +406,12 @@ pw_proto_library("protos") {
 
 pw_doc_group("docs") {
   sources = [
-    "benchmark.rst",
+    "cpp.rst",
+    "design.rst",
     "docs.rst",
+    "guides.rst",
+    "libraries.rst",
+    "protocol.rst",
   ]
   inputs = [
     "benchmark.proto",

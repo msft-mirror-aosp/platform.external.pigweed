@@ -37,6 +37,14 @@ http_archive(
 )
 
 http_archive(
+    name = "rules_platform",
+    sha256 = "0aadd1bd350091aa1f9b6f2fbcac8cd98201476289454e475b28801ecf85d3fd",
+    urls = [
+        "https://github.com/bazelbuild/rules_platform/releases/download/0.1.0/rules_platform-0.1.0.tar.gz",
+    ],
+)
+
+http_archive(
     name = "rules_cc",
     sha256 = "2037875b9a4456dce4a79d112a8ae885bbc4aad968e6587dca6e64f3a0900cdf",
     strip_prefix = "rules_cc-0.0.9",
@@ -66,6 +74,15 @@ cipd_repository(
     tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
 )
 
+# Set up bloaty size profiler.
+# Required by: pigweed.
+# Used in modules: //pw_bloat.
+cipd_repository(
+    name = "bloaty",
+    path = "fuchsia/third_party/bloaty/${os}-amd64",
+    tag = "git_revision:c057ba4f43db0506d4ba8c096925b054b02a8bd3",
+)
+
 # Set up Starlark library.
 # Required by: io_bazel_rules_go, com_google_protobuf, rules_python
 # Used in modules: None.
@@ -88,7 +105,7 @@ bazel_skylib_workspace()
 # TODO: b/345806988 - remove this fork and update to upstream HEAD.
 git_repository(
     name = "io_bazel_rules_go",
-    commit = "21005c4056de3283553c015c172001229ecbaca9",
+    commit = "d5ba42f3ca0b8510526ed5df2cf5807bdba43856",
     remote = "https://github.com/cramertj/rules_go.git",
 )
 
@@ -126,14 +143,11 @@ http_archive(
 )
 
 # Set up Python support.
-# Required by: rules_fuzzing, com_github_nanopb_nanopb.
-# Used in modules: None.
-# TODO: b/310293060 - Switch to an official release when it includes the fix for
-# macOS hosts running Python <=3.8.
-git_repository(
+http_archive(
     name = "rules_python",
-    commit = "e06b4bae446706db3414e75d301f56821001b554",
-    remote = "https://github.com/bazelbuild/rules_python.git",
+    sha256 = "e3f1cc7a04d9b09635afb3130731ed82b5f58eadc8233d4efb59944d92ffc06f",
+    strip_prefix = "rules_python-0.33.2",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.33.2/rules_python-0.33.2.tar.gz",
 )
 
 load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
@@ -175,9 +189,9 @@ install_deps()
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-06-01.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8746297072233905681.
-    commit = "dc0007365302ab30293144aa5dac6194fdea10ad",
+    # ROLL: Last updated 2024-06-08.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8745662233558600481.
+    commit = "5084a6ded7858e2824e9a683d5ca33745140723b",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -185,12 +199,19 @@ load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
 
-FUCHSIA_SDK_VERSION = "version:20.20240408.3.1"
+FUCHSIA_LINUX_SDK_VERSION = "version:22.20240717.3.1"
+
+# The Fuchsia SDK is no longer released for MacOS, so we need to pin an older
+# version, from the halcyon days when this OS was still supported.
+FUCHSIA_MAC_SDK_VERSION = "version:20.20240408.3.1"
 
 cipd_repository(
     name = "fuchsia_sdk",
     path = "fuchsia/sdk/core/fuchsia-bazel-rules/${os}-amd64",
-    tag = FUCHSIA_SDK_VERSION,
+    tag_by_os = {
+        "linux": FUCHSIA_LINUX_SDK_VERSION,
+        "mac": FUCHSIA_MAC_SDK_VERSION,
+    },
 )
 
 load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
@@ -202,7 +223,10 @@ register_toolchains("@fuchsia_sdk//:fuchsia_toolchain_sdk")
 cipd_repository(
     name = "fuchsia_products_metadata",
     path = "fuchsia/development/product_bundles/v2",
-    tag = FUCHSIA_SDK_VERSION,
+    tag_by_os = {
+        "linux": FUCHSIA_LINUX_SDK_VERSION,
+        "mac": FUCHSIA_MAC_SDK_VERSION,
+    },
 )
 
 load("@fuchsia_sdk//fuchsia:products.bzl", "fuchsia_products_repository")
@@ -216,7 +240,11 @@ load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
 
 fuchsia_clang_repository(
     name = "fuchsia_clang",
-    from_workspace = "@llvm_toolchain//:BUILD.bazel",
+    # TODO: https://pwbug.dev/346354914 - Reuse @llvm_toolchain. This currently
+    # leads to flaky loading phase errors!
+    # from_workspace = "@llvm_toolchain//:BUILD",
+    cipd_tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
+    sdk_root_label = "@fuchsia_sdk",
 )
 
 load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
@@ -436,7 +464,7 @@ git_repository(
 
 git_repository(
     name = "mbedtls",
-    build_file = "//:third_party/mbedtls/BUILD.mbedtls",
+    build_file = "//:third_party/mbedtls/mbedtls.BUILD.bazel",
     # mbedtls-3.2.1 released 2022-07-12
     commit = "869298bffeea13b205343361b7a7daf2b210e33d",
     remote = "https://pigweed.googlesource.com/third_party/github/ARMmbed/mbedtls",
@@ -446,7 +474,14 @@ git_repository(
     name = "com_google_emboss",
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
     # Also update emboss tag in pw_package/py/pw_package/packages/emboss.py
-    tag = "v2024.0501.215421",
+    tag = "v2024.0716.040724",
+)
+
+git_repository(
+    name = "icu",
+    build_file = "//third_party/icu:icu.BUILD.bazel",
+    commit = "ef02cc27c0faceffc9345e11a35769ae92b836fb",
+    remote = "https://fuchsia.googlesource.com/third_party/icu",
 )
 
 http_archive(
@@ -492,75 +527,14 @@ new_local_repository(
     path = ".",
 )
 
-git_repository(
-    name = "pico-sdk",
-    commit = "4de7ec6bd73cd154533f35d9058279267ba77176",
-    remote = "https://pigweed.googlesource.com/third_party/github/raspberrypi/pico-sdk",
-)
+load("//targets/rp2040:deps.bzl", "pigweed_rp2_deps")
 
-http_archive(
-    name = "tinyusb",
-    build_file = "@pico-sdk//src/rp2_common/tinyusb:tinyusb.BUILD",
-    sha256 = "ac57109bba00d26ffa33312d5f334990ec9a9a4d82bf890ed8b825b4610d1da2",
-    strip_prefix = "tinyusb-86c416d4c0fb38432460b3e11b08b9de76941bf5",
-    url = "https://github.com/hathach/tinyusb/archive/86c416d4c0fb38432460b3e11b08b9de76941bf5.zip",
-)
+pigweed_rp2_deps()
 
-# ---- probe-rs Paths ----
-#
-# NOTE: These paths and sha-s have been manually copied from
-# https://github.com/probe-rs/probe-rs/releases/tag/v0.24.0
+load("//pw_ide:deps.bzl", "pw_ide_deps")
 
-http_archive(
-    name = "probe-rs-tools-x86_64-unknown-linux-gnu",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "21e8d7df39fa0cdc9a0421e0ac2ac5ba81ec295ea11306f26846089f6fe975c0",
-    strip_prefix = "probe-rs-tools-x86_64-unknown-linux-gnu",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-unknown-linux-gnu.tar.xz",
-)
+pw_ide_deps()
 
-http_archive(
-    name = "probe-rs-tools-aarch64-unknown-linux-gnu",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "95d91ebe08868d5119a698e3268ff60a4d71d72afa26ab207d43c807c729c90a",
-    strip_prefix = "probe-rs-tools-aarch64-unknown-linux-gnu",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-aarch64-unknown-linux-gnu.tar.xz",
-)
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 
-http_archive(
-    name = "probe-rs-tools-x86_64-apple-darwin",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "0e35cc92ff34af1b1c72dd444e6ddd57c039ed31c2987e37578864211e843cf1",
-    strip_prefix = "probe-rs-tools-x86_64-apple-darwin",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-apple-darwin.tar.xz",
-)
-
-http_archive(
-    name = "probe-rs-tools-aarch64-apple-darwin",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "7140d9c2c61f8712ba15887f74df0cb40a7b16728ec86d5f45cc93fe96a0a29a",
-    strip_prefix = "probe-rs-tools-aarch64-apple-darwin",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-aarch64-apple-darwin.tar.xz",
-)
-
-http_archive(
-    name = "probe-rs-tools-x86_64-pc-windows-msvc",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "d195dfa3466a87906251e27d6d70a0105274faa28ebf90ffadad0bdd89b1ec77",
-    strip_prefix = "probe-rs-tools-x86_64-pc-windows-msvc",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-pc-windows-msvc.zip",
-)
-
-git_repository(
-    name = "rules_libusb",
-    commit = "8680b8d1dea7b4053cdd82bd118026b545b50c0b",
-    remote = "https://pigweed.googlesource.com/pigweed/rules_libusb",
-)
-
-http_archive(
-    name = "libusb",
-    build_file = "@rules_libusb//:libusb.BUILD",
-    sha256 = "ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575",
-    strip_prefix = "libusb-1.0.27",
-    url = "https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2",
-)
+hedron_compile_commands_setup()

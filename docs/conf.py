@@ -40,9 +40,11 @@ pygments_style = 'pw_console.pigweed_code_style.PigweedCodeLightStyle'
 pygments_dark_style = 'pw_console.pigweed_code_style.PigweedCodeStyle'
 
 extensions = [
+    "pw_docgen.sphinx.bug",
     "pw_docgen.sphinx.google_analytics",  # Enables optional Google Analytics
     "pw_docgen.sphinx.kconfig",
     "pw_docgen.sphinx.module_metadata",
+    "pw_docgen.sphinx.modules_index",
     "pw_docgen.sphinx.pigweed_live",
     "pw_docgen.sphinx.pw_status_codes",
     "pw_docgen.sphinx.inlinesearch",
@@ -110,8 +112,13 @@ html_static_path = ['docs/_static']
 # or fully qualified paths (eg. https://...)
 html_css_files = [
     "css/pigweed.css",
-    # Needed for Inconsolata font.
-    "https://fonts.googleapis.com/css2?family=Inconsolata&display=swap",
+    # We could potentially merge the Google Fonts stylesheets into a single network
+    # request but we already preconnect with the service in //docs/layout/page.html
+    # so the performance impact of keeping these as 3 separate calls should be
+    # negligible.
+    "https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap",
+    "https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap",
+    "https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap",
     # FontAwesome for mermaid and sphinx-design
     "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css",
 ]
@@ -256,9 +263,12 @@ redirects = {
     'docs/contributing/changelog': './docs/changelog.html',
     'docs/contributing/module_docs': './docs/modules.html',
     'docs/getting_started': './get_started/index.html',
+    'docs/infra/github': '../get_started/github.html',
     'docs/os_abstraction_layers': './os/index.html',
     'docs/release_notes/index': '../../changelog.html',
     'docs/release_notes/2022_jan': '../../changelog.html',
+    # Can be deleted after pw_enviro stuff gets published.
+    'drafts/pw_enviro/index': 'https://storage.googleapis.com/pigweed-docs-try/220311/docs/showcases/pw_enviro/tutorial.html',
     'module_guides': './modules.html',
     'pw_sys_io_pico/docs': '../pw_sys_io_rp2040/docs.html',
     'pw_tokenizer/cli': './docs.html',

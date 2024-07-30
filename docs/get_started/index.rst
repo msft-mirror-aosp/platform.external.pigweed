@@ -1,7 +1,7 @@
 .. _docs-get-started:
 
 ===========
-Get Started
+Quickstarts
 ===========
 .. _docs-first-time-setup:
 
@@ -15,7 +15,7 @@ all prerequisites, it greatly accelerates new developer onboarding.
 The first-time setup guides below are required for any Pigweed-based project,
 but only need to be done once per machine.
 
-.. grid:: 1
+.. grid:: 2
 
    .. grid-item-card:: First-time setup
       :link: docs-first-time-setup-guide
@@ -24,6 +24,13 @@ but only need to be done once per machine.
 
       Prerequisites, first-time setup, and support notes for Linux, macOS, and
       Windows.
+
+   .. grid-item-card:: Install Bazel
+      :link: docs-install-bazel
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Recommendations on how to install Bazel.
 
 ------------------------------
 Create a Pigweed-based project
@@ -78,22 +85,12 @@ Create a Pigweed-based project
 
       Get set up to contribute to upstream Pigweed.
 
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-
-   First-time setup <first_time_setup>
-   Bazel quickstart <bazel>
-   Bazel integration <bazel_integration>
-   Zephyr quickstart <zephyr>
-   Upstream Pigweed <upstream>
-
 ------------------------------------------
 Use Pigweed modules in an existing project
 ------------------------------------------
 Pigweed is modular: you can use as much or as little of it as you need.
 
-.. grid:: 1
+.. grid:: 2
 
    .. grid-item-card:: :octicon:`rocket` Bazel
       :link: docs-bazel-integration
@@ -102,3 +99,23 @@ Pigweed is modular: you can use as much or as little of it as you need.
 
       Instructions for how to use a Pigweed module in an existing Bazel
       project.
+
+   .. grid-item-card:: :octicon:`list-ordered` GitHub Actions
+      :link: docs-github-actions
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      How to set up GitHub Actions to build and test your Bazel-based
+      Pigweed project.
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   First-time setup <first_time_setup>
+   Install Bazel <install_bazel>
+   Bazel quickstart <bazel>
+   Bazel integration <bazel_integration>
+   GitHub Actions <github_actions>
+   Zephyr quickstart <zephyr>
+   Upstream Pigweed <upstream>

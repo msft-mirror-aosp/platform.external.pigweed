@@ -111,6 +111,19 @@ def _custom_find_library(name: str) -> str | None:
         if cipd_lib.is_dir():
             search_paths.append(cipd_lib)
 
+    # libusb provided by Bazel
+    try:
+        # pylint: disable=import-outside-toplevel
+        from rules_python.python.runfiles import runfiles  # type: ignore
+
+        r = runfiles.Create()
+        libusb_dir = os.path.dirname(
+            r.Rlocation(f'libusb/libusb-1.0{_LIB_SUFFIX}')
+        )
+        search_paths.append(Path(libusb_dir))
+    except ImportError:
+        pass
+
     _LOG.debug('Potential shared library search paths:')
     for path in search_paths:
         _LOG.debug(path)
@@ -185,6 +198,8 @@ class PicoBoardInfo:
     bus: int
     port: str
     serial_port: Optional[str]
+    manufacturer: Optional[str]
+    product: Optional[str]
 
     def address(self) -> int:
         """Queries this device for its USB address.
@@ -326,6 +341,17 @@ def _detect_pico_usb_info(
             _LOG.debug(
                 '  --> Found Raspberry Pi debug probe: %s', board_usb_info
             )
+            if device.bcdDevice < 0x201:
+                _LOG.error(
+                    'Reliable flashing and testing not possible due to '
+                    'outdated Debug Probe firmware (%d.%d.%d). Update to '
+                    'version 2.0.1 or later. See https://www.raspberrypi.com/'
+                    'documentation/microcontrollers/debug-probe.html for '
+                    'update instructions.',
+                    (device.bcdDevice >> 8 & 0xF),
+                    (device.bcdDevice >> 4 & 0xF),
+                    (device.bcdDevice & 0xF),
+                )
 
         else:
             _LOG.warning(
@@ -399,12 +425,16 @@ def board_from_usb_port(
             port=usb_info.port,
             serial_port=serial_port,
             serial_number=usb_info.serial_number,
+            product=usb_info.product,
+            manufacturer=usb_info.manufacturer,
         )
 
     return PicoBoardInfo(
         bus=usb_info.bus,
         port=usb_info.port,
         serial_port=serial_port,
+        product=usb_info.product,
+        manufacturer=usb_info.manufacturer,
     )
 
 
@@ -446,6 +476,8 @@ def detect_boards(
                     port=usb_info.port,
                     serial_port=serial_port,
                     serial_number=usb_info.serial_number,
+                    product=usb_info.product,
+                    manufacturer=usb_info.manufacturer,
                 )
             )
         elif serial_port or usb_info.in_bootloader_mode:
@@ -454,6 +486,8 @@ def detect_boards(
                     bus=usb_info.bus,
                     port=usb_info.port,
                     serial_port=serial_port,
+                    product=usb_info.product,
+                    manufacturer=usb_info.manufacturer,
                 )
             )
 

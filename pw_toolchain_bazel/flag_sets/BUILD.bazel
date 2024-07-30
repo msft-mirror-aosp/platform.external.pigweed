@@ -32,6 +32,17 @@ pw_cc_flag_set(
     flags = ["-O2"],
 )
 
+# Optimization aggressively for size rather than speed option
+pw_cc_flag_set(
+    name = "oz",
+    actions = [
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+        "@pw_toolchain//actions:all_link_actions",
+    ],
+    flags = ["-Oz"],
+)
+
 # Prevent relative paths from being converted to absolute paths.
 pw_cc_flag_set(
     name = "no_canonical_prefixes",
@@ -107,5 +118,31 @@ pw_cc_flag_set(
     flags = [
         "-fsanitize=address",
         "-DADDRESS_SANITIZER",
+    ],
+)
+
+# TODO: https://pwbug.dev/346388161 - Push this to upstream rules_cc.
+pw_cc_flag_set(
+    name = "ubsan",
+    actions = [
+        "@pw_toolchain//actions:all_compiler_actions",
+        "@pw_toolchain//actions:all_link_actions",
+    ],
+    flags = [
+        "-fsanitize=undefined",
+        "-DUNDEFINED_SANITIZER",
+    ],
+)
+
+# TODO: https://pwbug.dev/346388161 - Push this to upstream rules_cc.
+pw_cc_flag_set(
+    name = "tsan",
+    actions = [
+        "@pw_toolchain//actions:all_compiler_actions",
+        "@pw_toolchain//actions:all_link_actions",
+    ],
+    flags = [
+        "-fsanitize=thread",
+        "-DTHREAD_SANITIZER",
     ],
 )
