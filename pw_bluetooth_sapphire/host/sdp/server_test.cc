@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/sdp/server.h"
 
+#include <pw_bytes/endian.h>
+
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_channel.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_channel_test.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_l2cap.h"
@@ -148,7 +150,7 @@ class ServerTest : public TestingBase {
 
     // Trigger inbound L2CAP channels for the remaining. |id|, |remote_id|
     // aren't important.
-    auto id = 0x40;
+    l2cap::ChannelId id = 0x40;
     for (auto it = allocated.begin(); it != allocated.end(); it++) {
       EXPECT_TRUE(
           l2cap()->TriggerInboundL2capChannel(kTestHandle1, *it, id, id));
@@ -341,7 +343,8 @@ TEST_F(ServerTest, RegisterProtocolOnlyService) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<Header> packet(cb_packet.get());
     EXPECT_EQ(kServiceSearchResponse, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     packet.Resize(len);
     ServiceSearchResponse resp;
     fit::result<Error<>> result = resp.Parse(packet.payload_data());
@@ -389,7 +392,8 @@ TEST_F(ServerTest, RegisterProtocolOnlyService) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(kServiceSearchAttributeResponse, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     packet.Resize(len);
     ServiceSearchAttributeResponse rsp;
     fit::result<Error<>> result = rsp.Parse(packet.payload_data());
@@ -433,7 +437,8 @@ TEST_F(ServerTest, RegisterProtocolOnlyService) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x01, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     ASSERT_GE(sizeof(Header) + len, cb_packet->size());
     packet.Resize(len);
     ErrorResponse rsp;
@@ -959,8 +964,9 @@ TEST_F(ServerTest, ServiceSearchRequest) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<Header> packet(cb_packet.get());
     EXPECT_EQ(kServiceSearchResponse, packet.header().pdu_id);
-    tid = be16toh(packet.header().tid);
-    uint16_t len = be16toh(packet.header().param_length);
+    tid = pw::bytes::ConvertOrderFrom(cpp20::endian::big, packet.header().tid);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     bt_log(TRACE, "unittest", "resize packet to %d", len);
     packet.Resize(len);
     ServiceSearchResponse resp;
@@ -1074,8 +1080,9 @@ TEST_F(ServerTest, ServiceSearchRequestOneOfMany) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<Header> packet(cb_packet.get());
     EXPECT_EQ(kServiceSearchResponse, packet.header().pdu_id);
-    tid = be16toh(packet.header().tid);
-    uint16_t len = be16toh(packet.header().param_length);
+    tid = pw::bytes::ConvertOrderFrom(cpp20::endian::big, packet.header().tid);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     bt_log(TRACE, "unittests", "resizing packet to %d", len);
     packet.Resize(len);
     ServiceSearchResponse resp;
@@ -1147,7 +1154,8 @@ TEST_F(ServerTest, ServiceSearchContinuationState) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x03, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     EXPECT_LE(len,
               0x2F);  // 10 records (4 * 10) + 2 (total count) + 2 (current
                       // count) + 3 (cont state)
@@ -1167,10 +1175,10 @@ TEST_F(ServerTest, ServiceSearchContinuationState) {
     if (!rsp.complete()) {
       // Repeat the request with the continuation state if it was returned.
       auto continuation = rsp.ContinuationState();
-      uint8_t cont_size = continuation.size();
+      uint8_t cont_size = static_cast<uint8_t>(continuation.size());
       EXPECT_NE(0u, cont_size);
       // Make another request with the continuation data.
-      size_t param_size = 8 + cont_size;
+      uint16_t param_size = 8 + cont_size;
       StaticByteBuffer kContinuedRequestStart(
           0x02,  // SDP_ServiceSearchRequest
           0x10,
@@ -1275,7 +1283,8 @@ TEST_F(ServerTest, ServiceAttributeRequest) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x05, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     EXPECT_LE(len, 0x11);  // 10 + 2 (byte count) + 5 (cont state)
     packet.Resize(len);
     fit::result<Error<>> result = rsp.Parse(packet.payload_data());
@@ -1293,10 +1302,10 @@ TEST_F(ServerTest, ServiceAttributeRequest) {
     if (!rsp.complete()) {
       // Repeat the request with the continuation state if it was returned.
       auto continuation = rsp.ContinuationState();
-      uint8_t cont_size = continuation.size();
+      uint8_t cont_size = static_cast<uint8_t>(continuation.size());
       EXPECT_NE(0u, cont_size);
       // Make another request with the continuation data.
-      size_t param_size = 17 + cont_size;
+      uint16_t param_size = 17 + cont_size;
       auto kContinuedRequestAttrStart = StaticByteBuffer(
           0x04,  // SDP_ServiceAttributeRequest
           0x10,
@@ -1466,7 +1475,8 @@ TEST_F(ServerTest, SearchAttributeRequest) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x07, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     EXPECT_LE(len, 0x11);  // 2 (byte count) + 10 (max len) + 5 (cont state)
     packet.Resize(len);
     fit::result<Error<>> result = rsp.Parse(packet.payload_data());
@@ -1484,10 +1494,10 @@ TEST_F(ServerTest, SearchAttributeRequest) {
     if (!rsp.complete()) {
       // Repeat the request with the continuation state if it was returned.
       auto continuation = rsp.ContinuationState();
-      uint8_t cont_size = continuation.size();
+      uint8_t cont_size = static_cast<uint8_t>(continuation.size());
       EXPECT_NE(0u, cont_size);
       // Make another request with the continuation data.
-      size_t param_size = 18 + cont_size;
+      uint16_t param_size = 18 + cont_size;
       auto kContinuedRequestAttrStart = StaticByteBuffer(
           0x06,  // SDP_ServiceAttributeRequest
           0x10,
@@ -1532,7 +1542,7 @@ TEST_F(ServerTest, SearchAttributeRequest) {
   EXPECT_GE(received, 1u);
   // We should receive both of our entered records.
   EXPECT_EQ(2u, rsp.num_attribute_lists());
-  for (size_t i = 0; i < rsp.num_attribute_lists(); i++) {
+  for (uint32_t i = 0; i < rsp.num_attribute_lists(); i++) {
     const auto& attrs = rsp.attributes(i);
     // Every service has a record handle
     auto handle_it = attrs.find(kServiceRecordHandle);
@@ -1686,7 +1696,8 @@ TEST_F(ServerTest, BrowseGroup) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x07, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     packet.Resize(len);
     auto status = rsp.Parse(packet.payload_data());
     EXPECT_EQ(fit::ok(), status);

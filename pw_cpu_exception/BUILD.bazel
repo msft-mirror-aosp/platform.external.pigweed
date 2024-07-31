@@ -12,10 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_facade",
-)
+load("//pw_build:compatibility.bzl", "boolean_constraint_value")
+load("//pw_build:pigweed.bzl", "pw_facade")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -88,6 +86,14 @@ constraint_value(
     constraint_setting = "//pw_cpu_exception:handler_constraint_setting",
 )
 
+# TODO: https://github.com/bazelbuild/bazel/issues/23003 - this shouldn't be
+# needed, as it should be possible to have a config_setting as to whether
+# the entry_backend is "//pw_build:unspecified_backend" or not, but that doesn't
+# work currently due to the referenced bug.
+boolean_constraint_value(
+    name = "enabled",
+)
+
 cc_library(
     name = "basic_handler",
     srcs = ["basic_handler.cc"],
@@ -101,53 +107,20 @@ cc_library(
 # Override-able flags for each facade backend.
 label_flag(
     name = "entry_backend",
-    build_setting_default = ":entry_backend_multiplexer",
+    build_setting_default = "//pw_build:unspecified_backend",
 )
 
 label_flag(
     name = "entry_backend_impl",
-    build_setting_default = ":entry_backend_impl_multiplexer",
+    build_setting_default = "//pw_build:unspecified_backend",
 )
 
 label_flag(
     name = "handler_backend",
-    build_setting_default = ":handler_backend_multiplexer",
+    build_setting_default = "//pw_build:unspecified_backend",
 )
 
 label_flag(
     name = "support_backend",
-    build_setting_default = ":support_backend_multiplexer",
-)
-
-# Default facade backends.
-alias(
-    name = "entry_backend_multiplexer",
-    actual = select({
-        "//pw_cpu_exception_cortex_m:entry_backend": "//pw_cpu_exception_cortex_m:cpu_exception",
-        "//conditions:default": "//pw_build:unspecified_backend",
-    }),
-)
-
-alias(
-    name = "entry_backend_impl_multiplexer",
-    actual = select({
-        "//pw_cpu_exception_cortex_m:entry_backend": "//pw_cpu_exception_cortex_m:cpu_exception_impl",
-        "//conditions:default": "//pw_build:unspecified_backend",
-    }),
-)
-
-alias(
-    name = "handler_backend_multiplexer",
-    actual = select({
-        ":basic_handler_backend": ":basic_handler",
-        "//conditions:default": "//pw_build:unspecified_backend",
-    }),
-)
-
-alias(
-    name = "support_backend_multiplexer",
-    actual = select({
-        "//pw_cpu_exception_cortex_m:support_backend": "//pw_cpu_exception_cortex_m:support",
-        "//conditions:default": "//pw_build:unspecified_backend",
-    }),
+    build_setting_default = "//pw_build:unspecified_backend",
 )

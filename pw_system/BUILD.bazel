@@ -12,11 +12,17 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_binary",
     "pw_cc_test",
     "pw_facade",
+)
+load(
+    "//pw_protobuf_compiler:pw_proto_library.bzl",
+    "pw_proto_filegroup",
+    "pw_proto_library",
 )
 load("//pw_system/py:console.bzl", "device_console", "device_simulator_console")
 load("//targets/host_device_simulator:transition.bzl", "host_device_simulator_binary")
@@ -26,15 +32,6 @@ load("//targets/rp2040:transition.bzl", "rp2040_binary")
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
-
-constraint_setting(
-    name = "system_example_tracing_setting",
-)
-
-constraint_value(
-    name = "system_example_tracing",
-    constraint_setting = ":system_example_tracing_setting",
-)
 
 cc_library(
     name = "config",
@@ -52,11 +49,12 @@ label_flag(
 
 cc_library(
     name = "default_config",
-    defines = [
-        # TODO(b/260641850): Remove this Bazel-only default configuration once
-        # pw_trace builds with Bazel.
-        "PW_SYSTEM_ENABLE_TRACE_SERVICE=0",
-    ],
+    defines = select({
+        "//pw_cpu_exception:enabled": [],
+        "//conditions:default": [
+            "PW_SYSTEM_ENABLE_CRASH_HANDLER=0",
+        ],
+    }),
 )
 
 cc_library(
@@ -74,7 +72,8 @@ cc_library(
         # When implementing a backend for pw_assert or pw_log, *do not* depend
         # on //pw_system:pw_system. Instead, depend on the appropriate
         # component library. See :log_backend, below, for an examples.
-        "//pw_assert:backend_impl",
+        "//pw_assert:check_backend_impl",
+        "//pw_assert:assert_backend_impl",
         "//pw_log:backend_impl",
     ],
 )
@@ -196,6 +195,34 @@ label_flag(
     build_setting_default = "//pw_system:sys_io_target_io",
 )
 
+pw_facade(
+    name = "device_handler",
+    hdrs = [
+        "public/pw_system/device_handler.h",
+    ],
+    backend = ":device_handler_backend",
+    includes = ["public"],
+    deps = [
+        "//pw_snapshot:snapshot_proto_cc.pwpb",
+    ],
+)
+
+label_flag(
+    name = "device_handler_backend",
+    build_setting_default = "//pw_system:unknown_device_handler",
+)
+
+cc_library(
+    name = "unknown_device_handler",
+    srcs = [
+        "unknown_device_handler.cc",
+    ],
+    includes = ["public"],
+    deps = [
+        ":device_handler.facade",
+    ],
+)
+
 cc_library(
     name = "init",
     srcs = [
@@ -206,11 +233,14 @@ cc_library(
     ],
     includes = ["public"],
     deps = [
+        ":device_service",
         ":file_manager",
+        ":file_service",
         ":log",
         ":rpc_server",
         ":target_hooks",
         ":thread_snapshot_service",
+        ":trace_service",
         ":transfer_service",
         ":work_queue",
         "//pw_metric:global",
@@ -218,13 +248,11 @@ cc_library(
         "//pw_rpc/pwpb:echo_service",
         "//pw_thread:thread",
     ] + select({
-        ":system_example_tracing": [
-            ":file_service",
-            ":trace_service",
-            "//pw_trace",
+        "//pw_cpu_exception:enabled": [
+            ":crash_handler",
+            ":crash_snapshot",
         ],
-        "//conditions:default": [
-        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -281,6 +309,7 @@ cc_library(
     ],
     includes = ["public"],
     deps = [
+        ":config",
         "//pw_persistent_ram",
         "//pw_trace_tokenized:config",
         "//pw_transfer",
@@ -298,15 +327,15 @@ cc_library(
     includes = ["public"],
     deps = [
         ":config",
+        ":trace_service",
         ":transfer_handlers",
         "//pw_file:flat_file_system",
         "//pw_persistent_ram:flat_file_system_entry",
     ] + select({
-        ":system_example_tracing": [
-            ":trace_service",
+        "//pw_cpu_exception:enabled": [
+            ":crash_snapshot",
         ],
-        "//conditions:default": [
-        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -352,6 +381,96 @@ cc_library(
         ":transfer_handlers",
         "//pw_persistent_ram",
         "//pw_trace_tokenized:trace_service_pwpb",
+    ],
+)
+
+cc_library(
+    name = "crash_handler",
+    srcs = [
+        "crash_handler.cc",
+    ],
+    hdrs = [
+        "public/pw_system/crash_handler.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":crash_snapshot",
+        ":device_handler",
+        ":log",
+        "//pw_assert_trap:message",
+        "//pw_cpu_exception:handler",
+    ],
+)
+
+cc_library(
+    name = "crash_snapshot",
+    srcs = [
+        "crash_snapshot.cc",
+    ],
+    hdrs = [
+        "public/pw_system/crash_snapshot.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":device_handler",
+        ":log",
+        ":transfer_handlers",
+        "//pw_cpu_exception:entry",
+        "//pw_multisink:util",
+        "//pw_persistent_ram",
+        "//pw_snapshot:snapshot_proto_cc.pwpb",
+        "//pw_snapshot:uuid",
+    ],
+)
+
+pw_proto_filegroup(
+    name = "device_service_proto_and_options",
+    srcs = ["pw_system_protos/device_service.proto"],
+    options_files = ["pw_system_protos/device_service.options"],
+)
+
+proto_library(
+    name = "device_service_proto",
+    srcs = [":device_service_proto_and_options"],
+    strip_import_prefix = "/pw_system",
+)
+
+pw_proto_library(
+    name = "device_service_cc",
+    deps = [":device_service_proto"],
+)
+
+py_proto_library(
+    name = "device_service_py_pb2",
+    deps = [":device_service_proto"],
+)
+
+cc_library(
+    name = "device_service_pwpb",
+    srcs = [
+        "device_service_pwpb.cc",
+    ],
+    hdrs = [
+        "public/pw_system/device_service_pwpb.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":device_handler",
+        ":device_service_cc.pwpb_rpc",
+    ],
+)
+
+cc_library(
+    name = "device_service",
+    srcs = [
+        "device_service.cc",
+    ],
+    hdrs = [
+        "public/pw_system/device_service.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":device_service_pwpb",
     ],
 )
 
@@ -439,6 +558,7 @@ cc_library(
     hdrs = ["public/pw_system/system.h"],
     implementation_deps = [
         ":async_packet_io",
+        ":device_service",
         ":file_manager",
         ":file_service",
         ":log",
@@ -446,13 +566,21 @@ cc_library(
         ":transfer_service",
         ":work_queue",
         "//pw_allocator:best_fit_block_allocator",
+        "//pw_allocator:synchronized_allocator",
         "//pw_async2:allocate_task",
         "//pw_async2:pend_func_task",
         "//pw_hdlc:router",
         "//pw_multibuf:simple_allocator",
         "//pw_rpc/pwpb:echo_service",
+        "//pw_sync:interrupt_spin_lock",
         "//pw_thread:thread",
-    ],
+    ] + select({
+        "//pw_cpu_exception:enabled": [
+            ":crash_handler",
+            ":crash_snapshot",
+        ],
+        "//conditions:default": [],
+    }),
     includes = ["public"],
     deps = [
         "//pw_allocator:allocator",
@@ -556,11 +684,11 @@ device_simulator_console(
     script = "//pw_system/py:device_sim",
 )
 
-# Conect to a device running :system_example over serial with the
+# Conect to a Pico running :system_example over serial with the
 # pw-system-console.
 device_console(
-    name = "system_example_console",
+    name = "rp2040_system_example_console",
     testonly = True,
-    binary = ":system_example",
+    binary = ":rp2040_system_example",
     script = "//pw_system/py:pw_system_console",
 )
