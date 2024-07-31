@@ -298,16 +298,17 @@ export class LogViewer extends LitElement {
       const { inputValue } = (event as InputChangeEvent).detail;
       if (nodeToUpdate.logViewState) {
         nodeToUpdate.logViewState.searchText = inputValue;
-      }
-      return;
-    } else if (event.type === 'resize-column') {
-      const { columnData } = (event as ResizeColumnEvent).detail;
-      if (nodeToUpdate.logViewState) {
-        nodeToUpdate.logViewState.columnData = columnData;
+        this._stateService.saveState({ rootNode: this._rootNode });
       }
     }
 
-    this._stateService.saveState({ rootNode: this._rootNode });
+    if (event.type === 'resize-column' || event.type === 'column-toggle') {
+      const { columnData } = (event as ResizeColumnEvent).detail;
+      if (nodeToUpdate.logViewState) {
+        nodeToUpdate.logViewState.columnData = columnData;
+        this._stateService.saveState({ rootNode: this._rootNode });
+      }
+    }
   }
 
   private renderNodes(node: ViewNode): TemplateResult {
@@ -323,8 +324,8 @@ export class LogViewer extends LitElement {
         .useShoelaceFeatures=${this.useShoelaceFeatures}
         @split-view="${this.splitLogView}"
         @input-change="${this.handleViewEvent}"
-        @column-toggle="${this.handleViewEvent}"
         @resize-column="${this.handleViewEvent}"
+        @column-toggle="${this.handleViewEvent}"
       ></log-view>`;
     } else {
       const [startChild, endChild] = node.children;

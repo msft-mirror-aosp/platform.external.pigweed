@@ -14,10 +14,12 @@
 
 #include "pw_bluetooth_sapphire/internal/host/hci/legacy_low_energy_scanner.h"
 
+#include "pw_bluetooth/hci_events.emb.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/fake_local_address_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_peer.h"
+#include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 
 namespace bt::hci {
 
@@ -31,7 +33,7 @@ constexpr pw::chrono::SystemClock::duration kPwScanResponseTimeout =
 const StaticByteBuffer kPlainAdvDataBytes('T', 'e', 's', 't');
 const StaticByteBuffer kPlainScanRspBytes('D', 'a', 't', 'a');
 
-const DeviceAddress kPublicAddress1(DeviceAddress::Type::kLEPublic, {1});
+const DeviceAddress kPublicAddr(DeviceAddress::Type::kLEPublic, {1});
 
 class LegacyLowEnergyScannerTest : public TestingBase,
                                    public LowEnergyScanner::Delegate {
@@ -50,6 +52,15 @@ class LegacyLowEnergyScannerTest : public TestingBase,
     scanner_ = std::make_unique<LegacyLowEnergyScanner>(
         fake_address_delegate(), transport()->GetWeakPtr(), dispatcher());
     scanner_->set_delegate(this);
+
+    auto p = std::make_unique<FakePeer>(kPublicAddr,
+                                        dispatcher(),
+                                        /*scannable=*/true,
+                                        /*send_advertising_report=*/true);
+    p->set_use_extended_advertising_pdus(true);
+    p->set_advertising_data(kPlainAdvDataBytes);
+    p->set_scan_response(kPlainScanRspBytes);
+    peers_.push_back(std::move(p));
   }
 
   void TearDown() override {
@@ -66,21 +77,18 @@ class LegacyLowEnergyScannerTest : public TestingBase,
         .filter_duplicates = true,
         .period = period,
         .scan_response_timeout = kPwScanResponseTimeout};
-    return scanner()->StartScan(
-        options, [this](auto status) { last_scan_status_ = status; });
+    return scanner()->StartScan(options, [](auto status) {});
   }
 
-  using PeerFoundCallback =
-      fit::function<void(const LowEnergyScanResult&, const ByteBuffer&)>;
+  using PeerFoundCallback = fit::function<void(const LowEnergyScanResult&)>;
   void set_peer_found_callback(PeerFoundCallback cb) {
     peer_found_cb_ = std::move(cb);
   }
 
   // LowEnergyScanner::Delegate override:
-  void OnPeerFound(const LowEnergyScanResult& result,
-                   const ByteBuffer& data) override {
+  void OnPeerFound(const LowEnergyScanResult& result) override {
     if (peer_found_cb_) {
-      peer_found_cb_(result, data);
+      peer_found_cb_(result);
     }
   }
 
@@ -89,19 +97,61 @@ class LegacyLowEnergyScannerTest : public TestingBase,
     return &fake_address_delegate_;
   }
 
+  static constexpr size_t event_prefix_size =
+      pw::bluetooth::emboss::LEAdvertisingReportSubevent::MinSizeInBytes();
+  static constexpr size_t report_prefix_size =
+      pw::bluetooth::emboss::LEAdvertisingReportData::MinSizeInBytes();
+
  private:
   std::unique_ptr<LowEnergyScanner> scanner_;
   PeerFoundCallback peer_found_cb_;
+  std::vector<std::unique_ptr<FakePeer>> peers_;
   FakeLocalAddressDelegate fake_address_delegate_{dispatcher()};
-  LowEnergyScanner::ScanStatus last_scan_status_;
 };
 
-// Ensure we can parse an advertising report that is batched with a scan
-// response
-TEST_F(LegacyLowEnergyScannerTest, ParseBatchedAdvertisingReport) {
+// Ensure we can parse a single advertising report correctly
+TEST_F(LegacyLowEnergyScannerTest, ParseAdvertisingReportsSingleReport) {
   {
-    auto peer = std::make_unique<FakePeer>(
-        kPublicAddress1, dispatcher(), true, true, false);
+    auto peer = std::make_unique<FakePeer>(kPublicAddr,
+                                           dispatcher(),
+                                           /*connectable=*/false,
+                                           /*scannable=*/false,
+                                           /*send_advertising_report=*/false);
+    peer->set_advertising_data(kPlainAdvDataBytes);
+    test_device()->AddPeer(std::move(peer));
+  }
+
+  bool peer_found_callback_called = false;
+  std::unordered_map<DeviceAddress, std::unique_ptr<DynamicByteBuffer>> map;
+
+  set_peer_found_callback([&](const LowEnergyScanResult& result) {
+    peer_found_callback_called = true;
+    map[result.address()] =
+        std::make_unique<DynamicByteBuffer>(result.data().size());
+    result.data().Copy(&*map[result.address()]);
+  });
+
+  ASSERT_TRUE(StartScan(true));
+  RunUntilIdle();
+
+  auto peer = test_device()->FindPeer(kPublicAddr);
+  DynamicByteBuffer buffer = peer->BuildLegacyAdvertisingReportEvent(false);
+  test_device()->SendCommandChannelPacket(buffer);
+
+  RunUntilIdle();
+  ASSERT_TRUE(peer_found_callback_called);
+  ASSERT_EQ(1u, map.count(peer->address()));
+  ASSERT_TRUE(ContainersEqual(kPlainAdvDataBytes, *map[peer->address()]));
+}
+
+// Ensure we can parse multiple extended advertising reports correctly
+TEST_F(LegacyLowEnergyScannerTest, ParseAdvertisingReportsMultipleReports) {
+  {
+    auto peer = std::make_unique<FakePeer>(kPublicAddr,
+                                           dispatcher(),
+                                           /*connectable=*/true,
+                                           /*scannable=*/true,
+                                           /*send_advertising_report=*/false);
     peer->set_advertising_data(kPlainAdvDataBytes);
     peer->set_scan_response(kPlainScanRspBytes);
     test_device()->AddPeer(std::move(peer));
@@ -110,24 +160,59 @@ TEST_F(LegacyLowEnergyScannerTest, ParseBatchedAdvertisingReport) {
   bool peer_found_callback_called = false;
   std::unordered_map<DeviceAddress, std::unique_ptr<DynamicByteBuffer>> map;
 
-  set_peer_found_callback(
-      [&](const LowEnergyScanResult& result, const ByteBuffer& data) {
-        peer_found_callback_called = true;
-        map[result.address] = std::make_unique<DynamicByteBuffer>(data.size());
-        data.Copy(&*map[result.address]);
-      });
+  set_peer_found_callback([&](const LowEnergyScanResult& result) {
+    peer_found_callback_called = true;
+    map[result.address()] =
+        std::make_unique<DynamicByteBuffer>(result.data().size());
+    result.data().Copy(&*map[result.address()]);
+  });
 
-  EXPECT_TRUE(this->StartScan(true));
+  ASSERT_TRUE(StartScan(true));
   RunUntilIdle();
 
-  auto peer = test_device()->FindPeer(kPublicAddress1);
+  auto peer = test_device()->FindPeer(kPublicAddr);
   DynamicByteBuffer buffer = peer->BuildLegacyAdvertisingReportEvent(true);
   test_device()->SendCommandChannelPacket(buffer);
+
   RunUntilIdle();
   ASSERT_TRUE(peer_found_callback_called);
   ASSERT_EQ(1u, map.count(peer->address()));
-  EXPECT_EQ(kPlainAdvDataBytes.ToString() + kPlainScanRspBytes.ToString(),
+  ASSERT_EQ(kPlainAdvDataBytes.ToString() + kPlainScanRspBytes.ToString(),
             map[peer->address()]->ToString());
+}
+
+// Test that we check for enough data being present before constructing a view
+// on top of it. This case hopefully should never happen since the
+// Controller should always send back valid data but it's better to be
+// careful and avoid a crash.
+TEST_F(LegacyLowEnergyScannerTest, ParseAdvertisingReportsNotEnoughData) {
+  {
+    auto peer = std::make_unique<FakePeer>(kPublicAddr,
+                                           dispatcher(),
+                                           /*connectable=*/true,
+                                           /*scannable=*/true,
+                                           /*send_advertising_report=*/false);
+    peer->set_advertising_data(kPlainAdvDataBytes);
+    test_device()->AddPeer(std::move(peer));
+  }
+
+  ASSERT_TRUE(StartScan(true));
+  RunUntilIdle();
+
+  auto peer = test_device()->FindPeer(kPublicAddr);
+  DynamicByteBuffer buffer = peer->BuildLegacyAdvertisingReportEvent(false);
+  auto params = pw::bluetooth::emboss::LEAdvertisingReportSubeventWriter(
+      buffer.mutable_data(), buffer.size());
+  auto report = pw::bluetooth::emboss::LEAdvertisingReportDataWriter(
+      params.BackingStorage().data(), params.BackingStorage().SizeInBytes());
+  report.data_length().Write(report.data_length().Read() + 1);
+  test_device()->SendCommandChannelPacket(buffer);
+
+  // there wasn't enough data available so we shouldn't have parsed out any
+  // advertising reports
+  set_peer_found_callback([&](const LowEnergyScanResult& result) { FAIL(); });
+
+  RunUntilIdle();
 }
 
 }  // namespace bt::hci

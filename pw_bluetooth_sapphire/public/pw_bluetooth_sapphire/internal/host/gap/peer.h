@@ -28,9 +28,9 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_metrics.h"
 #include "pw_bluetooth_sapphire/internal/host/gatt/persisted_data.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
+#include "pw_bluetooth_sapphire/internal/host/hci-spec/le_connection_parameters.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/lmp_feature_set.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/connection.h"
-#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
 
 #pragma clang diagnostic ignored "-Wshadow"
@@ -308,6 +308,16 @@ class Peer final {
       auto_conn_behavior_ = behavior;
     }
 
+    void set_sleep_clock_accuracy(
+        pw::bluetooth::emboss::LESleepClockAccuracyRange sca) {
+      sleep_clock_accuracy_ = sca;
+    }
+
+    std::optional<pw::bluetooth::emboss::LESleepClockAccuracyRange>
+    sleep_clock_accuracy() const {
+      return sleep_clock_accuracy_;
+    }
+
     // TODO(armansito): Store most recently seen random address and identity
     // address separately, once PeerCache can index peers by multiple
     // addresses.
@@ -357,6 +367,9 @@ class Peer final {
 
     // Data persisted from GATT database for bonded peers.
     gatt::ServiceChangedCCCPersistedData service_changed_gatt_data_;
+
+    std::optional<pw::bluetooth::emboss::LESleepClockAccuracyRange>
+        sleep_clock_accuracy_;
   };
 
   // Contains Peer data that apply only to the BR/EDR transport.
