@@ -23,8 +23,8 @@ load(
 _cipd_client_repository = repository_rule(
     _cipd_client_impl,
     attrs = {
-        "_cipd_digest_file": attr.label(default = "@pigweed//pw_env_setup:py/pw_env_setup/cipd_setup/.cipd_version.digests"),
-        "_cipd_version_file": attr.label(default = "@pigweed//pw_env_setup:py/pw_env_setup/cipd_setup/.cipd_version"),
+        "_cipd_digest_file": attr.label(default = str(Label("//pw_env_setup:py/pw_env_setup/cipd_setup/.cipd_version.digests"))),
+        "_cipd_version_file": attr.label(default = str(Label("//pw_env_setup:py/pw_env_setup/cipd_setup/.cipd_version"))),
     },
     doc = """
 Fetches the cipd client.
@@ -58,6 +58,9 @@ cipd_repository = repository_rule(
         "tag": attr.string(
             doc = "Tag specifying which version of the repository to fetch.",
         ),
+        "tag_by_os": attr.string_dict(
+            doc = "Dict from OS name (mac, linux, windows) to tag. Incompatible with the 'tag' attribute.",
+        ),
         "_cipd_client": attr.label(
             default = "@cipd_client//:cipd",
             doc = "Location of the CIPD client binary (internal).",
@@ -69,7 +72,7 @@ Downloads a singular CIPD dependency to the root of a remote repository.
 Example:
 
     load(
-        "//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
+        "@pigweed//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
         "cipd_client_repository",
         "cipd_repository",
     )
@@ -89,10 +92,10 @@ _pigweed_deps = repository_rule(
     _cipd_deps_impl,
     attrs = {
         "_pigweed_packages_json": attr.label(
-            default = "@pigweed//pw_env_setup:py/pw_env_setup/cipd_setup/pigweed.json",
+            default = str(Label("//pw_env_setup:py/pw_env_setup/cipd_setup/pigweed.json")),
         ),
         "_upstream_testing_packages_json": attr.label(
-            default = "@pigweed//pw_env_setup:py/pw_env_setup/cipd_setup/testing.json",
+            default = str(Label("//pw_env_setup:py/pw_env_setup/cipd_setup/testing.json")),
         ),
     },
 )

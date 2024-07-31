@@ -317,7 +317,8 @@ TEST(FragmenterTest, SingleFragmentExactFit) {
 
   // Make the fragment limit large enough to fit exactly one B-frame containing
   // |payload|.
-  Fragmenter fragmenter(kTestHandle, payload.size() + sizeof(BasicHeader));
+  Fragmenter fragmenter(
+      kTestHandle, static_cast<uint16_t>(payload.size() + sizeof(BasicHeader)));
   PDU pdu = fragmenter.BuildFrame(
       kTestChannelId, payload, FrameCheckSequenceOption::kNoFcs);
   ASSERT_TRUE(pdu.is_valid());
@@ -362,7 +363,9 @@ TEST(FragmenterTest, TwoFragmentsOffByOne) {
   // Make the fragment limit large enough to fit exactly one B-frame containing
   // 1 octet less than |payload|. The last octet should be placed in a second
   // fragment.
-  Fragmenter fragmenter(kTestHandle, payload.size() + sizeof(BasicHeader) - 1);
+  Fragmenter fragmenter(
+      kTestHandle,
+      static_cast<uint16_t>(payload.size() + sizeof(BasicHeader) - 1));
   PDU pdu = fragmenter.BuildFrame(
       kTestChannelId, payload, FrameCheckSequenceOption::kNoFcs);
   ASSERT_TRUE(pdu.is_valid());
@@ -378,8 +381,8 @@ TEST(FragmenterTest, TwoFragmentsOffByOne) {
 
 TEST(FragmenterTest, TwoFragmentsExact) {
   StaticByteBuffer payload('T', 'e', 's', 't');
-  BT_DEBUG_ASSERT_MSG(payload.size() % 2 == 0,
-                      "test payload size should be even");
+  const bool payload_size_is_even = payload.size() % 2 == 0;
+  BT_DEBUG_ASSERT_MSG(payload_size_is_even, "test payload size should be even");
 
   StaticByteBuffer expected_fragment0(
       // ACL data header
@@ -410,8 +413,9 @@ TEST(FragmenterTest, TwoFragmentsExact) {
   // Make the fragment limit large enough to fit exactly half a B-frame
   // containing |payload|. The frame should be evenly divided across two
   // fragments.
-  Fragmenter fragmenter(kTestHandle,
-                        (payload.size() + sizeof(BasicHeader)) / 2);
+  Fragmenter fragmenter(
+      kTestHandle,
+      static_cast<uint16_t>((payload.size() + sizeof(BasicHeader)) / 2));
   PDU pdu = fragmenter.BuildFrame(
       kTestChannelId, payload, FrameCheckSequenceOption::kNoFcs);
   ASSERT_TRUE(pdu.is_valid());
