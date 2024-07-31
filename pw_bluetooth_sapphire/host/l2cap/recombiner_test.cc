@@ -14,6 +14,10 @@
 
 #include "pw_bluetooth_sapphire/internal/host/l2cap/recombiner.h"
 
+#include <pw_bytes/endian.h>
+
+#include <cstdint>
+
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/pdu.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/packet.h"
@@ -32,8 +36,8 @@ hci::ACLDataPacketPtr PacketFromBytes(T... data) {
   StaticByteBuffer bytes(std::forward<T>(data)...);
   BT_DEBUG_ASSERT(bytes.size() >= sizeof(hci_spec::ACLDataHeader));
 
-  auto packet =
-      hci::ACLDataPacket::New(bytes.size() - sizeof(hci_spec::ACLDataHeader));
+  auto packet = hci::ACLDataPacket::New(
+      static_cast<uint16_t>(bytes.size() - sizeof(hci_spec::ACLDataHeader)));
   packet->mutable_view()->mutable_data().Write(bytes);
   packet->InitializeFromBuffer();
 
@@ -45,18 +49,21 @@ hci::ACLDataPacketPtr FirstFragment(
     std::optional<uint16_t> payload_size = std::nullopt,
     hci_spec::ACLPacketBoundaryFlag pbf =
         hci_spec::ACLPacketBoundaryFlag::kFirstFlushable) {
-  uint16_t header_payload_size =
-      payload_size.has_value() ? *payload_size : payload.size();
-  auto packet =
-      hci::ACLDataPacket::New(kTestHandle,
-                              pbf,
-                              hci_spec::ACLBroadcastFlag::kPointToPoint,
-                              sizeof(BasicHeader) + payload.size());
+  uint16_t header_payload_size = payload_size.has_value()
+                                     ? *payload_size
+                                     : static_cast<uint16_t>(payload.size());
+  auto packet = hci::ACLDataPacket::New(
+      kTestHandle,
+      pbf,
+      hci_spec::ACLBroadcastFlag::kPointToPoint,
+      static_cast<uint16_t>(sizeof(BasicHeader) + payload.size()));
 
   // L2CAP Header
   auto* header = packet->mutable_view()->mutable_payload<BasicHeader>();
-  header->length = htole16(header_payload_size);
-  header->channel_id = htole16(kTestChannelId);
+  header->length =
+      pw::bytes::ConvertOrderTo(cpp20::endian::little, header_payload_size);
+  header->channel_id =
+      pw::bytes::ConvertOrderTo(cpp20::endian::little, kTestChannelId);
 
   // L2CAP payload
   packet->mutable_view()->mutable_payload_data().Write(BufferView(payload),
@@ -69,7 +76,7 @@ hci::ACLDataPacketPtr ContinuingFragment(std::string payload) {
       kTestHandle,
       hci_spec::ACLPacketBoundaryFlag::kContinuingFragment,
       hci_spec::ACLBroadcastFlag::kPointToPoint,
-      payload.size());
+      static_cast<uint16_t>(payload.size()));
   packet->mutable_view()->mutable_payload_data().Write(BufferView(payload));
   return packet;
 }

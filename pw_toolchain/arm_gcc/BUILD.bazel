@@ -29,6 +29,8 @@ cc_library(
         "-Wl,--wrap=__sseek",
         "-Wl,--wrap=__sclose",
     ],
+    # TODO: b/261603269 - Get this to build.
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = ["//pw_assert"],
     alwayslink = 1,
@@ -36,6 +38,8 @@ cc_library(
 
 cc_library(
     name = "arm_none_eabi_gcc_support",
+    # TODO: b/261603269 - Get this to build.
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         ":newlib_os_interface_stubs",
@@ -69,6 +73,19 @@ pw_cc_flag_set(
     flags = [
         "-mabi=aapcs",
         "-mthumb",
+    ],
+)
+
+pw_cc_flag_set(
+    name = "unified_asm_syntax",
+    actions = [
+        "@pw_toolchain//actions:all_asm_actions",
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+        "@pw_toolchain//actions:all_link_actions",
+    ],
+    flags = [
+        "-masm-syntax-unified",
     ],
 )
 
@@ -264,7 +281,6 @@ pw_cc_toolchain(
     ],
     flag_sets = [
         "@pw_toolchain//flag_sets:oz",
-        "@pw_toolchain//flag_sets:c++17",
         "@pw_toolchain//flag_sets:debugging",
         "@pw_toolchain//flag_sets:reduced_size",
         "@pw_toolchain//flag_sets:no_canonical_prefixes",
@@ -285,6 +301,8 @@ pw_cc_toolchain(
         "@pw_toolchain//constraints/arm_mcpu:none": [],
     }) + [
         ":thumb_abi",
+        # TODO(b/353576440): Enable unified assembly syntax.
+        # ":unified_asm_syntax",
         ":cortex_common",
         ":cortex_common_link",
         ":no_canonical_system_headers",
@@ -301,6 +319,10 @@ pw_cc_toolchain(
         "@pw_toolchain//constraints/arm_mcpu:cortex-m7": [],
         "@pw_toolchain//constraints/arm_mcpu:none": ["@platforms//:incompatible"],
     }),
+    toolchain_features = [
+        "//pw_toolchain/cc:c++17_feature",
+        "//pw_toolchain/cc:c++20_feature",
+    ],
     toolchain_identifier = "arm-gcc-toolchain",
 )
 

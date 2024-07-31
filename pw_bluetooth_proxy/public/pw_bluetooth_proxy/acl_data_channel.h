@@ -44,6 +44,10 @@ class AclDataChannel {
   AclDataChannel(AclDataChannel&&) = delete;
   AclDataChannel& operator=(AclDataChannel&&) = delete;
 
+  // Revert to uninitialized state, clearing credit reservation and connections,
+  // but not the number of credits to reserve nor HCI transport.
+  void Reset();
+
   // Acquires LE ACL credits for proxy host use by removing the amount needed
   // from the amount that is passed to the host.
   void ProcessLEReadBufferSizeCommandCompleteEvent(
@@ -58,12 +62,10 @@ class AclDataChannel {
 
   // Remove completed packets from `nocp_event` as necessary to reclaim LE ACL
   // credits that are associated with our credit-allocated connections.
-  void ProcessNumberOfCompletedPacketsEvent(
-      emboss::NumberOfCompletedPacketsEventWriter nocp_event);
+  void HandleNumberOfCompletedPacketsEvent(H4PacketWithHci&& h4_packet);
 
   // Reclaim any credits we have associated with the removed connection.
-  void ProcessDisconnectionCompleteEvent(
-      emboss::DisconnectionCompleteEventWriter dc_event);
+  void HandleDisconnectionCompleteEvent(H4PacketWithHci&& h4_packet);
 
   // Returns the number of LE ACL send credits reserved for the proxy.
   uint16_t GetLeAclCreditsToReserve() const;

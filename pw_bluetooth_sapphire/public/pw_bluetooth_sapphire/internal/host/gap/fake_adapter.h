@@ -55,6 +55,7 @@ class FakeAdapter final : public Adapter {
       AdvertisingData scan_rsp;
       std::optional<ConnectableAdvertisingParameters> connectable;
       AdvertisingInterval interval;
+      bool extended_pdu;
       bool anonymous;
       bool include_tx_power_level;
     };
@@ -104,6 +105,7 @@ class FakeAdapter final : public Adapter {
         AdvertisingData data,
         AdvertisingData scan_rsp,
         AdvertisingInterval interval,
+        bool extended_pdu,
         bool anonymous,
         bool include_tx_power_level,
         std::optional<ConnectableAdvertisingParameters> connectable,
@@ -245,7 +247,7 @@ class FakeAdapter final : public Adapter {
                                        l2cap::ChannelParameters chan_params,
                                        ServiceConnectCallback conn_cb) override;
 
-    bool UnregisterService(RegistrationHandle handle) override { return false; }
+    bool UnregisterService(RegistrationHandle handle) override;
 
     std::optional<ScoRequestHandle> OpenScoConnection(
         PeerId peer_id,
@@ -298,6 +300,13 @@ class FakeAdapter final : public Adapter {
 
   void SetDeviceClass(DeviceClass dev_class,
                       hci::ResultFunction<> callback) override;
+
+  void GetSupportedDelayRange(
+      const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
+      pw::bluetooth::emboss::LogicalTransportType logical_transport_type,
+      pw::bluetooth::emboss::DataPathDirection direction,
+      const std::optional<std::vector<uint8_t>>& codec_configuration,
+      GetSupportedDelayRangeCallback cb) override;
 
   void set_auto_connect_callback(AutoConnectCallback callback) override {}
 

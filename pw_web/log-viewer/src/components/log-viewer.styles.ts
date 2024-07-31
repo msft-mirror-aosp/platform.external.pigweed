@@ -45,14 +45,18 @@ export const styles = css`
 
     /* Log List */
     --sys-log-viewer-table-cell-padding: 0.375rem 0.75rem;
-    --sys-log-viewer-table-cell-icon-size: 1.125rem;
+    --sys-log-viewer-table-cell-icon-size: 1rem;
+
+    /* Log View Controls */
+    --sys-log-viewer-header-height: 2.75rem;
+    --sys-log-viewer-header-title-font-size: 1rem;
   }
 
   sl-split-panel {
     --divider-width: 8px;
     --divider-hit-area: 24px;
-    --min: 20rem;
-    --max: calc(100% - 20rem);
+    --min: 10rem;
+    --max: calc(100% - 10rem);
     height: 100%;
     width: 100%;
     contain: size style;
