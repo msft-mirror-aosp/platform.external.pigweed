@@ -55,7 +55,6 @@ from pw_presubmit.presubmit import (
     filter_paths,
 )
 from pw_presubmit.presubmit_context import (
-    FormatOptions,
     PresubmitContext,
     PresubmitFailure,
 )
@@ -755,8 +754,7 @@ def bazel_test(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'test',
-        '--build_tag_filters=-requires_cxx_20',
-        '--test_tag_filters=-requires_cxx_20',
+        '--config=cxx20',
         '--',
         '//...',
     )
@@ -786,7 +784,9 @@ def bazel_test(ctx: PresubmitContext) -> None:
 def bthost_package(ctx: PresubmitContext) -> None:
     target = '//pw_bluetooth_sapphire/fuchsia:infra'
     build_bazel(ctx, 'build', target)
-    build_bazel(ctx, 'test', f'{target}.test_all')
+    # Override the default test_tag_filters to ensure test targets tagged
+    # "integration" are still run.
+    build_bazel(ctx, 'test', '--test_tag_filters=', f'{target}.test_all')
 
     stdout_path = ctx.output_dir / 'bazel.manifest.stdout'
     with open(stdout_path, 'w') as outs:
@@ -827,7 +827,6 @@ def bazel_build(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'build',
-        '--build_tag_filters=-requires_cxx_20',
         '--',
         '//...',
     )
@@ -843,11 +842,9 @@ def bazel_build(ctx: PresubmitContext) -> None:
         ],
     }
 
-    for cxxversion in ('c++17', 'c++20'):
+    for cxxversion in ('17', '20'):
         # Explicitly build for each supported C++ version.
-        args = [ctx, 'build', f"--cxxopt=-std={cxxversion}"]
-        if cxxversion == 'c++17':
-            args += ['--build_tag_filters=-requires_cxx_20']
+        args = [ctx, 'build', f"--//pw_toolchain/cc:cxx_standard={cxxversion}"]
         args += ['--', '//...']
         build_bazel(*args)
 
@@ -856,7 +853,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
                 ctx,
                 'build',
                 f'--config={config}',
-                f"--cxxopt='-std={cxxversion}'",
+                f"--//pw_toolchain/cc:cxx_standard={cxxversion}",
                 *targets,
             )
 
@@ -1018,7 +1015,8 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\bupstream_requirements_darwin_lock.txt$',
     r'\bupstream_requirements_linux_lock.txt$',
     r'\bupstream_requirements_windows_lock.txt$',
-    r'^(?:.+/)?\..+$',
+    r'^(?:.+/)?\.bazelversion$',
+    r'^pw_env_setup/py/pw_env_setup/cipd_setup/.cipd_version',
     # keep-sorted: end
     # Metadata
     # keep-sorted: start
@@ -1026,6 +1024,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\bAUTHORS$',
     r'\bLICENSE$',
     r'\bPIGWEED_MODULES$',
+    r'\b\.vscodeignore$',
     r'\bgo.(mod|sum)$',
     r'\bpackage-lock.json$',
     r'\bpackage.json$',
@@ -1046,6 +1045,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\.png$',
     r'\.svg$',
     r'\.vsix$',
+    r'\.woff2',
     r'\.xml$',
     # keep-sorted: end
     # Documentation
@@ -1062,6 +1062,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Generated third-party files
     # keep-sorted: start
     r'\bthird_party/.*\.bazelrc$',
+    r'\bthird_party/fuchsia/repo',
     r'\bthird_party/perfetto/repo/protos/perfetto/trace/perfetto_trace.proto',
     # keep-sorted: end
     # Diff/Patch files
@@ -1214,6 +1215,14 @@ def commit_message_format(_: PresubmitContext):
     if not lines:
         _LOG.error('The commit message is too short!')
         raise PresubmitFailure
+
+    # Ignore merges.
+    repo = git_repo.LoggingGitRepo(Path.cwd())
+    parents = repo.commit_parents()
+    _LOG.debug('parents: %r', parents)
+    if len(parents) > 1:
+        _LOG.warning('Ignoring multi-parent commit')
+        return
 
     # Ignore Gerrit-generated reverts.
     if (
@@ -1466,17 +1475,15 @@ SECURITY = (
 
 FUZZ = (gn_fuzz_build, oss_fuzz_build)
 
-# Avoid running all checks on specific paths.
-PATH_EXCLUSIONS = FormatOptions.load().exclude
-
 _LINTFORMAT = (
     commit_message_format,
     copyright_notice,
     format_code.presubmit_checks(),
     inclusive_language.presubmit_check.with_filter(
         exclude=(
-            r'\byarn.lock$',
+            r'\bgo.sum$',
             r'\bpackage-lock.json$',
+            r'\byarn.lock$',
         )
     ),
     cpp_checks.pragma_once,
@@ -1550,7 +1557,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(install: bool, exclude: list, **presubmit_args) -> int:
+def run(install: bool, **presubmit_args) -> int:
     """Entry point for presubmit."""
 
     if install:
@@ -1568,8 +1575,7 @@ def run(install: bool, exclude: list, **presubmit_args) -> int:
         )
         return 0
 
-    exclude.extend(PATH_EXCLUSIONS)
-    return cli.run(exclude=exclude, **presubmit_args)
+    return cli.run(**presubmit_args)
 
 
 def main() -> int:

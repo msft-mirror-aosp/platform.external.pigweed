@@ -520,6 +520,15 @@ enum DataPathDirection:
 # ========================= HCI Command packets =========================
 # Core Spec v5.3 Vol 4, Part E, Section 7
 
+
+struct GenericHciCommand:
+  -- In general, the command-specific variants are preferred. This definition is
+  -- for the rare cases where we are generating a packet whose type we don't know
+  -- a priori.
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+  0     [+hdr_size]                     hci.CommandHeader                    header
+  $next [+header.parameter_total_size]  UInt:8[header.parameter_total_size]  payload
+
 # ========== 7.1 Link Control Commands ==========
 
 
@@ -681,9 +690,11 @@ struct PinCodeRequestReplyCommand:
   0     [+hdr_size]                   hci.CommandHeader  header
   $next [+hci.BdAddr.$size_in_bytes]  hci.BdAddr         bd_addr
     -- BD_ADDR of the device which the PIN code is for
+
   $next [+1]                          UInt               pin_code_length
     -- Length of the PIN code in octets
     [requires: 0x01 <= this <= 0x10]
+
   $next [+16]                         UInt:8[16]         pin_code
 
 
@@ -694,7 +705,6 @@ struct PinCodeRequestNegativeReplyCommand:
   0     [+hdr_size]                   hci.CommandHeader  header
   $next [+hci.BdAddr.$size_in_bytes]  hci.BdAddr         bd_addr
     -- BD_ADDR of the peer device that the host is responding to
-
 
 # 7.1.14 Change Connection Packet Type command
 # HCI_Change_Connection_Packet_Type
@@ -1132,16 +1142,15 @@ struct ReadPinTypeCommand:
   -- 7.3.5 Read PIN Type command (v1.1) (BR/EDR)
   -- HCI_Read_PIN_Type
   let hdr_size = hci.CommandHeader.$size_in_bytes
-  0     [+hdr_size]                   hci.CommandHeader  header
+  0 [+hdr_size]  hci.CommandHeader  header
 
 
 struct WritePinTypeCommand:
   -- 7.3.6 Write PIN Type command (v1.1) (BR/EDR)
   -- HCI_Write_PIN_Type
   let hdr_size = hci.CommandHeader.$size_in_bytes
-  0     [+hdr_size]                   hci.CommandHeader  header
-  $next [+1]                          hci.PinType        pin_type
-
+  0     [+hdr_size]  hci.CommandHeader  header
+  $next [+1]         hci.PinType        pin_type
 
 # 7.3.8 Read Stored Link Key command
 # HCI_Read_Stored_Link_Key

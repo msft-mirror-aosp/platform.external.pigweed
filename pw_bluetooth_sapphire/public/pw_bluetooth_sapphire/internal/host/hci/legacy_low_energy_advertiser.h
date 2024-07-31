@@ -23,14 +23,12 @@ class SequentialCommandRunner;
 class LegacyLowEnergyAdvertiser final : public LowEnergyAdvertiser {
  public:
   explicit LegacyLowEnergyAdvertiser(hci::Transport::WeakPtr hci)
-      : LowEnergyAdvertiser(std::move(hci)) {}
+      : LowEnergyAdvertiser(std::move(hci),
+                            hci_spec::kMaxLEAdvertisingDataLength) {}
   ~LegacyLowEnergyAdvertiser() override;
 
   // LowEnergyAdvertiser overrides:
   size_t MaxAdvertisements() const override { return 1; }
-  size_t GetSizeLimit() const override {
-    return hci_spec::kMaxLEAdvertisingDataLength;
-  }
   bool AllowsRandomAddressChange() const override {
     return !starting_ && !IsAdvertising();
   }
@@ -43,9 +41,9 @@ class LegacyLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   void StartAdvertising(const DeviceAddress& address,
                         const AdvertisingData& data,
                         const AdvertisingData& scan_rsp,
-                        AdvertisingOptions options,
+                        const AdvertisingOptions& options,
                         ConnectionCallback connect_callback,
-                        ResultFunction<> status_callback) override;
+                        ResultFunction<> result_callback) override;
 
   void StopAdvertising() override;
 
@@ -54,7 +52,8 @@ class LegacyLowEnergyAdvertiser final : public LowEnergyAdvertiser {
   // request and proceeds with start.
   // Returns false if called while not advertising.
   // TODO(fxbug.dev/42127634): Update documentation.
-  void StopAdvertising(const DeviceAddress& address) override;
+  void StopAdvertising(const DeviceAddress& address,
+                       bool extended_pdu) override;
 
   void OnIncomingConnection(
       hci_spec::ConnectionHandle handle,
@@ -65,44 +64,49 @@ class LegacyLowEnergyAdvertiser final : public LowEnergyAdvertiser {
  private:
   EmbossCommandPacket BuildEnablePacket(
       const DeviceAddress& address,
-      pw::bluetooth::emboss::GenericEnableParam enable) override;
+      pw::bluetooth::emboss::GenericEnableParam enable,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetAdvertisingParams(
+  std::optional<EmbossCommandPacket> BuildSetAdvertisingParams(
       const DeviceAddress& address,
-      pw::bluetooth::emboss::LEAdvertisingType type,
+      const AdvertisingEventProperties& properties,
       pw::bluetooth::emboss::LEOwnAddressType own_address_type,
-      AdvertisingIntervalRange interval) override;
+      const AdvertisingIntervalRange& interval,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetAdvertisingData(
+  std::vector<EmbossCommandPacket> BuildSetAdvertisingData(
       const DeviceAddress& address,
       const AdvertisingData& data,
-      AdvFlags flags) override;
+      AdvFlags flags,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildUnsetAdvertisingData(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildUnsetAdvertisingData(const DeviceAddress& address,
+                                                bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildSetScanResponse(
-      const DeviceAddress& address, const AdvertisingData& scan_rsp) override;
+  std::vector<EmbossCommandPacket> BuildSetScanResponse(
+      const DeviceAddress& address,
+      const AdvertisingData& scan_rsp,
+      bool extended_pdu) override;
 
-  CommandChannel::CommandPacketVariant BuildUnsetScanResponse(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildUnsetScanResponse(const DeviceAddress& address,
+                                             bool extended_pdu) override;
 
-  EmbossCommandPacket BuildRemoveAdvertisingSet(
-      const DeviceAddress& address) override;
+  EmbossCommandPacket BuildRemoveAdvertisingSet(const DeviceAddress& address,
+                                                bool extended_pdu) override;
 
   // |starting_| is set to true if a start is pending.
   // |staged_params_| are the parameters that will be advertised.
   struct StagedParams {
     DeviceAddress address;
-    AdvertisingIntervalRange interval;
-    AdvFlags flags;
     AdvertisingData data;
     AdvertisingData scan_rsp;
+    AdvertisingOptions options;
     ConnectionCallback connect_callback;
     ResultFunction<> result_callback;
   };
   std::optional<StagedParams> staged_params_;
   bool starting_ = false;
+  DeviceAddress local_address_;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(LegacyLowEnergyAdvertiser);
 };

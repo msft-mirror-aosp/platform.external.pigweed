@@ -60,6 +60,14 @@ using AdvertisingHandle = uint8_t;
 // Advertising feature.
 using PeriodicAdvertiserHandle = uint16_t;
 
+// Uniquely identifies a CIG (Connected Isochronous Group) in the context of an
+// LE connection.
+using CigIdentifier = uint8_t;
+
+// Uniquely identifies a CIS (Connected Isochronous Stream) in the context of a
+// CIG and an LE connection.
+using CisIdentifier = uint8_t;
+
 // Returns the OGF (OpCode Group Field) which occupies the upper 6-bits of the
 // opcode.
 inline uint8_t GetOGF(const OpCode opcode) { return opcode >> 10; }
@@ -92,6 +100,17 @@ struct ACLDataHeader {
   //   - 12-bits: Connection Handle
   //   - 2-bits: Packet Boundary Flags
   //   - 2-bits: Broadcast Flags
+  uint16_t handle_and_flags;
+
+  // Length of data following the header.
+  uint16_t data_total_length;
+} __attribute__((packed));
+
+struct IsoDataHeader {
+  // The first 16-bits contain the following fields, in order:
+  //   - 12-bits: Connection Handle
+  //   - 2-bits: Packet Boundary Flags
+  //   - 1-bit: Timestamp Flag
   uint16_t handle_and_flags;
 
   // Length of data following the header.
@@ -715,6 +734,11 @@ struct ReadDataBlockSizeReturnParams {
   uint16_t total_num_data_blocks;
 } __attribute__((packed));
 
+// ====================================================
+// Read Local Supported Controller Delay Command (v5.2)
+constexpr OpCode kReadLocalSupportedControllerDelay =
+    InformationalParamsOpCode(0x000F);
+
 // ======= Events =======
 // Core Spec v5.0 Vol 2, Part E, Section 7.7
 
@@ -963,52 +987,6 @@ constexpr EventCode kLEConnectionCompleteSubeventCode = 0x01;
 
 // LE Advertising Report Event (v4.0) (LE)
 constexpr EventCode kLEAdvertisingReportSubeventCode = 0x02;
-
-struct LEAdvertisingReportData {
-  LEAdvertisingReportData() = delete;
-  BT_DISALLOW_COPY_ASSIGN_AND_MOVE(LEAdvertisingReportData);
-
-  // The event type.
-  LEAdvertisingEventType event_type;
-
-  // Type of |address| for the advertising device.
-  LEAddressType address_type;
-
-  // Public Device Address, Random Device Address, Public Identity Address or
-  // Random (static) Identity Address of the advertising device.
-  DeviceAddressBytes address;
-
-  // Length of the advertising data payload.
-  uint8_t length_data;
-
-  // The beginning of |length_data| octets of advertising or scan response data
-  // formatted as defined in Core Spec v5.0, Vol 3, Part C, Section 11.
-  uint8_t data[];
-
-  // Immediately following |data| there is a single octet field containing the
-  // received signal strength for this advertising report. Since |data| has a
-  // variable length we do not declare it as a field within this struct.
-  //
-  //   Range: -127 <= N <= +20
-  //   Units: dBm
-  //   If N == 127: RSSI is not available.
-  //
-  // int8_t rssi;
-} __attribute__((packed));
-
-struct LEAdvertisingReportSubeventParams {
-  LEAdvertisingReportSubeventParams() = delete;
-  BT_DISALLOW_COPY_ASSIGN_AND_MOVE(LEAdvertisingReportSubeventParams);
-
-  // Number of LEAdvertisingReportData instances contained in the array
-  // |reports|.
-  uint8_t num_reports;
-
-  // Beginning of LEAdvertisingReportData array. Since each report data has a
-  // variable length, the contents of |reports| this is declared as an array of
-  // uint8_t.
-  uint8_t reports[];
-} __attribute__((packed));
 
 // LE Connection Update Complete Event (v4.0) (LE)
 constexpr EventCode kLEConnectionUpdateCompleteSubeventCode = 0x03;
@@ -1312,6 +1290,12 @@ constexpr EventCode kLEChannelSelectionAlgorithmSubeventCode = 0x014;
 
 // LE Request Peer SCA Complete Event (v5.2) (LE)
 constexpr EventCode kLERequestPeerSCACompleteSubeventCode = 0x1F;
+
+// LE CIS Established Event (v5.2) (LE)
+constexpr EventCode kLECISEstablishedSubeventCode = 0x019;
+
+// LE CIS Request Event (v5.2) (LE)
+constexpr EventCode kLECISRequestSubeventCode = 0x01A;
 
 // ================================================================
 // Number Of Completed Data Blocks Event (v3.0 + HS) (BR/EDR & AMP)
@@ -2178,15 +2162,8 @@ constexpr OpCode kLESetExtendedAdvertisingEnable =
 
 // ===========================================================
 // LE Read Maximum Advertising Data Length Command (v5.0) (LE)
-constexpr OpCode kLEReadMaxAdvertisingDataLength =
+constexpr OpCode kLEReadMaximumAdvertisingDataLength =
     LEControllerCommandOpCode(0x003A);
-
-struct LEReadMaxAdvertisingDataLengthReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  uint16_t max_adv_data_length;
-} __attribute__((packed));
 
 // ================================================================
 // LE Read Number of Supported Advertising Sets Command (v5.0) (LE)
@@ -2251,7 +2228,7 @@ struct LESetPeriodicAdvertisingDataCommandParams {
   LESetExtendedAdvDataOp operation;
 
   // Length of the advertising data included in this command packet, up to
-  // kMaxLEExtendedAdvertisingDataLength bytes.
+  // kMaxPduLEExtendedAdvertisingDataLength bytes.
   uint8_t adv_data_length;
 
   // Variable length advertising data.
@@ -2383,6 +2360,14 @@ constexpr OpCode kLERequestPeerSCA = LEControllerCommandOpCode(0x006D);
 // =======================================
 // LE Set Host Feature Command (v5.2) (LE)
 constexpr OpCode kLESetHostFeature = LEControllerCommandOpCode(0x0074);
+
+// =========================================
+// LE Accept CIS Request Command (v5.2) (LE)
+constexpr OpCode kLEAcceptCISRequest = LEControllerCommandOpCode(0x0066);
+
+// =========================================
+// LE Reject CIS Request Command (v5.2) (LE)
+constexpr OpCode kLERejectCISRequest = LEControllerCommandOpCode(0x0067);
 
 // ======= Vendor Command =======
 // Core Spec v5.0, Vol 2, Part E, Section 5.4.1
