@@ -17,6 +17,7 @@
 
 #include <array>
 #include <initializer_list>
+#include <optional>
 #include <string>
 
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
@@ -100,12 +101,20 @@ class DeviceAddress {
 
   // Utilities to convert between DeviceAddress::Type and the LE peer address
   // type.
+  static pw::bluetooth::emboss::LEAddressType DeviceAddrToLeAddr(Type type);
   static pw::bluetooth::emboss::LEPeerAddressType DeviceAddrToLePeerAddr(
       Type type);
-  static Type LePeerAddrToDeviceAddr(
-      pw::bluetooth::emboss::LEPeerAddressType type);
-  static pw::bluetooth::emboss::LEAddressType DeviceAddrToLeAddr(Type type);
+  static pw::bluetooth::emboss::LEPeerAddressTypeNoAnon
+  DeviceAddrToLePeerAddrNoAnon(Type type);
+  static pw::bluetooth::emboss::LEOwnAddressType DeviceAddrToLEOwnAddr(
+      Type type);
+
   static Type LeAddrToDeviceAddr(pw::bluetooth::emboss::LEAddressType type);
+  static Type LeAddrToDeviceAddr(pw::bluetooth::emboss::LEPeerAddressType type);
+  static Type LeAddrToDeviceAddr(
+      pw::bluetooth::emboss::LEPeerAddressTypeNoAnon type);
+  static std::optional<Type> LeAddrToDeviceAddr(
+      pw::bluetooth::emboss::LEExtendedAddressType type);
 
   // The default constructor initializes the address to 00:00:00:00:00:00 and
   // the type to Type::kBREDR.

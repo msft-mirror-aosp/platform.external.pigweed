@@ -25,6 +25,7 @@ import { styles } from './log-list.styles';
 import { LogEntry, Severity, TableColumn } from '../../shared/interfaces';
 import { virtualize } from '@lit-labs/virtualizer/virtualize.js';
 import '@lit-labs/virtualizer';
+import { debounce } from '../../utils/debounce';
 import { throttle } from '../../utils/throttle';
 
 /**
@@ -96,6 +97,12 @@ export class LogList extends LitElement {
 
   /** The minimum width (in px) for table columns. */
   private readonly MIN_COL_WIDTH: number = 52;
+
+  /** The minimum width (in px) for table columns. */
+  private readonly LAST_COL_MIN_WIDTH: number = 700;
+
+  /** The delay (in ms) for debouncing column resizing */
+  private readonly RESIZE_DEBOUNCE_DELAY = 10;
 
   /**
    * Data used for column resizing including the column index, the starting
@@ -240,7 +247,7 @@ export class LogList extends LitElement {
 
     const calculateColumnWidth = (col: TableColumn, i: number) => {
       const chWidth = col.characterLength;
-      const padding = 34;
+      const padding = 24 + 1; // +1 pixel to avoid ellipsis jitter when highlighting text
 
       if (i === resizingIndex) {
         return `${newWidth}px`;
@@ -249,10 +256,10 @@ export class LogList extends LitElement {
         return `${col.manualWidth}px`;
       }
       if (i === 0) {
-        return `3rem`;
+        return `calc(var(--sys-log-viewer-table-cell-icon-size) + 1rem)`;
       }
       if (i === this.columnData.length - 1) {
-        return `minmax(${this.MIN_COL_WIDTH}px, auto)`;
+        return `minmax(${this.LAST_COL_MIN_WIDTH}px, 1fr)`;
       }
       return `clamp(${this.MIN_COL_WIDTH}px, ${chWidth}ch + ${padding}px, 80ch)`;
     };
@@ -431,19 +438,25 @@ export class LogList extends LitElement {
 
     const { columnIndex, startX, startWidth } = this.columnResizeData;
     const offsetX = event.clientX - startX;
-    const newWidth = Math.max(startWidth + offsetX, this.MIN_COL_WIDTH);
+    const newWidth =
+      this.columnData.length - 1 === columnIndex
+        ? Math.max(startWidth + offsetX, this.LAST_COL_MIN_WIDTH)
+        : Math.max(startWidth + offsetX, this.MIN_COL_WIDTH);
 
     // Ensure the column index exists in columnData
     if (this.columnData[columnIndex]) {
       this.columnData[columnIndex].manualWidth = newWidth;
     }
 
-    const gridTemplateColumns = this.generateGridTemplateColumns(
-      newWidth,
-      columnIndex,
-    );
+    const generateGridTemplateColumns = debounce(() => {
+      const gridTemplateColumns = this.generateGridTemplateColumns(
+        newWidth,
+        columnIndex,
+      );
+      this.updateColumnWidths(gridTemplateColumns);
+    }, this.RESIZE_DEBOUNCE_DELAY);
 
-    this.updateColumnWidths(gridTemplateColumns);
+    generateGridTemplateColumns();
   }
 
   render() {
@@ -551,6 +564,7 @@ export class LogList extends LitElement {
 
     if (field.key == 'severity') {
       const severityIcons = new Map<Severity, string>([
+        [Severity.INFO, `\ue88e`],
         [Severity.WARNING, '\uf083'],
         [Severity.ERROR, '\ue888'],
         [Severity.CRITICAL, '\uf5cf'],
@@ -570,7 +584,7 @@ export class LogList extends LitElement {
       };
 
       return html`
-        <td ?hidden=${!isVisible}>
+        <td class="level-cell" ?hidden=${!isVisible}>
           <div class="cell-content">
             <md-icon
               class="cell-icon"

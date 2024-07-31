@@ -13,10 +13,14 @@
 # the License.
 
 load(
+    "//pw_build:compatibility.bzl",
+    "incompatible_with_mcu",
+    "minimum_cxx_20",
+)
+load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
 )
-load("//pw_build:selects.bzl", "TARGET_COMPATIBLE_WITH_HOST_SELECT")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -65,6 +69,7 @@ cc_library(
         "//pw_containers:vector",
         "//pw_sync:interrupt_spin_lock",
         "//pw_sync:lock_annotations",
+        "//pw_sync:mutex",
         "//pw_toolchain:no_destructor",
     ],
 )
@@ -107,7 +112,7 @@ pw_cc_test(
     name = "dispatcher_thread_test",
     srcs = ["dispatcher_thread_test.cc"],
     # TODO: b/343776738 - update to run on all compatible devices
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":dispatcher",
         "//pw_function",
@@ -185,7 +190,7 @@ cc_library(
     includes = [
         "public",
     ],
-    tags = ["requires_cxx_20"],
+    target_compatible_with = minimum_cxx_20(),
     deps = [
         ":dispatcher",
         "//pw_allocator:allocator",
@@ -195,9 +200,35 @@ cc_library(
 pw_cc_test(
     name = "coro_test",
     srcs = ["coro_test.cc"],
-    tags = ["requires_cxx_20"],
     deps = [
         ":coro",
+        ":dispatcher",
+        "//pw_allocator:null_allocator",
+        "//pw_allocator:testing",
+    ],
+)
+
+cc_library(
+    name = "coro_or_else_task",
+    hdrs = [
+        "public/pw_async2/coro_or_else_task.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":coro",
+        ":dispatcher",
+        "//pw_function",
+    ],
+)
+
+pw_cc_test(
+    name = "coro_or_else_task_test",
+    srcs = ["coro_or_else_task_test.cc"],
+    deps = [
+        ":coro",
+        ":coro_or_else_task",
         ":dispatcher",
         "//pw_allocator:null_allocator",
         "//pw_allocator:testing",

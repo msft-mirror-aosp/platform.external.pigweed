@@ -15,10 +15,10 @@
 #include "pw_bluetooth_sapphire/internal/host/transport/command_channel.h"
 
 #include <cpp-string/string_printf.h>
-#include <endian.h>
 #include <lib/fit/defer.h>
 #include <pw_bluetooth/hci_android.emb.h>
 #include <pw_bluetooth/hci_common.emb.h>
+#include <pw_bytes/endian.h>
 
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
@@ -188,14 +188,14 @@ CommandChannel::~CommandChannel() {
 
 CommandChannel::TransactionId CommandChannel::SendCommand(
     CommandPacketVariant command_packet,
-    CommandCallback callback,
+    CommandCallbackVariant callback,
     const hci_spec::EventCode complete_event_code) {
   return SendExclusiveCommand(
       std::move(command_packet), std::move(callback), complete_event_code);
 }
 
 CommandChannel::TransactionId CommandChannel::SendLeAsyncCommand(
-    CommandPacketVariant command_packet,
+    EmbossCommandPacket command_packet,
     CommandCallback callback,
     hci_spec::EventCode le_meta_subevent_code) {
   return SendLeAsyncExclusiveCommand(
@@ -215,7 +215,7 @@ CommandChannel::TransactionId CommandChannel::SendExclusiveCommand(
 }
 
 CommandChannel::TransactionId CommandChannel::SendLeAsyncExclusiveCommand(
-    CommandPacketVariant command_packet,
+    EmbossCommandPacket command_packet,
     CommandCallback callback,
     std::optional<hci_spec::EventCode> le_meta_subevent_code,
     std::unordered_set<hci_spec::OpCode> exclusions) {
@@ -626,12 +626,14 @@ void CommandChannel::UpdateTransaction(std::unique_ptr<EventPacket> event) {
   if (event->event_code() == hci_spec::kCommandCompleteEventCode) {
     const hci_spec::CommandCompleteEventParams& params =
         event->params<hci_spec::CommandCompleteEventParams>();
-    matching_opcode = le16toh(params.command_opcode);
+    matching_opcode = pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                                  params.command_opcode);
     allowed_command_packets_.Set(params.num_hci_command_packets);
   } else {  //  hci_spec::kCommandStatusEventCode
     const hci_spec::CommandStatusEventParams& params =
         event->params<hci_spec::CommandStatusEventParams>();
-    matching_opcode = le16toh(params.command_opcode);
+    matching_opcode = pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                                  params.command_opcode);
     allowed_command_packets_.Set(params.num_hci_command_packets);
     unregister_async_handler =
         params.status != pw::bluetooth::emboss::StatusCode::SUCCESS;
