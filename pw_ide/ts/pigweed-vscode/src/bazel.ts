@@ -12,14 +12,16 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-/** Set up and manage the Bazel tools integration. */
+import * as child_process from 'child_process';
+import * as path from 'path';
 
 import * as vscode from 'vscode';
 
-import { execSync } from 'child_process';
-import { resolve, basename } from 'path';
 import { getNativeBinary as getBazeliskBinary } from '@bazel/bazelisk';
 import node_modules from 'node_modules-path';
+
+import logger from './logging';
+
 import {
   bazel_executable,
   buildifier_executable,
@@ -29,7 +31,7 @@ import {
 } from './settings';
 
 /**
- * Is there a path to the given tool configured in VS Code settings
+ * Is there a path to the given tool configured in VS Code settings?
  *
  * @param name The name of the tool
  * @param configAccessor A config accessor for the setting
@@ -40,7 +42,9 @@ function hasConfiguredPathTo(
   configAccessor: ConfigAccessor<string>,
 ): boolean {
   const exe = configAccessor.get();
-  return exe ? basename(exe).toLowerCase().includes(name.toLowerCase()) : false;
+  return exe
+    ? path.basename(exe).toLowerCase().includes(name.toLowerCase())
+    : false;
 }
 
 /**
@@ -51,7 +55,9 @@ function hasConfiguredPathTo(
 function findPathsTo(name: string): string[] {
   // TODO: https://pwbug.dev/351883170 - This only works on Unix-ish OSes.
   try {
-    const stdout = execSync(`which -a ${name.toLowerCase()}`).toString();
+    const stdout = child_process
+      .execSync(`which -a ${name.toLowerCase()}`)
+      .toString();
     // Parse the output into a list of paths, removing any duplicates/blanks.
     return [...new Set(stdout.split('\n'))].filter((item) => item.length > 0);
   } catch (err: unknown) {
@@ -68,8 +74,23 @@ export function vendoredBazeliskPath(): string | undefined {
   // have a path.
   if (typeof result !== 'string') return undefined;
 
-  return resolve(node_modules()!, '@bazel', 'bazelisk', basename(result));
+  return path.resolve(
+    node_modules()!,
+    '@bazel',
+    'bazelisk',
+    path.basename(result),
+  );
 }
+
+/**
+ * Get a path to Bazel no matter what.
+ *
+ * The difference between this and `bazel_executable.get()` is that this will
+ * return the vendored Bazelisk as a last resort, whereas the former only
+ * returns whatever path has been configured.
+ */
+export const getReliableBazelExecutable = () =>
+  bazel_executable.get() ?? vendoredBazeliskPath();
 
 function vendoredBuildifierPath(): string | undefined {
   const result = getBazeliskBinary();
@@ -81,9 +102,9 @@ function vendoredBuildifierPath(): string | undefined {
 
   // Unlike the @bazel/bazelisk package, @bazel/buildifer doesn't export any
   // code. The logic is exactly the same, but with a different name.
-  const binaryName = basename(result).replace('bazelisk', 'buildifier');
+  const binaryName = path.basename(result).replace('bazelisk', 'buildifier');
 
-  return resolve(node_modules()!, '@bazel', 'buildifier', binaryName);
+  return path.resolve(node_modules()!, '@bazel', 'buildifier', binaryName);
 }
 
 const VENDORED_LABEL = 'Use the version built in to the Pigweed extension';
@@ -168,11 +189,11 @@ export const interactivelySetBazeliskPath = () =>
     vendoredBazeliskPath(),
   );
 
-export function configureBazelisk() {
+export async function configureBazelisk() {
   if (settings.disableBazeliskCheck()) return;
   if (hasConfiguredPathTo('bazelisk', bazel_executable)) return;
 
-  vscode.window
+  await vscode.window
     .showInformationMessage(
       'Pigweed recommends using Bazelisk to manage your Bazel environment. ' +
         'The Pigweed extension comes with Bazelisk built in, or you can select ' +
@@ -200,33 +221,62 @@ export function configureBazelisk() {
     });
 }
 
-export function setBazelRecommendedSettings() {
-  buildifier_executable.update(vendoredBuildifierPath());
-  bazel_codelens.update(true);
+export async function setBazelRecommendedSettings() {
+  if (!settings.preserveBazelPath()) {
+    await bazel_executable.update(vendoredBazeliskPath());
+  }
+
+  await buildifier_executable.update(vendoredBuildifierPath());
+  await bazel_codelens.update(true);
 }
 
-export function configureOtherBazelSettings() {
+export async function configureBazelSettings() {
+  await updateVendoredBazelisk();
+  await updateVendoredBuildifier();
+
   if (settings.disableBazelSettingsRecommendations()) return;
 
-  vscode.window
+  await vscode.window
     .showInformationMessage(
       "Would you like to use Pigweed's recommended Bazel settings?",
       'Yes',
       'No',
       'Disable',
     )
-    .then((value) => {
+    .then(async (value) => {
       switch (value) {
         case 'Yes': {
-          setBazelRecommendedSettings();
-          settings.disableBazelSettingsRecommendations(true);
+          await setBazelRecommendedSettings();
+          await settings.disableBazelSettingsRecommendations(true);
           break;
         }
         case 'Disable': {
-          settings.disableBazelSettingsRecommendations(true);
+          await settings.disableBazelSettingsRecommendations(true);
           vscode.window.showInformationMessage("Okay, I won't ask again.");
           break;
         }
       }
     });
+}
+
+export async function updateVendoredBazelisk() {
+  const isUsingVendoredBazelisk = !!bazel_executable
+    .get()
+    ?.match(/pigweed\.pigweed-.*/);
+
+  if (isUsingVendoredBazelisk && !settings.preserveBazelPath()) {
+    logger.info('Updating Bazelisk path for current extension version');
+    await bazel_executable.update(vendoredBazeliskPath());
+  }
+}
+
+export async function updateVendoredBuildifier() {
+  const isUsingVendoredBuildifier = !!buildifier_executable
+    .get()
+    ?.match(/pigweed\.pigweed-.*/);
+
+  if (isUsingVendoredBuildifier) {
+    logger.info('Updating Buildifier path for current extension version');
+    await buildifier_executable.update(vendoredBuildifierPath());
+  }
 }

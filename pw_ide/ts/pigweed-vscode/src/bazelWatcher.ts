@@ -12,29 +12,50 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-/**
- * A file watcher for Bazel files.
- *
- * We use this to automatically trigger compile commands refreshes on changes
- * to the build graph.
- */
+import * as child_process from 'child_process';
 
 import * as vscode from 'vscode';
 
-// Convert `exec` from callback style to promise style.
-import { exec as cbExec } from 'child_process';
-import util from 'node:util';
-const exec = util.promisify(cbExec);
-
-import { RefreshCallback, OK, refreshManager } from './refreshManager';
+import { Disposable } from './disposables';
 import logger from './logging';
 import { getPigweedProjectRoot } from './project';
+
+import {
+  RefreshCallback,
+  OK,
+  RefreshManager,
+  RefreshCallbackResult,
+} from './refreshManager';
+
 import { bazel_executable, settings, workingDir } from './settings';
+
+/** Regex for finding ANSI escape codes. */
+const ANSI_PATTERN = new RegExp(
+  '[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)' +
+    '*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)' +
+    '|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))',
+  'g',
+);
+
+/** Strip ANSI escape codes from a string. */
+const stripAnsi = (input: string): string => input.replace(ANSI_PATTERN, '');
+
+/** Remove ANSI escape codes that aren't supported in the output window. */
+const cleanLogLine = (line: Buffer) => {
+  const stripped = stripAnsi(line.toString());
+
+  // Remove superfluous newlines
+  if (stripped.at(-1) === '\n') {
+    return stripped.substring(0, stripped.length - 1);
+  }
+
+  return stripped;
+};
 
 /**
  * Create a container for a process running the refresh compile commands target.
  *
- * @return Refresh callbacks to do the refresh and to abort
+ * @return Refresh callbacks to do the refresh and to abort it
  */
 function createRefreshProcess(): [RefreshCallback, () => void] {
   // This provides us a handle to abort the process, if needed.
@@ -45,83 +66,138 @@ function createRefreshProcess(): [RefreshCallback, () => void] {
   // This callback will be registered with the RefreshManager to be called
   // when it's time to do the refresh.
   const cb: RefreshCallback = async () => {
-    const cwd = (await getPigweedProjectRoot(
-      settings,
-      workingDir.get(),
-    )) as string;
-
     logger.info('Refreshing compile commands');
+    const cwd = (await getPigweedProjectRoot(settings, workingDir)) as string;
+    const cmd = bazel_executable.get();
 
-    try {
-      const { stdout, stderr } = await exec(
-        // TODO: https://pwbug.dev/350861417 - This should use the Bazel
-        // extension commands instead, but doing that through the VS Code
-        // command API is not simple.
-        `${bazel_executable.get()} run ${settings.refreshCompileCommandsTarget()}`,
-        {
-          cwd,
-          signal,
-        },
-      );
-
-      if (stdout.length > 0) {
-        logger.info(stdout);
-      }
-
-      if (stderr.length > 0) {
-        logger.info(stderr);
-      }
-    } catch (err: unknown) {
-      const { message, code } = err as unknown as {
-        message: string;
-        code: string;
-      };
-
-      if (code === 'ABORT_ERR') {
-        logger.info('Aborted refreshing compile commands');
-        return OK;
-      } else {
-        logger.error(`Error refreshing compile commands: ${message}`);
-        return { error: message };
-      }
+    if (!cmd) {
+      const message = "Couldn't find a Bazel or Bazelisk executable";
+      logger.error(message);
+      return { error: message };
     }
 
-    logger.info('Finished refreshing compile commands');
-    return OK;
+    const refreshTarget = settings.refreshCompileCommandsTarget();
+
+    if (!refreshTarget) {
+      const message =
+        "There's no configured Bazel target to refresh compile commands";
+      logger.error(message);
+      return { error: message };
+    }
+
+    const args = ['run', settings.refreshCompileCommandsTarget()!];
+    let result: RefreshCallbackResult = OK;
+
+    // TODO: https://pwbug.dev/350861417 - This should use the Bazel
+    // extension commands instead, but doing that through the VS Code
+    // command API is not simple.
+    const spawnedProcess = child_process.spawn(cmd, args, { cwd, signal });
+
+    // Wrapping this in a promise that only resolves on exit or error ensures
+    // that this refresh callback blocks until the spawned process is complete.
+    // Otherwise, the callback would return early while the spawned process is
+    // still executing, prematurely moving on to later refresh manager states
+    // that depend on *this* callback being finished.
+    return new Promise((resolve) => {
+      spawnedProcess.on('spawn', () => {
+        logger.info(`Running ${cmd} ${args.join(' ')}`);
+      });
+
+      // All of the output actually goes out on stderr
+      spawnedProcess.stderr.on('data', (data) =>
+        logger.info(cleanLogLine(data)),
+      );
+
+      spawnedProcess.on('error', (err) => {
+        const { name, message } = err;
+
+        if (name === 'ABORT_ERR') {
+          logger.info('Aborted refreshing compile commands');
+        } else {
+          logger.error(
+            `[${name}] while refreshing compile commands: ${message}`,
+          );
+          result = { error: message };
+        }
+
+        resolve(result);
+      });
+
+      spawnedProcess.on('exit', (code) => {
+        if (code === 0) {
+          logger.info('Finished refreshing compile commands');
+        } else {
+          const message =
+            'Failed to complete compile commands refresh ' +
+            `(error code: ${code})`;
+
+          logger.error(message);
+          result = { error: message };
+        }
+
+        resolve(result);
+      });
+    });
   };
 
   return [cb, abort];
 }
 
-/** Trigger a refresh compile commands process. */
-export async function refreshCompileCommands() {
-  const [cb, abort] = createRefreshProcess();
+/** A file watcher that automatically runs a refresh on Bazel file changes. */
+export class BazelRefreshCompileCommandsWatcher extends Disposable {
+  private refreshManager: RefreshManager<any>;
 
-  const wrappedAbort = () => {
-    abort();
-    return OK;
-  };
+  constructor(refreshManager: RefreshManager<any>, disable = false) {
+    super();
 
-  refreshManager.onOnce(cb, 'refreshing');
-  refreshManager.onOnce(wrappedAbort, 'abort');
-  refreshManager.refresh();
-}
+    this.refreshManager = refreshManager;
+    if (disable) return;
 
-/** Create file watchers to refresh compile commands on Bazel file changes. */
-export function initRefreshCompileCommandsWatcher(): { dispose: () => void } {
-  const watchers = [
-    vscode.workspace.createFileSystemWatcher('**/BUILD.bazel'),
-    vscode.workspace.createFileSystemWatcher('**/WORKSPACE'),
-    vscode.workspace.createFileSystemWatcher('**/*.bzl'),
-  ];
+    logger.info('Initializing Bazel refresh compile commands file watcher');
 
-  watchers.forEach((watcher) => {
-    watcher.onDidChange(refreshCompileCommands);
-    watcher.onDidCreate(refreshCompileCommands);
-    watcher.onDidDelete(refreshCompileCommands);
-  });
+    const watchers = [
+      vscode.workspace.createFileSystemWatcher('**/WORKSPACE'),
+      vscode.workspace.createFileSystemWatcher('**/*.bazel'),
+      vscode.workspace.createFileSystemWatcher('**/*.bzl'),
+    ];
 
-  return {
-    dispose: () => watchers.forEach((watcher) => watcher.dispose()),
+    watchers.forEach((watcher) => {
+      watcher.onDidChange(() => {
+        logger.info(
+          '[onDidChange] triggered from refresh compile commands watcher',
+        );
+        this.refresh();
+      });
+
+      watcher.onDidCreate(() => {
+        logger.info(
+          '[onDidCreate] triggered from refresh compile commands watcher',
+        );
+        this.refresh();
+      });
+
+      watcher.onDidDelete(() => {
+        logger.info(
+          '[onDidDelete] triggered from refresh compile commands watcher',
+        );
+        this.refresh();
+      });
+    });
+
+    this.disposables.push(...watchers);
+  }
+
+  /** Trigger a refresh compile commands process. */
+  refresh = () => {
+    const [cb, abort] = createRefreshProcess();
+
+    const wrappedAbort = () => {
+      abort();
+      return OK;
+    };
+
+    this.refreshManager.onOnce(cb, 'refreshing');
+    this.refreshManager.onOnce(wrappedAbort, 'abort');
+    this.refreshManager.refresh();
   };
 }
