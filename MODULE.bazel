@@ -17,7 +17,7 @@ module(
     version = "0.0.1",
 )
 
-bazel_dep(name = "bazel_skylib", version = "1.6.1")
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
 bazel_dep(name = "boringssl", version = "0.0.0-20240530-2db0eb3")
 bazel_dep(name = "freertos", version = "10.5.1.bcr.2")
 bazel_dep(name = "gazelle", version = "0.36.0", repo_name = "bazel_gazelle")
@@ -29,14 +29,25 @@ bazel_dep(name = "protobuf", version = "24.4", repo_name = "com_google_protobuf"
 bazel_dep(name = "rules_cc", version = "0.0.9")
 bazel_dep(name = "rules_fuzzing", version = "0.5.2")
 bazel_dep(name = "rules_go", version = "0.44.2", repo_name = "io_bazel_rules_go")
+bazel_dep(name = "rules_jvm_external", version = "6.2")
 bazel_dep(name = "rules_libusb", version = "0.1.0-rc1")
 bazel_dep(name = "rules_platform", version = "0.1.0")
 bazel_dep(name = "rules_proto", version = "6.0.0")
 bazel_dep(name = "rules_python", version = "0.34.0")
 bazel_dep(name = "rules_rust", version = "0.45.1")
 
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+
 # Repository overrides
 # ====================
+
+# TODO: https://pwbug.dev/349880767 - Point this back to the upstream repo once
+# this PR is merged.
+archive_override(
+    module_name = "hedron_compile_commands",
+    strip_prefix = "bazel-compile-commands-extractor-163521345aa6366fd1ed801b989b668b5c806f69",
+    urls = ["https://github.com/chadnorvell/bazel-compile-commands-extractor/archive/163521345aa6366fd1ed801b989b668b5c806f69.tar.gz"],
+)
 
 # TODO: https://pwbug.dev/258836641 - Pre-release version needed for the Pico
 # SDK. Remove this once rules_cc 0.10.0 is released and the Pico SDK
@@ -203,6 +214,35 @@ http_archive(
     url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-pc-windows-msvc.zip",
 )
 
+# STM32 APIs
+# ==========
+#
+# TODO: https://github.com/bazelbuild/bazel/issues/23077 - Make these
+# bazel_deps dev_dependencies once archive_override has a build_file argument.
+http_archive(
+    name = "stm32f4xx_hal_driver",
+    build_file = "//third_party/stm32cube:stm32_hal_driver.BUILD.bazel",
+    sha256 = "c8741e184555abcd153f7bdddc65e4b0103b51470d39ee0056ce2f8296b4e835",
+    strip_prefix = "stm32f4xx_hal_driver-1.8.0",
+    urls = ["https://github.com/STMicroelectronics/stm32f4xx_hal_driver/archive/refs/tags/v1.8.0.tar.gz"],
+)
+
+http_archive(
+    name = "cmsis_device_f4",
+    build_file = "//third_party/stm32cube:cmsis_device.BUILD.bazel",
+    sha256 = "6390baf3ea44aff09d0327a3c112c6ca44418806bfdfe1c5c2803941c391fdce",
+    strip_prefix = "cmsis_device_f4-2.6.8",
+    urls = ["https://github.com/STMicroelectronics/cmsis_device_f4/archive/refs/tags/v2.6.8.tar.gz"],
+)
+
+http_archive(
+    name = "cmsis_core",
+    build_file = "//third_party/stm32cube:cmsis_core.BUILD.bazel",
+    sha256 = "f711074a546bce04426c35e681446d69bc177435cd8f2f1395a52db64f52d100",
+    strip_prefix = "cmsis_core-5.4.0_cm4",
+    urls = ["https://github.com/STMicroelectronics/cmsis_core/archive/refs/tags/v5.4.0_cm4.tar.gz"],
+)
+
 # Configure Python toolchains and pip dependencies.
 # =================================================
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
@@ -236,3 +276,29 @@ register_toolchains("@rules_python//python/runtime_env_toolchains:all")
 go_deps = use_extension("@bazel_gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
 use_repo(go_deps, "org_golang_google_grpc", "org_golang_google_grpc_examples", "org_golang_google_protobuf")
+
+# Configure Java dependencies
+# ===========================
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    artifacts = [
+        "com.google.auto.value:auto-value-annotations:1.8.2",
+        "com.google.auto.value:auto-value:1.8.2",
+        "com.google.code.findbugs:jsr305:3.0.2",
+        "com.google.flogger:flogger-system-backend:0.7.1",
+        "com.google.flogger:flogger:0.7.1",
+        "com.google.guava:failureaccess:1.0.2",
+        "com.google.guava:guava:31.0.1-jre",
+        "com.google.truth:truth:1.1.3",
+        "org.mockito:mockito-core:4.1.0",
+    ],
+    repositories = [
+        "https://maven.google.com/",
+        "https://jcenter.bintray.com/",
+        "https://repo1.maven.org/maven2",
+    ],
+)
+use_repo(
+    maven,
+    "maven",
+)
