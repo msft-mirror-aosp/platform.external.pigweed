@@ -48,12 +48,16 @@ describe('state', () => {
           logViewId: 'child-node-1',
           type: NodeType.View,
           columnData: mockColumnData,
+          viewTitle: 'Child Node 1',
+          wordWrap: true,
         }),
         new ViewNode({
           searchText: 'world',
           logViewId: 'child-node-2',
           type: NodeType.View,
           columnData: mockColumnData,
+          viewTitle: 'Child Node 2',
+          wordWrap: false,
         }),
       ],
     }),
@@ -64,8 +68,22 @@ describe('state', () => {
 
   describe('state service', () => {
     it('loads a stored state object', () => {
-      expect(stateService.loadState()).to.have.property('rootNode');
-      assert.lengthOf(stateService.loadState().rootNode.children, 2);
+      const loadedState = stateService.loadState();
+      expect(loadedState).to.have.property('rootNode');
+      assert.lengthOf(loadedState.rootNode.children, 2);
+    });
+
+    it('sets log view properties correctly', () => {
+      const loadedState = stateService.loadState();
+      const childNode1 = loadedState.rootNode.children[0];
+      const childNode2 = loadedState.rootNode.children[1];
+
+      expect(childNode1.logViewState.viewTitle).to.equal('Child Node 1');
+      expect(childNode1.logViewState.searchText).to.equal('hello');
+      expect(childNode1.logViewState.wordWrap).to.equal(true);
+      expect(childNode2.logViewState.viewTitle).to.equal('Child Node 2');
+      expect(childNode2.logViewState.searchText).to.equal('world');
+      expect(childNode2.logViewState.wordWrap).to.equal(false);
     });
   });
 });
