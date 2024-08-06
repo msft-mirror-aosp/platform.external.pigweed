@@ -12,11 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::all)]
 
-use b::RequiredB;
-
-#[derive(Copy, Clone, Default)]
-pub struct RequiredA {
-    pub required_b: RequiredB,
+#[derive(Copy, Clone, Debug, Default)]
+pub struct RequiredB {
+    pub value: i32,
 }
