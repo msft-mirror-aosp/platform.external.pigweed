@@ -152,7 +152,7 @@ def gn_quick_build_check(ctx: PresubmitContext):
     build.gn_gen(ctx)
 
 
-def _gn_combined_build_check_targets() -> Sequence[str]:
+def _gn_main_build_check_targets() -> Sequence[str]:
     build_targets = [
         'check_modules',
         *_at_all_optimization_levels('stm32f429i'),
@@ -161,6 +161,12 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
         'python.lint',
         'pigweed_pypi_distribution',
     ]
+
+    return build_targets
+
+
+def _gn_platform_build_check_targets() -> Sequence[str]:
+    build_targets = []
 
     # TODO: b/315998985 - Add docs back to Mac ARM build.
     if sys.platform != 'darwin' or platform.machine() != 'arm64':
@@ -198,6 +204,35 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
 
     return build_targets
 
+
+def _gn_combined_build_check_targets() -> Sequence[str]:
+    return [
+        *_gn_main_build_check_targets(),
+        *_gn_platform_build_check_targets(),
+    ]
+
+
+gn_main_build_check = PigweedGnGenNinja(
+    name='gn_main_build_check',
+    doc='Run most host.',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+        pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
+    ),
+    ninja_targets=_gn_main_build_check_targets(),
+)
+
+gn_platform_build_check = PigweedGnGenNinja(
+    name='gn_platform_build_check',
+    doc='Run any host platform-specific tests.',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+        pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
+    ),
+    ninja_targets=_gn_platform_build_check_targets(),
+)
 
 gn_combined_build_check = PigweedGnGenNinja(
     name='gn_combined_build_check',
@@ -1426,6 +1461,8 @@ OTHER_CHECKS = (
     gn_all,
     gn_clang_build,
     gn_combined_build_check,
+    gn_main_build_check,
+    gn_platform_build_check,
     module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
@@ -1455,9 +1492,7 @@ ARDUINO_PICO = (
 
 INTERNAL = (gn_mimxrt595_build, gn_mimxrt595_freertos_build)
 
-# The misc program differs from other_checks in that checks in the misc
-# program block CQ on Linux.
-MISC = (
+SAPPHIRE = (
     # keep-sorted: start
     gn_chre_googletest_nanopb_sapphire_build,
     # keep-sorted: end
@@ -1534,10 +1569,10 @@ PROGRAMS = Programs(
     fuzz=FUZZ,
     internal=INTERNAL,
     lintformat=LINTFORMAT,
-    misc=MISC,
     other_checks=OTHER_CHECKS,
     quick=QUICK,
     sanitizers=SANITIZERS,
+    sapphire=SAPPHIRE,
     security=SECURITY,
     # keep-sorted: end
 )
