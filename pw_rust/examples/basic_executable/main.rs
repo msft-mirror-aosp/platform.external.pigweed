@@ -14,6 +14,31 @@
 
 #![warn(clippy::all)]
 
-pub fn value() -> i32 {
-    1
+mod other;
+
+fn main() {
+    println!("Hello, Pigweed!");
+
+    // ensure we can run code from other modules in the main crate
+    println!("{}", other::foo());
+
+    // ensure we can run code from dependent libraries
+    println!("{}", a::RequiredA::default().required_b.value);
+    println!("{}", c::value());
+
+    println!("{}", proc_macro::fn_like_proc_macro!(123));
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_simple() {
+        let x = 3.14;
+        assert!(x > 0.0);
+    }
+
+    #[test]
+    fn test_other_module() {
+        assert!(a::RequiredA::default().required_b.value == 0);
+    }
 }
