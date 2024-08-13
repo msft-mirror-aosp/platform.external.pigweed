@@ -22,8 +22,8 @@ bazel_dep(name = "boringssl", version = "0.0.0-20240530-2db0eb3")
 bazel_dep(name = "freertos", version = "10.5.1.bcr.2")
 bazel_dep(name = "gazelle", version = "0.36.0", repo_name = "bazel_gazelle")
 bazel_dep(name = "nanopb", repo_name = "com_github_nanopb_nanopb")
-bazel_dep(name = "pico-sdk", version = "1.6.0-rc1")
-bazel_dep(name = "picotool")
+bazel_dep(name = "pico-sdk", version = "2.0.0")
+bazel_dep(name = "picotool", version = "2.0.0")
 bazel_dep(name = "platforms", version = "0.0.10")
 bazel_dep(name = "protobuf", version = "24.4", repo_name = "com_google_protobuf")
 bazel_dep(name = "rules_cc", version = "0.0.9")
@@ -68,13 +68,6 @@ git_override(
     remote = "https://github.com/nanopb/nanopb.git",
 )
 
-# TODO: https://pwbug.dev/354270165 - Add picotool to the BCR.
-git_override(
-    module_name = "picotool",
-    commit = "6cd88302465919ff2005c88494f4f8dafc3b207e",
-    remote = "https://github.com/armandomontanez/picotool",
-)
-
 # TODO: b/345806988 - remove this fork and update to upstream HEAD.
 git_override(
     module_name = "rules_go",
@@ -102,12 +95,19 @@ archive_override(
     urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.45.1/rules_rust-v0.45.1.tar.gz"],
 )
 
+# Transitive deps not in BCR
+# ==========================
+http_archive = use_repo_rule(
+    "@bazel_tools//tools/build_defs/repo:http.bzl",
+    "http_archive",
+)
+
 # Configure libusb
 # ================
 #
 # The rules_libusb lets you configure which actual libusb version to use.
 libusb = use_extension("@rules_libusb//:extensions.bzl", "libusb")
-libusb.source_release(min_version = "1.0.22")
+libusb.source_release(min_version = "1.0.27")
 use_repo(libusb, "libusb")
 
 # Configure C++ toolchains
@@ -138,6 +138,13 @@ cipd_repository(
     tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
 )
 
+cipd_repository(
+    name = "llvm_toolchain_device",
+    build_file = "@pw_toolchain//build_external:llvm_clang.BUILD",
+    path = "fuchsia/third_party/clang/${os}-${arch}",
+    tag = "git_revision:0dcada94bb1ae79f0edd91013038098c62a96b3b",
+)
+
 # Fetch linux sysroot for host builds.
 cipd_repository(
     name = "linux_sysroot",
@@ -154,12 +161,12 @@ cipd_repository(
 )
 
 register_toolchains(
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m0",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m0plus",
+    "//pw_toolchain:cc_toolchain_cortex-m0",
+    "//pw_toolchain:cc_toolchain_cortex-m0plus",
+    "//pw_toolchain:cc_toolchain_cortex-m33",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m3",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4+nofp",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33+nofp",
     "//pw_toolchain/host_clang:host_cc_toolchain_linux",
     "//pw_toolchain/host_clang:host_cc_toolchain_macos",
@@ -169,10 +176,6 @@ register_toolchains(
 # ============
 #
 # TODO: https://pwbug.dev/354742574 - Make it simpler to depend on probe-rs.
-http_archive = use_repo_rule(
-    "@bazel_tools//tools/build_defs/repo:http.bzl",
-    "http_archive",
-)
 
 http_archive(
     name = "probe-rs-tools-x86_64-unknown-linux-gnu",

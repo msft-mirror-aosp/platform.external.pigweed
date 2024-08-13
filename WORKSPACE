@@ -49,9 +49,9 @@ cipd_repository(
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-08-04.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8740567680888136625.
-    commit = "6833492d54bfa587f97f1a2ec2636c1013596782",
+    # ROLL: Last updated 2024-08-10.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8739954865728922337.
+    commit = "a61ac0c9305860e9d439ee153b5d5bb34c176fcd",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -184,25 +184,19 @@ new_git_repository(
 )
 
 # TODO: https://pwbug.dev/354749299 - Use the BCR version of mbedtls.
-git_repository(
+http_archive(
     name = "mbedtls",
     build_file = "//:third_party/mbedtls/mbedtls.BUILD.bazel",
-    # mbedtls-3.2.1 released 2022-07-12
-    commit = "869298bffeea13b205343361b7a7daf2b210e33d",
-    remote = "https://pigweed.googlesource.com/third_party/github/ARMmbed/mbedtls",
+    sha256 = "241c68402cef653e586be3ce28d57da24598eb0df13fcdea9d99bfce58717132",
+    strip_prefix = "mbedtls-2.28.8",
+    url = "https://github.com/Mbed-TLS/mbedtls/releases/download/v2.28.8/mbedtls-2.28.8.tar.bz2",
 )
 
 # TODO: https://pwbug.dev/354747966 - Update the BCR version of Emboss.
 git_repository(
     name = "com_google_emboss",
+    # LINT.IfChange(emboss)
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
-    # Also update emboss tag in pw_package/py/pw_package/packages/emboss.py
-    tag = "v2024.0718.173957",
-)
-
-git_repository(
-    name = "icu",
-    build_file = "//third_party/icu:icu.BUILD.bazel",
-    commit = "ef02cc27c0faceffc9345e11a35769ae92b836fb",
-    remote = "https://fuchsia.googlesource.com/third_party/icu",
+    tag = "v2024.0809.170004",
+    # LINT.ThenChange(/pw_package/py/pw_package/packages/emboss.py:emboss)
 )
