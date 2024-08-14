@@ -40,6 +40,7 @@ cc_library(
         "supplement_data.cc",
         "uuid.cc",
     ],
+    copts = ["-Wswitch-enum"],
     # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
     # builder issue is resolved.
     target_compatible_with = ["@platforms//os:linux"],
@@ -57,6 +58,7 @@ cc_library(
         "@pigweed//pw_random",
         "@pigweed//pw_span",
         "@pigweed//pw_string",
+        "@pigweed//pw_string:utf_codecs",
         "@pigweed//third_party/fuchsia:fit",
     ] + fuchsia_select({
         "@platforms//os:fuchsia": [
