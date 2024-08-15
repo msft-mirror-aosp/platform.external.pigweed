@@ -183,8 +183,6 @@ TypedPool
 .. doxygenclass:: pw::allocator::TypedPool
    :members:
 
-.. TODO: b/328076428 - Update FreeListHeap or remove
-
 ---------------------
 Forwarding Allocators
 ---------------------
@@ -305,6 +303,13 @@ AllocatorForTest
 ================
 .. doxygenclass:: pw::allocator::test::AllocatorForTest
    :members:
+
+.. _module-pw_allocator-api-synchronized_allocator_for_test:
+
+SynchronizedAllocatorForTest
+============================
+.. doxygenclass:: pw::allocator::test::SynchronizedAllocatorForTest
+    :members:
 
 .. _module-pw_allocator-api-test_harness:
 

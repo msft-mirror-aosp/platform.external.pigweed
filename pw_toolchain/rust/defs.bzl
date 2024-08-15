@@ -60,6 +60,10 @@ EXTRA_TARGETS = [
         "cpu": "armv7e-m",
         "triple": "thumbv7m-none-eabi",
     },
+    {
+        "cpu": "armv8-m",
+        "triple": "thumbv7m-none-eabi",  # TODO: https://pwbug.dev/352342797 - This should be some variant of ARMv8-M.
+    },
 ]
 
 CHANNELS = [
@@ -188,6 +192,7 @@ def _pw_rust_toolchain(
     rust_toolchain(
         name = "{}_rust_toolchain".format(name),
         binary_ext = "",
+        clippy_driver = "{}//:bin/clippy-driver".format(toolchain_repo),
         default_edition = "2021",
         dylib_ext = dylib_ext,
         exec_compatible_with = exec_compatible_with,

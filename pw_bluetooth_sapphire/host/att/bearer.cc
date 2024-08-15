@@ -16,6 +16,8 @@
 
 #include <cpp-string/string_printf.h>
 #include <lib/fit/defer.h>
+#include <pw_bytes/endian.h>
+#include <pw_preprocessor/compiler.h>
 
 #include <type_traits>
 
@@ -23,8 +25,6 @@
 #include "pw_bluetooth_sapphire/internal/host/common/slab_allocator.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
-
-#pragma clang diagnostic ignored "-Wswitch-enum"
 
 namespace bt::att {
 
@@ -43,6 +43,8 @@ sm::SecurityLevel CheckSecurity(ErrorCode ecode,
                                 const sm::SecurityProperties& security) {
   bool encrypted = (security.level() != sm::SecurityLevel::kNoSecurity);
 
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (ecode) {
     // "Insufficient Encryption" error code is specified for cases when the peer
     // is paired (i.e. a LTK or STK exists for it) but the link is not
@@ -75,6 +77,7 @@ sm::SecurityLevel CheckSecurity(ErrorCode ecode,
     default:
       break;
   }
+  PW_MODIFY_DIAGNOSTICS_POP();
 
   return sm::SecurityLevel::kNoSecurity;
 }
@@ -393,6 +396,8 @@ bool Bearer::SendInternal(ByteBufferPtr pdu, TransactionCallback callback) {
 
   TransactionQueue* tq = nullptr;
 
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (type) {
     case MethodType::kCommand:
     case MethodType::kNotification:
@@ -413,6 +418,7 @@ bool Bearer::SendInternal(ByteBufferPtr pdu, TransactionCallback callback) {
     default:
       BT_PANIC("unsupported opcode: %#.2x", reader.opcode());
   }
+  PW_MODIFY_DIAGNOSTICS_POP();
 
   BT_ASSERT_MSG(
       callback,
@@ -557,7 +563,8 @@ void Bearer::SendErrorResponse(OpCode request_opcode,
   PacketWriter packet(kErrorResponse, buffer.get());
   auto* payload = packet.mutable_payload<ErrorResponseParams>();
   payload->request_opcode = request_opcode;
-  payload->attribute_handle = htole16(attribute_handle);
+  payload->attribute_handle =
+      pw::bytes::ConvertOrderTo(cpp20::endian::little, attribute_handle);
   payload->error_code = error_code;
 
   chan_->Send(std::move(buffer));
@@ -588,7 +595,8 @@ void Bearer::HandleEndTransaction(TransactionQueue* tq,
       const auto& payload = packet.payload<ErrorResponseParams>();
       target_opcode = payload.request_opcode;
       const ErrorCode error_code = payload.error_code;
-      const Handle attr_in_error = le16toh(payload.attribute_handle);
+      const Handle attr_in_error = pw::bytes::ConvertOrderFrom(
+          cpp20::endian::little, payload.attribute_handle);
       error.emplace(std::pair(Error(error_code), attr_in_error));
     } else {
       bt_log(DEBUG, "att", "received malformed error response");
@@ -782,6 +790,8 @@ void Bearer::OnRxBFrame(ByteBufferPtr sdu) {
   }
 
   PacketReader packet(sdu.get());
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (GetMethodType(packet.opcode())) {
     case MethodType::kResponse:
       HandleEndTransaction(&request_queue_, packet);
@@ -804,6 +814,7 @@ void Bearer::OnRxBFrame(ByteBufferPtr sdu) {
       SendErrorResponse(packet.opcode(), 0, ErrorCode::kRequestNotSupported);
       break;
   }
+  PW_MODIFY_DIAGNOSTICS_POP();
 }
 
 }  // namespace bt::att

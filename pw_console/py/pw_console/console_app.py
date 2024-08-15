@@ -79,7 +79,7 @@ from pw_console.pw_ptpython_repl import PwPtPythonRepl
 from pw_console.python_logging import all_loggers
 from pw_console.quit_dialog import QuitDialog
 from pw_console.repl_pane import ReplPane
-from pw_console.style import generate_styles
+from pw_console.style import generate_styles, THEME_NAME_MAPPING
 from pw_console.test_mode import start_fake_logger
 from pw_console.widgets import (
     FloatingWindowPane,
@@ -94,7 +94,7 @@ _ROOT_LOG = logging.getLogger('')
 
 _SYSTEM_COMMAND_LOG = logging.getLogger('pw_console_system_command')
 
-_PW_CONSOLE_MODULE = 'pw_console'
+PW_CONSOLE_MODULE = 'pw_console'
 
 MAX_FPS = 30
 MIN_REDRAW_INTERVAL = (60.0 / MAX_FPS) / 60.0
@@ -190,10 +190,10 @@ class ConsoleApp:
 
         jinja_templates = {
             t: importlib.resources.read_text(
-                f'{_PW_CONSOLE_MODULE}.templates', t
+                f'{PW_CONSOLE_MODULE}.templates', t
             )
             for t in importlib.resources.contents(
-                f'{_PW_CONSOLE_MODULE}.templates'
+                f'{PW_CONSOLE_MODULE}.templates'
             )
             if t.endswith('.jinja')
         }
@@ -640,11 +640,11 @@ class ConsoleApp:
         if self.http_server is not None:
             return
 
-        html_package_path = f'{_PW_CONSOLE_MODULE}.html'
+        html_package_path = f'{PW_CONSOLE_MODULE}.html'
         self.html_files = {
             '/{}'.format(t): importlib.resources.read_text(html_package_path, t)
             for t in importlib.resources.contents(html_package_path)
-            if Path(t).suffix in ['.css', '.html', '.js']
+            if Path(t).suffix in ['.css', '.html', '.js', '.json']
         }
 
         server_thread = Thread(
@@ -680,13 +680,8 @@ class ConsoleApp:
             MenuItem(
                 'UI Themes',
                 children=[
-                    MenuItem('Default: Dark', self.set_ui_theme('dark')),
-                    MenuItem(
-                        'High Contrast', self.set_ui_theme('high-contrast-dark')
-                    ),
-                    MenuItem('Nord', self.set_ui_theme('nord')),
-                    MenuItem('Nord Light', self.set_ui_theme('nord-light')),
-                    MenuItem('Moonlight', self.set_ui_theme('moonlight')),
+                    MenuItem(theme.display_name, self.set_ui_theme(theme_name))
+                    for theme_name, theme in THEME_NAME_MAPPING.items()
                 ],
             ),
             MenuItem(
@@ -699,6 +694,10 @@ class ConsoleApp:
                     MenuItem(
                         'Code: pigweed-code-light',
                         self.set_code_theme('pigweed-code-light'),
+                    ),
+                    MenuItem(
+                        'Code: synthwave84',
+                        self.set_code_theme('synthwave84'),
                     ),
                     MenuItem('Code: material', self.set_code_theme('material')),
                     MenuItem(
@@ -1062,9 +1061,12 @@ class ConsoleApp:
         self.window_manager.add_pane(log_pane)
         return log_pane
 
-    def load_clean_config(self, config_file: Path) -> None:
+    def load_config(self, config_file: Path) -> None:
         self.prefs.reset_config()
         self.prefs.load_config_file(config_file)
+        # Re-apply user settings.
+        if self.prefs.user_file:
+            self.prefs.load_config_file(self.prefs.user_file)
 
         # Reset colors
         self.load_theme(self.prefs.ui_theme)

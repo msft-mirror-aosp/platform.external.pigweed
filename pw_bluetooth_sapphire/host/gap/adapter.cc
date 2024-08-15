@@ -14,9 +14,11 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/adapter.h"
 
-#include <endian.h>
 #include <pw_async/dispatcher.h>
 #include <pw_bluetooth/hci_commands.emb.h>
+#include <pw_bytes/endian.h>
+
+#include <cinttypes>
 
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
@@ -34,19 +36,21 @@
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/android_extended_low_energy_advertiser.h"
-#include "pw_bluetooth_sapphire/internal/host/hci/connection.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_advertiser.h"
+#include "pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_scanner.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/legacy_low_energy_advertiser.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/legacy_low_energy_scanner.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/low_energy_connector.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/sequential_command_runner.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel_manager.h"
+#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/transport.h"
 
 namespace bt::gap {
 
-namespace hci_android = hci_spec::vendor::android;
+namespace android_hci = hci_spec::vendor::android;
+namespace android_emb = pw::bluetooth::vendor::android_hci;
 
 static constexpr const char* kInspectLowEnergyDiscoveryManagerNodeName =
     "low_energy_discovery_manager";
@@ -121,6 +125,7 @@ class AdapterImpl final : public Adapter {
         AdvertisingData data,
         AdvertisingData scan_rsp,
         AdvertisingInterval interval,
+        bool extended_pdu,
         bool anonymous,
         bool include_tx_power_level,
         std::optional<ConnectableAdvertisingParameters> connectable,
@@ -155,6 +160,7 @@ class AdapterImpl final : public Adapter {
           std::move(scan_rsp),
           std::move(advertisement_connect_cb),
           interval,
+          extended_pdu,
           anonymous,
           include_tx_power_level,
           std::move(status_callback));
@@ -303,6 +309,11 @@ class AdapterImpl final : public Adapter {
       return adapter_->sdp_server_->UnregisterService(handle);
     }
 
+    std::vector<sdp::ServiceRecord> GetRegisteredServices(
+        RegistrationHandle handle) const override {
+      return adapter_->sdp_server_->GetRegisteredServices(handle);
+    }
+
     std::optional<ScoRequestHandle> OpenScoConnection(
         PeerId peer_id,
         const bt::StaticPacket<
@@ -346,6 +357,13 @@ class AdapterImpl final : public Adapter {
 
   void SetDeviceClass(DeviceClass dev_class,
                       hci::ResultFunction<> callback) override;
+
+  void GetSupportedDelayRange(
+      const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
+      pw::bluetooth::emboss::LogicalTransportType logical_transport_type,
+      pw::bluetooth::emboss::DataPathDirection direction,
+      const std::optional<std::vector<uint8_t>>& codec_configuration,
+      GetSupportedDelayRangeCallback cb) override;
 
   void set_auto_connect_callback(AutoConnectCallback callback) override {
     auto_conn_cb_ = std::move(callback);
@@ -402,36 +420,61 @@ class AdapterImpl final : public Adapter {
   // reconfigure the LE random address.
   bool IsLeRandomAddressChangeAllowed();
 
-  std::unique_ptr<hci::LowEnergyAdvertiser> CreateAdvertiser() {
-    constexpr hci_spec::LESupportedFeature feature =
-        hci_spec::LESupportedFeature::kLEExtendedAdvertising;
-    if (state().low_energy_state.IsFeatureSupported(feature)) {
-      bt_log(INFO,
-             "gap",
-             "controller supports extended advertising, using extended LE "
-             "advertiser");
-      return std::make_unique<hci::ExtendedLowEnergyAdvertiser>(hci_);
+  // Called when we receive an LE Get Vendor Capabilities Command Complete from
+  // the Controller
+  void ParseLEGetVendorCapabilitiesCommandComplete(
+      const hci::EmbossEventPacket& event);
+
+  std::unique_ptr<hci::LowEnergyAdvertiser> CreateAdvertiser(bool extended) {
+    if (extended) {
+      return std::make_unique<hci::ExtendedLowEnergyAdvertiser>(
+          hci_, state_.low_energy_state.max_advertising_data_length_);
     }
 
-    if (state().IsControllerFeatureSupported(
-            pw::bluetooth::Controller::FeaturesBits::
-                kAndroidVendorExtensions)) {
-      uint8_t max_advt =
-          state().android_vendor_capabilities.max_simultaneous_advertisements();
-      bt_log(INFO,
-             "gap",
-             "controller supports android vendor extensions, max simultaneous "
-             "advertisements: %d",
-             max_advt);
-      return std::make_unique<hci::AndroidExtendedLowEnergyAdvertiser>(
-          hci_, max_advt);
+    constexpr pw::bluetooth::Controller::FeaturesBits feature =
+        pw::bluetooth::Controller::FeaturesBits::kAndroidVendorExtensions;
+    if (!state().IsControllerFeatureSupported(feature)) {
+      return std::make_unique<hci::LegacyLowEnergyAdvertiser>(hci_);
     }
 
+    if (!state().android_vendor_capabilities) {
+      bt_log(
+          WARN,
+          "gap",
+          "controller supports android vendor extensions, but failed to parse "
+          "LEGetVendorCapabilitiesCommandComplete, using legacy advertiser");
+      return std::make_unique<hci::LegacyLowEnergyAdvertiser>(hci_);
+    }
+
+    uint8_t max_advt =
+        state().android_vendor_capabilities->max_simultaneous_advertisements();
     bt_log(INFO,
            "gap",
-           "controller supports only legacy advertising, using legacy LE "
-           "advertiser");
-    return std::make_unique<hci::LegacyLowEnergyAdvertiser>(hci_);
+           "controller supports android vendor extensions, max simultaneous "
+           "advertisements: %d",
+           max_advt);
+    return std::make_unique<hci::AndroidExtendedLowEnergyAdvertiser>(hci_,
+                                                                     max_advt);
+  }
+
+  std::unique_ptr<hci::LowEnergyConnector> CreateConnector(bool extended) {
+    return std::make_unique<hci::LowEnergyConnector>(
+        hci_,
+        le_address_manager_.get(),
+        dispatcher_,
+        fit::bind_member<&hci::LowEnergyAdvertiser::OnIncomingConnection>(
+            hci_le_advertiser_.get()),
+        extended);
+  }
+
+  std::unique_ptr<hci::LowEnergyScanner> CreateScanner(bool extended) {
+    if (extended) {
+      return std::make_unique<hci::ExtendedLowEnergyScanner>(
+          le_address_manager_.get(), hci_, dispatcher_);
+    }
+
+    return std::make_unique<hci::LegacyLowEnergyScanner>(
+        le_address_manager_.get(), hci_, dispatcher_);
   }
 
   // Must be initialized first so that child nodes can be passed to other
@@ -726,6 +769,67 @@ void AdapterImpl::SetDeviceClass(DeviceClass dev_class,
       });
 }
 
+void AdapterImpl::GetSupportedDelayRange(
+    const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
+    pw::bluetooth::emboss::LogicalTransportType logical_transport_type,
+    pw::bluetooth::emboss::DataPathDirection direction,
+    const std::optional<std::vector<uint8_t>>& codec_configuration,
+    GetSupportedDelayRangeCallback cb) {
+  if (!state_.IsCommandSupported(
+          /*octet=*/45,
+          hci_spec::SupportedCommand::kReadLocalSupportedControllerDelay)) {
+    bt_log(WARN,
+           "gap",
+           "read local supported controller delay command not supported");
+    cb(PW_STATUS_UNIMPLEMENTED, /*min=*/0, /*max=*/0);
+    return;
+  }
+  bt_log(INFO, "gap", "retrieving controller codec delay");
+  size_t codec_configuration_size = 0;
+  if (codec_configuration.has_value()) {
+    codec_configuration_size = codec_configuration->size();
+  }
+  size_t packet_size =
+      pw::bluetooth::emboss::ReadLocalSupportedControllerDelayCommand::
+          MinSizeInBytes() +
+      codec_configuration_size;
+  auto cmd_packet = hci::EmbossCommandPacket::New<
+      pw::bluetooth::emboss::ReadLocalSupportedControllerDelayCommandWriter>(
+      hci_spec::kReadLocalSupportedControllerDelay, packet_size);
+  auto cmd_view = cmd_packet.view_t();
+  cmd_view.codec_id().CopyFrom(
+      const_cast<bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>&>(
+          codec_id)
+          .view());
+  cmd_view.logical_transport_type().Write(logical_transport_type);
+  cmd_view.direction().Write(direction);
+  cmd_view.codec_configuration_length().Write(codec_configuration_size);
+  if (codec_configuration.has_value()) {
+    std::memcpy(cmd_view.codec_configuration().BackingStorage().data(),
+                codec_configuration->data(),
+                codec_configuration_size);
+  }
+
+  hci_->command_channel()->SendCommand(
+      std::move(cmd_packet),
+      [cb = std::move(cb)](auto /*id*/, const hci::EmbossEventPacket& event) {
+        auto view = event.view<
+            pw::bluetooth::emboss::
+                ReadLocalSupportedControllerDelayCommandCompleteEventView>();
+        if (hci_is_error(event,
+                         WARN,
+                         "gap",
+                         "read local supported controller delay failed")) {
+          cb(PW_STATUS_UNKNOWN, /*min=*/0, /*max=*/0);
+          return;
+        }
+        bt_log(INFO, "gap", "controller delay read successfully");
+        cb(PW_STATUS_OK,
+           view.min_controller_delay().Read(),
+           view.max_controller_delay().Read());
+      });
+}
+
 void AdapterImpl::AttachInspect(inspect::Node& parent, std::string name) {
   adapter_node_ = parent.CreateChild(name);
   UpdateInspectProperties();
@@ -760,6 +864,68 @@ void AdapterImpl::AttachInspect(inspect::Node& parent, std::string name) {
       metrics_bredr_node_, "request_discoverable_events");
   metrics_.bredr.open_l2cap_channel_requests.AttachInspect(
       metrics_bredr_node_, "open_l2cap_channel_requests");
+}
+
+void AdapterImpl::ParseLEGetVendorCapabilitiesCommandComplete(
+    const hci::EmbossEventPacket& event) {
+  // NOTE: There can be various versions of this command complete event
+  // sent by the Controller. As fields are added, the version_supported
+  // field is incremented to signify which fields are available. In a previous
+  // undertaking (pwrev.dev/203950, fxrev.dev/1029396), we attempted to use
+  // Emboss' conditional fields feature to define fields based on the version
+  // they are included in. However, in practice, we've found vendors sometimes
+  // send the wrong number of bytes required for the version they claim to send.
+  // To tolerate these types of errors, we simply define all the fields in
+  // Emboss. If we receive a response smaller than what we expect, we use what
+  // the vendor sends, and fill the rest with zero to disable the feature. If we
+  // receive a response larger than what we expect, we read up to what we
+  // support and drop the rest of the data.
+  StaticPacket<android_emb::LEGetVendorCapabilitiesCommandCompleteEventView>
+      packet;
+  packet.SetToZeros();
+  size_t copy_size = std::min(packet.data().size(), event.size());
+  packet.mutable_data().Write(event.data().data(), copy_size);
+
+  auto params = packet.view();
+  state_.android_vendor_capabilities = AndroidVendorCapabilities::New(params);
+
+  size_t expected_size = 0;
+  uint8_t major = params.version_supported().major_number().Read();
+  uint8_t minor = params.version_supported().minor_number().Read();
+
+  if (major == 0 && minor == 0) {
+    // The version_supported field was only introduced into the command in
+    // Version 0.95. Controllers that use the base version, Version 0.55,
+    // don't have the version_supported field.
+    expected_size = android_emb::LEGetVendorCapabilitiesCommandCompleteEvent::
+        version_0_55_size();
+  } else if (major == 0 && minor == 95) {
+    expected_size = android_emb::LEGetVendorCapabilitiesCommandCompleteEvent::
+        version_0_95_size();
+  } else if (major == 0 && minor == 96) {
+    expected_size = android_emb::LEGetVendorCapabilitiesCommandCompleteEvent::
+        version_0_96_size();
+  } else if (major == 0 && minor == 98) {
+    expected_size = android_emb::LEGetVendorCapabilitiesCommandCompleteEvent::
+        version_0_98_size();
+  } else if (major == 1 && minor == 03) {
+    expected_size = android_emb::LEGetVendorCapabilitiesCommandCompleteEvent::
+        version_1_03_size();
+  } else if (major == 1 && minor == 04) {
+    expected_size = android_emb::LEGetVendorCapabilitiesCommandCompleteEvent::
+        version_1_04_size();
+  }
+
+  if (event.size() != expected_size) {
+    bt_log(WARN,
+           "gap",
+           "LE Get Vendor Capabilities Command Complete, received %zu bytes, "
+           "expected %zu bytes, version: %d.%d",
+           event.size(),
+           expected_size,
+           major,
+           minor);
+  }
 }
 
 void AdapterImpl::InitializeStep1() {
@@ -837,9 +1003,9 @@ void AdapterImpl::InitializeStep1() {
            "controller supports android hci extensions, querying exact feature "
            "set");
     init_seq_runner_->QueueCommand(
-        hci::EmbossCommandPacket::New<pw::bluetooth::vendor::android_hci::
-                                          LEGetVendorCapabilitiesCommandView>(
-            hci_android::kLEGetVendorCapabilities),
+        hci::EmbossCommandPacket::New<
+            android_emb::LEGetVendorCapabilitiesCommandView>(
+            android_hci::kLEGetVendorCapabilities),
         [this](const hci::EmbossEventPacket& event) {
           if (hci_is_error(
                   event,
@@ -849,10 +1015,7 @@ void AdapterImpl::InitializeStep1() {
             return;
           }
 
-          auto params =
-              event.view<pw::bluetooth::vendor::android_hci::
-                             LEGetVendorCapabilitiesCommandCompleteEventView>();
-          state_.android_vendor_capabilities.Initialize(params);
+          ParseLEGetVendorCapabilitiesCommandComplete(event);
         });
   }
 
@@ -909,16 +1072,19 @@ void AdapterImpl::InitializeStep2() {
           auto params =
               cmd_complete
                   .return_params<hci_spec::ReadBufferSizeReturnParams>();
-          uint16_t acl_mtu = le16toh(params->hc_acl_data_packet_length);
-          uint16_t acl_max_count =
-              le16toh(params->hc_total_num_acl_data_packets);
+          uint16_t acl_mtu = pw::bytes::ConvertOrderFrom(
+              cpp20::endian::little, params->hc_acl_data_packet_length);
+          uint16_t acl_max_count = pw::bytes::ConvertOrderFrom(
+              cpp20::endian::little, params->hc_total_num_acl_data_packets);
           if (acl_mtu && acl_max_count) {
             state_.bredr_data_buffer_info =
                 hci::DataBufferInfo(acl_mtu, acl_max_count);
           }
-          uint16_t sco_mtu = le16toh(params->hc_synchronous_data_packet_length);
-          uint16_t sco_max_count =
-              le16toh(params->hc_total_num_synchronous_data_packets);
+          uint16_t sco_mtu = pw::bytes::ConvertOrderFrom(
+              cpp20::endian::little, params->hc_synchronous_data_packet_length);
+          uint16_t sco_max_count = pw::bytes::ConvertOrderFrom(
+              cpp20::endian::little,
+              params->hc_total_num_synchronous_data_packets);
           if (sco_mtu && sco_max_count) {
             state_.sco_buffer_info =
                 hci::DataBufferInfo(sco_mtu, sco_max_count);
@@ -941,7 +1107,8 @@ void AdapterImpl::InitializeStep2() {
         auto params = cmd_complete.return_params<
             hci_spec::LEReadLocalSupportedFeaturesReturnParams>();
         state_.low_energy_state.supported_features_ =
-            le64toh(params->le_features);
+            pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                        params->le_features);
       });
 
   // HCI_LE_Read_Supported_States
@@ -959,8 +1126,45 @@ void AdapterImpl::InitializeStep2() {
         auto params =
             cmd_complete
                 .return_params<hci_spec::LEReadSupportedStatesReturnParams>();
-        state_.low_energy_state.supported_states_ = le64toh(params->le_states);
+        state_.low_energy_state.supported_states_ = pw::bytes::ConvertOrderFrom(
+            cpp20::endian::little, params->le_states);
       });
+
+  if (state_.IsCommandSupported(
+          /*octet=*/36,
+          hci_spec::SupportedCommand::kLEReadMaximumAdvertisingDataLength)) {
+    // HCI_LE_Read_Maximum_Advertising_Data_Length
+    init_seq_runner_->QueueCommand(
+        hci::EmbossCommandPacket::New<
+            pw::bluetooth::emboss::LEReadMaxAdvertisingDataLengthCommandView>(
+            hci_spec::kLEReadMaximumAdvertisingDataLength),
+        [this](const hci::EmbossEventPacket& cmd_complete) {
+          if (hci_is_error(cmd_complete,
+                           WARN,
+                           "gap",
+                           "LE read maximum advertising data length failed")) {
+            return;
+          }
+
+          auto params = cmd_complete.view<
+              pw::bluetooth::emboss::
+                  LEReadMaximumAdvertisingDataLengthCommandCompleteEventView>();
+          state_.low_energy_state.max_advertising_data_length_ =
+              params.max_advertising_data_length().Read();
+          bt_log(INFO,
+                 "gap",
+                 "maximum advertising data length: %d",
+                 state_.low_energy_state.max_advertising_data_length_);
+        });
+  } else {
+    bt_log(INFO,
+           "gap",
+           "LE read maximum advertising data command not supported, "
+           "defaulting to legacy maximum: %zu",
+           hci_spec::kMaxLEAdvertisingDataLength);
+    state_.low_energy_state.max_advertising_data_length_ =
+        hci_spec::kMaxLEAdvertisingDataLength;
+  }
 
   if (state_.IsCommandSupported(
           /*octet=*/41, hci_spec::SupportedCommand::kLEReadBufferSizeV2)) {
@@ -1007,7 +1211,8 @@ void AdapterImpl::InitializeStep2() {
           auto params =
               cmd_complete
                   .return_params<hci_spec::LEReadBufferSizeV1ReturnParams>();
-          uint16_t mtu = le16toh(params->hc_le_acl_data_packet_length);
+          uint16_t mtu = pw::bytes::ConvertOrderFrom(
+              cpp20::endian::little, params->hc_le_acl_data_packet_length);
           uint8_t max_count = params->hc_total_num_le_acl_data_packets;
           if (mtu && max_count) {
             state_.low_energy_state.acl_data_buffer_info_ =
@@ -1165,6 +1370,29 @@ void AdapterImpl::InitializeStep3() {
            sco_flow_control_supported);
   }
 
+  const hci::DataBufferInfo iso_data_buffer_info =
+      state_.low_energy_state.iso_data_buffer_info();
+  if (iso_data_buffer_info.IsAvailable()) {
+    bt_log(INFO,
+           "gap",
+           "ISO data buffer information available (size: %zu, count: %zu)",
+           iso_data_buffer_info.max_data_length(),
+           iso_data_buffer_info.max_num_packets());
+    if (hci_->InitializeIsoDataChannel(iso_data_buffer_info)) {
+      bt_log(INFO, "gap", "IsoDataChannel initialized successfully");
+    } else {
+      bt_log(WARN,
+             "gap",
+             "Failed to initialize IsoDataChannel, proceeding without HCI ISO "
+             "support");
+    }
+  } else {
+    bt_log(
+        INFO,
+        "gap",
+        "No ISO data buffer information available, not starting data channel");
+  }
+
   hci_->AttachInspect(adapter_node_);
 
   // Create ChannelManager, if we haven't been provided one for testing. Doing
@@ -1244,16 +1472,18 @@ void AdapterImpl::InitializeStep4() {
       hci_->command_channel()->AsWeakPtr(),
       dispatcher_);
 
-  // Initialize the HCI adapters.
-  hci_le_advertiser_ = CreateAdvertiser();
-  hci_le_connector_ = std::make_unique<hci::LowEnergyConnector>(
-      hci_,
-      le_address_manager_.get(),
-      dispatcher_,
-      fit::bind_member<&hci::LowEnergyAdvertiser::OnIncomingConnection>(
-          hci_le_advertiser_.get()));
-  hci_le_scanner_ = std::make_unique<hci::LegacyLowEnergyScanner>(
-      le_address_manager_.get(), hci_, dispatcher_);
+  // Initialize the HCI adapters. Note: feature support for extended
+  // scanning, connections, etc are all grouped under the extended advertising
+  // feature flag.
+  bool extended = state().low_energy_state.IsFeatureSupported(
+      hci_spec::LESupportedFeature::kLEExtendedAdvertising);
+  bt_log(INFO,
+         "gap",
+         "controller support for extended operations: %s",
+         extended ? "yes" : "no");
+  hci_le_advertiser_ = CreateAdvertiser(extended);
+  hci_le_connector_ = CreateConnector(extended);
+  hci_le_scanner_ = CreateScanner(extended);
 
   // Initialize the LE manager objects
   le_discovery_manager_ = std::make_unique<LowEnergyDiscoveryManager>(
@@ -1272,6 +1502,7 @@ void AdapterImpl::InitializeStep4() {
       gatt_,
       le_discovery_manager_->GetWeakPtr(),
       sm::SecurityManager::Create,
+      state(),
       dispatcher_);
   le_connection_manager_->AttachInspect(
       adapter_node_, kInspectLowEnergyConnectionManagerNodeName);
@@ -1391,7 +1622,10 @@ void AdapterImpl::InitQueueReadLMPFeatureMaskPage(uint8_t page) {
           }
           auto params = cmd_complete.return_params<
               hci_spec::ReadLocalSupportedFeaturesReturnParams>();
-          state_.features.SetPage(page, le64toh(params->lmp_features));
+          state_.features.SetPage(
+              page,
+              pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                          params->lmp_features));
         });
     return;
   }
@@ -1422,7 +1656,10 @@ void AdapterImpl::InitQueueReadLMPFeatureMaskPage(uint8_t page) {
           }
           auto params = cmd_complete.return_params<
               hci_spec::ReadLocalExtendedFeaturesReturnParams>();
-          state_.features.SetPage(page, le64toh(params->extended_lmp_features));
+          state_.features.SetPage(
+              page,
+              pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                          params->extended_lmp_features));
           max_lmp_feature_page_index_ = params->maximum_page_number;
         });
   }
@@ -1455,7 +1692,7 @@ void AdapterImpl::UpdateInspectProperties() {
       adapter_node_.CreateString("lmp_features", state_.features.ToString());
 
   auto le_features = bt_lib_cpp_string::StringPrintf(
-      "0x%016lx", state_.low_energy_state.supported_features());
+      "0x%016" PRIx64, state_.low_energy_state.supported_features());
   inspect_properties_.le_features =
       adapter_node_.CreateString("le_features", le_features);
 }

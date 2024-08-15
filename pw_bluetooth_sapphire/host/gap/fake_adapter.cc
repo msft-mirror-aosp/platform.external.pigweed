@@ -93,16 +93,24 @@ void FakeAdapter::FakeLowEnergy::Connect(
     LowEnergyConnectionOptions connection_options) {
   connections_[peer_id] = Connection{peer_id, connection_options};
 
+  auto accept_cis_cb = [](iso::CigCisIdentifier, iso::CisEstablishedCallback) {
+    return iso::AcceptCisStatus::kSuccess;
+  };
   auto bondable_cb = [connection_options]() {
     return connection_options.bondable_mode;
   };
   auto security_cb = []() { return sm::SecurityProperties(); };
+  auto role_cb = []() {
+    return pw::bluetooth::emboss::ConnectionRole::CENTRAL;
+  };
   auto handle = std::make_unique<LowEnergyConnectionHandle>(
       peer_id,
       /*handle=*/1,
       /*release_cb=*/[](auto) {},
+      std::move(accept_cis_cb),
       std::move(bondable_cb),
-      std::move(security_cb));
+      std::move(security_cb),
+      std::move(role_cb));
   callback(fit::ok(std::move(handle)));
 }
 
@@ -114,6 +122,7 @@ void FakeAdapter::FakeLowEnergy::StartAdvertising(
     AdvertisingData data,
     AdvertisingData scan_rsp,
     AdvertisingInterval interval,
+    bool extended_pdu,
     bool anonymous,
     bool include_tx_power_level,
     std::optional<ConnectableAdvertisingParameters> connectable,
@@ -125,6 +134,7 @@ void FakeAdapter::FakeLowEnergy::StartAdvertising(
                               .scan_rsp = std::move(scan_rsp),
                               .connectable = std::move(connectable),
                               .interval = interval,
+                              .extended_pdu = extended_pdu,
                               .anonymous = anonymous,
                               .include_tx_power_level = include_tx_power_level};
   AdvertisementId adv_id = next_advertisement_id_;
@@ -153,6 +163,10 @@ FakeAdapter::FakeBrEdr::RegisterService(std::vector<sdp::ServiceRecord> records,
   return handle;
 }
 
+bool FakeAdapter::FakeBrEdr::UnregisterService(RegistrationHandle handle) {
+  return registered_services_.erase(handle);
+}
+
 void FakeAdapter::SetLocalName(std::string name,
                                hci::ResultFunction<> callback) {
   local_name_ = name;
@@ -163,6 +177,19 @@ void FakeAdapter::SetDeviceClass(DeviceClass dev_class,
                                  hci::ResultFunction<> callback) {
   device_class_ = dev_class;
   callback(fit::ok());
+}
+
+void FakeAdapter::GetSupportedDelayRange(
+    const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
+    pw::bluetooth::emboss::LogicalTransportType logical_transport_type,
+    pw::bluetooth::emboss::DataPathDirection direction,
+    const std::optional<std::vector<uint8_t>>& codec_configuration,
+    GetSupportedDelayRangeCallback cb) {
+  cb(PW_STATUS_OK,
+     0,
+     pw::bluetooth::emboss::
+         ReadLocalSupportedControllerDelayCommandCompleteEvent::
+             max_delay_usecs());
 }
 
 BrEdrConnectionManager::SearchId FakeAdapter::FakeBrEdr::AddServiceSearch(

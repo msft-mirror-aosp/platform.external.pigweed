@@ -112,7 +112,6 @@ pw_add_library(pw_rpc.common STATIC
     public/pw_rpc/channel.h
     public/pw_rpc/internal/call.h
     public/pw_rpc/internal/call_context.h
-    public/pw_rpc/internal/channel.h
     public/pw_rpc/internal/channel_list.h
     public/pw_rpc/internal/encoding_buffer.h
     public/pw_rpc/internal/endpoint.h
@@ -132,6 +131,7 @@ pw_add_library(pw_rpc.common STATIC
     pw_bytes
     pw_containers.intrusive_list
     pw_function
+    pw_polyfill
     pw_rpc.config
     pw_rpc.protos.pwpb
     pw_span
