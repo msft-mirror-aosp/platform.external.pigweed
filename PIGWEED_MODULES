@@ -8,6 +8,7 @@ pw_assert
 pw_assert_basic
 pw_assert_log
 pw_assert_tokenized
+pw_assert_trap
 pw_assert_zephyr
 pw_async
 pw_async2
@@ -41,6 +42,7 @@ pw_chrono_threadx
 pw_chrono_zephyr
 pw_cli
 pw_clock_tree
+pw_clock_tree_mcuxpresso
 pw_compilation_testing
 pw_config_loader
 pw_console

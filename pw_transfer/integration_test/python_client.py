@@ -22,8 +22,8 @@ from google.protobuf import text_format
 from pw_hdlc.rpc import HdlcRpcClient, default_channels, SocketReader
 from pw_status import Status
 import pw_transfer
-from pigweed.pw_transfer import transfer_pb2
-from pigweed.pw_transfer.integration_test import config_pb2
+from pw_transfer import transfer_pb2
+from pw_transfer.integration_test import config_pb2
 
 _LOG = logging.getLogger('pw_transfer_integration_test_python_client')
 _LOG.level = logging.DEBUG
@@ -35,7 +35,7 @@ HOSTNAME: str = "localhost"
 def _perform_transfer_action(
     action: config_pb2.TransferAction, transfer_manager: pw_transfer.Manager
 ) -> bool:
-    """Performs the transfer action and returns Truen on success."""
+    """Performs the transfer action and returns True on success."""
     protocol_version = pw_transfer.ProtocolVersion(int(action.protocol_version))
 
     # Default to the latest protocol version if none is specified.

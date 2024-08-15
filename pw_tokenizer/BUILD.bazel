@@ -13,6 +13,7 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_binary",
@@ -73,7 +74,7 @@ pw_linker_script(
 
 cc_library(
     name = "test_backend",
-    visibility = ["@pigweed//targets:__pkg__"],
+    visibility = ["//targets:__pkg__"],
 )
 
 cc_library(
@@ -189,6 +190,11 @@ pw_cc_test(
         "pw_tokenizer_private/tokenized_string_decoding_test_data.h",
         "pw_tokenizer_private/varint_decoding_test_data.h",
     ],
+    # TODO: https://pwbug.dev/346628514 - Fix this for rp2040
+    target_compatible_with = select({
+        "//pw_build/constraints/chipset:rp2040": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":decoder",
         "//pw_unit_test",
@@ -283,6 +289,8 @@ pw_cc_test(
         "tokenize_test.cc",
         "tokenize_test_c.c",
     ],
+    # TODO: b/344050496 - get working on rp2040 and stm32f429i
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":pw_tokenizer",
         "//pw_preprocessor",

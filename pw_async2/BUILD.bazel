@@ -13,6 +13,11 @@
 # the License.
 
 load(
+    "//pw_build:compatibility.bzl",
+    "incompatible_with_mcu",
+    "minimum_cxx_20",
+)
+load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
 )
@@ -29,9 +34,9 @@ cc_library(
     ],
     includes = ["public"],
     deps = [
+        "//pw_polyfill",
+        "//pw_string:to_string",
         "//third_party/fuchsia:stdcompat",
-        "@pigweed//pw_polyfill",
-        "@pigweed//pw_string:to_string",
     ],
 )
 
@@ -40,7 +45,7 @@ pw_cc_test(
     srcs = ["poll_test.cc"],
     deps = [
         ":poll",
-        "@pigweed//pw_result",
+        "//pw_result",
     ],
 )
 
@@ -59,12 +64,13 @@ cc_library(
     ],
     deps = [
         ":poll",
-        "@pigweed//pw_assert",
-        "@pigweed//pw_chrono:system_clock",
-        "@pigweed//pw_containers:vector",
-        "@pigweed//pw_sync:interrupt_spin_lock",
-        "@pigweed//pw_sync:lock_annotations",
-        "@pigweed//pw_toolchain:no_destructor",
+        "//pw_assert",
+        "//pw_chrono:system_clock",
+        "//pw_containers:vector",
+        "//pw_sync:interrupt_spin_lock",
+        "//pw_sync:lock_annotations",
+        "//pw_sync:mutex",
+        "//pw_toolchain:no_destructor",
     ],
 )
 
@@ -89,7 +95,7 @@ label_flag(
 
 cc_library(
     name = "dispatcher_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
+    visibility = ["//targets:__pkg__"],
     deps = select({
         "@platforms//os:linux": ["//pw_async2_epoll:dispatcher"],
         "//conditions:default": ["//pw_async2_basic:dispatcher"],
@@ -105,11 +111,13 @@ pw_cc_test(
 pw_cc_test(
     name = "dispatcher_thread_test",
     srcs = ["dispatcher_thread_test.cc"],
+    # TODO: b/343776738 - update to run on all compatible devices
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":dispatcher",
-        "@pigweed//pw_function",
-        "@pigweed//pw_thread:sleep",
-        "@pigweed//pw_thread:thread",
+        "//pw_function",
+        "//pw_thread:sleep",
+        "//pw_thread:thread",
     ],
 )
 
@@ -182,7 +190,7 @@ cc_library(
     includes = [
         "public",
     ],
-    tags = ["requires_cxx_20"],
+    target_compatible_with = minimum_cxx_20(),
     deps = [
         ":dispatcher",
         "//pw_allocator:allocator",
@@ -192,9 +200,35 @@ cc_library(
 pw_cc_test(
     name = "coro_test",
     srcs = ["coro_test.cc"],
-    tags = ["requires_cxx_20"],
     deps = [
         ":coro",
+        ":dispatcher",
+        "//pw_allocator:null_allocator",
+        "//pw_allocator:testing",
+    ],
+)
+
+cc_library(
+    name = "coro_or_else_task",
+    hdrs = [
+        "public/pw_async2/coro_or_else_task.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":coro",
+        ":dispatcher",
+        "//pw_function",
+    ],
+)
+
+pw_cc_test(
+    name = "coro_or_else_task_test",
+    srcs = ["coro_or_else_task_test.cc"],
+    deps = [
+        ":coro",
+        ":coro_or_else_task",
         ":dispatcher",
         "//pw_allocator:null_allocator",
         "//pw_allocator:testing",

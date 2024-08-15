@@ -19,10 +19,9 @@
 /* Make the "Pigweed" logo text. One day, this will be an image. */
 .sidebar-brand {
   font-size: 2em;
-  font-family: 'Inconsolata', monospace;
+  font-family: "Lato", sans-serif;
   font-weight: bold;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-style: italic;
 }
 
 .sidebar-brand-text {
@@ -41,7 +40,31 @@
   scroll-behavior: auto !important;
 }
 
+/********** Focus behavior ***********/
+
+/* (a11y) Provide clear visual indication that an element is focused:
+ * https://www.w3.org/WAI/WCAG21/Understanding/focus-visible.html
+ *
+ * This rule should be applied to all focusable HTML elements:
+ * https://stackoverflow.com/a/1600194 */
+a:focus, area:focus, button:focus, input:focus, select:focus, textarea:focus {
+  outline: 3px solid var(--color-text-selection-background);
+}
+
 /********** General document coloring ***********/
+
+code, pre {
+  font-family: "Roboto Mono", monospace;
+}
+
+div, li, p {
+  font-family: "Noto Sans", sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Lato", sans-serif;
+  font-weight: bold;
+}
 
 /* Code blocks inside block quotes end up getting italicized. */
 blockquote {
@@ -257,4 +280,35 @@ div.font-monospace {
 .sales-pitch-cta-secondary .sd-card-title {
   border-bottom: 3px solid var(--color-sidebar-link-text);
   padding-bottom: 0.5rem;
+}
+
+/* Position the "skip to main content" anchor offscreen by default.
+ * https://pwbug.dev/344643289 */
+#skip {
+  position: absolute;
+  left: -1000%;
+  top: -1000%;
+  background-color: var(--color-background-primary);
+}
+
+/* Show the "skip to main content" anchor at the top-left of the viewport when
+ * it's focused. */
+#skip:focus {
+  left: 10px;
+  top: 10px;
+  z-index: 1000;
+}
+
+.announcement {
+  background-color: #00a100;
+  color: var(--sd-color-light);
+  font-style: italic;
+  font-weight: bold;
+  a {
+    text-decoration: none;
+  }
+  a:hover {
+    color: var(--sd-color-light);
+    text-decoration: underline;
+  }
 }

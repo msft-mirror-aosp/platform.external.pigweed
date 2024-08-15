@@ -12,14 +12,6 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-/*
- * Copyright 2018 - 2022 NXP
- * All rights reserved.
- *
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
-
 #include "pw_stream_uart_mcuxpresso/dma_stream.h"
 
 #include "pw_assert/check.h"
@@ -29,6 +21,10 @@ namespace pw::stream {
 
 // Deinitialize the DMA channels and USART.
 void UartDmaStreamMcuxpresso::Deinit() {
+  if (!initialized_) {
+    return;
+  }
+
   // We need to touch register space that can be shared
   // among several DMA peripherals, hence we need to access
   // it exclusively. We achieve exclusive access on non-SMP systems as
@@ -41,14 +37,10 @@ void UartDmaStreamMcuxpresso::Deinit() {
   interrupt_lock_.unlock();
 
   USART_Deinit(config_.usart_base);
+  clock_tree_element_controller_.Release().IgnoreError();
 }
 
-UartDmaStreamMcuxpresso::~UartDmaStreamMcuxpresso() {
-  if (!initialized_) {
-    return;
-  }
-  Deinit();
-}
+UartDmaStreamMcuxpresso::~UartDmaStreamMcuxpresso() { Deinit(); }
 
 // Initialize the USART and DMA channels based on the configuration
 // specified during object creation.
@@ -74,8 +66,10 @@ Status UartDmaStreamMcuxpresso::Init(uint32_t srcclk) {
   defconfig_.enableTx = true;
   defconfig_.enableRx = true;
 
+  PW_TRY(clock_tree_element_controller_.Acquire());
   status_t status = USART_Init(config_.usart_base, &defconfig_, srcclk);
   if (status != kStatus_Success) {
+    clock_tree_element_controller_.Release().IgnoreError();
     return Status::Internal();
   }
 
@@ -87,14 +81,13 @@ Status UartDmaStreamMcuxpresso::Init(uint32_t srcclk) {
   // we cannot get descheduled until we release the interrupt_lock_.
   interrupt_lock_.lock();
 
+  // Temporarily enable clock to inputmux, so that RX and TX DMA requests can
+  // get enabled.
   INPUTMUX_Init(INPUTMUX);
-  // Enable DMA request.
   INPUTMUX_EnableSignal(
       INPUTMUX, config_.rx_input_mux_dmac_ch_request_en, true);
   INPUTMUX_EnableSignal(
       INPUTMUX, config_.tx_input_mux_dmac_ch_request_en, true);
-  // Turnoff clock to inputmux to save power. Clock is only needed to make
-  // changes.
   INPUTMUX_Deinit(INPUTMUX);
 
   DMA_EnableChannel(config_.dma_base, config_.tx_dma_ch);
@@ -475,7 +468,7 @@ StatusWithSize UartDmaStreamMcuxpresso::DoRead(ByteSpan data) {
 // the USART TX channel.
 Status UartDmaStreamMcuxpresso::DoWrite(ConstByteSpan data) {
   if (data.size() == 0) {
-    return Status::InvalidArgument();
+    return OkStatus();
   }
 
   bool was_busy = tx_data_.busy.exchange(true);

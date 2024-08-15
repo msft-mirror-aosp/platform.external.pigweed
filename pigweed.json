@@ -127,6 +127,60 @@
         "pw_emu/qemu-netduinoplus2.json",
         "pw_emu/renode-stm32f4_discovery.json"
       ]
+    },
+    "bazel_presubmit": {
+      "remote_cache": true,
+      "upload_local_results": true,
+      "programs": {
+        "default": [
+          [
+            "build",
+            "//..."
+          ],
+          [
+            "test",
+            "//..."
+          ],
+          [
+            "test",
+            "--//pw_unit_test:backend=//pw_unit_test:googletest",
+            "--//pw_unit_test:main=@com_google_googletest//:gtest_main",
+            "--platforms=//pw_unit_test:googletest_platform",
+            "//..."
+          ],
+          [
+            "build",
+            "--aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect",
+            "--output_groups=clippy_checks",
+            "//..."
+          ]
+        ],
+        "integration": [
+          [
+            "test",
+            "--build_tag_filters=integration",
+            "--test_tag_filters=integration",
+            "//..."
+          ]
+        ],
+        "sanitizers": [
+          [
+            "test",
+            "--config=asan",
+            "//..."
+          ],
+          [
+            "test",
+            "--config=tsan",
+            "//..."
+          ],
+          [
+            "test",
+            "--config=ubsan",
+            "//..."
+          ]
+        ]
+      }
     }
   }
 }

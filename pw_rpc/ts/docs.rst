@@ -1,12 +1,13 @@
 .. _module-pw_rpc-ts:
 
--------------------------
-pw_rpc Web Module
--------------------------
-The ``pw_rpc`` module makes it possible to call Pigweed RPCs from
-TypeScript or JavaScript. The module includes client library to facilitate handling RPCs.
+-----------------
+TypeScript client
+-----------------
+.. pigweed-module-subpage::
+   :name: pw_rpc
 
-This module is currently a work in progress.
+The ``pw_rpc`` module makes it possible to call Pigweed RPCs from
+TypeScript. The module includes client library to facilitate handling RPCs.
 
 Creating an RPC Client
 ======================
@@ -156,8 +157,8 @@ Client Streaming RPC
    // Send three more requests, end the stream, and wait for a response.
    const timeout = 2000 // 2 seconds
    request.finishAndWait([request, request, request], timeout)
-       .then(() => {
-         console.log('Client stream finished successfully');
+       .then((status, response) => {
+         console.log(`Client stream finished successfully: ${response}`);
        })
        .catch((reason) => {
          console.log(`Client stream error: ${reason}`);

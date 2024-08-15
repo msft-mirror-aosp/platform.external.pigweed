@@ -13,9 +13,10 @@
 // the License.
 
 #include <cstdint>
+#include <utility>
 
 #include "pw_bloat/bloat_this_binary.h"
-#include "pw_bluetooth_proxy/common.h"
+#include "pw_bluetooth_proxy/h4_packet.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
 #include "pw_span/span.h"
 
@@ -23,28 +24,29 @@ namespace pw::bluetooth::proxy {
 
 namespace {
 
-// Example for docs.rst.
 void UsePassthroughProxy() {
   // Populate H4 buffer to send towards controller.
   std::array<uint8_t, 20> h4_array_from_host{0};
-  H4HciPacket h4_span_from_host = pw::span(h4_array_from_host);
+  H4PacketWithH4 h4_span_from_host = {pw::span(h4_array_from_host)};
 
   // Populate H4 buffer to send towards host.
-  std::array<uint8_t, 20> h4_array_from_controller{0};
-  H4HciPacket h4_span_from_controller = pw::span(h4_array_from_controller);
+  std::array<uint8_t, 19> hci_array_from_controller{0};
+  H4PacketWithHci h4_span_from_controller = {
+      emboss::H4PacketType::COMMAND, pw::span(hci_array_from_controller)};
 
-  H4HciPacketSendFn containerSendToHostFn(
-      []([[maybe_unused]] H4HciPacket packet) {});
+  pw::Function<void(H4PacketWithHci && packet)> container_send_to_host_fn(
+      []([[maybe_unused]] H4PacketWithHci packet) {});
 
-  H4HciPacketSendFn containerSendToControllerFn(
-      ([]([[maybe_unused]] H4HciPacket packet) {}));
+  pw::Function<void(H4PacketWithH4 && packet)> container_send_to_controller_fn(
+      ([]([[maybe_unused]] H4PacketWithH4&& packet) {}));
 
-  ProxyHost proxy = ProxyHost(std::move(containerSendToHostFn),
-                              std::move(containerSendToControllerFn));
+  ProxyHost proxy = ProxyHost(std::move(container_send_to_host_fn),
+                              std::move(container_send_to_controller_fn),
+                              0);
 
-  proxy.HandleH4HciFromHost(h4_span_from_host);
+  proxy.HandleH4HciFromHost(std::move(h4_span_from_host));
 
-  proxy.HandleH4HciFromController(h4_span_from_controller);
+  proxy.HandleH4HciFromController(std::move(h4_span_from_controller));
 }
 
 }  // namespace

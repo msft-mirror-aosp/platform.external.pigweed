@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:selects.bzl",
-    "TARGET_COMPATIBLE_WITH_HOST_SELECT",
-)
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -24,19 +21,19 @@ licenses(["notice"])
 cc_library(
     name = "system_clock",
     hdrs = [
+        "clock_public_overrides/pw_chrono_backend/system_clock_config.h",
+        "clock_public_overrides/pw_chrono_backend/system_clock_inline.h",
         "public/pw_chrono_stl/system_clock_config.h",
         "public/pw_chrono_stl/system_clock_inline.h",
-        "public_overrides/pw_chrono_backend/system_clock_config.h",
-        "public_overrides/pw_chrono_backend/system_clock_inline.h",
     ],
     includes = [
+        "clock_public_overrides",
         "public",
-        "public_overrides",
     ],
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         "//pw_chrono:epoch",
-        "//pw_chrono:system_clock_facade",
+        "//pw_chrono:system_clock.facade",
     ],
 )
 
@@ -48,17 +45,17 @@ cc_library(
     hdrs = [
         "public/pw_chrono_stl/system_timer_inline.h",
         "public/pw_chrono_stl/system_timer_native.h",
-        "public_overrides/pw_chrono_backend/system_timer_inline.h",
-        "public_overrides/pw_chrono_backend/system_timer_native.h",
+        "timer_public_overrides/pw_chrono_backend/system_timer_inline.h",
+        "timer_public_overrides/pw_chrono_backend/system_timer_native.h",
     ],
     includes = [
         "public",
-        "public_overrides",
+        "timer_public_overrides",
     ],
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         "//pw_chrono:system_clock",
-        "//pw_chrono:system_timer_facade",
+        "//pw_chrono:system_timer.facade",
         "//pw_function",
     ],
 )

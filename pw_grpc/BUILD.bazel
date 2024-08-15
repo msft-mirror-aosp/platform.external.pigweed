@@ -14,6 +14,7 @@
 
 load("@io_bazel_rules_go//go:def.bzl", "go_test")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
@@ -35,6 +36,10 @@ cc_library(
         "public/pw_grpc/connection.h",
     ],
     includes = ["public"],
+    target_compatible_with = select({
+        ":pw_rpc_config_setting": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         ":hpack",
         ":send_queue",
@@ -65,7 +70,6 @@ cc_library(
         "//pw_async:dispatcher",
         "//pw_async_basic:dispatcher",
         "//pw_bytes",
-        "//pw_chrono:system_clock",
         "//pw_function",
         "//pw_log",
         "//pw_result",
@@ -218,6 +222,7 @@ go_test(
     data = [
         ":test_pw_rpc_server",
     ],
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",

@@ -113,7 +113,7 @@ describe('log-view-controls', () => {
       const logControls =
         logViews[0].shadowRoot.querySelector('log-view-controls');
       logControls.requestUpdate();
-      const inputEl = logControls.shadowRoot.querySelector('#search-field');
+      const inputEl = logControls.shadowRoot.querySelector('.search-field');
 
       await logViewer.updateComplete;
       expect(inputEl.value).to.equal(stateSearchString);
@@ -129,7 +129,7 @@ describe('log-view-controls', () => {
       logViews.forEach((logView) => {
         const logControls =
           logView.shadowRoot.querySelector('log-view-controls');
-        const inputEl = logControls.shadowRoot.querySelector('#search-field');
+        const inputEl = logControls.shadowRoot.querySelector('.search-field');
         searchInputs.push(inputEl.value);
       });
 
@@ -145,10 +145,20 @@ describe('log-view-controls', () => {
       const logViews = await getLogViews();
       const logControls =
         logViews[0].shadowRoot.querySelector('log-view-controls');
-      const fieldMenu =
-        logControls.shadowRoot.querySelectorAll('.item-checkboxes');
+      const colToggleMenu = logControls.shadowRoot
+        .querySelector('#col-toggle-menu')
+        .querySelectorAll('.item-checkbox');
 
-      fieldMenu.forEach((field, index) => {
+      colToggleMenu.forEach((field, index) => {
+        const columnData = state.rootNode.children[0].logViewState.columnData;
+        expect(field.checked).to.equal(columnData[index].isVisible);
+      });
+
+      const colToggleSubMenu = logControls.shadowRoot
+        .querySelector('#col-toggle-sub-menu')
+        .querySelectorAll('.item-checkbox');
+
+      colToggleSubMenu.forEach((field, index) => {
         const columnData = state.rootNode.children[0].logViewState.columnData;
         expect(field.checked).to.equal(columnData[index].isVisible);
       });

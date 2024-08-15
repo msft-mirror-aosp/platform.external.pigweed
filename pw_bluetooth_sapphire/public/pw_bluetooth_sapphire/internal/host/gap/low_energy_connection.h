@@ -22,11 +22,15 @@
 #include "pw_bluetooth_sapphire/internal/host/gatt/gatt.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/low_energy_connection.h"
+#include "pw_bluetooth_sapphire/internal/host/iso/iso_stream_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/delegate.h"
-#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/command_channel.h"
+
+namespace bt::sm {
+class SecurityManager;
+}
 
 namespace bt::gap {
 
@@ -102,13 +106,17 @@ class LowEnergyConnection final : public sm::Delegate {
   // parameters if all initialization procedures have completed.
   void OnInterrogationComplete();
 
+  // Accept a future incoming request to establish an Isochronous stream on this
+  // LE connection. |id| specifies the CIG/CIS pair that identify the stream.
+  // |cb| will be called after the request is received to indicate success of
+  // establishing a stream, and the associated parameters.
+  iso::AcceptCisStatus AcceptCis(iso::CigCisIdentifier id,
+                                 iso::CisEstablishedCallback cb);
+
   // Attach connection as child node of |parent| with specified |name|.
   void AttachInspect(inspect::Node& parent, std::string name);
 
-  void set_security_mode(LESecurityMode mode) {
-    BT_ASSERT(sm_);
-    sm_->set_security_mode(mode);
-  }
+  void set_security_mode(LESecurityMode mode);
 
   // Sets a callback that will be called when the peer disconnects.
   void set_peer_disconnect_callback(PeerDisconnectCallback cb) {
@@ -135,15 +143,11 @@ class LowEnergyConnection final : public sm::Delegate {
   PeerId peer_id() const { return peer_->identifier(); }
   hci_spec::ConnectionHandle handle() const { return link_->handle(); }
   hci::LowEnergyConnection* link() const { return link_.get(); }
-  sm::BondableMode bondable_mode() const {
-    BT_ASSERT(sm_);
-    return sm_->bondable_mode();
-  }
+  sm::BondableMode bondable_mode() const;
 
-  sm::SecurityProperties security() const {
-    BT_ASSERT(sm_);
-    return sm_->security();
-  }
+  sm::SecurityProperties security() const;
+
+  pw::bluetooth::emboss::ConnectionRole role() const { return link()->role(); }
 
   using WeakPtr = WeakSelf<LowEnergyConnection>::WeakPtr;
   LowEnergyConnection::WeakPtr GetWeakPtr() { return weak_self_.GetWeakPtr(); }
@@ -155,6 +159,7 @@ class LowEnergyConnection final : public sm::Delegate {
                       PeerDisconnectCallback peer_disconnect_cb,
                       ErrorCallback error_cb,
                       WeakSelf<LowEnergyConnectionManager>::WeakPtr conn_mgr,
+                      std::unique_ptr<iso::IsoStreamManager> iso_mgr,
                       l2cap::ChannelManager* l2cap,
                       gatt::GATT::WeakPtr gatt,
                       hci::CommandChannel::WeakPtr cmd_channel,
@@ -313,6 +318,12 @@ class LowEnergyConnection final : public sm::Delegate {
   std::unique_ptr<hci::LowEnergyConnection> link_;
   LowEnergyConnectionOptions connection_options_;
   WeakSelf<LowEnergyConnectionManager>::WeakPtr conn_mgr_;
+
+  // Manages all Isochronous streams for this connection. If this connection is
+  // operating as a Central, |iso_mgr_| is used to establish an outgoing
+  // connection to a peer. When operating as a Peripheral, |iso_mgr_| is used to
+  // allow incoming requests for specified CIG/CIS combinations.
+  std::unique_ptr<iso::IsoStreamManager> iso_mgr_;
 
   struct InspectProperties {
     inspect::StringProperty peer_id;

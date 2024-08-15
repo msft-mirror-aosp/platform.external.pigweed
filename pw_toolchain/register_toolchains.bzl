@@ -43,12 +43,20 @@ def register_pigweed_cxx_toolchains():
     # Generate xcode repository on macOS.
     pw_xcode_command_line_tools_repository()
 
-    # Fetch llvm toolchain.
+    # Fetch llvm toolchain for device.
+    cipd_repository(
+        name = "llvm_toolchain_device",
+        build_file = "@pw_toolchain//build_external:llvm_clang.BUILD",
+        path = "fuchsia/third_party/clang/${os}-${arch}",
+        tag = "git_revision:b5e4d323badbd24324bfab4366b670977b16df07",
+    )
+
+    # Fetch llvm toolchain for host.
     cipd_repository(
         name = "llvm_toolchain",
         build_file = "@pw_toolchain//build_external:llvm_clang.BUILD",
         path = "fuchsia/third_party/clang/${os}-${arch}",
-        tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
+        tag = "git_revision:e894df6392beea3723627329009f3e6d51d16f47",
     )
 
     # Fetch linux sysroot for host builds.
@@ -67,10 +75,13 @@ def register_pigweed_cxx_toolchains():
     )
 
     native.register_toolchains(
-        "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m0",
+        "//pw_toolchain:cc_toolchain_cortex-m0",
+        "//pw_toolchain:cc_toolchain_cortex-m0plus",
+        "//pw_toolchain:cc_toolchain_cortex-m33",
         "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m3",
         "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
         "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4+nofp",
+        "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m7",
         "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33",
         "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33+nofp",
         "//pw_toolchain/host_clang:host_cc_toolchain_linux",

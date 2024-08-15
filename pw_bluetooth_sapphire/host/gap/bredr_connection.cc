@@ -21,7 +21,7 @@ namespace bt::gap {
 namespace {
 
 const char* const kInspectPeerIdPropertyName = "peer_id";
-const char* const kInspectPairingStateNodeName = "pairing_state";
+const char* const kInspectPairingStateNodeName = "secure_simple_pairing_state";
 
 }  // namespace
 
@@ -32,18 +32,12 @@ BrEdrConnection::BrEdrConnection(Peer::WeakPtr peer,
                                  fit::closure on_peer_disconnect_cb,
                                  l2cap::ChannelManager* l2cap,
                                  hci::Transport::WeakPtr transport,
-                                 std::optional<Request> request,
+                                 std::optional<BrEdrConnectionRequest> request,
                                  pw::async::Dispatcher& dispatcher)
     : peer_id_(peer->identifier()),
       peer_(std::move(peer)),
       link_(std::move(link)),
       request_(std::move(request)),
-      pairing_state_(std::make_unique<PairingState>(
-          peer_,
-          link_.get(),
-          request_ && request_->AwaitingOutgoing(),
-          std::move(send_auth_request_cb),
-          fit::bind_member<&BrEdrConnection::OnPairingStateStatus>(this))),
       l2cap_(l2cap),
       sco_manager_(
           std::make_unique<sco::ScoConnectionManager>(peer_id_,
@@ -61,6 +55,23 @@ BrEdrConnection::BrEdrConnection(Peer::WeakPtr peer,
   link_->set_peer_disconnect_callback(
       [peer_disconnect_cb = std::move(on_peer_disconnect_cb)](
           const auto& conn, auto /*reason*/) { peer_disconnect_cb(); });
+
+  std::unique_ptr<LegacyPairingState> legacy_pairing_state = nullptr;
+  if (request_ && request_->legacy_pairing_state()) {
+    // This means that we were responding to Legacy Pairing before the
+    // ACL connection between the two devices was complete.
+    legacy_pairing_state = request_->take_legacy_pairing_state();
+
+    // TODO(fxbug.dev/356165942): Check that legacy pairing is done
+  }
+
+  pairing_state_manager_ = std::make_unique<PairingStateManager>(
+      peer_,
+      link_->GetWeakPtr(),
+      std::move(legacy_pairing_state),
+      request_ && request_->AwaitingOutgoing(),
+      std::move(send_auth_request_cb),
+      fit::bind_member<&BrEdrConnection::OnPairingStateStatus>(this));
 }
 
 BrEdrConnection::~BrEdrConnection() {
@@ -72,7 +83,7 @@ BrEdrConnection::~BrEdrConnection() {
   }
 
   sco_manager_.reset();
-  pairing_state_.reset();
+  pairing_state_manager_.reset();
   link_.reset();
 }
 
@@ -94,7 +105,7 @@ void BrEdrConnection::OnInterrogationComplete() {
 }
 
 void BrEdrConnection::AddRequestCallback(
-    BrEdrConnection::Request::OnComplete cb) {
+    BrEdrConnectionRequest::OnComplete cb) {
   if (!request_.has_value()) {
     cb(fit::ok(), this);
     return;
@@ -149,16 +160,18 @@ void BrEdrConnection::AttachInspect(inspect::Node& parent, std::string name) {
   inspect_properties_.peer_id = inspect_node_.CreateString(
       kInspectPeerIdPropertyName, peer_id_.ToString());
 
-  pairing_state_->AttachInspect(inspect_node_, kInspectPairingStateNodeName);
+  pairing_state_manager_->AttachInspect(inspect_node_,
+                                        kInspectPairingStateNodeName);
 }
 
 void BrEdrConnection::OnPairingStateStatus(hci_spec::ConnectionHandle handle,
                                            hci::Result<> status) {
-  if (bt_is_error(status,
-                  DEBUG,
-                  "gap-bredr",
-                  "PairingState error status, disconnecting (peer id: %s)",
-                  bt_str(peer_id_))) {
+  if (bt_is_error(
+          status,
+          DEBUG,
+          "gap-bredr",
+          "SecureSimplePairingState error status, disconnecting (peer id: %s)",
+          bt_str(peer_id_))) {
     if (disconnect_cb_) {
       disconnect_cb_();
     }

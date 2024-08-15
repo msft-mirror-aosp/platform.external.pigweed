@@ -28,12 +28,10 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_metrics.h"
 #include "pw_bluetooth_sapphire/internal/host/gatt/persisted_data.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
+#include "pw_bluetooth_sapphire/internal/host/hci-spec/le_connection_parameters.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/lmp_feature_set.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/connection.h"
-#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
-
-#pragma clang diagnostic ignored "-Wshadow"
 
 namespace bt::gap {
 
@@ -113,7 +111,7 @@ class Peer final {
   // source location. `RegisterName()` will update the device name attribute if
   // the newly encountered name's source is of higher priority (lower enum
   // value) than that of the existing name.
-  enum NameSource {
+  enum class NameSource {
     kGenericAccessService = /*highest priority*/ 0,
     kNameDiscoveryProcedure = 1,
     kInquiryResultComplete = 2,
@@ -308,6 +306,16 @@ class Peer final {
       auto_conn_behavior_ = behavior;
     }
 
+    void set_sleep_clock_accuracy(
+        pw::bluetooth::emboss::LESleepClockAccuracyRange sca) {
+      sleep_clock_accuracy_ = sca;
+    }
+
+    std::optional<pw::bluetooth::emboss::LESleepClockAccuracyRange>
+    sleep_clock_accuracy() const {
+      return sleep_clock_accuracy_;
+    }
+
     // TODO(armansito): Store most recently seen random address and identity
     // address separately, once PeerCache can index peers by multiple
     // addresses.
@@ -357,6 +365,9 @@ class Peer final {
 
     // Data persisted from GATT database for bonded peers.
     gatt::ServiceChangedCCCPersistedData service_changed_gatt_data_;
+
+    std::optional<pw::bluetooth::emboss::LESleepClockAccuracyRange>
+        sleep_clock_accuracy_;
   };
 
   // Contains Peer data that apply only to the BR/EDR transport.
@@ -607,7 +618,8 @@ class Peer final {
   // Returns true if a name change occurs.  If the name is updated and
   // `notify_listeners` is false, then listeners will not be notified of an
   // update to this peer.
-  bool RegisterName(const std::string& name, NameSource source = kUnknown);
+  bool RegisterName(const std::string& name,
+                    NameSource source = NameSource::kUnknown);
 
   // Updates the appearance of this device.
   void SetAppearance(uint16_t appearance) { appearance_ = appearance; }

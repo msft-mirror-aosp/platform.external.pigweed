@@ -40,8 +40,13 @@ runs bootstrap.
 .. note::
 
    On Windows the scripts used to set up the environment are ``bootstrap.bat``
-   and ``activate.bat``. For simplicity they will be referred to with the
-   ``.sh`` endings unless the distinction is relevant.
+   and ``activate.bat``.
+
+   ``bootstrap.fish`` and ``activate.fish`` are also available for `Fish shell
+   <https://fishshell.com/>`_ users.
+
+   For simplicity they will be referred to with the ``.sh`` endings unless the
+   distinction is relevant.
 
 On POSIX systems, the environment can be deactivated by running ``deactivate``.
 
@@ -253,12 +258,12 @@ here.
   access.
 
   A plugin is specified as a dictionary with two keys: "import_path" and
-  "module_name"
+  "module_name". The "import_path" is relative to the root of the checkout.
 
   The specified module must provide a "run_actions" method which takes a single
   argument, "env_vars", which is a pw_env_setup.Environment instance.
 
-  NB: This feature is not supported when using a python2.7 system python.
+  NB: This feature is not supported when using a python2 system python.
 
   Sample plugin and pigweed.json blob:
 

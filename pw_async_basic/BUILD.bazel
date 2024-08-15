@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
@@ -33,7 +34,7 @@ cc_library(
         "public_overrides",
     ],
     deps = [
-        "//pw_async:task_facade",
+        "//pw_async:task.facade",
         "//pw_containers:intrusive_list",
     ],
 )
@@ -51,7 +52,7 @@ cc_library(
         "public_override",
     ],
     deps = [
-        "//pw_async:fake_dispatcher_facade",
+        "//pw_async:fake_dispatcher.facade",
         "//pw_async:task",
         "//pw_log",
     ],
@@ -81,6 +82,8 @@ cc_library(
 pw_cc_test(
     name = "dispatcher_test",
     srcs = ["dispatcher_test.cc"],
+    # TODO: b/343776800 - update to run on all compatible devices
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":dispatcher",
         "//pw_log",

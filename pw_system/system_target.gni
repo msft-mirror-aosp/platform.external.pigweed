@@ -117,6 +117,8 @@ template("pw_system_target") {
     pw_system_RPC_SERVER_BACKEND = "$dir_pw_system:hdlc_rpc_server"
     pw_system_IO_BACKEND = "$dir_pw_system:sys_io_target_io"
 
+    pw_system_DEVICE_HANDLER = "$dir_pw_system:unknown_device_handler"
+
     # TODO(amontanez): This should be set to pw_assert_log ASAP.
     pw_assert_BACKEND = dir_pw_assert_basic
 
@@ -357,10 +359,10 @@ template("pw_system_target") {
   }
 
   if (_use_pw_malloc) {
-    _default_configs += [ "$dir_pw_malloc:pw_malloc_wrapper_config" ]
+    _default_configs += [ "$dir_pw_malloc:wrap_functions" ]
     _link_deps += [ dir_pw_malloc ]
     _malloc_build_args = {
-      pw_malloc_BACKEND = dir_pw_malloc_freelist
+      pw_malloc_BACKEND = "$dir_pw_malloc:bucket_block_allocator"
     }
   } else {
     _malloc_build_args = {

@@ -93,9 +93,78 @@ pw_cc_test(
     srcs = ["loopback_channel_test.cc"],
     deps = [
         ":loopback_channel",
-        "//pw_allocator:testing",
-        "//pw_multibuf:header_chunk_region_tracker",
-        "//pw_multibuf:simple_allocator",
+        "//pw_multibuf:testing",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "epoll_channel",
+    srcs = ["epoll_channel.cc"],
+    hdrs = ["public/pw_channel/epoll_channel.h"],
+    includes = ["public"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":pw_channel",
+        "//pw_multibuf:allocator",
+    ],
+)
+
+pw_cc_test(
+    name = "epoll_channel_test",
+    srcs = ["epoll_channel_test.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":epoll_channel",
+        "//pw_multibuf:testing",
+        "//pw_thread:sleep",
+        "//pw_thread:thread",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "rp2_stdio_channel",
+    srcs = ["rp2_stdio_channel.cc"],
+    hdrs = ["public/pw_channel/rp2_stdio_channel.h"],
+    includes = ["public"],
+    target_compatible_with = [
+        "//pw_build/constraints/chipset:rp2040",
+    ],
+    deps = [
+        ":pw_channel",
+        "//pw_log",
+        "//pw_multibuf:allocator",
+        "@pico-sdk//src/rp2_common/pico_stdlib",
+    ],
+)
+
+cc_library(
+    name = "stream_channel",
+    srcs = ["stream_channel.cc"],
+    hdrs = ["public/pw_channel/stream_channel.h"],
+    includes = ["public"],
+    deps = [
+        ":pw_channel",
+        "//pw_log",
+        "//pw_stream",
+        "//pw_sync:interrupt_spin_lock",
+        "//pw_sync:thread_notification",
+        "//pw_thread:thread",
+    ],
+)
+
+pw_cc_test(
+    name = "stream_channel_test",
+    srcs = ["stream_channel_test.cc"],
+    deps = [
+        ":stream_channel",
+        "//pw_async2:pend_func_task",
+        "//pw_multibuf:testing",
+        "//pw_stream",
+        "//pw_stream:mpsc_stream",
+        "//pw_thread:test_thread_context",
+        "//pw_thread:thread",
         "//pw_unit_test",
     ],
 )

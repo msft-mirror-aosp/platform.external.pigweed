@@ -18,6 +18,7 @@ load(
     "pw_cc_test",
     "pw_facade",
 )
+load("//pw_build:python.bzl", "pw_py_binary")
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -56,7 +57,7 @@ label_flag(
 
 cc_library(
     name = "system_clock_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
+    visibility = ["//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:embos": ["//pw_chrono_embos:system_clock"],
         "//pw_build/constraints/rtos:freertos": ["//pw_chrono_freertos:system_clock"],
@@ -84,7 +85,7 @@ label_flag(
 
 cc_library(
     name = "system_timer_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
+    visibility = ["//targets:__pkg__"],
     deps = select({
         "//pw_build/constraints/rtos:embos": ["//pw_chrono_embos:system_timer"],
         "//pw_build/constraints/rtos:freertos": ["//pw_chrono_freertos:system_timer"],
@@ -157,4 +158,35 @@ pw_cc_test(
         "//pw_sync:thread_notification",
         "//pw_unit_test",
     ],
+)
+
+pw_py_binary(
+    name = "generate_build_time_header",
+    srcs = ["generate_build_time_header.py"],
+)
+
+genrule(
+    name = "build_time_header",
+    outs = ["build_time.h"],
+    cmd = "$(location :generate_build_time_header) $@",
+    tools = [":generate_build_time_header"],
+)
+
+cc_library(
+    name = "wrap_time_build_time",
+    srcs = [
+        "wrap_time_build_time.cc",
+        ":build_time_header",
+    ],
+)
+
+cc_library(
+    name = "wrap_time_system_clock",
+    srcs = ["wrap_time_system_clock.cc"],
+    linkopts = [
+        "-Wl,--wrap=gettimeofday",
+        "-Wl,--wrap=time",
+    ],
+    deps = [":system_clock"],
+    alwayslink = 1,
 )

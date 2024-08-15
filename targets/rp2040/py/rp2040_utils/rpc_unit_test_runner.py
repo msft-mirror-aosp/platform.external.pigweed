@@ -29,43 +29,21 @@ from pw_system import device
 from pw_tokenizer import detokenize
 from pw_unit_test_proto import unit_test_pb2
 
-from rp2040_utils import device_detector
-from rp2040_utils.device_detector import BoardInfo
-from rp2040_utils.unit_test_runner import PiPicoTestingDevice
-
+from rp2040_utils.device_detector import PicoBoardInfo
+from rp2040_utils.flasher import (
+    create_flash_parser,
+    device_from_args,
+    flash,
+    find_elf,
+)
 
 _LOG = logging.getLogger()
 
 
-def parse_args():
-    """Parse and return command-line arguments."""
-
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        'binary', type=Path, help='The target test binary to run'
-    )
-    parser.add_argument(
-        '--usb-bus',
-        type=int,
-        help='The bus this Pi Pico is on',
-    )
-    parser.add_argument(
-        '--usb-port',
-        type=int,
-        help='The port of this Pi Pico on the specified USB bus',
-    )
-    parser.add_argument(
-        '--serial-port',
-        type=str,
-        help='The name of the serial port to connect to when running tests',
-    )
-    parser.add_argument(
-        '-b',
-        '--baud',
-        type=int,
-        default=115200,
-        help='Baud rate to use for serial communication with target device',
-    )
+def create_test_runner_parser() -> argparse.ArgumentParser:
+    """Parses command-line arguments."""
+    parser = create_flash_parser()
+    parser.description = __doc__
     parser.add_argument(
         '--test-timeout',
         type=float,
@@ -73,148 +51,55 @@ def parse_args():
         help='Maximum communication delay in seconds before a '
         'test is considered unresponsive and aborted',
     )
-    parser.add_argument(
-        '--verbose',
-        '-v',
-        dest='verbose',
-        action='store_true',
-        help='Output additional logs as the script runs',
-    )
-
-    return parser.parse_args()
+    return parser
 
 
-class PiPicoRpcTestingDevice(PiPicoTestingDevice):
-    """An RPC test runner implementation for the Pi Pico."""
-
-    @staticmethod
-    def _find_elf(binary: Path) -> Path | None:
-        """Attempt to find and return the path to an ELF file for a binary.
-
-        Args:
-          binary: A relative path to a binary.
-
-        Returns the path to the associated ELF file, or None if none was found.
-        """
-        if binary.suffix == '.elf' or not binary.suffix:
-            return binary
-        choices = (
-            binary.parent / f'{binary.stem}.elf',
-            binary.parent / 'bin' / f'{binary.stem}.elf',
-            binary.parent / 'test' / f'{binary.stem}.elf',
-        )
-        for choice in choices:
-            if choice.exists():
-                return choice
-
-        _LOG.error(
-            'Cannot find ELF file to use as a token database for binary: %s',
-            binary,
-        )
-        return None
-
-    def run_device_test(self, binary: Path, timeout: float) -> bool:
-        """Run an RPC unit test on this device.
-
-        Returns whether it succeeded.
-        """
-        if not self.load_binary(binary):
-            return False
-        serial_device = serial.Serial(
-            self.serial_port(), self.baud_rate(), timeout=0.1
-        )
-        reader = rpc.SerialReader(serial_device, 8192)
-        elf_path = self._find_elf(binary)
-        if not elf_path:
-            return False
-        with device.Device(
-            channel_id=rpc.DEFAULT_CHANNEL_ID,
-            reader=reader,
-            write=serial_device.write,
-            proto_library=[log_pb2, unit_test_pb2],
-            detokenizer=detokenize.Detokenizer(elf_path),
-        ) as dev:
-            try:
-                test_results = dev.run_tests(timeout)
-                _LOG.info('Test run complete')
-            except RpcTimeout:
-                _LOG.error('Test timed out after %s seconds.', timeout)
-                return False
-            if not test_results.all_tests_passed():
-                return False
-        return True
-
-
-def run_device_test(
-    binary: Path,
-    test_timeout: float,
-    serial_port: str,
+def run_test_on_board(
+    board: PicoBoardInfo,
     baud_rate: int,
-    usb_bus: int,
-    usb_port: int,
+    binary: Path,
+    test_timeout_seconds: float,
 ) -> bool:
-    """Flash, run, and check an on-device test binary.
+    """Run an RPC unit test on this device.
 
-    Returns true on test pass.
+    Returns whether it succeeded.
     """
-    board = BoardInfo(
-        bus=usb_bus,
-        port=usb_port,
-        serial_port=serial_port,
-    )
-    return PiPicoRpcTestingDevice(board, baud_rate).run_device_test(
-        binary, test_timeout
-    )
-
-
-def detect_and_run_test(
-    binary: Path, test_timeout: float, baud_rate: int
-) -> bool:
-    """Detect a dev board and run a test binary on it.
-
-    Returns whether or not the test completed successfully.
-    """
-    _LOG.debug('Attempting to automatically detect dev board')
-    boards = device_detector.detect_boards()
-    if not boards:
-        _LOG.error('Could not find an attached device')
+    if not flash(board, baud_rate, binary):
         return False
-    return PiPicoRpcTestingDevice(boards[0], baud_rate).run_device_test(
-        binary, test_timeout
-    )
+    serial_device = serial.Serial(board.serial_port, baud_rate, timeout=0.1)
+    reader = rpc.SerialReader(serial_device, 8192)
+    elf_path = find_elf(binary)
+    if not elf_path:
+        return False
+    with device.Device(
+        channel_id=rpc.DEFAULT_CHANNEL_ID,
+        reader=reader,
+        write=serial_device.write,
+        proto_library=[log_pb2, unit_test_pb2],
+        detokenizer=detokenize.Detokenizer(elf_path),
+    ) as dev:
+        try:
+            test_results = dev.run_tests(test_timeout_seconds)
+            _LOG.info('Test run complete')
+        except RpcTimeout:
+            _LOG.error('Test timed out after %s seconds.', test_timeout_seconds)
+            return False
+        if not test_results.all_tests_passed():
+            return False
+    return True
 
 
 def main():
     """Set up runner and then flash/run device test."""
-    args = parse_args()
-    log_level = logging.DEBUG if args.verbose else logging.INFO
-    pw_cli.log.install(level=log_level)
-
-    test_logfile = args.binary.with_suffix(args.binary.suffix + '.test_log.txt')
-    # Truncate existing logfile
-    test_logfile.write_text('', encoding='utf-8')
-    # Setup the test_log.txt file handler.
+    args = create_test_runner_parser().parse_args()
+    # Log to stdout, which will be captured by the unit test server.
     pw_cli.log.install(
-        level=logging.DEBUG,
-        use_color=False,
-        log_file=test_logfile,
-        logger=_LOG,
+        level=logging.DEBUG if args.verbose else logging.INFO,
     )
-
-    test_passed = False
-    if not args.serial_port:
-        test_passed = detect_and_run_test(
-            args.binary, args.test_timeout, args.baud
-        )
-    else:
-        test_passed = run_device_test(
-            args.binary,
-            args.test_timeout,
-            args.serial_port,
-            args.baud,
-            args.usb_bus,
-            args.usb_port,
-        )
+    board = device_from_args(args, interactive=False)
+    test_passed = run_test_on_board(
+        board, args.baud, args.binary, args.test_timeout
+    )
     sys.exit(0 if test_passed else 1)
 
 

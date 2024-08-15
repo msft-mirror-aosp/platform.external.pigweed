@@ -33,8 +33,21 @@ _LOG = logging.getLogger('unit_test_server')
 
 DEFAULT_PORT = 34172
 
-_TEST_RUNNER_COMMAND = 'rp2040_unit_test_runner'
-_TEST_SERVER_COMMAND = 'pw_target_runner_server'
+# If the script is being run through Bazel, our runner and server are provided
+# at well known locations in the runfiles.
+try:
+    from python.runfiles import runfiles  # type: ignore
+
+    r = runfiles.Create()
+    _TEST_RUNNER_COMMAND = r.Rlocation(
+        'pigweed/targets/rp2040/py/rpc_unit_test_runner'
+    )
+    _TEST_SERVER_COMMAND = r.Rlocation(
+        'pigweed/pw_target_runner/go/cmd/server_/server'
+    )
+except ImportError:
+    _TEST_RUNNER_COMMAND = 'rp2040_unit_test_runner'
+    _TEST_SERVER_COMMAND = 'pw_target_runner_server'
 
 
 def parse_args():
@@ -53,10 +66,20 @@ def parse_args():
         help='Path to server config file',
     )
     parser.add_argument(
+        '--debug-probe-only',
+        action='store_true',
+        help='Only run tests on detected Pi Pico debug probes',
+    )
+    parser.add_argument(
+        '--pico-only',
+        action='store_true',
+        help='Only run tests on detected Pi Pico boards (NOT debug probes)',
+    )
+    parser.add_argument(
         '--verbose',
         '-v',
         dest='verbose',
-        action="store_true",
+        action='store_true',
         help='Output additional logs as the script runs',
     )
 
@@ -75,19 +98,45 @@ def generate_runner(command: str, arguments: list[str]) -> str:
     return '\n'.join(runner)
 
 
-def generate_server_config() -> IO[bytes]:
+def generate_server_config(
+    include_picos: bool = True, include_debug_probes: bool = True
+) -> IO[bytes]:
     """Returns a temporary generated file for use as the server config."""
-    boards = device_detector.detect_boards()
+    boards = device_detector.detect_boards(
+        include_picos=include_picos,
+        include_debug_probes=include_debug_probes,
+    )
+
     if not boards:
         _LOG.critical('No attached boards detected')
         sys.exit(1)
+
+    if (
+        len({'b' if b.is_debug_probe() else 'p': True for b in boards}.keys())
+        > 1
+    ):
+        _LOG.critical(
+            'Debug probes and picos both detected. Mixed device configurations '
+            'are not supported. Please only connect Picos directly, or only '
+            'connect debug probes! You can also use --pico-only or '
+            '--debug-probe-only to filter attached devices.'
+        )
+        sys.exit(1)
+
     config_file = tempfile.NamedTemporaryFile()
     _LOG.debug('Generating test server config at %s', config_file.name)
     _LOG.debug('Found %d attached devices', len(boards))
 
-    # TODO: b/290245354 - Multi-device flashing doesn't work due to limitations
-    # of picotool. Limit to one device even if multiple are connected.
-    if boards:
+    picotool_boards = [board for board in boards if not board.is_debug_probe()]
+    if len(picotool_boards) > 1:
+        # TODO: https://pwbug.dev/290245354 - Multi-device flashing doesn't work
+        # due to limitations of picotool. Limit to one device even if multiple
+        # are connected.
+        _LOG.warning(
+            'TODO: https://pwbug.dev/290245354 - Multiple non-debugprobe '
+            ' boards attached. '
+            'Disabling parallel testing.'
+        )
         boards = boards[:1]
 
     for board in boards:
@@ -96,8 +145,6 @@ def generate_server_config() -> IO[bytes]:
             str(board.bus),
             '--usb-port',
             str(board.port),
-            '--serial-port',
-            str(board.serial_port),
         ]
         config_file.write(
             generate_runner(_TEST_RUNNER_COMMAND, test_runner_args).encode(
@@ -109,12 +156,17 @@ def generate_server_config() -> IO[bytes]:
 
 
 def launch_server(
-    server_config: IO[bytes] | None, server_port: int | None
+    server_config: IO[bytes] | None,
+    server_port: int | None,
+    include_picos: bool,
+    include_debug_probes: bool,
 ) -> int:
     """Launch a device test server with the provided arguments."""
     if server_config is None:
         # Auto-detect attached boards if no config is provided.
-        server_config = generate_server_config()
+        server_config = generate_server_config(
+            include_picos, include_debug_probes
+        )
 
     cmd = [_TEST_SERVER_COMMAND, '-config', server_config.name]
 
@@ -131,7 +183,16 @@ def main():
     log_level = logging.DEBUG if args.verbose else logging.INFO
     pw_cli.log.install(level=log_level)
 
-    exit_code = launch_server(args.server_config, args.server_port)
+    if args.pico_only and args.debug_probe_only:
+        _LOG.critical('Cannot specify both --pico-only and --debug-probe-only')
+        sys.exit(1)
+
+    exit_code = launch_server(
+        args.server_config,
+        args.server_port,
+        not args.debug_probe_only,
+        not args.pico_only,
+    )
     sys.exit(exit_code)
 
 

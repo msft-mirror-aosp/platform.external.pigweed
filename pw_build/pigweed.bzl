@@ -13,7 +13,6 @@
 # the License.
 """Pigweed build environment for bazel."""
 
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
 load("@rules_cc//cc:action_names.bzl", "C_COMPILE_ACTION_NAME")
 load(
@@ -87,7 +86,7 @@ def pw_cc_binary(**kwargs):
     # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
-    kwargs["deps"] = kwargs.get("deps", []) + ["@pigweed//pw_build:default_link_extra_lib"]
+    kwargs["deps"] = kwargs.get("deps", []) + [str(Label("//pw_build:default_link_extra_lib"))]
     native.cc_binary(**kwargs)
 
 def pw_cc_test(**kwargs):
@@ -112,16 +111,16 @@ def pw_cc_test(**kwargs):
     # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
-    kwargs["deps"] = kwargs.get("deps", []) + ["@pigweed//pw_build:default_link_extra_lib"]
+    kwargs["deps"] = kwargs.get("deps", []) + [str(Label("//pw_build:default_link_extra_lib"))]
 
     # Depend on the backend. E.g. to pull in gtest.h include paths.
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_unit_test:backend"]
+    kwargs["deps"] = kwargs["deps"] + [str(Label("//pw_unit_test:backend"))]
 
     # Save the base set of deps minus pw_unit_test:main for the .lib target.
     original_deps = kwargs["deps"]
 
     # Add the unit test main label flag dep.
-    test_main = kwargs.pop("test_main", "@pigweed//pw_unit_test:main")
+    test_main = kwargs.pop("test_main", str(Label("//pw_unit_test:main")))
     kwargs["deps"] = original_deps + [test_main]
 
     native.cc_test(**kwargs)
@@ -163,26 +162,11 @@ def pw_cc_perf_test(**kwargs):
       **kwargs: Passed to cc_binary.
     """
     kwargs["deps"] = kwargs.get("deps", []) + \
-                     ["@pigweed//pw_perf_test:logging_main"]
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert:backend_impl"]
+                     [str(Label("//pw_perf_test:logging_main"))]
+    kwargs["deps"] = kwargs["deps"] + [str(Label("//pw_assert:assert_backend_impl"))]
+    kwargs["deps"] = kwargs["deps"] + [str(Label("//pw_assert:check_backend_impl"))]
     kwargs["testonly"] = True
     native.cc_binary(**kwargs)
-
-def host_backend_alias(name, backend):
-    """An alias that resolves to the backend for host platforms."""
-    native.alias(
-        name = name,
-        actual = selects.with_or({
-            (
-                "@platforms//os:android",
-                "@platforms//os:chromiumos",
-                "@platforms//os:linux",
-                "@platforms//os:macos",
-                "@platforms//os:windows",
-            ): backend,
-            "//conditions:default": "@pigweed//pw_build:unspecified_backend",
-        }),
-    )
 
 CcBlobInfo = provider(
     "Input to pw_cc_blob_library",
@@ -252,7 +236,6 @@ def _pw_cc_blob_library_impl(ctx):
         progress_message = "Generating cc blob library for %s" % (ctx.label.name),
         tools = [
             ctx.executable._generate_cc_blob_library,
-            ctx.executable._python_runtime,
         ],
         outputs = [hdr, src],
         executable = ctx.executable._generate_cc_blob_library,
@@ -322,16 +305,10 @@ pw_cc_blob_library = rule(
             executable = True,
             cfg = "exec",
         ),
-        "_python_runtime": attr.label(
-            default = Label("//:python3_interpreter"),
-            allow_single_file = True,
-            executable = True,
-            cfg = "exec",
-        ),
     },
     provides = [CcInfo],
     fragments = ["cpp"],
-    toolchains = use_cpp_toolchain(),
+    toolchains = ["@rules_python//python:exec_tools_toolchain_type"] + use_cpp_toolchain(),
 )
 
 def _pw_cc_binary_with_map_impl(ctx):
@@ -407,6 +384,7 @@ pw_cc_binary_with_map = rule(
             doc = "Whether to encode build information into the binary.",
         ),
     },
+    executable = True,
     provides = [DefaultInfo],
     fragments = ["cpp"],
     toolchains = use_cpp_toolchain(),
@@ -479,6 +457,10 @@ def _preprocess_linker_script_impl(ctx):
 
 pw_linker_script = rule(
     _preprocess_linker_script_impl,
+    doc = """Create a linker script target. Supports preprocessing with the C
+    preprocessor and adding the resulting linker script to linkopts. Also
+    provides a DefaultInfo containing the processed linker script.
+    """,
     attrs = {
         "copts": attr.string_list(doc = "C compile options."),
         "defines": attr.string_list(doc = "C preprocessor defines."),

@@ -40,7 +40,7 @@ Status Dispatcher::NativeInit() {
   }
 
   int pipefd[2];
-  if (pipe2(pipefd, O_DIRECT) == -1) {
+  if (pipe2(pipefd, O_DIRECT | O_NONBLOCK) == -1) {
     PW_LOG_ERROR("Failed to create pipe: %s", std::strerror(errno));
     return Status::Internal();
   }
@@ -90,33 +90,104 @@ void Dispatcher::DoRunToCompletion(Task* task) {
       return;
     }
     if (!result.ran_a_task()) {
-      SleepInfo sleep_info = AttemptRequestWake();
+      SleepInfo sleep_info = AttemptRequestWake(/*allow_empty=*/false);
       if (sleep_info.should_sleep()) {
-        NativeWaitForWake();
+        if (!NativeWaitForWake().ok()) {
+          break;
+        }
       }
     }
   }
 }
 
-void Dispatcher::NativeWaitForWake() {
-  struct epoll_event event;
+Status Dispatcher::NativeWaitForWake() {
+  std::array<epoll_event, kMaxEventsToProcessAtOnce> events;
 
-  int num_fds = epoll_wait(epoll_fd_, &event, 1, /*timeout=*/-1);
+  int num_events =
+      epoll_wait(epoll_fd_, events.data(), events.size(), /*timeout=*/-1);
+  if (num_events < 0) {
+    if (errno == EINTR) {
+      return OkStatus();
+    }
 
-  PW_CHECK_INT_EQ(num_fds, 1);
+    PW_LOG_ERROR("Dispatcher failed to wait for incoming events: %s",
+                 std::strerror(errno));
+    return Status::Internal();
+  }
 
-  // Consume the written notification.
-  char unused;
-  ssize_t bytes_read = read(wait_fd_, &unused, 1);
-  PW_CHECK_INT_EQ(bytes_read, 1, "Dispatcher failed to read wake notification");
-  PW_DCHECK_INT_EQ(unused, kNotificationSignal);
+  for (int i = 0; i < num_events; ++i) {
+    epoll_event& event = events[i];
+    if (event.data.fd == wait_fd_) {
+      // Consume the wake notification.
+      char unused;
+      ssize_t bytes_read = read(wait_fd_, &unused, 1);
+      PW_CHECK_INT_EQ(
+          bytes_read, 1, "Dispatcher failed to read wake notification");
+      PW_DCHECK_INT_EQ(unused, kNotificationSignal);
+      continue;
+    }
+
+    // Debug log for missed events.
+    if (PW_LOG_LEVEL >= PW_LOG_LEVEL_DEBUG &&
+        wakers_[event.data.fd].read.IsEmpty() &&
+        wakers_[event.data.fd].write.IsEmpty()) {
+      PW_LOG_DEBUG(
+          "Received an event for registered file descriptor %d, but there is "
+          "no task to wake",
+          event.data.fd);
+    }
+
+    if ((event.events & (EPOLLIN | EPOLLRDHUP)) != 0) {
+      std::move(wakers_[event.data.fd].read).Wake();
+    }
+    if ((event.events & EPOLLOUT) != 0) {
+      std::move(wakers_[event.data.fd].write).Wake();
+    }
+  }
+
+  return OkStatus();
+}
+
+Status Dispatcher::NativeRegisterFileDescriptor(int fd,
+                                                FileDescriptorType type) {
+  epoll_event event;
+  event.events = EPOLLET;
+  event.data.fd = fd;
+
+  if ((type & FileDescriptorType::kReadable) != 0) {
+    event.events |= EPOLLIN | EPOLLRDHUP;
+  }
+  if ((type & FileDescriptorType::kWritable) != 0) {
+    event.events |= EPOLLOUT;
+  }
+
+  if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &event) == -1) {
+    PW_LOG_ERROR("Failed to register epoll event: %s", std::strerror(errno));
+    return Status::Internal();
+  }
+
+  return OkStatus();
+}
+
+Status Dispatcher::NativeUnregisterFileDescriptor(int fd) {
+  epoll_event event;
+  event.data.fd = fd;
+  if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, &event) == -1) {
+    PW_LOG_ERROR("Failed to unregister epoll event: %s", std::strerror(errno));
+    return Status::Internal();
+  }
+  wakers_.erase(fd);
+  return OkStatus();
 }
 
 void Dispatcher::DoWake() {
   // Perform a write to unblock the waiting dispatcher.
-  ssize_t bytes_written = write(notify_fd_, &kNotificationSignal, 1);
-  PW_CHECK_INT_EQ(
-      bytes_written, 1, "Dispatcher failed to write wake notification");
+  //
+  // We ignore the result of the write, since nonblocking writes can
+  // fail due to there already being messages in the `notify_fd_` pipe.
+  // This is fine, since it means that the dispatcher thread is already queued
+  // to wake up.
+  write(notify_fd_, &kNotificationSignal, 1);
 }
 
 }  // namespace pw::async2

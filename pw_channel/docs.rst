@@ -3,9 +3,8 @@
 ==========
 pw_channel
 ==========
-.. warning::
-
-  This module is in an early, experimental state. Do not rely on its APIs.
+.. pigweed-module::
+   :name: pw_channel
 
 .. cpp:namespace:: pw::channel
 
@@ -45,6 +44,8 @@ This is only valid if, for the datagram channel:
 -------------
 API reference
 -------------
+.. cpp:namespace:: pw::channel
+
 .. doxygengroup:: pw_channel
    :content-only:
    :members:
@@ -56,5 +57,17 @@ Channel implementations
    :members:
 
 .. doxygengroup:: pw_channel_loopback
+   :content-only:
+   :members:
+
+.. doxygengroup:: pw_channel_epoll
+   :content-only:
+   :members:
+
+.. doxygengroup:: pw_channel_rp2_stdio
+   :content-only:
+   :members:
+
+.. doxygengroup:: pw_channel_stream_channel
    :content-only:
    :members:

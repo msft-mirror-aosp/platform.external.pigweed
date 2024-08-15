@@ -22,9 +22,10 @@ import {
 } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { styles } from './log-list.styles';
-import { LogEntry, Severity, TableColumn } from '../../shared/interfaces';
+import { LogEntry, Level, TableColumn } from '../../shared/interfaces';
 import { virtualize } from '@lit-labs/virtualizer/virtualize.js';
 import '@lit-labs/virtualizer';
+import { debounce } from '../../utils/debounce';
 import { throttle } from '../../utils/throttle';
 
 /**
@@ -51,7 +52,7 @@ export class LogList extends LitElement {
 
   /** Whether line wrapping in table cells should be used. */
   @property({ type: Boolean })
-  lineWrap = false;
+  lineWrap = true;
 
   @state()
   columnData: TableColumn[] = [];
@@ -96,6 +97,12 @@ export class LogList extends LitElement {
 
   /** The minimum width (in px) for table columns. */
   private readonly MIN_COL_WIDTH: number = 52;
+
+  /** The minimum width (in px) for table columns. */
+  private readonly LAST_COL_MIN_WIDTH: number = 250;
+
+  /** The delay (in ms) for debouncing column resizing */
+  private readonly RESIZE_DEBOUNCE_DELAY = 10;
 
   /**
    * Data used for column resizing including the column index, the starting
@@ -185,26 +192,30 @@ export class LogList extends LitElement {
    */
   private autosizeColumns = (rows = this._tableRows) => {
     // Iterate through each row to find the maximum width in each column
+    const visibleColumnData = this.columnData.filter(
+      (column) => column.isVisible,
+    );
+
     rows.forEach((row) => {
       const cells = Array.from(row.children).filter(
         (cell) => !cell.hasAttribute('hidden'),
       ) as HTMLTableCellElement[];
 
       cells.forEach((cell, columnIndex) => {
-        if (columnIndex === 0) return;
+        if (visibleColumnData[columnIndex].fieldName == 'level') return;
 
         const textLength = cell.textContent?.trim().length || 0;
 
         if (!this._autosizeLocked) {
           // Update the preferred width if it's smaller than the new one
-          if (this.columnData[columnIndex]) {
-            this.columnData[columnIndex].characterLength = Math.max(
-              this.columnData[columnIndex].characterLength,
+          if (visibleColumnData[columnIndex]) {
+            visibleColumnData[columnIndex].characterLength = Math.max(
+              visibleColumnData[columnIndex].characterLength,
               textLength,
             );
           } else {
             // Initialize if the column data for this index does not exist
-            this.columnData[columnIndex] = {
+            visibleColumnData[columnIndex] = {
               fieldName: '',
               characterLength: textLength,
               manualWidth: null,
@@ -234,18 +245,36 @@ export class LogList extends LitElement {
   ): string {
     let gridTemplateColumns = '';
 
+    let lastVisibleCol = -1;
+    for (let i = this.columnData.length - 1; i >= 0; i--) {
+      if (this.columnData[i].isVisible) {
+        lastVisibleCol = i;
+        break;
+      }
+    }
+
     const calculateColumnWidth = (col: TableColumn, i: number) => {
+      const chWidth = col.characterLength;
+      const padding = 24 + 1; // +1 pixel to avoid ellipsis jitter when highlighting text
+
       if (i === resizingIndex) {
+        if (i === lastVisibleCol) {
+          return `minmax(${newWidth}px, 1fr)`;
+        }
         return `${newWidth}px`;
       }
       if (col.manualWidth !== null) {
+        if (i === lastVisibleCol) {
+          return `minmax(${col.manualWidth}px, 1fr)`;
+        }
         return `${col.manualWidth}px`;
       }
       if (i === 0) {
-        return `3rem`;
+        return `calc(var(--sys-log-viewer-table-cell-icon-size) + 1rem)`;
       }
-      const chWidth = col.characterLength;
-      const padding = 34;
+      if (i === lastVisibleCol) {
+        return `minmax(${this.LAST_COL_MIN_WIDTH}px, 1fr)`;
+      }
       return `clamp(${this.MIN_COL_WIDTH}px, ${chWidth}ch + ${padding}px, 80ch)`;
     };
 
@@ -423,19 +452,25 @@ export class LogList extends LitElement {
 
     const { columnIndex, startX, startWidth } = this.columnResizeData;
     const offsetX = event.clientX - startX;
-    const newWidth = Math.max(startWidth + offsetX, this.MIN_COL_WIDTH);
+    const newWidth =
+      this.columnData.length - 1 === columnIndex
+        ? Math.max(startWidth + offsetX, this.LAST_COL_MIN_WIDTH)
+        : Math.max(startWidth + offsetX, this.MIN_COL_WIDTH);
 
     // Ensure the column index exists in columnData
     if (this.columnData[columnIndex]) {
       this.columnData[columnIndex].manualWidth = newWidth;
     }
 
-    const gridTemplateColumns = this.generateGridTemplateColumns(
-      newWidth,
-      columnIndex,
-    );
+    const generateGridTemplateColumns = debounce(() => {
+      const gridTemplateColumns = this.generateGridTemplateColumns(
+        newWidth,
+        columnIndex,
+      );
+      this.updateColumnWidths(gridTemplateColumns);
+    }, this.RESIZE_DEBOUNCE_DELAY);
 
-    this.updateColumnWidths(gridTemplateColumns);
+    generateGridTemplateColumns();
   }
 
   render() {
@@ -485,8 +520,7 @@ export class LogList extends LitElement {
   ) {
     return html`
       <th title="${fieldKey}" ?hidden=${!isVisible}>
-        ${fieldKey}
-        ${columnIndex > 0 ? this.resizeHandle(columnIndex - 1) : html``}
+        ${fieldKey} ${this.resizeHandle(columnIndex)}
       </th>
     `;
   }
@@ -512,9 +546,9 @@ export class LogList extends LitElement {
       'log-row': true,
       'log-row--nowrap': !this.lineWrap,
     };
-    const logSeverityClass = ('log-row--' +
-      (log.severity || Severity.INFO).toLowerCase()) as keyof typeof classes;
-    classes[logSeverityClass] = true;
+    const logLevelClass = ('log-row--' +
+      (log?.level || Level.INFO).toLowerCase()) as keyof typeof classes;
+    classes[logLevelClass] = true;
 
     return html`
       <tr class="${classMap(classes)}">
@@ -541,20 +575,21 @@ export class LogList extends LitElement {
       value: '',
     };
 
-    if (field.key == 'severity') {
-      const severityIcons = new Map<Severity, string>([
-        [Severity.WARNING, 'warning'],
-        [Severity.ERROR, 'cancel'],
-        [Severity.CRITICAL, 'brightness_alert'],
-        [Severity.DEBUG, 'bug_report'],
+    if (field.key == 'level') {
+      const levelIcons = new Map<Level, string>([
+        [Level.INFO, `\ue88e`],
+        [Level.WARNING, '\uf083'],
+        [Level.ERROR, '\ue888'],
+        [Level.CRITICAL, '\uf5cf'],
+        [Level.DEBUG, '\ue868'],
       ]);
 
-      const severityValue: Severity = field.value
-        ? (field.value as Severity)
-        : log.severity
-          ? log.severity
-          : Severity.INFO;
-      const iconId = severityIcons.get(severityValue) || '';
+      const levelValue: Level = field.value
+        ? (field.value as Level)
+        : log.level
+          ? log.level
+          : Level.INFO;
+      const iconId = levelIcons.get(levelValue) || '';
       const toTitleCase = (input: string): string => {
         return input.replace(/\b\w+/g, (match) => {
           return match.charAt(0).toUpperCase() + match.slice(1).toLowerCase();
@@ -562,7 +597,7 @@ export class LogList extends LitElement {
       };
 
       return html`
-        <td ?hidden=${!isVisible}>
+        <td class="level-cell" ?hidden=${!isVisible}>
           <div class="cell-content">
             <md-icon
               class="cell-icon"
@@ -571,6 +606,7 @@ export class LogList extends LitElement {
               ${iconId}
             </md-icon>
           </div>
+          ${this.resizeHandle(columnIndex)}
         </td>
       `;
     }
@@ -584,7 +620,7 @@ export class LogList extends LitElement {
               : ''}</span
           >
         </div>
-        ${columnIndex > 0 ? this.resizeHandle(columnIndex - 1) : html``}
+        ${this.resizeHandle(columnIndex)}
       </td>
     `;
   }
@@ -616,7 +652,7 @@ export class LogList extends LitElement {
       leading-icon
       data-visible="${this._autoscrollIsEnabled ? 'false' : 'true'}"
     >
-      <md-icon slot="icon" aria-hidden="true">arrow_downward</md-icon>
+      <md-icon slot="icon" aria-hidden="true">&#xe5db;</md-icon>
       Jump to Bottom
     </md-filled-button>
   `;

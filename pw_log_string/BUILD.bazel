@@ -51,7 +51,7 @@ pw_facade(
 
 label_flag(
     name = "handler_backend",
-    build_setting_default = ":handler_backend_multiplexer",
+    build_setting_default = "//pw_build:unspecified_backend",
 )
 
 label_flag(
@@ -65,9 +65,16 @@ alias(
 )
 
 cc_library(
-    name = "handler_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
-    # TODO: b/257539200 - This probably should default to
-    # //pw_system:log_backend, but that target does not yet build in Bazel.
-    # deps = ["//pw_system:log_backend"],
+    name = "wrap_newlib_assert",
+    srcs = [
+        "wrap_newlib_assert.cc",
+    ],
+    linkopts = [
+        "-Wl,--wrap=__assert_func",
+    ],
+    deps = [
+        ":handler",
+        "//pw_log",
+    ],
+    alwayslink = 1,
 )

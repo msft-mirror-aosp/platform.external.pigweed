@@ -7,22 +7,28 @@
       "type": "object",
       "properties": {
         "languages": {
-          "description": "The programming languages that the module supports.",
+          "description": "Supported languages, build systems, etc. TODO: https://pwbug.dev/345534064 - Refactor this.",
           "type": "array",
           "items": {
             "type": "string",
             "enum": [
+              "Bazel",
               "C",
               "C11",
               "C++",
               "C++17",
               "C++20",
               "CLI",
+              "CMake",
+              "GN",
+              "Go",
               "Java",
+              "JavaScript",
               "Python",
               "Rust",
               "Starlark",
-              "TypeScript"
+              "TypeScript",
+              "VS Code"
             ]
           }
         },
@@ -36,7 +42,8 @@
           "enum": [
             "stable",
             "unstable",
-            "experimental"
+            "experimental",
+            "deprecated"
           ]
         },
         "tagline": {

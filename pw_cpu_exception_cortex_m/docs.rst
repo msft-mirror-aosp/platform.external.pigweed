@@ -3,15 +3,18 @@
 =========================
 pw_cpu_exception_cortex_m
 =========================
-This backend provides an implementations for the CPU exception module frontend
+This module provides backend implementations for the CPU exception module frontend
 for the following Cortex-M architectures:
 
+* ARMv6-M - Cortex M0, M0+
 * ARMv7-M - Cortex M3
 * ARMv7-EM - Cortex M4, M7
 * ARMv8-M Mainline - Cortex M33, M33P
 
-Setup
-=====
+It also includes a crash facade for a more detailed analysis of the CPU state.
+
+Backend Setup
+=============
 There are a few ways to set up the Cortex M exception handler so the
 application's exception handler is properly called during an exception.
 
@@ -72,6 +75,35 @@ exception_entry_test integration test), but keep in mind that your
 application's exception handler will not be entered if an exception occurs
 before the vector table entries are updated to point to
 ``pw_cpu_exception_Entry``.
+
+.. _module-pw_cpu_exception_cortex_m-crash-facade-setup:
+
+Crash Facade Setup
+==================
+The function ``AnalyzeCpuStateAndCrash()`` creates a condensed analysis of the
+CPU state at crash time. It passes the given state along with a format string
+and its arguments to ``PW_CPU_EXCEPTION_CORTEX_M_CRASH()``. The user must
+implement the ``PW_CPU_EXCEPTION_CORTEX_M_HANDLE_CRASH()`` macro and the
+``GetCrashThreadName()`` function, which must returna a null-terminated string
+with the thread name at the time of the crash. The user can choose what to do
+with the format string and arguments in their implementation of
+``PW_CPU_EXCEPTION_CORTEX_M_HANDLE_CRASH()``. For example, the format string and
+arguments can be tokenized to reduce the size of data collected at crash time or
+a string can be composed and reported instead.
+
+The function ``AnalyzeCpuStateAndCrash()`` can be called in the
+``pw_cpu_exception_DefaultHandler()`` directly to delegate the crash handling
+to the user-provided ``PW_CPU_EXCEPTION_CORTEX_M_HANDLE_CRASH()``
+implementation.
+
+Configuration Options
+---------------------
+- ``PW_CPU_EXCEPTION_CORTEX_M_CRASH_EXTENDED_CPU_ANALYSIS``: Enable extended
+  analysis in ``AnalyzeCpuStateAndCrash()`` that collects important register
+  values depending on the fault type.
+
+- ``PW_CPU_EXCEPTION_CORTEX_M_CRASH_ANALYSIS_INCLUDE_PC_LR``: Enable including
+  the PC and LR register values in the ``AnalyzeCpuStateAndCrash()`` analysis.
 
 Module Usage
 ============
