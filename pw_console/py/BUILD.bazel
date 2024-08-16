@@ -12,7 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//pw_build:python.bzl", "pw_py_binary", "pw_py_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -76,6 +77,9 @@ py_library(
         "pw_console/templates/__init__.py",
         "pw_console/test_mode.py",
         "pw_console/text_formatting.py",
+        "pw_console/web.py",
+        "pw_console/web_kernel.py",
+        "pw_console/web_server.py",
         "pw_console/widgets/__init__.py",
         "pw_console/widgets/border.py",
         "pw_console/widgets/checkbox.py",
@@ -88,6 +92,8 @@ py_library(
     ],
     data = [
         "pw_console/docs/user_guide.rst",
+        "pw_console/html/console.html",
+        "pw_console/html/defaultconfig.json",
         "pw_console/html/index.html",
         "pw_console/html/main.js",
         "pw_console/html/style.css",
@@ -102,17 +108,18 @@ py_library(
         "//pw_cli/py:pw_cli",
         "//pw_config_loader/py:pw_config_loader",
         "//pw_log_tokenized/py:pw_log_tokenized",
-        "@python_packages_jinja2//:pkg",
-        "@python_packages_prompt_toolkit//:pkg",
-        "@python_packages_ptpython//:pkg",
-        "@python_packages_pygments//:pkg",
-        "@python_packages_pyperclip//:pkg",
-        "@python_packages_pyyaml//:pkg",
-        "@python_packages_websockets//:pkg",
+        "@python_packages//aiohttp",
+        "@python_packages//jinja2",
+        "@python_packages//prompt_toolkit",
+        "@python_packages//ptpython",
+        "@python_packages//pygments",
+        "@python_packages//pyperclip",
+        "@python_packages//pyyaml",
+        "@python_packages//websockets",
     ],
 )
 
-py_binary(
+pw_py_binary(
     name = "pw_console_test_mode",
     srcs = [
         "pw_console/__main__.py",
@@ -123,7 +130,7 @@ py_binary(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "command_runner_test",
     size = "small",
     srcs = [
@@ -134,7 +141,7 @@ py_test(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "console_app_test",
     size = "small",
     srcs = [
@@ -145,7 +152,7 @@ py_test(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "console_prefs_test",
     size = "small",
     srcs = [
@@ -156,7 +163,7 @@ py_test(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "help_window_test",
     size = "small",
     srcs = [
@@ -167,7 +174,7 @@ py_test(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "log_filter_test",
     size = "small",
     srcs = [
@@ -175,11 +182,11 @@ py_test(
     ],
     deps = [
         ":pw_console",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
-py_test(
+pw_py_test(
     name = "log_store_test",
     size = "small",
     srcs = [
@@ -190,7 +197,7 @@ py_test(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "log_view_test",
     size = "small",
     srcs = [
@@ -198,11 +205,11 @@ py_test(
     ],
     deps = [
         ":pw_console",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
-py_test(
+pw_py_test(
     name = "socket_client_test",
     size = "small",
     srcs = [
@@ -213,7 +220,7 @@ py_test(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "repl_pane_test",
     size = "small",
     srcs = [
@@ -224,7 +231,7 @@ py_test(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "table_test",
     size = "small",
     srcs = [
@@ -232,11 +239,11 @@ py_test(
     ],
     deps = [
         ":pw_console",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
-py_test(
+pw_py_test(
     name = "text_formatting_test",
     size = "small",
     srcs = [
@@ -244,11 +251,11 @@ py_test(
     ],
     deps = [
         ":pw_console",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
-py_test(
+pw_py_test(
     name = "window_manager_test",
     size = "small",
     srcs = [

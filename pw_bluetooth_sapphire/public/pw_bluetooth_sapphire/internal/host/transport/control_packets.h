@@ -13,7 +13,8 @@
 // the License.
 
 #pragma once
-#include <endian.h>
+
+#include <pw_bytes/endian.h>
 
 #include <memory>
 
@@ -41,7 +42,10 @@ class Packet<hci_spec::CommandHeader>
                                             size_t payload_size = 0u);
 
   // Returns the HCI command opcode currently in this packet.
-  hci_spec::OpCode opcode() const { return le16toh(view().header().opcode); }
+  hci_spec::OpCode opcode() const {
+    return pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                       view().header().opcode);
+  }
 
   // Convenience function to get a mutable payload of a packet.
   template <typename PayloadType>
@@ -138,5 +142,5 @@ class Packet<hci_spec::EventHeader>
 
 // Convenience macros to check and log any non-Success status of an event.
 // Evaluate to true if the event status is not success.
-#define hci_is_error(event, flag, tag, fmt...) \
-  bt_is_error(event.ToResult(), flag, tag, fmt)
+#define hci_is_error(event, flag, tag, /*fmt*/...) \
+  bt_is_error(event.ToResult(), flag, tag, __VA_ARGS__)

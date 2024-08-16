@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
@@ -53,12 +54,6 @@ pw_cc_test(
 )
 
 cc_library(
-    name = "digital_io_controller",
-    hdrs = ["public/pw_digital_io/digital_io_controller.h"],
-    includes = ["public"],
-)
-
-cc_library(
     name = "digital_io_service",
     srcs = ["digital_io_service.cc"],
     hdrs = ["public/pw_digital_io/digital_io_service.h"],
@@ -81,4 +76,35 @@ proto_library(
 pw_proto_library(
     name = "digital_io_proto_cc",
     deps = [":digital_io_proto"],
+)
+
+py_proto_library(
+    name = "digital_io_proto_py_pb2",
+    deps = [":digital_io_proto"],
+)
+
+cc_library(
+    name = "digital_io_mock",
+    srcs = ["digital_io_mock.cc"],
+    hdrs = ["public/pw_digital_io/digital_io_mock.h"],
+    implementation_deps = [
+        "//pw_log",
+    ],
+    includes = ["public"],
+    deps = [
+        "//pw_assert:check",
+        "//pw_chrono:system_clock",
+        "//pw_containers:inline_deque",
+        "//pw_digital_io",
+        "//pw_result",
+    ],
+)
+
+pw_cc_test(
+    name = "digital_io_mock_test",
+    srcs = ["digital_io_mock_test.cc"],
+    deps = [
+        ":digital_io_mock",
+        "//pw_unit_test",
+    ],
 )

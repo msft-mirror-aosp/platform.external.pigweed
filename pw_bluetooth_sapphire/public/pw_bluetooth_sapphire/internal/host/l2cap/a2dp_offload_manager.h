@@ -19,6 +19,8 @@
 
 namespace bt::l2cap {
 
+namespace android_emb = pw::bluetooth::vendor::android_hci;
+
 // Provides an API surface to start and stop A2DP offloading. A2dpOffloadManager
 // tracks the state of A2DP offloading and allows at most one channel to be
 // offloaded at a given time
@@ -27,14 +29,18 @@ class A2dpOffloadManager {
   // Configuration received from the profile server that needs to be converted
   // to a command packet in order to send the StartA2dpOffload command
   struct Configuration {
-    hci_spec::vendor::android::A2dpCodecType codec;
+    android_emb::A2dpCodecType codec;
     uint16_t max_latency;
-    hci_spec::vendor::android::A2dpScmsTEnable scms_t_enable;
-    hci_spec::vendor::android::A2dpSamplingFrequency sampling_frequency;
-    hci_spec::vendor::android::A2dpBitsPerSample bits_per_sample;
-    hci_spec::vendor::android::A2dpChannelMode channel_mode;
+    StaticPacket<android_emb::A2dpScmsTEnableWriter> scms_t_enable;
+    android_emb::A2dpSamplingFrequency sampling_frequency;
+    android_emb::A2dpBitsPerSample bits_per_sample;
+    android_emb::A2dpChannelMode channel_mode;
     uint32_t encoded_audio_bit_rate;
-    hci_spec::vendor::android::A2dpOffloadCodecInformation codec_information;
+
+    StaticPacket<android_emb::SbcCodecInformationWriter> sbc_configuration;
+    StaticPacket<android_emb::AacCodecInformationWriter> aac_configuration;
+    StaticPacket<android_emb::LdacCodecInformationWriter> ldac_configuration;
+    StaticPacket<android_emb::AptxCodecInformationWriter> aptx_configuration;
   };
 
   explicit A2dpOffloadManager(hci::CommandChannel::WeakPtr cmd_channel)
@@ -68,21 +74,6 @@ class A2dpOffloadManager {
   WeakPtr<A2dpOffloadManager> GetWeakPtr() { return weak_self_.GetWeakPtr(); }
 
  private:
-  // Defines the state of A2DP offloading to the controller.
-  enum class A2dpOffloadStatus : uint8_t {
-    // The A2DP offload command was received and successfully started.
-    kStarted,
-    // The A2DP offload command was sent and the L2CAP channel is waiting for a
-    // response.
-    kStarting,
-    // The A2DP offload stop command was sent and the L2CAP channel is waiting
-    // for a response.
-    kStopping,
-    // Either an error or an A2DP offload command stopped offloading to the
-    // controller.
-    kStopped,
-  };
-
   hci::CommandChannel::WeakPtr cmd_channel_;
 
   A2dpOffloadStatus a2dp_offload_status_ = A2dpOffloadStatus::kStopped;

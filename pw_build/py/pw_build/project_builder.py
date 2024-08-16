@@ -194,13 +194,14 @@ def execute_command_no_logging(
     command: list,
     env: dict,
     recipe: BuildRecipe,
+    working_dir: Path | None = None,
     # pylint: disable=unused-argument
     logger: logging.Logger = _LOG,
     line_processed_callback: Callable[[BuildRecipe], None] | None = None,
     # pylint: enable=unused-argument
 ) -> bool:
     print()
-    proc = subprocess.Popen(command, env=env, errors='replace')
+    proc = subprocess.Popen(command, env=env, cwd=working_dir, errors='replace')
     BUILDER_CONTEXT.register_process(recipe, proc)
     returncode = None
     while returncode is None:
@@ -222,6 +223,7 @@ def execute_command_with_logging(
     command: list,
     env: dict,
     recipe: BuildRecipe,
+    working_dir: Path | None = None,
     logger: logging.Logger = _LOG,
     line_processed_callback: Callable[[BuildRecipe], None] | None = None,
 ) -> bool:
@@ -245,6 +247,7 @@ def execute_command_with_logging(
     with subprocess.Popen(
         command,
         env=env,
+        cwd=working_dir,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         errors='replace',
@@ -524,7 +527,15 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
         keep_going: bool = False,
         abort_callback: Callable = _exit,
         execute_command: Callable[
-            [list, dict, BuildRecipe, logging.Logger, Callable | None], bool
+            [
+                list,
+                dict,
+                BuildRecipe,
+                Path | None,
+                logging.Logger,
+                Callable | None,
+            ],
+            bool,
         ] = execute_command_no_logging,
         charset: ProjectBuilderCharset = ASCII_CHARSET,
         colors: bool = True,
@@ -577,6 +588,15 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
 
         # Progress bar enable/disable flag
         self.allow_progress_bars = allow_progress_bars
+
+        # Disable progress bars if the terminal is not a tty or the
+        # $TERM env var is set accordingly.
+        term = os.environ.get('TERM', '')
+        # inclusive-language: disable
+        if not sys.stdout.isatty() or term.lower() in ['dumb', 'unknown']:
+            self.allow_progress_bars = False
+        # inclusive-language: enable
+
         self.log_build_steps = log_build_steps
         self.stdout_proxy: StdoutProxy | None = None
 
@@ -800,7 +820,12 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
                     )
 
                 build_succeeded = self.execute_command(
-                    command_args, env, cfg, cfg.log, None
+                    command_args,
+                    env,
+                    cfg,
+                    command_step.working_dir,
+                    cfg.log,
+                    None,
                 )
             else:
                 cfg.log.info(

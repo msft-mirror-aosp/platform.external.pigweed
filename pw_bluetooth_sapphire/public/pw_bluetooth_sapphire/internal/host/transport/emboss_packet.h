@@ -47,8 +47,8 @@ namespace bt {
 //    $next [+1] UInt num_responses
 //
 // The Emboss compiler generates two types of view for each struct. In the case
-// of InquiryCommand, it generates InquiryCommandView (read-only) and
-// InquiryCommandWriter (read & writable). We can parameterize StaticPacket over
+// of InquiryCommand, it generates InquiryCommandView (read only) and
+// InquiryCommandWriter (read write). We can parameterize StaticPacket over
 // one of these views to read and/or write an Inquiry packet:
 //
 //  bt::StaticPacket<pw::bluetooth::emboss::InquiryCommandWriter> packet;
@@ -74,6 +74,13 @@ class StaticPacket {
   template <typename... Args>
   T view(Args... args) {
     T view(args..., buffer_.mutable_data(), buffer_.size());
+    BT_ASSERT(view.IsComplete());
+    return view;
+  }
+
+  template <typename... Args>
+  T view(Args... args) const {
+    T view(args..., buffer_.data(), buffer_.size());
     BT_ASSERT(view.IsComplete());
     return view;
   }
@@ -127,6 +134,11 @@ class DynamicPacket {
         view.IsComplete(),
         "emboss packet buffer not large enough to hold requested view");
     return view;
+  }
+
+  template <typename T, typename... Args>
+  T unchecked_view(Args... args) {
+    return T(args..., buffer_.mutable_data(), size());
   }
 
   template <typename T, typename... Args>
