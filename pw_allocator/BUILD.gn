@@ -78,10 +78,7 @@ pw_source_set("block") {
     dir_pw_result,
     dir_pw_status,
   ]
-  deps = [
-    ":buffer",
-    dir_pw_assert,
-  ]
+  deps = [ ":buffer" ]
   sources = [ "block.cc" ]
 }
 
@@ -321,6 +318,7 @@ pw_source_set("testing") {
     ":buffer",
     ":first_fit_block_allocator",
     ":tracking_allocator",
+    "$dir_pw_sync:interrupt_spin_lock",
     dir_pw_bytes,
     dir_pw_result,
     dir_pw_status,

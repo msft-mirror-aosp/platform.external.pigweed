@@ -168,6 +168,9 @@ const auto kWritePageScanTypeRsp =
 const auto kWritePageTimeoutRsp =
     COMMAND_COMPLETE_RSP(hci_spec::kWritePageTimeout);
 
+const auto kWritePinTypeRsp =
+    testing::CommandCompletePacket(hci_spec::kWritePinType);
+
 const auto kConnectionRequest = testing::ConnectionRequestPacket(kTestDevAddr);
 
 const auto kAcceptConnectionRequest =
@@ -565,6 +568,10 @@ class BrEdrConnectionManagerTest : public TestingBase {
                           testing::WritePageTimeoutPacket(static_cast<uint16_t>(
                               pw::bluetooth::emboss::PageTimeout::DEFAULT)),
                           &kWritePageTimeoutRsp);
+    EXPECT_CMD_PACKET_OUT(test_device(),
+                          testing::WritePinTypePacket(static_cast<uint8_t>(
+                              pw::bluetooth::emboss::PinType::VARIABLE)),
+                          &kWritePinTypeRsp);
 
     connection_manager_ = std::make_unique<BrEdrConnectionManager>(
         transport()->GetWeakPtr(),
@@ -4670,7 +4677,7 @@ TEST_F(BrEdrConnectionManagerTest, RoleChangeDuringInboundConnectionProcedure) {
 // Peer and local Secure Connections (SC) are supported and key is of SC type
 TEST_F(BrEdrConnectionManagerTest,
        SecureConnectionsSupportedCorrectLinkKeyTypeSucceeds) {
-  const auto kReadRemoteExtended2Complete = StaticByteBuffer(
+  const auto kReadRemoteExtended2CompleteSc = StaticByteBuffer(
       hci_spec::kReadRemoteExtendedFeaturesCompleteEventCode,
       0x0D,  // parameter_total_size (13 bytes)
       pw::bluetooth::emboss::StatusCode::SUCCESS,  // status
@@ -4688,9 +4695,9 @@ TEST_F(BrEdrConnectionManagerTest,
       0x00
       // lmp_features_page2: Secure Connections (Controller Support)
   );
-  const auto kLinkKeyNotification = MakeLinkKeyNotification(
+  const auto kLinkKeyNotificationSc = MakeLinkKeyNotification(
       hci_spec::LinkKeyType::kAuthenticatedCombination256);
-  const StaticByteBuffer kEncryptionChangeEvent(
+  const StaticByteBuffer kEncryptionChangeEventSc(
       hci_spec::kEncryptionChangeEventCode,
       4,     // parameter total size
       0x00,  // status
@@ -4727,7 +4734,7 @@ TEST_F(BrEdrConnectionManagerTest,
   EXPECT_CMD_PACKET_OUT(test_device(),
                         kReadRemoteExtended2,
                         &kReadRemoteExtendedFeaturesRsp,
-                        &kReadRemoteExtended2Complete);
+                        &kReadRemoteExtended2CompleteSc);
 
   test_device()->SendCommandChannelPacket(kConnectionRequest);
 
@@ -4766,11 +4773,11 @@ TEST_F(BrEdrConnectionManagerTest,
                         kUserConfirmationRequestReply,
                         &kUserConfirmationRequestReplyRsp,
                         &kSimplePairingCompleteSuccess,
-                        &kLinkKeyNotification);
+                        &kLinkKeyNotificationSc);
   EXPECT_CMD_PACKET_OUT(test_device(),
                         kSetConnectionEncryption,
                         &kSetConnectionEncryptionRsp,
-                        &kEncryptionChangeEvent);
+                        &kEncryptionChangeEventSc);
   EXPECT_CMD_PACKET_OUT(
       test_device(), kReadEncryptionKeySize, &kReadEncryptionKeySizeRsp);
 
@@ -4785,7 +4792,7 @@ TEST_F(BrEdrConnectionManagerTest,
 // type
 TEST_F(BrEdrConnectionManagerTest,
        SecureConnectionsSupportedIncorrectLinkKeyTypeFails) {
-  const auto kReadRemoteExtended2Complete = StaticByteBuffer(
+  const auto kReadRemoteExtended2CompleteLktf = StaticByteBuffer(
       hci_spec::kReadRemoteExtendedFeaturesCompleteEventCode,
       0x0D,  // parameter_total_size (13 bytes)
       pw::bluetooth::emboss::StatusCode::SUCCESS,  // status
@@ -4832,7 +4839,7 @@ TEST_F(BrEdrConnectionManagerTest,
   EXPECT_CMD_PACKET_OUT(test_device(),
                         kReadRemoteExtended2,
                         &kReadRemoteExtendedFeaturesRsp,
-                        &kReadRemoteExtended2Complete);
+                        &kReadRemoteExtended2CompleteLktf);
 
   test_device()->SendCommandChannelPacket(kConnectionRequest);
 

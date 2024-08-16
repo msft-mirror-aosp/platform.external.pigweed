@@ -47,6 +47,7 @@ cc_library(
         "discovery_filter.cc",
         "generic_access_client.cc",
         "identity_resolving_list.cc",
+        "legacy_pairing_state.cc",
         "low_energy_address_manager.cc",
         "low_energy_advertising_manager.cc",
         "low_energy_connection.cc",
@@ -65,6 +66,7 @@ cc_library(
     ],
     copts = [
         "-Wno-unused-parameter",
+        "-Wswitch-enum",
     ],
     # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
     # builder issue is resolved.
@@ -82,6 +84,7 @@ cc_library(
         "//pw_bluetooth_sapphire/host/sm:definitions",
         "@pigweed//pw_async:heap_dispatcher",
         "@pigweed//pw_bluetooth",
+        "@pigweed//pw_string:utf_codecs",
         "@pigweed//third_party/fuchsia:fit",
     ],
 )
@@ -117,6 +120,7 @@ fuchsia_cc_test(
         "discovery_filter_test.cc",
         "fake_pairing_delegate_test.cc",
         "identity_resolving_list_test.cc",
+        "legacy_pairing_state_test.cc",
         "low_energy_address_manager_test.cc",
         "low_energy_advertising_manager_test.cc",
         "low_energy_connection_manager_test.cc",
