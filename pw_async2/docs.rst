@@ -34,7 +34,7 @@ progress, the ``Dispatcher`` will run it again. For example:
    using ::pw::async2::Pending;
    using ::pw::async2::Task;
 
-   class ReceiveAndSend: public Task {
+   class ReceiveAndSend : public Task {
     public:
      ReceiveAndSend(Receiver receiver, Sender sender):
        receiver_(receiver), sender_(sender) {}
@@ -160,6 +160,9 @@ C++ Utilities
 .. doxygenfunction:: pw::async2::AllocateTask(pw::allocator::Allocator& allocator, Pendable&& pendable)
 
 .. doxygenfunction:: pw::async2::AllocateTask(pw::allocator::Allocator& allocator, Args&&... args)
+
+.. doxygenclass:: pw::async2::CoroOrElseTask
+  :members:
 
 .. doxygenclass:: pw::async2::PendFuncTask
   :members:

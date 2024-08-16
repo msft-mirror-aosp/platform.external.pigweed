@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection_manager.h"
 
 #include <cpp-string/string_printf.h>
+#include <pw_preprocessor/compiler.h>
 
 #include <optional>
 #include <vector>
@@ -34,13 +35,10 @@
 #include "pw_bluetooth_sapphire/internal/host/hci/local_address_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/error.h"
-#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/smp.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/util.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/transport.h"
-
-#pragma clang diagnostic ignored "-Wswitch-enum"
 
 using bt::sm::BondableMode;
 
@@ -55,6 +53,8 @@ namespace {
 // these other errors based on their descriptions in v5.2 Vol. 1 Part F
 // Section 2.
 bool ShouldStopAlwaysAutoConnecting(pw::bluetooth::emboss::StatusCode err) {
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (err) {
     case pw::bluetooth::emboss::StatusCode::CONNECTION_TIMEOUT:
     case pw::bluetooth::emboss::StatusCode::CONNECTION_REJECTED_SECURITY:
@@ -65,6 +65,7 @@ bool ShouldStopAlwaysAutoConnecting(pw::bluetooth::emboss::StatusCode err) {
     default:
       return false;
   }
+  PW_MODIFY_DIAGNOSTICS_POP();
 }
 
 // During the initial connection to a peripheral we use the initial high

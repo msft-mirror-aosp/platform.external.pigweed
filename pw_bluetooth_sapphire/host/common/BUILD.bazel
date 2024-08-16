@@ -40,6 +40,7 @@ cc_library(
         "supplement_data.cc",
         "uuid.cc",
     ],
+    copts = ["-Wswitch-enum"],
     # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
     # builder issue is resolved.
     target_compatible_with = ["@platforms//os:linux"],
@@ -57,6 +58,7 @@ cc_library(
         "@pigweed//pw_random",
         "@pigweed//pw_span",
         "@pigweed//pw_string",
+        "@pigweed//pw_string:utf_codecs",
         "@pigweed//third_party/fuchsia:fit",
     ] + fuchsia_select({
         "@platforms//os:fuchsia": [
@@ -65,6 +67,12 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "uuid_string_util",
+    srcs = ["uuid_string_util.cc"],
+    deps = [":common"],
 )
 
 fuchsia_cc_test(
@@ -95,6 +103,7 @@ fuchsia_cc_test(
     visibility = ["//visibility:public"],
     deps = [
         ":common",
+        ":uuid_string_util",
         "//pw_bluetooth_sapphire/host/testing",
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "@pigweed//pw_async:fake_dispatcher_fixture",

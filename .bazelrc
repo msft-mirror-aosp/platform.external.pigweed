@@ -11,12 +11,13 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-
-# TODO: https://pwbug.dev/258836641#comment4: Enabling bzlmod breaks the build.
-common --noenable_bzlmod
+#
 
 # Improve debugability by printing all arguments for failing commands.
 common --verbose_failures
+
+# Standard flags required for all Pigweed projects.
+import %workspace%/pw_build/pigweed.bazelrc
 
 # Silence all C/C++ warnings in external code.
 #
@@ -24,6 +25,10 @@ common --verbose_failures
 # first-party code.
 common --per_file_copt=external/.*@-w
 common --host_per_file_copt=external/.*@-w
+
+# Picotool needs to build with exceptions and RTTI enabled.
+common --per_file_copt=external.*picotool.*@-fexceptions,-frtti
+common --host_per_file_copt=external.*picotool.*@-fexceptions,-frtti
 
 # Don't automatically create __init__.py files.
 #
@@ -43,18 +48,15 @@ build --incompatible_enable_cc_toolchain_resolution
 common --experimental_exclude_defines_from_exec_config
 common --experimental_exclude_starlark_flags_from_exec_config
 
-# Skip building or testing C++20 targets by default
-# TODO: b/340568834 Remove when a proper solution is available.
-build --build_tag_filters=-requires_cxx_20
+# Default to C++17 to ensure compatibility.
+common --//pw_toolchain/cc:cxx_standard=17
+common:cxx20 --//pw_toolchain/cc:cxx_standard=20
+
 # Also exclude integration tests from the default build. The test_tag_filters
 # flag doesn't accumulate (https://github.com/bazelbuild/bazel/issues/7322): we
 # have to specify it only once, setting all the exclusions in a comma-separated
 # list.
-test --test_tag_filters=-requires_cxx_20,-integration
-
-# Do not attempt to configure an autodetected (local) toolchain. We vendor all
-# our toolchains, and CI VMs may not have any local toolchain to detect.
-common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+test --test_tag_filters=-integration
 
 # Required for combined code coverage reports.
 coverage --experimental_generate_llvm_lcov
@@ -63,11 +65,6 @@ coverage --combined_report=lcov
 # Suppress the DEBUG: log messages from bazel. We get lots of spammy DEBUG:
 # messages from our third-party dependencies.
 build --ui_event_filters=-debug
-
-# Enforces consistent action environment variables. This is important to
-# address Protobuf's rebuild sensitivity on changes to the environment
-# variables.
-build --incompatible_strict_action_env
 
 # Workaround for https://github.com/bazelbuild/rules_jvm_external/issues/445.
 build --java_language_version=11
@@ -96,9 +93,9 @@ build --@mbedtls//:mbedtls_config=//third_party/mbedtls:default_config
 
 common:asan --//pw_toolchain/host_clang:asan
 # TODO: https://github.com/bazelbuild/bazel/issues/7322 - We need to repeat the
-# -requires_cxx_20 and -integration because the test_tag_filters flag does not
+# -integration because the test_tag_filters flag does not
 # accumulate.
-test:asan --test_tag_filters=-requires_cxx_20,-integration,-noasan
+test:asan --test_tag_filters=-integration,-noasan
 
 # Define the --config=asan-libfuzzer configuration.
 build:asan-libfuzzer \
@@ -116,15 +113,13 @@ build:fuzztest \
 
 common:ubsan --//pw_toolchain/host_clang:ubsan
 # TODO: https://github.com/bazelbuild/bazel/issues/7322 - We need to repeat the
-# -requires_cxx_20 and -integration because the test_tag_filters flag does not
-# accumulate.
-test:ubsan --test_tag_filters=-requires_cxx_20,-integration,-noubsan
+# -integration because the test_tag_filters flag does not accumulate.
+test:ubsan --test_tag_filters=-integration,-noubsan
 
 common:tsan --//pw_toolchain/host_clang:tsan
 # TODO: https://github.com/bazelbuild/bazel/issues/7322 - We need to repeat the
-# -requires_cxx_20 and -integration because the test_tag_filters flag does not
-# accumulate.
-test:tsan --test_tag_filters=-requires_cxx_20,-integration,-notsan
+# -integration because the test_tag_filters flag does not accumulate.
+test:tsan --test_tag_filters=-integration,-notsan
 
 # Configure workspace status command to test pw_build_info git_build_info
 # https://bazel.build/docs/user-manual#workspace-status-command
@@ -137,18 +132,21 @@ build --workspace_status_command=pw_build_info/git_workspace_status_command.sh
 common --//third_party/stm32cube:hal_driver=@stm32f4xx_hal_driver//:hal_driver
 common --@stm32f4xx_hal_driver//:cmsis_device=@cmsis_device_f4//:cmsis_device
 common --@stm32f4xx_hal_driver//:cmsis_init=@cmsis_device_f4//:default_cmsis_init
+common --@cmsis_device_f4//:cmsis_core=@cmsis_core
 
 common --//pw_env_setup/py:pigweed_json=//:pigweed.json
 
 build --//pw_function:config_override=//pw_function:upstream_default_config
 
-# Config for the rp2040 platform.
+# Config for all RP2xxx platforms.
 #
 # TODO: b/301334234 - Make the platform set the flags below.
 # LINT.IfChange
 build:rp2040 --platforms=@pigweed//targets/rp2040
-build:rp2040 --//pw_assert:check_backend=@pigweed//pw_assert_basic
-build:rp2040 --//pw_assert:check_backend_impl=@pigweed//pw_assert_basic:impl
+build:rp2040 --//pw_assert:assert_backend=@pigweed//pw_assert_trap
+build:rp2040 --//pw_assert:assert_backend_impl=@pigweed//pw_assert_trap:impl
+build:rp2040 --//pw_assert:check_backend=@pigweed//pw_assert_trap
+build:rp2040 --//pw_assert:check_backend_impl=@pigweed//pw_assert_trap:impl
 build:rp2040 --//pw_cpu_exception:entry_backend=@pigweed//pw_cpu_exception_cortex_m:cpu_exception
 build:rp2040 --//pw_cpu_exception:entry_backend_impl=@pigweed//pw_cpu_exception_cortex_m:cpu_exception_impl
 build:rp2040 --//pw_cpu_exception:handler_backend=@pigweed//pw_cpu_exception:basic_handler
@@ -158,24 +156,36 @@ build:rp2040 --//pw_log:backend=@pigweed//pw_log_tokenized
 build:rp2040 --//pw_log:backend_impl=@pigweed//pw_log_tokenized:impl
 build:rp2040 --//pw_log_tokenized:handler_backend=@pigweed//pw_system:log_backend
 build:rp2040 --//pw_sync:binary_semaphore_backend=//pw_sync_freertos:binary_semaphore
+build:rp2040 --//pw_sync:counting_semaphore_backend=@pigweed//pw_sync_freertos:counting_semaphore
 build:rp2040 --//pw_sync:interrupt_spin_lock_backend=//pw_sync_freertos:interrupt_spin_lock
 build:rp2040 --//pw_sync:mutex_backend=//pw_sync_freertos:mutex
 build:rp2040 --//pw_sync:thread_notification_backend=//pw_sync_freertos:thread_notification
 build:rp2040 --//pw_sync:timed_thread_notification_backend=//pw_sync_freertos:timed_thread_notification
 build:rp2040 --//pw_sys_io:backend=//pw_sys_io_rp2040
 build:rp2040 --//pw_system:extra_platform_libs=@pigweed//targets/rp2040:extra_platform_libs
+build:rp2040 --//pw_system:device_handler_backend=@pigweed//targets/rp2040:device_handler
 build:rp2040 --//pw_thread:id_backend=@pigweed//pw_thread_freertos:id
 build:rp2040 --//pw_thread:iteration_backend=@pigweed//pw_thread_freertos:thread_iteration
 build:rp2040 --//pw_thread:sleep_backend=@pigweed//pw_thread_freertos:sleep
+build:rp2040 --//pw_thread:test_thread_context_backend=@pigweed//pw_thread_freertos:test_thread_context
 build:rp2040 --//pw_thread:thread_backend=@pigweed//pw_thread_freertos:thread
+build:rp2040 --//pw_thread:yield_backend=@pigweed//pw_thread_freertos:yield
+build:rp2040 --//pw_toolchain:cortex-m_toolchain_kind=clang
 build:rp2040 --//pw_trace:backend=@pigweed//pw_trace_tokenized:pw_trace_tokenized
 build:rp2040 --//pw_unit_test:backend=//pw_unit_test:light
 build:rp2040 --//pw_unit_test:main=//targets/rp2040:unit_test_app
+build:rp2040 --//pw_build:default_module_config=//targets/rp2040:pigweed_module_config
 build:rp2040 --@freertos//:freertos_config=@pigweed//targets/rp2040:freertos_config
 build:rp2040 --@pico-sdk//bazel/config:PICO_STDIO_USB=True
 build:rp2040 --@pico-sdk//bazel/config:PICO_STDIO_UART=True
+build:rp2040 --@pico-sdk//bazel/config:PICO_CLIB=llvm_libc
+build:rp2040 --@pico-sdk//bazel/config:PICO_TOOLCHAIN="clang"
 test:rp2040 --run_under=//targets/rp2040/py:unit_test_client
 # LINT.ThenChange(//targets/rp2040/transition.bzl)
+
+# RP2350 is the same but with a different --platforms setting.
+build:rp2350 --config=rp2040
+build:rp2350 --platforms=@pigweed//targets/rp2040:rp2350
 
 # Config for the stm32f429i_disc1 baremetal platform.
 #

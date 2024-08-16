@@ -112,8 +112,13 @@ html_static_path = ['docs/_static']
 # or fully qualified paths (eg. https://...)
 html_css_files = [
     "css/pigweed.css",
-    # Needed for Inconsolata font.
-    "https://fonts.googleapis.com/css2?family=Inconsolata&display=swap",
+    # We could potentially merge the Google Fonts stylesheets into a single network
+    # request but we already preconnect with the service in //docs/layout/page.html
+    # so the performance impact of keeping these as 3 separate calls should be
+    # negligible.
+    "https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap",
+    "https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap",
+    "https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap",
     # FontAwesome for mermaid and sphinx-design
     "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css",
 ]
@@ -124,10 +129,15 @@ html_js_files = [
     "https://cdnjs.cloudflare.com/ajax/libs/fuzzysort/2.0.4/fuzzysort.js",
 ]
 
+announcement_url = 'https://pigweed.dev/docs/blog/03-pigweed-sdk.html'
+announcement_text = 'Pigweed SDK launches with Raspberry Pi RP2350'
+announcement = f'🚀🚀🚀 <a href="{announcement_url}">{announcement_text}</a> 🚀🚀🚀'
+
 # Furo color theme variables based on:
 # https://github.com/pradyunsg/furo/blob/main/src/furo/assets/styles/variables/_colors.scss
 # Colors with unchanged defaults are left commented out for easy updating.
 html_theme_options = {
+    'announcement': announcement,
     'light_css_variables': {
         # Make the logo text more amaranth-like
         'color-sidebar-brand-text': '#b529aa',

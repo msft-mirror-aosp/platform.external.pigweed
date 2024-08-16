@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection.h"
 
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection_manager.h"
+#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 
 namespace bt::gap::internal {
 
@@ -145,6 +146,11 @@ LowEnergyConnection::AddRef() {
       self->conn_mgr_->ReleaseReference(handle);
     }
   };
+  auto accept_cis_cb = [self](iso::CigCisIdentifier id,
+                              iso::CisEstablishedCallback cb) {
+    BT_ASSERT(self.is_alive());
+    return self->AcceptCis(id, std::move(cb));
+  };
   auto bondable_cb = [self] {
     BT_ASSERT(self.is_alive());
     return self->bondable_mode();
@@ -161,6 +167,7 @@ LowEnergyConnection::AddRef() {
       new LowEnergyConnectionHandle(peer_id(),
                                     handle(),
                                     std::move(release_cb),
+                                    std::move(accept_cis_cb),
                                     std::move(bondable_cb),
                                     std::move(security_cb),
                                     std::move(role_cb)));
@@ -265,6 +272,21 @@ void LowEnergyConnection::UpgradeSecurity(sm::SecurityLevel level,
   OnSecurityRequest(level, std::move(cb));
 }
 
+void LowEnergyConnection::set_security_mode(LESecurityMode mode) {
+  BT_ASSERT(sm_);
+  sm_->set_security_mode(mode);
+}
+
+sm::BondableMode LowEnergyConnection::bondable_mode() const {
+  BT_ASSERT(sm_);
+  return sm_->bondable_mode();
+}
+
+sm::SecurityProperties LowEnergyConnection::security() const {
+  BT_ASSERT(sm_);
+  return sm_->security();
+}
+
 // Cancels any on-going pairing procedures and sets up SMP to use the provided
 // new I/O capabilities for future pairing procedures.
 void LowEnergyConnection::ResetSecurityManager(sm::IOCapability ioc) {
@@ -275,6 +297,14 @@ void LowEnergyConnection::OnInterrogationComplete() {
   BT_ASSERT(!interrogation_completed_);
   interrogation_completed_ = true;
   MaybeUpdateConnectionParameters();
+}
+
+iso::AcceptCisStatus LowEnergyConnection::AcceptCis(
+    iso::CigCisIdentifier id, iso::CisEstablishedCallback cb) {
+  if (role() != pw::bluetooth::emboss::ConnectionRole::PERIPHERAL) {
+    return iso::AcceptCisStatus::kNotPeripheral;
+  }
+  return iso_mgr_->AcceptCis(id, std::move(cb));
 }
 
 void LowEnergyConnection::AttachInspect(inspect::Node& parent,

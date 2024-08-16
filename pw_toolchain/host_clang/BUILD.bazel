@@ -13,6 +13,7 @@
 # the License.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load(
     "@pw_toolchain//cc_toolchain:defs.bzl",
     "pw_cc_action_files",
@@ -23,6 +24,7 @@ load(
     "pw_cc_toolchain",
 )
 load("@pw_xcode_command_line_tools//:defs.bzl", "XCODE_SDK_PATH")
+load("//pw_toolchain/host_clang:paths.bzl", "LINUX_SYSROOT", "LLVM_TOOLCHAIN")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -37,7 +39,7 @@ pw_cc_flag_set(
         # Force dropping the system libc++.
         "-nostdlib++",
         # Use libc++ provided by the toolchain.
-        "external/llvm_toolchain/lib/libc++.a",
+        LLVM_TOOLCHAIN + "/lib/libc++.a",
     ],
     target_compatible_with = ["@platforms//os:macos"],
 )
@@ -254,6 +256,14 @@ pw_cc_feature(
     overrides = "@pw_toolchain//features/well_known:supports_pic",
 )
 
+# Symlink to clangd, for user convenience.
+copy_file(
+    name = "copy_clangd",
+    src = "@llvm_toolchain//:bin/clangd",
+    out = "clangd",
+    allow_symlink = True,
+)
+
 pw_cc_toolchain(
     name = "host_toolchain",
     action_configs = [
@@ -267,16 +277,16 @@ pw_cc_toolchain(
         "@llvm_toolchain//:llvm-strip",
     ],
     builtin_sysroot = select({
-        "@platforms//os:linux": "external/linux_sysroot",
+        "@platforms//os:linux": LINUX_SYSROOT,
         "@platforms//os:macos": XCODE_SDK_PATH,
         "//conditions:default": "",
     }),
     compiler = "clang",
     cxx_builtin_include_directories = select({
         "@platforms//os:linux": [
-            "%package(@llvm_toolchain//)%/include/x86_64-unknown-linux-gnu/c++/v1",
-            "%package(@llvm_toolchain//)%/include/c++/v1",
-            "%package(@llvm_toolchain//)%/lib/clang/18/include",
+            "%package(@@llvm_toolchain//)%/include/x86_64-unknown-linux-gnu/c++/v1",
+            "%package(@@llvm_toolchain//)%/include/c++/v1",
+            "%package(@@llvm_toolchain//)%/lib/clang/18/include",
             "%sysroot%/usr/local/include",
             "%sysroot%/usr/include/x86_64-linux-gnu",
             "%sysroot%/usr/include",
@@ -286,8 +296,8 @@ pw_cc_toolchain(
             "%sysroot%/System/Library/Frameworks/CoreFoundation.framework/Headers",
             "%sysroot%/System/Library/Frameworks/IOKit.framework/Headers",
             "%sysroot%/System/Library/Frameworks/Security.framework/Headers",
-            "%package(@llvm_toolchain//)%/include/c++/v1",
-            "%package(@llvm_toolchain//)%/lib/clang/18/include",
+            "%package(@@llvm_toolchain//)%/include/c++/v1",
+            "%package(@@llvm_toolchain//)%/lib/clang/18/include",
         ],
         "//conditions:default": [],
     }),
@@ -304,7 +314,6 @@ pw_cc_toolchain(
         "//conditions:default": [],
     }) + [
         ":thread_safety_warnings",
-        "@pw_toolchain//flag_sets:c++17",
         "@pw_toolchain//flag_sets:debugging",
         "@pw_toolchain//flag_sets:reduced_size",
         "@pw_toolchain//flag_sets:no_canonical_prefixes",
@@ -334,6 +343,8 @@ pw_cc_toolchain(
         ":verbose_compiler_output",
         ":rules_rust_unsupported_feature",
         ":supports_pic",
+        "//pw_toolchain/cc:c++17_feature",
+        "//pw_toolchain/cc:c++20_feature",
     ],
     toolchain_identifier = "host-toolchain",
 )
