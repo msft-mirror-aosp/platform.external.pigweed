@@ -21,8 +21,8 @@
        pw_preprocessor/arch.h
 #endif  // !_PW_ARCH_ARM_CORTEX_M
 
-#if !_PW_ARCH_ARM_V7M && !_PW_ARCH_ARM_V7EM && !_PW_ARCH_ARM_V8M_MAINLINE && \
-    !_PW_ARCH_ARM_V8_1M_MAINLINE
+#if !_PW_ARCH_ARM_V6M && !_PW_ARCH_ARM_V7M && !_PW_ARCH_ARM_V7EM && \
+    !_PW_ARCH_ARM_V8M_MAINLINE && !_PW_ARCH_ARM_V8_1M_MAINLINE
 #error "Your selected ARM Cortex-M arch is not yet supported by this module."
 #endif
 
@@ -38,7 +38,11 @@
 // Bytes when using tokenized logging. It's useful to enable this for device
 // bringup until your application has an end-to-end crash reporting solution.
 #ifndef PW_CPU_EXCEPTION_CORTEX_M_EXTENDED_CFSR_DUMP
+#if _PW_ARCH_ARM_V6M
 #define PW_CPU_EXCEPTION_CORTEX_M_EXTENDED_CFSR_DUMP 0
+#else
+#define PW_CPU_EXCEPTION_CORTEX_M_EXTENDED_CFSR_DUMP 0
+#endif
 #endif  // PW_CPU_EXCEPTION_CORTEX_M_EXTENDED_CFSR_DUMP
 
 // Enables the extended CPU analysis in AnalyzeCpuStateAndCrash() that collects
@@ -47,8 +51,17 @@
 #define PW_CPU_EXCEPTION_CORTEX_M_CRASH_EXTENDED_CPU_ANALYSIS 1
 #endif  // PW_CPU_EXCEPTION_CORTEX_M_CRASH_EXTENDED_CPU_ANALYSIS
 
+// Includes the PC and LR registers in AnalyzeCpuStateAndCrash() analysis.
+#ifndef PW_CPU_EXCEPTION_CORTEX_M_CRASH_ANALYSIS_INCLUDE_PC_LR
+#define PW_CPU_EXCEPTION_CORTEX_M_CRASH_ANALYSIS_INCLUDE_PC_LR 1
+#endif  // PW_CPU_EXCEPTION_CORTEX_M_CRASH_ANALYSIS_INCLUDE_PC_LR
+
 // Whether the floating-point unit is enabled.
 // TODO: b/264897542 - This should be an Arm target trait.
 #ifndef PW_ARMV7M_ENABLE_FPU
+#if _PW_ARCH_ARM_V6M
+#define PW_ARMV7M_ENABLE_FPU 0
+#else
 #define PW_ARMV7M_ENABLE_FPU 1
+#endif
 #endif  // PW_ARMV7M_ENABLE_FPU

@@ -647,10 +647,6 @@ use the following additional tags:
 
    will run all tests *except* for these integration tests.
 
-*  ``requires_cxx_20``: targets which can only be built with C++20.
-   `b/340568834 <https://issues.pigweed.dev/issues//340568834>`_
-   tracks replacing this with a proper upstream Bazel solution.
-
 .. _docs-build_system-bazel_coverage:
 
 Code Coverage
@@ -706,8 +702,10 @@ This can be added in a couple ways:
     <https://bazel.build/reference/be/c-cpp#cc_binary.link_extra_lib>`_. Set
     the ``@bazel_tools//tools/cpp:link_extra_libs`` label flag to point to
     ``@pigweed//pw_build:default_link_extra_lib``, probably using `bazelrc
-    <https://bazel.build/run/bazelrc>`_. This is only supported in Bazel 7.0.0
-    or newer.
+    <https://bazel.build/run/bazelrc>`_. This is only likely to work if you
+    specify the ``--experimental_exclude_starlark_flags_from_exec_config``
+    flag, available in Bazel 8 and newer; see `bazelbuild/bazel#22457
+    <https://github.com/bazelbuild/bazel/issues/22457>`__.
 
     The con is that these libraries are linked into *all* C++ binaries that are
     part of your project's build, including ones that have no dependencies on

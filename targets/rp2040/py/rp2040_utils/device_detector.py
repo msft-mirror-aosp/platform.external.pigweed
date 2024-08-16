@@ -40,17 +40,30 @@ _RASPBERRY_PI_VENDOR_ID = 0x2E8A
 # RaspberryPi Debug probe: https://github.com/raspberrypi/debugprobe
 _DEBUG_PROBE_DEVICE_ID = 0x000C
 
-_PICO_USB_SERIAL_DEVICE_ID = 0x000A
-_PICO_BOOTLOADER_DEVICE_ID = 0x0003
-_PICO_DEVICE_IDS = (
+_RP2040_USB_SERIAL_DEVICE_ID = 0x000A
+_RP2040_BOOTLOADER_DEVICE_ID = 0x0003
+_PICO_USB_SERIAL_DEVICE_ID = 0x0009
+_PICO_BOOTLOADER_DEVICE_ID = 0x000F
+
+_PICO_USB_SERIAL_DEVICE_IDS = (
+    _RP2040_USB_SERIAL_DEVICE_ID,
     _PICO_USB_SERIAL_DEVICE_ID,
+)
+
+_PICO_BOOTLOADER_DEVICE_IDS = (
+    _RP2040_BOOTLOADER_DEVICE_ID,
     _PICO_BOOTLOADER_DEVICE_ID,
+)
+
+_PICO_DEVICE_IDS = (
+    *_PICO_USB_SERIAL_DEVICE_IDS,
+    *_PICO_BOOTLOADER_DEVICE_IDS,
 )
 
 _ALL_DEVICE_IDS = (
     _DEBUG_PROBE_DEVICE_ID,
-    _PICO_USB_SERIAL_DEVICE_ID,
-    _PICO_BOOTLOADER_DEVICE_ID,
+    *_PICO_USB_SERIAL_DEVICE_IDS,
+    *_PICO_BOOTLOADER_DEVICE_IDS,
 )
 
 _LIBUSB_CIPD_INSTALL_ENV_VAR = 'PW_PIGWEED_CIPD_INSTALL_DIR'
@@ -114,7 +127,7 @@ def _custom_find_library(name: str) -> str | None:
     # libusb provided by Bazel
     try:
         # pylint: disable=import-outside-toplevel
-        from rules_python.python.runfiles import runfiles  # type: ignore
+        from python.runfiles import runfiles  # type: ignore
 
         r = runfiles.Create()
         libusb_dir = os.path.dirname(
@@ -198,6 +211,8 @@ class PicoBoardInfo:
     bus: int
     port: str
     serial_port: Optional[str]
+    manufacturer: Optional[str]
+    product: Optional[str]
 
     def address(self) -> int:
         """Queries this device for its USB address.
@@ -268,11 +283,11 @@ class _BoardUsbInfo:
 
     @property
     def in_bootloader_mode(self) -> bool:
-        return self.product_id == _PICO_BOOTLOADER_DEVICE_ID
+        return self.product_id in _PICO_BOOTLOADER_DEVICE_IDS
 
     @property
     def in_usb_serial_mode(self) -> bool:
-        return self.product_id == _PICO_USB_SERIAL_DEVICE_ID
+        return self.product_id in _PICO_USB_SERIAL_DEVICE_IDS
 
     @property
     def is_debug_probe(self) -> bool:
@@ -366,7 +381,7 @@ def _detect_pico_serial_ports() -> dict[str, _BoardSerialInfo]:
     all_devs = serial.tools.list_ports.comports()
     for dev in all_devs:
         if dev.vid == _RASPBERRY_PI_VENDOR_ID and (
-            dev.pid == _PICO_USB_SERIAL_DEVICE_ID
+            dev.pid in _PICO_USB_SERIAL_DEVICE_IDS
             or dev.pid == _DEBUG_PROBE_DEVICE_ID
         ):
             serial_number = dev.serial_number
@@ -423,12 +438,16 @@ def board_from_usb_port(
             port=usb_info.port,
             serial_port=serial_port,
             serial_number=usb_info.serial_number,
+            product=usb_info.product,
+            manufacturer=usb_info.manufacturer,
         )
 
     return PicoBoardInfo(
         bus=usb_info.bus,
         port=usb_info.port,
         serial_port=serial_port,
+        product=usb_info.product,
+        manufacturer=usb_info.manufacturer,
     )
 
 
@@ -470,6 +489,8 @@ def detect_boards(
                     port=usb_info.port,
                     serial_port=serial_port,
                     serial_number=usb_info.serial_number,
+                    product=usb_info.product,
+                    manufacturer=usb_info.manufacturer,
                 )
             )
         elif serial_port or usb_info.in_bootloader_mode:
@@ -478,6 +499,8 @@ def detect_boards(
                     bus=usb_info.bus,
                     port=usb_info.port,
                     serial_port=serial_port,
+                    product=usb_info.product,
+                    manufacturer=usb_info.manufacturer,
                 )
             )
 

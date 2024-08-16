@@ -68,7 +68,6 @@ pw_add_library(pw_allocator.block STATIC
     pw_status
   PRIVATE_DEPS
     pw_allocator.buffer
-    pw_assert
   SOURCES
     block.cc
 )
@@ -352,6 +351,7 @@ pw_add_library(pw_allocator.testing INTERFACE
     pw_bytes
     pw_result
     pw_status
+    pw_sync.interrupt_spin_lock
     pw_unit_test
   PRIVATE_DEPS
     pw_assert

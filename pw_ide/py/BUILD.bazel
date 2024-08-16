@@ -12,8 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
-load("//pw_build:python.bzl", "pw_py_test")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//pw_build:python.bzl", "pw_py_binary", "pw_py_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -39,11 +39,11 @@ py_library(
     deps = [
         "//pw_cli/py:pw_cli",
         "//pw_config_loader/py:pw_config_loader",
-        "@python_packages_json5//:pkg",
+        "@python_packages//json5",
     ],
 )
 
-py_binary(
+pw_py_binary(
     name = "pw_ide_cli",
     srcs = ["pw_ide/__main__.py"],
     main = "pw_ide/__main__.py",

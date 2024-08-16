@@ -14,7 +14,10 @@
 
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 
-#include <cpp-string/utf_codecs.h>
+#include <cpp-string/string_printf.h>
+#include <pw_string/utf_codecs.h>
+
+#include <string>
 
 namespace bt {
 
@@ -37,7 +40,7 @@ std::string ByteBuffer::Printable(size_t pos, size_t size) const {
 
   // If the region already contains only valid UTF-8 characters, it's already
   // printable
-  if (bt_lib_cpp_string::IsStringUTF8(view)) {
+  if (pw::utf8::IsStringValid(view)) {
     return std::string(view);
   }
 
@@ -74,7 +77,24 @@ std::string_view ByteBuffer::AsString() const {
   return std::string_view(reinterpret_cast<const char*>(data()), size());
 }
 
-std::string ByteBuffer::ToString() const { return std::string(AsString()); }
+std::string ByteBuffer::AsHexadecimal() const {
+  std::string formatted_string;
+  for (size_t i = 0; i < size(); ++i) {
+    bt_lib_cpp_string::StringAppendf(
+        &formatted_string, "%02x", static_cast<int>(data()[i]));
+    if (i < size() - 1) {
+      formatted_string += " ";
+    }
+  }
+  return formatted_string;
+}
+
+std::string ByteBuffer::ToString(bool as_hex) const {
+  if (as_hex) {
+    return AsHexadecimal();
+  }
+  return std::string(AsString());
+}
 
 std::vector<uint8_t> ByteBuffer::ToVector() const {
   std::vector<uint8_t> vec(size());
@@ -205,6 +225,26 @@ size_t DynamicByteBuffer::size() const { return buffer_size_; }
 
 void DynamicByteBuffer::Fill(uint8_t value) {
   memset(buffer_.get(), value, buffer_size_);
+}
+
+bool DynamicByteBuffer::expand(size_t new_buffer_size) {
+  // we only allow growing the buffer, not shrinking it
+  if (new_buffer_size < buffer_size_) {
+    return false;
+  }
+
+  // no reason to do extra work
+  if (new_buffer_size == buffer_size_) {
+    return false;
+  }
+
+  std::unique_ptr<uint8_t[]> new_buffer =
+      std::make_unique<uint8_t[]>(new_buffer_size);
+  memcpy(new_buffer.get(), buffer_.get(), buffer_size_);
+  buffer_.swap(new_buffer);
+  buffer_size_ = new_buffer_size;
+
+  return true;
 }
 
 ByteBuffer::const_iterator DynamicByteBuffer::cbegin() const {

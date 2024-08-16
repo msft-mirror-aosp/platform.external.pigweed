@@ -12,12 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_jvm_external//:defs.bzl", "artifact")
 load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:pigweed.bzl", "pw_cc_binary")
-load("//pw_build:python.bzl", "pw_py_test")
-load("//pw_build:selects.bzl", "TARGET_COMPATIBLE_WITH_HOST_SELECT")
+load("//pw_build:python.bzl", "pw_py_binary", "pw_py_test")
 
 pw_cc_binary(
     name = "server",
@@ -36,7 +37,7 @@ pw_cc_binary(
     ],
 )
 
-py_binary(
+pw_py_binary(
     name = "proxy",
     srcs = ["proxy.py"],
     deps = [
@@ -75,7 +76,7 @@ cc_proto_library(
     name = "config_cc_proto",
     # cc_proto_library pulls in the regular proto library, which is only
     # needed for host tests.
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    target_compatible_with = incompatible_with_mcu(),
     deps = [":config_proto"],
 )
 
@@ -145,7 +146,7 @@ pw_py_test(
     ],
     deps = [
         ":integration_test_fixture",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -165,7 +166,7 @@ pw_py_test(
     ],
     deps = [
         ":integration_test_fixture",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -183,7 +184,7 @@ pw_py_test(
         ":config_pb2",
         ":integration_test_fixture",
         "@com_google_protobuf//:protobuf_python",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -201,7 +202,7 @@ pw_py_test(
         ":config_pb2",
         ":integration_test_fixture",
         "@com_google_protobuf//:protobuf_python",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -218,7 +219,7 @@ pw_py_test(
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -235,7 +236,7 @@ pw_py_test(
     deps = [
         ":config_pb2",
         ":integration_test_fixture",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -252,7 +253,7 @@ pw_py_test(
         ":integration_test_fixture",
         "//pw_protobuf:status_proto_pb2",
         "@com_google_protobuf//:protobuf_python",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -273,7 +274,7 @@ pw_py_test(
         ":config_pb2",
         ":integration_test_fixture",
         "//pw_protobuf:status_proto_pb2",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
         "@rules_python//python/runfiles",
     ],
 )
@@ -282,7 +283,7 @@ java_binary(
     name = "java_client",
     srcs = ["JavaClient.java"],
     main_class = "JavaClient",
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":config_java_proto",
         "//pw_hdlc/java/main/dev/pigweed/pw_hdlc",
@@ -290,12 +291,12 @@ java_binary(
         "//pw_rpc/java/main/dev/pigweed/pw_rpc:client",
         "//pw_transfer/java/main/dev/pigweed/pw_transfer:client",
         "@com_google_protobuf//:protobuf_java",
-        "@maven//:com_google_flogger_flogger_system_backend",
-        "@maven//:com_google_guava_guava",
+        artifact("com.google.flogger:flogger-system-backend"),
+        artifact("com.google.guava:guava"),
     ],
 )
 
-py_binary(
+pw_py_binary(
     name = "python_client",
     srcs = ["python_client.py"],
     deps = [
@@ -305,6 +306,6 @@ py_binary(
         "//pw_transfer:transfer_proto_pb2",
         "//pw_transfer/py:pw_transfer",
         "@com_google_protobuf//:protobuf_python",
-        "@python_packages_pyserial//:pkg",
+        "@python_packages//pyserial",
     ],
 )

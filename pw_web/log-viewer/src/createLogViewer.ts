@@ -26,6 +26,7 @@ import '@material/web/textfield/filled-text-field.js';
 import '@material/web/icon/icon.js';
 import '@material/web/iconbutton/icon-button.js';
 import '@material/web/menu/menu.js';
+import '@material/web/menu/sub-menu.js';
 import '@material/web/menu/menu-item.js';
 
 /**
@@ -33,7 +34,7 @@ import '@material/web/menu/menu-item.js';
  * @param logSources - Collection of sources from where logs originate
  * @param root - HTML component to append log-viewer to
  * @param options - Optional parameters to change default settings
- * @param options.columnOrder - Defines column order between severity and
+ * @param options.columnOrder - Defines column order between level and
  *   message. Undefined fields are added between defined order and message.
  * @param options.logStore - Stores and handles management of all logs
  * @param options.state - Handles state between sessions, defaults to localStorage

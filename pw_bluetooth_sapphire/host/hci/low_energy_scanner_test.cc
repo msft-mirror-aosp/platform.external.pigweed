@@ -12,6 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#include "pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_scanner.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/fake_local_address_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/legacy_low_energy_scanner.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
@@ -88,14 +89,19 @@ class LowEnergyScannerTest : public TestingBase,
     TestingBase::TearDown();
   }
 
+  template <bool same = std::is_same_v<T, ExtendedLowEnergyScanner>>
+  std::enable_if_t<same, ExtendedLowEnergyScanner>* CreateScannerInternal() {
+    return new ExtendedLowEnergyScanner(
+        fake_address_delegate(), transport()->GetWeakPtr(), dispatcher());
+  }
+
   template <bool same = std::is_same_v<T, LegacyLowEnergyScanner>>
   std::enable_if_t<same, LegacyLowEnergyScanner>* CreateScannerInternal() {
     return new LegacyLowEnergyScanner(
         fake_address_delegate(), transport()->GetWeakPtr(), dispatcher());
   }
 
-  using PeerFoundCallback =
-      fit::function<void(const LowEnergyScanResult&, const ByteBuffer&)>;
+  using PeerFoundCallback = fit::function<void(const LowEnergyScanResult&)>;
   void set_peer_found_callback(PeerFoundCallback cb) {
     peer_found_cb_ = std::move(cb);
   }
@@ -117,11 +123,10 @@ class LowEnergyScannerTest : public TestingBase,
         options, [this](auto status) { last_scan_status_ = status; });
   }
 
-  // LowEnergyScanner::Observer override:
-  void OnPeerFound(const LowEnergyScanResult& result,
-                   const ByteBuffer& data) override {
+  // LowEnergyScanner::Delegate override:
+  void OnPeerFound(const LowEnergyScanResult& result) override {
     if (peer_found_cb_) {
-      peer_found_cb_(result, data);
+      peer_found_cb_(result);
     }
   }
 
@@ -134,38 +139,31 @@ class LowEnergyScannerTest : public TestingBase,
 
   // Adds 6 fake peers using kAddress[0-5] above.
   void AddFakePeers() {
-    // Generates ADV_IND, scan response is reported in a single HCI event.
+    // Generates ADV_IND
     auto fake_peer =
         std::make_unique<FakePeer>(kPublicAddress1, dispatcher(), true, true);
     fake_peer->set_advertising_data(kPlainAdvDataBytes);
-    fake_peer->set_scan_response(/*should_batch_reports=*/true,
-                                 kPlainScanRspBytes);
+    fake_peer->set_scan_response(kPlainScanRspBytes);
     test_device()->AddPeer(std::move(fake_peer));
 
-    // Generates ADV_SCAN_IND, scan response is reported over multiple HCI
-    // events.
+    // Generates ADV_SCAN_IND
     fake_peer =
         std::make_unique<FakePeer>(kRandomAddress1, dispatcher(), false, true);
     fake_peer->set_advertising_data(kPlainAdvDataBytes);
-    fake_peer->set_scan_response(/*should_batch_reports=*/false,
-                                 kPlainScanRspBytes);
+    fake_peer->set_scan_response(kPlainScanRspBytes);
     test_device()->AddPeer(std::move(fake_peer));
 
-    // Generates ADV_IND, empty scan response is reported over multiple HCI
-    // events.
+    // Generates ADV_IND
     fake_peer =
         std::make_unique<FakePeer>(kPublicAddress2, dispatcher(), true, true);
     fake_peer->set_advertising_data(kPlainAdvDataBytes);
-    fake_peer->set_scan_response(/*should_batch_reports=*/false,
-                                 DynamicByteBuffer());
+    fake_peer->set_scan_response(DynamicByteBuffer());
     test_device()->AddPeer(std::move(fake_peer));
 
-    // Generates ADV_IND, empty adv data and non-empty scan response is reported
-    // over multiple HCI events.
+    // Generates ADV_IND
     fake_peer =
         std::make_unique<FakePeer>(kRandomAddress2, dispatcher(), true, true);
-    fake_peer->set_scan_response(/*should_batch_reports=*/false,
-                                 kPlainScanRspBytes);
+    fake_peer->set_scan_response(kPlainScanRspBytes);
     test_device()->AddPeer(std::move(fake_peer));
 
     // Generates ADV_IND, a scan response is never sent even though ADV_IND is
@@ -202,7 +200,8 @@ class LowEnergyScannerTest : public TestingBase,
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(LowEnergyScannerTest);
 };
 
-using Implementations = ::testing::Types<LegacyLowEnergyScanner>;
+using Implementations =
+    ::testing::Types<LegacyLowEnergyScanner, ExtendedLowEnergyScanner>;
 TYPED_TEST_SUITE(LowEnergyScannerTest, Implementations);
 
 TYPED_TEST(LowEnergyScannerTest, StartScanHCIErrors) {
@@ -213,6 +212,9 @@ TYPED_TEST(LowEnergyScannerTest, StartScanHCIErrors) {
   // Set Scan Parameters will fail.
   this->test_device()->SetDefaultResponseStatus(
       hci_spec::kLESetScanParameters,
+      pw::bluetooth::emboss::StatusCode::HARDWARE_FAILURE);
+  this->test_device()->SetDefaultResponseStatus(
+      hci_spec::kLESetExtendedScanParameters,
       pw::bluetooth::emboss::StatusCode::HARDWARE_FAILURE);
   EXPECT_EQ(0, this->test_device()->le_scan_state().scan_interval);
 
@@ -233,8 +235,13 @@ TYPED_TEST(LowEnergyScannerTest, StartScanHCIErrors) {
   // Set Scan Parameters will succeed but Set Scan Enable will fail.
   this->test_device()->ClearDefaultResponseStatus(
       hci_spec::kLESetScanParameters);
+  this->test_device()->ClearDefaultResponseStatus(
+      hci_spec::kLESetExtendedScanParameters);
   this->test_device()->SetDefaultResponseStatus(
       hci_spec::kLESetScanEnable,
+      pw::bluetooth::emboss::StatusCode::HARDWARE_FAILURE);
+  this->test_device()->SetDefaultResponseStatus(
+      hci_spec::kLESetExtendedScanEnable,
       pw::bluetooth::emboss::StatusCode::HARDWARE_FAILURE);
 
   EXPECT_TRUE(this->StartScan(false));
@@ -346,16 +353,15 @@ TYPED_TEST(LowEnergyScannerTest, ScanResponseTimeout) {
       kScanResponseTimeout / 2;
 
   std::unordered_set<DeviceAddress> results;
-  this->set_peer_found_callback([&](const auto& result, const auto& data) {
-    results.insert(result.address);
+  this->set_peer_found_callback([&](const LowEnergyScanResult& result) {
+    results.insert(result.address());
   });
 
   // Add a peer that sends a scan response and one that doesn't.
   auto fake_peer = std::make_unique<FakePeer>(
       kRandomAddress1, this->dispatcher(), false, true);
   fake_peer->set_advertising_data(kPlainAdvDataBytes);
-  fake_peer->set_scan_response(/*should_batch_reports=*/false,
-                               kPlainScanRspBytes);
+  fake_peer->set_scan_response(kPlainScanRspBytes);
   this->test_device()->AddPeer(std::move(fake_peer));
 
   fake_peer = std::make_unique<FakePeer>(
@@ -393,6 +399,40 @@ TYPED_TEST(LowEnergyScannerTest, ScanResponseTimeout) {
   EXPECT_EQ(1u, results.count(kRandomAddress3));
 }
 
+TYPED_TEST(LowEnergyScannerTest, ScanResponseAfterTimeout) {
+  {
+    auto peer = std::make_unique<FakePeer>(
+        kPublicAddress1, this->dispatcher(), true, true, false);
+    peer->set_advertising_data(kPlainAdvDataBytes);
+    peer->set_scan_response(kPlainScanRspBytes);
+    this->test_device()->AddPeer(std::move(peer));
+  }
+  auto peer = this->test_device()->FindPeer(kPublicAddress1);
+
+  // The callback should get called on timeout waiting for a scan response
+  bool peer_found_callback_called = false;
+  std::unordered_map<DeviceAddress, std::unique_ptr<DynamicByteBuffer>> map;
+
+  this->set_peer_found_callback([&](const LowEnergyScanResult& result) {
+    peer_found_callback_called = true;
+    map[result.address()] = std::make_unique<DynamicByteBuffer>(result.data());
+  });
+
+  EXPECT_TRUE(this->StartScan(true));
+  this->RunUntilIdle();
+
+  this->test_device()->SendAdvertisingReport(*peer);
+  this->RunFor(kPwScanResponseTimeout);
+  ASSERT_TRUE(peer_found_callback_called);
+  ASSERT_EQ(1u, map.count(peer->address()));
+  EXPECT_EQ(kPlainAdvDataBytes.ToString(), map[peer->address()]->ToString());
+
+  peer_found_callback_called = false;
+  this->test_device()->SendScanResponseReport(*peer);
+  this->RunUntilIdle();
+  ASSERT_FALSE(peer_found_callback_called);
+}
+
 TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
   // One of the 6 fake peers is scannable but never sends scan response
   // packets. That peer doesn't get reported until the end of the scan period.
@@ -400,9 +440,9 @@ TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
 
   this->AddFakePeers();
 
-  std::map<DeviceAddress, std::pair<LowEnergyScanResult, std::string>> results;
-  this->set_peer_found_callback([&](const auto& result, const auto& data) {
-    results[result.address] = std::make_pair(result, data.ToString());
+  std::map<DeviceAddress, LowEnergyScanResult> results;
+  this->set_peer_found_callback([&](const LowEnergyScanResult& result) {
+    results[result.address()] = result;
   });
 
   // Perform an active scan.
@@ -428,11 +468,9 @@ TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
   {
     const auto& iter = results.find(kPublicAddress1);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kAdvDataAndScanRsp, result_pair.second);
-    EXPECT_EQ(kPublicAddress1, result_pair.first.address);
-    EXPECT_TRUE(result_pair.first.connectable);
+    EXPECT_EQ(kAdvDataAndScanRsp, iter->second.data().ToString());
+    EXPECT_EQ(kPublicAddress1, iter->second.address());
+    EXPECT_TRUE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -440,11 +478,9 @@ TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
   {
     const auto& iter = results.find(kRandomAddress1);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kAdvDataAndScanRsp, result_pair.second);
-    EXPECT_EQ(kRandomAddress1, result_pair.first.address);
-    EXPECT_FALSE(result_pair.first.connectable);
+    EXPECT_EQ(kAdvDataAndScanRsp, iter->second.data().ToString());
+    EXPECT_EQ(kRandomAddress1, iter->second.address());
+    EXPECT_FALSE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -452,11 +488,9 @@ TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
   {
     const auto& iter = results.find(kPublicAddress2);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainAdvData, result_pair.second);
-    EXPECT_EQ(kPublicAddress2, result_pair.first.address);
-    EXPECT_TRUE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainAdvData, iter->second.data().ToString());
+    EXPECT_EQ(kPublicAddress2, iter->second.address());
+    EXPECT_TRUE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -464,11 +498,9 @@ TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
   {
     const auto& iter = results.find(kRandomAddress2);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainScanRsp, result_pair.second);
-    EXPECT_EQ(kRandomAddress2, result_pair.first.address);
-    EXPECT_TRUE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainScanRsp, iter->second.data().ToString());
+    EXPECT_EQ(kRandomAddress2, iter->second.address());
+    EXPECT_TRUE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -476,11 +508,9 @@ TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
   {
     const auto& iter = results.find(kRandomAddress3);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainAdvData, result_pair.second);
-    EXPECT_EQ(kRandomAddress3, result_pair.first.address);
-    EXPECT_TRUE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainAdvData, iter->second.data().ToString());
+    EXPECT_EQ(kRandomAddress3, iter->second.address());
+    EXPECT_TRUE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -488,11 +518,9 @@ TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
   {
     const auto& iter = results.find(kRandomAddress4);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainAdvData, result_pair.second);
-    EXPECT_EQ(kRandomAddress4, result_pair.first.address);
-    EXPECT_FALSE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainAdvData, iter->second.data().ToString());
+    EXPECT_EQ(kRandomAddress4, iter->second.address());
+    EXPECT_FALSE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -503,11 +531,10 @@ TYPED_TEST(LowEnergyScannerTest, ActiveScanResults) {
 TYPED_TEST(LowEnergyScannerTest, StopDuringActiveScan) {
   this->AddFakePeers();
 
-  std::map<DeviceAddress, std::pair<LowEnergyScanResult, std::string>> results;
-  this->set_peer_found_callback(
-      [&results](const auto& result, const auto& data) {
-        results[result.address] = std::make_pair(result, data.ToString());
-      });
+  std::map<DeviceAddress, LowEnergyScanResult> results;
+  this->set_peer_found_callback([&results](const LowEnergyScanResult& result) {
+    results[result.address()] = result;
+  });
 
   // Perform an active scan indefinitely. This means that the scan period will
   // never complete by itself.
@@ -537,9 +564,9 @@ TYPED_TEST(LowEnergyScannerTest, PassiveScanResults) {
   constexpr size_t kExpectedResultCount = 6u;
   this->AddFakePeers();
 
-  std::map<DeviceAddress, std::pair<LowEnergyScanResult, std::string>> results;
-  this->set_peer_found_callback([&](const auto& result, const auto& data) {
-    results[result.address] = std::make_pair(result, data.ToString());
+  std::map<DeviceAddress, LowEnergyScanResult> results;
+  this->set_peer_found_callback([&](const LowEnergyScanResult& result) {
+    results[result.address()] = result;
   });
 
   // Perform a passive scan.
@@ -560,11 +587,9 @@ TYPED_TEST(LowEnergyScannerTest, PassiveScanResults) {
   {
     const auto& iter = results.find(kPublicAddress1);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainAdvData, result_pair.second);
-    EXPECT_EQ(kPublicAddress1, result_pair.first.address);
-    EXPECT_TRUE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainAdvData, iter->second.data().ToString());
+    EXPECT_EQ(kPublicAddress1, iter->second.address());
+    EXPECT_TRUE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -572,11 +597,9 @@ TYPED_TEST(LowEnergyScannerTest, PassiveScanResults) {
   {
     const auto& iter = results.find(kRandomAddress1);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainAdvData, result_pair.second);
-    EXPECT_EQ(kRandomAddress1, result_pair.first.address);
-    EXPECT_FALSE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainAdvData, iter->second.data().ToString());
+    EXPECT_EQ(kRandomAddress1, iter->second.address());
+    EXPECT_FALSE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -584,11 +607,9 @@ TYPED_TEST(LowEnergyScannerTest, PassiveScanResults) {
   {
     const auto& iter = results.find(kPublicAddress2);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainAdvData, result_pair.second);
-    EXPECT_EQ(kPublicAddress2, result_pair.first.address);
-    EXPECT_TRUE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainAdvData, iter->second.data().ToString());
+    EXPECT_EQ(kPublicAddress2, iter->second.address());
+    EXPECT_TRUE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -596,11 +617,9 @@ TYPED_TEST(LowEnergyScannerTest, PassiveScanResults) {
   {
     const auto& iter = results.find(kRandomAddress2);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ("", result_pair.second);
-    EXPECT_EQ(kRandomAddress2, result_pair.first.address);
-    EXPECT_TRUE(result_pair.first.connectable);
+    EXPECT_EQ("", iter->second.data().ToString());
+    EXPECT_EQ(kRandomAddress2, iter->second.address());
+    EXPECT_TRUE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -608,11 +627,9 @@ TYPED_TEST(LowEnergyScannerTest, PassiveScanResults) {
   {
     const auto& iter = results.find(kRandomAddress3);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainAdvData, result_pair.second);
-    EXPECT_EQ(kRandomAddress3, result_pair.first.address);
-    EXPECT_TRUE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainAdvData, iter->second.data().ToString());
+    EXPECT_EQ(kRandomAddress3, iter->second.address());
+    EXPECT_TRUE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -620,11 +637,9 @@ TYPED_TEST(LowEnergyScannerTest, PassiveScanResults) {
   {
     const auto& iter = results.find(kRandomAddress4);
     ASSERT_NE(iter, results.end());
-
-    const auto& result_pair = iter->second;
-    EXPECT_EQ(kPlainAdvData, result_pair.second);
-    EXPECT_EQ(kRandomAddress4, result_pair.first.address);
-    EXPECT_FALSE(result_pair.first.connectable);
+    EXPECT_EQ(kPlainAdvData, iter->second.data().ToString());
+    EXPECT_EQ(kRandomAddress4, iter->second.address());
+    EXPECT_FALSE(iter->second.connectable());
     results.erase(iter);
   }
 
@@ -665,8 +680,9 @@ TYPED_TEST(LowEnergyScannerTest, DirectedReport) {
   this->test_device()->AddPeer(std::move(fake_peer));
 
   std::unordered_map<DeviceAddress, LowEnergyScanResult> results;
-  this->set_directed_adv_callback(
-      [&](const auto& result) { results[result.address] = result; });
+  this->set_directed_adv_callback([&](const LowEnergyScanResult& result) {
+    results[result.address()] = result;
+  });
 
   EXPECT_TRUE(this->StartScan(true));
   EXPECT_EQ(LowEnergyScanner::State::kInitiating, this->scanner()->state());
@@ -677,16 +693,16 @@ TYPED_TEST(LowEnergyScannerTest, DirectedReport) {
   ASSERT_EQ(kExpectedResultCount, results.size());
 
   ASSERT_TRUE(results.count(kPublicUnresolved));
-  EXPECT_FALSE(results[kPublicUnresolved].resolved);
+  EXPECT_FALSE(results[kPublicUnresolved].resolved());
 
   ASSERT_TRUE(results.count(kRandomUnresolved));
-  EXPECT_FALSE(results[kRandomUnresolved].resolved);
+  EXPECT_FALSE(results[kRandomUnresolved].resolved());
 
   ASSERT_TRUE(results.count(kPublicResolved));
-  EXPECT_TRUE(results[kPublicResolved].resolved);
+  EXPECT_TRUE(results[kPublicResolved].resolved());
 
   ASSERT_TRUE(results.count(kRandomResolved));
-  EXPECT_TRUE(results[kRandomResolved].resolved);
+  EXPECT_TRUE(results[kRandomResolved].resolved());
 }
 
 TYPED_TEST(LowEnergyScannerTest, AllowsRandomAddressChange) {
@@ -763,11 +779,11 @@ TYPED_TEST(LowEnergyScannerTest, CallbackStopsScanning) {
   fake_peer->set_advertising_data(kPlainAdvDataBytes);
   this->test_device()->AddPeer(std::move(fake_peer));
 
-  // We should be able to stop scanning in the callback and not crash
+  // We should be able to stop scanning in the callback and not crash. Note: if
+  // crashing, it will likely be due to a use-after-free type bug. Such a bug
+  // may or may not manifest itself in a non-asan build.
   this->set_peer_found_callback(
-      [&](const LowEnergyScanResult& result, const ByteBuffer& data) {
-        this->scanner()->StopScan();
-      });
+      [&](const LowEnergyScanResult& result) { this->scanner()->StopScan(); });
 
   EXPECT_TRUE(this->StartScan(true, kPwScanPeriod));
   this->RunFor(kScanPeriod);

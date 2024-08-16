@@ -208,7 +208,7 @@ values to indicate target compatibility.
        name = "pw_digital_io_rp2040",
        deps = [
            # Depends on the Pico SDK.
-           "@pico-sdk//src/common/pico_stdlib",
+           "@pico-sdk//src/rp2_common/pico_stdlib",
            "@pico-sdk//src/rp2_common/hardware_gpio",
        ],
        # The Pico SDK provides authoritative constraint_values.
@@ -309,7 +309,7 @@ but also work on host platforms by default. An example of this is
      # Compatible with host platforms, and any platform that explicitly
      # lists `@pigweed//pw_stream:socket_stream_compatible` among its
      # constraint_values.
-     target_compatible_with = incompatible_with_mcu(and_requires=":socket_stream_compatible"),
+     target_compatible_with = incompatible_with_mcu(unless_platform_has=":socket_stream_compatible"),
    )
 
 Patterns for facade authors
