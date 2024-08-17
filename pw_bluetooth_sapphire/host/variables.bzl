@@ -1,4 +1,4 @@
-# Copyright 2023 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -12,18 +12,16 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-import("//build_overrides/pigweed.gni")
-import("$dir_pw_build/target_types.gni")
-import("$dir_pw_third_party/icu/icu.gni")
+"""Build information used in the bt-host builds."""
 
-if (dir_pw_third_party_icu != "") {
-  config("includes") {
-    include_dirs = [ "$dir_pw_third_party_icu/source/common" ]
-    cflags = [ "-Wno-conversion" ]
-  }
+# Note, this file is not copybara'd from upstream Fuchsia.
 
-  pw_source_set("icu") {
-    public_configs = [ ":includes" ]
-    public = [ "$dir_pw_third_party_icu/source/common/unicode/utf8.h" ]
-  }
-}
+# LINT.IfChange(copts)
+# Common C++ flags used in bt-host to ensure it builds in Pigweed and downstreams.
+# Note Fuchsia upstream has its own version of COPTS since this file is not
+# copybara'd.
+COPTS = [
+    # TODO: https://fxbug.dev/345799180 - Remove once code doesn't have unused parameters.
+    "-Wno-unused-parameter",
+]
+# LINT.ThenChange(BUILD.gn:copts)
