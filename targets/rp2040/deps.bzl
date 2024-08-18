@@ -36,20 +36,19 @@ def pigweed_rp2_deps():
         url = "https://github.com/bazelbuild/rules_platform/releases/download/0.1.0/rules_platform-0.1.0.tar.gz",
     )
 
-    # This repository is pinned to the upstream `develop` branch of the Pico SDK.
+    # Pinned to 2.0.0 releases.
     maybe(
-        git_repository,
+        http_archive,
         name = "pico-sdk",
-        commit = "6ff3e4fab27441de19fd53c0eb5aacbe83a18221",
-        remote = "https://pigweed.googlesource.com/third_party/github/raspberrypi/pico-sdk",
+        sha256 = "626db87779fa37f7f9c7cfe3e152f7e828fe19c486730af2e7c80836b6b57e1d",
+        url = "https://github.com/raspberrypi/pico-sdk/releases/download/2.0.0/pico-sdk-2.0.0.tar.gz",
     )
 
-    # TODO: https://pwbug.dev/345244650 - Upstream bazel build.
     maybe(
-        git_repository,
+        http_archive,
         name = "picotool",
-        commit = "49072f6ebbc814dcc74d6f8b753b89c24af12971",
-        remote = "https://github.com/armandomontanez/picotool",
+        sha256 = "9392c4a31f16b80b70f861c37a029701d3212e212840daa097c8a3720282ce65",
+        url = "https://github.com/raspberrypi/picotool/releases/download/2.0.0/picotool-2.0.0.tar.gz",
     )
 
     # ---- probe-rs Paths ----
