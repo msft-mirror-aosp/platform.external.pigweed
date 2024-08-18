@@ -12,6 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load(
+    "//pw_build:pigweed.bzl",
+    "pw_cc_test",
+)
+
+package(default_visibility = ["//visibility:public"])
+
 cc_library(
     name = "pw_libcxx",
     srcs = [
@@ -25,4 +32,20 @@ cc_library(
         "@rules_cc//cc/compiler:clang": [],
         "//conditions:default": ["@platforms//:incompatible"],
     }),
+    alwayslink = True,
+)
+
+pw_cc_test(
+    name = "operator_new_test",
+    srcs = ["operator_new_test.cc"],
+    deps = [
+        "//pw_unit_test",
+    ],
+)
+
+filegroup(
+    name = "cxx_lib_configs",
+    srcs = [
+        "include/__external_threading",
+    ],
 )
