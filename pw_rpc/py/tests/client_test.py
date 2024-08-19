@@ -23,8 +23,7 @@ from pw_status import Status
 from pw_rpc import callback_client, client, packets
 import pw_rpc.ids
 from pw_rpc.internal.packet_pb2 import PacketType, RpcPacket
-
-RpcIds = packets.RpcIds
+from pw_rpc.descriptors import fake_pending_rpc
 
 TEST_PROTO_1 = """\
 syntax = "proto3";
@@ -90,7 +89,7 @@ def create_protos() -> Any:
 
 def create_client(
     proto_modules: Any,
-    first_channel_output_fn: Callable[[bytes], Any] | None = None,
+    first_channel_output_fn: Callable[[bytes], Any] = lambda _: None,
 ) -> client.Client:
     return client.Client.from_modules(
         callback_client.Impl(),
@@ -290,7 +289,7 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    RpcIds(
+                    fake_pending_rpc(
                         SOME_CHANNEL_ID,
                         SOME_SERVICE_ID,
                         SOME_METHOD_ID,
@@ -306,7 +305,7 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    RpcIds(
+                    fake_pending_rpc(
                         CLIENT_FIRST_CHANNEL_ID,
                         SOME_SERVICE_ID,
                         SOME_METHOD_ID,
@@ -336,7 +335,7 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    RpcIds(
+                    fake_pending_rpc(
                         CLIENT_FIRST_CHANNEL_ID,
                         service.id,
                         SOME_METHOD_ID,
@@ -367,7 +366,7 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    RpcIds(
+                    fake_pending_rpc(
                         CLIENT_FIRST_CHANNEL_ID,
                         service.id,
                         method.id,
@@ -417,7 +416,7 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    RpcIds(
+                    fake_pending_rpc(
                         CLIENT_FIRST_CHANNEL_ID,
                         method.service.id,
                         method.id,
