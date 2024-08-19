@@ -305,8 +305,17 @@ enum OpCode:
   LE_READ_BUFFER_SIZE_V1                                       = 0x2002
     -- LE Read Buffer Size [v1] Command (v4.0) (LE)
 
+  LE_READ_LOCAL_SUPPORTED_FEATURES                             = 0x2003
+    -- LE Read Local Supported Features Command (v4.0) (LE)
+
   LE_SET_RANDOM_ADDRESS                                        = 0x2005
     -- LE Set Random Address Command (v4.0) (LE)
+
+  LE_SET_ADVERTISING_PARAMETERS                                = 0x2006
+    -- LE Set Advertising Parameters Command (v4.0) (LE)
+
+  LE_READ_ADVERTISING_CHANNEL_TX_POWER                         = 0x2007
+    -- LE Read Advertising Physical Channel Tx Power Command (v4.0) (LE)
 
   LE_SET_ADVERTISING_DATA                                      = 0x2008
     -- LE Set Advertising Data Command (v4.0) (LE)
@@ -397,6 +406,27 @@ enum OpCode:
 
   LE_ENHANCED_TRANSMITTER_TEST                                 = 0x2034
     -- LE Enhanced Transmitter Test Command (v5.0) (LE)
+
+  LE_SET_ADVERTISING_SET_RANDOM_ADDRESS                        = 0x2035
+    -- LE Set Advertising Set Random Address Command (v5.0) (LE)
+
+  LE_SET_EXTENDED_ADVERTISING_PARAMETERS_V1                    = 0x2036
+    -- LE Set Extended Advertising Parameters [v1] (v5.0) (LE)
+
+  LE_SET_EXTENDED_ADVERTISING_DATA                             = 0x2037
+    -- LE Set Extended Advertising Data Command (v5.0) (LE)
+
+  LE_SET_EXTENDED_SCAN_RESPONSE_DATA                           = 0x2038
+    -- LE Set Extended Scan Response Data Command (v5.0) (LE)
+
+  LE_SET_EXTENDED_ADVERTISING_ENABLE                           = 0x2039
+    -- LE Set Extended Advertising Enable Command (v5.0) (LE)
+
+  LE_READ_MAXIMUM_ADVERTISING_DATA_LENGTH                      = 0x203A
+    -- LE Read Maximum Advertising Data Length Command (v5.0) (LE)
+
+  LE_READ_NUMBER_OF_SUPPORTED_ADVERTISING_SETS                 = 0x203B
+    -- LE Read Number of Supported Advertising Sets Command (v5.0) (LE)
 
   LE_REMOVE_ADVERTISING_SET                                    = 0x203C
     -- LE Remove Advertising Set Command (v5.0) (LE)
@@ -502,6 +532,9 @@ enum OpCode:
 
   LE_READ_ISO_LINK_QUALITY                                     = 0x2075
     -- LE Read ISO Link Quality Command (v5.2) (LE)
+
+  LE_SET_EXTENDED_ADVERTISING_PARAMETERS_V2                    = 0x207F
+    -- LE Set Extended Advertising Parameters Command (v5.4) (LE)
 
 
 enum EventCode:
@@ -838,6 +871,15 @@ bits ClassOfDevice:
   $next [+11]   MajorServiceClasses          major_service_classes
 
 
+bits ScanEnableBits:
+  -- Bitmask Values for the Scan_Enable parameter in a HCI_(Read,Write)_Scan_Enable command.
+  0 [+1]  Flag  inquiry
+    -- Inquiry scan enabled
+
+  1 [+1]  Flag  page
+    -- Page scan enabled
+
+
 enum ConnectionRole:
   [maximum_bits: 8]
   CENTRAL    = 0x00
@@ -1020,6 +1062,7 @@ enum IoCapability:
   DISPLAY_YES_NO     = 0x01
   KEYBOARD_ONLY      = 0x02
   NO_INPUT_NO_OUTPUT = 0x03
+  KEYBOARD_DISPLAY   = 0x04
 
 
 enum LESleepClockAccuracyRange:
@@ -1051,6 +1094,12 @@ enum AuthenticationRequirements:
   MITM_GENERAL_BONDING   = 0x05
 
 # inclusive-language: enable
+
+
+enum PinType:
+  [maximum_bits: 8]
+  VARIABLE = 0x00
+  FIXED    = 0x01
 
 
 struct LinkKey:

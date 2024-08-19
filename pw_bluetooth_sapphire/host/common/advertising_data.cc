@@ -14,17 +14,19 @@
 
 #include "pw_bluetooth_sapphire/internal/host/common/advertising_data.h"
 
-#include <cpp-string/utf_codecs.h>
-#include <endian.h>
+#include <cpp-string/string_printf.h>
+#include <pw_bytes/endian.h>
+#include <pw_preprocessor/compiler.h>
+#include <pw_string/utf_codecs.h>
 
+#include <string>
 #include <type_traits>
 
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
+#include "pw_bluetooth_sapphire/internal/host/common/to_string.h"
 #include "pw_bluetooth_sapphire/internal/host/common/uuid.h"
-
-#pragma clang diagnostic ignored "-Wswitch-enum"
 
 namespace bt {
 
@@ -97,18 +99,21 @@ const char* kUriSchemes[] = {"aaa:", "aaas:", "about:", "acap:", "acct:", "cap:"
 const size_t kUriSchemesSize = std::extent<decltype(kUriSchemes)>::value;
 
 std::string EncodeUri(const std::string& uri) {
-  std::string encoded_scheme;
   for (uint32_t i = 0; i < kUriSchemesSize; i++) {
     const char* scheme = kUriSchemes[i];
     size_t scheme_len = strlen(scheme);
     if (std::equal(scheme, scheme + scheme_len, uri.begin())) {
-      bt_lib_cpp_string::WriteUnicodeCharacter(i + 2, &encoded_scheme);
-      return encoded_scheme + uri.substr(scheme_len);
+      const pw::Result<pw::utf8::EncodedCodePoint> encoded_scheme =
+          pw::utf8::EncodeCodePoint(i + 2);
+      BT_DEBUG_ASSERT(encoded_scheme.ok());
+      return std::string(encoded_scheme->as_view()) + uri.substr(scheme_len);
     }
   }
   // First codepoint (U+0001) is for uncompressed schemes.
-  bt_lib_cpp_string::WriteUnicodeCharacter(1, &encoded_scheme);
-  return encoded_scheme + uri;
+  const pw::Result<pw::utf8::EncodedCodePoint> encoded_scheme =
+      pw::utf8::EncodeCodePoint(1u);
+  BT_DEBUG_ASSERT(encoded_scheme.ok());
+  return std::string(encoded_scheme->as_view()) + uri;
 }
 
 const char kUndefinedScheme = 0x01;
@@ -117,19 +122,18 @@ std::string DecodeUri(const std::string& uri) {
   if (uri[0] == kUndefinedScheme) {
     return uri.substr(1);
   }
-  uint32_t code_point = 0;
-  size_t index = 0;
 
   // NOTE: as we are reading UTF-8 from `uri`, it is possible that `code_point`
   // corresponds to > 1 byte of `uri` (even for valid URI encoding schemes, as
   // U+00(>7F) encodes to 2 bytes).
-  if (!bt_lib_cpp_string::ReadUnicodeCharacter(
-          uri.c_str(), uri.size(), &index, &code_point)) {
+  const auto result = pw::utf8::ReadCodePoint(uri);
+  if (!result.ok()) {
     bt_log(INFO,
            "gap-le",
            "Attempted to decode malformed UTF-8 in AdvertisingData URI");
     return "";
   }
+  const uint32_t code_point = result->code_point();
   // `uri` is not a c-string, so URIs that start with '\0' after c_str
   // conversion (i.e. both empty URIs and URIs with leading null bytes '\0') are
   // caught by the code_point < 2 check. We check
@@ -146,7 +150,7 @@ std::string DecodeUri(const std::string& uri) {
         kUriSchemesSize + 1);
     return "";
   }
-  return kUriSchemes[code_point - 2] + uri.substr(index + 1);
+  return kUriSchemes[code_point - 2] + uri.substr(result->size());
 }
 
 template <typename T>
@@ -197,6 +201,110 @@ std::string AdvertisingData::ParseErrorToString(ParseError e) {
   }
 }
 
+std::string AdvFlagsToString(const std::optional<AdvFlags>& flags_opt) {
+  std::string result = "Flags: {";
+
+  if (!flags_opt.has_value()) {
+    return result += "} ";
+  }
+
+  const AdvFlags& flags = flags_opt.value();
+
+  if (flags & kLELimitedDiscoverableMode) {
+    result += " LE Limited Discoverable Mode,";
+  }
+  if (flags & kLEGeneralDiscoverableMode) {
+    result += " LE General Discoverable Mode,";
+  }
+  if (flags & kBREDRNotSupported) {
+    result += " BR/EDR Not Supported,";
+  }
+  if (flags & kSimultaneousLEAndBREDRController) {
+    result += " Simultaneous LE And BR/EDR Controller,";
+  }
+  if (flags & kSimultaneousLEAndBREDRHost) {
+    result += " Simultaneous LE And BR/EDR Host,";
+  }
+  return result += " }, ";
+}
+
+std::string AdvertisingData::ToString() const {
+  std::string result = "Advertising Data { ";
+
+  if (local_name_) {
+    bt_lib_cpp_string::StringAppendf(
+        &result,
+        "%s Name: %s, ",
+        (local_name_->is_complete ? "Complete" : "Short"),
+        local_name_->name.c_str());
+  }
+
+  if (tx_power_) {
+    bt_lib_cpp_string::StringAppendf(&result, "TX Power: %hhd, ", *tx_power_);
+  }
+
+  if (appearance_) {
+    bt_lib_cpp_string::StringAppendf(
+        &result, "Appearance: 0x%04x, ", *appearance_);
+  }
+
+  if (!uris_.empty()) {
+    result += "URIs: { ";
+    for (const auto& uri : uris_) {
+      bt_lib_cpp_string::StringAppendf(&result, "%s, ", uri.c_str());
+    }
+    result += "}, ";
+  }
+
+  if (flags_.has_value()) {
+    result += AdvFlagsToString(flags_);
+  }
+
+  bool hasServiceUuids = false;
+  for (const auto& [_, bounded_uuids] : service_uuids_) {
+    if (!bounded_uuids.set().empty()) {
+      hasServiceUuids = true;
+      break;
+    }
+  }
+
+  if (hasServiceUuids) {
+    result += "Service UUIDs: { ";
+    for (const auto& [_, bounded_uuids] : service_uuids_) {
+      for (const auto& uuid : bounded_uuids.set()) {
+        bt_lib_cpp_string::StringAppendf(&result, "%s, ", bt_str(uuid));
+      }
+    }
+    result += "}, ";
+  }
+
+  if (!service_data_.empty()) {
+    result += "Service Data: { ";
+    for (const auto& [uuid, data_buffer] : service_data_) {
+      bt_lib_cpp_string::StringAppendf(
+          &result,
+          "{ UUID:%s, Data: {%s} }, ",
+          bt_str(uuid),
+          data_buffer.ToString(/*as_hex*/ true).c_str());
+    }
+    result += "}, ";
+  }
+
+  if (!manufacturer_data_.empty()) {
+    result += "Manufacturer Data: { ";
+    for (const auto& [company_id, data_buffer] : manufacturer_data_) {
+      bt_lib_cpp_string::StringAppendf(
+          &result,
+          "{ Company ID: 0x%04x, Data: {%s} }, ",
+          company_id,
+          data_buffer.ToString(/*as_hex*/ true).c_str());
+    }
+    result += "} ";
+  }
+  result += "}";
+  return result;
+}
+
 AdvertisingData::ParseResult AdvertisingData::FromBytes(
     const ByteBuffer& data) {
   if (data.size() == 0) {
@@ -215,6 +323,8 @@ AdvertisingData::ParseResult AdvertisingData::FromBytes(
     // validate that per-field sizes do not overflow a uint8_t because they, by
     // construction, are obtained from a uint8_t.
     BT_DEBUG_ASSERT(field.size() <= std::numeric_limits<uint8_t>::max());
+    PW_MODIFY_DIAGNOSTICS_PUSH();
+    PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
     switch (type) {
       case DataType::kTxPowerLevel: {
         if (field.size() != kTxPowerLevelSize) {
@@ -267,7 +377,9 @@ AdvertisingData::ParseResult AdvertisingData::FromBytes(
           return fit::error(ParseError::kManufacturerSpecificDataTooSmall);
         }
 
-        uint16_t id = le16toh(*reinterpret_cast<const uint16_t*>(field.data()));
+        uint16_t id = static_cast<uint16_t>(pw::bytes::ConvertOrderFrom(
+            cpp20::endian::little,
+            *reinterpret_cast<const uint16_t*>(field.data())));
         const BufferView manuf_data(field.data() + kManufacturerIdSize,
                                     field.size() - kManufacturerIdSize);
 
@@ -303,7 +415,8 @@ AdvertisingData::ParseResult AdvertisingData::FromBytes(
           return fit::error(ParseError::kAppearanceMalformed);
         }
 
-        out_ad.SetAppearance(le16toh(field.To<uint16_t>()));
+        out_ad.SetAppearance(pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                                         field.To<uint16_t>()));
         break;
       }
       case DataType::kURI: {
@@ -329,6 +442,7 @@ AdvertisingData::ParseResult AdvertisingData::FromBytes(
                static_cast<unsigned int>(type));
         break;
     }
+    PW_MODIFY_DIAGNOSTICS_POP();
   }
 
   return fit::ok(std::move(out_ad));

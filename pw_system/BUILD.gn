@@ -20,11 +20,14 @@ import("$dir_pigweed/third_party/nanopb/nanopb.gni")
 import("$dir_pigweed/third_party/pico_sdk/pi_pico.gni")
 import("$dir_pigweed/third_party/smartfusion_mss/mss.gni")
 import("$dir_pigweed/third_party/stm32cube/stm32cube.gni")
+import("$dir_pw_async2/backend.gni")
 import("$dir_pw_build/error.gni")
 import("$dir_pw_build/facade.gni")
 import("$dir_pw_build/module_config.gni")
 import("$dir_pw_build/target_types.gni")
+import("$dir_pw_cpu_exception/backend.gni")
 import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_protobuf_compiler/proto.gni")
 import("$dir_pw_unit_test/test.gni")
 import("backend.gni")
 
@@ -59,6 +62,14 @@ config("multi_endpoint_rpc_overrides") {
   ]
 }
 
+config("pw_cpu_exception_config") {
+  # disable the crash handler entirely if the cpu exception backend has
+  # not been set.
+  if (pw_cpu_exception_ENTRY_BACKEND == "") {
+    defines = [ "PW_SYSTEM_ENABLE_CRASH_HANDLER=0" ]
+  }
+}
+
 # The Pigweed config pattern requires a pw_source_set to provide the
 # configuration defines. This provides the flags in
 # multi_endpoint_rpc_overrides.
@@ -68,10 +79,12 @@ pw_source_set("multi_endpoint_rpc_config") {
 
 pw_source_set("config") {
   sources = [ "public/pw_system/config.h" ]
-  public_configs = [ ":public_include_path" ]
+  public_configs = [
+    ":public_include_path",
+    ":pw_cpu_exception_config",
+  ]
   public_deps = [ pw_system_CONFIG ]
   visibility = [ "./*" ]
-  friend = [ "./*" ]
 }
 
 pw_source_set("log") {
@@ -87,7 +100,6 @@ pw_source_set("log") {
   ]
   deps = [
     ":config",
-    ":rpc_server",
     "$dir_pw_log_rpc:rpc_log_drain",
     "$dir_pw_sync:lock_annotations",
     "$dir_pw_sync:mutex",
@@ -137,11 +149,24 @@ pw_facade("io") {
   public_deps = [ "$dir_pw_stream" ]
 }
 
+pw_facade("device_handler") {
+  backend = pw_system_DEVICE_HANDLER
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_system/device_handler.h" ]
+  public_deps = [ "$dir_pw_snapshot:snapshot_proto.pwpb" ]
+}
+
+pw_source_set("unknown_device_handler") {
+  sources = [ "unknown_device_handler.cc" ]
+  deps = [ ":device_handler.facade" ]
+}
+
 pw_source_set("init") {
   public_configs = [ ":public_include_path" ]
   public = [ "public/pw_system/init.h" ]
   sources = [ "init.cc" ]
   deps = [
+    ":device_service",
     ":file_manager",
     ":file_service",
     ":log",
@@ -157,6 +182,16 @@ pw_source_set("init") {
     "$dir_pw_thread:thread",
     "$dir_pw_trace",
   ]
+  if (pw_cpu_exception_ENTRY_BACKEND != "") {
+    deps += [
+      ":crash_handler",
+      ":crash_snapshot",
+    ]
+  }
+
+  # disable include checking, as there are conditional includes dependent on
+  # whether the pw_cpu_exception_ENTRY_BACKEND is set.
+  check_includes = false
 }
 
 pw_source_set("hdlc_rpc_server") {
@@ -184,7 +219,7 @@ pw_source_set("work_queue") {
 }
 
 pw_source_set("sys_io_target_io") {
-  sources = [ "target_io.cc" ]
+  sources = [ "sys_io_target_io.cc" ]
   deps = [
     ":io.facade",
     "$dir_pw_stream",
@@ -207,6 +242,7 @@ pw_source_set("transfer_handlers") {
   public = [ "public/pw_system/transfer_handlers.h" ]
   public_configs = [ ":public_include_path" ]
   public_deps = [
+    ":config",
     "$dir_pw_persistent_ram",
     "$dir_pw_trace_tokenized:config",
     "$dir_pw_transfer",
@@ -226,6 +262,13 @@ pw_source_set("file_manager") {
   ]
   sources = [ "file_manager.cc" ]
   deps = [ ":trace_service" ]
+  if (pw_cpu_exception_ENTRY_BACKEND != "") {
+    deps += [ ":crash_snapshot" ]
+  }
+
+  # disable include checking, as there are conditional includes dependent on
+  # whether the pw_cpu_exception_ENTRY_BACKEND is set.
+  check_includes = false
 }
 
 pw_source_set("transfer_service") {
@@ -253,6 +296,61 @@ pw_source_set("trace_service") {
     "$dir_pw_persistent_ram",
     "$dir_pw_trace_tokenized:trace_service_pwpb",
   ]
+}
+
+pw_source_set("crash_handler") {
+  public = [ "public/pw_system/crash_handler.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = []
+  sources = [ "crash_handler.cc" ]
+  deps = [
+    ":crash_snapshot",
+    ":device_handler",
+    ":log",
+    "$dir_pw_assert_trap:message",
+    "$dir_pw_cpu_exception:handler",
+  ]
+}
+
+pw_source_set("crash_snapshot") {
+  public = [ "public/pw_system/crash_snapshot.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = [
+    ":transfer_handlers",
+    "$dir_pw_cpu_exception:entry",
+    "$dir_pw_persistent_ram",
+    "$dir_pw_snapshot:snapshot_proto.pwpb",
+  ]
+  sources = [ "crash_snapshot.cc" ]
+  deps = [
+    ":device_handler",
+    ":log",
+    "$dir_pw_multisink:util",
+    "$dir_pw_snapshot:uuid",
+  ]
+}
+
+pw_proto_library("device_service_proto") {
+  sources = [ "pw_system_protos/device_service.proto" ]
+  inputs = [ "pw_system_protos/device_service.options" ]
+  deps = []
+}
+
+pw_source_set("device_service_pwpb") {
+  public = [ "public/pw_system/device_service_pwpb.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = []
+  sources = [ "device_service_pwpb.cc" ]
+  public_deps = [ ":device_service_proto.pwpb_rpc" ]
+  deps = [ ":device_handler" ]
+}
+
+pw_source_set("device_service") {
+  public = [ "public/pw_system/device_service.h" ]
+  public_configs = [ ":public_include_path" ]
+  public_deps = []
+  sources = [ "device_service.cc" ]
+  deps = [ ":device_service_pwpb" ]
 }
 
 pw_source_set("thread_snapshot_service") {
@@ -310,6 +408,46 @@ group("pw_system") {
   deps = [ ":target_hooks" ]
 }
 
+pw_source_set("async") {
+  public = [ "public/pw_system/system.h" ]
+  public_configs = [ ":public_include_path" ]
+  sources = [
+    "pw_system_private/threads.h",
+    "system.cc",
+    "threads.cc",
+  ]
+  public_deps = [
+    "$dir_pw_allocator:allocator",
+    "$dir_pw_async2:dispatcher",
+    "$dir_pw_channel",
+    "$dir_pw_rpc:server",
+  ]
+  deps = [
+    ":async_packet_io",
+    ":file_manager",
+    ":file_service",
+    ":log",
+    ":thread_snapshot_service",
+    ":transfer_service",
+    ":work_queue",
+    "$dir_pw_allocator:best_fit_block_allocator",
+    "$dir_pw_allocator:synchronized_allocator",
+    "$dir_pw_async2:allocate_task",
+    "$dir_pw_async2:pend_func_task",
+    "$dir_pw_hdlc:router",
+    "$dir_pw_multibuf:simple_allocator",
+    "$dir_pw_rpc/pwpb:echo_service",
+    "$dir_pw_sync:interrupt_spin_lock",
+    "$dir_pw_thread:thread",
+  ]
+  if (pw_cpu_exception_ENTRY_BACKEND != "") {
+    deps += [
+      ":crash_handler",
+      ":crash_snapshot",
+    ]
+  }
+}
+
 pw_executable("system_example") {
   # TODO: b/303282642 - Remove this testonly
   testonly = pw_unit_test_TESTONLY
@@ -326,6 +464,69 @@ pw_executable("system_example") {
     "$dir_pw_status:status_test.lib",
     "$dir_pw_string:string_builder_test.lib",
   ]
+}
+
+pw_executable("system_async_host_example") {
+  sources = [ "system_async_host_example.cc" ]
+  deps = [
+    ":async",
+    "$dir_pw_channel:epoll_channel",
+    "$dir_pw_multibuf:testing",
+  ]
+}
+
+pw_source_set("async_packet_io") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_system/internal/async_packet_io.h" ]
+  sources = [ "async_packet_io.cc" ]
+  public_deps = [
+    "$dir_pw_async2:dispatcher",
+    "$dir_pw_channel:forwarding_channel",
+    "$dir_pw_containers:inline_var_len_entry_queue",
+    "$dir_pw_hdlc:router",
+    "$dir_pw_multibuf:simple_allocator",
+    "$dir_pw_rpc:server",
+    "$dir_pw_sync:lock_annotations",
+    "$dir_pw_sync:mutex",
+    "$dir_pw_sync:thread_notification",
+    "$dir_pw_thread:thread",
+    "$dir_pw_thread:thread_core",
+    dir_pw_allocator,
+    dir_pw_channel,
+    dir_pw_multibuf,
+  ]
+  deps = [
+    ":config",
+    dir_pw_assert,
+    dir_pw_log,
+  ]
+  visibility = [ "./*" ]
+}
+
+pw_test("async_packet_io_test") {
+  sources = [ "async_packet_io_test.cc" ]
+  deps = [
+    ":async_packet_io",
+    "$dir_pw_allocator:testing",
+    "$dir_pw_channel:loopback_channel",
+    "$dir_pw_multibuf:testing",
+  ]
+
+  # TODO: b/317922402 - Run on Windows when thread detaching is supported.
+  enable_if = host_os != "win" && pw_async2_DISPATCHER_BACKEND != ""
+}
+
+pw_test("system_async_test") {
+  sources = [ "system_async_test.cc" ]
+  deps = [
+    ":async",
+    "$dir_pw_allocator:testing",
+    "$dir_pw_channel:loopback_channel",
+    "$dir_pw_multibuf:testing",
+  ]
+
+  # TODO: b/317922402 - Run on Windows when thread detaching is supported.
+  enable_if = host_os != "win" && pw_async2_DISPATCHER_BACKEND != ""
 }
 
 group("system_examples") {
@@ -365,7 +566,12 @@ pw_doc_group("docs") {
     "cli.rst",
     "docs.rst",
   ]
+  inputs = [ "system_async_test.cc" ]
 }
 
 pw_test_group("tests") {
+  tests = [
+    ":async_packet_io_test",
+    ":system_async_test",
+  ]
 }

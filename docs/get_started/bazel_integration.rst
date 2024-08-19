@@ -40,7 +40,7 @@ We don't yet publish releases that could be pulled in using `http_archive
 <https://bazel.build/rules/lib/repo/http#http_archive>`__.
 
 We don't support `bzlmod <https://bazel.build/external/overview#bzlmod>`__ yet.
-See http://pwbug.dev/258836641.
+See :bug:`258836641`.
 
 If either of these limitations is important to you, please reach out to us on
 `chat <https://discord.gg/M9NSeTA>`__.
@@ -92,6 +92,17 @@ embedded-friendly replacement for ``std::vector``.
           "@pigweed//pw_build:default_link_extra_lib",  # <-- The new dependency
         ],
       )
+
+----------------------------
+Set the required Bazel flags
+----------------------------
+Pigweed projects need to set certain flags in their ``.bazelrc``. These
+generally pre-adopt Bazel features that will become default in the future and
+improve cache performance, disambiguate Python imports, etc. These flags are
+listed below.  Unfortunately there's no way to automatically import them, see
+:bug:`353750350`.
+
+.. literalinclude:: ../../pw_build/pigweed.bazelrc
 
 --------------------------------------------
 Configure backends for facades you depend on

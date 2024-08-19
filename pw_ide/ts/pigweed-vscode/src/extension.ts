@@ -14,287 +14,327 @@
 
 import * as vscode from 'vscode';
 
-import { getExtensionsJson } from './config';
-import { launchBootstrapTerminal, launchTerminal } from './terminal';
+import { configureBazelisk, configureBazelSettings } from './bazel';
+import { BazelRefreshCompileCommandsWatcher } from './bazelWatcher';
+import {
+  ClangdActiveFilesCache,
+  initClangdPath,
+  setCompileCommandsTargetOnSettingsChange,
+  setTarget,
+} from './clangd';
+import { registerBazelProjectCommands } from './commands/bazel';
+import { getSettingsData, syncSettingsSharedToProject } from './configParsing';
+import { Disposer } from './disposables';
+import { didInit, linkRefreshManagerToEvents } from './events';
+import { checkExtensions } from './extensionManagement';
+import { InactiveFileDecorationProvider } from './inactiveFileDecoration';
+import logger, { output } from './logging';
+import { fileBug, launchTroubleshootingLink } from './links';
 
-const bugUrl =
-  'https://issues.pigweed.dev/issues/new?component=1194524&template=1911548';
+import {
+  getPigweedProjectRoot,
+  isBazelWorkspaceProject,
+  isBootstrapProject,
+} from './project';
 
-/**
- * Open the bug report template in the user's browser.
- */
-function fileBug() {
-  vscode.env.openExternal(vscode.Uri.parse(bugUrl));
-}
+import { RefreshManager } from './refreshManager';
+import { settings, workingDir } from './settings';
+import { ClangdFileWatcher, SettingsFileWatcher } from './settingsWatcher';
 
-/**
- * Open the extensions sidebar and show the provided extensions.
- * @param extensions - A list of extension IDs
- */
-function showExtensions(extensions: string[]) {
-  vscode.commands.executeCommand(
-    'workbench.extensions.search',
-    '@id:' + extensions.join(', @id:'),
+import {
+  InactiveVisibilityStatusBarItem,
+  TargetStatusBarItem,
+} from './statusBar';
+
+import {
+  launchBootstrapTerminal,
+  launchTerminal,
+  patchBazeliskIntoTerminalPath,
+} from './terminal';
+
+const disposer = new Disposer();
+
+function registerUniversalCommands(context: vscode.ExtensionContext) {
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.open-output-panel', output.show),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.file-bug', fileBug),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'pigweed.check-extensions',
+      checkExtensions,
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.sync-settings', async () =>
+      syncSettingsSharedToProject(await getSettingsData(), true),
+    ),
   );
 }
 
-/**
- * Given a list of extensions, return the subset that are not installed or are
- * disabled.
- * @param extensions - A list of extension IDs
- * @returns A list of extension IDs
- */
-function getUnavailableExtensions(extensions: string[]): string[] {
-  const unavailableExtensions: string[] = [];
-  const available = vscode.extensions.all;
-
-  // TODO(chadnorvell): Verify that this includes disabled extensions
-  extensions.map(async (extId) => {
-    const ext = available.find((ext) => ext.id == extId);
-
-    if (!ext) {
-      unavailableExtensions.push(extId);
-    }
-  });
-
-  return unavailableExtensions;
-}
-
-/**
- * If there are recommended extensions that are not installed or enabled in the
- * current workspace, prompt the user to install them. This is "sticky" in the
- * sense that it will keep bugging the user to enable those extensions until
- * they enable them all, or until they explicitly cancel.
- * @param recs - A list of extension IDs
- */
-async function installRecommendedExtensions(recs: string[]): Promise<void> {
-  let unavailableRecs = getUnavailableExtensions(recs);
-  const totalNumUnavailableRecs = unavailableRecs.length;
-  let numUnavailableRecs = totalNumUnavailableRecs;
-
-  const update = () => {
-    unavailableRecs = getUnavailableExtensions(recs);
-    numUnavailableRecs = unavailableRecs.length;
-  };
-
-  const wait = async () => new Promise((resolve) => setTimeout(resolve, 2500));
-
-  const progressIncrement = (num: number) =>
-    1 - (num / totalNumUnavailableRecs) * 100;
-
-  // All recommendations are installed; we're done.
-  if (totalNumUnavailableRecs == 0) {
-    console.log('User has all recommended extensions');
-
-    return;
-  }
-
-  showExtensions(unavailableRecs);
-
-  vscode.window.showInformationMessage(
-    `This Pigweed project needs you to install ${totalNumUnavailableRecs} ` +
-      'required extensions. ' +
-      'Install the extensions shown in the extensions tab.',
-    { modal: true },
-    'Ok',
+function registerBootstrapCommands(context: vscode.ExtensionContext) {
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.launch-terminal', launchTerminal),
   );
 
-  vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title:
-        'Install these extensions! This Pigweed project needs these recommended extensions to be installed.',
-      cancellable: true,
-    },
-    async (progress, token) => {
-      while (numUnavailableRecs > 0) {
-        // TODO(chadnorvell): Wait for vscode.extensions.onDidChange
-        await wait();
-        update();
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'pigweed.bootstrap-terminal',
+      launchBootstrapTerminal,
+    ),
+  );
 
-        progress.report({
-          increment: progressIncrement(numUnavailableRecs),
-        });
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'pigweed.disable-inactive-file-code-intelligence',
+      () =>
+        vscode.window.showWarningMessage(
+          'This command is currently not supported with Bootstrap projects',
+        ),
+    ),
+  );
 
-        if (numUnavailableRecs > 0) {
-          console.log(
-            `User lacks ${numUnavailableRecs} recommended extensions`,
-          );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'pigweed.enable-inactive-file-code-intelligence',
+      () =>
+        vscode.window.showWarningMessage(
+          'This command is currently not supported with Bootstrap projects',
+        ),
+    ),
+  );
 
-          showExtensions(unavailableRecs);
-        }
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.refresh-compile-commands', () =>
+      vscode.window.showWarningMessage(
+        'This command is currently not supported with Bootstrap projects',
+      ),
+    ),
+  );
 
-        if (token.isCancellationRequested) {
-          console.log('User cancelled recommended extensions check');
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'pigweed.refresh-compile-commands-and-set-target',
+      () =>
+        vscode.window.showWarningMessage(
+          'This command is currently not supported with Bootstrap projects',
+        ),
+    ),
+  );
 
-          break;
-        }
-      }
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.set-bazelisk-path', () =>
+      vscode.window.showWarningMessage(
+        'This command is currently not supported with Bootstrap projects',
+      ),
+    ),
+  );
 
-      console.log('All recommended extensions are enabled');
-      vscode.commands.executeCommand(
-        'workbench.action.toggleSidebarVisibility',
-      );
-      progress.report({ increment: 100 });
-    },
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'pigweed.set-bazel-recommended-settings',
+      () =>
+        vscode.window.showWarningMessage(
+          'This command is currently not supported with Bootstrap projects',
+        ),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('pigweed.select-target', () =>
+      vscode.window.showWarningMessage(
+        'This command is currently not supported with Bootstrap projects',
+      ),
+    ),
   );
 }
 
-/**
- * Given a list of extensions, return the subset that are enabled.
- * @param extensions - A list of extension IDs
- * @returns A list of extension IDs
- */
-function getEnabledExtensions(extensions: string[]): string[] {
-  const enabledExtensions: string[] = [];
-  const available = vscode.extensions.all;
+async function initAsBazelProject(context: vscode.ExtensionContext) {
+  // Do stuff that we want to do on load.
+  await initClangdPath();
+  await configureBazelSettings();
+  await configureBazelisk();
 
-  // TODO(chadnorvell): Verify that this excludes disabled extensions
-  extensions.map(async (extId) => {
-    const ext = available.find((ext) => ext.id == extId);
-
-    if (ext) {
-      enabledExtensions.push(extId);
-    }
-  });
-
-  return enabledExtensions;
-}
-
-/**
- * If there are unwanted extensions that are enabled in the current workspace,
- * prompt the user to disable them. This is "sticky" in the sense that it will
- * keep bugging the user to disable those extensions until they disable them
- * all, or until they explicitly cancel.
- * @param recs - A list of extension IDs
- */
-async function disableUnwantedExtensions(unwanted: string[]) {
-  let enabledUnwanted = getEnabledExtensions(unwanted);
-  const totalNumEnabledUnwanted = enabledUnwanted.length;
-  let numEnabledUnwanted = totalNumEnabledUnwanted;
-
-  const update = () => {
-    enabledUnwanted = getEnabledExtensions(unwanted);
-    numEnabledUnwanted = enabledUnwanted.length;
-  };
-
-  const wait = async () => new Promise((resolve) => setTimeout(resolve, 2500));
-
-  const progressIncrement = (num: number) =>
-    1 - (num / totalNumEnabledUnwanted) * 100;
-
-  // All unwanted are disabled; we're done.
-  if (totalNumEnabledUnwanted == 0) {
-    console.log('User has no unwanted extensions enabled');
-
-    return;
-  }
-
-  showExtensions(enabledUnwanted);
-
-  vscode.window.showInformationMessage(
-    `This Pigweed project needs you to disable ${totalNumEnabledUnwanted} ` +
-      'incompatible extensions. ' +
-      'Disable the extensions shown the extensions tab.',
-    { modal: true },
-    'Ok',
-  );
-
-  vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title:
-        'Disable these extensions! This Pigweed project needs these extensions to be disabled.',
-      cancellable: true,
-    },
-    async (progress, token) => {
-      while (numEnabledUnwanted > 0) {
-        // TODO(chadnorvell): Wait for vscode.extensions.onDidChange
-        await wait();
-        update();
-
-        progress.report({
-          increment: progressIncrement(numEnabledUnwanted),
-        });
-
-        if (numEnabledUnwanted > 0) {
-          console.log(
-            `User has ${numEnabledUnwanted} unwanted extensions enabled`,
-          );
-
-          showExtensions(enabledUnwanted);
-        }
-
-        if (token.isCancellationRequested) {
-          console.log('User cancelled unwanted extensions check');
-
-          break;
-        }
-      }
-
-      console.log('All unwanted extensions are disabled');
-      vscode.commands.executeCommand(
-        'workbench.action.toggleSidebarVisibility',
-      );
-      progress.report({ increment: 100 });
-    },
-  );
-}
-
-async function checkExtensions() {
-  const extensions = await getExtensionsJson();
-
-  const num_recommendations = extensions?.recommendations?.length ?? 0;
-  const num_unwanted = extensions?.unwantedRecommendations?.length ?? 0;
-
-  if (extensions && num_recommendations > 0) {
-    await installRecommendedExtensions(extensions.recommendations as string[]);
-  }
-
-  if (extensions && num_unwanted > 0) {
-    await disableUnwantedExtensions(
-      extensions.unwantedRecommendations as string[],
+  if (settings.activateBazeliskInNewTerminals()) {
+    vscode.window.onDidOpenTerminal(
+      patchBazeliskIntoTerminalPath,
+      disposer.disposables,
     );
   }
+
+  // Marshall all of our components and dependencies.
+  const refreshManager = disposer.add(RefreshManager.create());
+  linkRefreshManagerToEvents(refreshManager);
+
+  const { clangdActiveFilesCache, compileCommandsWatcher } = disposer.addMany({
+    clangdActiveFilesCache: new ClangdActiveFilesCache(refreshManager),
+    compileCommandsWatcher: new BazelRefreshCompileCommandsWatcher(
+      refreshManager,
+      settings.disableCompileCommandsFileWatcher(),
+    ),
+    inactiveVisibilityStatusBarItem: new InactiveVisibilityStatusBarItem(),
+    settingsFileWatcher: new SettingsFileWatcher(),
+    targetStatusBarItem: new TargetStatusBarItem(),
+  });
+
+  // If the current target is changed directly via a settings file change (in
+  // other words, not by running a command), detect that and do all the other
+  // stuff that the command would otherwise have done.
+  vscode.workspace.onDidChangeConfiguration(
+    setCompileCommandsTargetOnSettingsChange(clangdActiveFilesCache),
+    disposer.disposables,
+  );
+
+  disposer.add(new ClangdFileWatcher(clangdActiveFilesCache));
+  disposer.add(new InactiveFileDecorationProvider(clangdActiveFilesCache));
+
+  registerBazelProjectCommands(
+    context,
+    refreshManager,
+    compileCommandsWatcher,
+    clangdActiveFilesCache,
+  );
+
+  if (!settings.disableCompileCommandsFileWatcher()) {
+    compileCommandsWatcher.refresh();
+  }
+
+  didInit.fire();
 }
 
-function registerCommands(context: vscode.ExtensionContext) {
-  context.subscriptions.push(
-    vscode.commands.registerCommand('pigweed.file-bug', () => fileBug()),
-  );
+/**
+ * Get the project type and configuration details on startup.
+ *
+ * This is a little long and over-complex, but essentially it does just a few
+ * things:
+ *   - Do I know where the Pigweed project root is?
+ *   - Do I know if this is a Bazel or bootstrap project?
+ *   - If I don't know any of that, ask the user to tell me and save the
+ *     selection to settings.
+ *   - If the user needs help, route them to the right place.
+ */
+async function configureProject(context: vscode.ExtensionContext) {
+  // If we're missing a piece of information, we can ask the user to manually
+  // provide it. If they do, we should re-run this flow, and that intent is
+  // signaled by setting this var.
+  let tryAgain = false;
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('pigweed.check-extensions', () =>
-      checkExtensions(),
-    ),
-  );
+  const projectRoot = await getPigweedProjectRoot(settings, workingDir);
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('pigweed.launch-terminal', () =>
-      launchTerminal(),
-    ),
-  );
+  if (projectRoot) {
+    output.appendLine(`The Pigweed project root is ${projectRoot}`);
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('pigweed.bootstrap-terminal', () =>
-      launchBootstrapTerminal(),
-    ),
-  );
+    if (
+      settings.projectType() === 'bootstrap' ||
+      isBootstrapProject(projectRoot)
+    ) {
+      output.appendLine('This is a bootstrap project');
+      registerBootstrapCommands(context);
+    } else if (
+      settings.projectType() === 'bazel' ||
+      isBazelWorkspaceProject(projectRoot)
+    ) {
+      output.appendLine('This is a Bazel project');
+      await initAsBazelProject(context);
+    } else {
+      vscode.window
+        .showErrorMessage(
+          "I couldn't automatically determine what type of Pigweed project " +
+            'this is. Choose one of these project types, or get more help.',
+          'Bazel',
+          'Bootstrap',
+          'Get Help',
+        )
+        .then((selection) => {
+          switch (selection) {
+            case 'Bazel': {
+              settings.projectType('bazel');
+              vscode.window.showInformationMessage(
+                'Configured as a Pigweed Bazel project',
+              );
+              tryAgain = true;
+              break;
+            }
+            case 'Bootstrap': {
+              settings.projectType('bootstrap');
+              vscode.window.showInformationMessage(
+                'Configured as a Pigweed Bootstrap project',
+              );
+              tryAgain = true;
+              break;
+            }
+            case 'Get Help': {
+              launchTroubleshootingLink('project-type');
+              break;
+            }
+          }
+        });
+    }
+  } else {
+    vscode.window
+      .showErrorMessage(
+        "I couldn't automatically determine the location of the  Pigweed " +
+          'root directory. Enter it manually, or get more help.',
+        'Browse',
+        'Get Help',
+      )
+      .then((selection) => {
+        switch (selection) {
+          case 'Browse': {
+            vscode.window
+              .showOpenDialog({
+                canSelectFiles: false,
+                canSelectFolders: true,
+                canSelectMany: false,
+              })
+              .then((result) => {
+                // The user can cancel, making result undefined
+                if (result) {
+                  const [uri] = result;
+                  settings.projectRoot(uri.fsPath);
+                  vscode.window.showInformationMessage(
+                    `Set the Pigweed project root to: ${uri.fsPath}`,
+                  );
+                  tryAgain = true;
+                }
+              });
+            break;
+          }
+          case 'Get Help': {
+            launchTroubleshootingLink('project-root');
+            break;
+          }
+        }
+      });
+  }
+
+  // This should only re-run if something has materially changed, e.g., the user
+  // provided a piece of information we needed.
+  if (tryAgain) {
+    await configureProject(context);
+  }
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-  registerCommands(context);
+  // Register commands that apply to all project types
+  registerUniversalCommands(context);
+  logger.info('Extension loaded');
 
-  const shouldEnforce = vscode.workspace
-    .getConfiguration('pigweed')
-    .get('enforceExtensionRecommendations') as string;
+  // Determine the project type and configuration parameters. This also
+  // registers the commands specific to each project type.
+  await configureProject(context);
 
-  if (shouldEnforce === 'true') {
-    console.log('pigweed.enforceExtensionRecommendations: true');
+  if (settings.enforceExtensionRecommendations()) {
+    logger.info('Project is configured to enforce extension recommendations');
     await checkExtensions();
   }
 }
 
 export function deactivate() {
-  // Do nothing.
+  disposer.dispose();
 }

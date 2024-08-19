@@ -1,7 +1,7 @@
 .. _docs-get-started:
 
 ===========
-Get Started
+Quickstarts
 ===========
 .. _docs-first-time-setup:
 
@@ -15,7 +15,7 @@ all prerequisites, it greatly accelerates new developer onboarding.
 The first-time setup guides below are required for any Pigweed-based project,
 but only need to be done once per machine.
 
-.. grid:: 1
+.. grid:: 2
 
    .. grid-item-card:: First-time setup
       :link: docs-first-time-setup-guide
@@ -25,20 +25,46 @@ but only need to be done once per machine.
       Prerequisites, first-time setup, and support notes for Linux, macOS, and
       Windows.
 
+   .. grid-item-card:: Install Bazel
+      :link: docs-install-bazel
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Recommendations on how to install Bazel.
+
+---------------
+Tour of Pigweed
+---------------
+Want a guided, hands-on tour of Pigweed's core features? Try our
+brand new :ref:`Tour of Pigweed <showcase-sense>`!
+
+.. grid:: 1
+
+   .. grid-item-card:: :octicon:`rocket` Tour of Pigweed
+      :link: showcase-sense
+      :link-type: ref
+      :class-item: sales-pitch-cta-primary
+
+      Explore key Pigweed features, such as hermetic building, full C++
+      code intelligence in VS Code, communicating with devices over RPC,
+      host-side and on-device unit tests, and lots more.
+
 ------------------------------
 Create a Pigweed-based project
 ------------------------------
 .. grid:: 1
 
-   .. grid-item-card:: :octicon:`rocket` Bazel
-      :link: docs-get-started-bazel
-      :link-type: ref
-      :class-item: sales-pitch-cta-primary
+   .. grid-item-card:: :octicon:`code-square` Bazel quickstart
+      :link: https://cs.opensource.google/pigweed/quickstart/bazel
+      :link-type: url
+      :class-item: sales-pitch-cta-secondary
 
-      Fork our minimal, Bazel-based starter code. Bazel is the recommended
-      build system for new projects using Pigweed.
+      Fork our minimal, Bazel-based starter project to create a new
+      Pigweed project from scratch. The project includes a basic
+      blinky LED program that runs on Raspberry Pi Picos and can
+      be simulated on your development host.
 
-.. grid:: 1
+.. grid:: 2
 
    .. grid-item-card:: :octicon:`rocket` Zephyr
       :link: docs-quickstart-zephyr
@@ -47,8 +73,6 @@ Create a Pigweed-based project
 
       Learn how to set up a C++-based Zephyr project that is ready to use
       Pigweed and then build the app with Zephyr's ``native_sim`` board.
-
-.. grid:: 1
 
    .. grid-item-card:: :octicon:`code` Examples
       :link: https://pigweed.dev/examples/index.html
@@ -78,22 +102,12 @@ Create a Pigweed-based project
 
       Get set up to contribute to upstream Pigweed.
 
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-
-   First-time setup <first_time_setup>
-   Bazel quickstart <bazel>
-   Bazel integration <bazel_integration>
-   Zephyr quickstart <zephyr>
-   Upstream Pigweed <upstream>
-
 ------------------------------------------
 Use Pigweed modules in an existing project
 ------------------------------------------
 Pigweed is modular: you can use as much or as little of it as you need.
 
-.. grid:: 1
+.. grid:: 2
 
    .. grid-item-card:: :octicon:`rocket` Bazel
       :link: docs-bazel-integration
@@ -102,3 +116,23 @@ Pigweed is modular: you can use as much or as little of it as you need.
 
       Instructions for how to use a Pigweed module in an existing Bazel
       project.
+
+   .. grid-item-card:: :octicon:`list-ordered` GitHub Actions
+      :link: docs-github-actions
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      How to set up GitHub Actions to build and test your Bazel-based
+      Pigweed project.
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   First-time setup <first_time_setup>
+   Install Bazel <install_bazel>
+   Bazel quickstart <bazel>
+   Bazel integration <bazel_integration>
+   GitHub Actions <github_actions>
+   Zephyr quickstart <zephyr>
+   Upstream Pigweed <upstream>

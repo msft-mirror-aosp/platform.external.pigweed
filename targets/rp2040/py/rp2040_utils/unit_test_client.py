@@ -18,13 +18,25 @@ import argparse
 import subprocess
 import sys
 
+SERVER_RUNNER_CMD = 'bazelisk run @pigweed//targets/rp2040/py:unit_test_server'
+
 try:
     from rp2040_utils import unit_test_server
 except ImportError:
     # Load from this directory if rp2040_utils is not available.
     import unit_test_server  # type: ignore
 
-_TARGET_CLIENT_COMMAND = 'pw_target_runner_client'
+# If the script is being run through Bazel, our client is provided at a well
+# known location in its runfiles.
+try:
+    from python.runfiles import runfiles  # type: ignore
+
+    r = runfiles.Create()
+    _TARGET_CLIENT_COMMAND = r.Rlocation(
+        'pigweed/pw_target_runner/go/cmd/client_/client'
+    )
+except ImportError:
+    _TARGET_CLIENT_COMMAND = 'pw_target_runner_client'
 
 
 def parse_args():
@@ -44,7 +56,15 @@ def parse_args():
 
 def launch_client(binary: str, server_port: int) -> int:
     """Sends a test request to the specified server port."""
-    cmd = (_TARGET_CLIENT_COMMAND, '-binary', binary, '-port', str(server_port))
+    cmd = (
+        _TARGET_CLIENT_COMMAND,
+        '-binary',
+        binary,
+        '-port',
+        str(server_port),
+        '-server_suggestion',
+        SERVER_RUNNER_CMD,
+    )
     return subprocess.call(cmd)
 
 

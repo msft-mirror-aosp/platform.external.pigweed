@@ -20,7 +20,7 @@
 // DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-Flexcomm0]
 
 // Define FRO_DIV_4 clock source
-PW_CONSTINIT pw::clock_tree::ClockMcuxpressoFro fro_div_4(kCLOCK_FroDiv4OutEn);
+PW_CONSTINIT pw::clock_tree::ClockMcuxpressoFro fro_div4(kCLOCK_FroDiv4OutEn);
 
 // Define FRG0 configuration
 const clock_frg_clk_config_t g_frg0Config_BOARD_BOOTCLOCKRUN = {
@@ -30,38 +30,48 @@ const clock_frg_clk_config_t g_frg0Config_BOARD_BOOTCLOCKRUN = {
     .mult = 144};
 
 PW_CONSTINIT pw::clock_tree::ClockMcuxpressoFrgNonBlocking frg_0(
-    fro_div_4, g_frg0Config_BOARD_BOOTCLOCKRUN);
+    fro_div4, g_frg0Config_BOARD_BOOTCLOCKRUN);
 
 // Define clock source selector FLEXCOMM0
-PW_CONSTINIT pw::clock_tree::ClockMcuxpressoSelectorNonBlocking flexcomm_0(
-    frg_0, kFRG_to_FLEXCOMM0, kNONE_to_FLEXCOMM0);
+PW_CONSTINIT pw::clock_tree::ClockMcuxpressoSelectorNonBlocking
+    flexcomm_selector_0(frg_0, kFRG_to_FLEXCOMM0, kNONE_to_FLEXCOMM0);
+
+// Define clock source clock ip name kCLOCK_Flexcomm0
+PW_CONSTINIT pw::clock_tree::ClockMcuxpressoClockIpNonBlocking flexcomm_0(
+    flexcomm_selector_0, kCLOCK_Flexcomm0);
 
 // DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-Flexcomm0]
 
-// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-i3c0]
+// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-fro_div8]
 
-// Define FRO_DIV_8 clock source
-PW_CONSTINIT pw::clock_tree::ClockMcuxpressoFro fro_div_8(kCLOCK_FroDiv8OutEn);
+// Define FRO_DIV8 clock source
+PW_CONSTINIT pw::clock_tree::ClockMcuxpressoFro fro_div8(kCLOCK_FroDiv8OutEn);
+
+// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-fro_div8]
+
+// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-i3c0]
 
 // Define clock source selector I3C01FCLKSEL
 PW_CONSTINIT pw::clock_tree::ClockMcuxpressoSelectorNonBlocking i3c0_selector(
-    fro_div_8, kFRO_DIV8_to_I3C_CLK, kNONE_to_I3C_CLK);
+    fro_div8, kFRO_DIV8_to_I3C_CLK, kNONE_to_I3C_CLK);
 
 // Define clock divider I3C01FCLKDIV
 PW_CONSTINIT pw::clock_tree::ClockMcuxpressoDividerNonBlocking i3c0_divider(
     i3c0_selector, kCLOCK_DivI3cClk, 12);
 
+// Define clock source clock ip name kCLOCK_I3c0
+PW_CONSTINIT pw::clock_tree::ClockMcuxpressoClockIpNonBlocking i3c0(
+    i3c0_divider, kCLOCK_I3c0);
+
 // DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-i3c0]
 
-// DOCSTAG:
-// [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-ClockSourceNoOp]
+// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClkTreeElemDefs-ClockSourceNoOp]
 
 // Need to define `ClockSourceNoOp` clock tree element to satisfy dependency for
 // `ClockMcuxpressoMclk` or `ClockMcuxpressoClkIn` class.
 PW_CONSTINIT pw::clock_tree::ClockSourceNoOp clock_source_no_op;
 
-// DOCSTAG:
-// [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-ClockSourceNoOp]
+// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClkTreeElemDefs-ClockSourceNoOp]
 
 // inclusive-language: disable
 // DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-Ctimer0]
@@ -71,8 +81,12 @@ PW_CONSTINIT pw::clock_tree::ClockMcuxpressoMclkNonBlocking mclk(
     clock_source_no_op, 19200000);
 
 // Define clock selector CTIMER0
-PW_CONSTINIT pw::clock_tree::ClockMcuxpressoSelectorNonBlocking ctimer_0(
-    mclk, kMASTER_CLK_to_CTIMER0, kNONE_to_CTIMER0);
+PW_CONSTINIT pw::clock_tree::ClockMcuxpressoSelectorNonBlocking
+    ctimer_selector_0(mclk, kMASTER_CLK_to_CTIMER0, kNONE_to_CTIMER0);
+
+// Define clock source clock ip name kCLOCK_Ct32b0
+PW_CONSTINIT pw::clock_tree::ClockMcuxpressoClockIpNonBlocking ctimer_0(
+    ctimer_selector_0, kCLOCK_Ct32b0);
 
 // DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-Ctimer0]
 // inclusive-language: enable
@@ -84,7 +98,7 @@ PW_CONSTINIT pw::clock_tree::ClockMcuxpressoLpOsc lp_osc_clk;
 
 // DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-LpOsc]
 
-// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-AudioPll]
+// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElemDefs-AudioPll]
 
 // Define ClkIn pin clock source
 PW_CONSTINIT pw::clock_tree::ClockMcuxpressoClkInNonBlocking clk_in(
@@ -104,17 +118,18 @@ const clock_audio_pll_config_t kAudioPllConfig = {
 PW_CONSTINIT pw::clock_tree::ClockMcuxpressoAudioPllNonBlocking audio_pll(
     clk_in, kAudioPllConfig, 18);
 
-// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-AudioPll]
+// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElemDefs-AudioPll]
 
-// DOCSTAG:
-// [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-AudioPllBypass]
+// DOCSTAG:[pw_clock_tree_mcuxpresso-examples-ClockTreeElemDefs-AudioPllBypass]
 
-// Define Audio PLL in bypass mode sourced by FRO_DIV_8 clock source
+// Define Audio PLL in bypass mode sourced by FRO_DIV8 clock source
 PW_CONSTINIT pw::clock_tree::ClockMcuxpressoAudioPllNonBlocking
-    audio_pll_bypass(fro_div_8, kCLOCK_AudioPllFroDiv8Clk);
+    audio_pll_bypass(fro_div8, kCLOCK_AudioPllFroDiv8Clk);
 
-// DOCSTAG:
-// [pw_clock_tree_mcuxpresso-examples-ClockTreeElementDefs-AudioPllBypass]
+// DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeElemDefs-AudioPllBypass]
+
+PW_CONSTINIT pw::clock_tree::ClockMcuxpressoRtcNonBlocking rtc(
+    clock_source_no_op);
 
 // DOCSTAG: [pw_clock_tree_mcuxpresso-examples-ClockTreeDef]
 
@@ -129,11 +144,14 @@ TEST(ClockTreeMcuxpresso, UseExample) {
   // Enable the low-power oscillator
   clock_tree.Acquire(lp_osc_clk);
 
-  // Enable the i3c0_divider
-  clock_tree.Acquire(i3c0_divider);
+  // Enable the i3c0
+  clock_tree.Acquire(i3c0);
 
   // Change the i3c0_divider value
   clock_tree.SetDividerValue(i3c0_divider, 24);
+
+  // Enable the flexcomm0 interface
+  clock_tree.Acquire(flexcomm_0);
 
   // Disable the low-power oscillator
   clock_tree.Release(lp_osc_clk);
@@ -142,11 +160,27 @@ TEST(ClockTreeMcuxpresso, UseExample) {
 }
 
 TEST(ClockTreeMcuxpresso, AudioPll) {
-  clock_tree.Acquire(audio_pll);
+  // DOCSTAG:[pw_clock_tree_mcuxpresso-examples-Use-AudioPll]
+
+  // Enable audio PLL. We use AcquireWith to ensure that FRO_DIV8
+  // is enabled while enabling the audio PLL. If FRO_DIV8 wasn't enabled
+  // before, it will only be enabled while configuring the audio PLL
+  // and be disabled afterward to save power.
+  clock_tree.AcquireWith(audio_pll, fro_div8);
+
+  // Do something while audio PLL is enabled.
+
+  // Release audio PLL to save power.
   clock_tree.Release(audio_pll);
+  // DOCSTAG:[pw_clock_tree_mcuxpresso-examples-Use-AudioPll]
 }
 
 TEST(ClockTreeMcuxpresso, AudioPllBypass) {
   clock_tree.Acquire(audio_pll_bypass);
   clock_tree.Release(audio_pll_bypass);
+}
+
+TEST(ClockTreeMcuxpresso, Rtc) {
+  clock_tree.Acquire(rtc);
+  clock_tree.Release(rtc);
 }

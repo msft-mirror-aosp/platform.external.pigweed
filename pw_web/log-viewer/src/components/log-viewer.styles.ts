@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -45,7 +45,11 @@ export const styles = css`
 
     /* Log List */
     --sys-log-viewer-table-cell-padding: 0.375rem 0.75rem;
-    --sys-log-viewer-table-cell-icon-size: 1.125rem;
+    --sys-log-viewer-table-cell-icon-size: 1rem;
+
+    /* Log View Controls */
+    --sys-log-viewer-header-height: 2.75rem;
+    --sys-log-viewer-header-title-font-size: 1rem;
   }
 
   sl-split-panel {

@@ -52,10 +52,10 @@ platform(
         "//pw_build/constraints/rtos:freertos",
         "//pw_interrupt_cortex_m:backend",
         "//pw_malloc:bucket_block_allocator_backend",
-        "//pw_sys_io_stm32cube:backend",
         "@freertos//:port_ARM_CM4F",
         "@freertos//:disable_task_statics",
         "@platforms//cpu:armv7e-m",
+        "@platforms//os:none",
         "@pw_toolchain//constraints/arm_mcpu:cortex-m4",
         "@rust_crates//:no_std",
     ],
@@ -67,6 +67,20 @@ cc_library(
         "config/stm32f4xx_hal_conf.h",
     ],
     includes = ["config"],
+)
+
+cc_library(
+    name = "unit_test_app",
+    testonly = True,
+    srcs = [
+        "unit_test_app.cc",
+    ],
+    deps = [
+        "//pw_status",
+        "//pw_system",
+        "//pw_unit_test:rpc_service",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
