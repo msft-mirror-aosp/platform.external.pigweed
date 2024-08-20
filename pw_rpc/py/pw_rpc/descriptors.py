@@ -44,7 +44,7 @@ from pw_rpc import ids
 @dataclass(frozen=True)
 class Channel:
     id: int
-    output: Callable[[bytes], Any] | None
+    output: Callable[[bytes], Any]
 
     def __repr__(self) -> str:
         return f'Channel({self.id})'
@@ -456,3 +456,51 @@ def get_method(service_accessor: ServiceAccessor, name: str):
         service = service.methods
 
     return service[method_name]
+
+
+@dataclass(frozen=True)
+class PendingRpc:
+    """Uniquely identifies an RPC call."""
+
+    channel: Channel
+    service: Service
+    method: Method
+    call_id: int
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, PendingRpc):
+            return self._ids() == other._ids()
+
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self._ids())
+
+    def _ids(self) -> tuple[int, int, int, int]:
+        return self.channel.id, self.service.id, self.method.id, self.call_id
+
+    def __str__(self) -> str:
+        return (
+            f'PendingRpc(channel={self.channel.id}, method={self.method}, '
+            f'call_id={self.call_id})'
+        )
+
+    def matches_channel_service_method(self, other: PendingRpc) -> bool:
+        return (
+            self.channel.id == other.channel.id
+            and self.service.id == other.service.id
+            and self.method.id == other.method.id
+        )
+
+
+def fake_pending_rpc(
+    channel_id: int, service_id: int, method_id: int, call_id: int
+) -> PendingRpc:
+    """Creates a fake PendingRpc for testing: ONLY the *_id properties work!"""
+    service = Service(None, service_id, None)  # type: ignore[arg-type]
+    return PendingRpc(
+        Channel(channel_id, lambda _: None),
+        service,
+        Method(None, service, method_id, False, False, None, None),  # type: ignore[arg-type] # pylint: disable=line-too-long
+        call_id,
+    )
