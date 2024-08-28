@@ -13,6 +13,9 @@
 // the License.
 
 #pragma once
+#include <pw_bluetooth/hci_common.emb.h>
+#include <pw_bluetooth/hci_data.emb.h>
+
 #include <memory>
 
 #include "pw_bluetooth_sapphire/internal/host/common/macros.h"
@@ -23,8 +26,7 @@
 namespace bt::hci::allocators {
 
 // Slab sizes for control (command/event) and ACL data packets used by the slab
-// allocators. These are used by the CommandPacket, EventPacket, and
-// ACLDataPacket classes.
+// allocators. These are used by the EventPacket, and ACLDataPacket classes.
 
 // TODO(armansito): The slab sizes below are arbitrary; fine tune them based on
 // usage.
@@ -34,36 +36,32 @@ constexpr size_t kMaxScoSlabSize = 33024;  // exactly 128 max size SCO packets
 constexpr size_t kMaxNumSlabs = 100;
 
 // The largest possible control packet size.
-constexpr size_t kLargeControlPayloadSize =
-    hci_spec::kMaxCommandPacketPayloadSize;
-constexpr size_t kLargeControlPacketSize =
-    sizeof(hci_spec::CommandHeader) + kLargeControlPayloadSize;
-constexpr size_t kNumLargeControlPackets =
-    kMaxControlSlabSize / kLargeControlPacketSize;
-
-// The average HCI control packet payload size. Most packets are under 16 bytes.
-constexpr size_t kSmallControlPayloadSize = 16;
-constexpr size_t kSmallControlPacketSize =
-    sizeof(hci_spec::CommandHeader) + kSmallControlPayloadSize;
-constexpr size_t kNumSmallControlPackets =
-    kMaxControlSlabSize / kSmallControlPacketSize;
+constexpr size_t kMaxEventPayloadSize = hci_spec::kMaxEventPacketPayloadSize;
+constexpr size_t kMaxEventPacketSize =
+    pw::bluetooth::emboss::EventHeader::IntrinsicSizeInBytes() +
+    kMaxEventPayloadSize;
+constexpr size_t kMaxNumEventPackets =
+    kMaxControlSlabSize / kMaxEventPacketSize;
 
 // Large, medium, and small buffer sizes for ACL data packets.
 constexpr size_t kLargeACLDataPayloadSize = hci_spec::kMaxACLPayloadSize;
 constexpr size_t kLargeACLDataPacketSize =
-    sizeof(hci_spec::ACLDataHeader) + kLargeACLDataPayloadSize;
+    pw::bluetooth::emboss::AclDataFrameHeader::IntrinsicSizeInBytes() +
+    kLargeACLDataPayloadSize;
 constexpr size_t kNumLargeACLDataPackets =
     kMaxACLSlabSize / kLargeACLDataPacketSize;
 
 constexpr size_t kMediumACLDataPayloadSize = 256;
 constexpr size_t kMediumACLDataPacketSize =
-    sizeof(hci_spec::ACLDataHeader) + kMediumACLDataPayloadSize;
+    pw::bluetooth::emboss::AclDataFrameHeader::IntrinsicSizeInBytes() +
+    kMediumACLDataPayloadSize;
 constexpr size_t kNumMediumACLDataPackets =
     kMaxACLSlabSize / kMediumACLDataPacketSize;
 
 constexpr size_t kSmallACLDataPayloadSize = 64;
 constexpr size_t kSmallACLDataPacketSize =
-    sizeof(hci_spec::ACLDataHeader) + kSmallACLDataPayloadSize;
+    pw::bluetooth::emboss::AclDataFrameHeader::IntrinsicSizeInBytes() +
+    kSmallACLDataPayloadSize;
 constexpr size_t kNumSmallACLDataPackets =
     kMaxACLSlabSize / kSmallACLDataPacketSize;
 
