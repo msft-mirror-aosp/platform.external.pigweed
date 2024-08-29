@@ -23,7 +23,7 @@ from pw_status import Status
 from pw_rpc import callback_client, client, packets
 import pw_rpc.ids
 from pw_rpc.internal.packet_pb2 import PacketType, RpcPacket
-from pw_rpc.descriptors import fake_pending_rpc
+from pw_rpc.descriptors import RpcIds
 
 TEST_PROTO_1 = """\
 syntax = "proto3";
@@ -74,6 +74,8 @@ service Bravo {
 }
 """
 
+PROTOS = python_protos.Library.from_strings([TEST_PROTO_1, TEST_PROTO_2])
+
 SOME_CHANNEL_ID: int = 237
 SOME_SERVICE_ID: int = 193
 SOME_METHOD_ID: int = 769
@@ -81,10 +83,6 @@ SOME_CALL_ID: int = 452
 
 CLIENT_FIRST_CHANNEL_ID: int = 557
 CLIENT_SECOND_CHANNEL_ID: int = 474
-
-
-def create_protos() -> Any:
-    return python_protos.Library.from_strings([TEST_PROTO_1, TEST_PROTO_2])
 
 
 def create_client(
@@ -105,7 +103,7 @@ class ChannelClientTest(unittest.TestCase):
     """Tests the ChannelClient."""
 
     def setUp(self) -> None:
-        client_instance = create_client(create_protos().modules())
+        client_instance = create_client(PROTOS.modules())
         self._channel_client: client.ChannelClient = client_instance.channel(
             CLIENT_FIRST_CHANNEL_ID
         )
@@ -203,8 +201,7 @@ class ClientTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self._last_packet_sent_bytes: bytes | None = None
-        self._protos = create_protos()
-        self._client = create_client(self._protos.modules(), self._save_packet)
+        self._client = create_client(PROTOS.modules(), self._save_packet)
 
     def _save_packet(self, packet) -> None:
         self._last_packet_sent_bytes = packet
@@ -289,13 +286,13 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    fake_pending_rpc(
+                    RpcIds(
                         SOME_CHANNEL_ID,
                         SOME_SERVICE_ID,
                         SOME_METHOD_ID,
                         SOME_CALL_ID,
                     ),
-                    self._protos.packages.pw.test2.Request(),
+                    PROTOS.packages.pw.test2.Request(),
                 )
             ),
             Status.NOT_FOUND,
@@ -305,13 +302,13 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    fake_pending_rpc(
+                    RpcIds(
                         CLIENT_FIRST_CHANNEL_ID,
                         SOME_SERVICE_ID,
                         SOME_METHOD_ID,
                         SOME_CALL_ID,
                     ),
-                    self._protos.packages.pw.test2.Request(),
+                    PROTOS.packages.pw.test2.Request(),
                 )
             ),
             Status.OK,
@@ -335,13 +332,13 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    fake_pending_rpc(
+                    RpcIds(
                         CLIENT_FIRST_CHANNEL_ID,
                         service.id,
                         SOME_METHOD_ID,
                         SOME_CALL_ID,
                     ),
-                    self._protos.packages.pw.test2.Request(),
+                    PROTOS.packages.pw.test2.Request(),
                 )
             ),
             Status.OK,
@@ -366,13 +363,13 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    fake_pending_rpc(
+                    RpcIds(
                         CLIENT_FIRST_CHANNEL_ID,
                         service.id,
                         method.id,
                         SOME_CALL_ID,
                     ),
-                    self._protos.packages.pw.test2.Request(),
+                    PROTOS.packages.pw.test2.Request(),
                 )
             ),
             Status.OK,
@@ -416,7 +413,7 @@ class ClientTest(unittest.TestCase):
         self.assertIs(
             self._client.process_packet(
                 packets.encode_response(
-                    fake_pending_rpc(
+                    RpcIds(
                         CLIENT_FIRST_CHANNEL_ID,
                         method.service.id,
                         method.id,

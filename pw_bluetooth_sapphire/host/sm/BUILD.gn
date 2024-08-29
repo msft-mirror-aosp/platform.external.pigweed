@@ -18,6 +18,10 @@ import("$dir_pw_unit_test/test.gni")
 
 dir_public_sm = "../../public/pw_bluetooth_sapphire/internal/host/sm"
 
+config("warnings") {
+  cflags_cc = [ "-Wswitch-enum" ]
+}
+
 pw_source_set("definitions") {
   public = [
     "$dir_public_sm/error.h",
@@ -35,6 +39,14 @@ pw_source_set("definitions") {
   public_deps = [
     "$dir_pw_bluetooth_sapphire/host/common",
     "$dir_pw_bluetooth_sapphire/host/hci-spec",  # hci_spec::LinkKey
+  ]
+
+  deps = [ "$dir_pw_preprocessor" ]
+
+  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  configs = [
+    ":warnings",
+    "$dir_pw_build:internal_strict_warnings_core",
   ]
 }
 
@@ -80,6 +92,9 @@ pw_source_set("sm") {
     "$dir_pw_third_party/boringssl",
     "$dir_pw_third_party/fuchsia:fit",
   ]
+
+  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  configs = [ "$dir_pw_build:internal_strict_warnings_core" ]
 }
 
 pw_source_set("testing") {
@@ -91,6 +106,9 @@ pw_source_set("testing") {
   sources = [ "test_security_manager.cc" ]
 
   deps = [ ":sm" ]
+
+  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  configs = [ "$dir_pw_build:internal_strict_warnings_core" ]
 }
 
 pw_test("sm_tests") {

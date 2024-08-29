@@ -12,8 +12,26 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Allows targets to be marked manual if the host/exec architecture is incompatible (non-x64)."""
+import("//build_overrides/pigweed.gni")
 
-load("@host_metadata//:host_metadata.bzl", "HOST_ARCH", "HOST_OS")
+import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_unit_test/test.gni")
 
-MANUAL_IF_NOT_LINUX_X64 = ["integration"] if HOST_ARCH == "amd64" and HOST_OS == "linux" else ["manual"]
+pw_doc_group("docs") {
+  sources = [ "docs.rst" ]
+}
+
+pw_test_group("tests") {
+}
+
+# Satisfy source_is_in_build_files presubmit step
+pw_source_set("satisfy_presubmit") {
+  sources = [
+    "assert.cc",
+    "assert_public_overrides/pw_assert_backend/assert_backend.h",
+    "check_public_overrides/pw_assert_backend/check_backend.h",
+    "public/pw_assert_fuchsia/assert_backend.h",
+    "public/pw_assert_fuchsia/check_backend.h",
+  ]
+  visibility = []
+}
