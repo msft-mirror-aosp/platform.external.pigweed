@@ -5,6 +5,9 @@ Pigweed
 =======
 *Sustained, robust, and rapid embedded product development for large teams*
 
+-----------
+Get started
+-----------
 .. raw:: html
 
    <!-- Add a little space between the H2 and the cards. This is an edge case
@@ -12,9 +15,6 @@ Pigweed
         locally here. -->
    <br>
 
------------
-Get started
------------
 .. grid:: 1
 
    .. grid-item-card:: :octicon:`rocket` Tour of Pigweed
@@ -152,7 +152,7 @@ Talk to us
 .. grid:: 2
 
    .. grid-item-card:: :octicon:`device-camera-video` Monthly community meeting
-      :link: https://discord.com/channels/691686718377558037/951228399119126548
+      :link: https://groups.google.com/g/pigweed
       :link-type: url
       :class-item: sales-pitch-cta-secondary
 
