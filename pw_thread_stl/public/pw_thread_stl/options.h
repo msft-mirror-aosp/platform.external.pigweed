@@ -13,7 +13,8 @@
 // the License.
 #pragma once
 
-#include "pw_thread/thread.h"
+#include "pw_thread/options.h"
+#include "pw_thread/thread.h"  // TODO: b/362356045 - Remove unnecessary include
 
 namespace pw::thread::stl {
 
@@ -23,7 +24,7 @@ namespace pw::thread::stl {
 // threading APIs.
 class Options : public thread::Options {
  public:
-  constexpr Options() {}
+  constexpr Options() = default;
 };
 
 }  // namespace pw::thread::stl
