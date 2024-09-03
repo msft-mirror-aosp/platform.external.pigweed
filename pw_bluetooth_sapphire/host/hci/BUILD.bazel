@@ -11,6 +11,7 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
+load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -40,7 +41,7 @@ cc_library(
         "-Wno-unused-parameter",
         "-Wno-deprecated-this-capture",
         "-Wswitch-enum",
-    ],
+    ] + COPTS,
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/transport",
@@ -58,9 +59,7 @@ cc_library(
         "fake_low_energy_connection.cc",
         "fake_sco_connection.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
-    ],
+    copts = COPTS,
     deps = [
         ":hci",
         "//pw_bluetooth_sapphire:public",
@@ -85,6 +84,7 @@ cc_library(
         "low_energy_scanner_test.cc",
         "sequential_command_runner_test.cc",
     ],
+    copts = COPTS,
     tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
@@ -94,4 +94,5 @@ cc_library(
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "@pigweed//pw_bluetooth:emboss_hci_test",
     ],
+    alwayslink = 1,
 )

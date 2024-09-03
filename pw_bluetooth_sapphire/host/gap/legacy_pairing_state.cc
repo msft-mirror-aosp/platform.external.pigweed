@@ -14,12 +14,16 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/legacy_pairing_state.h"
 
+#include <optional>
+
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
+#include "pw_bluetooth_sapphire/internal/host/common/random.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/types.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
+#include "pw_bluetooth_sapphire/internal/host/sm/util.h"
 
 namespace bt::gap {
 
@@ -29,14 +33,36 @@ const char* const kInspectSecurityPropertiesPropertyName =
     "security_properties";
 }  // namespace
 
-LegacyPairingState::LegacyPairingState(Peer::WeakPtr peer,
-                                       WeakPtr<hci::BrEdrConnection> link,
-                                       bool outgoing_connection,
-                                       fit::closure auth_cb,
-                                       StatusCallback status_cb)
+LegacyPairingState::LegacyPairingState(
+    Peer::WeakPtr peer,
+    PairingDelegate::WeakPtr pairing_delegate,
+    bool outgoing_connection)
     : peer_id_(peer->identifier()),
       peer_(std::move(peer)),
       outgoing_connection_(outgoing_connection) {
+  if (!pairing_delegate.is_alive()) {
+    bt_log(WARN,
+           "gap-bredr",
+           "No pairing delegate set for peer id %s",
+           bt_str(peer_id_));
+    // We set the state_ to Idle instead of Failed because it is possible that a
+    // PairingDelegate will be set before the next pairing attempt, allowing it
+    // to succeed.
+    state_ = State::kIdle;
+    return;
+  }
+  pairing_delegate_ = std::move(pairing_delegate);
+}
+
+LegacyPairingState::LegacyPairingState(
+    Peer::WeakPtr peer,
+    PairingDelegate::WeakPtr pairing_delegate,
+    WeakPtr<hci::BrEdrConnection> link,
+    bool outgoing_connection,
+    fit::closure auth_cb,
+    StatusCallback status_cb)
+    : LegacyPairingState(
+          std::move(peer), std::move(pairing_delegate), outgoing_connection) {
   // We can only populate |link_|, |send_auth_request_callback_|, and
   // |status_callback_| if the ACL connection is complete.
   BT_ASSERT(link.is_alive());
@@ -44,12 +70,6 @@ LegacyPairingState::LegacyPairingState(Peer::WeakPtr peer,
   BuildEstablishedLink(
       std::move(link), std::move(auth_cb), std::move(status_cb));
 }
-
-LegacyPairingState::LegacyPairingState(Peer::WeakPtr peer,
-                                       bool outgoing_connection)
-    : peer_id_(peer->identifier()),
-      peer_(std::move(peer)),
-      outgoing_connection_(outgoing_connection) {}
 
 LegacyPairingState::~LegacyPairingState() {
   if (link_.is_alive()) {
@@ -97,10 +117,26 @@ void LegacyPairingState::InitiatePairing(StatusCallback status_cb) {
 
   // If we interrogated the peer and they support SSP, we should be using SSP
   // since we also support SSP.
-  if (IsPeerSecureSimplePairingSupported()) {
+  if (peer_->IsSecureSimplePairingSupported()) {
     bt_log(WARN,
            "gap-bredr",
            "Do not use Legacy Pairing when peer actually supports SSP");
+    state_ = State::kFailed;
+    SignalStatus(ToResult(HostError::kFailed), __func__);
+    return;
+  }
+
+  BT_ASSERT(pairing_delegate_.is_alive());
+
+  // Only initiate pairing if we have output capabilities to display a PIN
+  pw::bluetooth::emboss::IoCapability io_capability =
+      sm::util::IOCapabilityForHci(pairing_delegate_->io_capability());
+  if (io_capability ==
+          pw::bluetooth::emboss::IoCapability::NO_INPUT_NO_OUTPUT ||
+      io_capability == pw::bluetooth::emboss::IoCapability::KEYBOARD_ONLY) {
+    bt_log(DEBUG,
+           "gap-bredr",
+           "Do not initiate Legacy Pairing without display output capability");
     state_ = State::kFailed;
     SignalStatus(ToResult(HostError::kFailed), __func__);
     return;
@@ -169,7 +205,7 @@ std::optional<hci_spec::LinkKey> LegacyPairingState::OnLinkKeyRequest() {
 
   // If we interrogated the peer and they support SSP, we should be using SSP
   // since we also support SSP.
-  if (link_.is_alive() && IsPeerSecureSimplePairingSupported()) {
+  if (link_.is_alive() && peer_->IsSecureSimplePairingSupported()) {
     bt_log(WARN,
            "gap-bredr",
            "Do not use Legacy Pairing when peer actually supports SSP");
@@ -247,6 +283,94 @@ std::optional<hci_spec::LinkKey> LegacyPairingState::OnLinkKeyRequest() {
   return std::nullopt;
 }
 
+void LegacyPairingState::OnPinCodeRequest(UserPinCodeCallback cb) {
+  if (state_ != State::kIdle && state_ != State::kWaitPinCodeRequest) {
+    FailWithUnexpectedEvent(__func__);
+    cb(std::nullopt);
+    return;
+  }
+
+  if (state_ == State::kIdle) {
+    BT_ASSERT(!is_pairing());
+    current_pairing_ = Pairing::MakeResponder(outgoing_connection_);
+  }
+
+  BT_ASSERT(pairing_delegate_.is_alive());
+
+  // Get our I/O capabilities
+  pw::bluetooth::emboss::IoCapability io_capability =
+      sm::util::IOCapabilityForHci(pairing_delegate_->io_capability());
+
+  // If this was our in-flight request (i.e. we are initiator), we should have
+  // only initiated pairing if we have output capabilities to display our PIN.
+  // Devices with keyboard input and numeric output will use DisplayYesNo IO
+  // Capability (Core Spec v5.4, Vol 3, Part C, 5.2.2.5, Table 5.5) so all PINs
+  // will be randomly generated.
+  if (initiator()) {
+    BT_ASSERT(io_capability !=
+              pw::bluetooth::emboss::IoCapability::NO_INPUT_NO_OUTPUT);
+    BT_ASSERT(io_capability !=
+              pw::bluetooth::emboss::IoCapability::KEYBOARD_ONLY);
+
+    // Randomly generate a 4-digit passkey
+    uint16_t random_pin;
+    random_generator()->GetInt<uint16_t>(random_pin,
+                                         /*exclusive_upper_bound=*/10000);
+
+    auto confirm_cb = [this,
+                       cb = std::move(cb),
+                       pairing = current_pairing_->GetWeakPtr(),
+                       peer_id = peer_id_,
+                       handle = handle(),
+                       random_pin](bool confirm) mutable {
+      if (!pairing.is_alive()) {
+        return;
+      }
+
+      bt_log(DEBUG,
+             "gap-bredr",
+             "%sing User Confirmation Request (peer: %s, handle: %#.4x)",
+             confirm ? "Confirm" : "Cancel",
+             bt_str(peer_id),
+             handle);
+
+      if (confirm) {
+        state_ = State::kWaitLinkKey;
+        cb(random_pin);
+      } else {
+        cb(std::nullopt);
+      }
+    };
+    pairing_delegate_->DisplayPasskey(
+        peer_id_,
+        random_pin,
+        PairingDelegate::DisplayMethod::kPeerEntry,
+        std::move(confirm_cb));
+    return;
+  }
+
+  // When we are the responder (regardless of whether the ACL connection is
+  // complete), we will request a PIN code from the product. The pairing
+  // delegate and product configuration determine if the device wants to try
+  // common pins (e.g. "0000") when it has no input capability. Otherwise the
+  // user will be requested to input their own 4-digit PIN code.
+  auto pairing = current_pairing_->GetWeakPtr();
+  auto passkey_cb =
+      [this, cb = std::move(cb), pairing](int64_t passkey) mutable {
+        if (!pairing.is_alive()) {
+          return;
+        }
+        bt_log(DEBUG, "gap-bredr", "Replying to User Passkey Request");
+        if (passkey >= 0) {
+          state_ = State::kWaitLinkKey;
+          cb(static_cast<uint16_t>(passkey));
+        } else {
+          cb(std::nullopt);
+        }
+      };
+  pairing_delegate_->RequestPasskey(peer_id_, std::move(passkey_cb));
+}
+
 void LegacyPairingState::OnLinkKeyNotification(const UInt128& link_key,
                                                hci_spec::LinkKeyType key_type) {
   if (state_ != State::kWaitLinkKey) {
@@ -283,9 +407,19 @@ void LegacyPairingState::OnLinkKeyNotification(const UInt128& link_key,
   // Link keys resulting from legacy pairing are assigned lowest security level.
   BT_ASSERT(sec_props.level() == sm::SecurityLevel::kNoSecurity);
 
+  if (!link_.is_alive()) {
+    // Connection is not complete yet so temporarily store this to later give
+    // to HCI link on the HCI_Connection_Complete event.
+    link_key_ = hci_spec::LinkKey(link_key, /*rand=*/0, /*ediv=*/0);
+
+    state_ = State::kIdle;
+    SignalStatus(hci::Result<>(fit::ok()), __func__);
+    return;
+  }
+
   // If we interrogated the peer and they support SSP, we should be using SSP
   // since we also support SSP.
-  if (link_.is_alive() && IsPeerSecureSimplePairingSupported()) {
+  if (peer_->IsSecureSimplePairingSupported()) {
     bt_log(WARN,
            "gap-bredr",
            "Do not use Legacy Pairing when peer actually supports SSP");
@@ -294,22 +428,12 @@ void LegacyPairingState::OnLinkKeyNotification(const UInt128& link_key,
     return;
   }
 
-  if (link_.is_alive()) {
-    link_->set_link_key(hci_spec::LinkKey(link_key, /*rand=*/0, /*ediv=*/0),
-                        key_type);
-  } else {
-    // Connection is not complete yet so temporarily store this to later give
-    // to HCI link on the HCI_Connection_Complete event.
-    link_key_ = hci_spec::LinkKey(link_key, /*rand=*/0, /*ediv=*/0);
-  }
-
+  link_->set_link_key(hci_spec::LinkKey(link_key, /*rand=*/0, /*ediv=*/0),
+                      key_type);
   if (initiator()) {
     // Initiators will receive a HCI_Authentication_Complete event
     state_ = State::kInitiatorWaitAuthComplete;
-    return;
-  }
-
-  if (link_.is_alive()) {
+  } else {
     // Responders can now enable encryption after generating a valid link key
     EnableEncryption();
   }
@@ -424,11 +548,14 @@ LegacyPairingState::Pairing::MakeInitiator(
 
 std::unique_ptr<LegacyPairingState::Pairing>
 LegacyPairingState::Pairing::MakeResponder(
-    pw::bluetooth::emboss::IoCapability peer_iocap, bool outgoing_connection) {
+    bool outgoing_connection,
+    std::optional<pw::bluetooth::emboss::IoCapability> peer_iocap) {
   // Private constructor is inaccessible to std::make_unique
   std::unique_ptr<Pairing> pairing(new Pairing(outgoing_connection));
   pairing->initiator = false;
-  pairing->peer_iocap = peer_iocap;
+  if (peer_iocap.has_value()) {
+    pairing->peer_iocap = peer_iocap.value();
+  }
   // Do not try to upgrade security as responder
   pairing->preferred_security = kNoSecurityRequirements;
   return pairing;
@@ -441,14 +568,6 @@ LegacyPairingState::Pairing::MakeResponderForBonded() {
   // Do not try to upgrade security as responder
   pairing->preferred_security = kNoSecurityRequirements;
   return pairing;
-}
-
-bool LegacyPairingState::IsPeerSecureSimplePairingSupported() const {
-  return peer_->features().HasBit(
-             /*page=*/0,
-             hci_spec::LMPFeature::kSecureSimplePairingControllerSupport) &&
-         peer_->features().HasBit(
-             /*page=*/1, hci_spec::LMPFeature::kSecureSimplePairingHostSupport);
 }
 
 void LegacyPairingState::EnableEncryption() {
@@ -511,7 +630,7 @@ void LegacyPairingState::InitiateNextPairingRequest() {
 
   // If we interrogated the peer and they support SSP, we should be using SSP
   // since we also support SSP.
-  if (IsPeerSecureSimplePairingSupported()) {
+  if (peer_->IsSecureSimplePairingSupported()) {
     bt_log(WARN,
            "gap-bredr",
            "Do not use Legacy Pairing when peer actually supports SSP");

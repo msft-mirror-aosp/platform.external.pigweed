@@ -49,9 +49,9 @@ cipd_repository(
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-08-19.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8739167430029079089.
-    commit = "80e5252f18afa9cae15857a79454c5ebd4ef258b",
+    # ROLL: Last updated 2024-08-31.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8738052824450612657.
+    commit = "3d3b59367ca6885675071d975cc37b66c99a4656",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -59,7 +59,7 @@ load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
 
-FUCHSIA_SDK_VERSION = "version:23.20240826.3.1"
+FUCHSIA_SDK_VERSION = "version:23.20240829.4.1"
 
 cipd_repository(
     name = "fuchsia_sdk",

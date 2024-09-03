@@ -817,14 +817,21 @@ def bthost_package(ctx: PresubmitContext) -> None:
     """Builds, tests, and prepares bt_host for upload."""
     target = '//pw_bluetooth_sapphire/fuchsia:infra'
     build_bazel(ctx, 'build', '--config=fuchsia', target)
-    # Override the default test_tag_filters to ensure test targets tagged
-    # "integration" are still run.
+
+    # Explicitly specify TEST_UNDECLARED_OUTPUTS_DIR_OVERRIDE as that will allow
+    # `orchestrate`'s output (eg: ffx host + target logs, test stdout/stderr) to
+    # be picked up by the `save_logs` recipe module.
+    # We cannot rely on Bazel's native TEST_UNDECLARED_OUTPUTS_DIR functionality
+    # since `zip` is not available in builders. See https://pwbug.dev/362990622.
     build_bazel(
         ctx,
-        'test',
+        'run',
         '--config=fuchsia',
-        '--test_tag_filters=',
         f'{target}.test_all',
+        env=dict(
+            os.environ,
+            TEST_UNDECLARED_OUTPUTS_DIR_OVERRIDE=ctx.output_dir,
+        ),
     )
 
     stdout_path = ctx.output_dir / 'bazel.manifest.stdout'
@@ -1522,6 +1529,7 @@ _LINTFORMAT = (
     format_code.presubmit_checks(),
     inclusive_language.presubmit_check.with_filter(
         exclude=(
+            r'\bMODULE.bazel.lock$',
             r'\bgo.sum$',
             r'\bpackage-lock.json$',
             r'\byarn.lock$',

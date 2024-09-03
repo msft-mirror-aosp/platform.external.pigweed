@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files(glob(["**/*"]))
@@ -21,6 +23,7 @@ cc_library(
     srcs = [
         "packet.cc",
     ],
+    copts = COPTS,
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
@@ -39,7 +42,7 @@ cc_library(
         "permissions.cc",
         "write_queue.cc",
     ],
-    copts = ["-Wswitch-enum"],
+    copts = ["-Wswitch-enum"] + COPTS,
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire/host/l2cap",
@@ -59,6 +62,7 @@ cc_library(
         "error_test.cc",
         "permissions_test.cc",
     ],
+    copts = COPTS,
     tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
@@ -66,4 +70,5 @@ cc_library(
         "//pw_bluetooth_sapphire/host/l2cap:testing",
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
+    alwayslink = 1,
 )

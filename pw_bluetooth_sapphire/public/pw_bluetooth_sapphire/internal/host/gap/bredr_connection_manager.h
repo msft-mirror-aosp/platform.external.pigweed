@@ -14,9 +14,6 @@
 
 #pragma once
 
-#include <pw_async/dispatcher.h>
-
-#include <functional>
 #include <optional>
 
 #include "pw_bluetooth_sapphire/internal/host/common/bounded_inspect_list_node.h"
@@ -83,6 +80,7 @@ class BrEdrConnectionManager final {
                          l2cap::ChannelManager* l2cap,
                          bool use_interlaced_scan,
                          bool local_secure_connections_supported,
+                         bool legacy_pairing_enabled,
                          pw::async::Dispatcher& dispatcher);
   ~BrEdrConnectionManager();
 
@@ -193,6 +191,9 @@ class BrEdrConnectionManager final {
   void AttachInspect(inspect::Node& parent, std::string name);
 
  private:
+  using ConnectionMap =
+      std::unordered_map<hci_spec::ConnectionHandle, BrEdrConnection>;
+
   // Callback for hci::Connection. Called when the peer disconnects.
   void OnPeerDisconnect(const hci::Connection* connection);
 
@@ -291,6 +292,8 @@ class BrEdrConnectionManager final {
       const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnRoleChange(
       const hci::EmbossEventPacket& event);
+  hci::CommandChannel::EventCallbackResult OnPinCodeRequest(
+      const hci::EmbossEventPacket& event);
 
   void HandleNonAclConnectionRequest(const DeviceAddress& addr,
                                      pw::bluetooth::emboss::LinkType link_type);
@@ -348,6 +351,11 @@ class BrEdrConnectionManager final {
   void SendRejectSynchronousRequest(DeviceAddress addr,
                                     pw::bluetooth::emboss::StatusCode reason,
                                     hci::ResultFunction<> cb = nullptr);
+  void SendPinCodeRequestReply(DeviceAddressBytes bd_addr,
+                               uint16_t pin_code,
+                               hci::ResultFunction<> cb = nullptr);
+  void SendPinCodeRequestNegativeReply(DeviceAddressBytes bd_addr,
+                                       hci::ResultFunction<> cb = nullptr);
 
   // Send the HCI command encoded in |command_packet|. If |cb| is not nullptr,
   // the event returned will be decoded for its status, which is passed to |cb|.
@@ -358,9 +366,6 @@ class BrEdrConnectionManager final {
   // Record a disconnection in Inspect's list of disconnections.
   void RecordDisconnectInspect(const BrEdrConnection& conn,
                                DisconnectReason reason);
-
-  using ConnectionMap =
-      std::unordered_map<hci_spec::ConnectionHandle, BrEdrConnection>;
 
   hci::Transport::WeakPtr hci_;
   std::unique_ptr<hci::SequentialCommandRunner> hci_cmd_runner_;
@@ -404,6 +409,10 @@ class BrEdrConnectionManager final {
 
   // True when local Host and Controller support BR/EDR Secure Connections
   bool local_secure_connections_supported_;
+
+  // When True, BR/EDR pairing may attempt to use legacy pairing if the peer
+  // does not support SSP.
+  bool legacy_pairing_enabled_;
 
   // Outstanding incoming and outgoing connection requests from remote peer with
   // |PeerId|.
