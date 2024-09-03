@@ -44,6 +44,14 @@
       "C++"
     ]
   },
+  "pw_assert_fuchsia": {
+    "tagline": "pw_assert backend for Fuchsia",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_async": {
     "tagline": "Portable APIs for asynchronous code",
     "status": "deprecated",
@@ -237,6 +245,11 @@
     "languages": [
       "C++17"
     ]
+  },
+  "pw_display": {
+    "tagline": "Graphic display support and framebuffer management",
+    "status": "experimental",
+    "languages": []
   },
   "pw_dma_mcuxpresso": {
     "tagline": "DMA helpers for MCUXpresso SDK",

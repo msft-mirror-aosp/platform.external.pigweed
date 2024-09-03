@@ -35,6 +35,7 @@ declare_args() {
   dir_pw_arduino_build = get_path_info("../pw_arduino_build", "abspath")
   dir_pw_assert = get_path_info("../pw_assert", "abspath")
   dir_pw_assert_basic = get_path_info("../pw_assert_basic", "abspath")
+  dir_pw_assert_fuchsia = get_path_info("../pw_assert_fuchsia", "abspath")
   dir_pw_assert_log = get_path_info("../pw_assert_log", "abspath")
   dir_pw_assert_tokenized = get_path_info("../pw_assert_tokenized", "abspath")
   dir_pw_assert_trap = get_path_info("../pw_assert_trap", "abspath")
@@ -91,6 +92,7 @@ declare_args() {
   dir_pw_digital_io_mcuxpresso =
       get_path_info("../pw_digital_io_mcuxpresso", "abspath")
   dir_pw_digital_io_rp2040 = get_path_info("../pw_digital_io_rp2040", "abspath")
+  dir_pw_display = get_path_info("../pw_display", "abspath")
   dir_pw_dma_mcuxpresso = get_path_info("../pw_dma_mcuxpresso", "abspath")
   dir_pw_docgen = get_path_info("../pw_docgen", "abspath")
   dir_pw_doctor = get_path_info("../pw_doctor", "abspath")
@@ -231,6 +233,7 @@ declare_args() {
     dir_pw_arduino_build,
     dir_pw_assert,
     dir_pw_assert_basic,
+    dir_pw_assert_fuchsia,
     dir_pw_assert_log,
     dir_pw_assert_tokenized,
     dir_pw_assert_trap,
@@ -280,6 +283,7 @@ declare_args() {
     dir_pw_digital_io_linux,
     dir_pw_digital_io_mcuxpresso,
     dir_pw_digital_io_rp2040,
+    dir_pw_display,
     dir_pw_dma_mcuxpresso,
     dir_pw_docgen,
     dir_pw_doctor,
@@ -408,6 +412,7 @@ declare_args() {
     "$dir_pw_arduino_build:tests",
     "$dir_pw_assert:tests",
     "$dir_pw_assert_basic:tests",
+    "$dir_pw_assert_fuchsia:tests",
     "$dir_pw_assert_log:tests",
     "$dir_pw_assert_tokenized:tests",
     "$dir_pw_assert_trap:tests",
@@ -457,6 +462,7 @@ declare_args() {
     "$dir_pw_digital_io_linux:tests",
     "$dir_pw_digital_io_mcuxpresso:tests",
     "$dir_pw_digital_io_rp2040:tests",
+    "$dir_pw_display:tests",
     "$dir_pw_dma_mcuxpresso:tests",
     "$dir_pw_docgen:tests",
     "$dir_pw_doctor:tests",
@@ -585,6 +591,7 @@ declare_args() {
     "$dir_pw_arduino_build:docs",
     "$dir_pw_assert:docs",
     "$dir_pw_assert_basic:docs",
+    "$dir_pw_assert_fuchsia:docs",
     "$dir_pw_assert_log:docs",
     "$dir_pw_assert_tokenized:docs",
     "$dir_pw_assert_trap:docs",
@@ -634,6 +641,7 @@ declare_args() {
     "$dir_pw_digital_io_linux:docs",
     "$dir_pw_digital_io_mcuxpresso:docs",
     "$dir_pw_digital_io_rp2040:docs",
+    "$dir_pw_display:docs",
     "$dir_pw_dma_mcuxpresso:docs",
     "$dir_pw_docgen:docs",
     "$dir_pw_doctor:docs",

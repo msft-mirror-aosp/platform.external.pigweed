@@ -228,10 +228,18 @@ class BrEdrConnectionManager final {
                              bool interlaced,
                              hci::ResultFunction<> cb);
 
+  // Write PIN type used for legacy pairing to the controller.
+  void WritePinType(pw::bluetooth::emboss::PinType pin_type);
+
   // Helper to register an event handler to run.
   hci::CommandChannel::EventHandlerId AddEventHandler(
       const hci_spec::EventCode& code,
       hci::CommandChannel::EventCallbackVariant cb);
+
+  // Find the outstanding connection request object for a connection request
+  // to/from |peer_id|. Returns nullopt if no request for |peer_id| exists.
+  std::optional<BrEdrConnectionRequest*> FindConnectionRequestById(
+      PeerId peer_id);
 
   // Find the handle for a connection to |peer_id|. Returns nullopt if no BR/EDR
   // |peer_id| is connected.
@@ -274,13 +282,13 @@ class BrEdrConnectionManager final {
   hci::CommandChannel::EventCallbackResult OnLinkKeyNotification(
       const hci::EmbossEventPacket& event);
   hci::CommandChannel::EventCallbackResult OnSimplePairingComplete(
-      const hci::EventPacket& event);
+      const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserConfirmationRequest(
-      const hci::EventPacket& event);
+      const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserPasskeyRequest(
-      const hci::EventPacket& event);
+      const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserPasskeyNotification(
-      const hci::EventPacket& event);
+      const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnRoleChange(
       const hci::EmbossEventPacket& event);
 

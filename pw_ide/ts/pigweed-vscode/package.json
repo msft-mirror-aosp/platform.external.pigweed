@@ -8,7 +8,7 @@
     "type": "git",
     "url": "https://pigweed.googlesource.com/pigweed/pigweed"
   },
-  "version": "1.1.0",
+  "version": "1.3.3",
   "license": "Apache-2.0",
   "engines": {
     "vscode": "^1.75.0"
@@ -34,6 +34,10 @@
       {
         "command": "pigweed.file-bug",
         "title": "Pigweed: File Bug"
+      },
+      {
+        "command": "pigweed.sync-settings",
+        "title": "Pigweed: Sync Shared Settings"
       },
       {
         "command": "pigweed.check-extensions",
@@ -64,6 +68,14 @@
         "title": "Pigweed: Select Code Analysis Target"
       },
       {
+        "command": "pigweed.disable-inactive-file-code-intelligence",
+        "title": "Pigweed: Disable Inactive File Code intelligence"
+      },
+      {
+        "command": "pigweed.enable-inactive-file-code-intelligence",
+        "title": "Pigweed: Enable Inactive File Code intelligence"
+      },
+      {
         "command": "pigweed.set-bazelisk-path",
         "title": "Pigweed: Set Bazelisk Path"
       },
@@ -75,6 +87,11 @@
     "configuration": {
       "title": "Pigweed",
       "properties": {
+        "pigweed.activateBazeliskInNewTerminals": {
+          "type": "boolean",
+          "default": "false",
+          "description": "When enabled, the path to Bazelisk will be added to the integrated terminal when launched"
+        },
         "pigweed.codeAnalysisTarget": {
           "type": "string",
           "description": "The build target to use for editor code intelligence"
@@ -94,10 +111,25 @@
           "default": "false",
           "description": "Disable automatically refreshing compile commands"
         },
+        "pigweed.disableInactiveFileCodeIntelligence": {
+          "type": "boolean",
+          "default": "true",
+          "description": "By default, Pigweed disables code intelligence for files not in the current target's build graph. Setting this to false disables that behavior."
+        },
         "pigweed.enforceExtensionRecommendations": {
           "type": "boolean",
           "default": "false",
           "description": "Require installing and disabling extensions recommended in extensions.json"
+        },
+        "pigweed.hideInactiveFileIndicators": {
+          "type": "boolean",
+          "default": "false",
+          "description": "When code intelligence is enabled for all files, hide indicators for inactive and orphaned files"
+        },
+        "pigweed.preserveBazelPath": {
+          "type": "boolean",
+          "default": "false",
+          "description": "When enabled, this extension won't override the specified Bazel path under any circumstances"
         },
         "pigweed.projectRoot": {
           "type": "string",
@@ -137,8 +169,10 @@
     "lint": "eslint src --ext ts",
     "prePackage": "tsx scripts/prepostPackage.mts --pre",
     "doPackage": "vsce package",
+    "doPackagePrerelease": "vsce package --pre-release",
     "postPackage": "tsx scripts/prepostPackage.mts --post",
     "package": "npm run clean && npm run build && npm run bundle && npm run prePackage && npm run doPackage && npm run postPackage",
+    "packagePrerelease": "npm run clean && npm run build && npm run bundle && npm run prePackage && npm run doPackagePrerelease && npm run postPackage",
     "test:jest": "jest '.*.test.ts'",
     "test:vscode": "vscode-test"
   },
@@ -147,12 +181,14 @@
     "@bazel/buildifier": "^7.1.2",
     "glob": "^10.4.5",
     "hjson": "^3.2.2",
+    "js-yaml": "^4.1.0",
     "node_modules-path": "^2.0.8"
   },
   "devDependencies": {
     "@types/glob": "^8.1.0",
     "@types/hjson": "^2.4.6",
     "@types/jest": "29.5.12",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.14.10",
     "@types/vscode": "^1.75.0",
     "@typescript-eslint/eslint-plugin": "^7.16.0",

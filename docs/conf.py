@@ -129,10 +129,15 @@ html_js_files = [
     "https://cdnjs.cloudflare.com/ajax/libs/fuzzysort/2.0.4/fuzzysort.js",
 ]
 
+announcement_url = 'https://pigweed.dev/docs/blog/03-pigweed-sdk.html'
+announcement_text = 'Pigweed SDK launches with Raspberry Pi RP2350'
+announcement = f'🚀🚀🚀 <a href="{announcement_url}">{announcement_text}</a> 🚀🚀🚀'
+
 # Furo color theme variables based on:
 # https://github.com/pradyunsg/furo/blob/main/src/furo/assets/styles/variables/_colors.scss
 # Colors with unchanged defaults are left commented out for easy updating.
 html_theme_options = {
+    'announcement': announcement,
     'light_css_variables': {
         # Make the logo text more amaranth-like
         'color-sidebar-brand-text': '#b529aa',
@@ -269,6 +274,7 @@ redirects = {
     'docs/release_notes/2022_jan': '../../changelog.html',
     # Can be deleted after pw_enviro stuff gets published.
     'drafts/pw_enviro/index': 'https://storage.googleapis.com/pigweed-docs-try/220311/docs/showcases/pw_enviro/tutorial.html',
+    'live/index': 'https://docs.google.com/document/d/1zcXQoMX6NDSe4cdxzt8afLbDcs8GSmI_Bsy5hTF_RVM/edit',
     'module_guides': './modules.html',
     'pw_sys_io_pico/docs': '../pw_sys_io_rp2040/docs.html',
     'pw_tokenizer/cli': './docs.html',

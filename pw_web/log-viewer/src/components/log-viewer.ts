@@ -13,8 +13,13 @@
 // the License.
 
 import { LitElement, PropertyValues, TemplateResult, html } from 'lit';
-import { customElement, property, state } from 'lit/decorators.js';
-import { LogEntry, LogSourceEvent, SourceData } from '../shared/interfaces';
+import { customElement, property, queryAll, state } from 'lit/decorators.js';
+import {
+  LogEntry,
+  LogSourceEvent,
+  SourceData,
+  TableColumn,
+} from '../shared/interfaces';
 import {
   LocalStateStorage,
   LogViewerState,
@@ -30,6 +35,7 @@ import { LogStore } from '../log-store';
 import CloseViewEvent from '../events/close-view';
 import SplitViewEvent from '../events/split-view';
 import InputChangeEvent from '../events/input-change';
+import WrapToggleEvent from '../events/wrap-toggle';
 import ColumnToggleEvent from '../events/column-toggle';
 import ResizeColumnEvent from '../events/resize-column';
 
@@ -71,6 +77,8 @@ export class LogViewer extends LitElement {
   @state()
   private _columnOrder: string[] = ['log_source', 'time', 'timestamp'];
 
+  @queryAll('log-view') logViews!: LogView[];
+
   /** A map containing data from present log sources */
   private _sources: Map<string, SourceData> = new Map();
 
@@ -86,7 +94,7 @@ export class LogViewer extends LitElement {
    * Create a log-viewer
    * @param logSources - Collection of sources from where logs originate
    * @param options - Optional parameters to change default settings
-   * @param options.columnOrder - defines column order between severity and
+   * @param options.columnOrder - defines column order between level and
    *   message undefined fields are added between defined order and message.
    * @param options.state - handles state between sessions, defaults to localStorage
    */
@@ -152,6 +160,10 @@ export class LogViewer extends LitElement {
     }
   }
 
+  firstUpdated() {
+    this.delSevFromState(this._rootNode);
+  }
+
   updated(changedProperties: PropertyValues) {
     super.updated(changedProperties);
 
@@ -197,7 +209,8 @@ export class LogViewer extends LitElement {
   }
 
   private splitLogView(event: SplitViewEvent) {
-    const { parentId, orientation, columnData, searchText } = event.detail;
+    const { parentId, orientation, columnData, searchText, viewTitle } =
+      event.detail;
 
     // Find parent node, handle errors if not found
     const parentNode = this.findNodeById(this._rootNode, parentId);
@@ -214,6 +227,7 @@ export class LogViewer extends LitElement {
         JSON.stringify(columnData || parentNode.logViewState?.columnData),
       ),
       searchText: searchText || parentNode.logViewState?.searchText,
+      viewTitle: viewTitle || parentNode.logViewState?.viewTitle,
     });
 
     // Both views receive the same values for `searchText` and `columnData`
@@ -285,13 +299,25 @@ export class LogViewer extends LitElement {
   }
 
   private handleViewEvent(
-    event: InputChangeEvent | ColumnToggleEvent | ResizeColumnEvent,
+    event:
+      | InputChangeEvent
+      | ColumnToggleEvent
+      | ResizeColumnEvent
+      | WrapToggleEvent,
   ) {
     const { viewId } = event.detail;
     const nodeToUpdate = this.findNodeById(this._rootNode, viewId);
 
     if (!nodeToUpdate) {
       return;
+    }
+
+    if (event.type === 'wrap-toggle') {
+      const { isChecked } = (event as WrapToggleEvent).detail;
+      if (nodeToUpdate.logViewState) {
+        nodeToUpdate.logViewState.wordWrap = isChecked;
+        this._stateService.saveState({ rootNode: this._rootNode });
+      }
     }
 
     if (event.type === 'input-change') {
@@ -302,12 +328,44 @@ export class LogViewer extends LitElement {
       }
     }
 
-    if (event.type === 'resize-column') {
+    if (event.type === 'resize-column' || event.type === 'column-toggle') {
       const { columnData } = (event as ResizeColumnEvent).detail;
       if (nodeToUpdate.logViewState) {
         nodeToUpdate.logViewState.columnData = columnData;
         this._stateService.saveState({ rootNode: this._rootNode });
       }
+    }
+  }
+
+  /**
+   * Handles case if switching from level -> severity -> level, state will be
+   * restructured to remove severity and move up level if it exists.
+   *
+   * @param node The state node.
+   */
+  private delSevFromState(node: ViewNode) {
+    if (node.logViewState?.columnData) {
+      const fields = node.logViewState?.columnData.map(
+        (field) => field.fieldName,
+      );
+
+      if (fields?.includes('level')) {
+        const index = fields.indexOf('level');
+        if (index !== 0) {
+          const level = node.logViewState?.columnData[index] as TableColumn;
+          node.logViewState?.columnData.splice(index, 1);
+          node.logViewState?.columnData.unshift(level);
+        }
+      }
+
+      if (fields?.includes('severity')) {
+        const index = fields.indexOf('severity');
+        node.logViewState?.columnData.splice(index, 1);
+      }
+    }
+
+    if (node.type === 'split') {
+      node.children.forEach((child) => this.delSevFromState(child));
     }
   }
 
@@ -321,11 +379,14 @@ export class LogViewer extends LitElement {
         .columnOrder=${this._columnOrder}
         .searchText=${node.logViewState?.searchText ?? ''}
         .columnData=${node.logViewState?.columnData ?? []}
+        .viewTitle=${node.logViewState?.viewTitle || ''}
+        .lineWrap=${node.logViewState?.wordWrap ?? true}
         .useShoelaceFeatures=${this.useShoelaceFeatures}
         @split-view="${this.splitLogView}"
         @input-change="${this.handleViewEvent}"
-        @column-toggle="${this.handleViewEvent}"
+        @wrap-toggle="${this.handleViewEvent}"
         @resize-column="${this.handleViewEvent}"
+        @column-toggle="${this.handleViewEvent}"
       ></log-view>`;
     } else {
       const [startChild, endChild] = node.children;

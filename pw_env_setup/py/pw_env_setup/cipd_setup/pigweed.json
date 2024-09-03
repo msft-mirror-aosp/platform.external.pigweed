@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:b2afae122eeb6ce09c52d63f67dc53fc517dbdc8"
+        "git_revision:05eed8f6252e2dd6b555e0b65192ef03e2c4a276"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -71,7 +71,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:3809e20afc68d7d03821f0ec59b928dcf9befbf4"
+        "git_revision:e894df6392beea3723627329009f3e6d51d16f47"
       ],
       "version_file": ".versions/clang.cipd_version"
     },
@@ -85,7 +85,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:73a228116ae8c8ce73e309eee8c730ce90feac78"
+        "git_revision:c6f81a452e291dd4ff5bcbc6ecb9cd6f2271f164"
       ]
     },
     {
@@ -95,7 +95,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:73a228116ae8c8ce73e309eee8c730ce90feac78"
+        "git_revision:c6f81a452e291dd4ff5bcbc6ecb9cd6f2271f164"
       ]
     },
     {
@@ -105,7 +105,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:73a228116ae8c8ce73e309eee8c730ce90feac78"
+        "git_revision:c6f81a452e291dd4ff5bcbc6ecb9cd6f2271f164"
       ]
     },
     {
@@ -115,7 +115,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:73a228116ae8c8ce73e309eee8c730ce90feac78"
+        "git_revision:c6f81a452e291dd4ff5bcbc6ecb9cd6f2271f164"
       ]
     },
     {
@@ -125,7 +125,20 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:73a228116ae8c8ce73e309eee8c730ce90feac78"
+        "git_revision:c6f81a452e291dd4ff5bcbc6ecb9cd6f2271f164"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust/target/thumbv7m-none-eabi",
+      "platforms": [
+        "linux-amd64",
+        "linux-arm64",
+        "mac-amd64",
+        "mac-arm64"
+      ],
+      "subdir": "rust",
+      "tags": [
+        "git_revision:c6f81a452e291dd4ff5bcbc6ecb9cd6f2271f164"
       ]
     },
     {
