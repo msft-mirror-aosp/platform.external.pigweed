@@ -45,6 +45,7 @@ declare_args() {
   dir_pw_async2_basic = get_path_info("../pw_async2_basic", "abspath")
   dir_pw_async2_epoll = get_path_info("../pw_async2_epoll", "abspath")
   dir_pw_async_basic = get_path_info("../pw_async_basic", "abspath")
+  dir_pw_async_fuchsia = get_path_info("../pw_async_fuchsia", "abspath")
   dir_pw_base64 = get_path_info("../pw_base64", "abspath")
   dir_pw_bloat = get_path_info("../pw_bloat", "abspath")
   dir_pw_blob_store = get_path_info("../pw_blob_store", "abspath")
@@ -124,6 +125,7 @@ declare_args() {
   dir_pw_log = get_path_info("../pw_log", "abspath")
   dir_pw_log_android = get_path_info("../pw_log_android", "abspath")
   dir_pw_log_basic = get_path_info("../pw_log_basic", "abspath")
+  dir_pw_log_fuchsia = get_path_info("../pw_log_fuchsia", "abspath")
   dir_pw_log_null = get_path_info("../pw_log_null", "abspath")
   dir_pw_log_rpc = get_path_info("../pw_log_rpc", "abspath")
   dir_pw_log_string = get_path_info("../pw_log_string", "abspath")
@@ -147,6 +149,7 @@ declare_args() {
   dir_pw_protobuf = get_path_info("../pw_protobuf", "abspath")
   dir_pw_protobuf_compiler = get_path_info("../pw_protobuf_compiler", "abspath")
   dir_pw_random = get_path_info("../pw_random", "abspath")
+  dir_pw_random_fuchsia = get_path_info("../pw_random_fuchsia", "abspath")
   dir_pw_result = get_path_info("../pw_result", "abspath")
   dir_pw_ring_buffer = get_path_info("../pw_ring_buffer", "abspath")
   dir_pw_router = get_path_info("../pw_router", "abspath")
@@ -243,6 +246,7 @@ declare_args() {
     dir_pw_async2_basic,
     dir_pw_async2_epoll,
     dir_pw_async_basic,
+    dir_pw_async_fuchsia,
     dir_pw_base64,
     dir_pw_bloat,
     dir_pw_blob_store,
@@ -314,6 +318,7 @@ declare_args() {
     dir_pw_log,
     dir_pw_log_android,
     dir_pw_log_basic,
+    dir_pw_log_fuchsia,
     dir_pw_log_null,
     dir_pw_log_rpc,
     dir_pw_log_string,
@@ -336,6 +341,7 @@ declare_args() {
     dir_pw_protobuf,
     dir_pw_protobuf_compiler,
     dir_pw_random,
+    dir_pw_random_fuchsia,
     dir_pw_result,
     dir_pw_ring_buffer,
     dir_pw_router,
@@ -422,6 +428,7 @@ declare_args() {
     "$dir_pw_async2_basic:tests",
     "$dir_pw_async2_epoll:tests",
     "$dir_pw_async_basic:tests",
+    "$dir_pw_async_fuchsia:tests",
     "$dir_pw_base64:tests",
     "$dir_pw_bloat:tests",
     "$dir_pw_blob_store:tests",
@@ -493,6 +500,7 @@ declare_args() {
     "$dir_pw_log:tests",
     "$dir_pw_log_android:tests",
     "$dir_pw_log_basic:tests",
+    "$dir_pw_log_fuchsia:tests",
     "$dir_pw_log_null:tests",
     "$dir_pw_log_rpc:tests",
     "$dir_pw_log_string:tests",
@@ -515,6 +523,7 @@ declare_args() {
     "$dir_pw_protobuf:tests",
     "$dir_pw_protobuf_compiler:tests",
     "$dir_pw_random:tests",
+    "$dir_pw_random_fuchsia:tests",
     "$dir_pw_result:tests",
     "$dir_pw_ring_buffer:tests",
     "$dir_pw_router:tests",
@@ -601,6 +610,7 @@ declare_args() {
     "$dir_pw_async2_basic:docs",
     "$dir_pw_async2_epoll:docs",
     "$dir_pw_async_basic:docs",
+    "$dir_pw_async_fuchsia:docs",
     "$dir_pw_base64:docs",
     "$dir_pw_bloat:docs",
     "$dir_pw_blob_store:docs",
@@ -672,6 +682,7 @@ declare_args() {
     "$dir_pw_log:docs",
     "$dir_pw_log_android:docs",
     "$dir_pw_log_basic:docs",
+    "$dir_pw_log_fuchsia:docs",
     "$dir_pw_log_null:docs",
     "$dir_pw_log_rpc:docs",
     "$dir_pw_log_string:docs",
@@ -694,6 +705,7 @@ declare_args() {
     "$dir_pw_protobuf:docs",
     "$dir_pw_protobuf_compiler:docs",
     "$dir_pw_random:docs",
+    "$dir_pw_random_fuchsia:docs",
     "$dir_pw_result:docs",
     "$dir_pw_ring_buffer:docs",
     "$dir_pw_router:docs",
