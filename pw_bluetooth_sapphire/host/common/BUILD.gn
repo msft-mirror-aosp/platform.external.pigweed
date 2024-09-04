@@ -85,6 +85,7 @@ pw_source_set("common") {
     "$dir_pw_random",
     "$dir_pw_span",
     "$dir_pw_string",
+    "$dir_pw_string:utf_codecs",
     "$dir_pw_third_party/fuchsia:fit",
   ]
 
@@ -94,10 +95,19 @@ pw_source_set("common") {
       "//zircon/system/ulib/trace",
     ]
   }
+
+  deps = [ "$dir_pw_preprocessor" ]
+
+  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  configs = [
+    "$dir_pw_build:internal_strict_warnings_core",
+    "$dir_pw_bluetooth_sapphire/host:copts",
+  ]
 }
 
 pw_source_set("uuid_string_util") {
   sources = [ "uuid_string_util.cc" ]
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
   public_deps = [ ":common" ]
 }
 
@@ -124,6 +134,8 @@ pw_test("common_tests") {
     "windowed_inspect_numeric_property_test.cc",
   ]
 
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
+
   deps = [
     ":common",
     ":uuid_string_util",
@@ -136,6 +148,7 @@ pw_test("common_tests") {
 
 pw_fuzzer("advertising_data_fuzzer") {
   sources = [ "advertising_data_fuzztest.cc" ]
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
   deps = [ ":common" ]
 }
 

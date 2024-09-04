@@ -12,17 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_select",
-)
-
 package(default_visibility = ["//pw_bluetooth_sapphire:__subpackages__"])
 
 cc_library(
     name = "config",
     srcs = [],
-    defines = fuchsia_select({
+    defines = select({
         "@platforms//os:fuchsia": [
             "PW_BLUETOOTH_SAPPHIRE_INSPECT_ENABLED",
             "PW_BLUETOOTH_SAPPHIRE_TRACE_ENABLED",
@@ -91,6 +86,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/gap/gap.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/generic_access_client.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/identity_resolving_list.h",
+        "public/pw_bluetooth_sapphire/internal/host/gap/legacy_pairing_state.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_address_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_advertising_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_connection.h",
@@ -137,7 +133,6 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/hci/android_extended_low_energy_advertiser.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/bredr_connection.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/bredr_connection_request.h",
-        "public/pw_bluetooth_sapphire/internal/host/hci/command_handler.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/connection.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_advertiser.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_scanner.h",
@@ -154,6 +149,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/hci/low_energy_scanner.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/sco_connection.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/sequential_command_runner.h",
+        "public/pw_bluetooth_sapphire/internal/host/iso/fake_iso_stream.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_common.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_stream.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_stream_manager.h",
@@ -265,4 +261,5 @@ cc_library(
     includes = [
         "public",
     ],
+    tags = ["manual"],
 )

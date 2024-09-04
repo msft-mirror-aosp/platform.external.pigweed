@@ -22,8 +22,11 @@ import subprocess
 import sys
 from typing import cast, Set
 
+from pw_cli.diff import print_diff
 from pw_cli.env import pigweed_environment
 from pw_cli.status_reporter import LoggingStatusReporter, StatusReporter
+
+from pw_ide.activate import pigweed_root
 
 from pw_ide.cpp import (
     COMPDB_FILE_NAME,
@@ -50,7 +53,6 @@ from pw_ide.settings import (
     SupportedEditor,
 )
 
-from pw_ide import vscode
 from pw_ide.vscode import (
     build_extension as build_vscode_extension,
     VscSettingsManager,
@@ -124,7 +126,9 @@ def cmd_sync(
 
     for command in pw_ide_settings.sync:
         _LOG.debug("Running: %s", command)
-        subprocess.run(shlex.split(command), cwd=Path(env.PW_PROJECT_ROOT))
+        subprocess.run(
+            shlex.split(command), cwd=pigweed_root(use_env_vars=False)[0]
+        )
 
     if pw_ide_settings.editor_enabled('vscode'):
         cmd_vscode()
@@ -226,9 +230,6 @@ def cmd_vscode(
         )
         sys.exit(1)
 
-    if not vscode.DEFAULT_SETTINGS_PATH.exists():
-        vscode.DEFAULT_SETTINGS_PATH.mkdir()
-
     vsc_manager = VscSettingsManager(pw_ide_settings)
 
     if include is None and exclude is None:
@@ -252,19 +253,23 @@ def cmd_vscode(
     )
 
     for settings_type in types_to_update:
+        prev_settings_str = ''
         prev_settings_hash = ''
         active_settings_existed = vsc_manager.active(settings_type).is_present()
 
         if active_settings_existed:
-            prev_settings_hash = vsc_manager.active(settings_type).hash()
+            prev_settings = vsc_manager.active(settings_type)
+            prev_settings_str = str(prev_settings)
+            prev_settings_hash = prev_settings.hash()
 
         with vsc_manager.active(settings_type).build() as active_settings:
             vsc_manager.default(settings_type).sync_to(active_settings)
             vsc_manager.project(settings_type).sync_to(active_settings)
             vsc_manager.user(settings_type).sync_to(active_settings)
-            vsc_manager.active(settings_type).sync_to(active_settings)
 
-        new_settings_hash = vsc_manager.active(settings_type).hash()
+        new_settings = vsc_manager.active(settings_type)
+        new_settings_str = str(new_settings)
+        new_settings_hash = new_settings.hash()
         settings_changed = new_settings_hash != prev_settings_hash
 
         _LOG.debug(
@@ -282,6 +287,14 @@ def cmd_vscode(
             verb = 'Updated' if active_settings_existed else 'Created'
             reporter.new(
                 f'{verb} Visual Studio Code active ' f'{settings_type.value}'
+            )
+
+            print_diff(
+                prev_settings_str.splitlines(True),
+                new_settings_str.splitlines(True),
+                fromfile=f"{settings_type.value}.json",
+                tofile=f"{settings_type.value}.json",
+                indent=8,
             )
 
 

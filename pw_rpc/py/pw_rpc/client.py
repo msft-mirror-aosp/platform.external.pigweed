@@ -30,7 +30,7 @@ from google.protobuf.message import DecodeError, Message
 from pw_status import Status
 
 from pw_rpc import descriptors, packets
-from pw_rpc.descriptors import Channel, Service, Method
+from pw_rpc.descriptors import Channel, Service, Method, PendingRpc
 from pw_rpc.internal.packet_pb2 import PacketType, RpcPacket
 
 _LOG = logging.getLogger(__package__)
@@ -45,32 +45,6 @@ _MAX_CALL_ID: int = 1 << 14
 
 class Error(Exception):
     """Error from incorrectly using the RPC client classes."""
-
-
-class PendingRpc(packets.RpcIds):
-    """Uniquely identifies an RPC call.
-
-    Attributes:
-      channel: Channel
-      service: Service
-      method: Method
-      channel_id: int
-      service_id: int
-      method_id: int
-      call_id: int
-    """
-
-    def __init__(
-        self,
-        channel: Channel,
-        service: Service,
-        method: Method,
-        call_id: int,
-    ) -> None:
-        super().__init__(channel.id, service.id, method.id, call_id)
-        self.channel = channel
-        self.service = service
-        self.method = method
 
 
 class _PendingRpcMetadata:
@@ -95,49 +69,26 @@ class PendingRpcs:
         return call_id
 
     def request(
-        self,
-        rpc: PendingRpc,
-        request: Message | None,
-        context: object,
-        override_pending: bool = True,
+        self, rpc: PendingRpc, request: Message | None, context: object
     ) -> bytes:
         """Starts the provided RPC and returns the encoded packet to send."""
         # Ensure that every context is a unique object by wrapping it in a list.
-        self.open(rpc, context, override_pending)
+        self.open(rpc, context)
         return packets.encode_request(rpc, request)
 
     def send_request(
-        self,
-        rpc: PendingRpc,
-        request: Message | None,
-        context: object,
-        *,
-        ignore_errors: bool = False,
-        override_pending: bool = False,
-    ) -> Any:
+        self, rpc: PendingRpc, request: Message | None, context: object
+    ) -> None:
         """Starts the provided RPC and sends the request packet to the channel.
 
         Returns:
           the previous context object or None
         """
-        previous = self.open(rpc, context, override_pending)
+        self.open(rpc, context)
         packet = packets.encode_request(rpc, request)
+        rpc.channel.output(packet)
 
-        # TODO(hepler): Remove `type: ignore[misc]` below when
-        #     https://github.com/python/mypy/issues/10711 is fixed.
-        if ignore_errors:
-            try:
-                rpc.channel.output(packet)  # type: ignore[misc]
-            except Exception as err:  # pylint: disable=broad-except
-                _LOG.debug('Ignoring exception when starting RPC: %s', err)
-        else:
-            rpc.channel.output(packet)  # type: ignore[misc]
-
-        return previous
-
-    def open(
-        self, rpc: PendingRpc, context: object, override_pending: bool = False
-    ) -> Any:
+    def open(self, rpc: PendingRpc, context: object) -> None:
         """Creates a context for an RPC, but does not invoke it.
 
         open() can be used to receive streaming responses to an RPC that was not
@@ -150,11 +101,6 @@ class PendingRpcs:
         _LOG.debug('Starting %s', rpc)
         metadata = _PendingRpcMetadata(context)
 
-        if override_pending:
-            previous = self._pending.get(rpc)
-            self._pending[rpc] = metadata
-            return None if previous is None else previous.context
-
         if self._pending.setdefault(rpc, metadata) is not metadata:
             # If the context was not added, the RPC was already pending.
             raise Error(
@@ -162,15 +108,11 @@ class PendingRpcs:
                 'Cancel the RPC before invoking it again'
             )
 
-        return None
-
     def send_client_stream(self, rpc: PendingRpc, message: Message) -> None:
         if rpc not in self._pending:
             raise Error(f'Attempt to send client stream for inactive RPC {rpc}')
 
-        rpc.channel.output(  # type: ignore
-            packets.encode_client_stream(rpc, message)
-        )
+        rpc.channel.output(packets.encode_client_stream(rpc, message))
 
     def send_client_stream_end(self, rpc: PendingRpc) -> None:
         if rpc not in self._pending:
@@ -178,9 +120,7 @@ class PendingRpcs:
                 f'Attempt to send client stream end for inactive RPC {rpc}'
             )
 
-        rpc.channel.output(  # type: ignore
-            packets.encode_client_stream_end(rpc)
-        )
+        rpc.channel.output(packets.encode_client_stream_end(rpc))
 
     def cancel(self, rpc: PendingRpc) -> bytes:
         """Cancels the RPC.
@@ -204,28 +144,58 @@ class PendingRpcs:
             return False
 
         if packet:
-            rpc.channel.output(packet)  # type: ignore
+            rpc.channel.output(packet)
 
         return True
 
-    def get_pending(self, rpc: PendingRpc, status: Status | None):
+    def _match_unrequested_rpcs(
+        self, rpc: PendingRpc, completed: bool
+    ) -> _PendingRpcMetadata | None:
+        # If the inbound packet is unrequested, route to any matching call.
+        # If both the client and server calls use the open ID, they would have
+        # matched in the initial lookup before this function is called.
+        if rpc.call_id in (OPEN_CALL_ID, LEGACY_OPEN_CALL_ID):
+            for pending, context in self._pending.items():
+                if rpc.matches_channel_service_method(pending):
+                    if completed:
+                        del self._pending[pending]
+
+                    return context
+
+        # Otherwise, look for an existing open call that matches. If one is
+        # found, the unrequested call adopts the inbound call's ID.
+        for pending in self._pending:
+            if (
+                pending.call_id == OPEN_CALL_ID
+                and rpc.matches_channel_service_method(pending)
+            ):
+                # Change the call ID in the PendingRpc object. The PendingRpc
+                # MUST be removed from the self._pending dict first since it is
+                # hashable.
+                #
+                # TODO: https://pwbug.dev/359401616 - Changing a hashable object
+                # is not good, but the ClientImpl abstraction boundary makes
+                # updating the call's PendingRpc instance difficult. This code
+                # should be updated after the client is refactored.
+                context = self._pending.pop(pending)
+                object.__setattr__(pending, 'call_id', rpc.call_id)
+                if not completed:
+                    self._pending[pending] = context
+                return context
+
+        return None
+
+    def get_pending(
+        self, rpc: PendingRpc, completed: bool
+    ) -> _PendingRpcMetadata | None:
         """Gets the pending RPC's context. If status is set, clears the RPC."""
-        if rpc.call_id == OPEN_CALL_ID or rpc.call_id == LEGACY_OPEN_CALL_ID:
-            # Calls with ID `OPEN_CALL_ID` were unrequested, and are updated to
-            # have the call ID of the first matching request.
-            for pending in self._pending:
-                if (
-                    pending.channel == rpc.channel
-                    and pending.service == rpc.service
-                    and pending.method == rpc.method
-                ):
-                    rpc = pending
+        # Look up the RPC. If there is no match, check for unrequested RPCs.
+        if (meta := self._pending.get(rpc)) is None:
+            meta = self._match_unrequested_rpcs(rpc, completed)
+        elif completed:
+            del self._pending[rpc]
 
-        if status is None:
-            return self._pending[rpc].context
-
-        _LOG.debug('%s finished with status %s', rpc, status)
-        return self._pending.pop(rpc).context
+        return meta
 
 
 class ClientImpl(abc.ABC):
@@ -249,9 +219,6 @@ class ClientImpl(abc.ABC):
         rpc: PendingRpc,
         context: Any,
         payload: Any,
-        *,
-        args: tuple = (),
-        kwargs: dict | None = None,
     ) -> Any:
         """Handles a response from the RPC server.
 
@@ -259,7 +226,6 @@ class ClientImpl(abc.ABC):
           rpc: Information about the pending RPC
           context: Arbitrary context object associated with the pending RPC
           payload: A protobuf message
-          args, kwargs: Arbitrary arguments passed to the ClientImpl
         """
 
     @abc.abstractmethod
@@ -268,9 +234,6 @@ class ClientImpl(abc.ABC):
         rpc: PendingRpc,
         context: Any,
         status: Status,
-        *,
-        args: tuple = (),
-        kwargs: dict | None = None,
     ) -> Any:
         """Handles the successful completion of an RPC.
 
@@ -278,7 +241,6 @@ class ClientImpl(abc.ABC):
           rpc: Information about the pending RPC
           context: Arbitrary context object associated with the pending RPC
           status: Status returned from the RPC
-          args, kwargs: Arbitrary arguments passed to the ClientImpl
         """
 
     @abc.abstractmethod
@@ -287,9 +249,6 @@ class ClientImpl(abc.ABC):
         rpc: PendingRpc,
         context,
         status: Status,
-        *,
-        args: tuple = (),
-        kwargs: dict | None = None,
     ):
         """Handles the abnormal termination of an RPC.
 
@@ -297,7 +256,6 @@ class ClientImpl(abc.ABC):
           rpc: Information about the pending RPC
           context: Arbitrary context object associated with the pending RPC
           status: which error occurred
-          args, kwargs: Arbitrary arguments passed to the ClientImpl
         """
 
 
@@ -529,15 +487,11 @@ class Client:
         for service in self.services:
             yield from service.methods
 
-    def process_packet(
-        self, pw_rpc_raw_packet_data: bytes, *impl_args, **impl_kwargs
-    ) -> Status:
+    def process_packet(self, pw_rpc_raw_packet_data: bytes) -> Status:
         """Processes an incoming packet.
 
         Args:
           pw_rpc_raw_packet_data: raw binary data for exactly one RPC packet
-          impl_args: optional positional arguments passed to the ClientImpl
-          impl_kwargs: optional keyword arguments passed to the ClientImpl
 
         Returns:
           OK - the packet was processed by this client
@@ -603,10 +557,10 @@ class Client:
                 rpc, payload, status
             )
 
-        try:
-            assert self._impl.rpcs
-            context = self._impl.rpcs.get_pending(rpc, status)
-        except KeyError:
+        assert self._impl.rpcs
+        meta = self._impl.rpcs.get_pending(rpc, status is not None)
+
+        if meta is None:
             _send_client_error(
                 channel_client, packet, Status.FAILED_PRECONDITION
             )
@@ -616,19 +570,13 @@ class Client:
         if packet.type == PacketType.SERVER_ERROR:
             assert status is not None and not status.ok()
             _LOG.warning('%s: invocation failed with %s', rpc, status)
-            self._impl.handle_error(
-                rpc, context, status, args=impl_args, kwargs=impl_kwargs
-            )
+            self._impl.handle_error(rpc, meta.context, status)
             return Status.OK
 
         if payload is not None:
-            self._impl.handle_response(
-                rpc, context, payload, args=impl_args, kwargs=impl_kwargs
-            )
+            self._impl.handle_response(rpc, meta.context, payload)
         if status is not None:
-            self._impl.handle_completion(
-                rpc, context, status, args=impl_args, kwargs=impl_kwargs
-            )
+            self._impl.handle_completion(rpc, meta.context, status)
 
         return Status.OK
 
@@ -669,6 +617,4 @@ def _send_client_error(
 ) -> None:
     # Never send responses to SERVER_ERRORs.
     if packet.type != PacketType.SERVER_ERROR:
-        client.channel.output(  # type: ignore
-            packets.encode_client_error(packet, error)
-        )
+        client.channel.output(packets.encode_client_error(packet, error))
