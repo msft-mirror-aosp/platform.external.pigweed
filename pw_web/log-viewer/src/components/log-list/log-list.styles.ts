@@ -160,8 +160,8 @@ export const styles = css`
     white-space: nowrap;
   }
 
-  th[title='severity'] {
-    visibility: hidden;
+  th[title='level'] {
+    color: transparent;
   }
 
   td {
@@ -198,7 +198,6 @@ export const styles = css`
     content: '';
     cursor: col-resize;
     height: 100%;
-    left: 0;
     mix-blend-mode: luminosity;
     opacity: 1;
     pointer-events: auto;

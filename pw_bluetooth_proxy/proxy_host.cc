@@ -175,6 +175,7 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
     acl_send_mutex_.lock();
     std::optional<span<uint8_t>> h4_buff = ReserveH4Buff();
     if (!h4_buff) {
+      PW_LOG_WARN("No H4 buffers available. So will not send.");
       acl_send_mutex_.unlock();
       return pw::Status::Unavailable();
     }
@@ -182,6 +183,17 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
     size_t acl_packet_size =
         emboss::AttNotifyOverAcl::MinSizeInBytes() + attribute_value.size();
     size_t h4_packet_size = sizeof(emboss::H4PacketType) + acl_packet_size;
+
+    H4PacketWithH4 h4_temp(
+        span(h4_buff->data(), h4_packet_size),
+        /*release_fn=*/[this](const uint8_t* buffer) {
+          acl_send_mutex_.lock();
+          PW_CHECK(h4_buff_occupied_.contains(const_cast<uint8_t*>(buffer)),
+                   "Received release callback for invalid buffer address.");
+          h4_buff_occupied_.at(const_cast<uint8_t*>(buffer)) = false;
+          acl_send_mutex_.unlock();
+        });
+    h4_temp.SetH4Type(emboss::H4PacketType::ACL_DATA);
 
     if (h4_packet_size > h4_buff->size()) {
       PW_LOG_ERROR("Buffer is too small for H4 packet. So will not send.");
@@ -202,16 +214,6 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
     BuildAttNotify(
         att_notify, connection_handle, attribute_handle, attribute_value);
 
-    H4PacketWithH4 h4_temp(
-        span(h4_buff->data(), h4_packet_size),
-        /*release_fn=*/[this](const uint8_t* buffer) {
-          acl_send_mutex_.lock();
-          PW_CHECK(h4_buff_occupied_.contains(const_cast<uint8_t*>(buffer)),
-                   "Received release callback for invalid buffer address.");
-          h4_buff_occupied_.at(const_cast<uint8_t*>(buffer)) = false;
-          acl_send_mutex_.unlock();
-        });
-    h4_temp.SetH4Type(emboss::H4PacketType::ACL_DATA);
     h4_att_notify = std::move(h4_temp);
     acl_send_mutex_.unlock();
   }
@@ -221,6 +223,7 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
   // destructed, so its release function will clear the corresponding flag in
   // `h4_buff_occupied_`.
   if (!acl_data_channel_.SendAcl(std::move(h4_att_notify))) {
+    // SendAcl function will have logged reason for failure to send..
     return pw::Status::Unavailable();
   }
   return OkStatus();

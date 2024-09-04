@@ -59,6 +59,11 @@ class FakeController final : public ControllerTestDoubleBase,
 
     bool is_event_unmasked(hci_spec::LEEventMask event) const;
 
+    auto SupportedCommandsView() {
+      return pw::bluetooth::emboss::MakeSupportedCommandsView(
+          supported_commands, sizeof(supported_commands));
+    }
+
     // The time elapsed from the receipt of a LE Create Connection command until
     // the resulting LE Connection Complete event.
     pw::chrono::SystemClock::duration le_connection_delay =
@@ -87,11 +92,11 @@ class FakeController final : public ControllerTestDoubleBase,
     uint8_t supported_commands[64] = {0};
 
     // Buffer Size.
-    uint16_t acl_data_packet_length = 0;
-    uint8_t total_num_acl_data_packets = 0;
+    uint16_t acl_data_packet_length = 1;
+    uint8_t total_num_acl_data_packets = 1;
     uint16_t le_acl_data_packet_length = 0;
     uint8_t le_total_num_acl_data_packets = 0;
-    uint16_t synchronous_data_packet_length = 0;
+    uint8_t synchronous_data_packet_length = 1;
     uint8_t total_num_synchronous_data_packets = 0;
     uint16_t iso_data_packet_length = 0;
     uint8_t total_num_iso_data_packets = 0;
@@ -572,6 +577,12 @@ class FakeController final : public ControllerTestDoubleBase,
   void RespondWithCommandComplete(hci_spec::OpCode opcode,
                                   hci::EmbossEventPacket* packet);
 
+  // Sends an HCI_Command_Complete event in response to the command with
+  // |opcode| and using the provided event packet, filling in the event header
+  // fields.
+  void RespondWithCommandComplete(pw::bluetooth::emboss::OpCode opcode,
+                                  hci::EmbossEventPacket* packet);
+
   // Sends a HCI_Command_Status event in response to the command with |opcode|
   // and using the given data as the parameter payload.
   void RespondWithCommandStatus(hci_spec::OpCode opcode,
@@ -910,7 +921,7 @@ class FakeController final : public ControllerTestDoubleBase,
 
   // Called when a HCI_LE_Read_Remote_Features_Command is received.
   void OnLEReadRemoteFeaturesCommand(
-      const hci_spec::LEReadRemoteFeaturesCommandParams& params);
+      const pw::bluetooth::emboss::LEReadRemoteFeaturesCommandView& params);
 
   // Called when a HCI_LE_Enable_Encryption command is received, responds with
   // a successful encryption change event.

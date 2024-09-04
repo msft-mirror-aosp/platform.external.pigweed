@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/l2cap/a2dp_offload_manager.h"
 
 #include <pw_bluetooth/hci_android.emb.h>
+#include <pw_preprocessor/compiler.h>
 
 #include <cstdint>
 #include <utility>
@@ -99,6 +100,8 @@ void A2dpOffloadManager::StartA2dpOffload(
   view.l2cap_mtu_size().Write(max_tx_sdu_size);
 
   // kAptx and kAptxhd codecs not yet handled
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (config.codec) {
     case android_emb::A2dpCodecType::SBC:
       view.sbc_codec_information().CopyFrom(
@@ -122,6 +125,7 @@ void A2dpOffloadManager::StartA2dpOffload(
       callback(ToResult(HostError::kNotSupported));
       return;
   }
+  PW_MODIFY_DIAGNOSTICS_POP();
 
   cmd_channel_->SendCommand(
       std::move(packet),
@@ -129,7 +133,8 @@ void A2dpOffloadManager::StartA2dpOffload(
        id = local_id,
        handle = link_handle,
        self = weak_self_.GetWeakPtr(),
-       this](auto /*transaction_id*/, const hci::EventPacket& event) mutable {
+       this](auto /*transaction_id*/,
+             const hci::EmbossEventPacket& event) mutable {
         if (!self.is_alive()) {
           return;
         }
@@ -219,7 +224,8 @@ void A2dpOffloadManager::RequestStopA2dpOffload(
        self = weak_self_.GetWeakPtr(),
        id = local_id,
        handle = link_handle,
-       this](auto /*transaction_id*/, const hci::EventPacket& event) mutable {
+       this](auto /*transaction_id*/,
+             const hci::EmbossEventPacket& event) mutable {
         if (!self.is_alive()) {
           return;
         }
