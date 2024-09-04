@@ -57,6 +57,7 @@ if (current_toolchain != default_toolchain) {
 
   config("config_includes") {
     include_dirs = [ "config" ]
+    defines = [ "_PW_PICO_GN_BUILD=1" ]
   }
 
   config("module_config_include") {
@@ -166,4 +167,5 @@ pw_doc_group("target_docs") {
     "target_docs.rst",
     "upstream.rst",
   ]
+  inputs = [ "49-pico.rules" ]
 }
