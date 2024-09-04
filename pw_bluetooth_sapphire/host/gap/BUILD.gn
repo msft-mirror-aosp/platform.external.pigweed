@@ -20,8 +20,8 @@ dir_public_gap = "../../public/pw_bluetooth_sapphire/internal/host/gap"
 
 pw_source_set("definitions") {
   public = [ "$dir_public_gap/gap.h" ]
-
   sources = [ "gap.cc" ]
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
   deps = [ "$dir_pw_bluetooth_sapphire/host/common" ]
 }
 
@@ -40,6 +40,7 @@ pw_source_set("gap") {
     "$dir_public_gap/event_masks.h",
     "$dir_public_gap/generic_access_client.h",
     "$dir_public_gap/identity_resolving_list.h",
+    "$dir_public_gap/legacy_pairing_state.h",
     "$dir_public_gap/low_energy_address_manager.h",
     "$dir_public_gap/low_energy_advertising_manager.h",
     "$dir_public_gap/low_energy_connection.h",
@@ -70,6 +71,7 @@ pw_source_set("gap") {
     "discovery_filter.cc",
     "generic_access_client.cc",
     "identity_resolving_list.cc",
+    "legacy_pairing_state.cc",
     "low_energy_address_manager.cc",
     "low_energy_advertising_manager.cc",
     "low_energy_connection.cc",
@@ -87,7 +89,16 @@ pw_source_set("gap") {
     "types.cc",
   ]
 
-  deps = [ "$dir_pw_bluetooth_sapphire/host/sm" ]
+  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  configs = [
+    "$dir_pw_build:internal_strict_warnings_core",
+    "$dir_pw_bluetooth_sapphire/host:copts",
+  ]
+
+  deps = [
+    "$dir_pw_bluetooth_sapphire/host/sm",
+    "$dir_pw_preprocessor",
+  ]
 
   public_deps = [
     ":definitions",
@@ -101,6 +112,7 @@ pw_source_set("gap") {
     "$dir_pw_bluetooth_sapphire/host/sco",
     "$dir_pw_bluetooth_sapphire/host/sdp",
     "$dir_pw_bluetooth_sapphire/host/sm:definitions",
+    "$dir_pw_string:utf_codecs",
     "$dir_pw_third_party/fuchsia:fit",
   ]
 
@@ -120,6 +132,8 @@ pw_source_set("testing") {
     "fake_pairing_delegate.cc",
   ]
 
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
+
   public_deps = [
     ":gap",
     "$dir_pw_bluetooth_sapphire/host/l2cap:testing",
@@ -138,6 +152,7 @@ pw_test("gap_tests") {
     "discovery_filter_test.cc",
     "fake_pairing_delegate_test.cc",
     "identity_resolving_list_test.cc",
+    "legacy_pairing_state_test.cc",
     "low_energy_address_manager_test.cc",
     "low_energy_advertising_manager_test.cc",
     "low_energy_connection_manager_test.cc",
@@ -148,6 +163,8 @@ pw_test("gap_tests") {
     "secure_simple_pairing_state_test.cc",
     "types_test.cc",
   ]
+
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
 
   deps = [
     ":gap",
@@ -166,6 +183,7 @@ pw_test("gap_tests") {
 
 pw_fuzzer("peer_cache_fuzzer") {
   sources = [ "peer_cache_fuzztest.cc" ]
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
   deps = [
     ":gap",
     "$dir_pw_async:fake_dispatcher",

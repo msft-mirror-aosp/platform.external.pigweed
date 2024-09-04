@@ -27,7 +27,7 @@ load(
 load("//pw_system/py:console.bzl", "device_console", "device_simulator_console")
 load("//targets/host_device_simulator:transition.bzl", "host_device_simulator_binary")
 load("//targets/rp2040:flash.bzl", "flash_rp2040")
-load("//targets/rp2040:transition.bzl", "rp2040_binary")
+load("//targets/rp2040:transition.bzl", "rp2040_binary", "rp2350_binary")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -556,7 +556,8 @@ cc_library(
         "threads.cc",
     ],
     hdrs = ["public/pw_system/system.h"],
-    implementation_deps = [
+    includes = ["public"],
+    deps = [
         ":async_packet_io",
         ":device_service",
         ":file_manager",
@@ -565,12 +566,16 @@ cc_library(
         ":thread_snapshot_service",
         ":transfer_service",
         ":work_queue",
+        "//pw_allocator:allocator",
         "//pw_allocator:best_fit_block_allocator",
         "//pw_allocator:synchronized_allocator",
         "//pw_async2:allocate_task",
+        "//pw_async2:dispatcher",
         "//pw_async2:pend_func_task",
+        "//pw_channel",
         "//pw_hdlc:router",
         "//pw_multibuf:simple_allocator",
+        "//pw_rpc",
         "//pw_rpc/pwpb:echo_service",
         "//pw_sync:interrupt_spin_lock",
         "//pw_thread:thread",
@@ -581,13 +586,6 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    includes = ["public"],
-    deps = [
-        "//pw_allocator:allocator",
-        "//pw_async2:dispatcher",
-        "//pw_channel",
-        "//pw_rpc",
-    ],
 )
 
 cc_library(
@@ -670,6 +668,12 @@ rp2040_binary(
     binary = ":system_example",
 )
 
+rp2350_binary(
+    name = "rp2350_system_example",
+    testonly = True,
+    binary = ":system_example",
+)
+
 flash_rp2040(
     name = "flash_rp2040_system_example",
     testonly = True,
@@ -690,5 +694,12 @@ device_console(
     name = "rp2040_system_example_console",
     testonly = True,
     binary = ":rp2040_system_example",
+    script = "//pw_system/py:pw_system_console",
+)
+
+device_console(
+    name = "rp2350_system_example_console",
+    testonly = True,
+    binary = ":rp2350_system_example",
     script = "//pw_system/py:pw_system_console",
 )

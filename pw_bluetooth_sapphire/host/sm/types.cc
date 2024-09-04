@@ -15,14 +15,13 @@
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
 
 #include <cpp-string/string_printf.h>
+#include <pw_preprocessor/compiler.h>
 
 #include <utility>
 
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/smp.h"
-
-#pragma clang diagnostic ignored "-Wswitch-enum"
 
 namespace bt::sm {
 namespace {
@@ -58,6 +57,8 @@ bool HasKeysToDistribute(PairingFeatures features) {
 }
 
 const char* LevelToString(SecurityLevel level) {
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (level) {
     case SecurityLevel::kEncrypted:
       return "encrypted";
@@ -68,6 +69,7 @@ const char* LevelToString(SecurityLevel level) {
     default:
       break;
   }
+  PW_MODIFY_DIAGNOSTICS_POP();
   return "not secure";
 }
 
@@ -133,11 +135,16 @@ SecurityLevel SecurityProperties::level() const {
   return level;
 }
 
-std::optional<hci_spec::LinkKeyType> SecurityProperties::GetLinkKeyType()
-    const {
+hci_spec::LinkKeyType SecurityProperties::GetLinkKeyType() const {
   if (level() == SecurityLevel::kNoSecurity) {
-    return std::nullopt;
+    // Sapphire considers legacy pairing keys to have security level
+    // kNoSecurity. Returning kCombination type since the kLocalUnit and
+    // kRemoteUnit key types are deprecated.
+    //
+    // TODO(fxbug.dev/42113587): Implement BR/EDR security database
+    return hci_spec::LinkKeyType::kCombination;
   }
+
   if (authenticated()) {
     if (secure_connections()) {
       return hci_spec::LinkKeyType::kAuthenticatedCombination256;
@@ -189,11 +196,9 @@ void SecurityProperties::AttachInspect(inspect::Node& parent,
       kInspectSecureConnectionsPropertyName, secure_connections());
   inspect_properties_.authenticated = inspect_node_.CreateBool(
       kInspectAuthenticatedPropertyName, authenticated());
-  if (GetLinkKeyType().has_value()) {
-    inspect_properties_.key_type = inspect_node_.CreateString(
-        kInspectKeyTypePropertyName,
-        hci_spec::LinkKeyTypeToString(GetLinkKeyType().value()));
-  }
+  inspect_properties_.key_type = inspect_node_.CreateString(
+      kInspectKeyTypePropertyName,
+      hci_spec::LinkKeyTypeToString(GetLinkKeyType()));
 }
 
 LTK::LTK(const SecurityProperties& security, const hci_spec::LinkKey& key)

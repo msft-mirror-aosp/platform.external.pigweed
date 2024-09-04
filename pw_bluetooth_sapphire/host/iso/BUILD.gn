@@ -19,6 +19,7 @@ dir_public_iso = "../../public/pw_bluetooth_sapphire/internal/host/iso"
 
 pw_source_set("iso") {
   public = [
+    "$dir_public_iso/fake_iso_stream.h",
     "$dir_public_iso/iso_common.h",
     "$dir_public_iso/iso_stream.h",
     "$dir_public_iso/iso_stream_manager.h",
@@ -31,8 +32,12 @@ pw_source_set("iso") {
 
   public_deps = [
     "$dir_pw_bluetooth_sapphire/host/common",
+    "$dir_pw_bluetooth_sapphire/host/hci",
     "$dir_pw_bluetooth_sapphire/host/transport",
   ]
+
+  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  configs = [ "$dir_pw_build:internal_strict_warnings_core" ]
 }
 
 pw_test("tests") {
