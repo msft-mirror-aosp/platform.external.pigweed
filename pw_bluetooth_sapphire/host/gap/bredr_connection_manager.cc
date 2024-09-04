@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/bredr_connection_manager.h"
 
 #include <pw_bytes/endian.h>
+#include <pw_string/string_builder.h>
 
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/expiring_set.h"
@@ -33,6 +34,7 @@
 #include "pw_bluetooth_sapphire/internal/host/hci/sequential_command_runner.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/types.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/command_channel.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
 
 namespace bt::gap {
@@ -98,14 +100,16 @@ void SetPageScanEnabled(bool enabled,
       pw::bluetooth::emboss::ReadScanEnableCommandWriter>(
       hci_spec::kReadScanEnable);
   auto finish_enable_cb = [enabled, hci, finish_cb = std::move(cb)](
-                              auto, const hci::EventPacket& event) mutable {
+                              auto,
+                              const hci::EmbossEventPacket& event) mutable {
     if (hci_is_error(event, WARN, "gap-bredr", "read scan enable failed")) {
       finish_cb(event.ToResult());
       return;
     }
 
-    auto params = event.return_params<hci_spec::ReadScanEnableReturnParams>();
-    uint8_t scan_type = params->scan_enable;
+    const auto params = event.view<
+        pw::bluetooth::emboss::ReadScanEnableCommandCompleteEventView>();
+    uint8_t scan_type = params.scan_enable().BackingStorage().ReadUInt();
     if (enabled) {
       scan_type |= static_cast<uint8_t>(hci_spec::ScanEnableBit::kPage);
     } else {
@@ -122,7 +126,7 @@ void SetPageScanEnabled(bool enabled,
         scan_type & static_cast<uint8_t>(hci_spec::ScanEnableBit::kPage));
     hci->command_channel()->SendCommand(
         std::move(write_enable),
-        [cb = std::move(finish_cb)](auto, const hci::EventPacket& event) {
+        [cb = std::move(finish_cb)](auto, const hci::EmbossEventPacket& event) {
           cb(event.ToResult());
         });
   };
@@ -175,6 +179,7 @@ BrEdrConnectionManager::BrEdrConnectionManager(
     l2cap::ChannelManager* l2cap,
     bool use_interlaced_scan,
     bool local_secure_connections_supported,
+    bool legacy_pairing_enabled,
     pw::async::Dispatcher& dispatcher)
     : hci_(std::move(hci)),
       cache_(peer_cache),
@@ -185,6 +190,7 @@ BrEdrConnectionManager::BrEdrConnectionManager(
       page_scan_window_(0),
       use_interlaced_scan_(use_interlaced_scan),
       local_secure_connections_supported_(local_secure_connections_supported),
+      legacy_pairing_enabled_(legacy_pairing_enabled),
       dispatcher_(dispatcher),
       weak_self_(this) {
   BT_DEBUG_ASSERT(hci_.is_alive());
@@ -234,6 +240,9 @@ BrEdrConnectionManager::BrEdrConnectionManager(
   AddEventHandler(
       hci_spec::kRoleChangeEventCode,
       fit::bind_member<&BrEdrConnectionManager::OnRoleChange>(this));
+  AddEventHandler(
+      hci_spec::kPinCodeRequestEventCode,
+      fit::bind_member<&BrEdrConnectionManager::OnPinCodeRequest>(this));
 
   // Set the timeout for outbound connections explicitly to the spec default.
   WritePageTimeout(
@@ -632,7 +641,7 @@ void BrEdrConnectionManager::WritePageTimeout(
 
   hci_->command_channel()->SendCommand(
       std::move(write_page_timeout_cmd),
-      [cb = std::move(cb)](auto id, const hci::EventPacket& event) {
+      [cb = std::move(cb)](auto id, const hci::EmbossEventPacket& event) {
         cb(event.ToResult());
       });
 }
@@ -658,7 +667,7 @@ void BrEdrConnectionManager::WritePageScanSettings(uint16_t interval,
 
   hci_cmd_runner_->QueueCommand(
       std::move(write_activity),
-      [self, interval, window](const hci::EventPacket& event) {
+      [self, interval, window](const hci::EmbossEventPacket& event) {
         if (!self.is_alive() ||
             hci_is_error(
                 event, WARN, "gap-bredr", "write page scan activity failed")) {
@@ -682,7 +691,8 @@ void BrEdrConnectionManager::WritePageScanSettings(uint16_t interval,
   type_params.page_scan_type().Write(scan_type);
 
   hci_cmd_runner_->QueueCommand(
-      std::move(write_type), [self, scan_type](const hci::EventPacket& event) {
+      std::move(write_type),
+      [self, scan_type](const hci::EmbossEventPacket& event) {
         if (!self.is_alive() ||
             hci_is_error(
                 event, WARN, "gap-bredr", "write page scan type failed")) {
@@ -706,7 +716,7 @@ void BrEdrConnectionManager::WritePinType(
 
   hci_->command_channel()->SendCommand(
       std::move(write_pin_type_cmd),
-      [](auto id, const hci::EventPacket& event) {
+      [](auto id, const hci::EmbossEventPacket& event) {
         [[maybe_unused]] bool _ = bt_is_error(
             event.ToResult(), WARN, "gap-bredr", "Write PIN Type failed");
       });
@@ -803,6 +813,8 @@ void BrEdrConnectionManager::InitializeConnection(
   auto on_peer_disconnect_cb = [this, link = link.get()] {
     OnPeerDisconnect(link);
   };
+
+  // Create the BrEdrConnection object and place into |connections_| map
   auto [conn_iter, success] =
       connections_.try_emplace(handle,
                                peer->GetWeakPtr(),
@@ -817,8 +829,6 @@ void BrEdrConnectionManager::InitializeConnection(
   BT_ASSERT(success);
 
   BrEdrConnection& connection = conn_iter->second;
-  connection.pairing_state_manager().SetPairingDelegate(pairing_delegate_);
-  connection.set_security_mode(security_mode());
   connection.AttachInspect(inspect_properties_.connections_node_,
                            inspect_properties_.connections_node_.UniqueName(
                                kInspectConnectionNodeNamePrefix));
@@ -881,6 +891,25 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
            handle);
     return;
   }
+
+  // Now that interrogation has successfully completed, check if the peer's
+  // feature bits indicate SSP support. If not, use LegacyPairingState to
+  // perform pairing if legacy pairing is enabled.
+  PairingStateManager::PairingStateType pairing_type =
+      PairingStateManager::PairingStateType::kSecureSimplePairing;
+  if (!peer->IsSecureSimplePairingSupported()) {
+    if (!legacy_pairing_enabled_) {
+      bt_log(WARN,
+             "gap-bredr",
+             "Peer %s does not support SSP but legacy pairing is not enabled "
+             "so pairing cannot occur",
+             bt_str(peer_id));
+      return;
+    }
+    pairing_type = PairingStateManager::PairingStateType::kLegacyPairing;
+  }
+  conn_state.CreateOrUpdatePairingState(
+      pairing_type, pairing_delegate_, security_mode());
 
   WeakPtr<hci::BrEdrConnection> const connection =
       conn_state.link().GetWeakPtr();
@@ -1287,6 +1316,14 @@ BrEdrConnectionManager::OnIoCapabilityRequest(
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
   auto [handle, conn_ptr] = *conn_pair;
+
+  // If we receive an HCI_IO_Capability_Request event before interrogation is
+  // complete, there will be no pairing state object so we need to create it now
+  conn_ptr->CreateOrUpdatePairingState(
+      PairingStateManager::PairingStateType::kSecureSimplePairing,
+      pairing_delegate_,
+      security_mode());
+
   auto reply = conn_ptr->pairing_state_manager().OnIoCapabilityRequest();
 
   if (!reply) {
@@ -1329,6 +1366,16 @@ BrEdrConnectionManager::OnIoCapabilityResponse(
            bt_str(addr));
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
+
+  // If we receive an HCI_IO_Capability_Response event before interrogation is
+  // complete, there will be no pairing state object so we need to create it
+  // now. If we previously created a pairing state object because there was
+  // already an HCI_IO_Capability_Request event, then this method will no-op.
+  conn_pair->second->CreateOrUpdatePairingState(
+      PairingStateManager::PairingStateType::kSecureSimplePairing,
+      pairing_delegate_,
+      security_mode());
+
   conn_pair->second->pairing_state_manager().OnIoCapabilityResponse(
       params.io_capability().Read());
   return hci::CommandChannel::EventCallbackResult::kContinue;
@@ -1360,12 +1407,22 @@ BrEdrConnectionManager::OnLinkKeyRequest(const hci::EmbossEventPacket& event) {
     if (!conn_pair) {
       bt_log(WARN,
              "gap-bredr",
-             "can't find connection for ltk (id: %s)",
+             "Can't find current connection or connection request for peer %s",
              bt_str(peer_id));
       SendLinkKeyRequestNegativeReply(addr.value());
       return hci::CommandChannel::EventCallbackResult::kContinue;
     }
     auto& [handle, conn] = *conn_pair;
+
+    // TODO(fxbug.dev/355466957): Pairing state type is unknown if a
+    // link key request is received after ACL connection is complete but before
+    // interrogation is complete. Default to using SSP for now.
+    if (!conn->interrogation_complete()) {
+      conn->CreateOrUpdatePairingState(
+          PairingStateManager::PairingStateType::kSecureSimplePairing,
+          pairing_delegate_,
+          security_mode());
+    }
 
     link_key = conn->pairing_state_manager().OnLinkKeyRequest();
   } else {
@@ -1382,6 +1439,7 @@ BrEdrConnectionManager::OnLinkKeyRequest(const hci::EmbossEventPacket& event) {
     // are initialized in |PairingStateManager|'s constructor.
     std::unique_ptr<LegacyPairingState> legacy_pairing_state =
         std::make_unique<LegacyPairingState>(peer->GetWeakPtr(),
+                                             std::move(pairing_delegate_),
                                              outgoing_connection);
 
     connection_req.value()->set_legacy_pairing_state(
@@ -1423,6 +1481,18 @@ BrEdrConnectionManager::OnLinkKeyNotification(
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
 
+  if (!legacy_pairing_enabled_ &&
+      key_type == pw::bluetooth::emboss::KeyType::COMBINATION) {
+    bt_log(WARN,
+           "gap-bredr",
+           "Got %u key type in link key notification for peer %s but legacy "
+           "pairing is not enabled",
+           static_cast<uint8_t>(key_type),
+           bt_str(peer->identifier()));
+    cache_->LogBrEdrBondingEvent(false);
+    return hci::CommandChannel::EventCallbackResult::kContinue;
+  }
+
   bt_log(INFO,
          "gap-bredr",
          "got link key notification (key type: %u, peer: %s)",
@@ -1452,15 +1522,6 @@ BrEdrConnectionManager::OnLinkKeyNotification(
 
   auto peer_id = peer->identifier();
 
-  if (sec_props.level() == sm::SecurityLevel::kNoSecurity) {
-    bt_log(WARN,
-           "gap-bredr",
-           "link key for peer %s has insufficient security; not stored",
-           bt_str(peer_id));
-    cache_->LogBrEdrBondingEvent(false);
-    return hci::CommandChannel::EventCallbackResult::kContinue;
-  }
-
   UInt128 key_value;
   ::emboss::support::ReadWriteContiguousBuffer(&key_value)
       .CopyFrom(params.link_key().value().BackingStorage(), key_value.size());
@@ -1470,10 +1531,20 @@ BrEdrConnectionManager::OnLinkKeyNotification(
 
   auto handle = FindConnectionById(peer_id);
   if (!handle) {
-    bt_log(WARN,
-           "gap-bredr",
-           "can't find current connection for ltk (peer: %s)",
-           bt_str(peer_id));
+    std::optional<BrEdrConnectionRequest*> request =
+        FindConnectionRequestById(peer_id);
+    if (!request) {
+      bt_log(WARN,
+             "gap-bredr",
+             "Can't find current connection or connection request for peer %s",
+             bt_str(peer_id));
+    } else {
+      // The connection request's legacy pairing state object must exist at this
+      // point since we created it in the request's constructor.
+      BT_ASSERT(request.value()->legacy_pairing_state());
+      request.value()->legacy_pairing_state()->OnLinkKeyNotification(
+          key_value, static_cast<hci_spec::LinkKeyType>(key_type));
+    }
   } else {
     handle->second->link().set_link_key(
         hci_key, static_cast<hci_spec::LinkKeyType>(key_type));
@@ -1496,47 +1567,47 @@ BrEdrConnectionManager::OnLinkKeyNotification(
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnSimplePairingComplete(const hci::EventPacket& event) {
-  BT_DEBUG_ASSERT(event.event_code() ==
-                  hci_spec::kSimplePairingCompleteEventCode);
-  const auto& params =
-      event.params<hci_spec::SimplePairingCompleteEventParams>();
+BrEdrConnectionManager::OnSimplePairingComplete(
+    const hci::EmbossEventPacket& event_packet) {
+  auto params =
+      event_packet
+          .view<pw::bluetooth::emboss::SimplePairingCompleteEventView>();
+  DeviceAddressBytes bd_addr = DeviceAddressBytes(params.bd_addr());
 
-  auto conn_pair = FindConnectionByAddress(params.bd_addr);
+  auto conn_pair = FindConnectionByAddress(bd_addr);
   if (!conn_pair) {
     bt_log(WARN,
            "gap-bredr",
            "got Simple Pairing Complete (status: %s) for unconnected addr %s",
-           bt_str(ToResult(params.status)),
-           bt_str(params.bd_addr));
+           bt_str(ToResult(params.status().Read())),
+           bt_str(bd_addr));
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
   conn_pair->second->pairing_state_manager().OnSimplePairingComplete(
-      params.status);
+      params.status().Read());
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
 
 hci::CommandChannel::EventCallbackResult
 BrEdrConnectionManager::OnUserConfirmationRequest(
-    const hci::EventPacket& event) {
-  BT_DEBUG_ASSERT(event.event_code() ==
-                  hci_spec::kUserConfirmationRequestEventCode);
-  const auto& params =
-      event.params<hci_spec::UserConfirmationRequestEventParams>();
+    const hci::EmbossEventPacket& event_packet) {
+  auto params =
+      event_packet
+          .view<pw::bluetooth::emboss::UserConfirmationRequestEventView>();
+  DeviceAddressBytes bd_addr = DeviceAddressBytes(params.bd_addr());
 
-  auto conn_pair = FindConnectionByAddress(params.bd_addr);
+  auto conn_pair = FindConnectionByAddress(bd_addr);
   if (!conn_pair) {
     bt_log(WARN,
            "gap-bredr",
            "got %s for unconnected addr %s",
            __func__,
-           bt_str(params.bd_addr));
-    SendUserConfirmationRequestNegativeReply(params.bd_addr);
+           bt_str(bd_addr));
+    SendUserConfirmationRequestNegativeReply(bd_addr);
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
 
-  auto confirm_cb = [self = weak_self_.GetWeakPtr(),
-                     bd_addr = params.bd_addr](bool confirm) {
+  auto confirm_cb = [self = weak_self_.GetWeakPtr(), bd_addr](bool confirm) {
     if (!self.is_alive()) {
       return;
     }
@@ -1548,29 +1619,30 @@ BrEdrConnectionManager::OnUserConfirmationRequest(
     }
   };
   conn_pair->second->pairing_state_manager().OnUserConfirmationRequest(
-      pw::bytes::ConvertOrderFrom(cpp20::endian::little, params.numeric_value),
-      std::move(confirm_cb));
+      params.numeric_value().Read(), std::move(confirm_cb));
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnUserPasskeyRequest(const hci::EventPacket& event) {
-  BT_DEBUG_ASSERT(event.event_code() == hci_spec::kUserPasskeyRequestEventCode);
-  const auto& params = event.params<hci_spec::UserPasskeyRequestEventParams>();
+BrEdrConnectionManager::OnUserPasskeyRequest(
+    const hci::EmbossEventPacket& event_packet) {
+  auto params =
+      event_packet.view<pw::bluetooth::emboss::UserPasskeyRequestEventView>();
+  DeviceAddressBytes bd_addr = DeviceAddressBytes(params.bd_addr());
 
-  auto conn_pair = FindConnectionByAddress(params.bd_addr);
+  auto conn_pair = FindConnectionByAddress(bd_addr);
   if (!conn_pair) {
     bt_log(WARN,
            "gap-bredr",
            "got %s for unconnected addr %s",
            __func__,
-           bt_str(params.bd_addr));
-    SendUserPasskeyRequestNegativeReply(params.bd_addr);
+           bt_str(bd_addr));
+    SendUserPasskeyRequestNegativeReply(bd_addr);
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
 
-  auto passkey_cb = [self = weak_self_.GetWeakPtr(), bd_addr = params.bd_addr](
-                        std::optional<uint32_t> passkey) {
+  auto passkey_cb = [self = weak_self_.GetWeakPtr(),
+                     bd_addr](std::optional<uint32_t> passkey) {
     if (!self.is_alive()) {
       return;
     }
@@ -1588,23 +1660,23 @@ BrEdrConnectionManager::OnUserPasskeyRequest(const hci::EventPacket& event) {
 
 hci::CommandChannel::EventCallbackResult
 BrEdrConnectionManager::OnUserPasskeyNotification(
-    const hci::EventPacket& event) {
-  BT_DEBUG_ASSERT(event.event_code() ==
-                  hci_spec::kUserPasskeyNotificationEventCode);
-  const auto& params =
-      event.params<hci_spec::UserPasskeyNotificationEventParams>();
+    const hci::EmbossEventPacket& event_packet) {
+  auto params =
+      event_packet
+          .view<pw::bluetooth::emboss::UserPasskeyNotificationEventView>();
+  DeviceAddressBytes bd_addr = DeviceAddressBytes(params.bd_addr());
 
-  auto conn_pair = FindConnectionByAddress(params.bd_addr);
+  auto conn_pair = FindConnectionByAddress(bd_addr);
   if (!conn_pair) {
     bt_log(WARN,
            "gap-bredr",
            "got %s for unconnected addr %s",
            __func__,
-           bt_str(params.bd_addr));
+           bt_str(bd_addr));
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
   conn_pair->second->pairing_state_manager().OnUserPasskeyNotification(
-      pw::bytes::ConvertOrderFrom(cpp20::endian::little, params.numeric_value));
+      params.passkey().Read());
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
 
@@ -1661,6 +1733,102 @@ hci::CommandChannel::EventCallbackResult BrEdrConnectionManager::OnRoleChange(
          hci_spec::ConnectionRoleToString(new_role).c_str(),
          bt_str(peer_id));
   conn_pair->second->link().set_role(new_role);
+
+  return hci::CommandChannel::EventCallbackResult::kContinue;
+}
+
+hci::CommandChannel::EventCallbackResult
+BrEdrConnectionManager::OnPinCodeRequest(const hci::EmbossEventPacket& event) {
+  const auto params =
+      event.view<pw::bluetooth::emboss::PinCodeRequestEventView>();
+  const DeviceAddress addr(DeviceAddress::Type::kBREDR,
+                           DeviceAddressBytes(params.bd_addr()));
+  Peer* peer = cache_->FindByAddress(addr);
+  if (!peer) {
+    bt_log(WARN, "gap-bredr", "no peer with address %s found", bt_str(addr));
+    SendPinCodeRequestNegativeReply(addr.value());
+    return hci::CommandChannel::EventCallbackResult::kContinue;
+  }
+
+  PeerId peer_id = peer->identifier();
+
+  auto pin_code_cb = [this,
+                      self = weak_self_.GetWeakPtr(),
+                      addr = addr.value()](std::optional<uint16_t> pin) {
+    if (!self.is_alive()) {
+      return;
+    }
+
+    if (pin) {
+      // TODO(fxbug.dev/348700005): Support exponential backoff
+      SendPinCodeRequestReply(addr, pin.value());
+    } else {
+      SendPinCodeRequestNegativeReply(addr);
+    }
+  };
+
+  std::optional<BrEdrConnectionRequest*> connection_req =
+      FindConnectionRequestById(peer_id);
+  if (!connection_req.has_value()) {
+    // The ACL connection is complete so get the PIN code
+    auto conn_pair = FindConnectionByAddress(addr.value());
+    if (!conn_pair.has_value()) {
+      bt_log(WARN,
+             "gap-bredr",
+             "Can't find current connection or connection request for peer %s",
+             bt_str(addr));
+      SendPinCodeRequestNegativeReply(addr.value());
+      return hci::CommandChannel::EventCallbackResult::kContinue;
+    }
+    auto [handle, conn_ptr] = *conn_pair;
+
+    if (conn_ptr->pairing_state_manager().secure_simple_pairing_state()) {
+      // TODO(fxbug.dev/355466957): If a SecureSimplePairingState object
+      // already exists for this connection, we have the following edge case: we
+      // received an HCI_Link_Key_Request event after ACL connection was
+      // complete but before interrogation was complete. We temporarily default
+      // to SSP which causes this error when it is actually legacy pairing.
+
+      SendPinCodeRequestNegativeReply(addr.value());
+      return hci::CommandChannel::EventCallbackResult::kContinue;
+    }
+
+    // If we receive an HCI_PIN_Code_Request event before interrogation is
+    // complete, there will be no pairing state object so we need to create it
+    // now
+    conn_ptr->CreateOrUpdatePairingState(
+        PairingStateManager::PairingStateType::kLegacyPairing,
+        pairing_delegate_,
+        security_mode());
+
+    conn_ptr->pairing_state_manager().OnPinCodeRequest(std::move(pin_code_cb));
+  } else {
+    // Legacy Pairing may occur before the ACL connection between two devices is
+    // complete. If a PIN code is requested during connection setup, a
+    // HCI_PIN_Code_Request event may be received prior to the
+    // HCI_Connection_Complete event (so no connection object will exist yet)
+    // (Core Spec v5.4, Vol 2, Part F, Sec 3.1).
+
+    // If we already created a LegacyPairingState object in |OnLinkKeyRequest|,
+    // don't recreate another one.
+    if (!connection_req.value()->legacy_pairing_state()) {
+      bool outgoing_connection = connection_req.value()->AwaitingOutgoing();
+
+      // The HCI link is not yet established, so |link|, |auth_cb|, and
+      // |status_cb| are not created yet. After the connection is complete, they
+      // are initialized in |PairingStateManager|'s constructor.
+      std::unique_ptr<LegacyPairingState> legacy_pairing_state =
+          std::make_unique<LegacyPairingState>(peer->GetWeakPtr(),
+                                               std::move(pairing_delegate_),
+                                               outgoing_connection);
+
+      connection_req.value()->set_legacy_pairing_state(
+          std::move(legacy_pairing_state));
+    }
+
+    connection_req.value()->legacy_pairing_state()->OnPinCodeRequest(
+        std::move(pin_code_cb));
+  }
 
   return hci::CommandChannel::EventCallbackResult::kContinue;
 }
@@ -1834,7 +2002,7 @@ void BrEdrConnectionManager::SendCreateConnectionCancelCommand(
   auto params = cancel.view_t();
   params.bd_addr().CopyFrom(addr.value().view());
   hci_->command_channel()->SendCommand(
-      std::move(cancel), [](auto, const hci::EventPacket& event) {
+      std::move(cancel), [](auto, const hci::EmbossEventPacket& event) {
         hci_is_error(
             event, WARN, "hci-bredr", "failed to cancel connection request");
       });
@@ -1849,9 +2017,10 @@ void BrEdrConnectionManager::SendAuthenticationRequested(
 
   // Complete on command status because Authentication Complete Event is already
   // registered.
-  hci::CommandChannel::CommandCallback command_cb;
+  hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+    command_cb = [cb = std::move(cb)](auto,
+                                      const hci::EmbossEventPacket& event) {
       cb(event.ToResult());
     };
   }
@@ -1958,9 +2127,10 @@ void BrEdrConnectionManager::SendLinkKeyRequestReply(DeviceAddressBytes bd_addr,
 template <typename T>
 void BrEdrConnectionManager::SendCommandWithStatusCallback(
     T command_packet, hci::ResultFunction<> cb) {
-  hci::CommandChannel::CommandCallback command_cb;
+  hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+    command_cb = [cb = std::move(cb)](auto,
+                                      const hci::EmbossEventPacket& event) {
       cb(event.ToResult());
     };
   }
@@ -1980,9 +2150,10 @@ void BrEdrConnectionManager::SendAcceptConnectionRequest(
   // Sec 3.1).
   accept_params.role().Write(pw::bluetooth::emboss::ConnectionRole::CENTRAL);
 
-  hci::CommandChannel::CommandCallback command_cb;
+  hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+    command_cb = [cb = std::move(cb)](auto,
+                                      const hci::EmbossEventPacket& event) {
       cb(event.ToResult());
     };
   }
@@ -2003,9 +2174,10 @@ void BrEdrConnectionManager::SendRejectConnectionRequest(
   reject_params.bd_addr().CopyFrom(addr.value().view());
   reject_params.reason().Write(reason);
 
-  hci::CommandChannel::CommandCallback command_cb;
+  hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+    command_cb = [cb = std::move(cb)](auto,
+                                      const hci::EmbossEventPacket& event) {
       cb(event.ToResult());
     };
   }
@@ -2026,9 +2198,10 @@ void BrEdrConnectionManager::SendRejectSynchronousRequest(
   reject_params.bd_addr().CopyFrom(addr.value().view());
   reject_params.reason().Write(reason);
 
-  hci::CommandChannel::CommandCallback command_cb;
+  hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+    command_cb = [cb = std::move(cb)](auto,
+                                      const hci::EmbossEventPacket& event) {
       cb(event.ToResult());
     };
   }
@@ -2036,6 +2209,40 @@ void BrEdrConnectionManager::SendRejectSynchronousRequest(
   hci_->command_channel()->SendCommand(std::move(reject),
                                        std::move(command_cb),
                                        hci_spec::kCommandStatusEventCode);
+}
+
+void BrEdrConnectionManager::SendPinCodeRequestReply(DeviceAddressBytes bd_addr,
+                                                     uint16_t pin_code,
+                                                     hci::ResultFunction<> cb) {
+  auto packet = hci::EmbossCommandPacket::New<
+      pw::bluetooth::emboss::PinCodeRequestReplyCommandWriter>(
+      hci_spec::kPinCodeRequestReply);
+  auto params = packet.view_t();
+  params.bd_addr().CopyFrom(bd_addr.view());
+
+  // 4-digit PIN codes are generated
+  params.pin_code_length().Write(4);
+
+  MutableBufferView data_view(params.pin_code().BackingStorage().data(),
+                              params.pin_code().SizeInBytes());
+  data_view.SetToZeros();
+
+  // Convert pin code int to string (4 digits + 1 digit for null character)
+  pw::StringBuffer<5> builder;
+  builder << pin_code;
+  data_view.Write(BufferView(builder));
+
+  SendCommandWithStatusCallback(std::move(packet), std::move(cb));
+}
+
+void BrEdrConnectionManager::SendPinCodeRequestNegativeReply(
+    DeviceAddressBytes bd_addr, hci::ResultFunction<> cb) {
+  auto packet = hci::EmbossCommandPacket::New<
+      pw::bluetooth::emboss::PinCodeRequestNegativeReplyCommandWriter>(
+      hci_spec::kPinCodeRequestNegativeReply);
+  auto params = packet.view_t();
+  params.bd_addr().CopyFrom(bd_addr.view());
+  SendCommandWithStatusCallback(std::move(packet), std::move(cb));
 }
 
 void BrEdrConnectionManager::RecordDisconnectInspect(

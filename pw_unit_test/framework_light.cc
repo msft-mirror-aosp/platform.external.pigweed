@@ -18,8 +18,7 @@
 #include "light_public_overrides/pw_unit_test/framework_backend.h"
 #include "pw_assert/check.h"
 
-namespace pw {
-namespace unit_test {
+namespace pw::unit_test {
 
 void RegisterEventHandler(EventHandler* event_handler) {
   internal::Framework::Get().RegisterEventHandler(event_handler);
@@ -145,7 +144,7 @@ void Framework::EndCurrentTest() {
   current_test_ = nullptr;
 }
 
-void Framework::CurrentTestSkip(int line) {
+FailureMessageAdapter Framework::CurrentTestSkip(int line) {
   if (current_result_ == TestResult::kSuccess) {
     current_result_ = TestResult::kSkipped;
   }
@@ -153,10 +152,11 @@ void Framework::CurrentTestSkip(int line) {
       "(test skipped)", "(test skipped)", line, true);
 }
 
-void Framework::CurrentTestExpectSimple(const char* expression,
-                                        const char* evaluated_expression,
-                                        int line,
-                                        bool success) {
+FailureMessageAdapter Framework::CurrentTestExpectSimple(
+    const char* expression,
+    const char* evaluated_expression,
+    int line,
+    bool success) {
   PW_CHECK_NOTNULL(
       current_test_,
       "EXPECT/ASSERT was called when no test was running! EXPECT/ASSERT cannot "
@@ -169,7 +169,7 @@ void Framework::CurrentTestExpectSimple(const char* expression,
   }
 
   if (event_handler_ == nullptr) {
-    return;
+    return {};
   }
 
   TestExpectation expectation = {
@@ -180,11 +180,10 @@ void Framework::CurrentTestExpectSimple(const char* expression,
   };
 
   event_handler_->TestCaseExpect(current_test_->test_case(), expectation);
+  return {};
 }
 
 bool Framework::ShouldRunTest(const TestInfo& test_info) const {
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
-  // Test suite filtering is only supported if using C++17.
   if (!test_suites_to_run_.empty()) {
     std::string_view test_suite(test_info.test_case().suite_name);
 
@@ -197,7 +196,6 @@ bool Framework::ShouldRunTest(const TestInfo& test_info) const {
       return false;
     }
   }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
   return test_info.enabled();
 }
@@ -209,5 +207,4 @@ bool TestInfo::enabled() const {
 }
 
 }  // namespace internal
-}  // namespace unit_test
-}  // namespace pw
+}  // namespace pw::unit_test
