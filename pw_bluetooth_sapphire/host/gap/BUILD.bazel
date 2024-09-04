@@ -11,23 +11,18 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_cc_test",
-    "fuchsia_unittest_package",
-)
+load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(glob(["**/*"]))
 
 cc_library(
     name = "definitions",
     srcs = [
         "gap.cc",
     ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
+    copts = COPTS,
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
@@ -47,6 +42,7 @@ cc_library(
         "discovery_filter.cc",
         "generic_access_client.cc",
         "identity_resolving_list.cc",
+        "legacy_pairing_state.cc",
         "low_energy_address_manager.cc",
         "low_energy_advertising_manager.cc",
         "low_energy_connection.cc",
@@ -65,10 +61,8 @@ cc_library(
     ],
     copts = [
         "-Wno-unused-parameter",
-    ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
+        "-Wswitch-enum",
+    ] + COPTS,
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire:public",
@@ -82,6 +76,7 @@ cc_library(
         "//pw_bluetooth_sapphire/host/sm:definitions",
         "@pigweed//pw_async:heap_dispatcher",
         "@pigweed//pw_bluetooth",
+        "@pigweed//pw_string:utf_codecs",
         "@pigweed//third_party/fuchsia:fit",
     ],
 )
@@ -93,9 +88,7 @@ cc_library(
         "fake_adapter.cc",
         "fake_pairing_delegate.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
-    ],
+    copts = COPTS,
     deps = [
         ":gap",
         "//pw_bluetooth_sapphire:public",
@@ -104,8 +97,8 @@ cc_library(
     ],
 )
 
-fuchsia_cc_test(
-    name = "gap_test",
+cc_library(
+    name = "gap_test.lib",
     testonly = True,
     srcs = [
         "adapter_test.cc",
@@ -117,6 +110,7 @@ fuchsia_cc_test(
         "discovery_filter_test.cc",
         "fake_pairing_delegate_test.cc",
         "identity_resolving_list_test.cc",
+        "legacy_pairing_state_test.cc",
         "low_energy_address_manager_test.cc",
         "low_energy_advertising_manager_test.cc",
         "low_energy_connection_manager_test.cc",
@@ -127,7 +121,8 @@ fuchsia_cc_test(
         "secure_simple_pairing_state_test.cc",
         "types_test.cc",
     ],
-    death_unittest = True,
+    copts = COPTS,
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         ":gap",
@@ -141,15 +136,5 @@ fuchsia_cc_test(
         "//pw_bluetooth_sapphire/host/testing",
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-)
-
-fuchsia_unittest_package(
-    name = "test_pkg",
-    package_name = "gap_tests",
-    testonly = True,
-    fuchsia_api_level = "HEAD",
-    unit_tests = [
-        ":gap_test",
-    ],
-    visibility = ["//visibility:public"],
+    alwayslink = 1,
 )

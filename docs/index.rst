@@ -5,6 +5,9 @@ Pigweed
 =======
 *Sustained, robust, and rapid embedded product development for large teams*
 
+-----------
+Get started
+-----------
 .. raw:: html
 
    <!-- Add a little space between the H2 and the cards. This is an edge case
@@ -14,13 +17,35 @@ Pigweed
 
 .. grid:: 1
 
-   .. grid-item-card:: :octicon:`rocket` Get started
-      :link: docs-get-started
+   .. grid-item-card:: :octicon:`rocket` Tour of Pigweed
+      :link: showcase-sense
       :link-type: ref
       :class-item: sales-pitch-cta-primary
 
-      Create a new project, integrate Pigweed into an existing project, browse
-      example apps, or contribute to upstream Pigweed
+      Explore key Pigweed features, such as hermetic building, full C++
+      code intelligence in VS Code, communicating with devices over RPC,
+      host-side and on-device unit tests, and lots more in a guided
+      walkthrough.
+
+.. grid:: 2
+
+   .. grid-item-card:: :octicon:`code-square` Bazel quickstart
+      :link: https://cs.opensource.google/pigweed/quickstart/bazel
+      :link-type: url
+      :class-item: sales-pitch-cta-secondary
+
+      Fork our minimal, Bazel-based starter project to create a new
+      Pigweed project from scratch. The project includes a basic
+      blinky LED program that runs on Raspberry Pi Picos and can
+      be simulated on your development host.
+
+   .. grid-item-card:: :octicon:`list-ordered` More get started guides
+      :link: docs-get-started
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Set up a C++-based Zephyr project, set up GitHub Actions,
+      integrate Pigweed into an existing Bazel project, and more.
 
 ----------------
 What is Pigweed?
@@ -72,7 +97,13 @@ What is Pigweed?
 --------------------
 Who's using Pigweed?
 --------------------
-Pigweed has shipped on millions of devices.
+.. _satellites: https://www.spinlaunch.com/
+.. _autonomous aerial drones: https://www.flyzipline.com/
+
+.. TODO: b/358432838 - Update this section once the banned word list is fixed.
+
+Pigweed has shipped in millions of devices, including Google's suite of Pixel
+devices, Nest thermostats, `satellites`_, and `autonomous aerial drones`_.
 
 --------------------
 Showcase: pw_console
@@ -121,7 +152,7 @@ Talk to us
 .. grid:: 2
 
    .. grid-item-card:: :octicon:`device-camera-video` Monthly community meeting
-      :link: https://discord.com/channels/691686718377558037/951228399119126548
+      :link: https://groups.google.com/g/pigweed
       :link-type: url
       :class-item: sales-pitch-cta-secondary
 
@@ -140,10 +171,11 @@ Talk to us
    :hidden:
 
    Home <self>
+   Tour of Pigweed <docs/showcases/sense/index>
    What's new <changelog>
    docs/get_started/index
-   docs/showcases/index
    Source code <https://cs.pigweed.dev/pigweed>
+   docs/showcases/index
    docs/concepts/index
    docs/3p/index
    modules

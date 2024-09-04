@@ -43,32 +43,38 @@ config("colorize_output") {
 config("debugging") {
   # Enable debug symbol generation. This has no effect on final code size.
   cflags = [ "-g" ]
+  rustflags = [ "-Clink-arg=-g" ]
 }
 
 config("extra_debugging") {
   # Include things like macro expansion in debug info.
   cflags = [ "-g3" ]
+  rustflags = [ "-Clink-arg=-g3" ]
 }
 
 # Optimization levels
 config("optimize_debugging") {
   cflags = [ "-Og" ]
   ldflags = cflags
+  rustflags = [ "-Clink-arg=-Og" ]
 }
 
 config("optimize_speed") {
   cflags = [ "-O2" ]
   ldflags = cflags
+  rustflags = [ "-Clink-arg=-O2" ]
 }
 
 config("optimize_more_speed") {
   cflags = [ "-O3" ]
   ldflags = cflags
+  rustflags = [ "-Clink-arg=-O3" ]
 }
 
 config("optimize_size") {
   cflags = [ "-Os" ]
   ldflags = cflags
+  rustflags = [ "-Clink-arg=-Os" ]
 }
 
 config("enable_clang_fixed_point_types") {
@@ -105,6 +111,10 @@ config("optimize_size_clang") {
     "-Wl,-O2",
   ]
   ldflags += cflags
+  rustflags = []
+  foreach(f, ldflags) {
+    rustflags += [ "-Clink-arg=$f" ]
+  }
 }
 
 # Standard compiler flags to reduce output binary size.
@@ -121,9 +131,11 @@ config("reduced_size") {
   if (current_os == "mac" || current_os == "ios") {
     # Delete unreferenced sections. Helpful with -ffunction-sections.
     ldflags = [ "-Wl,-dead_strip" ]
+    rustflags = [ "-Clink-arg=-Wl,-dead_strip" ]
   } else {
     # Delete unreferenced sections. Helpful with -ffunction-sections.
     ldflags = [ "-Wl,--gc-sections" ]
+    rustflags = [ "-Clink-arg=-Wl,--gc-sections" ]
   }
 }
 
@@ -177,6 +189,15 @@ config("extra_strict_warnings") {
 # This config MUST NOT be used downstream to allow for warnings to be
 # added in the future without breaking downstream.
 config("internal_strict_warnings") {
+  configs = [
+    ":internal_strict_warnings_core",
+    ":shadow_all",
+  ]
+}
+
+# Core flags from ":internal_strict_warnings" that are enabled throughout
+# Pigweed. These are split out so ":shadow_all" can be disabled where needed.
+config("internal_strict_warnings_core") {
   cflags = [ "-Wswitch-enum" ]
 
   if (is_clang) {
@@ -189,6 +210,13 @@ config("internal_strict_warnings") {
   # TODO: b/243069432 - Enable pedantic warnings on Windows when they pass.
   if (host_os != "win") {
     configs = [ ":pedantic_warnings" ]
+  }
+}
+
+# Keep "-Wshadow-all" separate so it can be disabled individually.
+config("shadow_all") {
+  if (is_clang) {
+    cflags = [ "-Wshadow-all" ]
   }
 }
 
@@ -219,6 +247,16 @@ config("pedantic_warnings") {
 
   # TODO: b/335328444 - Enable C++ 20 extension warnings.
   cflags += [ "-Wno-deprecated-pragma" ]
+
+  cflags += [
+    # TODO: b/356904203 - Unblock Clang roll. Missing template argument
+    # warning introduced by Clang produces warnings in third party code.
+    # Remove this warning suppression after addressing the root cause.
+    "-Wno-missing-template-arg-list-after-template-kw",
+
+    # TODO: b/356689444 - Remove no-unknown-warning-option after Clang roll.
+    "-Wno-unknown-warning-option",
+  ]
 }
 
 # Numeric conversion warnings.
