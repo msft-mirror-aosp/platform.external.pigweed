@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import tempfile
 from types import ModuleType
+from collections.abc import Iterable
 from typing import Any, Callable, Sequence
 
 from pw_file import file_pb2
@@ -27,9 +28,10 @@ from pw_log import log_decoder
 from pw_log_rpc import rpc_log_stream
 from pw_metric import metric_parser
 import pw_rpc
-from pw_rpc import callback_client, console_tools
+from pw_rpc import callback_client, console_tools, client_utils
 import pw_transfer
 from pw_transfer import transfer_pb2
+from pw_stream import stream_readers
 from pw_system import snapshot
 from pw_thread import thread_analyzer
 from pw_thread_protos import thread_pb2
@@ -59,9 +61,9 @@ class Device:
         # pylint: disable=too-many-arguments
         self,
         channel_id: int,
-        reader: rpc.CancellableReader,
-        write,
-        proto_library: list[ModuleType | Path],
+        reader: stream_readers.CancellableReader,
+        write: Callable[[bytes], Any],
+        proto_library: Iterable[ModuleType | Path],
         detokenizer: detokenize.Detokenizer | None = None,
         timestamp_decoder: Callable[[int], str] | None = None,
         rpc_timeout_s: float = 5,
@@ -70,7 +72,7 @@ class Device:
         logger: logging.Logger | logging.LoggerAdapter = DEFAULT_DEVICE_LOGGER,
     ):
         self.channel_id = channel_id
-        self.protos = proto_library
+        self.protos = list(proto_library)
         self.detokenizer = detokenizer
         self.rpc_timeout_s = rpc_timeout_s
 
@@ -101,7 +103,7 @@ class Device:
         if transfer_pb2 not in self.protos:
             self.protos.append(transfer_pb2)
 
-        self.client: rpc.RpcClient
+        self.client: client_utils.RpcClient
         if use_hdlc_encoding:
             channels = [
                 pw_rpc.Channel(self.channel_id, rpc.channel_output(write))
@@ -115,7 +117,7 @@ class Device:
             )
         else:
             channel = pw_rpc.Channel(self.channel_id, write)
-            self.client = rpc.NoEncodingSingleChannelRpcClient(
+            self.client = client_utils.NoEncodingSingleChannelRpcClient(
                 reader,
                 self.protos,
                 channel,

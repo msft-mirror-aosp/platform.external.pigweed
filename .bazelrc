@@ -30,6 +30,9 @@ common --host_per_file_copt=external/.*@-w
 common --per_file_copt=external.*picotool.*@-fexceptions,-frtti
 common --host_per_file_copt=external.*picotool.*@-fexceptions,-frtti
 
+# RP2xxx PIO assembler also needs exceptions.
+common --host_per_file_copt=external.*pioasm.*@-fexceptions,-frtti
+
 # Don't automatically create __init__.py files.
 #
 # This prevents spurious package name collisions at import time, and should be
@@ -255,6 +258,11 @@ common:remote_cache --remote_cache=grpcs://remotebuildexecution.googleapis.com
 common:remote_cache --google_default_credentials=true
 common:remote_cache --remote_instance_name=projects/pigweed-rbe-open/instances/default-instance
 common:remote_cache --remote_upload_local_results=false
+common:remote_cache --bes_backend="buildeventservice.googleapis.com"
+common:remote_cache --bes_timeout=60s
+common:remote_cache --bes_results_url="https://source.cloud.google.com/results/invocations/"
+common:remote_cache --remote_instance_name=projects/pigweed-rbe-open/instances/default-instance
+common:remote_cache --bes_instance_name=pigweed-rbe-open
 
 # Specifies desired output mode for running tests.
 # Valid values are
@@ -265,6 +273,24 @@ common:remote_cache --remote_upload_local_results=false
 #     (this will force tests to be executed locally one at a time regardless
 #     of --test_strategy value).
 test --test_output=errors
+
+# Exclude //pw_bluetooth_sapphire/fuchsia when the host platform is not
+# linux-amd64. This is the only platform that the Fuchsia SDK supports.
+common --enable_platform_specific_config
+# Incompatible host platforms.
+common:macos --deleted_packages=//pw_bluetooth_sapphire/fuchsia/...,//pw_async_fuchsia/...
+common:windows --deleted_packages=//pw_bluetooth_sapphire/fuchsia/...,//pw_async_fuchsia/...
+# Target build configurations for which @fuchsia_sdk is irrelevant and thus
+# targets should be pruned to avoid fetching @fuchsia_sdk.
+common:rp2350 --deleted_packages=//pw_bluetooth_sapphire/fuchsia/...,//pw_async_fuchsia/...
+common:rp2040 --deleted_packages=//pw_bluetooth_sapphire/fuchsia/...,//pw_async_fuchsia/...
+common:stm32f429i_baremetal --deleted_packages=//pw_bluetooth_sapphire/fuchsia/...,//pw_async_fuchsia/...
+common:stm32f429i_freertos --deleted_packages=//pw_bluetooth_sapphire/fuchsia/...,//pw_async_fuchsia/...
+common:lm3s6965evb --deleted_packages=//pw_bluetooth_sapphire/fuchsia/...,//pw_async_fuchsia/...
+common:microbit --deleted_packages=//pw_bluetooth_sapphire/fuchsia/...,//pw_async_fuchsia/...
+
+# Import `--config=fuchsia` scoped pigweed backends.
+import %workspace%/pw_bluetooth_sapphire/fuchsia/backends.bazelrc
 
 # User bazelrc file; see
 # https://bazel.build/configure/best-practices#bazelrc-file

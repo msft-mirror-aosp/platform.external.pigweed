@@ -46,16 +46,19 @@ pigweed_arm_clang_defaults = {
 
 # Configs specific to different architectures.
 _cortex_m0plus = [
+  "$dir_pw_build:link_with_lld",
   "$dir_pw_toolchain/arm_clang:nosys",
   "$dir_pw_toolchain/arm_clang:cortex_m0plus",
 ]
 
 _cortex_m3 = [
+  "$dir_pw_build:link_with_lld",
   "$dir_pw_toolchain/arm_clang:nosys",
   "$dir_pw_toolchain/arm_clang:cortex_m3",
 ]
 
 _cortex_m4 = [
+  "$dir_pw_build:link_with_lld",
   "$dir_pw_toolchain/arm_clang:nosys",
   "$dir_pw_toolchain/arm_clang:cortex_m4",
 ]
@@ -66,23 +69,33 @@ _cortex_m4f = [
 ]
 
 _cortex_m7 = [
+  "$dir_pw_build:link_with_lld",
   "$dir_pw_toolchain/arm_clang:nosys",
   "$dir_pw_toolchain/arm_clang:cortex_m7",
 ]
 
 _cortex_m7f = [
+  "$dir_pw_build:link_with_lld",
   "$dir_pw_toolchain/arm_clang:nosys",
   "$dir_pw_toolchain/arm_clang:cortex_m7f",
 ]
 
 _cortex_m33 = [
+  "$dir_pw_build:link_with_lld",
   "$dir_pw_toolchain/arm_clang:nosys",
   "$dir_pw_toolchain/arm_clang:cortex_m33",
 ]
 
 _cortex_m33f = [
+  "$dir_pw_build:link_with_lld",
   "$dir_pw_toolchain/arm_clang:nosys",
   "$dir_pw_toolchain/arm_clang:cortex_m33f",
+]
+
+_cortex_m55 = [
+  "$dir_pw_build:link_with_lld",
+  "$dir_pw_toolchain/arm_clang:nosys",
+  "$dir_pw_toolchain/arm_clang:cortex_m55",
 ]
 
 # Describes ARM clang toolchains for specific targets.
@@ -303,6 +316,33 @@ pw_toolchain_arm_clang = {
                         [ "$dir_pw_build:optimize_size_clang" ]
     }
   }
+  cortex_m55_debug = {
+    name = "arm_clang_cortex_m55_debug"
+    forward_variables_from(_arm_clang_toolchain, "*")
+    defaults = {
+      forward_variables_from(pigweed_arm_clang_defaults, "*")
+      default_configs = pigweed_default_configs + _cortex_m55 +
+                        [ "$dir_pw_build:optimize_debugging" ]
+    }
+  }
+  cortex_m55_speed_optimized = {
+    name = "arm_clang_cortex_m55_speed_optimized"
+    forward_variables_from(_arm_clang_toolchain, "*")
+    defaults = {
+      forward_variables_from(pigweed_arm_clang_defaults, "*")
+      default_configs = pigweed_default_configs + _cortex_m55 +
+                        [ "$dir_pw_build:optimize_speed" ]
+    }
+  }
+  cortex_m55_size_optimized = {
+    name = "arm_clang_cortex_m55_size_optimized"
+    forward_variables_from(_arm_clang_toolchain, "*")
+    defaults = {
+      forward_variables_from(pigweed_arm_clang_defaults, "*")
+      default_configs = pigweed_default_configs + _cortex_m55 +
+                        [ "$dir_pw_build:optimize_size_clang" ]
+    }
+  }
 }
 
 # This list just contains the members of the above scope for convenience to make
@@ -333,4 +373,7 @@ pw_toolchain_arm_clang_list = [
   pw_toolchain_arm_clang.cortex_m33f_debug,
   pw_toolchain_arm_clang.cortex_m33f_speed_optimized,
   pw_toolchain_arm_clang.cortex_m33f_size_optimized,
+  pw_toolchain_arm_clang.cortex_m55_debug,
+  pw_toolchain_arm_clang.cortex_m55_speed_optimized,
+  pw_toolchain_arm_clang.cortex_m55_size_optimized,
 ]
