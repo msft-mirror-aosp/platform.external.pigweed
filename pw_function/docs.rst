@@ -5,9 +5,6 @@ pw_function
 ===========
 .. pigweed-module::
    :name: pw_function
-   :tagline: Embedded-friendly std::function
-   :status: stable
-   :languages: C++17
 
 * **Familiar**. ``pw_function`` provides a standard, general-purpose API for
   wrapping callable objects that's similar to `std::function`_.
@@ -207,6 +204,8 @@ place of a function pointer or equivalent callable.
    // After:
    void DoTheThing(int arg, const pw::Function<void(int result)>& callback);
    // Note the parameter name within the function signature template for clarity.
+
+.. _module-pw_function-move-semantics:
 
 Move semantics
 ==============
@@ -452,5 +451,3 @@ be used as a reference when sizing external buffers for ``pw::Function``
 objects.
 
 .. include:: callable_size
-
-

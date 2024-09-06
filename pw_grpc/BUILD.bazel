@@ -18,6 +18,7 @@ load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
 )
+load("//pw_build:selects.bzl", "TARGET_COMPATIBLE_WITH_HOST_SELECT")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
     "pw_proto_filegroup",
@@ -35,9 +36,14 @@ cc_library(
         "public/pw_grpc/connection.h",
     ],
     includes = ["public"],
+    target_compatible_with = select({
+        ":pw_rpc_config_setting": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         ":hpack",
         ":send_queue",
+        "//pw_allocator:allocator",
         "//pw_assert",
         "//pw_async:dispatcher",
         "//pw_async_basic:dispatcher",
@@ -64,7 +70,6 @@ cc_library(
         "//pw_async:dispatcher",
         "//pw_async_basic:dispatcher",
         "//pw_bytes",
-        "//pw_chrono:system_clock",
         "//pw_function",
         "//pw_log",
         "//pw_result",
@@ -150,10 +155,12 @@ cc_binary(
         ":echo_cc.pwpb_rpc",
         ":grpc_channel_output",
         ":pw_rpc_handler",
+        "//pw_allocator:libc_allocator",
         "//pw_assert_basic:pw_assert_basic_handler",
         "//pw_assert_log:assert_backend",
         "//pw_assert_log:check_backend",
         "//pw_bytes",
+        "//pw_checksum",
         "//pw_log",
         "//pw_result",
         "//pw_rpc",
@@ -215,6 +222,7 @@ go_test(
     data = [
         ":test_pw_rpc_server",
     ],
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
         "@org_golang_google_grpc//:grpc",
         "@org_golang_google_grpc//codes",

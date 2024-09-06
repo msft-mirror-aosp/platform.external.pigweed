@@ -281,6 +281,8 @@ executable and ``pw_protobuf_compiler_PROTOC_BINARY`` to the path, relative to
 For all ``protoc`` invocations, the build will add a dependency on that target
 and will invoke that executable.
 
+.. _module-pw_protobuf_compiler-cmake:
+
 CMake
 =====
 CMake provides a ``pw_proto_library`` function with similar features as the
@@ -475,8 +477,8 @@ e.g.
 Why isn't there one rule to generate all the code?
 --------------------------------------------------
 There is! Like in GN, it's called ``pw_proto_library``, and has subtargets
-corresponding to the different codegen flavors. However, *we recommend against
-using this target*. It is deprecated, and will be removed in the future.
+corresponding to the different codegen flavors. However, new code **should not**
+use this. It is deprecated, and will be removed in the future.
 
 The ``pw_proto_library`` target has a number of disadvantages:
 

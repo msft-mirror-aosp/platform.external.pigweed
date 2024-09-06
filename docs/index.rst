@@ -3,7 +3,7 @@
 =======
 Pigweed
 =======
-*Modern software development for embedded systems*
+*Sustained, robust, and rapid embedded product development for large teams*
 
 .. raw:: html
 
@@ -87,6 +87,8 @@ and log viewer for each new project!
    :alt: Using pw_console to interact with a device
 
    Using pw_console to interact with a device
+
+.. _docs-root-changelog:
 
 ---------------------
 What's new in Pigweed

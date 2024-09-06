@@ -1,224 +1,171 @@
 .. _module-pw_allocator:
 
-------------
+============
 pw_allocator
-------------
+============
+.. pigweed-module::
+   :name: pw_allocator
 
-This module provides various building blocks
-for a dynamic allocator. This is composed of the following parts:
+- **Flexible**: Simple interface makes it easy to inject specific behaviors.
+- **Safe**: Can detect memory corruption, e.g overflows and use-after-free.
+- **Measurable**: Pick what allocations you want to track and measure.
 
-- ``block``: An implementation of a doubly-linked list of memory blocks,
-  supporting splitting and merging of blocks.
-- ``freelist``: A freelist, suitable for fast lookups of available memory chunks
-  (i.e. ``block`` s).
-- ``allocator``: An interface for memory allocators. Several concrete
-  implementations are also provided.
-
-Block
-=====
-.. doxygenclass:: pw::allocator::Block
-   :members:
-
-FreeList
-========
-.. doxygenclass:: pw::allocator::FreeList
-   :members:
-
-Allocator
-=========
-.. doxygenclass:: pw::allocator::Allocator
-   :members:
-
-Example
--------
-As an example, the following implements a simple allocator that tracks memory
-using ``Block``.
-
-.. literalinclude:: public/pw_allocator/simple_allocator.h
+.. literalinclude:: examples/basic.cc
    :language: cpp
    :linenos:
-   :start-after: [pw_allocator_examples_simple_allocator]
-   :end-before: [pw_allocator_examples_simple_allocator]
-
-.. _module-pw_allocator-other-impls:
-
-Other Implemetations
---------------------
-Provided implementations of the ``Allocator`` interface include:
-
-- ``FallbackAllocator``: Dispatches first to a primary allocator, and, if that
-  fails, to a secondary alloator.
-- ``LibCAllocator``: Uses ``malloc``, ``realloc``, and ``free``. This should
-  only be used if the ``libc`` in use provides those functions.
-- ``MultiplexAllocator``: Abstract class that applications can use to dispatch
-  between allocators based on an application-specific request type identifier.
-- ``NullAllocator``: Always fails. This may be useful if allocations should be
-  disallowed under specific circumstances.
-- ``BlockAllocator``: Tracks memory using ``Block``. Derived types use
-  specific strategies for how to choose a block to use to satisfy a request.
-  Derived types include:
-
-  - ``FirstFitBlockAllocator``: Chooses the first block that is large enough to
-    satisfy a request. This strategy is very fast, but may increase
-    fragmentation.
-  - ``LastFitBlockAllocator``: Chooses the last block that is large enough to
-    satisfy a request. This strategy is fast, and may fragment memory less than
-    ``FirstFitBlockAllocator`` when satisfying aligned memory requests.
-  - ``BestFitBlockAllocator``: Chooses the smallest block that is large enough
-    to satisfy a request. This strategy maximizes the avilable space for large
-    allocations, but may increase fragmentation and is slower.
-  - ``WorstFitBlockAllocator``: Chooses the largest block if it is large enough
-    to satisfy a request. This strategy minimizes the amount of memory in
-    unusably small blocks, but is slower.
-  - ``DualFirstFitBlockAllocator``: Acts like ``FirstFitBlockAllocator`` or
-    ``LastFitBlockAllocator`` depending on whether a request is larger or
-    smaller, respectively, than a given threshold value. This strategy preserves
-    the speed of the two other strategies, while fragmenting memory less by
-    co-locating allocations of similar sizes.
-
-- ``SynchronizedAllocator``: Synchronizes access to another allocator, allowing
-  it to be used by multiple threads.
-- ``TrackingAllocator``: Wraps another allocator and records its usage.
-
-UniquePtr
-=========
-.. doxygenclass:: pw::allocator::UniquePtr
-   :members:
-
-.. _module-pw_allocator-test-support:
-
-Test Support
-============
-This module also provides several utilities designed to make it easier to write
-tests for custom ``Allocator`` implementations:
-
-AllocatorForTest
-----------------
-.. doxygenclass:: pw::allocator::test::AllocatorForTest
-   :members:
-
-AllocatorTestHarness
---------------------
-.. doxygenclass:: pw::allocator::test::AllocatorTestHarness
-   :members:
-
-Heap Poisoning
-==============
-
-By default, this module disables heap poisoning since it requires extra space.
-User can enable heap poisoning by enabling the ``pw_allocator_POISON_HEAP``
-build arg.
-
-.. tab-set::
-
-   .. tab-item:: GN
-      :sync: gn
-
-      .. code-block:: sh
-
-         $ gn args out
-         # Modify and save the args file to use heap poison.
-         pw_allocator_POISON_HEAP = true
-
-   .. tab-item:: CMake
-      :sync: cmake
-
-      .. code-block:: sh
-
-         # Modify the top-level CMakeLists.txt and add:
-         set(pw_allocator_POISON_HEAP, ON)
-
-When heap poisoning is enabled, ``pw_allocator`` will add ``sizeof(void*)``
-bytes before and after the usable space of each ``Block``, and paint the space
-with a hard-coded randomized pattern. During each check, ``pw_allocator``
-will check if the painted space still remains the pattern, and return ``false``
-if the pattern is damaged.
-
-Heap Visualizer
-===============
-
-Functionality
--------------
-
-``pw_allocator`` supplies a pw command ``pw heap-viewer`` to help visualize
-the state of the heap at the end of a dump file. The heap is represented by
-ASCII characters, where each character represents 4 bytes in the heap.
-
-.. image:: doc_resources/pw_allocator_heap_visualizer_demo.png
-
-Usage
------
-
-The heap visualizer can be launched from a shell using the Pigweed environment.
-
-.. code-block:: sh
-
-  $ pw heap-viewer --dump-file <directory of dump file> --heap-low-address
-  <hex address of heap lower address> --heap-high-address <hex address of heap
-  lower address> [options]
-
-The required arguments are:
-
-- ``--dump-file`` is the path of a file that contains ``malloc/free``
-  information. Each line in the dump file represents a ``malloc/free`` call.
-  ``malloc`` is represented as ``m <size> <memory address>`` and ``free`` is
-  represented as ``f <memory address>``. For example, a dump file should look
-  like:
-
-  .. code-block:: sh
-
-    m 20 0x20004450  # malloc 20 bytes, the pointer is 0x20004450
-    m 8 0x2000447c   # malloc 8 bytes, the pointer is 0x2000447c
-    f 0x2000447c     # free the pointer at 0x2000447c
-    ...
-
-  Any line not formatted as the above will be ignored.
-
-- ``--heap-low-address`` is the start of the heap. For example:
-
-  .. code-block:: sh
-
-    --heap-low-address 0x20004440
-
-- ``--heap-high-address`` is the end of the heap. For example:
-
-  .. code-block:: sh
-
-    --heap-high-address 0x20006040
-
-Options include the following:
-
-- ``--poison-enable``: If heap poisoning is enabled during the
-  allocation or not. The value is ``False`` if the option is not specified and
-  ``True`` otherwise.
-
-- ``--pointer-size <integer of pointer size>``: The size of a pointer on the
-  machine where ``malloc/free`` is called. The default value is ``4``.
-
-.. _module-pw_allocator-size:
-
-Size report
-===========
-``pw_allocator`` provides some of its own implementations of the ``Allocator``
-interface, whos costs are shown below.
-
-.. include:: allocator_size_report
-
-.. _module-pw_allocator-metric-collection:
-
-Metric collection
-=================
-Consumers can use a ``TrackingAllocator`` to wrap an allocator and collect
-usage statistics. These statistics are implemented using
-:ref:`module-pw_metric`.
+   :start-after: [pw_allocator-examples-basic-allocate]
+   :end-before: [pw_allocator-examples-basic-allocate]
 
 .. code-block:: cpp
 
-  MyAllocator allocator;
-  TrackingAllocator tracker(PW_TOKENIZE_STRING_EXPR("my allocator"));
-  tracker.Init(allocator);
-  // ...Perform various allocations and deallocations...
-  tracker.Dump();
+   // Any of these allocators can be passed to the routine above.
+   WithBuffer<LastFitBlockAllocator<uint32_t>, 0x1000> block_allocator;
+   LibCAllocator libc_allocator;
+   TrackingAllocator tracker(libc_allocator);
+   SynchronizedAllocator synced(*block_allocator);
 
-Metric collection is controlled using the ``pw_allocator_COLLECT_METRICS`` build
-argument. If this is unset or ``false``, metric collection is skipped.
+
+Dynamically allocate without giving up control! Pigweed's allocators let you
+easily combine allocator features for your needs, without extra code size or
+performance penalties for those you don't. Complex projects in particular can
+benefit from dynamic allocation through simplified code, improved memory usage,
+increased shared memory, and reduced large reservations.
+
+**Want to allocate objects from specific memory like SRAM or PSRAM?**
+
+Use `dependency injection`_! Write your code to take
+:ref:`module-pw_allocator-api-allocator` parameters, and you can quickly and
+easily change where memory comes from or what additional features are provided
+simply by changing what allocator is passed:
+
+.. literalinclude:: examples/linker_sections.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-linker_sections-injection]
+   :end-before: [pw_allocator-examples-linker_sections-injection]
+
+Now you can easily allocate objects in the example above using SRAM, PSRAM, or
+both:
+
+.. literalinclude:: examples/linker_sections.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-linker_sections-placement]
+   :end-before: [pw_allocator-examples-linker_sections-placement]
+
+**Worried about forgetting to deallocate?**
+
+Use a smart pointer!
+
+.. literalinclude:: examples/basic.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-basic-make_unique]
+   :end-before: [pw_allocator-examples-basic-make_unique]
+
+**Want to know how much memory has been allocated?**
+
+Pick the metrics you're interested in and track them with a
+:ref:`module-pw_allocator-api-tracking_allocator`:
+
+.. literalinclude:: examples/metrics.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-metrics-custom_metrics1]
+   :end-before: [pw_allocator-examples-metrics-custom_metrics1]
+
+.. literalinclude:: examples/metrics.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-metrics-custom_metrics2]
+   :end-before: [pw_allocator-examples-metrics-custom_metrics2]
+
+**Need to share the allocator with another thread or an interrupt handler?**
+
+Use a :ref:`module-pw_allocator-api-synchronized_allocator` with the lock of
+your choice:
+
+.. literalinclude:: examples/spin_lock.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_allocator-examples-spin_lock]
+   :end-before: [pw_allocator-examples-spin_lock]
+
+.. tip:: Check out the :ref:`module-pw_allocator-guides` for even more code
+   samples!
+
+--------------------
+Is it right for you?
+--------------------
+.. rst-class:: key-text
+
+Does your project need to use memory...
+
+- Without knowing exactly how much ahead of time?
+- From different backing storage, e.g. SRAM vs. PSRAM?
+- Across different tasks using a shared pool?
+- In multiple places, and you need to know how much each place is using?
+
+If you answered "yes" to any of these questions, ``pw_allocator`` may be able to
+help! This module is designed to faciliate dynamic allocation for embedded
+projects that are sufficiently complex to make static allocation infeasible.
+
+Smaller projects may be able to enumerate their objects and preallocate any
+storage they may need on device when running, and may be subject to extremely
+tight memory constraints. In these cases, ``pw_allocator`` may add more costs in
+terms of code size, overhead, and performance than it provides benefits in terms
+of code simplicity and memory sharing.
+
+At the other extreme, larger projects may be built on platforms with rich
+operating system capabilities. On these platforms, the system and language
+runtime may already provide dynamic allocation and memory may be less
+constrained. In these cases, ``pw_allocator`` may not provide the same
+capabilities as the platform.
+
+Between these two is a range of complex projects on RTOSes and other platforms.
+These projects may benefit from using the
+:ref:`module-pw_allocator-api-allocator` interface and its implementations to
+manage memory.
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   guide
+   api
+   design
+   code_size
+
+.. grid:: 2
+
+   .. grid-item-card:: :octicon:`rocket` Guides
+      :link: module-pw_allocator-guides
+      :link-type: ref
+      :class-item: sales-pitch-cta-primary
+
+      Integrate pw_allocator into your project and learn common use cases
+
+   .. grid-item-card:: :octicon:`code-square` API reference
+      :link: module-pw_allocator-api
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Detailed description of the pw_allocator's API
+
+.. grid:: 2
+
+   .. grid-item-card:: :octicon:`code-square` Design & roadmap
+      :link: module-pw_allocator-design
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Learn why pw_allocator is designed the way it is, and upcoming plans
+
+   .. grid-item-card:: :octicon:`code-square` Code size analysis
+      :link: module-pw_allocator-size-reports
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Understand pw_allocator's code footprint and savings potential
+
+.. _dependency injection: https://en.wikipedia.org/wiki/Dependency_injection

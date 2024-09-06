@@ -1,4 +1,4 @@
-# Copyright 2023 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -156,16 +156,17 @@ pw_seed("0115") {
 pw_seed("0116") {
   changelist = 177696
   title = "pw_net Sockets"
-  status = "Open for Comments"
+  status = "On Hold"
   author = "Wyatt Hepler"
   facilitator = "Taylor Cramer"
 }
 
 pw_seed("0117") {
-  changelist = 178350
+  sources = [ "0117-pw_i3c.rst" ]
   title = "pw_i3c"
-  status = "Open for Comments"
+  status = "Accepted"
   author = "Jack Chen"
+  facilitator = "Alexei Frolov"
 }
 
 pw_seed("0118") {
@@ -187,9 +188,9 @@ pw_seed("0119") {
 }
 
 pw_seed("0120") {
-  changelist = 182805
-  title = "pw_sensor Sensor driver configuration"
-  status = "Draft"
+  sources = [ "0120-pw-sensor-config.rst" ]
+  status = "Accepted"
+  title = "pw_sensor Sensor configuration"
   author = "Yuval Peress"
 }
 
@@ -217,9 +218,9 @@ pw_seed("0123") {
 }
 
 pw_seed("0124") {
-  changelist = 188670
+  sources = [ "0124-multisink-size-info.rst" ]
   title = "Interfaces for Retrieving Size Information from Multisink"
-  status = "Draft"
+  status = "Intent Approved"
   author = "Jiacheng Lu"
   facilitator = "Carlos Chinchilla"
 }
@@ -229,6 +230,34 @@ pw_seed("0125") {
   title = "Statistics Database"
   status = "Draft"
   author = "Erik Staats"
+}
+
+pw_seed("0126") {
+  changelist = 200910
+  title = "Key-Value Store Interfaces"
+  status = "Draft"
+  author = "Wenji Li"
+}
+
+pw_seed("0127") {
+  changelist = 198134
+  title = "pw_sensor Reading"
+  status = "Draft"
+  author = "Yuval Peress"
+}
+
+pw_seed("0128") {
+  title = "Abstracting Thread Creation"
+  author = "Wyatt Hepler"
+  status = "Draft"
+  changelist = 206670
+}
+
+pw_seed("0129") {
+  title = "pw_assert: Support PW_ASSERT with non-argument message"
+  author = "momoshen"
+  status = "Draft"
+  changelist = 207130
 }
 
 # This must be defined after all `pw_seed` targets, as it relies on information
@@ -263,5 +292,9 @@ pw_seed_index("seeds") {
     ":0123",
     ":0124",
     ":0125",
+    ":0126",
+    ":0127",
+    ":0128",
+    ":0129",
   ]
 }

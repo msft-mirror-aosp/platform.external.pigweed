@@ -5,9 +5,6 @@ pw_status
 =========
 .. pigweed-module::
    :name: pw_status
-   :tagline: Exception-free error propagation for embedded
-   :status: stable
-   :languages: C++17, C, Python, Java, TypeScript, Rust
 
    - **Easy**: Simple to understand, includes convenient macro ``PW_TRY``
    - **Efficient**: No memory allocation, no exceptions
@@ -69,6 +66,8 @@ and `gRPC <https://grpc.io>`_ (`doc/statuscodes.md
       :class-item: sales-pitch-cta-secondary
 
       Detailed description of pw_status's methods.
+
+.. _module-pw_status-quickref:
 
 ---------------
 Quick reference

@@ -16,10 +16,13 @@
 
 #include "pw_unit_test/framework.h"
 
-namespace pw::allocator {
+namespace {
+
+using ::pw::allocator::GetNullAllocator;
+using ::pw::allocator::Layout;
 
 TEST(NullAllocatorTest, Allocate) {
-  NullAllocator allocator;
+  pw::Allocator& allocator = GetNullAllocator();
   // Allocate should fail, regardless of size and alignment.
   for (size_t size = 1; size < 0x100; size <<= 1) {
     for (size_t alignment = 1; alignment < 0x100; alignment <<= 1) {
@@ -28,11 +31,4 @@ TEST(NullAllocatorTest, Allocate) {
   }
 }
 
-TEST(NullAllocatorTest, Resize) {
-  NullAllocator allocator;
-  // It is not possible to get a valid pointer from Allocate.
-  constexpr Layout layout = Layout::Of<uint8_t>();
-  EXPECT_FALSE(allocator.Resize(this, layout, 1));
-}
-
-}  // namespace pw::allocator
+}  // namespace

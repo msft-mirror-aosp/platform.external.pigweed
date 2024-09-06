@@ -16,6 +16,7 @@ load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
 )
+load("//pw_build:selects.bzl", "TARGET_COMPATIBLE_WITH_HOST_SELECT")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -24,9 +25,15 @@ licenses(["notice"])
 cc_library(
     name = "poll",
     hdrs = [
+        "public/pw_async2/internal/poll_internal.h",
         "public/pw_async2/poll.h",
     ],
     includes = ["public"],
+    deps = [
+        "//third_party/fuchsia:stdcompat",
+        "@pigweed//pw_polyfill",
+        "@pigweed//pw_string:to_string",
+    ],
 )
 
 pw_cc_test(
@@ -34,6 +41,7 @@ pw_cc_test(
     srcs = ["poll_test.cc"],
     deps = [
         ":poll",
+        "@pigweed//pw_result",
     ],
 )
 
@@ -70,15 +78,21 @@ cc_library(
         "public",
     ],
     deps = [
+        ":dispatcher_backend",
         ":dispatcher_base",
-        "@pigweed//targets:pw_async2_dispatcher_backend",
     ],
+)
+
+label_flag(
+    name = "dispatcher_backend",
+    build_setting_default = ":dispatcher_backend_multiplexer",
 )
 
 cc_library(
     name = "dispatcher_backend_multiplexer",
     visibility = ["@pigweed//targets:__pkg__"],
     deps = select({
+        "@platforms//os:linux": ["//pw_async2_epoll:dispatcher"],
         "//conditions:default": ["//pw_async2_basic:dispatcher"],
     }),
 )
@@ -87,4 +101,105 @@ pw_cc_test(
     name = "dispatcher_test",
     srcs = ["dispatcher_test.cc"],
     deps = [":dispatcher"],
+)
+
+pw_cc_test(
+    name = "dispatcher_thread_test",
+    srcs = ["dispatcher_thread_test.cc"],
+    # TODO: b/343776738 - update to run on all compatible devices
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    deps = [
+        ":dispatcher",
+        "@pigweed//pw_function",
+        "@pigweed//pw_thread:sleep",
+        "@pigweed//pw_thread:thread",
+    ],
+)
+
+cc_library(
+    name = "pend_func_task",
+    hdrs = [
+        "public/pw_async2/pend_func_task.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":dispatcher",
+    ],
+)
+
+pw_cc_test(
+    name = "pend_func_task_test",
+    srcs = ["pend_func_task_test.cc"],
+    deps = [":pend_func_task"],
+)
+
+cc_library(
+    name = "pendable_as_task",
+    hdrs = [
+        "public/pw_async2/pendable_as_task.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":dispatcher",
+    ],
+)
+
+pw_cc_test(
+    name = "pendable_as_task_test",
+    srcs = ["pendable_as_task_test.cc"],
+    deps = [":pendable_as_task"],
+)
+
+cc_library(
+    name = "allocate_task",
+    hdrs = [
+        "public/pw_async2/allocate_task.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":dispatcher",
+        "//pw_allocator:allocator",
+    ],
+)
+
+pw_cc_test(
+    name = "allocate_task_test",
+    srcs = ["allocate_task_test.cc"],
+    deps = [
+        ":allocate_task",
+        "//pw_allocator:testing",
+    ],
+)
+
+cc_library(
+    name = "coro",
+    hdrs = [
+        "public/pw_async2/coro.h",
+    ],
+    includes = [
+        "public",
+    ],
+    tags = ["requires_cxx_20"],
+    deps = [
+        ":dispatcher",
+        "//pw_allocator:allocator",
+    ],
+)
+
+pw_cc_test(
+    name = "coro_test",
+    srcs = ["coro_test.cc"],
+    tags = ["requires_cxx_20"],
+    deps = [
+        ":coro",
+        ":dispatcher",
+        "//pw_allocator:null_allocator",
+        "//pw_allocator:testing",
+    ],
 )

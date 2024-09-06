@@ -199,11 +199,12 @@ autocomplete. Here's how to run the web console locally:
    $ npm install
    $ npm run dev
 
-Log viewer component
+Log Viewer Component
 ====================
 The NPM package also includes a log viewer component that can be embedded in any
 webapp. The component works with Pigweed's RPC stack out-of-the-box but also
-supports defining your own log source.
+supports defining your own log source. See :ref:`module-pw_web-log-viewer` for
+component interaction details.
 
 The component is composed of the component itself and a log source. Here is a
 simple example app that uses a mock log source:
@@ -290,6 +291,29 @@ to `createLogViewer()`. See implementation of
 `PigweedRPCLogSource <https://cs.opensource.google/pigweed/pigweed/+/main:ts/logging_source_rpc.ts>`_
 for reference.
 
+Column Order
+------------
+Column Order can be defined on initialization with the optional ``columnOrder`` parameter.
+Only fields that exist in the Log Source will render as columns in the Log Viewer.
+
+.. code-block:: typescript
+
+   createLogViewer(logSource, root, state, logStore, columnOrder)
+
+``columnOrder`` accepts an ``string[]`` and defaults to ``[log_source, time, timestamp]``
+
+.. code-block:: typescript
+
+   createLogViewer(logSource, root, state, logStore, ['log_source', 'time', 'timestamp'])
+
+Note, columns will always start with ``severity`` and end with ``message``, these fields do not need to be defined.
+Columns are ordered in the following format:
+
+1. ``severity``
+2. ``columnOrder``
+3. Fields that exist in Log Source but not listed will be added here.
+4. ``message``
+
 Color Scheme
 ------------
 The log viewer web component provides the ability to set the color scheme
@@ -321,11 +345,11 @@ Material Icon Font (Subsetting)
 -------------------------------
 .. inclusive-language: disable
 
-Log Viewer uses a subset of Material Icons Rounded hosted on `GitHub <https://github.com/google/material-design-icons/blob/master/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.woff2>`_
-with codepoints listed in the `codepoints <https://github.com/google/material-design-icons/blob/master/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.codepoints>`_ file
+The Log Viewer uses a subset of the Material Symbols Rounded icon font fetched via the `Google Fonts API <https://developers.google.com/fonts/docs/css2#forming_api_urls>`_. However, we also provide a subset of this font for offline usage at `GitHub <https://github.com/google/material-design-icons/blob/master/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.woff2>`_
+with codepoints listed in the `codepoints <https://github.com/google/material-design-icons/blob/master/variablefont/MaterialSymbolsRounded%5BFILL%2CGRAD%2Copsz%2Cwght%5D.codepoints>`_ file.
 
 (It's easiest to look up the codepoints at `fonts.google.com <https://fonts.google.com/icons?selected=Material+Symbols+Rounded>`_ e.g. see
-the sidebar shows the Codepoint for `"home" <https://fonts.google.com/icons?selected=Material+Symbols+Rounded:home:FILL@0;wght@0;GRAD@0;opsz@NaN>`_ is e88a)
+the sidebar shows the Codepoint for `"home" <https://fonts.google.com/icons?selected=Material+Symbols+Rounded:home:FILL@0;wght@0;GRAD@0;opsz@NaN>`_ is e88a).
 
 The following icons with codepoints are curently used:
 
@@ -386,3 +410,4 @@ Guides
   :maxdepth: 1
 
   testing
+  log_viewer

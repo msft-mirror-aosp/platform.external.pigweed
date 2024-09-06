@@ -19,17 +19,38 @@
 //! *Note*: This modules requires `std`.
 //!
 //! TODO: <pwbug.dev/311232605> - Document how to configure facade backends.
-use pw_log_backend_api::LogLevel;
-pub use pw_log_backend_println_macro::pw_logf_backend;
 
 #[doc(hidden)]
-pub const fn log_level_tag(level: LogLevel) -> &'static str {
-    match level {
-        LogLevel::Debug => "DBG",
-        LogLevel::Info => "INF",
-        LogLevel::Warn => "WRN",
-        LogLevel::Error => "ERR",
-        LogLevel::Critical => "CRT",
-        LogLevel::Fatal => "FTL",
+pub mod __private {
+    pub use pw_log_backend_println_macro::{_pw_log_backend, _pw_logf_backend};
+
+    use pw_log_backend_api::LogLevel;
+
+    pub const fn log_level_tag(level: LogLevel) -> &'static str {
+        match level {
+            LogLevel::Debug => "DBG",
+            LogLevel::Info => "INF",
+            LogLevel::Warn => "WRN",
+            LogLevel::Error => "ERR",
+            LogLevel::Critical => "CRT",
+            LogLevel::Fatal => "FTL",
+        }
     }
+}
+
+// Implement the `pw_log` backend API.
+#[macro_export]
+macro_rules! pw_log_backend {
+  ($log_level:expr, $format_string:literal $(, $args:expr)* $(,)?) => {{
+    use $crate::__private as __pw_log_backend_crate;
+    $crate::__private::_pw_log_backend!($log_level, $format_string, $($args),*);
+  }};
+}
+
+#[macro_export]
+macro_rules! pw_logf_backend {
+  ($log_level:expr, $format_string:literal $(, $args:expr)* $(,)?) => {{
+    use $crate::__private as __pw_log_backend_crate;
+    $crate::__private::_pw_logf_backend!($log_level, $format_string, $($args),*);
+  }};
 }

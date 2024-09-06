@@ -3,7 +3,10 @@
 ===========
 pw_protobuf
 ===========
-The protobuf module provides an expressive interface for encoding and decoding
+.. pigweed-module::
+   :name: pw_protobuf
+
+``pw_protobuf`` provides an expressive interface for encoding and decoding
 the Protocol Buffer wire format with a lightweight code and data footprint.
 
 .. note::
@@ -933,10 +936,10 @@ that can hold the set of values encoded by it, following these rules.
 
   .. code-block:: protobuf
 
-    message Register {
-      repeated int32 cash_in = 1;
-      repeated int32 cash_out = 2;
-    }
+     message Register {
+       repeated int32 cash_in = 1;
+       repeated int32 cash_out = 2;
+     }
 
   .. code-block:: text
 

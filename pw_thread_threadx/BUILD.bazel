@@ -64,6 +64,7 @@ cc_library(
         ":id",
         "//pw_assert",
         "//pw_string",
+        "//pw_thread:deprecated_or_new_thread_function",
         "//pw_thread:thread_facade",
     ],
 )
@@ -117,7 +118,6 @@ cc_library(
         ":sleep_headers",
         "//pw_assert",
         "//pw_chrono:system_clock",
-        "//pw_chrono_threadx:system_clock_headers",
         "//pw_thread:sleep_facade",
     ],
 )

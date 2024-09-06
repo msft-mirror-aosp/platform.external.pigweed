@@ -4,7 +4,13 @@
 pw_stream_uart_mcuxpresso
 =========================
 ``pw_stream_uart_mcuxpresso`` implements the ``pw_stream`` interface for reading
-and writing to a UART using the NXP MCUXpresso SDK.
+and writing to a UART using the NXP MCUXpresso SDK. ``UartStreamMcuxpresso``
+version uses the CPU to read and write to the UART, while ``UartDmaStreamMcuxpresso``
+uses DMA transfers to read and write to the UART minimizing the CPU utilization.
+
+``InterruptSafeUartWriterMcuxpresso`` implements an interrupt safe
+write-only stream to UART. Intended for use in fault handlers. It can be
+constructed ``constinit`` for use in pre-static constructor environments as well.
 
 .. note::
   This module will likely be superseded by a future ``pw_uart`` interface.
@@ -26,19 +32,27 @@ The name of the SDK source set must be set in the
 
 Usage
 =====
-.. code-block:: cpp
 
-  constexpr uint32_t kFlexcomm = 0;
-  constexpr uint32_t kBaudRate = 115200;
-  std::array<std::byte, 20> kBuffer = {};
+``UartStreamMcuxpresso`` example:
 
-  auto stream = UartStreamMcuxpresso{USART0,
-                                     kBaudRate,
-                                     kUSART_ParityDisabled,
-                                     kUSART_OneStopBit,
-                                     kBuffer};
+.. literalinclude:: stream_example.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_stream_uart_mcuxpresso-UartStreamExample]
+   :end-before: [pw_stream_uart_mcuxpresso-UartStreamExample]
 
-  PW_TRY(stream.Init(CLOCK_GetFlexcommClkFreq(kFlexcomm)));
+``UartDmaStreamMcuxpresso`` example:
 
-  std::array<std::byte, 10> to_write = {};
-  PW_TRY(stream.Write(to_write));
+.. literalinclude:: dma_stream_example.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_stream_uart_mcuxpresso-UartDmaStreamExample]
+   :end-before: [pw_stream_uart_mcuxpresso-UartDmaStreamExample]
+
+``InterruptSafeUartWriterMcuxpresso`` example:
+
+.. literalinclude:: interrupt_safe_writer_example.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_stream_uart_mcuxpresso-UartInterruptSafeWriterExample]
+   :end-before: [pw_stream_uart_mcuxpresso-UartInterruptSafeWriterExample]

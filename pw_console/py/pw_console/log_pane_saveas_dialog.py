@@ -16,7 +16,7 @@
 from __future__ import annotations
 import functools
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
@@ -75,7 +75,7 @@ class LogPaneSaveAsDialog(ConditionalContainer):
     # Height of the dialog box contens in lines of text.
     DIALOG_HEIGHT = 3
 
-    def __init__(self, log_pane: 'LogPane'):
+    def __init__(self, log_pane: LogPane):
         self.log_pane = log_pane
 
         self.path_validator = PathValidator()
@@ -179,8 +179,8 @@ class LogPaneSaveAsDialog(ConditionalContainer):
 
     def set_export_options(
         self,
-        table_format: Optional[bool] = None,
-        selected_lines_only: Optional[bool] = None,
+        table_format: bool | None = None,
+        selected_lines_only: bool | None = None,
     ) -> None:
         # Allows external callers such as the line selection dialog to set
         # export format options.

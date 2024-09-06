@@ -22,6 +22,8 @@ from pw_build.project_builder_argparse import add_project_builder_arguments
 WATCH_PATTERN_DELIMITER = ','
 
 WATCH_PATTERNS = (
+    '*.bazel',
+    '*.bzl',
     '*.bloaty',
     '*.c',
     '*.cc',
@@ -31,6 +33,7 @@ WATCH_PATTERNS = (
     'CMakeLists.txt',
     '*.dts',
     '*.dtsi',
+    '*.emb',
     '*.gn',
     '*.gni',
     '*.go',
@@ -84,10 +87,10 @@ def add_parser_arguments(
     )
 
     watch_group.add_argument(
-        '--no-restart',
-        dest='restart',
-        action='store_false',
-        help='Do not restart ongoing builds if files change.',
+        '--restart',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Whether to restart ongoing builds if files change.',
     )
 
     watch_group.add_argument(

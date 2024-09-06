@@ -17,6 +17,7 @@ load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
 )
+load("//pw_build:selects.bzl", "TARGET_COMPATIBLE_WITH_HOST_SELECT")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
     "pw_proto_filegroup",
@@ -48,6 +49,7 @@ cc_library(
     ],
     includes = ["public"],
     deps = [
+        ":address",
         "//pw_bytes",
         "//pw_chrono:system_clock",
         "//pw_status",
@@ -121,6 +123,8 @@ cc_library(
         "public/pw_i2c/initiator_gmock.h",
     ],
     includes = ["public"],
+    # TODO: b/310957361 - gtest not supported on device
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
         ":initiator",
         "@com_google_googletest//:gtest",

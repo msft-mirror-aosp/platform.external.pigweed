@@ -69,12 +69,12 @@ dump might look something like this:
 
 .. code-block:: none
 
-  {
-    "my_subsystem" : {
-      "successes" : 1000,
-      "attempts" : 1200,
-    }
-  }
+   {
+     "my_subsystem" : {
+       "successes" : 1000,
+       "attempts" : 1200,
+     }
+   }
 
 In this case, every instance of ``MySubsystem`` will have unique counters.
 
@@ -193,6 +193,8 @@ The metric object is 12 bytes on 32-bit platforms.
 
       Set the metric to the given value. Results in undefined behaviour if the
       metric is not of type float.
+
+.. _module-pw_metric-group:
 
 Group
 -----
@@ -621,6 +623,8 @@ Below is an example that **is incorrect**. Don't do what follows!
    **Don't destruct metrics**. Metrics are designed to be registered /
    structured upfront, then manipulated during a device's active phase. They do
    not support destruction.
+
+.. _module-pw_metric-exporting:
 
 -----------------
 Exporting metrics

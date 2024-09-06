@@ -33,33 +33,51 @@ template <typename LockType>
 class SynchronizedAllocator : public Allocator {
  public:
   constexpr SynchronizedAllocator(Allocator& allocator) noexcept
-      : borrowable_(allocator, lock_) {}
+      : Allocator(allocator.capabilities()), borrowable_(allocator, lock_) {}
 
  private:
-  using pointer_type = sync::BorrowedPointer<Allocator, LockType>;
+  using Pointer = sync::BorrowedPointer<Allocator, LockType>;
 
-  Status DoQuery(const void* ptr, Layout layout) const override {
-    pointer_type allocator = borrowable_.acquire();
-    return allocator->Query(ptr, layout);
-  }
-
+  /// @copydoc Allocator::Allocate
   void* DoAllocate(Layout layout) override {
-    pointer_type allocator = borrowable_.acquire();
+    Pointer allocator = borrowable_.acquire();
     return allocator->Allocate(layout);
   }
 
-  void DoDeallocate(void* ptr, Layout layout) override {
-    pointer_type allocator = borrowable_.acquire();
-    return allocator->Deallocate(ptr, layout);
+  /// @copydoc Allocator::Deallocate
+  void DoDeallocate(void* ptr) override {
+    Pointer allocator = borrowable_.acquire();
+    return allocator->Deallocate(ptr);
   }
 
-  bool DoResize(void* ptr, Layout layout, size_t new_size) override {
-    pointer_type allocator = borrowable_.acquire();
-    return allocator->Resize(ptr, layout, new_size);
+  /// @copydoc Allocator::Deallocate
+  void DoDeallocate(void* ptr, Layout) override { DoDeallocate(ptr); }
+
+  /// @copydoc Allocator::Resize
+  bool DoResize(void* ptr, size_t new_size) override {
+    Pointer allocator = borrowable_.acquire();
+    return allocator->Resize(ptr, new_size);
+  }
+
+  void* DoReallocate(void* ptr, Layout new_layout) override {
+    Pointer allocator = borrowable_.acquire();
+    return allocator->Reallocate(ptr, new_layout);
+  }
+
+  /// @copydoc Deallocator::GetInfo
+  Result<Layout> DoGetInfo(InfoType info_type, const void* ptr) const override {
+    Pointer allocator = borrowable_.acquire();
+    return GetInfo(*allocator, info_type, ptr);
   }
 
   LockType lock_;
   sync::Borrowable<Allocator, LockType> borrowable_;
 };
+
+/// Tag type used to indicate synchronization is NOT desired.
+///
+/// This can be useful with allocator parameters for module configuration, e.g.
+/// PW_MALLOC_LOCK_TYPE.
+struct NoSync {};
 
 }  // namespace pw::allocator

@@ -54,8 +54,8 @@ def register_pigweed_cxx_toolchains():
     # Fetch linux sysroot for host builds.
     cipd_repository(
         name = "linux_sysroot",
-        path = "fuchsia/third_party/sysroot/linux",
-        tag = "git_revision:d342388843734b6c5c50fb7e18cd3a76476b93aa",
+        path = "fuchsia/third_party/sysroot/bionic",
+        tag = "git_revision:702eb9654703a7cec1cadf93a7e3aa269d053943",
     )
 
     # Fetch gcc-arm-none-eabi toolchain.
@@ -71,6 +71,8 @@ def register_pigweed_cxx_toolchains():
         "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m3",
         "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
         "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4+nofp",
+        "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33",
+        "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33+nofp",
         "//pw_toolchain/host_clang:host_cc_toolchain_linux",
         "//pw_toolchain/host_clang:host_cc_toolchain_macos",
     )

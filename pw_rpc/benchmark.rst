@@ -3,6 +3,9 @@
 ===================
 pw_rpc Benchmarking
 ===================
+.. pigweed-module-subpage::
+   :name: pw_rpc
+
 pw_rpc provides tools for stress testing and benchmarking a Pigweed RPC
 deployment and the transport it is running over. Two components are included:
 
@@ -37,17 +40,17 @@ Example
 =======
 .. code-block:: c++
 
-  #include "pw_rpc/benchmark.h"
-  #include "pw_rpc/server.h"
+   #include "pw_rpc/benchmark.h"
+   #include "pw_rpc/server.h"
 
-  constexpr pw::rpc::Channel kChannels[] = { /* ... */ };
-  static pw::rpc::Server server(kChannels);
+   constexpr pw::rpc::Channel kChannels[] = { /* ... */ };
+   static pw::rpc::Server server(kChannels);
 
-  static pw::rpc::BenchmarkService benchmark_service;
+   static pw::rpc::BenchmarkService benchmark_service;
 
-  void RegisterServices() {
-    server.RegisterService(benchmark_service);
-  }
+   void RegisterServices() {
+     server.RegisterService(benchmark_service);
+   }
 
 Stress Test
 ===========
@@ -62,10 +65,10 @@ be run locally using GN:
 
 .. code-block:: bash
 
-     $ gn desc out //:integration_tests deps | grep fuzz
-     //pw_rpc/fuzz:cpp_client_server_fuzz_test(//targets/host/pigweed_internal:pw_strict_host_clang_debug)
+   $ gn desc out //:integration_tests deps | grep fuzz
+   //pw_rpc/fuzz:cpp_client_server_fuzz_test(//targets/host/pigweed_internal:pw_strict_host_clang_debug)
 
-     $ gn outputs out '//pw_rpc/fuzz:cpp_client_server_fuzz_test(//targets/host/pigweed_internal:pw_strict_host_clang_debug)'
-     pw_strict_host_clang_debug/gen/pw_rpc/fuzz/cpp_client_server_fuzz_test.pw_pystamp
+   $ gn outputs out '//pw_rpc/fuzz:cpp_client_server_fuzz_test(//targets/host/pigweed_internal:pw_strict_host_clang_debug)'
+   pw_strict_host_clang_debug/gen/pw_rpc/fuzz/cpp_client_server_fuzz_test.pw_pystamp
 
-     $ ninja -C out pw_strict_host_clang_debug/gen/pw_rpc/fuzz/cpp_client_server_fuzz_test.pw_pystamp
+   $ ninja -C out pw_strict_host_clang_debug/gen/pw_rpc/fuzz/cpp_client_server_fuzz_test.pw_pystamp

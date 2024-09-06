@@ -20,25 +20,28 @@ use syn::{
     parse_macro_input, Expr, Token,
 };
 
-use pw_format::macros::{generate_core_fmt, CoreFmtFormatMacroGenerator, FormatAndArgs, Result};
+use pw_format::macros::{
+    generate_core_fmt, Arg, CoreFmtFormatMacroGenerator, CoreFmtFormatStringParser,
+    FormatAndArgsFlavor, FormatStringParser, PrintfFormatStringParser, Result,
+};
 
 type TokenStream2 = proc_macro2::TokenStream;
 
-// Arguments to `pw_logf_backend`.  A log level followed by a [`pw_format`]
+// Arguments to `pw_log[f]_backend`.  A log level followed by a [`pw_format`]
 // format string.
 #[derive(Debug)]
-struct PwLogfArgs {
+struct PwLogArgs<T: FormatStringParser> {
     log_level: Expr,
-    format_and_args: FormatAndArgs,
+    format_and_args: FormatAndArgsFlavor<T>,
 }
 
-impl Parse for PwLogfArgs {
+impl<T: FormatStringParser> Parse for PwLogArgs<T> {
     fn parse(input: ParseStream) -> syn::parse::Result<Self> {
         let log_level: Expr = input.parse()?;
         input.parse::<Token![,]>()?;
-        let format_and_args: FormatAndArgs = input.parse()?;
+        let format_and_args: FormatAndArgsFlavor<_> = input.parse()?;
 
-        Ok(PwLogfArgs {
+        Ok(PwLogArgs {
             log_level,
             format_and_args,
         })
@@ -71,8 +74,7 @@ impl<'a> CoreFmtFormatMacroGenerator for LogfGenerator<'a> {
         Ok(quote! {
           {
             use std::println;
-            println!(#format_string, __pw_log_crate::pw_log_backend::log_level_tag(#log_level), #(#args),*);
-            // Todo, return status?
+            println!(#format_string, __pw_log_backend_crate::log_level_tag(#log_level), #(#args),*);
           }
         })
     }
@@ -82,29 +84,46 @@ impl<'a> CoreFmtFormatMacroGenerator for LogfGenerator<'a> {
         Ok(())
     }
 
-    fn integer_conversion(&mut self, ty: Ident, expression: Expr) -> Result<Option<String>> {
+    fn integer_conversion(&mut self, ty: Ident, expression: Arg) -> Result<Option<String>> {
         self.args.push(quote! {((#expression) as #ty)});
         Ok(None)
     }
 
-    fn string_conversion(&mut self, expression: Expr) -> Result<Option<String>> {
+    fn string_conversion(&mut self, expression: Arg) -> Result<Option<String>> {
         self.args.push(quote! {((#expression) as &str)});
         Ok(None)
     }
 
-    fn char_conversion(&mut self, expression: Expr) -> Result<Option<String>> {
+    fn char_conversion(&mut self, expression: Arg) -> Result<Option<String>> {
         self.args.push(quote! {((#expression) as char)});
         Ok(None)
+    }
+
+    fn untyped_conversion(&mut self, expression: Arg) -> Result<()> {
+        self.args.push(quote! {(#expression)});
+        Ok(())
     }
 }
 
 #[proc_macro]
-pub fn pw_logf_backend(tokens: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(tokens as PwLogfArgs);
+pub fn _pw_log_backend(tokens: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(tokens as PwLogArgs<CoreFmtFormatStringParser>);
 
     let generator = LogfGenerator::new(&input.log_level);
 
-    match generate_core_fmt(generator, input.format_and_args) {
+    match generate_core_fmt(generator, input.format_and_args.into()) {
+        Ok(token_stream) => token_stream.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+#[proc_macro]
+pub fn _pw_logf_backend(tokens: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(tokens as PwLogArgs<PrintfFormatStringParser>);
+
+    let generator = LogfGenerator::new(&input.log_level);
+
+    match generate_core_fmt(generator, input.format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }

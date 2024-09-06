@@ -36,6 +36,16 @@
             PW_SYS_IO_STM32CUBE_USART_PREFIX, \
             PW_SYS_IO_STM32CUBE_USART_NUM)
 
+// USART_GPIO_REMAP defined to __HAL_AFIO_REMAP_USARTn_val,
+// where n is the USART peripheral index and val is ENABLE or DISABLE.
+// It only applies to the stm32f1xx family.
+#define USART_GPIO_REMAP                      \
+  PW_CONCAT(__HAL_AFIO_REMAP_,                \
+            PW_SYS_IO_STM32CUBE_USART_PREFIX, \
+            PW_SYS_IO_STM32CUBE_USART_NUM,    \
+            _,                                \
+            PW_SYS_IO_STM32CUBE_GPIO_REMAP)
+
 // USART_GPIO_PORT defined to GPIOx, where x is the GPIO port letter that the
 // TX/RX pins are on.
 #define USART_GPIO_TX_PORT PW_CONCAT(GPIO, PW_SYS_IO_STM32CUBE_GPIO_TX_PORT)
@@ -67,20 +77,39 @@ extern "C" void pw_sys_io_Init() {
   USART_ENABLE();
   USART_GPIO_TX_PORT_ENABLE();
   USART_GPIO_RX_PORT_ENABLE();
+#if defined(STM32F1)
+  __HAL_RCC_AFIO_CLK_ENABLE();
+#endif  // defined(STM32F1)
 
   GPIO_InitStruct.Pin = USART_GPIO_TX_PIN;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
+#if defined(STM32F0) || defined(STM32F1) || defined(STM32F3)
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+#else
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+#endif
+#if !defined(STM32F1)
   GPIO_InitStruct.Alternate = USART_GPIO_ALTERNATE_FUNC;
+#endif  // !defined(STM32F1)
   HAL_GPIO_Init(USART_GPIO_TX_PORT, &GPIO_InitStruct);
 
   GPIO_InitStruct.Pin = USART_GPIO_RX_PIN;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
+#if defined(STM32F0) || defined(STM32F1) || defined(STM32F3)
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+#else
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+#endif
+#if !defined(STM32F1)
   GPIO_InitStruct.Alternate = USART_GPIO_ALTERNATE_FUNC;
+#endif  // !defined(STM32F1)
   HAL_GPIO_Init(USART_GPIO_RX_PORT, &GPIO_InitStruct);
+
+#if defined(STM32F1)
+  USART_GPIO_REMAP();
+#endif  // defined(STM32F1)
 
   uart.Instance = USART_INSTANCE;
   uart.Init.BaudRate = 115200;
@@ -116,7 +145,7 @@ Status WriteByte(std::byte b) {
 }
 
 // Writes a string using pw::sys_io, and add newline characters at the end.
-StatusWithSize WriteLine(const std::string_view& s) {
+StatusWithSize WriteLine(std::string_view s) {
   size_t chars_written = 0;
   StatusWithSize result = WriteBytes(as_bytes(span(s)));
   if (!result.ok()) {

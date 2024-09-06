@@ -13,7 +13,6 @@
 # the License.
 """Sphinx directives for Pigweed SEEDs"""
 
-from typing import List
 
 import docutils
 from docutils import nodes
@@ -33,6 +32,7 @@ def status_choice(arg) -> str:
     return directives.choice(
         arg,
         (
+            'draft',
             'open_for_comments',
             'intent_approved',
             'last_call',
@@ -93,7 +93,7 @@ class PigweedSeedDirective(SphinxDirective):
         except KeyError:
             raise self.error(f' :{option}: option is required')
 
-    def run(self) -> List[nodes.Node]:
+    def run(self) -> list[nodes.Node]:
         seed_number = '{:04d}'.format(self._try_get_option('number'))
         seed_name = self._try_get_option('name')
         status = self._try_get_option('status')

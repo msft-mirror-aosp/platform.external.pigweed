@@ -29,7 +29,7 @@ import os
 from pathlib import Path
 import sys
 import subprocess
-from typing import Iterator, Optional, Sequence
+from typing import Iterator, Sequence
 
 _COPYRIGHT_NOTICE = '''\
 # Copyright 2022 The Pigweed Authors
@@ -118,6 +118,8 @@ def _generate_modules_gni(
     script_path = Path(__file__).resolve()
     script = script_path.relative_to(script_path.parent.parent).as_posix()
 
+    module_paths: Sequence[Path] = list(Path(module) for module in modules)
+
     yield _COPYRIGHT_NOTICE
     yield ''
     yield '# Build args and lists for all modules in Pigweed.'
@@ -136,9 +138,9 @@ def _generate_modules_gni(
     yield '# Declare a build arg for each module.'
     yield 'declare_args() {'
 
-    for module in modules:
-        module_path = prefix.joinpath(module).as_posix()
-        yield f'dir_{module} = get_path_info("{module_path}", "abspath")'
+    for module in module_paths:
+        final_path = (prefix / module).as_posix()
+        yield f'dir_{module.name} = get_path_info("{final_path}", "abspath")'
 
     yield '}'
     yield ''
@@ -148,8 +150,8 @@ def _generate_modules_gni(
     yield f'# A list with paths to all Pigweed module. {_DO_NOT_SET}'
     yield 'pw_modules = ['
 
-    for module in modules:
-        yield f'dir_{module},'
+    for module in module_paths:
+        yield f'dir_{module.name},'
 
     yield ']'
     yield ''
@@ -157,16 +159,16 @@ def _generate_modules_gni(
     yield f'# A list with all Pigweed module test groups. {_DO_NOT_SET}'
     yield 'pw_module_tests = ['
 
-    for module in modules:
-        yield f'"$dir_{module}:tests",'
+    for module in module_paths:
+        yield f'"$dir_{module.name}:tests",'
 
     yield ']'
     yield ''
     yield f'# A list with all Pigweed modules docs groups. {_DO_NOT_SET}'
     yield 'pw_module_docs = ['
 
-    for module in modules:
-        yield f'"$dir_{module}:docs",'
+    for module in module_paths:
+        yield f'"$dir_{module.name}:docs",'
 
     yield ']'
     yield ''
@@ -212,7 +214,7 @@ def main(
     modules_list: Path,
     modules_gni_file: Path,
     mode: Mode,
-    stamp: Optional[Path] = None,
+    stamp: Path | None = None,
 ) -> int:
     """Manages the list of Pigweed modules."""
     prefix = Path(os.path.relpath(root, modules_gni_file.parent))

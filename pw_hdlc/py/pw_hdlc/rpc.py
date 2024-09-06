@@ -13,6 +13,8 @@
 # the License.
 """Utilities for using HDLC with ``pw_rpc``."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 import io
@@ -30,13 +32,9 @@ from typing import (
     Any,
     BinaryIO,
     Callable,
-    Dict,
     Iterable,
-    List,
-    Optional,
     Sequence,
     TypeVar,
-    Union,
 )
 import warnings
 
@@ -84,7 +82,7 @@ def channel_output(
     return write_hdlc
 
 
-FrameHandlers = Dict[int, Callable[[Frame], Any]]
+FrameHandlers = dict[int, Callable[[Frame], Any]]
 FrameTypeT = TypeVar('FrameTypeT')
 
 
@@ -109,7 +107,7 @@ class CancellableReader(ABC):
         self._read_args = read_args
         self._read_kwargs = read_kwargs
 
-    def __enter__(self) -> 'CancellableReader':
+    def __enter__(self) -> CancellableReader:
         return self
 
     def __exit__(self, *exc_info) -> None:
@@ -235,7 +233,7 @@ class DataReaderAndExecutor:
         on_read_error: Callable[[Exception], None],
         data_processor: Callable[[bytes], Iterable[FrameTypeT]],
         frame_handler: Callable[[FrameTypeT], None],
-        handler_threads: Optional[int] = 1,
+        handler_threads: int | None = 1,
     ):
         """Creates the data reader and frame delegator.
 
@@ -320,13 +318,13 @@ def write_to_file(
     output.flush()
 
 
-def default_channels(write: Callable[[bytes], Any]) -> List[pw_rpc.Channel]:
+def default_channels(write: Callable[[bytes], Any]) -> list[pw_rpc.Channel]:
     return [pw_rpc.Channel(DEFAULT_CHANNEL_ID, channel_output(write))]
 
 
-PathsModulesOrProtoLibrary = Union[
-    Iterable[python_protos.PathOrModule], python_protos.Library
-]
+PathsModulesOrProtoLibrary = (
+    Iterable[python_protos.PathOrModule] | python_protos.Library
+)
 
 
 class RpcClient:
@@ -337,7 +335,7 @@ class RpcClient:
         reader_and_executor: DataReaderAndExecutor,
         paths_or_modules: PathsModulesOrProtoLibrary,
         channels: Iterable[pw_rpc.Channel],
-        client_impl: Optional[pw_rpc.client.ClientImpl] = None,
+        client_impl: pw_rpc.client.ClientImpl | None = None,
     ):
         """Creates an RPC client.
 
@@ -373,7 +371,7 @@ class RpcClient:
     def close(self) -> None:
         self._reader_and_executor.stop()
 
-    def rpcs(self, channel_id: Optional[int] = None) -> Any:
+    def rpcs(self, channel_id: int | None = None) -> Any:
         """Returns object for accessing services on the specified channel.
 
         This skips some intermediate layers to make it simpler to invoke RPCs
@@ -403,14 +401,14 @@ class HdlcRpcClient(RpcClient):
         paths_or_modules: PathsModulesOrProtoLibrary,
         channels: Iterable[pw_rpc.Channel],
         output: Callable[[bytes], Any] = write_to_file,
-        client_impl: Optional[pw_rpc.client.ClientImpl] = None,
+        client_impl: pw_rpc.client.ClientImpl | None = None,
         *,
-        _incoming_packet_filter_for_testing: Optional[
-            pw_rpc.ChannelManipulator
-        ] = None,
+        _incoming_packet_filter_for_testing: (
+            pw_rpc.ChannelManipulator | None
+        ) = None,
         rpc_frames_address: int = DEFAULT_ADDRESS,
         log_frames_address: int = STDOUT_ADDRESS,
-        extra_frame_handlers: Optional[FrameHandlers] = None,
+        extra_frame_handlers: FrameHandlers | None = None,
     ):
         """Creates an RPC client configured to communicate using HDLC.
 
@@ -485,7 +483,7 @@ class NoEncodingSingleChannelRpcClient(RpcClient):
         reader: CancellableReader,
         paths_or_modules: PathsModulesOrProtoLibrary,
         channel: pw_rpc.Channel,
-        client_impl: Optional[pw_rpc.client.ClientImpl] = None,
+        client_impl: pw_rpc.client.ClientImpl | None = None,
     ):
         """Creates an RPC client over a single channel with no frame encoding.
 
@@ -557,7 +555,7 @@ class SocketSubprocess:
             self._server_process.terminate()
             self._server_process.communicate()
 
-    def __enter__(self) -> 'SocketSubprocess':
+    def __enter__(self) -> SocketSubprocess:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
@@ -576,14 +574,14 @@ class HdlcRpcLocalServerAndClient:
         port: int,
         protos: PathsModulesOrProtoLibrary,
         *,
-        incoming_processor: Optional[pw_rpc.ChannelManipulator] = None,
-        outgoing_processor: Optional[pw_rpc.ChannelManipulator] = None,
+        incoming_processor: pw_rpc.ChannelManipulator | None = None,
+        outgoing_processor: pw_rpc.ChannelManipulator | None = None,
     ) -> None:
         """Creates a new ``HdlcRpcLocalServerAndClient``."""
 
         self.server = SocketSubprocess(server_command, port)
 
-        self._bytes_queue: 'queue.SimpleQueue[bytes]' = queue.SimpleQueue()
+        self._bytes_queue: queue.SimpleQueue[bytes] = queue.SimpleQueue()
         self._read_thread = threading.Thread(target=self._read_from_socket)
         self._read_thread.start()
 
@@ -628,7 +626,7 @@ class HdlcRpcLocalServerAndClient:
         self._rpc_client.close()
         self._read_thread.join()
 
-    def __enter__(self) -> 'HdlcRpcLocalServerAndClient':
+    def __enter__(self) -> HdlcRpcLocalServerAndClient:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
