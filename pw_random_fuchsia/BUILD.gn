@@ -12,12 +12,24 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""
-A build file for probe-rs releases which merely exports the probe-rs binary.
-"""
+import("//build_overrides/pigweed.gni")
 
-package(default_visibility = ["//visibility:public"])
+import("$dir_pw_docgen/docs.gni")
+import("$dir_pw_unit_test/test.gni")
 
-licenses(["notice"])
+pw_test_group("tests") {
+  tests = []
+}
 
-exports_files(["probe-rs"])
+pw_doc_group("docs") {
+  sources = [ "docs.rst" ]
+}
+
+# Satisfy source_is_in_build_files presubmit step
+pw_source_set("satisfy_presubmit") {
+  sources = [
+    "public/pw_random_fuchsia/zircon_random_generator.h",
+    "zircon_random_generator_test.cc",
+  ]
+  visibility = []
+}
