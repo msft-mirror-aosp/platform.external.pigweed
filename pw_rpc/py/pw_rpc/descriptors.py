@@ -44,7 +44,7 @@ from pw_rpc import ids
 @dataclass(frozen=True)
 class Channel:
     id: int
-    output: Callable[[bytes], Any] | None
+    output: Callable[[bytes], Any]
 
     def __repr__(self) -> str:
         return f'Channel({self.id})'
@@ -456,3 +456,62 @@ def get_method(service_accessor: ServiceAccessor, name: str):
         service = service.methods
 
     return service[method_name]
+
+
+@dataclass(frozen=True)
+class RpcIds:
+    """Integer IDs that uniquely identify a remote procedure call."""
+
+    channel_id: int
+    service_id: int
+    method_id: int
+    call_id: int
+
+
+@dataclass(frozen=True)
+class PendingRpc:
+    """Tracks an active RPC call."""
+
+    channel: Channel
+    service: Service
+    method: Method
+    call_id: int
+
+    @property
+    def channel_id(self) -> int:
+        return self.channel.id
+
+    @property
+    def service_id(self) -> int:
+        return self.service.id
+
+    @property
+    def method_id(self) -> int:
+        return self.method.id
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, PendingRpc):
+            return self.ids() == other.ids()
+
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.ids())
+
+    def ids(self) -> RpcIds:
+        return RpcIds(
+            self.channel.id, self.service.id, self.method.id, self.call_id
+        )
+
+    def __str__(self) -> str:
+        return (
+            f'PendingRpc(channel={self.channel.id}, method={self.method}, '
+            f'call_id={self.call_id})'
+        )
+
+    def matches_channel_service_method(self, other: PendingRpc) -> bool:
+        return (
+            self.channel.id == other.channel.id
+            and self.service.id == other.service.id
+            and self.method.id == other.method.id
+        )
