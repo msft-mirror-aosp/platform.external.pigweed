@@ -30,6 +30,11 @@ pw_source_set("epoch") {
   public_configs = [ ":public_include_path" ]
 }
 
+pw_source_set("virtual_clock") {
+  public = [ "public/pw_chrono/virtual_clock.h" ]
+  public_configs = [ ":public_include_path" ]
+}
+
 pw_facade("system_clock") {
   backend = pw_chrono_SYSTEM_CLOCK_BACKEND
   public_configs = [ ":public_include_path" ]
@@ -39,6 +44,7 @@ pw_facade("system_clock") {
   ]
   public_deps = [
     ":epoch",
+    ":virtual_clock",
     "$dir_pw_preprocessor",
   ]
   sources = [ "system_clock.cc" ]
@@ -50,7 +56,7 @@ pw_facade("system_timer") {
   public = [ "public/pw_chrono/system_timer.h" ]
   public_deps = [
     ":system_clock",
-    "$dir_pw_function",
+    dir_pw_function,
   ]
 }
 
@@ -86,7 +92,7 @@ pw_test("system_clock_facade_test") {
   ]
   deps = [
     ":system_clock",
-    "$dir_pw_preprocessor",
+    dir_pw_preprocessor,
     pw_chrono_SYSTEM_CLOCK_BACKEND,
   ]
 }

@@ -36,6 +36,16 @@ Fuchsia support
 demonstrate building, running, and testing Fuchsia components and packages with
 the Fuchsia SDK.
 
+.. note::
+   Please do not add any fuchsia-specific dependencies (targets that load from
+   ``@fuchsia_sdk``) outside of ``//pw_bluetooth_sapphire/fuchsia`` since that
+   will break the global pigweed build (``//...``) for macos hosts.
+
+.. note::
+   Every ``bazel`` invocation needs ``--config=fuchsia`` whenever the target or
+   dependency needs to specify ``@fuchsia_sdk`` backends for pigweed and the
+   target platform is fuchsia.
+
 It will eventually be filled with the real `bt-host component`_ once that's
 migrated. See https://fxbug.dev/321267390.
 
@@ -45,9 +55,9 @@ To build the bt-host package, use one of the following commands:
 
 .. code-block::
 
-   bazel build //pw_bluetooth_sapphire/fuchsia/bt_host:pkg.x64
+   bazel build --config=fuchsia //pw_bluetooth_sapphire/fuchsia/bt_host:pkg.x64
    # OR
-   bazel build //pw_bluetooth_sapphire/fuchsia/bt_host:pkg.arm64
+   bazel build --config=fuchsia //pw_bluetooth_sapphire/fuchsia/bt_host:pkg.arm64
 
 Start an emulator
 =================
@@ -74,9 +84,9 @@ of the following command:
 
 .. code-block::
 
-   bazel run //pw_bluetooth_sapphire/fuchsia/bt_host:pkg.x64.component
+   bazel run --config=fuchsia //pw_bluetooth_sapphire/fuchsia/bt_host:pkg.x64.component
    # OR
-   bazel run //pw_bluetooth_sapphire/fuchsia/bt_host:pkg.arm64.component
+   bazel run --config=fuchsia //pw_bluetooth_sapphire/fuchsia/bt_host:pkg.arm64.component
 
 Run unit tests
 ==============
@@ -85,7 +95,7 @@ following command:
 
 .. code-block::
 
-   bazel run //pw_bluetooth_sapphire/fuchsia/bt_host:test_pkg
+   bazel run --config=fuchsia //pw_bluetooth_sapphire/fuchsia/bt_host:test_pkg
 
 Stop the emulator
 =================
@@ -113,13 +123,32 @@ Example:
 
 Run Fuchsia presubmit tests
 ===========================
-Presubmits for bt-host are captured in a dedicated separate builder, rather than
-existing ones such as ``pigweed-linux-bazel-noenv``.
-These presubmits can be replicated with the following command:
+Presubmits for bt-host are captured in a dedicated separate builder,
+``pigweed-linux-bazel-bthost``, rather than existing ones such as
+``pigweed-linux-bazel-noenv``.
+
+On the builder invocation console, there are a number of useful artifacts for
+examining the environment during test failures. Here are some notable examples:
+
+* ``bt_host_package`` stdout: Combined stdout/stderr of the entire test orchestration and execution.
+* ``subrunner.log``: Combined test stdout/stderr of test execution only.
+* ``target.log``: The ffx target device's logs.
+* ``ffx_config.txt``: The ffx configuration used for provisioning and testing.
+* ``ffx.log``: The ffx host logs.
+* ``ffx_daemon.log``: The ffx daemon's logs.
+* ``env.dump.txt``: The environment variables when test execution started.
+* ``ssh.log``: The ssh logs when communicating with the target device.
+
+These presubmits can be also be replicated locally with the following command:
 
 .. code-block::
 
-   bazel run //pw_bluetooth_sapphire/fuchsia:infra.test_all
+   bazel run --config=fuchsia //pw_bluetooth_sapphire/fuchsia:infra.test_all
+
+.. note::
+   Existing package servers must be stopped before running this command. To
+   check for any existing package servers run ``lsof -i :8083`` and make sure
+   each of those processes are killed.
 
 .. note::
    You do not need to start an emulator beforehand to to run all tests this way.
@@ -133,10 +162,10 @@ Pigweed infrastructure uploads bt-host's artifacts to
 .. code-block::
 
    # Ensure all dependencies are built.
-   bazel build //pw_bluetooth_sapphire/fuchsia:infra
+   bazel build --config=fuchsia //pw_bluetooth_sapphire/fuchsia:infra
 
    # Get builder manifest file.
-   bazel build --output_groups=builder_manifest //pw_bluetooth_sapphire/fuchsia:infra
+   bazel build --config=fuchsia --output_groups=builder_manifest //pw_bluetooth_sapphire/fuchsia:infra
 
 The resulting file contains a ``cipd_manifests`` json field which references a
 sequence of json files specifying the CIPD package path and package file

@@ -12,13 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_cc_test",
-    "fuchsia_unittest_package",
-)
-
 package(default_visibility = ["//visibility:public"])
+
+exports_files(glob(["**/*"]))
 
 cc_library(
     name = "testing",
@@ -31,13 +27,18 @@ cc_library(
     copts = [
         "-Wno-unused-parameter",
     ],
-    target_compatible_with = ["//pw_unit_test:googletest_only"],
+    target_compatible_with = select({
+        "//pw_unit_test:googletest_only": [],
+        "@platforms//os:fuchsia": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         ":fake_controller",
         ":mock_controller",
         ":test_helpers",
         "//pw_bluetooth_sapphire:config",
         "//pw_bluetooth_sapphire:public",
+        "//pw_bluetooth_sapphire/fuchsia/lib/inspect_testing",
         "//pw_bluetooth_sapphire/host/transport",
         "//pw_bluetooth_sapphire/host/transport:testing",
         "//pw_unit_test",
@@ -50,7 +51,11 @@ cc_library(
     copts = [
         "-Wno-unused-parameter",
     ],
-    target_compatible_with = ["//pw_unit_test:googletest_only"],
+    target_compatible_with = select({
+        "//pw_unit_test:googletest_only": [],
+        "@platforms//os:fuchsia": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     # test_helpers.h is currently in bt-host:public, but its deps are here.
     deps = [
         "//pw_bluetooth_sapphire:public",
@@ -67,7 +72,11 @@ cc_library(
     copts = [
         "-Wno-unused-parameter",
     ],
-    target_compatible_with = ["//pw_unit_test:googletest_only"],
+    target_compatible_with = select({
+        "//pw_unit_test:googletest_only": [],
+        "@platforms//os:fuchsia": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
@@ -86,7 +95,11 @@ cc_library(
     copts = [
         "-Wno-unused-parameter",
     ],
-    target_compatible_with = ["//pw_unit_test:googletest_only"],
+    target_compatible_with = select({
+        "//pw_unit_test:googletest_only": [],
+        "@platforms//os:fuchsia": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         ":controller_test_double_base",
         ":test_helpers",
@@ -113,7 +126,11 @@ cc_library(
     copts = [
         "-Wno-unused-parameter",
     ],
-    target_compatible_with = ["//pw_unit_test:googletest_only"],
+    target_compatible_with = select({
+        "//pw_unit_test:googletest_only": [],
+        "@platforms//os:fuchsia": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         ":controller_test_double_base",
         ":test_helpers",
@@ -145,7 +162,11 @@ cc_library(
 cc_library(
     name = "loop_fixture",
     testonly = True,
-    target_compatible_with = ["//pw_unit_test:googletest_only"],
+    target_compatible_with = select({
+        "//pw_unit_test:googletest_only": [],
+        "@platforms//os:fuchsia": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     # header is in bt-host:public
     deps = [
         "//pw_bluetooth_sapphire:public",
@@ -154,8 +175,8 @@ cc_library(
     ],
 )
 
-fuchsia_cc_test(
-    name = "testing_test",
+cc_library(
+    name = "testing_test.lib",
     testonly = True,
     srcs = [
         "fake_controller_test.cc",
@@ -166,22 +187,12 @@ fuchsia_cc_test(
         "inspect_util_test.cc",
         "parse_args_test.cc",
     ],
-    death_unittest = True,
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         ":testing",
         "//pw_bluetooth_sapphire/host/l2cap:testing",
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-)
-
-fuchsia_unittest_package(
-    name = "test_pkg",
-    package_name = "testing_tests",
-    testonly = True,
-    fuchsia_api_level = "HEAD",
-    unit_tests = [
-        ":testing_test",
-    ],
-    visibility = ["//visibility:public"],
+    alwayslink = 1,
 )
