@@ -24,13 +24,6 @@ pw_add_library(pw_chrono.epoch INTERFACE
     public
 )
 
-pw_add_library(pw_chrono.virtual_clock INTERFACE
-  HEADERS
-    public/pw_chrono/virtual_clock.h
-  PUBLIC_INCLUDES
-    public
-)
-
 pw_add_facade(pw_chrono.system_clock STATIC
   BACKEND
     pw_chrono.system_clock_BACKEND
@@ -41,7 +34,6 @@ pw_add_facade(pw_chrono.system_clock STATIC
     public
   PUBLIC_DEPS
     pw_chrono.epoch
-    pw_chrono.virtual_clock
     pw_preprocessor
   SOURCES
     system_clock.cc

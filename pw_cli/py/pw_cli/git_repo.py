@@ -13,7 +13,6 @@
 # the License.
 """Helpful commands for working with a Git repository."""
 
-from datetime import datetime
 import logging
 from pathlib import Path
 import re
@@ -276,18 +275,6 @@ class GitRepo:
             Commit author as a string.
         """
         return self._git('log', '--format=%ae', '-n1', commit)
-
-    def commit_date(self, commit: str = 'HEAD') -> datetime:
-        """Returns the datetime of the specified commit.
-
-        Defaults to ``HEAD`` if no commit specified.
-
-        Returns:
-            Commit datetime as a datetime object.
-        """
-        return datetime.fromisoformat(
-            self._git('log', '--format=%aI', '-n1', commit)
-        )
 
     def commit_hash(
         self,

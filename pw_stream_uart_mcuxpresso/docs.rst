@@ -13,7 +13,7 @@ write-only stream to UART. Intended for use in fault handlers. It can be
 constructed ``constinit`` for use in pre-static constructor environments as well.
 
 .. note::
-  For a DMA implementation with configurable timeouts, see ``pw_uart_mcuxpresso``.
+  This module will likely be superseded by a future ``pw_uart`` interface.
 
 Setup
 =====

@@ -583,13 +583,6 @@
       "C++"
     ]
   },
-  "pw_uart_mcuxpresso": {
-    "tagline": "NXP MCUXpresso SDK implementation for pw_uart",
-    "status": "unstable",
-    "languages": [
-      "C++"
-    ]
-  },
   "pw_unit_test": {
     "tagline": "GoogleTest for embedded",
     "status": "stable"

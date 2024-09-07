@@ -19,7 +19,6 @@
 #include <mutex>
 
 #include "pw_async2/dispatcher.h"
-#include "pw_chrono/virtual_clock.h"
 #include "pw_containers/intrusive_list.h"
 #include "pw_sync/interrupt_spin_lock.h"
 #include "pw_sync/lock_annotations.h"
@@ -45,8 +44,9 @@ class TimeFuture;
 
 /// A factory for time and timers.
 ///
-/// This extends the `VirtualClock` interface with the ability to create async
-/// timers.
+/// This provides similar functionality as the `VirtualSystemClock` interface
+/// except it can also create timers, and its template parameter means that it
+/// can be used with non-SystemClock clocks.
 ///
 /// `TimeProvider` is designed to be dependency-injection friendly so that
 /// code that uses time and timers is not bound to real wall-clock time.
@@ -57,13 +57,14 @@ class TimeFuture;
 /// Note that `Timer` objects must not outlive the `TimeProvider` from which
 /// they were created.
 template <typename Clock>
-class TimeProvider : public chrono::VirtualClock<Clock> {
+class TimeProvider {
  public:
-  ~TimeProvider() override {
+  /// Gets the current `time_point` for the provided clock.
+  virtual typename Clock::time_point now() const = 0;
+
+  virtual ~TimeProvider() {
     internal::AssertTimeFutureObjectsAllGone(futures_.empty());
   }
-
-  typename Clock::time_point now() override = 0;
 
   /// Queues the `callback` to be invoked after `delay`.
   ///
