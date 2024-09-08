@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_select",
-)
+load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -40,7 +37,7 @@ cc_library(
         "supplement_data.cc",
         "uuid.cc",
     ],
-    copts = ["-Wswitch-enum"],
+    copts = ["-Wswitch-enum"] + COPTS,
     # This library is not compatible with --config=rp2040.
     target_compatible_with = select({
         "@platforms//os:fuchsia": [],
@@ -64,7 +61,7 @@ cc_library(
         "@pigweed//pw_string",
         "@pigweed//pw_string:utf_codecs",
         "@pigweed//third_party/fuchsia:fit",
-    ] + fuchsia_select({
+    ] + select({
         "@platforms//os:fuchsia": [
             "@fuchsia_sdk//pkg/inspect_component_cpp",
             "@fuchsia_sdk//pkg/trace",
@@ -76,6 +73,7 @@ cc_library(
 cc_library(
     name = "uuid_string_util",
     srcs = ["uuid_string_util.cc"],
+    copts = COPTS,
     deps = [":common"],
 )
 
@@ -103,6 +101,7 @@ cc_library(
         "weak_self_test.cc",
         "windowed_inspect_numeric_property_test.cc",
     ],
+    copts = COPTS,
     tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
@@ -112,4 +111,5 @@ cc_library(
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "@pigweed//pw_async:fake_dispatcher_fixture",
     ],
+    alwayslink = 1,
 )
