@@ -11,6 +11,7 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
+load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -59,7 +60,7 @@ cc_library(
     copts = [
         "-Wno-unused-parameter",
         "-Wswitch-enum",
-    ],
+    ] + COPTS,
     target_compatible_with = select({
         "@platforms//os:fuchsia": [],
         "@platforms//os:linux": [],
@@ -100,9 +101,7 @@ cc_library(
         "mock_channel_test.cc",
         "test_packets.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
-    ],
+    copts = COPTS,
     deps = [
         ":l2cap",
         "//pw_bluetooth_sapphire:public",
@@ -148,6 +147,7 @@ cc_library(
         "signaling_channel_test.cc",
         "types_test.cc",
     ],
+    copts = COPTS,
     tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
@@ -161,4 +161,5 @@ cc_library(
         "//pw_bluetooth_sapphire/host/transport:testing",
         "@pigweed//pw_async:fake_dispatcher_fixture",
     ],
+    alwayslink = 1,
 )
