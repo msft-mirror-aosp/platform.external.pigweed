@@ -1,4 +1,4 @@
-// Copyright 2022 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,13 +12,17 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_transfer/transfer.h"
+#include <mutex>
+#define PW_LOG_MODULE_NAME "TRN"
+#define PW_LOG_LEVEL PW_TRANSFER_CONFIG_LOG_LEVEL
 
 #include "public/pw_transfer/transfer.h"
 #include "pw_assert/check.h"
 #include "pw_log/log.h"
 #include "pw_status/try.h"
 #include "pw_transfer/internal/chunk.h"
+#include "pw_transfer/internal/config.h"
+#include "pw_transfer/transfer.h"
 
 namespace pw::transfer {
 
@@ -75,6 +79,8 @@ void TransferService::GetResourceStatus(pw::ConstByteSpan request,
                                         pw::rpc::RawUnaryResponder& responder) {
   uint32_t resource_id;
   Status status;
+  std::array<std::byte, pwpb::ResourceStatus::kMaxEncodedSizeBytes> buffer = {};
+  pwpb::ResourceStatus::MemoryEncoder encoder(buffer);
 
   protobuf::Decoder decoder(request);
   if (status = decoder.Next(); status.IsOutOfRange()) {
@@ -94,12 +100,19 @@ void TransferService::GetResourceStatus(pw::ConstByteSpan request,
     return;
   }
 
-  if (TransferService::resource_responder_.active()) {
-    responder.Finish({}, Status::Unavailable()).IgnoreError();
-    return;
-  }
+  encoder.WriteResourceId(resource_id).IgnoreError();
 
-  TransferService::resource_responder_ = std::move(responder);
+  {
+    std::lock_guard lock(resource_responder_mutex_);
+    if (TransferService::resource_responder_.active()) {
+      PW_LOG_ERROR("Previous GetResourceStatus still being handled!");
+      responder.Finish(ConstByteSpan(encoder), Status::Unavailable())
+          .IgnoreError();
+      return;
+    }
+
+    TransferService::resource_responder_ = std::move(responder);
+  }
 
   thread_.EnqueueResourceEvent(
       resource_id,
@@ -110,24 +123,28 @@ void TransferService::GetResourceStatus(pw::ConstByteSpan request,
 
 void TransferService::ResourceStatusCallback(
     Status status, const internal::ResourceStatus& stats) {
+  std::lock_guard lock(resource_responder_mutex_);
   PW_ASSERT(resource_responder_.active());
-
-  if (!status.ok()) {
-    resource_responder_.Finish({}, status).IgnoreError();
-  }
 
   std::array<std::byte, pwpb::ResourceStatus::kMaxEncodedSizeBytes> buffer = {};
   pwpb::ResourceStatus::MemoryEncoder encoder(buffer);
 
   encoder.WriteResourceId(stats.resource_id).IgnoreError();
   encoder.WriteStatus(status.code()).IgnoreError();
+
+  if (!status.ok()) {
+    resource_responder_.Finish(ConstByteSpan(encoder), status).IgnoreError();
+    return;
+  }
+
   encoder.WriteReadableOffset(stats.readable_offset).IgnoreError();
   encoder.WriteReadChecksum(stats.read_checksum).IgnoreError();
   encoder.WriteWriteableOffset(stats.writeable_offset).IgnoreError();
   encoder.WriteWriteChecksum(stats.write_checksum).IgnoreError();
 
   if (!encoder.status().ok()) {
-    resource_responder_.Finish({}, encoder.status()).IgnoreError();
+    resource_responder_.Finish(ConstByteSpan(encoder), encoder.status())
+        .IgnoreError();
     return;
   }
 

@@ -79,6 +79,50 @@ TEST(InlineQueue, Construct_CopySmallerCapacity) {
   EXPECT_EQ(123, copied[2].value);
 }
 
+TEST(InlineQueue, Construct_MoveSameCapacity) {
+  InlineQueue<MoveOnly, 4> queue;
+  queue.emplace(MoveOnly(1));
+  queue.emplace(MoveOnly(2));
+  queue.emplace(MoveOnly(3));
+  queue.emplace(MoveOnly(4));
+  InlineQueue<MoveOnly, 4> moved(std::move(queue));
+
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  EXPECT_EQ(0u, queue.size());
+
+  ASSERT_EQ(4u, moved.size());
+  EXPECT_EQ(4, moved[3].value);
+}
+
+TEST(InlineQueue, Construct_MoveLargerCapacity) {
+  InlineQueue<MoveOnly, 4> queue;
+  queue.emplace(MoveOnly(1));
+  queue.emplace(MoveOnly(2));
+  queue.emplace(MoveOnly(3));
+  queue.emplace(MoveOnly(4));
+  InlineQueue<MoveOnly, 5> moved(std::move(queue));
+
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  EXPECT_EQ(0u, queue.size());
+
+  ASSERT_EQ(4u, moved.size());
+  EXPECT_EQ(4, moved[3].value);
+}
+
+TEST(InlineQueue, Construct_MoveSmallerCapacity) {
+  InlineQueue<MoveOnly, 4> queue;
+  queue.emplace(MoveOnly(1));
+  queue.emplace(MoveOnly(2));
+  queue.emplace(MoveOnly(3));
+  InlineQueue<MoveOnly, 3> moved(std::move(queue));
+
+  // NOLINTNEXTLINE(bugprone-use-after-move)
+  EXPECT_EQ(0u, queue.size());
+
+  ASSERT_EQ(3u, moved.size());
+  EXPECT_EQ(3, moved[2].value);
+}
+
 TEST(InlineQueue, Destruct_ZeroLength) {
   Counter::Reset();
   {
@@ -104,7 +148,9 @@ TEST(InlineQueue, Destruct_MultipleEntries) {
   Counter value;
   Counter::Reset();
 
-  { InlineQueue<Counter, 128> queue(100, value); }
+  {
+    InlineQueue<Counter, 128> queue(100, value);
+  }
 
   EXPECT_EQ(Counter::created, 100);
   EXPECT_EQ(Counter::destroyed, 100);

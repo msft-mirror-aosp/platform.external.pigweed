@@ -15,7 +15,7 @@
 load(
     "//pw_build:pigweed.bzl",
     "host_backend_alias",
-    "pw_cc_facade",
+    "pw_facade",
 )
 
 package(default_visibility = ["//visibility:public"])
@@ -24,16 +24,34 @@ licenses(["notice"])
 
 constraint_setting(
     name = "backend_constraint_setting",
+    default_constraint_value = "unspecified",
 )
 
-pw_cc_facade(
+constraint_value(
+    name = "unspecified",
+    constraint_setting = ":backend_constraint_setting",
+)
+
+# TODO: pwbug.dev/328679085 - Remove this alias once no-one uses it.
+alias(
     name = "facade",
+    actual = ":pw_sys_io.facade",
+)
+
+pw_facade(
+    name = "pw_sys_io",
     hdrs = ["public/pw_sys_io/sys_io.h"],
+    backend = ":backend",
     includes = ["public"],
     deps = [
         "//pw_bytes",
         "//pw_status",
     ],
+)
+
+label_flag(
+    name = "backend",
+    build_setting_default = ":backend_multiplexer",
 )
 
 cc_library(
@@ -46,17 +64,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "pw_sys_io",
-    hdrs = ["public/pw_sys_io/sys_io.h"],
-    includes = ["public"],
-    deps = [
-        "//pw_bytes",
-        "//pw_status",
-        "@pigweed//targets:pw_sys_io_backend",
-    ],
-)
-
 alias(
     name = "backend_multiplexer",
     actual = select({
@@ -66,8 +73,9 @@ alias(
         "//pw_sys_io_emcraft_sf2:backend": "@pigweed//pw_sys_io_emcraft_sf2",
         "//pw_sys_io_mcuxpresso:backend": "@pigweed//pw_sys_io_mcuxpresso",
         "//pw_sys_io_rp2040:backend": "@pigweed//pw_sys_io_rp2040",
-        "//pw_sys_io_stm32cube:backend": "@pigweed//pw_sys_io_stm32cube",
         "//pw_sys_io_stdio:backend": "@pigweed//pw_sys_io_stdio",
+        "//pw_sys_io_stm32cube:backend": "@pigweed//pw_sys_io_stm32cube",
+        ":unspecified": ":unspecified_backend",
         "//conditions:default": ":unspecified_backend",
     }),
     visibility = ["@pigweed//targets:__pkg__"],

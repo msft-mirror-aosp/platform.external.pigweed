@@ -46,13 +46,13 @@ disabled for the affected lines by adding ``// clang-format off``.
 
 .. code-block:: cpp
 
-  // clang-format off
-  constexpr int kMyMatrix[] = {
-      100,  23,   0,
-        0, 542,  38,
-        1,   2, 201,
-  };
-  // clang-format on
+   // clang-format off
+   constexpr int kMyMatrix[] = {
+       100,  23,   0,
+         0, 542,  38,
+         1,   2, 201,
+   };
+   // clang-format on
 
 C Standard Library
 ==================
@@ -155,21 +155,21 @@ C functions with no parameters must include ``void``.
 
 .. code-block:: cpp
 
-  namespace pw {
+   namespace pw {
 
-  bool ThisIsACppFunction() { return true; }
+   bool ThisIsACppFunction() { return true; }
 
-  extern "C" int pw_ThisIsACFunction(void) { return -1; }
+   extern "C" int pw_ThisIsACFunction(void) { return -1; }
 
-  extern "C" {
+   extern "C" {
 
-  int pw_ThisIsAlsoACFunction(void) {
-    return ThisIsACppFunction() ? 100 : 0;
-  }
+   int pw_ThisIsAlsoACFunction(void) {
+     return ThisIsACppFunction() ? 100 : 0;
+   }
 
-  }  // extern "C"
+   }  // extern "C"
 
-  }  // namespace pw
+   }  // namespace pw
 
 Comments
 ========
@@ -178,11 +178,11 @@ comments should only be used for inline comments.
 
 .. code-block:: cpp
 
-  // Use C++-style comments, except where C-style comments are necessary.
-  // This returns a random number using an algorithm I found on the internet.
-  #define RANDOM_NUMBER() [] {                \
-    return 4;  /* chosen by fair dice roll */ \
-  }()
+   // Use C++-style comments, except where C-style comments are necessary.
+   // This returns a random number using an algorithm I found on the internet.
+   #define RANDOM_NUMBER() [] {                \
+     return 4;  /* chosen by fair dice roll */ \
+   }()
 
 Indent code in comments with two additional spaces, making a total of three
 spaces after the ``//``. All code blocks must begin and end with an empty
@@ -190,14 +190,136 @@ comment line, even if the blank comment line is the last line in the block.
 
 .. code-block:: cpp
 
-  // Here is an example of code in comments.
-  //
-  //   int indentation_spaces = 2;
-  //   int total_spaces = 3;
-  //
-  //   engine_1.thrust = RANDOM_NUMBER() * indentation_spaces + total_spaces;
-  //
-  bool SomeFunction();
+   // Here is an example of code in comments.
+   //
+   //   int indentation_spaces = 2;
+   //   int total_spaces = 3;
+   //
+   //   engine_1.thrust = RANDOM_NUMBER() * indentation_spaces + total_spaces;
+   //
+   bool SomeFunction();
+
+Passing move-only or expensive-to-copy arguments
+================================================
+C++ offers a number of ways to pass arguments arguments to functions.
+When taking move-only or expensive-to-copy arguments, use the following table
+to determine which argument type to use:
+
+.. list-table:: C++ argument type choices
+   :widths: 30 20 10
+   :header-rows: 1
+
+   * - Use-case
+     - Name
+     - Syntax
+   * - If read-only
+     - By const reference
+     - ``const T&``
+   * - If mutating
+     - By reference
+     - ``T&``
+   * - If consuming
+     - By rvalue reference
+     - ``T&&``
+   * - If conditionally consuming
+     - By value
+     - ``T``
+
+Why rvalue references
+---------------------
+When a function consumes or moves such an argument, it should accept an rvalue
+reference (``T&&``) rather than taking the argument by-value (``T``). An rvalue
+reference forces the caller to ``std::move`` when passing a preexisting
+variable, which makes the transfer of ownership explicit.
+
+Compared with accepting arguments by-value, rvalue references prevent
+unnecessary object instances and extra calls to move constructors. This has been
+shown to significantly impact code size and stack usage for Pigweed users.
+
+This is especially important when using ``pw::Function``. For more information
+about accepting ``pw::Function`` arguments, see
+:ref:`module-pw_function-move-semantics`.
+
+.. admonition:: **Yes**: Accept move-only or expensive-to-copy values by rvalue:
+   :class: checkmark
+
+   .. code-block:: cpp
+
+      void FrobulateVector(pw::Vector<T>&& vector) {
+        Frobulate(std::move(vector));
+      }
+
+.. admonition:: **No**: Accepts move-only or expensive-to-copy values by value:
+   :class: error
+
+   .. code-block:: cpp
+
+      void FrobulateVector(pw::Vector<T> vector) {
+        Frobulate(std::move(vector));
+      }
+
+This guidance overrides the standard `Google style guidance on rvalues
+<https://google.github.io/styleguide/cppguide.html#Rvalue_references>`_.
+
+Conditionally moving values
+---------------------------
+An exception to the rule above is when a move-only or expensive-to-copy value
+is only conditionally consumed by the body of the function, for example:
+
+.. admonition:: **No**: Conditionally consumes ``vector``:
+   :class: error
+
+   .. code-block:: cpp
+
+      void PossiblyFrobulate(bool should_frob, pw::Vector<T>&& vector) {
+        if (should_frob) {
+          Frobulate(std::move(vector));
+        }
+      }
+
+Because ``PossiblyFrobulate`` above will only consume ``vector`` in some code
+paths, the original ``vector`` passed by the user will outlive the call to
+``PossiblyFrobulate``:
+
+.. code-block:: cpp
+
+   pw::Vector<T> my_vec = ...;
+
+   // ``my_vec`` looks to be moved here, but the resulting ``rvalue`` is never
+   // consumed by ``PossiblyFrobulate``.
+   PossiblyFrobulate(false, std::move(my_vec));
+
+   ... // some other long-running work
+
+   // ``my_vec`` is still alive here, possibly causing excess memory usage,
+   // deadlocks, or even undefined behavior!
+
+When conditionally consuming an argument, prefer instead to either accept
+the argument by-value or ensure that it is consumed by all control paths:
+
+.. admonition:: **Yes**: Conditionally consumes by-value ``vector``:
+   :class: checkmark
+
+   .. code-block:: cpp
+
+      void PossiblyFrobulate(bool should_frob, pw::Vector<T> vector) {
+        if (should_frob) {
+          Frobulate(std::move(vector));
+        }
+      }
+
+.. admonition:: **Yes**: Consumes ``vector`` on all control paths:
+   :class: checkmark
+
+   .. code-block:: cpp
+
+      void PossiblyFrobulate(bool should_frob, pw::Vector<T>&& vector) {
+        if (should_frob) {
+          Frobulate(std::move(vector));
+        } else {
+          [[maybe_unused]] auto to_discard = std::move(vector);
+        }
+      }
 
 Control statements
 ==================
@@ -454,22 +576,22 @@ blank, like this:
 
 .. code-block:: cpp
 
-  // Copyright 2021 The Pigweed Authors
-  //
-  // Licensed under the Apache License, Version 2.0 (the "License"); you may not
-  // use this file except in compliance with the License. You may obtain a copy of
-  // the License at
-  //
-  //     https://www.apache.org/licenses/LICENSE-2.0
-  //
-  // Unless required by applicable law or agreed to in writing, software
-  // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-  // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-  // License for the specific language governing permissions and limitations under
-  // the License.
-  #pragma once
+   // Copyright 2021 The Pigweed Authors
+   //
+   // Licensed under the Apache License, Version 2.0 (the "License"); you may not
+   // use this file except in compliance with the License. You may obtain a copy of
+   // the License at
+   //
+   //     https://www.apache.org/licenses/LICENSE-2.0
+   //
+   // Unless required by applicable law or agreed to in writing, software
+   // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+   // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+   // License for the specific language governing permissions and limitations under
+   // the License.
+   #pragma once
 
-  // Header file-level comment goes here...
+   // Header file-level comment goes here...
 
 Memory allocation
 =================
@@ -558,54 +680,54 @@ Preprocessor macros
 
 .. code-block:: cpp
 
-  namespace pw::my_module {
-  namespace nested_namespace {
+   namespace pw::my_module {
+   namespace nested_namespace {
 
-  // C++ names (types, variables, functions) must be in the pw namespace.
-  // They are named according to the Google style guide.
-  constexpr int kGlobalConstant = 123;
+   // C++ names (types, variables, functions) must be in the pw namespace.
+   // They are named according to the Google style guide.
+   constexpr int kGlobalConstant = 123;
 
-  // Prefer using functions over extern global variables.
-  extern int global_variable;
+   // Prefer using functions over extern global variables.
+   extern int global_variable;
 
-  class Class {};
+   class Class {};
 
-  void Function();
+   void Function();
 
-  extern "C" {
+   extern "C" {
 
-  // Public Pigweed code used from C must be prefixed with pw_.
-  extern const int pw_my_module_kGlobalConstant;
+   // Public Pigweed code used from C must be prefixed with pw_.
+   extern const int pw_my_module_kGlobalConstant;
 
-  extern int pw_my_module_global_variable;
+   extern int pw_my_module_global_variable;
 
-  void pw_my_module_Function(void);
+   void pw_my_module_Function(void);
 
-  typedef struct {
-    int member_variable;
-  } pw_my_module_Struct;
+   typedef struct {
+     int member_variable;
+   } pw_my_module_Struct;
 
-  // Private Pigweed code used from C must be prefixed with _pw_.
-  extern const int _pw_my_module_kPrivateGlobalConstant;
+   // Private Pigweed code used from C must be prefixed with _pw_.
+   extern const int _pw_my_module_kPrivateGlobalConstant;
 
-  extern int _pw_my_module_private_global_variable;
+   extern int _pw_my_module_private_global_variable;
 
-  void _pw_my_module_PrivateFunction(void);
+   void _pw_my_module_PrivateFunction(void);
 
-  typedef struct {
-    int member_variable;
-  } _pw_my_module_PrivateStruct;
+   typedef struct {
+     int member_variable;
+   } _pw_my_module_PrivateStruct;
 
-  }  // extern "C"
+   }  // extern "C"
 
-  // Public macros must be prefixed with PW_.
-  #define PW_MY_MODULE_PUBLIC_MACRO(arg) arg
+   // Public macros must be prefixed with PW_.
+   #define PW_MY_MODULE_PUBLIC_MACRO(arg) arg
 
-  // Private macros must be prefixed with _PW_.
-  #define _PW_MY_MODULE_PRIVATE_MACRO(arg) arg
+   // Private macros must be prefixed with _PW_.
+   #define _PW_MY_MODULE_PRIVATE_MACRO(arg) arg
 
-  }  // namespace nested_namespace
-  }  // namespace pw::my_module
+   }  // namespace nested_namespace
+   }  // namespace pw::my_module
 
 See :ref:`docs-pw-style-macros` for details about macro usage.
 
@@ -620,38 +742,38 @@ them.
 
 .. code-block:: cpp
 
-  #include "some/header.h"
+   #include "some/header.h"
 
-  namespace pw::nested {
-  namespace {
+   namespace pw::nested {
+   namespace {
 
-  constexpr int kAnonConstantGoesHere = 0;
+   constexpr int kAnonConstantGoesHere = 0;
 
-  }  // namespace
+   }  // namespace
 
-  namespace other {
+   namespace other {
 
-  const char* SomeClass::yes = "no";
+   const char* SomeClass::yes = "no";
 
-  bool ThisIsAFunction() {
-  #if PW_CONFIG_IS_SET
-    return true;
-  #else
-    return false;
-  #endif  // PW_CONFIG_IS_SET
-  }
+   bool ThisIsAFunction() {
+   #if PW_CONFIG_IS_SET
+     return true;
+   #else
+     return false;
+   #endif  // PW_CONFIG_IS_SET
+   }
 
-  extern "C" {
+   extern "C" {
 
-  const int pw_kSomeConstant = 10;
-  int pw_some_global_variable = 600;
+   const int pw_kSomeConstant = 10;
+   int pw_some_global_variable = 600;
 
-  void pw_CFunction() { ... }
+   void pw_CFunction() { ... }
 
-  }  // extern "C"
+   }  // extern "C"
 
-  }  // namespace
-  }  // namespace pw::nested
+   }  // namespace
+   }  // namespace pw::nested
 
 Using directives for literals
 =============================
@@ -670,10 +792,10 @@ of definition.
 
 .. code-block:: cpp
 
-  using namespace std::chrono;                    // Not allowed
-  using namespace std::literals::chrono_literals; // Allowed
+   using namespace std::chrono;                    // Not allowed
+   using namespace std::literals::chrono_literals; // Allowed
 
-  constexpr std::chrono::duration delay = 250ms;
+   constexpr std::chrono::duration delay = 250ms;
 
 Pointers and references
 =======================
@@ -682,10 +804,10 @@ type.
 
 .. code-block:: cpp
 
-  int* const number = &that_thing;
-  constexpr const char* kString = "theory!"
+   int* const number = &that_thing;
+   constexpr const char* kString = "theory!"
 
-  bool FindTheOneRing(const Region& where_to_look) { ... }
+   bool FindTheOneRing(const Region& where_to_look) { ... }
 
 Prefer storing references over storing pointers. Pointers are required when the
 pointer can change its target or may be ``nullptr``. Otherwise, a reference or
@@ -714,44 +836,44 @@ example, the following does *not* conform to Pigweed's macro style:
 
 .. code-block:: cpp
 
-  // BAD! Definition has built-in semicolon.
-  #define PW_LOG_IF_BAD(mj) \
-    CallSomeFunction(mj);
+   // BAD! Definition has built-in semicolon.
+   #define PW_LOG_IF_BAD(mj) \
+     CallSomeFunction(mj);
 
-  // BAD! Compiles without error; semicolon is missing.
-  PW_LOG_IF_BAD("foo")
+   // BAD! Compiles without error; semicolon is missing.
+   PW_LOG_IF_BAD("foo")
 
 Here's how to do this instead:
 
 .. code-block:: cpp
 
-  // GOOD; requires semicolon to compile.
-  #define PW_LOG_IF_BAD(mj) \
-    CallSomeFunction(mj)
+   // GOOD; requires semicolon to compile.
+   #define PW_LOG_IF_BAD(mj) \
+     CallSomeFunction(mj)
 
-  // GOOD; fails to compile due to lacking semicolon.
-  PW_LOG_IF_BAD("foo")
+   // GOOD; fails to compile due to lacking semicolon.
+   PW_LOG_IF_BAD("foo")
 
 For macros in function scope that do not already require a semicolon, the
 contents can be placed in a ``do { ... } while (0)`` loop.
 
 .. code-block:: cpp
 
-  #define PW_LOG_IF_BAD(mj)  \
-    do {                     \
-      if (mj.Bad()) {        \
-        Log(#mj " is bad")   \
-      }                      \
-    } while (0)
+   #define PW_LOG_IF_BAD(mj)  \
+     do {                     \
+       if (mj.Bad()) {        \
+         Log(#mj " is bad")   \
+       }                      \
+     } while (0)
 
 Standalone macros at global scope that do not already require a semicolon can
 add a ``static_assert`` declaration statement as their last line.
 
 .. code-block:: cpp
 
-  #define PW_NEAT_THING(thing)             \
-    bool IsNeat_##thing() { return true; } \
-    static_assert(true, "Macros must be terminated with a semicolon")
+   #define PW_NEAT_THING(thing)             \
+     bool IsNeat_##thing() { return true; } \
+     static_assert(true, "Macros must be terminated with a semicolon")
 
 Private macros in public headers
 --------------------------------
@@ -761,11 +883,11 @@ example:
 
 .. code-block:: cpp
 
-  #define _PW_MY_SPECIAL_MACRO(op) ...
-  ...
-  // Code that uses _PW_MY_SPECIAL_MACRO()
-  ...
-  #undef _PW_MY_SPECIAL_MACRO
+   #define _PW_MY_SPECIAL_MACRO(op) ...
+   ...
+   // Code that uses _PW_MY_SPECIAL_MACRO()
+   ...
+   #undef _PW_MY_SPECIAL_MACRO
 
 Macros in private implementation files (.cc)
 --------------------------------------------
@@ -774,16 +896,16 @@ undefined after their last use; for example:
 
 .. code-block:: cpp
 
-  #define DEFINE_OPERATOR(op) \
-    T operator ## op(T x, T y) { return x op y; } \
-    static_assert(true, "Macros must be terminated with a semicolon") \
+   #define DEFINE_OPERATOR(op) \
+     T operator ## op(T x, T y) { return x op y; } \
+     static_assert(true, "Macros must be terminated with a semicolon") \
 
-  DEFINE_OPERATOR(+);
-  DEFINE_OPERATOR(-);
-  DEFINE_OPERATOR(/);
-  DEFINE_OPERATOR(*);
+   DEFINE_OPERATOR(+);
+   DEFINE_OPERATOR(-);
+   DEFINE_OPERATOR(/);
+   DEFINE_OPERATOR(*);
 
-  #undef DEFINE_OPERATOR
+   #undef DEFINE_OPERATOR
 
 Preprocessor conditional statements
 ===================================
@@ -804,11 +926,11 @@ corresponding ``#if``. Do not indent within preprocessor conditional statements.
 
 .. code-block:: cpp
 
-  #if USE_64_BIT_WORD
-  using Word = uint64_t;
-  #else
-  using Word = uint32_t;
-  #endif  // USE_64_BIT_WORD
+   #if USE_64_BIT_WORD
+   using Word = uint64_t;
+   #else
+   using Word = uint32_t;
+   #endif  // USE_64_BIT_WORD
 
 Unsigned integers
 =================

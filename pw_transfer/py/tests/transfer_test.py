@@ -18,7 +18,7 @@ import enum
 import math
 import os
 import unittest
-from typing import Iterable, List
+from typing import Iterable
 
 from pw_status import Status
 from pw_rpc import callback_client, client, ids, packets
@@ -35,6 +35,7 @@ except ImportError:
 
 _TRANSFER_SERVICE_ID = ids.calculate('pw.transfer.Transfer')
 _FIRST_SESSION_ID = 1
+_ARBITRARY_TRANSFER_ID = 66
 
 # If the default timeout is too short, some tests become flaky on Windows.
 DEFAULT_TIMEOUT_S = 0.3
@@ -60,8 +61,8 @@ class TransferManagerTest(unittest.TestCase):
         )
         self._service = self._client.channel(1).rpcs.pw.transfer.Transfer
 
-        self._sent_chunks: List[transfer_pb2.Chunk] = []
-        self._packets_to_send: List[List[packet_pb2.RpcPacket]] = []
+        self._sent_chunks: list[transfer_pb2.Chunk] = []
+        self._packets_to_send: list[list[packet_pb2.RpcPacket]] = []
 
     def _enqueue_server_responses(
         self, method: _Method, responses: Iterable[Iterable[transfer_pb2.Chunk]]
@@ -181,7 +182,7 @@ class TransferManagerTest(unittest.TestCase):
             ),
         )
 
-        progress: List[pw_transfer.ProgressStats] = []
+        progress: list[pw_transfer.ProgressStats] = []
 
         data = manager.read(3, progress.append)
         self.assertEqual(data, b'abcdef')
@@ -402,61 +403,6 @@ class TransferManagerTest(unittest.TestCase):
         self.assertEqual(exception.resource_id, 31)
         self.assertEqual(exception.status, Status.NOT_FOUND)
 
-    def test_read_transfer_reopen(self) -> None:
-        manager = pw_transfer.Manager(
-            self._service,
-            initial_response_timeout_s=DEFAULT_TIMEOUT_S,
-            default_response_timeout_s=DEFAULT_TIMEOUT_S,
-        )
-
-        # A FAILED_PRECONDITION error should attempt a stream reopen.
-        self._enqueue_server_error(_Method.READ, Status.FAILED_PRECONDITION)
-        self._enqueue_server_responses(
-            _Method.READ,
-            (
-                (
-                    transfer_pb2.Chunk(
-                        transfer_id=3,
-                        offset=0,
-                        data=b'xyz',
-                        remaining_bytes=0,
-                    ),
-                ),
-            ),
-        )
-
-        # The transfer should complete following reopen, with the first chunk
-        # being retried.
-        data = manager.read(3)
-        self.assertEqual(data, b'xyz')
-        self.assertEqual(len(self._sent_chunks), 3)
-        self.assertEqual(self._sent_chunks[0], self._sent_chunks[1])
-        self.assertTrue(self._sent_chunks[-1].HasField('status'))
-        self.assertEqual(self._sent_chunks[-1].status, 0)
-
-    def test_read_transfer_reopen_max_attempts(self) -> None:
-        manager = pw_transfer.Manager(
-            self._service,
-            initial_response_timeout_s=DEFAULT_TIMEOUT_S,
-            default_response_timeout_s=DEFAULT_TIMEOUT_S,
-        )
-
-        # A FAILED_PRECONDITION error should attempt a stream reopen; enqueue
-        # several.
-        self._enqueue_server_error(_Method.READ, Status.FAILED_PRECONDITION)
-        self._enqueue_server_error(_Method.READ, Status.FAILED_PRECONDITION)
-        self._enqueue_server_error(_Method.READ, Status.FAILED_PRECONDITION)
-        self._enqueue_server_error(_Method.READ, Status.FAILED_PRECONDITION)
-        self._enqueue_server_error(_Method.READ, Status.FAILED_PRECONDITION)
-
-        with self.assertRaises(pw_transfer.Error) as context:
-            manager.read(81)
-
-        exception = context.exception
-        self.assertEqual(len(self._sent_chunks), 4)
-        self.assertEqual(exception.resource_id, 81)
-        self.assertEqual(exception.status, Status.INTERNAL)
-
     def test_read_transfer_server_error(self) -> None:
         manager = pw_transfer.Manager(
             self._service, default_response_timeout_s=DEFAULT_TIMEOUT_S
@@ -470,6 +416,524 @@ class TransferManagerTest(unittest.TestCase):
         exception = context.exception
         self.assertEqual(exception.resource_id, 31)
         self.assertEqual(exception.status, Status.INTERNAL)
+
+    def test_read_transfer_adaptive_window_slow_start(self) -> None:
+        test_max_chunk_size = 16
+
+        manager = pw_transfer.Manager(
+            self._service,
+            default_response_timeout_s=DEFAULT_TIMEOUT_S,
+            max_chunk_size_bytes=test_max_chunk_size,
+            default_protocol_version=ProtocolVersion.LEGACY,
+        )
+
+        self._enqueue_server_responses(
+            _Method.READ,
+            (
+                # First window: 1 chunk.
+                (
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=0,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Second window: 2 chunks.
+                (
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=2 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Third window: finish transfer.
+                (
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=3 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                        remaining_bytes=0,
+                    ),
+                ),
+            ),
+        )
+
+        data = manager.read(_ARBITRARY_TRANSFER_ID)
+
+        self.assertEqual(
+            self._sent_chunks,
+            [
+                # First parameters: 1 chunk window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.START,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    resource_id=_ARBITRARY_TRANSFER_ID,
+                    pending_bytes=test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=test_max_chunk_size,
+                ),
+                # Second parameters: 2 chunk window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    offset=test_max_chunk_size,
+                    pending_bytes=2 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        test_max_chunk_size + 2 * test_max_chunk_size
+                    ),
+                ),
+                # Third parameters: 4 chunk window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    offset=2 * test_max_chunk_size,
+                    pending_bytes=4 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        2 * test_max_chunk_size + 4 * test_max_chunk_size
+                    ),
+                ),
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.COMPLETION,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    status=Status.OK.value,
+                ),
+            ],
+        )
+        self.assertEqual(data, b'#' * (4 * test_max_chunk_size))
+
+    def test_read_transfer_adaptive_window_congestion_avoidance(self) -> None:
+        test_max_chunk_size = 16
+
+        manager = pw_transfer.Manager(
+            self._service,
+            default_response_timeout_s=DEFAULT_TIMEOUT_S,
+            max_chunk_size_bytes=test_max_chunk_size,
+            default_protocol_version=ProtocolVersion.LEGACY,
+        )
+
+        self._enqueue_server_responses(
+            _Method.READ,
+            (
+                # First window: 1 chunk.
+                (
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=0,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Second window: 2 chunks.
+                (
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=2 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Third window: send the wrong offset, triggering a
+                # retransmission.
+                (
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=2 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Fourth window: send the expected offset.
+                (
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=3 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=4 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Fifth window: finish the transfer.
+                (
+                    transfer_pb2.Chunk(
+                        transfer_id=_ARBITRARY_TRANSFER_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=5 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                        remaining_bytes=0,
+                    ),
+                ),
+            ),
+        )
+
+        data = manager.read(_ARBITRARY_TRANSFER_ID)
+
+        self.assertEqual(
+            self._sent_chunks,
+            [
+                # First parameters: 1 chunk window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.START,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    resource_id=_ARBITRARY_TRANSFER_ID,
+                    pending_bytes=test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=test_max_chunk_size,
+                ),
+                # Second parameters: 2 chunk window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    offset=test_max_chunk_size,
+                    pending_bytes=2 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        test_max_chunk_size + 2 * test_max_chunk_size
+                    ),
+                ),
+                # Third parameters: 4 chunk window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    offset=2 * test_max_chunk_size,
+                    pending_bytes=4 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        2 * test_max_chunk_size + 4 * test_max_chunk_size
+                    ),
+                ),
+                # Fourth parameters: data loss, retransmit and halve window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_RETRANSMIT,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    offset=3 * test_max_chunk_size,
+                    pending_bytes=2 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        3 * test_max_chunk_size + 2 * test_max_chunk_size
+                    ),
+                ),
+                # Fifth parameters: in congestion avoidance, window size now
+                # only increases by one chunk instead of doubling.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    offset=4 * test_max_chunk_size,
+                    pending_bytes=3 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        4 * test_max_chunk_size + 3 * test_max_chunk_size
+                    ),
+                ),
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.COMPLETION,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    status=Status.OK.value,
+                ),
+            ],
+        )
+        self.assertEqual(data, b'#' * (6 * test_max_chunk_size))
+
+    def test_read_transfer_v2_adaptive_window_slow_start(self) -> None:
+        test_max_chunk_size = 16
+
+        manager = pw_transfer.Manager(
+            self._service,
+            default_response_timeout_s=DEFAULT_TIMEOUT_S,
+            max_chunk_size_bytes=test_max_chunk_size,
+            default_protocol_version=ProtocolVersion.VERSION_TWO,
+        )
+
+        self._enqueue_server_responses(
+            _Method.READ,
+            (
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.START_ACK,
+                        protocol_version=ProtocolVersion.VERSION_TWO.value,
+                    ),
+                ),
+                # First window: 1 chunk.
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=0,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Second window: 2 chunks.
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=2 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Third window: finish transfer.
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=3 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                        remaining_bytes=0,
+                    ),
+                ),
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.COMPLETION_ACK,
+                    ),
+                ),
+            ),
+        )
+
+        data = manager.read(_ARBITRARY_TRANSFER_ID)
+
+        self.assertEqual(
+            self._sent_chunks,
+            [
+                transfer_pb2.Chunk(
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    resource_id=_ARBITRARY_TRANSFER_ID,
+                    desired_session_id=_FIRST_SESSION_ID,
+                    pending_bytes=test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=test_max_chunk_size,
+                    type=transfer_pb2.Chunk.Type.START,
+                    protocol_version=ProtocolVersion.VERSION_TWO.value,
+                ),
+                # First parameters: 1 chunk window.
+                transfer_pb2.Chunk(
+                    session_id=_FIRST_SESSION_ID,
+                    type=transfer_pb2.Chunk.Type.START_ACK_CONFIRMATION,
+                    offset=0,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=test_max_chunk_size,
+                    protocol_version=ProtocolVersion.VERSION_TWO.value,
+                ),
+                # Second parameters: 2 chunk window.
+                transfer_pb2.Chunk(
+                    session_id=_FIRST_SESSION_ID,
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    offset=test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        test_max_chunk_size + 2 * test_max_chunk_size
+                    ),
+                ),
+                # Third parameters: 4 chunk window.
+                transfer_pb2.Chunk(
+                    session_id=_FIRST_SESSION_ID,
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    offset=2 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        2 * test_max_chunk_size + 4 * test_max_chunk_size
+                    ),
+                ),
+                transfer_pb2.Chunk(
+                    session_id=_FIRST_SESSION_ID,
+                    type=transfer_pb2.Chunk.Type.COMPLETION,
+                    status=Status.OK.value,
+                ),
+            ],
+        )
+        self.assertEqual(data, b'#' * (4 * test_max_chunk_size))
+
+    def test_read_transfer_v2_adaptive_window_congestion_avoidance(
+        self,
+    ) -> None:
+        test_max_chunk_size = 16
+
+        manager = pw_transfer.Manager(
+            self._service,
+            default_response_timeout_s=DEFAULT_TIMEOUT_S,
+            max_chunk_size_bytes=test_max_chunk_size,
+            default_protocol_version=ProtocolVersion.VERSION_TWO,
+        )
+
+        self._enqueue_server_responses(
+            _Method.READ,
+            (
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.START_ACK,
+                        protocol_version=ProtocolVersion.VERSION_TWO.value,
+                    ),
+                ),
+                # First window: 1 chunk.
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=0,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Second window: 2 chunks.
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=2 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Third window: send the wrong offset, triggering a
+                # retransmission.
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=2 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Fourth window: send the expected offset.
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=3 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=4 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                    ),
+                ),
+                # Fifth window: finish the transfer.
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.DATA,
+                        offset=5 * test_max_chunk_size,
+                        data=b'#' * test_max_chunk_size,
+                        remaining_bytes=0,
+                    ),
+                ),
+                (
+                    transfer_pb2.Chunk(
+                        session_id=_FIRST_SESSION_ID,
+                        type=transfer_pb2.Chunk.Type.COMPLETION_ACK,
+                    ),
+                ),
+            ),
+        )
+
+        data = manager.read(_ARBITRARY_TRANSFER_ID)
+
+        self.assertEqual(
+            self._sent_chunks,
+            [
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.START,
+                    transfer_id=_ARBITRARY_TRANSFER_ID,
+                    resource_id=_ARBITRARY_TRANSFER_ID,
+                    desired_session_id=_FIRST_SESSION_ID,
+                    pending_bytes=test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=test_max_chunk_size,
+                    protocol_version=ProtocolVersion.VERSION_TWO.value,
+                ),
+                # First parameters: 1 chunk window.
+                transfer_pb2.Chunk(
+                    session_id=_FIRST_SESSION_ID,
+                    type=transfer_pb2.Chunk.Type.START_ACK_CONFIRMATION,
+                    offset=0,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=test_max_chunk_size,
+                    protocol_version=ProtocolVersion.VERSION_TWO.value,
+                ),
+                # Second parameters: 2 chunk window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    session_id=_FIRST_SESSION_ID,
+                    offset=test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        test_max_chunk_size + 2 * test_max_chunk_size
+                    ),
+                ),
+                # Third parameters: 4 chunk window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    session_id=_FIRST_SESSION_ID,
+                    offset=2 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        2 * test_max_chunk_size + 4 * test_max_chunk_size
+                    ),
+                ),
+                # Fourth parameters: data loss, retransmit and halve window.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_RETRANSMIT,
+                    session_id=_FIRST_SESSION_ID,
+                    offset=3 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        3 * test_max_chunk_size + 2 * test_max_chunk_size
+                    ),
+                ),
+                # Fifth parameters: in congestion avoidance, window size now
+                # only increases by one chunk instead of doubling.
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.PARAMETERS_CONTINUE,
+                    session_id=_FIRST_SESSION_ID,
+                    offset=4 * test_max_chunk_size,
+                    max_chunk_size_bytes=test_max_chunk_size,
+                    window_end_offset=(
+                        4 * test_max_chunk_size + 3 * test_max_chunk_size
+                    ),
+                ),
+                transfer_pb2.Chunk(
+                    type=transfer_pb2.Chunk.Type.COMPLETION,
+                    session_id=_FIRST_SESSION_ID,
+                    status=Status.OK.value,
+                ),
+            ],
+        )
+        self.assertEqual(data, b'#' * (6 * test_max_chunk_size))
 
     def test_write_transfer_basic(self) -> None:
         manager = pw_transfer.Manager(
@@ -585,7 +1049,7 @@ class TransferManagerTest(unittest.TestCase):
             ),
         )
 
-        progress: List[pw_transfer.ProgressStats] = []
+        progress: list[pw_transfer.ProgressStats] = []
 
         manager.write(4, b'data to write', progress.append)
         self.assertEqual(len(self._sent_chunks), 3)
@@ -878,9 +1342,9 @@ class TransferManagerTest(unittest.TestCase):
                     transfer_id=39,
                     resource_id=39,
                     desired_session_id=_FIRST_SESSION_ID,
-                    pending_bytes=8192,
+                    pending_bytes=1024,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     type=transfer_pb2.Chunk.Type.START,
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
                 ),
@@ -888,7 +1352,7 @@ class TransferManagerTest(unittest.TestCase):
                     session_id=_FIRST_SESSION_ID,
                     type=transfer_pb2.Chunk.Type.START_ACK_CONFIRMATION,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     # pending_bytes should no longer exist as server and client
                     # have agreed on v2.
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
@@ -937,9 +1401,9 @@ class TransferManagerTest(unittest.TestCase):
                     transfer_id=40,
                     resource_id=40,
                     desired_session_id=_FIRST_SESSION_ID,
-                    pending_bytes=8192,
+                    pending_bytes=1024,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     type=transfer_pb2.Chunk.Type.START,
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
                 ),
@@ -1134,9 +1598,9 @@ class TransferManagerTest(unittest.TestCase):
                     transfer_id=43,
                     desired_session_id=_FIRST_SESSION_ID,
                     resource_id=43,
-                    pending_bytes=8192,
+                    pending_bytes=1024,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     type=transfer_pb2.Chunk.Type.START,
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
                 ),
@@ -1144,7 +1608,7 @@ class TransferManagerTest(unittest.TestCase):
                     session_id=_FIRST_SESSION_ID,
                     type=transfer_pb2.Chunk.Type.START_ACK_CONFIRMATION,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
                 ),
                 # Client sends a COMPLETION_ACK in response to the server.
@@ -1176,9 +1640,9 @@ class TransferManagerTest(unittest.TestCase):
             transfer_id=41,
             resource_id=41,
             desired_session_id=_FIRST_SESSION_ID,
-            pending_bytes=8192,
+            pending_bytes=1024,
             max_chunk_size_bytes=1024,
-            window_end_offset=8192,
+            window_end_offset=1024,
             type=transfer_pb2.Chunk.Type.START,
             protocol_version=ProtocolVersion.VERSION_TWO.value,
         )
@@ -1331,9 +1795,9 @@ class TransferManagerTest(unittest.TestCase):
                     transfer_id=47,
                     resource_id=47,
                     desired_session_id=_FIRST_SESSION_ID,
-                    pending_bytes=8192,
+                    pending_bytes=1024,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     type=transfer_pb2.Chunk.Type.START,
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
                 ),
@@ -1341,7 +1805,7 @@ class TransferManagerTest(unittest.TestCase):
                     session_id=_FIRST_SESSION_ID,
                     type=transfer_pb2.Chunk.Type.START_ACK_CONFIRMATION,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
                 ),
                 transfer_pb2.Chunk(
@@ -1401,9 +1865,9 @@ class TransferManagerTest(unittest.TestCase):
                     transfer_id=47,
                     resource_id=47,
                     desired_session_id=_FIRST_SESSION_ID,
-                    pending_bytes=8192,
+                    pending_bytes=1024,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     type=transfer_pb2.Chunk.Type.START,
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
                 ),
@@ -1411,7 +1875,7 @@ class TransferManagerTest(unittest.TestCase):
                     session_id=_FIRST_SESSION_ID,
                     type=transfer_pb2.Chunk.Type.START_ACK_CONFIRMATION,
                     max_chunk_size_bytes=1024,
-                    window_end_offset=8192,
+                    window_end_offset=1024,
                     protocol_version=ProtocolVersion.VERSION_TWO.value,
                 ),
                 transfer_pb2.Chunk(

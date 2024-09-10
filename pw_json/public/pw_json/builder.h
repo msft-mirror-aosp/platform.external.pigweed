@@ -42,50 +42,6 @@ namespace pw {
 /// @defgroup pw_json_builder_api
 /// @{
 
-/// Stores a simple JSON value: a string, integer, float, boolean, or null.
-/// Provides a `Set()` function as well as the common functions for accessing
-/// the serialized data (see documentation for `JsonBuilder`).
-class JsonValue {
- public:
-  constexpr JsonValue(const JsonValue&) = delete;
-  constexpr JsonValue& operator=(const JsonValue&) = delete;
-
-  // Functions common to all JSON types.
-  [[nodiscard]] constexpr bool IsValue() const;
-  [[nodiscard]] constexpr bool IsArray() const;
-  [[nodiscard]] constexpr bool IsObject() const;
-
-  constexpr operator std::string_view() const;
-  constexpr const char* data() const;
-  constexpr size_t size() const;
-  constexpr size_t max_size() const;
-
-  [[nodiscard]] constexpr bool ok() const;
-  constexpr Status status() const;
-  constexpr Status last_status() const;
-  constexpr void clear();
-  constexpr void clear_status();
-
-  /// Sets the JSON value to a boolean, number, string, or `null`. Sets and
-  /// returns the status. If a `Set` call fails, the value is set to `null`.
-  ///
-  /// It is an error to call `Set()` on a `JsonValue` if `StartArray` or
-  /// `StartObject` was called on the `JsonBuilder`. Setting the `JsonValue` to
-  /// a JSON object or array is also an error.
-  ///
-  /// @returns
-  /// - @pw_status{OK} if the value serialized successfully
-  /// - @pw_status{RESOURCE_EXHAUSTED} if there is insufficient buffer space to
-  ///   serialize
-  template <typename T>
-  constexpr Status Set(const T& value);
-
- private:
-  friend class JsonBuilder;
-
-  constexpr JsonValue() = default;
-};
-
 /// A `JsonArray` nested inside an object or array. Only provides functions for
 /// appending values to the nested array.
 ///
@@ -152,6 +108,56 @@ class [[nodiscard]] NestedJsonObject {
       : json_(std::move(nested)) {}
 
   json_impl::NestedJson json_;
+};
+
+/// Stores a simple JSON value: a string, integer, float, boolean, or null.
+/// Provides a `Set()` function as well as the common functions for accessing
+/// the serialized data (see documentation for `JsonBuilder`).
+class JsonValue {
+ public:
+  constexpr JsonValue(const JsonValue&) = delete;
+  constexpr JsonValue& operator=(const JsonValue&) = delete;
+
+  // Functions common to all JSON types.
+  [[nodiscard]] constexpr bool IsValue() const;
+  [[nodiscard]] constexpr bool IsArray() const;
+  [[nodiscard]] constexpr bool IsObject() const;
+
+  constexpr operator std::string_view() const;
+  constexpr const char* data() const;
+  constexpr size_t size() const;
+  constexpr size_t max_size() const;
+
+  [[nodiscard]] constexpr bool ok() const;
+  constexpr Status status() const;
+  constexpr Status last_status() const;
+  constexpr void clear();
+  constexpr void clear_status();
+
+  /// Sets the JSON value to a boolean, number, string, or `null`. Sets and
+  /// returns the status. If a `Set` call fails, the value is set to `null`.
+  ///
+  /// It is an error to call `Set()` on a `JsonValue` if `StartArray` or
+  /// `StartObject` was called on the `JsonBuilder`. Setting the `JsonValue` to
+  /// a JSON object or array is also an error.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The value serialized successfully.
+  ///
+  ///    RESOURCE_EXHAUSTED: There is insufficient buffer space to
+  ///    serialize.
+  ///
+  /// @endrst
+  template <typename T>
+  constexpr Status Set(const T& value);
+
+ private:
+  friend class JsonBuilder;
+
+  constexpr JsonValue() = default;
 };
 
 /// Stores a JSON array: a sequence of values. Provides functions for adding
@@ -236,9 +242,15 @@ class JsonObject {
   /// It is an error to call `Add()` if the underlying `JsonBuilder` is no
   /// longer an object.
   ///
-  /// @returns
-  /// - @pw_status{OK} the value was appended successfully
-  /// - @pw_status{RESOURCE_EXHAUSTED} insufficient buffer space to serialize
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The value was appended successfully.
+  ///
+  ///    RESOURCE_EXHAUSTED: Insufficient buffer space to serialize.
+  ///
+  /// @endrst
   template <typename T>
   constexpr JsonObject& Add(std::string_view key, const T& value);
 
@@ -305,14 +317,20 @@ class JsonBuilder : private JsonValue, private JsonArray, private JsonObject {
   /// status remains until it is reset with `clear`, `clear_status`, or
   /// `SetValue`.
   ///
-  /// @returns
-  /// - @pw_status{OK} if the all previous updates have succeeded
-  /// - @pw_status{RESOURCE_EXHAUSTED} if an update did not fit in the buffer
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: All previous updates have succeeded.
+  ///
+  ///    RESOURCE_EXHAUSTED: An update did not fit in the buffer.
+  ///
+  /// @endrst
   constexpr Status status() const { return static_cast<Status::Code>(status_); }
 
   /// Returns the status from the most recent change to the JSON. This is set
   /// with each JSON update and may be @pw_status{OK} while `status()` is not.
-  Status constexpr last_status() const {
+  constexpr Status last_status() const {
     return static_cast<Status::Code>(last_status_);
   }
 

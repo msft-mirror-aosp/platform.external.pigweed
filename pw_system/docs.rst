@@ -33,13 +33,37 @@ Target Bringup
 Bringing up a new device is as easy as 1-2-3! (Kidding, this is a work in
 progress)
 
-#. **Create a ``pw_system_target`` in your GN build.**
-   This is what will control the configuration of your target from a build
-   system level. This includes which compiler will be used, what architecture
-   flags will be used, which backends will be used, and more. A large quantity
-   of configuration will be pre-set to work with pw_system after you select the
-   CPU and scheduler your target will use, but your target will likely need to
-   set a few other things to get to a fully working state.
+#. **Configure the build.** How exactly to do this depends on the build
+   system.
+
+   *  **GN**: Create a ``pw_system_target`` in your GN build. This is what will
+      control the configuration of your target from a build system level. This
+      includes which compiler will be used, what architecture flags will be
+      used, which backends will be used, and more. A large quantity of
+      configuration will be pre-set to work with pw_system after you select the
+      CPU and scheduler your target will use, but your target will likely need
+      to set a few other things to get to a fully working state.
+
+   *  **Bazel**: Add a dependency on ``@pigweed//pw_system`` to your ``cc_binary``,
+      and set one `label flag
+      <https://bazel.build/extending/config#label-typed-build-settings>`__,
+      ``@pigweed//pw_system:extra_platform_libs``. Point it to a ``cc_library``
+      containing any platform-dependent dependencies of your ``pw_system``
+      instantiation. In particular, this should include platform-specific
+      initialization code (see next point) and the custom
+      :ref:`pw_linker_script <module-pw_build-bazel-pw_linker_script>` (if any)
+      to use when linking the ``pw_system`` binary.
+
+      .. warning::
+
+         You should always add the ``alwayslink = 1`` attribute to the target
+         you point ``@pigweed//pw_system:extra_platform_libs`` to. This is
+         because Bazel `links files in topological order
+         <https://stackoverflow.com/a/73006724/24291280>`__, but the
+         dependencies from ``extra_platform_libs`` may appear before the
+         objects they are used in. The ``alwayslink = 1`` will prevent the
+         linker from erroneously garbage-collecting them.
+
 #. **Write target-specific initialization.**
    Most embedded devices require a linker script, manual initialization of
    memory, and some clock initialization. pw_system leaves this to users to
@@ -140,8 +164,8 @@ being foundational infrastructure.
          "PW_BOOT_FLASH_SIZE=200K",
 
          # TODO: b/235348465 - Currently "pw_tokenizer/detokenize_test" requires at
-         # least 6K bytes in heap when using pw_malloc_freelist. The heap size
-         # required for tests should be investigated.
+         # least 6K bytes in heap when using pw_malloc:bucket_block_allocator.
+         # The heap size required for tests should be investigated.
          "PW_BOOT_HEAP_SIZE=7K",
          "PW_BOOT_MIN_STACK_SIZE=1K",
          "PW_BOOT_RAM_BEGIN=0x20000000",

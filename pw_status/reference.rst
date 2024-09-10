@@ -5,7 +5,6 @@ Reference
 =========
 .. pigweed-module-subpage::
    :name: pw_status
-   :tagline: pw_status: Exception-free error propagation for embedded
 
 .. _module-pw_status-codes:
 
@@ -251,10 +250,10 @@ Status codes
    file size.
 
    There is a fair bit of overlap between :c:enumerator:`FAILED_PRECONDITION`
-   and :c:enumerator:`OUT_OF_RANGE`.  We recommend using
-   :c:enumerator:`OUT_OF_RANGE` (the more specific error) when it applies so
-   that callers who are iterating through a space can easily look for an
-   :c:enumerator:`OUT_OF_RANGE` error to detect when they are done.
+   and :c:enumerator:`OUT_OF_RANGE`. Use :c:enumerator:`OUT_OF_RANGE` (the more
+   specific error) when it applies so that callers who are iterating through a
+   space can easily look for an :c:enumerator:`OUT_OF_RANGE` error to detect
+   when they are done.
 
    .. list-table::
 
@@ -373,6 +372,12 @@ C++ API
    The values of the :c:enum:`pw_Status` enum are all-caps and prefixed with
    ``PW_STATUS_``. For example, ``PW_STATUS_DATA_LOSS`` corresponds with
    :c:enumerator:`DATA_LOSS`.
+
+.. doxygendefine:: PW_TRY
+.. doxygendefine:: PW_TRY_ASSIGN
+.. doxygendefine:: PW_TRY_WITH_SIZE
+.. doxygendefine:: PW_CO_TRY
+.. doxygendefine:: PW_CO_TRY_ASSIGN
 
 Unused result warnings
 ----------------------

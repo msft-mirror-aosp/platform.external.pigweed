@@ -33,23 +33,20 @@ from typing import (
     Collection,
     Container,
     ContextManager,
-    Dict,
     Iterable,
     Iterator,
-    List,
     Mapping,
-    Optional,
     Sequence,
     Set,
-    Tuple,
-    Union,
+    TextIO,
 )
 
 import pw_cli.color
+from pw_cli.plural import plural
+from pw_cli.file_filter import FileFilter
 from pw_presubmit.presubmit import (
     call,
     Check,
-    FileFilter,
     filter_paths,
     install_package,
     PresubmitResult,
@@ -65,7 +62,6 @@ from pw_presubmit import (
     ninja_parser,
 )
 from pw_presubmit.tools import (
-    plural,
     log_run,
     format_command,
 )
@@ -73,45 +69,70 @@ from pw_presubmit.tools import (
 _LOG = logging.getLogger(__name__)
 
 
-def bazel(ctx: PresubmitContext, cmd: str, *args: str, **kwargs) -> None:
+def bazel(
+    ctx: PresubmitContext,
+    cmd: str,
+    *args: str,
+    use_remote_cache: bool = False,
+    stdout: TextIO | None = None,
+    **kwargs,
+) -> None:
     """Invokes Bazel with some common flags set.
 
     Intended for use with bazel build and test. May not work with others.
     """
 
-    num_jobs: List[str] = []
+    num_jobs: list[str] = []
     if ctx.num_jobs is not None:
         num_jobs.extend(('--jobs', str(ctx.num_jobs)))
 
-    keep_going: List[str] = []
+    keep_going: list[str] = []
     if ctx.continue_after_build_error:
         keep_going.append('--keep_going')
 
-    bazel_stdout = ctx.output_dir / 'bazel.stdout'
+    remote_cache: list[str] = []
+    if use_remote_cache and ctx.luci:
+        remote_cache.append('--config=remote_cache')
+        if ctx.luci.is_ci:
+            # Only CI builders should attempt to write to the cache. Try
+            # builders will be denied permission if they do so.
+            remote_cache.append('--remote_upload_local_results=true')
+
     ctx.output_dir.mkdir(exist_ok=True, parents=True)
     try:
-        with bazel_stdout.open('w') as outs:
+        with contextlib.ExitStack() as stack:
+            if not stdout:
+                stdout = stack.enter_context(
+                    (ctx.output_dir / f'bazel.{cmd}.stdout').open('w')
+                )
+
+            with (ctx.output_dir / 'bazel.output.base').open('w') as outs, (
+                ctx.output_dir / 'bazel.output.base.err'
+            ).open('w') as errs:
+                call('bazel', 'info', 'output_base', tee=outs, stderr=errs)
+
             call(
                 'bazel',
                 cmd,
                 '--verbose_failures',
-                '--verbose_explanations',
                 '--worker_verbose',
-                f'--symlink_prefix={ctx.output_dir / ".bazel-"}',
+                f'--symlink_prefix={ctx.output_dir / "bazel-"}',
                 *num_jobs,
                 *keep_going,
+                *remote_cache,
                 *args,
                 cwd=ctx.root,
-                tee=outs,
+                tee=stdout,
                 call_annotation={'build_system': 'bazel'},
                 **kwargs,
             )
 
     except PresubmitFailure as exc:
-        failure = bazel_parser.parse_bazel_stdout(bazel_stdout)
-        if failure:
-            with ctx.failure_summary_log.open('w') as outs:
-                outs.write(failure)
+        if stdout:
+            failure = bazel_parser.parse_bazel_stdout(Path(stdout.name))
+            if failure:
+                with ctx.failure_summary_log.open('w') as outs:
+                    outs.write(failure)
 
         raise exc
 
@@ -136,7 +157,7 @@ def _gn_value(value) -> str:
     return str(value)
 
 
-def gn_args_list(**kwargs) -> List[str]:
+def gn_args_list(**kwargs) -> list[str]:
     """Return a list of formatted strings to use as gn args.
 
     Currently supports bool, int, and str values. In the case of str values,
@@ -198,7 +219,7 @@ def gn_gen(
     *args: str,
     gn_check: bool = True,  # pylint: disable=redefined-outer-name
     gn_fail_on_unused: bool = True,
-    export_compile_commands: Union[bool, str] = True,
+    export_compile_commands: bool | str = True,
     preserve_args_gn: bool = False,
     **gn_arguments,
 ) -> None:
@@ -265,11 +286,11 @@ def ninja(
 ) -> None:
     """Runs ninja in the specified directory."""
 
-    num_jobs: List[str] = []
+    num_jobs: list[str] = []
     if ctx.num_jobs is not None:
         num_jobs.extend(('-j', str(ctx.num_jobs)))
 
-    keep_going: List[str] = []
+    keep_going: list[str] = []
     if ctx.continue_after_build_error:
         keep_going.extend(('-k', '0'))
 
@@ -323,7 +344,7 @@ def ninja(
         raise exc
 
 
-def get_gn_args(directory: Path) -> List[Dict[str, Dict[str, str]]]:
+def get_gn_args(directory: Path) -> list[dict[str, dict[str, str]]]:
     """Dumps GN variables to JSON."""
     proc = log_run(
         ['gn', 'args', directory, '--list', '--json'], stdout=subprocess.PIPE
@@ -334,7 +355,7 @@ def get_gn_args(directory: Path) -> List[Dict[str, Dict[str, str]]]:
 def cmake(
     ctx: PresubmitContext,
     *args: str,
-    env: Optional[Mapping['str', 'str']] = None,
+    env: Mapping['str', 'str'] | None = None,
 ) -> None:
     """Runs CMake for Ninja on the given source and output directories."""
     call(
@@ -421,10 +442,10 @@ def compiled_files(compile_commands: Path) -> Iterable[Path]:
 
 
 def check_compile_commands_for_files(
-    compile_commands: Union[Path, Iterable[Path]],
+    compile_commands: Path | Iterable[Path],
     files: Iterable[Path],
     extensions: Collection[str] = format_code.CPP_SOURCE_EXTS,
-) -> List[Path]:
+) -> list[Path]:
     """Checks for paths in one or more compile_commands.json files.
 
     Only checks C and C++ source files by default.
@@ -444,7 +465,7 @@ def check_bazel_build_for_files(
     bazel_extensions_to_check: Container[str],
     files: Iterable[Path],
     bazel_dirs: Iterable[Path] = (),
-) -> List[Path]:
+) -> list[Path]:
     """Checks that source files are in the Bazel builds.
 
     Args:
@@ -465,7 +486,7 @@ def check_bazel_build_for_files(
             )
         )
 
-    missing: List[Path] = []
+    missing: list[Path] = []
 
     if bazel_dirs:
         for path in (p for p in files if p.suffix in bazel_extensions_to_check):
@@ -487,9 +508,9 @@ def check_bazel_build_for_files(
 def check_gn_build_for_files(
     gn_extensions_to_check: Container[str],
     files: Iterable[Path],
-    gn_dirs: Iterable[Tuple[Path, Path]] = (),
+    gn_dirs: Iterable[tuple[Path, Path]] = (),
     gn_build_files: Iterable[Path] = (),
-) -> List[Path]:
+) -> list[Path]:
     """Checks that source files are in the GN build.
 
     Args:
@@ -512,7 +533,7 @@ def check_gn_build_for_files(
 
     gn_builds.update(_search_files_for_paths(gn_build_files))
 
-    missing: List[Path] = []
+    missing: list[Path] = []
 
     if gn_dirs or gn_build_files:
         for path in (p for p in files if p.suffix in gn_extensions_to_check):
@@ -534,9 +555,9 @@ def check_builds_for_files(
     gn_extensions_to_check: Container[str],
     files: Iterable[Path],
     bazel_dirs: Iterable[Path] = (),
-    gn_dirs: Iterable[Tuple[Path, Path]] = (),
+    gn_dirs: Iterable[tuple[Path, Path]] = (),
     gn_build_files: Iterable[Path] = (),
-) -> Dict[str, List[Path]]:
+) -> dict[str, list[Path]]:
     """Checks that source files are in the GN and Bazel builds.
 
     Args:
@@ -653,11 +674,11 @@ def gn_gen_check(ctx: PresubmitContext):
     gn_gen(ctx, gn_check=True)
 
 
-Item = Union[int, str]
-Value = Union[Item, Sequence[Item]]
+Item = int | str
+Value = Item | Sequence[Item]
 ValueCallable = Callable[[PresubmitContext], Value]
-InputItem = Union[Item, ValueCallable]
-InputValue = Union[InputItem, Sequence[InputItem]]
+InputItem = Item | ValueCallable
+InputValue = InputItem | Sequence[InputItem]
 
 
 def _value(ctx: PresubmitContext, val: InputValue) -> Value:
@@ -668,21 +689,19 @@ def _value(ctx: PresubmitContext, val: InputValue) -> Value:
     the lambda with the result. Return the updated top-level structure.
     """
 
-    # TODO(mohrr) Use typing.TypeGuard instead of "type: ignore"
-
     if isinstance(val, (str, int)):
         return val
     if callable(val):
         return val(ctx)
 
-    result: List[Item] = []
+    result: list[Item] = []
     for item in val:
         if callable(item):
             call_result = item(ctx)
-            if isinstance(item, (int, str)):
+            if isinstance(call_result, (int, str)):
                 result.append(call_result)
             else:  # Sequence.
-                result.extend(call_result)  # type: ignore
+                result.extend(call_result)
         elif isinstance(item, (int, str)):
             result.append(item)
         else:  # Sequence.
@@ -691,7 +710,7 @@ def _value(ctx: PresubmitContext, val: InputValue) -> Value:
 
 
 _CtxMgrLambda = Callable[[PresubmitContext], ContextManager]
-_CtxMgrOrLambda = Union[ContextManager, _CtxMgrLambda]
+_CtxMgrOrLambda = ContextManager | _CtxMgrLambda
 
 
 @dataclass(frozen=True)
@@ -756,7 +775,7 @@ class CoverageOptions:
     """Coverage collection configuration. For Google use only."""
 
     common: CommonCoverageOptions
-    codesearch: Tuple[CodeSearchCoverageOptions, ...]
+    codesearch: tuple[CodeSearchCoverageOptions, ...]
     gerrit: GerritCoverageOptions
 
 
@@ -768,8 +787,8 @@ class _NinjaBase(Check):
         *args,
         packages: Sequence[str] = (),
         ninja_contexts: Sequence[_CtxMgrOrLambda] = (),
-        ninja_targets: Union[str, Sequence[str], Sequence[Sequence[str]]] = (),
-        coverage_options: Optional[CoverageOptions] = None,
+        ninja_targets: str | Sequence[str] | Sequence[Sequence[str]] = (),
+        coverage_options: CoverageOptions | None = None,
         **kwargs,
     ):
         """Initializes a _NinjaBase object.
@@ -788,7 +807,7 @@ class _NinjaBase(Check):
         """
         super().__init__(*args, **kwargs)
         self._packages: Sequence[str] = packages
-        self._ninja_contexts: Tuple[_CtxMgrOrLambda, ...] = tuple(
+        self._ninja_contexts: tuple[_CtxMgrOrLambda, ...] = tuple(
             ninja_contexts
         )
         self._coverage_options = coverage_options
@@ -801,9 +820,9 @@ class _NinjaBase(Check):
         if ninja_targets and all_strings != any_strings:
             raise ValueError(repr(ninja_targets))
 
-        self._ninja_target_lists: Tuple[Tuple[str, ...], ...]
+        self._ninja_target_lists: tuple[tuple[str, ...], ...]
         if all_strings:
-            targets: List[str] = []
+            targets: list[str] = []
             for target in ninja_targets:
                 targets.append(target)  # type: ignore
             self._ninja_target_lists = (tuple(targets),)
@@ -811,7 +830,7 @@ class _NinjaBase(Check):
             self._ninja_target_lists = tuple(tuple(x) for x in ninja_targets)
 
     @property
-    def ninja_targets(self) -> List[str]:
+    def ninja_targets(self) -> list[str]:
         return list(itertools.chain(*self._ninja_target_lists))
 
     def _install_package(  # pylint: disable=no-self-use
@@ -846,7 +865,7 @@ class _NinjaBase(Check):
         """Archive and (on LUCI) upload coverage reports."""
         reports = ctx.output_dir / 'coverage_reports'
         os.makedirs(reports, exist_ok=True)
-        coverage_jsons: List[Path] = []
+        coverage_jsons: list[Path] = []
         for path in ctx.output_dir.rglob('coverage_report'):
             _LOG.debug('exploring %s', path)
             name = str(path.relative_to(ctx.output_dir))
@@ -1003,30 +1022,30 @@ class GnGenNinja(_NinjaBase):
     def __init__(
         self,
         *args,
-        gn_args: Optional[  # pylint: disable=redefined-outer-name
-            Dict[str, Any]
-        ] = None,
+        gn_args: (  # pylint: disable=redefined-outer-name
+            dict[str, Any] | None
+        ) = None,
         **kwargs,
     ):
         """Initializes a GnGenNinja object.
 
         Args:
             *args: Passed on to superclass.
-            gn_args: Dict of GN args.
+            gn_args: dict of GN args.
             **kwargs: Passed on to superclass.
         """
         super().__init__(self._substeps(), *args, **kwargs)
-        self._gn_args: Dict[str, Any] = gn_args or {}
+        self._gn_args: dict[str, Any] = gn_args or {}
 
     def add_default_gn_args(self, args):
         """Add any project-specific default GN args to 'args'."""
 
     @property
-    def gn_args(self) -> Dict[str, Any]:
+    def gn_args(self) -> dict[str, Any]:
         return self._gn_args
 
     def _gn_gen(self, ctx: PresubmitContext) -> PresubmitResult:
-        args: Dict[str, Any] = {}
+        args: dict[str, Any] = {}
         if self._coverage_options is not None:
             args['pw_toolchain_COVERAGE_ENABLED'] = True
             args['pw_build_PYTHON_TEST_COVERAGE'] = True

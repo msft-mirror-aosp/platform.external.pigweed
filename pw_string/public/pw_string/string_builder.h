@@ -134,10 +134,19 @@ class StringBuilder {
   /// status remains non-OK until it is cleared with
   /// `pw::StringBuilder::clear()` or `pw::StringBuilder::clear_status()`.
   ///
-  /// @returns `OK` if no errors have occurred; `RESOURCE_EXHAUSTED` if output
-  /// to the `StringBuilder` was truncated; `INVALID_ARGUMENT` if `printf`-style
-  /// formatting failed; `OUT_OF_RANGE` if an operation outside the buffer was
-  /// attempted.
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: No errors have occurred.
+  ///
+  ///    RESOURCE_EXHAUSTED: Output to the ``StringBuilder`` was truncated.
+  ///
+  ///    INVALID_ARGUMENT: ``printf``-style formatting failed.
+  ///
+  ///    OUT_OF_RANGE: An operation outside the buffer was attempted.
+  ///
+  /// @endrst
   Status status() const { return static_cast<Status::Code>(status_); }
 
   /// Returns `status()` and `size()` as a `StatusWithSize`.
@@ -200,12 +209,12 @@ class StringBuilder {
   StringBuilder& append(const char* str);
 
   /// Appends a `std::string_view` to the end of the `StringBuilder`.
-  StringBuilder& append(const std::string_view& str);
+  StringBuilder& append(std::string_view str);
 
   /// Appends a substring from the `std::string_view` to the `StringBuilder`.
   /// Copies up to count characters starting from `pos` to the end of the
   /// `StringBuilder`. If `pos > str.size()`, sets the status to `OUT_OF_RANGE`.
-  StringBuilder& append(const std::string_view& str,
+  StringBuilder& append(std::string_view str,
                         size_t pos,
                         size_t count = std::string_view::npos);
 
@@ -356,6 +365,12 @@ class StringBuffer : public StringBuilder {
     CopyContents(other);
     return *this;
   }
+
+  /// StringBuffers are not movable: the underlying data must be copied.
+  StringBuffer(StringBuffer&& other) = delete;
+
+  /// StringBuffers are not movable: the underlying data must be copied.
+  StringBuffer& operator=(StringBuffer&& other) = delete;
 
   // Returns the maximum length of the string, excluding the null terminator.
   static constexpr size_t max_size() { return kSizeBytes - 1; }

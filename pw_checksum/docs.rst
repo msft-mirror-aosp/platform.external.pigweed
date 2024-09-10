@@ -3,6 +3,9 @@
 -----------
 pw_checksum
 -----------
+.. pigweed-module::
+   :name: pw_checksum
+
 The ``pw_checksum`` module provides functions for calculating checksums.
 
 pw_checksum/crc16_ccitt.h
@@ -24,9 +27,9 @@ pw_checksum/crc16_ccitt.h
 
   .. code-block:: cpp
 
-    uint16_t crc = CcittCrc16(my_data);
+     uint16_t crc = CcittCrc16(my_data);
 
-    crc  = CcittCrc16(more_data, crc);
+     crc  = CcittCrc16(more_data, crc);
 
 pw_checksum/crc32.h
 ===================
@@ -42,7 +45,7 @@ pw_checksum/crc32.h
 
   .. code-block:: cpp
 
-    uint32_t crc = Crc32(my_data);
+     uint32_t crc = Crc32(my_data);
 
 .. cpp:function:: uint32_t Crc32(span<const std::byte> data, uint32_t previous_result)
 
@@ -51,8 +54,8 @@ pw_checksum/crc32.h
 
   .. code-block:: cpp
 
-    uint32_t crc = Crc32(my_data);
-    crc = Crc32(more_data, crc);
+     uint32_t crc = Crc32(my_data);
+     crc = Crc32(more_data, crc);
 
 .. _CRC32 Implementations:
 

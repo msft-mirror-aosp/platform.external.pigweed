@@ -112,6 +112,25 @@ our focus, we cannot adopt incomplete CLs.
 
 .. _gerrit-commit-hook:
 
+Build System Support
+--------------------
+Pigweed users are split across a number of build systems including:
+
+* `Bazel <https://bazel.build/>`_
+* `GN (a ninja generator) <https://gn.googlesource.com/gn/>`_
+* `CMake <https://cmake.org/>`_
+* `Soong (Android's build system) <https://source.android.com/docs/setup/build>`_
+
+In order to ensure parity between different build systems, contributions must
+include support for at least Bazel (``BUILD.bazel``), GN (``BUILD.gn``) and
+CMake (``CMakeLists.txt``).
+
+We understand that most people don't have experience with all of the build
+systems Pigweed supports, and that this requirement is a burden on contributors.
+We find most people are able to follow the patterns in existing build files to
+add support for their changes; but not always. We're happy to help with build
+questions on Discord for that reason. Don't be shy if you need help!
+
 Gerrit Commit Hook
 ------------------
 Gerrit requires all changes to have a ``Change-Id`` tag at the bottom of each
@@ -247,8 +266,8 @@ In addition to Pigweed's presubmit checks, some projects that use Pigweed run
 their presubmit checks in Pigweed's infrastructure. This supports a development
 flow where projects automatically update their Pigweed submodule if their tests
 pass. If a project cannot build against Pigweed's tip-of-tree, it will stay on
-a fixed Pigweed revision until the issues are fixed. See the `sample project
-<https://pigweed.googlesource.com/pigweed/sample_project/>`_ for an example of
+a fixed Pigweed revision until the issues are fixed. See the `examples
+<https://pigweed.googlesource.com/pigweed/examples/>`_ repo for an example of
 this.
 
 Pigweed does its best to keep builds passing for dependent projects. In some
@@ -300,14 +319,14 @@ Linux/macOS
 ^^^^^^^^^^^
 .. code-block:: bash
 
-  $ pw presubmit --install
+   $ pw presubmit --install
 
 This will be effectively the same as running the following command before every
 ``git push``:
 
 .. code-block:: bash
 
-  $ pw presubmit
+   $ pw presubmit
 
 
 .. image:: ../../pw_presubmit/docs/pw_presubmit_demo.gif
@@ -319,7 +338,7 @@ example) you may push using this command:
 
 .. code-block:: bash
 
-  $ git push origin HEAD:refs/for/main --no-verify
+   $ git push origin HEAD:refs/for/main --no-verify
 
 Presubmit and branch management
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -328,7 +347,7 @@ track, e.g.
 
 .. code-block:: bash
 
-  $ git checkout -b myfeature origin/main
+   $ git checkout -b myfeature origin/main
 
 When tracking an upstream branch, ``pw presubmit`` will only run checks on the
 modified files, rather than the entire repository.
@@ -405,5 +424,4 @@ See the warning about caching Python packages for multiple platforms in
    ../style_guide
    ../code_reviews
    ../code_of_conduct
-   module_docs
-   changelog
+   docs/index

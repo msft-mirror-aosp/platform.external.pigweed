@@ -14,6 +14,7 @@
 
 interface InputChangeEvent extends CustomEvent {
   detail: {
+    viewId: string;
     inputValue: string;
   };
 }

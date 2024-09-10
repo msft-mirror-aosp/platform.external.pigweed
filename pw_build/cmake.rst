@@ -1,31 +1,38 @@
+.. _module-pw_build-cmake:
+
 CMake
 =====
+.. pigweed-module-subpage::
+   :name: pw_build
+
 Pigweed's `CMake`_ support is provided primarily for projects that have an
 existing CMake build and wish to integrate Pigweed without switching to a new
 build system.
 
-The following command generates Ninja build files for a host build in the
-``out/cmake_host`` directory:
+.. tip::
+   To run upstream Pigweed's CMake build use the ``pw build`` command:
 
-.. code-block:: sh
+   .. code-block:: console
 
-  cmake -B out/cmake_host -S "$PW_ROOT" -G Ninja -DCMAKE_TOOLCHAIN_FILE=$PW_ROOT/pw_toolchain/host_clang/toolchain.cmake
+      pw build -r default_cmake
 
-The ``PW_ROOT`` environment variable must point to the root of the Pigweed
-directory. This variable is set by Pigweed's environment setup.
+   This will install any required packages, generate cmake build files and invkoke ninja.
 
-Tests can be executed with the ``pw_run_tests.GROUP`` targets. To run Pigweed
-module tests, execute ``pw_run_tests.modules``:
+   .. code-block:: text
 
-.. code-block:: sh
+      19:36:58 INF [1/1] Starting ==> Recipe: default_cmake Targets: pw_run_tests.modules pw_apps pw_run_tests.pw_bluetooth Logfile: /out/build_default_cmake.txt
+      19:36:58 INF [1/1] Run ==> pw --no-banner package install emboss
+      19:36:59 INF [1/1] Run ==> pw --no-banner package install nanopb
+      19:37:00 INF [1/1] Run ==> pw --no-banner package install boringssl
+      19:37:10 INF [1/1] Run ==> cmake --fresh --debug-output -DCMAKE_MESSAGE_LOG_LEVEL=WARNING -S . -B ./out/cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=./pw_toolchain/host_clang/toolchain.cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -Ddir_pw_third_party_nanopb=./environment/packages/nanopb -Dpw_third_party_nanopb_ADD_SUBDIRECTORY=ON -Ddir_pw_third_party_emboss=./environment/packages/emboss -Ddir_pw_third_party_boringssl=./environment/packages/boringssl -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      19:37:10 INF [1/1] Run ==> ninja -C out/cmake pw_apps pw_run_tests.modules pw_run_tests.pw_bluetooth
 
-  ninja -C out/cmake_host pw_run_tests.modules
+   :ref:`module-pw_watch` works with ``pw build`` as well. You can run the
+   following to automatically rebuild when files change.
 
-:ref:`module-pw_watch` supports CMake, so you can also run
+   .. code-block:: console
 
-.. code-block:: sh
-
-  pw watch -C out/cmake_host pw_run_tests.modules
+      pw build -r default_cmake --watch
 
 CMake functions
 ---------------
@@ -57,6 +64,8 @@ CMake convenience functions are defined in ``pw_build/pigweed.cmake``.
   messages cannot be used to catch problems during the CMake configuration
   phase.
 * ``pw_parse_arguments`` -- Helper to parse CMake function arguments.
+* ``pw_rebase_paths`` -- Helper to update a set of file paths to be rooted on a
+  new directory.
 
 See ``pw_build/pigweed.cmake`` for the complete documentation of these
 functions.
@@ -95,9 +104,9 @@ following ways:
 
   .. code-block:: sh
 
-    cmake -B out/cmake_host -S "$PW_ROOT" -G Ninja \
-        -DCMAKE_TOOLCHAIN_FILE=$PW_ROOT/pw_toolchain/host_clang/toolchain.cmake \
-        -Dpw_log_BACKEND=pw_log_basic
+     cmake -B out/cmake_host -S "$PW_ROOT" -G Ninja \
+         -DCMAKE_TOOLCHAIN_FILE=$PW_ROOT/pw_toolchain/host_clang/toolchain.cmake \
+         -Dpw_log_BACKEND=pw_log_basic
 
 * Temporarily override a backend by setting it interactively with ``ccmake`` or
   ``cmake-gui``.
@@ -152,17 +161,19 @@ is recommended to set these in one of the following ways:
 
   .. code-block:: cmake
 
-    set(dir_pw_third_party_nanopb ${CMAKE_CURRENT_SOURCE_DIR}/external/nanopb CACHE PATH "" FORCE)
+     set(dir_pw_third_party_nanopb ${CMAKE_CURRENT_SOURCE_DIR}/external/nanopb CACHE PATH "" FORCE)
 
 * Set the variable at the command line with the ``-D`` option.
 
   .. code-block:: sh
 
-    cmake -B out/cmake_host -S "$PW_ROOT" -G Ninja \
-        -DCMAKE_TOOLCHAIN_FILE=$PW_ROOT/pw_toolchain/host_clang/toolchain.cmake \
-        -Ddir_pw_third_party_nanopb=/path/to/nanopb
+     cmake -B out/cmake_host -S "$PW_ROOT" -G Ninja \
+         -DCMAKE_TOOLCHAIN_FILE=$PW_ROOT/pw_toolchain/host_clang/toolchain.cmake \
+         -Ddir_pw_third_party_nanopb=/path/to/nanopb
 
 * Set the variable interactively with ``ccmake`` or ``cmake-gui``.
+
+.. _module-pw_build-existing-cmake-project:
 
 Use Pigweed from an existing CMake project
 ------------------------------------------
@@ -171,7 +182,7 @@ repository from a ``CMakeLists.txt``.
 
 .. code-block:: cmake
 
-  add_subdirectory(path/to/pigweed pigweed)
+   add_subdirectory(path/to/pigweed pigweed)
 
 All module libraries will be available as ``module_name`` or
 ``module_name.sublibrary``.
@@ -180,5 +191,11 @@ If desired, modules can be included individually.
 
 .. code-block:: cmake
 
-  add_subdirectory(path/to/pigweed/pw_some_module pw_some_module)
-  add_subdirectory(path/to/pigweed/pw_another_module pw_another_module)
+   add_subdirectory(path/to/pigweed/pw_some_module pw_some_module)
+   add_subdirectory(path/to/pigweed/pw_another_module pw_another_module)
+
+.. seealso::
+   Additional Pigweed CMake function references:
+   - :bdg-ref-primary-line:`module-pw_fuzzer-guides-using_fuzztest-toolchain`
+   - :bdg-ref-primary-line:`module-pw_protobuf_compiler-cmake`
+   - :bdg-ref-primary-line:`module-pw_unit_test-cmake`

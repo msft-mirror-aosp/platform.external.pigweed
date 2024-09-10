@@ -7,7 +7,6 @@ pw_tokenizer API reference
 ==========================
 .. pigweed-module-subpage::
    :name: pw_tokenizer
-   :tagline: Compress strings to shrink logs by +75%
 
 .. _module-pw_tokenizer-api-configuration:
 
@@ -83,6 +82,13 @@ Token databases
 Detokenization
 --------------
 .. tab-set::
+
+   .. tab-item:: C++ / C
+      :sync: cpp
+
+      .. doxygengroup:: pw_tokenizer_detokenize
+         :content-only:
+         :members:
 
    .. tab-item:: Python
       :sync: py

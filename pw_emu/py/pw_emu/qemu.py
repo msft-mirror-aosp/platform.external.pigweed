@@ -23,7 +23,7 @@ import socket
 import sys
 
 from pathlib import Path
-from typing import Optional, Dict, List, Any
+from typing import Any
 
 from pw_emu.core import (
     ConfigError,
@@ -63,7 +63,7 @@ class QmpClient:
         # subsequent 'return' response.
         self.request('qmp_capabilities')
 
-    def request(self, cmd: str, args: Optional[Dict[str, Any]] = None) -> Any:
+    def request(self, cmd: str, args: dict[str, Any] | None = None) -> Any:
         """Issue a command using the qmp interface.
 
         Returns a map with the response or None if there is no
@@ -71,7 +71,7 @@ class QmpClient:
 
         """
 
-        req: Dict[str, Any] = {'execute': cmd}
+        req: dict[str, Any] = {'execute': cmd}
         if args:
             req['arguments'] = args
         _QMP_LOG.debug(' -> {json.dumps(cmd)}')
@@ -89,16 +89,16 @@ class QmpClient:
 class QemuLauncher(Launcher):
     """Start a new qemu process for a given target and config file."""
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         super().__init__('qemu', config_path)
-        self._start_cmd: List[str] = []
+        self._start_cmd: list[str] = []
         self._chardevs_id_to_name = {
             'compat_monitor0': 'qmp',
             'compat_monitor1': 'monitor',
             'gdb': 'gdb',
         }
-        self._chardevs: Dict[str, Any] = {}
-        self._qmp_init_sock: Optional[socket.socket] = None
+        self._chardevs: dict[str, Any] = {}
+        self._qmp_init_sock: socket.socket | None = None
 
     def _set_qemu_channel_tcp(self, name: str, filename: str) -> None:
         """Parse a TCP chardev and return (host, port) tuple.
@@ -172,7 +172,7 @@ class QemuLauncher(Launcher):
             val = self._get_channels_config(name, opt)
         return val
 
-    def _configure_serial_channels(self, serials: Dict) -> None:
+    def _configure_serial_channels(self, serials: dict) -> None:
         """Create "standard" serial devices.
 
         We can't control the serial allocation number for "standard"
@@ -244,11 +244,11 @@ class QemuLauncher(Launcher):
     def _pre_start(
         self,
         target: str,
-        file: Optional[Path] = None,
+        file: Path | None = None,
         pause: bool = False,
         debug: bool = False,
-        args: Optional[str] = None,
-    ) -> List[str]:
+        args: str | None = None,
+    ) -> list[str]:
         qemu = self._config.get_target_emu(['executable'])
         if not qemu:
             qemu = self._config.get_emu(['executable'], optional=False)
@@ -320,7 +320,7 @@ class QemuConnector(Connector):
         super().__init__(wdir)
         if self.get_emu() != 'qemu':
             raise WrongEmulator('qemu', self.get_emu())
-        self._qmp: Optional[QmpClient] = None
+        self._qmp: QmpClient | None = None
 
     def _q(self) -> QmpClient:
         if not self._qmp:
@@ -348,7 +348,7 @@ class QemuConnector(Connector):
         }
         return self._q().request('qom-get', args)
 
-    def list_properties(self, path: str) -> List[Any]:
+    def list_properties(self, path: str) -> list[Any]:
         args = {
             'path': '{}'.format(path),
         }

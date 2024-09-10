@@ -23,23 +23,26 @@ cc_library_static {
     export_include_dirs: ["public"],
     header_libs: [
         "fuchsia_sdk_lib_stdcompat",
-        "pw_polyfill_headers",
-        "pw_preprocessor_headers",
-        "pw_span_headers",
     ],
     export_header_lib_headers: [
         "fuchsia_sdk_lib_stdcompat",
-        "pw_span_headers",
     ],
     host_supported: true,
     srcs: [
+	"alignment.cc",
         // Errors with
         // "no member named 'contiguous_iterator_tag' in namespace 'std'"
         // Updating libc++ will fix this.
-        // "byte_builder.cc"
+        // "byte_builder.cc",
     ],
     static_libs: [
         "pw_containers",
+        "pw_polyfill",
+        "pw_preprocessor",
+        "pw_span",
         "pw_status",
+    ],
+    export_static_lib_headers: [
+        "pw_span",
     ],
 }

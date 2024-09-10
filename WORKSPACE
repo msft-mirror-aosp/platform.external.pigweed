@@ -84,13 +84,12 @@ load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 bazel_skylib_workspace()
 
 # Used in modules: //pw_grpc
-http_archive(
+#
+# TODO: b/345806988 - remove this fork and update to upstream HEAD.
+git_repository(
     name = "io_bazel_rules_go",
-    sha256 = "7c76d6236b28ff695aa28cf35f95de317a9472fd1fb14ac797c9bf684f09b37c",
-    urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.44.2/rules_go-v0.44.2.zip",
-    ],
+    commit = "21005c4056de3283553c015c172001229ecbaca9",
+    remote = "https://github.com/cramertj/rules_go.git",
 )
 
 # Used in modules: //pw_grpc
@@ -168,6 +167,69 @@ load("@python_packages//:requirements.bzl", "install_deps")
 # Run pip install for all @python_packages_*//:pkg deps.
 install_deps()
 
+# Setup Fuchsia SDK.
+# Required by: bt-host.
+# Used in modules: //pw_bluetooth_sapphire.
+# NOTE: These blocks cannot feasibly be moved into a macro.
+# See https://github.com/bazelbuild/bazel/issues/1550
+git_repository(
+    name = "fuchsia_infra",
+    # ROLL: Warning: this entry is automatically updated.
+    # ROLL: Last updated 2024-06-01.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8746297072233905681.
+    commit = "dc0007365302ab30293144aa5dac6194fdea10ad",
+    remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
+)
+
+load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
+
+fuchsia_infra_workspace()
+
+FUCHSIA_SDK_VERSION = "version:20.20240408.3.1"
+
+cipd_repository(
+    name = "fuchsia_sdk",
+    path = "fuchsia/sdk/core/fuchsia-bazel-rules/${os}-amd64",
+    tag = FUCHSIA_SDK_VERSION,
+)
+
+load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
+
+rules_fuchsia_deps()
+
+register_toolchains("@fuchsia_sdk//:fuchsia_toolchain_sdk")
+
+cipd_repository(
+    name = "fuchsia_products_metadata",
+    path = "fuchsia/development/product_bundles/v2",
+    tag = FUCHSIA_SDK_VERSION,
+)
+
+load("@fuchsia_sdk//fuchsia:products.bzl", "fuchsia_products_repository")
+
+fuchsia_products_repository(
+    name = "fuchsia_products",
+    metadata_file = "@fuchsia_products_metadata//:product_bundles.json",
+)
+
+load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
+
+fuchsia_clang_repository(
+    name = "fuchsia_clang",
+    from_workspace = "@llvm_toolchain//:BUILD.bazel",
+)
+
+load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
+
+register_clang_toolchains()
+
+# Since Fuchsia doesn't release arm64 SDKs, use this to gate Fuchsia targets.
+load("//pw_env_setup:bazel/host_metadata_repository.bzl", "host_metadata_repository")
+
+host_metadata_repository(
+    name = "host_metadata",
+)
+
 # Set up rules for Abseil C++.
 # Must be included before com_google_googletest and rules_fuzzing.
 # Required by: rules_fuzzing, fuzztest
@@ -180,15 +242,12 @@ http_archive(
 )
 
 # Set up upstream googletest and googlemock.
-# Required by: Pigweed.
-# Used in modules: //pw_analog, //pw_fuzzer, //pw_i2c.
-http_archive(
+# Required by: Pigweed, Fuchsia SDK.
+# Used in modules: //pw_analog, //pw_fuzzer, //pw_i2c, //pw_bluetooth_sapphire.
+git_repository(
     name = "com_google_googletest",
-    sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
-    strip_prefix = "googletest-1.14.0",
-    urls = [
-        "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
-    ],
+    commit = "3b6d48e8d5c1d9b3f9f10ac030a94008bfaf032b",
+    remote = "https://pigweed.googlesource.com/third_party/github/google/googletest",
 )
 
 # Sets up Bazels documentation generator.
@@ -238,9 +297,9 @@ nanopb_workspace()
 
 # Rust Support
 #
-
 http_archive(
     name = "rules_rust",
+    integrity = "sha256-+bWb47wg0VchIADaHt6L5Dma2Gn+Q589nz/MKcTi+lo=",
     patch_args = ["-p1"],
     patches = [
         # Fix rustdoc test w/ proc macros
@@ -255,8 +314,7 @@ http_archive(
         # https://github.com/konkers/rules_rust/tree/wip/rustdoc
         "//pw_rust/bazel_patches:0002-PROTOTYPE-Add-ability-to-document-multiple-crates-at.patch",
     ],
-    sha256 = "9d04e658878d23f4b00163a72da3db03ddb451273eb347df7d7c50838d698f49",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.26.0/rules_rust-v0.26.0.tar.gz"],
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.45.1/rules_rust-v0.45.1.tar.gz"],
 )
 
 load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies")
@@ -270,7 +328,7 @@ load(
 )
 
 pw_rust_register_toolchain_and_target_repos(
-    cipd_tag = "rust_revision:faee636ebfff793ea9dcff17960a611b580e3cd5",
+    cipd_tag = "rust_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72",
 )
 
 # Allows creation of a `rust-project.json` file to allow rust analyzer to work.
@@ -283,7 +341,7 @@ pw_rust_register_toolchains()
 # Vendored third party rust crates.
 git_repository(
     name = "rust_crates",
-    commit = "6d975531f7672cc6aa54bdd7517e1beeffa578da",
+    commit = "de54de1a2683212d8edb4e15ec7393eb013c849c",
     remote = "https://pigweed.googlesource.com/third_party/rust_crates",
 )
 
@@ -386,13 +444,14 @@ git_repository(
 
 git_repository(
     name = "com_google_emboss",
-    commit = "69bb1372053fc3cb8a16180497970465ae2ed66d",
     remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
+    # Also update emboss tag in pw_package/py/pw_package/packages/emboss.py
+    tag = "v2024.0501.215421",
 )
 
 http_archive(
     name = "freertos",
-    build_file = "//:third_party/freertos/BUILD.bazel",
+    build_file = "//third_party/freertos:freertos.BUILD.bazel",
     sha256 = "89af32b7568c504624f712c21fe97f7311c55fccb7ae6163cda7adde1cde7f62",
     strip_prefix = "FreeRTOS-Kernel-10.5.1",
     urls = ["https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V10.5.1.tar.gz"],
@@ -420,4 +479,88 @@ http_archive(
     sha256 = "f711074a546bce04426c35e681446d69bc177435cd8f2f1395a52db64f52d100",
     strip_prefix = "cmsis_core-5.4.0_cm4",
     urls = ["https://github.com/STMicroelectronics/cmsis_core/archive/refs/tags/v5.4.0_cm4.tar.gz"],
+)
+
+# This is a stub repository. The //third_party/stm32cube:hal_driver label_flag
+# by default points to "@hal_driver//:hal_driver". This is intended for use by
+# downstream; in upstream we always override this flag in our .bazelrc. But
+# `bazel query` uses the default build settings. So, to ensure `bazel query`
+# works, add this stub target here.
+new_local_repository(
+    name = "hal_driver",
+    build_file_content = 'cc_library(name="hal_driver")',
+    path = ".",
+)
+
+git_repository(
+    name = "pico-sdk",
+    commit = "4de7ec6bd73cd154533f35d9058279267ba77176",
+    remote = "https://pigweed.googlesource.com/third_party/github/raspberrypi/pico-sdk",
+)
+
+http_archive(
+    name = "tinyusb",
+    build_file = "@pico-sdk//src/rp2_common/tinyusb:tinyusb.BUILD",
+    sha256 = "ac57109bba00d26ffa33312d5f334990ec9a9a4d82bf890ed8b825b4610d1da2",
+    strip_prefix = "tinyusb-86c416d4c0fb38432460b3e11b08b9de76941bf5",
+    url = "https://github.com/hathach/tinyusb/archive/86c416d4c0fb38432460b3e11b08b9de76941bf5.zip",
+)
+
+# ---- probe-rs Paths ----
+#
+# NOTE: These paths and sha-s have been manually copied from
+# https://github.com/probe-rs/probe-rs/releases/tag/v0.24.0
+
+http_archive(
+    name = "probe-rs-tools-x86_64-unknown-linux-gnu",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "21e8d7df39fa0cdc9a0421e0ac2ac5ba81ec295ea11306f26846089f6fe975c0",
+    strip_prefix = "probe-rs-tools-x86_64-unknown-linux-gnu",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-unknown-linux-gnu.tar.xz",
+)
+
+http_archive(
+    name = "probe-rs-tools-aarch64-unknown-linux-gnu",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "95d91ebe08868d5119a698e3268ff60a4d71d72afa26ab207d43c807c729c90a",
+    strip_prefix = "probe-rs-tools-aarch64-unknown-linux-gnu",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-aarch64-unknown-linux-gnu.tar.xz",
+)
+
+http_archive(
+    name = "probe-rs-tools-x86_64-apple-darwin",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "0e35cc92ff34af1b1c72dd444e6ddd57c039ed31c2987e37578864211e843cf1",
+    strip_prefix = "probe-rs-tools-x86_64-apple-darwin",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-apple-darwin.tar.xz",
+)
+
+http_archive(
+    name = "probe-rs-tools-aarch64-apple-darwin",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "7140d9c2c61f8712ba15887f74df0cb40a7b16728ec86d5f45cc93fe96a0a29a",
+    strip_prefix = "probe-rs-tools-aarch64-apple-darwin",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-aarch64-apple-darwin.tar.xz",
+)
+
+http_archive(
+    name = "probe-rs-tools-x86_64-pc-windows-msvc",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    sha256 = "d195dfa3466a87906251e27d6d70a0105274faa28ebf90ffadad0bdd89b1ec77",
+    strip_prefix = "probe-rs-tools-x86_64-pc-windows-msvc",
+    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-pc-windows-msvc.zip",
+)
+
+git_repository(
+    name = "rules_libusb",
+    commit = "8680b8d1dea7b4053cdd82bd118026b545b50c0b",
+    remote = "https://pigweed.googlesource.com/pigweed/rules_libusb",
+)
+
+http_archive(
+    name = "libusb",
+    build_file = "@rules_libusb//:libusb.BUILD",
+    sha256 = "ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575",
+    strip_prefix = "libusb-1.0.27",
+    url = "https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2",
 )

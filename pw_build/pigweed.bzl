@@ -22,11 +22,57 @@ load(
     _link_cc = "link_cc",
 )
 
-# Used by `pw_cc_test`.
-FUZZTEST_OPTS = [
-    "-Wno-sign-compare",
-    "-Wno-unused-parameter",
-]
+def pw_facade(name, srcs = None, backend = None, **kwargs):
+    """Create a cc_library with a facade.
+
+    This macro simplifies instantiating Pigweed's facade pattern. It generates
+    two targets:
+
+    * cc_library with the label "name". This is the complete library target.
+      Users of the functionality provided by this library should depend on this
+      target.  It has a public dependency on the "backend".
+    * cc_library with the label "name.facade". This library exposes only the
+      headers. Implementations of the backend should depend on it.
+
+    Args:
+      name: The name of the cc_library.
+      srcs: The source files of the cc_library.
+      backend: The backend for the facade. This should be a label_flag or other
+        target that allows swapping out the backend implementation at build
+        time. (In a downstream project an alias with an "actual = select(...)"
+        attribute may also be appropriate, but in upstream Pigweed use only a
+        label_flag.).
+      **kwargs: Passed on to cc_library.
+    """
+    if type(backend) != "string":
+        fail(
+            "The 'backend' attribute must be a single label, " +
+            "got {} of type {}".format(backend, type(backend)),
+        )
+
+    facade_kwargs = dict(**kwargs)
+
+    # A facade has no srcs, so it can only have public deps. Don't specify any
+    # implementation_deps on the facade target.
+    facade_kwargs.pop("implementation_deps", [])
+    native.cc_library(
+        name = name + ".facade",
+        **facade_kwargs
+    )
+
+    kwargs["deps"] = kwargs.get("deps", []) + [backend]
+    native.cc_library(
+        name = name,
+        srcs = srcs,
+        **kwargs
+    )
+
+    # For simplifying the migration to this macro only. Do not depend on this
+    # target from new code: depend directly on the .facade target instead.
+    native.alias(
+        name = name + "_facade",
+        actual = ":" + name + ".facade",
+    )
 
 def pw_cc_binary(**kwargs):
     """Wrapper for cc_binary providing some defaults.
@@ -62,23 +108,21 @@ def pw_cc_test(**kwargs):
     Args:
       **kwargs: Passed to cc_test.
     """
-    kwargs["deps"] = kwargs.get("deps", []) + \
-                     ["@pigweed//targets:pw_unit_test_main"]
 
     # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_build:default_link_extra_lib"]
+    kwargs["deps"] = kwargs.get("deps", []) + ["@pigweed//pw_build:default_link_extra_lib"]
 
-    # Some tests may include FuzzTest, which includes headers that trigger
-    # warnings. This check must be done here and not in `add_defaults`, since
-    # the `use_fuzztest` config setting can refer by label to a library which
-    # itself calls `add_defaults`.
-    extra_copts = select({
-        "@pigweed//pw_fuzzer:use_fuzztest": FUZZTEST_OPTS,
-        "//conditions:default": [],
-    })
-    kwargs["copts"] = kwargs.get("copts", []) + extra_copts
+    # Depend on the backend. E.g. to pull in gtest.h include paths.
+    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_unit_test:backend"]
+
+    # Save the base set of deps minus pw_unit_test:main for the .lib target.
+    original_deps = kwargs["deps"]
+
+    # Add the unit test main label flag dep.
+    test_main = kwargs.pop("test_main", "@pigweed//pw_unit_test:main")
+    kwargs["deps"] = original_deps + [test_main]
 
     native.cc_test(**kwargs)
 
@@ -102,6 +146,9 @@ def pw_cc_test(**kwargs):
         "timeout",
     ):
         kwargs.pop(arg, "")
+
+    # Reset the deps for the .lib target.
+    kwargs["deps"] = original_deps
     native.cc_library(name = kwargs.pop("name") + ".lib", **kwargs)
 
 def pw_cc_perf_test(**kwargs):
@@ -117,21 +164,9 @@ def pw_cc_perf_test(**kwargs):
     """
     kwargs["deps"] = kwargs.get("deps", []) + \
                      ["@pigweed//pw_perf_test:logging_main"]
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//targets:pw_assert_backend_impl"]
+    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert:backend_impl"]
     kwargs["testonly"] = True
     native.cc_binary(**kwargs)
-
-def pw_cc_facade(**kwargs):
-    # Bazel facades should be source only cc_library's this is to simplify
-    # lazy header evaluation. Bazel headers are not 'precompiled' so the build
-    # system does not check to see if the build has the right dependant headers
-    # in the sandbox. If a source file is declared here and includes a header
-    # file the toolchain will compile as normal and complain about the missing
-    # backend headers.
-    if "srcs" in kwargs.keys():
-        fail("'srcs' attribute does not exist in pw_cc_facade, please use \
-        main implementing target.")
-    native.cc_library(**kwargs)
 
 def host_backend_alias(name, backend):
     """An alias that resolves to the backend for host platforms."""
@@ -152,13 +187,13 @@ def host_backend_alias(name, backend):
 CcBlobInfo = provider(
     "Input to pw_cc_blob_library",
     fields = {
-        "symbol_name": "The C++ symbol for the byte array.",
-        "file_path": "The file path for the binary blob.",
-        "linker_section": "If present, places the byte array in the specified " +
-                          "linker section.",
         "alignas": "If present, the byte array is aligned as specified. The " +
                    "value of this argument is used verbatim in an alignas() " +
                    "specifier for the blob byte array.",
+        "file_path": "The file path for the binary blob.",
+        "linker_section": "If present, places the byte array in the specified " +
+                          "linker section.",
+        "symbol_name": "The C++ symbol for the byte array.",
     },
 )
 
@@ -173,10 +208,10 @@ def _pw_cc_blob_info_impl(ctx):
 pw_cc_blob_info = rule(
     implementation = _pw_cc_blob_info_impl,
     attrs = {
-        "symbol_name": attr.string(),
+        "alignas": attr.string(default = ""),
         "file_path": attr.label(allow_single_file = True),
         "linker_section": attr.string(default = ""),
-        "alignas": attr.string(default = ""),
+        "symbol_name": attr.string(),
     },
     provides = [CcBlobInfo],
 )
@@ -190,8 +225,8 @@ def _pw_cc_blob_library_impl(ctx):
         blob_paths.append(blob_info.file_path)
         blob_dict = {
             "file_path": blob_info.file_path.path,
-            "symbol_name": blob_info.symbol_name,
             "linker_section": blob_info.linker_section,
+            "symbol_name": blob_info.symbol_name,
         }
         if (blob_info.alignas):
             blob_dict["alignas"] = blob_info.alignas
@@ -224,12 +259,25 @@ def _pw_cc_blob_library_impl(ctx):
         arguments = [args],
     )
 
+    include_path = ctx.bin_dir.path
+
+    # If workspace_root is set, this target is in an external workspace, so the
+    # generated file will be located under workspace_root.
+    if ctx.label.workspace_root:
+        include_path += "/" + ctx.label.workspace_root
+
+    # If target is not in root BUILD file of repo, append package name as that's
+    # where the generated file will end up.
+    if ctx.label.package:
+        include_path += "/" + ctx.label.package
+
     return _compile_cc(
         ctx,
         [src],
         [hdr],
         deps = ctx.attr.deps,
-        includes = [ctx.bin_dir.path + "/" + ctx.label.package],
+        alwayslink = ctx.attr.alwayslink,
+        includes = [include_path],
         defines = [],
     )
 
@@ -261,23 +309,25 @@ pw_cc_blob_library = rule(
                     exactly as it is written here to reference the byte arrays.
 
         namespace: The C++ namespace in which to place the generated blobs.
+        alwayslink: Whether this library should always be linked.
     """,
     attrs = {
+        "alwayslink": attr.bool(default = False),
         "blobs": attr.label_list(providers = [CcBlobInfo]),
-        "out_header": attr.string(),
+        "deps": attr.label_list(default = [Label("//pw_preprocessor")]),
         "namespace": attr.string(),
+        "out_header": attr.string(),
+        "_generate_cc_blob_library": attr.label(
+            default = Label("//pw_build/py:generate_cc_blob_library"),
+            executable = True,
+            cfg = "exec",
+        ),
         "_python_runtime": attr.label(
             default = Label("//:python3_interpreter"),
             allow_single_file = True,
             executable = True,
             cfg = "exec",
         ),
-        "_generate_cc_blob_library": attr.label(
-            default = Label("//pw_build/py:generate_cc_blob_library"),
-            executable = True,
-            cfg = "exec",
-        ),
-        "deps": attr.label_list(default = [Label("//pw_preprocessor")]),
     },
     provides = [CcInfo],
     fragments = ["cpp"],
@@ -321,42 +371,43 @@ pw_cc_binary_with_map = rule(
         ctx: Rule context.
     """,
     attrs = {
-        "srcs": attr.label_list(
-            allow_files = True,
-            doc = "The list of C and C++ files that are processed to create the target.",
+        "defines": attr.string_list(
+            doc = "List of defines to add to the compile line.",
         ),
         "deps": attr.label_list(
             providers = [CcInfo],
             doc = "The list of other libraries to be linked in to the binary target.",
         ),
-        "malloc": attr.label(
-            default = "@bazel_tools//tools/cpp:malloc",
-            doc = "Override the default dependency on malloc.",
+        "includes": attr.string_list(
+            doc = "List of include dirs to add to the compile line.",
         ),
         "link_extra_lib": attr.label(
             default = "@bazel_tools//tools/cpp:link_extra_lib",
             doc = "Control linking of extra libraries.",
         ),
+        "linkopts": attr.string_list(
+            doc = "Add these flags to the C++ linker command.",
+        ),
         "linkstatic": attr.bool(
             doc = "True if binary should be link statically",
-        ),
-        "includes": attr.string_list(
-            doc = "List of include dirs to add to the compile line.",
-        ),
-        "defines": attr.string_list(
-            doc = "List of defines to add to the compile line.",
         ),
         "local_defines": attr.string_list(
             doc = "List of defines to add to the compile line.",
         ),
-        "linkopts": attr.string_list(
-            doc = "Add these flags to the C++ linker command.",
+        "malloc": attr.label(
+            default = "@bazel_tools//tools/cpp:malloc",
+            doc = "Override the default dependency on malloc.",
+        ),
+        "srcs": attr.label_list(
+            allow_files = True,
+            doc = "The list of C and C++ files that are processed to create the target.",
         ),
         "stamp": attr.int(
             default = -1,
             doc = "Whether to encode build information into the binary.",
         ),
     },
+    executable = True,
     provides = [DefaultInfo],
     fragments = ["cpp"],
     toolchains = use_cpp_toolchain(),
@@ -375,10 +426,22 @@ def _preprocess_linker_script_impl(ctx):
         feature_configuration = feature_configuration,
         action_name = C_COMPILE_ACTION_NAME,
     )
+    compilation_context = cc_common.merge_compilation_contexts(
+        compilation_contexts = [dep[CcInfo].compilation_context for dep in ctx.attr.deps],
+    )
     c_compile_variables = cc_common.create_compile_variables(
         feature_configuration = feature_configuration,
         cc_toolchain = cc_toolchain,
         user_compile_flags = ctx.fragments.cpp.copts + ctx.fragments.cpp.conlyopts,
+        include_directories = compilation_context.includes,
+        quote_include_directories = compilation_context.quote_includes,
+        system_include_directories = compilation_context.system_includes,
+        preprocessor_defines = depset(ctx.attr.defines, transitive = [compilation_context.defines]),
+    )
+    cmd_line = cc_common.get_memory_inefficient_command_line(
+        feature_configuration = feature_configuration,
+        action_name = C_COMPILE_ACTION_NAME,
+        variables = c_compile_variables,
     )
     env = cc_common.get_environment_variables(
         feature_configuration = feature_configuration,
@@ -389,25 +452,17 @@ def _preprocess_linker_script_impl(ctx):
         outputs = [output_script],
         inputs = depset(
             [ctx.file.linker_script],
-            transitive = [cc_toolchain.all_files],
+            transitive = [compilation_context.headers, cc_toolchain.all_files],
         ),
         executable = cxx_compiler_path,
         arguments = [
             "-E",
             "-P",
-            # TODO: b/296928739 - This flag is needed so cc1 can be located
-            # despite the presence of symlinks. Normally this is provided
-            # through copts inherited from the toolchain, but since those are
-            # not pulled in here the flag must be explicitly added.
-            "-no-canonical-prefixes",
             "-xc",
             ctx.file.linker_script.path,
             "-o",
             output_script.path,
-        ] + [
-            "-D" + d
-            for d in ctx.attr.defines
-        ] + ctx.attr.copts,
+        ] + cmd_line,
         env = env,
     )
     linker_input = cc_common.create_linker_input(
@@ -425,9 +480,19 @@ def _preprocess_linker_script_impl(ctx):
 
 pw_linker_script = rule(
     _preprocess_linker_script_impl,
+    doc = """Create a linker script target. Supports preprocessing with the C
+    preprocessor and adding the resulting linker script to linkopts. Also
+    provides a DefaultInfo containing the processed linker script.
+    """,
     attrs = {
         "copts": attr.string_list(doc = "C compile options."),
         "defines": attr.string_list(doc = "C preprocessor defines."),
+        "deps": attr.label_list(
+            providers = [CcInfo],
+            doc = """Dependencies of this linker script. Can be used to provide
+                     header files and defines. Only the CompilationContext of
+                     the provided dependencies are used.""",
+        ),
         "linker_script": attr.label(
             mandatory = True,
             allow_single_file = True,
