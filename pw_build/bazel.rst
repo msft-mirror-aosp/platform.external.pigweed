@@ -13,8 +13,9 @@ microcontrollers.
 Wrapper rules
 -------------
 The common configuration for Bazel for all modules is in the ``pigweed.bzl``
-file. The built-in Bazel rules ``cc_binary``, ``cc_test`` and ``py_test`` are
-wrapped with ``pw_cc_binary``, ``pw_cc_test`` and ``pw_py_test``.
+file. The built-in Bazel rules ``cc_binary``, ``cc_test``, ``py_binary`` and
+``py_test`` are wrapped with ``pw_cc_binary``, ``pw_cc_test`` ``pw_py_binary``
+and ``pw_py_test``, respectively.
 
 .. _module-pw_build-bazel-pw_linker_script:
 
@@ -331,6 +332,12 @@ host_backend_alias
 An alias that resolves to the backend for host platforms. This is useful when
 declaring a facade that provides a default backend for host platform use.
 
+Flag merging rules
+------------------
+Macros that help with using platform-based flags are in
+``//pw_build:merge_flags.bzl``. These are useful, for example, when you wish to
+:ref:`docs-bazel-compatibility-facade-backend-dict`.
+
 Miscellaneous utilities
 -----------------------
 
@@ -354,6 +361,46 @@ A special target used instead of a cc_library as the default condition in
 backend multiplexer select statements to signal that a facade is in an
 unconfigured state. This produces better error messages than e.g. using an
 invalid label.
+
+glob_dirs
+^^^^^^^^^
+A starlark helper for performing ``glob()`` operations strictly on directories.
+
+.. py:function:: glob_dirs(include: List[str], exclude: List[str] = [], allow_empty: bool = True) -> List[str]
+
+   Matches the provided glob pattern to identify a list of directories.
+
+   This helper follows the same semantics as Bazel's native ``glob()`` function,
+   but only matches directories.
+
+   Args:
+     include: A list of wildcard patterns to match against.
+     exclude: A list of wildcard patterns to exclude.
+     allow_empty: Whether or not to permit an empty list of matches.
+
+   Returns:
+     List of directory paths that match the specified constraints.
+
+match_dir
+^^^^^^^^^
+A starlark helper for using a wildcard pattern to match a single directory
+
+.. py:function:: match_dir(include: List[str], exclude: List[str] = [], allow_empty: bool = True) -> Optional[str]
+
+   Identifies a single directory using a wildcard pattern.
+
+   This helper follows the same semantics as Bazel's native ``glob()`` function,
+   but only matches a single directory. If more than one match is found, this
+   will fail.
+
+   Args:
+     include: A list of wildcard patterns to match against.
+     exclude: A list of wildcard patterns to exclude.
+     allow_empty: Whether or not to permit returning ``None``.
+
+   Returns:
+     Path to a single directory that matches the specified constraints, or
+     ``None`` if no match is found and ``allow_empty`` is ``True``.
 
 Toolchains and platforms
 ------------------------

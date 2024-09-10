@@ -14,9 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 
-#include <endian.h>
-
-#pragma clang diagnostic ignored "-Wswitch-enum"
+#include <pw_preprocessor/compiler.h>
 
 namespace bt::hci_spec {
 
@@ -59,6 +57,8 @@ std::string HCIVersionToString(
 
 // clang-format off
 std::string StatusCodeToString(pw::bluetooth::emboss::StatusCode code) {
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (code) {
     case pw::bluetooth::emboss::StatusCode::SUCCESS: return "success";
     case pw::bluetooth::emboss::StatusCode::UNKNOWN_COMMAND: return "unknown command";
@@ -128,6 +128,8 @@ std::string StatusCodeToString(pw::bluetooth::emboss::StatusCode code) {
     case pw::bluetooth::emboss::StatusCode::OPERATION_CANCELLED_BY_HOST: return "operation cancelled by host";
     default: break;
   };
+  PW_MODIFY_DIAGNOSTICS_POP();
+
   return "unknown status";
 }
 // clang-format on
@@ -181,48 +183,6 @@ std::string ConnectionRoleToString(pw::bluetooth::emboss::ConnectionRole role) {
     default:
       return "<unknown role>";
   }
-}
-
-std::optional<AdvertisingEventBits> AdvertisingTypeToEventBits(
-    pw::bluetooth::emboss::LEAdvertisingType type) {
-  // TODO(fxbug.dev/42161929): for backwards compatibility and because
-  // supporting extended advertising PDUs is a much larger project, we currently
-  // only support legacy PDUs. Without using legacy PDUs, non-Bluetooth 5
-  // devices will not be able to discover extended advertisements.
-  uint16_t adv_event_properties = kLEAdvEventPropBitUseLegacyPDUs;
-
-  // Bluetooth Spec Volume 4, Part E, Section 7.8.53, Table 7.2 defines the
-  // mapping of legacy PDU types to the corresponding bits within
-  // adv_event_properties.
-  switch (type) {
-    case pw::bluetooth::emboss::LEAdvertisingType::
-        CONNECTABLE_AND_SCANNABLE_UNDIRECTED:
-      adv_event_properties |= kLEAdvEventPropBitConnectable;
-      adv_event_properties |= kLEAdvEventPropBitScannable;
-      break;
-    case pw::bluetooth::emboss::LEAdvertisingType::
-        CONNECTABLE_LOW_DUTY_CYCLE_DIRECTED:
-      adv_event_properties |= kLEAdvEventPropBitConnectable;
-      adv_event_properties |= kLEAdvEventPropBitDirected;
-      break;
-    case pw::bluetooth::emboss::LEAdvertisingType::
-        CONNECTABLE_HIGH_DUTY_CYCLE_DIRECTED:
-      adv_event_properties |= kLEAdvEventPropBitConnectable;
-      adv_event_properties |= kLEAdvEventPropBitDirected;
-      adv_event_properties |=
-          kLEAdvEventPropBitHighDutyCycleDirectedConnectable;
-      break;
-    case pw::bluetooth::emboss::LEAdvertisingType::SCANNABLE_UNDIRECTED:
-      adv_event_properties |= kLEAdvEventPropBitScannable;
-      break;
-    case pw::bluetooth::emboss::LEAdvertisingType::NOT_CONNECTABLE_UNDIRECTED:
-      // no extra bits to set
-      break;
-    default:
-      return std::nullopt;
-  }
-
-  return adv_event_properties;
 }
 
 }  // namespace bt::hci_spec

@@ -44,6 +44,17 @@
 
 namespace bt {
 
+namespace sm {
+using SecurityManagerFactory = std::function<std::unique_ptr<SecurityManager>(
+    hci::LowEnergyConnection::WeakPtr,
+    l2cap::Channel::WeakPtr,
+    IOCapability,
+    Delegate::WeakPtr,
+    BondableMode,
+    gap::LESecurityMode,
+    pw::async::Dispatcher&)>;
+}  // namespace sm
+
 namespace hci {
 class LocalAddressDelegate;
 }  // namespace hci
@@ -91,7 +102,7 @@ class LowEnergyConnectionManager final {
   // |gatt|: Used to interact with the GATT profile layer.
   // |adapter_state|: Provides information on controller capabilities.
   LowEnergyConnectionManager(
-      hci::CommandChannel::WeakPtr cmd_channel,
+      hci::Transport::WeakPtr hci,
       hci::LocalAddressDelegate* addr_delegate,
       hci::LowEnergyConnector* connector,
       PeerCache* peer_cache,
@@ -308,7 +319,7 @@ class LowEnergyConnectionManager final {
 
   pw::async::Dispatcher& dispatcher_;
 
-  hci::CommandChannel::WeakPtr cmd_;
+  hci::Transport::WeakPtr hci_;
 
   // The pairing delegate used for authentication challenges. If nullptr, all
   // pairing requests will be rejected.

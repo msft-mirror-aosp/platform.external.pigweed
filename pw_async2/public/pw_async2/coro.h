@@ -19,6 +19,7 @@
 #include "pw_allocator/allocator.h"
 #include "pw_allocator/layout.h"
 #include "pw_async2/dispatcher.h"
+#include "pw_function/function.h"
 #include "pw_log/log.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
@@ -201,23 +202,17 @@ struct InOut final {
   OptionalOrDefault<T>* output;
 };
 
-// A base class for `Awaitable` instances.
+// Attempt to complete the current pendable value passed to `co_await`,
+// storing its return value inside the `Awaitable` object so that it can
+// be retrieved by the coroutine.
 //
 // Each `co_await` statement creates an `Awaitable` object whose `Pend`
 // method must be completed before the coroutine's `resume()` function can
 // be invoked.
-class AwaitableBase {
- public:
-  // Attempt to complete the current pendable value passed to `co_await`,
-  // storing its return value inside the `Awaitable` object so that it can
-  // be retrieved by the coroutine.
-  virtual Poll<> PendFillReturnValue(Context& cx) = 0;
-
- protected:
-  // A protected destructor ensures that child classes are never destroyed
-  // through a base pointer, so no virtual destructor is needed.
-  ~AwaitableBase() {}
-};
+//
+// `sizeof(void*)` is used as the size since only one pointer capture is
+// required in all cases.
+using PendFillReturnValueFn = pw::Function<Poll<>(Context&), sizeof(void*)>;
 
 // The `promise_type` of `Coro<T>`.
 //
@@ -233,7 +228,12 @@ class CoroPromiseType final {
   // arguments are unused, but must be accepted in order for this to compile.
   template <typename... Args>
   CoroPromiseType(CoroContext& cx, const Args&...)
-      : dealloc_(cx.alloc()), current_awaitable_(nullptr), in_out_(nullptr) {}
+      : dealloc_(cx.alloc()), currently_pending_(nullptr), in_out_(nullptr) {}
+
+  // Method-receiver version.
+  template <typename MethodReceiver, typename... Args>
+  CoroPromiseType(const MethodReceiver&, CoroContext& cx, const Args&...)
+      : dealloc_(cx.alloc()), currently_pending_(nullptr), in_out_(nullptr) {}
 
   // Get the `Coro<T>` after successfully allocating the coroutine space
   // and constructing `this`.
@@ -277,6 +277,15 @@ class CoroPromiseType final {
     return coro_cx.alloc().Allocate(pw::allocator::Layout(n));
   }
 
+  // Method-receiver form.
+  template <typename MethodReceiver, typename... Args>
+  static void* operator new(std::size_t n,
+                            const MethodReceiver&,
+                            CoroContext& coro_cx,
+                            const Args&...) noexcept {
+    return coro_cx.alloc().Allocate(pw::allocator::Layout(n));
+  }
+
   // Deallocate the space for both this `CoroPromiseType<T>` and the
   // coroutine state.
   //
@@ -291,15 +300,21 @@ class CoroPromiseType final {
   // `Poll<U> Pend(Context&)` method, returning an `Awaitable` which will
   // yield a `U` once complete.
   template <typename Pendable>
+    requires(!std::is_reference_v<Pendable>)
   Awaitable<Pendable, CoroPromiseType> await_transform(Pendable&& pendable) {
     return pendable;
+  }
+
+  template <typename Pendable>
+  Awaitable<Pendable*, CoroPromiseType> await_transform(Pendable& pendable) {
+    return &pendable;
   }
 
   // Returns a reference to the `Context` passed in.
   Context& cx() { return *in_out_->input_cx; }
 
   pw::allocator::Deallocator& dealloc_;
-  AwaitableBase* current_awaitable_;
+  PendFillReturnValueFn currently_pending_;
   InOut<T>* in_out_;
 };
 
@@ -308,16 +323,15 @@ class CoroPromiseType final {
 // This wraps a `Pendable` type and implements the awaitable interface
 // expected by the standard coroutine API.
 template <typename Pendable, typename PromiseType>
-class Awaitable final : AwaitableBase {
+class Awaitable final {
  public:
   // The `OutputType` in `Poll<OutputType> Pendable::Pend(Context&)`.
-  using OutputType =
-      std::remove_cvref_t<decltype(std::declval<Pendable>()
-                                       .Pend(std::declval<Context&>())
-                                       .value())>;
+  using OutputType = std::remove_cvref_t<
+      decltype(std::declval<std::remove_pointer_t<Pendable>>()
+                   .Pend(std::declval<Context&>())
+                   .value())>;
 
-  Awaitable(Pendable&& pendable)
-      : pendable_(std::forward<Pendable>(pendable)) {}
+  Awaitable(Pendable&& pendable) : state_(std::forward<Pendable>(pendable)) {}
 
   // Confirms that `await_suspend` must be invoked.
   bool await_ready() { return false; }
@@ -333,7 +347,9 @@ class Awaitable final : AwaitableBase {
     Context& cx = promise.promise().cx();
     if (PendFillReturnValue(cx).IsPending()) {
       /// The coroutine should suspend since the await-ed thing is pending.
-      promise.promise().current_awaitable_ = this;
+      promise.promise().currently_pending_ = [this](Context& lambda_cx) {
+        return PendFillReturnValue(lambda_cx);
+      };
       return true;
     }
     return false;
@@ -343,7 +359,17 @@ class Awaitable final : AwaitableBase {
   //
   // This is automatically invoked by the language runtime when the promise's
   // `resume()` method is called.
-  OutputType&& await_resume() { return std::move(*return_value_); }
+  OutputType&& await_resume() {
+    return std::move(std::get<OutputType>(state_));
+  }
+
+  auto& PendableNoPtr() {
+    if constexpr (std::is_pointer_v<Pendable>) {
+      return *std::get<Pendable>(state_);
+    } else {
+      return std::get<Pendable>(state_);
+    }
+  }
 
   // Attempts to complete the `Pendable` value, storing its return value
   // upon completion.
@@ -351,18 +377,17 @@ class Awaitable final : AwaitableBase {
   // This method must return `Ready()` before the coroutine can be safely
   // resumed, as otherwise the return value will not be available when
   // `await_resume` is called to produce the result of `co_await`.
-  Poll<> PendFillReturnValue(Context& cx) final {
-    Poll<OutputType> poll_res = pendable_.Pend(cx);
+  Poll<> PendFillReturnValue(Context& cx) {
+    Poll<OutputType> poll_res(PendableNoPtr().Pend(cx));
     if (poll_res.IsPending()) {
       return Pending();
     }
-    return_value_ = std::move(*poll_res);
+    state_ = std::move(*poll_res);
     return Ready();
   }
 
  private:
-  Pendable pendable_;
-  OptionalOrDefault<OutputType> return_value_;
+  std::variant<Pendable, OutputType> state_;
 };
 
 }  // namespace internal
@@ -397,7 +422,7 @@ class Awaitable final : AwaitableBase {
 ///   argument. This allocator will be used to allocate storage for coroutine
 ///   stack variables held across a `co_await` point.
 ///
-/// # Using `co_await`
+/// # Using co_await
 /// Inside a coroutine function, `co_await <expr>` can be used on any type
 /// with a `Poll<T> Pend(Context&)` method. The result will be a value of
 /// type `T`.
@@ -413,6 +438,11 @@ class Awaitable final : AwaitableBase {
 template <std::constructible_from<pw::Status> T>
 class Coro final {
  public:
+  /// Creates an empty, invalid coroutine object.
+  static Coro Empty() {
+    return Coro(internal::OwningCoroutineHandle<promise_type>(nullptr));
+  }
+
   /// Whether or not this `Coro<T>` is a valid coroutine.
   ///
   /// This will return `false` if coroutine state allocation failed or if
@@ -433,10 +463,8 @@ class Coro final {
     // If an `Awaitable` value is currently being processed, it must be
     // allowed to complete and store its return value before we can resume
     // the coroutine.
-    if (promise_handle_.promise().current_awaitable_ != nullptr &&
-        promise_handle_.promise()
-            .current_awaitable_->PendFillReturnValue(cx)
-            .IsPending()) {
+    if (promise_handle_.promise().currently_pending_ != nullptr &&
+        promise_handle_.promise().currently_pending_(cx).IsPending()) {
       return Pending();
     }
     // Create the arguments (and output storage) for the coroutine.

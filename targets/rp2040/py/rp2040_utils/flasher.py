@@ -22,9 +22,8 @@ import subprocess
 import sys
 import time
 
-import serial  # type: ignore
-
 import pw_cli.log
+from pw_cli.interactive_prompts import interactive_index_select
 
 from rp2040_utils import device_detector
 from rp2040_utils.device_detector import PicoBoardInfo, PicoDebugProbeBoardInfo
@@ -34,17 +33,17 @@ _LOG = logging.getLogger()
 # If the script is being run through Bazel, our support binaries are provided
 # at well known locations in its runfiles.
 try:
-    from rules_python.python.runfiles import runfiles  # type: ignore
+    from python.runfiles import runfiles  # type: ignore
 
     r = runfiles.Create()
-    _PROBE_RS_COMMAND = r.Rlocation('pigweed/third_party/probe-rs/probe-rs')
+    _PROBE_RS_COMMAND = r.Rlocation('probe_rs/probe-rs')
     _PICOTOOL_COMMAND = r.Rlocation('picotool/picotool')
 except ImportError:
     _PROBE_RS_COMMAND = 'probe-rs'
     _PICOTOOL_COMMAND = 'picotool'
 
 
-def flash(board_info: PicoBoardInfo, baud_rate: int, binary: Path) -> bool:
+def flash(board_info: PicoBoardInfo, binary: Path) -> bool:
     """Load `binary` onto `board_info` and wait for the device to become
     available.
 
@@ -53,12 +52,18 @@ def flash(board_info: PicoBoardInfo, baud_rate: int, binary: Path) -> bool:
         return _load_debugprobe_binary(board_info, binary)
     if not _load_picotool_binary(board_info, binary):
         return False
-    if not _wait_for_serial_port(board_info, baud_rate):
+    if not _wait_for_serial_port(board_info):
         _LOG.error(
             'Binary flashed but unable to connect to the serial port: %s',
             board_info.serial_port,
         )
         return False
+    _LOG.info(
+        'Successfully flashed Pico on bus %s, port %s, serial port %s',
+        board_info.bus,
+        board_info.port,
+        board_info.serial_port,
+    )
     return True
 
 
@@ -137,7 +142,7 @@ def _load_picotool_binary(board_info: PicoBoardInfo, binary: Path) -> bool:
     return True
 
 
-def _wait_for_serial_port(board_info: PicoBoardInfo, baud_rate: int) -> bool:
+def _wait_for_serial_port(board_info: PicoBoardInfo) -> bool:
     """Waits for a serial port to enumerate."""
     start_time = time.monotonic()
     timeout_seconds = 10.0
@@ -161,15 +166,13 @@ def _wait_for_serial_port(board_info: PicoBoardInfo, baud_rate: int) -> bool:
         if board_info.serial_port is not None:
             # Connect to the serial port.
             try:
-                serial.Serial(baudrate=baud_rate, port=board_info.serial_port)
-                return True
-            except serial.serialutil.SerialException:
-                # Unable to connect, try again.
+                with open(board_info.serial_port, 'r+b', buffering=0):
+                    return True
+            except (OSError, IOError):
                 _LOG.debug(
                     'Unable to connect to %s, retrying', board_info.serial_port
                 )
                 time.sleep(0.1)
-
     _LOG.error(
         'Binary flashed but unable to connect to the serial port: %s',
         board_info.serial_port,
@@ -341,14 +344,15 @@ def device_from_args(
             'Interactive mode disabled. Defaulting to first discovered device.'
         )
         return boards[0]
+
     print('Multiple devices detected. Please select one:')
-    for n, board_n in enumerate(boards):
-        print(f' {n}: bus {board_n.bus}, port {board_n.port}')
-    print()
-    user_input = input('--> Board index (default: 0): ')
-    if user_input == '':
-        return boards[0]
-    return boards[int(user_input)]
+    board_lines = list(
+        f'bus {board.bus}, port {board.port}'
+        f' ({board.manufacturer} - {board.product})'
+        for board in boards
+    )
+    user_input_index, _user_input_text = interactive_index_select(board_lines)
+    return boards[user_input_index]
 
 
 def main():
@@ -358,7 +362,7 @@ def main():
     pw_cli.log.install(level=log_level)
     board = device_from_args(args, interactive=True)
     _LOG.info('Flashing bus %s port %s', board.bus, board.port)
-    flashed = flash(board, args.baud, args.binary)
+    flashed = flash(board, args.binary)
     sys.exit(0 if flashed else 1)
 
 

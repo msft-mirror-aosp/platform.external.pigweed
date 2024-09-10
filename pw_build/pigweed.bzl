@@ -50,6 +50,7 @@ def pw_facade(name, srcs = None, backend = None, **kwargs):
         )
 
     facade_kwargs = dict(**kwargs)
+    facade_kwargs["textual_hdrs"] = facade_kwargs.pop("hdrs", [])
 
     # A facade has no srcs, so it can only have public deps. Don't specify any
     # implementation_deps on the facade target.
@@ -86,7 +87,7 @@ def pw_cc_binary(**kwargs):
     # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
-    kwargs["deps"] = kwargs.get("deps", []) + ["@pigweed//pw_build:default_link_extra_lib"]
+    kwargs["deps"] = kwargs.get("deps", []) + [str(Label("//pw_build:default_link_extra_lib"))]
     native.cc_binary(**kwargs)
 
 def pw_cc_test(**kwargs):
@@ -111,16 +112,16 @@ def pw_cc_test(**kwargs):
     # TODO: b/234877642 - Remove this implicit dependency once we have a better
     # way to handle the facades without introducing a circular dependency into
     # the build.
-    kwargs["deps"] = kwargs.get("deps", []) + ["@pigweed//pw_build:default_link_extra_lib"]
+    kwargs["deps"] = kwargs.get("deps", []) + [str(Label("//pw_build:default_link_extra_lib"))]
 
     # Depend on the backend. E.g. to pull in gtest.h include paths.
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_unit_test:backend"]
+    kwargs["deps"] = kwargs["deps"] + [str(Label("//pw_unit_test:backend"))]
 
     # Save the base set of deps minus pw_unit_test:main for the .lib target.
     original_deps = kwargs["deps"]
 
     # Add the unit test main label flag dep.
-    test_main = kwargs.pop("test_main", "@pigweed//pw_unit_test:main")
+    test_main = kwargs.pop("test_main", str(Label("//pw_unit_test:main")))
     kwargs["deps"] = original_deps + [test_main]
 
     native.cc_test(**kwargs)
@@ -162,8 +163,9 @@ def pw_cc_perf_test(**kwargs):
       **kwargs: Passed to cc_binary.
     """
     kwargs["deps"] = kwargs.get("deps", []) + \
-                     ["@pigweed//pw_perf_test:logging_main"]
-    kwargs["deps"] = kwargs["deps"] + ["@pigweed//pw_assert:backend_impl"]
+                     [str(Label("//pw_perf_test:logging_main"))]
+    kwargs["deps"] = kwargs["deps"] + [str(Label("//pw_assert:assert_backend_impl"))]
+    kwargs["deps"] = kwargs["deps"] + [str(Label("//pw_assert:check_backend_impl"))]
     kwargs["testonly"] = True
     native.cc_binary(**kwargs)
 
@@ -235,7 +237,6 @@ def _pw_cc_blob_library_impl(ctx):
         progress_message = "Generating cc blob library for %s" % (ctx.label.name),
         tools = [
             ctx.executable._generate_cc_blob_library,
-            ctx.executable._python_runtime,
         ],
         outputs = [hdr, src],
         executable = ctx.executable._generate_cc_blob_library,
@@ -305,16 +306,10 @@ pw_cc_blob_library = rule(
             executable = True,
             cfg = "exec",
         ),
-        "_python_runtime": attr.label(
-            default = Label("//:python3_interpreter"),
-            allow_single_file = True,
-            executable = True,
-            cfg = "exec",
-        ),
     },
     provides = [CcInfo],
     fragments = ["cpp"],
-    toolchains = use_cpp_toolchain(),
+    toolchains = ["@rules_python//python:exec_tools_toolchain_type"] + use_cpp_toolchain(),
 )
 
 def _pw_cc_binary_with_map_impl(ctx):

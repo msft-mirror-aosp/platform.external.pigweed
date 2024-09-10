@@ -55,7 +55,6 @@ from pw_presubmit.presubmit import (
     filter_paths,
 )
 from pw_presubmit.presubmit_context import (
-    FormatOptions,
     PresubmitContext,
     PresubmitFailure,
 )
@@ -96,7 +95,9 @@ class PigweedGnGenNinja(build.GnGenNinja):
 
 
 def build_bazel(*args, **kwargs) -> None:
-    build.bazel(*args, use_remote_cache=True, **kwargs)
+    build.bazel(
+        *args, use_remote_cache=True, strict_module_lockfile=True, **kwargs
+    )
 
 
 #
@@ -153,7 +154,7 @@ def gn_quick_build_check(ctx: PresubmitContext):
     build.gn_gen(ctx)
 
 
-def _gn_combined_build_check_targets() -> Sequence[str]:
+def _gn_main_build_check_targets() -> Sequence[str]:
     build_targets = [
         'check_modules',
         *_at_all_optimization_levels('stm32f429i'),
@@ -162,6 +163,12 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
         'python.lint',
         'pigweed_pypi_distribution',
     ]
+
+    return build_targets
+
+
+def _gn_platform_build_check_targets() -> Sequence[str]:
+    build_targets = []
 
     # TODO: b/315998985 - Add docs back to Mac ARM build.
     if sys.platform != 'darwin' or platform.machine() != 'arm64':
@@ -199,6 +206,35 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
 
     return build_targets
 
+
+def _gn_combined_build_check_targets() -> Sequence[str]:
+    return [
+        *_gn_main_build_check_targets(),
+        *_gn_platform_build_check_targets(),
+    ]
+
+
+gn_main_build_check = PigweedGnGenNinja(
+    name='gn_main_build_check',
+    doc='Run most host.',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+        pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
+    ),
+    ninja_targets=_gn_main_build_check_targets(),
+)
+
+gn_platform_build_check = PigweedGnGenNinja(
+    name='gn_platform_build_check',
+    doc='Run any host platform-specific tests.',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+        pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
+    ),
+    ninja_targets=_gn_platform_build_check_targets(),
+)
 
 gn_combined_build_check = PigweedGnGenNinja(
     name='gn_combined_build_check',
@@ -426,7 +462,7 @@ gn_pw_system_demo_build = PigweedGnGenNinja(
 gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
     name='gn_chre_googletest_nanopb_sapphire_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('boringssl', 'chre', 'emboss', 'googletest', 'icu', 'nanopb'),
+    packages=('boringssl', 'chre', 'emboss', 'googletest', 'nanopb'),
     gn_args=dict(
         dir_pw_third_party_chre=lambda ctx: '"{}"'.format(
             ctx.package_root / 'chre'
@@ -442,9 +478,6 @@ gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
         ),
         dir_pw_third_party_boringssl=lambda ctx: '"{}"'.format(
             ctx.package_root / 'boringssl'
-        ),
-        dir_pw_third_party_icu=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'icu'
         ),
         pw_unit_test_MAIN=lambda ctx: '"{}"'.format(
             ctx.root / 'third_party/googletest:gmock_main'
@@ -755,8 +788,7 @@ def bazel_test(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'test',
-        '--build_tag_filters=-requires_cxx_20',
-        '--test_tag_filters=-requires_cxx_20',
+        '--config=cxx20',
         '--',
         '//...',
     )
@@ -784,15 +816,32 @@ def bazel_test(ctx: PresubmitContext) -> None:
 
 
 def bthost_package(ctx: PresubmitContext) -> None:
+    """Builds, tests, and prepares bt_host for upload."""
     target = '//pw_bluetooth_sapphire/fuchsia:infra'
-    build_bazel(ctx, 'build', target)
-    build_bazel(ctx, 'test', f'{target}.test_all')
+    build_bazel(ctx, 'build', '--config=fuchsia', target)
+
+    # Explicitly specify TEST_UNDECLARED_OUTPUTS_DIR_OVERRIDE as that will allow
+    # `orchestrate`'s output (eg: ffx host + target logs, test stdout/stderr) to
+    # be picked up by the `save_logs` recipe module.
+    # We cannot rely on Bazel's native TEST_UNDECLARED_OUTPUTS_DIR functionality
+    # since `zip` is not available in builders. See https://pwbug.dev/362990622.
+    build_bazel(
+        ctx,
+        'run',
+        '--config=fuchsia',
+        f'{target}.test_all',
+        env=dict(
+            os.environ,
+            TEST_UNDECLARED_OUTPUTS_DIR_OVERRIDE=ctx.output_dir,
+        ),
+    )
 
     stdout_path = ctx.output_dir / 'bazel.manifest.stdout'
     with open(stdout_path, 'w') as outs:
         build_bazel(
             ctx,
             'build',
+            '--config=fuchsia',
             '--output_groups=builder_manifest',
             target,
             stdout=outs,
@@ -827,7 +876,6 @@ def bazel_build(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'build',
-        '--build_tag_filters=-requires_cxx_20',
         '--',
         '//...',
     )
@@ -843,11 +891,9 @@ def bazel_build(ctx: PresubmitContext) -> None:
         ],
     }
 
-    for cxxversion in ('c++17', 'c++20'):
+    for cxxversion in ('17', '20'):
         # Explicitly build for each supported C++ version.
-        args = [ctx, 'build', f"--cxxopt=-std={cxxversion}"]
-        if cxxversion == 'c++17':
-            args += ['--build_tag_filters=-requires_cxx_20']
+        args = [ctx, 'build', f"--//pw_toolchain/cc:cxx_standard={cxxversion}"]
         args += ['--', '//...']
         build_bazel(*args)
 
@@ -856,7 +902,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
                 ctx,
                 'build',
                 f'--config={config}',
-                f"--cxxopt='-std={cxxversion}'",
+                f"--//pw_toolchain/cc:cxx_standard={cxxversion}",
                 *targets,
             )
 
@@ -1008,6 +1054,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Configuration
     # keep-sorted: start
     r'MODULE.bazel.lock',
+    r'\b49-pico.rules$',
     r'\bDoxyfile$',
     r'\bPW_PLUGINS$',
     r'\bconstraint.list$',
@@ -1018,7 +1065,8 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\bupstream_requirements_darwin_lock.txt$',
     r'\bupstream_requirements_linux_lock.txt$',
     r'\bupstream_requirements_windows_lock.txt$',
-    r'^(?:.+/)?\..+$',
+    r'^(?:.+/)?\.bazelversion$',
+    r'^pw_env_setup/py/pw_env_setup/cipd_setup/.cipd_version',
     # keep-sorted: end
     # Metadata
     # keep-sorted: start
@@ -1026,6 +1074,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\bAUTHORS$',
     r'\bLICENSE$',
     r'\bPIGWEED_MODULES$',
+    r'\b\.vscodeignore$',
     r'\bgo.(mod|sum)$',
     r'\bpackage-lock.json$',
     r'\bpackage.json$',
@@ -1046,6 +1095,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\.png$',
     r'\.svg$',
     r'\.vsix$',
+    r'\.woff2',
     r'\.xml$',
     # keep-sorted: end
     # Documentation
@@ -1062,6 +1112,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Generated third-party files
     # keep-sorted: start
     r'\bthird_party/.*\.bazelrc$',
+    r'\bthird_party/fuchsia/repo',
     r'\bthird_party/perfetto/repo/protos/perfetto/trace/perfetto_trace.proto',
     # keep-sorted: end
     # Diff/Patch files
@@ -1214,6 +1265,14 @@ def commit_message_format(_: PresubmitContext):
     if not lines:
         _LOG.error('The commit message is too short!')
         raise PresubmitFailure
+
+    # Ignore merges.
+    repo = git_repo.LoggingGitRepo(Path.cwd())
+    parents = repo.commit_parents()
+    _LOG.debug('parents: %r', parents)
+    if len(parents) > 1:
+        _LOG.warning('Ignoring multi-parent commit')
+        return
 
     # Ignore Gerrit-generated reverts.
     if (
@@ -1417,6 +1476,8 @@ OTHER_CHECKS = (
     gn_all,
     gn_clang_build,
     gn_combined_build_check,
+    gn_main_build_check,
+    gn_platform_build_check,
     module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
@@ -1446,9 +1507,7 @@ ARDUINO_PICO = (
 
 INTERNAL = (gn_mimxrt595_build, gn_mimxrt595_freertos_build)
 
-# The misc program differs from other_checks in that checks in the misc
-# program block CQ on Linux.
-MISC = (
+SAPPHIRE = (
     # keep-sorted: start
     gn_chre_googletest_nanopb_sapphire_build,
     # keep-sorted: end
@@ -1466,17 +1525,16 @@ SECURITY = (
 
 FUZZ = (gn_fuzz_build, oss_fuzz_build)
 
-# Avoid running all checks on specific paths.
-PATH_EXCLUSIONS = FormatOptions.load().exclude
-
 _LINTFORMAT = (
     commit_message_format,
     copyright_notice,
     format_code.presubmit_checks(),
     inclusive_language.presubmit_check.with_filter(
         exclude=(
-            r'\byarn.lock$',
+            r'\bMODULE.bazel.lock$',
+            r'\bgo.sum$',
             r'\bpackage-lock.json$',
+            r'\byarn.lock$',
         )
     ),
     cpp_checks.pragma_once,
@@ -1527,10 +1585,10 @@ PROGRAMS = Programs(
     fuzz=FUZZ,
     internal=INTERNAL,
     lintformat=LINTFORMAT,
-    misc=MISC,
     other_checks=OTHER_CHECKS,
     quick=QUICK,
     sanitizers=SANITIZERS,
+    sapphire=SAPPHIRE,
     security=SECURITY,
     # keep-sorted: end
 )
@@ -1550,7 +1608,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run(install: bool, exclude: list, **presubmit_args) -> int:
+def run(install: bool, **presubmit_args) -> int:
     """Entry point for presubmit."""
 
     if install:
@@ -1568,8 +1626,7 @@ def run(install: bool, exclude: list, **presubmit_args) -> int:
         )
         return 0
 
-    exclude.extend(PATH_EXCLUSIONS)
-    return cli.run(exclude=exclude, **presubmit_args)
+    return cli.run(**presubmit_args)
 
 
 def main() -> int:

@@ -13,6 +13,7 @@
 # the License.
 """Helpful commands for working with a Git repository."""
 
+from datetime import datetime
 import logging
 from pathlib import Path
 import re
@@ -276,6 +277,18 @@ class GitRepo:
         """
         return self._git('log', '--format=%ae', '-n1', commit)
 
+    def commit_date(self, commit: str = 'HEAD') -> datetime:
+        """Returns the datetime of the specified commit.
+
+        Defaults to ``HEAD`` if no commit specified.
+
+        Returns:
+            Commit datetime as a datetime object.
+        """
+        return datetime.fromisoformat(
+            self._git('log', '--format=%aI', '-n1', commit)
+        )
+
     def commit_hash(
         self,
         commit: str = 'HEAD',
@@ -309,6 +322,10 @@ class GitRepo:
         )
         match = regex.search(message)
         return match.group(1) if match else None
+
+    def commit_parents(self, commit: str = 'HEAD') -> list[str]:
+        args = ['log', '--pretty=%P', '-n', '1', commit]
+        return self._git(*args).split()
 
 
 def find_git_repo(path_in_repo: Path, tool_runner: ToolRunner) -> GitRepo:

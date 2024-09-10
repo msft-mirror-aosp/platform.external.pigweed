@@ -23,6 +23,17 @@
 
 namespace pw::bluetooth::proxy {
 
+std::array<containers::Pair<uint8_t*, bool>, ProxyHost::kNumH4Buffs>
+ProxyHost::InitOccupiedMap() {
+  std::array<containers::Pair<uint8_t*, bool>, kNumH4Buffs> arr;
+  acl_send_mutex_.lock();
+  for (size_t i = 0; i < kNumH4Buffs; ++i) {
+    arr[i] = {h4_buffs_[i].data(), false};
+  }
+  acl_send_mutex_.unlock();
+  return arr;
+}
+
 ProxyHost::ProxyHost(
     pw::Function<void(H4PacketWithHci&& packet)>&& send_to_host_fn,
     pw::Function<void(H4PacketWithH4&& packet)>&& send_to_controller_fn,
@@ -30,16 +41,20 @@ ProxyHost::ProxyHost(
     : hci_transport_(std::move(send_to_host_fn),
                      std::move(send_to_controller_fn)),
       acl_data_channel_(hci_transport_, le_acl_credits_to_reserve),
-      acl_send_pending_(false) {}
+      h4_buff_occupied_(InitOccupiedMap()) {}
 
 void ProxyHost::HandleH4HciFromHost(H4PacketWithH4&& h4_packet) {
   hci_transport_.SendToController(std::move(h4_packet));
 }
 
-void ProxyHost::ProcessH4HciFromController(pw::span<uint8_t> hci_buffer) {
+void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
   auto event = MakeEmboss<emboss::EventHeaderView>(hci_buffer);
   if (!event.IsComplete()) {
-    PW_LOG_ERROR("Buffer is too small for EventHeader. So will not process.");
+    PW_LOG_ERROR(
+        "Buffer is too small for EventHeader. So will pass on to host without "
+        "processing.");
+    hci_transport_.SendToHost(std::move(h4_packet));
     return;
   }
 
@@ -47,47 +62,34 @@ void ProxyHost::ProcessH4HciFromController(pw::span<uint8_t> hci_buffer) {
   PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (event.event_code_enum().Read()) {
     case emboss::EventCode::NUMBER_OF_COMPLETED_PACKETS: {
-      auto nocp_event =
-          MakeEmboss<emboss::NumberOfCompletedPacketsEventWriter>(hci_buffer);
-      if (!nocp_event.IsComplete()) {
-        PW_LOG_ERROR(
-            "Buffer is too small for NUMBER_OF_COMPLETED_PACKETS event. So "
-            "will not process.");
-        break;
-      }
-      acl_data_channel_.ProcessNumberOfCompletedPacketsEvent(nocp_event);
+      acl_data_channel_.HandleNumberOfCompletedPacketsEvent(
+          std::move(h4_packet));
       break;
     }
     case emboss::EventCode::DISCONNECTION_COMPLETE: {
-      auto dc_event =
-          MakeEmboss<emboss::DisconnectionCompleteEventWriter>(hci_buffer);
-      if (!dc_event.IsComplete()) {
-        PW_LOG_ERROR(
-            "Buffer is too small for DISCONNECTION_COMPLETE event. So will not "
-            "process.");
-        break;
-      }
-      acl_data_channel_.ProcessDisconnectionCompleteEvent(dc_event);
+      acl_data_channel_.HandleDisconnectionCompleteEvent(std::move(h4_packet));
       break;
     }
     case emboss::EventCode::COMMAND_COMPLETE: {
-      ProcessCommandCompleteEvent(hci_buffer);
+      HandleCommandCompleteEvent(std::move(h4_packet));
       break;
     }
     default: {
-      PW_LOG_ERROR("Received unexpected HCI event. So will not process.");
+      hci_transport_.SendToHost(std::move(h4_packet));
       return;
     }
   }
   PW_MODIFY_DIAGNOSTICS_POP();
 }
 
-void ProxyHost::ProcessCommandCompleteEvent(pw::span<uint8_t> hci_buffer) {
-  auto command_complete_event =
+void ProxyHost::HandleCommandCompleteEvent(H4PacketWithHci&& h4_packet) {
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
+  emboss::CommandCompleteEventView command_complete_event =
       MakeEmboss<emboss::CommandCompleteEventView>(hci_buffer);
   if (!command_complete_event.IsComplete()) {
     PW_LOG_ERROR(
         "Buffer is too small for COMMAND_COMPLETE event. So will not process.");
+    hci_transport_.SendToHost(std::move(h4_packet));
     return;
   }
 
@@ -121,26 +123,29 @@ void ProxyHost::ProcessCommandCompleteEvent(pw::span<uint8_t> hci_buffer) {
       break;
     }
     default:
-      // Nothing to process
       break;
   }
   PW_MODIFY_DIAGNOSTICS_POP();
-}
-
-void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
-  if (h4_packet.GetHciSpan().empty()) {
-    PW_LOG_ERROR("Received empty H4 buffer. So will not process.");
-  } else if (h4_packet.GetH4Type() == emboss::H4PacketType::EVENT) {
-    ProcessH4HciFromController(h4_packet.GetHciSpan());
-  }
   hci_transport_.SendToHost(std::move(h4_packet));
 }
 
 void ProxyHost::Reset() {
   acl_send_mutex_.lock();
   acl_data_channel_.Reset();
-  acl_send_pending_ = false;
+  for (const auto& [buff, _] : h4_buff_occupied_) {
+    h4_buff_occupied_.at(buff) = false;
+  }
   acl_send_mutex_.unlock();
+}
+
+std::optional<pw::span<uint8_t>> ProxyHost::ReserveH4Buff() {
+  for (const auto& [buff, occupied] : h4_buff_occupied_) {
+    if (!occupied) {
+      h4_buff_occupied_.at(buff) = true;
+      return {{buff, kH4BuffSize}};
+    }
+  }
+  return std::nullopt;
 }
 
 pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
@@ -165,22 +170,40 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
     return pw::Status::InvalidArgument();
   }
 
-  H4PacketWithH4 h4_att_notify({});
+  H4PacketWithH4 h4_att_notify;
   {
     acl_send_mutex_.lock();
-    // TODO: https://pwbug.dev/348680331 - Currently ProxyHost only supports 1
-    // in-flight ACL send, increase this to support multiple.
-    if (acl_send_pending_) {
+    std::optional<span<uint8_t>> h4_buff = ReserveH4Buff();
+    if (!h4_buff) {
+      PW_LOG_WARN("No H4 buffers available. So will not send.");
       acl_send_mutex_.unlock();
       return pw::Status::Unavailable();
     }
-    acl_send_pending_ = true;
 
     size_t acl_packet_size =
         emboss::AttNotifyOverAcl::MinSizeInBytes() + attribute_value.size();
+    size_t h4_packet_size = sizeof(emboss::H4PacketType) + acl_packet_size;
+
+    H4PacketWithH4 h4_temp(
+        span(h4_buff->data(), h4_packet_size),
+        /*release_fn=*/[this](const uint8_t* buffer) {
+          acl_send_mutex_.lock();
+          PW_CHECK(h4_buff_occupied_.contains(const_cast<uint8_t*>(buffer)),
+                   "Received release callback for invalid buffer address.");
+          h4_buff_occupied_.at(const_cast<uint8_t*>(buffer)) = false;
+          acl_send_mutex_.unlock();
+        });
+    h4_temp.SetH4Type(emboss::H4PacketType::ACL_DATA);
+
+    if (h4_packet_size > h4_buff->size()) {
+      PW_LOG_ERROR("Buffer is too small for H4 packet. So will not send.");
+      acl_send_mutex_.unlock();
+      return pw::Status::InvalidArgument();
+    }
+
     emboss::AttNotifyOverAclWriter att_notify =
         emboss::MakeAttNotifyOverAclView(attribute_value.size(),
-                                         H4HciSubspan(h4_buff_).data(),
+                                         H4HciSubspan(*h4_buff).data(),
                                          acl_packet_size);
     if (!att_notify.IsComplete()) {
       PW_LOG_ERROR("Buffer is too small for ATT Notify. So will not send.");
@@ -191,28 +214,16 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
     BuildAttNotify(
         att_notify, connection_handle, attribute_handle, attribute_value);
 
-    size_t h4_packet_size = 1 + acl_packet_size;
-    H4PacketWithH4 h4_temp(pw::span(h4_buff_.data(), h4_packet_size),
-                           [this](const uint8_t* buffer) {
-                             acl_send_mutex_.lock();
-                             PW_CHECK_PTR_EQ(
-                                 buffer,
-                                 h4_buff_.data(),
-                                 "Received release callback for buffer that "
-                                 "doesn't match our buffer.");
-                             PW_LOG_DEBUG("H4 packet release fn called.");
-                             acl_send_pending_ = false;
-                             acl_send_mutex_.unlock();
-                           });
-    h4_temp.SetH4Type(emboss::H4PacketType::ACL_DATA);
     h4_att_notify = std::move(h4_temp);
     acl_send_mutex_.unlock();
   }
 
   // H4 packet is hereby moved. Either ACL data channel will move packet to
   // controller or will be unable to send packet. In either case, packet will be
-  // destructed, so its release function will clear the `acl_send_pending` flag.
+  // destructed, so its release function will clear the corresponding flag in
+  // `h4_buff_occupied_`.
   if (!acl_data_channel_.SendAcl(std::move(h4_att_notify))) {
+    // SendAcl function will have logged reason for failure to send..
     return pw::Status::Unavailable();
   }
   return OkStatus();

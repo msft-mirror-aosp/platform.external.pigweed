@@ -56,11 +56,13 @@ export const themeLight = css`
       --md-sys-color-scrim: #000000;
       --md-sys-color-inverse-surface-rgb: 49, 48, 51;
 
-      /* General */
-      --sys-log-viewer-color-primary: var(--md-sys-color-primary);
-      --sys-log-viewer-color-on-primary: var(--md-sys-color-on-primary);
+      /* REPL */
+      --sys-repl-gutter-bg: var(--md-sys-color-primary-90);
+      --sys-repl-active-gutter-bg: var(--md-sys-color-primary-70);
 
       /* Log Viewer */
+      --sys-log-viewer-color-primary: var(--md-sys-color-primary);
+      --sys-log-viewer-color-on-primary: var(--md-sys-color-on-primary);
       --sys-log-viewer-color-bg: var(--md-sys-color-surface);
 
       /* Log View */
@@ -103,7 +105,7 @@ export const themeLight = css`
         --md-sys-color-inverse-surface-rgb
       );
 
-      /* Severity */
+      /* Log Level */
       --sys-log-viewer-color-error-bright: #dc362e;
       --sys-log-viewer-color-surface-error: #fcefee;
       --sys-log-viewer-color-on-surface-error: #8c1d18;
@@ -111,6 +113,7 @@ export const themeLight = css`
       --sys-log-viewer-color-surface-yellow: #fef9eb;
       --sys-log-viewer-color-on-surface-yellow: #783616;
       --sys-log-viewer-color-debug: var(--md-sys-color-primary);
+      --sys-log-viewer-color-info: #7d96b0;
     }
   }
 
@@ -154,11 +157,13 @@ export const themeLight = css`
     --md-sys-color-scrim: #000000;
     --md-sys-color-inverse-surface-rgb: 49, 48, 51;
 
-    /* General */
-    --sys-log-viewer-color-primary: var(--md-sys-color-primary);
-    --sys-log-viewer-color-on-primary: var(--md-sys-color-on-primary);
+    /* REPL */
+    --sys-repl-gutter-bg: var(--md-sys-color-primary-90);
+    --sys-repl-active-gutter-bg: var(--md-sys-color-primary-70);
 
     /* Log Viewer */
+    --sys-log-viewer-color-primary: var(--md-sys-color-primary);
+    --sys-log-viewer-color-on-primary: var(--md-sys-color-on-primary);
     --sys-log-viewer-color-bg: var(--md-sys-color-surface);
 
     /* Log View */
@@ -201,7 +206,7 @@ export const themeLight = css`
       --md-sys-color-inverse-surface-rgb
     );
 
-    /* Severity */
+    /* Log Level */
     --sys-log-viewer-color-error-bright: #dc362e;
     --sys-log-viewer-color-surface-error: #fcefee;
     --sys-log-viewer-color-on-surface-error: #8c1d18;
@@ -209,5 +214,6 @@ export const themeLight = css`
     --sys-log-viewer-color-surface-yellow: #fef9eb;
     --sys-log-viewer-color-on-surface-yellow: #783616;
     --sys-log-viewer-color-debug: var(--md-sys-color-primary);
+    --sys-log-viewer-color-info: #7d96b0;
   }
 `;

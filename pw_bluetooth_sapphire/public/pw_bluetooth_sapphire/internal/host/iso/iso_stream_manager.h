@@ -16,7 +16,10 @@
 
 #include "pw_bluetooth_sapphire/internal/host/common/weak_self.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
+#include "pw_bluetooth_sapphire/internal/host/iso/iso_common.h"
+#include "pw_bluetooth_sapphire/internal/host/iso/iso_stream.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/command_channel.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/transport.h"
 
 namespace bt::iso {
 
@@ -27,8 +30,23 @@ namespace bt::iso {
 class IsoStreamManager final {
  public:
   explicit IsoStreamManager(hci_spec::ConnectionHandle handle,
-                            hci::CommandChannel::WeakPtr cmd_channel);
+                            hci::Transport::WeakPtr hci);
   ~IsoStreamManager();
+
+  // Start waiting on an incoming request to create an Isochronous channel for
+  // the specified CIG/CIS |id|. If we are already waiting on |id|, or if a
+  // stream has already been established with the given |id|, returns
+  // kAlreadyExists. |cb| will be invoked when we receive an incoming ISO
+  // channel request with a matching CIG/CIS |id|, and will indicate the status
+  // of establishing a channel and on success the associated channel parameters.
+  [[nodiscard]] AcceptCisStatus AcceptCis(CigCisIdentifier id,
+                                          CisEstablishedCallback cb);
+
+  // Indicates if we are currently waiting on a connection for the specified
+  // CIG/CIS combination
+  bool HandlerRegistered(const CigCisIdentifier& id) const {
+    return accept_handlers_.count(id) != 0;
+  }
 
   using WeakPtr = WeakSelf<IsoStreamManager>::WeakPtr;
   IsoStreamManager::WeakPtr GetWeakPtr() { return weak_self_.GetWeakPtr(); }
@@ -36,6 +54,10 @@ class IsoStreamManager final {
  private:
   // Process an incoming CIS request. Currently rejects all requests.
   void OnCisRequest(const hci::EmbossEventPacket& event);
+
+  void AcceptCisRequest(
+      const pw::bluetooth::emboss::LECISRequestSubeventView& event_view,
+      CisEstablishedCallback cb);
 
   // Send a rejection in response to an incoming CIS request.
   void RejectCisRequest(
@@ -47,6 +69,17 @@ class IsoStreamManager final {
   hci::CommandChannel::EventHandlerId cis_request_handler_;
 
   hci::CommandChannel::WeakPtr cmd_;
+
+  hci::Transport::WeakPtr hci_;
+
+  // The streams that we are currently waiting on, and the associated callback
+  // when the connection is resolved (either accepted and established, or failed
+  // to establish).
+  std::unordered_map<CigCisIdentifier, CisEstablishedCallback> accept_handlers_;
+
+  // All of the allocated streams.
+  std::unordered_map<CigCisIdentifier, std::unique_ptr<IsoStream>> streams_;
+
   WeakSelf<IsoStreamManager> weak_self_;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(IsoStreamManager);

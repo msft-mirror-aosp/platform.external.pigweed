@@ -44,6 +44,14 @@
       "C++"
     ]
   },
+  "pw_assert_fuchsia": {
+    "tagline": "pw_assert backend for Fuchsia",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_async": {
     "tagline": "Portable APIs for asynchronous code",
     "status": "deprecated",
@@ -56,6 +64,14 @@
     "status": "experimental",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_async_fuchsia": {
+    "tagline": "Fuchsia backend for pw_async",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
     ]
   },
   "pw_base64": {
@@ -238,6 +254,11 @@
       "C++17"
     ]
   },
+  "pw_display": {
+    "tagline": "Graphic display support and framebuffer management",
+    "status": "experimental",
+    "languages": []
+  },
   "pw_dma_mcuxpresso": {
     "tagline": "DMA helpers for MCUXpresso SDK",
     "status": "unstable",
@@ -294,13 +315,6 @@
       "C++20"
     ]
   },
-  "pw_hex_dump": {
-    "tagline": "Handy hexdump utilities",
-    "status": "stable",
-    "languages": [
-      "C++17"
-    ]
-  },
   "pw_hdlc": {
     "tagline": "Simple, robust, and efficient serial communication",
     "status": "stable",
@@ -309,6 +323,13 @@
       "Python",
       "C++17",
       "TypeScript"
+    ]
+  },
+  "pw_hex_dump": {
+    "tagline": "Handy hexdump utilities",
+    "status": "stable",
+    "languages": [
+      "C++17"
     ]
   },
   "pw_i2c": {
@@ -380,6 +401,14 @@
       "C++"
     ]
   },
+  "pw_log_fuchsia": {
+    "tagline": "Fuchsia logging backend",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_malloc": {
     "tagline": "Replacement interface for standard libc dynamic memory operations",
     "status": "stable",
@@ -424,18 +453,23 @@
       "C++"
     ]
   },
-  "pw_router": {
-    "tagline": "Transport-agnostic packet routing",
+  "pw_random_fuchsia": {
+    "tagline": "Fuchsia implementation of pw_random",
     "status": "experimental",
-    "languages": [
-      "C++"
-    ]
+    "languages": []
   },
   "pw_result": {
     "tagline": "Error propagation primitives: value-or-error",
     "status": "stable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_router": {
+    "tagline": "Transport-agnostic packet routing",
+    "status": "experimental",
+    "languages": [
+      "C++"
     ]
   },
   "pw_rpc": {
@@ -447,6 +481,14 @@
       "JavaScript",
       "Python",
       "TypeScript"
+    ]
+  },
+  "pw_sensor": {
+    "tagline": "A modular way to see the world",
+    "status": "experimental",
+    "languages": [
+      "Python",
+      "C++17"
     ]
   },
   "pw_software_update": {
@@ -536,6 +578,13 @@
   },
   "pw_uart": {
     "tagline": "Core interfaces for UART communication",
+    "status": "unstable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_uart_mcuxpresso": {
+    "tagline": "NXP MCUXpresso SDK implementation for pw_uart",
     "status": "unstable",
     "languages": [
       "C++"

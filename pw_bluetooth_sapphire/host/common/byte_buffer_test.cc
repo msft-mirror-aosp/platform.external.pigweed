@@ -19,10 +19,9 @@
 #include <cstddef>
 #include <type_traits>
 
+#include "pw_bluetooth_sapphire/internal/host/common/macros.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 #include "pw_unit_test/framework.h"
-
-#pragma clang diagnostic ignored "-Wc99-extensions"
 
 namespace bt {
 namespace {
@@ -194,6 +193,12 @@ TEST(ByteBufferTest, DynamicByteBufferExpand) {
   ASSERT_TRUE(buffer.expand(data.size() * 2));
   ASSERT_EQ(buffer.size(), data.size() * 2);
   EXPECT_EQ(buffer.view(0, data.size()).ToString(), data);
+}
+
+TEST(ByteBufferTest, ByteBufferToStringAsHex) {
+  StaticByteBuffer bytes(0x01, 0x02, 0x03);
+  std::string bytesStringAsHex = bytes.ToString(/*as_hex*/ true);
+  ASSERT_EQ(bytesStringAsHex, "01 02 03");
 }
 
 TEST(ByteBufferTest, BufferViewTest) {
@@ -512,6 +517,8 @@ TEST(ByteBufferTest, ByteBufferToDoesNotReadUnaligned) {
 }
 
 TEST(ByteBufferTest, ByteBufferReadMember) {
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC_CLANG(ignored, "-Wc99-extensions");
   struct [[gnu::packed]] Point {
     uint8_t x;
     const uint8_t y;
@@ -519,6 +526,7 @@ TEST(ByteBufferTest, ByteBufferReadMember) {
     char multi[2][1];
     uint8_t flex[];
   };
+  PW_MODIFY_DIAGNOSTICS_POP();
 
   StaticByteBuffer data(0x01, 0x02, 0x03, 0x37, 0x7f, 0x02, 0x45);
   auto x = data.ReadMember<&Point::x>();
@@ -602,10 +610,13 @@ TEST(ByteBufferDeathTest, ByteBufferReadMemberOfStdArrayType) {
 }
 
 TEST(ByteBufferDeathTest, ByteBufferReadMemberOfFlexibleArrayType) {
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC_CLANG(ignored, "-Wc99-extensions");
   struct [[gnu::packed]] Point {
     uint16_t dimensions;
     int8_t coordinates[];
   };
+  PW_MODIFY_DIAGNOSTICS_POP();
 
   StaticByteBuffer data(0, 0, 0x01, 0x02);
   ASSERT_LE(sizeof(Point), data.size());

@@ -19,12 +19,16 @@
 #include <utility>
 
 #include "pw_allocator/best_fit_block_allocator.h"
+#include "pw_allocator/synchronized_allocator.h"
 #include "pw_assert/check.h"
 #include "pw_async2/allocate_task.h"
 #include "pw_async2/pend_func_task.h"
 #include "pw_log/log.h"
 #include "pw_rpc/echo_service_pwpb.h"
+#include "pw_sync/interrupt_spin_lock.h"
 #include "pw_system/config.h"
+#include "pw_system/device_service.h"
+#include "pw_system/file_service.h"
 #include "pw_system/internal/async_packet_io.h"
 #include "pw_system/thread_snapshot_service.h"
 #include "pw_system/transfer_service.h"
@@ -32,6 +36,11 @@
 #include "pw_system_private/log.h"
 #include "pw_system_private/threads.h"
 #include "pw_thread/detached_thread.h"
+
+#if PW_SYSTEM_ENABLE_CRASH_HANDLER
+#include "pw_system/crash_handler.h"
+#include "pw_system/crash_snapshot.h"
+#endif  // PW_SYSTEM_ENABLE_CRASH_HANDLER
 
 namespace pw {
 
@@ -43,6 +52,9 @@ void SystemStart(channel::ByteReaderWriter& io_channel) {
 
 namespace system {
 namespace {
+
+using pw::allocator::BestFitBlockAllocator;
+using pw::allocator::SynchronizedAllocator;
 
 // TODO: b/349654108 - Standardize component declaration and initialization.
 alignas(internal::PacketIO) std::byte packet_io_[sizeof(internal::PacketIO)];
@@ -82,8 +94,10 @@ async2::Dispatcher& AsyncCore::dispatcher() {
 
 Allocator& AsyncCore::allocator() {
   alignas(uintptr_t) static std::byte buffer[8192];
-  static allocator::BestFitBlockAllocator allocator(buffer);
-  return allocator;
+  static BestFitBlockAllocator block_allocator(buffer);
+  static SynchronizedAllocator<pw::sync::InterruptSpinLock> sync_allocator(
+      block_allocator);
+  return sync_allocator;
 }
 
 bool AsyncCore::RunOnce(Function<void()>&& function) {
@@ -91,7 +105,25 @@ bool AsyncCore::RunOnce(Function<void()>&& function) {
 }
 
 void AsyncCore::Init(channel::ByteReaderWriter& io_channel) {
+#if PW_SYSTEM_ENABLE_CRASH_HANDLER
+  RegisterCrashHandler();
+#endif  // PW_SYSTEM_ENABLE_CRASH_HANDLER
+
   PW_LOG_INFO("Initializing pw_system");
+
+#if PW_SYSTEM_ENABLE_CRASH_HANDLER
+  if (HasCrashSnapshot()) {
+    PW_LOG_ERROR("==========================");
+    PW_LOG_ERROR("======CRASH DETECTED======");
+    PW_LOG_ERROR("==========================");
+    PW_LOG_ERROR("Crash snapshots available.");
+    PW_LOG_ERROR(
+        "Run `device.get_crash_snapshots()` to download and clear the "
+        "snapshots.");
+  } else {
+    PW_LOG_DEBUG("No crash snapshot");
+  }
+#endif  // PW_SYSTEM_ENABLE_CRASH_HANDLER
 
   PostTaskFunctionOrCrash(InitTask);
 
@@ -101,6 +133,8 @@ void AsyncCore::Init(channel::ByteReaderWriter& io_channel) {
 
   thread::DetachedThread(DispatcherThreadOptions(),
                          [] { System().dispatcher().RunToCompletion(); });
+
+  thread::DetachedThread(WorkQueueThreadOptions(), GetWorkQueue());
 }
 
 async2::Poll<> AsyncCore::InitTask(async2::Context&) {
@@ -119,12 +153,15 @@ async2::Poll<> AsyncCore::InitTask(async2::Context&) {
   static rpc::EchoService echo_service;
   System().rpc_server().RegisterService(echo_service);
 
+  RegisterDeviceService(System().rpc_server());
+
   if (PW_SYSTEM_ENABLE_THREAD_SNAPSHOT_SERVICE != 0) {
     RegisterThreadSnapshotService(System().rpc_server());
   }
 
   if (PW_SYSTEM_ENABLE_TRANSFER_SERVICE != 0) {
     RegisterTransferService(System().rpc_server());
+    RegisterFileService(System().rpc_server());
     thread::DetachedThread(system::TransferThreadOptions(),
                            GetTransferThread());
     InitTransferService();

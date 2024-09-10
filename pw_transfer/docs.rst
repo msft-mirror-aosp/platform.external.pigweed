@@ -109,7 +109,8 @@ must have a globally-unique integer ID used to identify the resource.
 
 Handlers are registered with the transfer service. This may be done during
 system initialization (for static resources), or dynamically at runtime to
-support ephemeral transfer resources.
+support ephemeral transfer resources. A boolean is returned with registration/
+unregistration to indicate success or failure.
 
 **Example transfer handler implementation**
 
@@ -185,7 +186,7 @@ thread and registered with the system's RPC server.
    void InitTransferService() {
      // Register the handler with the transfer service, then the transfer service
      // with an RPC server.
-     transfer_service.RegisterHandler(magic_buffer_handler);
+     bool success = transfer_service.RegisterHandler(magic_buffer_handler);
      GetSystemRpcServer().RegisterService(transfer_service);
    }
 
@@ -430,6 +431,13 @@ more details.
   Turns on logging of individual data and parameter chunks. Default is false to
   disable logging. These chunks are moderated (rate-limited) by the same
   ``PW_TRANSFER_RATE_PERIOD_MS`` as other repetitive logs.
+
+.. c:macro:: PW_TRANSFER_EVENT_PROCESSING_TIMEOUT_MS
+
+   Maximum time to wait for a transfer event to be processed before dropping
+   further queued events. In systems which can perform long-running operations
+   to process transfer data, this can be used to prevent threads from blocking
+   for extended periods. A value of 0 results in indefinite blocking.
 
 .. _pw_transfer-nonzero-transfers:
 

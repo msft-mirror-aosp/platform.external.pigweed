@@ -15,6 +15,7 @@
 import("//build_overrides/pigweed.gni")
 
 import("$dir_pw_build/gn_internal/build_target.gni")
+import("$dir_pw_rust/rust.gni")
 
 # Note: In general, prefer to import target_types.gni rather than this file.
 #
@@ -30,9 +31,8 @@ template("pw_rust_library") {
   pw_internal_build_target(target_name) {
     forward_variables_from(invoker, "*")
 
-    crate_name = target_name
-    if (defined(name)) {
-      crate_name = name
+    if (!defined(crate_name)) {
+      crate_name = target_name
     }
 
     _edition = "2021"
@@ -61,7 +61,6 @@ template("pw_rust_library") {
     }
 
     crate_name = string_replace(crate_name, "-", "_")
-    output_name = crate_name
     output_dir = "${target_out_dir}/lib"
     add_global_link_deps = true
   }
