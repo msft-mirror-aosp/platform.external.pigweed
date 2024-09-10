@@ -34,17 +34,24 @@ def _tokenized_fields(proto: Message) -> Iterator[FieldDescriptor]:
 
 
 def decode_optionally_tokenized(
-    detokenizer: detokenize.Detokenizer,
+    detokenizer: detokenize.Detokenizer | None,
     data: bytes,
-    prefix: str = encode.NESTED_TOKEN_PREFIX,
 ) -> str:
-    """Decodes data that may be plain text or binary / Base64 tokenized text."""
-    # Try detokenizing as binary.
-    result = detokenizer.detokenize(data)
-    if result.best_result() is not None:
-        # Rather than just returning the detokenized string, continue
-        # detokenization in case recursive Base64 detokenization is needed.
-        data = str(result).encode()
+    """Decodes data that may be plain text or binary / Base64 tokenized text.
+
+    Args:
+      detokenizer: detokenizer to use; if `None`, binary logs as Base64 encoded
+      data: encoded text or binary data
+    """
+    prefix = detokenizer.prefix if detokenizer else encode.NESTED_TOKEN_PREFIX
+
+    if detokenizer:
+        # Try detokenizing as binary.
+        result = detokenizer.detokenize(data)
+        if result.best_result() is not None:
+            # Rather than just returning the detokenized string, continue
+            # detokenization in case recursive Base64 detokenization is needed.
+            data = str(result).encode()
 
     # Attempt to decode as UTF-8.
     try:
@@ -54,9 +61,10 @@ def decode_optionally_tokenized(
         return encode.prefixed_base64(data, prefix)
 
     # See if the string is prefixed Base64 or contains prefixed Base64.
-    detokenized = detokenize.detokenize_base64(detokenizer, data, prefix)
-    if detokenized != data:  # If anything detokenized successfully, use that.
-        return detokenized.decode()
+    if detokenizer:
+        detokenized = detokenize.detokenize_base64(detokenizer, data)
+        if detokenized != data:  # If detokenized successfully, use the result.
+            return detokenized.decode()
 
     # Attempt to determine whether this is an unknown token or plain text.
     # Any string with only printable or whitespace characters is plain text.
@@ -68,9 +76,8 @@ def decode_optionally_tokenized(
 
 
 def detokenize_fields(
-    detokenizer: detokenize.Detokenizer,
+    detokenizer: detokenize.Detokenizer | None,
     proto: Message,
-    prefix: str = encode.NESTED_TOKEN_PREFIX,
 ) -> None:
     """Detokenizes fields annotated as tokenized in the given proto.
 
@@ -80,6 +87,6 @@ def detokenize_fields(
     """
     for field in _tokenized_fields(proto):
         decoded = decode_optionally_tokenized(
-            detokenizer, getattr(proto, field.name), prefix
+            detokenizer, getattr(proto, field.name)
         )
         setattr(proto, field.name, decoded.encode())

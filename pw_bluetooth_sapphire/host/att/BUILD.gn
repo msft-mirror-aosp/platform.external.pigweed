@@ -25,6 +25,8 @@ pw_source_set("definitions") {
     "$dir_public_att/packet.h",
   ]
 
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
+
   sources = [ "packet.cc" ]
 
   public_deps = [
@@ -60,7 +62,16 @@ pw_source_set("att") {
     "$dir_pw_third_party/fuchsia:fit",
   ]
 
-  deps = [ "$dir_pw_string" ]
+  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  configs = [
+    "$dir_pw_build:internal_strict_warnings_core",
+    "$dir_pw_bluetooth_sapphire/host:copts",
+  ]
+
+  deps = [
+    "$dir_pw_preprocessor",
+    "$dir_pw_string",
+  ]
 
   public_configs = [ "$dir_pw_bluetooth_sapphire:public_include_path" ]
 }
@@ -73,6 +84,8 @@ pw_test("tests") {
     "error_test.cc",
     "permissions_test.cc",
   ]
+
+  configs = [ "$dir_pw_bluetooth_sapphire/host:copts" ]
 
   deps = [
     ":att",

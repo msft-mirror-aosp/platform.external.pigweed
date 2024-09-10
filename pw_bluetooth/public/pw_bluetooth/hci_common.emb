@@ -171,6 +171,11 @@ enum OpCode:
   IO_CAPABILITY_REQUEST_NEGATIVE_REPLY                         = 0x0434
     -- IO Capability Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
 
+  ### Link Policy Commands - Core Spec v5.4, Part E, Section 7.32 (OGF 0x02)
+
+  SNIFF_MODE                                                   = 0x0803
+    -- Sniff Mode Command
+
   ### Controller & Baseband Commands - Core Spec v5.0 Vol 2, Part E, Section 7.3 (OGF 0x03)
 
   SET_EVENT_MASK                                               = 0x0C01
@@ -305,8 +310,17 @@ enum OpCode:
   LE_READ_BUFFER_SIZE_V1                                       = 0x2002
     -- LE Read Buffer Size [v1] Command (v4.0) (LE)
 
+  LE_READ_LOCAL_SUPPORTED_FEATURES                             = 0x2003
+    -- LE Read Local Supported Features Command (v4.0) (LE)
+
   LE_SET_RANDOM_ADDRESS                                        = 0x2005
     -- LE Set Random Address Command (v4.0) (LE)
+
+  LE_SET_ADVERTISING_PARAMETERS                                = 0x2006
+    -- LE Set Advertising Parameters Command (v4.0) (LE)
+
+  LE_READ_ADVERTISING_CHANNEL_TX_POWER                         = 0x2007
+    -- LE Read Advertising Physical Channel Tx Power Command (v4.0) (LE)
 
   LE_SET_ADVERTISING_DATA                                      = 0x2008
     -- LE Set Advertising Data Command (v4.0) (LE)
@@ -397,6 +411,27 @@ enum OpCode:
 
   LE_ENHANCED_TRANSMITTER_TEST                                 = 0x2034
     -- LE Enhanced Transmitter Test Command (v5.0) (LE)
+
+  LE_SET_ADVERTISING_SET_RANDOM_ADDRESS                        = 0x2035
+    -- LE Set Advertising Set Random Address Command (v5.0) (LE)
+
+  LE_SET_EXTENDED_ADVERTISING_PARAMETERS_V1                    = 0x2036
+    -- LE Set Extended Advertising Parameters [v1] (v5.0) (LE)
+
+  LE_SET_EXTENDED_ADVERTISING_DATA                             = 0x2037
+    -- LE Set Extended Advertising Data Command (v5.0) (LE)
+
+  LE_SET_EXTENDED_SCAN_RESPONSE_DATA                           = 0x2038
+    -- LE Set Extended Scan Response Data Command (v5.0) (LE)
+
+  LE_SET_EXTENDED_ADVERTISING_ENABLE                           = 0x2039
+    -- LE Set Extended Advertising Enable Command (v5.0) (LE)
+
+  LE_READ_MAXIMUM_ADVERTISING_DATA_LENGTH                      = 0x203A
+    -- LE Read Maximum Advertising Data Length Command (v5.0) (LE)
+
+  LE_READ_NUMBER_OF_SUPPORTED_ADVERTISING_SETS                 = 0x203B
+    -- LE Read Number of Supported Advertising Sets Command (v5.0) (LE)
 
   LE_REMOVE_ADVERTISING_SET                                    = 0x203C
     -- LE Remove Advertising Set Command (v5.0) (LE)
@@ -502,6 +537,9 @@ enum OpCode:
 
   LE_READ_ISO_LINK_QUALITY                                     = 0x2075
     -- LE Read ISO Link Quality Command (v5.2) (LE)
+
+  LE_SET_EXTENDED_ADVERTISING_PARAMETERS_V2                    = 0x207F
+    -- LE Set Extended Advertising Parameters Command (v5.4) (LE)
 
 
 enum EventCode:
@@ -838,6 +876,15 @@ bits ClassOfDevice:
   $next [+11]   MajorServiceClasses          major_service_classes
 
 
+bits ScanEnableBits:
+  -- Bitmask Values for the Scan_Enable parameter in a HCI_(Read,Write)_Scan_Enable command.
+  0 [+1]  Flag  inquiry
+    -- Inquiry scan enabled
+
+  1 [+1]  Flag  page
+    -- Page scan enabled
+
+
 enum ConnectionRole:
   [maximum_bits: 8]
   CENTRAL    = 0x00
@@ -1058,6 +1105,35 @@ enum PinType:
   [maximum_bits: 8]
   VARIABLE = 0x00
   FIXED    = 0x01
+
+
+enum InquiryScanType:
+  [maximum_bits: 8]
+  STANDARD   = 0x00
+    -- Standard scan (Default) (Mandatory)
+
+  INTERLACED = 0x01
+
+
+enum InquiryMode:
+  [maximum_bits: 8]
+  STANDARD = 0x00
+    -- Standard Inquiry Result format (default)
+
+  RSSI     = 0x01
+    -- Inquiry Result format with RSSI
+
+  EXTENDED = 0x02
+    -- Inquiry Result format with RSSI or EIR format
+
+
+enum PageScanType:
+  [maximum_bits: 8]
+  STANDARD_SCAN   = 0x00
+    -- Standard scan (default) (mandatory)
+
+  INTERLACED_SCAN = 0x01
+    -- Interlaced scan (optional)
 
 
 struct LinkKey:

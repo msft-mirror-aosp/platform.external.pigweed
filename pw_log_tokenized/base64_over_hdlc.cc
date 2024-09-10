@@ -41,9 +41,11 @@ extern "C" void pw_log_tokenized_HandleLog(
   const pw::InlineBasicString base64_string =
       PrefixedBase64Encode(log_buffer, size_bytes);
 
-  // HDLC-encode the Base64 string via a SysIoWriter.
+  // HDLC-encode the Base64 string via a SysIoWriter. Ignore errors since we
+  // cannot take any action anyway.
   hdlc::WriteUIFrame(
-      kBase64LogHdlcAddress, as_bytes(span(base64_string)), writer);
+      kBase64LogHdlcAddress, as_bytes(span(base64_string)), writer)
+      .IgnoreError();
 }
 
 }  // namespace pw::log_tokenized

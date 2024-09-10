@@ -189,6 +189,7 @@ class SecureSimplePairingState final {
   //
   // |link| must be valid for the lifetime of this object.
   SecureSimplePairingState(Peer::WeakPtr peer,
+                           PairingDelegate::WeakPtr pairing_delegate,
                            WeakPtr<hci::BrEdrConnection> link,
                            bool outgoing_connection,
                            fit::closure auth_cb,
@@ -441,10 +442,6 @@ class SecureSimplePairingState final {
   // event. Invokes |status_callback_| with HostError::kNotSupported and sets
   // |state_| to kFailed. Logs an error using |handler_name| for identification.
   void FailWithUnexpectedEvent(const char* handler_name);
-
-  // Compute the expected pairing event and state to occur after receiving the
-  // peer IO Capability and write it to |current_pairing_| (which must exist).
-  void WritePairingData();
 
   // Returns true when the peer's host and peer's controller support Secure
   // Connections

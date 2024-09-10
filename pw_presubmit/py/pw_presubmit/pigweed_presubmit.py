@@ -95,7 +95,9 @@ class PigweedGnGenNinja(build.GnGenNinja):
 
 
 def build_bazel(*args, **kwargs) -> None:
-    build.bazel(*args, use_remote_cache=True, **kwargs)
+    build.bazel(
+        *args, use_remote_cache=True, strict_module_lockfile=True, **kwargs
+    )
 
 
 #
@@ -152,7 +154,7 @@ def gn_quick_build_check(ctx: PresubmitContext):
     build.gn_gen(ctx)
 
 
-def _gn_combined_build_check_targets() -> Sequence[str]:
+def _gn_main_build_check_targets() -> Sequence[str]:
     build_targets = [
         'check_modules',
         *_at_all_optimization_levels('stm32f429i'),
@@ -161,6 +163,12 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
         'python.lint',
         'pigweed_pypi_distribution',
     ]
+
+    return build_targets
+
+
+def _gn_platform_build_check_targets() -> Sequence[str]:
+    build_targets = []
 
     # TODO: b/315998985 - Add docs back to Mac ARM build.
     if sys.platform != 'darwin' or platform.machine() != 'arm64':
@@ -198,6 +206,35 @@ def _gn_combined_build_check_targets() -> Sequence[str]:
 
     return build_targets
 
+
+def _gn_combined_build_check_targets() -> Sequence[str]:
+    return [
+        *_gn_main_build_check_targets(),
+        *_gn_platform_build_check_targets(),
+    ]
+
+
+gn_main_build_check = PigweedGnGenNinja(
+    name='gn_main_build_check',
+    doc='Run most host.',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+        pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
+    ),
+    ninja_targets=_gn_main_build_check_targets(),
+)
+
+gn_platform_build_check = PigweedGnGenNinja(
+    name='gn_platform_build_check',
+    doc='Run any host platform-specific tests.',
+    path_filter=_BUILD_FILE_FILTER,
+    gn_args=dict(
+        pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
+        pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
+    ),
+    ninja_targets=_gn_platform_build_check_targets(),
+)
 
 gn_combined_build_check = PigweedGnGenNinja(
     name='gn_combined_build_check',
@@ -425,7 +462,7 @@ gn_pw_system_demo_build = PigweedGnGenNinja(
 gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
     name='gn_chre_googletest_nanopb_sapphire_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('boringssl', 'chre', 'emboss', 'googletest', 'icu', 'nanopb'),
+    packages=('boringssl', 'chre', 'emboss', 'googletest', 'nanopb'),
     gn_args=dict(
         dir_pw_third_party_chre=lambda ctx: '"{}"'.format(
             ctx.package_root / 'chre'
@@ -441,9 +478,6 @@ gn_chre_googletest_nanopb_sapphire_build = PigweedGnGenNinja(
         ),
         dir_pw_third_party_boringssl=lambda ctx: '"{}"'.format(
             ctx.package_root / 'boringssl'
-        ),
-        dir_pw_third_party_icu=lambda ctx: '"{}"'.format(
-            ctx.package_root / 'icu'
         ),
         pw_unit_test_MAIN=lambda ctx: '"{}"'.format(
             ctx.root / 'third_party/googletest:gmock_main'
@@ -782,17 +816,32 @@ def bazel_test(ctx: PresubmitContext) -> None:
 
 
 def bthost_package(ctx: PresubmitContext) -> None:
+    """Builds, tests, and prepares bt_host for upload."""
     target = '//pw_bluetooth_sapphire/fuchsia:infra'
-    build_bazel(ctx, 'build', target)
-    # Override the default test_tag_filters to ensure test targets tagged
-    # "integration" are still run.
-    build_bazel(ctx, 'test', '--test_tag_filters=', f'{target}.test_all')
+    build_bazel(ctx, 'build', '--config=fuchsia', target)
+
+    # Explicitly specify TEST_UNDECLARED_OUTPUTS_DIR_OVERRIDE as that will allow
+    # `orchestrate`'s output (eg: ffx host + target logs, test stdout/stderr) to
+    # be picked up by the `save_logs` recipe module.
+    # We cannot rely on Bazel's native TEST_UNDECLARED_OUTPUTS_DIR functionality
+    # since `zip` is not available in builders. See https://pwbug.dev/362990622.
+    build_bazel(
+        ctx,
+        'run',
+        '--config=fuchsia',
+        f'{target}.test_all',
+        env=dict(
+            os.environ,
+            TEST_UNDECLARED_OUTPUTS_DIR_OVERRIDE=ctx.output_dir,
+        ),
+    )
 
     stdout_path = ctx.output_dir / 'bazel.manifest.stdout'
     with open(stdout_path, 'w') as outs:
         build_bazel(
             ctx,
             'build',
+            '--config=fuchsia',
             '--output_groups=builder_manifest',
             target,
             stdout=outs,
@@ -1005,6 +1054,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # Configuration
     # keep-sorted: start
     r'MODULE.bazel.lock',
+    r'\b49-pico.rules$',
     r'\bDoxyfile$',
     r'\bPW_PLUGINS$',
     r'\bconstraint.list$',
@@ -1426,6 +1476,8 @@ OTHER_CHECKS = (
     gn_all,
     gn_clang_build,
     gn_combined_build_check,
+    gn_main_build_check,
+    gn_platform_build_check,
     module_owners.presubmit_check(),
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
@@ -1455,9 +1507,7 @@ ARDUINO_PICO = (
 
 INTERNAL = (gn_mimxrt595_build, gn_mimxrt595_freertos_build)
 
-# The misc program differs from other_checks in that checks in the misc
-# program block CQ on Linux.
-MISC = (
+SAPPHIRE = (
     # keep-sorted: start
     gn_chre_googletest_nanopb_sapphire_build,
     # keep-sorted: end
@@ -1481,6 +1531,7 @@ _LINTFORMAT = (
     format_code.presubmit_checks(),
     inclusive_language.presubmit_check.with_filter(
         exclude=(
+            r'\bMODULE.bazel.lock$',
             r'\bgo.sum$',
             r'\bpackage-lock.json$',
             r'\byarn.lock$',
@@ -1534,10 +1585,10 @@ PROGRAMS = Programs(
     fuzz=FUZZ,
     internal=INTERNAL,
     lintformat=LINTFORMAT,
-    misc=MISC,
     other_checks=OTHER_CHECKS,
     quick=QUICK,
     sanitizers=SANITIZERS,
+    sapphire=SAPPHIRE,
     security=SECURITY,
     # keep-sorted: end
 )

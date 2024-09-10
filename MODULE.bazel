@@ -17,26 +17,38 @@ module(
     version = "0.0.1",
 )
 
-bazel_dep(name = "bazel_skylib", version = "1.6.1")
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
 bazel_dep(name = "boringssl", version = "0.0.0-20240530-2db0eb3")
 bazel_dep(name = "freertos", version = "10.5.1.bcr.2")
 bazel_dep(name = "gazelle", version = "0.36.0", repo_name = "bazel_gazelle")
 bazel_dep(name = "nanopb", repo_name = "com_github_nanopb_nanopb")
-bazel_dep(name = "pico-sdk", version = "1.6.0-rc1")
-bazel_dep(name = "picotool")
+bazel_dep(name = "pico-sdk", version = "2.0.0")
+bazel_dep(name = "picotool", version = "2.0.0")
 bazel_dep(name = "platforms", version = "0.0.10")
 bazel_dep(name = "protobuf", version = "24.4", repo_name = "com_google_protobuf")
 bazel_dep(name = "rules_cc", version = "0.0.9")
 bazel_dep(name = "rules_fuzzing", version = "0.5.2")
-bazel_dep(name = "rules_go", version = "0.44.2", repo_name = "io_bazel_rules_go")
+bazel_dep(name = "rules_go", version = "0.49.0", repo_name = "io_bazel_rules_go")
+bazel_dep(name = "rules_jvm_external", version = "6.2")
 bazel_dep(name = "rules_libusb", version = "0.1.0-rc1")
 bazel_dep(name = "rules_platform", version = "0.1.0")
-bazel_dep(name = "rules_proto", version = "6.0.0")
+bazel_dep(name = "rules_probe_rs", version = "0.0.2")
+bazel_dep(name = "rules_proto", version = "6.0.2")
 bazel_dep(name = "rules_python", version = "0.34.0")
-bazel_dep(name = "rules_rust", version = "0.45.1")
+bazel_dep(name = "rules_rust", version = "0.49.3")
+
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
 
 # Repository overrides
 # ====================
+
+# TODO: https://pwbug.dev/349880767 - Point this back to the upstream repo once
+# this PR is merged.
+archive_override(
+    module_name = "hedron_compile_commands",
+    strip_prefix = "bazel-compile-commands-extractor-163521345aa6366fd1ed801b989b668b5c806f69",
+    urls = ["https://github.com/chadnorvell/bazel-compile-commands-extractor/archive/163521345aa6366fd1ed801b989b668b5c806f69.tar.gz"],
+)
 
 # TODO: https://pwbug.dev/258836641 - Pre-release version needed for the Pico
 # SDK. Remove this once rules_cc 0.10.0 is released and the Pico SDK
@@ -57,23 +69,8 @@ git_override(
     remote = "https://github.com/nanopb/nanopb.git",
 )
 
-# TODO: https://pwbug.dev/354270165 - Add picotool to the BCR.
-git_override(
-    module_name = "picotool",
-    commit = "6cd88302465919ff2005c88494f4f8dafc3b207e",
-    remote = "https://github.com/armandomontanez/picotool",
-)
-
-# TODO: b/345806988 - remove this fork and update to upstream HEAD.
-git_override(
-    module_name = "rules_go",
-    commit = "d5ba42f3ca0b8510526ed5df2cf5807bdba43856",
-    remote = "https://github.com/cramertj/rules_go.git",
-)
-
-archive_override(
+single_version_override(
     module_name = "rules_rust",
-    integrity = "sha256-+bWb47wg0VchIADaHt6L5Dma2Gn+Q589nz/MKcTi+lo=",
     patch_strip = 1,
     patches = [
         # Fix rustdoc test w/ proc macros
@@ -87,8 +84,19 @@ archive_override(
         # we will migrate to that solution.
         # https://github.com/konkers/rules_rust/tree/wip/rustdoc
         "//pw_rust/bazel_patches:0002-PROTOTYPE-Add-ability-to-document-multiple-crates-at.patch",
+        # When used through bzlmod, there is no way to disable the registration
+        # rules_rust's default toolchains.   We force disable them here while
+        # TODO: https://github.com/bazelbuild/rules_rust/issues/2818 - Remove
+        #       when mechanism to disable toolchains is added upstream.
+        "//pw_rust/bazel_patches:0003-WIP-disable-default-toolchain-registration.patch",
     ],
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.45.1/rules_rust-v0.45.1.tar.gz"],
+)
+
+# Transitive deps not in BCR
+# ==========================
+http_archive = use_repo_rule(
+    "@bazel_tools//tools/build_defs/repo:http.bzl",
+    "http_archive",
 )
 
 # Configure libusb
@@ -96,7 +104,7 @@ archive_override(
 #
 # The rules_libusb lets you configure which actual libusb version to use.
 libusb = use_extension("@rules_libusb//:extensions.bzl", "libusb")
-libusb.source_release(min_version = "1.0.22")
+libusb.source_release(min_version = "1.0.27")
 use_repo(libusb, "libusb")
 
 # Configure C++ toolchains
@@ -127,6 +135,13 @@ cipd_repository(
     tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
 )
 
+cipd_repository(
+    name = "llvm_toolchain_device",
+    build_file = "@pw_toolchain//build_external:llvm_clang.BUILD",
+    path = "fuchsia/third_party/clang/${os}-${arch}",
+    tag = "git_revision:0dcada94bb1ae79f0edd91013038098c62a96b3b",
+)
+
 # Fetch linux sysroot for host builds.
 cipd_repository(
     name = "linux_sysroot",
@@ -143,64 +158,63 @@ cipd_repository(
 )
 
 register_toolchains(
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m0",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m0plus",
+    "//pw_toolchain:cc_toolchain_cortex-m0",
+    "//pw_toolchain:cc_toolchain_cortex-m0plus",
+    "//pw_toolchain:cc_toolchain_cortex-m33",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m3",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4+nofp",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33+nofp",
     "//pw_toolchain/host_clang:host_cc_toolchain_linux",
     "//pw_toolchain/host_clang:host_cc_toolchain_macos",
 )
 
+# Rust toolchains
+pw_rust = use_extension("//pw_toolchain/rust:extensions.bzl", "pw_rust")
+pw_rust.toolchain(cipd_tag = "rust_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72")
+use_repo(pw_rust, "pw_rust_toolchains")
+
+register_toolchains(
+    "@pw_rust_toolchains//:all",
+    dev_dependency = True,
+)
+
 # Get probe-rs
 # ============
+probe_rs = use_extension("@rules_probe_rs//probe_rs:extensions.bzl", "probe_rs")
+probe_rs.tools(
+    name = "probe_rs",
+    version = "0.24.0",
+)
+use_repo(probe_rs, "probe_rs")
+
+# STM32 APIs
+# ==========
 #
-# TODO: https://pwbug.dev/354742574 - Make it simpler to depend on probe-rs.
-http_archive = use_repo_rule(
-    "@bazel_tools//tools/build_defs/repo:http.bzl",
-    "http_archive",
+# TODO: https://github.com/bazelbuild/bazel/issues/23077 - Make these
+# bazel_deps dev_dependencies once archive_override has a build_file argument.
+http_archive(
+    name = "stm32f4xx_hal_driver",
+    build_file = "//third_party/stm32cube:stm32_hal_driver.BUILD.bazel",
+    sha256 = "c8741e184555abcd153f7bdddc65e4b0103b51470d39ee0056ce2f8296b4e835",
+    strip_prefix = "stm32f4xx_hal_driver-1.8.0",
+    urls = ["https://github.com/STMicroelectronics/stm32f4xx_hal_driver/archive/refs/tags/v1.8.0.tar.gz"],
 )
 
 http_archive(
-    name = "probe-rs-tools-x86_64-unknown-linux-gnu",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "21e8d7df39fa0cdc9a0421e0ac2ac5ba81ec295ea11306f26846089f6fe975c0",
-    strip_prefix = "probe-rs-tools-x86_64-unknown-linux-gnu",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-unknown-linux-gnu.tar.xz",
+    name = "cmsis_device_f4",
+    build_file = "//third_party/stm32cube:cmsis_device.BUILD.bazel",
+    sha256 = "6390baf3ea44aff09d0327a3c112c6ca44418806bfdfe1c5c2803941c391fdce",
+    strip_prefix = "cmsis_device_f4-2.6.8",
+    urls = ["https://github.com/STMicroelectronics/cmsis_device_f4/archive/refs/tags/v2.6.8.tar.gz"],
 )
 
 http_archive(
-    name = "probe-rs-tools-aarch64-unknown-linux-gnu",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "95d91ebe08868d5119a698e3268ff60a4d71d72afa26ab207d43c807c729c90a",
-    strip_prefix = "probe-rs-tools-aarch64-unknown-linux-gnu",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-aarch64-unknown-linux-gnu.tar.xz",
-)
-
-http_archive(
-    name = "probe-rs-tools-x86_64-apple-darwin",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "0e35cc92ff34af1b1c72dd444e6ddd57c039ed31c2987e37578864211e843cf1",
-    strip_prefix = "probe-rs-tools-x86_64-apple-darwin",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-apple-darwin.tar.xz",
-)
-
-http_archive(
-    name = "probe-rs-tools-aarch64-apple-darwin",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "7140d9c2c61f8712ba15887f74df0cb40a7b16728ec86d5f45cc93fe96a0a29a",
-    strip_prefix = "probe-rs-tools-aarch64-apple-darwin",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-aarch64-apple-darwin.tar.xz",
-)
-
-http_archive(
-    name = "probe-rs-tools-x86_64-pc-windows-msvc",
-    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
-    sha256 = "d195dfa3466a87906251e27d6d70a0105274faa28ebf90ffadad0bdd89b1ec77",
-    strip_prefix = "probe-rs-tools-x86_64-pc-windows-msvc",
-    url = "https://github.com/probe-rs/probe-rs/releases/download/v0.24.0/probe-rs-tools-x86_64-pc-windows-msvc.zip",
+    name = "cmsis_core",
+    build_file = "//third_party/stm32cube:cmsis_core.BUILD.bazel",
+    sha256 = "32f226c31d7d1ff4a504404400603e047b99f405cd0c9a8f417f1f250251b829",
+    strip_prefix = "cmsis-core-5.4.0_cm4",
+    urls = ["https://github.com/STMicroelectronics/cmsis-core/archive/refs/tags/v5.4.0_cm4.tar.gz"],
 )
 
 # Configure Python toolchains and pip dependencies.
@@ -236,3 +250,29 @@ register_toolchains("@rules_python//python/runtime_env_toolchains:all")
 go_deps = use_extension("@bazel_gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
 use_repo(go_deps, "org_golang_google_grpc", "org_golang_google_grpc_examples", "org_golang_google_protobuf")
+
+# Configure Java dependencies
+# ===========================
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    artifacts = [
+        "com.google.auto.value:auto-value-annotations:1.8.2",
+        "com.google.auto.value:auto-value:1.8.2",
+        "com.google.code.findbugs:jsr305:3.0.2",
+        "com.google.flogger:flogger-system-backend:0.7.1",
+        "com.google.flogger:flogger:0.7.1",
+        "com.google.guava:failureaccess:1.0.2",
+        "com.google.guava:guava:31.0.1-jre",
+        "com.google.truth:truth:1.1.3",
+        "org.mockito:mockito-core:4.1.0",
+    ],
+    repositories = [
+        "https://maven.google.com/",
+        "https://jcenter.bintray.com/",
+        "https://repo1.maven.org/maven2",
+    ],
+)
+use_repo(
+    maven,
+    "maven",
+)
