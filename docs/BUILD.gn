@@ -37,7 +37,7 @@ pw_doc_group("core_docs") {
     "$dir_pw_build/py/pw_build/generate_python_wheel_cache.py",
     "$dir_pw_build/python.gni",
     "$dir_pw_build/python_gn_args.gni",
-    "layout/page.html",
+    "layout/layout.html",
     "run_doxygen.py",
   ]
   sources = [
@@ -79,6 +79,7 @@ pw_doc_group("core_docs") {
     "showcases/index.rst",
     "showcases/sense/index.rst",
     "showcases/sense/tutorial/automate.rst",
+    "showcases/sense/tutorial/bazel_cloud.rst",
     "showcases/sense/tutorial/build.rst",
     "showcases/sense/tutorial/code_intelligence.rst",
     "showcases/sense/tutorial/device_tests.rst",
