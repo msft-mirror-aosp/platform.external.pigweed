@@ -16,6 +16,7 @@
 
 #include <cpp-string/string_printf.h>
 
+#include <cinttypes>
 #include <functional>
 
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
@@ -669,11 +670,11 @@ void LogicalLink::OnRxFixedChannelsSupportedInfoRsp(
     return;
   }
 
-  bt_log(
-      TRACE,
-      "l2cap",
-      "Received Fixed Channels Supported Information Response (mask: %#016lx)",
-      rsp.fixed_channels());
+  bt_log(TRACE,
+         "l2cap",
+         "Received Fixed Channels Supported Information Response (mask: "
+         "%#016" PRIx64 ")",
+         rsp.fixed_channels());
 }
 
 void LogicalLink::SendConnectionParameterUpdateRequest(
@@ -777,7 +778,7 @@ void LogicalLink::SetBrEdrAutomaticFlushTimeout(
   cmd_channel_->SendCommand(
       std::move(write_timeout),
       [cb = std::move(callback_wrapper), handle = handle_, flush_timeout](
-          auto, const hci::EventPacket& event) mutable {
+          auto, const hci::EmbossEventPacket& event) mutable {
         if (event.ToResult().is_error()) {
           bt_log(WARN,
                  "hci",

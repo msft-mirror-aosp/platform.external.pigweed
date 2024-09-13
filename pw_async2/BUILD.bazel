@@ -12,7 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+load(
+    "//pw_build:compatibility.bzl",
+    "incompatible_with_mcu",
+    "minimum_cxx_20",
+)
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
@@ -65,6 +69,7 @@ cc_library(
         "//pw_containers:vector",
         "//pw_sync:interrupt_spin_lock",
         "//pw_sync:lock_annotations",
+        "//pw_sync:mutex",
         "//pw_toolchain:no_destructor",
     ],
 )
@@ -178,6 +183,31 @@ pw_cc_test(
 )
 
 cc_library(
+    name = "once_sender",
+    hdrs = [
+        "public/pw_async2/once_sender.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":dispatcher",
+        "//pw_function",
+    ],
+)
+
+pw_cc_test(
+    name = "once_sender_test",
+    srcs = [
+        "once_sender_test.cc",
+    ],
+    deps = [
+        ":once_sender",
+        "//pw_containers:vector",
+    ],
+)
+
+cc_library(
     name = "coro",
     hdrs = [
         "public/pw_async2/coro.h",
@@ -185,21 +215,120 @@ cc_library(
     includes = [
         "public",
     ],
-    tags = ["requires_cxx_20"],
+    target_compatible_with = minimum_cxx_20(),
     deps = [
         ":dispatcher",
         "//pw_allocator:allocator",
+        "//pw_function",
     ],
 )
 
 pw_cc_test(
     name = "coro_test",
     srcs = ["coro_test.cc"],
-    tags = ["requires_cxx_20"],
     deps = [
         ":coro",
         ":dispatcher",
         "//pw_allocator:null_allocator",
         "//pw_allocator:testing",
+    ],
+)
+
+cc_library(
+    name = "coro_or_else_task",
+    hdrs = [
+        "public/pw_async2/coro_or_else_task.h",
+    ],
+    includes = [
+        "public",
+    ],
+    deps = [
+        ":coro",
+        ":dispatcher",
+        "//pw_function",
+    ],
+)
+
+pw_cc_test(
+    name = "coro_or_else_task_test",
+    srcs = ["coro_or_else_task_test.cc"],
+    deps = [
+        ":coro",
+        ":coro_or_else_task",
+        ":dispatcher",
+        "//pw_allocator:null_allocator",
+        "//pw_allocator:testing",
+    ],
+)
+
+cc_library(
+    name = "time_provider",
+    srcs = [
+        "time_provider.cc",
+    ],
+    hdrs = [
+        "public/pw_async2/time_provider.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":dispatcher",
+        "//pw_chrono:virtual_clock",
+        "//pw_containers:intrusive_list",
+        "//pw_sync:interrupt_spin_lock",
+        "//pw_toolchain:no_destructor",
+    ],
+)
+
+cc_library(
+    name = "system_time_provider",
+    srcs = [
+        "system_time_provider.cc",
+    ],
+    hdrs = [
+        "public/pw_async2/system_time_provider.h",
+    ],
+    implementation_deps = [
+        "//pw_chrono:system_timer",
+        "//pw_toolchain:no_destructor",
+    ],
+    includes = ["public"],
+    deps = [
+        ":time_provider",
+        "//pw_chrono:system_clock",
+    ],
+)
+
+pw_cc_test(
+    name = "system_time_provider_test",
+    srcs = [
+        "system_time_provider_test.cc",
+    ],
+    deps = [
+        ":system_time_provider",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "simulated_time_provider",
+    hdrs = [
+        "public/pw_async2/simulated_time_provider.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":time_provider",
+        "//pw_sync:interrupt_spin_lock",
+    ],
+)
+
+pw_cc_test(
+    name = "simulated_time_provider_test",
+    srcs = [
+        "simulated_time_provider_test.cc",
+    ],
+    deps = [
+        ":simulated_time_provider",
+        "//pw_chrono:system_clock",
+        "//pw_unit_test",
     ],
 )

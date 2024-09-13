@@ -24,14 +24,14 @@
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/le_connection_parameters.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
-#include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
+#include "pw_bluetooth_sapphire/internal/host/hci/low_energy_advertiser.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test_double_base.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_peer.h"
 
 namespace bt::testing {
 
-namespace android_hci = pw::bluetooth::vendor::android_hci;
+namespace android_emb = pw::bluetooth::vendor::android_hci;
 
 class FakePeer;
 
@@ -59,10 +59,19 @@ class FakeController final : public ControllerTestDoubleBase,
 
     bool is_event_unmasked(hci_spec::LEEventMask event) const;
 
+    auto SupportedCommandsView() {
+      return pw::bluetooth::emboss::MakeSupportedCommandsView(
+          supported_commands, sizeof(supported_commands));
+    }
+
     // The time elapsed from the receipt of a LE Create Connection command until
     // the resulting LE Connection Complete event.
     pw::chrono::SystemClock::duration le_connection_delay =
         std::chrono::seconds(0);
+
+    // Our role in any LE connections we make.
+    pw::bluetooth::emboss::ConnectionRole le_connection_role =
+        pw::bluetooth::emboss::ConnectionRole::CENTRAL;
 
     // HCI settings.
     pw::bluetooth::emboss::CoreSpecificationVersion hci_version =
@@ -83,31 +92,31 @@ class FakeController final : public ControllerTestDoubleBase,
     uint8_t supported_commands[64] = {0};
 
     // Buffer Size.
-    uint16_t acl_data_packet_length = 0;
-    uint8_t total_num_acl_data_packets = 0;
+    uint16_t acl_data_packet_length = 1;
+    uint8_t total_num_acl_data_packets = 1;
     uint16_t le_acl_data_packet_length = 0;
     uint8_t le_total_num_acl_data_packets = 0;
-    uint16_t synchronous_data_packet_length = 0;
+    uint8_t synchronous_data_packet_length = 1;
     uint8_t total_num_synchronous_data_packets = 0;
     uint16_t iso_data_packet_length = 0;
     uint8_t total_num_iso_data_packets = 0;
 
     // Vendor extensions
-    StaticPacket<android_hci::LEGetVendorCapabilitiesCommandCompleteEventWriter>
+    StaticPacket<android_emb::LEGetVendorCapabilitiesCommandCompleteEventWriter>
         android_extension_settings;
   };
 
   // Configuration of an L2CAP channel for A2DP offloading.
   struct OffloadedA2dpChannel final {
-    android_hci::A2dpCodecType codec_type = android_hci::A2dpCodecType::SBC;
+    android_emb::A2dpCodecType codec_type = android_emb::A2dpCodecType::SBC;
     uint16_t max_latency = 0;
-    StaticPacket<android_hci::A2dpScmsTEnableWriter> scms_t_enable;
-    android_hci::A2dpSamplingFrequency sampling_frequency =
-        android_hci::A2dpSamplingFrequency::HZ_44100;
-    android_hci::A2dpBitsPerSample bits_per_sample =
-        android_hci::A2dpBitsPerSample::BITS_PER_SAMPLE_16;
-    android_hci::A2dpChannelMode channel_mode =
-        android_hci::A2dpChannelMode::MONO;
+    StaticPacket<android_emb::A2dpScmsTEnableWriter> scms_t_enable;
+    android_emb::A2dpSamplingFrequency sampling_frequency =
+        android_emb::A2dpSamplingFrequency::HZ_44100;
+    android_emb::A2dpBitsPerSample bits_per_sample =
+        android_emb::A2dpBitsPerSample::BITS_PER_SAMPLE_16;
+    android_emb::A2dpChannelMode channel_mode =
+        android_emb::A2dpChannelMode::MONO;
     uint32_t encoded_audio_bitrate = 0;
     hci_spec::ConnectionHandle connection_handle = 0;
     l2cap::ChannelId l2cap_channel_id = 0;
@@ -138,12 +147,9 @@ class FakeController final : public ControllerTestDoubleBase,
     }
 
     bool IsDirectedAdvertising() const;
-    bool IsScannableAdvertising() const;
-    bool IsConnectableAdvertising() const;
 
     bool enabled = false;
-    pw::bluetooth::emboss::LEAdvertisingType adv_type = pw::bluetooth::emboss::
-        LEAdvertisingType::CONNECTABLE_AND_SCANNABLE_UNDIRECTED;
+    hci::LowEnergyAdvertiser::AdvertisingEventProperties properties;
 
     std::optional<DeviceAddress> random_address;
     pw::bluetooth::emboss::LEOwnAddressType own_address_type =
@@ -152,10 +158,10 @@ class FakeController final : public ControllerTestDoubleBase,
     uint32_t interval_min = 0;
     uint32_t interval_max = 0;
 
-    uint8_t data_length = 0;
-    uint8_t data[hci_spec::kMaxLEAdvertisingDataLength] = {0};
-    uint8_t scan_rsp_length = 0;
-    uint8_t scan_rsp_data[hci_spec::kMaxLEAdvertisingDataLength] = {0};
+    uint16_t data_length = 0;
+    uint8_t data[hci_spec::kMaxLEExtendedAdvertisingDataLength] = {0};
+    uint16_t scan_rsp_length = 0;
+    uint8_t scan_rsp_data[hci_spec::kMaxLEExtendedAdvertisingDataLength] = {0};
   };
 
   // The parameters of the most recent low energy connection initiation request
@@ -442,6 +448,10 @@ class FakeController final : public ControllerTestDoubleBase,
     paused_opcode_listeners_.erase(code);
   }
 
+  void set_maximum_advertising_data_length(uint16_t value) {
+    max_advertising_data_length_ = value;
+  }
+
   // Called when a HCI_LE_Read_Advertising_Channel_Tx_Power command is
   // received.
   void OnLEReadAdvertisingChannelTxPower();
@@ -565,6 +575,12 @@ class FakeController final : public ControllerTestDoubleBase,
   // |opcode| and using the provided event packet, filling in the event header
   // fields.
   void RespondWithCommandComplete(hci_spec::OpCode opcode,
+                                  hci::EmbossEventPacket* packet);
+
+  // Sends an HCI_Command_Complete event in response to the command with
+  // |opcode| and using the provided event packet, filling in the event header
+  // fields.
+  void RespondWithCommandComplete(pw::bluetooth::emboss::OpCode opcode,
                                   hci::EmbossEventPacket* packet);
 
   // Sends a HCI_Command_Status event in response to the command with |opcode|
@@ -905,7 +921,7 @@ class FakeController final : public ControllerTestDoubleBase,
 
   // Called when a HCI_LE_Read_Remote_Features_Command is received.
   void OnLEReadRemoteFeaturesCommand(
-      const hci_spec::LEReadRemoteFeaturesCommandParams& params);
+      const pw::bluetooth::emboss::LEReadRemoteFeaturesCommandView& params);
 
   // Called when a HCI_LE_Enable_Encryption command is received, responds with
   // a successful encryption change event.
@@ -916,13 +932,17 @@ class FakeController final : public ControllerTestDoubleBase,
       const pw::bluetooth::emboss::WriteSynchronousFlowControlEnableCommandView&
           params);
 
+  void OnReadLocalSupportedControllerDelay(
+      const pw::bluetooth::emboss::ReadLocalSupportedControllerDelayCommandView&
+          params);
+
   void OnAndroidLEGetVendorCapabilities();
 
   void OnAndroidA2dpOffloadCommand(
       const PacketView<hci_spec::CommandHeader>& command_packet);
 
   void OnAndroidStartA2dpOffload(
-      const android_hci::StartA2dpOffloadCommandView& params);
+      const android_emb::StartA2dpOffloadCommandView& params);
 
   void OnAndroidStopA2dpOffload();
 
@@ -930,19 +950,19 @@ class FakeController final : public ControllerTestDoubleBase,
       const PacketView<hci_spec::CommandHeader>& command_packet);
 
   void OnAndroidLEMultiAdvtSetAdvtParam(
-      const android_hci::LEMultiAdvtSetAdvtParamCommandView& params);
+      const android_emb::LEMultiAdvtSetAdvtParamCommandView& params);
 
   void OnAndroidLEMultiAdvtSetAdvtData(
-      const android_hci::LEMultiAdvtSetAdvtDataCommandView& params);
+      const android_emb::LEMultiAdvtSetAdvtDataCommandView& params);
 
   void OnAndroidLEMultiAdvtSetScanResp(
-      const android_hci::LEMultiAdvtSetScanRespDataCommandView& params);
+      const android_emb::LEMultiAdvtSetScanRespDataCommandView& params);
 
   void OnAndroidLEMultiAdvtSetRandomAddr(
-      const android_hci::LEMultiAdvtSetRandomAddrCommandView& params);
+      const android_emb::LEMultiAdvtSetRandomAddrCommandView& params);
 
   void OnAndroidLEMultiAdvtEnable(
-      const android_hci::LEMultiAdvtEnableCommandView& params);
+      const android_emb::LEMultiAdvtEnableCommandView& params);
 
   // Called when a command with an OGF of hci_spec::kVendorOGF is received.
   void OnVendorCommand(
@@ -1081,6 +1101,7 @@ class FakeController final : public ControllerTestDoubleBase,
   bool auto_disconnection_complete_event_enabled_ = true;
 
   AdvertisingProcedure advertising_procedure_ = AdvertisingProcedure::kUnknown;
+  uint16_t max_advertising_data_length_ = hci_spec::kMaxLEAdvertisingDataLength;
 
   BT_DISALLOW_COPY_AND_ASSIGN_ALLOW_MOVE(FakeController);
 };

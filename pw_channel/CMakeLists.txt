@@ -15,7 +15,7 @@
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 include($ENV{PW_ROOT}/pw_async2/backend.cmake)
 
-pw_add_library(pw_channel INTERFACE
+pw_add_library(pw_channel STATIC
   HEADERS
     public/pw_channel/channel.h
   PUBLIC_DEPS
@@ -31,6 +31,8 @@ pw_add_library(pw_channel INTERFACE
     pw_toolchain._sibling_cast
   PUBLIC_INCLUDES
     public
+  SOURCES
+    public/pw_channel/internal/channel_specializations.h
 )
 
 pw_add_test(pw_channel.channel_test
@@ -95,8 +97,11 @@ pw_add_library(pw_channel.epoll_channel STATIC
   PUBLIC_DEPS
     pw_channel
     pw_multibuf.allocator
+    pw_sync.mutex
   PUBLIC_INCLUDES
     public
+  PRIVATE_DEPS
+    pw_log
 )
 
 pw_add_test(pw_channel.epoll_channel_test
@@ -107,4 +112,33 @@ pw_add_test(pw_channel.epoll_channel_test
     pw_multibuf.testing
     pw_thread.sleep
     pw_thread.thread
+)
+
+pw_add_library(pw_channel.stream_channel STATIC
+  HEADERS
+    public/pw_channel/stream_channel.h
+  SOURCES
+    stream_channel.cc
+  PUBLIC_DEPS
+    pw_channel
+    pw_log
+    pw_stream
+    pw_sync.interrupt_spin_lock
+    pw_sync.thread_notification
+    pw_thread.thread
+  PUBLIC_INCLUDES
+    public
+)
+
+pw_add_test(pw_channel.stream_channel_test
+  SOURCES
+    stream_channel_test.cc
+  PRIVATE_DEPS
+    pw_channel.stream_channel
+    pw_async2.pend_func_task
+    pw_multibuf.testing
+    pw_stream
+    pw_stream.mpsc_stream
+    pw_thread.thread
+    pw_thread.test_thread_context
 )

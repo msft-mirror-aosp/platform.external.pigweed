@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/transport/control_packets.h"
 
+#include <pw_bytes/endian.h>
+
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/error.h"
@@ -22,27 +24,9 @@
 namespace bt::hci {
 namespace {
 
-// Limit CommandPacket template instantiations to 2 (small and large):
-using SmallCommandPacket =
-    allocators::internal::FixedSizePacket<hci_spec::CommandHeader,
-                                          allocators::kSmallControlPacketSize>;
-using LargeCommandPacket =
-    allocators::internal::FixedSizePacket<hci_spec::CommandHeader,
-                                          allocators::kLargeControlPacketSize>;
-
 using EventFixedSizedPacket =
     allocators::internal::FixedSizePacket<hci_spec::EventHeader,
-                                          allocators::kLargeControlPacketSize>;
-
-// TODO(fxbug.dev/42058160): Use Pigweed's slab allocator
-std::unique_ptr<CommandPacket> NewCommandPacket(size_t payload_size) {
-  BT_DEBUG_ASSERT(payload_size <= allocators::kLargeControlPayloadSize);
-
-  if (payload_size <= allocators::kSmallControlPayloadSize) {
-    return std::make_unique<SmallCommandPacket>(payload_size);
-  }
-  return std::make_unique<LargeCommandPacket>(payload_size);
-}
+                                          allocators::kMaxEventPacketSize>;
 
 // Returns true and populates the |out_code| field with the status parameter.
 // Returns false if |event|'s payload is too small to hold a T. T must have a
@@ -115,25 +99,7 @@ bool StatusCodeFromEvent<hci_spec::CommandCompleteEventParams>(
 
 }  // namespace
 
-namespace hci_android = bt::hci_spec::vendor::android;
-
-// static
-std::unique_ptr<CommandPacket> CommandPacket::New(hci_spec::OpCode opcode,
-                                                  size_t payload_size) {
-  auto packet = NewCommandPacket(payload_size);
-  if (!packet)
-    return nullptr;
-
-  packet->WriteHeader(opcode);
-  return packet;
-}
-
-void CommandPacket::WriteHeader(hci_spec::OpCode opcode) {
-  mutable_view()->mutable_header()->opcode = htole16(opcode);
-  BT_ASSERT(view().payload_size() < std::numeric_limits<uint8_t>::max());
-  mutable_view()->mutable_header()->parameter_total_size =
-      static_cast<uint8_t>(view().payload_size());
-}
+namespace android_hci = bt::hci_spec::vendor::android;
 
 // static
 std::unique_ptr<EventPacket> EventPacket::New(size_t payload_size) {
@@ -167,7 +133,6 @@ bool EventPacket::ToStatusCode(
     CASE_EMBOSS_EVENT_STATUS(DisconnectionComplete);
     CASE_EMBOSS_EVENT_STATUS(RemoteNameRequestComplete);
     CASE_EVENT_STATUS(ReadRemoteSupportedFeaturesComplete);
-    CASE_EVENT_STATUS(SimplePairingComplete);
     CASE_EMBOSS_EVENT_STATUS(InquiryComplete);
     case hci_spec::kEncryptionChangeEventCode:
       return StatusCodeFromEmbossEvent<

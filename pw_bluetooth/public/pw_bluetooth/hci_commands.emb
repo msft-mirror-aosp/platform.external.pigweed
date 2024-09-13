@@ -122,23 +122,6 @@ enum OobDataPresent:
   P192_AND_P256 = 0x03
 
 
-bits ScanEnableBits:
-  -- Bitmask Values for the Scan_Enable parameter in a HCI_(Read,Write)_Scan_Enable command.
-  0 [+1]  Flag  inquiry
-    -- Inquiry scan enabled
-
-  1 [+1]  Flag  page
-    -- Page scan enabled
-
-
-enum InquiryScanType:
-  [maximum_bits: 8]
-  STANDARD   = 0x00
-    -- Standard scan (Default) (Mandatory)
-
-  INTERLACED = 0x01
-
-
 struct LocalName:
   0 [+248]  UInt:8[248]  local_name
 
@@ -255,27 +238,6 @@ enum LEPrivacyMode:
 
   DEVICE  = 0x01
     -- Use Device Privacy Mode for this peer device.
-
-
-enum InquiryMode:
-  [maximum_bits: 8]
-  STANDARD = 0x00
-    -- Standard Inquiry Result format (default)
-
-  RSSI     = 0x01
-    -- Inquiry Result format with RSSI
-
-  EXTENDED = 0x02
-    -- Inquiry Result format with RSSI or EIR format
-
-
-enum PageScanType:
-  [maximum_bits: 8]
-  STANDARD_SCAN   = 0x00
-    -- Standard scan (default) (mandatory)
-
-  INTERLACED_SCAN = 0x01
-    -- Interlaced scan (optional)
 
 
 bits LEEventMask:
@@ -519,6 +481,15 @@ enum DataPathDirection:
 
 # ========================= HCI Command packets =========================
 # Core Spec v5.3 Vol 4, Part E, Section 7
+
+
+struct GenericHciCommand:
+  -- In general, the command-specific variants are preferred. This definition is
+  -- for the rare cases where we are generating a packet whose type we don't know
+  -- a priori.
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+  0     [+hdr_size]                     hci.CommandHeader                    header
+  $next [+header.parameter_total_size]  UInt:8[header.parameter_total_size]  payload
 
 # ========== 7.1 Link Control Commands ==========
 
@@ -1096,6 +1067,54 @@ struct EnhancedAcceptSynchronousConnectionRequestCommand:
 # TODO: b/265052417 - Definition needs to be added
 
 
+# ========== 7.2 Link Policy Commands ==========
+
+
+struct SniffModeCommand:
+  -- 7.2.2 Sniff Mode command (v1.1)
+  -- HCI_Sniff_Mode
+
+  let hdr_size = hci.CommandHeader.$size_in_bytes
+
+  0     [+hdr_size]  hci.CommandHeader  header
+
+  $next [+2]         UInt               connection_handle
+    -- Connection_Handle (only the lower 12-bits are meaningful).
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+2]         UInt               sniff_max_interval
+    -- Max interval
+    -- Range: 0x0002 to 0xFFFE; only even values are valid
+    -- Mandatory Range: 0x0006 to 0x0540
+    -- Time = N × 0.625 ms
+    -- Time Range: 1.25 ms to 40.9 s
+    [requires: 0x0002 <= this <= 0xFFFE]
+
+  $next [+2]         UInt               sniff_min_interval
+    -- Min interval
+    -- Range: 0x0002 to 0xFFFE; only even values are valid
+    -- Mandatory Range: 0x0006 to 0x0540
+    -- Time = N × 0.625 ms
+    -- Time Range: 1.25 ms to 40.9 s
+    [requires: 0x0002 <= this <= 0xFFFE]
+
+  $next [+2]         UInt               sniff_attempt
+    -- Number of Baseband receive slots for sniff attempt.
+    -- Length = N × 1.25 ms
+    -- Range: 0x0001 to 0x7FFF
+    -- Time Range: 1.25 ms to 40.9 s
+    -- Mandatory Range for Controller: 1 to Tsniff/2
+    [requires: 0x0001 <= this <= 0x7FFF]
+
+  $next [+2]         UInt               sniff_timeout
+    -- Number of Baseband receive slots for sniff timeout.
+    -- Length = N × 1.25 ms
+    -- Range: 0x0000 to 0x7FFF
+    -- Time Range: 0 ms to 40.9 s
+    -- Mandatory Range for Controller: 0 to 0x0028
+    [requires: 0x0000 <= this <= 0x7FFF]
+
+
 # ========== 7.3 Controller & Baseband Commands ==========
 
 
@@ -1215,9 +1234,9 @@ struct WriteScanEnableCommand:
   -- 7.3.18 Write Scan Enable command (v1.1) (BR/EDR)
   -- HCI_Write_Scan_Enable
   let hdr_size = hci.CommandHeader.$size_in_bytes
-  0     [+hdr_size]                        hci.CommandHeader  header
+  0     [+hdr_size]                            hci.CommandHeader   header
   $next [+1]  bits:
-    0     [+ScanEnableBits.$size_in_bits]  ScanEnableBits     scan_enable
+    0     [+hci.ScanEnableBits.$size_in_bits]  hci.ScanEnableBits  scan_enable
 
 
 struct ReadPageScanActivityCommand:
@@ -1414,9 +1433,8 @@ struct WriteInquiryScanTypeCommand:
   -- 7.3.48 Write Inquiry Scan Type (v1.2) (BR/EDR)
   -- HCI_Write_Inquiry_Scan_Type
   let hdr_size = hci.CommandHeader.$size_in_bytes
-  0     [+hdr_size]  hci.CommandHeader  header
-  $next [+1]         InquiryScanType    inquiry_scan_type
-    -- See enum class InquiryScanType in this file for possible values
+  0     [+hdr_size]  hci.CommandHeader    header
+  $next [+1]         hci.InquiryScanType  inquiry_scan_type
 
 
 struct ReadInquiryModeCommand:
@@ -1431,7 +1449,7 @@ struct WriteInquiryModeCommand:
   -- HCI_Write_Inquiry_Mode
   let hdr_size = hci.CommandHeader.$size_in_bytes
   0     [+hdr_size]  hci.CommandHeader  header
-  $next [+1]         InquiryMode        inquiry_mode
+  $next [+1]         hci.InquiryMode    inquiry_mode
 
 
 struct ReadPageScanTypeCommand:
@@ -1446,7 +1464,7 @@ struct WritePageScanTypeCommand:
   -- HCI_Write_Page_Scan_Type
   let hdr_size = hci.CommandHeader.$size_in_bytes
   0     [+hdr_size]  hci.CommandHeader  header
-  $next [+1]         PageScanType       page_scan_type
+  $next [+1]         hci.PageScanType   page_scan_type
 
 # 7.3.53 Read AFH Channel Assessment Mode command
 # HCI_Read_AFH_Channel_Assessment_Mode

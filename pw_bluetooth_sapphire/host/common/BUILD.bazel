@@ -12,14 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_cc_test",
-    "fuchsia_select",
-    "fuchsia_unittest_package",
-)
+load("@pigweed//pw_build:pigweed.bzl", "pw_cc_test")
+load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(glob(["**/*"]))
 
 cc_library(
     name = "common",
@@ -40,9 +38,14 @@ cc_library(
         "supplement_data.cc",
         "uuid.cc",
     ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
+    copts = ["-Wswitch-enum"] + COPTS,
+    # This library is not compatible with --config=rp2040.
+    target_compatible_with = select({
+        "@platforms//os:fuchsia": [],
+        "@platforms//os:linux": [],
+        "@platforms//os:macos": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         "//pw_bluetooth_sapphire:config",
         "//pw_bluetooth_sapphire:public",
@@ -57,8 +60,9 @@ cc_library(
         "@pigweed//pw_random",
         "@pigweed//pw_span",
         "@pigweed//pw_string",
+        "@pigweed//pw_string:utf_codecs",
         "@pigweed//third_party/fuchsia:fit",
-    ] + fuchsia_select({
+    ] + select({
         "@platforms//os:fuchsia": [
             "@fuchsia_sdk//pkg/inspect_component_cpp",
             "@fuchsia_sdk//pkg/trace",
@@ -67,9 +71,15 @@ cc_library(
     }),
 )
 
-fuchsia_cc_test(
+cc_library(
+    name = "uuid_string_util",
+    srcs = ["uuid_string_util.cc"],
+    copts = COPTS,
+    deps = [":common"],
+)
+
+pw_cc_test(
     name = "common_test",
-    testonly = True,
     srcs = [
         "advertising_data_test.cc",
         "bounded_inspect_list_node_test.cc",
@@ -91,23 +101,12 @@ fuchsia_cc_test(
         "weak_self_test.cc",
         "windowed_inspect_numeric_property_test.cc",
     ],
-    death_unittest = True,
-    visibility = ["//visibility:public"],
+    copts = COPTS,
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":common",
+        ":uuid_string_util",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "@pigweed//pw_async:fake_dispatcher_fixture",
     ],
-)
-
-fuchsia_unittest_package(
-    name = "test_pkg",
-    package_name = "common_tests",
-    testonly = True,
-    fuchsia_api_level = "HEAD",
-    unit_tests = [
-        ":common_test",
-    ],
-    visibility = ["//visibility:public"],
 )

@@ -13,7 +13,8 @@
 // the License.
 
 #pragma once
-#include <endian.h>
+
+#include <pw_bytes/endian.h>
 
 #include <memory>
 
@@ -26,36 +27,8 @@
 
 namespace bt::hci {
 
-using CommandPacket = Packet<hci_spec::CommandHeader>;
 using EventPacket = Packet<hci_spec::EventHeader>;
 using EventPacketPtr = std::unique_ptr<EventPacket>;
-
-// Packet template specialization for HCI command packets.
-template <>
-class Packet<hci_spec::CommandHeader>
-    : public PacketBase<hci_spec::CommandHeader, CommandPacket> {
- public:
-  // Slab-allocates a new CommandPacket with the given payload size and
-  // initializes the packet's header field.
-  static std::unique_ptr<CommandPacket> New(hci_spec::OpCode opcode,
-                                            size_t payload_size = 0u);
-
-  // Returns the HCI command opcode currently in this packet.
-  hci_spec::OpCode opcode() const { return le16toh(view().header().opcode); }
-
-  // Convenience function to get a mutable payload of a packet.
-  template <typename PayloadType>
-  PayloadType* mutable_payload() {
-    return mutable_view()->mutable_payload<PayloadType>();
-  }
-
- protected:
-  using PacketBase<hci_spec::CommandHeader, CommandPacket>::PacketBase;
-
- private:
-  // Writes the given header fields into the underlying buffer.
-  void WriteHeader(hci_spec::OpCode opcode);
-};
 
 // Packet template specialization for HCI event packets.
 template <>
@@ -138,5 +111,5 @@ class Packet<hci_spec::EventHeader>
 
 // Convenience macros to check and log any non-Success status of an event.
 // Evaluate to true if the event status is not success.
-#define hci_is_error(event, flag, tag, fmt...) \
-  bt_is_error(event.ToResult(), flag, tag, fmt)
+#define hci_is_error(event, flag, tag, /*fmt*/...) \
+  bt_is_error(event.ToResult(), flag, tag, __VA_ARGS__)

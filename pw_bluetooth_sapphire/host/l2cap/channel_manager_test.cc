@@ -28,14 +28,11 @@
 #include "pw_bluetooth_sapphire/internal/host/testing/test_packets.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/acl_data_packet.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/mock_acl_data_channel.h"
-
-#pragma clang diagnostic ignored "-Wshadow"
-
 namespace bt::l2cap {
 namespace {
 
-namespace hci_android = bt::hci_spec::vendor::android;
-namespace android_hci = pw::bluetooth::vendor::android_hci;
+namespace android_hci = bt::hci_spec::vendor::android;
+namespace android_emb = pw::bluetooth::vendor::android_hci;
 using namespace inspect::testing;
 using namespace bt::testing;
 
@@ -420,44 +417,45 @@ auto OutboundDisconnectionResponse(CommandId id) {
 }
 
 A2dpOffloadManager::Configuration BuildConfiguration(
-    android_hci::A2dpCodecType codec = android_hci::A2dpCodecType::SBC) {
+    android_emb::A2dpCodecType codec = android_emb::A2dpCodecType::SBC) {
   A2dpOffloadManager::Configuration config;
   config.codec = codec;
   config.max_latency = 0xFFFF;
   config.scms_t_enable.view().enabled().Write(
       pw::bluetooth::emboss::GenericEnableParam::DISABLE);
   config.scms_t_enable.view().header().Write(0x00);
-  config.sampling_frequency = android_hci::A2dpSamplingFrequency::HZ_44100;
-  config.bits_per_sample = android_hci::A2dpBitsPerSample::BITS_PER_SAMPLE_16;
-  config.channel_mode = android_hci::A2dpChannelMode::MONO;
+  config.sampling_frequency = android_emb::A2dpSamplingFrequency::HZ_44100;
+  config.bits_per_sample = android_emb::A2dpBitsPerSample::BITS_PER_SAMPLE_16;
+  config.channel_mode = android_emb::A2dpChannelMode::MONO;
   config.encoded_audio_bit_rate = 0x0;
 
   switch (codec) {
-    case android_hci::A2dpCodecType::SBC:
+    case android_emb::A2dpCodecType::SBC:
       config.sbc_configuration.view().block_length().Write(
-          android_hci::SbcBlockLen::BLOCK_LEN_4);
+          android_emb::SbcBlockLen::BLOCK_LEN_4);
       config.sbc_configuration.view().subbands().Write(
-          android_hci::SbcSubBands::SUBBANDS_4);
+          android_emb::SbcSubBands::SUBBANDS_4);
       config.sbc_configuration.view().allocation_method().Write(
-          android_hci::SbcAllocationMethod::SNR);
+          android_emb::SbcAllocationMethod::SNR);
       config.sbc_configuration.view().min_bitpool_value().Write(0x00);
       config.sbc_configuration.view().max_bitpool_value().Write(0xFF);
       break;
-    case android_hci::A2dpCodecType::AAC:
+    case android_emb::A2dpCodecType::AAC:
       config.aac_configuration.view().object_type().Write(0x00);
       config.aac_configuration.view().variable_bit_rate().Write(
-          android_hci::AacEnableVariableBitRate::DISABLE);
+          android_emb::AacEnableVariableBitRate::DISABLE);
       break;
-    case android_hci::A2dpCodecType::LDAC:
+    case android_emb::A2dpCodecType::LDAC:
       config.ldac_configuration.view().vendor_id().Write(
-          hci_android::kLdacVendorId);
+          android_hci::kLdacVendorId);
       config.ldac_configuration.view().codec_id().Write(
-          hci_android::kLdacCodecId);
+          android_hci::kLdacCodecId);
       config.ldac_configuration.view().bitrate_index().Write(
-          android_hci::LdacBitrateIndex::LOW);
+          android_emb::LdacBitrateIndex::LOW);
       config.ldac_configuration.view().ldac_channel_mode().stereo().Write(true);
       break;
-    default:
+    case android_emb::A2dpCodecType::APTX:
+    case android_emb::A2dpCodecType::APTX_HD:
       break;
   }
 
@@ -769,7 +767,7 @@ class ChannelManagerMockAclChannelTest : public TestingBase {
   hci::ACLPacketHandler packet_rx_handler_;
   hci::testing::MockAclDataChannel acl_data_channel_;
 
-  std::queue<const PacketExpectation> expected_packets_;
+  std::queue<PacketExpectation> expected_packets_;
 
   CommandId next_command_id_;
 
@@ -3881,7 +3879,7 @@ TEST_F(ChannelManagerMockAclChannelTest, StartAndStopA2dpOffloadSuccess) {
   Channel::WeakPtr channel = SetUpOutboundChannel();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(test_device(),
                         StartA2dpOffloadRequest(config,
@@ -3945,7 +3943,7 @@ TEST_F(ChannelManagerMockAclChannelTest,
   Channel::WeakPtr channel = SetUpOutboundChannel();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(test_device(),
                         StartA2dpOffloadRequest(config,
@@ -3988,7 +3986,7 @@ TEST_F(ChannelManagerMockAclChannelTest,
   Channel::WeakPtr channel = SetUpOutboundChannel();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(test_device(),
                         StartA2dpOffloadRequest(config,
@@ -4080,7 +4078,6 @@ TEST_F(ChannelManagerMockAclChannelTest,
 TEST_F(ChannelManagerRealAclChannelTest,
        InboundRfcommChannelFailsWithPsmNotSupported) {
   constexpr l2cap::Psm kPsm = l2cap::kRFCOMM;
-  constexpr l2cap::ChannelId kRemoteId = 0x9042;
 
   QueueAclConnection(kTestHandle1);
   RunUntilIdle();
@@ -4106,8 +4103,6 @@ TEST_F(ChannelManagerRealAclChannelTest,
 TEST_F(ChannelManagerRealAclChannelTest,
        InboundPacketQueuedAfterChannelOpenIsNotDropped) {
   constexpr l2cap::Psm kPsm = l2cap::kSDP;
-  constexpr l2cap::ChannelId kLocalId = 0x0040;
-  constexpr l2cap::ChannelId kRemoteId = 0x9042;
 
   QueueAclConnection(kTestHandle1);
   RunUntilIdle();
@@ -4187,8 +4182,6 @@ TEST_F(ChannelManagerRealAclChannelTest,
 TEST_F(ChannelManagerRealAclChannelTest,
        NegotiateChannelParametersOnOutboundL2capChannel) {
   constexpr l2cap::Psm kPsm = l2cap::kAVDTP;
-  constexpr l2cap::ChannelId kLocalId = 0x0040;
-  constexpr l2cap::ChannelId kRemoteId = 0x9042;
   constexpr uint16_t kMtu = l2cap::kMinACLMTU;
 
   l2cap::ChannelParameters chan_params;
@@ -4225,8 +4218,6 @@ TEST_F(ChannelManagerRealAclChannelTest,
 TEST_F(ChannelManagerRealAclChannelTest,
        NegotiateChannelParametersOnInboundChannel) {
   constexpr l2cap::Psm kPsm = l2cap::kAVDTP;
-  constexpr l2cap::ChannelId kLocalId = 0x0040;
-  constexpr l2cap::ChannelId kRemoteId = 0x9042;
 
   l2cap::ChannelParameters chan_params;
   chan_params.mode =
@@ -4326,8 +4317,6 @@ TEST_F(ChannelManagerRealAclChannelTest,
 
 TEST_F(ChannelManagerRealAclChannelTest, SignalingChannelAndOneDynamicChannel) {
   constexpr l2cap::Psm kPsm = l2cap::kSDP;
-  constexpr l2cap::ChannelId kLocalId = 0x0040;
-  constexpr l2cap::ChannelId kRemoteId = 0x9042;
 
   // L2CAP connection request/response, config request, config response
   constexpr size_t kChannelCreationPacketCount = 3;
@@ -4496,8 +4485,6 @@ TEST_F(ChannelManagerRealAclChannelTest,
 
 TEST_F(ChannelManagerRealAclChannelTest, ChannelMaximumQueueSize) {
   constexpr l2cap::Psm kPsm = l2cap::kSDP;
-  constexpr l2cap::ChannelId kLocalId = 0x0040;
-  constexpr l2cap::ChannelId kRemoteId = 0x9042;
 
   // L2CAP connection request/response, config request, config response
   constexpr size_t kChannelCreationPacketCount = 3;
@@ -4586,8 +4573,6 @@ TEST_P(AclPriorityTest, OutboundConnectAndSetPriority) {
                                          0x03);  // test parameter
 
   constexpr l2cap::Psm kPsm = l2cap::kAVCTP;
-  constexpr l2cap::ChannelId kLocalId = 0x0040;
-  constexpr l2cap::ChannelId kRemoteId = 0x9042;
 
   std::optional<hci_spec::ConnectionHandle> connection_handle_from_encode_cb;
   std::optional<AclPriority> priority_from_encode_cb;

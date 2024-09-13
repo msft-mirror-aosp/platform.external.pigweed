@@ -12,13 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_cc_test",
-    "fuchsia_unittest_package",
-)
+load("@pigweed//pw_build:pigweed.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(glob(["**/*"]))
 
 cc_library(
     name = "sco",
@@ -26,9 +24,6 @@ cc_library(
         "sco_connection.cc",
         "sco_connection_manager.cc",
     ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
@@ -38,30 +33,17 @@ cc_library(
     ],
 )
 
-fuchsia_cc_test(
+pw_cc_test(
     name = "sco_test",
-    testonly = True,
     srcs = [
         "sco_connection_manager_test.cc",
         "sco_connection_test.cc",
     ],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":sco",
         "//pw_bluetooth_sapphire/host/hci:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "//pw_bluetooth_sapphire/host/transport:testing",
     ],
-)
-
-fuchsia_unittest_package(
-    name = "test_pkg",
-    package_name = "sco_tests",
-    testonly = True,
-    fuchsia_api_level = "HEAD",
-    unit_tests = [
-        ":sco_test",
-    ],
-    visibility = ["//visibility:public"],
 )

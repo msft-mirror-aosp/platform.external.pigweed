@@ -12,17 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_select",
-)
-
 package(default_visibility = ["//pw_bluetooth_sapphire:__subpackages__"])
 
 cc_library(
     name = "config",
     srcs = [],
-    defines = fuchsia_select({
+    defines = select({
         "@platforms//os:fuchsia": [
             "PW_BLUETOOTH_SAPPHIRE_INSPECT_ENABLED",
             "PW_BLUETOOTH_SAPPHIRE_TRACE_ENABLED",
@@ -91,6 +86,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/gap/gap.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/generic_access_client.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/identity_resolving_list.h",
+        "public/pw_bluetooth_sapphire/internal/host/gap/legacy_pairing_state.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_address_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_advertising_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_connection.h",
@@ -102,10 +98,11 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_interrogator.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_state.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/pairing_delegate.h",
-        "public/pw_bluetooth_sapphire/internal/host/gap/pairing_state.h",
+        "public/pw_bluetooth_sapphire/internal/host/gap/pairing_state_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/peer.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/peer_cache.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/peer_metrics.h",
+        "public/pw_bluetooth_sapphire/internal/host/gap/secure_simple_pairing_state.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/types.h",
         "public/pw_bluetooth_sapphire/internal/host/gatt/client.h",
         "public/pw_bluetooth_sapphire/internal/host/gatt/connection.h",
@@ -136,7 +133,6 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/hci/android_extended_low_energy_advertiser.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/bredr_connection.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/bredr_connection_request.h",
-        "public/pw_bluetooth_sapphire/internal/host/hci/command_handler.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/connection.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_advertiser.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/extended_low_energy_scanner.h",
@@ -153,8 +149,9 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/hci/low_energy_scanner.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/sco_connection.h",
         "public/pw_bluetooth_sapphire/internal/host/hci/sequential_command_runner.h",
-        "public/pw_bluetooth_sapphire/internal/host/hci/util.h",
+        "public/pw_bluetooth_sapphire/internal/host/iso/fake_iso_stream.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_common.h",
+        "public/pw_bluetooth_sapphire/internal/host/iso/iso_stream.h",
         "public/pw_bluetooth_sapphire/internal/host/iso/iso_stream_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/a2dp_offload_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/basic_mode_rx_engine.h",
@@ -167,6 +164,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/l2cap/channel_manager.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/channel_manager_mock_controller_test_fixture.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/command_handler.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/credit_based_flow_control_rx_engine.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/credit_based_flow_control_tx_engine.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/dynamic_channel.h",
         "public/pw_bluetooth_sapphire/internal/host/l2cap/dynamic_channel_registry.h",
@@ -251,6 +249,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/transport/error.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/fake_acl_connection.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/fake_sco_data_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/iso_data_channel.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/link_type.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/mock_acl_data_channel.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/packet.h",
@@ -262,4 +261,5 @@ cc_library(
     includes = [
         "public",
     ],
+    tags = ["manual"],
 )

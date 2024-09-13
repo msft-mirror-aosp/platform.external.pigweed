@@ -12,20 +12,18 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_cc_test",
-    "fuchsia_unittest_package",
-)
+load("@pigweed//pw_build:pigweed.bzl", "pw_cc_test")
+load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(glob(["**/*"]))
 
 cc_library(
     name = "hci",
     srcs = [
         "acl_connection.cc",
         "advertising_handle_map.cc",
-        "advertising_report_parser.cc",
         "android_extended_low_energy_advertiser.cc",
         "bredr_connection.cc",
         "bredr_connection_request.cc",
@@ -40,15 +38,12 @@ cc_library(
         "low_energy_scanner.cc",
         "sco_connection.cc",
         "sequential_command_runner.cc",
-        "util.cc",
     ],
     copts = [
         "-Wno-unused-parameter",
         "-Wno-deprecated-this-capture",
-    ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
+        "-Wswitch-enum",
+    ] + COPTS,
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/transport",
@@ -66,9 +61,7 @@ cc_library(
         "fake_low_energy_connection.cc",
         "fake_sco_connection.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
-    ],
+    copts = COPTS,
     deps = [
         ":hci",
         "//pw_bluetooth_sapphire:public",
@@ -77,13 +70,11 @@ cc_library(
     ],
 )
 
-fuchsia_cc_test(
-    name = "hci_test",
+cc_library(
+    name = "hci_test.lib",
     testonly = True,
     srcs = [
         "advertising_handle_map_test.cc",
-        "advertising_report_parser_test.cc",
-        "command_handler_test.cc",
         "connection_test.cc",
         "extended_low_energy_advertiser_test.cc",
         "extended_low_energy_scanner_test.cc",
@@ -94,9 +85,9 @@ fuchsia_cc_test(
         "low_energy_multiple_advertising_test.cc",
         "low_energy_scanner_test.cc",
         "sequential_command_runner_test.cc",
-        "util_test.cc",
     ],
-    death_unittest = True,
+    copts = COPTS,
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         ":hci",
@@ -105,15 +96,30 @@ fuchsia_cc_test(
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "@pigweed//pw_bluetooth:emboss_hci_test",
     ],
+    alwayslink = 1,
 )
 
-fuchsia_unittest_package(
-    name = "test_pkg",
-    package_name = "hci_tests",
-    testonly = True,
-    fuchsia_api_level = "HEAD",
-    unit_tests = [
-        ":hci_test",
+pw_cc_test(
+    name = "hci-spec_test",
+    srcs = [
+        "advertising_handle_map_test.cc",
+        "connection_test.cc",
+        "extended_low_energy_advertiser_test.cc",
+        "extended_low_energy_scanner_test.cc",
+        "legacy_low_energy_advertiser_test.cc",
+        "legacy_low_energy_scanner_test.cc",
+        "low_energy_advertiser_test.cc",
+        "low_energy_connector_test.cc",
+        "low_energy_multiple_advertising_test.cc",
+        "low_energy_scanner_test.cc",
+        "sequential_command_runner_test.cc",
     ],
-    visibility = ["//visibility:public"],
+    copts = COPTS,
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
+    deps = [
+        ":hci",
+        ":testing",
+        "//pw_bluetooth_sapphire/host/testing",
+        "@pigweed//pw_bluetooth:emboss_hci_test",
+    ],
 )

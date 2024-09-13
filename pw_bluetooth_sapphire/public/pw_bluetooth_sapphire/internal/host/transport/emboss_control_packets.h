@@ -91,11 +91,24 @@ class EmbossEventPacket : public DynamicPacket {
   // Construct an HCI Event packet from an Emboss view T and initialize its
   // header with the |event_code| and size.
   template <typename T>
-  static EmbossEventPacketT<T> New(hci_spec::EventCode event_code) {
+  static EmbossEventPacketT<T> New(
+      pw::bluetooth::emboss::EventCode event_code) {
     EmbossEventPacketT<T> packet(T::IntrinsicSizeInBytes().Read());
     auto header =
         packet.template view<pw::bluetooth::emboss::EventHeaderWriter>();
     header.event_code().Write(event_code);
+    header.parameter_total_size().Write(
+        T::IntrinsicSizeInBytes().Read() -
+        pw::bluetooth::emboss::EventHeader::IntrinsicSizeInBytes());
+    return packet;
+  }
+
+  template <typename T>
+  static EmbossEventPacketT<T> New(hci_spec::EventCode event_code) {
+    EmbossEventPacketT<T> packet(T::IntrinsicSizeInBytes().Read());
+    auto header =
+        packet.template view<pw::bluetooth::emboss::EventHeaderWriter>();
+    header.event_code_uint().Write(event_code);
     header.parameter_total_size().Write(
         T::IntrinsicSizeInBytes().Read() -
         pw::bluetooth::emboss::EventHeader::IntrinsicSizeInBytes());
@@ -113,7 +126,7 @@ class EmbossEventPacket : public DynamicPacket {
     EmbossEventPacketT<T> packet(packet_size);
     auto header =
         packet.template view<pw::bluetooth::emboss::EventHeaderWriter>();
-    header.event_code().Write(event_code);
+    header.event_code_uint().Write(event_code);
     header.parameter_total_size().Write(
         packet_size -
         pw::bluetooth::emboss::EventHeader::IntrinsicSizeInBytes());
@@ -161,6 +174,11 @@ class EmbossEventPacketT : public EmbossEventPacket {
   template <typename... Args>
   ViewT view_t(Args... args) {
     return view<ViewT>(args...);
+  }
+
+  template <typename... Args>
+  ViewT unchecked_view_t(Args... args) {
+    return unchecked_view<ViewT>(args...);
   }
 
  private:

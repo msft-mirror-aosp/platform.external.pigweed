@@ -63,6 +63,7 @@ pw_clang_arm_config("cortex_m3") {
   cflags += cortex_m_software_fpu_flags
   asmflags = cflags
   ldflags = cflags
+  rustflags = [ "--target=thumbv7m-none-eabi" ]
 }
 
 pw_clang_arm_config("cortex_m4") {
@@ -109,6 +110,14 @@ pw_clang_arm_config("cortex_m33f") {
   cflags = [ "-mcpu=cortex-m33" ]
   cflags += cortex_m_common_flags
   cflags += cortex_m_hardware_fpu_v5_sp_flags
+  asmflags = cflags
+  ldflags = cflags
+}
+
+pw_clang_arm_config("cortex_m55") {
+  cflags = [ "-mcpu=cortex-m55" ]
+  cflags += cortex_m_common_flags
+  cflags += cortex_m_software_fpu_flags
   asmflags = cflags
   ldflags = cflags
 }

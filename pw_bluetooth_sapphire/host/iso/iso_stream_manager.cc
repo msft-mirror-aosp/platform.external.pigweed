@@ -17,11 +17,12 @@
 namespace bt::iso {
 
 IsoStreamManager::IsoStreamManager(hci_spec::ConnectionHandle handle,
-                                   hci::CommandChannel::WeakPtr cmd_channel)
-    : acl_handle_(handle), cmd_(cmd_channel), weak_self_(this) {
-  if (!cmd_.is_alive()) {
-    return;
-  }
+                                   hci::Transport::WeakPtr hci)
+    : acl_handle_(handle), hci_(std::move(hci)), weak_self_(this) {
+  BT_ASSERT(hci_.is_alive());
+  cmd_ = hci_->command_channel()->AsWeakPtr();
+  BT_ASSERT(cmd_.is_alive());
+
   auto self = GetWeakPtr();
   cis_request_handler_ = cmd_->AddLEMetaEventHandler(
       hci_spec::kLECISRequestSubeventCode,
@@ -38,6 +39,40 @@ IsoStreamManager::~IsoStreamManager() {
   if (cmd_.is_alive()) {
     cmd_->RemoveEventHandler(cis_request_handler_);
   }
+  if (hci_.is_alive()) {
+    hci::IsoDataChannel* iso_data_channel = hci_->iso_data_channel();
+    if (iso_data_channel) {
+      for (const auto& stream : streams_) {
+        hci_spec::ConnectionHandle cis_handle = stream.second->cis_handle();
+        bt_log(INFO,
+               "iso",
+               "unregistering ISO connection for handle %#x",
+               cis_handle);
+        iso_data_channel->UnregisterConnection(cis_handle);
+      }
+    }
+  }
+}
+
+AcceptCisStatus IsoStreamManager::AcceptCis(CigCisIdentifier id,
+                                            CisEstablishedCallback cb) {
+  bt_log(INFO,
+         "iso",
+         "IsoStreamManager: preparing to accept incoming connection (CIG: %u, "
+         "CIS: %u)",
+         id.cig_id(),
+         id.cis_id());
+
+  if (accept_handlers_.count(id) != 0) {
+    return AcceptCisStatus::kAlreadyExists;
+  }
+
+  if (streams_.count(id) != 0) {
+    return AcceptCisStatus::kAlreadyExists;
+  }
+
+  accept_handlers_[id] = std::move(cb);
+  return AcceptCisStatus::kSuccess;
 }
 
 void IsoStreamManager::OnCisRequest(const hci::EmbossEventPacket& event) {
@@ -50,6 +85,16 @@ void IsoStreamManager::OnCisRequest(const hci::EmbossEventPacket& event) {
 
   hci_spec::ConnectionHandle request_handle =
       event_view.acl_connection_handle().Read();
+  uint8_t cig_id = event_view.cig_id().Read();
+  uint8_t cis_id = event_view.cis_id().Read();
+  CigCisIdentifier id(cig_id, cis_id);
+
+  bt_log(INFO,
+         "iso",
+         "CIS request received for handle 0x%x (CIG: %u, CIS: %u)",
+         request_handle,
+         cig_id,
+         cis_id);
 
   // Ignore any requests that are not intended for this connection.
   if (request_handle != acl_handle_) {
@@ -61,8 +106,84 @@ void IsoStreamManager::OnCisRequest(const hci::EmbossEventPacket& event) {
     return;
   }
 
-  // For now, just reject all incoming requests.
-  RejectCisRequest(event_view);
+  // If we are not waiting on this request, reject it
+  if (accept_handlers_.count(id) == 0) {
+    bt_log(INFO, "iso", "Rejecting incoming request");
+    RejectCisRequest(event_view);
+    return;
+  }
+
+  bt_log(INFO, "iso", "Accepting incoming request");
+
+  // We should not already have an established stream using this same CIG/CIS
+  // permutation.
+  BT_ASSERT_MSG(
+      streams_.count(id) == 0, "(cig = %u, cis = %u)", cig_id, cis_id);
+  CisEstablishedCallback cb = std::move(accept_handlers_[id]);
+  accept_handlers_.erase(id);
+  AcceptCisRequest(event_view, std::move(cb));
+}
+
+void IsoStreamManager::AcceptCisRequest(
+    const pw::bluetooth::emboss::LECISRequestSubeventView& event_view,
+    CisEstablishedCallback cb) {
+  uint8_t cig_id = event_view.cig_id().Read();
+  uint8_t cis_id = event_view.cis_id().Read();
+  CigCisIdentifier id(cig_id, cis_id);
+
+  hci_spec::ConnectionHandle cis_handle =
+      event_view.cis_connection_handle().Read();
+
+  BT_ASSERT(streams_.count(id) == 0);
+
+  auto on_closed_cb = [this, id, cis_handle]() {
+    if (hci_.is_alive()) {
+      hci::IsoDataChannel* iso_data_channel = hci_->iso_data_channel();
+      if (iso_data_channel) {
+        bt_log(INFO,
+               "iso",
+               "unregistering ISO connection for handle %#x",
+               cis_handle);
+        iso_data_channel->UnregisterConnection(cis_handle);
+      }
+    }
+    streams_.erase(id);
+  };
+
+  streams_[id] = IsoStream::Create(cig_id,
+                                   cis_id,
+                                   cis_handle,
+                                   std::move(cb),
+                                   cmd_->AsWeakPtr(),
+                                   on_closed_cb);
+
+  auto command = hci::EmbossCommandPacket::New<
+      pw::bluetooth::emboss::LEAcceptCISRequestCommandWriter>(
+      hci_spec::kLEAcceptCISRequest);
+  auto cmd_view = command.view_t();
+  cmd_view.connection_handle().Write(cis_handle);
+
+  auto self = GetWeakPtr();
+  auto cmd_complete_cb = [cis_handle, id, self](
+                             auto cmd_id, const hci::EmbossEventPacket& event) {
+    bt_log(INFO, "iso", "LE_Accept_CIS_Request command response received");
+    if (!self.is_alive()) {
+      return;
+    }
+    if (hci_is_error(event,
+                     WARN,
+                     "bt-iso",
+                     "accept CIS request failed for handle %#x",
+                     cis_handle)) {
+      self->streams_.erase(id);
+      return;
+    }
+    hci::IsoDataChannel* iso_data_channel = self->hci_->iso_data_channel();
+    iso_data_channel->RegisterConnection(cis_handle,
+                                         self->streams_[id]->GetWeakPtr());
+  };
+
+  cmd_->SendCommand(std::move(command), cmd_complete_cb);
 }
 
 void IsoStreamManager::RejectCisRequest(
@@ -78,7 +199,8 @@ void IsoStreamManager::RejectCisRequest(
   cmd_view.reason().Write(pw::bluetooth::emboss::StatusCode::UNSPECIFIED_ERROR);
 
   cmd_->SendCommand(std::move(command),
-                    [cis_handle](auto id, const hci::EventPacket& event) {
+                    [cis_handle](auto id, const hci::EmbossEventPacket& event) {
+                      bt_log(INFO, "iso", "LE_Reject_CIS_Request command sent");
                       hci_is_error(event,
                                    ERROR,
                                    "bt-iso",

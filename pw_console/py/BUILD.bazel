@@ -12,8 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
-load("//pw_build:python.bzl", "pw_py_test")
+load("@rules_python//python:defs.bzl", "py_library")
+load("//pw_build:python.bzl", "pw_py_binary", "pw_py_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -93,6 +93,7 @@ py_library(
     data = [
         "pw_console/docs/user_guide.rst",
         "pw_console/html/console.html",
+        "pw_console/html/defaultconfig.json",
         "pw_console/html/index.html",
         "pw_console/html/main.js",
         "pw_console/html/style.css",
@@ -107,18 +108,18 @@ py_library(
         "//pw_cli/py:pw_cli",
         "//pw_config_loader/py:pw_config_loader",
         "//pw_log_tokenized/py:pw_log_tokenized",
-        "@python_packages_aiohttp//:pkg",
-        "@python_packages_jinja2//:pkg",
-        "@python_packages_prompt_toolkit//:pkg",
-        "@python_packages_ptpython//:pkg",
-        "@python_packages_pygments//:pkg",
-        "@python_packages_pyperclip//:pkg",
-        "@python_packages_pyyaml//:pkg",
-        "@python_packages_websockets//:pkg",
+        "@python_packages//aiohttp",
+        "@python_packages//jinja2",
+        "@python_packages//prompt_toolkit",
+        "@python_packages//ptpython",
+        "@python_packages//pygments",
+        "@python_packages//pyperclip",
+        "@python_packages//pyyaml",
+        "@python_packages//websockets",
     ],
 )
 
-py_binary(
+pw_py_binary(
     name = "pw_console_test_mode",
     srcs = [
         "pw_console/__main__.py",
@@ -181,7 +182,7 @@ pw_py_test(
     ],
     deps = [
         ":pw_console",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -204,7 +205,7 @@ pw_py_test(
     ],
     deps = [
         ":pw_console",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -238,7 +239,7 @@ pw_py_test(
     ],
     deps = [
         ":pw_console",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 
@@ -250,7 +251,7 @@ pw_py_test(
     ],
     deps = [
         ":pw_console",
-        "@python_packages_parameterized//:pkg",
+        "@python_packages//parameterized",
     ],
 )
 

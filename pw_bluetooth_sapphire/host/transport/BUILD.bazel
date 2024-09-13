@@ -12,13 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_cc_test",
-    "fuchsia_unittest_package",
-)
+load("@pigweed//pw_build:pigweed.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(glob(["**/*"]))
 
 cc_library(
     name = "transport",
@@ -29,6 +27,7 @@ cc_library(
         "control_packets.cc",
         "emboss_control_packets.cc",
         "error.cc",
+        "iso_data_channel.cc",
         "link_type.cc",
         "sco_data_channel.cc",
         "sco_data_packet.cc",
@@ -37,9 +36,6 @@ cc_library(
     copts = [
         "-Wno-unused-parameter",
     ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
@@ -62,9 +58,6 @@ cc_library(
     copts = [
         "-Wno-unused-parameter",
     ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":transport",
         "//pw_bluetooth_sapphire:public",
@@ -88,36 +81,23 @@ filegroup(
     ],
 )
 
-fuchsia_cc_test(
+pw_cc_test(
     name = "transport_test",
-    testonly = True,
     srcs = [
         "acl_data_channel_test.cc",
         "command_channel_test.cc",
         "emboss_control_packets_test.cc",
         "emboss_packet_test.cc",
+        "iso_data_channel_test.cc",
         "packet_test.cc",
         "sco_data_channel_test.cc",
         "sco_data_packet_test.cc",
         "slab_allocators_test.cc",
         "transport_test.cc",
     ],
-    death_unittest = True,
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":transport",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-)
-
-fuchsia_unittest_package(
-    name = "test_pkg",
-    package_name = "transport_tests",
-    testonly = True,
-    fuchsia_api_level = "HEAD",
-    unit_tests = [
-        ":transport_test",
-    ],
-    visibility = ["//visibility:public"],
 )

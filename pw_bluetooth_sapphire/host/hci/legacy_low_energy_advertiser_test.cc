@@ -20,6 +20,7 @@
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/fake_controller.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
 
 namespace bt {
 
@@ -31,6 +32,7 @@ using AdvertisingOptions = LowEnergyAdvertiser::AdvertisingOptions;
 
 namespace {
 
+namespace pwemb = pw::bluetooth::emboss;
 using TestingBase = bt::testing::FakeDispatcherControllerTest<FakeController>;
 
 const DeviceAddress kPublicAddress(DeviceAddress::Type::kLEPublic, {1});
@@ -98,7 +100,7 @@ class LegacyLowEnergyAdvertiserTest : public TestingBase {
     auto name = "fuchsia";
     EXPECT_TRUE(result.SetLocalName(name));
 
-    auto appearance = 0x1234;
+    uint16_t appearance = 0x1234;
     result.SetAppearance(appearance);
 
     EXPECT_LE(result.CalculateBlockSize(include_flags),
@@ -144,6 +146,17 @@ class LegacyLowEnergyAdvertiserTest : public TestingBase {
     return result;
   }
 
+  void SetRandomAddress(DeviceAddress random_address) {
+    auto emboss_packet =
+        EmbossCommandPacket::New<pwemb::LESetRandomAddressCommandWriter>(
+            hci_spec::kLESetRandomAddress);
+    emboss_packet.view_t().random_address().CopyFrom(
+        random_address.value().view());
+
+    test_device()->SendCommand(emboss_packet.data().subspan());
+    RunUntilIdle();
+  }
+
  private:
   std::unique_ptr<LegacyLowEnergyAdvertiser> advertiser_;
 
@@ -161,6 +174,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, NoAdvertiseTwice) {
                              /*extended_pdu=*/false,
                              /*anonymous=*/false,
                              /*include_tx_power_level=*/false);
+  SetRandomAddress(kRandomAddress);
 
   advertiser()->StartAdvertising(kRandomAddress,
                                  ad,
@@ -212,6 +226,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartAndStopWithTxPower) {
                              /*extended_pdu=*/false,
                              /*anonymous=*/false,
                              /*include_tx_power_level=*/true);
+  SetRandomAddress(kRandomAddress);
 
   advertiser()->StartAdvertising(kRandomAddress,
                                  ad,
@@ -265,6 +280,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartWhileStartingWithTxPower) {
                                  /*extended_pdu=*/false,
                                  /*anonymous=*/false,
                                  /*include_tx_power_level=*/true);
+  SetRandomAddress(addr);
 
   advertiser()->StartAdvertising(
       addr, ad, scan_data, options, nullptr, [](auto) {});
@@ -295,7 +311,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartWhileStartingWithTxPower) {
 }
 
 // Test that the second StartAdvertising call (with no TX Power requested)
-// successfully supercedes the first ongoing StartAdvertising call (with TX
+// successfully supersedes the first ongoing StartAdvertising call (with TX
 // Power requested). Validates the advertised data does not include the TX
 // power.
 TEST_F(LegacyLowEnergyAdvertiserTest,
@@ -317,6 +333,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest,
                                  /*extended_pdu=*/false,
                                  /*anonymous=*/false,
                                  /*include_tx_power_level=*/false);
+  SetRandomAddress(addr);
 
   advertiser()->StartAdvertising(
       addr, ad, scan_data, options, nullptr, [](auto) {});
@@ -341,7 +358,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest,
 }
 
 // Test that the second StartAdvertising call (with TX Power requested)
-// successfully supercedes the first ongoing StartAdvertising call (no TX Power
+// successfully supersedes the first ongoing StartAdvertising call (no TX Power
 // requested). Validates the advertised data includes the TX power.
 TEST_F(LegacyLowEnergyAdvertiserTest,
        StartingWhileStartingTxPowerNotRequestedThenRequested) {
@@ -362,6 +379,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest,
                                  /*extended_pdu=*/false,
                                  /*anonymous=*/false,
                                  /*include_tx_power_level=*/true);
+  SetRandomAddress(addr);
 
   advertiser()->StartAdvertising(
       addr, ad, scan_data, options, nullptr, [](auto) {});
@@ -412,6 +430,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, StartWhileTxPowerReadSuccess) {
 
   // Hold off on responding to the first TX Power Level Read command.
   test_device()->set_tx_power_level_read_response_flag(/*respond=*/false);
+  SetRandomAddress(addr);
 
   advertiser()->StartAdvertising(
       addr, ad, scan_data, options, nullptr, MakeExpectErrorCallback());
@@ -483,6 +502,7 @@ TEST_F(LegacyLowEnergyAdvertiserTest, AllowsRandomAddressChange) {
 
   // The random address can be changed while not advertising.
   EXPECT_TRUE(advertiser()->AllowsRandomAddressChange());
+  SetRandomAddress(kRandomAddress);
 
   // The random address cannot be changed while starting to advertise.
   advertiser()->StartAdvertising(kRandomAddress,
