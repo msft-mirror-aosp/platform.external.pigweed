@@ -49,9 +49,9 @@ cipd_repository(
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-08-31.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8738052824450612657.
-    commit = "3d3b59367ca6885675071d975cc37b66c99a4656",
+    # ROLL: Last updated 2024-09-07.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8737418645822593841.
+    commit = "0a69be8abfa4bbe44cd1a4a77f18e76369dac615",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -108,23 +108,6 @@ git_repository(
     commit = "3b6d48e8d5c1d9b3f9f10ac030a94008bfaf032b",
     remote = "https://pigweed.googlesource.com/third_party/github/google/googletest",
 )
-
-load(
-    "//pw_toolchain/rust:defs.bzl",
-    "pw_rust_register_toolchain_and_target_repos",
-    "pw_rust_register_toolchains",
-)
-
-pw_rust_register_toolchain_and_target_repos(
-    cipd_tag = "rust_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72",
-)
-
-# Allows creation of a `rust-project.json` file to allow rust analyzer to work.
-load("@rules_rust//tools/rust_analyzer:deps.bzl", "rust_analyzer_dependencies")
-
-rust_analyzer_dependencies()
-
-pw_rust_register_toolchains()
 
 # Vendored third party rust crates.
 git_repository(
