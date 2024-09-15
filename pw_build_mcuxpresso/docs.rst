@@ -3,6 +3,8 @@
 ===================
 pw_build_mcuxpresso
 ===================
+.. pigweed-module::
+   :name: pw_build_mcuxpresso
 
 The ``pw_build_mcuxpresso`` module provides helper utilities for building a
 target based on an NXP MCUXpresso SDK.
@@ -58,17 +60,21 @@ These source sets sets are defined using the ``pw_mcuxpresso_sdk`` template.
 Provide the path to the ``manifest`` XML, along with the names of the components
 you wish to ``include``.
 
+For boards with multiple cores, pass the specific core to filter components for
+in ``device_core``.
+
 .. code-block:: text
 
    import("$dir_pw_third_party/mcuxpresso/mcuxpresso.gni")
 
    pw_mcuxpresso_sdk("sample_project_sdk") {
-     manifest = "$dir_pw_third_party/mcuxpresso/evkmimxrt595/EVK-MIMXRT595_manifest_v3_8.xml"
+     manifest = "$dir_pw_third_party/mcuxpresso/evkmimxrt595/EVK-MIMXRT595_manifest_v3_13.xml"
      include = [
        "component.serial_manager_uart.MIMXRT595S",
        "project_template.evkmimxrt595.MIMXRT595S",
        "utility.debug_console.MIMXRT595S",
      ]
+     device_core = "cm33_MIMXRT595S"
    }
 
    pw_executable("hello_world") {
@@ -108,7 +114,7 @@ the source set uses.
 .. code-block:: text
 
    pw_mcuxpresso_sdk("my_project_sdk") {
-     manifest = "$dir_pw_third_party/mcuxpresso/evkmimxrt595/EVK-MIMXRT595_manifest_v3_8.xml"
+     manifest = "$dir_pw_third_party/mcuxpresso/evkmimxrt595/EVK-MIMXRT595_manifest_v3_13.xml"
      include = [
        "component.serial_manager_uart.MIMXRT595S",
        "utility.debug_console.MIMXRT595S",
@@ -139,12 +145,13 @@ The ``--prefix`` option specifies the GN location of the SDK files.
 
 .. code-block:: bash
 
-  mcuxpresso_builder gn /path/to/manifest.xml \
-      --include project_template.evkmimxrt595.MIMXRT595S \
-      --include utility.debug_console.MIMXRT595S \
-      --include component.serial_manager_uart.MIMXRT595S \
-      --exclude middleware.freertos-kernel.MIMXRT595S \
-      --prefix //path/to/sdk
+   mcuxpresso_builder gn /path/to/manifest.xml \
+       --include project_template.evkmimxrt595.MIMXRT595S \
+       --include utility.debug_console.MIMXRT595S \
+       --include component.serial_manager_uart.MIMXRT595S \
+       --exclude middleware.freertos-kernel.MIMXRT595S \
+       --device-core cm33_MIMXRT595S \
+       --prefix //path/to/sdk
 
 ---------------
 The Bazel build
@@ -159,12 +166,13 @@ create, along with the names of the components you wish to ``--include`` or
 
 .. code-block:: bash
 
-  mcuxpresso_builder bazel /path/to/manifest.xml \
-      --name example_sdk \
-      --include project_template.evkmimxrt595.MIMXRT595S \
-      --include utility.debug_console.MIMXRT595S \
-      --include component.serial_manager_uart.MIMXRT595S \
-      --exclude middleware.freertos-kernel.MIMXRT595S
+   mcuxpresso_builder bazel /path/to/manifest.xml \
+       --name example_sdk \
+       --include project_template.evkmimxrt595.MIMXRT595S \
+       --include utility.debug_console.MIMXRT595S \
+       --include component.serial_manager_uart.MIMXRT595S \
+       --exclude middleware.freertos-kernel.MIMXRT595S \
+       --device-core cm33_MIMXRT595S
 
 
 Place the resulting output in a ``BUILD`` file, and then modify your
@@ -173,11 +181,11 @@ checkout.
 
 .. code-block:: python
 
-  new_local_repository(
-      name = "mcuxpresso_sdk",
-      build_file = "//third_party/mcuxpresso_sdk/BUILD",
-      path = "third_party/evkmimxrt595/sdk",
-  )
+   new_local_repository(
+       name = "mcuxpresso_sdk",
+       build_file = "//third_party/mcuxpresso_sdk/BUILD",
+       path = "third_party/evkmimxrt595/sdk",
+   )
 
 To add other dependencies, compiler definitions, etc. it is recommended that
 you do so by creating a new target, and add a dependency to it, rather than

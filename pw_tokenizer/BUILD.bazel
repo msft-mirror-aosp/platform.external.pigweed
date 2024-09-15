@@ -21,6 +21,7 @@ load(
     "pw_cc_test",
     "pw_linker_script",
 )
+load("//pw_build:selects.bzl", "TARGET_COMPATIBLE_WITH_HOST_SELECT")
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -142,8 +143,8 @@ pw_cc_binary(
     target_compatible_with = select(
         {
             "@platforms//os:linux": [],
-            "@platforms//os:windows": [],
             "@platforms//os:macos": [],
+            "@platforms//os:windows": [],
             "//conditions:default": ["@platforms//:incompatible"],
         },
     ),
@@ -198,7 +199,7 @@ pw_cc_test(
 
 pw_cc_blob_info(
     name = "detokenizer_example_elf_blob",
-    file_path = "//pw_tokenizer/py:example_binary_with_tokenized_strings.elf",
+    file_path = "//pw_tokenizer/py:example_binary_with_tokenized_strings",
     symbol_name = "kElfSection",
 )
 
@@ -283,6 +284,8 @@ pw_cc_test(
         "tokenize_test.cc",
         "tokenize_test_c.c",
     ],
+    # TODO: b/344050496 - get working on rp2040 and stm32f429i
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
     deps = [
         ":pw_tokenizer",
         "//pw_preprocessor",
@@ -312,7 +315,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":pw_tokenizer",
-        "//pw_containers:variable_length_entry_queue",
+        "//pw_containers:inline_var_len_entry_queue",
     ],
 )
 

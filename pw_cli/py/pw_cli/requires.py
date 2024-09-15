@@ -36,7 +36,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from typing import Callable, Dict, IO, List, Sequence
+from typing import Callable, IO, Sequence
 import uuid
 
 HELPER_GERRIT = 'pigweed-internal'
@@ -108,9 +108,9 @@ def parse_args() -> argparse.Namespace:
         help='Requirements to be added ("<gerrit-name>:<cl-number>").',
     )
     parser.add_argument(
-        '--no-push',
-        dest='push',
-        action='store_false',
+        '--push',
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=argparse.SUPPRESS,  # This option is only for debugging.
     )
 
@@ -152,7 +152,7 @@ def create_commit(
     change_id = str(uuid.uuid4()).replace('-', '00')
     _LOG.debug('change_id %s', change_id)
 
-    requirement_objects: List[Change] = []
+    requirement_objects: list[Change] = []
     for req in requirement_strings:
         gerrit_name, number = req.split(':', 1)
         requirement_objects.append(Change(gerrit_name, int(number)))
@@ -220,7 +220,7 @@ def push_commit(requires_dir: Path, push=True) -> Change:
 
 
 @log_entry_exit
-def amend_existing_change(dependency: Dict[str, str]) -> None:
+def amend_existing_change(dependency: dict[str, str]) -> None:
     """Amend the current change to depend on the dependency
 
     Args:

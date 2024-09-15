@@ -18,5 +18,10 @@ cc_library(
         "__cxa_deleted_virtual.cc",
         "__cxa_pure_virtual.cc",
         "operator_delete.cc",
+        "verbose_abort.cc",
     ],
+    target_compatible_with = select({
+        "@rules_cc//cc/compiler:clang": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
 )

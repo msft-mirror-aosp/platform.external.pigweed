@@ -58,6 +58,8 @@ this takes effect until they are merged into VSC's active settings files
 command.
 """
 
+from __future__ import annotations
+
 # TODO(chadnorvell): Import collections.OrderedDict when we don't need to
 # support Python 3.8 anymore.
 from enum import Enum
@@ -65,7 +67,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Any, Dict, List, Optional, OrderedDict
+from typing import Any, OrderedDict
 
 from pw_cli.env import pigweed_environment
 
@@ -84,7 +86,7 @@ from pw_ide.settings import PigweedIdeSettings
 env = pigweed_environment()
 
 
-def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> Dict[str, Any]:
+def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> dict[str, Any]:
     """VSC settings for running clangd with Pigweed paths."""
     clangd_settings = ClangdSettings(ide_settings)
     return {
@@ -93,7 +95,7 @@ def _local_clangd_settings(ide_settings: PigweedIdeSettings) -> Dict[str, Any]:
     }
 
 
-def _local_python_settings() -> Dict[str, Any]:
+def _local_python_settings() -> dict[str, Any]:
     """VSC settings for finding the Python virtualenv."""
     paths = PythonPaths()
     return {
@@ -108,6 +110,7 @@ def _local_python_settings() -> Dict[str, Any]:
 # alternative of instantiating with a list of tuples.
 _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
     {
+        "cmake.format.allowOptionalArgumentIndentation": True,
         "editor.detectIndentation": False,
         "editor.rulers": [80],
         "editor.tabSize": 2,
@@ -151,6 +154,10 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
         ),
         # The "strict" mode is much more strict than what we currently enforce.
         "python.analysis.typeCheckingMode": "basic",
+        # Restrict the search for Python files to the locations we expect to
+        # have Python files. This minimizes the time & RAM the LSP takes to
+        # parse the project.
+        "python.analysis.include": ["pw_*/py/**/*"],
         "python.terminal.activateEnvironment": False,
         "python.testing.unittestEnabled": True,
         "[python]": OrderedDict({"editor.tabSize": 4}),
@@ -327,7 +334,7 @@ def _default_settings(
 
 def _default_tasks(
     pw_ide_settings: PigweedIdeSettings,
-    state: Optional[CppIdeFeaturesState] = None,
+    state: CppIdeFeaturesState | None = None,
 ) -> EditorSettingsDict:
     if state is None:
         state = CppIdeFeaturesState(pw_ide_settings)
@@ -373,7 +380,7 @@ class VscSettingsType(Enum):
     LAUNCH = 'launch'
 
     @classmethod
-    def all(cls) -> List['VscSettingsType']:
+    def all(cls) -> list[VscSettingsType]:
         return list(cls)
 
 

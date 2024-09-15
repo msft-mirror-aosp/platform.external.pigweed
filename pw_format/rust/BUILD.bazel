@@ -13,16 +13,33 @@
 # the License.
 
 load("@rules_rust//rust:defs.bzl", "rust_doc", "rust_doc_test", "rust_library", "rust_proc_macro", "rust_test")
+load("//pw_build:selects.bzl", "TARGET_COMPATIBLE_WITH_HOST_SELECT")
+
+rust_library(
+    name = "pw_format_core",
+    srcs = [
+        "pw_format_core.rs",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pw_status/rust:pw_status",
+    ],
+)
 
 rust_library(
     name = "pw_format",
     srcs = [
+        "pw_format/core_fmt.rs",
         "pw_format/lib.rs",
         "pw_format/macros.rs",
-        "pw_format/tests.rs",
+        "pw_format/printf.rs",
+        "pw_format/tests/core_fmt.rs",
+        "pw_format/tests/mod.rs",
+        "pw_format/tests/printf.rs",
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":pw_format_core",
         "//pw_status/rust:pw_status",
         "@rust_crates//:nom",
         "@rust_crates//:proc-macro2",
@@ -34,16 +51,20 @@ rust_library(
 rust_test(
     name = "pw_format_test",
     crate = ":pw_format",
+    # TODO: b/343726867 - support on-device rust tests
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
 )
 
 rust_doc_test(
     name = "pw_format_doc_test",
     crate = ":pw_format",
+    deps = ["//pw_bytes/rust:pw_bytes"],
 )
 
 rust_doc(
     name = "pw_format_doc",
     crate = ":pw_format",
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
 )
 
 rust_proc_macro(
@@ -69,12 +90,15 @@ rust_library(
     proc_macro_deps = [
         ":pw_format_example_macro",
     ],
+    tags = ["manual"],
     visibility = ["//visibility:public"],
 )
 
 rust_test(
     name = "pw_format_example_macro_test_test",
     crate = ":pw_format_example_macro_test",
+    # TODO: b/343726867 - support on-device rust tests
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
 )
 
 rust_proc_macro(
@@ -93,9 +117,9 @@ rust_proc_macro(
 )
 
 rust_library(
-    name = "pw_format_test_macros_test",
+    name = "pw_format_test_macros_printf_test",
     srcs = [
-        "pw_format_test_macros_test.rs",
+        "pw_format_test_macros_printf_test.rs",
     ],
     proc_macro_deps = [
         ":pw_format_test_macros",
@@ -103,10 +127,37 @@ rust_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pw_format",
+        ":pw_format_core",
+        "//pw_bytes/rust:pw_bytes",
     ],
 )
 
 rust_test(
-    name = "pw_format_test_macros_test_test",
-    crate = ":pw_format_test_macros_test",
+    name = "pw_format_test_macros_printf_test_test",
+    crate = ":pw_format_test_macros_printf_test",
+    # TODO: b/343726867 - support on-device rust tests
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+)
+
+rust_library(
+    name = "pw_format_test_macros_core_fmt_test",
+    srcs = [
+        "pw_format_test_macros_core_fmt_test.rs",
+    ],
+    proc_macro_deps = [
+        ":pw_format_test_macros",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pw_format",
+        ":pw_format_core",
+        "//pw_bytes/rust:pw_bytes",
+    ],
+)
+
+rust_test(
+    name = "pw_format_test_macros_core_fmt_test_test",
+    crate = ":pw_format_test_macros_core_fmt_test",
+    # TODO: b/343726867 - support on-device rust tests
+    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
 )

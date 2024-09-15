@@ -14,14 +14,26 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 
 #include "pw_allocator/allocator.h"
+#include "pw_allocator/capability.h"
 #include "pw_allocator/metrics.h"
+#include "pw_assert/assert.h"
 #include "pw_metric/metric.h"
+#include "pw_preprocessor/compiler.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
+#include "pw_status/status_with_size.h"
 
 namespace pw::allocator {
+
+/// This tag type is used to explicitly select the constructor which adds
+/// the tracking allocator's metrics group as a child of the info
+/// allocator it is wrapping.
+static constexpr struct AddTrackingAllocatorAsChild {
+} kAddTrackingAllocatorAsChild = {};
 
 /// Wraps an `Allocator` and records details of its usage.
 ///
@@ -32,77 +44,133 @@ namespace pw::allocator {
 /// default metrics implementation, or `TrackingAllocatorForTest` which
 /// always uses the real metrics implementation.
 template <typename MetricsType>
-class TrackingAllocatorImpl : public AllocatorWithMetrics<MetricsType> {
+class TrackingAllocator : public Allocator {
  public:
-  using metrics_type = MetricsType;
-  using Base = AllocatorWithMetrics<MetricsType>;
+  TrackingAllocator(metric::Token token, Allocator& allocator)
+      : Allocator(allocator.capabilities() | kImplementsGetRequestedLayout),
+        allocator_(allocator),
+        metrics_(token) {}
 
-  TrackingAllocatorImpl(metric::Token token, Allocator& allocator)
-      : allocator_(allocator), metrics_(token) {}
+  template <typename OtherMetrics>
+  TrackingAllocator(metric::Token token,
+                    TrackingAllocator<OtherMetrics>& parent,
+                    const AddTrackingAllocatorAsChild&)
+      : TrackingAllocator(token, parent) {
+    parent.metric_group().Add(metric_group());
+  }
 
-  metrics_type& metric_group() override { return metrics_; }
-  const metrics_type& metric_group() const override { return metrics_; }
+  const metric::Group& metric_group() const { return metrics_.group(); }
+  metric::Group& metric_group() { return metrics_.group(); }
+
+  const MetricsType& metrics() const { return metrics_.metrics(); }
 
  private:
   /// @copydoc Allocator::Allocate
-  void* DoAllocate(Layout layout) override {
-    void* ptr = allocator_.Allocate(layout);
-    if (ptr == nullptr) {
-      metrics_.RecordFailure();
-      return nullptr;
-    }
-    metrics_.RecordAllocation(layout.size());
-    return ptr;
-  }
+  void* DoAllocate(Layout layout) override;
 
   /// @copydoc Allocator::Deallocate
-  void DoDeallocate(void* ptr, Layout layout) override {
-    if (ptr != nullptr) {
-      allocator_.Deallocate(ptr, layout);
-      metrics_.RecordDeallocation(layout.size());
-    }
-  }
+  void DoDeallocate(void* ptr) override;
+
+  /// @copydoc Allocator::Deallocate
+  void DoDeallocate(void* ptr, Layout) override { DoDeallocate(ptr); }
 
   /// @copydoc Allocator::Resize
-  bool DoResize(void* ptr, Layout layout, size_t new_size) override {
-    if (!allocator_.Resize(ptr, layout, new_size)) {
-      metrics_.RecordFailure();
-      return false;
-    }
-    metrics_.RecordResize(layout.size(), new_size);
-    return true;
-  }
-
-  /// @copydoc Allocator::GetLayout
-  Result<Layout> DoGetLayout(const void* ptr) const override {
-    return allocator_.GetLayout(ptr);
-  }
-
-  /// @copydoc Allocator::Query
-  Status DoQuery(const void* ptr, Layout layout) const override {
-    return allocator_.Query(ptr, layout);
-  }
+  bool DoResize(void* ptr, size_t new_size) override;
 
   /// @copydoc Allocator::Reallocate
-  void* DoReallocate(void* ptr, Layout layout, size_t new_size) override {
-    void* new_ptr = allocator_.Reallocate(ptr, layout, new_size);
-    if (new_ptr == nullptr) {
-      metrics_.RecordFailure();
-      return nullptr;
-    }
-    metrics_.RecordReallocation(layout.size(), new_size, new_ptr != ptr);
-    return new_ptr;
+  void* DoReallocate(void* ptr, Layout new_layout) override;
+
+  /// @copydoc Deallocator::GetInfo
+  Result<Layout> DoGetInfo(InfoType info_type, const void* ptr) const override {
+    return GetInfo(allocator_, info_type, ptr);
   }
 
   Allocator& allocator_;
-  metrics_type metrics_;
+  internal::Metrics<MetricsType> metrics_;
 };
 
-/// Allocator metric proxy that uses the default metrics implementation.
-///
-/// Depending on the value of the `pw_allocator_COLLECT_METRICS` build argument,
-/// the `internal::DefaultMetrics` type is an alias for either the real or stub
-/// metrics implementation.
-using TrackingAllocator = TrackingAllocatorImpl<internal::DefaultMetrics>;
+// Template method implementation.
+
+template <typename MetricsType>
+void* TrackingAllocator<MetricsType>::DoAllocate(Layout layout) {
+  Layout requested = layout;
+  void* new_ptr = allocator_.Allocate(requested);
+  if (new_ptr == nullptr) {
+    metrics_.RecordFailure(requested.size());
+    return nullptr;
+  }
+  Layout allocated = Layout::Unwrap(GetAllocatedLayout(new_ptr));
+  metrics_.IncrementAllocations();
+  metrics_.ModifyRequested(requested.size(), 0);
+  metrics_.ModifyAllocated(allocated.size(), 0);
+  return new_ptr;
+}
+
+template <typename MetricsType>
+void TrackingAllocator<MetricsType>::DoDeallocate(void* ptr) {
+  Layout requested = Layout::Unwrap(GetRequestedLayout(ptr));
+  Layout allocated = Layout::Unwrap(GetAllocatedLayout(ptr));
+  allocator_.Deallocate(ptr);
+  metrics_.IncrementDeallocations();
+  metrics_.ModifyRequested(0, requested.size());
+  metrics_.ModifyAllocated(0, allocated.size());
+}
+
+template <typename MetricsType>
+bool TrackingAllocator<MetricsType>::DoResize(void* ptr, size_t new_size) {
+  Layout requested = Layout::Unwrap(GetRequestedLayout(ptr));
+  Layout allocated = Layout::Unwrap(GetAllocatedLayout(ptr));
+  Layout new_requested(new_size, requested.alignment());
+  if (!allocator_.Resize(ptr, new_requested.size())) {
+    metrics_.RecordFailure(new_size);
+    return false;
+  }
+  Layout new_allocated = Layout::Unwrap(GetAllocatedLayout(ptr));
+  metrics_.IncrementResizes();
+  metrics_.ModifyRequested(new_requested.size(), requested.size());
+  metrics_.ModifyAllocated(new_allocated.size(), allocated.size());
+  return true;
+}
+
+template <typename MetricsType>
+void* TrackingAllocator<MetricsType>::DoReallocate(void* ptr,
+                                                   Layout new_layout) {
+  Layout requested = Layout::Unwrap(GetRequestedLayout(ptr));
+  Layout allocated = Layout::Unwrap(GetAllocatedLayout(ptr));
+  Layout new_requested(new_layout.size(), requested.alignment());
+  void* new_ptr = allocator_.Reallocate(ptr, new_requested);
+  if (new_ptr == nullptr) {
+    metrics_.RecordFailure(new_requested.size());
+    return nullptr;
+  }
+  metrics_.IncrementReallocations();
+  metrics_.ModifyRequested(new_requested.size(), requested.size());
+  Layout new_allocated = Layout::Unwrap(GetAllocatedLayout(new_ptr));
+  if (ptr != new_ptr) {
+    // Reallocate performed "alloc, copy, free". Increment and decrement
+    // seperately in order to ensure "peak" metrics are correct.
+    metrics_.ModifyAllocated(new_allocated.size(), 0);
+    metrics_.ModifyAllocated(0, allocated.size());
+  } else {
+    // Reallocate performed "resize" without additional overhead.
+    metrics_.ModifyAllocated(new_allocated.size(), allocated.size());
+  }
+  return new_ptr;
+}
+
+// TODO(b/326509341): This is an interim alias to facilitate refactoring
+// downstream consumers of `TrackingAllocator` to add a template parameter.
+//
+// The following migration steps are complete:
+// 1. Downstream consumers will be updated to use `TrackingAllocatorImpl<...>`.
+// 2. The iterim `TrackingAllocator` class will be removed.
+// 3. `TrackingAllocatorImpl<...>` will be renamed to `TrackingAllocator<...>`,
+//    with a `TrackingAllocatorImpl<...>` alias pointing to it.
+//
+// The following migration steps remain:
+// 4. Downstream consumers will be updated to use `TrackingAllocator<...>`.
+// 5. The `TrackingAllocatorImpl<...>` alias will be removed.
+template <typename MetricsType>
+using TrackingAllocatorImpl = TrackingAllocator<MetricsType>;
 
 }  // namespace pw::allocator

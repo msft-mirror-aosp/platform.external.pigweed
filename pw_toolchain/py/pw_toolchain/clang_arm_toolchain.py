@@ -36,7 +36,6 @@ import os
 import subprocess
 
 from pathlib import Path
-from typing import List, Dict, Tuple
 
 _ARM_COMPILER_PREFIX = 'arm-none-eabi'
 _ARM_COMPILER_NAME = _ARM_COMPILER_PREFIX + '-gcc'
@@ -76,7 +75,7 @@ def _parse_args() -> argparse.Namespace:
     return parsed_args
 
 
-def _compiler_info_command(print_command: str, cflags: List[str]) -> str:
+def _compiler_info_command(print_command: str, cflags: list[str]) -> str:
     command = [_ARM_COMPILER_NAME]
     command.extend(cflags)
     command.append(print_command)
@@ -89,14 +88,14 @@ def _compiler_info_command(print_command: str, cflags: List[str]) -> str:
     return result.stdout.decode().rstrip()
 
 
-def get_gcc_lib_dir(cflags: List[str]) -> Path:
+def get_gcc_lib_dir(cflags: list[str]) -> Path:
     return Path(
         _compiler_info_command('-print-libgcc-file-name', cflags)
     ).parent
 
 
-def get_compiler_info(cflags: List[str]) -> Dict[str, str]:
-    compiler_info: Dict[str, str] = {}
+def get_compiler_info(cflags: list[str]) -> dict[str, str]:
+    compiler_info: dict[str, str] = {}
     compiler_info['gcc_libs_dir'] = os.path.relpath(
         str(get_gcc_lib_dir(cflags)), "."
     )
@@ -110,7 +109,7 @@ def get_compiler_info(cflags: List[str]) -> Dict[str, str]:
     return compiler_info
 
 
-def get_cflags(compiler_info: Dict[str, str]):
+def get_cflags(compiler_info: dict[str, str]):
     """TODO(amontanez): Add docstring."""
     # TODO(amontanez): Make newlib-nano optional.
     cflags = [
@@ -153,7 +152,7 @@ def get_cflags(compiler_info: Dict[str, str]):
     return cflags
 
 
-def get_crt_objs(compiler_info: Dict[str, str]) -> Tuple[str, ...]:
+def get_crt_objs(compiler_info: dict[str, str]) -> tuple[str, ...]:
     return (
         str(Path(compiler_info['gcc_libs_dir']) / 'crtfastmath.o'),
         str(Path(compiler_info['gcc_libs_dir']) / 'crti.o'),
@@ -167,8 +166,8 @@ def get_crt_objs(compiler_info: Dict[str, str]) -> Tuple[str, ...]:
     )
 
 
-def get_ldflags(compiler_info: Dict[str, str]) -> List[str]:
-    ldflags: List[str] = [
+def get_ldflags(compiler_info: dict[str, str]) -> list[str]:
+    ldflags: list[str] = [
         # Add library search paths.
         '-L' + compiler_info['gcc_libs_dir'],
         '-L'
@@ -188,7 +187,7 @@ def main(
     cflags: bool,
     ldflags: bool,
     gn_scope: bool,
-    clang_flags: List[str],
+    clang_flags: list[str],
 ) -> int:
     """Script entry point."""
     compiler_info = get_compiler_info(clang_flags)

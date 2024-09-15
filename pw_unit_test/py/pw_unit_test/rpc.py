@@ -11,13 +11,13 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-"""Utilities for running unit tests over Pigweed RPC."""
+"""Utilities for running unit tests over :ref:`module-pw_rpc`."""
 
 import enum
 import abc
 from dataclasses import dataclass
 import logging
-from typing import Iterable, List, Tuple
+from typing import Iterable
 
 from pw_rpc.client import Services
 from pw_rpc.callback_client import OptionalTimeout, UseDefault
@@ -94,7 +94,7 @@ class EventHandler(abc.ABC):
     def test_case_expect(
         self, test_case: TestCase, expectation: TestExpectation
     ) -> None:
-        """Called after each expect/assert statement within a test case."""
+        """Called after each expect or assert statement within a test case."""
 
 
 class LoggingEventHandler(EventHandler):
@@ -135,11 +135,11 @@ class LoggingEventHandler(EventHandler):
 
 @dataclass(frozen=True)
 class TestRecord:
-    """Class for recording test results."""
+    """Records test results."""
 
-    passing_tests: Tuple[TestCase, ...]
-    failing_tests: Tuple[TestCase, ...]
-    disabled_tests: Tuple[TestCase, ...]
+    passing_tests: tuple[TestCase, ...]
+    failing_tests: tuple[TestCase, ...]
+    disabled_tests: tuple[TestCase, ...]
 
     def all_tests_passed(self) -> bool:
         return not self.failing_tests
@@ -155,10 +155,10 @@ def run_tests(
     event_handlers: Iterable[EventHandler] = (LoggingEventHandler(),),
     timeout_s: OptionalTimeout = UseDefault.VALUE,
 ) -> TestRecord:
-    """Runs unit tests on a device over Pigweed RPC.
+    """Runs unit tests on a device over :ref:`module-pw_rpc`.
 
     Calls each of the provided event handlers as test events occur, and returns
-    True if all tests pass.
+    ``True`` if all tests pass.
     """
     unit_test_service = rpcs.pw.unit_test.UnitTest  # type: ignore[attr-defined]
     request = unit_test_service.Run.request(
@@ -189,9 +189,9 @@ def run_tests(
     for event_handler in event_handlers:
         event_handler.run_all_tests_start()
 
-    passing_tests: List[TestCase] = []
-    failing_tests: List[TestCase] = []
-    disabled_tests: List[TestCase] = []
+    passing_tests: list[TestCase] = []
+    failing_tests: list[TestCase] = []
+    disabled_tests: list[TestCase] = []
 
     for response in test_responses:
         if response.HasField('test_run_start'):

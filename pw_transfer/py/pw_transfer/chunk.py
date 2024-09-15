@@ -13,8 +13,10 @@
 # the License.
 """Protocol version-aware chunk message wrapper."""
 
+from __future__ import annotations
+
 import enum
-from typing import Any, Optional
+from typing import Any
 
 from pw_status import Status
 
@@ -83,15 +85,15 @@ class Chunk:
         protocol_version: ProtocolVersion,
         chunk_type: Any,
         session_id: int = 0,
-        desired_session_id: Optional[int] = None,
-        resource_id: Optional[int] = None,
+        desired_session_id: int | None = None,
+        resource_id: int | None = None,
         offset: int = 0,
         window_end_offset: int = 0,
         data: bytes = b'',
-        remaining_bytes: Optional[int] = None,
-        max_chunk_size_bytes: Optional[int] = None,
-        min_delay_microseconds: Optional[int] = None,
-        status: Optional[Status] = None,
+        remaining_bytes: int | None = None,
+        max_chunk_size_bytes: int | None = None,
+        min_delay_microseconds: int | None = None,
+        status: Status | None = None,
         initial_offset: int = 0,
     ):
         """Creates a new transfer chunk.
@@ -132,7 +134,7 @@ class Chunk:
         self.initial_offset = initial_offset
 
     @classmethod
-    def from_message(cls, message: transfer_pb2.Chunk) -> 'Chunk':
+    def from_message(cls, message: transfer_pb2.Chunk) -> Chunk:
         """Parses a Chunk from a protobuf message."""
 
         # Some very old versions of transfer don't always encode chunk types,

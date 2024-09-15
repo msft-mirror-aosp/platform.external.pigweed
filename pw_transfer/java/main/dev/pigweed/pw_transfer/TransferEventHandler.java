@@ -24,10 +24,8 @@ import dev.pigweed.pw_rpc.StreamObserver;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -174,6 +172,7 @@ class TransferEventHandler {
       handleTimeouts();
     }
   }
+
   /** Stops the transfer event handler from processing events. */
   void stop() {
     enqueueEvent(() -> {
@@ -228,7 +227,8 @@ class TransferEventHandler {
   }
 
   private void handleTimeouts() {
-    for (Transfer<?> transfer : sessionIdToTransfer.values()) {
+    // Copy to array since transfers may remove themselves from sessionIdToTransfer while iterating.
+    for (Transfer<?> transfer : sessionIdToTransfer.values().toArray(Transfer<?>[] ::new)) {
       transfer.handleTimeoutIfDeadlineExceeded();
     }
   }
@@ -311,18 +311,12 @@ class TransferEventHandler {
       enqueueEvent(() -> {
         resetStream();
 
-        // The transfers remove themselves from the Map during cleanup, iterate over a copied list.
-        List<Transfer<?>> activeTransfers = new ArrayList<>(sessionIdToTransfer.values());
+        TransferError error = new TransferError(
+            "Transfer stream RPC closed unexpectedly with status " + status, Status.INTERNAL);
 
-        // FAILED_PRECONDITION indicates that the stream packet was not recognized as the stream is
-        // not open. This could occur if the server resets. Notify pending transfers that this has
-        // occurred so they can restart.
-        if (status.equals(Status.FAILED_PRECONDITION)) {
-          activeTransfers.forEach(Transfer::handleDisconnection);
-        } else {
-          TransferError error = new TransferError(
-              "Transfer stream RPC closed unexpectedly with status " + status, Status.INTERNAL);
-          activeTransfers.forEach(t -> t.terminate(error));
+        // The transfers remove themselves from the Map during cleanup; iterate over a copied list.
+        for (Transfer<?> transfer : sessionIdToTransfer.values().toArray(Transfer<?>[] ::new)) {
+          transfer.terminate(error);
         }
       });
     }

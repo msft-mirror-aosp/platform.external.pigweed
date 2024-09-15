@@ -15,11 +15,13 @@
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
 use pw_format::macros::{
-    generate, generate_core_fmt, generate_printf, CoreFmtFormatMacroGenerator, FormatAndArgs,
-    FormatMacroGenerator, IntegerDisplayType, PrintfFormatMacroGenerator, Result,
+    generate, generate_core_fmt, generate_printf, Arg, CoreFmtFormatMacroGenerator,
+    CoreFmtFormatStringParser, FormatAndArgsFlavor, FormatMacroGenerator, FormatParams,
+    FormatStringParser, PrintfFormatMacroGenerator, PrintfFormatStringFragment,
+    PrintfFormatStringParser, Result,
 };
-use quote::quote;
-use syn::{parse_macro_input, Expr};
+use quote::{quote, ToTokens};
+use syn::parse_macro_input;
 
 type TokenStream2 = proc_macro2::TokenStream;
 
@@ -61,42 +63,65 @@ impl FormatMacroGenerator for TestGenerator {
     // This example ignores display type and width.
     fn integer_conversion(
         &mut self,
-        display_type: IntegerDisplayType,
+        params: &FormatParams,
+        signed: bool,
         type_width: u8, // in bits
-        _expression: Expr,
+        expression: Arg,
     ) -> Result<()> {
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
             ops.push(TestGeneratorOps::IntegerConversion{
-                display_type: #display_type,
-                type_width: #type_width
+                params: #params,
+                signed: #signed,
+                type_width: #type_width,
+                arg: #expression.to_string(),
             });
         });
         Ok(())
     }
 
-    fn string_conversion(&mut self, _expression: Expr) -> Result<()> {
+    fn string_conversion(&mut self, expression: Arg) -> Result<()> {
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
-            ops.push(TestGeneratorOps::StringConversion);
+            ops.push(TestGeneratorOps::StringConversion(#expression.to_string()));
         });
         Ok(())
     }
 
-    fn char_conversion(&mut self, _expression: Expr) -> Result<()> {
+    fn char_conversion(&mut self, expression: Arg) -> Result<()> {
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
-            ops.push(TestGeneratorOps::CharConversion);
+            ops.push(TestGeneratorOps::CharConversion(#expression.to_string()));
+        });
+        Ok(())
+    }
+
+    fn untyped_conversion(&mut self, expression: Arg, _params: &FormatParams) -> Result<()> {
+        let expression = format!("{}", expression.to_token_stream());
+        self.code_fragments.push(quote! {
+            ops.push(TestGeneratorOps::UntypedConversion(#expression.to_string()));
         });
         Ok(())
     }
 }
 
-#[proc_macro]
-pub fn generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+fn generator_test_macro_impl<T: FormatStringParser>(tokens: TokenStream) -> TokenStream {
+    let format_and_args = parse_macro_input!(tokens as FormatAndArgsFlavor<T>);
     let generator = TestGenerator::new();
-    match generate(generator, format_and_args) {
+    match generate(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
+}
+
+#[proc_macro]
+pub fn printf_format_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    generator_test_macro_impl::<PrintfFormatStringParser>(tokens)
+}
+
+#[proc_macro]
+pub fn core_fmt_format_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    generator_test_macro_impl::<CoreFmtFormatStringParser>(tokens)
 }
 
 // Generator for testing `generate_printf()`.  Allows control over the return
@@ -135,17 +160,25 @@ impl PrintfTestGenerator {
 }
 
 impl PrintfFormatMacroGenerator for PrintfTestGenerator {
-    fn finalize(self, format_string: String) -> Result<TokenStream2> {
+    fn finalize(
+        self,
+        format_string_fragments: &[PrintfFormatStringFragment],
+    ) -> Result<TokenStream2> {
         // Create locally scoped alias so we can refer to them in `quote!()`.
         let code_fragments = self.code_fragments;
+        let format_string_pieces: Vec<_> = format_string_fragments
+            .iter()
+            .map(|fragment| fragment.as_token_stream("pw_format_core"))
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(quote! {
           {
             use pw_format_test_macros_test::PrintfTestGeneratorOps;
             let mut ops = Vec::new();
+            let format_string = pw_bytes::concat_static_strs!(#(#format_string_pieces),*);
             #(#code_fragments);*;
             ops.push(PrintfTestGeneratorOps::Finalize);
-            (#format_string, ops)
+            (format_string, ops)
           }
         })
     }
@@ -155,45 +188,69 @@ impl PrintfFormatMacroGenerator for PrintfTestGenerator {
         });
         Ok(())
     }
-    fn integer_conversion(&mut self, ty: Ident, _expression: Expr) -> Result<Option<String>> {
+    fn integer_conversion(&mut self, ty: Ident, expression: Arg) -> Result<Option<String>> {
         let ty_str = format!("{ty}");
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
-            ops.push(PrintfTestGeneratorOps::IntegerConversion{ ty: #ty_str.to_string() });
+            ops.push(PrintfTestGeneratorOps::IntegerConversion{
+               ty: #ty_str.to_string(),
+               arg: #expression.to_string(),
+            });
         });
         Ok(self.integer_specifier_override.clone())
     }
 
-    fn string_conversion(&mut self, _expression: Expr) -> Result<Option<String>> {
+    fn string_conversion(&mut self, expression: Arg) -> Result<Option<String>> {
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
-            ops.push(PrintfTestGeneratorOps::StringConversion);
+            ops.push(PrintfTestGeneratorOps::StringConversion(#expression.to_string()));
         });
         Ok(self.string_specifier_override.clone())
     }
 
-    fn char_conversion(&mut self, _expression: Expr) -> Result<Option<String>> {
+    fn char_conversion(&mut self, expression: Arg) -> Result<Option<String>> {
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
-            ops.push(PrintfTestGeneratorOps::CharConversion);
+            ops.push(PrintfTestGeneratorOps::CharConversion(#expression.to_string()));
         });
         Ok(self.char_specifier_override.clone())
     }
+
+    fn untyped_conversion(&mut self, expression: Arg) -> Result<()> {
+        let expression = format!("{}", expression.to_token_stream());
+        self.code_fragments.push(quote! {
+            ops.push(PrintfTestGeneratorOps::UntypedConversion(#expression.to_string()));
+        });
+        Ok(())
+    }
 }
 
-#[proc_macro]
-pub fn printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+fn printf_generator_test_macro_impl<T: FormatStringParser>(tokens: TokenStream) -> TokenStream {
+    let format_and_args = parse_macro_input!(tokens as FormatAndArgsFlavor<T>);
     let generator = PrintfTestGenerator::new();
-    match generate_printf(generator, format_and_args) {
+    match generate_printf(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
 }
 
+#[proc_macro]
+pub fn printf_format_printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    printf_generator_test_macro_impl::<PrintfFormatStringParser>(tokens)
+}
+
+#[proc_macro]
+pub fn core_fmt_format_printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    printf_generator_test_macro_impl::<CoreFmtFormatStringParser>(tokens)
+}
+
 // Causes the generator to substitute %d with %K.
 #[proc_macro]
-pub fn integer_sub_printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+pub fn integer_sub_printf_format_printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    let format_and_args =
+        parse_macro_input!(tokens as FormatAndArgsFlavor<PrintfFormatStringParser>);
     let generator = PrintfTestGenerator::new().with_integer_specifier("%K");
-    match generate_printf(generator, format_and_args) {
+    match generate_printf(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
@@ -201,10 +258,11 @@ pub fn integer_sub_printf_generator_test_macro(tokens: TokenStream) -> TokenStre
 
 // Causes the generator to substitute %s with %K.
 #[proc_macro]
-pub fn string_sub_printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+pub fn string_sub_printf_format_printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    let format_and_args =
+        parse_macro_input!(tokens as FormatAndArgsFlavor<PrintfFormatStringParser>);
     let generator = PrintfTestGenerator::new().with_string_specifier("%K");
-    match generate_printf(generator, format_and_args) {
+    match generate_printf(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
@@ -212,10 +270,11 @@ pub fn string_sub_printf_generator_test_macro(tokens: TokenStream) -> TokenStrea
 
 // Causes the generator to substitute %c with %K.
 #[proc_macro]
-pub fn char_sub_printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+pub fn char_sub_printf_format_printf_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    let format_and_args =
+        parse_macro_input!(tokens as FormatAndArgsFlavor<PrintfFormatStringParser>);
     let generator = PrintfTestGenerator::new().with_char_specifier("%K");
-    match generate_printf(generator, format_and_args) {
+    match generate_printf(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
@@ -278,45 +337,69 @@ impl CoreFmtFormatMacroGenerator for CoreFmtTestGenerator {
         });
         Ok(())
     }
-    fn integer_conversion(&mut self, ty: Ident, _expression: Expr) -> Result<Option<String>> {
+    fn integer_conversion(&mut self, ty: Ident, expression: Arg) -> Result<Option<String>> {
         let ty_str = format!("{ty}");
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
-            ops.push(PrintfTestGeneratorOps::IntegerConversion{ ty: #ty_str.to_string() });
+            ops.push(PrintfTestGeneratorOps::IntegerConversion{
+                ty: #ty_str.to_string(),
+                arg: #expression.to_string()
+            });
         });
         Ok(self.integer_specifier_override.clone())
     }
 
-    fn string_conversion(&mut self, _expression: Expr) -> Result<Option<String>> {
+    fn string_conversion(&mut self, expression: Arg) -> Result<Option<String>> {
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
-            ops.push(PrintfTestGeneratorOps::StringConversion);
+            ops.push(PrintfTestGeneratorOps::StringConversion(#expression.to_string()));
         });
         Ok(self.string_specifier_override.clone())
     }
 
-    fn char_conversion(&mut self, _expression: Expr) -> Result<Option<String>> {
+    fn char_conversion(&mut self, expression: Arg) -> Result<Option<String>> {
+        let expression = format!("{}", expression.to_token_stream());
         self.code_fragments.push(quote! {
-            ops.push(PrintfTestGeneratorOps::CharConversion);
+            ops.push(PrintfTestGeneratorOps::CharConversion(#expression.to_string()));
         });
         Ok(self.char_specifier_override.clone())
     }
+
+    fn untyped_conversion(&mut self, expression: Arg) -> Result<()> {
+        let expression = format!("{}", expression.to_token_stream());
+        self.code_fragments.push(quote! {
+            ops.push(PrintfTestGeneratorOps::UntypedConversion(#expression.to_string()));
+        });
+        Ok(())
+    }
 }
 
-#[proc_macro]
-pub fn core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+fn core_fmt_generator_test_macro_impl<T: FormatStringParser>(tokens: TokenStream) -> TokenStream {
+    let format_and_args = parse_macro_input!(tokens as FormatAndArgsFlavor<T>);
     let generator = CoreFmtTestGenerator::new();
-    match generate_core_fmt(generator, format_and_args) {
+    match generate_core_fmt(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
 }
 
+#[proc_macro]
+pub fn printf_format_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    core_fmt_generator_test_macro_impl::<PrintfFormatStringParser>(tokens)
+}
+
+#[proc_macro]
+pub fn core_fmt_format_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    core_fmt_generator_test_macro_impl::<CoreFmtFormatStringParser>(tokens)
+}
+
 // Causes the generator to substitute {} with {:?}.
 #[proc_macro]
-pub fn integer_sub_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+pub fn integer_sub_printf_format_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    let format_and_args =
+        parse_macro_input!(tokens as FormatAndArgsFlavor<PrintfFormatStringParser>);
     let generator = CoreFmtTestGenerator::new().with_integer_specifier("{:?}");
-    match generate_core_fmt(generator, format_and_args) {
+    match generate_core_fmt(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
@@ -324,10 +407,11 @@ pub fn integer_sub_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenSt
 
 // Causes the generator to substitute {} with {:?}.
 #[proc_macro]
-pub fn string_sub_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+pub fn string_sub_printf_format_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    let format_and_args =
+        parse_macro_input!(tokens as FormatAndArgsFlavor<PrintfFormatStringParser>);
     let generator = CoreFmtTestGenerator::new().with_string_specifier("{:?}");
-    match generate_core_fmt(generator, format_and_args) {
+    match generate_core_fmt(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }
@@ -335,10 +419,11 @@ pub fn string_sub_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStr
 
 // Causes the generator to substitute {} with {:?}.
 #[proc_macro]
-pub fn char_sub_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
-    let format_and_args = parse_macro_input!(tokens as FormatAndArgs);
+pub fn char_sub_printf_format_core_fmt_generator_test_macro(tokens: TokenStream) -> TokenStream {
+    let format_and_args =
+        parse_macro_input!(tokens as FormatAndArgsFlavor<PrintfFormatStringParser>);
     let generator = CoreFmtTestGenerator::new().with_char_specifier("{:?}");
-    match generate_core_fmt(generator, format_and_args) {
+    match generate_core_fmt(generator, format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }

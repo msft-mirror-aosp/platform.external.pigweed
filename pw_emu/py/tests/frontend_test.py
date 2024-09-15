@@ -16,7 +16,7 @@
 
 import unittest
 
-from typing import Any, Dict
+from typing import Any
 
 from pw_emu.core import (
     ConfigError,
@@ -25,7 +25,7 @@ from pw_emu.core import (
     InvalidPropertyPath,
 )
 from mock_emu_frontend import _mock_emu
-from tests.common import ConfigHelperWithEmulator
+from config_helper import ConfigHelperWithEmulator
 
 
 class TestEmulator(ConfigHelperWithEmulator):
@@ -123,7 +123,7 @@ class TestGdbEmptyConfig(ConfigHelperWithEmulator):
 
     """
 
-    _config: Dict[str, Any] = {
+    _config: dict[str, Any] = {
         'emulators': {
             'mock-emu': {
                 'launcher': 'mock_emu_frontend.MockEmuLauncher',

@@ -115,7 +115,7 @@ TEST(FlatMap, Iterate) {
   char value = 'a';
   for (const auto& item : kOddMap) {
     EXPECT_EQ(value, item.second);
-    EXPECT_EQ(&item, kOddMap.find(item.first));
+    EXPECT_EQ(&item, &(*kOddMap.find(item.first)));
     value += 1;
   }
 }
@@ -345,6 +345,30 @@ TEST(FlatMap, MappedIteratorPostfixDecrementCorrectReturnAndSideEffect) {
   auto it_original = it--;
   EXPECT_EQ(map.mapped_end(), it_original);
   EXPECT_NE(it, it_original);
+}
+
+TEST(FlatMap, PairsConstructionWithOneElement) {
+  constexpr FlatMap kMap(Pair<int, char>{1, 'a'});
+
+  ASSERT_EQ(kMap.size(), 1u);
+  ASSERT_NE(kMap.find(1), kMap.cend());
+  EXPECT_EQ(kMap.at(1), 'a');
+}
+
+TEST(FlatMap, PairsConstructionWithMoreThanOneElements) {
+  using FlatMapItem = Pair<int, char>;
+  constexpr FlatMap kMap = {
+      FlatMapItem{-4, 'a'},
+      FlatMapItem{-1, 'b'},
+      FlatMapItem{0, 'c'},
+      FlatMapItem{49, 'd'},
+      FlatMapItem{99, 'e'},
+  };
+
+  ASSERT_EQ(kMap.size(), 5u);
+  for (const auto& [key, value] : kMap) {
+    EXPECT_EQ(kMap.at(key), value);
+  }
 }
 
 }  // namespace pw::containers
