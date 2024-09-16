@@ -24,7 +24,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:980bc1f80a6779e8b4ce034c47936238fb16e58c"
+        "git_revision:745380fed7d2216b20b5ab22dd173ff167042aca"
       ]
     },
     {
@@ -139,6 +139,18 @@
       "subdir": "rust",
       "tags": [
         "git_revision:9afe7136958edaa403f0b0eb00f0353c125b7352"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust_bindgen/${platform}",
+      "platforms": [
+        "linux-amd64",
+        "mac-amd64",
+        "mac-arm64"
+      ],
+      "subdir": "rust_bindgen",
+      "tags": [
+        "git_revision:f518815cc14a7f8c292964bb37179a1070d7e18a"
       ]
     },
     {
