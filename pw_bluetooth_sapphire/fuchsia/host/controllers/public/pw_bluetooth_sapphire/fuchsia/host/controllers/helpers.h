@@ -11,16 +11,14 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-#include <gtest/gtest.h>
 
-#include <iostream>
+#pragma once
 
-// Demonstrate some basic assertions.
-TEST(HelloTest, BasicAssertions) {
-  std::cout << "Example stdout." << std::endl;
+#include "pw_status/status.h"
+#include "zircon/status.h"
 
-  // Expect two strings not to be equal.
-  EXPECT_STRNE("hello", "world");
-  // Expect equality.
-  EXPECT_EQ(7 * 6, 42);
+namespace bt::controllers {
+
+pw::Status ZxStatusToPwStatus(zx_status_t status);
+
 }
