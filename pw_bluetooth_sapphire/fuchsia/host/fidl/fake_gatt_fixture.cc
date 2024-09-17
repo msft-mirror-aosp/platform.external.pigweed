@@ -11,9 +11,16 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-#include <iostream>
 
-int main() {
-  std::cout << "Hello pigweed.git Fuchsia component!" << std::endl;
-  return 0;
-}
+#include "pw_bluetooth_sapphire/fuchsia/host/fidl/fake_gatt_fixture.h"
+
+namespace bt::fidl::testing {
+
+FakeGattFixture::FakeGattFixture()
+    : gatt_(std::make_unique<bt::gatt::testing::FakeLayer>(pw_dispatcher_)),
+      weak_gatt_(gatt_->GetWeakPtr()),
+      weak_fake_layer_(gatt_->GetFakePtr()) {}
+
+void FakeGattFixture::TearDown() { RunLoopUntilIdle(); }
+
+}  // namespace bt::fidl::testing
