@@ -49,9 +49,9 @@ cipd_repository(
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-09-07.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8737418645822593841.
-    commit = "0a69be8abfa4bbe44cd1a4a77f18e76369dac615",
+    # ROLL: Last updated 2024-09-14.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8736784466744735137.
+    commit = "b875b819944c7f5afb70929398e34f652f84f374",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -59,17 +59,13 @@ load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
 
-FUCHSIA_SDK_VERSION = "version:23.20240829.4.1"
+FUCHSIA_SDK_VERSION = "version:24.20240911.4.1"
 
 cipd_repository(
     name = "fuchsia_sdk",
     path = "fuchsia/sdk/core/fuchsia-bazel-rules/linux-amd64",
     tag = FUCHSIA_SDK_VERSION,
 )
-
-load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
-
-rules_fuchsia_deps()
 
 register_toolchains("@fuchsia_sdk//:fuchsia_toolchain_sdk")
 
@@ -79,27 +75,24 @@ cipd_repository(
     tag = FUCHSIA_SDK_VERSION,
 )
 
-load("@fuchsia_sdk//fuchsia:products.bzl", "fuchsia_products_repository")
+load("//pw_build/bazel_internal/fuchsia_sdk_workspace:products.bzl", "fuchsia_products_repository")
 
 fuchsia_products_repository(
     name = "fuchsia_products",
     metadata_file = "@fuchsia_products_metadata//:product_bundles.json",
 )
 
-load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
-
-fuchsia_clang_repository(
+cipd_repository(
     name = "fuchsia_clang",
-    # TODO: https://pwbug.dev/346354914 - Reuse @llvm_toolchain. This currently
-    # leads to flaky loading phase errors!
-    # from_workspace = "@llvm_toolchain//:BUILD",
-    cipd_tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
-    sdk_root_label = "@fuchsia_sdk",
+    path = "fuchsia/development/fuchsia_clang/linux-amd64",
+    tag = "git_revision:0856f12bb0a9829a282bef7c26ad536ff3b1e0a5",
 )
 
-load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
-
-register_clang_toolchains()
+register_toolchains(
+    "@fuchsia_clang//:cc-x86_64",
+    "@fuchsia_clang//:cc-aarch64",
+    "@fuchsia_clang//:cc-riscv64",
+)
 
 # TODO: b/354268150 - googletest is in the BCR, but its MODULE.bazel doesn't
 # express its dependency on the Fuchsia SDK correctly.
