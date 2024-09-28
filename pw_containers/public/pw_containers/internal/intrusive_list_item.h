@@ -17,13 +17,6 @@
 
 namespace pw::containers::internal {
 
-/// Crashes with a diagnostic message that items must be unlisted before
-/// addition to a list or destruction if the given `unlisted` parameter is not
-/// set.
-///
-/// This function is standalone to avoid using PW_CHECK in a header file.
-void CheckUnlisted(bool unlisted);
-
 // Forward declaration for friending.
 template <typename>
 class GenericIntrusiveList;
@@ -41,7 +34,7 @@ class IntrusiveListItemBase {
   ///
   /// Subclasses MUST call `unlist` in their destructors, since unlisting may
   /// require calling derived class methods.
-  ~IntrusiveListItemBase() { CheckUnlisted(unlisted()); }
+  ~IntrusiveListItemBase() { CheckIntrusiveItemIsUncontained(unlisted()); }
 
   /// Items are not copyable.
   IntrusiveListItemBase(const IntrusiveListItemBase&) = delete;
@@ -136,14 +129,11 @@ class IntrusiveListItemBase {
 /// Base class for items in singly-linked lists.
 class IntrusiveForwardListItem
     : public IntrusiveListItemBase<IntrusiveForwardListItem> {
- private:
-  using Base = IntrusiveListItemBase<IntrusiveForwardListItem>;
-
  protected:
   constexpr IntrusiveForwardListItem() = default;
 
  private:
-  friend Base;
+  friend IntrusiveListItemBase<IntrusiveForwardListItem>;
 
   template <typename>
   friend class GenericIntrusiveList;
@@ -161,14 +151,11 @@ class IntrusiveForwardListItem
 
 /// Base class for items in doubly-linked lists.
 class IntrusiveListItem : public IntrusiveListItemBase<IntrusiveListItem> {
- private:
-  using Base = IntrusiveListItemBase<IntrusiveListItem>;
-
  protected:
   constexpr IntrusiveListItem() = default;
 
  private:
-  friend Base;
+  friend IntrusiveListItemBase<IntrusiveListItem>;
 
   template <typename>
   friend class GenericIntrusiveList;
