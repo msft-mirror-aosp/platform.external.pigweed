@@ -17,15 +17,10 @@
 #include <limits>
 #include <type_traits>
 
+#include "pw_containers/internal/intrusive_item.h"
 #include "pw_containers/internal/intrusive_list_item.h"
 
 namespace pw::containers::internal {
-
-/// Crashes with a diagnostic message that lists must be empty before
-/// destruction if the given `empty` parameter is not set.
-///
-/// This function is standalone to avoid using PW_CHECK in a header file.
-void CheckEmpty(bool empty);
 
 /// Generic intrusive list implementation.
 ///
@@ -51,7 +46,7 @@ class GenericIntrusiveList {
   GenericIntrusiveList(const GenericIntrusiveList&) = delete;
   GenericIntrusiveList& operator=(const GenericIntrusiveList&) = delete;
 
-  ~GenericIntrusiveList() { CheckEmpty(empty()); }
+  ~GenericIntrusiveList() { CheckIntrusiveContainerIsEmpty(empty()); }
 
   template <typename Iterator>
   void assign(Iterator first, Iterator last) {
@@ -82,8 +77,7 @@ class GenericIntrusiveList {
 
   /// Returns how many items can be added.
   ///
-  /// As an intrusive list, this is effectively unbounded, but is provided to
-  /// match std::list<T>.
+  /// As an intrusive container, this is effectively unbounded.
   constexpr size_t max_size() const noexcept {
     return std::numeric_limits<ptrdiff_t>::max();
   }
@@ -107,7 +101,7 @@ class GenericIntrusiveList {
   ///
   /// @return The item that was added.
   static Item* insert_after(Item* prev, Item& item) {
-    CheckUnlisted(item.unlisted());
+    CheckIntrusiveItemIsUncontained(item.unlisted());
     item.next_ = prev->next_;
     item.set_previous(prev);
     prev->next_ = &item;
@@ -331,21 +325,5 @@ class GenericIntrusiveList {
   // List and ensures that items already in a list cannot be added to another.
   Item head_;
 };
-
-// Gets the element type from an Item. This is used to check that an
-// IntrusiveList element class inherits from Item, either directly or through
-// another class.
-template <typename Item, typename T, bool kIsItem = std::is_base_of<Item, T>()>
-struct GetListElementTypeFromItem {
-  using Type = void;
-};
-
-template <typename Item, typename T>
-struct GetListElementTypeFromItem<Item, T, true> {
-  using Type = typename T::PwIntrusiveListElementType;
-};
-
-template <typename Item, typename T>
-using ElementTypeFromItem = typename GetListElementTypeFromItem<Item, T>::Type;
 
 }  // namespace pw::containers::internal
