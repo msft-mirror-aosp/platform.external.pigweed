@@ -38,13 +38,14 @@ label_flag(
 # Libraries
 
 cc_library(
+    # This group is deprecated. Prefer to depend on individual features rather
+    # than on this collection.
     name = "pw_containers",
     deps = [
         ":algorithm",
         ":flat_map",
         ":inline_deque",
         ":inline_queue",
-        ":intrusive_forward_list",
         ":intrusive_list",
         ":vector",
     ],
@@ -60,10 +61,27 @@ cc_library(
 )
 
 cc_library(
-    name = "intrusive_forward_list",
+    name = "intrusive_item",
+    srcs = ["intrusive_item.cc"],
+    hdrs = ["public/pw_containers/internal/intrusive_item.h"],
+    implementation_deps = ["//pw_assert"],
+    includes = ["public"],
+)
+
+cc_library(
+    name = "intrusive_list_common",
     hdrs = [
-        "public/pw_containers/intrusive_forward_list.h",
+        "public/pw_containers/internal/intrusive_list.h",
+        "public/pw_containers/internal/intrusive_list_item.h",
+        "public/pw_containers/internal/intrusive_list_iterator.h",
     ],
+    includes = ["public"],
+    deps = [":intrusive_item"],
+)
+
+cc_library(
+    name = "intrusive_forward_list",
+    hdrs = ["public/pw_containers/intrusive_forward_list.h"],
     includes = ["public"],
     deps = [
         ":config",
@@ -73,9 +91,7 @@ cc_library(
 
 cc_library(
     name = "intrusive_list",
-    hdrs = [
-        "public/pw_containers/intrusive_list.h",
-    ],
+    hdrs = ["public/pw_containers/intrusive_list.h"],
     includes = ["public"],
     deps = [
         ":config",
@@ -85,31 +101,38 @@ cc_library(
 )
 
 cc_library(
-    name = "intrusive_list_common",
+    name = "legacy_intrusive_list",
+    hdrs = ["public/pw_containers/internal/legacy_intrusive_list.h"],
+    includes = ["public"],
+    visibility = ["//visibility:private"],
+    deps = [":intrusive_forward_list"],
+)
+
+cc_library(
+    name = "intrusive_map",
     srcs = [
-        "intrusive_list.cc",
+        "aa_tree.cc",
+        "aa_tree_item.cc",
     ],
     hdrs = [
-        "public/pw_containers/internal/intrusive_list.h",
-        "public/pw_containers/internal/intrusive_list_item.h",
-        "public/pw_containers/internal/intrusive_list_iterator.h",
+        "public/pw_containers/internal/aa_tree.h",
+        "public/pw_containers/internal/aa_tree_item.h",
+        "public/pw_containers/internal/aa_tree_iterator.h",
+        "public/pw_containers/intrusive_map.h",
     ],
     includes = ["public"],
     deps = [
+        ":intrusive_item",
         "//pw_assert",
+        "//pw_bytes:packed_ptr",
     ],
 )
 
 cc_library(
-    name = "legacy_intrusive_list",
-    hdrs = [
-        "public/pw_containers/internal/legacy_intrusive_list.h",
-    ],
+    name = "intrusive_multimap",
+    hdrs = ["public/pw_containers/intrusive_multimap.h"],
     includes = ["public"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":intrusive_forward_list",
-    ],
+    deps = [":intrusive_map"],
 )
 
 cc_library(
@@ -329,9 +352,7 @@ pw_cc_test(
 
 pw_cc_test(
     name = "intrusive_forward_list_test",
-    srcs = [
-        "intrusive_forward_list_test.cc",
-    ],
+    srcs = ["intrusive_forward_list_test.cc"],
     deps = [
         ":intrusive_forward_list",
         ":vector",
@@ -342,12 +363,45 @@ pw_cc_test(
 
 pw_cc_test(
     name = "intrusive_list_test",
-    srcs = [
-        "intrusive_list_test.cc",
-    ],
+    srcs = ["intrusive_list_test.cc"],
     deps = [
         ":intrusive_list",
         ":vector",
+        "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "intrusive_map_test",
+    srcs = ["intrusive_map_test.cc"],
+    deps = [
+        ":intrusive_map",
+        ":intrusive_multimap",
+        "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_span",
+    ],
+)
+
+pw_cc_test(
+    name = "intrusive_multimap_test",
+    srcs = ["intrusive_multimap_test.cc"],
+    deps = [
+        ":intrusive_map",
+        ":intrusive_multimap",
+        "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_span",
+    ],
+)
+
+pw_cc_test(
+    name = "intrusive_item_test",
+    srcs = ["intrusive_item_test.cc"],
+    deps = [
+        ":intrusive_forward_list",
+        ":intrusive_list",
+        ":intrusive_map",
+        ":intrusive_multimap",
         "//pw_compilation_testing:negative_compilation_testing",
         "//pw_unit_test",
     ],

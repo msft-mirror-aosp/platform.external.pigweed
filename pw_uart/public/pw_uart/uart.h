@@ -21,85 +21,44 @@
 #include "pw_assert/assert.h"
 #include "pw_bytes/span.h"
 #include "pw_chrono/system_clock.h"
-#include "pw_function/function.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
+#include "pw_uart/uart_base.h"
 
 namespace pw::uart {
 
 /// Represents an abstract UART interface.
 ///
-/// The `Uart` interface provides a basic set of methods for performing UART
-/// communication. It defines the interface that concrete UART implementations
-/// must adhere to.
+/// The `Uart` interface provides a basic set of methods for performing
+/// blocking UART communication.
 
-/// @defgroup pw_uart
-/// @{
-class Uart {
+class Uart : public UartBase {
  public:
-  virtual ~Uart() = default;
-
-  /// Initializes the UART module on the microcontroller, sets it into the
-  /// default state as determined by the concrete UART implementation. This
-  /// function should be a no-op if the UART module is in an enabled state.
-  ///
-  /// This may change the power state of the UART module, configure the
-  /// interface parameters, enable the associated pins, setup the internal
-  /// TX and RX buffers, etc...
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The UART module has been successfully initialized.
-  ///
-  ///    INTERNAL: Internal errors within the hardware abstraction layer.
-  ///
-  /// @endrst
-  Status Enable() { return DoEnable(true); }
-
-  /// Disables the UART module on the microcontroller. Disabling the UART
-  /// shuts down communication and prevents the microcontroller from
-  /// sending or receiving data through the UART port.
-  ///
-  /// This is usually done to save power. Interrupt handlers should also be
-  /// disabled.
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The UART module has been successfully initialized.
-  ///
-  ///    INTERNAL: Internal errors  within the hardware abstraction layer.
-  ///
-  /// @endrst
-  Status Disable() { return DoEnable(false); }
-
-  /// Configures the UART communication baud rate.
-  ///
-  /// This function sets the communication speed (baud rate) for the UART.
-  /// Whether the baud rate can be changed while the UART is enabled depends on
-  /// the specific implementation.
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///
-  ///    OK: The UART has been successfully initialized.
-  ///
-  ///    FAILED_PRECONDITION: The device is enabled and does not support
-  ///    changing settings on the fly.
-  ///
-  ///    INTERNAL: Internal errors  within the hardware abstraction layer.
-  ///
-  /// @endrst
-  Status SetBaudRate(uint32_t baud_rate) { return DoSetBaudRate(baud_rate); }
+  ~Uart() override = default;
 
   /// Reads data from the UART into a provided buffer.
   ///
-  /// This function blocks until the entirety of `rx_buffer` is filled with
-  /// data.
+  /// This function blocks until `min_bytes` have been read into `rx_buffer`.
+  ///
+  /// @param rx_buffer  The buffer to read data into.
+  /// @param min_bytes  The minimum number of bytes to read before returning.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The operation was successful.
+  ///
+  /// May return other implementation-specific status codes.
+  ///
+  /// @endrst
+  StatusWithSize ReadAtLeast(ByteSpan rx_buffer, size_t min_bytes) {
+    return DoTryReadFor(rx_buffer, min_bytes, std::nullopt);
+  }
+
+  /// Reads data from the UART into a provided buffer.
+  ///
+  /// This function blocks until the entire buffer has been filled.
   ///
   /// @param rx_buffer  The buffer to read data into.
   ///
@@ -112,14 +71,95 @@ class Uart {
   /// May return other implementation-specific status codes.
   ///
   /// @endrst
+  StatusWithSize ReadExactly(ByteSpan rx_buffer) {
+    return DoTryReadFor(rx_buffer, rx_buffer.size(), std::nullopt);
+  }
+
+  /// Deprecated: Prefer ReadExactly in new code.
+  ///
+  /// Reads data from the UART into a provided buffer.
+  ///
+  /// This function blocks until the entire buffer has been filled.
+  ///
+  /// @param rx_buffer  The buffer to read data into.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The operation was successful.
+  ///
+  /// May return other implementation-specific status codes.
+  ///
+  /// @endrst
+  // TODO: https://pwbug.dev/368149122 - Remove after transition
   Status Read(ByteSpan rx_buffer) {
     return DoTryReadFor(rx_buffer, std::nullopt).status();
   }
 
   /// Reads data from the UART into a provided buffer.
   ///
-  /// This function blocks until either the entire buffer has been filled with
-  /// data or the specified timeout has elapsed, whichever occurs first.
+  /// This function blocks until either `min_bytes` have been read into buffer
+  /// or the specified timeout has elapsed, whichever occurs first.
+  ///
+  /// @param rx_buffer  The buffer to read data into.
+  /// @param min_bytes  The minimum number of bytes to read before returning.
+  /// @param timeout    The maximum time to wait for data to be read. If zero,
+  ///                   the function will immediately return with at least one
+  ///                   hardware read operation attempt.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The operation was successful and the entire buffer has been filled
+  ///    with data.
+  ///
+  ///    DEADLINE_EXCEEDED: The operation timed out before the entire buffer
+  ///    could be filled.
+  ///
+  /// May return other implementation-specific status codes.
+  ///
+  /// @endrst
+  StatusWithSize TryReadAtLeastFor(ByteSpan rx_buffer,
+                                   size_t min_bytes,
+                                   chrono::SystemClock::duration timeout) {
+    return DoTryReadFor(rx_buffer, min_bytes, timeout);
+  }
+
+  /// Reads data from the UART into a provided buffer.
+  ///
+  /// This function blocks until either `rx_buffer.size()` bytes have been read
+  /// into buffer or the specified timeout has elapsed, whichever occurs first.
+  ///
+  /// @param rx_buffer  The buffer to read data into.
+  /// @param timeout    The maximum time to wait for data to be read. If zero,
+  ///                   the function will immediately return with at least one
+  ///                   hardware read operation attempt.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The operation was successful and the entire buffer has been filled
+  ///    with data.
+  ///
+  ///    DEADLINE_EXCEEDED: The operation timed out before the entire buffer
+  ///    could be filled.
+  ///
+  /// May return other implementation-specific status codes.
+  ///
+  /// @endrst
+  StatusWithSize TryReadExactlyFor(ByteSpan rx_buffer,
+                                   chrono::SystemClock::duration timeout) {
+    return DoTryReadFor(rx_buffer, rx_buffer.size(), timeout);
+  }
+
+  /// Deprecated: Prefer TryReadExactlyFor in new code.
+  /// Reads data from the UART into a provided buffer.
+  ///
+  /// This function blocks until either `rx_buffer.size()` bytes have been read
+  /// into buffer or the specified timeout has elapsed, whichever occurs first.
   ///
   /// @param rx_buffer  The buffer to read data into.
   /// @param timeout    The maximum time to wait for data to be read. If zero,
@@ -141,6 +181,7 @@ class Uart {
   /// @endrst
   StatusWithSize TryReadFor(ByteSpan rx_buffer,
                             chrono::SystemClock::duration timeout) {
+    // TODO: https://pwbug.dev/368149122 - Remove after transition
     return DoTryReadFor(rx_buffer, timeout);
   }
 
@@ -234,9 +275,6 @@ class Uart {
   Status ClearPendingReceiveBytes() { return DoClearPendingReceiveBytes(); }
 
  private:
-  virtual Status DoEnable(bool enable) = 0;
-  virtual Status DoSetBaudRate(uint32_t baud_rate) = 0;
-
   /// Reads data from the UART into a provided buffer with an optional timeout
   /// provided.
   ///
@@ -249,7 +287,7 @@ class Uart {
   ///                   will block for no longer than this duration. If zero,
   ///                   the function will immediately return with at least one
   ///                   hardware read operation attempt. If not specified, the
-  ///                   function blocks untill the buffer is full.
+  ///                   function blocks until the buffer is full.
   ///
   /// @returns @rst
   ///
@@ -264,9 +302,49 @@ class Uart {
   /// May return other implementation-specific status codes.
   ///
   /// @endrst
+  // TODO: https://pwbug.dev/368149122 - Remove after transition.
   virtual StatusWithSize DoTryReadFor(
       ByteSpan rx_buffer,
-      std::optional<chrono::SystemClock::duration> timeout) = 0;
+      std::optional<chrono::SystemClock::duration> timeout) {
+    return DoTryReadFor(rx_buffer, rx_buffer.size(), timeout);
+  }
+
+  /// Reads data from the UART into a provided buffer with an optional timeout
+  /// provided.
+  ///
+  /// This virtual function attempts to read data into the provided byte buffer
+  /// (`rx_buffer`). The operation will continue until either `min_bytes` have
+  /// been read into the buffer, an error occurs, or the optional timeout
+  /// duration expires.
+  ///
+  /// @param rx_buffer  The buffer to read data into.
+  /// @param min_bytes  The minimum number of bytes to read before returning.
+  /// @param timeout    An optional timeout duration. If specified, the function
+  ///                   will block for no longer than this duration. If zero,
+  ///                   the function will immediately return with at least one
+  ///                   hardware read operation attempt. If not specified, the
+  ///                   function blocks until the buffer is full.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///
+  ///    OK: The operation was successful and the entire buffer has been
+  ///    filled with data.
+  ///
+  ///    DEADLINE_EXCEEDED: The operation timed out before the entire buffer
+  ///    could be filled.
+  ///
+  /// May return other implementation-specific status codes.
+  ///
+  /// @endrst
+  // TODO: https://pwbug.dev/368149122 - Make pure virtual after transition.
+  virtual StatusWithSize DoTryReadFor(
+      ByteSpan /*rx_buffer*/,
+      size_t /*min_bytes*/,
+      std::optional<chrono::SystemClock::duration> /*timeout*/) {
+    return StatusWithSize::Unimplemented();
+  }
 
   /// @brief Writes data from a provided buffer to the UART with an optional
   /// timeout.
@@ -303,7 +381,5 @@ class Uart {
   virtual Status DoFlushOutput() = 0;
   virtual Status DoClearPendingReceiveBytes() = 0;
 };
-
-/// @}
 
 }  // namespace pw::uart

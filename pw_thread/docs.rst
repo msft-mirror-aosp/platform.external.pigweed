@@ -6,9 +6,6 @@ pw_thread
 The ``pw_thread`` module contains utilities for thread creation and thread
 execution.
 
-.. Warning::
-  This module is still under construction, the API is not yet stable.
-
 ---------------
 Thread Sleeping
 ---------------
@@ -156,6 +153,8 @@ multiple functions to execute concurrently.
 
 API reference
 =============
+.. doxygentypedef:: pw::Thread
+
 .. doxygenclass:: pw::thread::Thread
    :members:
 

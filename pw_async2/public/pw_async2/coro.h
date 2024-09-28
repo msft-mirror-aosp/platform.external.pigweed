@@ -15,6 +15,7 @@
 
 #include <concepts>
 #include <coroutine>
+#include <variant>
 
 #include "pw_allocator/allocator.h"
 #include "pw_allocator/layout.h"
@@ -118,7 +119,7 @@ template <typename PromiseType>
 class OwningCoroutineHandle final {
  public:
   // Construct a null (`!IsValid()`) handle.
-  OwningCoroutineHandle(nullptr_t) : promise_handle_(nullptr) {}
+  OwningCoroutineHandle(std::nullptr_t) : promise_handle_(nullptr) {}
 
   /// Take ownership of `promise_handle`.
   OwningCoroutineHandle(std::coroutine_handle<PromiseType>&& promise_handle)
@@ -439,11 +440,11 @@ class Awaitable final {
 ///
 /// # Example
 /// @rst
-/// .. literalinclude:: examples/coro.cc
+/// .. literalinclude:: examples/basic.cc
 ///    :language: cpp
 ///    :linenos:
-///    :start-after: [pw_async2-examples-coro-injection]
-///    :end-before: [pw_async2-examples-coro-injection]
+///    :start-after: [pw_async2-examples-basic-coro]
+///    :end-before: [pw_async2-examples-basic-coro]
 /// @endrst
 template <std::constructible_from<pw::Status> T>
 class Coro final {

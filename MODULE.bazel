@@ -18,7 +18,7 @@ module(
 )
 
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
-bazel_dep(name = "boringssl", version = "0.0.0-20240530-2db0eb3")
+bazel_dep(name = "boringssl", version = "0.20240913.0")
 bazel_dep(name = "freertos", version = "10.5.1.bcr.2")
 bazel_dep(name = "gazelle", version = "0.36.0", repo_name = "bazel_gazelle")
 bazel_dep(name = "nanopb", repo_name = "com_github_nanopb_nanopb")
@@ -56,13 +56,6 @@ git_override(
     module_name = "nanopb",
     commit = "f9191cd0be4177abd0d04546d61d59a9b6c32de3",
     remote = "https://github.com/nanopb/nanopb.git",
-)
-
-# TODO: https://pwbug.dev/365993144 - Use bazel_dep once this commit is in the BCR.
-git_override(
-    module_name = "boringssl",
-    commit = "40ec347196a939bd4fd1f801df896b2f4e2205dc",
-    remote = "https://boringssl.googlesource.com/boringssl",
 )
 
 single_version_override(
@@ -113,9 +106,12 @@ local_path_override(
     path = "pw_toolchain_bazel",
 )
 
-xcode = use_repo_rule("@pw_toolchain//features/macos/private:xcode_command_line_tools.bzl", "pw_xcode_repository")
+xcode_sdk_repository = use_repo_rule("//pw_toolchain:xcode.bzl", "xcode_sdk_repository")
 
-xcode(name = "pw_xcode_command_line_tools")
+xcode_sdk_repository(
+    name = "macos_sysroot",
+    build_file = "//pw_toolchain/host_clang:macos_sysroot.BUILD",
+)
 
 cipd_client_repository = use_repo_rule("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "_cipd_client_repository")
 
@@ -126,14 +122,14 @@ cipd_repository = use_repo_rule("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl"
 # Fetch llvm toolchain.
 cipd_repository(
     name = "llvm_toolchain",
-    build_file = "@pw_toolchain//build_external:llvm_clang.BUILD",
+    build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
+    tag = "git_revision:e894df6392beea3723627329009f3e6d51d16f47",
 )
 
 cipd_repository(
     name = "llvm_toolchain_device",
-    build_file = "@pw_toolchain//build_external:llvm_clang.BUILD",
+    build_file = "@pw_toolchain//build_external:llvm_clang_legacy.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
     tag = "git_revision:0dcada94bb1ae79f0edd91013038098c62a96b3b",
 )
@@ -141,6 +137,7 @@ cipd_repository(
 # Fetch linux sysroot for host builds.
 cipd_repository(
     name = "linux_sysroot",
+    build_file = "//pw_toolchain/host_clang:linux_sysroot.BUILD",
     path = "fuchsia/third_party/sysroot/bionic",
     tag = "git_revision:702eb9654703a7cec1cadf93a7e3aa269d053943",
 )

@@ -12,11 +12,6 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Contains a stub Fuchsia bt-host component.
-# Eventually the real bt-host component will be migrated here:
-# https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/src/connectivity/bluetooth/core/bt-host/
-# See https://fxbug.dev/321267390.
-
 load("@fuchsia_infra//infra:infra.bzl", "fuchsia_cipd_releases")
 load(
     "@fuchsia_sdk//fuchsia:defs.bzl",
@@ -35,6 +30,7 @@ load(
     "fuchsia_licenses_collection",
     "fuchsia_licenses_spdx",
 )
+load("//pw_bluetooth_sapphire/fuchsia:fuchsia_api_level.bzl", "FUCHSIA_API_LEVEL")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 
 package(
@@ -92,6 +88,8 @@ fuchsia_cc_binary(
     name = "bt_host_bin",
     srcs = ["main.cc"],
     bin_name = "bt_host",
+    # TODO: b/367805596 - Remove when dynamic linking size budget issues are resolved.
+    features = ["static_cpp_standard_library"],
     deps = [
         ":sources",
         "//pw_log_fuchsia",
@@ -123,6 +121,7 @@ fuchsia_component(
     name = "component",
     component_name = "bt-host",
     manifest = ":manifest",
+    moniker = "core/bluetooth-core/bt-host-collection:bt-host_000",
     deps = [":bt_host_bin"],
 )
 
@@ -146,7 +145,7 @@ fuchsia_unittest_package(
     name = "test_pkg",
     package_name = "bt-host-unittests",
     testonly = True,
-    fuchsia_api_level = "HEAD",
+    fuchsia_api_level = FUCHSIA_API_LEVEL,
     platform = fuchsia_platforms.x64,
     tags = ["manual"],
     unit_tests = [
@@ -160,7 +159,7 @@ fuchsia_package(
     components = [
         ":component",
     ],
-    fuchsia_api_level = "HEAD",
+    fuchsia_api_level = FUCHSIA_API_LEVEL,
     platform = fuchsia_platforms.x64,
     resources = [":default_config_values"],
     tags = ["manual"],
@@ -172,7 +171,7 @@ fuchsia_package(
     components = [
         ":component",
     ],
-    fuchsia_api_level = "HEAD",
+    fuchsia_api_level = FUCHSIA_API_LEVEL,
     platform = fuchsia_platforms.arm64,
     resources = [":default_config_values"],
     tags = ["manual"],
@@ -184,7 +183,7 @@ fuchsia_package(
     components = [
         ":component",
     ],
-    fuchsia_api_level = "HEAD",
+    fuchsia_api_level = FUCHSIA_API_LEVEL,
     platform = fuchsia_platforms.riscv64,
     resources = [":default_config_values"],
     tags = ["manual"],

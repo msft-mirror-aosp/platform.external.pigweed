@@ -20,6 +20,7 @@
 #include <type_traits>
 
 #include "pw_containers/config.h"
+#include "pw_containers/internal/intrusive_item.h"
 #include "pw_containers/internal/intrusive_list.h"
 #include "pw_containers/internal/intrusive_list_item.h"
 #include "pw_containers/internal/intrusive_list_iterator.h"
@@ -80,20 +81,7 @@ class LegacyIntrusiveList;
 ///
 /// * C++23 methods are not (yet) supported.
 ///
-/// Example:
-/// @code{.cpp}
-///   class TestItem
-///      : public IntrusiveForwardList<TestItem>::Item {}
-///
-///   IntrusiveForwardList<TestItem> test_items;
-///
-///   auto item = TestItem();
-///   test_items.push_back(item);
-///
-///   for (auto& test_item : test_items) {
-///     // Do a thing.
-///   }
-/// @endcode
+/// @tparam   T           Type of intrusive items stored in the list.
 template <typename T>
 class IntrusiveForwardList {
  private:
@@ -118,12 +106,11 @@ class IntrusiveForwardList {
     constexpr explicit Item() = default;
 
    private:
-    // GetListElementTypeFromItem is used to find the element type from an item.
-    // It is used to ensure list items inherit from the correct Item type.
+    // IntrusiveItem is used to ensure T inherits from this container's Item
+    // type. See also `CheckItemType`.
     template <typename, typename, bool>
-    friend struct ::pw::containers::internal::GetListElementTypeFromItem;
-
-    using PwIntrusiveListElementType = T;
+    friend struct containers::internal::IntrusiveItem;
+    using ItemType = T;
   };
 
   using iterator =
@@ -327,9 +314,10 @@ class IntrusiveForwardList {
   // Check that T is an Item in a function, since the class T will not be fully
   // defined when the IntrusiveList<T> class is instantiated.
   static constexpr void CheckItemType() {
-    using Base = ::pw::containers::internal::ElementTypeFromItem<ItemBase, T>;
+    using IntrusiveItemType =
+        typename containers::internal::IntrusiveItem<ItemBase, T>::Type;
     static_assert(
-        std::is_base_of<Base, T>(),
+        std::is_base_of<IntrusiveItemType, T>(),
         "IntrusiveForwardList items must be derived from "
         "IntrusiveForwardList<T>::Item, where T is the item or one of its "
         "bases.");

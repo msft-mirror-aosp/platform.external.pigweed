@@ -500,6 +500,9 @@ void Context::PerformInitialHandshake(const Chunk& chunk) {
 
       set_transfer_state(TransferState::kWaiting);
       EncodeAndSendChunk(start_ack_confirmation);
+      // we received a response, so we can re-up the timeout while waiting for
+      // parameters.
+      SetTimeout(chunk_timeout_);
       break;
     }
 
@@ -746,10 +749,12 @@ void Context::TransmitNextChunk(bool retransmit_requested) {
       return;  // No data was requested, so there is nothing else to do.
     }
 
-    PW_LOG_DEBUG("Transfer %u sending chunk offset=%u size=%u",
-                 static_cast<unsigned>(session_id_),
-                 static_cast<unsigned>(offset_),
-                 static_cast<unsigned>(data.value().size()));
+    PW_LOG_EVERY_N_DURATION(PW_LOG_LEVEL_DEBUG,
+                            std::chrono::seconds(3),
+                            "Transfer %u sending chunk offset=%u size=%u",
+                            static_cast<unsigned>(session_id_),
+                            static_cast<unsigned>(offset_),
+                            static_cast<unsigned>(data.value().size()));
 
     chunk.set_payload(data.value());
     last_chunk_offset_ = offset_;
@@ -878,11 +883,14 @@ void Context::HandleReceiveChunk(const Chunk& chunk) {
 
 void Context::HandleReceivedData(const Chunk& chunk) {
   if (chunk.offset() != offset_) {
-    if (chunk.offset() + chunk.payload().size() <= offset_) {
+    if (chunk.offset() + chunk.payload().size() <= offset_ &&
+        chunk.type() != Chunk::Type::kStartAckConfirmation) {
       // If the chunk's data has already been received, don't go through a full
       // recovery cycle to avoid shrinking the window size and potentially
       // thrashing. The expected data may already be in-flight, so just allow
       // the transmitter to keep going with a CONTINUE parameters chunk.
+      // Start ack confs do not come with an offset set, so it can get stuck
+      // here if we are doing an offset transfer.
       PW_LOG_DEBUG("Transfer %u received duplicate chunk with offset %u",
                    id_for_log(),
                    static_cast<unsigned>(chunk.offset()));
