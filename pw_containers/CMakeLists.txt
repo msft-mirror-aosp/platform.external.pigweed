@@ -146,6 +146,28 @@ pw_add_library(pw_containers.wrapped_iterator INTERFACE
     public
 )
 
+pw_add_library(pw_containers.intrusive_item STATIC
+  HEADERS
+    public/pw_containers/internal/intrusive_item.h
+  PUBLIC_INCLUDES
+    public
+  SOURCES
+    intrusive_item.cc
+  PRIVATE_DEPS
+    pw_assert
+)
+
+pw_add_library(pw_containers.intrusive_list_common INTERFACE
+  HEADERS
+    public/pw_containers/internal/intrusive_list.h
+    public/pw_containers/internal/intrusive_list_item.h
+    public/pw_containers/internal/intrusive_list_iterator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.intrusive_item
+)
+
 pw_add_library(pw_containers.intrusive_forward_list INTERFACE
   HEADERS
     public/pw_containers/intrusive_forward_list.h
@@ -167,19 +189,6 @@ pw_add_library(pw_containers.intrusive_list INTERFACE
     pw_containers.legacy_intrusive_list
 )
 
-pw_add_library(pw_containers.intrusive_list_common STATIC
-  HEADERS
-    public/pw_containers/internal/intrusive_list.h
-    public/pw_containers/internal/intrusive_list_item.h
-    public/pw_containers/internal/intrusive_list_iterator.h
-  PUBLIC_INCLUDES
-    public
-  SOURCES
-    intrusive_list.cc
-  PRIVATE_DEPS
-    pw_assert
-)
-
 pw_add_library(pw_containers.legacy_intrusive_list INTERFACE
   HEADERS
     public/pw_containers/internal/legacy_intrusive_list.h
@@ -187,6 +196,32 @@ pw_add_library(pw_containers.legacy_intrusive_list INTERFACE
     public
   PUBLIC_DEPS
     pw_containers.intrusive_forward_list
+)
+
+pw_add_library(pw_containers.intrusive_map STATIC
+  HEADERS
+    public/pw_containers/internal/aa_tree.h
+    public/pw_containers/internal/aa_tree_item.h
+    public/pw_containers/internal/aa_tree_iterator.h
+    public/pw_containers/intrusive_map.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_bytes.packed_ptr
+    pw_containers.intrusive_item
+  SOURCES
+    aa_tree.cc
+    aa_tree_item.cc
+)
+
+pw_add_library(pw_containers.intrusive_multimap INTERFACE
+  HEADERS
+    public/pw_containers/intrusive_multimap.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.intrusive_map
 )
 
 pw_add_test(pw_containers.algorithm_test
@@ -333,3 +368,45 @@ pw_add_test(pw_containers.intrusive_list_test
     modules
     pw_containers
 )
+
+pw_add_test(pw_containers.intrusive_map_test
+  SOURCES
+    intrusive_map_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.intrusive_map
+    pw_containers.intrusive_multimap
+    pw_span
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.intrusive_multimap_test
+  SOURCES
+    intrusive_multimap_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.intrusive_map
+    pw_containers.intrusive_multimap
+    pw_span
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.intrusive_item_test
+  SOURCES
+    intrusive_item_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.intrusive_forward_list
+    pw_containers.intrusive_list
+    pw_containers.intrusive_map
+    pw_containers.intrusive_multimap
+  GROUPS
+    modules
+    pw_containers
+)
+
+add_subdirectory(examples)
