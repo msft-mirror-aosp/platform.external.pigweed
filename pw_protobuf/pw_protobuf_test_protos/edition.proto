@@ -1,4 +1,4 @@
-// Copyright 2020 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -11,21 +11,21 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+edition = "2023";
 
-#include "pw_containers/internal/intrusive_list.h"
+package pw.protobuf.test;
 
-#include "pw_assert/check.h"
-#include "pw_containers/internal/intrusive_list_item.h"
+message EditionsTest {
+  // In edition 2023, explicit presence is the default.
+  // proto3 equivalent:
+  //   optional uint32 optional_uint = 1;
+  uint32 optional_uint = 1;
 
-namespace pw::containers::internal {
+  // To function like proto3, implicit presence must be specified.
+  // proto3 equivalent:
+  //   uint32 default_uint = 2;
+  uint32 default_uint = 2 [features.field_presence = IMPLICIT];
 
-void CheckUnlisted(bool unlisted) {
-  PW_CHECK(unlisted,
-           "Item is in an intrusive list and cannot be added or destroyed");
+  // Just like in proto3, packed varints are the default.
+  repeated int32 packed_values = 3;
 }
-
-void CheckEmpty(bool empty) {
-  PW_CHECK(empty, "List is not empty and cannot be destroyed");
-}
-
-}  // namespace pw::containers::internal
