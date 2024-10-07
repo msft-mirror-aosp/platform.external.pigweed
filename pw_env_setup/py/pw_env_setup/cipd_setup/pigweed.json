@@ -24,7 +24,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:b23e3858e5eabaad1b7f7a1fa1c2e5934b8ff7b4"
+        "git_revision:ad51f28a1094c1a0eb0c2623e5cbebc135f855f1"
       ]
     },
     {
@@ -85,7 +85,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
+        "git_revision:f559d6188828b738ce7e7c2e4d99bf03111336d6"
       ]
     },
     {
@@ -95,7 +95,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
+        "git_revision:f559d6188828b738ce7e7c2e4d99bf03111336d6"
       ]
     },
     {
@@ -105,7 +105,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
+        "git_revision:f559d6188828b738ce7e7c2e4d99bf03111336d6"
       ]
     },
     {
@@ -115,7 +115,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
+        "git_revision:f559d6188828b738ce7e7c2e4d99bf03111336d6"
       ]
     },
     {
@@ -125,7 +125,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
+        "git_revision:f559d6188828b738ce7e7c2e4d99bf03111336d6"
       ]
     },
     {
@@ -138,7 +138,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
+        "git_revision:f559d6188828b738ce7e7c2e4d99bf03111336d6"
       ]
     },
     {
