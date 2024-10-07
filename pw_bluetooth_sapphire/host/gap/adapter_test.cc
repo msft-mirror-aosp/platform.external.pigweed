@@ -21,6 +21,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_advertising_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_discovery_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/gatt/fake_layer.h"
+#include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_l2cap.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
@@ -65,9 +66,13 @@ class AdapterTest : public TestingBase {
 
     auto l2cap = std::make_unique<l2cap::testing::FakeL2cap>(dispatcher());
     gatt_ = std::make_unique<gatt::testing::FakeLayer>(dispatcher());
+    Adapter::Config config = {
+        .legacy_pairing_enabled = false,
+    };
     adapter_ = Adapter::Create(dispatcher(),
                                transport()->GetWeakPtr(),
                                gatt_->GetWeakPtr(),
+                               config,
                                std::move(l2cap));
   }
 
@@ -166,7 +171,7 @@ TEST_F(AdapterTest, InitializeNoBREDR) {
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kBREDRNotSupported);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   test_device()->set_settings(settings);
 
@@ -241,7 +246,7 @@ TEST_F(AdapterTest, InitializeSuccess) {
   FakeController::Settings settings;
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   test_device()->set_settings(settings);
 
@@ -1122,7 +1127,7 @@ TEST_F(AdapterTest, InspectHierarchy) {
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   settings.synchronous_data_packet_length = 6;
   settings.total_num_synchronous_data_packets = 2;
@@ -1344,9 +1349,13 @@ TEST_F(AdapterConstructorTest, GattCallbacks) {
   EXPECT_EQ(set_persist_cb_count, 0);
   EXPECT_EQ(set_retrieve_cb_count, 0);
 
+  Adapter::Config config = {
+      .legacy_pairing_enabled = false,
+  };
   auto adapter = Adapter::Create(dispatcher(),
                                  transport()->GetWeakPtr(),
                                  gatt_->GetWeakPtr(),
+                                 config,
                                  std::move(l2cap_));
 
   EXPECT_EQ(set_persist_cb_count, 1);
@@ -1471,10 +1480,10 @@ TEST_F(AdapterTest, LEReadMaximumAdvertisingDataLengthSupported) {
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
   settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 2;
+  settings.SupportedCommandsView()
+      .le_read_maximum_advertising_data_length()
+      .Write(true);
 
-  constexpr size_t octet = 36;
-  settings.supported_commands[octet] |= static_cast<uint8_t>(
-      hci_spec::SupportedCommand::kLEReadMaximumAdvertisingDataLength);
   test_device()->set_settings(settings);
   test_device()->set_maximum_advertising_data_length(
       hci_spec::kMaxLEExtendedAdvertisingDataLength);
@@ -1488,22 +1497,45 @@ TEST_F(AdapterTest, LEReadMaximumAdvertisingDataLengthSupported) {
             low_energy_state.max_advertising_data_length());
 }
 
+TEST_F(AdapterTest, LEConnectedIsochronousStreamSupported) {
+  FakeController::Settings settings;
+  settings.AddBREDRSupportedCommands();
+  settings.AddLESupportedCommands();
+  settings.lmp_features_page0 |=
+      static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
+  settings.le_features |= static_cast<uint64_t>(
+      hci_spec::LESupportedFeature::kConnectedIsochronousStreamPeripheral);
+  settings.le_acl_data_packet_length = 0x1B;
+  settings.le_total_num_acl_data_packets = 2;
+
+  test_device()->set_settings(settings);
+
+  bool success = false;
+  auto init_cb = [&](bool cb_success) { success = cb_success; };
+  InitializeAdapter(std::move(init_cb));
+  EXPECT_TRUE(success);
+  const auto& le_features = test_device()->le_features();
+  EXPECT_TRUE(
+      (le_features.le_features &
+       static_cast<uint64_t>(hci_spec::LESupportedFeature::
+                                 kConnectedIsochronousStreamHostSupport)) != 0);
+}
+
 TEST_F(AdapterTest, ScoDataChannelInitializedSuccessfully) {
   // Return valid buffer information and enable LE support.
   FakeController::Settings settings;
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   // Ensure SCO buffers are available.
   settings.synchronous_data_packet_length = 6;
   settings.total_num_synchronous_data_packets = 2;
   // Enable SCO flow control command.
-  constexpr size_t flow_control_enable_octet = 10;
-  settings.supported_commands[flow_control_enable_octet] |=
-      static_cast<uint8_t>(
-          hci_spec::SupportedCommand::kWriteSynchronousFlowControlEnable);
+  settings.SupportedCommandsView()
+      .write_synchronous_flow_control_enable()
+      .Write(true);
   test_device()->set_settings(settings);
 
   bool success = false;
@@ -1520,12 +1552,10 @@ TEST_F(AdapterTest,
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  constexpr size_t flow_control_command_byte = 10;
-  constexpr uint8_t disable_flow_control_mask = ~static_cast<uint8_t>(
-      hci_spec::SupportedCommand::kWriteSynchronousFlowControlEnable);
-  settings.supported_commands[flow_control_command_byte] &=
-      disable_flow_control_mask;
-  settings.le_acl_data_packet_length = 5;
+  settings.SupportedCommandsView()
+      .write_synchronous_flow_control_enable()
+      .Write(false);
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   // Ensure SCO buffers are available.
   settings.synchronous_data_packet_length = 6;
@@ -1545,16 +1575,15 @@ TEST_F(AdapterTest, ScoDataChannelNotInitializedBecauseBufferInfoNotAvailable) {
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   // Ensure SCO buffers are not available.
-  settings.synchronous_data_packet_length = 0;
+  settings.synchronous_data_packet_length = 1;
   settings.total_num_synchronous_data_packets = 0;
   // Enable SCO flow control command.
-  constexpr size_t flow_control_enable_octet = 10;
-  settings.supported_commands[flow_control_enable_octet] |=
-      static_cast<uint8_t>(
-          hci_spec::SupportedCommand::kWriteSynchronousFlowControlEnable);
+  settings.SupportedCommandsView()
+      .write_synchronous_flow_control_enable()
+      .Write(true);
   test_device()->set_settings(settings);
 
   bool success = false;
@@ -1571,16 +1600,15 @@ TEST_F(AdapterScoAndIsoDisabledTest,
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   // Ensure SCO buffers are available.
   settings.synchronous_data_packet_length = 6;
   settings.total_num_synchronous_data_packets = 2;
   // Enable SCO flow control command.
-  constexpr size_t flow_control_enable_octet = 10;
-  settings.supported_commands[flow_control_enable_octet] |=
-      static_cast<uint8_t>(
-          hci_spec::SupportedCommand::kWriteSynchronousFlowControlEnable);
+  settings.SupportedCommandsView()
+      .write_synchronous_flow_control_enable()
+      .Write(true);
   test_device()->set_settings(settings);
 
   bool success = false;
@@ -1644,7 +1672,7 @@ TEST_F(AdapterTest, InitializeWriteSecureConnectionsHostSupport) {
       static_cast<uint64_t>(hci_spec::LMPFeature::kExtendedFeatures);
   settings.lmp_features_page1 |= static_cast<uint64_t>(
       hci_spec::LMPFeature::kSecureConnectionsHostSupport);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   test_device()->set_settings(settings);
 
@@ -1667,20 +1695,13 @@ void AdapterTest::GetSupportedDelayRangeHelper(
   // Define minimum required settings for an LE controller
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
 
   // Enable or disable the "Read Local Supported Controller Delay" command
-  constexpr size_t kReadLocalSupportedControllerDelayOctet = 45;
-  if (supported) {
-    settings.supported_commands[kReadLocalSupportedControllerDelayOctet] |=
-        static_cast<uint8_t>(
-            hci_spec::SupportedCommand::kReadLocalSupportedControllerDelay);
-  } else {
-    settings.supported_commands[kReadLocalSupportedControllerDelayOctet] &=
-        ~static_cast<uint8_t>(
-            hci_spec::SupportedCommand::kReadLocalSupportedControllerDelay);
-  }
+  settings.SupportedCommandsView()
+      .read_local_supported_controller_delay()
+      .Write(supported);
 
   test_device()->set_settings(settings);
 

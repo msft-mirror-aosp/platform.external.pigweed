@@ -25,6 +25,8 @@ _INT32_MAX = 2**31 - 1
 _UINT32_MAX = 2**32 - 1
 NESTED_TOKEN_PREFIX = '$'
 NESTED_TOKEN_BASE_PREFIX = '#'
+NESTED_DOMAIN_START_PREFIX = '{'
+NESTED_DOMAIN_END_PREFIX = '}'
 
 
 def _zig_zag_encode(value: int) -> int:
@@ -102,8 +104,9 @@ def encode_token_and_args(
     return struct.pack('<I', token) + encode_args(*args)
 
 
-def prefixed_base64(data: bytes, prefix: str = '$') -> str:
+def prefixed_base64(data: bytes, prefix: str | bytes = '$') -> str:
     """Encodes a tokenized message as prefixed Base64."""
+    prefix = prefix if isinstance(prefix, str) else prefix.decode()
     return prefix + base64.b64encode(data).decode()
 
 

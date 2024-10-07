@@ -32,6 +32,10 @@
 #include "pw_thread/yield.h"
 #include "pw_unit_test/framework.h"
 
+// TODO: https://pwbug.dev/365161669 - Express joinability as a build-system
+// constraint.
+#if PW_THREAD_JOINING_ENABLED
+
 namespace {
 
 // Test fixtures.
@@ -85,7 +89,7 @@ class Background final {
 
   Background(pw::Allocator& allocator, uint64_t seed, size_t iterations)
       : background_(allocator, seed, iterations) {
-    background_thread_ = pw::thread::Thread(context_.options(), background_);
+    background_thread_ = pw::Thread(context_.options(), background_);
   }
 
   ~Background() {
@@ -101,8 +105,7 @@ class Background final {
   }
 
  private:
-  struct TestHarness
-      : public pw::allocator::test::TestHarness<kBackgroundRequests> {
+  struct TestHarness : public pw::allocator::test::TestHarness {
     pw::Allocator* allocator = nullptr;
     pw::Allocator* Init() override { return allocator; }
   };
@@ -141,7 +144,7 @@ class Background final {
   } background_;
 
   pw::thread::test::TestThreadContext context_;
-  pw::thread::Thread background_thread_;
+  pw::Thread background_thread_;
 };
 
 // Unit tests.
@@ -305,3 +308,5 @@ TEST(SynchronizedAllocatorTest, GenerateRequestsMutex) {
 }
 
 }  // namespace
+
+#endif  // PW_THREAD_JOINING_ENABLED

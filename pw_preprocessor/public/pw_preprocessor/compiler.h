@@ -28,6 +28,32 @@
 /// @{
 
 /// Marks a struct or class as packed.
+///
+/// Use packed structs with extreme caution! Packed structs are rarely needed.
+/// Instead, define the struct and `static_assert` to verify that the size and
+/// alignement are as expected.
+///
+/// Packed structs should only be used to avoid standard padding or to force
+/// unaligned members when describing in-memory or wire format data structures.
+/// Packed struct members should NOT be accessed directly because they may be
+/// unaligned. Instead, `memcpy` the fields into variables. For example:
+///
+/// @code{.cpp}
+///   PW_PACKED(struct) PackedStruct {
+///     uint8_t a;
+///     uint32_t b;
+///     uint16_t c;
+///   };
+///
+///   void UsePackedStruct(const PackedStruct& packed_struct) {
+///     uint8_t a;
+///     uint32_t b;
+///     uint16_t c;
+///     std::memcpy(&a, &packed_struct.a, sizeof(a));
+///     std::memcpy(&b, &packed_struct.b, sizeof(b));
+///     std::memcpy(&c, &packed_struct.c, sizeof(c));
+///   }
+/// @endcode
 #define PW_PACKED(declaration) declaration __attribute__((packed))
 
 /// Marks a function or object as used, ensuring code for it is generated.
@@ -181,6 +207,15 @@
 #else
 #define PW_MODIFY_DIAGNOSTIC_GCC(kind, option) \
   PW_MODIFY_DIAGNOSTIC(kind, option)
+#endif  // __clang__
+
+/// Applies ``PW_MODIFY_DIAGNOSTIC`` only for Clang. This is useful for warnings
+/// that aren't supported by or don't need to be changed in other compilers.
+#ifdef __clang__
+#define PW_MODIFY_DIAGNOSTIC_CLANG(kind, option) \
+  PW_MODIFY_DIAGNOSTIC(kind, option)
+#else
+#define PW_MODIFY_DIAGNOSTIC_CLANG(kind, option) _PW_REQUIRE_SEMICOLON
 #endif  // __clang__
 
 /// Expands to a `_Pragma` with the contents as a string. `_Pragma` must take a

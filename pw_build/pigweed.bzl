@@ -50,6 +50,7 @@ def pw_facade(name, srcs = None, backend = None, **kwargs):
         )
 
     facade_kwargs = dict(**kwargs)
+    facade_kwargs["textual_hdrs"] = facade_kwargs.pop("hdrs", [])
 
     # A facade has no srcs, so it can only have public deps. Don't specify any
     # implementation_deps on the facade target.
@@ -64,13 +65,6 @@ def pw_facade(name, srcs = None, backend = None, **kwargs):
         name = name,
         srcs = srcs,
         **kwargs
-    )
-
-    # For simplifying the migration to this macro only. Do not depend on this
-    # target from new code: depend directly on the .facade target instead.
-    native.alias(
-        name = name + "_facade",
-        actual = ":" + name + ".facade",
     )
 
 def pw_cc_binary(**kwargs):

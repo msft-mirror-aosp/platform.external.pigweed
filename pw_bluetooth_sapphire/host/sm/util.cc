@@ -17,6 +17,7 @@
 #include <openssl/aes.h>
 #include <openssl/cmac.h>
 #include <pw_bytes/endian.h>
+#include <pw_preprocessor/compiler.h>
 
 #include <algorithm>
 #include <optional>
@@ -30,8 +31,6 @@
 #include "pw_bluetooth_sapphire/internal/host/sm/error.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/smp.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
-
-#pragma clang diagnostic ignored "-Wswitch-enum"
 
 namespace bt::sm::util {
 namespace {
@@ -205,16 +204,23 @@ PairingMethod SelectPairingMethod(
       break;
 
     case IOCapability::kDisplayOnly:
+      PW_MODIFY_DIAGNOSTICS_PUSH();
+      PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
       switch (peer_ioc) {
         case IOCapability::kKeyboardOnly:
         case IOCapability::kKeyboardDisplay:
           return PairingMethod::kPasskeyEntryDisplay;
-        default:
+        case IOCapability::kDisplayOnly:
+        case IOCapability::kDisplayYesNo:
+        case IOCapability::kNoInputNoOutput:
           break;
       }
+      PW_MODIFY_DIAGNOSTICS_POP();
       break;
 
     case IOCapability::kDisplayYesNo:
+      PW_MODIFY_DIAGNOSTICS_PUSH();
+      PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
       switch (peer_ioc) {
         case IOCapability::kDisplayYesNo:
           return sec_conn ? PairingMethod::kNumericComparison
@@ -224,15 +230,19 @@ PairingMethod SelectPairingMethod(
                           : PairingMethod::kPasskeyEntryDisplay;
         case IOCapability::kKeyboardOnly:
           return PairingMethod::kPasskeyEntryDisplay;
-        default:
+        case IOCapability::kDisplayOnly:
+        case IOCapability::kNoInputNoOutput:
           break;
       }
+      PW_MODIFY_DIAGNOSTICS_POP();
       break;
 
     case IOCapability::kKeyboardOnly:
       return PairingMethod::kPasskeyEntryInput;
 
     case IOCapability::kKeyboardDisplay:
+      PW_MODIFY_DIAGNOSTICS_PUSH();
+      PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
       switch (peer_ioc) {
         case IOCapability::kKeyboardOnly:
           return PairingMethod::kPasskeyEntryDisplay;
@@ -241,9 +251,11 @@ PairingMethod SelectPairingMethod(
         case IOCapability::kDisplayYesNo:
           return sec_conn ? PairingMethod::kNumericComparison
                           : PairingMethod::kPasskeyEntryInput;
-        default:
+        case IOCapability::kKeyboardDisplay:
+        case IOCapability::kNoInputNoOutput:
           break;
       }
+      PW_MODIFY_DIAGNOSTICS_POP();
 
       // If both devices have KeyboardDisplay then use Numeric Comparison
       // if S.C. is supported. Otherwise, the initiator always displays and the

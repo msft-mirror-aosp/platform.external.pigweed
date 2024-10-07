@@ -171,6 +171,11 @@ enum OpCode:
   IO_CAPABILITY_REQUEST_NEGATIVE_REPLY                         = 0x0434
     -- IO Capability Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
 
+  ### Link Policy Commands - Core Spec v5.4, Part E, Section 7.32 (OGF 0x02)
+
+  SNIFF_MODE                                                   = 0x0803
+    -- Sniff Mode Command
+
   ### Controller & Baseband Commands - Core Spec v5.0 Vol 2, Part E, Section 7.3 (OGF 0x03)
 
   SET_EVENT_MASK                                               = 0x0C01
@@ -1100,6 +1105,35 @@ enum PinType:
   [maximum_bits: 8]
   VARIABLE = 0x00
   FIXED    = 0x01
+
+
+enum InquiryScanType:
+  [maximum_bits: 8]
+  STANDARD   = 0x00
+    -- Standard scan (Default) (Mandatory)
+
+  INTERLACED = 0x01
+
+
+enum InquiryMode:
+  [maximum_bits: 8]
+  STANDARD = 0x00
+    -- Standard Inquiry Result format (default)
+
+  RSSI     = 0x01
+    -- Inquiry Result format with RSSI
+
+  EXTENDED = 0x02
+    -- Inquiry Result format with RSSI or EIR format
+
+
+enum PageScanType:
+  [maximum_bits: 8]
+  STANDARD_SCAN   = 0x00
+    -- Standard scan (default) (mandatory)
+
+  INTERLACED_SCAN = 0x01
+    -- Interlaced scan (optional)
 
 
 struct LinkKey:

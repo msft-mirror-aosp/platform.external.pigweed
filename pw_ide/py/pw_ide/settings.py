@@ -26,15 +26,16 @@ from pw_config_loader.yaml_config_loader_mixin import YamlConfigLoaderMixin
 env = pigweed_environment()
 env_vars = vars(env)
 
-PW_PROJECT_ROOT = (
+PW_PROJECT_ROOT = Path(
     env.PW_PROJECT_ROOT if env.PW_PROJECT_ROOT is not None else os.getcwd()
 )
 
 PW_IDE_DIR_NAME = '.pw_ide'
-PW_IDE_DEFAULT_DIR = Path(PW_PROJECT_ROOT) / PW_IDE_DIR_NAME
 
 _DEFAULT_BUILD_DIR_NAME = 'out'
-_DEFAULT_BUILD_DIR = Path(PW_PROJECT_ROOT) / _DEFAULT_BUILD_DIR_NAME
+_DEFAULT_BUILD_DIR = PW_PROJECT_ROOT / _DEFAULT_BUILD_DIR_NAME
+
+_DEFAULT_WORKSPACE_ROOT = PW_PROJECT_ROOT
 
 _DEFAULT_TARGET_INFERENCE = '?'
 
@@ -56,17 +57,18 @@ _DEFAULT_CONFIG: dict[str, Any] = {
     'compdb_gen_cmd': None,
     'compdb_search_paths': [_DEFAULT_BUILD_DIR_NAME],
     'default_target': None,
+    'workspace_root': _DEFAULT_WORKSPACE_ROOT,
     'editors': _DEFAULT_SUPPORTED_EDITORS,
     'sync': ['pw --no-banner ide cpp --process'],
     'targets_exclude': [],
     'targets_include': [],
     'target_inference': _DEFAULT_TARGET_INFERENCE,
-    'working_dir': PW_IDE_DEFAULT_DIR,
+    'working_dir': _DEFAULT_WORKSPACE_ROOT / PW_IDE_DIR_NAME,
 }
 
-_DEFAULT_PROJECT_FILE = Path('$PW_PROJECT_ROOT/.pw_ide.yaml')
-_DEFAULT_PROJECT_USER_FILE = Path('$PW_PROJECT_ROOT/.pw_ide.user.yaml')
-_DEFAULT_USER_FILE = Path('$HOME/.pw_ide.yaml')
+_DEFAULT_PROJECT_FILE = PW_PROJECT_ROOT / '.pw_ide.yaml'
+_DEFAULT_PROJECT_USER_FILE = PW_PROJECT_ROOT / '.pw_ide.user.yaml'
+_DEFAULT_USER_FILE = Path.home() / '.pw_ide.yaml'
 
 
 def _expand_any_vars(input_path: Path) -> Path:
@@ -96,20 +98,22 @@ def _expand_any_vars_str(input_path: str) -> str:
     return str(_expand_any_vars(Path(input_path)))
 
 
-def _parse_dir_path(input_path_str: str) -> Path:
+def _parse_dir_path(input_path_str: str, workspace_root: Path) -> Path:
     if (path := Path(input_path_str)).is_absolute():
         return path
 
-    return Path.cwd() / path
+    return (workspace_root / path).resolve()
 
 
 def _parse_compdb_search_path(
-    input_data: str | tuple[str, str], default_inference: str
+    input_data: str | tuple[str, str],
+    default_inference: str,
+    workspace_root: Path,
 ) -> tuple[Path, str]:
     if isinstance(input_data, (tuple, list)):
-        return _parse_dir_path(input_data[0]), input_data[1]
+        return _parse_dir_path(input_data[0], workspace_root), input_data[1]
 
-    return _parse_dir_path(input_data), default_inference
+    return _parse_dir_path(input_data, workspace_root), default_inference
 
 
 class PigweedIdeSettings(YamlConfigLoaderMixin):
@@ -133,6 +137,10 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
             environment_var='PW_IDE_CONFIG_FILE',
         )
 
+        # YamlConfigLoaderMixin only conditionally assigns this, but we rely
+        # on it later, so we just extra assign it here.
+        self.project_file = project_file  # type: ignore
+
     def __repr__(self) -> str:
         return str(
             {
@@ -153,7 +161,9 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         """
         return Path(
             _expand_any_vars_str(
-                self._config.get('working_dir', PW_IDE_DEFAULT_DIR)
+                self._config.get(
+                    'working_dir', self.workspace_root / PW_IDE_DIR_NAME
+                )
             )
         )
 
@@ -182,9 +192,14 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
 
         Finally, the directories can be concrete paths, or they can be globs
         that expand to multiple paths.
+
+        Note that relative directory paths will be resolved relative to the
+        workspace root.
         """
         return [
-            _parse_compdb_search_path(search_path, self.target_inference)
+            _parse_compdb_search_path(
+                search_path, self.target_inference, self.workspace_root
+            )
             for search_path in self._config.get(
                 'compdb_search_paths', [_DEFAULT_BUILD_DIR]
             )
@@ -317,17 +332,25 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
         return self._config.get('clangd_alternate_path', None)
 
     @property
-    def clangd_additional_query_drivers(self) -> list[str]:
+    def clangd_additional_query_drivers(self) -> list[str] | None:
         """Additional query driver paths that clangd should use.
 
         By default, ``pw_ide`` supplies driver paths for the toolchains included
         in Pigweed. If you are using toolchains that are not supplied by
         Pigweed, you should include path globs to your toolchains here. These
         paths will be given higher priority than the Pigweed toolchain paths.
+
+        If you want to omit the query drivers argument altogether, set this to
+        ``null``.
         """
         return self._config.get('clangd_additional_query_drivers', list())
 
-    def clangd_query_drivers(self, host_clang_cc_path: Path) -> list[str]:
+    def clangd_query_drivers(
+        self, host_clang_cc_path: Path
+    ) -> list[str] | None:
+        if self.clangd_additional_query_drivers is None:
+            return None
+
         drivers = [
             *[
                 _expand_any_vars_str(p)
@@ -342,8 +365,67 @@ class PigweedIdeSettings(YamlConfigLoaderMixin):
 
         return drivers
 
-    def clangd_query_driver_str(self, host_clang_cc_path: Path) -> str:
-        return ','.join(self.clangd_query_drivers(host_clang_cc_path))
+    def clangd_query_driver_str(self, host_clang_cc_path: Path) -> str | None:
+        clangd_query_drivers = self.clangd_query_drivers(host_clang_cc_path)
+
+        if clangd_query_drivers is None:
+            return None
+
+        return ','.join(clangd_query_drivers)
+
+    @property
+    def workspace_root(self) -> Path:
+        """The root directory of the IDE workspace.
+
+        In most cases, the IDE workspace directory is also your Pigweed project
+        root; that's the default, and if that's the case, this you can omit this
+        configuration.
+
+        If your project has a structure where the directory you open in your
+        IDE is *not* the Pigweed project root directory, you can specify the
+        workspace root directory here to ensure that IDE support files are
+        put in the right place.
+
+        For example, given this directory structure:
+
+        .. code-block::
+
+           my_project
+           |
+           ├- third_party
+           ├- docs
+           ├- src
+           |  ├- pigweed.json
+           |  └- ... all other project source files
+           |
+           └- pigweed
+               └ ... upstream Pigweed source, e.g. a submodule
+
+        In this case ```my_project/src/``` is the Pigweed project root, but
+        ```my_project/``` is the workspace root directory you will open in your
+        IDE.
+
+        A relative path will be resolved relative to the directory in which the
+        ``.pw_ide.yaml`` config file is located.
+        """
+        workspace_root = Path(
+            self._config.get('workspace_root', _DEFAULT_WORKSPACE_ROOT)
+        )
+
+        project_file_exists = (
+            isinstance(self.project_file, Path) and self.project_file.exists()
+        )
+
+        config_file_root = (
+            cast(Path, self.project_file)
+            if project_file_exists
+            else _DEFAULT_PROJECT_FILE
+        ).parent
+
+        if workspace_root.is_absolute():
+            return workspace_root
+
+        return config_file_root.resolve() / workspace_root
 
     @property
     def editors(self) -> dict[str, bool]:

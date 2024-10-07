@@ -12,13 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "@fuchsia_sdk//fuchsia:defs.bzl",
-    "fuchsia_cc_test",
-    "fuchsia_unittest_package",
-)
+load("@pigweed//pw_build:pigweed.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
+
+exports_files(glob(["**/*"]))
 
 cc_library(
     name = "definitions",
@@ -27,9 +25,6 @@ cc_library(
         "error.cc",
         "service_record.cc",
     ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
@@ -44,9 +39,6 @@ cc_library(
         "server.cc",
         "service_discoverer.cc",
     ],
-    # TODO: https://pwbug.dev/313665184 - Re-enable for all platforms once Mac
-    # builder issue is resolved.
-    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire:public",
@@ -55,9 +47,8 @@ cc_library(
     ],
 )
 
-fuchsia_cc_test(
+pw_cc_test(
     name = "sdp_test",
-    testonly = True,
     srcs = [
         "client_test.cc",
         "data_element_test.cc",
@@ -66,24 +57,11 @@ fuchsia_cc_test(
         "service_discoverer_test.cc",
         "service_record_test.cc",
     ],
-    death_unittest = True,
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":sdp",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/l2cap:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-)
-
-fuchsia_unittest_package(
-    name = "test_pkg",
-    package_name = "sdp_tests",
-    testonly = True,
-    fuchsia_api_level = "HEAD",
-    unit_tests = [
-        ":sdp_test",
-    ],
-    visibility = ["//visibility:public"],
 )

@@ -27,20 +27,16 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#include <string_view>
 
 #include "pw_bytes/alignment.h"
 #include "pw_polyfill/standard.h"
 #include "pw_preprocessor/compiler.h"
 #include "pw_preprocessor/util.h"
 #include "pw_span/span.h"
+#include "pw_string/string_builder.h"
 #include "pw_unit_test/config.h"
 #include "pw_unit_test/event_handler.h"
-
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
-#include <string_view>
-
-#include "pw_string/string_builder.h"
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 /// @def GTEST_TEST
 /// Alias for `TEST`.
@@ -254,10 +250,10 @@
 
 /// @def ADD_FAILURE
 /// Generates a non-fatal failure with a generic message.
-#define ADD_FAILURE()                                                    \
-  ::pw::unit_test::internal::Framework::Get().CurrentTestExpectSimple(   \
-      "(line is not executed)", "(line was executed)", __LINE__, false); \
-  _PW_UNIT_TEST_LOG
+#define ADD_FAILURE()                                                      \
+  ::pw::unit_test::internal::ReturnHelper() =                              \
+      ::pw::unit_test::internal::Framework::Get().CurrentTestExpectSimple( \
+          "(line is not executed)", "(line was executed)", __LINE__, false)
 
 /// @def GTEST_FAIL
 ///
@@ -267,9 +263,10 @@
 /// @def GTEST_SKIP
 /// Skips test at runtime. Skips are neither successful nor failed. They
 /// abort the current function.
-#define GTEST_SKIP()                                                     \
-  ::pw::unit_test::internal::Framework::Get().CurrentTestSkip(__LINE__); \
-  return _PW_UNIT_TEST_LOG
+#define GTEST_SKIP()                                                      \
+  return ::pw::unit_test::internal::ReturnHelper() =                      \
+             ::pw::unit_test::internal::Framework::Get().CurrentTestSkip( \
+                 __LINE__)
 
 /// @def FAIL
 /// Generates a fatal failure with a generic message.
@@ -285,8 +282,7 @@
 /// Alias of `SUCCEED`.
 #define GTEST_SUCCEED()                                                \
   ::pw::unit_test::internal::Framework::Get().CurrentTestExpectSimple( \
-      "(success)", "(success)", __LINE__, true);                       \
-  _PW_UNIT_TEST_LOG
+      "(success)", "(success)", __LINE__, true)
 
 /// @def SUCCEED
 ///
@@ -328,9 +324,6 @@
   EXPECT_DEATH_IF_SUPPORTED(statement, regex)
 
 namespace pw {
-
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
-
 namespace string {
 
 // This function is used to print unknown types that are used in EXPECT or
@@ -391,8 +384,6 @@ StatusWithSize UnknownTypeToString(const T& value, span<char> buffer) {
 
 }  // namespace string
 
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
-
 namespace unit_test {
 namespace internal {
 
@@ -416,6 +407,30 @@ constexpr size_t MaxPaddingNeededToRaiseAlignment(size_t current_align,
   }
   return new_align - current_align;
 }
+
+// GoogleTest supports stream-style messages, but pw_unit_test does not. This
+// class accepts and ignores C++ <<-style logs.
+class FailureMessageAdapter {
+ public:
+  constexpr FailureMessageAdapter() = default;
+
+  template <typename T>
+  constexpr const FailureMessageAdapter& operator<<(const T&) const {
+    return *this;
+  }
+};
+
+// Used to ignore a stream-style message in an assert, which returns. This uses
+// a similar approach as upstream GoogleTest, but drops any messages.
+class ReturnHelper {
+ public:
+  constexpr ReturnHelper() = default;
+
+  // Return void so that assigning to ReturnHelper converts the log expression
+  // to void without blocking the stream-style log with a closing parenthesis.
+  // NOLINTNEXTLINE(misc-unconventional-assign-operator)
+  constexpr void operator=(const FailureMessageAdapter&) const {}
+};
 
 // Singleton test framework class responsible for managing and running test
 // cases. This implementation is internal to Pigweed test; free functions
@@ -450,14 +465,12 @@ class Framework {
   // are sent to the registered event handler, if any.
   int RunAllTests();
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
   // Only run test suites whose names are included in the provided list during
   // the next test run. This is C++17 only; older versions of C++ will run all
   // non-disabled tests.
   void SetTestSuitesToRun(span<std::string_view> test_suites) {
     test_suites_to_run_ = test_suites;
   }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
   bool ShouldRunTest(const TestInfo& test_info) const;
 
@@ -512,12 +525,12 @@ class Framework {
   }
 
   template <typename Expectation, typename Lhs, typename Rhs, typename Epsilon>
-  bool CurrentTestExpect(Expectation expectation,
-                         const Lhs& lhs,
-                         const Rhs& rhs,
-                         const Epsilon& epsilon,
-                         const char* expression,
-                         int line) {
+  [[nodiscard]] bool CurrentTestExpect(Expectation expectation,
+                                       const Lhs& lhs,
+                                       const Rhs& rhs,
+                                       const Epsilon& epsilon,
+                                       const char* expression,
+                                       int line) {
     // Size of the buffer into which to write the string with the evaluated
     // version of the arguments. This buffer is allocated on the unit test's
     // stack, so it shouldn't be too large.
@@ -527,16 +540,12 @@ class Framework {
     const bool success = expectation(lhs, rhs, epsilon);
     CurrentTestExpectSimple(
         expression,
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
         MakeString<kExpectationBufferSizeBytes>(ConvertForPrint(lhs),
                                                 " within ",
                                                 ConvertForPrint(epsilon),
                                                 " of ",
                                                 ConvertForPrint(rhs))
             .c_str(),
-#else
-        "(evaluation requires C++17)",
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
         line,
         success);
     return success;
@@ -559,29 +568,26 @@ class Framework {
     const bool success = expectation(lhs, rhs);
     CurrentTestExpectSimple(
         expression,
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
         MakeString<kExpectationBufferSizeBytes>(ConvertForPrint(lhs),
                                                 ' ',
                                                 expectation_string,
                                                 ' ',
                                                 ConvertForPrint(rhs))
             .c_str(),
-#else
-        "(evaluation requires C++17)",
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
         line,
         success);
     return success;
   }
 
   // Skips the current test and dispatches an event for it.
-  void CurrentTestSkip(int line);
+  ::pw::unit_test::internal::FailureMessageAdapter CurrentTestSkip(int line);
 
   // Dispatches an event indicating the result of an expectation.
-  void CurrentTestExpectSimple(const char* expression,
-                               const char* evaluated_expression,
-                               int line,
-                               bool success);
+  ::pw::unit_test::internal::FailureMessageAdapter CurrentTestExpectSimple(
+      const char* expression,
+      const char* evaluated_expression,
+      int line,
+      bool success);
 
  private:
   // Convert char* to void* so that they are printed as pointers instead of
@@ -634,11 +640,7 @@ class Framework {
   // Handler to which to dispatch test events.
   EventHandler* event_handler_;
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
   span<std::string_view> test_suites_to_run_;
-#else
-  span<const char*> test_suites_to_run_;  // Always empty in C++14.
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
   alignas(std::max_align_t) std::byte memory_pool_[config::kMemoryPoolSize];
 };
@@ -755,42 +757,11 @@ constexpr bool HasNoUnderscores(const char* suite) {
   return true;
 }
 
-// GoogleTest supports stream-style messages, but pw_unit_test does not. This
-// class accepts and ignores C++ <<-style logs. This could be replaced with
-// pw_log/glog_adapter.h.
-class IgnoreLogs {
- public:
-  constexpr IgnoreLogs() = default;
-
-  template <typename T>
-  constexpr const IgnoreLogs& operator<<(const T&) const {
-    return *this;
-  }
-};
-
-// Used to ignore a stream-style message in an assert, which returns. This uses
-// a similar approach as upstream GoogleTest, but drops any messages.
-class ReturnHelper {
- public:
-  constexpr ReturnHelper() = default;
-
-  // Return void so that assigning to ReturnHelper converts the log expression
-  // to void without blocking the stream-style log with a closing parenthesis.
-  // NOLINTNEXTLINE(misc-unconventional-assign-operator)
-  constexpr void operator=(const IgnoreLogs&) const {}
-};
-
-#define _PW_UNIT_TEST_LOG                     \
-  ::pw::unit_test::internal::ReturnHelper() = \
-      ::pw::unit_test::internal::IgnoreLogs()
-
 }  // namespace internal
 
-#if PW_CXX_STANDARD_IS_SUPPORTED(17)
 inline void SetTestSuitesToRun(span<std::string_view> test_suites) {
   internal::Framework::Get().SetTestSuitesToRun(test_suites);
 }
-#endif  // PW_CXX_STANDARD_IS_SUPPORTED(17)
 
 }  // namespace unit_test
 }  // namespace pw
@@ -833,13 +804,14 @@ inline void SetTestSuitesToRun(span<std::string_view> test_suites) {
                                                                             \
   void class_name::PigweedTestBody()
 
-#define _PW_TEST_ASSERT(expectation) \
-  if (!(expectation))                \
-  return _PW_UNIT_TEST_LOG
+#define _PW_TEST_ASSERT(expectation)                 \
+  if (!(expectation))                                \
+  return ::pw::unit_test::internal::ReturnHelper() = \
+             ::pw::unit_test::internal::FailureMessageAdapter()
 
 #define _PW_TEST_EXPECT(expectation) \
   if (!(expectation))                \
-  _PW_UNIT_TEST_LOG
+  ::pw::unit_test::internal::FailureMessageAdapter()
 
 #define _PW_TEST_BOOL(expr, value)                               \
   ::pw::unit_test::internal::Framework::Get().CurrentTestExpect( \

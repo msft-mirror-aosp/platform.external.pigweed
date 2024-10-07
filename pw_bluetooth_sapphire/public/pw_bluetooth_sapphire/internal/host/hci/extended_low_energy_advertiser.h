@@ -131,12 +131,12 @@ class ExtendedLowEnergyAdvertiser final : public LowEnergyAdvertiser {
       pw::bluetooth::emboss::LEExtendedAdvFragmentPreference
           fragment_preference);
 
-  void OnSetAdvertisingParamsComplete(const EventPacket& event) override;
+  void OnSetAdvertisingParamsComplete(const EmbossEventPacket& event) override;
 
   void OnCurrentOperationComplete() override;
 
   // Event handler for the HCI LE Advertising Set Terminated event
-  void OnAdvertisingSetTerminatedEvent(const EventPacket& event);
+  void OnAdvertisingSetTerminatedEvent(const EmbossEventPacket& event);
   CommandChannel::EventHandlerId event_handler_id_;
 
   AdvertisingHandleMap advertising_handle_map_;

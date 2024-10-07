@@ -44,6 +44,14 @@
       "C++"
     ]
   },
+  "pw_assert_fuchsia": {
+    "tagline": "pw_assert backend for Fuchsia",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_async": {
     "tagline": "Portable APIs for asynchronous code",
     "status": "deprecated",
@@ -58,12 +66,21 @@
       "C++17"
     ]
   },
+  "pw_async_fuchsia": {
+    "tagline": "Fuchsia backend for pw_async",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_base64": {
     "tagline": "Base64 encoding, decoding, and validating",
     "status": "stable",
     "languages": [
       "C",
-      "C++"
+      "C++",
+      "Rust"
     ]
   },
   "pw_bloat": {
@@ -138,7 +155,8 @@
     "languages": [
       "Bazel",
       "CMake",
-      "GN"
+      "GN",
+      "Rust"
     ]
   },
   "pw_build_android": {
@@ -169,7 +187,8 @@
     "tagline": "Utilities for manipulating binary data",
     "status": "stable",
     "languages": [
-      "C++"
+      "C++",
+      "Rust"
     ]
   },
   "pw_channel": {
@@ -238,6 +257,11 @@
       "C++17"
     ]
   },
+  "pw_display": {
+    "tagline": "Graphic display support and framebuffer management",
+    "status": "experimental",
+    "languages": []
+  },
   "pw_dma_mcuxpresso": {
     "tagline": "DMA helpers for MCUXpresso SDK",
     "status": "unstable",
@@ -294,13 +318,6 @@
       "C++20"
     ]
   },
-  "pw_hex_dump": {
-    "tagline": "Handy hexdump utilities",
-    "status": "stable",
-    "languages": [
-      "C++17"
-    ]
-  },
   "pw_hdlc": {
     "tagline": "Simple, robust, and efficient serial communication",
     "status": "stable",
@@ -309,6 +326,13 @@
       "Python",
       "C++17",
       "TypeScript"
+    ]
+  },
+  "pw_hex_dump": {
+    "tagline": "Handy hexdump utilities",
+    "status": "stable",
+    "languages": [
+      "C++17"
     ]
   },
   "pw_i2c": {
@@ -370,13 +394,22 @@
     "languages": [
       "C++",
       "Java",
-      "Python"
+      "Python",
+      "Rust"
     ]
   },
   "pw_log_android": {
     "tagline": "Android logging backend",
     "status": "unstable",
     "languages": [
+      "C++"
+    ]
+  },
+  "pw_log_fuchsia": {
+    "tagline": "Fuchsia logging backend",
+    "status": "experimental",
+    "languages": [
+      "C",
       "C++"
     ]
   },
@@ -424,18 +457,23 @@
       "C++"
     ]
   },
-  "pw_router": {
-    "tagline": "Transport-agnostic packet routing",
+  "pw_random_fuchsia": {
+    "tagline": "Fuchsia implementation of pw_random",
     "status": "experimental",
-    "languages": [
-      "C++"
-    ]
+    "languages": []
   },
   "pw_result": {
     "tagline": "Error propagation primitives: value-or-error",
     "status": "stable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_router": {
+    "tagline": "Transport-agnostic packet routing",
+    "status": "experimental",
+    "languages": [
+      "C++"
     ]
   },
   "pw_rpc": {
@@ -500,6 +538,14 @@
       "Rust"
     ]
   },
+  "pw_stream": {
+    "tagline": "A foundational interface for streaming data",
+    "status": "stable",
+    "languages": [
+      "C++",
+      "Rust"
+    ]
+  },
   "pw_string": {
     "tagline": "Efficient, easy, and safe string manipulation",
     "status": "stable",
@@ -544,6 +590,13 @@
   },
   "pw_uart": {
     "tagline": "Core interfaces for UART communication",
+    "status": "unstable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_uart_mcuxpresso": {
+    "tagline": "NXP MCUXpresso SDK implementation for pw_uart",
     "status": "unstable",
     "languages": [
       "C++"

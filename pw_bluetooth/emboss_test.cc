@@ -51,12 +51,100 @@ TEST(EmbossTest, MakeView) {
   EXPECT_EQ(view.payload().Read(), 0x03);
 }
 
+static void InitializeIsoPacket(const emboss::IsoDataFramePacketWriter& view,
+                                emboss::TsFlag ts_flag,
+                                emboss::IsoDataPbFlag pb_flag,
+                                size_t sdu_fragment_size) {
+  view.header().connection_handle().Write(0x123);
+  view.header().ts_flag().Write(ts_flag);
+  view.header().pb_flag().Write(pb_flag);
+
+  size_t optional_fields_total_size = 0;
+  if (ts_flag == emboss::TsFlag::TIMESTAMP_PRESENT) {
+    optional_fields_total_size += 4;
+  }
+
+  if ((pb_flag == emboss::IsoDataPbFlag::FIRST_FRAGMENT) ||
+      (pb_flag == emboss::IsoDataPbFlag::COMPLETE_SDU)) {
+    optional_fields_total_size += 4;
+  }
+
+  view.header().data_total_length().Write(sdu_fragment_size +
+                                          optional_fields_total_size);
+}
+
 // This definition has a mix of full-width values and bitfields and includes
 // conditional bitfields. Let's add this to verify that the structure itself
 // doesn't get changed incorrectly and that emboss' size calculation matches
 // ours.
-TEST(EmbossTest, CheckIsoHeaderSize) {
-  EXPECT_EQ(emboss::IsoDataFrameHeader::MaxSizeInBytes(), 12);
+TEST(EmbossTest, CheckIsoPacketSize) {
+  std::array<uint8_t, 2048> buffer;
+  const size_t kSduFragmentSize = 100;
+  auto view = emboss::MakeIsoDataFramePacketView(&buffer);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_NOT_PRESENT,
+                      emboss::IsoDataPbFlag::FIRST_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 4);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_NOT_PRESENT,
+                      emboss::IsoDataPbFlag::INTERMEDIATE_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_NOT_PRESENT,
+                      emboss::IsoDataPbFlag::COMPLETE_SDU,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 4);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_NOT_PRESENT,
+                      emboss::IsoDataPbFlag::LAST_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_PRESENT,
+                      emboss::IsoDataPbFlag::FIRST_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 8);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_PRESENT,
+                      emboss::IsoDataPbFlag::INTERMEDIATE_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 4);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_PRESENT,
+                      emboss::IsoDataPbFlag::COMPLETE_SDU,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 8);
+
+  InitializeIsoPacket(view,
+                      emboss::TsFlag::TIMESTAMP_PRESENT,
+                      emboss::IsoDataPbFlag::LAST_FRAGMENT,
+                      kSduFragmentSize);
+  ASSERT_TRUE(view.IntrinsicSizeInBytes().Ok());
+  EXPECT_EQ(static_cast<size_t>(view.IntrinsicSizeInBytes().Read()),
+            view.hdr_size().Read() + kSduFragmentSize + 4);
 }
 
 // Test and demonstrate various ways of reading opcodes.
@@ -174,5 +262,122 @@ TEST(EmbossTest, ReadAndWriteEventCodesInEventHeader) {
             cpp23::to_underlying(emboss::EventCode::CONNECTION_REQUEST));
 }
 
+TEST(EmbossTest, ReadCommandPayloadLength) {
+  std::array<uint8_t, 8> hci_buffer = {
+      0x4c, 0xfc, 0x05, 0x73, 0x86, 0x30, 0x00, 0x00};
+  emboss::CommandHeaderView command = emboss::MakeCommandHeaderView(
+      hci_buffer.data(), emboss::CommandHeaderView::SizeInBytes());
+  EXPECT_TRUE(command.IsComplete());
+  EXPECT_EQ(command.parameter_total_size().Read(), 5);
+}
+
+TEST(EmbossTest, ReadEventPayloadLength) {
+  std::array<uint8_t, 8> hci_buffer = {0x0e, 0x04, 0x01, 0x2e, 0xfc, 0x00};
+  emboss::EventHeaderView event = emboss::MakeEventHeaderView(
+      hci_buffer.data(), emboss::EventHeaderView::SizeInBytes());
+  EXPECT_TRUE(event.IsComplete());
+  EXPECT_EQ(event.parameter_total_size().Read(), 4);
+}
+
+TEST(EmbossTest, ReadAclPayloadLength) {
+  std::array<uint8_t, 16> hci_buffer = {0x0c,
+                                        0x00,
+                                        0x0c,
+                                        0x00,
+                                        0x08,
+                                        0x00,
+                                        0x01,
+                                        0x00,
+                                        0x06,
+                                        0x06,
+                                        0x04,
+                                        0x00,
+                                        0x5b,
+                                        0x00,
+                                        0x41,
+                                        0x00};
+  emboss::AclDataFrameHeaderView acl = emboss::MakeAclDataFrameHeaderView(
+      hci_buffer.data(), emboss::AclDataFrameHeaderView::SizeInBytes());
+  EXPECT_TRUE(acl.IsComplete());
+  EXPECT_EQ(acl.data_total_length().Read(), 12);
+}
+
+TEST(EmbossTest, ReadScoPayloadLength) {
+  std::array<uint8_t, 9> hci_buffer = {
+      0x02, 0x00, 0x06, 0xFF, 0xD3, 0x4A, 0x1B, 0x2C, 0x3D};
+  emboss::ScoDataHeaderView sco = emboss::ScoDataHeaderView(
+      hci_buffer.data(), emboss::ScoDataHeaderView::SizeInBytes());
+  EXPECT_TRUE(sco.IsComplete());
+  EXPECT_EQ(sco.data_total_length().Read(), 6);
+}
+
+TEST(EmbossTest, WriteSniffMode) {
+  std::array<uint8_t, emboss::SniffModeCommandWriter::SizeInBytes()> buffer{};
+  emboss::SniffModeCommandWriter writer =
+      emboss::MakeSniffModeCommandView(&buffer);
+  writer.header().opcode_enum().Write(emboss::OpCode::SNIFF_MODE);
+  writer.header().parameter_total_size().Write(
+      emboss::SniffModeCommandWriter::SizeInBytes() -
+      emboss::CommandHeaderWriter::SizeInBytes());
+  writer.connection_handle().Write(0x0004);
+  writer.sniff_max_interval().Write(0x0330);
+  writer.sniff_min_interval().Write(0x0190);
+  writer.sniff_attempt().Write(0x0004);
+  writer.sniff_timeout().Write(0x0001);
+  std::array<uint8_t, emboss::SniffModeCommandView::SizeInBytes()> expected{
+      // Opcode (LSB, MSB)
+      0x03,
+      0x08,
+      // Parameter Total Size
+      0x0A,
+      // Connection Handle (LSB, MSB)
+      0x04,
+      0x00,
+      // Sniff Max Interval (LSB, MSB)
+      0x30,
+      0x03,
+      // Sniff Min Interval (LSB, MSB)
+      0x90,
+      0x01,
+      // Sniff Attempt (LSB, MSB)
+      0x04,
+      0x00,
+      // Sniff Timeout (LSB, MSB)
+      0x01,
+      0x00};
+  EXPECT_EQ(buffer, expected);
+}
+
+TEST(EmbossTest, ReadSniffMode) {
+  std::array<uint8_t, emboss::SniffModeCommandView::SizeInBytes()> buffer{
+      // Opcode (LSB, MSB)
+      0x03,
+      0x08,
+      // Parameter Total Size
+      0x0A,
+      // Connection Handle (LSB, MSB)
+      0x04,
+      0x00,
+      // Sniff Max Interval (LSB, MSB)
+      0x30,
+      0x03,
+      // Sniff Min Interval (LSB, MSB)
+      0x90,
+      0x01,
+      // Sniff Attempt (LSB, MSB)
+      0x04,
+      0x00,
+      // Sniff Timeout (LSB, MSB)
+      0x01,
+      0x00};
+  emboss::SniffModeCommandView view = emboss::MakeSniffModeCommandView(&buffer);
+  EXPECT_EQ(view.header().opcode_enum().Read(), emboss::OpCode::SNIFF_MODE);
+  EXPECT_TRUE(view.header().IsComplete());
+  EXPECT_EQ(view.connection_handle().Read(), 0x0004);
+  EXPECT_EQ(view.sniff_max_interval().Read(), 0x0330);
+  EXPECT_EQ(view.sniff_min_interval().Read(), 0x0190);
+  EXPECT_EQ(view.sniff_attempt().Read(), 0x0004);
+  EXPECT_EQ(view.sniff_timeout().Read(), 0x0001);
+}
 }  // namespace
 }  // namespace pw::bluetooth

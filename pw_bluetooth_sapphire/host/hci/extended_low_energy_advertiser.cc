@@ -24,7 +24,7 @@ ExtendedLowEnergyAdvertiser::ExtendedLowEnergyAdvertiser(
     : LowEnergyAdvertiser(std::move(hci_ptr), max_advertising_data_length) {
   event_handler_id_ = hci()->command_channel()->AddLEMetaEventHandler(
       hci_spec::kLEAdvertisingSetTerminatedSubeventCode,
-      [this](const EventPacket& event) {
+      [this](const EmbossEventPacket& event) {
         OnAdvertisingSetTerminatedEvent(event);
         return CommandChannel::EventCallbackResult::kContinue;
       });
@@ -447,11 +447,16 @@ EmbossCommandPacket ExtendedLowEnergyAdvertiser::BuildRemoveAdvertisingSet(
 }
 
 void ExtendedLowEnergyAdvertiser::OnSetAdvertisingParamsComplete(
-    const EventPacket& event) {
-  BT_ASSERT(event.event_code() == hci_spec::kCommandCompleteEventCode);
+    const EmbossEventPacket& event) {
+  auto event_view = event.view<pw::bluetooth::emboss::EventHeaderView>();
+  BT_ASSERT(event_view.event_code_enum().Read() ==
+            pw::bluetooth::emboss::EventCode::COMMAND_COMPLETE);
+
+  auto cmd_complete_view =
+      event.view<pw::bluetooth::emboss::CommandCompleteEventView>();
   BT_ASSERT(
-      event.params<hci_spec::CommandCompleteEventParams>().command_opcode ==
-      hci_spec::kLESetExtendedAdvertisingParameters);
+      cmd_complete_view.command_opcode_enum().Read() ==
+      pw::bluetooth::emboss::OpCode::LE_SET_EXTENDED_ADVERTISING_PARAMETERS_V1);
 
   Result<> result = event.ToResult();
   if (bt_is_error(result,
@@ -462,13 +467,12 @@ void ExtendedLowEnergyAdvertiser::OnSetAdvertisingParamsComplete(
     return;  // full error handling done in super class, can just return here
   }
 
-  auto params = event.return_params<
-      hci_spec::LESetExtendedAdvertisingParametersReturnParams>();
-  BT_ASSERT(params);
-
+  auto view = event.view<
+      pw::bluetooth::emboss::
+          LESetExtendedAdvertisingParametersCommandCompleteEventView>();
   if (staged_advertising_parameters_.include_tx_power_level) {
     staged_advertising_parameters_.selected_tx_power_level =
-        params->selected_tx_power;
+        view.selected_tx_power().Read();
   }
 }
 
@@ -599,11 +603,7 @@ void ExtendedLowEnergyAdvertiser::OnIncomingConnection(
 // HCI_LE_Advertising_Set_Terminated event, we have all the information
 // necessary to create a connection object within the Host layer.
 void ExtendedLowEnergyAdvertiser::OnAdvertisingSetTerminatedEvent(
-    const EventPacket& event) {
-  BT_ASSERT(event.event_code() == hci_spec::kLEMetaEventCode);
-  BT_ASSERT(event.params<hci_spec::LEMetaEventParams>().subevent_code ==
-            hci_spec::kLEAdvertisingSetTerminatedSubeventCode);
-
+    const EmbossEventPacket& event) {
   Result<> result = event.ToResult();
   if (bt_is_error(result,
                   ERROR,
@@ -613,11 +613,10 @@ void ExtendedLowEnergyAdvertiser::OnAdvertisingSetTerminatedEvent(
     return;
   }
 
-  auto params = event.subevent_params<
-      hci_spec::LEAdvertisingSetTerminatedSubeventParams>();
-  BT_ASSERT(params);
+  auto params = event.view<pwemb::LEAdvertisingSetTerminatedSubeventView>();
 
-  hci_spec::ConnectionHandle connection_handle = params->connection_handle;
+  hci_spec::ConnectionHandle connection_handle =
+      params.connection_handle().Read();
   auto staged_parameters_node = staged_connections_.extract(connection_handle);
 
   if (staged_parameters_node.empty()) {
@@ -625,11 +624,11 @@ void ExtendedLowEnergyAdvertiser::OnAdvertisingSetTerminatedEvent(
            "hci-le",
            "advertising set terminated event, staged params not available "
            "(handle: %d)",
-           params->adv_handle);
+           params.advertising_handle().Read());
     return;
   }
 
-  hci_spec::AdvertisingHandle adv_handle = params->adv_handle;
+  hci_spec::AdvertisingHandle adv_handle = params.advertising_handle().Read();
   std::optional<DeviceAddress> opt_local_address =
       advertising_handle_map_.GetAddress(adv_handle);
 

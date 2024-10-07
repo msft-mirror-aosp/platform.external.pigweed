@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:05eed8f6252e2dd6b555e0b65192ef03e2c4a276"
+        "git_revision:95b0f8fe31a992a33c040bbe3867901335c12762"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -24,7 +24,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:7fdd96a48def7f0d7909d045ce8afffb4d04ebbc"
+        "git_revision:b23e3858e5eabaad1b7f7a1fa1c2e5934b8ff7b4"
       ]
     },
     {
@@ -85,7 +85,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:48090b11b52bd841fa89082cdaa4c139f11995f7"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -95,7 +95,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:48090b11b52bd841fa89082cdaa4c139f11995f7"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -105,7 +105,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:48090b11b52bd841fa89082cdaa4c139f11995f7"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -115,7 +115,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:48090b11b52bd841fa89082cdaa4c139f11995f7"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -125,7 +125,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:48090b11b52bd841fa89082cdaa4c139f11995f7"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -138,7 +138,19 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:3942254d00bf95cd5920980f85ebea57a1e6ce2a"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust_bindgen/${platform}",
+      "platforms": [
+        "linux-amd64",
+        "mac-amd64",
+        "mac-arm64"
+      ],
+      "subdir": "rust_bindgen",
+      "tags": [
+        "git_revision:f518815cc14a7f8c292964bb37179a1070d7e18a"
       ]
     },
     {

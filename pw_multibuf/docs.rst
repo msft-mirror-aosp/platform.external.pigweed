@@ -51,7 +51,7 @@ Most users of ``pw_multibuf`` will start by allocating a ``MultiBuf`` using
 a ``MultiBufAllocator`` class, such as the ``SimpleAllocator``.
 
 ``MultiBuf`` s consist of a number of ``Chunk`` s of contiguous memory regions.
-``Chunk`` s can be grown or shrunk which allows ``MultiBuf``s to be grown or
+``Chunk`` s can be grown or shrunk which allows ``MultiBuf`` s to be grown or
 shrunk. This allows, for example, lower layers to reserve part of a
 ``MultiBuf`` for a header or footer (see ``Chunk`` for more details).
 
@@ -66,6 +66,9 @@ iterator available through the ``Chunks()`` method. It allows extracting a
    :members:
 
 .. doxygenclass:: pw::multibuf::MultiBuf
+   :members:
+
+.. doxygenclass:: pw::multibuf::MultiBufChunks
    :members:
 
 .. doxygenclass:: pw::multibuf::MultiBufAllocator

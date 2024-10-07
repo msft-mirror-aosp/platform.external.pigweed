@@ -22,6 +22,7 @@
 #include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
+namespace {
 
 class TestServiceImpl final
     : public test::pw_rpc::nanopb::TestService::Service<TestServiceImpl> {
@@ -33,7 +34,7 @@ class TestServiceImpl final
 
   Status TestAnotherUnaryRpc(const pw_rpc_test_TestRequest&,
                              pw_rpc_test_TestResponse& response) {
-    typedef std::array<uint32_t, 3> ArgType;
+    using ArgType = std::array<uint32_t, 3>;
     // The values array needs to be kept in memory until after this method call
     // returns since the response is not encoded until after returning from this
     // method.
@@ -110,4 +111,5 @@ TEST(NanopbTestMethodContext, ResponseWithCallbacks) {
   EXPECT_EQ(9u, decoder_context.values[2]);
 }
 
+}  // namespace
 }  // namespace pw::rpc

@@ -95,7 +95,9 @@ class PigweedGnGenNinja(build.GnGenNinja):
 
 
 def build_bazel(*args, **kwargs) -> None:
-    build.bazel(*args, use_remote_cache=True, **kwargs)
+    build.bazel(
+        *args, use_remote_cache=True, strict_module_lockfile=True, **kwargs
+    )
 
 
 #
@@ -161,6 +163,15 @@ def _gn_main_build_check_targets() -> Sequence[str]:
         'python.lint',
         'pigweed_pypi_distribution',
     ]
+
+    # Since there is no mac-arm64 bloaty binary in CIPD, Arm Macs use the x86_64
+    # binary. However, Arm Macs in Pigweed CI disable Rosetta 2, so skip the
+    # 'default' build on those machines for now.
+    #
+    # TODO: b/368387791 - Add 'default' for all platforms when Arm Mac bloaty is
+    # available.
+    if platform.machine() != 'arm64' or sys.platform != 'darwin':
+        build_targets.append('default')
 
     return build_targets
 
@@ -238,6 +249,7 @@ gn_combined_build_check = PigweedGnGenNinja(
     name='gn_combined_build_check',
     doc='Run most host and device (QEMU) tests.',
     path_filter=_BUILD_FILE_FILTER,
+    packages=('emboss',),
     gn_args=dict(
         pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
         pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
@@ -359,8 +371,11 @@ gn_teensy_build = PigweedGnGenNinja(
 gn_pico_build = PigweedGnGenNinja(
     name='gn_pico_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('pico_sdk', 'freertos'),
+    packages=('pico_sdk', 'freertos', 'emboss'),
     gn_args={
+        'dir_pw_third_party_emboss': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'emboss')
+        ),
         'dir_pw_third_party_freertos': lambda ctx: '"{}"'.format(
             str(ctx.package_root / 'freertos')
         ),
@@ -610,8 +625,23 @@ def zephyr_build(ctx: PresubmitContext) -> None:
     # Produces reports at (ctx.root / 'twister_out' / 'twister*.xml')
 
 
+def assert_non_empty_directory(directory: Path) -> None:
+    if not directory.is_dir():
+        raise PresubmitFailure(f'no directory {directory}')
+
+    for _ in directory.iterdir():
+        return
+
+    raise PresubmitFailure(f'no files in {directory}')
+
+
 def docs_build(ctx: PresubmitContext) -> None:
     """Build Pigweed docs"""
+    if ctx.dry_run:
+        raise PresubmitFailure(
+            'This presubmit cannot be run in dry-run mode. '
+            'Please run with: "pw presubmit --step"'
+        )
 
     build.install_package(ctx, 'emboss')
     build.install_package(ctx, 'freertos')
@@ -629,6 +659,7 @@ def docs_build(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'build',
+        '--remote_download_outputs=all',
         '--',
         '//pw_rust:docs',
     )
@@ -708,6 +739,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(rust_docs_output_dir)
 
     # Copy doxygen html outputs.
     shutil.copytree(
@@ -716,6 +748,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(doxygen_html_output_dir)
 
     # mkdir -p the example repo output dir and copy the files over.
     examples_html_output_dir.mkdir(parents=True, exist_ok=True)
@@ -725,6 +758,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(examples_html_output_dir)
 
 
 gn_host_tools = PigweedGnGenNinja(
@@ -814,17 +848,32 @@ def bazel_test(ctx: PresubmitContext) -> None:
 
 
 def bthost_package(ctx: PresubmitContext) -> None:
+    """Builds, tests, and prepares bt_host for upload."""
     target = '//pw_bluetooth_sapphire/fuchsia:infra'
-    build_bazel(ctx, 'build', target)
-    # Override the default test_tag_filters to ensure test targets tagged
-    # "integration" are still run.
-    build_bazel(ctx, 'test', '--test_tag_filters=', f'{target}.test_all')
+    build_bazel(ctx, 'build', '--config=fuchsia', target)
+
+    # Explicitly specify TEST_UNDECLARED_OUTPUTS_DIR_OVERRIDE as that will allow
+    # `orchestrate`'s output (eg: ffx host + target logs, test stdout/stderr) to
+    # be picked up by the `save_logs` recipe module.
+    # We cannot rely on Bazel's native TEST_UNDECLARED_OUTPUTS_DIR functionality
+    # since `zip` is not available in builders. See https://pwbug.dev/362990622.
+    build_bazel(
+        ctx,
+        'run',
+        '--config=fuchsia',
+        f'{target}.test_all',
+        env=dict(
+            os.environ,
+            TEST_UNDECLARED_OUTPUTS_DIR_OVERRIDE=ctx.output_dir,
+        ),
+    )
 
     stdout_path = ctx.output_dir / 'bazel.manifest.stdout'
     with open(stdout_path, 'w') as outs:
         build_bazel(
             ctx,
             'build',
+            '--config=fuchsia',
             '--output_groups=builder_manifest',
             target,
             stdout=outs,
@@ -1465,7 +1514,9 @@ OTHER_CHECKS = (
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
     python_checks.update_upstream_python_constraints,
+    python_checks.upload_pigweed_pypi_distribution,
     python_checks.vendor_python_wheels,
+    python_checks.version_bump_pigweed_pypi_distribution,
     shell_checks.shellcheck,
     # TODO(hepler): Many files are missing from the CMake build. Add this check
     # to lintformat when the missing files are fixed.
@@ -1514,6 +1565,7 @@ _LINTFORMAT = (
     format_code.presubmit_checks(),
     inclusive_language.presubmit_check.with_filter(
         exclude=(
+            r'\bMODULE.bazel.lock$',
             r'\bgo.sum$',
             r'\bpackage-lock.json$',
             r'\byarn.lock$',

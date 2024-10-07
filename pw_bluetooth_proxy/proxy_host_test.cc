@@ -76,6 +76,7 @@ void SendReadBufferResponseFromController(ProxyHost& proxy,
       uint8_t,
       emboss::LEReadBufferSizeV2CommandCompleteEventWriter::SizeInBytes()>
       hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   emboss::LEReadBufferSizeV2CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
@@ -100,6 +101,7 @@ void SendNumberOfCompletedPackets(
           kNumConnections *
               emboss::NumberOfCompletedPacketsEventData::IntrinsicSizeInBytes()>
       hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci nocp_event{emboss::H4PacketType::EVENT, hci_arr};
   auto view = MakeEmboss<emboss::NumberOfCompletedPacketsEventWriter>(
       nocp_event.GetHciSpan());
@@ -125,6 +127,7 @@ void SendDisconnectionCompleteEvent(ProxyHost& proxy,
   std::array<uint8_t,
              emboss::DisconnectionCompleteEvent::IntrinsicSizeInBytes()>
       hci_arr_dc;
+  hci_arr_dc.fill(0);
   H4PacketWithHci dc_event{emboss::H4PacketType::EVENT, hci_arr_dc};
   auto view = MakeEmboss<emboss::DisconnectionCompleteEventWriter>(
       dc_event.GetHciSpan());
@@ -150,6 +153,7 @@ TEST(Example, ExampleUsage) {
   // Populate H4 buffer to send towards controller.
   std::array<uint8_t, emboss::InquiryCommandView::SizeInBytes() + 1>
       h4_array_from_host;
+  h4_array_from_host.fill(0);
   H4PacketWithH4 h4_packet_from_host{emboss::H4PacketType::UNKNOWN,
                                      h4_array_from_host};
   PopulateNoninteractingToControllerBuffer(h4_packet_from_host);
@@ -157,6 +161,7 @@ TEST(Example, ExampleUsage) {
   // Populate H4 buffer to send towards host.
   std::array<uint8_t, emboss::InquiryCompleteEventView::SizeInBytes() + 1>
       hci_array_from_controller;
+  hci_array_from_controller.fill(0);
   H4PacketWithHci h4_packet_from_controller{emboss::H4PacketType::UNKNOWN,
                                             hci_array_from_controller};
 
@@ -195,6 +200,7 @@ TEST(Example, ExampleUsage) {
 // Verify buffer is properly passed (contents unaltered and zero-copy).
 TEST(PassthroughTest, ToControllerPassesEqualBuffer) {
   std::array<uint8_t, emboss::InquiryCommandView::SizeInBytes() + 1> h4_arr;
+  h4_arr.fill(0);
   H4PacketWithH4 h4_packet{emboss::H4PacketType::UNKNOWN, h4_arr};
   PopulateNoninteractingToControllerBuffer(h4_packet);
 
@@ -236,6 +242,7 @@ TEST(PassthroughTest, ToControllerPassesEqualBuffer) {
 // Verify buffer is properly passed (contents unaltered and zero-copy).
 TEST(PassthroughTest, ToHostPassesEqualBuffer) {
   std::array<uint8_t, emboss::InquiryCompleteEventView::SizeInBytes()> hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   CreateNonInteractingToHostBuffer(h4_packet);
 
@@ -281,6 +288,7 @@ TEST(PassthroughTest, ToHostPassesEqualCommandComplete) {
       uint8_t,
       emboss::ReadLocalVersionInfoCommandCompleteEventWriter::SizeInBytes()>
       hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   emboss::ReadLocalVersionInfoCommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
@@ -330,6 +338,7 @@ TEST(PassthroughTest, ToHostPassesEqualCommandComplete) {
 
 TEST(BadPacketTest, BadH4TypeToControllerIsPassedOn) {
   std::array<uint8_t, emboss::InquiryCommandView::SizeInBytes() + 1> h4_arr;
+  h4_arr.fill(0);
   H4PacketWithH4 h4_packet{emboss::H4PacketType::UNKNOWN, h4_arr};
   PopulateNoninteractingToControllerBuffer(h4_packet);
   // Set back to an invalid type (after
@@ -373,6 +382,7 @@ TEST(BadPacketTest, BadH4TypeToControllerIsPassedOn) {
 
 TEST(PBadPacketTest, BadH4TypeToHostIsPassedOn) {
   std::array<uint8_t, emboss::InquiryCompleteEventView::SizeInBytes()> hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   CreateNonInteractingToHostBuffer(h4_packet);
 
@@ -468,6 +478,7 @@ TEST(BadPacketTest, EmptyBufferToHostIsPassedOn) {
 TEST(BadPacketTest, TooShortEventToHostIsPassOn) {
   std::array<uint8_t, emboss::InquiryCompleteEventView::SizeInBytes()>
       valid_hci_arr;
+  valid_hci_arr.fill(0);
   H4PacketWithHci valid_packet{emboss::H4PacketType::UNKNOWN, valid_hci_arr};
   CreateNonInteractingToHostBuffer(valid_packet);
 
@@ -515,6 +526,7 @@ TEST(BadPacketTest, TooShortCommandCompleteEventToHost) {
       uint8_t,
       emboss::ReadLocalVersionInfoCommandCompleteEventWriter::SizeInBytes()>
       valid_hci_arr;
+  valid_hci_arr.fill(0);
   H4PacketWithHci valid_packet{emboss::H4PacketType::UNKNOWN, valid_hci_arr};
   emboss::ReadLocalVersionInfoCommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
@@ -578,6 +590,7 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV1) {
       uint8_t,
       emboss::LEReadBufferSizeV1CommandCompleteEventWriter::SizeInBytes()>
       hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
@@ -589,14 +602,14 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV1) {
 
   uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&sends_called](H4PacketWithHci&& h4_packet) {
+      [&sends_called](H4PacketWithHci&& received_packet) {
         sends_called++;
-        emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+        emboss::LEReadBufferSizeV1CommandCompleteEventWriter event_view =
             MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
-                h4_packet.GetHciSpan());
+                received_packet.GetHciSpan());
         // Should reserve 2 credits from original total of 10 (so 8 left for
         // host).
-        EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 8);
+        EXPECT_EQ(event_view.total_num_le_acl_data_packets().Read(), 8);
       });
 
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
@@ -622,6 +635,7 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV2) {
       uint8_t,
       emboss::LEReadBufferSizeV2CommandCompleteEventWriter::SizeInBytes()>
       hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   emboss::LEReadBufferSizeV2CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
@@ -633,14 +647,14 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveCreditsWithLEReadBufferSizeV2) {
 
   uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&sends_called](H4PacketWithHci&& h4_packet) {
+      [&sends_called](H4PacketWithHci&& received_packet) {
         sends_called++;
-        emboss::LEReadBufferSizeV2CommandCompleteEventWriter view =
+        emboss::LEReadBufferSizeV2CommandCompleteEventWriter event_view =
             MakeEmboss<emboss::LEReadBufferSizeV2CommandCompleteEventWriter>(
-                h4_packet.GetHciSpan());
+                received_packet.GetHciSpan());
         // Should reserve 2 credits from original total of 10 (so 8 left for
         // host).
-        EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 8);
+        EXPECT_EQ(event_view.total_num_le_acl_data_packets().Read(), 8);
       });
 
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
@@ -666,6 +680,7 @@ TEST(ReserveLeAclCredits, ProxyCreditsCappedByControllerCredits) {
       uint8_t,
       emboss::LEReadBufferSizeV1CommandCompleteEventWriter::SizeInBytes()>
       hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
@@ -677,14 +692,14 @@ TEST(ReserveLeAclCredits, ProxyCreditsCappedByControllerCredits) {
 
   uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&sends_called](H4PacketWithHci&& h4_packet) {
+      [&sends_called](H4PacketWithHci&& received_packet) {
         sends_called++;
         // We want 7, but can reserve only 5 from original 5 (so 0 left for
         // host).
-        emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+        emboss::LEReadBufferSizeV1CommandCompleteEventWriter event_view =
             MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
-                h4_packet.GetHciSpan());
-        EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 0);
+                received_packet.GetHciSpan());
+        EXPECT_EQ(event_view.total_num_le_acl_data_packets().Read(), 0);
       });
 
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
@@ -707,6 +722,7 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveZeroCredits) {
       uint8_t,
       emboss::LEReadBufferSizeV1CommandCompleteEventWriter::SizeInBytes()>
       hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
@@ -718,14 +734,14 @@ TEST(ReserveLeAclCredits, ProxyCreditsReserveZeroCredits) {
 
   uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&sends_called](H4PacketWithHci&& h4_packet) {
+      [&sends_called](H4PacketWithHci&& received_packet) {
         sends_called++;
-        emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+        emboss::LEReadBufferSizeV1CommandCompleteEventWriter event_view =
             MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
-                h4_packet.GetHciSpan());
+                received_packet.GetHciSpan());
         // Should reserve 0 credits from original total of 10 (so 10 left for
         // host).
-        EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 10);
+        EXPECT_EQ(event_view.total_num_le_acl_data_packets().Read(), 10);
       });
 
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
@@ -750,6 +766,7 @@ TEST(ReserveLeAclPackets, ProxyCreditsZeroWhenHostCreditsZero) {
       uint8_t,
       emboss::LEReadBufferSizeV1CommandCompleteEventWriter::SizeInBytes()>
       hci_arr;
+  hci_arr.fill(0);
   H4PacketWithHci h4_packet{emboss::H4PacketType::UNKNOWN, hci_arr};
   emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
       CreateAndPopulateToHostEventView<
@@ -761,14 +778,14 @@ TEST(ReserveLeAclPackets, ProxyCreditsZeroWhenHostCreditsZero) {
 
   uint8_t sends_called = 0;
   pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
-      [&sends_called](H4PacketWithHci&& h4_packet) {
+      [&sends_called](H4PacketWithHci&& received_packet) {
         sends_called++;
-        emboss::LEReadBufferSizeV1CommandCompleteEventWriter view =
+        emboss::LEReadBufferSizeV1CommandCompleteEventWriter event_view =
             MakeEmboss<emboss::LEReadBufferSizeV1CommandCompleteEventWriter>(
-                h4_packet.GetHciSpan());
+                received_packet.GetHciSpan());
         // Should reserve 0 credit from original total of 0 (so 0 left for
         // host).
-        EXPECT_EQ(view.total_num_le_acl_data_packets().Read(), 0);
+        EXPECT_EQ(event_view.total_num_le_acl_data_packets().Read(), 0);
       });
 
   pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(

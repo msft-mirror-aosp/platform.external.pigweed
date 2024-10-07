@@ -127,6 +127,7 @@ system, intended to be used directly.
       ``PW_LOG_DEBUG`` style macros, which are often implemented more efficiently
       in the backend.
 
+.. _module-pw_log-levels:
 
 .. c:macro:: PW_LOG_DEBUG(fmt, ...)
 .. c:macro:: PW_LOG_INFO(fmt, ...)
@@ -246,9 +247,7 @@ source files, not headers. For example:
 .. c:macro:: PW_LOG_MODULE_NAME
 
    A string literal module name to use in logs. Log backends may attach this
-   name to log messages or use it for runtime filtering. Defaults to ``""``. The
-   ``PW_LOG_MODULE_NAME_DEFINED`` macro is set to ``1`` or ``0`` to indicate
-   whether ``PW_LOG_MODULE_NAME`` was overridden.
+   name to log messages or use it for runtime filtering. Defaults to ``""``.
 
 .. c:macro:: PW_LOG_FLAGS
 
@@ -321,6 +320,8 @@ source files, not headers. For example:
 
    At this time, only compile time filtering is supported. In the future, we
    plan to add support for runtime filtering.
+
+.. _module-pw_log-logging_attributes:
 
 ------------------
 Logging attributes

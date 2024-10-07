@@ -24,6 +24,7 @@
 #include "pw_chrono/system_clock.h"
 #include "pw_log/log.h"
 #include "pw_log/rate_limited.h"
+#include "pw_preprocessor/compiler.h"
 #include "pw_protobuf/serialized_size.h"
 #include "pw_transfer/internal/config.h"
 #include "pw_transfer/transfer.pwpb.h"
@@ -499,6 +500,9 @@ void Context::PerformInitialHandshake(const Chunk& chunk) {
 
       set_transfer_state(TransferState::kWaiting);
       EncodeAndSendChunk(start_ack_confirmation);
+      // we received a response, so we can re-up the timeout while waiting for
+      // parameters.
+      SetTimeout(chunk_timeout_);
       break;
     }
 
@@ -581,16 +585,12 @@ void Context::HandleTransmitChunk(const Chunk& chunk) {
       PW_CRASH("Never should handle chunk while inactive");
 
     case TransferState::kCompleted:
-      // If the transfer has already completed and another chunk is received,
-      // tell the other end that the transfer is over.
-      //
-      // TODO(frolv): Final status chunks should be ACKed by the other end. When
-      // that is added, this case should be updated to check if the received
-      // chunk is an ACK. If so, the transfer state can be reset to INACTIVE.
-      // Otherwise, the final status should be re-sent.
-      if (!chunk.IsInitialChunk()) {
+      // In a legacy transfer, if the transfer has already completed and another
+      // chunk is received, tell the other end that the transfer is over.
+      if (!chunk.IsInitialChunk() && status_.ok()) {
         status_ = Status::FailedPrecondition();
       }
+
       SendFinalStatusChunk();
       return;
 
@@ -749,10 +749,12 @@ void Context::TransmitNextChunk(bool retransmit_requested) {
       return;  // No data was requested, so there is nothing else to do.
     }
 
-    PW_LOG_DEBUG("Transfer %u sending chunk offset=%u size=%u",
-                 static_cast<unsigned>(session_id_),
-                 static_cast<unsigned>(offset_),
-                 static_cast<unsigned>(data.value().size()));
+    PW_LOG_EVERY_N_DURATION(PW_LOG_LEVEL_DEBUG,
+                            std::chrono::seconds(3),
+                            "Transfer %u sending chunk offset=%u size=%u",
+                            static_cast<unsigned>(session_id_),
+                            static_cast<unsigned>(offset_),
+                            static_cast<unsigned>(data.value().size()));
 
     chunk.set_payload(data.value());
     last_chunk_offset_ = offset_;
@@ -806,6 +808,13 @@ void Context::HandleReceiveChunk(const Chunk& chunk) {
     return;
   }
 
+  if (transfer_state_ == TransferState::kCompleted) {
+    // If the transfer has already completed and another chunk is received,
+    // re-send the final status chunk.
+    SendFinalStatusChunk();
+    return;
+  }
+
   if (chunk.protocol_version() != configured_protocol_version_) {
     PW_LOG_ERROR(
         "Receive transfer %u was configured to use protocol version %d "
@@ -825,15 +834,8 @@ void Context::HandleReceiveChunk(const Chunk& chunk) {
                static_cast<int>(transfer_state_));
 
     case TransferState::kCompleted:
-      // If the transfer has already completed and another chunk is received,
-      // re-send the final status chunk.
-      //
-      // TODO(frolv): Final status chunks should be ACKed by the other end. When
-      // that is added, this case should be updated to check if the received
-      // chunk is an ACK. If so, the transfer state can be reset to INACTIVE.
-      // Otherwise, the final status should be re-sent.
-      SendFinalStatusChunk();
-      return;
+      // Handled earlier.
+      PW_UNREACHABLE;
 
     case TransferState::kRecovery:
       if (chunk.offset() != offset_) {
@@ -881,18 +883,32 @@ void Context::HandleReceiveChunk(const Chunk& chunk) {
 
 void Context::HandleReceivedData(const Chunk& chunk) {
   if (chunk.offset() != offset_) {
-    // Bad offset; reset window size to send another parameters chunk.
-    PW_LOG_DEBUG(
-        "Transfer %u expected offset %u, received %u; entering recovery "
-        "state",
-        static_cast<unsigned>(session_id_),
-        static_cast<unsigned>(offset_),
-        static_cast<unsigned>(chunk.offset()));
+    if (chunk.offset() + chunk.payload().size() <= offset_ &&
+        chunk.type() != Chunk::Type::kStartAckConfirmation) {
+      // If the chunk's data has already been received, don't go through a full
+      // recovery cycle to avoid shrinking the window size and potentially
+      // thrashing. The expected data may already be in-flight, so just allow
+      // the transmitter to keep going with a CONTINUE parameters chunk.
+      // Start ack confs do not come with an offset set, so it can get stuck
+      // here if we are doing an offset transfer.
+      PW_LOG_DEBUG("Transfer %u received duplicate chunk with offset %u",
+                   id_for_log(),
+                   static_cast<unsigned>(chunk.offset()));
+      SendTransferParameters(TransmitAction::kExtend);
+    } else {
+      // Bad offset; reset window size to send another parameters chunk.
+      PW_LOG_WARN(
+          "Transfer %u expected offset %u, received %u; entering recovery "
+          "state",
+          static_cast<unsigned>(session_id_),
+          static_cast<unsigned>(offset_),
+          static_cast<unsigned>(chunk.offset()));
 
-    set_transfer_state(TransferState::kRecovery);
+      set_transfer_state(TransferState::kRecovery);
+      UpdateAndSendTransferParameters(TransmitAction::kRetransmit);
+    }
+
     SetTimeout(chunk_timeout_);
-
-    UpdateAndSendTransferParameters(TransmitAction::kRetransmit);
     return;
   }
 
@@ -1075,6 +1091,18 @@ void Context::HandleTermination(Status status) {
 void Context::SendFinalStatusChunk(bool with_resource_id) {
   PW_DCHECK(transfer_state_ == TransferState::kCompleted ||
             transfer_state_ == TransferState::kTerminating);
+
+  if (configured_protocol_version_ == ProtocolVersion::kUnknown) {
+    // If the transfer is ended before contact is made with the peer,
+    // the protocol version may not yet be configured. Use the desired
+    // version for the status chunk.
+    configured_protocol_version_ = desired_protocol_version_;
+    PW_LOG_WARN(
+        "Transfer %u ending before protocol version was confirmed; using "
+        "version %u",
+        id_for_log(),
+        static_cast<unsigned>(desired_protocol_version_));
+  }
 
   PW_LOG_INFO("Sending final chunk for transfer %u with status %u",
               static_cast<unsigned>(session_id_),

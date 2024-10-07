@@ -96,8 +96,9 @@ cc_library(
         "log.cc",
     ],
     hdrs = [
-        "pw_system_private/log.h",
+        "public/pw_system/log.h",
     ],
+    includes = ["public"],
     deps = [
         ":config",
         ":rpc_server",
@@ -542,6 +543,11 @@ pw_cc_binary(
     # testonly dependencies.
     testonly = True,
     srcs = ["example_user_app_init.cc"],
+    # TODO(b/365184562): This target does not build with asan and fuzztest.
+    target_compatible_with = select({
+        "//pw_fuzzer:use_fuzztest": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":pw_system",
         "//pw_unit_test:rpc_service",
@@ -694,5 +700,12 @@ device_console(
     name = "rp2040_system_example_console",
     testonly = True,
     binary = ":rp2040_system_example",
+    script = "//pw_system/py:pw_system_console",
+)
+
+device_console(
+    name = "rp2350_system_example_console",
+    testonly = True,
+    binary = ":rp2350_system_example",
     script = "//pw_system/py:pw_system_console",
 )
