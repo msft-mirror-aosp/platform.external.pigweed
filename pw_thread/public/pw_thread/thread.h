@@ -119,18 +119,6 @@ class Thread {
   /// @post The thread get EITHER detached or joined.
   Thread(const Options& options, ThreadCore& thread_core);
 
-  using ThreadRoutine = void (*)(void* arg);
-
-  /// DEPRECATED: Creates a thread from a void-returning function pointer and
-  /// a void pointer argument.
-  ///
-  /// @post The thread get EITHER detached or joined.
-  [[deprecated(
-      "The Thread constructor now takes a pw::Function<void()>. Pass a "
-      "function, lambda, or other functor that converts to a "
-      "pw::Function<void()>, instead of a void(void*) function.")]]
-  Thread(const Options& options, ThreadRoutine entry, void* arg = nullptr);
-
   /// @post The other thread no longer represents a thread of execution.
   Thread& operator=(Thread&& other);
 
