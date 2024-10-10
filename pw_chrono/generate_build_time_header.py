@@ -40,16 +40,33 @@ def parse_args() -> None:
     """Setup argparse."""
     parser = argparse.ArgumentParser()
     parser.add_argument("out", help="path for output header file")
+    parser.add_argument(
+        '--bazel',
+        action='store_true',
+        help='Set if this script is being invoked by Bazel',
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     """Main function"""
     args = parse_args()
-    time_stamp = int(datetime.now().timestamp())
-    print(time_stamp)
+
+    if args.bazel:
+        # See https://bazel.build/docs/user-manual#workspace-status for
+        # documentation of volatite-status.txt.
+        with open('bazel-out/volatile-status.txt', 'r') as status:
+            for line in status:
+                pieces = line.split()
+                key = pieces[0]
+                if key == "BUILD_TIMESTAMP":
+                    time_stamp = int(pieces[1])
+                    break
+    else:
+        # We're not being invoked from Bazel.
+        time_stamp = int(datetime.now().timestamp())
+
     with open(args.out, "w") as header:
-        print(args.out)
         header.write(HEADER)
 
         # Add a comment in the generated header to show readable build time
