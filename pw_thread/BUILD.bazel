@@ -14,12 +14,9 @@
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//pw_build:compatibility.bzl", "host_backend_alias")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-    "pw_facade",
-)
+load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -150,25 +147,6 @@ label_flag(
 host_backend_alias(
     name = "thread_unspecified_backend",
     backend = "//pw_thread_stl:thread",
-)
-
-cc_library(
-    name = "deprecated_or_new_thread_function",
-    hdrs = ["public/pw_thread/deprecated_or_new_thread_function.h"],
-    includes = ["public"],
-    deps = [
-        "//pw_function",
-    ],
-)
-
-pw_cc_test(
-    name = "deprecated_or_new_thread_function_test",
-    srcs = [
-        "deprecated_or_new_thread_function_test.cc",
-    ],
-    deps = [
-        ":deprecated_or_new_thread_function",
-    ],
 )
 
 cc_library(

@@ -27,22 +27,22 @@ from pw_tokenizer import tokens
 from pw_tokenizer.tokens import c_hash, DIR_DB_SUFFIX, _LOG
 
 CSV_DATABASE = '''\
-00000000,2019-06-10,""
-141c35d5,          ,"The answer: ""%s"""
-2db1515f,          ,"%u%d%02x%X%hu%hhu%d%ld%lu%lld%llu%c%c%c"
-2e668cd6,2019-06-11,"Jello, world!"
-31631781,          ,"%d"
-61fd1e26,          ,"%ld"
-68ab92da,          ,"%s there are %x (%.2f) of them%c"
-7b940e2a,          ,"Hello %s! %hd %e"
-851beeb6,          ,"%u %d"
-881436a0,          ,"The answer is: %s"
-ad002c97,          ,"%llx"
-b3653e13,2019-06-12,"Jello!"
-b912567b,          ,"%x%lld%1.2f%s"
-cc6d3131,2020-01-01,"Jello?"
-e13b0f94,          ,"%llu"
-e65aefef,2019-06-10,"Won't fit : %s%d"
+00000000,2019-06-10,"",""
+141c35d5,          ,"","The answer: ""%s"""
+2db1515f,          ,"","%u%d%02x%X%hu%hhu%d%ld%lu%lld%llu%c%c%c"
+2e668cd6,2019-06-11,"","Jello, world!"
+31631781,          ,"","%d"
+61fd1e26,          ,"","%ld"
+68ab92da,          ,"","%s there are %x (%.2f) of them%c"
+7b940e2a,          ,"","Hello %s! %hd %e"
+851beeb6,          ,"","%u %d"
+881436a0,          ,"","The answer is: %s"
+ad002c97,          ,"","%llx"
+b3653e13,2019-06-12,"","Jello!"
+b912567b,          ,"","%x%lld%1.2f%s"
+cc6d3131,2020-01-01,"","Jello?"
+e13b0f94,          ,"","%llu"
+e65aefef,2019-06-10,"","Won't fit : %s%d"
 '''
 
 # The date 2019-06-10 is 07E3-06-0A in hex. In database order, it's 0A 06 E3 07.
@@ -92,66 +92,81 @@ INVALID_CSV = """\
 """
 
 CSV_DATABASE_2 = '''\
-00000000,          ,""
-141c35d5,          ,"The answer: ""%s"""
-29aef586,          ,"1234"
-2b78825f,          ,"[:-)"
-2e668cd6,          ,"Jello, world!"
-31631781,          ,"%d"
-61fd1e26,          ,"%ld"
-68ab92da,          ,"%s there are %x (%.2f) of them%c"
-7b940e2a,          ,"Hello %s! %hd %e"
-7da55d52,          ,">:-[]"
-7f35a9a5,          ,"TestName"
-851beeb6,          ,"%u %d"
-881436a0,          ,"The answer is: %s"
-88808930,          ,"%u%d%02x%X%hu%hhd%d%ld%lu%lld%llu%c%c%c"
-92723f44,          ,"???"
-a09d6698,          ,"won-won-won-wonderful"
-aa9ffa66,          ,"void pw::tokenizer::{anonymous}::TestName()"
-ad002c97,          ,"%llx"
-b3653e13,          ,"Jello!"
-cc6d3131,          ,"Jello?"
-e13b0f94,          ,"%llu"
-e65aefef,          ,"Won't fit : %s%d"
+00000000,          ,"",""
+141c35d5,          ,"","The answer: ""%s"""
+29aef586,          ,"","1234"
+2b78825f,          ,"","[:-)"
+2e668cd6,          ,"","Jello, world!"
+31631781,          ,"","%d"
+61fd1e26,          ,"","%ld"
+68ab92da,          ,"","%s there are %x (%.2f) of them%c"
+7b940e2a,          ,"","Hello %s! %hd %e"
+7da55d52,          ,"",">:-[]"
+7f35a9a5,          ,"","TestName"
+851beeb6,          ,"","%u %d"
+881436a0,          ,"","The answer is: %s"
+88808930,          ,"","%u%d%02x%X%hu%hhd%d%ld%lu%lld%llu%c%c%c"
+92723f44,          ,"","???"
+a09d6698,          ,"","won-won-won-wonderful"
+aa9ffa66,          ,"","void pw::tokenizer::{anonymous}::TestName()"
+ad002c97,          ,"","%llx"
+b3653e13,          ,"","Jello!"
+cc6d3131,          ,"","Jello?"
+e13b0f94,          ,"","%llu"
+e65aefef,          ,"","Won't fit : %s%d"
 '''
 
 CSV_DATABASE_3 = """\
-17fa86d3,          ,"hello"
-18c5017c,          ,"yes"
-59b2701c,          ,"The answer was: %s"
-881436a0,          ,"The answer is: %s"
-d18ada0f,          ,"something"
+17fa86d3,          ,"TEST_DOMAIN","hello"
+18c5017c,          ,"TEST_DOMAIN","yes"
+59b2701c,          ,"TEST_DOMAIN","The answer was: %s"
+881436a0,          ,"TEST_DOMAIN","The answer is: %s"
+d18ada0f,          ,"TEST_DOMAIN","something"
 """
 
 CSV_DATABASE_4 = '''\
-00000000,          ,""
-141c35d5,          ,"The answer: ""%s"""
-17fa86d3,          ,"hello"
-18c5017c,          ,"yes"
-29aef586,          ,"1234"
-2b78825f,          ,"[:-)"
-2e668cd6,          ,"Jello, world!"
-31631781,          ,"%d"
-59b2701c,          ,"The answer was: %s"
-61fd1e26,          ,"%ld"
-68ab92da,          ,"%s there are %x (%.2f) of them%c"
-7b940e2a,          ,"Hello %s! %hd %e"
-7da55d52,          ,">:-[]"
-7f35a9a5,          ,"TestName"
-851beeb6,          ,"%u %d"
-881436a0,          ,"The answer is: %s"
-88808930,          ,"%u%d%02x%X%hu%hhd%d%ld%lu%lld%llu%c%c%c"
-92723f44,          ,"???"
-a09d6698,          ,"won-won-won-wonderful"
-aa9ffa66,          ,"void pw::tokenizer::{anonymous}::TestName()"
-ad002c97,          ,"%llx"
-b3653e13,          ,"Jello!"
-cc6d3131,          ,"Jello?"
-d18ada0f,          ,"something"
-e13b0f94,          ,"%llu"
-e65aefef,          ,"Won't fit : %s%d"
+00000000,          ,"",""
+141c35d5,          ,"","The answer: ""%s"""
+29aef586,          ,"","1234"
+2b78825f,          ,"","[:-)"
+2e668cd6,          ,"","Jello, world!"
+31631781,          ,"","%d"
+61fd1e26,          ,"","%ld"
+68ab92da,          ,"","%s there are %x (%.2f) of them%c"
+7b940e2a,          ,"","Hello %s! %hd %e"
+7da55d52,          ,"",">:-[]"
+7f35a9a5,          ,"","TestName"
+851beeb6,          ,"","%u %d"
+881436a0,          ,"","The answer is: %s"
+88808930,          ,"","%u%d%02x%X%hu%hhd%d%ld%lu%lld%llu%c%c%c"
+92723f44,          ,"","???"
+a09d6698,          ,"","won-won-won-wonderful"
+aa9ffa66,          ,"","void pw::tokenizer::{anonymous}::TestName()"
+ad002c97,          ,"","%llx"
+b3653e13,          ,"","Jello!"
+cc6d3131,          ,"","Jello?"
+e13b0f94,          ,"","%llu"
+e65aefef,          ,"","Won't fit : %s%d"
+17fa86d3,          ,"TEST_DOMAIN","hello"
+18c5017c,          ,"TEST_DOMAIN","yes"
+59b2701c,          ,"TEST_DOMAIN","The answer was: %s"
+881436a0,          ,"TEST_DOMAIN","The answer is: %s"
+d18ada0f,          ,"TEST_DOMAIN","something"
 '''
+
+CSV_DATABASE_5 = """\
+00000001,1998-09-04,"Domain","hello"
+00000002,          ,"","yes"
+00000002,          ,"Domain","No!"
+00000004,          ,"?","The answer is: %s"
+"""
+
+CSV_DATABASE_5_NO_DOMAIN = """\
+00000001,1998-09-04,"hello"
+00000002,          ,"yes"
+00000002,          ,"No!"
+00000004,          ,"The answer is: %s"
+"""
 
 
 def read_db_from_csv(csv_str: str) -> tokens.Database:
@@ -171,24 +186,87 @@ class TokenDatabaseTest(unittest.TestCase):
         db = read_db_from_csv(CSV_DATABASE)
         self.assertEqual(str(db), CSV_DATABASE)
 
+        db = read_db_from_csv(CSV_DATABASE_4)
+        self.assertEqual(str(db), CSV_DATABASE_4)
+
         db = read_db_from_csv('')
         self.assertEqual(str(db), '')
+
+    def test_csv_loads_domains(self) -> None:
+        db = read_db_from_csv(CSV_DATABASE_5)
+        self.assertEqual(
+            db.token_to_entries[1],
+            [
+                tokens.TokenizedStringEntry(
+                    token=1,
+                    string='hello',
+                    domain='Domain',
+                    date_removed=datetime(1998, 9, 4),
+                )
+            ],
+        )
+        self.assertEqual(
+            db.token_to_entries[2],
+            [
+                tokens.TokenizedStringEntry(token=2, string='yes', domain=''),
+                tokens.TokenizedStringEntry(
+                    token=2, string='No!', domain='Domain'
+                ),
+            ],
+        )
+        self.assertEqual(
+            db.token_to_entries[4],
+            [
+                tokens.TokenizedStringEntry(
+                    token=4, string='The answer is: %s', domain='?'
+                ),
+            ],
+        )
+
+    def test_csv_legacy_no_domain_database(self) -> None:
+        db = read_db_from_csv(CSV_DATABASE_5_NO_DOMAIN)
+        self.assertEqual(
+            db.token_to_entries[1],
+            [
+                tokens.TokenizedStringEntry(
+                    token=1,
+                    string='hello',
+                    domain='',
+                    date_removed=datetime(1998, 9, 4),
+                )
+            ],
+        )
+        self.assertEqual(
+            db.token_to_entries[2],
+            [
+                tokens.TokenizedStringEntry(token=2, string='No!', domain=''),
+                tokens.TokenizedStringEntry(token=2, string='yes', domain=''),
+            ],
+        )
+        self.assertEqual(
+            db.token_to_entries[4],
+            [
+                tokens.TokenizedStringEntry(
+                    token=4, string='The answer is: %s', domain=''
+                ),
+            ],
+        )
 
     def test_csv_formatting(self) -> None:
         db = read_db_from_csv('')
         self.assertEqual(str(db), '')
 
         db = read_db_from_csv('abc123,2048-04-01,Fake string\n')
-        self.assertEqual(str(db), '00abc123,2048-04-01,"Fake string"\n')
+        self.assertEqual(str(db), '00abc123,2048-04-01,"","Fake string"\n')
 
         db = read_db_from_csv(
-            '1,1990-01-01,"Quotes"""\n' '0,1990-02-01,"Commas,"",,"\n'
+            '1,1990-01-01,"","Quotes"""\n' '0,1990-02-01,"Commas,"",,"\n'
         )
         self.assertEqual(
             str(db),
             (
-                '00000000,1990-02-01,"Commas,"",,"\n'
-                '00000001,1990-01-01,"Quotes"""\n'
+                '00000000,1990-02-01,"","Commas,"",,"\n'
+                '00000001,1990-01-01,"","Quotes"""\n'
             ),
         )
 
@@ -306,6 +384,7 @@ class TokenDatabaseTest(unittest.TestCase):
 
         db.purge(datetime(2019, 6, 11))
         self.assertLess(len(db.token_to_entries), original_length)
+        self.assertEqual(len(db.token_to_entries), len(db.entries()))
 
         self.assertFalse(db.token_to_entries[0])
         self.assertNotIn(0, db.token_to_entries)
@@ -621,6 +700,16 @@ class TokenDatabaseTest(unittest.TestCase):
         difference = first.difference(second)
         self.assertEqual({e.string for e in difference.entries()}, {'two'})
 
+    def test_tokens_by_domain(self) -> None:
+        db = read_db_from_csv(CSV_DATABASE_2)
+        self.assertEqual(db.domains.keys(), {''})
+        db = read_db_from_csv(CSV_DATABASE_3)
+        self.assertEqual(db.domains.keys(), {'TEST_DOMAIN'})
+        db = read_db_from_csv(CSV_DATABASE_4)
+        self.assertEqual(db.domains.keys(), {'', 'TEST_DOMAIN'})
+        db = read_db_from_csv(CSV_DATABASE_5)
+        self.assertEqual(db.domains.keys(), {'', '?', 'Domain'})
+
     def test_binary_format_write(self) -> None:
         db = read_db_from_csv(CSV_DATABASE)
 
@@ -653,13 +742,13 @@ class TestDatabaseFile(unittest.TestCase):
         db = tokens.DatabaseFile.load(self._path)
         self.assertEqual(str(db), CSV_DATABASE)
 
-        db.add([tokens.TokenizedStringEntry(0xFFFFFFFF, 'New entry!')])
+        db.add([tokens.TokenizedStringEntry(0xFFFFFFFF, 'New entry!', '')])
 
         db.write_to_file()
 
         self.assertEqual(
             self._path.read_text(),
-            CSV_DATABASE + 'ffffffff,          ,"New entry!"\n',
+            CSV_DATABASE + 'ffffffff,          ,"","New entry!"\n',
         )
 
     def test_csv_file_too_short_raises_exception(self) -> None:
