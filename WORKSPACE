@@ -59,7 +59,7 @@ load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
 
-FUCHSIA_SDK_VERSION = "version:24.20240924.6.1"
+FUCHSIA_SDK_VERSION = "version:24.20241009.5.1"
 
 cipd_repository(
     name = "fuchsia_sdk",
@@ -99,7 +99,7 @@ git_repository(
 # Vendored third party rust crates.
 git_repository(
     name = "rust_crates",
-    commit = "de54de1a2683212d8edb4e15ec7393eb013c849c",
+    commit = "ed1ec1bd240b9446b30af5331b960871a0503a6c",
     remote = "https://pigweed.googlesource.com/third_party/rust_crates",
 )
 
