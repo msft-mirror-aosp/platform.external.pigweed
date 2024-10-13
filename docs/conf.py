@@ -15,8 +15,6 @@
 
 from datetime import date
 
-import pygments
-import sphinx
 
 from pw_console.pigweed_code_style import PigweedCodeStyle
 from pw_console.pigweed_code_style import PigweedCodeLightStyle
@@ -148,6 +146,12 @@ html_js_files = [
     "js/pigweed.js",
     # Needed for sidebar search
     "https://cdnjs.cloudflare.com/ajax/libs/fuzzysort/2.0.4/fuzzysort.js",
+]
+
+html_extra_path = [
+    # Note: In this repo the file lives at //docs/blog/rss.xml but during the
+    # Sphinx build it's copied to the root of the website, https://pigweed.dev/rss.xml
+    'docs/blog/rss.xml',
 ]
 
 html_theme_options = {
