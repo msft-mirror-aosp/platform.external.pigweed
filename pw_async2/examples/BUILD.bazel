@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -28,6 +25,19 @@ pw_cc_test(
         "//pw_allocator:testing",
         "//pw_async2:coro",
         "//pw_async2:dispatcher",
+    ],
+)
+
+pw_cc_test(
+    name = "coro_blinky_loop",
+    srcs = ["coro_blinky_loop.cc"],
+    deps = [
+        "//pw_allocator:testing",
+        "//pw_async2:coro",
+        "//pw_async2:dispatcher",
+        "//pw_async2:simulated_time_provider",
+        "//pw_async2:time_provider",
+        "//pw_chrono:system_clock",
     ],
 )
 
