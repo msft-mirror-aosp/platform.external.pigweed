@@ -50,3 +50,29 @@ pw_add_library(pw_uart.uart_non_blocking INTERFACE
     pw_span
     pw_uart.uart_base
 )
+
+pw_add_library(pw_uart.blocking_adapater STATIC
+  HEADERS
+    public/pw_uart/blocking_adapter.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_log
+    pw_status
+    pw_sync.timed_thread_notification
+    pw_uart.uart
+    pw_uart.uart_non_blocking
+  SOURCES
+    blocking_adapter.cc
+)
+
+pw_add_library(pw_uart.stream INTERFACE
+  HEADERS
+    public/pw_uart/stream.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_stream
+    pw_uart.uart
+)
