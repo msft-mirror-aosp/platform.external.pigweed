@@ -80,6 +80,15 @@ http_archive = use_repo_rule(
     "http_archive",
 )
 
+# TODO(b/370523804): Remove this once the following issues are addressed in a
+# released version of rules_fuzzing
+# https://github.com/bazel-contrib/rules_fuzzing/issues/257
+non_module_dependencies = use_extension("@rules_fuzzing//fuzzing/private:extensions.bzl", "non_module_dependencies")
+use_repo(
+    non_module_dependencies,
+    "rules_fuzzing_oss_fuzz",
+)
+
 # Configure libusb
 # ================
 #
@@ -116,9 +125,11 @@ cipd_repository(
     name = "llvm_toolchain",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:e894df6392beea3723627329009f3e6d51d16f47",
+    tag = "git_revision:8280651ad57cb9fb24a404cec2401040c28dec98",
 )
 
+# TODO: b/366374135 - This is behind, most recent version
+# is in pw_env_setup/py/pw_env_setup/cipd_setup/pigweed.json
 cipd_repository(
     name = "llvm_toolchain_device",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
@@ -172,12 +183,24 @@ register_toolchains(
 
 # Get probe-rs
 # ============
-probe_rs = use_extension("@rules_probe_rs//probe_rs:extensions.bzl", "probe_rs")
-probe_rs.tools(
+
+# TODO: https://pwbug.dev/346388161 - Re enable use of rules_probe_rs once rp2350
+# support is upstreamed.
+#
+# probe_rs = use_extension("@rules_probe_rs//probe_rs:extensions.bzl", "probe_rs")
+# probe_rs.tools(
+#     name = "probe_rs",
+#     version = "0.24.0",
+# )
+# use_repo(probe_rs, "probe_rs")
+
+# Use pre-release prebuilts for RP2350 support.
+cipd_repository(
     name = "probe_rs",
-    version = "0.24.0",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    path = "pigweed/third_party/probe-rs/${os}-${arch}",
+    tag = "git_revision:37660106aba307cbab5cf6c2b0da57b72b6dc4e9",
 )
-use_repo(probe_rs, "probe_rs")
 
 # STM32 APIs
 # ==========
