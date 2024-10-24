@@ -17,17 +17,13 @@ load(
     "fuchsia_cc_test",
     "fuchsia_unittest_package",
 )
-load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+load("//pw_bluetooth_sapphire/fuchsia:fuchsia_api_level.bzl", "FUCHSIA_API_LEVEL")
 
 fuchsia_cc_test(
     name = "iso_test",
     death_unittest = True,
-    # TODO: b/310957361 - gtest not supported on device
-    target_compatible_with = incompatible_with_mcu(),
     deps = [
-        "//pw_bluetooth_sapphire/host/iso",
         "//pw_bluetooth_sapphire/host/iso:iso_test.lib",
-        "//pw_bluetooth_sapphire/host/testing",
         "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
 )
@@ -35,7 +31,7 @@ fuchsia_cc_test(
 fuchsia_unittest_package(
     name = "test_pkg",
     package_name = "iso_tests",
-    fuchsia_api_level = "23",
+    fuchsia_api_level = FUCHSIA_API_LEVEL,
     tags = ["manual"],
     unit_tests = [
         ":iso_test",

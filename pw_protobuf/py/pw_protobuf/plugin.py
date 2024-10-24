@@ -25,7 +25,7 @@ from shlex import shlex
 
 from google.protobuf.compiler import plugin_pb2
 
-from pw_protobuf import codegen_pwpb, options
+from pw_protobuf import codegen_pwpb, edition_constants, options
 
 
 def parse_parameter_options(parameter: str) -> Namespace:
@@ -60,11 +60,13 @@ def parse_parameter_options(parameter: str) -> Namespace:
         help='Do not generate legacy SNAKE_CASE names for field name enums.',
     )
     parser.add_argument(
-        '--import-prefix',
-        dest='import_prefix',
-        help='Path prefix expected to be prepended to proto_file. If set '
-        'this prefix will be stripped from the proto filename before '
-        'performing .options file lookup',
+        '--options-file',
+        dest='options_files',
+        metavar='FILE',
+        action='append',
+        default=[],
+        type=Path,
+        help='Append FILE to options file list',
     )
 
     # protoc passes the custom arguments in shell quoted form, separated by
@@ -91,10 +93,11 @@ def process_proto_request(
       req: A CodeGeneratorRequest for a proto compilation.
       res: A CodeGeneratorResponse to populate with the plugin's output.
     """
+
     args = parse_parameter_options(req.parameter)
     for proto_file in req.proto_file:
         proto_options = options.load_options(
-            args.include_paths, Path(proto_file.name), args.import_prefix
+            args.include_paths, Path(proto_file.name), args.options_files
         )
         output_files = codegen_pwpb.process_proto_file(
             proto_file,
@@ -125,6 +128,8 @@ def main() -> int:
     response.supported_features |= (  # type: ignore[attr-defined]
         response.FEATURE_PROTO3_OPTIONAL
     )  # type: ignore[attr-defined]
+
+    response.supported_features |= edition_constants.FEATURE_SUPPORTS_EDITIONS
 
     sys.stdout.buffer.write(response.SerializeToString())
     return 0

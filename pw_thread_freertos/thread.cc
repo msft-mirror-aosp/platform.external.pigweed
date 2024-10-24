@@ -16,7 +16,6 @@
 #include "FreeRTOS.h"
 #include "pw_assert/check.h"
 #include "pw_preprocessor/compiler.h"
-#include "pw_thread/deprecated_or_new_thread_function.h"
 #include "pw_thread/id.h"
 #include "pw_thread_freertos/config.h"
 #include "pw_thread_freertos/context.h"
@@ -29,7 +28,7 @@ namespace pw::thread {
 namespace {
 
 #if (INCLUDE_xTaskGetSchedulerState != 1) && (configUSE_TIMERS != 1)
-#error "xTaskGetSchedulerState is required for pw::thread::Thread"
+#error "xTaskGetSchedulerState is required for pw::Thread"
 #endif
 
 #if PW_THREAD_JOINING_ENABLED
@@ -130,7 +129,7 @@ void Context::AddToEventGroup() {
 }
 
 void Context::CreateThread(const freertos::Options& options,
-                           DeprecatedOrNewThreadFn&& thread_fn,
+                           Function<void()>&& thread_fn,
                            Context*& native_type_out) {
   TaskHandle_t task_handle;
   if (options.static_context() != nullptr) {
@@ -190,17 +189,6 @@ Thread::Thread(const thread::Options& facade_options, Function<void()>&& entry)
   // only one type can exist at compile time.
   auto options = static_cast<const freertos::Options&>(facade_options);
   Context::CreateThread(options, std::move(entry), native_type_);
-}
-
-Thread::Thread(const thread::Options& facade_options,
-               ThreadRoutine routine,
-               void* arg)
-    : native_type_(nullptr) {
-  // Cast the generic facade options to the backend specific option of which
-  // only one type can exist at compile time.
-  auto options = static_cast<const freertos::Options&>(facade_options);
-  Context::CreateThread(
-      options, DeprecatedFnPtrAndArg{routine, arg}, native_type_);
 }
 
 void Thread::detach() {

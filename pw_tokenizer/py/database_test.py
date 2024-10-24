@@ -34,70 +34,71 @@ from pw_tokenizer import database
 #
 #   arm-none-eabi-objcopy -S --only-section ".pw_tokenize*" <ELF> <OUTPUT>
 #
-TOKENIZED_ENTRIES_ELF = (
-    Path(__file__).parent / 'example_binary_with_tokenized_strings.elf'
+TOKENIZED_ENTRIES_ELF = Path(__file__).with_name(
+    'example_binary_with_tokenized_strings.elf'
 )
 
 CSV_DEFAULT_DOMAIN = '''\
-00000000,          ,""
-141c35d5,          ,"The answer: ""%s"""
-29aef586,          ,"1234"
-2b78825f,          ,"[:-)"
-2e668cd6,          ,"Jello, world!"
-31631781,          ,"%d"
-61fd1e26,          ,"%ld"
-68ab92da,          ,"%s there are %x (%.2f) of them%c"
-7b940e2a,          ,"Hello %s! %hd %e"
-7da55d52,          ,">:-[]"
-7f35a9a5,          ,"TestName"
-851beeb6,          ,"%u %d"
-881436a0,          ,"The answer is: %s"
-88808930,          ,"%u%d%02x%X%hu%hhd%d%ld%lu%lld%llu%c%c%c"
-92723f44,          ,"???"
-a09d6698,          ,"won-won-won-wonderful"
-aa9ffa66,          ,"void pw::tokenizer::{anonymous}::TestName()"
-ad002c97,          ,"%llx"
-b3653e13,          ,"Jello!"
-cc6d3131,          ,"Jello?"
-e13b0f94,          ,"%llu"
-e65aefef,          ,"Won't fit : %s%d"
+00000000,          ,"",""
+141c35d5,          ,"","The answer: ""%s"""
+29aef586,          ,"","1234"
+2b78825f,          ,"","[:-)"
+2e668cd6,          ,"","Jello, world!"
+31631781,          ,"","%d"
+61fd1e26,          ,"","%ld"
+68ab92da,          ,"","%s there are %x (%.2f) of them%c"
+7b940e2a,          ,"","Hello %s! %hd %e"
+7da55d52,          ,"",">:-[]"
+7f35a9a5,          ,"","TestName"
+851beeb6,          ,"","%u %d"
+881436a0,          ,"","The answer is: %s"
+88808930,          ,"","%u%d%02x%X%hu%hhd%d%ld%lu%lld%llu%c%c%c"
+92723f44,          ,"","???"
+a09d6698,          ,"","won-won-won-wonderful"
+aa9ffa66,          ,"","void pw::tokenizer::{anonymous}::TestName()"
+ad002c97,          ,"","%llx"
+b3653e13,          ,"","Jello!"
+cc6d3131,          ,"","Jello?"
+e13b0f94,          ,"","%llu"
+e65aefef,          ,"","Won't fit : %s%d"
 '''
 
 CSV_TEST_DOMAIN = """\
-17fa86d3,          ,"hello"
-18c5017c,          ,"yes"
-59b2701c,          ,"The answer was: %s"
-881436a0,          ,"The answer is: %s"
-d18ada0f,          ,"something"
+17fa86d3,          ,"TEST_DOMAIN","hello"
+18c5017c,          ,"TEST_DOMAIN","yes"
+59b2701c,          ,"TEST_DOMAIN","The answer was: %s"
+881436a0,          ,"TEST_DOMAIN","The answer is: %s"
+d18ada0f,          ,"TEST_DOMAIN","something"
 """
 
 CSV_ALL_DOMAINS = '''\
-00000000,          ,""
-141c35d5,          ,"The answer: ""%s"""
-17fa86d3,          ,"hello"
-18c5017c,          ,"yes"
-29aef586,          ,"1234"
-2b78825f,          ,"[:-)"
-2e668cd6,          ,"Jello, world!"
-31631781,          ,"%d"
-59b2701c,          ,"The answer was: %s"
-61fd1e26,          ,"%ld"
-68ab92da,          ,"%s there are %x (%.2f) of them%c"
-7b940e2a,          ,"Hello %s! %hd %e"
-7da55d52,          ,">:-[]"
-7f35a9a5,          ,"TestName"
-851beeb6,          ,"%u %d"
-881436a0,          ,"The answer is: %s"
-88808930,          ,"%u%d%02x%X%hu%hhd%d%ld%lu%lld%llu%c%c%c"
-92723f44,          ,"???"
-a09d6698,          ,"won-won-won-wonderful"
-aa9ffa66,          ,"void pw::tokenizer::{anonymous}::TestName()"
-ad002c97,          ,"%llx"
-b3653e13,          ,"Jello!"
-cc6d3131,          ,"Jello?"
-d18ada0f,          ,"something"
-e13b0f94,          ,"%llu"
-e65aefef,          ,"Won't fit : %s%d"
+00000000,          ,"",""
+141c35d5,          ,"","The answer: ""%s"""
+29aef586,          ,"","1234"
+2b78825f,          ,"","[:-)"
+2e668cd6,          ,"","Jello, world!"
+31631781,          ,"","%d"
+61fd1e26,          ,"","%ld"
+68ab92da,          ,"","%s there are %x (%.2f) of them%c"
+7b940e2a,          ,"","Hello %s! %hd %e"
+7da55d52,          ,"",">:-[]"
+7f35a9a5,          ,"","TestName"
+851beeb6,          ,"","%u %d"
+881436a0,          ,"","The answer is: %s"
+88808930,          ,"","%u%d%02x%X%hu%hhd%d%ld%lu%lld%llu%c%c%c"
+92723f44,          ,"","???"
+a09d6698,          ,"","won-won-won-wonderful"
+aa9ffa66,          ,"","void pw::tokenizer::{anonymous}::TestName()"
+ad002c97,          ,"","%llx"
+b3653e13,          ,"","Jello!"
+cc6d3131,          ,"","Jello?"
+e13b0f94,          ,"","%llu"
+e65aefef,          ,"","Won't fit : %s%d"
+17fa86d3,          ,"TEST_DOMAIN","hello"
+18c5017c,          ,"TEST_DOMAIN","yes"
+59b2701c,          ,"TEST_DOMAIN","The answer was: %s"
+881436a0,          ,"TEST_DOMAIN","The answer is: %s"
+d18ada0f,          ,"TEST_DOMAIN","something"
 '''
 
 JSON_SOURCE_STRINGS = '''\
@@ -111,12 +112,12 @@ JSON_SOURCE_STRINGS = '''\
 '''
 
 CSV_STRINGS = '''\
-2cbf627a,          ,"pigweed/pw_rpc/client_server.cc"
-666562a1,          ,"protocol_buffer/gen/pigweed/pw_protobuf/common_protos.proto_library/nanopb/pw_protobuf_protos/status.pb.h"
-6c1e6eb3,          ,"pigweed/pw_rpc/public/pw_rpc/client_server.h"
-b25a9932,          ,"This is a very long string that will produce two tokens; one for C++ and one for C. This is because this string exceeds the default C hash length."
-eadf017f,          ,"pigweed/pw_polyfill/standard_library_public/pw_polyfill/standard_library/assert.h"
-f815dc5c,          ,"This is a very long string that will produce two tokens; one for C++ and one for C. This is because this string exceeds the default C hash length."
+2cbf627a,          ,"","pigweed/pw_rpc/client_server.cc"
+666562a1,          ,"","protocol_buffer/gen/pigweed/pw_protobuf/common_protos.proto_library/nanopb/pw_protobuf_protos/status.pb.h"
+6c1e6eb3,          ,"","pigweed/pw_rpc/public/pw_rpc/client_server.h"
+b25a9932,          ,"","This is a very long string that will produce two tokens; one for C++ and one for C. This is because this string exceeds the default C hash length."
+eadf017f,          ,"","pigweed/pw_polyfill/standard_library_public/pw_polyfill/standard_library/assert.h"
+f815dc5c,          ,"","This is a very long string that will produce two tokens; one for C++ and one for C. This is because this string exceeds the default C hash length."
 '''
 
 EXPECTED_REPORT = {
@@ -180,8 +181,6 @@ class DatabaseCommandLineTest(unittest.TestCase):
         self._csv = self._dir / 'db.csv'
         self._elf = TOKENIZED_ENTRIES_ELF
 
-        self._csv_test_domain = CSV_TEST_DOMAIN
-
     def tearDown(self) -> None:
         shutil.rmtree(self._dir)
 
@@ -189,23 +188,49 @@ class DatabaseCommandLineTest(unittest.TestCase):
         run_cli('create', '--database', self._csv, self._elf)
 
         self.assertEqual(
-            CSV_DEFAULT_DOMAIN.splitlines(), self._csv.read_text().splitlines()
+            CSV_ALL_DOMAINS.splitlines(), self._csv.read_text().splitlines()
+        )
+
+    def test_create_csv_from_three_column_csv(self) -> None:
+        three_col_db = self._dir.joinpath('legacy.csv')
+        # Remove the domain column
+        three_col_db.write_text(CSV_TEST_DOMAIN.replace('"TEST_DOMAIN",', ''))
+        run_cli('create', '--database', self._csv, three_col_db)
+
+        tokens_in_default = CSV_TEST_DOMAIN.replace('"TEST_DOMAIN",', '"",')
+        self.assertEqual(
+            tokens_in_default.splitlines(), self._csv.read_text().splitlines()
         )
 
     def test_create_csv_test_domain(self) -> None:
         run_cli('create', '--database', self._csv, f'{self._elf}#TEST_DOMAIN')
 
         self.assertEqual(
-            self._csv_test_domain.splitlines(),
+            CSV_TEST_DOMAIN.splitlines(),
             self._csv.read_text().splitlines(),
         )
 
     def test_create_csv_all_domains(self) -> None:
+        run_cli('create', '--database', self._csv, self._elf)
+
+        self.assertEqual(
+            CSV_ALL_DOMAINS.splitlines(), self._csv.read_text().splitlines()
+        )
+
+    def test_create_csv_all_domains_regex(self) -> None:
         run_cli('create', '--database', self._csv, f'{self._elf}#.*')
 
         self.assertEqual(
             CSV_ALL_DOMAINS.splitlines(), self._csv.read_text().splitlines()
         )
+
+    def test_invalid_domain_pattern(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_cli('create', '--database', self._csv, f'{self._elf}#.*#')
+
+    def test_invalid_glob(self) -> None:
+        with self.assertRaises(SystemExit):
+            run_cli('create', '--database', self._csv, 'INVALID PATH')
 
     def test_create_force(self) -> None:
         self._csv.write_text(CSV_ALL_DOMAINS)
@@ -217,7 +242,14 @@ class DatabaseCommandLineTest(unittest.TestCase):
 
     def test_create_binary(self) -> None:
         binary = self._dir / 'db.bin'
-        run_cli('create', '--type', 'binary', '--database', binary, self._elf)
+        run_cli(
+            'create',
+            '--type',
+            'binary',
+            '--database',
+            binary,
+            f'{self._elf}#',  # Only default domain since v1 DB excludes domain.
+        )
 
         # Write the binary database as CSV to verify its contents.
         run_cli('create', '--database', self._csv, binary)
@@ -227,7 +259,7 @@ class DatabaseCommandLineTest(unittest.TestCase):
         )
 
     def test_add_does_not_recalculate_tokens(self) -> None:
-        db_with_custom_token = '01234567,          ,"hello"'
+        db_with_custom_token = '01234567,          ,"","hello"'
 
         to_add = self._dir / 'add_this.csv'
         to_add.write_text(db_with_custom_token + '\n')
@@ -240,6 +272,7 @@ class DatabaseCommandLineTest(unittest.TestCase):
         )
 
     def test_mark_removed(self) -> None:
+        """Tests adding a removal date to tokens in a CSV database."""
         self._csv.write_text(CSV_ALL_DOMAINS)
 
         run_cli(
@@ -248,23 +281,30 @@ class DatabaseCommandLineTest(unittest.TestCase):
             self._csv,
             '--date',
             '1998-09-04',
-            self._elf,
+            f'{self._elf}#',  # Only load the default domain for this test.
         )
 
-        # Add the removal date to the four tokens not in the default domain
+        # Add the removal date to the tokens not in the default domain
         new_csv = CSV_ALL_DOMAINS
         new_csv = new_csv.replace(
-            '17fa86d3,          ,"hello"', '17fa86d3,1998-09-04,"hello"'
+            '17fa86d3,          ,"TEST_DOMAIN","hello"',
+            '17fa86d3,1998-09-04,"TEST_DOMAIN","hello"',
         )
         new_csv = new_csv.replace(
-            '18c5017c,          ,"yes"', '18c5017c,1998-09-04,"yes"'
+            '18c5017c,          ,"TEST_DOMAIN","yes"',
+            '18c5017c,1998-09-04,"TEST_DOMAIN","yes"',
         )
         new_csv = new_csv.replace(
-            '59b2701c,          ,"The answer was: %s"',
-            '59b2701c,1998-09-04,"The answer was: %s"',
+            '59b2701c,          ,"TEST_DOMAIN","The answer was: %s"',
+            '59b2701c,1998-09-04,"TEST_DOMAIN","The answer was: %s"',
         )
         new_csv = new_csv.replace(
-            'd18ada0f,          ,"something"', 'd18ada0f,1998-09-04,"something"'
+            'd18ada0f,          ,"TEST_DOMAIN","something"',
+            'd18ada0f,1998-09-04,"TEST_DOMAIN","something"',
+        )
+        new_csv = new_csv.replace(
+            '881436a0,          ,"TEST_DOMAIN","The answer is: %s"',
+            '881436a0,1998-09-04,"TEST_DOMAIN","The answer is: %s"',
         )
         self.assertNotEqual(CSV_ALL_DOMAINS, new_csv)
 
@@ -273,18 +313,23 @@ class DatabaseCommandLineTest(unittest.TestCase):
         )
 
     def test_purge(self) -> None:
-        self._csv.write_text(CSV_ALL_DOMAINS)
+        self._csv.write_text(CSV_DEFAULT_DOMAIN)
 
-        # Mark everything not in TEST_DOMAIN as removed.
-        run_cli(
-            'mark_removed', '--database', self._csv, f'{self._elf}#TEST_DOMAIN'
+        first_5_csv = self._dir / 'first_5.csv'
+        first_5_csv.write_text(
+            ''.join(CSV_DEFAULT_DOMAIN.splitlines(keepends=True)[:5])
         )
+
+        self._csv.write_text(CSV_DEFAULT_DOMAIN)
+
+        # Mark everything except for the first 5 entries as removed.
+        run_cli('mark_removed', '--database', self._csv, first_5_csv)
 
         # Delete all entries except those in TEST_DOMAIN.
         run_cli('purge', '--database', self._csv)
 
         self.assertEqual(
-            self._csv_test_domain.splitlines(),
+            first_5_csv.read_text().splitlines(),
             self._csv.read_text().splitlines(),
         )
 
@@ -302,7 +347,7 @@ class DatabaseCommandLineTest(unittest.TestCase):
             'create',
             '--database',
             self._csv,
-            self._elf,
+            f'{self._elf}#',  # Only load the default domain for this test.
             '--replace',
             r'(?i)\b[jh]ello\b/' + sub,
         )
@@ -323,7 +368,7 @@ class DatabaseCommandLineTest(unittest.TestCase):
         )
 
 
-class TestDirectoryDatabaseCommandLine(unittest.TestCase):
+class DirectoryDatabaseCommandLineTest(unittest.TestCase):
     """Tests the directory database command line interface."""
 
     def setUp(self) -> None:
@@ -332,7 +377,6 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         self._db_dir.mkdir(exist_ok=True)
         self._db_csv = self._db_dir / '8123913.pw_tokenizer.csv'
         self._elf = TOKENIZED_ENTRIES_ELF
-        self._csv_test_domain = CSV_TEST_DOMAIN
 
     def _git(self, *command: str) -> None:
         """Runs git in self._dir with forced user name and email values.
@@ -366,7 +410,7 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         self._db_csv = directory.pop()
 
         self.assertEqual(
-            self._csv_test_domain.splitlines(),
+            CSV_TEST_DOMAIN.splitlines(),
             self._db_csv.read_text().splitlines(),
         )
 
@@ -385,8 +429,8 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
 
     def test_not_adding_existing_tokens(self) -> None:
         """Tests duplicate tokens are not added to the database."""
-        run_cli('add', '--database', self._db_dir, f'{self._elf}#TEST_DOMAIN')
-        run_cli('add', '--database', self._db_dir, f'{self._elf}#TEST_DOMAIN')
+        run_cli('add', '--database', self._db_dir, self._elf)
+        run_cli('add', '--database', self._db_dir, self._elf)
         directory = list(self._db_dir.iterdir())
 
         self.assertEqual(1, len(directory))
@@ -394,14 +438,17 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         self._db_csv = directory.pop()
 
         self.assertEqual(
-            self._csv_test_domain.splitlines(),
+            CSV_ALL_DOMAINS.splitlines(),
             self._db_csv.read_text().splitlines(),
         )
 
     def test_adding_tokens_without_git_repo(self):
         """Tests creating new files with new entries when no repo exists."""
-        # Add CSV_TEST_DOMAIN to a new CSV in the directory database.
-        run_cli('add', '--database', self._db_dir, f'{self._elf}#TEST_DOMAIN')
+        # Add a subset of entries to a new CSV in the directory database.
+        entry_subset = self._dir / 'entry_subset.csv'
+        entry_subset.write_text(CSV_TEST_DOMAIN)
+
+        run_cli('add', '--database', self._db_dir, entry_subset)
         directory = list(self._db_dir.iterdir())
 
         self.assertEqual(1, len(directory))
@@ -409,11 +456,14 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         first_csv_in_db = directory.pop()
 
         self.assertEqual(
-            self._csv_test_domain.splitlines(),
+            CSV_TEST_DOMAIN.splitlines(),
             first_csv_in_db.read_text().splitlines(),
         )
-        # Add CSV_ALL_DOMAINS to a new CSV in the directory database.
-        run_cli('add', '--database', self._db_dir, f'{self._elf}#.*')
+        # Add a superset of entries to a new CSV in the directory database.
+        entry_superset = self._dir / 'entry_superset.csv'
+        entry_superset.write_text(CSV_ALL_DOMAINS)
+
+        run_cli('add', '--database', self._db_dir, entry_superset)
         directory = list(self._db_dir.iterdir())
         # Assert two different CSVs were created to store new tokens.
         self.assertEqual(2, len(directory))
@@ -424,19 +474,18 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
 
         self.assertNotEqual(first_csv_in_db, second_csv_in_db)
         self.assertEqual(
-            self._csv_test_domain.splitlines(),
+            CSV_TEST_DOMAIN.splitlines(),
             first_csv_in_db.read_text().splitlines(),
         )
 
-        # Retrieve entries that exclusively exist in CSV_ALL_DOMAINS
-        # as CSV_ALL_DOMAINS contains all entries in TEST_DOMAIN.
-        entries_exclusively_in_all_domain = set(
+        # Retrieve entries exclusively in the superset, not the subset.
+        entries_exclusively_in_superset = set(
             CSV_ALL_DOMAINS.splitlines()
-        ) - set(self._csv_test_domain.splitlines())
-        # Ensure only new tokens not in CSV_TEST_DOMAIN were added to
-        # the second CSV added to the directory database.
+        ) - set(CSV_TEST_DOMAIN.splitlines())
+        # Ensure only new tokens not in the subset were added to the second CSV
+        # added to the directory database.
         self.assertEqual(
-            entries_exclusively_in_all_domain,
+            entries_exclusively_in_superset,
             set(second_csv_in_db.read_text().splitlines()),
         )
 
@@ -459,7 +508,7 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         first_path_in_db = directory.pop()
 
         self.assertEqual(
-            self._csv_test_domain.splitlines(),
+            CSV_TEST_DOMAIN.splitlines(),
             first_path_in_db.read_text().splitlines(),
         )
         # Retrieve the untracked CSV in the Git repository and discard
@@ -481,7 +530,7 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         # the CSV content is the same as CSV_DEFAULT_DOMAIN.
         self.assertEqual(first_path_in_db, reused_path_in_db)
         self.assertEqual(
-            CSV_DEFAULT_DOMAIN.splitlines(),
+            CSV_ALL_DOMAINS.splitlines(),
             reused_path_in_db.read_text().splitlines(),
         )
 
@@ -502,7 +551,7 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         # of token entries.
         entries_from_default_and_test_domain = set(
             CSV_DEFAULT_DOMAIN.splitlines()
-        ).union(set(self._csv_test_domain.splitlines()))
+        ).union(set(CSV_TEST_DOMAIN.splitlines()))
         # Multiple ELF files were added at once to a single CSV.
         self.assertEqual(
             entries_from_default_and_test_domain,
@@ -551,7 +600,7 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         # Combines CSV_DEFAULT_DOMAIN and TEST_DOMAIN.
         entries_from_default_and_test_domain = set(
             CSV_DEFAULT_DOMAIN.splitlines()
-        ).union(set(self._csv_test_domain.splitlines()))
+        ).union(set(CSV_TEST_DOMAIN.splitlines()))
 
         self.assertEqual(untracked_path_in_db, reused_path_in_db)
         self.assertEqual(
@@ -596,7 +645,7 @@ class TestDirectoryDatabaseCommandLine(unittest.TestCase):
         reused_path_in_db = directory.pop()
 
         self.assertEqual(
-            self._csv_test_domain.splitlines(),
+            CSV_TEST_DOMAIN.splitlines(),
             reused_path_in_db.read_text().splitlines(),
         )
 

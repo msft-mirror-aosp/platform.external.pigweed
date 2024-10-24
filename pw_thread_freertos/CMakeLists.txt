@@ -64,8 +64,8 @@ pw_add_library(pw_thread_freertos.sleep STATIC
     pw_thread.id
 )
 
-# This target provides the backend for pw::thread::Thread and the headers needed
-# for thread creation.
+# This target provides the backend for pw::Thread and the headers needed for
+# thread creation.
 pw_add_library(pw_thread_freertos.thread STATIC
   HEADERS
     public/pw_thread_freertos/context.h
@@ -79,11 +79,11 @@ pw_add_library(pw_thread_freertos.thread STATIC
     thread_public_overrides
   PUBLIC_DEPS
     pw_assert
+    pw_function
     pw_span
     pw_string
     pw_third_party.freertos
     pw_thread.id
-    pw_thread.deprecated_or_new_thread_function
     pw_thread.thread.facade
     pw_thread_freertos.config
   SOURCES

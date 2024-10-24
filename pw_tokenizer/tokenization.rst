@@ -226,11 +226,14 @@ Nested tokens have the following format within strings:
 
 .. code-block::
 
-   $[BASE#]TOKEN
+   $[{DOMAIN}][BASE#]TOKEN
 
 The ``$`` is a common prefix required for all nested tokens. It is possible to
 configure a different common prefix if necessary, but using the default ``$``
 character is strongly recommended.
+
+The optional ``DOMAIN`` specifies the token domain. If this option is omitted,
+the default (empty) domain is assumed.
 
 The optional ``BASE`` defines the numeric base encoding of the token. Accepted
 values are 8, 10, 16, and 64. If the hash symbol ``#`` is used without
@@ -486,6 +489,9 @@ following:
 * Create a separate database for a small number of strings that use truncated
   tokens, for example only 10 or 16 bits instead of the full 32 bits.
 
+When a domain is specified, any whitespace will be ignored in domain names and
+removed from the database.
+
 If no domain is specified, the domain is empty (``""``). For many projects, this
 default domain is sufficient, so no additional configuration is required.
 
@@ -497,14 +503,15 @@ default domain is sufficient, so no additional configuration is required.
    // Tokenizes this string to the "my_custom_domain" domain.
    PW_TOKENIZE_STRING_DOMAIN("my_custom_domain", "Hello, world!");
 
-The database and detokenization command line tools default to reading from the
-default domain. The domain may be specified for ELF files by appending
-``#DOMAIN_NAME`` to the file path. Use ``#.*`` to read from all domains. For
-example, the following reads strings in ``some_domain`` from ``my_image.elf``.
+The database and detokenization command line tools default to loading tokens
+from all domains. The domain may be specified for ELF files by appending
+``#DOMAIN_NAME_REGEX`` to the file path. Use ``#`` to only read from the default
+domain. For example, the following reads strings in ``some_domain`` from
+``my_image.elf``.
 
 .. code-block:: sh
 
-   ./database.py create --database my_db.csv path/to/my_image.elf#some_domain
+   ./database.py create --database my_db.csv "path/to/my_image.elf#some_domain"
 
 See :ref:`module-pw_tokenizer-managing-token-databases` for information about
 the ``database.py`` command line tool.

@@ -25,9 +25,10 @@
 #include "pw_thread_backend/thread_native.h"
 // clang-format on
 
-namespace pw::thread {
+namespace pw {
+namespace thread {
 
-/// The class Thread can represent a single thread of execution. Threads allow
+/// The class `Thread` can represent a single thread of execution. Threads allow
 /// multiple functions to execute concurrently.
 ///
 /// Threads may begin execution immediately upon construction of the associated
@@ -35,20 +36,37 @@ namespace pw::thread {
 /// function provided as a constructor argument. The return value of the
 /// top-level function is ignored. The top-level function may communicate its
 /// return value by modifying shared variables (which may require
-/// synchronization, see pw_sync and std::atomic)
+/// synchronization, see `pw_sync` and `std::atomic`)
 ///
-/// Thread objects may also be in the state that does not represent any thread
+/// `Thread` objects may also be in the state that does not represent any thread
 /// (after default construction, move from, detach, or join), and a thread of
 /// execution may be not associated with any thread objects (after detach).
 ///
-/// No two Thread objects may represent the same thread of execution; Thread is
-/// not CopyConstructible or CopyAssignable, although it is MoveConstructible
+/// No two `Thread` objects may represent the same thread of execution; `Thread`
+/// is not CopyConstructible or CopyAssignable, although it is MoveConstructible
 /// and MoveAssignable.
 class Thread {
  public:
   /// The type of the native handle for the thread. As with `std::thread`, use
   /// is inherently non-portable.
   using native_handle_type = backend::NativeThreadHandle;
+
+  /// The class id is a lightweight, trivially copyable class that serves as a
+  /// unique identifier of Thread objects.
+  ///
+  /// Instances of this class may also hold the special distinct value that does
+  /// not represent any thread. Once a thread has finished, the value of its
+  /// `Thread::id` may be reused by another thread.
+  ///
+  /// This class is designed for use as key in associative containers, both
+  /// ordered and unordered.
+  ///
+  /// The backend must ensure that:
+  ///
+  /// 1. There is a default construct which does not represent a thread.
+  /// 2. Compare operators (`==`, `!=`, `<`, `<=`, `>`, `>=`) are provided to
+  ///    compare and sort IDs.
+  using id = ::pw::thread::backend::NativeId;
 
   /// Creates a new thread object which does not represent a thread of execution
   /// yet.
@@ -65,7 +83,7 @@ class Thread {
   /// to ensure the dispatching closure is not destructed before the thread is
   /// done executing. For example:
   ///
-  /// ```
+  /// @code{.cpp}
   /// class Foo {
   ///  public:
   ///   void DoBar() {}
@@ -76,27 +94,14 @@ class Thread {
   /// // this as the argument.
   /// Thread thread(options, [&foo]() { foo.DoBar(); });
   /// thread.detach();
-  /// ```
+  /// @endcode
   ///
-  /// Alternatively a helper ThreadCore interface can be implemented by an
-  /// object so that a lambda closure or function is not needed to dispatch to a
-  /// member function without arguments. For example:
-  ///
-  ///
-  /// Postcondition: The thread get EITHER detached or joined.
-  ///
-  /// NOTE: Options have a default constructor, however default options are not
-  /// portable! Default options can only work if threads are dynamically
-  /// allocated by default, meaning default options cannot work on backends
-  /// which require static thread allocations. In addition on some schedulers
-  /// default options may not work for other reasons.
+  /// @post The thread get EITHER detached or joined.
   Thread(const Options& options, Function<void()>&& entry);
 
-  /// Creates a thread from a ``ThreadCore`` subclass.
-  ///
-  /// The ``ThreadCore`` interface can be implemented by an object so that
-  /// a lambda closure or function is not needed to dispatch to a member
-  /// function.
+  /// Creates a thread from a `ThreadCore` subclass. `ThreadCore` is not
+  /// recommended for new code; use the `pw::Function<void()>` constructor
+  /// instead.
   ///
   /// For example:
   ///
@@ -111,69 +116,48 @@ class Thread {
   /// Thread(options, foo).detach();
   /// @endcode
   ///
-  /// Postcondition: The thread get EITHER detached or joined.
-  ///
-  /// NOTE: Options have a default constructor, however default options are not
-  /// portable! Default options can only work if threads are dynamically
-  /// allocated by default, meaning default options cannot work on backends
-  /// which require static thread allocations. In addition on some schedulers
-  /// default options may not work for other reasons.
+  /// @post The thread get EITHER detached or joined.
   Thread(const Options& options, ThreadCore& thread_core);
 
-  using ThreadRoutine = void (*)(void* arg);
-
-  /// DEPRECATED: Creates a thread from a void-returning function pointer and
-  /// a void pointer argument.
-  ///
-  /// Postcondition: The thread get EITHER detached or joined.
-  ///
-  /// NOTE: Options have a default constructor, however default options are not
-  /// portable! Default options can only work if threads are dynamically
-  /// allocated by default, meaning default options cannot work on backends
-  /// which require static thread allocations. In addition on some schedulers
-  /// default options may not work for other reasons.
-  Thread(const Options& options, ThreadRoutine entry, void* arg = nullptr);
-
-  /// Postcondition: The other thread no longer represents a thread of
-  /// execution.
+  /// @post The other thread no longer represents a thread of execution.
   Thread& operator=(Thread&& other);
 
-  /// Precondition: The thread must have been EITHER detached or joined.
+  /// @pre The thread must have been EITHER detached or joined.
   ~Thread();
 
   Thread(const Thread&) = delete;
   Thread(Thread&&) = delete;
   Thread& operator=(const Thread&) = delete;
 
-  /// Returns a value of Thread::id identifying the thread associated with
-  /// *this. If there is no thread associated, default constructed Thread::id is
-  /// returned.
-  Id get_id() const;
+  /// Returns a value of `Thread::id` identifying the thread associated with
+  /// `*this`. If there is no thread associated, default constructed
+  /// `Thread::id` is returned.
+  id get_id() const;
 
-  /// Checks if the Thread object identifies an active thread of execution which
-  /// has not yet been detached. Specifically, returns true if get_id() !=
-  /// pw::Thread::id() && detach() has NOT been invoked. So a default
+  /// Checks if the `Thread` object identifies an active thread of execution
+  /// which has not yet been detached. Specifically, returns true if `get_id()
+  /// != pw::Thread::id()` and `detach()` has NOT been invoked. So a default
   /// constructed thread is not joinable and neither is one which was detached.
   ///
   /// A thread that has not started or has finished executing code which was
   /// never detached, but has not yet been joined is still considered an active
   /// thread of execution and is therefore joinable.
-  bool joinable() const { return get_id() != Id(); }
+  bool joinable() const { return get_id() != id(); }
 
 #if PW_THREAD_JOINING_ENABLED
-  /// Blocks the current thread until the thread identified by *this finishes
+  /// Blocks the current thread until the thread identified by `*this` finishes
   /// its execution.
   ///
   /// The completion of the thread identified by *this synchronizes with the
   /// corresponding successful return from join().
   ///
-  /// No synchronization is performed on *this itself. Concurrently calling
-  /// join() on the same thread object from multiple threads constitutes a data
-  /// race that results in undefined behavior.
+  /// No synchronization is performed on `*this` itself. Concurrently calling
+  /// `join()` on the same thread object from multiple threads constitutes a
+  /// data race that results in undefined behavior.
   ///
-  /// Precondition: The thread must have been NEITHER detached nor joined.
+  /// @pre The thread must have been NEITHER detached nor joined.
   ///
-  /// Postcondition: After calling detach *this no longer owns any thread.
+  /// @post After calling detach `*this` no longer owns any thread.
   void join();
 #else
   template <typename kUnusedType = void>
@@ -188,9 +172,9 @@ class Thread {
   /// execution to continue independently. Any allocated resources will be freed
   /// once the thread exits.
   ///
-  /// Precondition: The thread must have been NEITHER detached nor joined.
+  /// @pre The thread must have been NEITHER detached nor joined.
   ///
-  /// Postcondition: After calling detach *this no longer owns any thread.
+  /// @post After calling detach *this no longer owns any thread.
   void detach();
 
   /// Exchanges the underlying handles of two thread objects.
@@ -216,6 +200,12 @@ class Thread {
   backend::NativeThread native_type_;
 };
 
-}  // namespace pw::thread
+}  // namespace thread
+
+/// `pw::thread::Thread` will be renamed to `pw::Thread`. New code should refer
+/// to `pw::Thread`.
+using Thread = ::pw::thread::Thread;  // Must use `=` for Doxygen to find this.
+
+}  // namespace pw
 
 #include "pw_thread_backend/thread_inline.h"

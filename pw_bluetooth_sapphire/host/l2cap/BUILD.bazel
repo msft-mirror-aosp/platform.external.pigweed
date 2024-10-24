@@ -11,6 +11,8 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
+
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
 
 package(default_visibility = ["//visibility:public"])
@@ -48,6 +50,7 @@ cc_library(
         "enhanced_retransmission_mode_tx_engine.cc",
         "fcs.cc",
         "fragmenter.cc",
+        "le_dynamic_channel.cc",
         "le_signaling_channel.cc",
         "logical_link.cc",
         "low_energy_command_handler.cc",
@@ -115,9 +118,8 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "l2cap_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "l2cap_test",
     srcs = [
         "a2dp_offload_manager_test.cc",
         "basic_mode_rx_engine_test.cc",
@@ -138,6 +140,7 @@ cc_library(
         "fcs_test.cc",
         "fragmenter_test.cc",
         "frame_headers_test.cc",
+        "le_dynamic_channel_test.cc",
         "le_signaling_channel_test.cc",
         "logical_link_test.cc",
         "low_energy_command_handler_test.cc",
@@ -148,8 +151,7 @@ cc_library(
         "types_test.cc",
     ],
     copts = COPTS,
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":channel_manager_mock_controller_test_fixture",
         ":l2cap",
@@ -157,9 +159,7 @@ cc_library(
         "//pw_bluetooth_sapphire/host/hci",
         "//pw_bluetooth_sapphire/host/hci:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "//pw_bluetooth_sapphire/host/transport:testing",
         "@pigweed//pw_async:fake_dispatcher_fixture",
     ],
-    alwayslink = 1,
 )

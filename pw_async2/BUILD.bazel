@@ -17,10 +17,7 @@ load(
     "incompatible_with_mcu",
     "minimum_cxx_20",
 )
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -209,8 +206,14 @@ pw_cc_test(
 
 cc_library(
     name = "coro",
+    srcs = [
+        "coro.cc",
+    ],
     hdrs = [
         "public/pw_async2/coro.h",
+    ],
+    implementation_deps = [
+        "//pw_log",
     ],
     includes = [
         "public",
@@ -219,6 +222,7 @@ cc_library(
     deps = [
         ":dispatcher",
         "//pw_allocator:allocator",
+        "//pw_function",
     ],
 )
 
@@ -271,6 +275,7 @@ cc_library(
     includes = ["public"],
     deps = [
         ":dispatcher",
+        "//pw_chrono:virtual_clock",
         "//pw_containers:intrusive_list",
         "//pw_sync:interrupt_spin_lock",
         "//pw_toolchain:no_destructor",

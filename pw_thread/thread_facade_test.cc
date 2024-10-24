@@ -48,18 +48,6 @@ TEST(Thread, JoinWaitsForLambdaCompletion) {
   EXPECT_TRUE(thread_ran.try_acquire());
 }
 
-static void ReleaseBinarySemaphore(void* arg) {
-  static_cast<BinarySemaphore*>(arg)->release();
-}
-
-TEST(Thread, JoinWaitsForDeprecatedFunctionPointerCompletion) {
-  BinarySemaphore thread_ran;
-  Thread thread(TestOptionsThread0(), ReleaseBinarySemaphore, &thread_ran);
-  EXPECT_TRUE(thread.joinable());
-  thread.join();
-  EXPECT_EQ(thread.get_id(), Id());
-  EXPECT_TRUE(thread_ran.try_acquire());
-}
 #endif  // PW_THREAD_JOINING_ENABLED
 
 TEST(Thread, DetachAllowsThreadToRunAfterExitingScope) {
