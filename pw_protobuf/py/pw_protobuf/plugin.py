@@ -68,6 +68,19 @@ def parse_parameter_options(parameter: str) -> Namespace:
         type=Path,
         help='Append FILE to options file list',
     )
+    parser.add_argument(
+        '--no-oneof-callbacks',
+        dest='oneof_callbacks',
+        action='store_false',
+        help='Generate legacy inline oneof members instead of callbacks',
+    )
+    parser.add_argument(
+        '--no-generic-options-files',
+        dest='generic_options_files',
+        action='store_false',
+        help='If set, only permits the usage of the `.pwpb_options` extension '
+        'for options files instead of the generic `.options`',
+    )
 
     # protoc passes the custom arguments in shell quoted form, separated by
     # commas. Use shlex to split them, correctly handling quoted sections, with
@@ -97,15 +110,24 @@ def process_proto_request(
     args = parse_parameter_options(req.parameter)
     for proto_file in req.proto_file:
         proto_options = options.load_options(
-            args.include_paths, Path(proto_file.name), args.options_files
+            args.include_paths,
+            Path(proto_file.name),
+            args.options_files,
+            allow_generic_options_extension=args.generic_options_files,
         )
-        output_files = codegen_pwpb.process_proto_file(
-            proto_file,
-            proto_options,
+
+        codegen_options = codegen_pwpb.GeneratorOptions(
+            oneof_callbacks=args.oneof_callbacks,
             suppress_legacy_namespace=args.no_legacy_namespace,
             exclude_legacy_snake_case_field_name_enums=(
                 args.exclude_legacy_snake_case_field_name_enums
             ),
+        )
+
+        output_files = codegen_pwpb.process_proto_file(
+            proto_file,
+            proto_options,
+            codegen_options,
         )
         for output_file in output_files:
             fd = res.file.add()
