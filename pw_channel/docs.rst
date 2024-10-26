@@ -6,68 +6,53 @@ pw_channel
 .. pigweed-module::
    :name: pw_channel
 
-.. cpp:namespace:: pw::channel
+   ``pw_channel`` provides features that are essential for efficient,
+   high-performance communications. The ``Channel`` API is:
 
-------------------
-Channel attributes
-------------------
-Channels may be reliable, readable, writable, or seekable. A channel may be
-substituted for another as long as it provides at least the same set of
-capabilities; additional capabilities are okay. The channel's data type
-(datagram or byte) implies different read/write semantics, so datagram/byte
-channels cannot be used interchangeably in general.
+   - **Flow-control-aware**: Built-in backpressure ensures that data is only
+     requested when consumers are able to buffer and handle it.
+   - **Zero-copy**: Data transfers seamlessly throughout the stack without
+     copying between intermediate buffers or memory pools.
+   - **Composable**: Layers of the communications stack are swappable, allowing
+     more code reuse and configurability.
+   - **Asynchronous**: No need for dedicated threads or nested callbacks.
 
-Using datagram channels as byte channels
-========================================
-For datagram channels, the exact bytes provided to a write call will appear in a
-read call on the other end. A zero-byte datagram write results in a zero-byte
-datagram read, so empty datagrams may convey information.
+Not sure if ``pw_channel`` is right for you? Check out
+:ref:`module-pw_channel-design-why` to learn how ``pw_channel`` handles
+flow control, backpressure, composability, and more.
 
-For byte channels, bytes written may be grouped differently when read. A
-zero-length byte write is meaningless and will not result in a zero-length byte
-read. If a zero-length byte read occurs, it is ignored.
+.. grid:: 2
 
-To facilitate simple code reuse, datagram-oriented channels may used as
-byte-oriented channels when appropriate. Calling
-:cpp:func:`Channel::IgnoreDatagramBoundaries` on a datagram channel returns a
-byte channel reference to it. The byte view of the channel is simply the
-concatenation of the contents of the datagrams.
+   .. grid-item-card:: :octicon:`code-square` Design
+      :link: module-pw_channel-design
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
 
-This is only valid if, for the datagram channel:
+      How pw_channel handles:
 
-- datagram boundaries have no significance or meaning,
-- zero-length datagrams are not used to convey information, since they are
-  meaningless for byte channels,
-- short or zero-length writes through the byte API will not result in
-  unacceptable overhead.
+      * Flow control
+      * Backpressure
+      * Composability
+      * Asynchronous operations
 
--------------
-API reference
--------------
-.. cpp:namespace:: pw::channel
+      And more.
 
-.. doxygengroup:: pw_channel
-   :content-only:
-   :members:
+   .. grid-item-card:: :octicon:`code-square` Reference
+      :link: module-pw_channel-reference
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
 
-Channel implementations
-=======================
-.. doxygengroup:: pw_channel_forwarding
-   :content-only:
-   :members:
+      API reference for:
 
-.. doxygengroup:: pw_channel_loopback
-   :content-only:
-   :members:
+      * ``Channel``
+      * ``AnyChannel``
+      * ``ByteChannel``
+      * ``DatagramChannel``
 
-.. doxygengroup:: pw_channel_epoll
-   :content-only:
-   :members:
+      And more.
 
-.. doxygengroup:: pw_channel_rp2_stdio
-   :content-only:
-   :members:
+.. toctree::
+   :hidden:
 
-.. doxygengroup:: pw_channel_stream_channel
-   :content-only:
-   :members:
+   design
+   reference

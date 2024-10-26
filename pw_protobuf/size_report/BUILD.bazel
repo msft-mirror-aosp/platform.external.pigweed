@@ -97,7 +97,7 @@ pw_cc_binary(
     deps = [
         ":proto_bloat",
         "//pw_bloat:bloat_this_binary",
-        "//pw_protobuf:codegen_test_proto_cc.pwpb",
+        "//pw_protobuf:codegen_test_proto_pwpb",
     ],
 )
 
@@ -108,7 +108,7 @@ pw_cc_binary(
     deps = [
         ":proto_bloat",
         "//pw_bloat:bloat_this_binary",
-        "//pw_protobuf:codegen_test_proto_cc.pwpb",
+        "//pw_protobuf:codegen_test_proto_pwpb",
     ],
 )
 
@@ -119,7 +119,7 @@ pw_cc_binary(
     deps = [
         ":proto_bloat",
         "//pw_bloat:bloat_this_binary",
-        "//pw_protobuf:codegen_test_proto_cc.pwpb",
+        "//pw_protobuf:codegen_test_proto_pwpb",
     ],
 )
 
@@ -130,7 +130,7 @@ pw_cc_binary(
     deps = [
         ":proto_bloat",
         "//pw_bloat:bloat_this_binary",
-        "//pw_protobuf:codegen_test_proto_cc.pwpb",
+        "//pw_protobuf:codegen_test_proto_pwpb",
     ],
 )
 
@@ -141,7 +141,7 @@ pw_cc_binary(
     deps = [
         ":proto_bloat",
         "//pw_bloat:bloat_this_binary",
-        "//pw_protobuf:codegen_test_proto_cc.pwpb",
+        "//pw_protobuf:codegen_test_proto_pwpb",
     ],
 )
 
@@ -149,9 +149,11 @@ pw_cc_binary(
     name = "oneof_message",
     srcs = ["oneof_codegen_comparison.cc"],
     defines = ["_PW_PROTOBUF_SIZE_REPORT_MESSAGE=1"],
+    # TODO: b/373693434 - Temporarily disabled pending the oneof migration.
+    tags = ["manual"],
     deps = [
         ":proto_bloat",
         "//pw_bloat:bloat_this_binary",
-        "//pw_protobuf:codegen_test_proto_cc.pwpb",
+        "//pw_protobuf:codegen_test_proto_pwpb",
     ],
 )
