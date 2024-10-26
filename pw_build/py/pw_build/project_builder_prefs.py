@@ -14,26 +14,85 @@
 """Pigweed Watch config file preferences loader."""
 
 import argparse
-import copy
-import shlex
 from pathlib import Path
+import shlex
+import shutil
 from typing import Any, Callable
 
+from pw_cli.env import running_under_bazel
 from pw_config_loader import yaml_config_loader_mixin
 
-_DEFAULT_CONFIG: dict[Any, Any] = {
-    # Config settings not available as a command line options go here.
-    'build_system_commands': {
-        'default': {
-            'commands': [
-                {
-                    'command': 'ninja',
-                    'extra_args': [],
-                },
-            ],
+DEFAULT_BUILD_DIRECTORY = 'out'
+
+
+def default_config(forced_build_system: str | None = None) -> dict[Any, Any]:
+    """Return either a ninja or bazel default build config.
+
+    These are the build configs used if a ProjectBuilder instance is provided no
+    build recipes. That is the same scenario as when no build related command
+    line flags are passed to pw build or pw watch (defined in
+    project_builder_argparse.py)
+
+    Args:
+      forced_build_system: If set to 'bazel' or 'ninja' return the assumed build
+        config for bazel.
+
+    Returns: A pw_config_loader dict representing the base build config. If
+      executed outside of bazel, the ninja config is returned. If executed
+      within a bazel run, the bazel config is returned.
+    """
+
+    # Base config assuming ninja -C out
+    ninja_config: dict[Any, Any] = {
+        # Config settings not available as a command line options go here.
+        'build_system_commands': {
+            'default': {
+                'commands': [
+                    {
+                        'command': 'ninja',
+                        'extra_args': [],
+                    },
+                ],
+            },
         },
-    },
-}
+    }
+
+    bazel_command = 'bazel'
+    # Prefer bazelisk if available.
+    if shutil.which('bazelisk'):
+        bazel_command = 'bazelisk'
+
+    bazel_config: dict[Any, Any] = {
+        # Config settings not available as a command line options go here.
+        'build_system_commands': {
+            'default': {
+                'commands': [
+                    {
+                        'command': bazel_command,
+                        'extra_args': ['build'],
+                    },
+                    {
+                        'command': bazel_command,
+                        'extra_args': ['test'],
+                    },
+                ],
+            },
+        },
+        # Bazel requires at least one target to build or test.
+        'default_build_targets': ['//...'],
+    }
+
+    if forced_build_system:
+        if forced_build_system == 'ninja':
+            return ninja_config
+        if forced_build_system == 'bazel':
+            return bazel_config
+
+    if running_under_bazel():
+        return bazel_config
+
+    return ninja_config
+
 
 _DEFAULT_PROJECT_FILE = Path('$PW_PROJECT_ROOT/.pw_build.yaml')
 _DEFAULT_PROJECT_USER_FILE = Path('$PW_PROJECT_ROOT/.pw_build.user.yaml')
@@ -75,21 +134,26 @@ class ProjectBuilderPrefs(yaml_config_loader_mixin.YamlConfigLoaderMixin):
             project_file=project_file,
             project_user_file=project_user_file,
             user_file=user_file,
-            default_config=_DEFAULT_CONFIG,
+            default_config={},
             environment_var='PW_BUILD_CONFIG_FILE',
         )
 
     def reset_config(self) -> None:
+        # Erase self._config and set to self.default_config.
         super().reset_config()
+        # Get the config defined by argparse defaults.
+        argparse_config = load_defaults_from_argparse(
+            self.load_argparse_arguments
+        )
         self._update_config(
-            load_defaults_from_argparse(self.load_argparse_arguments),
+            argparse_config,
             yaml_config_loader_mixin.Stage.DEFAULT,
         )
 
     def _argparse_build_system_commands_to_prefs(  # pylint: disable=no-self-use
         self, argparse_input: list[list[str]]
     ) -> dict[str, Any]:
-        result = copy.copy(_DEFAULT_CONFIG['build_system_commands'])
+        result: dict[str, Any] = {}
         for out_dir, command in argparse_input:
             new_dir_spec = result.get(out_dir, {})
             # Get existing commands list
@@ -109,6 +173,7 @@ class ProjectBuilderPrefs(yaml_config_loader_mixin.YamlConfigLoaderMixin):
         return result
 
     def apply_command_line_args(self, new_args: argparse.Namespace) -> None:
+        """Update the stored config with an argparse namespace."""
         default_args = load_defaults_from_argparse(self.load_argparse_arguments)
 
         # Only apply settings that differ from the defaults.
@@ -119,6 +184,51 @@ class ProjectBuilderPrefs(yaml_config_loader_mixin.YamlConfigLoaderMixin):
                     value = self._argparse_build_system_commands_to_prefs(value)
                 changed_settings[key] = value
 
+        # Apply the default build configs if no build directories and build
+        # systems were supplied on the command line.
+        fallback_build_config = default_config(
+            forced_build_system=changed_settings.get(
+                'default_build_system', None
+            )
+        )
+
+        # If no --build-system-commands provided on the command line, set them
+        # via the fallback (ninja or bazel).
+        if 'build_system_commands' not in changed_settings:
+            changed_settings['build_system_commands'] = fallback_build_config[
+                'build_system_commands'
+            ]
+
+        # If the user did not specify a default build system command:
+        if 'default' not in changed_settings['build_system_commands']:
+            # Check if there are any build directories with no matching build
+            # system commands.
+            for build_dir, targets in changed_settings.get(
+                'build_directories', []
+            ):
+                if build_dir not in changed_settings['build_system_commands']:
+                    # Build dir has no defined build system command. Set the
+                    # fallback default.
+                    changed_settings['build_system_commands'][
+                        'default'
+                    ] = fallback_build_config['build_system_commands'][
+                        'default'
+                    ]
+
+        # If no targets are on the command line, set them via the fallback.
+        if (
+            # Targets without a build directory:
+            #   'pw watch docs python.lint'
+            'default_build_targets' not in changed_settings
+            # Targets with a build directory:
+            #   'pw watch -C outdir docs python.lint'
+            and 'build_directories' not in changed_settings
+        ):
+            targets = fallback_build_config.get('default_build_targets', None)
+            if targets:
+                changed_settings['default_build_targets'] = targets
+
+        # Apply the changed settings.
         self._update_config(
             changed_settings,
             yaml_config_loader_mixin.Stage.DEFAULT,
@@ -157,7 +267,7 @@ class ProjectBuilderPrefs(yaml_config_loader_mixin.YamlConfigLoaderMixin):
         # default_build_targets or empty targets. If run_commands were supplied,
         # only run those by returning an empty final_build_dirs list.
         if not final_build_dirs and not self.run_commands:
-            final_build_dirs['out'] = self._config.get(
+            final_build_dirs[DEFAULT_BUILD_DIRECTORY] = self._config.get(
                 'default_build_targets', []
             )
 
@@ -166,7 +276,7 @@ class ProjectBuilderPrefs(yaml_config_loader_mixin.YamlConfigLoaderMixin):
     def _get_build_system_commands_for(self, build_dir: str) -> dict[str, Any]:
         config_dict = self._config.get('build_system_commands', {})
         if not config_dict:
-            config_dict = _DEFAULT_CONFIG['build_system_commands']
+            config_dict = default_config()['build_system_commands']
         default_system_commands: dict[str, Any] = config_dict.get('default', {})
         if default_system_commands is None:
             default_system_commands = {}
