@@ -516,6 +516,10 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             in serial.
         use_verbatim_error_log_formatting: Use a blank log format when printing
             errors from sub builds to the root logger.
+        source_path: Path to the root of the source files. Defaults to the
+            current working directory. If running under bazel this will be set
+            to the $BUILD_WORKSPACE_DIRECTORY environment variable. Otherwise
+            $PW_PROJECT_ROOT will be used.
     """
 
     def __init__(
@@ -547,6 +551,7 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
         allow_progress_bars: bool = True,
         use_verbatim_error_log_formatting: bool = False,
         log_build_steps: bool = False,
+        source_path: Path | None = None,
     ):
         self.charset: ProjectBuilderCharset = charset
         self.abort_callback = abort_callback
@@ -658,6 +663,16 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
         if separate_build_file_logging:
             self._create_per_build_logfiles()
 
+        self.source_path = source_path
+
+        # Determine the source root path.
+        if not self.source_path:
+            self.source_path = pw_cli.env.project_root()
+
+        # If source_path was set change to that directory before building.
+        if self.source_path:
+            os.chdir(self.source_path)
+
     def _create_per_build_logfiles(self) -> None:
         """Create separate log files per build.
 
@@ -681,9 +696,11 @@ class ProjectBuilder:  # pylint: disable=too-many-instance-attributes
             if self.default_logfile:
                 new_logfile_dir = self.default_logfile.parent
                 new_logfile_name = self.default_logfile
-                new_logfile_postfix = '_' + recipe.display_name.replace(
-                    ' ', '_'
-                )
+                # Replace spaces and forward slash with undescores.
+                display_name = recipe.display_name
+                display_name = display_name.replace(' ', '_')
+                display_name = display_name.replace('/', '_')
+                new_logfile_postfix = '_' + display_name
 
             new_logfile = new_logfile_dir / (
                 new_logfile_name.stem
