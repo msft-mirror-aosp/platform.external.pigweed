@@ -49,28 +49,48 @@ load(
 # For Copybara use only
 ADDITIONAL_PWPB_DEPS = []
 
-def pwpb_proto_library(name, deps, tags = None, visibility = None):
+# TODO: b/373693434 - The `oneof_callbacks` parameter is temporary to assist
+# with migration.
+def pwpb_proto_library(name, deps, tags = None, visibility = None, oneof_callbacks = False):
     """A C++ proto library generated using pw_protobuf.
 
     Attributes:
       deps: proto_library targets for which to generate this library.
     """
-    _pwpb_proto_library(
-        name = name,
-        protos = deps,
-        deps = [
-            Label("//pw_assert"),
-            Label("//pw_containers:vector"),
-            Label("//pw_preprocessor"),
-            Label("//pw_protobuf"),
-            Label("//pw_result"),
-            Label("//pw_span"),
-            Label("//pw_status"),
-            Label("//pw_string:string"),
-        ] + ADDITIONAL_PWPB_DEPS,
-        tags = tags,
-        visibility = visibility,
-    )
+    if oneof_callbacks:
+        _pwpb_proto_library(
+            name = name,
+            protos = deps,
+            deps = [
+                Label("//pw_assert"),
+                Label("//pw_containers:vector"),
+                Label("//pw_preprocessor"),
+                Label("//pw_protobuf"),
+                Label("//pw_result"),
+                Label("//pw_span"),
+                Label("//pw_status"),
+                Label("//pw_string:string"),
+            ] + ADDITIONAL_PWPB_DEPS,
+            tags = tags,
+            visibility = visibility,
+        )
+    else:
+        _pwpb_legacy_oneof_proto_library(
+            name = name,
+            protos = deps,
+            deps = [
+                Label("//pw_assert"),
+                Label("//pw_containers:vector"),
+                Label("//pw_preprocessor"),
+                Label("//pw_protobuf"),
+                Label("//pw_result"),
+                Label("//pw_span"),
+                Label("//pw_status"),
+                Label("//pw_string:string"),
+            ] + ADDITIONAL_PWPB_DEPS,
+            tags = tags,
+            visibility = visibility,
+        )
 
 def pwpb_rpc_proto_library(name, deps, pwpb_proto_library_deps, tags = None, visibility = None):
     """A pwpb_rpc proto library target.
@@ -523,6 +543,29 @@ _pwpb_proto_compiler_aspect = _proto_compiler_aspect(
     ["--no-legacy-namespace", "--options-file={}"],
 )
 
+# TODO: b/373693434 - This aspect and its corresponding rule should be removed
+# once oneof callback migration is complete.
+_pwpb_legacy_oneof_compiler_aspect = _proto_compiler_aspect(
+    ["pwpb.h"],
+    "//pw_protobuf/py:plugin",
+    ["--no-oneof-callbacks", "--no-legacy-namespace", "--options-file={}"],
+)
+
+_pwpb_legacy_oneof_proto_library = rule(
+    implementation = _impl_pw_proto_library,
+    attrs = {
+        "deps": attr.label_list(
+            providers = [CcInfo],
+        ),
+        "protos": attr.label_list(
+            providers = [ProtoInfo],
+            aspects = [_pwpb_legacy_oneof_compiler_aspect],
+        ),
+    },
+    fragments = ["cpp"],
+    toolchains = use_cpp_toolchain(),
+)
+
 _pwpb_proto_library = rule(
     implementation = _impl_pw_proto_library,
     attrs = {
@@ -631,13 +674,13 @@ def _pw_proto_filegroup_impl(ctx):
 
     for options_src in ctx.attr.options_files:
         for file in options_src.files.to_list():
-            if file.extension == "options":
+            if file.extension == "options" or file.extension == "pwpb_options":
                 options_files.append(file)
             else:
                 fail((
                     "Files provided as `options_files` to a " +
-                    "`pw_proto_filegroup` must have the `.options` " +
-                    "extension; the file `{}` was provided."
+                    "`pw_proto_filegroup` must have the `.options` or " +
+                    "`.pwpb_options` extensions; the file `{}` was provided."
                 ).format(file.basename))
 
     return [
