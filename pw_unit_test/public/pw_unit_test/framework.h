@@ -14,6 +14,7 @@
 #pragma once
 
 #include "pw_unit_test/framework_backend.h"  // IWYU pragma: export
+#include "pw_unit_test/status_test_matchers.h"
 // Check that the backend defined the following.
 
 #ifndef GTEST_TEST
@@ -176,11 +177,9 @@
 #error "The pw_unit_test framework backend must define SUCCEED()"
 #endif  // SUCCEED
 
-// RUN_ALL_TESTS can be a macro or a function, check for both.
-#ifndef RUN_ALL_TESTS
-static_assert(&RUN_ALL_TESTS != nullptr,
-              "The pw_unit_test framework backend must define RUN_ALL_TESTS()");
-#endif  // RUN_ALL_TESTS
+static_assert(std::is_same_v<decltype(RUN_ALL_TESTS()), int>,
+              "The pw_unit_test framework backend must define the "
+              "int RUN_ALL_TESTS() function");
 
 #ifndef GTEST_HAS_DEATH_TEST
 #error "The pw_unit_test framework backend must define GTEST_HAS_DEATH_TEST"
