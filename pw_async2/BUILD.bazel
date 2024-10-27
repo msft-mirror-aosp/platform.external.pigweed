@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load(
     "//pw_build:compatibility.bzl",
     "incompatible_with_mcu",
@@ -128,6 +129,7 @@ cc_library(
     ],
     deps = [
         ":dispatcher",
+        "//pw_function",
     ],
 )
 
@@ -333,5 +335,41 @@ pw_cc_test(
         ":simulated_time_provider",
         "//pw_chrono:system_clock",
         "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "enqueue_heap_func",
+    hdrs = [
+        "public/pw_async2/enqueue_heap_func.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":dispatcher",
+    ],
+)
+
+pw_cc_test(
+    name = "enqueue_heap_func_test",
+    srcs = [
+        "enqueue_heap_func_test.cc",
+    ],
+    deps = [
+        ":dispatcher",
+        ":enqueue_heap_func",
+        "//pw_unit_test",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "backends.rst",
+        "docs.rst",
+    ],
+    prefix = "pw_async2/",
+    target_compatible_with = incompatible_with_mcu(),
+    deps = [
+        "//pw_async2/examples:docs",
     ],
 )
