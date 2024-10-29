@@ -88,7 +88,7 @@ message Pigweed {
   repeated Proto.ID id = 10;
 
   // Fixed-length bytes field, a string with no maximum size specified in
-  // full_test.options, and a scalar with a forced callback.
+  // full_test.pwpb_options, and a scalar with a forced callback.
   bytes data = 11;
   string description = 12;
   uint32 special_property = 13;
@@ -210,4 +210,16 @@ message KeyValuePair {
 message CornerCases {
   // Generates ReadUint32() and WriteUint32() that call the parent definition.
   uint32 _uint32 = 1;
+}
+
+message OneOfTest {
+  message AMessage {
+    bool a_bool = 1;
+  }
+
+  oneof type {
+    int32 an_int = 1;
+    string a_string = 2;
+    AMessage a_message = 3;
+  }
 }

@@ -31,7 +31,7 @@ BrEdrInterrogator::BrEdrInterrogator(Peer::WeakPtr peer,
       handle_(handle),
       cmd_runner_(std::move(cmd_channel)),
       weak_self_(this) {
-  BT_ASSERT(peer_.is_alive());
+  PW_CHECK(peer_.is_alive());
 }
 
 void BrEdrInterrogator::Start(ResultCallback callback) {
@@ -96,13 +96,13 @@ void BrEdrInterrogator::QueueRemoteNameRequest() {
   auto packet = hci::EmbossCommandPacket::New<
       pw::bluetooth::emboss::RemoteNameRequestCommandWriter>(
       hci_spec::kRemoteNameRequest);
-  auto params = packet.view_t();
-  params.bd_addr().CopyFrom(peer_->address().value().view());
-  params.page_scan_repetition_mode().Write(mode);
+  auto packet_view = packet.view_t();
+  packet_view.bd_addr().CopyFrom(peer_->address().value().view());
+  packet_view.page_scan_repetition_mode().Write(mode);
   if (peer_->bredr()->clock_offset()) {
-    params.clock_offset().valid().Write(true);
+    packet_view.clock_offset().valid().Write(true);
     const uint16_t offset = peer_->bredr()->clock_offset().value();
-    params.clock_offset().clock_offset().Write(offset);
+    packet_view.clock_offset().clock_offset().Write(offset);
   }
 
   auto cmd_cb = [this](const hci::EmbossEventPacket& event) {
@@ -251,8 +251,8 @@ void BrEdrInterrogator::QueueReadRemoteVersionInformation() {
     if (hci_is_error(event, WARN, "gap", "read remote version info failed")) {
       return;
     }
-    BT_DEBUG_ASSERT(event.event_code() ==
-                    hci_spec::kReadRemoteVersionInfoCompleteEventCode);
+    PW_DCHECK(event.event_code() ==
+              hci_spec::kReadRemoteVersionInfoCompleteEventCode);
     bt_log(TRACE,
            "gap",
            "read remote version info completed (peer id: %s)",
