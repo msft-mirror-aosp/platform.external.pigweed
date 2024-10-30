@@ -45,7 +45,7 @@ bool ProcessDescriptorDiscoveryResponse(
     BufferView entries,
     Client::DescriptorCallback desc_callback,
     att::Handle* out_last_handle) {
-  BT_DEBUG_ASSERT(out_last_handle);
+  PW_DCHECK(out_last_handle);
 
   if (entries.size() % sizeof(EntryType)) {
     bt_log(DEBUG, "gatt", "malformed information data list");
@@ -96,11 +96,11 @@ class Impl final : public Client {
  public:
   explicit Impl(att::Bearer::WeakPtr bearer)
       : att_(std::move(bearer)), weak_self_(this) {
-    BT_DEBUG_ASSERT(att_.is_alive());
+    PW_DCHECK(att_.is_alive());
 
     auto handler = [this](auto txn_id, const att::PacketReader& pdu) {
-      BT_DEBUG_ASSERT(pdu.opcode() == att::kNotification ||
-                      pdu.opcode() == att::kIndication);
+      PW_DCHECK(pdu.opcode() == att::kNotification ||
+                pdu.opcode() == att::kIndication);
 
       if (pdu.payload_size() < sizeof(att::NotificationParams)) {
         // Received a malformed notification. Disconnect the link.
@@ -161,10 +161,10 @@ class Impl final : public Client {
  private:
   uint16_t mtu() const override { return att_->mtu(); }
 
-  void ExchangeMTU(MTUCallback mtu_cb) override {
+  void ExchangeMTU(MTUCallback mtu_callback) override {
     auto pdu = NewPDU(sizeof(att::ExchangeMTURequestParams));
     if (!pdu) {
-      mtu_cb(fit::error(att::Error(HostError::kOutOfMemory)));
+      mtu_callback(fit::error(att::Error(HostError::kOutOfMemory)));
       return;
     }
 
@@ -173,11 +173,11 @@ class Impl final : public Client {
     params->client_rx_mtu =
         pw::bytes::ConvertOrderTo(cpp20::endian::little, att_->preferred_mtu());
 
-    auto rsp_cb = [this, mtu_cb = std::move(mtu_cb)](
+    auto rsp_cb = [this, mtu_cb = std::move(mtu_callback)](
                       att::Bearer::TransactionResult result) mutable {
       if (result.is_ok()) {
         const att::PacketReader& rsp = result.value();
-        BT_DEBUG_ASSERT(rsp.opcode() == att::kExchangeMTUResponse);
+        PW_DCHECK(rsp.opcode() == att::kExchangeMTUResponse);
 
         if (rsp.payload_size() != sizeof(att::ExchangeMTUResponseParams)) {
           // Received a malformed response. Disconnect the link.
@@ -235,7 +235,7 @@ class Impl final : public Client {
                                att::Handle range_end,
                                ServiceCallback svc_callback,
                                att::ResultFunction<> status_callback) override {
-    BT_ASSERT(range_start <= range_end);
+    PW_CHECK(range_start <= range_end);
 
     auto pdu = NewPDU(sizeof(att::ReadByGroupTypeRequestParams16));
     if (!pdu) {
@@ -277,7 +277,7 @@ class Impl final : public Client {
       }
 
       const att::PacketReader& rsp = result.value();
-      BT_DEBUG_ASSERT(rsp.opcode() == att::kReadByGroupTypeResponse);
+      PW_DCHECK(rsp.opcode() == att::kReadByGroupTypeResponse);
       TRACE_DURATION("bluetooth",
                      "gatt::Client::DiscoverServicesInRange rsp_cb",
                      "size",
@@ -401,8 +401,8 @@ class Impl final : public Client {
                                         ServiceCallback svc_callback,
                                         att::ResultFunction<> status_callback,
                                         std::vector<UUID> uuids) override {
-    BT_ASSERT(range_start <= range_end);
-    BT_ASSERT(!uuids.empty());
+    PW_CHECK(range_start <= range_end);
+    PW_CHECK(!uuids.empty());
     UUID uuid = uuids.back();
     uuids.pop_back();
 
@@ -486,7 +486,7 @@ class Impl final : public Client {
       }
 
       const att::PacketReader& rsp = result.value();
-      BT_DEBUG_ASSERT(rsp.opcode() == att::kFindByTypeValueResponse);
+      PW_DCHECK(rsp.opcode() == att::kFindByTypeValueResponse);
 
       size_t payload_size = rsp.payload_size();
       if (payload_size < 1 ||
@@ -507,18 +507,19 @@ class Impl final : public Client {
       while (handle_list.size()) {
         const auto& entry = handle_list.To<att::HandlesInformationList>();
 
-        att::Handle start =
+        att::Handle start_handle =
             pw::bytes::ConvertOrderFrom(cpp20::endian::little, entry.handle);
-        att::Handle end = pw::bytes::ConvertOrderFrom(cpp20::endian::little,
-                                                      entry.group_end_handle);
+        att::Handle end_handle = pw::bytes::ConvertOrderFrom(
+            cpp20::endian::little, entry.group_end_handle);
 
-        if (end < start) {
+        if (end_handle < start_handle) {
           bt_log(DEBUG, "gatt", "received malformed service range values");
           res_cb(ToResult(HostError::kPacketMalformed));
           return;
         }
 
-        if (start < discovery_range_start || start > discovery_range_end) {
+        if (start_handle < discovery_range_start ||
+            start_handle > discovery_range_end) {
           bt_log(DEBUG,
                  "gatt",
                  "received service range values outside of requested range");
@@ -529,13 +530,13 @@ class Impl final : public Client {
         // "The Handles Information List is ordered sequentially based on the
         // found attribute handles." (Core Spec v5.3, Vol 3, Part F,
         // Sec 3.4.3.4)
-        if (last_handle.has_value() && start <= last_handle.value()) {
+        if (last_handle.has_value() && start_handle <= last_handle.value()) {
           bt_log(DEBUG, "gatt", "received services out of order");
           res_cb(ToResult(HostError::kPacketMalformed));
           return;
         }
 
-        ServiceData service(kind, start, end, uuid);
+        ServiceData service(kind, start_handle, end_handle, uuid);
 
         // Notify the handler.
         svc_cb(service);
@@ -570,9 +571,9 @@ class Impl final : public Client {
                                att::Handle range_end,
                                CharacteristicCallback chrc_callback,
                                att::ResultFunction<> status_callback) override {
-    BT_ASSERT(range_start <= range_end);
-    BT_ASSERT(chrc_callback);
-    BT_ASSERT(status_callback);
+    PW_CHECK(range_start <= range_end);
+    PW_CHECK(chrc_callback);
+    PW_CHECK(status_callback);
 
     if (range_start == range_end) {
       status_callback(fit::ok());
@@ -605,7 +606,7 @@ class Impl final : public Client {
 
       // ReadByTypeRequest() should return an error result if there are no
       // attributes in a success response.
-      BT_ASSERT(!attributes.empty());
+      PW_CHECK(!attributes.empty());
 
       for (auto& char_attr : attributes) {
         Properties properties = 0u;
@@ -685,9 +686,9 @@ class Impl final : public Client {
                            att::Handle range_end,
                            DescriptorCallback desc_callback,
                            att::ResultFunction<> status_callback) override {
-    BT_DEBUG_ASSERT(range_start <= range_end);
-    BT_DEBUG_ASSERT(desc_callback);
-    BT_DEBUG_ASSERT(status_callback);
+    PW_DCHECK(range_start <= range_end);
+    PW_DCHECK(desc_callback);
+    PW_DCHECK(status_callback);
 
     auto pdu = NewPDU(sizeof(att::FindInformationRequestParams));
     if (!pdu) {
@@ -722,7 +723,7 @@ class Impl final : public Client {
         return;
       }
       const att::PacketReader& rsp = result.value();
-      BT_DEBUG_ASSERT(rsp.opcode() == att::kFindInformationResponse);
+      PW_DCHECK(rsp.opcode() == att::kFindInformationResponse);
       TRACE_DURATION("bluetooth",
                      "gatt::Client::DiscoverDescriptors rsp_cb",
                      "size",
@@ -799,15 +800,15 @@ class Impl final : public Client {
     auto params = writer.mutable_payload<att::ReadRequestParams>();
     params->handle = pw::bytes::ConvertOrderTo(cpp20::endian::little, handle);
 
-    auto rsp_cb = [this, callback = std::move(callback)](
+    auto rsp_cb = [this, cb = std::move(callback)](
                       att::Bearer::TransactionResult result) {
       if (result.is_ok()) {
         const att::PacketReader& rsp = result.value();
-        BT_DEBUG_ASSERT(rsp.opcode() == att::kReadResponse);
+        PW_DCHECK(rsp.opcode() == att::kReadResponse);
         bool maybe_truncated =
             (rsp.payload_size() != att::kMaxAttributeValueLength) &&
             (rsp.payload_size() == (mtu() - sizeof(rsp.opcode())));
-        callback(fit::ok(), rsp.payload_data(), maybe_truncated);
+        cb(fit::ok(), rsp.payload_data(), maybe_truncated);
         return;
       }
       const auto& [error, err_handle] = result.error_value();
@@ -816,7 +817,7 @@ class Impl final : public Client {
              "read request failed: %s, handle %#.4x",
              bt_str(error),
              err_handle);
-      callback(fit::error(error), BufferView(), /*maybe_truncated=*/false);
+      cb(fit::error(error), BufferView(), /*maybe_truncated=*/false);
     };
 
     att_->StartTransaction(std::move(pdu), BindCallback(std::move(rsp_cb)));
@@ -827,7 +828,7 @@ class Impl final : public Client {
                          att::Handle end_handle,
                          ReadByTypeCallback callback) override {
     size_t type_size = type.CompactSize(/*allow_32bit=*/false);
-    BT_ASSERT(type_size == sizeof(uint16_t) || type_size == sizeof(UInt128));
+    PW_CHECK(type_size == sizeof(uint16_t) || type_size == sizeof(UInt128));
     auto pdu = NewPDU(type_size == sizeof(uint16_t)
                           ? sizeof(att::ReadByTypeRequestParams16)
                           : sizeof(att::ReadByTypeRequestParams128));
@@ -856,10 +857,8 @@ class Impl final : public Client {
       type.ToBytes(&type_view, /*allow_32bit=*/false);
     }
 
-    auto rsp_cb = [this,
-                   callback = std::move(callback),
-                   start_handle,
-                   end_handle](att::Bearer::TransactionResult result) {
+    auto rsp_cb = [this, cb = std::move(callback), start_handle, end_handle](
+                      att::Bearer::TransactionResult result) {
       if (result.is_error()) {
         const auto& [error, handle] = result.error_value();
         bt_log(DEBUG,
@@ -870,13 +869,13 @@ class Impl final : public Client {
         // Only some errors have handles.
         std::optional<att::Handle> cb_handle =
             handle ? std::optional(handle) : std::nullopt;
-        callback(fit::error(ReadByTypeError{error, cb_handle}));
+        cb(fit::error(ReadByTypeError{error, cb_handle}));
         return;
       }
       const att::PacketReader& rsp = result.value();
-      BT_ASSERT(rsp.opcode() == att::kReadByTypeResponse);
+      PW_CHECK(rsp.opcode() == att::kReadByTypeResponse);
       if (rsp.payload_size() < sizeof(att::ReadByTypeResponseParams)) {
-        callback(fit::error(
+        cb(fit::error(
             ReadByTypeError{Error(HostError::kPacketMalformed), std::nullopt}));
         return;
       }
@@ -895,7 +894,7 @@ class Impl final : public Client {
       // c) Have a list size that is evenly divisible by pair size.
       if (pair_size < sizeof(att::Handle) || list_size < sizeof(att::Handle) ||
           list_size % pair_size != 0) {
-        callback(fit::error(
+        cb(fit::error(
             ReadByTypeError{Error(HostError::kPacketMalformed), std::nullopt}));
         return;
       }
@@ -913,8 +912,8 @@ class Impl final : public Client {
                  "gatt",
                  "client received read by type response with handle outside of "
                  "requested range");
-          callback(fit::error(ReadByTypeError{
-              Error(HostError::kPacketMalformed), std::nullopt}));
+          cb(fit::error(ReadByTypeError{Error(HostError::kPacketMalformed),
+                                        std::nullopt}));
           return;
         }
 
@@ -923,8 +922,8 @@ class Impl final : public Client {
                  "gatt",
                  "client received read by type response with handles in "
                  "non-increasing order");
-          callback(fit::error(ReadByTypeError{
-              Error(HostError::kPacketMalformed), std::nullopt}));
+          cb(fit::error(ReadByTypeError{Error(HostError::kPacketMalformed),
+                                        std::nullopt}));
           return;
         }
 
@@ -947,9 +946,9 @@ class Impl final : public Client {
         // Advance list view to next pair (or end of list).
         attr_list_view = attr_list_view.view(pair_size);
       }
-      BT_ASSERT(attr_list_view.size() == 0);
+      PW_CHECK(attr_list_view.size() == 0);
 
-      callback(fit::ok(std::move(attributes)));
+      cb(fit::ok(std::move(attributes)));
     };
 
     att_->StartTransaction(std::move(pdu), BindCallback(std::move(rsp_cb)));
@@ -971,16 +970,16 @@ class Impl final : public Client {
     params->handle = pw::bytes::ConvertOrderTo(cpp20::endian::little, handle);
     params->offset = pw::bytes::ConvertOrderTo(cpp20::endian::little, offset);
 
-    auto rsp_cb = [this, offset, callback = std::move(callback)](
+    auto rsp_cb = [this, offset, cb = std::move(callback)](
                       att::Bearer::TransactionResult result) {
       if (result.is_ok()) {
         const att::PacketReader& rsp = result.value();
-        BT_DEBUG_ASSERT(rsp.opcode() == att::kReadBlobResponse);
+        PW_DCHECK(rsp.opcode() == att::kReadBlobResponse);
         bool maybe_truncated =
             (static_cast<size_t>(offset) + rsp.payload_size() !=
              att::kMaxAttributeValueLength) &&
             (rsp.payload_data().size() == (mtu() - sizeof(att::OpCode)));
-        callback(fit::ok(), rsp.payload_data(), maybe_truncated);
+        cb(fit::ok(), rsp.payload_data(), maybe_truncated);
         return;
       }
       const auto& [error, err_handle] = result.error_value();
@@ -989,7 +988,7 @@ class Impl final : public Client {
              "read blob request failed: %s, handle: %#.4x",
              bt_str(error),
              err_handle);
-      callback(fit::error(error), BufferView(), /*maybe_truncated=*/false);
+      cb(fit::error(error), BufferView(), /*maybe_truncated=*/false);
     };
 
     att_->StartTransaction(std::move(pdu), BindCallback(std::move(rsp_cb)));
@@ -1019,7 +1018,7 @@ class Impl final : public Client {
         writer.mutable_payload_data().mutable_view(sizeof(att::Handle));
     value.Copy(&value_view);
 
-    auto rsp_cb = [this, callback = std::move(callback)](
+    auto rsp_cb = [this, cb = std::move(callback)](
                       att::Bearer::TransactionResult result) {
       if (result.is_error()) {
         const auto& [error, err_handle] = result.error_value();
@@ -1028,19 +1027,19 @@ class Impl final : public Client {
                "write request failed: %s, handle: %#.2x",
                bt_str(error),
                err_handle);
-        callback(fit::error(error));
+        cb(fit::error(error));
         return;
       }
       const att::PacketReader& rsp = result.value();
-      BT_DEBUG_ASSERT(rsp.opcode() == att::kWriteResponse);
+      PW_DCHECK(rsp.opcode() == att::kWriteResponse);
 
       if (rsp.payload_size()) {
         att_->ShutDown();
-        callback(ToResult(HostError::kPacketMalformed));
+        cb(ToResult(HostError::kPacketMalformed));
         return;
       }
 
-      callback(fit::ok());
+      cb(fit::ok());
     };
 
     att_->StartTransaction(std::move(pdu), BindCallback(std::move(rsp_cb)));
@@ -1070,19 +1069,19 @@ class Impl final : public Client {
     }
   }
 
-  void ProcessWriteQueue(PreparedWrite prep_write) {
-    if (!prep_write.prep_write_queue.empty()) {
+  void ProcessWriteQueue(PreparedWrite prepared_write) {
+    if (!prepared_write.prep_write_queue.empty()) {
       att::QueuedWrite prep_write_request =
-          std::move(prep_write.prep_write_queue.front());
+          std::move(prepared_write.prep_write_queue.front());
       // A copy of the |prep_write_request| is made to pass into the capture
       // list for |prep_write_cb|. It will be used to validate the echoed blob.
       auto prep_write_copy = att::QueuedWrite(prep_write_request.handle(),
                                               prep_write_request.offset(),
                                               prep_write_request.value());
-      prep_write.prep_write_queue.pop();
+      prepared_write.prep_write_queue.pop();
 
       auto prep_write_cb = [this,
-                            prep_write = std::move(prep_write),
+                            prep_write = std::move(prepared_write),
                             requested_blob = std::move(prep_write_copy)](
                                att::Result<> status,
                                const ByteBuffer& blob) mutable {
@@ -1110,22 +1109,22 @@ class Impl final : public Client {
         }
 
         if (status.is_error()) {
-          auto exec_write_cb = [this,
-                                callback = std::move(prep_write.callback),
-                                prep_write_status =
-                                    status](att::Result<> status) mutable {
-            // In this case return the original failure status. This effectively
-            // overrides the ExecuteWrite status.
-            callback(prep_write_status);
-            // Now that this request is complete, remove it from the overall
-            // queue.
-            BT_DEBUG_ASSERT(!long_write_queue_.empty());
-            long_write_queue_.pop();
+          auto exec_write_cb =
+              [this,
+               callback = std::move(prep_write.callback),
+               prep_write_status = status](att::Result<> write_status) mutable {
+                // In this case return the original failure status. This
+                // effectively overrides the ExecuteWrite status.
+                callback(prep_write_status);
+                // Now that this request is complete, remove it from the overall
+                // queue.
+                PW_DCHECK(!long_write_queue_.empty());
+                long_write_queue_.pop();
 
-            if (long_write_queue_.size() > 0) {
-              ProcessWriteQueue(std::move(long_write_queue_.front()));
-            }
-          };
+                if (long_write_queue_.size() > 0) {
+                  ProcessWriteQueue(std::move(long_write_queue_.front()));
+                }
+              };
 
           ExecuteWriteRequest(att::ExecuteWriteFlag::kCancelAll,
                               std::move(exec_write_cb));
@@ -1143,12 +1142,13 @@ class Impl final : public Client {
     }
     // End of this write, send and prepare for next item in overall write queue
     else {
-      auto exec_write_cb = [this, callback = std::move(prep_write.callback)](
+      auto exec_write_cb = [this,
+                            callback = std::move(prepared_write.callback)](
                                att::Result<> status) mutable {
         callback(status);
         // Now that this request is complete, remove it from the overall
         // queue.
-        BT_DEBUG_ASSERT(!long_write_queue_.empty());
+        PW_DCHECK(!long_write_queue_.empty());
         long_write_queue_.pop();
 
         // If the super queue still has any long writes left to execute,
@@ -1190,23 +1190,23 @@ class Impl final : public Client {
     auto value_view = writer.mutable_payload_data().mutable_view(header_size);
     part_value.Copy(&value_view);
 
-    auto rsp_cb = [callback = std::move(callback)](
-                      att::Bearer::TransactionResult result) {
-      if (result.is_ok()) {
-        const att::PacketReader& rsp = result.value();
-        BT_DEBUG_ASSERT(rsp.opcode() == att::kPrepareWriteResponse);
-        callback(fit::ok(), rsp.payload_data());
-        return;
-      }
-      const auto& [error, err_handle] = result.error_value();
-      bt_log(DEBUG,
-             "gatt",
-             "prepare write request failed: %s, handle:"
-             "%#.4x",
-             bt_str(error),
-             err_handle);
-      callback(fit::error(error), BufferView());
-    };
+    auto rsp_cb =
+        [cb = std::move(callback)](att::Bearer::TransactionResult result) {
+          if (result.is_ok()) {
+            const att::PacketReader& rsp = result.value();
+            PW_DCHECK(rsp.opcode() == att::kPrepareWriteResponse);
+            cb(fit::ok(), rsp.payload_data());
+            return;
+          }
+          const auto& [error, err_handle] = result.error_value();
+          bt_log(DEBUG,
+                 "gatt",
+                 "prepare write request failed: %s, handle:"
+                 "%#.4x",
+                 bt_str(error),
+                 err_handle);
+          cb(fit::error(error), BufferView());
+        };
 
     att_->StartTransaction(std::move(pdu), BindCallback(std::move(rsp_cb)));
   }
@@ -1232,24 +1232,24 @@ class Impl final : public Client {
     auto params = writer.mutable_payload<att::ExecuteWriteRequestParams>();
     params->flags = flag;
 
-    auto rsp_cb = [this, callback = std::move(callback)](
+    auto rsp_cb = [this, cb = std::move(callback)](
                       att::Bearer::TransactionResult result) {
       if (result.is_ok()) {
         const att::PacketReader& rsp = result.value();
-        BT_DEBUG_ASSERT(rsp.opcode() == att::kExecuteWriteResponse);
+        PW_DCHECK(rsp.opcode() == att::kExecuteWriteResponse);
 
         if (rsp.payload_size()) {
           att_->ShutDown();
-          callback(ToResult(HostError::kPacketMalformed));
+          cb(ToResult(HostError::kPacketMalformed));
           return;
         }
 
-        callback(fit::ok());
+        cb(fit::ok());
         return;
       }
       const att::Error& error = result.error_value().first;
       bt_log(DEBUG, "gatt", "execute write request failed: %s", bt_str(error));
-      callback(fit::error(error));
+      cb(fit::error(error));
     };
 
     att_->StartTransaction(std::move(pdu), BindCallback(std::move(rsp_cb)));
@@ -1292,9 +1292,9 @@ class Impl final : public Client {
   att::Bearer::TransactionCallback BindCallback(
       att::Bearer::TransactionCallback callback) {
     return [self = weak_self_.GetWeakPtr(),
-            callback = std::move(callback)](auto rsp) mutable {
+            cb = std::move(callback)](auto rsp) mutable {
       if (self.is_alive()) {
-        callback(rsp);
+        cb(rsp);
       }
     };
   }
