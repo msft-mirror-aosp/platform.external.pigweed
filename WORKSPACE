@@ -49,9 +49,9 @@ cipd_repository(
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-10-19.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8733613569699455441.
-    commit = "8c99ec2804c67b6888a3de043bae1ac69e9b4a26",
+    # ROLL: Last updated 2024-10-26.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8732979395199720977.
+    commit = "986ed50df467d090edf02fa5cf017a0679eff560",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -59,7 +59,7 @@ load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
 
-FUCHSIA_SDK_VERSION = "version:24.20241009.5.1"
+FUCHSIA_SDK_VERSION = "version:25.20241025.4.1"
 
 cipd_repository(
     name = "fuchsia_sdk",
@@ -85,7 +85,7 @@ fuchsia_products_repository(
 cipd_repository(
     name = "fuchsia_clang",
     path = "fuchsia/development/fuchsia_clang/linux-amd64",
-    tag = "git_revision:0856f12bb0a9829a282bef7c26ad536ff3b1e0a5",
+    tag = "git_revision:aea60ab94db4729bad17daa86ccfc411d48a1699",
 )
 
 # TODO: b/354268150 - googletest is in the BCR, but its MODULE.bazel doesn't
