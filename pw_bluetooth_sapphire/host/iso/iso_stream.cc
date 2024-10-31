@@ -35,7 +35,7 @@ class IsoStreamImpl final : public IsoStream {
       const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
       const std::optional<std::vector<uint8_t>>& codec_configuration,
       uint32_t controller_delay_usecs,
-      fit::function<void(SetupDataPathError)> cb) override;
+      fit::function<void(SetupDataPathError)> callback) override;
   hci_spec::ConnectionHandle cis_handle() const override {
     return cis_hci_handle_;
   }
@@ -99,12 +99,12 @@ IsoStreamImpl::IsoStreamImpl(uint8_t cig_id,
       on_closed_cb_(std::move(on_closed_cb)),
       cmd_(std::move(cmd)),
       weak_self_(this) {
-  BT_ASSERT(cmd_.is_alive());
+  PW_CHECK(cmd_.is_alive());
 
-  auto self = weak_self_.GetWeakPtr();
+  auto weak_self = weak_self_.GetWeakPtr();
   cis_established_handler_ = cmd_->AddLEMetaEventHandler(
       hci_spec::kLECISEstablishedSubeventCode,
-      [self = std::move(self)](const hci::EmbossEventPacket& event) {
+      [self = std::move(weak_self)](const hci::EmbossEventPacket& event) {
         if (!self.is_alive()) {
           return hci::CommandChannel::EventCallbackResult::kRemove;
         }
@@ -114,14 +114,14 @@ IsoStreamImpl::IsoStreamImpl(uint8_t cig_id,
         }
         return hci::CommandChannel::EventCallbackResult::kContinue;
       });
-  BT_ASSERT(cis_established_handler_ != 0u);
+  PW_CHECK(cis_established_handler_ != 0u);
 }
 
 bool IsoStreamImpl::OnCisEstablished(const hci::EmbossEventPacket& event) {
-  BT_ASSERT(event.event_code() == hci_spec::kLEMetaEventCode);
-  BT_ASSERT(event.view<pw::bluetooth::emboss::LEMetaEventView>()
-                .subevent_code()
-                .Read() == hci_spec::kLECISEstablishedSubeventCode);
+  PW_CHECK(event.event_code() == hci_spec::kLEMetaEventCode);
+  PW_CHECK(event.view<pw::bluetooth::emboss::LEMetaEventView>()
+               .subevent_code()
+               .Read() == hci_spec::kLECISEstablishedSubeventCode);
   auto view = event.view<pw::bluetooth::emboss::LECISEstablishedSubeventView>();
 
   // Ignore any events intended for another CIS
@@ -187,10 +187,10 @@ void IsoStreamImpl::SetupDataPath(
     const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
     const std::optional<std::vector<uint8_t>>& codec_configuration,
     uint32_t controller_delay_usecs,
-    fit::function<void(IsoStream::SetupDataPathError)> cb) {
+    fit::function<void(IsoStream::SetupDataPathError)> callback) {
   if (state_ != IsoStreamState::kEstablished) {
     bt_log(WARN, "iso", "failed to setup data path - CIS not established");
-    cb(kCisNotEstablished);
+    callback(kCisNotEstablished);
     return;
   }
 
@@ -210,7 +210,7 @@ void IsoStreamImpl::SetupDataPath(
              "iso",
              "invalid data path direction (%u)",
              static_cast<unsigned>(direction));
-      cb(kInvalidArgs);
+      callback(kInvalidArgs);
       return;
   }
 
@@ -219,7 +219,7 @@ void IsoStreamImpl::SetupDataPath(
            "iso",
            "attempt to setup %s CIS path - already setup",
            direction_as_str);
-    cb(kStreamAlreadyExists);
+    callback(kStreamAlreadyExists);
     return;
   }
 
@@ -254,7 +254,7 @@ void IsoStreamImpl::SetupDataPath(
   bt_log(INFO, "iso", "sending LE_Setup_ISO_Data_Path command");
   cmd_->SendCommand(
       std::move(cmd_packet),
-      [cb = std::move(cb),
+      [cb = std::move(callback),
        self,
        cis_handle = cis_hci_handle_,
        target_data_path_state](auto id,

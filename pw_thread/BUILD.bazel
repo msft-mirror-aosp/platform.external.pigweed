@@ -14,12 +14,9 @@
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//pw_build:compatibility.bzl", "host_backend_alias")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-    "pw_facade",
-)
+load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -97,7 +94,7 @@ pw_facade(
     ],
     backend = ":sleep_backend",
     implementation_deps = [
-        ":id",
+        ":thread",
     ],
     includes = ["public"],
     deps = [
@@ -150,25 +147,6 @@ label_flag(
 host_backend_alias(
     name = "thread_unspecified_backend",
     backend = "//pw_thread_stl:thread",
-)
-
-cc_library(
-    name = "deprecated_or_new_thread_function",
-    hdrs = ["public/pw_thread/deprecated_or_new_thread_function.h"],
-    includes = ["public"],
-    deps = [
-        "//pw_function",
-    ],
-)
-
-pw_cc_test(
-    name = "deprecated_or_new_thread_function_test",
-    srcs = [
-        "deprecated_or_new_thread_function_test.cc",
-    ],
-    deps = [
-        ":deprecated_or_new_thread_function",
-    ],
 )
 
 cc_library(
@@ -236,7 +214,7 @@ pw_facade(
     ],
     backend = ":yield_backend",
     implementation_deps = [
-        ":id",
+        ":thread",
     ],
     includes = ["public"],
     deps = [
@@ -293,7 +271,6 @@ cc_library(
         "thread_facade_test.cc",
     ],
     deps = [
-        ":id",
         ":non_portable_test_thread_options",
         ":thread",
         "//pw_chrono:system_clock",
@@ -332,7 +309,7 @@ pw_cc_test(
         "id_facade_test.cc",
     ],
     deps = [
-        ":id",
+        ":thread",
         "//pw_unit_test",
     ],
 )
@@ -353,8 +330,8 @@ pw_cc_test(
         "sleep_facade_test_c.c",
     ],
     deps = [
-        ":id",
         ":sleep",
+        ":thread",
         "//pw_chrono:system_clock",
         "//pw_preprocessor",
         "//pw_unit_test",
@@ -399,7 +376,7 @@ pw_cc_test(
         "yield_facade_test_c.c",
     ],
     deps = [
-        ":id",
+        ":thread",
         ":yield",
         "//pw_preprocessor",
         "//pw_unit_test",

@@ -77,20 +77,20 @@ class BrEdrCommandHandler final : public CommandHandler {
     InformationResult result() const { return result_; }
 
     uint16_t connectionless_mtu() const {
-      BT_ASSERT(result() == InformationResult::kSuccess);
-      BT_ASSERT(type() == InformationType::kConnectionlessMTU);
+      PW_CHECK(result() == InformationResult::kSuccess);
+      PW_CHECK(type() == InformationType::kConnectionlessMTU);
       return data_.To<uint16_t>();
     }
 
     ExtendedFeatures extended_features() const {
-      BT_ASSERT(result() == InformationResult::kSuccess);
-      BT_ASSERT(type() == InformationType::kExtendedFeaturesSupported);
+      PW_CHECK(result() == InformationResult::kSuccess);
+      PW_CHECK(type() == InformationType::kExtendedFeaturesSupported);
       return data_.To<ExtendedFeatures>();
     }
 
     FixedChannelsSupported fixed_channels() const {
-      BT_ASSERT(result() == InformationResult::kSuccess);
-      BT_ASSERT(type() == InformationType::kFixedChannelsSupported);
+      PW_CHECK(result() == InformationResult::kSuccess);
+      PW_CHECK(type() == InformationType::kFixedChannelsSupported);
       return data_.To<FixedChannelsSupported>();
     }
 
@@ -189,7 +189,7 @@ class BrEdrCommandHandler final : public CommandHandler {
       ChannelConfiguration::ConfigurationOptions options,
       ConfigurationResponseCallback cb);
   bool SendInformationRequest(InformationType type,
-                              InformationResponseCallback cb);
+                              InformationResponseCallback callback);
 
   // Inbound request delegate registration methods. The callbacks are wrapped
   // and moved into the SignalingChannel and may outlive BrEdrCommandHandler. It
@@ -197,9 +197,9 @@ class BrEdrCommandHandler final : public CommandHandler {
   // its signaling channel and hence link, so no unregistration is provided.
   // However each call to register will replace any currently registered request
   // delegate.
-  void ServeConnectionRequest(ConnectionRequestCallback cb);
-  void ServeConfigurationRequest(ConfigurationRequestCallback cb);
-  void ServeInformationRequest(InformationRequestCallback cb);
+  void ServeConnectionRequest(ConnectionRequestCallback callback);
+  void ServeConfigurationRequest(ConfigurationRequestCallback callback);
+  void ServeInformationRequest(InformationRequestCallback callback);
 };
 
 }  // namespace bt::l2cap::internal

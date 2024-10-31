@@ -245,7 +245,7 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
   // |starting_| was reset or the |result_callback| was moved), return early.
   if (options.include_tx_power_level) {
     auto power_cb = [this](auto, const hci::EmbossEventPacket& event) mutable {
-      BT_ASSERT(staged_params_.has_value());
+      PW_CHECK(staged_params_.has_value());
       if (!starting_ || !staged_params_.value().result_callback) {
         bt_log(
             INFO, "hci-le", "Advertising canceled during TX Power Level read.");
@@ -279,12 +279,12 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
           staged_params.options,
           std::move(staged_params.connect_callback),
           [this,
-           address = staged_params.address,
-           result_callback = std::move(staged_params.result_callback)](
-              const Result<>& result) {
+           address_copy = staged_params.address,
+           result_cb = std::move(staged_params.result_callback)](
+              const Result<>& start_result) {
             starting_ = false;
-            local_address_ = address;
-            result_callback(result);
+            local_address_ = address_copy;
+            result_cb(start_result);
           });
     };
 
@@ -299,11 +299,11 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
       scan_rsp,
       options,
       std::move(connect_callback),
-      [this, address, result_callback = std::move(result_callback)](
-          const Result<>& result) {
+      [this, address_copy = address, result_cb = std::move(result_callback)](
+          const Result<>& start_result) {
         starting_ = false;
-        local_address_ = address;
-        result_callback(result);
+        local_address_ = address_copy;
+        result_cb(start_result);
       });
 }
 
