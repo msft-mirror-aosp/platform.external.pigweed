@@ -17,16 +17,16 @@
 namespace bt::hci {
 
 void FakeLocalAddressDelegate::EnsureLocalAddress(AddressCallback callback) {
-  BT_DEBUG_ASSERT(callback);
+  PW_DCHECK(callback);
   if (!async_) {
     callback(local_address_);
     return;
   }
   (void)heap_dispatcher_.Post(
-      [callback = std::move(callback), addr = local_address_](
+      [cb = std::move(callback), addr = local_address_](
           pw::async::Context /*ctx*/, pw::Status status) {
         if (status.ok()) {
-          callback(addr);
+          cb(addr);
         }
       });
 }

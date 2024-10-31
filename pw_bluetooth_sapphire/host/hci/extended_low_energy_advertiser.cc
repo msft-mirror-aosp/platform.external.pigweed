@@ -24,7 +24,7 @@ ExtendedLowEnergyAdvertiser::ExtendedLowEnergyAdvertiser(
     : LowEnergyAdvertiser(std::move(hci_ptr), max_advertising_data_length) {
   event_handler_id_ = hci()->command_channel()->AddLEMetaEventHandler(
       hci_spec::kLEAdvertisingSetTerminatedSubeventCode,
-      [this](const EventPacket& event) {
+      [this](const EmbossEventPacket& event) {
         OnAdvertisingSetTerminatedEvent(event);
         return CommandChannel::EventCallbackResult::kContinue;
       });
@@ -64,7 +64,7 @@ EmbossCommandPacket ExtendedLowEnergyAdvertiser::BuildEnablePacket(
 
   std::optional<hci_spec::AdvertisingHandle> handle =
       advertising_handle_map_.GetHandle(address, extended_pdu);
-  BT_ASSERT(handle);
+  PW_CHECK(handle);
 
   view.data()[0].advertising_handle().Write(handle.value());
   view.data()[0].duration().Write(hci_spec::kNoAdvertisingDuration);
@@ -239,7 +239,7 @@ ExtendedLowEnergyAdvertiser::BuildSetAdvertisingData(
 
   std::optional<hci_spec::AdvertisingHandle> handle =
       advertising_handle_map_.GetHandle(address, extended_pdu);
-  BT_ASSERT(handle);
+  PW_CHECK(handle);
 
   size_t block_size = adv_data.CalculateBlockSize(/*include_flags=*/true);
   DynamicByteBuffer buffer(block_size);
@@ -316,7 +316,7 @@ EmbossCommandPacket ExtendedLowEnergyAdvertiser::BuildUnsetAdvertisingData(
   // advertising handle
   std::optional<hci_spec::AdvertisingHandle> handle =
       advertising_handle_map_.GetHandle(address, extended_pdu);
-  BT_ASSERT(handle);
+  PW_CHECK(handle);
   payload.advertising_handle().Write(handle.value());
 
   payload.operation().Write(pwemb::LESetExtendedAdvDataOp::COMPLETE);
@@ -344,7 +344,7 @@ ExtendedLowEnergyAdvertiser::BuildSetScanResponse(const DeviceAddress& address,
 
   std::optional<hci_spec::AdvertisingHandle> handle =
       advertising_handle_map_.GetHandle(address, extended_pdu);
-  BT_ASSERT(handle);
+  PW_CHECK(handle);
 
   size_t block_size = scan_rsp.CalculateBlockSize(/*include_flags=*/false);
   DynamicByteBuffer buffer(block_size);
@@ -421,7 +421,7 @@ EmbossCommandPacket ExtendedLowEnergyAdvertiser::BuildUnsetScanResponse(
   // advertising handle
   std::optional<hci_spec::AdvertisingHandle> handle =
       advertising_handle_map_.GetHandle(address, extended_pdu);
-  BT_ASSERT(handle);
+  PW_CHECK(handle);
   payload.advertising_handle().Write(handle.value());
 
   payload.operation().Write(pwemb::LESetExtendedAdvDataOp::COMPLETE);
@@ -436,7 +436,7 @@ EmbossCommandPacket ExtendedLowEnergyAdvertiser::BuildRemoveAdvertisingSet(
     const DeviceAddress& address, bool extended_pdu) {
   std::optional<hci_spec::AdvertisingHandle> handle =
       advertising_handle_map_.GetHandle(address, extended_pdu);
-  BT_ASSERT(handle);
+  PW_CHECK(handle);
   auto packet =
       hci::EmbossCommandPacket::New<pwemb::LERemoveAdvertisingSetCommandWriter>(
           hci_spec::kLERemoveAdvertisingSet);
@@ -449,12 +449,12 @@ EmbossCommandPacket ExtendedLowEnergyAdvertiser::BuildRemoveAdvertisingSet(
 void ExtendedLowEnergyAdvertiser::OnSetAdvertisingParamsComplete(
     const EmbossEventPacket& event) {
   auto event_view = event.view<pw::bluetooth::emboss::EventHeaderView>();
-  BT_ASSERT(event_view.event_code_enum().Read() ==
-            pw::bluetooth::emboss::EventCode::COMMAND_COMPLETE);
+  PW_CHECK(event_view.event_code_enum().Read() ==
+           pw::bluetooth::emboss::EventCode::COMMAND_COMPLETE);
 
   auto cmd_complete_view =
       event.view<pw::bluetooth::emboss::CommandCompleteEventView>();
-  BT_ASSERT(
+  PW_CHECK(
       cmd_complete_view.command_opcode_enum().Read() ==
       pw::bluetooth::emboss::OpCode::LE_SET_EXTENDED_ADVERTISING_PARAMETERS_V1);
 
@@ -497,16 +497,16 @@ void ExtendedLowEnergyAdvertiser::StartAdvertising(
     scan_rsp.Copy(&copied_scan_rsp);
 
     op_queue_.push([this,
-                    address,
-                    data = std::move(copied_data),
-                    scan_rsp = std::move(copied_scan_rsp),
-                    options,
+                    address_copy = address,
+                    data_copy = std::move(copied_data),
+                    scan_rsp_copy = std::move(copied_scan_rsp),
+                    options_copy = options,
                     conn_cb = std::move(connect_callback),
                     result_cb = std::move(result_callback)]() mutable {
-      StartAdvertising(address,
-                       data,
-                       scan_rsp,
-                       options,
+      StartAdvertising(address_copy,
+                       data_copy,
+                       scan_rsp_copy,
+                       options_copy,
                        std::move(conn_cb),
                        std::move(result_cb));
     });
@@ -603,11 +603,7 @@ void ExtendedLowEnergyAdvertiser::OnIncomingConnection(
 // HCI_LE_Advertising_Set_Terminated event, we have all the information
 // necessary to create a connection object within the Host layer.
 void ExtendedLowEnergyAdvertiser::OnAdvertisingSetTerminatedEvent(
-    const EventPacket& event) {
-  BT_ASSERT(event.event_code() == hci_spec::kLEMetaEventCode);
-  BT_ASSERT(event.params<hci_spec::LEMetaEventParams>().subevent_code ==
-            hci_spec::kLEAdvertisingSetTerminatedSubeventCode);
-
+    const EmbossEventPacket& event) {
   Result<> result = event.ToResult();
   if (bt_is_error(result,
                   ERROR,
@@ -617,11 +613,10 @@ void ExtendedLowEnergyAdvertiser::OnAdvertisingSetTerminatedEvent(
     return;
   }
 
-  auto params = event.subevent_params<
-      hci_spec::LEAdvertisingSetTerminatedSubeventParams>();
-  BT_ASSERT(params);
+  auto params = event.view<pwemb::LEAdvertisingSetTerminatedSubeventView>();
 
-  hci_spec::ConnectionHandle connection_handle = params->connection_handle;
+  hci_spec::ConnectionHandle connection_handle =
+      params.connection_handle().Read();
   auto staged_parameters_node = staged_connections_.extract(connection_handle);
 
   if (staged_parameters_node.empty()) {
@@ -629,11 +624,11 @@ void ExtendedLowEnergyAdvertiser::OnAdvertisingSetTerminatedEvent(
            "hci-le",
            "advertising set terminated event, staged params not available "
            "(handle: %d)",
-           params->adv_handle);
+           params.advertising_handle().Read());
     return;
   }
 
-  hci_spec::AdvertisingHandle adv_handle = params->adv_handle;
+  hci_spec::AdvertisingHandle adv_handle = params.advertising_handle().Read();
   std::optional<DeviceAddress> opt_local_address =
       advertising_handle_map_.GetAddress(adv_handle);
 

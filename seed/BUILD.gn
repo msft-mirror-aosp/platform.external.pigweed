@@ -50,9 +50,9 @@ pw_seed("0102") {
 }
 
 pw_seed("0103") {
-  changelist = 133971
+  sources = [ "0103-pw_protobuf-past-present-future.rst" ]
   title = "pw_protobuf: Past, present, and future"
-  status = "On Hold"
+  status = "Accepted"
   author = "Alexei Frolov"
   facilitator = "Armando Montanez"
 }
@@ -212,7 +212,7 @@ pw_seed("0122") {
 pw_seed("0123") {
   changelist = 188141
   title = "Sprout Bazel C++ toolchain API into a separate repository"
-  status = "Draft"
+  status = "Rejected"
   author = "Ted Pudlik"
   facilitator = "Armando Montanez"
 }
@@ -249,8 +249,9 @@ pw_seed("0127") {
 pw_seed("0128") {
   title = "Abstracting Thread Creation"
   author = "Wyatt Hepler"
-  status = "Draft"
-  changelist = 206670
+  status = "Accepted"
+  sources = [ "0128-abstracting-thread-creation.rst" ]
+  facilitator = "Taylor Cramer"
 }
 
 pw_seed("0129") {
@@ -263,8 +264,15 @@ pw_seed("0129") {
 pw_seed("0130") {
   title = "Update Sphinx theme"
   author = "Kayce Basques"
+  status = "Accepted"
+  sources = [ "0130-update-sphinx-theme.rst" ]
+}
+
+pw_seed("0132") {
+  title = "pw_usb"
+  author = "Łukasz Kędziora"
   status = "Draft"
-  changelist = 232591
+  changelist = 243132
 }
 
 # This must be defined after all `pw_seed` targets, as it relies on information
@@ -304,5 +312,6 @@ pw_seed_index("seeds") {
     ":0128",
     ":0129",
     ":0130",
+    ":0132",
   ]
 }

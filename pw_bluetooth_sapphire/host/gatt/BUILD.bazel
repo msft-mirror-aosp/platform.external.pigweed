@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files(glob(["**/*"]))
@@ -41,14 +43,11 @@ cc_library(
         "server.cc",
         "types.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
-    ],
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/att",
-        "@pigweed//third_party/fuchsia:fit",
+        "//third_party/fuchsia:fit",
     ],
 )
 
@@ -60,22 +59,18 @@ cc_library(
         "fake_layer.cc",
         "mock_server.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
-    ],
     deps = [
         ":gatt",
+        "//pw_async:heap_dispatcher",
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/common:uuid_string_util",
-        "@pigweed//pw_async:heap_dispatcher",
-        "@pigweed//pw_unit_test",
+        "//pw_unit_test",
     ],
 )
 
-cc_library(
-    name = "gatt_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "gatt_test",
     srcs = [
         "client_test.cc",
         "gatt_test.cc",
@@ -84,15 +79,12 @@ cc_library(
         "remote_service_manager_test.cc",
         "server_test.cc",
     ],
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":gatt",
         ":testing",
         "//pw_bluetooth_sapphire/host/att",
         "//pw_bluetooth_sapphire/host/l2cap:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-    alwayslink = 1,
 )
