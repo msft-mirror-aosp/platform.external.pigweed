@@ -25,7 +25,7 @@ SequentialCommandRunner::SequentialCommandRunner(
       sequence_number_(0u),
       running_commands_(0u),
       weak_ptr_factory_(this) {
-  BT_DEBUG_ASSERT(cmd_.is_alive());
+  PW_DCHECK(cmd_.is_alive());
 }
 
 void SequentialCommandRunner::QueueCommand(
@@ -66,9 +66,9 @@ void SequentialCommandRunner::QueueLeAsyncCommand(
 }
 
 void SequentialCommandRunner::RunCommands(ResultFunction<> status_callback) {
-  BT_DEBUG_ASSERT(!status_callback_);
-  BT_DEBUG_ASSERT(status_callback);
-  BT_DEBUG_ASSERT(!command_queue_.empty());
+  PW_DCHECK(!status_callback_);
+  PW_DCHECK(status_callback);
+  PW_DCHECK(!command_queue_.empty());
 
   status_callback_ = std::move(status_callback);
   sequence_number_++;
@@ -87,7 +87,7 @@ bool SequentialCommandRunner::HasQueuedCommands() const {
 }
 
 void SequentialCommandRunner::TryRunNextQueuedCommand(Result<> status) {
-  BT_DEBUG_ASSERT(status_callback_);
+  PW_DCHECK(status_callback_);
 
   // If an error occurred or we're done, reset.
   if (status.is_error() || (command_queue_.empty() && running_commands_ == 0)) {
@@ -111,16 +111,16 @@ void SequentialCommandRunner::TryRunNextQueuedCommand(Result<> status) {
                            seq_no = sequence_number_](
                               auto, const EventPacket& event_packet) {
     std::optional<EmbossEventPacket> emboss_packet;
-    hci::Result<> status =
+    hci::Result<> event_result =
         bt::ToResult(pw::bluetooth::emboss::StatusCode::SUCCESS);
     using T = std::decay_t<decltype(cmd_cb)>;
     if constexpr (std::is_same_v<T, CommandCompleteCallback>) {
-      status = event_packet.ToResult();
+      event_result = event_packet.ToResult();
     } else {
       emboss_packet = EmbossEventPacket::New(event_packet.view().size());
       MutableBufferView buffer = emboss_packet->mutable_data();
       event_packet.view().data().Copy(&buffer);
-      status = emboss_packet->ToResult();
+      event_result = emboss_packet->ToResult();
     }
 
     if (self.is_alive() && seq_no != self->sequence_number_) {
@@ -129,7 +129,7 @@ void SequentialCommandRunner::TryRunNextQueuedCommand(Result<> status) {
              "Ignoring event for previous sequence (event code: %#.2x, status: "
              "%s)",
              event_packet.event_code(),
-             bt_str(status));
+             bt_str(event_result));
     }
 
     // The sequence could have failed or been canceled, and a new sequence could
@@ -140,23 +140,23 @@ void SequentialCommandRunner::TryRunNextQueuedCommand(Result<> status) {
       return;
     }
 
-    if (status.is_ok() &&
+    if (event_result.is_ok() &&
         event_packet.event_code() == hci_spec::kCommandStatusEventCode &&
         complete_event_code != hci_spec::kCommandStatusEventCode) {
       return;
     }
 
     std::visit(
-        [&event_packet, &emboss_packet](auto& cmd_cb) {
-          using cmd_cb_t = std::decay_t<decltype(cmd_cb)>;
+        [&event_packet, &emboss_packet](auto& cmd_cb_arg) {
+          using cmd_cb_t = std::decay_t<decltype(cmd_cb_arg)>;
           if constexpr (std::is_same_v<cmd_cb_t, CommandCompleteCallback>) {
-            if (cmd_cb) {
-              cmd_cb(event_packet);
+            if (cmd_cb_arg) {
+              cmd_cb_arg(event_packet);
             }
           } else if constexpr (std::is_same_v<cmd_cb_t,
                                               EmbossCommandCompleteCallback>) {
-            if (cmd_cb) {
-              cmd_cb(*emboss_packet);
+            if (cmd_cb_arg) {
+              cmd_cb_arg(*emboss_packet);
             }
           }
         },
@@ -170,9 +170,9 @@ void SequentialCommandRunner::TryRunNextQueuedCommand(Result<> status) {
       return;
     }
 
-    BT_DEBUG_ASSERT(self->running_commands_ > 0);
+    PW_DCHECK(self->running_commands_ > 0);
     self->running_commands_--;
-    self->TryRunNextQueuedCommand(status);
+    self->TryRunNextQueuedCommand(event_result);
   };
 
   running_commands_++;
@@ -211,7 +211,7 @@ void SequentialCommandRunner::Reset() {
 }
 
 void SequentialCommandRunner::NotifyStatusAndReset(Result<> status) {
-  BT_DEBUG_ASSERT(status_callback_);
+  PW_DCHECK(status_callback_);
   auto status_cb = std::move(status_callback_);
   Reset();
   status_cb(status);

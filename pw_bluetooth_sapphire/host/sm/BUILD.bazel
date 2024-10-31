@@ -11,7 +11,8 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
+
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -24,7 +25,6 @@ cc_library(
         "packet.cc",
         "types.cc",
     ],
-    copts = ["-Wswitch-enum"] + COPTS,
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
@@ -48,7 +48,6 @@ cc_library(
         "security_request_phase.cc",
         "util.cc",
     ],
-    copts = COPTS,
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire:public",
@@ -66,16 +65,14 @@ cc_library(
     srcs = [
         "test_security_manager.cc",
     ],
-    copts = COPTS,
     deps = [
         ":sm",
         "//pw_bluetooth_sapphire:public",
     ],
 )
 
-cc_library(
-    name = "sm_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "sm_test",
     srcs = [
         "ecdh_key_test.cc",
         "error_test.cc",
@@ -93,16 +90,12 @@ cc_library(
         "types_test.cc",
         "util_test.cc",
     ],
-    copts = COPTS,
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":sm",
         ":testing",
         "//pw_bluetooth_sapphire/host/hci:testing",
         "//pw_bluetooth_sapphire/host/l2cap:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-    alwayslink = 1,
 )

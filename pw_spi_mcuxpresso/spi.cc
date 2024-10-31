@@ -72,16 +72,16 @@ void McuxpressoInitiator::SpiCallback(SPI_Type*,
   driver->transfer_semaphore_.release();
 }
 
-Status McuxpressoInitiator::Configure(const Config& config) {
+Status McuxpressoInitiator::DoConfigure(const Config& config) {
   std::lock_guard lock(mutex_);
   if (current_config_ && config == *current_config_) {
     return OkStatus();
   }
-  return DoConfigure(config, lock);
+  return DoConfigureLocked(config, lock);
 }
 
-Status McuxpressoInitiator::DoConfigure(const Config& config,
-                                        const std::lock_guard<sync::Mutex>&) {
+Status McuxpressoInitiator::DoConfigureLocked(
+    const Config& config, const std::lock_guard<sync::Mutex>&) {
   spi_master_config_t master_config = {};
   SPI_MasterGetDefaultConfig(&master_config);
 
@@ -126,8 +126,8 @@ Status McuxpressoInitiator::DoConfigure(const Config& config,
   return status;
 }
 
-Status McuxpressoInitiator::WriteRead(ConstByteSpan write_buffer,
-                                      ByteSpan read_buffer) {
+Status McuxpressoInitiator::DoWriteRead(ConstByteSpan write_buffer,
+                                        ByteSpan read_buffer) {
   spi_transfer_t transfer = {};
 
   transfer.txData =
@@ -177,7 +177,7 @@ Status McuxpressoInitiator::SetChipSelect(uint32_t pin) {
   if (!current_config_) {
     return OkStatus();
   }
-  return DoConfigure(*current_config_, lock);
+  return DoConfigureLocked(*current_config_, lock);
 }
 
 }  // namespace pw::spi

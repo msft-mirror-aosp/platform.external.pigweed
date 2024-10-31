@@ -27,6 +27,12 @@ _TEST_SRC_FILE = _TEST_DATA_FILES / 'bazel_test_data.bazel'
 _TEST_GOLDEN = _TEST_DATA_FILES / 'bazel_test_data_golden.bazel'
 _TEST_MALFORMED = _TEST_DATA_FILES / 'malformed_file.txt'
 
+_WARNINGS = (
+    'load',
+    'native-build',
+    'unsorted-dict-items',
+)
+
 
 class TestBuildifierFormatter(unittest.TestCase):
     """Tests for the BuildifierFormatter."""
@@ -53,17 +59,7 @@ class TestBuildifierFormatter(unittest.TestCase):
                     'buildifier',
                     '--type=build',
                     '--lint=fix',
-                    '--warnings='
-                    + ','.join(
-                        (
-                            'load',
-                            'load-on-top',
-                            'native-build',
-                            'same-origin-load',
-                            'out-of-order-load',
-                            'unsorted-dict-items',
-                        )
-                    ),
+                    f'--warnings={",".join(_WARNINGS)}',
                 )
             ),
         )
@@ -79,7 +75,11 @@ class TestBuildifierFormatter(unittest.TestCase):
             _TEST_MALFORMED, _TEST_MALFORMED.read_bytes()
         )
         self.assertFalse(result.ok)
-        self.assertEqual(result.formatted_file_contents, b'')
+        # stdout may differ depending on the version of buildifier used.
+        self.assertNotIn(
+            'This is just a text file with random contents!',
+            result.formatted_file_contents.decode(),
+        )
         self.assertIn('syntax error', result.error_message)
 
         self.assertEqual(
@@ -89,17 +89,7 @@ class TestBuildifierFormatter(unittest.TestCase):
                     'buildifier',
                     '--type=default',
                     '--lint=fix',
-                    '--warnings='
-                    + ','.join(
-                        (
-                            'load',
-                            'load-on-top',
-                            'native-build',
-                            'same-origin-load',
-                            'out-of-order-load',
-                            'unsorted-dict-items',
-                        )
-                    ),
+                    f'--warnings={",".join(_WARNINGS)}',
                 )
             ),
         )
@@ -130,17 +120,7 @@ class TestBuildifierFormatter(unittest.TestCase):
                         'buildifier',
                         '--type=build',
                         '--lint=fix',
-                        '--warnings='
-                        + ','.join(
-                            (
-                                'load',
-                                'load-on-top',
-                                'native-build',
-                                'same-origin-load',
-                                'out-of-order-load',
-                                'unsorted-dict-items',
-                            )
-                        ),
+                        '--warnings=' + ','.join(_WARNINGS),
                         str(file_to_fix),
                     )
                 ),
@@ -153,17 +133,7 @@ class TestBuildifierFormatter(unittest.TestCase):
                         'buildifier',
                         '--type=default',
                         '--lint=fix',
-                        '--warnings='
-                        + ','.join(
-                            (
-                                'load',
-                                'load-on-top',
-                                'native-build',
-                                'same-origin-load',
-                                'out-of-order-load',
-                                'unsorted-dict-items',
-                            )
-                        ),
+                        '--warnings=' + ','.join(_WARNINGS),
                         str(malformed_file),
                     )
                 ),
@@ -176,17 +146,7 @@ class TestBuildifierFormatter(unittest.TestCase):
                         'buildifier',
                         '--type=default',
                         '--lint=fix',
-                        '--warnings='
-                        + ','.join(
-                            (
-                                'load',
-                                'load-on-top',
-                                'native-build',
-                                'same-origin-load',
-                                'out-of-order-load',
-                                'unsorted-dict-items',
-                            )
-                        ),
+                        '--warnings=' + ','.join(_WARNINGS),
                         str(malformed_file),
                     )
                 ),

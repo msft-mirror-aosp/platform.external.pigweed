@@ -70,12 +70,20 @@ EnvAttrT = TypeVar('EnvAttrT')
 # The module metadata is exposed as a global because it's used as read-only
 # data. Opening and reading the metadata file in one of the event handlers
 # would cause hundreds of filesystem reads on each build because those event
-# handlers fire once for each docs page.
-metadata_file = 'docs/module_metadata.json'
-schema_file = 'docs/module_metadata_schema.json'
-with open(f'{os.environ["PW_ROOT"]}/{schema_file}', 'r') as f:
+# handlers fire once for each docs page that's built.
+try:  # Bazel location for the data
+    from python.runfiles import runfiles  # type: ignore
+
+    r = runfiles.Create()
+    schema_file = r.Rlocation('pigweed/docs/module_metadata_schema.json')
+    r = runfiles.Create()
+    metadata_file = r.Rlocation('pigweed/docs/module_metadata.json')
+except ImportError:  # GN location for the data
+    schema_file = f'{os.environ["PW_ROOT"]}/docs/module_metadata_schema.json'
+    metadata_file = f'{os.environ["PW_ROOT"]}/docs/module_metadata.json'
+with open(schema_file, 'r') as f:
     schema = json.load(f)
-with open(f'{os.environ["PW_ROOT"]}/{metadata_file}', 'r') as f:
+with open(metadata_file, 'r') as f:
     metadata = json.load(f)
 # Make sure the metadata matches its schema. Raise an uncaught exception
 # if not.
@@ -215,6 +223,11 @@ def cs_url(module_name: str) -> str:
 def issues_url(module_name: str) -> str:
     """Returns open issues that mention the given module name."""
     return f'https://issues.pigweed.dev/issues?q={module_name}%20status:open'
+
+
+def rustdoc_url(module_name: str) -> str:
+    """Returns the rustdoc URL for a given module."""
+    return f'https://pigweed.dev/rustdoc/{module_name}'
 
 
 def concat_tags(*tag_lists: list[str]) -> list[str]:
@@ -512,6 +525,11 @@ def add_links(module_name: str, toctree: Element) -> None:
     Returns:
         `None`. `toctree` is modified in-place.
     """
+    languages = get_languages(module_name)
+    if languages is not None and 'Rust' in languages:
+        rustdoc = ('Rust API reference', rustdoc_url(module_name))
+        toctree['entries'] += [rustdoc]
+        toctree['rawentries'] += [rustdoc[0]]
     src = ('Source code', cs_url(module_name))
     issues = ('Issues', issues_url(module_name))
     # Maintenance tip: the trick here is to create the `toctree` the same way

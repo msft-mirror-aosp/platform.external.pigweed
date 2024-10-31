@@ -52,7 +52,13 @@ pw_test_group("fuzzers") {
 }
 
 pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
+  sources = [
+    "docs.rst",
+    "fuchsia.rst",
+    "host/att/docs.rst",
+    "host/gap/docs.rst",
+    "host/l2cap/docs.rst",
+  ]
 }
 
 # Satisfies source_is_in_gn_build lint, which doesn't know about the BUILD.gn
@@ -209,6 +215,7 @@ pw_source_set("_public") {
     "public/pw_bluetooth_sapphire/internal/host/l2cap/fragmenter.h",
     "public/pw_bluetooth_sapphire/internal/host/l2cap/frame_headers.h",
     "public/pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h",
+    "public/pw_bluetooth_sapphire/internal/host/l2cap/le_dynamic_channel.h",
     "public/pw_bluetooth_sapphire/internal/host/l2cap/le_signaling_channel.h",
     "public/pw_bluetooth_sapphire/internal/host/l2cap/logical_link.h",
     "public/pw_bluetooth_sapphire/internal/host/l2cap/low_energy_command_handler.h",

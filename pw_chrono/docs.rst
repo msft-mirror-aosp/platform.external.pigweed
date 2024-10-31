@@ -446,6 +446,27 @@ Example in C++
      }
    }
 
+VirtualClock
+============
+Pigweed also includes a virtual base class for timers,
+:cpp:class:`pw::chrono::VirtualClock`. This class allows for writing
+timing-sensitive code that can be tested using simulated clocks such as
+:cpp:class:`pw::chrono::SimulatedSystemClock`.
+
+Using simulated clocks in tests allow tests to avoid sleeping or timeouts,
+resulting in faster and more reliable tests.
+
+See also :cpp:class:`pw::async2::TimeProvider` for creating testable
+time-sensitive code using asynchronous timers.
+
+.. doxygenclass:: pw::chrono::VirtualClock
+  :members:
+
+.. doxygenclass:: pw::chrono::SimulatedSystemClock
+  :members:
+
+
+
 Protobuf
 ========
 Sometimes it's desirable to communicate high resolution time points and
@@ -557,8 +578,8 @@ Example in C++
 ------------------
 libc time wrappers
 ------------------
-The `gettimeofday <https://pubs.opengroup.org/onlinepubs/9699919799/functions/gettimeofday.html>`
-and `time <https://pubs.opengroup.org/onlinepubs/9699919799/functions/time.html>`
+The `gettimeofday <https://pubs.opengroup.org/onlinepubs/9699919799/functions/gettimeofday.html>`__
+and `time <https://pubs.opengroup.org/onlinepubs/9699919799/functions/time.html>`__
 POSIX functions are defined to return the current time since the Epoch.
 The default ``pw_toolchain/arg_gcc:newlib_os_interface_stubs`` stub for
 ``gettimeofday`` will cause a linker error if any code tried to use this
@@ -577,6 +598,12 @@ general time querying and are only intended to provide compatibility.
 Wrap ``gettimeofday`` and ``time`` with an implementation that returns a static
 time value at which the library was built. Use this option if you need these
 functions to return a known value greater than some point in the past.
+
+.. note::
+   When building with Bazel, use the `--stamp
+   <https://bazel.build/docs/user-manual#stamp>`__ flag when building release
+   binaries to ensure the build time reflects the actual time the build is
+   executed, as opposed to a cached value.
 
 ``pw_chrono:wrap_time_system_clock``
 ====================================
