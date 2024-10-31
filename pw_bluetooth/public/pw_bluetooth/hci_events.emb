@@ -1921,10 +1921,19 @@ struct LEScanTimeoutSubevent:
   -- HCI_LE_Scan_Timeout
   0 [+LEMetaEvent.$size_in_bytes]  LEMetaEvent  le_meta_event
 
-# 7.7.65.18 LE Advertising Set Terminated event
-# HCI_LE_Advertising_Set_Terminated
-# TODO: b/265052417 - Definition needs to be added
 
+struct LEAdvertisingSetTerminatedSubevent:
+  -- 7.7.65.18 LE Advertising Set Terminated event
+  0     [+LEMetaEvent.$size_in_bytes]  LEMetaEvent     le_meta_event
+  $next [+1]                           hci.StatusCode  status
+  $next [+1]                           UInt            advertising_handle
+    [requires: 0x00 <= this <= 0xEF]
+
+  $next [+2]                           UInt            connection_handle
+    -- Only the lower 12-bits are meaningful.
+    [requires: 0x0000 <= this <= 0x0EFF]
+
+  $next [+1]                           UInt            num_completed_extended_advertising_events
 
 # 7.7.65.19 LE Scan Request Received event
 # HCI_LE_Scan_Request_Received
@@ -2172,3 +2181,13 @@ struct LERequestPeerSCACompleteSubevent:
 # 7.7.76 SAM Status Change event
 # HCI_SAM_Status_Change
 # TODO: b/265052417 - Definition needs to be added
+
+
+struct LEReadNumberOfSupportedAdvertisingSetsCommandCompleteEvent:
+  -- 7.7.14 Command Complete event (7.8.58 LE Read Number of Supported Advertising Sets command)
+  let hdr_size = hci.CommandCompleteEvent.$size_in_bytes
+  0     [+hdr_size]  hci.CommandCompleteEvent  command_complete
+  let header = command_complete.header
+  $next [+1]         hci.StatusCode            status
+  $next [+1]         UInt                      num_supported_advertising_sets
+    [requires: 1 <= this <= 0xF0]

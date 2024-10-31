@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files(glob(["**/*"]))
@@ -27,25 +29,21 @@ cc_library(
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/hci",
         "//pw_bluetooth_sapphire/host/transport",
-        "@pigweed//third_party/fuchsia:fit",
+        "//third_party/fuchsia:fit",
     ],
 )
 
-cc_library(
-    name = "sco_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "sco_test",
     srcs = [
         "sco_connection_manager_test.cc",
         "sco_connection_test.cc",
     ],
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":sco",
         "//pw_bluetooth_sapphire/host/hci:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "//pw_bluetooth_sapphire/host/transport:testing",
     ],
-    alwayslink = 1,
 )

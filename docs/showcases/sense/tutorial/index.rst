@@ -100,5 +100,7 @@ development host ready to run Sense.
    automate
    web
    factory
+   bazel_cloud
    production
+   crash_handler
    outro

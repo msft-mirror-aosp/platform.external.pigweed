@@ -11,7 +11,8 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
+
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -37,11 +38,6 @@ cc_library(
         "sco_connection.cc",
         "sequential_command_runner.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
-        "-Wno-deprecated-this-capture",
-        "-Wswitch-enum",
-    ] + COPTS,
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/transport",
@@ -59,7 +55,6 @@ cc_library(
         "fake_low_energy_connection.cc",
         "fake_sco_connection.cc",
     ],
-    copts = COPTS,
     deps = [
         ":hci",
         "//pw_bluetooth_sapphire:public",
@@ -68,9 +63,8 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "hci_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "hci_test",
     srcs = [
         "advertising_handle_map_test.cc",
         "connection_test.cc",
@@ -84,15 +78,11 @@ cc_library(
         "low_energy_scanner_test.cc",
         "sequential_command_runner_test.cc",
     ],
-    copts = COPTS,
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":hci",
         ":testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "@pigweed//pw_bluetooth:emboss_hci_test",
     ],
-    alwayslink = 1,
 )

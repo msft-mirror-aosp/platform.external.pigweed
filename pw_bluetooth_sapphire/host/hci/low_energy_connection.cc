@@ -32,9 +32,9 @@ LowEnergyConnection::LowEnergyConnection(
     : AclConnection(handle, local_address, peer_address, role, hci),
       WeakSelf(this),
       parameters_(params) {
-  BT_ASSERT(local_address.type() != DeviceAddress::Type::kBREDR);
-  BT_ASSERT(peer_address.type() != DeviceAddress::Type::kBREDR);
-  BT_ASSERT(hci.is_alive());
+  PW_CHECK(local_address.type() != DeviceAddress::Type::kBREDR);
+  PW_CHECK(peer_address.type() != DeviceAddress::Type::kBREDR);
+  PW_CHECK(hci.is_alive());
 
   le_ltk_request_id_ = hci->command_channel()->AddLEMetaEventHandler(
       hci_spec::kLELongTermKeyRequestSubeventCode,
@@ -119,30 +119,24 @@ void LowEnergyConnection::HandleEncryptionStatus(Result<bool> result,
 }
 
 CommandChannel::EventCallbackResult
-LowEnergyConnection::OnLELongTermKeyRequestEvent(const EventPacket& event) {
-  BT_ASSERT(event.event_code() == hci_spec::kLEMetaEventCode);
-  BT_ASSERT(event.params<hci_spec::LEMetaEventParams>().subevent_code ==
-            hci_spec::kLELongTermKeyRequestSubeventCode);
-
-  auto* params =
-      event.subevent_params<hci_spec::LELongTermKeyRequestSubeventParams>();
-  if (!params) {
+LowEnergyConnection::OnLELongTermKeyRequestEvent(
+    const EmbossEventPacket& event) {
+  auto view = event.unchecked_view<
+      pw::bluetooth::emboss::LELongTermKeyRequestSubeventView>();
+  if (!view.IsComplete()) {
     bt_log(WARN, "hci", "malformed LE LTK request event");
     return CommandChannel::EventCallbackResult::kContinue;
   }
 
-  hci_spec::ConnectionHandle handle = pw::bytes::ConvertOrderFrom(
-      cpp20::endian::little, params->connection_handle);
+  hci_spec::ConnectionHandle handle = view.connection_handle().Read();
 
   // Silently ignore the event as it isn't meant for this connection.
   if (handle != this->handle()) {
     return CommandChannel::EventCallbackResult::kContinue;
   }
 
-  uint64_t rand =
-      pw::bytes::ConvertOrderFrom(cpp20::endian::little, params->random_number);
-  uint16_t ediv = pw::bytes::ConvertOrderFrom(cpp20::endian::little,
-                                              params->encrypted_diversifier);
+  uint64_t rand = view.random_number().Read();
+  uint16_t ediv = view.encrypted_diversifier().Read();
 
   bt_log(DEBUG,
          "hci",
@@ -154,17 +148,18 @@ LowEnergyConnection::OnLELongTermKeyRequestEvent(const EventPacket& event) {
     return CommandChannel::EventCallbackResult::kRemove;
   }
 
-  auto status_cb = [](auto id, const EventPacket& event) {
-    hci_is_error(event, TRACE, "hci-le", "failed to reply to LTK request");
+  auto status_cb = [](auto id, const EventPacket& status_event) {
+    hci_is_error(
+        status_event, TRACE, "hci-le", "failed to reply to LTK request");
   };
 
   if (ltk() && ltk()->rand() == rand && ltk()->ediv() == ediv) {
     auto cmd = EmbossCommandPacket::New<
         pw::bluetooth::emboss::LELongTermKeyRequestReplyCommandWriter>(
         hci_spec::kLELongTermKeyRequestReply);
-    auto view = cmd.view_t();
-    view.connection_handle().Write(handle);
-    view.long_term_key().CopyFrom(
+    auto cmd_view = cmd.view_t();
+    cmd_view.connection_handle().Write(handle);
+    cmd_view.long_term_key().CopyFrom(
         pw::bluetooth::emboss::LinkKeyView(&ltk()->value()));
     hci()->command_channel()->SendCommand(cmd, std::move(status_cb));
   } else {
@@ -173,8 +168,8 @@ LowEnergyConnection::OnLELongTermKeyRequestEvent(const EventPacket& event) {
     auto cmd = EmbossCommandPacket::New<
         pw::bluetooth::emboss::LELongTermKeyRequestNegativeReplyCommandWriter>(
         hci_spec::kLELongTermKeyRequestNegativeReply);
-    auto view = cmd.view_t();
-    view.connection_handle().Write(handle);
+    auto cmd_view = cmd.view_t();
+    cmd_view.connection_handle().Write(handle);
     hci()->command_channel()->SendCommand(cmd, std::move(status_cb));
   }
 

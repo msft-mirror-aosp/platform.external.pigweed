@@ -88,11 +88,9 @@ pw_source_set("config") {
 }
 
 pw_source_set("log") {
+  public = [ "public/pw_system/log.h" ]
   public_configs = [ ":public_include_path" ]
-  sources = [
-    "log.cc",
-    "pw_system_private/log.h",
-  ]
+  sources = [ "log.cc" ]
   public_deps = [
     "$dir_pw_log_rpc:log_service",
     "$dir_pw_log_rpc:rpc_log_drain_thread",
@@ -490,7 +488,6 @@ pw_source_set("async_packet_io") {
     "$dir_pw_sync:mutex",
     "$dir_pw_sync:thread_notification",
     "$dir_pw_thread:thread",
-    "$dir_pw_thread:thread_core",
     dir_pw_allocator,
     dir_pw_channel,
     dir_pw_multibuf,

@@ -413,6 +413,16 @@ Client call objects provide a few common methods.
         the error codes are determined by the :cpp:class:`ChannelOutput`
         implementation
 
+   .. cpp:function:: void WriteCallback(Function<StatusWithSize(ByteSpan)>)
+
+      Raw RPC only. Invokes the provided callback with the available RPC payload
+      buffer, allowing payloads to be encoded directly into it. Sends a stream
+      packet with the payload if the callback is successful.
+
+      The buffer provided to the callback is only valid for the duration of the
+      callback. The callback should return an OK status with the size of the
+      encoded payload on success, or an error status on failure.
+
    .. cpp:function:: pw::Status RequestCompletion()
 
       Notifies the server that client has requested for call completion. On
@@ -921,7 +931,7 @@ timeout for the waiting part (default timeout is 100ms).
    context(other_service_client);
    context.call({});
 
-   ASSERT_OK(pw::rpc::test::SendResponseIfCalled<
+   PW_TEST_ASSERT_OK(pw::rpc::test::SendResponseIfCalled<
              other::pw_rpc::pwpb::OtherService::GetPart>(
        client_context, {.value = 42}));
 

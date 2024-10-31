@@ -14,14 +14,18 @@
 
 load(
     "@fuchsia_sdk//fuchsia:defs.bzl",
+    "fuchsia_cc_library",
     "fuchsia_cc_test",
     "fuchsia_unittest_package",
 )
-load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+load("//pw_bluetooth_sapphire/fuchsia:fuchsia_api_level.bzl", "FUCHSIA_API_LEVEL")
 
-package(default_visibility = ["//pw_bluetooth_sapphire/fuchsia:__pkg__"])
+package(default_visibility = [
+    "//pw_bluetooth_sapphire/fuchsia/bt_host:__pkg__",
+    "//pw_bluetooth_sapphire/fuchsia/host/fidl:__pkg__",
+])
 
-cc_library(
+fuchsia_cc_library(
     name = "fidl",
     hdrs = [
         "public/pw_bluetooth_sapphire/fuchsia/lib/fidl/hanging_getter.h",
@@ -40,7 +44,6 @@ fuchsia_cc_test(
     srcs = [
         "hanging_getter_unittest.cc",
     ],
-    target_compatible_with = incompatible_with_mcu(),
     visibility = ["//visibility:public"],
     deps = [
         ":fidl",
@@ -53,8 +56,7 @@ fuchsia_unittest_package(
     name = "test_pkg",
     package_name = "bt_lib_fidl_tests",
     testonly = True,
-    fuchsia_api_level = "23",
-    tags = ["manual"],
+    fuchsia_api_level = FUCHSIA_API_LEVEL,
     unit_tests = [
         ":bt_lib_fidl_test",
     ],
