@@ -95,7 +95,9 @@ class PigweedGnGenNinja(build.GnGenNinja):
 
 
 def build_bazel(*args, **kwargs) -> None:
-    build.bazel(*args, use_remote_cache=True, **kwargs)
+    build.bazel(
+        *args, use_remote_cache=True, strict_module_lockfile=True, **kwargs
+    )
 
 
 #
@@ -161,6 +163,15 @@ def _gn_main_build_check_targets() -> Sequence[str]:
         'python.lint',
         'pigweed_pypi_distribution',
     ]
+
+    # Since there is no mac-arm64 bloaty binary in CIPD, Arm Macs use the x86_64
+    # binary. However, Arm Macs in Pigweed CI disable Rosetta 2, so skip the
+    # 'default' build on those machines for now.
+    #
+    # TODO: b/368387791 - Add 'default' for all platforms when Arm Mac bloaty is
+    # available.
+    if platform.machine() != 'arm64' or sys.platform != 'darwin':
+        build_targets.append('default')
 
     return build_targets
 
@@ -238,6 +249,7 @@ gn_combined_build_check = PigweedGnGenNinja(
     name='gn_combined_build_check',
     doc='Run most host and device (QEMU) tests.',
     path_filter=_BUILD_FILE_FILTER,
+    packages=('emboss',),
     gn_args=dict(
         pw_C_OPTIMIZATION_LEVELS=_OPTIMIZATION_LEVELS,
         pw_BUILD_BROKEN_GROUPS=True,  # Enable to fully test the GN build
@@ -359,8 +371,11 @@ gn_teensy_build = PigweedGnGenNinja(
 gn_pico_build = PigweedGnGenNinja(
     name='gn_pico_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('pico_sdk', 'freertos'),
+    packages=('pico_sdk', 'freertos', 'emboss'),
     gn_args={
+        'dir_pw_third_party_emboss': lambda ctx: '"{}"'.format(
+            str(ctx.package_root / 'emboss')
+        ),
         'dir_pw_third_party_freertos': lambda ctx: '"{}"'.format(
             str(ctx.package_root / 'freertos')
         ),
@@ -610,8 +625,23 @@ def zephyr_build(ctx: PresubmitContext) -> None:
     # Produces reports at (ctx.root / 'twister_out' / 'twister*.xml')
 
 
+def assert_non_empty_directory(directory: Path) -> None:
+    if not directory.is_dir():
+        raise PresubmitFailure(f'no directory {directory}')
+
+    for _ in directory.iterdir():
+        return
+
+    raise PresubmitFailure(f'no files in {directory}')
+
+
 def docs_build(ctx: PresubmitContext) -> None:
     """Build Pigweed docs"""
+    if ctx.dry_run:
+        raise PresubmitFailure(
+            'This presubmit cannot be run in dry-run mode. '
+            'Please run with: "pw presubmit --step"'
+        )
 
     build.install_package(ctx, 'emboss')
     build.install_package(ctx, 'freertos')
@@ -629,6 +659,7 @@ def docs_build(ctx: PresubmitContext) -> None:
     build_bazel(
         ctx,
         'build',
+        '--remote_download_outputs=all',
         '--',
         '//pw_rust:docs',
     )
@@ -708,6 +739,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(rust_docs_output_dir)
 
     # Copy doxygen html outputs.
     shutil.copytree(
@@ -716,6 +748,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(doxygen_html_output_dir)
 
     # mkdir -p the example repo output dir and copy the files over.
     examples_html_output_dir.mkdir(parents=True, exist_ok=True)
@@ -725,6 +758,7 @@ def docs_build(ctx: PresubmitContext) -> None:
         copy_function=shutil.copyfile,
         dirs_exist_ok=True,
     )
+    assert_non_empty_directory(examples_html_output_dir)
 
 
 gn_host_tools = PigweedGnGenNinja(
@@ -1120,6 +1154,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # keep-sorted: end
     # Test data
     # keep-sorted: start
+    r'\bpw_build/test_data/pw_copy_and_patch_file/',
     r'\bpw_presubmit/py/test/owners_checks/',
     # keep-sorted: end
 )
@@ -1248,12 +1283,16 @@ def _valid_capitalization(word: str) -> bool:
     )  # Matches an executable (clangd)
 
 
-def commit_message_format(_: PresubmitContext):
+def commit_message_format(ctx: PresubmitContext):
     """Checks that the top commit's message is correctly formatted."""
     if git_repo.commit_author().endswith('gserviceaccount.com'):
         return
 
     lines = git_repo.commit_message().splitlines()
+
+    # Ignore fixup/squash commits, but only if running locally.
+    if not ctx.luci and lines[0].startswith(('fixup!', 'squash!')):
+        return
 
     # Show limits and current commit message in log.
     _LOG.debug('%-25s%+25s%+22s', 'Line limits', '72|', '72|')
@@ -1311,7 +1350,8 @@ def commit_message_format(_: PresubmitContext):
 
     # Check that the first line matches the expected pattern.
     match = re.match(
-        r'^(?:[.\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
+        r'^(?P<prefix>[.\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$',
+        lines[0],
     )
     if not match:
         _LOG.warning('The first line does not match the expected format')
@@ -1321,6 +1361,9 @@ def commit_message_format(_: PresubmitContext):
             lines[0],
         )
         errors += 1
+    elif match.group('prefix') == 'roll':
+        # We're much more flexible with roll commits.
+        pass
     elif not _valid_capitalization(match.group('desc').split()[0]):
         _LOG.warning(
             'The first word after the ":" in the first line ("%s") must be '
@@ -1387,6 +1430,7 @@ _EXCLUDE_FROM_TODO_CHECK = (
     r'.dockerignore$',
     r'.gitignore$',
     r'.pylintrc$',
+    r'.ruff.toml$',
     r'\bdocs/build_system.rst',
     r'\bdocs/code_reviews.rst',
     r'\bpw_assert_basic/basic_handler.cc',
@@ -1480,7 +1524,9 @@ OTHER_CHECKS = (
     npm_presubmit.npm_test,
     pw_transfer_integration_test,
     python_checks.update_upstream_python_constraints,
+    python_checks.upload_pigweed_pypi_distribution,
     python_checks.vendor_python_wheels,
+    python_checks.version_bump_pigweed_pypi_distribution,
     shell_checks.shellcheck,
     # TODO(hepler): Many files are missing from the CMake build. Add this check
     # to lintformat when the missing files are fixed.

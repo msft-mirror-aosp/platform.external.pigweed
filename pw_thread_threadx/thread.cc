@@ -15,8 +15,6 @@
 
 #include "pw_assert/check.h"
 #include "pw_preprocessor/compiler.h"
-#include "pw_thread/deprecated_or_new_thread_function.h"
-#include "pw_thread/id.h"
 #include "pw_thread_threadx/config.h"
 #include "pw_thread_threadx/context.h"
 #include "pw_thread_threadx/options.h"
@@ -113,7 +111,7 @@ void Context::DeleteThread(Context& context) {
 }
 
 void Context::CreateThread(const threadx::Options& options,
-                           DeprecatedOrNewThreadFn&& thread_fn) {
+                           Function<void()>&& thread_fn) {
   // Can't use a context more than once.
   PW_DCHECK(!in_use());
 
@@ -158,18 +156,6 @@ Thread::Thread(const thread::Options& facade_options, Function<void()>&& entry)
   PW_DCHECK_NOTNULL(options.context(), "The Context is not optional");
   native_type_ = options.context();
   native_type_->CreateThread(options, std::move(entry));
-}
-
-Thread::Thread(const thread::Options& facade_options,
-               ThreadRoutine entry,
-               void* arg)
-    : native_type_(nullptr) {
-  // Cast the generic facade options to the backend specific option of which
-  // only one type can exist at compile time.
-  auto options = static_cast<const threadx::Options&>(facade_options);
-  PW_DCHECK_NOTNULL(options.context(), "The Context is not optional");
-  native_type_ = options.context();
-  native_type_->CreateThread(options, DeprecatedFnPtrAndArg{entry, arg});
 }
 
 void Thread::detach() {

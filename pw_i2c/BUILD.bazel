@@ -16,14 +16,11 @@ load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
-load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
     "pw_proto_filegroup",
     "pw_proto_library",
 )
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -172,7 +169,7 @@ pw_cc_test(
 pw_proto_filegroup(
     name = "i2c_proto_and_options",
     srcs = ["i2c.proto"],
-    options_files = ["i2c.options"],
+    options_files = ["i2c.pwpb_options"],
 )
 
 proto_library(

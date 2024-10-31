@@ -15,10 +15,12 @@
 
 #include <concepts>
 #include <coroutine>
+#include <variant>
 
 #include "pw_allocator/allocator.h"
 #include "pw_allocator/layout.h"
 #include "pw_async2/dispatcher.h"
+#include "pw_function/function.h"
 #include "pw_log/log.h"
 #include "pw_status/status.h"
 #include "pw_status/try.h"
@@ -47,6 +49,33 @@ class CoroContext {
 // they think it sounds like fun ;)
 namespace internal {
 
+void LogCoroAllocationFailure(size_t requested_size);
+
+template <typename T>
+class OptionalWrapper final {
+ public:
+  // Create an empty container for a to-be-provided value.
+  OptionalWrapper() : value_() {}
+
+  // Assign a value.
+  template <typename U>
+  OptionalWrapper& operator=(U&& value) {
+    value_ = std::forward<U>(value);
+    return *this;
+  }
+
+  // Retrieve the inner value.
+  //
+  // This operation will fail if no value was assigned.
+  operator T() {
+    PW_ASSERT(value_.has_value());
+    return *value_;
+  }
+
+ private:
+  std::optional<T> value_;
+};
+
 // A container for a to-be-produced value of type `T`.
 //
 // This is designed to allow avoiding the overhead of `std::optional` when
@@ -56,55 +85,10 @@ namespace internal {
 // - a default-initialized `T` if `T` is default-initializable or
 // - `std::nullopt`
 template <typename T>
-class OptionalOrDefault final {
- public:
-  // Create an empty container for a to-be-provided value.
-  OptionalOrDefault() : value_() {}
-
-  // Assign a value.
-  template <typename U>
-  OptionalOrDefault& operator=(U&& value) {
-    value_ = std::forward<U>(value);
-    return *this;
-  }
-
-  // Retrieve the inner value.
-  //
-  // This operation will fail if no value was assigned.
-  T& operator*() {
-    PW_ASSERT(value_.has_value());
-    return *value_;
-  }
-
- private:
-  std::optional<T> value_;
-};
-
-// A specialization of `OptionalOrDefault<T>` for `default_initializable`
-// types.
-template <std::default_initializable T>
-class OptionalOrDefault<T> final {
- public:
-  // Create a container for a to-be-provided value by default-initializing.
-  OptionalOrDefault() : value_() {}
-
-  // Assign a value.
-  template <typename U>
-  OptionalOrDefault& operator=(U&& value) {
-    value_ = std::forward<U>(value);
-    return *this;
-  }
-
-  // Retrieve the inner value.
-  //
-  // This operation will return a default-constructed `T` if no value was
-  // assigned. Typical users should not rely on this, and should instead
-  // only retrieve values assigned using `operator=`.
-  T& operator*() { return value_; }
-
- private:
-  T value_;
-};
+using OptionalOrDefault =
+    std::conditional<std::is_default_constructible<T>::value,
+                     T,
+                     OptionalWrapper<T>>::type;
 
 // A wrapper for `std::coroutine_handle` that assumes unique ownership of the
 // underlying `PromiseType`.
@@ -115,7 +99,7 @@ template <typename PromiseType>
 class OwningCoroutineHandle final {
  public:
   // Construct a null (`!IsValid()`) handle.
-  OwningCoroutineHandle(nullptr_t) : promise_handle_(nullptr) {}
+  OwningCoroutineHandle(std::nullptr_t) : promise_handle_(nullptr) {}
 
   /// Take ownership of `promise_handle`.
   OwningCoroutineHandle(std::coroutine_handle<PromiseType>&& promise_handle)
@@ -169,6 +153,7 @@ class OwningCoroutineHandle final {
   // Invokes `destroy()` on the underlying promise and deallocates its
   // associated storage.
   void Release() {
+    // DOCSTAG: [pw_async2-coro-release]
     void* address = promise_handle_.address();
     if (address != nullptr) {
       pw::allocator::Deallocator& dealloc = promise_handle_.promise().dealloc_;
@@ -176,6 +161,7 @@ class OwningCoroutineHandle final {
       promise_handle_ = nullptr;
       dealloc.Deallocate(address);
     }
+    // DOCSTAG: [pw_async2-coro-release]
   }
 
  private:
@@ -201,23 +187,17 @@ struct InOut final {
   OptionalOrDefault<T>* output;
 };
 
-// A base class for `Awaitable` instances.
+// Attempt to complete the current pendable value passed to `co_await`,
+// storing its return value inside the `Awaitable` object so that it can
+// be retrieved by the coroutine.
 //
 // Each `co_await` statement creates an `Awaitable` object whose `Pend`
 // method must be completed before the coroutine's `resume()` function can
 // be invoked.
-class AwaitableBase {
- public:
-  // Attempt to complete the current pendable value passed to `co_await`,
-  // storing its return value inside the `Awaitable` object so that it can
-  // be retrieved by the coroutine.
-  virtual Poll<> PendFillReturnValue(Context& cx) = 0;
-
- protected:
-  // A protected destructor ensures that child classes are never destroyed
-  // through a base pointer, so no virtual destructor is needed.
-  ~AwaitableBase() {}
-};
+//
+// `sizeof(void*)` is used as the size since only one pointer capture is
+// required in all cases.
+using PendFillReturnValueFn = pw::Function<Poll<>(Context&), sizeof(void*)>;
 
 // The `promise_type` of `Coro<T>`.
 //
@@ -233,12 +213,12 @@ class CoroPromiseType final {
   // arguments are unused, but must be accepted in order for this to compile.
   template <typename... Args>
   CoroPromiseType(CoroContext& cx, const Args&...)
-      : dealloc_(cx.alloc()), current_awaitable_(nullptr), in_out_(nullptr) {}
+      : dealloc_(cx.alloc()), currently_pending_(nullptr), in_out_(nullptr) {}
 
   // Method-receiver version.
   template <typename MethodReceiver, typename... Args>
   CoroPromiseType(const MethodReceiver&, CoroContext& cx, const Args&...)
-      : dealloc_(cx.alloc()), current_awaitable_(nullptr), in_out_(nullptr) {}
+      : dealloc_(cx.alloc()), currently_pending_(nullptr), in_out_(nullptr) {}
 
   // Get the `Coro<T>` after successfully allocating the coroutine space
   // and constructing `this`.
@@ -279,7 +259,11 @@ class CoroPromiseType final {
   static void* operator new(std::size_t n,
                             CoroContext& coro_cx,
                             const Args&...) noexcept {
-    return coro_cx.alloc().Allocate(pw::allocator::Layout(n));
+    auto ptr = coro_cx.alloc().Allocate(pw::allocator::Layout(n));
+    if (ptr == nullptr) {
+      internal::LogCoroAllocationFailure(n);
+    }
+    return ptr;
   }
 
   // Method-receiver form.
@@ -288,7 +272,11 @@ class CoroPromiseType final {
                             const MethodReceiver&,
                             CoroContext& coro_cx,
                             const Args&...) noexcept {
-    return coro_cx.alloc().Allocate(pw::allocator::Layout(n));
+    auto ptr = coro_cx.alloc().Allocate(pw::allocator::Layout(n));
+    if (ptr == nullptr) {
+      internal::LogCoroAllocationFailure(n);
+    }
+    return ptr;
   }
 
   // Deallocate the space for both this `CoroPromiseType<T>` and the
@@ -319,7 +307,7 @@ class CoroPromiseType final {
   Context& cx() { return *in_out_->input_cx; }
 
   pw::allocator::Deallocator& dealloc_;
-  AwaitableBase* current_awaitable_;
+  PendFillReturnValueFn currently_pending_;
   InOut<T>* in_out_;
 };
 
@@ -328,7 +316,7 @@ class CoroPromiseType final {
 // This wraps a `Pendable` type and implements the awaitable interface
 // expected by the standard coroutine API.
 template <typename Pendable, typename PromiseType>
-class Awaitable final : AwaitableBase {
+class Awaitable final {
  public:
   // The `OutputType` in `Poll<OutputType> Pendable::Pend(Context&)`.
   using OutputType = std::remove_cvref_t<
@@ -352,7 +340,9 @@ class Awaitable final : AwaitableBase {
     Context& cx = promise.promise().cx();
     if (PendFillReturnValue(cx).IsPending()) {
       /// The coroutine should suspend since the await-ed thing is pending.
-      promise.promise().current_awaitable_ = this;
+      promise.promise().currently_pending_ = [this](Context& lambda_cx) {
+        return PendFillReturnValue(lambda_cx);
+      };
       return true;
     }
     return false;
@@ -380,7 +370,7 @@ class Awaitable final : AwaitableBase {
   // This method must return `Ready()` before the coroutine can be safely
   // resumed, as otherwise the return value will not be available when
   // `await_resume` is called to produce the result of `co_await`.
-  Poll<> PendFillReturnValue(Context& cx) final {
+  Poll<> PendFillReturnValue(Context& cx) {
     Poll<OutputType> poll_res(PendableNoPtr().Pend(cx));
     if (poll_res.IsPending()) {
       return Pending();
@@ -432,11 +422,11 @@ class Awaitable final : AwaitableBase {
 ///
 /// # Example
 /// @rst
-/// .. literalinclude:: examples/coro.cc
+/// .. literalinclude:: examples/basic.cc
 ///    :language: cpp
 ///    :linenos:
-///    :start-after: [pw_async2-examples-coro-injection]
-///    :end-before: [pw_async2-examples-coro-injection]
+///    :start-after: [pw_async2-examples-basic-coro]
+///    :end-before: [pw_async2-examples-basic-coro]
 /// @endrst
 template <std::constructible_from<pw::Status> T>
 class Coro final {
@@ -466,12 +456,11 @@ class Coro final {
     // If an `Awaitable` value is currently being processed, it must be
     // allowed to complete and store its return value before we can resume
     // the coroutine.
-    if (promise_handle_.promise().current_awaitable_ != nullptr &&
-        promise_handle_.promise()
-            .current_awaitable_->PendFillReturnValue(cx)
-            .IsPending()) {
+    if (promise_handle_.promise().currently_pending_ != nullptr &&
+        promise_handle_.promise().currently_pending_(cx).IsPending()) {
       return Pending();
     }
+    // DOCSTAG: [pw_async2-coro-resume]
     // Create the arguments (and output storage) for the coroutine.
     internal::InOut<T> in_out;
     internal::OptionalOrDefault<T> return_value;
@@ -492,7 +481,8 @@ class Coro final {
 
     // When the coroutine completed in `resume()` above, it stored its
     // `co_return` value into `return_value`. This retrieves that value.
-    return std::move(*return_value);
+    return return_value;
+    // DOCSTAG: [pw_async2-coro-resume]
   }
 
   /// Used by the compiler in order to create a `Coro<T>` from a coroutine

@@ -1,3 +1,5 @@
+:html_theme.sidebar_secondary.remove:
+
 .. _docs-root:
 
 =======
@@ -46,6 +48,19 @@ Get started
 
       Set up a C++-based Zephyr project, set up GitHub Actions,
       integrate Pigweed into an existing Bazel project, and more.
+
+---------------------------------------------
+Pigweed SDK launches with Raspberry Pi RP2350
+---------------------------------------------
+.. _Google Pigweed comes to our new RP2350: https://www.raspberrypi.com/news/google-pigweed-comes-to-our-new-rp2350/
+.. _Introducing the Pigweed SDK: https://opensource.googleblog.com/2024/08/introducing-pigweed-sdk.html
+
+The first preview release of the Pigweed SDK has launched with official
+hardware support for Raspberry Pi’s newest microprocessor products, the
+RP2350 and Pico 2! Check out the following blog posts to learn more:
+
+* `Google Pigweed comes to our new RP2350`_
+* `Introducing the Pigweed SDK`_
 
 ----------------
 What is Pigweed?
@@ -171,14 +186,14 @@ Talk to us
    :hidden:
 
    Home <self>
-   Tour of Pigweed <docs/showcases/sense/index>
-   What's new <changelog>
+   Tour <docs/showcases/sense/index>
    docs/get_started/index
+   What's new <changelog>
+   modules
    Source code <https://cs.pigweed.dev/pigweed>
    docs/showcases/index
    docs/concepts/index
    docs/3p/index
-   modules
    docs/community/index
    Developing & contributing <docs/contributing/index>
    Blog <docs/blog/index>
