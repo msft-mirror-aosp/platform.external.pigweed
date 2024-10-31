@@ -65,8 +65,9 @@ Add FuzzTest to your workspace with the following command.
 
    .. tab-item:: Bazel
 
-      Set the following `label flags`_, either in your `target config`_ or on
-      the command line:
+      Set the following :ref:`label flags <docs-build_system-bazel_flags>`,
+      either in your :ref:`target config
+      <docs-build_system-bazel_configuration>` or on the command line:
 
       * ``pw_fuzzer_fuzztest_backend`` to ``@com_google_fuzztest//fuzztest``.
 
@@ -77,24 +78,22 @@ Add FuzzTest to your workspace with the following command.
          bazel test //... \
             --@pigweed//targets:pw_fuzzer_fuzztest_backend=@com_google_fuzztest//fuzztest
 
-.. _target config: :ref:`_docs-build_system-bazel_configuration`
-.. _label flags: :ref:`_docs-build_system-bazel_flags`
-
 Updating
 ========
 The GN build files are generated from the third-party Bazel build files using
-$dir_pw_build/py/pw_build/generate_3p_gn.py.
+$dir_pw_build/py/pw_build/bazel_to_gn.py.
 
-The script uses data taken from ``$dir_pw_third_party/fuzztest/repo.json``.
+The script uses data taken from a ``bazel_to_gn.json`` file for this module and
+for each third party module that this module depends on, e.g.
+``$PW_ROOT/third_party/fuzztest/bazel_to_gn.json``.
 
 The script should be re-run whenever the submodule is updated or the JSON file
-is modified. Specify the location of the Bazel repository can be specified using
-the ``-w`` option, e.g.
+is modified. Specify the location of the Bazel repository using ``gn args``,
+then run:
 
 .. code-block:: sh
 
-   python pw_build/py/pw_build/generate_3p_gn.py \
-     -w third_party/fuzztest/src
+   python pw_build/py/pw_build/bazel_to_gn.py fuzztest
 
 Additionally, the ``fuzztest.bazelrc`` file should regenerated. From this
 directory, run:
@@ -107,6 +106,6 @@ directory, run:
 
 Version
 =======
-The update script was last run for revision `6eb010c7`_.
+The update script was last run for revision `b7257a64`_.
 
-.. _6eb010c7: https://github.com/google/fuzztes/tree/6eb010c7223a6aa609b94d49bfc06ac88f922961
+.. _b7257a64: https://github.com/google/fuzztes/tree/b7257a64c701fc30265eb91179bf9310549bf440

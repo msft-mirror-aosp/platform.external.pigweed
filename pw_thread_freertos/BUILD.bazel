@@ -13,10 +13,7 @@
 # the License.
 
 load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -63,8 +60,8 @@ cc_library(
     deps = [
         "//pw_assert",
         "//pw_chrono:system_clock",
-        "//pw_thread:id",
         "//pw_thread:sleep.facade",
+        "//pw_thread:thread",
         "@freertos",
     ],
 )
@@ -94,9 +91,9 @@ cc_library(
         ":config_override",
         ":id",
         "//pw_assert",
+        "//pw_function",
         "//pw_string",
         "//pw_sync:binary_semaphore",
-        "//pw_thread:deprecated_or_new_thread_function",
         "//pw_thread:thread.facade",
     ],
 )
@@ -120,12 +117,13 @@ cc_library(
         "//pw_thread:sleep",
         "//pw_thread:thread.facade",
     ],
+    alwayslink = 1,
 )
 
 pw_cc_test(
     name = "dynamic_thread_backend_test",
-    # TODO: b/271465588 - Get this test to build.
-    tags = ["manual"],
+    # TODO: https://pwbug.dev/271465588 - This test fails on-device.
+    tags = ["do_not_run_test"],
     deps = [
         ":dynamic_test_threads",
         "//pw_thread:thread_facade_test",
@@ -146,12 +144,11 @@ cc_library(
         "//pw_thread:sleep",
         "//pw_thread:thread.facade",
     ],
+    alwayslink = 1,
 )
 
 pw_cc_test(
     name = "static_thread_backend_test",
-    # TODO: b/271465588 - Get this test to build.
-    tags = ["manual"],
     deps = [
         ":static_test_threads",
         "//pw_thread:thread_facade_test",
@@ -169,7 +166,7 @@ cc_library(
         "yield_public_overrides",
     ],
     deps = [
-        "//pw_thread:id",
+        "//pw_thread:thread",
         "//pw_thread:yield.facade",
         "@freertos",
     ],
@@ -201,8 +198,8 @@ pw_cc_test(
         "pw_thread_freertos_private/thread_iteration.h",
         "thread_iteration_test.cc",
     ],
-    # TODO: b/271465588 - Get this test to build.
-    tags = ["manual"],
+    # TODO: https://pwbug.dev/271465588 - This test fails on-device.
+    tags = ["do_not_run_test"],
     deps = [
         ":freertos_tasktcb",
         ":static_test_threads",

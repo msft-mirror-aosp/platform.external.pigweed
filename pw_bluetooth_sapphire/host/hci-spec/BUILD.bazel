@@ -11,7 +11,8 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
+
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -23,28 +24,22 @@ cc_library(
         "le_connection_parameters.cc",
         "util.cc",
     ],
-    copts = ["-Wswitch-enum"] + COPTS,
     deps = [
+        "//pw_bluetooth:emboss_hci",
         "//pw_bluetooth_sapphire:config",
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
-        "@pigweed//pw_bluetooth:emboss_hci",
-        "@pigweed//pw_chrono:system_clock",
+        "//pw_chrono:system_clock",
     ],
 )
 
-cc_library(
-    name = "hci-spec_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "hci-spec_test",
     srcs = [
         "util_test.cc",
     ],
-    copts = COPTS,
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":hci-spec",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-    alwayslink = 1,
 )

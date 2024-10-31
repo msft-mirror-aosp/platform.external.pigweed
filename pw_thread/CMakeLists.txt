@@ -26,6 +26,7 @@ pw_add_library(pw_thread.config INTERFACE
     ${pw_thread_CONFIG}
 )
 
+# pw_thread.id is deprecated; depend on pw_thread.thread instead.
 pw_add_facade(pw_thread.id INTERFACE
   BACKEND
     pw_thread.id_BACKEND
@@ -102,25 +103,6 @@ pw_add_facade(pw_thread.thread_iteration INTERFACE
     pw_status
 )
 
-pw_add_library(pw_thread.deprecated_or_new_thread_function INTERFACE
-  HEADERS
-    public/pw_thread/deprecated_or_new_thread_function.h
-  PUBLIC_INCLUDES
-    public
-  PUBLIC_DEPS
-    pw_function
-)
-
-pw_add_test(pw_thread.deprecated_or_new_thread_function_test
-  SOURCES
-    deprecated_or_new_thread_function_test.cc
-  PRIVATE_DEPS
-    pw_thread.deprecated_or_new_thread_function
-  GROUPS
-    modules
-    pw_thread
-)
-
 pw_proto_library(pw_thread.thread_snapshot_service_cc
   SOURCES
     pw_thread_protos/thread_snapshot_service.proto
@@ -134,6 +116,7 @@ pw_add_library(pw_thread.thread_snapshot_service STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_log
     pw_protobuf
     pw_rpc.raw.server_api
     pw_span
@@ -201,7 +184,7 @@ if(NOT "${pw_thread.id_BACKEND}" STREQUAL "")
     SOURCES
       id_facade_test.cc
     PRIVATE_DEPS
-      pw_thread.id
+      pw_thread.thread
     GROUPS
       modules
       pw_thread
@@ -216,8 +199,8 @@ if((NOT "${pw_thread.id_BACKEND}" STREQUAL "") AND
       sleep_facade_test_c.c
     PRIVATE_DEPS
       pw_chrono.system_clock
-      pw_thread.id
       pw_thread.sleep
+      pw_thread.thread
     GROUPS
       modules
       pw_thread
@@ -241,7 +224,6 @@ pw_add_library(pw_thread.thread_facade_test STATIC
   SOURCES
     thread_facade_test.cc
   PRIVATE_DEPS
-    pw_thread.id
     pw_thread.sleep
     pw_thread.non_portable_test_thread_options
     pw_thread.thread
@@ -256,7 +238,7 @@ if((NOT "${pw_thread.id_BACKEND}" STREQUAL "") AND
       yield_facade_test.cc
       yield_facade_test_c.c
     PRIVATE_DEPS
-      pw_thread.id
+      pw_thread.thread
       pw_thread.yield
     GROUPS
       modules

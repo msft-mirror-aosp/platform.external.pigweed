@@ -14,6 +14,21 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
+# Module configuration
+
+pw_add_module_config(pw_containers_CONFIG)
+
+pw_add_library(pw_containers.config INTERFACE
+  HEADERS
+    public/pw_containers/config.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    ${pw_containers_CONFIG}
+)
+
+# Libraries
+
 pw_add_library(pw_containers INTERFACE
   PUBLIC_DEPS
     pw_containers.algorithm
@@ -131,16 +146,82 @@ pw_add_library(pw_containers.wrapped_iterator INTERFACE
     public
 )
 
-pw_add_library(pw_containers.intrusive_list STATIC
+pw_add_library(pw_containers.intrusive_item STATIC
   HEADERS
-    public/pw_containers/internal/intrusive_list_impl.h
-    public/pw_containers/intrusive_list.h
+    public/pw_containers/internal/intrusive_item.h
   PUBLIC_INCLUDES
     public
   SOURCES
-    intrusive_list.cc
+    intrusive_item.cc
   PRIVATE_DEPS
     pw_assert
+)
+
+pw_add_library(pw_containers.intrusive_list_common INTERFACE
+  HEADERS
+    public/pw_containers/internal/intrusive_list.h
+    public/pw_containers/internal/intrusive_list_item.h
+    public/pw_containers/internal/intrusive_list_iterator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.intrusive_item
+)
+
+pw_add_library(pw_containers.intrusive_forward_list INTERFACE
+  HEADERS
+    public/pw_containers/intrusive_forward_list.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.config
+    pw_containers.intrusive_list_common
+)
+
+pw_add_library(pw_containers.intrusive_list INTERFACE
+  HEADERS
+    public/pw_containers/intrusive_list.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.config
+    pw_containers.intrusive_list_common
+    pw_containers.legacy_intrusive_list
+)
+
+pw_add_library(pw_containers.legacy_intrusive_list INTERFACE
+  HEADERS
+    public/pw_containers/internal/legacy_intrusive_list.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.intrusive_forward_list
+)
+
+pw_add_library(pw_containers.intrusive_map STATIC
+  HEADERS
+    public/pw_containers/internal/aa_tree.h
+    public/pw_containers/internal/aa_tree_item.h
+    public/pw_containers/internal/aa_tree_iterator.h
+    public/pw_containers/intrusive_map.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_bytes.packed_ptr
+    pw_containers.intrusive_item
+  SOURCES
+    aa_tree.cc
+    aa_tree_item.cc
+)
+
+pw_add_library(pw_containers.intrusive_multimap INTERFACE
+  HEADERS
+    public/pw_containers/intrusive_multimap.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_containers.intrusive_map
 )
 
 pw_add_test(pw_containers.algorithm_test
@@ -262,6 +343,19 @@ pw_add_test(pw_containers.wrapped_iterator_test
     pw_containers
 )
 
+pw_add_test(pw_containers.intrusive_forward_list_test
+  SOURCES
+    intrusive_forward_list_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.intrusive_forward_list
+    pw_containers.vector
+    pw_preprocessor
+  GROUPS
+    modules
+    pw_containers
+)
+
 pw_add_test(pw_containers.intrusive_list_test
   SOURCES
     intrusive_list_test.cc
@@ -274,3 +368,45 @@ pw_add_test(pw_containers.intrusive_list_test
     modules
     pw_containers
 )
+
+pw_add_test(pw_containers.intrusive_map_test
+  SOURCES
+    intrusive_map_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.intrusive_map
+    pw_containers.intrusive_multimap
+    pw_span
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.intrusive_multimap_test
+  SOURCES
+    intrusive_multimap_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.intrusive_map
+    pw_containers.intrusive_multimap
+    pw_span
+  GROUPS
+    modules
+    pw_containers
+)
+
+pw_add_test(pw_containers.intrusive_item_test
+  SOURCES
+    intrusive_item_test.cc
+  PRIVATE_DEPS
+    pw_compilation_testing._pigweed_only_negative_compilation
+    pw_containers.intrusive_forward_list
+    pw_containers.intrusive_list
+    pw_containers.intrusive_map
+    pw_containers.intrusive_multimap
+  GROUPS
+    modules
+    pw_containers
+)
+
+add_subdirectory(examples)
