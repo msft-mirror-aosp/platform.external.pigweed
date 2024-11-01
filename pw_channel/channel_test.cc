@@ -73,12 +73,12 @@ class ReliableByteReaderWriterStub
     PW_CHECK(false);
   }
 
-  pw::Result<pw::channel::WriteToken> DoWrite(
+  pw::Result<pw::channel::WriteToken> DoStageWrite(
       pw::multibuf::MultiBuf&&) override {
     return pw::Status::Unimplemented();
   }
 
-  pw::async2::Poll<pw::Result<pw::channel::WriteToken>> DoPendFlush(
+  pw::async2::Poll<pw::Result<pw::channel::WriteToken>> DoPendWrite(
       pw::async2::Context&) override {
     return pw::async2::Ready(
         pw::Result<pw::channel::WriteToken>(pw::Status::Unimplemented()));
@@ -119,12 +119,12 @@ class WriteOnlyStub : public pw::channel::ByteWriter {
     PW_CHECK(false);
   }
 
-  pw::Result<pw::channel::WriteToken> DoWrite(
+  pw::Result<pw::channel::WriteToken> DoStageWrite(
       pw::multibuf::MultiBuf&&) override {
     return pw::Status::Unimplemented();
   }
 
-  pw::async2::Poll<pw::Result<pw::channel::WriteToken>> DoPendFlush(
+  pw::async2::Poll<pw::Result<pw::channel::WriteToken>> DoPendWrite(
       pw::async2::Context&) override {
     return pw::async2::Ready(
         pw::Result<pw::channel::WriteToken>(pw::Status::Unimplemented()));
@@ -156,7 +156,7 @@ TEST(Channel, MethodsShortCircuitAfterCloseReturnsReady) {
       EXPECT_EQ(Ready(pw::Status::FailedPrecondition()),
                 channel.PendReadyToWrite(cx));
       EXPECT_EQ(pw::Status::FailedPrecondition(),
-                channel.PendFlush(cx)->status());
+                channel.PendWrite(cx)->status());
       EXPECT_EQ(pw::async2::Ready(pw::Status::FailedPrecondition()),
                 channel.PendClose(cx));
 
@@ -227,7 +227,8 @@ class TestByteReader : public ByteChannel<kReliable, kReadable> {
  private:
   Poll<pw::Result<MultiBuf>> DoPendRead(Context& cx) override {
     if (data_.empty()) {
-      read_waker_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
+      PW_ASYNC_STORE_WAKER(
+          cx, read_waker_, "TestByteReader is waiting for a call to PushData");
       return Pending();
     }
     return std::move(data_);
@@ -272,11 +273,14 @@ class TestDatagramWriter : public DatagramWriter {
       return Ready(pw::OkStatus());
     }
 
-    waker_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        waker_,
+        "TestDatagramWriter waiting for a call to MakeReadyToWrite");
     return Pending();
   }
 
-  pw::Result<pw::channel::WriteToken> DoWrite(MultiBuf&& buffer) override {
+  pw::Result<pw::channel::WriteToken> DoStageWrite(MultiBuf&& buffer) override {
     if (state_ != kReadyToWrite) {
       return pw::Status::Unavailable();
     }
@@ -290,9 +294,10 @@ class TestDatagramWriter : public DatagramWriter {
     return alloc_;
   }
 
-  Poll<pw::Result<pw::channel::WriteToken>> DoPendFlush(Context& cx) override {
+  Poll<pw::Result<pw::channel::WriteToken>> DoPendWrite(Context& cx) override {
     if (state_ != kReadyToFlush) {
-      waker_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
+      PW_ASYNC_STORE_WAKER(
+          cx, waker_, "TestDatagramWriter is waiting for its Channel to flush");
       return Pending();
     }
     last_flush_ = last_write_;
@@ -409,14 +414,14 @@ TEST(Channel, TestDatagramWriter) {
           }
           pw::ConstByteSpan str(pw::as_bytes(pw::span(kWriteData)));
           std::copy(str.begin(), str.end(), (**buffer).begin());
-          auto token = channel_.Write(std::move(**buffer));
+          auto token = channel_.StageWrite(std::move(**buffer));
           PW_CHECK(token.ok());
           write_token_ = *token;
           state_ = kFlushPacket;
           [[fallthrough]];
         }
         case kFlushPacket: {
-          auto result = channel_.PendFlush(cx);
+          auto result = channel_.PendWrite(cx);
           if (result.IsPending() || **result < write_token_) {
             return Pending();
           }

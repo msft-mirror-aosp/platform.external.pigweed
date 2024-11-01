@@ -21,6 +21,7 @@
 
 #include "pw_bluetooth/hci_android.emb.h"
 #include "pw_bluetooth/hci_data.emb.h"
+#include "pw_bluetooth/hci_events.emb.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/common/packet_view.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
@@ -275,25 +276,12 @@ uint8_t FakeController::NextL2CAPCommandId() {
 
 void FakeController::RespondWithCommandComplete(hci_spec::OpCode opcode,
                                                 pwemb::StatusCode status) {
-  hci_spec::SimpleReturnParams params;
-  params.status = status;
-  RespondWithCommandComplete(opcode, BufferView(&params, sizeof(params)));
-}
-
-void FakeController::RespondWithCommandComplete(hci_spec::OpCode opcode,
-                                                const ByteBuffer& params) {
-  DynamicByteBuffer buffer(sizeof(hci_spec::CommandCompleteEventParams) +
-                           params.size());
-  MutablePacketView<hci_spec::CommandCompleteEventParams> event(&buffer,
-                                                                params.size());
-
-  event.mutable_header()->num_hci_command_packets =
-      settings_.num_hci_command_packets;
-  event.mutable_header()->command_opcode =
-      pw::bytes::ConvertOrderTo(cpp20::endian::little, opcode);
-  event.mutable_payload_data().Write(params);
-
-  SendEvent(hci_spec::kCommandCompleteEventCode, buffer);
+  auto packet =
+      hci::EmbossEventPacket::New<pwemb::SimpleCommandCompleteEventWriter>(
+          hci_spec::kCommandCompleteEventCode);
+  auto view = packet.view_t();
+  view.status().Write(status);
+  RespondWithCommandComplete(opcode, &packet);
 }
 
 void FakeController::RespondWithCommandComplete(
@@ -1619,31 +1607,29 @@ void FakeController::OnLESetHostFeature(
 
 void FakeController::OnReadLocalExtendedFeatures(
     const pwemb::ReadLocalExtendedFeaturesCommandView& params) {
-  hci_spec::ReadLocalExtendedFeaturesReturnParams out_params;
-  out_params.status = pwemb::StatusCode::SUCCESS;
-  out_params.page_number = params.page_number().Read();
-  out_params.maximum_page_number = 2;
-  out_params.extended_lmp_features = 0;
-
+  auto packet = hci::EmbossEventPacket::New<
+      pwemb::ReadLocalExtendedFeaturesCommandCompleteEventWriter>(
+      hci_spec::kCommandCompleteEventCode);
+  auto view = packet.view_t();
+  view.status().Write(pwemb::StatusCode::SUCCESS);
+  view.page_number().Write(params.page_number().Read());
+  view.max_page_number().Write(2);
+  view.extended_lmp_features().Write(0);
   switch (params.page_number().Read()) {
     case 0:
-      out_params.extended_lmp_features = pw::bytes::ConvertOrderTo(
-          cpp20::endian::little, settings_.lmp_features_page0);
+      view.extended_lmp_features().Write(settings_.lmp_features_page0);
       break;
     case 1:
-      out_params.extended_lmp_features = pw::bytes::ConvertOrderTo(
-          cpp20::endian::little, settings_.lmp_features_page1);
+      view.extended_lmp_features().Write(settings_.lmp_features_page1);
       break;
     case 2:
-      out_params.extended_lmp_features = pw::bytes::ConvertOrderTo(
-          cpp20::endian::little, settings_.lmp_features_page2);
+      view.extended_lmp_features().Write(settings_.lmp_features_page2);
       break;
     default:
-      out_params.status = pwemb::StatusCode::INVALID_HCI_COMMAND_PARAMETERS;
+      view.status().Write(pwemb::StatusCode::INVALID_HCI_COMMAND_PARAMETERS);
   }
 
-  RespondWithCommandComplete(hci_spec::kReadLocalExtendedFeatures,
-                             BufferView(&out_params, sizeof(out_params)));
+  RespondWithCommandComplete(hci_spec::kReadLocalExtendedFeatures, &packet);
 }
 
 void FakeController::OnSetEventMask(
@@ -2198,12 +2184,13 @@ void FakeController::OnLESetRandomAddress(
 }
 
 void FakeController::OnReadLocalSupportedFeatures() {
-  hci_spec::ReadLocalSupportedFeaturesReturnParams params;
-  params.status = pwemb::StatusCode::SUCCESS;
-  params.lmp_features = pw::bytes::ConvertOrderTo(cpp20::endian::little,
-                                                  settings_.lmp_features_page0);
-  RespondWithCommandComplete(hci_spec::kReadLocalSupportedFeatures,
-                             BufferView(&params, sizeof(params)));
+  auto packet = hci::EmbossEventPacket::New<
+      pwemb::ReadLocalSupportedFeaturesCommandCompleteEventWriter>(
+      hci_spec::kCommandCompleteEventCode);
+  auto view = packet.view_t();
+  view.status().Write(pwemb::StatusCode::SUCCESS);
+  view.lmp_features().Write(settings_.lmp_features_page0);
+  RespondWithCommandComplete(hci_spec::kReadLocalSupportedFeatures, &packet);
 }
 
 void FakeController::OnReadLocalSupportedCommands() {
@@ -3337,11 +3324,14 @@ void FakeController::OnLEReadMaximumAdvertisingDataLength() {
 }
 
 void FakeController::OnLEReadNumberOfSupportedAdvertisingSets() {
-  hci_spec::LEReadNumSupportedAdvertisingSetsReturnParams params;
-  params.status = pwemb::StatusCode::SUCCESS;
-  params.num_supported_adv_sets = num_supported_advertising_sets_;
+  auto event = hci::EmbossEventPacket::New<
+      pwemb::LEReadNumberOfSupportedAdvertisingSetsCommandCompleteEventWriter>(
+      hci_spec::kCommandCompleteEventCode);
+  auto view = event.view_t();
+  view.status().Write(pwemb::StatusCode::SUCCESS);
+  view.num_supported_advertising_sets().Write(num_supported_advertising_sets_);
   RespondWithCommandComplete(hci_spec::kLEReadNumSupportedAdvertisingSets,
-                             BufferView(&params, sizeof(params)));
+                             &event);
 }
 
 void FakeController::OnLERemoveAdvertisingSet(
