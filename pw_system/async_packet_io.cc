@@ -36,7 +36,10 @@ RpcChannelOutputQueue::PendOutgoingDatagram(async2::Context& cx) {
   // The head pointer will not change until Pop is called.
   std::lock_guard lock(mutex_);
   if (queue_.empty()) {
-    packet_ready_ = cx.GetWaker(async2::WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        packet_ready_,
+        "RpcChannel is waiting for outgoing RPC datagrams to be enqueued");
     return async2::Pending();
   }
   return async2::Ready(queue_.front());
@@ -200,7 +203,7 @@ async2::Poll<> PacketIO::PacketWriter::DoPend(async2::Context& cx) {
   io_.rpc_server_thread_.PopOutboundPacket();
 
   PACKET_IO_DEBUG_LOG("Writing %zu B outbound packet", (**mb).size());
-  auto write_result = io_.channel().Write(**std::move(mb));
+  auto write_result = io_.channel().StageWrite(**std::move(mb));
   if (!write_result.ok()) {
     return async2::Ready();  // Write failed, but should not have
   }
@@ -218,7 +221,7 @@ async2::Poll<> PacketIO::PacketWriter::DoPend(async2::Context& cx) {
 
 async2::Poll<> PacketIO::PacketFlusher::DoPend(async2::Context& cx) {
   // Flush pending writes
-  auto flush_result = io_.channel().PendFlush(cx);
+  auto flush_result = io_.channel().PendWrite(cx);
   if (flush_result.IsPending()) {
     return async2::Pending();
   }
@@ -233,7 +236,7 @@ async2::Poll<> PacketIO::PacketFlusher::DoPend(async2::Context& cx) {
     cx.ReEnqueue();  // didn't flush as far as expected, try again later
     return async2::Pending();
   }
-  waker_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
+  PW_ASYNC_STORE_WAKER(cx, waker_, "PacketIO is waiting for packets to flush");
   return async2::Pending();  // Done
 }
 
