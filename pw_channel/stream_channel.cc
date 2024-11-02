@@ -59,7 +59,8 @@ Poll<Result<MultiBuf>> StreamChannelReadState::PendFilledBuffer(Context& cx) {
   if (!status_.ok()) {
     return status_;
   }
-  on_buffer_filled_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
+  PW_ASYNC_STORE_WAKER(
+      cx, on_buffer_filled_, "StreamChannel is waiting on a `Stream::Read`");
   return Pending();
 }
 
@@ -199,7 +200,7 @@ Poll<Result<MultiBuf>> StreamChannel::DoPendRead(Context& cx) {
 
 Poll<Status> StreamChannel::DoPendReadyToWrite(Context&) { return OkStatus(); }
 
-pw::Result<pw::channel::WriteToken> StreamChannel::DoWrite(
+pw::Result<pw::channel::WriteToken> StreamChannel::DoStageWrite(
     pw::multibuf::MultiBuf&& data) {
   PW_TRY(write_state_.SendData(std::move(data)));
   const uint32_t token = write_token_++;
