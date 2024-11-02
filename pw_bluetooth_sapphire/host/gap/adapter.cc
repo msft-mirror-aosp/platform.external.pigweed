@@ -16,6 +16,7 @@
 
 #include <pw_async/dispatcher.h>
 #include <pw_bluetooth/hci_commands.emb.h>
+#include <pw_bluetooth/hci_events.emb.h>
 #include <pw_bytes/endian.h>
 
 #include <cinttypes>
@@ -139,6 +140,7 @@ class AdapterImpl final : public Adapter {
         bool anonymous,
         bool include_tx_power_level,
         std::optional<ConnectableAdvertisingParameters> connectable,
+        std::optional<DeviceAddress::Type> address_type,
         AdvertisingStatusCallback status_callback) override {
       LowEnergyAdvertisingManager::ConnectionCallback advertisement_connect_cb =
           nullptr;
@@ -173,6 +175,7 @@ class AdapterImpl final : public Adapter {
           extended_pdu,
           anonymous,
           include_tx_power_level,
+          address_type,
           std::move(status_callback));
       adapter_->metrics_.le.start_advertising_events.Add();
     }
@@ -196,7 +199,7 @@ class AdapterImpl final : public Adapter {
       return adapter_->le_address_manager_->PrivacyEnabled();
     }
 
-    const DeviceAddress& CurrentAddress() const override {
+    const DeviceAddress CurrentAddress() const override {
       return adapter_->le_address_manager_->current_address();
     }
 
@@ -1645,7 +1648,8 @@ void AdapterImpl::InitQueueReadLMPFeatureMaskPage(uint8_t page) {
       page > max_lmp_feature_page_index_.value()) {
     bt_log(WARN,
            "gap",
-           "Maximum value of LMP features mask page is %lu. Received page %hu",
+           "Maximum value of LMP features mask page is %zu. Received page "
+           "%" PRIx8,
            max_lmp_feature_page_index_.value(),
            page);
     return;
@@ -1656,19 +1660,17 @@ void AdapterImpl::InitQueueReadLMPFeatureMaskPage(uint8_t page) {
         hci::EmbossCommandPacket::New<
             pw::bluetooth::emboss::ReadLocalSupportedFeaturesCommandView>(
             hci_spec::kReadLocalSupportedFeatures),
-        [this, page](const hci::EventPacket& cmd_complete) {
+        [this, page](const hci::EmbossEventPacket& cmd_complete) {
           if (hci_is_error(cmd_complete,
                            WARN,
                            "gap",
                            "read local supported features failed")) {
             return;
           }
-          auto params = cmd_complete.return_params<
-              hci_spec::ReadLocalSupportedFeaturesReturnParams>();
-          state_.features.SetPage(
-              page,
-              pw::bytes::ConvertOrderFrom(cpp20::endian::little,
-                                          params->lmp_features));
+          auto view = cmd_complete.view<
+              pw::bluetooth::emboss::
+                  ReadLocalSupportedFeaturesCommandCompleteEventView>();
+          state_.features.SetPage(page, view.lmp_features().Read());
         });
     return;
   }
@@ -1690,20 +1692,18 @@ void AdapterImpl::InitQueueReadLMPFeatureMaskPage(uint8_t page) {
 
     init_seq_runner_->QueueCommand(
         std::move(cmd_packet),
-        [this, page](const hci::EventPacket& cmd_complete) {
+        [this, page](const hci::EmbossEventPacket& cmd_complete) {
           if (hci_is_error(cmd_complete,
                            WARN,
                            "gap",
                            "read local extended features failed")) {
             return;
           }
-          auto params = cmd_complete.return_params<
-              hci_spec::ReadLocalExtendedFeaturesReturnParams>();
-          state_.features.SetPage(
-              page,
-              pw::bytes::ConvertOrderFrom(cpp20::endian::little,
-                                          params->extended_lmp_features));
-          max_lmp_feature_page_index_ = params->maximum_page_number;
+          auto view = cmd_complete.view<
+              pw::bluetooth::emboss::
+                  ReadLocalExtendedFeaturesCommandCompleteEventView>();
+          state_.features.SetPage(page, view.extended_lmp_features().Read());
+          max_lmp_feature_page_index_ = view.max_page_number().Read();
         });
   }
 }
