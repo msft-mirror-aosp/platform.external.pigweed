@@ -22,14 +22,14 @@ using ::pw::async2::Context;
 using ::pw::async2::Pending;
 using ::pw::async2::Poll;
 using ::pw::async2::Ready;
-using ::pw::async2::WaitReason;
 using ::pw::channel::WriteToken;
 using ::pw::multibuf::MultiBuf;
 
 Poll<Result<MultiBuf>> LoopbackChannel<DataType::kDatagram>::DoPendRead(
     Context& cx) {
   if (!queue_.has_value()) {
-    waker_ = cx.GetWaker(WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx, waker_, "LoopbackChannel is waiting for incoming data");
     return Pending();
   }
   MultiBuf data = std::move(*queue_);
@@ -41,13 +41,16 @@ Poll<Result<MultiBuf>> LoopbackChannel<DataType::kDatagram>::DoPendRead(
 Poll<Status> LoopbackChannel<DataType::kDatagram>::DoPendReadyToWrite(
     Context& cx) {
   if (queue_.has_value()) {
-    waker_ = cx.GetWaker(WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        waker_,
+        "LoopbackChannel is waiting for the incoming data to be consumed");
     return Pending();
   }
   return Ready(OkStatus());
 }
 
-Result<WriteToken> LoopbackChannel<DataType::kDatagram>::DoWrite(
+Result<WriteToken> LoopbackChannel<DataType::kDatagram>::DoStageWrite(
     MultiBuf&& data) {
   PW_DASSERT(!queue_.has_value());
   queue_ = std::move(data);
@@ -57,7 +60,7 @@ Result<WriteToken> LoopbackChannel<DataType::kDatagram>::DoWrite(
 }
 
 async2::Poll<Result<channel::WriteToken>>
-LoopbackChannel<DataType::kDatagram>::DoPendFlush(async2::Context&) {
+LoopbackChannel<DataType::kDatagram>::DoPendWrite(async2::Context&) {
   return async2::Ready(CreateWriteToken(write_token_));
 }
 
@@ -70,13 +73,15 @@ async2::Poll<Status> LoopbackChannel<DataType::kDatagram>::DoPendClose(
 Poll<Result<MultiBuf>> LoopbackChannel<DataType::kByte>::DoPendRead(
     Context& cx) {
   if (queue_.empty()) {
-    read_waker_ = cx.GetWaker(WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx, read_waker_, "LoopbackChannel is waiting for incoming data");
     return Pending();
   }
   return std::move(queue_);
 }
 
-Result<WriteToken> LoopbackChannel<DataType::kByte>::DoWrite(MultiBuf&& data) {
+Result<WriteToken> LoopbackChannel<DataType::kByte>::DoStageWrite(
+    MultiBuf&& data) {
   const uint32_t token = ++write_token_;
   if (!data.empty()) {
     bool was_empty = queue_.empty();
@@ -89,7 +94,7 @@ Result<WriteToken> LoopbackChannel<DataType::kByte>::DoWrite(MultiBuf&& data) {
 }
 
 async2::Poll<Result<channel::WriteToken>>
-LoopbackChannel<DataType::kByte>::DoPendFlush(async2::Context&) {
+LoopbackChannel<DataType::kByte>::DoPendWrite(async2::Context&) {
   return async2::Ready(CreateWriteToken(write_token_));
 }
 

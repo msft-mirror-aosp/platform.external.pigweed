@@ -13,18 +13,13 @@
 # the License.
 """Serializes an Environment into a JSON file."""
 
-from __future__ import print_function
-
 import ntpath
 import os
 import posixpath
 import re
 
-# Disable super() warnings since this file must be Python 2 compatible.
-# pylint: disable=super-with-arguments
 
-
-class GNIVisitor(object):  # pylint: disable=useless-object-inheritance
+class GNIVisitor:
     """Serializes portions of an Environment into a gni file.
 
     Example gni file:
@@ -41,7 +36,7 @@ class GNIVisitor(object):  # pylint: disable=useless-object-inheritance
     """
 
     def __init__(self, project_root, gni_file, *args, **kwargs):
-        super(GNIVisitor, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._project_root = project_root
         self._gni_file = gni_file
         self._variables = {}  # Dict of variables to set.

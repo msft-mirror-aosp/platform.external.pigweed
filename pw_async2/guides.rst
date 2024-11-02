@@ -12,10 +12,31 @@ Quickstart & guides
 Guides
 ------
 
+Implementing tasks
+==================
+:cpp:class:`pw::async2::Task` instances complete one or more asynchronous
+operations. They are the top-level "thread" primitives of ``pw_async2``.
+
+You can use one of the concrete subclasses of ``Task`` that Pigweed provides:
+
+* :cpp:class:`pw::async2::CoroOrElseTask`: Delegates to a provided
+  coroutine and executes an ``or_else`` handler function on failure.
+* :cpp:class:`pw::async2::PendFuncTask`: Delegates to a provided
+  function.
+* :cpp:class:`pw::async2::PendableAsTask`: Delegates to a type
+  with a :cpp:func:`pw::async2::Pend` method.
+* :cpp:func:`pw::async2::AllocateTask`: Creates a concrete subclass of
+  ``Task``, just like ``PendableAsTask``, but the created task is
+  dynamically allocated and frees the associated memory upon
+  completion.
+
+Or you can subclass ``Task`` yourself. See :cpp:class:`pw::async2::Task`
+for more guidance on subclassing.
+
 .. _module-pw_async2-guides-tasks:
 
-Dispatchers and tasks
-=====================
+How a dispatcher manages tasks
+==============================
 The purpose of a :cpp:class:`pw::async2::Dispatcher` is to keep track of a set
 of :cpp:class:`pw::async2::Task` objects and run them to completion. The
 dispatcher is essentially a scheduler for cooperatively-scheduled
@@ -37,14 +58,13 @@ dispatcher will then invoke ``DoPend`` once more, continuing the cycle until
 
 .. _module-pw_async2-guides-waking:
 
-Waking
-======
+Waking tasks
+============
 When a task is unable to complete without waiting, the implementor of
 ``DoPend`` must return ``Pending`` and should arrange for the task to be reawoken
 once ``DoPend`` may be able to make more progress. This is done by calling
-:cpp:func:`pw::async2::Context::GetWaker` to get a
-:cpp:class:`pw::async2::Waker` for the current task. In order to wake the
-task up and put it back on the dispatcher's queue,
+:c:macro:`PW_ASYNC_STORE_WAKER` store a :cpp:class:`pw::async2::Waker` for the current
+task. In order to wake the task up and put it back on the dispatcher's queue,
 :cpp:func:`pw::async2::Waker::Wake` must be called.
 
 For example, one implementation of a delayed task might arrange for its ``Waker``
@@ -107,7 +127,6 @@ C++20 users can define tasks using coroutines!
    :end-before: [pw_async2-examples-basic-coro]
 
 Any value with a ``Poll<T> Pend(Context&)`` method can be passed to
-
 ``co_await``, which will return with a ``T`` when the result is ready.
 
 To return from a coroutine, ``co_return <expression>`` must be used instead of
@@ -116,8 +135,8 @@ the usual ``return <expression>`` syntax. Because of this, the
 coroutines. :c:macro:`PW_CO_TRY` and :c:macro:`PW_CO_TRY_ASSIGN` should be
 used instead.
 
-For a more detailed explanation of Pigweed's coroutine support, see the
-documentation on the :cpp:class:`pw::async2::Coro` type.
+For a more detailed explanation of Pigweed's coroutine support, see
+:cpp:class:`pw::async2::Coro`.
 
 .. _module-pw_async2-guides-timing:
 
@@ -136,5 +155,5 @@ for a timeout or deadline using the
 Additionally, code which uses :cpp:class:`pw::async2::TimeProvider` for timing
 can be tested with simulated time using
 :cpp:class:`pw::async2::SimulatedTimeProvider`. Doing so helps avoid
-timing-dependent test flakes, as well as ensure that tests are fast since they
+timing-dependent test flakes and helps ensure that tests are fast since they
 don't need to wait for real-world time to elapse.
