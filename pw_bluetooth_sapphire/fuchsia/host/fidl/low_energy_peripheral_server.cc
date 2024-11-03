@@ -38,8 +38,7 @@ namespace bthost {
 namespace {
 
 fble::PeripheralError FidlErrorFromStatus(bt::hci::Result<> status) {
-  BT_ASSERT_MSG(status.is_error(),
-                "FidlErrorFromStatus called on success status");
+  PW_CHECK(status.is_error(), "FidlErrorFromStatus called on success status");
   return status.error_value().Visit(
       [](bt::HostError host_error) {
         switch (host_error) {
@@ -74,7 +73,7 @@ LowEnergyPeripheralServer::AdvertisementInstance::AdvertisementInstance(
       parameters_(std::move(parameters)),
       advertise_complete_cb_(std::move(complete_cb)),
       weak_self_(this) {
-  BT_ASSERT(advertise_complete_cb_);
+  PW_CHECK(advertise_complete_cb_);
   advertised_peripheral_.Bind(std::move(handle));
   advertised_peripheral_.set_error_handler(
       [this, peripheral_server, id](zx_status_t /*status*/) {
@@ -126,14 +125,14 @@ void LowEnergyPeripheralServer::ListenL2cap(
 
 void LowEnergyPeripheralServer::AdvertisementInstance::Register(
     bt::gap::AdvertisementInstance instance) {
-  BT_ASSERT(!instance_);
+  PW_CHECK(!instance_);
   instance_ = std::move(instance);
 }
 
 void LowEnergyPeripheralServer::AdvertisementInstance::OnConnected(
     bt::gap::AdvertisementId advertisement_id,
     bt::gap::Adapter::LowEnergy::ConnectionResult result) {
-  BT_ASSERT(advertisement_id != bt::gap::kInvalidAdvertisementId);
+  PW_CHECK(advertisement_id != bt::gap::kInvalidAdvertisementId);
 
   // HCI advertising ends when a connection is received (even for error
   // results), so clear the stale advertisement handle.
@@ -156,7 +155,7 @@ void LowEnergyPeripheralServer::AdvertisementInstance::OnConnected(
   bt::PeerId peer_id = conn->peer_identifier();
   bt::gap::Peer* peer =
       peripheral_server_->adapter()->peer_cache()->FindById(peer_id);
-  BT_ASSERT(peer);
+  PW_CHECK(peer);
 
   bt_log(INFO,
          LOG_TAG,
@@ -195,7 +194,7 @@ LowEnergyPeripheralServer::AdvertisementInstanceDeprecated::
         fidl::InterfaceRequest<fuchsia::bluetooth::le::AdvertisingHandle>
             handle)
     : handle_(std::move(handle)) {
-  BT_DEBUG_ASSERT(handle_);
+  PW_DCHECK(handle_);
 }
 
 LowEnergyPeripheralServer::AdvertisementInstanceDeprecated::
@@ -206,7 +205,7 @@ LowEnergyPeripheralServer::AdvertisementInstanceDeprecated::
 zx_status_t
 LowEnergyPeripheralServer::AdvertisementInstanceDeprecated::Register(
     bt::gap::AdvertisementInstance instance) {
-  BT_DEBUG_ASSERT(!instance_);
+  PW_DCHECK(!instance_);
 
   instance_ = std::move(instance);
 
@@ -235,13 +234,15 @@ LowEnergyPeripheralServer::AdvertisementInstanceDeprecated::Register(
 LowEnergyPeripheralServer::LowEnergyPeripheralServer(
     bt::gap::Adapter::WeakPtr adapter,
     bt::gatt::GATT::WeakPtr gatt,
-    fidl::InterfaceRequest<Peripheral> request)
+    fidl::InterfaceRequest<Peripheral> request,
+    bool privileged)
     : AdapterServerBase(std::move(adapter), this, std::move(request)),
       gatt_(std::move(gatt)),
+      privileged_(privileged),
       weak_self_(this) {}
 
 LowEnergyPeripheralServer::~LowEnergyPeripheralServer() {
-  BT_ASSERT(adapter()->bredr());
+  PW_CHECK(adapter()->bredr());
 }
 
 void LowEnergyPeripheralServer::Advertise(
@@ -255,19 +256,32 @@ void LowEnergyPeripheralServer::Advertise(
     return;
   }
 
-  // TODO(fxbug.dev/42156474): As a temporary hack until multiple advertisements
-  // is supported, don't allow more than one advertisement. The current behavior
-  // of hci::LegacyLowEnergyAdvertiser is to replace the current advertisement,
-  // which is not the intended behavior of `Advertise`. NOTE: This is
-  // insufficient  when there are multiple Peripheral clients advertising, but
-  // that is the status quo with `StartAdvertising` anyway (the last advertiser
-  // wins).
+  // TODO: https://fxbug.dev/42156474 - As a temporary hack until multiple
+  // advertisements is supported, don't allow more than one advertisement. The
+  // current behavior of hci::LegacyLowEnergyAdvertiser is to replace the
+  // current advertisement, which is not the intended behavior of `Advertise`.
+  // NOTE: This is insufficient  when there are multiple Peripheral clients
+  // advertising, but that is the status quo with `StartAdvertising` anyway (the
+  // last advertiser wins).
   if (!advertisements_.empty()) {
     callback(fpromise::error(fble::PeripheralError::FAILED));
     return;
   }
 
   AdvertisementInstanceId instance_id = next_advertisement_instance_id_++;
+
+  // Non-privileged clients should not be able to advertise with a public
+  // address, so we default to a random address type.
+  if (!privileged_ && parameters.has_address_type() &&
+      parameters.address_type() == fuchsia::bluetooth::AddressType::PUBLIC) {
+    bt_log(WARN,
+           LOG_TAG,
+           "Cannot advertise public address (instance id: %zu)",
+           instance_id);
+    callback(fpromise::error(fble::PeripheralError::INVALID_PARAMETERS));
+    return;
+  }
+
   auto [iter, inserted] =
       advertisements_.try_emplace(instance_id,
                                   this,
@@ -275,7 +289,7 @@ void LowEnergyPeripheralServer::Advertise(
                                   std::move(parameters),
                                   std::move(advertised_peripheral),
                                   std::move(callback));
-  BT_ASSERT(inserted);
+  PW_CHECK(inserted);
   iter->second.StartAdvertising();
 }
 
@@ -314,9 +328,9 @@ void LowEnergyPeripheralServer::StartAdvertising(
       return;
     }
 
-    BT_ASSERT(self->advertisement_deprecated_);
-    BT_ASSERT(self->advertisement_deprecated_->id() ==
-              bt::gap::kInvalidAdvertisementId);
+    PW_CHECK(self->advertisement_deprecated_);
+    PW_CHECK(self->advertisement_deprecated_->id() ==
+             bt::gap::kInvalidAdvertisementId);
 
     fble::Peripheral_StartAdvertising_Result result;
     if (status.is_error()) {
@@ -372,7 +386,7 @@ LowEnergyPeripheralServer::FindConnectionForTesting(bt::PeerId id) const {
 void LowEnergyPeripheralServer::OnConnectedDeprecated(
     bt::gap::AdvertisementId advertisement_id,
     bt::gap::Adapter::LowEnergy::ConnectionResult result) {
-  BT_ASSERT(advertisement_id != bt::gap::kInvalidAdvertisementId);
+  PW_CHECK(advertisement_id != bt::gap::kInvalidAdvertisementId);
 
   // Abort connection procedure if advertisement was canceled by the client.
   if (!advertisement_deprecated_ ||
@@ -406,7 +420,7 @@ void LowEnergyPeripheralServer::OnConnectedDeprecated(
   auto conn = std::move(result).value();
   auto peer_id = conn->peer_identifier();
   auto* peer = adapter()->peer_cache()->FindById(peer_id);
-  BT_ASSERT(peer);
+  PW_CHECK(peer);
 
   bt_log(INFO,
          LOG_TAG,
@@ -427,7 +441,7 @@ LowEnergyPeripheralServer::CreateConnectionServer(
     std::unique_ptr<bt::gap::LowEnergyConnectionHandle> connection) {
   zx::channel local, remote;
   zx_status_t status = zx::channel::create(0, &local, &remote);
-  BT_ASSERT(status == ZX_OK);
+  PW_CHECK(status == ZX_OK);
 
   auto conn_server_id = next_connection_server_id_++;
   auto conn_server = std::make_unique<LowEnergyConnectionServer>(
@@ -495,8 +509,8 @@ void LowEnergyPeripheralServer::StartAdvertisingInternal(
   // `connection_options` is present or the deprecated `connectable` parameter
   // is true, advertisements will be connectable. `connectable_parameter` was
   // the predecessor of `connection_options` and
-  // TODO(fxbug.dev/42121197): will be removed once all consumers of it have
-  // migrated to `connection_options`.
+  // TODO: https://fxbug.dev/42121197 - will be removed once all consumers of it
+  // have migrated to `connection_options`.
   bool connectable = parameters.has_connection_options() ||
                      (parameters.has_connectable() && parameters.connectable());
   if (connectable) {
@@ -551,7 +565,13 @@ void LowEnergyPeripheralServer::StartAdvertisingInternal(
     extended_pdu = parameters.advertising_procedure().is_extended();
   }
 
-  BT_ASSERT(adapter()->le());
+  std::optional<bt::DeviceAddress::Type> address_type = std::nullopt;
+  if (parameters.has_address_type()) {
+    address_type =
+        fidl_helpers::FidlToDeviceAddressType(parameters.address_type());
+  }
+
+  PW_CHECK(adapter()->le());
   adapter()->le()->StartAdvertising(std::move(adv_data),
                                     std::move(scan_rsp),
                                     interval,
@@ -559,7 +579,43 @@ void LowEnergyPeripheralServer::StartAdvertisingInternal(
                                     /*anonymous=*/false,
                                     include_tx_power_level,
                                     std::move(connectable_params),
+                                    address_type,
                                     std::move(status_cb));
+}
+
+LowEnergyPrivilegedPeripheralServer::LowEnergyPrivilegedPeripheralServer(
+    const bt::gap::Adapter::WeakPtr& adapter,
+    bt::gatt::GATT::WeakPtr gatt,
+    fidl::InterfaceRequest<fuchsia::bluetooth::le::PrivilegedPeripheral>
+        request)
+    : AdapterServerBase(adapter, this, std::move(request)), weak_self_(this) {
+  fidl::InterfaceHandle<fuchsia::bluetooth::le::Peripheral> handle;
+  le_peripheral_server_ = std::make_unique<LowEnergyPeripheralServer>(
+      adapter, std::move(gatt), handle.NewRequest(), /*privileged=*/true);
+}
+
+void LowEnergyPrivilegedPeripheralServer::Advertise(
+    fuchsia::bluetooth::le::AdvertisingParameters parameters,
+    fidl::InterfaceHandle<fuchsia::bluetooth::le::AdvertisedPeripheral>
+        advertised_peripheral,
+    AdvertiseCallback callback) {
+  le_peripheral_server_->Advertise(std::move(parameters),
+                                   std::move(advertised_peripheral),
+                                   std::move(callback));
+}
+
+void LowEnergyPrivilegedPeripheralServer::StartAdvertising(
+    fble::AdvertisingParameters parameters,
+    ::fidl::InterfaceRequest<fble::AdvertisingHandle> token,
+    StartAdvertisingCallback callback) {
+  le_peripheral_server_->StartAdvertising(
+      std::move(parameters), std::move(token), std::move(callback));
+}
+
+void LowEnergyPrivilegedPeripheralServer::ListenL2cap(
+    fble::ChannelListenerRegistryListenL2capRequest request,
+    ListenL2capCallback callback) {
+  le_peripheral_server_->ListenL2cap(std::move(request), std::move(callback));
 }
 
 }  // namespace bthost
