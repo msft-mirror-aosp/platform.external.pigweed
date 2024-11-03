@@ -480,9 +480,9 @@ class FakeController final : public ControllerTestDoubleBase,
     return num_supported_advertising_sets_;
   }
   void set_num_supported_advertising_sets(uint8_t value) {
-    BT_ASSERT(value >= extended_advertising_states_.size());
-    BT_ASSERT(value <= hci_spec::kAdvertisingHandleMax +
-                           1);  // support advertising handle of 0
+    PW_CHECK(value >= extended_advertising_states_.size());
+    PW_CHECK(value <= hci_spec::kAdvertisingHandleMax +
+                          1);  // support advertising handle of 0
     num_supported_advertising_sets_ = value;
   }
 
@@ -570,11 +570,6 @@ class FakeController final : public ControllerTestDoubleBase,
   // second parameter) instead.
   void RespondWithCommandComplete(hci_spec::OpCode opcode,
                                   pw::bluetooth::emboss::StatusCode status);
-
-  // Sends a HCI_Command_Complete event in response to the command with
-  // |opcode| and using the given data as the parameter payload.
-  void RespondWithCommandComplete(hci_spec::OpCode opcode,
-                                  const ByteBuffer& params);
 
   // Sends an HCI_Command_Complete event in response to the command with
   // |opcode| and using the provided event packet, filling in the event header

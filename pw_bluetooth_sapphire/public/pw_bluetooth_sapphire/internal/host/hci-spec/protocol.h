@@ -442,26 +442,9 @@ constexpr OpCode kReadLocalSupportedCommands =
 constexpr OpCode kReadLocalSupportedFeatures =
     InformationalParamsOpCode(0x0003);
 
-struct ReadLocalSupportedFeaturesReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  // Bit Mask List of LMP features. See enum class LMPFeature in hci_constants.h
-  // for how to interpret this bitfield.
-  uint64_t lmp_features;
-} __attribute__((packed));
-
 // ====================================================
 // Read Local Extended Features Command (v1.2) (BR/EDR)
 constexpr OpCode kReadLocalExtendedFeatures = InformationalParamsOpCode(0x0004);
-
-struct ReadLocalExtendedFeaturesReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-  uint8_t page_number;
-  uint8_t maximum_page_number;
-  uint64_t extended_lmp_features;
-} __attribute__((packed));
 
 // ===============================
 // Read Buffer Size Command (v1.1)
@@ -1045,13 +1028,6 @@ constexpr OpCode kLEReadMaximumAdvertisingDataLength =
 // LE Read Number of Supported Advertising Sets Command (v5.0) (LE)
 constexpr OpCode kLEReadNumSupportedAdvertisingSets =
     LEControllerCommandOpCode(0x003B);
-
-struct LEReadNumSupportedAdvertisingSetsReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  uint8_t num_supported_adv_sets;
-} __attribute__((packed));
 
 // =============================================
 // LE Remove Advertising Set Command (v5.0) (LE)
