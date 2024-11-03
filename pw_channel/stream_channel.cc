@@ -29,16 +29,11 @@ using pw::Status;
 using pw::async2::Context;
 using pw::async2::Pending;
 using pw::async2::Poll;
-using pw::async2::Ready;
-using pw::async2::WaitReason;
-using pw::async2::Waker;
 using pw::channel::ByteReaderWriter;
 using pw::multibuf::MultiBuf;
 using pw::multibuf::MultiBufAllocationFuture;
 using pw::multibuf::MultiBufAllocator;
 using pw::multibuf::OwnedChunk;
-using pw::sync::InterruptSpinLock;
-using pw::sync::ThreadNotification;
 
 namespace internal {
 
@@ -64,7 +59,8 @@ Poll<Result<MultiBuf>> StreamChannelReadState::PendFilledBuffer(Context& cx) {
   if (!status_.ok()) {
     return status_;
   }
-  on_buffer_filled_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
+  PW_ASYNC_STORE_WAKER(
+      cx, on_buffer_filled_, "StreamChannel is waiting on a `Stream::Read`");
   return Pending();
 }
 
@@ -73,8 +69,12 @@ void StreamChannelReadState::ReadLoop(pw::stream::Reader& reader) {
     OwnedChunk buffer = WaitForBufferToFillAndTakeFrontChunk();
     Result<pw::ByteSpan> read = reader.Read(buffer);
     if (!read.ok()) {
-      PW_LOG_ERROR("Failed to read from stream in StreamChannel.");
       SetReadError(read.status());
+
+      if (!read.status().IsOutOfRange()) {
+        PW_LOG_ERROR("Failed to read from stream in StreamChannel: %s",
+                     read.status().str());
+      }
       return;
     }
     buffer->Truncate(read->size());
@@ -104,6 +104,7 @@ void StreamChannelReadState::ProvideFilledBuffer(MultiBuf&& filled_buffer) {
 void StreamChannelReadState::SetReadError(Status status) {
   std::lock_guard lock(buffer_lock_);
   status_ = status;
+  std::move(on_buffer_filled_).Wake();
 }
 
 Status StreamChannelWriteState::SendData(MultiBuf&& buf) {
@@ -130,9 +131,9 @@ void StreamChannelWriteState::WriteLoop(pw::stream::Writer& writer) {
       buffer = std::move(buffer_to_write_);
     }
     for (const auto& chunk : buffer.Chunks()) {
-      Status status = writer.Write(chunk);
-      if (!status.ok()) {
-        PW_LOG_ERROR("Failed to write to stream in StreamChannel.");
+      if (Status status = writer.Write(chunk); !status.ok()) {
+        PW_LOG_ERROR("Failed to write to stream in StreamChannel: %s",
+                     status.str());
         std::lock_guard lock(buffer_lock_);
         status_ = status;
         return;
@@ -199,7 +200,7 @@ Poll<Result<MultiBuf>> StreamChannel::DoPendRead(Context& cx) {
 
 Poll<Status> StreamChannel::DoPendReadyToWrite(Context&) { return OkStatus(); }
 
-pw::Result<pw::channel::WriteToken> StreamChannel::DoWrite(
+pw::Result<pw::channel::WriteToken> StreamChannel::DoStageWrite(
     pw::multibuf::MultiBuf&& data) {
   PW_TRY(write_state_.SendData(std::move(data)));
   const uint32_t token = write_token_++;

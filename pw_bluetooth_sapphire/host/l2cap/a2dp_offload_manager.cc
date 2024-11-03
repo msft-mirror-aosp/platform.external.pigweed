@@ -40,7 +40,7 @@ void A2dpOffloadManager::StartA2dpOffload(
     hci_spec::ConnectionHandle link_handle,
     uint16_t max_tx_sdu_size,
     hci::ResultCallback<> callback) {
-  BT_DEBUG_ASSERT(cmd_channel_.is_alive());
+  PW_DCHECK(cmd_channel_.is_alive());
 
   switch (a2dp_offload_status_) {
     case A2dpOffloadStatus::kStarted: {
@@ -161,10 +161,12 @@ void A2dpOffloadManager::StartA2dpOffload(
         // If we tried to stop while A2DP was still starting, perform the stop
         // command now
         if (pending_stop_a2dp_offload_request_.has_value()) {
-          auto callback = std::move(pending_stop_a2dp_offload_request_.value());
+          auto pending_request_callback =
+              std::move(pending_stop_a2dp_offload_request_.value());
           pending_stop_a2dp_offload_request_.reset();
 
-          RequestStopA2dpOffload(id, handle, std::move(callback));
+          RequestStopA2dpOffload(
+              id, handle, std::move(pending_request_callback));
         }
       });
 }
@@ -173,7 +175,7 @@ void A2dpOffloadManager::RequestStopA2dpOffload(
     ChannelId local_id,
     hci_spec::ConnectionHandle link_handle,
     hci::ResultCallback<> callback) {
-  BT_DEBUG_ASSERT(cmd_channel_.is_alive());
+  PW_DCHECK(cmd_channel_.is_alive());
 
   switch (a2dp_offload_status_) {
     case A2dpOffloadStatus::kStopped: {

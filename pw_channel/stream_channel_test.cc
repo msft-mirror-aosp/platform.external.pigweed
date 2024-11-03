@@ -27,14 +27,11 @@
 
 namespace {
 
-using ::pw::Result;
 using ::pw::async2::Context;
 using ::pw::async2::PendFuncTask;
 using ::pw::async2::Pending;
 using ::pw::async2::Poll;
 using ::pw::async2::Ready;
-using ::pw::async2::Task;
-using ::pw::async2::Waker;
 using ::pw::multibuf::MultiBuf;
 using ::pw::multibuf::test::SimpleAllocatorForTest;
 using ::pw::operator""_b;
@@ -97,7 +94,7 @@ TEST(StreamChannel, ReadsAndWritesData) {
     if (stream_channel->PendReadyToWrite(cx).IsPending()) {
       return Pending();
     }
-    EXPECT_EQ(stream_channel->Write(std::move(to_send)).status(),
+    EXPECT_EQ(stream_channel->StageWrite(std::move(to_send)).status(),
               pw::OkStatus());
     return Ready();
   });

@@ -60,6 +60,7 @@ pw_source_set("allocator") {
     "public/pw_allocator/as_pmr_allocator.h",
   ]
   public_deps = [
+    ":config",
     ":deallocator",
     "$dir_pw_assert:check",
     dir_pw_result,
@@ -653,7 +654,10 @@ pw_test_group("tests") {
     ":unique_ptr_test",
     ":worst_fit_block_allocator_test",
   ]
-  group_deps = [ "examples" ]
+  group_deps = [
+    "benchmarks:tests",
+    "examples",
+  ]
 }
 
 # Docs

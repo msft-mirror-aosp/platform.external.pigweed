@@ -24,6 +24,7 @@ cc_library_static {
     name: "pw_multibuf",
     srcs: [
         "chunk.cc",
+        "from_span.cc",
         "multibuf.cc",
     ],
     cpp_std: "c++20",
@@ -46,12 +47,16 @@ cc_library_static {
     vendor_available: true,
     host_supported: true,
     static_libs: [
+        "pw_allocator",
         "pw_bytes",
+        "pw_function",
         "pw_span",
         "pw_status",
     ],
     export_static_lib_headers: [
+        "pw_allocator",
         "pw_bytes",
+        "pw_function",
         "pw_span",
         "pw_status",
     ],

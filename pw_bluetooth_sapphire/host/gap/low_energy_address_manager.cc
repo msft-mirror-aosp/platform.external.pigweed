@@ -33,9 +33,9 @@ LowEnergyAddressManager::LowEnergyAddressManager(
       needs_refresh_(false),
       refreshing_(false),
       weak_self_(this) {
-  BT_DEBUG_ASSERT(public_.type() == DeviceAddress::Type::kLEPublic);
-  BT_DEBUG_ASSERT(delegate_);
-  BT_DEBUG_ASSERT(cmd_.is_alive());
+  PW_DCHECK(public_.type() == DeviceAddress::Type::kLEPublic);
+  PW_DCHECK(delegate_);
+  PW_DCHECK(cmd_.is_alive());
 }
 
 LowEnergyAddressManager::~LowEnergyAddressManager() { CancelExpiry(); }
@@ -63,12 +63,27 @@ void LowEnergyAddressManager::EnablePrivacy(bool enabled) {
   TryRefreshRandomAddress();
 }
 
-void LowEnergyAddressManager::EnsureLocalAddress(AddressCallback callback) {
-  BT_DEBUG_ASSERT(callback);
+void LowEnergyAddressManager::EnsureLocalAddress(
+    std::optional<DeviceAddress::Type> address_type, AddressCallback callback) {
+  PW_DCHECK(callback);
+
+  if (!privacy_enabled_ && address_type.has_value() &&
+      address_type.value() == DeviceAddress::Type::kLERandom) {
+    bt_log(WARN,
+           "hci-le",
+           "Cannot advertise a random address while privacy is disabled");
+    callback(fit::error(HostError::kInvalidParameters));
+    return;
+  }
+
+  if (address_type == DeviceAddress::Type::kLEPublic || !privacy_enabled_) {
+    callback(fit::ok(public_address()));
+    return;
+  }
 
   // Report the address right away if it doesn't need refreshing.
   if (!needs_refresh_) {
-    callback(current_address());
+    callback(fit::ok(current_address()));
     return;
   }
 
@@ -165,7 +180,7 @@ void LowEnergyAddressManager::CancelExpiry() {
 }
 
 bool LowEnergyAddressManager::CanUpdateRandomAddress() const {
-  BT_DEBUG_ASSERT(delegate_);
+  PW_DCHECK(delegate_);
   return delegate_();
 }
 
@@ -174,7 +189,7 @@ void LowEnergyAddressManager::ResolveAddressRequests() {
   auto q = std::move(address_callbacks_);
   bt_log(DEBUG, "gap-le", "using local address %s", address.ToString().c_str());
   while (!q.empty()) {
-    q.front()(address);
+    q.front()(fit::ok(address));
     q.pop();
   }
 }
@@ -182,7 +197,7 @@ void LowEnergyAddressManager::ResolveAddressRequests() {
 void LowEnergyAddressManager::NotifyAddressUpdate() {
   auto address = current_address();
   for (auto& cb : address_changed_callbacks_) {
-    cb(address);
+    cb(fit::ok(address));
   }
 }
 
