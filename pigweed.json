@@ -134,6 +134,11 @@
       "programs": {
         "default": [
           [
+            "mod",
+            "deps",
+            "--lockfile_mode=error"
+          ],
+          [
             "build",
             "//..."
           ],
@@ -153,6 +158,18 @@
             "--aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect",
             "--output_groups=clippy_checks",
             "//..."
+          ],
+          [
+            "build",
+            "--config=asan",
+            "--config=fuzztest",
+            "//..."
+          ]
+        ],
+        "docs": [
+          [
+            "build",
+            "//docs"
           ]
         ],
         "integration": [
@@ -181,6 +198,12 @@
           ]
         ]
       }
+    },
+    "pw_cli_analytics": {
+      "report_command_line": true,
+      "report_project_name": true,
+      "report_remote_url": true,
+      "report_subcommand_name": "always"
     }
   }
 }

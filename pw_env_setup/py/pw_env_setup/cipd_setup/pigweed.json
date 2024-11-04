@@ -10,7 +10,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:05eed8f6252e2dd6b555e0b65192ef03e2c4a276"
+        "git_revision:feafd1012a32c05ec6095f69ddc3850afb621f3a"
       ],
       "version_file": ".versions/gn.cipd_version"
     },
@@ -24,7 +24,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:980bc1f80a6779e8b4ce034c47936238fb16e58c"
+        "git_revision:4d9df71730a08c643583ec18db002b17dee823d7"
       ]
     },
     {
@@ -71,7 +71,7 @@
         "windows-amd64"
       ],
       "tags": [
-        "git_revision:e894df6392beea3723627329009f3e6d51d16f47"
+        "git_revision:8280651ad57cb9fb24a404cec2401040c28dec98"
       ],
       "version_file": ".versions/clang.cipd_version"
     },
@@ -85,7 +85,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:9afe7136958edaa403f0b0eb00f0353c125b7352"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -95,7 +95,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:9afe7136958edaa403f0b0eb00f0353c125b7352"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -105,7 +105,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:9afe7136958edaa403f0b0eb00f0353c125b7352"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -115,7 +115,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:9afe7136958edaa403f0b0eb00f0353c125b7352"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -125,7 +125,7 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:9afe7136958edaa403f0b0eb00f0353c125b7352"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
       ]
     },
     {
@@ -138,7 +138,19 @@
       ],
       "subdir": "rust",
       "tags": [
-        "git_revision:9afe7136958edaa403f0b0eb00f0353c125b7352"
+        "git_revision:612796c42077605fdd3c6f7dda05745d8f4dc4d8"
+      ]
+    },
+    {
+      "path": "fuchsia/third_party/rust_bindgen/${platform}",
+      "platforms": [
+        "linux-amd64",
+        "mac-amd64",
+        "mac-arm64"
+      ],
+      "subdir": "rust_bindgen",
+      "tags": [
+        "git_revision:f518815cc14a7f8c292964bb37179a1070d7e18a"
       ]
     },
     {

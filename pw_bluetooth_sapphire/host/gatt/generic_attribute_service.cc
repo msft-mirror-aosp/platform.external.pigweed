@@ -26,8 +26,8 @@ GenericAttributeService::GenericAttributeService(
     SendIndicationCallback send_indication_callback)
     : local_service_manager_(std::move(local_service_manager)),
       send_indication_callback_(std::move(send_indication_callback)) {
-  BT_ASSERT(local_service_manager_.is_alive());
-  BT_DEBUG_ASSERT(send_indication_callback_);
+  PW_CHECK(local_service_manager_.is_alive());
+  PW_DCHECK(send_indication_callback_);
 
   Register();
 }
@@ -60,21 +60,8 @@ void GenericAttributeService::Register() {
                                              PeerId peer_id,
                                              bool notify,
                                              bool indicate) {
-    BT_DEBUG_ASSERT(chrc_id == 0u);
+    PW_DCHECK(chrc_id == 0u);
 
-    // Discover the handle assigned to this characteristic if necessary.
-    if (svc_changed_handle_ == att::kInvalidHandle) {
-      LocalServiceManager::ClientCharacteristicConfig config;
-      if (!local_service_manager_->GetCharacteristicConfig(
-              service_id, chrc_id, peer_id, &config)) {
-        bt_log(DEBUG,
-               "gatt",
-               "service: Peer has not configured characteristic: %s",
-               bt_str(peer_id));
-        return;
-      }
-      svc_changed_handle_ = config.handle;
-    }
     SetServiceChangedIndicationSubscription(peer_id, indicate);
     if (persist_service_changed_ccc_callback_) {
       ServiceChangedCCCPersistedData persisted = {.notify = notify,
@@ -87,12 +74,38 @@ void GenericAttributeService::Register() {
     }
   };
 
+  // Server Supported Features (Vol 3, Part G, Section 7.4)
+  CharacteristicPtr server_features_chr = std::make_unique<Characteristic>(
+      kServerSupportedFeaturesChrcId,                 // id
+      types::kServerSupportedFeaturesCharacteristic,  // type
+      Property::kRead,                                // properties
+      0u,                                             // extended_properties
+      kAllowedNoSecurity,                             // read
+      kDisallowed,                                    // write
+      kDisallowed);                                   // update
+  service->AddCharacteristic(std::move(server_features_chr));
+
+  ReadHandler read_handler = [](PeerId,
+                                IdType service_id,
+                                IdType chrc_id,
+                                uint16_t offset,
+                                ReadResponder responder) {
+    // The stack shouldn't send us any read requests other than this id, none of
+    // the other characteristics or descriptors support it.
+    PW_DCHECK(chrc_id == kServerSupportedFeaturesChrcId);
+
+    // The only octet is the first octet.  The only bit is the EATT supported
+    // bit.
+    // TODO(fxbug.dev/364660604): Support EATT, then flip this bit to 1.
+    responder(fit::ok(), StaticByteBuffer(0x00));
+  };
+
   service_id_ =
       local_service_manager_->RegisterService(std::move(service),
-                                              NopReadHandler,
+                                              std::move(read_handler),
                                               NopWriteHandler,
                                               std::move(ccc_callback));
-  BT_DEBUG_ASSERT(service_id_ != kInvalidId);
+  PW_DCHECK(service_id_ != kInvalidId);
 
   local_service_manager_->set_service_changed_callback(
       fit::bind_member<&GenericAttributeService::OnServiceChanged>(this));
@@ -118,11 +131,6 @@ void GenericAttributeService::SetServiceChangedIndicationSubscription(
 void GenericAttributeService::OnServiceChanged(IdType service_id,
                                                att::Handle start,
                                                att::Handle end) {
-  // Service Changed not yet configured for indication.
-  if (svc_changed_handle_ == att::kInvalidHandle) {
-    return;
-  }
-
   // Don't send indications for this service's removal.
   if (service_id_ == service_id) {
     return;

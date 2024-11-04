@@ -27,7 +27,6 @@ namespace {
 using pw::async2::Context;
 using pw::async2::Pending;
 using pw::async2::Poll;
-using pw::async2::WaitReason;
 using pw::async2::Waker;
 using pw::multibuf::MultiBuf;
 
@@ -51,7 +50,10 @@ void WriteMultiBuf(const MultiBuf& buf) {
 Poll<std::byte> PollReadByte(Context& cx) {
   int c = getchar_timeout_us(0);
   if (c == PICO_ERROR_TIMEOUT) {
-    global_chars_available_waker = cx.GetWaker(WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        global_chars_available_waker,
+        "RP2StdioChannel is waiting for stdio chars available");
     // Read again to ensure that no race occurred.
     //
     // The concern is an interleaving like this
@@ -102,9 +104,9 @@ class Rp2StdioChannel final : public ByteReaderWriter {
     return *allocator_;
   }
 
-  Result<channel::WriteToken> DoWrite(multibuf::MultiBuf&& data) override;
+  Result<channel::WriteToken> DoStageWrite(multibuf::MultiBuf&& data) override;
 
-  async2::Poll<Result<channel::WriteToken>> DoPendFlush(
+  async2::Poll<Result<channel::WriteToken>> DoPendWrite(
       async2::Context&) override {
     return CreateWriteToken(write_token_);
   }
@@ -173,7 +175,7 @@ async2::Poll<Status> Rp2StdioChannel::DoPendReadyToWrite(async2::Context&) {
   return OkStatus();
 }
 
-Result<channel::WriteToken> Rp2StdioChannel::DoWrite(
+Result<channel::WriteToken> Rp2StdioChannel::DoStageWrite(
     multibuf::MultiBuf&& data) {
   WriteMultiBuf(data);
   const uint32_t token = write_token_++;

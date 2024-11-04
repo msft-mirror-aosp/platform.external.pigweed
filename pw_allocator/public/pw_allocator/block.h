@@ -35,7 +35,7 @@ namespace internal {
 // Types of corrupted blocks, and functions to crash with an error message
 // corresponding to each type. These functions are implemented independent of
 // any template parameters to allow them to use `PW_CHECK`.
-enum BlockStatus {
+enum class BlockStatus {
   kValid,
   kMisaligned,
   kPrevMismatched,
@@ -49,38 +49,76 @@ void CrashPoisonCorrupted(uintptr_t addr);
 
 }  // namespace internal
 
-/// Describes the side effects of fulfilling and allocation request.
-enum BlockAllocType {
-  /// The allocation fit exactly, and no other blocks were affected.
-  kExact,
+/// This class communicates the results and side effects of allocator requests
+/// by compactly combining a typical `Status` with enumerated values describing
+/// how a block's previous and next neighboring blocks may have been changed.
+class _PW_STATUS_NO_DISCARD BlockResult {
+ public:
+  enum class Prev : uint8_t {
+    kUnchanged,
+    kSplitNew,
+    kResized,
+  };
 
-  /// Extra trailing space was split off into a new block.
-  kNewNext,
+  enum class Next : uint8_t {
+    kUnchanged,
+    kSplitNew,
+    kResized,
+    kMerged,
+  };
 
-  /// Extra leading space was split off into a new block.
-  kNewPrev,
+  constexpr BlockResult() : BlockResult(pw::OkStatus()) {}
+  constexpr explicit BlockResult(Status status)
+      : BlockResult(status, Prev::kUnchanged, Next::kUnchanged) {}
+  constexpr explicit BlockResult(Prev prev)
+      : BlockResult(OkStatus(), prev, Next::kUnchanged) {}
+  constexpr explicit BlockResult(Next next)
+      : BlockResult(OkStatus(), Prev::kUnchanged, next) {}
+  constexpr BlockResult(Prev prev, Next next)
+      : BlockResult(OkStatus(), prev, next) {}
 
-  /// Extra leading and trailing space was split off into new blocks.
-  kNewPrevAndNewNext,
+  static constexpr BlockResult InvalidArgument() {
+    return BlockResult(Status::InvalidArgument());
+  }
+  static constexpr BlockResult ResourceExhausted() {
+    return BlockResult(Status::ResourceExhausted());
+  }
+  static constexpr BlockResult FailedPrecondition() {
+    return BlockResult(Status::FailedPrecondition());
+  }
+  static constexpr BlockResult OutOfRange() {
+    return BlockResult(Status::OutOfRange());
+  }
 
-  /// A small amount of leading space was shifted to the end of the previous
-  /// block.
-  kShiftToPrev,
+  [[nodiscard]] constexpr Prev prev() const {
+    return static_cast<Prev>(encoded_.size() >> 8);
+  }
 
-  /// A small amount of leading space was shifted to the end of the previous
-  /// block, and extra trailing space was split off into a new block.
-  kShiftToPrevAndNewNext,
+  [[nodiscard]] constexpr Next next() const {
+    return static_cast<Next>(encoded_.size() & 0xFF);
+  }
+
+  [[nodiscard]] constexpr bool ok() const { return encoded_.ok(); }
+
+  [[nodiscard]] constexpr Status status() const { return encoded_.status(); }
+
+ private:
+  explicit constexpr BlockResult(Status status, Prev prev, Next next)
+      : encoded_(
+            status,
+            (static_cast<size_t>(prev) << 8) | (static_cast<size_t>(next))) {}
+  StatusWithSize encoded_;
 };
 
 /// Memory region with links to adjacent blocks.
 ///
 /// The blocks do not encode their size directly. Instead, they encode offsets
 /// to the next and previous blocks using the type given by the `OffsetType`
-/// template parameter. The encoded offsets are simply the offsets divded by the
-/// minimum block alignment, `kAlignment`.
+/// template parameter. The encoded offsets are simply the offsets divided by
+/// the minimum block alignment, `kAlignment`.
 ///
-/// The `kAlignment` constant provided by the derived block is typically the
-/// minimum value of `alignof(OffsetType)`. Since the addressable range of a
+/// `kAlignment` is set by the `kAlign` template parameter, which defaults to
+/// its minimum value of `alignof(OffsetType)`. Since the addressable range of a
 /// block is given by `std::numeric_limits<OffsetType>::max() * kAlignment`, it
 /// may be advantageous to set a higher alignment if it allows using a smaller
 /// offset type, even if this wastes some bytes in order to align block headers.
@@ -94,7 +132,7 @@ enum BlockAllocType {
 /// use-after-frees.
 ///
 /// As an example, the diagram below represents two contiguous
-/// `Block<uint32_t, true, 8>`s. The indices indicate byte offsets:
+/// `Block<uint32_t, 4, true>`s. The indices indicate byte offsets:
 ///
 /// @code{.unparsed}
 /// Block 1:
@@ -103,7 +141,7 @@ enum BlockAllocType {
 /// +----------+----------+------+--------------+
 /// | Prev     | Next     |      |              |
 /// | 0......3 | 4......7 | 8..9 | 10.......280 |
-/// | 00000000 | 00000046 | 8008 |  <app data>  |
+/// | 00000000 | 00000046 | 8004 |  <app data>  |
 /// +----------+----------+------+--------------+
 /// Block 2:
 /// +---------------------+------+--------------+
@@ -111,32 +149,31 @@ enum BlockAllocType {
 /// +----------+----------+------+--------------+
 /// | Prev     | Next     |      |              |
 /// | 0......3 | 4......7 | 8..9 | 10......1056 |
-/// | 00000046 | 00000106 | 6008 | f7f7....f7f7 |
+/// | 00000046 | 00000106 | 6004 | f7f7....f7f7 |
 /// +----------+----------+------+--------------+
 /// @endcode
 ///
 /// The overall size of the block (e.g. 280 bytes) is given by its next offset
-/// multiplied by the alignment (e.g. 0x106 * 4). Also, the next offset of a
+/// multiplied by the alignment (e.g. 0x46 * 4). Also, the next offset of a
 /// block matches the previous offset of its next block. The first block in a
 /// list is denoted by having a previous offset of `0`.
 ///
 /// @tparam   OffsetType  Unsigned integral type used to encode offsets. Larger
 ///                       types can address more memory, but consume greater
 ///                       overhead.
-/// @tparam   kCanPoison  Indicates whether to enable poisoning free blocks.
 /// @tparam   kAlign      Sets the overall alignment for blocks. Minimum is
 ///                       `alignof(OffsetType)` (the default). Larger values can
 ///                       address more memory, but consume greater overhead.
-template <typename OffsetType = uintptr_t,
-          size_t kAlign = alignof(OffsetType),
+/// @tparam   kCanPoison  Indicates whether to enable poisoning free blocks.
+template <typename OffsetType_ = uintptr_t,
+          size_t kAlign = alignof(OffsetType_),
           bool kCanPoison = false>
 class Block {
  public:
-  using offset_type = OffsetType;
-  static_assert(std::is_unsigned_v<offset_type>,
-                "offset type must be unsigned");
+  using OffsetType = OffsetType_;
+  static_assert(std::is_unsigned_v<OffsetType>, "offset type must be unsigned");
 
-  static constexpr size_t kAlignment = std::max(kAlign, alignof(offset_type));
+  static constexpr size_t kAlignment = std::max(kAlign, alignof(OffsetType));
   static constexpr size_t kBlockOverhead = AlignUp(sizeof(Block), kAlignment);
 
   // No copy or move.
@@ -227,7 +264,7 @@ class Block {
   ///    is greater than the current size.
   ///
   /// @endrst
-  static Result<BlockAllocType> AllocFirst(Block*& block, Layout layout);
+  static BlockResult AllocFirst(Block*& block, Layout layout);
 
   /// Checks if an aligned block could be split from the end of the block.
   ///
@@ -240,8 +277,8 @@ class Block {
   ///
   /// .. pw-status-codes::
   ///
-  ///    OK: Returns the number of bytes to shift this block in order to align
-  ///    its usable space.
+  ///    OK: Returns the number of bytes from this block that would precede an
+  ///    a block allocated from this one and aligned according to `layout`.
   ///
   ///    FAILED_PRECONDITION: This block is in use and cannot be split.
   ///
@@ -279,7 +316,7 @@ class Block {
   ///    block.
   ///
   /// @endrst
-  static Result<BlockAllocType> AllocLast(Block*& block, Layout layout);
+  static BlockResult AllocLast(Block*& block, Layout layout);
 
   /// Marks the block as free and merges it with any free neighbors.
   ///
@@ -311,7 +348,7 @@ class Block {
   ///    OUT_OF_RANGE: The requested size is greater than the available space.
   ///
   /// @endrst
-  static Status Resize(Block*& block, size_t new_inner_size);
+  static BlockResult Resize(Block*& block, size_t new_inner_size);
 
   /// Fetches the block immediately after this one.
   ///
@@ -347,7 +384,7 @@ class Block {
   }
 
   /// Returns the current alignment of a block.
-  size_t Alignment() const { return Used() ? info_.alignment : 1; }
+  size_t Alignment() const { return Used() ? info_.alignment : kAlignment; }
 
   /// Indicates whether the block is in use.
   ///
@@ -372,7 +409,7 @@ class Block {
   void MarkLast() { info_.last = 1; }
 
   /// Clears the last bit from this block.
-  void ClearLast() { info_.last = 1; }
+  void ClearLast() { info_.last = 0; }
 
   /// Poisons the block's usable space.
   ///
@@ -392,7 +429,9 @@ class Block {
   /// * The block is aligned.
   /// * The prev/next fields match with the previous and next blocks.
   /// * The poisoned bytes are not damaged (if poisoning is enabled).
-  bool IsValid() const { return CheckStatus() == internal::kValid; }
+  bool IsValid() const {
+    return CheckStatus() == internal::BlockStatus::kValid;
+  }
 
   /// @brief Crashes with an informtaional message if a block is invalid.
   ///
@@ -431,7 +470,7 @@ class Block {
   /// pointer with a pointer to the new, smaller block.
   ///
   /// @pre The block must not be in use.
-  static BlockAllocType ShiftBlock(Block*& block, size_t pad_size);
+  static BlockResult::Prev ShiftBlock(Block*& block, size_t pad_size);
 
   /// Split a block into two smaller blocks.
   ///
@@ -445,14 +484,15 @@ class Block {
   /// @pre The space remaining after a split can hold a new block.
   static Block* Split(Block*& block, size_t new_inner_size);
 
-  /// Merges this block with next block if it exists and is free; otherwise does
-  /// nothing.
+  /// Attempts to merge this block with next block if it exists and is free.
   ///
   /// This method is static in order to consume and replace the given block
   /// pointer with a pointer to the new, larger block.
   ///
   /// @pre The blocks must not be in use.
-  static void MergeNext(Block*& block);
+  ///
+  /// @returns whether the block was merged.
+  static bool MergeNext(Block*& block);
 
   /// Returns true if the block is unpoisoned or if its usable space is
   /// untouched; false otherwise.
@@ -460,12 +500,12 @@ class Block {
 
   /// Offset (in increments of the minimum alignment) from this block to the
   /// previous block. 0 if this is the first block.
-  offset_type prev_ = 0;
+  OffsetType prev_ = 0;
 
   /// Offset (in increments of the minimum alignment) from this block to the
   /// next block. Valid even if this is the last block, since it equals the
   /// size of the block.
-  offset_type next_ = 0;
+  OffsetType next_ = 0;
 
   /// Information about the current state of the block:
   /// * If the `used` flag is set, the block's usable memory has been allocated
@@ -485,7 +525,7 @@ class Block {
   } info_;
 
   /// Number of bytes allocated beyond what was requested. This will be at most
-  /// the minimum alignment, i.e. `alignof(offset_type).`
+  /// the minimum alignment, i.e. `alignof(OffsetType).`
   uint16_t padding_ = 0;
 
  public:
@@ -599,16 +639,19 @@ Block<OffsetType, kAlign, kCanPoison>::Init(ByteSpan region) {
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
-Result<BlockAllocType> Block<OffsetType, kAlign, kCanPoison>::AllocFirst(
-    Block*& block, Layout layout) {
+BlockResult Block<OffsetType, kAlign, kCanPoison>::AllocFirst(Block*& block,
+                                                              Layout layout) {
   if (block == nullptr || layout.size() == 0) {
-    return Status::InvalidArgument();
+    return BlockResult::InvalidArgument();
   }
   block->CrashIfInvalid();
   if (block->Used()) {
-    return Status::FailedPrecondition();
+    return BlockResult::FailedPrecondition();
   }
   Block* prev = block->Prev();
+  if (block->InnerSize() < layout.size()) {
+    return BlockResult::OutOfRange();
+  }
 
   // Check if padding will be needed at the front to align the usable space.
   size_t alignment = std::max(layout.alignment(), kAlignment);
@@ -630,43 +673,31 @@ Result<BlockAllocType> Block<OffsetType, kAlign, kCanPoison>::AllocFirst(
   // Make sure everything fits.
   size_t inner_size = AlignUp(layout.size(), kAlignment);
   if (block->InnerSize() < pad_size + inner_size) {
-    return Status::OutOfRange();
+    return BlockResult::ResourceExhausted();
   }
-  BlockAllocType alloc_type = ShiftBlock(block, pad_size);
+  BlockResult::Prev prev_result = ShiftBlock(block, pad_size);
 
   // If the block is large enough to have a trailing block, split it to get the
   // requested usable space.
-  if (inner_size + kBlockOverhead <= block->InnerSize()) {
+  BlockResult::Next next_result = BlockResult::Next::kUnchanged;
+  if (inner_size + kBlockOverhead < block->InnerSize()) {
     Block* trailing = Split(block, inner_size);
     trailing->Poison(should_poison);
-    switch (alloc_type) {
-      case BlockAllocType::kExact:
-        alloc_type = kNewNext;
-        break;
-      case BlockAllocType::kNewPrev:
-        alloc_type = kNewPrevAndNewNext;
-        break;
-      case BlockAllocType::kShiftToPrev:
-        alloc_type = kShiftToPrevAndNewNext;
-        break;
-      case BlockAllocType::kNewNext:
-      case BlockAllocType::kNewPrevAndNewNext:
-      case BlockAllocType::kShiftToPrevAndNewNext:
-      default:
-        // `AllocLast` never creates a trailing block.
-        PW_CRASH("unreachable");
-    }
+    next_result = BlockResult::Next::kSplitNew;
   }
 
   block->MarkUsed();
   block->info_.alignment = alignment;
   block->padding_ = block->InnerSize() - layout.size();
-  return alloc_type;
+  return BlockResult(prev_result, next_result);
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
 StatusWithSize Block<OffsetType, kAlign, kCanPoison>::CanAllocLast(
     Layout layout) const {
+  if (layout.size() == 0) {
+    return StatusWithSize::InvalidArgument();
+  }
   if (Used()) {
     return StatusWithSize::FailedPrecondition();
   }
@@ -684,53 +715,63 @@ StatusWithSize Block<OffsetType, kAlign, kCanPoison>::CanAllocLast(
     // Requested size does not fit.
     return StatusWithSize::ResourceExhausted();
   }
-  return StatusWithSize(next - addr);
+  size_t extra = next - addr;
+  if (extra > kBlockOverhead) {
+    // Sufficient extra room for a new block.
+    return StatusWithSize(extra);
+  }
+  if (Prev() != nullptr) {
+    // Extra can be shifted to the previous block.
+    return StatusWithSize(extra);
+  }
+  if (extra % alignment == 0) {
+    // Pad the end of the block.
+    return StatusWithSize();
+  }
+  return StatusWithSize::ResourceExhausted();
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
-Result<BlockAllocType> Block<OffsetType, kAlign, kCanPoison>::AllocLast(
-    Block*& block, Layout layout) {
-  if (block == nullptr || layout.size() == 0) {
-    return Status::InvalidArgument();
+BlockResult Block<OffsetType, kAlign, kCanPoison>::AllocLast(Block*& block,
+                                                             Layout layout) {
+  if (block == nullptr) {
+    return BlockResult::InvalidArgument();
   }
-  size_t pad_size = 0;
-  PW_TRY_ASSIGN(pad_size, block->CanAllocLast(layout));
-
-  BlockAllocType alloc_type = ShiftBlock(block, pad_size);
+  StatusWithSize pad = block->CanAllocLast(layout);
+  if (!pad.ok()) {
+    return BlockResult(pad.status());
+  }
+  BlockResult::Prev prev_result = ShiftBlock(block, pad.size());
 
   block->MarkUsed();
   block->info_.alignment = layout.alignment();
   block->padding_ = block->InnerSize() - layout.size();
-  return alloc_type;
+  return BlockResult(prev_result);
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
-BlockAllocType Block<OffsetType, kAlign, kCanPoison>::ShiftBlock(
+BlockResult::Prev Block<OffsetType, kAlign, kCanPoison>::ShiftBlock(
     Block*& block, size_t pad_size) {
   if (pad_size == 0) {
-    return BlockAllocType::kExact;
-  }
-
-  // Check if this is the first block.
-  Block* prev = block->Prev();
-  if (prev == nullptr && pad_size <= kBlockOverhead) {
-    pad_size += kBlockOverhead;
+    return BlockResult::Prev::kUnchanged;
   }
 
   bool should_poison = block->info_.poisoned;
+  Block* prev = block->Prev();
   if (pad_size <= kBlockOverhead) {
     // The small amount of padding can be appended to the previous block.
-    Block::Resize(prev, prev->InnerSize() + pad_size).IgnoreError();
+    BlockResult result = Block::Resize(prev, prev->InnerSize() + pad_size);
+    PW_ASSERT(result.ok());
     prev->padding_ += pad_size;
     block = prev->Next();
-    return BlockAllocType::kShiftToPrev;
+    return BlockResult::Prev::kResized;
 
   } else {
     // Split the large padding off the front.
     Block* leading = block;
     block = Split(leading, pad_size - kBlockOverhead);
     leading->Poison(should_poison);
-    return BlockAllocType::kNewPrev;
+    return BlockResult::Prev::kSplitNew;
   }
 }
 
@@ -755,19 +796,20 @@ void Block<OffsetType, kAlign, kCanPoison>::Free(Block*& block) {
   if (prev->padding_ >= kAlignment) {
     // Previous block has trailing unused space from `ShiftBlock`. Resizing will
     // automatically add it to the block that has been freed.
-    Resize(prev, prev->InnerSize() - prev->padding_).IgnoreError();
+    BlockResult result = Resize(prev, prev->InnerSize() - prev->padding_);
+    PW_ASSERT(result.ok());
     block = prev->Next();
   }
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
-Status Block<OffsetType, kAlign, kCanPoison>::Resize(Block*& block,
-                                                     size_t new_inner_size) {
+BlockResult Block<OffsetType, kAlign, kCanPoison>::Resize(
+    Block*& block, size_t new_inner_size) {
   if (block == nullptr) {
-    return Status::InvalidArgument();
+    return BlockResult::InvalidArgument();
   }
   if (!block->Used()) {
-    return Status::FailedPrecondition();
+    return BlockResult::FailedPrecondition();
   }
   size_t requested_inner_size = new_inner_size;
   size_t old_inner_size = block->InnerSize();
@@ -776,13 +818,19 @@ Status Block<OffsetType, kAlign, kCanPoison>::Resize(Block*& block,
   new_inner_size = AlignUp(new_inner_size, kAlignment);
 
   if (old_inner_size == new_inner_size) {
-    return OkStatus();
+    // A small change to a block that has been padded may not change its size,
+    // but still needs its padding adjusted. This allows an aligned block that
+    // "lent" bytes to the previous block to become aligned can reclaim them
+    // when it is freed.
+    block->padding_ = new_inner_size - requested_inner_size;
+    return BlockResult();
   }
 
   // Treat the block as free and try to combine it with the next block. At most
   // one free block is expected to follow this block.
   block->MarkFree();
-  MergeNext(block);
+  BlockResult::Next result = MergeNext(block) ? BlockResult::Next::kMerged
+                                              : BlockResult::Next::kUnchanged;
 
   Status status = OkStatus();
 
@@ -790,11 +838,14 @@ Status Block<OffsetType, kAlign, kCanPoison>::Resize(Block*& block,
     // The merged block is too small for the resized block.
     status = Status::OutOfRange();
 
-  } else if (new_inner_size + kBlockOverhead <= block->InnerSize()) {
+  } else if (new_inner_size + kBlockOverhead < block->InnerSize()) {
     // There is enough room after the resized block for another trailing block.
     bool should_poison = block->info_.poisoned;
     Block* trailing = Split(block, new_inner_size);
     trailing->Poison(should_poison);
+    result = result == BlockResult::Next::kMerged
+                 ? BlockResult::Next::kResized
+                 : BlockResult::Next::kSplitNew;
   }
 
   if (status.ok()) {
@@ -806,7 +857,7 @@ Status Block<OffsetType, kAlign, kCanPoison>::Resize(Block*& block,
   block->MarkUsed();
   block->info_.alignment = alignment;
   block->padding_ = padding;
-  return status;
+  return status.ok() ? BlockResult(result) : BlockResult(status);
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
@@ -829,13 +880,13 @@ Block<OffsetType, kAlign, kCanPoison>::Split(Block*& block,
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
-void Block<OffsetType, kAlign, kCanPoison>::MergeNext(Block*& block) {
+bool Block<OffsetType, kAlign, kCanPoison>::MergeNext(Block*& block) {
   if (block->Last()) {
-    return;
+    return false;
   }
   Block* next = block->Next();
   if (block->Used() || next->Used()) {
-    return;
+    return false;
   }
   size_t prev_outer_size = block->prev_ * kAlignment;
   bool is_last = next->Last();
@@ -849,6 +900,7 @@ void Block<OffsetType, kAlign, kCanPoison>::MergeNext(Block*& block) {
   } else {
     block->Next()->prev_ = block->next_;
   }
+  return true;
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
@@ -925,38 +977,38 @@ template <typename OffsetType, size_t kAlign, bool kCanPoison>
 internal::BlockStatus Block<OffsetType, kAlign, kCanPoison>::CheckStatus()
     const {
   if (reinterpret_cast<uintptr_t>(this) % kAlignment != 0) {
-    return internal::kMisaligned;
+    return internal::BlockStatus::kMisaligned;
   }
   if (!Last() && (this >= Next() || this != Next()->Prev())) {
-    return internal::kNextMismatched;
+    return internal::BlockStatus::kNextMismatched;
   }
   if (Prev() && (this <= Prev() || this != Prev()->Next())) {
-    return internal::kPrevMismatched;
+    return internal::BlockStatus::kPrevMismatched;
   }
   if (!Used() && !CheckPoison()) {
-    return internal::kPoisonCorrupted;
+    return internal::BlockStatus::kPoisonCorrupted;
   }
-  return internal::kValid;
+  return internal::BlockStatus::kValid;
 }
 
 template <typename OffsetType, size_t kAlign, bool kCanPoison>
 void Block<OffsetType, kAlign, kCanPoison>::CrashIfInvalid() const {
   uintptr_t addr = reinterpret_cast<uintptr_t>(this);
   switch (CheckStatus()) {
-    case internal::kValid:
+    case internal::BlockStatus::kValid:
       break;
-    case internal::kMisaligned:
+    case internal::BlockStatus::kMisaligned:
       internal::CrashMisaligned(addr);
       break;
-    case internal::kNextMismatched:
+    case internal::BlockStatus::kNextMismatched:
       internal::CrashNextMismatched(
           addr, reinterpret_cast<uintptr_t>(Next()->Prev()));
       break;
-    case internal::kPrevMismatched:
+    case internal::BlockStatus::kPrevMismatched:
       internal::CrashPrevMismatched(
           addr, reinterpret_cast<uintptr_t>(Prev()->Next()));
       break;
-    case internal::kPoisonCorrupted:
+    case internal::BlockStatus::kPoisonCorrupted:
       internal::CrashPoisonCorrupted(addr);
       break;
   }

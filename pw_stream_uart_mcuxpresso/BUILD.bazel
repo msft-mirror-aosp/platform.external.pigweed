@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -33,24 +30,6 @@ cc_library(
         "//pw_clock_tree",
         "//pw_preprocessor",
         "//pw_stream",
-        "//targets:mcuxpresso_sdk",
-    ],
-)
-
-cc_library(
-    name = "pw_stream_uart_dma_mcuxpresso",
-    srcs = ["dma_stream.cc"],
-    hdrs = ["public/pw_stream_uart_mcuxpresso/dma_stream.h"],
-    includes = ["public"],
-    target_compatible_with = [
-        "//pw_build/constraints/board:mimxrt595_evk",
-    ],
-    deps = [
-        "//pw_clock_tree",
-        "//pw_preprocessor",
-        "//pw_stream",
-        "//pw_sync:interrupt_spin_lock",
-        "//pw_sync:thread_notification",
         "//targets:mcuxpresso_sdk",
     ],
 )
@@ -87,15 +66,6 @@ pw_cc_test(
         "//pw_build/constraints/board:mimxrt595_evk",
     ],
     deps = [":pw_stream_uart_mcuxpresso"],
-)
-
-pw_cc_test(
-    name = "dma_stream_example",
-    srcs = ["dma_stream_example.cc"],
-    target_compatible_with = [
-        "//pw_build/constraints/board:mimxrt595_evk",
-    ],
-    deps = [":pw_stream_uart_dma_mcuxpresso"],
 )
 
 pw_cc_test(

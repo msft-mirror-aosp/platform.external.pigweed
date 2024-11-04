@@ -15,8 +15,6 @@
 
 from datetime import date
 
-import pygments
-import sphinx
 
 from pw_console.pigweed_code_style import PigweedCodeStyle
 from pw_console.pigweed_code_style import PigweedCodeLightStyle
@@ -150,12 +148,13 @@ html_js_files = [
     "https://cdnjs.cloudflare.com/ajax/libs/fuzzysort/2.0.4/fuzzysort.js",
 ]
 
-announcement_url = 'https://pigweed.dev/docs/blog/03-pigweed-sdk.html'
-announcement_text = 'Pigweed SDK launches with Raspberry Pi RP2350'
-announcement = f'🚀🚀🚀 <a href="{announcement_url}">{announcement_text}</a> 🚀🚀🚀'
+html_extra_path = [
+    # Note: In this repo the file lives at //docs/blog/rss.xml but during the
+    # Sphinx build it's copied to the root of the website, https://pigweed.dev/rss.xml
+    'docs/blog/rss.xml',
+]
 
 html_theme_options = {
-    'announcement': announcement,
     # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/header-links.html#navigation-bar-dropdown-links
     'header_links_before_dropdown': 5,
     # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/header-links.html#icon-links

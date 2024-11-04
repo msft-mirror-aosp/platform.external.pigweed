@@ -17,12 +17,7 @@
 
 This script installs everything and writes out a file for the user's shell
 to source.
-
-For now, this is valid Python 2 and Python 3. Once we switch to running this
-with PyOxidizer it can be upgraded to recent Python 3.
 """
-
-from __future__ import print_function
 
 import argparse
 import copy
@@ -165,11 +160,9 @@ def _assert_sequence(value):
     return value
 
 
-# TODO(mohrr) remove disable=useless-object-inheritance once in Python 3.
-# pylint: disable=useless-object-inheritance
 # pylint: disable=too-many-instance-attributes
 # pylint: disable=too-many-arguments
-class EnvSetup(object):
+class EnvSetup:
     """Run environment setup for Pigweed."""
 
     def __init__(
@@ -422,8 +415,9 @@ class EnvSetup(object):
     def _check_submodule_presence(self):
         uninitialized = set()
 
-        # Don't check submodule presence if using the Android Repo Tool.
-        if os.path.isdir(os.path.join(self._project_root, '.repo')):
+        # If there's no `.git` file or directory, then we are not in
+        # a git repo and must skip the git-submodule check.
+        if not os.path.exists(os.path.join(self._project_root, '.git')):
             return
 
         if not self._check_submodules:

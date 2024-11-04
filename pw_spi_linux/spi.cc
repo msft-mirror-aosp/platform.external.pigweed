@@ -33,7 +33,12 @@ LinuxInitiator::~LinuxInitiator() {
   }
 }
 
-Status LinuxInitiator::Configure(const Config& config) {
+Status LinuxInitiator::DoConfigure(const Config& config) {
+  if (current_config_ == config) {
+    // Don't waste time issuing ioctls if the config is not actually changing.
+    return OkStatus();
+  }
+
   // Map clock polarity/phase to Linux userspace equivalents
   uint32_t mode = 0;
   if (config.polarity == ClockPolarity::kActiveLow) {
@@ -70,11 +75,12 @@ Status LinuxInitiator::Configure(const Config& config) {
     return Status::InvalidArgument();
   }
 
+  current_config_ = config;
   return OkStatus();
 }
 
-Status LinuxInitiator::WriteRead(ConstByteSpan write_buffer,
-                                 ByteSpan read_buffer) {
+Status LinuxInitiator::DoWriteRead(ConstByteSpan write_buffer,
+                                   ByteSpan read_buffer) {
   // Configure a full-duplex transfer using ioctl()
 
   struct spi_ioc_transfer transaction[2] = {};

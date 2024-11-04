@@ -133,9 +133,14 @@ def exclude_paths(
 ) -> Iterable[Path]:
     """Excludes paths based on a series of regular expressions."""
     if relative_to:
-        relpath = lambda path: Path(os.path.relpath(path, relative_to))
+
+        def relpath(path):
+            return Path(os.path.relpath(path, relative_to))
+
     else:
-        relpath = lambda path: path
+
+        def relpath(path):
+            return path
 
     for path in paths:
         if not any(e.search(relpath(path).as_posix()) for e in exclusions):
@@ -162,10 +167,12 @@ def log_run(
     """
     ctx = PRESUBMIT_CONTEXT.get()
     if ctx:
+        # Save the subprocess command args for pw build presubmit runner.
         if not ignore_dry_run:
             ctx.append_check_command(*args, **kwargs)
         if ctx.dry_run and not ignore_dry_run:
-            # Return an empty CompletedProcess
+            # Return an empty CompletedProcess without actually running anything
+            # if dry-run mode is on.
             empty_proc: subprocess.CompletedProcess = (
                 subprocess.CompletedProcess('', 0)
             )

@@ -21,7 +21,6 @@
 #include "pw_allocator/test_harness.h"
 #include "pw_allocator/testing.h"
 #include "pw_containers/vector.h"
-#include "pw_random/xor_shift.h"
 #include "pw_status/status_with_size.h"
 #include "pw_sync/binary_semaphore.h"
 #include "pw_sync/interrupt_spin_lock.h"
@@ -89,7 +88,7 @@ class Background final {
 
   Background(pw::Allocator& allocator, uint64_t seed, size_t iterations)
       : background_(allocator, seed, iterations) {
-    background_thread_ = pw::thread::Thread(context_.options(), background_);
+    background_thread_ = pw::Thread(context_.options(), background_);
   }
 
   ~Background() {
@@ -105,8 +104,7 @@ class Background final {
   }
 
  private:
-  struct TestHarness
-      : public pw::allocator::test::TestHarness<kBackgroundRequests> {
+  struct TestHarness : public pw::allocator::test::TestHarness {
     pw::Allocator* allocator = nullptr;
     pw::Allocator* Init() override { return allocator; }
   };
@@ -118,8 +116,9 @@ class Background final {
     BackgroundThreadCore(pw::Allocator& allocator,
                          uint64_t seed,
                          size_t iterations)
-        : prng_(seed), iterations_(iterations) {
+        : iterations_(iterations) {
       test_harness_.allocator = &allocator;
+      test_harness_.set_prng_seed(seed);
     }
 
     void Stop() { semaphore_.release(); }
@@ -132,20 +131,19 @@ class Background final {
    private:
     void Run() override {
       for (size_t i = 0; i < iterations_ && !semaphore_.try_acquire(); ++i) {
-        test_harness_.GenerateRequests(prng_, kMaxSize, kBackgroundRequests);
+        test_harness_.GenerateRequests(kMaxSize, kBackgroundRequests);
         pw::this_thread::yield();
       }
       semaphore_.release();
     }
 
     TestHarness test_harness_;
-    pw::random::XorShiftStarRng64 prng_;
     pw::sync::BinarySemaphore semaphore_;
     size_t iterations_;
   } background_;
 
   pw::thread::test::TestThreadContext context_;
-  pw::thread::Thread background_thread_;
+  pw::Thread background_thread_;
 };
 
 // Unit tests.
@@ -161,9 +159,9 @@ void TestGetCapacity() {
   SynchronizedAllocator<LockType> synchronized(allocator);
   Background background(synchronized);
 
-  // pw::StatusWithSize capacity = synchronized.GetCapacity();
-  // EXPECT_EQ(capacity.status(), pw::OkStatus());
-  // EXPECT_EQ(capacity.size(), kCapacity);
+  pw::StatusWithSize capacity = synchronized.GetCapacity();
+  EXPECT_EQ(capacity.status(), pw::OkStatus());
+  EXPECT_EQ(capacity.size(), kCapacity);
 }
 
 TEST(SynchronizedAllocatorTest, GetCapacitySpinLock) {

@@ -66,23 +66,23 @@ void BrEdrConnectionRequest::CreateConnection(
         page_scan_repetition_mode,
     pw::chrono::SystemClock::duration timeout,
     OnCompleteDelegate on_command_fail) {
-  BT_DEBUG_ASSERT(timeout.count() > 0);
+  PW_DCHECK(timeout.count() > 0);
 
   // HCI Command Status Event will be sent as our completion callback.
   auto self = weak_self_.GetWeakPtr();
   auto complete_cb = [self,
                       timeout,
                       peer_id = peer_id_,
-                      on_command_fail = std::move(on_command_fail)](
+                      on_command_fail_cb = std::move(on_command_fail)](
                          auto, const EventPacket& event) {
-    BT_DEBUG_ASSERT(event.event_code() == hci_spec::kCommandStatusEventCode);
+    PW_DCHECK(event.event_code() == hci_spec::kCommandStatusEventCode);
 
     if (!self.is_alive())
       return;
 
     Result<> status = event.ToResult();
     if (status.is_error()) {
-      on_command_fail(status, peer_id);
+      on_command_fail_cb(status, peer_id);
     } else {
       // Both CommandChannel and the controller perform some scheduling, so log
       // when the controller finally acknowledges Create Connection to observe
@@ -142,7 +142,7 @@ Result<> BrEdrConnectionRequest::CompleteRequest(Result<> status) {
 
 void BrEdrConnectionRequest::Timeout() {
   // If the request was cancelled, this handler will have been removed
-  BT_ASSERT(state_ == RequestState::kPending);
+  PW_CHECK(state_ == RequestState::kPending);
   bt_log(INFO,
          "hci-bredr",
          "create connection timed out: canceling request (peer: %s)",

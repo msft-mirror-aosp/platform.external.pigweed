@@ -1235,7 +1235,7 @@ class ConsoleApp:
             self.application.invalidate()
 
     def setup_command_runner_log_pane(self) -> None:
-        if not self.system_command_output_pane is None:
+        if self.system_command_output_pane is not None:
             return
 
         self.system_command_output_pane = LogPane(
@@ -1272,9 +1272,7 @@ class ConsoleApp:
             self.window_manager.focus_first_visible_pane()
 
         try:
-            unused_result = await self.application.run_async(
-                set_exception_handler=True
-            )
+            await self.application.run_async(set_exception_handler=True)
         finally:
             if test_mode:
                 background_log_task.cancel()

@@ -158,6 +158,16 @@ class Adapter {
     // disconnected.
     virtual bool Disconnect(PeerId peer_id) = 0;
 
+    // Opens a new L2CAP channel to service |psm| on |peer_id| using the
+    // preferred parameters |params|.
+    //
+    // |cb| will be called with the channel created to the peer, or nullptr if
+    // the channel creation resulted in an error.
+    virtual void OpenL2capChannel(PeerId peer_id,
+                                  l2cap::Psm psm,
+                                  l2cap::ChannelParameters params,
+                                  l2cap::ChannelCallback cb) = 0;
+
     // Initiates the pairing process. Expected to only be called during
     // higher-level testing.
     //   |peer_id|: the peer to pair to - if the peer is not connected, |cb| is
@@ -198,6 +208,10 @@ class Adapter {
     // Returns false if the parameters represent an invalid advertisement:
     //  * if |anonymous| is true but |callback| is set
     //
+    // |address_type| is used to determine whether to perform LE advertising
+    // using a public or random address, depending on whether privacy has been
+    // enabled or not and the value of |address_type| if given.
+    //
     // |status_callback| may be called synchronously within this function.
     // |status_callback| provides one of:
     //  - an |advertisement_id|, which can be used to stop advertising
@@ -225,6 +239,7 @@ class Adapter {
         bool anonymous,
         bool include_tx_power_level,
         std::optional<ConnectableAdvertisingParameters> connectable,
+        std::optional<DeviceAddress::Type> address_type,
         AdvertisingStatusCallback status_callback) = 0;
 
     // Stop advertising the advertisement with the id |advertisement_id|
@@ -246,7 +261,7 @@ class Adapter {
     // Returns true if the privacy feature is currently enabled.
     virtual bool PrivacyEnabled() const = 0;
     // Returns the current LE address.
-    virtual const DeviceAddress& CurrentAddress() const = 0;
+    virtual const DeviceAddress CurrentAddress() const = 0;
     // Register a callback to be notified any time the LE address changes.
     virtual void register_address_changed_callback(fit::closure callback) = 0;
 
