@@ -38,16 +38,9 @@
 
 // Default: Module name
 //
-// An empty string is used for the module name if it is not set. The
-// PW_LOG_MODULE_NAME_DEFINED macro is set to 1 or 0 to allow pw_log backends to
-// behave differently if the module name is defined. For example, a backend
-// might prefix the format string with PW_LOG_MODULE_NAME ": ", but only if the
-// module name is provided.
-#ifdef PW_LOG_MODULE_NAME
-#define PW_LOG_MODULE_NAME_DEFINED 1
-#else
+// An empty string is used for the module name if it is not set.
+#ifndef PW_LOG_MODULE_NAME
 #define PW_LOG_MODULE_NAME ""
-#define PW_LOG_MODULE_NAME_DEFINED 0
 #endif  // PW_LOG_MODULE_NAME
 
 // Default: Log level filtering
@@ -72,12 +65,3 @@
 #ifndef PW_LOG_DEFAULT_FLAGS
 #define PW_LOG_DEFAULT_FLAGS PW_LOG_FLAGS
 #endif  // PW_LOG_DEFAULT_FLAGS
-
-// Default: Log enabled expression
-//
-// This expression determines whether or not the statement is enabled and
-// should be passed to the backend.
-#ifndef PW_LOG_ENABLE_IF
-#define PW_LOG_ENABLE_IF(level, module, flags) \
-  PW_LOG_ENABLE_IF_DEFAULT(level, module, flags)
-#endif  // PW_LOG_ENABLE_IF

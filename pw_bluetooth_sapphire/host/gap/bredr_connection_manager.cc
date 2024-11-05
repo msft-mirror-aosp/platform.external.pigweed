@@ -95,7 +95,7 @@ std::string ReasonAsString(DisconnectReason reason) {
 void SetPageScanEnabled(bool enabled,
                         hci::Transport::WeakPtr hci,
                         hci::ResultFunction<> cb) {
-  BT_DEBUG_ASSERT(cb);
+  PW_DCHECK(cb);
   auto read_enable = hci::EmbossCommandPacket::New<
       pw::bluetooth::emboss::ReadScanEnableCommandWriter>(
       hci_spec::kReadScanEnable);
@@ -126,8 +126,9 @@ void SetPageScanEnabled(bool enabled,
         scan_type & static_cast<uint8_t>(hci_spec::ScanEnableBit::kPage));
     hci->command_channel()->SendCommand(
         std::move(write_enable),
-        [cb = std::move(finish_cb)](auto, const hci::EmbossEventPacket& event) {
-          cb(event.ToResult());
+        [callback = std::move(finish_cb)](
+            auto, const hci::EmbossEventPacket& response) {
+          callback(response.ToResult());
         });
   };
   hci->command_channel()->SendCommand(std::move(read_enable),
@@ -143,31 +144,34 @@ hci::CommandChannel::EventHandlerId BrEdrConnectionManager::AddEventHandler(
   hci::CommandChannel::EventHandlerId event_id = 0;
   event_id = std::visit(
       [hci = hci_, &self, code](
-          auto&& cb) -> hci::CommandChannel::EventHandlerId {
-        using T = std::decay_t<decltype(cb)>;
+          auto&& callback) -> hci::CommandChannel::EventHandlerId {
+        using T = std::decay_t<decltype(callback)>;
         if constexpr (std::is_same_v<T, hci::CommandChannel::EventCallback>) {
           return hci->command_channel()->AddEventHandler(
-              code, [self, cb = std::move(cb)](const hci::EventPacket& event) {
+              code,
+              [self,
+               event_cb = std::move(callback)](const hci::EventPacket& event) {
                 if (!self.is_alive()) {
                   return hci::CommandChannel::EventCallbackResult::kRemove;
                 }
-                return cb(event);
+                return event_cb(event);
               });
         } else if constexpr (std::is_same_v<
                                  T,
                                  hci::CommandChannel::EmbossEventCallback>) {
           return hci->command_channel()->AddEventHandler(
               code,
-              [self, cb = std::move(cb)](const hci::EmbossEventPacket& event) {
+              [self, emboss_event_cb = std::move(callback)](
+                  const hci::EmbossEventPacket& event) {
                 if (!self.is_alive()) {
                   return hci::CommandChannel::EventCallbackResult::kRemove;
                 }
-                return cb(event);
+                return emboss_event_cb(event);
               });
         }
       },
       std::move(cb));
-  BT_DEBUG_ASSERT(event_id);
+  PW_DCHECK(event_id);
   event_handler_ids_.push_back(event_id);
   return event_id;
 }
@@ -193,9 +197,9 @@ BrEdrConnectionManager::BrEdrConnectionManager(
       legacy_pairing_enabled_(legacy_pairing_enabled),
       dispatcher_(dispatcher),
       weak_self_(this) {
-  BT_DEBUG_ASSERT(hci_.is_alive());
-  BT_DEBUG_ASSERT(cache_);
-  BT_DEBUG_ASSERT(l2cap_);
+  PW_DCHECK(hci_.is_alive());
+  PW_DCHECK(cache_);
+  PW_DCHECK(l2cap_);
 
   hci_cmd_runner_ = std::make_unique<hci::SequentialCommandRunner>(
       hci_->command_channel()->AsWeakPtr());
@@ -330,7 +334,7 @@ PeerId BrEdrConnectionManager::GetPeerId(
   }
 
   auto* peer = cache_->FindByAddress(it->second.link().peer_address());
-  BT_DEBUG_ASSERT_MSG(peer, "Couldn't find peer for handle %#.4x", handle);
+  PW_DCHECK(peer, "Couldn't find peer for handle %#.4x", handle);
   return peer->identifier();
 }
 
@@ -366,7 +370,7 @@ void BrEdrConnectionManager::OpenL2capChannel(
                      peer_id,
                      psm,
                      params,
-                     cb = std::move(cb)](auto status) mutable {
+                     callback = std::move(cb)](auto status) mutable {
     bt_log(TRACE,
            "gap-bredr",
            "got pairing status %s, %sreturning socket to %s",
@@ -375,7 +379,7 @@ void BrEdrConnectionManager::OpenL2capChannel(
            bt_str(peer_id));
     if (status.is_error() || !self.is_alive()) {
       // Report the failure to the user with a null channel.
-      cb(l2cap::Channel::WeakPtr());
+      callback(l2cap::Channel::WeakPtr());
       return;
     }
 
@@ -385,13 +389,15 @@ void BrEdrConnectionManager::OpenL2capChannel(
              "gap-bredr",
              "can't open l2cap channel: connection not found (peer: %s)",
              bt_str(peer_id));
-      cb(l2cap::Channel::WeakPtr());
+      callback(l2cap::Channel::WeakPtr());
       return;
     }
     auto& [handle, connection] = *conn_pair;
 
     connection->OpenL2capChannel(
-        psm, params, [cb = std::move(cb)](auto chan) { cb(std::move(chan)); });
+        psm, params, [open_cb = std::move(callback)](auto chan) {
+          open_cb(std::move(chan));
+        });
   };
 
   Pair(peer_id, security_reqs, std::move(pairing_cb));
@@ -403,13 +409,13 @@ BrEdrConnectionManager::SearchId BrEdrConnectionManager::AddServiceSearch(
     BrEdrConnectionManager::SearchCallback callback) {
   auto on_service_discovered =
       [self = weak_self_.GetWeakPtr(), uuid, client_cb = std::move(callback)](
-          PeerId peer_id, auto& attributes) {
+          PeerId peer_id, auto& service_attributes) {
         if (self.is_alive()) {
           Peer* const peer = self->cache_->FindById(peer_id);
-          BT_ASSERT(peer);
+          PW_CHECK(peer);
           peer->MutBrEdr().AddService(uuid);
         }
-        client_cb(peer_id, attributes);
+        client_cb(peer_id, service_attributes);
       };
   SearchId new_id = discoverer_.AddSearch(
       uuid, std::move(attributes), std::move(on_service_discovered));
@@ -623,15 +629,15 @@ void BrEdrConnectionManager::AttachInspect(inspect::Node& parent,
 
 void BrEdrConnectionManager::WritePageTimeout(
     pw::chrono::SystemClock::duration page_timeout, hci::ResultFunction<> cb) {
-  BT_ASSERT(page_timeout >= hci_spec::kMinPageTimeoutDuration);
-  BT_ASSERT(page_timeout <= hci_spec::kMaxPageTimeoutDuration);
+  PW_CHECK(page_timeout >= hci_spec::kMinPageTimeoutDuration);
+  PW_CHECK(page_timeout <= hci_spec::kMaxPageTimeoutDuration);
 
   const int64_t raw_page_timeout =
       page_timeout / hci_spec::kDurationPerPageTimeoutUnit;
-  BT_ASSERT(raw_page_timeout >=
-            static_cast<uint16_t>(pw::bluetooth::emboss::PageTimeout::MIN));
-  BT_ASSERT(raw_page_timeout <=
-            static_cast<uint16_t>(pw::bluetooth::emboss::PageTimeout::MAX));
+  PW_CHECK(raw_page_timeout >=
+           static_cast<uint16_t>(pw::bluetooth::emboss::PageTimeout::MIN));
+  PW_CHECK(raw_page_timeout <=
+           static_cast<uint16_t>(pw::bluetooth::emboss::PageTimeout::MAX));
 
   auto write_page_timeout_cmd = hci::EmbossCommandPacket::New<
       pw::bluetooth::emboss::WritePageTimeoutCommandWriter>(
@@ -641,8 +647,8 @@ void BrEdrConnectionManager::WritePageTimeout(
 
   hci_->command_channel()->SendCommand(
       std::move(write_page_timeout_cmd),
-      [cb = std::move(cb)](auto id, const hci::EmbossEventPacket& event) {
-        cb(event.ToResult());
+      [callback = std::move(cb)](auto id, const hci::EmbossEventPacket& event) {
+        callback(event.ToResult());
       });
 }
 
@@ -784,7 +790,7 @@ void BrEdrConnectionManager::InitializeConnection(
          bt_str(peer_id));
 
   // We should never have more than one link to a given peer
-  BT_DEBUG_ASSERT(!FindConnectionById(peer_id));
+  PW_DCHECK(!FindConnectionById(peer_id));
 
   // The controller has completed the HCI connection procedure, so the
   // connection request can no longer be failed by a lower layer error. Now tie
@@ -810,8 +816,8 @@ void BrEdrConnectionManager::InitializeConnection(
            handle);
     Disconnect(peer_id, DisconnectReason::kPairingFailed);
   };
-  auto on_peer_disconnect_cb = [this, link = link.get()] {
-    OnPeerDisconnect(link);
+  auto on_peer_disconnect_cb = [this, connection = link.get()] {
+    OnPeerDisconnect(connection);
   };
 
   // Create the BrEdrConnection object and place into |connections_| map
@@ -826,7 +832,7 @@ void BrEdrConnectionManager::InitializeConnection(
                                hci_,
                                std::move(request),
                                dispatcher_);
-  BT_ASSERT(success);
+  PW_CHECK(success);
 
   BrEdrConnection& connection = conn_iter->second;
   connection.AttachInspect(inspect_properties_.connections_node_,
@@ -834,27 +840,28 @@ void BrEdrConnectionManager::InitializeConnection(
                                kInspectConnectionNodeNamePrefix));
 
   // Interrogate this peer to find out its version/capabilities.
-  connection.Interrogate([this, peer = peer->GetWeakPtr(), handle](
-                             hci::Result<> result) {
-    if (bt_is_error(result,
-                    WARN,
-                    "gap-bredr",
-                    "interrogation failed, dropping connection (peer: %s, "
-                    "handle: %#.4x)",
-                    bt_str(peer->identifier()),
-                    handle)) {
-      // If this connection was locally requested, requester(s) are notified by
-      // the disconnection.
-      Disconnect(peer->identifier(), DisconnectReason::kInterrogationFailed);
-      return;
-    }
-    bt_log(INFO,
-           "gap-bredr",
-           "interrogation complete (peer: %s, handle: %#.4x)",
-           bt_str(peer->identifier()),
-           handle);
-    CompleteConnectionSetup(peer, handle);
-  });
+  connection.Interrogate(
+      [this, peer_weak_ptr = peer->GetWeakPtr(), handle](hci::Result<> result) {
+        if (bt_is_error(result,
+                        WARN,
+                        "gap-bredr",
+                        "interrogation failed, dropping connection (peer: %s, "
+                        "handle: %#.4x)",
+                        bt_str(peer_weak_ptr->identifier()),
+                        handle)) {
+          // If this connection was locally requested, requester(s) are notified
+          // by the disconnection.
+          Disconnect(peer_weak_ptr->identifier(),
+                     DisconnectReason::kInterrogationFailed);
+          return;
+        }
+        bt_log(INFO,
+               "gap-bredr",
+               "interrogation complete (peer: %s, handle: %#.4x)",
+               bt_str(peer_weak_ptr->identifier()),
+               handle);
+        CompleteConnectionSetup(peer_weak_ptr, handle);
+      });
 
   // If this was our in-flight request, close it
   if (pending_request_ && addr == pending_request_->peer_address()) {
@@ -895,8 +902,7 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
   // Now that interrogation has successfully completed, check if the peer's
   // feature bits indicate SSP support. If not, use LegacyPairingState to
   // perform pairing if legacy pairing is enabled.
-  PairingStateManager::PairingStateType pairing_type =
-      PairingStateManager::PairingStateType::kSecureSimplePairing;
+  PairingStateType pairing_type = PairingStateType::kSecureSimplePairing;
   if (!peer->IsSecureSimplePairingSupported()) {
     if (!legacy_pairing_enabled_) {
       bt_log(WARN,
@@ -906,7 +912,7 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
              bt_str(peer_id));
       return;
     }
-    pairing_type = PairingStateManager::PairingStateType::kLegacyPairing;
+    pairing_type = PairingStateType::kLegacyPairing;
   }
   conn_state.CreateOrUpdatePairingState(
       pairing_type, pairing_delegate_, security_mode());
@@ -915,8 +921,8 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
       conn_state.link().GetWeakPtr();
 
   auto error_handler =
-      [self, peer_id, connection = connection->GetWeakPtr(), handle] {
-        if (!self.is_alive() || !connection.is_alive()) {
+      [self, peer_id, connection_weak_ptr = connection->GetWeakPtr(), handle] {
+        if (!self.is_alive() || !connection_weak_ptr.is_alive()) {
           return;
         }
         bt_log(
@@ -930,7 +936,7 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
 
   // TODO(fxbug.dev/42113313): Implement this callback as a call to
   // InitiatePairing().
-  auto security_callback = [peer_id](hci_spec::ConnectionHandle handle,
+  auto security_callback = [peer_id](hci_spec::ConnectionHandle conn_handle,
                                      sm::SecurityLevel level,
                                      auto cb) {
     bt_log(INFO,
@@ -938,7 +944,7 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
            "Ignoring security upgrade request; not implemented (peer: %s, "
            "handle: %#.4x)",
            bt_str(peer_id),
-           handle);
+           conn_handle);
     cb(ToResult(HostError::kNotSupported));
   };
 
@@ -979,8 +985,7 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
 hci::CommandChannel::EventCallbackResult
 BrEdrConnectionManager::OnAuthenticationComplete(
     const hci::EmbossEventPacket& event) {
-  BT_DEBUG_ASSERT(event.event_code() ==
-                  hci_spec::kAuthenticationCompleteEventCode);
+  PW_DCHECK(event.event_code() == hci_spec::kAuthenticationCompleteEventCode);
   auto params =
       event.view<pw::bluetooth::emboss::AuthenticationCompleteEventView>();
   hci_spec::ConnectionHandle connection_handle =
@@ -1319,10 +1324,9 @@ BrEdrConnectionManager::OnIoCapabilityRequest(
 
   // If we receive an HCI_IO_Capability_Request event before interrogation is
   // complete, there will be no pairing state object so we need to create it now
-  conn_ptr->CreateOrUpdatePairingState(
-      PairingStateManager::PairingStateType::kSecureSimplePairing,
-      pairing_delegate_,
-      security_mode());
+  conn_ptr->CreateOrUpdatePairingState(PairingStateType::kSecureSimplePairing,
+                                       pairing_delegate_,
+                                       security_mode());
 
   auto reply = conn_ptr->pairing_state_manager().OnIoCapabilityRequest();
 
@@ -1372,7 +1376,7 @@ BrEdrConnectionManager::OnIoCapabilityResponse(
   // now. If we previously created a pairing state object because there was
   // already an HCI_IO_Capability_Request event, then this method will no-op.
   conn_pair->second->CreateOrUpdatePairingState(
-      PairingStateManager::PairingStateType::kSecureSimplePairing,
+      PairingStateType::kSecureSimplePairing,
       pairing_delegate_,
       security_mode());
 
@@ -1418,10 +1422,9 @@ BrEdrConnectionManager::OnLinkKeyRequest(const hci::EmbossEventPacket& event) {
     // link key request is received after ACL connection is complete but before
     // interrogation is complete. Default to using SSP for now.
     if (!conn->interrogation_complete()) {
-      conn->CreateOrUpdatePairingState(
-          PairingStateManager::PairingStateType::kSecureSimplePairing,
-          pairing_delegate_,
-          security_mode());
+      conn->CreateOrUpdatePairingState(PairingStateType::kSecureSimplePairing,
+                                       pairing_delegate_,
+                                       security_mode());
     }
 
     link_key = conn->pairing_state_manager().OnLinkKeyRequest();
@@ -1511,7 +1514,7 @@ BrEdrConnectionManager::OnLinkKeyNotification(
     }
 
     // Reuse current properties
-    BT_DEBUG_ASSERT(peer->bredr()->link_key());
+    PW_DCHECK(peer->bredr()->link_key());
     sec_props = peer->bredr()->link_key()->security();
     key_type =
         static_cast<pw::bluetooth::emboss::KeyType>(sec_props.GetLinkKeyType());
@@ -1541,7 +1544,7 @@ BrEdrConnectionManager::OnLinkKeyNotification(
     } else {
       // The connection request's legacy pairing state object must exist at this
       // point since we created it in the request's constructor.
-      BT_ASSERT(request.value()->legacy_pairing_state());
+      PW_CHECK(request.value()->legacy_pairing_state());
       request.value()->legacy_pairing_state()->OnLinkKeyNotification(
           key_value, static_cast<hci_spec::LinkKeyType>(key_type));
     }
@@ -1752,20 +1755,20 @@ BrEdrConnectionManager::OnPinCodeRequest(const hci::EmbossEventPacket& event) {
 
   PeerId peer_id = peer->identifier();
 
-  auto pin_code_cb = [this,
-                      self = weak_self_.GetWeakPtr(),
-                      addr = addr.value()](std::optional<uint16_t> pin) {
-    if (!self.is_alive()) {
-      return;
-    }
+  auto pin_code_cb =
+      [this, self = weak_self_.GetWeakPtr(), addr_as_bytes = addr.value()](
+          std::optional<uint16_t> pin) {
+        if (!self.is_alive()) {
+          return;
+        }
 
-    if (pin) {
-      // TODO(fxbug.dev/348700005): Support exponential backoff
-      SendPinCodeRequestReply(addr, pin.value());
-    } else {
-      SendPinCodeRequestNegativeReply(addr);
-    }
-  };
+        if (pin) {
+          // TODO(fxbug.dev/348700005): Support exponential backoff
+          SendPinCodeRequestReply(addr_as_bytes, pin.value());
+        } else {
+          SendPinCodeRequestNegativeReply(addr_as_bytes);
+        }
+      };
 
   std::optional<BrEdrConnectionRequest*> connection_req =
       FindConnectionRequestById(peer_id);
@@ -1797,9 +1800,7 @@ BrEdrConnectionManager::OnPinCodeRequest(const hci::EmbossEventPacket& event) {
     // complete, there will be no pairing state object so we need to create it
     // now
     conn_ptr->CreateOrUpdatePairingState(
-        PairingStateManager::PairingStateType::kLegacyPairing,
-        pairing_delegate_,
-        security_mode());
+        PairingStateType::kLegacyPairing, pairing_delegate_, security_mode());
 
     conn_ptr->pairing_state_manager().OnPinCodeRequest(std::move(pin_code_cb));
   } else {
@@ -1835,7 +1836,7 @@ BrEdrConnectionManager::OnPinCodeRequest(const hci::EmbossEventPacket& event) {
 
 void BrEdrConnectionManager::HandleNonAclConnectionRequest(
     const DeviceAddress& addr, pw::bluetooth::emboss::LinkType link_type) {
-  BT_DEBUG_ASSERT(link_type != pw::bluetooth::emboss::LinkType::ACL);
+  PW_DCHECK(link_type != pw::bluetooth::emboss::LinkType::ACL);
 
   // Initialize the peer if it doesn't exist, to ensure we have allocated a
   // PeerId
@@ -1962,9 +1963,9 @@ void BrEdrConnectionManager::TryCreateNextConnection() {
 
   auto self = weak_self_.GetWeakPtr();
   auto on_failure = [self, addr = request.address()](hci::Result<> status,
-                                                     PeerId peer_id) {
+                                                     PeerId id) {
     if (self.is_alive() && status.is_error()) {
-      self->CompleteRequest(peer_id, addr, status, /*handle=*/0);
+      self->CompleteRequest(id, addr, status, /*handle=*/0);
     }
   };
   auto on_timeout = [self] {
@@ -2019,9 +2020,9 @@ void BrEdrConnectionManager::SendAuthenticationRequested(
   // registered.
   hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto,
-                                      const hci::EmbossEventPacket& event) {
-      cb(event.ToResult());
+    command_cb = [callback = std::move(cb)](
+                     auto, const hci::EmbossEventPacket& event) {
+      callback(event.ToResult());
     };
   }
   hci_->command_channel()->SendCommand(std::move(auth_request),
@@ -2129,9 +2130,9 @@ void BrEdrConnectionManager::SendCommandWithStatusCallback(
     T command_packet, hci::ResultFunction<> cb) {
   hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto,
-                                      const hci::EmbossEventPacket& event) {
-      cb(event.ToResult());
+    command_cb = [callback = std::move(cb)](
+                     auto, const hci::EmbossEventPacket& event) {
+      callback(event.ToResult());
     };
   }
   hci_->command_channel()->SendCommand(std::move(command_packet),
@@ -2152,9 +2153,9 @@ void BrEdrConnectionManager::SendAcceptConnectionRequest(
 
   hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto,
-                                      const hci::EmbossEventPacket& event) {
-      cb(event.ToResult());
+    command_cb = [callback = std::move(cb)](
+                     auto, const hci::EmbossEventPacket& event) {
+      callback(event.ToResult());
     };
   }
 
@@ -2176,9 +2177,9 @@ void BrEdrConnectionManager::SendRejectConnectionRequest(
 
   hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto,
-                                      const hci::EmbossEventPacket& event) {
-      cb(event.ToResult());
+    command_cb = [callback = std::move(cb)](
+                     auto, const hci::EmbossEventPacket& event) {
+      callback(event.ToResult());
     };
   }
 
@@ -2200,9 +2201,9 @@ void BrEdrConnectionManager::SendRejectSynchronousRequest(
 
   hci::CommandChannel::EmbossCommandCallback command_cb;
   if (cb) {
-    command_cb = [cb = std::move(cb)](auto,
-                                      const hci::EmbossEventPacket& event) {
-      cb(event.ToResult());
+    command_cb = [callback = std::move(cb)](
+                     auto, const hci::EmbossEventPacket& event) {
+      callback(event.ToResult());
     };
   }
 

@@ -480,9 +480,9 @@ class FakeController final : public ControllerTestDoubleBase,
     return num_supported_advertising_sets_;
   }
   void set_num_supported_advertising_sets(uint8_t value) {
-    BT_ASSERT(value >= extended_advertising_states_.size());
-    BT_ASSERT(value <= hci_spec::kAdvertisingHandleMax +
-                           1);  // support advertising handle of 0
+    PW_CHECK(value >= extended_advertising_states_.size());
+    PW_CHECK(value <= hci_spec::kAdvertisingHandleMax +
+                          1);  // support advertising handle of 0
     num_supported_advertising_sets_ = value;
   }
 
@@ -538,6 +538,11 @@ class FakeController final : public ControllerTestDoubleBase,
   // support advertising.
   void SendScanResponseReport(const FakePeer& peer);
 
+  // Gets a reference to the set of LE Host Features that were set
+  hci_spec::LESupportedFeatures le_features() {
+    return hci_spec::LESupportedFeatures{.le_features = settings_.le_features};
+  }
+
  private:
   static bool IsValidAdvertisingHandle(hci_spec::AdvertisingHandle handle) {
     return handle <= hci_spec::kAdvertisingHandleMax;
@@ -565,11 +570,6 @@ class FakeController final : public ControllerTestDoubleBase,
   // second parameter) instead.
   void RespondWithCommandComplete(hci_spec::OpCode opcode,
                                   pw::bluetooth::emboss::StatusCode status);
-
-  // Sends a HCI_Command_Complete event in response to the command with
-  // |opcode| and using the given data as the parameter payload.
-  void RespondWithCommandComplete(hci_spec::OpCode opcode,
-                                  const ByteBuffer& params);
 
   // Sends an HCI_Command_Complete event in response to the command with
   // |opcode| and using the provided event packet, filling in the event header
@@ -825,6 +825,10 @@ class FakeController final : public ControllerTestDoubleBase,
       const pw::bluetooth::emboss::LESetExtendedAdvertisingEnableCommandView&
           params);
 
+  // Called when a HCI_LE_Set_Host_Feature command is received.
+  void OnLESetHostFeature(
+      const pw::bluetooth::emboss::LESetHostFeatureCommandView& params);
+
   // Called when a HCI_LE_Read_Maximum_Advertising_Data_Length command is
   // received.
   void OnLEReadMaximumAdvertisingDataLength();
@@ -835,7 +839,7 @@ class FakeController final : public ControllerTestDoubleBase,
 
   // Called when a HCI_LE_Remove_Advertising_Set command is received.
   void OnLERemoveAdvertisingSet(
-      const hci_spec::LERemoveAdvertisingSetCommandParams& params);
+      const pw::bluetooth::emboss::LERemoveAdvertisingSetCommandView& params);
 
   // Called when a HCI_LE_Clear_Advertising_Sets command is received.
   void OnLEClearAdvertisingSets();

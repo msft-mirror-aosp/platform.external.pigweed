@@ -35,7 +35,7 @@ using ::pw::async2::Poll;
 using ::pw::async2::Ready;
 using ::pw::async2::Task;
 using ::pw::async2::Waker;
-using ::pw::operator"" _b;
+using ::pw::operator""_b;
 using ::pw::channel::DatagramReader;
 using ::pw::channel::DatagramWriter;
 using ::pw::channel::ForwardingByteChannelPair;
@@ -70,7 +70,7 @@ class SendDatagrams : public Task {
       if (channel_.PendReadyToWrite(cx).IsPending()) {
         return Pending();
       }
-      EXPECT_EQ(channel_.Write(std::move(to_send_.front())).status(),
+      EXPECT_EQ(channel_.StageWrite(std::move(to_send_.front())).status(),
                 pw::OkStatus());
       to_send_.pop();
     }

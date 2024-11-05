@@ -25,6 +25,8 @@
 #include "pw_bluetooth_sapphire/internal/host/common/weak_self.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/basic_mode_rx_engine.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/basic_mode_tx_engine.h"
+#include "pw_bluetooth_sapphire/internal/host/l2cap/credit_based_flow_control_rx_engine.h"
+#include "pw_bluetooth_sapphire/internal/host/l2cap/credit_based_flow_control_tx_engine.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/enhanced_retransmission_mode_engines.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/logical_link.h"
@@ -49,9 +51,9 @@ Channel::Channel(ChannelId id,
       info_(info),
       max_tx_queued_(max_tx_queued),
       requested_acl_priority_(AclPriority::kNormal) {
-  BT_DEBUG_ASSERT(id_);
-  BT_DEBUG_ASSERT(link_type_ == bt::LinkType::kLE ||
-                  link_type_ == bt::LinkType::kACL);
+  PW_DCHECK(id_);
+  PW_DCHECK(link_type_ == bt::LinkType::kLE ||
+            link_type_ == bt::LinkType::kACL);
 }
 
 namespace internal {
@@ -131,26 +133,39 @@ ChannelImpl::ChannelImpl(pw::async::Dispatcher& dispatcher,
       fragmenter_(link->handle(), max_acl_payload_size),
       a2dp_offload_manager_(a2dp_offload_manager),
       weak_self_(this) {
-  BT_ASSERT(link_.is_alive());
-  BT_ASSERT_MSG(
+  PW_CHECK(link_.is_alive());
+  PW_CHECK(
       info_.mode == RetransmissionAndFlowControlMode::kBasic ||
           info_.mode ==
-              RetransmissionAndFlowControlMode::kEnhancedRetransmission,
+              RetransmissionAndFlowControlMode::kEnhancedRetransmission ||
+          info.mode == CreditBasedFlowControlMode::kLeCreditBasedFlowControl,
       "Channel constructed with unsupported mode: %s\n",
       AnyChannelModeToString(info_.mode).c_str());
+
+  auto connection_failure_cb = [link] {
+    if (link.is_alive()) {
+      // |link| is expected to ignore this call if it has been closed.
+      link->SignalError();
+    }
+  };
 
   if (info_.mode == RetransmissionAndFlowControlMode::kBasic) {
     rx_engine_ = std::make_unique<BasicModeRxEngine>();
     tx_engine_ =
         std::make_unique<BasicModeTxEngine>(id, max_tx_sdu_size(), *this);
+  } else if (std::holds_alternative<CreditBasedFlowControlMode>(info_.mode)) {
+    PW_CHECK(info_.remote_initial_credits.has_value());
+    auto mode = std::get<CreditBasedFlowControlMode>(info_.mode);
+    rx_engine_ = std::make_unique<CreditBasedFlowControlRxEngine>(
+        std::move(connection_failure_cb));
+    tx_engine_ = std::make_unique<CreditBasedFlowControlTxEngine>(
+        id,
+        max_tx_sdu_size(),
+        *this,
+        mode,
+        info_.max_tx_pdu_payload_size,
+        *info_.remote_initial_credits);
   } else {
-    // Must capture |link| and not |link_| to avoid having to take |mutex_|.
-    auto connection_failure_cb = [link] {
-      if (link.is_alive()) {
-        // |link| is expected to ignore this call if it has been closed.
-        link->SignalError();
-      }
-    };
     std::tie(rx_engine_, tx_engine_) =
         MakeLinkedEnhancedRetransmissionModeEngines(
             id,
@@ -168,7 +183,7 @@ ChannelImpl::~ChannelImpl() {
   if (removed_count > 0) {
     bt_log(TRACE,
            "hci",
-           "packets dropped (count: %lu) due to channel destruction (link: "
+           "packets dropped (count: %zu) due to channel destruction (link: "
            "%#.4x, id: %#.4x)",
            removed_count,
            link_handle(),
@@ -185,15 +200,15 @@ const sm::SecurityProperties ChannelImpl::security() {
 
 bool ChannelImpl::Activate(RxCallback rx_callback,
                            ClosedCallback closed_callback) {
-  BT_ASSERT(rx_callback);
-  BT_ASSERT(closed_callback);
+  PW_CHECK(rx_callback);
+  PW_CHECK(closed_callback);
 
   // Activating on a closed link has no effect. We also clear this on
   // deactivation to prevent a channel from being activated more than once.
   if (!link_.is_alive())
     return false;
 
-  BT_ASSERT(!active_);
+  PW_CHECK(!active_);
   active_ = true;
   rx_cb_ = std::move(rx_callback);
   closed_cb_ = std::move(closed_callback);
@@ -247,7 +262,7 @@ void ChannelImpl::SignalLinkError() {
 }
 
 bool ChannelImpl::Send(ByteBufferPtr sdu) {
-  BT_DEBUG_ASSERT(sdu);
+  PW_DCHECK(sdu);
 
   TRACE_DURATION(
       "bluetooth", "l2cap:send", "handle", link_->handle(), "id", id());
@@ -302,7 +317,7 @@ std::unique_ptr<hci::ACLDataPacket> ChannelImpl::GetNextOutboundPacket() {
 
 void ChannelImpl::UpgradeSecurity(sm::SecurityLevel level,
                                   sm::ResultFunction<> callback) {
-  BT_ASSERT(callback);
+  PW_CHECK(callback);
 
   if (!link_.is_alive() || !active_) {
     bt_log(DEBUG, "l2cap", "Ignoring security request on inactive channel");
@@ -338,7 +353,7 @@ void ChannelImpl::RequestAclPriority(
 void ChannelImpl::SetBrEdrAutomaticFlushTimeout(
     pw::chrono::SystemClock::duration flush_timeout,
     hci::ResultCallback<> callback) {
-  BT_ASSERT(link_type_ == bt::LinkType::kACL);
+  PW_CHECK(link_type_ == bt::LinkType::kACL);
 
   // Channel may be inactive if this method is called before activation.
   if (!link_.is_alive()) {
@@ -413,7 +428,7 @@ void ChannelImpl::OnClosed() {
     return;
   }
 
-  BT_ASSERT(closed_cb_);
+  PW_CHECK(closed_cb_);
   auto closed_cb = std::move(closed_cb_);
 
   CleanUp();
@@ -436,7 +451,7 @@ void ChannelImpl::HandleRxPdu(PDU&& pdu) {
     return;
   }
 
-  BT_ASSERT(rx_engine_);
+  PW_CHECK(rx_engine_);
 
   ByteBufferPtr sdu = rx_engine_->ProcessPdu(std::move(pdu));
   if (!sdu) {
@@ -461,7 +476,7 @@ void ChannelImpl::HandleRxPdu(PDU&& pdu) {
     return;
   }
 
-  BT_ASSERT(rx_cb_);
+  PW_CHECK(rx_cb_);
   {
     TRACE_DURATION("bluetooth", "ChannelImpl::HandleRxPdu callback");
     rx_cb_(std::move(sdu));

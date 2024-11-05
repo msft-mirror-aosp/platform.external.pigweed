@@ -378,12 +378,14 @@ The ``pw_facade`` template bundles a ``pw_source_set`` with a facade build arg.
 This allows the facade to provide header files, compilation options or anything
 else a GN ``source_set`` provides.
 
-The ``pw_facade`` template declares two targets:
+The ``pw_facade`` template declares one or two targets:
 
-* ``$target_name``: the public-facing ``pw_source_set``, with a ``public_dep``
-  on the backend
-* ``$target_name.facade``: target used by the backend to avoid circular
-  dependencies
+* ``$target_name``: The public-facing ``pw_source_set``, with a ``public_dep``
+  on the backend. Always declared.
+* ``$target_name.facade``: Target with ``public`` headers, ``public_deps``, and
+  ``public_configs`` shared between the public-facing ``pw_source_set`` and
+  backend to avoid circular dependencies. Only declared if ``public``,
+  ``public_deps``, or ``public_configs`` are provided.
 
 .. code-block::
 
@@ -1368,4 +1370,38 @@ Example
        "PW_NOINIT_SIZE=512"
      ]
      linker_script = "basic_script.ld"
+   }
+
+
+pw_copy_and_patch_file
+----------------------
+Provides the ability to patch a file as part of the build.
+
+The source file will not be patched in place, but instead copied into the
+output directory before patching. The output of this target will be the
+patched file.
+
+Arguments
+^^^^^^^^^
+- ``source``: The source file to be patched.
+
+- ``out``: The output file containing the patched contents.
+
+- ``patch_file``: The patch file.
+
+- ``root``: The root directory for applying the path.
+
+Example
+^^^^^^^
+
+To apply the patch `changes.patch` to the file `data/file.txt` which is located
+in the packages directory `<PW_ROOT>/environment/packages/external_sdk`.
+
+.. code-block::
+
+   pw_copy_and_patch_file("apply_patch") {
+     source = "$EXTERNAL_SDK/data/file.txt"
+     out = "data/patched_file.txt"
+     patch_file = "changes.patch"
+     root = "$EXTERNAL_SDK"
    }

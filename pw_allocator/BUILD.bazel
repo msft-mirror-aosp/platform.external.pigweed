@@ -12,14 +12,30 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
+
+# Module configuration
+
+cc_library(
+    name = "config",
+    hdrs = ["public/pw_allocator/config.h"],
+    includes = ["public"],
+    deps = [":config_override"],
+)
+
+label_flag(
+    name = "config_override",
+    build_setting_default = "//pw_build:default_module_config",
+)
+
+cc_library(
+    name = "test_config",
+    defines = ["PW_ALLOCATOR_STRICT_VALIDATION=1"],
+)
 
 # Libraries
 
@@ -35,6 +51,7 @@ cc_library(
     ],
     includes = ["public"],
     deps = [
+        ":config",
         ":deallocator",
         "//pw_assert",
         "//pw_result",
@@ -62,7 +79,10 @@ cc_library(
     name = "best_fit_block_allocator",
     hdrs = ["public/pw_allocator/best_fit_block_allocator.h"],
     includes = ["public"],
-    deps = [":block_allocator"],
+    deps = [
+        ":block_allocator",
+        ":config",
+    ],
 )
 
 cc_library(
@@ -223,7 +243,10 @@ cc_library(
     name = "dual_first_fit_block_allocator",
     hdrs = ["public/pw_allocator/dual_first_fit_block_allocator.h"],
     includes = ["public"],
-    deps = [":block_allocator"],
+    deps = [
+        ":block_allocator",
+        ":config",
+    ],
 )
 
 cc_library(
@@ -248,7 +271,10 @@ cc_library(
     name = "first_fit_block_allocator",
     hdrs = ["public/pw_allocator/first_fit_block_allocator.h"],
     includes = ["public"],
-    deps = [":block_allocator"],
+    deps = [
+        ":block_allocator",
+        ":config",
+    ],
 )
 
 cc_library(
@@ -277,7 +303,10 @@ cc_library(
     name = "last_fit_block_allocator",
     hdrs = ["public/pw_allocator/last_fit_block_allocator.h"],
     includes = ["public"],
-    deps = [":block_allocator"],
+    deps = [
+        ":block_allocator",
+        ":config",
+    ],
 )
 
 cc_library(
@@ -364,7 +393,10 @@ cc_library(
     name = "worst_fit_block_allocator",
     hdrs = ["public/pw_allocator/worst_fit_block_allocator.h"],
     includes = ["public"],
-    deps = [":block_allocator"],
+    deps = [
+        ":block_allocator",
+        ":config",
+    ],
 )
 
 # Test support
@@ -381,6 +413,7 @@ cc_library(
         ":block",
         ":buffer",
         ":first_fit_block_allocator",
+        ":test_config",
         ":tracking_allocator",
         "//pw_assert",
         "//pw_bytes",
@@ -400,6 +433,7 @@ cc_library(
     includes = ["public"],
     deps = [
         ":block",
+        ":testing",
         "//pw_assert",
         "//pw_bytes:alignment",
         "//pw_status",
@@ -538,6 +572,7 @@ pw_cc_test(
     ],
     deps = [
         ":buddy_allocator",
+        ":testing",
         "//pw_unit_test",
     ],
 )
@@ -549,6 +584,7 @@ pw_cc_test(
     ],
     deps = [
         ":buffer",
+        ":testing",
         "//pw_bytes",
         "//pw_result",
     ],
@@ -561,6 +597,7 @@ pw_cc_test(
     ],
     deps = [
         ":bump_allocator",
+        ":testing",
         "//pw_unit_test",
     ],
 )
@@ -615,6 +652,7 @@ pw_cc_test(
     srcs = ["fragmentation_test.cc"],
     deps = [
         ":fragmentation",
+        ":testing",
         "//pw_unit_test",
     ],
 )
@@ -625,7 +663,9 @@ pw_cc_test(
         "freelist_heap_test.cc",
     ],
     deps = [
+        ":block_testing",
         ":freelist_heap",
+        ":testing",
         "//pw_bytes:alignment",
     ],
 )
@@ -645,6 +685,7 @@ pw_cc_test(
     srcs = ["layout_test.cc"],
     deps = [
         ":deallocator",
+        ":testing",
         "//pw_unit_test",
     ],
 )
@@ -656,6 +697,7 @@ pw_cc_test(
     ],
     deps = [
         ":libc_allocator",
+        ":testing",
         "//pw_unit_test",
     ],
 )
@@ -667,6 +709,7 @@ pw_cc_test(
     ],
     deps = [
         ":null_allocator",
+        ":testing",
         "//pw_unit_test",
     ],
 )
@@ -717,6 +760,7 @@ pw_cc_test(
         "typed_pool_test.cc",
     ],
     deps = [
+        ":testing",
         ":typed_pool",
         "//pw_bytes:alignment",
         "//pw_unit_test",

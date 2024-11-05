@@ -16,7 +16,9 @@
 #include "pw_bluetooth_sapphire/internal/host/common/device_address.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/adapter.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
+#include "pw_bluetooth_sapphire/internal/host/hci/fake_local_address_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_channel.h"
+#include "pw_bluetooth_sapphire/internal/host/l2cap/types.h"
 
 namespace bt::gap::testing {
 
@@ -51,13 +53,8 @@ class FakeAdapter final : public Adapter {
   class FakeLowEnergy final : public LowEnergy {
    public:
     struct RegisteredAdvertisement {
-      AdvertisingData data;
-      AdvertisingData scan_rsp;
-      std::optional<ConnectableAdvertisingParameters> connectable;
-      AdvertisingInterval interval;
-      bool extended_pdu;
-      bool anonymous;
       bool include_tx_power_level;
+      DeviceAddress::Type addr_type;
     };
 
     struct Connection {
@@ -65,7 +62,8 @@ class FakeAdapter final : public Adapter {
       LowEnergyConnectionOptions options;
     };
 
-    explicit FakeLowEnergy(FakeAdapter* adapter) : adapter_(adapter) {}
+    explicit FakeLowEnergy(FakeAdapter* adapter)
+        : adapter_(adapter), fake_address_delegate_(adapter->pw_dispatcher_) {}
     ~FakeLowEnergy() override = default;
 
     const std::unordered_map<AdvertisementId, RegisteredAdvertisement>&
@@ -90,6 +88,11 @@ class FakeAdapter final : public Adapter {
 
     bool Disconnect(PeerId peer_id) override;
 
+    void OpenL2capChannel(PeerId peer_id,
+                          l2cap::Psm,
+                          l2cap::ChannelParameters,
+                          l2cap::ChannelCallback) override;
+
     void Pair(PeerId peer_id,
               sm::SecurityLevel pairing_level,
               sm::BondableMode bondable_mode,
@@ -109,6 +112,7 @@ class FakeAdapter final : public Adapter {
         bool anonymous,
         bool include_tx_power_level,
         std::optional<ConnectableAdvertisingParameters> connectable,
+        std::optional<DeviceAddress::Type> address_type,
         AdvertisingStatusCallback status_callback) override;
 
     void StopAdvertising(AdvertisementId advertisement_id) override {}
@@ -117,14 +121,18 @@ class FakeAdapter final : public Adapter {
 
     void EnablePrivacy(bool enabled) override;
 
-    bool PrivacyEnabled() const override { return privacy_enabled_; }
-
-    const DeviceAddress& CurrentAddress() const override {
-      return (privacy_enabled_ && random_) ? *random_ : public_;
+    // Returns true if the privacy feature is currently enabled.
+    bool PrivacyEnabled() const override {
+      return fake_address_delegate_.privacy_enabled();
+    }
+    // Returns the current LE address.
+    const DeviceAddress CurrentAddress() const override {
+      return fake_address_delegate_.current_address();
     }
 
     void register_address_changed_callback(fit::closure callback) override {
-      address_changed_callback_ = std::move(callback);
+      fake_address_delegate_.register_address_changed_callback(
+          std::move(callback));
     }
 
     void set_irk(const std::optional<UInt128>& irk) override {}
@@ -143,10 +151,11 @@ class FakeAdapter final : public Adapter {
     std::unordered_map<AdvertisementId, RegisteredAdvertisement>
         advertisements_;
     std::unordered_map<PeerId, Connection> connections_;
-    const DeviceAddress public_;
-    bool privacy_enabled_ = false;
-    std::optional<DeviceAddress> random_;
-    fit::closure address_changed_callback_;
+    hci::FakeLocalAddressDelegate fake_address_delegate_;
+    l2cap::ChannelId next_channel_id_ = l2cap::kFirstDynamicChannelId;
+    std::unordered_map<l2cap::ChannelId,
+                       std::unique_ptr<l2cap::testing::FakeChannel>>
+        channels_;
   };
 
   LowEnergy* le() const override { return fake_le_.get(); }
@@ -336,6 +345,7 @@ class FakeAdapter final : public Adapter {
   DeviceClass device_class_;
   LESecurityMode le_security_mode_;
 
+  pw::async::Dispatcher& pw_dispatcher_;
   pw::async::HeapDispatcher heap_dispatcher_;
   PeerCache peer_cache_;
   WeakSelf<Adapter> weak_self_;

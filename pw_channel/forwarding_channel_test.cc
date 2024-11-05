@@ -99,7 +99,7 @@ TEST(ForwardingDatagramChannel, ForwardsEmptyDatagrams) {
       // Send datagram first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      auto result = pair->first().Write({});  // Write empty datagram
+      auto result = pair->first().StageWrite({});  // Write empty datagram
       EXPECT_EQ(pw::OkStatus(), result.status());
 
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendReadyToWrite(cx));
@@ -115,7 +115,7 @@ TEST(ForwardingDatagramChannel, ForwardsEmptyDatagrams) {
       // Send datagram second->first
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->second().PendReadyToWrite(cx));
-      result = pair->second().Write({});  // Write empty datagram
+      result = pair->second().StageWrite({});  // Write empty datagram
       EXPECT_EQ(pw::OkStatus(), result.status());
 
       EXPECT_EQ(pw::async2::Pending(), pair->second().PendReadyToWrite(cx));
@@ -156,7 +156,7 @@ TEST(ForwardingDatagramChannel, ForwardsNonEmptyDatagrams) {
       // Send datagram first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().Write(b1.Take()).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b1.Take()).status());
 
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendReadyToWrite(cx));
 
@@ -167,7 +167,7 @@ TEST(ForwardingDatagramChannel, ForwardsNonEmptyDatagrams) {
                 pair->first().PendReadyToWrite(cx));
       EXPECT_EQ(pw::async2::Pending(), pair->second().PendRead(cx));
 
-      EXPECT_EQ(pw::OkStatus(), pair->first().Write(b2.Take()).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b2.Take()).status());
       EXPECT_EQ(CopyToString(pair->second().PendRead(cx).value().value()),
                 "world!");
 
@@ -204,7 +204,7 @@ TEST(ForwardingDatagramChannel, ForwardsDatagrams) {
       // Send datagram first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      auto result = pair->first().Write({});  // Write empty datagram
+      auto result = pair->first().StageWrite({});  // Write empty datagram
       EXPECT_EQ(pw::OkStatus(), result.status());
 
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendReadyToWrite(cx));
@@ -220,7 +220,7 @@ TEST(ForwardingDatagramChannel, ForwardsDatagrams) {
       // Send datagram second->first
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->second().PendReadyToWrite(cx));
-      result = pair->second().Write({});  // Write empty datagram
+      result = pair->second().StageWrite({});  // Write empty datagram
       EXPECT_EQ(pw::OkStatus(), result.status());
 
       EXPECT_EQ(pw::async2::Pending(), pair->second().PendReadyToWrite(cx));
@@ -249,15 +249,27 @@ TEST(ForwardingDatagramchannel, PendCloseAwakensAndClosesPeer) {
    public:
     TryToReadUntilClosed(DatagramReader& reader) : reader_(reader) {}
 
+    int packets_read = 0;
+    Waker waker;
+
    private:
     pw::async2::Poll<> DoPend(Context& cx) final {
       Poll<Result<MultiBuf>> read = reader_.PendRead(cx);
       if (read.IsPending()) {
+        PW_ASYNC_STORE_WAKER(
+            cx, waker, "TryToReadUntilClosed is waiting for reader");
+        return Pending();
+      }
+
+      if (read->ok()) {
+        packets_read += 1;
+        EXPECT_TRUE(read->value().empty());
         return Pending();
       }
       EXPECT_EQ(read->status(), pw::Status::FailedPrecondition());
       return Ready();
     }
+
     DatagramReader& reader_;
   };
 
@@ -271,9 +283,29 @@ TEST(ForwardingDatagramchannel, PendCloseAwakensAndClosesPeer) {
 
   Waker empty_waker;
   Context empty_cx(dispatcher, empty_waker);
-  EXPECT_EQ(pair->second().PendClose(empty_cx), Ready(pw::OkStatus()));
 
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  // Write a datagram, but close before the datagram is read.
+  EXPECT_EQ(pair->second().PendReadyToWrite(empty_cx), Ready(pw::OkStatus()));
+  EXPECT_EQ(pair->second().StageWrite({}).status(), pw::OkStatus());
+  EXPECT_EQ(pair->second().PendClose(empty_cx), Ready(pw::OkStatus()));
+  EXPECT_FALSE(pair->second().is_read_or_write_open());
+
+  // Closed second, so first is closed for writes, but still open for reads.
+  EXPECT_TRUE(pair->first().is_read_open());
+  EXPECT_FALSE(pair->first().is_write_open());
+
+  // First should read the packet and immediately be marked closed.
+  EXPECT_EQ(read_task.packets_read, 0);
+  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_EQ(read_task.packets_read, 1);
+
+  EXPECT_FALSE(pair->first().is_read_or_write_open());
+
+  std::move(read_task.waker).Wake();  // wake the task so it runs again
+  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());  // runs to completion
+
+  EXPECT_FALSE(pair->first().is_read_or_write_open());
+  EXPECT_EQ(read_task.packets_read, 1);
 }
 
 TEST(ForwardingByteChannel, IgnoresEmptyWrites) {
@@ -294,7 +326,7 @@ TEST(ForwardingByteChannel, IgnoresEmptyWrites) {
       // Send nothing first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().Write({}).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite({}).status());
 
       // Still no data
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
@@ -303,7 +335,7 @@ TEST(ForwardingByteChannel, IgnoresEmptyWrites) {
       // Send nothing second->first
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().Write({}).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite({}).status());
 
       // Still no data
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
@@ -342,13 +374,13 @@ TEST(ForwardingByteChannel, WriteData) {
       // Send "hello world" first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().Write(b1.Take()).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b1.Take()).status());
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().Write(b2.Take()).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b2.Take()).status());
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().Write(b3.Take()).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b3.Take()).status());
 
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
 
@@ -360,7 +392,7 @@ TEST(ForwardingByteChannel, WriteData) {
       // Send nothing second->first
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().Write({}).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite({}).status());
 
       // Still no data
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
@@ -382,12 +414,24 @@ TEST(ForwardingByteChannel, PendCloseAwakensAndClosesPeer) {
    public:
     TryToReadUntilClosed(ByteReader& reader) : reader_(reader) {}
 
+    int bytes_read = 0;
+    Waker waker;
+
    private:
     pw::async2::Poll<> DoPend(Context& cx) final {
       Poll<Result<MultiBuf>> read = reader_.PendRead(cx);
       if (read.IsPending()) {
+        PW_ASYNC_STORE_WAKER(
+            cx, waker, "TryToReadUntilClosed is waiting for reader");
         return Pending();
       }
+
+      if (read->ok()) {
+        bytes_read += read->value().size();
+        EXPECT_EQ(read->value().size(), 5u);
+        return Pending();
+      }
+
       EXPECT_EQ(read->status(), pw::Status::FailedPrecondition());
       return Ready();
     }
@@ -404,9 +448,31 @@ TEST(ForwardingByteChannel, PendCloseAwakensAndClosesPeer) {
 
   Waker empty_waker;
   Context empty_cx(dispatcher, empty_waker);
-  EXPECT_EQ(pair->second().PendClose(empty_cx), Ready(pw::OkStatus()));
 
-  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+  InitializedMultiBuf data("hello");
+
+  // Write a datagram, but close before the datagram is read.
+  EXPECT_EQ(pair->second().PendReadyToWrite(empty_cx), Ready(pw::OkStatus()));
+  EXPECT_EQ(pair->second().StageWrite(data.Take()).status(), pw::OkStatus());
+  EXPECT_EQ(pair->second().PendClose(empty_cx), Ready(pw::OkStatus()));
+  EXPECT_FALSE(pair->second().is_read_or_write_open());
+
+  // Closed second, so first is closed for writes, but still open for reads.
+  EXPECT_TRUE(pair->first().is_read_open());
+  EXPECT_FALSE(pair->first().is_write_open());
+
+  // First should read the packet and immediately be marked closed.
+  EXPECT_EQ(read_task.bytes_read, 0);
+  EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
+  EXPECT_EQ(read_task.bytes_read, 5);
+
+  EXPECT_FALSE(pair->second().is_read_or_write_open());
+
+  std::move(read_task.waker).Wake();  // wake the task so it runs again
+  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());  // runs to completion
+
+  EXPECT_FALSE(pair->first().is_read_or_write_open());
+  EXPECT_EQ(read_task.bytes_read, 5);
 }
 
 }  // namespace

@@ -27,9 +27,12 @@ license(
 )
 
 qemu_tests = [
-    "//pw_bluetooth_sapphire/fuchsia/bt_host:unittest_pkg",
+    "//pw_bluetooth_sapphire/fuchsia/bt_hci_virtual:test_pkg",
+    "//pw_bluetooth_sapphire/fuchsia/bt_host:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/att:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/common:test_pkg",
+    "//pw_bluetooth_sapphire/fuchsia/host/controllers:test_pkg",
+    "//pw_bluetooth_sapphire/fuchsia/host/fidl:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/gap:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/gatt:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/hci:test_pkg",
@@ -39,6 +42,7 @@ qemu_tests = [
     "//pw_bluetooth_sapphire/fuchsia/host/sco:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/sdp:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/sm:test_pkg",
+    "//pw_bluetooth_sapphire/fuchsia/host/socket:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/testing:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/host/transport:test_pkg",
     "//pw_bluetooth_sapphire/fuchsia/lib/fidl:test_pkg",
@@ -58,12 +62,18 @@ fuchsia_test_group(
 # buildifier: leave-alone
 fuchsia_builder_group(
     name = "infra",
+    build_only = [
+    ],
     test_groups = [
         ":tests_qemu",
     ],
     cipd_uploads = [
         "//pw_bluetooth_sapphire/fuchsia/bt_host:bt_host_x64_cipd",
         "//pw_bluetooth_sapphire/fuchsia/bt_host:bt_host_arm64_cipd",
+        "//pw_bluetooth_sapphire/fuchsia/bt_host:bt_host_riscv64_cipd",
+        "//pw_bluetooth_sapphire/fuchsia/bt_hci_virtual:bt_hci_virtual_x64_cipd",
+        "//pw_bluetooth_sapphire/fuchsia/bt_hci_virtual:bt_hci_virtual_arm64_cipd",
+        "//pw_bluetooth_sapphire/fuchsia/bt_hci_virtual:bt_hci_virtual_riscv64_cipd",
     ],
     tags = ["integration"],
 )

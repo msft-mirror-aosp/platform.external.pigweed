@@ -13,10 +13,7 @@
 # the License.
 
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -63,7 +60,7 @@ cc_library(
         "//pw_bytes",
         "//pw_function",
         "//pw_log",
-        "//pw_log:log_proto_cc.pwpb",
+        "//pw_log:log_proto_pwpb",
         "//pw_status",
     ],
 )

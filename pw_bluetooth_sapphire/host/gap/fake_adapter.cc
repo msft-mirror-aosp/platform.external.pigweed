@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/fake_adapter.h"
 
+#include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
+#include "pw_bluetooth_sapphire/internal/host/l2cap/types.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/link_type.h"
 
 namespace bt::gap::testing {
@@ -22,6 +24,7 @@ FakeAdapter::FakeAdapter(pw::async::Dispatcher& pw_dispatcher)
     : init_state_(InitState::kNotInitialized),
       fake_le_(std::make_unique<FakeLowEnergy>(this)),
       fake_bredr_(std::make_unique<FakeBrEdr>()),
+      pw_dispatcher_(pw_dispatcher),
       heap_dispatcher_(pw_dispatcher),
       peer_cache_(pw_dispatcher),
       weak_self_(this) {}
@@ -80,11 +83,7 @@ void FakeAdapter::FakeBrEdr::OpenL2capChannel(
 }
 
 void FakeAdapter::FakeLowEnergy::UpdateRandomAddress(DeviceAddress& address) {
-  random_ = address;
-  // Notify the callback about the change in address.
-  if (address_changed_callback_) {
-    address_changed_callback_();
-  }
+  fake_address_delegate_.UpdateRandomAddress(address);
 }
 
 void FakeAdapter::FakeLowEnergy::Connect(
@@ -118,6 +117,35 @@ bool FakeAdapter::FakeLowEnergy::Disconnect(PeerId peer_id) {
   return connections_.erase(peer_id);
 }
 
+void FakeAdapter::FakeLowEnergy::OpenL2capChannel(
+    PeerId peer_id,
+    l2cap::Psm psm,
+    l2cap::ChannelParameters params,
+    l2cap::ChannelCallback cb) {
+  l2cap::ChannelInfo info(
+      params.mode.value_or(
+          l2cap::CreditBasedFlowControlMode::kLeCreditBasedFlowControl),
+      params.max_rx_sdu_size.value_or(l2cap::kDefaultMTU),
+      /*max_tx_sdu_size=*/l2cap::kDefaultMTU,
+      /*n_frames_in_tx_window=*/0,
+      /*max_transmissions=*/0,
+      /*max_tx_pdu_payload_size=*/0,
+      psm,
+      params.flush_timeout);
+
+  l2cap::ChannelId local_id = next_channel_id_++;
+  auto channel = std::make_unique<l2cap::testing::FakeChannel>(
+      /*id=*/local_id,
+      /*remote_id=*/l2cap::kFirstDynamicChannelId,
+      /*handle=*/1,
+      bt::LinkType::kLE,
+      info);
+
+  l2cap::Channel::WeakPtr weak_channel = channel->GetWeakPtr();
+  channels_.emplace(local_id, std::move(channel));
+  cb(weak_channel);
+}
+
 void FakeAdapter::FakeLowEnergy::StartAdvertising(
     AdvertisingData data,
     AdvertisingData scan_rsp,
@@ -126,30 +154,33 @@ void FakeAdapter::FakeLowEnergy::StartAdvertising(
     bool anonymous,
     bool include_tx_power_level,
     std::optional<ConnectableAdvertisingParameters> connectable,
+    std::optional<DeviceAddress::Type> address_type,
     AdvertisingStatusCallback status_callback) {
-  // status_callback is currently not called because its parameters can only be
-  // constructed by LowEnergyAdvertisingManager.
+  fake_address_delegate_.EnsureLocalAddress(
+      address_type,
+      [this,
+       include_tx_power_level,
+       status_callback = std::move(status_callback)](
+          fit::result<HostError, DeviceAddress> result) {
+        if (result.is_error()) {
+          status_callback(AdvertisementInstance(),
+                          fit::error(result.error_value()));
+          return;
+        }
 
-  RegisteredAdvertisement adv{.data = std::move(data),
-                              .scan_rsp = std::move(scan_rsp),
-                              .connectable = std::move(connectable),
-                              .interval = interval,
-                              .extended_pdu = extended_pdu,
-                              .anonymous = anonymous,
-                              .include_tx_power_level = include_tx_power_level};
-  AdvertisementId adv_id = next_advertisement_id_;
-  next_advertisement_id_ = AdvertisementId(next_advertisement_id_.value() + 1);
-  advertisements_.emplace(adv_id, std::move(adv));
+        RegisteredAdvertisement adv{
+            .include_tx_power_level = include_tx_power_level,
+            .addr_type = result.value().type()};
+
+        AdvertisementId adv_id = next_advertisement_id_;
+        next_advertisement_id_ =
+            AdvertisementId(next_advertisement_id_.value() + 1);
+        advertisements_.emplace(adv_id, std::move(adv));
+      });
 }
 
 void FakeAdapter::FakeLowEnergy::EnablePrivacy(bool enabled) {
-  privacy_enabled_ = enabled;
-  if (!enabled && random_.has_value()) {
-    random_.reset();
-    if (address_changed_callback_) {
-      address_changed_callback_();
-    }
-  }
+  fake_address_delegate_.EnablePrivacy(enabled);
 }
 
 FakeAdapter::FakeBrEdr::RegistrationHandle

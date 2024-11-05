@@ -361,13 +361,6 @@ constexpr OpCode kWriteInquiryScanType = ControllerAndBasebandOpCode(0x0043);
 // Read Inquiry Mode (v1.2) (BR/EDR)
 constexpr OpCode kReadInquiryMode = ControllerAndBasebandOpCode(0x0044);
 
-struct ReadInquiryModeReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  pw::bluetooth::emboss::InquiryMode inquiry_mode;
-} __attribute__((packed));
-
 // ==================================
 // Write Inquiry Mode (v1.2) (BR/EDR)
 constexpr OpCode kWriteInquiryMode = ControllerAndBasebandOpCode(0x0045);
@@ -449,26 +442,9 @@ constexpr OpCode kReadLocalSupportedCommands =
 constexpr OpCode kReadLocalSupportedFeatures =
     InformationalParamsOpCode(0x0003);
 
-struct ReadLocalSupportedFeaturesReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  // Bit Mask List of LMP features. See enum class LMPFeature in hci_constants.h
-  // for how to interpret this bitfield.
-  uint64_t lmp_features;
-} __attribute__((packed));
-
 // ====================================================
 // Read Local Extended Features Command (v1.2) (BR/EDR)
 constexpr OpCode kReadLocalExtendedFeatures = InformationalParamsOpCode(0x0004);
-
-struct ReadLocalExtendedFeaturesReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-  uint8_t page_number;
-  uint8_t maximum_page_number;
-  uint64_t extended_lmp_features;
-} __attribute__((packed));
 
 // ===============================
 // Read Buffer Size Command (v1.1)
@@ -707,18 +683,6 @@ constexpr EventCode kLEReadRemoteFeaturesCompleteSubeventCode = 0x04;
 // LE Long Term Key Request Event (v4.0) (LE)
 constexpr EventCode kLELongTermKeyRequestSubeventCode = 0x05;
 
-struct LELongTermKeyRequestSubeventParams {
-  // Connection Handle (only the lower 12-bits are meaningful).
-  //   Range: 0x0000 to kConnectionHandleMax in hci_constants.h
-  ConnectionHandle connection_handle;
-
-  // 64-bit random number.
-  uint64_t random_number;
-
-  // 16-bit encrypted diversifier.
-  uint16_t encrypted_diversifier;
-} __attribute__((packed));
-
 // LE Remote Connection Parameter Request Event (v4.1) (LE)
 constexpr EventCode kLERemoteConnectionParameterRequestSubeventCode = 0x06;
 
@@ -757,21 +721,6 @@ constexpr EventCode kLEScanTimeoutSubeventCode = 0x11;
 
 // LE Advertising Set Terminated Event (v5.0) (LE)
 constexpr EventCode kLEAdvertisingSetTerminatedSubeventCode = 0x012;
-
-struct LEAdvertisingSetTerminatedSubeventParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  // Advertising Handle in which advertising has ended.
-  AdvertisingHandle adv_handle;
-
-  // Connection Handle of the connection whose creation ended the advertising.
-  ConnectionHandle connection_handle;
-
-  // Number of completed extended advertising events transmitted by the
-  // Controller.
-  uint8_t num_completed_extended_adv_events;
-} __attribute__((packed));
 
 // LE Scan Request Received Event (v5.0) (LE)
 constexpr EventCode kLEScanRequestReceivedSubeventCode = 0x13;
@@ -830,14 +779,6 @@ constexpr OpCode kLESetEventMask = LEControllerCommandOpCode(0x0001);
 // =======================================
 // LE Read Buffer Size [v1] Command (v4.0) (LE)
 constexpr OpCode kLEReadBufferSizeV1 = LEControllerCommandOpCode(0x0002);
-
-struct LEReadBufferSizeV1ReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  uint16_t hc_le_acl_data_packet_length;
-  uint8_t hc_total_num_le_acl_data_packets;
-} __attribute__((packed));
 
 // ====================================================
 // LE Read Local Supported Features Command (v4.0) (LE)
@@ -1088,21 +1029,9 @@ constexpr OpCode kLEReadMaximumAdvertisingDataLength =
 constexpr OpCode kLEReadNumSupportedAdvertisingSets =
     LEControllerCommandOpCode(0x003B);
 
-struct LEReadNumSupportedAdvertisingSetsReturnParams {
-  // See enum StatusCode in hci_constants.h.
-  StatusCode status;
-
-  uint8_t num_supported_adv_sets;
-} __attribute__((packed));
-
 // =============================================
 // LE Remove Advertising Set Command (v5.0) (LE)
 constexpr OpCode kLERemoveAdvertisingSet = LEControllerCommandOpCode(0x003C);
-
-struct LERemoveAdvertisingSetCommandParams {
-  // Handle used to identify an advertising set.
-  AdvertisingHandle adv_handle;
-} __attribute__((packed));
 
 // =============================================
 // LE Clear Advertising Sets Command (v5.0) (LE)

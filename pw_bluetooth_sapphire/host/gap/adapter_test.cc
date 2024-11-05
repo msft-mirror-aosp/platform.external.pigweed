@@ -21,6 +21,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_advertising_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_discovery_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/gatt/fake_layer.h"
+#include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_l2cap.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/controller_test.h"
@@ -170,7 +171,7 @@ TEST_F(AdapterTest, InitializeNoBREDR) {
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kBREDRNotSupported);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   test_device()->set_settings(settings);
 
@@ -245,7 +246,7 @@ TEST_F(AdapterTest, InitializeSuccess) {
   FakeController::Settings settings;
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   test_device()->set_settings(settings);
 
@@ -667,7 +668,8 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
     EXPECT_EQ(fit::ok(), status);
   };
 
-  // Advertising should use the public address by default.
+  // Advertising should use the public address by default when privacy is not
+  // enabled.
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
@@ -675,6 +677,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     adv_cb);
   RunUntilIdle();
   EXPECT_TRUE(test_device()->legacy_advertising_state().enabled);
@@ -702,6 +705,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     adv_cb);
   RunUntilIdle();
   EXPECT_TRUE(test_device()->legacy_advertising_state().random_address);
@@ -726,6 +730,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     adv_cb);
   RunUntilIdle();
   EXPECT_TRUE(test_device()->legacy_advertising_state().enabled);
@@ -746,6 +751,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     adv_cb);
   RunUntilIdle();
   EXPECT_TRUE(test_device()->legacy_advertising_state().enabled);
@@ -870,9 +876,9 @@ TEST_F(AdapterTest, LocalAddressForConnections) {
   ASSERT_TRUE(conn_ref);
   ASSERT_TRUE(test_device()->le_connect_params());
 
-  // TODO(fxbug.dev/42141593): The current policy is to use a public address
-  // when initiating connections. Change this test to expect a random address
-  // once RPAs for central connections are re-enabled.
+  // TODO: https://fxbug.dev/42141593 - The current policy is to use a public
+  // address when initiating connections. Change this test to expect a random
+  // address once RPAs for central connections are re-enabled.
   EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
             test_device()->le_connect_params()->own_address_type);
 
@@ -910,7 +916,7 @@ TEST_F(AdapterTest, LocalAddressDuringHangingConnect) {
   // Some of the behavior below stems from the fact that kTestTimeout is longer
   // than kCacheTimeout. This assertion is here to catch regressions in this
   // test if the values ever change.
-  // TODO(fxbug.dev/42087236): Configuring the cache expiration timeout
+  // TODO: https://fxbug.dev/42087236 - Configuring the cache expiration timeout
   // explicitly would remove some of the unnecessary invariants from this test
   // case.
   static_assert(kTestTimeout > kCacheTimeout,
@@ -952,9 +958,9 @@ TEST_F(AdapterTest, LocalAddressDuringHangingConnect) {
       peer->identifier(), connect_cb, LowEnergyConnectionOptions());
   RunUntilIdle();
   ASSERT_TRUE(test_device()->legacy_advertising_state().random_address);
-  // TODO(fxbug.dev/42141593): The current policy is to use a public address
-  // when initiating connections. Change this test to expect a random address
-  // once RPAs for central connections are re-enabled.
+  // TODO: https://fxbug.dev/42141593 - The current policy is to use a public
+  // address when initiating connections. Change this test to expect a random
+  // address once RPAs for central connections are re-enabled.
   EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
             test_device()->le_connect_params()->own_address_type);
 
@@ -981,9 +987,9 @@ TEST_F(AdapterTest, LocalAddressDuringHangingConnect) {
   RunUntilIdle();
   EXPECT_NE(last_random_addr,
             *test_device()->legacy_advertising_state().random_address);
-  // TODO(fxbug.dev/42141593): The current policy is to use a public address
-  // when initiating connections. Change this test to expect a random address
-  // once RPAs for central connections are re-enabled.
+  // TODO: https://fxbug.dev/42141593 - The current policy is to use a public
+  // address when initiating connections. Change this test to expect a random
+  // address once RPAs for central connections are re-enabled.
   EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
             test_device()->le_connect_params()->own_address_type);
 }
@@ -1011,9 +1017,9 @@ TEST_F(AdapterTest, ExistingConnectionDoesNotPreventLocalAddressChange) {
   adapter()->le()->Connect(
       peer->identifier(), connect_cb, LowEnergyConnectionOptions());
   RunUntilIdle();
-  // TODO(fxbug.dev/42141593): The current policy is to use a public address
-  // when initiating connections. Change this test to expect a random address
-  // once RPAs for central connections are re-enabled.
+  // TODO: https://fxbug.dev/42141593 - The current policy is to use a public
+  // address when initiating connections. Change this test to expect a random
+  // address once RPAs for central connections are re-enabled.
   EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
             test_device()->le_connect_params()->own_address_type);
 
@@ -1044,6 +1050,7 @@ TEST_F(AdapterTest, IsDiscoverableLowEnergy) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     [&](AdvertisementInstance i, auto status) {
                                       ASSERT_EQ(fit::ok(), status);
                                       instance = std::move(i);
@@ -1093,6 +1100,7 @@ TEST_F(AdapterTest, IsDiscoverableLowEnergyPrivacyEnabled) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     [&](AdvertisementInstance i, auto status) {
                                       ASSERT_EQ(fit::ok(), status);
                                       instance = std::move(i);
@@ -1126,7 +1134,7 @@ TEST_F(AdapterTest, InspectHierarchy) {
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   settings.synchronous_data_packet_length = 6;
   settings.total_num_synchronous_data_packets = 2;
@@ -1268,7 +1276,9 @@ TEST_F(AdapterTest,
       /*anonymous=*/false,
       /*include_tx_power_level=*/false,
       bt::gap::Adapter::LowEnergy::ConnectableAdvertisingParameters{
-          std::move(connect_cb), sm::BondableMode::NonBondable},
+          .connection_cb = std::move(connect_cb),
+          .bondable_mode = sm::BondableMode::NonBondable},
+      /*address_type=*/std::nullopt,
       adv_cb);
   RunUntilIdle();
   EXPECT_FALSE(conn_result);
@@ -1496,13 +1506,37 @@ TEST_F(AdapterTest, LEReadMaximumAdvertisingDataLengthSupported) {
             low_energy_state.max_advertising_data_length());
 }
 
+TEST_F(AdapterTest, LEConnectedIsochronousStreamSupported) {
+  FakeController::Settings settings;
+  settings.AddBREDRSupportedCommands();
+  settings.AddLESupportedCommands();
+  settings.lmp_features_page0 |=
+      static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
+  settings.le_features |= static_cast<uint64_t>(
+      hci_spec::LESupportedFeature::kConnectedIsochronousStreamPeripheral);
+  settings.le_acl_data_packet_length = 0x1B;
+  settings.le_total_num_acl_data_packets = 2;
+
+  test_device()->set_settings(settings);
+
+  bool success = false;
+  auto init_cb = [&](bool cb_success) { success = cb_success; };
+  InitializeAdapter(std::move(init_cb));
+  EXPECT_TRUE(success);
+  const auto& le_features = test_device()->le_features();
+  EXPECT_TRUE(
+      (le_features.le_features &
+       static_cast<uint64_t>(hci_spec::LESupportedFeature::
+                                 kConnectedIsochronousStreamHostSupport)) != 0);
+}
+
 TEST_F(AdapterTest, ScoDataChannelInitializedSuccessfully) {
   // Return valid buffer information and enable LE support.
   FakeController::Settings settings;
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   // Ensure SCO buffers are available.
   settings.synchronous_data_packet_length = 6;
@@ -1530,7 +1564,7 @@ TEST_F(AdapterTest,
   settings.SupportedCommandsView()
       .write_synchronous_flow_control_enable()
       .Write(false);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   // Ensure SCO buffers are available.
   settings.synchronous_data_packet_length = 6;
@@ -1550,7 +1584,7 @@ TEST_F(AdapterTest, ScoDataChannelNotInitializedBecauseBufferInfoNotAvailable) {
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   // Ensure SCO buffers are not available.
   settings.synchronous_data_packet_length = 1;
@@ -1575,7 +1609,7 @@ TEST_F(AdapterScoAndIsoDisabledTest,
   settings.AddBREDRSupportedCommands();
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   // Ensure SCO buffers are available.
   settings.synchronous_data_packet_length = 6;
@@ -1647,7 +1681,7 @@ TEST_F(AdapterTest, InitializeWriteSecureConnectionsHostSupport) {
       static_cast<uint64_t>(hci_spec::LMPFeature::kExtendedFeatures);
   settings.lmp_features_page1 |= static_cast<uint64_t>(
       hci_spec::LMPFeature::kSecureConnectionsHostSupport);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
   test_device()->set_settings(settings);
 
@@ -1670,7 +1704,7 @@ void AdapterTest::GetSupportedDelayRangeHelper(
   // Define minimum required settings for an LE controller
   settings.lmp_features_page0 |=
       static_cast<uint64_t>(hci_spec::LMPFeature::kLESupportedHost);
-  settings.le_acl_data_packet_length = 5;
+  settings.le_acl_data_packet_length = 0x1B;
   settings.le_total_num_acl_data_packets = 1;
 
   // Enable or disable the "Read Local Supported Controller Delay" command

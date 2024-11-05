@@ -18,7 +18,6 @@
 
 #include "pw_assert/check.h"
 #include "pw_preprocessor/compiler.h"
-#include "pw_thread/id.h"
 #include "pw_thread_zephyr/config.h"
 #include "pw_thread_zephyr/context.h"
 #include "pw_thread_zephyr/options.h"
@@ -50,7 +49,7 @@ void Context::ThreadEntryPoint(void* void_context_ptr, void*, void*) {
 }
 
 void Context::CreateThread(const zephyr::Options& options,
-                           DeprecatedOrNewThreadFn&& thread_fn,
+                           Function<void()>&& thread_fn,
                            Context*& native_type_out) {
   PW_CHECK(options.static_context() != nullptr);
 
@@ -84,15 +83,6 @@ Thread::Thread(const thread::Options& facade_options, Function<void()>&& entry)
   // only one type can exist at compile time.
   auto options = static_cast<const zephyr::Options&>(facade_options);
   Context::CreateThread(options, std::move(entry), native_type_);
-}
-
-Thread::Thread(const thread::Options& facade_options,
-               ThreadRoutine entry,
-               void* arg)
-    : native_type_(nullptr) {
-  auto options = static_cast<const zephyr::Options&>(facade_options);
-  Context::CreateThread(
-      options, DeprecatedFnPtrAndArg{entry, arg}, native_type_);
 }
 
 void Thread::detach() {

@@ -30,9 +30,10 @@ void EpollChannel::Register() {
     return;
   }
 
-  if (!dispatcher_
-           ->NativeRegisterFileDescriptor(
-               channel_fd_, async2::Dispatcher::FileDescriptorType::kReadWrite)
+  if (!dispatcher_->native()
+           .NativeRegisterFileDescriptor(channel_fd_,
+                                         async2::backend::NativeDispatcher::
+                                             FileDescriptorType::kReadWrite)
            .ok()) {
     set_closed();
     return;
@@ -61,7 +62,7 @@ async2::Poll<Result<multibuf::MultiBuf>> EpollChannel::DoPendRead(
   }
 
   multibuf::MultiBuf buf = std::move(**maybe_multibuf);
-  multibuf::Chunk& chunk = *buf.ChunkBegin();
+  multibuf::Chunk& chunk = *buf.Chunks().begin();
 
   int bytes_read = read(channel_fd_, chunk.data(), chunk.size());
   if (bytes_read >= 0) {
@@ -73,9 +74,11 @@ async2::Poll<Result<multibuf::MultiBuf>> EpollChannel::DoPendRead(
     // EAGAIN on a non-blocking read indicates that there is no data available.
     // Put the task to sleep until the dispatcher is notified that the file
     // descriptor is active.
-    async2::Waker waker = cx.GetWaker(async2::WaitReason::Unspecified());
-    cx.dispatcher().NativeAddReadWakerForFileDescriptor(channel_fd_,
-                                                        std::move(waker));
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        cx.dispatcher().native().NativeAddReadWakerForFileDescriptor(
+            channel_fd_),
+        "EpollChannel is waiting on a file descriptor read");
     return async2::Pending();
   }
 
@@ -89,13 +92,16 @@ async2::Poll<Status> EpollChannel::DoPendReadyToWrite(async2::Context& cx) {
   // The previous write operation failed. Block the task until the dispatcher
   // receives a notification for the channel's file descriptor.
   ready_to_write_ = true;
-  async2::Waker waker = cx.GetWaker(async2::WaitReason::Unspecified());
-  cx.dispatcher().NativeAddWriteWakerForFileDescriptor(channel_fd_,
-                                                       std::move(waker));
+  PW_ASYNC_STORE_WAKER(
+      cx,
+      cx.dispatcher().native().NativeAddWriteWakerForFileDescriptor(
+          channel_fd_),
+      "EpollChannel is waiting on a file descriptor write");
   return async2::Pending();
 }
 
-Result<channel::WriteToken> EpollChannel::DoWrite(multibuf::MultiBuf&& data) {
+Result<channel::WriteToken> EpollChannel::DoStageWrite(
+    multibuf::MultiBuf&& data) {
   const uint32_t token = write_token_++;
 
   for (multibuf::Chunk& chunk : data.Chunks()) {
@@ -118,7 +124,9 @@ Result<channel::WriteToken> EpollChannel::DoWrite(multibuf::MultiBuf&& data) {
 
 void EpollChannel::Cleanup() {
   if (is_read_or_write_open()) {
-    dispatcher_->NativeUnregisterFileDescriptor(channel_fd_).IgnoreError();
+    dispatcher_->native()
+        .NativeUnregisterFileDescriptor(channel_fd_)
+        .IgnoreError();
     set_closed();
   }
   close(channel_fd_);
