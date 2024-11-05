@@ -24,6 +24,7 @@
 #include "pw_rpc/service.h"
 #include "pw_rpc_private/fake_server_reader_writer.h"
 #include "pw_rpc_private/test_method.h"
+#include "pw_status/status_with_size.h"
 #include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
@@ -184,6 +185,32 @@ TEST_F(ServerWriterTest, Open_SendsPacketWithPayload) {
   EXPECT_EQ(0, std::memcmp(data, payload.data(), sizeof(data)));
 }
 
+TEST_F(ServerWriterTest, Open_WriteCallback_SendsPacketWithPayload) {
+  constexpr byte data[] = {byte{0xaa}, byte{0xbb}, byte{0xcc}, byte{0xdd}};
+
+  ASSERT_EQ(OkStatus(), writer_.Write([&data](ByteSpan buffer) {
+    std::memcpy(buffer.data(), data, sizeof(data));
+    return StatusWithSize(sizeof(data));
+  }));
+
+  byte encoded[64];
+  auto result = context_.server_stream(data).Encode(encoded);
+  ASSERT_EQ(OkStatus(), result.status());
+
+  ConstByteSpan payload = context_.output().last_packet().payload();
+  EXPECT_EQ(sizeof(data), payload.size());
+  EXPECT_EQ(0, std::memcmp(data, payload.data(), sizeof(data)));
+}
+
+TEST_F(ServerWriterTest, Open_WriteCallback_ErrorPropagates) {
+  ASSERT_EQ(Status::DataLoss(),
+            writer_.Write([](ByteSpan) { return StatusWithSize::DataLoss(); }));
+}
+
+TEST_F(ServerWriterTest, Open_WriteCallback_NullptrReturnsInvalidArgument) {
+  ASSERT_EQ(Status::InvalidArgument(), writer_.Write(nullptr));
+}
+
 TEST_F(ServerWriterTest, Closed_IgnoresFinish) {
   EXPECT_EQ(OkStatus(), writer_.Finish());
   EXPECT_EQ(Status::FailedPrecondition(), writer_.Finish());
@@ -308,6 +335,14 @@ TEST_F(ServerReaderWriterTest, Move_ClearsCallAndChannelId) {
   RpcLockGuard lock;
   EXPECT_EQ(reader_writer_.id(), 0u);
   EXPECT_EQ(reader_writer_.channel_id_locked(), 0u);
+}
+
+TEST_F(ServerReaderWriterTest, DefaultConstructorAssign_Reset) {
+  reader_writer_ = {};
+
+  RpcLockGuard lock;
+  EXPECT_EQ(reader_writer_.service_id(), 0u);
+  EXPECT_EQ(reader_writer_.method_id(), 0u);
 }
 
 TEST_F(ServerReaderWriterTest, Move_SourceAwaitingCleanup_CleansUpCalls) {

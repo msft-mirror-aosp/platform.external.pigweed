@@ -54,6 +54,20 @@ class Allocator : public Deallocator {
     return ptr != nullptr ? new (ptr) T(std::forward<Args>(args)...) : nullptr;
   }
 
+  /// Constructs an array of type `T` from the given `args` and size
+  ///
+  /// The return value is nullable, as allocating memory for the object may
+  /// fail. Callers must check for this error before using the resulting
+  /// pointer.
+  ///
+  /// @param[in]  size        The size of the array to allocate.
+  template <typename T, int&... ExplicitGuard>
+  T* NewArray(size_t size) {
+    Layout layout(sizeof(T) * size, alignof(T));
+    void* ptr = Allocate(layout);
+    return ptr != nullptr ? new (ptr) T[size] : nullptr;
+  }
+
   /// Constructs and object of type `T` from the given `args`, and wraps it in a
   /// `UniquePtr`
   ///
@@ -64,6 +78,18 @@ class Allocator : public Deallocator {
   template <typename T, int&... ExplicitGuard, typename... Args>
   [[nodiscard]] UniquePtr<T> MakeUnique(Args&&... args) {
     return Deallocator::WrapUnique<T>(New<T>(std::forward<Args>(args)...));
+  }
+
+  /// Constructs an array of type `T` from the given `args` and size, and
+  /// wraps it in a `UniquePtr`
+  ///
+  /// The returned value may contain null if allocating memory for the object
+  /// fails. Callers must check for null before using the `UniquePtr`.
+  ///
+  /// @param[in]  size        The size of the array to allocate.
+  template <typename T, int&... ExplicitGuard>
+  [[nodiscard]] UniquePtr<T[]> MakeUniqueArray(size_t size) {
+    return Deallocator::WrapUniqueArray<T>(NewArray<T>(size), size);
   }
 
   /// Modifies the size of an previously-allocated block of memory without

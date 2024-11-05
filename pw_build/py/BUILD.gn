@@ -27,6 +27,7 @@ pw_python_package("py") {
     "pw_build/bazel_to_gn.py",
     "pw_build/build_recipe.py",
     "pw_build/collect_wheels.py",
+    "pw_build/copy_and_patch.py",
     "pw_build/copy_from_cipd.py",
     "pw_build/create_gn_venv.py",
     "pw_build/create_python_tree.py",
@@ -83,4 +84,5 @@ pw_python_package("py") {
   python_test_deps = [ "gn_tests:test_dist1" ]
   pylintrc = "$dir_pigweed/.pylintrc"
   mypy_ini = "$dir_pigweed/.mypy.ini"
+  ruff_toml = "$dir_pigweed/.ruff.toml"
 }

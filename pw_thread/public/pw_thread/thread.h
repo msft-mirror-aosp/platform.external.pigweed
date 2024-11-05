@@ -13,7 +13,7 @@
 // the License.
 #pragma once
 
-#include <tuple>
+#include <type_traits>
 
 #include "pw_function/function.h"
 #include "pw_thread/id.h"
@@ -22,7 +22,7 @@
 
 // clang-format off
 // The backend's thread_native header must provide PW_THREAD_JOINING_ENABLED.
-#include "pw_thread_backend/thread_native.h"
+#include "pw_thread_backend/thread_native.h"  // IWYU pragma: export
 // clang-format on
 
 namespace pw {
@@ -118,18 +118,6 @@ class Thread {
   ///
   /// @post The thread get EITHER detached or joined.
   Thread(const Options& options, ThreadCore& thread_core);
-
-  using ThreadRoutine = void (*)(void* arg);
-
-  /// DEPRECATED: Creates a thread from a void-returning function pointer and
-  /// a void pointer argument.
-  ///
-  /// @post The thread get EITHER detached or joined.
-  [[deprecated(
-      "The Thread constructor now takes a pw::Function<void()>. Pass a "
-      "function, lambda, or other functor that converts to a "
-      "pw::Function<void()>, instead of a void(void*) function.")]]
-  Thread(const Options& options, ThreadRoutine entry, void* arg = nullptr);
 
   /// @post The other thread no longer represents a thread of execution.
   Thread& operator=(Thread&& other);

@@ -1154,6 +1154,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # keep-sorted: end
     # Test data
     # keep-sorted: start
+    r'\bpw_build/test_data/pw_copy_and_patch_file/',
     r'\bpw_presubmit/py/test/owners_checks/',
     # keep-sorted: end
 )
@@ -1282,12 +1283,16 @@ def _valid_capitalization(word: str) -> bool:
     )  # Matches an executable (clangd)
 
 
-def commit_message_format(_: PresubmitContext):
+def commit_message_format(ctx: PresubmitContext):
     """Checks that the top commit's message is correctly formatted."""
     if git_repo.commit_author().endswith('gserviceaccount.com'):
         return
 
     lines = git_repo.commit_message().splitlines()
+
+    # Ignore fixup/squash commits, but only if running locally.
+    if not ctx.luci and lines[0].startswith(('fixup!', 'squash!')):
+        return
 
     # Show limits and current commit message in log.
     _LOG.debug('%-25s%+25s%+22s', 'Line limits', '72|', '72|')
@@ -1345,7 +1350,8 @@ def commit_message_format(_: PresubmitContext):
 
     # Check that the first line matches the expected pattern.
     match = re.match(
-        r'^(?:[.\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$', lines[0]
+        r'^(?P<prefix>[.\w*/]+(?:{[\w* ,]+})?[\w*/]*|SEED-\d+): (?P<desc>.+)$',
+        lines[0],
     )
     if not match:
         _LOG.warning('The first line does not match the expected format')
@@ -1355,6 +1361,9 @@ def commit_message_format(_: PresubmitContext):
             lines[0],
         )
         errors += 1
+    elif match.group('prefix') == 'roll':
+        # We're much more flexible with roll commits.
+        pass
     elif not _valid_capitalization(match.group('desc').split()[0]):
         _LOG.warning(
             'The first word after the ":" in the first line ("%s") must be '
@@ -1421,6 +1430,7 @@ _EXCLUDE_FROM_TODO_CHECK = (
     r'.dockerignore$',
     r'.gitignore$',
     r'.pylintrc$',
+    r'.ruff.toml$',
     r'\bdocs/build_system.rst',
     r'\bdocs/code_reviews.rst',
     r'\bpw_assert_basic/basic_handler.cc',

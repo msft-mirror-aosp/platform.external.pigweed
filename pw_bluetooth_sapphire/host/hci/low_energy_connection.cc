@@ -32,9 +32,9 @@ LowEnergyConnection::LowEnergyConnection(
     : AclConnection(handle, local_address, peer_address, role, hci),
       WeakSelf(this),
       parameters_(params) {
-  BT_ASSERT(local_address.type() != DeviceAddress::Type::kBREDR);
-  BT_ASSERT(peer_address.type() != DeviceAddress::Type::kBREDR);
-  BT_ASSERT(hci.is_alive());
+  PW_CHECK(local_address.type() != DeviceAddress::Type::kBREDR);
+  PW_CHECK(peer_address.type() != DeviceAddress::Type::kBREDR);
+  PW_CHECK(hci.is_alive());
 
   le_ltk_request_id_ = hci->command_channel()->AddLEMetaEventHandler(
       hci_spec::kLELongTermKeyRequestSubeventCode,
@@ -148,17 +148,18 @@ LowEnergyConnection::OnLELongTermKeyRequestEvent(
     return CommandChannel::EventCallbackResult::kRemove;
   }
 
-  auto status_cb = [](auto id, const EventPacket& event) {
-    hci_is_error(event, TRACE, "hci-le", "failed to reply to LTK request");
+  auto status_cb = [](auto id, const EventPacket& status_event) {
+    hci_is_error(
+        status_event, TRACE, "hci-le", "failed to reply to LTK request");
   };
 
   if (ltk() && ltk()->rand() == rand && ltk()->ediv() == ediv) {
     auto cmd = EmbossCommandPacket::New<
         pw::bluetooth::emboss::LELongTermKeyRequestReplyCommandWriter>(
         hci_spec::kLELongTermKeyRequestReply);
-    auto view = cmd.view_t();
-    view.connection_handle().Write(handle);
-    view.long_term_key().CopyFrom(
+    auto cmd_view = cmd.view_t();
+    cmd_view.connection_handle().Write(handle);
+    cmd_view.long_term_key().CopyFrom(
         pw::bluetooth::emboss::LinkKeyView(&ltk()->value()));
     hci()->command_channel()->SendCommand(cmd, std::move(status_cb));
   } else {
@@ -167,8 +168,8 @@ LowEnergyConnection::OnLELongTermKeyRequestEvent(
     auto cmd = EmbossCommandPacket::New<
         pw::bluetooth::emboss::LELongTermKeyRequestNegativeReplyCommandWriter>(
         hci_spec::kLELongTermKeyRequestNegativeReply);
-    auto view = cmd.view_t();
-    view.connection_handle().Write(handle);
+    auto cmd_view = cmd.view_t();
+    cmd_view.connection_handle().Write(handle);
     hci()->command_channel()->SendCommand(cmd, std::move(status_cb));
   }
 

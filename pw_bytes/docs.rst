@@ -82,7 +82,7 @@ pw_bytes/suffix.h
 This module exports a single ``_b`` literal, making it easier to create
 ``std::byte`` values for tests.
 
-.. cpp:function:: constexpr std::byte operator"" _b(unsigned long long value)
+.. cpp:function:: constexpr std::byte operator""_b(unsigned long long value)
 
 .. note::
    This should not be used in header files, as it requires a ``using``
@@ -145,4 +145,4 @@ project's configuration.
 Rust API
 --------
 ``pw_bytes``'s Rust API is documented in our
-`rustdoc API docs </rustdoc/pw_bytes>`_.
+`rustdoc API docs </rustdoc/pw_bytes/>`_.

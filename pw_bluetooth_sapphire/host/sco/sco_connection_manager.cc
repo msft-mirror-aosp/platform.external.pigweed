@@ -53,7 +53,7 @@ ScoConnectionManager::ScoConnectionManager(
       acl_handle_(acl_handle),
       transport_(std::move(transport)),
       weak_ptr_factory_(this) {
-  BT_ASSERT(transport_.is_alive());
+  PW_CHECK(transport_.is_alive());
 
   AddEventHandler(
       hci_spec::kSynchronousConnectionCompleteEventCode,
@@ -129,15 +129,17 @@ ScoConnectionManager::RequestHandle ScoConnectionManager::AcceptConnection(
 
 hci::CommandChannel::EventHandlerId ScoConnectionManager::AddEventHandler(
     const hci_spec::EventCode& code,
-    hci::CommandChannel::EventCallbackVariant cb) {
+    hci::CommandChannel::EventCallbackVariant event_cb_variant) {
   auto self = weak_ptr_factory_.GetWeakPtr();
   hci::CommandChannel::EventHandlerId event_id = 0;
   event_id = std::visit(
-      [this, &self, code](auto&& cb) -> hci::CommandChannel::EventHandlerId {
-        using T = std::decay_t<decltype(cb)>;
+      [this, &self, code](
+          auto&& event_cb) -> hci::CommandChannel::EventHandlerId {
+        using T = std::decay_t<decltype(event_cb)>;
         if constexpr (std::is_same_v<T, hci::CommandChannel::EventCallback>) {
           return transport_->command_channel()->AddEventHandler(
-              code, [self, cb = std::move(cb)](const hci::EventPacket& event) {
+              code,
+              [self, cb = std::move(event_cb)](const hci::EventPacket& event) {
                 if (!self.is_alive()) {
                   return hci::CommandChannel::EventCallbackResult::kRemove;
                 }
@@ -148,7 +150,8 @@ hci::CommandChannel::EventHandlerId ScoConnectionManager::AddEventHandler(
                                  hci::CommandChannel::EmbossEventCallback>) {
           return transport_->command_channel()->AddEventHandler(
               code,
-              [self, cb = std::move(cb)](const hci::EmbossEventPacket& event) {
+              [self,
+               cb = std::move(event_cb)](const hci::EmbossEventPacket& event) {
                 if (!self.is_alive()) {
                   return hci::CommandChannel::EventCallbackResult::kRemove;
                 }
@@ -156,8 +159,8 @@ hci::CommandChannel::EventHandlerId ScoConnectionManager::AddEventHandler(
               });
         }
       },
-      std::move(cb));
-  BT_ASSERT(event_id);
+      std::move(event_cb_variant));
+  PW_CHECK(event_id);
   event_handler_ids_.push_back(event_id);
   return event_id;
 }
@@ -213,7 +216,7 @@ ScoConnectionManager::OnSynchronousConnectionComplete(
   }
 
   fit::closure deactivated_cb = [this, connection_handle] {
-    BT_ASSERT(connections_.erase(connection_handle));
+    PW_CHECK(connections_.erase(connection_handle));
   };
   bt::StaticPacket<pw::bluetooth::emboss::SynchronousConnectionParametersWriter>
       conn_params = in_progress_request_
@@ -226,10 +229,10 @@ ScoConnectionManager::OnSynchronousConnectionComplete(
 
   auto [_, success] =
       connections_.try_emplace(connection_handle, std::move(conn));
-  BT_ASSERT_MSG(success,
-                "SCO connection already exists with handle %#.4x (peer: %s)",
-                connection_handle,
-                bt_str(peer_id_));
+  PW_CHECK(success,
+           "SCO connection already exists with handle %#.4x (peer: %s)",
+           connection_handle,
+           bt_str(peer_id_));
 
   CompleteRequest(fit::ok(std::make_pair(
       std::move(conn_weak), in_progress_request_->current_param_index)));
@@ -239,7 +242,7 @@ ScoConnectionManager::OnSynchronousConnectionComplete(
 
 hci::CommandChannel::EventCallbackResult
 ScoConnectionManager::OnConnectionRequest(const hci::EmbossEventPacket& event) {
-  BT_ASSERT(event.event_code() == hci_spec::kConnectionRequestEventCode);
+  PW_CHECK(event.event_code() == hci_spec::kConnectionRequestEventCode);
   auto params = event.view<pw::bluetooth::emboss::ConnectionRequestEventView>();
 
   // Ignore requests for other link types.
@@ -330,7 +333,7 @@ ScoConnectionManager::OnConnectionRequest(const hci::EmbossEventPacket& event) {
 }
 
 bool ScoConnectionManager::FindNextParametersThatSupportSco() {
-  BT_ASSERT(in_progress_request_);
+  PW_CHECK(in_progress_request_);
   while (in_progress_request_->current_param_index <
          in_progress_request_->parameters.size()) {
     bt::StaticPacket<
@@ -346,7 +349,7 @@ bool ScoConnectionManager::FindNextParametersThatSupportSco() {
 }
 
 bool ScoConnectionManager::FindNextParametersThatSupportEsco() {
-  BT_ASSERT(in_progress_request_);
+  PW_CHECK(in_progress_request_);
   while (in_progress_request_->current_param_index <
          in_progress_request_->parameters.size()) {
     bt::StaticPacket<
@@ -366,7 +369,7 @@ ScoConnectionManager::RequestHandle ScoConnectionManager::QueueRequest(
     std::vector<bt::StaticPacket<
         pw::bluetooth::emboss::SynchronousConnectionParametersWriter>> params,
     ConnectionCallback cb) {
-  BT_ASSERT(cb);
+  PW_CHECK(cb);
 
   if (params.empty()) {
     cb(fit::error(HostError::kInvalidParameters));
@@ -438,7 +441,7 @@ void ScoConnectionManager::TryCreateNextConnection() {
 
 void ScoConnectionManager::CompleteRequestOrTryNextParameters(
     ConnectionResult result) {
-  BT_ASSERT(in_progress_request_);
+  PW_CHECK(in_progress_request_);
 
   // Multiple parameter attempts are not supported for initiator requests.
   if (result.is_ok() || in_progress_request_->initiator) {
@@ -468,7 +471,7 @@ void ScoConnectionManager::CompleteRequestOrTryNextParameters(
 }
 
 void ScoConnectionManager::CompleteRequest(ConnectionResult result) {
-  BT_ASSERT(in_progress_request_);
+  PW_CHECK(in_progress_request_);
   bt_log(INFO,
          "gap-sco",
          "Completing SCO connection request (initiator: %d, success: %d, peer: "
@@ -486,10 +489,11 @@ void ScoConnectionManager::CompleteRequest(ConnectionResult result) {
 }
 
 void ScoConnectionManager::SendCommandWithStatusCallback(
-    hci::EmbossCommandPacket command_packet, hci::ResultFunction<> cb) {
+    hci::EmbossCommandPacket command_packet, hci::ResultFunction<> result_cb) {
   hci::CommandChannel::CommandCallback command_cb;
-  if (cb) {
-    command_cb = [cb = std::move(cb)](auto, const hci::EventPacket& event) {
+  if (result_cb) {
+    command_cb = [cb = std::move(result_cb)](auto,
+                                             const hci::EventPacket& event) {
       cb(event.ToResult());
     };
   }
@@ -501,7 +505,7 @@ void ScoConnectionManager::SendRejectConnectionCommand(
     DeviceAddressBytes addr, pw::bluetooth::emboss::StatusCode reason) {
   // The reject command has a small range of allowed reasons (the controller
   // sends "Invalid HCI Command Parameters" for other reasons).
-  BT_ASSERT_MSG(
+  PW_CHECK(
       reason == pw::bluetooth::emboss::StatusCode::
                     CONNECTION_REJECTED_LIMITED_RESOURCES ||
           reason ==

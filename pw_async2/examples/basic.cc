@@ -21,7 +21,6 @@ namespace {
 using ::pw::OkStatus;
 using ::pw::Result;
 using ::pw::Status;
-using ::pw::allocator::Allocator;
 using ::pw::async2::Context;
 using ::pw::async2::Poll;
 
@@ -135,7 +134,6 @@ namespace {
 using ::pw::OkStatus;
 using ::pw::Result;
 using ::pw::Status;
-using ::pw::allocator::Allocator;
 using ::pw::async2::Coro;
 using ::pw::async2::CoroContext;
 
@@ -145,18 +143,18 @@ class MySender;
 /// Create a coroutine which asynchronously receives a value from
 /// ``receiver`` and forwards it to ``sender``.
 ///
-/// Note: the ``Allocator`` argument is used by the ``Coro<T>`` internals to
+/// Note: the ``CoroContext`` argument is used by the ``Coro<T>`` internals to
 /// allocate the coroutine state. If this allocation fails, ``Coro<Status>``
 /// will return ``Status::Internal()``.
 Coro<Status> ReceiveAndSendCoro(CoroContext&,
                                 MyReceiver receiver,
                                 MySender sender) {
-  pw::Result<MyData> data = co_await receiver.Receive();
+  Result<MyData> data = co_await receiver.Receive();
   if (!data.ok()) {
     PW_LOG_ERROR("Receiving failed: %s", data.status().str());
     co_return Status::Unavailable();
   }
-  pw::Status sent = co_await sender.Send(std::move(*data));
+  Status sent = co_await sender.Send(std::move(*data));
   if (!sent.ok()) {
     PW_LOG_ERROR("Sending failed: %s", sent.str());
     co_return Status::Unavailable();
@@ -202,29 +200,12 @@ TEST(ManualExample, Runs) {
   // DOCSTAG: [pw_async2-examples-basic-dispatcher]
 }
 
-class ExpectCoroTask final : public Task {
- public:
-  ExpectCoroTask(Coro<pw::Status>&& coro) : coro_(std::move(coro)) {}
-
- private:
-  Poll<> DoPend(Context& cx) final {
-    Poll<Status> result = coro_.Pend(cx);
-    if (result.IsPending()) {
-      return Pending();
-    }
-    EXPECT_EQ(*result, OkStatus());
-    return Ready();
-  }
-  Coro<pw::Status> coro_;
-};
-
 TEST(CoroExample, ReturnsOk) {
   AllocatorForTest<256> alloc;
   CoroContext coro_cx(alloc);
-  ExpectCoroTask task = ReceiveAndSendCoro(coro_cx, MyReceiver(), MySender());
+  auto coro = ReceiveAndSendCoro(coro_cx, MyReceiver(), MySender());
   Dispatcher dispatcher;
-  dispatcher.Post(task);
-  EXPECT_TRUE(dispatcher.RunUntilStalled().IsReady());
+  EXPECT_EQ(dispatcher.RunPendableUntilStalled(coro), Ready(OkStatus()));
 }
 
 }  // namespace
