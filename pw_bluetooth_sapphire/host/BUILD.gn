@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+# Note, this file is not copybara'd from upstream Fuchsia.
+
 import("//build_overrides/pigweed.gni")
 import("$dir_pigweed/third_party/emboss/emboss.gni")
 import("$dir_pw_assert/backend.gni")
@@ -24,6 +26,19 @@ declare_args() {
   pw_bluetooth_sapphire_ENABLED = false
 }
 
+# LINT.IfChange(copts)
+# Common C++ flags used in bt-host to ensure it builds in Pigweed and downstreams.
+# Note Fuchsia upstream has its own version of copts since this file is not
+# copybara'd.
+config("copts") {
+  cflags_cc = [
+    # TODO: https://fxbug.dev/345799180 - Remove once code doesn't have unused parameters.
+    "-Wno-unused-parameter",
+  ]
+}
+
+# LINT.ThenChange(variables.bzl:copts)
+
 group("host") {
   public_deps = [
     "att",
@@ -32,6 +47,7 @@ group("host") {
     "gatt",
     "hci",
     "hci-spec",
+    "iso",
     "l2cap",
     "sco",
     "sdp",
@@ -50,6 +66,7 @@ pw_test_group("tests") {
     "gatt:tests",
     "hci:tests",
     "hci-spec:tests",
+    "iso:tests",
     "l2cap:tests",
     "sco:tests",
     "sdp:tests",

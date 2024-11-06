@@ -14,9 +14,10 @@
 
 #include "pw_bluetooth_sapphire/internal/host/sm/util.h"
 
-#include <endian.h>
 #include <openssl/aes.h>
 #include <openssl/cmac.h>
+#include <pw_bytes/endian.h>
+#include <pw_preprocessor/compiler.h>
 
 #include <algorithm>
 #include <optional>
@@ -27,12 +28,9 @@
 #include "pw_bluetooth_sapphire/internal/host/common/random.h"
 #include "pw_bluetooth_sapphire/internal/host/common/uint128.h"
 #include "pw_bluetooth_sapphire/internal/host/common/uint256.h"
-#include "pw_bluetooth_sapphire/internal/host/hci/util.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/error.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/smp.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
-
-#pragma clang diagnostic ignored "-Wswitch-enum"
 
 namespace bt::sm::util {
 namespace {
@@ -206,16 +204,23 @@ PairingMethod SelectPairingMethod(
       break;
 
     case IOCapability::kDisplayOnly:
+      PW_MODIFY_DIAGNOSTICS_PUSH();
+      PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
       switch (peer_ioc) {
         case IOCapability::kKeyboardOnly:
         case IOCapability::kKeyboardDisplay:
           return PairingMethod::kPasskeyEntryDisplay;
-        default:
+        case IOCapability::kDisplayOnly:
+        case IOCapability::kDisplayYesNo:
+        case IOCapability::kNoInputNoOutput:
           break;
       }
+      PW_MODIFY_DIAGNOSTICS_POP();
       break;
 
     case IOCapability::kDisplayYesNo:
+      PW_MODIFY_DIAGNOSTICS_PUSH();
+      PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
       switch (peer_ioc) {
         case IOCapability::kDisplayYesNo:
           return sec_conn ? PairingMethod::kNumericComparison
@@ -225,15 +230,19 @@ PairingMethod SelectPairingMethod(
                           : PairingMethod::kPasskeyEntryDisplay;
         case IOCapability::kKeyboardOnly:
           return PairingMethod::kPasskeyEntryDisplay;
-        default:
+        case IOCapability::kDisplayOnly:
+        case IOCapability::kNoInputNoOutput:
           break;
       }
+      PW_MODIFY_DIAGNOSTICS_POP();
       break;
 
     case IOCapability::kKeyboardOnly:
       return PairingMethod::kPasskeyEntryInput;
 
     case IOCapability::kKeyboardDisplay:
+      PW_MODIFY_DIAGNOSTICS_PUSH();
+      PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
       switch (peer_ioc) {
         case IOCapability::kKeyboardOnly:
           return PairingMethod::kPasskeyEntryDisplay;
@@ -242,9 +251,11 @@ PairingMethod SelectPairingMethod(
         case IOCapability::kDisplayYesNo:
           return sec_conn ? PairingMethod::kNumericComparison
                           : PairingMethod::kPasskeyEntryInput;
-        default:
+        case IOCapability::kKeyboardDisplay:
+        case IOCapability::kNoInputNoOutput:
           break;
       }
+      PW_MODIFY_DIAGNOSTICS_POP();
 
       // If both devices have KeyboardDisplay then use Numeric Comparison
       // if S.C. is supported. Otherwise, the initiator always displays and the
@@ -342,12 +353,16 @@ uint32_t Ah(const UInt128& k, uint32_t r) {
   // r' = padding || r.
   UInt128 r_prime;
   r_prime.fill(0);
-  *reinterpret_cast<uint32_t*>(r_prime.data()) = htole32(r & k24BitMax);
+  *reinterpret_cast<uint32_t*>(r_prime.data()) =
+      pw::bytes::ConvertOrderTo(cpp20::endian::little, r & k24BitMax);
 
   UInt128 hash128;
   Encrypt(k, r_prime, &hash128);
 
-  return le32toh(*reinterpret_cast<uint32_t*>(hash128.data())) & k24BitMax;
+  return pw::bytes::ConvertOrderFrom(
+             cpp20::endian::little,
+             *reinterpret_cast<uint32_t*>(hash128.data())) &
+         k24BitMax;
 }
 
 bool IrkCanResolveRpa(const UInt128& irk, const DeviceAddress& rpa) {
@@ -360,7 +375,9 @@ bool IrkCanResolveRpa(const UInt128& irk, const DeviceAddress& rpa) {
   BufferView rpa_bytes = rpa.value().bytes();
 
   // Lower 24-bits (in host order).
-  uint32_t rpa_hash = le32toh(rpa_bytes.To<uint32_t>()) & k24BitMax;
+  uint32_t rpa_hash = pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                                  rpa_bytes.To<uint32_t>()) &
+                      k24BitMax;
 
   // Upper 24-bits (we avoid a cast to uint32_t to prevent an invalid access
   // since the buffer would be too short).
@@ -390,7 +407,9 @@ DeviceAddress GenerateRpa(const UInt128& irk) {
   prand_bytes[2] &= ~0b10000000;
 
   // 24-bit hash value in little-endian order.
-  uint32_t hash_le = htole32(Ah(irk, le32toh(prand_le)));
+  uint32_t hash_le = pw::bytes::ConvertOrderTo(
+      cpp20::endian::little,
+      Ah(irk, pw::bytes::ConvertOrderFrom(cpp20::endian::little, prand_le)));
   BufferView hash_bytes(&hash_le, k24BitSize);
 
   // The |rpa_hash| and |prand| values generated below take up the least

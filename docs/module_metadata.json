@@ -36,6 +36,22 @@
       "GN"
     ]
   },
+  "pw_assert": {
+    "tagline": "Flexible crash triggering and handling",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
+  "pw_assert_fuchsia": {
+    "tagline": "pw_assert backend for Fuchsia",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_async": {
     "tagline": "Portable APIs for asynchronous code",
     "status": "deprecated",
@@ -48,6 +64,14 @@
     "status": "experimental",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_async_fuchsia": {
+    "tagline": "Fuchsia backend for pw_async",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
     ]
   },
   "pw_base64": {
@@ -113,7 +137,15 @@
     "tagline": "Simplified booting for C++ targets",
     "status": "stable",
     "languages": [
-      "C++17"
+      "C++"
+    ]
+  },
+  "pw_boot_cortex_m": {
+    "tagline": "ARM Cortex-M backend for pw_boot",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
     ]
   },
   "pw_build": {
@@ -178,6 +210,14 @@
       "C++"
     ]
   },
+  "pw_chrono": {
+    "tagline": "Portable std::chrono for constrained embedded devices",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_cli": {
     "tagline": "Enhance and accelerate custom command-line tooling",
     "status": "stable",
@@ -213,6 +253,11 @@
     "languages": [
       "C++17"
     ]
+  },
+  "pw_display": {
+    "tagline": "Graphic display support and framebuffer management",
+    "status": "experimental",
+    "languages": []
   },
   "pw_dma_mcuxpresso": {
     "tagline": "DMA helpers for MCUXpresso SDK",
@@ -280,6 +325,13 @@
       "TypeScript"
     ]
   },
+  "pw_hex_dump": {
+    "tagline": "Handy hexdump utilities",
+    "status": "stable",
+    "languages": [
+      "C++17"
+    ]
+  },
   "pw_i2c": {
     "tagline": "Cross-platform I2C API with interactive debugging",
     "status": "stable",
@@ -306,6 +358,16 @@
     "status": "stable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_ide": {
+    "tagline": "Code editor and IDE support for Pigweed projects",
+    "status": "stable",
+    "languages": [
+      "C++",
+      "CLI",
+      "Python",
+      "VS Code"
     ]
   },
   "pw_json": {
@@ -339,6 +401,22 @@
       "C++"
     ]
   },
+  "pw_log_fuchsia": {
+    "tagline": "Fuchsia logging backend",
+    "status": "experimental",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
+  "pw_malloc": {
+    "tagline": "Replacement interface for standard libc dynamic memory operations",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
+    ]
+  },
   "pw_multibuf": {
     "tagline": "A buffer API optimized for zero-copy messaging",
     "status": "unstable",
@@ -351,6 +429,14 @@
     "status": "unstable",
     "languages": [
       "C++17"
+    ]
+  },
+  "pw_preprocessor": {
+    "tagline": "Helpful preprocessor macros",
+    "status": "stable",
+    "languages": [
+      "C",
+      "C++"
     ]
   },
   "pw_presubmit": {
@@ -367,12 +453,10 @@
       "C++"
     ]
   },
-  "pw_router": {
-    "tagline": "Transport-agnostic packet routing",
+  "pw_random_fuchsia": {
+    "tagline": "Fuchsia implementation of pw_random",
     "status": "experimental",
-    "languages": [
-      "C++"
-    ]
+    "languages": []
   },
   "pw_result": {
     "tagline": "Error propagation primitives: value-or-error",
@@ -381,8 +465,15 @@
       "C++17"
     ]
   },
+  "pw_router": {
+    "tagline": "Transport-agnostic packet routing",
+    "status": "experimental",
+    "languages": [
+      "C++"
+    ]
+  },
   "pw_rpc": {
-    "tagline": "Efficient, low-code-size, higher-level RPC system for embedded devices",
+    "tagline": "Efficient, low-code-size RPC system for embedded devices",
     "status": "stable",
     "languages": [
       "C++",
@@ -390,6 +481,14 @@
       "JavaScript",
       "Python",
       "TypeScript"
+    ]
+  },
+  "pw_sensor": {
+    "tagline": "A modular way to see the world",
+    "status": "experimental",
+    "languages": [
+      "Python",
+      "C++17"
     ]
   },
   "pw_software_update": {
@@ -463,6 +562,13 @@
       "Java"
     ]
   },
+  "pw_toolchain": {
+    "tagline": "Embedded toolchains for GN-based Pigweed projects",
+    "status": "stable",
+    "languages": [
+      "GN"
+    ]
+  },
   "pw_toolchain_bazel": {
     "tagline": "A modular toolkit for declaring C/C++ toolchains in Bazel",
     "status": "unstable",
@@ -472,6 +578,13 @@
   },
   "pw_uart": {
     "tagline": "Core interfaces for UART communication",
+    "status": "unstable",
+    "languages": [
+      "C++"
+    ]
+  },
+  "pw_uart_mcuxpresso": {
+    "tagline": "NXP MCUXpresso SDK implementation for pw_uart",
     "status": "unstable",
     "languages": [
       "C++"

@@ -135,7 +135,9 @@ template("emboss_cc_library") {
       "$dir_pw_third_party_emboss/compiler/util/attribute_util.py",
       "$dir_pw_third_party_emboss/compiler/util/error.py",
       "$dir_pw_third_party_emboss/compiler/util/expression_parser.py",
-      "$dir_pw_third_party_emboss/compiler/util/ir_pb2.py",
+      "$dir_pw_third_party_emboss/compiler/util/ir_data.py",
+      "$dir_pw_third_party_emboss/compiler/util/ir_data_fields.py",
+      "$dir_pw_third_party_emboss/compiler/util/ir_data_utils.py",
       "$dir_pw_third_party_emboss/compiler/util/ir_util.py",
       "$dir_pw_third_party_emboss/compiler/util/name_conversion.py",
       "$dir_pw_third_party_emboss/compiler/util/parser_types.py",
@@ -168,7 +170,10 @@ template("emboss_cc_library") {
 
     sources = [ compiled_header_path ]
 
-    public_deps = [
+    if (!defined(invoker.public_deps)) {
+      public_deps = []
+    }
+    public_deps += [
       ":${target_name}_header",
       "$dir_pw_third_party/emboss:cpp_utils",
     ]

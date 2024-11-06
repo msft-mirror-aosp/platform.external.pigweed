@@ -29,6 +29,8 @@ cc_library(
         "-Wl,--wrap=__sseek",
         "-Wl,--wrap=__sclose",
     ],
+    # Only built as part of the ARM GCC toolchain.
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = ["//pw_assert"],
     alwayslink = 1,
@@ -36,6 +38,8 @@ cc_library(
 
 cc_library(
     name = "arm_none_eabi_gcc_support",
+    # Only built as part of the ARM GCC toolchain.
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         ":newlib_os_interface_stubs",
@@ -43,9 +47,7 @@ cc_library(
     ],
 )
 
-# Although we use similar warnings for clang and arm_gcc, we don't have one
-# centralized list, since we might want to use different warnings based on the
-# compiler in the future.
+# Additional arm_gcc specific warning flags
 pw_cc_flag_set(
     name = "warnings",
     actions = [
@@ -53,13 +55,10 @@ pw_cc_flag_set(
         "@pw_toolchain//actions:all_cpp_compiler_actions",
     ],
     flags = [
-        "-Wall",
-        "-Wextra",
-        # Make all warnings errors, except for the exemptions below.
-        "-Werror",
-        "-Wno-error=cpp",  # preprocessor #warning statement
-        "-Wno-error=deprecated-declarations",  # [[deprecated]] attribute
-        "-Wno-psabi",  # Silence the really verbose ARM warnings.
+        # This can't be in common, because proto headers in host builds trigger
+        "-Wundef",
+        # Silence the really verbose ARM warnings.
+        "-Wno-psabi",
     ],
 )
 
@@ -74,6 +73,19 @@ pw_cc_flag_set(
     flags = [
         "-mabi=aapcs",
         "-mthumb",
+    ],
+)
+
+pw_cc_flag_set(
+    name = "unified_asm_syntax",
+    actions = [
+        "@pw_toolchain//actions:all_asm_actions",
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+        "@pw_toolchain//actions:all_link_actions",
+    ],
+    flags = [
+        "-masm-syntax-unified",
     ],
 )
 
@@ -135,6 +147,20 @@ pw_cc_flag_set(
 )
 
 pw_cc_flag_set(
+    name = "cortex-m0plus",
+    actions = [
+        "@pw_toolchain//actions:all_asm_actions",
+        "@pw_toolchain//actions:all_c_compiler_actions",
+        "@pw_toolchain//actions:all_cpp_compiler_actions",
+        "@pw_toolchain//actions:all_link_actions",
+    ],
+    flags = [
+        "-mcpu=cortex-m0plus",
+        "-mfloat-abi=soft",
+    ],
+)
+
+pw_cc_flag_set(
     name = "cortex-m3",
     actions = [
         "@pw_toolchain//actions:all_asm_actions",
@@ -159,6 +185,10 @@ pw_cc_flag_set(
     flags = [
         "-mcpu=cortex-m4",
         "-mfloat-abi=hard",
+        "-mfpu=fpv4-sp-d16",
+        # Used by some pigweed tests/targets to correctly handle hardware FPU
+        # behavior.
+        "-DPW_ARMV7M_ENABLE_FPU=1",
     ],
 )
 
@@ -187,6 +217,10 @@ pw_cc_flag_set(
     flags = [
         "-mcpu=cortex-m7",
         "-mfloat-abi=hard",
+        "-mfpu=fpv5-d16",
+        # Used by some pigweed tests/targets to correctly handle hardware FPU
+        # behavior.
+        "-DPW_ARMV7M_ENABLE_FPU=1",
     ],
 )
 
@@ -201,6 +235,10 @@ pw_cc_flag_set(
     flags = [
         "-mcpu=cortex-m33",
         "-mfloat-abi=hard",
+        "-mfpu=fpv5-sp-d16",
+        # Used by some pigweed tests/targets to correctly handle hardware FPU
+        # behavior.
+        "-DPW_ARMV7M_ENABLE_FPU=1",
     ],
 )
 
@@ -242,16 +280,18 @@ pw_cc_toolchain(
         "%sysroot%/arm-none-eabi/include",
     ],
     flag_sets = [
-        "@pw_toolchain//flag_sets:o2",
-        "@pw_toolchain//flag_sets:c++17",
+        "@pw_toolchain//flag_sets:oz",
         "@pw_toolchain//flag_sets:debugging",
         "@pw_toolchain//flag_sets:reduced_size",
         "@pw_toolchain//flag_sets:no_canonical_prefixes",
         "@pw_toolchain//flag_sets:no_rtti",
         "@pw_toolchain//flag_sets:wno_register",
         "@pw_toolchain//flag_sets:wnon_virtual_dtor",
+        "//pw_toolchain/cc:common_warnings",
+        "//pw_toolchain/cc:color_diagnostics",
     ] + select({
         "@pw_toolchain//constraints/arm_mcpu:cortex-m0": [":cortex-m0"],
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m0plus": [":cortex-m0plus"],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m3": [":cortex-m3"],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m33": [":cortex-m33"],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m33+nofp": [":cortex-m33+nofp"],
@@ -261,6 +301,8 @@ pw_cc_toolchain(
         "@pw_toolchain//constraints/arm_mcpu:none": [],
     }) + [
         ":thumb_abi",
+        # TODO(b/353576440): Enable unified assembly syntax.
+        # ":unified_asm_syntax",
         ":cortex_common",
         ":cortex_common_link",
         ":no_canonical_system_headers",
@@ -268,6 +310,7 @@ pw_cc_toolchain(
     ],
     target_compatible_with = select({
         "@pw_toolchain//constraints/arm_mcpu:cortex-m0": [],
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m0plus": [],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m3": [],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m33": [],
         "@pw_toolchain//constraints/arm_mcpu:cortex-m33+nofp": [],
@@ -276,13 +319,27 @@ pw_cc_toolchain(
         "@pw_toolchain//constraints/arm_mcpu:cortex-m7": [],
         "@pw_toolchain//constraints/arm_mcpu:none": ["@platforms//:incompatible"],
     }),
+    toolchain_features = [
+        "//pw_toolchain/cc:c++17_feature",
+        "//pw_toolchain/cc:c++20_feature",
+    ],
     toolchain_identifier = "arm-gcc-toolchain",
+    visibility = ["//pw_toolchain:__pkg__"],
 )
 
 toolchain(
     name = "arm_gcc_cc_toolchain_cortex-m0",
     target_compatible_with = [
         "@pw_toolchain//constraints/arm_mcpu:cortex-m0",
+    ],
+    toolchain = ":arm_gcc_toolchain_cortex-m",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
+toolchain(
+    name = "arm_gcc_cc_toolchain_cortex-m0plus",
+    target_compatible_with = [
+        "@pw_toolchain//constraints/arm_mcpu:cortex-m0plus",
     ],
     toolchain = ":arm_gcc_toolchain_cortex-m",
     toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",

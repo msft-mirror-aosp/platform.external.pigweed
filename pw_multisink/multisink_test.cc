@@ -26,6 +26,8 @@
 #include "pw_unit_test/framework.h"
 
 namespace pw::multisink {
+namespace {
+
 using Drain = MultiSink::Drain;
 using Listener = MultiSink::Listener;
 
@@ -539,18 +541,23 @@ TEST_F(MultiSinkTest, DetachedDrainReportsDropCount) {
   const uint32_t ingress_drops = 10;
   multisink_.HandleDropped(ingress_drops);
   multisink_.HandleEntry(kMessage);
+  EXPECT_EQ(drains_[0].GetUnreadEntriesCount(), 1u);
   VerifyPopEntry(drains_[0], kMessage, 0, ingress_drops);
+  EXPECT_EQ(drains_[0].GetUnreadEntriesCount(), 0u);
 
   // Detaching and attaching drain should report the same drops.
   multisink_.DetachDrain(drains_[0]);
   multisink_.AttachDrain(drains_[0]);
+  EXPECT_EQ(drains_[0].GetUnreadEntriesCount(), 1u);
   VerifyPopEntry(drains_[0], kMessage, 0, ingress_drops);
+  EXPECT_EQ(drains_[0].GetUnreadEntriesCount(), 0u);
 }
 
 TEST_F(MultiSinkTest, DrainUnreadEntriesSize) {
   multisink_.AttachDrain(drains_[0]);
 
   EXPECT_EQ(drains_[0].GetUnreadEntriesSize(), 0u);
+  EXPECT_EQ(drains_[0].GetUnreadEntriesCount(), 0u);
   multisink_.HandleEntry(kMessage);
   multisink_.HandleEntry(kMessage);
   const size_t unread_entries_size = drains_[0].GetUnreadEntriesSize();
@@ -572,6 +579,8 @@ TEST_F(MultiSinkTest, DrainUnreadEntriesSize) {
                  /*expected_ingress_drop_count=*/0);
   EXPECT_EQ(drains_[0].GetUnreadEntriesSize(), 0u);
   EXPECT_EQ(drains_[1].GetUnreadEntriesSize(), unread_entries_size);
+  EXPECT_EQ(drains_[0].GetUnreadEntriesCount(), 0u);
+  EXPECT_EQ(drains_[1].GetUnreadEntriesCount(), 2u);
 }
 
 TEST(UnsafeGetUnreadEntriesSize, ReadFromListener) {
@@ -655,4 +664,5 @@ TEST(UnsafeIteration, Subset) {
   EXPECT_EQ(kExpectedEntriesMaxEntries, entry_count);
 }
 
+}  // namespace
 }  // namespace pw::multisink

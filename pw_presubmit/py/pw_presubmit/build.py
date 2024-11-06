@@ -69,10 +69,14 @@ from pw_presubmit.tools import (
 _LOG = logging.getLogger(__name__)
 
 
+BAZEL_EXECUTABLE = 'bazel'
+
+
 def bazel(
     ctx: PresubmitContext,
     cmd: str,
     *args: str,
+    strict_module_lockfile: bool = False,
     use_remote_cache: bool = False,
     stdout: TextIO | None = None,
     **kwargs,
@@ -89,6 +93,10 @@ def bazel(
     keep_going: list[str] = []
     if ctx.continue_after_build_error:
         keep_going.append('--keep_going')
+
+    strict_lockfile: list[str] = []
+    if strict_module_lockfile:
+        strict_lockfile.append('--lockfile_mode=error')
 
     remote_cache: list[str] = []
     if use_remote_cache and ctx.luci:
@@ -109,16 +117,23 @@ def bazel(
             with (ctx.output_dir / 'bazel.output.base').open('w') as outs, (
                 ctx.output_dir / 'bazel.output.base.err'
             ).open('w') as errs:
-                call('bazel', 'info', 'output_base', tee=outs, stderr=errs)
+                call(
+                    BAZEL_EXECUTABLE,
+                    'info',
+                    'output_base',
+                    tee=outs,
+                    stderr=errs,
+                )
 
             call(
-                'bazel',
+                BAZEL_EXECUTABLE,
                 cmd,
                 '--verbose_failures',
                 '--worker_verbose',
                 f'--symlink_prefix={ctx.output_dir / "bazel-"}',
                 *num_jobs,
                 *keep_going,
+                *strict_lockfile,
                 *remote_cache,
                 *args,
                 cwd=ctx.root,
@@ -482,7 +497,10 @@ def check_bazel_build_for_files(
     for directory in bazel_dirs:
         bazel_builds.update(
             _get_paths_from_command(
-                directory, 'bazel', 'query', 'kind("source file", //...:*)'
+                directory,
+                BAZEL_EXECUTABLE,
+                'query',
+                'kind("source file", //...:*)',
             )
         )
 
@@ -648,7 +666,11 @@ def fuzztest_prng_seed(ctx: PresubmitContext) -> str:
 
 
 @filter_paths(
-    file_filter=FileFilter(endswith=('.bzl', '.bazel'), name=('WORKSPACE',))
+    file_filter=FileFilter(
+        endswith=('.bzl', '.bazel'),
+        name=('WORKSPACE',),
+        exclude=(r'pw_presubmit/py/pw_presubmit/format/test_data',),
+    )
 )
 def bazel_lint(ctx: PresubmitContext):
     """Runs buildifier with lint on Bazel files.

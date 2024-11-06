@@ -19,8 +19,9 @@
 
 #include "pw_bluetooth_sapphire/internal/host/common/identifier.h"
 #include "pw_bluetooth_sapphire/internal/host/common/inspectable.h"
+#include "pw_bluetooth_sapphire/internal/host/gap/legacy_pairing_state.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/peer.h"
-#include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
+#include "pw_bluetooth_sapphire/internal/host/hci/bredr_connection_request.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/error.h"
 
 namespace bt::gap {
@@ -42,6 +43,8 @@ class BrEdrConnection;
 class BrEdrConnectionRequest final {
  public:
   using OnComplete = fit::function<void(hci::Result<>, BrEdrConnection*)>;
+  using OnTimeout = fit::function<void()>;
+  using OnFailure = fit::function<void(hci::Result<>, PeerId)>;
   using RefFactory = fit::function<BrEdrConnection*()>;
 
   // Construct without a callback. Can be used for incoming only requests
@@ -58,7 +61,16 @@ class BrEdrConnectionRequest final {
 
   BrEdrConnectionRequest(BrEdrConnectionRequest&&) = default;
 
-  void RecordHciCreateConnectionAttempt();
+  // Creates a hci::BrEdrConnectionRequest from this gap::BrEdrConnectionRequest
+  std::unique_ptr<hci::BrEdrConnectionRequest> CreateHciConnectionRequest(
+      hci::CommandChannel* command_channel,
+      std::optional<uint16_t> clock_offset,
+      std::optional<pw::bluetooth::emboss::PageScanRepetitionMode>
+          page_scan_repetition_mode,
+      OnTimeout timeout_cb,
+      OnFailure failure_cb,
+      pw::async::Dispatcher& dispatcher);
+
   bool ShouldRetry(hci::Error failure_mode);
 
   void AddCallback(OnComplete cb) {
@@ -93,6 +105,17 @@ class BrEdrConnectionRequest final {
     return role_change_;
   }
 
+  void set_legacy_pairing_state(
+      std::unique_ptr<LegacyPairingState> legacy_pairing_state) {
+    legacy_pairing_state_ = std::move(legacy_pairing_state);
+  }
+  LegacyPairingState* legacy_pairing_state() {
+    return legacy_pairing_state_.get();
+  }
+  std::unique_ptr<LegacyPairingState> take_legacy_pairing_state() {
+    return std::move(legacy_pairing_state_);
+  }
+
   Peer::InitializingConnectionToken take_peer_init_token() {
     BT_ASSERT(peer_init_conn_token_);
     return std::exchange(peer_init_conn_token_, std::nullopt).value();
@@ -104,6 +127,8 @@ class BrEdrConnectionRequest final {
   UintInspectable<std::list<OnComplete>> callbacks_;
   BoolInspectable<bool> has_incoming_{false};
   std::optional<pw::bluetooth::emboss::ConnectionRole> role_change_;
+  std::unique_ptr<LegacyPairingState> legacy_pairing_state_;
+
   // Used to determine whether an outbound connection request should be retried.
   // If empty, no HCI Create Connection Requests associated with this object
   // have been made, otherwise stores the time at which the first HCI request
@@ -117,6 +142,10 @@ class BrEdrConnectionRequest final {
   inspect::Node inspect_node_;
 
   std::optional<Peer::InitializingConnectionToken> peer_init_conn_token_;
+
+  // Time after which a connection attempt is considered to have timed out.
+  pw::chrono::SystemClock::duration request_timeout_{
+      kBrEdrCreateConnectionTimeout};
 
   pw::async::Dispatcher& dispatcher_;
 

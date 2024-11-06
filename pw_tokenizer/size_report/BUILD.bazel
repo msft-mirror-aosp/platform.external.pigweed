@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_binary",
@@ -28,6 +29,7 @@ pw_cc_binary(
     name = "tokenize_string_base",
     srcs = ["tokenize_string.cc"],
     defines = ["BASELINE"],
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":base_lib",
         "//pw_tokenizer",
@@ -38,6 +40,7 @@ pw_cc_binary(
 pw_cc_binary(
     name = "tokenize_string",
     srcs = ["tokenize_string.cc"],
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":base_lib",
         "//pw_tokenizer",
@@ -49,6 +52,7 @@ pw_cc_binary(
     name = "tokenize_string_expr_base",
     srcs = ["tokenize_string_expr.cc"],
     defines = ["BASELINE"],
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":base_lib",
         "//pw_tokenizer",
@@ -59,6 +63,7 @@ pw_cc_binary(
 pw_cc_binary(
     name = "tokenize_string_expr",
     srcs = ["tokenize_string_expr.cc"],
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":base_lib",
         "//pw_tokenizer",
