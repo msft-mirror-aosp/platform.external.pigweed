@@ -55,20 +55,14 @@ config("test_config") {
 
 pw_source_set("allocator") {
   public_configs = [ ":public_include_path" ]
-  public = [
-    "public/pw_allocator/allocator.h",
-    "public/pw_allocator/as_pmr_allocator.h",
-  ]
+  public = [ "public/pw_allocator/allocator.h" ]
   public_deps = [
     ":config",
     ":deallocator",
     "$dir_pw_assert:check",
     dir_pw_result,
   ]
-  sources = [
-    "allocator.cc",
-    "as_pmr_allocator.cc",
-  ]
+  sources = [ "allocator.cc" ]
 }
 
 pw_source_set("allocator_as_pool") {
@@ -135,14 +129,20 @@ pw_source_set("bucket") {
   sources = [ "bucket.cc" ]
 }
 
-pw_source_set("bucket_block_allocator") {
+pw_source_set("bucket_allocator") {
   public_configs = [ ":public_include_path" ]
-  public = [ "public/pw_allocator/bucket_block_allocator.h" ]
+  public = [ "public/pw_allocator/bucket_allocator.h" ]
   public_deps = [
     ":block_allocator",
     ":bucket",
     dir_pw_status,
   ]
+}
+
+pw_source_set("bucket_block_allocator") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_allocator/bucket_block_allocator.h" ]
+  public_deps = [ ":bucket_allocator" ]
 }
 
 pw_source_set("buddy_allocator") {
@@ -263,7 +263,7 @@ pw_source_set("freelist_heap") {
   public = [ "public/pw_allocator/freelist_heap.h" ]
   public_deps = [
     ":block",
-    ":bucket_block_allocator",
+    ":bucket_allocator",
     dir_pw_assert,
     dir_pw_bytes,
     dir_pw_preprocessor,
@@ -291,6 +291,16 @@ pw_source_set("null_allocator") {
   public = [ "public/pw_allocator/null_allocator.h" ]
   public_deps = [ ":allocator" ]
   sources = [ "null_allocator.cc" ]
+}
+
+pw_source_set("pmr_allocator") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_allocator/pmr_allocator.h" ]
+  public_deps = [
+    ":allocator",
+    ":config",
+  ]
+  sources = [ "pmr_allocator.cc" ]
 }
 
 pw_source_set("pool") {
@@ -372,6 +382,7 @@ pw_source_set("block_testing") {
     ":block",
     ":testing",
     "$dir_pw_bytes:alignment",
+    "$dir_pw_third_party/fuchsia:stdcompat",
     dir_pw_assert,
     dir_pw_status,
   ]
@@ -433,14 +444,6 @@ pw_test("allocator_test") {
   sources = [ "allocator_test.cc" ]
 }
 
-pw_test("as_pmr_allocator_test") {
-  deps = [
-    ":allocator",
-    ":testing",
-  ]
-  sources = [ "as_pmr_allocator_test.cc" ]
-}
-
 pw_test("best_fit_block_allocator_test") {
   deps = [
     ":best_fit_block_allocator",
@@ -457,12 +460,12 @@ pw_test("block_test") {
   sources = [ "block_test.cc" ]
 }
 
-pw_test("bucket_block_allocator_test") {
+pw_test("bucket_allocator_test") {
   deps = [
     ":block_allocator_testing",
-    ":bucket_block_allocator",
+    ":bucket_allocator",
   ]
-  sources = [ "bucket_block_allocator_test.cc" ]
+  sources = [ "bucket_allocator_test.cc" ]
 }
 
 pw_test("buddy_allocator_test") {
@@ -574,6 +577,14 @@ pw_test("null_allocator_test") {
   sources = [ "null_allocator_test.cc" ]
 }
 
+pw_test("pmr_allocator_test") {
+  deps = [
+    ":pmr_allocator",
+    ":testing",
+  ]
+  sources = [ "pmr_allocator_test.cc" ]
+}
+
 pw_test("synchronized_allocator_test") {
   enable_if =
       pw_sync_BINARY_SEMAPHORE_BACKEND != "" && pw_sync_MUTEX_BACKEND != "" &&
@@ -630,11 +641,12 @@ pw_test("worst_fit_block_allocator_test") {
 pw_test_group("tests") {
   tests = [
     ":allocator_as_pool_test",
+
+    # ":allocator_nc_test",
     ":allocator_test",
-    ":as_pmr_allocator_test",
     ":best_fit_block_allocator_test",
     ":block_test",
-    ":bucket_block_allocator_test",
+    ":bucket_allocator_test",
     ":buddy_allocator_test",
     ":buffer_test",
     ":bump_allocator_test",
@@ -648,9 +660,10 @@ pw_test_group("tests") {
     ":layout_test",
     ":libc_allocator_test",
     ":null_allocator_test",
-    ":typed_pool_test",
+    ":pmr_allocator_test",
     ":synchronized_allocator_test",
     ":tracking_allocator_test",
+    ":typed_pool_test",
     ":unique_ptr_test",
     ":worst_fit_block_allocator_test",
   ]
@@ -733,14 +746,14 @@ pw_size_diff("forwarding_allocators_size_report") {
   title = "Sizes of various forwarding allocator implementations"
   binaries = [
     {
-      target = "size_report:as_pmr_allocator"
-      base = "size_report:as_pmr_allocator_base"
-      label = "AsPmrAllocator"
-    },
-    {
       target = "size_report:fallback_allocator"
       base = "size_report:fallback_allocator_base"
       label = "FallbackAllocator"
+    },
+    {
+      target = "size_report:pmr_allocator"
+      base = "size_report:pmr_allocator_base"
+      label = "AsPmrAllocator"
     },
     {
       target = "size_report:synchronized_allocator_isl"

@@ -37,7 +37,6 @@ pw_add_library(pw_allocator.test_config INTERFACE
 pw_add_library(pw_allocator.allocator STATIC
   HEADERS
     public/pw_allocator/allocator.h
-    public/pw_allocator/as_pmr_allocator.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -46,7 +45,6 @@ pw_add_library(pw_allocator.allocator STATIC
     pw_result
   SOURCES
     allocator.cc
-    as_pmr_allocator.cc
 )
 
 pw_add_library(pw_allocator.allocator_as_pool STATIC
@@ -124,15 +122,24 @@ pw_add_library(pw_allocator.bucket STATIC
     bucket.cc
 )
 
-pw_add_library(pw_allocator.bucket_block_allocator INTERFACE
+pw_add_library(pw_allocator.bucket_allocator INTERFACE
   HEADERS
-    public/pw_allocator/bucket_block_allocator.h
+    public/pw_allocator/bucket_allocator.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
     pw_allocator.block_allocator
     pw_allocator.bucket
     pw_status
+)
+
+pw_add_library(pw_allocator.bucket_block_allocator INTERFACE
+  HEADERS
+    public/pw_allocator/bucket_block_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.bucket_allocator
 )
 
 pw_add_library(pw_allocator.buddy_allocator STATIC
@@ -266,7 +273,7 @@ pw_add_library(pw_allocator.freelist_heap INTERFACE
     public
   PUBLIC_DEPS
     pw_allocator.block
-    pw_allocator.bucket_block_allocator
+    pw_allocator.bucket_allocator
     pw_assert
     pw_bytes
     pw_preprocessor
@@ -302,6 +309,17 @@ pw_add_library(pw_allocator.null_allocator STATIC
     public
   PUBLIC_DEPS
     pw_allocator.allocator
+)
+
+pw_add_library(pw_allocator.pmr_allocator STATIC
+  HEADERS
+    public/pw_allocator/pmr_allocator.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_allocator.allocator
+  SOURCES
+    pmr_allocator.cc
 )
 
 pw_add_library(pw_allocator.pool INTERFACE
@@ -394,6 +412,7 @@ pw_add_library(pw_allocator.block_testing INTERFACE
     pw_bytes.alignment
     pw_bytes
     pw_result
+    pw_third_party.fuchsia.stdcompat
 )
 
 pw_add_library(pw_allocator.block_allocator_testing STATIC
@@ -465,18 +484,6 @@ pw_add_test(pw_allocator.allocator_test
     pw_allocator
 )
 
-pw_add_test(pw_allocator.as_pmr_allocator_test
-  SOURCES
-    as_pmr_allocator_test.cc
-  PRIVATE_DEPS
-    pw_allocator.allocator
-    pw_allocator.testing
-    pw_unit_test
-  GROUPS
-    modules
-    pw_allocator
-)
-
 pw_add_test(pw_allocator.best_fit_block_allocator_test
   SOURCES
     best_fit_block_allocator_test.cc
@@ -499,12 +506,12 @@ pw_add_test(pw_allocator.block_test
     pw_allocator
 )
 
-pw_add_test(pw_allocator.bucket_block_allocator_test
+pw_add_test(pw_allocator.bucket_allocator_test
   SOURCES
-    bucket_block_allocator_test.cc
+    bucket_allocator_test.cc
   PRIVATE_DEPS
     pw_allocator.block_allocator_testing
-    pw_allocator.bucket_block_allocator
+    pw_allocator.bucket_allocator
   GROUPS
     modules
     pw_allocator
@@ -654,6 +661,18 @@ pw_add_test(pw_allocator.null_allocator_test
     null_allocator_test.cc
   PRIVATE_DEPS
     pw_allocator.null_allocator
+    pw_allocator.testing
+    pw_unit_test
+  GROUPS
+    modules
+    pw_allocator
+)
+
+pw_add_test(pw_allocator.pmr_allocator_test
+  SOURCES
+    pmr_allocator_test.cc
+  PRIVATE_DEPS
+    pw_allocator.pmr_allocator
     pw_allocator.testing
     pw_unit_test
   GROUPS
