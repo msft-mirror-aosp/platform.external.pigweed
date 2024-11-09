@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_allocator/as_pmr_allocator.h"
+#include "pw_allocator/pmr_allocator.h"
 
 #include <vector>
 
@@ -27,7 +27,7 @@ int main() {
   reporter.SetBaseline();
 
   pw::allocator::FirstFitBlockAllocator<uint16_t> base(reporter.buffer());
-  pw::allocator::AsPmrAllocator allocator(base);
+  pw::allocator::PmrAllocator allocator(base);
   std::pmr::vector<Bar> vec(allocator);
   vec.emplace_back(1);
   PW_CHECK_UINT_EQ(vec.size(), 1U);

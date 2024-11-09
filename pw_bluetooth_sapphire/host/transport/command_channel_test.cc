@@ -151,14 +151,16 @@ TEST_F(CommandChannelTest, SingleAsynchronousRequest) {
   CommandChannel::TransactionId id;
   int cb_count = 0;
   auto cb = [&cb_count, &id](CommandChannel::TransactionId callback_id,
-                             const EventPacket& event) {
+                             const EmbossEventPacket& event) {
     cb_count++;
     EXPECT_EQ(callback_id, id);
     if (cb_count == 1) {
       ASSERT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
-      const auto params = event.params<hci_spec::CommandStatusEventParams>();
-      EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS, params.status);
-      EXPECT_EQ(hci_spec::kInquiry, params.command_opcode);
+      auto view = event.view<pw::bluetooth::emboss::CommandStatusEventView>();
+      EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS,
+                view.status().Read());
+      EXPECT_EQ(pw::bluetooth::emboss::OpCode::INQUIRY,
+                view.command_opcode_enum().Read());
     } else {
       EXPECT_EQ(hci_spec::kInquiryCompleteEventCode, event.event_code());
       EXPECT_EQ(fit::ok(), event.ToResult());
@@ -199,20 +201,14 @@ TEST_F(CommandChannelTest, SingleRequestWithStatusResponse) {
   // Send HCI_Reset
   CommandChannel::TransactionId id;
   auto complete_cb = [&id](CommandChannel::TransactionId callback_id,
-                           const EventPacket& event) {
+                           const EmbossEventPacket& event) {
     EXPECT_EQ(callback_id, id);
     EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
-    EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS,
-              event.params<hci_spec::CommandStatusEventParams>().status);
-    EXPECT_EQ(1,
-              event.view()
-                  .payload<hci_spec::CommandStatusEventParams>()
-                  .num_hci_command_packets);
-    EXPECT_EQ(
-        hci_spec::kReset,
-        pw::bytes::ConvertOrderFrom(
-            cpp20::endian::little,
-            event.params<hci_spec::CommandStatusEventParams>().command_opcode));
+    auto view = event.view<pw::bluetooth::emboss::CommandStatusEventView>();
+    EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS, view.status().Read());
+    EXPECT_EQ(1, view.num_hci_command_packets().Read());
+    EXPECT_EQ(pw::bluetooth::emboss::OpCode::RESET,
+              view.command_opcode_enum().Read());
   };
 
   auto reset =
@@ -267,19 +263,18 @@ TEST_F(CommandChannelTest, OneSentUntilStatus) {
       [&transaction_count]() { transaction_count++; });
 
   auto cb = [&cb_event_count](CommandChannel::TransactionId,
-                              const EventPacket& event) {
+                              const EmbossEventPacket& event) {
     EXPECT_EQ(hci_spec::kCommandCompleteEventCode, event.event_code());
-    hci_spec::OpCode expected_opcode;
+    pw::bluetooth::emboss::OpCode expected_opcode;
     if (cb_event_count == 0u) {
-      expected_opcode = hci_spec::kReset;
+      expected_opcode = pw::bluetooth::emboss::OpCode::RESET;
     } else {
-      expected_opcode = hci_spec::kInquiryCancel;
+      expected_opcode = pw::bluetooth::emboss::OpCode::INQUIRY_CANCEL;
     }
     EXPECT_EQ(expected_opcode,
-              pw::bytes::ConvertOrderFrom(
-                  cpp20::endian::little,
-                  event.params<hci_spec::CommandCompleteEventParams>()
-                      .command_opcode));
+              event.view<pw::bluetooth::emboss::CommandCompleteEventView>()
+                  .command_opcode_enum()
+                  .Read());
     cb_event_count++;
   };
 
@@ -355,14 +350,15 @@ TEST_F(CommandChannelTest, QueuedCommands) {
       [&transaction_count]() { transaction_count++; });
 
   auto cb = [&reset_count, &cancel_count](CommandChannel::TransactionId id,
-                                          const EventPacket& event) {
+                                          const EmbossEventPacket& event) {
     EXPECT_EQ(hci_spec::kCommandCompleteEventCode, event.event_code());
-    uint16_t opcode = pw::bytes::ConvertOrderFrom(
-        cpp20::endian::little,
-        event.params<hci_spec::CommandCompleteEventParams>().command_opcode);
-    if (opcode == hci_spec::kReset) {
+    pw::bluetooth::emboss::OpCode opcode =
+        event.view<pw::bluetooth::emboss::CommandCompleteEventView>()
+            .command_opcode_enum()
+            .Read();
+    if (opcode == pw::bluetooth::emboss::OpCode::RESET) {
       reset_count++;
-    } else if (opcode == hci_spec::kInquiryCancel) {
+    } else if (opcode == pw::bluetooth::emboss::OpCode::INQUIRY_CANCEL) {
       cancel_count++;
     } else {
       EXPECT_TRUE(false) << "Unexpected opcode in command callback!";
@@ -452,7 +448,7 @@ TEST_F(CommandChannelTest, AsynchronousCommands) {
 
   auto cb = [&id1, &id2, &cb_count, kTestEventCode0](
                 CommandChannel::TransactionId callback_id,
-                const EventPacket& event) {
+                const EmbossEventPacket& event) {
     if (cb_count < 2) {
       EXPECT_EQ(id1, callback_id);
     } else {
@@ -460,8 +456,10 @@ TEST_F(CommandChannelTest, AsynchronousCommands) {
     }
     if ((cb_count % 2) == 0) {
       EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
-      auto params = event.params<hci_spec::CommandStatusEventParams>();
-      EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS, params.status);
+      EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS,
+                event.view<pw::bluetooth::emboss::CommandStatusEventView>()
+                    .status()
+                    .Read());
     } else if ((cb_count % 2) == 1) {
       EXPECT_EQ(kTestEventCode0, event.event_code());
     }
@@ -498,7 +496,7 @@ TEST_F(CommandChannelTest, AsynchronousCommands) {
   // the asynchronous command.
   auto event_id0 = cmd_channel()->AddEventHandler(
       kTestEventCode0,
-      [](const EventPacket&) { return EventCallbackResult::kContinue; });
+      [](const EmbossEventPacket&) { return EventCallbackResult::kContinue; });
   EXPECT_EQ(0u, event_id0);
 
   // Finish out the commands.
@@ -561,14 +559,16 @@ TEST_F(CommandChannelTest, AsyncQueueWhenBlocked) {
   size_t cb_count = 0;
   auto cb = [&cb_count, &id, kTestEventCode0](
                 CommandChannel::TransactionId callback_id,
-                const EventPacket& event) {
+                const EmbossEventPacket& event) {
     cb_count++;
     EXPECT_EQ(callback_id, id);
     if (cb_count == 1) {
       ASSERT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
-      const auto params = event.params<hci_spec::CommandStatusEventParams>();
-      EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS, params.status);
-      EXPECT_EQ(hci_spec::kReset, params.command_opcode);
+      auto view = event.view<pw::bluetooth::emboss::CommandStatusEventView>();
+      EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS,
+                view.status().Read());
+      EXPECT_EQ(pw::bluetooth::emboss::OpCode::RESET,
+                view.command_opcode_enum().Read());
     } else {
       EXPECT_EQ(kTestEventCode0, event.event_code());
     }
@@ -587,7 +587,7 @@ TEST_F(CommandChannelTest, AsyncQueueWhenBlocked) {
   // This returns invalid because an async command is registered.
   auto invalid_id = cmd_channel()->AddEventHandler(
       kTestEventCode0,
-      [](const EventPacket&) { return EventCallbackResult::kContinue; });
+      [](const EmbossEventPacket&) { return EventCallbackResult::kContinue; });
 
   RunUntilIdle();
 
@@ -617,21 +617,24 @@ TEST_F(CommandChannelTest, EventHandlerBasic) {
   auto event1 = StaticByteBuffer(kTestEventCode1, 0x00);
 
   int event_count0 = 0;
-  auto event_cb0 = [&event_count0, kTestEventCode0](const EventPacket& event) {
+  auto event_cb0 = [&event_count0,
+                    kTestEventCode0](const EmbossEventPacket& event) {
     event_count0++;
     EXPECT_EQ(kTestEventCode0, event.event_code());
     return EventCallbackResult::kContinue;
   };
 
   int event_count1 = 0;
-  auto event_cb1 = [&event_count1, kTestEventCode0](const EventPacket& event) {
+  auto event_cb1 = [&event_count1,
+                    kTestEventCode0](const EmbossEventPacket& event) {
     event_count1++;
     EXPECT_EQ(kTestEventCode0, event.event_code());
     return EventCallbackResult::kContinue;
   };
 
   int event_count2 = 0;
-  auto event_cb2 = [&event_count2, kTestEventCode1](const EventPacket& event) {
+  auto event_cb2 = [&event_count2,
+                    kTestEventCode1](const EmbossEventPacket& event) {
     event_count2++;
     EXPECT_EQ(kTestEventCode1, event.event_code());
     return EventCallbackResult::kContinue;
@@ -744,11 +747,16 @@ TEST_F(CommandChannelTest, EventHandlerEventWhileTransactionPending) {
   EXPECT_CMD_PACKET_OUT(test_device(), req, &req_complete, &event, &event);
 
   int event_count = 0;
-  auto event_cb = [&event_count, kTestEventCode](const EventPacket& event) {
+  auto event_cb = [&event_count,
+                   kTestEventCode](const EmbossEventPacket& event) {
     event_count++;
     EXPECT_EQ(kTestEventCode, event.event_code());
-    EXPECT_EQ(1u, event.view().header().parameter_total_size);
-    EXPECT_EQ(1u, event.view().payload_size());
+    EXPECT_EQ(1u,
+              event.view<pw::bluetooth::emboss::EventHeaderView>()
+                  .parameter_total_size()
+                  .Read());
+    EXPECT_EQ(pw::bluetooth::emboss::EventHeader::IntrinsicSizeInBytes() + 1u,
+              event.size());
     return EventCallbackResult::kContinue;
   };
 
@@ -847,7 +855,7 @@ TEST_F(CommandChannelTest, RemoveQueuedQueuedSyncCommand) {
       [&transaction_count]() { transaction_count++; });
 
   auto event_cb = [](CommandChannel::TransactionId id,
-                     const EventPacket& event,
+                     const EmbossEventPacket& event,
                      int* event_count) {
     EXPECT_EQ(hci_spec::kCommandCompleteEventCode, event.event_code());
     (*event_count)++;
@@ -941,7 +949,7 @@ TEST_F(CommandChannelTest, RemoveQueuedQueuedAsyncCommand) {
       [&transaction_count]() { transaction_count++; });
 
   auto event_cb = [](CommandChannel::TransactionId id,
-                     const EventPacket& event,
+                     const EmbossEventPacket& event,
                      int* event_count) { (*event_count)++; };
 
   // Send two read commands so that the second one is queued up.
@@ -998,7 +1006,9 @@ TEST_F(CommandChannelTest, RemoveQueuedCompletedAsyncCommand) {
 
   int event_count = 0;
   auto event_cb = [&event_count](CommandChannel::TransactionId id,
-                                 const EventPacket& event) { event_count++; };
+                                 const EmbossEventPacket& event) {
+    event_count++;
+  };
 
   auto packet = MakeReadRemoteSupportedFeatures(0x0001);
   auto id = cmd_channel()->SendCommand(
@@ -1035,7 +1045,7 @@ TEST_F(CommandChannelTest, RemoveQueuedAsyncCommandPendingUpdate) {
   CommandChannel::TransactionId cmd_id;
   int cmd_events = 0;
   auto cmd_cb = [&cmd_id, &cmd_events](CommandChannel::TransactionId id,
-                                       const EventPacket& event) {
+                                       const EmbossEventPacket& event) {
     EXPECT_EQ(cmd_id, id);
     if (cmd_events == 0) {
       EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
@@ -1084,7 +1094,7 @@ TEST_F(CommandChannelTest, RemoveQueuedAsyncCommandPendingCompletion) {
   CommandChannel::TransactionId cmd_id;
   int cmd_events = 0;
   auto cmd_cb = [&cmd_id, &cmd_events](CommandChannel::TransactionId id,
-                                       const EventPacket& event) {
+                                       const EmbossEventPacket& event) {
     EXPECT_EQ(cmd_id, id);
     if (cmd_events == 0) {
       EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
@@ -1196,21 +1206,25 @@ TEST_F(CommandChannelTest, LEMetaEventHandler) {
 
   int event_count0 = 0;
   auto event_cb0 = [&event_count0,
-                    kTestSubeventCode0](const EventPacket& event) {
+                    kTestSubeventCode0](const EmbossEventPacket& event) {
     event_count0++;
     EXPECT_EQ(hci_spec::kLEMetaEventCode, event.event_code());
     EXPECT_EQ(kTestSubeventCode0,
-              event.params<hci_spec::LEMetaEventParams>().subevent_code);
+              event.view<pw::bluetooth::emboss::LEMetaEventView>()
+                  .subevent_code()
+                  .Read());
     return EventCallbackResult::kContinue;
   };
 
   int event_count1 = 0;
   auto event_cb1 = [&event_count1,
-                    kTestSubeventCode1](const EventPacket& event) {
+                    kTestSubeventCode1](const EmbossEventPacket& event) {
     event_count1++;
     EXPECT_EQ(hci_spec::kLEMetaEventCode, event.event_code());
     EXPECT_EQ(kTestSubeventCode1,
-              event.params<hci_spec::LEMetaEventParams>().subevent_code);
+              event.view<pw::bluetooth::emboss::LEMetaEventView>()
+                  .subevent_code()
+                  .Read());
     return EventCallbackResult::kContinue;
   };
 
@@ -1264,9 +1278,10 @@ TEST_F(CommandChannelTest, EventHandlerIdsDontCollide) {
                 }));
   EXPECT_EQ(
       2u,
-      cmd_channel()->AddEventHandler(
-          hci_spec::kDisconnectionCompleteEventCode,
-          [](const EventPacket&) { return EventCallbackResult::kContinue; }));
+      cmd_channel()->AddEventHandler(hci_spec::kDisconnectionCompleteEventCode,
+                                     [](const EmbossEventPacket&) {
+                                       return EventCallbackResult::kContinue;
+                                     }));
 }
 
 // Tests:
@@ -1274,11 +1289,11 @@ TEST_F(CommandChannelTest, EventHandlerIdsDontCollide) {
 TEST_F(CommandChannelTest, EventHandlerRestrictions) {
   auto id0 = cmd_channel()->AddEventHandler(
       hci_spec::kCommandStatusEventCode,
-      [](const EventPacket&) { return EventCallbackResult::kContinue; });
+      [](const EmbossEventPacket&) { return EventCallbackResult::kContinue; });
   EXPECT_EQ(0u, id0);
   id0 = cmd_channel()->AddEventHandler(
       hci_spec::kCommandCompleteEventCode,
-      [](const EventPacket&) { return EventCallbackResult::kContinue; });
+      [](const EmbossEventPacket&) { return EventCallbackResult::kContinue; });
   EXPECT_EQ(0u, id0);
 }
 
@@ -1302,10 +1317,12 @@ TEST_F(CommandChannelTest,
 
   // Add LE event handler for kTestEventCode
   int le_event_count = 0;
-  auto le_event_cb = [&](const EventPacket& event) {
+  auto le_event_cb = [&](const EmbossEventPacket& event) {
     EXPECT_EQ(hci_spec::kLEMetaEventCode, event.event_code());
     EXPECT_EQ(kTestEventCode,
-              event.params<hci_spec::LEMetaEventParams>().subevent_code);
+              event.view<pw::bluetooth::emboss::LEMetaEventView>()
+                  .subevent_code()
+                  .Read());
     le_event_count++;
     return EventCallbackResult::kContinue;
   };
@@ -1315,7 +1332,7 @@ TEST_F(CommandChannelTest,
   // Initiate the async transaction with kTestEventCode as its completion code
   // (we use hci_spec::kInquiry as a test opcode).
   int async_cmd_cb_count = 0;
-  auto async_cmd_cb = [&](auto id, const EventPacket& event) {
+  auto async_cmd_cb = [&](auto id, const EmbossEventPacket& event) {
     if (async_cmd_cb_count == 0) {
       EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
     } else {
@@ -1562,7 +1579,7 @@ TEST_F(CommandChannelTest, AsynchronousCommandChaining) {
         &id2,
         &cb_count,
         kTestEventCode0](CommandChannel::TransactionId callback_id,
-                         const EventPacket& event) {
+                         const EmbossEventPacket& event) {
     if (cb_count < kExpectedCallbacksPerCommand) {
       EXPECT_EQ(id1, callback_id);
     } else {
@@ -1571,8 +1588,10 @@ TEST_F(CommandChannelTest, AsynchronousCommandChaining) {
     if ((cb_count % 2) == 0) {
       // First event from each command - CommandStatus
       EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
-      auto params = event.params<hci_spec::CommandStatusEventParams>();
-      EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS, params.status);
+      EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS,
+                event.view<pw::bluetooth::emboss::CommandStatusEventView>()
+                    .status()
+                    .Read());
     } else {
       // Second event from each command - completion event
       EXPECT_EQ(kTestEventCode0, event.event_code());
@@ -1681,7 +1700,8 @@ TEST_F(CommandChannelTest, ExclusiveCommands) {
 
   size_t nonexclusive_cb_count = 0;
   CommandChannel::CommandCallback nonexclusive_cb =
-      [&nonexclusive_cb_count](auto callback_id, const EventPacket& event) {
+      [&nonexclusive_cb_count](auto callback_id,
+                               const EmbossEventPacket& event) {
         EXPECT_EQ(hci_spec::kCommandCompleteEventCode, event.event_code());
         nonexclusive_cb_count++;
       };
@@ -1696,7 +1716,7 @@ TEST_F(CommandChannelTest, ExclusiveCommands) {
                   kExclOneCompleteEvent,
                   kExclTwoCompleteEvent](
                      CommandChannel::TransactionId callback_id,
-                     const EventPacket& event) {
+                     const EmbossEventPacket& event) {
     // Expected event -> Action in response
     // 0. Status for kExclusiveOne -> Send a kExclusiveTwo
     // 1. Complete for kExclusiveOne -> Send Another kExclusiveOne and
@@ -1710,8 +1730,10 @@ TEST_F(CommandChannelTest, ExclusiveCommands) {
         // Status for kExclusiveOne -> Send kExclusiveTwo (queued)
         EXPECT_EQ(id1, callback_id);
         EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
-        auto params = event.params<hci_spec::CommandStatusEventParams>();
-        EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS, params.status);
+        EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS,
+                  event.view<pw::bluetooth::emboss::CommandStatusEventView>()
+                      .status()
+                      .Read());
         auto packet =
             EmbossCommandPacket::New<pw::bluetooth::emboss::CommandHeaderView>(
                 kExclusiveTwo);
@@ -1745,8 +1767,10 @@ TEST_F(CommandChannelTest, ExclusiveCommands) {
       case 2: {  // Status for kExclusiveTwo
         EXPECT_EQ(id2, callback_id);
         EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
-        auto params = event.params<hci_spec::CommandStatusEventParams>();
-        EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS, params.status);
+        EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS,
+                  event.view<pw::bluetooth::emboss::CommandStatusEventView>()
+                      .status()
+                      .Read());
         break;
       }
       case 3: {  // Complete for kExclusiveTwo
@@ -1757,8 +1781,10 @@ TEST_F(CommandChannelTest, ExclusiveCommands) {
       case 4: {  // Status for Second kExclusiveOne
         EXPECT_EQ(id3, callback_id);
         EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
-        auto params = event.params<hci_spec::CommandStatusEventParams>();
-        EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS, params.status);
+        EXPECT_EQ(pw::bluetooth::emboss::StatusCode::SUCCESS,
+                  event.view<pw::bluetooth::emboss::CommandStatusEventView>()
+                      .status()
+                      .Read());
         break;
       }
       case 5: {  // Complete for Second kExclusiveOne
@@ -1832,8 +1858,9 @@ TEST_F(CommandChannelTest, SendCommandFailsIfEventHandlerInstalled) {
 
   // Register event handler for kTestEventCode0.
   auto id0 = cmd_channel()->AddEventHandler(
-      kTestEventCode0,
-      [](const EventPacket& event) { return EventCallbackResult::kContinue; });
+      kTestEventCode0, [](const EmbossEventPacket& event) {
+        return EventCallbackResult::kContinue;
+      });
   EXPECT_NE(0u, id0);
 
   // Try to send a command for kTestEventCode0. SendCommand should fail for a
@@ -1852,7 +1879,8 @@ TEST_F(CommandChannelTest, EventHandlerResults) {
   constexpr hci_spec::EventCode kTestEventCode0 = 0xFE;
 
   int event_count = 0;
-  auto event_cb = [&event_count, kTestEventCode0](const EventPacket& event) {
+  auto event_cb = [&event_count,
+                   kTestEventCode0](const EmbossEventPacket& event) {
     event_count++;
     EXPECT_EQ(kTestEventCode0, event.event_code());
 
@@ -1907,7 +1935,7 @@ TEST_F(CommandChannelTest, SendCommandWithLEMetaEventSubeventRsp) {
           kOpCode);
 
   size_t event_count = 0;
-  auto event_cb = [&event_count](auto, const EventPacket& event) {
+  auto event_cb = [&event_count](auto, const EmbossEventPacket& event) {
     switch (event_count) {
       case 0: {
         EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
@@ -1960,7 +1988,7 @@ TEST_F(
       cmd_channel()->SendLeAsyncCommand(
           EmbossCommandPacket::New<pw::bluetooth::emboss::CommandHeaderView>(
               kOpCode),
-          [](auto, const auto&) {},
+          [](auto, const EmbossEventPacket&) {},
           kSubeventCode));
 
   auto cmd = StaticByteBuffer(LowerBits(kOpCode),
@@ -1973,7 +2001,7 @@ TEST_F(
       cmd_channel()->SendLeAsyncCommand(
           EmbossCommandPacket::New<pw::bluetooth::emboss::CommandHeaderView>(
               kOpCode),
-          [](auto, const auto&) {},
+          [](auto, const EmbossEventPacket&) {},
           kSubeventCode + 1));
   RunUntilIdle();
 }
@@ -2025,7 +2053,7 @@ TEST_F(CommandChannelTest,
   EXPECT_CMD_PACKET_OUT(test_device(), cmd0, &cmd0_status_event);
 
   size_t event_count_0 = 0;
-  auto event_cb_0 = [&event_count_0](auto, const EventPacket& event) {
+  auto event_cb_0 = [&event_count_0](auto, const EmbossEventPacket& event) {
     switch (event_count_0) {
       case 0: {
         EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
@@ -2052,7 +2080,7 @@ TEST_F(CommandChannelTest,
   EXPECT_EQ(1u, event_count_0);
 
   size_t event_count_1 = 0;
-  auto event_cb_1 = [&event_count_1](auto, const EventPacket& event) {
+  auto event_cb_1 = [&event_count_1](auto, const EmbossEventPacket& event) {
     switch (event_count_1) {
       case 0: {
         EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
@@ -2121,7 +2149,7 @@ TEST_F(
   EXPECT_CMD_PACKET_OUT(test_device(), cmd, &cmd_status_event);
 
   size_t event_count = 0;
-  auto event_cb = [&event_count](auto, const EventPacket& event) {
+  auto event_cb = [&event_count](auto, const EmbossEventPacket& event) {
     EXPECT_EQ(hci_spec::kCommandStatusEventCode, event.event_code());
     event_count++;
   };
