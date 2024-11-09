@@ -27,9 +27,11 @@ namespace {
 
 using ::pw::allocator::test::AllocatorForTest;
 using ::pw::async2::Context;
+using ::pw::async2::Dispatcher;
 using ::pw::async2::Pending;
 using ::pw::async2::Poll;
 using ::pw::async2::Ready;
+using ::pw::async2::Task;
 using ::pw::async2::Waker;
 using ::pw::channel::ByteChannel;
 using ::pw::channel::DatagramWriter;
@@ -52,9 +54,8 @@ class ReliableByteReaderWriterStub
  private:
   // Read functions
 
-  pw::async2::Poll<pw::Result<pw::multibuf::MultiBuf>> DoPendRead(
-      pw::async2::Context&) override {
-    return pw::async2::Pending();
+  Poll<pw::Result<pw::multibuf::MultiBuf>> DoPendRead(Context&) override {
+    return Pending();
   }
 
   // Write functions
@@ -62,32 +63,24 @@ class ReliableByteReaderWriterStub
   // Disable maybe-uninitialized: this check fails erroniously on Windows GCC.
   PW_MODIFY_DIAGNOSTICS_PUSH();
   PW_MODIFY_DIAGNOSTIC_GCC(ignored, "-Wmaybe-uninitialized");
-  pw::async2::Poll<pw::Status> DoPendReadyToWrite(
-      pw::async2::Context&) override {
-    return pw::async2::Pending();
-  }
+  Poll<pw::Status> DoPendReadyToWrite(Context&) override { return Pending(); }
   PW_MODIFY_DIAGNOSTICS_POP();
 
-  pw::multibuf::MultiBufAllocator& DoGetWriteAllocator() override {
-    // `DoPendReadyToWrite` never returns `Ready`, so this is not callable.
-    PW_CHECK(false);
+  Poll<std::optional<MultiBuf>> DoPendAllocateWriteBuffer(Context&,
+                                                          size_t) override {
+    return std::nullopt;
   }
 
-  pw::Result<pw::channel::WriteToken> DoStageWrite(
-      pw::multibuf::MultiBuf&&) override {
+  pw::Status DoStageWrite(pw::multibuf::MultiBuf&&) override {
     return pw::Status::Unimplemented();
   }
 
-  pw::async2::Poll<pw::Result<pw::channel::WriteToken>> DoPendWrite(
-      pw::async2::Context&) override {
-    return pw::async2::Ready(
-        pw::Result<pw::channel::WriteToken>(pw::Status::Unimplemented()));
+  Poll<pw::Status> DoPendWrite(Context&) override {
+    return Ready(pw::Status::Unimplemented());
   }
 
   // Common functions
-  pw::async2::Poll<pw::Status> DoPendClose(pw::async2::Context&) override {
-    return pw::OkStatus();
-  }
+  Poll<pw::Status> DoPendClose(Context&) override { return pw::OkStatus(); }
 };
 
 class ReadOnlyStub : public pw::channel::ByteReader {
@@ -96,58 +89,48 @@ class ReadOnlyStub : public pw::channel::ByteReader {
 
  private:
   // Read functions
-  pw::async2::Poll<pw::Result<pw::multibuf::MultiBuf>> DoPendRead(
-      pw::async2::Context&) override {
-    return pw::async2::Pending();
+  Poll<pw::Result<pw::multibuf::MultiBuf>> DoPendRead(Context&) override {
+    return Pending();
   }
 
-  pw::async2::Poll<pw::Status> DoPendClose(pw::async2::Context&) override {
-    return pw::OkStatus();
-  }
+  Poll<pw::Status> DoPendClose(Context&) override { return pw::OkStatus(); }
 };
 
 class WriteOnlyStub : public pw::channel::ByteWriter {
  private:
   // Write functions
 
-  pw::async2::Poll<pw::Status> DoPendReadyToWrite(
-      pw::async2::Context&) override {
-    return pw::async2::Pending();
+  Poll<pw::Status> DoPendReadyToWrite(Context&) override { return Pending(); }
+
+  Poll<std::optional<MultiBuf>> DoPendAllocateWriteBuffer(Context&,
+                                                          size_t) override {
+    return std::nullopt;
   }
 
-  pw::multibuf::MultiBufAllocator& DoGetWriteAllocator() override {
-    PW_CHECK(false);
-  }
-
-  pw::Result<pw::channel::WriteToken> DoStageWrite(
-      pw::multibuf::MultiBuf&&) override {
+  pw::Status DoStageWrite(pw::multibuf::MultiBuf&&) override {
     return pw::Status::Unimplemented();
   }
 
-  pw::async2::Poll<pw::Result<pw::channel::WriteToken>> DoPendWrite(
-      pw::async2::Context&) override {
-    return pw::async2::Ready(
-        pw::Result<pw::channel::WriteToken>(pw::Status::Unimplemented()));
+  Poll<pw::Status> DoPendWrite(Context&) override {
+    return Ready(pw::Status::Unimplemented());
   }
 
   // Common functions
-  pw::async2::Poll<pw::Status> DoPendClose(pw::async2::Context&) override {
-    return pw::OkStatus();
-  }
+  Poll<pw::Status> DoPendClose(Context&) override { return pw::OkStatus(); }
 };
 
 TEST(Channel, MethodsShortCircuitAfterCloseReturnsReady) {
-  pw::async2::Dispatcher dispatcher;
+  Dispatcher dispatcher;
 
-  class : public pw::async2::Task {
+  class : public Task {
    public:
     ReliableByteReaderWriterStub channel;
 
    private:
-    pw::async2::Poll<> DoPend(pw::async2::Context& cx) override {
+    Poll<> DoPend(Context& cx) override {
       EXPECT_TRUE(channel.is_read_open());
       EXPECT_TRUE(channel.is_write_open());
-      EXPECT_EQ(pw::async2::Ready(pw::OkStatus()), channel.PendClose(cx));
+      EXPECT_EQ(Ready(pw::OkStatus()), channel.PendClose(cx));
       EXPECT_FALSE(channel.is_read_open());
       EXPECT_FALSE(channel.is_write_open());
 
@@ -155,12 +138,10 @@ TEST(Channel, MethodsShortCircuitAfterCloseReturnsReady) {
                 channel.PendRead(cx)->status());
       EXPECT_EQ(Ready(pw::Status::FailedPrecondition()),
                 channel.PendReadyToWrite(cx));
-      EXPECT_EQ(pw::Status::FailedPrecondition(),
-                channel.PendWrite(cx)->status());
-      EXPECT_EQ(pw::async2::Ready(pw::Status::FailedPrecondition()),
-                channel.PendClose(cx));
+      EXPECT_EQ(Ready(pw::Status::FailedPrecondition()), channel.PendWrite(cx));
+      EXPECT_EQ(Ready(pw::Status::FailedPrecondition()), channel.PendClose(cx));
 
-      return pw::async2::Ready();
+      return Ready();
     }
   } test_task;
   dispatcher.Post(test_task);
@@ -244,7 +225,7 @@ class TestByteReader : public ByteChannel<kReliable, kReadable> {
 
 class TestDatagramWriter : public DatagramWriter {
  public:
-  TestDatagramWriter(MultiBufAllocator& alloc) : alloc_(alloc) {}
+  TestDatagramWriter(MultiBufAllocator& alloc) : alloc_fut_(alloc) {}
 
   const pw::multibuf::MultiBuf& last_datagram() const { return last_dgram_; }
 
@@ -280,29 +261,30 @@ class TestDatagramWriter : public DatagramWriter {
     return Pending();
   }
 
-  pw::Result<pw::channel::WriteToken> DoStageWrite(MultiBuf&& buffer) override {
+  pw::Status DoStageWrite(MultiBuf&& buffer) override {
     if (state_ != kReadyToWrite) {
       return pw::Status::Unavailable();
     }
 
     state_ = kWritePending;
     last_dgram_ = std::move(buffer);
-    return CreateWriteToken(++last_write_);
+    return pw::OkStatus();
   }
 
-  pw::multibuf::MultiBufAllocator& DoGetWriteAllocator() override {
-    return alloc_;
+  Poll<std::optional<MultiBuf>> DoPendAllocateWriteBuffer(
+      Context& cx, size_t min_bytes) override {
+    alloc_fut_.SetDesiredSize(min_bytes);
+    return alloc_fut_.Pend(cx);
   }
 
-  Poll<pw::Result<pw::channel::WriteToken>> DoPendWrite(Context& cx) override {
+  Poll<pw::Status> DoPendWrite(Context& cx) override {
     if (state_ != kReadyToFlush) {
       PW_ASYNC_STORE_WAKER(
           cx, waker_, "TestDatagramWriter is waiting for its Channel to flush");
       return Pending();
     }
     last_flush_ = last_write_;
-    return Ready(
-        pw::Result<pw::channel::WriteToken>(CreateWriteToken(last_flush_)));
+    return pw::OkStatus();
   }
 
   Poll<pw::Status> DoPendClose(Context&) override {
@@ -319,7 +301,7 @@ class TestDatagramWriter : public DatagramWriter {
   uint32_t last_write_ = 0;
   uint32_t last_flush_ = 0;
   MultiBuf last_dgram_;
-  MultiBufAllocator& alloc_;
+  MultiBufAllocationFuture alloc_fut_;
 };
 
 TEST(Channel, TestByteReader) {
@@ -327,7 +309,7 @@ TEST(Channel, TestByteReader) {
   static constexpr size_t kReadDataSize = sizeof(kReadData);
   static constexpr size_t kArbitraryMetaSize = 512;
 
-  pw::async2::Dispatcher dispatcher;
+  Dispatcher dispatcher;
   std::array<std::byte, kReadDataSize> data_area;
   AllocatorForTest<kArbitraryMetaSize> meta_alloc;
   SimpleAllocator simple_allocator(data_area, meta_alloc);
@@ -336,7 +318,7 @@ TEST(Channel, TestByteReader) {
   ASSERT_TRUE(read_buf_opt.has_value());
   MultiBuf& read_buf = *read_buf_opt;
 
-  class : public pw::async2::Task {
+  class : public Task {
    public:
     TestByteReader channel;
     int test_executed = 0;
@@ -375,7 +357,7 @@ TEST(Channel, TestByteReader) {
 }
 
 TEST(Channel, TestDatagramWriter) {
-  pw::async2::Dispatcher dispatcher;
+  Dispatcher dispatcher;
   static constexpr size_t kArbitraryDataSize = 128;
   static constexpr size_t kArbitraryMetaSize = 512;
   std::array<std::byte, kArbitraryDataSize> data_area;
@@ -385,7 +367,7 @@ TEST(Channel, TestDatagramWriter) {
 
   static constexpr char kWriteData[] = "Hello there";
 
-  class SendWriteDataAndFlush : public pw::async2::Task {
+  class SendWriteDataAndFlush : public Task {
    public:
     explicit SendWriteDataAndFlush(DatagramWriter& channel, size_t)
         : channel_(channel) {}
@@ -398,15 +380,11 @@ TEST(Channel, TestDatagramWriter) {
           if (channel_.PendReadyToWrite(cx).IsPending()) {
             return Pending();
           }
-          if (!allocation_future_.has_value()) {
-            allocation_future_ =
-                channel_.GetWriteAllocator().AllocateAsync(sizeof(kWriteData));
-          }
-          Poll<std::optional<MultiBuf>> buffer = allocation_future_->Pend(cx);
+          Poll<std::optional<MultiBuf>> buffer =
+              channel_.PendAllocateWriteBuffer(cx, sizeof(kWriteData));
           if (buffer.IsPending()) {
             return Pending();
           }
-          allocation_future_ = std::nullopt;
           if (!buffer->has_value()) {
             // Allocator should have enough space for `kWriteData`.
             ADD_FAILURE();
@@ -414,15 +392,14 @@ TEST(Channel, TestDatagramWriter) {
           }
           pw::ConstByteSpan str(pw::as_bytes(pw::span(kWriteData)));
           std::copy(str.begin(), str.end(), (**buffer).begin());
-          auto token = channel_.StageWrite(std::move(**buffer));
-          PW_CHECK(token.ok());
-          write_token_ = *token;
+          pw::Status write_status = channel_.StageWrite(std::move(**buffer));
+          PW_CHECK_OK(write_status);
           state_ = kFlushPacket;
           [[fallthrough]];
         }
         case kFlushPacket: {
           auto result = channel_.PendWrite(cx);
-          if (result.IsPending() || **result < write_token_) {
+          if (result.IsPending()) {
             return Pending();
           }
           test_executed += 1;
@@ -440,9 +417,7 @@ TEST(Channel, TestDatagramWriter) {
     }
 
     enum { kWaitUntilReady, kFlushPacket } state_ = kWaitUntilReady;
-    std::optional<MultiBufAllocationFuture> allocation_future_;
     DatagramWriter& channel_;
-    pw::channel::WriteToken write_token_;
   };
 
   SendWriteDataAndFlush test_task(write_channel, 24601);

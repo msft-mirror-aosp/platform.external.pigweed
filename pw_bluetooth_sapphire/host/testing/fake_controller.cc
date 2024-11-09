@@ -301,16 +301,14 @@ void FakeController::RespondWithCommandComplete(
 
 void FakeController::RespondWithCommandStatus(hci_spec::OpCode opcode,
                                               pwemb::StatusCode status) {
-  StaticByteBuffer<sizeof(hci_spec::CommandStatusEventParams)> buffer;
-  MutablePacketView<hci_spec::CommandStatusEventParams> event(&buffer);
+  auto packet = hci::EmbossEventPacket::New<pwemb::CommandStatusEventWriter>(
+      hci_spec::kCommandStatusEventCode);
+  auto view = packet.view_t();
+  view.status().Write(status);
+  view.num_hci_command_packets().Write(settings_.num_hci_command_packets);
+  view.command_opcode_enum().Write(static_cast<pwemb::OpCode>(opcode));
 
-  event.mutable_header()->status = status;
-  event.mutable_header()->num_hci_command_packets =
-      settings_.num_hci_command_packets;
-  event.mutable_header()->command_opcode =
-      pw::bytes::ConvertOrderTo(cpp20::endian::little, opcode);
-
-  SendEvent(hci_spec::kCommandStatusEventCode, buffer);
+  SendEvent(hci_spec::kCommandStatusEventCode, &packet);
 }
 
 void FakeController::SendEvent(hci_spec::EventCode event_code,
@@ -340,7 +338,7 @@ void FakeController::SendEvent(hci_spec::EventCode event_code,
 
 void FakeController::SendLEMetaEvent(hci_spec::EventCode subevent_code,
                                      const ByteBuffer& payload) {
-  DynamicByteBuffer buffer(sizeof(hci_spec::LEMetaEventParams) +
+  DynamicByteBuffer buffer(pwemb::LEMetaEvent::IntrinsicSizeInBytes() +
                            payload.size());
   buffer[0] = subevent_code;
   buffer.Write(payload, 1);
@@ -2249,13 +2247,14 @@ void FakeController::OnReadRemoteSupportedFeaturesCommandReceived(
   RespondWithCommandStatus(hci_spec::kReadRemoteSupportedFeatures,
                            pwemb::StatusCode::SUCCESS);
 
-  hci_spec::ReadRemoteSupportedFeaturesCompleteEventParams response = {};
-  response.status = pwemb::StatusCode::SUCCESS;
-  response.connection_handle = pw::bytes::ConvertOrderTo(
-      cpp20::endian::little, params.connection_handle().Read());
-  response.lmp_features = settings_.lmp_features_page0;
-  SendEvent(hci_spec::kReadRemoteSupportedFeaturesCompleteEventCode,
-            BufferView(&response, sizeof(response)));
+  auto response = hci::EmbossEventPacket::New<
+      pwemb::ReadRemoteSupportedFeaturesCompleteEventWriter>(
+      hci_spec::kReadRemoteSupportedFeaturesCompleteEventCode);
+  auto view = response.view_t();
+  view.status().Write(pwemb::StatusCode::SUCCESS);
+  view.connection_handle().Write(params.connection_handle().Read());
+  view.lmp_features().BackingStorage().WriteUInt(settings_.lmp_features_page0);
+  SendCommandChannelPacket(response.data());
 }
 
 void FakeController::OnReadRemoteVersionInfoCommandReceived(

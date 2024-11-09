@@ -23,6 +23,10 @@ cc_library_static {
     host_supported: true,
     srcs: [
         "acl_data_channel.cc",
+        "gatt_notify_channel.cc",
+        "h4_storage.cc",
+        "l2cap_coc.cc",
+        "l2cap_write_channel.cc",
         "proxy_host.cc",
     ],
     export_include_dirs: [
@@ -34,18 +38,21 @@ cc_library_static {
     static_libs: [
         "pw_containers",
         "pw_function",
+        "pw_result",
         "pw_span",
         "pw_status",
     ],
     export_static_lib_headers: [
         "pw_containers",
         "pw_function",
+        "pw_result",
         "pw_span",
         "pw_status",
     ],
     header_libs: [
         "emboss_runtime_headers",
         "fuchsia_sdk_lib_stdcompat",
+        "pw_bluetooth_emboss_util_include_dirs",
     ],
     generated_headers: [
         "pw_bluetooth_generate_emboss_att",

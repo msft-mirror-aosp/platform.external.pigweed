@@ -44,7 +44,7 @@ class LoopbackChannel<DataType::kDatagram>
     : public ReliableDatagramReaderWriter {
  public:
   LoopbackChannel(multibuf::MultiBufAllocator& write_allocator)
-      : write_allocator_(&write_allocator) {}
+      : write_alloc_future_(write_allocator) {}
   LoopbackChannel(const LoopbackChannel&) = delete;
   LoopbackChannel& operator=(const LoopbackChannel&) = delete;
 
@@ -57,19 +57,21 @@ class LoopbackChannel<DataType::kDatagram>
 
   async2::Poll<Status> DoPendReadyToWrite(async2::Context& cx) final;
 
-  multibuf::MultiBufAllocator& DoGetWriteAllocator() final {
-    return *write_allocator_;
+  async2::Poll<std::optional<multibuf::MultiBuf>> DoPendAllocateWriteBuffer(
+      async2::Context& cx, size_t min_bytes) final {
+    write_alloc_future_.SetDesiredSize(min_bytes);
+    return write_alloc_future_.Pend(cx);
   }
 
-  Result<channel::WriteToken> DoStageWrite(multibuf::MultiBuf&& data) final;
+  Status DoStageWrite(multibuf::MultiBuf&& data) final;
 
-  async2::Poll<Result<channel::WriteToken>> DoPendWrite(async2::Context&) final;
+  async2::Poll<Status> DoPendWrite(async2::Context&) final;
 
   async2::Poll<Status> DoPendClose(async2::Context&) final;
 
-  multibuf::MultiBufAllocator* write_allocator_;
+  multibuf::MultiBufAllocationFuture write_alloc_future_;
   std::optional<multibuf::MultiBuf> queue_;
-  uint32_t write_token_;
+
   async2::Waker waker_;
 };
 
@@ -77,7 +79,7 @@ template <>
 class LoopbackChannel<DataType::kByte> : public ReliableByteReaderWriter {
  public:
   LoopbackChannel(multibuf::MultiBufAllocator& write_allocator)
-      : write_allocator_(&write_allocator) {}
+      : write_alloc_future_(write_allocator) {}
   LoopbackChannel(const LoopbackChannel&) = delete;
   LoopbackChannel& operator=(const LoopbackChannel&) = delete;
 
@@ -92,19 +94,21 @@ class LoopbackChannel<DataType::kByte> : public ReliableByteReaderWriter {
     return async2::Ready(OkStatus());
   }
 
-  multibuf::MultiBufAllocator& DoGetWriteAllocator() final {
-    return *write_allocator_;
+  async2::Poll<std::optional<multibuf::MultiBuf>> DoPendAllocateWriteBuffer(
+      async2::Context& cx, size_t min_bytes) final {
+    write_alloc_future_.SetDesiredSize(min_bytes);
+    return write_alloc_future_.Pend(cx);
   }
 
-  Result<channel::WriteToken> DoStageWrite(multibuf::MultiBuf&& data) final;
+  Status DoStageWrite(multibuf::MultiBuf&& data) final;
 
-  async2::Poll<Result<channel::WriteToken>> DoPendWrite(async2::Context&) final;
+  async2::Poll<Status> DoPendWrite(async2::Context&) final;
 
   async2::Poll<Status> DoPendClose(async2::Context&) final;
 
-  multibuf::MultiBufAllocator* write_allocator_;
+  multibuf::MultiBufAllocationFuture write_alloc_future_;
   multibuf::MultiBuf queue_;
-  uint32_t write_token_;
+
   async2::Waker read_waker_;
 };
 

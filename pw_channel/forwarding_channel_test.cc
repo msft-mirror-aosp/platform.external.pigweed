@@ -67,14 +67,18 @@ template <pw::channel::DataType kType,
 class TestChannelPair {
  public:
   TestChannelPair()
-      : simple_allocator_(data_area_, meta_alloc_), pair_(simple_allocator_) {}
+      : first_out_alloc_(first_out_data_area_, meta_alloc_),
+        second_out_alloc_(second_out_data_area_, meta_alloc_),
+        pair_(first_out_alloc_, second_out_alloc_) {}
 
   pw::channel::ForwardingChannelPair<kType>* operator->() { return &pair_; }
 
  private:
-  std::array<std::byte, kDataSize> data_area_;
+  std::array<std::byte, kDataSize> first_out_data_area_;
+  std::array<std::byte, kDataSize> second_out_data_area_;
   pw::allocator::test::AllocatorForTest<kMetaSize> meta_alloc_;
-  pw::multibuf::SimpleAllocator simple_allocator_;
+  pw::multibuf::SimpleAllocator first_out_alloc_;
+  pw::multibuf::SimpleAllocator second_out_alloc_;
 
   pw::channel::ForwardingChannelPair<kType> pair_;
 };
@@ -99,8 +103,7 @@ TEST(ForwardingDatagramChannel, ForwardsEmptyDatagrams) {
       // Send datagram first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      auto result = pair->first().StageWrite({});  // Write empty datagram
-      EXPECT_EQ(pw::OkStatus(), result.status());
+      PW_TEST_EXPECT_OK(pair->first().StageWrite({}));  // Write empty datagram
 
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendReadyToWrite(cx));
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
@@ -115,8 +118,7 @@ TEST(ForwardingDatagramChannel, ForwardsEmptyDatagrams) {
       // Send datagram second->first
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->second().PendReadyToWrite(cx));
-      result = pair->second().StageWrite({});  // Write empty datagram
-      EXPECT_EQ(pw::OkStatus(), result.status());
+      PW_TEST_EXPECT_OK(pair->second().StageWrite({}));  // Write empty datagram
 
       EXPECT_EQ(pw::async2::Pending(), pair->second().PendReadyToWrite(cx));
       EXPECT_EQ(pw::async2::Pending(), pair->second().PendRead(cx));
@@ -156,7 +158,7 @@ TEST(ForwardingDatagramChannel, ForwardsNonEmptyDatagrams) {
       // Send datagram first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b1.Take()).status());
+      PW_TEST_EXPECT_OK(pair->first().StageWrite(b1.Take()));
 
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendReadyToWrite(cx));
 
@@ -167,7 +169,7 @@ TEST(ForwardingDatagramChannel, ForwardsNonEmptyDatagrams) {
                 pair->first().PendReadyToWrite(cx));
       EXPECT_EQ(pw::async2::Pending(), pair->second().PendRead(cx));
 
-      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b2.Take()).status());
+      PW_TEST_EXPECT_OK(pair->first().StageWrite(b2.Take()));
       EXPECT_EQ(CopyToString(pair->second().PendRead(cx).value().value()),
                 "world!");
 
@@ -204,8 +206,7 @@ TEST(ForwardingDatagramChannel, ForwardsDatagrams) {
       // Send datagram first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      auto result = pair->first().StageWrite({});  // Write empty datagram
-      EXPECT_EQ(pw::OkStatus(), result.status());
+      PW_TEST_EXPECT_OK(pair->first().StageWrite({}));  // Write empty datagram
 
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendReadyToWrite(cx));
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
@@ -220,8 +221,7 @@ TEST(ForwardingDatagramChannel, ForwardsDatagrams) {
       // Send datagram second->first
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->second().PendReadyToWrite(cx));
-      result = pair->second().StageWrite({});  // Write empty datagram
-      EXPECT_EQ(pw::OkStatus(), result.status());
+      PW_TEST_EXPECT_OK(pair->second().StageWrite({}));  // Write empty datagram
 
       EXPECT_EQ(pw::async2::Pending(), pair->second().PendReadyToWrite(cx));
       EXPECT_EQ(pw::async2::Pending(), pair->second().PendRead(cx));
@@ -286,7 +286,7 @@ TEST(ForwardingDatagramchannel, PendCloseAwakensAndClosesPeer) {
 
   // Write a datagram, but close before the datagram is read.
   EXPECT_EQ(pair->second().PendReadyToWrite(empty_cx), Ready(pw::OkStatus()));
-  EXPECT_EQ(pair->second().StageWrite({}).status(), pw::OkStatus());
+  PW_TEST_EXPECT_OK(pair->second().StageWrite({}));
   EXPECT_EQ(pair->second().PendClose(empty_cx), Ready(pw::OkStatus()));
   EXPECT_FALSE(pair->second().is_read_or_write_open());
 
@@ -326,7 +326,7 @@ TEST(ForwardingByteChannel, IgnoresEmptyWrites) {
       // Send nothing first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite({}).status());
+      PW_TEST_EXPECT_OK(pair->first().StageWrite({}));
 
       // Still no data
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
@@ -335,7 +335,7 @@ TEST(ForwardingByteChannel, IgnoresEmptyWrites) {
       // Send nothing second->first
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite({}).status());
+      PW_TEST_EXPECT_OK(pair->first().StageWrite({}));
 
       // Still no data
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
@@ -374,13 +374,13 @@ TEST(ForwardingByteChannel, WriteData) {
       // Send "hello world" first->second
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b1.Take()).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b1.Take()));
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b2.Take()).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b2.Take()));
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b3.Take()).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite(b3.Take()));
 
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
 
@@ -392,7 +392,7 @@ TEST(ForwardingByteChannel, WriteData) {
       // Send nothing second->first
       EXPECT_EQ(pw::async2::Ready(pw::OkStatus()),
                 pair->first().PendReadyToWrite(cx));
-      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite({}).status());
+      EXPECT_EQ(pw::OkStatus(), pair->first().StageWrite({}));
 
       // Still no data
       EXPECT_EQ(pw::async2::Pending(), pair->first().PendRead(cx));
@@ -453,7 +453,7 @@ TEST(ForwardingByteChannel, PendCloseAwakensAndClosesPeer) {
 
   // Write a datagram, but close before the datagram is read.
   EXPECT_EQ(pair->second().PendReadyToWrite(empty_cx), Ready(pw::OkStatus()));
-  EXPECT_EQ(pair->second().StageWrite(data.Take()).status(), pw::OkStatus());
+  EXPECT_EQ(pair->second().StageWrite(data.Take()), pw::OkStatus());
   EXPECT_EQ(pair->second().PendClose(empty_cx), Ready(pw::OkStatus()));
   EXPECT_FALSE(pair->second().is_read_or_write_open());
 

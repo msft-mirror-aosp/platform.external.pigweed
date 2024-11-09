@@ -52,57 +52,6 @@ TEST(PacketTest, EventPacket) {
   EXPECT_EQ(foo, packet->params<TestPayload>().foo);
 }
 
-TEST(PacketTest, EventPacketReturnParams) {
-  uint8_t return_parameter = 0x7F;
-
-  // clang-format off
- StaticByteBuffer correct_size_bad_event_code(
-      // Event header
-      0xFF, 0x04,  // (event_code is not CommandComplete)
-
-      // hci_spec::CommandCompleteEventParams
-      0x01, 0xFF, 0x07,
-
-      return_parameter);
-  auto cmd_complete_small_payload = StaticByteBuffer(
-      // Event header
-      0x0E, 0x03,
-
-      // hci_spec::CommandCompleteEventParams
-      0x01, 0xFF, 0x07);
-  auto valid = StaticByteBuffer(
-      // Event header
-      0x0E, 0x04,
-
-      // hci_spec::CommandCompleteEventParams
-      0x01, 0xFF, 0x07,
-
-      return_parameter);
-  // clang-format on
-
-  // Allocate a large enough packet which we'll reuse for the 3 payloads.
-  auto packet = EventPacket::New(valid.size());
-
-  // If the event code or the payload size don't match, then return_params()
-  // should return nullptr.
-  packet->mutable_view()->mutable_data().Write(correct_size_bad_event_code);
-  packet->InitializeFromBuffer();
-  EXPECT_EQ(nullptr, packet->return_params<TestPayload>());
-
-  packet->mutable_view()->mutable_data().Write(cmd_complete_small_payload);
-  packet->InitializeFromBuffer();
-  EXPECT_EQ(nullptr, packet->return_params<TestPayload>());
-
-  // Reset packet size to the original so that |valid| can fit.
-  packet->mutable_view()->Resize(valid.size());
-
-  // Valid case
-  packet->mutable_view()->mutable_data().Write(valid);
-  packet->InitializeFromBuffer();
-  ASSERT_NE(nullptr, packet->return_params<TestPayload>());
-  EXPECT_EQ(return_parameter, packet->return_params<TestPayload>()->foo);
-}
-
 TEST(PacketTest, EventPacketStatus) {
   // clang-format off
   auto evt = StaticByteBuffer(
@@ -131,7 +80,7 @@ TEST(PacketTest, CommandCompleteEventStatus) {
       // Event header
       0x0E, 0x04,  // (event code is CommandComplete)
 
-      // hci_spec::CommandCompleteEventParams
+      // pw::bluetooth::emboss::CommandCompleteEvent
       0x01, 0xFF, 0x07,
 
       // Return parameters (status: hardware failure)
@@ -166,54 +115,6 @@ TEST(PacketTest, EventPacketMalformed) {
 
   Result<> status = packet->ToResult();
   EXPECT_EQ(ToResult(HostError::kPacketMalformed), status);
-}
-
-TEST(PacketTest, LEEventParams) {
-  uint8_t subevent_payload = 0x7F;
-
-  // clang-format off
-  auto correct_size_bad_event_code = StaticByteBuffer(
-      // Event header
-      0xFE, 0x02,  // (event_code is not hci_spec::kLEMetaEventCode)
-
-      // Subevent code
-      0xFF,
-
-      subevent_payload);
-  auto payload_too_small = StaticByteBuffer(
-      0x3E, 0x01,
-
-      // Subevent code
-      0xFF);
-  auto valid = StaticByteBuffer(
-      // Event header
-      0x3E, 0x02,
-
-      // Subevent code
-      0xFF,
-
-      subevent_payload);
-  // clang-format on
-
-  auto packet = EventPacket::New(valid.size());
-
-  // If the event code or the payload size don't match, then return_params()
-  // should return nullptr.
-  packet->mutable_view()->mutable_data().Write(correct_size_bad_event_code);
-  packet->InitializeFromBuffer();
-  EXPECT_EQ(nullptr, packet->subevent_params<TestPayload>());
-
-  packet->mutable_view()->mutable_data().Write(payload_too_small);
-  packet->InitializeFromBuffer();
-  EXPECT_EQ(nullptr, packet->subevent_params<TestPayload>());
-
-  // Valid case
-  packet->mutable_view()->Resize(valid.size());
-  packet->mutable_view()->mutable_data().Write(valid);
-  packet->InitializeFromBuffer();
-
-  EXPECT_NE(nullptr, packet->subevent_params<TestPayload>());
-  EXPECT_EQ(subevent_payload, packet->subevent_params<TestPayload>()->foo);
 }
 
 TEST(PacketTest, ACLDataPacketFromFields) {
