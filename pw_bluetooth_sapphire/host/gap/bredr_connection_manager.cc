@@ -138,39 +138,18 @@ void SetPageScanEnabled(bool enabled,
 }  // namespace
 
 hci::CommandChannel::EventHandlerId BrEdrConnectionManager::AddEventHandler(
-    const hci_spec::EventCode& code,
-    hci::CommandChannel::EventCallbackVariant cb) {
+    const hci_spec::EventCode& code, hci::CommandChannel::EventCallback cb) {
   auto self = weak_self_.GetWeakPtr();
   hci::CommandChannel::EventHandlerId event_id = 0;
-  event_id = std::visit(
-      [hci = hci_, &self, code](
-          auto&& callback) -> hci::CommandChannel::EventHandlerId {
-        using T = std::decay_t<decltype(callback)>;
-        if constexpr (std::is_same_v<T, hci::CommandChannel::EventCallback>) {
-          return hci->command_channel()->AddEventHandler(
-              code,
-              [self,
-               event_cb = std::move(callback)](const hci::EventPacket& event) {
-                if (!self.is_alive()) {
-                  return hci::CommandChannel::EventCallbackResult::kRemove;
-                }
-                return event_cb(event);
-              });
-        } else if constexpr (std::is_same_v<
-                                 T,
-                                 hci::CommandChannel::EmbossEventCallback>) {
-          return hci->command_channel()->AddEventHandler(
-              code,
-              [self, emboss_event_cb = std::move(callback)](
-                  const hci::EmbossEventPacket& event) {
-                if (!self.is_alive()) {
-                  return hci::CommandChannel::EventCallbackResult::kRemove;
-                }
-                return emboss_event_cb(event);
-              });
+  event_id = hci_->command_channel()->AddEventHandler(
+      code,
+      [self,
+       emboss_event_cb = std::move(cb)](const hci::EmbossEventPacket& event) {
+        if (!self.is_alive()) {
+          return hci::CommandChannel::EventCallbackResult::kRemove;
         }
-      },
-      std::move(cb));
+        return emboss_event_cb(event);
+      });
   PW_DCHECK(event_id);
   event_handler_ids_.push_back(event_id);
   return event_id;
@@ -2018,7 +1997,7 @@ void BrEdrConnectionManager::SendAuthenticationRequested(
 
   // Complete on command status because Authentication Complete Event is already
   // registered.
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
     command_cb = [callback = std::move(cb)](
                      auto, const hci::EmbossEventPacket& event) {
@@ -2128,7 +2107,7 @@ void BrEdrConnectionManager::SendLinkKeyRequestReply(DeviceAddressBytes bd_addr,
 template <typename T>
 void BrEdrConnectionManager::SendCommandWithStatusCallback(
     T command_packet, hci::ResultFunction<> cb) {
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
     command_cb = [callback = std::move(cb)](
                      auto, const hci::EmbossEventPacket& event) {
@@ -2151,7 +2130,7 @@ void BrEdrConnectionManager::SendAcceptConnectionRequest(
   // Sec 3.1).
   accept_params.role().Write(pw::bluetooth::emboss::ConnectionRole::CENTRAL);
 
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
     command_cb = [callback = std::move(cb)](
                      auto, const hci::EmbossEventPacket& event) {
@@ -2175,7 +2154,7 @@ void BrEdrConnectionManager::SendRejectConnectionRequest(
   reject_params.bd_addr().CopyFrom(addr.value().view());
   reject_params.reason().Write(reason);
 
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
     command_cb = [callback = std::move(cb)](
                      auto, const hci::EmbossEventPacket& event) {
@@ -2199,7 +2178,7 @@ void BrEdrConnectionManager::SendRejectSynchronousRequest(
   reject_params.bd_addr().CopyFrom(addr.value().view());
   reject_params.reason().Write(reason);
 
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
     command_cb = [callback = std::move(cb)](
                      auto, const hci::EmbossEventPacket& event) {

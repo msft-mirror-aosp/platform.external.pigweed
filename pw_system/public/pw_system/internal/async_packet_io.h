@@ -137,38 +137,21 @@ class PacketIO {
 
     PacketIO& io_;
     async2::Poll<InlineVarLenEntryQueue<>::Entry> outbound_packet_;
-    std::optional<multibuf::MultiBufAllocationFuture> outbound_packet_multibuf_;
-  };
-
-  class PacketFlusher : public async2::Task {
-   public:
-    constexpr PacketFlusher(PacketIO& io) : io_(io), flush_until_{} {}
-
-    void FlushUntil(channel::WriteToken write_token) {
-      flush_until_ = write_token;
-      std::move(waker_).Wake();
-    }
-
-   private:
-    async2::Poll<> DoPend(async2::Context& cx) override;
-
-    PacketIO& io_;
-    channel::WriteToken flush_until_;
-    async2::Waker waker_;
   };
 
   channel::DatagramReaderWriter& channel() { return channels_.first(); }
 
-  std::byte mb_allocator_buffer_[PW_SYSTEM_MAX_TRANSMISSION_UNIT * 2];
+  std::byte mb_allocator_buffer_1_[PW_SYSTEM_MAX_TRANSMISSION_UNIT];
+  std::byte mb_allocator_buffer_2_[PW_SYSTEM_MAX_TRANSMISSION_UNIT];
   Allocator& allocator_;
-  multibuf::SimpleAllocator mb_allocator_;
+  multibuf::SimpleAllocator mb_allocator_1_;
+  multibuf::SimpleAllocator mb_allocator_2_;
   channel::ForwardingDatagramChannelPair channels_;
   hdlc::Router router_;
   RpcServerThread rpc_server_thread_;
 
   PacketReader packet_reader_;
   PacketWriter packet_writer_;
-  PacketFlusher packet_flusher_;
 };
 
 }  // namespace pw::system::internal
