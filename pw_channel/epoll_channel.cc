@@ -44,17 +44,13 @@ void EpollChannel::Register() {
 
 async2::Poll<Result<multibuf::MultiBuf>> EpollChannel::DoPendRead(
     async2::Context& cx) {
-  if (!allocation_future_.has_value()) {
-    allocation_future_ =
-        allocator_->AllocateContiguousAsync(kMinimumReadSize, kDesiredReadSize);
-  }
+  write_alloc_future_.SetDesiredSizes(
+      kMinimumReadSize, kDesiredReadSize, pw::multibuf::kNeedsContiguous);
   async2::Poll<std::optional<multibuf::MultiBuf>> maybe_multibuf =
-      allocation_future_->Pend(cx);
+      write_alloc_future_.Pend(cx);
   if (maybe_multibuf.IsPending()) {
     return async2::Pending();
   }
-
-  allocation_future_ = std::nullopt;
 
   if (!maybe_multibuf->has_value()) {
     PW_LOG_ERROR("Failed to allocate multibuf for reading");
@@ -100,10 +96,7 @@ async2::Poll<Status> EpollChannel::DoPendReadyToWrite(async2::Context& cx) {
   return async2::Pending();
 }
 
-Result<channel::WriteToken> EpollChannel::DoStageWrite(
-    multibuf::MultiBuf&& data) {
-  const uint32_t token = write_token_++;
-
+Status EpollChannel::DoStageWrite(multibuf::MultiBuf&& data) {
   for (multibuf::Chunk& chunk : data.Chunks()) {
     if (write(channel_fd_, chunk.data(), chunk.size()) < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -119,7 +112,7 @@ Result<channel::WriteToken> EpollChannel::DoStageWrite(
     }
   }
 
-  return CreateWriteToken(token);
+  return OkStatus();
 }
 
 void EpollChannel::Cleanup() {
