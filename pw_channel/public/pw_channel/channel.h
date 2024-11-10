@@ -33,7 +33,6 @@
 #include "pw_async2/dispatcher.h"
 #include "pw_async2/poll.h"
 #include "pw_bytes/span.h"
-#include "pw_multibuf/allocator.h"
 #include "pw_multibuf/multibuf.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
@@ -85,48 +84,17 @@ enum Whence : uint8_t {
   kEnd,
 };
 
-/// Represents a write operation. `WriteToken` can be used to track whether a
-/// particular write has been flushed.
-class [[nodiscard]] WriteToken {
- public:
-  constexpr WriteToken() : token_(0) {}
-
-  constexpr WriteToken(const WriteToken&) = default;
-  constexpr WriteToken& operator=(const WriteToken&) = default;
-
-  constexpr bool operator==(const WriteToken& other) const {
-    return token_ == other.token_;
-  }
-  constexpr bool operator!=(const WriteToken& other) const {
-    return token_ != other.token_;
-  }
-  constexpr bool operator<(const WriteToken& other) const {
-    return token_ < other.token_;
-  }
-  constexpr bool operator>(const WriteToken& other) const {
-    return token_ > other.token_;
-  }
-  constexpr bool operator<=(const WriteToken& other) const {
-    return token_ <= other.token_;
-  }
-  constexpr bool operator>=(const WriteToken& other) const {
-    return token_ >= other.token_;
-  }
-
- private:
-  friend class AnyChannel;
-
-  constexpr WriteToken(uint32_t value) : token_(value) {}
-
-  uint32_t token_;
-};
-
 /// A generic data channel that may support reading or writing bytes or
 /// datagrams.
 ///
 /// Note that this channel should be used from only one ``pw::async::Task``
 /// at a time, as the ``Pend`` methods are only required to remember the
-/// latest ``pw::async2::Context`` that was provided.
+/// latest ``pw::async2::Context`` that was provided. Notably, this means
+/// that it is not possible to read from the channel in one task while
+/// writing to it from another task: a single task must own and operate
+/// the channel. In the future, a wrapper will be offered which will
+/// allow the channel to be split into a read half and a write half which
+/// can be used from independent tasks.
 class AnyChannel {
  public:
   virtual ~AnyChannel() = default;
@@ -244,8 +212,30 @@ class AnyChannel {
   /// any other ``MultiBuf`` s or ``Chunk`` s.
   ///
   /// This method must not be called on channels which do not support writing.
-  multibuf::MultiBufAllocator& GetWriteAllocator() {
-    return DoGetWriteAllocator();
+
+  /// Attempts to allocate a write buffer of at least `min_bytes` bytes.
+  ///
+  /// On success, returns a `MultiBuf` of at least `min_bytes`.
+  /// This buffer should be filled with data and then passed back into
+  /// `StageWrite`. The user may shrink or fragment the `MultiBuf` during
+  /// its own usage of the buffer, but the `MultiBuf` should be restored
+  /// to its original shape before it is passed to `StageWrite`.
+  ///
+  /// Users should not wait on the result of `PendAllocateWriteBuffer` while
+  /// holding an existing `MultiBuf` from `PendAllocateWriteBuffer`, as this
+  /// can result in deadlocks.
+  ///
+  /// This method will return:
+  ///
+  /// * Ready(buffer) - A buffer of the requested size is provided.
+  /// * Ready(std::nullopt) - `min_bytes` is larger than the maximum buffer
+  ///   size this channel can allocate.
+  /// * Pending - No buffer of at least `min_bytes` is available. The task
+  ///   associated with the provided `pw::async2::Context` will be awoken
+  ///   when a sufficiently-sized buffer becomes available.
+  async2::Poll<std::optional<multibuf::MultiBuf>> PendAllocateWriteBuffer(
+      async2::Context& cx, size_t min_bytes) {
+    return DoPendAllocateWriteBuffer(cx, min_bytes);
   }
 
   /// Writes using a previously allocated MultiBuf. Returns a token that
@@ -253,15 +243,15 @@ class AnyChannel {
   /// PendWrite() returns the value of the latest token it has flushed.
   ///
   /// The ``MultiBuf`` argument to ``Write`` may consist of either:
-  ///   (1) A single ``MultiBuf`` allocated by ``GetWriteAllocator()``
+  ///   (1) A single ``MultiBuf`` allocated by ``PendAllocateWriteBuffer``
   ///       that has not been combined with any other ``MultiBuf`` s
   ///       or ``Chunk``s OR
   ///   (2) A ``MultiBuf`` containing any combination of buffers from sources
-  ///       other than ``GetWriteAllocator``.
+  ///       other than ``PendAllocateWriteBuffer``.
   ///
   /// This requirement allows for more efficient use of memory in case (1).
   /// For example, a ring-buffer implementation of a ``Channel`` may
-  /// specialize ``GetWriteAllocator`` to return the next section of the
+  /// specialize ``PendAllocateWriteBuffer`` to return the next section of the
   /// buffer available for writing.
   ///
   /// @returns @rst
@@ -279,15 +269,15 @@ class AnyChannel {
   ///    FAILED_PRECONDITION: The channel is closed.
   ///
   /// @endrst
-  Result<WriteToken> StageWrite(multibuf::MultiBuf&& data) {
+  Status StageWrite(multibuf::MultiBuf&& data) {
     if (!is_write_open()) {
       return Status::FailedPrecondition();
     }
-    Result<WriteToken> result = DoStageWrite(std::move(data));
-    if (result.status().IsFailedPrecondition()) {
+    Status status = DoStageWrite(std::move(data));
+    if (status.IsFailedPrecondition()) {
       set_write_closed();
     }
-    return result;
+    return status;
   }
 
   /// Flushes pending writes.
@@ -299,15 +289,15 @@ class AnyChannel {
   /// * Ready(UNIMPLEMENTED) - The channel does not support writing.
   /// * Ready(FAILED_PRECONDITION) - The channel is closed.
   /// * Pending - Data remains to be flushed.
-  async2::Poll<Result<WriteToken>> PendWrite(async2::Context& cx) {
+  async2::Poll<Status> PendWrite(async2::Context& cx) {
     if (!is_write_open()) {
       return Status::FailedPrecondition();
     }
-    async2::Poll<Result<WriteToken>> result = DoPendWrite(cx);
-    if (result.IsReady() && result->status().IsFailedPrecondition()) {
+    async2::Poll<Status> status = DoPendWrite(cx);
+    if (status.IsReady() && status->IsFailedPrecondition()) {
       set_write_closed();
     }
-    return result;
+    return status;
   }
 
   /// Seek changes the position in the stream.
@@ -371,10 +361,6 @@ class AnyChannel {
   }
 
  protected:
-  static constexpr WriteToken CreateWriteToken(uint32_t value) {
-    return WriteToken(value);
-  }
-
   // Marks the channel as closed for reading, but does nothing else.
   //
   // PendClose() always marks the channel closed when DoPendClose() returns
@@ -441,14 +427,14 @@ class AnyChannel {
 
   // Write functions
 
-  virtual multibuf::MultiBufAllocator& DoGetWriteAllocator() = 0;
+  virtual async2::Poll<std::optional<multibuf::MultiBuf>>
+  DoPendAllocateWriteBuffer(async2::Context& cx, size_t min_bytes) = 0;
 
   virtual pw::async2::Poll<Status> DoPendReadyToWrite(async2::Context& cx) = 0;
 
-  virtual Result<WriteToken> DoStageWrite(multibuf::MultiBuf&& buffer) = 0;
+  virtual Status DoStageWrite(multibuf::MultiBuf&& buffer) = 0;
 
-  virtual pw::async2::Poll<Result<WriteToken>> DoPendWrite(
-      async2::Context& cx) = 0;
+  virtual pw::async2::Poll<Status> DoPendWrite(async2::Context& cx) = 0;
 
   // Seek functions
   /// TODO: b/323622630 - `Seek` and `Position` are not yet implemented.
