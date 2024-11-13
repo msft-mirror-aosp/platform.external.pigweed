@@ -12,25 +12,16 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include <vector>
+#include "pw_allocator/bucket_allocator.h"
 
-#include "pw_allocator/as_pmr_allocator.h"
-#include "pw_allocator/first_fit_block_allocator.h"
 #include "pw_allocator/size_reporter.h"
-#include "pw_assert/check.h"
 
 int main() {
-  using Bar = ::pw::allocator::SizeReporter::Bar;
-
   pw::allocator::SizeReporter reporter;
   reporter.SetBaseline();
 
-  pw::allocator::FirstFitBlockAllocator<uint16_t> base(reporter.buffer());
-  std::vector<Bar> vec;
-  auto* bar = base.New<Bar>(1);
-  vec.emplace_back(std::move(*bar));
-  PW_CHECK_UINT_EQ(vec.size(), 1U);
-  vec.clear();
+  pw::allocator::BucketAllocator<4, 8> allocator(reporter.buffer());
+  reporter.Measure(allocator);
 
   return 0;
 }

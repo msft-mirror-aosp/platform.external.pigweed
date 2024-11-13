@@ -12,26 +12,22 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_allocator/as_pmr_allocator.h"
+import fs from 'fs';
+import * as argModule from 'arg';
+const arg = argModule.default;
+import { buildProtos } from './build';
 
-#include <vector>
+const args = arg({
+  // Types
+  '--proto': [String],
+  '--out': String,
 
-#include "pw_allocator/first_fit_block_allocator.h"
-#include "pw_allocator/size_reporter.h"
-#include "pw_assert/check.h"
+  // Aliases
+  '-p': '--proto',
+});
 
-int main() {
-  using Bar = ::pw::allocator::SizeReporter::Bar;
+const protos = args['--proto'];
+const outDir = args['--out'] || 'protos';
 
-  pw::allocator::SizeReporter reporter;
-  reporter.SetBaseline();
-
-  pw::allocator::FirstFitBlockAllocator<uint16_t> base(reporter.buffer());
-  pw::allocator::AsPmrAllocator allocator(base);
-  std::pmr::vector<Bar> vec(allocator);
-  vec.emplace_back(1);
-  PW_CHECK_UINT_EQ(vec.size(), 1U);
-  vec.clear();
-
-  return 0;
-}
+fs.mkdirSync(outDir, { recursive: true });
+buildProtos(protos, outDir);

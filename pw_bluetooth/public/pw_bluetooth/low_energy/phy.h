@@ -11,18 +11,20 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
+#pragma once
 
-#include "pw_allocator/bucket_block_allocator.h"
+#include <cstdint>
+namespace pw::bluetooth::low_energy {
 
-#include "pw_allocator/size_reporter.h"
+/// Physical layer configurations. Can be used as a bitmask.
+enum class Phy : uint8_t {
+  /// Original/default PHY configuration. The only configuration compatible with
+  /// legacy devices.
+  k1Megabit = 0x01,
+  /// Increases throughput but reduces range.
+  k2Megabit = 0x02,
+  /// Increases maximum range but reduces throughput.
+  kLeCoded = 0x04,
+};
 
-int main() {
-  pw::allocator::SizeReporter reporter;
-  reporter.SetBaseline();
-
-  pw::allocator::BucketBlockAllocator<uint16_t, 4, 8> allocator(
-      reporter.buffer());
-  reporter.Measure(allocator);
-
-  return 0;
-}
+}  // namespace pw::bluetooth::low_energy
