@@ -1,4 +1,4 @@
-# Copyright 2020 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -12,36 +12,15 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 
 package(default_visibility = ["//visibility:public"])
 
-licenses(["notice"])
-
-cc_library(
-    name = "pw_base64",
+sphinx_docs_library(
+    name = "docs",
     srcs = [
-        "base64.cc",
+        "target_docs.rst",
     ],
-    hdrs = [
-        "public/pw_base64/base64.h",
-    ],
-    strip_include_prefix = "public",
-    deps = [
-        "//pw_assert",
-        "//pw_span",
-        "//pw_string:string",
-    ],
-)
-
-pw_cc_test(
-    name = "base64_test",
-    srcs = [
-        "base64_test.cc",
-        "base64_test_c.c",
-    ],
-    deps = [
-        ":pw_base64",
-        "//pw_unit_test",
-    ],
+    target_compatible_with = incompatible_with_mcu(),
 )
