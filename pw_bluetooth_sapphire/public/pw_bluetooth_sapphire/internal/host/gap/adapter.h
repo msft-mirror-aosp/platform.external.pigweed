@@ -166,6 +166,7 @@ class Adapter {
     virtual void OpenL2capChannel(PeerId peer_id,
                                   l2cap::Psm psm,
                                   l2cap::ChannelParameters params,
+                                  sm::SecurityLevel security_level,
                                   l2cap::ChannelCallback cb) = 0;
 
     // Initiates the pairing process. Expected to only be called during
@@ -241,10 +242,6 @@ class Adapter {
         std::optional<ConnectableAdvertisingParameters> connectable,
         std::optional<DeviceAddress::Type> address_type,
         AdvertisingStatusCallback status_callback) = 0;
-
-    // Stop advertising the advertisement with the id |advertisement_id|
-    // Returns true if an advertisement was stopped, and false otherwise.
-    virtual void StopAdvertising(AdvertisementId advertisement_id) = 0;
 
     // Starts a new discovery session and reports the result via |callback|. If
     // a session has been successfully started the caller will receive a new

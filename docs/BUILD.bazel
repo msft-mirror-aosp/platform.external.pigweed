@@ -143,6 +143,8 @@ sphinx_docs(
         ":prefixed",
         "//pw_async2:docs",
         "//pw_boot:docs",
+        "//seed:docs",
+        "//targets:docs",
     ],
 )
 

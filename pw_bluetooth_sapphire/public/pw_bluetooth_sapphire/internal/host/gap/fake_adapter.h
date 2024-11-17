@@ -91,6 +91,7 @@ class FakeAdapter final : public Adapter {
     void OpenL2capChannel(PeerId peer_id,
                           l2cap::Psm,
                           l2cap::ChannelParameters,
+                          sm::SecurityLevel security_level,
                           l2cap::ChannelCallback) override;
 
     void Pair(PeerId peer_id,
@@ -114,8 +115,6 @@ class FakeAdapter final : public Adapter {
         std::optional<ConnectableAdvertisingParameters> connectable,
         std::optional<DeviceAddress::Type> address_type,
         AdvertisingStatusCallback status_callback) override;
-
-    void StopAdvertising(AdvertisementId advertisement_id) override {}
 
     void StartDiscovery(bool active, SessionCallback callback) override {}
 
