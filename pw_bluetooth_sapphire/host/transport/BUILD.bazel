@@ -25,7 +25,6 @@ cc_library(
         "acl_data_packet.cc",
         "command_channel.cc",
         "control_packets.cc",
-        "emboss_control_packets.cc",
         "error.cc",
         "iso_data_channel.cc",
         "link_type.cc",
@@ -63,8 +62,7 @@ pw_cc_test(
     srcs = [
         "acl_data_channel_test.cc",
         "command_channel_test.cc",
-        "emboss_control_packets_test.cc",
-        "emboss_packet_test.cc",
+        "control_packets_test.cc",
         "iso_data_channel_test.cc",
         "packet_test.cc",
         "sco_data_channel_test.cc",
