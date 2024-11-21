@@ -14,6 +14,10 @@
 
 #include "pw_allocator/block_allocator_testing.h"
 
+#include <cstdint>
+
+#include "lib/stdcompat/bit.h"
+#include "pw_allocator/layout.h"
 #include "pw_assert/check.h"
 #include "pw_bytes/alignment.h"
 #include "pw_status/status.h"
@@ -46,14 +50,14 @@ void BlockAllocatorTestBase::UseMemory(void* ptr, size_t size) {
 // Unit tests.
 
 void BlockAllocatorTestBase::GetCapacity() {
-  Allocator& allocator = GetAllocator();
+  Allocator& allocator = GetGenericAllocator();
   StatusWithSize capacity = allocator.GetCapacity();
   EXPECT_EQ(capacity.status(), OkStatus());
   EXPECT_EQ(capacity.size(), kCapacity);
 }
 
 void BlockAllocatorTestBase::AllocateLarge() {
-  Allocator& allocator = GetAllocator();
+  Allocator& allocator = GetGenericAllocator();
   constexpr Layout layout = Layout::Of<std::byte[kLargeInnerSize]>();
   Store(0, allocator.Allocate(layout));
   ASSERT_NE(Fetch(0), nullptr);
@@ -64,7 +68,7 @@ void BlockAllocatorTestBase::AllocateLarge() {
 }
 
 void BlockAllocatorTestBase::AllocateSmall() {
-  Allocator& allocator = GetAllocator();
+  Allocator& allocator = GetGenericAllocator();
   constexpr Layout layout = Layout::Of<std::byte[kSmallInnerSize]>();
   Store(0, allocator.Allocate(layout));
   ASSERT_NE(Fetch(0), nullptr);
@@ -75,22 +79,23 @@ void BlockAllocatorTestBase::AllocateSmall() {
 }
 
 void BlockAllocatorTestBase::AllocateTooLarge() {
-  Allocator& allocator = GetAllocator();
+  Allocator& allocator = GetGenericAllocator();
   Store(0, allocator.Allocate(Layout::Of<std::byte[kCapacity * 2]>()));
   EXPECT_EQ(Fetch(0), nullptr);
 }
 
 void BlockAllocatorTestBase::AllocateLargeAlignment() {
-  Allocator& allocator = GetAllocator();
+  Allocator& allocator = GetGenericAllocator();
+
   constexpr size_t kAlignment = 64;
   Store(0, allocator.Allocate(Layout(kLargeInnerSize, kAlignment)));
   ASSERT_NE(Fetch(0), nullptr);
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(Fetch(0)) % kAlignment, 0U);
+  EXPECT_TRUE(IsAlignedAs(Fetch(0), kAlignment));
   UseMemory(Fetch(0), kLargeInnerSize);
 
   Store(1, allocator.Allocate(Layout(kLargeInnerSize, kAlignment)));
   ASSERT_NE(Fetch(1), nullptr);
-  EXPECT_EQ(reinterpret_cast<uintptr_t>(Fetch(1)) % kAlignment, 0U);
+  EXPECT_TRUE(IsAlignedAs(Fetch(1), kAlignment));
   UseMemory(Fetch(1), kLargeInnerSize);
 }
 
@@ -101,7 +106,7 @@ void BlockAllocatorTestBase::AllocateAlignmentFailure() {
   size_t outer_size =
       GetAlignedOffsetAfter(bytes.data(), kAlignment, kSmallInnerSize) +
       kAlignment;
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {outer_size, Preallocation::kUsed},
       {kLargeOuterSize, Preallocation::kFree},
       {Preallocation::kSizeRemaining, Preallocation::kUsed},
@@ -113,12 +118,12 @@ void BlockAllocatorTestBase::AllocateAlignmentFailure() {
 }
 
 void BlockAllocatorTestBase::DeallocateNull() {
-  Allocator& allocator = GetAllocator();
+  Allocator& allocator = GetGenericAllocator();
   allocator.Deallocate(nullptr);
 }
 
 void BlockAllocatorTestBase::DeallocateShuffled() {
-  Allocator& allocator = GetAllocator();
+  Allocator& allocator = GetGenericAllocator();
   constexpr Layout layout = Layout::Of<std::byte[kSmallInnerSize]>();
   for (size_t i = 0; i < kNumPtrs; ++i) {
     Store(i, allocator.Allocate(layout));
@@ -145,15 +150,15 @@ void BlockAllocatorTestBase::DeallocateShuffled() {
 }
 
 void BlockAllocatorTestBase::ResizeNull() {
-  Allocator& allocator = GetAllocator();
+  Allocator& allocator = GetGenericAllocator();
   size_t new_size = 1;
   EXPECT_FALSE(allocator.Resize(nullptr, new_size));
 }
 
 void BlockAllocatorTestBase::ResizeLargeSame() {
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {kLargeOuterSize, Preallocation::kUsed},
-      {kLargeOuterSize, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
   size_t new_size = kLargeInnerSize;
   ASSERT_TRUE(allocator.Resize(Fetch(0), new_size));
@@ -161,9 +166,9 @@ void BlockAllocatorTestBase::ResizeLargeSame() {
 }
 
 void BlockAllocatorTestBase::ResizeLargeSmaller() {
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {kLargeOuterSize, Preallocation::kUsed},
-      {kLargeOuterSize, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
   size_t new_size = kSmallInnerSize;
   ASSERT_TRUE(allocator.Resize(Fetch(0), new_size));
@@ -171,10 +176,10 @@ void BlockAllocatorTestBase::ResizeLargeSmaller() {
 }
 
 void BlockAllocatorTestBase::ResizeLargeLarger() {
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {kLargeOuterSize, Preallocation::kUsed},
       {kLargeOuterSize, Preallocation::kFree},
-      {kSmallOuterSize, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
   size_t new_size = kLargeInnerSize * 2;
   ASSERT_TRUE(allocator.Resize(Fetch(0), new_size));
@@ -182,9 +187,9 @@ void BlockAllocatorTestBase::ResizeLargeLarger() {
 }
 
 void BlockAllocatorTestBase::ResizeLargeLargerFailure() {
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {kLargeOuterSize, Preallocation::kUsed},
-      {kSmallOuterSize, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
   // Memory after ptr is already allocated, so `Resize` should fail.
   size_t new_size = kLargeInnerSize * 2;
@@ -192,9 +197,9 @@ void BlockAllocatorTestBase::ResizeLargeLargerFailure() {
 }
 
 void BlockAllocatorTestBase::ResizeSmallSame() {
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {kSmallOuterSize, Preallocation::kUsed},
-      {kSmallOuterSize, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
   size_t new_size = kSmallInnerSize;
   ASSERT_TRUE(allocator.Resize(Fetch(0), new_size));
@@ -202,9 +207,9 @@ void BlockAllocatorTestBase::ResizeSmallSame() {
 }
 
 void BlockAllocatorTestBase::ResizeSmallSmaller() {
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {kSmallOuterSize, Preallocation::kUsed},
-      {kSmallOuterSize, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
   size_t new_size = kSmallInnerSize / 2;
   ASSERT_TRUE(allocator.Resize(Fetch(0), new_size));
@@ -212,10 +217,10 @@ void BlockAllocatorTestBase::ResizeSmallSmaller() {
 }
 
 void BlockAllocatorTestBase::ResizeSmallLarger() {
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {kSmallOuterSize, Preallocation::kUsed},
       {kSmallOuterSize, Preallocation::kFree},
-      {kSmallOuterSize, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
   size_t new_size = kSmallInnerSize * 2;
   ASSERT_TRUE(allocator.Resize(Fetch(0), new_size));
@@ -223,9 +228,9 @@ void BlockAllocatorTestBase::ResizeSmallLarger() {
 }
 
 void BlockAllocatorTestBase::ResizeSmallLargerFailure() {
-  Allocator& allocator = GetAllocator({
+  Allocator& allocator = GetGenericAllocator({
       {kSmallOuterSize, Preallocation::kUsed},
-      {kSmallOuterSize, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
   // Memory after ptr is already allocated, so `Resize` should fail.
   size_t new_size = kSmallInnerSize * 2 + kDefaultBlockOverhead;

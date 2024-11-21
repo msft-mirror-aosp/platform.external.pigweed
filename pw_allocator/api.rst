@@ -99,39 +99,25 @@ BlockAllocator
 .. doxygenclass:: pw::allocator::BlockAllocator
    :members:
 
-.. _module-pw_allocator-api-first_fit_block_allocator:
+.. _module-pw_allocator-api-first_fit_allocator:
 
-FirstFitBlockAllocator
-----------------------
-.. doxygenclass:: pw::allocator::FirstFitBlockAllocator
+FirstFitAllocator
+-----------------
+.. doxygenclass:: pw::allocator::FirstFitAllocator
    :members:
 
-.. _module-pw_allocator-api-last_fit_block_allocator:
+.. _module-pw_allocator-api-best_fit_allocator:
 
-LastFitBlockAllocator
----------------------
-.. doxygenclass:: pw::allocator::LastFitBlockAllocator
+BestFitAllocator
+----------------
+.. doxygenclass:: pw::allocator::BestFitAllocator
    :members:
 
-.. _module-pw_allocator-api-best_fit_block_allocator:
+.. _module-pw_allocator-api-worst_fit_allocator:
 
-BestFitBlockAllocator
----------------------
-.. doxygenclass:: pw::allocator::BestFitBlockAllocator
-   :members:
-
-.. _module-pw_allocator-api-worst_fit_block_allocator:
-
-WorstFitBlockAllocator
-----------------------
-.. doxygenclass:: pw::allocator::WorstFitBlockAllocator
-   :members:
-
-.. _module-pw_allocator-api-dual_first_fit_block_allocator:
-
-DualFirstFitBlockAllocator
---------------------------
-.. doxygenclass:: pw::allocator::DualFirstFitBlockAllocator
+WorstFitAllocator
+-----------------
+.. doxygenclass:: pw::allocator::WorstFitAllocator
    :members:
 
 .. _module-pw_allocator-api-bucket_block_allocator:
@@ -232,10 +218,13 @@ includes some utility classes.
 
 .. _module-pw_allocator-api-block:
 
-Block
-=====
-.. doxygenclass:: pw::allocator::Block
-   :members:
+Block interfaces
+================
+A block is an allocatable region of memory, and is the fundamental type managed
+by several of the concrete allocator implementations. Blocks are defined
+using several stateless "mix-in" interface types. These provide specific
+functionality, while deferring the detailed representation of a block to a
+derived type.
 
 .. tip::
    Avoid converting pointers to allocations into ``Block`` instances, even if
@@ -243,11 +232,105 @@ Block
    abstraction in this manner will limit your flexibility to change to a
    different allocator in the future.
 
+.. TODO(b/378549332): Add a diagram of mix-in relationships.
+
+BasicBlock
+----------
+.. doxygenclass:: pw::allocator::BasicBlock
+   :members:
+
+ContiguousBlock
+---------------
+.. doxygenclass:: pw::allocator::ContiguousBlock
+   :members:
+
+AllocatableBlock
+----------------
+.. doxygenclass:: pw::allocator::AllocatableBlock
+   :members:
+
+AlignableBlock
+--------------
+.. doxygenclass:: pw::allocator::AlignableBlock
+   :members:
+
+BlockWithLayout
+---------------
+.. doxygenclass:: pw::allocator::BlockWithLayout
+   :members:
+
+ForwardIterableBlock
+--------------------
+.. doxygenclass:: pw::allocator::ForwardIterableBlock
+   :members:
+
+ReverseIterableBlock
+--------------------
+.. doxygenclass:: pw::allocator::ReverseIterableBlock
+   :members:
+
+PoisonableBlock
+---------------
+.. doxygenclass:: pw::allocator::PoisonableBlock
+   :members:
+
+BlockResult
+-----------
+This type is not a block mix-in. It is used to communicate whether a method
+succeeded, what block was produced or modified, and what side-effects the call
+produced.
+
+.. doxygenclass:: pw::allocator::BlockResult
+   :members:
+
+DetailedBlock
+-------------
+This type is not a block mix-in. It is an example of a block implementation that
+uses the mix-ins above.
+
+.. doxygenstruct:: pw::allocator::DetailedBlockParameters
+   :members:
+
+.. doxygenclass:: pw::allocator::DetailedBlockImpl
+   :members:
+
 .. _module-pw_allocator-api-bucket:
 
 Bucket
 ======
-.. doxygenclass:: pw::allocator::internal::Bucket
+Several block allocator implementations improve performance by managing buckets,
+which are data structures that track free blocks. Several bucket implementations
+are provided that trade off between performance and per-block space needed when
+free.
+
+FastSortedBucket
+----------------
+.. doxygenclass:: pw::allocator::FastSortedBucket
+   :members:
+
+ForwardSortedBucket
+-------------------
+.. doxygenclass:: pw::allocator::ForwardSortedBucket
+   :members:
+
+ReverseFastSortedBucket
+-----------------------
+.. doxygenclass:: pw::allocator::ReverseFastSortedBucket
+   :members:
+
+ReverseSortedBucket
+-------------------
+.. doxygenclass:: pw::allocator::ReverseSortedBucket
+   :members:
+
+SequencedBucket
+---------------
+.. doxygenclass:: pw::allocator::SequencedBucket
+   :members:
+
+UnorderedBucket
+---------------
+.. doxygenclass:: pw::allocator::UnorderedBucket
    :members:
 
 .. _module-pw_allocator-api-metrics_adapter:
