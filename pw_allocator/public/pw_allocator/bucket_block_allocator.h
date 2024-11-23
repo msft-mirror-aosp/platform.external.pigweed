@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "pw_allocator/bucket_allocator.h"
+#include "pw_allocator/config.h"
 
 namespace pw::allocator {
 
@@ -29,9 +30,10 @@ namespace pw::allocator {
 /// the `BlockAllocator`. Since the free blocks' usable space is interpreted as
 /// intrusive items, they must have a pointer-compatible alignment. As a result,
 /// the first template parameter is ignored.
-template <typename = uintptr_t,
+template <typename OffsetType = uintptr_t,
           size_t kMinBucketChunkSize = 32,
           size_t kNumBuckets = 5>
-using BucketBlockAllocator = BucketAllocator<kMinBucketChunkSize, kNumBuckets>;
+using BucketBlockAllocator PW_ALLOCATOR_DEPRECATED =
+    BucketAllocator<BucketBlock<OffsetType>, kMinBucketChunkSize, kNumBuckets>;
 
 }  // namespace pw::allocator
