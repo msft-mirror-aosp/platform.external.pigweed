@@ -13,50 +13,14 @@
 // the License.
 #pragma once
 
-#include "pw_allocator/block_allocator.h"
 #include "pw_allocator/config.h"
+#include "pw_allocator/first_fit.h"
 
 namespace pw::allocator {
 
-/// Block allocator that uses a "first-fit" allocation strategy.
-///
-/// In this strategy, the allocator handles an allocation request by starting at
-/// the beginning of the range of blocks and looking for the first one which can
-/// satisfy the request.
-///
-/// This strategy may result in slightly worse fragmentation than the
-/// corresponding "last-fit" strategy, since the alignment may result in unused
-/// fragments both before and after an allocated block.
-template <typename OffsetType = uintptr_t,
-          uint16_t kPoisonInterval = PW_ALLOCATOR_BLOCK_POISON_INTERVAL>
-class FirstFitBlockAllocator
-    : public BlockAllocator<OffsetType, kPoisonInterval> {
- public:
-  using Base = BlockAllocator<OffsetType, kPoisonInterval>;
-  using BlockType = typename Base::BlockType;
-
-  /// Constexpr constructor. Callers must explicitly call `Init`.
-  constexpr FirstFitBlockAllocator() : Base() {}
-
-  /// Non-constexpr constructor that automatically calls `Init`.
-  ///
-  /// @param[in]  region  Region of memory to use when satisfying allocation
-  ///                     requests. The region MUST be large enough to fit an
-  ///                     aligned block with overhead. It MUST NOT be larger
-  ///                     than what is addressable by `OffsetType`.
-  explicit FirstFitBlockAllocator(ByteSpan region) : Base(region) {}
-
- private:
-  /// @copydoc Allocator::Allocate
-  BlockType* ChooseBlock(Layout layout) override {
-    // Search forwards for the first block that can hold this allocation.
-    for (auto* block : Base::blocks()) {
-      if (BlockType::AllocFirst(block, layout).ok()) {
-        return block;
-      }
-    }
-    return nullptr;
-  }
-};
+/// Alias providing the legacy name for a first fit allocator with a threshold.
+template <typename OffsetType = uintptr_t>
+using FirstFitBlockAllocator PW_ALLOCATOR_DEPRECATED =
+    FirstFitAllocator<FirstFitBlock<uintptr_t>>;
 
 }  // namespace pw::allocator
