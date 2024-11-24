@@ -14,12 +14,17 @@
 
 #pragma once
 
-#include "pw_bluetooth_proxy/internal/acl_data_channel.h"
-#include "pw_bluetooth_proxy/internal/h4_storage.h"
+#include "pw_bluetooth_proxy/h4_packet.h"
+#include "pw_containers/inline_queue.h"
+#include "pw_containers/intrusive_forward_list.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
+#include "pw_sync/lock_annotations.h"
+#include "pw_sync/mutex.h"
 
 namespace pw::bluetooth::proxy {
+
+class L2capChannelManager;
 
 // Base class for peer-to-peer L2CAP-based channels supporting writing.
 //
@@ -27,13 +32,36 @@ namespace pw::bluetooth::proxy {
 // takes a variable information payload. Protocol-dependent information that
 // is fixed per channel, such as addresses, flags, handles, etc. should be
 // provided at construction to derived channels.
-class L2capWriteChannel {
+class L2capWriteChannel : public IntrusiveForwardList<L2capWriteChannel>::Item {
  public:
-  virtual ~L2capWriteChannel() {}
+  L2capWriteChannel(const L2capWriteChannel& other) = delete;
+  L2capWriteChannel& operator=(const L2capWriteChannel& other) = delete;
+  L2capWriteChannel(L2capWriteChannel&& other);
+  // TODO: https://pwbug.dev/360929142 - Define move assignment operator so
+  // write channels can be erased from containers.
+  L2capWriteChannel& operator=(L2capWriteChannel&& other) = delete;
+
+  virtual ~L2capWriteChannel();
+
+  // Max number of Tx L2CAP packets that can be waiting to send.
+  static constexpr size_t QueueCapacity() { return kQueueCapacity; }
+
+  // Queue L2CAP `packet` for sending and `ReportPacketsMayBeReadyToSend()`.
+  //
+  // Returns PW_STATUS_UNAVAILABLE if queue is full (transient error).
+  [[nodiscard]] virtual Status QueuePacket(H4PacketWithH4&& packet);
+
+  // Dequeue a packet if one is available to send.
+  [[nodiscard]] virtual std::optional<H4PacketWithH4> DequeuePacket();
+
+  // Get the destination L2CAP channel ID.
+  uint16_t remote_cid() const { return remote_cid_; }
+
+  // Get the ACL connection handle.
+  uint16_t connection_handle() const { return connection_handle_; }
 
  protected:
-  explicit L2capWriteChannel(AclDataChannel& acl_data_channel,
-                             H4Storage& h4_storage,
+  explicit L2capWriteChannel(L2capChannelManager& l2cap_channel_manager,
                              uint16_t connection_handle,
                              uint16_t remote_cid);
 
@@ -50,14 +78,22 @@ class L2capWriteChannel {
   // Returns PW_STATUS_UNAVAILABLE if all buffers are currently occupied.
   pw::Result<H4PacketWithH4> PopulateTxL2capPacket(uint16_t data_length);
 
-  // Send `tx_packet` over `AclDataChannel`.
-  //
-  // Returns PW_STATUS_OK if send successful.
-  // Returns PW_STATUS_UNAVAILABLE if credits were not available to send.
-  pw::Status SendL2capPacket(H4PacketWithH4&& tx_packet);
+  // Returns the maximum size supported for Tx L2CAP PDU payloads.
+  uint16_t MaxL2capPayloadSize() const;
+
+  // Alert `L2capChannelManager` that queued packets may be ready to send.
+  // When calling this method, ensure no locks are held that are also acquired
+  // in `Dequeue()` overrides.
+  void ReportPacketsMayBeReadyToSend();
+
+  // Remove all packets from queue.
+  void ClearQueue();
 
  private:
   static constexpr uint16_t kMaxValidConnectionHandle = 0x0EFF;
+
+  // TODO: https://pwbug.dev/349700888 - Make capacity configurable.
+  static constexpr size_t kQueueCapacity = 5;
 
   // ACL connection handle on remote peer to which packets are sent.
   uint16_t connection_handle_;
@@ -65,11 +101,15 @@ class L2capWriteChannel {
   // L2CAP channel ID on remote peer to which packets are sent.
   uint16_t remote_cid_;
 
-  // Provided by proxy, owns packet buffers.
-  H4Storage& h4_storage_;
+  // `L2capChannelManager` and channel may concurrently call functions that
+  // access queue.
+  sync::Mutex send_queue_mutex_;
 
-  // Provided by proxy, owns management of the ACL data channel.
-  AclDataChannel& acl_data_channel_;
+  // Stores Tx L2CAP packets.
+  InlineQueue<H4PacketWithH4, kQueueCapacity> send_queue_
+      PW_GUARDED_BY(send_queue_mutex_);
+
+  L2capChannelManager& l2cap_channel_manager_;
 };
 
 }  // namespace pw::bluetooth::proxy

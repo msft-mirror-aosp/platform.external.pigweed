@@ -14,16 +14,15 @@
 
 #pragma once
 
+#include "pw_bluetooth_proxy/internal/l2cap_read_channel.h"
 #include "pw_bluetooth_proxy/internal/l2cap_write_channel.h"
+#include "pw_sync/mutex.h"
 
 namespace pw::bluetooth::proxy {
 
 /// L2CAP connection-oriented channel that supports writing to and reading
 /// from a remote peer.
-///
-// TODO: https://pwbug.dev/360934030 - Support queuing + credit-based control
-// flow.
-class L2capCoc : public L2capWriteChannel {
+class L2capCoc : public L2capWriteChannel, public L2capReadChannel {
  public:
   /// Parameters for a direction of packet flow in an `L2capCoc`.
   struct CocConfig {
@@ -53,8 +52,30 @@ class L2capCoc : public L2capWriteChannel {
     uint16_t credits;
   };
 
-  // TODO: saeedali@ - Add error codes here.
-  enum class Event {};
+  enum class Event {
+    // TODO: https://pwbug.dev/360929142 - Listen for
+    // L2CAP_DISCONNECTION_REQ/RSP packets and report this event accordingly.
+    kChannelClosedByOther,
+    /// An invalid packet was received. The channel is now `kStopped` and should
+    /// be closed. See error logs for details.
+    kRxInvalid,
+    /// The channel has received a packet while in the `kStopped` state. The
+    /// channel should have been closed.
+    kRxWhileStopped,
+    /// PDU recombination is not yet supported, but a fragmented L2CAP frame has
+    /// been received. The channel is now `kStopped` and should be closed.
+    // TODO: https://pwbug.dev/365179076 - Support recombination.
+    kRxFragmented,
+  };
+
+  L2capCoc(const L2capCoc& other) = delete;
+  L2capCoc& operator=(const L2capCoc& other) = delete;
+  /// Channel is moved on return from factory function, so client is responsible
+  /// for storing channel.
+  L2capCoc(L2capCoc&& other);
+  // TODO: https://pwbug.dev/360929142 - Define move assignment operator so
+  // `L2capCoc` can be erased from pw containers.
+  L2capCoc& operator=(L2capCoc&& other) = delete;
 
   /// Enter `kStopped` state. This means
   ///   - Pending sends will not complete.
@@ -79,23 +100,28 @@ class L2capCoc : public L2capWriteChannel {
   /// .. pw-status-codes::
   ///  OK:                  If packet was successfully queued for send.
   ///  UNAVAILABLE:         If channel could not acquire the resources to queue
-  ///  the
-  ///                       send at this time (transient error).
+  ///                       the send at this time (transient error).
   ///  INVALID_ARGUMENT:    If payload is too large.
   ///  FAILED_PRECONDITION: If channel is `kStopped`.
   /// @endrst
   pw::Status Write(pw::span<const uint8_t> payload);
 
-  // TODO: https://pwbug.dev/360934032 - Implement Read().
-
  protected:
   static pw::Result<L2capCoc> Create(
-      AclDataChannel& acl_data_channel,
-      H4Storage& h4_storage,
+      L2capChannelManager& l2cap_channel_manager,
       uint16_t connection_handle,
       CocConfig rx_config,
       CocConfig tx_config,
+      pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
       pw::Function<void(Event event)>&& event_fn);
+
+  // `CallReceiveFn` with the information payload contained in `kframe`. As
+  // packet desegmentation is not supported, segmented SDUs are discarded.
+  bool OnPduReceived(pw::span<uint8_t> kframe) override
+      PW_LOCKS_EXCLUDED(mutex_);
+
+  // Increment `send_credits_` by `credits`.
+  void AddCredits(uint16_t credits) PW_LOCKS_EXCLUDED(mutex_);
 
  private:
   enum class CocState {
@@ -103,16 +129,31 @@ class L2capCoc : public L2capWriteChannel {
     kStopped,
   };
 
-  explicit L2capCoc(AclDataChannel& acl_data_channel,
-                    H4Storage& h4_storage,
+  explicit L2capCoc(L2capChannelManager& l2cap_channel_manager,
                     uint16_t connection_handle,
                     CocConfig rx_config,
                     CocConfig tx_config,
+                    pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
                     pw::Function<void(Event event)>&& event_fn);
 
+  // Stop channel & notify client.
+  void OnFragmentedPduReceived() override;
+
+  // `Stop()` channel if `kRunning` & call `event_fn_(error)` if it exists.
+  void StopChannelAndReportError(Event error);
+
+  // Override: Dequeue a packet only if a credit is able to be subtracted.
+  std::optional<H4PacketWithH4> DequeuePacket() override
+      PW_LOCKS_EXCLUDED(mutex_);
+
   CocState state_;
+  sync::Mutex mutex_;
+  uint16_t rx_mtu_;
+  uint16_t rx_mps_;
   uint16_t tx_mtu_;
   uint16_t tx_mps_;
+  uint16_t tx_credits_ PW_GUARDED_BY(mutex_);
+  uint16_t remaining_sdu_bytes_to_ignore_ PW_GUARDED_BY(mutex_);
   pw::Function<void(Event event)> event_fn_;
 };
 
