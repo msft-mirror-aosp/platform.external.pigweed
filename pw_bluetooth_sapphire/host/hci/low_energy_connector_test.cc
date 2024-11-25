@@ -77,10 +77,10 @@ class LowEnergyConnectorTest : public TestingBase,
     TestingBase::TearDown();
   }
 
-  EmbossEventPacket CreateConnectionCompleteSubevent(
+  EventPacket CreateConnectionCompleteSubevent(
       hci_spec::ConnectionHandle conn_handle,
       const DeviceAddress& peer_address) const {
-    auto packet = hci::EmbossEventPacket::New<
+    auto packet = hci::EventPacket::New<
         pw::bluetooth::emboss::LEEnhancedConnectionCompleteSubeventV1Writer>(
         hci_spec::kLEMetaEventCode);
     auto params = packet.view_t();
@@ -127,11 +127,10 @@ class LowEnergyConnectorTest : public TestingBase,
   }
 
  private:
-  void OnIncomingConnectionCreated(
-      hci_spec::ConnectionHandle handle,
-      pw::bluetooth::emboss::ConnectionRole role,
-      const DeviceAddress& peer_address,
-      const hci_spec::LEConnectionParameters& conn_params) {
+  void OnIncomingConnectionCreated(hci_spec::ConnectionHandle handle,
+                                   pw::bluetooth::emboss::ConnectionRole role,
+                                   const DeviceAddress& peer_address,
+                                   const hci_spec::LEConnectionParameters&) {
     in_connections_.push_back(
         std::make_unique<testing::FakeLowEnergyConnection>(
             handle,
@@ -141,9 +140,9 @@ class LowEnergyConnectorTest : public TestingBase,
             transport()->GetWeakPtr()));
   }
 
-  void OnConnectionStateChanged(const DeviceAddress& address,
-                                hci_spec::ConnectionHandle handle,
-                                bool connected,
+  void OnConnectionStateChanged(const DeviceAddress&,
+                                hci_spec::ConnectionHandle,
+                                bool,
                                 bool canceled) {
     request_canceled_ = canceled;
   }
@@ -352,7 +351,7 @@ TEST_P(LowEnergyConnectorTest, IncomingConnect) {
   EXPECT_TRUE(in_connections().empty());
   EXPECT_FALSE(connector()->request_pending());
 
-  EmbossEventPacket packet = CreateConnectionCompleteSubevent(1, kTestAddress);
+  EventPacket packet = CreateConnectionCompleteSubevent(1, kTestAddress);
   test_device()->SendCommandChannelPacket(packet.data());
 
   RunUntilIdle();
@@ -400,7 +399,7 @@ TEST_P(LowEnergyConnectorTest, IncomingConnectDuringConnectionRequest) {
           return;
         }
 
-        EmbossEventPacket packet =
+        EventPacket packet =
             CreateConnectionCompleteSubevent(2, kIncomingAddress);
         test_device()->SendCommandChannelPacket(packet.data());
       });

@@ -46,11 +46,26 @@
 #define PW_ALLOCATOR_BLOCK_POISON_INTERVAL 0
 #endif  // PW_ALLOCATOR_BLOCK_POISON_INTERVAL
 
-#ifndef PW_ALLOCATOR_ENABLE_PMR
-/// Disables the ability to use this allocator with the PMR versions of
-/// standard library containers.
+#ifndef PW_ALLOCATOR_SUPPRESS_DEPRECATED_WARNINGS
+/// Suppresses warnings about using legacy allocator interfaces.
 ///
-/// If set to 1, PMR allocators can be created using `as_pmr()`. If set to 0,
-/// this usage is disabled. This is enabled by default.
-#define PW_ALLOCATOR_ENABLE_PMR 1
-#endif  // PW_ALLOCATOR_ENABLE_PMR
+/// This module is undergoing refactoring to improve flexibility and
+/// performance. Some portions of the API that are being updated are in use by
+/// downstream consumers. These legacy interfaces are preserved for now, but
+/// deprecated.
+///
+/// Initially, this setting defaults to 1 and these interfaces may still be
+/// consumed without warning.  At some point, this will default to 0. Downstream
+/// projects may still suppress the warning by overriding this configuration,
+/// but must be aware that legacy interfaces will eventually be removed.
+///
+/// See b/376730645 for background and details.
+#define PW_ALLOCATOR_SUPPRESS_DEPRECATED_WARNINGS 1
+#endif  // PW_ALLOCATOR_SUPPRESS_DEPRECATED_WARNINGS
+
+#if PW_ALLOCATOR_SUPPRESS_DEPRECATED_WARNINGS
+#define PW_ALLOCATOR_DEPRECATED
+#else
+#define PW_ALLOCATOR_DEPRECATED \
+  [[deprecated("See b/376730645 for background and workarounds.")]]
+#endif  // PW_ALLOCATOR_SUPPRESS_DEPRECATED_WARNINGS

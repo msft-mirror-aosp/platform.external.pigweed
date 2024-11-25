@@ -29,8 +29,9 @@ cc_library(
     hdrs = [
         "public/pw_async2/internal/poll_internal.h",
         "public/pw_async2/poll.h",
+        "public/pw_async2/try.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_polyfill",
         "//pw_string:to_string",
@@ -57,9 +58,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/dispatcher_base.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":poll",
         "//pw_assert",
@@ -77,9 +76,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/dispatcher.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher_backend",
         ":dispatcher_base",
@@ -124,9 +121,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/pend_func_task.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
         "//pw_function",
@@ -144,9 +139,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/pendable_as_task.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
     ],
@@ -163,9 +156,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/allocate_task.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
         "//pw_allocator:allocator",
@@ -186,9 +177,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/once_sender.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
         "//pw_function",
@@ -217,9 +206,7 @@ cc_library(
     implementation_deps = [
         "//pw_log",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     target_compatible_with = minimum_cxx_20(),
     deps = [
         ":dispatcher",
@@ -244,9 +231,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/coro_or_else_task.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":coro",
         ":dispatcher",
@@ -274,7 +259,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/time_provider.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
         "//pw_chrono:virtual_clock",
@@ -296,7 +281,7 @@ cc_library(
         "//pw_chrono:system_timer",
         "//pw_toolchain:no_destructor",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":time_provider",
         "//pw_chrono:system_clock",
@@ -319,7 +304,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/simulated_time_provider.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":time_provider",
         "//pw_sync:interrupt_spin_lock",
@@ -343,7 +328,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/enqueue_heap_func.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
     ],
@@ -366,7 +351,7 @@ cc_library(
     hdrs = [
         "public/pw_async2/join.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":dispatcher",
     ],

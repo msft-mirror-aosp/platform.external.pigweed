@@ -14,14 +14,16 @@
 #pragma once
 
 #include <cstddef>
+#include <mutex>
 
 #include "pw_allocator/allocator.h"
-#include "pw_allocator/block.h"
 #include "pw_allocator/buffer.h"
 #include "pw_allocator/config.h"
-#include "pw_allocator/first_fit_block_allocator.h"
+#include "pw_allocator/first_fit.h"
 #include "pw_allocator/metrics.h"
 #include "pw_allocator/tracking_allocator.h"
+#include "pw_assert/assert.h"
+#include "pw_assert/internal/check_impl.h"
 #include "pw_bytes/span.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
@@ -38,12 +40,43 @@ static_assert(PW_ALLOCATOR_STRICT_VALIDATION,
 // A token that can be used in tests.
 constexpr pw::tokenizer::Token kToken = PW_TOKENIZE_STRING("test");
 
+/// Free all the blocks reachable by the given block. Useful for test cleanup.
+template <typename BlockType>
+void FreeAll(typename BlockType::Range range) {
+  BlockType* block = *(range.begin());
+  if (block == nullptr) {
+    return;
+  }
+
+  // Rewind to the first block.
+  BlockType* prev = block->Prev();
+  while (prev != nullptr) {
+    block = prev;
+    prev = block->Prev();
+  }
+
+  // Free and merge blocks.
+  while (block != nullptr) {
+    if (!block->IsFree()) {
+      auto result = BlockType::Free(std::move(block));
+      block = result.block();
+    }
+    block = block->Next();
+  }
+}
+
 /// An `AllocatorForTest` that is automatically initialized on construction.
-template <size_t kBufferSize, typename MetricsType = internal::AllMetrics>
+template <size_t kBufferSize,
+          typename BlockType_ = FirstFitBlock<uint32_t>,
+          typename MetricsType = internal::AllMetrics>
 class AllocatorForTest : public Allocator {
  public:
-  using AllocatorType = FirstFitBlockAllocator<uint32_t>;
-  using BlockType = AllocatorType::BlockType;
+  using BlockType = BlockType_;
+  using AllocatorType = FirstFitAllocator<BlockType>;
+
+  // Since the unbderlying first-fit allocator uses an intrusive free list, all
+  // allocations will be at least this size.
+  static constexpr size_t kMinSize = BlockType::kAlignment;
 
   AllocatorForTest()
       : Allocator(AllocatorType::kCapabilities), tracker_(kToken, *allocator_) {
@@ -52,14 +85,12 @@ class AllocatorForTest : public Allocator {
   }
 
   ~AllocatorForTest() override {
-    for (auto* block : allocator_->blocks()) {
-      BlockType::Free(block);
-    }
+    FreeAll<BlockType>(blocks());
     allocator_->Reset();
   }
 
-  AllocatorType::Range blocks() const { return allocator_->blocks(); }
-  AllocatorType::Range blocks() { return allocator_->blocks(); }
+  typename BlockType::Range blocks() const { return allocator_->blocks(); }
+  typename BlockType::Range blocks() { return allocator_->blocks(); }
 
   const metric::Group& metric_group() const { return tracker_.metric_group(); }
   metric::Group& metric_group() { return tracker_.metric_group(); }
@@ -86,7 +117,17 @@ class AllocatorForTest : public Allocator {
   /// Allocates all the memory from this object.
   void Exhaust() {
     for (auto* block : allocator_->blocks()) {
-      block->MarkUsed();
+      if (block->IsFree()) {
+        auto result = BlockType::AllocLast(std::move(block),
+                                           Layout(block->InnerSize(), 1));
+        PW_ASSERT(result.status() == OkStatus());
+
+        using Prev = internal::GenericBlockResult::Prev;
+        PW_ASSERT(result.prev() == Prev::kUnchanged);
+
+        using Next = internal::GenericBlockResult::Next;
+        PW_ASSERT(result.next() == Next::kUnchanged);
+      }
     }
   }
 
@@ -99,7 +140,8 @@ class AllocatorForTest : public Allocator {
   /// @copydoc Allocator::Allocate
   void* DoAllocate(Layout layout) override {
     allocate_size_ = layout.size();
-    return tracker_.Allocate(layout);
+    void* ptr = tracker_.Allocate(layout);
+    return ptr;
   }
 
   /// @copydoc Allocator::Deallocate
@@ -122,6 +164,9 @@ class AllocatorForTest : public Allocator {
     return tracker_.Resize(ptr, new_size);
   }
 
+  /// @copydoc Allocator::GetAllocated
+  size_t DoGetAllocated() const override { return tracker_.GetAllocated(); }
+
   /// @copydoc Deallocator::GetInfo
   Result<Layout> DoGetInfo(InfoType info_type, const void* ptr) const override {
     return GetInfo(tracker_, info_type, ptr);
@@ -139,10 +184,13 @@ class AllocatorForTest : public Allocator {
 
 /// An `AllocatorForTest` that is thread and interrupt-safe and automatically
 /// initialized on construction.
-template <size_t kBufferSize, typename MetricsType = internal::AllMetrics>
+template <size_t kBufferSize,
+          typename BlockType_ = FirstFitBlock<uint32_t>,
+          typename MetricsType = internal::AllMetrics>
 class SynchronizedAllocatorForTest : public Allocator {
  private:
-  using Base = AllocatorForTest<kBufferSize, MetricsType>;
+  using BlockType = BlockType_;
+  using Base = AllocatorForTest<kBufferSize, BlockType, MetricsType>;
 
   /// @copydoc Allocator::Allocate
   void* DoAllocate(Layout layout) override {
