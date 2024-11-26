@@ -57,6 +57,61 @@ void ProxyHost::HandleH4HciFromController(H4PacketWithHci&& h4_packet) {
   hci_transport_.SendToHost(std::move(h4_packet));
 }
 
+bool ProxyHost::CheckForActiveFragmenting(AclDataChannel::Direction direction,
+                                          emboss::AclDataFrameWriter& acl) {
+  const uint16_t handle = acl.header().handle().Read();
+  const emboss::AclDataPacketBoundaryFlag boundary_flag =
+      acl.header().packet_boundary_flag().Read();
+
+  pw::Result<bool> connection_is_receiving_fragmented_pdu =
+      acl_data_channel_.IsReceivingFragmentedPdu(direction, handle);
+  if (connection_is_receiving_fragmented_pdu.ok() &&
+      *connection_is_receiving_fragmented_pdu) {
+    // We're in a state where this connection is dropping continuing fragments
+    // in a fragmented PDU.
+    if (boundary_flag !=
+        emboss::AclDataPacketBoundaryFlag::CONTINUING_FRAGMENT) {
+      // The fragmented PDU has been fully received, so note that then proceed
+      // to process the new PDU as normal.
+      PW_CHECK(acl_data_channel_.FragmentedPduFinished(direction, handle).ok());
+    } else {
+      PW_LOG_INFO("(Connection: 0x%X) Dropping continuing PDU fragment.",
+                  handle);
+      return true;
+    }
+  }
+  return false;
+}
+
+bool ProxyHost::CheckForFragmentedStart(
+    AclDataChannel::Direction direction,
+    emboss::AclDataFrameWriter& acl,
+    emboss::BasicL2capHeaderView& l2cap_header,
+    L2capReadChannel* channel) {
+  const uint16_t handle = acl.header().handle().Read();
+  const emboss::AclDataPacketBoundaryFlag boundary_flag =
+      acl.header().packet_boundary_flag().Read();
+  // TODO: https://pwbug.dev/365179076 - Support recombination.
+  if (boundary_flag == emboss::AclDataPacketBoundaryFlag::CONTINUING_FRAGMENT) {
+    PW_LOG_INFO("(CID: 0x%X) Received unexpected continuing PDU fragment.",
+                handle);
+    channel->OnFragmentedPduReceived();
+    return true;
+  }
+  const uint16_t l2cap_frame_length =
+      emboss::BasicL2capHeader::IntrinsicSizeInBytes() +
+      l2cap_header.pdu_length().Read();
+  if (l2cap_frame_length > acl.data_total_length().Read()) {
+    pw::Status status =
+        acl_data_channel_.FragmentedPduStarted(direction, handle);
+    PW_CHECK(status.ok());
+    channel->OnFragmentedPduReceived();
+    return true;
+  }
+
+  return false;
+}
+
 void ProxyHost::HandleEventFromController(H4PacketWithHci&& h4_packet) {
   pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
   Result<emboss::EventHeaderView> event =
@@ -104,31 +159,11 @@ void ProxyHost::HandleAclFromController(H4PacketWithHci&& h4_packet) {
     hci_transport_.SendToHost(std::move(h4_packet));
     return;
   }
-  uint16_t handle = acl->header().handle().Read();
+  const uint16_t handle = acl->header().handle().Read();
 
-  pw::Result<bool> connection_is_receiving_fragmented_pdu =
-      acl_data_channel_.IsReceivingFragmentedPdu(handle);
-  if (connection_is_receiving_fragmented_pdu.status().IsNotFound()) {
-    // Channel on a connection not managed by proxy, so forward to host.
-    hci_transport_.SendToHost(std::move(h4_packet));
+  if (CheckForActiveFragmenting(AclDataChannel::Direction::kFromController,
+                                *acl)) {
     return;
-  }
-
-  emboss::AclDataPacketBoundaryFlag boundary_flag =
-      acl->header().packet_boundary_flag().Read();
-  if (*connection_is_receiving_fragmented_pdu) {
-    // We're in a state where this connection is dropping continuing fragments
-    // in a fragmented PDU.
-    if (boundary_flag !=
-        emboss::AclDataPacketBoundaryFlag::CONTINUING_FRAGMENT) {
-      // The fragmented PDU has been fully received, so note that then proceed
-      // to process the new PDU as normal.
-      PW_CHECK(acl_data_channel_.FragmentedPduFinished(handle).ok());
-    } else {
-      PW_LOG_INFO("(Connection: 0x%X) Dropping continuing PDU fragment.",
-                  handle);
-      return;
-    }
   }
 
   emboss::BasicL2capHeaderView l2cap_header = emboss::MakeBasicL2capHeaderView(
@@ -152,22 +187,13 @@ void ProxyHost::HandleAclFromController(H4PacketWithHci&& h4_packet) {
     return;
   }
 
-  // TODO: https://pwbug.dev/365179076 - Support recombination.
-  if (boundary_flag == emboss::AclDataPacketBoundaryFlag::CONTINUING_FRAGMENT) {
-    PW_LOG_INFO("(CID: 0x%X) Received unexpected continuing PDU fragment.",
-                handle);
-    channel->OnFragmentedPduReceived();
+  if (CheckForFragmentedStart(AclDataChannel::Direction::kFromController,
+                              *acl,
+                              l2cap_header,
+                              channel)) {
     return;
   }
-  const uint16_t l2cap_frame_length =
-      emboss::BasicL2capHeader::IntrinsicSizeInBytes() +
-      l2cap_header.pdu_length().Read();
-  if (l2cap_frame_length > acl->data_total_length().Read()) {
-    pw::Status status = acl_data_channel_.FragmentedPduStarted(handle);
-    PW_CHECK(status.ok());
-    channel->OnFragmentedPduReceived();
-    return;
-  }
+
   if (!channel->OnPduReceived(pw::span(acl->payload().BackingStorage().data(),
                                        acl->payload().SizeInBytes()))) {
     hci_transport_.SendToHost(std::move(h4_packet));
@@ -247,7 +273,8 @@ pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
     L2capCoc::CocConfig tx_config,
     pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
     pw::Function<void(L2capCoc::Event event)>&& event_fn) {
-  Status status = acl_data_channel_.CreateLeAclConnection(connection_handle);
+  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
+                                                        AclTransport::kLe);
   if (status.IsResourceExhausted()) {
     return pw::Status::Unavailable();
   }
@@ -264,7 +291,8 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
                                      uint16_t attribute_handle,
                                      pw::span<const uint8_t> attribute_value) {
   // TODO: https://pwbug.dev/369709521 - Migrate clients to channel API.
-  Status status = acl_data_channel_.CreateLeAclConnection(connection_handle);
+  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
+                                                        AclTransport::kLe);
   if (status != OkStatus() && status != Status::AlreadyExists()) {
     return pw::Status::Unavailable();
   }
@@ -277,20 +305,39 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
   return channel_result->Write(attribute_value);
 }
 
+pw::Result<RfcommChannel> ProxyHost::AcquireRfcommChannel(
+    uint16_t connection_handle,
+    RfcommChannel::Config rx_config,
+    RfcommChannel::Config tx_config,
+    uint8_t channel_number,
+    pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn) {
+  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
+                                                        AclTransport::kBrEdr);
+  if (status != OkStatus() && status != Status::AlreadyExists()) {
+    return pw::Status::Unavailable();
+  }
+  return RfcommChannel::Create(l2cap_channel_manager_,
+                               connection_handle,
+                               rx_config,
+                               tx_config,
+                               channel_number,
+                               std::move(receive_fn));
+}
+
 bool ProxyHost::HasSendLeAclCapability() const {
-  return acl_data_channel_.HasSendLeAclCapability();
+  return acl_data_channel_.HasSendAclCapability(AclTransport::kLe);
 }
 
 bool ProxyHost::HasSendBrEdrAclCapability() const {
-  return acl_data_channel_.HasSendBrEdrAclCapability();
+  return acl_data_channel_.HasSendAclCapability(AclTransport::kBrEdr);
 }
 
 uint16_t ProxyHost::GetNumFreeLeAclPackets() const {
-  return acl_data_channel_.GetNumFreeLeAclPackets();
+  return acl_data_channel_.GetNumFreeAclPackets(AclTransport::kLe);
 }
 
 uint16_t ProxyHost::GetNumFreeBrEdrAclPackets() const {
-  return acl_data_channel_.GetNumFreeBrEdrAclPackets();
+  return acl_data_channel_.GetNumFreeAclPackets(AclTransport::kBrEdr);
 }
 
 }  // namespace pw::bluetooth::proxy
