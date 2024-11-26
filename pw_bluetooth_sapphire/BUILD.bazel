@@ -12,6 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+
 package(default_visibility = ["//pw_bluetooth_sapphire:__subpackages__"])
 
 cc_library(
@@ -246,7 +249,6 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/transport/command_channel.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/control_packets.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/data_buffer_info.h",
-        "public/pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/emboss_packet.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/error.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/fake_acl_connection.h",
@@ -260,8 +262,17 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/transport/slab_allocators.h",
         "public/pw_bluetooth_sapphire/internal/host/transport/transport.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     tags = ["manual"],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+        "fuchsia.rst",
+    ],
+    prefix = "pw_bluetooth_sapphire/",
+    target_compatible_with = incompatible_with_mcu(),
+    visibility = ["//visibility:public"],
 )

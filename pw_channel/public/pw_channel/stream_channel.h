@@ -15,6 +15,7 @@
 
 #include "pw_async2/dispatcher_base.h"
 #include "pw_channel/channel.h"
+#include "pw_multibuf/allocator.h"
 #include "pw_multibuf/multibuf.h"
 #include "pw_status/status.h"
 #include "pw_stream/stream.h"
@@ -110,13 +111,29 @@ class StreamChannelWriteState {
 /// `Stream::Write` are blocking. The stream reading and writing threaads
 /// may be blocked on `Read` or `Write` calls, and therefore cannot cleanly
 /// be shutdown.
-class StreamChannel final : public channel::ByteReaderWriter {
+class StreamChannel final
+    : public channel::Implement<channel::ByteReaderWriter> {
  public:
+  StreamChannel(stream::Reader& reader,
+                const thread::Options& read_thread_options,
+                multibuf::MultiBufAllocator& read_allocator,
+                stream::Writer& writer,
+                const thread::Options& write_thread_option,
+                multibuf::MultiBufAllocator& write_allocator);
+
+  // Deprecated: prefer the two-allocator constructor in order to prevent reads
+  // and writes blocking on waiting for buffer space from the other.
   StreamChannel(multibuf::MultiBufAllocator& allocator,
                 stream::Reader& reader,
                 const thread::Options& read_thread_options,
                 stream::Writer& writer,
-                const thread::Options& write_thread_options);
+                const thread::Options& write_thread_options)
+      : StreamChannel(reader,
+                      read_thread_options,
+                      allocator,
+                      writer,
+                      write_thread_options,
+                      allocator) {}
 
   // StreamChannel is referenced from other threads and is therefore not movable
   // or copyable.
@@ -137,15 +154,16 @@ class StreamChannel final : public channel::ByteReaderWriter {
 
   async2::Poll<Status> DoPendReadyToWrite(async2::Context& cx) override;
 
-  multibuf::MultiBufAllocator& DoGetWriteAllocator() override {
-    return *allocator_;
+  async2::Poll<std::optional<multibuf::MultiBuf>> DoPendAllocateWriteBuffer(
+      async2::Context& cx, size_t min_bytes) override {
+    write_allocation_future_.SetDesiredSize(min_bytes);
+    return write_allocation_future_.Pend(cx);
   }
 
-  Result<channel::WriteToken> DoStageWrite(multibuf::MultiBuf&& data) override;
+  Status DoStageWrite(multibuf::MultiBuf&& data) override;
 
-  async2::Poll<Result<channel::WriteToken>> DoPendWrite(
-      async2::Context&) override {
-    return CreateWriteToken(write_token_);
+  async2::Poll<Status> DoPendWrite(async2::Context&) override {
+    return OkStatus();
   }
 
   async2::Poll<Status> DoPendClose(async2::Context&) override {
@@ -156,9 +174,8 @@ class StreamChannel final : public channel::ByteReaderWriter {
   stream::Writer& writer_;
   internal::StreamChannelReadState read_state_;
   internal::StreamChannelWriteState write_state_;
-  std::optional<multibuf::MultiBufAllocationFuture> allocation_future_;
-  multibuf::MultiBufAllocator* allocator_;
-  uint32_t write_token_;
+  multibuf::MultiBufAllocationFuture read_allocation_future_;
+  multibuf::MultiBufAllocationFuture write_allocation_future_;
 };
 
 /// @}

@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -23,7 +25,7 @@ licenses(["notice"])
 cc_library(
     name = "config",
     hdrs = ["public/pw_containers/config.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":config_override"],
 )
 
@@ -54,7 +56,7 @@ cc_library(
         "public/pw_containers/algorithm.h",
         "public/pw_containers/internal/algorithm_internal.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
@@ -62,7 +64,7 @@ cc_library(
     srcs = ["intrusive_item.cc"],
     hdrs = ["public/pw_containers/internal/intrusive_item.h"],
     implementation_deps = ["//pw_assert"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
@@ -72,14 +74,14 @@ cc_library(
         "public/pw_containers/internal/intrusive_list_item.h",
         "public/pw_containers/internal/intrusive_list_iterator.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":intrusive_item"],
 )
 
 cc_library(
     name = "intrusive_forward_list",
     hdrs = ["public/pw_containers/intrusive_forward_list.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         ":intrusive_list_common",
@@ -89,7 +91,7 @@ cc_library(
 cc_library(
     name = "intrusive_list",
     hdrs = ["public/pw_containers/intrusive_list.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         ":intrusive_list_common",
@@ -100,7 +102,7 @@ cc_library(
 cc_library(
     name = "legacy_intrusive_list",
     hdrs = ["public/pw_containers/internal/legacy_intrusive_list.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     visibility = [":__subpackages__"],
     deps = [":intrusive_forward_list"],
 )
@@ -116,7 +118,7 @@ cc_library(
         "public/pw_containers/internal/aa_tree_item.h",
         "public/pw_containers/internal/aa_tree_iterator.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     visibility = [":__subpackages__"],
     deps = [
         ":intrusive_item",
@@ -129,35 +131,35 @@ cc_library(
 cc_library(
     name = "intrusive_map",
     hdrs = ["public/pw_containers/intrusive_map.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":aa_tree"],
 )
 
 cc_library(
     name = "intrusive_multimap",
     hdrs = ["public/pw_containers/intrusive_multimap.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":aa_tree"],
 )
 
 cc_library(
     name = "intrusive_set",
     hdrs = ["public/pw_containers/intrusive_set.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":aa_tree"],
 )
 
 cc_library(
     name = "intrusive_multiset",
     hdrs = ["public/pw_containers/intrusive_multiset.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":aa_tree"],
 )
 
 cc_library(
     name = "iterator",
     hdrs = ["public/pw_containers/iterator.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
@@ -165,7 +167,7 @@ cc_library(
     hdrs = [
         "public/pw_containers/inline_deque.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":raw_storage",
         "//pw_assert",
@@ -179,7 +181,7 @@ cc_library(
     hdrs = [
         "public/pw_containers/inline_queue.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":inline_deque",
     ],
@@ -189,7 +191,7 @@ cc_library(
     name = "inline_var_len_entry_queue",
     srcs = ["inline_var_len_entry_queue.c"],
     hdrs = ["public/pw_containers/inline_var_len_entry_queue.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":raw_storage",
         "//pw_assert",
@@ -202,7 +204,7 @@ cc_library(
     hdrs = [
         "public/pw_containers/vector.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_preprocessor",
@@ -212,7 +214,7 @@ cc_library(
 cc_library(
     name = "filtered_view",
     hdrs = ["public/pw_containers/filtered_view.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_containers",
@@ -222,7 +224,7 @@ cc_library(
 cc_library(
     name = "flat_map",
     hdrs = ["public/pw_containers/flat_map.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = ["//pw_assert"],
 )
 
@@ -231,7 +233,7 @@ cc_library(
     hdrs = [
         "public/pw_containers/internal/raw_storage.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     visibility = [":__subpackages__"],
 )
 
@@ -245,13 +247,13 @@ cc_library(
 cc_library(
     name = "to_array",
     hdrs = ["public/pw_containers/to_array.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
     name = "wrapped_iterator",
     hdrs = ["public/pw_containers/wrapped_iterator.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 # Unit tests
@@ -448,4 +450,32 @@ pw_cc_test(
         "//pw_compilation_testing:negative_compilation_testing",
         "//pw_unit_test",
     ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_containers/filtered_view.h",
+        "public/pw_containers/inline_deque.h",
+        "public/pw_containers/inline_queue.h",
+        "public/pw_containers/inline_var_len_entry_queue.h",
+        "public/pw_containers/internal/aa_tree.h",
+        "public/pw_containers/internal/intrusive_list.h",
+        "public/pw_containers/intrusive_forward_list.h",
+        "public/pw_containers/intrusive_list.h",
+        "public/pw_containers/intrusive_map.h",
+        "public/pw_containers/intrusive_multimap.h",
+        "public/pw_containers/intrusive_multiset.h",
+        "public/pw_containers/intrusive_set.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "Kconfig",
+        "docs.rst",
+    ],
+    prefix = "pw_containers/",
+    target_compatible_with = incompatible_with_mcu(),
 )

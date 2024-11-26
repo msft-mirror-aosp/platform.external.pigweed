@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:glob_dirs.bzl", "glob_dirs", "match_dir", "match_dir_internal")
 load("//pw_build:load_phase_test.bzl", "pw_string_comparison_test", "pw_string_list_comparison_test", "return_error")
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary_with_map")
@@ -145,13 +147,13 @@ cc_library(
 cc_library(
     name = "must_place",
     hdrs = ["public/pw_build/must_place.ld.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
     name = "linker_symbol",
     hdrs = ["public/pw_build/linker_symbol.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//third_party/fuchsia:stdcompat",
     ],
@@ -267,4 +269,27 @@ pw_copy_and_patch_file_test(
     out = "test_data/pw_copy_and_patch_file/patched_basic.txt",
     expected = "test_data/pw_copy_and_patch_file/basic.expected",
     patch_file = "test_data/pw_copy_and_patch_file/basic.patch",
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_build/linker_symbol.h",
+        "public/pw_build/must_place.ld.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "bazel.rst",
+        "cmake.rst",
+        "docs.rst",
+        "gn.rst",
+        "linker_scripts.rst",
+        "project_builder.rst",
+        "python.rst",
+    ],
+    prefix = "pw_build/",
+    target_compatible_with = incompatible_with_mcu(),
 )

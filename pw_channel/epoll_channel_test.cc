@@ -142,7 +142,7 @@ TEST_F(EpollChannelTest, Read_ValidData_Succeeds) {
   ASSERT_TRUE(channel.is_read_open());
   ASSERT_TRUE(channel.is_write_open());
 
-  ReaderTask<ByteReader> read_task(channel, 1);
+  ReaderTask<ByteReader> read_task(channel.channel(), 1);
   dispatcher.Post(read_task);
 
   EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
@@ -184,7 +184,7 @@ TEST_F(EpollChannelTest, Read_Closed_ReturnsFailedPrecondition) {
   EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
   EXPECT_EQ(close_task.close_status, pw::OkStatus());
 
-  ReaderTask<ByteReader> read_task(channel, 1);
+  ReaderTask<ByteReader> read_task(channel.channel(), 1);
   dispatcher.Post(read_task);
 
   EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
@@ -206,7 +206,6 @@ class WriterTask : public Task {
   int write_count = 0;
   int max_writes = 0;
   pw::Status last_write_status = pw::Status::Unknown();
-  pw::channel::WriteToken flushed_write_token;
 
  private:
   Poll<> DoPend(Context& cx) final {
@@ -225,21 +224,21 @@ class WriterTask : public Task {
       }
       ++write_count;
 
-      std::optional<pw::multibuf::MultiBuf> multibuf =
-          channel_.GetWriteAllocator().Allocate(data_to_write_.size());
-      PW_CHECK(multibuf.has_value());
-      std::copy(
-          data_to_write_.begin(), data_to_write_.end(), multibuf->begin());
+      Poll<std::optional<MultiBuf>> multibuf_result =
+          channel_.PendAllocateWriteBuffer(cx, data_to_write_.size());
+      PW_CHECK(multibuf_result.IsReady());
+      PW_CHECK(multibuf_result->has_value());
+      MultiBuf& multibuf = **multibuf_result;
+      std::copy(data_to_write_.begin(), data_to_write_.end(), multibuf.begin());
 
-      last_write_status = channel_.StageWrite(std::move(*multibuf)).status();
+      last_write_status = channel_.StageWrite(std::move(multibuf));
 
-      auto token = channel_.PendWrite(cx);
-      if (token.IsPending()) {
+      Poll<pw::Status> write_status = channel_.PendWrite(cx);
+      if (write_status.IsPending()) {
         return Pending();
       }
 
-      PW_CHECK_OK(token->status());
-      flushed_write_token = **token;
+      PW_CHECK_OK(*write_status);
     }
 
     return Ready();
@@ -258,7 +257,7 @@ TEST_F(EpollChannelTest, Write_ValidData_Succeeds) {
   ASSERT_TRUE(channel.is_write_open());
 
   constexpr auto kData = pw::bytes::Initialized<32>(0x3f);
-  WriterTask<ByteWriter> write_task(channel, 1, kData);
+  WriterTask<ByteWriter> write_task(channel.channel(), 1, kData);
   dispatcher.Post(write_task);
 
   dispatcher.RunToCompletion();
@@ -283,7 +282,7 @@ TEST_F(EpollChannelTest, Write_EmptyData_Succeeds) {
   ASSERT_TRUE(channel.is_read_open());
   ASSERT_TRUE(channel.is_write_open());
 
-  WriterTask<ByteWriter> write_task(channel, 1, {});
+  WriterTask<ByteWriter> write_task(channel.channel(), 1, {});
   dispatcher.Post(write_task);
 
   dispatcher.RunToCompletion();
@@ -308,7 +307,7 @@ TEST_F(EpollChannelTest, Write_Closed_ReturnsFailedPrecondition) {
   EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
   EXPECT_EQ(close_task.close_status, pw::OkStatus());
 
-  WriterTask<ByteWriter> write_task(channel, 1, {});
+  WriterTask<ByteWriter> write_task(channel.channel(), 1, {});
   dispatcher.Post(write_task);
 
   dispatcher.RunToCompletion();
@@ -340,7 +339,7 @@ TEST_F(EpollChannelTest, PendReadyToWrite_BlocksWhenUnavailable) {
   constexpr auto kData =
       pw::bytes::Initialized<decltype(alloc)::data_size_bytes()>('c');
   WriterTask<ByteWriter> write_task(
-      channel,
+      channel.channel(),
       100,  // Max writes set to some high number so the task fills the pipe.
       pw::ConstByteSpan(kData));
   dispatcher.Post(write_task);

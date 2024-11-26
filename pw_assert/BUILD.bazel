@@ -12,7 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("//pw_build:compatibility.bzl", "host_backend_alias")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mcu")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
@@ -40,9 +41,7 @@ cc_library(
         "public/pw_assert/internal/check_impl.h",
         "public/pw_assert/short.h",
     ],
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":assert_backend",
         ":check_backend",
@@ -76,9 +75,7 @@ pw_facade(
         "public/pw_assert/short.h",
     ],
     backend = ":check_backend",
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         "//pw_preprocessor",
@@ -111,9 +108,7 @@ pw_facade(
         "public/pw_assert/assert.h",
     ],
     backend = ":assert_backend",
-    includes = [
-        "public",
-    ],
+    strip_include_prefix = "public",
     deps = [":config"],
 )
 
@@ -140,7 +135,7 @@ label_flag(
 cc_library(
     name = "config",
     hdrs = ["public/pw_assert/config.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":config_override"],
 )
 
@@ -178,7 +173,7 @@ cc_library(
 cc_library(
     name = "print_and_abort",
     hdrs = ["public/pw_assert/internal/print_and_abort.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     visibility = ["//visibility:private"],
     deps = [":config"],
 )
@@ -242,4 +237,14 @@ pw_cc_test(
         "//pw_status",
         "//pw_unit_test",
     ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "backends.rst",
+        "docs.rst",
+    ],
+    prefix = "pw_assert/",
+    target_compatible_with = incompatible_with_mcu(),
 )

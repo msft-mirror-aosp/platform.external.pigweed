@@ -24,30 +24,6 @@
 namespace bt::hci::allocators {
 namespace {
 
-TEST(SlabAllocatorsTest, EventPacket) {
-  auto packet = EventPacket::New(5);
-  EXPECT_TRUE(packet);
-  EXPECT_EQ(5u + sizeof(hci_spec::EventHeader), packet->view().size());
-
-  packet = EventPacket::New(kMaxEventPayloadSize);
-  EXPECT_TRUE(packet);
-  EXPECT_GE(packet->view().size(), kMaxEventPacketSize);
-}
-
-TEST(SlabAllocatorsTest, EventPacketFallBack) {
-  std::list<std::unique_ptr<hci::EventPacket>> packets;
-  for (size_t num_packets = 0; num_packets < kMaxNumEventPackets;
-       num_packets++) {
-    auto packet = EventPacket::New(5);
-    packets.push_front(std::move(packet));
-  }
-
-  // Control allocator can fall back on system allocator after slabs are
-  // exhausted.
-  auto packet = EventPacket::New(5);
-  ASSERT_TRUE(packet);
-}
-
 TEST(SlabAllocatorsTest, ACLDataPacket) {
   auto packet = ACLDataPacket::New(5);
   EXPECT_TRUE(packet);

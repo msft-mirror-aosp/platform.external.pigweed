@@ -129,7 +129,7 @@
   "pw_bluetooth_sapphire": {
     "tagline": "Battle-tested Bluetooth with rock-solid reliability",
     "status": "unstable",
-    "size": "1.5 to 2 mB",
+    "size": "500 to 700 kB",
     "languages": [
       "C++17"
     ]
@@ -274,6 +274,13 @@
     "status": "stable",
     "languages": [
       "GN"
+    ]
+  },
+  "pw_elf": {
+    "tagline": "ELF file support",
+    "status": "experimental",
+    "languages": [
+      "C++17"
     ]
   },
   "pw_emu": {

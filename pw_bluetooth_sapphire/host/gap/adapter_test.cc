@@ -662,7 +662,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   test_device()->set_settings(settings);
   InitializeAdapter([](bool) {});
 
-  AdvertisementInstance instance;
+  std::optional<AdvertisementInstance> instance;
   auto adv_cb = [&](auto i, hci::Result<> status) {
     instance = std::move(i);
     EXPECT_EQ(fit::ok(), status);
@@ -691,7 +691,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   EXPECT_FALSE(test_device()->legacy_advertising_state().random_address);
 
   // Stop advertising.
-  adapter()->le()->StopAdvertising(instance.id());
+  instance.reset();
   RunUntilIdle();
   EXPECT_FALSE(test_device()->legacy_advertising_state().enabled);
   EXPECT_FALSE(test_device()->legacy_advertising_state().random_address);
@@ -722,7 +722,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
             *test_device()->legacy_advertising_state().random_address);
 
   // Restarting advertising should refresh the controller address.
-  adapter()->le()->StopAdvertising(instance.id());
+  instance.reset();
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
@@ -743,7 +743,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   // Disable privacy. The next time advertising gets started it should use a
   // public address.
   adapter()->le()->EnablePrivacy(false);
-  adapter()->le()->StopAdvertising(instance.id());
+  instance.reset();
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
@@ -1168,8 +1168,6 @@ TEST_F(AdapterTest, InspectHierarchy) {
                                   UintIs("pair_requests", 0),
                                   UintIs("set_connectable_true_events", 0),
                                   UintIs("set_connectable_false_events", 0),
-                                  UintIs("request_discovery_events", 0),
-                                  UintIs("request_discoverable_events", 0),
                                   UintIs("open_l2cap_channel_requests", 0))))));
   auto metrics_node_matcher =
       AllOf(NodeMatches(NameMatches(Adapter::kMetricsInspectNodeName)),

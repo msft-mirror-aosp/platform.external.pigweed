@@ -13,6 +13,8 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
     "pwpb_proto_library",
@@ -32,7 +34,7 @@ cc_library(
         "public/pw_digital_io/internal/conversions.h",
         "public/pw_digital_io/polarity.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_function",
@@ -55,7 +57,7 @@ cc_library(
     name = "digital_io_service",
     srcs = ["digital_io_service.cc"],
     hdrs = ["public/pw_digital_io/digital_io_service.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":digital_io_proto_pwpb",
         ":digital_io_proto_pwpb_rpc",
@@ -94,7 +96,7 @@ cc_library(
     implementation_deps = [
         "//pw_log",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert:check",
         "//pw_chrono:system_clock",
@@ -111,4 +113,22 @@ pw_cc_test(
         ":digital_io_mock",
         "//pw_unit_test",
     ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_digital_io/digital_io.h",
+        "public/pw_digital_io/digital_io_mock.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "backends.rst",
+        "docs.rst",
+    ],
+    prefix = "pw_digital_io/",
+    target_compatible_with = incompatible_with_mcu(),
 )

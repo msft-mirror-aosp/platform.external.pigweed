@@ -13,7 +13,8 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//pw_build:compatibility.bzl", "host_backend_alias")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mcu")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
@@ -34,9 +35,6 @@ alias(
 
 pw_facade(
     name = "pw_log",
-    srcs = [
-        "public/pw_log/tokenized_args.h",
-    ],
     hdrs = [
         "public/pw_log/config.h",
         "public/pw_log/levels.h",
@@ -46,7 +44,7 @@ pw_facade(
         "public/pw_log/shorter.h",
     ],
     backend = ":backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config_override",
         "//pw_preprocessor",
@@ -61,12 +59,21 @@ cc_library(
     hdrs = [
         "public/pw_log/rate_limited.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config_override",
         ":pw_log",
         "//pw_chrono:system_clock",
     ],
+)
+
+cc_library(
+    name = "args",
+    hdrs = [
+        "public/pw_log/tokenized_args.h",
+    ],
+    strip_include_prefix = "public",
+    deps = ["//pw_tokenizer"],
 )
 
 label_flag(
@@ -105,7 +112,7 @@ cc_library(
         "public/pw_log/glog_adapter_config.h",
         "public/pw_log/internal/glog_adapter.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":glog_adapter_config_override",
         "//pw_assert",
@@ -128,6 +135,7 @@ cc_library(
     hdrs = [
         "public/pw_log/proto_utils.h",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":log_proto_pwpb",
         ":pw_log.facade",
@@ -232,8 +240,28 @@ pw_cc_test(
         "log_enum_test.cc",
     ],
     deps = [
+        ":args",
         "//pw_log",
         "//pw_tokenizer",
         "//pw_unit_test",
     ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_log/tokenized_args.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "backends.rst",
+        "docs.rst",
+        "protobuf.rst",
+        "tokenized_args.rst",
+    ],
+    prefix = "pw_log/",
+    target_compatible_with = incompatible_with_mcu(),
 )

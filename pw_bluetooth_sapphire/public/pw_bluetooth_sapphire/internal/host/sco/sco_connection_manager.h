@@ -139,13 +139,13 @@ class ScoConnectionManager final {
 
   hci::CommandChannel::EventHandlerId AddEventHandler(
       const hci_spec::EventCode& code,
-      hci::CommandChannel::EventCallbackVariant event_callback_variant);
+      hci::CommandChannel::EventCallback event_callback);
 
   // Event handlers:
   hci::CommandChannel::EventCallbackResult OnSynchronousConnectionComplete(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
   hci::CommandChannel::EventCallbackResult OnConnectionRequest(
-      const hci::EmbossEventPacket& event);
+      const hci::EventPacket& event);
 
   // Returns true if parameters matching the corresponding transport were found
   // in the current request, or false otherwise. Mutates the current request's
@@ -166,7 +166,7 @@ class ScoConnectionManager final {
 
   void CompleteRequest(ConnectionResult);
 
-  void SendCommandWithStatusCallback(hci::EmbossCommandPacket command_packet,
+  void SendCommandWithStatusCallback(hci::CommandPacket command_packet,
                                      hci::ResultFunction<> cb);
 
   void SendRejectConnectionCommand(DeviceAddressBytes addr,

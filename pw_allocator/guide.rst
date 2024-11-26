@@ -193,7 +193,7 @@ While there are
 :ref:`module-pw_allocator-design-differences-with-polymorphic-allocators`, an
 :ref:`module-pw_allocator-api-allocator` can be used with these containers by
 wrapping them with a PMR adapter type,
-:ref:`module-pw_allocator-api-as_pmr_allocator`:
+:ref:`module-pw_allocator-api-pmr_allocator`:
 
 .. literalinclude:: examples/pmr.cc
    :language: cpp
@@ -211,7 +211,7 @@ wrapping them with a PMR adapter type,
 .. Warning::
    The standard library containers expect their allocators to throw an exception
    on allocation failure, and do not check for failure themselves. If
-   exceptions are disabled, :ref:`module-pw_allocator-api-as_pmr_allocator`
+   exceptions are disabled, :ref:`module-pw_allocator-api-pmr_allocator`
    instead **asserts** that allocation succeeded. Care must be taken in this
    case to ensure that memory is not exhausted.
 
@@ -220,6 +220,8 @@ Choose the right allocator
 --------------------------
 Once one or more routines are using allocators, you can consider how best to
 implement memory allocation for each particular scenario.
+
+.. TODO(b/378549332): Add a decision tree for selecting an allocator.
 
 Concrete allocator implementations
 ==================================
@@ -238,38 +240,26 @@ overview. Consult the :ref:`module-pw_allocator-api` for additional details.
   region of memory and only frees them all at once when the allocator is
   destroyed.
 - :ref:`module-pw_allocator-api-buddy_allocator`: Allocates objects out of a
-  chunks with sizes that are powers of two. Chunks are split evenly for smaller
+  blocks with sizes that are powers of two. Blocks are split evenly for smaller
   allocations and merged on free.
 - :ref:`module-pw_allocator-api-block_allocator`: Tracks memory using
   :ref:`module-pw_allocator-api-block`. Derived types use specific strategies
   for how to choose a block to use to satisfy a request. See also
   :ref:`module-pw_allocator-design-block`. Derived types include:
 
-  - :ref:`module-pw_allocator-api-first_fit_block_allocator`: Chooses the first
+  - :ref:`module-pw_allocator-api-first_fit_allocator`: Chooses the first
     block that's large enough to satisfy a request. This strategy is very fast,
     but may increase fragmentation.
-  - :ref:`module-pw_allocator-api-last_fit_block_allocator`: Chooses the last
-    block that's large enough to satisfy a request. This strategy is fast, and
-    may fragment memory less than
-    :ref:`module-pw_allocator-api-first_fit_block_allocator` when satisfying
-    aligned memory requests.
-  - :ref:`module-pw_allocator-api-best_fit_block_allocator`: Chooses the
+  - :ref:`module-pw_allocator-api-best_fit_allocator`: Chooses the
     smallest block that's large enough to satisfy a request. This strategy
     maximizes the avilable space for large allocations, but may increase
     fragmentation and is slower.
-  - :ref:`module-pw_allocator-api-worst_fit_block_allocator`: Chooses the
+  - :ref:`module-pw_allocator-api-worst_fit_allocator`: Chooses the
     largest block if it's large enough to satisfy a request. This strategy
     minimizes the amount of memory in unusably small blocks, but is slower.
-  - :ref:`module-pw_allocator-api-dual_first_fit_block_allocator`: Acts like
-    :ref:`module-pw_allocator-api-first_fit_block_allocator` or
-    :ref:`module-pw_allocator-api-last_fit_block_allocator` depending on
-    whether a request is larger or smaller, respectively, than a given
-    threshold value. This strategy preserves the speed of the two other
-    strategies, while fragmenting memory less by co-locating allocations of
-    similar sizes.
   - :ref:`module-pw_allocator-api-bucket_block_allocator`: Sorts and stores
     each free blocks in a :ref:`module-pw_allocator-api-bucket` with a given
-    maximum chunk size.
+    maximum block inner size.
 
 - :ref:`module-pw_allocator-api-typed_pool`: Efficiently creates and
   destroys objects of a single given type.
@@ -282,7 +272,7 @@ Consult the :ref:`module-pw_allocator-api` for additional details.
 
 - :ref:`module-pw_allocator-api-fallback_allocator`: Dispatches first to a
   primary allocator, and, if that fails, to a secondary allocator.
-- :ref:`module-pw_allocator-api-as_pmr_allocator`: Adapts an allocator to be a
+- :ref:`module-pw_allocator-api-pmr_allocator`: Adapts an allocator to be a
   ``std::pmr::polymorphic_allocator``, which can be used with standard library
   containers that `use allocators`_, such as ``std::pmr::vector<T>``.
 - :ref:`module-pw_allocator-api-synchronized_allocator`: Synchronizes access to
@@ -451,17 +441,6 @@ deallocation by writing a set pattern to the usable memory, and later check on
 allocation that the pattern is intact. If it's not, some routine has modified
 unallocated memory.
 
-The :ref:`module-pw_allocator-api-block_allocator` has a
-``kPoisonInterval`` template parameter to control how frequently blocks are
-poisoned on deallocation. This allows projects to stochiastically sample
-allocations for memory corruptions while mitigating the performance impact.
-
-.. literalinclude:: examples/block_allocator.cc
-   :language: cpp
-   :linenos:
-   :start-after: [pw_allocator-examples-block_allocator-poison]
-   :end-before: [pw_allocator-examples-block_allocator-poison]
-
 ----------------------
 Test custom allocators
 ----------------------
@@ -523,8 +502,8 @@ For example, the C++ code for a size report binary might look like:
    :start-after: [pw_allocator-examples-size_report]
 
 The resulting binary could be compared with the binary produced from
-pw_allocator/size_report/first_fit_block_allocator.cc to identify just the code
-added in this case by ``CustomAllocator``.
+pw_allocator/size_report/first_fit.cc to identify just the code added in this
+case by ``CustomAllocator``.
 
 For example, the GN build rule to generate a size report might look liek:
 
@@ -535,7 +514,7 @@ For example, the GN build rule to generate a size report might look liek:
      binaries = [
        {
          target = ":size_report"
-         base = "$dir_pw_allocator/size_report:first_fit_block_allocator"
+         base = "$dir_pw_allocator/size_report:first_fit"
          label = "CustomAllocator"
        },
      ]
