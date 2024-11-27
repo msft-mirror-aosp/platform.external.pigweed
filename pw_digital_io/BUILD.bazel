@@ -13,6 +13,8 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
     "pwpb_proto_library",
@@ -111,4 +113,22 @@ pw_cc_test(
         ":digital_io_mock",
         "//pw_unit_test",
     ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_digital_io/digital_io.h",
+        "public/pw_digital_io/digital_io_mock.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "backends.rst",
+        "docs.rst",
+    ],
+    prefix = "pw_digital_io/",
+    target_compatible_with = incompatible_with_mcu(),
 )
