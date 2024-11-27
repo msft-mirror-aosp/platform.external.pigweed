@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -776,8 +778,6 @@ pw_cc_test(
     ],
 )
 
-# Docs
-
 cc_library(
     name = "size_reporter",
     hdrs = ["public/pw_allocator/size_reporter.h"],
@@ -787,4 +787,57 @@ cc_library(
         "//pw_bloat:bloat_this_binary",
         "//pw_bytes",
     ],
+)
+
+# Docs
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_allocator/allocator.h",
+        "public/pw_allocator/allocator_as_pool.h",
+        "public/pw_allocator/best_fit.h",
+        "public/pw_allocator/block_allocator.h",
+        "public/pw_allocator/bucket_allocator.h",
+        "public/pw_allocator/buddy_allocator.h",
+        "public/pw_allocator/buffer.h",
+        "public/pw_allocator/bump_allocator.h",
+        "public/pw_allocator/capability.h",
+        "public/pw_allocator/chunk_pool.h",
+        "public/pw_allocator/config.h",
+        "public/pw_allocator/deallocator.h",
+        "public/pw_allocator/fallback_allocator.h",
+        "public/pw_allocator/first_fit.h",
+        "public/pw_allocator/fragmentation.h",
+        "public/pw_allocator/fuzzing.h",
+        "public/pw_allocator/layout.h",
+        "public/pw_allocator/libc_allocator.h",
+        "public/pw_allocator/metrics.h",
+        "public/pw_allocator/null_allocator.h",
+        "public/pw_allocator/pmr_allocator.h",
+        "public/pw_allocator/pool.h",
+        "public/pw_allocator/size_reporter.h",
+        "public/pw_allocator/synchronized_allocator.h",
+        "public/pw_allocator/test_harness.h",
+        "public/pw_allocator/testing.h",
+        "public/pw_allocator/tracking_allocator.h",
+        "public/pw_allocator/typed_pool.h",
+        "public/pw_allocator/unique_ptr.h",
+        "public/pw_allocator/worst_fit.h",
+        "//pw_allocator/block:doxygen",
+        "//pw_allocator/bucket:doxygen",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "api.rst",
+        "code_size.rst",
+        "design.rst",
+        "docs.rst",
+        "guide.rst",
+    ],
+    prefix = "pw_allocator/",
+    target_compatible_with = incompatible_with_mcu(),
 )
