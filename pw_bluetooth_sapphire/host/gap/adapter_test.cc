@@ -662,13 +662,14 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   test_device()->set_settings(settings);
   InitializeAdapter([](bool) {});
 
-  AdvertisementInstance instance;
+  std::optional<AdvertisementInstance> instance;
   auto adv_cb = [&](auto i, hci::Result<> status) {
     instance = std::move(i);
     EXPECT_EQ(fit::ok(), status);
   };
 
-  // Advertising should use the public address by default.
+  // Advertising should use the public address by default when privacy is not
+  // enabled.
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
@@ -676,6 +677,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     adv_cb);
   RunUntilIdle();
   EXPECT_TRUE(test_device()->legacy_advertising_state().enabled);
@@ -689,7 +691,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   EXPECT_FALSE(test_device()->legacy_advertising_state().random_address);
 
   // Stop advertising.
-  adapter()->le()->StopAdvertising(instance.id());
+  instance.reset();
   RunUntilIdle();
   EXPECT_FALSE(test_device()->legacy_advertising_state().enabled);
   EXPECT_FALSE(test_device()->legacy_advertising_state().random_address);
@@ -703,6 +705,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     adv_cb);
   RunUntilIdle();
   EXPECT_TRUE(test_device()->legacy_advertising_state().random_address);
@@ -719,7 +722,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
             *test_device()->legacy_advertising_state().random_address);
 
   // Restarting advertising should refresh the controller address.
-  adapter()->le()->StopAdvertising(instance.id());
+  instance.reset();
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
@@ -727,6 +730,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     adv_cb);
   RunUntilIdle();
   EXPECT_TRUE(test_device()->legacy_advertising_state().enabled);
@@ -739,7 +743,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
   // Disable privacy. The next time advertising gets started it should use a
   // public address.
   adapter()->le()->EnablePrivacy(false);
-  adapter()->le()->StopAdvertising(instance.id());
+  instance.reset();
   adapter()->le()->StartAdvertising(AdvertisingData(),
                                     AdvertisingData(),
                                     AdvertisingInterval::FAST1,
@@ -747,6 +751,7 @@ TEST_F(AdapterTest, LocalAddressForLegacyAdvertising) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     adv_cb);
   RunUntilIdle();
   EXPECT_TRUE(test_device()->legacy_advertising_state().enabled);
@@ -871,9 +876,9 @@ TEST_F(AdapterTest, LocalAddressForConnections) {
   ASSERT_TRUE(conn_ref);
   ASSERT_TRUE(test_device()->le_connect_params());
 
-  // TODO(fxbug.dev/42141593): The current policy is to use a public address
-  // when initiating connections. Change this test to expect a random address
-  // once RPAs for central connections are re-enabled.
+  // TODO: https://fxbug.dev/42141593 - The current policy is to use a public
+  // address when initiating connections. Change this test to expect a random
+  // address once RPAs for central connections are re-enabled.
   EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
             test_device()->le_connect_params()->own_address_type);
 
@@ -911,7 +916,7 @@ TEST_F(AdapterTest, LocalAddressDuringHangingConnect) {
   // Some of the behavior below stems from the fact that kTestTimeout is longer
   // than kCacheTimeout. This assertion is here to catch regressions in this
   // test if the values ever change.
-  // TODO(fxbug.dev/42087236): Configuring the cache expiration timeout
+  // TODO: https://fxbug.dev/42087236 - Configuring the cache expiration timeout
   // explicitly would remove some of the unnecessary invariants from this test
   // case.
   static_assert(kTestTimeout > kCacheTimeout,
@@ -953,9 +958,9 @@ TEST_F(AdapterTest, LocalAddressDuringHangingConnect) {
       peer->identifier(), connect_cb, LowEnergyConnectionOptions());
   RunUntilIdle();
   ASSERT_TRUE(test_device()->legacy_advertising_state().random_address);
-  // TODO(fxbug.dev/42141593): The current policy is to use a public address
-  // when initiating connections. Change this test to expect a random address
-  // once RPAs for central connections are re-enabled.
+  // TODO: https://fxbug.dev/42141593 - The current policy is to use a public
+  // address when initiating connections. Change this test to expect a random
+  // address once RPAs for central connections are re-enabled.
   EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
             test_device()->le_connect_params()->own_address_type);
 
@@ -982,9 +987,9 @@ TEST_F(AdapterTest, LocalAddressDuringHangingConnect) {
   RunUntilIdle();
   EXPECT_NE(last_random_addr,
             *test_device()->legacy_advertising_state().random_address);
-  // TODO(fxbug.dev/42141593): The current policy is to use a public address
-  // when initiating connections. Change this test to expect a random address
-  // once RPAs for central connections are re-enabled.
+  // TODO: https://fxbug.dev/42141593 - The current policy is to use a public
+  // address when initiating connections. Change this test to expect a random
+  // address once RPAs for central connections are re-enabled.
   EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
             test_device()->le_connect_params()->own_address_type);
 }
@@ -1012,9 +1017,9 @@ TEST_F(AdapterTest, ExistingConnectionDoesNotPreventLocalAddressChange) {
   adapter()->le()->Connect(
       peer->identifier(), connect_cb, LowEnergyConnectionOptions());
   RunUntilIdle();
-  // TODO(fxbug.dev/42141593): The current policy is to use a public address
-  // when initiating connections. Change this test to expect a random address
-  // once RPAs for central connections are re-enabled.
+  // TODO: https://fxbug.dev/42141593 - The current policy is to use a public
+  // address when initiating connections. Change this test to expect a random
+  // address once RPAs for central connections are re-enabled.
   EXPECT_EQ(pw::bluetooth::emboss::LEOwnAddressType::PUBLIC,
             test_device()->le_connect_params()->own_address_type);
 
@@ -1045,6 +1050,7 @@ TEST_F(AdapterTest, IsDiscoverableLowEnergy) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     [&](AdvertisementInstance i, auto status) {
                                       ASSERT_EQ(fit::ok(), status);
                                       instance = std::move(i);
@@ -1094,6 +1100,7 @@ TEST_F(AdapterTest, IsDiscoverableLowEnergyPrivacyEnabled) {
                                     /*anonymous=*/false,
                                     /*include_tx_power_level=*/false,
                                     /*connectable=*/std::nullopt,
+                                    /*address_type=*/std::nullopt,
                                     [&](AdvertisementInstance i, auto status) {
                                       ASSERT_EQ(fit::ok(), status);
                                       instance = std::move(i);
@@ -1161,8 +1168,6 @@ TEST_F(AdapterTest, InspectHierarchy) {
                                   UintIs("pair_requests", 0),
                                   UintIs("set_connectable_true_events", 0),
                                   UintIs("set_connectable_false_events", 0),
-                                  UintIs("request_discovery_events", 0),
-                                  UintIs("request_discoverable_events", 0),
                                   UintIs("open_l2cap_channel_requests", 0))))));
   auto metrics_node_matcher =
       AllOf(NodeMatches(NameMatches(Adapter::kMetricsInspectNodeName)),
@@ -1269,7 +1274,9 @@ TEST_F(AdapterTest,
       /*anonymous=*/false,
       /*include_tx_power_level=*/false,
       bt::gap::Adapter::LowEnergy::ConnectableAdvertisingParameters{
-          std::move(connect_cb), sm::BondableMode::NonBondable},
+          .connection_cb = std::move(connect_cb),
+          .bondable_mode = sm::BondableMode::NonBondable},
+      /*address_type=*/std::nullopt,
       adv_cb);
   RunUntilIdle();
   EXPECT_FALSE(conn_result);

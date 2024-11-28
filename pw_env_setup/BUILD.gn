@@ -35,6 +35,7 @@ pw_python_group("core_pigweed_python_packages") {
     "$dir_pw_build_mcuxpresso/py",
     "$dir_pw_chrono/py",
     "$dir_pw_cli/py",
+    "$dir_pw_cli_analytics/py",
     "$dir_pw_compilation_testing/py",
     "$dir_pw_console/py",
     "$dir_pw_containers/py",
@@ -103,6 +104,7 @@ pw_python_group("python") {
     # These targets are included here in order to ensure they are linted.
     "$dir_pw_emu/py:mock_emu",
     "$dir_pw_emu/py:mock_emu_frontend",
+    "$dir_pw_preprocessor/py:generate_apply_macros",
     "$dir_pw_third_party/fuchsia:generate_fuchsia_patch",
     "$dir_pw_third_party/nanopb:generate_nanopb_proto",
   ]

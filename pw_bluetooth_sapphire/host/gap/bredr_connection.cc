@@ -54,7 +54,7 @@ BrEdrConnection::BrEdrConnection(Peer::WeakPtr peer,
       dispatcher_(dispatcher) {
   link_->set_peer_disconnect_callback(
       [peer_disconnect_cb = std::move(on_peer_disconnect_cb)](
-          const auto& conn, auto /*reason*/) { peer_disconnect_cb(); });
+          const auto&, auto) { peer_disconnect_cb(); });
 
   std::unique_ptr<LegacyPairingState> legacy_pairing_state = nullptr;
   if (request_ && request_->legacy_pairing_state()) {
@@ -92,9 +92,9 @@ void BrEdrConnection::Interrogate(BrEdrInterrogator::ResultCallback callback) {
 }
 
 void BrEdrConnection::OnInterrogationComplete() {
-  BT_ASSERT_MSG(!interrogation_complete(),
-                "%s on a connection that's already been interrogated",
-                __FUNCTION__);
+  PW_CHECK(!interrogation_complete(),
+           "%s on a connection that's already been interrogated",
+           __FUNCTION__);
 
   // Fulfill and clear request so that the dtor does not signal requester(s)
   // with errors.
@@ -111,7 +111,7 @@ void BrEdrConnection::AddRequestCallback(
     return;
   }
 
-  BT_ASSERT(request_);
+  PW_CHECK(request_);
   request_->AddCallback(std::move(cb));
 }
 
@@ -119,7 +119,7 @@ void BrEdrConnection::CreateOrUpdatePairingState(
     PairingStateType type,
     const PairingDelegate::WeakPtr& pairing_delegate,
     BrEdrSecurityMode security_mode) {
-  BT_ASSERT(pairing_state_manager_);
+  PW_CHECK(pairing_state_manager_);
   pairing_state_manager_->CreateOrUpdatePairingState(type, pairing_delegate);
   set_security_mode(security_mode);
 }
@@ -173,7 +173,7 @@ void BrEdrConnection::AttachInspect(inspect::Node& parent, std::string name) {
                                         kInspectPairingStateNodeName);
 }
 
-void BrEdrConnection::OnPairingStateStatus(hci_spec::ConnectionHandle handle,
+void BrEdrConnection::OnPairingStateStatus(hci_spec::ConnectionHandle,
                                            hci::Result<> status) {
   if (bt_is_error(
           status,

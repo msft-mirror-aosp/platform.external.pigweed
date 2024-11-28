@@ -14,6 +14,7 @@
 
 load(
     "@fuchsia_sdk//fuchsia:defs.bzl",
+    "fuchsia_cc_library",
     "fuchsia_cc_test",
     "fuchsia_unittest_package",
 )
@@ -21,11 +22,11 @@ load("//pw_bluetooth_sapphire/fuchsia:fuchsia_api_level.bzl", "FUCHSIA_API_LEVEL
 
 package(default_visibility = ["//visibility:public"])
 
-cc_library(
+fuchsia_cc_library(
     name = "public",
     hdrs = [
         "public/pw_bluetooth_sapphire/fuchsia/host/fidl/adapter_test_fixture.h",
-        "public/pw_bluetooth_sapphire/fuchsia/host/fidl/bredr_connection_server.h",
+        "public/pw_bluetooth_sapphire/fuchsia/host/fidl/channel_server.h",
         "public/pw_bluetooth_sapphire/fuchsia/host/fidl/fake_adapter_test_fixture.h",
         "public/pw_bluetooth_sapphire/fuchsia/host/fidl/fake_gatt_fixture.h",
         "public/pw_bluetooth_sapphire/fuchsia/host/fidl/fake_hci_transport_server.h",
@@ -46,19 +47,16 @@ cc_library(
         "public/pw_bluetooth_sapphire/fuchsia/host/fidl/profile_server.h",
         "public/pw_bluetooth_sapphire/fuchsia/host/fidl/server_base.h",
     ],
-    includes = [
-        "public",
-    ],
-    tags = ["manual"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_bluetooth_sapphire/fuchsia/host/socket:public",
     ],
 )
 
-cc_library(
+fuchsia_cc_library(
     name = "fidl",
     srcs = [
-        "bredr_connection_server.cc",
+        "channel_server.cc",
         "gatt2_client_server.cc",
         "gatt2_remote_service_server.cc",
         "gatt2_server_server.cc",
@@ -91,7 +89,7 @@ cc_library(
     ],
 )
 
-cc_library(
+fuchsia_cc_library(
     name = "helpers",
     srcs = [
         "helpers.cc",
@@ -113,7 +111,7 @@ cc_library(
     ],
 )
 
-cc_library(
+fuchsia_cc_library(
     name = "adapter_test_fixture",
     testonly = True,
     srcs = [
@@ -132,7 +130,7 @@ cc_library(
     ],
 )
 
-cc_library(
+fuchsia_cc_library(
     name = "fake_adapter_test_fixture",
     testonly = True,
     deps = [
@@ -145,7 +143,7 @@ cc_library(
     ],
 )
 
-cc_library(
+fuchsia_cc_library(
     name = "fake_gatt_test_fixture",
     testonly = True,
     srcs = [
@@ -161,7 +159,7 @@ cc_library(
     ],
 )
 
-cc_library(
+fuchsia_cc_library(
     name = "fake_vendor_server",
     testonly = True,
     srcs = [
@@ -185,7 +183,7 @@ fuchsia_cc_test(
     name = "fidl_test",
     testonly = True,
     srcs = [
-        "bredr_connection_server_test.cc",
+        "channel_server_test.cc",
         "gatt2_client_server_test.cc",
         "gatt2_remote_service_server_test.cc",
         "gatt2_server_server_test.cc",
@@ -220,7 +218,6 @@ fuchsia_unittest_package(
     package_name = "bt_host_fidl_tests_bazel",
     testonly = True,
     fuchsia_api_level = FUCHSIA_API_LEVEL,
-    tags = ["manual"],
     unit_tests = [
         ":fidl_test",
     ],

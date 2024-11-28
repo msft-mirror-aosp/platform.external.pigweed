@@ -83,7 +83,8 @@ class UniquePtr : public allocator::internal::BaseUniquePtr {
         deallocator_(other.deallocator_),
         size_(other.size_) {
     static_assert(
-        std::is_assignable_v<T*&, U*>,
+        std::is_assignable_v<UnderlyingType*&,
+                             typename UniquePtr<U>::UnderlyingType*>,
         "Attempted to construct a UniquePtr<T> from a UniquePtr<U> where "
         "U* is not assignable to T*.");
     other.Release();
@@ -106,7 +107,8 @@ class UniquePtr : public allocator::internal::BaseUniquePtr {
   /// ``UniquePtr<Base> base = deallocator.MakeUnique<Child>();``.
   template <typename U>
   UniquePtr& operator=(UniquePtr<U>&& other) noexcept {
-    static_assert(std::is_assignable_v<T*&, U*>,
+    static_assert(std::is_assignable_v<UnderlyingType*&,
+                                       typename UniquePtr<U>::UnderlyingType*>,
                   "Attempted to assign a UniquePtr<U> to a UniquePtr<T> where "
                   "U* is not assignable to T*.");
     Reset();
@@ -203,9 +205,27 @@ class UniquePtr : public allocator::internal::BaseUniquePtr {
   /// Returns a reference to the element at the given index.
   ///
   /// The behavior of this operation is undefined if this ``UniquePtr`` is in an
-  /// "empty" (``nullptr``) state or does not contain an array.
-  UnderlyingType& operator[](size_t index) { return value_[index]; }
-  const UnderlyingType& operator[](size_t index) const { return value_[index]; }
+  /// "empty" (``nullptr``) state.
+  template <typename U = T,
+            typename = std::enable_if_t<std::is_array_v<U>, bool>>
+  UnderlyingType& operator[](size_t index) {
+    return value_[index];
+  }
+
+  template <typename U = T,
+            typename = std::enable_if_t<std::is_array_v<U>, bool>>
+  const UnderlyingType& operator[](size_t index) const {
+    return value_[index];
+  }
+
+  /// Returns the number of elements allocated.
+  ///
+  /// This will assert if it is called on a non-array type UniquePtr.
+  template <typename U = T,
+            typename = std::enable_if_t<std::is_array_v<U>, bool>>
+  size_t size() const {
+    return size_;
+  }
 
  private:
   /// A pointer to the contained value.

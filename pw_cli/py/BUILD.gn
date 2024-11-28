@@ -26,6 +26,7 @@ pw_python_package("py") {
     "pw_cli/__init__.py",
     "pw_cli/__main__.py",
     "pw_cli/aliases.py",
+    "pw_cli/allowed_caller.py",
     "pw_cli/argument_types.py",
     "pw_cli/arguments.py",
     "pw_cli/branding.py",
@@ -61,7 +62,10 @@ pw_python_package("py") {
     "plural_test.py",
     "tool_runner_test.py",
   ]
-  python_deps = [ "$dir_pw_env_setup/py" ]
+  python_deps = [
+    "$dir_pw_cli_analytics/py",
+    "$dir_pw_env_setup/py",
+  ]
   pylintrc = "$dir_pigweed/.pylintrc"
   mypy_ini = "$dir_pigweed/.mypy.ini"
   inputs = [

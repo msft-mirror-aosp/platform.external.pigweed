@@ -29,16 +29,10 @@ using pw::Status;
 using pw::async2::Context;
 using pw::async2::Pending;
 using pw::async2::Poll;
-using pw::async2::Ready;
-using pw::async2::WaitReason;
-using pw::async2::Waker;
 using pw::channel::ByteReaderWriter;
 using pw::multibuf::MultiBuf;
-using pw::multibuf::MultiBufAllocationFuture;
 using pw::multibuf::MultiBufAllocator;
 using pw::multibuf::OwnedChunk;
-using pw::sync::InterruptSpinLock;
-using pw::sync::ThreadNotification;
 
 namespace internal {
 
@@ -64,7 +58,8 @@ Poll<Result<MultiBuf>> StreamChannelReadState::PendFilledBuffer(Context& cx) {
   if (!status_.ok()) {
     return status_;
   }
-  on_buffer_filled_ = cx.GetWaker(pw::async2::WaitReason::Unspecified());
+  PW_ASYNC_STORE_WAKER(
+      cx, on_buffer_filled_, "StreamChannel is waiting on a `Stream::Read`");
   return Pending();
 }
 
@@ -73,8 +68,12 @@ void StreamChannelReadState::ReadLoop(pw::stream::Reader& reader) {
     OwnedChunk buffer = WaitForBufferToFillAndTakeFrontChunk();
     Result<pw::ByteSpan> read = reader.Read(buffer);
     if (!read.ok()) {
-      PW_LOG_ERROR("Failed to read from stream in StreamChannel.");
       SetReadError(read.status());
+
+      if (!read.status().IsOutOfRange()) {
+        PW_LOG_ERROR("Failed to read from stream in StreamChannel: %s",
+                     read.status().str());
+      }
       return;
     }
     buffer->Truncate(read->size());
@@ -104,6 +103,7 @@ void StreamChannelReadState::ProvideFilledBuffer(MultiBuf&& filled_buffer) {
 void StreamChannelReadState::SetReadError(Status status) {
   std::lock_guard lock(buffer_lock_);
   status_ = status;
+  std::move(on_buffer_filled_).Wake();
 }
 
 Status StreamChannelWriteState::SendData(MultiBuf&& buf) {
@@ -130,9 +130,9 @@ void StreamChannelWriteState::WriteLoop(pw::stream::Writer& writer) {
       buffer = std::move(buffer_to_write_);
     }
     for (const auto& chunk : buffer.Chunks()) {
-      Status status = writer.Write(chunk);
-      if (!status.ok()) {
-        PW_LOG_ERROR("Failed to write to stream in StreamChannel.");
+      if (Status status = writer.Write(chunk); !status.ok()) {
+        PW_LOG_ERROR("Failed to write to stream in StreamChannel: %s",
+                     status.str());
         std::lock_guard lock(buffer_lock_);
         status_ = status;
         return;
@@ -146,18 +146,18 @@ void StreamChannelWriteState::WriteLoop(pw::stream::Writer& writer) {
 static constexpr size_t kMinimumReadSize = 64;
 static constexpr size_t kDesiredReadSize = 1024;
 
-StreamChannel::StreamChannel(MultiBufAllocator& allocator,
-                             pw::stream::Reader& reader,
-                             const pw::thread::Options& read_thread_options,
-                             pw::stream::Writer& writer,
-                             const pw::thread::Options& write_thread_options)
+StreamChannel::StreamChannel(stream::Reader& reader,
+                             const thread::Options& read_thread_options,
+                             MultiBufAllocator& read_allocator,
+                             stream::Writer& writer,
+                             const thread::Options& write_thread_options,
+                             MultiBufAllocator& write_allocator)
     : reader_(reader),
       writer_(writer),
       read_state_(),
       write_state_(),
-      allocation_future_(std::nullopt),
-      allocator_(&allocator),
-      write_token_(0) {
+      read_allocation_future_(read_allocator),
+      write_allocation_future_(write_allocator) {
   pw::thread::DetachedThread(read_thread_options,
                              [this]() { read_state_.ReadLoop(reader_); });
   pw::thread::DetachedThread(write_thread_options,
@@ -169,19 +169,16 @@ Status StreamChannel::ProvideBufferIfAvailable(Context& cx) {
     return OkStatus();
   }
 
-  if (!allocation_future_.has_value()) {
-    allocation_future_ =
-        allocator_->AllocateContiguousAsync(kMinimumReadSize, kDesiredReadSize);
-  }
-  Poll<std::optional<MultiBuf>> maybe_multibuf = allocation_future_->Pend(cx);
+  read_allocation_future_.SetDesiredSizes(
+      kMinimumReadSize, kDesiredReadSize, pw::multibuf::kNeedsContiguous);
+  Poll<std::optional<MultiBuf>> maybe_multibuf =
+      read_allocation_future_.Pend(cx);
 
   // If this is pending, we'll be awoken and this function will be re-run
   // when a buffer becomes available, allowing us to provide a buffer.
   if (maybe_multibuf.IsPending()) {
     return OkStatus();
   }
-
-  allocation_future_ = std::nullopt;
 
   if (!maybe_multibuf->has_value()) {
     PW_LOG_ERROR("Failed to allocate multibuf for reading");
@@ -199,11 +196,9 @@ Poll<Result<MultiBuf>> StreamChannel::DoPendRead(Context& cx) {
 
 Poll<Status> StreamChannel::DoPendReadyToWrite(Context&) { return OkStatus(); }
 
-pw::Result<pw::channel::WriteToken> StreamChannel::DoWrite(
-    pw::multibuf::MultiBuf&& data) {
+pw::Status StreamChannel::DoStageWrite(pw::multibuf::MultiBuf&& data) {
   PW_TRY(write_state_.SendData(std::move(data)));
-  const uint32_t token = write_token_++;
-  return CreateWriteToken(token);
+  return OkStatus();
 }
 
 }  // namespace pw::channel

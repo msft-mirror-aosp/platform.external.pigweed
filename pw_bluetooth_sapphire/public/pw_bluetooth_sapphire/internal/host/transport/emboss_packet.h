@@ -74,14 +74,14 @@ class StaticPacket {
   template <typename... Args>
   T view(Args... args) {
     T view(args..., buffer_.mutable_data(), buffer_.size());
-    BT_ASSERT(view.IsComplete());
+    PW_ASSERT(view.IsComplete());
     return view;
   }
 
   template <typename... Args>
   T view(Args... args) const {
     T view(args..., buffer_.data(), buffer_.size());
-    BT_ASSERT(view.IsComplete());
+    PW_ASSERT(view.IsComplete());
     return view;
   }
 
@@ -110,8 +110,8 @@ class StaticPacket {
 // Instances of DynamicPacket should not be constructed directly. Instead,
 // packet type specialization classes should provide static factory functions.
 //
-// See EmbossCommandPacket in emboss_control_packets.h for an example of a
-// packet type specialization.
+// See CommandPacket in control_packets.h for an example of a packet type
+// specialization.
 class DynamicPacket {
  public:
   // Returns an Emboss view over the buffer. Unlike StaticPacket, which ensures
@@ -121,18 +121,14 @@ class DynamicPacket {
   template <typename T, typename... Args>
   T view(Args... args) {
     T view(args..., buffer_.mutable_data(), size());
-    BT_ASSERT_MSG(
-        view.IsComplete(),
-        "emboss packet buffer not large enough to hold requested view");
+    PW_ASSERT(view.IsComplete());
     return view;
   }
 
   template <typename T, typename... Args>
   T view(Args... args) const {
     T view(args..., buffer_.data(), size());
-    BT_ASSERT_MSG(
-        view.IsComplete(),
-        "emboss packet buffer not large enough to hold requested view");
+    PW_ASSERT(view.IsComplete());
     return view;
   }
 

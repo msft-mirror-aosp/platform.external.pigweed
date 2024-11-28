@@ -18,18 +18,21 @@
 #include "pw_assert/check.h"
 #include "pw_async2/dispatcher_base.h"
 #include "pw_log/log.h"
+#include "pw_multibuf/allocator.h"
 #include "pw_multibuf/multibuf.h"
 #include "pw_status/status.h"
 
 namespace pw::channel {
 namespace {
 
-using pw::async2::Context;
-using pw::async2::Pending;
-using pw::async2::Poll;
-using pw::async2::WaitReason;
-using pw::async2::Waker;
-using pw::multibuf::MultiBuf;
+using ::pw::async2::Context;
+using ::pw::async2::Pending;
+using ::pw::async2::Poll;
+using ::pw::async2::Ready;
+using ::pw::async2::Waker;
+using ::pw::multibuf::MultiBuf;
+using ::pw::multibuf::MultiBufAllocationFuture;
+using ::pw::multibuf::MultiBufAllocator;
 
 Waker global_chars_available_waker;
 
@@ -51,7 +54,10 @@ void WriteMultiBuf(const MultiBuf& buf) {
 Poll<std::byte> PollReadByte(Context& cx) {
   int c = getchar_timeout_us(0);
   if (c == PICO_ERROR_TIMEOUT) {
-    global_chars_available_waker = cx.GetWaker(WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        global_chars_available_waker,
+        "RP2StdioChannel is waiting for stdio chars available");
     // Read again to ensure that no race occurred.
     //
     // The concern is an interleaving like this
@@ -72,13 +78,13 @@ Poll<std::byte> PollReadByte(Context& cx) {
 // Channel implementation which writes to and reads from rp2040's stdio.
 //
 // NOTE: only one Rp2StdioChannel may be in existence.
-class Rp2StdioChannel final : public ByteReaderWriter {
+class Rp2StdioChannel final : public pw::channel::Implement<ByteReaderWriter> {
  public:
-  Rp2StdioChannel(multibuf::MultiBufAllocator& allocator)
-      : write_token_(0),
-        allocation_future_(std::nullopt),
-        buffer_(std::nullopt),
-        allocator_(&allocator) {}
+  Rp2StdioChannel(MultiBufAllocator& read_allocator,
+                  MultiBufAllocator& write_allocator)
+      : read_allocation_future_(read_allocator),
+        write_allocation_future_(write_allocator),
+        buffer_(std::nullopt) {}
 
   Rp2StdioChannel(const Rp2StdioChannel&) = delete;
   Rp2StdioChannel& operator=(const Rp2StdioChannel&) = delete;
@@ -91,51 +97,41 @@ class Rp2StdioChannel final : public ByteReaderWriter {
   static constexpr size_t kMinimumReadSize = 64;
   static constexpr size_t kDesiredReadSize = 1024;
 
-  async2::Poll<Status> PendGetBuffer(async2::Context& cx);
+  Poll<Status> PendGetReadBuffer(Context& cx);
 
-  async2::Poll<Result<multibuf::MultiBuf>> DoPendRead(
-      async2::Context& cx) override;
+  Poll<Result<MultiBuf>> DoPendRead(Context& cx) override;
 
-  async2::Poll<Status> DoPendReadyToWrite(async2::Context& cx) override;
+  Poll<Status> DoPendReadyToWrite(Context& cx) override;
 
-  multibuf::MultiBufAllocator& DoGetWriteAllocator() override {
-    return *allocator_;
+  Poll<std::optional<MultiBuf>> DoPendAllocateWriteBuffer(
+      Context& cx, size_t min_bytes) override {
+    write_allocation_future_.SetDesiredSize(min_bytes);
+    return write_allocation_future_.Pend(cx);
   }
 
-  Result<channel::WriteToken> DoWrite(multibuf::MultiBuf&& data) override;
+  Status DoStageWrite(MultiBuf&& data) override;
 
-  async2::Poll<Result<channel::WriteToken>> DoPendFlush(
-      async2::Context&) override {
-    return CreateWriteToken(write_token_);
-  }
+  Poll<Status> DoPendWrite(Context&) override { return OkStatus(); }
 
-  async2::Poll<Status> DoPendClose(async2::Context&) override {
-    return async2::Ready(OkStatus());
-  }
+  Poll<Status> DoPendClose(Context&) override { return Ready(OkStatus()); }
 
-  uint32_t write_token_;
-  std::optional<multibuf::MultiBufAllocationFuture> allocation_future_;
-  std::optional<multibuf::MultiBuf> buffer_;
-  multibuf::MultiBufAllocator* allocator_;
+  MultiBufAllocationFuture read_allocation_future_;
+  MultiBufAllocationFuture write_allocation_future_;
+  std::optional<MultiBuf> buffer_;
 };
 
-Poll<Status> Rp2StdioChannel::PendGetBuffer(async2::Context& cx) {
+Poll<Status> Rp2StdioChannel::PendGetReadBuffer(Context& cx) {
   if (buffer_.has_value()) {
     return OkStatus();
   }
 
-  if (!allocation_future_.has_value()) {
-    allocation_future_ =
-        allocator_->AllocateContiguousAsync(kMinimumReadSize, kDesiredReadSize);
-  }
-  async2::Poll<std::optional<multibuf::MultiBuf>> maybe_multibuf =
-      allocation_future_->Pend(cx);
+  read_allocation_future_.SetDesiredSizes(
+      kMinimumReadSize, kDesiredReadSize, pw::multibuf::kNeedsContiguous);
+  Poll<std::optional<MultiBuf>> maybe_multibuf =
+      read_allocation_future_.Pend(cx);
   if (maybe_multibuf.IsPending()) {
     return Pending();
   }
-
-  allocation_future_ = std::nullopt;
-
   if (!maybe_multibuf->has_value()) {
     PW_LOG_ERROR("Failed to allocate multibuf for reading");
     return Status::ResourceExhausted();
@@ -146,7 +142,7 @@ Poll<Status> Rp2StdioChannel::PendGetBuffer(async2::Context& cx) {
 }
 
 Poll<Result<MultiBuf>> Rp2StdioChannel::DoPendRead(Context& cx) {
-  Poll<Status> buffer_ready = PendGetBuffer(cx);
+  Poll<Status> buffer_ready = PendGetReadBuffer(cx);
   if (buffer_ready.IsPending() || !buffer_ready->ok()) {
     return buffer_ready;
   }
@@ -169,25 +165,29 @@ Poll<Result<MultiBuf>> Rp2StdioChannel::DoPendRead(Context& cx) {
   return buffer;
 }
 
-async2::Poll<Status> Rp2StdioChannel::DoPendReadyToWrite(async2::Context&) {
+Poll<Status> Rp2StdioChannel::DoPendReadyToWrite(Context&) {
   return OkStatus();
 }
 
-Result<channel::WriteToken> Rp2StdioChannel::DoWrite(
-    multibuf::MultiBuf&& data) {
+Status Rp2StdioChannel::DoStageWrite(MultiBuf&& data) {
   WriteMultiBuf(data);
-  const uint32_t token = write_token_++;
-  return CreateWriteToken(token);
+
+  return OkStatus();
 }
 
 }  // namespace
 
-ByteReaderWriter& Rp2StdioChannelInit(
-    pw::multibuf::MultiBufAllocator& allocator) {
-  static std::optional<Rp2StdioChannel> channel = std::nullopt;
-  PW_CHECK(!channel.has_value());
-  InitStdio();
-  return channel.emplace(allocator);
+ByteReaderWriter& Rp2StdioChannelInit(MultiBufAllocator& read_allocator,
+                                      MultiBufAllocator& write_allocator) {
+  static Rp2StdioChannel channel = [&] {
+    InitStdio();
+    return Rp2StdioChannel(read_allocator, write_allocator);
+  }();
+  return channel.channel();
+}
+
+ByteReaderWriter& Rp2StdioChannelInit(MultiBufAllocator& allocator) {
+  return Rp2StdioChannelInit(allocator, allocator);
 }
 
 }  // namespace pw::channel

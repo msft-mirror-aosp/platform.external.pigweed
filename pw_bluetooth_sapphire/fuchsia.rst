@@ -20,8 +20,12 @@ for more details on product assembly.
 
 .. note::
    Every ``bazelisk`` invocation needs ``--config=fuchsia`` whenever the target
-   or dependency needs to specify ``@fuchsia_sdk`` backends for Pigweed and the
-   target platform is Fuchsia.
+   is a fuchsia-specific target.
+   These fuchsia-specific targets are disabled (marked incompatible with the
+   target platform) by default to avoid polluting/conflicting with non-fuchsia
+   pigweed builds.
+   Specifying ``--config=fuchsia`` also allows ``@fuchsia_sdk`` backends to be
+   specified for Pigweed dependencies.
 
 ----------------------------------------
 Accessing ffx from a Pigweed environment
@@ -82,6 +86,11 @@ To stop the running emulator, use the following command:
 --------
 Building
 --------
+.. note::
+   See the main :ref:`Building <module-pw_bluetooth_sapphire-building>` section
+   for instructions on building for your host machine (producing Linux/macOS
+   test binaries).
+
 To build the ``bt-host`` package, use one of the following commands:
 
 .. tab-set::

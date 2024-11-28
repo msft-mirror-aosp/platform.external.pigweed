@@ -15,7 +15,6 @@
 
 #include <cstddef>
 
-#include "pw_allocator/as_pmr_allocator.h"
 #include "pw_allocator/capability.h"
 #include "pw_allocator/deallocator.h"
 #include "pw_allocator/layout.h"
@@ -61,19 +60,11 @@ class Allocator : public Deallocator {
   /// pointer.
   ///
   /// @param[in]  size        The size of the array to allocate.
-  /// @param[in]  args...     Arguments passed to the object constructor.
-  template <typename T, int&... ExplicitGuard, typename... Args>
-  T* NewArray(size_t size, Args&&... args) {
+  template <typename T, int&... ExplicitGuard>
+  T* NewArray(size_t size) {
     Layout layout(sizeof(T) * size, alignof(T));
-    T* ptr = static_cast<T*>(Allocate(layout));
-    if (ptr == nullptr) {
-      return nullptr;
-    }
-
-    for (size_t i = 0; i < size; ++i) {
-      new (ptr + i) T(args...);
-    }
-    return ptr;
+    void* ptr = Allocate(layout);
+    return ptr != nullptr ? new (ptr) T[size] : nullptr;
   }
 
   /// Constructs and object of type `T` from the given `args`, and wraps it in a
@@ -95,11 +86,9 @@ class Allocator : public Deallocator {
   /// fails. Callers must check for null before using the `UniquePtr`.
   ///
   /// @param[in]  size        The size of the array to allocate.
-  /// @param[in]  args...     Arguments passed to the object constructor.
-  template <typename T, int&... ExplicitGuard, typename... Args>
-  [[nodiscard]] UniquePtr<T[]> MakeUniqueArray(size_t size, Args&&... args) {
-    return Deallocator::WrapUniqueArray<T>(
-        NewArray<T>(size, std::forward<Args>(args)...), size);
+  template <typename T, int&... ExplicitGuard>
+  [[nodiscard]] UniquePtr<T[]> MakeUniqueArray(size_t size) {
+    return Deallocator::WrapUniqueArray<T>(NewArray<T>(size), size);
   }
 
   /// Modifies the size of an previously-allocated block of memory without
@@ -171,17 +160,9 @@ class Allocator : public Deallocator {
     return DoReallocate(ptr, old_layout, new_size);
   }
 
-  /// Returns an std::pmr::polymorphic_allocator that wraps this object.
-  ///
-  /// The returned object can be used with the PMR versions of standard library
-  /// containers, e.g. `std::pmr::vector`, `std::pmr::string`, etc.
-  ///
-  /// @rst
-  /// See also :ref:`module-pw_allocator-use-standard-library-containers`
-  /// @endrst
-  allocator::AsPmrAllocator as_pmr() {
-    return allocator::AsPmrAllocator(*this);
-  }
+  /// Returns the total bytes that have been allocated by this allocator, or
+  /// `size_t(-1)` if this allocator does not track its total allocated bytes.
+  size_t GetAllocated() const { return DoGetAllocated(); }
 
  protected:
   /// TODO(b/326509341): Remove when downstream consumers migrate.
@@ -226,6 +207,12 @@ class Allocator : public Deallocator {
   /// Do not use this method. It will be removed.
   /// TODO(b/326509341): Remove when downstream consumers migrate.
   virtual void* DoReallocate(void* ptr, Layout old_layout, size_t new_size);
+
+  /// Virtual `GetAllocated` function that can be overridden by derived classes.
+  ///
+  /// The default implementation simply returns `size_t(-1)`, indicating that
+  /// tracking total allocated bytes is not supported.
+  virtual size_t DoGetAllocated() const { return size_t(-1); }
 };
 
 namespace allocator {
