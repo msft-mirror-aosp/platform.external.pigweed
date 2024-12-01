@@ -32,6 +32,7 @@ pw_doc_group("static_assets") {
 # split out from the overall docgen target below.
 pw_doc_group("core_docs") {
   inputs = [
+    "$dir_pigweed/Kconfig.zephyr",
     "$dir_pw_async2/examples/coro_blinky_loop.cc",
     "$dir_pw_async2/public/pw_async2/coro.h",
     "$dir_pw_build/pigweed.bazelrc",
@@ -432,7 +433,7 @@ pw_doc_gen("docs") {
     ":target_docs",
     ":third_party_docs",
     "$dir_pigweed/kudzu:docs",
-    "$dir_pigweed/seed:seeds",
+    "$dir_pigweed/seed:docs",
   ]
 
   # Extra Python deps are required to set the PYTHONPATH so
