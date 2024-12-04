@@ -38,16 +38,29 @@ class L2capReadChannel : public IntrusiveForwardList<L2capReadChannel>::Item {
 
   // Handle an Rx L2CAP PDU.
   //
-  // Implementations should call `CallReceiveFn` after recombining/processing
-  // the SDU (e.g. after updating channel state and screening out certain SDUs).
+  // Implementations should call `SendPayloadFromControllerToClient` after
+  // recombining/processing the PDU (e.g. after updating channel state and
+  // screening out certain PDUs).
   //
   // Return true if the PDU was consumed by the channel. Otherwise, return false
   // and the PDU will be forwarded by `ProxyHost` on to the Bluetooth host.
-  [[nodiscard]] virtual bool OnPduReceived(pw::span<uint8_t> l2cap_pdu) = 0;
+  [[nodiscard]] virtual bool HandlePduFromController(
+      pw::span<uint8_t> l2cap_pdu) = 0;
+
+  // Handle a Tx L2CAP PDU.
+  //
+  // Implementations should call `SendPayloadFromHostToClient` after
+  // recombining/processing the PDU (e.g. after updating channel state and
+  // screening out certain PDUs).
+  //
+  // Return true if the PDU was consumed by the channel. Otherwise, return false
+  // and the PDU will be forwarded by `ProxyHost` on to the Bluetooth
+  // controller.
+  [[nodiscard]] virtual bool HandlePduFromHost(pw::span<uint8_t> l2cap_pdu) = 0;
 
   // Handle fragmented Rx L2CAP PDU.
   // TODO: https://pwbug.dev/365179076 - Support recombination & delete this.
-  virtual void OnFragmentedPduReceived() = 0;
+  virtual void OnFragmentedPduReceived();
 
   // Get the source L2CAP channel ID.
   uint16_t local_cid() const { return local_cid_; }
@@ -56,26 +69,32 @@ class L2capReadChannel : public IntrusiveForwardList<L2capReadChannel>::Item {
   uint16_t connection_handle() const { return connection_handle_; }
 
  protected:
-  explicit L2capReadChannel(
-      L2capChannelManager& l2cap_channel_manager,
-      pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      uint16_t connection_handle,
-      uint16_t local_cid);
+  explicit L2capReadChannel(L2capChannelManager& l2cap_channel_manager,
+                            pw::Function<void(pw::span<uint8_t> payload)>&&
+                                payload_from_controller_fn,
+                            uint16_t connection_handle,
+                            uint16_t local_cid);
 
-  // Often the useful `payload` for clients is some subspan of the Rx SDU.
-  void CallReceiveFn(pw::span<uint8_t> payload) {
-    if (receive_fn_) {
-      receive_fn_(payload);
+  // Returns whether or not ACL connection handle & local L2CAP channel
+  // identifier are valid parameters for a packet.
+  [[nodiscard]] static bool AreValidParameters(uint16_t connection_handle,
+                                               uint16_t local_cid);
+
+  void SendPayloadFromControllerToClient(pw::span<uint8_t> payload) {
+    if (payload_from_controller_fn_) {
+      payload_from_controller_fn_(payload);
     }
   }
 
  private:
+  static constexpr uint16_t kMaxValidConnectionHandle = 0x0EFF;
+
   // ACL connection handle of this channel.
   uint16_t connection_handle_;
   // L2CAP channel ID of this channel.
   uint16_t local_cid_;
-  // Client-provided read callback.
-  pw::Function<void(pw::span<uint8_t> payload)> receive_fn_;
+  // Client-provided controller read callback.
+  pw::Function<void(pw::span<uint8_t> payload)> payload_from_controller_fn_;
 
   L2capChannelManager& l2cap_channel_manager_;
 };

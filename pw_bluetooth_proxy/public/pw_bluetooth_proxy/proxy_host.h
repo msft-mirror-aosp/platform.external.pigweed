@@ -100,18 +100,22 @@ class ProxyHost {
   /// Returns an L2CAP connection-oriented channel that supports writing to and
   /// reading from a remote peer.
   ///
-  /// @param[in] connection_handle The connection handle of the remote peer.
+  /// @param[in] connection_handle     The connection handle of the remote peer.
   ///
-  /// @param[in] rx_config         Parameters applying to reading packets.
-  ///                              See `l2cap_coc.h` for details.
+  /// @param[in] rx_config             Parameters applying to reading packets.
+  ///                                  See `l2cap_coc.h` for details.
   ///
-  /// @param[in] tx_config         Parameters applying to writing packets.
-  ///                              See `l2cap_coc.h` for details.
+  /// @param[in] tx_config             Parameters applying to writing packets.
+  ///                                  See `l2cap_coc.h` for details.
   ///
-  /// @param[in] receive_fn        Read callback to be invoked on Rx SDUs.
+  /// @param[in] receive_fn            Read callback to be invoked on Rx SDUs.
   ///
-  /// @param[in] event_fn          Handle asynchronous events such as errors
-  ///                              encountered by the channel.
+  /// @param[in] event_fn              Handle asynchronous events such as errors
+  ///                                  encountered by the channel.
+  ///
+  /// @param[in] rx_additional_credits Send L2CAP_FLOW_CONTROL_CREDIT_IND to
+  ///                                  dispense remote peer additional credits
+  ///                                  for this channel.
   ///
   /// @returns @rst
   ///
@@ -125,7 +129,40 @@ class ProxyHost {
       L2capCoc::CocConfig rx_config,
       L2capCoc::CocConfig tx_config,
       pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      pw::Function<void(L2capCoc::Event event)>&& event_fn);
+      pw::Function<void(L2capCoc::Event event)>&& event_fn,
+      uint16_t rx_additional_credits = 0);
+
+  /// Returns an L2CAP channel operating in basic mode that supports writing to
+  /// and reading from a remote peer.
+  ///
+  /// @param[in] connection_handle          The connection handle of the remote
+  ///                                       peer.
+  ///
+  /// @param[in] local_cid                  L2CAP channel ID of the local
+  ///                                       endpoint.
+  ///
+  /// @param[in] remote_cid                 L2CAP channel ID of the remote
+  ///                                       endpoint.
+  ///
+  /// @param[in] transport                  Logical link transport type.
+  ///
+  /// @param[in] payload_from_controller_fn Read callback to be invoked on Rx
+  ///                                       SDUs.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///  INVALID_ARGUMENT: If arguments are invalid (check logs).
+  ///  UNAVAILABLE:      If channel could not be created because no memory was
+  ///                    available to accommodate an additional ACL connection.
+  /// @endrst
+  pw::Result<BasicL2capChannel> AcquireBasicL2capChannel(
+      uint16_t connection_handle,
+      uint16_t local_cid,
+      uint16_t remote_cid,
+      AclTransportType transport,
+      pw::Function<void(pw::span<uint8_t> payload)>&&
+          payload_from_controller_fn);
 
   /// Send a GATT Notify to the indicated connection.
   ///
@@ -221,8 +258,14 @@ class ProxyHost {
   // Handle HCI ACL data packet from the controller.
   void HandleAclFromController(H4PacketWithHci&& h4_packet);
 
+  // Process an LE_META_EVENT
+  void HandleLeMetaEvent(H4PacketWithHci&& h4_packet);
+
   // Process a Command_Complete event.
   void HandleCommandCompleteEvent(H4PacketWithHci&& h4_packet);
+
+  // Handle HCI ACL data packet from the host.
+  void HandleAclFromHost(H4PacketWithH4&& h4_packet);
 
   // If ACL frame is end of fragment, complete fragment and return false.
   // Otherwise process frame as part of ongoing fragmented PDU and return true.

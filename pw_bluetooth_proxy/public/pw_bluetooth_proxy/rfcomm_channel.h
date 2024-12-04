@@ -108,7 +108,7 @@ class RfcommChannel final : public L2capWriteChannel, public L2capReadChannel {
   Config tx_config() const { return tx_config_; }
 
  private:
-  static constexpr uint8_t kMinRxCredits = 1;
+  static constexpr uint8_t kMinRxCredits = 2;
 
   RfcommChannel(L2capChannelManager& l2cap_channel_manager,
                 uint16_t connection_handle,
@@ -117,8 +117,10 @@ class RfcommChannel final : public L2capWriteChannel, public L2capReadChannel {
                 uint8_t channel_number,
                 Function<void(pw::span<uint8_t> payload)>&& receive_fn);
 
-  // Parses out RFCOMM payload from `l2cap_pdu` and calls `CallReceiveFn`.
-  bool OnPduReceived(pw::span<uint8_t> l2cap_pdu) override;
+  // Parses out RFCOMM payload from `l2cap_pdu` and calls
+  // `SendPayloadFromControllerToClient`.
+  bool HandlePduFromController(pw::span<uint8_t> l2cap_pdu) override;
+  bool HandlePduFromHost(pw::span<uint8_t> l2cap_pdu) override;
 
   void OnFragmentedPduReceived() override;
 
