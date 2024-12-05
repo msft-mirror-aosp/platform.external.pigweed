@@ -13,7 +13,8 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//pw_build:compatibility.bzl", "host_backend_alias")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mcu")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
@@ -32,7 +33,7 @@ pw_facade(
         "public/pw_thread/id.h",
     ],
     backend = ":id_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 label_flag(
@@ -48,7 +49,7 @@ host_backend_alias(
 cc_library(
     name = "config",
     hdrs = ["public/pw_thread/config.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":config_override"],
 )
 
@@ -60,7 +61,7 @@ label_flag(
 cc_library(
     name = "thread_info",
     hdrs = ["public/pw_thread/thread_info.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = ["//pw_span"],
 )
 
@@ -70,7 +71,7 @@ pw_facade(
         "public/pw_thread/thread_iteration.h",
     ],
     backend = ":iteration_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":thread_info",
         "//pw_function",
@@ -100,7 +101,7 @@ pw_facade(
     implementation_deps = [
         ":thread",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_chrono:system_clock",
         "//pw_preprocessor",
@@ -128,7 +129,7 @@ pw_facade(
         "public/pw_thread/thread.h",
     ],
     backend = ":thread_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":id",
         ":options",
@@ -140,7 +141,7 @@ pw_facade(
 cc_library(
     name = "options",
     hdrs = ["public/pw_thread/options.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 label_flag(
@@ -158,7 +159,7 @@ cc_library(
     hdrs = [
         "public/pw_thread/thread_core.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_log",
         "//pw_status",
@@ -172,7 +173,7 @@ cc_library(
         "thread_snapshot_service.cc",
     ],
     hdrs = ["public/pw_thread/thread_snapshot_service.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_protobuf",
         "//pw_rpc/raw:server_api",
@@ -195,7 +196,7 @@ pw_facade(
         "public/pw_thread/test_thread_context.h",
     ],
     backend = ":test_thread_context_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 label_flag(
@@ -220,7 +221,7 @@ pw_facade(
     implementation_deps = [
         ":thread",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_preprocessor",
     ],
@@ -244,7 +245,9 @@ cc_library(
     hdrs = [
         "public/pw_thread/snapshot.h",
     ],
+    strip_include_prefix = "public",
     deps = [
+        ":config",
         ":thread",
         ":thread_pwpb",
         "//pw_bytes",
@@ -260,6 +263,7 @@ cc_library(
     hdrs = [
         "public/pw_thread/non_portable_test_thread_options.h",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":thread",
     ],
@@ -428,4 +432,23 @@ py_proto_library(
 pwpb_proto_library(
     name = "thread_pwpb",
     deps = [":thread_proto"],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_thread/options.h",
+        "public/pw_thread/test_thread_context.h",
+        "public/pw_thread/thread.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "backends.rst",
+        "docs.rst",
+    ],
+    prefix = "pw_thread/",
+    target_compatible_with = incompatible_with_mcu(),
 )

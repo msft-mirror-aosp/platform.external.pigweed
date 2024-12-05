@@ -14,6 +14,8 @@
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
 load("//pw_perf_test:pw_cc_perf_test.bzl", "pw_cc_perf_test")
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_filegroup", "pwpb_proto_library")
@@ -26,7 +28,7 @@ licenses(["notice"])
 cc_library(
     name = "config",
     hdrs = ["public/pw_protobuf/config.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":config_override"],
 )
 
@@ -57,7 +59,7 @@ cc_library(
         "public/pw_protobuf/stream_decoder.h",
         "public/pw_protobuf/wire_format.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         "//pw_assert",
@@ -81,7 +83,7 @@ cc_library(
 cc_library(
     name = "bytes_utils",
     hdrs = ["public/pw_protobuf/bytes_utils.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_protobuf",
         "//pw_bytes",
@@ -343,6 +345,7 @@ pw_cc_test(
     deps = [
         ":codegen_test_proto_pwpb",
         ":pw_protobuf",
+        "//pw_bytes",
         "//pw_span",
         "//pw_unit_test",
     ],
@@ -385,4 +388,21 @@ filegroup(
     srcs = glob([
         "size_report/*.cc",
     ]),
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_protobuf/find.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+        "size_report.rst",
+    ],
+    prefix = "pw_protobuf/",
+    target_compatible_with = incompatible_with_mcu(),
 )

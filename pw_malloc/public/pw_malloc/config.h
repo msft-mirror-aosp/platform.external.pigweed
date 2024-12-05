@@ -16,14 +16,13 @@
 #include <cstdint>
 
 #include "pw_allocator/metrics.h"
-#include "pw_allocator/synchronized_allocator.h"
-#include "pw_allocator/tracking_allocator.h"
 
 #ifndef PW_MALLOC_LOCK_TYPE
 /// Sets the type of synchronization primitive to use to mediate concurrent
 /// allocations by the system allocator.
 ///
 /// Defaults to `pw::allocator::NoSync`, which does no locking.
+#include "pw_allocator/synchronized_allocator.h"
 #define PW_MALLOC_LOCK_TYPE ::pw::allocator::NoSync
 #endif  // PW_MALLOC_LOCK_TYPE
 
@@ -31,7 +30,14 @@
 /// Sets the type of allocator metrics collected by the system allocator.
 ///
 /// Defaults to `pw::allocator::NoMetrics`, which does no tracking.
+#include "pw_allocator/tracking_allocator.h"
 #define PW_MALLOC_METRICS_TYPE ::pw::allocator::NoMetrics
+
+#elif defined(PW_MALLOC_METRICS_INCLUDE)
+
+/// Sets the header that can be included to define the `PW_MALLOC_METRICS_TYPE`.
+#include PW_MALLOC_METRICS_INCLUDE
+
 #endif  // PW_MALLOC_METRICS_TYPE
 
 #ifndef PW_MALLOC_BLOCK_OFFSET_TYPE
@@ -44,30 +50,6 @@
 /// Defaults to platform's `uintptr_t` type.
 #define PW_MALLOC_BLOCK_OFFSET_TYPE uintptr_t
 #endif  // PW_MALLOC_BLOCK_OFFSET_TYPE
-
-#ifndef PW_MALLOC_BLOCK_POISON_INTERVAL
-/// Sets how frequently `pw::allocator::BlockAllocator`s poison free blocks.
-///
-/// Poisoned free blocks are checked on allocation to ensure nothing has
-/// modified their usable space while deallocated. Setting this value to a
-/// nonzero value N while poison every N-th free block.
-///
-/// Defaults to 0, which disables poisoning.
-#define PW_MALLOC_BLOCK_POISON_INTERVAL 0
-#endif  // PW_MALLOC_BLOCK_POISON_INTERVAL
-
-#ifndef PW_MALLOC_BLOCK_ALIGNMENT
-/// Sets the minimum alignment for a `pw::allocator::BlockAllocator`s memory.
-///
-/// Must be a power of two.
-///
-/// Defaults to the block offset type's alignment, which is the smallest value
-/// that has any effect on the block allocator.
-#define PW_MALLOC_BLOCK_ALIGNMENT alignof(PW_MALLOC_BLOCK_OFFSET_TYPE)
-#endif  // PW_MALLOC_BLOCK_ALIGNMENT
-static_assert(((PW_MALLOC_BLOCK_ALIGNMENT - 1) & PW_MALLOC_BLOCK_ALIGNMENT) ==
-                  0,
-              "PW_MALLOC_BLOCK_ALIGNMENT must be a power of two");
 
 #ifndef PW_MALLOC_MIN_BUCKET_SIZE
 /// Sets the size of the smallest ``pw::allocator::Bucket` used by an allocator.

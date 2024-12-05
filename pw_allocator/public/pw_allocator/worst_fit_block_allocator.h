@@ -13,57 +13,16 @@
 // the License.
 #pragma once
 
-#include "pw_allocator/block_allocator.h"
+#include <cstdint>
+
 #include "pw_allocator/config.h"
+#include "pw_allocator/worst_fit.h"
 
 namespace pw::allocator {
 
-/// Block allocator that uses a "worst-fit" allocation strategy.
-///
-/// In this strategy, the allocator handles an allocation request by looking at
-/// all unused blocks and finding the biggest one which can satisfy the
-/// request.
-///
-/// This algorithm may lead to less fragmentation as any unused fragments are
-/// more likely to be large enough to be useful to other requests.
-template <typename OffsetType = uintptr_t,
-          size_t kPoisonInterval = PW_ALLOCATOR_BLOCK_POISON_INTERVAL,
-          size_t kAlign = alignof(OffsetType)>
-class WorstFitBlockAllocator
-    : public BlockAllocator<OffsetType, kPoisonInterval, kAlign> {
- public:
-  using Base = BlockAllocator<OffsetType, kPoisonInterval, kAlign>;
-  using BlockType = typename Base::BlockType;
-
-  /// Constexpr constructor. Callers must explicitly call `Init`.
-  constexpr WorstFitBlockAllocator() : Base() {}
-
-  /// Non-constexpr constructor that automatically calls `Init`.
-  ///
-  /// @param[in]  region  Region of memory to use when satisfying allocation
-  ///                     requests. The region MUST be large enough to fit an
-  ///                     aligned block with overhead. It MUST NOT be larger
-  ///                     than what is addressable by `OffsetType`.
-  explicit WorstFitBlockAllocator(ByteSpan region) : Base(region) {}
-
- private:
-  /// @copydoc Allocator::Allocate
-  BlockType* ChooseBlock(Layout layout) override {
-    // Search backwards for the biggest block that can hold this allocation.
-    BlockType* worst = nullptr;
-    for (auto* block : Base::rblocks()) {
-      if (!block->CanAllocLast(layout).ok()) {
-        continue;
-      }
-      if (worst == nullptr || block->OuterSize() > worst->OuterSize()) {
-        worst = block;
-      }
-    }
-    if (worst != nullptr && BlockType::AllocLast(worst, layout).ok()) {
-      return worst;
-    }
-    return nullptr;
-  }
-};
+/// Alias providing the legacy name for a best fit allocator.
+template <typename OffsetType = uintptr_t>
+using WorstFitBlockAllocator PW_ALLOCATOR_DEPRECATED =
+    WorstFitAllocator<WorstFitBlock<OffsetType>>;
 
 }  // namespace pw::allocator

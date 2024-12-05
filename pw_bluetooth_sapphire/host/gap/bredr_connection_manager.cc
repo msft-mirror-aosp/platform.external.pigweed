@@ -35,7 +35,7 @@
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/types.h"
 #include "pw_bluetooth_sapphire/internal/host/transport/command_channel.h"
-#include "pw_bluetooth_sapphire/internal/host/transport/emboss_control_packets.h"
+#include "pw_bluetooth_sapphire/internal/host/transport/control_packets.h"
 
 namespace bt::gap {
 
@@ -96,13 +96,12 @@ void SetPageScanEnabled(bool enabled,
                         hci::Transport::WeakPtr hci,
                         hci::ResultFunction<> cb) {
   PW_DCHECK(cb);
-  auto read_enable = hci::EmbossCommandPacket::New<
+  auto read_enable = hci::CommandPacket::New<
       pw::bluetooth::emboss::ReadScanEnableCommandWriter>(
       hci_spec::kReadScanEnable);
   auto finish_enable_cb = [enabled, hci, finish_cb = std::move(cb)](
-                              auto,
-                              const hci::EmbossEventPacket& event) mutable {
-    if (hci_is_error(event, WARN, "gap-bredr", "read scan enable failed")) {
+                              auto, const hci::EventPacket& event) mutable {
+    if (HCI_IS_ERROR(event, WARN, "gap-bredr", "read scan enable failed")) {
       finish_cb(event.ToResult());
       return;
     }
@@ -116,7 +115,7 @@ void SetPageScanEnabled(bool enabled,
       scan_type &= ~static_cast<uint8_t>(hci_spec::ScanEnableBit::kPage);
     }
 
-    auto write_enable = hci::EmbossCommandPacket::New<
+    auto write_enable = hci::CommandPacket::New<
         pw::bluetooth::emboss::WriteScanEnableCommandWriter>(
         hci_spec::kWriteScanEnable);
     auto write_enable_view = write_enable.view_t();
@@ -126,8 +125,8 @@ void SetPageScanEnabled(bool enabled,
         scan_type & static_cast<uint8_t>(hci_spec::ScanEnableBit::kPage));
     hci->command_channel()->SendCommand(
         std::move(write_enable),
-        [callback = std::move(finish_cb)](
-            auto, const hci::EmbossEventPacket& response) {
+        [callback = std::move(finish_cb)](auto,
+                                          const hci::EventPacket& response) {
           callback(response.ToResult());
         });
   };
@@ -138,39 +137,17 @@ void SetPageScanEnabled(bool enabled,
 }  // namespace
 
 hci::CommandChannel::EventHandlerId BrEdrConnectionManager::AddEventHandler(
-    const hci_spec::EventCode& code,
-    hci::CommandChannel::EventCallbackVariant cb) {
+    const hci_spec::EventCode& code, hci::CommandChannel::EventCallback cb) {
   auto self = weak_self_.GetWeakPtr();
   hci::CommandChannel::EventHandlerId event_id = 0;
-  event_id = std::visit(
-      [hci = hci_, &self, code](
-          auto&& callback) -> hci::CommandChannel::EventHandlerId {
-        using T = std::decay_t<decltype(callback)>;
-        if constexpr (std::is_same_v<T, hci::CommandChannel::EventCallback>) {
-          return hci->command_channel()->AddEventHandler(
-              code,
-              [self,
-               event_cb = std::move(callback)](const hci::EventPacket& event) {
-                if (!self.is_alive()) {
-                  return hci::CommandChannel::EventCallbackResult::kRemove;
-                }
-                return event_cb(event);
-              });
-        } else if constexpr (std::is_same_v<
-                                 T,
-                                 hci::CommandChannel::EmbossEventCallback>) {
-          return hci->command_channel()->AddEventHandler(
-              code,
-              [self, emboss_event_cb = std::move(callback)](
-                  const hci::EmbossEventPacket& event) {
-                if (!self.is_alive()) {
-                  return hci::CommandChannel::EventCallbackResult::kRemove;
-                }
-                return emboss_event_cb(event);
-              });
+  event_id = hci_->command_channel()->AddEventHandler(
+      code,
+      [self, emboss_event_cb = std::move(cb)](const hci::EventPacket& event) {
+        if (!self.is_alive()) {
+          return hci::CommandChannel::EventCallbackResult::kRemove;
         }
-      },
-      std::move(cb));
+        return emboss_event_cb(event);
+      });
   PW_DCHECK(event_id);
   event_handler_ids_.push_back(event_id);
   return event_id;
@@ -639,7 +616,7 @@ void BrEdrConnectionManager::WritePageTimeout(
   PW_CHECK(raw_page_timeout <=
            static_cast<uint16_t>(pw::bluetooth::emboss::PageTimeout::MAX));
 
-  auto write_page_timeout_cmd = hci::EmbossCommandPacket::New<
+  auto write_page_timeout_cmd = hci::CommandPacket::New<
       pw::bluetooth::emboss::WritePageTimeoutCommandWriter>(
       hci_spec::kWritePageTimeout);
   auto params = write_page_timeout_cmd.view_t();
@@ -647,7 +624,7 @@ void BrEdrConnectionManager::WritePageTimeout(
 
   hci_->command_channel()->SendCommand(
       std::move(write_page_timeout_cmd),
-      [callback = std::move(cb)](auto id, const hci::EmbossEventPacket& event) {
+      [callback = std::move(cb)](auto, const hci::EventPacket& event) {
         callback(event.ToResult());
       });
 }
@@ -664,7 +641,7 @@ void BrEdrConnectionManager::WritePageScanSettings(uint16_t interval,
     return;
   }
 
-  auto write_activity = hci::EmbossCommandPacket::New<
+  auto write_activity = hci::CommandPacket::New<
       pw::bluetooth::emboss::WritePageScanActivityCommandWriter>(
       hci_spec::kWritePageScanActivity);
   auto activity_params = write_activity.view_t();
@@ -673,9 +650,9 @@ void BrEdrConnectionManager::WritePageScanSettings(uint16_t interval,
 
   hci_cmd_runner_->QueueCommand(
       std::move(write_activity),
-      [self, interval, window](const hci::EmbossEventPacket& event) {
+      [self, interval, window](const hci::EventPacket& event) {
         if (!self.is_alive() ||
-            hci_is_error(
+            HCI_IS_ERROR(
                 event, WARN, "gap-bredr", "write page scan activity failed")) {
           return;
         }
@@ -690,17 +667,16 @@ void BrEdrConnectionManager::WritePageScanSettings(uint16_t interval,
       interlaced ? pw::bluetooth::emboss::PageScanType::INTERLACED_SCAN
                  : pw::bluetooth::emboss::PageScanType::STANDARD_SCAN;
 
-  auto write_type = hci::EmbossCommandPacket::New<
+  auto write_type = hci::CommandPacket::New<
       pw::bluetooth::emboss::WritePageScanTypeCommandWriter>(
       hci_spec::kWritePageScanType);
   auto type_params = write_type.view_t();
   type_params.page_scan_type().Write(scan_type);
 
   hci_cmd_runner_->QueueCommand(
-      std::move(write_type),
-      [self, scan_type](const hci::EmbossEventPacket& event) {
+      std::move(write_type), [self, scan_type](const hci::EventPacket& event) {
         if (!self.is_alive() ||
-            hci_is_error(
+            HCI_IS_ERROR(
                 event, WARN, "gap-bredr", "write page scan type failed")) {
           return;
         }
@@ -714,15 +690,14 @@ void BrEdrConnectionManager::WritePageScanSettings(uint16_t interval,
 
 void BrEdrConnectionManager::WritePinType(
     pw::bluetooth::emboss::PinType pin_type) {
-  auto write_pin_type_cmd = hci::EmbossCommandPacket::New<
-      pw::bluetooth::emboss::WritePinTypeCommandWriter>(
-      hci_spec::kWritePinType);
+  auto write_pin_type_cmd =
+      hci::CommandPacket::New<pw::bluetooth::emboss::WritePinTypeCommandWriter>(
+          hci_spec::kWritePinType);
   auto params = write_pin_type_cmd.view_t();
   params.pin_type().Write(pin_type);
 
   hci_->command_channel()->SendCommand(
-      std::move(write_pin_type_cmd),
-      [](auto id, const hci::EmbossEventPacket& event) {
+      std::move(write_pin_type_cmd), [](auto, const hci::EventPacket& event) {
         [[maybe_unused]] bool _ = bt_is_error(
             event.ToResult(), WARN, "gap-bredr", "Write PIN Type failed");
       });
@@ -937,7 +912,7 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
   // TODO(fxbug.dev/42113313): Implement this callback as a call to
   // InitiatePairing().
   auto security_callback = [peer_id](hci_spec::ConnectionHandle conn_handle,
-                                     sm::SecurityLevel level,
+                                     sm::SecurityLevel,
                                      auto cb) {
     bt_log(INFO,
            "gap-bredr",
@@ -984,7 +959,7 @@ void BrEdrConnectionManager::CompleteConnectionSetup(
 
 hci::CommandChannel::EventCallbackResult
 BrEdrConnectionManager::OnAuthenticationComplete(
-    const hci::EmbossEventPacket& event) {
+    const hci::EventPacket& event) {
   PW_DCHECK(event.event_code() == hci_spec::kAuthenticationCompleteEventCode);
   auto params =
       event.view<pw::bluetooth::emboss::AuthenticationCompleteEventView>();
@@ -1014,8 +989,7 @@ bool BrEdrConnectionManager::ExistsIncomingRequest(PeerId id) {
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnConnectionRequest(
-    const hci::EmbossEventPacket& event) {
+BrEdrConnectionManager::OnConnectionRequest(const hci::EventPacket& event) {
   auto params = event.view<pw::bluetooth::emboss::ConnectionRequestEventView>();
   const DeviceAddress addr(DeviceAddress::Type::kBREDR,
                            DeviceAddressBytes(params.bd_addr()));
@@ -1089,6 +1063,8 @@ BrEdrConnectionManager::OnConnectionRequest(
          hci_spec::LinkTypeToString(link_type),
          bt_str(device_class));
 
+  peer->MutBrEdr().SetIncomingRequest(params);
+
   // Register that we're in the middle of an incoming request for this peer -
   // create a new request if one doesn't already exist
   auto [request, _] = connection_requests_.try_emplace(
@@ -1116,8 +1092,7 @@ BrEdrConnectionManager::OnConnectionRequest(
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnConnectionComplete(
-    const hci::EmbossEventPacket& event) {
+BrEdrConnectionManager::OnConnectionComplete(const hci::EventPacket& event) {
   auto params =
       event.view<pw::bluetooth::emboss::ConnectionCompleteEventView>();
   if (params.link_type().Read() != pw::bluetooth::emboss::LinkType::ACL) {
@@ -1303,8 +1278,7 @@ void BrEdrConnectionManager::CleanUpConnection(
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnIoCapabilityRequest(
-    const hci::EmbossEventPacket& event) {
+BrEdrConnectionManager::OnIoCapabilityRequest(const hci::EventPacket& event) {
   const auto params =
       event.view<pw::bluetooth::emboss::IoCapabilityRequestEventView>();
   const DeviceAddressBytes addr(params.bd_addr());
@@ -1355,8 +1329,7 @@ BrEdrConnectionManager::OnIoCapabilityRequest(
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnIoCapabilityResponse(
-    const hci::EmbossEventPacket& event) {
+BrEdrConnectionManager::OnIoCapabilityResponse(const hci::EventPacket& event) {
   const auto params =
       event.view<pw::bluetooth::emboss::IoCapabilityResponseEventView>();
   const DeviceAddressBytes addr(params.bd_addr());
@@ -1386,7 +1359,7 @@ BrEdrConnectionManager::OnIoCapabilityResponse(
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnLinkKeyRequest(const hci::EmbossEventPacket& event) {
+BrEdrConnectionManager::OnLinkKeyRequest(const hci::EventPacket& event) {
   const auto params =
       event.view<pw::bluetooth::emboss::LinkKeyRequestEventView>();
   const DeviceAddress addr(DeviceAddress::Type::kBREDR,
@@ -1463,8 +1436,7 @@ BrEdrConnectionManager::OnLinkKeyRequest(const hci::EmbossEventPacket& event) {
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnLinkKeyNotification(
-    const hci::EmbossEventPacket& event) {
+BrEdrConnectionManager::OnLinkKeyNotification(const hci::EventPacket& event) {
   const auto params =
       event.view<pw::bluetooth::emboss::LinkKeyNotificationEventView>();
 
@@ -1571,7 +1543,7 @@ BrEdrConnectionManager::OnLinkKeyNotification(
 
 hci::CommandChannel::EventCallbackResult
 BrEdrConnectionManager::OnSimplePairingComplete(
-    const hci::EmbossEventPacket& event_packet) {
+    const hci::EventPacket& event_packet) {
   auto params =
       event_packet
           .view<pw::bluetooth::emboss::SimplePairingCompleteEventView>();
@@ -1593,7 +1565,7 @@ BrEdrConnectionManager::OnSimplePairingComplete(
 
 hci::CommandChannel::EventCallbackResult
 BrEdrConnectionManager::OnUserConfirmationRequest(
-    const hci::EmbossEventPacket& event_packet) {
+    const hci::EventPacket& event_packet) {
   auto params =
       event_packet
           .view<pw::bluetooth::emboss::UserConfirmationRequestEventView>();
@@ -1628,7 +1600,7 @@ BrEdrConnectionManager::OnUserConfirmationRequest(
 
 hci::CommandChannel::EventCallbackResult
 BrEdrConnectionManager::OnUserPasskeyRequest(
-    const hci::EmbossEventPacket& event_packet) {
+    const hci::EventPacket& event_packet) {
   auto params =
       event_packet.view<pw::bluetooth::emboss::UserPasskeyRequestEventView>();
   DeviceAddressBytes bd_addr = DeviceAddressBytes(params.bd_addr());
@@ -1663,7 +1635,7 @@ BrEdrConnectionManager::OnUserPasskeyRequest(
 
 hci::CommandChannel::EventCallbackResult
 BrEdrConnectionManager::OnUserPasskeyNotification(
-    const hci::EmbossEventPacket& event_packet) {
+    const hci::EventPacket& event_packet) {
   auto params =
       event_packet
           .view<pw::bluetooth::emboss::UserPasskeyNotificationEventView>();
@@ -1684,7 +1656,7 @@ BrEdrConnectionManager::OnUserPasskeyNotification(
 }
 
 hci::CommandChannel::EventCallbackResult BrEdrConnectionManager::OnRoleChange(
-    const hci::EmbossEventPacket& event) {
+    const hci::EventPacket& event) {
   const auto params = event.view<pw::bluetooth::emboss::RoleChangeEventView>();
   const DeviceAddress address(DeviceAddress::Type::kBREDR,
                               DeviceAddressBytes(params.bd_addr()));
@@ -1721,7 +1693,7 @@ hci::CommandChannel::EventCallbackResult BrEdrConnectionManager::OnRoleChange(
     return hci::CommandChannel::EventCallbackResult::kContinue;
   }
 
-  if (hci_is_error(event,
+  if (HCI_IS_ERROR(event,
                    WARN,
                    "gap-bredr",
                    "role change failed and remains %s (peer: %s)",
@@ -1741,7 +1713,7 @@ hci::CommandChannel::EventCallbackResult BrEdrConnectionManager::OnRoleChange(
 }
 
 hci::CommandChannel::EventCallbackResult
-BrEdrConnectionManager::OnPinCodeRequest(const hci::EmbossEventPacket& event) {
+BrEdrConnectionManager::OnPinCodeRequest(const hci::EventPacket& event) {
   const auto params =
       event.view<pw::bluetooth::emboss::PinCodeRequestEventView>();
   const DeviceAddress addr(DeviceAddress::Type::kBREDR,
@@ -1997,31 +1969,31 @@ void BrEdrConnectionManager::OnRequestTimeout() {
 
 void BrEdrConnectionManager::SendCreateConnectionCancelCommand(
     DeviceAddress addr) {
-  auto cancel = hci::EmbossCommandPacket::New<
+  auto cancel = hci::CommandPacket::New<
       pw::bluetooth::emboss::CreateConnectionCancelCommandWriter>(
       hci_spec::kCreateConnectionCancel);
   auto params = cancel.view_t();
   params.bd_addr().CopyFrom(addr.value().view());
   hci_->command_channel()->SendCommand(
-      std::move(cancel), [](auto, const hci::EmbossEventPacket& event) {
-        hci_is_error(
+      std::move(cancel), [](auto, const hci::EventPacket& event) {
+        HCI_IS_ERROR(
             event, WARN, "hci-bredr", "failed to cancel connection request");
       });
 }
 
 void BrEdrConnectionManager::SendAuthenticationRequested(
     hci_spec::ConnectionHandle handle, hci::ResultFunction<> cb) {
-  auto auth_request = hci::EmbossCommandPacket::New<
+  auto auth_request = hci::CommandPacket::New<
       pw::bluetooth::emboss::AuthenticationRequestedCommandWriter>(
       hci_spec::kAuthenticationRequested);
   auth_request.view_t().connection_handle().Write(handle);
 
   // Complete on command status because Authentication Complete Event is already
   // registered.
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
-    command_cb = [callback = std::move(cb)](
-                     auto, const hci::EmbossEventPacket& event) {
+    command_cb = [callback = std::move(cb)](auto,
+                                            const hci::EventPacket& event) {
       callback(event.ToResult());
     };
   }
@@ -2036,7 +2008,7 @@ void BrEdrConnectionManager::SendIoCapabilityRequestReply(
     pw::bluetooth::emboss::OobDataPresent oob_data_present,
     pw::bluetooth::emboss::AuthenticationRequirements auth_requirements,
     hci::ResultFunction<> cb) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::IoCapabilityRequestReplyCommandWriter>(
       hci_spec::kIOCapabilityRequestReply);
   auto params = packet.view_t();
@@ -2051,7 +2023,7 @@ void BrEdrConnectionManager::SendIoCapabilityRequestNegativeReply(
     DeviceAddressBytes bd_addr,
     pw::bluetooth::emboss::StatusCode reason,
     hci::ResultFunction<> cb) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::IoCapabilityRequestNegativeReplyCommandWriter>(
       hci_spec::kIOCapabilityRequestNegativeReply);
   auto params = packet.view_t();
@@ -2062,7 +2034,7 @@ void BrEdrConnectionManager::SendIoCapabilityRequestNegativeReply(
 
 void BrEdrConnectionManager::SendUserConfirmationRequestReply(
     DeviceAddressBytes bd_addr, hci::ResultFunction<> cb) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::UserConfirmationRequestReplyCommandWriter>(
       hci_spec::kUserConfirmationRequestReply);
   packet.view_t().bd_addr().CopyFrom(bd_addr.view());
@@ -2071,7 +2043,7 @@ void BrEdrConnectionManager::SendUserConfirmationRequestReply(
 
 void BrEdrConnectionManager::SendUserConfirmationRequestNegativeReply(
     DeviceAddressBytes bd_addr, hci::ResultFunction<> cb) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::UserConfirmationRequestNegativeReplyCommandWriter>(
       hci_spec::kUserConfirmationRequestNegativeReply);
   packet.view_t().bd_addr().CopyFrom(bd_addr.view());
@@ -2082,7 +2054,7 @@ void BrEdrConnectionManager::SendUserPasskeyRequestReply(
     DeviceAddressBytes bd_addr,
     uint32_t numeric_value,
     hci::ResultFunction<> cb) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::UserPasskeyRequestReplyCommandWriter>(
       hci_spec::kUserPasskeyRequestReply);
   auto view = packet.view_t();
@@ -2093,7 +2065,7 @@ void BrEdrConnectionManager::SendUserPasskeyRequestReply(
 
 void BrEdrConnectionManager::SendUserPasskeyRequestNegativeReply(
     DeviceAddressBytes bd_addr, hci::ResultFunction<> cb) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::UserPasskeyRequestNegativeReplyCommandWriter>(
       hci_spec::kUserPasskeyRequestNegativeReply);
   packet.view_t().bd_addr().CopyFrom(bd_addr.view());
@@ -2102,7 +2074,7 @@ void BrEdrConnectionManager::SendUserPasskeyRequestNegativeReply(
 
 void BrEdrConnectionManager::SendLinkKeyRequestNegativeReply(
     DeviceAddressBytes bd_addr, hci::ResultFunction<> cb) {
-  auto negative_reply = hci::EmbossCommandPacket::New<
+  auto negative_reply = hci::CommandPacket::New<
       pw::bluetooth::emboss::LinkKeyRequestNegativeReplyCommandWriter>(
       hci_spec::kLinkKeyRequestNegativeReply);
   auto negative_reply_params = negative_reply.view_t();
@@ -2113,7 +2085,7 @@ void BrEdrConnectionManager::SendLinkKeyRequestNegativeReply(
 void BrEdrConnectionManager::SendLinkKeyRequestReply(DeviceAddressBytes bd_addr,
                                                      hci_spec::LinkKey link_key,
                                                      hci::ResultFunction<> cb) {
-  auto reply = hci::EmbossCommandPacket::New<
+  auto reply = hci::CommandPacket::New<
       pw::bluetooth::emboss::LinkKeyRequestReplyCommandWriter>(
       hci_spec::kLinkKeyRequestReply);
   auto reply_params = reply.view_t();
@@ -2128,10 +2100,10 @@ void BrEdrConnectionManager::SendLinkKeyRequestReply(DeviceAddressBytes bd_addr,
 template <typename T>
 void BrEdrConnectionManager::SendCommandWithStatusCallback(
     T command_packet, hci::ResultFunction<> cb) {
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
-    command_cb = [callback = std::move(cb)](
-                     auto, const hci::EmbossEventPacket& event) {
+    command_cb = [callback = std::move(cb)](auto,
+                                            const hci::EventPacket& event) {
       callback(event.ToResult());
     };
   }
@@ -2141,7 +2113,7 @@ void BrEdrConnectionManager::SendCommandWithStatusCallback(
 
 void BrEdrConnectionManager::SendAcceptConnectionRequest(
     DeviceAddressBytes addr, hci::ResultFunction<> cb) {
-  auto accept = hci::EmbossCommandPacket::New<
+  auto accept = hci::CommandPacket::New<
       pw::bluetooth::emboss::AcceptConnectionRequestCommandWriter>(
       hci_spec::kAcceptConnectionRequest);
   auto accept_params = accept.view_t();
@@ -2151,10 +2123,10 @@ void BrEdrConnectionManager::SendAcceptConnectionRequest(
   // Sec 3.1).
   accept_params.role().Write(pw::bluetooth::emboss::ConnectionRole::CENTRAL);
 
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
-    command_cb = [callback = std::move(cb)](
-                     auto, const hci::EmbossEventPacket& event) {
+    command_cb = [callback = std::move(cb)](auto,
+                                            const hci::EventPacket& event) {
       callback(event.ToResult());
     };
   }
@@ -2168,17 +2140,17 @@ void BrEdrConnectionManager::SendRejectConnectionRequest(
     DeviceAddress addr,
     pw::bluetooth::emboss::StatusCode reason,
     hci::ResultFunction<> cb) {
-  auto reject = hci::EmbossCommandPacket::New<
+  auto reject = hci::CommandPacket::New<
       pw::bluetooth::emboss::RejectConnectionRequestCommandWriter>(
       hci_spec::kRejectConnectionRequest);
   auto reject_params = reject.view_t();
   reject_params.bd_addr().CopyFrom(addr.value().view());
   reject_params.reason().Write(reason);
 
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
-    command_cb = [callback = std::move(cb)](
-                     auto, const hci::EmbossEventPacket& event) {
+    command_cb = [callback = std::move(cb)](auto,
+                                            const hci::EventPacket& event) {
       callback(event.ToResult());
     };
   }
@@ -2192,17 +2164,17 @@ void BrEdrConnectionManager::SendRejectSynchronousRequest(
     DeviceAddress addr,
     pw::bluetooth::emboss::StatusCode reason,
     hci::ResultFunction<> cb) {
-  auto reject = hci::EmbossCommandPacket::New<
+  auto reject = hci::CommandPacket::New<
       pw::bluetooth::emboss::RejectSynchronousConnectionRequestCommandWriter>(
       hci_spec::kRejectSynchronousConnectionRequest);
   auto reject_params = reject.view_t();
   reject_params.bd_addr().CopyFrom(addr.value().view());
   reject_params.reason().Write(reason);
 
-  hci::CommandChannel::EmbossCommandCallback command_cb;
+  hci::CommandChannel::CommandCallback command_cb;
   if (cb) {
-    command_cb = [callback = std::move(cb)](
-                     auto, const hci::EmbossEventPacket& event) {
+    command_cb = [callback = std::move(cb)](auto,
+                                            const hci::EventPacket& event) {
       callback(event.ToResult());
     };
   }
@@ -2215,7 +2187,7 @@ void BrEdrConnectionManager::SendRejectSynchronousRequest(
 void BrEdrConnectionManager::SendPinCodeRequestReply(DeviceAddressBytes bd_addr,
                                                      uint16_t pin_code,
                                                      hci::ResultFunction<> cb) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::PinCodeRequestReplyCommandWriter>(
       hci_spec::kPinCodeRequestReply);
   auto params = packet.view_t();
@@ -2238,7 +2210,7 @@ void BrEdrConnectionManager::SendPinCodeRequestReply(DeviceAddressBytes bd_addr,
 
 void BrEdrConnectionManager::SendPinCodeRequestNegativeReply(
     DeviceAddressBytes bd_addr, hci::ResultFunction<> cb) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::PinCodeRequestNegativeReplyCommandWriter>(
       hci_spec::kPinCodeRequestNegativeReply);
   auto params = packet.view_t();
