@@ -20,14 +20,16 @@ namespace examples {
 
 // DOCSTAG: [pw_containers-intrusive_multimap]
 
-struct Book : public pw::IntrusiveMultiMap<uint32_t, Book>::Item {
-  const char* name;
-  uint32_t oclc;
+struct Book : public pw::IntrusiveMultiMap<uint32_t, Book>::Pair {
+ private:
+  using Pair = pw::IntrusiveMultiMap<uint32_t, Book>::Pair;
 
-  Book(const char* name_, uint32_t oclc_) : name(name_), oclc(oclc_) {}
+ public:
+  Book(const char* name, uint32_t oclc) : Pair(oclc), name_(name) {}
+  const char* name() const { return name_; }
 
-  // Indicates the key used to look up this item in the map.
-  constexpr const uint32_t& key() const { return oclc; }
+ private:
+  const char* name_;
 };
 
 std::array<Book, 12> books = {{
@@ -81,25 +83,25 @@ TEST(IntrusiveMultiMapExampleTest, VisitLibrary) {
 
   auto iter = book_bag1.begin();
   ASSERT_NE(iter, book_bag1.end());
-  EXPECT_STREQ((iter++)->name, "The Hobbit");
+  EXPECT_STREQ((iter++)->name(), "The Hobbit");
   ASSERT_NE(iter, book_bag1.end());
-  EXPECT_STREQ((iter++)->name, "Alice's Adventures in Wonderland");
+  EXPECT_STREQ((iter++)->name(), "Alice's Adventures in Wonderland");
   ASSERT_NE(iter, book_bag1.end());
-  EXPECT_STREQ((iter++)->name, "The Little Prince");
+  EXPECT_STREQ((iter++)->name(), "The Little Prince");
   EXPECT_EQ(iter, book_bag1.end());
   book_bag1.clear();
 
   iter = book_bag2.begin();
   ASSERT_NE(iter, book_bag2.end());
-  EXPECT_STREQ((iter++)->name, "The Hobbit");
+  EXPECT_STREQ((iter++)->name(), "The Hobbit");
   ASSERT_NE(iter, book_bag2.end());
-  EXPECT_STREQ((iter++)->name, "Alice's Adventures in Wonderland");
+  EXPECT_STREQ((iter++)->name(), "Alice's Adventures in Wonderland");
   EXPECT_EQ(iter, book_bag2.end());
   book_bag2.clear();
 
   iter = book_bag3.begin();
   ASSERT_NE(iter, book_bag3.end());
-  EXPECT_STREQ((iter++)->name, "The Hobbit");
+  EXPECT_STREQ((iter++)->name(), "The Hobbit");
   EXPECT_EQ(iter, book_bag3.end());
   book_bag3.clear();
 

@@ -141,8 +141,14 @@ bool LowEnergyScanner::StartScan(const ScanOptions& options,
 
   // Obtain the local address type.
   local_addr_delegate_->EnsureLocalAddress(
-      [this, options, cb = std::move(callback)](const auto& address) mutable {
-        StartScanInternal(address, options, std::move(cb));
+      /*address_type=*/std::nullopt,
+      [this, options, cb = std::move(callback)](
+          fit::result<HostError, const DeviceAddress> result) mutable {
+        if (result.is_error()) {
+          cb(ScanStatus::kFailed);
+          return;
+        }
+        StartScanInternal(result.value(), options, std::move(cb));
       });
 
   return true;
@@ -150,7 +156,7 @@ bool LowEnergyScanner::StartScan(const ScanOptions& options,
 
 void LowEnergyScanner::StartScanInternal(const DeviceAddress& local_address,
                                          const ScanOptions& options,
-                                         ScanStatusCallback callback) {
+                                         ScanStatusCallback) {
   // Check if the scan request was canceled by StopScan() while we were waiting
   // for the local address.
   if (state_ != State::kInitiating) {
@@ -168,9 +174,9 @@ void LowEnergyScanner::StartScanInternal(const DeviceAddress& local_address,
          options.interval,
          options.window);
 
-  EmbossCommandPacket scan_params_command =
+  CommandPacket scan_params_command =
       BuildSetScanParametersPacket(local_address, options);
-  EmbossCommandPacket scan_enable_command = BuildEnablePacket(
+  CommandPacket scan_enable_command = BuildEnablePacket(
       options, pw::bluetooth::emboss::GenericEnableParam::ENABLE);
 
   hci_cmd_runner_->QueueCommand(std::move(scan_params_command));
@@ -251,7 +257,7 @@ void LowEnergyScanner::StopScanInternal(bool stopped_by_user) {
 
   // Tell the controller to stop scanning.
   ScanOptions options;
-  EmbossCommandPacket command = BuildEnablePacket(
+  CommandPacket command = BuildEnablePacket(
       options, pw::bluetooth::emboss::GenericEnableParam::DISABLE);
 
   hci_cmd_runner_->QueueCommand(std::move(command));

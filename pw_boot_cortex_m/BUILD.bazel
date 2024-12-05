@@ -12,6 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
@@ -24,9 +27,11 @@ cc_library(
     name = "pw_boot_cortex_m",
     srcs = [
         "core_init.c",
+    ],
+    hdrs = [
         "public/pw_boot_cortex_m/boot.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     target_compatible_with = select({
         "@platforms//cpu:armv7-m": [],
         "@platforms//cpu:armv7e-m": [],
@@ -60,4 +65,13 @@ cc_library(
         "//conditions:default": ["@platforms//:incompatible"],
     }),
     deps = [":pw_boot_cortex_m"],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+    ],
+    prefix = "pw_boot_cortex_m/",
+    target_compatible_with = incompatible_with_mcu(),
 )

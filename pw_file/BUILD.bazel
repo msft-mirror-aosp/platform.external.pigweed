@@ -13,7 +13,13 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+load(
+    "//pw_protobuf_compiler:pw_proto_library.bzl",
+    "pwpb_proto_library",
+    "raw_rpc_proto_library",
+)
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -28,8 +34,16 @@ proto_library(
     ],
 )
 
-pw_proto_library(
-    name = "file_cc_proto",
+pwpb_proto_library(
+    name = "file_proto_pwpb",
+    deps = [
+        ":file_proto",
+        "//pw_protobuf:common_proto",
+    ],
+)
+
+raw_rpc_proto_library(
+    name = "file_proto_raw_rpc",
     deps = [
         ":file_proto",
         "//pw_protobuf:common_proto",
@@ -49,10 +63,10 @@ cc_library(
     hdrs = [
         "public/pw_file/flat_file_system.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
-        ":file_cc_proto.pwpb",
-        ":file_cc_proto.raw_rpc",
+        ":file_proto_pwpb",
+        ":file_proto_raw_rpc",
         "//pw_bytes",
         "//pw_result",
         "//pw_rpc/raw:server_api",
@@ -66,11 +80,20 @@ pw_cc_test(
         "flat_file_system_test.cc",
     ],
     deps = [
-        ":file_cc_proto.pwpb",
+        ":file_proto_pwpb",
         ":flat_file_system",
         "//pw_bytes",
         "//pw_protobuf",
         "//pw_rpc/raw:test_method_context",
         "//pw_status",
     ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+    ],
+    prefix = "pw_file/",
+    target_compatible_with = incompatible_with_mcu(),
 )
