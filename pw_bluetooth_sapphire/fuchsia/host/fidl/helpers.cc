@@ -1596,6 +1596,12 @@ std::optional<bt::AdvertisingData> AdvertisingDataFromFidl(
       }
     }
   }
+  if (input.has_broadcast_name()) {
+    output.SetBroadcastName(input.broadcast_name());
+  }
+  if (input.has_resolvable_set_identifier()) {
+    output.SetResolvableSetIdentifier(input.resolvable_set_identifier());
+  }
 
   return output;
 }
@@ -1658,6 +1664,12 @@ fble::AdvertisingData AdvertisingDataToFidl(const bt::AdvertisingData& input) {
       uris.push_back(uri);
     }
     output.set_uris(std::move(uris));
+  }
+  if (input.broadcast_name()) {
+    output.set_broadcast_name(*input.broadcast_name());
+  }
+  if (input.resolvable_set_identifier()) {
+    output.set_resolvable_set_identifier(*input.resolvable_set_identifier());
   }
 
   return output;
@@ -2902,6 +2914,14 @@ fuchsia::bluetooth::le::CisEstablishedParameters CisEstablishedParametersToFidl(
   return params_out;
 }
 
+bt::DeviceAddress::Type FidlToDeviceAddressType(fbt::AddressType addr_type) {
+  switch (addr_type) {
+    case fbt::AddressType::PUBLIC:
+      return bt::DeviceAddress::Type::kLEPublic;
+    case fbt::AddressType::RANDOM:
+      return bt::DeviceAddress::Type::kLERandom;
+  }
+}
 }  // namespace bthost::fidl_helpers
 
 // static

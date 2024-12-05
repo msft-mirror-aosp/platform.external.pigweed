@@ -28,7 +28,10 @@ ForwardingChannel<DataType::kDatagram>::DoPendRead(async2::Context& cx)
       return Status::FailedPrecondition();
     }
   } else if (!read_queue_.has_value()) {
-    waker_ = cx.GetWaker(async2::WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        waker_,
+        "ForwardingChannel is waiting for incoming data from its peer");
     return async2::Pending();
   }
 
@@ -42,26 +45,30 @@ async2::Poll<Status> ForwardingChannel<DataType::kDatagram>::DoPendReadyToWrite(
     async2::Context& cx) PW_NO_LOCK_SAFETY_ANALYSIS {
   std::lock_guard lock(pair_.mutex_);
   if (sibling_.read_queue_.has_value()) {
-    waker_ = cx.GetWaker(async2::WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        waker_,
+        "ForwardingChannel is waiting for its peer to read the data "
+        "it enqueued");
     return async2::Pending();
   }
   return async2::Ready(OkStatus());
 }
 
-Result<channel::WriteToken> ForwardingChannel<DataType::kDatagram>::DoWrite(
+Status ForwardingChannel<DataType::kDatagram>::DoStageWrite(
     multibuf::MultiBuf&& data) PW_NO_LOCK_SAFETY_ANALYSIS {
   std::lock_guard lock(pair_.mutex_);
   PW_DASSERT(!sibling_.read_queue_.has_value());
   sibling_.read_queue_ = std::move(data);
-  const uint32_t token = ++write_token_;
+
   std::move(sibling_.waker_).Wake();
-  return CreateWriteToken(token);
+  return OkStatus();
 }
 
-async2::Poll<Result<channel::WriteToken>>
-ForwardingChannel<DataType::kDatagram>::DoPendFlush(async2::Context&) {
+async2::Poll<Status> ForwardingChannel<DataType::kDatagram>::DoPendWrite(
+    async2::Context&) {
   std::lock_guard lock(pair_.mutex_);
-  return async2::Ready(CreateWriteToken(write_token_));
+  return OkStatus();
 }
 
 async2::Poll<Status> ForwardingChannel<DataType::kDatagram>::DoPendClose(
@@ -84,7 +91,10 @@ ForwardingChannel<DataType::kByte>::DoPendRead(async2::Context& cx) {
       return Status::FailedPrecondition();
     }
   } else if (read_queue_.empty()) {
-    read_waker_ = cx.GetWaker(async2::WaitReason::Unspecified());
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        read_waker_,
+        "ForwardingChannel is waiting for incoming data from its peer");
     return async2::Pending();
   }
 
@@ -93,22 +103,21 @@ ForwardingChannel<DataType::kByte>::DoPendRead(async2::Context& cx) {
   return read_data;
 }
 
-Result<channel::WriteToken> ForwardingChannel<DataType::kByte>::DoWrite(
+Status ForwardingChannel<DataType::kByte>::DoStageWrite(
     multibuf::MultiBuf&& data) PW_NO_LOCK_SAFETY_ANALYSIS {
   std::lock_guard lock(pair_.mutex_);
   if (data.empty()) {
-    return CreateWriteToken(write_token_);  // no data, nothing to do
+    return OkStatus();  // no data, nothing to do
   }
 
-  write_token_ += data.size();
   sibling_.read_queue_.PushSuffix(std::move(data));
-  return CreateWriteToken(write_token_);
+  return OkStatus();
 }
 
-async2::Poll<Result<channel::WriteToken>>
-ForwardingChannel<DataType::kByte>::DoPendFlush(async2::Context&) {
+async2::Poll<Status> ForwardingChannel<DataType::kByte>::DoPendWrite(
+    async2::Context&) {
   std::lock_guard lock(pair_.mutex_);
-  return async2::Ready(CreateWriteToken(write_token_));
+  return OkStatus();
 }
 
 async2::Poll<Status> ForwardingChannel<DataType::kByte>::DoPendClose(

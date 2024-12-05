@@ -12,6 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
@@ -103,7 +106,7 @@ cc_library(
     srcs = [
         "test_threads.cc",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     # TODO: b/260637734 - This target doesn't build
     tags = ["manual"],
     deps = [
@@ -139,7 +142,7 @@ cc_library(
     hdrs = [
         "public/pw_thread_embos/util.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     # TODO: b/260637734 - This target doesn't build
     tags = ["manual"],
     deps = [
@@ -158,7 +161,7 @@ cc_library(
     hdrs = [
         "public/pw_thread_embos/snapshot.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     # TODO: b/260637734 - This target doesn't build
     tags = ["manual"],
     deps = [
@@ -172,4 +175,13 @@ cc_library(
     ],
     # TODO: b/234876414 - This should depend on embOS but our third parties
     # currently do not have Bazel support.
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+    ],
+    prefix = "pw_thread_embos/",
+    target_compatible_with = incompatible_with_mcu(),
 )

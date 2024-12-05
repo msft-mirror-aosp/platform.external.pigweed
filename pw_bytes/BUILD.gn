@@ -49,6 +49,7 @@ pw_source_set("alignment") {
   public = [ "public/pw_bytes/alignment.h" ]
   public_deps = [
     ":pw_bytes",
+    "$dir_pw_third_party/fuchsia:stdcompat",
     dir_pw_assert,
     dir_pw_preprocessor,
   ]
@@ -130,6 +131,7 @@ pw_test("units_test") {
 }
 
 pw_doc_group("docs") {
+  inputs = [ "Kconfig" ]
   sources = [ "docs.rst" ]
   report_deps = [ ":byte_builder_size_report" ]
 }

@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
@@ -25,7 +26,7 @@ cc_library(
     hdrs = [
         "public/pw_work_queue/work_queue.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_containers:inline_queue",
         "//pw_function",
@@ -41,7 +42,7 @@ cc_library(
 cc_library(
     name = "test_thread_header",
     hdrs = ["public/pw_work_queue/test_thread.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
@@ -78,4 +79,20 @@ pw_cc_test(
         ":stl_test_thread",
         ":work_queue_test",
     ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_work_queue/work_queue.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+    ],
+    prefix = "pw_work_queue/",
+    target_compatible_with = incompatible_with_mcu(),
 )

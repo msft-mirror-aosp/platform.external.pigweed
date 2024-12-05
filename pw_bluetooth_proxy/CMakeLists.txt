@@ -25,11 +25,26 @@ endif()
 
 pw_add_library(pw_bluetooth_proxy STATIC
   HEADERS
-    public/pw_bluetooth_proxy/acl_data_channel.h
-    public/pw_bluetooth_proxy/emboss_util.h
-    public/pw_bluetooth_proxy/hci_transport.h
+    public/pw_bluetooth_proxy/basic_l2cap_channel.h
+    public/pw_bluetooth_proxy/gatt_notify_channel.h
     public/pw_bluetooth_proxy/h4_packet.h
+    public/pw_bluetooth_proxy/internal/acl_data_channel.h
+    public/pw_bluetooth_proxy/internal/gatt_notify_channel_internal.h
+    public/pw_bluetooth_proxy/internal/h4_storage.h
+    public/pw_bluetooth_proxy/internal/hci_transport.h
+    public/pw_bluetooth_proxy/internal/l2cap_aclu_signaling_channel.h
+    public/pw_bluetooth_proxy/internal/l2cap_channel_manager.h
+    public/pw_bluetooth_proxy/internal/l2cap_coc_internal.h
+    public/pw_bluetooth_proxy/internal/l2cap_read_channel.h
+    public/pw_bluetooth_proxy/internal/l2cap_signaling_channel.h
+    public/pw_bluetooth_proxy/internal/l2cap_write_channel.h
+    public/pw_bluetooth_proxy/internal/l2cap_leu_signaling_channel.h
+    public/pw_bluetooth_proxy/internal/logical_transport.h
+    public/pw_bluetooth_proxy/internal/rfcomm_fcs.h
+    public/pw_bluetooth_proxy/l2cap_coc.h
     public/pw_bluetooth_proxy/proxy_host.h
+    public/pw_bluetooth_proxy/rfcomm_channel.h
+
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -39,33 +54,38 @@ pw_add_library(pw_bluetooth_proxy STATIC
     pw_bluetooth.emboss_hci_events
     pw_bluetooth.emboss_hci_h4
     pw_bluetooth.emboss_l2cap_frames
+    pw_bluetooth.emboss_rfcomm_frames
+    pw_bluetooth.emboss_util
     pw_containers
     pw_function
     pw_log
+    pw_result
     pw_span
     pw_status
     pw_sync.lock_annotations
     pw_sync.mutex
   SOURCES
     acl_data_channel.cc
+    basic_l2cap_channel.cc
+    gatt_notify_channel.cc
+    h4_storage.cc
+    l2cap_aclu_signaling_channel.cc
+    l2cap_channel_manager.cc
+    l2cap_coc.cc
+    l2cap_read_channel.cc
+    l2cap_signaling_channel.cc
+    l2cap_write_channel.cc
+    l2cap_leu_signaling_channel.cc
     proxy_host.cc
-)
-
-pw_add_test(pw_bluetooth_proxy.emboss_util_test
-  SOURCES
-    emboss_util_test.cc
-  PRIVATE_DEPS
-    pw_bluetooth_proxy
-    pw_bluetooth.emboss_hci_test
-    pw_span
-  GROUPS
-    modules
+    rfcomm_channel.cc
+    rfcomm_fcs.cc
 )
 
 pw_add_test(pw_bluetooth_proxy.pw_bluetooth_proxy_test
   SOURCES
     proxy_host_test.cc
     h4_packet_test.cc
+    rfcomm_fcs_test.cc
   PRIVATE_DEPS
     pw_bluetooth_proxy
     pw_third_party.fuchsia.stdcompat
