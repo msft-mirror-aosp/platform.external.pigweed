@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -25,7 +27,7 @@ cc_library(
         "public/pw_intrusive_ptr/internal/ref_counted_base.h",
         "public/pw_intrusive_ptr/intrusive_ptr.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_recyclable",
         "//pw_assert",
@@ -37,7 +39,7 @@ cc_library(
     hdrs = [
         "public/pw_intrusive_ptr/recyclable.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 pw_cc_test(
@@ -64,4 +66,13 @@ pw_cc_test(
         "//conditions:default": [],
     }),
     deps = [":pw_intrusive_ptr"],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+    ],
+    prefix = "pw_intrusive_ptr/",
+    target_compatible_with = incompatible_with_mcu(),
 )

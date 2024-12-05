@@ -13,6 +13,7 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 load("//pw_build:pw_cc_blob_library.bzl", "pw_cc_blob_info", "pw_cc_blob_library")
@@ -29,7 +30,13 @@ cc_library(
     srcs = [
         "encode_args.cc",
         "hash.cc",
+        "tokenize.cc",
+    ],
+    hdrs = [
         "public/pw_tokenizer/config.h",
+        "public/pw_tokenizer/encode_args.h",
+        "public/pw_tokenizer/enum.h",
+        "public/pw_tokenizer/hash.h",
         "public/pw_tokenizer/internal/argument_types.h",
         "public/pw_tokenizer/internal/argument_types_macro_4_byte.h",
         "public/pw_tokenizer/internal/argument_types_macro_8_byte.h",
@@ -39,16 +46,10 @@ cc_library(
         "public/pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_80_hash_macro.h",
         "public/pw_tokenizer/internal/pw_tokenizer_65599_fixed_length_96_hash_macro.h",
         "public/pw_tokenizer/internal/tokenize_string.h",
-        "tokenize.cc",
-    ],
-    hdrs = [
-        "public/pw_tokenizer/encode_args.h",
-        "public/pw_tokenizer/enum.h",
-        "public/pw_tokenizer/hash.h",
         "public/pw_tokenizer/nested_tokenization.h",
         "public/pw_tokenizer/tokenize.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config_override",
         "//pw_bytes:bit",
@@ -83,7 +84,7 @@ cc_library(
     hdrs = [
         "public/pw_tokenizer/base64.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_tokenizer",
         "//pw_base64",
@@ -105,12 +106,16 @@ cc_library(
         "public/pw_tokenizer/internal/decode.h",
         "public/pw_tokenizer/token_database.h",
     ],
-    includes = ["public"],
+    implementation_deps = [
+        "//pw_elf:reader",
+    ],
+    strip_include_prefix = "public",
     deps = [
         ":base64",
         "//pw_bytes",
         "//pw_result",
         "//pw_span",
+        "//pw_stream",
         "//pw_varint",
     ],
 )
@@ -223,6 +228,7 @@ pw_cc_test(
     deps = [
         ":decoder",
         ":detokenizer_elf_test_blob",
+        "//pw_stream",
         "//pw_unit_test",
     ],
 )
@@ -342,4 +348,32 @@ filegroup(
     srcs = [
         "java/dev/pigweed/tokenizer/detokenizer.cc",
     ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_tokenizer/config.h",
+        "public/pw_tokenizer/detokenize.h",
+        "public/pw_tokenizer/encode_args.h",
+        "public/pw_tokenizer/enum.h",
+        "public/pw_tokenizer/nested_tokenization.h",
+        "public/pw_tokenizer/token_database.h",
+        "public/pw_tokenizer/tokenize.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "Kconfig",
+        # "api.rst",
+        "detokenization.rst",
+        "docs.rst",
+        "get_started.rst",
+        "tokenization.rst",
+        "token_databases.rst",
+    ],
+    prefix = "pw_tokenizer/",
+    target_compatible_with = incompatible_with_mcu(),
 )

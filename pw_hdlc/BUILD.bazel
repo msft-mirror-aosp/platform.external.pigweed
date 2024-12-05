@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -23,14 +25,14 @@ cc_library(
     srcs = [
         "decoder.cc",
         "encoder.cc",
-        "public/pw_hdlc/internal/protocol.h",
     ],
     hdrs = [
         "public/pw_hdlc/decoder.h",
         "public/pw_hdlc/encoded_size.h",
         "public/pw_hdlc/encoder.h",
+        "public/pw_hdlc/internal/protocol.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_bytes",
         "//pw_checksum",
@@ -46,7 +48,7 @@ cc_library(
 cc_library(
     name = "rpc_channel_output",
     hdrs = ["public/pw_hdlc/rpc_channel.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_hdlc",
         "//pw_rpc",
@@ -57,14 +59,14 @@ cc_library(
 cc_library(
     name = "default_addresses",
     hdrs = ["public/pw_hdlc/default_addresses.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
     name = "packet_parser",
     srcs = ["wire_packet_parser.cc"],
     hdrs = ["public/pw_hdlc/wire_packet_parser.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_hdlc",
         "//pw_assert",
@@ -156,7 +158,7 @@ cc_library(
     name = "router",
     srcs = ["router.cc"],
     hdrs = ["public/pw_hdlc/router.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_hdlc",
         "//pw_async2:dispatcher",
@@ -187,4 +189,29 @@ pw_cc_test(
         "//pw_multibuf:simple_allocator",
         "//pw_unit_test",
     ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_hdlc/decoder.h",
+        "public/pw_hdlc/encoder.h",
+        "public/pw_hdlc/router.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "Kconfig",
+        "api.rst",
+        "design.rst",
+        "docs.rst",
+        "guide.rst",
+        "router.rst",
+        "size.rst",
+        "//pw_hdlc/rpc_example:docs",
+    ],
+    prefix = "pw_hdlc/",
+    target_compatible_with = incompatible_with_mcu(),
 )
