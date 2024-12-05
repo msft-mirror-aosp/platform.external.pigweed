@@ -129,37 +129,16 @@ ScoConnectionManager::RequestHandle ScoConnectionManager::AcceptConnection(
 
 hci::CommandChannel::EventHandlerId ScoConnectionManager::AddEventHandler(
     const hci_spec::EventCode& code,
-    hci::CommandChannel::EventCallbackVariant event_cb_variant) {
+    hci::CommandChannel::EventCallback event_cb) {
   auto self = weak_ptr_factory_.GetWeakPtr();
   hci::CommandChannel::EventHandlerId event_id = 0;
-  event_id = std::visit(
-      [this, &self, code](
-          auto&& event_cb) -> hci::CommandChannel::EventHandlerId {
-        using T = std::decay_t<decltype(event_cb)>;
-        if constexpr (std::is_same_v<T, hci::CommandChannel::EventCallback>) {
-          return transport_->command_channel()->AddEventHandler(
-              code,
-              [self, cb = std::move(event_cb)](const hci::EventPacket& event) {
-                if (!self.is_alive()) {
-                  return hci::CommandChannel::EventCallbackResult::kRemove;
-                }
-                return cb(event);
-              });
-        } else if constexpr (std::is_same_v<
-                                 T,
-                                 hci::CommandChannel::EmbossEventCallback>) {
-          return transport_->command_channel()->AddEventHandler(
-              code,
-              [self,
-               cb = std::move(event_cb)](const hci::EmbossEventPacket& event) {
-                if (!self.is_alive()) {
-                  return hci::CommandChannel::EventCallbackResult::kRemove;
-                }
-                return cb(event);
-              });
+  event_id = transport_->command_channel()->AddEventHandler(
+      code, [self, cb = std::move(event_cb)](const hci::EventPacket& event) {
+        if (!self.is_alive()) {
+          return hci::CommandChannel::EventCallbackResult::kRemove;
         }
-      },
-      std::move(event_cb_variant));
+        return cb(event);
+      });
   PW_CHECK(event_id);
   event_handler_ids_.push_back(event_id);
   return event_id;
@@ -167,7 +146,7 @@ hci::CommandChannel::EventHandlerId ScoConnectionManager::AddEventHandler(
 
 hci::CommandChannel::EventCallbackResult
 ScoConnectionManager::OnSynchronousConnectionComplete(
-    const hci::EmbossEventPacket& event) {
+    const hci::EventPacket& event) {
   const auto params = event.view<
       pw::bluetooth::emboss::SynchronousConnectionCompleteEventView>();
   DeviceAddress addr(DeviceAddress::Type::kBREDR,
@@ -241,7 +220,7 @@ ScoConnectionManager::OnSynchronousConnectionComplete(
 }
 
 hci::CommandChannel::EventCallbackResult
-ScoConnectionManager::OnConnectionRequest(const hci::EmbossEventPacket& event) {
+ScoConnectionManager::OnConnectionRequest(const hci::EventPacket& event) {
   PW_CHECK(event.event_code() == hci_spec::kConnectionRequestEventCode);
   auto params = event.view<pw::bluetooth::emboss::ConnectionRequestEventView>();
 
@@ -297,7 +276,7 @@ ScoConnectionManager::OnConnectionRequest(const hci::EmbossEventPacket& event) {
          bt_str(DeviceAddressBytes(params.bd_addr())),
          bt_str(peer_id_));
 
-  auto accept = hci::EmbossCommandPacket::New<
+  auto accept = hci::CommandPacket::New<
       pw::bluetooth::emboss::
           EnhancedAcceptSynchronousConnectionRequestCommandWriter>(
       hci_spec::kEnhancedAcceptSynchronousConnectionRequest);
@@ -416,7 +395,7 @@ void ScoConnectionManager::TryCreateNextConnection() {
            "Initiating SCO connection (peer: %s)",
            bt_str(peer_id_));
 
-    auto packet = hci::EmbossCommandPacket::New<
+    auto packet = hci::CommandPacket::New<
         pw::bluetooth::emboss::EnhancedSetupSynchronousConnectionCommandWriter>(
         hci_spec::kEnhancedSetupSynchronousConnection);
     auto view = packet.view_t();
@@ -489,7 +468,7 @@ void ScoConnectionManager::CompleteRequest(ConnectionResult result) {
 }
 
 void ScoConnectionManager::SendCommandWithStatusCallback(
-    hci::EmbossCommandPacket command_packet, hci::ResultFunction<> result_cb) {
+    hci::CommandPacket command_packet, hci::ResultFunction<> result_cb) {
   hci::CommandChannel::CommandCallback command_cb;
   if (result_cb) {
     command_cb = [cb = std::move(result_cb)](auto,
@@ -515,7 +494,7 @@ void ScoConnectionManager::SendRejectConnectionCommand(
       "Tried to send invalid reject reason: %s",
       hci_spec::StatusCodeToString(reason).c_str());
 
-  auto reject = hci::EmbossCommandPacket::New<
+  auto reject = hci::CommandPacket::New<
       pw::bluetooth::emboss::RejectSynchronousConnectionRequestCommandWriter>(
       hci_spec::kRejectSynchronousConnectionRequest);
   auto reject_params = reject.view_t();

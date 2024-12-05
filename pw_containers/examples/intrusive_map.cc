@@ -20,14 +20,16 @@ namespace examples {
 
 // DOCSTAG: [pw_containers-intrusive_map]
 
-struct Book : public pw::IntrusiveMap<uint32_t, Book>::Item {
-  const char* name;
-  uint32_t oclc;
+struct Book : public pw::IntrusiveMap<uint32_t, Book>::Pair {
+ private:
+  using Pair = pw::IntrusiveMap<uint32_t, Book>::Pair;
 
-  Book(const char* name_, uint32_t oclc_) : name(name_), oclc(oclc_) {}
+ public:
+  Book(const char* name, uint32_t oclc) : Pair(oclc), name_(name) {}
+  const char* name() const { return name_; }
 
-  // Indicates the key used to look up this item in the map.
-  constexpr const uint32_t& key() const { return oclc; }
+ private:
+  const char* name_;
 };
 
 std::array<Book, 8> books = {{
@@ -76,8 +78,8 @@ TEST(IntrusiveMapExampleTest, VisitLibrary) {
 
   examples::VisitLibrary(book_bag);
   auto iter = book_bag.begin();
-  EXPECT_STREQ((iter++)->name, "The Hobbit");
-  EXPECT_STREQ((iter++)->name, "Harry Potter and the Philosopher's Stone");
+  EXPECT_STREQ((iter++)->name(), "The Hobbit");
+  EXPECT_STREQ((iter++)->name(), "Harry Potter and the Philosopher's Stone");
   EXPECT_EQ(iter, book_bag.end());
 
   // Remove books before items go out scope.

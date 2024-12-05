@@ -15,7 +15,6 @@
 
 #include "pw_containers/internal/aa_tree.h"
 #include "pw_containers/internal/aa_tree_item.h"
-#include "pw_containers/intrusive_map.h"
 
 namespace pw {
 
@@ -50,36 +49,40 @@ namespace pw {
 ///   - std::multimap<T>::insert
 ///   - std::multimap<T>::erase
 ///
+/// - An additional overload of `erase` is provided that takes a direct
+///   reference to an item.
+///
 /// - C++23 methods are not (yet) supported.
 ///
 /// @tparam   Key         Type to sort items on
 /// @tparam   T           Type of values stored in the map.
-/// @tparam   Compare     Function with the signature `bool(Key, Key)` that is
-///                       used to order items.
-/// @tparam   GetKey      Function with signature `Key(const T&)` that
-///                       returns the value that items are sorted on.
-template <typename Key,
-          typename T,
-          typename Compare = std::less<Key>,
-          typename GetKey = containers::internal::GetKey<Key, T>>
+template <typename Key, typename T>
 class IntrusiveMultiMap {
  private:
   using GenericIterator = containers::internal::GenericAATree::iterator;
-  using Tree = containers::internal::AATree<GetKey, Compare>;
+  using Tree = containers::internal::AATree<Key, T>;
+  using Compare = typename Tree::Compare;
+  using GetKey = typename Tree::GetKey;
 
  public:
-  using Item = containers::internal::IntrusiveMapItem<T>;
-  using key_type = typename Tree::Key;
+  /// IntrusiveMultiMap items must derive from either `Item` or `Pair`.
+  /// Use `Pair` to automatically provide storage for a `Key`.
+  /// Use `Item` when the derived type has a `key()` accessor method or when the
+  /// map provides a custom `GetKey` function object.
+  using Item = typename Tree::Item;
+  using Pair = typename Tree::Pair;
+
+  using key_type = Key;
   using mapped_type = std::remove_cv_t<T>;
   using value_type = Item;
   using size_type = std::size_t;
+  using difference_type = std::ptrdiff_t;
+  using key_compare = Compare;
   using reference = value_type&;
   using const_reference = const value_type&;
   using pointer = value_type*;
   using const_pointer = const value_type*;
-  using key_compare = Compare;
 
- public:
   class iterator : public containers::internal::AATreeIterator<T> {
    public:
     constexpr iterator() = default;
@@ -104,22 +107,54 @@ class IntrusiveMultiMap {
   using reverse_iterator = std::reverse_iterator<iterator>;
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
-  /// Constructs an empty multimap.
-  constexpr IntrusiveMultiMap() : tree_(false) { CheckItemType(); }
+  /// Constructs an empty map of items.
+  constexpr explicit IntrusiveMultiMap()
+      : IntrusiveMultiMap(std::less<Key>()) {}
+
+  /// Constructs an empty map of items.
+  ///
+  /// SFINAE is used to disambiguate between this constructor and the one that
+  /// takes an initializer list.
+  ///
+  /// @param  compare   Function with the signature `bool(Key, Key)` that is
+  ///                   used to order items.
+  /// @param  get_key   Function with signature `Key(const T&)` that returns the
+  ///                   value that items are sorted on.
+  template <typename Comparator>
+  constexpr explicit IntrusiveMultiMap(Comparator&& compare)
+      : IntrusiveMultiMap(std::forward<Comparator>(compare),
+                          [](const T& t) { return t.key(); }) {}
+
+  /// Constructs an empty map of items.
+  ///
+  /// @param  compare   Function with the signature `bool(Key, Key)` that is
+  ///                   used to order items.
+  /// @param  get_key   Function with signature `Key(const T&)` that returns the
+  ///                   value that items are sorted on.
+  template <typename Comparator, typename KeyRetriever>
+  constexpr IntrusiveMultiMap(Comparator&& compare, KeyRetriever&& get_key)
+      : tree_(false,
+              std::forward<Comparator>(compare),
+              std::forward<KeyRetriever>(get_key)) {
+    CheckItemType();
+  }
 
   /// Constructs an IntrusiveMultiMap from an iterator over Items.
   ///
   /// The iterator may dereference as either Item& (e.g. from std::array<Item>)
   /// or Item* (e.g. from std::initializer_list<Item*>).
-  template <typename Iterator>
-  IntrusiveMultiMap(Iterator first, Iterator last) : IntrusiveMultiMap() {
+  template <typename Iterator, typename... Functors>
+  IntrusiveMultiMap(Iterator first, Iterator last, Functors&&... functors)
+      : IntrusiveMultiMap(std::forward<Functors>(functors)...) {
     tree_.insert(first, last);
   }
 
   /// Constructs an IntrusiveMultiMap from a std::initializer_list of pointers
   /// to items.
-  IntrusiveMultiMap(std::initializer_list<Item*> items)
-      : IntrusiveMultiMap(items.begin(), items.end()) {}
+  template <typename... Functors>
+  IntrusiveMultiMap(std::initializer_list<T*> items, Functors&&... functors)
+      : IntrusiveMultiMap(
+            items.begin(), items.end(), std::forward<Functors>(functors)...) {}
 
   // Iterators
 
@@ -186,23 +221,20 @@ class IntrusiveMultiMap {
   /// after the removed item.
   ///
   /// The items themselves are not destructed.
-  iterator erase(iterator pos) { return iterator(tree_.erase(*pos)); }
+  iterator erase(T& item) { return iterator(tree_.erase_one(item)); }
+
+  iterator erase(iterator pos) { return iterator(tree_.erase_one(*pos)); }
 
   iterator erase(iterator first, iterator last) {
-    return iterator(tree_.erase(*first, *last));
+    return iterator(tree_.erase_range(*first, *last));
   }
 
-  size_t erase(const Key& key) { return tree_.erase(key); }
+  size_t erase(const Key& key) { return tree_.erase_all(key); }
 
   /// Exchanges this multimap's items with the `other` multimap's items.
-  void swap(IntrusiveMultiMap<Key, T, Compare, GetKey>& other) {
-    tree_.swap(other.tree_);
-  }
+  void swap(IntrusiveMultiMap<Key, T>& other) { tree_.swap(other.tree_); }
 
   /// Splices items from the `other` map into this one.
-  ///
-  /// The receiving map's `GetKey` and `Compare` functions are used when
-  /// inserting items.
   template <typename MapType>
   void merge(MapType& other) {
     tree_.merge(other.tree_);
@@ -267,7 +299,7 @@ class IntrusiveMultiMap {
   }
 
   // Allow maps to access the tree for `merge`.
-  template <typename, typename, typename, typename>
+  template <typename, typename>
   friend class IntrusiveMap;
 
   // The AA tree that stores the map.

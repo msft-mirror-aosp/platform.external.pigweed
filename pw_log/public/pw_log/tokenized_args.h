@@ -13,6 +13,8 @@
 // the License.
 #pragma once
 
+#include "pw_tokenizer/enum.h"
+
 /// If nested tokenization is supported by the logging backend, this is a
 /// format specifier to declare a nested token with a specific domain value.
 ///
