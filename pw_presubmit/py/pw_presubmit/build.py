@@ -16,6 +16,7 @@
 import base64
 import contextlib
 from dataclasses import dataclass
+import io
 import itertools
 import json
 import logging
@@ -38,7 +39,6 @@ from typing import (
     Mapping,
     Sequence,
     Set,
-    TextIO,
 )
 
 import pw_cli.color
@@ -78,7 +78,7 @@ def bazel(
     *args: str,
     strict_module_lockfile: bool = False,
     use_remote_cache: bool = False,
-    stdout: TextIO | None = None,
+    stdout: io.TextIOWrapper | None = None,
     **kwargs,
 ) -> None:
     """Invokes Bazel with some common flags set.
@@ -106,6 +106,11 @@ def bazel(
             # builders will be denied permission if they do so.
             remote_cache.append('--remote_upload_local_results=true')
 
+    symlink_prefix: list[str] = []
+    if cmd != 'query':
+        # bazel query doesn't support the --symlink_prefix flag.
+        symlink_prefix.append(f'--symlink_prefix={ctx.output_dir / "bazel-"}')
+
     ctx.output_dir.mkdir(exist_ok=True, parents=True)
     try:
         with contextlib.ExitStack() as stack:
@@ -128,9 +133,7 @@ def bazel(
             call(
                 BAZEL_EXECUTABLE,
                 cmd,
-                '--verbose_failures',
-                '--worker_verbose',
-                f'--symlink_prefix={ctx.output_dir / "bazel-"}',
+                *symlink_prefix,
                 *num_jobs,
                 *keep_going,
                 *strict_lockfile,
