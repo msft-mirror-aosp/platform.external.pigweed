@@ -14,13 +14,11 @@
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
-load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
-    "pw_proto_library",
+    "pwpb_proto_library",
+    "pwpb_rpc_proto_library",
 )
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -34,7 +32,7 @@ cc_library(
         "public/pw_digital_io/internal/conversions.h",
         "public/pw_digital_io/polarity.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_function",
@@ -57,10 +55,10 @@ cc_library(
     name = "digital_io_service",
     srcs = ["digital_io_service.cc"],
     hdrs = ["public/pw_digital_io/digital_io_service.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
-        ":digital_io_proto_cc.pwpb",
-        ":digital_io_proto_cc.pwpb_rpc",
+        ":digital_io_proto_pwpb",
+        ":digital_io_proto_pwpb_rpc",
         ":pw_digital_io",
         "//pw_function",
         "//pw_rpc/pwpb:server_api",
@@ -73,8 +71,14 @@ proto_library(
     srcs = ["digital_io.proto"],
 )
 
-pw_proto_library(
-    name = "digital_io_proto_cc",
+pwpb_proto_library(
+    name = "digital_io_proto_pwpb",
+    deps = [":digital_io_proto"],
+)
+
+pwpb_rpc_proto_library(
+    name = "digital_io_proto_pwpb_rpc",
+    pwpb_proto_library_deps = [":digital_io_proto_pwpb"],
     deps = [":digital_io_proto"],
 )
 
@@ -90,7 +94,7 @@ cc_library(
     implementation_deps = [
         "//pw_log",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert:check",
         "//pw_chrono:system_clock",
@@ -106,5 +110,13 @@ pw_cc_test(
     deps = [
         ":digital_io_mock",
         "//pw_unit_test",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_digital_io/digital_io.h",
+        "public/pw_digital_io/digital_io_mock.h",
     ],
 )

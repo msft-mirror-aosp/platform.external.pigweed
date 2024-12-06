@@ -49,24 +49,21 @@ class ValueTask : public Task {
  public:
   ValueTask(bool use_make_constructor = true)
       : use_make_constructor_(use_make_constructor) {}
-  Poll<> DoPend(Context& ctx) override {
+  Poll<> DoPend(Context& cx) override {
     if (!receiver_) {
       if (use_make_constructor_) {
         auto [send, recv] =
-            pw::async2::MakeOnceSenderAndReceiver<MoveOnlyValue>(
-                ctx.GetWaker(pw::async2::WaitReason::Unspecified()));
+            pw::async2::MakeOnceSenderAndReceiver<MoveOnlyValue>();
         sender_.emplace(std::move(send));
         receiver_.emplace(std::move(recv));
       } else {
         receiver_.emplace();
         sender_.emplace();
         pw::async2::InitializeOnceSenderAndReceiver<MoveOnlyValue>(
-            sender_.value(),
-            receiver_.value(),
-            ctx.GetWaker(pw::async2::WaitReason::Unspecified()));
+            sender_.value(), receiver_.value());
       }
     }
-    Poll<pw::Result<MoveOnlyValue>> poll = receiver_.value().Pend();
+    Poll<pw::Result<MoveOnlyValue>> poll = receiver_.value().Pend(cx);
     if (poll.IsReady()) {
       ready_value_.emplace(std::move(poll.value()));
       return Ready();
@@ -163,25 +160,21 @@ class VectorTask : public Task {
   VectorTask(bool use_make_constructor = true)
       : use_make_constructor_(use_make_constructor) {}
 
-  Poll<> DoPend(Context& ctx) override {
+  Poll<> DoPend(Context& cx) override {
     if (!receiver_) {
       if (use_make_constructor_) {
         auto [send, recv] =
-            pw::async2::MakeOnceRefSenderAndReceiver<pw::Vector<int>>(
-                value_, ctx.GetWaker(pw::async2::WaitReason::Unspecified()));
+            pw::async2::MakeOnceRefSenderAndReceiver<pw::Vector<int>>(value_);
         sender_.emplace(std::move(send));
         receiver_.emplace(std::move(recv));
       } else {
         sender_.emplace();
         receiver_.emplace();
         pw::async2::InitializeOnceRefSenderAndReceiver<pw::Vector<int>>(
-            sender_.value(),
-            receiver_.value(),
-            value_,
-            ctx.GetWaker(pw::async2::WaitReason::Unspecified()));
+            sender_.value(), receiver_.value(), value_);
       }
     }
-    Poll<pw::Status> poll = receiver_->Pend();
+    Poll<pw::Status> poll = receiver_->Pend(cx);
     if (poll.IsReady()) {
       ready_value_.emplace(poll.value());
       return Ready();
@@ -264,15 +257,14 @@ TEST(OnceSender, DestroyingOnceRefSenderCausesReceiverPendToReturnCancelled) {
 
 class MoveOnlyRefTask : public Task {
  public:
-  Poll<> DoPend(Context& ctx) override {
+  Poll<> DoPend(Context& cx) override {
     if (!receiver_) {
       auto [send, recv] =
-          pw::async2::MakeOnceRefSenderAndReceiver<MoveOnlyValue>(
-              value_, ctx.GetWaker(pw::async2::WaitReason::Unspecified()));
+          pw::async2::MakeOnceRefSenderAndReceiver<MoveOnlyValue>(value_);
       sender_.emplace(std::move(send));
       receiver_.emplace(std::move(recv));
     }
-    Poll<pw::Status> poll = receiver_->Pend();
+    Poll<pw::Status> poll = receiver_->Pend(cx);
     if (poll.IsReady()) {
       ready_value_.emplace(poll.value());
       return Ready();
@@ -303,6 +295,40 @@ TEST(OnceSender, OnceRefSenderSetRValue) {
   ASSERT_TRUE(task.ready_value().has_value());
   ASSERT_TRUE(task.ready_value()->ok());
   EXPECT_EQ(task.value().value(), 2);
+}
+
+class AlreadyCompletedReceiverTask : public Task {
+ public:
+  AlreadyCompletedReceiverTask(OnceReceiver<MoveOnlyValue> receiver)
+      : receiver_(std::move(receiver)) {}
+
+  Poll<> DoPend(Context& cx) override {
+    Poll<pw::Result<MoveOnlyValue>> poll = receiver_.Pend(cx);
+    if (poll.IsReady()) {
+      ready_value_.emplace(std::move(poll.value()));
+      return Ready();
+    }
+    return Pending();
+  }
+
+  std::optional<pw::Result<MoveOnlyValue>>& ready_value() {
+    return ready_value_;
+  }
+
+ private:
+  std::optional<pw::Result<MoveOnlyValue>> ready_value_;
+  OnceReceiver<MoveOnlyValue> receiver_;
+};
+
+TEST(OnceSender, OnceReceiverAlreadyCompleted) {
+  Dispatcher dispatcher;
+  OnceReceiver<MoveOnlyValue> receiver(2);
+  AlreadyCompletedReceiverTask task(std::move(receiver));
+  dispatcher.Post(task);
+  EXPECT_TRUE(dispatcher.RunUntilStalled(task).IsReady());
+  ASSERT_TRUE(task.ready_value().has_value());
+  ASSERT_TRUE(task.ready_value()->ok());
+  EXPECT_EQ(task.ready_value()->value().value(), 2);
 }
 
 }  // namespace

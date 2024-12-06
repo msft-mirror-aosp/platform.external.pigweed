@@ -35,7 +35,7 @@ using ::pw::async2::Poll;
 using ::pw::async2::Ready;
 using ::pw::async2::Task;
 using ::pw::async2::Waker;
-using ::pw::operator"" _b;
+using ::pw::operator""_b;
 using ::pw::channel::DatagramReader;
 using ::pw::channel::DatagramWriter;
 using ::pw::channel::ForwardingByteChannelPair;
@@ -70,8 +70,7 @@ class SendDatagrams : public Task {
       if (channel_.PendReadyToWrite(cx).IsPending()) {
         return Pending();
       }
-      EXPECT_EQ(channel_.Write(std::move(to_send_.front())).status(),
-                pw::OkStatus());
+      PW_TEST_EXPECT_OK(channel_.StageWrite(std::move(to_send_.front())));
       to_send_.pop();
     }
     return Ready();
@@ -132,8 +131,8 @@ void ExpectSendAndReceive(
   SimpleAllocatorForTest alloc;
 
   LoopbackByteChannel io_loopback(*alloc);
-  ForwardingDatagramChannelPair outgoing_pair(*alloc);
-  ForwardingDatagramChannelPair incoming_pair(*alloc);
+  ForwardingDatagramChannelPair outgoing_pair(*alloc, *alloc);
+  ForwardingDatagramChannelPair incoming_pair(*alloc, *alloc);
 
   static constexpr size_t kMaxSendDatagrams = 16;
   ASSERT_LE(data.size(), kMaxSendDatagrams);
@@ -153,7 +152,7 @@ void ExpectSendAndReceive(
   static constexpr size_t kDecodeBufferSize = 256;
 
   std::array<std::byte, kDecodeBufferSize> decode_buffer;
-  Router router(io_loopback, decode_buffer);
+  Router router(io_loopback.channel(), decode_buffer);
   PendFuncTask router_task([&router](Context& cx) { return router.Pend(cx); });
 
   SendDatagrams send_task(datagrams_to_send, outgoing_pair.first());
@@ -207,11 +206,11 @@ TEST(Router, PendOnClosedIoChannelReturnsReady) {
 
   SimpleAllocatorForTest alloc;
 
-  ForwardingByteChannelPair byte_pair(*alloc);
+  ForwardingByteChannelPair byte_pair(*alloc, *alloc);
   std::array<std::byte, kDecodeBufferSize> decode_buffer;
   Router router(byte_pair.first(), decode_buffer);
 
-  ForwardingDatagramChannelPair datagram_pair(*alloc);
+  ForwardingDatagramChannelPair datagram_pair(*alloc, *alloc);
   ReceiveDatagramsUntilClosed recv_task(datagram_pair.first());
   EXPECT_EQ(router.AddChannel(datagram_pair.second(),
                               /*arbitrary incoming address*/ 5017,

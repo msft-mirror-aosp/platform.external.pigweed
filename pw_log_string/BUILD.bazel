@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_facade",
-)
+load("//pw_build:pw_facade.bzl", "pw_facade")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -43,7 +40,7 @@ pw_facade(
         "public/pw_log_string/handler.h",
     ],
     backend = ":handler_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_preprocessor",
     ],
@@ -77,4 +74,11 @@ cc_library(
         "//pw_log",
     ],
     alwayslink = 1,
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_log_string/handler.h",
+    ],
 )

@@ -34,20 +34,31 @@ pw_doc_group("docs") {
 }
 
 pw_test_group("tests") {
-  tests = [
-    ":pw_bluetooth_proxy_test",
-    ":emboss_util_test",
-  ]
+  tests = [ ":pw_bluetooth_proxy_test" ]
 }
 
 pw_source_set("pw_bluetooth_proxy") {
   public_configs = [ ":public_include_path" ]
   public = [
-    "public/pw_bluetooth_proxy/acl_data_channel.h",
-    "public/pw_bluetooth_proxy/emboss_util.h",
+    "public/pw_bluetooth_proxy/basic_l2cap_channel.h",
+    "public/pw_bluetooth_proxy/gatt_notify_channel.h",
     "public/pw_bluetooth_proxy/h4_packet.h",
-    "public/pw_bluetooth_proxy/hci_transport.h",
+    "public/pw_bluetooth_proxy/internal/acl_data_channel.h",
+    "public/pw_bluetooth_proxy/internal/gatt_notify_channel_internal.h",
+    "public/pw_bluetooth_proxy/internal/h4_storage.h",
+    "public/pw_bluetooth_proxy/internal/hci_transport.h",
+    "public/pw_bluetooth_proxy/internal/l2cap_aclu_signaling_channel.h",
+    "public/pw_bluetooth_proxy/internal/l2cap_channel_manager.h",
+    "public/pw_bluetooth_proxy/internal/l2cap_coc_internal.h",
+    "public/pw_bluetooth_proxy/internal/l2cap_leu_signaling_channel.h",
+    "public/pw_bluetooth_proxy/internal/l2cap_read_channel.h",
+    "public/pw_bluetooth_proxy/internal/l2cap_signaling_channel.h",
+    "public/pw_bluetooth_proxy/internal/l2cap_write_channel.h",
+    "public/pw_bluetooth_proxy/internal/logical_transport.h",
+    "public/pw_bluetooth_proxy/internal/rfcomm_fcs.h",
+    "public/pw_bluetooth_proxy/l2cap_coc.h",
     "public/pw_bluetooth_proxy/proxy_host.h",
+    "public/pw_bluetooth_proxy/rfcomm_channel.h",
   ]
   public_deps = [
     "//pw_bluetooth:emboss_att",
@@ -56,33 +67,33 @@ pw_source_set("pw_bluetooth_proxy") {
     "//pw_bluetooth:emboss_hci_events",
     "//pw_bluetooth:emboss_hci_h4",
     "//pw_bluetooth:emboss_l2cap_frames",
+    "//pw_bluetooth:emboss_rfcomm_frames",
+    "//pw_bluetooth:emboss_util",
     "//pw_sync:lock_annotations",
     "//pw_sync:mutex",
     dir_pw_containers,
     dir_pw_function,
     dir_pw_log,
+    dir_pw_result,
     dir_pw_span,
     dir_pw_status,
   ]
   deps = [ dir_pw_log ]
   sources = [
     "acl_data_channel.cc",
+    "basic_l2cap_channel.cc",
+    "gatt_notify_channel.cc",
+    "h4_storage.cc",
+    "l2cap_aclu_signaling_channel.cc",
+    "l2cap_channel_manager.cc",
+    "l2cap_coc.cc",
+    "l2cap_leu_signaling_channel.cc",
+    "l2cap_read_channel.cc",
+    "l2cap_signaling_channel.cc",
+    "l2cap_write_channel.cc",
     "proxy_host.cc",
-  ]
-}
-
-pw_test("emboss_util_test") {
-  enable_if =
-      dir_pw_third_party_emboss != "" && pw_chrono_SYSTEM_CLOCK_BACKEND != ""
-  sources = [
-    "emboss_util_test.cc",
-    "public/pw_bluetooth_proxy/emboss_util.h",
-  ]
-  include_dirs = [ "." ]
-  deps = [
-    ":pw_bluetooth_proxy",
-    "//pw_bluetooth:emboss_hci_test",
-    "//pw_span",
+    "rfcomm_channel.cc",
+    "rfcomm_fcs.cc",
   ]
 }
 
@@ -92,6 +103,7 @@ pw_test("pw_bluetooth_proxy_test") {
   sources = [
     "h4_packet_test.cc",
     "proxy_host_test.cc",
+    "rfcomm_fcs_test.cc",
   ]
   include_dirs = [ "." ]
   deps = [
@@ -102,6 +114,7 @@ pw_test("pw_bluetooth_proxy_test") {
     "//pw_bluetooth:emboss_hci_common",
     "//pw_bluetooth:emboss_hci_events",
     "//pw_bluetooth:emboss_hci_h4",
+    "//pw_bluetooth:emboss_util",
   ]
 }
 

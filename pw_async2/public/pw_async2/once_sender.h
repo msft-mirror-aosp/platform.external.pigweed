@@ -14,6 +14,7 @@
 #pragma once
 
 #include "pw_async2/dispatcher.h"
+#include "pw_async2/dispatcher_base.h"
 #include "pw_function/function.h"
 #include "pw_sync/mutex.h"
 
@@ -41,6 +42,12 @@ class OnceReceiver final {
  public:
   OnceReceiver() = default;
 
+  /// Create an already completed OnceReceiver by constructing the value with
+  /// `value_args`.
+  template <typename... Args>
+  explicit OnceReceiver(Args&&... value_args)
+      : value_(std::forward<Args>(value_args)...) {}
+
   OnceReceiver(OnceReceiver&& other) {
     std::lock_guard lock(sender_receiver_lock());
     sender_ = other.sender_;
@@ -64,31 +71,31 @@ class OnceReceiver final {
   /// Returns `Ready` with a result containing the value once the value has been
   /// assigned. If the sender is destroyed before sending a value, a `Cancelled`
   /// result will be returned.
-  Poll<Result<T>> Pend() {
+  Poll<Result<T>> Pend(Context& cx) {
     std::lock_guard lock(sender_receiver_lock());
     if (value_.has_value()) {
       return Ready(std::move(*value_));
     } else if (!sender_) {
       return Ready(Status::Cancelled());
     }
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        waker_,
+        "OnceReceiver is waiting for a value to be sent into the "
+        "corresponding OnceSender");
     return Pending();
   }
 
  private:
   template <typename U>
-  friend std::pair<OnceSender<U>, OnceReceiver<U>> MakeOnceSenderAndReceiver(
-      Waker);
+  friend std::pair<OnceSender<U>, OnceReceiver<U>> MakeOnceSenderAndReceiver();
   template <typename U>
   friend void InitializeOnceSenderAndReceiver(OnceSender<U>& sender,
-                                              OnceReceiver<U>& receiver,
-                                              Waker waker);
+                                              OnceReceiver<U>& receiver);
   friend class OnceSender<T>;
 
-  // `waker` is the `Waker` to be awoken when the value is assigned.
-  OnceReceiver(Waker waker) : waker_(std::move(waker)) {}
-
   OnceSender<T>* sender_ PW_GUARDED_BY(sender_receiver_lock()) = nullptr;
-  std::optional<T> value_ PW_GUARDED_BY(sender_receiver_lock());
+  std::optional<T> value_ PW_GUARDED_BY(sender_receiver_lock()) = std::nullopt;
   Waker waker_;
 };
 
@@ -145,12 +152,10 @@ class OnceSender final {
 
  private:
   template <typename U>
-  friend std::pair<OnceSender<U>, OnceReceiver<U>> MakeOnceSenderAndReceiver(
-      Waker);
+  friend std::pair<OnceSender<U>, OnceReceiver<U>> MakeOnceSenderAndReceiver();
   template <typename U>
   friend void InitializeOnceSenderAndReceiver(OnceSender<U>& sender,
-                                              OnceReceiver<U>& receiver,
-                                              Waker waker);
+                                              OnceReceiver<U>& receiver);
   friend class OnceReceiver<T>;
 
   OnceSender(OnceReceiver<T>* receiver) : receiver_(receiver) {}
@@ -167,28 +172,21 @@ OnceReceiver<T>::~OnceReceiver() {
 }
 
 /// Construct a pair of `OnceSender` and `OnceReceiver`.
-/// @param waker The `Waker` to be awoken when the value is sent.
 template <typename T>
-std::pair<OnceSender<T>, OnceReceiver<T>> MakeOnceSenderAndReceiver(
-    Waker waker) {
-  OnceReceiver<T> receiver(std::move(waker));
-  OnceSender<T> sender(&receiver);
-  {
-    std::lock_guard lock(sender_receiver_lock());
-    receiver.sender_ = &sender;
-  }
-  return std::make_pair(std::move(sender), std::move(receiver));
+std::pair<OnceSender<T>, OnceReceiver<T>> MakeOnceSenderAndReceiver() {
+  std::pair<OnceSender<T>, OnceReceiver<T>> send_recv;
+  InitializeOnceSenderAndReceiver(send_recv.first, send_recv.second);
+  return send_recv;
 }
 
 /// Initialize a pair of `OnceSender` and `OnceReceiver`.
-/// @param waker The `Waker` to be awoken when the value is sent.
 template <typename T>
 void InitializeOnceSenderAndReceiver(OnceSender<T>& sender,
-                                     OnceReceiver<T>& receiver,
-                                     Waker waker) {
-  std::lock_guard lock(sender_receiver_lock());
+                                     OnceReceiver<T>& receiver)
+    PW_NO_LOCK_SAFETY_ANALYSIS {
+  // Disable lock analysis because these are fresh sender/receiver pairs and
+  // do not require a lock to initialize;
   receiver.sender_ = &sender;
-  receiver.waker_ = std::move(waker);
   sender.receiver_ = &receiver;
 }
 
@@ -215,7 +213,6 @@ class OnceRefReceiver final {
       sender_->receiver_ = this;
     }
     value_ = other.value_;
-    cancelled_ = other.cancelled_;
     waker_ = std::move(other.waker_);
   }
 
@@ -228,35 +225,38 @@ class OnceRefReceiver final {
   /// Returns `Ready`  with an `ok` status when the modification of the
   /// reference is complete. If the sender is destroyed before updating the
   /// reference, a `cancelled` status is returned.
-  Poll<Status> Pend() {
+  Poll<Status> Pend(Context& cx) {
     std::lock_guard lock(sender_receiver_lock());
-    if (cancelled_) {
-      return Ready(Status::Cancelled());
-    }
-    if (waker_.IsEmpty()) {
+    if (value_ == nullptr) {
       return Ready(OkStatus());
     }
+    if (sender_ == nullptr) {
+      return Ready(Status::Cancelled());
+    }
+    PW_ASYNC_STORE_WAKER(
+        cx,
+        waker_,
+        "OnceRefReceiver is waiting for OnceRefSender to write a value");
     return Pending();
   }
 
  private:
   template <typename U>
   friend std::pair<OnceRefSender<U>, OnceRefReceiver<U>>
-  MakeOnceRefSenderAndReceiver(U&, Waker);
+  MakeOnceRefSenderAndReceiver(U&);
   template <typename U>
   friend void InitializeOnceRefSenderAndReceiver(OnceRefSender<U>& sender,
                                                  OnceRefReceiver<U>& receiver,
-                                                 U& value,
-                                                 Waker waker);
+                                                 U& value);
   friend class OnceRefSender<T>;
 
-  // `waker` is the `Waker` to be awoken when the value is assigned.
-  OnceRefReceiver(T& value, Waker waker)
-      : value_(&value), waker_(std::move(waker)) {}
+  OnceRefReceiver(T& value) : value_(&value) {}
 
-  OnceRefSender<T>* sender_ PW_GUARDED_BY(sender_receiver_lock()) = nullptr;
+  // Pointer to the value to be modified. Set to `nullptr` once modification
+  // is complete.
   T* value_ PW_GUARDED_BY(sender_receiver_lock()) = nullptr;
-  bool cancelled_ PW_GUARDED_BY(sender_receiver_lock()) = false;
+  // Pointer to the modifier. Set to `nullptr` if the sender disappears.
+  OnceRefSender<T>* sender_ PW_GUARDED_BY(sender_receiver_lock()) = nullptr;
   Waker waker_;
 };
 
@@ -273,10 +273,7 @@ class OnceRefSender final {
     std::lock_guard lock(sender_receiver_lock());
     if (receiver_) {
       receiver_->sender_ = nullptr;
-      if (!receiver_->waker_.IsEmpty()) {
-        receiver_->cancelled_ = true;
-        std::move(receiver_->waker_).Wake();
-      }
+      std::move(receiver_->waker_).Wake();
     }
   }
 
@@ -300,6 +297,7 @@ class OnceRefSender final {
       *(receiver_->value_) = value;
       std::move(receiver_->waker_).Wake();
       receiver_->sender_ = nullptr;
+      receiver_->value_ = nullptr;
       receiver_ = nullptr;
     }
   }
@@ -311,6 +309,7 @@ class OnceRefSender final {
       *(receiver_->value_) = std::move(value);
       std::move(receiver_->waker_).Wake();
       receiver_->sender_ = nullptr;
+      receiver_->value_ = nullptr;
       receiver_ = nullptr;
     }
   }
@@ -334,6 +333,7 @@ class OnceRefSender final {
     if (receiver_) {
       std::move(receiver_->waker_).Wake();
       receiver_->sender_ = nullptr;
+      receiver_->value_ = nullptr;
       receiver_ = nullptr;
     }
   }
@@ -341,12 +341,11 @@ class OnceRefSender final {
  private:
   template <typename U>
   friend std::pair<OnceRefSender<U>, OnceRefReceiver<U>>
-  MakeOnceRefSenderAndReceiver(U&, Waker);
+  MakeOnceRefSenderAndReceiver(U&);
   template <typename U>
   friend void InitializeOnceRefSenderAndReceiver(OnceRefSender<U>& sender,
                                                  OnceRefReceiver<U>& receiver,
-                                                 U& value,
-                                                 Waker waker);
+                                                 U& value);
   friend class OnceRefReceiver<T>;
 
   OnceRefSender(OnceRefReceiver<T>* receiver) : receiver_(receiver) {}
@@ -366,30 +365,26 @@ OnceRefReceiver<T>::~OnceRefReceiver() {
 /// @param[in] value The reference to be mutated by the sender. It must mot be
 /// read or modified until either `OnceRefSender` indicates `Ready()` or
 /// either the `OnceRefSender` or `OnceRefReceiver` is destroyed.
-/// @param[in] waker The `Waker` to be awoken when the reference is updated.
 template <typename T>
 std::pair<OnceRefSender<T>, OnceRefReceiver<T>> MakeOnceRefSenderAndReceiver(
-    T& value, Waker waker) {
-  OnceRefReceiver<T> receiver(value, std::move(waker));
-  OnceRefSender<T> sender(&receiver);
-  return std::make_pair(std::move(sender), std::move(receiver));
+    T& value) {
+  std::pair<OnceRefSender<T>, OnceRefReceiver<T>> send_recv;
+  InitializeOnceRefSenderAndReceiver(send_recv.first, send_recv.second, value);
+  return send_recv;
 }
 
 /// Initialize a pair of `OnceRefSender` and `OnceRefReceiver`.
 /// @param[in] value The reference to be mutated by the sender. It must mot be
 /// read or modified until either `OnceRefSender` indicates `Ready()` or
 /// either the `OnceRefSender` or `OnceRefReceiver` is destroyed.
-/// @param[in] waker The `Waker` to be awoken when the reference is updated.
 template <typename T>
 void InitializeOnceRefSenderAndReceiver(OnceRefSender<T>& sender,
                                         OnceRefReceiver<T>& receiver,
-                                        T& value,
-                                        Waker waker) {
-  std::lock_guard lock(sender_receiver_lock());
+                                        T& value) PW_NO_LOCK_SAFETY_ANALYSIS {
+  // Disable lock analysis because these are fresh sender/receiver pairs and
+  // do not require a lock to initialize;
   receiver.sender_ = &sender;
   receiver.value_ = &value;
-  receiver.cancelled_ = false;
-  receiver.waker_ = std::move(waker);
   sender.receiver_ = &receiver;
 }
 

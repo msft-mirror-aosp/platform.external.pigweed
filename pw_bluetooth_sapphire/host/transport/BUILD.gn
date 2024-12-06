@@ -26,7 +26,6 @@ pw_source_set("transport") {
     "$dir_public_transport/command_channel.h",
     "$dir_public_transport/control_packets.h",
     "$dir_public_transport/data_buffer_info.h",
-    "$dir_public_transport/emboss_control_packets.h",
     "$dir_public_transport/emboss_packet.h",
     "$dir_public_transport/error.h",
     "$dir_public_transport/iso_data_channel.h",
@@ -43,7 +42,6 @@ pw_source_set("transport") {
     "acl_data_packet.cc",
     "command_channel.cc",
     "control_packets.cc",
-    "emboss_control_packets.cc",
     "error.cc",
     "iso_data_channel.cc",
     "link_type.cc",
@@ -64,9 +62,6 @@ pw_source_set("transport") {
   ]
 
   public_configs = [ "$dir_pw_bluetooth_sapphire:public_include_path" ]
-
-  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
-  configs = [ "$dir_pw_build:internal_strict_warnings_core" ]
 }
 
 pw_source_set("testing") {
@@ -80,17 +75,13 @@ pw_source_set("testing") {
   ]
 
   public_deps = [ ":transport" ]
-
-  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
-  configs = [ "$dir_pw_build:internal_strict_warnings_core" ]
 }
 
 pw_test("tests") {
   sources = [
     "acl_data_channel_test.cc",
     "command_channel_test.cc",
-    "emboss_control_packets_test.cc",
-    "emboss_packet_test.cc",
+    "control_packets_test.cc",
     "iso_data_channel_test.cc",
     "packet_test.cc",
     "sco_data_channel_test.cc",

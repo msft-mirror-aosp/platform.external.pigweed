@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -29,7 +26,7 @@ cc_library(
     hdrs = [
         "public/pw_i2c_linux/initiator.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//pw_assert",
@@ -52,5 +49,12 @@ pw_cc_test(
     deps = [
         ":initiator",
         "//pw_i2c:initiator",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_i2c_linux/initiator.h",
     ],
 )

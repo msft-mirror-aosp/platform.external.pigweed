@@ -14,10 +14,14 @@
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
+    "//pw_protobuf_compiler:pw_proto_library.bzl",
+    "nanopb_proto_library",
+    "nanopb_rpc_proto_library",
+    "pw_proto_filegroup",
+    "pwpb_proto_library",
+    "raw_rpc_proto_library",
 )
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_filegroup", "pw_proto_library")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -30,7 +34,7 @@ cc_library(
         "public/pw_metric/global.h",
         "public/pw_metric/metric.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_containers",
@@ -69,9 +73,10 @@ cc_library(
     name = "metric_service_nanopb",
     srcs = ["metric_service_nanopb.cc"],
     hdrs = ["public/pw_metric/metric_service_nanopb.h"],
+    strip_include_prefix = "public",
     deps = [
         ":metric",
-        ":metric_proto_cc.nanopb_rpc",
+        ":metric_proto_nanopb_rpc",
         ":metric_walker",
     ],
 )
@@ -84,11 +89,11 @@ cc_library(
         "metric_proto_cc.pwpb.pb/pw_metric",
         "metric_proto_cc.raw_rpc.pb/pw_metric",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":metric",
-        ":metric_proto_cc.pwpb",
-        ":metric_proto_cc.pwpb_rpc",
-        ":metric_proto_cc.raw_rpc",
+        ":metric_proto_pwpb",
+        ":metric_proto_raw_rpc",
         ":metric_walker",
         "//pw_assert",
         "//pw_bytes",
@@ -105,7 +110,10 @@ pw_proto_filegroup(
     srcs = [
         "pw_metric_proto/metric_service.proto",
     ],
-    options_files = ["pw_metric_proto/metric_service.options"],
+    options_files = [
+        "pw_metric_proto/metric_service.options",
+        "pw_metric_proto/metric_service.pwpb_options",
+    ],
 )
 
 proto_library(
@@ -119,8 +127,24 @@ py_proto_library(
     deps = [":metric_proto"],
 )
 
-pw_proto_library(
-    name = "metric_proto_cc",
+pwpb_proto_library(
+    name = "metric_proto_pwpb",
+    deps = [":metric_proto"],
+)
+
+nanopb_proto_library(
+    name = "metric_proto_nanopb",
+    deps = [":metric_proto"],
+)
+
+nanopb_rpc_proto_library(
+    name = "metric_proto_nanopb_rpc",
+    nanopb_proto_library_deps = [":metric_proto_nanopb"],
+    deps = [":metric_proto"],
+)
+
+raw_rpc_proto_library(
+    name = "metric_proto_raw_rpc",
     deps = [":metric_proto"],
 )
 

@@ -14,11 +14,8 @@
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pwpb_proto_library")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -44,8 +41,8 @@ proto_library(
     ],
 )
 
-pw_proto_library(
-    name = "update_bundle_proto_cc",
+pwpb_proto_library(
+    name = "update_bundle_proto_pwpb",
     deps = [":update_bundle_proto"],
 )
 
@@ -122,13 +119,13 @@ cc_library(
         "public/pw_software_update/manifest_accessor.h",
         "public/pw_software_update/update_bundle_accessor.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     tags = ["manual"],  # TODO: b/236321905 - Depends on pw_crypto.
     deps = [
         ":blob_store_openable_reader",
         ":config_override",
         ":openable_reader",
-        ":update_bundle_proto_cc.pwpb",
+        ":update_bundle_proto_pwpb",
         "//pw_blob_store",
         "//pw_crypto:ecdsa.facade",
         "//pw_crypto:sha256.facade",
@@ -152,7 +149,7 @@ cc_library(
     name = "bundled_update_service",
     srcs = ["bundled_update_service.cc"],
     hdrs = ["public/pw_software_update/bundled_update_service.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     tags = ["manual"],
     deps = [
         # ":bundled_update_proto_cc.nanopb_rpc",
@@ -177,7 +174,7 @@ cc_library(
     name = "bundled_update_service_pwpb",
     srcs = ["bundled_update_service_pwpb.cc"],
     hdrs = ["public/pw_software_update/bundled_update_service_pwpb.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     tags = ["manual"],
     deps = [
         # ":bundled_update_proto_cc.pwpb",

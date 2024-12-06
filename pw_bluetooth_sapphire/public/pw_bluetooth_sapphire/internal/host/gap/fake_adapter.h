@@ -16,7 +16,9 @@
 #include "pw_bluetooth_sapphire/internal/host/common/device_address.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/adapter.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
+#include "pw_bluetooth_sapphire/internal/host/hci/fake_local_address_delegate.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_channel.h"
+#include "pw_bluetooth_sapphire/internal/host/l2cap/types.h"
 
 namespace bt::gap::testing {
 
@@ -52,12 +54,12 @@ class FakeAdapter final : public Adapter {
    public:
     struct RegisteredAdvertisement {
       AdvertisingData data;
-      AdvertisingData scan_rsp;
-      std::optional<ConnectableAdvertisingParameters> connectable;
-      AdvertisingInterval interval;
+      AdvertisingData scan_response;
+      bool include_tx_power_level;
+      DeviceAddress::Type addr_type;
       bool extended_pdu;
       bool anonymous;
-      bool include_tx_power_level;
+      std::optional<ConnectableAdvertisingParameters> connectable;
     };
 
     struct Connection {
@@ -65,7 +67,8 @@ class FakeAdapter final : public Adapter {
       LowEnergyConnectionOptions options;
     };
 
-    explicit FakeLowEnergy(FakeAdapter* adapter) : adapter_(adapter) {}
+    explicit FakeLowEnergy(FakeAdapter* adapter)
+        : adapter_(adapter), fake_address_delegate_(adapter->pw_dispatcher_) {}
     ~FakeLowEnergy() override = default;
 
     const std::unordered_map<AdvertisementId, RegisteredAdvertisement>&
@@ -80,6 +83,9 @@ class FakeAdapter final : public Adapter {
     // Update the LE random address of the adapter.
     void UpdateRandomAddress(DeviceAddress& address);
 
+    // Overrides the result returned to StartAdvertising() callback.
+    void set_advertising_result(hci::Result<> result);
+
     // LowEnergy overrides:
 
     // If Connect is called multiple times, only the connection options of the
@@ -90,12 +96,18 @@ class FakeAdapter final : public Adapter {
 
     bool Disconnect(PeerId peer_id) override;
 
-    void Pair(PeerId peer_id,
-              sm::SecurityLevel pairing_level,
-              sm::BondableMode bondable_mode,
-              sm::ResultFunction<> cb) override {}
+    void OpenL2capChannel(PeerId peer_id,
+                          l2cap::Psm,
+                          l2cap::ChannelParameters,
+                          sm::SecurityLevel security_level,
+                          l2cap::ChannelCallback) override;
 
-    void SetLESecurityMode(LESecurityMode mode) override {}
+    void Pair(PeerId,
+              sm::SecurityLevel,
+              sm::BondableMode,
+              sm::ResultFunction<>) override {}
+
+    void SetLESecurityMode(LESecurityMode) override {}
 
     LESecurityMode security_mode() const override {
       return adapter_->le_security_mode_;
@@ -109,33 +121,36 @@ class FakeAdapter final : public Adapter {
         bool anonymous,
         bool include_tx_power_level,
         std::optional<ConnectableAdvertisingParameters> connectable,
+        std::optional<DeviceAddress::Type> address_type,
         AdvertisingStatusCallback status_callback) override;
 
-    void StopAdvertising(AdvertisementId advertisement_id) override {}
-
-    void StartDiscovery(bool active, SessionCallback callback) override {}
+    void StartDiscovery(bool, SessionCallback) override {}
 
     void EnablePrivacy(bool enabled) override;
 
-    bool PrivacyEnabled() const override { return privacy_enabled_; }
-
-    const DeviceAddress& CurrentAddress() const override {
-      return (privacy_enabled_ && random_) ? *random_ : public_;
+    // Returns true if the privacy feature is currently enabled.
+    bool PrivacyEnabled() const override {
+      return fake_address_delegate_.privacy_enabled();
+    }
+    // Returns the current LE address.
+    const DeviceAddress CurrentAddress() const override {
+      return fake_address_delegate_.current_address();
     }
 
     void register_address_changed_callback(fit::closure callback) override {
-      address_changed_callback_ = std::move(callback);
+      fake_address_delegate_.register_address_changed_callback(
+          std::move(callback));
     }
 
-    void set_irk(const std::optional<UInt128>& irk) override {}
+    void set_irk(const std::optional<UInt128>&) override {}
 
     std::optional<UInt128> irk() const override { return std::nullopt; }
 
     void set_request_timeout_for_testing(
-        pw::chrono::SystemClock::duration value) override {}
+        pw::chrono::SystemClock::duration) override {}
 
     void set_scan_period_for_testing(
-        pw::chrono::SystemClock::duration period) override {}
+        pw::chrono::SystemClock::duration) override {}
 
    private:
     FakeAdapter* adapter_;
@@ -143,10 +158,12 @@ class FakeAdapter final : public Adapter {
     std::unordered_map<AdvertisementId, RegisteredAdvertisement>
         advertisements_;
     std::unordered_map<PeerId, Connection> connections_;
-    const DeviceAddress public_;
-    bool privacy_enabled_ = false;
-    std::optional<DeviceAddress> random_;
-    fit::closure address_changed_callback_;
+    hci::FakeLocalAddressDelegate fake_address_delegate_;
+    l2cap::ChannelId next_channel_id_ = l2cap::kFirstDynamicChannelId;
+    std::unordered_map<l2cap::ChannelId,
+                       std::unique_ptr<l2cap::testing::FakeChannel>>
+        channels_;
+    std::optional<hci::Result<>> advertising_result_override_;
   };
 
   LowEnergy* le() const override { return fake_le_.get(); }
@@ -201,14 +218,11 @@ class FakeAdapter final : public Adapter {
     }
 
     // BrEdr overrides:
-    [[nodiscard]] bool Connect(PeerId peer_id,
-                               ConnectResultCallback callback) override {
+    [[nodiscard]] bool Connect(PeerId, ConnectResultCallback) override {
       return false;
     }
 
-    bool Disconnect(PeerId peer_id, DisconnectReason reason) override {
-      return false;
-    }
+    bool Disconnect(PeerId, DisconnectReason) override { return false; }
 
     void OpenL2capChannel(PeerId peer_id,
                           l2cap::Psm psm,
@@ -216,7 +230,7 @@ class FakeAdapter final : public Adapter {
                           l2cap::ChannelParameters params,
                           l2cap::ChannelCallback cb) override;
 
-    PeerId GetPeerId(hci_spec::ConnectionHandle handle) const override {
+    PeerId GetPeerId(hci_spec::ConnectionHandle) const override {
       return PeerId();
     }
 
@@ -224,24 +238,23 @@ class FakeAdapter final : public Adapter {
                               std::unordered_set<sdp::AttributeId> attributes,
                               SearchCallback callback) override;
 
-    bool RemoveServiceSearch(SearchId id) override { return false; }
+    bool RemoveServiceSearch(SearchId) override { return false; }
 
-    void Pair(PeerId peer_id,
-              BrEdrSecurityRequirements security,
-              hci::ResultFunction<> callback) override {}
+    void Pair(PeerId,
+              BrEdrSecurityRequirements,
+              hci::ResultFunction<>) override {}
 
-    void SetBrEdrSecurityMode(BrEdrSecurityMode mode) override {}
+    void SetBrEdrSecurityMode(BrEdrSecurityMode) override {}
 
     BrEdrSecurityMode security_mode() const override {
       return BrEdrSecurityMode::Mode4;
     }
 
-    void SetConnectable(bool connectable,
-                        hci::ResultFunction<> status_cb) override {}
+    void SetConnectable(bool, hci::ResultFunction<>) override {}
 
-    void RequestDiscovery(DiscoveryCallback callback) override {}
+    void RequestDiscovery(DiscoveryCallback) override {}
 
-    void RequestDiscoverable(DiscoverableCallback callback) override {}
+    void RequestDiscoverable(DiscoverableCallback) override {}
 
     RegistrationHandle RegisterService(std::vector<sdp::ServiceRecord> records,
                                        l2cap::ChannelParameters chan_params,
@@ -250,25 +263,23 @@ class FakeAdapter final : public Adapter {
     bool UnregisterService(RegistrationHandle handle) override;
 
     std::vector<sdp::ServiceRecord> GetRegisteredServices(
-        RegistrationHandle handle) const override {
+        RegistrationHandle) const override {
       return {};
     }
 
     std::optional<ScoRequestHandle> OpenScoConnection(
-        PeerId peer_id,
+        PeerId,
         const bt::StaticPacket<
-            pw::bluetooth::emboss::SynchronousConnectionParametersWriter>&
-            parameters,
-        sco::ScoConnectionManager::OpenConnectionCallback callback) override {
+            pw::bluetooth::emboss::SynchronousConnectionParametersWriter>&,
+        sco::ScoConnectionManager::OpenConnectionCallback) override {
       return std::nullopt;
     }
 
     std::optional<ScoRequestHandle> AcceptScoConnection(
-        PeerId peer_id,
+        PeerId,
         std::vector<bt::StaticPacket<
-            pw::bluetooth::emboss::SynchronousConnectionParametersWriter>>
-            parameters,
-        sco::ScoConnectionManager::AcceptConnectionCallback callback) override {
+            pw::bluetooth::emboss::SynchronousConnectionParametersWriter>>,
+        sco::ScoConnectionManager::AcceptConnectionCallback) override {
       return std::nullopt;
     }
 
@@ -291,9 +302,9 @@ class FakeAdapter final : public Adapter {
 
   PeerCache* peer_cache() override { return &peer_cache_; }
 
-  bool AddBondedPeer(BondingData bonding_data) override { return true; }
+  bool AddBondedPeer(BondingData) override { return true; }
 
-  void SetPairingDelegate(PairingDelegate::WeakPtr delegate) override {}
+  void SetPairingDelegate(PairingDelegate::WeakPtr) override {}
 
   bool IsDiscoverable() const override { return is_discoverable_; }
 
@@ -313,9 +324,9 @@ class FakeAdapter final : public Adapter {
       const std::optional<std::vector<uint8_t>>& codec_configuration,
       GetSupportedDelayRangeCallback cb) override;
 
-  void set_auto_connect_callback(AutoConnectCallback callback) override {}
+  void set_auto_connect_callback(AutoConnectCallback) override {}
 
-  void AttachInspect(inspect::Node& parent, std::string name) override {}
+  void AttachInspect(inspect::Node&, std::string) override {}
 
   Adapter::WeakPtr AsWeakPtr() override { return weak_self_.GetWeakPtr(); }
 
@@ -336,6 +347,7 @@ class FakeAdapter final : public Adapter {
   DeviceClass device_class_;
   LESecurityMode le_security_mode_;
 
+  pw::async::Dispatcher& pw_dispatcher_;
   pw::async::HeapDispatcher heap_dispatcher_;
   PeerCache peer_cache_;
   WeakSelf<Adapter> weak_self_;

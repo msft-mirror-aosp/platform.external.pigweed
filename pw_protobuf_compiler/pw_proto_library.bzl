@@ -49,28 +49,48 @@ load(
 # For Copybara use only
 ADDITIONAL_PWPB_DEPS = []
 
-def pwpb_proto_library(name, deps, tags = None, visibility = None):
+# TODO: b/373693434 - The `oneof_callbacks` parameter is temporary to assist
+# with migration.
+def pwpb_proto_library(name, deps, tags = None, visibility = None, oneof_callbacks = True):
     """A C++ proto library generated using pw_protobuf.
 
     Attributes:
       deps: proto_library targets for which to generate this library.
     """
-    _pwpb_proto_library(
-        name = name,
-        protos = deps,
-        deps = [
-            Label("//pw_assert"),
-            Label("//pw_containers:vector"),
-            Label("//pw_preprocessor"),
-            Label("//pw_protobuf"),
-            Label("//pw_result"),
-            Label("//pw_span"),
-            Label("//pw_status"),
-            Label("//pw_string:string"),
-        ] + ADDITIONAL_PWPB_DEPS,
-        tags = tags,
-        visibility = visibility,
-    )
+    if oneof_callbacks:
+        _pwpb_proto_library(
+            name = name,
+            protos = deps,
+            deps = [
+                Label("//pw_assert"),
+                Label("//pw_containers:vector"),
+                Label("//pw_preprocessor"),
+                Label("//pw_protobuf"),
+                Label("//pw_result"),
+                Label("//pw_span"),
+                Label("//pw_status"),
+                Label("//pw_string:string"),
+            ] + ADDITIONAL_PWPB_DEPS,
+            tags = tags,
+            visibility = visibility,
+        )
+    else:
+        _pwpb_legacy_oneof_proto_library(
+            name = name,
+            protos = deps,
+            deps = [
+                Label("//pw_assert"),
+                Label("//pw_containers:vector"),
+                Label("//pw_preprocessor"),
+                Label("//pw_protobuf"),
+                Label("//pw_result"),
+                Label("//pw_span"),
+                Label("//pw_status"),
+                Label("//pw_string:string"),
+            ] + ADDITIONAL_PWPB_DEPS,
+            tags = tags,
+            visibility = visibility,
+        )
 
 def pwpb_rpc_proto_library(name, deps, pwpb_proto_library_deps, tags = None, visibility = None):
     """A pwpb_rpc proto library target.
@@ -393,23 +413,21 @@ def _proto_compiler_aspect_impl(target, ctx):
         args.add("--custom_opt=-I{}".format(options_file_include_path))
 
     for plugin_option in ctx.attr._plugin_options:
-        # if import_prefix is set, the .proto is placed under a virtual include path
-        # prefixed by `import_prefix`. That path is what is given to the proto
-        # plugin via plugin_pb2.CodeGeneratorRequest.proto_file.name, so the include
-        # paths we give to the plugin need to be able find the .options files based
-        # on the following logic in pw_protobuf/options.py:
-        #
-        #   options_file_name = include_path / proto_file_name.with_suffix(".options")
-        #
-        # This means that in order for the plugin to find the .options file, we need
-        # to let the plugin know the import prefix so it can modify the `proto_file_name`
-        # back to the original to be able to find the .options file.
-        if plugin_option == "--import-prefix={}":
-            if ctx.rule.attr.import_prefix:
-                plugin_option = plugin_option.format(ctx.rule.attr.import_prefix)
-            else:
-                continue
+        # If the plugin supports directly specifying the location of the options files, pass them here.
+        if plugin_option == "--options-file={}":
+            for options_file in options_files:
+                plugin_options_arg = plugin_option.format(options_file.path)
+                args.add("--custom_opt={}".format(plugin_options_arg))
+            continue
         args.add("--custom_opt={}".format(plugin_option))
+
+    # In certain environments the path to pb.h must be defined, rather
+    # than relying on the default location.
+    # Use a format string rather than `quote`, to maintain support
+    # for nanopb 3.
+    if hasattr(ctx.attr, "_pb_h"):
+        plugin_options_arg = "--library-include-format=#include \"{}/%s\"".format(ctx.file._pb_h.dirname)
+        args.add("--custom_opt={}".format(plugin_options_arg))
 
     args.add("--custom_out={}".format(out_path))
     args.add_all(proto_info.direct_sources)
@@ -452,7 +470,7 @@ def _proto_compiler_aspect_impl(target, ctx):
         includes = transitive_includes,
     )]
 
-def _proto_compiler_aspect(extensions, protoc_plugin, plugin_options = []):
+def _proto_compiler_aspect(extensions, protoc_plugin, plugin_options = [], additional_attrs = {}):
     """Returns an aspect that runs the proto compiler.
 
     The aspect propagates through the deps of proto_library targets, running
@@ -483,7 +501,7 @@ def _proto_compiler_aspect(extensions, protoc_plugin, plugin_options = []):
                 executable = True,
                 cfg = "exec",
             ),
-        },
+        } | additional_attrs,
         implementation = _proto_compiler_aspect_impl,
         provides = [PwProtoInfo],
         toolchains = ["@rules_python//python:exec_tools_toolchain_type"],
@@ -530,7 +548,30 @@ def _impl_pw_proto_library(ctx):
 _pwpb_proto_compiler_aspect = _proto_compiler_aspect(
     ["pwpb.h"],
     "//pw_protobuf/py:plugin",
-    ["--no-legacy-namespace", "--import-prefix={}"],
+    ["--no-legacy-namespace", "--options-file={}"],
+)
+
+# TODO: b/373693434 - This aspect and its corresponding rule should be removed
+# once oneof callback migration is complete.
+_pwpb_legacy_oneof_compiler_aspect = _proto_compiler_aspect(
+    ["pwpb.h"],
+    "//pw_protobuf/py:plugin",
+    ["--no-oneof-callbacks", "--no-legacy-namespace", "--options-file={}"],
+)
+
+_pwpb_legacy_oneof_proto_library = rule(
+    implementation = _impl_pw_proto_library,
+    attrs = {
+        "deps": attr.label_list(
+            providers = [CcInfo],
+        ),
+        "protos": attr.label_list(
+            providers = [ProtoInfo],
+            aspects = [_pwpb_legacy_oneof_compiler_aspect],
+        ),
+    },
+    fragments = ["cpp"],
+    toolchains = use_cpp_toolchain(),
 )
 
 _pwpb_proto_library = rule(
@@ -551,7 +592,13 @@ _pwpb_proto_library = rule(
 _nanopb_proto_compiler_aspect = _proto_compiler_aspect(
     ["pb.h", "pb.c"],
     "@com_github_nanopb_nanopb//:protoc-gen-nanopb",
-    ["--library-include-format=quote"],
+    [],
+    {
+        "_pb_h": attr.label(
+            default = Label("@com_github_nanopb_nanopb//:pb.h"),
+            allow_single_file = True,
+        ),
+    },
 )
 
 _nanopb_proto_library = rule(
@@ -641,13 +688,13 @@ def _pw_proto_filegroup_impl(ctx):
 
     for options_src in ctx.attr.options_files:
         for file in options_src.files.to_list():
-            if file.extension == "options":
+            if file.extension == "options" or file.extension == "pwpb_options":
                 options_files.append(file)
             else:
                 fail((
                     "Files provided as `options_files` to a " +
-                    "`pw_proto_filegroup` must have the `.options` " +
-                    "extension; the file `{}` was provided."
+                    "`pw_proto_filegroup` must have the `.options` or " +
+                    "`.pwpb_options` extensions; the file `{}` was provided."
                 ).format(file.basename))
 
     return [

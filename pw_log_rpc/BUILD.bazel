@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -26,7 +23,7 @@ cc_library(
     hdrs = [
         "public/pw_log_rpc/internal/config.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     visibility = ["//visibility:private"],
     deps = [
         ":config_override",
@@ -42,17 +39,19 @@ cc_library(
     name = "log_service",
     srcs = [
         "log_service.cc",
-        "public/pw_log_rpc/internal/log_config.h",
     ],
-    hdrs = ["public/pw_log_rpc/log_service.h"],
-    includes = ["public"],
+    hdrs = [
+        "public/pw_log_rpc/internal/log_config.h",
+        "public/pw_log_rpc/log_service.h",
+    ],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         ":log_filter",
         ":rpc_log_drain",
         "//pw_log",
-        "//pw_log:log_proto_cc.pwpb",
-        "//pw_log:log_proto_cc.raw_rpc",
+        "//pw_log:log_proto_pwpb",
+        "//pw_log:log_proto_raw_rpc",
     ],
 )
 
@@ -60,12 +59,12 @@ cc_library(
     name = "log_filter_service",
     srcs = ["log_filter_service.cc"],
     hdrs = ["public/pw_log_rpc/log_filter_service.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":log_filter",
         "//pw_log",
-        "//pw_log:log_proto_cc.pwpb",
-        "//pw_log:log_proto_cc.raw_rpc",
+        "//pw_log:log_proto_pwpb",
+        "//pw_log:log_proto_raw_rpc",
         "//pw_protobuf",
         "//pw_protobuf:bytes_utils",
     ],
@@ -80,14 +79,14 @@ cc_library(
         "public/pw_log_rpc/log_filter.h",
         "public/pw_log_rpc/log_filter_map.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         "//pw_assert",
         "//pw_bytes",
         "//pw_containers:vector",
         "//pw_log",
-        "//pw_log:log_proto_cc.pwpb",
+        "//pw_log:log_proto_pwpb",
         "//pw_protobuf",
         "//pw_status",
     ],
@@ -102,15 +101,15 @@ cc_library(
         "public/pw_log_rpc/rpc_log_drain.h",
         "public/pw_log_rpc/rpc_log_drain_map.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         ":log_filter",
         "//pw_assert",
         "//pw_chrono:system_clock",
         "//pw_function",
-        "//pw_log:log_proto_cc.pwpb",
-        "//pw_log:log_proto_cc.raw_rpc",
+        "//pw_log:log_proto_pwpb",
+        "//pw_log:log_proto_raw_rpc",
         "//pw_multisink",
         "//pw_protobuf",
         "//pw_result",
@@ -123,7 +122,7 @@ cc_library(
 cc_library(
     name = "rpc_log_drain_thread",
     hdrs = ["public/pw_log_rpc/rpc_log_drain_thread.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":log_service",
         ":rpc_log_drain",
@@ -146,7 +145,7 @@ cc_library(
         "//pw_bytes",
         "//pw_containers:vector",
         "//pw_log",
-        "//pw_log:log_proto_cc.pwpb",
+        "//pw_log:log_proto_pwpb",
         "//pw_log_tokenized:headers",
         "//pw_protobuf",
         "//pw_protobuf:bytes_utils",
@@ -163,7 +162,7 @@ pw_cc_test(
         ":test_utils",
         "//pw_containers:vector",
         "//pw_log",
-        "//pw_log:log_proto_cc.pwpb",
+        "//pw_log:log_proto_pwpb",
         "//pw_log:proto_utils",
         "//pw_log_tokenized:headers",
         "//pw_protobuf",
@@ -181,7 +180,7 @@ pw_cc_test(
     deps = [
         ":log_filter",
         ":log_filter_service",
-        "//pw_log:log_proto_cc.pwpb",
+        "//pw_log:log_proto_pwpb",
         "//pw_protobuf",
         "//pw_protobuf:bytes_utils",
         "//pw_result",
@@ -195,7 +194,7 @@ pw_cc_test(
     srcs = ["log_filter_test.cc"],
     deps = [
         ":log_filter",
-        "//pw_log:log_proto_cc.pwpb",
+        "//pw_log:log_proto_pwpb",
         "//pw_log:proto_utils",
         "//pw_log_tokenized:headers",
         "//pw_result",
@@ -218,7 +217,7 @@ pw_cc_test(
         ":rpc_log_drain",
         ":test_utils",
         "//pw_bytes",
-        "//pw_log:log_proto_cc.pwpb",
+        "//pw_log:log_proto_pwpb",
         "//pw_log:proto_utils",
         "//pw_multisink",
         "//pw_protobuf",

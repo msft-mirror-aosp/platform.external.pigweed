@@ -13,26 +13,17 @@
 # the License.
 
 load("//pw_build:compatibility.bzl", "host_backend_alias")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_facade",
-)
+load("//pw_build:pw_facade.bzl", "pw_facade")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-# TODO: pwbug.dev/328679085 - Remove this alias once no-one uses it.
-alias(
-    name = "facade",
-    actual = ":pw_sys_io.facade",
-)
-
 pw_facade(
     name = "pw_sys_io",
     hdrs = ["public/pw_sys_io/sys_io.h"],
     backend = ":backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_bytes",
         "//pw_status",
@@ -53,8 +44,15 @@ cc_library(
     name = "default_putget_bytes",
     srcs = ["sys_io.cc"],
     deps = [
-        ":facade",
+        ":pw_sys_io.facade",
         "//pw_span",
         "//pw_status",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_sys_io/sys_io.h",
     ],
 )

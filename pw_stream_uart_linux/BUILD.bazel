@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -25,7 +22,7 @@ cc_library(
     name = "pw_stream_uart_linux",
     srcs = ["stream.cc"],
     hdrs = ["public/pw_stream_uart_linux/stream.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     target_compatible_with = [
         "@platforms//os:linux",
     ],
@@ -44,5 +41,12 @@ pw_cc_test(
     ],
     deps = [
         ":pw_stream_uart_linux",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_stream_uart_linux/stream.h",
     ],
 )

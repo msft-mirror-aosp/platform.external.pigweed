@@ -14,12 +14,13 @@
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//pw_build:compatibility.bzl", "host_backend_alias")
+load("//pw_build:pw_facade.bzl", "pw_facade")
 load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-    "pw_facade",
+    "//pw_protobuf_compiler:pw_proto_library.bzl",
+    "pwpb_proto_library",
+    "raw_rpc_proto_library",
 )
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -33,9 +34,6 @@ alias(
 
 pw_facade(
     name = "pw_log",
-    srcs = [
-        "public/pw_log/tokenized_args.h",
-    ],
     hdrs = [
         "public/pw_log/config.h",
         "public/pw_log/levels.h",
@@ -45,7 +43,7 @@ pw_facade(
         "public/pw_log/shorter.h",
     ],
     backend = ":backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config_override",
         "//pw_preprocessor",
@@ -60,12 +58,21 @@ cc_library(
     hdrs = [
         "public/pw_log/rate_limited.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config_override",
         ":pw_log",
         "//pw_chrono:system_clock",
     ],
+)
+
+cc_library(
+    name = "args",
+    hdrs = [
+        "public/pw_log/tokenized_args.h",
+    ],
+    strip_include_prefix = "public",
+    deps = ["//pw_tokenizer"],
 )
 
 label_flag(
@@ -104,7 +111,7 @@ cc_library(
         "public/pw_log/glog_adapter_config.h",
         "public/pw_log/internal/glog_adapter.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":glog_adapter_config_override",
         "//pw_assert",
@@ -127,8 +134,9 @@ cc_library(
     hdrs = [
         "public/pw_log/proto_utils.h",
     ],
+    strip_include_prefix = "public",
     deps = [
-        ":log_proto_cc.pwpb",
+        ":log_proto_pwpb",
         ":pw_log.facade",
         "//pw_bytes",
         "//pw_log_tokenized:headers",
@@ -160,9 +168,26 @@ java_lite_proto_library(
     deps = [":log_proto"],
 )
 
-pw_proto_library(
-    name = "log_proto_cc",
+pwpb_proto_library(
+    name = "log_proto_pwpb",
     deps = [":log_proto"],
+)
+
+raw_rpc_proto_library(
+    name = "log_proto_raw_rpc",
+    deps = [":log_proto"],
+)
+
+# https://pwbug.dev/375207472 - Remove this alias after downstream migration.
+alias(
+    name = "log_proto_cc.pwpb",
+    actual = ":log_proto_pwpb",
+)
+
+# https://pwbug.dev/375207472 - Remove this alias after downstream migration.
+alias(
+    name = "log_proto_cc.raw_rpc",
+    actual = ":log_proto_raw_rpc",
 )
 
 pw_cc_test(
@@ -197,7 +222,7 @@ pw_cc_test(
         "proto_utils_test.cc",
     ],
     deps = [
-        ":log_proto_cc.pwpb",
+        ":log_proto_pwpb",
         ":proto_utils",
         ":pw_log.facade",
         "//pw_containers",
@@ -205,5 +230,25 @@ pw_cc_test(
         "//pw_protobuf",
         "//pw_protobuf:bytes_utils",
         "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "log_enum_test",
+    srcs = [
+        "log_enum_test.cc",
+    ],
+    deps = [
+        ":args",
+        "//pw_log",
+        "//pw_tokenizer",
+        "//pw_unit_test",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_log/tokenized_args.h",
     ],
 )

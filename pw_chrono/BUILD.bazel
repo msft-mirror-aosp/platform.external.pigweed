@@ -13,13 +13,10 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-    "pw_facade",
-)
+load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_build:python.bzl", "pw_py_binary")
-load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_library")
+load("//pw_protobuf_compiler:pw_proto_library.bzl", "pwpb_proto_library")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -30,7 +27,7 @@ cc_library(
     hdrs = [
         "public/pw_chrono/epoch.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 cc_library(
@@ -38,7 +35,7 @@ cc_library(
     hdrs = [
         "public/pw_chrono/virtual_clock.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
 )
 
 pw_facade(
@@ -51,7 +48,7 @@ pw_facade(
         "public/pw_chrono/system_clock.h",
     ],
     backend = ":system_clock_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":epoch",
         ":virtual_clock",
@@ -81,7 +78,7 @@ pw_facade(
         "public/pw_chrono/system_timer.h",
     ],
     backend = ":system_timer_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":system_clock",
     ],
@@ -116,8 +113,8 @@ py_proto_library(
     deps = [":chrono_proto"],
 )
 
-pw_proto_library(
-    name = "chrono_proto_cc",
+pwpb_proto_library(
+    name = "chrono_proto_pwpb",
     deps = [":chrono_proto"],
 )
 
@@ -126,6 +123,7 @@ cc_library(
     hdrs = [
         "public/pw_chrono/simulated_system_clock.h",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":system_clock",
         "//pw_sync:interrupt_spin_lock",
@@ -177,7 +175,8 @@ pw_py_binary(
 genrule(
     name = "build_time_header",
     outs = ["build_time.h"],
-    cmd = "$(location :generate_build_time_header) $@",
+    cmd = "$(location :generate_build_time_header) --bazel $@",
+    stamp = True,
     tools = [":generate_build_time_header"],
 )
 
@@ -198,4 +197,14 @@ cc_library(
     ],
     deps = [":system_clock"],
     alwayslink = 1,
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_chrono/simulated_system_clock.h",
+        "public/pw_chrono/system_clock.h",
+        "public/pw_chrono/system_timer.h",
+        "public/pw_chrono/virtual_clock.h",
+    ],
 )

@@ -31,7 +31,7 @@ ParsedOptions = list[tuple[str, CodegenOptions]]
 
 
 def load_options_from(options: ParsedOptions, options_file_name: Path):
-    """Loads a single .options file for the given .proto"""
+    """Loads a single options file for the given .proto"""
     with open(options_file_name) as options_file:
         # Read the options file and strip all styles of comments before parsing.
         options_data = options_file.read()
@@ -53,21 +53,46 @@ def load_options_from(options: ParsedOptions, options_file_name: Path):
                 continue
 
 
-def load_options(
-    include_paths: list[Path], proto_file_name: Path, import_prefix: str
+def _load_options_with_suffix(
+    include_paths: list[Path],
+    proto_file_name: Path,
+    options_files: list[Path],
+    suffix: str,
 ) -> ParsedOptions:
-    """Loads the .options for the given .proto."""
+    """Loads the options for the given .proto file."""
     options: ParsedOptions = []
 
-    if import_prefix and Path(import_prefix) in proto_file_name.parents:
-        proto_file_name = proto_file_name.relative_to(import_prefix)
+    # First load from any files that were directly specified.
+    for options_file in options_files:
+        if (
+            options_file.name == proto_file_name.with_suffix(suffix).name
+            and options_file.exists()
+        ):
+            load_options_from(options, options_file)
 
+    # Then search specified search paths for options files.
     for include_path in include_paths:
-        options_file_name = include_path / proto_file_name.with_suffix(
-            '.options'
-        )
+        options_file_name = include_path / proto_file_name.with_suffix(suffix)
         if options_file_name.exists():
             load_options_from(options, options_file_name)
+
+    return options
+
+
+def load_options(
+    include_paths: list[Path],
+    proto_file_name: Path,
+    options_files: list[Path],
+    allow_generic_options_extension: bool = True,
+) -> ParsedOptions:
+    # Try to load pwpb_options first. If they exist, ignore regular options.
+    options = _load_options_with_suffix(
+        include_paths, proto_file_name, options_files, ".pwpb_options"
+    )
+    if allow_generic_options_extension and not options:
+        options = _load_options_with_suffix(
+            include_paths, proto_file_name, options_files, ".options"
+        )
 
     return options
 

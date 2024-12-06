@@ -12,10 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -24,7 +21,7 @@ licenses(["notice"])
 cc_library(
     name = "pw_clock_tree",
     hdrs = ["public/pw_clock_tree/clock_tree.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_status",
@@ -47,5 +44,12 @@ pw_cc_test(
     srcs = ["examples.cc"],
     deps = [
         ":pw_clock_tree",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_clock_tree/clock_tree.h",
     ],
 )

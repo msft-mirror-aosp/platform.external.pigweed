@@ -12,11 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_binary",
-    "pw_cc_test",
-)
+load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -77,7 +74,7 @@ pw_cc_test(
     srcs = ["block_allocator.cc"],
     deps = [
         ":named_u32",
-        "//pw_allocator:last_fit_block_allocator",
+        "//pw_allocator:first_fit",
     ],
 )
 
@@ -111,8 +108,8 @@ pw_cc_test(
     deps = [
         ":named_u32",
         "//pw_allocator:allocator",
-        "//pw_allocator:first_fit_block_allocator",
-        "//pw_allocator:worst_fit_block_allocator",
+        "//pw_allocator:first_fit",
+        "//pw_allocator:worst_fit",
     ],
 )
 
@@ -132,7 +129,7 @@ pw_cc_test(
     testonly = True,
     srcs = ["pmr.cc"],
     deps = [
-        "//pw_allocator:allocator",
+        "//pw_allocator:pmr_allocator",
         "//pw_allocator:testing",
     ],
 )
@@ -143,7 +140,7 @@ pw_cc_binary(
     srcs = ["size_report.cc"],
     deps = [
         ":custom_allocator",
-        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:first_fit",
         "//pw_allocator:size_reporter",
     ],
 )

@@ -16,29 +16,11 @@ workspace(
     name = "pigweed",
 )
 
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load(
     "//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl",
     "cipd_repository",
-)
-
-# Set up legacy pw_transfer test binaries.
-# Required by: pigweed.
-# Used in modules: //pw_transfer.
-cipd_repository(
-    name = "pw_transfer_test_binaries",
-    path = "pigweed/pw_transfer_test_binaries/${os=linux}-${arch=amd64}",
-    tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
-)
-
-# Set up bloaty size profiler.
-# Required by: pigweed.
-# Used in modules: //pw_bloat.
-cipd_repository(
-    name = "bloaty",
-    path = "fuchsia/third_party/bloaty/${os}-amd64",
-    tag = "git_revision:c057ba4f43db0506d4ba8c096925b054b02a8bd3",
 )
 
 # Setup Fuchsia SDK.
@@ -49,9 +31,9 @@ cipd_repository(
 git_repository(
     name = "fuchsia_infra",
     # ROLL: Warning: this entry is automatically updated.
-    # ROLL: Last updated 2024-09-07.
-    # ROLL: By https://cr-buildbucket.appspot.com/build/8737418645822593841.
-    commit = "0a69be8abfa4bbe44cd1a4a77f18e76369dac615",
+    # ROLL: Last updated 2024-11-16.
+    # ROLL: By https://cr-buildbucket.appspot.com/build/8731076857971632145.
+    commit = "a627dc11a73d74754d9a66a3b80b6f352c94d723",
     remote = "https://fuchsia.googlesource.com/fuchsia-infra-bazel-rules",
 )
 
@@ -59,17 +41,13 @@ load("@fuchsia_infra//:workspace.bzl", "fuchsia_infra_workspace")
 
 fuchsia_infra_workspace()
 
-FUCHSIA_SDK_VERSION = "version:23.20240829.4.1"
+FUCHSIA_SDK_VERSION = "version:25.20241025.4.1"
 
 cipd_repository(
     name = "fuchsia_sdk",
     path = "fuchsia/sdk/core/fuchsia-bazel-rules/linux-amd64",
     tag = FUCHSIA_SDK_VERSION,
 )
-
-load("@fuchsia_sdk//fuchsia:deps.bzl", "rules_fuchsia_deps")
-
-rules_fuchsia_deps()
 
 register_toolchains("@fuchsia_sdk//:fuchsia_toolchain_sdk")
 
@@ -79,27 +57,18 @@ cipd_repository(
     tag = FUCHSIA_SDK_VERSION,
 )
 
-load("@fuchsia_sdk//fuchsia:products.bzl", "fuchsia_products_repository")
+load("//pw_build/bazel_internal/fuchsia_sdk_workspace:products.bzl", "fuchsia_products_repository")
 
 fuchsia_products_repository(
     name = "fuchsia_products",
     metadata_file = "@fuchsia_products_metadata//:product_bundles.json",
 )
 
-load("@fuchsia_sdk//fuchsia:clang.bzl", "fuchsia_clang_repository")
-
-fuchsia_clang_repository(
+cipd_repository(
     name = "fuchsia_clang",
-    # TODO: https://pwbug.dev/346354914 - Reuse @llvm_toolchain. This currently
-    # leads to flaky loading phase errors!
-    # from_workspace = "@llvm_toolchain//:BUILD",
-    cipd_tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
-    sdk_root_label = "@fuchsia_sdk",
+    path = "fuchsia/development/fuchsia_clang/linux-amd64",
+    tag = "git_revision:aea60ab94db4729bad17daa86ccfc411d48a1699",
 )
-
-load("@fuchsia_clang//:defs.bzl", "register_clang_toolchains")
-
-register_clang_toolchains()
 
 # TODO: b/354268150 - googletest is in the BCR, but its MODULE.bazel doesn't
 # express its dependency on the Fuchsia SDK correctly.
@@ -108,16 +77,6 @@ git_repository(
     commit = "3b6d48e8d5c1d9b3f9f10ac030a94008bfaf032b",
     remote = "https://pigweed.googlesource.com/third_party/github/google/googletest",
 )
-
-# Vendored third party rust crates.
-git_repository(
-    name = "rust_crates",
-    commit = "de54de1a2683212d8edb4e15ec7393eb013c849c",
-    remote = "https://pigweed.googlesource.com/third_party/rust_crates",
-)
-
-# Registers platforms for use with toolchain resolution
-register_execution_platforms("@local_config_platform//:host", "//pw_build/platforms:all")
 
 # Required by fuzztest
 http_archive(
@@ -135,34 +94,10 @@ http_archive(
     url = "https://github.com/abseil/abseil-cpp/releases/download/20240116.0/abseil-cpp-20240116.0.tar.gz",
 )
 
-# Fuzztest is not in the BCR yet (https://github.com/google/fuzztest/issues/950).
+# TODO: https://pwbug.dev/365103864 - Fuzztest is not in the BCR yet (also see
+# https://github.com/google/fuzztest/issues/950).
 http_archive(
     name = "com_google_fuzztest",
     strip_prefix = "fuzztest-6eb010c7223a6aa609b94d49bfc06ac88f922961",
     url = "https://github.com/google/fuzztest/archive/6eb010c7223a6aa609b94d49bfc06ac88f922961.zip",
-)
-
-new_git_repository(
-    name = "micro_ecc",
-    build_file = "//:third_party/micro_ecc/BUILD.micro_ecc",
-    commit = "b335ee812bfcca4cd3fb0e2a436aab39553a555a",
-    remote = "https://github.com/kmackay/micro-ecc.git",
-)
-
-# TODO: https://pwbug.dev/354749299 - Use the BCR version of mbedtls.
-http_archive(
-    name = "mbedtls",
-    build_file = "//:third_party/mbedtls/mbedtls.BUILD.bazel",
-    sha256 = "241c68402cef653e586be3ce28d57da24598eb0df13fcdea9d99bfce58717132",
-    strip_prefix = "mbedtls-2.28.8",
-    url = "https://github.com/Mbed-TLS/mbedtls/releases/download/v2.28.8/mbedtls-2.28.8.tar.bz2",
-)
-
-# TODO: https://pwbug.dev/354747966 - Update the BCR version of Emboss.
-git_repository(
-    name = "com_google_emboss",
-    # LINT.IfChange(emboss)
-    remote = "https://pigweed.googlesource.com/third_party/github/google/emboss",
-    tag = "v2024.0809.170004",
-    # LINT.ThenChange(/pw_package/py/pw_package/packages/emboss.py:emboss)
 )

@@ -49,6 +49,7 @@ pw_source_set("alignment") {
   public = [ "public/pw_bytes/alignment.h" ]
   public_deps = [
     ":pw_bytes",
+    "$dir_pw_third_party/fuchsia:stdcompat",
     dir_pw_assert,
     dir_pw_preprocessor,
   ]
@@ -61,6 +62,15 @@ pw_source_set("bit") {
   public_deps = [ "$dir_pw_third_party/fuchsia:stdcompat" ]
 }
 
+pw_source_set("packed_ptr") {
+  public_configs = [ ":public_include_path" ]
+  public = [ "public/pw_bytes/packed_ptr.h" ]
+  public_deps = [
+    "$dir_pw_third_party/fuchsia:stdcompat",
+    dir_pw_assert,
+  ]
+}
+
 pw_test_group("tests") {
   tests = [
     ":alignment_test",
@@ -68,6 +78,7 @@ pw_test_group("tests") {
     ":bit_test",
     ":byte_builder_test",
     ":endian_test",
+    ":packed_ptr_test",
     ":suffix_test",
     ":units_test",
   ]
@@ -102,6 +113,12 @@ pw_test("endian_test") {
   sources = [ "endian_test.cc" ]
 }
 
+pw_test("packed_ptr_test") {
+  deps = [ ":packed_ptr" ]
+  sources = [ "packed_ptr_test.cc" ]
+  negative_compilation_tests = true
+}
+
 pw_test("suffix_test") {
   deps = [ ":pw_bytes" ]
   sources = [ "suffix_test.cc" ]
@@ -114,6 +131,7 @@ pw_test("units_test") {
 }
 
 pw_doc_group("docs") {
+  inputs = [ "Kconfig" ]
   sources = [ "docs.rst" ]
   report_deps = [ ":byte_builder_size_report" ]
 }

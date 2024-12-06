@@ -39,6 +39,14 @@ class CrashSnapshot {
       const std::string_view reason,
       snapshot::pwpb::Snapshot::StreamEncoder& snapshot_encoder);
 
+  Status CaptureMainStackThread(
+      const pw_cpu_exception_State& cpu_state,
+      snapshot::pwpb::Snapshot::StreamEncoder& snapshot_encoder);
+
+  Status CaptureThreads(
+      const pw_cpu_exception_State& cpu_state,
+      snapshot::pwpb::Snapshot::StreamEncoder& snapshot_encoder);
+
   Status CaptureLogs(snapshot::pwpb::Snapshot::StreamEncoder& snapshot_encoder);
 
  private:

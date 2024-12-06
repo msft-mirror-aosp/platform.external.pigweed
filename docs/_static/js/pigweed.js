@@ -16,40 +16,42 @@ window.pw = {};
 
 // Display inline search results under the search modal. After the user types
 // text in the search box, results are shown underneath the text input box.
-// The search is restarted anew after each keypress.
+// The search is restarted after each keypress.
 //
 // TODO: b/363034219 - Try to upstream this code into pydata-sphinx-theme.
 window.pw.initSearch = () => {
-  // The search page has its own UI for running searches and displaying
-  // results. This logic isn't needed on /search.html.
+  // Don't interfere with the default search UX on /search.html.
   if (window.location.pathname.endsWith('/search.html')) {
     return;
   }
-  // Search class is provided by Sphinx's built-in search tools.
-  // The template //docs/layout/page.html ensures that Sphinx's
-  // search scripts are always loaded before pigweed.js.
+  // The template //docs/layout/page.html ensures that Search is always
+  // loaded at this point.
   // eslint-disable-next-line no-undef
   if (!Search) {
     return;
   }
+  // Destroy the previous search container and create a new one.
   window.pw.resetSearchResults();
   let timeoutId = null;
   let lastQuery = '';
   const searchInput = document.querySelector('#search-input');
-  // Kick off the search after the user types something.
+  // Set up the event handler to initiate searches whenever the user
+  // types stuff in the search modal textbox.
   searchInput.addEventListener('keyup', () => {
     const query = searchInput.value;
-    // Don't search when there's nothing in the query text box.
+    // Don't search when there's nothing in the query textbox.
     if (query === '') {
       return;
     }
     // Don't search if there is no detectable change between
-    // the last query and the current query. This prevents the
-    // search from re-running if the user presses Tab to start
-    // navigating the search results.
+    // the last query and the current query. E.g. user presses
+    // Tab to start navigating the search results.
     if (query === lastQuery) {
       return;
     }
+    // The user has changed the search query. Delete the old results
+    // and start setting up the new container.
+    window.pw.resetSearchResults();
     // Debounce so that the search only starts only when the
     // user stops typing.
     const delay_ms = 500;
@@ -58,8 +60,6 @@ window.pw.initSearch = () => {
       window.clearTimeout(timeoutId);
     }
     timeoutId = window.setTimeout(() => {
-      // The user has changed the search query. Delete the old results.
-      window.pw.resetSearchResults();
       // eslint-disable-next-line no-undef
       Search.performSearch(query);
       timeoutId = null;
@@ -67,7 +67,12 @@ window.pw.initSearch = () => {
   });
 };
 
-// Resets the custom search results container to an empty state.
+// Deletes the old custom search results container and recreates a
+// new, empty one.
+//
+// Note that Sphinx assumes that searches are always made from /search.html
+// so there's some safeguard logic to make sure the inline search always
+// works no matter what pigweed.dev page you're on. b/365179592
 //
 // TODO: b/363034219 - Try to upstream this code into pydata-sphinx-theme.
 window.pw.resetSearchResults = () => {
@@ -78,8 +83,47 @@ window.pw.resetSearchResults = () => {
   results = document.createElement('section');
   results.classList.add('pw-search-results');
   results.id = 'search-results';
-  let container = document.querySelector('.search-button__search-container');
-  container.appendChild(results);
+  // Add the new results container to the DOM.
+  let modal = document.querySelector('.search-button__search-container');
+  modal.appendChild(results);
+  // Relative path to the root directory of the site. Sphinx's
+  // HTML builder auto-inserts this metadata on every page.
+  const root = document.documentElement.dataset.content_root;
+  // As Sphinx populates the search results, this observer makes sure that
+  // each URL is correct (i.e. doesn't 404). b/365179592
+  const linkObserver = new MutationObserver(() => {
+    const links = Array.from(
+      document.querySelectorAll('#search-results .search a'),
+    );
+    // Check every link every time because the timing of when new results are
+    // added is unpredictable and it's not an expensive operation.
+    links.forEach((link) => {
+      // Don't use the link.href getter because the browser computes the href
+      // as a full URL. We need the relative URL that Sphinx generates.
+      const href = link.getAttribute('href');
+      if (href.startsWith(root)) {
+        // No work needed. The root has already been prepended to the href.
+        return;
+      }
+      link.href = `${root}${href}`;
+    });
+  });
+  // The node that linkObserver watches doesn't exist until the user types
+  // something into the search textbox. resultsObserver just waits for
+  // that container to exist and then registers linkObserver on it.
+  let isObserved = false;
+  const resultsObserver = new MutationObserver(() => {
+    if (isObserved) {
+      return;
+    }
+    const container = document.querySelector('#search-results .search');
+    if (!container) {
+      return;
+    }
+    linkObserver.observe(container, { childList: true });
+    isObserved = true;
+  });
+  resultsObserver.observe(results, { childList: true });
 };
 
 window.addEventListener('DOMContentLoaded', () => {
