@@ -451,7 +451,6 @@ pw_cc_test(
 proto_library(
     name = "internal_packet_proto",
     srcs = ["internal/packet.proto"],
-    visibility = [":__subpackages__"],
 )
 
 java_proto_library(
@@ -549,4 +548,13 @@ pwpb_rpc_proto_library(
     name = "echo_pwpb_rpc",
     pwpb_proto_library_deps = [":echo_pwpb"],
     deps = [":echo_proto"],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_rpc/channel.h",
+        "public/pw_rpc/internal/config.h",
+        "public/pw_rpc/synchronous_call.h",
+    ],
 )

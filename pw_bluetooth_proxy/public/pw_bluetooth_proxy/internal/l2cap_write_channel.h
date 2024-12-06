@@ -15,6 +15,7 @@
 #pragma once
 
 #include "pw_bluetooth_proxy/h4_packet.h"
+#include "pw_bluetooth_proxy/internal/logical_transport.h"
 #include "pw_containers/inline_queue.h"
 #include "pw_containers/intrusive_forward_list.h"
 #include "pw_result/result.h"
@@ -37,9 +38,7 @@ class L2capWriteChannel : public IntrusiveForwardList<L2capWriteChannel>::Item {
   L2capWriteChannel(const L2capWriteChannel& other) = delete;
   L2capWriteChannel& operator=(const L2capWriteChannel& other) = delete;
   L2capWriteChannel(L2capWriteChannel&& other);
-  // TODO: https://pwbug.dev/360929142 - Define move assignment operator so
-  // write channels can be erased from containers.
-  L2capWriteChannel& operator=(L2capWriteChannel&& other) = delete;
+  L2capWriteChannel& operator=(L2capWriteChannel&& other);
 
   virtual ~L2capWriteChannel();
 
@@ -60,9 +59,12 @@ class L2capWriteChannel : public IntrusiveForwardList<L2capWriteChannel>::Item {
   // Get the ACL connection handle.
   uint16_t connection_handle() const { return connection_handle_; }
 
+  AclTransportType transport() const { return transport_; }
+
  protected:
   explicit L2capWriteChannel(L2capChannelManager& l2cap_channel_manager,
                              uint16_t connection_handle,
+                             AclTransportType transport,
                              uint16_t remote_cid);
 
   // Returns whether or not ACL connection handle & destination L2CAP channel
@@ -95,6 +97,8 @@ class L2capWriteChannel : public IntrusiveForwardList<L2capWriteChannel>::Item {
   // TODO: https://pwbug.dev/349700888 - Make capacity configurable.
   static constexpr size_t kQueueCapacity = 5;
 
+  AclTransportType transport_;
+
   // ACL connection handle on remote peer to which packets are sent.
   uint16_t connection_handle_;
 
@@ -103,11 +107,20 @@ class L2capWriteChannel : public IntrusiveForwardList<L2capWriteChannel>::Item {
 
   // `L2capChannelManager` and channel may concurrently call functions that
   // access queue.
-  sync::Mutex send_queue_mutex_;
+  //
+  // TODO: https://pwbug.dev/381942905 - This mutex is static to avoid it being
+  // destroyed when an L2capWriteChannel is erased from a container. When an
+  // L2capWriteChannel is erased, it is std::destroyed then overwritten by the
+  // subsequent L2capWriteChannel in the container via the move assignment
+  // operator. After this, the previously destroyed L2capWriteChannel object is
+  // again in an operational state, so its mutex needs to remain valid. This is
+  // a bug in pw::Vector::erase(). Once this behavior is fixed, we can remove
+  // the static to avoid cross-channel contention.
+  inline static sync::Mutex global_send_queue_mutex_;
 
   // Stores Tx L2CAP packets.
   InlineQueue<H4PacketWithH4, kQueueCapacity> send_queue_
-      PW_GUARDED_BY(send_queue_mutex_);
+      PW_GUARDED_BY(global_send_queue_mutex_);
 
   L2capChannelManager& l2cap_channel_manager_;
 };
