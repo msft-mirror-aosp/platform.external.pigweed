@@ -15,21 +15,26 @@
 #include "pw_bluetooth_proxy/internal/l2cap_signaling_channel.h"
 
 #include "pw_bluetooth/emboss_util.h"
+#include "pw_bluetooth/hci_data.emb.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
+#include "pw_bluetooth_proxy/h4_packet.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel_manager.h"
 #include "pw_bluetooth_proxy/internal/l2cap_coc_internal.h"
 #include "pw_log/log.h"
+#include "pw_status/status.h"
+#include "pw_status/try.h"
 
 namespace pw::bluetooth::proxy {
 
 L2capSignalingChannel::L2capSignalingChannel(
     L2capChannelManager& l2cap_channel_manager,
     uint16_t connection_handle,
-    uint16_t local_cid)
+    uint16_t fixed_cid)
     : BasicL2capChannel(/*l2cap_channel_manager=*/l2cap_channel_manager,
                         /*connection_handle=*/connection_handle,
-                        /*local_cid=*/local_cid,
-                        /*receive_fn=*/nullptr),
+                        /*local_cid=*/fixed_cid,
+                        /*remote_cid=*/fixed_cid,
+                        /*payload_from_controller_fn=*/nullptr),
       l2cap_channel_manager_(l2cap_channel_manager) {}
 
 L2capSignalingChannel& L2capSignalingChannel::operator=(
@@ -38,7 +43,7 @@ L2capSignalingChannel& L2capSignalingChannel::operator=(
   return *this;
 }
 
-bool L2capSignalingChannel::OnPduReceived(pw::span<uint8_t> cframe) {
+bool L2capSignalingChannel::HandlePduFromController(pw::span<uint8_t> cframe) {
   Result<emboss::CFrameView> cframe_view =
       MakeEmbossView<emboss::CFrameView>(cframe);
   if (!cframe_view.ok()) {
@@ -56,6 +61,11 @@ bool L2capSignalingChannel::OnPduReceived(pw::span<uint8_t> cframe) {
   return OnCFramePayload(
       pw::span(cframe_view->payload().BackingStorage().data(),
                cframe_view->payload().BackingStorage().SizeInBytes()));
+}
+
+bool L2capSignalingChannel::HandlePduFromHost(pw::span<uint8_t>) {
+  // Forward all to controller.
+  return false;
 }
 
 bool L2capSignalingChannel::HandleL2capSignalingCommand(
@@ -85,7 +95,7 @@ bool L2capSignalingChannel::HandleFlowControlCreditInd(
   }
 
   L2capWriteChannel* found_channel = l2cap_channel_manager_.FindWriteChannel(
-      connection_handle(), cmd.cid().Read());
+      L2capReadChannel::connection_handle(), cmd.cid().Read());
   if (found_channel) {
     // If this L2CAP_FLOW_CONTROL_CREDIT_IND is addressed to a channel managed
     // by the proxy, it must be an L2CAP connection-oriented channel.
@@ -99,10 +109,34 @@ bool L2capSignalingChannel::HandleFlowControlCreditInd(
   return false;
 }
 
-void L2capSignalingChannel::OnFragmentedPduReceived() {
-  PW_LOG_ERROR(
-      "(Connection: 0x%X) Received fragmentary ACL data on signaling channel.",
-      connection_handle());
+Status L2capSignalingChannel::SendFlowControlCreditInd(uint16_t cid,
+                                                       uint16_t credits) {
+  if (cid == 0) {
+    PW_LOG_ERROR("Tried to send signaling packet on invalid CID 0x0.");
+    return Status::InvalidArgument();
+  }
+
+  PW_TRY_ASSIGN(H4PacketWithH4 h4_packet,
+                PopulateTxL2capPacket(
+                    emboss::L2capFlowControlCreditInd::IntrinsicSizeInBytes()));
+  PW_TRY_ASSIGN(
+      auto acl,
+      MakeEmbossWriter<emboss::AclDataFrameWriter>(h4_packet.GetHciSpan()));
+  emboss::CFrameWriter cframe = emboss::MakeCFrameView(
+      acl.payload().BackingStorage().data(), acl.payload().SizeInBytes());
+  emboss::L2capFlowControlCreditIndWriter ind =
+      emboss::MakeL2capFlowControlCreditIndView(
+          cframe.payload().BackingStorage().data(),
+          cframe.payload().SizeInBytes());
+  ind.command_header().code().Write(
+      emboss::L2capSignalingPacketCode::FLOW_CONTROL_CREDIT_IND);
+  ind.command_header().data_length().Write(
+      emboss::L2capFlowControlCreditInd::IntrinsicSizeInBytes() -
+      emboss::L2capSignalingCommandHeader::IntrinsicSizeInBytes());
+  ind.cid().Write(cid);
+  ind.credits().Write(credits);
+
+  return QueuePacket(std::move(h4_packet));
 }
 
 }  // namespace pw::bluetooth::proxy

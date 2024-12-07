@@ -25,7 +25,7 @@ class L2capSignalingChannel : public BasicL2capChannel {
  public:
   explicit L2capSignalingChannel(L2capChannelManager& l2cap_channel_manager,
                                  uint16_t connection_handle,
-                                 uint16_t local_cid);
+                                 uint16_t fixed_cid);
 
   L2capSignalingChannel& operator=(L2capSignalingChannel&& other);
 
@@ -48,6 +48,13 @@ class L2capSignalingChannel : public BasicL2capChannel {
   // by `L2capChannelManager`.
   bool HandleFlowControlCreditInd(emboss::L2capFlowControlCreditIndView cmd);
 
+  // Send L2CAP_FLOW_CONTROL_CREDIT_IND to indicate local endpoint `cid` is
+  // capable of receiving a number of additional K-frames (`credits`).
+  //
+  // Returns PW_STATUS_INVALID_ARGUMENT if CID is invalid.
+  // Returns PW_STATUS_UNAVAILABLE if send could not be queued.
+  Status SendFlowControlCreditInd(uint16_t cid, uint16_t credits);
+
  protected:
   // Process a C-frame.
   //
@@ -55,9 +62,9 @@ class L2capSignalingChannel : public BasicL2capChannel {
   // either because the command is not directed towards a channel managed by
   // `L2capChannelManager` or because the C-frame is invalid and should be
   // handled by the Bluetooth host.
-  bool OnPduReceived(pw::span<uint8_t> cframe) override;
+  bool HandlePduFromController(pw::span<uint8_t> cframe) override;
 
-  void OnFragmentedPduReceived() override;
+  bool HandlePduFromHost(pw::span<uint8_t> cframe) override;
 
   L2capChannelManager& l2cap_channel_manager_;
 };
