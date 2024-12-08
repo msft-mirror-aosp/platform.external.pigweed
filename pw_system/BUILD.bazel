@@ -13,8 +13,6 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
-load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load(
@@ -143,18 +141,32 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+pw_facade(
     name = "rpc_server",
-    srcs = [
-        "hdlc_rpc_server.cc",
-    ],
     hdrs = [
         "public/pw_system/rpc_server.h",
     ],
+    backend = ":rpc_server_backend",
     strip_include_prefix = "public",
+    deps = [
+        "//pw_thread:thread_core",
+    ],
+)
+
+label_flag(
+    name = "rpc_server_backend",
+    build_setting_default = "//pw_system:hdlc_rpc_server",
+)
+
+cc_library(
+    name = "hdlc_rpc_server",
+    srcs = [
+        "hdlc_rpc_server.cc",
+    ],
     deps = [
         ":config",
         ":io",
+        ":rpc_server.facade",
         "//pw_assert",
         "//pw_hdlc",
         "//pw_hdlc:default_addresses",
@@ -729,15 +741,4 @@ filegroup(
     srcs = [
         "public/pw_system/system.h",
     ],
-)
-
-sphinx_docs_library(
-    name = "docs",
-    srcs = [
-        "Kconfig",
-        "cli.rst",
-        "docs.rst",
-    ],
-    prefix = "pw_system/",
-    target_compatible_with = incompatible_with_mcu(),
 )
