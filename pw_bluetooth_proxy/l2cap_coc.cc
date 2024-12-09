@@ -103,7 +103,8 @@ pw::Result<L2capCoc> L2capCoc::Create(
     CocConfig tx_config,
     pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
     pw::Function<void(Event event)>&& event_fn) {
-  if (!L2capWriteChannel::AreValidParameters(connection_handle,
+  if (!L2capReadChannel::AreValidParameters(connection_handle, rx_config.cid) ||
+      !L2capWriteChannel::AreValidParameters(connection_handle,
                                              tx_config.cid)) {
     return pw::Status::InvalidArgument();
   }
@@ -125,7 +126,7 @@ pw::Result<L2capCoc> L2capCoc::Create(
                   /*event_fn=*/std::move(event_fn));
 }
 
-bool L2capCoc::OnPduReceived(pw::span<uint8_t> kframe) {
+bool L2capCoc::HandlePduFromController(pw::span<uint8_t> kframe) {
   // TODO: https://pwbug.dev/360934030 - Track rx_credits.
   if (state_ == CocState::kStopped) {
     StopChannelAndReportError(Event::kRxWhileStopped);
@@ -213,10 +214,15 @@ bool L2capCoc::OnPduReceived(pw::span<uint8_t> kframe) {
     return true;
   }
 
-  CallReceiveFn(pw::span(
+  SendPayloadFromControllerToClient(pw::span(
       const_cast<uint8_t*>(kframe_view->payload().BackingStorage().data()),
       kframe_view->payload_size().Read()));
   return true;
+}
+
+bool L2capCoc::HandlePduFromHost(pw::span<uint8_t>) PW_LOCKS_EXCLUDED(mutex_) {
+  // Always forward data from host to controller
+  return false;
 }
 
 L2capCoc::L2capCoc(L2capChannelManager& l2cap_channel_manager,
@@ -227,7 +233,7 @@ L2capCoc::L2capCoc(L2capChannelManager& l2cap_channel_manager,
                    pw::Function<void(Event event)>&& event_fn)
     : L2capWriteChannel(l2cap_channel_manager,
                         connection_handle,
-                        AclTransport::kLe,
+                        AclTransportType::kLe,
                         tx_config.cid),
       L2capReadChannel(l2cap_channel_manager,
                        std::move(receive_fn),
@@ -243,10 +249,7 @@ L2capCoc::L2capCoc(L2capChannelManager& l2cap_channel_manager,
       event_fn_(std::move(event_fn)) {}
 
 void L2capCoc::OnFragmentedPduReceived() {
-  PW_LOG_ERROR(
-      "(CID 0x%X) Fragmented L2CAP frame received (which is not yet "
-      "supported). Stopping channel.",
-      local_cid());
+  L2capReadChannel::OnFragmentedPduReceived();
   StopChannelAndReportError(Event::kRxFragmented);
 }
 
