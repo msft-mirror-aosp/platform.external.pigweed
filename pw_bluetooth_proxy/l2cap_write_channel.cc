@@ -30,7 +30,7 @@ namespace pw::bluetooth::proxy {
 Status L2capWriteChannel::QueuePacket(H4PacketWithH4&& packet) {
   Status status;
   {
-    std::lock_guard lock(send_queue_mutex_);
+    std::lock_guard lock(global_send_queue_mutex_);
     if (send_queue_.full()) {
       status = Status::Unavailable();
     } else {
@@ -43,7 +43,7 @@ Status L2capWriteChannel::QueuePacket(H4PacketWithH4&& packet) {
 }
 
 std::optional<H4PacketWithH4> L2capWriteChannel::DequeuePacket() {
-  std::lock_guard lock(send_queue_mutex_);
+  std::lock_guard lock(global_send_queue_mutex_);
   if (send_queue_.empty()) {
     return std::nullopt;
   }
@@ -53,7 +53,7 @@ std::optional<H4PacketWithH4> L2capWriteChannel::DequeuePacket() {
 }
 
 void L2capWriteChannel::ClearQueue() {
-  std::lock_guard lock(send_queue_mutex_);
+  std::lock_guard lock(global_send_queue_mutex_);
   send_queue_.clear();
 }
 
@@ -66,6 +66,25 @@ L2capWriteChannel::L2capWriteChannel(L2capWriteChannel&& other)
   l2cap_channel_manager_.RegisterWriteChannel(*this);
 }
 
+L2capWriteChannel& L2capWriteChannel::operator=(L2capWriteChannel&& other) {
+  if (this != &other) {
+    PW_CHECK(!l2cap_channel_manager_.ReleaseWriteChannel(*this),
+             "Move assignment operator called on channel that is still active "
+             "(still registered with L2capChannelManager).");
+    connection_handle_ = other.connection_handle();
+    remote_cid_ = other.remote_cid();
+    // All L2capWriteChannels share a static mutex, so only one lock needs to be
+    // acquired here.
+    // TODO: https://pwbug.dev/369849508 - Once mutex is no longer static,
+    // elide this operator or acquire a lock on both channels' mutexes.
+    std::lock_guard lock(global_send_queue_mutex_);
+    send_queue_ = std::move(other.send_queue_);
+    l2cap_channel_manager_.ReleaseWriteChannel(other);
+    l2cap_channel_manager_.RegisterWriteChannel(*this);
+  }
+  return *this;
+}
+
 L2capWriteChannel::~L2capWriteChannel() {
   l2cap_channel_manager_.ReleaseWriteChannel(*this);
   ClearQueue();
@@ -73,7 +92,7 @@ L2capWriteChannel::~L2capWriteChannel() {
 
 L2capWriteChannel::L2capWriteChannel(L2capChannelManager& l2cap_channel_manager,
                                      uint16_t connection_handle,
-                                     AclTransport transport,
+                                     AclTransportType transport,
                                      uint16_t remote_cid)
     : transport_(transport),
       connection_handle_(connection_handle),
