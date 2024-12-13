@@ -52,7 +52,7 @@ class L2capChannelManager {
   //
   // Returns PW_STATUS_UNAVAILABLE if all buffers are currently occupied.
   // Returns PW_STATUS_INVALID_ARGUMENT if `size` is too large for a buffer.
-  pw::Result<H4PacketWithH4> GetTxH4Packet(uint16_t size);
+  pw::Result<H4PacketWithH4> GetAclH4Packet(uint16_t size);
 
   // Send L2CAP packets queued in registered channels.
   void DrainChannelQueues() PW_LOCKS_EXCLUDED(channels_mutex_);
@@ -75,6 +75,9 @@ class L2capChannelManager {
 
   // Called when a l2cap channel connection successfully made.
   void HandleConnectionComplete(const L2capChannelConnectionInfo& info);
+
+  // Called when an ACL connection is disconnected.
+  void HandleDisconnectionComplete(uint16_t connection_handle);
 
   // Called when a l2cap channel connection is disconnected.
   void HandleDisconnectionComplete(

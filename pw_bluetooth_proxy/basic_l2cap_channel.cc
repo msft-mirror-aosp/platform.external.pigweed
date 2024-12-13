@@ -17,6 +17,7 @@
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_data.emb.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
 #include "pw_log/log.h"
 #include "pw_status/try.h"
 
@@ -29,7 +30,8 @@ pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
     uint16_t local_cid,
     uint16_t remote_cid,
     Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-    Function<void()>&& queue_space_available_fn) {
+    Function<void()>&& queue_space_available_fn,
+    Function<void(L2capChannelEvent event)>&& event_fn) {
   if (!AreValidParameters(/*connection_handle=*/connection_handle,
                           /*local_cid=*/local_cid,
                           /*remote_cid=*/remote_cid)) {
@@ -43,10 +45,15 @@ pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
       /*local_cid=*/local_cid,
       /*remote_cid=*/remote_cid,
       /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
-      /*queue_space_available_fn=*/std::move(queue_space_available_fn));
+      /*queue_space_available_fn=*/std::move(queue_space_available_fn),
+      /*event_fn=*/std::move(event_fn));
 }
 
 pw::Status BasicL2capChannel::Write(pw::span<const uint8_t> payload) {
+  if (state() != State::kRunning) {
+    return Status::FailedPrecondition();
+  }
+
   // TODO: https://pwbug.dev/360929142 - Reject payloads exceeding MTU.
 
   pw::Result<H4PacketWithH4> h4_result = PopulateTxL2capPacket(payload.size());
@@ -79,15 +86,17 @@ BasicL2capChannel::BasicL2capChannel(
     uint16_t local_cid,
     uint16_t remote_cid,
     Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-    Function<void()>&& queue_space_available_fn)
-    : L2capChannel(/*l2cap_channel_manager=*/l2cap_channel_manager,
-                   /*connection_handle=*/connection_handle,
-                   /*transport=*/transport,
-                   /*local_cid=*/local_cid,
-                   /*remote_cid=*/remote_cid,
-                   /*payload_from_controller_fn=*/
-                   std::move(payload_from_controller_fn),
-                   std::move(queue_space_available_fn)) {}
+    Function<void()>&& queue_space_available_fn,
+    Function<void(L2capChannelEvent event)>&& event_fn)
+    : L2capChannel(
+          /*l2cap_channel_manager=*/l2cap_channel_manager,
+          /*connection_handle=*/connection_handle,
+          /*transport=*/transport,
+          /*local_cid=*/local_cid,
+          /*remote_cid=*/remote_cid,
+          /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
+          /*queue_space_available_fn=*/std::move(queue_space_available_fn),
+          /*event_fn=*/std::move(event_fn)) {}
 
 bool BasicL2capChannel::HandlePduFromController(pw::span<uint8_t> bframe) {
   Result<emboss::BFrameWriter> bframe_view =

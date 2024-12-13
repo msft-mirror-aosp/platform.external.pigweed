@@ -16,6 +16,7 @@
 
 #include "pw_bluetooth_proxy/h4_packet.h"
 #include "pw_bluetooth_proxy/internal/logical_transport.h"
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
 #include "pw_containers/inline_queue.h"
 #include "pw_containers/intrusive_forward_list.h"
 #include "pw_result/result.h"
@@ -33,6 +34,17 @@ class L2capChannelManager;
 // flags, handles, etc. should be provided at construction to derived channels.
 class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
  public:
+  enum class State {
+    kRunning,
+    // Channel is stopped, but the L2CAP connection has not been closed.
+    kStopped,
+    // L2CAP connection has been closed, either as the result of an
+    // HCI_Disconnection_Complete event or L2CAP_DISCONNECTION_RSP packet.
+    kClosed,
+    // Channel has been moved from and is no longer a valid object.
+    kUndefined,
+  };
+
   L2capChannel(const L2capChannel& other) = delete;
   L2capChannel& operator=(const L2capChannel& other) = delete;
   // Channels are moved to the client after construction.
@@ -42,6 +54,24 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
 
   virtual ~L2capChannel();
 
+  // Enter `State::kStopped`. This means
+  //   - Queue is cleared so pending sends will not complete.
+  //   - Calls to `QueuePacket()` will return PW_STATUS_FAILED_PRECONDITION, so
+  //     derived channels should not accept client writes.
+  //   - Rx packets will be dropped & trigger `kRxWhileStopped` events.
+  //   - Container is responsible for closing L2CAP connection & destructing
+  //     the channel object to free its resources.
+  void Stop();
+
+  // Indicate that the L2CAP connection has been closed. This has all the same
+  // effects as stopping the channel & triggers a `kChannelClosedByOther` event.
+  //
+  // Returns false and has no effect if channel is already `State::kClosed`.
+  void Close();
+
+  // Indicate channel has been moved from and is no longer a valid object.
+  void Undefine();
+
   //-------
   //  Tx:
   //-------
@@ -49,6 +79,7 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   // Queue L2CAP `packet` for sending and `ReportPacketsMayBeReadyToSend()`.
   //
   // Returns PW_STATUS_UNAVAILABLE if queue is full (transient error).
+  // Returns PW_STATUS_FAILED_PRECONDITION if channel is not `State::kRunning`.
   [[nodiscard]] virtual Status QueuePacket(H4PacketWithH4&& packet);
 
   // Dequeue a packet if one is available to send.
@@ -82,13 +113,21 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   // controller.
   [[nodiscard]] virtual bool HandlePduFromHost(pw::span<uint8_t> l2cap_pdu) = 0;
 
-  // Handle fragmented Rx L2CAP PDU.
+  // Called when an L2CAP PDU is received on this channel. If channel is
+  // `kRunning`, returns `HandlePduFromController(l2cap_pdu)`. If channel is not
+  // `State::kRunning`, sends `kRxWhileStopped` event to client and drops PDU.
+  bool OnPduReceivedFromController(pw::span<uint8_t> l2cap_pdu);
+
+  // Handle fragmented Rx L2CAP PDU. Default implementation stops channel and
+  // sends `kRxFragmented` event to client.
   // TODO: https://pwbug.dev/365179076 - Support recombination & delete this.
   virtual void OnFragmentedPduReceived();
 
   //--------------
   //  Accessors:
   //--------------
+
+  State state() const { return state_; }
 
   uint16_t local_cid() const { return local_cid_; }
 
@@ -106,13 +145,27 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
       uint16_t local_cid,
       uint16_t remote_cid,
       Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-      Function<void()>&& queue_space_available_fn);
+      Function<void()>&& queue_space_available_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn);
 
   // Returns whether or not ACL connection handle & L2CAP channel identifiers
   // are valid parameters for a packet.
   [[nodiscard]] static bool AreValidParameters(uint16_t connection_handle,
                                                uint16_t local_cid,
                                                uint16_t remote_cid);
+
+  // Send `event` to client if an event callback was provided.
+  void SendEvent(L2capChannelEvent event) {
+    if (event_fn_) {
+      event_fn_(event);
+    }
+  }
+
+  // Helper since these operations should typically be coupled.
+  void StopAndSendEvent(L2capChannelEvent event) {
+    Stop();
+    SendEvent(event);
+  }
 
   //-------
   //  Tx:
@@ -154,10 +207,11 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   static constexpr size_t kQueueCapacity = 5;
 
   // Helper for move constructor and move assignment.
-  void MoveLockedFields(L2capChannel& other)
-      PW_LOCKS_EXCLUDED(send_queue_mutex_);
+  void MoveFields(L2capChannel& other) PW_LOCKS_EXCLUDED(send_queue_mutex_);
 
   L2capChannelManager& l2cap_channel_manager_;
+
+  State state_;
 
   // ACL connection handle.
   uint16_t connection_handle_;
@@ -170,13 +224,18 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   // L2CAP channel ID of remote endpoint.
   uint16_t remote_cid_;
 
+  // Notify clients of asynchronous events encountered such as errors.
+  Function<void(L2capChannelEvent event)> event_fn_;
+
+  // Reserve an L2CAP packet over ACL over H4 packet.
+  pw::Result<H4PacketWithH4> PopulateL2capPacket(uint16_t data_length);
+
   //-------
   //  Tx:
   //-------
 
   // `L2capChannelManager` and channel may concurrently call functions that
   // access queue.
-  //
   sync::Mutex send_queue_mutex_;
 
   // Stores Tx L2CAP packets.

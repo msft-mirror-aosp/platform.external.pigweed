@@ -288,7 +288,7 @@ Status Connection::SharedState::DrainResponseQueues() {
 
 Status Connection::SharedState::SendBytes(ConstByteSpan message) {
   std::optional<multibuf::MultiBuf> buffer =
-      multibuf_allocator_.Allocate(message.size());
+      multibuf_allocator_.AllocateContiguous(message.size());
   if (!buffer.has_value()) {
     return Status::ResourceExhausted();
   }
@@ -361,8 +361,9 @@ Status Connection::SharedState::SendHeaders(StreamId stream_id,
   }
 
   ConstByteSpan frame_span = AsBytes(frame);
-  std::optional<multibuf::MultiBuf> buffer = multibuf_allocator_.Allocate(
-      frame_span.size() + payload1.size() + payload2.size());
+  std::optional<multibuf::MultiBuf> buffer =
+      multibuf_allocator_.AllocateContiguous(frame_span.size() +
+                                             payload1.size() + payload2.size());
   if (!buffer.has_value()) {
     return Status::ResourceExhausted();
   }
@@ -474,9 +475,9 @@ Status Connection::Writer::SendResponseMessage(StreamId stream_id,
   // Create contiguous buffer big enough to hold the response message plus
   // headers.
   std::optional<multibuf::MultiBuf> buffer =
-      state->multibuf_allocator().Allocate(message.size() +
-                                           kLengthPrefixedMessageHdrSize +
-                                           sizeof(WireFrameHeader));
+      state->multibuf_allocator().AllocateContiguous(
+          message.size() + kLengthPrefixedMessageHdrSize +
+          sizeof(WireFrameHeader));
 
   if (!buffer.has_value()) {
     return Status::ResourceExhausted();
@@ -694,6 +695,9 @@ Status Connection::Reader::ProcessDataFrame(const FrameHeader& frame) {
     if (!stream) {
       PW_LOG_DEBUG("Ignoring DATA on closed stream id=%" PRIu32,
                    frame.stream_id);
+      // Unlock since ProcessIgnoredFrame will try and read all the ignored
+      // data, and also may try and take the lock in the error case.
+      connection_.UnlockState(std::move(state));
       PW_TRY(ProcessIgnoredFrame(frame));
       // Stream has been fully closed: silently ignore.
       return OkStatus();
@@ -702,11 +706,18 @@ Status Connection::Reader::ProcessDataFrame(const FrameHeader& frame) {
     if (stream->half_closed) {
       PW_LOG_ERROR("Recv DATA on half-closed stream id=%" PRIu32,
                    frame.stream_id);
+      // Unlock since ProcessIgnoredFrame will try and read all the ignored
+      // data, and also may try and take the lock in the error case.
+      connection_.UnlockState(std::move(state));
       PW_TRY(ProcessIgnoredFrame(frame));
-      // RFC 9113 §6.1: "If a DATA frame is received whose stream is not in the
-      // "open" or "half-closed (local)" state, the recipient MUST respond with
-      // a stream error of type STREAM_CLOSED."
-      PW_TRY(SendRstStreamAndClose(state, stream, Http2Error::STREAM_CLOSED));
+      state = connection_.LockState();
+      stream = state->LookupStream(frame.stream_id);
+      if (stream) {
+        // RFC 9113 §6.1: "If a DATA frame is received whose stream is not in
+        // the "open" or "half-closed (local)" state, the recipient MUST respond
+        // with a stream error of type STREAM_CLOSED."
+        PW_TRY(SendRstStreamAndClose(state, stream, Http2Error::STREAM_CLOSED));
+      }
       return OkStatus();
     }
   }
@@ -884,10 +895,19 @@ Status Connection::Reader::ProcessHeadersFrame(const FrameHeader& frame) {
     if (Stream* stream = state->LookupStream(frame.stream_id);
         stream != nullptr) {
       PW_LOG_DEBUG("Client sent HEADERS after the first stream message");
+      // Unlock since ProcessIgnoredFrame will try and read all the ignored
+      // data, and also may try and take the lock in the error case.
+      connection_.UnlockState(std::move(state));
       PW_TRY(ProcessIgnoredFrame(frame));
-      // grpc requests cannot contain trailers.
-      // See: https://github.com/grpc/grpc/blob/v1.60.x/doc/PROTOCOL-HTTP2.md.
-      PW_TRY(SendRstStreamAndClose(state, stream, Http2Error::PROTOCOL_ERROR));
+      state = connection_.LockState();
+      stream = state->LookupStream(frame.stream_id);
+      if (stream) {
+        // grpc requests cannot contain trailers.
+        // See:
+        // https://github.com/grpc/grpc/blob/v1.60.x/doc/PROTOCOL-HTTP2.md.
+        PW_TRY(
+            SendRstStreamAndClose(state, stream, Http2Error::PROTOCOL_ERROR));
+      }
       return OkStatus();
     }
   }
@@ -1259,7 +1279,13 @@ Status Connection::Reader::ProcessWindowUpdateFrame(const FrameHeader& frame) {
 
 // Advance past the payload.
 Status Connection::Reader::ProcessIgnoredFrame(const FrameHeader& frame) {
-  PW_TRY(ReadFramePayload(frame));
+  size_t to_read = frame.payload_length;
+  while (to_read > 0) {
+    auto chunk = span{payload_scratch_}.subspan(
+        0, std::min(payload_scratch_.size(), to_read));
+    PW_TRY(ReadExactly(connection_.socket_.as_reader(), chunk));
+    to_read -= chunk.size();
+  }
   return OkStatus();
 }
 

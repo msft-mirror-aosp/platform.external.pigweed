@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
 #include "pw_bluetooth_proxy/l2cap_coc.h"
 
 namespace pw::bluetooth::proxy {
@@ -23,13 +24,15 @@ class L2capCocInternal final : public L2capCoc {
   // Should only be created by `ProxyHost` and tests.
   static pw::Result<L2capCoc> Create(
       L2capChannelManager& l2cap_channel_manager,
+      L2capSignalingChannel* signaling_channel,
       uint16_t connection_handle,
       CocConfig rx_config,
       CocConfig tx_config,
       Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      Function<void(Event event)>&& event_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn,
       Function<void()>&& queue_space_available_fn) {
     return L2capCoc::Create(l2cap_channel_manager,
+                            signaling_channel,
                             connection_handle,
                             rx_config,
                             tx_config,

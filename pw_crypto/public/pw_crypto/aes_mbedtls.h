@@ -1,4 +1,4 @@
-// Copyright 2021 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -12,12 +12,17 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_thread/thread.h"
+#pragma once
 
-namespace pw::thread {
+#include "pw_crypto/aes_backend_defs.h"
 
-// Delegating constructor which defers to the facade's constructor.
-Thread::Thread(const Options& options, ThreadCore& thread_core)
-    : Thread(options, [&thread_core] { thread_core.Start(); }) {}
+namespace pw::crypto::aes::backend {
+constexpr auto kFullSupport =
+    SupportedKeySize::k128 | SupportedKeySize::k192 | SupportedKeySize::k256;
 
-}  // namespace pw::thread
+/// The mbedtls backend supports 128-bit, 192-bit, and 256-bit keys for
+/// unsafe EncryptBlock.
+template <>
+inline constexpr auto supported<AesOperation::kUnsafeEncryptBlock> =
+    kFullSupport;
+}  // namespace pw::crypto::aes::backend

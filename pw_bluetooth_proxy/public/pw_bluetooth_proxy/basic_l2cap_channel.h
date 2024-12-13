@@ -15,6 +15,7 @@
 #pragma once
 
 #include "pw_bluetooth_proxy/internal/l2cap_channel.h"
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
 
 namespace pw::bluetooth::proxy {
 
@@ -29,7 +30,8 @@ class BasicL2capChannel : public L2capChannel {
       uint16_t local_cid,
       uint16_t remote_cid,
       Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-      Function<void()>&& queue_space_available_fn);
+      Function<void()>&& queue_space_available_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn);
 
   BasicL2capChannel(const BasicL2capChannel& other) = delete;
   BasicL2capChannel& operator=(const BasicL2capChannel& other) = delete;
@@ -51,6 +53,7 @@ class BasicL2capChannel : public L2capChannel {
   ///                       `queue_space_available_fn` has been provided it will
   ///                       be called when there is queue space available again.
   ///  INVALID_ARGUMENT:    If payload is too large.
+  ///  FAILED_PRECONDITION  If channel is not `State::kRunning`.
   /// @endrst
   pw::Status Write(pw::span<const uint8_t> payload);
 
@@ -62,7 +65,8 @@ class BasicL2capChannel : public L2capChannel {
       uint16_t local_cid,
       uint16_t remote_cid,
       Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-      Function<void()>&& queue_space_available_fn);
+      Function<void()>&& queue_space_available_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn);
 
  protected:
   bool HandlePduFromController(pw::span<uint8_t> bframe) override;

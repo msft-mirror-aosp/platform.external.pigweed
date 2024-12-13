@@ -18,6 +18,7 @@
 #include "pw_bluetooth_proxy/internal/h4_storage.h"
 #include "pw_bluetooth_proxy/internal/hci_transport.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel_manager.h"
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
 #include "pw_bluetooth_proxy/l2cap_coc.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/rfcomm_channel.h"
@@ -125,12 +126,13 @@ class ProxyHost {
   ///
   /// @param[in] receive_fn         Read callback to be invoked on Rx SDUs.
   ///
-  /// @param[in] event_fn           Handle asynchronous events such as errors
-  ///                               encountered by the channel.
-  ///
   /// @param[in] queue_space_available_fn
   ///                               Callback to be invoked after resources
   ///                               become available after an UNAVAILABLE Write.
+  ///
+  /// @param[in] event_fn          Handle asynchronous events such as errors
+  ///                              encountered by the channel. See
+  ///                              `l2cap_channel_event.h`.
   ///
   /// @returns @rst
   ///
@@ -143,28 +145,14 @@ class ProxyHost {
       uint16_t connection_handle,
       L2capCoc::CocConfig rx_config,
       L2capCoc::CocConfig tx_config,
-      pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      pw::Function<void(L2capCoc::Event event)>&& event_fn,
+      Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn,
+      // TODO: https://pwbug.dev/383150263 - Delete & use event_fn instead.
       Function<void()>&& queue_space_available_fn = nullptr);
 
-  /// Send an L2CAP_FLOW_CONTROL_CREDIT_IND signaling packet to dispense the
-  /// remote peer additional L2CAP connection-oriented channel credits for this
-  /// channel.
-  ///
-  /// @param[in] connection_handle     ACL connection over which this L2CAP
-  ///                                  connection-oriented channel exists.
-  ///
-  /// @param[in] local_cid             L2CAP channel ID of local endpoint.
-  ///
-  /// @param[in] additional_rx_credits Number of credits to dispense.
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///  INVALID_ARGUMENT: CID invalid (check logs).
-  ///  NOT_FOUND:        Requested ACL connection does not exist.
-  ///  UNAVAILABLE:      Send could not be queued right now (transient error).
-  /// @endrst
+  /// TODO: https://pwbug.dev/380076024 - Delete after downstream client uses
+  /// this method on `L2capCoc`.
+  /// @deprecated Use L2capCoc::SendAdditionalRxCredits instead.
   pw::Status SendAdditionalRxCredits(uint16_t connection_handle,
                                      uint16_t local_cid,
                                      uint16_t additional_rx_credits);
@@ -190,6 +178,10 @@ class ProxyHost {
   ///                                       resources become available after an
   ///                                       UNAVAILABLE Write.
   ///
+  /// @param[in] event_fn                   Handle asynchronous events such as
+  ///                                       errors encountered by the channel.
+  ///                                       See `l2cap_channel_event.h`.
+  ///
   /// @returns @rst
   ///
   /// .. pw-status-codes::
@@ -203,7 +195,11 @@ class ProxyHost {
       uint16_t remote_cid,
       AclTransportType transport,
       Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-      Function<void()>&& queue_space_available_fn = nullptr);
+      // TODO: https://pwbug.dev/383150263 - Delete & use event_fn instead.
+      Function<void()>&& queue_space_available_fn = nullptr,
+      // TODO: https://pwbug.dev/383150263 - Delete nullptr after downstream
+      // clients are providing event_fn.
+      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
 
   /// Send a GATT Notify to the indicated connection.
   ///
@@ -246,6 +242,10 @@ class ProxyHost {
   ///                              Callback to be invoked after resources become
   ///                              available after an UNAVAILABLE Write.
   ///
+  /// @param[in] event_fn          Handle asynchronous events such as errors
+  ///                              encountered by the channel. See
+  ///                              `l2cap_channel_event.h`.
+  ///
   /// @returns @rst
   ///
   /// .. pw-status-codes::
@@ -258,7 +258,11 @@ class ProxyHost {
       RfcommChannel::Config tx_config,
       uint8_t channel_number,
       Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      Function<void()>&& queue_space_available_fn);
+      // TODO: https://pwbug.dev/383150263 - Delete & use event_fn instead.
+      Function<void()>&& queue_space_available_fn,
+      // TODO: https://pwbug.dev/383150263 - Delete nullptr after downstream
+      // clients are providing event_fn.
+      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
 
   /// Indicates whether the proxy has the capability of sending LE ACL packets.
   /// Note that this indicates intention, so it can be true even if the proxy
@@ -293,13 +297,16 @@ class ProxyHost {
   }
 
   /// Returns the max number of simultaneous LE ACL connections supported.
-  static constexpr size_t GetMaxNumLeAclConnections() {
-    return AclDataChannel::GetMaxNumLeAclConnections();
+  static constexpr size_t GetMaxNumAclConnections() {
+    return AclDataChannel::GetMaxNumAclConnections();
   }
 
  private:
   // Handle HCI Event packet from the controller.
   void HandleEventFromController(H4PacketWithHci&& h4_packet);
+
+  // Handle HCI Event packet from the host.
+  void HandleEventFromHost(H4PacketWithH4&& h4_packet);
 
   // Handle HCI ACL data packet from the controller.
   void HandleAclFromController(H4PacketWithHci&& h4_packet);

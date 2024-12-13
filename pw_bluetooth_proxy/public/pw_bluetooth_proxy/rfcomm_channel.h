@@ -88,7 +88,8 @@ class RfcommChannel final : public L2capChannel {
       Config tx_config,
       uint8_t channel_number,
       Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      Function<void()>&& queue_space_available_fn);
+      Function<void()>&& queue_space_available_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn);
 
   /// Send an RFCOMM payload to the remote peer.
   ///
@@ -104,7 +105,7 @@ class RfcommChannel final : public L2capChannel {
   ///                       `queue_space_available_fn` has been provided it will
   ///                       be called when there is queue space available again.
   ///  INVALID_ARGUMENT:    If payload is too large.
-  ///  FAILED_PRECONDITION: If channel is `kStopped`.
+  ///  FAILED_PRECONDITION: If channel is not `State::kRunning`.
   /// @endrst
   Status Write(pw::span<const uint8_t> payload);
 
@@ -120,7 +121,8 @@ class RfcommChannel final : public L2capChannel {
                 Config tx_config,
                 uint8_t channel_number,
                 Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-                Function<void()>&& queue_space_available_fn);
+                Function<void()>&& queue_space_available_fn,
+                Function<void(L2capChannelEvent event)>&& event_fn);
 
   // Parses out RFCOMM payload from `l2cap_pdu` and calls
   // `SendPayloadFromControllerToClient`.
@@ -133,18 +135,12 @@ class RfcommChannel final : public L2capChannel {
   std::optional<H4PacketWithH4> DequeuePacket() override
       PW_LOCKS_EXCLUDED(mutex_);
 
-  enum class State {
-    kStarted,
-    kStopped,
-  };
-
   const Config rx_config_;
   const Config tx_config_;
   const uint8_t channel_number_;
   uint8_t rx_credits_ PW_GUARDED_BY(mutex_);
   uint8_t tx_credits_ PW_GUARDED_BY(mutex_);
   sync::Mutex mutex_;
-  State state_;
 };
 
 }  // namespace pw::bluetooth::proxy

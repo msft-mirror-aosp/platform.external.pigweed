@@ -25,6 +25,9 @@
 #include "pw_bluetooth/hci_h4.emb.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
+#include "pw_bluetooth_proxy/internal/logical_transport.h"
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
+#include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
 #include "pw_containers/flat_map.h"
 #include "pw_function/function.h"
@@ -150,9 +153,11 @@ Status SendLeConnectionCompleteEvent(ProxyHost& proxy,
 
 // Send a Disconnection_Complete event to `proxy` indicating the provided
 // `handle` has disconnected.
-Status SendDisconnectionCompleteEvent(ProxyHost& proxy,
-                                      uint16_t handle,
-                                      bool successful = true);
+Status SendDisconnectionCompleteEvent(
+    ProxyHost& proxy,
+    uint16_t handle,
+    Direction direction = Direction::kFromController,
+    bool successful = true);
 
 Status SendL2capConnectionReq(ProxyHost& proxy,
                               uint16_t handle,
@@ -166,10 +171,13 @@ Status SendL2capConnectionRsp(ProxyHost& proxy,
                               emboss::L2capConnectionRspResultCode result_code);
 
 Status SendL2capDisconnectRsp(ProxyHost& proxy,
+                              AclTransportType transport,
                               uint16_t handle,
                               uint16_t source_cid,
-                              uint16_t destination_cid);
+                              uint16_t destination_cid,
+                              Direction direction = Direction::kFromHost);
 
+// TODO: https://pwbug.dev/382783733 - Migrate to L2capChannelEvent callback.
 struct CocParameters {
   uint16_t handle = 123;
   uint16_t local_cid = 234;
@@ -181,12 +189,26 @@ struct CocParameters {
   uint16_t tx_mps = 100;
   uint16_t tx_credits = 1;
   pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr;
-  pw::Function<void(L2capCoc::Event event)>&& event_fn = nullptr;
+  pw::Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
   pw::Function<void()>&& queue_space_available_fn = nullptr;
 };
 
 // Open and return an L2CAP connection-oriented channel managed by `proxy`.
 L2capCoc BuildCoc(ProxyHost& proxy, CocParameters params);
+
+struct BasicL2capParameters {
+  uint16_t handle = 123;
+  uint16_t local_cid = 234;
+  uint16_t remote_cid = 456;
+  AclTransportType transport = AclTransportType::kLe;
+  Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn =
+      nullptr;
+  Function<void()>&& queue_space_available_fn = nullptr;
+  Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
+};
+
+BasicL2capChannel BuildBasicL2capChannel(ProxyHost& proxy,
+                                         BasicL2capParameters params);
 
 struct RfcommParameters {
   uint16_t handle = 123;
@@ -200,7 +222,8 @@ struct RfcommParameters {
 RfcommChannel BuildRfcomm(
     ProxyHost& proxy,
     RfcommParameters params = {},
-    pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr,
-    pw::Function<void()>&& queue_space_available_fn = nullptr);
+    Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr,
+    Function<void()>&& queue_space_available_fn = nullptr,
+    Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
 
 }  // namespace pw::bluetooth::proxy
