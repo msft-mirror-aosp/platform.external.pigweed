@@ -44,13 +44,21 @@ pw_source_set("pw_bluetooth_proxy") {
   public_configs = [ ":public_include_path" ]
   public = [
     "public/pw_bluetooth_proxy/acl_data_channel.h",
-    "public/pw_bluetooth_proxy/common.h",
+    "public/pw_bluetooth_proxy/emboss_util.h",
+    "public/pw_bluetooth_proxy/h4_packet.h",
+    "public/pw_bluetooth_proxy/hci_transport.h",
     "public/pw_bluetooth_proxy/proxy_host.h",
   ]
   public_deps = [
+    "//pw_bluetooth:emboss_att",
     "//pw_bluetooth:emboss_hci_common",
+    "//pw_bluetooth:emboss_hci_data",
     "//pw_bluetooth:emboss_hci_events",
     "//pw_bluetooth:emboss_hci_h4",
+    "//pw_bluetooth:emboss_l2cap_frames",
+    "//pw_sync:lock_annotations",
+    "//pw_sync:mutex",
+    dir_pw_containers,
     dir_pw_function,
     dir_pw_log,
     dir_pw_span,
@@ -59,7 +67,6 @@ pw_source_set("pw_bluetooth_proxy") {
   deps = [ dir_pw_log ]
   sources = [
     "acl_data_channel.cc",
-    "emboss_util.h",
     "proxy_host.cc",
   ]
 }
@@ -68,8 +75,8 @@ pw_test("emboss_util_test") {
   enable_if =
       dir_pw_third_party_emboss != "" && pw_chrono_SYSTEM_CLOCK_BACKEND != ""
   sources = [
-    "emboss_util.h",
     "emboss_util_test.cc",
+    "public/pw_bluetooth_proxy/emboss_util.h",
   ]
   include_dirs = [ "." ]
   deps = [
@@ -83,13 +90,14 @@ pw_test("pw_bluetooth_proxy_test") {
   enable_if =
       dir_pw_third_party_emboss != "" && pw_chrono_SYSTEM_CLOCK_BACKEND != ""
   sources = [
-    "emboss_util.h",
+    "h4_packet_test.cc",
     "proxy_host_test.cc",
   ]
   include_dirs = [ "." ]
   deps = [
     ":pw_bluetooth_proxy",
     "$dir_pw_third_party/fuchsia:stdcompat",
+    "//pw_bluetooth:emboss_att",
     "//pw_bluetooth:emboss_hci_commands",
     "//pw_bluetooth:emboss_hci_common",
     "//pw_bluetooth:emboss_hci_events",

@@ -27,6 +27,7 @@
 #include "pw_thread/thread_core.h"
 #include "pw_transfer/handler.h"
 #include "pw_transfer/internal/client_context.h"
+#include "pw_transfer/internal/config.h"
 #include "pw_transfer/internal/context.h"
 #include "pw_transfer/internal/event.h"
 #include "pw_transfer/internal/server_context.h"
@@ -222,15 +223,18 @@ class TransferThread : public thread::ThreadCore {
     SetStream(TransferStream::kServerWrite);
   }
 
-  void AddTransferHandler(Handler& handler) {
-    TransferHandlerEvent(EventType::kAddTransferHandler, handler);
+  bool AddTransferHandler(Handler& handler) {
+    return TransferHandlerEvent(EventType::kAddTransferHandler, handler);
   }
 
-  void RemoveTransferHandler(Handler& handler) {
-    TransferHandlerEvent(EventType::kRemoveTransferHandler, handler);
+  bool RemoveTransferHandler(Handler& handler) {
+    if (!TransferHandlerEvent(EventType::kRemoveTransferHandler, handler)) {
+      return false;
+    }
     // Ensure this function blocks until the transfer handler is fully cleaned
     // up.
     WaitUntilEventIsProcessed();
+    return true;
   }
 
   size_t max_chunk_size() const { return chunk_buffer_.size(); }
@@ -346,6 +350,14 @@ class TransferThread : public thread::ThreadCore {
     PW_ASSERT(false);
   }
 
+  bool TryWaitForEventToProcess() {
+    if constexpr (cfg::kWaitForEventProcessingIndefinitely) {
+      next_event_ownership_.acquire();
+      return true;
+    }
+    return next_event_ownership_.try_acquire_for(cfg::kEventProcessingTimeout);
+  }
+
   // Returns the earliest timeout among all active transfers, up to kMaxTimeout.
   chrono::SystemClock::time_point GetNextTransferTimeout() const;
 
@@ -382,7 +394,7 @@ class TransferThread : public thread::ThreadCore {
   void SetStream(TransferStream stream);
   void HandleSetStreamEvent(TransferStream stream);
 
-  void TransferHandlerEvent(EventType type, Handler& handler);
+  bool TransferHandlerEvent(EventType type, Handler& handler);
 
   void HandleEvent(const Event& event);
   Context* FindContextForEvent(const Event& event) const;

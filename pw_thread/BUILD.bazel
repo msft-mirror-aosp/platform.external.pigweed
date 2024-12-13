@@ -13,6 +13,7 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("//pw_build:compatibility.bzl", "host_backend_alias")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
@@ -35,18 +36,12 @@ pw_facade(
 
 label_flag(
     name = "id_backend",
-    build_setting_default = ":id_backend_multiplexer",
+    build_setting_default = ":id_unspecified_backend",
 )
 
-cc_library(
-    name = "id_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
-    deps = select({
-        "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:id"],
-        "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:id"],
-        "//pw_build/constraints/rtos:threadx": ["//pw_thread_threadx:id"],
-        "//conditions:default": ["//pw_thread_stl:id"],
-    }),
+host_backend_alias(
+    name = "id_unspecified_backend",
+    backend = "//pw_thread_stl:id",
 )
 
 cc_library(
@@ -84,18 +79,12 @@ pw_facade(
 
 label_flag(
     name = "iteration_backend",
-    build_setting_default = ":iteration_backend_multiplexer",
+    build_setting_default = ":iteration_unspecified_backend",
 )
 
-cc_library(
-    name = "iteration_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
-    deps = select({
-        "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:thread_iteration"],
-        "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:thread_iteration"],
-        "//pw_build/constraints/rtos:threadx": ["//pw_thread_threadx:thread_iteration"],
-        "//conditions:default": ["//pw_thread_stl:thread_iteration"],
-    }),
+host_backend_alias(
+    name = "iteration_unspecified_backend",
+    backend = "//pw_thread_stl:thread_iteration",
 )
 
 pw_facade(
@@ -119,18 +108,12 @@ pw_facade(
 
 label_flag(
     name = "sleep_backend",
-    build_setting_default = ":sleep_backend_multiplexer",
+    build_setting_default = ":sleep_unspecified_backend",
 )
 
-cc_library(
-    name = "sleep_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
-    deps = select({
-        "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:sleep"],
-        "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:sleep"],
-        "//pw_build/constraints/rtos:threadx": ["//pw_thread_threadx:sleep"],
-        "//conditions:default": ["//pw_thread_stl:sleep"],
-    }),
+host_backend_alias(
+    name = "sleep_unspecified_backend",
+    backend = "//pw_thread_stl:sleep",
 )
 
 pw_facade(
@@ -147,25 +130,26 @@ pw_facade(
     includes = ["public"],
     deps = [
         ":id",
+        ":options",
         ":thread_core",
         "//pw_function",
     ],
 )
 
-label_flag(
-    name = "thread_backend",
-    build_setting_default = ":thread_backend_multiplexer",
+cc_library(
+    name = "options",
+    hdrs = ["public/pw_thread/options.h"],
+    includes = ["public"],
 )
 
-cc_library(
-    name = "thread_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
-    deps = select({
-        "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:thread"],
-        "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:thread"],
-        "//pw_build/constraints/rtos:threadx": ["//pw_thread_threadx:thread"],
-        "//conditions:default": ["//pw_thread_stl:thread"],
-    }),
+label_flag(
+    name = "thread_backend",
+    build_setting_default = ":thread_unspecified_backend",
+)
+
+host_backend_alias(
+    name = "thread_unspecified_backend",
+    backend = "//pw_thread_stl:thread",
 )
 
 cc_library(
@@ -223,14 +207,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "test_thread_context_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
-    deps = select({
-        "//conditions:default": ["//pw_thread_stl:test_thread_context"],
-    }),
-)
-
 pw_facade(
     name = "test_thread_context",
     hdrs = [
@@ -242,7 +218,12 @@ pw_facade(
 
 label_flag(
     name = "test_thread_context_backend",
-    build_setting_default = ":test_thread_context_backend_multiplexer",
+    build_setting_default = ":test_thread_context_unspecified_backend",
+)
+
+host_backend_alias(
+    name = "test_thread_context_unspecified_backend",
+    backend = "//pw_thread_stl:test_thread_context",
 )
 
 pw_facade(
@@ -265,18 +246,12 @@ pw_facade(
 
 label_flag(
     name = "yield_backend",
-    build_setting_default = ":yield_backend_multiplexer",
+    build_setting_default = ":yield_unspecified_backend",
 )
 
-cc_library(
-    name = "yield_backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
-    deps = select({
-        "//pw_build/constraints/rtos:embos": ["//pw_thread_embos:yield"],
-        "//pw_build/constraints/rtos:freertos": ["//pw_thread_freertos:yield"],
-        "//pw_build/constraints/rtos:threadx": ["//pw_thread_threadx:yield"],
-        "//conditions:default": ["//pw_thread_stl:yield"],
-    }),
+host_backend_alias(
+    name = "yield_unspecified_backend",
+    backend = "//pw_thread_stl:yield",
 )
 
 cc_library(
@@ -336,7 +311,10 @@ pw_cc_test(
     # TODO: b/317922402 - On Windows, this test can easily hang indefinitely.
     # Disable on Windows until we can test with the native Windows SDK libraries
     # for threading.
+    # TODO: b/361369192 - This test behaves unusually on rp2.
     target_compatible_with = select({
+        "@pico-sdk//bazel/constraint:rp2040": ["@platforms//:incompatible"],
+        "@pico-sdk//bazel/constraint:rp2350": ["@platforms//:incompatible"],
         "@platforms//os:windows": ["@platforms//:incompatible"],
         "//conditions:default": [],
     }),
@@ -356,6 +334,15 @@ pw_cc_test(
     deps = [
         ":id",
         "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "options_test",
+    srcs = ["options_test.cc"],
+    deps = [
+        ":options",
+        "//pw_compilation_testing:negative_compilation_testing",
     ],
 )
 

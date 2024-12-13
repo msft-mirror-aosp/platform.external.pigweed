@@ -611,6 +611,7 @@ Status Connection::Reader::ProcessDataFrame(const FrameHeader& frame) {
     if (!stream.ok()) {
       PW_LOG_DEBUG("Ignoring DATA on closed stream id=%" PRIu32,
                    frame.stream_id);
+      PW_TRY(ProcessIgnoredFrame(frame));
       // Stream has been fully closed: silently ignore.
       return OkStatus();
     }
@@ -618,6 +619,7 @@ Status Connection::Reader::ProcessDataFrame(const FrameHeader& frame) {
     if (stream->get().half_closed) {
       PW_LOG_ERROR("Recv DATA on half-closed stream id=%" PRIu32,
                    frame.stream_id);
+      PW_TRY(ProcessIgnoredFrame(frame));
       // RFC 9113 §6.1: "If a DATA frame is received whose stream is not in the
       // "open" or "half-closed (local)" state, the recipient MUST respond with
       // a stream error of type STREAM_CLOSED."
@@ -630,6 +632,13 @@ Status Connection::Reader::ProcessDataFrame(const FrameHeader& frame) {
 
   // Drop padding.
   if ((frame.flags & FLAGS_PADDED) != 0) {
+    if (payload.size() < 1) {
+      // RFC 9113 §4.2: "An endpoint MUST send an error code of FRAME_SIZE_ERROR
+      // if a frame ... is too small to contain mandatory frame data."
+      SendGoAway(Http2Error::FRAME_SIZE_ERROR);
+      return Status::Internal();
+    }
+
     uint32_t pad_length = static_cast<uint32_t>(payload[0]);
     if (pad_length >= frame.payload_length) {
       // RFC 9113 §6.1: "If the length of the padding is the length of the frame
@@ -728,7 +737,7 @@ Status Connection::Reader::ProcessDataFrame(const FrameHeader& frame) {
     connection_.UnlockState(std::move(state));
     const auto status = callbacks_.OnMessage(frame.stream_id, message);
     state = connection_.LockState();
-    auto maybe_stream = state->LookupStream(frame.stream_id);
+    maybe_stream = state->LookupStream(frame.stream_id);
     if (!maybe_stream.ok()) {
       return OkStatus();
     }
@@ -790,6 +799,7 @@ Status Connection::Reader::ProcessHeadersFrame(const FrameHeader& frame) {
     auto state = connection_.LockState();
     if (auto stream = state->LookupStream(frame.stream_id); stream.ok()) {
       PW_LOG_DEBUG("Client sent HEADERS after the first stream message");
+      PW_TRY(ProcessIgnoredFrame(frame));
       // grpc requests cannot contain trailers.
       // See: https://github.com/grpc/grpc/blob/v1.60.x/doc/PROTOCOL-HTTP2.md.
       PW_TRY(SendRstStreamAndClose(stream->get(), Http2Error::PROTOCOL_ERROR));
@@ -799,6 +809,7 @@ Status Connection::Reader::ProcessHeadersFrame(const FrameHeader& frame) {
 
   if ((frame.flags & FLAGS_END_STREAM) != 0) {
     PW_LOG_DEBUG("Client sent HEADERS with END_STREAM");
+    PW_TRY(ProcessIgnoredFrame(frame));
     // grpc requests must send END_STREAM in an empty DATA frame.
     // See: https://github.com/grpc/grpc/blob/v1.60.x/doc/PROTOCOL-HTTP2.md.
     PW_TRY(SendRstStream(
@@ -815,6 +826,14 @@ Status Connection::Reader::ProcessHeadersFrame(const FrameHeader& frame) {
 
   // Drop padding.
   if ((frame.flags & FLAGS_PADDED) != 0) {
+    if (payload.size() < 1) {
+      // RFC 9113 §4.2: "An endpoint MUST send an error code of FRAME_SIZE_ERROR
+      // if a frame ... is too small to contain mandatory frame data. A frame
+      // size error in a frame that could alter the state of the entire
+      // connection MUST be treated as a connection error"
+      SendGoAway(Http2Error::FRAME_SIZE_ERROR);
+      return Status::Internal();
+    }
     uint32_t pad_length = static_cast<uint32_t>(payload[0]);
     if (pad_length >= frame.payload_length) {
       // RFC 9113 §6.2: "If the length of the padding is the length of the frame
@@ -828,6 +847,12 @@ Status Connection::Reader::ProcessHeadersFrame(const FrameHeader& frame) {
 
   // Drop priority fields.
   if ((frame.flags & FLAGS_PRIORITY) != 0) {
+    if (payload.size() < 5) {
+      // RFC 9113 §4.2: "An endpoint MUST send an error code of FRAME_SIZE_ERROR
+      // if a frame ... is too small to contain mandatory frame data."
+      SendGoAway(Http2Error::FRAME_SIZE_ERROR);
+      return Status::Internal();
+    }
     payload = payload.subspan(5);
   }
 

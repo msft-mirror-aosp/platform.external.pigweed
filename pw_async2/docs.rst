@@ -34,7 +34,7 @@ progress, the ``Dispatcher`` will run it again. For example:
    using ::pw::async2::Pending;
    using ::pw::async2::Task;
 
-   class ReceiveAndSend: public Task {
+   class ReceiveAndSend : public Task {
     public:
      ReceiveAndSend(Receiver receiver, Sender sender):
        receiver_(receiver), sender_(sender) {}
@@ -122,6 +122,33 @@ used instead.
 For a more detailed explanation of Pigweed's coroutine support, see the
 documentation on the :cpp:class:`pw::async2::Coro<T>` type.
 
+------
+Timing
+------
+When using ``pw::async2``, timing functionality should be injected
+by accepting a :cpp:class:`pw::async2::TimeProvider` (most commonly
+``TimeProvider<SystemClock>`` when using the system's built-in `time_point`
+and `duration` types).
+
+:cpp:class:`pw::async2::TimeProvider` allows for easily waiting
+for a timeout or deadline using the
+:cpp:func:`pw::async2::TimePoint::WaitFor` and
+:cpp:func:`pw::async2::TimePoint::WaitUntil` methods.
+
+Additionally, code which uses :cpp:class:`pw::async2::TimeProvider` for timing
+can be tested with simulated time using
+:cpp:class:`pw::async2::SimulatedTimeProvider`. Doing so helps avoid
+timing-dependent test flakes, as well as ensure that tests are fast since they
+don't need to wait for real-world time to elapse.
+
+.. doxygenclass:: pw::async2::TimeProvider
+   :members:
+
+.. doxygenfunction:: pw::async2::GetSystemTimeProvider
+
+.. doxygenclass:: pw::async2::SimulatedTimeProvider
+   :members:
+
 -----------------
 C++ API reference
 -----------------
@@ -161,10 +188,30 @@ C++ Utilities
 
 .. doxygenfunction:: pw::async2::AllocateTask(pw::allocator::Allocator& allocator, Args&&... args)
 
+.. doxygenclass:: pw::async2::CoroOrElseTask
+  :members:
+
 .. doxygenclass:: pw::async2::PendFuncTask
   :members:
 
 .. doxygenclass:: pw::async2::PendableAsTask
+  :members:
+
+
+.. doxygenfunction:: pw::async2::MakeOnceSenderAndReceiver
+
+.. doxygenclass:: pw::async2::OnceSender
+  :members:
+
+.. doxygenclass:: pw::async2::OnceReceiver
+  :members:
+
+.. doxygenfunction:: pw::async2::MakeOnceRefSenderAndReceiver
+
+.. doxygenclass:: pw::async2::OnceRefSender
+  :members:
+
+.. doxygenclass:: pw::async2::OnceRefReceiver
   :members:
 
 .. toctree::

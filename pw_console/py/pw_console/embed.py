@@ -40,6 +40,19 @@ def _set_console_app_instance(plugin: Any, console_app: ConsoleApp) -> None:
         plugin.application = console_app
 
 
+def create_word_completer(
+    word_meta_dict: dict[str, str], ignore_case=True
+) -> WordCompleter:
+    sentences: list[str] = list(word_meta_dict.keys())
+    return WordCompleter(
+        sentences,
+        meta_dict=word_meta_dict,
+        ignore_case=ignore_case,
+        # Whole input field should match
+        sentence=True,
+    )
+
+
 class PwConsoleEmbed:
     """Embed class for customizing the console before startup."""
 
@@ -217,15 +230,7 @@ class PwConsoleEmbed:
         if len(word_meta_dict) == 0:
             return
 
-        sentences: list[str] = list(word_meta_dict.keys())
-        word_completer = WordCompleter(
-            sentences,
-            meta_dict=word_meta_dict,
-            ignore_case=ignore_case,
-            # Whole input field should match
-            sentence=True,
-        )
-
+        word_completer = create_word_completer(word_meta_dict, ignore_case)
         self.extra_completers.append(word_completer)
 
     def _setup_log_panes(self) -> None:
@@ -335,7 +340,7 @@ class PwConsoleEmbed:
 
         # Load external config if passed in.
         if self.config_file_path:
-            self.console_app.load_clean_config(self.config_file_path)
+            self.console_app.load_config(self.config_file_path)
 
         if override_window_config:
             self.console_app.prefs.set_windows(override_window_config)

@@ -28,12 +28,10 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_metrics.h"
 #include "pw_bluetooth_sapphire/internal/host/gatt/persisted_data.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
+#include "pw_bluetooth_sapphire/internal/host/hci-spec/le_connection_parameters.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/lmp_feature_set.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/connection.h"
-#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
-
-#pragma clang diagnostic ignored "-Wshadow"
 
 namespace bt::gap {
 
@@ -75,6 +73,15 @@ class Peer final {
        PeerMetrics* peer_metrics,
        pw::async::Dispatcher& dispatcher);
 
+  bool IsSecureSimplePairingSupported() {
+    return lmp_features_->HasBit(
+               /*page=*/0,
+               hci_spec::LMPFeature::kSecureSimplePairingControllerSupport) &&
+           lmp_features_->HasBit(
+               /*page=*/1,
+               hci_spec::LMPFeature::kSecureSimplePairingHostSupport);
+  }
+
   // Connection state as considered by the GAP layer. This may not correspond
   // exactly with the presence or absence of a link at the link layer. For
   // example, GAP may consider a peer disconnected whilst the link disconnection
@@ -113,7 +120,7 @@ class Peer final {
   // source location. `RegisterName()` will update the device name attribute if
   // the newly encountered name's source is of higher priority (lower enum
   // value) than that of the existing name.
-  enum NameSource {
+  enum class NameSource {
     kGenericAccessService = /*highest priority*/ 0,
     kNameDiscoveryProcedure = 1,
     kInquiryResultComplete = 2,
@@ -243,6 +250,10 @@ class Peer final {
       return *bond_data_;
     }
 
+    bool feature_interrogation_complete() const {
+      return feature_interrogation_complete_;
+    }
+
     // Bit mask of LE features (Core Spec v5.2, Vol 6, Part B, Section 4.6).
     std::optional<hci_spec::LESupportedFeatures> features() const {
       return *features_;
@@ -288,6 +299,10 @@ class Peer final {
     // is disconnected. Does not notify listeners.
     void ClearBondData();
 
+    void SetFeatureInterrogationComplete() {
+      feature_interrogation_complete_ = true;
+    }
+
     void SetFeatures(hci_spec::LESupportedFeatures features) {
       features_.Set(features);
     }
@@ -306,6 +321,16 @@ class Peer final {
 
     void set_auto_connect_behavior(AutoConnectBehavior behavior) {
       auto_conn_behavior_ = behavior;
+    }
+
+    void set_sleep_clock_accuracy(
+        pw::bluetooth::emboss::LESleepClockAccuracyRange sca) {
+      sleep_clock_accuracy_ = sca;
+    }
+
+    std::optional<pw::bluetooth::emboss::LESleepClockAccuracyRange>
+    sleep_clock_accuracy() const {
+      return sleep_clock_accuracy_;
     }
 
     // TODO(armansito): Store most recently seen random address and identity
@@ -335,7 +360,7 @@ class Peer final {
     // Buffer containing advertising and scan response data appended to each
     // other. NOTE: Repeated fields in advertising and scan response data are
     // not deduplicated, so duplicate entries are possible. It is OK to assume
-    // that fields repeated in scan response data supercede those in the
+    // that fields repeated in scan response data supersede those in the
     // original advertising data when processing fields in order.
     DynamicByteBuffer adv_data_buffer_;
     // Time when advertising data was last updated and successfully parsed.
@@ -351,12 +376,21 @@ class Peer final {
 
     AutoConnectBehavior auto_conn_behavior_ = AutoConnectBehavior::kAlways;
 
+    bool feature_interrogation_complete_ = false;
+
+    // features_ will be unset if feature interrogation has not been attempted
+    // (in which case feature_interrogation_complete_ will be false) or if
+    // feature interrogation has failed (in which case
+    // feature_interrogation_complete_ will be true).
     StringInspectable<std::optional<hci_spec::LESupportedFeatures>> features_;
 
     // TODO(armansito): Store GATT service UUIDs.
 
     // Data persisted from GATT database for bonded peers.
     gatt::ServiceChangedCCCPersistedData service_changed_gatt_data_;
+
+    std::optional<pw::bluetooth::emboss::LESleepClockAccuracyRange>
+        sleep_clock_accuracy_;
   };
 
   // Contains Peer data that apply only to the BR/EDR transport.
@@ -607,7 +641,8 @@ class Peer final {
   // Returns true if a name change occurs.  If the name is updated and
   // `notify_listeners` is false, then listeners will not be notified of an
   // update to this peer.
-  bool RegisterName(const std::string& name, NameSource source = kUnknown);
+  bool RegisterName(const std::string& name,
+                    NameSource source = NameSource::kUnknown);
 
   // Updates the appearance of this device.
   void SetAppearance(uint16_t appearance) { appearance_ = appearance; }

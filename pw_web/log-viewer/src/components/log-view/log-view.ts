@@ -21,6 +21,7 @@ import { LogFilter } from '../../utils/log-filter/log-filter';
 import '../log-list/log-list';
 import '../log-view-controls/log-view-controls';
 import { downloadTextLogs } from '../../utils/download';
+import { LogViewControls } from '../log-view-controls/log-view-controls';
 
 type FilterFunction = (logEntry: LogEntry) => boolean;
 
@@ -58,19 +59,27 @@ export class LogView extends LitElement {
   @property({ type: Array })
   columnData: TableColumn[] = [];
 
-  /** Whether line wrapping in table cells should be used. */
-  @state()
-  _lineWrap = false;
+  /**
+   * Flag to determine whether Shoelace components should be used by
+   * `LogView` and its subcomponents.
+   */
+  @property({ type: Boolean })
+  useShoelaceFeatures = true;
 
   /** A string representing the value contained in the search field. */
-  @state()
+  @property()
   searchText = '';
+
+  /** Whether line wrapping in table cells should be used. */
+  @property()
+  lineWrap = true;
 
   /** Preferred column order to reference */
   @state()
   columnOrder: string[] = [];
 
   @query('log-list') _logList!: LogList;
+  @query('log-view-controls') _logControls!: LogViewControls;
 
   /** A map containing data from present log sources */
   sources: Map<string, SourceData> = new Map();
@@ -98,10 +107,13 @@ export class LogView extends LitElement {
   /** The amount of time, in ms, before the filter expression is executed. */
   private readonly FILTER_DELAY = 100;
 
+  /** A default header title for the log view. */
+  private readonly DEFAULT_VIEW_TITLE: string = 'Log View';
+
   protected firstUpdated(): void {
-    // Update view title with log source names if a view title isn't already provided
-    if (!this.viewTitle) {
-      this.updateTitle();
+    this.updateColumnOrder(this.columnData);
+    if (this.columnData) {
+      this.columnData = this.updateColumnRender(this.columnData);
     }
   }
 
@@ -113,7 +125,6 @@ export class LogView extends LitElement {
       this._lastKnownLogLength = this.logs.length;
 
       this.updateFieldsFromNewLogs(newLogs);
-      this.updateTitle();
     }
 
     if (changedProperties.has('logs') || changedProperties.has('searchText')) {
@@ -121,7 +132,8 @@ export class LogView extends LitElement {
     }
 
     if (changedProperties.has('columnData')) {
-      this._logList.columnData = this.columnData;
+      this._logList.columnData = [...this.columnData];
+      this._logControls.columnData = [...this.columnData];
     }
   }
 
@@ -157,7 +169,6 @@ export class LogView extends LitElement {
               : () => true;
 
           this.filterLogs();
-          this.requestUpdate();
         }, this.FILTER_DELAY);
         break;
       case 'clear-logs':
@@ -167,9 +178,7 @@ export class LogView extends LitElement {
       default:
         break;
     }
-
     this.filterLogs();
-    this.requestUpdate();
   }
 
   private updateFieldsFromNewLogs(newLogs: LogEntry[]): void {
@@ -193,11 +202,11 @@ export class LogView extends LitElement {
   }
 
   /**
-   * Orders fields by the following: severity, init defined fields, undefined fields, and message
+   * Orders fields by the following: level, init defined fields, undefined fields, and message
    * @param columnData ColumnData is used to check for undefined fields.
    */
   private updateColumnOrder(columnData: TableColumn[]) {
-    const columnOrder = [...new Set(this.columnOrder)];
+    const columnOrder = this.columnOrder;
     if (this.columnOrder.length !== columnOrder.length) {
       console.warn(
         'Log View had duplicate columns defined, duplicates were removed.',
@@ -205,12 +214,12 @@ export class LogView extends LitElement {
       this.columnOrder = columnOrder;
     }
 
-    if (this.columnOrder.indexOf('severity') != 0) {
-      const index = this.columnOrder.indexOf('severity');
+    if (this.columnOrder.indexOf('level') != 0) {
+      const index = this.columnOrder.indexOf('level');
       if (index != -1) {
         this.columnOrder.splice(index, 1);
       }
-      this.columnOrder.unshift('severity');
+      this.columnOrder.unshift('level');
     }
 
     if (this.columnOrder.indexOf('message') != this.columnOrder.length) {
@@ -222,6 +231,14 @@ export class LogView extends LitElement {
     }
 
     columnData.forEach((tableColumn) => {
+      // Do not display severity in log views
+      if (tableColumn.fieldName == 'severity') {
+        console.warn(
+          'The field `severity` has been deprecated. Please use `level` instead.',
+        );
+        return;
+      }
+
       if (!this.columnOrder.includes(tableColumn.fieldName)) {
         this.columnOrder.splice(
           this.columnOrder.length - 1,
@@ -249,7 +266,6 @@ export class LogView extends LitElement {
         orderedColumns.push(columnData[index]);
       }
     });
-
     return orderedColumns;
   }
 
@@ -277,7 +293,7 @@ export class LogView extends LitElement {
     }
 
     // Toggle the column's visibility
-    column.isVisible = event.detail.isChecked;
+    column.isVisible = !event.detail.isChecked;
 
     // Clear the manually-set width of the last visible column
     const lastVisibleColumn = this.columnData
@@ -298,7 +314,7 @@ export class LogView extends LitElement {
    * @param {CustomEvent} event - The click event.
    */
   private toggleWrapping() {
-    this._lineWrap = !this._lineWrap;
+    this.lineWrap = !this.lineWrap;
   }
 
   /**
@@ -316,13 +332,7 @@ export class LogView extends LitElement {
     ) {
       this._filteredLogs = newFilteredLogs;
     }
-  }
-
-  private updateTitle() {
-    const sourceNames = Array.from(this.sources.values())?.map(
-      (tag: SourceData) => tag.name,
-    );
-    this.viewTitle = sourceNames.join(', ');
+    this.requestUpdate();
   }
 
   /**
@@ -338,22 +348,22 @@ export class LogView extends LitElement {
 
   render() {
     return html` <log-view-controls
-        .columnData=${this.columnData}
         .viewId=${this.id}
-        .viewTitle=${this.viewTitle}
+        .viewTitle=${this.viewTitle || this.DEFAULT_VIEW_TITLE}
         .hideCloseButton=${!this.isOneOfMany}
         .searchText=${this.searchText}
+        .useShoelaceFeatures=${this.useShoelaceFeatures}
+        .lineWrap=${this.lineWrap}
         @input-change="${this.updateFilter}"
         @clear-logs="${this.updateFilter}"
         @column-toggle="${this.toggleColumns}"
         @wrap-toggle="${this.toggleWrapping}"
         @download-logs="${this.downloadLogs}"
-        role="toolbar"
       >
       </log-view-controls>
 
       <log-list
-        .lineWrap=${this._lineWrap}
+        .lineWrap=${this.lineWrap}
         .viewId=${this.id}
         .logs=${this._filteredLogs}
         .searchText=${this.searchText}

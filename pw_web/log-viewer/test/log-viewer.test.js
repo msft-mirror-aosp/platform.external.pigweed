@@ -20,13 +20,9 @@ import { createLogViewer } from '../src/createLogViewer';
 // Initialize the log viewer component with a mock log source
 function setUpLogViewer(columnOrder) {
   const mockLogSource = new MockLogSource();
-  const destroyLogViewer = createLogViewer(
-    mockLogSource,
-    document.body,
-    undefined,
-    undefined,
+  const destroyLogViewer = createLogViewer(mockLogSource, document.body, {
     columnOrder,
-  );
+  });
   const logViewer = document.querySelector('log-viewer');
   return { mockLogSource, destroyLogViewer, logViewer };
 }
@@ -213,17 +209,28 @@ describe('log-viewer', () => {
     checkTableBodyCells(table, logViewer.logs);
   });
 
-  describe('column order', async () => {
-    it('should generate table columns in defined order', async () => {
-      const logEntry1 = {
-        timestamp: new Date(),
-        fields: [
-          { key: 'source', value: 'application' },
-          { key: 'timestamp', value: '2023-11-13T23:05:16.520Z' },
-          { key: 'message', value: 'Log entry 1' },
-        ],
-      };
+  it('should expose log view subcomponent(s) and properties', async () => {
+    await logViewer.updateComplete;
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
+    const logView = logViewer.logViews;
+    expect(logView).to.have.lengthOf(1);
+
+    logView[0].viewTitle = 'Test';
+    expect(logView[0].viewTitle).to.equal('Test');
+  });
+
+  describe('column order', async () => {
+    const logEntry1 = {
+      timestamp: new Date(),
+      fields: [
+        { key: 'source', value: 'application' },
+        { key: 'timestamp', value: '2023-11-13T23:05:16.520Z' },
+        { key: 'message', value: 'Log entry 1' },
+      ],
+    };
+
+    it('should generate table columns in defined order', async () => {
       destroyLogViewer();
       ({ mockLogSource, destroyLogViewer, logViewer } = setUpLogViewer([
         'timestamp',
@@ -236,15 +243,6 @@ describe('log-viewer', () => {
     });
 
     it('removes duplicate columns in defined order', async () => {
-      const logEntry1 = {
-        timestamp: new Date(),
-        fields: [
-          { key: 'source', value: 'application' },
-          { key: 'timestamp', value: '2023-11-13T23:05:16.520Z' },
-          { key: 'message', value: 'Log entry 1' },
-        ],
-      };
-
       destroyLogViewer();
       ({ mockLogSource, destroyLogViewer, logViewer } = setUpLogViewer([
         'timestamp',
@@ -255,6 +253,25 @@ describe('log-viewer', () => {
 
       const { table } = getLogViewerElements(logViewer);
       const expectedColumnNames = ['timestamp', 'source', 'message'];
+      checkTableHeaderCells(table, expectedColumnNames);
+    });
+
+    it('orders columns if data is stored in state', async () => {
+      destroyLogViewer();
+      ({ mockLogSource, destroyLogViewer, logViewer } = setUpLogViewer([
+        'timestamp',
+      ]));
+      await appendLogsAndWait(logViewer, [logEntry1]);
+
+      destroyLogViewer();
+      ({ mockLogSource, destroyLogViewer, logViewer } = setUpLogViewer([
+        'source',
+        'timestamp',
+      ]));
+      await appendLogsAndWait(logViewer, [logEntry1]);
+
+      const { table } = getLogViewerElements(logViewer);
+      const expectedColumnNames = ['source', 'timestamp', 'message'];
       checkTableHeaderCells(table, expectedColumnNames);
     });
   });

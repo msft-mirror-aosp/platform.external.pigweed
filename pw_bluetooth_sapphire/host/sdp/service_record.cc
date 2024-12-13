@@ -14,12 +14,14 @@
 
 #include "pw_bluetooth_sapphire/internal/host/sdp/service_record.h"
 
-#include <endian.h>
+#include <pw_bytes/endian.h>
 
 #include <iterator>
 #include <set>
+#include <vector>
 
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
+#include "pw_bluetooth_sapphire/internal/host/sdp/sdp.h"
 
 namespace bt::sdp {
 
@@ -44,6 +46,19 @@ void AddAllUUIDs(const DataElement& elem, std::unordered_set<UUID>* out) {
 
 ServiceRecord::ServiceRecord() {
   SetAttribute(kServiceId, DataElement(UUID::Generate()));
+}
+
+ServiceRecord::ServiceRecord(const ServiceRecord& other) {
+  handle_ = other.handle_;
+  security_level_ = other.security_level_;
+
+  for (const auto& attribute : other.attributes_) {
+    attributes_.emplace(attribute.first, attribute.second.Clone());
+  }
+
+  for (const auto& protocol : other.addl_protocols_) {
+    addl_protocols_.emplace(protocol.first, protocol.second.Clone());
+  }
 }
 
 void ServiceRecord::SetAttribute(AttributeId id, DataElement value) {
@@ -249,7 +264,11 @@ bool ServiceRecord::AddInfo(const std::string& language_code,
   if (it != attributes_.end()) {
     auto v = it->second.Get<std::vector<DataElement>>();
     base_attr_list = std::move(*v);
-    BT_DEBUG_ASSERT(base_attr_list.size() % 3 == 0);
+
+    // "%" can't be in pw_assert statements.
+    const size_t list_size_mod_3 = base_attr_list.size() % 3;
+    BT_DEBUG_ASSERT(list_size_mod_3 == 0);
+
     // 0x0100 is guaranteed to be taken, start counting from higher.
     base_attrid = 0x9000;
   }
@@ -270,7 +289,8 @@ bool ServiceRecord::AddInfo(const std::string& language_code,
   // The language code consists of two byte characters in left-to-right order,
   // so it may be considered a 16-bit big-endian integer that can be converted
   // to host byte order.
-  uint16_t lang_encoded = be16toh(*((const uint16_t*)(language_code.data())));
+  uint16_t lang_encoded = pw::bytes::ConvertOrderFrom(
+      cpp20::endian::big, *((const uint16_t*)(language_code.data())));
   base_attr_list.emplace_back(DataElement(lang_encoded));
   base_attr_list.emplace_back(DataElement(uint16_t{106}));  // UTF-8
   base_attr_list.emplace_back(DataElement(base_attrid));
@@ -289,6 +309,82 @@ bool ServiceRecord::AddInfo(const std::string& language_code,
   SetAttribute(kLanguageBaseAttributeIdList,
                DataElement(std::move(base_attr_list)));
   return true;
+}
+
+std::vector<ServiceRecord::Information> ServiceRecord::GetInfo() const {
+  if (!HasAttribute(kLanguageBaseAttributeIdList)) {
+    return {};
+  }
+
+  const auto& base_id_list = GetAttribute(kLanguageBaseAttributeIdList);
+  // Expected to be a sequence.
+  if (base_id_list.type() != DataElement::Type::kSequence) {
+    bt_log(WARN, "sdp", "kLanguageBaseAttributeIdList not a sequence");
+    return {};
+  }
+
+  std::vector<ServiceRecord::Information> out;
+  const auto& base_id_seq = base_id_list.Get<std::vector<DataElement>>();
+  const size_t list_size_mod_3 = base_id_seq->size() % 3;
+  BT_DEBUG_ASSERT(list_size_mod_3 == 0);
+
+  for (size_t i = 0; i + 2 < base_id_seq->size(); i += 3) {
+    // Each entry is a triplet of uint16_t (language_code, encoding format, base
+    // attribute ID). Encoding format is always Utf-8 and can be ignored.
+    const std::optional<uint16_t> language = base_id_seq->at(i).Get<uint16_t>();
+    const std::optional<uint16_t> base_attr_id =
+        base_id_seq->at(i + 2).Get<uint16_t>();
+
+    if (!language || !base_attr_id) {
+      bt_log(WARN, "sdp", "Missing language or base_attr_id");
+      return {};
+    }
+
+    ServiceRecord::Information info;
+    // The language code is stored in host byte order, but is interpreted as two
+    // byte characters in left-to-right order (big-endian).
+    uint16_t language_be =
+        pw::bytes::ConvertOrderTo(cpp20::endian::big, language.value());
+    info.language_code = std::string(
+        reinterpret_cast<const char*>(&language_be), sizeof(language_be));
+
+    if (HasAttribute(base_attr_id.value() + kServiceNameOffset)) {
+      std::optional<std::string> name =
+          GetAttribute(base_attr_id.value() + kServiceNameOffset)
+              .Get<std::string>();
+      if (!name) {
+        bt_log(WARN, "sdp", "Invalid name field in information entry");
+        return {};
+      }
+      info.name = std::move(name.value());
+    }
+
+    if (HasAttribute(base_attr_id.value() + kServiceDescriptionOffset)) {
+      std::optional<std::string> description =
+          GetAttribute(base_attr_id.value() + kServiceDescriptionOffset)
+              .Get<std::string>();
+      if (!description) {
+        bt_log(WARN, "sdp", "Invalid description field in information entry");
+        return {};
+      }
+      info.description = std::move(description.value());
+    }
+
+    if (HasAttribute(base_attr_id.value() + kProviderNameOffset)) {
+      std::optional<std::string> provider =
+          GetAttribute(base_attr_id.value() + kProviderNameOffset)
+              .Get<std::string>();
+      if (!provider) {
+        bt_log(WARN, "sdp", "Invalid provider field in information entry");
+        return {};
+      }
+      info.provider = std::move(provider.value());
+    }
+
+    out.emplace_back(std::move(info));
+  }
+
+  return out;
 }
 
 std::string ServiceRecord::ToString() const {

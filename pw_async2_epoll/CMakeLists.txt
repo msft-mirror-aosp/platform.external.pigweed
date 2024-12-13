@@ -14,7 +14,7 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-pw_add_library(pw_async2_basic.dispatcher_backend STATIC
+pw_add_library(pw_async2_epoll.dispatcher_backend STATIC
   HEADERS
     public_overrides/pw_async2/dispatcher_native.h
   SOURCES

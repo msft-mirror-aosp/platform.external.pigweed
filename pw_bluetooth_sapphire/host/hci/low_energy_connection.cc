@@ -14,9 +14,11 @@
 
 #include "pw_bluetooth_sapphire/internal/host/hci/low_energy_connection.h"
 
-#include "pw_bluetooth_sapphire/internal/host/transport/transport.h"
+#include <pw_bytes/endian.h>
 
-#pragma clang diagnostic ignored "-Wshadow"
+#include <cinttypes>
+
+#include "pw_bluetooth_sapphire/internal/host/transport/transport.h"
 
 namespace bt::hci {
 
@@ -117,61 +119,59 @@ void LowEnergyConnection::HandleEncryptionStatus(Result<bool> result,
 }
 
 CommandChannel::EventCallbackResult
-LowEnergyConnection::OnLELongTermKeyRequestEvent(const EventPacket& event) {
-  BT_ASSERT(event.event_code() == hci_spec::kLEMetaEventCode);
-  BT_ASSERT(event.params<hci_spec::LEMetaEventParams>().subevent_code ==
-            hci_spec::kLELongTermKeyRequestSubeventCode);
-
-  auto* params =
-      event.subevent_params<hci_spec::LELongTermKeyRequestSubeventParams>();
-  if (!params) {
+LowEnergyConnection::OnLELongTermKeyRequestEvent(
+    const EmbossEventPacket& event) {
+  auto view = event.unchecked_view<
+      pw::bluetooth::emboss::LELongTermKeyRequestSubeventView>();
+  if (!view.IsComplete()) {
     bt_log(WARN, "hci", "malformed LE LTK request event");
     return CommandChannel::EventCallbackResult::kContinue;
   }
 
-  hci_spec::ConnectionHandle handle = le16toh(params->connection_handle);
+  hci_spec::ConnectionHandle handle = view.connection_handle().Read();
 
   // Silently ignore the event as it isn't meant for this connection.
   if (handle != this->handle()) {
     return CommandChannel::EventCallbackResult::kContinue;
   }
 
-  CommandChannel::CommandPacketVariant cmd;
+  uint64_t rand = view.random_number().Read();
+  uint16_t ediv = view.encrypted_diversifier().Read();
 
-  uint64_t rand = le64toh(params->random_number);
-  uint16_t ediv = le16toh(params->encrypted_diversifier);
+  bt_log(DEBUG,
+         "hci",
+         "LE LTK request - ediv: %#.4x, rand: %#.16" PRIx64,
+         ediv,
+         rand);
 
-  bt_log(
-      DEBUG, "hci", "LE LTK request - ediv: %#.4x, rand: %#.16lx", ediv, rand);
-  if (ltk() && ltk()->rand() == rand && ltk()->ediv() == ediv) {
-    cmd = CommandPacket::New(
-        hci_spec::kLELongTermKeyRequestReply,
-        sizeof(hci_spec::LELongTermKeyRequestReplyCommandParams));
-    auto* params = std::get<std::unique_ptr<CommandPacket>>(cmd)
-                       ->mutable_payload<
-                           hci_spec::LELongTermKeyRequestReplyCommandParams>();
-
-    params->connection_handle = htole16(handle);
-    params->long_term_key = ltk()->value();
-  } else {
-    bt_log(DEBUG, "hci-le", "LTK request rejected");
-
-    cmd = EmbossCommandPacket::New<
-        pw::bluetooth::emboss::LELongTermKeyRequestNegativeReplyCommandWriter>(
-        hci_spec::kLELongTermKeyRequestNegativeReply);
-    auto view = std::get<EmbossCommandPacket>(cmd)
-                    .view<pw::bluetooth::emboss::
-                              LELongTermKeyRequestNegativeReplyCommandWriter>();
-    view.connection_handle().Write(handle);
+  if (!hci().is_alive()) {
+    return CommandChannel::EventCallbackResult::kRemove;
   }
 
   auto status_cb = [](auto id, const EventPacket& event) {
     hci_is_error(event, TRACE, "hci-le", "failed to reply to LTK request");
   };
-  if (!hci().is_alive()) {
-    return CommandChannel::EventCallbackResult::kRemove;
+
+  if (ltk() && ltk()->rand() == rand && ltk()->ediv() == ediv) {
+    auto cmd = EmbossCommandPacket::New<
+        pw::bluetooth::emboss::LELongTermKeyRequestReplyCommandWriter>(
+        hci_spec::kLELongTermKeyRequestReply);
+    auto view = cmd.view_t();
+    view.connection_handle().Write(handle);
+    view.long_term_key().CopyFrom(
+        pw::bluetooth::emboss::LinkKeyView(&ltk()->value()));
+    hci()->command_channel()->SendCommand(cmd, std::move(status_cb));
+  } else {
+    bt_log(DEBUG, "hci-le", "LTK request rejected");
+
+    auto cmd = EmbossCommandPacket::New<
+        pw::bluetooth::emboss::LELongTermKeyRequestNegativeReplyCommandWriter>(
+        hci_spec::kLELongTermKeyRequestNegativeReply);
+    auto view = cmd.view_t();
+    view.connection_handle().Write(handle);
+    hci()->command_channel()->SendCommand(cmd, std::move(status_cb));
   }
-  hci()->command_channel()->SendCommand(std::move(cmd), std::move(status_cb));
+
   return CommandChannel::EventCallbackResult::kContinue;
 }
 
