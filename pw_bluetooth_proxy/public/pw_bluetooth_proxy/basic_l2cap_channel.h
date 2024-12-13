@@ -14,22 +14,22 @@
 
 #pragma once
 
-#include "pw_bluetooth_proxy/internal/l2cap_read_channel.h"
-#include "pw_bluetooth_proxy/internal/l2cap_write_channel.h"
+#include "pw_bluetooth_proxy/internal/l2cap_channel.h"
 
 namespace pw::bluetooth::proxy {
 
-class BasicL2capChannel : public L2capReadChannel, public L2capWriteChannel {
+class BasicL2capChannel : public L2capChannel {
  public:
   // TODO: https://pwbug.dev/360929142 - Take the MTU. Signaling channels would
   // provide MTU_SIG.
   static pw::Result<BasicL2capChannel> Create(
       L2capChannelManager& l2cap_channel_manager,
       uint16_t connection_handle,
+      AclTransportType transport,
       uint16_t local_cid,
       uint16_t remote_cid,
-      pw::Function<void(pw::span<uint8_t> payload)>&&
-          payload_from_controller_fn);
+      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<void()>&& queue_space_available_fn);
 
   BasicL2capChannel(const BasicL2capChannel& other) = delete;
   BasicL2capChannel& operator=(const BasicL2capChannel& other) = delete;
@@ -47,18 +47,22 @@ class BasicL2capChannel : public L2capReadChannel, public L2capWriteChannel {
   /// .. pw-status-codes::
   ///  OK:                  If packet was successfully queued for send.
   ///  UNAVAILABLE:         If channel could not acquire the resources to queue
-  ///                       the send at this time (transient error).
+  ///                       the send at this time (transient error). If a
+  ///                       `queue_space_available_fn` has been provided it will
+  ///                       be called when there is queue space available again.
   ///  INVALID_ARGUMENT:    If payload is too large.
   /// @endrst
   pw::Status Write(pw::span<const uint8_t> payload);
 
  protected:
-  explicit BasicL2capChannel(L2capChannelManager& l2cap_channel_manager,
-                             uint16_t connection_handle,
-                             uint16_t local_cid,
-                             uint16_t remote_cid,
-                             pw::Function<void(pw::span<uint8_t> payload)>&&
-                                 payload_from_controller_fn);
+  explicit BasicL2capChannel(
+      L2capChannelManager& l2cap_channel_manager,
+      uint16_t connection_handle,
+      AclTransportType transport,
+      uint16_t local_cid,
+      uint16_t remote_cid,
+      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<void()>&& queue_space_available_fn);
 
  protected:
   bool HandlePduFromController(pw::span<uint8_t> bframe) override;

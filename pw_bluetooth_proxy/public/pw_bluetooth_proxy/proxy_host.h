@@ -19,6 +19,7 @@
 #include "pw_bluetooth_proxy/internal/hci_transport.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel_manager.h"
 #include "pw_bluetooth_proxy/l2cap_coc.h"
+#include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/rfcomm_channel.h"
 #include "pw_status/status.h"
 
@@ -97,25 +98,39 @@ class ProxyHost {
 
   // ##### Client APIs
 
+  /// Register for notifications of connection and disconnection for a
+  /// particular L2cap service identified by its PSM.
+  ///
+  /// @param[in] delegate   A delegate that will be notified when a successful
+  ///                       L2cap connection is made on its PSM. Note: This
+  ///                       must outlive the ProxyHost.
+  void RegisterL2capStatusDelegate(L2capStatusDelegate& delegate);
+
+  /// Unregister a service delegate.
+  ///
+  /// @param[in] delegate   The delegate to unregister. Must have been
+  ///                       previously registered.
+  void UnregisterL2capStatusDelegate(L2capStatusDelegate& delegate);
+
   /// Returns an L2CAP connection-oriented channel that supports writing to and
   /// reading from a remote peer.
   ///
-  /// @param[in] connection_handle     The connection handle of the remote peer.
+  /// @param[in] connection_handle  The connection handle of the remote peer.
   ///
-  /// @param[in] rx_config             Parameters applying to reading packets.
-  ///                                  See `l2cap_coc.h` for details.
+  /// @param[in] rx_config          Parameters applying to reading packets. See
+  ///                               `l2cap_coc.h` for details.
   ///
-  /// @param[in] tx_config             Parameters applying to writing packets.
-  ///                                  See `l2cap_coc.h` for details.
+  /// @param[in] tx_config          Parameters applying to writing packets. See
+  ///                               `l2cap_coc.h` for details.
   ///
-  /// @param[in] receive_fn            Read callback to be invoked on Rx SDUs.
+  /// @param[in] receive_fn         Read callback to be invoked on Rx SDUs.
   ///
-  /// @param[in] event_fn              Handle asynchronous events such as errors
-  ///                                  encountered by the channel.
+  /// @param[in] event_fn           Handle asynchronous events such as errors
+  ///                               encountered by the channel.
   ///
-  /// @param[in] rx_additional_credits Send L2CAP_FLOW_CONTROL_CREDIT_IND to
-  ///                                  dispense remote peer additional credits
-  ///                                  for this channel.
+  /// @param[in] queue_space_available_fn
+  ///                               Callback to be invoked after resources
+  ///                               become available after an UNAVAILABLE Write.
   ///
   /// @returns @rst
   ///
@@ -130,7 +145,29 @@ class ProxyHost {
       L2capCoc::CocConfig tx_config,
       pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
       pw::Function<void(L2capCoc::Event event)>&& event_fn,
-      uint16_t rx_additional_credits = 0);
+      Function<void()>&& queue_space_available_fn = nullptr);
+
+  /// Send an L2CAP_FLOW_CONTROL_CREDIT_IND signaling packet to dispense the
+  /// remote peer additional L2CAP connection-oriented channel credits for this
+  /// channel.
+  ///
+  /// @param[in] connection_handle     ACL connection over which this L2CAP
+  ///                                  connection-oriented channel exists.
+  ///
+  /// @param[in] local_cid             L2CAP channel ID of local endpoint.
+  ///
+  /// @param[in] additional_rx_credits Number of credits to dispense.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///  INVALID_ARGUMENT: CID invalid (check logs).
+  ///  NOT_FOUND:        Requested ACL connection does not exist.
+  ///  UNAVAILABLE:      Send could not be queued right now (transient error).
+  /// @endrst
+  pw::Status SendAdditionalRxCredits(uint16_t connection_handle,
+                                     uint16_t local_cid,
+                                     uint16_t additional_rx_credits);
 
   /// Returns an L2CAP channel operating in basic mode that supports writing to
   /// and reading from a remote peer.
@@ -149,6 +186,10 @@ class ProxyHost {
   /// @param[in] payload_from_controller_fn Read callback to be invoked on Rx
   ///                                       SDUs.
   ///
+  /// @param[in] queue_space_available_fn   Callback to be invoked after
+  ///                                       resources become available after an
+  ///                                       UNAVAILABLE Write.
+  ///
   /// @returns @rst
   ///
   /// .. pw-status-codes::
@@ -161,8 +202,8 @@ class ProxyHost {
       uint16_t local_cid,
       uint16_t remote_cid,
       AclTransportType transport,
-      pw::Function<void(pw::span<uint8_t> payload)>&&
-          payload_from_controller_fn);
+      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<void()>&& queue_space_available_fn = nullptr);
 
   /// Send a GATT Notify to the indicated connection.
   ///
@@ -201,6 +242,10 @@ class ProxyHost {
   ///
   /// @param[in] receive_fn        Read callback to be invoked on Rx frames.
   ///
+  /// @param[in] queue_space_available_fn
+  ///                              Callback to be invoked after resources become
+  ///                              available after an UNAVAILABLE Write.
+  ///
   /// @returns @rst
   ///
   /// .. pw-status-codes::
@@ -212,7 +257,8 @@ class ProxyHost {
       RfcommChannel::Config rx_config,
       RfcommChannel::Config tx_config,
       uint8_t channel_number,
-      pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn);
+      Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+      Function<void()>&& queue_space_available_fn);
 
   /// Indicates whether the proxy has the capability of sending LE ACL packets.
   /// Note that this indicates intention, so it can be true even if the proxy
@@ -264,6 +310,9 @@ class ProxyHost {
   // Process a Command_Complete event.
   void HandleCommandCompleteEvent(H4PacketWithHci&& h4_packet);
 
+  // Handle HCI Command packet from the host.
+  void HandleCommandFromHost(H4PacketWithH4&& h4_packet);
+
   // Handle HCI ACL data packet from the host.
   void HandleAclFromHost(H4PacketWithH4&& h4_packet);
 
@@ -277,7 +326,7 @@ class ProxyHost {
   bool CheckForFragmentedStart(AclDataChannel::Direction direction,
                                emboss::AclDataFrameWriter& acl,
                                emboss::BasicL2capHeaderView& l2cap_header,
-                               L2capReadChannel* channel);
+                               L2capChannel* channel);
 
   // For sending non-ACL data to the host and controller. ACL traffic shall be
   // sent through the `acl_data_channel_`.

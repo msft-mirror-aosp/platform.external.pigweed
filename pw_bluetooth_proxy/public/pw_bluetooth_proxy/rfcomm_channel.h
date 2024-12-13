@@ -14,8 +14,7 @@
 
 #pragma once
 
-#include "pw_bluetooth_proxy/internal/l2cap_read_channel.h"
-#include "pw_bluetooth_proxy/internal/l2cap_write_channel.h"
+#include "pw_bluetooth_proxy/internal/l2cap_channel.h"
 #include "pw_sync/mutex.h"
 
 namespace pw::bluetooth::proxy {
@@ -26,7 +25,7 @@ namespace pw::bluetooth::proxy {
 /// BasicL2capChannel instead of inheritance.
 ///
 /// This implementation requires use of RFCOMM credit based flow control.
-class RfcommChannel final : public L2capWriteChannel, public L2capReadChannel {
+class RfcommChannel final : public L2capChannel {
  public:
   /// Parameters for a direction of packet flow in an `RfcommChannel`.
   struct Config {
@@ -72,6 +71,10 @@ class RfcommChannel final : public L2capWriteChannel, public L2capReadChannel {
   ///
   /// @param[in] receive_fn        Read callback to be invoked on Rx frames.
   ///
+  /// @param[in] queue_space_available_fn
+  ///                              Callback to be invoked after resources become
+  ///                              available after an UNAVAILABLE Write.
+  ///
   /// @returns @rst
   ///
   /// .. pw-status-codes::
@@ -84,7 +87,8 @@ class RfcommChannel final : public L2capWriteChannel, public L2capReadChannel {
       Config rx_config,
       Config tx_config,
       uint8_t channel_number,
-      Function<void(pw::span<uint8_t> payload)>&& receive_fn);
+      Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+      Function<void()>&& queue_space_available_fn);
 
   /// Send an RFCOMM payload to the remote peer.
   ///
@@ -96,9 +100,9 @@ class RfcommChannel final : public L2capWriteChannel, public L2capReadChannel {
   /// .. pw-status-codes::
   ///  OK:                  If packet was successfully queued for send.
   ///  UNAVAILABLE:         If channel could not acquire the resources to queue
-  ///                       the send at this time (transient error).
-  ///                       TODO: https://pwbug.dev/380299794 - Add more robust
-  ///                       flow control solution.
+  ///                       the send at this time (transient error). If a
+  ///                       `queue_space_available_fn` has been provided it will
+  ///                       be called when there is queue space available again.
   ///  INVALID_ARGUMENT:    If payload is too large.
   ///  FAILED_PRECONDITION: If channel is `kStopped`.
   /// @endrst
@@ -115,7 +119,8 @@ class RfcommChannel final : public L2capWriteChannel, public L2capReadChannel {
                 Config rx_config,
                 Config tx_config,
                 uint8_t channel_number,
-                Function<void(pw::span<uint8_t> payload)>&& receive_fn);
+                Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+                Function<void()>&& queue_space_available_fn);
 
   // Parses out RFCOMM payload from `l2cap_pdu` and calls
   // `SendPayloadFromControllerToClient`.
