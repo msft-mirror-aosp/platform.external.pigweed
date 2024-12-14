@@ -16,21 +16,21 @@
 
 #include <mutex>
 
-#include "pw_assert/check.h"
+#include "pw_assert/check.h"  // IWYU pragma: keep
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_data.emb.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
 #include "pw_bluetooth/rfcomm_frames.emb.h"
-#include "pw_bluetooth_proxy/internal/l2cap_write_channel.h"
+#include "pw_bluetooth_proxy/internal/logical_transport.h"
 #include "pw_bluetooth_proxy/internal/rfcomm_fcs.h"
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
 #include "pw_log/log.h"
 #include "pw_status/try.h"
 
 namespace pw::bluetooth::proxy {
 
 RfcommChannel::RfcommChannel(RfcommChannel&& other)
-    : L2capWriteChannel(std::move(static_cast<L2capWriteChannel&>(other))),
-      L2capReadChannel(std::move(static_cast<L2capReadChannel&>(other))),
+    : L2capChannel(static_cast<RfcommChannel&&>(other)),
       rx_config_(other.rx_config_),
       tx_config_(other.tx_config_),
       channel_number_(other.channel_number_) {
@@ -38,12 +38,10 @@ RfcommChannel::RfcommChannel(RfcommChannel&& other)
   std::lock_guard other_lock(other.mutex_);
   rx_credits_ = other.rx_credits_;
   tx_credits_ = other.tx_credits_;
-  state_ = other.state_;
-  other.state_ = State::kStopped;
 }
 
 pw::Status RfcommChannel::Write(pw::span<const uint8_t> payload) {
-  if (state_ == State::kStopped) {
+  if (state() != State::kRunning) {
     return Status::FailedPrecondition();
   }
 
@@ -124,7 +122,6 @@ pw::Status RfcommChannel::Write(pw::span<const uint8_t> payload) {
 
   // TODO: https://pwbug.dev/379184978 - Support legacy non-credit based flow
   // control.
-
   return QueuePacket(std::move(h4_packet));
 }
 
@@ -134,8 +131,7 @@ std::optional<H4PacketWithH4> RfcommChannel::DequeuePacket() {
     return std::nullopt;
   }
 
-  std::optional<H4PacketWithH4> maybe_packet =
-      L2capWriteChannel::DequeuePacket();
+  std::optional<H4PacketWithH4> maybe_packet = L2capChannel::DequeuePacket();
   if (maybe_packet.has_value()) {
     --tx_credits_;
   }
@@ -148,10 +144,12 @@ Result<RfcommChannel> RfcommChannel::Create(
     Config rx_config,
     Config tx_config,
     uint8_t channel_number,
-    pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn) {
-  if (!L2capWriteChannel::AreValidParameters(connection_handle,
-                                             tx_config.cid) ||
-      !L2capReadChannel::AreValidParameters(connection_handle, rx_config.cid)) {
+    Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+    Function<void()>&& queue_space_available_fn,
+    Function<void(L2capChannelEvent event)>&& event_fn) {
+  if (!AreValidParameters(/*connection_handle=*/connection_handle,
+                          /*local_cid=*/rx_config.cid,
+                          /*remote_cid=*/tx_config.cid)) {
     return Status::InvalidArgument();
   }
 
@@ -160,11 +158,13 @@ Result<RfcommChannel> RfcommChannel::Create(
                        rx_config,
                        tx_config,
                        channel_number,
-                       std::move(receive_fn));
+                       std::move(receive_fn),
+                       std::move(queue_space_available_fn),
+                       std::move(event_fn));
 }
 
 bool RfcommChannel::HandlePduFromController(pw::span<uint8_t> l2cap_pdu) {
-  if (state_ == State::kStopped) {
+  if (state() != State::kRunning) {
     PW_LOG_WARN("Received data on stopped channel, passing on to host.");
     return false;
   }
@@ -259,21 +259,23 @@ RfcommChannel::RfcommChannel(
     Config rx_config,
     Config tx_config,
     uint8_t channel_number,
-    pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn)
-    : L2capWriteChannel(l2cap_channel_manager,
-                        connection_handle,
-                        AclTransportType::kBrEdr,
-                        tx_config.cid),
-      L2capReadChannel(l2cap_channel_manager,
-                       std::move(receive_fn),
-                       connection_handle,
-                       rx_config.cid),
+    Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+    Function<void()>&& queue_space_available_fn,
+    Function<void(L2capChannelEvent event)>&& event_fn)
+    : L2capChannel(
+          /*l2cap_channel_manager=*/l2cap_channel_manager,
+          /*connection_handle=*/connection_handle,
+          /*transport=*/AclTransportType::kBrEdr,
+          /*local_cid=*/rx_config.cid,
+          /*remote_cid=*/tx_config.cid,
+          /*payload_from_controller_fn=*/std::move(receive_fn),
+          /*queue_space_available_fn=*/std::move(queue_space_available_fn),
+          /*event_fn=*/std::move(event_fn)),
       rx_config_(rx_config),
       tx_config_(tx_config),
       channel_number_(channel_number),
       rx_credits_(rx_config.credits),
-      tx_credits_(tx_config.credits),
-      state_(State::kStarted) {}
+      tx_credits_(tx_config.credits) {}
 
 void RfcommChannel::OnFragmentedPduReceived() {
   PW_LOG_ERROR(

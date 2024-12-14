@@ -18,7 +18,9 @@
 #include "pw_bluetooth_proxy/internal/h4_storage.h"
 #include "pw_bluetooth_proxy/internal/hci_transport.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel_manager.h"
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
 #include "pw_bluetooth_proxy/l2cap_coc.h"
+#include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/rfcomm_channel.h"
 #include "pw_status/status.h"
 
@@ -97,25 +99,40 @@ class ProxyHost {
 
   // ##### Client APIs
 
+  /// Register for notifications of connection and disconnection for a
+  /// particular L2cap service identified by its PSM.
+  ///
+  /// @param[in] delegate   A delegate that will be notified when a successful
+  ///                       L2cap connection is made on its PSM. Note: This
+  ///                       must outlive the ProxyHost.
+  void RegisterL2capStatusDelegate(L2capStatusDelegate& delegate);
+
+  /// Unregister a service delegate.
+  ///
+  /// @param[in] delegate   The delegate to unregister. Must have been
+  ///                       previously registered.
+  void UnregisterL2capStatusDelegate(L2capStatusDelegate& delegate);
+
   /// Returns an L2CAP connection-oriented channel that supports writing to and
   /// reading from a remote peer.
   ///
-  /// @param[in] connection_handle     The connection handle of the remote peer.
+  /// @param[in] connection_handle  The connection handle of the remote peer.
   ///
-  /// @param[in] rx_config             Parameters applying to reading packets.
-  ///                                  See `l2cap_coc.h` for details.
+  /// @param[in] rx_config          Parameters applying to reading packets. See
+  ///                               `l2cap_coc.h` for details.
   ///
-  /// @param[in] tx_config             Parameters applying to writing packets.
-  ///                                  See `l2cap_coc.h` for details.
+  /// @param[in] tx_config          Parameters applying to writing packets. See
+  ///                               `l2cap_coc.h` for details.
   ///
-  /// @param[in] receive_fn            Read callback to be invoked on Rx SDUs.
+  /// @param[in] receive_fn         Read callback to be invoked on Rx SDUs.
   ///
-  /// @param[in] event_fn              Handle asynchronous events such as errors
-  ///                                  encountered by the channel.
+  /// @param[in] queue_space_available_fn
+  ///                               Callback to be invoked after resources
+  ///                               become available after an UNAVAILABLE Write.
   ///
-  /// @param[in] rx_additional_credits Send L2CAP_FLOW_CONTROL_CREDIT_IND to
-  ///                                  dispense remote peer additional credits
-  ///                                  for this channel.
+  /// @param[in] event_fn          Handle asynchronous events such as errors
+  ///                              encountered by the channel. See
+  ///                              `l2cap_channel_event.h`.
   ///
   /// @returns @rst
   ///
@@ -128,9 +145,17 @@ class ProxyHost {
       uint16_t connection_handle,
       L2capCoc::CocConfig rx_config,
       L2capCoc::CocConfig tx_config,
-      pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      pw::Function<void(L2capCoc::Event event)>&& event_fn,
-      uint16_t rx_additional_credits = 0);
+      Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn,
+      // TODO: https://pwbug.dev/383150263 - Delete & use event_fn instead.
+      Function<void()>&& queue_space_available_fn = nullptr);
+
+  /// TODO: https://pwbug.dev/380076024 - Delete after downstream client uses
+  /// this method on `L2capCoc`.
+  /// @deprecated Use L2capCoc::SendAdditionalRxCredits instead.
+  pw::Status SendAdditionalRxCredits(uint16_t connection_handle,
+                                     uint16_t local_cid,
+                                     uint16_t additional_rx_credits);
 
   /// Returns an L2CAP channel operating in basic mode that supports writing to
   /// and reading from a remote peer.
@@ -149,6 +174,14 @@ class ProxyHost {
   /// @param[in] payload_from_controller_fn Read callback to be invoked on Rx
   ///                                       SDUs.
   ///
+  /// @param[in] queue_space_available_fn   Callback to be invoked after
+  ///                                       resources become available after an
+  ///                                       UNAVAILABLE Write.
+  ///
+  /// @param[in] event_fn                   Handle asynchronous events such as
+  ///                                       errors encountered by the channel.
+  ///                                       See `l2cap_channel_event.h`.
+  ///
   /// @returns @rst
   ///
   /// .. pw-status-codes::
@@ -161,8 +194,12 @@ class ProxyHost {
       uint16_t local_cid,
       uint16_t remote_cid,
       AclTransportType transport,
-      pw::Function<void(pw::span<uint8_t> payload)>&&
-          payload_from_controller_fn);
+      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      // TODO: https://pwbug.dev/383150263 - Delete & use event_fn instead.
+      Function<void()>&& queue_space_available_fn = nullptr,
+      // TODO: https://pwbug.dev/383150263 - Delete nullptr after downstream
+      // clients are providing event_fn.
+      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
 
   /// Send a GATT Notify to the indicated connection.
   ///
@@ -201,6 +238,14 @@ class ProxyHost {
   ///
   /// @param[in] receive_fn        Read callback to be invoked on Rx frames.
   ///
+  /// @param[in] queue_space_available_fn
+  ///                              Callback to be invoked after resources become
+  ///                              available after an UNAVAILABLE Write.
+  ///
+  /// @param[in] event_fn          Handle asynchronous events such as errors
+  ///                              encountered by the channel. See
+  ///                              `l2cap_channel_event.h`.
+  ///
   /// @returns @rst
   ///
   /// .. pw-status-codes::
@@ -212,7 +257,12 @@ class ProxyHost {
       RfcommChannel::Config rx_config,
       RfcommChannel::Config tx_config,
       uint8_t channel_number,
-      pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn);
+      Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+      // TODO: https://pwbug.dev/383150263 - Delete & use event_fn instead.
+      Function<void()>&& queue_space_available_fn,
+      // TODO: https://pwbug.dev/383150263 - Delete nullptr after downstream
+      // clients are providing event_fn.
+      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
 
   /// Indicates whether the proxy has the capability of sending LE ACL packets.
   /// Note that this indicates intention, so it can be true even if the proxy
@@ -247,13 +297,16 @@ class ProxyHost {
   }
 
   /// Returns the max number of simultaneous LE ACL connections supported.
-  static constexpr size_t GetMaxNumLeAclConnections() {
-    return AclDataChannel::GetMaxNumLeAclConnections();
+  static constexpr size_t GetMaxNumAclConnections() {
+    return AclDataChannel::GetMaxNumAclConnections();
   }
 
  private:
   // Handle HCI Event packet from the controller.
   void HandleEventFromController(H4PacketWithHci&& h4_packet);
+
+  // Handle HCI Event packet from the host.
+  void HandleEventFromHost(H4PacketWithH4&& h4_packet);
 
   // Handle HCI ACL data packet from the controller.
   void HandleAclFromController(H4PacketWithHci&& h4_packet);
@@ -263,6 +316,9 @@ class ProxyHost {
 
   // Process a Command_Complete event.
   void HandleCommandCompleteEvent(H4PacketWithHci&& h4_packet);
+
+  // Handle HCI Command packet from the host.
+  void HandleCommandFromHost(H4PacketWithH4&& h4_packet);
 
   // Handle HCI ACL data packet from the host.
   void HandleAclFromHost(H4PacketWithH4&& h4_packet);
@@ -277,7 +333,7 @@ class ProxyHost {
   bool CheckForFragmentedStart(AclDataChannel::Direction direction,
                                emboss::AclDataFrameWriter& acl,
                                emboss::BasicL2capHeaderView& l2cap_header,
-                               L2capReadChannel* channel);
+                               L2capChannel* channel);
 
   // For sending non-ACL data to the host and controller. ACL traffic shall be
   // sent through the `acl_data_channel_`.

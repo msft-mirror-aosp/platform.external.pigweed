@@ -13,7 +13,8 @@
 # the License.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//pw_build:compatibility.bzl", "host_backend_alias")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mcu")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
@@ -119,10 +120,7 @@ host_backend_alias(
 
 pw_facade(
     name = "thread",
-    srcs = [
-        "public/pw_thread/config.h",
-        "thread.cc",
-    ],
+    srcs = ["public/pw_thread/config.h"],
     hdrs = [
         "public/pw_thread/detached_thread.h",
         "public/pw_thread/thread.h",
@@ -159,10 +157,7 @@ cc_library(
         "public/pw_thread/thread_core.h",
     ],
     strip_include_prefix = "public",
-    deps = [
-        "//pw_log",
-        "//pw_status",
-    ],
+    deps = ["//pw_function"],
 )
 
 cc_library(
@@ -280,6 +275,7 @@ cc_library(
     deps = [
         ":non_portable_test_thread_options",
         ":thread",
+        ":thread_core",
         "//pw_chrono:system_clock",
         "//pw_sync:binary_semaphore",
         "//pw_unit_test",
@@ -440,4 +436,14 @@ filegroup(
         "public/pw_thread/test_thread_context.h",
         "public/pw_thread/thread.h",
     ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "backends.rst",
+        "docs.rst",
+    ],
+    prefix = "pw_thread/",
+    target_compatible_with = incompatible_with_mcu(),
 )

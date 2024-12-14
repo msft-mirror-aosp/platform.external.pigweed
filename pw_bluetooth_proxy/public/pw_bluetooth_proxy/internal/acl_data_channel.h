@@ -59,10 +59,8 @@ class AclDataChannel {
   AclDataChannel(AclDataChannel&&) = delete;
   AclDataChannel& operator=(AclDataChannel&&) = delete;
 
-  // Returns the max number of simultaneous LE ACL connections supported.
-  static constexpr size_t GetMaxNumLeAclConnections() {
-    return kMaxConnections;
-  }
+  // Returns the max number of simultaneous ACL connections supported.
+  static constexpr size_t GetMaxNumAclConnections() { return kMaxConnections; }
 
   // Revert to uninitialized state, clearing credit reservation and connections,
   // but not the number of credits to reserve nor HCI transport.
@@ -87,8 +85,10 @@ class AclDataChannel {
   // credits that are associated with our credit-allocated connections.
   void HandleNumberOfCompletedPacketsEvent(H4PacketWithHci&& h4_packet);
 
-  // Reclaim any credits we have associated with the removed connection.
-  void HandleDisconnectionCompleteEvent(H4PacketWithHci&& h4_packet);
+  // Reclaim any credits we have associated with the removed connection and
+  // notify `L2capChannelManager` of disconnection. This function just processes
+  // the event; it does not handle forwarding it on.
+  void ProcessDisconnectionCompleteEvent(pw::span<uint8_t> hci_span);
 
   // Create new tracked connection and pass on to host.
   void HandleConnectionCompleteEvent(H4PacketWithHci&& h4_packet);
@@ -165,11 +165,17 @@ class AclDataChannel {
   // within a new LogicalLinkManager class?
   class AclConnection {
    public:
+    enum class State {
+      kOpen,
+      kClosed,
+    };
+
     AclConnection(AclTransportType transport,
                   uint16_t connection_handle,
                   uint16_t num_pending_packets,
                   L2capChannelManager& l2cap_channel_manager)
         : transport_(transport),
+          state_(State::kOpen),
           connection_handle_(connection_handle),
           num_pending_packets_(num_pending_packets),
           leu_signaling_channel_(l2cap_channel_manager, connection_handle),
@@ -177,6 +183,10 @@ class AclDataChannel {
           is_receiving_fragmented_pdu_{} {}
 
     AclConnection& operator=(AclConnection&& other) = default;
+
+    void Close() { state_ = State::kClosed; }
+
+    State state() const { return state_; }
 
     uint16_t connection_handle() const { return connection_handle_; }
 
@@ -206,6 +216,7 @@ class AclDataChannel {
 
    private:
     AclTransportType transport_;
+    State state_;
     uint16_t connection_handle_;
     uint16_t num_pending_packets_;
     L2capLeUSignalingChannel leu_signaling_channel_;
@@ -247,6 +258,9 @@ class AclDataChannel {
     // return true.
     bool HasSendCapability() const { return to_reserve_ > 0; }
 
+    // If this class has already had credits reserved from the controller.
+    bool Initialized() const { return proxy_max_ > 0; }
+
    private:
     const uint16_t to_reserve_;
     // The local number of HCI ACL Data packets that we have reserved for
@@ -257,9 +271,11 @@ class AclDataChannel {
     uint16_t proxy_pending_ = 0;
   };
 
-  // Returns pointer to AclConnection with provided `connection_handle` in
-  // `active_acl_connections_`. Returns nullptr if no such connection exists.
-  AclConnection* FindAclConnection(uint16_t connection_handle)
+  // Returns pointer to `kOpen` AclConnection with provided `connection_handle`
+  // in `acl_connections_`. Returns nullptr if no such connection exists.
+  // If `if_open` is false, a `State::kClosed` connection may also be returned.
+  AclConnection* FindAclConnection(uint16_t connection_handle,
+                                   bool if_open = true)
       PW_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Credits& LookupCredits(AclTransportType transport)
@@ -271,7 +287,7 @@ class AclDataChannel {
   void HandleLeConnectionCompleteEvent(uint16_t connection_handle,
                                        emboss::StatusCode status);
 
-  // Maximum number of simultaneous credit-allocated LE connections supported.
+  // Maximum number of simultaneous credit-allocated ACL connections supported.
   // TODO: https://pwbug.dev/349700888 - Make size configurable.
   static constexpr size_t kMaxConnections = 10;
 
@@ -289,7 +305,10 @@ class AclDataChannel {
   Credits br_edr_credits_ PW_GUARDED_BY(mutex_);
 
   // List of credit-allocated ACL connections.
-  pw::Vector<AclConnection, kMaxConnections> active_acl_connections_
+  // TODO: https://pwbug.dev/382138082 - Delete ACL connection when their
+  // channel ref count hits 0 and an HCI_Disconnection_Complete event has been
+  // processed.
+  pw::Vector<AclConnection, kMaxConnections> acl_connections_
       PW_GUARDED_BY(mutex_);
 
   // Instantiated in acl_data_channel.cc for

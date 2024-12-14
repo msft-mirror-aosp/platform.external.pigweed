@@ -30,7 +30,7 @@ void AclDataChannel::Reset() {
   std::lock_guard lock(mutex_);
   le_credits_.Reset();
   br_edr_credits_.Reset();
-  active_acl_connections_.clear();
+  acl_connections_.clear();
 }
 
 void AclDataChannel::Credits::Reset() {
@@ -39,9 +39,9 @@ void AclDataChannel::Credits::Reset() {
 }
 
 uint16_t AclDataChannel::Credits::Reserve(uint16_t controller_max) {
-  PW_CHECK(proxy_max_ == 0,
-           "AclDataChannel is already initialized, but encountered another "
-           "ReadBufferSizeCommandCompleteEvent.");
+  PW_CHECK(!Initialized(),
+           "AclDataChannel is already initialized. Proxy should have been "
+           "reset before this.");
 
   proxy_max_ = std::min(controller_max, to_reserve_);
   const uint16_t host_max = controller_max - proxy_max_;
@@ -116,7 +116,7 @@ void AclDataChannel::ProcessReadBufferSizeCommandCompleteEvent(
     read_buffer_event.total_num_acl_data_packets().Write(host_max);
   }
 
-  l2cap_channel_manager_.DrainWriteChannelQueues();
+  l2cap_channel_manager_.DrainChannelQueues();
 }
 
 template <class EventT>
@@ -132,7 +132,7 @@ void AclDataChannel::ProcessSpecificLEReadBufferSizeCommandCompleteEvent(
   }
 
   // Send packets that may have queued before we acquired any LE ACL credits.
-  l2cap_channel_manager_.DrainWriteChannelQueues();
+  l2cap_channel_manager_.DrainChannelQueues();
 }
 
 template void
@@ -173,8 +173,8 @@ void AclDataChannel::HandleNumberOfCompletedPacketsEvent(
 
       AclConnection* connection_ptr = FindAclConnection(handle);
       if (!connection_ptr) {
-        // Credits for connection we are not tracking, so should pass event on
-        // to host.
+        // Credits for connection we are not tracking or closed connection, so
+        // should pass event on to host.
         should_send_to_host = true;
         continue;
       }
@@ -204,7 +204,7 @@ void AclDataChannel::HandleNumberOfCompletedPacketsEvent(
   }
 
   if (did_reclaim_credits) {
-    l2cap_channel_manager_.DrainWriteChannelQueues();
+    l2cap_channel_manager_.DrainChannelQueues();
   }
   if (should_send_to_host) {
     hci_transport_.SendToHost(std::move(h4_packet));
@@ -304,16 +304,14 @@ void AclDataChannel::HandleLeEnhancedConnectionCompleteV2Event(
   hci_transport_.SendToHost(std::move(h4_packet));
 }
 
-void AclDataChannel::HandleDisconnectionCompleteEvent(
-    H4PacketWithHci&& h4_packet) {
+void AclDataChannel::ProcessDisconnectionCompleteEvent(
+    pw::span<uint8_t> hci_span) {
   Result<emboss::DisconnectionCompleteEventView> dc_event =
-      MakeEmbossView<emboss::DisconnectionCompleteEventView>(
-          h4_packet.GetHciSpan());
+      MakeEmbossView<emboss::DisconnectionCompleteEventView>(hci_span);
   if (!dc_event.ok()) {
     PW_LOG_ERROR(
         "Buffer is too small for DISCONNECTION_COMPLETE event. So will not "
         "process.");
-    hci_transport_.SendToHost(std::move(h4_packet));
     return;
   }
 
@@ -323,7 +321,6 @@ void AclDataChannel::HandleDisconnectionCompleteEvent(
 
     AclConnection* connection_ptr = FindAclConnection(conn_handle);
     if (!connection_ptr) {
-      hci_transport_.SendToHost(std::move(h4_packet));
       return;
     }
 
@@ -340,18 +337,21 @@ void AclDataChannel::HandleDisconnectionCompleteEvent(
             .MarkCompleted(connection_ptr->num_pending_packets());
       }
 
-      active_acl_connections_.erase(connection_ptr);
-    } else {
-      if (connection_ptr->num_pending_packets() > 0) {
-        PW_LOG_WARN(
-            "Proxy viewed failed disconnect (status: %#.2hhx) for connection "
-            "%#.4hx with packets in flight. Not releasing associated credits.",
-            cpp23::to_underlying(status),
-            conn_handle);
-      }
+      // Close but do not erase connection until all channels on the connection
+      // are dtored, as the channels may still try to access their connection's
+      // contained objects like signaling channels.
+      connection_ptr->Close();
+      l2cap_channel_manager_.HandleDisconnectionComplete(conn_handle);
+      return;
+    }
+    if (connection_ptr->num_pending_packets() > 0) {
+      PW_LOG_WARN(
+          "Proxy viewed failed disconnect (status: %#.2hhx) for connection "
+          "%#.4hx with packets in flight. Not releasing associated credits.",
+          cpp23::to_underlying(status),
+          conn_handle);
     }
   }
-  hci_transport_.SendToHost(std::move(h4_packet));
 }
 
 bool AclDataChannel::HasSendAclCapability(AclTransportType transport) const {
@@ -402,13 +402,13 @@ Status AclDataChannel::CreateAclConnection(uint16_t connection_handle,
   if (connection_it) {
     return Status::AlreadyExists();
   }
-  if (active_acl_connections_.full()) {
+  if (acl_connections_.full()) {
     return Status::ResourceExhausted();
   }
-  active_acl_connections_.emplace_back(transport,
-                                       /*connection_handle=*/connection_handle,
-                                       /*num_pending_packets=*/0,
-                                       l2cap_channel_manager_);
+  acl_connections_.emplace_back(transport,
+                                /*connection_handle=*/connection_handle,
+                                /*num_pending_packets=*/0,
+                                l2cap_channel_manager_);
   return OkStatus();
 }
 
@@ -466,14 +466,16 @@ L2capSignalingChannel* AclDataChannel::FindSignalingChannel(
 }
 
 AclDataChannel::AclConnection* AclDataChannel::FindAclConnection(
-    uint16_t connection_handle) {
+    uint16_t connection_handle, bool if_open) {
   AclConnection* connection_it = containers::FindIf(
-      active_acl_connections_,
-      [&connection_handle](const AclConnection& connection) {
-        return connection.connection_handle() == connection_handle;
+      acl_connections_,
+      [&connection_handle, if_open](const AclConnection& connection) {
+        if (connection.connection_handle() == connection_handle) {
+          return !if_open || connection.state() == AclConnection::State::kOpen;
+        }
+        return false;
       });
-  return connection_it == active_acl_connections_.end() ? nullptr
-                                                        : connection_it;
+  return connection_it == acl_connections_.end() ? nullptr : connection_it;
 }
 
 }  // namespace pw::bluetooth::proxy
