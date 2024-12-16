@@ -15,29 +15,108 @@
 #include "pw_bluetooth_proxy/basic_l2cap_channel.h"
 
 #include "pw_bluetooth/emboss_util.h"
+#include "pw_bluetooth/hci_data.emb.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
+#include "pw_bluetooth_proxy/l2cap_channel_event.h"
+#include "pw_log/log.h"
+#include "pw_status/try.h"
 
 namespace pw::bluetooth::proxy {
+
+pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
+    L2capChannelManager& l2cap_channel_manager,
+    uint16_t connection_handle,
+    AclTransportType transport,
+    uint16_t local_cid,
+    uint16_t remote_cid,
+    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    Function<void()>&& queue_space_available_fn,
+    Function<void(L2capChannelEvent event)>&& event_fn) {
+  if (!AreValidParameters(/*connection_handle=*/connection_handle,
+                          /*local_cid=*/local_cid,
+                          /*remote_cid=*/remote_cid)) {
+    return pw::Status::InvalidArgument();
+  }
+
+  return BasicL2capChannel(
+      /*l2cap_channel_manager=*/l2cap_channel_manager,
+      /*connection_handle=*/connection_handle,
+      /*transport=*/transport,
+      /*local_cid=*/local_cid,
+      /*remote_cid=*/remote_cid,
+      /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
+      /*queue_space_available_fn=*/std::move(queue_space_available_fn),
+      /*event_fn=*/std::move(event_fn));
+}
+
+pw::Status BasicL2capChannel::Write(pw::span<const uint8_t> payload) {
+  if (state() != State::kRunning) {
+    return Status::FailedPrecondition();
+  }
+
+  // TODO: https://pwbug.dev/360929142 - Reject payloads exceeding MTU.
+
+  pw::Result<H4PacketWithH4> h4_result = PopulateTxL2capPacket(payload.size());
+  if (!h4_result.ok()) {
+    // This can fail as a result of the L2CAP PDU not fitting in an H4 buffer
+    // or if all buffers are occupied.
+    // TODO: https://pwbug.dev/365179076 - Once we support ACL fragmentation,
+    // this function will not fail due to the L2CAP PDU size not fitting.
+    return h4_result.status();
+  }
+  H4PacketWithH4 h4_packet = std::move(*h4_result);
+
+  PW_TRY_ASSIGN(
+      auto acl,
+      MakeEmbossWriter<emboss::AclDataFrameWriter>(h4_packet.GetHciSpan()));
+  PW_TRY_ASSIGN(auto bframe,
+                MakeEmbossWriter<emboss::BFrameWriter>(
+                    acl.payload().BackingStorage().data(),
+                    acl.payload().BackingStorage().SizeInBytes()));
+  std::memcpy(
+      bframe.payload().BackingStorage().data(), payload.data(), payload.size());
+
+  return QueuePacket(std::move(h4_packet));
+}
 
 BasicL2capChannel::BasicL2capChannel(
     L2capChannelManager& l2cap_channel_manager,
     uint16_t connection_handle,
+    AclTransportType transport,
     uint16_t local_cid,
-    pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn)
-    : L2capReadChannel(l2cap_channel_manager,
-                       std::move(receive_fn),
-                       connection_handle,
-                       local_cid) {}
+    uint16_t remote_cid,
+    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    Function<void()>&& queue_space_available_fn,
+    Function<void(L2capChannelEvent event)>&& event_fn)
+    : L2capChannel(
+          /*l2cap_channel_manager=*/l2cap_channel_manager,
+          /*connection_handle=*/connection_handle,
+          /*transport=*/transport,
+          /*local_cid=*/local_cid,
+          /*remote_cid=*/remote_cid,
+          /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
+          /*queue_space_available_fn=*/std::move(queue_space_available_fn),
+          /*event_fn=*/std::move(event_fn)) {}
 
-bool BasicL2capChannel::OnPduReceived(pw::span<uint8_t> bframe) {
+bool BasicL2capChannel::HandlePduFromController(pw::span<uint8_t> bframe) {
   Result<emboss::BFrameWriter> bframe_view =
       MakeEmbossWriter<emboss::BFrameWriter>(bframe);
+
   if (!bframe_view.ok()) {
-    return false;
+    // TODO: https://pwbug.dev/360929142 - Stop channel on error.
+    PW_LOG_ERROR("(CID: 0x%X) Received invalid B-frame. So will drop.",
+                 local_cid());
+  } else {
+    SendPayloadFromControllerToClient(
+        span(bframe_view->payload().BackingStorage().data(),
+             bframe_view->payload().SizeInBytes()));
   }
-  CallReceiveFn(span(bframe_view->payload().BackingStorage().data(),
-                     bframe_view->BackingStorage().SizeInBytes()));
   return true;
+}
+
+bool BasicL2capChannel::HandlePduFromHost(pw::span<uint8_t>) {
+  // Always forward to controller.
+  return false;
 }
 
 }  // namespace pw::bluetooth::proxy

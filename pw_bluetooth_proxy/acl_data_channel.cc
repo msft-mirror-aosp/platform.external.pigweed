@@ -27,10 +27,10 @@
 namespace pw::bluetooth::proxy {
 
 void AclDataChannel::Reset() {
-  std::lock_guard lock(credit_allocation_mutex_);
+  std::lock_guard lock(mutex_);
   le_credits_.Reset();
   br_edr_credits_.Reset();
-  active_acl_connections_.clear();
+  acl_connections_.clear();
 }
 
 void AclDataChannel::Credits::Reset() {
@@ -39,9 +39,9 @@ void AclDataChannel::Credits::Reset() {
 }
 
 uint16_t AclDataChannel::Credits::Reserve(uint16_t controller_max) {
-  PW_CHECK(proxy_max_ == 0,
-           "AclDataChannel is already initialized, but encountered another "
-           "ReadBufferSizeCommandCompleteEvent.");
+  PW_CHECK(!Initialized(),
+           "AclDataChannel is already initialized. Proxy should have been "
+           "reset before this.");
 
   proxy_max_ = std::min(controller_max, to_reserve_);
   const uint16_t host_max = controller_max - proxy_max_;
@@ -82,11 +82,12 @@ void AclDataChannel::Credits::MarkCompleted(uint16_t num_credits) {
   }
 }
 
-AclDataChannel::Credits& AclDataChannel::LookupCredits(AclTransport transport) {
+AclDataChannel::Credits& AclDataChannel::LookupCredits(
+    AclTransportType transport) {
   switch (transport) {
-    case AclTransport::kBrEdr:
+    case AclTransportType::kBrEdr:
       return br_edr_credits_;
-    case AclTransport::kLe:
+    case AclTransportType::kLe:
       return le_credits_;
     default:
       PW_CHECK(false, "Invalid transport type");
@@ -94,11 +95,11 @@ AclDataChannel::Credits& AclDataChannel::LookupCredits(AclTransport transport) {
 }
 
 const AclDataChannel::Credits& AclDataChannel::LookupCredits(
-    AclTransport transport) const {
+    AclTransportType transport) const {
   switch (transport) {
-    case AclTransport::kBrEdr:
+    case AclTransportType::kBrEdr:
       return br_edr_credits_;
-    case AclTransport::kLe:
+    case AclTransportType::kLe:
       return le_credits_;
     default:
       PW_CHECK(false, "Invalid transport type");
@@ -108,21 +109,21 @@ const AclDataChannel::Credits& AclDataChannel::LookupCredits(
 void AclDataChannel::ProcessReadBufferSizeCommandCompleteEvent(
     emboss::ReadBufferSizeCommandCompleteEventWriter read_buffer_event) {
   {
-    std::lock_guard lock(credit_allocation_mutex_);
+    std::lock_guard lock(mutex_);
     const uint16_t controller_max =
         read_buffer_event.total_num_acl_data_packets().Read();
     const uint16_t host_max = br_edr_credits_.Reserve(controller_max);
     read_buffer_event.total_num_acl_data_packets().Write(host_max);
   }
 
-  l2cap_channel_manager_.DrainWriteChannelQueues();
+  l2cap_channel_manager_.DrainChannelQueues();
 }
 
 template <class EventT>
 void AclDataChannel::ProcessSpecificLEReadBufferSizeCommandCompleteEvent(
     EventT read_buffer_event) {
   {
-    std::lock_guard lock(credit_allocation_mutex_);
+    std::lock_guard lock(mutex_);
     const uint16_t controller_max =
         read_buffer_event.total_num_le_acl_data_packets().Read();
     // TODO: https://pwbug.dev/380316252 - Support shared buffers.
@@ -131,7 +132,7 @@ void AclDataChannel::ProcessSpecificLEReadBufferSizeCommandCompleteEvent(
   }
 
   // Send packets that may have queued before we acquired any LE ACL credits.
-  l2cap_channel_manager_.DrainWriteChannelQueues();
+  l2cap_channel_manager_.DrainChannelQueues();
 }
 
 template void
@@ -160,7 +161,7 @@ void AclDataChannel::HandleNumberOfCompletedPacketsEvent(
   bool should_send_to_host = false;
   bool did_reclaim_credits = false;
   {
-    std::lock_guard lock(credit_allocation_mutex_);
+    std::lock_guard lock(mutex_);
     for (uint8_t i = 0; i < nocp_event->num_handles().Read(); ++i) {
       uint16_t handle = nocp_event->nocp_data()[i].connection_handle().Read();
       uint16_t num_completed_packets =
@@ -172,8 +173,8 @@ void AclDataChannel::HandleNumberOfCompletedPacketsEvent(
 
       AclConnection* connection_ptr = FindAclConnection(handle);
       if (!connection_ptr) {
-        // Credits for connection we are not tracking, so should pass event on
-        // to host.
+        // Credits for connection we are not tracking or closed connection, so
+        // should pass event on to host.
         should_send_to_host = true;
         continue;
       }
@@ -203,33 +204,123 @@ void AclDataChannel::HandleNumberOfCompletedPacketsEvent(
   }
 
   if (did_reclaim_credits) {
-    l2cap_channel_manager_.DrainWriteChannelQueues();
+    l2cap_channel_manager_.DrainChannelQueues();
   }
   if (should_send_to_host) {
     hci_transport_.SendToHost(std::move(h4_packet));
   }
 }
 
-void AclDataChannel::HandleDisconnectionCompleteEvent(
+void AclDataChannel::HandleConnectionCompleteEvent(
     H4PacketWithHci&& h4_packet) {
-  Result<emboss::DisconnectionCompleteEventView> dc_event =
-      MakeEmbossView<emboss::DisconnectionCompleteEventView>(
-          h4_packet.GetHciSpan());
-  if (!dc_event.ok()) {
-    PW_LOG_ERROR(
-        "Buffer is too small for DISCONNECTION_COMPLETE event. So will not "
-        "process.");
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
+  Result<emboss::ConnectionCompleteEventView> connection_complete_event =
+      MakeEmbossView<emboss::ConnectionCompleteEventView>(hci_buffer);
+  if (!connection_complete_event.ok()) {
     hci_transport_.SendToHost(std::move(h4_packet));
     return;
   }
 
+  if (connection_complete_event->status().Read() !=
+      emboss::StatusCode::SUCCESS) {
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
+
+  const uint16_t conn_handle =
+      connection_complete_event->connection_handle().Read();
+
+  if (CreateAclConnection(conn_handle, AclTransportType::kBrEdr) ==
+      Status::ResourceExhausted()) {
+    PW_LOG_ERROR(
+        "Could not track connection like requested. Max connections "
+        "reached.");
+  }
+
+  hci_transport_.SendToHost(std::move(h4_packet));
+}
+
+void AclDataChannel::HandleLeConnectionCompleteEvent(
+    uint16_t connection_handle, emboss::StatusCode status) {
+  if (status != emboss::StatusCode::SUCCESS) {
+    return;
+  }
+
+  if (CreateAclConnection(connection_handle, AclTransportType::kLe) ==
+      Status::ResourceExhausted()) {
+    PW_LOG_ERROR(
+        "Could not track connection like requested. Max connections "
+        "reached.");
+  }
+}
+
+void AclDataChannel::HandleLeConnectionCompleteEvent(
+    H4PacketWithHci&& h4_packet) {
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
+  Result<emboss::LEConnectionCompleteSubeventView> event =
+      MakeEmbossView<emboss::LEConnectionCompleteSubeventView>(hci_buffer);
+  if (!event.ok()) {
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
+
+  HandleLeConnectionCompleteEvent(event->connection_handle().Read(),
+                                  event->status().Read());
+
+  hci_transport_.SendToHost(std::move(h4_packet));
+}
+
+void AclDataChannel::HandleLeEnhancedConnectionCompleteV1Event(
+    H4PacketWithHci&& h4_packet) {
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
+  Result<emboss::LEEnhancedConnectionCompleteSubeventV1View> event =
+      MakeEmbossView<emboss::LEEnhancedConnectionCompleteSubeventV1View>(
+          hci_buffer);
+  if (!event.ok()) {
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
+
+  HandleLeConnectionCompleteEvent(event->connection_handle().Read(),
+                                  event->status().Read());
+
+  hci_transport_.SendToHost(std::move(h4_packet));
+}
+
+void AclDataChannel::HandleLeEnhancedConnectionCompleteV2Event(
+    H4PacketWithHci&& h4_packet) {
+  pw::span<uint8_t> hci_buffer = h4_packet.GetHciSpan();
+  Result<emboss::LEEnhancedConnectionCompleteSubeventV2View> event =
+      MakeEmbossView<emboss::LEEnhancedConnectionCompleteSubeventV2View>(
+          hci_buffer);
+  if (!event.ok()) {
+    hci_transport_.SendToHost(std::move(h4_packet));
+    return;
+  }
+
+  HandleLeConnectionCompleteEvent(event->connection_handle().Read(),
+                                  event->status().Read());
+
+  hci_transport_.SendToHost(std::move(h4_packet));
+}
+
+void AclDataChannel::ProcessDisconnectionCompleteEvent(
+    pw::span<uint8_t> hci_span) {
+  Result<emboss::DisconnectionCompleteEventView> dc_event =
+      MakeEmbossView<emboss::DisconnectionCompleteEventView>(hci_span);
+  if (!dc_event.ok()) {
+    PW_LOG_ERROR(
+        "Buffer is too small for DISCONNECTION_COMPLETE event. So will not "
+        "process.");
+    return;
+  }
+
   {
-    std::lock_guard lock(credit_allocation_mutex_);
+    std::lock_guard lock(mutex_);
     uint16_t conn_handle = dc_event->connection_handle().Read();
 
     AclConnection* connection_ptr = FindAclConnection(conn_handle);
     if (!connection_ptr) {
-      hci_transport_.SendToHost(std::move(h4_packet));
       return;
     }
 
@@ -245,32 +336,37 @@ void AclDataChannel::HandleDisconnectionCompleteEvent(
         LookupCredits(connection_ptr->transport())
             .MarkCompleted(connection_ptr->num_pending_packets());
       }
-      active_acl_connections_.erase(connection_ptr);
-    } else {
-      if (connection_ptr->num_pending_packets() > 0) {
-        PW_LOG_WARN(
-            "Proxy viewed failed disconnect (status: %#.2hhx) for connection "
-            "%#.4hx with packets in flight. Not releasing associated credits.",
-            cpp23::to_underlying(status),
-            conn_handle);
-      }
+
+      // Close but do not erase connection until all channels on the connection
+      // are dtored, as the channels may still try to access their connection's
+      // contained objects like signaling channels.
+      connection_ptr->Close();
+      l2cap_channel_manager_.HandleDisconnectionComplete(conn_handle);
+      return;
+    }
+    if (connection_ptr->num_pending_packets() > 0) {
+      PW_LOG_WARN(
+          "Proxy viewed failed disconnect (status: %#.2hhx) for connection "
+          "%#.4hx with packets in flight. Not releasing associated credits.",
+          cpp23::to_underlying(status),
+          conn_handle);
     }
   }
-  hci_transport_.SendToHost(std::move(h4_packet));
 }
 
-bool AclDataChannel::HasSendAclCapability(AclTransport transport) const {
-  std::lock_guard lock(credit_allocation_mutex_);
+bool AclDataChannel::HasSendAclCapability(AclTransportType transport) const {
+  std::lock_guard lock(mutex_);
   return LookupCredits(transport).HasSendCapability();
 }
 
-uint16_t AclDataChannel::GetNumFreeAclPackets(AclTransport transport) const {
-  std::lock_guard lock(credit_allocation_mutex_);
+uint16_t AclDataChannel::GetNumFreeAclPackets(
+    AclTransportType transport) const {
+  std::lock_guard lock(mutex_);
   return LookupCredits(transport).Remaining();
 }
 
 pw::Status AclDataChannel::SendAcl(H4PacketWithH4&& h4_packet) {
-  std::lock_guard lock(credit_allocation_mutex_);
+  std::lock_guard lock(mutex_);
   Result<emboss::AclDataFrameHeaderView> acl_view =
       MakeEmbossView<emboss::AclDataFrameHeaderView>(h4_packet.GetHciSpan());
   if (!acl_view.ok()) {
@@ -300,25 +396,25 @@ pw::Status AclDataChannel::SendAcl(H4PacketWithH4&& h4_packet) {
 }
 
 Status AclDataChannel::CreateAclConnection(uint16_t connection_handle,
-                                           AclTransport transport) {
-  std::lock_guard lock(credit_allocation_mutex_);
+                                           AclTransportType transport) {
+  std::lock_guard lock(mutex_);
   AclConnection* connection_it = FindAclConnection(connection_handle);
   if (connection_it) {
     return Status::AlreadyExists();
   }
-  if (active_acl_connections_.full()) {
+  if (acl_connections_.full()) {
     return Status::ResourceExhausted();
   }
-  active_acl_connections_.emplace_back(transport,
-                                       /*connection_handle=*/connection_handle,
-                                       /*num_pending_packets=*/0,
-                                       l2cap_channel_manager_);
+  acl_connections_.emplace_back(transport,
+                                /*connection_handle=*/connection_handle,
+                                /*num_pending_packets=*/0,
+                                l2cap_channel_manager_);
   return OkStatus();
 }
 
 pw::Status AclDataChannel::FragmentedPduStarted(Direction direction,
                                                 uint16_t connection_handle) {
-  std::lock_guard lock(credit_allocation_mutex_);
+  std::lock_guard lock(mutex_);
   AclConnection* connection_ptr = FindAclConnection(connection_handle);
   if (!connection_ptr) {
     return Status::NotFound();
@@ -332,7 +428,7 @@ pw::Status AclDataChannel::FragmentedPduStarted(Direction direction,
 
 pw::Result<bool> AclDataChannel::IsReceivingFragmentedPdu(
     Direction direction, uint16_t connection_handle) {
-  std::lock_guard lock(credit_allocation_mutex_);
+  std::lock_guard lock(mutex_);
   AclConnection* connection_ptr = FindAclConnection(connection_handle);
   if (!connection_ptr) {
     return Status::NotFound();
@@ -342,7 +438,7 @@ pw::Result<bool> AclDataChannel::IsReceivingFragmentedPdu(
 
 pw::Status AclDataChannel::FragmentedPduFinished(Direction direction,
                                                  uint16_t connection_handle) {
-  std::lock_guard lock(credit_allocation_mutex_);
+  std::lock_guard lock(mutex_);
   AclConnection* connection_ptr = FindAclConnection(connection_handle);
   if (!connection_ptr) {
     return Status::NotFound();
@@ -354,15 +450,32 @@ pw::Status AclDataChannel::FragmentedPduFinished(Direction direction,
   return OkStatus();
 }
 
+L2capSignalingChannel* AclDataChannel::FindSignalingChannel(
+    uint16_t connection_handle, uint16_t local_cid) {
+  std::lock_guard lock(mutex_);
+
+  AclConnection* connection_ptr = FindAclConnection(connection_handle);
+  if (!connection_ptr) {
+    return nullptr;
+  }
+
+  if (local_cid == connection_ptr->signaling_channel()->local_cid()) {
+    return connection_ptr->signaling_channel();
+  }
+  return nullptr;
+}
+
 AclDataChannel::AclConnection* AclDataChannel::FindAclConnection(
-    uint16_t connection_handle) {
+    uint16_t connection_handle, bool if_open) {
   AclConnection* connection_it = containers::FindIf(
-      active_acl_connections_,
-      [&connection_handle](const AclConnection& connection) {
-        return connection.connection_handle() == connection_handle;
+      acl_connections_,
+      [&connection_handle, if_open](const AclConnection& connection) {
+        if (connection.connection_handle() == connection_handle) {
+          return !if_open || connection.state() == AclConnection::State::kOpen;
+        }
+        return false;
       });
-  return connection_it == active_acl_connections_.end() ? nullptr
-                                                        : connection_it;
+  return connection_it == acl_connections_.end() ? nullptr : connection_it;
 }
 
 }  // namespace pw::bluetooth::proxy

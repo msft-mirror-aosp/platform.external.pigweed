@@ -12,6 +12,447 @@ Talk to the team at Pigweed Live
 .. pigweed-live::
 
 .. _docs-changelog-latest:
+.. _docs-changelog-2024-12-11:
+
+------------
+Dec 11, 2024
+------------
+.. changelog_highlights_start
+
+Highlights (Nov 28, 2024 to Dec 11, 2024):
+
+* **New blog post**: :ref:`docs-blog-06-better-cpp-toolchains`
+  summarizes our journey to upstream modular toolchains in rules_cc.
+
+* **Customizable enum tokenization**: The new
+  :c:macro:`PW_TOKENIZE_ENUM_CUSTOM` macro lets you customize how enum values
+  are tokenized.
+
+* **AES API in pw_crypto**: :ref:`module-pw_crypto` now has an
+  Mbed-TLS backend for AES.
+
+.. changelog_highlights_end
+
+.. _docs-changelog-2024-12-11-Modules:
+
+Modules
+=======
+
+.. _docs-changelog-2024-12-11-Modules-pw_allocator:
+
+pw_allocator
+------------
+Bug fixes:
+
+.. b3d4f6ec721999b6bd4a856386a16c0b102d4f3c
+
+* A bug was fixed where the ``FirstFitAllocator`` incorrectly allocated
+  from the front. Commit: `Fix first-fit with threshold
+  <https://pwrev.dev/253233>`__. Bug: :bug:`382513957`.
+
+.. _docs-changelog-2024-12-11-Modules-pw_assert:
+
+pw_assert
+---------
+Changes:
+
+.. bb9f65d47f203a2623543f5adf20ef15d747524e
+
+* Error messages in constant expressions have been improved. Commit:
+  `Improve error messages in constant expressions
+  <https://pwrev.dev/251914>`__. Bug: :bug:`277821237`.
+
+.. _docs-changelog-2024-12-11-Modules-pw_async2:
+
+pw_async2
+---------
+New features:
+
+.. 4a1d9b2c3f76002ad7462e2a4373fa3eedfda692
+
+* :cpp:class:`pw::async2::OnceReceiver` can now be constructed with a
+  value. Commit: `Support value constructor for OnceReceiver
+  <https://pwrev.dev/251452>`__.
+
+.. _docs-changelog-2024-12-11-Modules-pw_bluetooth_proxy:
+
+pw_bluetooth_proxy
+------------------
+New features:
+
+.. ffb532447804634ffa9a97f78886e8422025f9c2
+
+* The new
+  :cpp:func:`pw::bluetooth::proxy::ProxyHost::SendAdditionalRxCredits`
+  method lets you send additional RX credits when needed. Previously this
+  logic was coupled with the L2CAP connection-oriented channel
+  acquisition. Commit: `Separate rx_additional_credits method
+  <https://pwrev.dev/252352>`__. Bug: :bug:`380076024`.
+
+.. b336566abf4d6d1119f5373dc534e1f1e1070523
+
+* Transport type for ``pw::bluetooth::proxy::BasicL2capChannel`` can now
+  be specified during channel creation. Commit: `Un-hardcode transport
+  type for BasicL2capChannel <https://pwrev.dev/252556>`__.
+
+.. e85884825ea35e9b3b6f86ab0d12d1a1c5e3518d
+
+* A flow control mechanism for writes was added. When a channel's write
+  fails because there's no space, and then space becomes available, the
+  channel is now notified. Commit: `Add write flow control mechanism
+  <https://pwrev.dev/251435>`__. Bug: :bug:`380299794`.
+
+.. 99944ede9942532e5a12996575497ecb31a10442
+
+* Proxies now reset after receiving ``HCI_Reset`` commands. Commit:
+  `Reset proxy on HCI_Reset <https://pwrev.dev/251472>`__. Bug:
+  :bug:`381902130`.
+
+.. 2bfeaec98417551db59ec6dcc718f526a15d193f
+
+* The new :cpp:class:`pw::bluetooth::proxy::L2capStatusDelegate` class
+  lets you receive connection/disconnection notifications for a particular
+  L2CAP service. Commit: `Add L2cap service listener API
+  <https://pwrev.dev/249754>`__. Bug: :bug:`379558046`.
+
+.. _docs-changelog-2024-12-11-Modules-pw_build:
+
+pw_build
+--------
+New features:
+
+.. b8d1cd064d4440e216f62802ab2378eb0c3eb269
+
+* New guidance on :ref:`module-pw_build-bazel-pw_cc_binary` was added.
+  Commit: `Document pw_cc_binary <https://pwrev.dev/252052>`__.
+
+Changes:
+
+.. 2ce8bc27e467224bf503fada12a29d8a4a2b81d7
+
+* When a ``pw_python_venv`` targets has no source packages and no
+  requirements, an empty Python venv is created and ``pip-compile`` is no
+  longer used. Commit: `Allow for empty Python build venvs
+  <https://pwrev.dev/253253>`__. Bug: :bug:`380293856`.
+
+.. _docs-changelog-2024-12-11-Modules-pw_cli:
+
+pw_cli
+------
+New features:
+
+.. 13c7f3ca42864136624da1d8452b0110d61b850e
+
+* Specifying whether color should be enabled on an output is now more
+  granular. Commit: `Allow output-specific color checks
+  <https://pwrev.dev/252292>`__.
+
+Changes:
+
+.. 73b5fbf1ba77139796d29b7a064ec3c76127bae4
+
+* The Python function ``pw_presubmit.tools.exclude_paths()`` was moved
+  to the ``pw_cli.file_filter`` module. Commit: `Move exclude_paths
+  <https://pwrev.dev/252293>`__.
+
+.. _docs-changelog-2024-12-11-Modules-pw_containers:
+
+pw_containers
+-------------
+Bug fixes:
+
+.. a7c4dd8b045259a12194742793eaa03aa9e07443
+
+* A bug was fixed where :cpp:class:`pw::Vector` was move-assigning to
+  destroyed objects. Commit: `Do not move assign to destroyed objects in
+  Vector::erase <https://pwrev.dev/251992>`__. Bug: :bug:`381942905`.
+
+.. _docs-changelog-2024-12-11-Modules-pw_crypto:
+
+pw_crypto
+---------
+New features:
+
+.. 9aceb7c03cab42e1d2ae7c4e2dd9de718fbe3c68
+
+* :ref:`module-pw_crypto` now has an Mbed-TLS backend for AES. Commit:
+  `Implement Mbed-TLS backend for AES <https://pwrev.dev/231912>`__.
+
+.. 23cc90c00be0e6f8c3eef0adfe1a0906fa77b346
+
+* The new :cpp:func:`pw::crypto::aes::backend::DoEncryptBlock` is an
+  initial facade for AES. Commit: `Add AES facade
+  <https://pwrev.dev/231911>`__.
+
+.. _docs-changelog-2024-12-11-Modules-pw_grpc:
+
+pw_grpc
+-------
+New features:
+
+.. d30c2bbc46ccb4e874da27c3b33dc48e30cdc893
+
+* Data is now queued if a stream or connection has no available send
+  window. Previously data was dropped in this case. The send queues are
+  non-blocking. Commit: `Implement per stream send queues and make sending
+  non-blocking <https://pwrev.dev/249952>`__. Bug: :bug:`382294674`.
+
+Bug fixes:
+
+.. 983b4f196331b7873c59f555a39ed519cb707943
+
+* A :cpp:class:`pw::multibuf::MultiBufAllocator` is now required when
+  creating a :cpp:class:`pw::grpc::Connection` instance. Commit: `Remove
+  old constructor and make multibuf allocator required
+  <https://pwrev.dev/252555>`__. Bug: :bug:`382294674`.
+
+.. _docs-changelog-2024-12-11-Modules-pw_presubmit:
+
+pw_presubmit
+------------
+New features:
+
+.. 9720483d67050eeda1910c707195aca45879ff90
+
+* A new guide for Pigweed contributors on :ref:`managing the Bazel
+  lockfile <docs-bazel-lockfile>` was published. Commit: `Bazel lockfile
+  check <https://pwrev.dev/253554>`__. Bug: :bug:`383387420`.
+
+.. _docs-changelog-2024-12-11-Modules-pw_rpc:
+
+pw_rpc
+------
+Changes:
+
+.. eb762cabb91d3712fe2ca6a470172f2164247072
+
+* The newly public ``internal_packet_proto`` library makes it possible
+  to generate ``packet.proto`` code for non-supported languages. E.g. this
+  makes it possible to write a Dart/Flutter RPC client. Commit: `Make
+  packet proto library public in Bazel <https://pwrev.dev/249692>`__.
+
+.. _docs-changelog-2024-12-11-Modules-pw_snapshot:
+
+pw_snapshot
+-----------
+New features:
+
+.. b950987d209c57b18389aaca91d9a3a9ef7066f5
+
+* The new ``thread_processing_callback`` parameter of
+  :py:func:`pw_snapshot.processor.process_snapshot` lets you do custom
+  thread processing during snapshot decoding. Commit: `Add per-thread
+  processing callback for snapshot decoding <https://pwrev.dev/251392>`__.
+
+.. _docs-changelog-2024-12-11-Modules-pw_system:
+
+pw_system
+---------
+New features:
+
+.. a4d795f13b833950d14ff9803d43e49ec1fb5e47
+
+* In the Bazel build ``rpc_server`` is now a
+  :ref:`module-pw_build-bazel-pw_facade` which lets you swap out the default
+  HDLC server with something else in your project. Commit: `Add facade for rpc
+  server in Bazel <https://pwrev.dev/252172>`__.
+
+.. _docs-changelog-2024-12-11-Modules-pw_thread:
+
+pw_thread
+---------
+Changes:
+
+.. 9e4c976345d4d2de321e17853e9fb86493ff2200
+
+* ``ThreadCore`` logic was moved out of ``pw::Thread``. Commit: `Move
+  ThreadCore logic out of pw::Thread <https://pwrev.dev/253264>`__.
+
+.. _docs-changelog-2024-12-11-Modules-pw_tokenizer:
+
+pw_tokenizer
+------------
+New features:
+
+.. 23370ed5ed0e01273080c231ee3475916dc74fba
+
+* The new :c:macro:`PW_TOKENIZE_ENUM_CUSTOM` macro lets you customize
+  how enum values are tokenized. Commit: `Add macro for tokenizing enums
+  with custom string <https://pwrev.dev/250492>`__.
+
+.. _docs-changelog-2024-12-11-Modules-pw_toolchain:
+
+pw_toolchain
+------------
+New features:
+
+.. 807a3aa14a2035f3c1693e3c023740d086ce7c94
+
+* In the GN build it is now possible to completely move away from GNU
+  libraries. Commit: `Support replacing GNU libs for ARM
+  <https://pwrev.dev/250572>`__. Bug: :bug:`322360978`.
+
+.. _docs-changelog-2024-12-11-Docs:
+
+Docs
+====
+New features:
+
+.. 4a28597bf8cc64f7cfc4cc019ba969bc10747c2b
+
+* A new :ref:`Bazel style guide <docs-pw-style-bazel>` was added.
+  Commit: `Add Bazel style guide <https://pwrev.dev/240811>`__. Bug:
+  :bug:`371564331`.
+
+.. 5a62fe471eab617742ded0ba84c693e4f2d29585
+
+* A new blog post on :ref:`C/C++ Bazel toolchains
+  <docs-blog-06-better-cpp-toolchains>` was published.
+  Commit: `Shaping a better future for Bazel C/C++ toolchains
+  <https://pwrev.dev/253332>`__.
+
+.. _docs-changelog-2024-11-27:
+
+------------
+Nov 27, 2024
+------------
+Highlights (Nov 15, 2024 to Nov 27, 2024):
+
+* **pw_allocator updates**: The :ref:`module-pw_allocator-api-bucket` class
+  has been refactored to be more flexible and the :ref:`block API
+  <module-pw_allocator-api-block>` has been refactored to support static
+  polymorphism.
+
+.. _docs-changelog-2024-11-27-Modules:
+
+Modules
+=======
+
+.. _docs-changelog-2024-11-27-Modules-pw_allocator:
+
+pw_allocator
+------------
+Changes:
+
+.. 0942b69025f2987ca9512141fe3cf3a7046f042c
+
+* ``BestFitBlockAllocator`` was renamed to ``BestFitAllocator`` and
+  ``WorstFitBlockAllocator`` was renamed to ``WorstFitAllocator``. These
+  classes have been refactored to use :ref:`buckets
+  <module-pw_allocator-api-bucket>`. Commit: `Refactor best- and worst-fit
+  allocators to use buckets <https://pwrev.dev/234817>`__.
+
+.. 0766dbaf5305202c6f67e18184bb165df8426713
+
+* ``FirstFitBlockAllocator``, ``LastFitBlockAllocator``, and
+  ``DualFirstFitBlockAllocator`` were merged into a single class:
+  :ref:`module-pw_allocator-api-first_fit_allocator`. Commit: `Refactor
+  first fit allocators <https://pwrev.dev/234816>`__.
+
+.. 3bfdac7a7826a4e2a1dc7a7174fd8d6276546c26
+
+* The :ref:`module-pw_allocator-api-bucket` class has been refactored to
+  be more flexible. Commit: `Refactor Bucket
+  <https://pwrev.dev/234815>`__.
+
+.. 65b5e336df018fbc9d124ca09d71a5dcccd1a8c0
+
+* Metric calculation for blocks that shift bytes has changed. Commit:
+  `Fix metrics for blocks that shift bytes <https://pwrev.dev/249372>`__.
+  Bug: :bug:`378743727`.
+
+.. 33d00a77472a6ff545032b213aa24dfe6a39d606
+
+* :cpp:class:`pw::allocator::BlockAllocator` now returns
+  :cpp:class:`pw::allocator::BlockResult`. Commit: `Use BlockResult in
+  BlockAllocator <https://pwrev.dev/234811>`__.
+
+.. 6417a523b06e03dce3453e96c3a1bec6ab511768
+
+* The :ref:`block API <module-pw_allocator-api-block>` has been
+  refactored to support static polymorphism. Commit: `Add static
+  polymorphism to Block <https://pwrev.dev/232214>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_bytes:
+
+pw_bytes
+--------
+New features:
+
+.. a287811e5e99eab8d4ddfcaf9f1a505fd1e3eb17
+
+* The new :cpp:func:`pw::IsAlignedAs` utility functions make it easier
+  to check alignment. Commit: `Add utility for checking alignment
+  <https://pwrev.dev/248192>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_presubmit:
+
+pw_presubmit
+------------
+New features:
+
+.. e278ead3bfe1361c3ff08e5329636a35abbcef6c
+
+* The new ``includes_presubmit_check`` verifies that ``cc_library``
+  Bazel targets don't use the ``includes`` attribute. Commit: `Add check
+  for cc_library includes <https://pwrev.dev/251172>`__. Bug:
+  :bug:`380934893`.
+
+.. _docs-changelog-2024-11-27-Modules-pw_protobuf:
+
+pw_protobuf
+-----------
+New features:
+
+.. f776679bbea5f4ae376ab924d80760bb2f1e69a0
+
+* :ref:`pw_protobuf-message-limitations` now has more guidance around
+  protobuf versioning and ``optional`` fields. Commit: `Expand message
+  structure limitations docs section <https://pwrev.dev/249072>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_transfer:
+
+pw_transfer
+-----------
+Changes:
+
+.. 1c771e0fd88511ef3550108572572db1f036d0a5
+
+* Warnings logs are now emitted when client or server streams close
+  unexpectedly. Commit: `Log when streams close unexpectedly
+  <https://pwrev.dev/249912>`__.
+
+.. 48712ad0655654b4dcc9b62085a58445fe0af696
+
+* The window size on retried data now shrinks in an attempt to reduce
+  network congestion. Commit: `Shrink window size on retried data
+  <https://pwrev.dev/249532>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_unit_test:
+
+pw_unit_test
+------------
+Changes:
+
+.. c4d59ce4d011e11781bcb6dc6660ad947a7ee8df
+
+* Successful expectations are no longer stringified by default. Commit:
+  `Stop stringifying successful expectations
+  <https://pwrev.dev/248693>`__.
+
+.. _docs-changelog-2024-11-27-Modules-pw_rpc:
+
+pw_rpc
+------
+Changes:
+
+.. 92e854a4d179f0b340a0f8b5a662012ea4b8635c
+
+* A warning log is now emitted when a server receives a completion
+  request but client completion callbacks have been disabled. Commit:
+  `Warn when client completion callback is disabled
+  <https://pwrev.dev/249414>`__.
+
 .. _docs-changelog-2024-11-14:
 
 ------------
