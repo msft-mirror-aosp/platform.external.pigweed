@@ -26,7 +26,8 @@
 #include "pw_bluetooth/l2cap_frames.emb.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
 #include "pw_bluetooth_proxy/internal/logical_transport.h"
-#include "pw_bluetooth_proxy/l2cap_channel_event.h"
+#include "pw_bluetooth_proxy/l2cap_channel_common.h"
+#include "pw_bluetooth_proxy/l2cap_coc.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
 #include "pw_containers/flat_map.h"
@@ -190,7 +191,6 @@ struct CocParameters {
   uint16_t tx_credits = 1;
   pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr;
   pw::Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
-  pw::Function<void()>&& queue_space_available_fn = nullptr;
 };
 
 // Attempt to AcquireL2capCoc and return result.
@@ -206,7 +206,6 @@ struct BasicL2capParameters {
   AclTransportType transport = AclTransportType::kLe;
   Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn =
       nullptr;
-  Function<void()>&& queue_space_available_fn = nullptr;
   Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
 };
 
@@ -226,7 +225,16 @@ RfcommChannel BuildRfcomm(
     ProxyHost& proxy,
     RfcommParameters params = {},
     Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr,
-    Function<void()>&& queue_space_available_fn = nullptr,
     Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
+
+// ########## Test Suites
+
+class ProxyHostTest : public testing::Test {
+ protected:
+  pw::Result<L2capCoc> BuildCocWithResult(ProxyHost& proxy,
+                                          CocParameters params);
+
+  L2capCoc BuildCoc(ProxyHost& proxy, CocParameters params);
+};
 
 }  // namespace pw::bluetooth::proxy
