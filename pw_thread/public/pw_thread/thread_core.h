@@ -13,22 +13,17 @@
 // the License.
 #pragma once
 
+#include "pw_function/function.h"
+
 namespace pw::thread {
 
 // An optional virtual interface which can be implemented by objects which are
-// a thread as a helper to use pw::thread::Thread.
+// a thread as a helper to use pw::Thread.
 //
-// This wrapper means that the user is not required to provide the indirection
-// callback to call run based on the passed context. For example instead of:
-//
-//   static auto invoke_foo_start = [](void *void_foo_ptr) {
-//     static_cast<Foo*>(void_foo_ptr)->Start();
-//   };
-//   Thread thread(options, invoke_foo_start, &foo).detach();
-//
-// You can instead use the helper constructor in Thread:
-//
-//   Thread thread(options, foo).detach();
+// ThreadCore was originally intended to avoid indirection when threads were
+// constructed from a function pointer and void* argument. Since Thread now uses
+// pw::Function<void()>, ThreadCore is no longer necessary. Its use is
+// discouraged in new code.
 //
 // WARNING: Because the thread may start after the pw::Thread creation, an
 // object which implements the ThreadCore MUST meet or exceed the lifetime of
@@ -39,6 +34,17 @@ class ThreadCore {
 
   // The public API to start a ThreadCore, note that this may return.
   void Start() { Run(); }
+
+  // Returns a pw::Function<void()> that runs this ThreadCore. This is used to
+  // run ThreadCores in a thread.
+  Function<void()> AsFunction() {
+    return [this] { Start(); };
+  }
+
+  // Implicitly convert a ThreadCore to a pw::Function that runs it. This is
+  // used to support existing uses of ThreadCore, without requiring pw::Thread
+  // to refer to it. This implicit conversion may be removed in the future.
+  operator Function<void()>() { return AsFunction(); }
 
  private:
   // This function may return.

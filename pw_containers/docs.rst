@@ -130,7 +130,7 @@ be inefficient and unlikely to be used, they are not implemented, and only a
 queue class is provided.
 
 API Reference
-===============
+=============
 C++
 ---
 .. doxygengroup:: inline_var_len_entry_queue_cpp_api
@@ -147,92 +147,70 @@ Python
 .. automodule:: pw_containers.inline_var_len_entry_queue
    :members:
 
+.. _module-pw_containers-intrusive_list:
+
 -----------------
 pw::IntrusiveList
 -----------------
-IntrusiveList provides an embedded-friendly singly-linked intrusive list
-implementation. An intrusive list is a type of linked list that embeds the
-"next" pointer into the list object itself. This allows the construction of a
-linked list without the need to dynamically allocate list entries.
+``pw::IntrusiveList`` provides an embedded-friendly, double-linked, intrusive
+list implementation. An intrusive list is a type of linked list that embeds list
+metadata, such as a "next" pointer, into the list object itself. This allows the
+construction of a linked list without the need to dynamically allocate list
+entries.
 
 In C, an intrusive list can be made by manually including the "next" pointer as
 a member of the object's struct. ``pw::IntrusiveList`` uses C++ features to
-simplify the process of creating an intrusive list. ``pw::IntrusiveList``
-provides a class that list elements can inherit from. This protects the "next"
-pointer from being accessed by the item class, so only the ``pw::IntrusiveList``
-class can modify the list.
+simplify the process of creating an intrusive list. It provides classes that
+list elements can inherit from, protecting the list metadata from being accessed
+by the item class.
 
-Usage
-=====
-While the API of ``pw::IntrusiveList`` is similar to a ``std::forward_list``,
-there are extra steps to creating objects that can be stored in this data
-structure. Objects that will be added to a ``IntrusiveList<T>`` must inherit
-from ``IntrusiveList<T>::Item``. They can inherit directly from it or inherit
-from it through another base class. When an item is instantiated and added to a
-linked list, the pointer to the object is added to the "next" pointer of
-whichever object is the current tail.
+API Reference
+=============
+This class is similar to ``std::list<T>``, except that the type of items to be
+added must derive from ``pw::IntrusiveList<T>::Item``.
 
-That means two key things:
+.. doxygenclass:: pw::containers::future::IntrusiveList
+   :members:
 
-- An instantiated ``IntrusiveList<T>::Item`` will be removed from its
-  corresponding ``IntrusiveList`` when it goes out of scope.
-- A linked list item CANNOT be included in two lists. Attempting to do so
-  results in an assert failure.
+.. note::
+   Originally, ``pw::IntrusiveList<T>`` was implemented as a singly-linked list.
+   To facilitate migration to ``pw::IntrusiveForwardList<T>::Item``, this
+   original implementation can still be temporarily used by enabling the
+   ``PW_CONTAINERS_USE_LEGACY_INTRUSIVE_LIST`` module configuration option.
 
-.. code-block:: cpp
+.. _module-pw_containers-intrusive_list-example:
 
-   class Square
-      : public pw::IntrusiveList<Square>::Item {
-    public:
-     Square(unsigned int side_length) : side_length(side_length) {}
-     unsigned long Area() { return side_length * side_length; }
+Example
+=======
+.. literalinclude:: examples/intrusive_list.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-intrusive_list]
+   :end-before: [pw_containers-intrusive_list]
 
-    private:
-     unsigned int side_length;
-   };
+------------------------
+pw::IntrusiveForwardList
+------------------------
+``pw::IntrusiveForwardList`` provides an embedded-friendly, singly-linked,
+intrusive list implementation. It is very similar to
+:ref:`module-pw_containers-intrusive_list`, except that is singly rather than
+doubly linked.
 
-   pw::IntrusiveList<Square> squares;
+API Reference
+=============
+This class is similar to ``std::forward_list<T>``. Items to be added must derive
+from ``pw::IntrusiveForwardList<T>::Item``.
 
-   Square small(1);
-   Square large(4000);
-   // These elements are not copied into the linked list, the original objects
-   // are just chained together and can be accessed via
-   // `IntrusiveList<Square> squares`.
-   squares.push_back(small);
-   squares.push_back(large);
+.. doxygenclass:: pw::IntrusiveForwardList
+   :members:
 
-   {
-     // When different_scope goes out of scope, it removes itself from the list.
-     Square different_scope = Square(5);
-     squares.push_back(&different_scope);
-   }
-
-   for (const auto& square : squares) {
-     PW_LOG_INFO("Found a square with an area of %lu", square.Area());
-   }
-
-   // Like std::forward_list, an iterator is invalidated when the item it refers
-   // to is removed. It is *NOT* safe to remove items from a list while iterating
-   // over it in a range-based for loop.
-   for (const auto& square_bad_example : squares) {
-     if (square_bad_example.verticies() != 4) {
-       // BAD EXAMPLE of how to remove matching items from a singly linked list.
-       squares.remove(square_bad_example);  // NEVER DO THIS! THIS IS A BUG!
-     }
-   }
-
-   // To remove items while iterating, use an iterator to the previous item.
-   auto previous = squares.before_begin();
-   auto current = squares.begin();
-
-   while (current != squares.end()) {
-     if (current->verticies() != 4) {
-       current = squares.erase_after(previous);
-     } else {
-       previous = current;
-       ++current;
-     }
-   }
+Example
+=======
+.. literalinclude:: examples/intrusive_forward_list.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-intrusive_forward_list]
+   :end-before: [pw_containers-intrusive_forward_list]
 
 Performance Considerations
 ==========================
@@ -241,20 +219,137 @@ maintains a cycle of items so that the first item can be reached from the last.
 This structure means certain operations have linear complexity in terms of the
 number of items in the list, i.e. they are "O(n)":
 
-- Adding to the end of a list with ``pw::IntrusiveList<T>::push_back(T&)``.
-- Accessing the last item in a list with ``pw::IntrusiveList<T>::back()``.
-- Destroying an item with ``pw::IntrusiveList<T>::Item::~Item()``.
-- Moving an item with either ``pw::IntrusiveList<T>::Item::Item(Item&&)`` or
-  ``pw::IntrusiveList<T>::Item::operator=(Item&&)``.
-- Removing an item from a list using ``pw::IntrusiveList<T>::remove(const T&)``.
-- Getting the list size using ``pw::IntrusiveList<T>::size()``.
+- Removing an item from a list using
+  ``pw::IntrusiveForwardList<T>::remove(const T&)``.
+- Getting the list size using ``pw::IntrusiveForwardList<T>::size()``.
 
-When using a ``pw::IntrusiveList<T>`` in a performance critical section or with
-many items, authors should prefer to avoid these methods. For example, it may be
-preferrable to create items that together with their storage outlive the list.
+When using a ``pw::IntrusiveForwardList<T>`` in a performance critical section
+or with many items, authors should prefer to avoid these methods. For example,
+it may be preferable to create items that together with their storage outlive
+the list.
 
-Notably, ``pw::IntrusiveList<T>::end()`` is constant complexity (i.e. "O(1)").
-As a result iterating over a list does not incur an additional penalty.
+Notably, ``pw::IntrusiveForwardList<T>::end()`` is constant complexity (i.e.
+"O(1)"). As a result iterating over a list does not incur an additional penalty.
+
+.. _module-pw_containers-intrusivelist-size-report:
+
+Size report
+===========
+.. include:: intrusive_list_size_report
+
+.. _module-pw_containers-intrusive_set:
+
+----------------
+pw::IntrusiveSet
+----------------
+``pw::IntrusiveSet`` provides an embedded-friendly, tree-based, intrusive
+set implementation. The intrusive aspect of the set is very similar to that of
+:ref:`module-pw_containers-intrusive_list`.
+
+API Reference
+=============
+This class is similar to ``std::set<T>``. Items to be added must derive from
+``pw::IntrusiveSet<T>::Item`` or an equivalent type.
+
+.. doxygenclass:: pw::IntrusiveSet
+   :members:
+
+Example
+=======
+.. literalinclude:: examples/intrusive_set.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-intrusive_set]
+   :end-before: [pw_containers-intrusive_set]
+
+---------------------
+pw::IntrusiveMultiSet
+---------------------
+``pw::IntrusiveMultiSet`` provides an embedded-friendly, tree-based, intrusive
+multiset implementation. This is very similar to
+:ref:`module-pw_containers-intrusive_set`, except that the tree may contain
+multiple items with equivalent keys.
+
+API Reference
+=============
+This class is similar to ``std::multiset<T>``. Items to be added must derive
+from ``pw::IntrusiveMultiSet<T>::Item`` or an equivalent type.
+
+.. doxygenclass:: pw::IntrusiveMultiSet
+   :members:
+
+Example
+=======
+.. literalinclude:: examples/intrusive_multiset.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-intrusive_multiset]
+   :end-before: [pw_containers-intrusive_multiset]
+
+.. _module-pw_containers-intrusive_map:
+
+----------------
+pw::IntrusiveMap
+----------------
+``pw::IntrusiveMap`` provides an embedded-friendly, tree-based, intrusive
+map implementation. The intrusive aspect of the map is very similar to that of
+:ref:`module-pw_containers-intrusive_list`.
+
+API Reference
+=============
+This class is similar to ``std::map<K, V>``. Items to be added must derive from
+``pw::IntrusiveMap<K, V>::Item`` or an equivalent type.
+
+.. doxygenclass:: pw::IntrusiveMap
+   :members:
+
+Example
+=======
+.. literalinclude:: examples/intrusive_map.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-intrusive_map]
+   :end-before: [pw_containers-intrusive_map]
+
+---------------------
+pw::IntrusiveMultiMap
+---------------------
+``pw::IntrusiveMultiMap`` provides an embedded-friendly, tree-based, intrusive
+multimap implementation. This is very similar to
+:ref:`module-pw_containers-intrusive_map`, except that the tree may contain
+multiple items with equivalent keys.
+
+API Reference
+=============
+This class is similar to ``std::multimap<K, V>``. Items to be added must derive
+from ``pw::IntrusiveMultiMap<K, V>::Item`` or an equivalent type.
+
+.. doxygenclass:: pw::IntrusiveMultiMap
+   :members:
+
+Example
+=======
+.. literalinclude:: examples/intrusive_multimap.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-intrusive_multimap]
+   :end-before: [pw_containers-intrusive_multimap]
+
+------------------------------------
+Using items with multiple containers
+------------------------------------
+Intrusive items may be used with multiple containers, provided each of those
+containers is templated on a type that is not derived from any of the others.
+This can be achieved by multiply inheriting from distinct type:
+
+.. literalinclude:: examples/multiple_containers.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-multiple_containers]
+   :end-before: [pw_containers-multiple_containers]
+
+If one or more types is derived from another, the compiler will fail to build
+with an error that ``ItemType`` is ambiguous or found in multiple base classes.
 
 -----------------------
 pw::containers::FlatMap
@@ -273,27 +368,14 @@ The underlying array in ``pw::containers::FlatMap`` does not need to be sorted.
 During construction, ``pw::containers::FlatMap`` will perform a constexpr
 insertion sort.
 
-To create a ``FlatMap``, there are some options. The following example defines
-a ``FlatMap`` with two items.
+A ``FlatMap`` can be created in one of several ways. Each of the following
+examples defines a ``FlatMap`` with two items.
 
-.. code-block:: cpp
-
-   // Initiates by a std::array of Pair<K, V> objects.
-   FlatMap<int, char, 2> map({{
-       {1, 'a'},
-       {-3, 'b'},
-   }});
-
-   FlatMap map(std::array{
-       Pair<int, char>{1, 'a'},
-       Pair<int, char>{-3, 'b'},
-   });
-
-   // Initiates by Pair<K, V> objects.
-   FlatMap map = {
-       Pair<int, char>{1, 'a'},
-       Pair<int, char>{-3, 'b'},
-   };
+.. literalinclude:: examples/flat_map.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-flat_map]
+   :end-before: [pw_containers-flat_map]
 
 ----------------------------
 pw::containers::FilteredView
@@ -315,26 +397,11 @@ apply a transformation to or access a member of the values provided by the
 original iterator. The following example defines an iterator that multiplies the
 values in an array by 2.
 
-.. code-block:: cpp
-
-   // Divides values in a std::array by two.
-   class DoubleIterator
-       : public pw::containers::WrappedIterator<DoubleIterator, const int*, int> {
-    public:
-     constexpr DoubleIterator(const int* it) : WrappedIterator(it) {}
-
-     int operator*() const { return value() * 2; }
-
-     // Don't define operator-> since this iterator returns by value.
-   };
-
-   constexpr std::array<int, 6> kArray{0, 1, 2, 3, 4, 5};
-
-   void SomeFunction {
-     for (DoubleIterator it(kArray.begin()); it != DoubleIterator(kArray.end()); ++it) {
-       // The iterator yields 0, 2, 4, 6, 8, 10 instead of the original values.
-     }
-   };
+.. literalinclude:: examples/wrapped_iterator.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_containers-wrapped_iterator]
+   :end-before: [pw_containers-wrapped_iterator]
 
 ``WrappedIterator`` may be used in concert with ``FilteredView`` to create a
 view that iterates over a matching values in a container and applies a

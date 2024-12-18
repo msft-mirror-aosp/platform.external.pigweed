@@ -20,7 +20,7 @@
 #include "pw_snapshot/uuid.h"
 #include "pw_status/status.h"
 #include "pw_system/device_handler.h"
-#include "pw_system_private/log.h"
+#include "pw_system/log.h"
 
 namespace pw::system {
 
@@ -58,6 +58,10 @@ void CrashSnapshot::Capture(const pw_cpu_exception_State& cpu_state,
   Status status = OkStatus();
   status.Update(CaptureMetadata(reason, snapshot_encoder));
   status.Update(device_handler::CaptureCpuState(cpu_state, snapshot_encoder));
+  status.Update(CaptureMainStackThread(cpu_state, snapshot_encoder));
+  status.Update(CaptureThreads(cpu_state, snapshot_encoder));
+  // Capture logs last as they can be large and fill
+  // the crash_snapshot buffer.
   status.Update(CaptureLogs(snapshot_encoder));
   status.Update(snapshot_encoder.status());
 }
@@ -90,10 +94,35 @@ Status CrashSnapshot::CaptureMetadata(
   return metadata_encoder.status();
 }
 
+Status CrashSnapshot::CaptureMainStackThread(
+    const pw_cpu_exception_State& cpu_state,
+    snapshot::pwpb::Snapshot::StreamEncoder& snapshot_encoder) {
+  thread::proto::pwpb::SnapshotThreadInfo::StreamEncoder* thread_info_encoder =
+      static_cast<thread::proto::pwpb::SnapshotThreadInfo::StreamEncoder*>(
+          static_cast<protobuf::StreamEncoder*>(&snapshot_encoder));
+  return device_handler::CaptureMainStackThread(cpu_state,
+                                                *thread_info_encoder);
+}
+
+Status CrashSnapshot::CaptureThreads(
+    const pw_cpu_exception_State& cpu_state,
+    snapshot::pwpb::Snapshot::StreamEncoder& snapshot_encoder) {
+  thread::proto::pwpb::SnapshotThreadInfo::StreamEncoder* thread_info_encoder =
+      static_cast<thread::proto::pwpb::SnapshotThreadInfo::StreamEncoder*>(
+          static_cast<protobuf::StreamEncoder*>(&snapshot_encoder));
+  return device_handler::CaptureThreads(cpu_state.extended.psp,
+                                        *thread_info_encoder);
+}
+
 Status CrashSnapshot::CaptureLogs(
     snapshot::pwpb::Snapshot::StreamEncoder& snapshot_encoder) {
   log::pwpb::LogEntries::StreamEncoder encoder(writer_, ByteSpan());
-  multisink::UnsafeDumpMultiSinkLogs(GetMultiSink(), encoder).IgnoreError();
+  // Limit the captured logs to the latest entries that were
+  // added to log buffer.
+  size_t remaining_bytes = snapshot_encoder.ConservativeWriteLimit();
+  multisink::UnsafeDumpMultiSinkLogsFromEnd(
+      GetMultiSink(), encoder, remaining_bytes)
+      .IgnoreError();
   return snapshot_encoder.status();
 }
 

@@ -17,6 +17,7 @@ import argparse
 import logging
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -82,6 +83,12 @@ def _argument_parser() -> argparse.ArgumentParser:
         help='Do not invoke protoc with --experimental_allow_proto3_optional',
     )
     parser.add_argument(
+        '--no-experimental-editions',
+        dest='experimental_editions',
+        action='store_false',
+        help='Do not invoke protoc with --experimental_editions',
+    )
+    parser.add_argument(
         '--no-generate-type-hints',
         dest='generate_type_hints',
         action='store_false',
@@ -96,6 +103,19 @@ def _argument_parser() -> argparse.ArgumentParser:
             'in PWPB.'
         ),
     )
+    parser.add_argument(
+        '--pwpb-no-generic-options-files',
+        action='store_true',
+        help=(
+            'If set, requires the use of the `.pwpb_options` for pw_protobuf '
+            'options files'
+        ),
+    )
+    parser.add_argument(
+        '--pwpb-no-oneof-callbacks',
+        action='store_true',
+        help='Generate legacy inline oneof members instead of callbacks',
+    )
 
     return parser
 
@@ -104,6 +124,8 @@ def protoc_common_args(args: argparse.Namespace) -> tuple[str, ...]:
     flags: tuple[str, ...] = ()
     if args.experimental_proto3_optional:
         flags += ('--experimental_allow_proto3_optional',)
+    if args.experimental_editions:
+        flags += ('--experimental_editions',)
     return flags
 
 
@@ -121,6 +143,10 @@ def protoc_pwpb_args(
         out_args.append(
             '--custom_opt=--exclude-legacy-snake-case-field-name-enums'
         )
+    if args.pwpb_no_generic_options_files:
+        out_args.append('--custom_opt=--no-generic-options-files')
+    if args.pwpb_no_oneof_callbacks:
+        out_args.append('--custom_opt=--no-oneof-callbacks')
 
     out_args.extend(
         [
@@ -198,7 +224,7 @@ def protoc_python_args(
         args.out_dir,
     )
 
-    if args.generate_type_hints:
+    if args.generate_type_hints and shutil.which('protoc-gen-mypy'):
         flags += (
             '--mypy_out',
             args.out_dir,

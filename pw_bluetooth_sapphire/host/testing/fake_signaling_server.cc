@@ -29,11 +29,11 @@ void FakeSignalingServer::RegisterWithL2cap(FakeL2cap* l2cap_) {
 
 void FakeSignalingServer::HandleSdu(hci_spec::ConnectionHandle conn,
                                     const ByteBuffer& sdu) {
-  BT_ASSERT_MSG(sdu.size() >= sizeof(l2cap::CommandHeader),
-                "SDU has only %zu bytes",
-                sdu.size());
-  BT_ASSERT(sdu.To<l2cap::CommandHeader>().length ==
-            (sdu.size() - sizeof(l2cap::CommandHeader)));
+  PW_CHECK(sdu.size() >= sizeof(l2cap::CommandHeader),
+           "SDU has only %zu bytes",
+           sdu.size());
+  PW_CHECK(sdu.To<l2cap::CommandHeader>().length ==
+           (sdu.size() - sizeof(l2cap::CommandHeader)));
   // Extract CommandCode and strip signaling packet header from sdu.
   l2cap::CommandHeader packet_header = sdu.To<l2cap::CommandHeader>();
   l2cap::CommandCode packet_code = packet_header.code;
@@ -188,7 +188,7 @@ void FakeSignalingServer::ProcessConfigurationRequest(
 
 void FakeSignalingServer::ProcessConfigurationResponse(
     hci_spec::ConnectionHandle conn,
-    l2cap::CommandId id,
+    [[maybe_unused]] l2cap::CommandId id,
     const ByteBuffer& configuration_res) {
   const l2cap::ChannelId local_cid =
       configuration_res
@@ -253,9 +253,10 @@ void FakeSignalingServer::SendCFrame(hci_spec::ConnectionHandle conn,
   return callback(conn, l2cap::kSignalingChannelId, response_buffer);
 }
 
-void FakeSignalingServer::SendCommandReject(hci_spec::ConnectionHandle conn,
-                                            l2cap::CommandId id,
-                                            l2cap::RejectReason reason) {
+void FakeSignalingServer::SendCommandReject(
+    hci_spec::ConnectionHandle conn,
+    l2cap::CommandId id,
+    [[maybe_unused]] l2cap::RejectReason reason) {
   DynamicByteBuffer payload_buffer(sizeof(l2cap::CommandRejectPayload));
   MutablePacketView<l2cap::CommandRejectPayload> payload_view(&payload_buffer);
   payload_view.mutable_header()->reason =

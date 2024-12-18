@@ -17,27 +17,36 @@ module(
     version = "0.0.1",
 )
 
+register_execution_platforms("@local_config_platform//:host", "//pw_build/platforms:all")
+
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
-bazel_dep(name = "boringssl", version = "0.0.0-20240530-2db0eb3")
+bazel_dep(name = "boringssl", version = "0.20240913.0")
 bazel_dep(name = "freertos", version = "10.5.1.bcr.2")
 bazel_dep(name = "gazelle", version = "0.36.0", repo_name = "bazel_gazelle")
-bazel_dep(name = "nanopb", repo_name = "com_github_nanopb_nanopb")
+bazel_dep(name = "nanopb", version = "0.4.9.1", repo_name = "com_github_nanopb_nanopb")
 bazel_dep(name = "pico-sdk", version = "2.0.0")
 bazel_dep(name = "picotool", version = "2.0.0")
 bazel_dep(name = "platforms", version = "0.0.10")
-bazel_dep(name = "protobuf", version = "24.4", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_cc", version = "0.0.9")
+bazel_dep(name = "protobuf", version = "28.2", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_cc", version = "0.0.10")
 bazel_dep(name = "rules_fuzzing", version = "0.5.2")
 bazel_dep(name = "rules_go", version = "0.49.0", repo_name = "io_bazel_rules_go")
+bazel_dep(name = "rules_java", version = "7.9.0")
 bazel_dep(name = "rules_jvm_external", version = "6.2")
 bazel_dep(name = "rules_libusb", version = "0.1.0-rc1")
+bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_platform", version = "0.1.0")
 bazel_dep(name = "rules_probe_rs", version = "0.0.2")
-bazel_dep(name = "rules_proto", version = "6.0.0")
-bazel_dep(name = "rules_python", version = "0.34.0")
-bazel_dep(name = "rules_rust", version = "0.45.1")
+bazel_dep(name = "rules_proto", version = "6.0.2")
+bazel_dep(name = "rules_python", version = "0.36.0")
+bazel_dep(name = "rules_rust", version = "0.54.1")
+
+# LINT.IfChange(emboss)
+bazel_dep(name = "emboss", version = "2024.1017.203246", repo_name = "com_google_emboss")
+# LINT.ThenChange(/pw_package/py/pw_package/packages/emboss.py:emboss)
 
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+bazel_dep(name = "rules_doxygen", version = "2.0.0", dev_dependency = True)
 
 # Repository overrides
 # ====================
@@ -50,33 +59,10 @@ archive_override(
     urls = ["https://github.com/chadnorvell/bazel-compile-commands-extractor/archive/163521345aa6366fd1ed801b989b668b5c806f69.tar.gz"],
 )
 
-# TODO: https://pwbug.dev/258836641 - Pre-release version needed for the Pico
-# SDK. Remove this once rules_cc 0.10.0 is released and the Pico SDK
-# MODULE.bazel declares its dependency on it.
-archive_override(
-    module_name = "rules_cc",
-    integrity = "sha256-NddP6xi6LzsIHT8bMSVJ2NtoURbN+l3xpjvmIgB6aSg=",
-    strip_prefix = "rules_cc-1acf5213b6170f1f0133e273cb85ede0e732048f",
-    urls = [
-        "https://github.com/bazelbuild/rules_cc/archive/1acf5213b6170f1f0133e273cb85ede0e732048f.zip",
-    ],
-)
-
-# TODO: https://pwbug.dev/354274498 - nanopb is not yet in the BCR.
-git_override(
-    module_name = "nanopb",
-    commit = "f9191cd0be4177abd0d04546d61d59a9b6c32de3",
-    remote = "https://github.com/nanopb/nanopb.git",
-)
-
-archive_override(
+single_version_override(
     module_name = "rules_rust",
-    integrity = "sha256-+bWb47wg0VchIADaHt6L5Dma2Gn+Q589nz/MKcTi+lo=",
     patch_strip = 1,
     patches = [
-        # Fix rustdoc test w/ proc macros
-        # https://github.com/bazelbuild/rules_rust/pull/1952
-        "//pw_rust/bazel_patches:0001-rustdoc_test-Apply-prefix-stripping-to-proc_macro-de.patch",
         # Adds prototype functionality for documenting multiple crates in one
         # HTML output directory.  While the approach in this patch may have
         # issues scaling to giant mono-repos, it is appropriate for embedded
@@ -86,7 +72,16 @@ archive_override(
         # https://github.com/konkers/rules_rust/tree/wip/rustdoc
         "//pw_rust/bazel_patches:0002-PROTOTYPE-Add-ability-to-document-multiple-crates-at.patch",
     ],
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.45.1/rules_rust-v0.45.1.tar.gz"],
+)
+
+# Supports directory sources in sphinx_docs_library. Providing //pw_rust:docs
+# as an input to //docs:docs depends on this bug fix:
+# https://github.com/bazelbuild/rules_python/issues/2374
+# We can remove this override when we upgrade to rules_python >= 0.38.
+git_override(
+    module_name = "rules_python",
+    commit = "a0b1a40b9335ec1a8cae737e805f721cd6d2cd1f",
+    remote = "https://github.com/bazelbuild/rules_python.git",
 )
 
 # Transitive deps not in BCR
@@ -94,6 +89,15 @@ archive_override(
 http_archive = use_repo_rule(
     "@bazel_tools//tools/build_defs/repo:http.bzl",
     "http_archive",
+)
+
+# TODO(b/370523804): Remove this once the following issues are addressed in a
+# released version of rules_fuzzing
+# https://github.com/bazel-contrib/rules_fuzzing/issues/257
+non_module_dependencies = use_extension("@rules_fuzzing//fuzzing/private:extensions.bzl", "non_module_dependencies")
+use_repo(
+    non_module_dependencies,
+    "rules_fuzzing_oss_fuzz",
 )
 
 # Configure libusb
@@ -114,9 +118,12 @@ local_path_override(
     path = "pw_toolchain_bazel",
 )
 
-xcode = use_repo_rule("@pw_toolchain//features/macos/private:xcode_command_line_tools.bzl", "pw_xcode_repository")
+xcode_sdk_repository = use_repo_rule("//pw_toolchain:xcode.bzl", "xcode_sdk_repository")
 
-xcode(name = "pw_xcode_command_line_tools")
+xcode_sdk_repository(
+    name = "macos_sysroot",
+    build_file = "//pw_toolchain/host_clang:macos_sysroot.BUILD",
+)
 
 cipd_client_repository = use_repo_rule("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "_cipd_client_repository")
 
@@ -127,14 +134,16 @@ cipd_repository = use_repo_rule("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl"
 # Fetch llvm toolchain.
 cipd_repository(
     name = "llvm_toolchain",
-    build_file = "@pw_toolchain//build_external:llvm_clang.BUILD",
+    build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:c58bc24fcf678c55b0bf522be89eff070507a005",
+    tag = "git_revision:8280651ad57cb9fb24a404cec2401040c28dec98",
 )
 
+# TODO: b/366374135 - This is behind, most recent version
+# is in pw_env_setup/py/pw_env_setup/cipd_setup/pigweed.json
 cipd_repository(
     name = "llvm_toolchain_device",
-    build_file = "@pw_toolchain//build_external:llvm_clang.BUILD",
+    build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
     tag = "git_revision:0dcada94bb1ae79f0edd91013038098c62a96b3b",
 )
@@ -142,6 +151,7 @@ cipd_repository(
 # Fetch linux sysroot for host builds.
 cipd_repository(
     name = "linux_sysroot",
+    build_file = "//pw_toolchain/host_clang:linux_sysroot.BUILD",
     path = "fuchsia/third_party/sysroot/bionic",
     tag = "git_revision:702eb9654703a7cec1cadf93a7e3aa269d053943",
 )
@@ -149,7 +159,7 @@ cipd_repository(
 # Fetch gcc-arm-none-eabi toolchain.
 cipd_repository(
     name = "gcc_arm_none_eabi_toolchain",
-    build_file = "@pw_toolchain//build_external:gcc_arm_none_eabi.BUILD",
+    build_file = "//pw_toolchain/build_external:arm_none_eabi_gcc.BUILD",
     path = "fuchsia/third_party/armgcc/${os}-${arch}",
     tag = "version:2@12.2.MPACBTI-Rel1.1",
 )
@@ -164,44 +174,52 @@ register_toolchains(
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33+nofp",
     "//pw_toolchain/host_clang:host_cc_toolchain_linux",
     "//pw_toolchain/host_clang:host_cc_toolchain_macos",
+    dev_dependency = True,
+)
+
+register_toolchains(
+    "//pw_toolchain/fuchsia:all",
+    dev_dependency = True,
+)
+
+# Rust toolchains
+pw_rust = use_extension("//pw_toolchain/rust:extensions.bzl", "pw_rust")
+pw_rust.toolchain(cipd_tag = "rust_revision:bf9c7a64ad222b85397573668b39e6d1ab9f4a72")
+use_repo(pw_rust, "pw_rust_toolchains")
+
+register_toolchains(
+    "@pw_rust_toolchains//:all",
+    dev_dependency = True,
+)
+
+git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
+# Vendored third party rust crates.
+git_repository(
+    name = "rust_crates",
+    commit = "ed1ec1bd240b9446b30af5331b960871a0503a6c",
+    remote = "https://pigweed.googlesource.com/third_party/rust_crates",
 )
 
 # Get probe-rs
 # ============
-probe_rs = use_extension("@rules_probe_rs//probe_rs:extensions.bzl", "probe_rs")
-probe_rs.tools(
-    name = "probe_rs",
-    version = "0.24.0",
-)
-use_repo(probe_rs, "probe_rs")
 
-# STM32 APIs
-# ==========
+# TODO: https://pwbug.dev/346388161 - Re enable use of rules_probe_rs once rp2350
+# support is upstreamed.
 #
-# TODO: https://github.com/bazelbuild/bazel/issues/23077 - Make these
-# bazel_deps dev_dependencies once archive_override has a build_file argument.
-http_archive(
-    name = "stm32f4xx_hal_driver",
-    build_file = "//third_party/stm32cube:stm32_hal_driver.BUILD.bazel",
-    sha256 = "c8741e184555abcd153f7bdddc65e4b0103b51470d39ee0056ce2f8296b4e835",
-    strip_prefix = "stm32f4xx_hal_driver-1.8.0",
-    urls = ["https://github.com/STMicroelectronics/stm32f4xx_hal_driver/archive/refs/tags/v1.8.0.tar.gz"],
-)
+# probe_rs = use_extension("@rules_probe_rs//probe_rs:extensions.bzl", "probe_rs")
+# probe_rs.tools(
+#     name = "probe_rs",
+#     version = "0.24.0",
+# )
+# use_repo(probe_rs, "probe_rs")
 
-http_archive(
-    name = "cmsis_device_f4",
-    build_file = "//third_party/stm32cube:cmsis_device.BUILD.bazel",
-    sha256 = "6390baf3ea44aff09d0327a3c112c6ca44418806bfdfe1c5c2803941c391fdce",
-    strip_prefix = "cmsis_device_f4-2.6.8",
-    urls = ["https://github.com/STMicroelectronics/cmsis_device_f4/archive/refs/tags/v2.6.8.tar.gz"],
-)
-
-http_archive(
-    name = "cmsis_core",
-    build_file = "//third_party/stm32cube:cmsis_core.BUILD.bazel",
-    sha256 = "f711074a546bce04426c35e681446d69bc177435cd8f2f1395a52db64f52d100",
-    strip_prefix = "cmsis_core-5.4.0_cm4",
-    urls = ["https://github.com/STMicroelectronics/cmsis_core/archive/refs/tags/v5.4.0_cm4.tar.gz"],
+# Use pre-release prebuilts for RP2350 support.
+cipd_repository(
+    name = "probe_rs",
+    build_file = "@pigweed//third_party/probe-rs:probe-rs.BUILD.bazel",
+    path = "pigweed/third_party/probe-rs/${os}-${arch}",
+    tag = "git_revision:37660106aba307cbab5cf6c2b0da57b72b6dc4e9",
 )
 
 # Configure Python toolchains and pip dependencies.
@@ -219,9 +237,9 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
     hub_name = "python_packages",
     python_version = "3.11",
-    requirements_darwin = "//pw_env_setup/py/pw_env_setup/virtualenv_setup:upstream_requirements_darwin_lock.txt",
-    requirements_linux = "//pw_env_setup/py/pw_env_setup/virtualenv_setup:upstream_requirements_linux_lock.txt",
-    requirements_windows = "//pw_env_setup/py/pw_env_setup/virtualenv_setup:upstream_requirements_windows_lock.txt",
+    requirements_darwin = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_darwin_lock.txt",
+    requirements_linux = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_linux_lock.txt",
+    requirements_windows = "//pw_env_setup/py:pw_env_setup/virtualenv_setup/upstream_requirements_windows_lock.txt",
 )
 use_repo(pip, "python_packages")
 
@@ -263,3 +281,125 @@ use_repo(
     maven,
     "maven",
 )
+
+# Vendored libraries
+# ==================
+
+# TODO: https://pwbug.dev/378531541 - These are one-off external libraries that
+# are NOT in the BCR that downstream users may need to override/unify to their
+# expected version.
+
+new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
+
+# TODO: https://pwbug.dev/378531541 - Get micro_ecc from the BCR.
+new_git_repository(
+    name = "micro_ecc",
+    build_file = "//:third_party/micro_ecc/BUILD.micro_ecc",
+    commit = "b335ee812bfcca4cd3fb0e2a436aab39553a555a",
+    remote = "https://github.com/kmackay/micro-ecc.git",
+)
+
+# TODO: https://pwbug.dev/354749299 - Use the BCR version of mbedtls.
+http_archive(
+    name = "mbedtls",
+    build_file = "//:third_party/mbedtls/mbedtls.BUILD.bazel",
+    sha256 = "241c68402cef653e586be3ce28d57da24598eb0df13fcdea9d99bfce58717132",
+    strip_prefix = "mbedtls-2.28.8",
+    url = "https://github.com/Mbed-TLS/mbedtls/releases/download/v2.28.8/mbedtls-2.28.8.tar.bz2",
+)
+
+# TODO: https://github.com/bazelbuild/bazel/issues/23077 - Make these
+# bazel_deps dev_dependencies once archive_override has a build_file argument.
+http_archive(
+    name = "stm32f4xx_hal_driver",
+    build_file = "//third_party/stm32cube:stm32_hal_driver.BUILD.bazel",
+    sha256 = "d0427a3830f0c23dd4810952321b8209be7b3c50897d1fc2d79587435cc3a379",
+    strip_prefix = "stm32f4xx-hal-driver-1.8.0",
+    urls = ["https://github.com/STMicroelectronics/stm32f4xx-hal-driver/archive/refs/tags/v1.8.0.tar.gz"],
+)
+
+http_archive(
+    name = "cmsis_device_f4",
+    build_file = "//third_party/stm32cube:cmsis_device.BUILD.bazel",
+    sha256 = "1d9612ecaaab8708c88be2c9573927f2e5e9a911aa2c1427182b545ed5ed0fd6",
+    strip_prefix = "cmsis-device-f4-2.6.8",
+    urls = ["https://github.com/STMicroelectronics/cmsis-device-f4/archive/refs/tags/v2.6.8.tar.gz"],
+)
+
+http_archive(
+    name = "cmsis_core",
+    build_file = "//third_party/stm32cube:cmsis_core.BUILD.bazel",
+    sha256 = "32f226c31d7d1ff4a504404400603e047b99f405cd0c9a8f417f1f250251b829",
+    strip_prefix = "cmsis-core-5.4.0_cm4",
+    urls = ["https://github.com/STMicroelectronics/cmsis-core/archive/refs/tags/v5.4.0_cm4.tar.gz"],
+)
+
+# Other Pigweed-specific dependencies
+# ===================================
+cipd_repository(
+    name = "bloaty",
+    path = "fuchsia/third_party/bloaty/${os}-amd64",
+    tag = "git_revision:c057ba4f43db0506d4ba8c096925b054b02a8bd3",
+)
+
+# Set up legacy pw_transfer test binaries.
+# Required by: pigweed.
+# Used in modules: //pw_transfer.
+cipd_repository(
+    name = "pw_transfer_test_binaries",
+    # Only ever needed if you run the pw_transfer unit tests.
+    dev_dependency = True,
+    path = "pigweed/pw_transfer_test_binaries/${os=linux}-${arch=amd64}",
+    tag = "version:pw_transfer_test_binaries_528098d588f307881af83f769207b8e6e1b57520-linux-amd64-cipd.cipd",
+)
+
+# Doxygen setup
+# =============
+
+# Get executables.
+cipd_repository(
+    name = "doxygen_linux_amd64",
+    path = "pigweed/third_party/doxygen/linux-amd64",
+    # TODO: b/384045900 - Update to a fresher executable.
+    tag = "version:1.9.6-1",
+)
+
+cipd_repository(
+    name = "doxygen_mac_amd64",
+    path = "pigweed/third_party/doxygen/mac-amd64",
+    # TODO: b/384045900 - Update to a fresher executable.
+    tag = "version:1.9.6-1",
+)
+
+cipd_repository(
+    name = "doxygen_mac_arm64",
+    path = "pigweed/third_party/doxygen/mac-arm64",
+    tag = "git_revision:401de7aa290e21f557e28515a5887fc40a092f62",
+)
+
+cipd_repository(
+    name = "doxygen_windows_amd64",
+    path = "pigweed/third_party/doxygen/windows-amd64",
+    # TODO: b/384045900 - Update to a fresher executable.
+    tag = "version:1.9.6-1",
+)
+
+# Configure rules_doxygen to use our executables.
+doxygen_extension = use_extension("@rules_doxygen//:extensions.bzl", "doxygen_extension", dev_dependency = True)
+doxygen_extension.configuration(
+    executable = "@doxygen_linux_amd64//:bin/doxygen",
+    platform = "linux",
+)
+doxygen_extension.configuration(
+    executable = "@doxygen_mac_amd64//:doxygen",
+    platform = "mac",
+)
+doxygen_extension.configuration(
+    executable = "@doxygen_mac_arm64//:doxygen",
+    platform = "mac-arm",
+)
+doxygen_extension.configuration(
+    executable = "@doxygen_windows_amd64//:windows.exe",
+    platform = "windows",
+)
+use_repo(doxygen_extension, "doxygen")

@@ -35,62 +35,79 @@ const char* kInspectScanIntervalPropertyName = "scan_interval_ms";
 const char* kInspectScanWindowPropertyName = "scan_window_ms";
 
 LowEnergyDiscoverySession::LowEnergyDiscoverySession(
-    bool active, LowEnergyDiscoveryManager::WeakPtr manager)
-    : alive_(true), active_(active), manager_(std::move(manager)) {
-  BT_ASSERT(manager_.is_alive());
-}
+    bool active,
+    PeerCache& peer_cache,
+    pw::async::Dispatcher& dispatcher,
+    fit::function<void(LowEnergyDiscoverySession*)> on_stop_cb,
+    fit::function<const std::unordered_set<PeerId>&()> cached_scan_results_fn)
+    : WeakSelf(this),
+      active_(active),
+      peer_cache_(peer_cache),
+      heap_dispatcher_(dispatcher),
+      on_stop_cb_(std::move(on_stop_cb)),
+      cached_scan_results_fn_(std::move(cached_scan_results_fn)) {}
 
 LowEnergyDiscoverySession::~LowEnergyDiscoverySession() {
-  if (alive_) {
-    Stop();
+  if (alive_ && on_stop_cb_) {
+    on_stop_cb_(this);
   }
 }
 
-void LowEnergyDiscoverySession::SetResultCallback(PeerFoundCallback callback) {
-  peer_found_callback_ = std::move(callback);
-  if (!manager_.is_alive())
+void LowEnergyDiscoverySession::SetResultCallback(PeerFoundFunction callback) {
+  if (!alive_) {
     return;
-  for (PeerId cached_peer_id : manager_->cached_scan_results()) {
-    auto peer = manager_->peer_cache()->FindById(cached_peer_id);
-    // Ignore peers that have since been removed from the peer cache.
-    if (!peer) {
-      bt_log(TRACE,
-             "gap",
-             "Ignoring cached scan result for peer %s missing from peer cache",
-             bt_str(cached_peer_id));
-      continue;
-    }
-    NotifyDiscoveryResult(*peer);
   }
-}
+  peer_found_fn_ = std::move(callback);
 
-void LowEnergyDiscoverySession::Stop() {
-  BT_DEBUG_ASSERT(alive_);
-  if (manager_.is_alive()) {
-    manager_->RemoveSession(this);
-  }
-  alive_ = false;
+  // Post NotifyDiscoveryResult(), which calls peer_found_fn_, to avoid client
+  // bugs (e.g. deadlock) when peer_found_fn_ is called in SetResultCallback().
+  pw::Status post_status = heap_dispatcher_.Post([self = GetWeakPtr()](
+                                                     pw::async::Context,
+                                                     pw::Status status) {
+    if (!status.ok() || !self.is_alive()) {
+      return;
+    }
+    for (PeerId cached_peer_id : self->cached_scan_results_fn_()) {
+      auto peer = self->peer_cache_.FindById(cached_peer_id);
+      // Ignore peers that have since been removed from the peer cache.
+      if (!peer) {
+        bt_log(
+            TRACE,
+            "gap",
+            "Ignoring cached scan result for peer %s missing from peer cache",
+            bt_str(cached_peer_id));
+        continue;
+      }
+      self->NotifyDiscoveryResult(*peer);
+    }
+  });
+  PW_CHECK(post_status.ok());
 }
 
 void LowEnergyDiscoverySession::NotifyDiscoveryResult(const Peer& peer) const {
-  BT_ASSERT(peer.le());
+  PW_CHECK(peer.le());
 
-  if (!alive_ || !peer_found_callback_) {
+  if (!alive_ || !peer_found_fn_) {
     return;
   }
-
   if (filter_.MatchLowEnergyResult(peer.le()->parsed_advertising_data(),
                                    peer.connectable(),
                                    peer.rssi())) {
-    peer_found_callback_(peer);
+    peer_found_fn_(peer);
   }
 }
 
 void LowEnergyDiscoverySession::NotifyError() {
   alive_ = false;
-  if (error_callback_) {
-    error_callback_();
+  if (error_cb_) {
+    error_cb_();
   }
+}
+
+void LowEnergyDiscoverySession::Stop() {
+  PW_DCHECK(alive_);
+  on_stop_cb_(this);
+  alive_ = false;
 }
 
 LowEnergyDiscoveryManager::LowEnergyDiscoveryManager(
@@ -103,8 +120,8 @@ LowEnergyDiscoveryManager::LowEnergyDiscoveryManager(
       peer_cache_(peer_cache),
       paused_count_(0),
       scanner_(scanner) {
-  BT_DEBUG_ASSERT(peer_cache_);
-  BT_DEBUG_ASSERT(scanner_);
+  PW_DCHECK(peer_cache_);
+  PW_DCHECK(scanner_);
 
   scanner_->set_delegate(this);
 }
@@ -117,34 +134,34 @@ LowEnergyDiscoveryManager::~LowEnergyDiscoveryManager() {
 
 void LowEnergyDiscoveryManager::StartDiscovery(bool active,
                                                SessionCallback callback) {
-  BT_ASSERT(callback);
+  PW_CHECK(callback);
   bt_log(INFO, "gap-le", "start %s discovery", active ? "active" : "passive");
 
   // If a request to start or stop is currently pending then this one will
-  // become pending until the HCI request completes. This does NOT include the
-  // state in which we are stopping and restarting scan in between scan
+  // become pending until the HCI request completes. This does NOT include
+  // the state in which we are stopping and restarting scan in between scan
   // periods, in which case session_ will not be empty.
   //
-  // If the scan needs to be upgraded to an active scan, it will be handled in
-  // OnScanStatus() when the HCI request completes.
+  // If the scan needs to be upgraded to an active scan, it will be handled
+  // in OnScanStatus() when the HCI request completes.
   if (!pending_.empty() ||
       (scanner_->state() == hci::LowEnergyScanner::State::kStopping &&
        sessions_.empty())) {
-    BT_ASSERT(!scanner_->IsScanning());
+    PW_CHECK(!scanner_->IsScanning());
     pending_.push_back(
         DiscoveryRequest{.active = active, .callback = std::move(callback)});
     return;
   }
 
   // If a peer scan is already in progress, then the request succeeds (this
-  // includes the state in which we are stopping and restarting scan in between
-  // scan periods).
+  // includes the state in which we are stopping and restarting scan in
+  // between scan periods).
   if (!sessions_.empty()) {
     if (active) {
       // If this is the first active session, stop scanning and wait for
       // OnScanStatus() to initiate active scan.
       if (!std::any_of(sessions_.begin(), sessions_.end(), [](auto s) {
-            return s->active_;
+            return s->active();
           })) {
         StopScan();
       }
@@ -154,10 +171,10 @@ void LowEnergyDiscoveryManager::StartDiscovery(bool active,
     // Post the callback instead of calling it synchronously to avoid bugs
     // caused by client code not expecting this.
     (void)heap_dispatcher_.Post(
-        [callback = std::move(callback), session = std::move(session)](
+        [cb = std::move(callback), discovery_session = std::move(session)](
             pw::async::Context /*ctx*/, pw::Status status) mutable {
           if (status.ok()) {
-            callback(std::move(session));
+            cb(std::move(discovery_session));
           }
         });
     return;
@@ -169,8 +186,8 @@ void LowEnergyDiscoveryManager::StartDiscovery(bool active,
     return;
   }
 
-  // If the scanner is not idle, it is starting/stopping, and the appropriate
-  // scanning will be initiated in OnScanStatus().
+  // If the scanner is not idle, it is starting/stopping, and the
+  // appropriate scanning will be initiated in OnScanStatus().
   if (scanner_->IsIdle()) {
     StartScan(active);
   }
@@ -190,7 +207,7 @@ LowEnergyDiscoveryManager::PauseDiscovery() {
       return;
     }
 
-    BT_ASSERT(paused());
+    PW_CHECK(paused());
     paused_count_.Set(*paused_count_ - 1);
     if (*paused_count_ == 0) {
       ResumeDiscovery();
@@ -233,32 +250,42 @@ std::string LowEnergyDiscoveryManager::StateToString(State state) {
 
 std::unique_ptr<LowEnergyDiscoverySession>
 LowEnergyDiscoveryManager::AddSession(bool active) {
-  // Cannot use make_unique here since LowEnergyDiscoverySession has a private
-  // constructor.
-  std::unique_ptr<LowEnergyDiscoverySession> session(
-      new LowEnergyDiscoverySession(active, GetWeakPtr()));
+  auto on_stop_cb = [this](LowEnergyDiscoverySession* session_to_remove) {
+    RemoveSession(session_to_remove);
+  };
+  auto cached_scan_results_fn =
+      [this]() -> const decltype(cached_scan_results_)& {
+    return this->cached_scan_results_;
+  };
+  auto session = std::make_unique<LowEnergyDiscoverySession>(
+      active,
+      *peer_cache_,
+      dispatcher_,
+      std::move(on_stop_cb),
+      std::move(cached_scan_results_fn));
   sessions_.push_back(session.get());
   return session;
 }
 
 void LowEnergyDiscoveryManager::RemoveSession(
     LowEnergyDiscoverySession* session) {
-  BT_ASSERT(session);
+  PW_CHECK(session);
 
-  // Only alive sessions are allowed to call this method. If there is at least
-  // one alive session object out there, then we MUST be scanning.
-  BT_ASSERT(session->alive());
+  // Only alive sessions are allowed to call this method. If there is at
+  // least one alive session object out there, then we MUST be scanning.
+  PW_CHECK(session->alive());
 
   auto iter = std::find(sessions_.begin(), sessions_.end(), session);
-  BT_ASSERT(iter != sessions_.end());
+  PW_CHECK(iter != sessions_.end());
 
   bool active = session->active();
 
   sessions_.erase(iter);
 
-  bool last_active = active && std::none_of(sessions_.begin(),
-                                            sessions_.end(),
-                                            [](auto& s) { return s->active_; });
+  bool last_active =
+      active && std::none_of(sessions_.begin(), sessions_.end(), [](auto& s) {
+        return s->active();
+      });
 
   // Stop scanning if the session count has dropped to zero or the scan type
   // needs to be downgraded to passive.
@@ -298,11 +325,12 @@ void LowEnergyDiscoveryManager::OnPeerFound(
   // Create a new entry if we found the device during general discovery.
   if (!peer) {
     peer = peer_cache_->NewPeer(result.address(), result.connectable());
-    BT_ASSERT(peer);
+    PW_CHECK(peer);
   } else if (!peer->connectable() && result.connectable()) {
     bt_log(DEBUG,
            "gap-le",
-           "received connectable advertisement from previously non-connectable "
+           "received connectable advertisement from previously "
+           "non-connectable "
            "peer (address: %s, "
            "peer: %s)",
            bt_str(result.address()),
@@ -316,8 +344,8 @@ void LowEnergyDiscoveryManager::OnPeerFound(
   cached_scan_results_.insert(peer->identifier());
 
   for (auto iter = sessions_.begin(); iter != sessions_.end();) {
-    // The session may be erased by the result handler, so we need to get the
-    // next iterator before iter is invalidated.
+    // The session may be erased by the result handler, so we need to get
+    // the next iterator before iter is invalidated.
     auto next = std::next(iter);
     auto session = *iter;
     session->NotifyDiscoveryResult(*peer);
@@ -356,8 +384,8 @@ void LowEnergyDiscoveryManager::OnDirectedAdvertisement(
 
   // Only notify passive sessions.
   for (auto iter = sessions_.begin(); iter != sessions_.end();) {
-    // The session may be erased by the result handler, so we need to get the
-    // next iterator before iter is invalidated.
+    // The session may be erased by the result handler, so we need to get
+    // the next iterator before iter is invalidated.
     auto next = std::next(iter);
     auto session = *iter;
     if (!session->active()) {
@@ -411,12 +439,12 @@ void LowEnergyDiscoveryManager::OnPassiveScanStarted() {
 
   state_.Set(State::kPassive);
 
-  // Stop the passive scan if an active scan was requested while the scan was
-  // starting. The active scan will start in OnScanStopped() once the passive
-  // scan stops.
+  // Stop the passive scan if an active scan was requested while the scan
+  // was starting. The active scan will start in OnScanStopped() once the
+  // passive scan stops.
   if (std::any_of(sessions_.begin(),
                   sessions_.end(),
-                  [](auto& s) { return s->active_; }) ||
+                  [](auto& s) { return s->active(); }) ||
       std::any_of(
           pending_.begin(), pending_.end(), [](auto& p) { return p.active; })) {
     bt_log(TRACE,
@@ -452,8 +480,9 @@ void LowEnergyDiscoveryManager::OnScanStopped() {
 
   if (!sessions_.empty()) {
     bt_log(DEBUG, "gap-le", "initiating scanning");
-    bool active = std::any_of(
-        sessions_.begin(), sessions_.end(), [](auto& s) { return s->active_; });
+    bool active = std::any_of(sessions_.begin(), sessions_.end(), [](auto& s) {
+      return s->active();
+    });
     StartScan(active);
     return;
   }
@@ -506,7 +535,7 @@ void LowEnergyDiscoveryManager::NotifyPending() {
       cb(std::move(new_sessions[i]));
     }
   }
-  BT_ASSERT(pending_.empty());
+  PW_CHECK(pending_.empty());
 }
 
 void LowEnergyDiscoveryManager::StartScan(bool active) {
@@ -515,14 +544,14 @@ void LowEnergyDiscoveryManager::StartScan(bool active) {
       self->OnScanStatus(status);
   };
 
-  // TODO(armansito): A client that is interested in scanning nearby beacons and
-  // calculating proximity based on RSSI changes may want to disable duplicate
-  // filtering. We generally shouldn't allow this unless a client has the
-  // capability for it. Processing all HCI events containing advertising reports
-  // will both generate a lot of bus traffic and performing duplicate filtering
-  // on the host will take away CPU cycles from other things. It's a valid use
-  // case but needs proper management. For now we always make the controller
-  // filter duplicate reports.
+  // TODO(armansito): A client that is interested in scanning nearby beacons
+  // and calculating proximity based on RSSI changes may want to disable
+  // duplicate filtering. We generally shouldn't allow this unless a client
+  // has the capability for it. Processing all HCI events containing
+  // advertising reports will both generate a lot of bus traffic and
+  // performing duplicate filtering on the host will take away CPU cycles
+  // from other things. It's a valid use case but needs proper management.
+  // For now we always make the controller filter duplicate reports.
   hci::LowEnergyScanner::ScanOptions options{
       .active = active,
       .filter_duplicates = true,
@@ -543,10 +572,10 @@ void LowEnergyDiscoveryManager::StartScan(bool active) {
     // advertisements.
   }
 
-  // Since we use duplicate filtering, we stop and start the scan periodically
-  // to re-process advertisements. We use the minimum required scan period for
-  // general discovery (by default; |scan_period_| can be modified, e.g. by unit
-  // tests).
+  // Since we use duplicate filtering, we stop and start the scan
+  // periodically to re-process advertisements. We use the minimum required
+  // scan period for general discovery (by default; |scan_period_| can be
+  // modified, e.g. by unit tests).
   state_.Set(State::kStarting);
   scanner_->StartScan(options, std::move(cb));
 
@@ -560,7 +589,7 @@ void LowEnergyDiscoveryManager::StopScan() {
 }
 
 void LowEnergyDiscoveryManager::ResumeDiscovery() {
-  BT_ASSERT(!paused());
+  PW_CHECK(!paused());
 
   if (!scanner_->IsIdle()) {
     bt_log(TRACE, "gap-le", "attempt to resume discovery when it is not idle");
@@ -569,8 +598,9 @@ void LowEnergyDiscoveryManager::ResumeDiscovery() {
 
   if (!sessions_.empty()) {
     bt_log(TRACE, "gap-le", "resuming scan");
-    bool active = std::any_of(
-        sessions_.begin(), sessions_.end(), [](auto& s) { return s->active_; });
+    bool active = std::any_of(sessions_.begin(), sessions_.end(), [](auto& s) {
+      return s->active();
+    });
     StartScan(active);
     return;
   }
@@ -585,7 +615,8 @@ void LowEnergyDiscoveryManager::ResumeDiscovery() {
 }
 
 void LowEnergyDiscoveryManager::DeactivateAndNotifySessions() {
-  // If there are any active sessions we invalidate by notifying of an error.
+  // If there are any active sessions we invalidate by notifying of an
+  // error.
 
   // We move the initial set and notify those, if any error callbacks create
   // additional sessions they will be added to pending_
@@ -599,7 +630,7 @@ void LowEnergyDiscoveryManager::DeactivateAndNotifySessions() {
   // Due to the move, sessions_ should be empty before the loop and any
   // callbacks will add sessions to pending_ so it should be empty
   // afterwards as well.
-  BT_ASSERT(sessions_.empty());
+  PW_CHECK(sessions_.empty());
 }
 
 }  // namespace bt::gap

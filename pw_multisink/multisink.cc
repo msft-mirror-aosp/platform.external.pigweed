@@ -81,7 +81,8 @@ Result<ConstByteSpan> MultiSink::PeekOrPopEntry(
     Request request,
     uint32_t& drain_drop_count_out,
     uint32_t& ingress_drop_count_out,
-    uint32_t& entry_sequence_id_out) {
+    uint32_t& entry_sequence_id_out)
+    PW_NO_SANITIZE("unsigned-integer-overflow") {
   size_t bytes_read = 0;
   entry_sequence_id_out = 0;
   drain_drop_count_out = 0;
@@ -146,7 +147,8 @@ Result<ConstByteSpan> MultiSink::PeekOrPopEntry(
   return as_bytes(buffer.first(bytes_read));
 }
 
-void MultiSink::AttachDrain(Drain& drain) {
+void MultiSink::AttachDrain(Drain& drain)
+    PW_NO_SANITIZE("unsigned-integer-overflow") {
   std::lock_guard lock(lock_);
   PW_DCHECK_PTR_EQ(drain.multisink_, nullptr);
   drain.multisink_ = this;
@@ -209,6 +211,54 @@ Status MultiSink::UnsafeForEachEntry(
   const size_t first_logged_offset =
       max_num_entries > num_entries ? 0 : num_entries - max_num_entries;
   pw::multisink::MultiSink::iterator it = multisink_iteration.begin();
+  for (size_t offset = 0; it != multisink_iteration.end(); ++it, ++offset) {
+    if (offset < first_logged_offset) {
+      continue;  // Skip this log.
+    }
+    callback(*it);
+  }
+  if (!it.status().ok()) {
+    PW_LOG_WARN("Multisink corruption detected, some entries may be missing");
+    return Status::DataLoss();
+  }
+
+  return OkStatus();
+}
+
+Status MultiSink::UnsafeForEachEntryFromEnd(
+    const Function<void(ConstByteSpan)>& callback, size_t max_size_bytes) {
+  MultiSink::UnsafeIterationWrapper multisink_iteration = UnsafeIteration();
+
+  // First count the number of entries and total size of the entries.
+  size_t num_entries = 0;
+  size_t total_bytes = 0;
+  iterator it = multisink_iteration.begin();
+  iterator last_elem_it;
+  for (; it != multisink_iteration.end(); ++it) {
+    num_entries++;
+    total_bytes += (*it).size();
+    last_elem_it = it;
+  }
+
+  size_t max_num_entries = std::numeric_limits<size_t>::max();
+  // All entries won't fit in the available space, so reverse iterate
+  // from the end to calculate the number of elements from the end
+  // which will fit in the available space.
+  if (total_bytes > max_size_bytes) {
+    total_bytes = 0;
+    max_num_entries = 0;
+    while (total_bytes <= max_size_bytes) {
+      total_bytes += (*last_elem_it).size();
+      last_elem_it--;
+      max_num_entries++;
+    }
+  }
+
+  // Log up to the max number of logs to avoid overflowing the crash log
+  // writer.
+  const size_t first_logged_offset =
+      max_num_entries > num_entries ? 0 : num_entries - max_num_entries;
+  it = multisink_iteration.begin();
   for (size_t offset = 0; it != multisink_iteration.end(); ++it, ++offset) {
     if (offset < first_logged_offset) {
       continue;  // Skip this log.

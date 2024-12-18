@@ -22,6 +22,10 @@
 #include "pw_thread/thread_core.h"
 #include "pw_unit_test/framework.h"
 
+// TODO: https://pwbug.dev/365161669 - Express joinability as a build-system
+// constraint.
+#if PW_THREAD_JOINING_ENABLED
+
 namespace examples {
 
 /// Threaded task that performs several allocations.
@@ -31,7 +35,7 @@ class MyTask final {
 
   MyTask(pw::Allocator& allocator, const pw::thread::Options& options)
       : thread_core_(allocator) {
-    thread_ = pw::thread::Thread(options, thread_core_);
+    thread_ = pw::Thread(options, thread_core_);
   }
 
   void join() { thread_.join(); }
@@ -60,7 +64,7 @@ class MyTask final {
     pw::Allocator& allocator_;
   } thread_core_;
 
-  pw::thread::Thread thread_;
+  pw::Thread thread_;
 };
 
 // DOCSTAG: [pw_allocator-examples-spin_lock]
@@ -90,3 +94,5 @@ TEST(SpinLockExample, RunTasks) {
 }
 
 }  // namespace
+
+#endif  // PW_THREAD_JOINING_ENABLED

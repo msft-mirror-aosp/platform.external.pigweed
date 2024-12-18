@@ -22,7 +22,6 @@
 #include "pw_thread_stl/options.h"
 #include "pw_unit_test/framework.h"
 
-#define ASSERT_OK(status) ASSERT_EQ(OkStatus(), status)
 #define ASSERT_CANCELLED(status) ASSERT_EQ(Status::Cancelled(), status)
 
 using namespace std::chrono_literals;
@@ -40,11 +39,11 @@ struct TestPrimitives {
 
 TEST(DispatcherBasic, PostTasks) {
   BasicDispatcher dispatcher;
-  thread::Thread work_thread(thread::stl::Options(), dispatcher);
+  Thread work_thread(thread::stl::Options(), dispatcher);
 
   TestPrimitives tp;
   auto inc_count = [&tp]([[maybe_unused]] Context& c, Status status) {
-    ASSERT_OK(status);
+    PW_TEST_ASSERT_OK(status);
     ++tp.count;
   };
 
@@ -55,7 +54,7 @@ TEST(DispatcherBasic, PostTasks) {
   dispatcher.Post(task2);
 
   Task task3([&tp]([[maybe_unused]] Context& c, Status status) {
-    ASSERT_OK(status);
+    PW_TEST_ASSERT_OK(status);
     ++tp.count;
     tp.notification.release();
   });
@@ -69,21 +68,21 @@ TEST(DispatcherBasic, PostTasks) {
 
 TEST(DispatcherBasic, ChainedTasks) {
   BasicDispatcher dispatcher;
-  thread::Thread work_thread(thread::stl::Options(), dispatcher);
+  Thread work_thread(thread::stl::Options(), dispatcher);
 
   sync::ThreadNotification notification;
   Task task1([&notification]([[maybe_unused]] Context& c, Status status) {
-    ASSERT_OK(status);
+    PW_TEST_ASSERT_OK(status);
     notification.release();
   });
 
   Task task2([&task1](Context& c, Status status) {
-    ASSERT_OK(status);
+    PW_TEST_ASSERT_OK(status);
     c.dispatcher->Post(task1);
   });
 
   Task task3([&task2](Context& c, Status status) {
-    ASSERT_OK(status);
+    PW_TEST_ASSERT_OK(status);
     c.dispatcher->Post(task2);
   });
   dispatcher.Post(task3);
@@ -100,16 +99,16 @@ TEST(DispatcherBasic, TaskOrdering) {
   };
 
   BasicDispatcher dispatcher;
-  thread::Thread work_thread(thread::stl::Options(), dispatcher);
+  Thread work_thread(thread::stl::Options(), dispatcher);
   TestState state;
 
   Task task1([&state](Context&, Status status) {
-    ASSERT_OK(status);
+    PW_TEST_ASSERT_OK(status);
     state.tasks.push_back(1);
   });
 
   Task task2([&state](Context&, Status status) {
-    ASSERT_OK(status);
+    PW_TEST_ASSERT_OK(status);
     state.tasks.push_back(2);
     state.notification.release();
   });
@@ -131,7 +130,7 @@ TEST(DispatcherBasic, TaskOrdering) {
 // Test RequestStop() from inside task.
 TEST(DispatcherBasic, RequestStopInsideTask) {
   BasicDispatcher dispatcher;
-  thread::Thread work_thread(thread::stl::Options(), dispatcher);
+  Thread work_thread(thread::stl::Options(), dispatcher);
 
   int count = 0;
   auto inc_count = [&count]([[maybe_unused]] Context& c, Status status) {
@@ -145,7 +144,7 @@ TEST(DispatcherBasic, RequestStopInsideTask) {
   dispatcher.PostAfter(task1, 21ms);
 
   Task stop_task([&count]([[maybe_unused]] Context& c, Status status) {
-    ASSERT_OK(status);
+    PW_TEST_ASSERT_OK(status);
     ++count;
     static_cast<BasicDispatcher*>(c.dispatcher)->RequestStop();
   });
@@ -157,7 +156,7 @@ TEST(DispatcherBasic, RequestStopInsideTask) {
 
 TEST(DispatcherBasic, TasksCancelledByRequestStopInDifferentThread) {
   BasicDispatcher dispatcher;
-  thread::Thread work_thread(thread::stl::Options(), dispatcher);
+  Thread work_thread(thread::stl::Options(), dispatcher);
 
   int count = 0;
   auto inc_count = [&count]([[maybe_unused]] Context& c, Status status) {

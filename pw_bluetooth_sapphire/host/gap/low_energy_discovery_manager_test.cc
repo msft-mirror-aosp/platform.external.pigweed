@@ -112,7 +112,7 @@ class LowEnergyDiscoveryManagerTest : public TestingBase {
   std::vector<inspect::PropertyValue> InspectProperties() const {
     auto hierarchy = InspectHierarchy();
     auto children = hierarchy.take_children();
-    BT_ASSERT(children.size() == 1u);
+    PW_CHECK(children.size() == 1u);
     return children.front().node_ptr()->take_properties();
   }
 #endif  // NINSPECT
@@ -278,12 +278,12 @@ class LowEnergyDiscoveryManagerTest : public TestingBase {
       bool active = true) {
     std::unique_ptr<LowEnergyDiscoverySession> session;
     discovery_manager()->StartDiscovery(active, [&](auto cb_session) {
-      BT_ASSERT(cb_session);
+      PW_CHECK(cb_session);
       session = std::move(cb_session);
     });
 
     RunUntilIdle();
-    BT_ASSERT(session);
+    PW_CHECK(session);
     return session;
   }
 
@@ -321,7 +321,6 @@ TEST_F(LowEnergyDiscoveryManagerTest, StartDiscoveryAndStop) {
   EXPECT_TRUE(session->alive());
 
   session->Stop();
-  EXPECT_FALSE(session->alive());
 
   RunUntilIdle();
   EXPECT_FALSE(scan_enabled());
@@ -378,7 +377,7 @@ TEST_F(LowEnergyDiscoveryManagerTest, Destructor) {
 TEST_F(LowEnergyDiscoveryManagerTest, StartDiscoveryAndStopInCallback) {
   // Start discovery but don't acquire ownership of the received session. This
   // should terminate the session when |session| goes out of scope.
-  discovery_manager()->StartDiscovery(/*active=*/true, [](auto session) {});
+  discovery_manager()->StartDiscovery(/*active=*/true, [](auto) {});
 
   RunUntilIdle();
   ASSERT_EQ(2u, scan_states().size());
@@ -622,7 +621,7 @@ TEST_F(LowEnergyDiscoveryManagerTest, ScanPeriodRestartRemoveSession) {
     // At this point the fake controller has updated its state but the discovery
     // manager has not processed the restarted scan. We should be able to remove
     // the current session and the state should ultimately become disabled.
-    session->Stop();
+    session.reset();
   });
 
   RunUntilIdle();
@@ -653,7 +652,7 @@ TEST_F(LowEnergyDiscoveryManagerTest, ScanPeriodRemoveSessionDuringRestart) {
 
     // Stop the session before the discovery manager processes the event. It
     // should detect this and discontinue the scan.
-    session->Stop();
+    session.reset();
   });
 
   RunUntilIdle();
@@ -685,7 +684,7 @@ TEST_F(LowEnergyDiscoveryManagerTest, ScanPeriodRestartRemoveAndAddSession) {
     // manager has not processed the restarted scan. We should be able to remove
     // the current session and create a new one and the state should update
     // accordingly.
-    session->Stop();
+    session.reset();
     discovery_manager()->StartDiscovery(/*active=*/true, cb);
   });
 
@@ -713,7 +712,7 @@ TEST_F(LowEnergyDiscoveryManagerTest, StartDiscoveryWithFilters) {
 
   // Session 0 is interested in performing general discovery.
   std::unordered_set<DeviceAddress> peers_session0;
-  LowEnergyDiscoverySession::PeerFoundCallback result_cb =
+  LowEnergyDiscoverySession::PeerFoundFunction result_cb =
       [&peers_session0](const auto& peer) {
         peers_session0.insert(peer.address());
       };
@@ -822,7 +821,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
 
   // Session 0 is interested in performing general discovery.
   std::unordered_set<DeviceAddress> peers_session0;
-  LowEnergyDiscoverySession::PeerFoundCallback result_cb =
+  LowEnergyDiscoverySession::PeerFoundFunction result_cb =
       [&peers_session0](const auto& peer) {
         peers_session0.insert(peer.address());
       };
@@ -873,6 +872,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
   sessions[4]->SetResultCallback(std::move(result_cb));
 
   EXPECT_EQ(5u, sessions.size());
+  RunUntilIdle();
 
 #define EXPECT_CONTAINS(addr, dev_list) \
   EXPECT_TRUE(dev_list.find(addr) != dev_list.end())
@@ -925,11 +925,11 @@ TEST_F(LowEnergyDiscoveryManagerTest, DirectedAdvertisingEventFromUnknownPeer) {
 
   auto active_session = StartDiscoverySession();
   int active_count = 0;
-  active_session->SetResultCallback([&](auto& peer) { active_count++; });
+  active_session->SetResultCallback([&](auto&) { active_count++; });
 
   auto passive_session = StartDiscoverySession(/*active=*/false);
   int passive_count = 0;
-  passive_session->SetResultCallback([&](auto& peer) { passive_count++; });
+  passive_session->SetResultCallback([&](auto&) { passive_count++; });
 
   RunUntilIdle();
   ASSERT_TRUE(active_session);
@@ -957,11 +957,11 @@ TEST_F(LowEnergyDiscoveryManagerTest,
 
   auto active_session = StartDiscoverySession();
   int active_count = 0;
-  active_session->SetResultCallback([&](auto& peer) { active_count++; });
+  active_session->SetResultCallback([&](auto&) { active_count++; });
 
   auto passive_session = StartDiscoverySession(/*active=*/false);
   int passive_count = 0;
-  passive_session->SetResultCallback([&](auto& peer) { passive_count++; });
+  passive_session->SetResultCallback([&](auto&) { passive_count++; });
 
   RunFor(kTestScanPeriod);
   ASSERT_TRUE(active_session);
@@ -993,11 +993,11 @@ TEST_F(LowEnergyDiscoveryManagerTest,
 
   auto active_session = StartDiscoverySession();
   int active_count = 0;
-  active_session->SetResultCallback([&](auto& peer) { active_count++; });
+  active_session->SetResultCallback([&](auto&) { active_count++; });
 
   auto passive_session = StartDiscoverySession(/*active=*/false);
   int passive_count = 0;
-  passive_session->SetResultCallback([&](auto& peer) { passive_count++; });
+  passive_session->SetResultCallback([&](auto&) { passive_count++; });
 
   RunFor(kTestScanPeriod);
   ASSERT_TRUE(active_session);
@@ -1020,7 +1020,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
   discovery_manager()->set_scan_period(kTestScanPeriod);
 
   std::unordered_set<DeviceAddress> addresses_found;
-  LowEnergyDiscoverySession::PeerFoundCallback result_cb =
+  LowEnergyDiscoverySession::PeerFoundFunction result_cb =
       [&addresses_found](const auto& peer) {
         addresses_found.insert(peer.address());
       };
@@ -1055,7 +1055,7 @@ TEST_F(LowEnergyDiscoveryManagerTest, StartAndDisablePassiveScanQuickly) {
 
   // Session will be destroyed in callback, stopping scan.
   discovery_manager()->StartDiscovery(
-      /*active=*/false, [&](auto cb_session) { BT_ASSERT(cb_session); });
+      /*active=*/false, [&](auto cb_session) { PW_CHECK(cb_session); });
   RunUntilIdle();
 
   EXPECT_FALSE(test_device()->le_scan_state().enabled);
@@ -1065,10 +1065,10 @@ TEST_F(LowEnergyDiscoveryManagerTest, StartAndDisablePassiveScanQuickly) {
   // requests will be processed at the same time, and second call to
   // StartDiscovery() retains its session.
   discovery_manager()->StartDiscovery(
-      /*active=*/false, [&](auto cb_session) { BT_ASSERT(cb_session); });
+      /*active=*/false, [&](auto cb_session) { PW_CHECK(cb_session); });
   std::unique_ptr<LowEnergyDiscoverySession> session;
   discovery_manager()->StartDiscovery(/*active=*/false, [&](auto cb_session) {
-    BT_ASSERT(cb_session);
+    PW_CHECK(cb_session);
     session = std::move(cb_session);
   });
   RunUntilIdle();
@@ -1164,14 +1164,14 @@ TEST_F(LowEnergyDiscoveryManagerTest, StartActiveScanDuringPassiveScan) {
 TEST_F(LowEnergyDiscoveryManagerTest, StartActiveScanWhileStartingPassiveScan) {
   std::unique_ptr<LowEnergyDiscoverySession> passive_session;
   discovery_manager()->StartDiscovery(/*active=*/false, [&](auto cb_session) {
-    BT_ASSERT(cb_session);
+    PW_CHECK(cb_session);
     passive_session = std::move(cb_session);
   });
   ASSERT_FALSE(passive_session);
 
   std::unique_ptr<LowEnergyDiscoverySession> active_session;
   discovery_manager()->StartDiscovery(/*active=*/true, [&](auto cb_session) {
-    BT_ASSERT(cb_session);
+    PW_CHECK(cb_session);
     active_session = std::move(cb_session);
   });
   ASSERT_FALSE(active_session);
@@ -1477,7 +1477,7 @@ TEST_F(LowEnergyDiscoveryManagerTest,
 TEST_F(LowEnergyDiscoveryManagerTest,
        StopSessionInsideOfResultCallbackDoesNotCrash) {
   auto session = StartDiscoverySession(/*active=*/false);
-  auto result_cb = [&session](const auto& peer) { session->Stop(); };
+  auto result_cb = [&session](const auto&) { session->Stop(); };
   session->SetResultCallback(std::move(result_cb));
   RunUntilIdle();
 
@@ -1537,7 +1537,7 @@ TEST_F(LowEnergyDiscoveryManagerTest, Inspect) {
 
   std::unique_ptr<LowEnergyDiscoverySession> passive_session;
   discovery_manager()->StartDiscovery(/*active=*/false, [&](auto cb_session) {
-    BT_ASSERT(cb_session);
+    PW_CHECK(cb_session);
     passive_session = std::move(cb_session);
   });
   EXPECT_THAT(InspectProperties(),

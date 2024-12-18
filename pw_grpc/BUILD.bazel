@@ -14,18 +14,22 @@
 
 load("@io_bazel_rules_go//go:def.bzl", "go_test")
 load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_test",
-)
 load(
     "//pw_protobuf_compiler:pw_proto_library.bzl",
     "pw_proto_filegroup",
-    "pw_proto_library",
+    "pwpb_proto_library",
+    "pwpb_rpc_proto_library",
 )
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
+
+log_defines = [
+    "PW_LOG_MODULE_NAME=\\\"GRPC\\\"",
+    "PW_LOG_LEVEL=PW_LOG_LEVEL_INFO",
+]
 
 cc_library(
     name = "connection",
@@ -35,7 +39,8 @@ cc_library(
     hdrs = [
         "public/pw_grpc/connection.h",
     ],
-    includes = ["public"],
+    local_defines = log_defines,
+    strip_include_prefix = "public",
     target_compatible_with = select({
         ":pw_rpc_config_setting": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -50,6 +55,8 @@ cc_library(
         "//pw_bytes",
         "//pw_function",
         "//pw_log",
+        "//pw_multibuf",
+        "//pw_multibuf:allocator",
         "//pw_result",
         "//pw_span",
         "//pw_status",
@@ -65,13 +72,16 @@ cc_library(
     name = "send_queue",
     srcs = ["send_queue.cc"],
     hdrs = ["public/pw_grpc/send_queue.h"],
-    includes = ["public"],
+    local_defines = log_defines,
+    strip_include_prefix = "public",
     deps = [
         "//pw_async:dispatcher",
         "//pw_async_basic:dispatcher",
         "//pw_bytes",
         "//pw_function",
         "//pw_log",
+        "//pw_multibuf",
+        "//pw_multibuf:allocator",
         "//pw_result",
         "//pw_span",
         "//pw_status",
@@ -87,7 +97,7 @@ cc_library(
 cc_library(
     name = "grpc_channel_output",
     hdrs = ["public/pw_grpc/grpc_channel_output.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":connection",
         "//pw_bytes",
@@ -99,7 +109,8 @@ cc_library(
     name = "pw_rpc_handler",
     srcs = ["pw_rpc_handler.cc"],
     hdrs = ["public/pw_grpc/pw_rpc_handler.h"],
-    includes = ["public"],
+    local_defines = log_defines,
+    strip_include_prefix = "public",
     target_compatible_with = select({
         ":pw_rpc_config_setting": [],
         "//conditions:default": ["@platforms//:incompatible"],
@@ -124,6 +135,7 @@ cc_library(
     hdrs = [
         "pw_grpc_private/hpack.h",
     ],
+    local_defines = log_defines,
     deps = [
         "//pw_assert",
         "//pw_bytes",
@@ -152,7 +164,7 @@ cc_binary(
     }),
     deps = [
         ":connection",
-        ":echo_cc.pwpb_rpc",
+        ":echo_pwpb_rpc",
         ":grpc_channel_output",
         ":pw_rpc_handler",
         "//pw_allocator:libc_allocator",
@@ -162,6 +174,7 @@ cc_binary(
         "//pw_bytes",
         "//pw_checksum",
         "//pw_log",
+        "//pw_multibuf:simple_allocator",
         "//pw_result",
         "//pw_rpc",
         "//pw_rpc_transport:service_registry",
@@ -186,8 +199,14 @@ proto_library(
     srcs = [":echo_proto_and_options"],
 )
 
-pw_proto_library(
-    name = "echo_cc",
+pwpb_proto_library(
+    name = "echo_pwpb",
+    deps = [":echo_proto"],
+)
+
+pwpb_rpc_proto_library(
+    name = "echo_pwpb_rpc",
+    pwpb_proto_library_deps = [":echo_pwpb"],
     deps = [":echo_proto"],
 )
 
@@ -230,4 +249,13 @@ go_test(
         "@org_golang_google_grpc//status",
         "@org_golang_google_grpc_examples//features/proto/echo",
     ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+    ],
+    prefix = "pw_grpc/",
+    target_compatible_with = incompatible_with_mcu(),
 )

@@ -54,7 +54,7 @@ class BitsPerWord {
     PW_ASSERT(data_bits_ >= 3 && data_bits_ <= 32);
   }
 
-  uint8_t operator()() const { return data_bits_; }
+  constexpr uint8_t operator()() const { return data_bits_; }
 
  private:
   uint8_t data_bits_;
@@ -68,10 +68,12 @@ struct Config {
   BitsPerWord bits_per_word;
   BitOrder bit_order;
 
-  bool operator==(const Config& rhs) const {
+  constexpr bool operator==(const Config& rhs) const {
     return polarity == rhs.polarity && phase == rhs.phase &&
            bits_per_word() == rhs.bits_per_word() && bit_order == rhs.bit_order;
   }
+
+  constexpr bool operator!=(const Config& rhs) const { return !(*this == rhs); }
 };
 static_assert(sizeof(Config) == sizeof(uint32_t),
               "Ensure that the config struct fits in 32-bits");
@@ -87,7 +89,7 @@ class Initiator {
   // bits-per-word.
   // Returns OkStatus() on success, and implementation-specific values on
   // failure.
-  virtual Status Configure(const Config& config) = 0;
+  Status Configure(const Config& config) { return DoConfigure(config); }
 
   // Perform a synchronous read/write operation on the SPI bus.  Data from the
   // `write_buffer` object is written to the bus, while the `read_buffer` is
@@ -99,8 +101,15 @@ class Initiator {
   // remainder of the transfer.
   // Returns OkStatus() on success, and implementation-specific values on
   // failure.
-  virtual Status WriteRead(ConstByteSpan write_buffer,
-                           ByteSpan read_buffer) = 0;
+  Status WriteRead(ConstByteSpan write_buffer, ByteSpan read_buffer) {
+    return DoWriteRead(write_buffer, read_buffer);
+  }
+
+ private:
+  // Subclass API:
+  virtual Status DoConfigure(const Config& config) = 0;
+  virtual Status DoWriteRead(ConstByteSpan write_buffer,
+                             ByteSpan read_buffer) = 0;
 };
 
 }  // namespace pw::spi

@@ -1,7 +1,7 @@
 .. _showcase-sense-tutorial-prod:
 
 ===================================
-13. Run the air quality monitor app
+14. Run the air quality monitor app
 ===================================
 .. caution::
 
@@ -221,5 +221,5 @@ importantly, the code that powers your new air quality monitor is
 a solid (but not perfect) starting point for learning how to structure
 your own Pigweed-powered products.
 
-Next, head over to :ref:`showcase-sense-tutorial-outro` to wrap up your
-tour of Pigweed.
+Next, head over to :ref:`showcase-sense-tutorial-crash-handler` to learn about
+the pigweed crash handler and crash snapshots.

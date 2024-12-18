@@ -39,7 +39,7 @@ ExtendedLowEnergyScanner::ExtendedLowEnergyScanner(
           local_addr_delegate, std::move(transport), pw_dispatcher) {
   event_handler_id_ = hci()->command_channel()->AddLEMetaEventHandler(
       hci_spec::kLEExtendedAdvertisingReportSubeventCode,
-      [this](const EmbossEventPacket& event) {
+      [this](const EventPacket& event) {
         OnExtendedAdvertisingReportEvent(event);
         return hci::CommandChannel::EventCallbackResult::kContinue;
       });
@@ -57,15 +57,15 @@ ExtendedLowEnergyScanner::~ExtendedLowEnergyScanner() {
 
 bool ExtendedLowEnergyScanner::StartScan(const ScanOptions& options,
                                          ScanStatusCallback callback) {
-  BT_ASSERT(options.interval >= hci_spec::kLEExtendedScanIntervalMin);
-  BT_ASSERT(options.interval <= hci_spec::kLEExtendedScanIntervalMax);
-  BT_ASSERT(options.window >= hci_spec::kLEExtendedScanIntervalMin);
-  BT_ASSERT(options.window <= hci_spec::kLEExtendedScanIntervalMax);
+  PW_CHECK(options.interval >= hci_spec::kLEExtendedScanIntervalMin);
+  PW_CHECK(options.interval <= hci_spec::kLEExtendedScanIntervalMax);
+  PW_CHECK(options.window >= hci_spec::kLEExtendedScanIntervalMin);
+  PW_CHECK(options.window <= hci_spec::kLEExtendedScanIntervalMax);
 
   return LowEnergyScanner::StartScan(options, std::move(callback));
 }
 
-EmbossCommandPacket ExtendedLowEnergyScanner::BuildSetScanParametersPacket(
+CommandPacket ExtendedLowEnergyScanner::BuildSetScanParametersPacket(
     const DeviceAddress& local_address, const ScanOptions& options) {
   // LESetExtendedScanParametersCommand contains a variable amount of data,
   // depending on how many bits are set within the scanning_phys parameter. As
@@ -81,7 +81,7 @@ EmbossCommandPacket ExtendedLowEnergyScanner::BuildSetScanParametersPacket(
   constexpr size_t packet_size = fixed_size + (num_phys * variable_size);
 
   auto packet =
-      hci::EmbossCommandPacket::New<LESetExtendedScanParametersCommandWriter>(
+      hci::CommandPacket::New<LESetExtendedScanParametersCommandWriter>(
           hci_spec::kLESetExtendedScanParameters, packet_size);
   auto params = packet.view_t();
 
@@ -106,9 +106,9 @@ EmbossCommandPacket ExtendedLowEnergyScanner::BuildSetScanParametersPacket(
   return packet;
 }
 
-EmbossCommandPacket ExtendedLowEnergyScanner::BuildEnablePacket(
+CommandPacket ExtendedLowEnergyScanner::BuildEnablePacket(
     const ScanOptions& options, GenericEnableParam enable) {
-  auto packet = EmbossCommandPacket::New<LESetExtendedScanEnableCommandWriter>(
+  auto packet = CommandPacket::New<LESetExtendedScanEnableCommandWriter>(
       hci_spec::kLESetExtendedScanEnable);
   auto params = packet.view_t();
 
@@ -133,11 +133,10 @@ EmbossCommandPacket ExtendedLowEnergyScanner::BuildEnablePacket(
 // Extract all advertising reports from a given HCI LE Extended Advertising
 // Report event
 std::vector<LEExtendedAdvertisingReportDataView>
-ExtendedLowEnergyScanner::ParseAdvertisingReports(
-    const EmbossEventPacket& event) {
-  BT_DEBUG_ASSERT(event.event_code() == hci_spec::kLEMetaEventCode);
-  BT_DEBUG_ASSERT(event.view<LEMetaEventView>().subevent_code().Read() ==
-                  hci_spec::kLEExtendedAdvertisingReportSubeventCode);
+ExtendedLowEnergyScanner::ParseAdvertisingReports(const EventPacket& event) {
+  PW_DCHECK(event.event_code() == hci_spec::kLEMetaEventCode);
+  PW_DCHECK(event.view<LEMetaEventView>().subevent_code().Read() ==
+            hci_spec::kLEExtendedAdvertisingReportSubeventCode);
   size_t reports_size =
       event.size() -
       pw::bluetooth::emboss::LEExtendedAdvertisingReportSubeventView::
@@ -186,7 +185,7 @@ static std::tuple<DeviceAddress, bool> BuildDeviceAddress(
     LEExtendedAddressType report_type, BdAddrView address_view) {
   std::optional<DeviceAddress::Type> address_type =
       DeviceAddress::LeAddrToDeviceAddr(report_type);
-  BT_DEBUG_ASSERT(address_type);
+  PW_DCHECK(address_type);
 
   bool resolved = false;
   switch (report_type) {
@@ -208,7 +207,7 @@ static std::tuple<DeviceAddress, bool> BuildDeviceAddress(
 }
 
 void ExtendedLowEnergyScanner::OnExtendedAdvertisingReportEvent(
-    const EmbossEventPacket& event) {
+    const EventPacket& event) {
   if (!IsScanning()) {
     return;
   }

@@ -171,6 +171,11 @@ enum OpCode:
   IO_CAPABILITY_REQUEST_NEGATIVE_REPLY                         = 0x0434
     -- IO Capability Request Negative Reply Command (v2.1 + EDR) (BR/EDR)
 
+  ### Link Policy Commands - Core Spec v5.4, Part E, Section 7.32 (OGF 0x02)
+
+  SNIFF_MODE                                                   = 0x0803
+    -- Sniff Mode Command
+
   ### Controller & Baseband Commands - Core Spec v5.0 Vol 2, Part E, Section 7.3 (OGF 0x03)
 
   SET_EVENT_MASK                                               = 0x0C01
@@ -593,6 +598,36 @@ enum EventCode:
   LE_META_EVENT                               = 0x3E
   NUMBER_OF_COMPLETED_DATA_BLOCKS             = 0x48
   VENDOR_DEBUG                                = 0xFF
+
+
+enum LeSubEventCode:
+  -- HCI LE Meta event SubEvent codes
+  -- Core Spec v6.0 Vol 4, Part E, Section 7.7.65
+  [maximum_bits: 8]
+  CONNECTION_COMPLETE                   = 0x01
+  ADVERTISING_REPORT                    = 0x02
+  CONNECTION_UPDATE_COMPLETE            = 0x03
+  READ_REMOTE_FEATURES_COMPLETE         = 0x04
+  LONG_TERM_KEY_REQUEST                 = 0x05
+  REMOTE_CONNECTION_PARAMETER_REQUEST   = 0x06
+  DATA_LENGTH_CHANGE                    = 0x07
+  READ_LOCAL_P256_PUBLIC_KEY_COMPLETE   = 0x08
+  GENERATE_DH_KEY_COMPLETE              = 0x09
+  ENHANCED_CONNECTION_COMPLETE_V1       = 0x0A
+  DIRECTED_ADVERTISING_REPORT           = 0x0B
+  PHY_UPDATE_COMPLETE                   = 0x0C
+  EXTENDED_ADVERTISING_REPORT           = 0x0D
+  PERIODIC_ADVERTISING_SYNC_ESTABLISHED = 0x0E
+  PERIODIC_ADVERTISING_REPORT           = 0x0F
+  PERIODIC_ADVERTISING_SYNC_LOST        = 0x10
+  SCAN_TIMEOUT                          = 0x11
+  ADVERTISING_SET_TERMINATED            = 0x12
+  SCAN_REQUEST_RECEIVED                 = 0x13
+  CHANNEL_SELECTION_ALGORITHM           = 0x14
+  CIS_ESTABLISHED                       = 0x19
+  REQUEST_PEER_SCA_COMPLETE             = 0x1F
+  CIS_REQUEST                           = 0x1A
+  ENHANCED_CONNECTION_COMPLETE_V2       = 0x29
 
 
 enum MajorDeviceClass:
@@ -1189,6 +1224,7 @@ struct CommandCompleteEvent:
   hdr_size   [+1]         UInt         num_hci_command_packets
   hdr_size+1 [+2]         OpCode       command_opcode_enum
   hdr_size+1 [+2]         OpCodeBits   command_opcode_bits
+  hdr_size+1 [+2]         UInt         command_opcode_uint
     # Note that this field overlaps command_opcode_enum field.
     -- Access opcode ogf or ocf sub-fields.
 

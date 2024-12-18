@@ -397,8 +397,10 @@ pw_proto_library("protos") {
     "internal/packet.proto",
   ]
   inputs = [
-    "echo.options",
     "benchmark.options",
+    "benchmark.pwpb_options",
+    "echo.options",
+    "echo.pwpb_options",
   ]
   python_package = "py"
   prefix = "pw_rpc"
@@ -414,6 +416,7 @@ pw_doc_group("docs") {
     "protocol.rst",
   ]
   inputs = [
+    "Kconfig",
     "benchmark.proto",
     "echo.proto",
     "internal/packet.proto",

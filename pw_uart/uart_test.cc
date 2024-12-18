@@ -29,7 +29,7 @@ class UartStub : public Uart {
  private:
   Status DoEnable(bool) override { return OkStatus(); }
   StatusWithSize DoTryReadFor(
-      ByteSpan, std::optional<chrono::SystemClock::duration>) override {
+      ByteSpan, size_t, std::optional<chrono::SystemClock::duration>) override {
     return StatusWithSize(0);
   }
   StatusWithSize DoTryWriteFor(
@@ -38,7 +38,7 @@ class UartStub : public Uart {
   }
 
   Status DoSetBaudRate(uint32_t) override { return OkStatus(); }
-
+  Status DoSetFlowControl(bool) override { return OkStatus(); }
   size_t DoConservativeReadAvailable() override { return 0; }
   Status DoFlushOutput() override { return OkStatus(); }
   Status DoClearPendingReceiveBytes() override { return OkStatus(); }

@@ -332,6 +332,8 @@ most things and fallback to raw only when needed.
    encounter if you try to include Nanopb and ``pw_protobuf`` headers in the
    same source file.
 
+.. _module-pw_rpc-guides-raw-fallback:
+
 Falling back to raw methods
 ===========================
 When implementing an RPC service using Nanopb or ``pw_protobuf``, you may
@@ -355,9 +357,8 @@ raw signature.
 Unary method
 ------------
 When defining a unary method using the raw APIs, it is important to note that
-there is no synchronous raw unary API, as ``pw_rpc`` cannot internally provide
-a response buffer to the method. Instead, define the raw method as asynchronous
-unary and encode the response to a buffer managed by the service.
+there is no synchronous raw unary API. The asynchronous unary method signature
+must be used instead.
 
 **Nanopb**
 

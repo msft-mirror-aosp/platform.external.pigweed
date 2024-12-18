@@ -71,7 +71,7 @@ from typing import (
 import pw_cli.color
 import pw_cli.env
 from pw_cli.plural import plural
-from pw_cli.file_filter import FileFilter
+from pw_cli.file_filter import FileFilter, exclude_paths
 from pw_package import package_manager
 from pw_presubmit import git_repo, tools
 from pw_presubmit.presubmit_context import (
@@ -136,7 +136,9 @@ class PresubmitResult(enum.Enum):
         elif self is PresubmitResult.CANCEL:
             color = _COLOR.yellow
         else:
-            color = lambda value: value
+
+            def color(value):
+                return value
 
         padding = (width - len(self.value)) // 2 * ' '
         return padding + color(self.value) + padding
@@ -574,16 +576,14 @@ def fetch_file_lists(
     modified_files: list[Path] = []
 
     all_files_repo = tuple(
-        tools.exclude_paths(
-            exclude, git_repo.list_files(None, pathspecs, repo), root
-        )
+        exclude_paths(exclude, git_repo.list_files(None, pathspecs, repo), root)
     )
     all_files += all_files_repo
 
     if base is None:
         modified_files += all_files_repo
     else:
-        modified_files += tools.exclude_paths(
+        modified_files += exclude_paths(
             exclude, git_repo.list_files(base, pathspecs, repo), root
         )
 
@@ -1080,10 +1080,12 @@ def call(
     """Optional subprocess wrapper that causes a PresubmitFailure on errors."""
     ctx = PRESUBMIT_CONTEXT.get()
     if ctx:
+        # Save the subprocess command args for pw build presubmit runner.
         call_annotation = call_annotation if call_annotation else {}
         ctx.append_check_command(
             *args, call_annotation=call_annotation, **kwargs
         )
+        # Return without running if dry-run mode is on.
         if ctx.dry_run:
             return
 

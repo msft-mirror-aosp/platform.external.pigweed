@@ -85,6 +85,27 @@ ECDSA
        // Handle errors.
    }
 
+---
+AES
+---
+
+1. Encrypting a single AES 128-bit block.
+
+.. warning::
+  This is a low-level operation. Users should know exactly what they are doing
+  and must ensure that this operation does not violate any safety bounds that
+  more refined operations usually ensure.
+
+.. code-block:: cpp
+
+   #include "pw_crypto/aes.h"
+
+   std::byte encrypted[16];
+
+   if (!pw::crypto::unsafe::aes::EncryptBlock(key, message, encrypted).ok()) {
+       // Handle errors.
+   }
+
 -------------
 Configuration
 -------------
@@ -115,6 +136,7 @@ configured. If using GN, do,
        dir_pw_third_party_mbedtls=getenv("PW_PACKAGE_ROOT")+"/mbedtls"
        pw_crypto_SHA256_BACKEND="//pw_crypto:sha256_mbedtls_v3"
        pw_crypto_ECDSA_BACKEND="//pw_crypto:ecdsa_mbedtls_v3"
+       pw_crypto_AES_BACKEND="//pw_crypto:aes_mbedtls_v3"
    '
 
    ninja -C out
@@ -130,6 +152,7 @@ appropriate backends by adding them to your project's `platform
       constraint_values = [
         "@pigweed//pw_crypto:sha256_mbedtls_backend",
         "@pigweed//pw_crypto:ecdsa_mbedtls_backend",
+        "@pigweed//pw_crypto:aes_mbedtls_backend",
         # ... other constraint_values
       ],
    )
@@ -164,6 +187,11 @@ a code size of ~12KiB.
 
 Micro ECC
 =========
+
+.. Warning::
+  Micro ECC's upstream hasn't received any updates since April 2023.
+  Please investigate to make sure that it meets your product's security
+  requirements before use.
 
 To select Micro ECC, the library needs to be installed and configured.
 

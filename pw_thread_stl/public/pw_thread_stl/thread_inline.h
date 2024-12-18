@@ -39,10 +39,6 @@ inline Thread::Thread(const Options&, Function<void()>&& entry) {
   native_type_ = std::thread(std::move(entry));
 }
 
-inline Thread::Thread(const Options&, ThreadRoutine entry, void* arg) {
-  native_type_ = std::thread(entry, arg);
-}
-
 inline Thread& Thread::operator=(Thread&& other) {
   native_type_ = std::move(other.native_type_);
   return *this;
@@ -50,7 +46,7 @@ inline Thread& Thread::operator=(Thread&& other) {
 
 inline Thread::~Thread() = default;
 
-inline Id Thread::get_id() const { return native_type_.get_id(); }
+inline Thread::id Thread::get_id() const { return native_type_.get_id(); }
 
 inline void Thread::join() { native_type_.join(); }
 

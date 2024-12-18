@@ -48,10 +48,11 @@ class FuzzerController : public ControllerTestDoubleBase,
 
  private:
   // Controller overrides:
-  void SendCommand(pw::span<const std::byte> command) override {}
-  void SendAclData(pw::span<const std::byte> data) override {}
-  void SendScoData(pw::span<const std::byte> data) override {}
-  void SendIsoData(pw::span<const std::byte> data) override {}
+  void SendCommand(
+      [[maybe_unused]] pw::span<const std::byte> command) override {}
+  void SendAclData([[maybe_unused]] pw::span<const std::byte> data) override {}
+  void SendScoData([[maybe_unused]] pw::span<const std::byte> data) override {}
+  void SendIsoData([[maybe_unused]] pw::span<const std::byte> data) override {}
 };
 
 // Reuse ControllerTest test fixture code even though we're not using gtest.
@@ -134,7 +135,7 @@ class DataFuzzTest : public TestingBase {
     packet_view.AsMutable<hci_spec::ACLDataHeader>()->handle_and_flags =
         handle_and_flags;
 
-    BT_ASSERT(test_device()->SendACLDataChannelPacket(packet_view));
+    PW_CHECK(test_device()->SendACLDataChannelPacket(packet_view));
     return true;
   }
 

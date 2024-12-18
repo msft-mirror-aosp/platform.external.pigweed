@@ -14,13 +14,17 @@
 """snapshot handler"""
 
 import dataclasses
+import functools
 import logging
 from io import StringIO
 
 from pw_log import log_decoder
 from pw_snapshot import processor
 from pw_snapshot_protos import snapshot_pb2
-from pw_tokenizer import detokenize
+from pw_symbolizer import Symbolizer, LlvmSymbolizer
+from pw_tokenizer import detokenize, elf_reader
+
+_LOG = logging.getLogger(__package__)
 
 
 def _parse_snapshot(serialized_snapshot: bytes) -> snapshot_pb2.Snapshot:
@@ -43,6 +47,7 @@ def _process_logs(
     handler = logging.StreamHandler(stream=decoded_log_stream)
 
     string_logger = logging.getLogger('crash_snapshot_logs')
+    string_logger.level = logging.DEBUG
     # only send logs to o StringIO handler
     string_logger.propagate = False
     string_logger.addHandler(handler)
@@ -68,6 +73,31 @@ def _process_logs(
     output.append(decoded_log_stream.getvalue())
 
     return "\n".join(output)
+
+
+def _snapshot_symbolizer_matcher(
+    detokenizer: detokenize.Detokenizer,
+    # pylint: disable=unused-argument
+    snapshot: snapshot_pb2.Snapshot,
+) -> Symbolizer:
+    if isinstance(detokenizer, detokenize.AutoUpdatingDetokenizer):
+        if len(detokenizer.paths) > 1:
+            _LOG.info(
+                'More than one token database file.  The first elf '
+                'file in the list will be used for symbolization.'
+            )
+
+        for database_path in detokenizer.paths:
+            path = database_path.path
+            if elf_reader.compatible_file(path):
+                _LOG.debug('Using %s for symbolization', path)
+                return LlvmSymbolizer(path)
+
+    _LOG.warning(
+        'No elf token database specified.  Crash report will not '
+        'have any symbols.'
+    )
+    return LlvmSymbolizer()
 
 
 @dataclasses.dataclass
@@ -105,5 +135,8 @@ def decode_snapshot(
     return processor.process_snapshots(
         serialized_snapshot=serialized_snapshot,
         detokenizer=detokenizer,
+        symbolizer_matcher=functools.partial(
+            _snapshot_symbolizer_matcher, detokenizer
+        ),
         user_processing_callback=custom_processor,
     )

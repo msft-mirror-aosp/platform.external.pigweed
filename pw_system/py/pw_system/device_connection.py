@@ -95,6 +95,8 @@ def create_device_serial_or_socket_connection(
     device_class: type[pw_device.Device] | None = pw_device.Device,
     device_tracing_class: type[pw_device_tracing.DeviceWithTracing]
     | None = (pw_device_tracing.DeviceWithTracing),
+    timestamp_decoder: Callable[[int], str] | None = None,
+    extra_frame_handlers: dict[int, Callable[[bytes, Any], Any]] | None = None,
 ) -> DeviceConnection:
     """Setup a pw_system.Device client connection.
 
@@ -135,6 +137,7 @@ def create_device_serial_or_socket_connection(
            device_tracing=args.device_tracing,
            device_class=Device,
            device_tracing_class=DeviceWithTracing,
+           timestamp_decoder=timestamp_parser_ms_since_boot,
        )
 
 
@@ -190,7 +193,6 @@ def create_device_serial_or_socket_connection(
     protos.append(trace_service_pb2)
     protos.append(device_service_pb2)
 
-    timestamp_decoder = None
     reader: stream_readers.SelectableReader | stream_readers.SerialReader
 
     if socket_addr is None:
@@ -216,7 +218,8 @@ def create_device_serial_or_socket_connection(
         write = serial_device.write
 
         # Overwrite decoder for serial device.
-        timestamp_decoder = timestamp_parser_ms_since_boot
+        if timestamp_decoder is None:
+            timestamp_decoder = timestamp_parser_ms_since_boot
     else:
         socket_impl = (
             socket_client.SocketClientWithLogging
@@ -257,6 +260,7 @@ def create_device_serial_or_socket_connection(
         'rpc_timeout_s': 5,
         'use_rpc_logging': rpc_logging,
         'use_hdlc_encoding': hdlc_encoding,
+        'extra_frame_handlers': extra_frame_handlers,
     }
 
     device_client: pw_device_tracing.DeviceWithTracing | pw_device.Device

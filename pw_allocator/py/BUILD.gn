@@ -23,9 +23,12 @@ pw_python_package("py") {
   ]
   sources = [
     "pw_allocator/__init__.py",
+    "pw_allocator/__main__.py",
+    "pw_allocator/benchmarks.py",
     "pw_allocator/heap_viewer.py",
   ]
   python_deps = [ "$dir_pw_cli/py" ]
   pylintrc = "$dir_pigweed/.pylintrc"
   mypy_ini = "$dir_pigweed/.mypy.ini"
+  ruff_toml = "$dir_pigweed/.ruff.toml"
 }

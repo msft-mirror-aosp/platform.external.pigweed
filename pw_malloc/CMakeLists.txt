@@ -13,7 +13,6 @@
 # the License.
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
-include($ENV{PW_ROOT}/pw_malloc/backend.cmake)
 
 pw_add_module_config(pw_malloc_CONFIG)
 
@@ -66,58 +65,47 @@ pw_add_library(pw_malloc.common INTERFACE
 
 # Allocator-based backends.
 
-pw_add_library(pw_malloc.best_fit_block_allocator STATIC
+pw_add_library(pw_malloc.best_fit STATIC
   PUBLIC_DEPS
     pw_malloc.facade
   PRIVATE_DEPS
-    pw_allocator.best_fit_block_allocator
+    pw_allocator.best_fit
   SOURCES
-    best_fit_block_allocator.cc
+    best_fit.cc
 )
 
-pw_add_library(pw_malloc.bucket_block_allocator STATIC
+pw_add_library(pw_malloc.bucket_allocator STATIC
   PUBLIC_DEPS
     pw_malloc.facade
   PRIVATE_DEPS
-    pw_allocator.bucket_block_allocator
+    pw_allocator.bucket_allocator
   SOURCES
-    bucket_block_allocator.cc
+    bucket_allocator.cc
 )
 
-pw_add_library(pw_malloc.dual_first_fit_block_allocator STATIC
+# TODO(b/376730645): Remove deprecated backends.
+pw_add_library(pw_malloc.bucket_block_allocator INTERFACE
   PUBLIC_DEPS
     pw_malloc.facade
-  PRIVATE_DEPS
-    pw_allocator.dual_first_fit_block_allocator
-  SOURCES
-    dual_first_fit_block_allocator.cc
+    pw_allocator.bucket_allocator
 )
 
-pw_add_library(pw_malloc.first_fit_block_allocator STATIC
+pw_add_library(pw_malloc.first_fit STATIC
   PUBLIC_DEPS
     pw_malloc.facade
   PRIVATE_DEPS
-    pw_allocator.first_fit_block_allocator
+    pw_allocator.first_fit
   SOURCES
-    first_fit_block_allocator.cc
+  first_fit.cc
 )
 
-pw_add_library(pw_malloc.last_fit_block_allocator STATIC
+pw_add_library(pw_malloc.worst_fit STATIC
   PUBLIC_DEPS
     pw_malloc.facade
   PRIVATE_DEPS
-    pw_allocator.last_fit_block_allocator
+    pw_allocator.worst_fit
   SOURCES
-    last_fit_block_allocator.cc
-)
-
-pw_add_library(pw_malloc.worst_fit_block_allocator STATIC
-  PUBLIC_DEPS
-    pw_malloc.facade
-  PRIVATE_DEPS
-    pw_allocator.worst_fit_block_allocator
-  SOURCES
-    worst_fit_block_allocator.cc
+    worst_fit.cc
 )
 
 # TODO(b/343531095): Add unit tests to CMake build whenever the following

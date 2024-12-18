@@ -11,14 +11,19 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-load("//pw_bluetooth_sapphire/host:variables.bzl", "COPTS")
+
+load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
-exports_files(glob(["**/*"]))
-
 cc_library(
     name = "definitions",
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/frame_headers.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h",
+    ],
+    strip_include_prefix = "public",
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/hci-spec",
@@ -48,6 +53,7 @@ cc_library(
         "enhanced_retransmission_mode_tx_engine.cc",
         "fcs.cc",
         "fragmenter.cc",
+        "le_dynamic_channel.cc",
         "le_signaling_channel.cc",
         "logical_link.cc",
         "low_energy_command_handler.cc",
@@ -57,10 +63,39 @@ cc_library(
         "signaling_channel.cc",
         "types.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
-        "-Wswitch-enum",
-    ] + COPTS,
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/a2dp_offload_manager.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/basic_mode_rx_engine.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/basic_mode_tx_engine.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/bredr_command_handler.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/bredr_dynamic_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/bredr_signaling_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/channel_configuration.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/channel_manager.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/command_handler.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/credit_based_flow_control_rx_engine.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/credit_based_flow_control_tx_engine.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/dynamic_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/dynamic_channel_registry.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/enhanced_retransmission_mode_engines.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/enhanced_retransmission_mode_rx_engine.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/enhanced_retransmission_mode_tx_engine.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/fcs.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/fragmenter.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/le_dynamic_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/le_signaling_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/logical_link.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/low_energy_command_handler.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/pdu.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/recombiner.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/rx_engine.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/scoped_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/signaling_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/tx_engine.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/types.h",
+    ],
+    strip_include_prefix = "public",
     target_compatible_with = select({
         "@platforms//os:fuchsia": [],
         "@platforms//os:linux": [],
@@ -72,15 +107,18 @@ cc_library(
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/hci",
         "//pw_bluetooth_sapphire/host/transport",
-        "@pigweed//pw_string",
-        "@pigweed//third_party/fuchsia:fit",
+        "//pw_string",
+        "//third_party/fuchsia:fit",
     ],
 )
 
 cc_library(
     name = "channel_manager_mock_controller_test_fixture",
     testonly = True,
-    # Header is in bt-host:public
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/channel_manager_mock_controller_test_fixture.h",
+    ],
+    strip_include_prefix = "public",
     deps = [
         ":l2cap",
         ":testing",
@@ -101,23 +139,31 @@ cc_library(
         "mock_channel_test.cc",
         "test_packets.cc",
     ],
-    copts = COPTS,
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/fake_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/fake_channel_test.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/fake_l2cap.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/fake_signaling_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/fake_tx_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/mock_channel_test.h",
+        "public/pw_bluetooth_sapphire/internal/host/l2cap/test_packets.h",
+    ],
+    strip_include_prefix = "public",
     deps = [
         ":l2cap",
+        "//pw_async:fake_dispatcher_fixture",
+        "//pw_async:heap_dispatcher",
+        "//pw_bluetooth",
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/hci",
         "//pw_bluetooth_sapphire/host/testing:test_helpers",
-        "@pigweed//pw_async:fake_dispatcher_fixture",
-        "@pigweed//pw_async:heap_dispatcher",
-        "@pigweed//pw_bluetooth",
-        "@pigweed//pw_unit_test",
+        "//pw_unit_test:googletest",
     ],
 )
 
-cc_library(
-    name = "l2cap_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "l2cap_test",
     srcs = [
         "a2dp_offload_manager_test.cc",
         "basic_mode_rx_engine_test.cc",
@@ -138,6 +184,7 @@ cc_library(
         "fcs_test.cc",
         "fragmenter_test.cc",
         "frame_headers_test.cc",
+        "le_dynamic_channel_test.cc",
         "le_signaling_channel_test.cc",
         "logical_link_test.cc",
         "low_energy_command_handler_test.cc",
@@ -147,19 +194,25 @@ cc_library(
         "signaling_channel_test.cc",
         "types_test.cc",
     ],
-    copts = COPTS,
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":channel_manager_mock_controller_test_fixture",
         ":l2cap",
         ":testing",
+        "//pw_async:fake_dispatcher_fixture",
         "//pw_bluetooth_sapphire/host/hci",
         "//pw_bluetooth_sapphire/host/hci:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
         "//pw_bluetooth_sapphire/host/transport:testing",
-        "@pigweed//pw_async:fake_dispatcher_fixture",
     ],
-    alwayslink = 1,
+)
+
+pw_cc_fuzz_test(
+    name = "basic_mode_rx_engine_fuzzer",
+    testonly = True,
+    srcs = ["basic_mode_rx_engine_fuzztest.cc"],
+    deps = [
+        ":l2cap",
+        ":testing",
+    ],
 )

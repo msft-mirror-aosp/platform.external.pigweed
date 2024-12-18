@@ -14,7 +14,7 @@
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-# This target provides the backend for pw::thread::Id & pw::this_thread::get_id.
+# This target provides the backend for pw::Thread::id & pw::this_thread::get_id.
 pw_add_library(pw_thread_stl.id INTERFACE
   HEADERS
     public/pw_thread_stl/id_inline.h
@@ -25,11 +25,10 @@ pw_add_library(pw_thread_stl.id INTERFACE
     public
     id_public_overrides
   PUBLIC_DEPS
-    pw_thread.id.facade
+    pw_thread.thread.facade
 )
 
-# This target provides the backend for pw::thread::Thread with joining
-# joining capability.
+# This target provides the backend for pw::Thread with joining capability.
 pw_add_library(pw_thread_stl.thread INTERFACE
   HEADERS
     public/pw_thread_stl/options.h
@@ -90,6 +89,15 @@ pw_add_library(pw_thread_stl.test_threads STATIC
     test_threads.cc
   PRIVATE_DEPS
     pw_thread.thread
+)
+
+pw_add_library(pw_thread_stl.thread_iteration STATIC
+  PRIVATE_DEPS
+    pw_status
+  SOURCES
+    thread_iteration.cc
+  PUBLIC_DEPS
+    pw_thread.thread_iteration.facade
 )
 
 if(("${pw_thread.thread_BACKEND}" STREQUAL "pw_thread_stl.thread") AND

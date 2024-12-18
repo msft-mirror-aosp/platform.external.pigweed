@@ -253,6 +253,8 @@ pw_source_set("stream_rpc_dispatcher") {
     ":egress_ingress",
     "$dir_pw_status",
     "$dir_pw_stream:pw_stream",
+    "$dir_pw_thread:thread",
+    "$dir_pw_thread:thread_core",
   ]
 }
 
@@ -309,6 +311,6 @@ pw_test("rpc_integration_test") {
 
 pw_proto_library("test_protos") {
   sources = [ "internal/test.proto" ]
-  inputs = [ "internal/test.options" ]
+  inputs = [ "internal/test.pwpb_options" ]
   prefix = "pw_rpc_transport"
 }

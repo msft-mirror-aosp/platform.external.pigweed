@@ -12,9 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-package(default_visibility = ["//visibility:public"])
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-exports_files(glob(["**/*"]))
+package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "definitions",
@@ -23,6 +23,13 @@ cc_library(
         "error.cc",
         "service_record.cc",
     ],
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/sdp/data_element.h",
+        "public/pw_bluetooth_sapphire/internal/host/sdp/error.h",
+        "public/pw_bluetooth_sapphire/internal/host/sdp/sdp.h",
+        "public/pw_bluetooth_sapphire/internal/host/sdp/service_record.h",
+    ],
+    strip_include_prefix = "public",
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
@@ -37,17 +44,23 @@ cc_library(
         "server.cc",
         "service_discoverer.cc",
     ],
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/sdp/client.h",
+        "public/pw_bluetooth_sapphire/internal/host/sdp/pdu.h",
+        "public/pw_bluetooth_sapphire/internal/host/sdp/server.h",
+        "public/pw_bluetooth_sapphire/internal/host/sdp/service_discoverer.h",
+    ],
+    strip_include_prefix = "public",
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/l2cap",
-        "@pigweed//third_party/fuchsia:stdcompat",
+        "//third_party/fuchsia:stdcompat",
     ],
 )
 
-cc_library(
-    name = "sdp_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "sdp_test",
     srcs = [
         "client_test.cc",
         "data_element_test.cc",
@@ -56,14 +69,11 @@ cc_library(
         "service_discoverer_test.cc",
         "service_record_test.cc",
     ],
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":sdp",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/l2cap:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-    alwayslink = 1,
 )

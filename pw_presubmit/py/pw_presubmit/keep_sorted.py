@@ -30,8 +30,9 @@ from typing import (
 
 import pw_cli
 from pw_cli.diff import colorize_diff
+from pw_cli.file_filter import exclude_paths
 from pw_cli.plural import plural
-from . import cli, git_repo, presubmit, presubmit_context, tools
+from . import cli, git_repo, presubmit, presubmit_context
 
 DEFAULT_PATH = Path('out', 'presubmit', 'keep_sorted')
 
@@ -140,7 +141,8 @@ class _FileSorter:
         raw_lines: list[str] = block.lines
         lines: list[_Line] = []
 
-        prefix = lambda x: len(x) - len(x.lstrip())
+        def prefix(x):
+            return len(x) - len(x.lstrip())
 
         prev_prefix: int | None = None
         comments: list[str] = []
@@ -454,7 +456,7 @@ def keep_sorted_in_repo(
 
         # Add files from Git and remove duplicates.
         files = sorted(
-            set(tools.exclude_paths(exclude, git_repo.list_files(base, paths)))
+            set(exclude_paths(exclude, git_repo.list_files(base, paths)))
             | set(files)
         )
     elif base:

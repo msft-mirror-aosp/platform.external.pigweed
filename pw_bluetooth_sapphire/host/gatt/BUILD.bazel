@@ -12,15 +12,19 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-package(default_visibility = ["//visibility:public"])
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-exports_files(glob(["**/*"]))
+package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "definitions",
     srcs = [
         "gatt_defs.cc",
     ],
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/gatt/gatt_defs.h",
+    ],
+    strip_include_prefix = "public",
     deps = [
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/att:definitions",
@@ -41,14 +45,25 @@ cc_library(
         "server.cc",
         "types.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/gatt/client.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/connection.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/gatt.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/generic_attribute_service.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/local_service_manager.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/persisted_data.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/remote_characteristic.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/remote_service.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/remote_service_manager.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/server.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/types.h",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/att",
-        "@pigweed//third_party/fuchsia:fit",
+        "//third_party/fuchsia:fit",
     ],
 )
 
@@ -60,22 +75,24 @@ cc_library(
         "fake_layer.cc",
         "mock_server.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/gatt/fake_client.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/fake_layer.h",
+        "public/pw_bluetooth_sapphire/internal/host/gatt/mock_server.h",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":gatt",
+        "//pw_async:heap_dispatcher",
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/common:uuid_string_util",
-        "@pigweed//pw_async:heap_dispatcher",
-        "@pigweed//pw_unit_test",
+        "//pw_unit_test:googletest",
     ],
 )
 
-cc_library(
-    name = "gatt_test.lib",
-    testonly = True,
+pw_cc_test(
+    name = "gatt_test",
     srcs = [
         "client_test.cc",
         "gatt_test.cc",
@@ -84,15 +101,12 @@ cc_library(
         "remote_service_manager_test.cc",
         "server_test.cc",
     ],
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":gatt",
         ":testing",
         "//pw_bluetooth_sapphire/host/att",
         "//pw_bluetooth_sapphire/host/l2cap:testing",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-    alwayslink = 1,
 )

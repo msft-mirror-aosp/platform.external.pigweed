@@ -12,10 +12,10 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_linker_script",
-)
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
+load("//pw_build:merge_flags.bzl", "flags_from_dict")
+load("//pw_build:pw_linker_script.bzl", "pw_linker_script")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -29,9 +29,19 @@ platform(
         "//pw_sys_io_baremetal_stm32f429:compatible",
         "@platforms//cpu:armv7e-m",
         "@platforms//os:none",
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m4",
+        "//pw_build/constraints/arm:cortex-m4",
         "@rust_crates//:no_std",
     ],
+    flags = flags_from_dict({
+        "@pigweed//pw_assert:check_backend": "//pw_assert_basic",
+        "@pigweed//pw_assert:check_backend_impl": "//pw_assert_basic:impl",
+        "@pigweed//pw_boot:backend": "//pw_boot_cortex_m",
+        "@pigweed//pw_log:backend": "//pw_log_basic",
+        "@pigweed//pw_log:backend_impl": "//pw_log_basic:impl",
+        "@pigweed//pw_malloc:backend": "//pw_malloc:bucket_block_allocator",
+        "@pigweed//pw_sys_io:backend": "//pw_sys_io_baremetal_stm32f429",
+        "@pigweed//pw_system:extra_platform_libs": "//targets/stm32f429i_disc1:extra_platform_libs",
+    }),
 )
 
 cc_library(
@@ -80,4 +90,12 @@ pw_linker_script(
         "PW_BOOT_VECTOR_TABLE_SIZE=512",
     ],
     linker_script = "//pw_boot_cortex_m:basic_cortex_m.ld",
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "target_docs.rst",
+    ],
+    target_compatible_with = incompatible_with_mcu(),
 )

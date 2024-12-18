@@ -25,7 +25,6 @@ from typing import (
     Iterable,
     Iterator,
     Sequence,
-    Pattern,
 )
 
 from pw_cli.plural import plural
@@ -126,22 +125,6 @@ def relative_paths(paths: Iterable[Path], start: Path) -> Iterable[Path]:
         yield Path(os.path.relpath(path, start))
 
 
-def exclude_paths(
-    exclusions: Iterable[Pattern[str]],
-    paths: Iterable[Path],
-    relative_to: Path | None = None,
-) -> Iterable[Path]:
-    """Excludes paths based on a series of regular expressions."""
-    if relative_to:
-        relpath = lambda path: Path(os.path.relpath(path, relative_to))
-    else:
-        relpath = lambda path: path
-
-    for path in paths:
-        if not any(e.search(relpath(path).as_posix()) for e in exclusions):
-            yield path
-
-
 def _truncate(value, length: int = 60) -> str:
     value = str(value)
     return (value[: length - 5] + '[...]') if len(value) > length else value
@@ -162,10 +145,12 @@ def log_run(
     """
     ctx = PRESUBMIT_CONTEXT.get()
     if ctx:
+        # Save the subprocess command args for pw build presubmit runner.
         if not ignore_dry_run:
             ctx.append_check_command(*args, **kwargs)
         if ctx.dry_run and not ignore_dry_run:
-            # Return an empty CompletedProcess
+            # Return an empty CompletedProcess without actually running anything
+            # if dry-run mode is on.
             empty_proc: subprocess.CompletedProcess = (
                 subprocess.CompletedProcess('', 0)
             )

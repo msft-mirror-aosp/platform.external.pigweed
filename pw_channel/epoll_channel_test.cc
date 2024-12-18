@@ -123,17 +123,6 @@ class EpollChannelTest : public ::testing::Test {
   int write_fd_;
 };
 
-template <typename Func>
-class FunctionThread : public pw::thread::ThreadCore {
- public:
-  explicit FunctionThread(Func&& func) : func_(std::move(func)) {}
-
- private:
-  void Run() override { func_(); }
-
-  Func func_;
-};
-
 TEST_F(EpollChannelTest, Read_ValidData_Succeeds) {
   SimpleAllocatorForTest alloc;
   Dispatcher dispatcher;
@@ -142,7 +131,7 @@ TEST_F(EpollChannelTest, Read_ValidData_Succeeds) {
   ASSERT_TRUE(channel.is_read_open());
   ASSERT_TRUE(channel.is_write_open());
 
-  ReaderTask<ByteReader> read_task(channel, 1);
+  ReaderTask<ByteReader> read_task(channel.channel(), 1);
   dispatcher.Post(read_task);
 
   EXPECT_EQ(dispatcher.RunUntilStalled(), Pending());
@@ -150,13 +139,11 @@ TEST_F(EpollChannelTest, Read_ValidData_Succeeds) {
   EXPECT_EQ(read_task.read_count, 0);
   EXPECT_EQ(read_task.bytes_read, 0);
 
-  FunctionThread delayed_write([this]() {
+  pw::Thread work_thread(pw::thread::stl::Options(), [this] {
     pw::this_thread::sleep_for(500ms);
     const char* data = "hello world";
     PW_CHECK_INT_EQ(write(write_fd_, data, 11), 11);
   });
-
-  pw::thread::Thread work_thread(pw::thread::stl::Options(), delayed_write);
   work_thread.join();
 
   dispatcher.RunToCompletion();
@@ -184,7 +171,7 @@ TEST_F(EpollChannelTest, Read_Closed_ReturnsFailedPrecondition) {
   EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
   EXPECT_EQ(close_task.close_status, pw::OkStatus());
 
-  ReaderTask<ByteReader> read_task(channel, 1);
+  ReaderTask<ByteReader> read_task(channel.channel(), 1);
   dispatcher.Post(read_task);
 
   EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
@@ -206,7 +193,6 @@ class WriterTask : public Task {
   int write_count = 0;
   int max_writes = 0;
   pw::Status last_write_status = pw::Status::Unknown();
-  pw::channel::WriteToken flushed_write_token;
 
  private:
   Poll<> DoPend(Context& cx) final {
@@ -225,21 +211,21 @@ class WriterTask : public Task {
       }
       ++write_count;
 
-      std::optional<pw::multibuf::MultiBuf> multibuf =
-          channel_.GetWriteAllocator().Allocate(data_to_write_.size());
-      PW_CHECK(multibuf.has_value());
-      std::copy(
-          data_to_write_.begin(), data_to_write_.end(), multibuf->begin());
+      Poll<std::optional<MultiBuf>> multibuf_result =
+          channel_.PendAllocateWriteBuffer(cx, data_to_write_.size());
+      PW_CHECK(multibuf_result.IsReady());
+      PW_CHECK(multibuf_result->has_value());
+      MultiBuf& multibuf = **multibuf_result;
+      std::copy(data_to_write_.begin(), data_to_write_.end(), multibuf.begin());
 
-      last_write_status = channel_.Write(std::move(*multibuf)).status();
+      last_write_status = channel_.StageWrite(std::move(multibuf));
 
-      auto token = channel_.PendFlush(cx);
-      if (token.IsPending()) {
+      Poll<pw::Status> write_status = channel_.PendWrite(cx);
+      if (write_status.IsPending()) {
         return Pending();
       }
 
-      PW_CHECK_OK(token->status());
-      flushed_write_token = **token;
+      PW_CHECK_OK(*write_status);
     }
 
     return Ready();
@@ -258,7 +244,7 @@ TEST_F(EpollChannelTest, Write_ValidData_Succeeds) {
   ASSERT_TRUE(channel.is_write_open());
 
   constexpr auto kData = pw::bytes::Initialized<32>(0x3f);
-  WriterTask<ByteWriter> write_task(channel, 1, kData);
+  WriterTask<ByteWriter> write_task(channel.channel(), 1, kData);
   dispatcher.Post(write_task);
 
   dispatcher.RunToCompletion();
@@ -283,7 +269,7 @@ TEST_F(EpollChannelTest, Write_EmptyData_Succeeds) {
   ASSERT_TRUE(channel.is_read_open());
   ASSERT_TRUE(channel.is_write_open());
 
-  WriterTask<ByteWriter> write_task(channel, 1, {});
+  WriterTask<ByteWriter> write_task(channel.channel(), 1, {});
   dispatcher.Post(write_task);
 
   dispatcher.RunToCompletion();
@@ -308,7 +294,7 @@ TEST_F(EpollChannelTest, Write_Closed_ReturnsFailedPrecondition) {
   EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
   EXPECT_EQ(close_task.close_status, pw::OkStatus());
 
-  WriterTask<ByteWriter> write_task(channel, 1, {});
+  WriterTask<ByteWriter> write_task(channel.channel(), 1, {});
   dispatcher.Post(write_task);
 
   dispatcher.RunToCompletion();
@@ -340,7 +326,7 @@ TEST_F(EpollChannelTest, PendReadyToWrite_BlocksWhenUnavailable) {
   constexpr auto kData =
       pw::bytes::Initialized<decltype(alloc)::data_size_bytes()>('c');
   WriterTask<ByteWriter> write_task(
-      channel,
+      channel.channel(),
       100,  // Max writes set to some high number so the task fills the pipe.
       pw::ConstByteSpan(kData));
   dispatcher.Post(write_task);
@@ -358,15 +344,15 @@ TEST_F(EpollChannelTest, PendReadyToWrite_BlocksWhenUnavailable) {
   write_task.max_writes = write_task.write_count + 1;
 
   // Drain the pipe to make it writable again after a delay.
-  FunctionThread delayed_read([this, writes_to_drain]() {
+  auto delayed_read = [this, writes_to_drain] {
     pw::this_thread::sleep_for(500ms);
     for (int i = 0; i < writes_to_drain; ++i) {
       std::array<std::byte, decltype(alloc)::data_size_bytes()> buffer;
       PW_CHECK_INT_GT(read(read_fd_, buffer.data(), buffer.size()), 0);
     }
-  });
-
-  pw::thread::Thread work_thread(pw::thread::stl::Options(), delayed_read);
+  };
+  pw::Thread work_thread(pw::thread::stl::Options(),
+                         [&delayed_read] { delayed_read(); });
 
   dispatcher.RunToCompletion();
   work_thread.join();

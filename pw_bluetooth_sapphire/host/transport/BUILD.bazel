@@ -12,9 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-package(default_visibility = ["//visibility:public"])
+load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-exports_files(glob(["**/*"]))
+package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "transport",
@@ -23,7 +23,6 @@ cc_library(
         "acl_data_packet.cc",
         "command_channel.cc",
         "control_packets.cc",
-        "emboss_control_packets.cc",
         "error.cc",
         "iso_data_channel.cc",
         "link_type.cc",
@@ -31,62 +30,61 @@ cc_library(
         "sco_data_packet.cc",
         "transport.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/transport/acl_data_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/acl_data_packet.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/command_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/control_packets.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/data_buffer_info.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/emboss_packet.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/error.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/iso_data_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/link_type.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/packet.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/sco_data_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/sco_data_packet.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/slab_allocators.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/transport.h",
     ],
+    strip_include_prefix = "public",
     deps = [
+        "//pw_async:dispatcher",
+        "//pw_async:task",
+        "//pw_bluetooth",
+        "//pw_bluetooth:emboss_hci",
+        "//pw_bluetooth:emboss_hci_test",
         "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/hci-spec",
-        "@pigweed//pw_async:dispatcher",
-        "@pigweed//pw_async:task",
-        "@pigweed//pw_bluetooth",
-        "@pigweed//pw_bluetooth:emboss_hci",
-        "@pigweed//pw_bluetooth:emboss_hci_test",
-        "@pigweed//third_party/fuchsia:fit",
+        "//third_party/fuchsia:fit",
     ],
 )
 
 cc_library(
     name = "testing",
+    testonly = True,
     srcs = [
         "fake_sco_data_channel.cc",
         "mock_acl_data_channel.cc",
     ],
-    copts = [
-        "-Wno-unused-parameter",
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/transport/fake_acl_connection.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/fake_sco_data_channel.h",
+        "public/pw_bluetooth_sapphire/internal/host/transport/mock_acl_data_channel.h",
     ],
+    strip_include_prefix = "public",
     deps = [
         ":transport",
         "//pw_bluetooth_sapphire:public",
     ],
 )
 
-# Bazel support for pw_bluetooth_sapphire has not been configured for all
-# files yet, but must be enumerated to satisfy presubmit.
-filegroup(
-    name = "_files",
+pw_cc_test(
+    name = "transport_test",
     srcs = [
         "acl_data_channel_test.cc",
         "command_channel_test.cc",
-        "emboss_control_packets_test.cc",
-        "emboss_packet_test.cc",
-        "packet_test.cc",
-        "sco_data_channel_test.cc",
-        "sco_data_packet_test.cc",
-        "slab_allocators_test.cc",
-        "transport_test.cc",
-    ],
-)
-
-cc_library(
-    name = "transport_test.lib",
-    testonly = True,
-    srcs = [
-        "acl_data_channel_test.cc",
-        "command_channel_test.cc",
-        "emboss_control_packets_test.cc",
-        "emboss_packet_test.cc",
+        "control_packets_test.cc",
         "iso_data_channel_test.cc",
         "packet_test.cc",
         "sco_data_channel_test.cc",
@@ -94,12 +92,9 @@ cc_library(
         "slab_allocators_test.cc",
         "transport_test.cc",
     ],
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
+    test_main = "//pw_bluetooth_sapphire/host/testing:gtest_main",
     deps = [
         ":transport",
         "//pw_bluetooth_sapphire/host/testing",
-        "//pw_bluetooth_sapphire/host/testing:gtest_main",
     ],
-    alwayslink = 1,
 )

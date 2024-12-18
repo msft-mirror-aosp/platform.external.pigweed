@@ -13,10 +13,7 @@
 # the License.
 
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
-load(
-    "//pw_build:pigweed.bzl",
-    "pw_cc_binary",
-)
+load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 
 cc_library(
     name = "base_lib",
@@ -67,8 +64,8 @@ pw_cc_binary(
 )
 
 pw_cc_binary(
-    name = "intrusive_list_one_item",
-    srcs = ["intrusive_list.cc"],
+    name = "intrusive_forward_list_one_item",
+    srcs = ["intrusive_forward_list.cc"],
     defines = ["ITEM_COUNT=1"],
     target_compatible_with = incompatible_with_mcu(),
     deps = [
@@ -78,8 +75,8 @@ pw_cc_binary(
 )
 
 pw_cc_binary(
-    name = "intrusive_list_two_item",
-    srcs = ["intrusive_list.cc"],
+    name = "intrusive_forward_list_two_item",
+    srcs = ["intrusive_forward_list.cc"],
     defines = ["ITEM_COUNT=2"],
     target_compatible_with = incompatible_with_mcu(),
     deps = [
@@ -89,8 +86,8 @@ pw_cc_binary(
 )
 
 pw_cc_binary(
-    name = "intrusive_list_four_item",
-    srcs = ["intrusive_list.cc"],
+    name = "intrusive_forward_list_four_item",
+    srcs = ["intrusive_forward_list.cc"],
     defines = ["ITEM_COUNT=4"],
     target_compatible_with = incompatible_with_mcu(),
     deps = [

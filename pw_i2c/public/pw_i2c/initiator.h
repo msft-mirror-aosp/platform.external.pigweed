@@ -135,8 +135,6 @@ class Initiator {
   ///
   /// @param[in] tx_buffer The transmit buffer.
   ///
-  /// @param[out] rx_buffer The receive buffer.
-  ///
   /// @param[in] timeout The maximum duration to block waiting for both
   /// exclusive bus access and the completion of the I2C transaction.
   ///
@@ -235,6 +233,11 @@ class Initiator {
   /// Probes the device for an I2C ACK after only writing the address.
   /// This is done by attempting to read a single byte from the specified
   /// device.
+  ///
+  /// @warning This method is not compatible with all devices. For example, some
+  /// I2C devices require a device_address in W mode before they can ack the
+  /// device_address in R mode. In this case, use WriteReadFor to read a
+  /// register with known value.
   ///
   /// @param[in] device_address The address of the I2C device.
   ///
