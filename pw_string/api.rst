@@ -5,7 +5,6 @@ API Reference
 =============
 .. pigweed-module-subpage::
    :name: pw_string
-   :tagline: pw_string: Efficient, easy, and safe string manipulation
 
 --------
 Overview
@@ -26,6 +25,11 @@ with strings.
 **String utility functions**
 
 .. doxygenfile:: pw_string/util.h
+   :sections: briefdescription
+
+**UTF-8 Helpers**
+
+.. doxygenfile:: pw_string/utf_codecs.h
    :sections: briefdescription
 
 -----------------
@@ -53,11 +57,11 @@ String utility functions
 
 pw::string::Assign()
 --------------------
-.. doxygenfunction:: pw::string::Assign(InlineString<> &string, const std::string_view &view)
+.. doxygenfunction:: pw::string::Assign(InlineString<> &string, std::string_view view)
 
 pw::string::Append()
 --------------------
-.. doxygenfunction:: pw::string::Append(InlineString<>& string, const std::string_view& view)
+.. doxygenfunction:: pw::string::Append(InlineString<>& string, std::string_view view)
 
 pw::string::ClampedCString()
 ----------------------------
@@ -68,13 +72,13 @@ pw::string::Copy()
 ------------------
 .. doxygenfunction:: pw::string::Copy(const char* source, char* dest, size_t num)
 .. doxygenfunction:: pw::string::Copy(const char* source, Span&& dest)
-.. doxygenfunction:: pw::string::Copy(const std::string_view& source, Span&& dest)
+.. doxygenfunction:: pw::string::Copy(std::string_view source, Span&& dest)
 
 It also has variants that provide a destination of ``pw::Vector<char>``
 (see :ref:`module-pw_containers` for details) that do not store the null
 terminator in the vector.
 
-.. cpp:function:: StatusWithSize Copy(const std::string_view& source, pw::Vector<char>& dest)
+.. cpp:function:: StatusWithSize Copy(std::string_view source, pw::Vector<char>& dest)
 .. cpp:function:: StatusWithSize Copy(const char* source, pw::Vector<char>& dest)
 
 pw::string::Format()
@@ -96,4 +100,14 @@ pw::string::NullTerminatedLength()
 
 pw::string::PrintableCopy()
 ---------------------------
-.. doxygenfunction:: pw::string::PrintableCopy(const std::string_view& source, span<char> dest)
+.. doxygenfunction:: pw::string::PrintableCopy(std::string_view source, span<char> dest)
+
+-------------
+UTF-8 Helpers
+-------------
+.. doxygenfile:: pw_string/utf_codecs.h
+   :sections: detaileddescription
+
+.. doxygenfunction:: pw::utf8::EncodeCodePoint(uint32_t code_point)
+.. doxygenfunction:: pw::utf8::WriteCodePoint(uint32_t code_point, pw::StringBuilder& output)
+.. doxygenfunction:: pw::utf8::ReadCodePoint(std::string_view str)

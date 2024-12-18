@@ -3,6 +3,8 @@
 =========
 pw_assert
 =========
+.. pigweed-module::
+   :name: pw_assert
 
 --------
 Overview
@@ -34,8 +36,8 @@ The ``pw_assert`` API provides three classes of macros:
 
   .. code-block:: cpp
 
-    PW_CHECK_INT_LE(ItemCount(), 100);
-    PW_CHECK_INT_LE(ItemCount(), 100, "System state: %s", GetStateStr());
+     PW_CHECK_INT_LE(ItemCount(), 100);
+     PW_CHECK_INT_LE(ItemCount(), 100, "System state: %s", GetStateStr());
 
   To ensure compatibility with :ref:`module-pw_assert_log` and
   :ref:`module-pw_log_tokenized`, the message must be a string literal.
@@ -45,17 +47,17 @@ Example
 
 .. code-block:: cpp
 
-  #include "pw_assert/check.h"
+   #include "pw_assert/check.h"
 
-  int main() {
-    bool sensor_running = StartSensor(&msg);
-    PW_CHECK(sensor_running, "Sensor failed to start; code: %s", msg);
+   int main() {
+     bool sensor_running = StartSensor(&msg);
+     PW_CHECK(sensor_running, "Sensor failed to start; code: %s", msg);
 
-    int temperature_c = ReadSensorCelcius();
-    PW_CHECK_INT_LE(temperature_c, 100,
-                    "System is way out of heat spec; state=%s",
-                    ReadSensorStateString());
-  }
+     int temperature_c = ReadSensorCelcius();
+     PW_CHECK_INT_LE(temperature_c, 100,
+                     "System is way out of heat spec; state=%s",
+                     ReadSensorStateString());
+   }
 
 .. tip::
 
@@ -66,12 +68,12 @@ Example
 
   .. code-block:: cpp
 
-    // This assert is always enabled, even in production.
-    PW_CHECK_INT_LE(ItemCount(), 100);
+     // This assert is always enabled, even in production.
+     PW_CHECK_INT_LE(ItemCount(), 100);
 
-    // This assert is enabled based on ``PW_ASSERT_ENABLE_DEBUG``.
-    // The functions ItemCount() and GetStateStr() are never called.
-    PW_DCHECK_INT_LE(ItemCount(), 100, "System state: %s", GetStateStr());
+     // This assert is enabled based on ``PW_ASSERT_ENABLE_DEBUG``.
+     // The functions ItemCount() and GetStateStr() are never called.
+     PW_DCHECK_INT_LE(ItemCount(), 100, "System state: %s", GetStateStr());
 
 .. tip::
 
@@ -111,7 +113,7 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
 
   .. code-block:: cpp
 
-    PW_CRASH("Unexpected: frobnitz in state: %s", frobnitz_state);
+     PW_CRASH("Unexpected: frobnitz in state: %s", frobnitz_state);
 
   Note: ``PW_CRASH`` is the equivalent of ``LOG_FATAL`` in other systems, where
   a device crash is triggered with a message. In Pigweed, logging and
@@ -134,9 +136,9 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
 
   .. code-block:: cpp
 
-    PW_CHECK(StartTurbines());
-    PW_CHECK(StartWarpDrive(), "Oddly warp drive couldn't start; ruh-roh!");
-    PW_CHECK(RunSelfTest(), "Failure in self test; try %d", TestAttempts());
+     PW_CHECK(StartTurbines());
+     PW_CHECK(StartWarpDrive(), "Oddly warp drive couldn't start; ruh-roh!");
+     PW_CHECK(RunSelfTest(), "Failure in self test; try %d", TestAttempts());
 
   .. attention::
 
@@ -150,6 +152,8 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
     Additionally, use ``PW_CHECK_OK(status)`` when checking for an OK status,
     since it enables showing a human-readable status string rather than an
     integer (e.g. ``status == RESOURCE_EXHAUSTED`` instead of ``status == 5``.
+    This works with any expression convertible to ``pw::Status``, including
+    ``pw::StatusWithString`` and ``pw::Result<T>``.
 
     +------------------------------------+-------------------------------------+
     | **Do NOT do this**                 | **Do this instead**                 |
@@ -177,11 +181,11 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
 
   .. code-block:: cpp
 
-    Foo* foo = GetTheFoo()
-    PW_CHECK_NOTNULL(foo);
+     Foo* foo = GetTheFoo()
+     PW_CHECK_NOTNULL(foo);
 
-    Bar* bar = GetSomeBar();
-    PW_CHECK_NOTNULL(bar, "Weirdly got NULL bar; state: %d", MyState());
+     Bar* bar = GetSomeBar();
+     PW_CHECK_NOTNULL(bar, "Weirdly got NULL bar; state: %d", MyState());
 
 .. cpp:function:: PW_CHECK_TYPE_OP(a, b)
 .. cpp:function:: PW_CHECK_TYPE_OP(a, b, format, ...)
@@ -201,15 +205,15 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
 
   .. code-block:: cpp
 
-    PW_CHECK_INT_LE(CurrentTemperature(), 100);
-    PW_CHECK_INT_LE(ItemCount(), 100);
+     PW_CHECK_INT_LE(CurrentTemperature(), 100);
+     PW_CHECK_INT_LE(ItemCount(), 100);
 
   Example, with an included message and arguments:
 
   .. code-block:: cpp
 
-    PW_CHECK_FLOAT_EXACT_GE(BatteryVoltage(), 3.2,
-                            "System state=%s", SysState());
+     PW_CHECK_FLOAT_EXACT_GE(BatteryVoltage(), 3.2,
+                             "System state=%s", SysState());
 
   Below is the full list of binary comparison assert macros, along with the
   type specifier. The specifier is irrelevant to application authors but is
@@ -330,8 +334,8 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
   precision and ergo error accumulation into account are not provided on
   purpose as this comes with some complexity and requires application
   specific tolerances in terms of Units of Least Precision (ULP). Instead,
-  we recommend developers carefully consider how floating point precision and
-  error impact the data they are bounding and whether checks are appropriate.
+  carefully consider how floating point precision and error impact the data
+  they are bounding and whether checks are appropriate.
 
 .. cpp:function:: PW_CHECK_FLOAT_NEAR(a, b, abs_tolerance)
 .. cpp:function:: PW_CHECK_FLOAT_NEAR(a, b, abs_tolerance, format, ...)
@@ -351,14 +355,14 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
 
   .. code-block:: cpp
 
-    PW_CHECK_FLOAT_NEAR(cos(0.0f), 1, 0.001);
+     PW_CHECK_FLOAT_NEAR(cos(0.0f), 1, 0.001);
 
   Example, with an included message and arguments:
 
   .. code-block:: cpp
 
-    PW_CHECK_FLOAT_NEAR(FirstOperation(), RedundantOperation(), 0.1,
-                        "System state=%s", SysState());
+     PW_CHECK_FLOAT_NEAR(FirstOperation(), RedundantOperation(), 0.1,
+                         "System state=%s", SysState());
 
 .. cpp:function:: PW_CHECK_OK(status)
 .. cpp:function:: PW_CHECK_OK(status, format, ...)
@@ -369,20 +373,28 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
   ``PW_STATUS_OK`` (in C). Optionally include a message with arguments to
   report.
 
+  ``status`` can be a ``pw::Status``, or (in C++ only) any expression
+  convertible to ``pw::Status``, including ``pw::StatusWithString`` and
+  ``pw::Result<T>``.
+
   The ``DCHECK`` variants only run if ``PW_ASSERT_ENABLE_DEBUG`` is defined;
   otherwise, the entire statement is removed (and the expression not evaluated).
 
   .. code-block:: cpp
 
-    pw::Status operation_status = DoSomeOperation();
-    PW_CHECK_OK(operation_status);
+     pw::Status operation_status = DoSomeOperation();
+     PW_CHECK_OK(operation_status);
 
-    // Any expression that evaluates to a pw::Status or pw_Status works.
-    PW_CHECK_OK(DoTheThing(), "System state: %s", SystemState());
+     // Any expression that evaluates to a pw::Status or pw_Status works.
+     PW_CHECK_OK(DoTheThing(), "System state: %s", SystemState());
 
-    // C works too.
-    pw_Status c_status = DoMoreThings();
-    PW_CHECK_OK(c_status, "System state: %s", SystemState());
+     // pw::Result<T> works.
+     pw::Result<int> result = GetSomething();
+     PW_CHECK_OK(result);
+
+     // C works too.
+     pw_Status c_status = DoMoreThings();
+     PW_CHECK_OK(c_status, "System state: %s", SystemState());
 
   .. note::
 
@@ -390,6 +402,30 @@ invoke to assert. These macros are found in the ``pw_assert/check.h`` header.
     enables displaying an error message with a string version of the error
     code; for example ``status == RESOURCE_EXHAUSTED`` instead of ``status ==
     5``.
+
+``%`` in conditions
+===================
+``PW_CHECK`` conditions cannot contain the ``%`` character (e.g. from the
+modulus operator), since it may be interpreted as a printf-style format
+specifier. Some backends (:ref:`module-pw_assert_tokenized` in particular) may
+include the condition in the format string as a size optimization.
+Unintentionally introducing an extra %-style argument could lead to problems, so
+``pw_assert`` prevents this.
+
+Using a % in a ``PW_CHECK`` condition causes errors like the following:
+
+.. code-block:: none
+
+   ../pw_assert/public/pw_assert/internal/check_impl.h:237:7: note: expanded from macro '_PW_CHECK_BINARY_ARG_HANDLER'
+     237 |       arg_a_str arg_b_str); /* cannot use '%' here; call mod via a function */ \
+
+To avoid errors like this, do not use ``%`` in ``PW_CHECK`` conditions. Modulus
+can be moved to a separate statement outside of the ``PW_CHECK`` or invoked via
+a function or `std::modulus
+<https://en.cppreference.com/w/cpp/utility/functional/modulus>`_.
+
+This restriction may be removed in the future (`b/235149326
+<https://issues.pigweed.dev/issues/235149326>`_)
 
 .. _module-pw_assert-assert-api:
 
@@ -423,23 +459,23 @@ Example
 
 .. code-block:: cpp
 
-  // This example demonstrates asserting in a header.
+   // This example demonstrates asserting in a header.
 
-  #include "pw_assert/assert.h"
+   #include "pw_assert/assert.h"
 
-  class InlinedSubsystem {
-   public:
-    void DoSomething() {
-      // GOOD: No problem; PW_ASSERT is fine to inline and place in a header.
-      PW_ASSERT(IsEnabled());
-    }
-    void DoSomethingElse() {
-      // BAD: Generally avoid using PW_DCHECK() or PW_CHECK in headers. If you
-      // want rich asserts or logs, move the function into the .cc file, and
-      // then use PW_CHECK there.
-      PW_DCHECK(IsEnabled());  // DON'T DO THIS
-    }
-  };
+   class InlinedSubsystem {
+    public:
+     void DoSomething() {
+       // GOOD: No problem; PW_ASSERT is fine to inline and place in a header.
+       PW_ASSERT(IsEnabled());
+     }
+     void DoSomethingElse() {
+       // BAD: Generally avoid using PW_DCHECK() or PW_CHECK in headers. If you
+       // want rich asserts or logs, move the function into the .cc file, and
+       // then use PW_CHECK there.
+       PW_DCHECK(IsEnabled());  // DON'T DO THIS
+     }
+   };
 
 PW_ASSERT API Reference
 =======================
@@ -512,12 +548,12 @@ Bazel
 -----
 In Bazel, assert backends may break dependency cycles by placing the full
 implementation in an ``impl`` target, like ``//pw_assert_basic:impl`` or
-``//pw_assert_tokenized:impl``. The ``//targets:pw_assert_backend_impl``
-label flag should be set to the ``impl`` target required by the assert backend
-used by the platform.
+``//pw_assert_tokenized:impl``. The ``//pw_assert:backend_impl`` label flag
+should be set to the ``impl`` target required by the assert backend used by the
+platform.
 
-You must add a dependency on the ``@pigweed//targets:pw_assert_backend_impl``
-target to any binary using ``pw_assert``.
+You must add a dependency on the ``@pigweed//pw_assert:backend_impl`` target to
+any binary using ``pw_assert``.
 
 See :ref:`docs-build_system-bazel_link-extra-lib` for a general discussion of
 cyclic dependencies in low-level libraries in Bazel.
@@ -575,9 +611,9 @@ and that header must define the following macros:
 
   .. code-block:: cpp
 
-    int temp = 16;
-    int max_temp = 15;
-    PW_CHECK_INT_LE(temp, MAX_TEMP, "Got too hot; state: %s", GetSystemState());
+     int temp = 16;
+     int max_temp = 15;
+     PW_CHECK_INT_LE(temp, MAX_TEMP, "Got too hot; state: %s", GetSystemState());
 
   In this block, the assert will trigger, which will cause the facade to invoke
   the handler macro. Below is the meaning of the arguments, referencing to the

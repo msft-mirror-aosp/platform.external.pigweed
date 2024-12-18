@@ -62,6 +62,27 @@ cc_library(
     deps = [":pw_rpc"],
 )
 
+# See https://pigweed.dev/pw_rpc/cpp.html#c.PW_RPC_YIELD_MODE for documentation.
+constraint_setting(
+    name = "yield_mode",
+    default_constraint_value = ":yield_mode_sleep",
+)
+
+constraint_value(
+    name = "yield_mode_busy_loop",
+    constraint_setting = ":yield_mode",
+)
+
+constraint_value(
+    name = "yield_mode_sleep",
+    constraint_setting = ":yield_mode",
+)
+
+constraint_value(
+    name = "yield_mode_yield",
+    constraint_setting = ":yield_mode",
+)
+
 cc_library(
     name = "pw_rpc",
     srcs = [
@@ -75,10 +96,8 @@ cc_library(
         "packet_meta.cc",
         "public/pw_rpc/internal/call.h",
         "public/pw_rpc/internal/call_context.h",
-        "public/pw_rpc/internal/channel.h",
         "public/pw_rpc/internal/channel_list.h",
         "public/pw_rpc/internal/client_call.h",
-        "public/pw_rpc/internal/config.h",
         "public/pw_rpc/internal/encoding_buffer.h",
         "public/pw_rpc/internal/endpoint.h",
         "public/pw_rpc/internal/grpc.h",
@@ -86,13 +105,10 @@ cc_library(
         "public/pw_rpc/internal/lock.h",
         "public/pw_rpc/internal/log_config.h",
         "public/pw_rpc/internal/method.h",
-        "public/pw_rpc/internal/method_info.h",
-        "public/pw_rpc/internal/method_lookup.h",
         "public/pw_rpc/internal/method_union.h",
         "public/pw_rpc/internal/packet.h",
         "public/pw_rpc/internal/server_call.h",
         "public/pw_rpc/method_info.h",
-        "public/pw_rpc/method_type.h",
         "public/pw_rpc/writer.h",
         "server.cc",
         "server_call.cc",
@@ -101,14 +117,25 @@ cc_library(
     hdrs = [
         "public/pw_rpc/channel.h",
         "public/pw_rpc/client.h",
+        "public/pw_rpc/internal/config.h",
+        "public/pw_rpc/internal/method_info.h",
+        "public/pw_rpc/internal/method_lookup.h",
         "public/pw_rpc/internal/service_client.h",
         "public/pw_rpc/method_id.h",
         "public/pw_rpc/method_info.h",
+        "public/pw_rpc/method_type.h",
         "public/pw_rpc/packet_meta.h",
         "public/pw_rpc/server.h",
         "public/pw_rpc/service.h",
         "public/pw_rpc/service_id.h",
     ],
+    # LINT.IfChange
+    defines = select({
+        ":yield_mode_busy_loop": ["PW_RPC_YIELD_MODE=PW_RPC_YIELD_MODE_BUSY_LOOP"],
+        ":yield_mode_sleep": ["PW_RPC_YIELD_MODE=PW_RPC_YIELD_MODE_SLEEP"],
+        ":yield_mode_yield": ["PW_RPC_YIELD_MODE=PW_RPC_YIELD_MODE_YIELD"],
+    }),
+    # LINT.ThenChange(//pw_rpc/public/pw_rpc/internal/config.h)
     includes = ["public"],
     deps = [
         ":config_override",
@@ -118,15 +145,19 @@ cc_library(
         "//pw_containers:intrusive_list",
         "//pw_function",
         "//pw_log",
+        "//pw_polyfill",
         "//pw_preprocessor",
         "//pw_result",
         "//pw_span",
         "//pw_status",
         "//pw_sync:lock_annotations",
         "//pw_sync:mutex",
-        "//pw_thread:sleep",
         "//pw_toolchain:no_destructor",
-    ],
+    ] + select({
+        ":yield_mode_busy_loop": [],
+        ":yield_mode_sleep": ["//pw_thread:sleep"],
+        ":yield_mode_yield": ["//pw_thread:yield"],
+    }),
 )
 
 label_flag(
@@ -400,6 +431,11 @@ proto_library(
     name = "internal_packet_proto",
     srcs = ["internal/packet.proto"],
     visibility = [":__subpackages__"],
+)
+
+java_proto_library(
+    name = "packet_proto_java",
+    deps = [":internal_packet_proto"],
 )
 
 java_lite_proto_library(

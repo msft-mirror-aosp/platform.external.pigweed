@@ -98,6 +98,7 @@ group("default") {
     ":docs",
     ":host",
     ":pi_pico",
+    ":python.install",
     ":python.lint",
     ":python.tests",
     ":static_analysis",
@@ -319,6 +320,10 @@ if (pw_BUILD_BROKEN_GROUPS) {
   }
   group("qemu_clang_size_optimized") {
     deps = [ ":pigweed_default($dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_clang_size_optimized)" ]
+
+    if (pw_rust_ENABLE_EXPERIMENTAL_BUILD) {
+      deps += [ "$dir_pw_rust/examples/basic_executable:basic_executable($dir_pigweed/targets/lm3s6965evb_qemu:lm3s6965evb_qemu_clang_size_optimized)" ]
+    }
   }
   group("qemu_clang") {
     deps = [ ":qemu_clang_size_optimized" ]
@@ -495,18 +500,18 @@ pw_python_group("python") {
 }
 
 group("pigweed_pypi_distribution") {
-  deps = [ "$dir_pw_env_setup:pypi_pigweed_python_source_tree($pw_build_PYTHON_TOOLCHAIN)" ]
+  deps = [
+    "$dir_pw_env_setup:generate_hdlc_proto_rpc_tokenizer_distribution.wheel($pw_build_PYTHON_TOOLCHAIN)",
+    "$dir_pw_env_setup:pypi_pigweed_python_source_tree.wheel($pw_build_PYTHON_TOOLCHAIN)",
+  ]
 }
 
 # Build host-only tooling.
 group("host_tools") {
-  deps = [
-    "$dir_pw_target_runner/go:simple_client(:non_default_toolchain)",
-    "$dir_pw_target_runner/go:simple_server(:non_default_toolchain)",
-  ]
+  deps = []
 
   if (pw_rust_ENABLE_EXPERIMENTAL_BUILD) {
-    deps += [ "$dir_pw_rust/examples/host_executable:host_executable($dir_pigweed/targets/host:host_clang_debug)" ]
+    deps += [ "$dir_pw_rust/examples/basic_executable:basic_executable($dir_pigweed/targets/host:host_clang_debug)" ]
   }
 }
 
@@ -575,7 +580,7 @@ group("build_with_pw_minimal_cpp_stdlib") {
   # This list of supported modules is incomplete.
   deps = [
     "$dir_pw_base64($_toolchain)",
-    "$dir_pw_containers:variable_length_entry_queue($_toolchain)",
+    "$dir_pw_containers:inline_var_len_entry_queue($_toolchain)",
     "$dir_pw_status($_toolchain)",
     "$dir_pw_tokenizer:base64($_toolchain)",
     "$dir_pw_tokenizer($_toolchain)",
@@ -611,6 +616,13 @@ if (current_toolchain != default_toolchain) {
           "$dir_pw_unit_test:test_rpc_server",
         ]
       }
+    }
+
+    if (current_os == "linux") {
+      deps += [
+        "$dir_pw_digital_io_linux:pw_digital_io_linux_cli",
+        "$dir_pw_spi_linux:pw_spi_linux_cli",
+      ]
     }
   }
 

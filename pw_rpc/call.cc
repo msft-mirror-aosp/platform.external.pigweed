@@ -204,7 +204,7 @@ Status Call::SendPacket(PacketType type, ConstByteSpan payload, Status status) {
     return Status::FailedPrecondition();
   }
 
-  Channel* channel = endpoint_->GetInternalChannel(channel_id_);
+  ChannelBase* channel = endpoint_->GetInternalChannel(channel_id_);
   if (channel == nullptr) {
     encoding_buffer.ReleaseIfAllocated();
     return Status::Unavailable();
@@ -217,6 +217,17 @@ Status Call::CloseAndSendFinalPacketLocked(PacketType type,
                                            Status status) {
   const Status send_status = SendPacket(type, response, status);
   UnregisterAndMarkClosed();
+  return send_status;
+}
+
+Status Call::TryCloseAndSendFinalPacketLocked(PacketType type,
+                                              ConstByteSpan response,
+                                              Status status) {
+  const Status send_status = SendPacket(type, response, status);
+  // Only close the call if the final packet gets sent out successfully.
+  if (send_status.ok()) {
+    UnregisterAndMarkClosed();
+  }
   return send_status;
 }
 

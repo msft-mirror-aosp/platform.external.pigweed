@@ -24,7 +24,8 @@
 namespace bt::l2cap {
 namespace {
 
-namespace hci_android = bt::hci_spec::vendor::android;
+namespace android_hci = bt::hci_spec::vendor::android;
+namespace android_emb = pw::bluetooth::vendor::android_hci;
 using namespace bt::testing;
 
 constexpr hci_spec::ConnectionHandle kTestHandle1 = 0x0001;
@@ -32,56 +33,47 @@ constexpr ChannelId kLocalId = 0x0040;
 constexpr ChannelId kRemoteId = 0x9042;
 
 A2dpOffloadManager::Configuration BuildConfiguration(
-    hci_android::A2dpCodecType codec = hci_android::A2dpCodecType::kSbc) {
-  hci_android::A2dpScmsTEnable scms_t_enable;
-  scms_t_enable.enabled = pw::bluetooth::emboss::GenericEnableParam::DISABLE;
-  scms_t_enable.header = 0x00;
-
-  hci_android::A2dpOffloadCodecInformation codec_information;
-  switch (codec) {
-    case hci_android::A2dpCodecType::kSbc:
-      codec_information.sbc.blocklen_subbands_alloc_method = 0x00;
-      codec_information.sbc.min_bitpool_value = 0x00;
-      codec_information.sbc.max_bitpool_value = 0xFF;
-      memset(codec_information.sbc.reserved,
-             0,
-             sizeof(codec_information.sbc.reserved));
-      break;
-    case hci_android::A2dpCodecType::kAac:
-      codec_information.aac.object_type = 0x00;
-      codec_information.aac.variable_bit_rate =
-          hci_android::A2dpAacEnableVariableBitRate::kDisable;
-      memset(codec_information.aac.reserved,
-             0,
-             sizeof(codec_information.aac.reserved));
-      break;
-    case hci_android::A2dpCodecType::kLdac:
-      codec_information.ldac.vendor_id = 0x0000012D;
-      codec_information.ldac.codec_id = 0x00AA;
-      codec_information.ldac.bitrate_index =
-          hci_android::A2dpBitrateIndex::kLow;
-      codec_information.ldac.ldac_channel_mode =
-          hci_android::A2dpLdacChannelMode::kStereo;
-      memset(codec_information.ldac.reserved,
-             0,
-             sizeof(codec_information.ldac.reserved));
-      break;
-    default:
-      memset(codec_information.aptx.reserved,
-             0,
-             sizeof(codec_information.aptx.reserved));
-      break;
-  }
-
+    android_emb::A2dpCodecType codec = android_emb::A2dpCodecType::SBC) {
   A2dpOffloadManager::Configuration config;
   config.codec = codec;
   config.max_latency = 0xFFFF;
-  config.scms_t_enable = scms_t_enable;
-  config.sampling_frequency = hci_android::A2dpSamplingFrequency::k44100Hz;
-  config.bits_per_sample = hci_android::A2dpBitsPerSample::k16BitsPerSample;
-  config.channel_mode = hci_android::A2dpChannelMode::kMono;
+  config.scms_t_enable.view().enabled().Write(
+      pw::bluetooth::emboss::GenericEnableParam::DISABLE);
+  config.scms_t_enable.view().header().Write(0x00);
+  config.sampling_frequency = android_emb::A2dpSamplingFrequency::HZ_44100;
+  config.bits_per_sample = android_emb::A2dpBitsPerSample::BITS_PER_SAMPLE_16;
+  config.channel_mode = android_emb::A2dpChannelMode::MONO;
   config.encoded_audio_bit_rate = 0x0;
-  config.codec_information = codec_information;
+
+  switch (codec) {
+    case android_emb::A2dpCodecType::SBC:
+      config.sbc_configuration.view().block_length().Write(
+          android_emb::SbcBlockLen::BLOCK_LEN_4);
+      config.sbc_configuration.view().subbands().Write(
+          android_emb::SbcSubBands::SUBBANDS_4);
+      config.sbc_configuration.view().allocation_method().Write(
+          android_emb::SbcAllocationMethod::SNR);
+      config.sbc_configuration.view().min_bitpool_value().Write(0x00);
+      config.sbc_configuration.view().max_bitpool_value().Write(0xFF);
+      break;
+    case android_emb::A2dpCodecType::AAC:
+      config.aac_configuration.view().object_type().Write(0x00);
+      config.aac_configuration.view().variable_bit_rate().Write(
+          android_emb::AacEnableVariableBitRate::DISABLE);
+      break;
+    case android_emb::A2dpCodecType::LDAC:
+      config.ldac_configuration.view().vendor_id().Write(
+          android_hci::kLdacVendorId);
+      config.ldac_configuration.view().codec_id().Write(
+          android_hci::kLdacCodecId);
+      config.ldac_configuration.view().bitrate_index().Write(
+          android_emb::LdacBitrateIndex::LOW);
+      config.ldac_configuration.view().ldac_channel_mode().stereo().Write(true);
+      break;
+    case android_emb::A2dpCodecType::APTX:
+    case android_emb::A2dpCodecType::APTX_HD:
+      break;
+  }
 
   return config;
 }
@@ -112,14 +104,14 @@ class A2dpOffloadTest : public TestingBase {
 
 class StartA2dpOffloadTest
     : public A2dpOffloadTest,
-      public ::testing::WithParamInterface<hci_android::A2dpCodecType> {};
+      public ::testing::WithParamInterface<android_emb::A2dpCodecType> {};
 
 TEST_P(StartA2dpOffloadTest, StartA2dpOffloadSuccess) {
-  const hci_android::A2dpCodecType codec = GetParam();
+  const android_emb::A2dpCodecType codec = GetParam();
   A2dpOffloadManager::Configuration config = BuildConfiguration(codec);
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -144,11 +136,10 @@ TEST_P(StartA2dpOffloadTest, StartA2dpOffloadSuccess) {
   EXPECT_TRUE(start_result->is_ok());
 }
 
-const std::vector<hci_android::A2dpCodecType> kA2dpCodecTypeParams = {
-    hci_android::A2dpCodecType::kSbc,
-    hci_android::A2dpCodecType::kAac,
-    hci_android::A2dpCodecType::kLdac,
-    hci_android::A2dpCodecType::kAptx};
+const std::vector<android_emb::A2dpCodecType> kA2dpCodecTypeParams = {
+    android_emb::A2dpCodecType::SBC,
+    android_emb::A2dpCodecType::AAC,
+    android_emb::A2dpCodecType::LDAC};
 INSTANTIATE_TEST_SUITE_P(ChannelManagerTest,
                          StartA2dpOffloadTest,
                          ::testing::ValuesIn(kA2dpCodecTypeParams));
@@ -157,7 +148,7 @@ TEST_F(A2dpOffloadTest, StartA2dpOffloadInvalidConfiguration) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete = CommandCompletePacket(
-      hci_android::kA2dpOffloadCommand,
+      android_hci::kA2dpOffloadCommand,
       pw::bluetooth::emboss::StatusCode::INVALID_HCI_COMMAND_PARAMETERS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -187,7 +178,7 @@ TEST_F(A2dpOffloadTest, StartAndStopA2dpOffloadSuccess) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -231,7 +222,7 @@ TEST_F(A2dpOffloadTest, StartA2dpOffloadAlreadyStarted) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -276,7 +267,7 @@ TEST_F(A2dpOffloadTest, StartA2dpOffloadStillStarting) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -317,7 +308,7 @@ TEST_F(A2dpOffloadTest, StartA2dpOffloadStillStopping) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -376,7 +367,7 @@ TEST_F(A2dpOffloadTest, StopA2dpOffloadStillStarting) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -418,7 +409,7 @@ TEST_F(A2dpOffloadTest, StopA2dpOffloadStillStopping) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -482,7 +473,7 @@ TEST_F(A2dpOffloadTest, A2dpOffloadOnlyOneChannel) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),
@@ -528,7 +519,7 @@ TEST_F(A2dpOffloadTest, DifferentChannelCannotStopA2dpOffloading) {
   A2dpOffloadManager::Configuration config = BuildConfiguration();
 
   const auto command_complete =
-      CommandCompletePacket(hci_android::kA2dpOffloadCommand,
+      CommandCompletePacket(android_hci::kA2dpOffloadCommand,
                             pw::bluetooth::emboss::StatusCode::SUCCESS);
   EXPECT_CMD_PACKET_OUT(
       test_device(),

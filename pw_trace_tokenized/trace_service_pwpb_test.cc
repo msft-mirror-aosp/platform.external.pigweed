@@ -22,6 +22,7 @@
 #include "pw_unit_test/framework.h"
 
 namespace pw::trace {
+namespace {
 
 class TraceServiceTest : public ::testing::Test {
  public:
@@ -117,14 +118,16 @@ TEST_F(TraceServiceTest, GetClockParameters) {
   context(tracer, writer);
 
   ASSERT_EQ(context.call({}), OkStatus());
-  EXPECT_EQ(PW_CHRONO_SYSTEM_CLOCK_PERIOD_SECONDS_NUMERATOR,
-            context.response().clock_parameters.tick_period_seconds_numerator);
   EXPECT_EQ(
-      PW_CHRONO_SYSTEM_CLOCK_PERIOD_SECONDS_DENOMINATOR,
+      static_cast<int32_t>(PW_CHRONO_SYSTEM_CLOCK_PERIOD_SECONDS_NUMERATOR),
+      context.response().clock_parameters.tick_period_seconds_numerator);
+  EXPECT_EQ(
+      static_cast<int32_t>(PW_CHRONO_SYSTEM_CLOCK_PERIOD_SECONDS_DENOMINATOR),
       context.response().clock_parameters.tick_period_seconds_denominator);
   EXPECT_EQ(
       static_cast<int32_t>(chrono::SystemClock::epoch),
       static_cast<int32_t>(*context.response().clock_parameters.epoch_type));
 }
 
+}  // namespace
 }  // namespace pw::trace

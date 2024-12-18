@@ -27,7 +27,6 @@ import logging
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import List, Union
 
 
 from pw_transfer import transfer_pb2
@@ -38,12 +37,13 @@ from pw_trace_tokenized import trace_tokenized
 import pw_transfer
 from pw_file import file_pb2
 from pw_hdlc import rpc
+from pw_stream import stream_readers
 from pw_system import device_tracing
 from pw_tokenizer import detokenize
 from pw_console import socket_client
 
 
-_LOG = logging.getLogger('pw_console_trace_client')
+_LOG = logging.getLogger(__package__)
 _LOG.level = logging.DEBUG
 _LOG.addHandler(logging.StreamHandler(sys.stdout))
 
@@ -143,13 +143,13 @@ def _main(args) -> int:
     socket_impl = socket_client.SocketClient
     try:
         socket_device = socket_impl(args.socket_addr)
-        reader = rpc.SelectableReader(socket_device)
+        reader = stream_readers.SelectableReader(socket_device)
         write = socket_device.write
     except ValueError:
         _LOG.exception('Failed to initialize socket at %s', args.socket_addr)
         return 1
 
-    protos: List[Union[ModuleType, Path]] = [
+    protos: list[ModuleType | Path] = [
         log_pb2,
         file_pb2,
         transfer_pb2,

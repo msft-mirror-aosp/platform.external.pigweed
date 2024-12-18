@@ -14,6 +14,8 @@
 # the License.
 """Test fixture for pw_transfer integration tests."""
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 from dataclasses import dataclass
@@ -22,14 +24,14 @@ import pathlib
 from pathlib import Path
 import sys
 import tempfile
-from typing import BinaryIO, Iterable, List, NamedTuple, Optional
+from typing import BinaryIO, Iterable, NamedTuple
 import unittest
 
 from google.protobuf import text_format
 
 from pw_protobuf_protos import status_pb2
-from pigweed.pw_transfer.integration_test import config_pb2
-from rules_python.python.runfiles import runfiles
+from pw_transfer.integration_test import config_pb2
+from python.runfiles import runfiles
 
 _LOG = logging.getLogger('pw_transfer_intergration_test_proxy')
 _LOG.level = logging.DEBUG
@@ -103,7 +105,7 @@ class MonitoredSubprocess:
     """A subprocess with monitored asynchronous communication."""
 
     @staticmethod
-    async def create(cmd: List[str], prefix: str, stdinput: bytes):
+    async def create(cmd: list[str], prefix: str, stdinput: bytes):
         """Starts the subprocess and writes stdinput to stdin.
 
         This method returns once stdinput has been written to stdin. The
@@ -156,7 +158,7 @@ class MonitoredSubprocess:
         """Terminate the process."""
         self._process.terminate()
 
-    async def wait_for_termination(self, timeout: float):
+    async def wait_for_termination(self, timeout: float | None):
         """Wait for the process to terminate."""
         await asyncio.wait_for(
             asyncio.gather(
@@ -196,11 +198,11 @@ class TransferIntegrationTestHarness:
     class Config:
         server_port: int = 3300
         client_port: int = 3301
-        java_client_binary: Optional[Path] = None
-        cpp_client_binary: Optional[Path] = None
-        python_client_binary: Optional[Path] = None
-        proxy_binary: Optional[Path] = None
-        server_binary: Optional[Path] = None
+        java_client_binary: Path | None = None
+        cpp_client_binary: Path | None = None
+        python_client_binary: Path | None = None
+        proxy_binary: Path | None = None
+        server_binary: Path | None = None
 
     class TransferExitCodes(NamedTuple):
         client: int
@@ -231,6 +233,10 @@ class TransferIntegrationTestHarness:
         self._CLIENT_PORT = harness_config.client_port
         self._SERVER_PORT = harness_config.server_port
 
+        self._server: MonitoredSubprocess | None = None
+        self._client: MonitoredSubprocess | None = None
+        self._proxy: MonitoredSubprocess | None = None
+
         # If the harness configuration specifies overrides, use those.
         if harness_config.java_client_binary is not None:
             self._JAVA_CLIENT_BINARY = harness_config.java_client_binary
@@ -248,7 +254,6 @@ class TransferIntegrationTestHarness:
             "java": self._JAVA_CLIENT_BINARY,
             "python": self._PYTHON_CLIENT_BINARY,
         }
-        pass
 
     async def _start_client(
         self, client_type: str, config: config_pb2.ClientConfig
@@ -309,16 +314,19 @@ class TransferIntegrationTestHarness:
 
         try:
             await self._start_proxy(proxy_config)
+            assert self._proxy is not None
             await self._proxy.wait_for_line(
                 "stderr", "Listening for client connection", TIMEOUT
             )
 
             await self._start_server(server_config)
+            assert self._server is not None
             await self._server.wait_for_line(
                 "stderr", "Starting pw_rpc server on port", TIMEOUT
             )
 
             await self._start_client(client_type, client_config)
+            assert self._client is not None
             # No timeout: the client will only exit once the transfer
             # completes, and this can take a long time for large payloads.
             await self._client.wait_for_termination(None)
@@ -329,11 +337,11 @@ class TransferIntegrationTestHarness:
         finally:
             # Stop the server, if still running. (Only expected if the
             # wait_for above timed out.)
-            if self._server:
+            if self._server is not None:
                 await self._server.terminate_and_wait(TIMEOUT)
             # Stop the proxy. Unlike the server, we expect it to still be
             # running at this stage.
-            if self._proxy:
+            if self._proxy is not None:
                 await self._proxy.terminate_and_wait(TIMEOUT)
 
             return self.TransferExitCodes(
@@ -343,7 +351,7 @@ class TransferIntegrationTestHarness:
 
 class BasicTransfer(NamedTuple):
     id: int
-    type: 'config_pb2.TransferAction.TransferType.ValueType'
+    type: config_pb2.TransferAction.TransferType.ValueType
     data: bytes
 
 
@@ -366,7 +374,7 @@ class TransferIntegrationTest(unittest.TestCase):
     def default_server_config() -> config_pb2.ServerConfig:
         return config_pb2.ServerConfig(
             chunk_size_bytes=216,
-            pending_bytes=32 * 1024,
+            pending_bytes=64 * 1024,
             chunk_timeout_seconds=5,
             transfer_service_retries=4,
             extend_window_divisor=32,
@@ -528,7 +536,7 @@ class TransferIntegrationTest(unittest.TestCase):
             client_file: BinaryIO
             expected_data: bytes
 
-        transfer_results: List[ReadbackSet] = []
+        transfer_results: list[ReadbackSet] = []
         for transfer in transfers:
             server_file = tempfile.NamedTemporaryFile()
             client_file = tempfile.NamedTemporaryFile()

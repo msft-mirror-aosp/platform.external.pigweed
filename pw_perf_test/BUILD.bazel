@@ -12,15 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_facade",
     "pw_cc_perf_test",
     "pw_cc_test",
-)
-load(
-    "//pw_build:selects.bzl",
-    "TARGET_COMPATIBLE_WITH_HOST_SELECT",
+    "pw_facade",
 )
 
 package(default_visibility = ["//visibility:public"])
@@ -116,33 +113,32 @@ cc_library(
     visibility = ["//visibility:private"],
 )
 
-pw_cc_facade(
+# TODO: pwbug.dev/328679085 - Remove this alias once no-one uses it.
+alias(
     name = "timer_interface_facade",
-    hdrs = [
-        "public/pw_perf_test/internal/timer.h",
-    ],
-    includes = ["public"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":duration_unit",
-    ],
+    actual = "timer.facade",
 )
 
-cc_library(
+pw_facade(
     name = "timer",
     hdrs = [
         "public/pw_perf_test/internal/timer.h",
     ],
+    backend = ":test_timer_backend",
     includes = ["public"],
     deps = [
         ":duration_unit",
-        "@pigweed//targets:pw_perf_test_timer_backend",
     ],
+)
+
+label_flag(
+    name = "test_timer_backend",
+    build_setting_default = ":timer_multiplexer",
 )
 
 cc_library(
     name = "timer_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
+    visibility = ["//targets:__pkg__"],
     deps = select({
         "//conditions:default": [":chrono_timer"],
     }),
@@ -170,10 +166,10 @@ cc_library(
         "chrono_public_overrides",
         "public",
     ],
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":duration_unit",
-        ":timer_interface_facade",
+        ":timer.facade",
         "//pw_chrono:system_clock",
     ],
 )
@@ -200,10 +196,10 @@ cc_library(
         "arm_cortex_cyccnt_public_overrides",
         "public",
     ],
-    target_compatible_with = select(TARGET_COMPATIBLE_WITH_HOST_SELECT),
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":duration_unit",
-        ":timer_interface_facade",
+        ":timer.facade",
     ],
 )
 

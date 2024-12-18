@@ -25,7 +25,6 @@
 #include <utility>
 
 #include "pw_assert/assert.h"
-#include "pw_polyfill/language_feature_macros.h"
 #include "pw_preprocessor/compiler.h"
 
 namespace pw {
@@ -36,7 +35,7 @@ using IsIterator = std::negation<
     std::is_same<typename std::iterator_traits<I>::value_type, void>>;
 
 // Used as max_size in the generic-size Vector<T> interface.
-PW_INLINE_VARIABLE constexpr size_t kGeneric = size_t(-1);
+inline constexpr size_t kGeneric = size_t(-1);
 
 }  // namespace vector_impl
 
@@ -308,20 +307,20 @@ class Vector<T, vector_impl::kGeneric> {
 
   // Access
 
-  reference at(size_type index) {
+  reference at(size_t index) {
     PW_ASSERT(index < size());
     return data()[index];
   }
-  const_reference at(size_type index) const {
+  const_reference at(size_t index) const {
     PW_ASSERT(index < size());
     return data()[index];
   }
 
-  reference operator[](size_type index) {
+  reference operator[](size_t index) {
     PW_DASSERT(index < size());
     return data()[index];
   }
-  const_reference operator[](size_type index) const {
+  const_reference operator[](size_t index) const {
     PW_DASSERT(index < size());
     return data()[index];
   }

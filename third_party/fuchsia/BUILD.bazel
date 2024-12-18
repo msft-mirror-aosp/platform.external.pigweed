@@ -12,9 +12,20 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-package(default_visibility = ["//visibility:public"])
+load("@rules_license//rules:license.bzl", "license")
 
-licenses(["notice"])
+package(
+    default_applicable_licenses = [":license_fuchsia"],
+    default_visibility = ["//visibility:public"],
+)
+
+license(
+    name = "license_fuchsia",
+    package_name = "Fuchsia (third_party)",
+    license_text = "repo/LICENSE",
+)
+
+exports_files(["repo/LICENSE"])
 
 # Allows downstream projects to provide an alternative implementation of fit.
 #
@@ -34,6 +45,7 @@ cc_library(
         "repo/sdk/lib/fit/include/lib/fit/internal/utility.h",
     ],
     hdrs = [
+        "repo/sdk/lib/fit/include/lib/fit/defer.h",
         "repo/sdk/lib/fit/include/lib/fit/function.h",
         "repo/sdk/lib/fit/include/lib/fit/nullable.h",
         "repo/sdk/lib/fit/include/lib/fit/result.h",

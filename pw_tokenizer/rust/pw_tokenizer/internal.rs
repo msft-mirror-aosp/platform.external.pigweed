@@ -25,7 +25,26 @@ use crate::MessageWriter;
 pub enum Argument<'a> {
     String(&'a str),
     Varint(i32),
+    Varint64(i64),
     Char(u8),
+}
+
+impl<'a> From<&'a str> for Argument<'a> {
+    fn from(val: &'a str) -> Self {
+        Self::String(val)
+    }
+}
+
+impl<'a> From<i32> for Argument<'a> {
+    fn from(val: i32) -> Self {
+        Self::Varint(val)
+    }
+}
+
+impl<'a> From<u32> for Argument<'a> {
+    fn from(val: u32) -> Self {
+        Self::Varint64(val as i64)
+    }
 }
 
 // Wraps a `Cursor` so that `tokenize_to_buffer` and `tokenize_to_writer` can
@@ -75,7 +94,7 @@ pub fn encode_string<W: MessageWriter>(writer: &mut W, value: &str) -> Result<()
     if overflow {
         header |= 0x80;
     }
-    writer.write(&[header as u8])?;
+    writer.write(&[header])?;
 
     writer.write(&string_bytes[..len])
 }
@@ -91,6 +110,11 @@ fn tokenize_engine<W: crate::MessageWriter>(
         match arg {
             Argument::String(s) => encode_string(writer, s)?,
             Argument::Varint(i) => {
+                let mut encode_buffer = [0u8; 10];
+                let len = i.varint_encode(&mut encode_buffer)?;
+                writer.write(&encode_buffer[..len])?;
+            }
+            Argument::Varint64(i) => {
                 let mut encode_buffer = [0u8; 10];
                 let len = i.varint_encode(&mut encode_buffer)?;
                 writer.write(&encode_buffer[..len])?;
@@ -142,7 +166,7 @@ pub fn tokenize_to_writer_no_args<W: crate::MessageWriter>(token: u32) -> Result
 
 #[cfg(test)]
 mod test {
-    use pw_stream::{Cursor, Seek};
+    use pw_stream::Seek;
 
     use super::*;
 

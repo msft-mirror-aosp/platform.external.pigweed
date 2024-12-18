@@ -13,6 +13,7 @@
 # the License.
 
 load("@rules_python//python:defs.bzl", "py_library")
+load("//pw_build:python.bzl", "pw_py_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -29,24 +30,36 @@ py_library(
     imports = ["."],
 )
 
-py_test(
+pw_py_test(
     name = "compiled_protos_test",
     size = "small",
     srcs = [
         "compiled_protos_test.py",
     ],
     imports = [
-        # To import pw_protobuf_compiler_protos
-        "..",
+        ".",
     ],
     deps = [
-        ":pw_protobuf_compiler",
-        "//pw_protobuf_compiler:pw_protobuf_compiler_protos",
+        "//pw_protobuf_compiler:pw_protobuf_compiler_protos_py_pb2",
+    ],
+)
+
+pw_py_test(
+    name = "compiled_nanopb_protos_test",
+    size = "small",
+    srcs = [
+        "compiled_nanopb_protos_test.py",
+    ],
+    imports = [
+        ".",
+    ],
+    deps = [
+        "//pw_protobuf_compiler:pw_protobuf_compiler_nanopb_protos_py_pb2",
     ],
 )
 
 # TODO(tonymd) Find out how to make protoc available in the bazel sandbox.
-# py_test(
+# pw_py_test(
 #     name = "python_protos_test",
 #     size = "small",
 #     srcs = [

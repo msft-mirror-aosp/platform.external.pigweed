@@ -16,16 +16,16 @@ package {
     default_applicable_licenses: ["external_pigweed_license"],
 }
 
-cc_library_headers {
-    name: "pw_preprocessor_headers",
+cc_library_static {
+    name: "pw_preprocessor",
     cpp_std: "c++20",
     vendor_available: true,
     host_supported: true,
     export_include_dirs: ["public"],
-    header_libs: [
-        "pw_polyfill_headers",
+    static_libs: [
+        "pw_polyfill",
     ],
-    export_header_lib_headers: [
-        "pw_polyfill_headers",
+    export_static_lib_headers: [
+        "pw_polyfill",
     ],
 }

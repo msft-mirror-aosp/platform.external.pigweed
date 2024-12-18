@@ -20,8 +20,8 @@
 
 #include "pw_containers/intrusive_list.h"
 #include "pw_function/function.h"
+#include "pw_rpc/channel.h"
 #include "pw_rpc/internal/call_context.h"
-#include "pw_rpc/internal/channel.h"
 #include "pw_rpc/internal/lock.h"
 #include "pw_rpc/internal/method.h"
 #include "pw_rpc/internal/packet.h"
@@ -200,6 +200,31 @@ class Call : public IntrusiveList<Call>::Item, private rpc::Writer {
   Status CloseAndSendServerErrorLocked(Status error)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
     return CloseAndSendFinalPacketLocked(
+        pwpb::PacketType::SERVER_ERROR, {}, error);
+  }
+
+  // Closes the Call and sends a RESPONSE packet, if the RESPONSE packet failed
+  // to send , keep the call alive and return error. This API allows user to
+  // resend RESPONSE packet when transmission failed.
+  Status TryCloseAndSendResponse(ConstByteSpan response, Status status)
+      PW_LOCKS_EXCLUDED(rpc_lock()) {
+    RpcLockGuard lock;
+    return TryCloseAndSendResponseLocked(response, status);
+  }
+
+  Status TryCloseAndSendResponseLocked(ConstByteSpan response, Status status)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    return TryCloseAndSendFinalPacketLocked(
+        pwpb::PacketType::RESPONSE, response, status);
+  }
+
+  Status TryCloseAndSendResponse(Status status) PW_LOCKS_EXCLUDED(rpc_lock()) {
+    return TryCloseAndSendResponse({}, status);
+  }
+
+  Status TryCloseAndSendServerErrorLocked(Status error)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {
+    return TryCloseAndSendFinalPacketLocked(
         pwpb::PacketType::SERVER_ERROR, {}, error);
   }
 
@@ -537,6 +562,11 @@ class Call : public IntrusiveList<Call>::Item, private rpc::Writer {
   Status CloseAndSendFinalPacketLocked(pwpb::PacketType type,
                                        ConstByteSpan response,
                                        Status status)
+      PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
+
+  Status TryCloseAndSendFinalPacketLocked(pwpb::PacketType type,
+                                          ConstByteSpan response,
+                                          Status status)
       PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
   bool CallbacksAreRunning() const PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock()) {

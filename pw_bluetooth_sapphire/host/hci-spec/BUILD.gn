@@ -33,7 +33,6 @@ pw_source_set("hci-spec") {
 
   sources = [
     "le_connection_parameters.cc",
-    "link_key.cc",
     "util.cc",
   ]
 
@@ -43,6 +42,9 @@ pw_source_set("hci-spec") {
     "$dir_pw_bluetooth_sapphire/host/common",
     "$dir_pw_chrono:system_clock",
   ]
+
+  remove_configs = [ "$dir_pw_build:internal_strict_warnings" ]
+  configs = [ "$dir_pw_build:internal_strict_warnings_core" ]
 }
 
 pw_test("tests") {

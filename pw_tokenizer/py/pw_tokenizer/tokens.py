@@ -13,8 +13,18 @@
 # the License.
 """Builds and manages databases of tokenized strings."""
 
+from __future__ import annotations
+
 from abc import abstractmethod
-import collections
+import bisect
+from collections.abc import (
+    Callable,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+    ValuesView,
+)
 import csv
 from dataclasses import dataclass
 from datetime import datetime
@@ -25,19 +35,14 @@ import re
 import struct
 import subprocess
 from typing import (
+    Any,
     BinaryIO,
-    Callable,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
+    IO,
     NamedTuple,
-    Optional,
+    overload,
     Pattern,
     TextIO,
-    Tuple,
-    Union,
-    ValuesView,
+    TypeVar,
 )
 from uuid import uuid4
 
@@ -56,12 +61,12 @@ TOKENIZER_HASH_CONSTANT = 65599
 _LOG = logging.getLogger('pw_tokenizer')
 
 
-def _value(char: Union[int, str]) -> int:
+def _value(char: int | str) -> int:
     return char if isinstance(char, int) else ord(char)
 
 
 def pw_tokenizer_65599_hash(
-    string: Union[str, bytes], *, hash_length: Optional[int] = None
+    string: str | bytes, *, hash_length: int | None = None
 ) -> int:
     """Hashes the string with the hash function used to generate tokens in C++.
 
@@ -80,33 +85,51 @@ def pw_tokenizer_65599_hash(
 
 
 def c_hash(
-    string: Union[str, bytes], hash_length: int = DEFAULT_C_HASH_LENGTH
+    string: str | bytes, hash_length: int = DEFAULT_C_HASH_LENGTH
 ) -> int:
     """Hashes the string with the hash function used in C."""
     return pw_tokenizer_65599_hash(string, hash_length=hash_length)
 
 
-class _EntryKey(NamedTuple):
+@dataclass(frozen=True, eq=True, order=True)
+class _EntryKey:
     """Uniquely refers to an entry."""
 
+    domain: str
     token: int
     string: str
 
 
-@dataclass(eq=True, order=False)
 class TokenizedStringEntry:
     """A tokenized string with its metadata."""
 
-    token: int
-    string: str
-    domain: str = DEFAULT_DOMAIN
-    date_removed: Optional[datetime] = None
+    def __init__(
+        self,
+        token: int,
+        string: str,
+        domain: str = DEFAULT_DOMAIN,
+        date_removed: datetime | None = None,
+    ) -> None:
+        self._key = _EntryKey(domain, token, string)
+        self.date_removed = date_removed
+
+    @property
+    def token(self) -> int:
+        return self._key.token
+
+    @property
+    def string(self) -> str:
+        return self._key.string
+
+    @property
+    def domain(self) -> str:
+        return self._key.domain
 
     def key(self) -> _EntryKey:
         """The key determines uniqueness for a tokenized string."""
-        return _EntryKey(self.token, self.string)
+        return self._key
 
-    def update_date_removed(self, new_date_removed: Optional[datetime]) -> None:
+    def update_date_removed(self, new_date_removed: datetime | None) -> None:
         """Sets self.date_removed if the other date is newer."""
         # No removal date (None) is treated as the newest date.
         if self.date_removed is None:
@@ -115,8 +138,17 @@ class TokenizedStringEntry:
         if new_date_removed is None or new_date_removed > self.date_removed:
             self.date_removed = new_date_removed
 
-    def __lt__(self, other) -> bool:
-        """Sorts the entry by token, date removed, then string."""
+    def __eq__(self, other: Any) -> bool:
+        return (
+            self.key() == other.key()
+            and self.date_removed == other.date_removed
+        )
+
+    def __lt__(self, other: Any) -> bool:
+        """Sorts the entry by domain, token, date removed, then string."""
+        if self.domain != other.domain:
+            return self.domain < other.domain
+
         if self.token != other.token:
             return self.token < other.token
 
@@ -132,6 +164,74 @@ class TokenizedStringEntry:
     def __str__(self) -> str:
         return self.string
 
+    def __repr__(self) -> str:
+        return (
+            f'{self.__class__.__name__}(token=0x{self.token:08x}, '
+            f'string={self.string!r}, domain={self.domain!r})'
+        )
+
+
+_TokenToEntries = dict[int, list[TokenizedStringEntry]]
+_K = TypeVar('_K')
+_V = TypeVar('_V')
+_T = TypeVar('_T')
+
+
+class _TokenDatabaseView(Mapping[_K, _V]):  # pylint: disable=abstract-method
+    """Read-only mapping view of a token database.
+
+    Behaves like a read-only version of defaultdict(list).
+    """
+
+    def __init__(self, mapping: Mapping[_K, Any]) -> None:
+        self._mapping = mapping
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._mapping
+
+    @overload
+    def get(self, key: _K) -> _V | None:  # pylint: disable=arguments-differ
+        ...
+
+    @overload
+    def get(self, key: _K, default: _T) -> _V | _T:  # pylint: disable=W0222
+        ...
+
+    def get(self, key: _K, default: _T | None = None) -> _V | _T | None:
+        return self._mapping.get(key, default)
+
+    def __iter__(self) -> Iterator[_K]:
+        return iter(self._mapping)
+
+    def __len__(self) -> int:
+        return len(self._mapping)
+
+    def __str__(self) -> str:
+        return str(self._mapping)
+
+    def __repr__(self) -> str:
+        return repr(self._mapping)
+
+
+class _TokenMapping(_TokenDatabaseView[int, Sequence[TokenizedStringEntry]]):
+    def __getitem__(self, token: int) -> Sequence[TokenizedStringEntry]:
+        """Returns strings that match the specified token; may be empty."""
+        return self._mapping.get(token, ())  # Empty sequence if no match
+
+
+class _DomainTokenMapping(_TokenDatabaseView[str, _TokenMapping]):
+    def __getitem__(self, domain: str) -> _TokenMapping:
+        """Returns the token-to-strings mapping for the specified domain."""
+        return _TokenMapping(self._mapping.get(domain, {}))  # Empty if no match
+
+
+def _add_entry(entries: _TokenToEntries, entry: TokenizedStringEntry) -> None:
+    bisect.insort(
+        entries.setdefault(entry.token, []),
+        entry,
+        key=TokenizedStringEntry.key,  # Keep lists of entries sorted by key.
+    )
+
 
 class Database:
     """Database of tokenized strings stored as TokenizedStringEntry objects."""
@@ -139,10 +239,11 @@ class Database:
     def __init__(self, entries: Iterable[TokenizedStringEntry] = ()):
         """Creates a token database."""
         # The database dict stores each unique (token, string) entry.
-        self._database: Dict[_EntryKey, TokenizedStringEntry] = {}
+        self._database: dict[_EntryKey, TokenizedStringEntry] = {}
 
-        # This is a cache for fast token lookup that is built as needed.
-        self._cache: Optional[Dict[int, List[TokenizedStringEntry]]] = None
+        # Index by token and domain
+        self._token_entries: _TokenToEntries = {}
+        self._domain_token_entries: dict[str, _TokenToEntries] = {}
 
         self.add(entries)
 
@@ -152,37 +253,46 @@ class Database:
         strings: Iterable[str],
         domain: str = DEFAULT_DOMAIN,
         tokenize: Callable[[str], int] = pw_tokenizer_65599_hash,
-    ) -> 'Database':
+    ) -> Database:
         """Creates a Database from an iterable of strings."""
         return cls(
-            (
-                TokenizedStringEntry(tokenize(string), string, domain)
-                for string in strings
-            )
+            TokenizedStringEntry(tokenize(string), string, domain)
+            for string in strings
         )
 
     @classmethod
-    def merged(cls, *databases: 'Database') -> 'Database':
+    def merged(cls, *databases: Database) -> Database:
         """Creates a TokenDatabase from one or more other databases."""
         db = cls()
         db.merge(*databases)
         return db
 
     @property
-    def token_to_entries(self) -> Dict[int, List[TokenizedStringEntry]]:
-        """Returns a dict that maps tokens to a list of TokenizedStringEntry."""
-        if self._cache is None:  # build cache token -> entry cache
-            self._cache = collections.defaultdict(list)
-            for entry in self._database.values():
-                self._cache[entry.token].append(entry)
+    def token_to_entries(self) -> Mapping[int, Sequence[TokenizedStringEntry]]:
+        """Returns a mapping of tokens to a sequence of TokenizedStringEntry.
 
-        return self._cache
+        Returns token database entries from all domains.
+        """
+        return _TokenMapping(self._token_entries)
+
+    @property
+    def domains(
+        self,
+    ) -> Mapping[str, Mapping[int, Sequence[TokenizedStringEntry]]]:
+        """Returns a mapping of domains to tokens to a sequence of entries.
+
+        `database.domains[domain][token]` returns a sequence of strings matching
+        the token in the domain, or an empty sequence if there are no matches.
+        """
+        return _DomainTokenMapping(self._domain_token_entries)
 
     def entries(self) -> ValuesView[TokenizedStringEntry]:
         """Returns iterable over all TokenizedStringEntries in the database."""
         return self._database.values()
 
-    def collisions(self) -> Iterator[Tuple[int, List[TokenizedStringEntry]]]:
+    def collisions(
+        self,
+    ) -> Iterator[tuple[int, Sequence[TokenizedStringEntry]]]:
         """Returns tuple of (token, entries_list)) for all colliding tokens."""
         for token, entries in self.token_to_entries.items():
             if len(entries) > 1:
@@ -191,8 +301,8 @@ class Database:
     def mark_removed(
         self,
         all_entries: Iterable[TokenizedStringEntry],
-        removal_date: Optional[datetime] = None,
-    ) -> List[TokenizedStringEntry]:
+        removal_date: datetime | None = None,
+    ) -> list[TokenizedStringEntry]:
         """Marks entries missing from all_entries as having been removed.
 
         The entries are assumed to represent the complete set of entries for the
@@ -208,8 +318,6 @@ class Database:
         Returns:
           A list of entries marked as removed.
         """
-        self._cache = None
-
         if removal_date is None:
             removal_date = datetime.now()
 
@@ -232,13 +340,10 @@ class Database:
 
         If the added tokens have removal dates, the newest date is used.
         """
-        self._cache = None
-
         for new_entry in entries:
             # Update an existing entry or create a new one.
             try:
                 entry = self._database[new_entry.key()]
-                entry.domain = new_entry.domain
 
                 # Keep the latest removal date between the two entries.
                 if new_entry.date_removed is None:
@@ -249,35 +354,28 @@ class Database:
                 ):
                     entry.date_removed = new_entry.date_removed
             except KeyError:
-                # Make a copy to avoid unintentially updating the database.
-                self._database[new_entry.key()] = TokenizedStringEntry(
-                    **vars(new_entry)
-                )
+                self._add_new_entry(new_entry)
 
     def purge(
-        self, date_removed_cutoff: Optional[datetime] = None
-    ) -> List[TokenizedStringEntry]:
+        self, date_removed_cutoff: datetime | None = None
+    ) -> list[TokenizedStringEntry]:
         """Removes and returns entries removed on/before date_removed_cutoff."""
-        self._cache = None
-
         if date_removed_cutoff is None:
             date_removed_cutoff = datetime.max
 
         to_delete = [
             entry
-            for _, entry in self._database.items()
+            for entry in self._database.values()
             if entry.date_removed and entry.date_removed <= date_removed_cutoff
         ]
 
         for entry in to_delete:
-            del self._database[entry.key()]
+            self._delete_entry(entry)
 
         return to_delete
 
-    def merge(self, *databases: 'Database') -> None:
+    def merge(self, *databases: Database) -> None:
         """Merges two or more databases together, keeping the newest dates."""
-        self._cache = None
-
         for other_db in databases:
             for entry in other_db.entries():
                 key = entry.key()
@@ -285,13 +383,13 @@ class Database:
                 if key in self._database:
                     self._database[key].update_date_removed(entry.date_removed)
                 else:
-                    self._database[key] = entry
+                    self._add_new_entry(entry)
 
     def filter(
         self,
-        include: Iterable[Union[str, Pattern[str]]] = (),
-        exclude: Iterable[Union[str, Pattern[str]]] = (),
-        replace: Iterable[Tuple[Union[str, Pattern[str]], str]] = (),
+        include: Iterable[str | Pattern[str]] = (),
+        exclude: Iterable[str | Pattern[str]] = (),
+        replace: Iterable[tuple[str | Pattern[str], str]] = (),
     ) -> None:
         """Filters the database using regular expressions (strings or compiled).
 
@@ -300,42 +398,85 @@ class Database:
           exclude: regexes; entries matching any of these are removed
           replace: (regex, str) tuples; replaces matching terms in all entries
         """
-        self._cache = None
-
-        to_delete: List[_EntryKey] = []
+        to_delete: list[TokenizedStringEntry] = []
 
         if include:
             include_re = [re.compile(pattern) for pattern in include]
             to_delete.extend(
-                key
-                for key, val in self._database.items()
+                val
+                for val in self._database.values()
                 if not any(rgx.search(val.string) for rgx in include_re)
             )
 
         if exclude:
             exclude_re = [re.compile(pattern) for pattern in exclude]
             to_delete.extend(
-                key
-                for key, val in self._database.items()
+                val
+                for val in self._database.values()
                 if any(rgx.search(val.string) for rgx in exclude_re)
             )
 
-        for key in to_delete:
-            del self._database[key]
+        for entry in to_delete:
+            self._delete_entry(entry)
 
+        # Do the replacement after removing entries.
         for search, replacement in replace:
             search = re.compile(search)
 
-            for value in self._database.values():
-                value.string = search.sub(replacement, value.string)
+            to_replace: list[TokenizedStringEntry] = []
+            add: list[TokenizedStringEntry] = []
 
-    def difference(self, other: 'Database') -> 'Database':
+            for entry in self._database.values():
+                new_string = search.sub(replacement, entry.string)
+                if new_string != entry.string:
+                    to_replace.append(entry)
+                    add.append(
+                        TokenizedStringEntry(
+                            entry.token,
+                            new_string,
+                            entry.domain,
+                            entry.date_removed,
+                        )
+                    )
+
+            for entry in to_replace:
+                self._delete_entry(entry)
+            self.add(add)
+
+    def difference(self, other: Database) -> Database:
         """Returns a new Database with entries in this DB not in the other."""
         # pylint: disable=protected-access
         return Database(
             e for k, e in self._database.items() if k not in other._database
         )
         # pylint: enable=protected-access
+
+    def _add_new_entry(self, new_entry: TokenizedStringEntry) -> None:
+        entry = TokenizedStringEntry(  # These are mutable, so make a copy.
+            new_entry.token,
+            new_entry.string,
+            new_entry.domain,
+            new_entry.date_removed,
+        )
+        self._database[entry.key()] = entry
+        _add_entry(self._token_entries, entry)
+        _add_entry(
+            self._domain_token_entries.setdefault(entry.domain, {}), entry
+        )
+
+    def _delete_entry(self, entry: TokenizedStringEntry) -> None:
+        del self._database[entry.key()]
+
+        # Remove from the token / domain mappings and clean up empty lists.
+        self._token_entries[entry.token].remove(entry)
+        if not self._token_entries[entry.token]:
+            del self._token_entries[entry.token]
+
+        self._domain_token_entries[entry.domain][entry.token].remove(entry)
+        if not self._domain_token_entries[entry.domain][entry.token]:
+            del self._domain_token_entries[entry.domain][entry.token]
+            if not self._domain_token_entries[entry.domain]:
+                del self._domain_token_entries[entry.domain]
 
     def __len__(self) -> int:
         """Returns the number of entries in the database."""
@@ -376,13 +517,29 @@ def parse_csv(fd: TextIO) -> Iterable[TokenizedStringEntry]:
     return entries
 
 
-def write_csv(database: Database, fd: BinaryIO) -> None:
+# TODO: b/364955916 - Remove this function when domains are written to
+#     databases.
+def _ignore_domains(
+    entries: Iterable[TokenizedStringEntry],
+) -> list[TokenizedStringEntry]:
+    # Temporarily prevent duplicate lines since domains aren't written yet.
+    no_domain = {}
+    for entry in entries:
+        new_entry = TokenizedStringEntry(
+            entry.token, entry.string, date_removed=entry.date_removed
+        )
+        no_domain[new_entry.key()] = new_entry
+
+    return sorted(no_domain.values())
+
+
+def write_csv(database: Database, fd: IO[bytes]) -> None:
     """Writes the database as CSV to the provided binary file."""
-    for entry in sorted(database.entries()):
+    for entry in _ignore_domains(sorted(database.entries())):
         _write_csv_line(fd, entry)
 
 
-def _write_csv_line(fd: BinaryIO, entry: TokenizedStringEntry):
+def _write_csv_line(fd: IO[bytes], entry: TokenizedStringEntry):
     """Write a line in CSV format to the provided binary file."""
     # Align the CSV output to 10-character columns for improved readability.
     # Use \n instead of RFC 4180's \r\n.
@@ -464,7 +621,7 @@ def parse_binary(fd: BinaryIO) -> Iterable[TokenizedStringEntry]:
         )
 
         try:
-            date_removed: Optional[datetime] = datetime(year, month, day)
+            date_removed: datetime | None = datetime(year, month, day)
         except ValueError:
             date_removed = None
 
@@ -488,7 +645,7 @@ def parse_binary(fd: BinaryIO) -> Iterable[TokenizedStringEntry]:
 
 def write_binary(database: Database, fd: BinaryIO) -> None:
     """Writes the database as packed binary to the provided binary file."""
-    entries = sorted(database.entries())
+    entries = _ignore_domains(sorted(database.entries()))
 
     fd.write(BINARY_FORMAT.header.pack(BINARY_FORMAT.magic, len(entries)))
 
@@ -533,7 +690,7 @@ class DatabaseFile(Database):
         self.path = path
 
     @staticmethod
-    def load(path: Path) -> 'DatabaseFile':
+    def load(path: Path) -> DatabaseFile:
         """Creates a DatabaseFile that coincides to the file type."""
         if path.is_dir():
             return _DirectoryDatabase(path)
@@ -644,7 +801,7 @@ class _DirectoryDatabase(DatabaseFile):
                 with self._create_filename().open('wb') as fd:
                     write_csv(new_entries, fd)
 
-    def _git_paths(self, commands: List) -> List[Path]:
+    def _git_paths(self, commands: list) -> list[Path]:
         """Returns a list of database CSVs from a Git command."""
         try:
             output = subprocess.run(

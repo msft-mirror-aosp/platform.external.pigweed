@@ -11,15 +11,15 @@ documentation or code comments instead. For example:
 
 .. code-block:: none
 
-  pw_some_module: Short capitalized description
+   pw_some_module: Short capitalized description
 
-  Details about the change here. Include a summary of what changed, and a clear
-  description of why the change is needed. Consider what parts of the commit
-  message are better suited for documentation or code.
+   Details about the change here. Include a summary of what changed, and a clear
+   description of why the change is needed. Consider what parts of the commit
+   message are better suited for documentation or code.
 
-  - Added foo, to fix issue bar
-  - Improved speed of qux
-  - Refactored and extended qux's test suite
+   - Added foo, to fix issue bar
+   - Improved speed of qux
+   - Refactored and extended qux's test suite
 
 -----------------------------
 Include both "what" and "why"
@@ -110,8 +110,9 @@ are rarely read after the change lands.
 ---------------------------
 Lists instead of paragraphs
 ---------------------------
-Use bulleted lists when multiple changes are in a single CL. Ideally, try to
-create smaller CLs so this isn't needed, but larger CLs are a practical reality.
+Use bulleted lists when multiple changes are in a single change. Ideally, try to
+create smaller changes so this isn't needed, but larger changes are a practical
+reality.
 
 .. admonition:: **Yes**: Uses bulleted lists
    :class: checkmark
@@ -135,7 +136,7 @@ create smaller CLs so this isn't needed, but larger CLs are a practical reality.
 
       pw_foo: Many things in a giant BWOT
 
-      This CL does A, B, and C. The commit message is a Big Wall Of Text
+      This change does A, B, and C. The commit message is a Big Wall Of Text
       (BWOT), which we try to discourage in Pigweed. Also changes X and Y,
       because Z and Q. Furthermore, in some cases, adds a new Foo (with Bar,
       because we want to). Also refactors qux and quz.
@@ -252,7 +253,7 @@ case-sensitive symbol.
 
    .. code-block:: none
 
-     pw_foo: Improve use of std::unique_lock
+      pw_foo: Improve use of std::unique_lock
 
 ------
 Footer
@@ -285,19 +286,19 @@ You are encouraged to use the following footers when appropriate:
 
   .. code-block:: none
 
-      pw_something: Add foo and bar functions
+     pw_something: Add foo and bar functions
 
-      Bug: 123
-      Bug: 456
+     Bug: 123
+     Bug: 456
 
 * ``Fixed`` or ``Fixes``: Like ``Bug``, but automatically closes the bug when
   submitted.
 
   .. code-block:: none
 
-      pw_something: Fix incorrect use of foo
+     pw_something: Fix incorrect use of foo
 
-      Fixes: 123
+     Fixes: 123
 
 * ``Test``: The author can use this field to tell the reviewer how the change
   was tested. Typically, this will be some combination of writing new automated
@@ -309,9 +310,9 @@ You are encouraged to use the following footers when appropriate:
 
   .. code-block:: none
 
-      pw_something: Fix incorrect use of foo
+     pw_something: Fix incorrect use of foo
 
-      Test: Added a regression unit test.
+     Test: Added a regression unit test.
 
 In addition, we support all of the `Chromium CQ footers`_, but those are
 relatively rarely useful.

@@ -18,7 +18,6 @@ import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static dev.pigweed.pw_transfer.TransferProgress.UNKNOWN_TRANSFER_SIZE;
 
 import com.google.common.util.concurrent.AbstractFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import dev.pigweed.pw_log.Logger;
 import dev.pigweed.pw_rpc.Status;
 import dev.pigweed.pw_transfer.TransferEventHandler.TransferInterface;
@@ -32,7 +31,8 @@ import java.util.function.Consumer;
 abstract class Transfer<T> extends AbstractFuture<T> {
   private static final Logger logger = Logger.forClass(Transfer.class);
 
-  // Largest nanosecond instant. Used to block indefinitely when no transfers are pending.
+  // Largest nanosecond instant. Used to block indefinitely when no transfers are
+  // pending.
   static final Instant NO_TIMEOUT = Instant.ofEpochSecond(0, Long.MAX_VALUE);
 
   // Whether to output some particularly noisy logs.
@@ -53,20 +53,18 @@ abstract class Transfer<T> extends AbstractFuture<T> {
   private State state;
   private VersionedChunk lastChunkSent;
 
-  // The number of times this transfer has retried due to an RPC disconnection. Limit this to
-  // maxRetries to prevent repeated crashes if reading to / writing from a particular transfer is
-  // causing crashes.
-  private int disconnectionRetries = 0;
   private int lifetimeRetries = 0;
 
   /**
    * Creates a new read or write transfer.
-   * @param resourceId The resource ID of the transfer
+   *
+   * @param resourceId             The resource ID of the transfer
    * @param desiredProtocolVersion protocol version to request
-   * @param eventHandler Interface to use to send a chunk.
-   * @param timeoutSettings Timeout and retry settings for this transfer.
-   * @param progressCallback Called each time a packet is sent.
-   * @param shouldAbortCallback BooleanSupplier that returns true if a transfer should be aborted.
+   * @param eventHandler           Interface to use to send a chunk.
+   * @param timeoutSettings        Timeout and retry settings for this transfer.
+   * @param progressCallback       Called each time a packet is sent.
+   * @param shouldAbortCallback    BooleanSupplier that returns true if a transfer
+   *                               should be aborted.
    */
   Transfer(int resourceId,
       int sessionId,
@@ -75,10 +73,10 @@ abstract class Transfer<T> extends AbstractFuture<T> {
       TransferTimeoutSettings timeoutSettings,
       Consumer<TransferProgress> progressCallback,
       BooleanSupplier shouldAbortCallback,
-      int initial_offset) {
+      int initialOffset) {
     this.resourceId = resourceId;
     this.sessionId = sessionId;
-    this.offset = initial_offset;
+    this.offset = initialOffset;
     this.desiredProtocolVersion = desiredProtocolVersion;
     this.eventHandler = eventHandler;
 
@@ -86,7 +84,8 @@ abstract class Transfer<T> extends AbstractFuture<T> {
     this.progressCallback = progressCallback;
     this.shouldAbortCallback = shouldAbortCallback;
 
-    // If the future is cancelled, tell the TransferEventHandler to cancel the transfer.
+    // If the future is cancelled, tell the TransferEventHandler to cancel the
+    // transfer.
     addListener(() -> {
       if (isCancelled()) {
         eventHandler.cancelTransfer(this);
@@ -94,7 +93,8 @@ abstract class Transfer<T> extends AbstractFuture<T> {
     }, directExecutor());
 
     if (desiredProtocolVersion == ProtocolVersion.LEGACY) {
-      // Legacy transfers skip protocol negotiation stage and use the resource ID as the session ID.
+      // Legacy transfers skip protocol negotiation stage and use the resource ID as
+      // the session ID.
       configuredProtocolVersion = ProtocolVersion.LEGACY;
       state = getWaitingForDataState();
     } else {
@@ -175,9 +175,6 @@ abstract class Transfer<T> extends AbstractFuture<T> {
 
   /** Processes an incoming chunk from the server. */
   final void handleChunk(VersionedChunk chunk) {
-    // Since a packet has been received, don't allow retries on disconnection; abort instead.
-    disconnectionRetries = Integer.MAX_VALUE;
-
     try {
       if (chunk.type() == Chunk.Type.COMPLETION) {
         state.handleFinalChunk(chunk.status().orElseGet(() -> {
@@ -210,35 +207,14 @@ abstract class Transfer<T> extends AbstractFuture<T> {
     state.handleCancellation();
   }
 
-  /** Restarts a transfer after an RPC disconnection. */
-  final void handleDisconnection() {
-    // disconnectionRetries is set to Int.MAX_VALUE when a packet is received to prevent retries
-    // after the initial packet.
-    if (disconnectionRetries++ < timeoutSettings.maxRetries()) {
-      logger.atFine().log("Restarting the pw_transfer RPC for %s (attempt %d/%d)",
-          this,
-          disconnectionRetries,
-          timeoutSettings.maxRetries());
-      try {
-        sendChunk(getChunkForRetry());
-      } catch (TransferAbortedException e) {
-        return; // Transfer is aborted; nothing else to do.
-      }
-      setInitialTimeout();
-    } else {
-      changeState(new Completed(new TransferError("Transfer " + sessionId + " restarted "
-              + timeoutSettings.maxRetries() + " times, aborting",
-          Status.INTERNAL)));
-    }
-  }
-
   /** Returns the State to enter immediately after sending the first packet. */
   abstract State getWaitingForDataState();
 
   abstract void prepareInitialChunk(VersionedChunk.Builder chunk);
 
   /**
-   * Returns the chunk to send for a retry. Returns the initial chunk if no chunks have been sent.
+   * Returns the chunk to send for a retry. Returns the initial chunk if no chunks
+   * have been sent.
    */
   abstract VersionedChunk getChunkForRetry();
 
@@ -275,7 +251,8 @@ abstract class Transfer<T> extends AbstractFuture<T> {
   /**
    * Sends a chunk.
    *
-   * If sending fails, the transfer cannot proceed. sendChunk() sets the state to completed and
+   * If sending fails, the transfer cannot proceed. sendChunk() sets the state to
+   * completed and
    * throws a TransferAbortedException.
    */
   final void sendChunk(VersionedChunk chunk) throws TransferAbortedException {
@@ -364,7 +341,8 @@ abstract class Transfer<T> extends AbstractFuture<T> {
         status = Status.INTERNAL;
       }
 
-      // If this is not version 2, immediately clean up. If it is, send the COMPLETION_ACK first and
+      // If this is not version 2, immediately clean up. If it is, send the
+      // COMPLETION_ACK first and
       // clean up if that succeeded.
       if (configuredProtocolVersion == ProtocolVersion.VERSION_TWO) {
         sendChunk(newChunk(Chunk.Type.COMPLETION_ACK).build());
@@ -464,7 +442,8 @@ abstract class Transfer<T> extends AbstractFuture<T> {
 
     @Override
     public void handleTimeout() throws TransferAbortedException {
-      // If the transfer timed out, skip to the completed state. Don't send any more packets.
+      // If the transfer timed out, skip to the completed state. Don't send any more
+      // packets.
       if (retries >= timeoutSettings.maxRetries()) {
         logger.atFine().log("%s exhausted its %d retries", Transfer.this, retries);
         changeState(new Completed(Status.DEADLINE_EXCEEDED));
@@ -482,16 +461,24 @@ abstract class Transfer<T> extends AbstractFuture<T> {
           timeoutSettings.timeoutMillis(),
           retries,
           timeoutSettings.maxRetries());
-      sendChunk(getChunkForRetry());
+      VersionedChunk retryChunk = getChunkForRetry();
+      sendChunk(retryChunk);
       retries += 1;
       lifetimeRetries += 1;
-      setNextChunkTimeout();
+      if (retryChunk.type() == Chunk.Type.START) {
+        setInitialTimeout();
+      } else {
+        setNextChunkTimeout();
+      }
     }
   }
 
-  /** Transfer completed. Do nothing if the transfer is terminated or cancelled. */
+  /**
+   * Transfer completed. Do nothing if the transfer is terminated or cancelled.
+   */
   class Terminating extends ActiveState {
     private final Status status;
+    private int retries;
 
     Terminating(Status status) {
       this.status = status;
@@ -503,10 +490,37 @@ abstract class Transfer<T> extends AbstractFuture<T> {
         changeState(new Completed(status));
       }
     }
+
+    @Override
+    public void handleTimeout() throws TransferAbortedException {
+      if (retries >= timeoutSettings.maxRetries()
+          || lifetimeRetries >= timeoutSettings.maxLifetimeRetries()) {
+        // Unlike the standard `TimeoutRecovery` state, a `Terminating` transfer should
+        // not fail due to a timeout if no completion ACK is received. It should
+        // instead complete with its existing status.
+        logger.atFine().log(
+            "%s exhausted its %d retries (lifetime %d)", Transfer.this, retries, lifetimeRetries);
+        changeState(new Completed(status));
+        return;
+      }
+
+      logger.atFiner().log("%s did not receive completion ack for %d ms; retrying %d/%d",
+          Transfer.this,
+          timeoutSettings.timeoutMillis(),
+          retries,
+          timeoutSettings.maxRetries());
+      sendChunk(getChunkForRetry());
+      retries += 1;
+      lifetimeRetries += 1;
+      setNextChunkTimeout();
+    }
   }
 
   class Completed implements State {
-    /** Performs final cleanup of a completed transfer. No packets are sent to the server. */
+    /**
+     * Performs final cleanup of a completed transfer. No packets are sent to the
+     * server.
+     */
     Completed(Status status) {
       cleanUp();
       logger.atInfo().log("%s completed with status %s", Transfer.this, status);
@@ -517,7 +531,9 @@ abstract class Transfer<T> extends AbstractFuture<T> {
       }
     }
 
-    /** Finishes the transfer due to an exception. No packets are sent to the server. */
+    /**
+     * Finishes the transfer due to an exception. No packets are sent to the server.
+     */
     Completed(TransferError exception) {
       cleanUp();
       logger.atWarning().withCause(exception).log("%s terminated with exception", Transfer.this);

@@ -16,11 +16,6 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-constraint_value(
-    name = "backend",
-    constraint_setting = "//pw_sys_io:backend_constraint_setting",
-)
-
 cc_library(
     name = "pw_sys_io_stm32cube",
     srcs = [
@@ -30,13 +25,12 @@ cc_library(
     hdrs = ["public/pw_sys_io_stm32cube/init.h"],
     copts = ["-Wno-unused-parameter"],
     includes = ["public"],
-    target_compatible_with = [":backend"],
     deps = [
         ":config_override",
         "//pw_preprocessor",
         "//pw_status",
         "//pw_sys_io:default_putget_bytes",
-        "//pw_sys_io:facade",
+        "//pw_sys_io:pw_sys_io.facade",
         "//third_party/stm32cube",
     ],
 )

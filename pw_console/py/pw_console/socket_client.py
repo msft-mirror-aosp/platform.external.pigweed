@@ -14,7 +14,7 @@
 """Wrapers for socket clients to log read and write data."""
 from __future__ import annotations
 
-from typing import Callable, Optional, TYPE_CHECKING, Tuple, Union
+from typing import Callable, TYPE_CHECKING
 
 import errno
 import re
@@ -33,18 +33,20 @@ class SocketClient:
     DEFAULT_SOCKET_SERVER = 'localhost'
     DEFAULT_SOCKET_PORT = 33000
     PW_RPC_MAX_PACKET_SIZE = 256
+    DEFAULT_TIMEOUT = 0.5
 
-    _InitArgsType = Tuple[
+    _InitArgsType = tuple[
         socket.AddressFamily, int  # pylint: disable=no-member
     ]
     # Can be a string, (address, port) for AF_INET or (address, port, flowinfo,
     # scope_id) AF_INET6.
-    _AddressType = Union[str, Tuple[str, int], Tuple[str, int, int, int]]
+    _AddressType = str | tuple[str, int] | tuple[str, int, int, int]
 
     def __init__(
         self,
         config: str,
-        on_disconnect: Optional[Callable[[SocketClient], None]] = None,
+        on_disconnect: Callable[[SocketClient], None] | None = None,
+        timeout: float | None = None,
     ):
         """Creates a socket connection.
 
@@ -71,13 +73,16 @@ class SocketClient:
             self._address,
         ) = SocketClient._parse_socket_config(config)
         self._on_disconnect = on_disconnect
+        self._timeout = SocketClient.DEFAULT_TIMEOUT
+        if timeout:
+            self._timeout = timeout
         self._connected = False
         self.connect()
 
     @staticmethod
     def _parse_socket_config(
         config: str,
-    ) -> Tuple[SocketClient._InitArgsType, SocketClient._AddressType]:
+    ) -> tuple[SocketClient._InitArgsType, SocketClient._AddressType]:
         """Sets the variables used to create a socket given a config string.
 
         Raises:
@@ -185,6 +190,7 @@ class SocketClient:
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         if hasattr(socket, 'SO_REUSEPORT'):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        self.socket.settimeout(self._timeout)
         self.socket.connect(self._address)
         self._connected = True
 

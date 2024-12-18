@@ -83,6 +83,7 @@ pw_add_library(pw_thread_freertos.thread STATIC
     pw_string
     pw_third_party.freertos
     pw_thread.id
+    pw_thread.deprecated_or_new_thread_function
     pw_thread.thread.facade
     pw_thread_freertos.config
   SOURCES
@@ -151,4 +152,16 @@ pw_add_facade(pw_thread_freertos.freertos_tsktcb INTERFACE
     public
   PUBLIC_DEPS
     pw_third_party.freertos
+)
+
+pw_add_library(pw_thread_freertos.test_thread_context INTERFACE
+  HEADERS
+    public/pw_thread_freertos/test_thread_context_native.h
+    test_thread_context_public_overrides/pw_thread_backend/test_thread_context_native.h
+  PUBLIC_INCLUDES
+    public
+    test_thread_context_public_overrides
+  PUBLIC_DEPS
+    pw_thread.thread
+    pw_thread.test_thread_context.facade
 )

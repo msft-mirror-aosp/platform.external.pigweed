@@ -117,6 +117,23 @@ pw_add_library_generic(pw_build.pedantic_warnings INTERFACE
     # Allow empty ... arguments in macros, which are permitted in C++20 but
     # widely supported prior.
     "-Wno-gnu-zero-variadic-macro-arguments"
+
+    # TODO: b/333712899 - Enable C23 extension warnings.
+    "-Wno-c23-extensions"
+
+    # TODO: b/335021928 - Enable C++ 20 extension warnings.
+    "-Wno-c++20-extensions"
+
+    # TODO: b/335328444 - Enable C++ 20 extension warnings.
+    "-Wno-deprecated-pragma"
+
+    # TODO: b/356904203 - Unblock Clang roll. Missing template argument
+    # warning introduced by Clang produces warnings in third party code.
+    # Remove this warning suppression after addressing the root cause.
+    "-Wno-missing-template-arg-list-after-template-kw"
+
+    # TODO: b/356689444 - Remove no-unknown-warning-option after Clang roll.
+    "-Wno-unknown-warning-option"
 )
 
 pw_add_library_generic(pw_build.cpp17 INTERFACE

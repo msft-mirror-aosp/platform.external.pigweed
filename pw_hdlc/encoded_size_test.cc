@@ -21,7 +21,6 @@
 #include "pw_bytes/array.h"
 #include "pw_hdlc/decoder.h"
 #include "pw_hdlc/encoder.h"
-#include "pw_hdlc/internal/encoder.h"
 #include "pw_result/result.h"
 #include "pw_stream/memory_stream.h"
 #include "pw_unit_test/framework.h"
@@ -272,7 +271,7 @@ TEST(DecodedSize, BigAddress_SaturatedPayload) {
       EXPECT_EQ(frame->address(), kNoEscapeAddress);
       EXPECT_EQ(frame->data().size(), kNoEscapePayload.size());
       EXPECT_TRUE(std::memcmp(frame->data().data(),
-                              kNoEscapePayload.begin(),
+                              kNoEscapePayload.data(),
                               kNoEscapePayload.size()) == 0);
     }
   }

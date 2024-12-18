@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -13,22 +13,18 @@
 // the License.
 
 import { JsonLogSource } from './custom/json-log-source';
+import { BrowserLogSource } from './custom/browser-log-source';
 import { createLogViewer } from './createLogViewer';
-import { MockLogSource } from './custom/mock-log-source';
-import { LocalStorageState } from './shared/state';
 import { LogSource } from './log-source';
-import { LogStore } from './log-store';
 
-const logStore = new LogStore();
-const logSources = [new MockLogSource(), new JsonLogSource()] as LogSource[];
-const state = new LocalStorageState();
+const logSources = [new JsonLogSource(), new BrowserLogSource()] as LogSource[];
 
 const containerEl = document.querySelector(
   '#log-viewer-container',
 ) as HTMLElement;
 
 if (containerEl) {
-  createLogViewer(containerEl, state, logStore, ...logSources);
+  createLogViewer(logSources, containerEl);
 }
 
 // Start reading log data

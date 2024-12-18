@@ -15,7 +15,6 @@
 load("@bazel_skylib//rules:run_binary.bzl", "run_binary")
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_facade",
     "pw_cc_test",
 )
 
@@ -40,7 +39,7 @@ cc_library(
     ],
     deps = [
         "//pw_interrupt:context",
-        "//pw_thread:id_facade",
+        "//pw_thread:id.facade",
         "@freertos",
     ],
 )
@@ -65,7 +64,7 @@ cc_library(
         "//pw_assert",
         "//pw_chrono:system_clock",
         "//pw_thread:id",
-        "//pw_thread:sleep_facade",
+        "//pw_thread:sleep.facade",
         "@freertos",
     ],
 )
@@ -97,7 +96,8 @@ cc_library(
         "//pw_assert",
         "//pw_string",
         "//pw_sync:binary_semaphore",
-        "//pw_thread:thread_facade",
+        "//pw_thread:deprecated_or_new_thread_function",
+        "//pw_thread:thread.facade",
     ],
 )
 
@@ -118,7 +118,7 @@ cc_library(
         "//pw_chrono:system_clock",
         "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:sleep",
-        "//pw_thread:thread_facade",
+        "//pw_thread:thread.facade",
     ],
 )
 
@@ -144,7 +144,7 @@ cc_library(
         "//pw_chrono:system_clock",
         "//pw_thread:non_portable_test_thread_options",
         "//pw_thread:sleep",
-        "//pw_thread:thread_facade",
+        "//pw_thread:thread.facade",
     ],
 )
 
@@ -169,7 +169,8 @@ cc_library(
         "yield_public_overrides",
     ],
     deps = [
-        "//pw_thread:yield_facade",
+        "//pw_thread:id",
+        "//pw_thread:yield.facade",
         "@freertos",
     ],
 )
@@ -189,7 +190,7 @@ cc_library(
         "//pw_span",
         "//pw_status",
         "//pw_thread:thread_info",
-        "//pw_thread:thread_iteration_facade",
+        "//pw_thread:thread_iteration.facade",
         "//pw_thread_freertos:util",
     ],
 )
@@ -267,17 +268,6 @@ cc_library(
     ],
 )
 
-pw_cc_facade(
-    name = "freertos_tasktcb_facade",
-    hdrs = [
-        "public/pw_thread_freertos/freertos_tsktcb.h",
-    ],
-    includes = ["public"],
-    target_compatible_with = [
-        "//pw_build/constraints/rtos:freertos",
-    ],
-)
-
 cc_library(
     name = "freertos_tasktcb",
     hdrs = [
@@ -301,4 +291,23 @@ run_binary(
         "--output=$(location :thread_public_overrides/pw_thread_freertos_backend/freertos_tsktcb.h)",
     ],
     tool = "//pw_thread_freertos/py:generate_freertos_tsktcb",
+)
+
+cc_library(
+    name = "test_thread_context",
+    hdrs = [
+        "public/pw_thread_freertos/test_thread_context_native.h",
+        "test_thread_context_public_overrides/pw_thread_backend/test_thread_context_native.h",
+    ],
+    includes = [
+        "public",
+        "test_thread_context_public_overrides",
+    ],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
+    deps = [
+        ":thread",
+        "//pw_thread:test_thread_context.facade",
+    ],
 )

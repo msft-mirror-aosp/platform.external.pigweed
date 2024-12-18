@@ -1,8 +1,11 @@
 .. _module-pw_rpc-py:
 
----------------------
-pw_rpc Python package
----------------------
+-------------
+Python client
+-------------
+.. pigweed-module-subpage::
+   :name: pw_rpc
+
 The ``pw_rpc`` Python package makes it possible to call Pigweed RPCs from
 Python. The package includes a ``pw_rpc`` client library, as well as tools for
 creating a ``pw_rpc`` console.
@@ -11,6 +14,13 @@ pw_rpc.client
 =============
 .. automodule:: pw_rpc.client
   :members: Client, ClientImpl
+
+pw_rpc.client_utils
+===================
+.. automodule:: pw_rpc.client_utils
+  :members:
+    NoEncodingSingleChannelRpcClient,
+    RpcClient,
 
 pw_rpc.callback_client
 ======================

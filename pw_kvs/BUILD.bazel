@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_test",
@@ -47,7 +48,6 @@ cc_library(
         "public/pw_kvs/flash_memory.h",
         "public/pw_kvs/format.h",
         "public/pw_kvs/io.h",
-        "public/pw_kvs/key.h",
         "public/pw_kvs/key_value_store.h",
     ],
     includes = ["public"],
@@ -59,7 +59,7 @@ cc_library(
         "//pw_checksum",
         "//pw_containers",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_polyfill",
         "//pw_span",
         "//pw_status",
@@ -91,6 +91,15 @@ cc_library(
 )
 
 cc_library(
+    name = "test_key_value_store",
+    hdrs = ["public/pw_kvs/test_key_value_store.h"],
+    deps = [
+        ":pw_kvs",
+        "//pw_sync:borrow",
+    ],
+)
+
+cc_library(
     name = "fake_flash",
     srcs = [
         "fake_flash_memory.cc",
@@ -103,7 +112,7 @@ cc_library(
         ":pw_kvs",
         "//pw_containers",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_span",
         "//pw_status",
     ],
@@ -258,12 +267,13 @@ cc_library(
         "public/pw_kvs/flash_partition_with_stats.h",
     ],
     includes = ["public"],
+    target_compatible_with = incompatible_with_mcu(),
     visibility = ["//visibility:private"],
     deps = [
         "//pw_containers",
         "//pw_kvs",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_status",
     ],
 )
@@ -303,6 +313,12 @@ pw_cc_test(
     srcs = [
         "entry_test.cc",
     ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash",
         ":pw_kvs",
@@ -315,6 +331,12 @@ pw_cc_test(
 pw_cc_test(
     name = "entry_cache_test",
     srcs = ["entry_cache_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash",
         ":pw_kvs",
@@ -326,6 +348,12 @@ pw_cc_test(
 pw_cc_test(
     name = "flash_partition_stream_test",
     srcs = ["flash_partition_stream_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash",
         ":pw_kvs",
@@ -335,15 +363,97 @@ pw_cc_test(
     ],
 )
 
-pw_cc_test(
-    name = "flash_partition_1_alignment_test",
+cc_library(
+    name = "flash_partition_test_100_iterations",
+    testonly = True,
     srcs = ["flash_partition_test.cc"],
     defines = [
         "PW_FLASH_TEST_ITERATIONS=100",
         "PW_FLASH_TEST_WRITE_SIZE=1",
     ],
     deps = [
+        ":flash_test_partition",
+        ":pw_kvs",
+        "//pw_log",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "flash_partition_test_2_iterations",
+    testonly = True,
+    srcs = ["flash_partition_test.cc"],
+    defines = [
+        "PW_FLASH_TEST_ITERATIONS=2",
+        "PW_FLASH_TEST_WRITE_SIZE=1",
+    ],
+    deps = [
+        ":flash_test_partition",
+        ":pw_kvs",
+        "//pw_log",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "flash_partition_test_100_iterations_256_write",
+    testonly = True,
+    srcs = ["flash_partition_test.cc"],
+    defines = [
+        "PW_FLASH_TEST_ITERATIONS=100",
+        "PW_FLASH_TEST_WRITE_SIZE=256",
+    ],
+    deps = [
+        ":flash_test_partition",
+        ":pw_kvs",
+        "//pw_log",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "flash_partition_test_2_iterations_256_write",
+    testonly = True,
+    srcs = ["flash_partition_test.cc"],
+    defines = [
+        "PW_FLASH_TEST_ITERATIONS=2",
+        "PW_FLASH_TEST_WRITE_SIZE=256",
+    ],
+    deps = [
+        ":flash_test_partition",
+        ":pw_kvs",
+        "//pw_log",
+        "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "key_value_store_initialized_test",
+    testonly = True,
+    srcs = ["key_value_store_initialized_test.cc"],
+    deps = [
+        ":crc16",
+        ":flash_test_partition",
+        ":pw_kvs",
+        "//pw_bytes",
+        "//pw_checksum",
+        "//pw_log",
+        "//pw_string:builder",
+        "//pw_unit_test",
+    ],
+)
+
+pw_cc_test(
+    name = "flash_partition_1_alignment_test",
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
+    deps = [
         ":fake_flash_1_aligned_partition",
+        ":flash_partition_test_100_iterations",
         ":pw_kvs",
         "//pw_log",
         "//pw_unit_test",
@@ -352,13 +462,15 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_1_alignment_4_logical_test",
-    srcs = ["flash_partition_test.cc"],
-    defines = [
-        "PW_FLASH_TEST_ITERATIONS=2",
-        "PW_FLASH_TEST_WRITE_SIZE=1",
-    ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash_1_aligned_4_logical_partition",
+        ":flash_partition_test_2_iterations",
         ":pw_kvs",
         "//pw_log",
         "//pw_unit_test",
@@ -367,13 +479,15 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_16_alignment_test",
-    srcs = ["flash_partition_test.cc"],
-    defines = [
-        "PW_FLASH_TEST_ITERATIONS=100",
-        "PW_FLASH_TEST_WRITE_SIZE=1",
-    ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash_16_aligned_partition",
+        ":flash_partition_test_100_iterations",
         ":pw_kvs",
         "//pw_log",
         "//pw_unit_test",
@@ -382,13 +496,15 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_64_alignment_test",
-    srcs = ["flash_partition_test.cc"],
-    defines = [
-        "PW_FLASH_TEST_ITERATIONS=100",
-        "PW_FLASH_TEST_WRITE_SIZE=1",
-    ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash_64_aligned_partition",
+        ":flash_partition_test_100_iterations",
         ":pw_kvs",
         "//pw_log",
         "//pw_unit_test",
@@ -397,13 +513,15 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_256_alignment_test",
-    srcs = ["flash_partition_test.cc"],
-    defines = [
-        "PW_FLASH_TEST_ITERATIONS=100",
-        "PW_FLASH_TEST_WRITE_SIZE=1",
-    ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash_256_aligned_partition",
+        ":flash_partition_test_100_iterations",
         ":pw_kvs",
         "//pw_log",
         "//pw_unit_test",
@@ -412,13 +530,15 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_256_write_size_test",
-    srcs = ["flash_partition_test.cc"],
-    defines = [
-        "PW_FLASH_TEST_ITERATIONS=100",
-        "PW_FLASH_TEST_WRITE_SIZE=256",
-    ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash_1_aligned_partition",
+        ":flash_partition_test_100_iterations_256_write",
         ":pw_kvs",
         "//pw_log",
         "//pw_unit_test",
@@ -427,27 +547,17 @@ pw_cc_test(
 
 pw_cc_test(
     name = "flash_partition_4_logical_256_write_size_test",
-    srcs = ["flash_partition_test.cc"],
-    defines = [
-        "PW_FLASH_TEST_ITERATIONS=2",
-        "PW_FLASH_TEST_WRITE_SIZE=256",
-    ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash_1_aligned_4_logical_partition",
+        ":flash_partition_test_2_iterations_256_write",
         ":pw_kvs",
         "//pw_log",
-        "//pw_unit_test",
-    ],
-)
-
-pw_cc_test(
-    name = "key_test",
-    srcs = [
-        "key_test.cc",
-    ],
-    deps = [
-        ":pw_kvs",
-        "//pw_status",
         "//pw_unit_test",
     ],
 )
@@ -455,13 +565,19 @@ pw_cc_test(
 pw_cc_test(
     name = "key_value_store_test",
     srcs = ["key_value_store_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash",
         ":pw_kvs",
         "//pw_checksum",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_span",
         "//pw_status",
         "//pw_string:builder",
@@ -471,14 +587,20 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_1_alignment_flash_test",
-    srcs = ["key_value_store_initialized_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash_1_aligned_partition",
+        ":key_value_store_initialized_test",
         ":pw_kvs",
         "//pw_checksum",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_span",
         "//pw_status",
         "//pw_string:builder",
@@ -488,14 +610,20 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_1_alignment_4_logical_flash_test",
-    srcs = ["key_value_store_initialized_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash_1_aligned_4_logical_partition",
+        ":key_value_store_initialized_test",
         ":pw_kvs",
         "//pw_checksum",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_span",
         "//pw_status",
         "//pw_string:builder",
@@ -505,14 +633,20 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_16_alignment_flash_test",
-    srcs = ["key_value_store_initialized_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash_16_aligned_partition",
+        ":key_value_store_initialized_test",
         ":pw_kvs",
         "//pw_checksum",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_span",
         "//pw_status",
         "//pw_string:builder",
@@ -522,14 +656,20 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_64_alignment_flash_test",
-    srcs = ["key_value_store_initialized_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash_64_aligned_partition",
+        ":key_value_store_initialized_test",
         ":pw_kvs",
         "//pw_checksum",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_span",
         "//pw_status",
         "//pw_string:builder",
@@ -539,14 +679,20 @@ pw_cc_test(
 
 pw_cc_test(
     name = "key_value_store_256_alignment_flash_test",
-    srcs = ["key_value_store_initialized_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash_256_aligned_partition",
+        ":key_value_store_initialized_test",
         ":pw_kvs",
         "//pw_checksum",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_span",
         "//pw_status",
         "//pw_string:builder",
@@ -557,6 +703,12 @@ pw_cc_test(
 pw_cc_test(
     name = "fake_flash_test_key_value_store_test",
     srcs = ["test_key_value_store_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash_test_key_value_store",
@@ -573,6 +725,12 @@ pw_cc_test(
     srcs = [
         "key_value_store_binary_format_test.cc",
     ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash",
@@ -585,6 +743,12 @@ pw_cc_test(
 pw_cc_test(
     name = "key_value_store_put_test",
     srcs = ["key_value_store_put_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash",
@@ -599,6 +763,12 @@ pw_cc_test(
 pw_cc_test(
     name = "key_value_store_map_test",
     srcs = ["key_value_store_map_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":crc16",
         ":fake_flash",
@@ -606,7 +776,7 @@ pw_cc_test(
         ":test_partition",
         "//pw_checksum",
         "//pw_log",
-        "//pw_log:facade",
+        "//pw_log:pw_log.facade",
         "//pw_span",
         "//pw_unit_test",
     ],
@@ -615,6 +785,12 @@ pw_cc_test(
 pw_cc_test(
     name = "sectors_test",
     srcs = ["sectors_test.cc"],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash",
         ":pw_kvs",
@@ -628,6 +804,12 @@ pw_cc_test(
     srcs = [
         "key_value_store_wear_test.cc",
     ],
+    # TODO: b/234883746 - KVS tests are not compatible with device builds as they
+    # use features such as std::map and are computationally expensive. Solving
+    # this requires a more complex capabilities-based build and configuration
+    # system which allowing enabling specific tests for targets that support
+    # them and modifying test parameters for different targets.
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":fake_flash",
         ":pw_kvs",

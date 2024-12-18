@@ -16,7 +16,6 @@
 
 import datetime
 import sys
-from typing import Dict, List
 
 from docutils import nodes
 from docutils.parsers.rst import Directive
@@ -37,36 +36,17 @@ class PigweedLiveDirective(Directive):
     # TODO: b/303859828 - Update this data sometime between 2024-09-23
     # and 2024-10-07.
     meetings = [
-        '2023-10-09 13:00:00',
-        '2023-10-23 13:00:00',
-        '2023-11-06 13:00:00',
-        # 2023-11-20 skipped since it's a holiday(ish)
-        '2023-12-04 13:00:00',
-        # 2023-12-18 skipped due to its holiday proximity
-        # 2024-01-01 and 2024-01-15 are skipped because they're holidays.
-        '2024-01-29 13:00:00',
-        '2024-02-12 13:00:00',
-        '2024-02-26 13:00:00',
-        '2024-03-11 13:00:00',
-        '2024-03-25 13:00:00',
-        '2024-04-08 13:00:00',
-        '2024-04-22 13:00:00',
-        '2024-05-06 13:00:00',
-        '2024-05-20 13:00:00',
-        '2024-06-03 13:00:00',
-        '2024-06-17 13:00:00',
         '2024-07-01 13:00:00',
-        '2024-07-15 13:00:00',
         '2024-07-29 13:00:00',
-        '2024-08-12 13:00:00',
         '2024-08-26 13:00:00',
-        '2024-09-09 13:00:00',
         '2024-09-23 13:00:00',
-        '2024-10-07 13:00:00',
+        '2024-10-21 13:00:00',
+        '2024-11-18 13:00:00',
+        '2024-12-16 13:00:00',
     ]
     timezone = pytz.timezone('US/Pacific')
 
-    def run(self) -> List[nodes.Node]:
+    def run(self) -> list[nodes.Node]:
         return [self._make_paragraph()]
 
     def _make_paragraph(self) -> nodes.Node:
@@ -76,20 +56,17 @@ class PigweedLiveDirective(Directive):
         meeting_text = nodes.strong()
         meeting_text += nodes.Text(next_meeting)
         paragraph += meeting_text
-        paragraph += nodes.Text(". Please ")
-        refuri = (
-            'https://discord.com/channels/691686718377558037/'
-            '951228399119126548'
-        )
-        link = nodes.reference(refuri=refuri)
-        link += nodes.Text('join us')
-        paragraph += link
         paragraph += nodes.Text(
             (
-                " to discuss what's new in Pigweed and anything else "
-                "Pigweed-related."
+                ". Please join us to discuss what's new in Pigweed and "
+                "anything else Pigweed-related that's on your mind. "
             )
         )
+        refuri = 'https://groups.google.com/g/pigweed'
+        link = nodes.reference(refuri=refuri)
+        link += nodes.Text('Join our mailing list')
+        paragraph += link
+        paragraph += nodes.Text(" to receive an invite to the next meeting.")
         return paragraph
 
     def _find_next_meeting(self) -> str:
@@ -117,7 +94,7 @@ class PigweedLiveDirective(Directive):
             return f'{date} {hour} ({timezone})'
 
 
-def setup(app: Sphinx) -> Dict[str, bool]:
+def setup(app: Sphinx) -> dict[str, bool]:
     """Initialize the directive."""
     if PYTZ_AVAILABLE:
         app.add_directive('pigweed-live', PigweedLiveDirective)

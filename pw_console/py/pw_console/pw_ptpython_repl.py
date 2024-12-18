@@ -13,6 +13,8 @@
 # the License.
 """PwPtPythonPane class."""
 
+from __future__ import annotations
+
 import asyncio
 import functools
 import io
@@ -21,7 +23,7 @@ import os
 import sys
 import shlex
 import subprocess
-from typing import Any, Iterable, Optional, TYPE_CHECKING
+from typing import Any, Iterable, TYPE_CHECKING
 from unittest.mock import patch
 
 # inclusive-language: disable
@@ -55,6 +57,7 @@ import pygments.plugin
 from pw_console.pigweed_code_style import (
     PigweedCodeStyle,
     PigweedCodeLightStyle,
+    Synthwave84CodeStyle,
 )
 from pw_console.text_formatting import remove_formatting
 
@@ -75,6 +78,7 @@ def _wrapped_find_plugin_styles():
     for style in [
         ('pigweed-code', PigweedCodeStyle),
         ('pigweed-code-light', PigweedCodeLightStyle),
+        ('synthwave84', Synthwave84CodeStyle),
     ]:
         yield style
     yield from _original_find_plugin_styles()
@@ -101,7 +105,7 @@ class PwPtPythonRepl(
         self,
         *args,
         # pw_console specific kwargs
-        extra_completers: Optional[Iterable] = None,
+        extra_completers: Iterable | None = None,
         **ptpython_kwargs,
     ):
         completer = None
@@ -154,7 +158,7 @@ class PwPtPythonRepl(
         )
 
         # Additional state variables.
-        self.repl_pane: 'Optional[ReplPane]' = None
+        self.repl_pane: ReplPane | None = None
         self._last_result = None
         self._last_exception = None
 
@@ -223,7 +227,7 @@ class PwPtPythonRepl(
         self._last_result = None
         self._last_exception = None
 
-    def _format_result_output(self, result: Any) -> Optional[str]:
+    def _format_result_output(self, result: Any) -> str | None:
         """Return a plaintext repr of any object."""
         try:
             formatted_result = repr(result)

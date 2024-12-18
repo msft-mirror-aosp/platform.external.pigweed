@@ -22,31 +22,178 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 pw_cc_binary(
-    name = "split_free_list_allocator",
-    srcs = ["split_free_list_allocator.cc"],
+    name = "base",
+    srcs = ["base.cc"],
+    defines = ["PW_ALLOCATOR_SIZE_REPORTER_BASE"],
+    deps = ["//pw_allocator:size_reporter"],
+)
+
+pw_cc_binary(
+    name = "as_pmr_allocator_base",
+    srcs = ["as_pmr_allocator_base.cc"],
     deps = [
-        "//pw_allocator:split_free_list_allocator",
-        "//pw_bloat:bloat_this_binary",
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
     ],
 )
 
 pw_cc_binary(
-    name = "split_free_list_allocator_with_unique_ptr",
-    srcs = ["split_free_list_allocator.cc"],
-    copts = ["-DSIZE_REPORT_UNIQUE_PTR=1"],
+    name = "as_pmr_allocator",
+    srcs = ["as_pmr_allocator.cc"],
     deps = [
-        "//pw_allocator:split_free_list_allocator",
-        "//pw_bloat:bloat_this_binary",
+        "//pw_allocator:allocator",
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
     ],
 )
 
 pw_cc_binary(
-    name = "split_free_list_allocator_with_metric_proxy",
-    srcs = ["split_free_list_allocator.cc"],
-    copts = ["-DSIZE_REPORT_WITH_METRICS=1"],
+    name = "best_fit_block_allocator",
+    srcs = ["best_fit_block_allocator.cc"],
     deps = [
-        "//pw_allocator:split_free_list_allocator",
+        "//pw_allocator:best_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "bucket_block_allocator",
+    srcs = ["bucket_block_allocator.cc"],
+    deps = [
+        "//pw_allocator:bucket_block_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "buddy_allocator",
+    srcs = ["buddy_allocator.cc"],
+    deps = [
+        "//pw_allocator:buddy_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "bump_allocator",
+    srcs = ["bump_allocator.cc"],
+    deps = [
+        "//pw_allocator:bump_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "dual_first_fit_block_allocator",
+    srcs = ["dual_first_fit_block_allocator.cc"],
+    deps = [
+        "//pw_allocator:dual_first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "fallback_allocator_base",
+    srcs = ["fallback_allocator_base.cc"],
+    deps = [
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "fallback_allocator",
+    srcs = ["fallback_allocator.cc"],
+    deps = [
+        "//pw_allocator:fallback_allocator",
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "first_fit_block_allocator",
+    srcs = ["first_fit_block_allocator.cc"],
+    deps = [
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "last_fit_block_allocator",
+    srcs = ["last_fit_block_allocator.cc"],
+    deps = [
+        "//pw_allocator:last_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "libc_allocator",
+    srcs = ["libc_allocator.cc"],
+    deps = [
+        "//pw_allocator:libc_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "null_allocator",
+    srcs = ["null_allocator.cc"],
+    deps = [
+        "//pw_allocator:null_allocator",
+        "//pw_allocator:size_reporter",
+    ],
+)
+
+pw_cc_binary(
+    name = "synchronized_allocator_isl",
+    srcs = ["synchronized_allocator_isl.cc"],
+    deps = [
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+        "//pw_allocator:synchronized_allocator",
+        "//pw_sync:interrupt_spin_lock",
+    ],
+)
+
+pw_cc_binary(
+    name = "synchronized_allocator_mutex",
+    srcs = ["synchronized_allocator_mutex.cc"],
+    deps = [
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+        "//pw_allocator:synchronized_allocator",
+        "//pw_sync:mutex",
+    ],
+)
+
+pw_cc_binary(
+    name = "tracking_allocator_all_metrics",
+    srcs = ["tracking_allocator_all_metrics.cc"],
+    deps = [
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
         "//pw_allocator:tracking_allocator",
-        "//pw_bloat:bloat_this_binary",
+    ],
+)
+
+pw_cc_binary(
+    name = "tracking_allocator_no_metrics",
+    srcs = ["tracking_allocator_no_metrics.cc"],
+    deps = [
+        "//pw_allocator:first_fit_block_allocator",
+        "//pw_allocator:size_reporter",
+        "//pw_allocator:tracking_allocator",
+    ],
+)
+
+pw_cc_binary(
+    name = "worst_fit_block_allocator",
+    srcs = ["worst_fit_block_allocator.cc"],
+    deps = [
+        "//pw_allocator:size_reporter",
+        "//pw_allocator:worst_fit_block_allocator",
     ],
 )

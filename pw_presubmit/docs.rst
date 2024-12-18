@@ -3,6 +3,9 @@
 ============
 pw_presubmit
 ============
+.. pigweed-module::
+   :name: pw_presubmit
+
 The presubmit module provides Python tools for running presubmit checks and
 checking and fixing code format. It also includes the presubmit check script for
 the Pigweed repository, ``pigweed_presubmit.py``.
@@ -196,8 +199,8 @@ Options for code formatting can be specified in the ``pigweed.json`` file
 steps that check code formatting and ``pw format`` commands that either check
 or fix code formatting.
 
-* ``python_formatter``: Choice of Python formatter. Options are ``black`` (used
-  by Pigweed itself) and ``yapf`` (the default).
+* ``python_formatter``: Choice of Python formatter. Options are ``black``
+  (default, used by Pigweed itself) and ``yapf``.
 * ``black_path``: If ``python_formatter`` is ``black``, use this as the
   executable instead of ``black``.
 * ``black_config_file``: Set the config file for the black formatter.
@@ -315,7 +318,7 @@ function takes an optional argument of type ``pw_presubmit.gitmodules.Config``.
   submodule URLs are prohibited.
 * ``require_branch: bool = False`` — If true, all submodules must reference a
   branch.
-* ``validator: Callable[[PresubmitContext, Path, str, Dict[str, str]], None] = None``
+* ``validator: Callable[[PresubmitContext, Path, str, dict[str, str]], None] = None``
   — A function that can be used for arbitrary submodule validation. It's called
   with the ``PresubmitContext``, the path to the ``.gitmodules`` file, the name
   of the current submodule, and the properties of the current submodule.
@@ -340,41 +343,13 @@ Pigweed.
 .. todo-check: disable
 
 TODO(b/###) Formatting
-^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^
 There's a check that confirms ``TODO`` lines match a given format. Upstream
 Pigweed expects these to look like ``TODO: https://pwbug.dev/### -
-Explanation``, but makes it easy for projects to define their own pattern
-instead.
+Explanation``, but projects may define their own patterns instead.
 
-In markdown docs like `Rustdoc <https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html>`_
-the following format is preferred.
-
-.. todo-check: disable
-
-.. code-block::
-
-   //! TODO: <pwbug.dev/1234> - Explanation.
-
-.. todo-check: enable
-
-Some older forms are still allowed but discouraged. In order of preference we
-allow the following formats by default.
-
-.. todo-check: disable
-
-.. code-block::
-
-   # TODO: https://pwbug.dev/1234 - Explanation.
-   # TODO: b/1234 - Explanation.
-   # TODO: username@ - Explanation.
-   # TODO: username@example.com - Explanation.
-   # TODO: b/1234 - Explanation.
-   # TODO(username) Explanation.
-
-.. todo-check: enable
-
-To use this check add ``todo_check.create(todo_check.BUGS_OR_USERNAMES)`` to a
-presubmit program.
+For information on supported TODO expressions, see Pigweed's
+:ref:`docs-pw-todo-style`.
 
 .. todo-check: enable
 
@@ -429,7 +404,7 @@ options.
 pw_presubmit
 ------------
 .. automodule:: pw_presubmit
-   :members: filter_paths, FileFilter, call, PresubmitFailure, Programs
+   :members: filter_paths, call, PresubmitFailure, Programs
 
 .. _example-script:
 
@@ -468,7 +443,6 @@ See ``pigweed_presubmit.py`` for a more complex presubmit check script example.
    from pathlib import Path
    import re
    import sys
-   from typing import Optional
 
    try:
        import pw_cli.log
@@ -568,7 +542,7 @@ See ``pigweed_presubmit.py`` for a more complex presubmit check script example.
    PRE_PUSH_REMOTE_REF_ALLOWLIST = ("refs/for/main",)
 
 
-   def run(install: bool, remote_ref: Optional[str], **presubmit_args) -> int:
+   def run(install: bool, remote_ref: str | None, **presubmit_args) -> int:
        """Process the --install argument then invoke pw_presubmit."""
 
        # Install the presubmit Git pre-push hook, if requested.
@@ -676,3 +650,11 @@ a formatter or remove/disable a PigWeed supplied one.
    if __name__ == '__main__':
        pw_cli.log.install(logging.INFO)
        sys.exit(main())
+
+.. pw_presubmit-nav-end
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   format

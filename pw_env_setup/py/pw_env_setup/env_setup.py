@@ -200,6 +200,7 @@ class EnvSetup(object):
         )
         self._cipd_cache_dir = cipd_cache_dir
         self._shell_file = shell_file
+        self._env._shell_file = shell_file
         self._is_windows = os.name == 'nt'
         self._quiet = quiet
         self._install_dir = install_dir
@@ -421,8 +422,9 @@ class EnvSetup(object):
     def _check_submodule_presence(self):
         uninitialized = set()
 
-        # Don't check submodule presence if using the Android Repo Tool.
-        if os.path.isdir(os.path.join(self._project_root, '.repo')):
+        # If there's no `.git` file or directory, then we are not in
+        # a git repo and must skip the git-submodule check.
+        if not os.path.exists(os.path.join(self._project_root, '.git')):
             return
 
         if not self._check_submodules:
@@ -603,6 +605,10 @@ Then use `set +x` to go back to normal.
             # every step.
             self._write_gni_file()
 
+        # Only write stuff for GitHub Actions once, at the end.
+        if 'GITHUB_ACTIONS' in os.environ:
+            self._env.github(self._install_dir)
+
         self._log('')
         self._env.echo('')
 
@@ -624,14 +630,14 @@ Then use `set +x` to go back to normal.
             return 0
 
         with open(self._shell_file, 'w') as outs:
-            self._env.write(outs)
+            self._env.write(outs, shell_file=self._shell_file)
 
         deactivate = os.path.join(
             self._install_dir,
             'deactivate{}'.format(os.path.splitext(self._shell_file)[1]),
         )
         with open(deactivate, 'w') as outs:
-            self._env.write_deactivate(outs)
+            self._env.write_deactivate(outs, shell_file=deactivate)
 
         config = {
             # Skipping sysname and nodename in os.uname(). nodename could change
@@ -724,7 +730,8 @@ Then use `set +x` to go back to normal.
         import importlib  # pylint: disable=import-outside-toplevel
 
         for import_path, module_name in self._project_actions:
-            sys.path.append(import_path)
+            full_import_path = os.path.join(self._project_root, import_path)
+            sys.path.append(full_import_path)
             mod = importlib.import_module(module_name)
             mod.run_action(env=self._env)
 

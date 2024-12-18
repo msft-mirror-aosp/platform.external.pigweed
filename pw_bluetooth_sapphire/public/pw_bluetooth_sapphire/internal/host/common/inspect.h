@@ -19,5 +19,11 @@
 #ifdef NINSPECT
 #include "pw_bluetooth_sapphire/internal/host/common/fake_inspect.h"
 #else
+#include "pw_preprocessor/compiler.h"
+PW_MODIFY_DIAGNOSTICS_PUSH();
+PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
+#include <lib/inspect/cpp/hierarchy.h>
 #include <lib/inspect/cpp/inspect.h>
+#include <lib/inspect/cpp/reader.h>
+PW_MODIFY_DIAGNOSTICS_POP();
 #endif  // NINSPECT

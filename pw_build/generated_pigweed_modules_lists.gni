@@ -35,13 +35,17 @@ declare_args() {
   dir_pw_arduino_build = get_path_info("../pw_arduino_build", "abspath")
   dir_pw_assert = get_path_info("../pw_assert", "abspath")
   dir_pw_assert_basic = get_path_info("../pw_assert_basic", "abspath")
+  dir_pw_assert_fuchsia = get_path_info("../pw_assert_fuchsia", "abspath")
   dir_pw_assert_log = get_path_info("../pw_assert_log", "abspath")
   dir_pw_assert_tokenized = get_path_info("../pw_assert_tokenized", "abspath")
+  dir_pw_assert_trap = get_path_info("../pw_assert_trap", "abspath")
   dir_pw_assert_zephyr = get_path_info("../pw_assert_zephyr", "abspath")
   dir_pw_async = get_path_info("../pw_async", "abspath")
   dir_pw_async2 = get_path_info("../pw_async2", "abspath")
   dir_pw_async2_basic = get_path_info("../pw_async2_basic", "abspath")
+  dir_pw_async2_epoll = get_path_info("../pw_async2_epoll", "abspath")
   dir_pw_async_basic = get_path_info("../pw_async_basic", "abspath")
+  dir_pw_async_fuchsia = get_path_info("../pw_async_fuchsia", "abspath")
   dir_pw_base64 = get_path_info("../pw_base64", "abspath")
   dir_pw_bloat = get_path_info("../pw_bloat", "abspath")
   dir_pw_blob_store = get_path_info("../pw_blob_store", "abspath")
@@ -49,11 +53,13 @@ declare_args() {
   dir_pw_bluetooth_hci = get_path_info("../pw_bluetooth_hci", "abspath")
   dir_pw_bluetooth_profiles =
       get_path_info("../pw_bluetooth_profiles", "abspath")
+  dir_pw_bluetooth_proxy = get_path_info("../pw_bluetooth_proxy", "abspath")
   dir_pw_bluetooth_sapphire =
       get_path_info("../pw_bluetooth_sapphire", "abspath")
   dir_pw_boot = get_path_info("../pw_boot", "abspath")
   dir_pw_boot_cortex_m = get_path_info("../pw_boot_cortex_m", "abspath")
   dir_pw_build = get_path_info("../pw_build", "abspath")
+  dir_pw_build_android = get_path_info("../pw_build_android", "abspath")
   dir_pw_build_info = get_path_info("../pw_build_info", "abspath")
   dir_pw_build_mcuxpresso = get_path_info("../pw_build_mcuxpresso", "abspath")
   dir_pw_bytes = get_path_info("../pw_bytes", "abspath")
@@ -68,6 +74,9 @@ declare_args() {
   dir_pw_chrono_threadx = get_path_info("../pw_chrono_threadx", "abspath")
   dir_pw_chrono_zephyr = get_path_info("../pw_chrono_zephyr", "abspath")
   dir_pw_cli = get_path_info("../pw_cli", "abspath")
+  dir_pw_clock_tree = get_path_info("../pw_clock_tree", "abspath")
+  dir_pw_clock_tree_mcuxpresso =
+      get_path_info("../pw_clock_tree_mcuxpresso", "abspath")
   dir_pw_compilation_testing =
       get_path_info("../pw_compilation_testing", "abspath")
   dir_pw_config_loader = get_path_info("../pw_config_loader", "abspath")
@@ -76,11 +85,16 @@ declare_args() {
   dir_pw_cpu_exception = get_path_info("../pw_cpu_exception", "abspath")
   dir_pw_cpu_exception_cortex_m =
       get_path_info("../pw_cpu_exception_cortex_m", "abspath")
+  dir_pw_cpu_exception_risc_v =
+      get_path_info("../pw_cpu_exception_risc_v", "abspath")
   dir_pw_crypto = get_path_info("../pw_crypto", "abspath")
   dir_pw_digital_io = get_path_info("../pw_digital_io", "abspath")
+  dir_pw_digital_io_linux = get_path_info("../pw_digital_io_linux", "abspath")
   dir_pw_digital_io_mcuxpresso =
       get_path_info("../pw_digital_io_mcuxpresso", "abspath")
   dir_pw_digital_io_rp2040 = get_path_info("../pw_digital_io_rp2040", "abspath")
+  dir_pw_display = get_path_info("../pw_display", "abspath")
+  dir_pw_dma_mcuxpresso = get_path_info("../pw_dma_mcuxpresso", "abspath")
   dir_pw_docgen = get_path_info("../pw_docgen", "abspath")
   dir_pw_doctor = get_path_info("../pw_doctor", "abspath")
   dir_pw_emu = get_path_info("../pw_emu", "abspath")
@@ -96,6 +110,7 @@ declare_args() {
   dir_pw_i2c = get_path_info("../pw_i2c", "abspath")
   dir_pw_i2c_linux = get_path_info("../pw_i2c_linux", "abspath")
   dir_pw_i2c_mcuxpresso = get_path_info("../pw_i2c_mcuxpresso", "abspath")
+  dir_pw_i2c_rp2040 = get_path_info("../pw_i2c_rp2040", "abspath")
   dir_pw_ide = get_path_info("../pw_ide", "abspath")
   dir_pw_interrupt = get_path_info("../pw_interrupt", "abspath")
   dir_pw_interrupt_cortex_m =
@@ -110,6 +125,7 @@ declare_args() {
   dir_pw_log = get_path_info("../pw_log", "abspath")
   dir_pw_log_android = get_path_info("../pw_log_android", "abspath")
   dir_pw_log_basic = get_path_info("../pw_log_basic", "abspath")
+  dir_pw_log_fuchsia = get_path_info("../pw_log_fuchsia", "abspath")
   dir_pw_log_null = get_path_info("../pw_log_null", "abspath")
   dir_pw_log_rpc = get_path_info("../pw_log_rpc", "abspath")
   dir_pw_log_string = get_path_info("../pw_log_string", "abspath")
@@ -133,16 +149,19 @@ declare_args() {
   dir_pw_protobuf = get_path_info("../pw_protobuf", "abspath")
   dir_pw_protobuf_compiler = get_path_info("../pw_protobuf_compiler", "abspath")
   dir_pw_random = get_path_info("../pw_random", "abspath")
+  dir_pw_random_fuchsia = get_path_info("../pw_random_fuchsia", "abspath")
   dir_pw_result = get_path_info("../pw_result", "abspath")
   dir_pw_ring_buffer = get_path_info("../pw_ring_buffer", "abspath")
   dir_pw_router = get_path_info("../pw_router", "abspath")
   dir_pw_rpc = get_path_info("../pw_rpc", "abspath")
   dir_pw_rpc_transport = get_path_info("../pw_rpc_transport", "abspath")
   dir_pw_rust = get_path_info("../pw_rust", "abspath")
+  dir_pw_sensor = get_path_info("../pw_sensor", "abspath")
   dir_pw_snapshot = get_path_info("../pw_snapshot", "abspath")
   dir_pw_software_update = get_path_info("../pw_software_update", "abspath")
   dir_pw_span = get_path_info("../pw_span", "abspath")
   dir_pw_spi = get_path_info("../pw_spi", "abspath")
+  dir_pw_spi_linux = get_path_info("../pw_spi_linux", "abspath")
   dir_pw_spi_mcuxpresso = get_path_info("../pw_spi_mcuxpresso", "abspath")
   dir_pw_spi_rp2040 = get_path_info("../pw_spi_rp2040", "abspath")
   dir_pw_status = get_path_info("../pw_status", "abspath")
@@ -195,6 +214,8 @@ declare_args() {
   dir_pw_trace = get_path_info("../pw_trace", "abspath")
   dir_pw_trace_tokenized = get_path_info("../pw_trace_tokenized", "abspath")
   dir_pw_transfer = get_path_info("../pw_transfer", "abspath")
+  dir_pw_uart = get_path_info("../pw_uart", "abspath")
+  dir_pw_uart_mcuxpresso = get_path_info("../pw_uart_mcuxpresso", "abspath")
   dir_pw_unit_test = get_path_info("../pw_unit_test", "abspath")
   dir_pw_unit_test_zephyr = get_path_info("../pw_unit_test_zephyr", "abspath")
   dir_pw_varint = get_path_info("../pw_varint", "abspath")
@@ -216,23 +237,29 @@ declare_args() {
     dir_pw_arduino_build,
     dir_pw_assert,
     dir_pw_assert_basic,
+    dir_pw_assert_fuchsia,
     dir_pw_assert_log,
     dir_pw_assert_tokenized,
+    dir_pw_assert_trap,
     dir_pw_assert_zephyr,
     dir_pw_async,
     dir_pw_async2,
     dir_pw_async2_basic,
+    dir_pw_async2_epoll,
     dir_pw_async_basic,
+    dir_pw_async_fuchsia,
     dir_pw_base64,
     dir_pw_bloat,
     dir_pw_blob_store,
     dir_pw_bluetooth,
     dir_pw_bluetooth_hci,
     dir_pw_bluetooth_profiles,
+    dir_pw_bluetooth_proxy,
     dir_pw_bluetooth_sapphire,
     dir_pw_boot,
     dir_pw_boot_cortex_m,
     dir_pw_build,
+    dir_pw_build_android,
     dir_pw_build_info,
     dir_pw_build_mcuxpresso,
     dir_pw_bytes,
@@ -247,16 +274,22 @@ declare_args() {
     dir_pw_chrono_threadx,
     dir_pw_chrono_zephyr,
     dir_pw_cli,
+    dir_pw_clock_tree,
+    dir_pw_clock_tree_mcuxpresso,
     dir_pw_compilation_testing,
     dir_pw_config_loader,
     dir_pw_console,
     dir_pw_containers,
     dir_pw_cpu_exception,
     dir_pw_cpu_exception_cortex_m,
+    dir_pw_cpu_exception_risc_v,
     dir_pw_crypto,
     dir_pw_digital_io,
+    dir_pw_digital_io_linux,
     dir_pw_digital_io_mcuxpresso,
     dir_pw_digital_io_rp2040,
+    dir_pw_display,
+    dir_pw_dma_mcuxpresso,
     dir_pw_docgen,
     dir_pw_doctor,
     dir_pw_emu,
@@ -272,6 +305,7 @@ declare_args() {
     dir_pw_i2c,
     dir_pw_i2c_linux,
     dir_pw_i2c_mcuxpresso,
+    dir_pw_i2c_rp2040,
     dir_pw_ide,
     dir_pw_interrupt,
     dir_pw_interrupt_cortex_m,
@@ -285,6 +319,7 @@ declare_args() {
     dir_pw_log,
     dir_pw_log_android,
     dir_pw_log_basic,
+    dir_pw_log_fuchsia,
     dir_pw_log_null,
     dir_pw_log_rpc,
     dir_pw_log_string,
@@ -307,16 +342,19 @@ declare_args() {
     dir_pw_protobuf,
     dir_pw_protobuf_compiler,
     dir_pw_random,
+    dir_pw_random_fuchsia,
     dir_pw_result,
     dir_pw_ring_buffer,
     dir_pw_router,
     dir_pw_rpc,
     dir_pw_rpc_transport,
     dir_pw_rust,
+    dir_pw_sensor,
     dir_pw_snapshot,
     dir_pw_software_update,
     dir_pw_span,
     dir_pw_spi,
+    dir_pw_spi_linux,
     dir_pw_spi_mcuxpresso,
     dir_pw_spi_rp2040,
     dir_pw_status,
@@ -362,6 +400,8 @@ declare_args() {
     dir_pw_trace,
     dir_pw_trace_tokenized,
     dir_pw_transfer,
+    dir_pw_uart,
+    dir_pw_uart_mcuxpresso,
     dir_pw_unit_test,
     dir_pw_unit_test_zephyr,
     dir_pw_varint,
@@ -380,23 +420,29 @@ declare_args() {
     "$dir_pw_arduino_build:tests",
     "$dir_pw_assert:tests",
     "$dir_pw_assert_basic:tests",
+    "$dir_pw_assert_fuchsia:tests",
     "$dir_pw_assert_log:tests",
     "$dir_pw_assert_tokenized:tests",
+    "$dir_pw_assert_trap:tests",
     "$dir_pw_assert_zephyr:tests",
     "$dir_pw_async:tests",
     "$dir_pw_async2:tests",
     "$dir_pw_async2_basic:tests",
+    "$dir_pw_async2_epoll:tests",
     "$dir_pw_async_basic:tests",
+    "$dir_pw_async_fuchsia:tests",
     "$dir_pw_base64:tests",
     "$dir_pw_bloat:tests",
     "$dir_pw_blob_store:tests",
     "$dir_pw_bluetooth:tests",
     "$dir_pw_bluetooth_hci:tests",
     "$dir_pw_bluetooth_profiles:tests",
+    "$dir_pw_bluetooth_proxy:tests",
     "$dir_pw_bluetooth_sapphire:tests",
     "$dir_pw_boot:tests",
     "$dir_pw_boot_cortex_m:tests",
     "$dir_pw_build:tests",
+    "$dir_pw_build_android:tests",
     "$dir_pw_build_info:tests",
     "$dir_pw_build_mcuxpresso:tests",
     "$dir_pw_bytes:tests",
@@ -411,16 +457,22 @@ declare_args() {
     "$dir_pw_chrono_threadx:tests",
     "$dir_pw_chrono_zephyr:tests",
     "$dir_pw_cli:tests",
+    "$dir_pw_clock_tree:tests",
+    "$dir_pw_clock_tree_mcuxpresso:tests",
     "$dir_pw_compilation_testing:tests",
     "$dir_pw_config_loader:tests",
     "$dir_pw_console:tests",
     "$dir_pw_containers:tests",
     "$dir_pw_cpu_exception:tests",
     "$dir_pw_cpu_exception_cortex_m:tests",
+    "$dir_pw_cpu_exception_risc_v:tests",
     "$dir_pw_crypto:tests",
     "$dir_pw_digital_io:tests",
+    "$dir_pw_digital_io_linux:tests",
     "$dir_pw_digital_io_mcuxpresso:tests",
     "$dir_pw_digital_io_rp2040:tests",
+    "$dir_pw_display:tests",
+    "$dir_pw_dma_mcuxpresso:tests",
     "$dir_pw_docgen:tests",
     "$dir_pw_doctor:tests",
     "$dir_pw_emu:tests",
@@ -436,6 +488,7 @@ declare_args() {
     "$dir_pw_i2c:tests",
     "$dir_pw_i2c_linux:tests",
     "$dir_pw_i2c_mcuxpresso:tests",
+    "$dir_pw_i2c_rp2040:tests",
     "$dir_pw_ide:tests",
     "$dir_pw_interrupt:tests",
     "$dir_pw_interrupt_cortex_m:tests",
@@ -449,6 +502,7 @@ declare_args() {
     "$dir_pw_log:tests",
     "$dir_pw_log_android:tests",
     "$dir_pw_log_basic:tests",
+    "$dir_pw_log_fuchsia:tests",
     "$dir_pw_log_null:tests",
     "$dir_pw_log_rpc:tests",
     "$dir_pw_log_string:tests",
@@ -471,16 +525,19 @@ declare_args() {
     "$dir_pw_protobuf:tests",
     "$dir_pw_protobuf_compiler:tests",
     "$dir_pw_random:tests",
+    "$dir_pw_random_fuchsia:tests",
     "$dir_pw_result:tests",
     "$dir_pw_ring_buffer:tests",
     "$dir_pw_router:tests",
     "$dir_pw_rpc:tests",
     "$dir_pw_rpc_transport:tests",
     "$dir_pw_rust:tests",
+    "$dir_pw_sensor:tests",
     "$dir_pw_snapshot:tests",
     "$dir_pw_software_update:tests",
     "$dir_pw_span:tests",
     "$dir_pw_spi:tests",
+    "$dir_pw_spi_linux:tests",
     "$dir_pw_spi_mcuxpresso:tests",
     "$dir_pw_spi_rp2040:tests",
     "$dir_pw_status:tests",
@@ -526,6 +583,8 @@ declare_args() {
     "$dir_pw_trace:tests",
     "$dir_pw_trace_tokenized:tests",
     "$dir_pw_transfer:tests",
+    "$dir_pw_uart:tests",
+    "$dir_pw_uart_mcuxpresso:tests",
     "$dir_pw_unit_test:tests",
     "$dir_pw_unit_test_zephyr:tests",
     "$dir_pw_varint:tests",
@@ -544,23 +603,29 @@ declare_args() {
     "$dir_pw_arduino_build:docs",
     "$dir_pw_assert:docs",
     "$dir_pw_assert_basic:docs",
+    "$dir_pw_assert_fuchsia:docs",
     "$dir_pw_assert_log:docs",
     "$dir_pw_assert_tokenized:docs",
+    "$dir_pw_assert_trap:docs",
     "$dir_pw_assert_zephyr:docs",
     "$dir_pw_async:docs",
     "$dir_pw_async2:docs",
     "$dir_pw_async2_basic:docs",
+    "$dir_pw_async2_epoll:docs",
     "$dir_pw_async_basic:docs",
+    "$dir_pw_async_fuchsia:docs",
     "$dir_pw_base64:docs",
     "$dir_pw_bloat:docs",
     "$dir_pw_blob_store:docs",
     "$dir_pw_bluetooth:docs",
     "$dir_pw_bluetooth_hci:docs",
     "$dir_pw_bluetooth_profiles:docs",
+    "$dir_pw_bluetooth_proxy:docs",
     "$dir_pw_bluetooth_sapphire:docs",
     "$dir_pw_boot:docs",
     "$dir_pw_boot_cortex_m:docs",
     "$dir_pw_build:docs",
+    "$dir_pw_build_android:docs",
     "$dir_pw_build_info:docs",
     "$dir_pw_build_mcuxpresso:docs",
     "$dir_pw_bytes:docs",
@@ -575,16 +640,22 @@ declare_args() {
     "$dir_pw_chrono_threadx:docs",
     "$dir_pw_chrono_zephyr:docs",
     "$dir_pw_cli:docs",
+    "$dir_pw_clock_tree:docs",
+    "$dir_pw_clock_tree_mcuxpresso:docs",
     "$dir_pw_compilation_testing:docs",
     "$dir_pw_config_loader:docs",
     "$dir_pw_console:docs",
     "$dir_pw_containers:docs",
     "$dir_pw_cpu_exception:docs",
     "$dir_pw_cpu_exception_cortex_m:docs",
+    "$dir_pw_cpu_exception_risc_v:docs",
     "$dir_pw_crypto:docs",
     "$dir_pw_digital_io:docs",
+    "$dir_pw_digital_io_linux:docs",
     "$dir_pw_digital_io_mcuxpresso:docs",
     "$dir_pw_digital_io_rp2040:docs",
+    "$dir_pw_display:docs",
+    "$dir_pw_dma_mcuxpresso:docs",
     "$dir_pw_docgen:docs",
     "$dir_pw_doctor:docs",
     "$dir_pw_emu:docs",
@@ -600,6 +671,7 @@ declare_args() {
     "$dir_pw_i2c:docs",
     "$dir_pw_i2c_linux:docs",
     "$dir_pw_i2c_mcuxpresso:docs",
+    "$dir_pw_i2c_rp2040:docs",
     "$dir_pw_ide:docs",
     "$dir_pw_interrupt:docs",
     "$dir_pw_interrupt_cortex_m:docs",
@@ -613,6 +685,7 @@ declare_args() {
     "$dir_pw_log:docs",
     "$dir_pw_log_android:docs",
     "$dir_pw_log_basic:docs",
+    "$dir_pw_log_fuchsia:docs",
     "$dir_pw_log_null:docs",
     "$dir_pw_log_rpc:docs",
     "$dir_pw_log_string:docs",
@@ -635,16 +708,19 @@ declare_args() {
     "$dir_pw_protobuf:docs",
     "$dir_pw_protobuf_compiler:docs",
     "$dir_pw_random:docs",
+    "$dir_pw_random_fuchsia:docs",
     "$dir_pw_result:docs",
     "$dir_pw_ring_buffer:docs",
     "$dir_pw_router:docs",
     "$dir_pw_rpc:docs",
     "$dir_pw_rpc_transport:docs",
     "$dir_pw_rust:docs",
+    "$dir_pw_sensor:docs",
     "$dir_pw_snapshot:docs",
     "$dir_pw_software_update:docs",
     "$dir_pw_span:docs",
     "$dir_pw_spi:docs",
+    "$dir_pw_spi_linux:docs",
     "$dir_pw_spi_mcuxpresso:docs",
     "$dir_pw_spi_rp2040:docs",
     "$dir_pw_status:docs",
@@ -690,6 +766,8 @@ declare_args() {
     "$dir_pw_trace:docs",
     "$dir_pw_trace_tokenized:docs",
     "$dir_pw_transfer:docs",
+    "$dir_pw_uart:docs",
+    "$dir_pw_uart_mcuxpresso:docs",
     "$dir_pw_unit_test:docs",
     "$dir_pw_unit_test_zephyr:docs",
     "$dir_pw_varint:docs",

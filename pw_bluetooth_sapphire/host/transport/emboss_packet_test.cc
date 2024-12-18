@@ -13,9 +13,9 @@
 // the License.
 #include "pw_bluetooth_sapphire/internal/host/transport/emboss_packet.h"
 
+#include <pw_bluetooth/hci_android.emb.h>
 #include <pw_bluetooth/hci_commands.emb.h>
 #include <pw_bluetooth/hci_test.emb.h>
-#include <pw_bluetooth/hci_vendor.emb.h>
 
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
@@ -25,9 +25,12 @@
 namespace bt::hci {
 namespace {
 
+namespace android_hci = hci_spec::vendor::android;
+namespace android_emb = pw::bluetooth::vendor::android_hci;
+
 TEST(StaticPacketTest, StaticPacketBasic) {
   StaticPacket<pw::bluetooth::emboss::TestCommandPacketWriter> packet;
-  packet.view().header().opcode().BackingStorage().WriteUInt(1234);
+  packet.view().header().opcode_bits().BackingStorage().WriteUInt(1234);
   packet.view().header().parameter_total_size().Write(1);
   packet.view().payload().Write(13);
 
@@ -93,13 +96,13 @@ TEST(EmbossEventPacketTest, EmbossEventPacketDeathTest) {
 
 TEST(EmbossEventPacketTest, StatusCode) {
   // Confirm status can be read from vendor subevent.
-  auto packet = EmbossEventPacket::New<
-      pw::bluetooth::vendor::android_hci::LEMultiAdvtStateChangeSubeventWriter>(
-      hci_spec::kVendorDebugEventCode);
+  auto packet =
+      EmbossEventPacket::New<android_emb::LEMultiAdvtStateChangeSubeventWriter>(
+          hci_spec::kVendorDebugEventCode);
   auto view = packet.view_t();
   view.status().Write(hci_spec::StatusCode::OPERATION_CANCELLED_BY_HOST);
   view.vendor_event().subevent_code().Write(
-      hci_spec::vendor::android::kLEMultiAdvtStateChangeSubeventCode);
+      android_hci::kLEMultiAdvtStateChangeSubeventCode);
 
   ASSERT_TRUE(packet.StatusCode().has_value());
   EXPECT_EQ(packet.StatusCode().value(),

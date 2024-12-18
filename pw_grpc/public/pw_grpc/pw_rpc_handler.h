@@ -32,14 +32,8 @@ namespace pw::grpc {
 class PwRpcHandler : public Connection::RequestCallbacks,
                      public GrpcChannelOutput::StreamCallbacks {
  public:
-  PwRpcHandler(uint32_t channel_id,
-               rpc::RpcPacketProcessor& packet_processor,
-               rpc::Server& server,
-               ByteSpan packet_encode_buffer)
-      : channel_id_(channel_id),
-        packet_processor_(packet_processor),
-        server_(server),
-        packet_encode_buffer_(packet_encode_buffer) {}
+  PwRpcHandler(uint32_t channel_id, rpc::Server& server)
+      : channel_id_(channel_id), server_(server) {}
 
   // GrpcChannelOutput::StreamCallbacks
   void OnClose(StreamId id) override;
@@ -58,6 +52,7 @@ class PwRpcHandler : public Connection::RequestCallbacks,
     StreamId id;
     uint32_t service_id;
     uint32_t method_id;
+    pw::rpc::MethodType method_type;
     // Used for client streaming to determine whether initial request packet has
     // been sent on yet.
     bool sent_request = false;
@@ -68,14 +63,15 @@ class PwRpcHandler : public Connection::RequestCallbacks,
   void ResetAllStreams();
   void ResetStream(StreamId id);
   void MarkSentRequest(StreamId id);
-  Status CreateStream(StreamId id, uint32_t service_id, uint32_t method_id);
+  Status CreateStream(StreamId id,
+                      uint32_t service_id,
+                      uint32_t method_id,
+                      pw::rpc::MethodType method_type);
 
   sync::InlineBorrowable<std::array<Stream, internal::kMaxConcurrentStreams>>
       streams_;
   const uint32_t channel_id_;
-  rpc::RpcPacketProcessor& packet_processor_;
   rpc::Server& server_;
-  ByteSpan packet_encode_buffer_;
 };
 
 }  // namespace pw::grpc

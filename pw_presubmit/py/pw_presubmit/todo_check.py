@@ -16,7 +16,7 @@
 import logging
 from pathlib import Path
 import re
-from typing import Dict, Iterable, List, Pattern, Sequence, Union
+from typing import Iterable, Pattern, Sequence
 
 from pw_presubmit import presubmit_context
 from pw_presubmit.presubmit import filter_paths
@@ -45,10 +45,11 @@ EXCLUDE: Sequence[str] = (
 BUGS_ONLY = re.compile(
     r'(?:\bTODO\(b/\d+(?:, ?b/\d+)*\).*\w)|'
     r'(?:\bTODO: b/\d+(?:, ?b/\d+)* - )|'
-    r'(?:\bTODO: https://issues.pigweed.dev/issues/\d+ - )|'
-    r'(?:\bTODO: https://pwbug.dev/\d+ - )|'
-    r'(?:\bTODO: pwbug.dev/\d+ - )|'
-    r'(?:\bTODO: <pwbug.dev/\d+> - )|'
+    r'(?:\bTODO: https://issues\.(?:pigweed|fuchsia)\.dev/(?:issues/)?\d+ - )|'
+    r'(?:\bTODO: https://issues\.chromium\.org/(?:issues/)?\d+ - )|'
+    r'(?:\bTODO: https://(?:(?:pw|fx)bug\.dev|crbug\.com)/\d+ - )|'
+    r'(?:\bTODO: (?:(?:pw|fx)bug\.dev|crbug\.com)/\d+ - )|'
+    r'(?:\bTODO: <(?:(?:pw|fx)bug\.dev|crbug\.com)/\d+> - )|'
     r'(?:\bTODO: https://github\.com/bazelbuild/[a-z][-_a-z0-9]*/issues/\d+[ ]-[ ])'
 )
 BUGS_OR_USERNAMES = re.compile(
@@ -64,10 +65,11 @@ BUGS_OR_USERNAMES = re.compile(
     \bTODO:[ ]
     (?:
         b/\d+|  # Bug.
-        https://pwbug.dev/\d+| # Short URL
-        pwbug.dev/\d+| # Even shorter URL
-        <pwbug.dev/\d+>| # Markdown compatible even shorter URL
-        https://issues.pigweed.dev/issues/\d+| # Fully qualified bug for rustdoc
+        https://(?:(?:pw|fx)bug\.dev|crbug\.com)(?:/issues)?/\d+| # Short URL
+        (?:(?:pw|fx)bug\.dev|crbug\.com)(?:/issues)?/\d+| # Even shorter URL
+        <(?:(?:pw|fx)bug\.dev|crbug\.com)/\d+>| # Markdown compatible
+        https://issues\.(?:pigweed|fuchsia)\.dev(?:/issues)?/\d+| # Fully qualified bug for rustdoc
+        https://issues.chromium.org/issues/\d+| # Fully qualified bug for rustdoc
         # Username@ with optional domain.
         [a-z]+@(?:[a-z][-a-z0-9]*(?:\.[a-z][-a-z0-9]*)+)?
     )
@@ -117,7 +119,7 @@ def _process_file(ctx: PresubmitContext, todo_pattern: re.Pattern, path: Path):
         prev = ''
 
         try:
-            summary: List[str] = []
+            summary: list[str] = []
             for i, line in enumerate(ins, 1):
                 if _DISABLE in line:
                     enabled = False
@@ -135,7 +137,9 @@ def _process_file(ctx: PresubmitContext, todo_pattern: re.Pattern, path: Path):
                         ctx.fail(f'    {line.strip()}')
                         ctx.fail('Prefer this format in new code:')
                         # todo-check: ignore
-                        ctx.fail('    TODO: b/XXXXX - info here')
+                        ctx.fail(
+                            '    TODO: https://pwbug.dev/12345 - More context.'
+                        )
                         summary.append(f'{i}:{line.strip()}')
 
                 prev = line
@@ -150,7 +154,7 @@ def _process_file(ctx: PresubmitContext, todo_pattern: re.Pattern, path: Path):
 
 def create(
     todo_pattern: re.Pattern = BUGS_ONLY,
-    exclude: Iterable[Union[Pattern[str], str]] = EXCLUDE,
+    exclude: Iterable[Pattern[str] | str] = EXCLUDE,
 ):
     """Create a todo_check presubmit step that uses the given pattern."""
 
@@ -158,7 +162,7 @@ def create(
     def todo_check(ctx: PresubmitContext):
         """Check that TODO lines are valid."""  # todo-check: ignore
         ctx.paths = presubmit_context.apply_exclusions(ctx)
-        summary: Dict[Path, List[str]] = {}
+        summary: dict[Path, list[str]] = {}
         for path in ctx.paths:
             if file_summary := _process_file(ctx, todo_pattern, path):
                 summary[path] = file_summary

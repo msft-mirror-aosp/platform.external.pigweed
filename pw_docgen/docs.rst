@@ -1,27 +1,35 @@
 .. _module-pw_docgen:
 
----------
+=========
 pw_docgen
----------
-The docgen module provides tools to generate documentation for Pigweed-based
-projects, and for Pigweed itself.
+=========
+.. pigweed-module::
+   :name: pw_docgen
 
+``pw_docgen`` provides tools to generate documentation for Pigweed-based
+projects.
+
+.. note::
+
+   Pigweed itself uses ``pw_docgen`` to generate ``pigweed.dev``.
+
+--------
+Overview
+--------
 Pigweed-based projects typically use a subset of Pigweed's modules and add their
 own product-specific modules on top of that, which may have product-specific
-documentation. Docgen provides a convenient way to combine all of the relevant
-documentation for a project into one place, allowing downstream consumers of
-release bundles (e.g. factory teams, QA teams, beta testers, etc.) to have a
-unified source of documentation early on.
+documentation. ``pw_docgen`` provides a convenient way to combine all of the
+relevant documentation for a project into one place, allowing downstream
+consumers of release bundles (e.g. factory teams, QA teams, beta testers, etc.)
+to have a unified source of documentation early on.
 
 The documentation generation is integrated directly into the build system. Any
 build target can depend on documentation, which allows it to be included as part
 of a factory release build, for example. Additionally, documentation itself can
-depend on other build targets, such as report cards for binary size/profiling.
-Any time the code is changed, documentation will be regenerated with the updated
-reports.
+depend on other build targets, such as :ref:`report cards <module-pw_bloat>` for
+binary size/profiling. Any time the code is changed, documentation will be
+regenerated with the updated reports.
 
-Documentation Overview
-======================
 Each Pigweed module provides documentation describing its functionality, use
 cases, and programming API.
 
@@ -29,9 +37,9 @@ Included in a module's documentation are report cards which show an overview of
 the module's size cost and performance benchmarks. These allow prospective users
 to evaluate the impact of including the module in their projects.
 
-Build Integration
-=================
-
+-----------------
+Build integration
+-----------------
 Pigweed documentation files are written in `reStructuredText`_ format and
 rendered to HTML using `Sphinx`_ through Pigweed's GN build system.
 
@@ -52,19 +60,19 @@ target, which accumulates all of them and renders the resulting HTML. This
 system can either be used directly within Pigweed, or integrated into a
 downstream project.
 
-GN Templates
-------------
+GN templates
+============
 
 pw_doc_group
-____________
+------------
 The main template for defining documentation files is ``pw_doc_group``. It is
 used to logically group a collection of documentation source files and assets.
 Each Pigweed module is expected to provide at least one ``pw_doc_group`` target
 defining the module's documentation. A ``pw_doc_group`` can depend on other
 groups, causing them to be built with it.
 
-**Arguments**
-
+Arguments
+^^^^^^^^^
 * ``sources``: RST documentation source files.
 * ``inputs``: Additional resources required for the docs (images, data files,
   etc.)
@@ -75,8 +83,8 @@ groups, causing them to be built with it.
   ``pw_doc_group`` runs that is not included in one of the above ``dep``
   categories.
 
-**Example**
-
+Example
+^^^^^^^
 .. code-block::
 
    pw_doc_group("my_doc_group") {
@@ -87,7 +95,7 @@ groups, causing them to be built with it.
    }
 
 pw_doc_gen
-__________
+----------
 The ``pw_doc_gen`` template creates a target which renders complete HTML
 documentation for a project. It depends on registered ``pw_doc_group`` targets
 and creates an action which collects and renders them.
@@ -97,8 +105,8 @@ configuring Sphinx's output, and a top level ``index.rst`` for the main page of
 the documentation. These are added at the root level of the built documentation
 to tie everything together.
 
-**Arguments**
-
+Arguments
+^^^^^^^^^
 * ``conf``: Path to the ``conf.py`` to use for Sphinx.
 * ``index``: Path to the top-level ``index.rst`` file.
 * ``output_directory``: Directory in which to render HTML output.
@@ -107,8 +115,8 @@ to tie everything together.
   deps for generating Python package metadata list, not the overall
   documentation generation. This should rarely be used by non-Pigweed code.
 
-**Example**
-
+Example
+^^^^^^^
 .. code-block::
 
    pw_doc_gen("my_docs") {
@@ -120,7 +128,7 @@ to tie everything together.
      ]
    }
 
-Generating Documentation
+Generating documentation
 ------------------------
 All source files listed under a ``pw_doc_gen`` target and its ``pw_doc_group``
 dependencies get copied out into a directory structure mirroring the original
@@ -169,7 +177,7 @@ identical to the project's directory structure. The only special case is the
 top-level ``index.rst`` file's imports; they must start from the project's build
 root.
 
-Viewing Documentation
+Viewing documentation
 ---------------------
 ``pw_docgen`` includes a web server that serves locally-generated documentation
 at ``pw_docgen.docserver``. It supports hot-reloading, so the rendered docs in
@@ -178,50 +186,21 @@ your browser will refresh as you make changes to the source files.
 In most cases, you will not need to run the docs server directly. Instead, it
 will be run via :ref:`module-pw_watch`.
 
-Sphinx Extensions
-=================
+-----------------------------
+pigweed.dev Sphinx extensions
+-----------------------------
+.. note:: The topics in this section only apply to ``pigweed.dev``.
+   This section isn't relevant to downstream users of ``pw_docgen``.
+
 This module houses Pigweed-specific extensions for the Sphinx documentation
 generator. Extensions are included and configured in ``docs/conf.py``.
 
 module_metadata
----------------
-Per :ref:`SEED-0102 <seed-0102>`, Pigweed module documentation has a standard
-format. The ``pigweed-module`` Sphinx directive provides that format and
-registers module metadata that can be used elsewhere in the Sphinx build.
-
-We need to add the directive after the document title, and add a class *to*
-the document title to achieve the title & subtitle formatting. Here's an
-example:
-
-.. code-block:: rst
-
-   .. rst-class:: with-subtitle
-
-   =========
-   pw_string
-   =========
-
-   .. pigweed-module::
-      :name: pw_string
-      :tagline: Efficient, easy, and safe string manipulation
-      :status: stable
-      :languages: C++17, Rust
-      :code-size-impact: 500 to 1500 bytes
-
-      Module sales pitch goes here!
-
-Directive options
-_________________
-- ``name``: The module name (required)
-- ``tagline``: A very short tagline that summarizes the module (required)
-- ``status``: One of ``experimental``, ``unstable``, and ``stable`` (required)
-- ``is-deprecated``: A flag indicating that the module is deprecated
-- ``languages``: A comma-separated list of languages the module supports.  If
-  the language has API docs (Rust), they will be linked from the metadata block.
-- ``code-size-impact``: A summarize of the average code size impact
+===============
+See :ref:`docs-contrib-docs-modules-metadata`.
 
 Canonical URL configuration
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+---------------------------
 ``module_metadata`` fixes the canonical URLs for ``*/docs.html`` pages. By
 default Sphinx assumes that a page's canonical URL is its full URL. E.g. the
 default canonical URL for ``//pw_string/docs.rst`` is
@@ -241,7 +220,20 @@ upstream Pigweed repo:
 
    grep '<link rel="canonical' out/docs/gen/docs/html/* -R
 
-Context: `b/323077749 <https://issues.pigweed.dev/323077749>`_
+Context: :bug:`323077749`.
+
+bug
+---
+This extension simplifies adding references to issues (bugs) in the Pigweed
+issue tracker. It defines a `Docutils role
+<https://docutils.sourceforge.io/docs/ref/rst/roles.html>`__ that can be
+used as follows.
+
+.. code-block:: rst
+
+   For more details see :bug:`323077749`.
+
+This becomes a hyperlink to https://pwbug.dev/323077749.
 
 google_analytics
 ----------------

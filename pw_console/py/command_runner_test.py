@@ -16,7 +16,6 @@
 import logging
 import re
 import unittest
-from typing import List
 
 from unittest.mock import MagicMock
 
@@ -83,8 +82,7 @@ def target_list_and_pane(window_manager, list_index, pane_index):
 class TestCommandRunner(unittest.TestCase):
     """Tests for CommandRunner."""
 
-    def setUp(self):
-        self.maxDiff = None  # pylint: disable=invalid-name
+    maxDiff = None
 
     def test_flatten_menu_items(self) -> None:
         with create_app_session(output=FakeOutput()):
@@ -125,7 +123,7 @@ class TestCommandRunner(unittest.TestCase):
             def empty_handler() -> None:
                 return None
 
-            def get_completions() -> List[CommandRunnerItem]:
+            def get_completions() -> list[CommandRunnerItem]:
                 return [
                     CommandRunnerItem('[File] > Open Logger', empty_handler),
                     CommandRunnerItem(

@@ -28,11 +28,13 @@
 #define PW_CRASH PW_HANDLE_CRASH
 
 // PW_CHECK - If condition evaluates to false, crash. Message optional.
-#define PW_CHECK(condition, ...)                            \
-  do {                                                      \
-    if (!(condition)) {                                     \
-      PW_HANDLE_ASSERT_FAILURE(#condition, "" __VA_ARGS__); \
-    }                                                       \
+#define PW_CHECK(condition, ...)                                   \
+  do {                                                             \
+    if (!(condition)) {                                            \
+      _pw_assert_ConditionCannotContainThePercentCharacter(        \
+          #condition); /* cannot use '%' in PW_CHECK conditions */ \
+      PW_HANDLE_ASSERT_FAILURE(#condition, "" __VA_ARGS__);        \
+    }                                                              \
   } while (0)
 
 #define PW_DCHECK(...)            \
@@ -142,27 +144,35 @@
 
 // clang-format on
 
-// PW_CHECK_OK - If condition does not evaluate to PW_STATUS_OK, crash. Message
-// optional.
-#define PW_CHECK_OK(expression, ...)                                     \
-  do {                                                                   \
-    const _PW_CHECK_OK_STATUS _pw_assert_check_ok_status = (expression); \
-    if (_pw_assert_check_ok_status != PW_STATUS_OK) {                    \
-      _PW_CHECK_BINARY_ARG_HANDLER(                                      \
-          #expression,                                                   \
-          pw_StatusString(_pw_assert_check_ok_status),                   \
-          "==",                                                          \
-          "OkStatus()",                                                  \
-          "OK",                                                          \
-          "%s",                                                          \
-          "" __VA_ARGS__);                                               \
-    }                                                                    \
+// PW_CHECK_OK - If expression does not evaluate to PW_STATUS_OK, crash.
+// Message optional.
+//
+// In C++, expression must evaluate to a value convertible to Status via
+// pw::internal::ConvertToStatus().
+//
+// In C, expression must evaluate to a pw_Status value.
+#define PW_CHECK_OK(expression, ...)                       \
+  do {                                                     \
+    const _PW_CHECK_OK_STATUS _pw_assert_check_ok_status = \
+        _PW_CHECK_OK_TO_STATUS(expression);                \
+    if (_pw_assert_check_ok_status != PW_STATUS_OK) {      \
+      _PW_CHECK_BINARY_ARG_HANDLER(                        \
+          #expression,                                     \
+          pw_StatusString(_pw_assert_check_ok_status),     \
+          "==",                                            \
+          "OkStatus()",                                    \
+          "OK",                                            \
+          "%s",                                            \
+          "" __VA_ARGS__);                                 \
+    }                                                      \
   } while (0)
 
 #ifdef __cplusplus
 #define _PW_CHECK_OK_STATUS ::pw::Status
+#define _PW_CHECK_OK_TO_STATUS(expr) ::pw::internal::ConvertToStatus(expr)
 #else
 #define _PW_CHECK_OK_STATUS pw_Status
+#define _PW_CHECK_OK_TO_STATUS(expr) (expr)
 #endif  // __cplusplus
 
 #define PW_DCHECK_OK(...)          \
@@ -224,19 +234,22 @@ constexpr T ConvertToType(const U& value) {
 // hitting the CHECK backend. This controls whether evaluated values are
 // captured.
 #if PW_ASSERT_CAPTURE_VALUES
-#define _PW_CHECK_BINARY_ARG_HANDLER(arg_a_str,              \
-                                     arg_a_val,              \
-                                     comparison_op_str,      \
-                                     arg_b_str,              \
-                                     arg_b_val,              \
-                                     type_fmt,               \
-                                     ...)                    \
-  PW_HANDLE_ASSERT_BINARY_COMPARE_FAILURE(arg_a_str,         \
-                                          arg_a_val,         \
-                                          comparison_op_str, \
-                                          arg_b_str,         \
-                                          arg_b_val,         \
-                                          type_fmt,          \
+#define _PW_CHECK_BINARY_ARG_HANDLER(arg_a_str,                         \
+                                     arg_a_val,                         \
+                                     comparison_op_str,                 \
+                                     arg_b_str,                         \
+                                     arg_b_val,                         \
+                                     type_fmt,                          \
+                                     ...)                               \
+                                                                        \
+  _pw_assert_ConditionCannotContainThePercentCharacter(                 \
+      arg_a_str arg_b_str); /* cannot use '%' in PW_CHECK conditions */ \
+  PW_HANDLE_ASSERT_BINARY_COMPARE_FAILURE(arg_a_str,                    \
+                                          arg_a_val,                    \
+                                          comparison_op_str,            \
+                                          arg_b_str,                    \
+                                          arg_b_val,                    \
+                                          type_fmt,                     \
                                           __VA_ARGS__)
 #else
 #define _PW_CHECK_BINARY_ARG_HANDLER(arg_a_str,                           \
@@ -246,6 +259,8 @@ constexpr T ConvertToType(const U& value) {
                                      arg_b_val,                           \
                                      type_fmt,                            \
                                      ...)                                 \
+  _pw_assert_ConditionCannotContainThePercentCharacter(                   \
+      arg_a_str arg_b_str); /* cannot use '%' in PW_CHECK conditions */   \
   PW_HANDLE_ASSERT_FAILURE(arg_a_str " " comparison_op_str " " arg_b_str, \
                            __VA_ARGS__)
 #endif  // PW_ASSERT_CAPTURE_VALUES
@@ -257,7 +272,7 @@ constexpr T ConvertToType(const U& value) {
   do {                                                                    \
     PW_CHECK_FLOAT_EXACT_GE(abs_tolerance, 0.0f);                         \
     float evaluated_argument_a = (float)(argument_a);                     \
-    float evaluated_argument_b_min = (float)(argument_b)-abs_tolerance;   \
+    float evaluated_argument_b_min = (float)(argument_b) - abs_tolerance; \
     float evaluated_argument_b_max = (float)(argument_b) + abs_tolerance; \
     if (!(evaluated_argument_a >= evaluated_argument_b_min)) {            \
       _PW_CHECK_BINARY_ARG_HANDLER(#argument_a,                           \
@@ -277,3 +292,20 @@ constexpr T ConvertToType(const U& value) {
                                    "" __VA_ARGS__);                       \
     }                                                                     \
   } while (0)
+
+// This empty function allows the compiler to verify that the condition contains
+// no % characters (modulus operator). Backends (pw_assert-tokenized in
+// particular) may include the condition in the format string as a size
+// optimization. Unintentionally introducing an extra argument could lead to
+// problems. Checking the condition here ensures that the behavior is consistent
+// for all backends.
+//
+// TODO: b/235149326 - Remove this restriction when pw_assert macros no longer
+// accept arbitrary arguments.
+static inline void _pw_assert_ConditionCannotContainThePercentCharacter(
+    const char* format, ...) PW_PRINTF_FORMAT(1, 2);
+
+static inline void _pw_assert_ConditionCannotContainThePercentCharacter(
+    const char* format, ...) {
+  (void)format;
+}

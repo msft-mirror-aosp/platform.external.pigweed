@@ -109,26 +109,27 @@ must have a globally-unique integer ID used to identify the resource.
 
 Handlers are registered with the transfer service. This may be done during
 system initialization (for static resources), or dynamically at runtime to
-support ephemeral transfer resources.
+support ephemeral transfer resources. A boolean is returned with registration/
+unregistration to indicate success or failure.
 
 **Example transfer handler implementation**
 
 .. code-block:: cpp
 
-  #include "pw_stream/memory_stream.h"
-  #include "pw_transfer/transfer.h"
+   #include "pw_stream/memory_stream.h"
+   #include "pw_transfer/transfer.h"
 
-  // A simple transfer handler which reads data from an in-memory buffer.
-  class SimpleBufferReadHandler : public pw::transfer::ReadOnlyHandler {
-   public:
-    SimpleReadTransfer(uint32_t resource_id, pw::ConstByteSpan data)
-        : ReadOnlyHandler(resource_id), reader_(data) {
-      set_reader(reader_);
-    }
+   // A simple transfer handler which reads data from an in-memory buffer.
+   class SimpleBufferReadHandler : public pw::transfer::ReadOnlyHandler {
+    public:
+     SimpleReadTransfer(uint32_t resource_id, pw::ConstByteSpan data)
+         : ReadOnlyHandler(resource_id), reader_(data) {
+       set_reader(reader_);
+     }
 
-   private:
-    pw::stream::MemoryReader reader_;
-  };
+    private:
+     pw::stream::MemoryReader reader_;
+   };
 
 Handlers may optionally implement a `GetStatus` method, which allows clients to
 query the status of a resource with a handler registered. The application layer
@@ -140,17 +141,17 @@ information is `readable_offset`, `writeable_offset`, `read_checksum`, and
 
 .. code-block:: cpp
 
-  Status GetStatus(uint64_t& readable_offset,
-                   uint64_t& writeable_offset,
-                   uint64_t& read_checksum,
-                   uint64_t& write_checksum) {
-    readable_offset = resource.get_size();
-    writeable_offset = resource.get_writeable_offset();
-    read_checksum = resource.get_crc();
-    write_checksum = resource.calculate_crc(0, writeable_offset);
+   Status GetStatus(uint64_t& readable_offset,
+                    uint64_t& writeable_offset,
+                    uint64_t& read_checksum,
+                    uint64_t& write_checksum) {
+     readable_offset = resource.get_size();
+     writeable_offset = resource.get_writeable_offset();
+     read_checksum = resource.get_crc();
+     write_checksum = resource.calculate_crc(0, writeable_offset);
 
-    return pw::OkStatus();
-  }
+     return pw::OkStatus();
+   }
 
 The transfer service is instantiated with a reference to the system's transfer
 thread and registered with the system's RPC server.
@@ -159,33 +160,35 @@ thread and registered with the system's RPC server.
 
 .. code-block:: cpp
 
-  #include "pw_transfer/transfer.h"
+   #include "pw_transfer/transfer.h"
 
-  namespace {
+   namespace {
 
-  // In a write transfer, the maximum number of bytes to receive at one time
-  // (potentially across multiple chunks), unless specified otherwise by the
-  // transfer handler's stream::Writer.
-  constexpr size_t kDefaultMaxBytesToReceive = 1024;
+   // In a write transfer, the maximum number of bytes to receive at one time
+   // (potentially across multiple chunks), unless specified otherwise by the
+   // transfer handler's stream::Writer. Should be set reasonably high; the
+   // transfer will attempt to determine an optimal window size based on the
+   // link.
+   constexpr size_t kDefaultMaxBytesToReceive = 16384;
 
-  pw::transfer::TransferService transfer_service(
-      GetSystemTransferThread(), kDefaultMaxBytesToReceive);
+   pw::transfer::TransferService transfer_service(
+       GetSystemTransferThread(), kDefaultMaxBytesToReceive);
 
-  // Instantiate a handler for the data to be transferred. The resource ID will
-  // be used by the transfer client and server to identify the handler.
-  constexpr uint32_t kMagicBufferResourceId = 1;
-  char magic_buffer_to_transfer[256] = { /* ... */ };
-  SimpleBufferReadHandler magic_buffer_handler(
-      kMagicBufferResourceId, magic_buffer_to_transfer);
+   // Instantiate a handler for the data to be transferred. The resource ID will
+   // be used by the transfer client and server to identify the handler.
+   constexpr uint32_t kMagicBufferResourceId = 1;
+   char magic_buffer_to_transfer[256] = { /* ... */ };
+   SimpleBufferReadHandler magic_buffer_handler(
+       kMagicBufferResourceId, magic_buffer_to_transfer);
 
-  }  // namespace
+   }  // namespace
 
-  void InitTransferService() {
-    // Register the handler with the transfer service, then the transfer service
-    // with an RPC server.
-    transfer_service.RegisterHandler(magic_buffer_handler);
-    GetSystemRpcServer().RegisterService(transfer_service);
-  }
+   void InitTransferService() {
+     // Register the handler with the transfer service, then the transfer service
+     // with an RPC server.
+     bool success = transfer_service.RegisterHandler(magic_buffer_handler);
+     GetSystemRpcServer().RegisterService(transfer_service);
+   }
 
 Transfer client
 ---------------
@@ -247,8 +250,16 @@ is used to manage the transfer. These handles support the following operations:
    // RPC channel on which transfers should be run.
    constexpr uint32_t kChannelId = 42;
 
-   pw::transfer::Client transfer_client(
-       GetSystemRpcClient(), kChannelId, GetSystemTransferThread());
+   // In a read transfer, the maximum number of bytes to receive at one time
+   // (potentially across multiple chunks), unless specified otherwise by the
+   // transfer's stream. Should be set reasonably high; the transfer will
+   // attempt to determine an optimal window size based on the link.
+   constexpr size_t kDefaultMaxBytesToReceive = 16384;
+
+   pw::transfer::Client transfer_client(GetSystemRpcClient(),
+                                        kChannelId,
+                                        GetSystemTransferThread(),
+                                        kDefaultMaxBytesToReceive);
 
    }  // namespace
 
@@ -288,6 +299,11 @@ The transfer size can only be set on the transmitting side of the transfer;
 that is, the client in a ``Write`` transfer or the server in a ``Read``
 transfer.
 
+If the specified resource size is smaller than the available transferrable data,
+only a slice of the data up to the resource size will be transferred. If the
+specified size is equal to or larger than the data size, all of the data will
+be sent.
+
 **Setting a transfer size from a transmitting client**
 
 .. code-block:: c++
@@ -311,6 +327,7 @@ transfer.
      virtual size_t ResourceSize() const final {
        return kMyResourceSize;
      }
+
   };
 
 Atomic File Transfer Handler
@@ -385,11 +402,48 @@ more details.
   requested data has been received, a divisor of three will extend at a third
   of the window, and so on.
 
+.. c:macro:: PW_TRANSFER_LOG_DEFAULT_CHUNKS_BEFORE_RATE_LIMIT
+
+  Number of chunks to send repetitive logs at full rate before reducing to
+  rate_limit. Retransmit parameter chunks will restart at this chunk count
+  limit.
+  Default is first 10 parameter logs will be sent, then reduced to one log
+  every ``PW_TRANSFER_RATE_PERIOD_MS``
+
+.. c:macro:: PW_TRANSFER_LOG_DEFAULT_RATE_PERIOD_MS
+
+  The minimum time between repetative logs after the rate limit has been
+  applied (after CHUNKS_BEFORE_RATE_LIMIT parameter chunks).
+  Default is to reduce repetative logs to once every 10 seconds after
+  CHUNKS_BEFORE_RATE_LIMIT parameter chunks have been sent.
+
+.. c:macro:: PW_TRANSFER_CONFIG_LOG_LEVEL
+
+  Configurable log level for the entire transfer module.
+
+.. c:macro:: PW_TRANSFER_CONFIG_DEBUG_CHUNKS
+
+  Turns on logging of individual non-data or non-parameter chunks. Default is
+  false, to disable logging.
+
+.. c:macro:: PW_TRANSFER_CONFIG_DEBUG_DATA_CHUNKS
+
+  Turns on logging of individual data and parameter chunks. Default is false to
+  disable logging. These chunks are moderated (rate-limited) by the same
+  ``PW_TRANSFER_RATE_PERIOD_MS`` as other repetitive logs.
+
+.. c:macro:: PW_TRANSFER_EVENT_PROCESSING_TIMEOUT_MS
+
+   Maximum time to wait for a transfer event to be processed before dropping
+   further queued events. In systems which can perform long-running operations
+   to process transfer data, this can be used to prevent threads from blocking
+   for extended periods. A value of 0 results in indefinite blocking.
+
 .. _pw_transfer-nonzero-transfers:
 
 Non-zero Starting Offset Transfers
 ----------------------------------
-`pw_transfer` provides for transfers which read from or
+``pw_transfer`` provides for transfers which read from or
 write to a server resource starting from a point after the beginning.
 Handling of read/write/erase boundaries of the resource storage backend must
 be handled by the user through the transfer handler interfaces of `GetStatus`
@@ -432,27 +486,27 @@ Python
 
 .. code-block:: python
 
-  import pw_transfer
+   import pw_transfer
 
-  # Initialize a Pigweed RPC client; see pw_rpc docs for more info.
-  rpc_client = CustomRpcClient()
-  rpcs = rpc_client.channel(1).rpcs
+   # Initialize a Pigweed RPC client; see pw_rpc docs for more info.
+   rpc_client = CustomRpcClient()
+   rpcs = rpc_client.channel(1).rpcs
 
-  transfer_service = rpcs.pw.transfer.Transfer
-  transfer_manager = pw_transfer.Manager(transfer_service)
+   transfer_service = rpcs.pw.transfer.Transfer
+   transfer_manager = pw_transfer.Manager(transfer_service)
 
-  try:
-    # Read the transfer resource with ID 3 from the server.
-    data = transfer_manager.read(3)
-  except pw_transfer.Error as err:
-    print('Failed to read:', err.status)
+   try:
+     # Read the transfer resource with ID 3 from the server.
+     data = transfer_manager.read(3)
+   except pw_transfer.Error as err:
+     print('Failed to read:', err.status)
 
-  try:
-    # Send some data to the server. The transfer manager does not have to be
-    # reinitialized.
-    transfer_manager.write(2, b'hello, world')
-  except pw_transfer.Error as err:
-    print('Failed to write:', err.status)
+   try:
+     # Send some data to the server. The transfer manager does not have to be
+     # reinitialized.
+     transfer_manager.write(2, b'hello, world')
+   except pw_transfer.Error as err:
+     print('Failed to write:', err.status)
 
 Typescript
 ==========
@@ -491,33 +545,33 @@ to represent the results of a read or write transfer.
 
 .. code-block:: java
 
-  import dev.pigweed.pw_transfer.TransferClient;
+   import dev.pigweed.pw_transfer.TransferClient;
 
-  public class TheClass  {
-    public void DoTransfer(MethodClient transferReadMethodClient,
-                           MethodClient transferWriteMethodClient) {
-      // Create a new transfer client.
-      TransferClient client = new TransferClient(
-          transferReadMethodClient,
-          transferWriteMethodClient,
-          TransferTimeoutSettings.builder()
-              .setTimeoutMillis(TRANSFER_TIMEOUT_MS)
-              .setMaxRetries(MAX_RETRIES)
-              .build());
+   public class TheClass  {
+     public void DoTransfer(MethodClient transferReadMethodClient,
+                            MethodClient transferWriteMethodClient) {
+       // Create a new transfer client.
+       TransferClient client = new TransferClient(
+           transferReadMethodClient,
+           transferWriteMethodClient,
+           TransferTimeoutSettings.builder()
+               .setTimeoutMillis(TRANSFER_TIMEOUT_MS)
+               .setMaxRetries(MAX_RETRIES)
+               .build());
 
-      // Start a read transfer.
-      ListenableFuture<byte[]> readTransfer = client.read(123);
+       // Start a read transfer.
+       ListenableFuture<byte[]> readTransfer = client.read(123);
 
-      // Start a write transfer.
-      ListenableFuture<Void> writeTransfer = client.write(123, dataToWrite);
+       // Start a write transfer.
+       ListenableFuture<Void> writeTransfer = client.write(123, dataToWrite);
 
-      // Get the data from the read transfer.
-      byte[] readData = readTransfer.get();
+       // Get the data from the read transfer.
+       byte[] readData = readTransfer.get();
 
-      // Wait for the write transfer to complete.
-      writeTransfer.get();
-    }
-  }
+       // Wait for the write transfer to complete.
+       writeTransfer.get();
+     }
+   }
 
 --------
 Protocol
@@ -560,6 +614,10 @@ timeouts, data retransmissions, and handshakes.
    A non-seekable stream could prematurely terminate a transfer following a
    packet drop.
 
+At present, ``pw_transfer`` requires in-order data transmission. If packets are
+received out-of-order, the receiver will request that the transmitter re-send
+data from the last received position.
+
 Opening handshake
 =================
 Transfers begin with a three-way handshake, whose purpose is to identify the
@@ -578,6 +636,27 @@ operation, which typically involves opening a data stream, alongside any
 additional user-specified setup. The server accepts the client's session ID,
 then responds to the client with a ``START_ACK`` chunk containing the resource,
 session, and configured protocol version for the transfer.
+
+.. _module-pw_transfer-windowing:
+
+Windowing
+=========
+Throughout a transfer, the receiver maintains a window of how much data it can
+receive at a given time. This window is a multiple of the maximum size of a
+single data chunk, and is adjusted dynamically in response to the ongoing status
+of the transfer.
+
+pw_transfer uses a congestion control algorithm similar to that of TCP
+`(RFC 5681 §3.1) <https://datatracker.ietf.org/doc/html/rfc5681#section-3.1>`_,
+adapted to pw_transfer's mode of operation that tunes parameters per window.
+
+Once a portion of a window has successfully been received, it is acknowledged by
+the receiver and the window size is extended. Transfers begin in a "slow start"
+phase, during which the window is doubled on each ACK. This continues until the
+transfer detects a packet loss or times out. Once this occurs, the window size
+is halved and the transfer enters a "congestion avoidance" phase for the
+remainder of its run. During this phase, successful ACKs increase the window
+size by a single chunk, whereas packet loss continues to half it.
 
 Transfer completion
 ===================
@@ -769,9 +848,9 @@ To run the tests on your machine, run
 
 .. code-block:: bash
 
-  $ bazel test \
-        pw_transfer/integration_test:cross_language_small_test \
-        pw_transfer/integration_test:cross_language_medium_test
+   $ bazel test \
+         pw_transfer/integration_test:cross_language_small_test \
+         pw_transfer/integration_test:cross_language_medium_test
 
 .. note:: There is a large test that tests transfers that are megabytes in size.
   These are not run automatically, but can be run manually via the
@@ -784,10 +863,10 @@ pw_transfer against newer versions.
 
 .. code-block:: bash
 
-  # Test a newer version of pw_transfer against an old C++ client that was
-  # backed up to another directory.
-  $ bazel run pw_transfer/integration_test:cross_language_medium_test -- \
-      --cpp-client-binary ../old_pw_transfer_version/cpp_client
+   # Test a newer version of pw_transfer against an old C++ client that was
+   # backed up to another directory.
+   $ bazel run pw_transfer/integration_test:cross_language_medium_test -- \
+       --cpp-client-binary ../old_pw_transfer_version/cpp_client
 
 Backwards compatibility tests
 =============================
@@ -802,13 +881,13 @@ The CIPD package contents can be created with this command:
 
 .. code-block::bash
 
-  $ bazel build pw_transfer/integration_test:server \
-                pw_transfer/integration_test:cpp_client
-  $ mkdir pw_transfer_test_binaries
-  $ cp bazel-bin/pw_transfer/integration_test/server \
-       pw_transfer_test_binaries
-  $ cp bazel-bin/pw_transfer/integration_test/cpp_client \
-       pw_transfer_test_binaries
+   $ bazel build pw_transfer/integration_test:server \
+                 pw_transfer/integration_test:cpp_client
+   $ mkdir pw_transfer_test_binaries
+   $ cp bazel-bin/pw_transfer/integration_test/server \
+        pw_transfer_test_binaries
+   $ cp bazel-bin/pw_transfer/integration_test/cpp_client \
+        pw_transfer_test_binaries
 
 To update the CIPD package itself, follow the `internal documentation for
 updating a CIPD package <go/pigweed-cipd#installing-packages-into-cipd>`_.

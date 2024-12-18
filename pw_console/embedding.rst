@@ -5,7 +5,6 @@ Embedding Guide
 ===============
 .. pigweed-module-subpage::
    :name: pw_console
-   :tagline: pw_console: Multi-purpose pluggable interactive console for dev & manufacturing
 
 -------------
 Using embed()
@@ -78,19 +77,19 @@ following code will create a log message with two custom columns titled
 
 .. code-block:: python
 
-  import logging
+   import logging
 
-  LOG = logging.getLogger('log_source_1')
+   LOG = logging.getLogger('log_source_1')
 
-  LOG.info(
-      'Hello there!',
-      extra={
-          'extra_metadata_fields': {
-              'module': 'cool',
-              'timestamp': 1.2345,
-          }
-      }
-  )
+   LOG.info(
+       'Hello there!',
+       extra={
+           'extra_metadata_fields': {
+               'module': 'cool',
+               'timestamp': 1.2345,
+           }
+       }
+   )
 
 ---------------------
 Debugging Serial Data
@@ -171,3 +170,28 @@ logger. This logger can then be included as a log window pane in the
 
 
 .. _Python's logging documentation: https://docs.python.org/3/library/logging.html#logging.Logger.debug
+
+.. _module-pw_console-embedding-ipython:
+
+------------------------------
+Embeddeding other interpreters
+------------------------------
+The Pigweed console is optimized for use with Pigweed, but other embedded Python
+interpreters may be used to interact with Pigweed devices. Popular options
+include `IPython <https://ipython.org/>`_ and `bpython
+<https://bpython-interpreter.org/>`_.
+
+Embedding IPython is similar to embedding ``pw_console``. After ``import
+IPython``, call ``IPython.start_ipython()`` with the set of variables to expose
+in the console. See `Embedding IPython
+<https://ipython.readthedocs.io/en/stable/interactive/reference.html#embedding>`_
+for details.
+
+.. code-block:: python
+
+   IPython.start_ipython(
+       argv=[],
+       display_banner=False,
+       user_ns=local_variables,
+   )
+   return

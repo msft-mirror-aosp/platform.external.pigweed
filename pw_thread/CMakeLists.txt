@@ -58,10 +58,19 @@ pw_add_facade(pw_thread.thread STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_function
     pw_thread.thread_core
     pw_thread.id
+    pw_thread.options
   SOURCES
     thread.cc
+)
+
+pw_add_library(pw_thread.options INTERFACE
+  HEADERS
+    public/pw_thread/options.h
+  PUBLIC_INCLUDES
+    public
 )
 
 pw_add_library(pw_thread.thread_core INTERFACE
@@ -93,6 +102,25 @@ pw_add_facade(pw_thread.thread_iteration INTERFACE
     pw_status
 )
 
+pw_add_library(pw_thread.deprecated_or_new_thread_function INTERFACE
+  HEADERS
+    public/pw_thread/deprecated_or_new_thread_function.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_function
+)
+
+pw_add_test(pw_thread.deprecated_or_new_thread_function_test
+  SOURCES
+    deprecated_or_new_thread_function_test.cc
+  PRIVATE_DEPS
+    pw_thread.deprecated_or_new_thread_function
+  GROUPS
+    modules
+    pw_thread
+)
+
 pw_proto_library(pw_thread.thread_snapshot_service_cc
   SOURCES
     pw_thread_protos/thread_snapshot_service.proto
@@ -106,6 +134,7 @@ pw_add_library(pw_thread.thread_snapshot_service STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_log
     pw_protobuf
     pw_rpc.raw.server_api
     pw_span

@@ -44,7 +44,7 @@ class StringReceiver {
  public:
   const char* Wait() {
     PW_CHECK(sem_.try_acquire_for(10s));
-    return reinterpret_cast<const char*>(buffer_.begin());
+    return reinterpret_cast<const char*>(buffer_.data());
   }
 
   Function<void(ConstByteSpan, Status)> UnaryOnCompleted() {
@@ -110,12 +110,12 @@ TEST(RawRpcIntegrationTest, DISABLED_OnNextOverwritesItsOwnCall) {
 
     // Chain together three calls. The first and third copy the string in normal
     // order, while the second copies the string in reverse order.
-    ctx.call = kServiceClient.BidirectionalEcho([&ctx](ConstByteSpan data) {
-      ctx.call = kServiceClient.BidirectionalEcho([&ctx](ConstByteSpan data) {
-        ctx.receiver.ReverseCopyStringPayload(data);
+    ctx.call = kServiceClient.BidirectionalEcho([&ctx](ConstByteSpan data_1) {
+      ctx.call = kServiceClient.BidirectionalEcho([&ctx](ConstByteSpan data_2) {
+        ctx.receiver.ReverseCopyStringPayload(data_2);
         ctx.call = kServiceClient.BidirectionalEcho(ctx.receiver.OnNext());
       });
-      ctx.receiver.CopyStringPayload(data);
+      ctx.receiver.CopyStringPayload(data_1);
     });
 
     ASSERT_EQ(OkStatus(), ctx.call.Write(pw::as_bytes(pw::span("Window"))));

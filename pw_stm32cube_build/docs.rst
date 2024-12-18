@@ -53,7 +53,7 @@ generate the ``files.txt``.
 
 .. code-block:: bash
 
-  pw package install stm32cube_{family}
+   pw package install stm32cube_{family}
 
 Headers
 =======
@@ -106,7 +106,7 @@ For multi target projects, the standard practice to set this for each target:
 
 .. code-block:: text
 
-  dir_pw_third_party_stm32cube = dir_pw_third_party_stm32cube_f4
+   dir_pw_third_party_stm32cube = dir_pw_third_party_stm32cube_f4
 
 
 ``pw_third_party_stm32cube_PRODUCT``
@@ -161,7 +161,7 @@ directories.
 
 .. code-block:: bash
 
-  stm32cube_builder gen_file_list /path/to/stm32cube_dir
+   stm32cube_builder gen_file_list /path/to/stm32cube_dir
 
 find_files
 ==========
@@ -186,7 +186,7 @@ The following variables are output: ``family``, ``product_define``,
 
 .. code-block:: bash
 
-  stm32cube_builder find_files /path/to/stm32cube_dir stm32{family}{product} [--init]
+   stm32cube_builder find_files /path/to/stm32cube_dir stm32{family}{product} [--init]
 
 inject_init
 =============
@@ -207,7 +207,7 @@ the pre main init call. The output is printed to stdout, or to the specified
 
 .. code-block:: bash
 
-  stm32cube_builder inject_init /path/to/startup.s [--out-startup-path /path/to/new_startup.s]
+   stm32cube_builder inject_init /path/to/startup.s [--out-startup-path /path/to/new_startup.s]
 
 icf_to_ld
 =========
@@ -223,7 +223,7 @@ stdout or the specified ``--ld-path``.
 
 .. code-block:: bash
 
-  stm32cube_builder inject_init /path/to/iar_linker.icf [--ld-path /path/to/gcc_linker.ld]
+   stm32cube_builder inject_init /path/to/iar_linker.icf [--ld-path /path/to/gcc_linker.ld]
 
 .. _`MCU Components`: https://github.com/STMicroelectronics/STM32Cube_MCU_Overall_Offer#stm32cube-mcu-components
 .. _`ST's GitHub page`: https://github.com/STMicroelectronics
@@ -243,20 +243,17 @@ integration. You need to add the following git repositories to your workspace:
 *  ``stm32{family}xx_hal_driver`` (e.g., `HAL driver repo for the F4 family
    <https://github.com/STMicroelectronics/stm32f4xx_hal_driver/>`_). We provide
    a Bazel build file which works for any family at
-   ``@pigweed//third_party/stm32cube/stm32_hal_driver.BUILD.bazel``. By default,
-   we assume this repository will be named ``@hal_driver``, but this can be
-   overriden with a label flag (discussed below).
+   ``@pigweed//third_party/stm32cube/stm32_hal_driver.BUILD.bazel``. Below,
+   we'll refer to this repository as ``@hal_driver``.
 *  ``cmsis_device_{family}`` (e.g., `CMSIS device repo for the F4 family
    <https://github.com/STMicroelectronics/cmsis_device_f4>`_). We provide a
    Bazel build file which works for any family at
-   ``@pigweed//third_party/stm32cube/cmsis_device.BUILD.bazel``. By default, we
-   assume this repository will be named ``@cmsis_device``, but this can be
-   overriden with a label flag (discussed below).
+   ``@pigweed//third_party/stm32cube/cmsis_device.BUILD.bazel``. Below, we'll
+   refer to this repository as ``@cmsis_device``.
 *  ``cmsis_core``, at https://github.com/STMicroelectronics/cmsis_core. We
    provide a Bazel build file for it at
-   ``@pigweed//third_party/stm32cube/cmsis_core.BUILD.bazel``. By
-   default, we assume this repository will be named ``@cmsis_core``, but this
-   can be overriden with a label flag (discussed below).
+   ``@pigweed//third_party/stm32cube/cmsis_core.BUILD.bazel``. Below, we'll
+   refer to this repository as ``@cmsis_core``.
 
 .. _module-pw_stm32cube_build-bazel-multifamily:
 
@@ -270,21 +267,23 @@ family. To do so,
 1.  Add the appropriate repositories to your WORKSPACE under different names,
     eg. ``@stm32f4xx_hal_driver`` and ``@stm32h7xx_hal_driver``.
 2.  Set the corresponding :ref:`module-pw_stm32cube_build-bazel-label-flags` as
-    part of the platform configuration for your embedded target platforms.
-    Currently, the best way to do this is via a `bazelrc config
-    <https://bazel.build/run/bazelrc#config>`_, which would look like this:
+    part of the platform definition for your embedded target platforms.
 
-    .. code-block::
+.. code-block:: text
 
-       build:stm32f429i --platforms=//targets/stm32f429i_disc1_stm32cube:platform
-       build:stm32f429i --@pigweed//third_party/stm32cube:stm32_hal_driver=@stm32f4xx_hal_driver//:hal_driver
-       build:stm32f429i --@stm32f4xx_hal_driver//:cmsis_device=@cmsis_device_f4//:cmsis_device
-       build:stm32f429i --@stm32f4xx_hal_driver//:cmsis_init=@cmsis_device_f4//:default_cmsis_init
-
-    However, once `platform-based flags
-    <https://github.com/bazelbuild/proposals/blob/main/designs/2023-06-08-platform-based-flags.md>`_
-    are implemented in Bazel, it will be possible to set these flags directly
-    in the platform definition.
+   platform(
+     name = "...",
+     ...
+     flags = flags_from_dict({
+       ...
+       "@cmsis_core//:cc_defines": ":<your cc_defines target>",
+       "@stm32f4xx_hal_driver//:hal_config": "//targets/stm32f429i_disc1_stm32cube:hal_config",
+       "@pigweed//third_party/stm32cube:hal_driver": "@stm32f4xx_hal_driver//:hal_driver",
+       "@stm32f4xx_hal_driver//:cmsis_device": "@cmsis_device_f4//:cmsis_device",
+       "@stm32f4xx_hal_driver//:cmsis_init": "@cmsis_device_f4//:default_cmsis_init",
+       "@cmsis_device_f4//:cmsis_core": "@cmsis_core",
+     }),
+   )
 
 .. [#] Although CMSIS core is shared by all MCU families, different CMSIS
    device repositories may not be compatible with the same version of CMSIS
@@ -301,8 +300,9 @@ Upstream Pigweed modules that depend on the STM32Cube HAL, like
 header ``stm32cube/stm32cube.h``. This header expects the family to be set
 through a define of ``STM32CUBE_HEADER``. So, to use these Pigweed modules, you
 need to set that define to the correct value (e.g., ``\"stm32f4xx.h\"``; note
-the backslashes) as part of your build. This is most conveniently done through
-``copts`` associated with the target platform.
+the backslashes) as part of your build. This is most conveniently done via the
+``defines`` attribute of a ``cc_library`` target which is then set as the
+value of the ``@cmsis_core//:cc_defines`` label flag.
 
 .. _module-pw_stm32cube_build-bazel-label-flags:
 
@@ -310,48 +310,45 @@ Label flags
 ===========
 Required
 --------
+``//third_party/stm32cube:hal_driver``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This label_flag should point to the repository containing the HAL driver.
+We'll refer to this repository as ``@hal_driver`` below.
+
 ``@hal_driver//:hal_config``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Points to the ``cc_library`` target providing a header with the HAL
 configuration. Note that this header needs an appropriate, family-specific name
 (e.g., ``stm32f4xx_hal_conf.h`` for the F4 family).
 
-Optional
---------
-These label flags can be used to further customize the behavior of STM32Cube.
-
-``//third_party/stm32cube:stm32_hal_driver``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-This label_flag introduces a layer of indirection useful when building a
-project that requires more than one STM32Cube package (see
-:ref:`module-pw_stm32cube_build-bazel-multifamily`). It should point to the
-repository containing the HAL driver.
-
-The default value is ``@hal_driver``.
+``@cmsis_core//:cc_defines``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This label flag should point to a `cc_library` target which adds `define`
+entries for `STM32CUBE_HEADER` and the `STM32....` family (e.g. `STM32F429xx`).
 
 ``@cmsis_device//:cmsis_core``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This label flag should point to the repository containing the CMSIS core build
-target.
-
-The default value is ``@cmsis_core``.
+target (``@cmsis_core``).
 
 ``@hal_driver//:cmsis_device``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This label flag should point to the repository containing the CMSIS device
-build target.
-
-The default value is ``@cmsis_device``.
+build target. (``@cmsis_device``).
 
 ``@hal_driver//:cmsis_init``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-This label flag should point to the CMSIS initialization code. By default it
-points to the ``system_{family}.c`` template provided in the CMSIS device
-repository.
+This label flag should point to the CMSIS initialization code
+``@cmsis_device://default_cmsis_init``, the ``system_{family}.c`` template
+provided in the CMSIS device repository, is a good starting choice.
+
+Optional
+--------
+These label flags can be used to further customize the behavior of STM32Cube.
+
 
 ``@hal_driver//:timebase``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 This label flag should point to a ``cc_library`` providing a timebase
 implementation. By default it points to the template included with STM's HAL
 repository.
-

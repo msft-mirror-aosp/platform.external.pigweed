@@ -41,28 +41,41 @@ In order to use this you are expected to set the following variables from
 
 Bazel
 =====
-.. There's a bug in the Bazel docs site which is causing the link to the evergreen
-.. section on constraint settings to 404. So for now, we'll just link to the
-.. v5.4.0 doc on constraint settings. When the Bazel bug is fixed we can return the
-.. URL to https://bazel.build/reference/be/platform#constraint_setting
+Pigweed provides its own BUILD.bazel file for FreeRTOS, at
+``third_party/freertos/freertos.BUILD.bazel``. You can use it directly in
+your ``WORKSPACE``, like so:
 
-In Bazel, the FreeRTOS build is configured through `constraint_settings
-<https://docs.bazel.build/versions/5.4.0/be/platform.html#constraint_setting>`_. The `platform
-<https://bazel.build/extending/platforms>`_ you are building for must specify
-values for the following settings:
+.. code-block:: python
 
-*   ``//third_party/freertos:port``, to set which FreeRTOS port to use. You can
-    select a value from those defined in ``third_party/freertos/BUILD.bazel``.
-*   ``//third_party/freertos:malloc``, to set which FreeRTOS malloc
-    implementation to use. You can select a value from those defined in
-    ``third_party/freertos/BUILD.bazel``.
-*   ``//third_party/freertos:disable_task_statics_setting``, to determine
-    whether statics should be disabled during compilation of the tasks.c source
-    file (see next section). This setting has only two possible values, also
-    defined in ``third_party/freertos/BUILD.bazel``.
+   http_archive(
+      name = "freertos",
+      build_file = "@pigweed//third_party/freertos:freertos.BUILD.bazel",
+      sha256 = "89af32b7568c504624f712c21fe97f7311c55fccb7ae6163cda7adde1cde7f62",
+      strip_prefix = "FreeRTOS-Kernel-10.5.1",
+      urls = ["https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V10.5.1.tar.gz"],
+   )
 
-In addition, you need to set the ``@pigweed//targets:freertos_config`` label
-flag to point to the library target providing the FreeRTOS config header.  See
+The FreeRTOS build is configured through `constraint_settings
+<https://bazel.build/reference/be/platforms-and-toolchains#constraint_setting>`_.
+The `platform <https://bazel.build/extending/platforms>`_ you are building for
+must specify values for the following settings:
+
+*   ``@freertos//:port``, to set which FreeRTOS port to use. You can
+    select a value from those defined in
+    ``third_party/freertos/freertos.BUILD.bazel`` (for example,
+    ``@freertos//:port_ARM_CM4F``).
+*   ``@freertos//:malloc``, to set which FreeRTOS malloc implementation to use.
+    You can select a value from those defined in
+    ``third_party/freertos/BUILD.bazel`` (for example,
+    ``@freertos//:malloc_heap_1``).
+*   ``@freertos//:disable_task_statics_setting``, to determine whether statics
+    should be disabled during compilation of the tasks.c source file (see next
+    section). This setting has only two possible values, also defined in
+    ``third_party/freertos/BUILD.bazel``: ``@freertos//:disable_task_statics``
+    and ``@freertos//:no_disable_task_statics``.
+
+In addition, you need to set the ``@freertos//:freertos_config`` label flag to
+point to the library target providing the FreeRTOS config header.  See
 :ref:`docs-build_system-bazel_configuration` for a discussion of how to work
 with our label flags.
 
@@ -78,8 +91,9 @@ to enable use of things like pw_thread_freertos/util.h's ``ForEachThread``.
 To facilitate this, Pigweed offers an opt-in option which can be enabled,
 
 *  in GN through ``pw_third_party_freertos_DISABLE_TASKS_STATICS = true``,
-*  in CMake through ``set(pw_third_party_freertos_DISABLE_TASKS_STATICS ON CACHE BOOL "" FORCE)``,
-*  in Bazel through ``//third_party/freertos:disable_task_statics``.
+*  in CMake through ``set(pw_third_party_freertos_DISABLE_TASKS_STATICS ON
+   CACHE BOOL "" FORCE)``,
+*  in Bazel through ``@freertos//:disable_task_statics``.
 
 This redefines ``static`` to nothing for the ``Source/tasks.c`` FreeRTOS source
 file when building through ``$dir_pw_third_party/freertos`` in GN and through
@@ -92,10 +106,9 @@ file when building through ``$dir_pw_third_party/freertos`` in GN and through
 As a helper ``PW_THIRD_PARTY_FREERTOS_NO_STATICS=1`` is defined when statics are
 disabled to help manage conditional configuration.
 
-We highly recommend
-:ref:`our configASSERT wrapper <third_party-freertos_config_assert>` when  using
-this configuration, which correctly sets ``configASSERT`` to use ``PW_CHECK` and
-``PW_ASSERT`` for you.
+We highly recommend :ref:`our configASSERT wrapper
+<third_party-freertos_config_assert>` when  using this configuration, which
+correctly sets ``configASSERT`` to use ``PW_CHECK`` and ``PW_ASSERT`` for you.
 
 -----------------------------
 OS Abstraction Layers Support
@@ -106,6 +119,25 @@ modules:
 * :ref:`module-pw_chrono_freertos`
 * :ref:`module-pw_sync_freertos`
 * :ref:`module-pw_thread_freertos`
+
+Backend group
+=============
+In GN, import ``pw_targets_FREERTOS_BACKEND_GROUP`` to set backends for
+:ref:`module-pw_chrono`, :ref:`module-pw_sync`, and :ref:`module-pw_thread` for
+FreeRTOS. The backends can be overridden individually if needed.
+
+.. code-block:: none
+
+   # Toolchain configuration
+   import("$dir_pigweed/targets/common/freertos.gni")
+
+   _backend_setting_example = {
+     # Since this target is using FreeRTOS, adopt FreeRTOS backends by default.
+     forward_variables_from(pw_targets_FREERTOS_BACKEND_GROUP, "*")
+
+     # Set other backends or override the default FreeRTOS selections if needed.
+     ...
+   }
 
 .. _third_party-freertos_config_assert:
 
@@ -119,5 +151,10 @@ is provided under ``pw_third_party/freertos/config_assert.h`` which defines
 
 .. code-block:: cpp
 
-  // Instead of defining configASSERT, simply include this header in its place.
-  #include "pw_third_party/freertos/config_assert.h"
+   // Instead of defining configASSERT, simply include this header in its place.
+   #include "pw_third_party/freertos/config_assert.h"
+
+---------------------------------------------
+FreeRTOS application function implementations
+---------------------------------------------
+.. doxygengroup:: FreeRTOS_application_functions

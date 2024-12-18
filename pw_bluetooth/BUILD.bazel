@@ -55,6 +55,7 @@ cc_library(
         "//pw_chrono:system_clock",
         "//pw_containers",
         "//pw_function",
+        "//pw_result",
         "//pw_status",
         "//pw_string:string",
     ],
@@ -101,12 +102,46 @@ pw_cc_test(
 )
 
 emboss_cc_library(
-    name = "_emboss_hci_common",
-    srcs = ["public/pw_bluetooth/hci_common.emb"],
+    name = "_emboss_att",
+    srcs = ["public/pw_bluetooth/att.emb"],
+    enable_enum_traits = False,
+    import_dirs = ["public"],
     visibility = ["//visibility:private"],
+    deps = [
+        ":_emboss_hci_data",
+        ":_emboss_l2cap_frames",
+    ],
+)
+
+cc_library(
+    name = "emboss_att",
+    includes = ["public"],
+    deps = [":_emboss_att"],
+)
+
+emboss_cc_library(
+    name = "_emboss_hci_android",
+    srcs = ["public/pw_bluetooth/hci_android.emb"],
+    enable_enum_traits = False,
+    import_dirs = ["public"],
+    visibility = ["//visibility:private"],
+    deps = [":_emboss_hci_common"],
 )
 
 # emboss_cc_library doesn't support includes, so we need to wrap it.
+cc_library(
+    name = "emboss_hci_android",
+    includes = ["public"],
+    deps = [":_emboss_hci_android"],
+)
+
+emboss_cc_library(
+    name = "_emboss_hci_common",
+    srcs = ["public/pw_bluetooth/hci_common.emb"],
+    enable_enum_traits = False,
+    visibility = ["//visibility:private"],
+)
+
 cc_library(
     name = "emboss_hci_common",
     includes = ["public"],
@@ -116,6 +151,8 @@ cc_library(
 emboss_cc_library(
     name = "_emboss_hci_commands",
     srcs = ["public/pw_bluetooth/hci_commands.emb"],
+    enable_enum_traits = False,
+    import_dirs = ["public"],
     visibility = ["//visibility:private"],
     deps = [":_emboss_hci_common"],
 )
@@ -127,8 +164,24 @@ cc_library(
 )
 
 emboss_cc_library(
+    name = "_emboss_hci_data",
+    srcs = ["public/pw_bluetooth/hci_data.emb"],
+    enable_enum_traits = False,
+    visibility = ["//visibility:private"],
+    deps = [":_emboss_hci_common"],
+)
+
+cc_library(
+    name = "emboss_hci_data",
+    includes = ["public"],
+    deps = [":_emboss_hci_data"],
+)
+
+emboss_cc_library(
     name = "_emboss_hci_events",
     srcs = ["public/pw_bluetooth/hci_events.emb"],
+    enable_enum_traits = False,
+    import_dirs = ["public"],
     visibility = ["//visibility:private"],
     deps = [":_emboss_hci_common"],
 )
@@ -140,21 +193,24 @@ cc_library(
 )
 
 emboss_cc_library(
-    name = "_emboss_hci_vendor",
-    srcs = ["public/pw_bluetooth/hci_vendor.emb"],
+    name = "_emboss_hci_h4",
+    srcs = ["public/pw_bluetooth/hci_h4.emb"],
+    enable_enum_traits = False,
+    import_dirs = ["public"],
     visibility = ["//visibility:private"],
-    deps = [":_emboss_hci_common"],
 )
 
 cc_library(
-    name = "emboss_hci_vendor",
+    name = "emboss_hci_h4",
     includes = ["public"],
-    deps = [":_emboss_hci_vendor"],
+    deps = [":_emboss_hci_h4"],
 )
 
 emboss_cc_library(
     name = "_emboss_hci_test",
     srcs = ["public/pw_bluetooth/hci_test.emb"],
+    enable_enum_traits = False,
+    import_dirs = ["public"],
     visibility = ["//visibility:private"],
     deps = [":_emboss_hci_common"],
 )
@@ -168,6 +224,7 @@ cc_library(
 emboss_cc_library(
     name = "_emboss_l2cap_frames",
     srcs = ["public/pw_bluetooth/l2cap_frames.emb"],
+    enable_enum_traits = False,
     visibility = ["//visibility:private"],
 )
 
@@ -180,10 +237,12 @@ cc_library(
 cc_library(
     name = "emboss_hci",
     deps = [
+        ":emboss_hci_android",
         ":emboss_hci_commands",
         ":emboss_hci_common",
+        ":emboss_hci_data",
         ":emboss_hci_events",
-        ":emboss_hci_vendor",
+        ":emboss_hci_h4",
     ],
 )
 
@@ -191,9 +250,13 @@ pw_cc_test(
     name = "emboss_test",
     srcs = ["emboss_test.cc"],
     deps = [
+        # All emboss targets are listed (even if they don't have explicit tests)
+        # to ensure they are compiled.
+        ":emboss_att",
         ":emboss_hci",
         ":emboss_hci_test",
         ":emboss_l2cap_frames",
+        "//third_party/fuchsia:stdcompat",
     ],
 )
 

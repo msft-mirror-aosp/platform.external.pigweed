@@ -21,7 +21,7 @@ from pathlib import Path
 import re
 import shutil
 import textwrap
-from typing import Callable, Collection, List, Optional, Sequence
+from typing import Callable, Collection, Sequence
 
 from pw_presubmit import git_repo, presubmit
 
@@ -144,7 +144,7 @@ def _add_programs_arguments(
         help='List all the available steps.',
     )
 
-    def presubmit_step(arg: str) -> List[presubmit.Check]:
+    def presubmit_step(arg: str) -> list[presubmit.Check]:
         """Return a list of matching presubmit steps."""
         filtered_step_names = fnmatch.filter(all_steps.keys(), arg)
 
@@ -197,7 +197,7 @@ def _add_programs_arguments(
 
 def add_arguments(
     parser: argparse.ArgumentParser,
-    programs: Optional[presubmit.Programs] = None,
+    programs: presubmit.Programs | None = None,
     default: str = '',
 ) -> None:
     """Adds common presubmit check options to an argument parser."""
@@ -278,17 +278,17 @@ def _get_default_parser() -> argparse.ArgumentParser:
 
 
 def run(  # pylint: disable=too-many-arguments
-    default_program: Optional[presubmit.Program],
+    default_program: presubmit.Program | None,
     program: Sequence[presubmit.Program],
     step: Sequence[presubmit.Check],
     substep: str,
-    output_directory: Optional[Path],
+    output_directory: Path | None,
     package_root: Path,
     clear: bool,
-    root: Optional[Path] = None,
+    root: Path | None = None,
     repositories: Collection[Path] = (),
     only_list_steps=False,
-    list_steps: Optional[Callable[[], None]] = None,
+    list_steps: Callable[[], None] | None = None,
     dry_run: bool = False,
     **other_args,
 ) -> int:
@@ -346,14 +346,14 @@ def run(  # pylint: disable=too-many-arguments
         list_steps()
         return 0
 
-    final_program: Optional[presubmit.Program] = None
+    final_program: presubmit.Program | None = None
     if not program and not step:
-        assert default_program  # Cast away Optional[].
+        assert default_program  # Cast away "| None".
         final_program = default_program
     elif len(program) == 1 and not step:
         final_program = program[0]
     else:
-        steps: List[presubmit.Check] = []
+        steps: list[presubmit.Check] = []
         steps.extend(step)
         for prog in program:
             steps.extend(prog)

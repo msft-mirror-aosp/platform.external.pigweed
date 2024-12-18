@@ -25,17 +25,19 @@ export interface TableColumn {
 }
 
 export interface LogEntry {
-  severity?: Severity;
+  severity?: Level;
+  level?: Level;
   timestamp: Date;
   fields: Field[];
   sourceData?: SourceData;
 }
 
-export interface LogViewConfig {
-  columnData: TableColumn[];
-  search: string;
-  viewID: string;
-  viewTitle: string;
+export enum Level {
+  DEBUG = 'DEBUG',
+  INFO = 'INFO',
+  WARNING = 'WARNING',
+  ERROR = 'ERROR',
+  CRITICAL = 'CRITICAL',
 }
 
 export enum Severity {
@@ -44,10 +46,6 @@ export enum Severity {
   WARNING = 'WARNING',
   ERROR = 'ERROR',
   CRITICAL = 'CRITICAL',
-}
-
-export interface State {
-  logViewConfig: LogViewConfig[];
 }
 
 export interface LogEntryEvent {

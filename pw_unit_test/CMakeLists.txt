@@ -13,6 +13,9 @@
 # the License.
 
 include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
+include($ENV{PW_ROOT}/pw_protobuf_compiler/proto.cmake)
+
+include($ENV{PW_ROOT}/pw_unit_test/backend.cmake)
 
 pw_add_module_config(pw_unit_test_CONFIG)
 
@@ -50,26 +53,41 @@ else()
 endif()
 
 pw_add_library(pw_unit_test.light STATIC
+  HEADERS
+    light_public_overrides/pw_unit_test/framework_backend.h
   SOURCES
     framework_light.cc
   PUBLIC_DEPS
+    pw_bytes.alignment
     pw_polyfill
     pw_preprocessor
-    pw_string
+    pw_string.builder
     pw_unit_test.config
+  PRIVATE_DEPS
+    pw_assert
   PUBLIC_INCLUDES
     light_public_overrides
     public
     public_overrides
 )
 
-pw_add_library(pw_unit_test.googletest STATIC
-  SOURCES
+pw_add_library(pw_unit_test.googletest INTERFACE
+  HEADERS
     googletest_public_overrides/pw_unit_test/framework_backend.h
   PUBLIC_INCLUDES
     googletest_public_overrides
   PUBLIC_DEPS
     pw_third_party.googletest
+)
+
+pw_add_library(pw_unit_test.googletest_handler_adapter STATIC
+  SOURCES
+    googletest_handler_adapter.cc
+  PUBLIC_DEPS
+    pw_unit_test.event_handler
+    pw_third_party.googletest
+  PUBLIC_INCLUDES
+    public
 )
 
 pw_add_test(pw_unit_test.framework_test
@@ -193,3 +211,74 @@ pw_add_test(pw_unit_test.multi_event_handler_test
   GROUPS
     pw_unit_test
 )
+
+pw_add_library(pw_unit_test.test_record_event_handler INTERFACE
+  HEADERS
+    public/pw_unit_test/internal/test_record_trie.h
+    public/pw_unit_test/test_record_event_handler.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_json.builder
+    pw_unit_test.event_handler
+)
+
+pw_add_test(pw_unit_test.test_record_event_handler_test
+  SOURCES
+    test_record_event_handler_test.cc
+  PRIVATE_DEPS
+    pw_unit_test.test_record_event_handler
+  GROUPS
+    pw_unit_test
+)
+
+pw_proto_library(pw_unit_test.unit_test_proto
+  SOURCES
+    pw_unit_test_proto/unit_test.proto
+)
+
+if("${pw_unit_test_BACKEND}" STREQUAL "pw_unit_test.light")
+  pw_add_library(pw_unit_test.rpc_service STATIC
+    PUBLIC_DEPS
+      pw_unit_test.config
+      pw_unit_test.event_handler
+      pw_unit_test
+      pw_unit_test.unit_test_proto.pwpb
+      pw_unit_test.unit_test_proto.raw_rpc
+      pw_containers.vector
+    PRIVATE_DEPS
+      pw_log
+    PUBLIC_INCLUDES
+      public
+      rpc_light_public
+    HEADERS
+      public/pw_unit_test/unit_test_service.h
+      rpc_light_public/pw_unit_test/internal/rpc_event_handler.h
+    SOURCES
+      unit_test_service.cc
+      rpc_light_event_handler.cc
+  )
+else()
+  pw_add_library(pw_unit_test.rpc_service STATIC
+    PUBLIC_DEPS
+      pw_unit_test.config
+      pw_unit_test.event_handler
+      pw_unit_test
+      pw_unit_test.unit_test_proto.pwpb
+      pw_unit_test.unit_test_proto.raw_rpc
+      pw_containers.vector
+    PRIVATE_DEPS
+      pw_log
+    PUBLIC_INCLUDES
+      public
+      rpc_gtest_public
+    HEADERS
+      public/pw_unit_test/unit_test_service.h
+      rpc_light_public/pw_unit_test/internal/rpc_event_handler.h
+      rpc_gtest_public/pw_unit_test/internal/rpc_event_handler.h
+    SOURCES
+      unit_test_service.cc
+      rpc_gtest_event_handler.cc
+  )
+endif()

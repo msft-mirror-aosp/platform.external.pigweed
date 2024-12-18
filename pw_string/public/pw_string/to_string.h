@@ -56,6 +56,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include "pw_result/result.h"
 #include "pw_span/span.h"
 #include "pw_status/status.h"
 #include "pw_status/status_with_size.h"
@@ -64,6 +65,10 @@
 #include "pw_string/type_to_string.h"
 
 namespace pw {
+
+template <typename T>
+StatusWithSize ToString(const T& value, span<char> buffer);
+
 namespace internal {
 
 template <typename T>
@@ -71,6 +76,36 @@ struct is_std_optional : std::false_type {};
 
 template <typename T>
 struct is_std_optional<std::optional<T>> : std::true_type {};
+
+template <typename, typename = void>
+constexpr bool is_iterable = false;
+
+template <typename T>
+constexpr bool is_iterable<T,
+                           std::void_t<decltype(std::declval<T>().begin()),
+                                       decltype(std::declval<T>().end())>> =
+    true;
+
+template <typename BeginType, typename EndType>
+inline StatusWithSize IterableToString(BeginType begin,
+                                       EndType end,
+                                       span<char> buffer) {
+  StatusWithSize s;
+  s.UpdateAndAdd(ToString("[", buffer));
+  auto iter = begin;
+  if (iter != end && s.ok()) {
+    s.UpdateAndAdd(ToString(*iter, buffer.subspan(s.size())));
+    ++iter;
+  }
+  while (iter != end && s.ok()) {
+    s.UpdateAndAdd(ToString(", ", buffer.subspan(s.size())));
+    s.UpdateAndAdd(ToString(*iter, buffer.subspan(s.size())));
+    ++iter;
+  }
+  s.UpdateAndAdd(ToString("]", buffer.subspan(s.size())));
+  s.ZeroIfNotOk();
+  return s;
+}
 
 }  // namespace internal
 
@@ -114,6 +149,8 @@ StatusWithSize ToString(const T& value, span<char> buffer) {
     }
   } else if constexpr (std::is_same_v<std::remove_cv_t<T>, std::nullopt_t>) {
     return string::CopyStringOrNull("std::nullopt", buffer);
+  } else if constexpr (internal::is_iterable<T>) {
+    return internal::IterableToString(value.begin(), value.end(), buffer);
   } else {
     // By default, no definition of UnknownTypeToString is provided.
     return string::UnknownTypeToString(value, buffer);
@@ -128,6 +165,19 @@ inline StatusWithSize ToString(Status status, span<char> buffer) {
 
 inline StatusWithSize ToString(pw_Status status, span<char> buffer) {
   return ToString(Status(status), buffer);
+}
+
+template <typename T>
+inline StatusWithSize ToString(const Result<T>& result, span<char> buffer) {
+  if (result.ok()) {
+    StatusWithSize s;
+    s.UpdateAndAdd(ToString("Ok(", buffer));
+    s.UpdateAndAdd(ToString(*result, buffer.subspan(s.size())));
+    s.UpdateAndAdd(ToString(")", buffer.subspan(s.size())));
+    s.ZeroIfNotOk();
+    return s;
+  }
+  return ToString(result.status(), buffer);
 }
 
 inline StatusWithSize ToString(std::byte byte, span<char> buffer) {

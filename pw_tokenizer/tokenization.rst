@@ -7,7 +7,6 @@ Tokenization
 ============
 .. pigweed-module-subpage::
    :name: pw_tokenizer
-   :tagline: Compress strings to shrink logs by +75%
 
 Tokenization converts a string literal to a token. If it's a printf-style
 string, its arguments are encoded along with it. The results of tokenization can
@@ -83,13 +82,13 @@ string.
 
 .. code-block:: protobuf
 
-  import "pw_tokenizer_proto/options.proto";
+   import "pw_tokenizer_proto/options.proto";
 
-  message MessageWithOptionallyTokenizedField {
-    bytes just_bytes = 1;
-    bytes maybe_tokenized = 2 [(pw.tokenizer.format) = TOKENIZATION_OPTIONAL];
-    string just_text = 3;
-  }
+   message MessageWithOptionallyTokenizedField {
+     bytes just_bytes = 1;
+     bytes maybe_tokenized = 2 [(pw.tokenizer.format) = TOKENIZATION_OPTIONAL];
+     string just_text = 3;
+   }
 
 -----------------------
 Tokenization in C++ / C
@@ -113,20 +112,20 @@ The tokenization macros above cannot be used inside other expressions.
 
   .. code-block:: cpp
 
-    constexpr uint32_t kGlobalToken = PW_TOKENIZE_STRING("Wowee Zowee!");
+     constexpr uint32_t kGlobalToken = PW_TOKENIZE_STRING("Wowee Zowee!");
 
-    void Function() {
-      constexpr uint32_t local_token = PW_TOKENIZE_STRING("Wowee Zowee?");
-    }
+     void Function() {
+       constexpr uint32_t local_token = PW_TOKENIZE_STRING("Wowee Zowee?");
+     }
 
 .. admonition:: **No**: Use :c:macro:`PW_TOKENIZE_STRING` in another expression.
   :class: error
 
   .. code-block:: cpp
 
-   void BadExample() {
-     ProcessToken(PW_TOKENIZE_STRING("This won't compile!"));
-   }
+     void BadExample() {
+       ProcessToken(PW_TOKENIZE_STRING("This won't compile!"));
+     }
 
   Use :c:macro:`PW_TOKENIZE_STRING_EXPR` instead.
 
@@ -151,9 +150,9 @@ special function variables like ``__func__``.
 
   .. code-block:: cpp
 
-    void GoodExample() {
-      ProcessToken(PW_TOKENIZE_STRING_EXPR("This will compile!"));
-    }
+     void GoodExample() {
+       ProcessToken(PW_TOKENIZE_STRING_EXPR("This will compile!"));
+     }
 
 .. admonition:: **No**: Assign :c:macro:`PW_TOKENIZE_STRING_EXPR` to a ``constexpr`` variable.
   :class: error
@@ -169,11 +168,11 @@ special function variables like ``__func__``.
 
   .. code-block:: cpp
 
-    void BadExample() {
-      // This compiles, but __func__ will not be the outer function's name, and
-      // there may be compiler warnings.
-      constexpr uint32_t wont_work = PW_TOKENIZE_STRING_EXPR(__func__);
-    }
+     void BadExample() {
+       // This compiles, but __func__ will not be the outer function's name, and
+       // there may be compiler warnings.
+       constexpr uint32_t wont_work = PW_TOKENIZE_STRING_EXPR(__func__);
+     }
 
   Instead, use :c:macro:`PW_TOKENIZE_STRING` to tokenize ``__func__`` or similar macros.
 
@@ -214,10 +213,10 @@ which is concatenated to the rest of the format string by the C preprocessor.
 
 .. code-block:: cpp
 
-  PW_TOKENIZE_FORMAT_STRING("margarine_domain",
-                            UINT32_MAX,
-                            "I can't believe it's not " PW_TOKEN_FMT() "!",
-                            PW_TOKENIZE_STRING_EXPR("butter"));
+   PW_TOKENIZE_FORMAT_STRING("margarine_domain",
+                             UINT32_MAX,
+                             "I can't believe it's not " PW_TOKEN_FMT() "!",
+                             PW_TOKENIZE_STRING_EXPR("butter"));
 
 This feature is currently only supported by the Python detokenizer.
 
@@ -227,11 +226,14 @@ Nested tokens have the following format within strings:
 
 .. code-block::
 
-   $[BASE#]TOKEN
+   $[{DOMAIN}][BASE#]TOKEN
 
 The ``$`` is a common prefix required for all nested tokens. It is possible to
 configure a different common prefix if necessary, but using the default ``$``
 character is strongly recommended.
+
+The optional ``DOMAIN`` specifies the token domain. If this option is omitted,
+the default (empty) domain is assumed.
 
 The optional ``BASE`` defines the numeric base encoding of the token. Accepted
 values are 8, 10, 16, and 64. If the hash symbol ``#`` is used without
@@ -592,18 +594,18 @@ format strings and optional arguments.
 
 .. code-block:: bash
 
-  python -m pw_tokenizer.encode [-h] FORMAT_STRING [ARG ...]
+   python -m pw_tokenizer.encode [-h] FORMAT_STRING [ARG ...]
 
 Example:
 
 .. code-block:: text
 
-  $ python -m pw_tokenizer.encode "There's... %d many of %s!" 2 them
-        Raw input: "There's... %d many of %s!" % (2, 'them')
-  Formatted input: There's... 2 many of them!
-            Token: 0xb6ef8b2d
-          Encoded: b'-\x8b\xef\xb6\x04\x04them' (2d 8b ef b6 04 04 74 68 65 6d) [10 bytes]
-  Prefixed Base64: $LYvvtgQEdGhlbQ==
+   $ python -m pw_tokenizer.encode "There's... %d many of %s!" 2 them
+         Raw input: "There's... %d many of %s!" % (2, 'them')
+   Formatted input: There's... 2 many of them!
+             Token: 0xb6ef8b2d
+           Encoded: b'-\x8b\xef\xb6\x04\x04them' (2d 8b ef b6 04 04 74 68 65 6d) [10 bytes]
+   Prefixed Base64: $LYvvtgQEdGhlbQ==
 
 See ``--help`` for full usage details.
 

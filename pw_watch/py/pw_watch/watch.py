@@ -57,11 +57,8 @@ from threading import Thread
 from typing import (
     Callable,
     Iterable,
-    List,
     NoReturn,
-    Optional,
     Sequence,
-    Tuple,
 )
 
 from watchdog.events import FileSystemEventHandler  # type: ignore[import]
@@ -178,7 +175,7 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
 
         self.restart_on_changes = restart
         self.fullscreen_enabled = fullscreen
-        self.watch_app: Optional[WatchApp] = None
+        self.watch_app: WatchApp | None = None
 
         self.use_logfile = use_logfile
         self.separate_logfiles = separate_logfiles
@@ -189,7 +186,7 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
 
         # Track state of a build. These need to be members instead of locals
         # due to the split between dispatch(), run(), and on_complete().
-        self.matching_path: Optional[Path] = None
+        self.matching_path: Path | None = None
 
         if (
             not self.fullscreen_enabled
@@ -235,7 +232,7 @@ class PigweedBuildWatcher(FileSystemEventHandler, DebouncedFunction):
             return
 
         # Collect paths of interest from the event.
-        paths: List[str] = []
+        paths: list[str] = []
         if hasattr(event, 'dest_path'):
             paths.append(os.fsdecode(event.dest_path))
         if event.src_path:
@@ -549,10 +546,7 @@ def _exit_due_to_inotify_instance_limit():
 def _exit_due_to_pigweed_not_installed():
     # Show information and suggested commands when pigweed environment variable
     # not found.
-    _LOG.error(
-        'Environment variable $PW_ROOT not defined or is defined '
-        'outside the current directory.'
-    )
+    _LOG.error('Environment variable $PW_ROOT not defined.')
     _LOG.error(
         'Did you forget to activate the Pigweed environment? '
         'Try source ./activate.sh'
@@ -578,7 +572,7 @@ def minimal_watch_directories(to_watch: Path, to_exclude: Iterable[Path]):
         assert False, "Please watch one directory at a time."
 
     # Reformat to_exclude.
-    directories_to_exclude: List[Path] = [
+    directories_to_exclude: list[Path] = [
         to_watch.joinpath(directory_to_exclude)
         for directory_to_exclude in to_exclude
         if to_watch.joinpath(directory_to_exclude).is_dir()
@@ -588,6 +582,10 @@ def minimal_watch_directories(to_watch: Path, to_exclude: Iterable[Path]):
     # and generate all parent paths needed to be watched without recursion.
     exclude_dir_parents = {to_watch}
     for directory_to_exclude in directories_to_exclude:
+        # Irrelevant excluded path
+        if not Path(directory_to_exclude).is_relative_to(to_watch):
+            continue
+
         parts = list(Path(directory_to_exclude).relative_to(to_watch).parts)[
             :-1
         ]
@@ -611,11 +609,11 @@ def minimal_watch_directories(to_watch: Path, to_exclude: Iterable[Path]):
                 yield item, True
 
 
-def get_common_excludes() -> List[Path]:
+def get_common_excludes() -> list[Path]:
     """Find commonly excluded directories, and return them as a [Path]"""
-    exclude_list: List[Path] = []
+    exclude_list: list[Path] = []
 
-    typical_ignored_directories: List[str] = [
+    typical_ignored_directories: list[str] = [
         '.environment',  # Legacy bootstrap-created CIPD and Python venv.
         '.presubmit',  # Presubmit-created CIPD and Python venv.
         '.git',  # Pigweed's git repo.
@@ -630,6 +628,11 @@ def get_common_excludes() -> List[Path]:
     exclude_list.extend(
         pw_root_dir / ignored_directory
         for ignored_directory in typical_ignored_directories
+    )
+
+    # Ignore bazel-* directories
+    exclude_list.extend(
+        d for d in pw_root_dir.glob('bazel-*') if d.is_dir() and d.is_symlink()
     )
 
     # Preset exclude for common downstream project structures.
@@ -729,29 +732,29 @@ def watch_setup(  # pylint: disable=too-many-locals
     # allows use of watch_setup by other project build scripts.
     patterns: str = WATCH_PATTERN_DELIMITER.join(WATCH_PATTERNS),
     ignore_patterns_string: str = '',
-    exclude_list: Optional[List[Path]] = None,
+    exclude_list: list[Path] | None = None,
     restart: bool = True,
     serve_docs: bool = False,
     serve_docs_port: int = 8000,
     serve_docs_path: Path = Path('docs/gen/docs'),
     fullscreen: bool = False,
     banners: bool = True,
-    logfile: Optional[Path] = None,
+    logfile: Path | None = None,
     separate_logfiles: bool = False,
     parallel: bool = False,
     parallel_workers: int = 0,
     # pylint: disable=unused-argument
-    default_build_targets: Optional[List[str]] = None,
-    build_directories: Optional[List[str]] = None,
-    build_system_commands: Optional[List[str]] = None,
-    run_command: Optional[List[str]] = None,
-    jobs: Optional[int] = None,
+    default_build_targets: list[str] | None = None,
+    build_directories: list[str] | None = None,
+    build_system_commands: list[str] | None = None,
+    run_command: list[str] | None = None,
+    jobs: int | None = None,
     keep_going: bool = False,
     colors: bool = True,
     debug_logging: bool = False,
     # pylint: enable=unused-argument
     # pylint: disable=too-many-arguments
-) -> Tuple[PigweedBuildWatcher, List[Path]]:
+) -> tuple[PigweedBuildWatcher, list[Path]]:
     """Watches files and runs Ninja commands when they change."""
     watch_logging_init(
         log_level=project_builder.default_log_level,
@@ -770,9 +773,6 @@ def watch_setup(  # pylint: disable=too-many-locals
 
     # Get pigweed directory information from environment variable PW_ROOT.
     if os.environ['PW_ROOT'] is None:
-        _exit_due_to_pigweed_not_installed()
-    pw_root = Path(os.environ['PW_ROOT']).resolve()
-    if Path.cwd().resolve() not in [pw_root, *pw_root.parents]:
         _exit_due_to_pigweed_not_installed()
 
     build_recipes = project_builder.build_recipes
@@ -852,7 +852,7 @@ def watch_setup(  # pylint: disable=too-many-locals
 
 def watch(
     event_handler: PigweedBuildWatcher,
-    exclude_list: List[Path],
+    exclude_list: list[Path],
 ):
     """Watches files and runs Ninja commands when they change."""
     # Try to make a short display path for the watched directory that has
@@ -919,8 +919,8 @@ def watch(
 
 def run_watch(
     event_handler: PigweedBuildWatcher,
-    exclude_list: List[Path],
-    prefs: Optional[WatchAppPrefs] = None,
+    exclude_list: list[Path],
+    prefs: WatchAppPrefs | None = None,
     fullscreen: bool = False,
 ) -> None:
     """Start pw_watch."""

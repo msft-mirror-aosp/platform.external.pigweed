@@ -24,8 +24,6 @@
 #include "pw_bluetooth_sapphire/internal/host/l2cap/mock_channel_test.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 
-#pragma clang diagnostic ignored "-Wshadow"
-
 namespace bt::gatt {
 namespace {
 
@@ -813,7 +811,7 @@ TEST_F(ServerTest, ReadByGroupTypeSingleTruncated) {
 
   // Force the MTU to exactly fit |kExpected| which partially contains
   // |kTestValue|.
-  att()->set_mtu(kExpected.size());
+  att()->set_mtu(static_cast<uint16_t>(kExpected.size()));
 
   EXPECT_PACKET_OUT(kExpected);
   fake_chan()->Receive(kRequest);
@@ -861,7 +859,7 @@ TEST_F(ServerTest, ReadByGroupTypeMultipleSameValueSize) {
 
   // Set the MTU to be one byte too short to include the 5th attribute group.
   // The 3rd group is omitted as its group type does not match.
-  att()->set_mtu(kExpected1.size() + 6);
+  att()->set_mtu(static_cast<uint16_t>(kExpected1.size() + 6));
 
   EXPECT_PACKET_OUT(kExpected1);
   fake_chan()->Receive(kRequest1);
@@ -1156,12 +1154,11 @@ TEST_F(ServerTest, ReadByTypeDynamicValueError) {
 }
 
 TEST_F(ServerTest, ReadByTypeSingle) {
-  const StaticByteBuffer kTestValue1('f', 'o', 'o');
-  const StaticByteBuffer kTestValue2('t', 'e', 's', 't');
+  const StaticByteBuffer kTestValue('t', 'e', 's', 't');
 
   auto* grp = db()->NewGrouping(types::kPrimaryService, 1, kTestValue1);
   grp->AddAttribute(kTestType16, AllowedNoSecurity(), att::AccessRequirements())
-      ->SetValue(kTestValue2);
+      ->SetValue(kTestValue);
   grp->set_active(true);
 
   // clang-format off
@@ -1186,13 +1183,12 @@ TEST_F(ServerTest, ReadByTypeSingle) {
 }
 
 TEST_F(ServerTest, ReadByTypeSingle128) {
-  const StaticByteBuffer kTestValue1('f', 'o', 'o');
-  const StaticByteBuffer kTestValue2('t', 'e', 's', 't');
+  const StaticByteBuffer kTestValue('t', 'e', 's', 't');
 
   auto* grp = db()->NewGrouping(types::kPrimaryService, 1, kTestValue1);
   grp->AddAttribute(
          kTestType128, AllowedNoSecurity(), att::AccessRequirements())
-      ->SetValue(kTestValue2);
+      ->SetValue(kTestValue);
   grp->set_active(true);
 
   // clang-format off
@@ -1245,7 +1241,7 @@ TEST_F(ServerTest, ReadByTypeSingleTruncated) {
   // Force the MTU to exactly fit |kExpected| which partially contains
   // |kTestValue2| (the packet is crafted so that both |kRequest| and
   // |kExpected| fit within the MTU).
-  att()->set_mtu(kExpected.size());
+  att()->set_mtu(static_cast<uint16_t>(kExpected.size()));
 
   EXPECT_PACKET_OUT(kExpected);
   fake_chan()->Receive(kRequest);
@@ -1325,7 +1321,7 @@ TEST_F(ServerTest, ReadByTypeMultipleSameValueSize) {
   fake_chan()->Receive(kRequest1);
 
   // Set the MTU 1 byte too short for |kExpected1|.
-  att()->set_mtu(kExpected1.size() - 1);
+  att()->set_mtu(static_cast<uint16_t>(kExpected1.size() - 1));
 
   // clang-format off
   const StaticByteBuffer kExpected2(
@@ -3208,7 +3204,7 @@ class ServerTestSecurity : public ServerTest {
     return true;
   }
 
-  template <bool (ServerTestSecurity::*EmulateMethod)(
+  template <bool (ServerTestSecurity::* EmulateMethod)(
                 att::Handle, fit::result<att::ErrorCode>),
             bool IsWrite>
   void RunTest() {

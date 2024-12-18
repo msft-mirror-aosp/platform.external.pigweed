@@ -14,7 +14,7 @@
 """Simple watchdog class."""
 
 import threading
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 
 class Watchdog:
@@ -30,7 +30,7 @@ class Watchdog:
         on_expiration: Callable[[], Any],
         while_expired: Callable[[], Any] = lambda: None,
         timeout_s: float = 1,
-        expired_timeout_s: Optional[float] = None,
+        expired_timeout_s: float | None = None,
     ):
         """Creates a watchdog; start() must be called to start it.
 
@@ -68,6 +68,15 @@ class Watchdog:
         )
         self._watchdog.daemon = True
         self._watchdog.start()
+
+    def stop(self) -> None:
+        """Stops the watchdog.
+
+        This will not trigger the execution of any callbacks and will prevent
+        further execution of any callbacks (including `while_expired`) until
+        `start` is called again.
+        """
+        self._watchdog.cancel()
 
     def reset(self) -> bool:
         """Resets the timeout; calls the on_reset callback if expired.

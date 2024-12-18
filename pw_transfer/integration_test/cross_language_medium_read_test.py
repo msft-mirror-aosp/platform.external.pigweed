@@ -36,8 +36,8 @@ import random
 
 from google.protobuf import text_format
 
-from pigweed.pw_transfer.integration_test import config_pb2
-from pigweed.pw_transfer.integration_test import test_fixture
+from pw_transfer.integration_test import config_pb2
+from pw_transfer.integration_test import test_fixture
 from test_fixture import TransferIntegrationTestHarness, TransferConfig
 
 _ALL_LANGUAGES = ("cpp", "java", "python")
@@ -97,12 +97,22 @@ class MediumTransferReadIntegrationTest(test_fixture.TransferIntegrationTest):
                 """
                 client_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [5, 1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [5, 1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
                 ]
 
                 server_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [5, 1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [5, 1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
             ]""",
                 config_pb2.ProxyConfig(),
             ),
@@ -132,12 +142,22 @@ class MediumTransferReadIntegrationTest(test_fixture.TransferIntegrationTest):
                 """
                 client_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [2, 1, -1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [2, 1, -1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
                 ]
 
                 server_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [1, 2, -1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [1, 2, -1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
             ]""",
                 config_pb2.ProxyConfig(),
             ),
@@ -185,13 +205,23 @@ class MediumTransferReadIntegrationTest(test_fixture.TransferIntegrationTest):
                 """
                 client_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [5, 1]} }
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [5, 1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
                 ]
 
                 server_filter_stack: [
                     { hdlc_packetizer: {} },
-                    { keep_drop_queue: {keep_drop_queue: [5, 1]} }
-            ]""",
+                    {
+                        keep_drop_queue: {
+                            keep_drop_queue: [5, 1],
+                            only_consider_transfer_chunks: true,
+                        }
+                    }
+                ]""",
                 config_pb2.ProxyConfig(),
             ),
         )

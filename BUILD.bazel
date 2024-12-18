@@ -11,18 +11,28 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-
-load("@python3//:defs.bzl", "interpreter")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 
 licenses(["notice"])
 
-alias(
-    name = "python3_interpreter",
-    actual = interpreter,
-    visibility = ["//visibility:public"],
+# Needed for releasing //pw_bluetooth_sapphire/fuchsia/bt_host.
+exports_files(
+    ["LICENSE"],
+    visibility = [":__subpackages__"],
 )
 
 exports_files(
-    ["tsconfig.json"],
+    [
+        "pigweed.json",
+        "tsconfig.json",
+    ],
     visibility = [":__subpackages__"],
+)
+
+# Symlink to clangd, for user convenience.
+copy_file(
+    name = "copy_clangd",
+    src = "@llvm_toolchain//:bin/clangd",
+    out = "clangd",
+    allow_symlink = True,
 )

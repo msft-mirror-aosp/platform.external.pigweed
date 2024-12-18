@@ -15,6 +15,7 @@
 #include "pw_stream/mpsc_stream.h"
 
 #include <cstring>
+#include <mutex>
 
 #include "pw_assert/check.h"
 
@@ -48,7 +49,9 @@ void CreateMpscStream(MpscReader& reader, MpscWriter& writer) {
 ////////////////////////////////////////////////////////////////////////////////
 // MpscWriter methods.
 
-MpscWriter::MpscWriter(const MpscWriter& other) { *this = other; }
+MpscWriter::MpscWriter(const MpscWriter& other) : MpscWriter() {
+  *this = other;
+}
 
 MpscWriter& MpscWriter::operator=(const MpscWriter& other) {
   Close();

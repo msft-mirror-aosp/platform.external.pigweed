@@ -21,6 +21,7 @@
 #include "pw_chrono/system_clock.h"
 #include "pw_sync/interrupt_spin_lock.h"
 #include "pw_sync/lock_annotations.h"
+#include "pw_sync/mutex.h"
 #include "pw_toolchain/no_destructor.h"
 
 namespace pw::async2 {
@@ -41,6 +42,7 @@ inline pw::sync::InterruptSpinLock& dispatcher_lock() {
 
 class DispatcherBase;
 class Waker;
+class WaitReason;
 
 // Forward-declare ``Dispatcher``.
 // This concrete type must be provided by a backend.
@@ -66,9 +68,19 @@ class Context {
   /// ``dispatcher().Post(task);``.
   Dispatcher& dispatcher() { return *dispatcher_; }
 
+  /// Queues the current ``Task::Pend`` to run again in the future, possibly
+  /// after other work is performed.
+  ///
+  /// This may be used by ``Task`` implementations that wish to provide
+  /// additional fairness by yielding to the dispatch loop rather than perform
+  /// too much work in a single iteration.
+  ///
+  /// This is semantically equivalent to calling ``GetWaker(...).Wake()``
+  void ReEnqueue();
+
   /// Returns a ``Waker`` which, when awoken, will cause the current task to be
   /// ``Pend``'d by its dispatcher.
-  Waker& waker() { return *waker_; }
+  Waker GetWaker(WaitReason reason);
 
  private:
   Dispatcher* dispatcher_;
@@ -95,9 +107,16 @@ class Context {
 /// to make progress.
 ///
 /// Note that ``Task`` objects *must not* be destroyed while they are actively
-/// being ``Pend``'d by a ``Dispatcher``. The best way to ensure this is to
-/// create ``Task`` objects that continue to live until they receive a
-/// ``DoDestroy`` call or which outlive their associated ``Dispatcher``.
+/// being ``Pend``'d by a ``Dispatcher``. To protect against this, be sure to
+/// do one of the following:
+///
+/// - Use dynamic lifetimes by creating ``Task`` objects that continue to live
+///   until they receive a ``DoDestroy`` call.
+/// - Create ``Task`` objects whose stack-based lifetimes outlive their
+///   associated ``Dispatcher``.
+/// - Call ``Deregister`` on the ``Task`` prior to its destruction. NOTE that
+///   ``Deregister`` may not be called from inside the ``Task``'s own ``Pend``
+///   method.
 class Task {
   friend class Waker;
   friend class DispatcherBase;
@@ -125,26 +144,58 @@ class Task {
     // read by the ``Pend`` implementation.
   }
 
-  // A public interface for ``DoPend``.
-  //
-  // ``DoPend`` is normally invoked by a ``Dispatcher`` after a ``Task`` has
-  // been ``Post`` ed.
-  //
-  // This wrapper should only be called by ``Task`` s delegating to other
-  // ``Task`` s.  For example, a ``class MainTask`` might have separate fields
-  // for  ``TaskA` and ``TaskB``, and could invoke ``Pend`` on these types
-  // within its own ``DoPend`` implementation.
+  /// A public interface for ``DoPend``.
+  ///
+  /// ``DoPend`` is normally invoked by a ``Dispatcher`` after a ``Task`` has
+  /// been ``Post`` ed.
+  ///
+  /// This wrapper should only be called by ``Task`` s delegating to other
+  /// ``Task`` s.  For example, a ``class MainTask`` might have separate fields
+  /// for  ``TaskA`` and ``TaskB``, and could invoke ``Pend`` on these types
+  /// within its own ``DoPend`` implementation.
   Poll<> Pend(Context& cx) { return DoPend(cx); }
 
-  // A public interface for ``DoDestroy``.
-  //
-  // ``DoDestroy`` is normally invoked by a ``Dispatcher`` after a ``Post`` ed
-  // ``Task`` has completed.
-  //
-  // This should only be called by ``Task`` s delegating to other ``Task`` s.
+  /// Whether or not the ``Task`` is registered with a ``Dispatcher``.
+  ///
+  /// Returns ``true`` after this ``Task`` is passed to ``Dispatcher::Post``
+  /// until one of the following occurs:
+  ///
+  /// - This ``Task`` returns ``Ready`` from its ``Pend`` method.
+  /// - ``Task::Deregister`` is called.
+  /// - The associated ``Dispatcher`` is destroyed.
+  bool IsRegistered() const;
+
+  /// Deregisters this ``Task`` from the linked ``Dispatcher`` and any
+  /// associated ``Waker`` values.
+  ///
+  /// This must not be invoked from inside this task's ``Pend`` function, as
+  /// this will result in a deadlock.
+  ///
+  /// NOTE: If this task's ``Pend`` method is currently being run on the
+  /// dispatcher, this method will block until ``Pend`` completes.
+  ///
+  /// NOTE: This method sadly cannot guard against the dispatcher itself being
+  /// destroyed, so this method must not be called concurrently with
+  /// destruction of the dispatcher associated with this ``Task``.
+  ///
+  /// Note that this will *not* destroy the underlying ``Task``.
+  void Deregister();
+
+  /// A public interface for ``DoDestroy``.
+  ///
+  /// ``DoDestroy`` is normally invoked by a ``Dispatcher`` after a ``Post`` ed
+  /// ``Task`` has completed.
+  ///
+  /// This should only be called by ``Task`` s delegating to other ``Task`` s.
   void Destroy() { DoDestroy(); }
 
  private:
+  /// Attempts to deregister this task.
+  ///
+  /// If the task is currently running, this will return false and the task
+  /// will not be deregistered.
+  bool TryDeregister() PW_EXCLUSIVE_LOCKS_REQUIRED(dispatcher_lock());
+
   /// Attempts to advance this ``Task`` to completion.
   ///
   /// This method should not perform synchronous waiting, as doing so may block
@@ -219,8 +270,11 @@ class Task {
 /// This identifier may be stored for debugging purposes.
 class WaitReason {
  public:
-  /// Indicates that the wait is happen for an unspecified reason.
+  /// Indicates that the wait is happening for an unspecified reason.
   static WaitReason Unspecified() { return WaitReason(); }
+
+  /// Indicates that the wait is happening until a timeout expires.
+  static WaitReason Timeout() { return WaitReason(); }
 
  private:
   WaitReason() {}
@@ -246,9 +300,14 @@ class Waker {
   friend class DispatcherImpl;
 
  public:
-  Waker() = default;
+  constexpr Waker() = default;
   Waker(Waker&& other) noexcept PW_LOCKS_EXCLUDED(dispatcher_lock());
+
+  /// Replace this ``Waker`` with another.
+  ///
+  /// This operation is guaranteed to be thread-safe.
   Waker& operator=(Waker&& other) noexcept PW_LOCKS_EXCLUDED(dispatcher_lock());
+
   ~Waker() noexcept { RemoveFromTaskWakerList(); }
 
   /// Wakes up the ``Waker``'s creator, alerting it that an asynchronous
@@ -258,6 +317,8 @@ class Waker {
   /// that the event that was waited on has been complete. This makes it
   /// possible to track the outstanding events that may cause a ``Task`` to
   /// wake up and make progress.
+  ///
+  /// This operation is guaranteed to be thread-safe.
   void Wake() && PW_LOCKS_EXCLUDED(dispatcher_lock());
 
   /// Creates a second ``Waker`` from this ``Waker``.
@@ -268,7 +329,29 @@ class Waker {
   /// The ``WaitReason`` argument can be used to provide information about
   /// what event the ``Waker`` is waiting on. This can be useful for
   /// debugging purposes.
+  ///
+  /// This operation is guaranteed to be thread-safe.
   Waker Clone(WaitReason reason) & PW_LOCKS_EXCLUDED(dispatcher_lock());
+
+  /// Returns whether this ``Waker`` is empty.
+  ///
+  /// Empty wakers are those that perform no action upon wake. These may be
+  /// created either via the default no-argument constructor or by
+  /// calling ``Clear`` or ``std::move`` on a ``Waker``, after which the
+  /// moved-from ``Waker`` will be empty.
+  ///
+  /// This operation is guaranteed to be thread-safe.
+  [[nodiscard]] bool IsEmpty() const PW_LOCKS_EXCLUDED(dispatcher_lock());
+
+  /// Clears this ``Waker``.
+  ///
+  /// After this call, ``Wake`` will no longer perform any action, and
+  /// ``IsEmpty`` will return ``true``.
+  ///
+  /// This operation is guaranteed to be thread-safe.
+  void Clear() PW_LOCKS_EXCLUDED(dispatcher_lock()) {
+    RemoveFromTaskWakerList();
+  }
 
  private:
   Waker(Task& task) PW_LOCKS_EXCLUDED(dispatcher_lock()) : task_(&task) {
@@ -298,11 +381,6 @@ class Waker {
 /// and to prevent build system cycles due to ``Task`` needing to refer
 /// to the ``Dispatcher`` class.
 class DispatcherBase {
-  friend class Task;
-  friend class Waker;
-  template <typename Impl>
-  friend class DispatcherImpl;
-
  public:
   DispatcherBase() = default;
   DispatcherBase(DispatcherBase&) = delete;
@@ -328,6 +406,11 @@ class DispatcherBase {
   void Deregister() PW_LOCKS_EXCLUDED(dispatcher_lock());
 
  private:
+  friend class Task;
+  friend class Waker;
+  template <typename Impl>
+  friend class DispatcherImpl;
+
   /// Sends a wakeup signal to this ``Dispatcher``.
   ///
   /// This method's implementation should ensure that the ``Dispatcher`` comes
@@ -359,6 +442,19 @@ class DispatcherBase {
 
   // For use by ``RunOneTask``.
   Task* PopWokenTask() PW_EXCLUSIVE_LOCKS_REQUIRED(dispatcher_lock());
+
+  // A lock guarding ``Task`` execution.
+  //
+  // This will be acquired prior to pulling any tasks off of the ``Task``
+  // queue, and only released after they have been run and possibly
+  // destroyed.
+  //
+  // If acquiring this lock and ``dispatcher_lock()``, this lock must
+  // be acquired first in order to avoid deadlocks.
+  //
+  // Acquiring this lock may be a slow process, as it must wait until
+  // the running task has finished executing ``Task::Pend``.
+  pw::sync::Mutex task_execution_lock_;
 
   Task* first_woken_ PW_GUARDED_BY(dispatcher_lock()) = nullptr;
   Task* last_woken_ PW_GUARDED_BY(dispatcher_lock()) = nullptr;
@@ -488,10 +584,17 @@ class DispatcherImpl : public DispatcherBase {
   /// ``Dispatcher`` implementation should go to sleep. Notably it will return
   /// that the ``Dispatcher`` should not sleep if there is still more work to
   /// be done.
-  SleepInfo AttemptRequestWake() PW_LOCKS_EXCLUDED(dispatcher_lock()) {
+  ///
+  /// @param  allow_empty Whether or not to allow sleeping when no tasks are
+  ///                     registered.
+  SleepInfo AttemptRequestWake(bool allow_empty)
+      PW_LOCKS_EXCLUDED(dispatcher_lock()) {
     std::lock_guard lock(dispatcher_lock());
     // Don't allow sleeping if there are already tasks waiting to be run.
     if (first_woken_ != nullptr) {
+      return SleepInfo::DontSleep();
+    }
+    if (!allow_empty && sleeping_ == nullptr) {
       return SleepInfo::DontSleep();
     }
     /// Indicate that the ``Dispatcher`` is sleeping and will need a ``DoWake``
@@ -505,12 +608,17 @@ class DispatcherImpl : public DispatcherBase {
   /// run, and whether `task_to_look_for` was run.
   [[nodiscard]] RunOneTaskResult RunOneTask(Task* task_to_look_for)
       PW_LOCKS_EXCLUDED(dispatcher_lock()) {
+    std::lock_guard task_lock(task_execution_lock_);
     Task* task;
     {
       std::lock_guard lock(dispatcher_lock());
       task = PopWokenTask();
       if (task == nullptr) {
-        return RunOneTaskResult(false, false, false);
+        bool all_complete = first_woken_ == nullptr && sleeping_ == nullptr;
+        return RunOneTaskResult(
+            /*completed_all_tasks=*/all_complete,
+            /*completed_main_task=*/false,
+            /*ran_a_task=*/false);
       }
       task->state_ = Task::State::kRunning;
     }
@@ -519,7 +627,7 @@ class DispatcherImpl : public DispatcherBase {
     {
       Waker waker(*task);
       Context context(self(), waker);
-      complete = task->DoPend(context).IsReady();
+      complete = task->Pend(context).IsReady();
     }
     if (complete) {
       bool all_complete;

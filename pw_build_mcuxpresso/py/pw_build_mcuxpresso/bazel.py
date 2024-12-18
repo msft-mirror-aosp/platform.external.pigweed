@@ -13,7 +13,7 @@
 # the License.
 """Bazel output support."""
 
-from typing import Any, List, Optional
+from typing import Any
 
 import pathlib
 
@@ -22,6 +22,16 @@ try:
 except ImportError:
     # Load from this directory if pw_build_mcuxpresso is not available.
     from components import Project  # type: ignore
+
+
+def _bazel_bool_out(name: str, val: bool, indent: int = 0) -> None:
+    """Outputs boolean in Bazel format."""
+    print('    ' * indent + f'{name} = "{val}",')
+
+
+def _bazel_int_out(name: str, val: int, indent: int = 0) -> None:
+    """Outputs integer in Bazel format."""
+    print('    ' * indent + f'{name} = "{val}",')
 
 
 def _bazel_str(val: Any) -> str:
@@ -34,7 +44,7 @@ def _bazel_str_out(name: str, val: Any, indent: int = 0) -> None:
     print('    ' * indent + f'{name} = "{_bazel_str(val)}",')
 
 
-def _bazel_str_list_out(name: str, vals: List[Any], indent: int = 0) -> None:
+def _bazel_str_list_out(name: str, vals: list[Any], indent: int = 0) -> None:
     """Outputs list of strings in Bazel format with correct escaping."""
     if not vals:
         return
@@ -47,8 +57,8 @@ def _bazel_str_list_out(name: str, vals: List[Any], indent: int = 0) -> None:
 
 def _bazel_path_list_out(
     name: str,
-    vals: List[pathlib.Path],
-    path_prefix: Optional[str] = None,
+    vals: list[pathlib.Path],
+    path_prefix: str | None = None,
     indent: int = 0,
 ) -> None:
     """Outputs list of paths in Bazel format with common prefix."""
@@ -61,7 +71,10 @@ def _bazel_path_list_out(
 
 
 def bazel_output(
-    project: Project, name: str, path_prefix: Optional[str] = None
+    project: Project,
+    name: str,
+    path_prefix: str | None = None,
+    extra_args: dict[str, Any] | None = None,
 ):
     """Output Bazel target for a project with the specified components.
 
@@ -69,6 +82,7 @@ def bazel_output(
         project: MCUXpresso project to output.
         name: target name to output.
         path_prefix: string prefix to prepend to all paths.
+        extra_args: Dictionary of additional arguments to generated target.
     """
     print('cc_library(')
     _bazel_str_out('name', name, indent=1)
@@ -85,5 +99,25 @@ def bazel_output(
     _bazel_path_list_out(
         'includes', project.include_dirs, path_prefix=path_prefix, indent=1
     )
+
+    for arg_name, arg_value in (extra_args or {}).items():
+        if isinstance(arg_value, bool):
+            _bazel_bool_out(arg_name, arg_value, indent=1)
+        elif isinstance(arg_value, int):
+            _bazel_int_out(arg_name, arg_value, indent=1)
+        elif isinstance(arg_value, str):
+            _bazel_str_out(arg_name, arg_value, indent=1)
+        elif isinstance(arg_value, list):
+            if all(isinstance(x, str) for x in arg_value):
+                _bazel_str_list_out(arg_name, arg_value, indent=1)
+            else:
+                raise TypeError(
+                    f"Can't handle extra arg {arg_name!r}: "
+                    f"a list of {type(arg_value[0])}"
+                )
+        else:
+            raise TypeError(
+                f"Can't handle extra arg {arg_name!r}: {type(arg_value)}"
+            )
 
     print(')')

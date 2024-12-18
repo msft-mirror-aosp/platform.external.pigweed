@@ -19,12 +19,6 @@ size in a variable. This allows Vectors to be used without having to know
 their maximum size at compile time. It also keeps code size small since
 function implementations are shared for all maximum sizes.
 
-.. admonition:: Non-trivially-destructible, self-referencing types
-
-   ``pw::Vector`` is not safe to use with non-trivially-destructible,
-   self-referencing types. See `b/313899658
-   <https://issues.pigweed.dev/issues/313899658>`_.
-
 ---------------
 pw::InlineDeque
 ---------------
@@ -35,60 +29,169 @@ pw::InlineQueue
 ---------------
 .. doxygentypedef:: pw::InlineQueue
 
-----------------------------
-pw::VariableLengthEntryQueue
-----------------------------
-.. doxygenfile:: pw_containers/variable_length_entry_queue.h
+--------------------------
+pw::InlineVarLenEntryQueue
+--------------------------
+.. doxygenfile:: pw_containers/inline_var_len_entry_queue.h
    :sections: detaileddescription
 
-API Reference
+Example
+=======
+.. tab-set::
+
+   .. tab-item:: C++
+      :sync: c++
+
+      Queues are declared with their max size
+      (``InlineVarLenEntryQueue<kMaxSize>``) but may be used without
+      specifying the size (``InlineVarLenEntryQueue<>&``).
+
+      .. code-block:: c++
+
+         // Declare a queue with capacity sufficient for one 10-byte entry or
+         // multiple smaller entries.
+         pw::InlineVarLenEntryQueue<10> queue;
+
+         // Push an entry, asserting if the entry does not fit.
+         queue.push(queue, data)
+
+         // Use push_overwrite() to push entries, overwriting older entries
+         // as needed.
+         queue.push_overwrite(queue, more_data)
+
+         // Remove an entry.
+         queue.pop();
+
+      Alternately, a ``InlineVarLenEntryQueue`` may be initialized in an
+      existing ``uint32_t`` array.
+
+      .. code-block:: c++
+
+         // Initialize a InlineVarLenEntryQueue.
+         uint32_t buffer[32];
+         auto& queue = pw::InlineVarLenEntryQueue<>::Init(buffer);
+
+         // Largest supported entry is 114 B (13 B overhead + 1 B prefix)
+         assert(queue.max_size_bytes() == 114u);
+
+         // Write data
+         queue.push_overwrite(data);
+
+   .. tab-item:: C
+      :sync: c
+
+      A ``InlineVarLenEntryQueue`` may be declared and initialized in C with the
+      :c:macro:`PW_VARIABLE_LENGTH_ENTRY_QUEUE_DECLARE` macro.
+
+      .. code-block:: c
+
+         // Declare a queue with capacity sufficient for one 10-byte entry or
+         // multiple smaller entries.
+         PW_VARIABLE_LENGTH_ENTRY_QUEUE_DECLARE(queue, 10);
+
+         // Push an entry, asserting if the entry does not fit.
+         pw_InlineVarLenEntryQueue_Push(queue, "12345", 5);
+
+         // Use push_overwrite() to push entries, overwriting older entries
+         // as needed.
+         pw_InlineVarLenEntryQueue_PushOverwrite(queue, "abcdefg", 7);
+
+         // Remove an entry.
+         pw_InlineVarLenEntryQueue_Pop(queue);
+
+      Alternately, a ``InlineVarLenEntryQueue`` may be initialized in an
+      existing ``uint32_t`` array.
+
+      .. code-block:: c
+
+         // Initialize a InlineVarLenEntryQueue.
+         uint32_t buffer[32];
+         pw_InlineVarLenEntryQueue_Init(buffer, 32);
+
+         // Largest supported entry is 114 B (13 B overhead + 1 B prefix)
+         assert(pw_InlineVarLenEntryQueue_MaxSizeBytes(buffer) == 114u);
+
+         // Write some data
+         pw_InlineVarLenEntryQueue_PushOverwrite(buffer, "123", 3);
+
+Queue vs. deque
 ===============
+This module provides :cpp:type:`InlineVarLenEntryQueue`, but no corresponding
+``InlineVarLenEntryDeque`` class. Following the C++ Standard Library style,
+the deque class would provide ``push_front()`` and ``pop_back()`` operations in
+addition to ``push_back()`` and ``pop_front()`` (equivalent to a queue's
+``push()`` and ``pop()``).
+
+There is no ``InlineVarLenEntryDeque`` class because there is no efficient way
+to implement ``push_front()`` and ``pop_back()``. These operations would
+necessarily be O(n), since each entry knows the position of the next entry, but
+not the previous, as in a single-linked list. Given that these operations would
+be inefficient and unlikely to be used, they are not implemented, and only a
+queue class is provided.
+
+API Reference
+=============
+C++
+---
+.. doxygengroup:: inline_var_len_entry_queue_cpp_api
+   :content-only:
+   :members:
+
 C
 -
-.. doxygengroup:: variable_length_entry_queue_c_api
+.. doxygengroup:: inline_var_len_entry_queue_c_api
    :content-only:
 
 Python
 ------
-.. automodule:: pw_containers.variable_length_entry_queue
+.. automodule:: pw_containers.inline_var_len_entry_queue
    :members:
 
 -----------------
 pw::IntrusiveList
 -----------------
-IntrusiveList provides an embedded-friendly singly-linked intrusive list
-implementation. An intrusive list is a type of linked list that embeds the
-"next" pointer into the list object itself. This allows the construction of a
+``pw::IntrusiveForwardList`` and ``pw::IntrusiveList`` provide embedded-friendly
+singly- and doubly-linked intrusive list implementations, respectively. An
+intrusive list is a type of linked list that embeds list metadata, such as a
+"next" pointer, into the list object itself. This allows the construction of a
 linked list without the need to dynamically allocate list entries.
 
 In C, an intrusive list can be made by manually including the "next" pointer as
-a member of the object's struct. ``pw::IntrusiveList`` uses C++ features to
-simplify the process of creating an intrusive list. ``pw::IntrusiveList``
-provides a class that list elements can inherit from. This protects the "next"
-pointer from being accessed by the item class, so only the ``pw::IntrusiveList``
-class can modify the list.
+a member of the object's struct. ``pw::IntrusiveForwardList`` and
+``pw::IntrusiveList`` uses C++ features to simplify the process of creating an
+intrusive list. They provide classes that list elements can inherit from,
+protecting the list metadata from being accessed by the item class.
 
-Usage
-=====
-While the API of ``pw::IntrusiveList`` is similar to a ``std::forward_list``,
-there are extra steps to creating objects that can be stored in this data
-structure. Objects that will be added to a ``IntrusiveList<T>`` must inherit
-from ``IntrusiveList<T>::Item``. They can inherit directly from it or inherit
-from it through another base class. When an item is instantiated and added to a
-linked list, the pointer to the object is added to the "next" pointer of
-whichever object is the current tail.
+API Reference
+=============
+IntrusiveForwardList
+--------------------
+This class is similar to ``std::forward_list<T>``, except that the type of items
+to be added must derive from ``pw::IntrusiveForwardList<T>::Item``.
 
-That means two key things:
+.. doxygenclass:: pw::IntrusiveForwardList
+   :members:
 
-- An instantiated ``IntrusiveList<T>::Item`` will be removed from its
-  corresponding ``IntrusiveList`` when it goes out of scope.
-- A linked list item CANNOT be included in two lists. Attempting to do so
-  results in an assert failure.
+IntrusiveList
+-------------
+This class is similar to ``std::list<T>``, except that the type of items to be
+added must derive from ``pw::IntrusiveList<T>::Item``.
 
+.. doxygenclass:: pw::containers::future::IntrusiveList
+   :members:
+
+.. note::
+   Originally, ``pw::IntrusiveList<T>`` was implemented as a singly-linked list.
+   To facilitate migration to ``pw::IntrusiveForwardList<T>::Item``, this
+   original implementation can still be temporarily used by enabling the
+   ``PW_CONTAINERS_USE_LEGACY_INTRUSIVE_LIST`` module configuration option.
+
+Example
+=======
 .. code-block:: cpp
 
    class Square
-      : public pw::IntrusiveList<Square>::Item {
+      : public pw::IntrusiveForwardList<Square>::Item {
     public:
      Square(unsigned int side_length) : side_length(side_length) {}
      unsigned long Area() { return side_length * side_length; }
@@ -97,13 +200,13 @@ That means two key things:
      unsigned int side_length;
    };
 
-   pw::IntrusiveList<Square> squares;
+   pw::IntrusiveForwardList<Square> squares;
 
    Square small(1);
    Square large(4000);
    // These elements are not copied into the linked list, the original objects
    // are just chained together and can be accessed via
-   // `IntrusiveList<Square> squares`.
+   // `IntrusiveForwardList<Square> squares`.
    squares.push_back(small);
    squares.push_back(large);
 
@@ -162,6 +265,10 @@ preferrable to create items that together with their storage outlive the list.
 Notably, ``pw::IntrusiveList<T>::end()`` is constant complexity (i.e. "O(1)").
 As a result iterating over a list does not incur an additional penalty.
 
+Size report
+===========
+.. include:: intrusive_list_size_report
+
 -----------------------
 pw::containers::FlatMap
 -----------------------
@@ -178,6 +285,28 @@ to access and mutate the mapped value objects.
 The underlying array in ``pw::containers::FlatMap`` does not need to be sorted.
 During construction, ``pw::containers::FlatMap`` will perform a constexpr
 insertion sort.
+
+To create a ``FlatMap``, there are some options. The following example defines
+a ``FlatMap`` with two items.
+
+.. code-block:: cpp
+
+   // Initiates by a std::array of Pair<K, V> objects.
+   FlatMap<int, char, 2> map({{
+       {1, 'a'},
+       {-3, 'b'},
+   }});
+
+   FlatMap map(std::array{
+       Pair<int, char>{1, 'a'},
+       Pair<int, char>{-3, 'b'},
+   });
+
+   // Initiates by Pair<K, V> objects.
+   FlatMap map = {
+       Pair<int, char>{1, 'a'},
+       Pair<int, char>{-3, 'b'},
+   };
 
 ----------------------------
 pw::containers::FilteredView

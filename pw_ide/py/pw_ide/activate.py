@@ -54,24 +54,106 @@ Aside from importing it, this script can be used in three ways:
 """
 # pylint: enable=line-too-long
 
+from __future__ import annotations
+
 from abc import abstractmethod, ABC
 import argparse
 from collections import defaultdict
 from inspect import cleandoc
+from functools import cache
 import json
 import os
 from pathlib import Path
 import shlex
 import subprocess
 import sys
-from typing import cast, Dict, Optional
-
-_PW_PROJECT_PATH = Path(
-    os.environ.get('PW_PROJECT_ROOT', os.environ.get('PW_ROOT', os.getcwd()))
-)
+from typing import cast, Tuple
 
 
-def assumed_environment_root() -> Optional[Path]:
+def find_pigweed_json_above(working_dir=Path(os.getcwd())) -> Path | None:
+    """Find the path to pigweed.json by searching this directory and above.
+
+    This starts looking in the current working directory, then recursively in
+    each directory above the current working directory, until it finds a
+    pigweed.json file or reaches the file system root. So invoking this anywhere
+    within a Pigweed project directory should work.
+    """
+
+    if (pigweed_json := (working_dir / "pigweed.json")).exists():
+        return pigweed_json.parent
+
+    # Recursively search in directories above this one.
+    # This condition will be false when we reach the root of the file system.
+    if working_dir.parent != working_dir:
+        return find_pigweed_json_above(working_dir.parent)
+
+    return None
+
+
+def find_pigweed_json_below(working_dir=Path(os.getcwd())) -> Path | None:
+    """Find the path to pigweed.json by searching below this directory.
+
+    This will return the one nearest subdirectory that contains a pigweeed.json
+    file.
+    """
+
+    # We only want the first result (there could be many other spurious
+    # pigweed.json files in environment directories), but we can't directly
+    # index a generator, and getting a list by running the generator to
+    # completion is pointlessly slow.
+    for path in working_dir.rglob('pigweed.json'):
+        dir_path = path.parent
+        # There's a source file for pigweed.json that we want to omit.
+        if dir_path.parent.name != "cipd_setup":
+            return dir_path
+
+    return None
+
+
+@cache
+def pigweed_root(
+    working_dir=Path(os.getcwd()), use_env_vars=True
+) -> Tuple[Path, bool]:
+    """Find the Pigweed root within the project.
+
+    The presence of a pigweed.json file is the sentinel for the Pigweed root.
+    The heuristic is to first search in the current directory or above ("are
+    we inside of a Pigweed directory?"), and failing that, to search in the
+    directories below ("does this project contain a Pigweed directory?").
+
+    This returns two values: the Pigweed root directory, and a boolean
+    indicating that the directory path is "validated". A validated path came
+    from a source of truth, like the location of a pigweed.json file or an
+    environment variable. An unvalidated path may just be a last resort guess.
+
+    Note that this logic presumes that there's only one Pigweed project
+    directory. In a hypothetical project setup that contained multiple Pigweed
+    projects, this would continue to work when invoked inside of one of those
+    Pigweed directories, but would have inconsistent results when invoked
+    in a parent directory.
+    """
+    # These are shortcuts that make this faster if we happen to be running in
+    # an activated environment. This can be disabled, e.g., in tests.
+    if use_env_vars:
+        if (pw_root := os.environ.get('PW_ROOT')) is not None:
+            return Path(pw_root), True
+
+        if (pw_project_root := os.environ.get('PW_PROJECT_ROOT')) is not None:
+            return Path(pw_project_root), True
+
+    # If we're not in an activated environment (which is typical for this
+    # module), search for the pigweed.json sentinel.
+    if (root_above := find_pigweed_json_above(working_dir)) is not None:
+        return root_above, True
+
+    if (root_below := find_pigweed_json_below(working_dir)) is not None:
+        return root_below, True
+
+    return Path(os.getcwd()), False
+
+
+@cache
+def assumed_environment_root() -> Path | None:
     """Infer the path to the Pigweed environment directory.
 
     First we look at the environment variable that should contain the path if
@@ -80,17 +162,23 @@ def assumed_environment_root() -> Optional[Path]:
     directory in any of those locations, we return None.
     """
     actual_environment_root = os.environ.get('_PW_ACTUAL_ENVIRONMENT_ROOT')
+
     if (
         actual_environment_root is not None
         and (root_path := Path(actual_environment_root)).exists()
     ):
         return root_path.absolute()
 
-    default_environment = _PW_PROJECT_PATH / 'environment'
+    root, root_is_validated = pigweed_root()
+
+    if not root_is_validated:
+        return None
+
+    default_environment = root / 'environment'
     if default_environment.exists():
         return default_environment.absolute()
 
-    default_dot_environment = _PW_PROJECT_PATH / '.environment'
+    default_dot_environment = root / '.environment'
     if default_dot_environment.exists():
         return default_dot_environment.absolute()
 
@@ -138,24 +226,18 @@ def _sanitize_path(
     if not Path(path).is_absolute():
         return path
 
-    project_root = _PW_PROJECT_PATH.resolve()
+    root, _ = pigweed_root()
+
+    project_root = root.resolve()
     user_home = Path.home().resolve()
     resolved_path = Path(path).resolve()
 
-    # TODO: b/248257406 - Remove once we drop support for Python 3.8.
-    def is_relative_to(path: Path, other: Path) -> bool:
-        try:
-            path.relative_to(other)
-            return True
-        except ValueError:
-            return False
-
-    if is_relative_to(resolved_path, project_root):
+    if resolved_path.is_relative_to(project_root):
         return f'{project_root_prefix}/' + str(
             resolved_path.relative_to(project_root)
         )
 
-    if is_relative_to(resolved_path, user_home):
+    if resolved_path.is_relative_to(user_home):
         return f'{user_home_prefix}/' + str(
             resolved_path.relative_to(user_home)
         )
@@ -178,7 +260,7 @@ class ShellModifier(ABC):
 
     def __init__(
         self,
-        env: Optional[Dict[str, str]] = None,
+        env: dict[str, str] | None = None,
         env_only: bool = False,
         path_var: str = '$PATH',
         project_root: str = '.',
@@ -196,7 +278,7 @@ class ShellModifier(ABC):
         # So it contains the complete new environment after modifications.
         # If no existing environment is provided, this is identical to env_mod.
         env = env if env is not None else default_env_mod.copy()
-        self.env: Dict[str, str] = defaultdict(str, env)
+        self.env: dict[str, str] = defaultdict(str, env)
 
         # Will contain the side effects, i.e. commands executed in the shell to
         # modify its environment.
@@ -220,9 +302,9 @@ class ShellModifier(ABC):
 
     def modify_env(
         self,
-        config_file_path: Optional[Path] = _DEFAULT_CONFIG_FILE_PATH,
+        config_file_path: Path | None = _DEFAULT_CONFIG_FILE_PATH,
         sanitize: bool = False,
-    ) -> 'ShellModifier':
+    ) -> ShellModifier:
         """Modify the current shell state per the actions.json file provided."""
         json_file_options = {}
 

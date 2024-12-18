@@ -15,36 +15,38 @@
 // clang-format off
 #include "pw_rpc/internal/log_config.h"  // PW_LOG_* macros must be first.
 
-#include "pw_rpc/internal/channel.h"
+#include "pw_rpc/channel.h"
 // clang-format on
 
+#include "pw_assert/check.h"
 #include "pw_bytes/span.h"
 #include "pw_log/log.h"
 #include "pw_protobuf/decoder.h"
+#include "pw_protobuf/find.h"
 #include "pw_rpc/internal/config.h"
 #include "pw_rpc/internal/encoding_buffer.h"
+#include "pw_rpc/internal/packet.pwpb.h"
+
+using pw::rpc::internal::pwpb::RpcPacket::Fields;
 
 namespace pw::rpc {
-
-Result<uint32_t> ExtractChannelId(ConstByteSpan packet) {
-  protobuf::Decoder decoder(packet);
-
-  while (decoder.Next().ok()) {
-    if (static_cast<internal::pwpb::RpcPacket::Fields>(decoder.FieldNumber()) !=
-        internal::pwpb::RpcPacket::Fields::kChannelId) {
-      continue;
-    }
-    uint32_t channel_id;
-    PW_TRY(decoder.ReadUint32(&channel_id));
-    return channel_id;
-  }
-
-  return Status::DataLoss();
-}
-
 namespace internal {
 
-Status Channel::Send(const Packet& packet) {
+Status OverwriteChannelId(ByteSpan rpc_packet, uint32_t channel_id_under_128) {
+  Result<ConstByteSpan> raw_field =
+      protobuf::FindRaw(rpc_packet, Fields::kChannelId);
+  if (!raw_field.ok()) {
+    return Status::DataLoss();  // Unexpected packet format
+  }
+  if (raw_field->size() != 1u) {
+    return Status::OutOfRange();
+  }
+  const_cast<std::byte*>(raw_field->data())[0] =
+      static_cast<std::byte>(channel_id_under_128);
+  return OkStatus();
+}
+
+Status ChannelBase::Send(const Packet& packet) {
   ByteSpan buffer = encoding_buffer.GetPacketBuffer(packet.payload().size());
   Result encoded = packet.Encode(buffer);
 
@@ -58,7 +60,8 @@ Status Channel::Send(const Packet& packet) {
     return Status::Internal();
   }
 
-  Status sent = output().Send(encoded.value());
+  PW_CHECK_NOTNULL(output_);
+  Status sent = output_->Send(encoded.value());
   encoding_buffer.Release();
 
   if (!sent.ok()) {
@@ -72,4 +75,20 @@ Status Channel::Send(const Packet& packet) {
 }
 
 }  // namespace internal
+
+Result<uint32_t> ExtractChannelId(ConstByteSpan packet) {
+  protobuf::Decoder decoder(packet);
+
+  while (decoder.Next().ok()) {
+    if (static_cast<Fields>(decoder.FieldNumber()) != Fields::kChannelId) {
+      continue;
+    }
+    uint32_t channel_id;
+    PW_TRY(decoder.ReadUint32(&channel_id));
+    return channel_id;
+  }
+
+  return Status::DataLoss();
+}
+
 }  // namespace pw::rpc

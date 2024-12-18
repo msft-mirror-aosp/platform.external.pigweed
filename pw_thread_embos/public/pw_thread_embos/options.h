@@ -21,6 +21,8 @@
 
 namespace pw::thread::embos {
 
+class Context;
+
 // pw::thread::Options for FreeRTOS.
 //
 // Example usage:
@@ -42,7 +44,7 @@ namespace pw::thread::embos {
 //
 class Options : public thread::Options {
  public:
-  constexpr Options() {}
+  constexpr Options() = default;
   constexpr Options(const Options&) = default;
   constexpr Options(Options&&) = default;
 
@@ -85,6 +87,7 @@ class Options : public thread::Options {
 
  private:
   friend thread::Thread;
+  friend Context;
 
   const char* name() const { return name_; }
   OS_PRIO priority() const { return priority_; }

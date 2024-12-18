@@ -5,7 +5,6 @@ RPC over HDLC example
 =====================
 .. pigweed-module-subpage::
    :name: pw_hdlc
-   :tagline: pw_hdlc: Simple, robust, and efficient serial communication
 
 The :ref:`module-pw_hdlc` module includes an example of bringing up a
 :ref:`module-pw_rpc` server that can be used to invoke RPCs. The example code
@@ -172,7 +171,7 @@ Invoke RPCs from the interactive console on the client side.
    - The target docs for other RPC-enabled application examples:
 
      - :bdg-ref-primary-line:`target-host-device-simulator`
-     - :bdg-ref-primary-line:`target-raspberry-pi-pico`
+     - :bdg-ref-primary-line:`target-rp2040`
      - :bdg-ref-primary-line:`target-stm32f429i-disc1-stm32cube`
 
 -----------------

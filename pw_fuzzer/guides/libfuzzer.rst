@@ -5,7 +5,6 @@ pw_fuzzer: Adding Fuzzers Using LibFuzzer
 =========================================
 .. pigweed-module-subpage::
    :name: pw_fuzzer
-   :tagline: Better C++ code through easier fuzzing
 
 .. note::
 
@@ -53,18 +52,9 @@ installation. In order to use it, you only need to define a suitable toolchain.
    .. tab-item:: Bazel
       :sync: bazel
 
-      Include ``rules_fuzzing`` and its Abseil C++ dependency in your
-      ``WORKSPACE`` file. For example:
+      Include ``rules_fuzzing`` in your ``WORKSPACE`` file. For example:
 
       .. code-block::
-
-         # Required by: rules_fuzzing.
-         http_archive(
-             name = "com_google_absl",
-             sha256 = "3ea49a7d97421b88a8c48a0de16c16048e17725c7ec0f1d3ea2683a2a75adc21",
-             strip_prefix = "abseil-cpp-20230125.0",
-             urls = ["https://github.com/abseil/abseil-cpp/archive/refs/tags/20230125.0.tar.gz"],
-         )
 
          # Set up rules for fuzz testing.
          http_archive(
@@ -82,15 +72,13 @@ installation. In order to use it, you only need to define a suitable toolchain.
 
          rules_fuzzing_init()
 
-      Then, define the following build configuration in your ``.bazelrc`` file:
+      Then, import the libFuzzer build configurations in your ``.bazelrc`` file
+      by adding and adapting the following:
 
       .. code-block::
 
-         build:asan-libfuzzer \
-             --@rules_fuzzing//fuzzing:cc_engine=@rules_fuzzing//fuzzing/engines:libfuzzer
-         build:asan-libfuzzer \
-             --@rules_fuzzing//fuzzing:cc_engine_instrumentation=libfuzzer
-         build:asan-libfuzzer --@rules_fuzzing//fuzzing:cc_engine_sanitizer=asan
+         # Include FuzzTest build configurations.
+         try-import %workspace%/path/to/pigweed/pw_fuzzer/libfuzzer.bazelrc
 
 ------------------------------------
 Step 1: Write a fuzz target function
@@ -100,10 +88,10 @@ following the guidelines given by libFuzzer:
 
 .. code-block:: cpp
 
-  extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-    DoSomethingInterestingWithMyAPI(data, size);
-    return 0;  // Non-zero return values are reserved for future use.
-  }
+   extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+     DoSomethingInterestingWithMyAPI(data, size);
+     return 0;  // Non-zero return values are reserved for future use.
+   }
 
 When writing your fuzz target function, you may want to consider:
 
@@ -247,7 +235,7 @@ runtimes when building.
 
       .. code-block:: sh
 
-        $ gn gen out --args='pw_toolchain_SANITIZERS=["address"]'
+         $ gn gen out --args='pw_toolchain_SANITIZERS=["address"]'
 
       Some toolchains may set a default for fuzzers if none is specified. For
       example, `//targets/host:host_clang_fuzz` defaults to "address".
@@ -256,7 +244,7 @@ runtimes when building.
 
       .. code-block:: sh
 
-        $ ninja -C out fuzzers
+         $ ninja -C out fuzzers
 
    .. tab-item:: CMake
       :sync: cmake
@@ -273,7 +261,7 @@ runtimes when building.
 
       .. code-block:: sh
 
-        $ bazel build //my_module:my_fuzzer --config=asan-libfuzzer
+         $ bazel build //my_module:my_fuzzer --config=asan-libfuzzer
 
 ----------------------------------
 Step 5: Running the fuzzer locally
@@ -289,7 +277,7 @@ Step 5: Running the fuzzer locally
 
       .. code-block:: sh
 
-        $ out/host_clang_fuzz/obj/my_module/bin/my_fuzzer -seed=1 path/to/corpus
+         $ out/host_clang_fuzz/obj/my_module/bin/my_fuzzer -seed=1 path/to/corpus
 
       Additional `sanitizer flags`_ may be passed uisng environment variables.
 
@@ -311,8 +299,8 @@ Step 5: Running the fuzzer locally
 
       .. code-block:: sh
 
-        $ bazel run //my_module:my_fuzzer_run --config=asan-libfuzzer -- \
-          -seed=1 path/to/corpus -max_total_time=5
+         $ bazel run //my_module:my_fuzzer_run --config=asan-libfuzzer -- \
+           -seed=1 path/to/corpus -max_total_time=5
 
 Running the fuzzer should produce output similar to the following:
 
@@ -357,4 +345,3 @@ Running the fuzzer should produce output similar to the following:
 .. _startup initialization: https://llvm.org/docs/LibFuzzer.html#startup-initialization
 .. _structure aware fuzzing: https://github.com/google/fuzzing/blob/HEAD/docs/structure-aware-fuzzing.md
 .. _valid options: https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html
-

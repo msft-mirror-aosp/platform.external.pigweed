@@ -21,6 +21,10 @@
 #include "pw_thread/thread.h"
 #include "pw_unit_test/framework.h"
 
+// TODO: https://pwbug.dev/365161669 - Express joinability as a build-system
+// constraint.
+#if PW_THREAD_JOINING_ENABLED
+
 namespace pw::stream {
 namespace {
 
@@ -125,13 +129,7 @@ struct MpscTestContext {
   using ThreadBody = Function<void(MpscTestContext* ctx)>;
   void Spawn(ThreadBody func) {
     body_ = std::move(func);
-    thread_ = thread::Thread(
-        context_.options(),
-        [](void* arg) {
-          auto* base = static_cast<MpscTestContext*>(arg);
-          base->body_(base);
-        },
-        this);
+    thread_ = thread::Thread(context_.options(), [this]() { body_(this); });
   }
 
   // Waits for the spawned thread to complete.
@@ -599,3 +597,5 @@ TEST(MpscStreamTest, BufferedMpscReader) {
 
 }  // namespace
 }  // namespace pw::stream
+
+#endif  // PW_THREAD_JOINING_ENABLED

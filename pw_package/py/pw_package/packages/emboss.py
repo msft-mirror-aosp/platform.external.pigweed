@@ -27,11 +27,13 @@ class Emboss(pw_package.git_repo.GitRepo):
         super().__init__(
             *args,
             name="emboss",
+            # LINT.IfChange(emboss)
             url=(
                 "https://pigweed.googlesource.com"
                 "/third_party/github/google/emboss"
             ),
-            commit="ac5e59b3be7ccac05921fff6ec274ff56b095ae6",
+            tag="v2024.0809.170004",
+            # LINT.ThenChange(/WORKSPACE:emboss)
             **kwargs,
         )
 

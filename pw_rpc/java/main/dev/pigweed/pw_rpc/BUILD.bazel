@@ -14,6 +14,8 @@
 
 # Generic client for pw_rpc, Pigweed's RPC system.
 
+load("@rules_jvm_external//:defs.bzl", "artifact")
+
 RPC_CLIENT_SOURCES = [
     "AbstractCall.java",
     "Call.java",
@@ -29,6 +31,7 @@ RPC_CLIENT_SOURCES = [
     "InvalidRpcStateException.java",
     "Method.java",
     "MethodClient.java",
+    "PacketByteFactory.java",
     "Packets.java",
     "PendingRpc.java",
     "RpcError.java",
@@ -46,11 +49,25 @@ java_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pw_log/java/main/dev/pigweed/pw_log",
+        "//pw_rpc:packet_proto_java",
+        "//third_party/google_auto:value",
+        "@com_google_protobuf//java/core",
+        artifact("com.google.code.findbugs:jsr305"),
+        artifact("com.google.guava:guava"),
+    ],
+)
+
+java_library(
+    name = "client_lite",
+    srcs = RPC_CLIENT_SOURCES,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pw_log/java/main/dev/pigweed/pw_log",
         "//pw_rpc:packet_proto_java_lite",
         "//third_party/google_auto:value",
         "@com_google_protobuf//java/lite",
-        "@maven//:com_google_code_findbugs_jsr305",
-        "@maven//:com_google_guava_guava",
+        artifact("com.google.code.findbugs:jsr305"),
+        artifact("com.google.guava:guava"),
     ],
 )
 
@@ -64,7 +81,7 @@ android_library(
         "//pw_rpc:packet_proto_java_lite",
         "//third_party/google_auto:value",
         "@com_google_protobuf//java/lite",
-        "@maven//:com_google_code_findbugs_jsr305",
-        "@maven//:com_google_guava_guava",
+        artifact("com.google.code.findbugs:jsr305"),
+        artifact("com.google.guava:guava"),
     ],
 )

@@ -14,31 +14,34 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input, Expr, Token,
 };
 
-use pw_format::macros::{generate_printf, FormatAndArgs, PrintfFormatMacroGenerator, Result};
+use pw_format::macros::{
+    generate_printf, Arg, CoreFmtFormatStringParser, FormatAndArgsFlavor, FormatStringParser,
+    PrintfFormatMacroGenerator, PrintfFormatStringFragment, PrintfFormatStringParser, Result,
+};
 
 type TokenStream2 = proc_macro2::TokenStream;
 
-// Arguments to `pw_logf_backend`.  A log level followed by a [`pw_format`]
+// Arguments to `pw_log[f]_backend`.  A log level followed by a [`pw_format`]
 // format string.
 #[derive(Debug)]
-struct PwLogfArgs {
+struct PwLogArgs<T: FormatStringParser> {
     log_level: Expr,
-    format_and_args: FormatAndArgs,
+    format_and_args: FormatAndArgsFlavor<T>,
 }
 
-impl Parse for PwLogfArgs {
+impl<T: FormatStringParser> Parse for PwLogArgs<T> {
     fn parse(input: ParseStream) -> syn::parse::Result<Self> {
         let log_level: Expr = input.parse()?;
         input.parse::<Token![,]>()?;
-        let format_and_args: FormatAndArgs = input.parse()?;
+        let format_and_args: FormatAndArgsFlavor<_> = input.parse()?;
 
-        Ok(PwLogfArgs {
+        Ok(PwLogArgs {
             log_level,
             format_and_args,
         })
@@ -64,20 +67,33 @@ impl<'a> LogfGenerator<'a> {
 // Use a [`pw_format::PrintfFormatMacroGenerator`] to prepare arguments to call
 // `printf`.
 impl<'a> PrintfFormatMacroGenerator for LogfGenerator<'a> {
-    fn finalize(self, format_string: String) -> Result<TokenStream2> {
+    fn finalize(
+        self,
+        format_string_fragments: &[PrintfFormatStringFragment],
+    ) -> Result<TokenStream2> {
         let log_level = self.log_level;
         let args = &self.args;
-        let format_string = format!("[%s] {format_string}\n\0");
+        let format_string_pieces: Vec<_> = format_string_fragments
+            .iter()
+            .map(|fragment| fragment.as_token_stream("__pw_log_backend_crate"))
+            .collect::<Result<Vec<_>>>()?;
         Ok(quote! {
           {
             use core::ffi::{c_int, c_uchar};
+            use __pw_log_backend_crate::{Arguments, VarArgs};
+            // Prepend log level tag and append newline and null terminator for
+            // C string validity.
+            let format_string = __pw_log_backend_crate::concat_static_strs!(
+              "[%s] ", #(#format_string_pieces),*, "\n\0"
+            );
             unsafe {
-              extern "C" {
-                fn printf(fmt: *const c_uchar, ...) -> c_int;
-              }
-              printf(#format_string.as_ptr(),
-                __pw_log_crate::pw_log_backend::log_level_tag(#log_level).as_ptr(),
-                #(#args),*);
+              // Build up the argument type/value.
+              let args = ();
+              #(#args)*
+
+              // Call printf through the argument type/value.
+              args.call_printf(format_string.as_ptr(),
+                __pw_log_backend_crate::log_level_tag(#log_level).as_ptr());
             }
           }
         })
@@ -88,33 +104,66 @@ impl<'a> PrintfFormatMacroGenerator for LogfGenerator<'a> {
         Ok(())
     }
 
-    fn integer_conversion(&mut self, ty: Ident, expression: Expr) -> Result<Option<String>> {
-        self.args.push(quote! {((#expression) as #ty)});
+    fn integer_conversion(&mut self, ty: Ident, expression: Arg) -> Result<Option<String>> {
+        self.args.push(quote! {
+          let args = <#ty as Arguments<#ty>>::push_arg(args, &((#expression) as #ty));
+        });
         Ok(None)
     }
 
-    fn string_conversion(&mut self, expression: Expr) -> Result<Option<String>> {
+    fn string_conversion(&mut self, expression: Arg) -> Result<Option<String>> {
         // In order to not convert Rust Strings to CStrings at runtime, we use
         // the "%.*s" specifier to explicitly bound the length of the
         // non-null-terminated Rust String.
-        self.args.push(quote! {((#expression) as &str).len()});
-        self.args.push(quote! {((#expression) as &str).as_ptr()});
+        self.args.push(quote! {
+          let args = <&str as Arguments<&str>>::push_arg(args, &((#expression) as &str));
+        });
         Ok(Some("%.*s".into()))
     }
 
-    fn char_conversion(&mut self, expression: Expr) -> Result<Option<String>> {
-        self.args.push(quote! {((#expression) as char)});
+    fn char_conversion(&mut self, expression: Arg) -> Result<Option<String>> {
+        self.args.push(quote! {
+          let args = <char as Arguments<char>>::push_arg(args, &((#expression) as char));
+        });
         Ok(None)
+    }
+
+    fn untyped_conversion(&mut self, expression: Arg) -> Result<()> {
+        match &expression {
+            Arg::ExprCast(cast) => {
+                let ty = &cast.ty;
+                self.args.push(quote! {
+                  let args = <#ty as Arguments<#ty>>::push_arg(args, &(#expression));
+                });
+            }
+            Arg::Expr(_) => {
+                return Err(pw_format::macros::Error::new(&format!(
+                "Expected argument to untyped format (%v) to be a cast expression (e.g. x as i32), but found {}.",
+                expression.to_token_stream()
+              )));
+            }
+        }
+        Ok(())
     }
 }
 
 #[proc_macro]
-pub fn pw_logf_backend(tokens: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(tokens as PwLogfArgs);
-
+pub fn _pw_log_backend(tokens: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(tokens as PwLogArgs<CoreFmtFormatStringParser>);
     let generator = LogfGenerator::new(&input.log_level);
 
-    match generate_printf(generator, input.format_and_args) {
+    match generate_printf(generator, input.format_and_args.into()) {
+        Ok(token_stream) => token_stream.into(),
+        Err(e) => e.to_compile_error().into(),
+    }
+}
+
+#[proc_macro]
+pub fn _pw_logf_backend(tokens: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(tokens as PwLogArgs<PrintfFormatStringParser>);
+    let generator = LogfGenerator::new(&input.log_level);
+
+    match generate_printf(generator, input.format_and_args.into()) {
         Ok(token_stream) => token_stream.into(),
         Err(e) => e.to_compile_error().into(),
     }

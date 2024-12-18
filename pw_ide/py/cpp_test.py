@@ -15,7 +15,7 @@
 
 import json
 from pathlib import Path
-from typing import cast, Dict, List, Optional
+from typing import cast
 import unittest
 
 # pylint: disable=protected-access
@@ -27,6 +27,8 @@ from pw_ide.cpp import (
     CppCompilationDatabasesMap,
     CppCompileCommand,
     CppCompileCommandDict,
+    CppIdeFeaturesTarget,
+    CppIdeFeaturesState,
     infer_target,
     _infer_target_pos,
 )
@@ -144,7 +146,7 @@ class TestCppCompileCommand(PwIdeTestCase):
     """Tests CppCompileCommand"""
 
     def run_process_test_with_valid_commands(
-        self, command: str, expected_executable: Optional[str]
+        self, command: str, expected_executable: str | None
     ) -> None:
         compile_command = CppCompileCommand(
             command=command, file='', directory=''
@@ -169,7 +171,7 @@ class TestCppCompileCommand(PwIdeTestCase):
     def test_process_valid_with_gn_compile_command(self) -> None:
         """Test output against typical GN-generated compile commands."""
 
-        cases: List[Dict[str, str]] = [
+        cases: list[dict[str, str]] = [
             {
                 # pylint: disable=line-too-long
                 'command': 'arm-none-eabi-g++ -MMD -MF  stm32f429i_disc1_debug/obj/pw_allocator/block.block.cc.o.d  -Wno-psabi -mabi=aapcs -mthumb --sysroot=../environment/cipd/packages/arm -specs=nano.specs -specs=nosys.specs -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -Wshadow -Wredundant-decls -u_printf_float -fdiagnostics-color -g -fno-common -fno-exceptions -ffunction-sections -fdata-sections -Wall -Wextra -Wimplicit-fallthrough -Wcast-qual -Wundef -Wpointer-arith -Werror -Wno-error=cpp -Wno-error=deprecated-declarations -ffile-prefix-map=/pigweed/pigweed/out=out -ffile-prefix-map=/pigweed/pigweed/= -ffile-prefix-map=../= -ffile-prefix-map=/pigweed/pigweed/out=out  -fno-rtti -Wnon-virtual-dtor -std=c++17 -Wno-register  -DPW_ARMV7M_ENABLE_FPU=1  -I../pw_allocator/public -I../pw_assert/public -I../pw_assert/assert_compatibility_public_overrides -I../pw_preprocessor/public -I../pw_assert_basic/public_overrides -I../pw_assert_basic/public -I../pw_span/public -I../pw_polyfill/public -I../pw_polyfill/standard_library_public -I../pw_status/public -c ../pw_allocator/block.cc -o  stm32f429i_disc1_debug/obj/pw_allocator/block.block.cc.o',
@@ -972,7 +974,7 @@ class TestCppCompilationDatabase(PwIdeTestCase):
     def setUp(self):
         self.root_dir = Path('/pigweed/pigweed/out')
 
-        self.fixture: List[CppCompileCommandDict] = [
+        self.fixture: list[CppCompileCommandDict] = [
             {
                 # pylint: disable=line-too-long
                 'command': 'arm-none-eabi-g++ -MMD -MF stm32f429i_disc1_debug/obj/pw_allocator/block.block.cc.o.d -Wno-psabi -mabi=aapcs -mthumb --sysroot=../environment/cipd/packages/arm -specs=nano.specs -specs=nosys.specs -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -Wshadow -Wredundant-decls -u_printf_float -fdiagnostics-color -g -fno-common -fno-exceptions -ffunction-sections -fdata-sections -Wall -Wextra -Wimplicit-fallthrough -Wcast-qual -Wundef -Wpointer-arith -Werror -Wno-error=cpp -Wno-error=deprecated-declarations -ffile-prefix-map=/pigweed/pigweed/out=out -ffile-prefix-map=/pigweed/pigweed/= -ffile-prefix-map=../= -ffile-prefix-map=/pigweed/pigweed/out=out -fno-rtti -Wnon-virtual-dtor -std=c++17 -Wno-register -DPW_ARMV7M_ENABLE_FPU=1 -I../pw_allocator/public -I../pw_assert/public -I../pw_assert/assert_compatibility_public_overrides -I../pw_preprocessor/public -I../pw_assert_basic/public_overrides -I../pw_assert_basic/public -I../pw_span/public -I../pw_polyfill/public -I../pw_polyfill/standard_library_public -I../pw_status/public -c ../pw_allocator/block.cc -o stm32f429i_disc1_debug/obj/pw_allocator/block.block.cc.o',
@@ -989,7 +991,7 @@ class TestCppCompilationDatabase(PwIdeTestCase):
             },
         ]
 
-        self.expected: List[CppCompileCommandDict] = [
+        self.expected: list[CppCompileCommandDict] = [
             {
                 **self.fixture[0],
                 # pylint: disable=line-too-long
@@ -1105,10 +1107,10 @@ class TestCppCompilationDatabase(PwIdeTestCase):
             'isosceles_debug',
         ]
 
-        settings = self.make_ide_settings(targets=targets)
+        settings = self.make_ide_settings(targets_include=targets)
 
         # pylint: disable=line-too-long
-        raw_db: List[CppCompileCommandDict] = [
+        raw_db: list[CppCompileCommandDict] = [
             {
                 'command': 'arm-none-eabi-g++ -MMD -MF stm32f429i_disc1_debug/obj/pw_allocator/block.block.cc.o.d -Wno-psabi -mabi=aapcs -mthumb --sysroot=../environment/cipd/packages/arm -specs=nano.specs -specs=nosys.specs -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16 -Og -Wshadow -Wredundant-decls -u_printf_float -fdiagnostics-color -g -fno-common -fno-exceptions -ffunction-sections -fdata-sections -Wall -Wextra -Wimplicit-fallthrough -Wcast-qual -Wundef -Wpointer-arith -Werror -Wno-error=cpp -Wno-error=deprecated-declarations -ffile-prefix-map=/pigweed/pigweed/out=out -ffile-prefix-map=/pigweed/pigweed/= -ffile-prefix-map=../= -ffile-prefix-map=/pigweed/pigweed/out=out -fno-rtti -Wnon-virtual-dtor -std=c++17 -Wno-register -DPW_ARMV7M_ENABLE_FPU=1  -I../pw_allocator/public -I../pw_assert/public -I../pw_assert/assert_compatibility_public_overrides -I../pw_preprocessor/public -I../pw_assert_basic/public_overrides -I../pw_assert_basic/public -I../pw_span/public -I../pw_polyfill/public -I../pw_polyfill/standard_library_public -I../pw_status/public -c ../pw_allocator/block.cc -o stm32f429i_disc1_debug/obj/pw_allocator/block.block.cc.o',
                 'directory': str(self.root_dir),
@@ -1258,7 +1260,8 @@ class TestCppCompilationDatabasesMap(PwIdeTestCase):
 
     def test_cascade_disabled(self):
         settings = self.make_ide_settings(
-            cascade_targets=False, targets=['test_target_1', 'test_target_2']
+            cascade_targets=False,
+            targets_include=['test_target_1', 'test_target_2'],
         )
         target1 = 'test_target_1'
         target2 = 'test_target_2'
@@ -1270,7 +1273,8 @@ class TestCppCompilationDatabasesMap(PwIdeTestCase):
 
     def test_cascade_enabled(self):
         settings = self.make_ide_settings(
-            cascade_targets=True, targets=['test_target_1', 'test_target_2']
+            cascade_targets=True,
+            targets_include=['test_target_1', 'test_target_2'],
         )
         target1 = 'test_target_1'
         target2 = 'test_target_2'
@@ -1279,6 +1283,46 @@ class TestCppCompilationDatabasesMap(PwIdeTestCase):
         db_set[target2] = self.fixture_2(target2)
         result = db_set._compdb_to_write(target1)
         self.assertCountEqual(result._db, [*db_set[target1], *db_set[target2]])
+
+
+class TestCppIdeFeaturesState(PwIdeTestCase):
+    """Test CppIdeFeaturesState"""
+
+    def test_targets_all(self):
+        all_targets = {
+            "a": CppIdeFeaturesTarget("a", Path("/dev/null"), 1),
+            "b": CppIdeFeaturesTarget("b", Path("/dev/null"), 1),
+            "c": CppIdeFeaturesTarget("c", Path("/dev/null"), 1),
+        }
+
+        settings = self.make_ide_settings()
+        state = CppIdeFeaturesState(settings)
+        state.targets = all_targets
+        self.assertListEqual(list(state.targets.keys()), ["a", "b", "c"])
+
+    def test_targets_exclude(self):
+        all_targets = {
+            "a": CppIdeFeaturesTarget("a", Path("/dev/null"), 1),
+            "b": CppIdeFeaturesTarget("b", Path("/dev/null"), 1),
+            "c": CppIdeFeaturesTarget("c", Path("/dev/null"), 1),
+        }
+
+        settings = self.make_ide_settings(targets_exclude=["a"])
+        state = CppIdeFeaturesState(settings)
+        state.targets = all_targets
+        self.assertListEqual(list(state.targets.keys()), ["b", "c"])
+
+    def test_targets_include(self):
+        all_targets = {
+            "a": CppIdeFeaturesTarget("a", Path("/dev/null"), 1),
+            "b": CppIdeFeaturesTarget("b", Path("/dev/null"), 1),
+            "c": CppIdeFeaturesTarget("c", Path("/dev/null"), 1),
+        }
+
+        settings = self.make_ide_settings(targets_include=["a"])
+        state = CppIdeFeaturesState(settings)
+        state.targets = all_targets
+        self.assertListEqual(list(state.targets.keys()), ["a"])
 
 
 if __name__ == '__main__':

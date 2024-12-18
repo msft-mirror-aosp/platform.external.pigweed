@@ -4,7 +4,6 @@ User Guide
 ==========
 .. pigweed-module-subpage::
    :name: pw_console
-   :tagline: pw_console: Multi-purpose pluggable interactive console for dev & manufacturing
 
 .. tip::
 
@@ -16,6 +15,7 @@ User Guide
 The Pigweed Console provides a Python repl (read eval print loop) and log viewer
 in a single-window terminal based interface.
 
+.. _module-pw_console-user_guide-start:
 
 Starting the Console
 --------------------
@@ -639,6 +639,14 @@ Example Config
 
    # Hide the year month and day from the time column.
    hide_date_from_log_time: False
+
+   # Style the log message to match the level. For example:
+   # Warning text is all yellow, ERROR and Critical are red.
+   recolor_log_lines_to_match_level: True
+
+   # Do not re-style log messages. This will preserve any ansi escape sequences
+   # for color.
+   recolor_log_lines_to_match_level: False
 
    # Show the Python file and line number responsible for creating log messages.
    show_python_file: False

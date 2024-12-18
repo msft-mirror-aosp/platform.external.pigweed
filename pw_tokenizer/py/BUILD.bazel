@@ -12,8 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("//pw_build:python.bzl", "pw_py_binary", "pw_py_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -37,7 +38,7 @@ py_library(
     ],
 )
 
-py_binary(
+pw_py_binary(
     name = "detokenize",
     srcs = [
         "pw_tokenizer/__main__.py",
@@ -55,7 +56,7 @@ filegroup(
     # deps = [":pw_tokenizer"],
 )
 
-py_test(
+pw_py_test(
     name = "decode_test",
     srcs = [
         "decode_test.py",
@@ -65,7 +66,7 @@ py_test(
     deps = [":pw_tokenizer"],
 )
 
-py_test(
+pw_py_test(
     name = "detokenize_proto_test",
     srcs = [
         "detokenize_proto_test.py",
@@ -91,7 +92,12 @@ py_proto_library(
     deps = [":detokenize_proto_test_proto"],
 )
 
-py_test(
+filegroup(
+    name = "example_binary_with_tokenized_strings",
+    srcs = ["example_binary_with_tokenized_strings.elf"],
+)
+
+pw_py_test(
     name = "detokenize_test",
     srcs = ["detokenize_test.py"],
     data = [
@@ -102,7 +108,7 @@ py_test(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "elf_reader_test",
     srcs = ["elf_reader_test.py"],
     data = [
@@ -136,7 +142,7 @@ filegroup(
     ],
 )
 
-py_test(
+pw_py_test(
     name = "encode_test",
     srcs = [
         "encode_test.py",
@@ -145,7 +151,7 @@ py_test(
     deps = [":pw_tokenizer"],
 )
 
-py_test(
+pw_py_test(
     name = "tokens_test",
     srcs = ["tokens_test.py"],
     deps = [":pw_tokenizer"],

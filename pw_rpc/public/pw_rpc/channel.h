@@ -26,10 +26,68 @@
 #include "pw_status/status.h"
 
 namespace pw::rpc {
+namespace internal {
+namespace test {
 
-// Extracts the channel ID from a pw_rpc packet. Returns DATA_LOSS if the
-// packet is corrupt and the channel ID could not be found.
+template <typename, typename, uint32_t>
+class InvocationContext;  // Forward declaration for friend statement
+
+}  // namespace test
+
+class ChannelList;  // Forward declaration for friend statement
+
+Status OverwriteChannelId(ByteSpan rpc_packet, uint32_t channel_id_under_128);
+
+}  // namespace internal
+
+/// @defgroup pw_rpc_channel_functions
+/// @{
+
+/// Extracts the channel ID from a pw_rpc packet.
+///
+/// @returns @rst
+///
+/// .. pw-status-codes::
+///
+///    OK: returns the channel ID in the packet
+///
+///    DATA_LOSS: the packet is corrupt and the channel ID could not be found.
+///
+/// @endrst
 Result<uint32_t> ExtractChannelId(ConstByteSpan packet);
+
+/// Rewrites an encoded packet's channel ID in place. Both channel IDs MUST be
+/// less than 128.
+///
+/// @returns @rst
+///
+/// .. pw-status-codes::
+///
+///    OK: Successfully replaced the channel ID
+///
+///    DATA_LOSS: parsing the packet failed
+///
+///    OUT_OF_RANGE: the encoded packet's channel ID was 128 or larger
+///
+/// @endrst
+template <uint32_t kNewChannelId>
+Status ChangeEncodedChannelId(ByteSpan rpc_packet) {
+  static_assert(kNewChannelId < 128u,
+                "Channel IDs must be less than 128 to avoid needing to "
+                "re-encode the packet");
+  return internal::OverwriteChannelId(rpc_packet, kNewChannelId);
+}
+
+/// Version of `ChangeEncodedChannelId` with a runtime variable channel ID.
+/// Prefer the template parameter version when possible to avoid a runtime check
+/// on the new channel ID.
+inline Status ChangeEncodedChannelId(ByteSpan rpc_packet,
+                                     uint32_t new_channel_id) {
+  PW_ASSERT(new_channel_id < 128);
+  return internal::OverwriteChannelId(rpc_packet, new_channel_id);
+}
+
+/// @}
 
 // Returns the maximum size of the payload of an RPC packet. This can be used
 // when allocating response encode buffers for RPC services.
@@ -88,34 +146,13 @@ class ChannelOutput {
   const char* name_;
 };
 
-class Channel {
+namespace internal {
+
+// Base class for rpc::Channel with internal-only public methods, which are
+// hidden in the public derived class.
+class ChannelBase {
  public:
   static constexpr uint32_t kUnassignedChannelId = 0;
-
-  // Creates a channel with a static ID. The channel's output can also be
-  // static, or it can set to null to allow dynamically opening connections
-  // through the channel.
-  template <uint32_t kId>
-  constexpr static Channel Create(ChannelOutput* output) {
-    static_assert(kId != kUnassignedChannelId, "Channel ID cannot be 0");
-    return Channel(kId, output);
-  }
-
-  // Creates a channel with a static ID from an enum value.
-  template <auto kId,
-            typename T = decltype(kId),
-            typename = std::enable_if_t<std::is_enum_v<T>>,
-            typename U = std::underlying_type_t<T>>
-  constexpr static Channel Create(ChannelOutput* output) {
-    constexpr U kIntId = static_cast<U>(kId);
-    static_assert(kIntId >= 0, "Channel ID cannot be negative");
-    static_assert(kIntId <= std::numeric_limits<uint32_t>::max(),
-                  "Channel ID must fit in a uint32");
-    return Create<static_cast<uint32_t>(kIntId)>(output);
-  }
-
-  // Creates a dynamically assignable channel without a set ID or output.
-  constexpr Channel() : id_(kUnassignedChannelId), output_(nullptr) {}
 
   // TODO: b/234876441 - Remove the Configure and set_channel_output functions.
   //     Users should call CloseChannel() / OpenChannel() to change a channel.
@@ -168,18 +205,13 @@ class Channel {
   constexpr uint32_t id() const { return id_; }
   constexpr bool assigned() const { return id_ != kUnassignedChannelId; }
 
- protected:
-  constexpr Channel(uint32_t id, ChannelOutput* output)
-      : id_(id), output_(output) {
-    PW_ASSERT(id != kUnassignedChannelId);
-  }
+  //
+  // Internal functions made private in the public Channel class.
+  //
 
-  ChannelOutput& output() const {
-    PW_ASSERT(output_ != nullptr);
-    return *output_;
-  }
-
-  void set_channel_id(uint32_t channel_id) { id_ = channel_id; }
+  // Invokes ChannelOutput::Send and returns its status. Any non-OK status
+  // indicates that the Channel is permanently closed.
+  Status Send(const Packet& packet) PW_EXCLUSIVE_LOCKS_REQUIRED(rpc_lock());
 
   constexpr void Close() {
     PW_ASSERT(id_ != kUnassignedChannelId);
@@ -187,9 +219,59 @@ class Channel {
     output_ = nullptr;
   }
 
+ protected:
+  constexpr ChannelBase(uint32_t id, ChannelOutput* output)
+      : id_(id), output_(output) {}
+
  private:
   uint32_t id_;
   ChannelOutput* output_;
+};
+
+}  // namespace internal
+
+// Associates an ID with an interface for sending packets.
+class Channel : public internal::ChannelBase {
+ public:
+  // Creates a channel with a static ID. The channel's output can also be
+  // static, or it can set to null to allow dynamically opening connections
+  // through the channel.
+  template <uint32_t kId>
+  constexpr static Channel Create(ChannelOutput* output) {
+    static_assert(kId != kUnassignedChannelId, "Channel ID cannot be 0");
+    return Channel(kId, output);
+  }
+
+  // Creates a channel with a static ID from an enum value.
+  template <auto kId,
+            typename T = decltype(kId),
+            typename = std::enable_if_t<std::is_enum_v<T>>,
+            typename U = std::underlying_type_t<T>>
+  constexpr static Channel Create(ChannelOutput* output) {
+    constexpr U kIntId = static_cast<U>(kId);
+    static_assert(kIntId >= 0, "Channel ID cannot be negative");
+    static_assert(kIntId <= std::numeric_limits<uint32_t>::max(),
+                  "Channel ID must fit in a uint32");
+    return Create<static_cast<uint32_t>(kIntId)>(output);
+  }
+
+  // Creates a dynamically assignable channel without a set ID or output.
+  constexpr Channel() : internal::ChannelBase(kUnassignedChannelId, nullptr) {}
+
+ private:
+  template <typename, typename, uint32_t>
+  friend class internal::test::InvocationContext;
+  friend class internal::ChannelList;
+
+  constexpr Channel(uint32_t id, ChannelOutput* output)
+      : internal::ChannelBase(id, output) {
+    PW_ASSERT(id != kUnassignedChannelId);
+  }
+
+ private:
+  // Hide internal-only methods defined in the internal::ChannelBase.
+  using internal::ChannelBase::Close;
+  using internal::ChannelBase::Send;
 };
 
 }  // namespace pw::rpc

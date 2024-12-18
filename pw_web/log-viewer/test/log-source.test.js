@@ -13,12 +13,15 @@
 // the License.
 
 import { expect } from '@open-wc/testing';
+import { spy, match } from 'sinon';
 import { LogSource } from '../src/log-source';
+import { BrowserLogSource } from '../src/custom/browser-log-source';
+import { Level } from '../src/shared/interfaces';
 
 describe('log-source', () => {
   let logSourceA, logSourceB;
   const logEntry = {
-    severity: 'INFO',
+    level: 'INFO',
     timestamp: new Date(Date.now()),
     fields: [{ key: 'message', value: 'Log message' }],
   };
@@ -86,5 +89,134 @@ describe('log-source', () => {
     } catch (error) {
       expect(error.message).to.equal('Invalid log entry structure');
     }
+  });
+
+  it('converts severity fields to level', async () => {
+    const severityLogEntry = {
+      severity: 'INFO',
+      timestamp: new Date(Date.now()),
+      fields: [
+        { key: 'message', value: 'Log message' },
+        { key: 'severity', value: 'INFO' },
+      ],
+    };
+
+    const eventType = 'log-entry';
+    let receivedData = null;
+
+    const listener = (event) => {
+      receivedData = event.data;
+    };
+    logSourceA.addEventListener(eventType, listener);
+    logSourceA.publishLogEntry(severityLogEntry);
+    expect(receivedData.severity).to.equal(undefined);
+    expect(receivedData.level).to.equal('INFO');
+    expect(receivedData.fields[2].key).to.equal('level');
+  });
+});
+
+describe('browser-log-source', () => {
+  let browserLogSource;
+  let originalConsoleMethods;
+
+  beforeEach(() => {
+    originalConsoleMethods = {
+      log: console.log,
+      info: console.info,
+      warn: console.warn,
+      error: console.error,
+      debug: console.debug,
+    };
+    browserLogSource = new BrowserLogSource();
+    browserLogSource.start();
+    browserLogSource.publishLogEntry = spy();
+  });
+
+  afterEach(() => {
+    browserLogSource.stop();
+
+    console.log = originalConsoleMethods.log;
+    console.info = originalConsoleMethods.info;
+    console.warn = originalConsoleMethods.warn;
+    console.error = originalConsoleMethods.error;
+    console.debug = originalConsoleMethods.debug;
+  });
+
+  it('captures and formats console.log messages with substitutions correctly', () => {
+    browserLogSource.publishLogEntry.resetHistory();
+
+    console.log("Hello, %s. You've called me %d times.", 'Alice', 5);
+    const expectedMessage = "Hello, Alice. You've called me 5 times.";
+
+    expect(browserLogSource.publishLogEntry.calledOnce).to.be.true;
+
+    const callArgs = browserLogSource.publishLogEntry.getCall(0).args[0];
+    expect(callArgs.level).to.equal(Level.INFO);
+
+    const messageField = callArgs.fields.find(
+      (field) => field.key === 'message',
+    );
+    expect(messageField).to.exist;
+    expect(messageField.value).to.equal(expectedMessage);
+  });
+
+  ['log', 'info', 'warn', 'error', 'debug'].forEach((method) => {
+    it(`captures and formats console.${method} messages`, () => {
+      const expectedLevel = mapMethodToLevel(method);
+
+      // For test, log-source.test.js:XXX needs to match next line number
+      console[method]('Test message (%s)', method);
+      expect(browserLogSource.publishLogEntry).to.have.been.calledWithMatch({
+        timestamp: match.instanceOf(Date),
+        level: expectedLevel,
+        fields: [
+          { key: 'level', value: expectedLevel },
+          { key: 'time', value: match.typeOf('string') },
+          { key: 'message', value: `Test message (${method})` },
+          { key: 'file', value: 'log-source.test.js:168' },
+        ],
+      });
+    });
+  });
+
+  function mapMethodToLevel(method) {
+    switch (method) {
+      case 'log':
+      case 'info':
+        return Level.INFO;
+      case 'warn':
+        return Level.WARNING;
+      case 'error':
+        return Level.ERROR;
+      case 'debug':
+        return Level.DEBUG;
+      default:
+        return Level.INFO;
+    }
+  }
+
+  it('captures and formats multiple arguments correctly', () => {
+    console.log('This is a test', 42, { type: 'answer' });
+
+    const expectedMessage = 'This is a test 42 {"type":"answer"}';
+
+    expect(browserLogSource.publishLogEntry.calledOnce).to.be.true;
+    const callArgs = browserLogSource.publishLogEntry.getCall(0).args[0];
+    expect(callArgs.level).to.equal(Level.INFO);
+
+    const messageField = callArgs.fields.find(
+      (field) => field.key === 'message',
+    );
+    expect(messageField).to.exist;
+    expect(messageField.value).to.equal(expectedMessage);
+  });
+
+  it('restores original console methods after stop is called', () => {
+    browserLogSource.stop();
+    expect(console.log).to.equal(originalConsoleMethods.log);
+    expect(console.info).to.equal(originalConsoleMethods.info);
+    expect(console.warn).to.equal(originalConsoleMethods.warn);
+    expect(console.error).to.equal(originalConsoleMethods.error);
+    expect(console.debug).to.equal(originalConsoleMethods.debug);
   });
 });

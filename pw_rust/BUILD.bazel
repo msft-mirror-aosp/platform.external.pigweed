@@ -13,6 +13,7 @@
 # the License.
 
 load("@rules_rust//rust:defs.bzl", "rust_docs")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 
 rust_docs(
     name = "docs",
@@ -23,6 +24,8 @@ rust_docs(
     # TODO: b/295227522 - Add support to `rust_docs` to automatically processs
     # crates in topological order.
     crates = [
+        "//pw_bytes/rust:pw_bytes",
+        "//pw_format/rust:pw_format_core",
         "//pw_format/rust:pw_format",
         "//pw_status/rust:pw_status",
         "//pw_stream/rust:pw_stream",
@@ -30,9 +33,10 @@ rust_docs(
         "//pw_tokenizer/rust:pw_tokenizer_core",
         "//pw_tokenizer/rust:pw_tokenizer",
         "//pw_log/rust:pw_log_backend_println",
-        "//pw_log/rust:pw_log_backend_printf",
+        "//pw_log/rust:pw_log_backend_printf_docs",
         "//pw_log/rust:pw_log_backend_api",
         "//pw_log/rust:pw_log",
         "//pw_base64/rust:pw_base64",
     ],
+    target_compatible_with = incompatible_with_mcu(),
 )

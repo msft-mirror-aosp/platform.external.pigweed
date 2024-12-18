@@ -5,7 +5,6 @@ Reference
 =========
 .. pigweed-module-subpage::
    :name: pw_status
-   :tagline: pw_status: Exception-free error propagation for embedded
 
 .. _module-pw_status-codes:
 
@@ -251,10 +250,10 @@ Status codes
    file size.
 
    There is a fair bit of overlap between :c:enumerator:`FAILED_PRECONDITION`
-   and :c:enumerator:`OUT_OF_RANGE`.  We recommend using
-   :c:enumerator:`OUT_OF_RANGE` (the more specific error) when it applies so
-   that callers who are iterating through a space can easily look for an
-   :c:enumerator:`OUT_OF_RANGE` error to detect when they are done.
+   and :c:enumerator:`OUT_OF_RANGE`. Use :c:enumerator:`OUT_OF_RANGE` (the more
+   specific error) when it applies so that callers who are iterating through a
+   space can easily look for an :c:enumerator:`OUT_OF_RANGE` error to detect
+   when they are done.
 
    .. list-table::
 
@@ -374,16 +373,28 @@ C++ API
    ``PW_STATUS_``. For example, ``PW_STATUS_DATA_LOSS`` corresponds with
    :c:enumerator:`DATA_LOSS`.
 
+.. doxygenclass:: pw::StatusWithSize
+   :members:
+   :undoc-members:
+
+.. doxygendefine:: PW_TRY
+.. doxygendefine:: PW_TRY_ASSIGN
+.. doxygendefine:: PW_TRY_WITH_SIZE
+.. doxygendefine:: PW_CO_TRY
+.. doxygendefine:: PW_CO_TRY_ASSIGN
+
+.. _module-pw_status-reference-unused:
+
 Unused result warnings
 ----------------------
 If the ``PW_STATUS_CFG_CHECK_IF_USED`` option is enabled, ``pw::Status`` objects
 returned from function calls must be used or it is a compilation error. To
 silence these warnings call ``IgnoreError()`` on the returned status object.
 
-``PW_STATUS_CFG_CHECK_IF_USED`` defaults to ``false``. Pigweed compiles with
-this option enabled, but projects that use Pigweed will need to be updated to
-compile with this option. After all projects have migrated, unused result
-warnings will be enabled unconditionally.
+``PW_STATUS_CFG_CHECK_IF_USED`` defaults to ``false`` in GN and CMake, but
+``true`` in Bazel. Pigweed compiles with this option enabled, but projects that
+use Pigweed will need to be updated to compile with this option. After all
+projects have migrated, unused result warnings will be enabled unconditionally.
 
 -----
 C API

@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -20,8 +20,7 @@ export const styles = css`
   }
 
   :host {
-    display: flex;
-    flex-direction: column;
+    display: block;
     gap: 2rem;
     height: var(--sys-log-viewer-height);
     width: 100%;
@@ -46,23 +45,38 @@ export const styles = css`
 
     /* Log List */
     --sys-log-viewer-table-cell-padding: 0.375rem 0.75rem;
-    --sys-log-viewer-table-cell-icon-size: 1.125rem;
+    --sys-log-viewer-table-cell-icon-size: 1rem;
+
+    /* Log View Controls */
+    --sys-log-viewer-header-height: 2.75rem;
+    --sys-log-viewer-header-title-font-size: 1rem;
   }
 
-  .grid-container {
-    display: grid;
-    grid-gap: 1rem;
-    grid-template-columns: repeat(auto-fit, minmax(27rem, 1fr));
+  sl-split-panel {
+    --divider-width: 8px;
+    --divider-hit-area: 24px;
+    --min: 10rem;
+    --max: calc(100% - 10rem);
     height: 100%;
-    overflow: hidden;
+    width: 100%;
+    contain: size style;
   }
 
-  .add-button {
-    width: 8rem;
-    height: 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+  sl-split-panel::part(divider) {
+    border-radius: 8px;
+    transition: 150ms ease 20ms;
+    background-color: transparent;
+    border: 2px solid black;
+    border-color: var(--md-sys-color-surface);
+  }
+
+  sl-split-panel::part(divider):hover,
+  sl-split-panel::part(divider):focus {
+    background-color: #a8c7fa;
+  }
+
+  sl-split-panel div[slot='start'],
+  sl-split-panel div[slot='end'] {
+    overflow: hidden;
   }
 `;

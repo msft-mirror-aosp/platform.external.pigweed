@@ -13,6 +13,7 @@
 // the License.
 
 #define PW_LOG_MODULE_NAME "TRN"
+#define PW_LOG_LEVEL PW_TRANSFER_CONFIG_LOG_LEVEL
 
 #include "pw_transfer/transfer_thread.h"
 
@@ -20,6 +21,7 @@
 #include "pw_log/log.h"
 #include "pw_transfer/internal/chunk.h"
 #include "pw_transfer/internal/client_context.h"
+#include "pw_transfer/internal/config.h"
 #include "pw_transfer/internal/event.h"
 
 PW_MODIFY_DIAGNOSTICS_PUSH();
@@ -115,8 +117,9 @@ void TransferThread::StartTransfer(
     uint8_t max_retries,
     uint32_t max_lifetime_retries,
     uint32_t initial_offset) {
-  // Block until the last event has been processed.
-  next_event_ownership_.acquire();
+  if (!TryWaitForEventToProcess()) {
+    return;
+  }
 
   bool is_client_transfer = stream != nullptr;
 
@@ -203,8 +206,9 @@ void TransferThread::ProcessChunk(EventType type, ConstByteSpan chunk) {
     return;
   }
 
-  // Block until the last event has been processed.
-  next_event_ownership_.acquire();
+  if (!TryWaitForEventToProcess()) {
+    return;
+  }
 
   std::memcpy(chunk_buffer_.data(), chunk.data(), chunk.size());
 
@@ -223,8 +227,9 @@ void TransferThread::SendStatus(TransferStream stream,
                                 uint32_t session_id,
                                 ProtocolVersion version,
                                 Status status) {
-  // Block until the last event has been processed.
-  next_event_ownership_.acquire();
+  if (!TryWaitForEventToProcess()) {
+    return;
+  }
 
   next_event_.type = EventType::kSendStatusChunk;
   next_event_.send_status_chunk = {
@@ -242,8 +247,9 @@ void TransferThread::EndTransfer(EventType type,
                                  uint32_t id,
                                  Status status,
                                  bool send_status_chunk) {
-  // Block until the last event has been processed.
-  next_event_ownership_.acquire();
+  if (!TryWaitForEventToProcess()) {
+    return;
+  }
 
   next_event_.type = type;
   next_event_.end_transfer = {
@@ -256,10 +262,24 @@ void TransferThread::EndTransfer(EventType type,
   event_notification_.release();
 }
 
+void TransferThread::SetStream(TransferStream stream) {
+  if (!TryWaitForEventToProcess()) {
+    return;
+  }
+
+  next_event_.type = EventType::kSetStream;
+  next_event_.set_stream = {
+      .stream = stream,
+  };
+
+  event_notification_.release();
+}
+
 void TransferThread::UpdateClientTransfer(uint32_t handle_id,
                                           size_t transfer_size_bytes) {
-  // Block until the last event has been processed.
-  next_event_ownership_.acquire();
+  if (!TryWaitForEventToProcess()) {
+    return;
+  }
 
   next_event_.type = EventType::kUpdateClientTransfer;
   next_event_.update_transfer.handle_id = handle_id;
@@ -268,9 +288,10 @@ void TransferThread::UpdateClientTransfer(uint32_t handle_id,
   event_notification_.release();
 }
 
-void TransferThread::TransferHandlerEvent(EventType type, Handler& handler) {
-  // Block until the last event has been processed.
-  next_event_ownership_.acquire();
+bool TransferThread::TransferHandlerEvent(EventType type, Handler& handler) {
+  if (!TryWaitForEventToProcess()) {
+    return false;
+  }
 
   next_event_.type = type;
   if (type == EventType::kAddTransferHandler) {
@@ -280,6 +301,7 @@ void TransferThread::TransferHandlerEvent(EventType type, Handler& handler) {
   }
 
   event_notification_.release();
+  return true;
 }
 
 void TransferThread::HandleEvent(const internal::Event& event) {
@@ -344,6 +366,10 @@ void TransferThread::HandleEvent(const internal::Event& event) {
         }
       }
       handlers_.remove(*event.remove_transfer_handler);
+      return;
+
+    case EventType::kSetStream:
+      HandleSetStreamEvent(event.set_stream.stream);
       return;
 
     case EventType::kGetResourceStatus:
@@ -448,6 +474,7 @@ Context* TransferThread::FindContextForEvent(
     case EventType::kSendStatusChunk:
     case EventType::kAddTransferHandler:
     case EventType::kRemoveTransferHandler:
+    case EventType::kSetStream:
     case EventType::kTerminate:
     case EventType::kGetResourceStatus:
     default:
@@ -485,12 +512,71 @@ uint32_t TransferThread::AssignSessionId() {
   return session_id;
 }
 
+template <typename T>
+void TerminateTransfers(span<T> contexts,
+                        TransferType type,
+                        EventType event_type,
+                        Status status) {
+  for (Context& context : contexts) {
+    if (context.active() && context.type() == type) {
+      context.HandleEvent(Event{
+          .type = event_type,
+          .end_transfer =
+              EndTransferEvent{
+                  .id_type = IdentifierType::Session,
+                  .id = context.session_id(),
+                  .status = status.code(),
+                  .send_status_chunk = false,
+              },
+      });
+    }
+  }
+}
+
+void TransferThread::HandleSetStreamEvent(TransferStream stream) {
+  switch (stream) {
+    case TransferStream::kClientRead:
+      TerminateTransfers(client_transfers_,
+                         TransferType::kReceive,
+                         EventType::kClientEndTransfer,
+                         Status::Aborted());
+      client_read_stream_ = std::move(staged_client_stream_);
+      client_read_stream_.set_on_next(std::move(staged_client_on_next_));
+      break;
+    case TransferStream::kClientWrite:
+      TerminateTransfers(client_transfers_,
+                         TransferType::kTransmit,
+                         EventType::kClientEndTransfer,
+                         Status::Aborted());
+      client_write_stream_ = std::move(staged_client_stream_);
+      client_write_stream_.set_on_next(std::move(staged_client_on_next_));
+      break;
+    case TransferStream::kServerRead:
+      TerminateTransfers(server_transfers_,
+                         TransferType::kTransmit,
+                         EventType::kServerEndTransfer,
+                         Status::Aborted());
+      server_read_stream_ = std::move(staged_server_stream_);
+      server_read_stream_.set_on_next(std::move(staged_server_on_next_));
+      break;
+    case TransferStream::kServerWrite:
+      TerminateTransfers(server_transfers_,
+                         TransferType::kReceive,
+                         EventType::kServerEndTransfer,
+                         Status::Aborted());
+      server_write_stream_ = std::move(staged_server_stream_);
+      server_write_stream_.set_on_next(std::move(staged_server_on_next_));
+      break;
+  }
+}
+
 // Adds GetResourceStatusEvent to the queue. Will fail if there is already a
 // GetResourceStatusEvent in process.
 void TransferThread::EnqueueResourceEvent(uint32_t resource_id,
                                           ResourceStatusCallback&& callback) {
-  // Block until the last event has been processed.
-  next_event_ownership_.acquire();
+  if (!TryWaitForEventToProcess()) {
+    return;
+  }
 
   next_event_.type = EventType::kGetResourceStatus;
 

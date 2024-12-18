@@ -121,7 +121,7 @@ class TypedMetric<float> : public Metric {
   TypedMetric(Token name, float value, IntrusiveList<Metric>& metrics)
       : Metric(name, value, metrics) {}
 
-  void Set(float value) { SetFloat(value); }
+  void Set(float value) { SetFloat(value); }  // namespace pw::metric
   float value() const { return Metric::as_float(); }
 
  private:

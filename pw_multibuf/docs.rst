@@ -5,9 +5,6 @@ pw_multibuf
 ===========
 .. pigweed-module::
    :name: pw_multibuf
-   :tagline: A buffer API optimized for zero-copy messaging
-   :status: unstable
-   :languages: C++17
 
 Sending or receiving messages via RPC, transfer, or sockets often requires a
 series of intermediate buffers, each requiring their own copy of the data.
@@ -51,15 +48,16 @@ data which are one of the following:
 API Reference
 -------------
 Most users of ``pw_multibuf`` will start by allocating a ``MultiBuf`` using
-a ``MultiBufAllocator`` class.
+a ``MultiBufAllocator`` class, such as the ``SimpleAllocator``.
 
-``MultiBuf`` s consist of a number of ``Chunk`` s of contiguous memory.
-These ``Chunk`` s can be grown, shrunk, modified, or extracted from the
-``MultiBuf``. ``MultiBuf`` exposes an ``std::byte`` iterator interface as well
-as a ``Chunk`` iterator available through the ``Chunks()`` method.
+``MultiBuf`` s consist of a number of ``Chunk`` s of contiguous memory regions.
+``Chunk`` s can be grown or shrunk which allows ``MultiBuf`` s to be grown or
+shrunk. This allows, for example, lower layers to reserve part of a
+``MultiBuf`` for a header or footer (see ``Chunk`` for more details).
 
-An RAII-style ``OwnedChunk`` is also provided, and manages the lifetime of
-``Chunk`` s which are not currently stored inside of a ``MultiBuf``.
+``MultiBuf`` exposes an ``std::byte`` iterator interface as well as a ``Chunk``
+iterator available through the ``Chunks()`` method. It allows extracting a
+``Chunk`` as an RAII-style ``OwnedChunk`` which manages its own lifetime.
 
 .. doxygenclass:: pw::multibuf::Chunk
    :members:
@@ -70,7 +68,21 @@ An RAII-style ``OwnedChunk`` is also provided, and manages the lifetime of
 .. doxygenclass:: pw::multibuf::MultiBuf
    :members:
 
+.. doxygenclass:: pw::multibuf::MultiBufChunks
+   :members:
+
 .. doxygenclass:: pw::multibuf::MultiBufAllocator
+   :members:
+
+.. doxygenclass:: pw::multibuf::SimpleAllocator
+   :members:
+
+.. doxygenclass:: pw::multibuf::Stream
+   :members:
+
+Test-only features
+==================
+.. doxygenclass:: pw::multibuf::test::SimpleAllocatorForTest
    :members:
 
 ---------------------------

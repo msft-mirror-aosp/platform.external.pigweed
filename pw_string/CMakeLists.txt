@@ -80,6 +80,7 @@ pw_add_library(pw_string.to_string STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_result
     pw_string.config
     pw_string.format
     pw_string.util
@@ -89,9 +90,25 @@ pw_add_library(pw_string.to_string STATIC
     type_to_string.cc
 )
 
-pw_add_library(pw_string.util STATIC
+pw_add_library(pw_string.utf_codecs STATIC
+  HEADERS
+    public/pw_string/utf_codecs.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_assert
+    pw_result
+    pw_span
+    pw_status
+    pw_string.builder
+  SOURCES
+    utf_codecs.cc
+)
+
+pw_add_library(pw_string.util INTERFACE
   HEADERS
     public/pw_string/util.h
+    public/pw_string/internal/length.h
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
@@ -100,8 +117,6 @@ pw_add_library(pw_string.util STATIC
     pw_span
     pw_status
     pw_string.string
-  SOURCES
-    public/pw_string/internal/length.h
 )
 
 pw_add_test(pw_string.format_test
@@ -151,6 +166,17 @@ pw_add_test(pw_string.type_to_string_test
     type_to_string_test.cc
   PRIVATE_DEPS
     pw_string
+  GROUPS
+    modules
+    pw_string
+)
+
+pw_add_test(pw_string.utf_codecs_test
+  SOURCES
+    utf_codecs_test.cc
+  PRIVATE_DEPS
+    pw_string
+    pw_string.utf_codecs
   GROUPS
     modules
     pw_string

@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
 load(
     "@pw_toolchain//cc_toolchain:defs.bzl",
     "pw_cc_action_config",
@@ -32,14 +33,58 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "llvm-libc_arm-none-eabi_compile_files",
+    srcs = glob([
+        "include/armv*-unknown-none-eabi/**",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "llvm-libc_arm-none-eabi_link_files",
+    srcs = glob([
+        "lib/armv*-unknown-none-eabi/**",
+        "lib/clang/*/lib/armv*-unknown-none-eabi/**",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
+# TODO(amontanez): Add sysroot for macos to the `data` field selection once
+# Pigweed migrates to use rules_cc toolchains.
+native_binary(
+    name = "clang-tidy",
+    src = select({
+        "@platforms//os:windows": "//:bin/clang-tidy.exe",
+        "//conditions:default": "//:bin/clang-tidy",
+    }),
+    data = glob([
+        "include/**",
+        "lib/clang/**/include/**",
+    ]) + select({
+        "@platforms//os:linux": ["@linux_sysroot//:all"],
+        "//conditions:default": [],
+    }),
+    out = select({
+        "@platforms//os:windows": "clang-tidy.exe",
+        "//conditions:default": "clang-tidy",
+    }),
+    visibility = ["//visibility:public"],
+)
+
 pw_cc_tool(
     name = "ar_tool",
-    tool = "//:bin/llvm-ar",
+    tool = select({
+        "@platforms//os:windows": "//:bin/llvm-ar.exe",
+        "//conditions:default": "//:bin/llvm-ar",
+    }),
+    additional_files = glob(["bin/llvm"]),
 )
 
 pw_cc_tool(
     name = "llvm_libtool_darwin_tool",
     tool = "//:bin/llvm-libtool-darwin",
+    additional_files = glob(["bin/llvm"]),
 )
 
 pw_cc_action_config(
@@ -61,8 +106,12 @@ pw_cc_action_config(
 
 pw_cc_tool(
     name = "clang++_tool",
-    tool = "//:bin/clang++",
+    tool = select({
+        "@platforms//os:windows": "//:bin/clang++.exe",
+        "//conditions:default": "//:bin/clang++",
+    }),
     additional_files = glob([
+        "bin/llvm",
         "include/**",
         "lib/clang/**/include/**",
     ]),
@@ -76,8 +125,12 @@ pw_cc_action_config(
 
 pw_cc_tool(
     name = "clang_tool",
-    tool = "//:bin/clang",
+    tool = select({
+        "@platforms//os:windows": "//:bin/clang.exe",
+        "//conditions:default": "//:bin/clang",
+    }),
     additional_files = glob([
+        "bin/llvm",
         "include/**",
         "lib/clang/**/include/**",
     ]),
@@ -96,10 +149,17 @@ pw_cc_action_config(
 # tool differently to specify a different set of additional files.
 pw_cc_tool(
     name = "lld_tool",
-    tool = "//:bin/clang++",
+    tool = select({
+        "@platforms//os:windows": "//:bin/clang++.exe",
+        "//conditions:default": "//:bin/clang++",
+    }),
     additional_files = glob([
+        "bin/llvm",
+        "bin/lld*",
+        "bin/ld*",
         "lib/**/*.a",
         "lib/**/*.so*",
+        "lib/**/*.o",
     ]),
 )
 
@@ -111,7 +171,11 @@ pw_cc_action_config(
 
 pw_cc_tool(
     name = "llvm_cov_tool",
-    tool = "//:bin/llvm-cov",
+    tool = select({
+        "@platforms//os:windows": "//:bin/llvm-cov.exe",
+        "//conditions:default": "//:bin/llvm-cov",
+    }),
+    additional_files = glob(["bin/llvm"]),
 )
 
 pw_cc_action_config(
@@ -122,7 +186,11 @@ pw_cc_action_config(
 
 pw_cc_tool(
     name = "llvm_objcopy_tool",
-    tool = "//:bin/llvm-objcopy",
+    tool = select({
+        "@platforms//os:windows": "//:bin/llvm-objcopy.exe",
+        "//conditions:default": "//:bin/llvm-objcopy",
+    }),
+    additional_files = glob(["bin/llvm"]),
 )
 
 pw_cc_action_config(
@@ -133,7 +201,11 @@ pw_cc_action_config(
 
 pw_cc_tool(
     name = "llvm_objdump_tool",
-    tool = "//:bin/llvm-objdump",
+    tool = select({
+        "@platforms//os:windows": "//:bin/llvm-objdump.exe",
+        "//conditions:default": "//:bin/llvm-objdump",
+    }),
+    additional_files = glob(["bin/llvm"]),
 )
 
 pw_cc_action_config(
@@ -144,7 +216,11 @@ pw_cc_action_config(
 
 pw_cc_tool(
     name = "llvm_strip_tool",
-    tool = "//:bin/llvm-strip",
+    tool = select({
+        "@platforms//os:windows": "//:bin/llvm-strip.exe",
+        "//conditions:default": "//:bin/llvm-strip",
+    }),
+    additional_files = glob(["bin/llvm"]),
 )
 
 pw_cc_action_config(

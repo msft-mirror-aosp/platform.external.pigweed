@@ -5,9 +5,6 @@ pw_function
 ===========
 .. pigweed-module::
    :name: pw_function
-   :tagline: Embedded-friendly std::function
-   :status: stable
-   :languages: C++17
 
 * **Familiar**. ``pw_function`` provides a standard, general-purpose API for
   wrapping callable objects that's similar to `std::function`_.
@@ -208,6 +205,8 @@ place of a function pointer or equivalent callable.
    void DoTheThing(int arg, const pw::Function<void(int result)>& callback);
    // Note the parameter name within the function signature template for clarity.
 
+.. _module-pw_function-move-semantics:
+
 Move semantics
 ==============
 :cpp:type:`pw::Function` is movable, but not copyable, so APIs must accept
@@ -328,6 +327,8 @@ is a compile-time error unless dynamic allocation is enabled.
    // Compiler error: sizeof(MyCallable) exceeds function's inline storage size.
    pw::Function<int(int)> function((MyCallable()));
 
+.. _module-pw_function-dynamic-allocation:
+
 Dynamic allocation
 ==================
 You can configure the inline allocation size of ``pw::Function`` and whether it
@@ -355,6 +356,15 @@ enabled but a compile-time check for the inlining is still required,
    If ``PW_FUNCTION_ENABLE_DYNAMIC_ALLOCATION`` is enabled then attempts to
    cast from :cpp:type:`pw::InlineFunction` to a regular
    :cpp:type:`pw::Function` will **ALWAYS** allocate memory.
+
+.. note::
+
+   When building Pigweed itself for host platforms, we enable dynamic
+   allocation.  This is required for some modules that use ``pw::Function``,
+   like :ref:`module-pw_bluetooth_sapphire`.  But it is *not* the default for
+   downstream projects because it introduces a difference between host and
+   non-host builds. This difference has the potential to cause breakages if
+   code is built for host first, and then later ported to device.
 
 Invoking ``pw::Function`` from a C-style API
 ============================================
@@ -452,5 +462,3 @@ be used as a reference when sizing external buffers for ``pw::Function``
 objects.
 
 .. include:: callable_size
-
-

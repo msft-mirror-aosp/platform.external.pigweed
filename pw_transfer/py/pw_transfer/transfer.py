@@ -1,4 +1,4 @@
-# Copyright 2023 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -20,7 +20,7 @@ import enum
 import logging
 import math
 import threading
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from pw_status import Status
 from pw_transfer.chunk import Chunk, ProtocolVersion
@@ -32,7 +32,7 @@ _LOG = logging.getLogger(__package__)
 class ProgressStats:
     bytes_sent: int
     bytes_confirmed_received: int
-    total_size_bytes: Optional[int]
+    total_size_bytes: int | None
 
     def percent_received(self) -> float:
         if self.total_size_bytes is None or self.total_size_bytes == 0:
@@ -59,9 +59,9 @@ class _Timer:
     def __init__(self, timeout_s: float, callback: Callable[[], Any]):
         self.timeout_s = timeout_s
         self._callback = callback
-        self._task: Optional[asyncio.Task[Any]] = None
+        self._task: asyncio.Task[Any] | None = None
 
-    def start(self, timeout_s: Optional[float] = None) -> None:
+    def start(self, timeout_s: float | None = None) -> None:
         """Starts a new timer.
 
         If a timer is already running, it is stopped and a new timer started.
@@ -130,7 +130,7 @@ class Transfer(abc.ABC):
         max_retries: int,
         max_lifetime_retries: int,
         protocol_version: ProtocolVersion,
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
         initial_offset: int = 0,
     ):
         self.status = Status.OK
@@ -156,7 +156,7 @@ class Transfer(abc.ABC):
         else:
             self._state = Transfer._State.INITIATING
 
-        self._last_chunk: Optional[Chunk] = None
+        self._last_chunk: Chunk | None = None
 
         self._retries = 0
         self._max_retries = max_retries
@@ -388,7 +388,13 @@ class Transfer(abc.ABC):
         else:
             self._retry_after_data_timeout()
 
-        self._response_timer.start()
+        if (
+            self._last_chunk is not None
+            and self._last_chunk.type is Chunk.Type.START
+        ):
+            self._response_timer.start(self._initial_response_timeout_s)
+        else:
+            self._response_timer.start()
 
     def finish(self, status: Status, skip_callback: bool = False) -> None:
         """Ends the transfer with the specified status."""
@@ -410,7 +416,7 @@ class Transfer(abc.ABC):
         self,
         bytes_sent: int,
         bytes_confirmed_received: int,
-        total_size_bytes: Optional[int],
+        total_size_bytes: int | None,
     ) -> None:
         """Invokes the provided progress callback, if any, with the progress."""
 
@@ -457,7 +463,7 @@ class WriteTransfer(Transfer):
         max_retries: int,
         max_lifetime_retries: int,
         protocol_version: ProtocolVersion,
-        progress_callback: Optional[ProgressCallback] = None,
+        progress_callback: ProgressCallback | None = None,
         initial_offset: int = 0,
     ):
         super().__init__(
@@ -478,7 +484,7 @@ class WriteTransfer(Transfer):
 
         self._window_end_offset = 0
         self._max_chunk_size = 0
-        self._chunk_delay_us: Optional[int] = None
+        self._chunk_delay_us: int | None = None
 
         # The window ID increments for each parameters update.
         self._window_id = 0
@@ -516,7 +522,7 @@ class WriteTransfer(Transfer):
         asyncio.create_task(self._transmit_next_chunk(self._window_id))
 
     async def _transmit_next_chunk(
-        self, window_id: int, timeout_us: Optional[int] = None
+        self, window_id: int, timeout_us: int | None = None
     ) -> None:
         """Transmits a single data chunk to the server.
 
@@ -647,6 +653,8 @@ class ReadTransfer(Transfer):
     device. These are configurable in the constructor.
     """
 
+    # pylint: disable=too-many-instance-attributes
+
     # The fractional position within a window at which a receive transfer should
     # extend its window size to minimize the amount of time the transmitter
     # spends blocked.
@@ -655,6 +663,27 @@ class ReadTransfer(Transfer):
     # requested data has been received, a divisor of three will extend at a
     # third of the window, and so on.
     EXTEND_WINDOW_DIVISOR = 2
+
+    # Slow start and congestion avoidance are analogues to the equally named
+    # phases in TCP congestion control.
+    class _TransmitPhase(enum.Enum):
+        SLOW_START = 0
+        CONGESTION_AVOIDANCE = 1
+
+    # The type of data transmission the transfer is requesting.
+    class _TransmitAction(enum.Enum):
+        # Immediate parameters sent at the start of a new transfer for legacy
+        # compatibility.
+        BEGIN = 0
+
+        # Initial parameters chunk following the opening handshake.
+        FIRST_PARAMETERS = 1
+
+        # Extend the current transmission window.
+        EXTEND = 2
+
+        # Rewind the transfer to a certain offset following data loss.
+        RETRANSMIT = 3
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -667,10 +696,10 @@ class ReadTransfer(Transfer):
         max_retries: int,
         max_lifetime_retries: int,
         protocol_version: ProtocolVersion,
-        max_bytes_to_receive: int = 8192,
+        max_window_size_bytes: int = 32768,
         max_chunk_size: int = 1024,
-        chunk_delay_us: Optional[int] = None,
-        progress_callback: Optional[ProgressCallback] = None,
+        chunk_delay_us: int | None = None,
+        progress_callback: ProgressCallback | None = None,
         initial_offset: int = 0,
     ):
         super().__init__(
@@ -686,14 +715,17 @@ class ReadTransfer(Transfer):
             progress_callback,
             initial_offset=initial_offset,
         )
-        self._max_bytes_to_receive = max_bytes_to_receive
+        self._max_window_size_bytes = max_window_size_bytes
         self._max_chunk_size = max_chunk_size
         self._chunk_delay_us = chunk_delay_us
 
-        self._remaining_transfer_size: Optional[int] = None
+        self._remaining_transfer_size: int | None = None
         self._data = bytearray()
-        self._window_end_offset = max_bytes_to_receive
-        self._last_chunk_offset: Optional[int] = None
+        self._window_end_offset = max_chunk_size
+        self._window_size_multiplier = 1
+        self._window_size = self._max_chunk_size * self._window_size_multiplier
+        self._transmit_phase = ReadTransfer._TransmitPhase.SLOW_START
+        self._last_chunk_offset: int | None = None
 
     @property
     def data(self) -> bytes:
@@ -701,7 +733,9 @@ class ReadTransfer(Transfer):
         return bytes(self._data)
 
     def _set_initial_chunk_fields(self, chunk: Chunk) -> None:
-        self._set_transfer_parameters(chunk)
+        self._update_and_set_transfer_parameters(
+            chunk, ReadTransfer._TransmitAction.BEGIN
+        )
 
     async def _handle_data_chunk(self, chunk: Chunk) -> None:
         """Processes an incoming chunk from the server.
@@ -721,7 +755,7 @@ class ReadTransfer(Transfer):
                     )
                     self._send_chunk(
                         self._transfer_parameters(
-                            Chunk.Type.PARAMETERS_RETRANSMIT
+                            ReadTransfer._TransmitAction.RETRANSMIT
                         )
                     )
                 else:
@@ -744,21 +778,41 @@ class ReadTransfer(Transfer):
         assert self._state is Transfer._State.WAITING
 
         if chunk.offset != self._offset:
-            # Initially, the transfer service only supports in-order transfers.
-            # If data is received out of order, request that the server
-            # retransmit from the previous offset.
-            _LOG.debug(
-                'Transfer %d expected offset %d, received %d: '
-                'entering recovery state',
-                self.id,
-                self._offset,
-                chunk.offset,
-            )
-            self._state = Transfer._State.RECOVERY
+            if chunk.offset + len(chunk.data) <= self._offset:
+                # If the chunk's data has already been received, don't go
+                # through a full recovery cycle to avoid shrinking the window
+                # size and potentially thrashing. The expected data may already
+                # be in-flight, so just allow the transmitter to keep going with
+                # a CONTINUE parameters chunk.
+                _LOG.debug(
+                    'Transfer %d received duplicate chunk with offset %d',
+                    self.id,
+                    chunk.offset,
+                )
+                self._send_chunk(
+                    self._transfer_parameters(
+                        ReadTransfer._TransmitAction.EXTEND,
+                        update=False,
+                    )
+                )
+            else:
+                # Initially, the transfer service only supports in-order
+                # transfers. If data is received out of order, request that the
+                # server retransmit from the previous offset.
+                _LOG.debug(
+                    'Transfer %d expected offset %d, received %d: '
+                    'entering recovery state',
+                    self.id,
+                    self._offset,
+                    chunk.offset,
+                )
+                self._state = Transfer._State.RECOVERY
 
-            self._send_chunk(
-                self._transfer_parameters(Chunk.Type.PARAMETERS_RETRANSMIT)
-            )
+                self._send_chunk(
+                    self._transfer_parameters(
+                        ReadTransfer._TransmitAction.RETRANSMIT
+                    )
+                )
             return
 
         self._data += chunk.data
@@ -815,21 +869,23 @@ class ReadTransfer(Transfer):
 
             self._window_end_offset = chunk.window_end_offset
 
-        remaining_window_size = self._window_end_offset - self._offset
-        extend_window = (
-            remaining_window_size
-            <= self._max_bytes_to_receive / ReadTransfer.EXTEND_WINDOW_DIVISOR
-        )
-
         if self._offset == self._window_end_offset:
             # All pending data was received. Send out a new parameters chunk for
             # the next block.
             self._send_chunk(
-                self._transfer_parameters(Chunk.Type.PARAMETERS_RETRANSMIT)
+                self._transfer_parameters(ReadTransfer._TransmitAction.EXTEND)
             )
-        elif extend_window:
+            return
+
+        remaining_window_size = self._window_end_offset - self._offset
+        extend_window = (
+            remaining_window_size
+            <= self._window_size / ReadTransfer.EXTEND_WINDOW_DIVISOR
+        )
+
+        if extend_window:
             self._send_chunk(
-                self._transfer_parameters(Chunk.Type.PARAMETERS_CONTINUE)
+                self._transfer_parameters(ReadTransfer._TransmitAction.EXTEND)
             )
 
     def _retry_after_data_timeout(self) -> None:
@@ -838,12 +894,15 @@ class ReadTransfer(Transfer):
             or self._state is Transfer._State.RECOVERY
         ):
             self._send_chunk(
-                self._transfer_parameters(Chunk.Type.PARAMETERS_RETRANSMIT)
+                self._transfer_parameters(
+                    ReadTransfer._TransmitAction.RETRANSMIT
+                )
             )
 
-    def _set_transfer_parameters(self, chunk: Chunk) -> None:
-        self._window_end_offset = self._offset + self._max_bytes_to_receive
-
+    def _set_transfer_parameters(
+        self,
+        chunk: Chunk,
+    ) -> None:
         chunk.offset = self._offset
         chunk.window_end_offset = self._window_end_offset
         chunk.max_chunk_size_bytes = self._max_chunk_size
@@ -851,12 +910,69 @@ class ReadTransfer(Transfer):
         if self._chunk_delay_us:
             chunk.min_delay_microseconds = self._chunk_delay_us
 
-    def _transfer_parameters(self, chunk_type: Any) -> Chunk:
+    def _update_and_set_transfer_parameters(
+        self, chunk: Chunk, action: 'ReadTransfer._TransmitAction'
+    ) -> None:
+        if action is ReadTransfer._TransmitAction.EXTEND:
+            # Window was received successfully without packet loss and should
+            # grow. Double the window size during slow start, or increase it by
+            # a single chunk in congestion avoidance.
+            if self._transmit_phase == ReadTransfer._TransmitPhase.SLOW_START:
+                self._window_size_multiplier *= 2
+            else:
+                self._window_size_multiplier += 1
+
+            # The window size can never exceed the user-specified maximum bytes.
+            # If it does, reduce the multiplier to the largest size that fits.
+            if (
+                self._window_size_multiplier * self._max_chunk_size
+                > self._max_window_size_bytes
+            ):
+                self._window_size_multiplier = (
+                    self._max_window_size_bytes // self._max_chunk_size
+                )
+
+        elif action is ReadTransfer._TransmitAction.RETRANSMIT:
+            # A packet was lost: shrink the window size. Additionally, after the
+            # first packet loss, transition from the slow start to the
+            # congestion avoidance phase of the transfer.
+            if self._transmit_phase == ReadTransfer._TransmitPhase.SLOW_START:
+                self._transmit_phase = (
+                    ReadTransfer._TransmitPhase.CONGESTION_AVOIDANCE
+                )
+            self._window_size_multiplier = max(
+                self._window_size_multiplier // 2, 1
+            )
+
+        self._window_size = min(
+            self._max_chunk_size * self._window_size_multiplier,
+            self._max_window_size_bytes,
+        )
+
+        self._window_end_offset = self._offset + self._window_size
+        self._set_transfer_parameters(chunk)
+
+    def _transfer_parameters(
+        self,
+        action: 'ReadTransfer._TransmitAction',
+        update: bool = True,
+    ) -> Chunk:
         """Returns an updated transfer parameters chunk."""
+
+        if action is ReadTransfer._TransmitAction.BEGIN:
+            chunk_type = Chunk.Type.START
+        elif action is ReadTransfer._TransmitAction.EXTEND:
+            chunk_type = Chunk.Type.PARAMETERS_CONTINUE
+        else:
+            chunk_type = Chunk.Type.PARAMETERS_RETRANSMIT
 
         chunk = Chunk(
             self._configured_protocol_version, chunk_type, session_id=self.id
         )
-        self._set_transfer_parameters(chunk)
+
+        if update:
+            self._update_and_set_transfer_parameters(chunk, action)
+        else:
+            self._set_transfer_parameters(chunk)
 
         return chunk

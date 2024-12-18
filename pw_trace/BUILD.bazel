@@ -12,46 +12,40 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load(
     "//pw_build:pigweed.bzl",
     "pw_cc_binary",
-    "pw_cc_facade",
     "pw_cc_test",
+    "pw_facade",
 )
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
 
-pw_cc_facade(
+# TODO: pwbug.dev/328679085 - Remove this alias once no-one uses it.
+alias(
     name = "facade",
-    hdrs = [
-        "public/pw_trace/internal/trace_internal.h",
-        "public/pw_trace/trace.h",
-    ],
-    includes = ["public"],
-    deps = [
-        "//pw_preprocessor",
-    ],
+    actual = ":pw_trace.facade",
 )
 
-cc_library(
+pw_facade(
     name = "pw_trace",
     hdrs = [
         "public/pw_trace/internal/trace_internal.h",
         "public/pw_trace/trace.h",
     ],
+    backend = ":backend",
     includes = ["public"],
     deps = [
         "//pw_preprocessor",
-        "@pigweed//targets:pw_trace_backend",
     ],
 )
 
-cc_library(
-    name = "backend_multiplexer",
-    visibility = ["@pigweed//targets:__pkg__"],
-    deps = ["//pw_trace:null"],
+label_flag(
+    name = "backend",
+    build_setting_default = ":null",
 )
 
 cc_library(
@@ -65,8 +59,8 @@ cc_library(
         "public_overrides",
     ],
     deps = [
+        ":pw_trace.facade",
         "//pw_preprocessor",
-        "//pw_trace:facade",
     ],
 )
 
@@ -113,7 +107,7 @@ pw_cc_test(
         "pw_trace_zero/public_overrides",
     ],
     deps = [
-        ":facade",
+        ":pw_trace.facade",
         "//pw_preprocessor",
         "//pw_unit_test",
     ],
@@ -127,6 +121,7 @@ cc_library(
         "trace_null_test_c.c",
     ],
     deps = [
+        ":null",
         ":pw_trace",
         "//pw_preprocessor",
         "//pw_unit_test",
@@ -138,8 +133,9 @@ cc_library(
     srcs = ["example/sample_app.cc"],
     hdrs = ["example/public/pw_trace/example/sample_app.h"],
     includes = ["example/public"],
-    # TODO: b/258071921 - Fix puzzling compiler errors
-    tags = ["manual"],
+    # TODO: b/258071921 - fails to link on rp2040 with missing
+    # std::this_thread::__sleep_for symbol
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         "//pw_ring_buffer",
         "//pw_trace",
@@ -149,8 +145,9 @@ cc_library(
 pw_cc_binary(
     name = "trace_example_basic",
     srcs = ["example/basic.cc"],
-    # TODO: b/258071921 - Fix puzzling compiler errors
-    tags = ["manual"],
+    # TODO: b/258071921 - fails to link on rp2040 with missing
+    # std::this_thread::__sleep_for symbol
+    target_compatible_with = incompatible_with_mcu(),
     deps = [
         ":pw_trace_sample_app",
         "//pw_log",

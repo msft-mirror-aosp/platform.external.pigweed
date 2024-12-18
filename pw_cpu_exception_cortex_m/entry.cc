@@ -25,7 +25,8 @@
 #include "pw_preprocessor/compiler.h"
 
 // TODO(pwbug/311): Deprecated naming.
-PW_EXTERN_C PW_NO_PROLOGUE __attribute__((alias("pw_cpu_exception_Entry"))) void
+PW_EXTERN_C PW_NO_PROLOGUE __attribute__((alias("pw_cpu_exception_Entry")))
+__attribute__((nothrow)) void
 pw_CpuExceptionEntry(void);
 
 namespace pw::cpu_exception::cortex_m {
@@ -44,9 +45,9 @@ bool FpuStateWasPushed(const pw_cpu_exception_State& cpu_state) {
 void CloneBaseRegistersFromPsp(pw_cpu_exception_State* cpu_state) {
   // If CPU succeeded in pushing context to PSP, copy it to the MSP.
   if (!(cpu_state->extended.cfsr & kCfsrStkerrMask) &&
-#if _PW_ARCH_ARM_V8M_MAINLINE
+#if _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
       !(cpu_state->extended.cfsr & kCfsrStkofMask) &&
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
       !(cpu_state->extended.cfsr & kCfsrMstkerrMask)) {
     // TODO(amontanez): {r0-r3,r12} are captured in pw_cpu_exception_Entry(),
     //                  so this only really needs to copy pc, lr, and psr. Could
@@ -76,9 +77,9 @@ void RestoreBaseRegistersToPsp(pw_cpu_exception_State* cpu_state) {
   // continue. Otherwise, don't attempt as we'll likely end up in an escalated
   // hard fault.
   if (!(cpu_state->extended.cfsr & kCfsrStkerrMask) &&
-#if _PW_ARCH_ARM_V8M_MAINLINE
+#if _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
       !(cpu_state->extended.cfsr & kCfsrStkofMask) &&
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
       !(cpu_state->extended.cfsr & kCfsrMstkerrMask)) {
     std::memcpy(reinterpret_cast<void*>(cpu_state->extended.psp),
                 &cpu_state->base,
@@ -110,9 +111,9 @@ uint32_t CalculatePspDelta(const pw_cpu_exception_State& cpu_state) {
   // need to be shifted.
   if (!ProcessStackActive(cpu_state) ||
       (cpu_state.extended.cfsr & kCfsrStkerrMask) ||
-#if _PW_ARCH_ARM_V8M_MAINLINE
+#if _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
       (cpu_state.extended.cfsr & kCfsrStkofMask) ||
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
       (cpu_state.extended.cfsr & kCfsrMstkerrMask)) {
     return 0;
   }
@@ -194,9 +195,13 @@ PW_USED void pw_PackageAndHandleCpuException(
 // Captures faulting CPU state on the main stack (MSP), then calls the exception
 // handlers.
 // This function should be called immediately after an exception.
-void pw_cpu_exception_Entry(void) {
+PW_USED PW_NO_PROLOGUE void pw_cpu_exception_Entry() {
   asm volatile(
       // clang-format off
+
+      // Enable unified syntax for Thumb and Thumb2.
+      " .syntax unified                         \n"
+
       // If PSP was in use at the time of exception, it's possible the CPU
       // wasn't able to push CPU state. To be safe, this first captures scratch
       // registers before moving forward.
@@ -271,7 +276,13 @@ void pw_cpu_exception_Entry(void) {
       " mov r0, r4                                            \n"
 
       // Restore special registers.
+#if _PW_ARCH_ARM_V7M || _PW_ARCH_ARM_V7EM
       " ldm r0!, {r1-r4}                                      \n"
+#elif _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
+      " ldm r0!, {r1-r6}                                      \n"
+      " msr msplim, r5                                        \n"
+      " msr psplim, r6                                        \n"
+#endif  // defined(PW_CPU_EXCEPTION_CORTEX_M_ARMV7M)
       " mov lr, r1                                            \n"
       " msr control, r4                                       \n"
 

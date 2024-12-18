@@ -1,4 +1,4 @@
-// Copyright 2023 The Pigweed Authors
+// Copyright 2024 The Pigweed Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not
 // use this file except in compliance with the License. You may obtain a copy of
@@ -13,8 +13,7 @@
 // the License.
 
 import { LogViewer as RootComponent } from './components/log-viewer';
-import { StateStore, LocalStorageState } from './shared/state';
-import { LogSourceEvent } from '../src/shared/interfaces';
+import { LogViewerState } from './shared/state';
 import { LogSource } from '../src/log-source';
 import { LogStore } from './log-store';
 
@@ -27,48 +26,36 @@ import '@material/web/textfield/filled-text-field.js';
 import '@material/web/icon/icon.js';
 import '@material/web/iconbutton/icon-button.js';
 import '@material/web/menu/menu.js';
+import '@material/web/menu/sub-menu.js';
 import '@material/web/menu/menu-item.js';
 
+/**
+ * Create an instance of log-viewer
+ * @param logSources - Collection of sources from where logs originate
+ * @param root - HTML component to append log-viewer to
+ * @param options - Optional parameters to change default settings
+ * @param options.columnOrder - Defines column order between level and
+ *   message. Undefined fields are added between defined order and message.
+ * @param options.logStore - Stores and handles management of all logs
+ * @param options.state - Handles state between sessions, defaults to localStorage
+ */
 export function createLogViewer(
+  logSources: LogSource[] | LogSource,
   root: HTMLElement,
-  state: StateStore = new LocalStorageState(),
-  logStore: LogStore,
-  ...logSources: LogSource[]
+  options?: {
+    columnOrder?: string[] | undefined;
+    logSources?: LogSource | LogSource[] | undefined;
+    logStore?: LogStore | undefined;
+    state?: LogViewerState | undefined;
+  },
 ) {
-  const logViewer = new RootComponent(state);
+  const logViewer = new RootComponent(logSources, options);
   root.appendChild(logViewer);
-  let lastUpdateTimeoutId: NodeJS.Timeout;
-
-  const logEntryListener = (event: LogSourceEvent) => {
-    if (event.type === 'log-entry') {
-      const logEntry = event.data;
-      logStore.addLogEntry(logEntry);
-      logViewer.logs = logStore.getLogs();
-      if (lastUpdateTimeoutId) {
-        clearTimeout(lastUpdateTimeoutId);
-      }
-
-      // Call requestUpdate at most once every 100 milliseconds.
-      lastUpdateTimeoutId = setTimeout(() => {
-        const updatedLogs = [...logStore.getLogs()];
-        logViewer.logs = updatedLogs;
-      }, 100);
-    }
-  };
-
-  logSources.forEach((logSource: LogSource) => {
-    // Add the event listener to the LogSource instance
-    logSource.addEventListener('log-entry', logEntryListener);
-  });
 
   // Method to destroy and unsubscribe
   return () => {
     if (logViewer.parentNode) {
       logViewer.parentNode.removeChild(logViewer);
     }
-
-    logSources.forEach((logSource: LogSource) => {
-      logSource.removeEventListener('log-entry', logEntryListener);
-    });
   };
 }

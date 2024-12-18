@@ -24,6 +24,7 @@
 #include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
+namespace {
 
 class TestServiceImpl final
     : public test::pw_rpc::raw::TestService::Service<TestServiceImpl> {
@@ -116,6 +117,36 @@ TEST(RawUnaryResponder, Closed) {
   call.set_on_error([](Status) {});
 }
 
+TEST(RawUnaryResponder, TryCloseFailed) {
+  ReaderWriterTestContext ctx;
+  RawUnaryResponder call = RawUnaryResponder::Open<TestService::TestUnaryRpc>(
+      ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish({}, OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+}
+
+TEST(RawUnaryResponder, TryCloseSuccessful) {
+  ReaderWriterTestContext ctx;
+  RawUnaryResponder call = RawUnaryResponder::Open<TestService::TestUnaryRpc>(
+      ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish({}, OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+
+  // Tries to close the call again, with ChannelOutput set to return ok.
+  ctx.output.set_send_status(OkStatus());
+  ASSERT_EQ(OkStatus(), call.TryFinish({}, OkStatus()));
+  // Call should be closed.
+  ASSERT_FALSE(call.active());
+}
+
 TEST(RawServerWriter, Closed) {
   ReaderWriterTestContext ctx;
   RawServerWriter call =
@@ -130,6 +161,38 @@ TEST(RawServerWriter, Closed) {
   EXPECT_EQ(Status::FailedPrecondition(), call.Finish(OkStatus()));
 
   call.set_on_error([](Status) {});
+}
+
+TEST(RawServerWriter, TryCloseFailed) {
+  ReaderWriterTestContext ctx;
+  RawServerWriter call =
+      RawServerWriter::Open<TestService::TestServerStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish(OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+}
+
+TEST(RawServerWriter, TryCloseSuccessful) {
+  ReaderWriterTestContext ctx;
+  RawServerWriter call =
+      RawServerWriter::Open<TestService::TestServerStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish(OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+
+  // Tries to close the call again, with ChannelOutput set to return ok.
+  ctx.output.set_send_status(OkStatus());
+  ASSERT_EQ(OkStatus(), call.TryFinish(OkStatus()));
+  // Call should be closed.
+  ASSERT_FALSE(call.active());
 }
 
 TEST(RawServerReader, Closed) {
@@ -148,6 +211,38 @@ TEST(RawServerReader, Closed) {
   call.set_on_error([](Status) {});
 }
 
+TEST(RawServerReader, TryCloseFailed) {
+  ReaderWriterTestContext ctx;
+  RawServerReader call =
+      RawServerReader::Open<TestService::TestClientStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish({}, OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+}
+
+TEST(RawServerReader, TryCloseSuccessful) {
+  ReaderWriterTestContext ctx;
+  RawServerReader call =
+      RawServerReader::Open<TestService::TestClientStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish({}, OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+
+  // Tries to close the call again, with ChannelOutput set to return ok.
+  ctx.output.set_send_status(OkStatus());
+  ASSERT_EQ(OkStatus(), call.TryFinish({}, OkStatus()));
+  // Call should be closed.
+  ASSERT_FALSE(call.active());
+}
+
 TEST(RawServerReaderWriter, Closed) {
   ReaderWriterTestContext ctx;
   RawServerReaderWriter call =
@@ -163,6 +258,38 @@ TEST(RawServerReaderWriter, Closed) {
 
   call.set_on_next([](ConstByteSpan) {});
   call.set_on_error([](Status) {});
+}
+
+TEST(RawServerReaderWriter, TryCloseFailed) {
+  ReaderWriterTestContext ctx;
+  RawServerReaderWriter call =
+      RawServerReaderWriter::Open<TestService::TestBidirectionalStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish(OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+}
+
+TEST(RawServerReaderWriter, TryCloseSuccessful) {
+  ReaderWriterTestContext ctx;
+  RawServerReaderWriter call =
+      RawServerReaderWriter::Open<TestService::TestBidirectionalStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish(OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+
+  // Tries to close the call again, with ChannelOutput set to return ok.
+  ctx.output.set_send_status(OkStatus());
+  ASSERT_EQ(OkStatus(), call.TryFinish(OkStatus()));
+  // Call should be closed.
+  ASSERT_FALSE(call.active());
 }
 
 TEST(RawUnaryResponder, Open_ReturnsUsableResponder) {
@@ -432,4 +559,5 @@ TEST(RawServerReaderWriter, UsableAsWriter) {
       kWriterData);
 }
 
+}  // namespace
 }  // namespace pw::rpc

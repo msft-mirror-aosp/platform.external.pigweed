@@ -5,7 +5,6 @@ Manual Test Procedure
 =====================
 .. pigweed-module-subpage::
    :name: pw_console
-   :tagline: pw_console: Multi-purpose pluggable interactive console for dev & manufacturing
 
 ``pw_console`` is a Terminal based user interface which is difficult to
 completely test in an automated fashion. Unit tests that don't depend on the
@@ -19,8 +18,8 @@ Begin each section below by running the console in test mode:
 
 .. code-block:: shell
 
-  touch /tmp/empty.yaml
-  env PW_CONSOLE_CONFIG_FILE='/tmp/empty.yaml' pw console --test-mode
+   touch /tmp/empty.yaml
+   env PW_CONSOLE_CONFIG_FILE='/tmp/empty.yaml' pw console --test-mode
 
 Test Sections
 =============

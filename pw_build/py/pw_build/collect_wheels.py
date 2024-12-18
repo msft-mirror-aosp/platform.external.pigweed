@@ -18,7 +18,6 @@ import logging
 from pathlib import Path
 import shutil
 import sys
-from typing import Dict
 
 _LOG = logging.getLogger(__name__)
 
@@ -54,10 +53,11 @@ def copy_wheels(prefix: Path, suffix_file: Path, out_dir: Path) -> None:
       FileExistsError: If any separate wheel files are copied to the same
           destination file path.
     """
-    if not out_dir.exists():
-        out_dir.mkdir()
+    # Delete existing wheels from the out dir, there may be stale versions.
+    shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    copied_files: Dict[str, Path] = dict()
+    copied_files: dict[str, Path] = dict()
     requirements_content: str = ''
 
     for suffix in suffix_file.read_text().splitlines():

@@ -15,76 +15,16 @@
 
 load("@rules_rust//rust:toolchain.bzl", "rust_analyzer_toolchain", "rust_toolchain")
 load("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "cipd_repository")
-
-HOSTS = [
-    {
-        "cpu": "aarch64",
-        "cipd_arch": "arm64",
-        "os": "linux",
-        "triple": "aarch64-unknown-linux-gnu",
-        "dylib_ext": ".so",
-    },
-    {
-        "cpu": "x86_64",
-        "cipd_arch": "amd64",
-        "os": "linux",
-        "triple": "x86_64-unknown-linux-gnu",
-        "dylib_ext": ".so",
-    },
-    {
-        "cpu": "aarch64",
-        "cipd_arch": "arm64",
-        "os": "macos",
-        "triple": "aarch64-apple-darwin",
-        "dylib_ext": ".dylib",
-    },
-    {
-        "cpu": "x86_64",
-        "cipd_arch": "amd64",
-        "os": "macos",
-        "triple": "x86_64-apple-darwin",
-        "dylib_ext": ".dylib",
-    },
-]
-
-EXTRA_TARGETS = [
-    {
-        "cpu": "armv6-m",
-        "triple": "thumbv6m-none-eabi",
-    },
-    {
-        "cpu": "armv7-m",
-        "triple": "thumbv7m-none-eabi",
-    },
-    {
-        "cpu": "armv7e-m",
-        "triple": "thumbv7m-none-eabi",
-    },
-]
-
-CHANNELS = [
-    {
-        "name": "nightly",
-        "extra_rustc_flags": [],
-        "target_settings": ["@rules_rust//rust/toolchain/channel:nightly"],
-    },
-    {
-        "name": "stable",
-        # In order to approximate a stable toolchain with our nightly one, we
-        # disable experimental features with the exception of `proc_macro_span`
-        # because the `proc-marcro2` automatically detects the toolchain
-        # as nightly and dynamically uses this feature.
-        "extra_rustc_flags": ["-Zallow-features=proc_macro_span"],
-        "target_settings": ["@rules_rust//rust/toolchain/channel:stable"],
-    },
-]
+load(":toolchains.bzl", "CHANNELS", "EXTRA_TARGETS", "HOSTS")
 
 # buildifier: disable=unnamed-macro
-def pw_rust_register_toolchain_and_target_repos(cipd_tag):
+def pw_rust_register_toolchain_and_target_repos(cipd_tag, pigweed_repo_name = "@pigweed"):
     """Declare and register CIPD repos for Rust toolchain and target rupport.
 
     Args:
       cipd_tag: Tag with which to select specific package versions.
+      pigweed_repo_name: The name of the pigweed used to reference build files
+        for the registered repositories.  Defaults to "@pigweed".
     """
     for host in HOSTS:
         cipd_os = host["os"]
@@ -93,14 +33,14 @@ def pw_rust_register_toolchain_and_target_repos(cipd_tag):
 
         cipd_repository(
             name = "rust_toolchain_host_{}_{}".format(host["os"], host["cpu"]),
-            build_file = "//pw_toolchain/rust:rust_toolchain.BUILD",
+            build_file = "{}//pw_toolchain/rust:rust_toolchain.BUILD".format(pigweed_repo_name),
             path = "fuchsia/third_party/rust/host/{}-{}".format(cipd_os, host["cipd_arch"]),
             tag = cipd_tag,
         )
 
         cipd_repository(
             name = "rust_toolchain_target_{}".format(host["triple"]),
-            build_file = "//pw_toolchain/rust:rust_stdlib.BUILD",
+            build_file = "{}//pw_toolchain/rust:rust_stdlib.BUILD".format(pigweed_repo_name),
             path = "fuchsia/third_party/rust/target/{}".format(host["triple"]),
             tag = cipd_tag,
         )
@@ -108,7 +48,7 @@ def pw_rust_register_toolchain_and_target_repos(cipd_tag):
     for target in EXTRA_TARGETS:
         cipd_repository(
             name = "rust_toolchain_target_{}".format(target["triple"]),
-            build_file = "//pw_toolchain/rust:rust_stdlib.BUILD",
+            build_file = "{}//pw_toolchain/rust:rust_stdlib.BUILD".format(pigweed_repo_name),
             path = "fuchsia/third_party/rust/target/{}".format(target["triple"]),
             tag = cipd_tag,
         )
@@ -186,6 +126,7 @@ def _pw_rust_toolchain(
     rust_toolchain(
         name = "{}_rust_toolchain".format(name),
         binary_ext = "",
+        clippy_driver = "{}//:bin/clippy-driver".format(toolchain_repo),
         default_edition = "2021",
         dylib_ext = dylib_ext,
         exec_compatible_with = exec_compatible_with,
@@ -200,6 +141,10 @@ def _pw_rust_toolchain(
         target_triple = target_triple,
         extra_rustc_flags = extra_rustc_flags,
         extra_exec_rustc_flags = extra_rustc_flags,
+        # TODO: https://pwbug.dev/342695883 - Works around confusing
+        # target_compatible_with semantics in rust_toolchain. Figure out how to
+        # do better.
+        tags = ["manual"],
     )
     native.toolchain(
         name = name,
@@ -241,6 +186,7 @@ def _pw_rust_host_toolchain(
         rustc_srcs = "{}//:rustc_srcs".format(toolchain_repo),
         target_compatible_with = compatible_with,
         visibility = ["//visibility:public"],
+        tags = ["manual"],
     )
 
     native.toolchain(

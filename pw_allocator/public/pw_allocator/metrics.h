@@ -16,202 +16,297 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "pw_allocator/allocator.h"
 #include "pw_metric/metric.h"
 
 namespace pw::allocator {
+
+/// Declares the names of metrics used by `pw::allocator::Metrics`.
+///
+/// Only the names of declared metrics may be passed to
+/// ``PW_ALLOCATOR_METRICS_ENABLE`` as part of a metrics struct definition.
+///
+/// This macro generates trait types that are used by ``Metrics`` to
+/// conditionally include metric-related code.
+///
+/// Note: if enabling ``peak_allocated_bytes` or `cumulative_allocated_bytes`,
+/// `allocated_bytes` should also be enabled.
+#define PW_ALLOCATOR_METRICS_DECLARE(metric_name)                           \
+  template <typename MetricsType, typename = void>                          \
+  struct has_##metric_name : std::false_type {};                            \
+  template <typename MetricsType>                                           \
+  struct has_##metric_name<MetricsType,                                     \
+                           std::void_t<decltype(MetricsType::metric_name)>> \
+      : std::true_type {}
+
+// Tracks the current, peak, and cumulative number of bytes requested to be
+// allocated, respectively.
+PW_ALLOCATOR_METRICS_DECLARE(requested_bytes);
+PW_ALLOCATOR_METRICS_DECLARE(peak_requested_bytes);
+PW_ALLOCATOR_METRICS_DECLARE(cumulative_requested_bytes);
+
+// Tracks the current, peak, and cumulative number of bytes actually allocated,
+// respectively.
+PW_ALLOCATOR_METRICS_DECLARE(allocated_bytes);
+PW_ALLOCATOR_METRICS_DECLARE(peak_allocated_bytes);
+PW_ALLOCATOR_METRICS_DECLARE(cumulative_allocated_bytes);
+
+// Tracks the number of successful calls to each interface method.
+PW_ALLOCATOR_METRICS_DECLARE(num_allocations);
+PW_ALLOCATOR_METRICS_DECLARE(num_deallocations);
+PW_ALLOCATOR_METRICS_DECLARE(num_resizes);
+PW_ALLOCATOR_METRICS_DECLARE(num_reallocations);
+
+// Tracks the number of interface calls that failed, and the number of bytes
+// requested in those calls.
+PW_ALLOCATOR_METRICS_DECLARE(num_failures);
+PW_ALLOCATOR_METRICS_DECLARE(unfulfilled_bytes);
+
+#undef PW_ALLOCATOR_METRICS_DECLARE
+
+/// Enables a metric for in a metrics struct.
+///
+/// The ``pw::allocator::TrackingAllocator`` template takes a struct that
+/// enables zero or more of the metrics enumerated by
+/// ``PW_ALLOCATOR_METRICS_DECLARE```.
+///
+/// This struct may be one of ``AllMetrics`` or ``NoMetrics``, or may be a
+/// custom struct that selects a subset of metrics.
+///
+/// Note that this must be fully-qualified since the metric struct may be
+/// defined in any namespace.
+///
+/// Example:
+/// @code{.cpp}
+///   struct MyMetrics {
+///     PW_ALLOCATOR_METRICS_ENABLE(allocated_bytes);
+///     PW_ALLOCATOR_METRICS_ENABLE(peak_allocated_bytes);
+///     PW_ALLOCATOR_METRICS_ENABLE(num_failures);
+///   };
+/// @endcode
+#define PW_ALLOCATOR_METRICS_ENABLE(metric_name)                   \
+  static_assert(!::pw::allocator::has_##metric_name<void>::value); \
+  PW_METRIC(metric_name, #metric_name, 0U)
+
+/// A predefined metric struct that enables no allocator metrics.
+struct NoMetrics {};
+
 namespace internal {
 
-/// Allocation metrics.
+/// A metrics type that enables all metrics for testing.
 ///
-/// This class encapsulates metric collection by the proxy in order to
-/// reduce the number of preprocessor statements for conditional compilation.
-class Metrics : public metric::Group {
+/// Warning! Do not use in production code. If metrics are added to it later,
+/// code using this struct may unexpected grow in code size, memory usage,
+/// and/or performance overhead.
+struct AllMetrics {
+  PW_ALLOCATOR_METRICS_ENABLE(requested_bytes);
+  PW_ALLOCATOR_METRICS_ENABLE(peak_requested_bytes);
+  PW_ALLOCATOR_METRICS_ENABLE(cumulative_requested_bytes);
+  PW_ALLOCATOR_METRICS_ENABLE(allocated_bytes);
+  PW_ALLOCATOR_METRICS_ENABLE(peak_allocated_bytes);
+  PW_ALLOCATOR_METRICS_ENABLE(cumulative_allocated_bytes);
+  PW_ALLOCATOR_METRICS_ENABLE(num_allocations);
+  PW_ALLOCATOR_METRICS_ENABLE(num_deallocations);
+  PW_ALLOCATOR_METRICS_ENABLE(num_resizes);
+  PW_ALLOCATOR_METRICS_ENABLE(num_reallocations);
+  PW_ALLOCATOR_METRICS_ENABLE(num_failures);
+  PW_ALLOCATOR_METRICS_ENABLE(unfulfilled_bytes);
+};
+
+/// Encapsulates the metrics struct for ``pw::allocator::TrackingAllocator``.
+///
+/// This class uses the type traits from ``PW_ALLOCATOR_METRICS_DECLARE`` to
+/// conditionally include or exclude code to update metrics based on calls to
+/// the ``pw::Allocator`` API. This minimizes code size without adding
+/// additional conditions to be evaluated at runtime.
+///
+/// @tparam   MetricsType   The struct defining which metrics are enabled.
+template <typename MetricsType>
+class Metrics final {
  public:
-  explicit Metrics(metric::Token token);
+  Metrics(metric::Token token);
+  ~Metrics() = default;
 
-  /// Records the details of allocating memory and updates metrics accordingly.
+  const metric::Group& group() const { return group_; }
+  metric::Group& group() { return group_; }
+
+  const MetricsType& metrics() const { return metrics_; }
+
+  /// Updates how much memory was requested and successfully allocated.
   ///
-  /// @param  new_size          Size of the allocated memory.
-  void RecordAllocation(size_t new_size);
-
-  /// Records the details of deallocating memory and updates metrics
-  /// accordingly.
+  /// This will update the current, peak, and cumulative amounts of memory
+  /// requests that were satisfied by an allocator.
   ///
-  /// @param  old_size          Size of the previously allocated memory.
-  void RecordDeallocation(size_t old_size);
+  /// @param  increase         How much memory was requested to be allocated.
+  /// @param  decrease         How much memory was requested to be freed.
+  void ModifyRequested(size_t increase, size_t decrease);
 
-  /// Records the details of resizing an allocation and updates metrics
-  /// accordingly.
+  /// Updates how much memory is allocated.
   ///
-  /// @param  old_size          Previous size of the allocated memory.
-  /// @param  new_size          Size of the allocated memory.
-  void RecordResize(size_t old_size, size_t new_size);
-
-  /// Records the details of reallocating memory and updates metrics
-  /// accordingly.
+  /// This will update the current, peak, and cumulative amounts of memory that
+  /// has been actually allocated or freed. This method acts as if it frees
+  /// memory before allocating. If a routine suchas `Reallocate` allocates
+  /// before freeing, the update should be separated into two calls, e.g.
   ///
-  /// @param  old_size          Previous size of the allocated memory.
-  /// @param  new_size          Size of the allocated memory.
-  /// @param  moved             True if the memory was copied to a new location.
-  void RecordReallocation(size_t old_size, size_t new_size, bool moved);
+  /// @code{.cpp}
+  /// ModifyAllocated(increase, 0);
+  /// ModifyAllocated(0, decrease);
+  /// @endcode
+  ///
+  /// @param  increase         How much memory was allocated.
+  /// @param  decrease         How much memory was freed.
+  void ModifyAllocated(size_t increase, size_t decrease);
 
-  /// Records that a call to `Allocate`, `Resize`, or `Reallocate` failed. This
-  /// may indicated memory becoming exhausted and/or high fragmentation.
-  void RecordFailure();
+  /// Records that a call to `Allocate` was made.
+  void IncrementAllocations();
 
-  uint32_t allocated_bytes() const { return allocated_bytes_.value(); }
-  uint32_t peak_allocated_bytes() const {
-    return peak_allocated_bytes_.value();
-  }
-  uint32_t cumulative_allocated_bytes() const {
-    return cumulative_allocated_bytes_.value();
-  }
-  uint32_t num_allocations() const { return num_allocations_.value(); }
-  uint32_t num_deallocations() const { return num_deallocations_.value(); }
-  uint32_t num_resizes() const { return num_resizes_.value(); }
-  uint32_t num_reallocations() const { return num_reallocations_.value(); }
-  uint32_t num_failures() const { return num_failures_.value(); }
+  /// Records that a call to `Deallocate` was made.
+  void IncrementDeallocations();
+
+  /// Records that a call to `Resize` was made.
+  void IncrementResizes();
+
+  /// Records that a call to `Reallocate` was made.
+  void IncrementReallocations();
+
+  /// Records that a call to `Allocate`, `Resize`, or `Reallocate` failed.
+  ///
+  /// This may indicated that memory becoming exhausted and/or highly
+  /// fragmented.
+  ///
+  /// @param  requested         How much memory was requested in the failed
+  ///                           call.
+  void RecordFailure(size_t requested);
 
  private:
-  /// @copydoc RecordAllocation
-  void RecordAllocationImpl(uint32_t new_size);
-
-  /// @copydoc RecordDeallocation
-  void RecordDeallocationImpl(uint32_t old_size);
-
-  /// @copydoc RecordResize
-  void RecordResizeImpl(uint32_t old_size, uint32_t new_size);
-
-  PW_METRIC(allocated_bytes_, "allocated_bytes", 0U);
-  PW_METRIC(peak_allocated_bytes_, "peak_allocated_bytes", 0U);
-  PW_METRIC(cumulative_allocated_bytes_, "cumulative_allocated_bytes", 0U);
-  PW_METRIC(num_allocations_, "num_allocations", 0U);
-  PW_METRIC(num_deallocations_, "num_deallocations", 0U);
-  PW_METRIC(num_resizes_, "num_resizes", 0U);
-  PW_METRIC(num_reallocations_, "num_reallocations", 0U);
-  PW_METRIC(num_failures_, "num_failures", 0U);
+  metric::Group group_;
+  MetricsType metrics_;
 };
 
-/// Stub implementation of the `Metrics` class above.
-///
-/// This class provides the same interface as `Metrics`, but each methods has no
-/// effect.
-class MetricsStub {
- public:
-  constexpr MetricsStub(metric::Token) {}
+// Helper method for converting `size_t`s to `uint32_t`s.
+inline uint32_t ClampU32(size_t size) {
+  return static_cast<uint32_t>(std::min(
+      size, static_cast<size_t>(std::numeric_limits<uint32_t>::max())));
+}
 
-  /// @copydoc `Metrics::Init`.
-  void Init(size_t) {}
+// Template method implementation.
 
-  /// Like `pw::metric::Group::Add`, but for this stub object.
-  void Add(MetricsStub&) {}
+template <typename MetricsType>
+Metrics<MetricsType>::Metrics(metric::Token token) : group_(token) {
+  if constexpr (has_requested_bytes<MetricsType>::value) {
+    group_.Add(metrics_.requested_bytes);
+  }
+  if constexpr (has_peak_requested_bytes<MetricsType>::value) {
+    group_.Add(metrics_.peak_requested_bytes);
+  }
+  if constexpr (has_cumulative_requested_bytes<MetricsType>::value) {
+    group_.Add(metrics_.cumulative_requested_bytes);
+  }
+  if constexpr (has_allocated_bytes<MetricsType>::value) {
+    group_.Add(metrics_.allocated_bytes);
+  }
+  if constexpr (has_peak_allocated_bytes<MetricsType>::value) {
+    group_.Add(metrics_.peak_allocated_bytes);
+  }
+  if constexpr (has_cumulative_allocated_bytes<MetricsType>::value) {
+    group_.Add(metrics_.cumulative_allocated_bytes);
+  }
+  if constexpr (has_num_allocations<MetricsType>::value) {
+    group_.Add(metrics_.num_allocations);
+  }
+  if constexpr (has_num_deallocations<MetricsType>::value) {
+    group_.Add(metrics_.num_deallocations);
+  }
+  if constexpr (has_num_resizes<MetricsType>::value) {
+    group_.Add(metrics_.num_resizes);
+  }
+  if constexpr (has_num_reallocations<MetricsType>::value) {
+    group_.Add(metrics_.num_reallocations);
+  }
+  if constexpr (has_num_failures<MetricsType>::value) {
+    group_.Add(metrics_.num_failures);
+  }
+  if constexpr (has_unfulfilled_bytes<MetricsType>::value) {
+    group_.Add(metrics_.unfulfilled_bytes);
+  }
+}
 
-  /// @copydoc `Metrics::RecordAllocation`.
-  void RecordAllocation(size_t) {}
+template <typename MetricsType>
+void Metrics<MetricsType>::ModifyRequested(size_t increase, size_t decrease) {
+  if constexpr (has_requested_bytes<MetricsType>::value) {
+    metrics_.requested_bytes.Increment(internal::ClampU32(increase));
+    metrics_.requested_bytes.Decrement(internal::ClampU32(decrease));
+    if constexpr (has_peak_requested_bytes<MetricsType>::value) {
+      uint32_t requested_bytes = metrics_.requested_bytes.value();
+      if (metrics_.peak_requested_bytes.value() < requested_bytes) {
+        metrics_.peak_requested_bytes.Set(requested_bytes);
+      }
+    }
+    if constexpr (has_cumulative_requested_bytes<MetricsType>::value) {
+      if (increase > decrease) {
+        metrics_.cumulative_requested_bytes.Increment(
+            internal::ClampU32(increase - decrease));
+      }
+    }
+  }
+}
 
-  /// @copydoc `Metrics::RecordDeallocation`.
-  void RecordDeallocation(size_t) {}
+template <typename MetricsType>
+void Metrics<MetricsType>::ModifyAllocated(size_t increase, size_t decrease) {
+  if constexpr (has_allocated_bytes<MetricsType>::value) {
+    metrics_.allocated_bytes.Increment(internal::ClampU32(increase));
+    metrics_.allocated_bytes.Decrement(internal::ClampU32(decrease));
+    if constexpr (has_peak_allocated_bytes<MetricsType>::value) {
+      uint32_t allocated_bytes = metrics_.allocated_bytes.value();
+      if (metrics_.peak_allocated_bytes.value() < allocated_bytes) {
+        metrics_.peak_allocated_bytes.Set(allocated_bytes);
+      }
+    }
+    if constexpr (has_cumulative_allocated_bytes<MetricsType>::value) {
+      if (increase > decrease) {
+        metrics_.cumulative_allocated_bytes.Increment(
+            internal::ClampU32(increase - decrease));
+      }
+    }
+  }
+}
 
-  /// @copydoc `Metrics::RecordResize`.
-  void RecordResize(size_t, size_t) {}
+template <typename MetricsType>
+void Metrics<MetricsType>::IncrementAllocations() {
+  if constexpr (has_num_allocations<MetricsType>::value) {
+    metrics_.num_allocations.Increment();
+  }
+}
 
-  /// @copydoc `Metrics::RecordReallocation`.
-  void RecordReallocation(size_t, size_t, bool) {}
+template <typename MetricsType>
+void Metrics<MetricsType>::IncrementDeallocations() {
+  if constexpr (has_num_deallocations<MetricsType>::value) {
+    metrics_.num_deallocations.Increment();
+  }
+}
 
-  /// @copydoc `Metrics::RecordFailure`.
-  void RecordFailure() {}
+template <typename MetricsType>
+void Metrics<MetricsType>::IncrementResizes() {
+  if constexpr (has_num_resizes<MetricsType>::value) {
+    metrics_.num_resizes.Increment();
+  }
+}
 
-  uint32_t allocated_bytes() const { return 0; }
-  uint32_t peak_allocated_bytes() const { return 0; }
-  uint32_t cumulative_allocated_bytes() const { return 0; }
-  uint32_t num_allocations() const { return 0; }
-  uint32_t num_deallocations() const { return 0; }
-  uint32_t num_resizes() const { return 0; }
-  uint32_t num_reallocations() const { return 0; }
-  uint32_t num_failures() const { return 0; }
+template <typename MetricsType>
+void Metrics<MetricsType>::IncrementReallocations() {
+  if constexpr (has_num_reallocations<MetricsType>::value) {
+    metrics_.num_reallocations.Increment();
+  }
+}
 
-  /// @copydoc pw::metric::Group::Dump.
-  void Dump() {}
-  void Dump(int) {}
-};
-
-/// If the `pw_allocator_COLLECT_METRICS` build argument is enabled,
-/// `AllocatorMetricProxy` will use `Metrics` by default. If it is disabled or
-/// not set, it will use the `MetricsStub`.
-#if defined(PW_ALLOCATOR_COLLECT_METRICS) && PW_ALLOCATOR_COLLECT_METRICS
-using DefaultMetrics = Metrics;
-#else
-using DefaultMetrics = MetricsStub;
-#endif
+template <typename MetricsType>
+void Metrics<MetricsType>::RecordFailure(size_t requested) {
+  if constexpr (has_num_failures<MetricsType>::value) {
+    metrics_.num_failures.Increment();
+  }
+  if constexpr (has_unfulfilled_bytes<MetricsType>::value) {
+    metrics_.unfulfilled_bytes.Increment(internal::ClampU32(requested));
+  }
+}
 
 }  // namespace internal
-
-/// Pure virtual base class for providing allocator metrics.
-///
-/// Classes which implement this interface must provide a `MetricsType`:
-///   - Using `internal::Metrics` will always collect metrics.
-///   - Using `internal::MetricsStub` will never collect metrics.
-///   - Using `internal::DefaultMetrics` will collect metrics if the
-///     `pw_allocator_COLLECT_METRICS` build argument is set and enabled.
-template <typename MetricsType>
-class WithMetrics {
- public:
-  using metrics_type = MetricsType;
-
-  virtual ~WithMetrics() = default;
-
-  virtual metrics_type& metric_group() = 0;
-  virtual const metrics_type& metric_group() const = 0;
-
-  uint32_t allocated_bytes() const { return metric_group().allocated_bytes(); }
-  uint32_t peak_allocated_bytes() const {
-    return metric_group().peak_allocated_bytes();
-  }
-  uint32_t cumulative_allocated_bytes() const {
-    return metric_group().cumulative_allocated_bytes();
-  }
-  uint32_t num_allocations() const { return metric_group().num_allocations(); }
-  uint32_t num_deallocations() const {
-    return metric_group().num_deallocations();
-  }
-  uint32_t num_resizes() const { return metric_group().num_resizes(); }
-  uint32_t num_reallocations() const {
-    return metric_group().num_reallocations();
-  }
-  uint32_t num_failures() const { return metric_group().num_failures(); }
-
- protected:
-  /// @copydoc `Metrics::RecordAllocation`.
-  void RecordAllocation(size_t new_size) {
-    metric_group().RecordAllocation(new_size);
-  }
-
-  /// @copydoc `Metrics::RecordDeallocation`.
-  void RecordDeallocation(size_t old_size) {
-    metric_group().RecordDeallocation(old_size);
-  }
-
-  /// @copydoc `Metrics::RecordResize`.
-  void RecordResize(size_t old_size, size_t new_size) {
-    metric_group().RecordResize(old_size, new_size);
-  }
-
-  /// @copydoc `Metrics::RecordReallocation`.
-  void RecordReallocation(size_t old_size, size_t new_size, bool moved) {
-    metric_group().RecordReallocation(old_size, new_size, moved);
-  }
-
-  /// @copydoc `Metrics::RecordFailure`.
-  void RecordFailure() { metric_group().RecordFailure(); }
-};
-
-/// Pure virtual base class that combines the allocator and metrics interfaces.
-///
-/// This type exists simply to make it easier to express both constraints on
-/// parameters and return types.
-template <typename MetricsType>
-class AllocatorWithMetrics : public Allocator,
-                             public WithMetrics<MetricsType> {};
-
 }  // namespace pw::allocator

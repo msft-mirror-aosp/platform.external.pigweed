@@ -82,21 +82,25 @@ inline constexpr uint32_t kPsrExtraStackAlignBit = (1 << 9);
 // NOTE: Memory mapped registers are NOT restored upon fault return!
 struct ExtraRegisters {
   // Memory mapped registers.
+#if !_PW_ARCH_ARM_V6M
   uint32_t cfsr;
   uint32_t mmfar;
   uint32_t bfar;
+#endif  // !_PW_ARCH_ARM_V6M
   uint32_t icsr;
+#if !_PW_ARCH_ARM_V6M
   uint32_t hfsr;
+#endif  // !_PW_ARCH_ARM_V6M
   uint32_t shcsr;
   // Special registers.
   uint32_t exc_return;
   uint32_t msp;
   uint32_t psp;
   uint32_t control;
-#if _PW_ARCH_ARM_V8M_MAINLINE
+#if _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
   uint32_t msplim;
   uint32_t psplim;
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
   // General purpose registers.
   uint32_t r4;
   uint32_t r5;
@@ -108,11 +112,13 @@ struct ExtraRegisters {
   uint32_t r11;
 };
 static_assert(sizeof(ExtraRegisters) ==
-#if _PW_ARCH_ARM_V8M_MAINLINE
+#if _PW_ARCH_ARM_V6M
+                  (sizeof(uint32_t) * 14),
+#elif _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
                   (sizeof(uint32_t) * 20),
-#else   // !_PW_ARCH_ARM_V8M_MAINLINE
+#else   // !_PW_ARCH_ARM_V8M_MAINLINE && ! _PW_ARCH_ARM_V8_1M_MAINLINE
                   (sizeof(uint32_t) * 18),
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
               "There's unexpected padding.");
 
 }  // namespace pw::cpu_exception::cortex_m

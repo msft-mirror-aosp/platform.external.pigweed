@@ -71,10 +71,8 @@ class ByteBuffer {
   //  view = my_buffer.view(2);
   //
   //
-  // WARNING:
-  //
-  // A BufferView is only valid as long as the buffer that it points to is
-  // valid. Care should be taken to ensure that a BufferView does not outlive
+  // WARNING: A BufferView is only valid as long as the buffer that it points to
+  // is valid. Care should be taken to ensure that a BufferView does not outlive
   // its backing buffer.
   BufferView view(size_t pos = 0,
                   size_t size = std::numeric_limits<std::size_t>::max()) const;
@@ -278,9 +276,12 @@ class ByteBuffer {
   // copying its contents.
   std::string_view AsString() const;
 
+  // Returns a string in hexadecimal format.
+  std::string AsHexadecimal() const;
+
   // Returns the contents of this buffer as a C++ string after copying its
   // contents.
-  std::string ToString() const;
+  std::string ToString(bool as_hex = false) const;
 
   // Returns a copy of the contents of this buffer in a std::vector.
   std::vector<uint8_t> ToVector() const;
@@ -356,10 +357,8 @@ class MutableByteBuffer : public ByteBuffer {
   // Behaves exactly like ByteBuffer::View but returns the result in a
   // MutableBufferView instead.
   //
-  // WARNING:
-  //
-  // A BufferView is only valid as long as the buffer that it points to is
-  // valid. Care should be taken to ensure that a BufferView does not outlive
+  // WARNING: A BufferView is only valid as long as the buffer that it points to
+  // is valid. Care should be taken to ensure that a BufferView does not outlive
   // its backing buffer.
   MutableBufferView mutable_view(
       size_t pos = 0, size_t size = std::numeric_limits<std::size_t>::max());
@@ -436,8 +435,8 @@ class StaticByteBuffer : public MutableByteBuffer {
   // ByteBuffer overrides
   const uint8_t* data() const override { return buffer_.data(); }
   size_t size() const override { return buffer_.size(); }
-  const_iterator cbegin() const override { return buffer_.cbegin(); }
-  const_iterator cend() const override { return buffer_.cend(); }
+  const_iterator cbegin() const override { return &*buffer_.cbegin(); }
+  const_iterator cend() const override { return &*buffer_.cend(); }
 
   // MutableByteBuffer overrides:
   uint8_t* mutable_data() override { return buffer_.data(); }
@@ -471,9 +470,8 @@ class DynamicByteBuffer : public MutableByteBuffer {
   explicit DynamicByteBuffer(size_t buffer_size);
 
   // Copies the contents of |buffer|.
-  explicit DynamicByteBuffer(const ByteBuffer& buffer);
   DynamicByteBuffer(const DynamicByteBuffer& buffer);
-  // Copies the contensts of |string|.
+  explicit DynamicByteBuffer(const ByteBuffer& buffer);
   explicit DynamicByteBuffer(const std::string& buffer);
 
   // Takes ownership of |buffer| and avoids allocating a new buffer. Since this
@@ -498,6 +496,12 @@ class DynamicByteBuffer : public MutableByteBuffer {
   uint8_t* mutable_data() override;
   void Fill(uint8_t value) override;
 
+  // Allocates a new buffer of the given size and copies all underlying data to
+  // the new buffer. This method is meant only to grow the underlying buffer to
+  // fit in more data. Returns false if the new buffer size is less than the
+  // current buffer size.
+  bool expand(size_t new_buffer_size);
+
  private:
   // Pointer to the underlying buffer, which is owned and managed by us.
   size_t buffer_size_ = 0u;
@@ -507,10 +511,8 @@ class DynamicByteBuffer : public MutableByteBuffer {
 // A ByteBuffer that does not own the memory that it points to but rather
 // provides an immutable view over it.
 //
-// WARNING:
-//
-// A BufferView is only valid as long as the buffer that it points to is
-// valid. Care should be taken to ensure that a BufferView does not outlive
+// WARNING: A BufferView is only valid as long as the buffer that it points to
+// is valid. Care should be taken to ensure that a BufferView does not outlive
 // its backing buffer.
 class BufferView final : public ByteBuffer {
  public:
@@ -540,10 +542,8 @@ class BufferView final : public ByteBuffer {
 // A ByteBuffer that does not own the memory that it points to but rather
 // provides a mutable view over it.
 //
-// WARNING:
-//
-// A BufferView is only valid as long as the buffer that it points to is
-// valid. Care should be taken to ensure that a BufferView does not outlive
+// WARNING: A BufferView is only valid as long as the buffer that it points to
+// is valid. Care should be taken to ensure that a BufferView does not outlive
 // its backing buffer.
 class MutableBufferView final : public MutableByteBuffer {
  public:

@@ -13,7 +13,9 @@
 // the License.
 
 #pragma once
+
 #include <lib/fit/function.h>
+#include <pw_status/status.h>
 
 #include <memory>
 #include <string>
@@ -72,6 +74,12 @@ class AdapterId : public Identifier<uint64_t> {
 // supported.
 class Adapter {
  public:
+  struct Config {
+    // When True, BR/EDR pairing may attempt to use legacy pairing if the peer
+    // does not support SSP.
+    bool legacy_pairing_enabled = false;
+  };
+
   static constexpr const char* kMetricsInspectNodeName = "metrics";
 
   // Optionally, a FakeL2cap  may be passed for testing purposes as |l2cap|. If
@@ -81,6 +89,7 @@ class Adapter {
       pw::async::Dispatcher& pw_dispatcher,
       hci::Transport::WeakPtr hci,
       gatt::GATT::WeakPtr gatt,
+      Config config,
       std::unique_ptr<l2cap::ChannelManager> l2cap = nullptr);
   virtual ~Adapter() = default;
 
@@ -212,6 +221,7 @@ class Adapter {
         AdvertisingData data,
         AdvertisingData scan_rsp,
         AdvertisingInterval interval,
+        bool extended_pdu,
         bool anonymous,
         bool include_tx_power_level,
         std::optional<ConnectableAdvertisingParameters> connectable,
@@ -370,7 +380,12 @@ class Adapter {
     // Idempotent. Returns |true| if any records were removed.
     virtual bool UnregisterService(RegistrationHandle handle) = 0;
 
-    // Initiate and outbound connection. A request will be queued if a
+    // Return the set of registered services that were previously registered
+    // with RegisterService, identified by |handle|.
+    virtual std::vector<sdp::ServiceRecord> GetRegisteredServices(
+        RegistrationHandle handle) const = 0;
+
+    // Initiate an outbound connection. A request will be queued if a
     // connection is already in progress. On error, |callback| will be called
     // with an error result. The error will be |kCanceled| if a connection was
     // never attempted, or |kFailed| if establishing a connection failed.
@@ -437,6 +452,21 @@ class Adapter {
   // Sets the Device Class of this adapter.
   virtual void SetDeviceClass(DeviceClass dev_class,
                               hci::ResultFunction<> callback) = 0;
+
+  // If the operation is successful, specifies the minimum and maximum local
+  // delay (in microseconds) supported by the controller for the codec
+  // specified.
+  // Returns PW_STATUS_UNIMPLEMENTED if the operation is not supported on this
+  // controller. Returns PW_STATUS_UNKNOWN if the operation fails to complete
+  // successfully.
+  using GetSupportedDelayRangeCallback = fit::function<void(
+      pw::Status status, uint32_t min_delay_us, uint32_t max_delay_us)>;
+  virtual void GetSupportedDelayRange(
+      const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
+      pw::bluetooth::emboss::LogicalTransportType logical_transport_type,
+      pw::bluetooth::emboss::DataPathDirection direction,
+      const std::optional<std::vector<uint8_t>>& codec_configuration,
+      GetSupportedDelayRangeCallback cb) = 0;
 
   // Assign a callback to be notified when a connection is automatically
   // established to a bonded LE peer in the directed connectable mode (Vol 3,

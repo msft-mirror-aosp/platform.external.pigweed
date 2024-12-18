@@ -12,48 +12,48 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "pw_pw_cpu_exception_cortex_m/util.h"
+#include "pw_cpu_exception_cortex_m/util.h"
 
-#include "pw_pw_cpu_exception_cortex_m/cpu_state.h"
+#include "pw_cpu_exception_cortex_m/cpu_state.h"
 #include "pw_unit_test/framework.h"
 
-namespace pw::pw_cpu_exception::cortex_m {
+namespace pw::cpu_exception::cortex_m {
 namespace {
 
 TEST(ActiveProcessorMode, HandlerModeMain) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b0001 - 0x1 Handler mode Main
   cpu_state.extended.exc_return = 0b0001;
-  EXPECT_EQ(ActiveProcessorMode(cpu_state), ProcessorMode::HandlerMode);
+  EXPECT_EQ(ActiveProcessorMode(cpu_state), ProcessorMode::kHandlerMode);
 }
 
 TEST(ActiveProcessorMode, ThreadModeMain) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b1001 - 0x9 Thread mode Main
   cpu_state.extended.exc_return = 0b1001;
-  EXPECT_EQ(ActiveProcessorMode(cpu_state), ProcessorMode::ThreadMode);
+  EXPECT_EQ(ActiveProcessorMode(cpu_state), ProcessorMode::kThreadMode);
 }
 
 TEST(ActiveProcessorMode, ThreadModeProcess) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b1101 - 0xD Thread mode Process
-  cpu_state.extended.exc_return = 0b1001;
-  EXPECT_EQ(ActiveProcessorMode(cpu_state), ProcessorMode::ThreadMode);
+  cpu_state.extended.exc_return = 0b1101;
+  EXPECT_EQ(ActiveProcessorMode(cpu_state), ProcessorMode::kThreadMode);
 }
 
 TEST(MainStackActive, HandlerModeMain) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b0001 - 0x1 Handler mode Main
   cpu_state.extended.exc_return = 0b0001;
@@ -62,8 +62,8 @@ TEST(MainStackActive, HandlerModeMain) {
 
 TEST(MainStackActive, ThreadModeMain) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b1001 - 0x9 Thread mode Main
   cpu_state.extended.exc_return = 0b1001;
@@ -72,18 +72,18 @@ TEST(MainStackActive, ThreadModeMain) {
 
 TEST(MainStackActive, ThreadModeProcess) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b1101 - 0xD Thread mode Process
-  cpu_state.extended.exc_return = 0b1001;
+  cpu_state.extended.exc_return = 0b1101;
   EXPECT_FALSE(MainStackActive(cpu_state));
 }
 
 TEST(ProcessStackActive, HandlerModeMain) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b0001 - 0x1 Handler mode Main
   cpu_state.extended.exc_return = 0b0001;
@@ -92,8 +92,8 @@ TEST(ProcessStackActive, HandlerModeMain) {
 
 TEST(ProcessStackActive, ThreadModeMain) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b1001 - 0x9 Thread mode Main
   cpu_state.extended.exc_return = 0b1001;
@@ -102,13 +102,13 @@ TEST(ProcessStackActive, ThreadModeMain) {
 
 TEST(ProcessStackActive, ThreadModeProcess) {
   pw_cpu_exception_State cpu_state = {};
-  // See ARMv7-M Architecture Reference Manual Section B1.5.8 for the exception
-  // return values, in particular bits 0:3.
+  // See ARMv6-M and ARMv7-M Architecture Reference Manual Section B1.5.8 for
+  // the exception return values, in particular bits 0:3.
   // Bits 0:3 of EXC_RETURN:
   // 0b1101 - 0xD Thread mode Process
-  cpu_state.extended.exc_return = 0b1001;
+  cpu_state.extended.exc_return = 0b1101;
   EXPECT_TRUE(ProcessStackActive(cpu_state));
 }
 
 }  // namespace
-}  // namespace pw::pw_cpu_exception::cortex_m
+}  // namespace pw::cpu_exception::cortex_m

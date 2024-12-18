@@ -17,7 +17,7 @@
 from dataclasses import dataclass
 import logging
 from random import randint
-from typing import Any, List
+from typing import Any
 from unittest import TestCase, main
 
 from pw_log.log_decoder import (
@@ -25,6 +25,7 @@ from pw_log.log_decoder import (
     LogStreamDecoder,
     log_decoded_log,
     pw_status_code_to_name,
+    timestamp_parser_ms_since_boot,
     timestamp_parser_ns_since_boot,
 )
 from pw_log.proto import log_pb2
@@ -64,6 +65,8 @@ _TOKEN_DATABASE = pw_tokenizer.tokens.Database(
     ]
 )
 _DETOKENIZER = pw_tokenizer.Detokenizer(_TOKEN_DATABASE)
+
+_ZERO_NS_TIMESTAMP_STR = '00:00:00.000000'
 
 
 def _create_log_entry_with_tokenized_fields(
@@ -121,7 +124,7 @@ class TestLogStreamDecoderBase(TestCase):
         def parse_pw_status(msg: str) -> str:
             return pw_status_code_to_name(msg)
 
-        self.captured_logs: List[Log] = []
+        self.captured_logs: list[Log] = []
 
         def decoded_log_handler(log: Log) -> None:
             self.captured_logs.append(log)
@@ -148,7 +151,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -167,7 +170,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             level=logging.DEBUG,
             source_name=self.decoder.source_name,
             module_name='wifi',
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -209,7 +212,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line=file + ':123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
             thread_name=thread_name,
         )
 
@@ -255,7 +258,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line=file + ':123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
             thread_name=thread,
         )
         result = self.decoder.parse_log_entry_proto(log_entry)
@@ -282,7 +285,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             level=logging.DEBUG,
             source_name=self.decoder.source_name,
             module_name='wifi',
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
             thread_name=thread_name,
         )
 
@@ -298,7 +301,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -318,7 +321,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -340,7 +343,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
 
         result = self.decoder.parse_log_entry_proto(
@@ -361,7 +364,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
 
         result = self.decoder.parse_log_entry_proto(
@@ -384,7 +387,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
 
         result = self.decoder.parse_log_entry_proto(
@@ -407,7 +410,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -429,7 +432,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -451,7 +454,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -473,7 +476,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -495,7 +498,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -519,7 +522,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -541,7 +544,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -563,7 +566,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -585,7 +588,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -609,7 +612,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -631,7 +634,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line='my/path/file.cc:123',
             level=logging.INFO,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
         )
         result = self.decoder.parse_log_entry_proto(
             log_pb2.LogEntry(
@@ -662,7 +665,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
             file_and_line=':123',
             level=logging.DEBUG,
             source_name=self.decoder.source_name,
-            timestamp='0:00',
+            timestamp=_ZERO_NS_TIMESTAMP_STR,
             thread_name=thread_name,
         )
         result = self.decoder.parse_log_entry_proto(log_entry)
@@ -698,7 +701,7 @@ class TestLogStreamDecoderDecodingFunctionality(TestLogStreamDecoderBase):
 
             def __init__(self):
                 super().__init__(name="CapturingLogger")
-                self.log_calls: List[CapturingLogger.LoggerLog] = []
+                self.log_calls: list[CapturingLogger.LoggerLog] = []
 
             def log(self, level, msg, *args, **kwargs) -> None:
                 log = CapturingLogger.LoggerLog(
@@ -862,6 +865,30 @@ class TestLogStreamDecoderLogDropDetectionFunctionality(
         self.assertEqual(
             f'Dropped {drop_count} logs due to {reason.lower()}',
             self.captured_logs[2].message,
+        )
+
+
+class TestTimestampFormatting(TestCase):
+    """Tests for log_decoder.timestamp_parser_* functions."""
+
+    maxDiff = None
+
+    def test_zero_millisecond_resolution(self) -> None:
+        # Check for 3 trailing 0s on a millisecond resolution timestamp.
+        self.assertEqual(
+            '00:45:45.587', timestamp_parser_ms_since_boot(2745587)
+        )
+        self.assertEqual(
+            '00:45:45.000', timestamp_parser_ms_since_boot(2745000)
+        )
+
+    def test_zero_nanosecond_resolution(self) -> None:
+        # Check for 6 trailing 0s on a nanosecond resolution timestamp.
+        self.assertEqual(
+            '00:45:45.587123', timestamp_parser_ns_since_boot(2745587123456)
+        )
+        self.assertEqual(
+            '00:45:45.000000', timestamp_parser_ns_since_boot(2745000000000)
         )
 
 

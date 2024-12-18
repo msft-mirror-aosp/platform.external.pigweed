@@ -13,6 +13,7 @@
 // the License.
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstring>
 #include <optional>
@@ -43,7 +44,7 @@ class SingleChunkRegionTracker : public ChunkRegionTracker {
     PW_DASSERT(size <= region_.size());
     // Since this is a single `Chunk` region, re-create the first `Chunk` is
     // allowed if freed.
-    std::optional<OwnedChunk> chunk = Chunk::CreateFirstForRegion(*this);
+    std::optional<OwnedChunk> chunk = CreateFirstChunk();
     if (chunk.has_value() && size < region_.size()) {
       (*chunk)->Truncate(size);
     }

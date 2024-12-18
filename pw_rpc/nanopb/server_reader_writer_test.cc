@@ -23,6 +23,7 @@
 #include "pw_unit_test/framework.h"
 
 namespace pw::rpc {
+namespace {
 
 class TestServiceImpl final
     : public test::pw_rpc::nanopb::TestService::Service<TestServiceImpl> {
@@ -149,6 +150,40 @@ TEST(NanopbServerWriter, Closed) {
   call.set_on_error([](Status) {});
 }
 
+TEST(NanopbServerWriter, TryClosedFailed) {
+  ReaderWriterTestContext<TestService::TestServerStreamRpc> ctx;
+  NanopbServerWriter call =
+      NanopbServerWriter<pw_rpc_test_TestStreamResponse>::Open<
+          TestService::TestServerStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish(OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+}
+
+TEST(NanopbServerWriter, TryCloseSuccessful) {
+  ReaderWriterTestContext<TestService::TestServerStreamRpc> ctx;
+  NanopbServerWriter call =
+      NanopbServerWriter<pw_rpc_test_TestStreamResponse>::Open<
+          TestService::TestServerStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish(OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+
+  // Tries to close the call again, with ChannelOutput set to return ok.
+  ctx.output.set_send_status(OkStatus());
+  ASSERT_EQ(OkStatus(), call.TryFinish(OkStatus()));
+  // Call should be closed.
+  ASSERT_FALSE(call.active());
+}
+
 TEST(NanopbServerReader, Closed) {
   ReaderWriterTestContext<TestService::TestClientStreamRpc> ctx;
   NanopbServerReader call = NanopbServerReader<pw_rpc_test_TestRequest,
@@ -164,6 +199,40 @@ TEST(NanopbServerReader, Closed) {
 
   call.set_on_next([](const pw_rpc_test_TestRequest&) {});
   call.set_on_error([](Status) {});
+}
+
+TEST(NanopbServerReader, TryClosedFailed) {
+  ReaderWriterTestContext<TestService::TestClientStreamRpc> ctx;
+  NanopbServerReader call = NanopbServerReader<pw_rpc_test_TestRequest,
+                                               pw_rpc_test_TestStreamResponse>::
+      Open<TestService::TestClientStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish({}, OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+}
+
+TEST(NanopbServerReader, TryCloseSuccessful) {
+  ReaderWriterTestContext<TestService::TestClientStreamRpc> ctx;
+  NanopbServerReader call = NanopbServerReader<pw_rpc_test_TestRequest,
+                                               pw_rpc_test_TestStreamResponse>::
+      Open<TestService::TestClientStreamRpc>(
+          ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish({}, OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+
+  // Tries to close the call again, with ChannelOutput set to return ok.
+  ctx.output.set_send_status(OkStatus());
+  ASSERT_EQ(OkStatus(), call.TryFinish({}, OkStatus()));
+  // Call should be closed.
+  ASSERT_FALSE(call.active());
 }
 
 TEST(NanopbServerReaderWriter, Closed) {
@@ -183,6 +252,42 @@ TEST(NanopbServerReaderWriter, Closed) {
 
   call.set_on_next([](const pw_rpc_test_TestRequest&) {});
   call.set_on_error([](Status) {});
+}
+
+TEST(NanopbServerReaderWriter, TryClosedFailed) {
+  ReaderWriterTestContext<TestService::TestBidirectionalStreamRpc> ctx;
+  NanopbServerReaderWriter call =
+      NanopbServerReaderWriter<pw_rpc_test_TestRequest,
+                               pw_rpc_test_TestStreamResponse>::
+          Open<TestService::TestBidirectionalStreamRpc>(
+              ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish(OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+}
+
+TEST(NanopbServerReaderWriter, TryCloseSuccessful) {
+  ReaderWriterTestContext<TestService::TestBidirectionalStreamRpc> ctx;
+  NanopbServerReaderWriter call =
+      NanopbServerReaderWriter<pw_rpc_test_TestRequest,
+                               pw_rpc_test_TestStreamResponse>::
+          Open<TestService::TestBidirectionalStreamRpc>(
+              ctx.server, ctx.channel.id(), ctx.service);
+  // Sets ChannelOutput to always return false.
+  ctx.output.set_send_status(Status::Unknown());
+  ASSERT_EQ(Status::Unknown(), call.TryFinish(OkStatus()));
+
+  // Call should be still alive.
+  ASSERT_TRUE(call.active());
+
+  // Tries to close the call again, with ChannelOutput set to return ok.
+  ctx.output.set_send_status(OkStatus());
+  ASSERT_EQ(OkStatus(), call.TryFinish(OkStatus()));
+  // Call should be closed.
+  ASSERT_FALSE(call.active());
 }
 
 TEST(NanopbUnaryResponder, Open_ReturnsUsableResponder) {
@@ -319,4 +424,5 @@ TEST(NanopbServerReader, CallbacksMoveCorrectly) {
   EXPECT_EQ(request.status_code, received_request.status_code);
 }
 
+}  // namespace
 }  // namespace pw::rpc

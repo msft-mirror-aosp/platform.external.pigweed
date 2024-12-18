@@ -123,9 +123,20 @@ TEST(PigweedTest, SucceedAndFailMacros) {
     ADD_FAILURE();
     FAIL();
   }
+
+  // Without braces, clang-tidy complains if these are multiple statements.
+  if (false)
+    ADD_FAILURE();
+
+  if (false)
+    FAIL();
 }
 
 TEST(PigweedTest, SkipMacro) {
+  // Without a brace, clang-tidy complains if GTEST_SKIP is multiple statements.
+  if (false)
+    GTEST_SKIP();
+
   GTEST_SKIP();
   // This code should not run.
   EXPECT_TRUE(false);
@@ -325,6 +336,26 @@ TEST_F(SetUpAndTearDown, MakeSureItIsSet) {
 TEST(TestSuiteTearDown, MakeSureItRan) {
   EXPECT_EQ(SetUpAndTearDown::value, 8);
 }
+
+class Interleaved : public ::testing::Test {
+ public:
+  static void SetUpTestSuite() { suites_running++; }
+  static void TearDownTestSuite() { suites_running--; }
+
+ protected:
+  static int suites_running;
+};
+
+int Interleaved::suites_running = 0;
+
+class InterleavedA : public Interleaved {};
+class InterleavedB : public Interleaved {};
+
+TEST_F(InterleavedA, Test1) { ASSERT_EQ(suites_running, 1); }
+TEST_F(InterleavedB, Test1) { ASSERT_EQ(suites_running, 1); }
+TEST_F(Interleaved, Test12) { ASSERT_EQ(suites_running, 1); }
+TEST_F(InterleavedB, Test2) { ASSERT_EQ(suites_running, 1); }
+TEST_F(InterleavedA, Test2) { ASSERT_EQ(suites_running, 1); }
 
 }  // namespace
 }  // namespace pw

@@ -111,8 +111,7 @@ pw_proto_filegroup(
 proto_library(
     name = "metric_proto",
     srcs = [":metric_proto_and_options"],
-    # TODO: b/326636665 - Stripping the import prefix breaks nanopb compilation.
-    # strip_import_prefix = "/pw_metric",
+    strip_import_prefix = "/pw_metric",
 )
 
 py_proto_library(
@@ -140,6 +139,12 @@ pw_cc_test(
     srcs = [
         "global_test.cc",
     ],
+    # TODO: https://pwbug.dev/325509758 - Doesn't work on the Pico yet; has test
+    # failures.
+    target_compatible_with = select({
+        "//pw_build/constraints/chipset:rp2040": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":global",
     ],

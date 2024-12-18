@@ -14,7 +14,7 @@
 """Utilities for address symbolization."""
 
 import abc
-from typing import Iterable, List, Optional
+from typing import Iterable
 from dataclasses import dataclass
 
 
@@ -68,7 +68,7 @@ class Symbolizer(abc.ABC):
         """
         order: str = 'first' if most_recent_first else 'last'
 
-        stack_trace: List[str] = []
+        stack_trace: list[str] = []
         stack_trace.append(f'Stack Trace (most recent call {order}):')
 
         max_width = len(str(len(addresses)))
@@ -90,7 +90,7 @@ class Symbolizer(abc.ABC):
 class FakeSymbolizer(Symbolizer):
     """A fake symbolizer that only knows a fixed set of symbols."""
 
-    def __init__(self, known_symbols: Optional[Iterable[Symbol]] = None):
+    def __init__(self, known_symbols: Iterable[Symbol] | None = None):
         if known_symbols is not None:
             self._db = {sym.address: sym for sym in known_symbols}
         else:

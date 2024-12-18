@@ -13,6 +13,9 @@
 // the License.
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+
 // PW_SYSTEM_LOG_BUFFER_SIZE is the log buffer size which determines how many
 // log entries can be buffered prior to streaming them.
 //
@@ -116,3 +119,89 @@
 #ifndef PW_SYSTEM_SOCKET_IO_PORT
 #define PW_SYSTEM_SOCKET_IO_PORT 33000
 #endif  // PW_SYSTEM_SOCKET_IO_PORT
+
+// PW_SYSTEM_ASYNC_LOG_THREAD_STACK_SIZE_BYTES specifies the size of the
+// internal pw_log thread stack.
+#ifndef PW_SYSTEM_ASYNC_LOG_THREAD_STACK_SIZE_BYTES
+#define PW_SYSTEM_ASYNC_LOG_THREAD_STACK_SIZE_BYTES 4096
+#endif  // PW_SYSTEM_ASYNC_LOG_THREAD_STACK_SIZE_BYTES
+
+// PW_SYSTEM_ASYNC_RPC_THREAD_STACK_SIZE_BYTES specifies the size of the
+// internal pw_rpc thread stack.
+#ifndef PW_SYSTEM_ASYNC_RPC_THREAD_STACK_SIZE_BYTES
+#define PW_SYSTEM_ASYNC_RPC_THREAD_STACK_SIZE_BYTES 2048
+#endif  // PW_SYSTEM_ASYNC_RPC_THREAD_STACK_SIZE_BYTES
+
+// PW_SYSTEM_ASYNC_TRANSFER_THREAD_STACK_SIZE_BYTES specifies the size of the
+// internal pw_transfer thread stack.
+#ifndef PW_SYSTEM_ASYNC_TRANSFER_THREAD_STACK_SIZE_BYTES
+#define PW_SYSTEM_ASYNC_TRANSFER_THREAD_STACK_SIZE_BYTES 2048
+#endif  // PW_SYSTEM_ASYNC_TRANSFER_THREAD_STACK_SIZE_BYTES
+
+// PW_SYSTEM_ASYNC_DISPATCHER_THREAD_STACK_SIZE_BYTES specifies the size of the
+// internal pw_async2 dispatcher thread stack.
+#ifndef PW_SYSTEM_ASYNC_DISPATCHER_THREAD_STACK_SIZE_BYTES
+#define PW_SYSTEM_ASYNC_DISPATCHER_THREAD_STACK_SIZE_BYTES 2048
+#endif  // PW_SYSTEM_ASYNC_DISPATCHER_THREAD_STACK_SIZE_BYTES
+
+// PW_SYSTEM_ASYNC_WORK_QUEUE_THREAD_STACK_SIZE_BYTES specifies the size of the
+// internal work queue thread stack.
+#ifndef PW_SYSTEM_ASYNC_WORK_QUEUE_THREAD_STACK_SIZE_BYTES
+#define PW_SYSTEM_ASYNC_WORK_QUEUE_THREAD_STACK_SIZE_BYTES 2048
+#endif  // PW_SYSTEM_ASYNC_WORK_QUEUE_THREAD_STACK_SIZE_BYTES
+
+// PW_SYSTEM_ENABLE_CRASH_HANDLER specifies if the crash handler is enabled.
+//
+// Defaults to 1.
+#ifndef PW_SYSTEM_ENABLE_CRASH_HANDLER
+#define PW_SYSTEM_ENABLE_CRASH_HANDLER 1
+#endif  // PW_SYSTEM_ENABLE_CRASH_HANDLER
+
+// PW_SYSTEM_CRASH_SNAPSHOT_NOINIT_MEMORY_SECTION specifies the section of
+// memory to store the snapshot data.
+//
+// Defaults to ".noinit"
+#ifndef PW_SYSTEM_CRASH_SNAPSHOT_NOINIT_MEMORY_SECTION
+#define PW_SYSTEM_CRASH_SNAPSHOT_NOINIT_MEMORY_SECTION ".noinit"
+#endif  // PW_SYSTEM_CRASH_SNAPSHOT_NOINIT_MEMORY_SECTION
+
+// PW_SYSTEM_CRASH_SNAPSHOT_MEMORY_SIZE_BYTES specifies how much memory  to
+// reserver for snapshots.
+//
+// Defaults to 2048
+#ifndef PW_SYSTEM_CRASH_SNAPSHOT_MEMORY_SIZE_BYTES
+#define PW_SYSTEM_CRASH_SNAPSHOT_MEMORY_SIZE_BYTES 2048
+#endif  // PW_SYSTEM_CRASH_SNAPSHOT_MEMORY_SIZE_BYTES
+
+namespace pw::system {
+
+// This is the default channel used by the pw_system RPC server. Some other
+// parts of pw_system use this channel ID as the default destination for
+// unrequested data streams.
+inline constexpr uint32_t kDefaultRpcChannelId = PW_SYSTEM_DEFAULT_CHANNEL_ID;
+
+// This is the channel ID used for logging.
+inline constexpr uint32_t kLoggingRpcChannelId = PW_SYSTEM_LOGGING_CHANNEL_ID;
+#if PW_SYSTEM_EXTRA_LOGGING_CHANNEL_ID != PW_SYSTEM_LOGGING_CHANNEL_ID
+inline constexpr uint32_t kExtraLoggingRpcChannelId =
+    PW_SYSTEM_EXTRA_LOGGING_CHANNEL_ID;
+#endif  // PW_SYSTEM_EXTRA_LOGGING_CHANNEL_ID != PW_SYSTEM_LOGGING_CHANNEL_ID
+
+inline constexpr size_t kLogThreadStackSizeBytes =
+    PW_SYSTEM_ASYNC_LOG_THREAD_STACK_SIZE_BYTES;
+inline constexpr size_t kRpcThreadStackSizeBytes =
+    PW_SYSTEM_ASYNC_RPC_THREAD_STACK_SIZE_BYTES;
+inline constexpr size_t kTransferThreadStackSizeBytes =
+    PW_SYSTEM_ASYNC_TRANSFER_THREAD_STACK_SIZE_BYTES;
+inline constexpr size_t kDispatcherThreadStackSizeBytes =
+    PW_SYSTEM_ASYNC_DISPATCHER_THREAD_STACK_SIZE_BYTES;
+inline constexpr size_t kWorkQueueThreadStackSizeBytes =
+    PW_SYSTEM_ASYNC_WORK_QUEUE_THREAD_STACK_SIZE_BYTES;
+
+#undef PW_SYSTEM_ASYNC_LOG_THREAD_STACK_SIZE_BYTES
+#undef PW_SYSTEM_ASYNC_RPC_THREAD_STACK_SIZE_BYTES
+#undef PW_SYSTEM_ASYNC_TRANSFER_THREAD_STACK_SIZE_BYTES
+#undef PW_SYSTEM_ASYNC_DISPATCHER_THREAD_STACK_SIZE_BYTES
+#undef PW_SYSTEM_ASYNC_WORK_QUEUE_THREAD_STACK_SIZE_BYTES
+
+}  // namespace pw::system

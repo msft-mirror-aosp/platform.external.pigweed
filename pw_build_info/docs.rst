@@ -3,9 +3,8 @@
 =============
 pw_build_info
 =============
-
-.. warning::
-  This module is incomplete, but the build ID integration is ready for use.
+.. pigweed-module::
+   :name: pw_build_info
 
 pw_build_info provides tooling, build integration, and libraries for generating,
 embedding, and parsing build-related information that is embedded into
@@ -41,44 +40,44 @@ your embedded target's linker script.
 
 Updating your linker script
 ---------------------------
-If your project has a custom linker scipt, you'll need to update it to include
+If your project has a custom linker script, you'll need to update it to include
 a section to contain the generated build ID. This section should be placed
 alongside the ``.text`` and ``.rodata`` sections, and named
 ``.note.gnu.build-id``.
 
 .. code-block:: none
 
-  /* Main executable code. */
-  .code : ALIGN(4)
-  {
-    . = ALIGN(4);
-    /* Application code. */
-    *(.text)
-    *(.text*)
-    KEEP(*(.init))
-    KEEP(*(.fini))
-    ...
-  } >FLASH
+   /* Main executable code. */
+   .code : ALIGN(4)
+   {
+     . = ALIGN(4);
+     /* Application code. */
+     *(.text)
+     *(.text*)
+     KEEP(*(.init))
+     KEEP(*(.fini))
+     ...
+   } >FLASH
 
-  /* GNU build ID section. */
-  .note.gnu.build-id :
-  {
-    . = ALIGN(4);
-    gnu_build_id_begin = .;
-    *(.note.gnu.build-id);
-  } >FLASH
+   /* GNU build ID section. */
+   .note.gnu.build-id :
+   {
+     . = ALIGN(4);
+     gnu_build_id_begin = .;
+     *(.note.gnu.build-id);
+   } >FLASH
 
-  /* Explicitly initialized global and static data. (.data) */
-  .static_init_ram : ALIGN(4)
-  {
-    *(.data)
-    *(.data*)
-    ...
-  } >RAM AT> FLASH
+   /* Explicitly initialized global and static data. (.data) */
+   .static_init_ram : ALIGN(4)
+   {
+     *(.data)
+     *(.data*)
+     ...
+   } >RAM AT> FLASH
 
 
 Alternatively, you can copy the following linker snippet into a pre-existing
-section. This makes reading the build ID slower, so whenever possibe prefer
+section. This makes reading the build ID slower, so whenever possible prefer
 creating a dedicated section for the build ID.
 
 .. literalinclude:: build_id_linker_snippet.ld
@@ -88,22 +87,22 @@ provided below:
 
 .. code-block:: none
 
-  /* Main executable code. */
-  .code : ALIGN(4)
-  {
-    . = ALIGN(4);
-    /* Application code. */
-    *(.text)
-    *(.text*)
-    KEEP(*(.init))
-    KEEP(*(.fini))
+   /* Main executable code. */
+   .code : ALIGN(4)
+   {
+     . = ALIGN(4);
+     /* Application code. */
+     *(.text)
+     *(.text*)
+     KEEP(*(.init))
+     KEEP(*(.fini))
 
-    . = ALIGN(4);
-    gnu_build_id_begin = .;
-    *(.note.gnu.build-id);
+     . = ALIGN(4);
+     gnu_build_id_begin = .;
+     *(.note.gnu.build-id);
 
-    ...
-  } >FLASH
+     ...
+   } >FLASH
 
 If your linker script is auto-generated, you may be able to use the
 ``INSERT AFTER`` linker script directive to append the build ID as seen in the
@@ -118,30 +117,31 @@ generated at the final link step of any binaries that depend on that library
 (whether directly or transitively). Those binaries will be able to read the
 build ID by calling ``pw::build_info::BuildId()``. Note that the build ID
 is not a string, but raw binary data, so to print it you'll need to convert
-it to hex or base64.
+it to hex or base64. It is possible to call ``pw::build_info::LogBuildId()``
+function to print it (as hexadecimal).
 
 Python API reference
 ====================
 
 .. py:function:: read_build_id_from_section(elf_file: BinaryIO) -> \
-                     Optional[bytes]
+                     bytes | None
 
   Reads a GNU build ID from an ELF binary by searching for a
   ``.note.gnu.build-id`` section.
 
 .. py:function:: read_build_id_from_symbol(elf_file: BinaryIO) -> \
-                     Optional[bytes]
+                     bytes | None
 
   Reads a GNU build ID from an ELF binary by searching for a
   ``gnu_build_id_begin`` symbol. This can be a rather slow operation.
 
-.. py:function:: read_build_id(elf_file: BinaryIO) -> Optional[bytes]
+.. py:function:: read_build_id(elf_file: BinaryIO) -> bytes | None
 
   Reads a GNU build ID from an ELF binary, first checking for a GNU build ID
   section and then falling back to search for a ``gnu_build_id_begin`` symbol.
 
 .. py:function:: find_matching_elf(uuid: bytes, search_dir: Path) -> \
-                     Optional[Path]
+                     Path | None
 
   Recursively searches a directory for an ELF file with a matching UUID.
 
@@ -155,5 +155,55 @@ printed out if it is found.
 
 .. code-block:: sh
 
-  $ python -m pw_build_info.build_id my_device_image.elf
-  d43cce74f18522052f77a1fa3fb7a25fe33f40dd
+   $ python -m pw_build_info.build_id my_device_image.elf
+   d43cce74f18522052f77a1fa3fb7a25fe33f40dd
+
+---------------
+Git Commit Info
+---------------
+If your project uses ``git`` and builds with ``bazel``, you can use the
+auto-generated ``//pw_build_info:git_build_info`` header to embed which git
+commit your binary was built from. This requires a bit of setup to use.
+
+Bazel Workspace Status Command
+==============================
+Bazel supports running a command to inspect the current workspace status each
+build. Add the following to your ``.bazelrc,`` replacing the ``path/to/pigweed``
+portion with where you have pigweed checked out.
+
+.. code-block::
+
+   build --workspace_status_command=path/to/pigweed/pw_build_info/git_workspace_status_command.sh
+
+Use ``pw_build_info/git_build_info.h`` Header
+=============================================
+Add generated header directly to the target where you want to use it.
+
+.. code-block:: python
+
+   cc_binary(
+     name = "main",
+     srcs = [
+       "main.cc",
+       "@pigweed//pw_build_info:git_build_info",
+     ]
+   )
+
+Include the header. The following constants are available:
+
+* ``pw::build_info::kGitCommit``: The git commit this binary was built from.
+* ``pw::build_info::kGitDirty``: True if there were any uncommitted changes.
+
+.. code-block:: cpp
+
+   #include "pw_build_info/git_build_info.h"
+   #include "pw_string/string.h"
+   #include "pw_log/log.h"
+
+   int main() {
+     PW_LOG_INFO("kGitCommit %s", pw::InlineString<40>(pw::build_info::kGitCommit).c_str());
+     PW_LOG_INFO("kGitDirty %d", pw::build_info::kGitDirty);
+     return 0;
+   }
+
+More info about `bazel workspace status commands <https://bazel.build/docs/user-manual#workspace-status-command>`__.

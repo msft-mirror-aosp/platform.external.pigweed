@@ -14,7 +14,7 @@
 
 load(
     "//pw_build:pigweed.bzl",
-    "pw_cc_facade",
+    "pw_facade",
 )
 
 package(default_visibility = ["//visibility:public"])
@@ -25,23 +25,18 @@ constraint_setting(
     name = "backend_constraint_setting",
 )
 
-pw_cc_facade(
-    name = "context_facade",
-    hdrs = [
-        "public/pw_interrupt/context.h",
-    ],
-    includes = ["public"],
-)
-
-cc_library(
+pw_facade(
     name = "context",
     hdrs = [
         "public/pw_interrupt/context.h",
     ],
+    backend = ":backend",
     includes = ["public"],
-    deps = [
-        "@pigweed//targets:pw_interrupt_backend",
-    ],
+)
+
+label_flag(
+    name = "backend",
+    build_setting_default = ":backend_multiplexer",
 )
 
 alias(
@@ -51,5 +46,5 @@ alias(
         "//pw_interrupt_xtensa:backend": "//pw_interrupt_xtensa:context",
         "//conditions:default": "//pw_build:unspecified_backend",
     }),
-    visibility = ["@pigweed//targets:__pkg__"],
+    visibility = ["//targets:__pkg__"],
 )

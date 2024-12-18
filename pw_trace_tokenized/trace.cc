@@ -24,11 +24,15 @@
 namespace pw {
 namespace trace {
 
-Callbacks callbacks;
-Callbacks& GetCallbacks() { return callbacks; }
+Callbacks& GetCallbacks() {
+  static Callbacks callbacks;
+  return callbacks;
+}
 
-TokenizedTracer tokenized_tracer(GetCallbacks());
-TokenizedTracer& GetTokenizedTracer() { return tokenized_tracer; }
+TokenizedTracer& GetTokenizedTracer() {
+  static TokenizedTracer tokenized_tracer(GetCallbacks());
+  return tokenized_tracer;
+}
 
 using TraceEvent = pw_trace_tokenized_TraceEvent;
 

@@ -55,15 +55,19 @@ void ToString(const pw_cpu_exception_State& cpu_state, const span<char>& dest) {
   _PW_FORMAT_REGISTER(extended, msp);
   _PW_FORMAT_REGISTER(extended, psp);
   _PW_FORMAT_REGISTER(extended, exc_return);
-#if _PW_ARCH_ARM_V8M_MAINLINE
+#if _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
   _PW_FORMAT_REGISTER(extended, msplim);
   _PW_FORMAT_REGISTER(extended, psplim);
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
+#if !_PW_ARCH_ARM_V6M
   _PW_FORMAT_REGISTER(extended, cfsr);
   _PW_FORMAT_REGISTER(extended, mmfar);
   _PW_FORMAT_REGISTER(extended, bfar);
+#endif  // !_PW_ARCH_ARM_V6M
   _PW_FORMAT_REGISTER(extended, icsr);
+#if !_PW_ARCH_ARM_V6M
   _PW_FORMAT_REGISTER(extended, hfsr);
+#endif  // !_PW_ARCH_ARM_V6M
   _PW_FORMAT_REGISTER(extended, shcsr);
   _PW_FORMAT_REGISTER(extended, control);
 
@@ -110,15 +114,19 @@ void LogCpuState(const pw_cpu_exception_State& cpu_state) {
   _PW_LOG_REGISTER(extended, msp);
   _PW_LOG_REGISTER(extended, psp);
   _PW_LOG_REGISTER(extended, exc_return);
-#if _PW_ARCH_ARM_V8M_MAINLINE
+#if _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
   _PW_LOG_REGISTER(extended, msplim);
   _PW_LOG_REGISTER(extended, psplim);
-#endif  // _PW_ARCH_ARM_V8M_MAINLINE
+#endif  // _PW_ARCH_ARM_V8M_MAINLINE || _PW_ARCH_ARM_V8_1M_MAINLINE
+#if !_PW_ARCH_ARM_V6M
   _PW_LOG_REGISTER(extended, cfsr);
   _PW_LOG_REGISTER(extended, mmfar);
   _PW_LOG_REGISTER(extended, bfar);
+#endif  // !_PW_ARCH_ARM_V6M
   _PW_LOG_REGISTER(extended, icsr);
+#if !_PW_ARCH_ARM_V6M
   _PW_LOG_REGISTER(extended, hfsr);
+#endif  // !_PW_ARCH_ARM_V6M
   _PW_LOG_REGISTER(extended, shcsr);
   _PW_LOG_REGISTER(extended, control);
 

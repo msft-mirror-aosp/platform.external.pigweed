@@ -14,6 +14,8 @@
 
 #include "pw_grpc/pw_rpc_handler.h"
 
+#include <cinttypes>
+
 namespace pw::grpc {
 
 using pw::rpc::internal::pwpb::PacketType;
@@ -35,28 +37,30 @@ Status PwRpcHandler::OnNew(StreamId id,
     return Status::NotFound();
   }
 
-  auto service = view.substr(1, split_pos - 1);
-  auto method = view.substr(split_pos + 1);
-  return CreateStream(
-      id, rpc::internal::Hash(service), rpc::internal::Hash(method));
+  // Look up method in the server.
+  std::string_view service_name = view.substr(1, split_pos - 1);
+  std::string_view method_name = view.substr(split_pos + 1);
+  uint32_t service_id = rpc::internal::Hash(service_name);
+  uint32_t method_id = rpc::internal::Hash(method_name);
+  const auto [service, method] = server_.FindMethod(service_id, method_id);
+  if (service == nullptr || method == nullptr) {
+    PW_LOG_WARN("Unknown method '%s'", full_method_name.c_str());
+    return Status::NotFound();
+  }
+
+  return CreateStream(id, service_id, method_id, method->type());
 }
 
 Status PwRpcHandler::OnMessage(StreamId id, ByteSpan message) {
   auto stream = LookupStream(id);
   if (!stream.ok()) {
-    PW_LOG_INFO(
-        "Handler.OnMessage id=%d size=%lu: unknown stream", id, message.size());
+    PW_LOG_INFO("Handler.OnMessage id=%" PRIu32 " size=%zu: unknown stream",
+                id,
+                message.size());
     return Status::NotFound();
   }
 
-  const auto [service, method] =
-      server_.FindMethod(stream->service_id, stream->method_id);
-  if (service == nullptr || method == nullptr) {
-    PW_LOG_WARN("Could not find method type");
-    return Status::NotFound();
-  }
-
-  switch (method->type()) {
+  switch (stream->method_type) {
     case pw::rpc::MethodType::kUnary:
     case pw::rpc::MethodType::kServerStreaming: {
       auto packet = pw::rpc::internal::Packet(PacketType::kRequest,
@@ -66,11 +70,7 @@ Status PwRpcHandler::OnMessage(StreamId id, ByteSpan message) {
                                               id,
                                               message,
                                               pw::OkStatus());
-      // TODO(b/319162657): Avoid this extra encode
-      PW_TRY_ASSIGN(auto size, packet.Encode(packet_encode_buffer_));
-
-      PW_TRY(packet_processor_.ProcessRpcPacket(
-          ConstByteSpan(packet_encode_buffer_.data(), size.size_bytes())));
+      PW_TRY(server_.ProcessPacket(packet));
       break;
     }
     case pw::rpc::MethodType::kClientStreaming:
@@ -83,9 +83,7 @@ Status PwRpcHandler::OnMessage(StreamId id, ByteSpan message) {
                                                 id,
                                                 {},
                                                 pw::OkStatus());
-        PW_TRY_ASSIGN(auto size, packet.Encode(packet_encode_buffer_));
-        PW_TRY(packet_processor_.ProcessRpcPacket(
-            ConstByteSpan(packet_encode_buffer_.data(), size.size_bytes())));
+        PW_TRY(server_.ProcessPacket(packet));
         MarkSentRequest(id);
       }
 
@@ -96,9 +94,7 @@ Status PwRpcHandler::OnMessage(StreamId id, ByteSpan message) {
                                               id,
                                               message,
                                               pw::OkStatus());
-      PW_TRY_ASSIGN(auto size, packet.Encode(packet_encode_buffer_));
-      PW_TRY(packet_processor_.ProcessRpcPacket(
-          ConstByteSpan(packet_encode_buffer_.data(), size.size_bytes())));
+      PW_TRY(server_.ProcessPacket(packet));
       break;
     }
     default:
@@ -116,15 +112,8 @@ void PwRpcHandler::OnHalfClose(StreamId id) {
     return;
   }
 
-  const auto [service, method] =
-      server_.FindMethod(stream->service_id, stream->method_id);
-  if (service == nullptr || method == nullptr) {
-    PW_LOG_WARN("Could not find method type");
-    return;
-  }
-
-  if (method->type() == pw::rpc::MethodType::kClientStreaming ||
-      method->type() == pw::rpc::MethodType::kBidirectionalStreaming) {
+  if (stream->method_type == pw::rpc::MethodType::kClientStreaming ||
+      stream->method_type == pw::rpc::MethodType::kBidirectionalStreaming) {
     auto packet =
         pw::rpc::internal::Packet(PacketType::kClientRequestCompletion,
                                   channel_id_,
@@ -135,15 +124,7 @@ void PwRpcHandler::OnHalfClose(StreamId id) {
                                   pw::OkStatus());
     ResetStream(id);
 
-    auto size = packet.Encode(packet_encode_buffer_);
-    if (!size.ok()) {
-      return;
-    }
-
-    packet_processor_
-        .ProcessRpcPacket(
-            ConstByteSpan(packet_encode_buffer_.data(), size->size_bytes()))
-        .IgnoreError();
+    server_.ProcessPacket(packet).IgnoreError();
   }
 }
 
@@ -163,15 +144,7 @@ void PwRpcHandler::OnCancel(StreamId id) {
                                           pw::Status::Cancelled());
   ResetStream(id);
 
-  auto size = packet.Encode(packet_encode_buffer_);
-  if (!size.ok()) {
-    return;
-  }
-
-  packet_processor_
-      .ProcessRpcPacket(
-          ConstByteSpan(packet_encode_buffer_.data(), size->size_bytes()))
-      .IgnoreError();
+  server_.ProcessPacket(packet).IgnoreError();
 }
 
 Result<PwRpcHandler::Stream> PwRpcHandler::LookupStream(StreamId id) {
@@ -217,7 +190,8 @@ void PwRpcHandler::MarkSentRequest(StreamId id) {
 
 Status PwRpcHandler::CreateStream(StreamId id,
                                   uint32_t service_id,
-                                  uint32_t method_id) {
+                                  uint32_t method_id,
+                                  pw::rpc::MethodType method_type) {
   auto streams_locked = streams_.acquire();
 
   for (size_t i = 0; i < streams_locked->size(); ++i) {
@@ -226,6 +200,7 @@ Status PwRpcHandler::CreateStream(StreamId id,
       stream.id = id;
       stream.service_id = service_id;
       stream.method_id = method_id;
+      stream.method_type = method_type;
       stream.sent_request = false;
       return OkStatus();
     }

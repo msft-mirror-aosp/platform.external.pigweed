@@ -1,8 +1,8 @@
 .. _docs-build-system:
 
-============
-Build system
-============
+=============
+Build systems
+=============
 Building software for embedded devices is a complex process. Projects often have
 custom toolchains, target different hardware platforms, and require additional
 configuration and post-processing of artifacts.
@@ -17,6 +17,7 @@ Pigweed.
 .. toctree::
   :hidden:
 
+  bazel_compatibility
   python_build
 
 What's in a build system?
@@ -585,9 +586,9 @@ commonly used commands used in bazel are;
 
 .. code-block:: sh
 
-  bazel build //your:target
-  bazel test //your:target
-  bazel coverage //your:target
+   bazelisk build //your:target
+   bazelisk test //your:target
+   bazelisk coverage //your:target
 
 .. note:: Code coverage support is only available on the host for now.
 
@@ -598,8 +599,8 @@ platform (e.g. stm32f429i-discovery) a slight variation is required.
 
 .. code-block:: sh
 
-  bazel build //your:target \
-    --platforms=@pigweed//pw_build/platforms:lm3s6965evb
+   bazelisk build //your:target \
+     --platforms=@pigweed//pw_build/platforms:lm3s6965evb
 
 For more information on how to create your own platforms refer to the official
 `Bazel platforms reference`_. You may also find helpful examples of constraints
@@ -627,10 +628,10 @@ Then, run:
 
    .. code-block:: sh
 
-    bazel test //your:test --platforms=//your/platform --run_under=//your_handler
+      bazelisk test //your:test --platforms=//your/platform --run_under=//your_handler
 
-Test tag conventions
-~~~~~~~~~~~~~~~~~~~~
+Tag conventions
+~~~~~~~~~~~~~~~
 Pigweed observes the standard Bazel test `tag conventions
 <https://bazel.build/reference/test-encyclopedia#tag-conventions>`_. We also
 use the following additional tags:
@@ -642,7 +643,7 @@ use the following additional tags:
 
    .. code-block:: sh
 
-     bazel test --test_tag_filters=-integration //...
+      bazelisk test --test_tag_filters=-integration //...
 
    will run all tests *except* for these integration tests.
 
@@ -667,7 +668,7 @@ Making use of the code coverage functionality in Bazel is straightforward.
 
    .. code-block:: sh
 
-      bazel coverage //pw_log/...
+      bazelisk coverage //pw_log/...
 
 3. View the results using the command line utility 'lcov'.
 
@@ -701,8 +702,10 @@ This can be added in a couple ways:
     <https://bazel.build/reference/be/c-cpp#cc_binary.link_extra_lib>`_. Set
     the ``@bazel_tools//tools/cpp:link_extra_libs`` label flag to point to
     ``@pigweed//pw_build:default_link_extra_lib``, probably using `bazelrc
-    <https://bazel.build/run/bazelrc>`_. This is only supported in Bazel 7.0.0
-    or newer.
+    <https://bazel.build/run/bazelrc>`_. This is only likely to work if you
+    specify the ``--experimental_exclude_starlark_flags_from_exec_config``
+    flag, available in Bazel 8 and newer; see `bazelbuild/bazel#22457
+    <https://github.com/bazelbuild/bazel/issues/22457>`__.
 
     The con is that these libraries are linked into *all* C++ binaries that are
     part of your project's build, including ones that have no dependencies on
@@ -736,13 +739,13 @@ see the `Bazel selects reference`_. e.g.
 
 .. code-block:: py
 
-  cc_library(
-    name = "some_platform_dependant_library",
-    deps = select({
-      "@platforms//cpu:armv7e-m": [":arm_libs"],
-      "//conditions:default": [":host_libs"],
-    }),
-  )
+   cc_library(
+     name = "some_platform_dependant_library",
+     deps = select({
+       "@platforms//cpu:armv7e-m": [":arm_libs"],
+       "//conditions:default": [":host_libs"],
+     }),
+   )
 
 Compatibility lists
 ^^^^^^^^^^^^^^^^^^^
@@ -752,17 +755,17 @@ compatible with only a host os;
 
 .. code-block:: py
 
-  cc_library(
-    name = "some_host_only_lib",
-    srcs = ["host.cc"],
-    target_compatible_with = select({
-      "@platforms//os:windows": [],
-      "@platforms//os:linux": [],
-      "@platforms//os:ios": [],
-      "@platforms//os:macos": [],
-      "//conditions:default": ["@platforms//:incompatible"],
-    }),
-  )
+   cc_library(
+     name = "some_host_only_lib",
+     srcs = ["host.cc"],
+     target_compatible_with = select({
+       "@platforms//os:windows": [],
+       "@platforms//os:linux": [],
+       "@platforms//os:ios": [],
+       "@platforms//os:macos": [],
+       "//conditions:default": ["@platforms//:incompatible"],
+     }),
+   )
 
 In this case building from or for either Windows/Linux/Mac will be supported, but
 other OS's will fail if this target is explicitly depended on. However if
@@ -771,7 +774,7 @@ and the build will continue. e.g.
 
 .. code-block:: sh
 
-  bazel build //... --platforms=@pigweed//pw_build/platforms:lm3s6965evb
+   bazelisk build //... --platforms=@pigweed//pw_build/platforms:lm3s6965evb
 
 This allows for you to easily create compatibility matricies without adversely
 affecting your ability build your entire repo for a given Pigweed target.
@@ -797,32 +800,32 @@ swap out a single dependency from the command line. e.g.
 
 .. code-block:: py
 
-  cc_library(
-    name = "some_default_io",
-    srcs = ["default_io.cc"],
-  )
+   cc_library(
+     name = "some_default_io",
+     srcs = ["default_io.cc"],
+   )
 
-  cc_library(
-    name = "some_other_io",
-    srcs = ["other_io.cc"],
-  )
+   cc_library(
+     name = "some_other_io",
+     srcs = ["other_io.cc"],
+   )
 
-  label_flag(
-    name = "io",
-    default_build_setting = ":some_default_io",
-  )
+   label_flag(
+     name = "io",
+     default_build_setting = ":some_default_io",
+   )
 
-  cc_library(
-    name = "some_target_that_needs_io",
-    deps = [":io"],
-  )
+   cc_library(
+     name = "some_target_that_needs_io",
+     deps = [":io"],
+   )
 
 From here the label_flag by default redirects to the target ":some_default_io",
 however it is possible to override this from the command line. e.g.
 
 .. code-block:: sh
 
-  bazel build //:some_target_that_needs_io --//:io=//:some_other_io
+   bazelisk build //:some_target_that_needs_io --//:io=//:some_other_io
 
 
 
@@ -837,7 +840,8 @@ however it is possible to override this from the command line. e.g.
 Facades and backends tutorial
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This section walks you through an example of configuring :ref:`facade
-<module-pw_build-bazel-pw_cc_facade>` backends in a Pigweed Bazel project.
+<module-pw_build-bazel-pw_facade>` backends in a Pigweed Bazel
+project.
 
 Consider a scenario that you are building a flight controller for a spacecraft.
 But you have very little experience with Pigweed and have just landed here.
@@ -860,7 +864,7 @@ This should work out of the box for any host operating system. E.g., running,
 
 .. code-block:: console
 
-   bazel build //:time_is_relative
+   bazelisk build //:time_is_relative
 
 will produce a working library for your host OS.
 
@@ -874,12 +878,12 @@ could build your library with:
 
 .. code-block:: console
 
-   bazel build \
-     --@pigweed//targets:pw_chrono_system_clock_backend=@pigweed//pw_chrono_freertos:system_clock_backend \
+   bazelisk build \
+     --@pigweed/pw_chrono:system_clock_backend=@pigweed//pw_chrono_freertos:system_clock \
      //:time_is_relative
 
 Then, ``//pw_chrono:system_clock`` will use the FreeRTOS backend
-``//pw_chrono_freertos:system_clock_backend``.
+``//pw_chrono_freertos:system_clock``.
 
 How does this work?  Here's the relevant part of the dependency tree for your
 target:
@@ -889,26 +893,26 @@ target:
    //:time_is_relative
     |
     v
-   @pigweed//pw_chrono:system_clock  -------> @pigweed//targets:pw_chrono_system_clock_backend
+   @pigweed//pw_chrono:system_clock  -------> @pigweed//pw_chrono:system_clock_backend
     |                                                    (Injectable)
     |                                                         |
     |                                                         v
     |                                         @pigweed//pw_chrono_freertos:system_clock
     |                                                   (Actual backend)
     v                                                         |
-   @pigweed//pw_chrono:system_clock_facade <------------------.
+   @pigweed//pw_chrono:system_clock.facade <------------------.
 
 When building ``//:time_is_relative``, Bazel checks the dependencies of
 ``@pigweed//pw_chrono:system_clock`` and finds that it depends on
-``@pigweed//targets:pw_chrono_system_clock_backend``, which looks like this:
+``@pigweed//pw_chrono:system_clock_backend``, which looks like this:
 
 .. code-block:: python
 
-   # @pigweed//targets/BUILD.bazel
+   # @pigweed//pw_chrono/BUILD.bazel
 
    label_flag(
-       name = "pw_chrono_system_clock_backend",
-       build_setting_default = "@pigweed//pw_chrono:system_clock_backend_multiplexer",
+       name = "system_clock_backend",
+       build_setting_default = ":unspecified system_clock_backend",
    )
 
 This is a  `label_flag
@@ -918,8 +922,8 @@ flags. By setting
 
 .. code-block:: console
 
-   --@pigweed//targets:pw_chrono_system_clock_backend=\
-     @pigweed//pw_chrono_freertos:system_clock_backend
+   --@pigweed//pw_chrono:system_clock_backend=\
+     @pigweed//pw_chrono_freertos:system_clock
 
 on the command line, you told Bazel to override the default and use the
 FreeRTOS backend.
@@ -949,7 +953,7 @@ files and a BUILD file like,
            "public_overrides",
        ],
        deps = [
-           "//pw_chrono:system_clock_facade",
+           "@pigweed//pw_chrono:system_clock.facade",
        ],
    )
 
@@ -957,8 +961,8 @@ To build your ``//:time_is_relative`` target using this backend, you'd run,
 
 .. code-block:: console
 
-   bazel build //:time_is_relative \
-     --@pigweed//targets:pw_chrono_system_clock_backend=//pw_chrono_my_hardware_rtc:system_clock
+   bazelisk build //:time_is_relative \
+     --@pigweed//pw_chrono:system_clock_backend=//pw_chrono_my_hardware_rtc:system_clock
 
 This modifies the build graph to look something like this:
 
@@ -967,151 +971,40 @@ This modifies the build graph to look something like this:
    //:time_is_relative
     |
     v
-   @pigweed//pw_chrono:system_clock  -------> @pigweed//targets:pw_chrono_system_clock_backend
+   @pigweed//pw_chrono:system_clock  -------> @pigweed//pw_chrono:system_clock_backend
     |                                                    (Injectable)
     |                                                         |
     |                                                         v
     |                                         //pw_chrono_my_hardware_rtc:system_clock
     |                                                   (Actual backend)
     v                                                         |
-   @pigweed//pw_chrono:system_clock_facade <------------------.
+   @pigweed//pw_chrono:system_clock.facade <------------------.
 
 Associating backends with platforms through bazelrc
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 As your project grows, you will want to select backends for an increasing
 number of facades. The right backend to choose will depend on the target
 platform (host vs embedded, with potentially multiple target embedded
-platforms). Managing this through command-line flags would be pretty arduous!
-
-What we recommend you do instead is group these flags into configs in your
+platforms). Managing this directly through command-line flags is generally an
+anti-pattern. Instead, group these flags into configs in your
 `bazelrc <https://bazel.build/run/bazelrc>`_. Eventually, your bazelrc may look
 something like this:
 
 .. code-block:: sh
 
    # The Cortex M7 config
-   build:m7 --@pigweed//tagrets:pw_chrono_system_clock_backend=//pw_chrono_my_hardware_rtc:system_clock
-   build:m7 --@pigweed//targets:pw_sys_io_backend=//cortex-m7:sys_io
+   build:m7 --@pigweed//pw_chrono:system_clock_backend=//pw_chrono_my_hardware_rtc:system_clock
+   build:m7 --@pigweed//pw_sys_io:backend=//cortex-m7:sys_io
 
    # The Cortex M4 config
-   build:m4 --@pigweed//tagrets:pw_chrono_system_clock_backend=//pw_chrono_my_hardware_rtc:system_clock
-   build:m4 --@pigweed//targets:pw_sys_io_backend=//cortex-m4:sys_io
-   build:m4 --@pigweed//targets:pw_log_backend=@pigweed//pw_log_string
-   build:m4 --@pigweed//targets:pw_log_string_handler_backend=@pigweed//pw_system:log_backend
+   build:m4 --@pigweed//pw_chrono:system_clock_backend=//pw_chrono_my_hardware_rtc:system_clock
+   build:m4 --@pigweed//pw_sys_io:backend=//cortex-m4:sys_io
+   build:m4 --@pigweed//pw_log:backend=@pigweed//pw_log_string
+   build:m4 --@pigweed//pw_log_string:handler_backend=@pigweed//pw_system:log_backend
 
 Then, to build your library for a particular configuration, on the command line
 you just specify the ``--config`` on the command line:
 
 .. code-block:: console
 
-    bazel build --config=m4 //:time_is_relative
-
-Multiplexer-based backend selection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-TODO(`b/272090220 <https://issues.pigweed.dev/issues/272090220>`_): Not all
-facades and backends expose this interface yet.
-
-As an alternative to directly switching backends using label flags, Pigweed
-supports backend selection based on the target `platform
-<https://bazel.build/extending/platforms>`_. That is, on the command line you
-build with,
-
-.. code-block:: console
-
-    bazel build --platforms-//platforms:primary_computer //:time_is_relative
-
-and backend selection is done by Bazel based on the platform definition. Let's
-discuss how to set this up.
-
-Continuing with our scenario, let's say we add a backup microcontroller
-to our spacecraft. But this backup computer doesn't have a hardware RTC. We
-still want to share the bulk of the code between the two computers but now we
-need two separate implementations for our pw_chrono facade. Let's say we choose
-to keep the primary flight computer using the hardware RTC and switch the
-backup computer over to use Pigweed's default FreeRTOS backend:
-
-#. Create a constraint value corresponding to your custom backend:
-
-   .. code-block:: python
-
-     # //pw_chrono_my_hardware_rtc/BUILD.bazel
-     constraint_value(
-       name = "system_clock_backend",
-       constraint_setting = "//pw_chrono:system_clock_constraint_setting",
-     )
-
-#. Create a set of platforms that can be used to switch constraint values.
-   For example:
-
-   .. code-block:: python
-
-      # //platforms/BUILD.bazel
-      platform(
-        name = "primary_computer",
-        constraint_values = ["//pw_chrono_my_hardware_rtc:system_clock_backend"],
-      )
-
-      platform(
-        name = "backup_computer",
-        constraint_values = ["@pigweed//pw_chrono_freertos:system_clock_backend"],
-      )
-
-   If you already have platform definitions for the primary and backup
-   computers, just add these constraint values to them.
-
-#. Create a target multiplexer that will select the right backend depending on
-   which computer you are using. For example:
-
-   .. code-block:: python
-
-     # //targets/BUILD.bazel
-     cc_library(
-       name = "system_clock_backend_multiplexer",
-       deps = select({
-         "//pw_chrono_my_hardware_rtc:system_clock_backend": [
-           "//pw_chrono_my_hardware_rtc:system_clock",
-         ],
-         "@pigweed//pw_chrono_freertos:system_clock_backend": [
-           "@pigweed//pw_chrono_freertos:system_clock",
-         ],
-         "//conditions:default": [
-           "@pigweed//pw_chrono_stl:system_clock",
-         ],
-       }),
-     )
-
-#. Add a build setting override for the ``pw_chrono_system_clock_backend`` label
-   flag to your ``.bazelrc`` file that points to your new target multiplexer.
-
-   .. code-block:: bash
-
-     # //.bazelrc
-     build --@pigweed//targets:pw_chrono_system_clock_backend=//targets:system_clock_backend_multiplexer
-
-Building your target now will result in slightly different build graph. For
-example, running;
-
-.. code-block:: sh
-
-  bazel build //:time_is_relative --platforms=//platforms:primary_computer
-
-Will result in a build graph that looks like;
-
-.. code-block::
-
-   //:time_is_relative
-    |
-   @pigweed//pw_chrono -> @pigweed//targets:pw_chrono_system_clock_backend
-    |                                   (Injectable)
-    |                                        |
-    |                                        v
-    |                     //targets:system_clock_backend_multiplexer
-    |                     Select backend based on OS:
-    |                     [Primary (X), Backup ( ), Host only default ( )]
-    |                                        |
-    |                                        v
-    |                     //pw_chrono_my_hardware_rtc:system_clock
-    |                     (Actual backend)
-    v                                        |
-   @pigweed//pw_chrono:pw_chrono_facade <---.
-
+   bazelisk build --config=m4 //:time_is_relative

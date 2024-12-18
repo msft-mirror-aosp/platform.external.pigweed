@@ -30,7 +30,7 @@ class MockTask : public Task {
  private:
   Poll<> DoPend(Context& cx) override {
     ++polled;
-    last_waker = cx.waker().Clone(WaitReason::Unspecified());
+    last_waker = cx.GetWaker(WaitReason::Unspecified());
     if (should_complete) {
       return Ready();
     } else {
@@ -45,9 +45,11 @@ TEST(Dispatcher, RunUntilStalledPendsPostedTask) {
   task.should_complete = true;
   Dispatcher dispatcher;
   dispatcher.Post(task);
+  EXPECT_TRUE(task.IsRegistered());
   EXPECT_TRUE(dispatcher.RunUntilStalled(task).IsReady());
   EXPECT_EQ(task.polled, 1);
   EXPECT_EQ(task.destroyed, 1);
+  EXPECT_FALSE(task.IsRegistered());
 }
 
 TEST(Dispatcher, RunUntilStalledReturnsOnNotReady) {
@@ -81,6 +83,11 @@ TEST(Dispatcher, RunUntilStalledDoesNotPendSleepingTask) {
   EXPECT_EQ(task.destroyed, 1);
 }
 
+TEST(Dispatcher, RunUntilStalledWithNoTasksReturnsReady) {
+  Dispatcher dispatcher;
+  EXPECT_TRUE(dispatcher.RunUntilStalled().IsReady());
+}
+
 TEST(Dispatcher, RunUntilCompletePendsMultipleTasks) {
   class CounterTask : public Task {
    public:
@@ -99,7 +106,7 @@ TEST(Dispatcher, RunUntilCompletePendsMultipleTasks) {
         }
         return Ready();
       } else {
-        wakers_->push_back(cx.waker().Clone(WaitReason::Unspecified()));
+        wakers_->push_back(cx.GetWaker(WaitReason::Unspecified()));
         return Pending();
       }
     }
@@ -156,6 +163,19 @@ TEST(Dispatcher, RunToCompletionPendsPostedTask) {
   dispatcher.RunToCompletion(task);
   EXPECT_EQ(task.polled, 1);
   EXPECT_EQ(task.destroyed, 1);
+}
+
+TEST(Dispatcher, RunToCompletionIgnoresDeregisteredTask) {
+  Dispatcher dispatcher;
+  MockTask task;
+  task.should_complete = false;
+  dispatcher.Post(task);
+  EXPECT_TRUE(task.IsRegistered());
+  task.Deregister();
+  EXPECT_FALSE(task.IsRegistered());
+  dispatcher.RunToCompletion();
+  EXPECT_EQ(task.polled, 0);
+  EXPECT_EQ(task.destroyed, 0);
 }
 
 }  // namespace

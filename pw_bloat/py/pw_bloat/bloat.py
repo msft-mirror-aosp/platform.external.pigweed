@@ -23,7 +23,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from typing import Iterable, Optional
+from typing import Iterable
 
 import pw_cli.log
 
@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
 def run_bloaty(
     filename: str,
     config: str,
-    base_file: Optional[str] = None,
+    base_file: str | None = None,
     data_sources: Iterable[str] = (),
     extra_args: Iterable[str] = (),
 ) -> bytes:
@@ -100,8 +100,18 @@ def run_bloaty(
         subprocess.CalledProcessError: The Bloaty invocation failed.
     """
 
-    default_bloaty = 'bloaty'
-    bloaty_path = os.getenv('BLOATY_PATH', default_bloaty)
+    try:
+        # If running from within a Bazel context, find the Bloaty executable
+        # within the project's runfiles.
+        # pylint: disable=import-outside-toplevel
+        from python.runfiles import runfiles  # type: ignore
+
+        r = runfiles.Create()
+        bloaty_path = r.Rlocation("bloaty/bloaty")
+    except ImportError:
+        # Outside of Bazel, use Bloaty from the system path.
+        default_bloaty = 'bloaty'
+        bloaty_path = os.getenv('BLOATY_PATH', default_bloaty)
 
     cmd = [
         bloaty_path,
@@ -121,6 +131,35 @@ def run_bloaty(
         cmd.extend(['--', base_file])
 
     return subprocess.check_output(cmd)
+
+
+def basic_size_report(
+    elf: Path,
+    bloaty_config: Path,
+    data_sources: Iterable[str] = (),
+    extra_args: Iterable[str] = (),
+) -> Iterable[str]:
+    """Runs a size report on an ELF file using the specified Bloaty config.
+
+    Arguments:
+        elf: The ELF binary on which to run.
+        bloaty_config: Path to a Bloaty configuration file.
+        data_sources: Hierarchical data sources to display.
+        extra_args: Additional command line arguments forwarded to bloaty.
+
+    Returns:
+        The bloaty TSV output detailing the size report.
+    """
+    return (
+        run_bloaty(
+            str(elf.resolve()),
+            str(bloaty_config.resolve()),
+            data_sources=data_sources,
+            extra_args=extra_args,
+        )
+        .decode('utf-8')
+        .splitlines()
+    )
 
 
 class NoMemoryRegions(Exception):

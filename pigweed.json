@@ -6,8 +6,10 @@
         "black_config_file": "$pw_env{PW_ROOT}/.black.toml",
         "exclude": [
           "\\bthird_party/fuchsia/repo",
+          "\\bthird_party/perfetto/repo",
           "\\bthird_party/.*\\.json$",
           "\\bpackage\\.lock$",
+          "\\bpw_presubmit/py/pw_presubmit/format/test_data/.*",
           "\\bpw_web/log-viewer/package(-lock)?\\.json",
           "\\bpw_web/log-viewer/src/assets/material_symbols_rounded_subset\\.woff2",
           "^patches\\.json$"
@@ -27,6 +29,14 @@
         "emu": {
           "module": "pw_emu.__main__",
           "function": "main"
+        },
+        "clang-tidy-fix": {
+          "module": "pw_toolchain.clang_apply_replacements",
+          "function": "main"
+        },
+        "ffx": {
+          "module": "pw_cli.pigweed_aliases",
+          "function": "ffx"
         },
         "format": {
           "module": "pw_presubmit.format_code",
@@ -56,12 +66,20 @@
           "module": "pw_hdlc.rpc_console",
           "function": "main"
         },
+        "seed": {
+          "module": "pw_module.seed",
+          "function": "main"
+        },
         "update": {
           "module": "pw_software_update.cli",
           "function": "main"
         },
         "west": {
           "module": "pw_env_setup_zephyr.zephyr",
+          "function": "main"
+        },
+        "sensor-desc": {
+          "module": "pw_sensor.sensor_desc",
           "function": "main"
         }
       }
@@ -109,6 +127,66 @@
         "pw_emu/qemu-netduinoplus2.json",
         "pw_emu/renode-stm32f4_discovery.json"
       ]
+    },
+    "bazel_presubmit": {
+      "remote_cache": true,
+      "upload_local_results": true,
+      "programs": {
+        "default": [
+          [
+            "build",
+            "//..."
+          ],
+          [
+            "test",
+            "//..."
+          ],
+          [
+            "test",
+            "--//pw_unit_test:backend=//pw_unit_test:googletest",
+            "--//pw_unit_test:main=@com_google_googletest//:gtest_main",
+            "--platforms=//pw_unit_test:googletest_platform",
+            "//..."
+          ],
+          [
+            "build",
+            "--aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect",
+            "--output_groups=clippy_checks",
+            "//..."
+          ],
+          [
+            "build",
+            "--config=asan",
+            "--config=fuzztest",
+            "//..."
+          ]
+        ],
+        "integration": [
+          [
+            "test",
+            "--build_tag_filters=integration",
+            "--test_tag_filters=integration",
+            "//..."
+          ]
+        ],
+        "sanitizers": [
+          [
+            "test",
+            "--config=asan",
+            "//..."
+          ],
+          [
+            "test",
+            "--config=tsan",
+            "//..."
+          ],
+          [
+            "test",
+            "--config=ubsan",
+            "//..."
+          ]
+        ]
+      }
     }
   }
 }

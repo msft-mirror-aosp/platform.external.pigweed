@@ -1,4 +1,4 @@
-# Copyright 2023 The Pigweed Authors
+# Copyright 2024 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -17,7 +17,7 @@ import asyncio
 import ctypes
 import logging
 import threading
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable
 
 from pw_rpc.callback_client import BidirectionalStreamingCall
 from pw_status import Status
@@ -30,16 +30,11 @@ from pw_transfer.transfer import (
     WriteTransfer,
 )
 from pw_transfer.chunk import Chunk
-
-try:
-    from pw_transfer import transfer_pb2
-except ImportError:
-    # For the bazel build, which puts generated protos in a different location.
-    from pigweed.pw_transfer import transfer_pb2  # type: ignore
+from pw_transfer import transfer_pb2
 
 _LOG = logging.getLogger(__package__)
 
-_TransferDict = Dict[int, Transfer]
+_TransferDict = dict[int, Transfer]
 
 
 class _TransferStream:
@@ -53,7 +48,7 @@ class _TransferStream:
         self._method = method
         self._chunk_handler = chunk_handler
         self._error_handler = error_handler
-        self._call: Optional[BidirectionalStreamingCall] = None
+        self._call: BidirectionalStreamingCall | None = None
         self._reopen_attempts = 0
         self._max_reopen_attempts = max_reopen_attempts
 
@@ -84,24 +79,14 @@ class _TransferStream:
         if rpc_status is Status.FAILED_PRECONDITION:
             # FAILED_PRECONDITION indicates that the stream packet was not
             # recognized as the stream is not open. Attempt to re-open the
-            # stream to allow pending transfers to continue.
-            self._reopen_attempts += 1
-            if self._reopen_attempts > self._max_reopen_attempts:
-                _LOG.error(
-                    'Failed to reopen transfer stream after %d tries',
-                    self._max_reopen_attempts,
-                )
-                self._error_handler(Status.UNAVAILABLE)
-            else:
-                _LOG.info(
-                    'Transfer stream failed to write; attempting to re-open'
-                )
-                self.open(force=True)
+            # stream automatically.
+            self.open(force=True)
         else:
             # Other errors are unrecoverable; clear the stream.
             _LOG.error('Transfer stream shut down with status %s', rpc_status)
             self._call = None
-            self._error_handler(rpc_status)
+
+        self._error_handler(rpc_status)
 
 
 class Manager:  # pylint: disable=too-many-instance-attributes
@@ -123,6 +108,7 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         initial_response_timeout_s: float = 4.0,
         max_retries: int = 3,
         max_lifetime_retries: int = 1500,
+        max_chunk_size_bytes: int = 1024,
         default_protocol_version=ProtocolVersion.VERSION_TWO,
     ):
         """Initializes a Manager on top of a TransferService.
@@ -132,17 +118,21 @@ class Manager:  # pylint: disable=too-many-instance-attributes
           default_response_timeout_s: max time to wait between receiving packets
           initial_response_timeout_s: timeout for the first packet; may be
               longer to account for transfer handler initialization
-          max_retires: number of times to retry a single package after a timeout
+          max_retries: number of times to retry a single package after a timeout
           max_lifetime_retires: Cumulative maximum number of times to retry over
               the course of the transfer before giving up.
-          default_protocol_version: Defaults to V2, can be set to legacy for
-              projects which use legacy devices.
+          max_chunk_size_bytes: In a read transfer, the maximum size of data the
+              server should send within a single packet.
+          default_protocol_version: Version of the pw_transfer protocol to use.
+              Defaults to the latest, but can be set to legacy for projects
+              which use legacy devices.
         """
         self._service: Any = rpc_transfer_service
         self._default_response_timeout_s = default_response_timeout_s
         self._initial_response_timeout_s = initial_response_timeout_s
         self.max_retries = max_retries
         self.max_lifetime_retries = max_lifetime_retries
+        self._max_chunk_size_bytes = max_chunk_size_bytes
         self._default_protocol_version = default_protocol_version
 
         # Ongoing transfers in the service by resource ID.
@@ -194,10 +184,10 @@ class Manager:  # pylint: disable=too-many-instance-attributes
     def read(
         self,
         resource_id: int,
-        progress_callback: Optional[ProgressCallback] = None,
-        protocol_version: Optional[ProtocolVersion] = None,
-        chunk_timeout_s: Optional[float] = None,
-        initial_timeout_s: Optional[float] = None,
+        progress_callback: ProgressCallback | None = None,
+        protocol_version: ProtocolVersion | None = None,
+        chunk_timeout_s: float | None = None,
+        initial_timeout_s: float | None = None,
         initial_offset: int = 0,
     ) -> bytes:
         """Receives ("downloads") data from the server.
@@ -259,6 +249,7 @@ class Manager:  # pylint: disable=too-many-instance-attributes
             self.max_retries,
             self.max_lifetime_retries,
             protocol_version,
+            max_chunk_size=self._max_chunk_size_bytes,
             progress_callback=progress_callback,
             initial_offset=initial_offset,
         )
@@ -274,11 +265,11 @@ class Manager:  # pylint: disable=too-many-instance-attributes
     def write(
         self,
         resource_id: int,
-        data: Union[bytes, str],
-        progress_callback: Optional[ProgressCallback] = None,
-        protocol_version: Optional[ProtocolVersion] = None,
-        chunk_timeout_s: Optional[Any] = None,
-        initial_timeout_s: Optional[Any] = None,
+        data: bytes | str,
+        progress_callback: ProgressCallback | None = None,
+        protocol_version: ProtocolVersion | None = None,
+        chunk_timeout_s: Any | None = None,
+        initial_timeout_s: Any | None = None,
         initial_offset: int = 0,
     ) -> None:
         """Transmits ("uploads") data to the server.
@@ -486,8 +477,12 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         self._read_stream.open()
 
         _LOG.debug('Starting new read transfer %d', transfer.id)
+        delay = 1
         self._loop.call_soon_threadsafe(
-            self._new_transfer_queue.put_nowait, transfer
+            self._loop.call_later,
+            delay,
+            self._new_transfer_queue.put_nowait,
+            transfer,
         )
 
     def _end_read_transfer(self, transfer: Transfer) -> None:
@@ -501,10 +496,6 @@ class Manager:  # pylint: disable=too-many-instance-attributes
                 transfer.status,
             )
 
-        # If no more transfers are using the read stream, close it.
-        if not self._read_transfers:
-            self._read_stream.close()
-
     def _start_write_transfer(self, transfer: Transfer) -> None:
         """Begins a new write transfer, opening the stream if it isn't."""
 
@@ -512,8 +503,12 @@ class Manager:  # pylint: disable=too-many-instance-attributes
         self._write_stream.open()
 
         _LOG.debug('Starting new write transfer %d', transfer.id)
+        delay = 1
         self._loop.call_soon_threadsafe(
-            self._new_transfer_queue.put_nowait, transfer
+            self._loop.call_later,
+            delay,
+            self._new_transfer_queue.put_nowait,
+            transfer,
         )
 
     def _end_write_transfer(self, transfer: Transfer) -> None:
@@ -526,10 +521,6 @@ class Manager:  # pylint: disable=too-many-instance-attributes
                 transfer.id,
                 transfer.status,
             )
-
-        # If no more transfers are using the write stream, close it.
-        if not self._write_transfers:
-            self._write_stream.close()
 
 
 class Error(Exception):

@@ -13,6 +13,8 @@
 # the License.
 """ConsoleApp control class."""
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import builtins
@@ -27,7 +29,7 @@ import sys
 import tempfile
 import time
 from threading import Thread
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterable
 
 from jinja2 import Environment, DictLoader, make_logging_undefined
 from prompt_toolkit.clipboard.pyperclip import PyperclipClipboard
@@ -77,7 +79,7 @@ from pw_console.pw_ptpython_repl import PwPtPythonRepl
 from pw_console.python_logging import all_loggers
 from pw_console.quit_dialog import QuitDialog
 from pw_console.repl_pane import ReplPane
-from pw_console.style import generate_styles
+from pw_console.style import generate_styles, THEME_NAME_MAPPING
 from pw_console.test_mode import start_fake_logger
 from pw_console.widgets import (
     FloatingWindowPane,
@@ -92,7 +94,7 @@ _ROOT_LOG = logging.getLogger('')
 
 _SYSTEM_COMMAND_LOG = logging.getLogger('pw_console_system_command')
 
-_PW_CONSOLE_MODULE = 'pw_console'
+PW_CONSOLE_MODULE = 'pw_console'
 
 MAX_FPS = 30
 MIN_REDRAW_INTERVAL = (60.0 / MAX_FPS) / 60.0
@@ -114,9 +116,9 @@ class FloatingMessageBar(ConditionalContainer):
 
 
 def _add_log_handler_to_pane(
-    logger: Union[str, logging.Logger],
-    pane: 'LogPane',
-    level_name: Optional[str] = None,
+    logger: str | logging.Logger,
+    pane: LogPane,
+    level_name: str | None = None,
 ) -> None:
     """A log pane handler for a given logger instance."""
     if not pane:
@@ -125,7 +127,7 @@ def _add_log_handler_to_pane(
 
 
 def get_default_colordepth(
-    color_depth: Optional[ColorDepth] = None,
+    color_depth: ColorDepth | None = None,
 ) -> ColorDepth:
     # Set prompt_toolkit color_depth to the highest possible.
     if color_depth is None:
@@ -158,9 +160,9 @@ class ConsoleApp:
         color_depth=None,
         extra_completers=None,
         prefs=None,
-        floating_window_plugins: Optional[
-            List[Tuple[FloatingWindowPane, Dict]]
-        ] = None,
+        floating_window_plugins: (
+            list[tuple[FloatingWindowPane, dict]] | None
+        ) = None,
     ):
         self.prefs = prefs if prefs else ConsolePrefs()
         self.color_depth = get_default_colordepth(color_depth)
@@ -170,8 +172,8 @@ class ConsoleApp:
         self.log_ui_update_frequency = 0.1  # 10 FPS
         self._last_ui_update_time = time.time()
 
-        self.http_server: Optional[socketserver.TCPServer] = None
-        self.html_files: Dict[str, str] = {}
+        self.http_server: socketserver.TCPServer | None = None
+        self.html_files: dict[str, str] = {}
 
         # Create a default global and local symbol table. Values are the same
         # structure as what is returned by globals():
@@ -188,10 +190,10 @@ class ConsoleApp:
 
         jinja_templates = {
             t: importlib.resources.read_text(
-                f'{_PW_CONSOLE_MODULE}.templates', t
+                f'{PW_CONSOLE_MODULE}.templates', t
             )
             for t in importlib.resources.contents(
-                f'{_PW_CONSOLE_MODULE}.templates'
+                f'{PW_CONSOLE_MODULE}.templates'
             )
             if t.endswith('.jinja')
         }
@@ -264,7 +266,7 @@ class ConsoleApp:
             self.prefs.current_config_as_yaml()
         )
 
-        self.floating_window_plugins: List[FloatingWindowPane] = []
+        self.floating_window_plugins: list[FloatingWindowPane] = []
         if floating_window_plugins:
             self.floating_window_plugins = [
                 plugin for plugin, _ in floating_window_plugins
@@ -290,7 +292,7 @@ class ConsoleApp:
         )
         self.pw_ptpython_repl.use_code_colorscheme(self.prefs.code_theme)
 
-        self.system_command_output_pane: Optional[LogPane] = None
+        self.system_command_output_pane: LogPane | None = None
 
         if self.prefs.swap_light_and_dark:
             self.toggle_light_theme()
@@ -481,7 +483,7 @@ class ConsoleApp:
         self,
         logger_name: str,
         level_name='NOTSET',
-        window_title: Optional[str] = None,
+        window_title: str | None = None,
     ) -> None:
         pane_title = window_title if window_title else logger_name
         self.run_pane_menu_option(
@@ -578,8 +580,8 @@ class ConsoleApp:
         if not self.command_runner_is_open():
             self.command_runner.open_dialog()
 
-    def _create_logger_completions(self) -> List[CommandRunnerItem]:
-        completions: List[CommandRunnerItem] = [
+    def _create_logger_completions(self) -> list[CommandRunnerItem]:
+        completions: list[CommandRunnerItem] = [
             CommandRunnerItem(
                 title='root',
                 handler=functools.partial(
@@ -609,7 +611,7 @@ class ConsoleApp:
         if not self.command_runner_is_open():
             self.command_runner.open_dialog()
 
-    def _create_history_completions(self) -> List[CommandRunnerItem]:
+    def _create_history_completions(self) -> list[CommandRunnerItem]:
         return [
             CommandRunnerItem(
                 title=title,
@@ -638,11 +640,11 @@ class ConsoleApp:
         if self.http_server is not None:
             return
 
-        html_package_path = f'{_PW_CONSOLE_MODULE}.html'
+        html_package_path = f'{PW_CONSOLE_MODULE}.html'
         self.html_files = {
             '/{}'.format(t): importlib.resources.read_text(html_package_path, t)
             for t in importlib.resources.contents(html_package_path)
-            if Path(t).suffix in ['.css', '.html', '.js']
+            if Path(t).suffix in ['.css', '.html', '.js', '.json']
         }
 
         server_thread = Thread(
@@ -650,8 +652,8 @@ class ConsoleApp:
         )
         server_thread.start()
 
-    def _create_snippet_completions(self) -> List[CommandRunnerItem]:
-        completions: List[CommandRunnerItem] = []
+    def _create_snippet_completions(self) -> list[CommandRunnerItem]:
+        completions: list[CommandRunnerItem] = []
 
         for snippet in self.prefs.snippet_completions():
             fenced_code = f'```python\n{snippet.code.strip()}\n```'
@@ -678,13 +680,8 @@ class ConsoleApp:
             MenuItem(
                 'UI Themes',
                 children=[
-                    MenuItem('Default: Dark', self.set_ui_theme('dark')),
-                    MenuItem(
-                        'High Contrast', self.set_ui_theme('high-contrast-dark')
-                    ),
-                    MenuItem('Nord', self.set_ui_theme('nord')),
-                    MenuItem('Nord Light', self.set_ui_theme('nord-light')),
-                    MenuItem('Moonlight', self.set_ui_theme('moonlight')),
+                    MenuItem(theme.display_name, self.set_ui_theme(theme_name))
+                    for theme_name, theme in THEME_NAME_MAPPING.items()
                 ],
             ),
             MenuItem(
@@ -697,6 +694,10 @@ class ConsoleApp:
                     MenuItem(
                         'Code: pigweed-code-light',
                         self.set_code_theme('pigweed-code-light'),
+                    ),
+                    MenuItem(
+                        'Code: synthwave84',
+                        self.set_code_theme('synthwave84'),
                     ),
                     MenuItem('Code: material', self.set_code_theme('material')),
                     MenuItem(
@@ -1051,8 +1052,8 @@ class ConsoleApp:
             self.prefs.set_ui_theme(theme_name)
 
     def _create_log_pane(
-        self, title: str = '', log_store: Optional[LogStore] = None
-    ) -> 'LogPane':
+        self, title: str = '', log_store: LogStore | None = None
+    ) -> LogPane:
         # Create one log pane.
         log_pane = LogPane(
             application=self, pane_title=title, log_store=log_store
@@ -1060,9 +1061,16 @@ class ConsoleApp:
         self.window_manager.add_pane(log_pane)
         return log_pane
 
-    def load_clean_config(self, config_file: Path) -> None:
+    def load_config(self, config_file: Path) -> None:
         self.prefs.reset_config()
         self.prefs.load_config_file(config_file)
+        # Re-apply user settings.
+        if self.prefs.user_file:
+            self.prefs.load_config_file(self.prefs.user_file)
+
+        # Reset colors
+        self.load_theme(self.prefs.ui_theme)
+        self.pw_ptpython_repl.use_code_colorscheme(self.prefs.code_theme)
 
     def apply_window_config(self) -> None:
         self.window_manager.apply_config(self.prefs)
@@ -1072,8 +1080,8 @@ class ConsoleApp:
         self.update_menu_items()
         self._update_help_window()
 
-    def all_log_stores(self) -> List[LogStore]:
-        log_stores: List[LogStore] = []
+    def all_log_stores(self) -> list[LogStore]:
+        log_stores: list[LogStore] = []
         for pane in self.window_manager.active_panes():
             if not isinstance(pane, LogPane):
                 continue
@@ -1084,10 +1092,10 @@ class ConsoleApp:
     def add_log_handler(
         self,
         window_title: str,
-        logger_instances: Union[Iterable[logging.Logger], LogStore],
+        logger_instances: Iterable[logging.Logger] | LogStore,
         separate_log_panes: bool = False,
-        log_level_name: Optional[str] = None,
-    ) -> Optional[LogPane]:
+        log_level_name: str | None = None,
+    ) -> LogPane | None:
         """Add the Log pane as a handler for this logger instance."""
 
         existing_log_pane = None
@@ -1097,7 +1105,7 @@ class ConsoleApp:
                 existing_log_pane = pane
                 break
 
-        log_store: Optional[LogStore] = None
+        log_store: LogStore | None = None
         if isinstance(logger_instances, LogStore):
             log_store = logger_instances
 

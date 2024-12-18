@@ -45,14 +45,15 @@ def generate_nanopb_proto(
         ):
             os.remove(generated_nanopb_pb2)
 
-    sys.path.append(str(nanopb_root / 'generator'))
+    sys.path.insert(0, str(nanopb_root / 'generator'))
 
     spec = importlib.util.spec_from_file_location(
-        'proto', nanopb_root / 'generator' / 'proto' / '__init__.py'
+        'proto', nanopb_root / 'generator' / 'nanopb_generator.py'
     )
     assert spec is not None
     proto_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(proto_module)  # type: ignore[union-attr]
+    assert generated_nanopb_pb2.is_file(), 'Could not generate nanopb_pb2.py'
 
 
 def _parse_args() -> argparse.Namespace:

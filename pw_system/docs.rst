@@ -33,13 +33,37 @@ Target Bringup
 Bringing up a new device is as easy as 1-2-3! (Kidding, this is a work in
 progress)
 
-#. **Create a ``pw_system_target`` in your GN build.**
-   This is what will control the configuration of your target from a build
-   system level. This includes which compiler will be used, what architecture
-   flags will be used, which backends will be used, and more. A large quantity
-   of configuration will be pre-set to work with pw_system after you select the
-   CPU and scheduler your target will use, but your target will likely need to
-   set a few other things to get to a fully working state.
+#. **Configure the build.** How exactly to do this depends on the build
+   system.
+
+   *  **GN**: Create a ``pw_system_target`` in your GN build. This is what will
+      control the configuration of your target from a build system level. This
+      includes which compiler will be used, what architecture flags will be
+      used, which backends will be used, and more. A large quantity of
+      configuration will be pre-set to work with pw_system after you select the
+      CPU and scheduler your target will use, but your target will likely need
+      to set a few other things to get to a fully working state.
+
+   *  **Bazel**: Add a dependency on ``@pigweed//pw_system`` to your ``cc_binary``,
+      and set one `label flag
+      <https://bazel.build/extending/config#label-typed-build-settings>`__,
+      ``@pigweed//pw_system:extra_platform_libs``. Point it to a ``cc_library``
+      containing any platform-dependent dependencies of your ``pw_system``
+      instantiation. In particular, this should include platform-specific
+      initialization code (see next point) and the custom
+      :ref:`pw_linker_script <module-pw_build-bazel-pw_linker_script>` (if any)
+      to use when linking the ``pw_system`` binary.
+
+      .. warning::
+
+         You should always add the ``alwayslink = 1`` attribute to the target
+         you point ``@pigweed//pw_system:extra_platform_libs`` to. This is
+         because Bazel `links files in topological order
+         <https://stackoverflow.com/a/73006724/24291280>`__, but the
+         dependencies from ``extra_platform_libs`` may appear before the
+         objects they are used in. The ``alwayslink = 1`` will prevent the
+         linker from erroneously garbage-collecting them.
+
 #. **Write target-specific initialization.**
    Most embedded devices require a linker script, manual initialization of
    memory, and some clock initialization. pw_system leaves this to users to
@@ -140,8 +164,8 @@ being foundational infrastructure.
          "PW_BOOT_FLASH_SIZE=200K",
 
          # TODO: b/235348465 - Currently "pw_tokenizer/detokenize_test" requires at
-         # least 6K bytes in heap when using pw_malloc_freelist. The heap size
-         # required for tests should be investigated.
+         # least 6K bytes in heap when using pw_malloc:bucket_block_allocator.
+         # The heap size required for tests should be investigated.
          "PW_BOOT_HEAP_SIZE=7K",
          "PW_BOOT_MIN_STACK_SIZE=1K",
          "PW_BOOT_RAM_BEGIN=0x20000000",
@@ -226,3 +250,45 @@ An example configuration is provided below:
 Once you have configured pw_system as shown in the example above, you will
 still need to define an RPC channel for the channel ID that you selected so
 the logs can be routed to the appropriate destination.
+
+---------------
+pw_system:async
+---------------
+``pw_system:async`` is a new version of ``pw_system`` based on
+:ref:`module-pw_async2` and :ref:`module-pw_channel`. It provides an async
+dispatcher, which may be used to run async tasks, including with C++20
+coroutines.
+
+To use ``pw_system:async``, add a dependency on ``@pigweed//pw_system:async`` in
+Bazel. Then, from your main function, invoke :cpp:func:`pw::SystemStart` with a
+:cpp:type:`pw::channel::ByteReaderWriter` to use for IO.
+
+.. literalinclude:: system_async_test.cc
+   :language: cpp
+   :linenos:
+   :start-after: [pw_system-async-example-main]
+   :end-before: [pw_system-async-example-main]
+
+pw_system:async Linux example
+=============================
+``//pw_system/system_async_host_simulator_example`` is an example app for
+running ``pw_system:async`` on a Linux host. Running the example requires two
+terminals. In the first terminal, start the ``pw_system:async`` instance:
+
+.. code-block:: sh
+
+   bazelisk run //pw_system/system_async_host_simulator_example
+
+That will wait for a TCP connection from the ``pw_system`` console. To connect
+to it from the console, run the following:
+
+.. code-block:: sh
+
+   bazelisk run //pw_system/py:pw_system_console -- -s 127.0.0.1:33000
+
+API reference
+=============
+.. doxygenfunction:: pw::SystemStart
+.. doxygenfunction:: pw::System
+.. doxygenclass:: pw::system::AsyncCore
+   :members:

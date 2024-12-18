@@ -1,34 +1,39 @@
 .. _module-pw_bloat:
 
---------
+========
 pw_bloat
---------
-The bloat module provides tools and helpers around using
+========
+.. pigweed-module::
+   :name: pw_bloat
+
+``pw_bloat`` provides tools and helpers around using
 `Bloaty McBloatface <https://github.com/google/bloaty>`_ including generating
-size report cards for output binaries through Pigweed's GN build
-system.
+size report cards for output binaries through :ref:`Pigweed's GN build
+system <module-pw_build-gn>`.
 
 Bloat report cards allow tracking the memory usage of a system over time as code
 changes are made and provide a breakdown of which parts of the code have the
 largest size impact.
 
+------------------------
 ``pw bloat`` CLI command
-========================
+------------------------
 ``pw_bloat`` includes a plugin for the Pigweed command line capable of running
 size reports on ELF binaries.
 
 .. note::
 
    The bloat CLI plugin is still experimental and only supports a small subset
-   of ``pw_bloat``'s capabilities. Notably, it currently only runs on binaries
-   which define memory region symbols; refer to the
-   :ref:`memoryregions documentation <module-pw_bloat-memoryregions>`
-   for details.
+   of ``pw_bloat``'s capabilities.
 
 Basic usage
-^^^^^^^^^^^
+===========
 
-**Running a size report on a single executable**
+Running a size report on a single executable
+--------------------------------------------
+By default, ``pw bloat`` assumes that
+:ref:`memoryregions <module-pw_bloat-memoryregions>` symbols are defined in
+binaries, and uses them to automatically generate a Bloaty config file.
 
 .. code-block:: sh
 
@@ -50,10 +55,10 @@ Basic usage
    |Total                 |1,245,184|
    +----------------------+---------+
 
-**Running a size report diff**
+Running a size report diff
+--------------------------
 
 .. code-block:: sh
-
 
    $ pw bloat out/docs/obj/pw_metric/size_report/bin/one_metric.elf \
          --diff out/docs/obj/pw_metric/size_report/bin/base.elf \
@@ -98,20 +103,79 @@ Basic usage
    |Total|                      |                                               |    -4|
    +-----+----------------------+-----------------------------------------------+------+
 
+Specifying a custom Bloaty config file
+--------------------------------------
+If the linker script for a target does not define memory regions, a custom
+Bloaty config can be provided using the ``-c / --custom-config`` option.
+
+.. code-block::
+
+   $ pw bloat out/pw_strict_host_clang_debug/obj/pw_status/test/status_test -c targets/host/linux.bloaty
+
+    ▒█████▄   █▓  ▄███▒  ▒█    ▒█ ░▓████▒ ░▓████▒ ▒▓████▄
+     ▒█░  █░ ░█▒ ██▒ ▀█▒ ▒█░ █ ▒█  ▒█   ▀  ▒█   ▀  ▒█  ▀█▌
+     ▒█▄▄▄█░ ░█▒ █▓░ ▄▄░ ▒█░ █ ▒█  ▒███    ▒███    ░█   █▌
+     ▒█▀     ░█░ ▓█   █▓ ░█░ █ ▒█  ▒█   ▄  ▒█   ▄  ░█  ▄█▌
+     ▒█      ░█░ ░▓███▀   ▒█▓▀▓█░ ░▓████▒ ░▓████▒ ▒▓████▀
+
+   +------------+---------------------+-------+
+   |  segments  |       sections      | sizes |
+   +============+=====================+=======+
+   |LOAD #3 [RX]|                     |138,176|
+   |            |.text                |137,524|
+   |            |.plt                 |    608|
+   |            |.init                |     24|
+   |            |.fini                |     20|
+   +------------+---------------------+-------+
+   |LOAD #2 [R] |                     | 87,816|
+   |            |.rela.dyn            | 32,664|
+   |            |.rodata              | 23,176|
+   |            |.eh_frame            | 23,152|
+   |            |.eh_frame_hdr        |  4,236|
+   |            |.gcc_except_table    |  1,140|
+   |            |.dynsym              |  1,008|
+   |            |.rela.plt            |    888|
+   |            |[ELF Program Headers]|    616|
+   |            |.dynstr              |    556|
+   |            |.gnu.version_r       |    116|
+   |            |.gnu.version         |     84|
+   |            |[ELF Header]         |     64|
+   |            |.note.ABI-tag        |     32|
+   |            |.gnu.hash            |     28|
+   |            |.interp              |     28|
+   |            |.note.gnu.build-id   |     28|
+   +------------+---------------------+-------+
+   |LOAD #5 [RW]|                     | 20,216|
+   |            |.bss                 | 19,824|
+   |            |.got.plt             |    328|
+   |            |.data                |     64|
+   +------------+---------------------+-------+
+   |LOAD #4 [RW]|                     | 15,664|
+   |            |.data.rel.ro         | 12,240|
+   |            |.relro_padding       |  2,872|
+   |            |.dynamic             |    464|
+   |            |.got                 |     56|
+   |            |.fini_array          |     16|
+   |            |.init_array          |     16|
+   +============+=====================+=======+
+   |Total       |                     |261,872|
+   +------------+---------------------+-------+
 
 .. _bloat-howto:
 
+---------------------------
 Defining size reports in GN
-===========================
+---------------------------
 
-Diff Size Reports
-^^^^^^^^^^^^^^^^^
+Diff size reports
+=================
 Size reports can be defined using the GN template ``pw_size_diff``. The template
 requires at least two executable targets on which to perform a size diff. The
 base for the size diff can be specified either globally through the top-level
 ``base`` argument, or individually per-binary within the ``binaries`` list.
 
-**Arguments**
+Arguments
+---------
 
 * ``base``: Optional default base target for all listed binaries.
 * ``source_filter``: Optional global regex to filter labels in the diff output.
@@ -153,18 +217,17 @@ base for the size diff can be specified either globally through the top-level
      ]
    }
 
-A sample ``pw_size_diff`` ReST size report table can be found within module
-docs. For example, see the :ref:`pw_checksum-size-report` section of the
-``pw_checksum`` module for more detail.
+A sample ``pw_size_diff`` reStructuredText size report table can be found
+within module docs. For example, see the :ref:`pw_checksum-size-report`
+section of the ``pw_checksum`` module for more detail.
 
-
-Single Binary Size Reports
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Single binary size reports
+==========================
 Size reports can also be defined using ``pw_size_report``, which provides
 a size report for a single binary. The template requires a target binary.
 
-**Arguments**
-
+Arguments
+---------
 * ``target``: Binary target to run size report on.
 * ``data_sources``: Optional list of data sources to organize outputs.
 * ``source_filter``: Optional regex to filter labels in the output.
@@ -191,7 +254,7 @@ a size report for a single binary. The template requires a target binary.
     ignore_unused_labels = true
   }
 
-Sample Single Binary ASCII Table Generated
+Example of the generated ASCII table for a single binary:
 
 .. code-block::
 
@@ -233,18 +296,18 @@ Sample Single Binary ASCII Table Generated
    └─────────────┴──────────────────────────────────────────────────┴──────┘
 
 
-Size reports are typically included in ReST documentation, as described in
+Size reports are typically included in reStructuredText, as described in
 `Documentation integration`_. Size reports may also be printed in the build
 output if desired. To enable this in the GN build
 (``pigweed/pw_bloat/bloat.gni``), set the ``pw_bloat_SHOW_SIZE_REPORTS``
 build arg to ``true``.
 
 Collecting size report data
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+===========================
 Each ``pw_size_report`` target outputs a JSON file containing the sizes of all
 top-level labels in the binary. (By default, this represents "segments", i.e.
 ELF program headers.) If ``full_json_summary`` is set to true, sizes for all
-label levels are reported (i.e. Default labels would show size of each symbol
+label levels are reported (i.e. default labels would show size of each symbol
 per segment). If a build produces multiple images, it may be useful to collect
 all of their sizes into a single file to provide a snapshot of sizes at some
 point in time --- for example, to display per-commit size deltas through CI.
@@ -252,8 +315,8 @@ point in time --- for example, to display per-commit size deltas through CI.
 The ``pw_size_report_aggregation`` template is provided to collect multiple size
 reports' data into a single JSON file.
 
-**Arguments**
-
+Arguments
+---------
 * ``deps``: List of ``pw_size_report`` targets whose data to collect.
 * ``output``: Path to the output JSON file.
 
@@ -269,11 +332,14 @@ reports' data into a single JSON file.
       output = "$root_gen_dir/artifacts/image_sizes.json"
    }
 
+.. _module-pw_bloat-docs:
+
+-------------------------
 Documentation integration
-=========================
+-------------------------
 Bloat reports are easy to add to documentation files. All ``pw_size_diff``
 and ``pw_size_report`` targets output a file containing a tabular report card.
-This file can be imported directly into a ReST documentation file using the
+This file can be imported directly into a reStructuredText file using the
 ``include`` directive.
 
 For example, the ``simple_bloat_loop`` and ``simple_bloat_function`` size
@@ -281,26 +347,29 @@ reports under ``//pw_bloat/examples`` are imported into this file as follows:
 
 .. code-block:: rst
 
-  Simple bloat loop example
-  ^^^^^^^^^^^^^^^^^^^^^^^^^
-  .. include:: examples/simple_bloat_loop
+   Simple bloat loop example
+   ^^^^^^^^^^^^^^^^^^^^^^^^^
+   .. include:: examples/simple_bloat_loop
 
-  Simple bloat function example
-  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  .. include:: examples/simple_bloat_function
+   Simple bloat function example
+   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   .. include:: examples/simple_bloat_function
 
 Resulting in this output:
 
 Simple bloat loop example
-^^^^^^^^^^^^^^^^^^^^^^^^^
+=========================
 .. include:: examples/simple_bloat_loop
 
 Simple bloat function example
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+=============================
 .. include:: examples/simple_bloat_function
 
+.. _module-pw_bloat-sources:
+
+------------------------------
 Additional Bloaty data sources
-==============================
+------------------------------
 `Bloaty McBloatface <https://github.com/google/bloaty>`_ by itself cannot help
 answer some questions which embedded developers frequently face such as
 understanding how much space is left. To address this, Pigweed provides Python
@@ -333,9 +402,10 @@ which may return something like:
     0.0%       0    Not resident in memory
       NAN%       0    Used space
 
+.. _module-pw_bloat-utilization:
 
 ``utilization`` data source
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+===========================
 The most common question many embedded developers face when using ``bloaty`` is
 how much space you are using and how much space is left. To correctly answer
 this, section sizes must be used in order to correctly account for section
@@ -343,6 +413,9 @@ alignment requirements.
 
 The generated ``utilization`` data source will work with any ELF file, where
 ``Used Space`` is reported for the sum of virtual memory size of all sections.
+``Padding`` captures the amount of memory that is utilized to enfore alignment
+requirements. Tracking ``Padding`` size can help monitor application growth
+for changes that are too small to force realignment.
 
 In order for ``Free Space`` to be reported, your linker scripts must include
 properly aligned sections which span the unused remaining space for the relevant
@@ -399,7 +472,7 @@ For example imagine this partial example GNU LD linker script:
      } >RAM
    }
 
-Could be modified as follows enable ``Free Space`` reporting:
+Could be modified as follows to enable ``Free Space`` reporting:
 
 .. code-block::
 
@@ -492,7 +565,7 @@ list.
 .. _module-pw_bloat-memoryregions:
 
 ``memoryregions`` data source
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+=============================
 Understanding how symbols, sections, and other data sources can be attributed
 back to the memory regions defined in your linker script is another common
 problem area. Unfortunately the ELF format does not include the original memory
@@ -537,4 +610,3 @@ you should produce the following four symbols in your linker script:
 
    PW_BLOAT_MEMORY_REGION_MAP(RAM, ITCM)
    PW_BLOAT_MEMORY_REGION_MAP(RAM, DTCM)
-
