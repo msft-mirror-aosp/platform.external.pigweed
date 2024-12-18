@@ -14,7 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/testing/mock_controller.h"
 
-#include <endian.h>
+#include <pw_bytes/endian.h>
 
 #include <cstdint>
 
@@ -41,7 +41,8 @@ CommandTransaction::CommandTransaction(
     const std::vector<const ByteBuffer*>& replies,
     ExpectationMetadata meta)
     : Transaction(DynamicByteBuffer(), replies, meta), prefix_(true) {
-  hci_spec::OpCode le_opcode = htole16(expected_opcode);
+  hci_spec::OpCode le_opcode =
+      pw::bytes::ConvertOrderTo(cpp20::endian::little, expected_opcode);
   const BufferView expected(&le_opcode, sizeof(expected_opcode));
   set_expected({DynamicByteBuffer(expected), meta});
 }
@@ -162,7 +163,8 @@ void MockController::ClearTransactionCallback() {
 
 void MockController::OnCommandReceived(const ByteBuffer& data) {
   ASSERT_GE(data.size(), sizeof(hci_spec::OpCode));
-  const hci_spec::OpCode opcode = le16toh(data.To<hci_spec::OpCode>());
+  const hci_spec::OpCode opcode = pw::bytes::ConvertOrderFrom(
+      cpp20::endian::little, data.To<hci_spec::OpCode>());
   const uint8_t ogf = hci_spec::GetOGF(opcode);
   const uint16_t ocf = hci_spec::GetOCF(opcode);
 
@@ -173,8 +175,9 @@ void MockController::OnCommandReceived(const ByteBuffer& data) {
       << static_cast<uint16_t>(ogf) << ", OCF: 0x" << ocf;
 
   auto& transaction = cmd_transactions_.front();
-  const hci_spec::OpCode expected_opcode =
-      le16toh(transaction.expected().data.To<hci_spec::OpCode>());
+  const hci_spec::OpCode expected_opcode = pw::bytes::ConvertOrderFrom(
+      cpp20::endian::little,
+      transaction.expected().data.To<hci_spec::OpCode>());
   const uint8_t expected_ogf = hci_spec::GetOGF(expected_opcode);
   const uint16_t expected_ocf = hci_spec::GetOCF(expected_opcode);
 
@@ -254,6 +257,22 @@ void MockController::OnScoDataPacketReceived(
   sco_transactions_.pop();
 }
 
+void MockController::OnIsoDataPacketReceived(
+    const ByteBuffer& iso_data_packet) {
+  ASSERT_FALSE(iso_transactions_.empty())
+      << "Received unexpected ISO data packet: { "
+      << ByteContainerToString(iso_data_packet) << "}";
+
+  auto& expected = iso_transactions_.front();
+  if (!expected.Match(iso_data_packet.view())) {
+    auto meta = expected.expected().meta;
+    GTEST_FAIL_AT(meta.file, meta.line)
+        << "Expected ISO packet (" << meta.expectation << ")";
+  }
+
+  iso_transactions_.pop();
+}
+
 void MockController::SendCommand(pw::span<const std::byte> data) {
   // Post task to simulate async
   DynamicByteBuffer buffer(BufferView(data.data(), data.size()));
@@ -284,6 +303,17 @@ void MockController::SendScoData(pw::span<const std::byte> data) {
                                          pw::Status status) {
         if (status.ok()) {
           OnScoDataPacketReceived(buffer);
+        }
+      });
+}
+void MockController::SendIsoData(pw::span<const std::byte> data) {
+  // Post task to simulate async
+  DynamicByteBuffer buffer(BufferView(data.data(), data.size()));
+  (void)heap_dispatcher().Post(
+      [this, buffer = std::move(buffer)](pw::async::Context /*ctx*/,
+                                         pw::Status status) {
+        if (status.ok()) {
+          OnIsoDataPacketReceived(buffer);
         }
       });
 }

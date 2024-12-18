@@ -17,6 +17,7 @@
 
 #include "pw_function/function.h"
 #include "pw_thread/id.h"
+#include "pw_thread/options.h"
 #include "pw_thread/thread_core.h"
 
 // clang-format off
@@ -25,35 +26,6 @@
 // clang-format on
 
 namespace pw::thread {
-
-/// The Options contains the parameters needed for a thread to start.
-///
-/// Options are backend specific and ergo the generic base class cannot be
-/// directly instantiated.
-///
-/// The attributes which can be set through the options are backend specific
-/// but may contain things like the thread name, priority, scheduling policy,
-/// core/processor affinity, and/or an optional reference to a pre-allocated
-/// Context (the collection of memory allocations needed for a thread to run).
-///
-/// Options shall NOT have an attribute to start threads as detached vs
-/// joinable. All `pw::thread::Thread` instances must be explicitly `join()`'d
-/// or `detach()`'d through the run-time Thread API.
-///
-/// Note that if backends set `PW_THREAD_JOINING_ENABLED` to false, backends may
-/// use native OS specific APIs to create native detached threads because the
-/// `join()` API would be compiled out. However, users must still explicitly
-/// invoke `detach()`.
-///
-/// Options must not contain any memory needed for a thread to run (TCB,
-/// stack, etc.). The Options may be deleted or re-used immediately after
-/// starting a thread.
-class Options {
- protected:
-  // We can't use `= default` here, because it allows to create an Options
-  // instance in C++17 with `pw::thread::Options{}` syntax.
-  constexpr Options() {}
-};
 
 /// The class Thread can represent a single thread of execution. Threads allow
 /// multiple functions to execute concurrently.
@@ -74,6 +46,8 @@ class Options {
 /// and MoveAssignable.
 class Thread {
  public:
+  /// The type of the native handle for the thread. As with `std::thread`, use
+  /// is inherently non-portable.
   using native_handle_type = backend::NativeThreadHandle;
 
   /// Creates a new thread object which does not represent a thread of execution
@@ -222,6 +196,8 @@ class Thread {
   /// Exchanges the underlying handles of two thread objects.
   void swap(Thread& other);
 
+  /// Returns the native handle for the thread. As with `std::thread`, use is
+  /// inherently non-portable.
   native_handle_type native_handle();
 
  private:

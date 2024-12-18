@@ -14,6 +14,7 @@
 
 #include "pw_allocator/bucket_block_allocator.h"
 
+#include "pw_allocator/allocator.h"
 #include "pw_allocator/block_allocator_testing.h"
 #include "pw_unit_test/framework.h"
 
@@ -69,15 +70,15 @@ TEST_F(BucketBlockAllocatorTest, AllocatesFromCompatibleBucket) {
   // Bucket sizes are: [ 64, 128, 256 ]
   // Start with everything allocated in order to recycle blocks into buckets.
   auto& allocator = GetAllocator({
-      {kSmallerOuterSize, 0},
-      {63 + BlockType::kBlockOverhead, 1},
-      {kSmallerOuterSize, 2},
-      {128 + BlockType::kBlockOverhead, 3},
-      {kSmallerOuterSize, 4},
-      {255 + BlockType::kBlockOverhead, 5},
-      {kSmallerOuterSize, 6},
-      {257 + BlockType::kBlockOverhead, 7},
-      {Preallocation::kSizeRemaining, 8},
+      {kSmallerOuterSize, Preallocation::kUsed},
+      {63 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {kSmallerOuterSize, Preallocation::kUsed},
+      {128 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {kSmallerOuterSize, Preallocation::kUsed},
+      {255 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {kSmallerOuterSize, Preallocation::kUsed},
+      {257 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
   });
 
   // Deallocate to fill buckets.
@@ -107,7 +108,7 @@ TEST_F(BucketBlockAllocatorTest, AllocatesFromCompatibleBucket) {
   EXPECT_FALSE(block2->Used());
   EXPECT_EQ(Fetch(5), block2->Next()->UsableSpace());
 
-  // this allocation exactly matches the chunk size of bucket 1.
+  // This allocation exactly matches the chunk size of bucket 1.
   Store(3, allocator.Allocate(Layout(128, 1)));
   EXPECT_EQ(Fetch(3), bucket1_ptr);
 
@@ -123,6 +124,57 @@ TEST_F(BucketBlockAllocatorTest, AllocatesFromCompatibleBucket) {
   Store(1, allocator.Allocate(Layout(32, 1)));
   EXPECT_FALSE(block0->Used());
   EXPECT_EQ(Fetch(1), block0->Next()->UsableSpace());
+}
+
+TEST_F(BucketBlockAllocatorTest, UnusedPortionIsRecycled) {
+  auto& allocator = GetAllocator({
+      {128 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
+  });
+
+  // Deallocate to fill buckets.
+  allocator.Deallocate(Fetch(0));
+  Store(0, nullptr);
+
+  Store(2, allocator.Allocate(Layout(65, 1)));
+  ASSERT_NE(Fetch(2), nullptr);
+
+  // The remainder should be recycled to a smaller bucket.
+  Store(3, allocator.Allocate(Layout(32, 1)));
+  ASSERT_NE(Fetch(3), nullptr);
+}
+
+TEST_F(BucketBlockAllocatorTest, ExhaustBucket) {
+  auto& allocator = GetAllocator({
+      {128 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {kSmallerOuterSize, Preallocation::kUsed},
+      {128 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {kSmallerOuterSize, Preallocation::kUsed},
+      {128 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
+  });
+
+  // Deallocate to fill buckets.
+  allocator.Deallocate(Fetch(0));
+  Store(0, nullptr);
+  allocator.Deallocate(Fetch(2));
+  Store(2, nullptr);
+  allocator.Deallocate(Fetch(4));
+  Store(4, nullptr);
+
+  void* ptr0 = allocator.Allocate(Layout(65, 1));
+  EXPECT_NE(ptr0, nullptr);
+  Store(0, ptr0);
+
+  void* ptr2 = allocator.Allocate(Layout(65, 1));
+  EXPECT_NE(ptr2, nullptr);
+  Store(2, ptr2);
+
+  void* ptr4 = allocator.Allocate(Layout(65, 1));
+  EXPECT_NE(ptr4, nullptr);
+  Store(4, ptr4);
+
+  EXPECT_EQ(allocator.Allocate(Layout(65, 1)), nullptr);
 }
 
 TEST_F(BucketBlockAllocatorTest, DeallocateNull) { DeallocateNull(); }
@@ -155,6 +207,51 @@ TEST_F(BucketBlockAllocatorTest, ResizeSmallLargerFailure) {
 
 TEST_F(BucketBlockAllocatorTest, CanMeasureFragmentation) {
   CanMeasureFragmentation();
+}
+
+TEST_F(BucketBlockAllocatorTest, FirstSmallSplitIsRecycled) {
+  auto& allocator = GetAllocator({
+      {128 + (BlockType::kBlockOverhead * 2), Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
+  });
+
+  // Deallocate to fill buckets.
+  allocator.Deallocate(Fetch(0));
+  Store(0, nullptr);
+
+  Store(2, allocator.Allocate(Layout(129, 1)));
+  ASSERT_NE(Fetch(2), nullptr);
+
+  auto& bucket_block_allocator = static_cast<BucketBlockAllocator&>(allocator);
+  for (auto* block : bucket_block_allocator.blocks()) {
+    ASSERT_TRUE(block->IsValid());
+  }
+}
+
+TEST_F(BucketBlockAllocatorTest, LaterSmallSplitNotIsRecycled) {
+  auto& allocator = GetAllocator({
+      {128 + BlockType::kBlockOverhead, Preallocation::kUsed},
+      {128 + (BlockType::kBlockOverhead * 2), Preallocation::kUsed},
+      {Preallocation::kSizeRemaining, Preallocation::kUsed},
+  });
+
+  // Deallocate to fill buckets.
+  allocator.Deallocate(Fetch(1));
+  Store(1, nullptr);
+
+  auto& bucket_block_allocator = static_cast<BucketBlockAllocator&>(allocator);
+  size_t old_size = (*bucket_block_allocator.blocks().begin())->OuterSize();
+
+  // The leftover space is not larger than `kBlockOverhead`, and so should be
+  // merged with the previous block.
+  Store(3, allocator.Allocate(Layout(128, 1)));
+  ASSERT_NE(Fetch(3), nullptr);
+  size_t new_size = (*bucket_block_allocator.blocks().begin())->OuterSize();
+  EXPECT_NE(old_size, new_size);
+
+  for (auto* block : bucket_block_allocator.blocks()) {
+    ASSERT_TRUE(block->IsValid());
+  }
 }
 
 }  // namespace

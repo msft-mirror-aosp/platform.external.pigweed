@@ -14,6 +14,10 @@
 
 #include "pw_bluetooth_sapphire/internal/host/sdp/server.h"
 
+#include <pw_bytes/endian.h>
+
+#include <cstdint>
+
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_channel.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_channel_test.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_l2cap.h"
@@ -40,6 +44,13 @@ constexpr hci_spec::ConnectionHandle kTestHandle1 = 1;
 constexpr hci_spec::ConnectionHandle kTestHandle2 = 2;
 
 void NopConnectCallback(l2cap::Channel::WeakPtr, const DataElement&) {}
+
+// Returns true if the |psm| is in the valid dynamic PSM range.
+bool isValidDynamicPsm(uint16_t psm) {
+  const auto kMinDynamicPSM = 0x1001;
+  const auto kMaxDynamicPSM = 0xfffe;  // Server::kDynamicPsm == 0xffff.
+  return ((psm >= kMinDynamicPSM) && (psm <= kMaxDynamicPSM));
+}
 
 constexpr l2cap::ChannelParameters kChannelParams;
 
@@ -148,7 +159,7 @@ class ServerTest : public TestingBase {
 
     // Trigger inbound L2CAP channels for the remaining. |id|, |remote_id|
     // aren't important.
-    auto id = 0x40;
+    l2cap::ChannelId id = 0x40;
     for (auto it = allocated.begin(); it != allocated.end(); it++) {
       EXPECT_TRUE(
           l2cap()->TriggerInboundL2capChannel(kTestHandle1, *it, id, id));
@@ -341,7 +352,8 @@ TEST_F(ServerTest, RegisterProtocolOnlyService) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<Header> packet(cb_packet.get());
     EXPECT_EQ(kServiceSearchResponse, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     packet.Resize(len);
     ServiceSearchResponse resp;
     fit::result<Error<>> result = resp.Parse(packet.payload_data());
@@ -389,7 +401,8 @@ TEST_F(ServerTest, RegisterProtocolOnlyService) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(kServiceSearchAttributeResponse, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     packet.Resize(len);
     ServiceSearchAttributeResponse rsp;
     fit::result<Error<>> result = rsp.Parse(packet.payload_data());
@@ -433,7 +446,8 @@ TEST_F(ServerTest, RegisterProtocolOnlyService) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x01, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     ASSERT_GE(sizeof(Header) + len, cb_packet->size());
     packet.Resize(len);
     ErrorResponse rsp;
@@ -771,7 +785,7 @@ TEST_F(ServerTest, RegisterObexService) {
   record.AddProtocolDescriptor(ServiceRecord::kPrimaryProtocolList,
                                protocol::kAVCTP,
                                DataElement(uint16_t{0x0104}));
-  // It also has additional L2CAP protocols for Browsing & OBEX.
+  // It also has 2 additional L2CAP protocols for Browsing & OBEX.
   record.AddProtocolDescriptor(
       1, protocol::kL2CAP, DataElement(uint16_t{l2cap::kAVCTP_Browse}));
   record.AddProtocolDescriptor(
@@ -790,14 +804,37 @@ TEST_F(ServerTest, RegisterObexService) {
       std::move(records), kChannelParams, std::move(cb));
   EXPECT_TRUE(handle);
 
+  // Should be able to get the registered OBEX service record.
+  auto registered_records = server()->GetRegisteredServices(handle);
+  EXPECT_EQ(1u, registered_records.size());
+  // The updated OBEX protocol should be in the additional protocol descriptors.
+  auto registered_addl_protocols =
+      registered_records[0]
+          .GetAttribute(kAdditionalProtocolDescriptorList)
+          .Get<std::vector<DataElement>>();
+  EXPECT_EQ((*registered_addl_protocols).size(), 2u);
+  // There are two entries - Browsing and OBEX.
+  // The OBEX protocol sequence looks like: [[L2CAP UUID, Dynamic PSM], [OBEX
+  // UUID].
+  auto obex_protocol_seq =
+      (*registered_addl_protocols)[0].Get<std::vector<DataElement>>();
+  EXPECT_EQ((*obex_protocol_seq).size(), 2u);
+  // PSM should be the second element in the first sequence.
+  auto updated_psm =
+      (*(*obex_protocol_seq).data()->Get<std::vector<DataElement>>())[1]
+          .Get<uint16_t>();
+  // Since the PSM is randomly assigned, we verify that it's in the valid range.
+  EXPECT_TRUE(isValidDynamicPsm(*updated_psm));
+
   // We expect 3 PSMs to be allocated for this service.
   // The dynamic PSM is generated randomly and is not known in advance -
   // therefore we trigger L2CAP channels for all allocated PSMs.
   TriggerInboundL2capChannelsForAllocated(/*expected_psm_count=*/3);
-
   // Expect the 3 service-specific PSMs to be connectable.
   EXPECT_EQ(3u, cb_count);
+
   EXPECT_TRUE(server()->UnregisterService(handle));
+  EXPECT_EQ(0u, server()->GetRegisteredServices(handle).size());
 }
 
 TEST_F(ServerTest, RegisterObexServiceWithAttribute) {
@@ -826,6 +863,15 @@ TEST_F(ServerTest, RegisterObexServiceWithAttribute) {
       std::move(records), kChannelParams, std::move(cb));
   EXPECT_TRUE(handle);
 
+  // Should be able to get the registered OBEX service record.
+  auto registered_records = server()->GetRegisteredServices(handle);
+  EXPECT_EQ(1u, registered_records.size());
+  // The GoepL2capProtocol should be in the additional attributes. The entry is
+  // the updated PSM.
+  auto updated_psm =
+      registered_records[0].GetAttribute(kGoepL2capPsm).Get<uint16_t>();
+  EXPECT_TRUE(isValidDynamicPsm(*updated_psm));
+
   // We expect 2 PSMs to be allocated and connectable for this service (RFCOMM &
   // Dynamic).
   TriggerInboundL2capChannelsForAllocated(/*expected_psm_count=*/2);
@@ -834,7 +880,8 @@ TEST_F(ServerTest, RegisterObexServiceWithAttribute) {
 }
 
 TEST_F(ServerTest, RegisterServiceWithMultipleDynamicPsms) {
-  // This service is not defined in any Bluetooth specification.
+  // This service is not defined in any Bluetooth specification. It requests 3
+  // dynamic PSMs.
   ServiceRecord record;
   record.SetServiceClassUUIDs({profile::kMessageNotificationServer});
   // Fictional MNS service with a primary protocol with dynamic PSM.
@@ -843,7 +890,7 @@ TEST_F(ServerTest, RegisterServiceWithMultipleDynamicPsms) {
                                DataElement(uint16_t{Server::kDynamicPsm}));
   record.AddProtocolDescriptor(
       ServiceRecord::kPrimaryProtocolList, protocol::kOBEX, DataElement());
-  // Fictional protocol also contains a dynamic PSM in the GoepL2capAttribute.
+  // Also contains a dynamic PSM in the GoepL2capAttribute.
   record.SetAttribute(kGoepL2capPsm,
                       DataElement(uint16_t(Server::kDynamicPsm)));
   // Additional protocol has dynamic PSM as well.
@@ -860,6 +907,40 @@ TEST_F(ServerTest, RegisterServiceWithMultipleDynamicPsms) {
   auto handle = server()->RegisterService(
       std::move(records), kChannelParams, std::move(cb));
   EXPECT_TRUE(handle);
+
+  // Should be able to get the registered service record.
+  auto registered_records = server()->GetRegisteredServices(handle);
+  EXPECT_EQ(1u, registered_records.size());
+  // Primary protocol list: [[L2CAP UUID, Dynamic PSM], [OBEX UUID]].
+  auto registered_primary_protocol = registered_records[0]
+                                         .GetAttribute(kProtocolDescriptorList)
+                                         .Get<std::vector<DataElement>>();
+  EXPECT_EQ((*registered_primary_protocol).size(), 2u);
+  auto updated_psm1 = (*(*registered_primary_protocol)
+                            .data()
+                            ->Get<std::vector<DataElement>>())[1]
+                          .Get<uint16_t>();
+  EXPECT_TRUE(isValidDynamicPsm(*updated_psm1));
+
+  // Additional protocol list has one OBEX entry for a dynamic PSM.
+  auto registered_addl_protocols =
+      registered_records[0]
+          .GetAttribute(kAdditionalProtocolDescriptorList)
+          .Get<std::vector<DataElement>>();
+  ASSERT_EQ((*registered_addl_protocols).size(), 1u);
+  // OBEX protocol: [[L2CAP UUID, Dynamic PSM], [OBEX UUID].
+  auto obex_protocol_seq =
+      (*registered_addl_protocols)[0].Get<std::vector<DataElement>>();
+  auto updated_psm2 =
+      (*(*obex_protocol_seq).data()->Get<std::vector<DataElement>>())[1]
+          .Get<uint16_t>();
+  EXPECT_TRUE(isValidDynamicPsm(*updated_psm2));
+
+  // The GoepL2cap attribute should have the updated PSM.
+  auto updated_psm3 =
+      registered_records[0].GetAttribute(kGoepL2capPsm).Get<uint16_t>();
+  // Since the PSM is randomly assigned, we verify that it's in the valid range.
+  EXPECT_TRUE(isValidDynamicPsm(*updated_psm3));
 
   // The dynamic PSMs should all be unique and allocated. Can connect.
   TriggerInboundL2capChannelsForAllocated(/*expected_psm_count=*/3);
@@ -959,8 +1040,9 @@ TEST_F(ServerTest, ServiceSearchRequest) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<Header> packet(cb_packet.get());
     EXPECT_EQ(kServiceSearchResponse, packet.header().pdu_id);
-    tid = be16toh(packet.header().tid);
-    uint16_t len = be16toh(packet.header().param_length);
+    tid = pw::bytes::ConvertOrderFrom(cpp20::endian::big, packet.header().tid);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     bt_log(TRACE, "unittest", "resize packet to %d", len);
     packet.Resize(len);
     ServiceSearchResponse resp;
@@ -1074,8 +1156,9 @@ TEST_F(ServerTest, ServiceSearchRequestOneOfMany) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<Header> packet(cb_packet.get());
     EXPECT_EQ(kServiceSearchResponse, packet.header().pdu_id);
-    tid = be16toh(packet.header().tid);
-    uint16_t len = be16toh(packet.header().param_length);
+    tid = pw::bytes::ConvertOrderFrom(cpp20::endian::big, packet.header().tid);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     bt_log(TRACE, "unittests", "resizing packet to %d", len);
     packet.Resize(len);
     ServiceSearchResponse resp;
@@ -1147,7 +1230,8 @@ TEST_F(ServerTest, ServiceSearchContinuationState) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x03, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     EXPECT_LE(len,
               0x2F);  // 10 records (4 * 10) + 2 (total count) + 2 (current
                       // count) + 3 (cont state)
@@ -1167,10 +1251,10 @@ TEST_F(ServerTest, ServiceSearchContinuationState) {
     if (!rsp.complete()) {
       // Repeat the request with the continuation state if it was returned.
       auto continuation = rsp.ContinuationState();
-      uint8_t cont_size = continuation.size();
+      uint8_t cont_size = static_cast<uint8_t>(continuation.size());
       EXPECT_NE(0u, cont_size);
       // Make another request with the continuation data.
-      size_t param_size = 8 + cont_size;
+      uint16_t param_size = 8 + cont_size;
       StaticByteBuffer kContinuedRequestStart(
           0x02,  // SDP_ServiceSearchRequest
           0x10,
@@ -1275,7 +1359,8 @@ TEST_F(ServerTest, ServiceAttributeRequest) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x05, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     EXPECT_LE(len, 0x11);  // 10 + 2 (byte count) + 5 (cont state)
     packet.Resize(len);
     fit::result<Error<>> result = rsp.Parse(packet.payload_data());
@@ -1293,10 +1378,10 @@ TEST_F(ServerTest, ServiceAttributeRequest) {
     if (!rsp.complete()) {
       // Repeat the request with the continuation state if it was returned.
       auto continuation = rsp.ContinuationState();
-      uint8_t cont_size = continuation.size();
+      uint8_t cont_size = static_cast<uint8_t>(continuation.size());
       EXPECT_NE(0u, cont_size);
       // Make another request with the continuation data.
-      size_t param_size = 17 + cont_size;
+      uint16_t param_size = 17 + cont_size;
       auto kContinuedRequestAttrStart = StaticByteBuffer(
           0x04,  // SDP_ServiceAttributeRequest
           0x10,
@@ -1466,7 +1551,8 @@ TEST_F(ServerTest, SearchAttributeRequest) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x07, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     EXPECT_LE(len, 0x11);  // 2 (byte count) + 10 (max len) + 5 (cont state)
     packet.Resize(len);
     fit::result<Error<>> result = rsp.Parse(packet.payload_data());
@@ -1484,10 +1570,10 @@ TEST_F(ServerTest, SearchAttributeRequest) {
     if (!rsp.complete()) {
       // Repeat the request with the continuation state if it was returned.
       auto continuation = rsp.ContinuationState();
-      uint8_t cont_size = continuation.size();
+      uint8_t cont_size = static_cast<uint8_t>(continuation.size());
       EXPECT_NE(0u, cont_size);
       // Make another request with the continuation data.
-      size_t param_size = 18 + cont_size;
+      uint16_t param_size = 18 + cont_size;
       auto kContinuedRequestAttrStart = StaticByteBuffer(
           0x06,  // SDP_ServiceAttributeRequest
           0x10,
@@ -1532,7 +1618,7 @@ TEST_F(ServerTest, SearchAttributeRequest) {
   EXPECT_GE(received, 1u);
   // We should receive both of our entered records.
   EXPECT_EQ(2u, rsp.num_attribute_lists());
-  for (size_t i = 0; i < rsp.num_attribute_lists(); i++) {
+  for (uint32_t i = 0; i < rsp.num_attribute_lists(); i++) {
     const auto& attrs = rsp.attributes(i);
     // Every service has a record handle
     auto handle_it = attrs.find(kServiceRecordHandle);
@@ -1686,7 +1772,8 @@ TEST_F(ServerTest, BrowseGroup) {
     EXPECT_LE(sizeof(Header), cb_packet->size());
     PacketView<sdp::Header> packet(cb_packet.get());
     ASSERT_EQ(0x07, packet.header().pdu_id);
-    uint16_t len = be16toh(packet.header().param_length);
+    uint16_t len = pw::bytes::ConvertOrderFrom(cpp20::endian::big,
+                                               packet.header().param_length);
     packet.Resize(len);
     auto status = rsp.Parse(packet.payload_data());
     EXPECT_EQ(fit::ok(), status);

@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gatt/generic_attribute_service.h"
 
+#include <pw_bytes/endian.h>
+
 #include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/gatt/gatt_defs.h"
 #include "pw_bluetooth_sapphire/internal/host/gatt/persisted_data.h"
@@ -25,6 +27,8 @@ namespace {
 // attribute (corresponding client config).
 constexpr att::Handle kChrcHandle = 0x0003;
 constexpr att::Handle kCCCHandle = 0x0004;
+// Handle for the ServerSupportedFeatures Chrc
+constexpr att::Handle kSupportedFeaturesChrcHandle = 0x0005;
 constexpr PeerId kTestPeerId(1);
 constexpr uint16_t kEnableInd = 0x0002;
 
@@ -38,7 +42,8 @@ class GenericAttributeServiceTest : public ::testing::Test {
     auto* attr = mgr.database()->FindAttribute(kCCCHandle);
     BT_ASSERT(attr);
     auto result_cb = [&out_status](auto cb_status) { *out_status = cb_status; };
-    uint16_t value = htole16(ccc_value);
+    uint16_t value =
+        pw::bytes::ConvertOrderTo(cpp20::endian::little, ccc_value);
     return attr->WriteAsync(
         peer_id, 0u, BufferView(&value, sizeof(value)), result_cb);
   }
@@ -55,10 +60,10 @@ TEST_F(GenericAttributeServiceTest, RegisterUnregister) {
     // service with four attributes.
     auto iter = mgr.database()->groupings().begin();
     EXPECT_TRUE(iter->complete());
-    EXPECT_EQ(4u, iter->attributes().size());
+    EXPECT_EQ(6u, iter->attributes().size());
     EXPECT_TRUE(iter->active());
     EXPECT_EQ(0x0001, iter->start_handle());
-    EXPECT_EQ(0x0004, iter->end_handle());
+    EXPECT_EQ(0x0006, iter->end_handle());
     EXPECT_EQ(types::kPrimaryService, iter->group_type());
 
     auto const* ccc_attr = mgr.database()->FindAttribute(kCCCHandle);
@@ -84,11 +89,11 @@ TEST_F(GenericAttributeServiceTest, IndicateOnRegister) {
         indicated_svc_id = service_id;
 
         ASSERT_EQ(4u, value.size());
-        // The second service following the four-attribute GATT service should
+        // The second service following the six-handle GATT service should
         // span the subsequent three handles.
-        EXPECT_EQ(0x05, value[0]);
+        EXPECT_EQ(0x07, value[0]);
         EXPECT_EQ(0x00, value[1]);
-        EXPECT_EQ(0x07, value[2]);
+        EXPECT_EQ(0x09, value[2]);
         EXPECT_EQ(0x00, value[3]);
       };
 
@@ -126,6 +131,22 @@ TEST_F(GenericAttributeServiceTest, IndicateOnRegister) {
   EXPECT_EQ(gatt_service.service_id(), indicated_svc_id);
 }
 
+TEST_F(GenericAttributeServiceTest, ReadSupportedFeatures) {
+  // Register the GATT service.
+  GenericAttributeService gatt_service(mgr.GetWeakPtr(), NopSendIndication);
+  auto const* ssf_attr =
+      mgr.database()->FindAttribute(kSupportedFeaturesChrcHandle);
+  ASSERT_TRUE(ssf_attr != nullptr);
+
+  auto result_callback = [&](auto status, const ByteBuffer& value) {
+    ASSERT_TRUE(status.is_ok());
+    ASSERT_EQ(1u, value.size());
+    ASSERT_EQ(0x00, value[0]);
+  };
+
+  ssf_attr->ReadAsync(PeerId(1), 0, result_callback);
+}
+
 // Same test as above, but the indication is enabled just prior unregistering
 // the latter test service.
 TEST_F(GenericAttributeServiceTest, IndicateOnUnregister) {
@@ -137,11 +158,11 @@ TEST_F(GenericAttributeServiceTest, IndicateOnUnregister) {
         indicated_svc_id = service_id;
 
         ASSERT_EQ(4u, value.size());
-        // The second service following the four-attribute GATT service should
+        // The second service following the six-handle GATT service should
         // span the subsequent four handles (update enabled).
-        EXPECT_EQ(0x05, value[0]);
+        EXPECT_EQ(0x07, value[0]);
         EXPECT_EQ(0x00, value[1]);
-        EXPECT_EQ(0x08, value[2]);
+        EXPECT_EQ(0x0A, value[2]);
         EXPECT_EQ(0x00, value[3]);
       };
 

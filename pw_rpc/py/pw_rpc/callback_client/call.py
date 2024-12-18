@@ -16,12 +16,14 @@
 from __future__ import annotations
 
 import enum
+from collections import deque
 import logging
 import math
 import queue
 from typing import (
     Any,
     Callable,
+    Deque,
     Iterable,
     Iterator,
     NamedTuple,
@@ -67,6 +69,12 @@ class UnaryResponse(NamedTuple):
     status: Status
     response: Any
 
+    def unwrap_or_raise(self):
+        """Returns the response value or raises `ValueError` if not OK."""
+        if not self.status.ok():
+            raise ValueError(f'RPC returned non-OK status: {self.status}')
+        return self.response
+
     def __repr__(self) -> str:
         reply = proto_repr(self.response) if self.response else self.response
         return f'({self.status}, {reply})'
@@ -96,6 +104,7 @@ class Call:
         on_next: OnNextCallback | None,
         on_completed: OnCompletedCallback | None,
         on_error: OnErrorCallback | None,
+        max_responses: int,
     ) -> None:
         self._rpcs = rpcs
         self._rpc = rpc
@@ -104,32 +113,19 @@ class Call:
         self.status: Status | None = None
         self.error: Status | None = None
         self._callback_exception: Exception | None = None
-        self._responses: list = []
+        self._responses: Deque = deque(maxlen=max_responses)
         self._response_queue: queue.SimpleQueue = queue.SimpleQueue()
 
         self.on_next = on_next or Call._default_response
         self.on_completed = on_completed or Call._default_completion
         self.on_error = on_error or Call._default_error
 
-    def _invoke(self, request: Message | None, ignore_errors: bool) -> None:
+    def _invoke(self, request: Message | None) -> None:
         """Calls the RPC. This must be called immediately after __init__."""
-        previous = self._rpcs.send_request(
-            self._rpc,
-            request,
-            self,
-            ignore_errors=ignore_errors,
-            override_pending=True,
-        )
+        self._rpcs.send_request(self._rpc, request, self)
 
-        # TODO(hepler): Remove the cancel_duplicate_calls option.
-        if (
-            self._rpcs.cancel_duplicate_calls  # type: ignore[attr-defined]
-            and previous is not None
-            and not previous.completed()
-        ):
-            previous._handle_error(  # pylint: disable=protected-access
-                Status.CANCELLED
-            )
+    def _open(self) -> None:
+        self._rpcs.open(self._rpc, self)
 
     def _default_response(self, response: Message) -> None:
         _LOG.debug('%s received response: %s', self._rpc, response)
@@ -189,7 +185,7 @@ class Call:
             pass
 
         assert self.status is not None
-        return StreamResponse(self.status, self._responses)
+        return StreamResponse(self.status, list(self._responses))
 
     def _get_responses(
         self, *, count: int | None = None, timeout_s: OptionalTimeout
@@ -241,8 +237,6 @@ class Call:
             raise RpcError(self._rpc, self.error)
 
     def _handle_response(self, response: Any) -> None:
-        # TODO(frolv): These lists could grow very large for persistent
-        # streaming RPCs such as logs. The size should be limited.
         self._responses.append(response)
         self._response_queue.put(response)
 
@@ -338,13 +332,11 @@ class ClientStreamingCall(Call):
     def response(self) -> Any:
         return self._responses[-1] if self._responses else None
 
-    # TODO(hepler): Use / to mark the first arg as positional-only
-    #     when when Python 3.7 support is no longer required.
     def send(
-        self, _rpc_request_proto: Message | None = None, **request_fields
+        self, request_proto: Message | None = None, /, **request_fields
     ) -> None:
         """Sends client stream request to the server."""
-        self._send_client_stream(_rpc_request_proto, request_fields)
+        self._send_client_stream(request_proto, request_fields)
 
     def finish_and_wait(
         self,
@@ -364,13 +356,11 @@ class BidirectionalStreamingCall(Call):
     def responses(self) -> Sequence:
         return self._responses
 
-    # TODO(hepler): Use / to mark the first arg as positional-only
-    #     when when Python 3.7 support is no longer required.
     def send(
-        self, _rpc_request_proto: Message | None = None, **request_fields
+        self, request_proto: Message | None = None, /, **request_fields
     ) -> None:
         """Sends a message to the server in the client stream."""
-        self._send_client_stream(_rpc_request_proto, request_fields)
+        self._send_client_stream(request_proto, request_fields)
 
     def finish_and_wait(
         self,

@@ -243,14 +243,12 @@ constexpr Poll<T> Ready(std::in_place_t, Args&&... args) {
 
 /// Returns a value indicating completion with some result.
 template <typename T>
-constexpr Poll<T> Ready(T&& value) {
-  return Poll<T>(std::forward<T>(value));
+constexpr Poll<std::remove_reference_t<T>> Ready(T&& value) {
+  return Poll<std::remove_reference_t<T>>(std::forward<T>(value));
 }
 
 /// Returns a value indicating that an operation was not yet able to complete.
 inline constexpr PendingType Pending() { return PendingType(); }
-
-#undef PW_NODISCARD_STR
 
 }  // namespace async2
 

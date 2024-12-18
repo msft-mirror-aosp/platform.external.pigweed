@@ -57,6 +57,9 @@ class AclConnection : public Connection {
   pw::bluetooth::emboss::EncryptionStatus encryption_status() const {
     return encryption_status_;
   }
+  void set_encryption_status(pw::bluetooth::emboss::EncryptionStatus status) {
+    encryption_status_ = status;
+  }
 
  protected:
   AclConnection(hci_spec::ConnectionHandle handle,
@@ -95,7 +98,7 @@ class AclConnection : public Connection {
   std::optional<hci_spec::LinkKey> ltk_;
 
   // Flag indicating if peer and local Secure Connections support are both
-  // present. Set in OnLinkKeyNotification in PairingState
+  // present. Set in OnLinkKeyNotification in SecureSimplePairingState
   bool use_secure_connections_ = false;
 
   pw::bluetooth::emboss::EncryptionStatus encryption_status_ =

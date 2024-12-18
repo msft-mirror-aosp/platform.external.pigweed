@@ -15,69 +15,7 @@
 
 load("@rules_rust//rust:toolchain.bzl", "rust_analyzer_toolchain", "rust_toolchain")
 load("//pw_env_setup/bazel/cipd_setup:cipd_rules.bzl", "cipd_repository")
-
-HOSTS = [
-    {
-        "cipd_arch": "arm64",
-        "cpu": "aarch64",
-        "dylib_ext": ".so",
-        "os": "linux",
-        "triple": "aarch64-unknown-linux-gnu",
-    },
-    {
-        "cipd_arch": "amd64",
-        "cpu": "x86_64",
-        "dylib_ext": ".so",
-        "os": "linux",
-        "triple": "x86_64-unknown-linux-gnu",
-    },
-    {
-        "cipd_arch": "arm64",
-        "cpu": "aarch64",
-        "dylib_ext": ".dylib",
-        "os": "macos",
-        "triple": "aarch64-apple-darwin",
-    },
-    {
-        "cipd_arch": "amd64",
-        "cpu": "x86_64",
-        "dylib_ext": ".dylib",
-        "os": "macos",
-        "triple": "x86_64-apple-darwin",
-    },
-]
-
-EXTRA_TARGETS = [
-    {
-        "cpu": "armv6-m",
-        "triple": "thumbv6m-none-eabi",
-    },
-    {
-        "cpu": "armv7-m",
-        "triple": "thumbv7m-none-eabi",
-    },
-    {
-        "cpu": "armv7e-m",
-        "triple": "thumbv7m-none-eabi",
-    },
-]
-
-CHANNELS = [
-    {
-        "extra_rustc_flags": ["-Dwarnings", "-Zmacro-backtrace"],
-        "name": "nightly",
-        "target_settings": ["@rules_rust//rust/toolchain/channel:nightly"],
-    },
-    {
-        # In order to approximate a stable toolchain with our nightly one, we
-        # disable experimental features with the exception of `proc_macro_span`
-        # because the `proc-marcro2` automatically detects the toolchain
-        # as nightly and dynamically uses this feature.
-        "extra_rustc_flags": ["-Dwarnings", "-Zallow-features=proc_macro_span"],
-        "name": "stable",
-        "target_settings": ["@rules_rust//rust/toolchain/channel:stable"],
-    },
-]
+load(":toolchains.bzl", "CHANNELS", "EXTRA_TARGETS", "HOSTS")
 
 # buildifier: disable=unnamed-macro
 def pw_rust_register_toolchain_and_target_repos(cipd_tag, pigweed_repo_name = "@pigweed"):
@@ -188,6 +126,7 @@ def _pw_rust_toolchain(
     rust_toolchain(
         name = "{}_rust_toolchain".format(name),
         binary_ext = "",
+        clippy_driver = "{}//:bin/clippy-driver".format(toolchain_repo),
         default_edition = "2021",
         dylib_ext = dylib_ext,
         exec_compatible_with = exec_compatible_with,
@@ -247,6 +186,7 @@ def _pw_rust_host_toolchain(
         rustc_srcs = "{}//:rustc_srcs".format(toolchain_repo),
         target_compatible_with = compatible_with,
         visibility = ["//visibility:public"],
+        tags = ["manual"],
     )
 
     native.toolchain(

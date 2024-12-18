@@ -18,7 +18,6 @@ import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static dev.pigweed.pw_transfer.TransferProgress.UNKNOWN_TRANSFER_SIZE;
 
 import com.google.common.util.concurrent.AbstractFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import dev.pigweed.pw_log.Logger;
 import dev.pigweed.pw_rpc.Status;
 import dev.pigweed.pw_transfer.TransferEventHandler.TransferInterface;
@@ -74,10 +73,10 @@ abstract class Transfer<T> extends AbstractFuture<T> {
       TransferTimeoutSettings timeoutSettings,
       Consumer<TransferProgress> progressCallback,
       BooleanSupplier shouldAbortCallback,
-      int initial_offset) {
+      int initialOffset) {
     this.resourceId = resourceId;
     this.sessionId = sessionId;
-    this.offset = initial_offset;
+    this.offset = initialOffset;
     this.desiredProtocolVersion = desiredProtocolVersion;
     this.eventHandler = eventHandler;
 
@@ -462,10 +461,15 @@ abstract class Transfer<T> extends AbstractFuture<T> {
           timeoutSettings.timeoutMillis(),
           retries,
           timeoutSettings.maxRetries());
-      sendChunk(getChunkForRetry());
+      VersionedChunk retryChunk = getChunkForRetry();
+      sendChunk(retryChunk);
       retries += 1;
       lifetimeRetries += 1;
-      setNextChunkTimeout();
+      if (retryChunk.type() == Chunk.Type.START) {
+        setInitialTimeout();
+      } else {
+        setNextChunkTimeout();
+      }
     }
   }
 

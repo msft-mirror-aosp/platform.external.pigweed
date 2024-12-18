@@ -140,6 +140,25 @@
           [
             "test",
             "//..."
+          ],
+          [
+            "test",
+            "--//pw_unit_test:backend=//pw_unit_test:googletest",
+            "--//pw_unit_test:main=@com_google_googletest//:gtest_main",
+            "--platforms=//pw_unit_test:googletest_platform",
+            "//..."
+          ],
+          [
+            "build",
+            "--aspects=@rules_rust//rust:defs.bzl%rust_clippy_aspect",
+            "--output_groups=clippy_checks",
+            "//..."
+          ],
+          [
+            "build",
+            "--config=asan",
+            "--config=fuzztest",
+            "//..."
           ]
         ],
         "integration": [
@@ -147,6 +166,23 @@
             "test",
             "--build_tag_filters=integration",
             "--test_tag_filters=integration",
+            "//..."
+          ]
+        ],
+        "sanitizers": [
+          [
+            "test",
+            "--config=asan",
+            "//..."
+          ],
+          [
+            "test",
+            "--config=tsan",
+            "//..."
+          ],
+          [
+            "test",
+            "--config=ubsan",
             "//..."
           ]
         ]

@@ -373,11 +373,17 @@ C++ API
    ``PW_STATUS_``. For example, ``PW_STATUS_DATA_LOSS`` corresponds with
    :c:enumerator:`DATA_LOSS`.
 
+.. doxygenclass:: pw::StatusWithSize
+   :members:
+   :undoc-members:
+
 .. doxygendefine:: PW_TRY
 .. doxygendefine:: PW_TRY_ASSIGN
 .. doxygendefine:: PW_TRY_WITH_SIZE
 .. doxygendefine:: PW_CO_TRY
 .. doxygendefine:: PW_CO_TRY_ASSIGN
+
+.. _module-pw_status-reference-unused:
 
 Unused result warnings
 ----------------------
@@ -385,10 +391,10 @@ If the ``PW_STATUS_CFG_CHECK_IF_USED`` option is enabled, ``pw::Status`` objects
 returned from function calls must be used or it is a compilation error. To
 silence these warnings call ``IgnoreError()`` on the returned status object.
 
-``PW_STATUS_CFG_CHECK_IF_USED`` defaults to ``false``. Pigweed compiles with
-this option enabled, but projects that use Pigweed will need to be updated to
-compile with this option. After all projects have migrated, unused result
-warnings will be enabled unconditionally.
+``PW_STATUS_CFG_CHECK_IF_USED`` defaults to ``false`` in GN and CMake, but
+``true`` in Bazel. Pigweed compiles with this option enabled, but projects that
+use Pigweed will need to be updated to compile with this option. After all
+projects have migrated, unused result warnings will be enabled unconditionally.
 
 -----
 C API

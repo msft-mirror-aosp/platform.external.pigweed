@@ -15,8 +15,9 @@
 #include "pw_bluetooth_sapphire/internal/host/l2cap/channel_configuration.h"
 
 #include <cpp-string/string_printf.h>
-#include <endian.h>
 #include <lib/fit/function.h>
+#include <pw_bytes/endian.h>
+#include <pw_preprocessor/compiler.h>
 
 #include <iterator>
 #include <optional>
@@ -25,8 +26,6 @@
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/common/packet_view.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
-
-#pragma clang diagnostic ignored "-Wswitch-enum"
 
 namespace bt::l2cap::internal {
 
@@ -100,6 +99,8 @@ size_t ChannelConfiguration::ReadNextOption(const ByteBuffer& options) {
     return 0;
   }
 
+  PW_MODIFY_DIAGNOSTICS_PUSH();
+  PW_MODIFY_DIAGNOSTIC(ignored, "-Wswitch-enum");
   switch (option.header().type) {
     case OptionType::kMTU:
       if (!CheckHeaderLengthField<MtuOption>(option)) {
@@ -141,16 +142,19 @@ size_t ChannelConfiguration::ReadNextOption(const ByteBuffer& options) {
 
       return option_size;
   }
+  PW_MODIFY_DIAGNOSTICS_POP();
 }
 
 // MtuOption implementation
 
 ChannelConfiguration::MtuOption::MtuOption(const ByteBuffer& data_buf) {
-  mtu_ = le16toh(data_buf.ReadMember<&MtuOptionPayload::mtu>());
+  mtu_ = pw::bytes::ConvertOrderFrom(
+      cpp20::endian::little, data_buf.ReadMember<&MtuOptionPayload::mtu>());
 }
 
 DynamicByteBuffer ChannelConfiguration::MtuOption::Encode() const {
-  return EncodeOption<MtuOption>(MtuOptionPayload{htole16(mtu_)});
+  return EncodeOption<MtuOption>(
+      MtuOptionPayload{pw::bytes::ConvertOrderTo(cpp20::endian::little, mtu_)});
 }
 
 std::string ChannelConfiguration::MtuOption::ToString() const {
@@ -201,9 +205,11 @@ ChannelConfiguration::RetransmissionAndFlowControlOption::
   mode_ = option_payload.mode;
   tx_window_size_ = option_payload.tx_window_size;
   max_transmit_ = option_payload.max_transmit;
-  rtx_timeout_ = le16toh(option_payload.rtx_timeout);
-  monitor_timeout_ = le16toh(option_payload.monitor_timeout);
-  mps_ = le16toh(option_payload.mps);
+  rtx_timeout_ = pw::bytes::ConvertOrderFrom(cpp20::endian::little,
+                                             option_payload.rtx_timeout);
+  monitor_timeout_ = pw::bytes::ConvertOrderFrom(
+      cpp20::endian::little, option_payload.monitor_timeout);
+  mps_ = pw::bytes::ConvertOrderFrom(cpp20::endian::little, option_payload.mps);
 }
 
 DynamicByteBuffer
@@ -212,8 +218,10 @@ ChannelConfiguration::RetransmissionAndFlowControlOption::Encode() const {
   payload.mode = mode_;
   payload.tx_window_size = tx_window_size_;
   payload.max_transmit = max_transmit_;
-  payload.rtx_timeout = htole16(rtx_timeout_);
-  payload.monitor_timeout = htole16(monitor_timeout_);
+  payload.rtx_timeout =
+      pw::bytes::ConvertOrderTo(cpp20::endian::little, rtx_timeout_);
+  payload.monitor_timeout =
+      pw::bytes::ConvertOrderTo(cpp20::endian::little, monitor_timeout_);
   payload.mps = mps_;
   return EncodeOption<RetransmissionAndFlowControlOption>(payload);
 }
@@ -255,13 +263,15 @@ std::string ChannelConfiguration::FrameCheckSequenceOption::ToString() const {
 
 ChannelConfiguration::FlushTimeoutOption::FlushTimeoutOption(
     const ByteBuffer& data_buf) {
-  flush_timeout_ =
-      le16toh(data_buf.ReadMember<&FlushTimeoutOptionPayload::flush_timeout>());
+  flush_timeout_ = pw::bytes::ConvertOrderFrom(
+      cpp20::endian::little,
+      data_buf.ReadMember<&FlushTimeoutOptionPayload::flush_timeout>());
 }
 
 DynamicByteBuffer ChannelConfiguration::FlushTimeoutOption::Encode() const {
   FlushTimeoutOptionPayload payload;
-  payload.flush_timeout = htole16(flush_timeout_);
+  payload.flush_timeout =
+      pw::bytes::ConvertOrderTo(cpp20::endian::little, flush_timeout_);
   return EncodeOption<FlushTimeoutOption>(payload);
 }
 

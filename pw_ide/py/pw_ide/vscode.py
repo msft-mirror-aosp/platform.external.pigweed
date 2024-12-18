@@ -63,11 +63,10 @@ from __future__ import annotations
 # TODO(chadnorvell): Import collections.OrderedDict when we don't need to
 # support Python 3.8 anymore.
 from enum import Enum
-import os
 from pathlib import Path
 import shutil
 import subprocess
-from typing import Any, OrderedDict
+from typing import Any, Callable, OrderedDict
 
 from pw_cli.env import pigweed_environment
 
@@ -138,9 +137,6 @@ _DEFAULT_SETTINGS: EditorSettingsDict = OrderedDict(
         "files.insertFinalNewline": True,
         "files.trimTrailingWhitespace": True,
         "search.useGlobalIgnoreFiles": True,
-        "grunt.autoDetect": "off",
-        "gulp.autoDetect": "off",
-        "jake.autoDetect": "off",
         "npm.autoDetect": "off",
         "C_Cpp.intelliSenseEngine": "disabled",
         "[cpp]": OrderedDict(
@@ -332,6 +328,16 @@ def _default_settings(
     )
 
 
+def _default_settings_no_side_effects(
+    _pw_ide_settings: PigweedIdeSettings,
+) -> EditorSettingsDict:
+    return OrderedDict(
+        {
+            **_DEFAULT_SETTINGS,
+        }
+    )
+
+
 def _default_tasks(
     pw_ide_settings: PigweedIdeSettings,
     state: CppIdeFeaturesState | None = None,
@@ -363,7 +369,9 @@ def _default_launch(
     return _DEFAULT_LAUNCH
 
 
-DEFAULT_SETTINGS_PATH = Path(os.path.expandvars('$PW_PROJECT_ROOT')) / '.vscode'
+DEFAULT_SETTINGS_PATH: Callable[[PigweedIdeSettings], Path] = (
+    lambda settings: settings.workspace_root / '.vscode'
+)
 
 
 class VscSettingsType(Enum):
@@ -392,6 +400,20 @@ class VscSettingsManager(EditorSettingsManager[VscSettingsType]):
 
     types_with_defaults: EditorSettingsTypesWithDefaults = {
         VscSettingsType.SETTINGS: _default_settings,
+        VscSettingsType.TASKS: _default_tasks,
+        VscSettingsType.EXTENSIONS: _default_extensions,
+        VscSettingsType.LAUNCH: _default_launch,
+    }
+
+
+class VscSettingsManagerNoSideEffects(EditorSettingsManager[VscSettingsType]):
+    """This is like VscSettingsManager, but optimized for unit testing."""
+
+    default_settings_dir = DEFAULT_SETTINGS_PATH
+    file_format = Json5FileFormat()
+
+    types_with_defaults: EditorSettingsTypesWithDefaults = {
+        VscSettingsType.SETTINGS: _default_settings_no_side_effects,
         VscSettingsType.TASKS: _default_tasks,
         VscSettingsType.EXTENSIONS: _default_extensions,
         VscSettingsType.LAUNCH: _default_launch,
