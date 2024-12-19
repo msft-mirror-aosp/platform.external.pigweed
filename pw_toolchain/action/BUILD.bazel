@@ -13,12 +13,13 @@
 # the License.
 
 load("@rules_cc//cc/toolchains:actions.bzl", "cc_action_type")
+load(":action_names.bzl", "PW_ACTION_NAMES")
 
 package(default_visibility = ["//visibility:public"])
 
 # TODO: https://pwbug.dev/367352331 - Rename and upstream this to Bazel
 # (rules_cc, bazeltools).
 cc_action_type(
-    name = "objdump",
-    action_name = "objdump_embed_data",
+    name = "objdump_disassemble",
+    action_name = PW_ACTION_NAMES.objdump_disassemble,
 )

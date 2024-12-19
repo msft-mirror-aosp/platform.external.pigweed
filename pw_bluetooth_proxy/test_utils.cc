@@ -25,7 +25,7 @@
 #include "pw_bluetooth_proxy/basic_l2cap_channel.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
 #include "pw_bluetooth_proxy/internal/logical_transport.h"
-#include "pw_bluetooth_proxy/l2cap_channel_event.h"
+#include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
 #include "pw_function/function.h"
@@ -313,8 +313,8 @@ Status SendL2capDisconnectRsp(ProxyHost& proxy,
   return OkStatus();
 }
 
-pw::Result<L2capCoc> BuildCocWithResult(ProxyHost& proxy,
-                                        CocParameters params) {
+pw::Result<L2capCoc> ProxyHostTest::BuildCocWithResult(ProxyHost& proxy,
+                                                       CocParameters params) {
   return proxy.AcquireL2capCoc(params.handle,
                                {.cid = params.local_cid,
                                 .mtu = params.rx_mtu,
@@ -325,11 +325,10 @@ pw::Result<L2capCoc> BuildCocWithResult(ProxyHost& proxy,
                                 .mps = params.tx_mps,
                                 .credits = params.tx_credits},
                                std::move(params.receive_fn),
-                               std::move(params.event_fn),
-                               std::move(params.queue_space_available_fn));
+                               std::move(params.event_fn));
 }
 
-L2capCoc BuildCoc(ProxyHost& proxy, CocParameters params) {
+L2capCoc ProxyHostTest::BuildCoc(ProxyHost& proxy, CocParameters params) {
   pw::Result<L2capCoc> channel = BuildCocWithResult(proxy, std::move(params));
   PW_TEST_EXPECT_OK(channel);
   return std::move(channel.value());
@@ -343,7 +342,6 @@ BasicL2capChannel BuildBasicL2capChannel(ProxyHost& proxy,
       params.remote_cid,
       params.transport,
       std::move(params.payload_from_controller_fn),
-      std::move(params.queue_space_available_fn),
       std::move(params.event_fn));
   PW_TEST_EXPECT_OK(channel);
   return std::move(channel.value());
@@ -353,7 +351,6 @@ RfcommChannel BuildRfcomm(
     ProxyHost& proxy,
     RfcommParameters params,
     Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-    Function<void()>&& queue_space_available_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   pw::Result<RfcommChannel> channel =
       proxy.AcquireRfcommChannel(params.handle,
@@ -361,7 +358,6 @@ RfcommChannel BuildRfcomm(
                                  params.tx_config,
                                  params.rfcomm_channel,
                                  std::move(receive_fn),
-                                 std::move(queue_space_available_fn),
                                  std::move(event_fn));
   PW_TEST_EXPECT_OK(channel);
   return std::move((channel.value()));
