@@ -13,19 +13,13 @@
 // the License.
 
 #include <cstdint>
-#include <numeric>
 
-#include "pw_bluetooth/att.emb.h"
 #include "pw_bluetooth/emboss_util.h"
-#include "pw_bluetooth/hci_commands.emb.h"
-#include "pw_bluetooth/hci_common.emb.h"
 #include "pw_bluetooth/hci_data.emb.h"
-#include "pw_bluetooth/hci_events.emb.h"
 #include "pw_bluetooth/hci_h4.emb.h"
 #include "pw_bluetooth/l2cap_frames.emb.h"
 #include "pw_bluetooth/rfcomm_frames.emb.h"
 #include "pw_bluetooth_proxy/h4_packet.h"
-#include "pw_bluetooth_proxy/internal/logical_transport.h"
 #include "pw_bluetooth_proxy/proxy_host.h"
 #include "pw_bluetooth_proxy_private/test_utils.h"
 #include "pw_containers/flat_map.h"
@@ -39,6 +33,8 @@ namespace {
 using containers::FlatMap;
 
 // ########## RfcommWriteTest
+
+class RfcommWriteTest : public ProxyHostTest {};
 
 // Construct and send an RFCOMM frame from controller->host.
 Status SendRfcommFromController(ProxyHost& proxy,
@@ -96,7 +92,7 @@ Status SendRfcommFromController(ProxyHost& proxy,
   return OkStatus();
 }
 
-TEST(RfcommWriteTest, BasicWrite) {
+TEST_F(RfcommWriteTest, BasicWrite) {
   struct {
     int sends_called = 0;
     // First four bits 0x0 encode PB & BC flags
@@ -198,7 +194,7 @@ TEST(RfcommWriteTest, BasicWrite) {
   EXPECT_EQ(capture.sends_called, 1);
 }
 
-TEST(RfcommWriteTest, ExtendedWrite) {
+TEST_F(RfcommWriteTest, ExtendedWrite) {
   constexpr size_t kPayloadSize = 0x80;
   struct {
     int sends_called = 0;
@@ -310,7 +306,7 @@ TEST(RfcommWriteTest, ExtendedWrite) {
   EXPECT_EQ(capture.sends_called, 1);
 }
 
-TEST(RfcommWriteTest, WriteFlowControl) {
+TEST_F(RfcommWriteTest, WriteFlowControl) {
   struct {
     int sends_called = 0;
     int queue_unblocked = 0;
@@ -318,12 +314,16 @@ TEST(RfcommWriteTest, WriteFlowControl) {
     std::array<uint8_t, 3> payload = {0xAB, 0xCD, 0xEF};
   } capture;
 
-  pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
+  pw::Function<void(H4PacketWithHci && packet)> send_to_host_fn(
       [](H4PacketWithHci&&) {});
-  pw::Function<void(H4PacketWithH4 && packet)>&& send_to_controller_fn(
+  pw::Function<void(H4PacketWithH4 && packet)> send_to_controller_fn(
       [&capture](H4PacketWithH4&&) { ++capture.sends_called; });
-  pw::Function<void()> queue_space_available_fn(
-      [&capture]() { ++capture.queue_unblocked; });
+  pw::Function<void(L2capChannelEvent event)> event_fn(
+      [&capture](L2capChannelEvent event) {
+        if (event == L2capChannelEvent::kWriteAvailable) {
+          ++capture.queue_unblocked;
+        }
+      });
 
   ProxyHost proxy = ProxyHost(
       std::move(send_to_host_fn),
@@ -339,12 +339,10 @@ TEST(RfcommWriteTest, WriteFlowControl) {
                                  .max_information_length = 900,
                                  .credits = 0,
                              }};
-  RfcommChannel channel = BuildRfcomm(
-      proxy,
-      params,
-      /*receive_fn=*/nullptr,
-      /*queue_space_available_fn=*/std::move(queue_space_available_fn),
-      /*event_fn=*/nullptr);
+  RfcommChannel channel = BuildRfcomm(proxy,
+                                      params,
+                                      /*receive_fn=*/nullptr,
+                                      /*event_fn=*/std::move(event_fn));
 
   // Writes while queue has space will return Ok. No RFCOMM credits yet though
   // so no sends complete.
@@ -381,7 +379,9 @@ TEST(RfcommWriteTest, WriteFlowControl) {
 
 // ########## RfcommReadTest
 
-TEST(RfcommReadTest, BasicRead) {
+class RfcommReadTest : public ProxyHostTest {};
+
+TEST_F(RfcommReadTest, BasicRead) {
   pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
       []([[maybe_unused]] H4PacketWithHci&& packet) {});
   pw::Function<void(H4PacketWithH4 && packet)>&& send_to_controller_fn(
@@ -418,7 +418,7 @@ TEST(RfcommReadTest, BasicRead) {
   EXPECT_EQ(capture.rx_called, 1);
 }
 
-TEST(RfcommReadTest, ExtendedRead) {
+TEST_F(RfcommReadTest, ExtendedRead) {
   pw::Function<void(H4PacketWithHci && packet)>&& send_to_host_fn(
       []([[maybe_unused]] H4PacketWithHci&& packet) {});
   pw::Function<void(H4PacketWithH4 && packet)>&& send_to_controller_fn(
@@ -456,7 +456,7 @@ TEST(RfcommReadTest, ExtendedRead) {
   EXPECT_EQ(capture.rx_called, 1);
 }
 
-TEST(RfcommReadTest, InvalidReads) {
+TEST_F(RfcommReadTest, InvalidReads) {
   struct {
     int rx_called = 0;
     int host_called = 0;

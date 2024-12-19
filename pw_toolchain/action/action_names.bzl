@@ -11,5 +11,10 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
+"""Custom toolchain action names unique to Pigweed."""
 
-package(default_visibility = ["//visibility:public"])
+PW_OBJDUMP_DISASSEMBLE = "objdump-disassemble"
+
+PW_ACTION_NAMES = struct(
+    objdump_disassemble = PW_OBJDUMP_DISASSEMBLE,
+)
