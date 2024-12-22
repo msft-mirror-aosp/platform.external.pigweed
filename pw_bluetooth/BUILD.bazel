@@ -55,6 +55,7 @@ cc_library(
         "//pw_chrono:system_clock",
         "//pw_containers",
         "//pw_function",
+        "//pw_result",
         "//pw_status",
         "//pw_string:string",
     ],
@@ -98,6 +99,24 @@ pw_cc_test(
     deps = [
         ":pw_bluetooth",
     ],
+)
+
+emboss_cc_library(
+    name = "_emboss_att",
+    srcs = ["public/pw_bluetooth/att.emb"],
+    enable_enum_traits = False,
+    import_dirs = ["public"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":_emboss_hci_data",
+        ":_emboss_l2cap_frames",
+    ],
+)
+
+cc_library(
+    name = "emboss_att",
+    includes = ["public"],
+    deps = [":_emboss_att"],
 )
 
 emboss_cc_library(
@@ -233,6 +252,7 @@ pw_cc_test(
     deps = [
         # All emboss targets are listed (even if they don't have explicit tests)
         # to ensure they are compiled.
+        ":emboss_att",
         ":emboss_hci",
         ":emboss_hci_test",
         ":emboss_l2cap_frames",

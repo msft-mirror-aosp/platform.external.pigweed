@@ -169,6 +169,7 @@ cc_library(
         "yield_public_overrides",
     ],
     deps = [
+        "//pw_thread:id",
         "//pw_thread:yield.facade",
         "@freertos",
     ],
@@ -290,4 +291,23 @@ run_binary(
         "--output=$(location :thread_public_overrides/pw_thread_freertos_backend/freertos_tsktcb.h)",
     ],
     tool = "//pw_thread_freertos/py:generate_freertos_tsktcb",
+)
+
+cc_library(
+    name = "test_thread_context",
+    hdrs = [
+        "public/pw_thread_freertos/test_thread_context_native.h",
+        "test_thread_context_public_overrides/pw_thread_backend/test_thread_context_native.h",
+    ],
+    includes = [
+        "public",
+        "test_thread_context_public_overrides",
+    ],
+    target_compatible_with = [
+        "//pw_build/constraints/rtos:freertos",
+    ],
+    deps = [
+        ":thread",
+        "//pw_thread:test_thread_context.facade",
+    ],
 )

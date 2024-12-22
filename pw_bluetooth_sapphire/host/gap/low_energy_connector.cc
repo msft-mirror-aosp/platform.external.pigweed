@@ -14,8 +14,6 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connector.h"
 
-#include <utility>
-
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_cache.h"
 
 namespace bt::gap::internal {
@@ -48,25 +46,30 @@ constexpr const char* kInspectIsOutboundPropertyName = "is_outbound";
 LowEnergyConnector::LowEnergyConnector(
     PeerId peer_id,
     LowEnergyConnectionOptions options,
-    hci::CommandChannel::WeakPtr cmd_channel,
+    hci::Transport::WeakPtr hci,
     PeerCache* peer_cache,
     WeakSelf<LowEnergyConnectionManager>::WeakPtr conn_mgr,
     l2cap::ChannelManager* l2cap,
     gatt::GATT::WeakPtr gatt,
+    const AdapterState& adapter_state,
     pw::async::Dispatcher& dispatcher)
     : dispatcher_(dispatcher),
       peer_id_(peer_id),
       peer_cache_(peer_cache),
       l2cap_(l2cap),
       gatt_(std::move(gatt)),
+      adapter_state_(adapter_state),
       options_(options),
-      cmd_(std::move(cmd_channel)),
+      hci_(std::move(hci)),
       le_connection_manager_(std::move(conn_mgr)) {
-  BT_ASSERT(cmd_.is_alive());
   BT_ASSERT(peer_cache_);
   BT_ASSERT(l2cap_);
   BT_ASSERT(gatt_.is_alive());
+  BT_ASSERT(hci_.is_alive());
   BT_ASSERT(le_connection_manager_.is_alive());
+
+  cmd_ = hci_->command_channel()->AsWeakPtr();
+  BT_ASSERT(cmd_.is_alive());
 
   auto peer = peer_cache_->FindById(peer_id_);
   BT_ASSERT(peer);
@@ -380,7 +383,7 @@ bool LowEnergyConnector::InitializeConnection(
                                                 le_connection_manager_,
                                                 l2cap_,
                                                 gatt_,
-                                                cmd_,
+                                                hci_,
                                                 dispatcher_);
   if (!connection) {
     bt_log(WARN,
@@ -403,7 +406,10 @@ void LowEnergyConnector::StartInterrogation() {
   state_.Set(State::kInterrogating);
   auto peer = peer_cache_->FindById(peer_id_);
   BT_ASSERT(peer);
-  interrogator_.emplace(peer->GetWeakPtr(), connection_->handle(), cmd_);
+  bool sca_supported =
+      adapter_state_.SupportedCommands().le_request_peer_sca().Read();
+  interrogator_.emplace(
+      peer->GetWeakPtr(), connection_->handle(), cmd_, sca_supported);
   interrogator_->Start(
       fit::bind_member<&LowEnergyConnector::OnInterrogationComplete>(this));
 }

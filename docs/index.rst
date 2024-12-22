@@ -1,3 +1,5 @@
+:html_theme.sidebar_secondary.remove:
+
 .. _docs-root:
 
 =======
@@ -5,6 +7,9 @@ Pigweed
 =======
 *Sustained, robust, and rapid embedded product development for large teams*
 
+-----------
+Get started
+-----------
 .. raw:: html
 
    <!-- Add a little space between the H2 and the cards. This is an edge case
@@ -14,13 +19,48 @@ Pigweed
 
 .. grid:: 1
 
-   .. grid-item-card:: :octicon:`rocket` Get started
-      :link: docs-get-started
+   .. grid-item-card:: :octicon:`rocket` Tour of Pigweed
+      :link: showcase-sense
       :link-type: ref
       :class-item: sales-pitch-cta-primary
 
-      Create a new project, integrate Pigweed into an existing project, browse
-      example apps, or contribute to upstream Pigweed
+      Explore key Pigweed features, such as hermetic building, full C++
+      code intelligence in VS Code, communicating with devices over RPC,
+      host-side and on-device unit tests, and lots more in a guided
+      walkthrough.
+
+.. grid:: 2
+
+   .. grid-item-card:: :octicon:`code-square` Bazel quickstart
+      :link: https://cs.opensource.google/pigweed/quickstart/bazel
+      :link-type: url
+      :class-item: sales-pitch-cta-secondary
+
+      Fork our minimal, Bazel-based starter project to create a new
+      Pigweed project from scratch. The project includes a basic
+      blinky LED program that runs on Raspberry Pi Picos and can
+      be simulated on your development host.
+
+   .. grid-item-card:: :octicon:`list-ordered` More get started guides
+      :link: docs-get-started
+      :link-type: ref
+      :class-item: sales-pitch-cta-secondary
+
+      Set up a C++-based Zephyr project, set up GitHub Actions,
+      integrate Pigweed into an existing Bazel project, and more.
+
+---------------------------------------------
+Pigweed SDK launches with Raspberry Pi RP2350
+---------------------------------------------
+.. _Google Pigweed comes to our new RP2350: https://www.raspberrypi.com/news/google-pigweed-comes-to-our-new-rp2350/
+.. _Introducing the Pigweed SDK: https://opensource.googleblog.com/2024/08/introducing-pigweed-sdk.html
+
+The first preview release of the Pigweed SDK has launched with official
+hardware support for Raspberry Pi’s newest microprocessor products, the
+RP2350 and Pico 2! Check out the following blog posts to learn more:
+
+* `Google Pigweed comes to our new RP2350`_
+* `Introducing the Pigweed SDK`_
 
 ----------------
 What is Pigweed?
@@ -72,7 +112,13 @@ What is Pigweed?
 --------------------
 Who's using Pigweed?
 --------------------
-Pigweed has shipped on millions of devices.
+.. _satellites: https://www.spinlaunch.com/
+.. _autonomous aerial drones: https://www.flyzipline.com/
+
+.. TODO: b/358432838 - Update this section once the banned word list is fixed.
+
+Pigweed has shipped in millions of devices, including Google's suite of Pixel
+devices, Nest thermostats, `satellites`_, and `autonomous aerial drones`_.
 
 --------------------
 Showcase: pw_console
@@ -121,7 +167,7 @@ Talk to us
 .. grid:: 2
 
    .. grid-item-card:: :octicon:`device-camera-video` Monthly community meeting
-      :link: https://discord.com/channels/691686718377558037/951228399119126548
+      :link: https://groups.google.com/g/pigweed
       :link-type: url
       :class-item: sales-pitch-cta-secondary
 
@@ -140,25 +186,14 @@ Talk to us
    :hidden:
 
    Home <self>
-   docs/overview
+   Tour of Pigweed <docs/showcases/sense/index>
    docs/get_started/index
-   docs/concepts/index
-   targets
+   What's new <changelog>
    modules
-   changelog
-   Mailing List <https://groups.google.com/forum/#!forum/pigweed>
-   Chat Room <https://discord.gg/M9NSeTA>
-   docs/os/index
-   docs/size_optimizations
-   Code Editor Support <docs/editors>
-   third_party_support
-   Source Code <https://cs.pigweed.dev/pigweed>
-   Code Reviews <https://pigweed-review.googlesource.com>
-   Issue Tracker <https://issues.pigweed.dev/issues?q=status:open>
-   docs/contributing/index
-   docs/infra/index
-   Automated Analysis <automated_analysis>
-   Build System <build_system>
-   SEEDs <seed/0000-index>
-   kudzu/docs
-   Eng Blog <docs/blog/index>
+   Source code <https://cs.pigweed.dev/pigweed>
+   docs/showcases/index
+   docs/concepts/index
+   docs/3p/index
+   docs/community/index
+   Developing & contributing <docs/contributing/index>
+   Blog <docs/blog/index>

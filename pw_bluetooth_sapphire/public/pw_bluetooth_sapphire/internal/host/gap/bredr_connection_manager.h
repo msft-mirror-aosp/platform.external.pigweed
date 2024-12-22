@@ -14,9 +14,6 @@
 
 #pragma once
 
-#include <pw_async/dispatcher.h>
-
-#include <functional>
 #include <optional>
 
 #include "pw_bluetooth_sapphire/internal/host/common/bounded_inspect_list_node.h"
@@ -83,6 +80,7 @@ class BrEdrConnectionManager final {
                          l2cap::ChannelManager* l2cap,
                          bool use_interlaced_scan,
                          bool local_secure_connections_supported,
+                         bool legacy_pairing_enabled,
                          pw::async::Dispatcher& dispatcher);
   ~BrEdrConnectionManager();
 
@@ -193,6 +191,9 @@ class BrEdrConnectionManager final {
   void AttachInspect(inspect::Node& parent, std::string name);
 
  private:
+  using ConnectionMap =
+      std::unordered_map<hci_spec::ConnectionHandle, BrEdrConnection>;
+
   // Callback for hci::Connection. Called when the peer disconnects.
   void OnPeerDisconnect(const hci::Connection* connection);
 
@@ -228,10 +229,18 @@ class BrEdrConnectionManager final {
                              bool interlaced,
                              hci::ResultFunction<> cb);
 
+  // Write PIN type used for legacy pairing to the controller.
+  void WritePinType(pw::bluetooth::emboss::PinType pin_type);
+
   // Helper to register an event handler to run.
   hci::CommandChannel::EventHandlerId AddEventHandler(
       const hci_spec::EventCode& code,
       hci::CommandChannel::EventCallbackVariant cb);
+
+  // Find the outstanding connection request object for a connection request
+  // to/from |peer_id|. Returns nullopt if no request for |peer_id| exists.
+  std::optional<BrEdrConnectionRequest*> FindConnectionRequestById(
+      PeerId peer_id);
 
   // Find the handle for a connection to |peer_id|. Returns nullopt if no BR/EDR
   // |peer_id| is connected.
@@ -274,14 +283,16 @@ class BrEdrConnectionManager final {
   hci::CommandChannel::EventCallbackResult OnLinkKeyNotification(
       const hci::EmbossEventPacket& event);
   hci::CommandChannel::EventCallbackResult OnSimplePairingComplete(
-      const hci::EventPacket& event);
+      const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserConfirmationRequest(
-      const hci::EventPacket& event);
+      const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserPasskeyRequest(
-      const hci::EventPacket& event);
+      const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnUserPasskeyNotification(
-      const hci::EventPacket& event);
+      const hci::EmbossEventPacket& event_packet);
   hci::CommandChannel::EventCallbackResult OnRoleChange(
+      const hci::EmbossEventPacket& event);
+  hci::CommandChannel::EventCallbackResult OnPinCodeRequest(
       const hci::EmbossEventPacket& event);
 
   void HandleNonAclConnectionRequest(const DeviceAddress& addr,
@@ -290,21 +301,6 @@ class BrEdrConnectionManager final {
   // Called when we complete a pending request. Initiates a new connection
   // attempt for the next peer in the pending list, if any.
   void TryCreateNextConnection();
-
-  // Collective parameters needed to begin a CreateConnection procedure
-  struct CreateConnectionParams {
-    PeerId peer_id;
-    DeviceAddress addr;
-    std::optional<uint16_t> clock_offset;
-    std::optional<pw::bluetooth::emboss::PageScanRepetitionMode>
-        page_scan_repetition_mode;
-  };
-
-  // Find the next valid Request that is available to begin connecting
-  std::optional<CreateConnectionParams> NextCreateConnectionParams();
-
-  // Begin a CreateConnection procedure for a given Request
-  void InitiatePendingConnection(CreateConnectionParams request);
 
   // Called when a request times out waiting for a connection complete packet,
   // *after* the command status was received. This is responsible for canceling
@@ -355,6 +351,11 @@ class BrEdrConnectionManager final {
   void SendRejectSynchronousRequest(DeviceAddress addr,
                                     pw::bluetooth::emboss::StatusCode reason,
                                     hci::ResultFunction<> cb = nullptr);
+  void SendPinCodeRequestReply(DeviceAddressBytes bd_addr,
+                               uint16_t pin_code,
+                               hci::ResultFunction<> cb = nullptr);
+  void SendPinCodeRequestNegativeReply(DeviceAddressBytes bd_addr,
+                                       hci::ResultFunction<> cb = nullptr);
 
   // Send the HCI command encoded in |command_packet|. If |cb| is not nullptr,
   // the event returned will be decoded for its status, which is passed to |cb|.
@@ -365,9 +366,6 @@ class BrEdrConnectionManager final {
   // Record a disconnection in Inspect's list of disconnections.
   void RecordDisconnectInspect(const BrEdrConnection& conn,
                                DisconnectReason reason);
-
-  using ConnectionMap =
-      std::unordered_map<hci_spec::ConnectionHandle, BrEdrConnection>;
 
   hci::Transport::WeakPtr hci_;
   std::unique_ptr<hci::SequentialCommandRunner> hci_cmd_runner_;
@@ -409,17 +407,25 @@ class BrEdrConnectionManager final {
   pw::bluetooth::emboss::PageScanType page_scan_type_;
   bool use_interlaced_scan_;
 
-  // True when local host and local controller support BR/EDR Secure Connections
+  // True when local Host and Controller support BR/EDR Secure Connections
   bool local_secure_connections_supported_;
 
-  // Outstanding connection requests based on remote peer ID.
+  // When True, BR/EDR pairing may attempt to use legacy pairing if the peer
+  // does not support SSP.
+  bool legacy_pairing_enabled_;
+
+  // Outstanding incoming and outgoing connection requests from remote peer with
+  // |PeerId|.
   std::unordered_map<PeerId, BrEdrConnectionRequest> connection_requests_;
 
-  std::optional<hci::BrEdrConnectionRequest> pending_request_;
-
-  // Time after which a connection attempt is considered to have timed out.
-  pw::chrono::SystemClock::duration request_timeout_{
-      kBrEdrCreateConnectionTimeout};
+  // Represents an outgoing HCI_Connection_Request that has not been fulfilled.
+  // There may only be one outstanding request at any given time.
+  //
+  // This request is fulfilled on either an HCI_Connection_Complete event from
+  // the peer this request was sent to or a failure during the connection
+  // process. This request might not complete if the connection closes or if the
+  // request times out.
+  std::unique_ptr<hci::BrEdrConnectionRequest> pending_request_;
 
   struct InspectProperties {
     BoundedInspectListNode last_disconnected_list =

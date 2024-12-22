@@ -19,13 +19,12 @@
 #include <vector>
 
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
+#include "pw_bluetooth_sapphire/internal/host/common/macros.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/fake_signaling_channel.h"
 #include "pw_bluetooth_sapphire/internal/host/l2cap/l2cap_defs.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 #include "pw_unit_test/framework.h"
-
-#pragma clang diagnostic ignored "-Wshadow"
 
 namespace bt::l2cap::internal {
 namespace {
@@ -471,6 +470,9 @@ const ByteBuffer& kOutboundEmptyPendingConfigRsp =
 
 const ByteBuffer& kInboundEmptyPendingConfigRsp =
     MakeEmptyConfigRsp(kLocalCId, ConfigurationResult::kPending);
+
+const ByteBuffer& kOutboundConfigRspRejected =
+    MakeEmptyConfigRsp(kRemoteCId, ConfigurationResult::kRejected);
 
 auto MakeConfigRspWithMtu(
     ChannelId source_cid,
@@ -1938,7 +1940,7 @@ TEST_F(BrEdrDynamicChannelTest,
 
   RETURN_IF_FATAL(RunUntilIdle());
 
-  const auto kInboundConfigReq = MakeConfigReqWithMtuAndRfc(
+  const auto inbound_config_req = MakeConfigReqWithMtuAndRfc(
       kLocalCId,
       kPeerMtu,
       RetransmissionAndFlowControlMode::kEnhancedRetransmission,
@@ -1959,7 +1961,7 @@ TEST_F(BrEdrDynamicChannelTest,
       kPeerMps);
 
   RETURN_IF_FATAL(sig()->ReceiveExpect(
-      kConfigurationRequest, kInboundConfigReq, kOutboundConfigRsp));
+      kConfigurationRequest, inbound_config_req, kOutboundConfigRsp));
 
   EXPECT_TRUE(channel_opened);
 
@@ -2226,10 +2228,11 @@ TEST_P(
       kOutboundConfigReq.view(),
       {SignalingChannel::Status::kSuccess, kInboundEmptyConfigRsp.view()});
 
-  const auto kExtendedFeaturesInfoRsp = MakeExtendedFeaturesInfoRsp(GetParam());
-  sig()->ReceiveResponses(
-      ext_info_transaction_id(),
-      {{SignalingChannel::Status::kSuccess, kExtendedFeaturesInfoRsp.view()}});
+  const auto extended_features_info_rsp =
+      MakeExtendedFeaturesInfoRsp(GetParam());
+  sig()->ReceiveResponses(ext_info_transaction_id(),
+                          {{SignalingChannel::Status::kSuccess,
+                            extended_features_info_rsp.view()}});
 
   RunUntilIdle();
 
@@ -3328,7 +3331,7 @@ TEST_F(BrEdrDynamicChannelTest,
       {SignalingChannel::Status::kSuccess, kInboundEmptyConfigRsp.view()});
 
   constexpr uint16_t kPeerMtu = kDefaultMTU + 2;
-  const auto kInboundConfigReq = MakeConfigReqWithMtu(kLocalCId, kPeerMtu);
+  const auto inbound_config_req = MakeConfigReqWithMtu(kLocalCId, kPeerMtu);
 
   int open_cb_count = 0;
   auto open_cb = [&](const DynamicChannel* chan) {
@@ -3349,7 +3352,7 @@ TEST_F(BrEdrDynamicChannelTest,
   const ByteBuffer& kExpectedOutboundOkConfigRsp =
       MakeConfigRspWithMtu(kRemoteCId, kPeerMtu);
   sig()->ReceiveExpect(
-      kConfigurationRequest, kInboundConfigReq, kExpectedOutboundOkConfigRsp);
+      kConfigurationRequest, inbound_config_req, kExpectedOutboundOkConfigRsp);
   RunUntilIdle();
   EXPECT_EQ(1, open_cb_count);
 
@@ -3506,6 +3509,60 @@ TEST_F(
                        kOutboundUnknownOptionsConfigRsp);
   RunUntilIdle();
   EXPECT_EQ(0u, open_cb_count);
+}
+
+TEST_F(BrEdrDynamicChannelTest, RejectReconfigurationAfterChannelOpen) {
+  EXPECT_OUTBOUND_REQ(*sig(),
+                      kConnectionRequest,
+                      kConnReq.view(),
+                      {SignalingChannel::Status::kSuccess, kOkConnRsp.view()});
+  EXPECT_OUTBOUND_REQ(
+      *sig(),
+      kConfigurationRequest,
+      kOutboundConfigReq.view(),
+      {SignalingChannel::Status::kSuccess, kInboundEmptyConfigRsp.view()});
+  EXPECT_OUTBOUND_REQ(*sig(),
+                      kDisconnectionRequest,
+                      kDisconReq.view(),
+                      {SignalingChannel::Status::kSuccess, kDisconRsp.view()});
+
+  int open_cb_count = 0;
+  auto open_cb = [&open_cb_count](auto chan) {
+    if (open_cb_count == 0) {
+      ASSERT_TRUE(chan);
+      EXPECT_TRUE(chan->IsOpen());
+    }
+    open_cb_count++;
+  };
+
+  int close_cb_count = 0;
+  set_channel_close_cb([&close_cb_count](auto chan) {
+    EXPECT_TRUE(chan);
+    close_cb_count++;
+  });
+
+  registry()->OpenOutbound(kPsm, kChannelParams, std::move(open_cb));
+
+  RETURN_IF_FATAL(RunUntilIdle());
+
+  RETURN_IF_FATAL(sig()->ReceiveExpect(
+      kConfigurationRequest, kInboundConfigReq, kOutboundOkConfigRsp));
+
+  EXPECT_EQ(1, open_cb_count);
+  EXPECT_EQ(0, close_cb_count);
+
+  // Inbound reconfiguration requests should be rejected. The channel should not
+  // be closed.
+  RETURN_IF_FATAL(sig()->ReceiveExpect(
+      kConfigurationRequest, kInboundConfigReq, kOutboundConfigRspRejected));
+  EXPECT_EQ(0, close_cb_count);
+
+  bool channel_close_cb_called = false;
+  registry()->CloseChannel(kLocalCId, [&] { channel_close_cb_called = true; });
+  RETURN_IF_FATAL(RunUntilIdle());
+  EXPECT_EQ(1, open_cb_count);
+  EXPECT_EQ(0, close_cb_count);
+  EXPECT_TRUE(channel_close_cb_called);
 }
 
 }  // namespace

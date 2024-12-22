@@ -222,6 +222,40 @@ def log_decoded_log(
     )
 
 
+def _timestamp_format(
+    timestamp: int,
+    input_resolution: int,
+    truncate_microseconds_to_three_digits: bool = False,
+) -> str:
+    time_delta = datetime.timedelta(seconds=timestamp / input_resolution)
+
+    minutes, seconds = divmod(time_delta.seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    microseconds = time_delta.microseconds
+
+    hms_str = f'{hours:02}:{minutes:02}:{seconds:02}'
+    microseconds_str = f'{microseconds:06}'
+    if truncate_microseconds_to_three_digits:
+        microseconds_str = microseconds_str[:-3]
+
+    return f'{hms_str}.{microseconds_str}'
+
+
+def timestamp_parser_ms_since_boot(timestamp: int) -> str:
+    """Decodes timestamp as milliseconds since boot.
+
+    Args:
+        timestamp: The timestamp as an integer.
+    Returns:
+        A string representation of the timestamp.
+    """
+    return _timestamp_format(
+        timestamp,
+        input_resolution=10**3,
+        truncate_microseconds_to_three_digits=True,
+    )
+
+
 def timestamp_parser_ns_since_boot(timestamp: int) -> str:
     """Decodes timestamp as nanoseconds since boot.
 
@@ -230,7 +264,7 @@ def timestamp_parser_ns_since_boot(timestamp: int) -> str:
     Returns:
         A string representation of the timestamp.
     """
-    return str(datetime.timedelta(seconds=timestamp / 1e9))[:-3]
+    return _timestamp_format(timestamp, input_resolution=10**9)
 
 
 class LogStreamDecoder:
@@ -310,8 +344,8 @@ class LogStreamDecoder:
         Returns:
             A Log object with the decoded log_entry_proto.
         """
-        detokenized_message = self._decode_optionally_tokenized_field(
-            log_entry_proto.message
+        detokenized_message = decode_optionally_tokenized(
+            self.detokenizer, log_entry_proto.message
         )
         # Handle dropped count first.
         if log_entry_proto.dropped:
@@ -327,15 +361,15 @@ class LogStreamDecoder:
         message_and_metadata = pw_log_tokenized.FormatStringWithMetadata(
             detokenized_message
         )
-        module_name = self._decode_optionally_tokenized_field(
-            log_entry_proto.module
+        module_name = decode_optionally_tokenized(
+            self.detokenizer, log_entry_proto.module
         )
         if not module_name:
             module_name = message_and_metadata.module
 
         line_level_tuple = Log.unpack_line_level(log_entry_proto.line_level)
-        file_and_line = self._decode_optionally_tokenized_field(
-            log_entry_proto.file
+        file_and_line = decode_optionally_tokenized(
+            self.detokenizer, log_entry_proto.file
         )
         if not file_and_line:
             # Set file name if found in the metadata.
@@ -367,8 +401,8 @@ class LogStreamDecoder:
             flags=log_entry_proto.flags,
             timestamp=timestamp,
             module_name=module_name,
-            thread_name=self._decode_optionally_tokenized_field(
-                log_entry_proto.thread
+            thread_name=decode_optionally_tokenized(
+                self.detokenizer, log_entry_proto.thread
             ),
             source_name=self.source_name,
             file_and_line=file_and_line,
@@ -402,14 +436,3 @@ class LogStreamDecoder:
             log_entries_proto.first_entry_sequence_id + messages_received
         )
         return dropped_log_count
-
-    def _decode_optionally_tokenized_field(self, field: bytes) -> str:
-        """Decodes tokenized field into a printable string.
-        Args:
-            field: Bytes.
-        Returns:
-            A printable string.
-        """
-        if self.detokenizer:
-            return decode_optionally_tokenized(self.detokenizer, field)
-        return field.decode('utf-8')

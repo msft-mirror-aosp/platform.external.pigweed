@@ -24,7 +24,7 @@ export const styles = css`
     color: var(--sys-log-viewer-color-table-text);
     display: block;
     font-family: 'Roboto Mono', monospace;
-    font-size: 1rem;
+    font-size: 0.875rem;
     height: 100%;
     overflow: hidden;
     position: relative;
@@ -71,6 +71,10 @@ export const styles = css`
     will-change: transform, grid-template-columns;
   }
 
+  .log-row--info {
+    --icon-color: var(--sys-log-viewer-color-info);
+  }
+
   .log-row--warning {
     --bg-color: var(--sys-log-viewer-color-surface-yellow);
     --text-color: var(--sys-log-viewer-color-on-surface-yellow);
@@ -90,6 +94,7 @@ export const styles = css`
     --icon-color: var(--sys-log-viewer-color-debug);
   }
 
+  .log-row--info .cell-icon,
   .log-row--warning .cell-icon,
   .log-row--error .cell-icon,
   .log-row--critical .cell-icon {
@@ -155,8 +160,8 @@ export const styles = css`
     white-space: nowrap;
   }
 
-  th[title='severity'] {
-    visibility: hidden;
+  th[title='level'] {
+    color: transparent;
   }
 
   td {
@@ -164,6 +169,13 @@ export const styles = css`
     position: relative;
     vertical-align: top;
     align-items: flex-start;
+  }
+
+  .level-cell {
+    align-items: flex-start;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .cell-text {
@@ -186,7 +198,6 @@ export const styles = css`
     content: '';
     cursor: col-resize;
     height: 100%;
-    left: 0;
     mix-blend-mode: luminosity;
     opacity: 1;
     pointer-events: auto;
@@ -226,6 +237,7 @@ export const styles = css`
     display: grid;
     place-content: center;
     place-items: center;
+    width: var(--sys-log-viewer-table-cell-icon-size);
   }
 
   .overflow-indicator {
@@ -272,7 +284,6 @@ export const styles = css`
     background-color: var(--sys-log-viewer-color-table-mark);
     border-radius: 4px;
     color: var(--sys-log-viewer-color-table-mark-text);
-    outline: 1px solid var(--sys-log-viewer-color-table-mark);
   }
 
   .jump-to-bottom-btn,

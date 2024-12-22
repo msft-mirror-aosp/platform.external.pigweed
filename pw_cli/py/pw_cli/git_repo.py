@@ -13,9 +13,11 @@
 # the License.
 """Helpful commands for working with a Git repository."""
 
+from datetime import datetime
 import logging
 from pathlib import Path
 import re
+import shlex
 import subprocess
 from typing import Collection, Iterable, Pattern
 
@@ -32,33 +34,28 @@ _NON_TRACKING_FALLBACK = 'HEAD~10'
 class GitError(Exception):
     """A Git-raised exception."""
 
-    def __init__(self, message, returncode):
-        super().__init__(message)
+    def __init__(
+        self, args: Iterable[str], message: str, returncode: int
+    ) -> None:
+        super().__init__(f'`git {shlex.join(args)}` failed: {message}')
         self.returncode = returncode
 
 
 class _GitTool:
-    def __init__(self, tool_runner: ToolRunner, working_dir: Path):
+    def __init__(self, tool_runner: ToolRunner, working_dir: Path) -> None:
         self._run_tool = tool_runner
         self._working_dir = working_dir
 
     def __call__(self, *args, **kwargs) -> str:
-        proc = self._run_tool(
-            tool='git',
-            args=(
-                '-C',
-                str(self._working_dir),
-                *args,
-            ),
-            **kwargs,
-        )
+        cmd = ('-C', str(self._working_dir), *args)
+        proc = self._run_tool(tool='git', args=cmd, **kwargs)
 
         if proc.returncode != 0:
             if not proc.stderr:
                 err = '(no output)'
             else:
                 err = proc.stderr.decode().strip()
-            raise GitError(err, proc.returncode)
+            raise GitError((str(s) for s in cmd), err, proc.returncode)
 
         return '' if not proc.stdout else proc.stdout.decode().strip()
 
@@ -280,6 +277,18 @@ class GitRepo:
         """
         return self._git('log', '--format=%ae', '-n1', commit)
 
+    def commit_date(self, commit: str = 'HEAD') -> datetime:
+        """Returns the datetime of the specified commit.
+
+        Defaults to ``HEAD`` if no commit specified.
+
+        Returns:
+            Commit datetime as a datetime object.
+        """
+        return datetime.fromisoformat(
+            self._git('log', '--format=%aI', '-n1', commit)
+        )
+
     def commit_hash(
         self,
         commit: str = 'HEAD',
@@ -313,6 +322,10 @@ class GitRepo:
         )
         match = regex.search(message)
         return match.group(1) if match else None
+
+    def commit_parents(self, commit: str = 'HEAD') -> list[str]:
+        args = ['log', '--pretty=%P', '-n', '1', commit]
+        return self._git(*args).split()
 
 
 def find_git_repo(path_in_repo: Path, tool_runner: ToolRunner) -> GitRepo:

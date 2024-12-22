@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection.h"
 
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection_manager.h"
+#include "pw_bluetooth_sapphire/internal/host/sm/security_manager.h"
 
 namespace bt::gap::internal {
 
@@ -44,7 +45,7 @@ std::unique_ptr<LowEnergyConnection> LowEnergyConnection::Create(
     WeakSelf<LowEnergyConnectionManager>::WeakPtr conn_mgr,
     l2cap::ChannelManager* l2cap,
     gatt::GATT::WeakPtr gatt,
-    hci::CommandChannel::WeakPtr cmd_channel,
+    hci::Transport::WeakPtr hci,
     pw::async::Dispatcher& dispatcher) {
   // Catch any errors/disconnects during connection initialization so that they
   // are reported by returning a nullptr. This is less error-prone than calling
@@ -52,6 +53,11 @@ std::unique_ptr<LowEnergyConnection> LowEnergyConnection::Create(
   bool error = false;
   auto peer_disconnect_cb_temp = [&error](auto) { error = true; };
   auto error_cb_temp = [&error] { error = true; };
+  // TODO(fxbug.dev/325646523): Only create an IsoStreamManager
+  // instance if our adapter supports Isochronous streams.
+  std::unique_ptr<iso::IsoStreamManager> iso_mgr =
+      std::make_unique<iso::IsoStreamManager>(link->handle(),
+                                              hci->GetWeakPtr());
   std::unique_ptr<LowEnergyConnection> connection(
       new LowEnergyConnection(std::move(peer),
                               std::move(link),
@@ -59,9 +65,10 @@ std::unique_ptr<LowEnergyConnection> LowEnergyConnection::Create(
                               std::move(peer_disconnect_cb_temp),
                               std::move(error_cb_temp),
                               std::move(conn_mgr),
+                              std::move(iso_mgr),
                               l2cap,
                               std::move(gatt),
-                              std::move(cmd_channel),
+                              std::move(hci),
                               dispatcher));
 
   // This looks strange, but it is possible for InitializeFixedChannels() to
@@ -85,18 +92,20 @@ LowEnergyConnection::LowEnergyConnection(
     PeerDisconnectCallback peer_disconnect_cb,
     ErrorCallback error_cb,
     WeakSelf<LowEnergyConnectionManager>::WeakPtr conn_mgr,
+    std::unique_ptr<iso::IsoStreamManager> iso_mgr,
     l2cap::ChannelManager* l2cap,
     gatt::GATT::WeakPtr gatt,
-    hci::CommandChannel::WeakPtr cmd_channel,
+    hci::Transport::WeakPtr hci,
     pw::async::Dispatcher& dispatcher)
     : dispatcher_(dispatcher),
       peer_(std::move(peer)),
       link_(std::move(link)),
       connection_options_(connection_options),
       conn_mgr_(std::move(conn_mgr)),
+      iso_mgr_(std::move(iso_mgr)),
       l2cap_(l2cap),
       gatt_(std::move(gatt)),
-      cmd_(std::move(cmd_channel)),
+      hci_(std::move(hci)),
       peer_disconnect_callback_(std::move(peer_disconnect_cb)),
       error_callback_(std::move(error_cb)),
       refs_(/*convert=*/[](const auto& refs) { return refs.size(); }),
@@ -106,9 +115,11 @@ LowEnergyConnection::LowEnergyConnection(
   BT_ASSERT(link_);
   BT_ASSERT(conn_mgr_.is_alive());
   BT_ASSERT(gatt_.is_alive());
-  BT_ASSERT(cmd_.is_alive());
+  BT_ASSERT(hci_.is_alive());
   BT_ASSERT(peer_disconnect_callback_);
   BT_ASSERT(error_callback_);
+  cmd_ = hci_->command_channel()->AsWeakPtr();
+  BT_ASSERT(cmd_.is_alive());
 
   link_->set_peer_disconnect_callback(
       [this](const auto&, auto reason) { peer_disconnect_callback_(reason); });
@@ -138,6 +149,11 @@ LowEnergyConnection::AddRef() {
       self->conn_mgr_->ReleaseReference(handle);
     }
   };
+  auto accept_cis_cb = [self](iso::CigCisIdentifier id,
+                              iso::CisEstablishedCallback cb) {
+    BT_ASSERT(self.is_alive());
+    return self->AcceptCis(id, std::move(cb));
+  };
   auto bondable_cb = [self] {
     BT_ASSERT(self.is_alive());
     return self->bondable_mode();
@@ -146,12 +162,18 @@ LowEnergyConnection::AddRef() {
     BT_ASSERT(self.is_alive());
     return self->security();
   };
+  auto role_cb = [self] {
+    BT_ASSERT(self.is_alive());
+    return self->role();
+  };
   std::unique_ptr<bt::gap::LowEnergyConnectionHandle> conn_ref(
       new LowEnergyConnectionHandle(peer_id(),
                                     handle(),
                                     std::move(release_cb),
+                                    std::move(accept_cis_cb),
                                     std::move(bondable_cb),
-                                    std::move(security_cb)));
+                                    std::move(security_cb),
+                                    std::move(role_cb)));
   BT_ASSERT(conn_ref);
 
   refs_.Mutable()->insert(conn_ref.get());
@@ -253,6 +275,21 @@ void LowEnergyConnection::UpgradeSecurity(sm::SecurityLevel level,
   OnSecurityRequest(level, std::move(cb));
 }
 
+void LowEnergyConnection::set_security_mode(LESecurityMode mode) {
+  BT_ASSERT(sm_);
+  sm_->set_security_mode(mode);
+}
+
+sm::BondableMode LowEnergyConnection::bondable_mode() const {
+  BT_ASSERT(sm_);
+  return sm_->bondable_mode();
+}
+
+sm::SecurityProperties LowEnergyConnection::security() const {
+  BT_ASSERT(sm_);
+  return sm_->security();
+}
+
 // Cancels any on-going pairing procedures and sets up SMP to use the provided
 // new I/O capabilities for future pairing procedures.
 void LowEnergyConnection::ResetSecurityManager(sm::IOCapability ioc) {
@@ -263,6 +300,14 @@ void LowEnergyConnection::OnInterrogationComplete() {
   BT_ASSERT(!interrogation_completed_);
   interrogation_completed_ = true;
   MaybeUpdateConnectionParameters();
+}
+
+iso::AcceptCisStatus LowEnergyConnection::AcceptCis(
+    iso::CigCisIdentifier id, iso::CisEstablishedCallback cb) {
+  if (role() != pw::bluetooth::emboss::ConnectionRole::PERIPHERAL) {
+    return iso::AcceptCisStatus::kNotPeripheral;
+  }
+  return iso_mgr_->AcceptCis(id, std::move(cb));
 }
 
 void LowEnergyConnection::AttachInspect(inspect::Node& parent,
@@ -416,15 +461,16 @@ void LowEnergyConnection::RequestConnectionParameterUpdate(
 
   BT_ASSERT(peer_.is_alive());
   // Ensure interrogation has completed.
-  BT_ASSERT(peer_->le()->features().has_value());
+  BT_ASSERT(peer_->le()->feature_interrogation_complete());
 
   // TODO(fxbug.dev/42126713): check local controller support for LL Connection
   // Parameters Request procedure (mask is currently in Adapter le state,
   // consider propagating down)
   bool ll_connection_parameters_req_supported =
-      peer_->le()->features()->le_features &
-      static_cast<uint64_t>(
-          hci_spec::LESupportedFeature::kConnectionParametersRequestProcedure);
+      peer_->le()->features().has_value() &&
+      (peer_->le()->features()->le_features &
+       static_cast<uint64_t>(hci_spec::LESupportedFeature::
+                                 kConnectionParametersRequestProcedure));
 
   bt_log(TRACE,
          "gap-le",
@@ -545,7 +591,8 @@ void LowEnergyConnection::UpdateConnectionParams(
   view.max_connection_event_length().Write(0x0000);
 
   auto status_cb_wrapper = [handle = handle(), cb = std::move(status_cb)](
-                               auto id, const hci::EventPacket& event) mutable {
+                               auto id,
+                               const hci::EmbossEventPacket& event) mutable {
     BT_ASSERT(event.event_code() == hci_spec::kCommandStatusEventCode);
     hci_is_error(event,
                  TRACE,

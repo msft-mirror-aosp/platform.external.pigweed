@@ -32,8 +32,6 @@ cc_library(
     includes = [
         "public",
     ],
-    # TODO: b/261603269 - Get this to build.
-    tags = ["manual"],
     deps = [
         "//pw_chrono:system_clock",
         "//pw_digital_io",
@@ -42,16 +40,14 @@ cc_library(
         "//pw_status",
         "//pw_sync:lock_annotations",
         "//pw_sync:mutex",
-        "@pico-sdk//src/common/pico_stdlib",
         "@pico-sdk//src/rp2_common/hardware_gpio",
         "@pico-sdk//src/rp2_common/hardware_i2c",
+        "@pico-sdk//src/rp2_common/pico_stdlib",
     ],
 )
 
 pw_cc_test(
     name = "initiator_test",
     srcs = ["initiator_test.cc"],
-    # TODO: b/261603269 - Get this to build.
-    tags = ["manual"],
     deps = [":pw_i2c_rp2040"],
 )

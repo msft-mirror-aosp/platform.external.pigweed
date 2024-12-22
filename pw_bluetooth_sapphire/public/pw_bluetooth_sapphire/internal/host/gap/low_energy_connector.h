@@ -14,6 +14,7 @@
 
 #pragma once
 #include "pw_bluetooth_sapphire/internal/host/common/device_address.h"
+#include "pw_bluetooth_sapphire/internal/host/gap/adapter_state.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connection_request.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_interrogator.h"
@@ -40,11 +41,12 @@ class LowEnergyConnector final {
   // established with the parameters specified in |options|.
   LowEnergyConnector(PeerId peer_id,
                      LowEnergyConnectionOptions options,
-                     hci::CommandChannel::WeakPtr cmd_channel,
+                     hci::Transport::WeakPtr hci,
                      PeerCache* peer_cache,
                      WeakSelf<LowEnergyConnectionManager>::WeakPtr conn_mgr,
                      l2cap::ChannelManager* l2cap,
                      gatt::GATT::WeakPtr gatt,
+                     const AdapterState& adapter_state,
                      pw::async::Dispatcher& dispatcher);
 
   // Instances should only be destroyed after the result callback is called
@@ -148,6 +150,8 @@ class LowEnergyConnector final {
   l2cap::ChannelManager* l2cap_;
   gatt::GATT::WeakPtr gatt_;
 
+  AdapterState adapter_state_;
+
   // True if this connector is connecting an outbound connection, false if it is
   // connecting an inbound connection.
   std::optional<bool> is_outbound_;
@@ -188,6 +192,8 @@ class LowEnergyConnector final {
   LowEnergyDiscoveryManager::WeakPtr discovery_manager_;
 
   hci::CommandChannel::WeakPtr cmd_;
+
+  hci::Transport::WeakPtr hci_;
 
   // Only used to construct a LowEnergyConnection.
   WeakSelf<LowEnergyConnectionManager>::WeakPtr le_connection_manager_;
