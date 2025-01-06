@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("@rules_rust//rust:defs.bzl", "rust_docs")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 
@@ -39,4 +40,24 @@ rust_docs(
         "//pw_base64/rust:pw_base64",
     ],
     target_compatible_with = incompatible_with_mcu(),
+)
+
+# Intermediary target that enables us to provide rustdoc files
+# as an input to rules_python/sphinx_docs_library.
+filegroup(
+    name = "docs_dir",
+    srcs = [":docs"],
+    output_group = "rustdoc_dir",
+    target_compatible_with = incompatible_with_mcu(),
+    visibility = ["//visibility:public"],
+)
+
+sphinx_docs_library(
+    name = "sphinx",
+    srcs = [
+        "docs.rst",
+    ],
+    prefix = "pw_rust/",
+    target_compatible_with = incompatible_with_mcu(),
+    visibility = ["//visibility:public"],
 )

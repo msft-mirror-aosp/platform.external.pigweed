@@ -19,6 +19,7 @@
 #include <fidl/fuchsia.hardware.bluetooth/cpp/fidl.h>
 #include <fuchsia/bluetooth/sys/cpp/fidl.h>
 #include <fuchsia/media/cpp/fidl.h>
+#include <pw_bluetooth/hci_data.emb.h>
 
 #include <charconv>
 #include <memory>
@@ -1596,6 +1597,12 @@ std::optional<bt::AdvertisingData> AdvertisingDataFromFidl(
       }
     }
   }
+  if (input.has_broadcast_name()) {
+    output.SetBroadcastName(input.broadcast_name());
+  }
+  if (input.has_resolvable_set_identifier()) {
+    output.SetResolvableSetIdentifier(input.resolvable_set_identifier());
+  }
 
   return output;
 }
@@ -1658,6 +1665,12 @@ fble::AdvertisingData AdvertisingDataToFidl(const bt::AdvertisingData& input) {
       uris.push_back(uri);
     }
     output.set_uris(std::move(uris));
+  }
+  if (input.broadcast_name()) {
+    output.set_broadcast_name(*input.broadcast_name());
+  }
+  if (input.resolvable_set_identifier()) {
+    output.set_resolvable_set_identifier(*input.resolvable_set_identifier());
   }
 
   return output;
@@ -2910,6 +2923,19 @@ bt::DeviceAddress::Type FidlToDeviceAddressType(fbt::AddressType addr_type) {
       return bt::DeviceAddress::Type::kLERandom;
   }
 }
+
+fble::IsoPacketStatusFlag EmbossIsoPacketStatusFlagToFidl(
+    pw::bluetooth::emboss::IsoDataPacketStatus status_in) {
+  switch (status_in) {
+    case pw::bluetooth::emboss::IsoDataPacketStatus::VALID_DATA:
+      return fble::IsoPacketStatusFlag::VALID_DATA;
+    case pw::bluetooth::emboss::IsoDataPacketStatus::POSSIBLY_INVALID_DATA:
+      return fble::IsoPacketStatusFlag::DATA_WITH_POSSIBLE_ERRORS;
+    case pw::bluetooth::emboss::IsoDataPacketStatus::LOST_DATA:
+      return fble::IsoPacketStatusFlag::LOST_DATA;
+  }
+}
+
 }  // namespace bthost::fidl_helpers
 
 // static

@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
@@ -25,7 +27,7 @@ pw_facade(
         "public/pw_crypto/sha256.h",
     ],
     backend = ":sha256_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_assert",
         "//pw_bytes",
@@ -64,7 +66,10 @@ cc_library(
         "public/pw_crypto/sha256_mbedtls.h",
         "public_overrides/mbedtls/pw_crypto/sha256_backend.h",
     ],
-    includes = ["public_overrides/mbedtls"],
+    includes = [
+        "public",
+        "public_overrides/mbedtls",
+    ],
     deps = [
         ":sha256.facade",
         "@mbedtls",
@@ -109,7 +114,7 @@ pw_facade(
         "public/pw_crypto/ecdsa.h",
     ],
     backend = ":ecdsa_backend",
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_bytes",
         "//pw_status",
@@ -176,4 +181,84 @@ pw_cc_test(
         ":ecdsa",
         "//pw_unit_test",
     ],
+)
+
+pw_facade(
+    name = "aes",
+    hdrs = [
+        "public/pw_crypto/aes.h",
+        "public/pw_crypto/aes_backend_defs.h",
+    ],
+    backend = ":aes_backend",
+    includes = ["public"],
+    deps = [
+        "//pw_bytes",
+        "//pw_status",
+    ],
+)
+
+label_flag(
+    name = "aes_backend",
+    build_setting_default = ":aes_backend_multiplexer",
+)
+
+constraint_setting(
+    name = "aes_backend_constraint_setting",
+)
+
+constraint_value(
+    name = "aes_mbedtls_backend",
+    constraint_setting = ":aes_backend_constraint_setting",
+)
+
+alias(
+    name = "aes_backend_multiplexer",
+    actual = select({
+        ":aes_mbedtls_backend": ":aes_mbedtls",
+        "//conditions:default": ":aes_mbedtls",
+    }),
+)
+
+cc_library(
+    name = "aes_mbedtls",
+    srcs = ["aes_mbedtls.cc"],
+    hdrs = [
+        "public/pw_crypto/aes_mbedtls.h",
+        "public_overrides/mbedtls/pw_crypto/aes_backend.h",
+    ],
+    includes = ["public_overrides/mbedtls"],
+    deps = [
+        ":aes.facade",
+        "//pw_assert",
+        "@mbedtls",
+    ],
+)
+
+pw_cc_test(
+    name = "aes_test",
+    srcs = [
+        "aes_test.cc",
+    ],
+    deps = [
+        ":aes",
+        "//pw_containers:vector",
+        "//pw_unit_test",
+    ],
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_crypto/ecdsa.h",
+        "public/pw_crypto/sha256.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+    ],
+    prefix = "pw_crypto/",
+    target_compatible_with = incompatible_with_mcu(),
 )

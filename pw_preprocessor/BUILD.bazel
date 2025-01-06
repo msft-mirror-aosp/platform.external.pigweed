@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -20,19 +22,17 @@ licenses(["notice"])
 
 cc_library(
     name = "pw_preprocessor",
-    srcs = [
-        "public/pw_preprocessor/internal/apply_macros.h",
-        "public/pw_preprocessor/internal/arg_count_impl.h",
-    ],
     hdrs = [
         "public/pw_preprocessor/apply.h",
         "public/pw_preprocessor/arguments.h",
         "public/pw_preprocessor/boolean.h",
         "public/pw_preprocessor/compiler.h",
         "public/pw_preprocessor/concat.h",
+        "public/pw_preprocessor/internal/apply_macros.h",
+        "public/pw_preprocessor/internal/arg_count_impl.h",
         "public/pw_preprocessor/util.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = ["//pw_polyfill"],
 )
 
@@ -41,7 +41,7 @@ cc_library(
     hdrs = [
         "public/pw_preprocessor/arch.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":config_override"],
 )
 
@@ -69,3 +69,21 @@ TESTS = [
     )
     for t in TESTS
 ]
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_preprocessor/apply.h",
+        "public/pw_preprocessor/compiler.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "Kconfig",
+        "docs.rst",
+    ],
+    prefix = "pw_preprocessor/",
+    target_compatible_with = incompatible_with_mcu(),
+)

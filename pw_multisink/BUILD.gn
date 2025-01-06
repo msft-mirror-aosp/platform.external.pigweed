@@ -98,12 +98,14 @@ pw_source_set("multisink_threaded_test") {
     ":test_thread",
     "$dir_pw_string",
     "$dir_pw_thread:thread",
+    "$dir_pw_thread:thread_core",
     "$dir_pw_thread:yield",
     "$dir_pw_unit_test",
   ]
 }
 
 pw_doc_group("docs") {
+  inputs = [ "Kconfig" ]
   sources = [ "docs.rst" ]
 }
 

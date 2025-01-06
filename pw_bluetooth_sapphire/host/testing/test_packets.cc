@@ -19,6 +19,7 @@
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/constants.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/protocol.h"
+#include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
 #include "pw_bluetooth_sapphire/internal/host/hci/bredr_connection_request.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 #include "pw_string/string_builder.h"
@@ -118,9 +119,9 @@ DynamicByteBuffer ConnectionRequestPacket(DeviceAddress address,
       addr[3],
       addr[4],
       addr[5],
-      0x00,      // Class_Of_Device (Unknown)
-      0x1F,      // Class_Of_Device (Unknown)
-      0x00,      // Class_Of_Device (Unknown)
+      0x5A,      // Class_Of_Device
+      0x42,      // (Smart Phone minor class)
+      0x0C,      // Networking, Capturing, Object Transfer, Telephony, LE Audio
       link_type  // Link_Type
       ));
 }
@@ -221,7 +222,7 @@ DynamicByteBuffer EnhancedAcceptSynchronousConnectionRequestPacket(
     DeviceAddress peer_address,
     bt::StaticPacket<
         pw::bluetooth::emboss::SynchronousConnectionParametersWriter> params) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::
           EnhancedAcceptSynchronousConnectionRequestCommandWriter>(
       hci_spec::kEnhancedAcceptSynchronousConnectionRequest);
@@ -237,7 +238,7 @@ DynamicByteBuffer EnhancedSetupSynchronousConnectionPacket(
     hci_spec::ConnectionHandle conn,
     bt::StaticPacket<
         pw::bluetooth::emboss::SynchronousConnectionParametersWriter> params) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::EnhancedSetupSynchronousConnectionCommandWriter>(
       hci_spec::kEnhancedSetupSynchronousConnection);
 
@@ -480,7 +481,7 @@ DynamicByteBuffer LERejectCisRequestCommandPacket(
 DynamicByteBuffer LERequestPeerScaCompletePacket(
     hci_spec::ConnectionHandle conn,
     pw::bluetooth::emboss::LESleepClockAccuracyRange sca) {
-  auto packet = hci::EmbossEventPacket::New<
+  auto packet = hci::EventPacket::New<
       pw::bluetooth::emboss::LERequestPeerSCACompleteSubeventWriter>(
       hci_spec::kLEMetaEventCode);
 
@@ -511,7 +512,7 @@ DynamicByteBuffer LECisEstablishedEventPacket(
     uint16_t max_pdu_c_to_p,
     uint16_t max_pdu_p_to_c,
     uint16_t iso_interval) {
-  auto packet = hci::EmbossEventPacket::New<
+  auto packet = hci::EventPacket::New<
       pw::bluetooth::emboss::LECISEstablishedSubeventWriter>(
       hci_spec::kLEMetaEventCode);
   auto view = packet.view_t();
@@ -548,7 +549,7 @@ DynamicByteBuffer LESetupIsoDataPathPacket(
   size_t packet_size =
       pw::bluetooth::emboss::LESetupISODataPathCommand::MinSizeInBytes() +
       (codec_configuration.has_value() ? codec_configuration->size() : 0);
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::LESetupISODataPathCommandWriter>(
       hci_spec::kLESetupISODataPath, packet_size);
   auto view = packet.view_t();
@@ -586,7 +587,7 @@ DynamicByteBuffer LESetupIsoDataPathResponse(
 }
 
 DynamicByteBuffer LERequestPeerScaPacket(hci_spec::ConnectionHandle conn) {
-  auto packet = hci::EmbossCommandPacket::New<
+  auto packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::LERequestPeerSCACommandWriter>(
       hci_spec::kLERequestPeerSCA);
   auto view = packet.view_t();
@@ -1214,7 +1215,7 @@ DynamicByteBuffer StartA2dpOffloadRequest(
   constexpr size_t kPacketSize =
       android_emb::StartA2dpOffloadCommand::MaxSizeInBytes();
   auto packet =
-      hci::EmbossCommandPacket::New<android_emb::StartA2dpOffloadCommandWriter>(
+      hci::CommandPacket::New<android_emb::StartA2dpOffloadCommandWriter>(
           android_hci::kA2dpOffloadCommand, kPacketSize);
   auto view = packet.view_t();
 

@@ -14,6 +14,8 @@
 
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
 load("//pw_perf_test:pw_cc_perf_test.bzl", "pw_cc_perf_test")
 load("//pw_protobuf_compiler:pw_proto_library.bzl", "pw_proto_filegroup", "pwpb_proto_library")
@@ -26,7 +28,7 @@ licenses(["notice"])
 cc_library(
     name = "config",
     hdrs = ["public/pw_protobuf/config.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [":config_override"],
 )
 
@@ -57,7 +59,7 @@ cc_library(
         "public/pw_protobuf/stream_decoder.h",
         "public/pw_protobuf/wire_format.h",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":config",
         "//pw_assert",
@@ -81,7 +83,7 @@ cc_library(
 cc_library(
     name = "bytes_utils",
     hdrs = ["public/pw_protobuf/bytes_utils.h"],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         ":pw_protobuf",
         "//pw_bytes",
@@ -289,6 +291,7 @@ proto_library(
 pw_proto_filegroup(
     name = "codegen_test_proto_and_options",
     srcs = [
+        "pw_protobuf_test_protos/edition.proto",
         "pw_protobuf_test_protos/full_test.proto",
         "pw_protobuf_test_protos/imported.proto",
         "pw_protobuf_test_protos/importer.proto",
@@ -299,6 +302,7 @@ pw_proto_filegroup(
         "pw_protobuf_test_protos/size_report.proto",
     ],
     options_files = [
+        "pw_protobuf_test_protos/edition.pwpb_options",
         "pw_protobuf_test_protos/full_test.pwpb_options",
         "pw_protobuf_test_protos/optional.pwpb_options",
         "pw_protobuf_test_protos/imported.pwpb_options",
@@ -343,6 +347,7 @@ pw_cc_test(
     deps = [
         ":codegen_test_proto_pwpb",
         ":pw_protobuf",
+        "//pw_bytes",
         "//pw_span",
         "//pw_unit_test",
     ],
@@ -361,13 +366,19 @@ pw_cc_test(
     ],
 )
 
-# TODO: https://pwbug.dev/366316523 - Bazel's protoc version does not support
-# editions, and extra compiler options cannot be passed to a proto_library
-# target, so `editions.proto` cannot be compiled until we upgrade Protobuf.
-filegroup(
+pw_cc_test(
     name = "codegen_editions_test",
     srcs = [
         "codegen_editions_test.cc",
+    ],
+    deps = [
+        ":codegen_test_proto_pwpb",
+        ":pw_protobuf",
+        "//pw_preprocessor",
+        "//pw_span",
+        "//pw_status",
+        "//pw_stream",
+        "//pw_unit_test",
     ],
 )
 
@@ -385,4 +396,23 @@ filegroup(
     srcs = glob([
         "size_report/*.cc",
     ]),
+)
+
+filegroup(
+    name = "doxygen",
+    srcs = [
+        "public/pw_protobuf/find.h",
+    ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+        "pw_protobuf_test_protos/size_report.proto",
+        "pw_protobuf_test_protos/size_report.pwpb_options",
+        "size_report.rst",
+    ],
+    prefix = "pw_protobuf/",
+    target_compatible_with = incompatible_with_mcu(),
 )

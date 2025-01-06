@@ -102,7 +102,9 @@ def _token_regex(prefix: str) -> Pattern[bytes]:
         # Brackets ({}) specifies domain string
         + rb'(?P<domainspec>('
         + NESTED_DOMAIN_START_PREFIX
-        + rb'(?P<domain>.*)'
+        + rb'(?P<domain>[^'
+        + NESTED_DOMAIN_END_PREFIX
+        + rb']*)'
         + NESTED_DOMAIN_END_PREFIX
         + rb'))?'
         # Optional; no base specifier defaults to BASE64.
@@ -535,7 +537,8 @@ class AutoUpdatingDetokenizer(Detokenizer):
         super().__init__(*(path.load() for path in self.paths), prefix=prefix)
 
     def __del__(self) -> None:
-        self._pool.shutdown(wait=False)
+        if hasattr(self, '_pool'):
+            self._pool.shutdown(wait=False)
 
     def _reload_paths(self) -> None:
         self._initialize_database([path.load() for path in self.paths])

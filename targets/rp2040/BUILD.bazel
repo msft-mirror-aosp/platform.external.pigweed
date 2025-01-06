@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
+load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_build:merge_flags.bzl", "flags_from_dict")
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 load("//pw_build:pw_copy_and_patch_file.bzl", "pw_copy_and_patch_file")
@@ -58,7 +60,7 @@ platform(
         "@pico-sdk//bazel/constraint:rp2040",
         # For toolchain selection.
         "@platforms//cpu:armv6-m",
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m0plus",
+        "//pw_build/constraints/arm:cortex-m0plus",
     ],
     flags = flags_from_dict({
         "@pico-sdk//bazel/config:PICO_DEFAULT_LINKER_SCRIPT": ":rp2040_linker_script",
@@ -73,7 +75,7 @@ platform(
         "@pico-sdk//bazel/constraint:rp2350",
         # For toolchain selection.
         "@platforms//cpu:armv8-m",
-        "@pw_toolchain//constraints/arm_mcpu:cortex-m33",
+        "//pw_build/constraints/arm:cortex-m33",
     ],
     flags = flags_from_dict({
         "@pico-sdk//bazel/config:PICO_DEFAULT_LINKER_SCRIPT": ":rp2350_linker_script",
@@ -185,7 +187,7 @@ cc_library(
     srcs = [
         "device_handler.cc",
     ],
-    includes = ["public"],
+    strip_include_prefix = "public",
     deps = [
         "//pw_cpu_exception_cortex_m:snapshot",
         "//pw_system:device_handler.facade",
@@ -268,4 +270,14 @@ cc_library(
     deps = [
         "@pico-sdk//src/rp2_common/pico_standard_link:default_flash_region",
     ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "49-pico.rules",
+        "target_docs.rst",
+        "upstream.rst",
+    ],
+    target_compatible_with = incompatible_with_mcu(),
 )

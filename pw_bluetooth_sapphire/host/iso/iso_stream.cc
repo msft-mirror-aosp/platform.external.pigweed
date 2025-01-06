@@ -30,7 +30,7 @@ class IsoStreamImpl final : public IsoStream {
                 pw::Callback<void()> on_closed_cb);
 
   // IsoStream overrides
-  bool OnCisEstablished(const hci::EmbossEventPacket& event) override;
+  bool OnCisEstablished(const hci::EventPacket& event) override;
   void SetupDataPath(
       pw::bluetooth::emboss::DataPathDirection direction,
       const bt::StaticPacket<pw::bluetooth::emboss::CodecIdWriter>& codec_id,
@@ -42,6 +42,7 @@ class IsoStreamImpl final : public IsoStream {
     return cis_hci_handle_;
   }
   void Close() override;
+  std::unique_ptr<IsoDataPacket> ReadNextQueuedIncomingPacket() override;
   IsoStream::WeakPtr GetWeakPtr() override { return weak_self_.GetWeakPtr(); }
 
   // IsoDataChannel::ConnectionInterface override
@@ -70,6 +71,12 @@ class IsoStreamImpl final : public IsoStream {
   IsoInboundPacketAssembler inbound_assembler_;
 
   IncomingDataHandler on_incoming_data_available_cb_;
+
+  // When true, we will send a notification to the client when the next packet
+  // arrives. Otherwise, we will just queue it up.
+  bool inbound_client_is_waiting_ = false;
+
+  std::queue<std::unique_ptr<std::vector<std::byte>>> incoming_data_queue_;
 
   // Called when stream is closed
   pw::Callback<void()> on_closed_cb_;
@@ -114,7 +121,7 @@ IsoStreamImpl::IsoStreamImpl(uint8_t cig_id,
   auto weak_self = weak_self_.GetWeakPtr();
   cis_established_handler_ = cmd_->AddLEMetaEventHandler(
       hci_spec::kLECISEstablishedSubeventCode,
-      [self = std::move(weak_self)](const hci::EmbossEventPacket& event) {
+      [self = std::move(weak_self)](const hci::EventPacket& event) {
         if (!self.is_alive()) {
           return hci::CommandChannel::EventCallbackResult::kRemove;
         }
@@ -127,7 +134,7 @@ IsoStreamImpl::IsoStreamImpl(uint8_t cig_id,
   PW_CHECK(cis_established_handler_ != 0u);
 }
 
-bool IsoStreamImpl::OnCisEstablished(const hci::EmbossEventPacket& event) {
+bool IsoStreamImpl::OnCisEstablished(const hci::EventPacket& event) {
   PW_CHECK(event.event_code() == hci_spec::kLEMetaEventCode);
   PW_CHECK(event.view<pw::bluetooth::emboss::LEMetaEventView>()
                .subevent_code()
@@ -238,7 +245,7 @@ void IsoStreamImpl::SetupDataPath(
   size_t packet_size =
       pw::bluetooth::emboss::LESetupISODataPathCommand::MinSizeInBytes() +
       (codec_configuration.has_value() ? codec_configuration->size() : 0);
-  auto cmd_packet = hci::EmbossCommandPacket::New<
+  auto cmd_packet = hci::CommandPacket::New<
       pw::bluetooth::emboss::LESetupISODataPathCommandWriter>(
       hci_spec::kLESetupISODataPath, packet_size);
   auto cmd_view = cmd_packet.view_t();
@@ -272,7 +279,7 @@ void IsoStreamImpl::SetupDataPath(
        direction,
        on_incoming_data_available_callback =
            std::move(on_incoming_data_available_cb)](
-          auto id, const hci::EmbossEventPacket& cmd_complete) mutable {
+          auto, const hci::EventPacket& cmd_complete) mutable {
         if (!self.is_alive()) {
           on_complete_callback(kStreamClosed);
           return;
@@ -339,12 +346,35 @@ void IsoStreamImpl::HandleCompletePacket(
     return;
   }
 
-  if (on_incoming_data_available_cb_(packet)) {
-    // Packet was processed successfully - we're done here
-    return;
+  if (inbound_client_is_waiting_) {
+    inbound_client_is_waiting_ = false;
+    if (on_incoming_data_available_cb_(packet)) {
+      // Packet was processed successfully - we're done here
+      return;
+    }
+    // This is not a hard error, but it is a bit unusual and probably worth
+    // noting.
+    bt_log(INFO,
+           "iso",
+           "ISO incoming packet client previously requested packets, now not "
+           "accepting new ones");
   }
 
-  // TODO(fxbug.dev/311639690): queue the packet
+  // Client not ready to handle packet, queue it up until they ask for it
+  incoming_data_queue_.push(
+      std::make_unique<IsoDataPacket>(packet.begin(), packet.end()));
+}
+
+std::unique_ptr<IsoDataPacket> IsoStreamImpl::ReadNextQueuedIncomingPacket() {
+  if (incoming_data_queue_.empty()) {
+    inbound_client_is_waiting_ = true;
+    return nullptr;
+  }
+
+  std::unique_ptr<IsoDataPacket> packet =
+      std::move(incoming_data_queue_.front());
+  incoming_data_queue_.pop();
+  return packet;
 }
 
 void IsoStreamImpl::Close() { on_closed_cb_(); }

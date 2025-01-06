@@ -33,6 +33,7 @@ pw_source_set("poll") {
   public = [
     "public/pw_async2/internal/poll_internal.h",
     "public/pw_async2/poll.h",
+    "public/pw_async2/try.h",
   ]
   public_deps = [
     "$dir_pw_string:to_string",
@@ -328,6 +329,8 @@ pw_test_group("tests") {
 
 pw_doc_group("docs") {
   inputs = [
+    "examples/BUILD.bazel",
+    "examples/BUILD.gn",
     "examples/basic.cc",
     "examples/once_send_recv.cc",
   ]

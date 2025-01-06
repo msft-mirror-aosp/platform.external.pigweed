@@ -81,7 +81,8 @@ Result<ConstByteSpan> MultiSink::PeekOrPopEntry(
     Request request,
     uint32_t& drain_drop_count_out,
     uint32_t& ingress_drop_count_out,
-    uint32_t& entry_sequence_id_out) {
+    uint32_t& entry_sequence_id_out)
+    PW_NO_SANITIZE("unsigned-integer-overflow") {
   size_t bytes_read = 0;
   entry_sequence_id_out = 0;
   drain_drop_count_out = 0;
@@ -146,7 +147,8 @@ Result<ConstByteSpan> MultiSink::PeekOrPopEntry(
   return as_bytes(buffer.first(bytes_read));
 }
 
-void MultiSink::AttachDrain(Drain& drain) {
+void MultiSink::AttachDrain(Drain& drain)
+    PW_NO_SANITIZE("unsigned-integer-overflow") {
   std::lock_guard lock(lock_);
   PW_DCHECK_PTR_EQ(drain.multisink_, nullptr);
   drain.multisink_ = this;
