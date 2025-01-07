@@ -23,25 +23,29 @@ class L2capCocInternal final : public L2capCoc {
  public:
   // Should only be created by `ProxyHost` and tests.
   static pw::Result<L2capCoc> Create(
+      pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
       L2capChannelManager& l2cap_channel_manager,
       L2capSignalingChannel* signaling_channel,
       uint16_t connection_handle,
       CocConfig rx_config,
       CocConfig tx_config,
       Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      Function<void(L2capChannelEvent event)>&& event_fn) {
-    return L2capCoc::Create(l2cap_channel_manager,
+      Function<void(L2capChannelEvent event)>&& event_fn,
+      Function<void(multibuf::MultiBuf&& payload)>&& receive_fn_multibuf) {
+    return L2capCoc::Create(rx_multibuf_allocator,
+                            l2cap_channel_manager,
                             signaling_channel,
                             connection_handle,
                             rx_config,
                             tx_config,
                             std::move(receive_fn),
-                            std::move(event_fn));
+                            std::move(event_fn),
+                            std::move(receive_fn_multibuf));
   }
 
   // Increment L2CAP credits. This should be called by signaling channels in
   // response to L2CAP_FLOW_CONTROL_CREDIT_IND packets.
-  void AddCredits(uint16_t credits) { L2capCoc::AddCredits(credits); }
+  void AddTxCredits(uint16_t credits) { L2capCoc::AddTxCredits(credits); }
 };
 
 }  // namespace pw::bluetooth::proxy

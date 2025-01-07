@@ -29,7 +29,7 @@ pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
     AclTransportType transport,
     uint16_t local_cid,
     uint16_t remote_cid,
-    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   if (!AreValidParameters(/*connection_handle=*/connection_handle,
                           /*local_cid=*/local_cid,
@@ -54,11 +54,12 @@ pw::Status BasicL2capChannel::Write(pw::span<const uint8_t> payload) {
 
   // TODO: https://pwbug.dev/360929142 - Reject payloads exceeding MTU.
 
-  pw::Result<H4PacketWithH4> h4_result = PopulateTxL2capPacket(payload.size());
+  pw::Result<H4PacketWithH4> h4_result =
+      PopulateTxL2capPacketDuringWrite(payload.size());
   if (!h4_result.ok()) {
     // This can fail as a result of the L2CAP PDU not fitting in an H4 buffer
     // or if all buffers are occupied.
-    // TODO: https://pwbug.dev/365179076 - Once we support ACL fragmentation,
+    // TODO: https://pwbug.dev/379337260 - Once we support ACL fragmentation,
     // this function will not fail due to the L2CAP PDU size not fitting.
     return h4_result.status();
   }
@@ -83,7 +84,7 @@ BasicL2capChannel::BasicL2capChannel(
     AclTransportType transport,
     uint16_t local_cid,
     uint16_t remote_cid,
-    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
     Function<void(L2capChannelEvent event)>&& event_fn)
     : L2capChannel(
           /*l2cap_channel_manager=*/l2cap_channel_manager,
@@ -92,7 +93,16 @@ BasicL2capChannel::BasicL2capChannel(
           /*local_cid=*/local_cid,
           /*remote_cid=*/remote_cid,
           /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
-          /*event_fn=*/std::move(event_fn)) {}
+          /*event_fn=*/std::move(event_fn)) {
+  PW_LOG_INFO("btproxy: BasicL2capChannel ctor");
+}
+
+BasicL2capChannel::~BasicL2capChannel() {
+  // Don't log dtor of moved-from channels.
+  if (state() != State::kUndefined) {
+    PW_LOG_INFO("btproxy: BasicL2capChannel dtor");
+  }
+}
 
 bool BasicL2capChannel::HandlePduFromController(pw::span<uint8_t> bframe) {
   Result<emboss::BFrameWriter> bframe_view =
@@ -102,12 +112,12 @@ bool BasicL2capChannel::HandlePduFromController(pw::span<uint8_t> bframe) {
     // TODO: https://pwbug.dev/360929142 - Stop channel on error.
     PW_LOG_ERROR("(CID: 0x%X) Received invalid B-frame. So will drop.",
                  local_cid());
-  } else {
-    SendPayloadFromControllerToClient(
-        span(bframe_view->payload().BackingStorage().data(),
-             bframe_view->payload().SizeInBytes()));
+    return true;
   }
-  return true;
+
+  return SendPayloadFromControllerToClient(
+      span(bframe_view->payload().BackingStorage().data(),
+           bframe_view->payload().SizeInBytes()));
 }
 
 bool BasicL2capChannel::HandlePduFromHost(pw::span<uint8_t>) {

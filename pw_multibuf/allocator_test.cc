@@ -17,6 +17,7 @@
 #include "gtest/gtest.h"
 #include "pw_async2/dispatcher.h"
 #include "pw_async2/poll.h"
+#include "pw_multibuf/allocator_async.h"
 
 namespace pw::multibuf {
 namespace {
@@ -75,6 +76,8 @@ class MockMultiBufAllocator : public MultiBufAllocator {
   std::optional<AllocateExpectation> expected_allocate_;
 };
 
+// ########## MultiBufAllocatorAsync
+
 class AllocateTask : public Task {
  public:
   AllocateTask(MultiBufAllocationFuture&& future)
@@ -93,10 +96,33 @@ class AllocateTask : public Task {
   }
 };
 
-TEST(MultiBufAllocator, AllocateAsyncReturnsImmediatelyAvailableAllocation) {
-  MockMultiBufAllocator alloc;
-  AllocateTask task(alloc.AllocateAsync(44, 33));
-  alloc.ExpectAllocateAndReturn(44, 33, kAllowDiscontiguous, MultiBuf());
+TEST(MultiBufAllocatorAsync, MultiBufAllocationFutureCtor) {
+  MockMultiBufAllocator mbuf_alloc;
+  MultiBufAllocatorAsync async_alloc{mbuf_alloc};
+  {
+    MultiBufAllocationFuture fut = async_alloc.AllocateAsync(44u, 33u);
+    EXPECT_EQ(44u, fut.min_size());
+    EXPECT_EQ(33u, fut.desired_size());
+    EXPECT_FALSE(fut.needs_contiguous());
+    EXPECT_EQ(&mbuf_alloc, &fut.allocator());
+  }
+  {
+    MultiBufAllocationFuture fut =
+        async_alloc.AllocateContiguousAsync(66u, 55u);
+    EXPECT_EQ(66u, fut.min_size());
+    EXPECT_EQ(55u, fut.desired_size());
+    EXPECT_TRUE(fut.needs_contiguous());
+    EXPECT_EQ(&mbuf_alloc, &fut.allocator());
+  }
+}
+
+TEST(MultiBufAllocatorAsync,
+     AllocateAsyncReturnsImmediatelyAvailableAllocation) {
+  MockMultiBufAllocator mbuf_alloc;
+  MultiBufAllocatorAsync async_alloc{mbuf_alloc};
+
+  AllocateTask task(async_alloc.AllocateAsync(44, 33));
+  mbuf_alloc.ExpectAllocateAndReturn(44, 33, kAllowDiscontiguous, MultiBuf());
 
   Dispatcher dispatcher;
   dispatcher.Post(task);
@@ -106,14 +132,16 @@ TEST(MultiBufAllocator, AllocateAsyncReturnsImmediatelyAvailableAllocation) {
   ASSERT_TRUE(task.last_result_->has_value());
 }
 
-TEST(MultiBufAllocator, AllocateAsyncWillNotPollUntilMoreMemoryAvailable) {
-  MockMultiBufAllocator alloc;
-  AllocateTask task(alloc.AllocateAsync(44, 33));
+TEST(MultiBufAllocatorAsync, AllocateAsyncWillNotPollUntilMoreMemoryAvailable) {
+  MockMultiBufAllocator mbuf_alloc;
+  MultiBufAllocatorAsync async_alloc{mbuf_alloc};
+
+  AllocateTask task(async_alloc.AllocateAsync(44, 33));
   Dispatcher dispatcher;
   dispatcher.Post(task);
 
   // First attempt will return `ResourceExhausted` to signal temporary OOM.
-  alloc.ExpectAllocateAndReturn(
+  mbuf_alloc.ExpectAllocateAndReturn(
       44, 33, kAllowDiscontiguous, Status::ResourceExhausted());
   EXPECT_TRUE(dispatcher.RunUntilStalled().IsPending());
   EXPECT_TRUE(task.last_result_.IsPending());
@@ -123,13 +151,42 @@ TEST(MultiBufAllocator, AllocateAsyncWillNotPollUntilMoreMemoryAvailable) {
   EXPECT_TRUE(dispatcher.RunUntilStalled().IsPending());
 
   // Insufficient memory should not awaken the task.
-  alloc.MoreMemoryAvailable(30, 30);
+  mbuf_alloc.MoreMemoryAvailable(30, 30);
   EXPECT_TRUE(dispatcher.RunUntilStalled().IsPending());
 
   // Sufficient memory will awaken and return the memory
-  alloc.MoreMemoryAvailable(50, 50);
-  alloc.ExpectAllocateAndReturn(44, 33, kAllowDiscontiguous, MultiBuf());
+  mbuf_alloc.MoreMemoryAvailable(50, 50);
+  mbuf_alloc.ExpectAllocateAndReturn(44, 33, kAllowDiscontiguous, MultiBuf());
   EXPECT_TRUE(dispatcher.RunUntilStalled().IsReady());
+}
+
+TEST(MultiBufAllocatorAsync, MoveMultiBufAllocationFuture) {
+  MockMultiBufAllocator mbuf_alloc;
+  MultiBufAllocatorAsync async_alloc{mbuf_alloc};
+  MultiBufAllocationFuture fut1 = async_alloc.AllocateAsync(44u, 33u);
+  EXPECT_EQ(44u, fut1.min_size());
+  EXPECT_EQ(33u, fut1.desired_size());
+
+  // Test move ctor
+  MultiBufAllocationFuture fut2{std::move(fut1)};
+  EXPECT_EQ(44u, fut2.min_size());
+  EXPECT_EQ(33u, fut2.desired_size());
+
+  // Test move assign
+  MultiBufAllocationFuture fut3{std::move(fut2)};
+  EXPECT_EQ(44u, fut3.min_size());
+  EXPECT_EQ(33u, fut3.desired_size());
+
+  // Test task behavior works after two moves
+  AllocateTask task(std::move(fut3));
+  mbuf_alloc.ExpectAllocateAndReturn(44, 33, kAllowDiscontiguous, MultiBuf());
+
+  Dispatcher dispatcher;
+  dispatcher.Post(task);
+  EXPECT_EQ(dispatcher.RunUntilStalled(), Ready());
+
+  ASSERT_TRUE(task.last_result_.IsReady());
+  ASSERT_TRUE(task.last_result_->has_value());
 }
 
 }  // namespace

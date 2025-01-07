@@ -154,7 +154,7 @@ void L2capSignalingChannel::HandleConnectionReq(
     return;
   }
   pending_connections_.push_back({.direction = direction,
-                                  .source_cid = cmd.source_cid().Read(),
+                                  .remote_cid = cmd.source_cid().Read(),
                                   .psm = cmd.psm().Read()});
 }
 
@@ -170,14 +170,14 @@ void L2capSignalingChannel::HandleConnectionRsp(
 
   struct {
     Direction direction;
-    uint16_t source_cid;
+    uint16_t remote_cid;
   } match_info = {.direction = request_direction,
-                  .source_cid = cmd.source_cid().Read()};
+                  .remote_cid = cmd.source_cid().Read()};
 
   auto match = [&match_info](const PendingConnection& pending) {
     // TODO: https://pwbug.dev/379558046 - Consider using identifier instead to
     // match request to response
-    return pending.source_cid == match_info.source_cid &&
+    return pending.remote_cid == match_info.remote_cid &&
            pending.direction == match_info.direction;
   };
   auto pending_it = std::find_if(
@@ -195,6 +195,9 @@ void L2capSignalingChannel::HandleConnectionRsp(
               .direction = request_direction,
               .psm = pending_it->psm,
               .connection_handle = connection_handle(),
+              .remote_cid = cmd.source_cid().Read(),
+              .local_cid = cmd.destination_cid().Read(),
+
               .source_cid = cmd.source_cid().Read(),
               .destination_cid = cmd.destination_cid().Read(),
           });
@@ -230,8 +233,8 @@ void L2capSignalingChannel::HandleDisconnectionRsp(
   l2cap_channel_manager_.HandleDisconnectionComplete(
       L2capStatusTracker::DisconnectParams{
           .connection_handle = connection_handle(),
-          .source_cid = cmd.source_cid().Read(),
-          .destination_cid = cmd.destination_cid().Read()});
+          .remote_cid = cmd.source_cid().Read(),
+          .local_cid = cmd.destination_cid().Read()});
 }
 
 bool L2capSignalingChannel::HandleFlowControlCreditInd(
@@ -251,7 +254,7 @@ bool L2capSignalingChannel::HandleFlowControlCreditInd(
     // TODO: https://pwbug.dev/360929142 - Validate type in case remote peer
     // sends indication addressed to wrong CID.
     L2capCocInternal* coc_ptr = static_cast<L2capCocInternal*>(found_channel);
-    coc_ptr->AddCredits(cmd.credits().Read());
+    coc_ptr->AddTxCredits(cmd.credits().Read());
     return true;
   }
   return false;
@@ -265,7 +268,7 @@ Status L2capSignalingChannel::SendFlowControlCreditInd(uint16_t cid,
   }
 
   PW_TRY_ASSIGN(H4PacketWithH4 h4_packet,
-                PopulateTxL2capPacket(
+                PopulateTxL2capPacketDuringWrite(
                     emboss::L2capFlowControlCreditInd::IntrinsicSizeInBytes()));
   PW_TRY_ASSIGN(
       auto acl,

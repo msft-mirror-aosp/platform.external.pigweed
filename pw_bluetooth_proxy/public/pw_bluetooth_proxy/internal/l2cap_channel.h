@@ -19,6 +19,7 @@
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_containers/inline_queue.h"
 #include "pw_containers/intrusive_forward_list.h"
+#include "pw_multibuf/multibuf.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
 #include "pw_sync/lock_annotations.h"
@@ -76,10 +77,33 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   //  Tx:
   //-------
 
+  /// Determine if channel is ready to accept one or more Write payloads.
+  ///
+  /// @returns @rst
+  ///
+  /// .. pw-status-codes::
+  ///    OK: Channel is ready to accept one or more Write payloads.
+  ///
+  ///    UNAVAILABLE: Channel does not yet have the resources to queue a Write
+  ///    at this time (transient error). If an `event_fn` has been provided it
+  ///    will be called with `L2capChannelEvent::kWriteAvailable` when there is
+  ///    queue space available again.
+  ///
+  ///    FAILED_PRECONDITION: If channel is not `State::kRunning`.
+  ///
+  /// @endrst
+  ///
+  Status IsWriteAvailable();
+
   // Queue L2CAP `packet` for sending and `ReportPacketsMayBeReadyToSend()`.
   //
   // Returns PW_STATUS_UNAVAILABLE if queue is full (transient error).
   // Returns PW_STATUS_FAILED_PRECONDITION if channel is not `State::kRunning`.
+  //
+  // Channels other than `L2capCoc` use QueuePacket(), but plan is to move them
+  // all to using QueuePayload().
+  // TODO: https://pwbug.dev/379337272 - Delete this once all channels have
+  // transitioned to QueuePayload.
   [[nodiscard]] virtual Status QueuePacket(H4PacketWithH4&& packet);
 
   // Dequeue a packet if one is available to send.
@@ -87,6 +111,23 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
 
   // Max number of Tx L2CAP packets that can be waiting to send.
   static constexpr size_t QueueCapacity() { return kQueueCapacity; }
+
+  // Queue a client `buf` for sending and `ReportPacketsMayBeReadyToSend()`.
+  // Must be a contiguous MultiBuf.
+  //
+  // Returns PW_STATUS_UNAVAILABLE if queue is full (transient error).
+  // Returns PW_STATUS_FAILED_PRECONDITION if channel is not `State::kRunning`.
+  StatusWithMultiBuf QueuePayload(multibuf::MultiBuf&& buf)
+      PW_LOCKS_EXCLUDED(send_queue_mutex_);
+
+  // Pop front buffer. Queue must be nonempty.
+  void PopFrontPayload() PW_EXCLUSIVE_LOCKS_REQUIRED(send_queue_mutex_);
+
+  // Returns span over front buffer. Queue must be nonempty.
+  ConstByteSpan GetFrontPayloadSpan() const
+      PW_EXCLUSIVE_LOCKS_REQUIRED(send_queue_mutex_);
+
+  bool PayloadQueueEmpty() const PW_EXCLUSIVE_LOCKS_REQUIRED(send_queue_mutex_);
 
   //-------
   //  Rx:
@@ -144,7 +185,7 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
       AclTransportType transport,
       uint16_t local_cid,
       uint16_t remote_cid,
-      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   // Returns whether or not ACL connection handle & L2CAP channel identifiers
@@ -154,11 +195,7 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
                                                uint16_t remote_cid);
 
   // Send `event` to client if an event callback was provided.
-  void SendEvent(L2capChannelEvent event) {
-    if (event_fn_) {
-      event_fn_(event);
-    }
-  }
+  void SendEvent(L2capChannelEvent event);
 
   // Helper since these operations should typically be coupled.
   void StopAndSendEvent(L2capChannelEvent event) {
@@ -166,9 +203,27 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
     SendEvent(event);
   }
 
+  // For derived channels to use in lock annotations.
+  const sync::Mutex& send_queue_mutex() const
+      PW_LOCK_RETURNED(send_queue_mutex_) {
+    return send_queue_mutex_;
+  }
+
   //-------
   //  Tx:
   //-------
+
+  // Return the next Tx PDU based on the client's queued payloads. If the
+  // returned PDU will complete the transmission of a payload, that payload
+  // should be popped from the queue. If no payloads are queued, return
+  // std::nullopt.
+  //
+  // Note this is overrode by `L2capCoc` which uses `payload_queue_` rather than
+  // `send_queue_`. The plan is to move all channels to using `payload_queue_`.
+  // TODO: https://pwbug.dev/379337272 - Make pure virtual once all derived
+  // channels implement this method.
+  virtual std::optional<H4PacketWithH4> GenerateNextTxPacket()
+      PW_EXCLUSIVE_LOCKS_REQUIRED(send_queue_mutex_);
 
   // Reserve an L2CAP over ACL over H4 packet, with those three headers
   // populated for an L2CAP PDU payload of `data_length` bytes addressed to
@@ -178,8 +233,20 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   // Returns PW_STATUS_UNAVAILABLE if all buffers are currently occupied.
   pw::Result<H4PacketWithH4> PopulateTxL2capPacket(uint16_t data_length);
 
+  // If all H4 buffers are occupied, this variant primes the kWriteAvailable
+  // event to be sent once buffer space becomes available again.
+  //
+  // TODO: https://pwbug.dev/379337272 - Once derived channels migrate to
+  // queueing client payloads on Write() instead of populating Tx packets, then
+  // delete this variant.
+  pw::Result<H4PacketWithH4> PopulateTxL2capPacketDuringWrite(
+      uint16_t data_length) PW_LOCKS_EXCLUDED(send_queue_mutex_);
+
   // Returns the maximum size supported for Tx L2CAP PDU payloads.
-  uint16_t MaxL2capPayloadSize() const;
+  //
+  // Returns std::nullopt if LE_ACL_Data_Packet_Length was not yet provided in
+  // an LE_Read_Buffer_Size command complete event.
+  std::optional<uint16_t> MaxL2capPayloadSize() const;
 
   // Alert `L2capChannelManager` that queued packets may be ready to send.
   // When calling this method, ensure no locks are held that are also acquired
@@ -193,13 +260,20 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   //  Rx:
   //-------
 
-  void SendPayloadFromControllerToClient(pw::span<uint8_t> payload) {
+  // Returns false if payload should be forwarded to host instead.
+  virtual bool SendPayloadFromControllerToClient(pw::span<uint8_t> payload) {
     if (payload_from_controller_fn_) {
-      payload_from_controller_fn_(payload);
+      return payload_from_controller_fn_(payload);
     }
+    return false;
   }
 
  private:
+  // Return true if the current object uses payload_queue_.
+  // TODO: https://pwbug.dev/379337272 - Delete this once all channels have
+  // transitioned to payload_queue_.
+  virtual bool UsesPayloadQueue() { return false; }
+
   static constexpr uint16_t kMaxValidConnectionHandle = 0x0EFF;
 
   // TODO: https://pwbug.dev/349700888 - Make capacity configurable.
@@ -238,7 +312,16 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   sync::Mutex send_queue_mutex_;
 
   // Stores Tx L2CAP packets.
+  //
+  // This queue is used for channels other than `L2capCoc`, but we plan to
+  // transition all channels to using `payload_queue_` below.
+  // TODO: https://pwbug.dev/379337272 - Delete this once all channels have
+  // transitioned to payload_queue_.
   InlineQueue<H4PacketWithH4, kQueueCapacity> send_queue_
+      PW_GUARDED_BY(send_queue_mutex_);
+
+  // Stores client Tx payload buffers.
+  InlineQueue<multibuf::MultiBuf, kQueueCapacity> payload_queue_
       PW_GUARDED_BY(send_queue_mutex_);
 
   // True if the last queue attempt didn't have space. Will be cleared on
@@ -250,7 +333,7 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   //-------
 
   // Client-provided controller read callback.
-  pw::Function<void(pw::span<uint8_t> payload)> payload_from_controller_fn_;
+  pw::Function<bool(pw::span<uint8_t> payload)> payload_from_controller_fn_;
 };
 
 }  // namespace pw::bluetooth::proxy

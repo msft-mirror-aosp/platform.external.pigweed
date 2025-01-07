@@ -29,7 +29,7 @@ class BasicL2capChannel : public L2capChannel {
       AclTransportType transport,
       uint16_t local_cid,
       uint16_t remote_cid,
-      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   BasicL2capChannel(const BasicL2capChannel& other) = delete;
@@ -37,6 +37,7 @@ class BasicL2capChannel : public L2capChannel {
   BasicL2capChannel(BasicL2capChannel&&) = default;
   // Move assignment operator allows channels to be erased from pw_containers.
   BasicL2capChannel& operator=(BasicL2capChannel&& other) = default;
+  ~BasicL2capChannel() override;
 
   /// Send an L2CAP payload to the remote peer.
   ///
@@ -64,7 +65,7 @@ class BasicL2capChannel : public L2capChannel {
       AclTransportType transport,
       uint16_t local_cid,
       uint16_t remote_cid,
-      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
  protected:

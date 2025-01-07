@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@local_config_platform//:constraints.bzl", "HOST_CONSTRAINTS")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
@@ -163,6 +164,10 @@ cc_library(
     testonly = True,
     hdrs = ["public/pw_unit_test/status_macros.h"],
     strip_include_prefix = "public",
+    deps = [
+        "//pw_status",
+        "//third_party/fuchsia:stdcompat",
+    ],
 )
 
 cc_library(
@@ -299,6 +304,26 @@ pw_cc_binary(
     deps = [
         ":logging",
         "//pw_unit_test",
+    ],
+)
+
+cc_library(
+    name = "constexpr",
+    hdrs = ["public/pw_unit_test/constexpr.h"],
+    includes = ["public"],
+    deps = [
+        "//pw_preprocessor",
+        "//third_party/fuchsia:stdcompat",
+    ],
+)
+
+pw_cc_test(
+    name = "constexpr_test",
+    srcs = ["constexpr_test.cc"],
+    deps = [
+        ":constexpr",
+        ":pw_unit_test",
+        "//pw_compilation_testing:negative_compilation_testing",
     ],
 )
 

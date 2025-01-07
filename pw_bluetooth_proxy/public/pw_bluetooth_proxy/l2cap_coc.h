@@ -14,9 +14,14 @@
 
 #pragma once
 
+#include <optional>
+
+#include "pw_allocator/allocator.h"
 #include "pw_bluetooth_proxy/internal/l2cap_channel.h"
 #include "pw_bluetooth_proxy/internal/l2cap_signaling_channel.h"
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
+#include "pw_multibuf/allocator.h"
+#include "pw_multibuf/multibuf.h"
 #include "pw_sync/mutex.h"
 
 namespace pw::bluetooth::proxy {
@@ -65,13 +70,15 @@ class L2capCoc : public L2capChannel {
   // TODO: https://pwbug.dev/360929142 - Define move assignment operator so
   // `L2capCoc` can be erased from pw containers.
   L2capCoc& operator=(L2capCoc&& other) = delete;
+  ~L2capCoc() override;
 
   /// Send an L2CAP payload to the remote peer.
   ///
   /// @param[in] payload The L2CAP payload to be sent. Payload will be copied
   ///                    before function completes.
   ///
-  /// @returns @rst
+  /// @returns A StatusWithMultiBuf with one of the statuses below. If status is
+  ///          not OK then payload is returned in StatusWithMultiBuf as well.
   ///
   /// .. pw-status-codes::
   ///  OK:                  If packet was successfully queued for send.
@@ -80,10 +87,16 @@ class L2capCoc : public L2capChannel {
   ///                       `event_fn` has been provided it will be called with
   ///                       `L2capChannelEvent::kWriteAvailable` when there is
   ///                       queue space available again.
-  ///  INVALID_ARGUMENT:    If payload is too large.
+  ///  INVALID_ARGUMENT:    If payload is too large or if payload is not a
+  ///                       contiguous MultiBuf.
   ///  FAILED_PRECONDITION: If channel is not `State::kRunning`.
   /// @endrst
-  pw::Status Write(pw::span<const uint8_t> payload);
+  StatusWithMultiBuf Write(pw::multibuf::MultiBuf&& payload);
+
+  /// @deprecated Use Write with MultiBuf parameter instead.
+  // TODO: https://pwbug.dev/382783733 - Delete once downstreams move to new
+  // Write.
+  pw::Status Write(pw::span<const uint8_t>) { return Status::Unimplemented(); }
 
   /// Send an L2CAP_FLOW_CONTROL_CREDIT_IND signaling packet to dispense the
   /// remote peer additional L2CAP connection-oriented channel credits for this
@@ -98,52 +111,93 @@ class L2capCoc : public L2capChannel {
   ///                       (transient error).
   ///  FAILED_PRECONDITION: If channel is not `State::kRunning`.
   /// @endrst
-  pw::Status SendAdditionalRxCredits(uint16_t additional_rx_credits);
+  pw::Status SendAdditionalRxCredits(uint16_t additional_rx_credits)
+      PW_LOCKS_EXCLUDED(rx_mutex_);
 
  protected:
   static pw::Result<L2capCoc> Create(
+      pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
       L2capChannelManager& l2cap_channel_manager,
       L2capSignalingChannel* signaling_channel,
       uint16_t connection_handle,
       CocConfig rx_config,
       CocConfig tx_config,
       Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-      Function<void(L2capChannelEvent event)>&& event_fn);
+      Function<void(L2capChannelEvent event)>&& event_fn,
+      Function<void(multibuf::MultiBuf&& payload)>&& receive_fn_multibuf);
 
   // `SendPayloadFromControllerToClient` with the information payload contained
-  // in `kframe`. As packet desegmentation is not supported, segmented SDUs are
-  // discarded.
+  // in `kframe`.
   bool HandlePduFromController(pw::span<uint8_t> kframe) override
-      PW_LOCKS_EXCLUDED(mutex_);
+      PW_LOCKS_EXCLUDED(rx_mutex_);
 
-  bool HandlePduFromHost(pw::span<uint8_t> kframe) override
-      PW_LOCKS_EXCLUDED(mutex_);
+  bool HandlePduFromHost(pw::span<uint8_t> kframe) override;
 
-  // Increment `send_credits_` by `credits`.
-  void AddCredits(uint16_t credits) PW_LOCKS_EXCLUDED(mutex_);
+  // Increment tx credits by `credits`.
+  void AddTxCredits(uint16_t credits) PW_LOCKS_EXCLUDED(tx_mutex_);
 
  private:
   explicit L2capCoc(
+      pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
       L2capChannelManager& l2cap_channel_manager,
       L2capSignalingChannel* signaling_channel,
       uint16_t connection_handle,
       CocConfig rx_config,
       CocConfig tx_config,
       Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-      Function<void(L2capChannelEvent event)>&& event_fn);
+      Function<void(L2capChannelEvent event)>&& event_fn,
+      Function<void(multibuf::MultiBuf&& payload)>&& receive_fn_multibuf);
 
-  // Override: Dequeue a packet only if a credit is able to be subtracted.
-  std::optional<H4PacketWithH4> DequeuePacket() override
-      PW_LOCKS_EXCLUDED(mutex_);
+  // Returns max size of L2CAP PDU payload supported by this channel.
+  //
+  // Returns std::nullopt if ACL data channel is not yet initialized.
+  std::optional<uint16_t> MaxL2capPayloadSize() const;
 
+  std::optional<H4PacketWithH4> GenerateNextTxPacket()
+      PW_LOCKS_EXCLUDED(tx_mutex_)
+          PW_EXCLUSIVE_LOCKS_REQUIRED(send_queue_mutex()) override;
+
+  // TODO: https://pwbug.dev/379337272 - Delete this once all channels have
+  // transitioned to payload_queue_.
+  bool UsesPayloadQueue() override { return true; }
+
+  bool SendPayloadFromControllerToClient(pw::span<uint8_t> payload) override {
+    if (payload_from_controller_fn_) {
+      payload_from_controller_fn_(payload);
+    }
+    return true;
+  }
+
+  void ProcessPduFromControllerMultibuf(span<uint8_t> kframe)
+      PW_LOCKS_EXCLUDED(rx_mutex_);
+
+  // Replenish some of the remote's credits.
+  pw::Status ReplenishRxCredits(uint16_t additional_rx_credits);
+
+  multibuf::MultiBufAllocator& rx_multibuf_allocator_;
   L2capSignalingChannel* signaling_channel_;
-  sync::Mutex mutex_;
+
   uint16_t rx_mtu_;
   uint16_t rx_mps_;
   uint16_t tx_mtu_;
   uint16_t tx_mps_;
-  uint16_t tx_credits_ PW_GUARDED_BY(mutex_);
-  uint16_t remaining_sdu_bytes_to_ignore_ PW_GUARDED_BY(mutex_);
+
+  Function<void(pw::span<uint8_t> payload)> payload_from_controller_fn_;
+  Function<void(multibuf::MultiBuf&& payload)> receive_fn_multibuf_;
+
+  sync::Mutex rx_mutex_;
+  uint16_t remaining_sdu_bytes_to_ignore_ PW_GUARDED_BY(rx_mutex_) = 0;
+  std::optional<multibuf::MultiBuf> rx_sdu_ PW_GUARDED_BY(rx_mutex_) =
+      std::nullopt;
+  uint16_t rx_sdu_offset_ PW_GUARDED_BY(rx_mutex_) = 0;
+  uint16_t rx_sdu_bytes_remaining_ PW_GUARDED_BY(rx_mutex_) = 0;
+  uint16_t rx_remaining_credits_ PW_GUARDED_BY(rx_mutex_);
+  uint16_t rx_total_credits_ PW_GUARDED_BY(rx_mutex_);
+
+  sync::Mutex tx_mutex_;
+  uint16_t tx_credits_ PW_GUARDED_BY(tx_mutex_);
+  uint16_t tx_sdu_offset_ PW_GUARDED_BY(tx_mutex_) = 0;
+  bool is_continuing_segment_ PW_GUARDED_BY(tx_mutex_) = false;
 };
 
 }  // namespace pw::bluetooth::proxy
