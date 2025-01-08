@@ -293,7 +293,7 @@ void FakeController::RespondWithCommandComplete(pwemb::OpCode opcode,
   auto header = packet->template view<pwemb::CommandCompleteEventWriter>();
 
   header.num_hci_command_packets().Write(settings_.num_hci_command_packets);
-  header.command_opcode_enum().Write(opcode);
+  header.command_opcode().Write(opcode);
 
   SendEvent(hci_spec::kCommandCompleteEventCode, packet);
 }
@@ -1214,7 +1214,7 @@ void FakeController::SendConnectionCompleteEvent(
   view.status().Write(status);
   view.peer_address().CopyFrom(params.peer_address());
   view.peer_address_type().Write(
-      DeviceAddress::DeviceAddrToLePeerAddr(addr_type));
+      DeviceAddress::DeviceAddrToLePeerAddrNoAnon(addr_type));
 
   view.peripheral_latency().CopyFrom(params.max_latency());
   view.connection_interval().Write(interval);
@@ -1732,8 +1732,9 @@ void FakeController::OnLECreateConnectionCancel() {
     params.status().Write(pwemb::StatusCode::UNKNOWN_CONNECTION_ID);
     params.peer_address().CopyFrom(
         le_connect_params_->peer_address.value().view());
-    params.peer_address_type().Write(DeviceAddress::DeviceAddrToLePeerAddr(
-        le_connect_params_->peer_address.type()));
+    params.peer_address_type().Write(
+        DeviceAddress::DeviceAddrToLePeerAddrNoAnon(
+            le_connect_params_->peer_address.type()));
 
     RespondWithCommandComplete(hci_spec::kLECreateConnectionCancel,
                                pwemb::StatusCode::SUCCESS);
@@ -2763,8 +2764,11 @@ void FakeController::OnLESetExtendedAdvertisingParameters(
     if (!adv_type) {
       bt_log(INFO,
              "fake-hci",
-             "invalid bit combination: %d",
-             params.advertising_event_properties().BackingStorage().ReadUInt());
+             "invalid bit combination: %s",
+             params.advertising_event_properties()
+                 .BackingStorage()
+                 .ToString<std::string>()
+                 .c_str());
       RespondWithCommandComplete(
           hci_spec::kLESetExtendedAdvertisingParameters,
           pwemb::StatusCode::INVALID_HCI_COMMAND_PARAMETERS);
@@ -3889,7 +3893,7 @@ void FakeController::OnAndroidLEMultiAdvtSetScanResp(
 
   state.scan_rsp_length = params.scan_resp_length().Read();
   std::memcpy(state.scan_rsp_data,
-              params.adv_data().BackingStorage().data(),
+              params.scan_resp_data().BackingStorage().data(),
               params.scan_resp_length().Read());
 
   view.status().Write(pwemb::StatusCode::SUCCESS);
@@ -3940,7 +3944,7 @@ void FakeController::OnAndroidLEMultiAdvtSetRandomAddr(
 
   state.random_address =
       DeviceAddress(DeviceAddress::Type::kLERandom,
-                    DeviceAddressBytes(params.peer_address()));
+                    DeviceAddressBytes(params.random_address()));
 
   view.status().Write(pwemb::StatusCode::SUCCESS);
   RespondWithCommandComplete(android_hci::kLEMultiAdvt, &packet);

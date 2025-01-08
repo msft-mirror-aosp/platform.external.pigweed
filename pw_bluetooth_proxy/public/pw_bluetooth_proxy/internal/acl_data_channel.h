@@ -45,6 +45,33 @@ class AclDataChannel {
     kMaxDirections,
   };
 
+  // Used to `SendAcl` packets.
+  class SendCredit {
+   public:
+    friend class AclDataChannel;
+
+    SendCredit(const SendCredit&) = delete;
+    SendCredit& operator=(const SendCredit&) = delete;
+    // Move-only
+    SendCredit(SendCredit&& other);
+    SendCredit& operator=(SendCredit&& other);
+
+    ~SendCredit();
+
+   private:
+    // Dispensed via `AclDataChannel::ReserveSendCredit()`.
+    SendCredit(AclTransportType transport,
+               Function<void(AclTransportType transport)>&& relinquish_fn);
+
+    // Indicate that credits has been used for Tx.
+    void MarkUsed();
+
+    AclTransportType transport_;
+    // If `this` was not used or moved and is destructed, `relinquish_fn_` is
+    // called to replenish the credit that was subtracted from `AclDataChannel`.
+    Function<void(AclTransportType transport)> relinquish_fn_;
+  };
+
   AclDataChannel(HciTransport& hci_transport,
                  L2capChannelManager& l2cap_channel_manager,
                  uint16_t le_acl_credits_to_reserve,
@@ -116,12 +143,21 @@ class AclDataChannel {
   // Can be zero if the controller has not yet been initialized by the host.
   uint16_t GetNumFreeAclPackets(AclTransportType transport) const;
 
+  // In order to `SendAcl`, a `SendCredit` for the desired transport must be
+  // provided.
+  //
+  // Returns std::nullopt if no credits are available for the desired transport.
+  std::optional<SendCredit> ReserveSendCredit(AclTransportType transport);
+
   // Send an ACL data packet contained in an H4 packet to the controller.
+  // Requires a reserved `SendCredit` that matches the transport of the
+  // connection on which `h4_packet` is to be sent.
   //
   // Returns PW_STATUS_UNAVAILABLE if no ACL send credits were available.
-  // Returns PW_STATUS_INVALID_ARGUMENT if ACL packet was ill-formed.
+  // Returns PW_STATUS_INVALID_ARGUMENT if ACL packet was ill-formed or `credit`
+  // was provided for the wrong transport. See logs.
   // Returns PW_NOT_FOUND if ACL connection does not exist.
-  pw::Status SendAcl(H4PacketWithH4&& h4_packet);
+  pw::Status SendAcl(H4PacketWithH4&& h4_packet, SendCredit&& credit);
 
   // Register a new logical link on ACL logical transport.
   //
@@ -173,18 +209,11 @@ class AclDataChannel {
     AclConnection(AclTransportType transport,
                   uint16_t connection_handle,
                   uint16_t num_pending_packets,
-                  L2capChannelManager& l2cap_channel_manager)
-        : transport_(transport),
-          state_(State::kOpen),
-          connection_handle_(connection_handle),
-          num_pending_packets_(num_pending_packets),
-          leu_signaling_channel_(l2cap_channel_manager, connection_handle),
-          aclu_signaling_channel_(l2cap_channel_manager, connection_handle),
-          is_receiving_fragmented_pdu_{} {}
+                  L2capChannelManager& l2cap_channel_manager);
 
     AclConnection& operator=(AclConnection&& other) = default;
 
-    void Close() { state_ = State::kClosed; }
+    void Close();
 
     State state() const { return state_; }
 
@@ -199,10 +228,12 @@ class AclDataChannel {
     }
 
     bool is_receiving_fragmented_pdu(Direction direction) const {
+      PW_CHECK(state_ == State::kOpen);
       return is_receiving_fragmented_pdu_[cpp23::to_underlying(direction)];
     }
 
     void set_is_receiving_fragmented_pdu(Direction direction, bool new_val) {
+      PW_CHECK(state_ == State::kOpen);
       is_receiving_fragmented_pdu_[cpp23::to_underlying(direction)] = new_val;
     }
 
@@ -229,7 +260,7 @@ class AclDataChannel {
     // unset.
     // TODO: https://pwbug.dev/365179076 - Support recombination.
     std::array<bool, cpp23::to_underlying(Direction::kMaxDirections)>
-        is_receiving_fragmented_pdu_;
+        is_receiving_fragmented_pdu_{};
   };
 
   class Credits {
@@ -273,9 +304,7 @@ class AclDataChannel {
 
   // Returns pointer to `kOpen` AclConnection with provided `connection_handle`
   // in `acl_connections_`. Returns nullptr if no such connection exists.
-  // If `if_open` is false, a `State::kClosed` connection may also be returned.
-  AclConnection* FindAclConnection(uint16_t connection_handle,
-                                   bool if_open = true)
+  AclConnection* FindOpenAclConnection(uint16_t connection_handle)
       PW_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Credits& LookupCredits(AclTransportType transport)

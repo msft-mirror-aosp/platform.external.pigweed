@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mcu")
@@ -130,7 +131,6 @@ pw_facade(
     deps = [
         ":id",
         ":options",
-        ":thread_core",
         "//pw_function",
     ],
 )
@@ -229,6 +229,19 @@ label_flag(
 host_backend_alias(
     name = "yield_unspecified_backend",
     backend = "//pw_thread_stl:yield",
+)
+
+cc_library(
+    name = "generic_priority",
+    hdrs = ["public/pw_thread/internal/priority.h"],
+    strip_include_prefix = "public",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//pw_assert",
+        "//pw_numeric:integer_division",
+        "//pw_polyfill",
+        "//third_party/fuchsia:stdcompat",
+    ],
 )
 
 cc_library(
@@ -369,6 +382,17 @@ pw_cc_test(
         "//pw_protobuf",
         "//pw_span",
         "//pw_sync:thread_notification",
+    ],
+)
+
+pw_cc_test(
+    name = "priority_test",
+    srcs = ["priority_test.cc"],
+    deps = [
+        ":generic_priority",
+        "//pw_compilation_testing:negative_compilation_testing",
+        "//pw_unit_test",
+        "//pw_unit_test:constexpr",
     ],
 )
 

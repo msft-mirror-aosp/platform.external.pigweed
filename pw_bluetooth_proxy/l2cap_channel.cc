@@ -16,6 +16,7 @@
 
 #include <mutex>
 
+#include "lib/stdcompat/utility.h"
 #include "pw_bluetooth/emboss_util.h"
 #include "pw_bluetooth/hci_data.emb.h"
 #include "pw_bluetooth/hci_h4.emb.h"
@@ -63,11 +64,33 @@ L2capChannel& L2capChannel::operator=(L2capChannel&& other) {
 }
 
 L2capChannel::~L2capChannel() {
+  // Don't log dtor of moved-from channels.
+  if (state_ != State::kUndefined) {
+    PW_LOG_INFO(
+        "btproxy: L2capChannel dtor - transport_: %u, connection_handle_ : "
+        "%#x, "
+        "local_cid_: %u, remote_cid_: %u, state_: %u",
+        cpp23::to_underlying(transport_),
+        connection_handle_,
+        local_cid_,
+        remote_cid_,
+        cpp23::to_underlying(state_));
+  }
+
   l2cap_channel_manager_.ReleaseChannel(*this);
   ClearQueue();
 }
 
 void L2capChannel::Stop() {
+  PW_LOG_INFO(
+      "btproxy: L2capChannel::Stop - transport_: %u, connection_handle_: %#x, "
+      "local_cid_: %u, remote_cid_: %u, previous state_: %u",
+      cpp23::to_underlying(transport_),
+      connection_handle_,
+      local_cid_,
+      remote_cid_,
+      cpp23::to_underlying(state_));
+
   PW_CHECK(state_ != State::kUndefined && state_ != State::kClosed);
 
   state_ = State::kStopped;
@@ -75,6 +98,16 @@ void L2capChannel::Stop() {
 }
 
 void L2capChannel::Close() {
+  PW_LOG_INFO(
+      "btproxy: L2capChannel::Close - transport_: %u, "
+      "connection_handle_: %#x, local_cid_: %u, remote_cid_: %u, previous "
+      "state_: %u",
+      cpp23::to_underlying(transport_),
+      connection_handle_,
+      local_cid_,
+      remote_cid_,
+      cpp23::to_underlying(state_));
+
   PW_CHECK(state_ != State::kUndefined);
 
   // Channel can be closed twice: once for an L2CAP disconnection, then again
@@ -83,6 +116,7 @@ void L2capChannel::Close() {
     return;
   }
 
+  l2cap_channel_manager_.ReleaseChannel(*this);
   state_ = State::kClosed;
   ClearQueue();
   SendEvent(L2capChannelEvent::kChannelClosedByOther);
@@ -110,14 +144,33 @@ Status L2capChannel::QueuePacket(H4PacketWithH4&& packet) {
   return status;
 }
 
+Status L2capChannel::IsWriteAvailable() {
+  if (state() != State::kRunning) {
+    return Status::FailedPrecondition();
+  }
+
+  std::lock_guard lock(send_queue_mutex_);
+
+  // TODO: https://pwbug.dev/379337272 - Only check payload_queue_ once all
+  // channels have transitioned to payload_queue_.
+  const bool queue_full =
+      UsesPayloadQueue() ? payload_queue_.full() : send_queue_.full();
+  if (queue_full) {
+    notify_on_dequeue_ = true;
+    return Status::Unavailable();
+  }
+
+  notify_on_dequeue_ = false;
+  return OkStatus();
+}
+
 std::optional<H4PacketWithH4> L2capChannel::DequeuePacket() {
   std::optional<H4PacketWithH4> packet;
   bool should_notify = false;
   {
     std::lock_guard lock(send_queue_mutex_);
-    if (!send_queue_.empty()) {
-      packet.emplace(std::move(send_queue_.front()));
-      send_queue_.pop();
+    packet = GenerateNextTxPacket();
+    if (packet) {
       should_notify = notify_on_dequeue_;
       notify_on_dequeue_ = false;
     }
@@ -130,8 +183,46 @@ std::optional<H4PacketWithH4> L2capChannel::DequeuePacket() {
   return packet;
 }
 
+StatusWithMultiBuf L2capChannel::QueuePayload(multibuf::MultiBuf&& buf) {
+  PW_CHECK(state() == State::kRunning);
+  PW_CHECK(buf.IsContiguous());
+
+  {
+    std::lock_guard lock(send_queue_mutex_);
+    if (payload_queue_.full()) {
+      notify_on_dequeue_ = true;
+      return {Status::Unavailable(), std::move(buf)};
+    }
+    payload_queue_.push(std::move(buf));
+  }
+
+  ReportPacketsMayBeReadyToSend();
+  return {OkStatus(), std::nullopt};
+}
+
+void L2capChannel::PopFrontPayload() {
+  PW_CHECK(!payload_queue_.empty());
+  payload_queue_.pop();
+}
+
+ConstByteSpan L2capChannel::GetFrontPayloadSpan() const {
+  PW_CHECK(!payload_queue_.empty());
+  const multibuf::MultiBuf& buf = payload_queue_.front();
+  std::optional<ConstByteSpan> span = buf.ContiguousSpan();
+  PW_CHECK(span);
+  return *span;
+}
+
+bool L2capChannel::PayloadQueueEmpty() const { return payload_queue_.empty(); }
+
 bool L2capChannel::OnPduReceivedFromController(pw::span<uint8_t> l2cap_pdu) {
   if (state() != State::kRunning) {
+    PW_LOG_ERROR(
+        "btproxy: L2capChannel::OnPduReceivedFromController on non-running "
+        "channel. local_cid: %u, remote_cid: %u, state: %u",
+        local_cid(),
+        remote_cid(),
+        cpp23::to_underlying(state()));
     SendEvent(L2capChannelEvent::kRxWhileStopped);
     return true;
   }
@@ -140,11 +231,17 @@ bool L2capChannel::OnPduReceivedFromController(pw::span<uint8_t> l2cap_pdu) {
 
 void L2capChannel::OnFragmentedPduReceived() {
   if (state() != State::kRunning) {
+    PW_LOG_ERROR(
+        "btproxy: L2capChannel::OnFragmentedPduReceived on non-running "
+        "channel. local_cid: %u, remote_cid: %u, state: %u",
+        local_cid(),
+        remote_cid(),
+        cpp23::to_underlying(state()));
     SendEvent(L2capChannelEvent::kRxWhileStopped);
     return;
   }
   PW_LOG_ERROR(
-      "(CID 0x%X) Fragmented L2CAP frame received, which is not yet supported. "
+      "(CID %u) Fragmented L2CAP frame received, which is not yet supported. "
       "Channel is now stopped.",
       local_cid());
   SendEvent(L2capChannelEvent::kRxFragmented);
@@ -157,7 +254,7 @@ L2capChannel::L2capChannel(
     AclTransportType transport,
     uint16_t local_cid,
     uint16_t remote_cid,
-    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
     Function<void(L2capChannelEvent event)>&& event_fn)
     : l2cap_channel_manager_(l2cap_channel_manager),
       state_(State::kRunning),
@@ -167,7 +264,37 @@ L2capChannel::L2capChannel(
       remote_cid_(remote_cid),
       event_fn_(std::move(event_fn)),
       payload_from_controller_fn_(std::move(payload_from_controller_fn)) {
+  PW_LOG_INFO(
+      "btproxy: L2capChannel ctor - transport_: %u, connection_handle_ : %u, "
+      "local_cid_ : %u, remote_cid_: %u",
+      cpp23::to_underlying(transport_),
+      connection_handle_,
+      local_cid_,
+      remote_cid_);
+
   l2cap_channel_manager_.RegisterChannel(*this);
+}
+
+// Send `event` to client if an event callback was provided.
+void L2capChannel::SendEvent(L2capChannelEvent event) {
+  // We don't log kWriteAvailable since they happen often. Optimally we would
+  // just debug log them also, but one of our downstreams logs all levels.
+  if (event != L2capChannelEvent::kWriteAvailable) {
+    PW_LOG_INFO(
+        "btproxy: SendEvent - event: %u, transport_: %u, "
+        "connection_handle_: %#x, local_cid_ : %u, remote_cid_: %u, "
+        "state_: %u",
+        cpp23::to_underlying(event),
+        cpp23::to_underlying(transport_),
+        connection_handle_,
+        local_cid_,
+        remote_cid_,
+        cpp23::to_underlying(state_));
+  }
+
+  if (event_fn_) {
+    event_fn_(event);
+  }
 }
 
 bool L2capChannel::AreValidParameters(uint16_t connection_handle,
@@ -175,7 +302,7 @@ bool L2capChannel::AreValidParameters(uint16_t connection_handle,
                                       uint16_t remote_cid) {
   if (connection_handle > kMaxValidConnectionHandle) {
     PW_LOG_ERROR(
-        "Invalid connection handle 0x%X. Maximum connection handle is 0x0EFF.",
+        "Invalid connection handle %#x. Maximum connection handle is 0x0EFF.",
         connection_handle);
     return false;
   }
@@ -186,9 +313,31 @@ bool L2capChannel::AreValidParameters(uint16_t connection_handle,
   return true;
 }
 
+std::optional<H4PacketWithH4> L2capChannel::GenerateNextTxPacket() {
+  if (send_queue_.empty()) {
+    return std::nullopt;
+  }
+  H4PacketWithH4 packet = std::move(send_queue_.front());
+  send_queue_.pop();
+  return packet;
+}
+
 pw::Result<H4PacketWithH4> L2capChannel::PopulateTxL2capPacket(
     uint16_t data_length) {
   return PopulateL2capPacket(data_length);
+}
+
+pw::Result<H4PacketWithH4> L2capChannel::PopulateTxL2capPacketDuringWrite(
+    uint16_t data_length) {
+  pw::Result<H4PacketWithH4> packet_result = PopulateL2capPacket(data_length);
+  if (packet_result.status().IsUnavailable()) {
+    std::lock_guard lock(send_queue_mutex_);
+    // If there were no buffers, they are all in the queue currently. This can
+    // happen if queue size == buffer count. Mark that a writer is getting an
+    // Unavailable status, and should be notified when queue space opens up.
+    notify_on_dequeue_ = true;
+  }
+  return packet_result;
 }
 
 pw::Result<H4PacketWithH4> L2capChannel::PopulateL2capPacket(
@@ -202,13 +351,6 @@ pw::Result<H4PacketWithH4> L2capChannel::PopulateL2capPacket(
   pw::Result<H4PacketWithH4> h4_packet_res =
       l2cap_channel_manager_.GetAclH4Packet(h4_packet_size);
   if (!h4_packet_res.ok()) {
-    // If there were no buffers, they are all in the queue currently. This can
-    // happen if queue size == buffer count. Mark that a writer is getting an
-    // Unavailable status, and should be notified when queue space opens up.
-    if (h4_packet_res.status().IsUnavailable()) {
-      std::lock_guard lock(send_queue_mutex_);
-      notify_on_dequeue_ = true;
-    }
     return h4_packet_res.status();
   }
   H4PacketWithH4 h4_packet = std::move(h4_packet_res.value());
@@ -236,10 +378,19 @@ pw::Result<H4PacketWithH4> L2capChannel::PopulateL2capPacket(
   return h4_packet;
 }
 
-uint16_t L2capChannel::MaxL2capPayloadSize() const {
-  return l2cap_channel_manager_.GetH4BuffSize() - sizeof(emboss::H4PacketType) -
-         emboss::AclDataFrameHeader::IntrinsicSizeInBytes() -
-         emboss::BasicL2capHeader::IntrinsicSizeInBytes();
+std::optional<uint16_t> L2capChannel::MaxL2capPayloadSize() const {
+  std::optional<uint16_t> le_acl_data_packet_length =
+      l2cap_channel_manager_.le_acl_data_packet_length();
+  if (!le_acl_data_packet_length) {
+    return std::nullopt;
+  }
+
+  uint16_t max_acl_data_size_based_on_h4_buffer =
+      l2cap_channel_manager_.GetH4BuffSize() - sizeof(emboss::H4PacketType) -
+      emboss::AclDataFrameHeader::IntrinsicSizeInBytes();
+  uint16_t max_acl_data_size = std::min(max_acl_data_size_based_on_h4_buffer,
+                                        *le_acl_data_packet_length);
+  return max_acl_data_size - emboss::BasicL2capHeader::IntrinsicSizeInBytes();
 }
 
 void L2capChannel::ReportPacketsMayBeReadyToSend() {

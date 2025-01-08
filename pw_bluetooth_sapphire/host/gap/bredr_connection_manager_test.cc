@@ -1075,6 +1075,50 @@ TEST_F(
   QueueDisconnection(kConnectionHandle);
 }
 
+// Responding to a legacy pairing request (HCI_Link_Key_Request event) before
+// connection should succeed.
+TEST_F(BrEdrConnectionManagerLegacyPairingTest,
+       RespondToLegacyPairingLinkKeyRequestBeforeAclConnection) {
+  FakePairingDelegate pairing_delegate(sm::IOCapability::kNoInputNoOutput);
+  connmgr()->SetPairingDelegate(pairing_delegate.GetWeakPtr());
+
+  ASSERT_TRUE(
+      peer_cache()->AddBondedPeer(BondingData{.identifier = PeerId(999),
+                                              .address = kTestDevAddr,
+                                              .name = std::nullopt,
+                                              .le_pairing_data = {},
+                                              .bredr_link_key = kLinkKey,
+                                              .bredr_services = {}}));
+  auto* peer = peer_cache()->FindByAddress(kTestDevAddr);
+  ASSERT_TRUE(peer);
+  ASSERT_TRUE(IsNotConnected(peer));
+  ASSERT_TRUE(peer->bonded());
+
+  EXPECT_CMD_PACKET_OUT(test_device(), kAcceptConnectionRequest);
+  test_device()->SendCommandChannelPacket(kConnectionRequest);
+  RunUntilIdle();
+
+  test_device()->SendCommandChannelPacket(testing::RoleChangePacket(
+      kTestDevAddr, pw::bluetooth::emboss::ConnectionRole::CENTRAL));
+  RunUntilIdle();
+
+  EXPECT_CMD_PACKET_OUT(
+      test_device(), kLinkKeyRequestReply, &kLinkKeyRequestReplyRsp);
+
+  test_device()->SendCommandChannelPacket(kLinkKeyRequest);
+  RunUntilIdle();
+
+  // Complete connection and interrogation successfully.
+  QueueSuccessfulInterrogation(kTestDevAddr, kConnectionHandle);
+  test_device()->SendCommandChannelPacket(kConnectionComplete);
+  RunUntilIdle();
+
+  // Our pairing delegate should not have been invalidated at any point
+  EXPECT_TRUE(connmgr()->pairing_delegate().is_alive());
+
+  QueueDisconnection(kConnectionHandle);
+}
+
 // Responding to a legacy pairing request (HCI_PIN_Code_Request event) before
 // the ACL connection is complete should succeed.
 TEST_F(
@@ -1123,6 +1167,9 @@ TEST_F(
   RETURN_IF_FATAL(RunUntilIdle());
 
   EXPECT_TRUE(l2cap()->IsLinkConnected(kConnectionHandle));
+
+  // Our pairing delegate should not have been invalidated at any point
+  EXPECT_TRUE(connmgr()->pairing_delegate().is_alive());
 
   QueueDisconnection(kConnectionHandle);
 }

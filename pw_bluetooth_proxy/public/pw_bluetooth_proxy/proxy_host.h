@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "pw_allocator/best_fit.h"
+#include "pw_allocator/synchronized_allocator.h"
 #include "pw_bluetooth_proxy/internal/acl_data_channel.h"
 #include "pw_bluetooth_proxy/internal/h4_storage.h"
 #include "pw_bluetooth_proxy/internal/hci_transport.h"
@@ -22,6 +24,7 @@
 #include "pw_bluetooth_proxy/l2cap_coc.h"
 #include "pw_bluetooth_proxy/l2cap_status_delegate.h"
 #include "pw_bluetooth_proxy/rfcomm_channel.h"
+#include "pw_multibuf/simple_allocator.h"
 #include "pw_status/status.h"
 
 namespace pw::bluetooth::proxy {
@@ -120,6 +123,11 @@ class ProxyHost {
   /// Returns an L2CAP connection-oriented channel that supports writing to and
   /// reading from a remote peer.
   ///
+  /// @param[in] rx_multibuf_allocator
+  ///                               Provides the allocator the channel will use
+  ///                               for its Rx buffers (for both queueing and
+  ///                               returning to the client).
+  ///
   /// @param[in] connection_handle  The connection handle of the remote peer.
   ///
   /// @param[in] rx_config          Parameters applying to reading packets. See
@@ -142,6 +150,17 @@ class ProxyHost {
   ///                    available to accommodate an additional ACL connection.
   /// @endrst
   pw::Result<L2capCoc> AcquireL2capCoc(
+      pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
+      uint16_t connection_handle,
+      L2capCoc::CocConfig rx_config,
+      L2capCoc::CocConfig tx_config,
+      Function<void(multibuf::MultiBuf&& payload)>&& receive_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn);
+
+  // TODO(drees) Remove once clients move to new signature with allocators.
+  /// @deprecated Use AcquireL2capCoc with allocator parameters instead.
+  pw::Result<L2capCoc> AcquireL2capCoc(
+      pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
       uint16_t connection_handle,
       L2capCoc::CocConfig rx_config,
       L2capCoc::CocConfig tx_config,
@@ -170,7 +189,9 @@ class ProxyHost {
   /// @param[in] transport                  Logical link transport type.
   ///
   /// @param[in] payload_from_controller_fn Read callback to be invoked on Rx
-  ///                                       SDUs.
+  ///                                       SDUs. Return value of false
+  ///                                       indicates the packet should be
+  ///                                       forwarded on to host.
   ///
   /// @param[in] event_fn                   Handle asynchronous events such as
   ///                                       errors encountered by the channel.
@@ -188,10 +209,8 @@ class ProxyHost {
       uint16_t local_cid,
       uint16_t remote_cid,
       AclTransportType transport,
-      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
-      // TODO: https://pwbug.dev/383150263 - Delete nullptr after downstream
-      // clients are providing event_fn.
-      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
+      Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn);
 
   /// Send a GATT Notify to the indicated connection.
   ///
@@ -228,7 +247,8 @@ class ProxyHost {
   ///
   /// @param[in] channel_number    RFCOMM channel number to use.
   ///
-  /// @param[in] receive_fn        Read callback to be invoked on Rx frames.
+  /// @param[in] payload_from_controller_fn
+  ///                              Read callback to be invoked on Rx frames.
   ///
   /// @param[in] event_fn          Handle asynchronous events such as errors
   ///                              encountered by the channel. See
@@ -245,23 +265,8 @@ class ProxyHost {
       RfcommChannel::Config rx_config,
       RfcommChannel::Config tx_config,
       uint8_t channel_number,
-      Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      // TODO: https://pwbug.dev/383150263 - Delete nullptr after downstream
-      // clients are providing event_fn.
-      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
-
-  // TODO: https://pwbug.dev/383150263 - Delete after users are migrated.
-  pw::Result<RfcommChannel> AcquireRfcommChannel(
-      uint16_t connection_handle,
-      RfcommChannel::Config rx_config,
-      RfcommChannel::Config tx_config,
-      uint8_t channel_number,
-      Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      // TODO: https://pwbug.dev/383150263 - Delete & use event_fn instead.
-      Function<void()>&& queue_space_available_fn,
-      // TODO: https://pwbug.dev/383150263 - Delete nullptr after downstream
-      // clients are providing event_fn.
-      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
+      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<void(L2capChannelEvent event)>&& event_fn);
 
   /// Indicates whether the proxy has the capability of sending LE ACL packets.
   /// Note that this indicates intention, so it can be true even if the proxy

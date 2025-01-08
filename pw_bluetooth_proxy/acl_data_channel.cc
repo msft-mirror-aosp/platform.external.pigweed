@@ -26,6 +26,64 @@
 
 namespace pw::bluetooth::proxy {
 
+AclDataChannel::AclConnection::AclConnection(
+    AclTransportType transport,
+    uint16_t connection_handle,
+    uint16_t num_pending_packets,
+    L2capChannelManager& l2cap_channel_manager)
+    : transport_(transport),
+      state_(State::kOpen),
+      connection_handle_(connection_handle),
+      num_pending_packets_(num_pending_packets),
+      leu_signaling_channel_(l2cap_channel_manager, connection_handle),
+      aclu_signaling_channel_(l2cap_channel_manager, connection_handle) {
+  PW_LOG_INFO(
+      "btproxy: AclConnection ctor. transport_: %u, connection_handle_: %#x",
+      cpp23::to_underlying(transport_),
+      connection_handle_);
+}
+
+void AclDataChannel::AclConnection::Close() {
+  PW_LOG_INFO(
+      "btproxy: AclConnection::Close. transport_: %u, connection_handle_: %#x, "
+      "previous state_: %u",
+      cpp23::to_underlying(transport_),
+      connection_handle_,
+      cpp23::to_underlying(state_));
+
+  state_ = State::kClosed;
+}
+
+AclDataChannel::SendCredit::SendCredit(SendCredit&& other) {
+  *this = std::move(other);
+}
+
+AclDataChannel::SendCredit& AclDataChannel::SendCredit::operator=(
+    SendCredit&& other) {
+  if (this != &other) {
+    transport_ = other.transport_;
+    relinquish_fn_ = std::move(other.relinquish_fn_);
+    other.relinquish_fn_ = nullptr;
+  }
+  return *this;
+}
+
+AclDataChannel::SendCredit::~SendCredit() {
+  if (relinquish_fn_) {
+    relinquish_fn_(transport_);
+  }
+}
+
+AclDataChannel::SendCredit::SendCredit(
+    AclTransportType transport,
+    Function<void(AclTransportType transport)>&& relinquish_fn)
+    : transport_(transport), relinquish_fn_(std::move(relinquish_fn)) {}
+
+void AclDataChannel::SendCredit::MarkUsed() {
+  PW_CHECK(relinquish_fn_);
+  relinquish_fn_ = nullptr;
+}
+
 void AclDataChannel::Reset() {
   std::lock_guard lock(mutex_);
   le_credits_.Reset();
@@ -131,6 +189,17 @@ void AclDataChannel::ProcessSpecificLEReadBufferSizeCommandCompleteEvent(
     read_buffer_event.total_num_le_acl_data_packets().Write(host_max);
   }
 
+  const uint16_t le_acl_data_packet_length =
+      read_buffer_event.le_acl_data_packet_length().Read();
+  // TODO: https://pwbug.dev/380316252 - Support shared buffers.
+  if (le_acl_data_packet_length == 0) {
+    PW_LOG_ERROR(
+        "Controller shares data buffers between BR/EDR and LE transport, which "
+        "is not yet supported. So channels on LE transport will not be "
+        "functional.");
+  }
+  l2cap_channel_manager_.set_le_acl_data_packet_length(
+      le_acl_data_packet_length);
   // Send packets that may have queued before we acquired any LE ACL credits.
   l2cap_channel_manager_.DrainChannelQueues();
 }
@@ -171,7 +240,7 @@ void AclDataChannel::HandleNumberOfCompletedPacketsEvent(
         continue;
       }
 
-      AclConnection* connection_ptr = FindAclConnection(handle);
+      AclConnection* connection_ptr = FindOpenAclConnection(handle);
       if (!connection_ptr) {
         // Credits for connection we are not tracking or closed connection, so
         // should pass event on to host.
@@ -319,8 +388,14 @@ void AclDataChannel::ProcessDisconnectionCompleteEvent(
     std::lock_guard lock(mutex_);
     uint16_t conn_handle = dc_event->connection_handle().Read();
 
-    AclConnection* connection_ptr = FindAclConnection(conn_handle);
+    AclConnection* connection_ptr = FindOpenAclConnection(conn_handle);
+
     if (!connection_ptr) {
+      PW_LOG_WARN(
+          "btproxy: Viewed disconnect (reason: %#.2hhx) for connection %#x, "
+          "but was unable to find an existing open AclConnection.",
+          cpp23::to_underlying(dc_event->reason().Read()),
+          conn_handle);
       return;
     }
 
@@ -328,8 +403,8 @@ void AclDataChannel::ProcessDisconnectionCompleteEvent(
     if (status == emboss::StatusCode::SUCCESS) {
       if (connection_ptr->num_pending_packets() > 0) {
         PW_LOG_WARN(
-            "Proxy viewed disconnect (reason: %#.2hhx) for connection %#.4hx "
-            "with packets in flight. Releasing associated credits",
+            "Proxy viewed disconnect (reason: %#.2hhx) for connection %#x "
+            "with packets in flight. Releasing associated credits.",
             cpp23::to_underlying(dc_event->reason().Read()),
             conn_handle);
 
@@ -347,7 +422,7 @@ void AclDataChannel::ProcessDisconnectionCompleteEvent(
     if (connection_ptr->num_pending_packets() > 0) {
       PW_LOG_WARN(
           "Proxy viewed failed disconnect (status: %#.2hhx) for connection "
-          "%#.4hx with packets in flight. Not releasing associated credits.",
+          "%#x with packets in flight. Not releasing associated credits.",
           cpp23::to_underlying(status),
           conn_handle);
     }
@@ -365,7 +440,21 @@ uint16_t AclDataChannel::GetNumFreeAclPackets(
   return LookupCredits(transport).Remaining();
 }
 
-pw::Status AclDataChannel::SendAcl(H4PacketWithH4&& h4_packet) {
+std::optional<AclDataChannel::SendCredit> AclDataChannel::ReserveSendCredit(
+    AclTransportType transport) {
+  std::lock_guard lock(mutex_);
+  if (const auto status = LookupCredits(transport).MarkPending(1);
+      !status.ok()) {
+    return std::nullopt;
+  }
+  return SendCredit(transport, [this](AclTransportType t) {
+    std::lock_guard fn_lock(mutex_);
+    LookupCredits(t).MarkCompleted(1);
+  });
+}
+
+pw::Status AclDataChannel::SendAcl(H4PacketWithH4&& h4_packet,
+                                   SendCredit&& credit) {
   std::lock_guard lock(mutex_);
   Result<emboss::AclDataFrameHeaderView> acl_view =
       MakeEmbossView<emboss::AclDataFrameHeaderView>(h4_packet.GetHciSpan());
@@ -375,18 +464,17 @@ pw::Status AclDataChannel::SendAcl(H4PacketWithH4&& h4_packet) {
   }
   uint16_t handle = acl_view->handle().Read();
 
-  AclConnection* connection_ptr = FindAclConnection(handle);
+  AclConnection* connection_ptr = FindOpenAclConnection(handle);
   if (!connection_ptr) {
     PW_LOG_ERROR("Tried to send ACL packet on unregistered connection.");
     return pw::Status::NotFound();
   }
 
-  if (const auto status =
-          LookupCredits(connection_ptr->transport()).MarkPending(1);
-      !status.ok()) {
-    PW_LOG_WARN("No ACL send credits available. So will not send.");
-    return pw::Status::Unavailable();
+  if (connection_ptr->transport() != credit.transport_) {
+    PW_LOG_WARN("Provided credit for wrong transport. So will not send.");
+    return pw::Status::InvalidArgument();
   }
+  credit.MarkUsed();
 
   connection_ptr->set_num_pending_packets(
       connection_ptr->num_pending_packets() + 1);
@@ -398,11 +486,19 @@ pw::Status AclDataChannel::SendAcl(H4PacketWithH4&& h4_packet) {
 Status AclDataChannel::CreateAclConnection(uint16_t connection_handle,
                                            AclTransportType transport) {
   std::lock_guard lock(mutex_);
-  AclConnection* connection_it = FindAclConnection(connection_handle);
+  AclConnection* connection_it = FindOpenAclConnection(connection_handle);
   if (connection_it) {
+    PW_LOG_WARN(
+        "btproxy: Attempt to create new AclConnection when existing one is "
+        "already open. connection_handle: %#x",
+        connection_handle);
     return Status::AlreadyExists();
   }
   if (acl_connections_.full()) {
+    PW_LOG_ERROR(
+        "btproxy: Attempt to create new AclConnection when acl_connections_ is"
+        "already full. connection_handle: %#x",
+        connection_handle);
     return Status::ResourceExhausted();
   }
   acl_connections_.emplace_back(transport,
@@ -415,7 +511,7 @@ Status AclDataChannel::CreateAclConnection(uint16_t connection_handle,
 pw::Status AclDataChannel::FragmentedPduStarted(Direction direction,
                                                 uint16_t connection_handle) {
   std::lock_guard lock(mutex_);
-  AclConnection* connection_ptr = FindAclConnection(connection_handle);
+  AclConnection* connection_ptr = FindOpenAclConnection(connection_handle);
   if (!connection_ptr) {
     return Status::NotFound();
   }
@@ -429,7 +525,7 @@ pw::Status AclDataChannel::FragmentedPduStarted(Direction direction,
 pw::Result<bool> AclDataChannel::IsReceivingFragmentedPdu(
     Direction direction, uint16_t connection_handle) {
   std::lock_guard lock(mutex_);
-  AclConnection* connection_ptr = FindAclConnection(connection_handle);
+  AclConnection* connection_ptr = FindOpenAclConnection(connection_handle);
   if (!connection_ptr) {
     return Status::NotFound();
   }
@@ -439,7 +535,7 @@ pw::Result<bool> AclDataChannel::IsReceivingFragmentedPdu(
 pw::Status AclDataChannel::FragmentedPduFinished(Direction direction,
                                                  uint16_t connection_handle) {
   std::lock_guard lock(mutex_);
-  AclConnection* connection_ptr = FindAclConnection(connection_handle);
+  AclConnection* connection_ptr = FindOpenAclConnection(connection_handle);
   if (!connection_ptr) {
     return Status::NotFound();
   }
@@ -454,7 +550,7 @@ L2capSignalingChannel* AclDataChannel::FindSignalingChannel(
     uint16_t connection_handle, uint16_t local_cid) {
   std::lock_guard lock(mutex_);
 
-  AclConnection* connection_ptr = FindAclConnection(connection_handle);
+  AclConnection* connection_ptr = FindOpenAclConnection(connection_handle);
   if (!connection_ptr) {
     return nullptr;
   }
@@ -465,15 +561,12 @@ L2capSignalingChannel* AclDataChannel::FindSignalingChannel(
   return nullptr;
 }
 
-AclDataChannel::AclConnection* AclDataChannel::FindAclConnection(
-    uint16_t connection_handle, bool if_open) {
+AclDataChannel::AclConnection* AclDataChannel::FindOpenAclConnection(
+    uint16_t connection_handle) {
   AclConnection* connection_it = containers::FindIf(
-      acl_connections_,
-      [&connection_handle, if_open](const AclConnection& connection) {
-        if (connection.connection_handle() == connection_handle) {
-          return !if_open || connection.state() == AclConnection::State::kOpen;
-        }
-        return false;
+      acl_connections_, [connection_handle](const AclConnection& connection) {
+        return connection.connection_handle() == connection_handle &&
+               connection.state() == AclConnection::State::kOpen;
       });
   return connection_it == acl_connections_.end() ? nullptr : connection_it;
 }

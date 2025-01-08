@@ -226,7 +226,7 @@ Create test suites and test cases:
      EXPECT_STREQ(expected.c_str(), actual.c_str());
    }
 
-   }
+   }  // namespace
 
 ``pw_unit_test`` provides a standard set of ``TEST``, ``EXPECT``, ``ASSERT``
 and ``FAIL`` macros. The default backend, ``pw_unit_test:light``, offers an
@@ -319,7 +319,7 @@ To do more complex testing, such as on-device testing:
 2. Set the build argument that instructs your build system to use your custom
    ``main`` function:
 
-   * Bazel: :option:`pw_unit_test_main`
+   * Bazel: :option:`@pigweed//pw_unit_test:main`
    * GN: :option:`pw_unit_test_MAIN`
 
 .. _module-pw_unit_test-event-handlers:
@@ -683,9 +683,35 @@ Helpers
 .. _module-pw_unit_test-py:
 
 --------------------
+Constexpr unit tests
+--------------------
+.. doxygenfile:: pw_unit_test/constexpr.h
+   :sections: detaileddescription
+
+API reference
+=============
+.. doxygendefine:: PW_CONSTEXPR_TEST
+
+.. block-submission: disable
+.. c:macro:: SKIP_CONSTEXPR_TESTS_DONT_SUBMIT
+
+   Define the ``SKIP_CONSTEXPR_TESTS_DONT_SUBMIT`` macro to temporarily disable
+   the ``constexpr`` portion of subsequent :c:macro:`PW_CONSTEXPR_TEST`\s. Use
+   this to view GoogleTest output, which is usually more informative than the
+   compiler's ``constexpr`` test failure output.
+
+   Defines of this macro should never be submitted. If a test shouldn't run at
+   compile time, use a plain ``TEST()``.
+
+   .. literalinclude:: constexpr_test.cc
+      :language: cpp
+      :start-after: [pw_unit_test-constexpr-skip]
+      :end-before: [pw_unit_test-constexpr-skip]
+.. block-submission: enable
+
+--------------------
 Python API reference
 --------------------
-
 .. _module-pw_unit_test-py-serial_test_runner:
 
 ``pw_unit_test.serial_test_runner``
@@ -750,25 +776,29 @@ all the arguments recognized by ``cc_test``.
 
 .. _module-pw_unit_test-bazel-args:
 
-Bazel build arguments
-=====================
-.. option:: pw_unit_test_backend <target>
+Label flags
+===========
+.. option:: @pigweed//pw_unit_test:backend
 
    The GoogleTest implementation to use for Pigweed unit tests. This library
    provides ``gtest/gtest.h`` and related headers. Defaults to
    ``@pigweed//pw_unit_test:light``, which implements a subset of GoogleTest.
 
-   Type: string (Bazel target label)
+   Type: Bazel target label
 
-   Usage: toolchain-controlled only
+   Usage: Typically specified as part of the platform definition, but can also
+   be set manually on the command line.
 
-.. option:: pw_unit_test_main <target>
+.. option:: @pigweed//pw_unit_test:main
 
-   Implementation of a main function for ``pw_cc_test`` unit test binaries.
+   Implementation of a main function for ``pw_cc_test`` unit test binaries. To
+   use upstream GoogleTest, set this to ``@com_google_googletest//:gtest_main``.
+   Note that this may not work on most embedded devices, see :bug:`310957361`.
 
-   Type: string (Bazel target label)
+   Type: Bazel target label
 
-   Usage: toolchain-controlled only
+   Usage: Typically specified as part of the platform definition, but can also
+   be set manually on the command line.
 
 .. _module-pw_unit_test-gn:
 

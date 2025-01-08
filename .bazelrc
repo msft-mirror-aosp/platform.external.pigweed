@@ -174,10 +174,18 @@ build:stm32f429i_baremetal --platforms=//targets/stm32f429i_disc1:platform
 build:stm32f429i_freertos --platforms=//targets/stm32f429i_disc1_stm32cube:platform
 
 # Config for the lm3s6965evb platform, used to build pw_rust/examples.
-build:lm3s6965evb --platforms=//pw_build/platforms:lm3s6965evb
+build:lm3s6965evb --platforms=//targets/lm3s6965evb
 
 # Config for the microbit platform, used to build pw_rust/examples.
-build:microbit --platforms=//pw_build/platforms:lm3s6965evb
+build:microbit --platforms=//targets/microbit
+
+# GoogleTest config
+# =================
+# This config can be used to build and run host tests using GoogleTest instead
+# of the default //pw_unit_test:light framework.
+common:googletest --//pw_unit_test:backend=//pw_unit_test:googletest
+common:googletest --//pw_unit_test:main=@com_google_googletest//:gtest_main
+common:googletest --platforms=//pw_unit_test:googletest_platform
 
 # Remote execution config definitions
 # ===================================

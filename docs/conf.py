@@ -13,7 +13,11 @@
 # the License.
 """Pigweed's Sphinx configuration."""
 
+
 from datetime import date
+import os
+from pathlib import Path
+import sys
 
 
 from pw_console.pigweed_code_style import PigweedCodeStyle
@@ -68,8 +72,19 @@ def pygments_monkeypatch_style(mod_name, cls):
 pygments_monkeypatch_style('pigweed_code_style', PigweedCodeStyle)
 pygments_monkeypatch_style('pigweed_code_light_style', PigweedCodeLightStyle)
 
+
+# //docs/_extensions must be added to the system path so that Sphinx
+# knows where to find the Sphinx extensions that have been custom-built
+# for pigweed.dev. The path resolution changes depending on whether we're
+# building pigweed.dev with GN or Bazel.
+if is_bazel_build:
+    sys.path.append(str(Path('_extensions').resolve()))
+else:  # GN build
+    pw_root = os.environ['PW_ROOT']
+    sys.path.append(f'{pw_root}/docs/_extensions')
+
 extensions = [
-    "pw_docgen.sphinx.bug",
+    "bug",  # Custom extension to normalize Pigweed bug links.
     "pw_docgen.sphinx.google_analytics",  # Enables optional Google Analytics
     "pw_docgen.sphinx.kconfig",
     "pw_docgen.sphinx.module_metadata",
@@ -77,6 +92,7 @@ extensions = [
     "pw_docgen.sphinx.pigweed_live",
     "pw_docgen.sphinx.pw_status_codes",
     "pw_docgen.sphinx.seed_metadata",
+    "sitemap",  # Custom extension to handle pigweed.dev sitemap nuances.
     "sphinx.ext.autodoc",  # Automatic documentation for Python code
     "sphinx.ext.napoleon",  # Parses Google-style docstrings
     "sphinxarg.ext",  # Automatic documentation of Python argparse
@@ -85,7 +101,6 @@ extensions = [
     "breathe",
     "sphinx_copybutton",  # Copy-to-clipboard button on code blocks
     "sphinx_reredirects",
-    "sphinx_sitemap",
 ]
 
 # When a user clicks the copy-to-clipboard button the `$ ` prompt should not be
@@ -118,8 +133,8 @@ html_use_smartypants = True
 # If false, no module index is generated.
 html_domain_indices = True
 
-html_favicon = 'docs/_static/pw_logo.ico'
-html_logo = 'docs/_static/pw_logo.svg'
+html_favicon = 'https://storage.googleapis.com/pigweed-media/pw_logo.ico'
+html_logo = 'https://storage.googleapis.com/pigweed-media/pw_logo.svg'
 
 # If false, no index is generated.
 html_use_index = True
@@ -192,8 +207,8 @@ html_theme_options = {
     # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/branding.html
     'logo': {
         'text': 'Pigweed',
-        'image_light': '_static/pw_logo.svg',
-        'image_dark': '_static/pw_logo.svg',
+        'image_light': 'https://storage.googleapis.com/pigweed-media/pw_logo.svg',
+        'image_dark': 'https://storage.googleapis.com/pigweed-media/pw_logo.svg',
     },
     # https://pydata-sphinx-theme.readthedocs.io/en/stable/user_guide/layout.html#configure-the-navbar-center-alignment
     'navbar_align': 'right',
@@ -207,7 +222,11 @@ html_theme_options = {
 html_baseurl = 'https://pigweed.dev/'
 
 # Hide "Section Navigation" on homepage and changelog.
-html_sidebars = {'index': [], 'changelog': []}
+html_sidebars = {
+    'index': [],
+    'changelog': [],
+    'toolchain': [],
+}
 
 html_context = {
     'default_mode': 'dark',
