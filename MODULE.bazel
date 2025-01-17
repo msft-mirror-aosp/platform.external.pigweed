@@ -24,10 +24,16 @@ bazel_dep(name = "boringssl", version = "0.20240913.0")
 bazel_dep(name = "freertos", version = "10.5.1.bcr.2")
 bazel_dep(name = "gazelle", version = "0.36.0", repo_name = "bazel_gazelle")
 bazel_dep(name = "nanopb", version = "0.4.9.1", repo_name = "com_github_nanopb_nanopb")
-bazel_dep(name = "pico-sdk", version = "2.0.0")
+bazel_dep(name = "pico-sdk", version = "2.1.1-develop.bcr.20250113-4b6e6475")
 bazel_dep(name = "picotool", version = "2.0.0")
 bazel_dep(name = "platforms", version = "0.0.10")
+
+# LINT.IfChange(protobuf)
 bazel_dep(name = "protobuf", version = "28.2", repo_name = "com_google_protobuf")
+# LINT.ThenChange(pw_env_setup/py/pw_env_setup/cipd_setup/pigweed.json,pw_env_setup/py/pw_env_setup/virtualenv_setup/constraint.list:protobuf)
+
+# A transitive dependency requires this.
+bazel_dep(name = "re2", version = "2024-07-02.bcr.1")
 bazel_dep(name = "rules_android", version = "0.1.1")
 bazel_dep(name = "rules_cc", version = "0.0.17")
 bazel_dep(name = "rules_fuzzing", version = "0.5.2")
@@ -57,6 +63,15 @@ archive_override(
     module_name = "hedron_compile_commands",
     strip_prefix = "bazel-compile-commands-extractor-163521345aa6366fd1ed801b989b668b5c806f69",
     urls = ["https://github.com/chadnorvell/bazel-compile-commands-extractor/archive/163521345aa6366fd1ed801b989b668b5c806f69.tar.gz"],
+)
+
+# TODO: https://pwbug.dev/372510795 - A `bazel_dep` on this version propagates
+# to downstream projects, which causes breakages since downstream is still
+# pre-Bazel 8.0.0. When all downstream projects are flipped to Bazel 8.0.0,
+# remove this and update the rules_android bazel_dep requirement.
+single_version_override(
+    module_name = "rules_android",
+    version = "0.6.0",
 )
 
 single_version_override(
@@ -98,16 +113,6 @@ libusb = use_extension("@rules_libusb//:extensions.bzl", "libusb")
 libusb.source_release(min_version = "1.0.27")
 use_repo(libusb, "libusb")
 
-# Configure C++ toolchains
-# ========================
-#
-# TODO: https://pwbug.dev/346388161 - Migrate to the rules_cc toolchain API.
-bazel_dep(name = "pw_toolchain")
-local_path_override(
-    module_name = "pw_toolchain",
-    path = "pw_toolchain_bazel",
-)
-
 xcode_sdk_repository = use_repo_rule("//pw_toolchain:xcode.bzl", "xcode_sdk_repository")
 
 xcode_sdk_repository(
@@ -126,6 +131,17 @@ cipd_repository(
     name = "llvm_toolchain",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
+    tag = "git_revision:9d3f9f47e6e630b8308562297757e0911be03a18",
+)
+
+# TODO: https://pwbug.dev/388593877 - macOS toolchain is behind because of a
+# breakage in C++ standard library headers. Remove this when the upstream LLVM
+# bug (https://github.com/llvm/llvm-project/issues/117630) is fixed and
+# rolled into Pigweed.
+cipd_repository(
+    name = "llvm_toolchain_macos",
+    build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
+    path = "fuchsia/third_party/clang/${os}-${arch}",
     tag = "git_revision:8280651ad57cb9fb24a404cec2401040c28dec98",
 )
 
@@ -135,7 +151,7 @@ cipd_repository(
     name = "llvm_toolchain_device",
     build_file = "//pw_toolchain/build_external:llvm_clang.BUILD",
     path = "fuchsia/third_party/clang/${os}-${arch}",
-    tag = "git_revision:0dcada94bb1ae79f0edd91013038098c62a96b3b",
+    tag = "git_revision:9d3f9f47e6e630b8308562297757e0911be03a18",
 )
 
 # Fetch linux sysroot for host builds.
@@ -160,8 +176,6 @@ register_toolchains(
     "//pw_toolchain:cc_toolchain_cortex-m33",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m3",
     "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m4+nofp",
-    "//pw_toolchain/arm_gcc:arm_gcc_cc_toolchain_cortex-m33+nofp",
     "//pw_toolchain/host_clang:host_cc_toolchain_linux",
     "//pw_toolchain/host_clang:host_cc_toolchain_macos",
     dev_dependency = True,
@@ -277,16 +291,6 @@ use_repo(
 # TODO: https://pwbug.dev/378531541 - These are one-off external libraries that
 # are NOT in the BCR that downstream users may need to override/unify to their
 # expected version.
-
-new_git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
-
-# TODO: https://pwbug.dev/378531541 - Get micro_ecc from the BCR.
-new_git_repository(
-    name = "micro_ecc",
-    build_file = "//:third_party/micro_ecc/BUILD.micro_ecc",
-    commit = "b335ee812bfcca4cd3fb0e2a436aab39553a555a",
-    remote = "https://github.com/kmackay/micro-ecc.git",
-)
 
 # TODO: https://pwbug.dev/354749299 - Use the BCR version of mbedtls.
 http_archive(

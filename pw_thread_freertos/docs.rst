@@ -3,10 +3,10 @@
 ==================
 pw_thread_freertos
 ==================
-This is a set of backends for pw_thread based on FreeRTOS.
+.. pigweed-module::
+   :name: pw_thread_freertos
 
-.. Warning::
-  This module is still under construction, the API is not yet stable.
+This is a set of backends for pw_thread based on FreeRTOS.
 
 -----------------------
 Thread Creation Backend

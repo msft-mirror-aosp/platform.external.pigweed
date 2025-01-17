@@ -130,7 +130,7 @@ bool ProxyHost::CheckForFragmentedStart(
   if (boundary_flag == emboss::AclDataPacketBoundaryFlag::CONTINUING_FRAGMENT) {
     PW_LOG_INFO("(CID: 0x%X) Received unexpected continuing PDU fragment.",
                 handle);
-    channel->OnFragmentedPduReceived();
+    channel->HandleFragmentedPdu();
     return true;
   }
   const uint16_t l2cap_frame_length =
@@ -140,7 +140,7 @@ bool ProxyHost::CheckForFragmentedStart(
     pw::Status status =
         acl_data_channel_.FragmentedPduStarted(direction, handle);
     PW_CHECK(status.ok());
-    channel->OnFragmentedPduReceived();
+    channel->HandleFragmentedPdu();
     return true;
   }
 
@@ -268,7 +268,7 @@ void ProxyHost::HandleAclFromController(H4PacketWithHci&& h4_packet) {
     return;
   }
 
-  if (!channel->OnPduReceivedFromController(
+  if (!channel->HandlePduFromController(
           pw::span(acl->payload().BackingStorage().data(),
                    acl->payload().SizeInBytes()))) {
     hci_transport_.SendToHost(std::move(h4_packet));
@@ -543,18 +543,47 @@ pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
       /*event_fn=*/std::move(event_fn));
 }
 
+namespace {
+
+pw::Result<GattNotifyChannel> CreateGattNotifyChannel(
+    AclDataChannel& acl_data_channel,
+    L2capChannelManager& l2cap_channel_manager,
+    uint16_t connection_handle,
+    uint16_t attribute_handle) {
+  Status status = acl_data_channel.CreateAclConnection(connection_handle,
+                                                       AclTransportType::kLe);
+  if (status != OkStatus() && status != Status::AlreadyExists()) {
+    return pw::Status::Unavailable();
+  }
+  return GattNotifyChannelInternal::Create(
+      l2cap_channel_manager, connection_handle, attribute_handle);
+}
+}  // namespace
+
+StatusWithMultiBuf ProxyHost::SendGattNotify(uint16_t connection_handle,
+                                             uint16_t attribute_handle,
+                                             pw::multibuf::MultiBuf&& payload) {
+  // TODO: https://pwbug.dev/369709521 - Migrate clients to channel API.
+  pw::Result<GattNotifyChannel> channel_result =
+      CreateGattNotifyChannel(acl_data_channel_,
+                              l2cap_channel_manager_,
+                              connection_handle,
+                              attribute_handle);
+  if (!channel_result.ok()) {
+    return {channel_result.status(), std::move(payload)};
+  }
+  return channel_result->Write(std::move(payload));
+}
+
 pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
                                      uint16_t attribute_handle,
                                      pw::span<const uint8_t> attribute_value) {
   // TODO: https://pwbug.dev/369709521 - Migrate clients to channel API.
-  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
-                                                        AclTransportType::kLe);
-  if (status != OkStatus() && status != Status::AlreadyExists()) {
-    return pw::Status::Unavailable();
-  }
   pw::Result<GattNotifyChannel> channel_result =
-      GattNotifyChannelInternal::Create(
-          l2cap_channel_manager_, connection_handle, attribute_handle);
+      CreateGattNotifyChannel(acl_data_channel_,
+                              l2cap_channel_manager_,
+                              connection_handle,
+                              attribute_handle);
   if (!channel_result.ok()) {
     return channel_result.status();
   }

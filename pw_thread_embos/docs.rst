@@ -3,10 +3,10 @@
 ===============
 pw_thread_embos
 ===============
-This is a set of backends for pw_thread based on embOS v4.
+.. pigweed-module::
+   :name: pw_thread_embos
 
-.. Warning::
-  This module is still under construction, the API is not yet stable.
+This is a set of backends for pw_thread based on embOS v4.
 
 -----------------------
 Thread Creation Backend

@@ -42,7 +42,7 @@ void L2capChannel::MoveFields(L2capChannel& other) {
   {
     std::lock_guard lock(send_queue_mutex_);
     std::lock_guard other_lock(other.send_queue_mutex_);
-    send_queue_ = std::move(other.send_queue_);
+    payload_queue_ = std::move(other.payload_queue_);
     notify_on_dequeue_ = other.notify_on_dequeue_;
     l2cap_channel_manager_.ReleaseChannel(other);
     l2cap_channel_manager_.RegisterChannel(*this);
@@ -69,7 +69,7 @@ L2capChannel::~L2capChannel() {
     PW_LOG_INFO(
         "btproxy: L2capChannel dtor - transport_: %u, connection_handle_ : "
         "%#x, "
-        "local_cid_: %u, remote_cid_: %u, state_: %u",
+        "local_cid_: %#x, remote_cid_: %#x, state_: %u",
         cpp23::to_underlying(transport_),
         connection_handle_,
         local_cid_,
@@ -84,7 +84,7 @@ L2capChannel::~L2capChannel() {
 void L2capChannel::Stop() {
   PW_LOG_INFO(
       "btproxy: L2capChannel::Stop - transport_: %u, connection_handle_: %#x, "
-      "local_cid_: %u, remote_cid_: %u, previous state_: %u",
+      "local_cid_: %#x, remote_cid_: %#x, previous state_: %u",
       cpp23::to_underlying(transport_),
       connection_handle_,
       local_cid_,
@@ -100,7 +100,7 @@ void L2capChannel::Stop() {
 void L2capChannel::Close() {
   PW_LOG_INFO(
       "btproxy: L2capChannel::Close - transport_: %u, "
-      "connection_handle_: %#x, local_cid_: %u, remote_cid_: %u, previous "
+      "connection_handle_: %#x, local_cid_: %#x, remote_cid_: %#x, previous "
       "state_: %u",
       cpp23::to_underlying(transport_),
       connection_handle_,
@@ -125,6 +125,8 @@ void L2capChannel::Close() {
 void L2capChannel::Undefine() { state_ = State::kUndefined; }
 
 Status L2capChannel::QueuePacket(H4PacketWithH4&& packet) {
+  PW_CHECK(!UsesPayloadQueue());
+
   if (state() != State::kRunning) {
     return Status::FailedPrecondition();
   }
@@ -142,6 +144,62 @@ Status L2capChannel::QueuePacket(H4PacketWithH4&& packet) {
   }
   ReportPacketsMayBeReadyToSend();
   return status;
+}
+
+namespace {
+
+// TODO: https://pwbug.dev/389724307 - Move to pw utility function once created.
+pw::span<const uint8_t> AsConstUint8Span(ConstByteSpan s) {
+  return {reinterpret_cast<const uint8_t*>(s.data()), s.size_bytes()};
+}
+
+}  // namespace
+
+StatusWithMultiBuf L2capChannel::WriteToPayloadQueue(
+    multibuf::MultiBuf&& payload) {
+  if (!payload.IsContiguous()) {
+    return {Status::InvalidArgument(), std::move(payload)};
+  }
+
+  if (state() != State::kRunning) {
+    return {Status::FailedPrecondition(), std::move(payload)};
+  }
+
+  PW_CHECK(UsesPayloadQueue());
+
+  return QueuePayload(std::move(payload));
+}
+
+// TODO: https://pwbug.dev/379337272 - Delete when all channels are
+// transitioned to using payload queues.
+StatusWithMultiBuf L2capChannel::WriteToPduQueue(multibuf::MultiBuf&& payload) {
+  if (!payload.IsContiguous()) {
+    return {Status::InvalidArgument(), std::move(payload)};
+  }
+
+  if (state() != State::kRunning) {
+    return {Status::FailedPrecondition(), std::move(payload)};
+  }
+
+  PW_CHECK(!UsesPayloadQueue());
+
+  std::optional<ByteSpan> span = payload.ContiguousSpan();
+  PW_CHECK(span.has_value());
+  Status status = Write(AsConstUint8Span(span.value()));
+
+  if (!status.ok()) {
+    return {status, std::move(payload)};
+  }
+
+  return {OkStatus(), std::nullopt};
+}
+
+pw::Status L2capChannel::Write(
+    [[maybe_unused]] pw::span<const uint8_t> payload) {
+  PW_LOG_ERROR(
+      "btproxy: Write(span) called on class that only supports "
+      "Write(MultiBuf)");
+  return Status::Unimplemented();
 }
 
 Status L2capChannel::IsWriteAvailable() {
@@ -184,6 +242,8 @@ std::optional<H4PacketWithH4> L2capChannel::DequeuePacket() {
 }
 
 StatusWithMultiBuf L2capChannel::QueuePayload(multibuf::MultiBuf&& buf) {
+  PW_CHECK(UsesPayloadQueue());
+
   PW_CHECK(state() == State::kRunning);
   PW_CHECK(buf.IsContiguous());
 
@@ -215,25 +275,25 @@ ConstByteSpan L2capChannel::GetFrontPayloadSpan() const {
 
 bool L2capChannel::PayloadQueueEmpty() const { return payload_queue_.empty(); }
 
-bool L2capChannel::OnPduReceivedFromController(pw::span<uint8_t> l2cap_pdu) {
+bool L2capChannel::HandlePduFromController(pw::span<uint8_t> l2cap_pdu) {
   if (state() != State::kRunning) {
     PW_LOG_ERROR(
         "btproxy: L2capChannel::OnPduReceivedFromController on non-running "
-        "channel. local_cid: %u, remote_cid: %u, state: %u",
+        "channel. local_cid: %#x, remote_cid: %#x, state: %u",
         local_cid(),
         remote_cid(),
         cpp23::to_underlying(state()));
     SendEvent(L2capChannelEvent::kRxWhileStopped);
     return true;
   }
-  return HandlePduFromController(l2cap_pdu);
+  return DoHandlePduFromController(l2cap_pdu);
 }
 
-void L2capChannel::OnFragmentedPduReceived() {
+void L2capChannel::HandleFragmentedPdu() {
   if (state() != State::kRunning) {
     PW_LOG_ERROR(
-        "btproxy: L2capChannel::OnFragmentedPduReceived on non-running "
-        "channel. local_cid: %u, remote_cid: %u, state: %u",
+        "btproxy: L2capChannel::HandleFragmentedPdu on non-running "
+        "channel. local_cid: %#x, remote_cid: %#x, state: %u",
         local_cid(),
         remote_cid(),
         cpp23::to_underlying(state()));
@@ -266,7 +326,7 @@ L2capChannel::L2capChannel(
       payload_from_controller_fn_(std::move(payload_from_controller_fn)) {
   PW_LOG_INFO(
       "btproxy: L2capChannel ctor - transport_: %u, connection_handle_ : %u, "
-      "local_cid_ : %u, remote_cid_: %u",
+      "local_cid_ : %#x, remote_cid_: %#x",
       cpp23::to_underlying(transport_),
       connection_handle_,
       local_cid_,
@@ -282,7 +342,7 @@ void L2capChannel::SendEvent(L2capChannelEvent event) {
   if (event != L2capChannelEvent::kWriteAvailable) {
     PW_LOG_INFO(
         "btproxy: SendEvent - event: %u, transport_: %u, "
-        "connection_handle_: %#x, local_cid_ : %u, remote_cid_: %u, "
+        "connection_handle_: %#x, local_cid_ : %#x, remote_cid_: %#x, "
         "state_: %u",
         cpp23::to_underlying(event),
         cpp23::to_underlying(transport_),
@@ -340,13 +400,28 @@ pw::Result<H4PacketWithH4> L2capChannel::PopulateTxL2capPacketDuringWrite(
   return packet_result;
 }
 
-pw::Result<H4PacketWithH4> L2capChannel::PopulateL2capPacket(
-    uint16_t data_length) {
+namespace {
+
+constexpr size_t H4SizeForL2capData(uint16_t data_length) {
   const size_t l2cap_packet_size =
       emboss::BasicL2capHeader::IntrinsicSizeInBytes() + data_length;
   const size_t acl_packet_size =
       emboss::AclDataFrameHeader::IntrinsicSizeInBytes() + l2cap_packet_size;
-  const size_t h4_packet_size = sizeof(emboss::H4PacketType) + acl_packet_size;
+  return sizeof(emboss::H4PacketType) + acl_packet_size;
+}
+
+}  // namespace
+
+bool L2capChannel::IsOkL2capDataLength(uint16_t data_length) {
+  return H4SizeForL2capData(data_length) <=
+         l2cap_channel_manager_.GetH4BuffSize();
+}
+
+pw::Result<H4PacketWithH4> L2capChannel::PopulateL2capPacket(
+    uint16_t data_length) {
+  const size_t l2cap_packet_size =
+      emboss::BasicL2capHeader::IntrinsicSizeInBytes() + data_length;
+  const size_t h4_packet_size = H4SizeForL2capData(data_length);
 
   pw::Result<H4PacketWithH4> h4_packet_res =
       l2cap_channel_manager_.GetAclH4Packet(h4_packet_size);

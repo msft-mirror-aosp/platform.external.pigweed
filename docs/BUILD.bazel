@@ -65,6 +65,7 @@ sphinx_docs_library(
         "blog/04-fixed-point.rst",
         "blog/05-coroutines.rst",
         "blog/06-better-cpp-toolchains.rst",
+        "blog/07-bazelcon-2024.rst",
         "blog/index.rst",
         "blog/rss.xml",
         "code_of_conduct.rst",
@@ -101,6 +102,7 @@ sphinx_docs_library(
         # https://pwrev.dev/248014 merges.
         # "os/zephyr/kconfig.rst",
         "overview.rst",
+        "showcases/index.rst",
         "showcases/sense/index.rst",
         "showcases/sense/tutorial/automate.rst",
         "showcases/sense/tutorial/bazel_cloud.rst",
@@ -170,6 +172,7 @@ filegroup(
         "//pw_containers:doxygen",
         "//pw_crypto:doxygen",
         "//pw_digital_io:doxygen",
+        "//pw_digital_io_mcuxpresso:doxygen",
         "//pw_display:doxygen",
         "//pw_elf:doxygen",
         "//pw_function:doxygen",

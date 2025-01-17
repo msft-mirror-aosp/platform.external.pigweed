@@ -248,44 +248,17 @@ cc_args(
 )
 
 cc_feature(
-    name = "supports_pic_old",
-    overrides = "@rules_cc//cc/toolchains/features:supports_pic",
-    tags = ["manual"],
-    visibility = ["//visibility:private"],
-)
-
-# TODO: https://pwbug.dev/384050813 - This flag is a temporary transition flag
-# that will be removed shortly.
-bool_flag(
-    name = "new_rules_cc",
-    build_setting_default = True,
-)
-
-config_setting(
-    name = "rules_cc_post_0.0.10",
-    flag_values = {
-        ":new_rules_cc": "True",
-    },
-)
-
-cc_feature(
-    name = "supports_pic_actual",
-    feature_name = "supports_pic",
-    visibility = ["//visibility:private"],
-)
-
-alias(
     name = "supports_pic",
-    actual = select({
-        ":rules_cc_post_0.0.10": "supports_pic_actual",
-        "//conditions:default": "supports_pic_old",
-    }),
+    feature_name = "supports_pic",
 )
 
 # Symlink to clangd, for user convenience.
 copy_file(
     name = "copy_clangd",
-    src = "@llvm_toolchain//:bin/clangd",
+    src = select({
+        "@platforms//os:macos": "@llvm_toolchain_macos//:bin/clangd",
+        "//conditions:default": "@llvm_toolchain//:bin/clangd",
+    }),
     out = "clangd",
     allow_symlink = True,
 )
@@ -360,7 +333,10 @@ cc_toolchain(
         "//pw_toolchain/cc/capability:compiler_is_clang",
         "//pw_toolchain/cc/capability:linker_is_clang",
     ],
-    tool_map = "@llvm_toolchain//:all_tools",
+    tool_map = select({
+        "@platforms//os:macos": "@llvm_toolchain_macos//:all_tools",
+        "//conditions:default": "@llvm_toolchain//:all_tools",
+    }),
 )
 
 toolchain(

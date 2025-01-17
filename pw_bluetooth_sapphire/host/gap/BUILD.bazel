@@ -12,7 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-load("@pigweed//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
+load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -27,8 +28,32 @@ cc_library(
     ],
     strip_include_prefix = "public",
     deps = [
-        "//pw_bluetooth_sapphire:public",
         "//pw_bluetooth_sapphire/host/common",
+        "//pw_bluetooth_sapphire/host/sm:definitions",
+        "//third_party/fuchsia:fit",
+    ],
+)
+
+cc_library(
+    name = "peer",
+    srcs = [
+        "peer.cc",
+        "peer_metrics.cc",
+    ],
+    hdrs = [
+        "public/pw_bluetooth_sapphire/internal/host/gap/peer.h",
+        "public/pw_bluetooth_sapphire/internal/host/gap/peer_metrics.h",
+    ],
+    strip_include_prefix = "public",
+    deps = [
+        ":definitions",
+        "//pw_bluetooth_sapphire/host/common",
+        "//pw_bluetooth_sapphire/host/gatt:persisted_data",
+        "//pw_bluetooth_sapphire/host/hci-spec",
+        "//pw_bluetooth_sapphire/host/sm:definitions",
+        "//pw_bluetooth_sapphire/lib/cpp-string",
+        "//pw_bytes",
+        "//pw_string:utf_codecs",
     ],
 )
 
@@ -56,9 +81,7 @@ cc_library(
         "low_energy_discovery_manager.cc",
         "low_energy_interrogator.cc",
         "pairing_state_manager.cc",
-        "peer.cc",
         "peer_cache.cc",
-        "peer_metrics.cc",
         "secure_simple_pairing_state.cc",
         "types.cc",
     ],
@@ -88,16 +111,18 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_interrogator.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/low_energy_state.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/pairing_state_manager.h",
-        "public/pw_bluetooth_sapphire/internal/host/gap/peer.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/peer_cache.h",
-        "public/pw_bluetooth_sapphire/internal/host/gap/peer_metrics.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/secure_simple_pairing_state.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/types.h",
+    ],
+    implementation_deps = [
+        "//pw_string:utf_codecs",
     ],
     strip_include_prefix = "public",
     deps = [
         ":definitions",
-        "//pw_bluetooth_sapphire:public",
+        ":peer",
+        "//pw_async:heap_dispatcher",
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/gatt",
         "//pw_bluetooth_sapphire/host/hci",
@@ -106,11 +131,8 @@ cc_library(
         "//pw_bluetooth_sapphire/host/sco",
         "//pw_bluetooth_sapphire/host/sdp",
         "//pw_bluetooth_sapphire/host/sm",
-        "//pw_bluetooth_sapphire/host/sm:definitions",
-        "@pigweed//pw_async:heap_dispatcher",
-        "@pigweed//pw_bluetooth",
-        "@pigweed//pw_string:utf_codecs",
-        "@pigweed//third_party/fuchsia:fit",
+        "//pw_bluetooth_sapphire/host/transport",
+        "//third_party/fuchsia:fit",
     ],
 )
 
@@ -125,13 +147,17 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/gap/fake_adapter.h",
         "public/pw_bluetooth_sapphire/internal/host/gap/fake_pairing_delegate.h",
     ],
+    implementation_deps = [
+        "//pw_unit_test:pw_unit_test.facade",
+    ],
     strip_include_prefix = "public",
     deps = [
+        ":definitions",
         ":gap",
-        "//pw_bluetooth_sapphire:public",
+        "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/hci:testing",
+        "//pw_bluetooth_sapphire/host/l2cap",
         "//pw_bluetooth_sapphire/host/l2cap:testing",
-        "@pigweed//pw_unit_test",
     ],
 )
 
@@ -169,5 +195,20 @@ pw_cc_test(
         "//pw_bluetooth_sapphire/host/sm",
         "//pw_bluetooth_sapphire/host/sm:testing",
         "//pw_bluetooth_sapphire/host/testing",
+        "//pw_bluetooth_sapphire/host/testing:fake_controller",
+        "//pw_bluetooth_sapphire/host/testing:mock_controller",
+        "//pw_bluetooth_sapphire/host/testing:test_helpers",
+        "//pw_bluetooth_sapphire/host/transport:testing",
+    ],
+)
+
+pw_cc_fuzz_test(
+    name = "peer_cache_fuzzer",
+    srcs = ["peer_cache_fuzztest.cc"],
+    deps = [
+        ":gap",
+        "//pw_async:fake_dispatcher",
+        "//pw_bluetooth_sapphire/host/testing:fuzzing",
+        "//pw_random:fuzzer_generator",
     ],
 )

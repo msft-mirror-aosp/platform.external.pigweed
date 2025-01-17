@@ -3,10 +3,10 @@
 =================
 pw_thread_threadx
 =================
-This is a set of backends for pw_thread based on ThreadX.
+.. pigweed-module::
+   :name: pw_thread_threadx
 
-.. Warning::
-   This module is still under construction, the API is not yet stable.
+This is a set of backends for pw_thread based on ThreadX.
 
 -----------------------
 Thread Creation Backend

@@ -14,12 +14,11 @@
 
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 
-#include <gmock/gmock.h>
-
 #include <cstddef>
 #include <type_traits>
 
 #include "pw_bluetooth_sapphire/internal/host/common/macros.h"
+#include "pw_bluetooth_sapphire/internal/host/testing/gtest_helpers.h"
 #include "pw_bluetooth_sapphire/internal/host/testing/test_helpers.h"
 #include "pw_unit_test/framework.h"
 
@@ -679,7 +678,7 @@ TEST(ByteBufferTest, MutableByteBufferAsMutableStruct) {
 
 TEST(ByteBufferTest, MutableByteBufferAsMutableArray) {
   StaticByteBuffer buf(10, 12);
-  uint8_t(&array)[2] = *buf.AsMutable<uint8_t[2]>();
+  uint8_t (&array)[2] = *buf.AsMutable<uint8_t[2]>();
   ++array[0];
   ++array[1];
 

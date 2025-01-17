@@ -71,6 +71,19 @@ pw_add_library(pw_sync.borrow INTERFACE
     pw_sync.virtual_basic_lockable
 )
 
+pw_add_library(pw_sync.timed_borrow INTERFACE
+  HEADERS
+    public/pw_sync/timed_borrow.h
+  PUBLIC_INCLUDES
+    public
+  PUBLIC_DEPS
+    pw_chrono.system_clock
+    pw_sync.borrow
+    pw_sync.lock_annotations
+    pw_sync.lock_traits
+    pw_sync.virtual_basic_lockable
+)
+
 pw_add_library(pw_sync.inline_borrowable INTERFACE
   HEADERS
     public/pw_sync/inline_borrowable.h
@@ -230,38 +243,51 @@ pw_add_library(pw_sync.lock_testing STATIC
   PUBLIC_INCLUDES
     public
   PUBLIC_DEPS
+    pw_chrono.system_clock
     pw_sync.virtual_basic_lockable
   PRIVATE_DEPS
     pw_assert
 )
 
-pw_add_library(pw_sync.borrow_lockable_tests INTERFACE
+pw_add_library(pw_sync.borrow_testing INTERFACE
   HEADERS
-    pw_sync_private/borrow_lockable_tests.h
+    public/pw_sync/borrow_testing.h
   PUBLIC_DEPS
     pw_sync.borrow
     pw_sync.lock_traits
 )
 
-pw_add_test(pw_sync.lock_traits_test
-  SOURCES
-    lock_traits_test.cc
-  PRIVATE_DEPS
-    pw_sync.lock_testing
-    pw_sync.lock_traits
+pw_add_library(pw_sync.timed_borrow_testing INTERFACE
+  HEADERS
+    public/pw_sync/timed_borrow_testing.h
+  PUBLIC_DEPS
+    pw_sync.borrow_testing
+    pw_sync.timed_borrow
 )
 
-pw_add_test(pw_sync.borrow_test
-  SOURCES
-    borrow_test.cc
-  PRIVATE_DEPS
-    pw_sync.borrow
-    pw_sync.borrow_lockable_tests
-    pw_sync.lock_testing
-  GROUPS
-    modules
-    pw_sync
-)
+if(NOT "${pw_chrono.system_clock_BACKEND}" STREQUAL "")
+  pw_add_test(pw_sync.lock_traits_test
+    SOURCES
+      lock_traits_test.cc
+    PRIVATE_DEPS
+      pw_sync.lock_testing
+      pw_sync.lock_traits
+  )
+endif()
+
+if(NOT "${pw_chrono.system_clock_BACKEND}" STREQUAL "")
+  pw_add_test(pw_sync.borrow_test
+    SOURCES
+      borrow_test.cc
+    PRIVATE_DEPS
+      pw_sync.borrow
+      pw_sync.timed_borrow_testing
+      pw_sync.lock_testing
+    GROUPS
+      modules
+      pw_sync
+  )
+endif()
 
 pw_add_test(pw_sync.inline_borrowable_test
   SOURCES
@@ -312,7 +338,7 @@ if(NOT "${pw_sync.mutex_BACKEND}" STREQUAL "")
     PRIVATE_DEPS
       pw_preprocessor
       pw_sync.mutex
-      pw_sync.borrow_lockable_tests
+      pw_sync.borrow_testing
     GROUPS
       modules
       pw_sync
@@ -327,7 +353,7 @@ if(NOT "${pw_sync.timed_mutex_BACKEND}" STREQUAL "")
     PRIVATE_DEPS
       pw_preprocessor
       pw_sync.timed_mutex
-      pw_sync.borrow_lockable_tests
+      pw_sync.timed_borrow_testing
     GROUPS
       modules
       pw_sync
@@ -342,7 +368,7 @@ if(NOT "${pw_sync.interrupt_spin_lock_BACKEND}" STREQUAL "")
     PRIVATE_DEPS
       pw_preprocessor
       pw_sync.interrupt_spin_lock
-      pw_sync.borrow_lockable_tests
+      pw_sync.borrow_testing
     GROUPS
       modules
       pw_sync

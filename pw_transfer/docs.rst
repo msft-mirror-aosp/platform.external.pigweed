@@ -3,12 +3,11 @@
 ===========
 pw_transfer
 ===========
+.. pigweed-module::
+   :name: pw_transfer
+
 ``pw_transfer`` is a reliable data transfer protocol which runs on top of
 Pigweed RPC.
-
-.. attention::
-
-  ``pw_transfer`` is under construction and so is its documentation.
 
 -----
 Usage

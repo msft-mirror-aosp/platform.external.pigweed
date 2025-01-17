@@ -17,6 +17,7 @@ _rust_toolchain_template = """\
 rust_toolchain(
     name = "{name}_rust_toolchain",
     binary_ext = "",
+    cargo = "{toolchain_repo}//:bin/cargo",
     clippy_driver = "{toolchain_repo}//:bin/clippy-driver",
     default_edition = "2021",
     dylib_ext = "{dylib_ext}",
@@ -112,6 +113,41 @@ def rust_analyzer_toolchain_template(
         target_compatible_with,
         target_settings):
     return _rust_analyzer_toolchain_template.format(
+        name = name,
+        toolchain_repo = toolchain_repo,
+        exec_compatible_with = json.encode(exec_compatible_with),
+        target_compatible_with = json.encode(target_compatible_with),
+        target_settings = json.encode(target_settings),
+    )
+
+_rustfmt_toolchain_template = """\
+rustfmt_toolchain(
+    name = "{name}_rustfmt_toolchain",
+    exec_compatible_with = {exec_compatible_with},
+    rustc = "{toolchain_repo}//:bin/rustc",
+    rustfmt = "{toolchain_repo}//:bin/rustfmt",
+    rustc_lib = "{toolchain_repo}//:rustc_lib",
+    target_compatible_with = {target_compatible_with},
+    visibility = ["//visibility:public"],
+)
+
+toolchain(
+    name = "{name}",
+    exec_compatible_with = {exec_compatible_with},
+    target_compatible_with = {target_compatible_with},
+    target_settings = {target_settings},
+    toolchain = ":{name}_rustfmt_toolchain",
+    toolchain_type = "@rules_rust//rust/rustfmt:toolchain_type",
+)
+"""
+
+def rustfmt_toolchain_template(
+        name,
+        toolchain_repo,
+        exec_compatible_with,
+        target_compatible_with,
+        target_settings):
+    return _rustfmt_toolchain_template.format(
         name = name,
         toolchain_repo = toolchain_repo,
         exec_compatible_with = json.encode(exec_compatible_with),

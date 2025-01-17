@@ -48,6 +48,8 @@ namespace bt::sm {
 
 namespace {
 
+using PairingToken = gap::Peer::PairingToken;
+
 SecurityProperties FeaturesToProperties(const PairingFeatures& features) {
   return SecurityProperties(features.method == PairingMethod::kJustWorks
                                 ? SecurityLevel::kEncrypted
@@ -68,7 +70,8 @@ class SecurityManagerImpl final : public SecurityManager,
                       Delegate::WeakPtr delegate,
                       BondableMode bondable_mode,
                       gap::LESecurityMode security_mode,
-                      pw::async::Dispatcher& dispatcher);
+                      pw::async::Dispatcher& dispatcher,
+                      bt::gap::Peer::WeakPtr peer);
   // SecurityManager overrides:
   bool AssignLongTermKey(const LTK& ltk) override;
   void UpgradeSecurity(SecurityLevel level, PairingCallback callback) override;
@@ -230,6 +233,11 @@ class SecurityManagerImpl final : public SecurityManager,
 
   SmartTask timeout_task_{pw_dispatcher_};
 
+  // Set to a PairingToken when the current phase is not monostate (always null
+  // in monostate).
+  std::optional<PairingToken> pairing_token_;
+  bt::gap::Peer::WeakPtr peer_;
+
   // The presence of a particular phase in this variant indicates that a
   // security upgrade is in progress at the stored phase. No security upgrade is
   // in progress if std::monostate is present.
@@ -264,7 +272,8 @@ SecurityManagerImpl::SecurityManagerImpl(hci::LowEnergyConnection::WeakPtr link,
                                          Delegate::WeakPtr delegate,
                                          BondableMode bondable_mode,
                                          gap::LESecurityMode security_mode,
-                                         pw::async::Dispatcher& dispatcher)
+                                         pw::async::Dispatcher& dispatcher,
+                                         bt::gap::Peer::WeakPtr peer)
     : SecurityManager(bondable_mode, security_mode),
       pw_dispatcher_(dispatcher),
       next_pairing_id_(0),
@@ -276,6 +285,7 @@ SecurityManagerImpl::SecurityManagerImpl(hci::LowEnergyConnection::WeakPtr link,
       role_(le_link_->role() == pw::bluetooth::emboss::ConnectionRole::CENTRAL
                 ? Role::kInitiator
                 : Role::kResponder),
+      peer_(std::move(peer)),
       weak_self_(this),
       weak_listener_(this),
       weak_handler_(this) {
@@ -410,6 +420,10 @@ void SecurityManagerImpl::OnPairingRequest(
     required_level = SecurityLevel::kSecureAuthenticated;
   }
 
+  if (!pairing_token_) {
+    pairing_token_ = peer_->MutLe().RegisterPairing();
+  }
+
   current_phase_ = Phase1::CreatePhase1Responder(
       sm_chan_->GetWeakPtr(),
       weak_listener_.GetWeakPtr(),
@@ -445,6 +459,10 @@ fit::result<ErrorCode> SecurityManagerImpl::RequestSecurityUpgrade(
            "cannot fulfill authenticated security request as IOCapabilities "
            "are NoInputNoOutput");
     return fit::error(ErrorCode::kAuthenticationRequirements);
+  }
+
+  if (!pairing_token_) {
+    pairing_token_ = peer_->MutLe().RegisterPairing();
   }
 
   if (role_ == Role::kInitiator) {
@@ -746,6 +764,7 @@ void SecurityManagerImpl::ResetState() {
   StopTimer();
   features_.reset();
   sm_chan_->SetChannelHandler(weak_handler_.GetWeakPtr());
+  pairing_token_.reset();
   current_phase_ = std::monostate{};
 }
 
@@ -1021,14 +1040,16 @@ std::unique_ptr<SecurityManager> SecurityManager::Create(
     Delegate::WeakPtr delegate,
     BondableMode bondable_mode,
     gap::LESecurityMode security_mode,
-    pw::async::Dispatcher& dispatcher) {
+    pw::async::Dispatcher& dispatcher,
+    bt::gap::Peer::WeakPtr peer) {
   return std::make_unique<SecurityManagerImpl>(std::move(link),
                                                std::move(smp),
                                                io_capability,
                                                std::move(delegate),
                                                bondable_mode,
                                                security_mode,
-                                               dispatcher);
+                                               dispatcher,
+                                               std::move(peer));
 }
 
 SecurityManager::SecurityManager(BondableMode bondable_mode,

@@ -3,11 +3,11 @@
 ------------------
 pw_chrono_freertos
 ------------------
+.. pigweed-module::
+   :name: pw_chrono_freertos
+
 ``pw_chrono_freertos`` is a collection of ``pw_chrono`` backends that are
 implemented using FreeRTOS.
-
-.. warning::
-  This module is still under construction, the API is not yet stable.
 
 SystemClock backend
 -------------------

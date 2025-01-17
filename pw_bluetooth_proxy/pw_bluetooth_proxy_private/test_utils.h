@@ -265,7 +265,8 @@ class ProxyHostTest : public testing::Test {
 
   L2capCoc BuildCoc(ProxyHost& proxy, CocParameters params);
 
-  pw::multibuf::MultiBuf MultiBufFromSpan(span<uint8_t> buf) {
+  template <typename T, size_t N>
+  pw::multibuf::MultiBuf MultiBufFromSpan(span<T, N> buf) {
     std::optional<pw::multibuf::MultiBuf> multibuf =
         test_multibuf_allocator_.AllocateContiguous(buf.size());
     PW_ASSERT(multibuf.has_value());
@@ -275,17 +276,22 @@ class ProxyHostTest : public testing::Test {
     return std::move(*multibuf);
   }
 
+  template <typename T, size_t N>
+  pw::multibuf::MultiBuf MultiBufFromArray(const std::array<T, N>& arr) {
+    return MultiBufFromSpan(pw::span{arr});
+  }
+
  private:
   // MultiBuf allocator for creating objects to pass to the system under
   // test (e.g. creating test packets to send to proxy host).
-  pw::multibuf::test::SimpleAllocatorForTest</*kDataSizeBytes=*/512,
-                                             /*kMetaSizeBytes=*/512>
+  pw::multibuf::test::SimpleAllocatorForTest</*kDataSizeBytes=*/2 * 1024,
+                                             /*kMetaSizeBytes=*/2 * 1024>
       test_multibuf_allocator_{};
 
   // Default MultiBuf allocator to be passed to system under test (e.g.
   // to pass to AcquireL2capCoc).
-  pw::multibuf::test::SimpleAllocatorForTest</*kDataSizeBytes=*/512,
-                                             /*kMetaSizeBytes=*/512>
+  pw::multibuf::test::SimpleAllocatorForTest</*kDataSizeBytes=*/1024,
+                                             /*kMetaSizeBytes=*/2 * 1024>
       sut_multibuf_allocator_{};
 };
 

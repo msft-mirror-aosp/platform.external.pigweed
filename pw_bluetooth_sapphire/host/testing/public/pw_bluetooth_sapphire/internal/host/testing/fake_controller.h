@@ -539,7 +539,7 @@ class FakeController final : public ControllerTestDoubleBase,
 
   // Gets a reference to the set of LE Host Features that were set
   hci_spec::LESupportedFeatures le_features() {
-    return hci_spec::LESupportedFeatures{.le_features = settings_.le_features};
+    return hci_spec::LESupportedFeatures{settings_.le_features};
   }
 
  private:
@@ -567,14 +567,8 @@ class FakeController final : public ControllerTestDoubleBase,
   // multiple fields in their return message. In those cases, it's better (and
   // clearer) to use the other RespondWithCommandComplete (ByteBuffer as
   // second parameter) instead.
-  void RespondWithCommandComplete(hci_spec::OpCode opcode,
+  void RespondWithCommandComplete(pw::bluetooth::emboss::OpCode opcode,
                                   pw::bluetooth::emboss::StatusCode status);
-
-  // Sends an HCI_Command_Complete event in response to the command with
-  // |opcode| and using the provided event packet, filling in the event header
-  // fields.
-  void RespondWithCommandComplete(hci_spec::OpCode opcode,
-                                  hci::EventPacket* packet);
 
   // Sends an HCI_Command_Complete event in response to the command with
   // |opcode| and using the provided event packet, filling in the event header
@@ -584,7 +578,7 @@ class FakeController final : public ControllerTestDoubleBase,
 
   // Sends a HCI_Command_Status event in response to the command with |opcode|
   // and using the given data as the parameter payload.
-  void RespondWithCommandStatus(hci_spec::OpCode opcode,
+  void RespondWithCommandStatus(pw::bluetooth::emboss::OpCode opcode,
                                 pw::bluetooth::emboss::StatusCode status);
 
   // If a default Command Status event status has been set for the given
