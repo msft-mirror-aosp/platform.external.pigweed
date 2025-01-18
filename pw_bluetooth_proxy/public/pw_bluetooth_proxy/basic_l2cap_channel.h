@@ -39,24 +39,8 @@ class BasicL2capChannel : public L2capChannel {
   BasicL2capChannel& operator=(BasicL2capChannel&& other) = default;
   ~BasicL2capChannel() override;
 
-  /// Send an L2CAP payload to the remote peer.
-  ///
-  /// @param[in] payload The L2CAP payload to be sent. Payload will be copied
-  ///                    before function completes.
-  ///
-  /// @returns @rst
-  ///
-  /// .. pw-status-codes::
-  ///  OK:                  If packet was successfully queued for send.
-  ///  UNAVAILABLE:         If channel could not acquire the resources to queue
-  ///                       the send at this time (transient error). If an
-  ///                       `event_fn` has been provided it will be called with
-  ///                       `L2capChannelEvent::kWriteAvailable` when there is
-  ///                       queue space available again.
-  ///  INVALID_ARGUMENT:    If payload is too large.
-  ///  FAILED_PRECONDITION  If channel is not `State::kRunning`.
-  /// @endrst
-  pw::Status Write(pw::span<const uint8_t> payload);
+  // Overridden here to do additional length checks.
+  StatusWithMultiBuf Write(multibuf::MultiBuf&& payload) override;
 
  protected:
   explicit BasicL2capChannel(
@@ -68,11 +52,17 @@ class BasicL2capChannel : public L2capChannel {
       Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
- protected:
-  bool HandlePduFromController(pw::span<uint8_t> bframe) override;
   bool HandlePduFromHost(pw::span<uint8_t> bframe) override;
 
-  // TODO: https://pwbug.dev/360929142 - Stop channel on errors.
+ private:
+  bool DoHandlePduFromController(pw::span<uint8_t> bframe) override;
+
+  // TODO: https://pwbug.dev/379337272 - Delete this once all channels have
+  // transitioned to payload_queue_.
+  bool UsesPayloadQueue() override { return true; }
+
+  [[nodiscard]] std::optional<H4PacketWithH4> GenerateNextTxPacket()
+      PW_EXCLUSIVE_LOCKS_REQUIRED(send_queue_mutex()) override;
 };
 
 }  // namespace pw::bluetooth::proxy

@@ -26,7 +26,6 @@
 #include "pw_bluetooth_sapphire/internal/host/common/uuid.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/util.h"
-#include "pw_bluetooth_sapphire/internal/host/hci/low_energy_scanner.h"
 #include "pw_bluetooth_sapphire/internal/host/sm/types.h"
 
 namespace bt::gap {
@@ -82,8 +81,7 @@ Peer::LowEnergyData::LowEnergyData(Peer* owner)
       auto_conn_behavior_(AutoConnectBehavior::kAlways),
       features_(std::nullopt,
                 [](const std::optional<hci_spec::LESupportedFeatures> f) {
-                  return f ? bt_lib_cpp_string::StringPrintf("%#.16" PRIx64,
-                                                             f->le_features)
+                  return f ? bt_lib_cpp_string::StringPrintf("%#.16" PRIx64, *f)
                            : "";
                 }),
       service_changed_gatt_data_({.notify = false, .indicate = false}) {
@@ -201,6 +199,39 @@ Peer::ConnectionToken Peer::LowEnergyData::RegisterConnection() {
   };
 
   return ConnectionToken(std::move(unregister_cb));
+}
+
+Peer::PairingToken Peer::LowEnergyData::RegisterPairing() {
+  pairing_tokens_count_++;
+  auto unregister_cb = [self = peer_->GetWeakPtr(), this] {
+    if (!self.is_alive()) {
+      return;
+    }
+    pairing_tokens_count_--;
+    OnPairingMaybeComplete();
+  };
+  return PairingToken(std::move(unregister_cb));
+}
+
+bool Peer::LowEnergyData::is_pairing() const {
+  return pairing_tokens_count_ > 0;
+}
+
+void Peer::LowEnergyData::add_pairing_completion_callback(
+    fit::callback<void()>&& callback) {
+  pairing_complete_callbacks_.emplace_back(std::move(callback));
+  OnPairingMaybeComplete();
+}
+
+void Peer::LowEnergyData::OnPairingMaybeComplete() {
+  if (pairing_tokens_count_ > 0 || pairing_complete_callbacks_.empty()) {
+    return;
+  }
+  std::vector<fit::callback<void()>> callbacks;
+  std::swap(callbacks, pairing_complete_callbacks_);
+  for (auto& cb : callbacks) {
+    cb();
+  }
 }
 
 void Peer::LowEnergyData::SetConnectionParameters(
@@ -379,6 +410,38 @@ Peer::ConnectionToken Peer::BrEdrData::RegisterConnection() {
     connection_tokens_count_--;
     OnConnectionStateMaybeChanged(conn_prev_state);
   });
+}
+
+Peer::PairingToken Peer::BrEdrData::RegisterPairing() {
+  PW_CHECK(!is_pairing());
+  pairing_tokens_count_++;
+  auto unregister_cb = [self = peer_->GetWeakPtr(), this] {
+    if (!self.is_alive()) {
+      return;
+    }
+    pairing_tokens_count_--;
+    OnPairingMaybeComplete();
+  };
+  return PairingToken(std::move(unregister_cb));
+}
+
+bool Peer::BrEdrData::is_pairing() const { return pairing_tokens_count_ > 0; }
+
+void Peer::BrEdrData::add_pairing_completion_callback(
+    fit::callback<void()>&& callback) {
+  pairing_complete_callbacks_.emplace_back(std::move(callback));
+  OnPairingMaybeComplete();
+}
+
+void Peer::BrEdrData::OnPairingMaybeComplete() {
+  if (pairing_tokens_count_ > 0 || pairing_complete_callbacks_.empty()) {
+    return;
+  }
+  std::vector<fit::callback<void()>> callbacks;
+  std::swap(callbacks, pairing_complete_callbacks_);
+  for (auto& cb : callbacks) {
+    cb();
+  }
 }
 
 void Peer::BrEdrData::OnConnectionStateMaybeChanged(ConnectionState previous) {

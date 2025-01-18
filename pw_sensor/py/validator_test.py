@@ -42,7 +42,7 @@ class ValidatorTest(unittest.TestCase):
                 + "supported-buses:\n- i2c"
             ),
             cause_substrings=[
-                "'org' is a required property",
+                "'part' is a required property",
             ],
         )
 
@@ -73,6 +73,46 @@ class ValidatorTest(unittest.TestCase):
             cause_substrings=[" is not of type 'object'"],
         )
 
+    def test_partial_compatible_string(self) -> None:
+        """
+        Check that missing 'org' generates correct keys and empty entries are
+        removed.
+        """
+        metadata: dict = {
+            "compatible": {"part": "pigweed"},
+            "supported-buses": ["i2c"],
+        }
+        result = Validator().validate(metadata=metadata)
+        self.assertIn("pigweed", result["sensors"])
+        self.assertDictEqual(
+            {"part": "pigweed"},
+            result["sensors"]["pigweed"]["compatible"],
+        )
+
+        metadata["compatible"]["org"] = " "
+        result = Validator().validate(metadata=metadata)
+        self.assertIn("pigweed", result["sensors"])
+        self.assertDictEqual(
+            {"part": "pigweed"},
+            result["sensors"]["pigweed"]["compatible"],
+        )
+
+    def test_compatible_string_to_lower(self) -> None:
+        """
+        Check that compatible components are converted to lowercase and
+        stripped.
+        """
+        metadata = {
+            "compatible": {"org": "Google", "part": "Pigweed"},
+            "supported-buses": ["i2c"],
+        }
+        result = Validator().validate(metadata=metadata)
+        self.assertIn("google,pigweed", result["sensors"])
+        self.assertDictEqual(
+            {"org": "google", "part": "pigweed"},
+            result["sensors"]["google,pigweed"]["compatible"],
+        )
+
     def test_invalid_supported_buses(self) -> None:
         """
         Check that invalid or missing supported-buses cause an error
@@ -98,15 +138,33 @@ class ValidatorTest(unittest.TestCase):
             cause_substrings=[],
         )
 
+    def test_unique_bus_names(self) -> None:
+        """
+        Check that resulting bus names are unique and are converted to lowercase
+        """
         self._check_with_exception(
             metadata={
-                "compatible": {"org": "Google", "part": "Pigweed"},
-                "supported-buses": ["not-a-bus"],
+                "compatible": {"org": "google", "part": "foo"},
+                "supported-buses": ["i2c", "I2C", "SPI"],
+                "deps": [],
             },
             exception_string=(
-                "ERROR: Malformed sensor metadata YAML:\ncompatible:\n"
-                + "  org: Google\n  part: Pigweed\nsupported-buses:\n"
-                + "- not-a-bus"
+                "ERROR: bus list contains duplicates when converted to "
+                "lowercase and concatenated with '_': "
+                "['I2C', 'SPI', 'i2c'] -> ['i2c', 'spi']"
+            ),
+            cause_substrings=[],
+        )
+        self._check_with_exception(
+            metadata={
+                "compatible": {"org": "google", "part": "foo"},
+                "supported-buses": ["i 2 c", "i  2_c", "i\t2-c"],
+                "deps": [],
+            },
+            exception_string=(
+                "ERROR: bus list contains duplicates when converted to "
+                "lowercase and concatenated with '_': "
+                "['i\\t2-c', 'i  2_c', 'i 2 c'] -> ['i_2_c']"
             ),
             cause_substrings=[],
         )
@@ -375,7 +433,7 @@ class ValidatorTest(unittest.TestCase):
         with self.assertRaises(exception_type) as context:
             Validator().validate(metadata=metadata)
 
-        self.assertEqual(str(context.exception).rstrip(), exception_string)
+        self.assertEqual(str(context.exception).rstrip(), str(exception_string))
         for cause_substring in cause_substrings:
             self.assertTrue(
                 cause_substring in str(context.exception.__cause__),

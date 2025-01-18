@@ -3,6 +3,9 @@
 ================
 pw_cpu_exception
 ================
+.. pigweed-module::
+   :name: pw_cpu_exception
+
 Pigweed's exception module provides a consistent interface for entering an
 application's CPU exception handler. While the actual exception handling
 behavior is left to an application to implement, this module deals with any
@@ -148,4 +151,4 @@ Dependencies
    :hidden:
    :maxdepth: 1
 
-   Backends <backends>
+   backends

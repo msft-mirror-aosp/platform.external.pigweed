@@ -334,26 +334,6 @@ gn_crypto_mbedtls_build = PigweedGnGenNinja(
     ),
 )
 
-gn_crypto_micro_ecc_build = PigweedGnGenNinja(
-    name='gn_crypto_micro_ecc_build',
-    path_filter=_BUILD_FILE_FILTER,
-    packages=('micro-ecc',),
-    gn_args={
-        'dir_pw_third_party_micro_ecc': lambda ctx: '"{}"'.format(
-            ctx.package_root / 'micro-ecc'
-        ),
-        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:ecdsa_uecc'
-        ),
-        'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
-    },
-    ninja_targets=(
-        *_at_all_optimization_levels(f'host_{_HOST_COMPILER}'),
-        # TODO: b/240982565 - SocketStream currently requires Linux.
-        *(('integration_tests',) if sys.platform.startswith('linux') else ()),
-    ),
-)
-
 gn_teensy_build = PigweedGnGenNinja(
     name='gn_teensy_build',
     path_filter=_BUILD_FILE_FILTER,
@@ -428,7 +408,7 @@ gn_mimxrt595_freertos_build = PigweedGnGenNinja(
 gn_software_update_build = PigweedGnGenNinja(
     name='gn_software_update_build',
     path_filter=_BUILD_FILE_FILTER,
-    packages=('nanopb', 'protobuf', 'mbedtls', 'micro-ecc'),
+    packages=('nanopb', 'protobuf', 'mbedtls'),
     gn_args={
         'dir_pw_third_party_protobuf': lambda ctx: '"{}"'.format(
             ctx.package_root / 'protobuf'
@@ -436,17 +416,14 @@ gn_software_update_build = PigweedGnGenNinja(
         'dir_pw_third_party_nanopb': lambda ctx: '"{}"'.format(
             ctx.package_root / 'nanopb'
         ),
-        'dir_pw_third_party_micro_ecc': lambda ctx: '"{}"'.format(
-            ctx.package_root / 'micro-ecc'
-        ),
-        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
-            ctx.root / 'pw_crypto:ecdsa_uecc'
-        ),
         'dir_pw_third_party_mbedtls': lambda ctx: '"{}"'.format(
             ctx.package_root / 'mbedtls'
         ),
         'pw_crypto_SHA256_BACKEND': lambda ctx: '"{}"'.format(
             ctx.root / 'pw_crypto:sha256_mbedtls_v3'
+        ),
+        'pw_crypto_ECDSA_BACKEND': lambda ctx: '"{}"'.format(
+            ctx.root / 'pw_crypto:ecdsa_mbedtls_v3'
         ),
         'pw_C_OPTIMIZATION_LEVELS': _OPTIMIZATION_LEVELS,
     },
@@ -1522,35 +1499,10 @@ SOURCE_FILES_FILTER_CMAKE_EXCLUDE = FileFilter(
 # TODO: https://pwbug.dev/378564135 - Burn this list down.
 INCLUDE_CHECK_EXCEPTIONS = (
     # keep-sorted: start
-    "//pw_allocator/block:alignable",
-    "//pw_allocator/block:allocatable",
-    "//pw_allocator/block:basic",
-    "//pw_allocator/block:contiguous",
-    "//pw_allocator/block:detailed_block",
-    "//pw_allocator/block:iterable",
-    "//pw_allocator/block:poisonable",
-    "//pw_allocator/block:result",
-    "//pw_allocator/block:testing",
-    "//pw_allocator/block:with_layout",
-    "//pw_allocator/bucket:base",
-    "//pw_allocator/bucket:fast_sorted",
-    "//pw_allocator/bucket:sequenced",
-    "//pw_allocator/bucket:sorted",
-    "//pw_allocator/bucket:testing",
-    "//pw_allocator/bucket:unordered",
-    "//pw_allocator/examples:custom_allocator",
-    "//pw_allocator/examples:custom_allocator_test_harness",
-    "//pw_allocator/examples:named_u32",
-    "//pw_allocator:best_fit_block_allocator",
-    "//pw_allocator:first_fit_block_allocator",
-    "//pw_allocator:worst_fit_block_allocator",
-    "//pw_assert:assert.facade",
     "//pw_assert:assert_compatibility_backend",
-    "//pw_assert:check.facade",
     "//pw_assert:libc_assert",
     "//pw_assert:print_and_abort_assert_backend",
     "//pw_assert:print_and_abort_check_backend",
-    "//pw_assert_basic:handler.facade",
     "//pw_assert_basic:pw_assert_basic",
     "//pw_assert_fuchsia:pw_assert_fuchsia",
     "//pw_assert_log:assert_backend",
@@ -1560,8 +1512,6 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_assert_trap:pw_assert_trap",
     "//pw_async2_basic:dispatcher",
     "//pw_async2_epoll:dispatcher",
-    "//pw_async:fake_dispatcher.facade",
-    "//pw_async:task.facade",
     "//pw_async_basic:fake_dispatcher",
     "//pw_async_basic:task",
     "//pw_async_fuchsia:dispatcher",
@@ -1581,10 +1531,7 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_bluetooth:emboss_util",
     "//pw_bluetooth:pw_bluetooth",
     "//pw_bluetooth:pw_bluetooth2",
-    "//pw_boot:pw_boot.facade",
     "//pw_build/bazel_internal:header_test",
-    "//pw_chrono:system_clock.facade",
-    "//pw_chrono:system_timer.facade",
     "//pw_chrono_embos:system_clock",
     "//pw_chrono_embos:system_timer",
     "//pw_chrono_freertos:system_clock",
@@ -1593,49 +1540,29 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_chrono_stl:system_clock",
     "//pw_chrono_stl:system_timer",
     "//pw_chrono_threadx:system_clock",
-    "//pw_cpu_exception:entry.facade",
-    "//pw_cpu_exception:handler.facade",
-    "//pw_cpu_exception:support.facade",
     "//pw_cpu_exception_cortex_m:cpu_exception",
-    "//pw_cpu_exception_cortex_m:crash.facade",
     "//pw_cpu_exception_cortex_m:crash_test.lib",
-    "//pw_crypto:ecdsa.facade",
-    "//pw_crypto:sha256.facade",
     "//pw_crypto:sha256_mbedtls",
     "//pw_crypto:sha256_mock",
     "//pw_fuzzer/examples/fuzztest:metrics_lib",
     "//pw_fuzzer:fuzztest",
     "//pw_fuzzer:fuzztest_stub",
-    "//pw_interrupt:context.facade",
     "//pw_interrupt_cortex_m:context",
-    "//pw_log:pw_log.facade",
     "//pw_log_basic:headers",
     "//pw_log_fuchsia:pw_log_fuchsia",
     "//pw_log_null:headers",
-    "//pw_log_string:handler.facade",
     "//pw_log_string:pw_log_string",
     "//pw_log_tokenized:gcc_partially_tokenized",
-    "//pw_log_tokenized:handler.facade",
     "//pw_log_tokenized:pw_log_tokenized",
-    "//pw_malloc:pw_malloc.facade",
     "//pw_metric:metric_service_pwpb",
     "//pw_multibuf:internal_test_utils",
     "//pw_perf_test:arm_cortex_timer",
     "//pw_perf_test:chrono_timer",
-    "//pw_perf_test:timer.facade",
     "//pw_polyfill:standard_library",
     "//pw_rpc:internal_test_utils",
     "//pw_sensor:pw_sensor_types",
-    "//pw_sync:binary_semaphore.facade",
     "//pw_sync:binary_semaphore_thread_notification_backend",
     "//pw_sync:binary_semaphore_timed_thread_notification_backend",
-    "//pw_sync:counting_semaphore.facade",
-    "//pw_sync:interrupt_spin_lock.facade",
-    "//pw_sync:mutex.facade",
-    "//pw_sync:recursive_mutex.facade",
-    "//pw_sync:thread_notification.facade",
-    "//pw_sync:timed_mutex.facade",
-    "//pw_sync:timed_thread_notification.facade",
     "//pw_sync_baremetal:interrupt_spin_lock",
     "//pw_sync_baremetal:mutex",
     "//pw_sync_baremetal:recursive_mutex",
@@ -1663,15 +1590,6 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_sync_threadx:interrupt_spin_lock",
     "//pw_sync_threadx:mutex",
     "//pw_sync_threadx:timed_mutex",
-    "//pw_sys_io:pw_sys_io.facade",
-    "//pw_system:device_handler.facade",
-    "//pw_system:io.facade",
-    "//pw_thread:id.facade",
-    "//pw_thread:sleep.facade",
-    "//pw_thread:test_thread_context.facade",
-    "//pw_thread:thread.facade",
-    "//pw_thread:thread_iteration.facade",
-    "//pw_thread:yield.facade",
     "//pw_thread_embos:id",
     "//pw_thread_embos:sleep",
     "//pw_thread_embos:thread",
@@ -1691,12 +1609,9 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_thread_threadx:sleep",
     "//pw_thread_threadx:thread",
     "//pw_thread_threadx:yield",
-    "//pw_tls_client:entropy.facade",
-    "//pw_tls_client:pw_tls_client.facade",
     "//pw_tls_client_boringssl:pw_tls_client_boringssl",
     "//pw_tls_client_mbedtls:pw_tls_client_mbedtls",
     "//pw_trace:null",
-    "//pw_trace:pw_trace.facade",
     "//pw_trace:pw_trace_sample_app",
     "//pw_trace:trace_facade_test.lib",
     "//pw_trace:trace_zero_facade_test.lib",
@@ -1706,7 +1621,6 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_trace_tokenized:trace_tokenized_test.lib",
     "//pw_unit_test:googletest",
     "//pw_unit_test:light",
-    "//pw_unit_test:pw_unit_test.facade",
     "//pw_unit_test:rpc_service",
     "//targets/mimxrt595_evk_freertos:freertos_config",
     "//targets/rp2040:freertos_config",
@@ -1792,7 +1706,6 @@ SANITIZERS = (cpp_checks.all_sanitizers(),)
 SECURITY = (
     # keep-sorted: start
     gn_crypto_mbedtls_build,
-    gn_crypto_micro_ecc_build,
     gn_software_update_build,
     # keep-sorted: end
 )

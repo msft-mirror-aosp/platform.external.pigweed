@@ -3,11 +3,10 @@
 ================
 pw_thread_zephyr
 ================
-This is a set of backends for pw_thread based on the Zephyr RTOS.
+.. pigweed-module::
+   :name: pw_thread_zephyr
 
-.. Warning::
-  This module is still under construction, the API is not yet stable and
-  documentation is incomplete.
+This is a set of backends for pw_thread based on the Zephyr RTOS.
 
 -----------------------
 Thread Creation Backend

@@ -3,12 +3,11 @@
 -----------------
 pw_chrono_threadx
 -----------------
+.. pigweed-module::
+   :name: pw_chrono_threadx
+
 ``pw_chrono_threadx`` is a collection of ``pw_chrono`` backends that are
 implemented using ThreadX.
-
-.. warning::
-  This module is under construction, not ready for use, and the documentation
-  is incomplete.
 
 SystemClock backend
 -------------------

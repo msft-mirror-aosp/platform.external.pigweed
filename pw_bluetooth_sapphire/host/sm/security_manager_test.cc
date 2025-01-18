@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cstdlib>
 
+#include "pw_async/fake_dispatcher.h"
 #include "pw_bluetooth_sapphire/internal/host/common/macros.h"
 #include "pw_bluetooth_sapphire/internal/host/common/random.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
@@ -46,6 +47,8 @@ const DeviceAddress kLocalAddr(DeviceAddress::Type::kLEPublic,
                                {0xA6, 0xA5, 0xA4, 0xA3, 0xA2, 0xA1});
 const DeviceAddress kPeerAddr(DeviceAddress::Type::kLERandom,
                               {0xB6, 0xB5, 0xB4, 0xB3, 0xB2, 0xB1});
+
+const PeerId kPeerId(2);
 
 const PairingRandomValue kHardCodedPairingRandom = {0x0,
                                                     0x1,
@@ -119,13 +122,33 @@ class SecurityManagerTest : public l2cap::testing::FakeChannelTest,
         link_role,
         transport_->GetWeakPtr());
 
+    InitializePeer();
+
     pairing_ = SecurityManager::Create(fake_link_->GetWeakPtr(),
                                        fake_chan_->GetWeakPtr(),
                                        ioc,
                                        weak_delegate_.GetWeakPtr(),
                                        bondable_mode,
                                        gap::LESecurityMode::Mode1,
-                                       dispatcher());
+                                       dispatcher(),
+                                       peer_->GetWeakPtr());
+  }
+
+  void InitializePeer() {
+    auto listeners_cb = [](const gap::Peer&, gap::Peer::NotifyListenersChange) {
+    };
+    auto expiry_cb = [](const gap::Peer&) {};
+    auto dual_mode_cb = [](const gap::Peer&) {};
+    auto store_le_bond_cb = [](const sm::PairingData&) { return true; };
+    peer_.emplace(std::move(listeners_cb),
+                  std::move(expiry_cb),
+                  std::move(dual_mode_cb),
+                  std::move(store_le_bond_cb),
+                  kPeerId,
+                  kPeerAddr,
+                  /*connectable=*/true,
+                  &peer_metrics_,
+                  dispatcher_);
   }
 
   void DestroySecurityManager() { pairing_ = nullptr; }
@@ -510,6 +533,8 @@ class SecurityManagerTest : public l2cap::testing::FakeChannelTest,
   const ByteBuffer& local_pairing_cmd() const { return local_pairing_cmd_; }
   const ByteBuffer& peer_pairing_cmd() const { return peer_pairing_cmd_; }
 
+  gap::Peer& peer() { return peer_.value(); }
+
  private:
   void Receive128BitCmd(Code cmd_code, const UInt128& value) {
     StaticByteBuffer<sizeof(Header) + sizeof(UInt128)> buffer;
@@ -534,6 +559,11 @@ class SecurityManagerTest : public l2cap::testing::FakeChannelTest,
     transport_->InitializeACLDataChannel(hci::DataBufferInfo(1, 1),
                                          hci::DataBufferInfo(1, 1));
   }
+
+  pw::async::test::FakeDispatcher dispatcher_;
+
+  gap::PeerMetrics peer_metrics_;
+  std::optional<gap::Peer> peer_;
 
   testing::MockController::WeakPtr controller_;
   std::unique_ptr<hci::Transport> transport_;
@@ -668,6 +698,7 @@ class InitiatorPairingTest : public SecurityManagerTest {
                         uint8_t max_key_size = kMaxEncryptionKeySize,
                         BondableMode bondable_mode = BondableMode::Bondable) {
     UpgradeSecurity(level);
+    EXPECT_TRUE(peer().MutLe().is_pairing());
 
     PairingRequestParams pairing_params;
     pairing_params.io_capability = IOCapability::kNoInputNoOutput;
@@ -697,6 +728,7 @@ class InitiatorPairingTest : public SecurityManagerTest {
     EXPECT_EQ(1, pairing_random_count());
     EXPECT_EQ(0, pairing_failed_count());
     EXPECT_EQ(0, security_callback_count());
+    EXPECT_TRUE(peer().MutLe().is_pairing());
 
     PW_DCHECK(out_stk);
 
@@ -713,6 +745,7 @@ class InitiatorPairingTest : public SecurityManagerTest {
       KeyDistGenField local_keys = 0,
       uint8_t max_key_size = kMaxEncryptionKeySize,
       BondableMode bondable_mode = BondableMode::Bondable) {
+    EXPECT_FALSE(peer().MutLe().is_pairing());
     if (secure_connections) {
       FastForwardToScLtk(
           out_encryption_key, level, remote_keys, local_keys, bondable_mode);
@@ -741,6 +774,7 @@ class InitiatorPairingTest : public SecurityManagerTest {
                           KeyDistGenField local_keys = 0,
                           BondableMode bondable = BondableMode::Bondable) {
     UpgradeSecurity(level);
+    EXPECT_TRUE(peer().MutLe().is_pairing());
     RunUntilIdle();
 
     ASSERT_EQ(1, pairing_request_count());
@@ -829,6 +863,7 @@ class InitiatorPairingTest : public SecurityManagerTest {
     RunUntilIdle();
     EXPECT_EQ(0, pairing_failed_count());
     EXPECT_EQ(0, security_callback_count());
+    EXPECT_TRUE(peer().MutLe().is_pairing());
 
     ASSERT_TRUE(out_ltk);
     *out_ltk = f5.ltk;
@@ -904,6 +939,7 @@ class ResponderPairingTest : public SecurityManagerTest {
     pairing_params.initiator_key_dist_gen = remote_keys;
     pairing_params.responder_key_dist_gen = local_keys;
     ReceivePairingFeatures(pairing_params, /*peer_initiator=*/true);
+    EXPECT_TRUE(peer().MutLe().is_pairing());
 
     // Run the loop until the harness caches the feature exchange PDUs (preq &
     // pres) so that we can generate a valid confirm value.
@@ -986,6 +1022,7 @@ class ResponderPairingTest : public SecurityManagerTest {
     preq.initiator_key_dist_gen = local_keys;
     preq.responder_key_dist_gen = peer_keys;
     ReceivePairingFeatures(preq, /*peer_initiator=*/true);
+    EXPECT_TRUE(peer().MutLe().is_pairing());
     RunUntilIdle();
     ASSERT_EQ(1, pairing_response_count());
 
@@ -1062,6 +1099,7 @@ class ResponderPairingTest : public SecurityManagerTest {
     ASSERT_EQ(dhkey_check_b, pairing_dhkey_check());
     EXPECT_EQ(0, pairing_failed_count());
     EXPECT_EQ(0, pairing_complete_count());
+    EXPECT_TRUE(peer().MutLe().is_pairing());
 
     ASSERT_TRUE(out_ltk);
     *out_ltk = f5.ltk;
@@ -1095,6 +1133,7 @@ TEST_F(InitiatorPairingTest, UpgradeSecurityCurrentLevel) {
   // No pairing requests should have been made.
   EXPECT_EQ(0, pairing_request_count());
   EXPECT_EQ(0, pairing_complete_count());
+  EXPECT_FALSE(peer().MutLe().is_pairing());
 
   // Pairing should succeed.
   EXPECT_EQ(1, security_callback_count());
@@ -1107,6 +1146,7 @@ TEST_F(InitiatorPairingTest, UpgradeSecurityCurrentLevel) {
 // Peer aborts during Phase 1.
 TEST_F(InitiatorPairingTest, PairingFailedInPhase1) {
   UpgradeSecurity(SecurityLevel::kEncrypted);
+  EXPECT_TRUE(peer().MutLe().is_pairing());
   RunUntilIdle();
 
   // Pairing not complete yet but we should be in Phase 1.
@@ -1122,11 +1162,13 @@ TEST_F(InitiatorPairingTest, PairingFailedInPhase1) {
 
   EXPECT_EQ(1, pairing_complete_count());
   EXPECT_EQ(security_status(), pairing_complete_status());
+  EXPECT_FALSE(peer().MutLe().is_pairing());
 }
 
 // Local aborts during Phase 1.
 TEST_F(InitiatorPairingTest, PairingAbortedInPhase1) {
   UpgradeSecurity(SecurityLevel::kEncrypted);
+  EXPECT_TRUE(peer().MutLe().is_pairing());
   RunUntilIdle();
 
   // Pairing not complete yet but we should be in Phase 1.
@@ -1142,6 +1184,7 @@ TEST_F(InitiatorPairingTest, PairingAbortedInPhase1) {
 
   EXPECT_EQ(1, pairing_complete_count());
   EXPECT_EQ(security_status(), pairing_complete_status());
+  EXPECT_FALSE(peer().MutLe().is_pairing());
 }
 
 // Local resets I/O capabilities while pairing. This should abort any ongoing
@@ -1164,6 +1207,7 @@ TEST_F(InitiatorPairingTest, SecurityManagerResetDuringPairing) {
 
   EXPECT_EQ(1, pairing_complete_count());
   EXPECT_EQ(security_status(), pairing_complete_status());
+  EXPECT_FALSE(peer().MutLe().is_pairing());
 
   UpgradeSecurity(SecurityLevel::kEncrypted);
   RunUntilIdle();
@@ -1266,6 +1310,7 @@ TEST_F(InitiatorPairingTest,
   EXPECT_EQ(1, pairing_complete_count());
   EXPECT_EQ(fit::ok(), security_status());
   EXPECT_EQ(security_status(), pairing_complete_status());
+  EXPECT_FALSE(peer().MutLe().is_pairing());
 
   EXPECT_EQ(SecurityLevel::kSecureAuthenticated, sec_props().level());
 }
@@ -3660,6 +3705,7 @@ TEST_F(ResponderPairingTest, LegacyPhase3LocalIdKeyDistributionWithRemoteKeys) {
   // we're still encrypted with the STK. This is because the initiator may not
   // always re-encrypt the link with the LTK until a reconnection.
   EXPECT_EQ(1, pairing_data_callback_count());
+  EXPECT_FALSE(peer().MutLe().is_pairing());
 
   // The peer should have sent us its identity information.
   ASSERT_TRUE(pairing_data().irk);
@@ -3851,6 +3897,7 @@ TEST_F(ResponderPairingTest,
             security_status());
   EXPECT_EQ(1, pairing_complete_count());
   EXPECT_EQ(security_status(), pairing_complete_status());
+  EXPECT_FALSE(peer().MutLe().is_pairing());
 }
 
 TEST_F(ResponderPairingTest,
@@ -3902,6 +3949,7 @@ TEST_F(ResponderPairingTest, SecureConnectionsWorks) {
   EXPECT_EQ(1, pairing_complete_count());
   EXPECT_EQ(0, pairing_failed_count());
   EXPECT_EQ(fit::ok(), pairing_complete_status());
+  EXPECT_FALSE(peer().MutLe().is_pairing());
 
   // No callbacks are notified as the peer started this pairing, not a call to
   // UpgradeSecurity.

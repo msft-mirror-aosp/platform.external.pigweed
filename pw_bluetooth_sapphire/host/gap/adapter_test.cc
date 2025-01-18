@@ -1525,7 +1525,7 @@ TEST_F(AdapterTest, LEConnectedIsochronousStreamSupported) {
   EXPECT_TRUE(success);
   const auto& le_features = test_device()->le_features();
   EXPECT_TRUE(
-      (le_features.le_features &
+      (le_features &
        static_cast<uint64_t>(hci_spec::LESupportedFeature::
                                  kConnectedIsochronousStreamHostSupport)) != 0);
 }
@@ -1770,6 +1770,28 @@ TEST_F(AdapterTest, ReadLocalSupportedControllerDelayBasic) {
 TEST_F(AdapterTest, ReadLocalSupportedControllerDelayWithCodecConfig) {
   std::vector<uint8_t> codec_configuration{0x11, 0x22, 0x33, 0x44, 0x55};
   GetSupportedDelayRangeHelper(true, codec_configuration);
+}
+
+TEST_F(AdapterTest, RemotePublicKeyValidationSupported) {
+  FakeController::Settings settings;
+  settings.ApplyDualModeDefaults();
+  settings.SupportedCommandsView().read_local_simple_pairing_options().Write(
+      true);
+  test_device()->set_settings(settings);
+  EXPECT_TRUE(EnsureInitialized());
+  EXPECT_TRUE(
+      adapter()->state().IsControllerRemotePublicKeyValidationSupported());
+}
+
+TEST_F(AdapterTest, RemotePublicKeyValidationNotSupported) {
+  FakeController::Settings settings;
+  settings.ApplyDualModeDefaults();
+  settings.SupportedCommandsView().read_local_simple_pairing_options().Write(
+      false);
+  test_device()->set_settings(settings);
+  EXPECT_TRUE(EnsureInitialized());
+  EXPECT_FALSE(
+      adapter()->state().IsControllerRemotePublicKeyValidationSupported());
 }
 
 }  // namespace

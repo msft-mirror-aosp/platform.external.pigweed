@@ -3,13 +3,12 @@
 =======
 pw_sync
 =======
+.. pigweed-module::
+   :name: pw_sync
+
 The ``pw_sync`` module contains utilities for synchronizing between threads
 and/or interrupts through signaling primitives and critical section lock
 primitives.
-
-.. Warning::
-
-   This module is still under construction, the API is not yet stable.
 
 .. Note::
 
@@ -900,6 +899,9 @@ C++
 .. doxygenclass:: pw::sync::Borrowable
    :members:
 
+.. doxygenclass:: pw::sync::TimedBorrowable
+   :members:
+
 Example in C++
 ^^^^^^^^^^^^^^
 
@@ -1615,4 +1617,4 @@ signaling the waiter and the waiter reacquiring its lock.
    :hidden:
    :maxdepth: 1
 
-   Backends <backends>
+   backends

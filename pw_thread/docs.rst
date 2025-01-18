@@ -3,6 +3,9 @@
 =========
 pw_thread
 =========
+.. pigweed-module::
+   :name: pw_thread
+
 The ``pw_thread`` module contains utilities for thread creation and thread
 execution.
 
@@ -576,4 +579,4 @@ currently running thread and produce symbolized thread dumps.
    :hidden:
    :maxdepth: 1
 
-   Backends <backends>
+   backends

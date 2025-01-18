@@ -3,6 +3,9 @@
 ==================
 pw_trace_tokenized
 ==================
+.. pigweed-module::
+   :name: pw_trace_tokenized
+
 Pigweed's tracing module provides facilities for applications to trace
 information about the execution of their application. The module is split into
 two components:
@@ -202,7 +205,7 @@ are surrounded by 'begin' and 'end' tags.
 Ex. Invoking PW_TRACE_INSTANT with 'test1' and 'test2', then calling this
 function would produce this in the output logs:
 
-.. code-block:: sh
+.. code-block:: text
 
    [TRACE] begin
    [TRACE] data: BWdDMRoABWj52YMB

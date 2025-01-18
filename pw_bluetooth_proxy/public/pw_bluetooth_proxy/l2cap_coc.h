@@ -72,31 +72,7 @@ class L2capCoc : public L2capChannel {
   L2capCoc& operator=(L2capCoc&& other) = delete;
   ~L2capCoc() override;
 
-  /// Send an L2CAP payload to the remote peer.
-  ///
-  /// @param[in] payload The L2CAP payload to be sent. Payload will be copied
-  ///                    before function completes.
-  ///
-  /// @returns A StatusWithMultiBuf with one of the statuses below. If status is
-  ///          not OK then payload is returned in StatusWithMultiBuf as well.
-  ///
-  /// .. pw-status-codes::
-  ///  OK:                  If packet was successfully queued for send.
-  ///  UNAVAILABLE:         If channel could not acquire the resources to queue
-  ///                       the send at this time (transient error). If an
-  ///                       `event_fn` has been provided it will be called with
-  ///                       `L2capChannelEvent::kWriteAvailable` when there is
-  ///                       queue space available again.
-  ///  INVALID_ARGUMENT:    If payload is too large or if payload is not a
-  ///                       contiguous MultiBuf.
-  ///  FAILED_PRECONDITION: If channel is not `State::kRunning`.
-  /// @endrst
-  StatusWithMultiBuf Write(pw::multibuf::MultiBuf&& payload);
-
-  /// @deprecated Use Write with MultiBuf parameter instead.
-  // TODO: https://pwbug.dev/382783733 - Delete once downstreams move to new
-  // Write.
-  pw::Status Write(pw::span<const uint8_t>) { return Status::Unimplemented(); }
+  StatusWithMultiBuf Write(pw::multibuf::MultiBuf&& payload) override;
 
   /// Send an L2CAP_FLOW_CONTROL_CREDIT_IND signaling packet to dispense the
   /// remote peer additional L2CAP connection-oriented channel credits for this
@@ -107,8 +83,8 @@ class L2capCoc : public L2capChannel {
   /// @returns @rst
   ///
   /// .. pw-status-codes::
-  ///  UNAVAILABLE:         Send could not be queued right now
-  ///                       (transient error).
+  /// UNAVAILABLE:   Send could not be queued due to lack of memory in the
+  /// client-provided rx_multibuf_allocator (transient error).
   ///  FAILED_PRECONDITION: If channel is not `State::kRunning`.
   /// @endrst
   pw::Status SendAdditionalRxCredits(uint16_t additional_rx_credits)
@@ -128,7 +104,7 @@ class L2capCoc : public L2capChannel {
 
   // `SendPayloadFromControllerToClient` with the information payload contained
   // in `kframe`.
-  bool HandlePduFromController(pw::span<uint8_t> kframe) override
+  bool DoHandlePduFromController(pw::span<uint8_t> kframe) override
       PW_LOCKS_EXCLUDED(rx_mutex_);
 
   bool HandlePduFromHost(pw::span<uint8_t> kframe) override;
