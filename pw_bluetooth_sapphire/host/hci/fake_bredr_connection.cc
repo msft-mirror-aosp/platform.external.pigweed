@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/hci/fake_bredr_connection.h"
 
+#include <pw_assert/check.h>
+
 namespace bt::hci::testing {
 
 FakeBrEdrConnection::FakeBrEdrConnection(
@@ -33,8 +35,13 @@ void FakeBrEdrConnection::TriggerEncryptionChangeCallback(
 void FakeBrEdrConnection::Disconnect(pw::bluetooth::emboss::StatusCode) {}
 
 bool FakeBrEdrConnection::StartEncryption() {
-  set_encryption_status(pw::bluetooth::emboss::EncryptionStatus::
-                            ON_WITH_E0_FOR_BREDR_OR_AES_FOR_LE);
+  return StartEncryption(pw::bluetooth::emboss::EncryptionStatus::
+                             ON_WITH_E0_FOR_BREDR_OR_AES_FOR_LE);
+}
+
+bool FakeBrEdrConnection::StartEncryption(
+    pw::bluetooth::emboss::EncryptionStatus status) {
+  set_encryption_status(status);
   start_encryption_count_++;
   return true;
 }

@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/adapter.h"
 
+#include <pw_assert/check.h>
 #include <pw_async/dispatcher.h>
 #include <pw_bluetooth/hci_commands.emb.h>
 #include <pw_bluetooth/hci_events.emb.h>
@@ -21,7 +22,6 @@
 
 #include <cinttypes>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/common/metrics.h"
 #include "pw_bluetooth_sapphire/internal/host/common/random.h"
@@ -1533,7 +1533,7 @@ void AdapterImpl::InitializeStep4() {
       l2cap_.get(),
       gatt_,
       le_discovery_manager_->GetWeakPtr(),
-      sm::SecurityManager::Create,
+      sm::SecurityManager::CreateLE,
       state(),
       dispatcher_);
   le_connection_manager_->AttachInspect(

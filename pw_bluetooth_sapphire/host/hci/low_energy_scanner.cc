@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/hci/low_energy_scanner.h"
 
+#include <pw_assert/check.h>
+
 namespace bt::hci {
 
 static std::string ScanStateToString(LowEnergyScanner::State state) {
@@ -32,7 +34,7 @@ static std::string ScanStateToString(LowEnergyScanner::State state) {
       break;
   }
 
-  BT_PANIC("invalid scanner state: %u", static_cast<unsigned int>(state));
+  PW_CRASH("invalid scanner state: %u", static_cast<unsigned int>(state));
   return "(unknown)";
 }
 

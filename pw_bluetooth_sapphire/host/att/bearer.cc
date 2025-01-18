@@ -16,6 +16,7 @@
 
 #include <cpp-string/string_printf.h>
 #include <lib/fit/defer.h>
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 #include <pw_preprocessor/compiler.h>
 
@@ -416,7 +417,7 @@ bool Bearer::SendInternal(ByteBufferPtr pdu, TransactionCallback callback) {
       tq = &indication_queue_;
       break;
     default:
-      BT_PANIC("unsupported opcode: %#.2x", reader.opcode());
+      PW_CRASH("unsupported opcode: %#.2x", reader.opcode());
   }
   PW_MODIFY_DIAGNOSTICS_POP();
 

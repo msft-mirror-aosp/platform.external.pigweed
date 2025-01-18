@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gap/low_energy_connector.h"
 
+#include <pw_assert/check.h>
+
 #include "pw_bluetooth_sapphire/internal/host/gap/peer_cache.h"
 
 namespace bt::gap::internal {
@@ -432,12 +434,12 @@ void LowEnergyConnector::NotifySuccess() {
   // LowEnergyConnectionManager should immediately set handlers to replace these
   // ones.
   connection_->set_peer_disconnect_callback([peer_id = peer_id_](auto) {
-    BT_PANIC("Peer disconnected without handler set (peer: %s)",
+    PW_CRASH("Peer disconnected without handler set (peer: %s)",
              bt_str(peer_id));
   });
 
   connection_->set_error_callback([peer_id = peer_id_]() {
-    BT_PANIC("connection error without handler set (peer: %s)",
+    PW_CRASH("connection error without handler set (peer: %s)",
              bt_str(peer_id));
   });
 

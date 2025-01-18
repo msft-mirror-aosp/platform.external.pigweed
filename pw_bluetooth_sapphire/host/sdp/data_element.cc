@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/sdp/data_element.h"
 
 #include <cpp-string/string_printf.h>
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 
 #include <algorithm>
@@ -56,7 +57,7 @@ DataElement::Size SizeToSizeType(size_t size) {
     case 16:
       return DataElement::Size::kSixteenBytes;
     default:
-      BT_PANIC("invalid data element size: %zu", size);
+      PW_CRASH("invalid data element size: %zu", size);
   }
   return DataElement::Size::kNextFour;
 }

@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/common/advertising_data.h"
 
 #include <cpp-string/string_printf.h>
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 #include <pw_preprocessor/compiler.h>
 #include <pw_string/utf_codecs.h>
@@ -22,7 +23,6 @@
 #include <string>
 #include <type_traits>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/common/to_string.h"
@@ -44,7 +44,7 @@ DataType ServiceUuidTypeForUuidSize(UUIDElemSize size, bool complete) {
       return complete ? DataType::kComplete128BitServiceUuids
                       : DataType::kIncomplete128BitServiceUuids;
     default:
-      BT_PANIC(
+      PW_CRASH(
           "called ServiceUuidTypeForUuidSize with unknown UUIDElemSize %du",
           size);
   }
@@ -59,7 +59,7 @@ DataType ServiceDataTypeForUuidSize(UUIDElemSize size) {
     case UUIDElemSize::k128Bit:
       return DataType::kServiceData128Bit;
     default:
-      BT_PANIC(
+      PW_CRASH(
           "called ServiceDataTypeForUuidSize with unknown UUIDElemSize %du",
           size);
   };

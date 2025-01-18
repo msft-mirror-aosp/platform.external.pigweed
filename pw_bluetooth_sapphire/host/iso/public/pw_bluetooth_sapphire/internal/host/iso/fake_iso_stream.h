@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <pw_assert/check.h>
+
 #include <optional>
 
 #include "pw_bluetooth_sapphire/internal/host/iso/iso_stream.h"
@@ -69,7 +71,7 @@ class FakeIsoStream : public IsoStream {
   size_t incoming_packet_requests() { return incoming_packet_requests_; }
 
   bool NotifyClientOfPacketReceived(pw::span<const std::byte> packet) {
-    BT_ASSERT(on_incoming_data_available_cb_.has_value());
+    PW_CHECK(on_incoming_data_available_cb_.has_value());
     return (*on_incoming_data_available_cb_)(packet);
   }
 
