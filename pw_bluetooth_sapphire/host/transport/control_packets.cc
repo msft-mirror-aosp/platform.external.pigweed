@@ -14,6 +14,7 @@
 
 #include "pw_bluetooth_sapphire/internal/host/transport/control_packets.h"
 
+#include <pw_assert/check.h>
 #include <pw_bluetooth/hci_android.emb.h>
 
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/vendor_protocol.h"
@@ -134,7 +135,7 @@ std::optional<pw::bluetooth::emboss::StatusCode> EventPacket::StatusCode()
         }
 
         default: {
-          BT_PANIC("Emboss vendor subevent (%#.2x) not implemented",
+          PW_CRASH("Emboss vendor subevent (%#.2x) not implemented",
                    subevent_code);
           break;
         }
@@ -179,7 +180,7 @@ std::optional<pw::bluetooth::emboss::StatusCode> EventPacket::StatusCode()
               pw::bluetooth::emboss::LEAdvertisingSetTerminatedSubeventView>();
         }
         default: {
-          BT_PANIC("Emboss LE meta subevent (%#.2x) not implemented",
+          PW_CRASH("Emboss LE meta subevent (%#.2x) not implemented",
                    subevent_code);
           break;
         }
@@ -189,7 +190,7 @@ std::optional<pw::bluetooth::emboss::StatusCode> EventPacket::StatusCode()
     }
 
     default: {
-      BT_PANIC("Emboss event (%#.2x) not implemented", event_code());
+      PW_CRASH("Emboss event (%#.2x) not implemented", event_code());
       break;
     }
   }

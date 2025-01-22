@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/testing/test_packets.h"
 
+#include <pw_assert/check.h>
+
 #include "pw_bluetooth/hci_common.emb.h"
 #include "pw_bluetooth/hci_data.emb.h"
 #include "pw_bluetooth_sapphire/internal/host/common/byte_buffer.h"
@@ -422,9 +424,9 @@ DynamicByteBuffer IsoDataPacket(
   }
 
   if (has_sdu_hdr) {
-    BT_ASSERT(packet_sequence_number.has_value());
-    BT_ASSERT(iso_sdu_length.has_value());
-    BT_ASSERT(packet_status_flag.has_value());
+    PW_CHECK(packet_sequence_number.has_value());
+    PW_CHECK(iso_sdu_length.has_value());
+    PW_CHECK(packet_status_flag.has_value());
     view.packet_sequence_number().Write(*packet_sequence_number);
     view.iso_sdu_length().Write(*iso_sdu_length);
     view.packet_status_flag().Write(*packet_status_flag);
@@ -852,6 +854,19 @@ DynamicByteBuffer NumberOfCompletedPacketsPacket(
       0x13,
       0x05,  // Number Of Completed Packet HCI event header, parameters length
       0x01,  // Num_Handles
+      LowerBits(conn),         // Connection_Handle
+      UpperBits(conn),         // Connection_Handle
+      LowerBits(num_packets),  // Num_Completed_Packets
+      UpperBits(num_packets)   // Num_Completed_Packets
+      ));
+}
+
+DynamicByteBuffer NumberOfCompletedPacketsPacketWithInvalidSize(
+    hci_spec::ConnectionHandle conn, uint16_t num_packets) {
+  return DynamicByteBuffer(StaticByteBuffer(
+      0x13,
+      0x05,  // Number Of Completed Packet HCI event header, parameters length
+      0x03,  // Num_Handles
       LowerBits(conn),         // Connection_Handle
       UpperBits(conn),         // Connection_Handle
       LowerBits(num_packets),  // Num_Completed_Packets

@@ -15,6 +15,7 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/secure_simple_pairing_state.h"
 
 #include <inttypes.h>
+#include <pw_assert/check.h>
 
 #include "pw_bluetooth_sapphire/internal/host/common/log.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/bredr_connection_manager.h"
@@ -293,7 +294,7 @@ void SecureSimplePairingState::OnUserConfirmationRequest(
   } else if (current_pairing_->action == PairingAction::kGetConsent) {
     pairing_delegate()->ConfirmPairing(peer_id(), std::move(confirm_cb));
   } else {
-    BT_PANIC("%#.4x (id: %s): unexpected action %d",
+    PW_CRASH("%#.4x (id: %s): unexpected action %d",
              handle(),
              bt_str(peer_id()),
              static_cast<int>(current_pairing_->action));

@@ -14,6 +14,7 @@
 
 #pragma once
 #include <cpp-string/string_printf.h>
+#include <pw_assert/check.h>
 
 #include <string>
 
@@ -119,8 +120,7 @@ class PairingPhase {
   // called once during destruction of the phase.
   void InvalidatePairingChannelHandler();
 
-  // To BT_ASSERT that methods are not called on a phase that has already
-  // failed.
+  // To PW_CHECK that methods are not called on a phase that has already failed.
   bool has_failed() const { return has_failed_; }
 
   // For subclasses to provide more detailed inspect information.

@@ -14,6 +14,8 @@
 
 #include "pw_bluetooth_sapphire/internal/host/gatt/fake_layer.h"
 
+#include <pw_assert/check.h>
+
 #include "pw_bluetooth_sapphire/internal/host/gatt/remote_service.h"
 
 namespace bt::gatt::testing {
@@ -95,11 +97,11 @@ void FakeLayer::AddConnection(PeerId peer_id,
 void FakeLayer::RemoveConnection(PeerId peer_id) { peers_.erase(peer_id); }
 
 GATT::PeerMtuListenerId FakeLayer::RegisterPeerMtuListener(PeerMtuListener) {
-  BT_PANIC("implement fake behavior if needed");
+  PW_CRASH("implement fake behavior if needed");
 }
 
 bool FakeLayer::UnregisterPeerMtuListener(PeerMtuListenerId) {
-  BT_PANIC("implement fake behavior if needed");
+  PW_CRASH("implement fake behavior if needed");
 }
 
 void FakeLayer::RegisterService(ServicePtr service,

@@ -13,8 +13,11 @@
 # the License.
 #
 
+load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
+
+package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "sysdeps",
@@ -39,4 +42,12 @@ pw_cc_test(
         ":sysdeps",
         "//pw_bytes",
     ],
+)
+
+sphinx_docs_library(
+    name = "docs",
+    srcs = [
+        "docs.rst",
+    ],
+    target_compatible_with = incompatible_with_mcu(),
 )

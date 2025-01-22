@@ -16,7 +16,6 @@
 #include <memory>
 #include <unordered_map>
 
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/uint128.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
 #include "pw_bluetooth_sapphire/internal/host/hci-spec/link_key.h"
@@ -38,11 +37,13 @@ namespace bt::sm::testing {
 // implementations for others.
 class TestSecurityManager final : public SecurityManager {
  public:
-  ~TestSecurityManager() = default;
+  ~TestSecurityManager() override = default;
 
   // SecurityManager overrides:
   bool AssignLongTermKey(const LTK& ltk) override;
   void UpgradeSecurity(SecurityLevel level, PairingCallback callback) override;
+  void InitiateBrEdrCrossTransportKeyDerivation(
+      CrossTransportKeyDerivationResultCallback) override {}
   void Reset(IOCapability io_capability) override;
   void Abort(ErrorCode ecode) override;
 

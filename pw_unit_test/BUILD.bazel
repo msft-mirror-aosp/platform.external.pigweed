@@ -106,7 +106,7 @@ cc_library(
         "//pw_preprocessor",
         "//pw_span",
         "//pw_status",
-        "//pw_string",
+        "//pw_string:builder",
     ],
 )
 
@@ -227,6 +227,7 @@ cc_library(
     ],
     strip_include_prefix = "public",
     deps = [
+        ":event_handler",
         ":googletest_style_event_handler",
         "//pw_preprocessor",
     ],
@@ -526,6 +527,7 @@ filegroup(
     srcs = [
         "light_public_overrides/pw_unit_test/framework_backend.h",
         "public/pw_unit_test/config.h",
+        "public/pw_unit_test/constexpr.h",
         "public/pw_unit_test/event_handler.h",
         "public/pw_unit_test/googletest_handler_adapter.h",
         "public/pw_unit_test/googletest_style_event_handler.h",
@@ -542,6 +544,7 @@ filegroup(
 sphinx_docs_library(
     name = "docs",
     srcs = [
+        "constexpr_test.cc",
         "docs.rst",
     ],
     prefix = "pw_unit_test/",

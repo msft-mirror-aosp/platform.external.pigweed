@@ -15,13 +15,13 @@
 #include "pw_bluetooth_sapphire/internal/host/gap/peer.h"
 
 #include <cpp-string/string_printf.h>
+#include <pw_assert/check.h>
 #include <pw_bytes/endian.h>
 #include <pw_string/utf_codecs.h>
 
 #include <cinttypes>
 
 #include "pw_bluetooth_sapphire/internal/host/common/advertising_data.h"
-#include "pw_bluetooth_sapphire/internal/host/common/assert.h"
 #include "pw_bluetooth_sapphire/internal/host/common/manufacturer_names.h"
 #include "pw_bluetooth_sapphire/internal/host/common/uuid.h"
 #include "pw_bluetooth_sapphire/internal/host/gap/gap.h"
@@ -45,7 +45,7 @@ std::string Peer::ConnectionStateToString(Peer::ConnectionState state) {
       return "connected";
   }
 
-  BT_PANIC("invalid connection state %u", static_cast<unsigned int>(state));
+  PW_CRASH("invalid connection state %u", static_cast<unsigned int>(state));
   return "(unknown)";
 }
 
@@ -67,7 +67,7 @@ std::string Peer::NameSourceToString(Peer::NameSource name_source) {
       return "Unknown source";
   }
 
-  BT_PANIC("invalid peer name source %u",
+  PW_CRASH("invalid peer name source %u",
            static_cast<unsigned int>(name_source));
   return "(unknown)";
 }
@@ -254,6 +254,9 @@ void Peer::LowEnergyData::SetBondData(const sm::PairingData& bond_data) {
   PW_DCHECK(peer_->connectable());
   PW_DCHECK(peer_->address().type() != DeviceAddress::Type::kLEAnonymous);
 
+  // TODO(fxbug.dev/42072204): Do not overwrite an existing key that has
+  // greater strength or authentication.
+
   // Make sure the peer is non-temporary.
   peer_->TryMakeNonTemporary();
 
@@ -413,7 +416,6 @@ Peer::ConnectionToken Peer::BrEdrData::RegisterConnection() {
 }
 
 Peer::PairingToken Peer::BrEdrData::RegisterPairing() {
-  PW_CHECK(!is_pairing());
   pairing_tokens_count_++;
   auto unregister_cb = [self = peer_->GetWeakPtr(), this] {
     if (!self.is_alive()) {
