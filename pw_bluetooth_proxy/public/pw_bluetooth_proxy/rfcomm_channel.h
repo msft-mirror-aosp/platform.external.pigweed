@@ -70,7 +70,8 @@ class RfcommChannel final : public L2capChannel {
   ///
   /// @param[in] channel_number    RFCOMM channel number to use.
   ///
-  /// @param[in] receive_fn        Read callback to be invoked on Rx frames.
+  /// @param[in] payload_from_controller_fn        Read callback to be invoked
+  /// on Rx frames.
   ///
   /// @returns @rst
   ///
@@ -80,11 +81,12 @@ class RfcommChannel final : public L2capChannel {
   /// @endrst
   static pw::Result<RfcommChannel> Create(
       L2capChannelManager& l2cap_channel_manager,
+      multibuf::MultiBufAllocator& rx_multibuf_allocator,
       uint16_t connection_handle,
       Config rx_config,
       Config tx_config,
       uint8_t channel_number,
-      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   // Overridden here to do additional length checks.
@@ -98,11 +100,12 @@ class RfcommChannel final : public L2capChannel {
 
   RfcommChannel(
       L2capChannelManager& l2cap_channel_manager,
+      multibuf::MultiBufAllocator& rx_multibuf_allocator,
       uint16_t connection_handle,
       Config rx_config,
       Config tx_config,
       uint8_t channel_number,
-      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   // TODO: https://pwbug.dev/379337272 - Delete this once all channels have
@@ -122,12 +125,7 @@ class RfcommChannel final : public L2capChannel {
       PW_LOCKS_EXCLUDED(tx_mutex_);
 
   // Override: All traffic on this channel goes to client.
-  bool SendPayloadFromControllerToClient(pw::span<uint8_t> payload) override {
-    if (payload_from_controller_fn_) {
-      payload_from_controller_fn_(payload);
-    }
-    return true;
-  }
+  bool SendPayloadFromControllerToClient(pw::span<uint8_t> payload) override;
 
   const Config rx_config_;
   const Config tx_config_;
@@ -137,7 +135,7 @@ class RfcommChannel final : public L2capChannel {
 
   sync::Mutex tx_mutex_;
   uint8_t tx_credits_ PW_GUARDED_BY(tx_mutex_);
-  Function<void(pw::span<uint8_t> payload)> payload_from_controller_fn_;
+  Function<void(multibuf::MultiBuf&& payload)> payload_from_controller_fn_;
 };
 
 }  // namespace pw::bluetooth::proxy

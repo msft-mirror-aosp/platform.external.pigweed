@@ -377,26 +377,6 @@ Status SendL2capDisconnectRsp(ProxyHost& proxy,
 
 pw::Result<L2capCoc> ProxyHostTest::BuildCocWithResult(ProxyHost& proxy,
                                                        CocParameters params) {
-  // TODO: https://pwbug.dev/369849508 - Once deprecated AcquireL2capCoc() fn
-  // is removed, use only new version.
-  if (params.receive_fn && params.receive_fn_multibuf) {
-    return Status::InvalidArgument();
-  }
-  if (params.receive_fn) {
-    return proxy.AcquireL2capCoc(
-        /*rx_multibuf_allocator=*/sut_multibuf_allocator_,
-        params.handle,
-        {.cid = params.local_cid,
-         .mtu = params.rx_mtu,
-         .mps = params.rx_mps,
-         .credits = params.rx_credits},
-        {.cid = params.remote_cid,
-         .mtu = params.tx_mtu,
-         .mps = params.tx_mps,
-         .credits = params.tx_credits},
-        std::move(params.receive_fn),
-        std::move(params.event_fn));
-  }
   return proxy.AcquireL2capCoc(
       /*rx_multibuf_allocator=*/sut_multibuf_allocator_,
       params.handle,
@@ -408,7 +388,7 @@ pw::Result<L2capCoc> ProxyHostTest::BuildCocWithResult(ProxyHost& proxy,
        .mtu = params.tx_mtu,
        .mps = params.tx_mps,
        .credits = params.tx_credits},
-      std::move(params.receive_fn_multibuf),
+      std::move(params.receive_fn),
       std::move(params.event_fn));
 }
 
@@ -418,26 +398,35 @@ L2capCoc ProxyHostTest::BuildCoc(ProxyHost& proxy, CocParameters params) {
   return std::move(channel.value());
 }
 
-BasicL2capChannel BuildBasicL2capChannel(ProxyHost& proxy,
-                                         BasicL2capParameters params) {
-  pw::Result<BasicL2capChannel> channel = proxy.AcquireBasicL2capChannel(
+Result<BasicL2capChannel> ProxyHostTest::BuildBasicL2capChannelWithResult(
+    ProxyHost& proxy, BasicL2capParameters params) {
+  return proxy.AcquireBasicL2capChannel(
+      sut_multibuf_allocator_,
       params.handle,
       params.local_cid,
       params.remote_cid,
       params.transport,
       std::move(params.payload_from_controller_fn),
+      std::move(params.payload_from_host_fn),
       std::move(params.event_fn));
+}
+
+BasicL2capChannel ProxyHostTest::BuildBasicL2capChannel(
+    ProxyHost& proxy, BasicL2capParameters params) {
+  pw::Result<BasicL2capChannel> channel =
+      BuildBasicL2capChannelWithResult(proxy, std::move(params));
   PW_TEST_EXPECT_OK(channel);
   return std::move(channel.value());
 }
 
-RfcommChannel BuildRfcomm(
+RfcommChannel ProxyHostTest::BuildRfcomm(
     ProxyHost& proxy,
     RfcommParameters params,
-    Function<void(pw::span<uint8_t> payload)>&& receive_fn,
+    Function<void(multibuf::MultiBuf&& payload)>&& receive_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   pw::Result<RfcommChannel> channel =
-      proxy.AcquireRfcommChannel(params.handle,
+      proxy.AcquireRfcommChannel(sut_multibuf_allocator_,
+                                 params.handle,
                                  params.rx_config,
                                  params.tx_config,
                                  params.rfcomm_channel,

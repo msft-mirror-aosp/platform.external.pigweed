@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -842,6 +843,28 @@ def bazel_test(ctx: PresubmitContext) -> None:
 
 def bthost_package(ctx: PresubmitContext) -> None:
     """Builds, tests, and prepares bt_host for upload."""
+    # Test that `@fuchsia_sdk` isn't fetched when building non-fuchsia targets.
+    # We specifically want to disallow this behavior because `@fuchsia_sdk` is
+    # large and expensive to fetch.
+    non_fuchsia_build_cmd = [
+        'bazel',
+        'build',
+        # TODO: https://pwbug.dev/392092401 - Use `--override_module` instead of
+        # `--override_repository` here once this dep is migrated to bzlmod.
+        '--override_repository=fuchsia_sdk=/disallow/fuchsia_sdk/download/',
+        '//pw_status/...',
+    ]
+    try:
+        build_bazel(ctx, *non_fuchsia_build_cmd[1:])
+    except PresubmitFailure as exc:
+        failure_message = (
+            "ERROR: Non-Fuchsia targets must be able to build without the "
+            "Fuchsia SDK.\nRepro command: " + shlex.join(non_fuchsia_build_cmd)
+        )
+        with ctx.failure_summary_log.open('w') as outs:
+            outs.write(failure_message)
+        raise PresubmitFailure(failure_message) from exc
+
     target = '//pw_bluetooth_sapphire/fuchsia:infra'
     build_bazel(ctx, 'build', '--config=fuchsia', target)
 
@@ -951,7 +974,7 @@ def bazel_build(ctx: PresubmitContext) -> None:
         # compatible with this platform. So we list them explicitly. (If an
         # explicitly listed target is incompatible with the platform, Bazel
         # will return an error instead of skipping it.)
-        '//pw_system:system_example',
+        '//pw_bloat:bloat_base',
     )
     # Then using the transition.
     #
@@ -1103,6 +1126,7 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     r'\bgo.(mod|sum)$',
     r'\bpackage-lock.json$',
     r'\bpackage.json$',
+    r'\bpnpm-lock.yaml$',
     r'\brequirements.txt$',
     r'\byarn.lock$',
     r'^docker/tag$',
@@ -1127,6 +1151,8 @@ _EXCLUDE_FROM_COPYRIGHT_NOTICE: Sequence[str] = (
     # keep-sorted: start
     r'\.md$',
     r'\.rst$',
+    # TODO: b/388905812 - Delete this file.
+    r'^docs/size_report_notice$',
     # keep-sorted: end
     # Generated protobuf files
     # keep-sorted: start
@@ -1499,21 +1525,7 @@ SOURCE_FILES_FILTER_CMAKE_EXCLUDE = FileFilter(
 # TODO: https://pwbug.dev/378564135 - Burn this list down.
 INCLUDE_CHECK_EXCEPTIONS = (
     # keep-sorted: start
-    "//pw_assert:assert_compatibility_backend",
-    "//pw_assert:libc_assert",
-    "//pw_assert:print_and_abort_assert_backend",
-    "//pw_assert:print_and_abort_check_backend",
-    "//pw_assert_basic:pw_assert_basic",
-    "//pw_assert_fuchsia:pw_assert_fuchsia",
-    "//pw_assert_log:assert_backend",
     "//pw_assert_log:check_and_assert_backend",
-    "//pw_assert_log:check_backend",
-    "//pw_assert_tokenized:pw_assert_tokenized",
-    "//pw_assert_trap:pw_assert_trap",
-    "//pw_async2_basic:dispatcher",
-    "//pw_async2_epoll:dispatcher",
-    "//pw_async_basic:fake_dispatcher",
-    "//pw_async_basic:task",
     "//pw_async_fuchsia:dispatcher",
     "//pw_async_fuchsia:fake_dispatcher",
     "//pw_async_fuchsia:task",
@@ -1600,11 +1612,6 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//pw_thread_freertos:test_thread_context",
     "//pw_thread_freertos:thread",
     "//pw_thread_freertos:yield",
-    "//pw_thread_stl:id",
-    "//pw_thread_stl:sleep",
-    "//pw_thread_stl:test_thread_context",
-    "//pw_thread_stl:thread",
-    "//pw_thread_stl:yield",
     "//pw_thread_threadx:id",
     "//pw_thread_threadx:sleep",
     "//pw_thread_threadx:thread",
@@ -1626,13 +1633,8 @@ INCLUDE_CHECK_EXCEPTIONS = (
     "//targets/rp2040:freertos_config",
     "//targets/stm32f429i_disc1_stm32cube:freertos_config",
     "//targets/stm32f429i_disc1_stm32cube:hal_config",
-    "//third_party/boringssl:sysdeps",
-    "//third_party/chromium_verifier:pthread",
     "//third_party/fuchsia:fit_impl",
     "//third_party/fuchsia:stdcompat",
-    "//third_party/mbedtls:default_config",
-    "//third_party/smartfusion_mss:debug_config",
-    "//third_party/smartfusion_mss:default_config",
     # keep-sorted: end
 )
 
@@ -1722,6 +1724,7 @@ _LINTFORMAT = (
             r'\bMODULE.bazel.lock$',
             r'\bgo.sum$',
             r'\bpackage-lock.json$',
+            r'\bpnpm-lock.yaml$',
             r'\byarn.lock$',
         )
     ),

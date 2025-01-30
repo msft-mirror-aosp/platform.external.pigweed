@@ -15,7 +15,9 @@
 load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])
 
@@ -25,11 +27,12 @@ cc_library(
     hdrs = [
         "public_overrides/pw_async2/dispatcher_native.h",
     ],
-    includes = ["public_overrides"],
+    strip_include_prefix = "public_overrides",
     deps = [
         "//pw_assert",
         "//pw_async2:dispatcher_base",
         "//pw_async2:poll",
+        "//pw_chrono:system_clock",
         "//pw_sync:thread_notification",
     ],
 )

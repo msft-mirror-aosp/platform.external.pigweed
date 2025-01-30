@@ -20,6 +20,7 @@
 #include "pw_bluetooth_proxy/l2cap_channel_common.h"
 #include "pw_containers/inline_queue.h"
 #include "pw_containers/intrusive_forward_list.h"
+#include "pw_multibuf/allocator.h"
 #include "pw_multibuf/multibuf.h"
 #include "pw_result/result.h"
 #include "pw_status/status.h"
@@ -206,11 +207,13 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
 
   explicit L2capChannel(
       L2capChannelManager& l2cap_channel_manager,
+      multibuf::MultiBufAllocator* rx_multibuf_allocator,
       uint16_t connection_handle,
       AclTransportType transport,
       uint16_t local_cid,
       uint16_t remote_cid,
-      Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      OptionalPayloadReceiveCallback&& payload_from_controller_fn,
+      OptionalPayloadReceiveCallback&& payload_from_host_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   // Returns whether or not ACL connection handle & L2CAP channel identifiers
@@ -302,12 +305,14 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   //  Rx (protected)
   //-------
 
+  // Returns false if payload should be forwarded to controller instead.
+  virtual bool SendPayloadFromHostToClient(pw::span<uint8_t> payload);
+
   // Returns false if payload should be forwarded to host instead.
-  virtual bool SendPayloadFromControllerToClient(pw::span<uint8_t> payload) {
-    if (payload_from_controller_fn_) {
-      return payload_from_controller_fn_(payload);
-    }
-    return false;
+  virtual bool SendPayloadFromControllerToClient(pw::span<uint8_t> payload);
+
+  multibuf::MultiBufAllocator* rx_multibuf_allocator() const {
+    return rx_multibuf_allocator_;
   }
 
  private:
@@ -315,6 +320,10 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   // TODO: https://pwbug.dev/379337272 - Delete this once all channels have
   // transitioned to payload_queue_.
   virtual bool UsesPayloadQueue() = 0;
+
+  // Returns false if payload should be forwarded to host instead.
+  bool SendPayloadToClient(pw::span<uint8_t> payload,
+                           OptionalPayloadReceiveCallback& callback);
 
   static constexpr uint16_t kMaxValidConnectionHandle = 0x0EFF;
 
@@ -428,8 +437,13 @@ class L2capChannel : public IntrusiveForwardList<L2capChannel>::Item {
   //  Data members
   //--------------
 
+  // Optional client-provided multibuf allocator.
+  multibuf::MultiBufAllocator* rx_multibuf_allocator_;
+
   // Client-provided controller read callback.
-  pw::Function<bool(pw::span<uint8_t> payload)> payload_from_controller_fn_;
+  OptionalPayloadReceiveCallback payload_from_controller_fn_;
+  // Client-provided host read callback.
+  OptionalPayloadReceiveCallback payload_from_host_fn_;
 };
 
 }  // namespace pw::bluetooth::proxy

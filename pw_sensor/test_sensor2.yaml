@@ -1,4 +1,4 @@
-# Copyright 2024 The Pigweed Authors
+# Copyright 2025 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -12,9 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-module(
-    name = "pw_toolchain",
-    version = "0.1",
-)
-
-bazel_dep(name = "rules_cc", version = "0.0.10")
+deps:
+  - "pw_sensor/attributes.yaml"
+  - "pw_sensor/channels.yaml"
+  - "pw_sensor/triggers.yaml"
+  - "pw_sensor/units.yaml"
+compatible:
+  part: "unscoped_part"
+supported-buses:
+  - "i2c"

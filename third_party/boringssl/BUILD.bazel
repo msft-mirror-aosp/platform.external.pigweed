@@ -17,13 +17,16 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 cc_library(
     name = "sysdeps",
     hdrs = ["sysdeps/sys/socket.h"],
     copts = ["-Wno-unused-parameter"],
-    includes = ["sysdeps"],
+    strip_include_prefix = "sysdeps",
     target_compatible_with = incompatible_with_mcu(),
     deps = [
         "//pw_assert",
@@ -36,8 +39,6 @@ pw_cc_test(
     srcs = [
         "build_test.cc",
     ],
-    # TODO: b/385375184 - Fix this test!
-    tags = ["noubsan"],
     deps = [
         ":sysdeps",
         "//pw_bytes",

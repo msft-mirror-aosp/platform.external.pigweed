@@ -94,6 +94,7 @@ adapter:
             set_connectable_false_events
             set_connectable_true_events
         le:
+            open_l2cap_channel_requests
             outgoing_connection_requests
             pair_requests
             start_advertising_events
@@ -209,14 +210,24 @@ adapter:
         connections:
             connection_0x0:
                 peer_id
-                pairing_state:
-                    encryption_status
-                    security_properties:
-                        encrypted
-                        secure_connections
-                        authenticated
-                        level
-                        key_type
+                pairing_state_manager:
+                    pairing_state_type
+                    legacy_pairing_state:
+                        encryption_status
+                        security_properties:
+                            encrypted
+                            secure_connections
+                            authenticated
+                            level
+                            key_type
+                    secure_simple_pairing_state:
+                        encryption_status
+                        security_properties:
+                            encrypted
+                            secure_connections
+                            authenticated
+                            level
+                            key_type
         last_disconnected:
             0:
                 peer_id

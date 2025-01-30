@@ -24,7 +24,10 @@ load(
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 log_defines = [
     "PW_LOG_MODULE_NAME=\\\"GRPC\\\"",
@@ -136,6 +139,7 @@ cc_library(
         "pw_grpc_private/hpack.h",
     ],
     local_defines = log_defines,
+    tags = ["noclangtidy"],
     deps = [
         "//pw_assert",
         "//pw_bytes",
@@ -150,6 +154,7 @@ cc_library(
 pw_cc_test(
     name = "hpack_test",
     srcs = ["hpack_test.cc"],
+    tags = ["noclangtidy"],
     deps = [
         ":hpack",
     ],

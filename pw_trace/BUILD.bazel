@@ -18,7 +18,10 @@ load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -36,6 +39,7 @@ pw_facade(
     ],
     backend = ":backend",
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_preprocessor",
     ],
@@ -56,6 +60,7 @@ cc_library(
         "public",
         "public_overrides",
     ],
+    tags = ["noclangtidy"],
     deps = [
         ":pw_trace.facade",
         "//pw_preprocessor",
@@ -86,6 +91,7 @@ pw_cc_test(
         "pw_trace_test",
         "pw_trace_test/public_overrides",
     ],
+    tags = ["noclangtidy"],
     deps = [
         ":pw_trace",
         "//pw_preprocessor",

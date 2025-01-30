@@ -14,7 +14,10 @@
 
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 cc_library(
     name = "sco",
@@ -28,6 +31,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/sco/sco_connection_manager.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_bluetooth:emboss_hci_commands",
         "//pw_bluetooth_sapphire/host/common",

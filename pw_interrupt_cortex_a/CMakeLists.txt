@@ -1,4 +1,4 @@
-# Copyright 2023 The Pigweed Authors
+# Copyright 2025 The Pigweed Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not
 # use this file except in compliance with the License. You may obtain a copy of
@@ -12,17 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-import("//build_overrides/pigweed.gni")
+include($ENV{PW_ROOT}/pw_build/pigweed.cmake)
 
-import("$dir_pw_docgen/docs.gni")
-import("$dir_pw_unit_test/test.gni")
-
-# This module is Bazel-only! GN is only used for documentation and to satisfy
-# requirements that a test group is present.
-
-pw_test_group("tests") {
-}
-
-pw_doc_group("docs") {
-  sources = [ "docs.rst" ]
-}
+pw_add_library(pw_interrupt_cortex_a.context INTERFACE
+  HEADERS
+    public/pw_interrupt_cortex_a/context_inline.h
+    public_overrides/pw_interrupt_backend/context_inline.h
+  PUBLIC_INCLUDES
+    public
+    public_overrides
+)

@@ -14,6 +14,8 @@
 
 load("//pw_build:pw_cc_binary.bzl", "pw_cc_binary")
 
+package(features = ["-layering_check"])
+
 licenses(["notice"])
 
 pw_cc_binary(

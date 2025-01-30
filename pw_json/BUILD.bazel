@@ -16,7 +16,10 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -24,7 +27,6 @@ cc_library(
     name = "builder",
     hdrs = [
         "public/pw_json/builder.h",
-        "public/pw_json/internal/builder_impl.h",
         "public/pw_json/internal/nesting.h",
     ],
     strip_include_prefix = "public",

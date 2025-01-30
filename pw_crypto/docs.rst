@@ -90,7 +90,23 @@ ECDSA
 AES
 ---
 
-1. Encrypting a single AES 128-bit block.
+1. Computing the AES-CMAC of a potentially long and/or non-contiguous message.
+   This is similar to a hash or digest except that the operation takes a secret
+   key as an input, so the MAC can be used to verify integrity and
+   authentication.
+
+.. code-block:: cpp
+
+   #include "pw_crypto/aes.h"
+
+   std::byte mac[16];
+
+   if (!pw::crypto::aes_cmac::Cmac(key).Update(chunk1).Update(chunk2)
+         .Update(chunk...).Final().ok()) {
+     // Handle errors.
+   }
+
+2. Encrypting a single AES 128-bit block.
 
 .. warning::
   This is a low-level operation. Users should know exactly what they are doing
@@ -230,7 +246,9 @@ Size Reports
 Below are size reports for each crypto service. These vary across
 configurations.
 
-.. include:: size_report
+.. TODO: b/388905812 - Re-enable the size report.
+.. .. include:: size_report
+.. include:: ../size_report_notice
 
 -------------
 API reference

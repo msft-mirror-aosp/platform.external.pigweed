@@ -23,4 +23,3 @@ bazel-out
 bazel-pigweed
 bazel-testlogs
 outbazel
-pw_toolchain_bazel
