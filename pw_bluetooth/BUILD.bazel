@@ -17,7 +17,10 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -56,6 +59,7 @@ cc_library(
         "public/pw_bluetooth/vendor.h",
     ],
     includes = ["public"],
+    tags = ["noclangtidy"],
     deps = [
         "//pw_chrono:system_clock",
         "//pw_containers",
@@ -97,6 +101,7 @@ cc_library(
         "public/pw_bluetooth/vendor.h",
     ],
     includes = ["public"],
+    tags = ["noclangtidy"],
     deps = [
         ":config",
         "//pw_async2:dispatcher",
@@ -111,6 +116,30 @@ cc_library(
         "//pw_span",
         "//pw_status",
         "//pw_string:string",
+    ],
+)
+
+cc_library(
+    name = "snoop",
+    srcs = [
+        "snoop.cc",
+    ],
+    hdrs = [
+        "public/pw_bluetooth/snoop.h",
+    ],
+    includes = ["public"],
+    deps = [
+        ":emboss_snoop",
+        ":emboss_util",
+        "//pw_assert:check",
+        "//pw_bluetooth_proxy",
+        "//pw_chrono:system_clock",
+        "//pw_containers:inline_var_len_entry_queue",
+        "//pw_hex_dump",
+        "//pw_log",
+        "//pw_result",
+        "//pw_span",
+        "//pw_sync:mutex",
     ],
 )
 
@@ -164,6 +193,18 @@ pw_cc_test(
     ],
     deps = [
         ":pw_bluetooth",
+    ],
+)
+
+pw_cc_test(
+    name = "snoop_test",
+    srcs = [
+        "snoop_test.cc",
+    ],
+    deps = [
+        ":snoop",
+        "//pw_chrono:simulated_system_clock",
+        "//pw_hex_dump:log_bytes",
     ],
 )
 
@@ -347,6 +388,19 @@ cc_library(
         ":emboss_hci_events",
         ":emboss_hci_h4",
     ],
+)
+
+emboss_cc_library(
+    name = "_emboss_snoop",
+    srcs = ["public/pw_bluetooth/snoop.emb"],
+    enable_enum_traits = False,
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "emboss_snoop",
+    includes = ["public"],
+    deps = [":_emboss_snoop"],
 )
 
 pw_cc_test(

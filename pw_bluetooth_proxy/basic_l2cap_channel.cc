@@ -25,11 +25,13 @@ namespace pw::bluetooth::proxy {
 
 pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
     L2capChannelManager& l2cap_channel_manager,
+    multibuf::MultiBufAllocator* rx_multibuf_allocator,
     uint16_t connection_handle,
     AclTransportType transport,
     uint16_t local_cid,
     uint16_t remote_cid,
-    Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    OptionalPayloadReceiveCallback&& payload_from_controller_fn,
+    OptionalPayloadReceiveCallback&& payload_from_host_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   if (!AreValidParameters(/*connection_handle=*/connection_handle,
                           /*local_cid=*/local_cid,
@@ -38,12 +40,14 @@ pw::Result<BasicL2capChannel> BasicL2capChannel::Create(
   }
 
   return BasicL2capChannel(
-      /*l2cap_channel_manager=*/l2cap_channel_manager,
+      l2cap_channel_manager,
+      rx_multibuf_allocator,
       /*connection_handle=*/connection_handle,
       /*transport=*/transport,
       /*local_cid=*/local_cid,
       /*remote_cid=*/remote_cid,
       /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
+      /*payload_from_host_fn=*/std::move(payload_from_host_fn),
       /*event_fn=*/std::move(event_fn));
 }
 
@@ -93,19 +97,23 @@ std::optional<H4PacketWithH4> BasicL2capChannel::GenerateNextTxPacket() {
 
 BasicL2capChannel::BasicL2capChannel(
     L2capChannelManager& l2cap_channel_manager,
+    multibuf::MultiBufAllocator* rx_multibuf_allocator,
     uint16_t connection_handle,
     AclTransportType transport,
     uint16_t local_cid,
     uint16_t remote_cid,
-    Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    OptionalPayloadReceiveCallback&& payload_from_controller_fn,
+    OptionalPayloadReceiveCallback&& payload_from_host_fn,
     Function<void(L2capChannelEvent event)>&& event_fn)
     : L2capChannel(
-          /*l2cap_channel_manager=*/l2cap_channel_manager,
+          l2cap_channel_manager,
+          rx_multibuf_allocator,
           /*connection_handle=*/connection_handle,
           /*transport=*/transport,
           /*local_cid=*/local_cid,
           /*remote_cid=*/remote_cid,
           /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
+          /*payload_from_host_fn=*/std::move(payload_from_host_fn),
           /*event_fn=*/std::move(event_fn)) {
   PW_LOG_INFO("btproxy: BasicL2capChannel ctor");
 }
@@ -133,9 +141,20 @@ bool BasicL2capChannel::DoHandlePduFromController(pw::span<uint8_t> bframe) {
            bframe_view->payload().SizeInBytes()));
 }
 
-bool BasicL2capChannel::HandlePduFromHost(pw::span<uint8_t>) {
-  // Always forward to controller.
-  return false;
+bool BasicL2capChannel::HandlePduFromHost(pw::span<uint8_t> bframe) {
+  Result<emboss::BFrameWriter> bframe_view =
+      MakeEmbossWriter<emboss::BFrameWriter>(bframe);
+
+  if (!bframe_view.ok()) {
+    // TODO: https://pwbug.dev/360929142 - Stop channel on error.
+    PW_LOG_ERROR("(CID: 0x%X) Host transmitted invalid B-frame. So will drop.",
+                 local_cid());
+    return true;
+  }
+
+  return SendPayloadFromHostToClient(
+      span(bframe_view->payload().BackingStorage().data(),
+           bframe_view->payload().SizeInBytes()));
 }
 
 }  // namespace pw::bluetooth::proxy

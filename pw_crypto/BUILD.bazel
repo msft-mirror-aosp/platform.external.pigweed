@@ -17,7 +17,10 @@ load("//pw_build:compatibility.bzl", "host_backend_alias", "incompatible_with_mc
 load("//pw_build:pw_facade.bzl", "pw_facade")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -149,8 +152,15 @@ pw_facade(
     includes = ["public"],
     deps = [
         "//pw_bytes",
+        "//pw_log",
         "//pw_status",
     ],
+)
+
+cc_library(
+    name = "aes_cmac",
+    hdrs = ["public/pw_crypto/aes_cmac.h"],
+    deps = [":aes"],
 )
 
 label_flag(
@@ -204,6 +214,7 @@ pw_cc_test(
     ],
     deps = [
         ":aes",
+        ":aes_cmac",
         "//pw_containers:vector",
         "//pw_unit_test",
     ],

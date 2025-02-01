@@ -15,7 +15,10 @@
 load("//pw_fuzzer:fuzzer.bzl", "pw_cc_fuzz_test")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 cc_library(
     name = "definitions",
@@ -36,6 +39,7 @@ cc_library(
         "//pw_string",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/hci-spec",
@@ -77,6 +81,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/sm/util.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire/host/common",
@@ -100,6 +105,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/sm/test_security_manager.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":definitions",
         ":sm",

@@ -16,7 +16,10 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 # Basic target with protocol definitions and no logic, suitable for test
 # emulation.
@@ -30,6 +33,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/att/packet.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_bluetooth_sapphire/host/common",
         "//pw_bluetooth_sapphire/host/hci-spec",
@@ -60,6 +64,7 @@ cc_library(
         "//pw_string",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":definitions",
         "//pw_async:dispatcher",

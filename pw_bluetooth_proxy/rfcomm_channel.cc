@@ -167,11 +167,12 @@ std::optional<H4PacketWithH4> RfcommChannel::DequeuePacket() {
 
 Result<RfcommChannel> RfcommChannel::Create(
     L2capChannelManager& l2cap_channel_manager,
+    multibuf::MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     Config rx_config,
     Config tx_config,
     uint8_t channel_number,
-    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   if (!AreValidParameters(/*connection_handle=*/connection_handle,
                           /*local_cid=*/rx_config.cid,
@@ -180,6 +181,7 @@ Result<RfcommChannel> RfcommChannel::Create(
   }
 
   return RfcommChannel(l2cap_channel_manager,
+                       rx_multibuf_allocator,
                        connection_handle,
                        rx_config,
                        tx_config,
@@ -277,24 +279,53 @@ bool RfcommChannel::DoHandlePduFromController(pw::span<uint8_t> l2cap_pdu) {
   return true;
 }
 
+bool RfcommChannel::SendPayloadFromControllerToClient(
+    pw::span<uint8_t> payload) {
+  PW_CHECK(rx_multibuf_allocator());
+  std::optional<multibuf::MultiBuf> buffer =
+      rx_multibuf_allocator()->AllocateContiguous(payload.size());
+
+  if (!buffer) {
+    PW_LOG_ERROR(
+        "(CID %#x) Rx MultiBuf allocator out of memory. So stopping "
+        "channel "
+        "and reporting it needs to be closed.",
+        local_cid());
+    StopAndSendEvent(L2capChannelEvent::kRxOutOfMemory);
+    return true;
+  }
+
+  StatusWithSize status = buffer->CopyFrom(/*source=*/as_bytes(payload),
+                                           /*position=*/0);
+  PW_CHECK_OK(status);
+
+  if (payload_from_controller_fn_) {
+    payload_from_controller_fn_(std::move(*buffer));
+  }
+
+  return true;
+}
+
 bool RfcommChannel::HandlePduFromHost(pw::span<uint8_t>) { return false; }
 
 RfcommChannel::RfcommChannel(
     L2capChannelManager& l2cap_channel_manager,
+    multibuf::MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     Config rx_config,
     Config tx_config,
     uint8_t channel_number,
-    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
     Function<void(L2capChannelEvent event)>&& event_fn)
-    : L2capChannel(
-          /*l2cap_channel_manager=*/l2cap_channel_manager,
-          /*connection_handle=*/connection_handle,
-          /*transport=*/AclTransportType::kBrEdr,
-          /*local_cid=*/rx_config.cid,
-          /*remote_cid=*/tx_config.cid,
-          /*payload_from_controller_fn=*/nullptr,
-          /*event_fn=*/std::move(event_fn)),
+    : L2capChannel(l2cap_channel_manager,
+                   &rx_multibuf_allocator,
+                   /*connection_handle=*/connection_handle,
+                   /*transport=*/AclTransportType::kBrEdr,
+                   /*local_cid=*/rx_config.cid,
+                   /*remote_cid=*/tx_config.cid,
+                   /*payload_from_controller_fn=*/nullptr,
+                   /*payload_from_host_fn=*/nullptr,
+                   /*event_fn=*/std::move(event_fn)),
       rx_config_(rx_config),
       tx_config_(tx_config),
       channel_number_(channel_number),

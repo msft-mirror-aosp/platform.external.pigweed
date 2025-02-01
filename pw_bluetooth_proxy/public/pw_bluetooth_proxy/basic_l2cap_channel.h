@@ -25,11 +25,13 @@ class BasicL2capChannel : public L2capChannel {
   // provide MTU_SIG.
   static pw::Result<BasicL2capChannel> Create(
       L2capChannelManager& l2cap_channel_manager,
+      multibuf::MultiBufAllocator* rx_multibuf_allocator,
       uint16_t connection_handle,
       AclTransportType transport,
       uint16_t local_cid,
       uint16_t remote_cid,
-      Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      OptionalPayloadReceiveCallback&& payload_from_controller_fn,
+      OptionalPayloadReceiveCallback&& payload_from_host_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   BasicL2capChannel(const BasicL2capChannel& other) = delete;
@@ -45,11 +47,13 @@ class BasicL2capChannel : public L2capChannel {
  protected:
   explicit BasicL2capChannel(
       L2capChannelManager& l2cap_channel_manager,
+      multibuf::MultiBufAllocator* rx_multibuf_allocator,
       uint16_t connection_handle,
       AclTransportType transport,
       uint16_t local_cid,
       uint16_t remote_cid,
-      Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      OptionalPayloadReceiveCallback&& payload_from_controller_fn,
+      OptionalPayloadReceiveCallback&& payload_from_host_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   bool HandlePduFromHost(pw::span<uint8_t> bframe) override;

@@ -16,7 +16,9 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "boolean_constraint_value", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+)
 
 licenses(["notice"])
 
@@ -53,8 +55,13 @@ cc_library(
     target_compatible_with = incompatible_with_mcu(unless_platform_has = ":socket_stream_compatible"),
     deps = [
         ":pw_stream",
+        "//pw_assert",
         "//pw_log",
-        "//pw_string",
+        "//pw_result",
+        "//pw_span",
+        "//pw_status",
+        "//pw_string:to_string",
+        "//pw_sync:lock_annotations",
         "//pw_sync:mutex",
         "//pw_sys_io",
     ],
@@ -87,7 +94,11 @@ cc_library(
     srcs = ["interval_reader.cc"],
     hdrs = ["public/pw_stream/interval_reader.h"],
     strip_include_prefix = "public",
-    deps = [":pw_stream"],
+    deps = [
+        ":pw_stream",
+        "//pw_assert",
+        "//pw_status",
+    ],
 )
 
 cc_library(
@@ -115,6 +126,7 @@ pw_cc_test(
     deps = [
         ":pw_stream",
         "//pw_assert",
+        "//pw_preprocessor",
         "//pw_status",
         "//pw_unit_test",
     ],
@@ -137,11 +149,12 @@ pw_cc_test(
         ":std_file_stream",
         "//pw_assert",
         "//pw_bytes",
-        "//pw_containers",
+        "//pw_containers:algorithm",
         "//pw_random",
         "//pw_result",
+        "//pw_span",
         "//pw_status",
-        "//pw_string",
+        "//pw_string:builder",
         "//pw_unit_test",
     ],
 )
@@ -160,6 +173,7 @@ pw_cc_test(
     srcs = ["stream_test.cc"],
     deps = [
         ":pw_stream",
+        "//pw_assert",
         "//pw_bytes",
         "//pw_containers:to_array",
         "//pw_span",
@@ -172,6 +186,9 @@ pw_cc_test(
     srcs = ["interval_reader_test.cc"],
     deps = [
         ":interval_reader",
+        ":pw_stream",
+        "//pw_assert",
+        "//pw_result",
         "//pw_unit_test",
     ],
 )
@@ -181,6 +198,8 @@ pw_cc_test(
     srcs = ["socket_stream_test.cc"],
     deps = [
         ":socket_stream",
+        "//pw_result",
+        "//pw_status",
         "//pw_unit_test",
     ],
 )

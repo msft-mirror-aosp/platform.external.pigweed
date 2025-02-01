@@ -26,7 +26,10 @@ load(
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -64,6 +67,7 @@ cc_library(
 cc_library(
     name = "metric_walker",
     hdrs = ["pw_metric_private/metric_walker.h"],
+    tags = ["noclangtidy"],
     visibility = ["//visibility:private"],
     deps = [
         ":metric",

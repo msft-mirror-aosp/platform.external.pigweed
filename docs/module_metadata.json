@@ -483,6 +483,10 @@
   "pw_interrupt": {
     "status": "unstable"
   },
+  "pw_interrupt_cortex_a": {
+    "status": "experimental",
+    "languages": []
+  },
   "pw_interrupt_cortex_m": {
     "status": "unstable"
   },
@@ -882,13 +886,6 @@
     "status": "stable",
     "languages": [
       "GN"
-    ]
-  },
-  "pw_toolchain_bazel": {
-    "tagline": "A modular toolkit for declaring C/C++ toolchains in Bazel",
-    "status": "unstable",
-    "languages": [
-      "Starlark"
     ]
   },
   "pw_trace": {

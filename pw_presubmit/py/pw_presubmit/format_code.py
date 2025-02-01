@@ -38,13 +38,16 @@ from typing import (
     NamedTuple,
     Optional,
     Pattern,
-    TextIO,
 )
 
+from pw_cli.collect_files import (
+    add_file_collection_arguments,
+    collect_files_in_current_repo,
+    file_summary,
+)
 import pw_cli.color
-from pw_cli.diff import colorize_diff
 import pw_cli.env
-from pw_cli.file_filter import FileFilter, exclude_paths
+from pw_cli.file_filter import FileFilter
 from pw_cli.plural import plural
 import pw_env_setup.config_file
 from pw_presubmit.presubmit import filter_paths
@@ -55,22 +58,31 @@ from pw_presubmit.presubmit_context import (
     PresubmitFailure,
 )
 from pw_presubmit import (
-    cli,
     git_repo,
     owners_checks,
     presubmit_context,
 )
+from pw_presubmit.format.bazel import (
+    BuildifierFormatter,
+    DEFAULT_BAZEL_FILE_PATTERNS,
+)
 from pw_presubmit.format.core import FormattedDiff, FormatFixStatus
+from pw_presubmit.format import cpp
 from pw_presubmit.format.cpp import ClangFormatFormatter
-from pw_presubmit.format.bazel import BuildifierFormatter
-from pw_presubmit.format.gn import GnFormatter
-from pw_presubmit.format.python import BlackFormatter
+from pw_presubmit.format.gn import GnFormatter, DEFAULT_GN_FILE_PATTERNS
+from pw_presubmit.format.private.cli_support import (
+    summarize_findings,
+    findings_to_formatted_diffs,
+)
+from pw_presubmit.format.python import (
+    BlackFormatter,
+    DEFAULT_PYTHON_FILE_PATTERNS,
+)
+from pw_presubmit.rst_format import reformat_rst
 from pw_presubmit.tools import (
-    file_summary,
     log_run,
     PresubmitToolRunner,
 )
-from pw_presubmit.rst_format import reformat_rst
 
 _LOG: logging.Logger = logging.getLogger(__name__)
 _COLOR = pw_cli.color.colors()
@@ -461,47 +473,6 @@ def rst_format_fix(ctx: _Context) -> dict[Path, str]:
     return errors
 
 
-def print_format_check(
-    errors: dict[Path, str],
-    show_fix_commands: bool,
-    show_summary: bool = True,
-    colors: bool | None = None,
-    file: TextIO = sys.stdout,
-) -> None:
-    """Prints and returns the result of a check_*_format function."""
-    if not errors:
-        # Don't print anything in the all-good case.
-        return
-
-    if colors is None:
-        colors = file == sys.stdout
-
-    # Show the format fixing diff suggested by the tooling (with colors).
-    if show_summary:
-        _LOG.warning(
-            'Found %d files with formatting errors. Format changes:',
-            len(errors),
-        )
-    for diff in errors.values():
-        if colors:
-            diff = colorize_diff(diff)
-        print(diff, end='', file=file)
-
-    # Show a copy-and-pastable command to fix the issues.
-    if show_fix_commands:
-
-        def path_relative_to_cwd(path: Path):
-            try:
-                return Path(path).resolve().relative_to(Path.cwd().resolve())
-            except ValueError:
-                return Path(path).resolve()
-
-        message = (
-            f'  pw format --fix {path_relative_to_cwd(path)}' for path in errors
-        )
-        _LOG.warning('To fix formatting, run:\n\n%s\n', '\n'.join(message))
-
-
 def print_format_fix(stdout: bytes):
     """Prints the output of a format --fix call."""
     for line in stdout.splitlines():
@@ -520,14 +491,10 @@ class CodeFormat(NamedTuple):
         return self.filter.endswith
 
 
-CPP_HEADER_EXTS = frozenset(('.h', '.hpp', '.hxx', '.h++', '.hh', '.H'))
-CPP_SOURCE_EXTS = frozenset(
-    ('.c', '.cpp', '.cxx', '.c++', '.cc', '.C', '.inc', '.inl')
-)
-CPP_EXTS = CPP_HEADER_EXTS.union(CPP_SOURCE_EXTS)
-CPP_FILE_FILTER = FileFilter(
-    endswith=CPP_EXTS, exclude=[r'\.pb\.h$', r'\.pb\.c$']
-)
+CPP_HEADER_EXTS = cpp.CPP_HEADER_EXTS
+CPP_SOURCE_EXTS = cpp.CPP_SOURCE_EXTS
+CPP_EXTS = cpp.CPP_EXTS
+CPP_FILE_FILTER = cpp.DEFAULT_CPP_FILE_PATTERNS
 
 C_FORMAT = CodeFormat(
     'C and C++', CPP_FILE_FILTER, clang_format_check, clang_format_fix
@@ -575,18 +542,18 @@ GO_FORMAT: CodeFormat = CodeFormat(
 
 PYTHON_FORMAT: CodeFormat = CodeFormat(
     'Python',
-    FileFilter(endswith=['.py']),
+    DEFAULT_PYTHON_FILE_PATTERNS,
     check_py_format,
     fix_py_format,
 )
 
 GN_FORMAT: CodeFormat = CodeFormat(
-    'GN', FileFilter(endswith=['.gn', '.gni']), check_gn_format, fix_gn_format
+    'GN', DEFAULT_GN_FILE_PATTERNS, check_gn_format, fix_gn_format
 )
 
 BAZEL_FORMAT: CodeFormat = CodeFormat(
     'Bazel',
-    FileFilter(endswith=['.bazel', '.bzl'], name=['^BUILD$', '^WORKSPACE$']),
+    DEFAULT_BAZEL_FILE_PATTERNS,
     check_bazel_format,
     fix_bazel_format,
 )
@@ -684,20 +651,20 @@ def presubmit_check(
     @filter_paths(file_filter=file_filter)
     def check_code_format(ctx: PresubmitContext):
         ctx.paths = presubmit_context.apply_exclusions(ctx)
-        errors = code_format.check(ctx)
-        print_format_check(
+        errors = findings_to_formatted_diffs(code_format.check(ctx))
+        summarize_findings(
             errors,
-            # When running as part of presubmit, show the fix command help.
-            show_fix_commands=True,
+            log_fix_command=True,
+            log_oneliner_summary=True,
         )
         if not errors:
             return
 
         with ctx.failure_summary_log.open('w') as outs:
-            print_format_check(
+            summarize_findings(
                 errors,
-                show_summary=False,
-                show_fix_commands=False,
+                log_fix_command=False,
+                log_oneliner_summary=False,
                 file=outs,
             )
 
@@ -820,39 +787,18 @@ def format_paths_in_repo(
 ) -> int:
     """Checks or fixes formatting for files in a Git repo."""
 
-    files = [Path(path).resolve() for path in paths if os.path.isfile(path)]
     repo = git_repo.root() if git_repo.is_repo() else None
 
-    # Implement a graceful fallback in case the tracking branch isn't available.
-    if base == git_repo.TRACKING_BRANCH_ALIAS and not git_repo.tracking_branch(
-        repo
-    ):
-        _LOG.warning(
-            'Failed to determine the tracking branch, using --base HEAD~1 '
-            'instead of listing all files'
-        )
-        base = 'HEAD~1'
+    files = collect_files_in_current_repo(
+        paths,
+        PresubmitToolRunner(),
+        modified_since_git_ref=base,
+        exclude_patterns=exclude,
+        action_flavor_text='Formatting',
+    )
 
-    # If this is a Git repo, list the original paths with git ls-files or diff.
-    if repo:
-        project_root = pw_cli.env.pigweed_environment().PW_PROJECT_ROOT
-        _LOG.info(
-            'Formatting %s',
-            git_repo.describe_files(
-                repo, Path.cwd(), base, paths, exclude, project_root
-            ),
-        )
-
-        # Add files from Git and remove duplicates.
-        files = sorted(
-            set(exclude_paths(exclude, git_repo.list_files(base, paths)))
-            | set(files)
-        )
-    elif base:
-        _LOG.critical(
-            'A base commit may only be provided if running from a Git repo'
-        )
-        return 1
+    # The format tooling currently expects absolute paths when filtering paths.
+    files = [Path.cwd() / f for f in files]
 
     return format_files(
         files,
@@ -905,18 +851,26 @@ def format_files(
     for line in _file_summary(paths, repo if repo else Path.cwd()):
         print(line, file=sys.stderr)
 
-    check_errors = formatter.check()
-    print_format_check(check_errors, show_fix_commands=(not fix))
+    check_errors = findings_to_formatted_diffs(formatter.check())
+    summarize_findings(
+        check_errors,
+        log_fix_command=(not fix),
+        log_oneliner_summary=True,
+    )
 
     if check_errors:
         if fix:
             _LOG.info(
                 'Applying formatting fixes to %d files', len(check_errors)
             )
-            fix_errors = formatter.fix()
+            fix_errors = findings_to_formatted_diffs(formatter.fix())
             if fix_errors:
                 _LOG.info('Failed to apply formatting fixes')
-                print_format_check(fix_errors, show_fix_commands=False)
+                summarize_findings(
+                    check_errors,
+                    log_fix_command=False,
+                    log_oneliner_summary=True,
+                )
                 return 1
 
             _LOG.info('Formatting fixes applied successfully')
@@ -935,7 +889,7 @@ def arguments(git_paths: bool) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
 
     if git_paths:
-        cli.add_path_arguments(parser)
+        add_file_collection_arguments(parser)
     else:
 
         def existing_path(arg: str) -> Path:

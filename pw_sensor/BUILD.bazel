@@ -20,7 +20,10 @@ load(
     "pw_sensor_library",
 )
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -38,7 +41,10 @@ cc_library(
 
 pw_sensor_library(
     name = "test_constants_lib",
-    srcs = [":sensor.yaml"],
+    srcs = [
+        ":test_sensor1.yaml",
+        ":test_sensor2.yaml",
+    ],
     generator_includes = ["../"],
     inputs = [
         ":attributes.yaml",

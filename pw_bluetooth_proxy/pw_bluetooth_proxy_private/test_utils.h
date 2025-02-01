@@ -217,29 +217,19 @@ struct CocParameters {
   uint16_t tx_mtu = 100;
   uint16_t tx_mps = 100;
   uint16_t tx_credits = 1;
-  pw::Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr;
+  Function<void(multibuf::MultiBuf&& payload)>&& receive_fn = nullptr;
   pw::Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
-  Function<void(multibuf::MultiBuf&& payload)>&& receive_fn_multibuf = nullptr;
 };
-
-// Attempt to AcquireL2capCoc and return result.
-pw::Result<L2capCoc> BuildCocWithResult(ProxyHost& proxy, CocParameters params);
-
-// Acquire L2capCoc and return result.
-L2capCoc BuildCoc(ProxyHost& proxy, CocParameters params);
 
 struct BasicL2capParameters {
   uint16_t handle = 123;
   uint16_t local_cid = 234;
   uint16_t remote_cid = 456;
   AclTransportType transport = AclTransportType::kLe;
-  Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn =
-      nullptr;
+  OptionalPayloadReceiveCallback&& payload_from_controller_fn = nullptr;
+  OptionalPayloadReceiveCallback&& payload_from_host_fn = nullptr;
   Function<void(L2capChannelEvent event)>&& event_fn = nullptr;
 };
-
-BasicL2capChannel BuildBasicL2capChannel(ProxyHost& proxy,
-                                         BasicL2capParameters params);
 
 struct RfcommParameters {
   uint16_t handle = 123;
@@ -250,12 +240,6 @@ struct RfcommParameters {
   uint8_t rfcomm_channel = 3;
 };
 
-RfcommChannel BuildRfcomm(
-    ProxyHost& proxy,
-    RfcommParameters params = {},
-    Function<void(pw::span<uint8_t> payload)>&& receive_fn = nullptr,
-    Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
-
 // ########## Test Suites
 
 class ProxyHostTest : public testing::Test {
@@ -264,6 +248,18 @@ class ProxyHostTest : public testing::Test {
                                           CocParameters params);
 
   L2capCoc BuildCoc(ProxyHost& proxy, CocParameters params);
+
+  Result<BasicL2capChannel> BuildBasicL2capChannelWithResult(
+      ProxyHost& proxy, BasicL2capParameters params);
+
+  BasicL2capChannel BuildBasicL2capChannel(ProxyHost& proxy,
+                                           BasicL2capParameters params);
+
+  RfcommChannel BuildRfcomm(
+      ProxyHost& proxy,
+      RfcommParameters params = {},
+      Function<void(multibuf::MultiBuf&& payload)>&& receive_fn = nullptr,
+      Function<void(L2capChannelEvent event)>&& event_fn = nullptr);
 
   template <typename T, size_t N>
   pw::multibuf::MultiBuf MultiBufFromSpan(span<T, N> buf) {

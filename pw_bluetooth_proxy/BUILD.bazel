@@ -16,7 +16,10 @@ load("@rules_python//sphinxdocs:sphinx_docs_library.bzl", "sphinx_docs_library")
 load("//pw_build:compatibility.bzl", "incompatible_with_mcu")
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -34,6 +37,7 @@ cc_library(
         "l2cap_leu_signaling_channel.cc",
         "l2cap_signaling_channel.cc",
         "l2cap_status_tracker.cc",
+        "multibuf_writer.cc",
         "proxy_host.cc",
         "rfcomm_channel.cc",
         "rfcomm_fcs.cc",
@@ -54,6 +58,7 @@ cc_library(
         "public/pw_bluetooth_proxy/internal/l2cap_signaling_channel.h",
         "public/pw_bluetooth_proxy/internal/l2cap_status_tracker.h",
         "public/pw_bluetooth_proxy/internal/logical_transport.h",
+        "public/pw_bluetooth_proxy/internal/multibuf_writer.h",
         "public/pw_bluetooth_proxy/internal/rfcomm_fcs.h",
         "public/pw_bluetooth_proxy/l2cap_channel_common.h",
         "public/pw_bluetooth_proxy/l2cap_coc.h",
@@ -92,6 +97,7 @@ cc_library(
     testonly = True,
     srcs = ["test_utils.cc"],
     hdrs = ["pw_bluetooth_proxy_private/test_utils.h"],
+    tags = ["noclangtidy"],
     deps = [
         ":pw_bluetooth_proxy",
         "//pw_bluetooth:emboss_att",
@@ -110,6 +116,7 @@ pw_cc_test(
     srcs = [
         "h4_packet_test.cc",
         "l2cap_coc_test.cc",
+        "multibuf_writer_test.cc",
         "proxy_host_test.cc",
         "rfcomm_fcs_test.cc",
         "rfcomm_test.cc",

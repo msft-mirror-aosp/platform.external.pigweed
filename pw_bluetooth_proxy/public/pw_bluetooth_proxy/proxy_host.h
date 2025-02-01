@@ -157,16 +157,6 @@ class ProxyHost {
       Function<void(multibuf::MultiBuf&& payload)>&& receive_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
-  // TODO(drees) Remove once clients move to new signature with allocators.
-  /// @deprecated Use AcquireL2capCoc with allocator parameters instead.
-  pw::Result<L2capCoc> AcquireL2capCoc(
-      pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
-      uint16_t connection_handle,
-      L2capCoc::CocConfig rx_config,
-      L2capCoc::CocConfig tx_config,
-      Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-      Function<void(L2capChannelEvent event)>&& event_fn);
-
   /// TODO: https://pwbug.dev/380076024 - Delete after downstream client uses
   /// this method on `L2capCoc`.
   /// @deprecated Use L2capCoc::SendAdditionalRxCredits instead.
@@ -176,6 +166,11 @@ class ProxyHost {
 
   /// Returns an L2CAP channel operating in basic mode that supports writing to
   /// and reading from a remote peer.
+  ///
+  /// @param[in] rx_multibuf_allocator      Provides the allocator the channel
+  ///                                       will use for its Rx buffers (for
+  ///                                       both queueing and  returning to the
+  ///                                       client).
   ///
   /// @param[in] connection_handle          The connection handle of the remote
   ///                                       peer.
@@ -189,9 +184,14 @@ class ProxyHost {
   /// @param[in] transport                  Logical link transport type.
   ///
   /// @param[in] payload_from_controller_fn Read callback to be invoked on Rx
-  ///                                       SDUs. Return value of false
-  ///                                       indicates the packet should be
-  ///                                       forwarded on to host.
+  ///                                       SDUs. Return value of passed-in
+  ///                                       multibuf indicates the packet should
+  ///                                       be forwarded on to host.
+  ///
+  /// @param[in] payload_from_host_fn       Read callback to be invoked on Tx
+  ///                                       SDUs. Return value of passed-in
+  ///                                       multibuf indicates the packet should
+  ///                                       be forwarded on to the controller.
   ///
   /// @param[in] event_fn                   Handle asynchronous events such as
   ///                                       errors encountered by the channel.
@@ -205,11 +205,13 @@ class ProxyHost {
   ///                    available to accommodate an additional ACL connection.
   /// @endrst
   pw::Result<BasicL2capChannel> AcquireBasicL2capChannel(
+      multibuf::MultiBufAllocator& rx_multibuf_allocator,
       uint16_t connection_handle,
       uint16_t local_cid,
       uint16_t remote_cid,
       AclTransportType transport,
-      Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      OptionalPayloadReceiveCallback&& payload_from_controller_fn,
+      OptionalPayloadReceiveCallback&& payload_from_host_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   /// Send a GATT Notify to the indicated connection.
@@ -265,6 +267,11 @@ class ProxyHost {
   /// Returns an RFCOMM channel that supports writing to and reading from a
   /// remote peer.
   ///
+  /// @param[in] rx_multibuf_allocator
+  ///                              Provides the allocator the channel will use
+  ///                              for its Rx buffers (for both queueing and
+  ///                              returning to the client).
+  ///
   /// @param[in] connection_handle The connection handle of the remote peer.
   ///
   /// @param[in] rx_config         Parameters applying to reading packets.
@@ -289,11 +296,12 @@ class ProxyHost {
   ///  UNAVAILABLE: If channel could not be created.
   /// @endrst
   pw::Result<RfcommChannel> AcquireRfcommChannel(
+      multibuf::MultiBufAllocator& rx_multibuf_allocator,
       uint16_t connection_handle,
       RfcommChannel::Config rx_config,
       RfcommChannel::Config tx_config,
       uint8_t channel_number,
-      Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+      Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
       Function<void(L2capChannelEvent event)>&& event_fn);
 
   /// Indicates whether the proxy has the capability of sending LE ACL packets.

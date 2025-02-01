@@ -465,49 +465,14 @@ pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
           connection_handle,
           static_cast<uint16_t>(emboss::L2capFixedCid::LE_U_SIGNALING));
   PW_CHECK(signaling_channel);
-  return L2capCocInternal::Create(
-      rx_multibuf_allocator,
-      l2cap_channel_manager_,
-      signaling_channel,
-      connection_handle,
-      rx_config,
-      tx_config,
-      /*receive_fn=*/nullptr,
-      std::move(event_fn),
-      /*receive_fn_multibuf=*/std::move(receive_fn));
-}
-
-// TODO: https://pwbug.dev/379337272 - Remove once clients move to new signature
-// with allocators.
-pw::Result<L2capCoc> ProxyHost::AcquireL2capCoc(
-    pw::multibuf::MultiBufAllocator& rx_multibuf_allocator,
-    uint16_t connection_handle,
-    L2capCoc::CocConfig rx_config,
-    L2capCoc::CocConfig tx_config,
-    Function<void(pw::span<uint8_t> payload)>&& receive_fn,
-    Function<void(L2capChannelEvent event)>&& event_fn) {
-  Status status = acl_data_channel_.CreateAclConnection(connection_handle,
-                                                        AclTransportType::kLe);
-  if (status.IsResourceExhausted()) {
-    return pw::Status::Unavailable();
-  }
-  PW_CHECK(status.ok() || status.IsAlreadyExists());
-
-  L2capSignalingChannel* signaling_channel =
-      acl_data_channel_.FindSignalingChannel(
-          connection_handle,
-          static_cast<uint16_t>(emboss::L2capFixedCid::LE_U_SIGNALING));
-  PW_CHECK(signaling_channel);
-  // Create config using the temporary shared allocators.
   return L2capCocInternal::Create(rx_multibuf_allocator,
                                   l2cap_channel_manager_,
                                   signaling_channel,
                                   connection_handle,
                                   rx_config,
                                   tx_config,
-                                  /*receive_fn=*/std::move(receive_fn),
                                   std::move(event_fn),
-                                  /*receive_fn_multibuf=*/nullptr);
+                                  /*receive_fn=*/std::move(receive_fn));
 }
 
 pw::Status ProxyHost::SendAdditionalRxCredits(uint16_t connection_handle,
@@ -521,11 +486,13 @@ pw::Status ProxyHost::SendAdditionalRxCredits(uint16_t connection_handle,
 }
 
 pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
+    multibuf::MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     uint16_t local_cid,
     uint16_t remote_cid,
     AclTransportType transport,
-    Function<bool(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    OptionalPayloadReceiveCallback&& payload_from_controller_fn,
+    OptionalPayloadReceiveCallback&& payload_from_host_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   Status status =
       acl_data_channel_.CreateAclConnection(connection_handle, transport);
@@ -533,14 +500,17 @@ pw::Result<BasicL2capChannel> ProxyHost::AcquireBasicL2capChannel(
     return pw::Status::Unavailable();
   }
   PW_CHECK(status.ok() || status.IsAlreadyExists());
-  return BasicL2capChannel::Create(
-      /*l2cap_channel_manager=*/l2cap_channel_manager_,
-      /*connection_handle=*/connection_handle,
-      /*transport=*/transport,
-      /*local_cid=*/local_cid,
-      /*remote_cid=*/remote_cid,
-      /*payload_from_controller_fn=*/std::move(payload_from_controller_fn),
-      /*event_fn=*/std::move(event_fn));
+  return BasicL2capChannel::Create(l2cap_channel_manager_,
+                                   &rx_multibuf_allocator,
+                                   /*connection_handle=*/connection_handle,
+                                   /*transport=*/transport,
+                                   /*local_cid=*/local_cid,
+                                   /*remote_cid=*/remote_cid,
+                                   /*payload_from_controller_fn=*/
+                                   std::move(payload_from_controller_fn),
+                                   /*payload_from_host_fn=*/
+                                   std::move(payload_from_host_fn),
+                                   /*event_fn=*/std::move(event_fn));
 }
 
 namespace {
@@ -591,11 +561,12 @@ pw::Status ProxyHost::SendGattNotify(uint16_t connection_handle,
 }
 
 pw::Result<RfcommChannel> ProxyHost::AcquireRfcommChannel(
+    multibuf::MultiBufAllocator& rx_multibuf_allocator,
     uint16_t connection_handle,
     RfcommChannel::Config rx_config,
     RfcommChannel::Config tx_config,
     uint8_t channel_number,
-    Function<void(pw::span<uint8_t> payload)>&& payload_from_controller_fn,
+    Function<void(multibuf::MultiBuf&& payload)>&& payload_from_controller_fn,
     Function<void(L2capChannelEvent event)>&& event_fn) {
   Status status = acl_data_channel_.CreateAclConnection(
       connection_handle, AclTransportType::kBrEdr);
@@ -603,6 +574,7 @@ pw::Result<RfcommChannel> ProxyHost::AcquireRfcommChannel(
     return pw::Status::Unavailable();
   }
   return RfcommChannel::Create(l2cap_channel_manager_,
+                               rx_multibuf_allocator,
                                connection_handle,
                                rx_config,
                                tx_config,

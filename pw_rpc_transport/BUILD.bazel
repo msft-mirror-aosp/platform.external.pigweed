@@ -23,7 +23,10 @@ load(
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -264,6 +267,7 @@ cc_library(
     name = "stream_rpc_dispatcher",
     hdrs = ["public/pw_rpc_transport/stream_rpc_dispatcher.h"],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":egress_ingress",
         "//pw_metric:metric",

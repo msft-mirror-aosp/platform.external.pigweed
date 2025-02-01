@@ -14,7 +14,10 @@
 
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 # Basic target with protocol definitions and no logic, suitable for test
 # emulation.
@@ -27,6 +30,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/gatt/gatt_defs.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         "//pw_bluetooth_sapphire/host/att:definitions",
         "//pw_bluetooth_sapphire/host/common",
@@ -74,6 +78,7 @@ cc_library(
         "public/pw_bluetooth_sapphire/internal/host/gatt/types.h",
     ],
     strip_include_prefix = "public",
+    tags = ["noclangtidy"],
     deps = [
         ":definitions",
         "//pw_bluetooth_sapphire/host/att",

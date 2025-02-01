@@ -22,7 +22,10 @@ load(
 )
 load("//pw_unit_test:pw_cc_test.bzl", "pw_cc_test")
 
-package(default_visibility = ["//visibility:public"])
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+)
 
 licenses(["notice"])
 
@@ -133,6 +136,7 @@ pw_cc_test(
         "git_build_info_test.cc",
         ":git_build_info",
     ],
+    tags = ["noclangtidy"],
     deps = [
         "//pw_log",
         "//pw_unit_test",
